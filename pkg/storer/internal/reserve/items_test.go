@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"testing"
 
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/storagetest"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -25,10 +25,11 @@ func TestReserveItems(t *testing.T) {
 			name: "BatchRadiusItem",
 			test: &storagetest.ItemMarshalAndUnmarshalTest{
 				Item: &reserve.BatchRadiusItem{
-					BatchID: storagetest.MaxAddressBytes[:],
-					Address: swarm.NewAddress(storagetest.MaxAddressBytes[:]),
-					Bin:     9,
-					BinID:   100,
+					BatchID:   storagetest.MaxAddressBytes[:],
+					Address:   swarm.NewAddress(storagetest.MaxAddressBytes[:]),
+					Bin:       9,
+					BinID:     100,
+					StampHash: storagetest.MaxAddressBytes[:],
 				},
 				Factory: func() storage.Item { return new(reserve.BatchRadiusItem) },
 			},
@@ -37,10 +38,11 @@ func TestReserveItems(t *testing.T) {
 			name: "ChunkBinItem",
 			test: &storagetest.ItemMarshalAndUnmarshalTest{
 				Item: &reserve.ChunkBinItem{
-					Address: swarm.NewAddress(storagetest.MaxAddressBytes[:]),
-					BatchID: storagetest.MaxAddressBytes[:],
-					Bin:     9,
-					BinID:   100,
+					Address:   swarm.NewAddress(storagetest.MaxAddressBytes[:]),
+					BatchID:   storagetest.MaxAddressBytes[:],
+					Bin:       9,
+					BinID:     100,
+					StampHash: storagetest.MaxAddressBytes[:],
 				},
 				Factory: func() storage.Item { return new(reserve.ChunkBinItem) },
 			},

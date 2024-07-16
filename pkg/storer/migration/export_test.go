@@ -9,4 +9,5 @@ var (
 	Step_02 = step_02
 	Step_04 = step_04
 	Step_05 = step_05
+	Step_06 = step_06
 )
