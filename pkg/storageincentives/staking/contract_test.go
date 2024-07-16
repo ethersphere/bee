@@ -89,6 +89,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
+			false,
 		)
 
 		_, err = contract.DepositStake(ctx, stakedAmount)
@@ -149,6 +150,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
+			false,
 		)
 
 		_, err = contract.DepositStake(ctx, stakedAmount)
@@ -187,6 +189,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
+			false,
 		)
 
 		_, err := contract.DepositStake(ctx, big.NewInt(0))
@@ -218,6 +221,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
+			false,
 		)
 
 		_, err := contract.DepositStake(ctx, big.NewInt(100000000000000000))
@@ -249,6 +253,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
+			false,
 		)
 
 		_, err := contract.DepositStake(ctx, big.NewInt(100000000000000000))
@@ -286,6 +291,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
+			false,
 		)
 
 		_, err := contract.DepositStake(ctx, stakedAmount)
@@ -334,6 +340,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
+			false,
 		)
 
 		_, err = contract.DepositStake(ctx, stakedAmount)
@@ -394,6 +401,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
+			false,
 		)
 
 		_, err = contract.DepositStake(ctx, stakedAmount)
@@ -452,6 +460,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
+			false,
 		)
 
 		_, err = contract.DepositStake(ctx, stakedAmount)
@@ -477,6 +486,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
+			false,
 		)
 
 		_, err := contract.DepositStake(ctx, stakedAmount)
@@ -716,6 +726,7 @@ func TestGetStake(t *testing.T) {
 				}),
 			),
 			nonce,
+			false,
 		)
 
 		stakedAmount, err := contract.GetStake(ctx)
@@ -751,6 +762,7 @@ func TestGetStake(t *testing.T) {
 				}),
 			),
 			nonce,
+			false,
 		)
 
 		_, err = contract.GetStake(ctx)
@@ -787,6 +799,7 @@ func TestGetStake(t *testing.T) {
 				}),
 			),
 			nonce,
+			false,
 		)
 
 		_, err = contract.GetStake(ctx)
@@ -809,6 +822,7 @@ func TestGetStake(t *testing.T) {
 				}),
 			),
 			nonce,
+			false,
 		)
 
 		_, err := contract.GetStake(ctx)
@@ -893,6 +907,7 @@ func TestWithdrawStake(t *testing.T) {
 				}),
 			),
 			nonce,
+			false,
 		)
 
 		_, err = contract.WithdrawAllStake(ctx)
@@ -926,6 +941,7 @@ func TestWithdrawStake(t *testing.T) {
 				}),
 			),
 			nonce,
+			false,
 		)
 
 		_, err = contract.WithdrawAllStake(ctx)
@@ -969,6 +985,7 @@ func TestWithdrawStake(t *testing.T) {
 				}),
 			),
 			nonce,
+			false,
 		)
 
 		_, err = contract.WithdrawAllStake(ctx)
@@ -1058,6 +1075,7 @@ func TestWithdrawStake(t *testing.T) {
 				}),
 			),
 			nonce,
+			false,
 		)
 
 		_, err = contract.WithdrawAllStake(ctx)
@@ -1130,6 +1148,7 @@ func TestWithdrawStake(t *testing.T) {
 				}),
 			),
 			nonce,
+			false,
 		)
 
 		_, err = contract.WithdrawAllStake(ctx)
@@ -1161,6 +1180,7 @@ func TestWithdrawStake(t *testing.T) {
 				}),
 			),
 			nonce,
+			false,
 		)
 
 		_, err = contract.WithdrawAllStake(ctx)
@@ -1202,6 +1222,7 @@ func TestWithdrawStake(t *testing.T) {
 				}),
 			),
 			nonce,
+			false,
 		)
 
 		_, err = contract.WithdrawAllStake(ctx)

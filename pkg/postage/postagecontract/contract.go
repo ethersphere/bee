@@ -64,6 +64,8 @@ type postageContract struct {
 	batchCreatedTopic       common.Hash
 	batchTopUpTopic         common.Hash
 	batchDepthIncreaseTopic common.Hash
+
+	gasLimit uint64
 }
 
 func New(
@@ -75,9 +77,15 @@ func New(
 	postageService postage.Service,
 	postageStorer postage.Storer,
 	chainEnabled bool,
+	setGasLimit bool,
 ) Interface {
 	if !chainEnabled {
 		return new(noOpPostageContract)
+	}
+
+	var gasLimit uint64
+	if setGasLimit {
+		gasLimit = transaction.DefaultGasLimit
 	}
 
 	return &postageContract{
@@ -92,6 +100,8 @@ func New(
 		batchCreatedTopic:       postageStampContractABI.Events["BatchCreated"].ID,
 		batchTopUpTopic:         postageStampContractABI.Events["BatchTopUp"].ID,
 		batchDepthIncreaseTopic: postageStampContractABI.Events["BatchDepthIncrease"].ID,
+
+		gasLimit: gasLimit,
 	}
 }
 
@@ -194,7 +204,7 @@ func (c *postageContract) sendTransaction(ctx context.Context, callData []byte, 
 		To:          &c.postageStampContractAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    sctx.GetGasLimit(ctx),
+		GasLimit:    max(sctx.GetGasLimit(ctx), c.gasLimit),
 		Value:       big.NewInt(0),
 		Description: desc,
 	}
