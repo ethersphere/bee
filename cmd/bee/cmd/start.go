@@ -337,6 +337,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		TargetNeighborhood:            c.config.GetString(optionNameTargetNeighborhood),
 		NeighborhoodSuggester:         neighborhoodSuggester,
 		WhitelistedWithdrawalAddress:  c.config.GetStringSlice(optionNameWhitelistedWithdrawalAddress),
+		TrxDebugMode:                  c.config.GetBool(optionNameTransactionDebugMode),
 	})
 
 	return b, err

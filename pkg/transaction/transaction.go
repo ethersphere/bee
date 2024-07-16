@@ -43,7 +43,10 @@ var (
 	ErrAlreadyImported     = errors.New("already imported")
 )
 
-const DefaultTipBoostPercent = 20
+const (
+	DefaultTipBoostPercent = 20
+	DefaultGasLimit        = 1_000_000
+)
 
 // TxRequest describes a request for a transaction that can be executed.
 type TxRequest struct {
