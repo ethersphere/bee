@@ -16,7 +16,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	chunk "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
@@ -51,11 +51,14 @@ func TestReserve(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: uint8(b), BatchID: ch.Stamp().BatchID(), Address: ch.Address()}, false)
-			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: uint8(b), BinID: uint64(i)}, false)
+			stampHash, err := ch.Stamp().Hash()
+			if err != nil {
+				t.Fatal(err)
+			}
+			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: uint8(b), BatchID: ch.Stamp().BatchID(), Address: ch.Address(), StampHash: stampHash}, false)
+			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: uint8(b), BinID: uint64(i), StampHash: stampHash}, false)
 			checkChunk(t, ts, ch, false)
-
-			h, err := r.Has(ch.Address(), ch.Stamp().BatchID())
+			h, err := r.Has(ch.Address(), ch.Stamp().BatchID(), stampHash)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -63,7 +66,7 @@ func TestReserve(t *testing.T) {
 				t.Fatalf("expected chunk addr %s binID %d", ch.Address(), i)
 			}
 
-			chGet, err := r.Get(context.Background(), ch.Address(), ch.Stamp().BatchID())
+			chGet, err := r.Get(context.Background(), ch.Address(), ch.Stamp().BatchID(), stampHash)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -164,13 +167,21 @@ func TestReplaceOldIndex(t *testing.T) {
 	}
 
 	// Chunk 1 must be gone
-	checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch1.Stamp().BatchID(), Address: ch1.Address()}, true)
-	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: 1}, true)
+	ch1StampHash, err := ch1.Stamp().Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch1.Stamp().BatchID(), Address: ch1.Address(), StampHash: ch1StampHash}, true)
+	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: 1, StampHash: ch1StampHash}, true)
 	checkChunk(t, ts, ch1, true)
 
 	// Chunk 2 must be stored
-	checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch2.Stamp().BatchID(), Address: ch2.Address()}, false)
-	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: 2}, false)
+	ch2StampHash, err := ch2.Stamp().Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch2.Stamp().BatchID(), Address: ch2.Address(), StampHash: ch2StampHash}, false)
+	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: 2, StampHash: ch2StampHash}, false)
 	checkChunk(t, ts, ch2, false)
 
 	item, err := stampindex.Load(ts.IndexStore(), "reserve", ch2)
@@ -233,20 +244,24 @@ func TestEvict(t *testing.T) {
 	for i, ch := range chunks {
 		binID := i%chunksPerBatch + 1
 		b := swarm.Proximity(baseAddr.Bytes(), ch.Address().Bytes())
-		_, err := r.Get(context.Background(), ch.Address(), ch.Stamp().BatchID())
+		stampHash, err := ch.Stamp().Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = r.Get(context.Background(), ch.Address(), ch.Stamp().BatchID(), stampHash)
 		if bytes.Equal(ch.Stamp().BatchID(), evictBatch.ID) {
 			if !errors.Is(err, storage.ErrNotFound) {
 				t.Fatalf("got err %v, want %v", err, storage.ErrNotFound)
 			}
-			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: b, BatchID: ch.Stamp().BatchID(), Address: ch.Address()}, true)
-			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: b, BinID: uint64(binID)}, true)
+			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: b, BatchID: ch.Stamp().BatchID(), Address: ch.Address(), StampHash: stampHash}, true)
+			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: b, BinID: uint64(binID), StampHash: stampHash}, true)
 			checkChunk(t, ts, ch, true)
 		} else {
 			if err != nil {
 				t.Fatal(err)
 			}
-			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: b, BatchID: ch.Stamp().BatchID(), Address: ch.Address()}, false)
-			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: b, BinID: uint64(binID)}, false)
+			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: b, BatchID: ch.Stamp().BatchID(), Address: ch.Address(), StampHash: stampHash}, false)
+			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: b, BinID: uint64(binID), StampHash: stampHash}, false)
 			checkChunk(t, ts, ch, false)
 		}
 	}
@@ -293,13 +308,17 @@ func TestEvictMaxCount(t *testing.T) {
 	}
 
 	for i, ch := range chunks {
+		stampHash, err := ch.Stamp().Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
 		if i < 10 {
-			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch.Stamp().BatchID(), Address: ch.Address()}, true)
-			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: uint64(i + 1)}, true)
+			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch.Stamp().BatchID(), Address: ch.Address(), StampHash: stampHash}, true)
+			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: uint64(i + 1), StampHash: stampHash}, true)
 			checkChunk(t, ts, ch, true)
 		} else {
-			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 1, BatchID: ch.Stamp().BatchID(), Address: ch.Address()}, false)
-			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 1, BinID: uint64(i - 10 + 1)}, false)
+			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 1, BatchID: ch.Stamp().BatchID(), Address: ch.Address(), StampHash: stampHash}, false)
+			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 1, BinID: uint64(i - 10 + 1), StampHash: stampHash}, false)
 			checkChunk(t, ts, ch, false)
 		}
 	}
@@ -344,7 +363,7 @@ func TestIterate(t *testing.T) {
 		r := createReserve(t)
 
 		var id uint64 = 1
-		err := r.IterateBin(1, 0, func(ch swarm.Address, binID uint64, _ []byte) (bool, error) {
+		err := r.IterateBin(1, 0, func(ch swarm.Address, binID uint64, _, _ []byte) (bool, error) {
 			if binID != id {
 				t.Fatalf("got %d, want %d", binID, id)
 			}
