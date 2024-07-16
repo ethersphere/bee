@@ -85,6 +85,7 @@ type PushSync struct {
 	store          Storer
 	topologyDriver topology.Driver
 	unwrap         func(swarm.Chunk)
+	gsocHandler    func(soc.SOC)
 	logger         log.Logger
 	accounting     accounting.Interface
 	pricer         pricer.Interface
@@ -114,6 +115,7 @@ func New(
 	topology topology.Driver,
 	fullNode bool,
 	unwrap func(swarm.Chunk),
+	gsocHandler func(soc.SOC),
 	validStamp postage.ValidStampFn,
 	logger log.Logger,
 	accounting accounting.Interface,
@@ -132,6 +134,7 @@ func New(
 		topologyDriver: topology,
 		fullNode:       fullNode,
 		unwrap:         unwrap,
+		gsocHandler:    gsocHandler,
 		logger:         logger.WithName(loggerName).Register(),
 		accounting:     accounting,
 		pricer:         pricer,
@@ -225,7 +228,9 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	if cac.Valid(chunk) {
 		go ps.unwrap(chunk)
-	} else if !soc.Valid(chunk) {
+	} else if chunk, err := soc.FromChunk(chunk); err == nil {
+		go ps.gsocHandler(*chunk)
+	} else {
 		return swarm.ErrInvalidChunk
 	}
 

@@ -32,6 +32,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/config"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/feeds/factory"
+	"github.com/ethersphere/bee/v2/pkg/gsoc"
 	"github.com/ethersphere/bee/v2/pkg/hive"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/metrics"
@@ -898,6 +899,7 @@ func NewBee(
 	pricing.SetPaymentThresholdObserver(acc)
 
 	pssService := pss.New(pssPrivateKey, logger)
+	gsocService := gsoc.New()
 	b.pssCloser = pssService
 
 	validStamp := postage.ValidStamp(batchStore)
@@ -951,7 +953,7 @@ func NewBee(
 		}
 	}
 
-	pushSyncProtocol := pushsync.New(swarmAddress, networkID, nonce, p2ps, localStore, waitNetworkRFunc, kad, o.FullNodeMode && !o.BootnodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
+	pushSyncProtocol := pushsync.New(swarmAddress, networkID, nonce, p2ps, localStore, waitNetworkRFunc, kad, o.FullNodeMode && !o.BootnodeMode, pssService.TryUnwrap, gsocService.Handler, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
 	b.pushSyncCloser = pushSyncProtocol
 
 	// set the pushSyncer in the PSS
@@ -965,7 +967,7 @@ func NewBee(
 
 	pusherService.AddFeed(localStore.PusherFeed())
 
-	pullSyncProtocol := pullsync.New(p2ps, localStore, pssService.TryUnwrap, validStamp, logger, pullsync.DefaultMaxPage)
+	pullSyncProtocol := pullsync.New(p2ps, localStore, pssService.TryUnwrap, gsocService.Handler, validStamp, logger, pullsync.DefaultMaxPage)
 	b.pullSyncCloser = pullSyncProtocol
 
 	retrieveProtocolSpec := retrieval.Protocol()
@@ -1118,6 +1120,7 @@ func NewBee(
 		Storer:          localStore,
 		Resolver:        multiResolver,
 		Pss:             pssService,
+		Gsoc:            gsocService,
 		FeedFactory:     feedFactory,
 		Post:            post,
 		AccessControl:   accesscontrol,

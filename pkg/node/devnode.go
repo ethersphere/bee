@@ -23,6 +23,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/feeds/factory"
+	"github.com/ethersphere/bee/v2/pkg/gsoc"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	mockP2P "github.com/ethersphere/bee/v2/pkg/p2p/mock"
 	mockPingPong "github.com/ethersphere/bee/v2/pkg/pingpong/mock"
@@ -340,6 +341,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		Storer:          localStore,
 		Resolver:        mockResolver,
 		Pss:             pssService,
+		Gsoc:            gsoc.New(),
 		FeedFactory:     mockFeeds,
 		Post:            post,
 		AccessControl:   accesscontrol,
