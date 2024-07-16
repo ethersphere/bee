@@ -22,7 +22,7 @@ type postEnvelopeResponse struct {
 	Signature string `json:"signature"` // postage stamp signature
 }
 
-// envelopePostHandler handles upload of raw binary data of arbitrary length.
+// envelopePostHandler generates new postage stamp for requested chunk address
 func (s *Service) envelopePostHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("post_envelope").Build()
 
