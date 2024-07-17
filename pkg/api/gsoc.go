@@ -18,7 +18,7 @@ func (s *Service) gsocWsHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("gsoc_subscribe").Build()
 
 	paths := struct {
-		address []byte `map:"address" validate:"required"`
+		Address []byte `map:"address" validate:"required"`
 	}{}
 	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
 		response("invalid path params", logger, w)
@@ -40,7 +40,7 @@ func (s *Service) gsocWsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.wsWg.Add(1)
-	go s.gsocListeningWs(conn, paths.address)
+	go s.gsocListeningWs(conn, paths.Address)
 }
 
 func (s *Service) gsocListeningWs(conn *websocket.Conn, socAddress []byte) {
