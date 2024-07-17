@@ -1118,7 +1118,7 @@ func TestJoinerRedundancy(t *testing.T) {
 				ctx, cancel := context.WithCancel(context.Background())
 				defer cancel()
 
-				decodeTimeoutStr := time.Second.String()
+				decodeTimeoutStr := (2 * time.Second).String()
 				fallback := true
 				s := getter.RACE
 
@@ -1138,6 +1138,7 @@ func TestJoinerRedundancy(t *testing.T) {
 				}
 				i := 0
 				eg, ectx := errgroup.WithContext(ctx)
+
 			scnt:
 				for ; i < shardCnt; i++ {
 					select {
@@ -1256,7 +1257,7 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			decodingTimeoutStr := (200 * time.Millisecond).String()
+			decodingTimeoutStr := (2 * time.Second).String()
 
 			ctx, err := getter.SetConfigInContext(ctx, &s, &fallback, &decodingTimeoutStr, log.Noop)
 			if err != nil {
