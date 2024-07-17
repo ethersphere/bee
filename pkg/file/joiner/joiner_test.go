@@ -1248,7 +1248,8 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 		buf := make([]byte, expRead)
 		offset := mrand.Intn(size) * expRead
 		canReadRange := func(t *testing.T, s getter.Strategy, fallback bool, canRead bool) {
-			ctx := context.Background()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
 
 			decodingTimeoutStr := (200 * time.Millisecond).String()
 
