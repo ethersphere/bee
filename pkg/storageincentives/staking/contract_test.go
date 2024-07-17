@@ -541,6 +541,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 				}),
 			),
 			nonce,
+			false,
 		)
 
 		_, err = contract.ChangeStakeOverlay(ctx, nonce)
@@ -566,6 +567,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 				}),
 			),
 			nonce,
+			false,
 		)
 
 		_, err := contract.ChangeStakeOverlay(ctx, nonce)
@@ -599,6 +601,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 				}),
 			),
 			nonce,
+			false,
 		)
 
 		newNonce := make([]byte, 32)
@@ -643,6 +646,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 				}),
 			),
 			nonce,
+			false,
 		)
 
 		_, err = contract.ChangeStakeOverlay(ctx, nonce)
@@ -682,6 +686,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 				}),
 			),
 			nonce,
+			false,
 		)
 
 		_, err = contract.ChangeStakeOverlay(ctx, nonce)
