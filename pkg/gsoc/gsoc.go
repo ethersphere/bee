@@ -15,6 +15,7 @@ import (
 type Listener interface {
 	Register(address [32]byte, handler handler) (cleanup func())
 	Handler(c soc.SOC)
+	Close() error
 }
 
 type listener struct {
