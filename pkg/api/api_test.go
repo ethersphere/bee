@@ -32,6 +32,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
+	"github.com/ethersphere/bee/v2/pkg/gsoc"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	p2pmock "github.com/ethersphere/bee/v2/pkg/p2p/mock"
@@ -93,6 +94,7 @@ type testServerOptions struct {
 	StateStorer        storage.StateStorer
 	Resolver           resolver.Interface
 	Pss                pss.Interface
+	Gsoc               gsoc.Listener
 	WsPath             string
 	WsPingPeriod       time.Duration
 	Logger             log.Logger
@@ -194,6 +196,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		Storer:          o.Storer,
 		Resolver:        o.Resolver,
 		Pss:             o.Pss,
+		Gsoc:            o.Gsoc,
 		FeedFactory:     o.Feeds,
 		Post:            o.Post,
 		AccessControl:   o.AccessControl,
