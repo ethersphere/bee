@@ -254,7 +254,8 @@ func TestEncryptDecrypt(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			ctx := context.Background()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
 			pipe := builder.NewPipelineBuilder(ctx, store, true, 0)
 			testDataReader := bytes.NewReader(testData)
 			resultAddress, err := builder.FeedPipeline(ctx, pipe, testDataReader)
@@ -336,7 +337,8 @@ func TestSeek(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			ctx := context.Background()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
 
 			store := inmemchunkstore.New()
 			testutil.CleanupCloser(t, store)
@@ -613,7 +615,8 @@ func TestPrefetch(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			ctx := context.Background()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
 
 			store := inmemchunkstore.New()
 			testutil.CleanupCloser(t, store)
@@ -917,7 +920,8 @@ func TestJoinerIterateChunkAddresses_Encrypted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	pipe := builder.NewPipelineBuilder(ctx, store, true, 0)
 	testDataReader := bytes.NewReader(testData)
 	resultAddress, err := builder.FeedPipeline(ctx, pipe, testDataReader)
@@ -1236,7 +1240,8 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 			t.Fatal(err)
 		}
 		dataReader := pseudorand.NewReader(seed, size*swarm.ChunkSize)
-		ctx := context.Background()
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 		// ctx = redundancy.SetLevelInContext(ctx, rLevel)
 		ctx = redundancy.SetLevelInContext(ctx, redundancy.NONE)
 		pipe := builder.NewPipelineBuilder(ctx, store, encrypt, rLevel)
