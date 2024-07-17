@@ -1118,7 +1118,7 @@ func TestJoinerRedundancy(t *testing.T) {
 				ctx, cancel := context.WithCancel(context.Background())
 				defer cancel()
 
-				decodeTimeoutStr := (2 * time.Second).String()
+				decodeTimeoutStr := (200 * time.Millisecond).String()
 				fallback := true
 				s := getter.RACE
 
@@ -1257,7 +1257,7 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			decodingTimeoutStr := (2 * time.Second).String()
+			decodingTimeoutStr := (200 * time.Millisecond).String()
 
 			ctx, err := getter.SetConfigInContext(ctx, &s, &fallback, &decodingTimeoutStr, log.Noop)
 			if err != nil {
