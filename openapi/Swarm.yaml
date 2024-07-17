@@ -1125,6 +1125,32 @@ paths:
         default:
           description: Default response
 
+  "/envelope/{address}":
+    post:
+      summary: "Create postage stamp signature against given chunk address"
+      tags:
+        - Envelope
+      parameters:
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
+          required: true
+      responses:
+        "201":
+          description: Ok
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/PostEnvelopeResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "402":
+          $ref: "SwarmCommon.yaml#/components/responses/402"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
   "/connect/{multiAddress}":
     post:
       summary: Connect to address

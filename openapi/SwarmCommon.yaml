@@ -242,6 +242,18 @@ components:
       pattern: "^([A-Fa-f0-9]+)$"
       example: "cf880b8eeac5093fa27b0825906c600685"
 
+    Hex8Bytes:
+      description: Hexadecimal string representation of 8 bytes
+      type: string
+      pattern: "^([0-9a-fA-F]{16})$"
+      example: "1a2b3c4d5e6f7a8b"
+
+    Signature:
+      description: Hexadecimal string representation of cryptographic signature
+      type: string
+      pattern: "^([0-9a-fA-F]{130})$"
+      example: "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e"
+
     MultiAddress:
       type: string
 
@@ -366,6 +378,18 @@ components:
       properties:
         reference:
           $ref: "#/components/schemas/SwarmReference"
+
+    PostEnvelopeResponse:
+      type: object
+      properties:
+        issuer:
+          $ref: "#/components/schemas/EthereumAddress"
+        index:
+          $ref: "#/components/schemas/Hex8Bytes"
+        timestamp:
+          $ref: "#/components/schemas/Hex8Bytes"
+        signature:
+          $ref: "#/components/schemas/Signature"
 
     DebugPostageBatchesResponse:
       type: object

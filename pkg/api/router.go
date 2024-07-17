@@ -234,6 +234,10 @@ func (s *Service) mountAPI() {
 		"HEAD": http.HandlerFunc(s.hasChunkHandler),
 	})
 
+	handle("/envelope/{address}", jsonhttp.MethodHandler{
+		"POST": http.HandlerFunc(s.envelopePostHandler),
+	})
+
 	handle("/soc/{owner}/{id}", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
 			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkWithSpanSize),
