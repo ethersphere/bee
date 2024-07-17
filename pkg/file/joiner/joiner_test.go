@@ -1024,7 +1024,7 @@ func (m *mockPutter) store(cnt int) error {
 }
 
 // nolint:thelper
-func TestJoinerRedundancy_FLAKY(t *testing.T) {
+func TestJoinerRedundancy(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		rLevel       redundancy.Level
@@ -1111,7 +1111,8 @@ func TestJoinerRedundancy_FLAKY(t *testing.T) {
 			}
 			// all data can be read back
 			readCheck := func(t *testing.T, expErr error) {
-				ctx := context.Background()
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
 
 				decodeTimeoutStr := time.Second.String()
 				fallback := true
