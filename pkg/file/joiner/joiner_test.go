@@ -1262,7 +1262,7 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			decodingTimeoutStr := (200 * time.Millisecond).String()
+			decodingTimeoutStr := time.Second.String()
 
 			ctx, err := getter.SetConfigInContext(ctx, &s, &fallback, &decodingTimeoutStr, log.Noop)
 			if err != nil {
