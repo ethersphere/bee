@@ -7,7 +7,6 @@ package gsoc
 import (
 	"sync"
 
-	"github.com/ethersphere/bee/v2/pkg/pushsync"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -19,7 +18,6 @@ type Listener interface {
 }
 
 type listener struct {
-	pusher     pushsync.PushSyncer
 	handlers   map[[32]byte][]*handler
 	handlersMu sync.Mutex
 	quit       chan struct{}
@@ -56,7 +54,10 @@ func (l *listener) Register(address [32]byte, handler handler) (cleanup func()) 
 
 // Handler is called by push/pull sync and passes the chunk its registered handler
 func (l *listener) Handler(c soc.SOC) {
-	addr, _ := c.Address()
+	addr, err := c.Address()
+	if err != nil {
+		return // no handler
+	}
 	h := l.getHandlers([32]byte(addr.Bytes()))
 	if h == nil {
 		return // no handler
