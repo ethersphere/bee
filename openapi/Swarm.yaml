@@ -665,7 +665,7 @@ paths:
         default:
           description: Default response
 
-    "/gsoc/subscribe/{address}":
+  "/gsoc/subscribe/{address}":
     get:
       summary: Subscribe to GSOC payloads
       tags:
