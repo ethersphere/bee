@@ -1011,6 +1011,8 @@ func (m *mockPutter) wait(ctx context.Context) {
 
 func (m *mockPutter) store(cnt int) error {
 	n := 0
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for ch := range m.parities {
 		if err := m.ChunkStore.Put(context.Background(), ch); err != nil {
 			return err
