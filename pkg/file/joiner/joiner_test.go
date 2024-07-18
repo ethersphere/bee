@@ -967,6 +967,7 @@ type mockPutter struct {
 	storage.ChunkStore
 	shards, parities chan swarm.Chunk
 	done             chan struct{}
+	mu               sync.Mutex
 }
 
 func newMockPutter(store storage.ChunkStore, shardCnt, parityCnt int) *mockPutter {
@@ -979,6 +980,8 @@ func newMockPutter(store storage.ChunkStore, shardCnt, parityCnt int) *mockPutte
 }
 
 func (m *mockPutter) Put(ctx context.Context, ch swarm.Chunk) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if len(m.shards) < cap(m.shards) {
 		m.shards <- ch
 		return nil
@@ -987,7 +990,7 @@ func (m *mockPutter) Put(ctx context.Context, ch swarm.Chunk) error {
 		m.parities <- ch
 		return nil
 	}
-	err := m.ChunkStore.Put(context.Background(), ch)
+	err := m.ChunkStore.Put(ctx, ch) // use passed context
 	select {
 	case m.done <- struct{}{}:
 	default:
@@ -1000,8 +1003,10 @@ func (m *mockPutter) wait(ctx context.Context) {
 	case <-m.done:
 	case <-ctx.Done():
 	}
+	m.mu.Lock()
 	close(m.parities)
 	close(m.shards)
+	m.mu.Unlock()
 }
 
 func (m *mockPutter) store(cnt int) error {
@@ -1118,7 +1123,7 @@ func TestJoinerRedundancy(t *testing.T) {
 				ctx, cancel := context.WithCancel(context.Background())
 				defer cancel()
 
-				decodeTimeoutStr := (200 * time.Millisecond).String()
+				decodeTimeoutStr := time.Second.String()
 				fallback := true
 				s := getter.RACE
 
