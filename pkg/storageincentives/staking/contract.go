@@ -33,13 +33,15 @@ var (
 	approveDescription       = "Approve tokens for stake deposit operations"
 	depositStakeDescription  = "Deposit Stake"
 	withdrawStakeDescription = "Withdraw stake"
+	migrateStakeDescription  = "Migrate stake"
 )
 
 type Contract interface {
 	DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error)
 	ChangeStakeOverlay(ctx context.Context, nonce common.Hash) (common.Hash, error)
 	GetStake(ctx context.Context) (*big.Int, error)
-	WithdrawAllStake(ctx context.Context) (common.Hash, error)
+	WithdrawStake(ctx context.Context) (common.Hash, error)
+	MigrateStake(ctx context.Context) (common.Hash, error)
 	RedistributionStatuser
 }
 
@@ -175,7 +177,7 @@ func (c *contract) sendDepositStakeTransaction(ctx context.Context, stakedAmount
 }
 
 func (c *contract) getStake(ctx context.Context) (*big.Int, error) {
-	callData, err := c.stakingContractABI.Pack("stakeOfAddress", c.owner)
+	callData, err := c.stakingContractABI.Pack("nodeEffectiveStake", c.owner)
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +189,7 @@ func (c *contract) getStake(ctx context.Context) (*big.Int, error) {
 		return nil, fmt.Errorf("get stake: %w", err)
 	}
 
-	results, err := c.stakingContractABI.Unpack("stakeOfAddress", result)
+	results, err := c.stakingContractABI.Unpack("nodeEffectiveStake", result)
 	if err != nil {
 		return nil, err
 	}
@@ -278,7 +280,27 @@ func (c *contract) getBalance(ctx context.Context) (*big.Int, error) {
 	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
 }
 
-func (c *contract) WithdrawAllStake(ctx context.Context) (txHash common.Hash, err error) {
+func (c *contract) WithdrawStake(ctx context.Context) (txHash common.Hash, err error) {
+	stakedAmount, err := c.getStake(ctx)
+	if err != nil {
+		return
+	}
+
+	if stakedAmount.Cmp(big.NewInt(0)) <= 0 {
+		return common.Hash{}, ErrInsufficientStake
+	}
+
+	receipt, err := c.withdrawFromStake(ctx)
+	if err != nil {
+		return common.Hash{}, err
+	}
+	if receipt != nil {
+		txHash = receipt.TxHash
+	}
+	return txHash, nil
+}
+
+func (c *contract) MigrateStake(ctx context.Context) (txHash common.Hash, err error) {
 	isPaused, err := c.paused(ctx)
 	if err != nil {
 		return
@@ -296,12 +318,7 @@ func (c *contract) WithdrawAllStake(ctx context.Context) (txHash common.Hash, er
 		return common.Hash{}, ErrInsufficientStake
 	}
 
-	_, err = c.sendApproveTransaction(ctx, stakedAmount)
-	if err != nil {
-		return common.Hash{}, err
-	}
-
-	receipt, err := c.withdrawFromStake(ctx, stakedAmount)
+	receipt, err := c.migrateStake(ctx)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -311,15 +328,29 @@ func (c *contract) WithdrawAllStake(ctx context.Context) (txHash common.Hash, er
 	return txHash, nil
 }
 
-func (c *contract) withdrawFromStake(ctx context.Context, stakedAmount *big.Int) (*types.Receipt, error) {
-	callData, err := c.stakingContractABI.Pack("withdrawFromStake", stakedAmount)
+func (c *contract) migrateStake(ctx context.Context) (*types.Receipt, error) {
+	callData, err := c.stakingContractABI.Pack("migrateStake")
+	if err != nil {
+		return nil, err
+	}
+
+	receipt, err := c.sendTransaction(ctx, callData, migrateStakeDescription)
+	if err != nil {
+		return nil, fmt.Errorf("migrate stake: %w", err)
+	}
+
+	return receipt, nil
+}
+
+func (c *contract) withdrawFromStake(ctx context.Context) (*types.Receipt, error) {
+	callData, err := c.stakingContractABI.Pack("withdrawFromStake")
 	if err != nil {
 		return nil, err
 	}
 
 	receipt, err := c.sendTransaction(ctx, callData, withdrawStakeDescription)
 	if err != nil {
-		return nil, fmt.Errorf("withdraw stake: stakedAmount %d: %w", stakedAmount, err)
+		return nil, fmt.Errorf("withdraw stake: %w", err)
 	}
 
 	return receipt, nil
