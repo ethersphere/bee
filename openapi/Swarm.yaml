@@ -818,6 +818,28 @@ paths:
         default:
           description: Default response
 
+    "/gsoc/subscribe/{address}":
+    get:
+      summary: Subscribe to GSOC payloads
+      tags:
+        - GSOC
+        - Subscribe
+        - Websocket
+      parameters:
+        - in: path
+          name: reference
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
+          required: true
+          description: "Single Owner Chunk address (which may have multiple payloads)"
+      responses:
+        "200":
+          description: Returns a WebSocket with a subscription for incoming message data on the requested SOC address.
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
   "/soc/{owner}/{id}":
     post:
       summary: Upload single owner chunk
