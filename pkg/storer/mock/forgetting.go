@@ -35,14 +35,17 @@ func (d *DelayedStore) Delay(addr swarm.Address, delay time.Duration) {
 
 func (d *DelayedStore) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
 	d.mu.Lock()
-	defer d.mu.Unlock()
-	if delay, ok := d.cache[addr.String()]; ok && delay > 0 {
+	delay, ok := d.cache[addr.String()]
+	if ok && delay > 0 {
+		delete(d.cache, addr.String())
+		d.mu.Unlock()
 		select {
 		case <-time.After(delay):
-			delete(d.cache, addr.String())
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
+	} else {
+		d.mu.Unlock()
 	}
 	return d.ChunkStore.Get(ctx, addr)
 }
@@ -64,10 +67,14 @@ func (f *ForgettingStore) Stored() int64 {
 }
 
 func (f *ForgettingStore) Record() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.record.Store(true)
 }
 
 func (f *ForgettingStore) Unrecord() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.record.Store(false)
 }
 
@@ -97,10 +104,14 @@ func (f *ForgettingStore) isMiss(addr swarm.Address) bool {
 }
 
 func (f *ForgettingStore) Reset() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.missed = make(map[string]struct{})
 }
 
 func (f *ForgettingStore) Missed() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	return len(f.missed)
 }
 
