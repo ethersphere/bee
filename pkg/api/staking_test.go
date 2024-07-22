@@ -186,7 +186,7 @@ func TestWithdrawStake(t *testing.T) {
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
 		jsonhttptest.Request(t, ts, http.MethodDelete, "/stake", http.StatusOK, jsonhttptest.WithExpectedJSONResponse(
-			&api.WithdrawAllStakeResponse{TxHash: txHash.String()}))
+			&api.StakeTransactionReponse{TxHash: txHash.String()}))
 	})
 
 	t.Run("with invalid stake amount", func(t *testing.T) {
@@ -252,7 +252,7 @@ func TestMigrateStake(t *testing.T) {
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
 		jsonhttptest.Request(t, ts, http.MethodPost, "/stake/migrate", http.StatusOK, jsonhttptest.WithExpectedJSONResponse(
-			&api.WithdrawAllStakeResponse{TxHash: txHash.String()}))
+			&api.StakeTransactionReponse{TxHash: txHash.String()}))
 	})
 
 	t.Run("with invalid stake amount", func(t *testing.T) {

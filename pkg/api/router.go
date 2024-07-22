@@ -563,7 +563,7 @@ func (s *Service) mountBusinessDebug() {
 		s.stakingAccessHandler,
 		s.gasConfigMiddleware("migrate stake"),
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"POST": http.HandlerFunc(s.migrateStakeHandler), // TODO
+			"POST": http.HandlerFunc(s.migrateStakeHandler),
 		})),
 	)
 

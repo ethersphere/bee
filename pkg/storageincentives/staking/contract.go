@@ -176,7 +176,7 @@ func (c *contract) sendDepositStakeTransaction(ctx context.Context, stakedAmount
 	return receipt, nil
 }
 
-func (c *contract) getStake(ctx context.Context) (*big.Int, error) {
+func (c *contract) getEffectiveStake(ctx context.Context) (*big.Int, error) {
 	callData, err := c.stakingContractABI.Pack("nodeEffectiveStake", c.owner)
 	if err != nil {
 		return nil, err
@@ -190,6 +190,31 @@ func (c *contract) getStake(ctx context.Context) (*big.Int, error) {
 	}
 
 	results, err := c.stakingContractABI.Unpack("nodeEffectiveStake", result)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(results) == 0 {
+		return nil, errors.New("unexpected empty results")
+	}
+
+	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
+}
+
+func (c *contract) getwithdrawableStake(ctx context.Context) (*big.Int, error) {
+	callData, err := c.stakingContractABI.Pack("withdrawableStake")
+	if err != nil {
+		return nil, err
+	}
+	result, err := c.transactionService.Call(ctx, &transaction.TxRequest{
+		To:   &c.stakingContractAddress,
+		Data: callData,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get stake: %w", err)
+	}
+
+	results, err := c.stakingContractABI.Unpack("withdrawableStake", result)
 	if err != nil {
 		return nil, err
 	}
@@ -247,7 +272,7 @@ func (c *contract) ChangeStakeOverlay(ctx context.Context, nonce common.Hash) (c
 }
 
 func (c *contract) GetStake(ctx context.Context) (*big.Int, error) {
-	stakedAmount, err := c.getStake(ctx)
+	stakedAmount, err := c.getEffectiveStake(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("staking contract: failed to get stake: %w", err)
 	}
@@ -281,7 +306,7 @@ func (c *contract) getBalance(ctx context.Context) (*big.Int, error) {
 }
 
 func (c *contract) WithdrawStake(ctx context.Context) (txHash common.Hash, err error) {
-	stakedAmount, err := c.getStake(ctx)
+	stakedAmount, err := c.getwithdrawableStake(ctx)
 	if err != nil {
 		return
 	}
@@ -309,7 +334,7 @@ func (c *contract) MigrateStake(ctx context.Context) (txHash common.Hash, err er
 		return common.Hash{}, ErrNotPaused
 	}
 
-	stakedAmount, err := c.getStake(ctx)
+	stakedAmount, err := c.getEffectiveStake(ctx)
 	if err != nil {
 		return
 	}
