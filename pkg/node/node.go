@@ -971,7 +971,7 @@ func NewBee(
 	stakingContract := staking.New(overlayEthAddress, stakingContractAddress, abiutil.MustParseABI(chainCfg.StakingABI), bzzTokenAddress, transactionService, common.BytesToHash(nonce), o.TrxDebugMode)
 
 	if chainEnabled && changedOverlay {
-		stake, err := stakingContract.GetStake(ctx)
+		stake, err := stakingContract.GetCommittedStake(ctx)
 		if err != nil {
 			return nil, errors.New("getting stake balance")
 		}

@@ -567,6 +567,14 @@ func (s *Service) mountBusinessDebug() {
 		})),
 	)
 
+	handle("/stake/withdrawable", web.ChainHandlers(
+		s.stakingAccessHandler,
+		s.gasConfigMiddleware("get withdrawable stake"),
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.getWithdrawableStakeHandler),
+		})),
+	)
+
 	handle("/stake/{amount}", web.ChainHandlers(
 		s.stakingAccessHandler,
 		s.gasConfigMiddleware("deposit stake"),
@@ -579,7 +587,7 @@ func (s *Service) mountBusinessDebug() {
 		s.stakingAccessHandler,
 		s.gasConfigMiddleware("get or withdraw stake"),
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET":    http.HandlerFunc(s.getStakedAmountHandler),
+			"GET":    http.HandlerFunc(s.getCommittedStakeHandler),
 			"DELETE": http.HandlerFunc(s.withdrawStakeHandler),
 		})),
 	)

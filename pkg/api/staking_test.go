@@ -105,7 +105,7 @@ func TestDepositStake(t *testing.T) {
 	})
 }
 
-func TestGetStake(t *testing.T) {
+func TestGetStakeCommitted(t *testing.T) {
 	t.Parallel()
 
 	t.Run("ok", func(t *testing.T) {
@@ -131,6 +131,36 @@ func TestGetStake(t *testing.T) {
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contractWithError})
 		jsonhttptest.Request(t, ts, http.MethodGet, "/stake", http.StatusInternalServerError,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusInternalServerError, Message: "get staked amount failed"}))
+	})
+}
+
+func TestGetStakeWithdrawable(t *testing.T) {
+	t.Parallel()
+
+	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
+		contract := stakingContractMock.New(
+			stakingContractMock.WithGetStake(func(ctx context.Context) (*big.Int, error) {
+				return big.NewInt(1), nil
+			}),
+		)
+		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
+		jsonhttptest.Request(t, ts, http.MethodGet, "/stake/withdrawable", http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(&api.GetStakeResponse{StakedAmount: bigint.Wrap(big.NewInt(1))}))
+	})
+
+	t.Run("with error", func(t *testing.T) {
+		t.Parallel()
+
+		contractWithError := stakingContractMock.New(
+			stakingContractMock.WithGetStake(func(ctx context.Context) (*big.Int, error) {
+				return big.NewInt(0), fmt.Errorf("get stake failed")
+			}),
+		)
+		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contractWithError})
+		jsonhttptest.Request(t, ts, http.MethodGet, "/stake/withdrawable", http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusInternalServerError, Message: "get staked amount failed"}))
 	})
 }

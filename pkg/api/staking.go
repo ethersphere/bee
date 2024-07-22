@@ -78,10 +78,24 @@ func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-func (s *Service) getStakedAmountHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) getCommittedStakeHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_stake").Build()
 
-	stakedAmount, err := s.stakingContract.GetStake(r.Context())
+	stakedAmount, err := s.stakingContract.GetCommittedStake(r.Context())
+	if err != nil {
+		logger.Debug("get staked amount failed", "overlayAddr", s.overlay, "error", err)
+		logger.Error(nil, "get staked amount failed")
+		jsonhttp.InternalServerError(w, "get staked amount failed")
+		return
+	}
+
+	jsonhttp.OK(w, getStakeResponse{StakedAmount: bigint.Wrap(stakedAmount)})
+}
+
+func (s *Service) getWithdrawableStakeHandler(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("get_stake").Build()
+
+	stakedAmount, err := s.stakingContract.GetWithdrawableStake(r.Context())
 	if err != nil {
 		logger.Debug("get staked amount failed", "overlayAddr", s.overlay, "error", err)
 		logger.Error(nil, "get staked amount failed")
