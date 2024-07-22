@@ -698,15 +698,6 @@ func TestChangeStakeOverlay(t *testing.T) {
 	})
 }
 
-func getCommittedStakeResponse(t *testing.T, amount *big.Int) []byte {
-
-	ret := make([]byte, 32+32+32+32+32+32)
-	copy(ret, swarm.RandAddress(t).Bytes())
-	copy(ret[32:], amount.FillBytes(make([]byte, 32)))
-
-	return ret
-}
-
 func TestGetCommittedStake(t *testing.T) {
 	t.Parallel()
 
@@ -1465,4 +1456,14 @@ func TestMigrateStake(t *testing.T) {
 			t.Fatalf("expected non nil error, got nil")
 		}
 	})
+}
+
+func getCommittedStakeResponse(t *testing.T, amount *big.Int) []byte {
+	t.Helper()
+
+	ret := make([]byte, 32+32+32+32+32+32)
+	copy(ret, swarm.RandAddress(t).Bytes())
+	copy(ret[32:], amount.FillBytes(make([]byte, 32)))
+
+	return ret
 }
