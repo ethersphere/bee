@@ -2052,7 +2052,6 @@ paths:
       summary: Get the withdrawable staked amount.
       description: This endpoint fetches any amount that is possible to withdraw as surplus.
       tags:
-      tags:
         - Staking
       responses:
         "200":
