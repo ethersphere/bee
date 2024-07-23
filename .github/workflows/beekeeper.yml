@@ -14,7 +14,7 @@ env:
   SETUP_CONTRACT_IMAGE: "ethersphere/bee-localchain"
   SETUP_CONTRACT_IMAGE_TAG: "0.9.1-rc1"
   BEELOCAL_BRANCH: "main"
-  BEEKEEPER_BRANCH: "master"
+  BEEKEEPER_BRANCH: "feat/act"
   BEEKEEPER_METRICS_ENABLED: false
   REACHABILITY_OVERRIDE_PUBLIC: true
   BATCHFACTOR_OVERRIDE_PUBLIC: 2
@@ -125,6 +125,9 @@ jobs:
       - name: Set local cluster
         run: |
           timeout ${TIMEOUT} make deploylocal BEEKEEPER_CLUSTER=local-dns
+      - name: Test act
+        id: act
+        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks ci-act; do echo "waiting for act..."; sleep .3; done'
       - name: Test pingpong
         id: pingpong
         run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done'

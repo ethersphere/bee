@@ -8,7 +8,7 @@ BEEKEEPER_INSTALL_DIR ?= $(GOBIN)
 BEEKEEPER_USE_SUDO ?= false
 BEEKEEPER_CLUSTER ?= local
 BEELOCAL_BRANCH ?= main
-BEEKEEPER_BRANCH ?= master
+BEEKEEPER_BRANCH ?= feat/act
 REACHABILITY_OVERRIDE_PUBLIC ?= false
 BATCHFACTOR_OVERRIDE_PUBLIC ?= 5
 
@@ -43,7 +43,7 @@ beekeeper:
 ifeq ($(BEEKEEPER_BRANCH), master)
 	curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/master/scripts/install.sh | BEEKEEPER_INSTALL_DIR=$(BEEKEEPER_INSTALL_DIR) USE_SUDO=$(BEEKEEPER_USE_SUDO) bash
 else
-	git clone -b $(BEEKEEPER_BRANCH) https://github.com/ethersphere/beekeeper.git && mv beekeeper beekeeper_src && cd beekeeper_src && mkdir -p $(BEEKEEPER_INSTALL_DIR) && make binary
+	git clone -b $(BEEKEEPER_BRANCH)https://github.com/Solar-Punk-Ltd/beekeeper.git && mv beekeeper beekeeper_src && cd beekeeper_src && mkdir -p $(BEEKEEPER_INSTALL_DIR) && make binary
 ifeq ($(BEEKEEPER_USE_SUDO), true)
 	sudo mv beekeeper_src/dist/beekeeper $(BEEKEEPER_INSTALL_DIR)
 else
