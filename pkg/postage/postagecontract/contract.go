@@ -342,7 +342,7 @@ func (c *postageContract) getMinimumValidityBlocks(ctx context.Context) (uint64,
 		return 0, err
 	}
 
-	results, err := c.postageStampContractABI.Unpack("lastPrice", result)
+	results, err := c.postageStampContractABI.Unpack("minimumValidityBlocks", result)
 	if err != nil {
 		return 0, err
 	}
@@ -387,7 +387,7 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 	if err != nil {
 		return
 	}
-	if initialBalance.Cmp(big.NewInt(int64(minInitialBalance))) < 0 {
+	if initialBalance.Cmp(big.NewInt(int64(minInitialBalance))) <= 0 {
 		err = fmt.Errorf("insufficient initial balance for 24h minimum validity. balance %d, minimum amount: %d: %w", initialBalance, minInitialBalance, ErrInsufficientValidity)
 		return
 	}
