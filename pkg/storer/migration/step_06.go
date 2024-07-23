@@ -57,11 +57,12 @@ func addStampHash(logger log.Logger, st transaction.Storage) error {
 	}()
 
 	go func() {
-		for oldBatchRadiusItem := range itemC {
+		for item := range itemC {
+			batchRadiusItemV1 := item
 			eg.Go(func() error {
 				err := st.Run(context.Background(), func(s transaction.Store) error {
 					idxStore := s.IndexStore()
-					stamp, err := chunkstamp.LoadWithBatchID(idxStore, "reserve", oldBatchRadiusItem.Address, oldBatchRadiusItem.BatchID)
+					stamp, err := chunkstamp.LoadWithBatchID(idxStore, "reserve", batchRadiusItemV1.Address, batchRadiusItemV1.BatchID)
 					if err != nil {
 						return err
 					}
@@ -71,38 +72,38 @@ func addStampHash(logger log.Logger, st transaction.Storage) error {
 					}
 
 					// Since the ID format has changed, we should delete the old item and put a new one with the new ID format.
-					err = idxStore.Delete(oldBatchRadiusItem)
+					err = idxStore.Delete(batchRadiusItemV1)
 					if err != nil {
 						return err
 					}
 					err = idxStore.Put(&reserve.BatchRadiusItem{
-						Bin:       oldBatchRadiusItem.Bin,
-						BatchID:   oldBatchRadiusItem.BatchID,
+						Bin:       batchRadiusItemV1.Bin,
+						BatchID:   batchRadiusItemV1.BatchID,
 						StampHash: stampHash,
-						Address:   oldBatchRadiusItem.Address,
-						BinID:     oldBatchRadiusItem.BinID,
+						Address:   batchRadiusItemV1.Address,
+						BinID:     batchRadiusItemV1.BinID,
 					})
 					if err != nil {
 						return err
 					}
 
-					oldChunkBinItem := &reserve.ChunkBinItemV1{
-						Bin:   oldBatchRadiusItem.Bin,
-						BinID: oldBatchRadiusItem.BinID,
+					chunkBinItemV1 := &reserve.ChunkBinItemV1{
+						Bin:   batchRadiusItemV1.Bin,
+						BinID: batchRadiusItemV1.BinID,
 					}
-					err = idxStore.Get(oldChunkBinItem)
+					err = idxStore.Get(chunkBinItemV1)
 					if err != nil {
 						return err
 					}
 
 					// same id. Will replace.
 					err = idxStore.Put(&reserve.ChunkBinItem{
-						Bin:       oldChunkBinItem.Bin,
-						BinID:     oldChunkBinItem.BinID,
-						Address:   oldChunkBinItem.Address,
-						BatchID:   oldChunkBinItem.BatchID,
+						Bin:       chunkBinItemV1.Bin,
+						BinID:     chunkBinItemV1.BinID,
+						Address:   chunkBinItemV1.Address,
+						BatchID:   chunkBinItemV1.BatchID,
 						StampHash: stampHash,
-						ChunkType: oldChunkBinItem.ChunkType,
+						ChunkType: chunkBinItemV1.ChunkType,
 					})
 					if err != nil {
 						return err
@@ -110,16 +111,17 @@ func addStampHash(logger log.Logger, st transaction.Storage) error {
 
 					// same id. Will replace.
 					stampIndexItem := &stampindex.Item{
-						BatchID:        oldChunkBinItem.BatchID,
+						BatchID:        chunkBinItemV1.BatchID,
 						StampIndex:     stamp.Index(),
 						StampHash:      stampHash,
 						StampTimestamp: stamp.Timestamp(),
-						ChunkAddress:   oldChunkBinItem.Address,
+						ChunkAddress:   chunkBinItemV1.Address,
 					}
 					stampIndexItem.SetNamespace([]byte("reserve"))
 					return idxStore.Put(stampIndexItem)
 				})
 				if err != nil {
+					logger.Error(err, "migrate")
 					errC <- err
 				}
 				return err
