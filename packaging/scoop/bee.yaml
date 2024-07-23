@@ -1,7 +1,7 @@
 ## Bee configuration - https://docs.ethswarm.org/docs/working-with-bee/configuration
 
-## HTTP API listen address (default ":1633")
-# api-addr: :1633
+## HTTP API listen address (default "127.0.0.1:1633")
+# api-addr: 127.0.0.1:1633
 ## chain block time (default 15)
 # block-time: 15
 ## initial nodes to connect to (default [/dnsaddr/mainnet.ethswarm.org])
