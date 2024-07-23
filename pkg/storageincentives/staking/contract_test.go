@@ -957,19 +957,18 @@ func TestWithdrawStake(t *testing.T) {
 	nonce := common.BytesToHash(make([]byte, 32))
 	stakedAmount := big.NewInt(100000000000000000)
 
-	expectedCallDataForWithdraw, err := stakingContractABI.Pack("withdrawFromStake")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	expectedCallDataForGetStake, err := stakingContractABI.Pack("withdrawableStake")
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	t.Run("ok", func(t *testing.T) {
 		t.Parallel()
 		txHashWithdrawn := common.HexToHash("c3a1")
+
+		expectedCallDataForWithdraw, err := stakingContractABI.Pack("withdrawFromStake")
+		if err != nil {
+			t.Fatal(err)
+		}
+		expectedCallDataForGetStake, err := stakingContractABI.Pack("withdrawableStake")
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		contract := staking.New(
 			owner,
@@ -1018,6 +1017,11 @@ func TestWithdrawStake(t *testing.T) {
 
 		invalidStakedAmount := big.NewInt(0)
 
+		expectedCallDataForGetStake, err := stakingContractABI.Pack("withdrawableStake")
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		contract := staking.New(
 			owner,
 			stakingContractAddress,
@@ -1048,6 +1052,10 @@ func TestWithdrawStake(t *testing.T) {
 		txHashWithdrawn := common.HexToHash("c3a1")
 
 		expectedCallDataForWithdraw, err := stakingContractABI.Pack("withdrawFromStake")
+		if err != nil {
+			t.Fatal(err)
+		}
+		expectedCallDataForGetStake, err := stakingContractABI.Pack("withdrawableStake")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1104,6 +1112,10 @@ func TestWithdrawStake(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		expectedCallDataForGetStake, err := stakingContractABI.Pack("withdrawableStake")
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		contract := staking.New(
 			owner,
@@ -1149,6 +1161,11 @@ func TestWithdrawStake(t *testing.T) {
 
 	t.Run("get stake with err", func(t *testing.T) {
 		t.Parallel()
+
+		expectedCallDataForGetStake, err := stakingContractABI.Pack("withdrawableStake")
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		contract := staking.New(
 			owner,
