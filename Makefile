@@ -51,8 +51,8 @@ else
 endif
 	rm -rf beekeeper_src
 endif
-	test -f ~/.beekeeper.yaml || curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/$(BEEKEEPER_BRANCH)/config/beekeeper-local.yaml -o ~/.beekeeper.yaml
-	mkdir -p ~/.beekeeper && curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/$(BEEKEEPER_BRANCH)/config/local.yaml -o ~/.beekeeper/local.yaml
+	test -f ~/.beekeeper.yaml || curl -sSfL https://raw.githubusercontent.com/Solar-Punk-Ltd/beekeeper/$(BEEKEEPER_BRANCH)/config/beekeeper-local.yaml -o ~/.beekeeper.yaml
+	mkdir -p ~/.beekeeper && curl -sSfL https://raw.githubusercontent.com/Solar-Punk-Ltd/beekeeper/$(BEEKEEPER_BRANCH)/config/local.yaml -o ~/.beekeeper/local.yaml
 
 .PHONY: beelocal
 beelocal:
