@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 7.0.0
+  version: 7.1.0
   title: Bee API
   description: "A list of the currently provided Interfaces to interact with the swarm, implementing file operations and sending messages"
 
@@ -2033,6 +2033,35 @@ paths:
         default:
           description: Default response
 
+  "/stake/migrate":
+    post:
+      summary: Withdraws all past staked amount back to the wallet.
+      description: Be aware, the endpoint call only be called when the contract is paused and is in the process of being migrated to a new contract.
+      tags:
+        - Staking
+      responses:
+        "200":
+          $ref: "SwarmCommon.yaml#/components/schemas/StakeTransactionResponse"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
+  "/stake/withdrawable":
+    get:
+      summary: Get the withdrawable staked amount.
+      description: This endpoint fetches any amount that is possible to withdraw as surplus.
+      tags:
+      tags:
+        - Staking
+      responses:
+        "200":
+          $ref: "SwarmCommon.yaml#/components/schemas/GetStakeResponse"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
   "/stake/{amount}":
     post:
       summary: Deposit some amount for staking.
@@ -2049,7 +2078,7 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       responses:
         "200":
-          $ref: "SwarmCommon.yaml#/components/schemas/StakeDepositResponse"
+          $ref: "SwarmCommon.yaml#/components/schemas/StakeTransactionResponse"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "500":
@@ -2060,7 +2089,7 @@ paths:
   "/stake":
     get:
       summary: Get the staked amount.
-      description: This endpoint fetches the staked amount from the blockchain.
+      description: This endpoint fetches the total staked amount from the blockchain.
       tags:
         - Staking
       responses:
@@ -2071,8 +2100,8 @@ paths:
         default:
           description: Default response
     delete:
-      summary: Withdraw all staked amount.
-      description: Be aware, this endpoint creates an on-chain transactions and transfers BZZ from the node's Ethereum account and hence directly manipulates the wallet balance.
+      summary: Withdraw the extra withdrawable staked amount.
+      description: This endpoint withdraws any amount that is possible to withdraw as surplus.
       tags:
         - Staking
       parameters:
@@ -2080,7 +2109,7 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       responses:
         "200":
-          $ref: "SwarmCommon.yaml#/components/schemas/WithdrawAllStakeResponse"
+          $ref: "SwarmCommon.yaml#/components/schemas/StakeTransactionResponse"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "500":
