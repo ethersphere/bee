@@ -38,6 +38,8 @@ func step_06(st transaction.Storage) func() error {
 func addStampHash(logger log.Logger, st transaction.Storage) error {
 	itemC := make(chan *reserve.BatchRadiusItemV1)
 	errC := make(chan error)
+	doneC := make(chan any)
+	defer close(doneC)
 
 	var eg errgroup.Group
 	p := runtime.NumCPU()
@@ -50,7 +52,7 @@ func addStampHash(logger log.Logger, st transaction.Storage) error {
 			select {
 			case <-ticker.C:
 				logger.Info("still migrating items...")
-			case <-errC:
+			case <-doneC:
 				return
 			}
 		}
@@ -121,13 +123,12 @@ func addStampHash(logger log.Logger, st transaction.Storage) error {
 					return idxStore.Put(stampIndexItem)
 				})
 				if err != nil {
-					logger.Error(err, "migrate")
 					errC <- err
+					return err
 				}
-				return err
+				return nil
 			})
 		}
-		close(errC)
 	}()
 
 	err := st.IndexStore().Iterate(storage.Query{
