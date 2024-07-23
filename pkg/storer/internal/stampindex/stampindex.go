@@ -29,9 +29,6 @@ var (
 	// to unmarshal buffer with smaller size then is the size
 	// of the Item fields.
 	errStampItemUnmarshalInvalidSize = errors.New("unmarshal stampindex.Item: invalid size")
-	// errStampItemUnmarshalChunkImmutableInvalid is returned when trying
-	// to unmarshal buffer with invalid ChunkIsImmutable value.
-	errStampItemUnmarshalChunkImmutableInvalid = errors.New("unmarshal stampindex.Item: chunk immutable is invalid")
 )
 
 var _ storage.Item = (*Item)(nil)
@@ -45,9 +42,8 @@ type Item struct {
 	StampHash  []byte
 
 	// Values.
-	StampTimestamp   []byte
-	ChunkAddress     swarm.Address
-	ChunkIsImmutable bool
+	StampTimestamp []byte
+	ChunkAddress   swarm.Address
 }
 
 // ID implements the storage.Item interface.
@@ -57,7 +53,7 @@ func (i Item) ID() string {
 
 // Namespace implements the storage.Item interface.
 func (i Item) Namespace() string {
-	return "stampIndex"
+	return "StampIndex"
 }
 
 func (i Item) GetNamespace() []byte {
@@ -79,7 +75,7 @@ func (i Item) Marshal() ([]byte, error) {
 		return nil, errStampItemMarshalBatchIndexInvalid
 	}
 
-	buf := make([]byte, 8+len(i.namespace)+swarm.HashSize+swarm.StampIndexSize+swarm.StampTimestampSize+swarm.HashSize+1+swarm.HashSize)
+	buf := make([]byte, 8+len(i.namespace)+swarm.HashSize+swarm.StampIndexSize+swarm.StampTimestampSize+swarm.HashSize+swarm.HashSize)
 
 	l := 0
 	binary.LittleEndian.PutUint64(buf[l:l+8], uint64(len(i.namespace)))
@@ -94,11 +90,6 @@ func (i Item) Marshal() ([]byte, error) {
 	l += swarm.StampTimestampSize
 	copy(buf[l:l+swarm.HashSize], internal.AddressBytesOrZero(i.ChunkAddress))
 	l += swarm.HashSize
-	buf[l] = '0'
-	if i.ChunkIsImmutable {
-		buf[l] = '1'
-	}
-	l += 1
 	copy(buf[l:l+swarm.HashSize], i.StampHash)
 	return buf, nil
 }
@@ -109,7 +100,7 @@ func (i *Item) Unmarshal(bytes []byte) error {
 		return errStampItemUnmarshalInvalidSize
 	}
 	nsLen := int(binary.LittleEndian.Uint64(bytes))
-	if len(bytes) != 8+nsLen+swarm.HashSize+swarm.StampIndexSize+swarm.StampTimestampSize+swarm.HashSize+swarm.HashSize+1 {
+	if len(bytes) != 8+nsLen+swarm.HashSize+swarm.StampIndexSize+swarm.StampTimestampSize+swarm.HashSize+swarm.HashSize {
 		return errStampItemUnmarshalInvalidSize
 	}
 
@@ -125,15 +116,6 @@ func (i *Item) Unmarshal(bytes []byte) error {
 	l += swarm.StampTimestampSize
 	ni.ChunkAddress = internal.AddressOrZero(bytes[l : l+swarm.HashSize])
 	l += swarm.HashSize
-	switch bytes[l] {
-	case '0':
-		ni.ChunkIsImmutable = false
-	case '1':
-		ni.ChunkIsImmutable = true
-	default:
-		return errStampItemUnmarshalChunkImmutableInvalid
-	}
-	l += 1
 	ni.StampHash = append(make([]byte, 0, swarm.HashSize), bytes[l:l+swarm.HashSize]...)
 	*i = *ni
 	return nil
@@ -145,13 +127,12 @@ func (i *Item) Clone() storage.Item {
 		return nil
 	}
 	return &Item{
-		namespace:        append([]byte(nil), i.namespace...),
-		BatchID:          append([]byte(nil), i.BatchID...),
-		StampIndex:       append([]byte(nil), i.StampIndex...),
-		StampHash:        append([]byte(nil), i.StampHash...),
-		StampTimestamp:   append([]byte(nil), i.StampTimestamp...),
-		ChunkAddress:     i.ChunkAddress.Clone(),
-		ChunkIsImmutable: i.ChunkIsImmutable,
+		namespace:      append([]byte(nil), i.namespace...),
+		BatchID:        append([]byte(nil), i.BatchID...),
+		StampIndex:     append([]byte(nil), i.StampIndex...),
+		StampHash:      append([]byte(nil), i.StampHash...),
+		StampTimestamp: append([]byte(nil), i.StampTimestamp...),
+		ChunkAddress:   i.ChunkAddress.Clone(),
 	}
 }
 
@@ -176,13 +157,12 @@ func LoadOrStore(
 				return nil, false, err
 			}
 			return &Item{
-				namespace:        []byte(namespace),
-				BatchID:          chunk.Stamp().BatchID(),
-				StampIndex:       chunk.Stamp().Index(),
-				StampHash:        stampHash,
-				StampTimestamp:   chunk.Stamp().Timestamp(),
-				ChunkAddress:     chunk.Address(),
-				ChunkIsImmutable: chunk.Immutable(),
+				namespace:      []byte(namespace),
+				BatchID:        chunk.Stamp().BatchID(),
+				StampIndex:     chunk.Stamp().Index(),
+				StampHash:      stampHash,
+				StampTimestamp: chunk.Stamp().Timestamp(),
+				ChunkAddress:   chunk.Address(),
 			}, false, Store(s, namespace, chunk)
 		}
 		return nil, false, err
@@ -213,13 +193,12 @@ func Store(s storage.IndexStore, namespace string, chunk swarm.Chunk) error {
 		return err
 	}
 	item := &Item{
-		namespace:        []byte(namespace),
-		BatchID:          chunk.Stamp().BatchID(),
-		StampIndex:       chunk.Stamp().Index(),
-		StampHash:        stampHash,
-		StampTimestamp:   chunk.Stamp().Timestamp(),
-		ChunkAddress:     chunk.Address(),
-		ChunkIsImmutable: chunk.Immutable(),
+		namespace:      []byte(namespace),
+		BatchID:        chunk.Stamp().BatchID(),
+		StampIndex:     chunk.Stamp().Index(),
+		StampHash:      stampHash,
+		StampTimestamp: chunk.Stamp().Timestamp(),
+		ChunkAddress:   chunk.Address(),
 	}
 	if err := s.Put(item); err != nil {
 		return fmt.Errorf("failed to put stampindex.Item %s: %w", item, err)
