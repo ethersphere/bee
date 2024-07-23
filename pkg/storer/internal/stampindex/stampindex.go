@@ -53,7 +53,7 @@ func (i Item) ID() string {
 
 // Namespace implements the storage.Item interface.
 func (i Item) Namespace() string {
-	return "StampIndex"
+	return "stampIndex"
 }
 
 func (i Item) GetNamespace() []byte {

@@ -34,7 +34,7 @@ func (i ItemV1) ID() string {
 
 // Namespace implements the storage.Item interface.
 func (i ItemV1) Namespace() string {
-	return "StampIndex"
+	return "stampIndex"
 }
 
 // Marshal implements the storage.Item interface.
