@@ -137,6 +137,12 @@ func (s *Service) migrateStakeHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.BadRequest(w, "insufficient stake to migrate")
 			return
 		}
+		if errors.Is(err, staking.ErrNotPaused) {
+			logger.Debug("contract is not paused", "error", err)
+			logger.Error(nil, "contract is not paused")
+			jsonhttp.BadRequest(w, "contract is not paused")
+			return
+		}
 		logger.Debug("migrate stake failed", "error", err)
 		logger.Error(nil, "migrate stake failed")
 		jsonhttp.InternalServerError(w, "cannot migrate stake")

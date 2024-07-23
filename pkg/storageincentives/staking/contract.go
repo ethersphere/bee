@@ -315,7 +315,7 @@ func (c *contract) getPotentialStake(ctx context.Context) (*big.Int, error) {
 		Data: callData,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("get stake: %w", err)
+		return nil, fmt.Errorf("get potential stake: %w", err)
 	}
 
 	// overlay bytes32,
@@ -328,7 +328,7 @@ func (c *contract) getPotentialStake(ctx context.Context) (*big.Int, error) {
 		return nil, err
 	}
 
-	if len(results) < 3 {
+	if len(results) < 5 {
 		return nil, errors.New("unexpected empty results")
 	}
 
@@ -345,7 +345,7 @@ func (c *contract) getwithdrawableStake(ctx context.Context) (*big.Int, error) {
 		Data: callData,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("get stake: %w", err)
+		return nil, fmt.Errorf("get withdrawable stake: %w", err)
 	}
 
 	results, err := c.stakingContractABI.Unpack("withdrawableStake", result)
