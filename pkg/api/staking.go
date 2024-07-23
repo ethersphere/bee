@@ -78,10 +78,10 @@ func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-func (s *Service) getCommittedStakeHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) getPotentialStake(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_stake").Build()
 
-	stakedAmount, err := s.stakingContract.GetCommittedStake(r.Context())
+	stakedAmount, err := s.stakingContract.GetPotentialStake(r.Context())
 	if err != nil {
 		logger.Debug("get staked amount failed", "overlayAddr", s.overlay, "error", err)
 		logger.Error(nil, "get staked amount failed")

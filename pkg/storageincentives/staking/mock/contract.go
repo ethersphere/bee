@@ -28,7 +28,7 @@ func (s *stakingContractMock) ChangeStakeOverlay(_ context.Context, h common.Has
 	return h, nil
 }
 
-func (s *stakingContractMock) GetCommittedStake(ctx context.Context) (*big.Int, error) {
+func (s *stakingContractMock) GetPotentialStake(ctx context.Context) (*big.Int, error) {
 	return s.getStake(ctx)
 }
 

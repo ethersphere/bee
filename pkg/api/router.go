@@ -587,7 +587,7 @@ func (s *Service) mountBusinessDebug() {
 		s.stakingAccessHandler,
 		s.gasConfigMiddleware("get or withdraw stake"),
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET":    http.HandlerFunc(s.getCommittedStakeHandler),
+			"GET":    http.HandlerFunc(s.getPotentialStake),
 			"DELETE": http.HandlerFunc(s.withdrawStakeHandler),
 		})),
 	)

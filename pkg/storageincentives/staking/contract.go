@@ -39,7 +39,7 @@ var (
 type Contract interface {
 	DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error)
 	ChangeStakeOverlay(ctx context.Context, nonce common.Hash) (common.Hash, error)
-	GetCommittedStake(ctx context.Context) (*big.Int, error)
+	GetPotentialStake(ctx context.Context) (*big.Int, error)
 	GetWithdrawableStake(ctx context.Context) (*big.Int, error)
 	WithdrawStake(ctx context.Context) (common.Hash, error)
 	MigrateStake(ctx context.Context) (common.Hash, error)
@@ -87,7 +87,7 @@ func New(
 }
 
 func (c *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
-	prevStakedAmount, err := c.GetCommittedStake(ctx)
+	prevStakedAmount, err := c.GetPotentialStake(ctx)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -131,8 +131,8 @@ func (c *contract) ChangeStakeOverlay(ctx context.Context, nonce common.Hash) (c
 	return receipt.TxHash, nil
 }
 
-func (c *contract) GetCommittedStake(ctx context.Context) (*big.Int, error) {
-	stakedAmount, err := c.getCommittedStake(ctx)
+func (c *contract) GetPotentialStake(ctx context.Context) (*big.Int, error) {
+	stakedAmount, err := c.getPotentialStake(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("staking contract: failed to get stake: %w", err)
 	}
@@ -305,7 +305,7 @@ func (c *contract) sendDepositStakeTransaction(ctx context.Context, stakedAmount
 	return receipt, nil
 }
 
-func (c *contract) getCommittedStake(ctx context.Context) (*big.Int, error) {
+func (c *contract) getPotentialStake(ctx context.Context) (*big.Int, error) {
 	callData, err := c.stakingContractABI.Pack("stakes", c.owner)
 	if err != nil {
 		return nil, err
@@ -328,11 +328,11 @@ func (c *contract) getCommittedStake(ctx context.Context) (*big.Int, error) {
 		return nil, err
 	}
 
-	if len(results) == 0 {
+	if len(results) < 3 {
 		return nil, errors.New("unexpected empty results")
 	}
 
-	return abi.ConvertType(results[1], new(big.Int)).(*big.Int), nil
+	return abi.ConvertType(results[2], new(big.Int)).(*big.Int), nil
 }
 
 func (c *contract) getwithdrawableStake(ctx context.Context) (*big.Int, error) {

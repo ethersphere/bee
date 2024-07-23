@@ -83,7 +83,7 @@ func TestDepositStake(t *testing.T) {
 						return totalAmount.FillBytes(make([]byte, 32)), nil
 					}
 					if *request.To == stakingContractAddress {
-						return getCommittedStakeResponse(t, prevStake), nil
+						return getPotentialStakeResponse(t, prevStake), nil
 					}
 					return nil, errors.New("unexpected call")
 				}),
@@ -144,7 +144,7 @@ func TestDepositStake(t *testing.T) {
 						return totalAmount.FillBytes(make([]byte, 32)), nil
 					}
 					if *request.To == stakingContractAddress {
-						return getCommittedStakeResponse(t, prevStake), nil
+						return getPotentialStakeResponse(t, prevStake), nil
 					}
 					return nil, errors.New("unexpected call")
 				}),
@@ -157,7 +157,7 @@ func TestDepositStake(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		stakedAmount, err := contract.GetCommittedStake(ctx)
+		stakedAmount, err := contract.GetPotentialStake(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -183,7 +183,7 @@ func TestDepositStake(t *testing.T) {
 						return totalAmount.FillBytes(make([]byte, 32)), nil
 					}
 					if *request.To == stakingContractAddress {
-						return getCommittedStakeResponse(t, prevStake), nil
+						return getPotentialStakeResponse(t, prevStake), nil
 					}
 					return nil, errors.New("unexpected call")
 				}),
@@ -215,7 +215,7 @@ func TestDepositStake(t *testing.T) {
 						return totalAmount.FillBytes(make([]byte, 32)), nil
 					}
 					if *request.To == stakingContractAddress {
-						return getCommittedStakeResponse(t, prevStake), nil
+						return getPotentialStakeResponse(t, prevStake), nil
 					}
 					return nil, errors.New("unexpected call")
 				}),
@@ -247,7 +247,7 @@ func TestDepositStake(t *testing.T) {
 						return totalAmount.FillBytes(make([]byte, 32)), nil
 					}
 					if *request.To == stakingContractAddress {
-						return getCommittedStakeResponse(t, prevStake), nil
+						return getPotentialStakeResponse(t, prevStake), nil
 					}
 					return nil, errors.New("unexpected call")
 				}),
@@ -395,7 +395,7 @@ func TestDepositStake(t *testing.T) {
 						return totalAmount.FillBytes(make([]byte, 32)), nil
 					}
 					if *request.To == stakingContractAddress {
-						return getCommittedStakeResponse(t, prevStake), nil
+						return getPotentialStakeResponse(t, prevStake), nil
 
 					}
 					return nil, errors.New("unexpected call")
@@ -455,7 +455,7 @@ func TestDepositStake(t *testing.T) {
 						return totalAmount.FillBytes(make([]byte, 32)), nil
 					}
 					if *request.To == stakingContractAddress {
-						return getCommittedStakeResponse(t, prevStake), nil
+						return getPotentialStakeResponse(t, prevStake), nil
 
 					}
 					return nil, errors.New("unexpected call")
@@ -728,7 +728,7 @@ func TestGetCommittedStake(t *testing.T) {
 						if !bytes.Equal(expectedCallData[:64], request.Data[:64]) {
 							return nil, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
 						}
-						return getCommittedStakeResponse(t, prevStake), nil
+						return getPotentialStakeResponse(t, prevStake), nil
 					}
 					return nil, errors.New("unexpected call")
 				}),
@@ -737,7 +737,7 @@ func TestGetCommittedStake(t *testing.T) {
 			false,
 		)
 
-		stakedAmount, err := contract.GetCommittedStake(ctx)
+		stakedAmount, err := contract.GetPotentialStake(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -774,7 +774,7 @@ func TestGetCommittedStake(t *testing.T) {
 			false,
 		)
 
-		_, err = contract.GetCommittedStake(ctx)
+		_, err = contract.GetPotentialStake(ctx)
 		if err == nil {
 			t.Fatal("expected error with unpacking")
 		}
@@ -811,7 +811,7 @@ func TestGetCommittedStake(t *testing.T) {
 			false,
 		)
 
-		_, err = contract.GetCommittedStake(ctx)
+		_, err = contract.GetPotentialStake(ctx)
 		if err == nil {
 			t.Fatal("expected error due to wrong call data")
 		}
@@ -834,7 +834,7 @@ func TestGetCommittedStake(t *testing.T) {
 			false,
 		)
 
-		_, err := contract.GetCommittedStake(ctx)
+		_, err := contract.GetPotentialStake(ctx)
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -917,7 +917,7 @@ func TestGetWithdrawableStake(t *testing.T) {
 			false,
 		)
 
-		_, err = contract.GetCommittedStake(ctx)
+		_, err = contract.GetPotentialStake(ctx)
 		if err == nil {
 			t.Fatal("expected error with unpacking")
 		}
@@ -940,7 +940,7 @@ func TestGetWithdrawableStake(t *testing.T) {
 			false,
 		)
 
-		_, err := contract.GetCommittedStake(ctx)
+		_, err := contract.GetPotentialStake(ctx)
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -1458,12 +1458,12 @@ func TestMigrateStake(t *testing.T) {
 	})
 }
 
-func getCommittedStakeResponse(t *testing.T, amount *big.Int) []byte {
+func getPotentialStakeResponse(t *testing.T, amount *big.Int) []byte {
 	t.Helper()
 
 	ret := make([]byte, 32+32+32+32+32+32)
 	copy(ret, swarm.RandAddress(t).Bytes())
-	copy(ret[32:], amount.FillBytes(make([]byte, 32)))
+	copy(ret[64:], amount.FillBytes(make([]byte, 32)))
 
 	return ret
 }
