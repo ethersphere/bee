@@ -1186,22 +1186,21 @@ func TestMigrateStake(t *testing.T) {
 	nonce := common.BytesToHash(make([]byte, 32))
 	stakedAmount := big.NewInt(100000000000000000)
 
-	expectedCallDataForPaused, err := stakingContractABI.Pack("paused")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	expectedCallDataForWithdraw, err := stakingContractABI.Pack("migrateStake")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	expectedCallDataForGetStake, err := stakingContractABI.Pack("nodeEffectiveStake", owner)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	t.Run("ok", func(t *testing.T) {
+
+		expectedCallDataForPaused, err := stakingContractABI.Pack("paused")
+		if err != nil {
+			t.Fatal(err)
+		}
+		expectedCallDataForWithdraw, err := stakingContractABI.Pack("migrateStake")
+		if err != nil {
+			t.Fatal(err)
+		}
+		expectedCallDataForGetStake, err := stakingContractABI.Pack("nodeEffectiveStake", owner)
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		t.Parallel()
 		txHashWithdrawn := common.HexToHash("c3a1")
 		expected := big.NewInt(1)
@@ -1255,6 +1254,11 @@ func TestMigrateStake(t *testing.T) {
 		t.Parallel()
 		expected := big.NewInt(0)
 
+		expectedCallDataForPaused, err := stakingContractABI.Pack("paused")
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		contract := staking.New(
 			owner,
 			stakingContractAddress,
@@ -1302,6 +1306,19 @@ func TestMigrateStake(t *testing.T) {
 		txHashWithdrawn := common.HexToHash("c3a1")
 		expected := big.NewInt(1)
 
+		expectedCallDataForPaused, err := stakingContractABI.Pack("paused")
+		if err != nil {
+			t.Fatal(err)
+		}
+		expectedCallDataForWithdraw, err := stakingContractABI.Pack("migrateStake")
+		if err != nil {
+			t.Fatal(err)
+		}
+		expectedCallDataForGetStake, err := stakingContractABI.Pack("nodeEffectiveStake", owner)
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		contract := staking.New(
 			owner,
 			stakingContractAddress,
@@ -1348,6 +1365,20 @@ func TestMigrateStake(t *testing.T) {
 	})
 
 	t.Run("tx reverted", func(t *testing.T) {
+
+		expectedCallDataForPaused, err := stakingContractABI.Pack("paused")
+		if err != nil {
+			t.Fatal(err)
+		}
+		expectedCallDataForWithdraw, err := stakingContractABI.Pack("migrateStake")
+		if err != nil {
+			t.Fatal(err)
+		}
+		expectedCallDataForGetStake, err := stakingContractABI.Pack("nodeEffectiveStake", owner)
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		t.Parallel()
 		txHashWithdrawn := common.HexToHash("c3a1")
 		expected := big.NewInt(1)
@@ -1398,6 +1429,12 @@ func TestMigrateStake(t *testing.T) {
 	})
 
 	t.Run("is paused with err", func(t *testing.T) {
+
+		expectedCallDataForPaused, err := stakingContractABI.Pack("paused")
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		t.Parallel()
 
 		contract := staking.New(
@@ -1426,6 +1463,16 @@ func TestMigrateStake(t *testing.T) {
 	})
 
 	t.Run("get stake with err", func(t *testing.T) {
+
+		expectedCallDataForPaused, err := stakingContractABI.Pack("paused")
+		if err != nil {
+			t.Fatal(err)
+		}
+		expectedCallDataForGetStake, err := stakingContractABI.Pack("nodeEffectiveStake", owner)
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		t.Parallel()
 		expected := big.NewInt(1)
 
