@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -26,16 +27,16 @@ func step_06(st transaction.Storage) func() error {
 		logger := log.NewLogger("migration-step-06", log.WithSink(os.Stdout))
 		logger.Info("start adding stampHash to BatchRadiusItems, ChunkBinItems and StampIndexItems")
 
-		err := addStampHash(logger, st)
+		seenCount, doneCount, err := addStampHash(logger, st)
 		if err != nil {
 			return fmt.Errorf("add stamp hash migration: %w", err)
 		}
-		logger.Info("finished migrating items")
+		logger.Info("finished migrating items", "seen", seenCount, "migrated", doneCount)
 		return nil
 	}
 }
 
-func addStampHash(logger log.Logger, st transaction.Storage) error {
+func addStampHash(logger log.Logger, st transaction.Storage) (int64, int64, error) {
 	itemC := make(chan *reserve.BatchRadiusItemV1)
 	errC := make(chan error)
 	doneC := make(chan any)
@@ -44,6 +45,9 @@ func addStampHash(logger log.Logger, st transaction.Storage) error {
 	var eg errgroup.Group
 	p := runtime.NumCPU()
 	eg.SetLimit(p)
+
+	var doneCount atomic.Int64
+	var seenCount int64
 
 	go func() {
 		ticker := time.NewTicker(1 * time.Minute)
@@ -120,7 +124,12 @@ func addStampHash(logger log.Logger, st transaction.Storage) error {
 						ChunkAddress:   chunkBinItemV1.Address,
 					}
 					stampIndexItem.SetNamespace([]byte("reserve"))
-					return idxStore.Put(stampIndexItem)
+					err = idxStore.Put(stampIndexItem)
+					if err != nil {
+						return err
+					}
+					doneCount.Add(1)
+					return nil
 				})
 				if err != nil {
 					errC <- err
@@ -134,6 +143,7 @@ func addStampHash(logger log.Logger, st transaction.Storage) error {
 	err := st.IndexStore().Iterate(storage.Query{
 		Factory: func() storage.Item { return new(reserve.BatchRadiusItemV1) },
 	}, func(result storage.Result) (bool, error) {
+		seenCount++
 		item := result.Entry.(*reserve.BatchRadiusItemV1)
 		select {
 		case itemC <- item:
@@ -144,8 +154,13 @@ func addStampHash(logger log.Logger, st transaction.Storage) error {
 	})
 	close(itemC)
 	if err != nil {
-		return err
+		return 0, 0, err
 	}
 
-	return eg.Wait()
+	err = eg.Wait()
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return seenCount, doneCount.Load(), nil
 }
