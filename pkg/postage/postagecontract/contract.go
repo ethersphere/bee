@@ -325,7 +325,9 @@ func (c *postageContract) getLastPrice(ctx context.Context) (uint64, error) {
 		return 0, errors.New("unexpected empty results")
 	}
 
-	return results[0].(uint64), nil
+	var out uint64
+	abi.ConvertType(results[0], &out)
+	return out, nil
 }
 
 func (c *postageContract) getMinimumValidityBlocks(ctx context.Context) (uint64, error) {
@@ -351,7 +353,9 @@ func (c *postageContract) getMinimumValidityBlocks(ctx context.Context) (uint64,
 		return 0, errors.New("unexpected empty results")
 	}
 
-	return results[0].(uint64), nil
+	var out uint64
+	abi.ConvertType(results[0], &out)
+	return out, nil
 }
 
 func (c *postageContract) getMinInitialBalance(ctx context.Context) (uint64, error) {
