@@ -33,13 +33,16 @@ var (
 	approveDescription       = "Approve tokens for stake deposit operations"
 	depositStakeDescription  = "Deposit Stake"
 	withdrawStakeDescription = "Withdraw stake"
+	migrateStakeDescription  = "Migrate stake"
 )
 
 type Contract interface {
 	DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error)
 	ChangeStakeOverlay(ctx context.Context, nonce common.Hash) (common.Hash, error)
-	GetStake(ctx context.Context) (*big.Int, error)
-	WithdrawAllStake(ctx context.Context) (common.Hash, error)
+	GetPotentialStake(ctx context.Context) (*big.Int, error)
+	GetWithdrawableStake(ctx context.Context) (*big.Int, error)
+	WithdrawStake(ctx context.Context) (common.Hash, error)
+	MigrateStake(ctx context.Context) (common.Hash, error)
 	RedistributionStatuser
 }
 
@@ -81,6 +84,134 @@ func New(
 		overlayNonce:           nonce,
 		gasLimit:               gasLimit,
 	}
+}
+
+func (c *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
+	prevStakedAmount, err := c.GetPotentialStake(ctx)
+	if err != nil {
+		return common.Hash{}, err
+	}
+
+	if len(prevStakedAmount.Bits()) == 0 {
+		if stakedAmount.Cmp(MinimumStakeAmount) == -1 {
+			return common.Hash{}, ErrInsufficientStakeAmount
+		}
+	}
+
+	balance, err := c.getBalance(ctx)
+	if err != nil {
+		return common.Hash{}, err
+	}
+
+	if balance.Cmp(stakedAmount) < 0 {
+		return common.Hash{}, ErrInsufficientFunds
+	}
+
+	_, err = c.sendApproveTransaction(ctx, stakedAmount)
+	if err != nil {
+		return common.Hash{}, err
+	}
+
+	receipt, err := c.sendDepositStakeTransaction(ctx, stakedAmount, c.overlayNonce)
+	if err != nil {
+		return common.Hash{}, err
+	}
+
+	return receipt.TxHash, nil
+}
+
+// ChangeStakeOverlay only changes the overlay address used in the redistribution game.
+func (c *contract) ChangeStakeOverlay(ctx context.Context, nonce common.Hash) (common.Hash, error) {
+	c.overlayNonce = nonce
+	receipt, err := c.sendDepositStakeTransaction(ctx, new(big.Int), c.overlayNonce)
+	if err != nil {
+		return common.Hash{}, err
+	}
+
+	return receipt.TxHash, nil
+}
+
+func (c *contract) GetPotentialStake(ctx context.Context) (*big.Int, error) {
+	stakedAmount, err := c.getPotentialStake(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("staking contract: failed to get stake: %w", err)
+	}
+	return stakedAmount, nil
+}
+
+func (c *contract) GetWithdrawableStake(ctx context.Context) (*big.Int, error) {
+	stakedAmount, err := c.getwithdrawableStake(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("staking contract: failed to get stake: %w", err)
+	}
+	return stakedAmount, nil
+}
+
+func (c *contract) WithdrawStake(ctx context.Context) (txHash common.Hash, err error) {
+	stakedAmount, err := c.getwithdrawableStake(ctx)
+	if err != nil {
+		return
+	}
+
+	if stakedAmount.Cmp(big.NewInt(0)) <= 0 {
+		return common.Hash{}, ErrInsufficientStake
+	}
+
+	receipt, err := c.withdrawFromStake(ctx)
+	if err != nil {
+		return common.Hash{}, err
+	}
+	if receipt != nil {
+		txHash = receipt.TxHash
+	}
+	return txHash, nil
+}
+
+func (c *contract) MigrateStake(ctx context.Context) (txHash common.Hash, err error) {
+	isPaused, err := c.paused(ctx)
+	if err != nil {
+		return
+	}
+	if !isPaused {
+		return common.Hash{}, ErrNotPaused
+	}
+
+	receipt, err := c.migrateStake(ctx)
+	if err != nil {
+		return common.Hash{}, err
+	}
+	if receipt != nil {
+		txHash = receipt.TxHash
+	}
+	return txHash, nil
+}
+
+func (c *contract) IsOverlayFrozen(ctx context.Context, block uint64) (bool, error) {
+	callData, err := c.stakingContractABI.Pack("lastUpdatedBlockNumberOfAddress", c.owner)
+	if err != nil {
+		return false, err
+	}
+
+	result, err := c.transactionService.Call(ctx, &transaction.TxRequest{
+		To:   &c.stakingContractAddress,
+		Data: callData,
+	})
+	if err != nil {
+		return false, err
+	}
+
+	results, err := c.stakingContractABI.Unpack("lastUpdatedBlockNumberOfOverlay", result)
+	if err != nil {
+		return false, err
+	}
+
+	if len(results) == 0 {
+		return false, errors.New("unexpected empty results")
+	}
+
+	lastUpdate := abi.ConvertType(results[0], new(big.Int)).(*big.Int)
+
+	return lastUpdate.Uint64() >= block, nil
 }
 
 func (c *contract) sendApproveTransaction(ctx context.Context, amount *big.Int) (receipt *types.Receipt, err error) {
@@ -174,8 +305,8 @@ func (c *contract) sendDepositStakeTransaction(ctx context.Context, stakedAmount
 	return receipt, nil
 }
 
-func (c *contract) getStake(ctx context.Context) (*big.Int, error) {
-	callData, err := c.stakingContractABI.Pack("stakeOfAddress", c.owner)
+func (c *contract) getPotentialStake(ctx context.Context) (*big.Int, error) {
+	callData, err := c.stakingContractABI.Pack("stakes", c.owner)
 	if err != nil {
 		return nil, err
 	}
@@ -184,10 +315,40 @@ func (c *contract) getStake(ctx context.Context) (*big.Int, error) {
 		Data: callData,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("get stake: %w", err)
+		return nil, fmt.Errorf("get potential stake: %w", err)
 	}
 
-	results, err := c.stakingContractABI.Unpack("stakeOfAddress", result)
+	// overlay bytes32,
+	// committedStake uint256,
+	// potentialStake uint256,
+	// lastUpdatedBlockNumber uint256,
+	// isValue bool
+	results, err := c.stakingContractABI.Unpack("stakes", result)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(results) < 5 {
+		return nil, errors.New("unexpected empty results")
+	}
+
+	return abi.ConvertType(results[2], new(big.Int)).(*big.Int), nil
+}
+
+func (c *contract) getwithdrawableStake(ctx context.Context) (*big.Int, error) {
+	callData, err := c.stakingContractABI.Pack("withdrawableStake")
+	if err != nil {
+		return nil, err
+	}
+	result, err := c.transactionService.Call(ctx, &transaction.TxRequest{
+		To:   &c.stakingContractAddress,
+		Data: callData,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get withdrawable stake: %w", err)
+	}
+
+	results, err := c.stakingContractABI.Unpack("withdrawableStake", result)
 	if err != nil {
 		return nil, err
 	}
@@ -197,59 +358,6 @@ func (c *contract) getStake(ctx context.Context) (*big.Int, error) {
 	}
 
 	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
-}
-
-func (c *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
-	prevStakedAmount, err := c.GetStake(ctx)
-	if err != nil {
-		return common.Hash{}, err
-	}
-
-	if len(prevStakedAmount.Bits()) == 0 {
-		if stakedAmount.Cmp(MinimumStakeAmount) == -1 {
-			return common.Hash{}, ErrInsufficientStakeAmount
-		}
-	}
-
-	balance, err := c.getBalance(ctx)
-	if err != nil {
-		return common.Hash{}, err
-	}
-
-	if balance.Cmp(stakedAmount) < 0 {
-		return common.Hash{}, ErrInsufficientFunds
-	}
-
-	_, err = c.sendApproveTransaction(ctx, stakedAmount)
-	if err != nil {
-		return common.Hash{}, err
-	}
-
-	receipt, err := c.sendDepositStakeTransaction(ctx, stakedAmount, c.overlayNonce)
-	if err != nil {
-		return common.Hash{}, err
-	}
-
-	return receipt.TxHash, nil
-}
-
-// ChangeStakeOverlay only changes the overlay address used in the redistribution game.
-func (c *contract) ChangeStakeOverlay(ctx context.Context, nonce common.Hash) (common.Hash, error) {
-	c.overlayNonce = nonce
-	receipt, err := c.sendDepositStakeTransaction(ctx, new(big.Int), c.overlayNonce)
-	if err != nil {
-		return common.Hash{}, err
-	}
-
-	return receipt.TxHash, nil
-}
-
-func (c *contract) GetStake(ctx context.Context) (*big.Int, error) {
-	stakedAmount, err := c.getStake(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("staking contract: failed to get stake: %w", err)
-	}
-	return stakedAmount, nil
 }
 
 func (c *contract) getBalance(ctx context.Context) (*big.Int, error) {
@@ -278,48 +386,29 @@ func (c *contract) getBalance(ctx context.Context) (*big.Int, error) {
 	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
 }
 
-func (c *contract) WithdrawAllStake(ctx context.Context) (txHash common.Hash, err error) {
-	isPaused, err := c.paused(ctx)
+func (c *contract) migrateStake(ctx context.Context) (*types.Receipt, error) {
+	callData, err := c.stakingContractABI.Pack("migrateStake")
 	if err != nil {
-		return
-	}
-	if !isPaused {
-		return common.Hash{}, ErrNotPaused
+		return nil, err
 	}
 
-	stakedAmount, err := c.getStake(ctx)
+	receipt, err := c.sendTransaction(ctx, callData, migrateStakeDescription)
 	if err != nil {
-		return
+		return nil, fmt.Errorf("migrate stake: %w", err)
 	}
 
-	if stakedAmount.Cmp(big.NewInt(0)) <= 0 {
-		return common.Hash{}, ErrInsufficientStake
-	}
-
-	_, err = c.sendApproveTransaction(ctx, stakedAmount)
-	if err != nil {
-		return common.Hash{}, err
-	}
-
-	receipt, err := c.withdrawFromStake(ctx, stakedAmount)
-	if err != nil {
-		return common.Hash{}, err
-	}
-	if receipt != nil {
-		txHash = receipt.TxHash
-	}
-	return txHash, nil
+	return receipt, nil
 }
 
-func (c *contract) withdrawFromStake(ctx context.Context, stakedAmount *big.Int) (*types.Receipt, error) {
-	callData, err := c.stakingContractABI.Pack("withdrawFromStake", stakedAmount)
+func (c *contract) withdrawFromStake(ctx context.Context) (*types.Receipt, error) {
+	callData, err := c.stakingContractABI.Pack("withdrawFromStake")
 	if err != nil {
 		return nil, err
 	}
 
 	receipt, err := c.sendTransaction(ctx, callData, withdrawStakeDescription)
 	if err != nil {
-		return nil, fmt.Errorf("withdraw stake: stakedAmount %d: %w", stakedAmount, err)
+		return nil, fmt.Errorf("withdraw stake: %w", err)
 	}
 
 	return receipt, nil
@@ -349,32 +438,4 @@ func (c *contract) paused(ctx context.Context) (bool, error) {
 	}
 
 	return results[0].(bool), nil
-}
-
-func (c *contract) IsOverlayFrozen(ctx context.Context, block uint64) (bool, error) {
-	callData, err := c.stakingContractABI.Pack("lastUpdatedBlockNumberOfAddress", c.owner)
-	if err != nil {
-		return false, err
-	}
-
-	result, err := c.transactionService.Call(ctx, &transaction.TxRequest{
-		To:   &c.stakingContractAddress,
-		Data: callData,
-	})
-	if err != nil {
-		return false, err
-	}
-
-	results, err := c.stakingContractABI.Unpack("lastUpdatedBlockNumberOfOverlay", result)
-	if err != nil {
-		return false, err
-	}
-
-	if len(results) == 0 {
-		return false, errors.New("unexpected empty results")
-	}
-
-	lastUpdate := abi.ConvertType(results[0], new(big.Int)).(*big.Int)
-
-	return lastUpdate.Uint64() >= block, nil
 }
