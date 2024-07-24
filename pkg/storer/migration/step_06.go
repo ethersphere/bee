@@ -37,7 +37,7 @@ func step_06(st transaction.Storage) func() error {
 }
 
 func addStampHash(logger log.Logger, st transaction.Storage) (int64, int64, error) {
-	itemC := make(chan *reserve.BatchRadiusItemV1)
+	itemC := make(chan *reserve.BatchRadiusItemV1, 1)
 	errC := make(chan error)
 	doneC := make(chan any)
 	defer close(doneC)
