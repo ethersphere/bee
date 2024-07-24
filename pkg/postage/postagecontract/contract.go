@@ -302,10 +302,10 @@ func (c *postageContract) getBalance(ctx context.Context) (*big.Int, error) {
 	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
 }
 
-func (c *postageContract) getLastPrice(ctx context.Context) (uint64, error) {
-	callData, err := c.postageStampContractABI.Pack("lastPrice")
+func (c *postageContract) getProperty(ctx context.Context, propertyName string, out any) error {
+	callData, err := c.postageStampContractABI.Pack(propertyName)
 	if err != nil {
-		return 0, err
+		return err
 	}
 
 	result, err := c.transactionService.Call(ctx, &transaction.TxRequest{
@@ -313,61 +313,34 @@ func (c *postageContract) getLastPrice(ctx context.Context) (uint64, error) {
 		Data: callData,
 	})
 	if err != nil {
-		return 0, err
+		return err
 	}
 
-	results, err := c.postageStampContractABI.Unpack("lastPrice", result)
+	results, err := c.postageStampContractABI.Unpack(propertyName, result)
 	if err != nil {
-		return 0, err
+		return err
 	}
 
 	if len(results) == 0 {
-		return 0, errors.New("unexpected empty results")
+		return errors.New("unexpected empty results")
 	}
 
-	var out uint64
-	abi.ConvertType(results[0], &out)
-	return out, nil
-}
-
-func (c *postageContract) getMinimumValidityBlocks(ctx context.Context) (uint64, error) {
-	callData, err := c.postageStampContractABI.Pack("minimumValidityBlocks")
-	if err != nil {
-		return 0, err
-	}
-
-	result, err := c.transactionService.Call(ctx, &transaction.TxRequest{
-		To:   &c.postageStampContractAddress,
-		Data: callData,
-	})
-	if err != nil {
-		return 0, err
-	}
-
-	results, err := c.postageStampContractABI.Unpack("minimumValidityBlocks", result)
-	if err != nil {
-		return 0, err
-	}
-
-	if len(results) == 0 {
-		return 0, errors.New("unexpected empty results")
-	}
-
-	var out uint64
-	abi.ConvertType(results[0], &out)
-	return out, nil
+	abi.ConvertType(results[0], out)
+	return nil
 }
 
 func (c *postageContract) getMinInitialBalance(ctx context.Context) (uint64, error) {
-	lastPrice, err := c.getLastPrice(ctx)
+	var lastPrice uint64
+	err := c.getProperty(ctx, "lastPrice", &lastPrice)
 	if err != nil {
 		return 0, err
 	}
-	minValidityBlocks, err := c.getMinimumValidityBlocks(ctx)
+	var minimumValidityBlocks uint64
+	err = c.getProperty(ctx, "minimumValidityBlocks", &minimumValidityBlocks)
 	if err != nil {
 		return 0, err
 	}
-	return lastPrice * minValidityBlocks, nil
+	return lastPrice * minimumValidityBlocks, nil
 }
 
 func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) (txHash common.Hash, batchID []byte, err error) {
