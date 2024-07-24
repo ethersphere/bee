@@ -105,7 +105,7 @@ func TestDepositStake(t *testing.T) {
 	})
 }
 
-func TestGetStake(t *testing.T) {
+func TestGetStakeCommitted(t *testing.T) {
 	t.Parallel()
 
 	t.Run("ok", func(t *testing.T) {
@@ -131,6 +131,36 @@ func TestGetStake(t *testing.T) {
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contractWithError})
 		jsonhttptest.Request(t, ts, http.MethodGet, "/stake", http.StatusInternalServerError,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusInternalServerError, Message: "get staked amount failed"}))
+	})
+}
+
+func TestGetStakeWithdrawable(t *testing.T) {
+	t.Parallel()
+
+	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
+		contract := stakingContractMock.New(
+			stakingContractMock.WithGetStake(func(ctx context.Context) (*big.Int, error) {
+				return big.NewInt(1), nil
+			}),
+		)
+		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
+		jsonhttptest.Request(t, ts, http.MethodGet, "/stake/withdrawable", http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(&api.GetStakeResponse{StakedAmount: bigint.Wrap(big.NewInt(1))}))
+	})
+
+	t.Run("with error", func(t *testing.T) {
+		t.Parallel()
+
+		contractWithError := stakingContractMock.New(
+			stakingContractMock.WithGetStake(func(ctx context.Context) (*big.Int, error) {
+				return big.NewInt(0), fmt.Errorf("get stake failed")
+			}),
+		)
+		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contractWithError})
+		jsonhttptest.Request(t, ts, http.MethodGet, "/stake/withdrawable", http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusInternalServerError, Message: "get staked amount failed"}))
 	})
 }
@@ -171,7 +201,7 @@ func Test_stakingDepositHandler_invalidInputs(t *testing.T) {
 	}
 }
 
-func TestWithdrawAllStake(t *testing.T) {
+func TestWithdrawStake(t *testing.T) {
 	t.Parallel()
 
 	txHash := common.HexToHash("0x1234")
@@ -180,20 +210,20 @@ func TestWithdrawAllStake(t *testing.T) {
 		t.Parallel()
 
 		contract := stakingContractMock.New(
-			stakingContractMock.WithWithdrawAllStake(func(ctx context.Context) (common.Hash, error) {
+			stakingContractMock.WithWithdrawStake(func(ctx context.Context) (common.Hash, error) {
 				return txHash, nil
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
 		jsonhttptest.Request(t, ts, http.MethodDelete, "/stake", http.StatusOK, jsonhttptest.WithExpectedJSONResponse(
-			&api.WithdrawAllStakeResponse{TxHash: txHash.String()}))
+			&api.StakeTransactionReponse{TxHash: txHash.String()}))
 	})
 
 	t.Run("with invalid stake amount", func(t *testing.T) {
 		t.Parallel()
 
 		contract := stakingContractMock.New(
-			stakingContractMock.WithWithdrawAllStake(func(ctx context.Context) (common.Hash, error) {
+			stakingContractMock.WithWithdrawStake(func(ctx context.Context) (common.Hash, error) {
 				return common.Hash{}, staking.ErrInsufficientStake
 			}),
 		)
@@ -206,7 +236,7 @@ func TestWithdrawAllStake(t *testing.T) {
 		t.Parallel()
 
 		contract := stakingContractMock.New(
-			stakingContractMock.WithWithdrawAllStake(func(ctx context.Context) (common.Hash, error) {
+			stakingContractMock.WithWithdrawStake(func(ctx context.Context) (common.Hash, error) {
 				return common.Hash{}, fmt.Errorf("some error")
 			}),
 		)
@@ -219,7 +249,7 @@ func TestWithdrawAllStake(t *testing.T) {
 		t.Parallel()
 
 		contract := stakingContractMock.New(
-			stakingContractMock.WithWithdrawAllStake(func(ctx context.Context) (common.Hash, error) {
+			stakingContractMock.WithWithdrawStake(func(ctx context.Context) (common.Hash, error) {
 				gasLimit := sctx.GetGasLimit(ctx)
 				if gasLimit != 2000000 {
 					t.Fatalf("want 2000000, got %d", gasLimit)
@@ -232,6 +262,72 @@ func TestWithdrawAllStake(t *testing.T) {
 		})
 
 		jsonhttptest.Request(t, ts, http.MethodDelete, "/stake", http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.GasLimitHeader, "2000000"),
+		)
+	})
+}
+
+func TestMigrateStake(t *testing.T) {
+	t.Parallel()
+
+	txHash := common.HexToHash("0x1234")
+
+	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
+		contract := stakingContractMock.New(
+			stakingContractMock.WithMigrateStake(func(ctx context.Context) (common.Hash, error) {
+				return txHash, nil
+			}),
+		)
+		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
+		jsonhttptest.Request(t, ts, http.MethodPost, "/stake/migrate", http.StatusOK, jsonhttptest.WithExpectedJSONResponse(
+			&api.StakeTransactionReponse{TxHash: txHash.String()}))
+	})
+
+	t.Run("with invalid stake amount", func(t *testing.T) {
+		t.Parallel()
+
+		contract := stakingContractMock.New(
+			stakingContractMock.WithMigrateStake(func(ctx context.Context) (common.Hash, error) {
+				return common.Hash{}, staking.ErrInsufficientStake
+			}),
+		)
+		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
+		jsonhttptest.Request(t, ts, http.MethodPost, "/stake/migrate", http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusBadRequest, Message: "insufficient stake to migrate"}))
+	})
+
+	t.Run("internal error", func(t *testing.T) {
+		t.Parallel()
+
+		contract := stakingContractMock.New(
+			stakingContractMock.WithMigrateStake(func(ctx context.Context) (common.Hash, error) {
+				return common.Hash{}, fmt.Errorf("some error")
+			}),
+		)
+		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
+		jsonhttptest.Request(t, ts, http.MethodPost, "/stake/migrate", http.StatusInternalServerError)
+		jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusInternalServerError, Message: "cannot withdraw stake"})
+	})
+
+	t.Run("gas limit header", func(t *testing.T) {
+		t.Parallel()
+
+		contract := stakingContractMock.New(
+			stakingContractMock.WithMigrateStake(func(ctx context.Context) (common.Hash, error) {
+				gasLimit := sctx.GetGasLimit(ctx)
+				if gasLimit != 2000000 {
+					t.Fatalf("want 2000000, got %d", gasLimit)
+				}
+				return txHash, nil
+			}),
+		)
+		ts, _, _, _ := newTestServer(t, testServerOptions{
+			StakingContract: contract,
+		})
+
+		jsonhttptest.Request(t, ts, http.MethodPost, "/stake/migrate", http.StatusOK,
 			jsonhttptest.WithRequestHeader(api.GasLimitHeader, "2000000"),
 		)
 	})
