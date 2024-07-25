@@ -13,6 +13,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	chunktest "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	localmigration "github.com/ethersphere/bee/v2/pkg/storer/migration"
@@ -82,6 +83,10 @@ func TestReserveRepair(t *testing.T) {
 			}
 
 			err = store.Run(context.Background(), func(s transaction.Store) error {
+				err := chunkstamp.Store(s.IndexStore(), "reserve", ch)
+				if err != nil {
+					return err
+				}
 				return s.ChunkStore().Put(context.Background(), ch)
 			})
 			if err != nil {

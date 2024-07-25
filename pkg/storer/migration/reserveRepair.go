@@ -5,6 +5,7 @@
 package migration
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -196,6 +198,18 @@ func ReserveRepairer(
 						}
 
 						item.BinID = newID(int(item.Bin))
+						if bytes.Equal(item.StampHash, swarm.EmptyAddress.Bytes()) {
+							stamp, err := chunkstamp.LoadWithBatchID(s.IndexStore(), "reserve", item.Address, item.BatchID)
+							if err != nil {
+								return err
+							}
+							stampHash, err := stamp.Hash()
+							if err != nil {
+								return err
+							}
+							item.StampHash = stampHash
+						}
+
 						err = s.IndexStore().Put(item)
 						if err != nil {
 							return err
