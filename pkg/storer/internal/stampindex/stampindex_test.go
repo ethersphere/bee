@@ -62,22 +62,14 @@ func TestStampIndexItem(t *testing.T) {
 	}, {
 		name: "valid values",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item: stampindex.NewItemWithValues(
-				[]byte{swarm.StampTimestampSize - 1: 9},
-				swarm.RandAddress(t),
-				false,
-			),
+			Item:    stampindex.NewItemWithValues([]byte{swarm.StampTimestampSize - 1: 9}, swarm.RandAddress(t)),
 			Factory: func() storage.Item { return new(stampindex.Item) },
 			CmpOpts: []cmp.Option{cmp.AllowUnexported(stampindex.Item{})},
 		},
 	}, {
 		name: "max values",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item: stampindex.NewItemWithValues(
-				storagetest.MaxBatchTimestampBytes[:],
-				swarm.NewAddress(storagetest.MaxAddressBytes[:]),
-				true,
-			),
+			Item:    stampindex.NewItemWithValues(storagetest.MaxBatchTimestampBytes[:], swarm.NewAddress(storagetest.MaxAddressBytes[:])),
 			Factory: func() storage.Item { return new(stampindex.Item) },
 			CmpOpts: []cmp.Option{cmp.AllowUnexported(stampindex.Item{})},
 		},
@@ -140,7 +132,6 @@ func TestStoreLoadDelete(t *testing.T) {
 				want := stampindex.NewItemWithKeys(ns, chunk.Stamp().BatchID(), chunk.Stamp().Index(), stampHash)
 				want.StampTimestamp = chunk.Stamp().Timestamp()
 				want.ChunkAddress = chunk.Address()
-				want.ChunkIsImmutable = chunk.Immutable()
 
 				have := stampindex.NewItemWithKeys(ns, chunk.Stamp().BatchID(), chunk.Stamp().Index(), stampHash)
 				err = ts.IndexStore().Get(have)
@@ -161,7 +152,6 @@ func TestStoreLoadDelete(t *testing.T) {
 				want := stampindex.NewItemWithKeys(ns, chunk.Stamp().BatchID(), chunk.Stamp().Index(), stampHash)
 				want.StampTimestamp = chunk.Stamp().Timestamp()
 				want.ChunkAddress = chunk.Address()
-				want.ChunkIsImmutable = chunk.Immutable()
 
 				have, err := stampindex.Load(ts.IndexStore(), ns, chunk)
 				if err != nil {
@@ -229,7 +219,6 @@ func TestLoadOrStore(t *testing.T) {
 			want := stampindex.NewItemWithKeys(ns, chunk.Stamp().BatchID(), chunk.Stamp().Index(), stampHash)
 			want.StampTimestamp = chunk.Stamp().Timestamp()
 			want.ChunkAddress = chunk.Address()
-			want.ChunkIsImmutable = chunk.Immutable()
 
 			trx, done := ts.NewTransaction(context.Background())
 
