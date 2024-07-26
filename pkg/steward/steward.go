@@ -34,6 +34,7 @@ type steward struct {
 	netStore     storer.NetStore
 	traverser    traversal.Traverser
 	netTraverser traversal.Traverser
+	netGetter    retrieval.Interface
 }
 
 func New(ns storer.NetStore, r retrieval.Interface, joinerPutter storage.Putter) Interface {
@@ -41,6 +42,7 @@ func New(ns storer.NetStore, r retrieval.Interface, joinerPutter storage.Putter)
 		netStore:     ns,
 		traverser:    traversal.New(ns.Download(true), joinerPutter),
 		netTraverser: traversal.New(&netGetter{r}, joinerPutter),
+		netGetter:    r,
 	}
 }
 
@@ -79,8 +81,11 @@ func (s *steward) Reupload(ctx context.Context, root swarm.Address, stamper post
 
 // IsRetrievable implements Interface.IsRetrievable method.
 func (s *steward) IsRetrievable(ctx context.Context, root swarm.Address) (bool, error) {
-	noop := func(leaf swarm.Address) error { return nil }
-	switch err := s.netTraverser.Traverse(ctx, root, noop); {
+	fn := func(a swarm.Address) error {
+		_, err := s.netGetter.RetrieveChunk(ctx, a, swarm.ZeroAddress)
+		return err
+	}
+	switch err := s.netTraverser.Traverse(ctx, root, fn); {
 	case errors.Is(err, storage.ErrNotFound):
 		return false, nil
 	case errors.Is(err, topology.ErrNotFound):
