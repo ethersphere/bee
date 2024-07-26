@@ -155,7 +155,7 @@ func newGsocTest(t *testing.T, socId []byte, pingPeriod time.Duration) (gsoc.Lis
 	}
 	chunkAddr, _ := soc.CreateAddress(socId, owner.Bytes())
 
-	gsoc := gsoc.New()
+	gsoc := gsoc.New(log.NewLogger("test"))
 	testutil.CleanupCloser(t, gsoc)
 
 	_, cl, listener, _ := newTestServer(t, testServerOptions{
