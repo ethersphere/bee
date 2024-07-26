@@ -890,7 +890,7 @@ func NewBee(
 	pricing.SetPaymentThresholdObserver(acc)
 
 	pssService := pss.New(pssPrivateKey, logger)
-	gsocService := gsoc.New()
+	gsocService := gsoc.New(logger)
 	b.pssCloser = pssService
 
 	validStamp := postage.ValidStamp(batchStore)

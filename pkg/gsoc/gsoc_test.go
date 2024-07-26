@@ -11,6 +11,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/gsoc"
+	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 )
@@ -20,7 +21,7 @@ func TestRegister(t *testing.T) {
 	t.Parallel()
 
 	var (
-		g       = gsoc.New()
+		g       = gsoc.New(log.NewLogger("test"))
 		h1Calls = 0
 		h2Calls = 0
 		h3Calls = 0

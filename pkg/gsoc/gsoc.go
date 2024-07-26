@@ -7,6 +7,7 @@ package gsoc
 import (
 	"sync"
 
+	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -21,11 +22,13 @@ type listener struct {
 	handlers   map[[32]byte][]*handler
 	handlersMu sync.Mutex
 	quit       chan struct{}
+	logger     log.Logger
 }
 
 // New returns a new pss service.
-func New() Listener {
+func New(logger log.Logger) Listener {
 	return &listener{
+		logger:   logger,
 		handlers: make(map[[32]byte][]*handler),
 		quit:     make(chan struct{}),
 	}
@@ -62,6 +65,9 @@ func (l *listener) Handler(c soc.SOC) {
 	if h == nil {
 		return // no handler
 	}
+	l.logger.Info("new incoming GSOC message",
+		"GSOC Address", addr,
+		"wrapped chunk address", c.WrappedChunk().Address())
 
 	var wg sync.WaitGroup
 	for _, hh := range h {

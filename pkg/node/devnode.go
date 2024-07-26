@@ -343,7 +343,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		Storer:          localStore,
 		Resolver:        mockResolver,
 		Pss:             pssService,
-		Gsoc:            gsoc.New(),
+		Gsoc:            gsoc.New(logger),
 		FeedFactory:     mockFeeds,
 		Post:            post,
 		AccessControl:   accesscontrol,
