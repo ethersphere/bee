@@ -2075,7 +2075,7 @@ paths:
           name: amount
           schema:
             type: string
-          required: true  
+          required: true
           description: Amount of BZZ added that will be deposited for staking.
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
