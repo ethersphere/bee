@@ -72,7 +72,7 @@ func TestIsOverlayFrozen(t *testing.T) {
 		}
 
 		if frozen {
-			t.Fatalf("expected owner to be frozen")
+			t.Fatalf("expected owner to not be frozen")
 		}
 
 	})
