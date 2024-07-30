@@ -200,7 +200,7 @@ func (c *contract) IsOverlayFrozen(ctx context.Context, block uint64) (bool, err
 		return false, err
 	}
 
-	results, err := c.stakingContractABI.Unpack("lastUpdatedBlockNumberOfOverlay", result)
+	results, err := c.stakingContractABI.Unpack("lastUpdatedBlockNumberOfAddress", result)
 	if err != nil {
 		return false, err
 	}
