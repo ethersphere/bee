@@ -168,6 +168,7 @@ type Options struct {
 	NeighborhoodSuggester         string
 	WhitelistedWithdrawalAddress  []string
 	TrxDebugMode                  bool
+	ReserveMinimumRadius          uint
 }
 
 const (
@@ -183,7 +184,6 @@ const (
 	ReserveCapacity               = 4_194_304                 // 2^22 chunks
 	reserveWakeUpDuration         = 15 * time.Minute          // time to wait before waking up reserveWorker
 	reserveTreshold               = ReserveCapacity * 5 / 10
-	reserveMinimumRadius          = 0
 	reserveMinEvictCount          = 1_000
 	cacheMinEvictCount            = 10_000
 )
@@ -915,7 +915,7 @@ func NewBee(
 		}
 
 		local, network := localStore.StorageRadius(), uint8(networkR.Load())
-		if local <= reserveMinimumRadius {
+		if local <= uint8(o.ReserveMinimumRadius) {
 			return network, nil
 		} else {
 			return local, nil
