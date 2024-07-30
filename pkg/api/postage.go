@@ -124,6 +124,7 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 			logger.Debug("create batch: insufficient validity", "error", err)
 			logger.Error(nil, "create batch: insufficient validity")
 			jsonhttp.BadRequest(w, "insufficient amount for 24h minimum validity")
+			return
 		}
 		logger.Debug("create batch: create failed", "error", err)
 		logger.Error(nil, "create batch: create failed")
