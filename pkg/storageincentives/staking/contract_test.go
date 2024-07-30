@@ -25,6 +25,59 @@ import (
 
 var stakingContractABI = abiutil.MustParseABI(chaincfg.Testnet.StakingABI)
 
+func TestIsOverlayFrozen(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	owner := common.HexToAddress("abcd")
+	stakingContractAddress := common.HexToAddress("ffff")
+	bzzTokenAddress := common.HexToAddress("eeee")
+	nonce := common.BytesToHash(make([]byte, 32))
+
+	height := 100
+	frozenHeight := big.NewInt(int64(height))
+
+	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
+		contract := staking.New(
+			owner,
+			stakingContractAddress,
+			stakingContractABI,
+			bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if *request.To == stakingContractAddress {
+						return frozenHeight.FillBytes(make([]byte, 32)), nil
+					}
+					return nil, errors.New("unexpected call")
+				}),
+			),
+			nonce,
+			false,
+		)
+
+		frozen, err := contract.IsOverlayFrozen(ctx, uint64(height-1))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !frozen {
+			t.Fatalf("expected owner to be frozen")
+		}
+
+		frozen, err = contract.IsOverlayFrozen(ctx, uint64(height+1))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if frozen {
+			t.Fatalf("expected owner to be frozen")
+		}
+
+	})
+}
+
 func TestDepositStake(t *testing.T) {
 	t.Parallel()
 
