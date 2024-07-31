@@ -232,14 +232,14 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 			continue
 		}
 
-		wantChunksID := addr.ByteString() + string(stamp.BatchID()) + string(stampHash)
-		if _, ok := wantChunks[wantChunksID]; !ok {
+		wantChunkID := addr.ByteString() + string(stamp.BatchID()) + string(stampHash)
+		if _, ok := wantChunks[wantChunkID]; !ok {
 			s.logger.Debug("want chunks", "error", ErrUnsolicitedChunk, "peer_address", peer, "chunk_address", addr)
 			chunkErr = errors.Join(chunkErr, ErrUnsolicitedChunk)
 			continue
 		}
 
-		delete(wantChunks, wantChunksID)
+		delete(wantChunks, wantChunkID)
 
 		chunk, err := s.validStamp(newChunk.WithStamp(stamp))
 		if err != nil {
