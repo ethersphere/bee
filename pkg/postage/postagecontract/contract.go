@@ -26,13 +26,14 @@ var (
 
 	erc20ABI = abiutil.MustParseABI(sw3abi.ERC20ABIv0_6_5)
 
-	ErrBatchCreate       = errors.New("batch creation failed")
-	ErrInsufficientFunds = errors.New("insufficient token balance")
-	ErrInvalidDepth      = errors.New("invalid depth")
-	ErrBatchTopUp        = errors.New("batch topUp failed")
-	ErrBatchDilute       = errors.New("batch dilute failed")
-	ErrChainDisabled     = errors.New("chain disabled")
-	ErrNotImplemented    = errors.New("not implemented")
+	ErrBatchCreate          = errors.New("batch creation failed")
+	ErrInsufficientFunds    = errors.New("insufficient token balance")
+	ErrInvalidDepth         = errors.New("invalid depth")
+	ErrBatchTopUp           = errors.New("batch topUp failed")
+	ErrBatchDilute          = errors.New("batch dilute failed")
+	ErrChainDisabled        = errors.New("chain disabled")
+	ErrNotImplemented       = errors.New("not implemented")
+	ErrInsufficientValidity = errors.New("insufficient validity")
 
 	approveDescription     = "Approve tokens for postage operations"
 	createBatchDescription = "Postage batch creation"
@@ -301,6 +302,47 @@ func (c *postageContract) getBalance(ctx context.Context) (*big.Int, error) {
 	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
 }
 
+func (c *postageContract) getProperty(ctx context.Context, propertyName string, out any) error {
+	callData, err := c.postageStampContractABI.Pack(propertyName)
+	if err != nil {
+		return err
+	}
+
+	result, err := c.transactionService.Call(ctx, &transaction.TxRequest{
+		To:   &c.postageStampContractAddress,
+		Data: callData,
+	})
+	if err != nil {
+		return err
+	}
+
+	results, err := c.postageStampContractABI.Unpack(propertyName, result)
+	if err != nil {
+		return err
+	}
+
+	if len(results) == 0 {
+		return errors.New("unexpected empty results")
+	}
+
+	abi.ConvertType(results[0], out)
+	return nil
+}
+
+func (c *postageContract) getMinInitialBalance(ctx context.Context) (uint64, error) {
+	var lastPrice uint64
+	err := c.getProperty(ctx, "lastPrice", &lastPrice)
+	if err != nil {
+		return 0, err
+	}
+	var minimumValidityBlocks uint64
+	err = c.getProperty(ctx, "minimumValidityBlocks", &minimumValidityBlocks)
+	if err != nil {
+		return 0, err
+	}
+	return lastPrice * minimumValidityBlocks, nil
+}
+
 func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) (txHash common.Hash, batchID []byte, err error) {
 	if depth <= BucketDepth {
 		err = ErrInvalidDepth
@@ -315,6 +357,15 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 
 	if balance.Cmp(totalAmount) < 0 {
 		err = fmt.Errorf("insufficient balance. amount %d, balance %d: %w", totalAmount, balance, ErrInsufficientFunds)
+		return
+	}
+
+	minInitialBalance, err := c.getMinInitialBalance(ctx)
+	if err != nil {
+		return
+	}
+	if initialBalance.Cmp(big.NewInt(int64(minInitialBalance))) <= 0 {
+		err = fmt.Errorf("insufficient initial balance for 24h minimum validity. balance %d, minimum amount: %d: %w", initialBalance, minInitialBalance, ErrInsufficientValidity)
 		return
 	}
 
