@@ -64,3 +64,5 @@ password-file: ./password
 # welcome-message: ""
 ## triggers connection to main network
 # mainnet: true
+## minimum radius storage treshold
+# reserve-minimum-radius: 0
