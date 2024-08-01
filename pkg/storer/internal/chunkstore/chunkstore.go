@@ -74,23 +74,23 @@ func Put(ctx context.Context, s storage.IndexStore, sh storage.Sharky, ch swarm.
 		rIdx = &RetrievalIndexItem{Address: ch.Address()}
 		loc  sharky.Location
 	)
-	fmt.Println("chunkstore: put chunk in sharky", "address", ch.Address().String())
+	fmt.Println("chunkstore: put chunk", "address", ch.Address().String())
 	err := s.Get(rIdx)
 	switch {
 	case errors.Is(err, storage.ErrNotFound):
 		// if this is the first instance of this address, we should store the chunk
 		// in sharky and create the new indexes.
-		fmt.Println("chunkstore: writing chunk to sharky", "address", ch.Address().String())
+		fmt.Println("chunkstore: writing chunk", "address", ch.Address().String())
 		loc, err = sh.Write(ctx, ch.Data())
 		if err != nil {
-			return fmt.Errorf("chunk store: write to sharky failed: %w", err)
+			return fmt.Errorf("chunk store: write failed: %w", err)
 		}
 		rIdx.Location = loc
 		rIdx.Timestamp = uint64(time.Now().Unix())
 	case err != nil:
 		return fmt.Errorf("chunk store: failed to read: %w", err)
 	default:
-		fmt.Println("chunkstore: chunk already exists in sharky. skipping", "address", ch.Address().String(), "count", rIdx.RefCnt+1)
+		fmt.Println("chunkstore: chunk already exists. skipping", "address", ch.Address().String())
 	}
 
 	rIdx.RefCnt++
@@ -110,16 +110,17 @@ func Delete(ctx context.Context, s storage.IndexStore, sh storage.Sharky, addr s
 		rIdx.RefCnt--
 	}
 
+	err = s.Put(rIdx)
+	if err != nil {
+		return fmt.Errorf("chunk store: failed updating retrievalIndex for address %s: %w", addr, err)
+	}
+
 	if rIdx.RefCnt > 0 { // If there are more references for this we don't delete it from sharky.
-		fmt.Println("chunkstore: ref count is greater than 0, not deleting from sharky", "address", addr.String(), "count", rIdx.RefCnt)
-		err = s.Put(rIdx)
-		if err != nil {
-			return fmt.Errorf("chunk store: failed updating retrievalIndex for address %s: %w", addr, err)
-		}
+		fmt.Println("chunkstore: ref count is greater than 0, not deleting", "address", addr.String(), "count", rIdx.RefCnt)
 		return nil
 	}
 
-	fmt.Println("chunkstore: deleting chunk from sharky", "address", addr.String())
+	fmt.Println("chunkstore: deleting chunk", "address", addr.String())
 	err = errors.Join(
 		sh.Release(ctx, rIdx.Location),
 		s.Delete(rIdx),
@@ -129,11 +130,12 @@ func Delete(ctx context.Context, s storage.IndexStore, sh storage.Sharky, addr s
 	}
 
 	fmt.Println("chunkstore: verifying delete on address", addr.String())
+	rIdx = &RetrievalIndexItem{Address: addr}
 	err = s.Get(rIdx)
 	if !errors.Is(err, storage.ErrNotFound) {
-		fmt.Println("chunkstore: failed to delete chunk from sharky", "address", addr.String())
+		fmt.Println("chunkstore: failed to delete chunk", "address", addr.String())
 	} else {
-		fmt.Println("chunkstore: successfully deleted chunk from sharky", "address", addr.String())
+		fmt.Println("chunkstore: successfully deleted chunk", "address", addr.String())
 	}
 	return nil
 }

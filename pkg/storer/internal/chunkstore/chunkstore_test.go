@@ -5,6 +5,7 @@
 package chunkstore_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/sharky"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 
 	"github.com/ethersphere/bee/v2/pkg/storage"
@@ -225,6 +227,159 @@ func TestChunkStore(t *testing.T) {
 				}
 			}
 		}
+	})
+
+	t.Run("chunkstore transactions", func(t *testing.T) {
+		ch := chunktest.GenerateTestRandomChunk()
+
+		ctx := context.Background()
+		// put and commit chunk
+		st.Run(ctx, func(s transaction.Store) error {
+			err = s.ChunkStore().Put(context.Background(), ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return nil
+		})
+
+		st.Run(ctx, func(s transaction.Store) error {
+			// should be found
+			_, err = s.ChunkStore().Get(ctx, ch.Address())
+			if err != nil && errors.Is(err, storage.ErrNotFound) {
+				t.Fatalf("expected found: %v", err)
+			}
+
+			rIdx := &chunkstore.RetrievalIndexItem{Address: ch.Address()}
+			err = s.IndexStore().Get(rIdx)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// want 1 ref (from initial put)
+			if rIdx.RefCnt != 1 {
+				t.Fatalf("expected ref count 1, got %d", rIdx.RefCnt)
+			}
+
+			// simulate delete as in (reserve.removeChunk)
+			// normally, it should remove the idxItem but it doesn't (or maybe it's batched)
+			err = s.ChunkStore().Delete(ctx, ch.Address())
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// want 0 ref but got 1 because the previous delete did not remove the item (YET)
+			rIdx = &chunkstore.RetrievalIndexItem{Address: ch.Address()}
+			err = s.IndexStore().Get(rIdx)
+			if err != nil && errors.Is(err, storage.ErrNotFound) {
+				t.Fatal(err)
+			}
+			if rIdx.RefCnt != 1 {
+				t.Fatalf("expected ref count 1, got %d", rIdx.RefCnt)
+			}
+
+			// sending 2 puts
+			// simulate put chunk with new payload after remove chunk (should replace but doesnt)
+			ch = swarm.NewChunk(ch.Address(), []byte("payload1")).WithStamp(ch.Stamp())
+			err = s.ChunkStore().Put(ctx, ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// simulate put chunk with new payload after remove chunk (should replac)
+			ch = swarm.NewChunk(ch.Address(), []byte("payload2")).WithStamp(ch.Stamp())
+			err = s.ChunkStore().Put(ctx, ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			return nil
+		})
+
+		rIdx := &chunkstore.RetrievalIndexItem{Address: ch.Address()}
+		err = st.IndexStore().Get(rIdx)
+		if err != nil && errors.Is(err, storage.ErrNotFound) {
+			t.Fatal(err)
+		}
+
+		// 3 puts have been sent (2 commited, i ignored) (1 delete ignored too)
+		if rIdx.RefCnt != 2 {
+			t.Fatalf("expected ref count 2, got %d", rIdx.RefCnt)
+		}
+
+		// get chunk returns old chunk because previous one was not deleted. So the put did not replace the chunk but the idx was incremented
+		c, err := st.ChunkStore().Get(ctx, ch.Address())
+		if err != nil {
+			t.Fatalf("failed getting chunk: %v", err)
+		}
+		if bytes.Equal(c.Data(), []byte("payload")) {
+			t.Fatalf("didn't expect chunk with new payload")
+		}
+
+	})
+
+	t.Run("index and chunkstore transactions", func(t *testing.T) {
+		item := &reserve.BatchRadiusItem{
+			Bin:       0,
+			BatchID:   swarm.RandAddress(t).Bytes(),
+			StampHash: swarm.RandAddress(t).Bytes(),
+			Address:   swarm.RandAddress(t),
+			BinID:     1,
+		}
+
+		// while inside a tx, you can write changes and read the latest changes in indexstore.
+		_ = st.Run(context.Background(), func(s transaction.Store) error {
+			err = s.IndexStore().Put(item)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			err = s.IndexStore().Delete(item)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			err = s.IndexStore().Get(item)
+			if err != nil && !errors.Is(err, storage.ErrNotFound) {
+				t.Fatalf("expected storage not found error found: %v", err)
+			}
+
+			return nil
+		})
+
+		// while inside a tx, you cannot read the latest changes on chunkstore
+		st.Run(context.Background(), func(s transaction.Store) error {
+			ch := chunktest.GenerateTestRandomChunk()
+			err = s.ChunkStore().Put(context.Background(), ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// chunk is not found
+			_, err = s.ChunkStore().Get(context.Background(), ch.Address())
+			if err != nil && !errors.Is(err, storage.ErrNotFound) {
+				t.Fatalf("expected storage not found error found: %v", err)
+			}
+			return nil
+		})
+
+		// but if you commit the tx before proceeding, it'll work\
+		ch := chunktest.GenerateTestRandomChunk()
+		st.Run(context.Background(), func(s transaction.Store) error {
+			err = s.ChunkStore().Put(context.Background(), ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return nil
+		})
+
+		st.Run(context.Background(), func(s transaction.Store) error {
+			// chunk is now found
+			_, err = s.ChunkStore().Get(context.Background(), ch.Address())
+			if err != nil && errors.Is(err, storage.ErrNotFound) {
+				t.Fatalf("expected found: %v", err)
+			}
+			return nil
+		})
 	})
 
 	t.Run("check deleted chunks", func(t *testing.T) {
