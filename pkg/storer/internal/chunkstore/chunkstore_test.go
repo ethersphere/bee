@@ -311,7 +311,7 @@ func TestChunkStore(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed getting chunk: %v", err)
 		}
-		if bytes.Equal(c.Data(), []byte("payload")) {
+		if bytes.Equal(c.Data(), []byte("payload2")) {
 			t.Fatalf("didn't expect chunk with new payload")
 		}
 
