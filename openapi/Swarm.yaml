@@ -2063,6 +2063,23 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
+    delete:
+      summary: Withdraw the extra withdrawable staked amount.
+      description: This endpoint withdraws any amount that is possible to withdraw as surplus.
+      tags:
+        - Staking
+      parameters:
+        - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
+      responses:
+        "200":
+          $ref: "SwarmCommon.yaml#/components/schemas/StakeTransactionResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
 
   "/stake/{amount}":
     post:
@@ -2103,8 +2120,8 @@ paths:
         default:
           description: Default response
     delete:
-      summary: Withdraw the extra withdrawable staked amount.
-      description: This endpoint withdraws any amount that is possible to withdraw as surplus.
+      summary: Withdraws all past staked amount back to the wallet.
+      description: Be aware, the endpoint call only be called when the contract is paused and is in the process of being migrated to a new contract.
       tags:
         - Staking
       parameters:
@@ -2119,6 +2136,7 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
+    
 
   "/loggers":
     get:

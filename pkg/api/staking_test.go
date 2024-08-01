@@ -215,7 +215,7 @@ func TestWithdrawStake(t *testing.T) {
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
-		jsonhttptest.Request(t, ts, http.MethodDelete, "/stake", http.StatusOK, jsonhttptest.WithExpectedJSONResponse(
+		jsonhttptest.Request(t, ts, http.MethodDelete, "/stake/withdrawable", http.StatusOK, jsonhttptest.WithExpectedJSONResponse(
 			&api.StakeTransactionReponse{TxHash: txHash.String()}))
 	})
 
@@ -228,7 +228,7 @@ func TestWithdrawStake(t *testing.T) {
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
-		jsonhttptest.Request(t, ts, http.MethodDelete, "/stake", http.StatusBadRequest,
+		jsonhttptest.Request(t, ts, http.MethodDelete, "/stake/withdrawable", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusBadRequest, Message: "insufficient stake to withdraw"}))
 	})
 
@@ -241,7 +241,7 @@ func TestWithdrawStake(t *testing.T) {
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
-		jsonhttptest.Request(t, ts, http.MethodDelete, "/stake", http.StatusInternalServerError)
+		jsonhttptest.Request(t, ts, http.MethodDelete, "/stake/withdrawable", http.StatusInternalServerError)
 		jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusInternalServerError, Message: "cannot withdraw stake"})
 	})
 
@@ -261,7 +261,7 @@ func TestWithdrawStake(t *testing.T) {
 			StakingContract: contract,
 		})
 
-		jsonhttptest.Request(t, ts, http.MethodDelete, "/stake", http.StatusOK,
+		jsonhttptest.Request(t, ts, http.MethodDelete, "/stake/withdrawable", http.StatusOK,
 			jsonhttptest.WithRequestHeader(api.GasLimitHeader, "2000000"),
 		)
 	})
@@ -281,7 +281,7 @@ func TestMigrateStake(t *testing.T) {
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
-		jsonhttptest.Request(t, ts, http.MethodPost, "/stake/migrate", http.StatusOK, jsonhttptest.WithExpectedJSONResponse(
+		jsonhttptest.Request(t, ts, http.MethodDelete, "/stake", http.StatusOK, jsonhttptest.WithExpectedJSONResponse(
 			&api.StakeTransactionReponse{TxHash: txHash.String()}))
 	})
 
@@ -294,7 +294,7 @@ func TestMigrateStake(t *testing.T) {
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
-		jsonhttptest.Request(t, ts, http.MethodPost, "/stake/migrate", http.StatusBadRequest,
+		jsonhttptest.Request(t, ts, http.MethodDelete, "/stake", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusBadRequest, Message: "insufficient stake to migrate"}))
 	})
 
@@ -307,7 +307,7 @@ func TestMigrateStake(t *testing.T) {
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
-		jsonhttptest.Request(t, ts, http.MethodPost, "/stake/migrate", http.StatusInternalServerError)
+		jsonhttptest.Request(t, ts, http.MethodDelete, "/stake", http.StatusInternalServerError)
 		jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusInternalServerError, Message: "cannot withdraw stake"})
 	})
 
@@ -327,7 +327,7 @@ func TestMigrateStake(t *testing.T) {
 			StakingContract: contract,
 		})
 
-		jsonhttptest.Request(t, ts, http.MethodPost, "/stake/migrate", http.StatusOK,
+		jsonhttptest.Request(t, ts, http.MethodDelete, "/stake", http.StatusOK,
 			jsonhttptest.WithRequestHeader(api.GasLimitHeader, "2000000"),
 		)
 	})
