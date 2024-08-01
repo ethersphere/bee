@@ -131,7 +131,7 @@ func (c *command) initStartDevCmd() (err error) {
 		},
 	}
 
-	cmd.Flags().String(optionNameAPIAddr, ":1633", "HTTP API listen address")
+	cmd.Flags().String(optionNameAPIAddr, "127.0.0.1:1633", "HTTP API listen address")
 	cmd.Flags().String(optionNameVerbosity, "info", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
 	cmd.Flags().Uint64(optionNameDevReserveCapacity, 4194304, "cache reserve capacity")
 	cmd.Flags().StringSlice(optionCORSAllowedOrigins, []string{}, "origins with CORS headers enabled")
