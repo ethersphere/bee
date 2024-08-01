@@ -2121,7 +2121,7 @@ paths:
           description: Default response
     delete:
       summary: Withdraws all past staked amount back to the wallet.
-      description: Be aware, the endpoint call only be called when the contract is paused and is in the process of being migrated to a new contract.
+      description: Be aware, this endpoint can only be called when the contract is paused and is in the process of being migrated to a new contract.
       tags:
         - Staking
       parameters:
