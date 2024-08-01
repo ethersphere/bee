@@ -2137,7 +2137,6 @@ paths:
         default:
           description: Default response
     
-
   "/loggers":
     get:
       summary: Get all available loggers.
