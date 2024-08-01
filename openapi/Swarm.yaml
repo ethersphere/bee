@@ -2136,7 +2136,7 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
-    
+
   "/loggers":
     get:
       summary: Get all available loggers.
