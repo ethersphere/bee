@@ -232,6 +232,8 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 			continue
 		}
 
+		s.logger.Info("got a delivery: ", "address", newChunk.Address().String(), "stampHash", stampHash)
+
 		wantChunkID := addr.ByteString() + string(stamp.BatchID()) + string(stampHash)
 		if _, ok := wantChunks[wantChunkID]; !ok {
 			s.logger.Debug("want chunks", "error", ErrUnsolicitedChunk, "peer_address", peer, "chunk_address", addr)
@@ -266,6 +268,8 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		s.metrics.LastReceived.WithLabelValues(fmt.Sprintf("%d", bin)).Add(float64(len(chunksToPut)))
 
 		for _, c := range chunksToPut {
+			s.logger.Info("putting chunk: ", "address", c.Address().String())
+
 			if err := s.store.ReservePutter().Put(ctx, c); err != nil {
 				// in case of these errors, no new items are added to the storage, so it
 				// is safe to continue with the next chunk

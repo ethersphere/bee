@@ -7,9 +7,12 @@ package reserve_test
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
+	"fmt"
 	"math"
 	"math/rand"
+	"os"
 	"testing"
 	"time"
 
@@ -183,6 +186,74 @@ func TestReplaceOldIndex(t *testing.T) {
 	checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch2.Stamp().BatchID(), Address: ch2.Address(), StampHash: ch2StampHash}, false)
 	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: 2, StampHash: ch2StampHash}, false)
 	checkChunk(t, ts, ch2, false)
+
+	item, err := stampindex.Load(ts.IndexStore(), "reserve", ch2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !item.ChunkAddress.Equal(ch2.Address()) {
+		t.Fatalf("wanted ch2 address")
+	}
+}
+
+func TestReplaceSocPayload(t *testing.T) {
+	t.Parallel()
+
+	baseAddr := swarm.RandAddress(t)
+
+	ts := internal.NewInmemStorage()
+
+	r, err := reserve.New(
+		baseAddr,
+		ts,
+		0, kademlia.NewTopologyDriver(),
+		log.NewLogger("test", log.WithSink(os.Stdout)),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	batch := postagetesting.MustNewBatch()
+	ch1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 0))
+
+	tesBuf := make([]byte, 8)
+	binary.BigEndian.PutUint64(tesBuf, 1)
+	newStamp := postage.NewStamp(ch1.Stamp().BatchID(), ch1.Stamp().Index(), tesBuf, postagetesting.MustNewSignature())
+	ch2 := swarm.NewChunk(ch1.Address(), []byte("testing")).WithStamp(newStamp)
+
+	err = r.Put(context.Background(), ch1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = r.Put(context.Background(), ch2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Chunk 1 must be gone
+	ch1StampHash, err := ch1.Stamp().Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch1.Stamp().BatchID(), Address: ch1.Address(), StampHash: ch1StampHash}, true)
+	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: 1, StampHash: ch1StampHash}, true)
+
+	// Chunk 2 must be stored
+	ch2StampHash, err := ch2.Stamp().Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch2.Stamp().BatchID(), Address: ch2.Address(), StampHash: ch2StampHash}, false)
+	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: 2, StampHash: ch2StampHash}, false)
+
+	c, err := ts.ChunkStore().Get(context.Background(), ch2.Address())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(c.Data(), ch2.Data()) {
+		t.Fatalf("wanted %s, got %s", ch2.Data(), c.Data())
+	}
 
 	item, err := stampindex.Load(ts.IndexStore(), "reserve", ch2)
 	if err != nil {
@@ -457,6 +528,9 @@ func checkChunk(t *testing.T, s transaction.ReadOnlyStore, ch swarm.Chunk, gone 
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	c, err := s.ChunkStore().Get(context.Background(), ch.Address())
+	fmt.Println(c, err)
 
 	_, err = chunkstamp.LoadWithBatchID(s.IndexStore(), "reserve", ch.Address(), ch.Stamp().BatchID())
 	if !gone && err != nil {

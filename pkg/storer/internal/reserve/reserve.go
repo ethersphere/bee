@@ -116,7 +116,13 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	r.multx.Lock(strconv.Itoa(int(bin)))
 	defer r.multx.Unlock(strconv.Itoa(int(bin)))
 
-	return r.st.Run(ctx, func(s transaction.Store) error {
+	var (
+		oldAddress   swarm.Address
+		oldStampHash []byte
+		oldBatchId   []byte
+	)
+
+	err = r.st.Run(ctx, func(s transaction.Store) error {
 
 		oldItem, loadedStamp, err := stampindex.LoadOrStore(s.IndexStore(), reserveNamespace, chunk)
 		if err != nil {
@@ -145,7 +151,13 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 				"old_chunk", oldItem.ChunkAddress,
 				"new_chunk", chunk.Address(),
 				"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
+				"old_stamp_hash", hex.EncodeToString(oldItem.StampHash),
+				"new_stamp_hash", hex.EncodeToString(stampHash),
 			)
+
+			oldAddress = oldItem.ChunkAddress
+			oldBatchId = chunk.Stamp().BatchID()
+			oldStampHash = oldItem.StampHash
 
 			// replace old stamp index.
 			err = stampindex.Store(s.IndexStore(), reserveNamespace, chunk)
@@ -154,6 +166,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			}
 		}
 
+		r.logger.Info("putting new chunk", "address", chunk.Address().String(), "data", hex.EncodeToString(chunk.Data()))
 		err = chunkstamp.Store(s.IndexStore(), reserveNamespace, chunk)
 		if err != nil {
 			return err
@@ -197,6 +210,20 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 
 		return nil
 	})
+
+	if err != nil {
+		return err
+	}
+
+	r.logger.Info("checking that thd old item has been deleted")
+	has, err = r.Has(oldAddress, oldBatchId, oldStampHash)
+	if err != nil {
+		return err
+	}
+	if has {
+		r.logger.Info("old chunk was not deleted: ", "address", chunk.Address().String())
+	}
+	return nil
 }
 
 func (r *Reserve) Has(addr swarm.Address, batchID []byte, stampHash []byte) (bool, error) {
@@ -429,6 +456,7 @@ func (r *Reserve) EvictionTarget() int {
 }
 
 func (r *Reserve) SetRadius(rad uint8) error {
+	rad = 0
 	r.radius.Store(uint32(rad))
 	r.radiusSetter.SetStorageRadius(rad)
 	return r.st.Run(context.Background(), func(s transaction.Store) error {

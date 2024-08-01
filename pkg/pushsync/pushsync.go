@@ -23,11 +23,11 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/pushsync/pb"
 	"github.com/ethersphere/bee/v2/pkg/skippeers"
 	"github.com/ethersphere/bee/v2/pkg/soc"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
-	opentracing "github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	olog "github.com/opentracing/opentracing-go/log"
 )
@@ -223,6 +223,9 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return swarm.ErrInvalidChunk
 	}
 
+	stampHash, _ := stamp.Hash()
+	ps.logger.Info("received soc chunk: ", "address", chunk.Address().String(), "stamp_hash", stampHash)
+
 	price := ps.pricer.Price(chunkAddress)
 
 	store := func(ctx context.Context) error {
@@ -262,13 +265,16 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	if ps.topologyDriver.IsReachable() && ps.store.IsWithinStorageRadius(chunkAddress) {
 		stored, reason = true, "is within AOR"
+		ps.logger.Info("storing chunk: ", "address", chunk.Address().String())
 		return store(ctx)
 	}
 
+	ps.logger.Info("forwarding chunk: ", "address", chunk.Address().String())
 	receipt, err := ps.pushToClosest(ctx, chunk, false)
 	if err != nil {
 		if errors.Is(err, topology.ErrWantSelf) {
 			stored, reason = true, "want self"
+			ps.logger.Info("storing chunk: ", "address", chunk.Address().String())
 			return store(ctx)
 		}
 

@@ -9,12 +9,14 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"os"
 	"runtime"
 	"strconv"
 	"sync/atomic"
 	"time"
 
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	log2 "github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"golang.org/x/sync/errgroup"
@@ -132,10 +134,12 @@ func (c *Cache) Getter(store transaction.Storage) storage.Getter {
 		trx, done := store.NewTransaction(ctx)
 		defer done()
 
+		logger := log2.NewLogger("cache", log2.WithSink(os.Stdout))
 		ch, err := trx.ChunkStore().Get(ctx, address)
 		if err != nil {
 			return nil, err
 		}
+		logger.Info("fetching chunk from chunk store", "address", address.String(), "chunk", ch)
 
 		// check if there is an entry in Cache. As this is the download path, we do
 		// a best-effort operation. So in case of any error we return the chunk.
