@@ -43,7 +43,6 @@ type Contract interface {
 	GetWithdrawableStake(ctx context.Context) (*big.Int, error)
 	WithdrawStake(ctx context.Context) (common.Hash, error)
 	MigrateStake(ctx context.Context) (common.Hash, error)
-	Paused(ctx context.Context) (bool, error)
 	RedistributionStatuser
 }
 
@@ -169,7 +168,7 @@ func (c *contract) WithdrawStake(ctx context.Context) (txHash common.Hash, err e
 }
 
 func (c *contract) MigrateStake(ctx context.Context) (txHash common.Hash, err error) {
-	isPaused, err := c.Paused(ctx)
+	isPaused, err := c.paused(ctx)
 	if err != nil {
 		return
 	}
@@ -415,7 +414,7 @@ func (c *contract) withdrawFromStake(ctx context.Context) (*types.Receipt, error
 	return receipt, nil
 }
 
-func (c *contract) Paused(ctx context.Context) (bool, error) {
+func (c *contract) paused(ctx context.Context) (bool, error) {
 	callData, err := c.stakingContractABI.Pack("paused")
 	if err != nil {
 		return false, err

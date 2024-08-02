@@ -746,43 +746,37 @@ func NewBee(
 		}
 	)
 
-	stakingContractAddress := chainCfg.StakingAddress
-	if o.StakingContractAddress != "" {
-		if !common.IsHexAddress(o.StakingContractAddress) {
-			return nil, errors.New("malformed staking contract address")
-		}
-		stakingContractAddress = common.HexToAddress(o.StakingContractAddress)
-	}
-
-	stakingContract := staking.New(overlayEthAddress, stakingContractAddress, abiutil.MustParseABI(chainCfg.StakingABI), bzzTokenAddress, transactionService, common.BytesToHash(nonce), o.TrxDebugMode)
-
 	if batchSvc != nil && chainEnabled {
 		logger.Info("waiting to sync postage contract data, this may take a while... more info available in Debug loglevel")
 
-		paused, err := stakingContract.Paused(ctx)
-		if paused && err == nil {
-			logger.Info("Staking contract is paused.")
+		paused, err := postageStampContractService.Paused(ctx)
+		if paused {
+			return nil, fmt.Errorf("postage contract is paused: %w", err)
+		}
+		if err != nil {
+			logger.Error(err, "Error checking postage contract is paused")
+		}
+
+		if o.FullNodeMode {
+			err = batchSvc.Start(ctx, postageSyncStart, initBatchState)
+			syncStatus.Store(true)
+			if err != nil {
+				syncErr.Store(err)
+				return nil, fmt.Errorf("unable to start batch service: %w", err)
+			}
 		} else {
-			if o.FullNodeMode {
-				err = batchSvc.Start(ctx, postageSyncStart, initBatchState)
+			go func() {
+				logger.Info("started postage contract data sync in the background...")
+				err := batchSvc.Start(ctx, postageSyncStart, initBatchState)
 				syncStatus.Store(true)
 				if err != nil {
 					syncErr.Store(err)
-					return nil, fmt.Errorf("unable to start batch service: %w", err)
+					logger.Error(err, "unable to sync batches")
+					b.syncingStopped.Signal() // trigger shutdown in start.go
 				}
-			} else {
-				go func() {
-					logger.Info("started postage contract data sync in the background...")
-					err := batchSvc.Start(ctx, postageSyncStart, initBatchState)
-					syncStatus.Store(true)
-					if err != nil {
-						syncErr.Store(err)
-						logger.Error(err, "unable to sync batches")
-						b.syncingStopped.Signal() // trigger shutdown in start.go
-					}
-				}()
-			}
+			}()
 		}
+
 	}
 
 	minThreshold := big.NewInt(2 * refreshRate)
@@ -975,6 +969,16 @@ func NewBee(
 	if err = p2ps.AddProtocol(pullSyncProtocolSpec); err != nil {
 		return nil, fmt.Errorf("pullsync protocol: %w", err)
 	}
+
+	stakingContractAddress := chainCfg.StakingAddress
+	if o.StakingContractAddress != "" {
+		if !common.IsHexAddress(o.StakingContractAddress) {
+			return nil, errors.New("malformed staking contract address")
+		}
+		stakingContractAddress = common.HexToAddress(o.StakingContractAddress)
+	}
+
+	stakingContract := staking.New(overlayEthAddress, stakingContractAddress, abiutil.MustParseABI(chainCfg.StakingABI), bzzTokenAddress, transactionService, common.BytesToHash(nonce), o.TrxDebugMode)
 
 	if chainEnabled && changedOverlay {
 		stake, err := stakingContract.GetPotentialStake(ctx)
