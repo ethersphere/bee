@@ -746,26 +746,42 @@ func NewBee(
 		}
 	)
 
+	stakingContractAddress := chainCfg.StakingAddress
+	if o.StakingContractAddress != "" {
+		if !common.IsHexAddress(o.StakingContractAddress) {
+			return nil, errors.New("malformed staking contract address")
+		}
+		stakingContractAddress = common.HexToAddress(o.StakingContractAddress)
+	}
+
+	stakingContract := staking.New(overlayEthAddress, stakingContractAddress, abiutil.MustParseABI(chainCfg.StakingABI), bzzTokenAddress, transactionService, common.BytesToHash(nonce), o.TrxDebugMode)
+
 	if batchSvc != nil && chainEnabled {
 		logger.Info("waiting to sync postage contract data, this may take a while... more info available in Debug loglevel")
-		if o.FullNodeMode {
-			err = batchSvc.Start(ctx, postageSyncStart, initBatchState)
-			syncStatus.Store(true)
-			if err != nil {
-				syncErr.Store(err)
-				return nil, fmt.Errorf("unable to start batch service: %w", err)
-			}
+
+		paused, err := stakingContract.Paused(ctx)
+		if paused && err == nil {
+			logger.Info("Staking contract is paused.")
 		} else {
-			go func() {
-				logger.Info("started postage contract data sync in the background...")
-				err := batchSvc.Start(ctx, postageSyncStart, initBatchState)
+			if o.FullNodeMode {
+				err = batchSvc.Start(ctx, postageSyncStart, initBatchState)
 				syncStatus.Store(true)
 				if err != nil {
 					syncErr.Store(err)
-					logger.Error(err, "unable to sync batches")
-					b.syncingStopped.Signal() // trigger shutdown in start.go
+					return nil, fmt.Errorf("unable to start batch service: %w", err)
 				}
-			}()
+			} else {
+				go func() {
+					logger.Info("started postage contract data sync in the background...")
+					err := batchSvc.Start(ctx, postageSyncStart, initBatchState)
+					syncStatus.Store(true)
+					if err != nil {
+						syncErr.Store(err)
+						logger.Error(err, "unable to sync batches")
+						b.syncingStopped.Signal() // trigger shutdown in start.go
+					}
+				}()
+			}
 		}
 	}
 
@@ -959,16 +975,6 @@ func NewBee(
 	if err = p2ps.AddProtocol(pullSyncProtocolSpec); err != nil {
 		return nil, fmt.Errorf("pullsync protocol: %w", err)
 	}
-
-	stakingContractAddress := chainCfg.StakingAddress
-	if o.StakingContractAddress != "" {
-		if !common.IsHexAddress(o.StakingContractAddress) {
-			return nil, errors.New("malformed staking contract address")
-		}
-		stakingContractAddress = common.HexToAddress(o.StakingContractAddress)
-	}
-
-	stakingContract := staking.New(overlayEthAddress, stakingContractAddress, abiutil.MustParseABI(chainCfg.StakingABI), bzzTokenAddress, transactionService, common.BytesToHash(nonce), o.TrxDebugMode)
 
 	if chainEnabled && changedOverlay {
 		stake, err := stakingContract.GetPotentialStake(ctx)
