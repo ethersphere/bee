@@ -175,7 +175,7 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 			e.TxHash,
 		)
 	case l.pausedTopic:
-		l.logger.Warning("Staking contract is paused.")
+		l.logger.Warning("Postage contract is paused.")
 		return context.Canceled
 	default:
 		l.metrics.EventErrors.Inc()
