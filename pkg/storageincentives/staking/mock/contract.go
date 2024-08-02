@@ -17,7 +17,7 @@ type stakingContractMock struct {
 	getStake         func(ctx context.Context) (*big.Int, error)
 	withdrawAllStake func(ctx context.Context) (common.Hash, error)
 	migrateStake     func(ctx context.Context) (common.Hash, error)
-	paused           func(ctx context.Context) (bool error)
+	paused           func(ctx context.Context) (bool, error)
 	isFrozen         func(ctx context.Context, block uint64) (bool, error)
 }
 
@@ -46,7 +46,7 @@ func (s *stakingContractMock) MigrateStake(ctx context.Context) (common.Hash, er
 }
 
 func (s *stakingContractMock) Paused(ctx context.Context) (bool, error) {
-	return false, s.paused(ctx)
+	return s.paused(ctx)
 }
 
 func (s *stakingContractMock) IsOverlayFrozen(ctx context.Context, block uint64) (bool, error) {
@@ -88,6 +88,12 @@ func WithWithdrawStake(f func(ctx context.Context) (common.Hash, error)) Option 
 func WithMigrateStake(f func(ctx context.Context) (common.Hash, error)) Option {
 	return func(mock *stakingContractMock) {
 		mock.migrateStake = f
+	}
+}
+
+func WithPaused(f func(ctx context.Context) (bool, error)) Option {
+	return func(mock *stakingContractMock) {
+		mock.paused = f
 	}
 }
 
