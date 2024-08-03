@@ -461,15 +461,25 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 			return nil, err
 		}
 	} else {
-		swarmPrivateKey, _, err := keystore.Key("swarm", password, crypto.EDGSecp256_K1)
+		oldSwarmKeyExists, err := keystore.Exists("swarm")
 		if err != nil {
-			return nil, fmt.Errorf("swarm key: %w", err)
+			return nil, err
 		}
-		signer = crypto.NewDefaultSigner(swarmPrivateKey)
-		publicKey = &swarmPrivateKey.PublicKey
+		if oldSwarmKeyExists {
+			err := keystore.RenameKey("swarm", "wallet")
+			if err != nil {
+				return nil, err
+			}
+		}
+		walletPrivateKey, _, err := keystore.Key("wallet", password, crypto.EDGSecp256_K1)
+		if err != nil {
+			return nil, fmt.Errorf("swarm wallet key: %w", err)
+		}
+		signer = crypto.NewDefaultSigner(walletPrivateKey)
+		publicKey = &walletPrivateKey.PublicKey
 	}
 
-	logger.Info("swarm public key", "public_key", hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(publicKey)))
+	logger.Info("swarm wallet public key", "public_key", hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(publicKey)))
 
 	libp2pPrivateKey, created, err := keystore.Key(libp2pPKFilename, password, crypto.EDGSecp256_R1)
 	if err != nil {
