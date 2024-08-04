@@ -45,6 +45,7 @@ type Interface interface {
 	CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) (common.Hash, []byte, error)
 	TopUpBatch(ctx context.Context, batchID []byte, topupBalance *big.Int) (common.Hash, error)
 	DiluteBatch(ctx context.Context, batchID []byte, newDepth uint8) (common.Hash, error)
+	Paused(ctx context.Context) (bool, error)
 	PostageBatchExpirer
 }
 
@@ -492,6 +493,32 @@ func (c *postageContract) DiluteBatch(ctx context.Context, batchID []byte, newDe
 	return
 }
 
+func (c *postageContract) Paused(ctx context.Context) (bool, error) {
+	callData, err := c.postageStampContractABI.Pack("paused")
+	if err != nil {
+		return false, err
+	}
+
+	result, err := c.transactionService.Call(ctx, &transaction.TxRequest{
+		To:   &c.postageStampContractAddress,
+		Data: callData,
+	})
+	if err != nil {
+		return false, err
+	}
+
+	results, err := c.postageStampContractABI.Unpack("paused", result)
+	if err != nil {
+		return false, err
+	}
+
+	if len(results) == 0 {
+		return false, errors.New("unexpected empty results")
+	}
+
+	return results[0].(bool), nil
+}
+
 type batchCreatedEvent struct {
 	BatchId           [32]byte
 	TotalAmount       *big.Int
@@ -512,6 +539,10 @@ func (m *noOpPostageContract) TopUpBatch(context.Context, []byte, *big.Int) (com
 }
 func (m *noOpPostageContract) DiluteBatch(context.Context, []byte, uint8) (common.Hash, error) {
 	return common.Hash{}, ErrChainDisabled
+}
+
+func (m *noOpPostageContract) Paused(context.Context) (bool, error) {
+	return false, nil
 }
 
 func (m *noOpPostageContract) ExpireBatches(context.Context) error {
