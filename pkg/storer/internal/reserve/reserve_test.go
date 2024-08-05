@@ -135,6 +135,49 @@ func TestReserveChunkType(t *testing.T) {
 	}
 }
 
+func TestReplaceSameAddress(t *testing.T) {
+	t.Parallel()
+
+	baseAddr := swarm.RandAddress(t)
+	ts := internal.NewInmemStorage()
+	r, err := reserve.New(
+		baseAddr,
+		ts,
+		0, kademlia.NewTopologyDriver(),
+		log.Noop,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	batch := postagetesting.MustNewBatch()
+	ch1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 0))
+	ch2 := swarm.NewChunk(ch1.Address(), []byte("new payload")).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 1))
+
+	err = r.Put(context.Background(), ch1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = r.Put(context.Background(), ch2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stampHash, err := ch2.Stamp().Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch3, err := r.Get(context.Background(), ch2.Address(), ch2.Stamp().BatchID(), stampHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(ch3.Data(), ch2.Data()) {
+		t.Fatalf("ch3 and ch2 payloads not equal")
+	}
+}
+
 func TestReplaceOldIndex(t *testing.T) {
 	t.Parallel()
 

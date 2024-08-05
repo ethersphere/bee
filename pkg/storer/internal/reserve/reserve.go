@@ -116,7 +116,23 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	r.multx.Lock(strconv.Itoa(int(bin)))
 	defer r.multx.Unlock(strconv.Itoa(int(bin)))
 
-	return r.st.Run(ctx, func(s transaction.Store) error {
+	// If this chunk already exists in the chunkstore, we delete it in a separate transaction.
+	// The oldChunk will be restored if the next tx fails.
+	oldChunk, err := r.st.ChunkStore().Get(ctx, chunk.Address())
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
+		return err
+	}
+	if oldChunk != nil {
+		err = r.st.Run(ctx, func(s transaction.Store) error {
+			r.logger.Warning("deleting chunk from chunkstore", "address", chunk.Address().String())
+			return s.ChunkStore().Delete(ctx, chunk.Address())
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	err = r.st.Run(ctx, func(s transaction.Store) error {
 
 		oldItem, loadedStamp, err := stampindex.LoadOrStore(s.IndexStore(), reserveNamespace, chunk)
 		if err != nil {
@@ -197,6 +213,15 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 
 		return nil
 	})
+	if err != nil {
+		if oldChunk != nil {
+			err = errors.Join(err, r.st.Run(ctx, func(s transaction.Store) error {
+				return s.ChunkStore().Put(ctx, oldChunk)
+			}))
+		}
+		return err
+	}
+	return nil
 }
 
 func (r *Reserve) Has(addr swarm.Address, batchID []byte, stampHash []byte) (bool, error) {
