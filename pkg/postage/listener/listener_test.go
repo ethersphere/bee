@@ -45,6 +45,8 @@ func toBatchBlock(block uint64) uint64 {
 }
 
 func TestListener(t *testing.T) {
+	t.Parallel()
+
 	const (
 		blockNumber = uint64(500)
 		timeout     = 5 * time.Second
@@ -53,6 +55,8 @@ func TestListener(t *testing.T) {
 	// test that when the listener gets a certain event
 	// then we would like to assert the appropriate EventUpdater method was called
 	t.Run("create event", func(t *testing.T) {
+		t.Parallel()
+
 		c := createArgs{
 			id:               hash[:],
 			owner:            addr[:],
@@ -97,6 +101,8 @@ func TestListener(t *testing.T) {
 	})
 
 	t.Run("topup event", func(t *testing.T) {
+		t.Parallel()
+
 		topup := topupArgs{
 			id:                hash[:],
 			amount:            big.NewInt(0),
@@ -138,6 +144,8 @@ func TestListener(t *testing.T) {
 	})
 
 	t.Run("depthIncrease event", func(t *testing.T) {
+		t.Parallel()
+
 		depthIncrease := depthArgs{
 			id:                hash[:],
 			depth:             200,
@@ -180,6 +188,8 @@ func TestListener(t *testing.T) {
 	})
 
 	t.Run("priceUpdate event", func(t *testing.T) {
+		t.Parallel()
+
 		priceUpdate := priceArgs{
 			price: big.NewInt(500),
 		}
@@ -219,6 +229,8 @@ func TestListener(t *testing.T) {
 	})
 
 	t.Run("multiple events", func(t *testing.T) {
+		t.Parallel()
+
 		c := createArgs{
 			id:               hash[:],
 			owner:            addr[:],
@@ -327,6 +339,8 @@ func TestListener(t *testing.T) {
 	})
 
 	t.Run("do not shutdown on error event", func(t *testing.T) {
+		t.Parallel()
+
 		blockNumber := uint64(500)
 		ev := newEventUpdaterMock()
 		mf := newMockFilterer(
@@ -355,6 +369,8 @@ func TestListener(t *testing.T) {
 	})
 
 	t.Run("shutdown on stalling", func(t *testing.T) {
+		t.Parallel()
+
 		ev := newEventUpdaterMock()
 		mf := newMockFilterer(
 			WithBlockNumberError(errors.New("dummy error")),
@@ -382,6 +398,8 @@ func TestListener(t *testing.T) {
 	})
 
 	t.Run("shutdown on processing error", func(t *testing.T) {
+		t.Parallel()
+
 		blockNumber := uint64(500)
 		ev := newEventUpdaterMockWithBlockNumberUpdateError(errors.New("err"))
 		mf := newMockFilterer(
@@ -417,6 +435,8 @@ func TestListener(t *testing.T) {
 }
 
 func TestListenerBatchState(t *testing.T) {
+	t.Parallel()
+
 	ev := newEventUpdaterMock()
 	mf := newMockFilterer()
 
