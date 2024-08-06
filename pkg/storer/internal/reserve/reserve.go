@@ -127,9 +127,9 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 		/*
 			if chunkstamp index has the chunk address then
 
-				if loadedStamp then
-					if prev >= curr then
-						return error
+				sameAddressOldItem = load stampIndex of the old chunk
+				if sameAddressOldItem.timestamp > newChunk.timestamp || (loadedStamp && loadedStamp.timestamp > newChunk.timestamp) then
+					return error
 
 				if chunk is CAC then // this means that the same chunk was uploaded with a different stamp
 					delete old BatchRadiusItem, ChunkBinItem, Chunkstamp, Stampindex
