@@ -39,6 +39,12 @@ type Hasser interface {
 	Has(context.Context, swarm.Address) (bool, error)
 }
 
+// Replacer is the interface that wraps the basic Replace method.
+type Replacer interface {
+	// Replace a chunk in the store.
+	Replace(context.Context, swarm.Chunk) error
+}
+
 // PutterFunc type is an adapter to allow the use of
 // ChunkStore as Putter interface. If f is a function
 // with the appropriate signature, PutterFunc(f) is a
@@ -70,6 +76,7 @@ type ChunkStore interface {
 	Putter
 	Deleter
 	Hasser
+	Replacer
 
 	// Iterate over chunks in no particular order.
 	Iterate(context.Context, IterateChunkFn) error

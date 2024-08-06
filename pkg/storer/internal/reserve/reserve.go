@@ -116,22 +116,6 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	r.multx.Lock(strconv.Itoa(int(bin)))
 	defer r.multx.Unlock(strconv.Itoa(int(bin)))
 
-	// If this chunk already exists in the chunkstore, we delete it in a separate transaction.
-	// The oldChunk will be restored if the next tx fails.
-	oldChunk, err := r.st.ChunkStore().Get(ctx, chunk.Address())
-	if err != nil && !errors.Is(err, storage.ErrNotFound) {
-		return err
-	}
-	if oldChunk != nil {
-		err = r.st.Run(ctx, func(s transaction.Store) error {
-			r.logger.Warning("deleting chunk from chunkstore", "address", chunk.Address().String())
-			return s.ChunkStore().Delete(ctx, chunk.Address())
-		})
-		if err != nil {
-			return err
-		}
-	}
-
 	err = r.st.Run(ctx, func(s transaction.Store) error {
 
 		oldItem, loadedStamp, err := stampindex.LoadOrStore(s.IndexStore(), reserveNamespace, chunk)
@@ -202,7 +186,17 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			return err
 		}
 
-		err = s.ChunkStore().Put(ctx, chunk)
+		chunkType := storage.ChunkType(chunk)
+		has, err := s.ChunkStore().Has(ctx, chunk.Address())
+		if err != nil {
+			return err
+		}
+		if !has {
+			err = s.ChunkStore().Put(ctx, chunk)
+		} else if chunkType == swarm.ChunkTypeSingleOwner {
+			r.logger.Warning("replacing SOC in chunkstore", "chunk", chunk.Address())
+			err = s.ChunkStore().Replace(ctx, chunk)
+		}
 		if err != nil {
 			return err
 		}
@@ -214,11 +208,6 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 		return nil
 	})
 	if err != nil {
-		if oldChunk != nil {
-			err = errors.Join(err, r.st.Run(ctx, func(s transaction.Store) error {
-				return s.ChunkStore().Put(ctx, oldChunk)
-			}))
-		}
 		return err
 	}
 	return nil
