@@ -186,16 +186,15 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			return err
 		}
 
-		chunkType := storage.ChunkType(chunk)
 		has, err := s.ChunkStore().Has(ctx, chunk.Address())
 		if err != nil {
 			return err
 		}
-		if !has {
-			err = s.ChunkStore().Put(ctx, chunk)
-		} else if chunkType == swarm.ChunkTypeSingleOwner {
-			r.logger.Warning("replacing SOC in chunkstore", "chunk", chunk.Address())
+		if has {
+			r.logger.Warning("replacing chunk in chunkstore", "chunk", chunk.Address())
 			err = s.ChunkStore().Replace(ctx, chunk)
+		} else {
+			err = s.ChunkStore().Put(ctx, chunk)
 		}
 		if err != nil {
 			return err
