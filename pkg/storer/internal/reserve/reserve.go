@@ -122,6 +122,28 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 		if err != nil {
 			return fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
 		}
+
+		// same address check
+		/*
+			if chunkstamp index has the chunk address then
+
+				if loadedStamp then
+					if prev >= curr then
+						return error
+
+				if chunk is CAC then // this means that the same chunk was uploaded with a different stamp
+					delete old BatchRadiusItem, ChunkBinItem, Chunkstamp, Stampindex
+					create new ones
+					return
+
+				if chunk is SOC then
+					delete old BatchRadiusItem, ChunkBinItem, Chunkstamp, Stampindex
+					create new ones
+					chunkstore.Replace(old, new)
+					return
+		*/
+
+		// different address check
 		if loadedStamp {
 			prev := binary.BigEndian.Uint64(oldItem.StampTimestamp)
 			curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
