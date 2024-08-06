@@ -116,7 +116,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	r.multx.Lock(strconv.Itoa(int(bin)))
 	defer r.multx.Unlock(strconv.Itoa(int(bin)))
 
-	err = r.st.Run(ctx, func(s transaction.Store) error {
+	return r.st.Run(ctx, func(s transaction.Store) error {
 
 		oldItem, loadedStamp, err := stampindex.LoadOrStore(s.IndexStore(), reserveNamespace, chunk)
 		if err != nil {
@@ -207,10 +207,6 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 
 		return nil
 	})
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 func (r *Reserve) Has(addr swarm.Address, batchID []byte, stampHash []byte) (bool, error) {
