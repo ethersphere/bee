@@ -54,6 +54,10 @@ func NewMantarayManifestReference(
 	}, nil
 }
 
+func (m *mantarayManifest) Root() *mantaray.Node {
+	return m.trie
+}
+
 func (m *mantarayManifest) Type() string {
 	return ManifestMantarayContentType
 }

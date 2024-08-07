@@ -166,6 +166,9 @@ jobs:
       - name: Test redundancy
         id: redundancy
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks ci-redundancy
+      - name: Test act
+        id: act
+        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks ci-act; do echo "waiting for act..."; sleep .3; done'
       - name: Collect debug artifacts
         if: failure()
         run: |
@@ -181,6 +184,7 @@ jobs:
           if ${{ steps.retrieval.outcome=='failure' }}; then FAILED=retrieval; fi
           if ${{ steps.manifest.outcome=='failure' }}; then FAILED=manifest; fi
           if ${{ steps.content-availability.outcome=='failure' }}; then FAILED=content-availability; fi
+          if ${{ steps.act.outcome=='failure' }}; then FAILED=act; fi
           curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Error\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebugging artifacts: [click](https://$BUCKET_NAME.$AWS_ENDPOINT/artifacts_$VERTAG.tar.gz)\nStep failed: \`${FAILED}\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
           echo "Failed test: ${FAILED}"
       - name: Create tunshell session for debug

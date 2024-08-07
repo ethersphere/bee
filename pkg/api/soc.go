@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/postage"
@@ -44,9 +45,11 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	headers := struct {
-		BatchID  []byte `map:"Swarm-Postage-Batch-Id"`
-		StampSig []byte `map:"Swarm-Postage-Stamp"`
-		Pin      bool   `map:"Swarm-Pin"`
+		BatchID        []byte        `map:"Swarm-Postage-Batch-Id"`
+		StampSig       []byte        `map:"Swarm-Postage-Stamp"`
+		Pin            bool          `map:"Swarm-Pin"`
+		Act            bool          `map:"Swarm-Act"`
+		HistoryAddress swarm.Address `map:"Swarm-Act-History-Address"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -185,6 +188,26 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	reference := sch.Address()
+	if headers.Act {
+		reference, err = s.actEncryptionHandler(r.Context(), w, putter, reference, headers.HistoryAddress)
+		if err != nil {
+			logger.Debug("access control upload failed", "error", err)
+			logger.Error(nil, "access control upload failed")
+			switch {
+			case errors.Is(err, accesscontrol.ErrNotFound):
+				jsonhttp.NotFound(w, "act or history entry not found")
+			case errors.Is(err, accesscontrol.ErrInvalidPublicKey) || errors.Is(err, accesscontrol.ErrSecretKeyInfinity):
+				jsonhttp.BadRequest(w, "invalid public key")
+			case errors.Is(err, accesscontrol.ErrUnexpectedType):
+				jsonhttp.BadRequest(w, "failed to create history")
+			default:
+				jsonhttp.InternalServerError(w, errActUpload)
+			}
+			return
+		}
+	}
+
 	err = putter.Put(r.Context(), sch)
 	if err != nil {
 		logger.Debug("write chunk failed", "chunk_address", sch.Address(), "error", err)
@@ -201,5 +224,5 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonhttp.Created(w, chunkAddressResponse{Reference: sch.Address()})
+	jsonhttp.Created(w, socPostResponse{Reference: reference})
 }

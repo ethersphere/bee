@@ -16,13 +16,8 @@ const (
 )
 
 var (
-	ZeroObfuscationKey []byte
-)
-
-// nolint:gochecknoinits
-func init() {
 	ZeroObfuscationKey = make([]byte, 32)
-}
+)
 
 // Error used when lookup path does not match
 var (

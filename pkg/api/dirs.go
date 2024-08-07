@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
@@ -47,6 +48,8 @@ func (s *Service) dirUploadHandler(
 	encrypt bool,
 	tag uint64,
 	rLevel redundancy.Level,
+	act bool,
+	historyAddress swarm.Address,
 ) {
 	if r.Body == http.NoBody {
 		logger.Error(nil, "request has no body")
@@ -98,6 +101,26 @@ func (s *Service) dirUploadHandler(
 		return
 	}
 
+	encryptedReference := reference
+	if act {
+		encryptedReference, err = s.actEncryptionHandler(r.Context(), w, putter, reference, historyAddress)
+		if err != nil {
+			logger.Debug("access control upload failed", "error", err)
+			logger.Error(nil, "access control upload failed")
+			switch {
+			case errors.Is(err, accesscontrol.ErrNotFound):
+				jsonhttp.NotFound(w, "act or history entry not found")
+			case errors.Is(err, accesscontrol.ErrInvalidPublicKey) || errors.Is(err, accesscontrol.ErrSecretKeyInfinity):
+				jsonhttp.BadRequest(w, "invalid public key")
+			case errors.Is(err, accesscontrol.ErrUnexpectedType):
+				jsonhttp.BadRequest(w, "failed to create history")
+			default:
+				jsonhttp.InternalServerError(w, errActUpload)
+			}
+			return
+		}
+	}
+
 	err = putter.Done(reference)
 	if err != nil {
 		logger.Debug("store dir failed", "error", err)
@@ -113,7 +136,7 @@ func (s *Service) dirUploadHandler(
 	}
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
 	jsonhttp.Created(w, bzzUploadResponse{
-		Reference: reference,
+		Reference: encryptedReference,
 	})
 }
 
