@@ -23,6 +23,8 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
+	mockac "github.com/ethersphere/bee/v2/pkg/accesscontrol/mock"
 	accountingmock "github.com/ethersphere/bee/v2/pkg/accounting/mock"
 	"github.com/ethersphere/bee/v2/pkg/api"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
@@ -100,6 +102,7 @@ type testServerOptions struct {
 	PostageContract    postagecontract.Interface
 	StakingContract    staking.Contract
 	Post               postage.Service
+	AccessControl      accesscontrol.Controller
 	Steward            steward.Interface
 	WsHeaders          http.Header
 	DirectUpload       bool
@@ -147,6 +150,9 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	if o.Post == nil {
 		o.Post = mockpost.New()
 	}
+	if o.AccessControl == nil {
+		o.AccessControl = mockac.New()
+	}
 	if o.BatchStore == nil {
 		o.BatchStore = mockbatchstore.New(mockbatchstore.WithAcceptAllExistsFunc()) // default is with accept-all Exists() func
 	}
@@ -187,6 +193,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		Pss:             o.Pss,
 		FeedFactory:     o.Feeds,
 		Post:            o.Post,
+		AccessControl:   o.AccessControl,
 		PostageContract: o.PostageContract,
 		Steward:         o.Steward,
 		SyncStatus:      o.SyncStatus,
