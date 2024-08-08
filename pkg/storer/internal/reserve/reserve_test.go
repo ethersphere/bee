@@ -135,6 +135,104 @@ func TestReserveChunkType(t *testing.T) {
 	}
 }
 
+func TestSameChunkSameIndex(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	baseAddr := swarm.RandAddress(t)
+
+	ts := internal.NewInmemStorage()
+
+	r, err := reserve.New(
+		baseAddr,
+		ts,
+		0, kademlia.NewTopologyDriver(),
+		log.Noop,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("same stamp index older timestamp", func(t *testing.T) {
+		batch := postagetesting.MustNewBatch()
+		ch1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 0))
+		ch2 := swarm.NewChunk(ch1.Address(), []byte("update")).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 0))
+		err = r.Put(ctx, ch1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = r.Put(ctx, ch2)
+		if !errors.Is(err, storage.ErrOverwriteNewerChunk) {
+			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("different stamp index older timestamp", func(t *testing.T) {
+		batch := postagetesting.MustNewBatch()
+		ch1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 0))
+		ch2 := swarm.NewChunk(ch1.Address(), []byte("update")).WithStamp(postagetesting.MustNewFields(batch.ID, 1, 0))
+
+		err = r.Put(ctx, ch1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = r.Put(ctx, ch2)
+		if !errors.Is(err, storage.ErrOverwriteNewerChunk) {
+			t.Fatal("expected error")
+		}
+	})
+
+	replace := func(t *testing.T, ch1, ch2 swarm.Chunk) {
+		t.Helper()
+
+		err := r.Put(ctx, ch1)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = r.Put(ctx, ch2)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		ch1StampHash, err := ch1.Stamp().Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		ch2StampHash, err := ch2.Stamp().Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+		checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch1.Stamp().BatchID(), Address: ch1.Address(), StampHash: ch1StampHash}, true)
+		checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch2.Stamp().BatchID(), Address: ch2.Address(), StampHash: ch2StampHash}, false)
+		checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: 3, StampHash: ch1StampHash}, true)
+		checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: 4, StampHash: ch2StampHash}, false)
+
+		ch, err := ts.ChunkStore().Get(ctx, ch2.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(ch.Data(), ch2.Data()) {
+			t.Fatalf("expected chunk data to be updated")
+		}
+	}
+
+	t.Run("same stamp index newer timestamp", func(t *testing.T) {
+		batch := postagetesting.MustNewBatch()
+		ch1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 0))
+		ch2 := swarm.NewChunk(ch1.Address(), []byte("update")).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 1))
+		replace(t, ch1, ch2)
+	})
+
+	t.Run("different stamp index newer timestamp", func(t *testing.T) {
+		batch := postagetesting.MustNewBatch()
+		ch1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 0))
+		ch2 := swarm.NewChunk(ch1.Address(), []byte("update")).WithStamp(postagetesting.MustNewFields(batch.ID, 1, 1))
+		replace(t, ch1, ch2)
+	})
+}
+
 func TestReplaceOldIndex(t *testing.T) {
 	t.Parallel()
 
