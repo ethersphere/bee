@@ -135,7 +135,7 @@ func TestReserveChunkType(t *testing.T) {
 	}
 }
 
-func TestSameChunkSameIndex(t *testing.T) {
+func TestSameChunkAddress(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -153,7 +153,7 @@ func TestSameChunkSameIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Run("same stamp index older timestamp", func(t *testing.T) {
+	t.Run("same stamp index and older timestamp", func(t *testing.T) {
 		batch := postagetesting.MustNewBatch()
 		ch1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 0))
 		ch2 := swarm.NewChunk(ch1.Address(), []byte("update")).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 0))
@@ -167,7 +167,7 @@ func TestSameChunkSameIndex(t *testing.T) {
 		}
 	})
 
-	t.Run("different stamp index older timestamp", func(t *testing.T) {
+	t.Run("different stamp index and older timestamp", func(t *testing.T) {
 		batch := postagetesting.MustNewBatch()
 		ch1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 0))
 		ch2 := swarm.NewChunk(ch1.Address(), []byte("update")).WithStamp(postagetesting.MustNewFields(batch.ID, 1, 0))
@@ -218,14 +218,14 @@ func TestSameChunkSameIndex(t *testing.T) {
 		}
 	}
 
-	t.Run("same stamp index newer timestamp", func(t *testing.T) {
+	t.Run("same stamp index and newer timestamp", func(t *testing.T) {
 		batch := postagetesting.MustNewBatch()
 		ch1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 0))
 		ch2 := swarm.NewChunk(ch1.Address(), []byte("update")).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 1))
 		replace(t, ch1, ch2)
 	})
 
-	t.Run("different stamp index newer timestamp", func(t *testing.T) {
+	t.Run("different stamp index and newer timestamp", func(t *testing.T) {
 		batch := postagetesting.MustNewBatch()
 		ch1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 0))
 		ch2 := swarm.NewChunk(ch1.Address(), []byte("update")).WithStamp(postagetesting.MustNewFields(batch.ID, 1, 1))
