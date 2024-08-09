@@ -25,7 +25,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/file/splitter"
 	filetest "github.com/ethersphere/bee/v2/pkg/file/testing"
 	"github.com/ethersphere/bee/v2/pkg/log"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
 	testingc "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
@@ -1409,6 +1409,14 @@ func (c *chunkStore) Put(_ context.Context, ch swarm.Chunk) error {
 	defer c.mu.Unlock()
 	c.chunks[ch.Address().ByteString()] = swarm.NewChunk(ch.Address(), ch.Data()).WithStamp(ch.Stamp())
 	return nil
+}
+
+func (c *chunkStore) Replace(_ context.Context, ch swarm.Chunk) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.chunks[ch.Address().ByteString()] = swarm.NewChunk(ch.Address(), ch.Data()).WithStamp(ch.Stamp())
+	return nil
+
 }
 
 func (c *chunkStore) Has(_ context.Context, addr swarm.Address) (bool, error) {

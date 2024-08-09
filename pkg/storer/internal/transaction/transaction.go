@@ -242,6 +242,13 @@ func (c *chunkStoreTrx) Iterate(ctx context.Context, fn storage.IterateChunkFn) 
 	return chunkstore.Iterate(ctx, c.indexStore, c.sharkyTrx, fn)
 }
 
+func (c *chunkStoreTrx) Replace(ctx context.Context, ch swarm.Chunk) (err error) {
+	defer handleMetric("chunkstore_replace", c.metrics)(&err)
+	unlock := c.lock(ch.Address())
+	defer unlock()
+	return chunkstore.Replace(ctx, c.indexStore, c.sharkyTrx, ch)
+}
+
 func (c *chunkStoreTrx) lock(addr swarm.Address) func() {
 	// directly lock
 	if c.readOnly {

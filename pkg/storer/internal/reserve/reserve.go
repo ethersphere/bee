@@ -117,7 +117,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	defer r.multx.Unlock(strconv.Itoa(int(bin)))
 
 	return r.st.Run(ctx, func(s transaction.Store) error {
-
+		// index collision (same or different chunk)
 		oldItem, loadedStamp, err := stampindex.LoadOrStore(s.IndexStore(), reserveNamespace, chunk)
 		if err != nil {
 			return fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
@@ -151,6 +151,28 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			err = stampindex.Store(s.IndexStore(), reserveNamespace, chunk)
 			if err != nil {
 				return fmt.Errorf("failed updating stamp index: %w", err)
+			}
+		} else {
+			// same chunk with different index
+			oldChunkStamp, err := chunkstamp.LoadWithBatchID(s.IndexStore(), reserveNamespace, chunk.Address(), chunk.Stamp().BatchID())
+			if err != nil && !errors.Is(err, storage.ErrNotFound) {
+				return err
+			}
+			if oldChunkStamp != nil {
+				prev := binary.BigEndian.Uint64(oldChunkStamp.Timestamp())
+				curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
+				if prev >= curr {
+					return fmt.Errorf("overwrite prev %d cur %d batch %s: %w", prev, curr, hex.EncodeToString(chunk.Stamp().BatchID()), storage.ErrOverwriteNewerChunk)
+				}
+				oldChunkStampHash, err := oldChunkStamp.Hash()
+				if err != nil {
+					return err
+				}
+				err = r.removeChunk(ctx, s, chunk.Address(), oldChunkStamp.BatchID(), oldChunkStampHash)
+				if err != nil {
+					return fmt.Errorf("failed removing older chunk %s: %w", oldItem.ChunkAddress, err)
+				}
+				// stampindex is already saved in LoadOrStore
 			}
 		}
 
@@ -186,7 +208,16 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			return err
 		}
 
-		err = s.ChunkStore().Put(ctx, chunk)
+		has, err := s.ChunkStore().Has(ctx, chunk.Address())
+		if err != nil {
+			return err
+		}
+		if has {
+			r.logger.Warning("replacing chunk in chunkstore", "chunk", chunk.Address())
+			err = s.ChunkStore().Replace(ctx, chunk)
+		} else {
+			err = s.ChunkStore().Put(ctx, chunk)
+		}
 		if err != nil {
 			return err
 		}
