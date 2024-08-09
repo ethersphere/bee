@@ -190,7 +190,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 			}
 
 			if !have {
-				wantChunks[a.ByteString()+string(batchID)] = struct{}{}
+				wantChunks[a.ByteString()+string(batchID)+string(stampHash)] = struct{}{}
 				ctr++
 				s.metrics.Wanted.Inc()
 				bv.Set(i)
@@ -226,14 +226,20 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 			chunkErr = errors.Join(chunkErr, err)
 			continue
 		}
+		stampHash, err := stamp.Hash()
+		if err != nil {
+			chunkErr = errors.Join(chunkErr, err)
+			continue
+		}
 
-		if _, ok := wantChunks[addr.ByteString()+string(stamp.BatchID())]; !ok {
+		wantChunkID := addr.ByteString() + string(stamp.BatchID()) + string(stampHash)
+		if _, ok := wantChunks[wantChunkID]; !ok {
 			s.logger.Debug("want chunks", "error", ErrUnsolicitedChunk, "peer_address", peer, "chunk_address", addr)
 			chunkErr = errors.Join(chunkErr, ErrUnsolicitedChunk)
 			continue
 		}
 
-		delete(wantChunks, addr.ByteString()+string(stamp.BatchID()))
+		delete(wantChunks, wantChunkID)
 
 		chunk, err := s.validStamp(newChunk.WithStamp(stamp))
 		if err != nil {
