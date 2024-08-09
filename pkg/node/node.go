@@ -31,6 +31,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/feeds/factory"
 	"github.com/ethersphere/bee/v2/pkg/hive"
+	"github.com/ethersphere/bee/v2/pkg/layer2"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
@@ -668,6 +669,8 @@ func NewBee(
 		return nil, err
 	}
 
+	l2P2p := layer2.NewP2pService(p2ps, logger)
+
 	// Construct protocols.
 	pingPong := pingpong.New(p2ps, logger, tracer)
 
@@ -1068,6 +1071,7 @@ func NewBee(
 		SyncStatus:      syncStatusFn,
 		NodeStatus:      nodeStatus,
 		PinIntegrity:    localStore.PinIntegrity(),
+		Layer2P2p:       &l2P2p,
 	}
 
 	if o.APIAddr != "" {

@@ -33,6 +33,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/layer2"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/pingpong"
@@ -170,6 +171,7 @@ type Service struct {
 
 	topologyDriver topology.Driver
 	p2p            p2p.DebugService
+	l2p2p          layer2.IP2pService
 	accounting     accounting.Interface
 	chequebook     chequebook.Service
 	pseudosettle   settlement.Interface
@@ -249,6 +251,7 @@ type ExtraOptions struct {
 	SyncStatus      func() (bool, error)
 	NodeStatus      *status.Service
 	PinIntegrity    PinIntegrity
+	Layer2P2p       layer2.IP2pService
 }
 
 func New(
@@ -337,6 +340,7 @@ func (s *Service) Configure(signer crypto.Signer, tracer *tracing.Tracer, o Opti
 	s.lightNodes = e.LightNodes
 	s.pseudosettle = e.Pseudosettle
 	s.blockTime = e.BlockTime
+	s.l2p2p = e.Layer2P2p
 
 	s.statusSem = semaphore.NewWeighted(1)
 	s.postageSem = semaphore.NewWeighted(1)
