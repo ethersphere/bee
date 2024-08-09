@@ -25,6 +25,7 @@ import (
 	pricermock "github.com/ethersphere/bee/v2/pkg/pricer/mock"
 	"github.com/ethersphere/bee/v2/pkg/pushsync"
 	"github.com/ethersphere/bee/v2/pkg/pushsync/pb"
+	"github.com/ethersphere/bee/v2/pkg/soc"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	testingc "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -836,12 +837,13 @@ func createPushSyncNodeWithAccounting(
 	if unwrap == nil {
 		unwrap = func(swarm.Chunk) {}
 	}
+	gsocListener := func(soc.SOC) {}
 
 	validStamp := func(ch swarm.Chunk) (swarm.Chunk, error) {
 		return ch, nil
 	}
 
-	ps := pushsync.New(addr, blockHash.Bytes(), recorderDisconnecter, storer, mockTopology, true, unwrap, validStamp, logger, acct, mockPricer, signer, nil, -1)
+	ps := pushsync.New(addr, blockHash.Bytes(), recorderDisconnecter, storer, mockTopology, true, unwrap, gsocListener, validStamp, logger, acct, mockPricer, signer, nil, -1)
 	t.Cleanup(func() { ps.Close() })
 
 	return ps, storer

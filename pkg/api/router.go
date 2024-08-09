@@ -316,6 +316,10 @@ func (s *Service) mountAPI() {
 		web.FinalHandlerFunc(s.pssWsHandler),
 	))
 
+	handle("/gsoc/subscribe/{address}", web.ChainHandlers(
+		web.FinalHandlerFunc(s.gsocWsHandler),
+	))
+
 	handle("/tags", web.ChainHandlers(
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.listTagsHandler),

@@ -120,6 +120,8 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.NotFound(w, "batch with id not found")
 		case errors.Is(err, errInvalidPostageBatch):
 			jsonhttp.BadRequest(w, "invalid batch id")
+		case errors.Is(err, errUnsupportedDevNodeOperation):
+			jsonhttp.NotImplemented(w, "operation is not supported in dev mode")
 		default:
 			jsonhttp.BadRequest(w, nil)
 		}

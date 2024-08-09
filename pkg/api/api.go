@@ -33,6 +33,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
+	"github.com/ethersphere/bee/v2/pkg/gsoc"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
@@ -148,6 +149,7 @@ type Service struct {
 	storer          Storer
 	resolver        resolver.Interface
 	pss             pss.Interface
+	gsoc            gsoc.Listener
 	steward         steward.Interface
 	logger          log.Logger
 	loggerV1        log.Logger
@@ -250,6 +252,7 @@ type ExtraOptions struct {
 	Storer          Storer
 	Resolver        resolver.Interface
 	Pss             pss.Interface
+	Gsoc            gsoc.Listener
 	FeedFactory     feeds.Factory
 	Post            postage.Service
 	AccessControl   accesscontrol.Controller
@@ -333,6 +336,7 @@ func (s *Service) Configure(signer crypto.Signer, tracer *tracing.Tracer, o Opti
 	s.storer = e.Storer
 	s.resolver = e.Resolver
 	s.pss = e.Pss
+	s.gsoc = e.Gsoc
 	s.feedFactory = e.FeedFactory
 	s.post = e.Post
 	s.accesscontrol = e.AccessControl
