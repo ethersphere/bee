@@ -77,7 +77,13 @@ func (c *ChunkStore) Delete(_ context.Context, addr swarm.Address) error {
 	return nil
 }
 
-func (c *ChunkStore) Replace(_ context.Context, _ swarm.Chunk) error {
+func (c *ChunkStore) Replace(_ context.Context, ch swarm.Chunk) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	chunkCount := c.chunks[ch.Address().ByteString()]
+	chunkCount.chunk = ch
+	c.chunks[ch.Address().ByteString()] = chunkCount
 	return nil
 }
 
