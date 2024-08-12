@@ -25,8 +25,6 @@ type actionType uint8
 const (
 	atUnicast actionType = iota
 	atBroadcast
-	// TODO atConnect
-	// TODO atDisconnect
 )
 
 type responseType uint8
@@ -88,6 +86,9 @@ func ListeningWs(ctx context.Context, conn *websocket.Conn, options WsOptions, l
 					if err != nil {
 						logger.Error(err, "L2 write message")
 					}
+				} else if action == atBroadcast {
+					msg := p[offset:]
+					protocolService.Broadcast(ctx, msg)
 				}
 			} else if messageType == 2 {
 				action := actionType(p[0])
