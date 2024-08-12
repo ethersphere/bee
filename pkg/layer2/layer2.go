@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"reflect"
 	"sync"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -129,6 +130,19 @@ func (p *protocolService) AddHandler(handler msgHandler) {
 	defer p.mu.Unlock()
 
 	p.handlers = append(p.handlers, handler)
+}
+
+func (p *protocolService) RemoveHandler(handler msgHandler) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	handlerValue := reflect.ValueOf(handler).Pointer()
+
+	for i, f := range p.handlers {
+		if reflect.ValueOf(f).Pointer() == handlerValue {
+			p.handlers = append(p.handlers[:i], p.handlers[i+1:]...)
+			return
+		}
+	}
 }
 
 // handler handles incoming messages from all connected peers and calls registered hook functions

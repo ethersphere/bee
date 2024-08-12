@@ -8,6 +8,7 @@ package layer2
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -41,21 +42,32 @@ func ListeningWs(ctx context.Context, conn *websocket.Conn, options WsOptions, l
 		err           error
 	)
 
+	respMessageType := atomic.Uint32{} // 1 textbase, 2 bytebase
+	respMessageType.Store(1)
+	protocolListener := func(a swarm.Address, b []byte) {
+		if respMessageType.Load() == 1 {
+			space := byte(' ')
+			msg := append([]byte{byte(atMsg + '0'), space}, ([]byte(a.String()))...)
+			msg = append(msg, append([]byte{space}, b...)...)
+			err := conn.WriteMessage(1, msg)
+			if err != nil {
+				logger.Error(err, "L2 ws write message")
+			}
+		} else {
+			msg := append([]byte{byte(atMsg + '0')}, a.Bytes()...)
+			msg = append(msg, b...)
+			err := conn.WriteMessage(2, msg)
+			if err != nil {
+				logger.Error(err, "L2 ws write message")
+			}
+		}
+	}
+
+	protocolService.AddHandler(protocolListener)
 	conn.SetCloseHandler(func(code int, text string) error {
 		logger.Debug("L2 ws: client gone", "protocol", protocolService.streamName, "code", code, "message", text)
-		// TODO remove handler
+		protocolService.RemoveHandler(protocolListener)
 		return nil
-	})
-
-	protocolService.AddHandler(func(a swarm.Address, b []byte) {
-		space := byte(' ')
-		msg := append([]byte{byte(atMsg + '0'), space}, ([]byte(a.String()))...)
-		msg = append(msg, append([]byte{space}, b...)...)
-		err := conn.WriteMessage(1, msg)
-		if err != nil {
-			logger.Error(err, "L2 ws write message")
-		}
-		// TODO messagetype 2
 	})
 
 	go func() {
@@ -70,6 +82,7 @@ func ListeningWs(ctx context.Context, conn *websocket.Conn, options WsOptions, l
 				logger.Error(err, "L2 ws read message")
 				return
 			}
+			respMessageType.Store(uint32(messageType))
 			if messageType == 1 {
 				action := actionType(p[0] - '0')
 				offset := 2 // + 1 delimeter
