@@ -27,6 +27,14 @@ func (s *Service) layer2WsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	headers := struct {
+		KeepAlive time.Duration `map:"Swarm-Keep-Alive"`
+	}{}
+	if response := s.mapStructure(r.Header, &headers); response != nil {
+		response("invalid header params", logger, w)
+		return
+	}
+
 	if s.beeMode == DevMode {
 		logger.Warning("layer2 endpoint is disabled in dev mode")
 		jsonhttp.BadRequest(w, errUnsupportedDevNodeOperation)
@@ -46,7 +54,12 @@ func (s *Service) layer2WsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pingPeriod := 100 * time.Second //TODO pass it in header
+	pingPeriod := headers.KeepAlive * time.Second
+	if pingPeriod == 0 {
+		pingPeriod = 30 * time.Second
+	}
+
+	logger.Info("pingPeriod", pingPeriod)
 	ctx, cancel := context.WithCancel(context.Background())
 	protocolService := s.l2p2p.GetProtocol(ctx, paths.StreamName)
 	err = s.p2p.AddProtocol(protocolService.Protocol())
@@ -58,7 +71,8 @@ func (s *Service) layer2WsHandler(w http.ResponseWriter, r *http.Request) {
 
 	s.wsWg.Add(1)
 	go func() {
-		layer2.ListeningWs(ctx, conn, layer2.WsOptions{PingPeriod: pingPeriod}, logger, protocolService)
+		layer2.ListeningWs(ctx, conn, layer2.WsOptions{PingPeriod: pingPeriod, Cancel: cancel}, logger, protocolService)
+		_ = conn.Close()
 		s.wsWg.Done()
 		cancel()
 	}()

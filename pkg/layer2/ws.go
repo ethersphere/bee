@@ -19,6 +19,7 @@ import (
 
 type WsOptions struct {
 	PingPeriod time.Duration
+	Cancel     context.CancelFunc
 }
 
 type actionType uint8
@@ -75,12 +76,12 @@ func ListeningWs(ctx context.Context, conn *websocket.Conn, options WsOptions, l
 			err = conn.SetReadDeadline(time.Now().Add(readDeadline))
 			if err != nil {
 				logger.Debug("L2 ws: set write deadline failed", "error", err)
-				return
+				break
 			}
 			messageType, p, err := conn.ReadMessage()
 			if err != nil {
 				logger.Error(err, "L2 ws read message")
-				return
+				break
 			}
 			respMessageType.Store(uint32(messageType))
 			if messageType == 1 {
@@ -94,6 +95,7 @@ func ListeningWs(ctx context.Context, conn *websocket.Conn, options WsOptions, l
 					conn, err := protocolService.GetConnection(ctx, overlay)
 					if err != nil {
 						logger.Error(err, "L2 get connection")
+						break
 					}
 					err = conn.SendMessage(ctx, msg)
 					if err != nil {
@@ -126,6 +128,7 @@ func ListeningWs(ctx context.Context, conn *websocket.Conn, options WsOptions, l
 				}
 			}
 		}
+		options.Cancel()
 	}()
 
 	defer func() {
@@ -147,7 +150,6 @@ func ListeningWs(ctx context.Context, conn *websocket.Conn, options WsOptions, l
 			}
 			return
 		case <-ticker.C:
-			err = conn.SetWriteDeadline(time.Now().Add(writeDeadline))
 			if err != nil {
 				logger.Debug("L2 ws: set write deadline failed", "error", err)
 				return
