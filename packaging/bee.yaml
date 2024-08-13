@@ -1,19 +1,19 @@
 ## Bee configuration - https://docs.ethswarm.org/docs/working-with-bee/configuration
 
 ## HTTP API listen address (default "127.0.0.1:1633")
-# api-addr: 127.0.0.1:1633
+# api-addr: "127.0.0.1:1633"
 ## chain block time (default 15)
 # block-time: 15
-## initial nodes to connect to (default [/dnsaddr/mainnet.ethswarm.org])
-# bootnode: [/dnsaddr/mainnet.ethswarm.org]
+## initial nodes to connect to (default ["/dnsaddr/mainnet.ethswarm.org"])
+# bootnode: ["/dnsaddr/mainnet.ethswarm.org"]
 ## cause the node to always accept incoming connections
 # bootnode-mode: false
-## config file (default is /home/<user>/.bee.yaml)
-config: /etc/bee/bee.yaml
+## config file (default is "/home/<user>/.bee.yaml")
+config: "/etc/bee/bee.yaml"
 ## origins with CORS headers enabled
 # cors-allowed-origins: []
 ## data directory (default "/home/<user>/.bee")
-data-dir: /var/lib/bee
+data-dir: "/var/lib/bee"
 ## cache capacity in chunks, multiply by 4096 to get approximate capacity in bytes
 # cache-capacity: 1000000
 ## number of open files allowed by database
@@ -31,17 +31,17 @@ data-dir: /var/lib/bee
 ## ID of the Swarm network (default 1)
 # network-id: 1
 ## P2P listen address (default ":1634")
-# p2p-addr: :1634
+# p2p-addr: ":1634"
 ## enable P2P WebSocket transport
 # p2p-ws-enable: false
 ## password for decrypting keys
 # password: ""
 ## path to a file that contains password for decrypting keys
-password-file: /var/lib/bee/password
+password-file: "/var/lib/bee/password"
 ## percentage below the peers payment threshold when we initiate settlement (default 50)
 # payment-early-percent: 50
-## threshold in BZZ where you expect to get paid from your peers (default 100000000)
-# payment-threshold: 100000000
+## threshold in BZZ where you expect to get paid from your peers (default 13500000). For value greater than 9223372036854775807 use value in quotes
+# payment-threshold: 13500000
 ## excess debt above payment threshold in percentages where you disconnect from your peer (default 25)
 # payment-tolerance-percent: 25
 ## postage stamp contract address
@@ -63,13 +63,13 @@ password-file: /var/lib/bee/password
 ## enable tracing
 # tracing-enable: false
 ## endpoint to send tracing data (default "127.0.0.1:6831")
-# tracing-endpoint: 127.0.0.1:6831
+# tracing-endpoint: "127.0.0.1:6831"
 ## service name identifier for tracing (default "bee")
-# tracing-service-name: bee
+# tracing-service-name: "bee"
 ## proof-of-identity transaction hash
 # transaction: ""
 ## log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace (default "info")
-# verbosity: info
+# verbosity: "info"
 ## send a welcome message string during handshakes
 # welcome-message: ""
 ## triggers connection to main network
