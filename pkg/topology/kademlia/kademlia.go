@@ -653,7 +653,9 @@ func (k *Kad) pruneOversaturatedBins(depth uint8) {
 		}
 
 		binPeersCount := k.connectedPeers.BinSize(uint8(i))
-		if binPeersCount <= k.opt.OverSaturationPeers {
+
+		oversaturated := k.opt.SaturationFunc(uint8(i), k.knownPeers, k.connectedPeers, k.opt.FilterFunc(im.Reachability(false)))
+		if !oversaturated {
 			continue
 		}
 
