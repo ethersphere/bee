@@ -40,7 +40,7 @@ data-dir: "/usr/local/var/lib/swarm-bee"
 password-file: "/usr/local/var/lib/swarm-bee/password"
 ## percentage below the peers payment threshold when we initiate settlement (default 50)
 # payment-early-percent: 50
-## threshold in BZZ where you expect to get paid from your peers (default 13500000). For value greater than 9223372036854775807 use value in quotes
+## threshold in BZZ where you expect to get paid from your peers (default 13500000). For value greater than int64 or 9223372036854775807 use value in quotes
 # payment-threshold: 13500000
 ## excess debt above payment threshold in percentages where you disconnect from your peer (default 25)
 # payment-tolerance-percent: 25
