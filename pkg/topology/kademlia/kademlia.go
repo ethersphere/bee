@@ -662,7 +662,7 @@ func (k *Kad) pruneOversaturatedBins(depth uint8) {
 		}
 
 		// skip to next bin if prune count is zero or fewer
-		binPeersCount, pruneCount := k.opt.PruneCountFunc(uint8(i), k.connectedPeers, k.opt.FilterFunc(im.Reachability(false)))
+		oldCount, pruneCount := k.opt.PruneCountFunc(uint8(i), k.connectedPeers, k.opt.FilterFunc(im.Reachability(false)))
 		if pruneCount <= 0 {
 			continue
 		}
@@ -709,7 +709,9 @@ func (k *Kad) pruneOversaturatedBins(depth uint8) {
 			}
 		}
 
-		k.logger.Debug("pruning", "bin", i, "oldBinSize", binPeersCount, "newBinSize", k.connectedPeers.BinSize(uint8(i)))
+		newCount, _ := k.opt.PruneCountFunc(uint8(i), k.connectedPeers, k.opt.FilterFunc(im.Reachability(false)))
+
+		k.logger.Debug("pruning", "bin", i, "oldBinSize", oldCount, "newBinSize", newCount)
 	}
 }
 
