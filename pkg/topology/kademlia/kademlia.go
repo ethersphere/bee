@@ -66,9 +66,10 @@ var (
 )
 
 type (
-	binSaturationFunc  func(bin uint8, peers, connected *pslice.PSlice, filter peerFilterFunc) bool
+	binSaturationFunc  func(bin uint8, connected *pslice.PSlice, filter peerFilterFunc) bool
 	sanctionedPeerFunc func(peer swarm.Address) bool
 	pruneFunc          func(depth uint8)
+	pruneCountFunc     func(bin uint8, connected *pslice.PSlice, filter peerFilterFunc) (int, int)
 	staticPeerFunc     func(peer swarm.Address) bool
 	peerFilterFunc     func(peer swarm.Address) bool
 	filtersFunc        func(...im.FilterOp) peerFilterFunc
@@ -79,6 +80,7 @@ var noopSanctionedPeerFn = func(_ swarm.Address) bool { return false }
 // Options for injecting services to Kademlia.
 type Options struct {
 	SaturationFunc binSaturationFunc
+	PruneCountFunc pruneCountFunc
 	Bootnodes      []ma.Multiaddr
 	BootnodeMode   bool
 	PruneFunc      pruneFunc
@@ -101,6 +103,7 @@ type kadOptions struct {
 	SaturationFunc binSaturationFunc
 	Bootnodes      []ma.Multiaddr
 	BootnodeMode   bool
+	PruneCountFunc pruneCountFunc
 	PruneFunc      pruneFunc
 	StaticNodes    []swarm.Address
 	FilterFunc     filtersFunc
@@ -247,6 +250,12 @@ func New(
 	if k.opt.PruneFunc == nil {
 		k.opt.PruneFunc = k.pruneOversaturatedBins
 	}
+
+	os := k.opt.OverSaturationPeers
+	if k.opt.BootnodeMode {
+		os = k.opt.BootnodeOverSaturationPeers
+	}
+	k.opt.PruneCountFunc = binPruneCount(os, isStaticPeer(k.opt.StaticNodes))
 
 	if k.opt.FilterFunc == nil {
 		k.opt.FilterFunc = func(f ...im.FilterOp) peerFilterFunc {
@@ -652,14 +661,19 @@ func (k *Kad) pruneOversaturatedBins(depth uint8) {
 			return
 		}
 
-		binPeersCount := k.connectedPeers.BinSize(uint8(i))
-
-		oversaturated := k.opt.SaturationFunc(uint8(i), k.knownPeers, k.connectedPeers, k.opt.FilterFunc(im.Reachability(false)))
-		if !oversaturated {
+		// skip to next bin if prune count is zero or fewer
+		binPeersCount, pruneCount := k.opt.PruneCountFunc(uint8(i), k.connectedPeers, k.opt.FilterFunc(im.Reachability(false)))
+		if pruneCount <= 0 {
 			continue
 		}
 
-		for j := 0; j < len(k.commonBinPrefixes[i]) && k.connectedPeers.BinSize(uint8(i)) > k.opt.OverSaturationPeers; j++ {
+		for j := 0; j < len(k.commonBinPrefixes[i]); j++ {
+
+			// skip to next bin if prune count is zero or fewer
+			_, pruneCount := k.opt.PruneCountFunc(uint8(i), k.connectedPeers, k.opt.FilterFunc(im.Reachability(false)))
+			if pruneCount <= 0 {
+				break
+			}
 
 			binPeers := k.connectedPeers.BinPeers(uint8(i))
 			peers := k.balancedSlotPeers(k.commonBinPrefixes[i][j], binPeers, i)
@@ -830,7 +844,7 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 // when a bin is not saturated it means we would like to proactively
 // initiate connections to other peers in the bin.
 func binSaturated(oversaturationAmount int, staticNode staticPeerFunc) binSaturationFunc {
-	return func(bin uint8, peers, connected *pslice.PSlice, filter peerFilterFunc) bool {
+	return func(bin uint8, connected *pslice.PSlice, filter peerFilterFunc) bool {
 		size := 0
 		_ = connected.EachBin(func(addr swarm.Address, po uint8) (bool, bool, error) {
 			if po == bin && !filter(addr) && !staticNode(addr) {
@@ -840,6 +854,21 @@ func binSaturated(oversaturationAmount int, staticNode staticPeerFunc) binSatura
 		})
 
 		return size >= oversaturationAmount
+	}
+}
+
+// binPruneCount counts how many peers should be pruned from a bin.
+func binPruneCount(oversaturationAmount int, staticNode staticPeerFunc) pruneCountFunc {
+	return func(bin uint8, connected *pslice.PSlice, filter peerFilterFunc) (int, int) {
+		size := 0
+		_ = connected.EachBin(func(addr swarm.Address, po uint8) (bool, bool, error) {
+			if po == bin && !filter(addr) && !staticNode(addr) {
+				size++
+			}
+			return false, false, nil
+		})
+
+		return size, size - oversaturationAmount
 	}
 }
 
@@ -1085,7 +1114,7 @@ func (k *Kad) Pick(peer p2p.Peer) bool {
 		return true
 	}
 	po := swarm.Proximity(k.base.Bytes(), peer.Address.Bytes())
-	oversaturated := k.opt.SaturationFunc(po, k.knownPeers, k.connectedPeers, k.opt.FilterFunc(im.Reachability(false)))
+	oversaturated := k.opt.SaturationFunc(po, k.connectedPeers, k.opt.FilterFunc(im.Reachability(false)))
 	// pick the peer if we are not oversaturated
 	if !oversaturated {
 		return true
@@ -1133,7 +1162,7 @@ func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool
 	address := peer.Address
 	po := swarm.Proximity(k.base.Bytes(), address.Bytes())
 
-	if overSaturated := k.opt.SaturationFunc(po, k.knownPeers, k.connectedPeers, k.opt.FilterFunc(im.Reachability(false))); overSaturated {
+	if overSaturated := k.opt.SaturationFunc(po, k.connectedPeers, k.opt.FilterFunc(im.Reachability(false))); overSaturated {
 		if k.bootnode {
 			randPeer, err := k.randomPeer(po)
 			if err != nil {
