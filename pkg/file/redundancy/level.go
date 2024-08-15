@@ -14,7 +14,7 @@ import (
 
 // Level is the redundancy level
 // which carries information about how much redundancy should be added to data to remain retrievable with a 1-10^(-6) certainty
-// in different groups of expected chunk retrival error rates (level values)
+// in different groups of expected chunk retrieval error rates (level values)
 type Level uint8
 
 const (

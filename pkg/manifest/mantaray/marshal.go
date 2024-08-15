@@ -84,7 +84,7 @@ var (
 	ErrInvalidInput = errors.New("input invalid")
 	// ErrInvalidVersionHash signals unknown version of hash.
 	ErrInvalidVersionHash = errors.New("invalid version hash")
-	// ErrInvalidManifest signals when malformed manifest contnet is supplied to Unmarshal function
+	// ErrInvalidManifest signals when malformed manifest contenet is supplied to Unmarshal function
 	ErrInvalidManifest = errors.New("malformed manifest contents")
 )
 

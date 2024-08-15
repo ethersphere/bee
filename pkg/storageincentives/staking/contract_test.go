@@ -460,7 +460,7 @@ func TestDepositStake(t *testing.T) {
 
 		_, err = contract.DepositStake(ctx, stakedAmount)
 		if !errors.Is(err, transaction.ErrTransactionReverted) {
-			t.Fatalf("expeted %v, got %v", transaction.ErrTransactionReverted, err)
+			t.Fatalf("expected %v, got %v", transaction.ErrTransactionReverted, err)
 		}
 	})
 
@@ -706,7 +706,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 
 		_, err = contract.ChangeStakeOverlay(ctx, nonce)
 		if !errors.Is(err, transaction.ErrTransactionReverted) {
-			t.Fatalf("expeted %v, got %v", transaction.ErrTransactionReverted, err)
+			t.Fatalf("expected %v, got %v", transaction.ErrTransactionReverted, err)
 		}
 	})
 

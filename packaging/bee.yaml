@@ -74,5 +74,5 @@ password-file: "/var/lib/bee/password"
 # welcome-message: ""
 ## triggers connection to main network
 # mainnet: true
-## minimum radius storage treshold
+## minimum radius storage threshold
 # reserve-minimum-radius: 0

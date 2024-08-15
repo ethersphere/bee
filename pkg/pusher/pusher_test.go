@@ -107,7 +107,7 @@ func (m *mockStorer) ReservePutter() storage.Putter {
 	)
 }
 
-// TestSendChunkToPushSync sends a chunk to pushsync to be sent ot its closest peer and get a receipt.
+// TestSendChunkToPushSync sends a chunk to pushsync to be sent to its closest peer and get a receipt.
 // once the receipt is got this check to see if the localstore is updated to see if the chunk is set
 // as ModeSetSync status.
 func TestChunkSyncing(t *testing.T) {
@@ -221,7 +221,7 @@ func TestChunkStored(t *testing.T) {
 	})
 }
 
-// TestSendChunkAndReceiveInvalidReceipt sends a chunk to pushsync to be sent ot its closest peer and
+// TestSendChunkAndReceiveInvalidReceipt sends a chunk to pushsync to be sent to its closest peer and
 // get a invalid receipt (not with the address of the chunk sent). The test makes sure that this error
 // is received and the ModeSetSync is not set for the chunk.
 func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
@@ -256,7 +256,7 @@ func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
 	}
 }
 
-// TestSendChunkAndTimeoutinReceivingReceipt sends a chunk to pushsync to be sent ot its closest peer and
+// TestSendChunkAndTimeoutinReceivingReceipt sends a chunk to pushsync to be sent to its closest peer and
 // expects a timeout to get instead of getting a receipt. The test makes sure that timeout error
 // is received and the ModeSetSync is not set for the chunk.
 func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {

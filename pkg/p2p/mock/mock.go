@@ -65,7 +65,7 @@ func WithBlocklistedPeersFunc(f func() ([]p2p.BlockListedPeer, error)) Option {
 	})
 }
 
-// WithAddressesFunc sets the mock implementation of the Adresses function
+// WithAddressesFunc sets the mock implementation of the Addresses function
 func WithAddressesFunc(f func() ([]ma.Multiaddr, error)) Option {
 	return optionFunc(func(s *Service) {
 		s.addressesFunc = f

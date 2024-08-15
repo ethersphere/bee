@@ -188,7 +188,6 @@ components:
                     metrics:
                       $ref: "#/components/schemas/PeerMetricsView"
 
-
     Cheque:
       type: object
       properties:
@@ -382,8 +381,8 @@ components:
       type: string
 
     PssTargets:
-      pattern: '^[0-9a-fA-F]{1,6}(,[0-9a-fA-F]{1,6})*$'
-      description: List of hex string targets that are comma seprated and can have maximum length of 6
+      pattern: "^[0-9a-fA-F]{1,6}(,[0-9a-fA-F]{1,6})*$"
+      description: List of hex string targets that are comma separated and can have maximum length of 6
       type: string
 
     PssTopic:
@@ -633,13 +632,13 @@ components:
       type: object
       properties:
         stakedAmount:
-           $ref: "#/components/schemas/BigInt"
+          $ref: "#/components/schemas/BigInt"
 
     StakeTransactionResponse:
-          type: object
-          properties:
-            txHash:
-               $ref: "#/components/schemas/TransactionHash"
+      type: object
+      properties:
+        txHash:
+          $ref: "#/components/schemas/TransactionHash"
 
     SwarmOnlyReference:
       oneOf:
@@ -666,7 +665,6 @@ components:
           nullable: false
           items:
             $ref: "#/components/schemas/SwarmOnlyReference"
-
 
     SwarmReference:
       oneOf:
@@ -856,7 +854,7 @@ components:
     LoggerTreeNode:
       type: object
       additionalProperties:
-          $ref: "#/components/schemas/LoggerTreeData"
+        $ref: "#/components/schemas/LoggerTreeData"
 
     Logger:
       type: object
@@ -874,7 +872,7 @@ components:
       type: object
       properties:
         tree:
-            $ref: "#/components/schemas/LoggerTreeNode"
+          $ref: "#/components/schemas/LoggerTreeNode"
         loggers:
           type: array
           items:
@@ -932,7 +930,7 @@ components:
           minimum: 0
           type: integer
         postageProof:
-          $ref: '#/components/schemas/ApiPostageProof'
+          $ref: "#/components/schemas/ApiPostageProof"
         proofSegments:
           items:
             type: string
@@ -954,7 +952,7 @@ components:
           type: string
         socProof:
           items:
-            $ref: '#/components/schemas/ApiSOCProof'
+            $ref: "#/components/schemas/ApiSOCProof"
           nullable: true
           type: array
 
@@ -962,11 +960,11 @@ components:
       type: object
       properties:
         proof1:
-          $ref: '#/components/schemas/ApiChunkInclusionProof'
+          $ref: "#/components/schemas/ApiChunkInclusionProof"
         proof2:
-          $ref: '#/components/schemas/ApiChunkInclusionProof'
+          $ref: "#/components/schemas/ApiChunkInclusionProof"
         proofLast:
-          $ref: '#/components/schemas/ApiChunkInclusionProof'
+          $ref: "#/components/schemas/ApiChunkInclusionProof"
 
     ApiPostageProof:
       type: object
@@ -986,9 +984,9 @@ components:
         duration:
           type: integer
         hash:
-          $ref: '#/components/schemas/SwarmAddress'
+          $ref: "#/components/schemas/SwarmAddress"
         proofs:
-          $ref: '#/components/schemas/ApiChunkInclusionProofs'
+          $ref: "#/components/schemas/ApiChunkInclusionProofs"
 
     ApiSOCProof:
       type: object
@@ -1040,7 +1038,6 @@ components:
         type: string
 
   parameters:
-
     GasPriceParameter:
       in: header
       name: gas-price

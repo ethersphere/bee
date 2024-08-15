@@ -62,7 +62,7 @@ Prefer american spellings over British spellings, avoid Latin abbreviations.
 // unmarshalling
 // cancelling
 // cancelled
-// cancelation
+// cancellation
 ```
 
 </td><td>
@@ -252,7 +252,7 @@ var (
   _                 Interface = (*Accounting)(nil)
   balancesPrefix    = "accounting_balance_"
   someOtherPrefix   = "some_other_balance_"
-  ErrLimitExceeded  = errors.New("limit exeeded")
+  ErrLimitExceeded  = errors.New("limit exceeded")
 )
 ```
 
@@ -273,7 +273,7 @@ var ( // or const
   someOtherPrefix = "some_other_balance_"
 )
 
-var ErrLimitExceeded = errors.New("limit exeeded)
+var ErrLimitExceeded = errors.New("limit exceeded")
 ```
 
 </td></tr>
@@ -819,7 +819,7 @@ return p.count
 </td></tr>
 </tbody></table>
 
-Defer has an extremely small overhead and should be avoided only if you can prove that your function execution time is in the order of nanoseconds. The readability win of using defers is worth the miniscule cost of using them. This is especially true for larger methods that have more than simple memory accesses, where the other computations are more significant than the `defer`.
+Defer has an extremely small overhead and should be avoided only if you can prove that your function execution time is in the order of nanoseconds. The readability win of using defers is worth the minuscule cost of using them. This is especially true for larger methods that have more than simple memory accesses, where the other computations are more significant than the `defer`.
 
 Most importantly the deferred function is going to be executed even in the case of a panic, so we avoid leaving some mutex on 'lock' and potentially leaving the system in an inconsistent state.
 

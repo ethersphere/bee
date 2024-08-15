@@ -58,7 +58,7 @@ will try to connect to us in order to satisfy their own connectivity thresholds
 
 We should allow other nodes to dial in, in order to help them maintain a healthy topolgy.
 It could be, however, that we would need to mark-and-sweep certain connections once a
-theorical upper bound has been reached.
+theoretical upper bound has been reached.
 
 Depth calculation explained:
 When we calculate depth we must keep in mind the following constraints:

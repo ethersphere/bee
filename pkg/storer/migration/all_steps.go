@@ -11,7 +11,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 )
 
-// AfterInitSteps lists all migration steps for localstore IndexStore after the localstore is intiated.
+// AfterInitSteps lists all migration steps for localstore IndexStore after the localstore is initiated.
 func AfterInitSteps(
 	sharkyPath string,
 	sharkyNoOfShards int,
@@ -28,7 +28,7 @@ func AfterInitSteps(
 	}
 }
 
-// BeforeInitSteps lists all migration steps for localstore IndexStore before the localstore is intiated.
+// BeforeInitSteps lists all migration steps for localstore IndexStore before the localstore is initiated.
 func BeforeInitSteps(st storage.BatchStore) migration.Steps {
 	return map[uint64]migration.StepFn{
 		1: RefCountSizeInc(st),

@@ -207,7 +207,7 @@ func TestTraversalFiles(t *testing.T) {
 			wantHashCount: 4,
 			wantHashes: []string{
 				"ae16fb27474b41273c0deb355e4405d3cd0a6639f834285f97c75636c9e29df7", // root manifest
-				"0cc878d32c96126d47f63fbe391114ee1438cd521146fc975dea1546d302b6c0", // mainifest root metadata
+				"0cc878d32c96126d47f63fbe391114ee1438cd521146fc975dea1546d302b6c0", // manifest root metadata
 				"05e34f11a0967e8c09968b69c4f486f569ef58a31a197992e01304a1e59f8e75", // manifest file entry
 				"e94a5aadf259f008b7d5039420c65d692901846523f503d97d24e2f077786d9a", // bytes
 			},

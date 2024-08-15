@@ -85,7 +85,7 @@ func (f Uint64Field) Inc() (val uint64, err error) {
 }
 
 // IncInBatch increments a uint64 value in the batch
-// by retreiving a value from the database, not the same batch.
+// by retrieving a value from the database, not the same batch.
 // This operation is not goroutine save.
 func (f Uint64Field) IncInBatch(batch *leveldb.Batch) (val uint64, err error) {
 	val, err = f.Get()
@@ -120,7 +120,7 @@ func (f Uint64Field) Dec() (val uint64, err error) {
 }
 
 // DecInBatch decrements a uint64 value in the batch
-// by retreiving a value from the database, not the same batch.
+// by retrieving a value from the database, not the same batch.
 // This operation is not goroutine save.
 // The field is protected from overflow to a negative value.
 func (f Uint64Field) DecInBatch(batch *leveldb.Batch) (val uint64, err error) {

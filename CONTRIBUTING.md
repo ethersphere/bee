@@ -57,7 +57,7 @@ These are work items that are good if you're contributing to the codebase for th
 
   - Core network abstractions
 
-    `p2p`, `topology`, `accouting`.
+    `p2p`, `topology`, `accounting`.
 
   - Core storage abstractions
 

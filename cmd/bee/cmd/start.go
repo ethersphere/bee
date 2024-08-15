@@ -93,7 +93,7 @@ func (c *command) initStartCmd() (err error) {
 			}()
 
 			// Building bee node can take up some time (because node.NewBee(...) is compute have function )
-			// Because of this we need to do it in background so that program could be terminated when interrupt singal is received
+			// Because of this we need to do it in background so that program could be terminated when interrupt signal is received
 			// while bee node is being constructed.
 			respC := buildBeeNodeAsync(ctx, c, cmd, logger)
 			var beeNode atomic.Value

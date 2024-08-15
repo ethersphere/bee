@@ -89,7 +89,7 @@ func newMetrics() metrics {
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "peer_underlay_err_count",
-			Help:      "Number of errors extacting peer underlay.",
+			Help:      "Number of errors extracting peer underlay.",
 		}),
 		StorePeerErr: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,

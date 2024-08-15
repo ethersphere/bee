@@ -139,7 +139,7 @@ func TestGetter(t *testing.T) {
 		}
 	}
 
-	// initiailise the base chunk
+	// initialise the base chunk
 	chunkLen := 420
 	buf := make([]byte, chunkLen)
 	if _, err := io.ReadFull(rand.Reader, buf); err != nil {

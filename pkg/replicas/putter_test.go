@@ -103,7 +103,7 @@ func TestPutter(t *testing.T) {
 				return false, nil
 			})
 			if !orig {
-				t.Fatal("origial chunk missing")
+				t.Fatal("original chunk missing")
 			}
 			t.Run("dispersion", func(t *testing.T) {
 				if err := dispersed(tc.level, ch, addrs); err != nil {
