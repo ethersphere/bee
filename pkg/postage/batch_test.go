@@ -15,6 +15,8 @@ import (
 // TestBatchMarshalling tests the idempotence  of binary marshal/unmarshal for a
 // Batch.
 func TestBatchMarshalling(t *testing.T) {
+	t.Parallel()
+
 	a := postagetesting.MustNewBatch()
 	buf, err := a.MarshalBinary()
 	if err != nil {
