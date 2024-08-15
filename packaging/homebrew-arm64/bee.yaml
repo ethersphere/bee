@@ -1,19 +1,19 @@
 ## Bee configuration - https://docs.ethswarm.org/docs/working-with-bee/configuration
 
 ## HTTP API listen address (default "127.0.0.1:1633")
-# api-addr: 127.0.0.1:1633
+# api-addr: "127.0.0.1:1633"
 ## chain block time (default 15)
 # block-time: 15
-## initial nodes to connect to (default [/dnsaddr/mainnet.ethswarm.org])
-# bootnode: [/dnsaddr/mainnet.ethswarm.org]
+## initial nodes to connect to (default ["/dnsaddr/mainnet.ethswarm.org"])
+# bootnode: ["/dnsaddr/mainnet.ethswarm.org"]
 ## cause the node to always accept incoming connections
 # bootnode-mode: false
 ## config file (default is /home/<user>/.bee.yaml)
-config: /opt/homebrew/etc/swarm-bee/bee.yaml
+config: "/opt/homebrew/etc/swarm-bee/bee.yaml"
 ## origins with CORS headers enabled
 # cors-allowed-origins: []
 ## data directory (default "/home/<user>/.bee")
-data-dir: /opt/homebrew/var/lib/swarm-bee
+data-dir: "/opt/homebrew/var/lib/swarm-bee"
 ## cache capacity in chunks, multiply by 4096 to get approximate capacity in bytes
 # cache-capacity: 1000000
 ## number of open files allowed by database
@@ -31,13 +31,13 @@ data-dir: /opt/homebrew/var/lib/swarm-bee
 ## ID of the Swarm network (default 1)
 # network-id: 1
 ## P2P listen address (default ":1634")
-# p2p-addr: :1634
+# p2p-addr: ":1634"
 ## enable P2P WebSocket transport
 # p2p-ws-enable: false
 ## password for decrypting keys
 # password: ""
 ## path to a file that contains password for decrypting keys
-password-file: /opt/homebrew/var/lib/swarm-bee/password
+password-file: "/opt/homebrew/var/lib/swarm-bee/password"
 ## percentage below the peers payment threshold when we initiate settlement (default 50)
 # payment-early-percent: 50
 ## threshold in BZZ where you expect to get paid from your peers (default 13500000). For value greater than int64 or 9223372036854775807 use value in quotes
