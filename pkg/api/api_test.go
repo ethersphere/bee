@@ -583,7 +583,7 @@ func TestPostageDirectAndDeferred(t *testing.T) {
 				if found, _ := mockStorer.ChunkStore().Has(context.Background(), body.Reference); !found {
 					t.Fatal("chunk not found in the store")
 				}
-				// sleep to allow chanStorer to drain if any to ensure we havent seen the chunk
+				// sleep to allow chanStorer to drain if any to ensure we haven't seen the chunk
 				time.Sleep(100 * time.Millisecond)
 				if chanStorer.Has(body.Reference) {
 					t.Fatal("chunk was not expected to be present in direct channel")

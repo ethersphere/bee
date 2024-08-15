@@ -192,7 +192,7 @@ func checkEntry(t *testing.T, m simple.Manifest, reference, path string) {
 }
 
 // TestMarshal verifies that created manifests are successfully marshalled and unmarshalled.
-// This function wil add all test case entries to a manifest and marshal it.
+// This function will add all test case entries to a manifest and marshal it.
 // After, it will unmarshal the result, and verify that it is equal to the original manifest.
 func TestMarshal(t *testing.T) {
 	t.Parallel()

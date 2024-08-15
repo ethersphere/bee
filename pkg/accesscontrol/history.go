@@ -47,7 +47,7 @@ type manifestInterface interface {
 	Root() *mantaray.Node
 }
 
-// HistoryStruct represents an access control histroy with a mantaray-based manifest.
+// HistoryStruct represents an access control history with a mantaray-based manifest.
 type HistoryStruct struct {
 	manifest manifestInterface
 	ls       file.LoadSaver

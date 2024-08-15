@@ -209,7 +209,7 @@ func TestIteratorError(t *testing.T) {
 
 	err := ps.EachBin(f)
 	if !errors.Is(err, e) {
-		t.Fatal("didnt get expected error")
+		t.Fatal("didn't get expected error")
 	}
 }
 

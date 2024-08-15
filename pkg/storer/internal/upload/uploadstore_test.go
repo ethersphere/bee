@@ -519,7 +519,7 @@ func TestChunkPutter(t *testing.T) {
 					t.Fatalf("Get(...): unexpected error: %v", err)
 				}
 				if want := chunk; !want.Equal(have) {
-					t.Fatalf("Get(...): chunk missmatch:\nwant: %x\nhave: %x", want, have)
+					t.Fatalf("Get(...): chunk mismatch:\nwant: %x\nhave: %x", want, have)
 				}
 			})
 		})
@@ -887,7 +887,7 @@ func TestListTags(t *testing.T) {
 
 	opts := cmpopts.SortSlices(func(i, j upload.TagItem) bool { return i.TagID < j.TagID })
 	if diff := cmp.Diff(want, have, opts); diff != "" {
-		t.Fatalf("upload.ListAllTags(): missmatch (-want +have):\n%s", diff)
+		t.Fatalf("upload.ListAllTags(): mismatch (-want +have):\n%s", diff)
 	}
 }
 

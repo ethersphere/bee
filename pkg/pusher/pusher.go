@@ -71,7 +71,7 @@ const (
 
 var (
 	ErrInvalidAddress = errors.New("invalid address")
-	ErrShallowReceipt = errors.New("shallow recipt")
+	ErrShallowReceipt = errors.New("shallow receipt")
 )
 
 func New(

@@ -28,7 +28,7 @@ type SignedCheque struct {
 	Signature []byte
 }
 
-// chequebookDomain computes chainId-dependant EIP712 domain
+// chequebookDomain computes chainId-dependent EIP712 domain
 func chequebookDomain(chainID int64) eip712.TypedDataDomain {
 	return eip712.TypedDataDomain{
 		Name:    "Chequebook",

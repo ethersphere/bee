@@ -130,11 +130,11 @@ func TestSetLoggerVerbosity(t *testing.T) {
 			)
 
 			if have.exp != tc.want.exp {
-				t.Errorf("exp missmatch: want: %q; have: %q", tc.want.exp, have.exp)
+				t.Errorf("exp mismatch: want: %q; have: %q", tc.want.exp, have.exp)
 			}
 
 			if have.ver != tc.want.ver {
-				t.Errorf("verbosity missmatch: want: %q; have: %q", tc.want.ver, have.ver)
+				t.Errorf("verbosity mismatch: want: %q; have: %q", tc.want.ver, have.ver)
 			}
 		})
 	}

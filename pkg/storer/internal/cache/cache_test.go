@@ -222,7 +222,7 @@ func TestCache(t *testing.T) {
 			}
 		})
 
-		t.Run("not in cache doesnt affect state", func(t *testing.T) {
+		t.Run("not in cache doesn't affect state", func(t *testing.T) {
 			state := c.State(st.IndexStore())
 
 			for i := 0; i < 5; i++ {

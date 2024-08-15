@@ -498,7 +498,7 @@ func TestMaxUint64(t *testing.T) {
 // TestEdgeBugUnmarshal is a regression test for the bug that
 // created incorrect intervals at the edges. It checks that the
 // serialized interval recovers from the error of multiple duplicate
-// intervals serialized sequencially.
+// intervals serialized sequentially.
 func TestEdgeBugUnmarshal(t *testing.T) {
 	t.Parallel()
 
