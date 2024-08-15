@@ -26,8 +26,8 @@ const (
 	DefaultBlocklistTime = 1 * time.Minute
 )
 
-// ConnectionBackoffError indicates that connection calls will not be executed until `tryAfter` timetamp.
-// The reason is provided in the wrappped error.
+// ConnectionBackoffError indicates that connection calls will not be executed until `tryAfter` timestamp.
+// The reason is provided in the wrapped error.
 type ConnectionBackoffError struct {
 	tryAfter time.Time
 	err      error
@@ -38,7 +38,7 @@ func NewConnectionBackoffError(err error, tryAfter time.Time) error {
 	return &ConnectionBackoffError{err: err, tryAfter: tryAfter}
 }
 
-// TryAfter returns a tryAfter timetamp.
+// TryAfter returns a tryAfter timestamp.
 func (e *ConnectionBackoffError) TryAfter() time.Time {
 	return e.tryAfter
 }

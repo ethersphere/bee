@@ -111,7 +111,7 @@ func TestAnnouncePaymentWithInsufficientThreshold(t *testing.T) {
 
 	observer := &testThresholdObserver{}
 
-	minThreshold := big.NewInt(1_000_000) // above requested threashold
+	minThreshold := big.NewInt(1_000_000) // above requested threshold
 
 	recipient := pricing.New(nil, logger, testThreshold, testLightThreshold, minThreshold)
 	recipient.SetPaymentThresholdObserver(observer)

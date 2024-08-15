@@ -308,7 +308,7 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 		var err error
 
 		for {
-			if isHistorical { // overide start with the next interval if historical syncing
+			if isHistorical { // override start with the next interval if historical syncing
 				start, err = p.nextPeerInterval(address, bin)
 				if err != nil {
 					p.metrics.SyncWorkerErrCounter.Inc()

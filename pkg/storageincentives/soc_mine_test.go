@@ -103,7 +103,7 @@ func makeChunks(t *testing.T, signer crypto.Signer, sampleSize int, filterSOCAdd
 	}
 
 	var done bool                          // to signal sampleSize number of chunks found
-	sampleC := make(chan *soc.SOC, 1)      // channel to push resuls on
+	sampleC := make(chan *soc.SOC, 1)      // channel to push results on
 	sample := make([]*soc.SOC, sampleSize) // to collect the sample
 	ctx, cancel := context.WithCancel(context.Background())
 	eg, ectx := errgroup.WithContext(ctx)

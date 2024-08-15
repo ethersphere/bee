@@ -1234,7 +1234,7 @@ func TestJoinerRedundancy(t *testing.T) {
 //  4. [positive test] download file using DATA with fallback to allow for
 //     reconstruction via erasure coding and succeed.
 //
-//  5. [positive test] after recovery chunks are saved, so fotgetting no longer
+//  5. [positive test] after recovery chunks are saved, so forgetting no longer
 //     repeat  3a/3b but this time succeed
 //
 // nolint:thelper

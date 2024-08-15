@@ -77,7 +77,7 @@ func newMetrics() metrics {
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "reserve_size_percentage_err",
-			Help:      "Pecentage error of the reservesize relative to the network average.",
+			Help:      "Percentage error of the reservesize relative to the network average.",
 		}),
 	}
 }

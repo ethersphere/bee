@@ -684,7 +684,7 @@ func (k *Kad) pruneOversaturatedBins(depth uint8) {
 				if unreachablePeer.IsZero() {
 					disconnectPeer = peers[rand.Intn(len(peers))]
 				} else {
-					disconnectPeer = unreachablePeer // pick unrechable peer
+					disconnectPeer = unreachablePeer // pick unreachable peer
 				}
 			}
 

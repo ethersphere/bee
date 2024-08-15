@@ -32,7 +32,7 @@ func ReserveRepairer(
 	return func() error {
 		/*
 			STEP 0:	remove epoch item
-			STEP 1:	remove all of the BinItem entires
+			STEP 1:	remove all of the BinItem entries
 			STEP 2:	remove all of the ChunkBinItem entries
 			STEP 3:	iterate BatchRadiusItem, get new binID
 					create new ChunkBinItem and BatchRadiusItem if the chunk exists in the chunkstore

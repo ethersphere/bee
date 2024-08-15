@@ -21,7 +21,7 @@ import (
 )
 
 // TestProximity validates Proximity function with explicit
-// values in a table-driven test. It is highly dependant on
+// values in a table-driven test. It is highly dependent on
 // MaxPO constant and it validates cases up to MaxPO=32.
 func TestProximity(t *testing.T) {
 	t.Parallel()

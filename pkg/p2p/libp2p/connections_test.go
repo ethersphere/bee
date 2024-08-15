@@ -153,7 +153,7 @@ func TestLightPeerLimit(t *testing.T) {
 // TestStreamsMaxIncomingLimit validates that a session between peers can
 // sustain up to the maximal configured concurrent streams, that all further
 // streams will result with ErrReset error, and that when the number of
-// concurrent streams is bellow the limit, new streams are created without
+// concurrent streams is below the limit, new streams are created without
 // errors.
 func TestStreamsMaxIncomingLimit(t *testing.T) {
 	t.Parallel()
@@ -927,7 +927,7 @@ func TestTopologyOverSaturated(t *testing.T) {
 	// s2 connects to s1, thus the notifier on s1 should be called on Connect
 	_, err := s2.Connect(ctx, addr)
 	if err == nil {
-		t.Fatal("expected connect to fail but it didnt")
+		t.Fatal("expected connect to fail but it didn't")
 	}
 
 	expectPeers(t, s1)

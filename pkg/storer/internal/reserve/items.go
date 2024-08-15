@@ -248,7 +248,7 @@ func (c *BinItem) Unmarshal(buf []byte) error {
 	return nil
 }
 
-// EpochItem stores the timetamp in seconds of the initial creation of the reserve.
+// EpochItem stores the timestamp in seconds of the initial creation of the reserve.
 type EpochItem struct {
 	Timestamp uint64
 }

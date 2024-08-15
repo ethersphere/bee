@@ -154,7 +154,7 @@ func TestCantEmitChequeRateMismatch(t *testing.T) {
 	swapReceiver := swapmock.NewSwap()
 	swapInitiator := swapmock.NewSwap()
 
-	// mock different informations for the receiver and sender received from oracle
+	// mock different information for the receiver and sender received from oracle
 
 	priceOracle := priceoraclemock.New(big.NewInt(50), big.NewInt(500))
 	priceOracle2 := priceoraclemock.New(big.NewInt(52), big.NewInt(560))

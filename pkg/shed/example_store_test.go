@@ -279,7 +279,7 @@ func (s *Store) CollectGarbage() (err error) {
 	return nil
 }
 
-// GetSchema is an example of retrieveing the most simple
+// GetSchema is an example of retrieving the most simple
 // string from a database field.
 func (s *Store) GetSchema() (name string, err error) {
 	name, err = s.schemaName.Get()

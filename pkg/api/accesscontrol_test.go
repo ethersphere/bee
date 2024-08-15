@@ -221,8 +221,8 @@ func TestAccessLogicEachEndpointWithAct(t *testing.T) {
 }
 
 // TestAccessLogicWithoutActHeader [negative tests]:
-// 1. upload w/ "Swarm-Act" header then try to dowload w/o the header.
-// 2. upload w/o "Swarm-Act" header then try to dowload w/ the header.
+// 1. upload w/ "Swarm-Act" header then try to download w/o the header.
+// 2. upload w/o "Swarm-Act" header then try to download w/ the header.
 //
 //nolint:paralleltest,tparallel
 func TestAccessLogicWithoutAct(t *testing.T) {

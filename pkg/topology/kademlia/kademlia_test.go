@@ -586,7 +586,7 @@ func TestOversaturationBootnode(t *testing.T) {
 			connectOne(t, signer, kad, ab, addr, nil)
 			// check that pick works correctly
 			if !kad.Pick(p2p.Peer{Address: addr}) {
-				t.Fatal("should pick the peer but didnt")
+				t.Fatal("should pick the peer but didn't")
 			}
 		}
 		// see depth is still as expected
@@ -647,7 +647,7 @@ func TestBootnodeMaxConnections(t *testing.T) {
 			connectOne(t, signer, kad, ab, addr, nil)
 			// check that pick works correctly
 			if !kad.Pick(p2p.Peer{Address: addr}) {
-				t.Fatal("should pick the peer but didnt")
+				t.Fatal("should pick the peer but didn't")
 			}
 		}
 	}

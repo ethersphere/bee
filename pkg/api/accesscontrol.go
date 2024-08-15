@@ -110,7 +110,7 @@ func (s *Service) actDecryptionHandler() func(h http.Handler) http.Handler {
 				return
 			}
 
-			// Try to download the file wihtout decryption, if the act headers are not present
+			// Try to download the file wihthout decryption, if the act headers are not present
 			if headers.Publisher == nil || headers.HistoryAddress == nil {
 				h.ServeHTTP(w, r)
 				return

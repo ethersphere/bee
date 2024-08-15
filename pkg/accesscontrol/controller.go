@@ -98,7 +98,7 @@ func (c *ControllerStruct) UploadHandler(
 
 // UpdateHandler manages the grantees for the given publisher, updating the list based on provided public keys to add or remove.
 // Only the publisher can make changes to the grantee list.
-// Limitation: If an upadate is called again within a second from the latest upload/update then mantaray save fails with ErrInvalidInput,
+// Limitation: If an update is called again within a second from the latest upload/update then mantaray save fails with ErrInvalidInput,
 // because the key (timestamp) is already present, hence a new fork is not created.
 func (c *ControllerStruct) UpdateHandler(
 	ctx context.Context,

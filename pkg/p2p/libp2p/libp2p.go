@@ -491,7 +491,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 				// kick another node to fit this one in
 				p, err := s.lightNodes.RandomPeer(peer.Address)
 				if err != nil {
-					s.logger.Debug("stream handler: cant find a peer slot for light node", "error", err)
+					s.logger.Debug("stream handler: can't find a peer slot for light node", "error", err)
 					_ = s.Disconnect(peer.Address, "unable to find peer slot for light node")
 					return
 				} else {
@@ -644,24 +644,24 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 	return nil
 }
 
-func (s *Service) Addresses() (addreses []ma.Multiaddr, err error) {
+func (s *Service) Addresses() (addresses []ma.Multiaddr, err error) {
 	for _, addr := range s.host.Addrs() {
 		a, err := buildUnderlayAddress(addr, s.host.ID())
 		if err != nil {
 			return nil, err
 		}
 
-		addreses = append(addreses, a)
+		addresses = append(addresses, a)
 	}
-	if s.natAddrResolver != nil && len(addreses) > 0 {
-		a, err := s.natAddrResolver.Resolve(addreses[0])
+	if s.natAddrResolver != nil && len(addresses) > 0 {
+		a, err := s.natAddrResolver.Resolve(addresses[0])
 		if err != nil {
 			return nil, err
 		}
-		addreses = append(addreses, a)
+		addresses = append(addresses, a)
 	}
 
-	return addreses, nil
+	return addresses, nil
 }
 
 func (s *Service) NATManager() basichost.NATManager {

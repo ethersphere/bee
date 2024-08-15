@@ -168,7 +168,7 @@ func (svc *batchService) TopUp(id []byte, totalAmout, normalisedBalance *big.Int
 	return nil
 }
 
-// UpdateDepth implements the EventUpdater inteface. It sets the new depth of a
+// UpdateDepth implements the EventUpdater interface. It sets the new depth of a
 // batch with the given ID.
 func (svc *batchService) UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int, txHash common.Hash) error {
 	b, err := svc.storer.Get(id)

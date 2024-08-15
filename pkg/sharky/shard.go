@@ -135,7 +135,7 @@ func (sh *shard) process() {
 			// only enabled if there is a free slot previously popped
 		case op := <-writes:
 			op.res <- sh.write(op.buf, slot)
-			free = sh.slots.out // reenable popping a free slot next time we can write
+			free = sh.slots.out // re-enable popping a free slot next time we can write
 			writes = nil        // disable popping a write operation until there is a free slot
 
 			// pop a free slot

@@ -34,7 +34,7 @@ type Manifest interface {
 	Length() int
 
 	// WalkEntry walks all entries, calling walkFn for each entry in the map.
-	// All errors that arise visiting entires are filtered by walkFn.
+	// All errors that arise visiting entries are filtered by walkFn.
 	WalkEntry(string, WalkEntryFunc) error
 
 	encoding.BinaryMarshaler

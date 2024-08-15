@@ -159,7 +159,7 @@ func TestPeerMetricsCollector(t *testing.T) {
 	have := mc.Inspect(addr)
 	want := ss
 	if diff := cmp.Diff(have, want); diff != "" {
-		t.Fatalf("unexpected snapshot diffrence:\n%s", diff)
+		t.Fatalf("unexpected snapshot difference:\n%s", diff)
 	}
 
 	// Flush.
@@ -190,6 +190,6 @@ func TestPeerMetricsCollector(t *testing.T) {
 		ConnectionTotalDuration: 2 * ss.ConnectionTotalDuration, // 2x because we've already logout with t3 and login with t1 again.
 	}
 	if diff := cmp.Diff(have, want); diff != "" {
-		t.Fatalf("unexpected snapshot diffrence:\n%s", diff)
+		t.Fatalf("unexpected snapshot difference:\n%s", diff)
 	}
 }

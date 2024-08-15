@@ -166,11 +166,11 @@ func checkTestItemEqual(t *testing.T, a, b storage.Item) {
 	t.Helper()
 
 	if a.Namespace() != b.Namespace() {
-		t.Fatalf("namespace doesnt match %s and %s", a.Namespace(), b.Namespace())
+		t.Fatalf("namespace doesn't match %s and %s", a.Namespace(), b.Namespace())
 	}
 
 	if a.ID() != b.ID() {
-		t.Fatalf("ID doesnt match %s and %s %d %d", a.ID(), b.ID(), len(a.ID()), len(b.ID()))
+		t.Fatalf("ID doesn't match %s and %s %d %d", a.ID(), b.ID(), len(a.ID()), len(b.ID()))
 	}
 
 	buf1, err := a.Marshal()
@@ -357,7 +357,7 @@ func TestStore(t *testing.T, s storage.Store) {
 				t.Fatalf("failed getting count: %v", err)
 			}
 			if cnt != obj1Cnt {
-				t.Fatalf("count missmatch: want %d have %d", obj1Cnt, cnt)
+				t.Fatalf("count mismatch: want %d have %d", obj1Cnt, cnt)
 			}
 		})
 		t.Run("obj2", func(t *testing.T) {
@@ -366,7 +366,7 @@ func TestStore(t *testing.T, s storage.Store) {
 				t.Fatalf("failed getting count: %v", err)
 			}
 			if cnt != obj2Cnt {
-				t.Fatalf("count missmatch: want %d, have %d", obj2Cnt, cnt)
+				t.Fatalf("count mismatch: want %d, have %d", obj2Cnt, cnt)
 			}
 		})
 	})
@@ -434,7 +434,7 @@ func TestStore(t *testing.T, s storage.Store) {
 				t.Fatalf("unexpected no of entries in iteration exp %d found %d", obj1WithPrefixCnt, idx)
 			}
 		})
-		t.Run("obj2 decending", func(t *testing.T) {
+		t.Run("obj2 descending", func(t *testing.T) {
 			idx := 7
 			err := s.Iterate(storage.Query{
 				Factory:      func() storage.Item { return new(obj2) },
@@ -477,7 +477,7 @@ func TestStore(t *testing.T, s storage.Store) {
 				t.Fatalf("unexpected no of entries in iteration exp %d found %d", obj1Cnt, idx)
 			}
 		})
-		t.Run("obj2 decending", func(t *testing.T) {
+		t.Run("obj2 descending", func(t *testing.T) {
 			idx := 8
 			err := s.Iterate(storage.Query{
 				Factory:      func() storage.Item { return new(obj2) },

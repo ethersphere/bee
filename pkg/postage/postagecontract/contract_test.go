@@ -374,7 +374,7 @@ func TestTopUpBatch(t *testing.T) {
 		}
 	})
 
-	t.Run("batch doesnt exist", func(t *testing.T) {
+	t.Run("batch doesn't exist", func(t *testing.T) {
 		errNotFound := errors.New("not found")
 		contract := postagecontract.New(
 			owner,
@@ -563,7 +563,7 @@ func TestDiluteBatch(t *testing.T) {
 		}
 	})
 
-	t.Run("batch doesnt exist", func(t *testing.T) {
+	t.Run("batch doesn't exist", func(t *testing.T) {
 		errNotFound := errors.New("not found")
 		contract := postagecontract.New(
 			owner,

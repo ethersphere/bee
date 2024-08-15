@@ -85,7 +85,7 @@ func (f Uint64Vector) Inc(i uint64) (val uint64, err error) {
 }
 
 // IncInBatch increments a uint64 value at index i in the batch
-// by retreiving a value from the database, not the same batch.
+// by retrieving a value from the database, not the same batch.
 // This operation is not goroutine safe.
 func (f Uint64Vector) IncInBatch(batch *leveldb.Batch, i uint64) (val uint64, err error) {
 	val, err = f.Get(i)
@@ -120,7 +120,7 @@ func (f Uint64Vector) Dec(i uint64) (val uint64, err error) {
 }
 
 // DecInBatch decrements a uint64 value at index i in the batch
-// by retreiving a value from the database, not the same batch.
+// by retrieving a value from the database, not the same batch.
 // This operation is not goroutine safe.
 // The field is protected from overflow to a negative value.
 func (f Uint64Vector) DecInBatch(batch *leveldb.Batch, i uint64) (val uint64, err error) {

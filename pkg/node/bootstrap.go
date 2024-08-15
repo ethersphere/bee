@@ -151,7 +151,7 @@ func bootstrapNode(
 	}
 	b.accountingCloser = acc
 
-	// bootstraper mode uses the light node refresh rate
+	// bootstrapper mode uses the light node refresh rate
 	enforcedRefreshRate := big.NewInt(lightRefreshRate)
 
 	pseudosettleService := pseudosettle.New(p2ps, logger, stateStore, acc, enforcedRefreshRate, enforcedRefreshRate, p2ps)

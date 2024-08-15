@@ -116,7 +116,7 @@ func TestSplitThreeLevels(t *testing.T) {
 	}
 }
 
-// TestUnalignedSplit tests that correct hash is generated regarless of
+// TestUnalignedSplit tests that correct hash is generated regardless of
 // individual write sizes at the source of the data.
 func TestUnalignedSplit(t *testing.T) {
 	t.Parallel()

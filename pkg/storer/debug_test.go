@@ -63,7 +63,7 @@ func testDebugInfo(t *testing.T, newStorer func() (*storer.DB, swarm.Address, er
 			t.Fatalf("DebugInfo(...): unexpected error: %v", err)
 		}
 
-		// Becase the chunks in the session where never 'Reported' as synced, the pending upload will be non-zero.
+		// Because the chunks in the session where never 'Reported' as synced, the pending upload will be non-zero.
 
 		wantInfo := storer.Info{
 			Upload: storer.UploadStat{

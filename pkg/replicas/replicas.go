@@ -52,7 +52,7 @@ type replica struct {
 	addr, id []byte // byte slice of SOC address and SOC ID
 }
 
-// replicate returns a replica params strucure seeded with a byte of entropy as argument
+// replicate returns a replica params structure seeded with a byte of entropy as argument
 func (rr *replicator) replicate(i uint8) (sp *replica) {
 	// change the last byte of the address to create SOC ID
 	id := make([]byte, 32)

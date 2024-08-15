@@ -13,7 +13,7 @@ import (
 func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(m,
 		// leveldb implementation does not wait for all goroutines
-		// to finishin when DB gets closed.
+		// to finishing when DB gets closed.
 		goleak.IgnoreTopFunction("github.com/syndtr/goleveldb/leveldb.(*DB).mpoolDrain"),
 	)
 }

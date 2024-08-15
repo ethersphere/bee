@@ -458,7 +458,7 @@ func TestRadiusManager(t *testing.T) {
 		waitForRadius(t, storer.Reserve(), 0)
 	})
 
-	t.Run("radius doesnt change due to non-zero pull rate", func(t *testing.T) {
+	t.Run("radius doesn't change due to non-zero pull rate", func(t *testing.T) {
 		t.Parallel()
 		storer, err := diskStorer(t, dbTestOps(baseAddr, 10, nil, nil, time.Millisecond*500))()
 		if err != nil {

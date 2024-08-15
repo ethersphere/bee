@@ -26,7 +26,7 @@ type ConnectionConfig struct {
 
 // ParseConnectionString will try to parse a connection string used to connect
 // the Resolver to a name resolution service. The resulting config can be
-// used to initialize a resovler Service.
+// used to initialize a resolver Service.
 func parseConnectionString(cs string) (ConnectionConfig, error) {
 	isAllUnicodeLetters := func(s string) bool {
 		for _, r := range s {

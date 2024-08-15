@@ -823,11 +823,11 @@ func CalculateNumberOfChunks(contentLength int64, isEncrypted bool) int64 {
 	return int64(totalChunks) + 1
 }
 
-// defaultUploadMethod returns true for deferred when the defered header is not present.
-func defaultUploadMethod(deffered *bool) bool {
-	if deffered == nil {
+// defaultUploadMethod returns true for deferred when the deferred header is not present.
+func defaultUploadMethod(deferred *bool) bool {
+	if deferred == nil {
 		return true
 	}
 
-	return *deffered
+	return *deferred
 }

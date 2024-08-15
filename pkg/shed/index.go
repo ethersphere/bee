@@ -467,12 +467,12 @@ func (f Index) itemFromIterator(it iterator.Iterator, totalPrefix []byte) (i Ite
 	if !bytes.HasPrefix(key, totalPrefix) {
 		return i, leveldb.ErrNotFound
 	}
-	// create a copy of key byte slice not to share leveldb underlaying slice array
+	// create a copy of key byte slice not to share leveldb underlying slice array
 	keyItem, err := f.decodeKeyFunc(append([]byte(nil), key...))
 	if err != nil {
 		return i, fmt.Errorf("decode key: %w", err)
 	}
-	// create a copy of value byte slice not to share leveldb underlaying slice array
+	// create a copy of value byte slice not to share leveldb underlying slice array
 	valueItem, err := f.decodeValueFunc(keyItem, append([]byte(nil), it.Value()...))
 	if err != nil {
 		return i, fmt.Errorf("decode value: %w", err)

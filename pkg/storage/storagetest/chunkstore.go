@@ -46,7 +46,7 @@ func TestChunkStore(t *testing.T, st storage.ChunkStore) {
 				t.Fatalf("failed getting chunk: %v", err)
 			}
 			if !readCh.Equal(ch) {
-				t.Fatal("read chunk doesnt match")
+				t.Fatal("read chunk doesn't match")
 			}
 		}
 	})
@@ -130,7 +130,7 @@ func TestChunkStore(t *testing.T, st storage.ChunkStore) {
 					t.Fatalf("failed getting chunk: %v", err)
 				}
 				if !readCh.Equal(ch) {
-					t.Fatal("read chunk doesnt match")
+					t.Fatal("read chunk doesn't match")
 				}
 				exists, err := st.Has(context.TODO(), ch.Address())
 				if err != nil {

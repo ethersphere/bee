@@ -229,7 +229,7 @@ func TestPeerDisconnected(t *testing.T) {
 	kad.Trigger()
 	time.Sleep(50 * time.Millisecond)
 	if p.IsSyncing(addr) {
-		t.Fatalf("peer is syncing but shouldnt")
+		t.Fatalf("peer is syncing but shouldn't")
 	}
 }
 
@@ -268,7 +268,7 @@ func TestEpochReset(t *testing.T) {
 	kad.Trigger()
 	time.Sleep(100 * time.Millisecond)
 	if p.IsSyncing(addr) {
-		t.Fatalf("peer is syncing but shouldnt")
+		t.Fatalf("peer is syncing but shouldn't")
 	}
 
 	beforeCalls := pullsync.SyncCalls(addr)
@@ -465,7 +465,7 @@ func TestRadiusIncrease(t *testing.T) {
 		t.Fatalf("peer is not syncing but should")
 	}
 	if p.IsBinSyncing(addr, 2) {
-		t.Fatalf("peer is syncing but shouldnt")
+		t.Fatalf("peer is syncing but shouldn't")
 	}
 }
 
@@ -553,7 +553,7 @@ func TestPeerGone(t *testing.T) {
 	}
 
 	if p.IsSyncing(addr) {
-		t.Fatalf("peer is syncing but shouldnt")
+		t.Fatalf("peer is syncing but shouldn't")
 	}
 }
 

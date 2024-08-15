@@ -7,7 +7,7 @@ Package transaction provides transaction support for localstore operations.
 All writes to the localstore (both indexstore and chunkstore) must be made using a transaction.
 The transaction must be committed for the writes to be stored on the disk.
 
-The rules of the transction is as follows:
+The rules of the transaction is as follows:
 
 -sharky_write 		-> write to disk, keep sharky location in memory
 -sharky_release		-> keep location in memory, do not release from the disk
@@ -184,20 +184,20 @@ func (t *transaction) Commit() (err error) {
 		rerr := t.sharkyTrx.sharky.Release(context.TODO(), l)
 		h(&rerr)
 		if rerr != nil {
-			err = errors.Join(err, fmt.Errorf("failed releasing location afer commit %s: %w", l, rerr))
+			err = errors.Join(err, fmt.Errorf("failed releasing location after commit %s: %w", l, rerr))
 		}
 	}
 
 	return err
 }
 
-// IndexStore gives acces to the index store of the transaction.
+// IndexStore gives access to the index store of the transaction.
 // Note that no writes are persisted to the disk until the commit is called.
 func (t *transaction) IndexStore() storage.IndexStore {
 	return t.indexstore
 }
 
-// ChunkStore gives acces to the chunkstore of the transaction.
+// ChunkStore gives access to the chunkstore of the transaction.
 // Note that no writes are persisted to the disk until the commit is called.
 func (t *transaction) ChunkStore() storage.ChunkStore {
 	return t.chunkStore

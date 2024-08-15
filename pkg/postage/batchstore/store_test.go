@@ -381,7 +381,7 @@ func TestBatchUpdate(t *testing.T) {
 
 		var batches []*postage.Batch
 
-		// add initial groupd of batches
+		// add initial group of batches
 		for _, b := range tc.add {
 			newBatch := addBatch(t, store, b.depth, b.value)
 			batches = append(batches, newBatch)

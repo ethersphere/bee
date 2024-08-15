@@ -127,7 +127,7 @@ func TestReplicateBeforeReceipt(t *testing.T) {
 	emptyRecorder := streamtest.New(streamtest.WithProtocols(psEmpty.Protocol()), streamtest.WithBaseAddr(secondPeer))
 
 	// node that is connected to closestPeer
-	// will receieve chunk from closestPeer
+	// will receive chunk from closestPeer
 	psSecond, _, secondAccounting := createPushSyncNode(t, secondPeer, defaultPrices, emptyRecorder, nil, defaultSigner, mock.WithPeers(emptyPeer))
 
 	secondRecorder := streamtest.New(streamtest.WithProtocols(psSecond.Protocol()), streamtest.WithBaseAddr(closestPeer))
@@ -204,7 +204,7 @@ func TestReplicateBeforeReceipt(t *testing.T) {
 }
 
 // PushChunkToClosest tests the sending of chunk to closest peer from the origination source perspective.
-// it also checks wether the tags are incremented properly if they are present
+// it also checks whether the tags are incremented properly if they are present
 func TestPushChunkToClosest(t *testing.T) {
 	t.Parallel()
 	// chunk data to upload
@@ -449,7 +449,7 @@ func TestPushChunkToClosestErrorAttemptRetry(t *testing.T) {
 	// this intercepts the incoming receipt message
 	waitOnRecordAndTest(t, peer4, recorder, chunk.Address(), nil)
 
-	// out of 4, 3 peers should return accouting error. So we should have effectively
+	// out of 4, 3 peers should return accounting error. So we should have effectively
 	// sent only 1 msg
 	found, count := pivotStorer.hasReported(t, chunk.Address())
 	if !found {
