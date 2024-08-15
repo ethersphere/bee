@@ -286,7 +286,7 @@ func NewBee(
 
 		if swarm.Proximity(swarmAddress.Bytes(), neighborhood.Bytes()) < uint8(len(targetNeighborhood)) {
 			// mine the overlay
-			logger.Info("mining an overlay address for the fresh node to target the selected neighborhood", "target", targetNeighborhood)
+			logger.Info("mining a new overlay address to target the selected neighborhood", "target", targetNeighborhood)
 			newSwarmAddress, newNonce, err := nbhdutil.MineOverlay(ctx, *pubKey, networkID, targetNeighborhood)
 			if err != nil {
 				return nil, fmt.Errorf("mine overlay address: %w", err)
