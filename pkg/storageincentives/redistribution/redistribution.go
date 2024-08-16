@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/sctx"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
@@ -28,6 +29,7 @@ type Contract interface {
 }
 
 type contract struct {
+	overlay                   swarm.Address
 	owner                     common.Address
 	logger                    log.Logger
 	txService                 transaction.Service
@@ -37,6 +39,7 @@ type contract struct {
 }
 
 func New(
+	overlay swarm.Address,
 	owner common.Address,
 	logger log.Logger,
 	txService transaction.Service,
@@ -51,6 +54,7 @@ func New(
 	}
 
 	return &contract{
+		overlay:                   overlay,
 		owner:                     owner,
 		logger:                    logger.WithName(loggerName).Register(),
 		txService:                 txService,
@@ -82,7 +86,7 @@ func (c *contract) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
 
 // IsWinner checks if the overlay is winner by sending a transaction to blockchain.
 func (c *contract) IsWinner(ctx context.Context) (isWinner bool, err error) {
-	callData, err := c.incentivesContractABI.Pack("isWinner", common.BytesToHash(c.owner.Bytes()))
+	callData, err := c.incentivesContractABI.Pack("isWinner", c.overlay)
 	if err != nil {
 		return false, err
 	}
