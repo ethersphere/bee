@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/storageincentives/redistribution"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 	transactionMock "github.com/ethersphere/bee/v2/pkg/transaction/mock"
 	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
@@ -63,6 +64,7 @@ func TestRedistribution(t *testing.T) {
 	ctx := context.Background()
 	ctx = sctx.SetGasPrice(ctx, big.NewInt(100))
 	owner := common.HexToAddress("abcd")
+	overlay := swarm.NewAddress(common.HexToHash("cbd").Bytes())
 	redistributionContractAddress := common.HexToAddress("ffff")
 	//nonce := common.BytesToHash(make([]byte, 32))
 	txHashDeposited := common.HexToHash("c3a7")
@@ -73,6 +75,7 @@ func TestRedistribution(t *testing.T) {
 		depth := uint8(10)
 		expectedRes := big.NewInt(1)
 		contract := redistribution.New(
+			overlay,
 			owner,
 			log.Noop,
 			transactionMock.New(
@@ -104,6 +107,7 @@ func TestRedistribution(t *testing.T) {
 
 		expectedRes := big.NewInt(0)
 		contract := redistribution.New(
+			overlay,
 			owner,
 			log.Noop,
 			transactionMock.New(
@@ -133,6 +137,7 @@ func TestRedistribution(t *testing.T) {
 
 		expectedRes := big.NewInt(0)
 		contract := redistribution.New(
+			overlay,
 			owner,
 			log.Noop,
 			transactionMock.New(
@@ -161,7 +166,7 @@ func TestRedistribution(t *testing.T) {
 		t.Parallel()
 
 		expectedRes := big.NewInt(1)
-		contract := redistribution.New(owner, log.Noop,
+		contract := redistribution.New(overlay, owner, log.Noop,
 			transactionMock.New(
 				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
 					if *request.To == redistributionContractAddress {
@@ -194,6 +199,7 @@ func TestRedistribution(t *testing.T) {
 			t.Fatal(err)
 		}
 		contract := redistribution.New(
+			overlay,
 			owner,
 			log.Noop,
 			transactionMock.New(
@@ -235,6 +241,7 @@ func TestRedistribution(t *testing.T) {
 			t.Fatal(err)
 		}
 		contract := redistribution.New(
+			overlay,
 			owner,
 			log.Noop,
 			transactionMock.New(
@@ -277,6 +284,7 @@ func TestRedistribution(t *testing.T) {
 			t.Fatal(err)
 		}
 		contract := redistribution.New(
+			overlay,
 			owner,
 			log.Noop,
 			transactionMock.New(
@@ -321,6 +329,7 @@ func TestRedistribution(t *testing.T) {
 			t.Fatal(err)
 		}
 		contract := redistribution.New(
+			overlay,
 			owner,
 			log.Noop,
 			transactionMock.New(
@@ -357,6 +366,7 @@ func TestRedistribution(t *testing.T) {
 		t.Parallel()
 		someSalt := testutil.RandBytes(t, 32)
 		contract := redistribution.New(
+			overlay,
 			owner,
 			log.Noop,
 			transactionMock.New(
@@ -387,6 +397,7 @@ func TestRedistribution(t *testing.T) {
 
 		depth := uint8(10)
 		contract := redistribution.New(
+			overlay,
 			owner,
 			log.Noop,
 			transactionMock.New(
@@ -416,6 +427,7 @@ func TestRedistribution(t *testing.T) {
 			t.Fatal(err)
 		}
 		contract := redistribution.New(
+			overlay,
 			owner,
 			log.Noop,
 			transactionMock.New(
