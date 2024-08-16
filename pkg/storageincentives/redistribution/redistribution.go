@@ -86,14 +86,14 @@ func (c *contract) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
 
 // IsWinner checks if the overlay is winner by sending a transaction to blockchain.
 func (c *contract) IsWinner(ctx context.Context) (isWinner bool, err error) {
-	callData, err := c.incentivesContractABI.Pack("isWinner", c.overlay)
+	callData, err := c.incentivesContractABI.Pack("isWinner", common.BytesToHash(c.overlay.Bytes()))
 	if err != nil {
 		return false, err
 	}
 
 	result, err := c.callTx(ctx, callData)
 	if err != nil {
-		return false, fmt.Errorf("IsWinner: overlay %v : %w", common.BytesToHash(c.owner.Bytes()), err)
+		return false, fmt.Errorf("IsWinner: overlay %v : %w", common.BytesToHash(c.overlay.Bytes()), err)
 	}
 
 	results, err := c.incentivesContractABI.Unpack("isWinner", result)
