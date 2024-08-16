@@ -52,11 +52,11 @@ const (
 	defaultBitSuffixLength             = 4 // the number of bits used to create pseudo addresses for balancing, 2^4, 16 addresses
 	defaultLowWaterMark                = 3 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
 	defaultSaturationPeers             = 8
-	defaultOverSaturationPeers         = 20
+	defaultOverSaturationPeers         = 18
 	defaultBootNodeOverSaturationPeers = 20
 	defaultShortRetry                  = 30 * time.Second
 	defaultTimeToRetry                 = 2 * defaultShortRetry
-	defaultBroadcastBinSize            = 4
+	defaultBroadcastBinSize            = 2
 )
 
 var (
@@ -553,7 +553,7 @@ func (k *Kad) manage() {
 				return
 			case <-k.quit:
 				return
-			case <-time.After(5 * time.Minute):
+			case <-time.After(15 * time.Minute):
 				var neighbors []swarm.Address
 				_ = k.connectedPeers.EachBin(func(addr swarm.Address, bin uint8) (stop bool, jumpToNext bool, err error) {
 					if bin < k.neighborhoodDepth() {
