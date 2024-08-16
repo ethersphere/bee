@@ -48,7 +48,7 @@ const (
 	MaxCursor               = math.MaxUint64
 	DefaultMaxPage   uint64 = 250
 	pageTimeout             = time.Second
-	makeOfferTimeout        = 5 * time.Minute
+	makeOfferTimeout        = 15 * time.Minute
 )
 
 // Interface is the PullSync interface.

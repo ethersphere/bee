@@ -40,6 +40,8 @@ const (
 	recalcPeersDur = time.Minute * 5
 
 	maxChunksPerSecond = 1000 // roughly 4 MB/s
+
+	maxPODelta = 2 // the lowest level of proximity order (of peers) subtracted from the storage radius allowed for chunk syncing.
 )
 
 type Options struct {
@@ -262,6 +264,7 @@ func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uin
 	*/
 
 	if peer.po >= storageRadius {
+
 		// cancel all bins lower than the storage radius
 		for bin := uint8(0); bin < storageRadius; bin++ {
 			peer.cancelBin(bin)
@@ -274,7 +277,7 @@ func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uin
 			}
 		}
 
-	} else {
+	} else if storageRadius-peer.po <= maxPODelta {
 		// cancel all non-po bins, if any
 		for bin := uint8(0); bin < p.bins; bin++ {
 			if bin != peer.po {
@@ -284,6 +287,10 @@ func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uin
 		// sync PO bin only
 		if !peer.isBinSyncing(peer.po) {
 			p.syncPeerBin(ctx, peer, peer.po, peer.cursors[peer.po])
+		}
+	} else {
+		for bin := uint8(0); bin < p.bins; bin++ {
+			peer.cancelBin(bin)
 		}
 	}
 
