@@ -395,10 +395,10 @@ func TestManageWithBalancing(t *testing.T) {
 	var (
 		conns int32 // how many connect calls were made to the p2p mock
 
-		saturationFuncImpl *func(bin uint8, peers, connected *pslice.PSlice, _ kademlia.PeerFilterFunc) bool
-		saturationFunc     = func(bin uint8, peers, connected *pslice.PSlice, filter kademlia.PeerFilterFunc) bool {
+		saturationFuncImpl *func(bin uint8, connected *pslice.PSlice, _ kademlia.PeerFilterFunc) bool
+		saturationFunc     = func(bin uint8, connected *pslice.PSlice, filter kademlia.PeerFilterFunc) bool {
 			f := *saturationFuncImpl
-			return f(bin, peers, connected, filter)
+			return f(bin, connected, filter)
 		}
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
 			SaturationFunc:  saturationFunc,
@@ -409,7 +409,7 @@ func TestManageWithBalancing(t *testing.T) {
 	)
 
 	// implement saturation function (while having access to Kademlia instance)
-	sfImpl := func(bin uint8, peers, connected *pslice.PSlice, _ kademlia.PeerFilterFunc) bool {
+	sfImpl := func(bin uint8, connected *pslice.PSlice, _ kademlia.PeerFilterFunc) bool {
 		return false
 	}
 	saturationFuncImpl = &sfImpl
@@ -1031,7 +1031,7 @@ func TestClosestPeer(t *testing.T) {
 func TestKademlia_SubscribeTopologyChange(t *testing.T) {
 	t.Parallel()
 
-	testSignal := func(t *testing.T, k *kademlia.Kad, c <-chan struct{}) {
+	testSignal := func(t *testing.T, c <-chan struct{}) {
 		t.Helper()
 
 		select {
@@ -1059,7 +1059,7 @@ func TestKademlia_SubscribeTopologyChange(t *testing.T) {
 		addr := swarm.RandAddressAt(t, base, 9)
 		addOne(t, sg, kad, ab, addr)
 
-		testSignal(t, kad, c)
+		testSignal(t, c)
 	})
 
 	t.Run("single subscription, remove peer", func(t *testing.T) {
@@ -1077,10 +1077,10 @@ func TestKademlia_SubscribeTopologyChange(t *testing.T) {
 		addr := swarm.RandAddressAt(t, base, 9)
 		addOne(t, sg, kad, ab, addr)
 
-		testSignal(t, kad, c)
+		testSignal(t, c)
 
 		removeOne(kad, addr)
-		testSignal(t, kad, c)
+		testSignal(t, c)
 	})
 
 	t.Run("multiple subscriptions", func(t *testing.T) {
@@ -1102,8 +1102,8 @@ func TestKademlia_SubscribeTopologyChange(t *testing.T) {
 			addr := swarm.RandAddressAt(t, base, i)
 			addOne(t, sg, kad, ab, addr)
 		}
-		testSignal(t, kad, c1)
-		testSignal(t, kad, c2)
+		testSignal(t, c1)
+		testSignal(t, c2)
 	})
 
 	t.Run("multiple changes", func(t *testing.T) {
@@ -1123,14 +1123,14 @@ func TestKademlia_SubscribeTopologyChange(t *testing.T) {
 			addOne(t, sg, kad, ab, addr)
 		}
 
-		testSignal(t, kad, c)
+		testSignal(t, c)
 
 		for i := 0; i < 4; i++ {
 			addr := swarm.RandAddressAt(t, base, i)
 			addOne(t, sg, kad, ab, addr)
 		}
 
-		testSignal(t, kad, c)
+		testSignal(t, c)
 	})
 
 	t.Run("no depth change", func(t *testing.T) {
