@@ -153,6 +153,9 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 						"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
 					)
 					err = r.removeChunk(ctx, s, oldItem.ChunkAddress, oldItem.BatchID, oldItem.StampHash)
+					if err != nil {
+						return fmt.Errorf("failed removing older chunk %s: %w", oldItem.ChunkAddress, err)
+					}
 				}
 			}
 
