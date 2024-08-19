@@ -145,13 +145,13 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 					return fmt.Errorf("overwrite same chunk. prev %d cur %d batch %s: %w", prev, curr, hex.EncodeToString(chunk.Stamp().BatchID()), storage.ErrOverwriteNewerChunk)
 				}
 
-				r.logger.Warning(
-					"replacing chunk stamp index",
-					"old_chunk", oldItem.ChunkAddress,
-					"new_chunk", chunk.Address(),
-					"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
-				)
 				if !chunk.Address().Equal(oldItem.ChunkAddress) {
+					r.logger.Warning(
+						"replacing chunk stamp index",
+						"old_chunk", oldItem.ChunkAddress,
+						"new_chunk", chunk.Address(),
+						"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
+					)
 					err = r.removeChunk(ctx, s, oldItem.ChunkAddress, oldItem.BatchID, oldItem.StampHash)
 				}
 			}
