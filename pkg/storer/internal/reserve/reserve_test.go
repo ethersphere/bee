@@ -243,7 +243,7 @@ func TestSameChunkAddress(t *testing.T) {
 		ch1 := s1.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 0))
 		s2 := soctesting.GenerateMockSocWithSigner(t, []byte("update"), signer)
 		ch2 := s2.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 1))
-		replace(t, ch1, ch2, 3)
+		replace(t, ch1, ch2, 4)
 	})
 
 	t.Run("different stamp index and newer timestamp", func(t *testing.T) {
@@ -252,7 +252,7 @@ func TestSameChunkAddress(t *testing.T) {
 		ch1 := s1.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 0))
 		s2 := soctesting.GenerateMockSocWithSigner(t, []byte("update"), signer)
 		ch2 := s2.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 1, 1))
-		replace(t, ch1, ch2, 4)
+		replace(t, ch1, ch2, 6)
 	})
 
 	t.Run("not a soc and newer timestamp", func(t *testing.T) {
