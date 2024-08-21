@@ -276,33 +276,34 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return store(ctx)
 	}
 
-	receipt, err := ps.pushToClosest(ctx, chunk, false)
-	if err != nil {
-		if errors.Is(err, topology.ErrWantSelf) {
-			stored, reason = true, "want self"
-			return store(ctx)
+	switch receipt, err := ps.pushToClosest(ctx, chunk, false); {
+	case errors.Is(err, topology.ErrWantSelf):
+		stored, reason = true, "want self"
+		return store(ctx)
+	case errors.Is(err, ErrShallowReceipt):
+		fallthrough
+	case err == nil:
+		ps.metrics.Forwarder.Inc()
+
+		debit, err := ps.accounting.PrepareDebit(ctx, p.Address, price)
+		if err != nil {
+			return fmt.Errorf("prepare debit to peer %s before writeback: %w", p.Address.String(), err)
+		}
+		defer debit.Cleanup()
+
+		attemptedWrite = true
+
+		// pass back the receipt
+		if err := w.WriteMsgWithContext(ctx, receipt); err != nil {
+			return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 		}
 
+		return debit.Apply()
+	default:
 		ps.metrics.Forwarder.Inc()
 		return fmt.Errorf("handler: push to closest chunk %s: %w", chunkAddress, err)
+
 	}
-
-	ps.metrics.Forwarder.Inc()
-
-	debit, err := ps.accounting.PrepareDebit(ctx, p.Address, price)
-	if err != nil {
-		return fmt.Errorf("prepare debit to peer %s before writeback: %w", p.Address.String(), err)
-	}
-	defer debit.Cleanup()
-
-	attemptedWrite = true
-
-	// pass back the receipt
-	if err := w.WriteMsgWithContext(ctx, receipt); err != nil {
-		return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
-	}
-
-	return debit.Apply()
 }
 
 // PushChunkToClosest sends chunk to the closest peer by opening a stream. It then waits for
