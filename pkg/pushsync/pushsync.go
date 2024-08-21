@@ -548,7 +548,6 @@ func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptRes
 	err = action.Apply()
 }
 
-// TODO: metrics
 func (ps *PushSync) checkReceipt(receipt *pb.Receipt) error {
 
 	addr := swarm.NewAddress(receipt.Address)
