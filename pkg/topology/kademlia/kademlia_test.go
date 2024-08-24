@@ -38,7 +38,7 @@ import (
 const spinLockWaitTime = time.Second * 5
 
 var nonConnectableAddress, _ = ma.NewMultiaddr(underlayBase + "16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkA")
-var defaultFilterFunc kademlia.FilterFunc = func(...im.FilterOp) kademlia.PeerFilterFunc {
+var defaultExcludeFunc kademlia.ExcludeFunc = func(...im.ExcludeOp) kademlia.PeerExcludeFunc {
 	return func(swarm.Address) bool { return false }
 }
 
@@ -55,7 +55,7 @@ func TestNeighborhoodDepth(t *testing.T) {
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
 			SaturationPeers: ptrInt(4),
-			FilterFunc:      defaultFilterFunc,
+			FilterFunc:      defaultExcludeFunc,
 		})
 	)
 	kad.SetStorageRadius(0)
@@ -351,7 +351,7 @@ func TestManage(t *testing.T) {
 		saturation               = kademlia.DefaultSaturationPeers
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
 			BitSuffixLength: ptrInt(-1),
-			FilterFunc:      defaultFilterFunc,
+			FilterFunc:      defaultExcludeFunc,
 		})
 	)
 
@@ -395,8 +395,8 @@ func TestManageWithBalancing(t *testing.T) {
 	var (
 		conns int32 // how many connect calls were made to the p2p mock
 
-		saturationFuncImpl *func(bin uint8, connected *pslice.PSlice, _ kademlia.PeerFilterFunc) bool
-		saturationFunc     = func(bin uint8, connected *pslice.PSlice, filter kademlia.PeerFilterFunc) bool {
+		saturationFuncImpl *func(bin uint8, connected *pslice.PSlice, _ kademlia.PeerExcludeFunc) bool
+		saturationFunc     = func(bin uint8, connected *pslice.PSlice, filter kademlia.PeerExcludeFunc) bool {
 			f := *saturationFuncImpl
 			return f(bin, connected, filter)
 		}
@@ -404,12 +404,12 @@ func TestManageWithBalancing(t *testing.T) {
 			SaturationFunc:  saturationFunc,
 			SaturationPeers: ptrInt(4),
 			BitSuffixLength: ptrInt(2),
-			FilterFunc:      defaultFilterFunc,
+			FilterFunc:      defaultExcludeFunc,
 		})
 	)
 
 	// implement saturation function (while having access to Kademlia instance)
-	sfImpl := func(bin uint8, connected *pslice.PSlice, _ kademlia.PeerFilterFunc) bool {
+	sfImpl := func(bin uint8, connected *pslice.PSlice, _ kademlia.PeerExcludeFunc) bool {
 		return false
 	}
 	saturationFuncImpl = &sfImpl
@@ -450,7 +450,7 @@ func TestBinSaturation(t *testing.T) {
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
 			SaturationPeers: ptrInt(2),
 			BitSuffixLength: ptrInt(-1),
-			FilterFunc:      defaultFilterFunc,
+			FilterFunc:      defaultExcludeFunc,
 		})
 	)
 
@@ -503,7 +503,7 @@ func TestOversaturation(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			FilterFunc: defaultFilterFunc,
+			FilterFunc: defaultExcludeFunc,
 		})
 	)
 
@@ -555,7 +555,7 @@ func TestOversaturationBootnode(t *testing.T) {
 			OverSaturationPeers: ptrInt(overSaturationPeers),
 			SaturationPeers:     ptrInt(4),
 			BootnodeMode:        true,
-			FilterFunc:          defaultFilterFunc,
+			FilterFunc:          defaultExcludeFunc,
 		})
 	)
 
@@ -613,7 +613,7 @@ func TestBootnodeMaxConnections(t *testing.T) {
 			BootnodeOverSaturationPeers: ptrInt(bootnodeOverSaturationPeers),
 			SaturationPeers:             ptrInt(4),
 			BootnodeMode:                true,
-			FilterFunc:                  defaultFilterFunc,
+			FilterFunc:                  defaultExcludeFunc,
 		})
 	)
 
@@ -704,7 +704,7 @@ func TestDiscoveryHooks(t *testing.T) {
 	var (
 		conns                    int32
 		_, kad, ab, disc, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			FilterFunc: defaultFilterFunc,
+			FilterFunc: defaultExcludeFunc,
 		})
 		p1, p2, p3 = swarm.RandAddress(t), swarm.RandAddress(t), swarm.RandAddress(t)
 	)
@@ -1277,7 +1277,7 @@ func TestOutofDepthPrune(t *testing.T) {
 			SaturationPeers:     ptrInt(saturationPeers),
 			OverSaturationPeers: ptrInt(overSaturationPeers),
 			PruneFunc:           pruneFunc,
-			FilterFunc:          defaultFilterFunc,
+			FilterFunc:          defaultExcludeFunc,
 		})
 	)
 
@@ -1378,7 +1378,7 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 			LowWaterMark:                ptrInt(0),
 			BootnodeMode:                true,
 			StaticNodes:                 protected,
-			FilterFunc:                  defaultFilterFunc,
+			FilterFunc:                  defaultExcludeFunc,
 		})
 	)
 
@@ -1468,7 +1468,7 @@ func TestAnnounceBgBroadcast_FLAKY(t *testing.T) {
 			}),
 		)
 		_, kad, ab, _, signer = newTestKademliaWithDiscovery(t, disc, &conns, nil, kademlia.Options{
-			FilterFunc: defaultFilterFunc,
+			FilterFunc: defaultExcludeFunc,
 		})
 	)
 
@@ -1537,7 +1537,7 @@ func TestAnnounceNeighborhoodToNeighbor(t *testing.T) {
 			}),
 		)
 		base, kad, ab, _, signer = newTestKademliaWithDiscovery(t, disc, &conns, nil, kademlia.Options{
-			FilterFunc:          defaultFilterFunc,
+			FilterFunc:          defaultExcludeFunc,
 			OverSaturationPeers: ptrInt(4),
 			SaturationPeers:     ptrInt(4),
 		})
