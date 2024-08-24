@@ -86,7 +86,7 @@ type Options struct {
 	BootnodeMode   bool
 	PruneFunc      pruneFunc
 	StaticNodes    []swarm.Address
-	FilterFunc     excludeFunc
+	ExcludeFunc    excludeFunc
 	DataDir        string
 
 	BitSuffixLength             *int
@@ -127,7 +127,7 @@ func newKadOptions(o Options) kadOptions {
 		BootnodeMode:   o.BootnodeMode,
 		PruneFunc:      o.PruneFunc,
 		StaticNodes:    o.StaticNodes,
-		ExcludeFunc:    o.FilterFunc,
+		ExcludeFunc:    o.ExcludeFunc,
 		// copy or use default
 		TimeToRetry:                 defaultValDuration(o.TimeToRetry, defaultTimeToRetry),
 		ShortRetry:                  defaultValDuration(o.ShortRetry, defaultShortRetry),
