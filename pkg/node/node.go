@@ -927,7 +927,7 @@ func NewBee(
 
 		local, network := localStore.StorageRadius(), uint8(networkR.Load())
 		if local <= uint8(o.ReserveMinimumRadius) {
-			return network, nil
+			return max(network, uint8(o.ReserveMinimumRadius)), nil
 		} else {
 			return local, nil
 		}
