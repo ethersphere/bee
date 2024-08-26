@@ -467,14 +467,11 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			ps.measurePushPeer(result.pushTime, result.err)
 
 			if result.err == nil {
-				err := ps.checkReceipt(result.receipt)
-				if err == nil {
+				switch err := ps.checkReceipt(result.receipt); {
+				case err == nil:
 					return result.receipt, nil
-				}
-
-				ps.errSkip.Add(ch.Address(), result.peer, skiplistDur)
-
-				if errors.Is(err, ErrShallowReceipt) {
+				case errors.Is(err, ErrShallowReceipt):
+					ps.errSkip.Add(ch.Address(), result.peer, skiplistDur)
 					return result.receipt, err
 				}
 			}
