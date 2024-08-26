@@ -414,6 +414,13 @@ func (db *DB) StorageRadius() uint8 {
 	return db.reserve.Radius()
 }
 
+func (db *DB) SetStorageRadius(rad uint8) error {
+	if db.reserve == nil {
+		return errors.New("reserve is not configured")
+	}
+	return db.reserve.SetRadius(rad)
+}
+
 func (db *DB) ReserveSize() int {
 	if db.reserve == nil {
 		return 0
