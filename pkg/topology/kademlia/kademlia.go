@@ -56,6 +56,7 @@ const (
 	defaultBootNodeOverSaturationPeers = 20
 	defaultShortRetry                  = 30 * time.Second
 	defaultTimeToRetry                 = 2 * defaultShortRetry
+	defaultPruneWakeup                 = 5 * time.Minute
 	defaultBroadcastBinSize            = 2
 )
 
@@ -92,6 +93,7 @@ type Options struct {
 	BitSuffixLength             *int
 	TimeToRetry                 *time.Duration
 	ShortRetry                  *time.Duration
+	PruneWakeup                 *time.Duration
 	SaturationPeers             *int
 	OverSaturationPeers         *int
 	BootnodeOverSaturationPeers *int
@@ -111,6 +113,7 @@ type kadOptions struct {
 
 	TimeToRetry                 time.Duration
 	ShortRetry                  time.Duration
+	PruneWakeup                 time.Duration
 	BitSuffixLength             int // additional depth of common prefix for bin
 	SaturationPeers             int
 	OverSaturationPeers         int
@@ -131,6 +134,7 @@ func newKadOptions(o Options) kadOptions {
 		// copy or use default
 		TimeToRetry:                 defaultValDuration(o.TimeToRetry, defaultTimeToRetry),
 		ShortRetry:                  defaultValDuration(o.ShortRetry, defaultShortRetry),
+		PruneWakeup:                 defaultValDuration(o.PruneWakeup, defaultPruneWakeup),
 		BitSuffixLength:             defaultValInt(o.BitSuffixLength, defaultBitSuffixLength),
 		SaturationPeers:             defaultValInt(o.SaturationPeers, defaultSaturationPeers),
 		OverSaturationPeers:         defaultValInt(o.OverSaturationPeers, defaultOverSaturationPeers),
@@ -538,6 +542,21 @@ func (k *Kad) manage() {
 				return
 			case <-k.quit:
 				return
+			case <-time.After(k.opt.PruneWakeup):
+				k.opt.PruneFunc(k.neighborhoodDepth())
+			}
+		}
+	}()
+
+	k.wg.Add(1)
+	go func() {
+		defer k.wg.Done()
+		for {
+			select {
+			case <-k.halt:
+				return
+			case <-k.quit:
+				return
 			case <-time.After(5 * time.Minute):
 				start := time.Now()
 				loggerV1.Debug("starting to flush metrics", "start_time", start)
@@ -614,8 +633,6 @@ func (k *Kad) manage() {
 			wg.Wait()
 
 			depth := k.neighborhoodDepth()
-
-			k.opt.PruneFunc(depth)
 
 			loggerV1.Debug("connector finished", "elapsed", time.Since(start), "old_depth", oldDepth, "new_depth", depth)
 
