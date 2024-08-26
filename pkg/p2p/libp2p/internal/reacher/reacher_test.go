@@ -21,7 +21,7 @@ import (
 var defaultOptions = reacher.Options{
 	PingTimeout:        time.Second * 5,
 	Workers:            8,
-	RetryAfterDuration: time.Millisecond,
+	RetryAfterDuration: time.Second,
 }
 
 func TestPingSuccess(t *testing.T) {
