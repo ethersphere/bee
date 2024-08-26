@@ -465,12 +465,14 @@ components:
       properties:
         beeMode:
           type: string
-          enum: [light, full, dev]
+          enum: [light, full, dev, ultra-light, unknown]
           description: >
             Gives back in what mode the Bee client has been started. The modes are mutually exclusive
             * `light` - light node; does not participate in forwarding or storing chunks
             * `full` - full node
             * `dev` - development mode; Bee client for development purposes, blockchain operations are mocked
+            * `ultra-light` - ultra-light node; a light node with chain disabled
+            * `unknown` - unknown mode
         chequebookEnabled:
           type: boolean
         swapEnabled:
@@ -481,11 +483,12 @@ components:
       properties:
         status:
           type: string
-          enum: [ok, nok]
+          enum: [ok, nok, unknown]
           description: >
             Indicates health state of node
             * `ok` - node is healthy
             * `nok` - node is not healthy
+            * `unknown` - health status is unknown
         version:
           type: string
         apiVersion:
@@ -888,6 +891,7 @@ components:
           enum:
             - "light"
             - "full"
+            - "dev"
             - "ultra-light"
             - "unknown"
         proximity:
