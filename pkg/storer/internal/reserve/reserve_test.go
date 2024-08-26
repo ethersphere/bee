@@ -193,7 +193,7 @@ func TestSameChunkAddress(t *testing.T) {
 		}
 	})
 
-	replace := func(t *testing.T, ch1 swarm.Chunk, ch2 swarm.Chunk, binID uint64) {
+	replace := func(t *testing.T, ch1 swarm.Chunk, ch2 swarm.Chunk, ch1BinID, ch2BinID uint64) {
 		t.Helper()
 
 		err := r.Put(ctx, ch1)
@@ -219,18 +219,8 @@ func TestSameChunkAddress(t *testing.T) {
 		bin := swarm.Proximity(baseAddr.Bytes(), ch1.Address().Bytes())
 		checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: bin, BatchID: ch1.Stamp().BatchID(), Address: ch1.Address(), StampHash: ch1StampHash}, true)
 		checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: bin, BatchID: ch2.Stamp().BatchID(), Address: ch2.Address(), StampHash: ch2StampHash}, false)
-		checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin, BinID: binID - 1, StampHash: ch1StampHash}, true)
-		checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin, BinID: binID, StampHash: ch2StampHash}, false)
-
-		chunkBinItem := &reserve.ChunkBinItem{Bin: bin, BinID: binID}
-		err = ts.IndexStore().Get(chunkBinItem)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(chunkBinItem.StampHash, ch2StampHash) {
-			t.Fatalf("expected chunk bin item to be updated")
-		}
-
+		checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin, BinID: ch1BinID, StampHash: ch1StampHash}, true)
+		checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin, BinID: ch2BinID, StampHash: ch2StampHash}, false)
 		ch, err := ts.ChunkStore().Get(ctx, ch2.Address())
 		if err != nil {
 			t.Fatal(err)
@@ -246,7 +236,7 @@ func TestSameChunkAddress(t *testing.T) {
 		ch1 := s1.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 3))
 		s2 := soctesting.GenerateMockSocWithSigner(t, []byte("update"), signer)
 		ch2 := s2.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 4))
-		replace(t, ch1, ch2, 4)
+		replace(t, ch1, ch2, 3, 4)
 	})
 
 	t.Run("different stamp index and newer timestamp", func(t *testing.T) {
@@ -255,7 +245,7 @@ func TestSameChunkAddress(t *testing.T) {
 		ch1 := s1.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 5))
 		s2 := soctesting.GenerateMockSocWithSigner(t, []byte("update"), signer)
 		ch2 := s2.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 1, 6))
-		replace(t, ch1, ch2, 6)
+		replace(t, ch1, ch2, 5, 6)
 	})
 
 	t.Run("not a soc and newer timestamp", func(t *testing.T) {
