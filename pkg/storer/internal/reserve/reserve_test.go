@@ -219,6 +219,9 @@ func TestSameChunkAddress(t *testing.T) {
 		bin := swarm.Proximity(baseAddr.Bytes(), ch1.Address().Bytes())
 		checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: bin, BatchID: ch1.Stamp().BatchID(), Address: ch1.Address(), StampHash: ch1StampHash}, true)
 		checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: bin, BatchID: ch2.Stamp().BatchID(), Address: ch2.Address(), StampHash: ch2StampHash}, false)
+		checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin, BinID: binID - 1, StampHash: ch1StampHash}, true)
+		checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin, BinID: binID, StampHash: ch2StampHash}, false)
+
 		chunkBinItem := &reserve.ChunkBinItem{Bin: bin, BinID: binID}
 		err = ts.IndexStore().Get(chunkBinItem)
 		if err != nil {

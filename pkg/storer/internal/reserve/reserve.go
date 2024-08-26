@@ -165,6 +165,12 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 				BatchID:   sameAddressOldStampIndex.BatchID,
 				StampHash: sameAddressOldStampIndex.StampHash,
 			}
+			// load item to get the binID
+			err = s.IndexStore().Get(oldBatchRadiusItem)
+			if err != nil {
+				return err
+			}
+
 			err = r.deleteWithStamp(s, oldBatchRadiusItem, sameAddressOldChunkStamp)
 			if err != nil {
 				return err
