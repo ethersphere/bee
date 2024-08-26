@@ -180,7 +180,7 @@ func TestSameChunkAddress(t *testing.T) {
 	t.Run("different stamp index and older timestamp", func(t *testing.T) {
 		batch := postagetesting.MustNewBatch()
 		s1 := soctesting.GenerateMockSocWithSigner(t, []byte("data"), signer)
-		ch1 := s1.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 1))
+		ch1 := s1.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 2))
 		s2 := soctesting.GenerateMockSocWithSigner(t, []byte("update"), signer)
 		ch2 := s2.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 1, 0))
 		err = r.Put(ctx, ch1)
@@ -240,25 +240,25 @@ func TestSameChunkAddress(t *testing.T) {
 	t.Run("same stamp index and newer timestamp", func(t *testing.T) {
 		batch := postagetesting.MustNewBatch()
 		s1 := soctesting.GenerateMockSocWithSigner(t, []byte("data"), signer)
-		ch1 := s1.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 0))
+		ch1 := s1.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 3))
 		s2 := soctesting.GenerateMockSocWithSigner(t, []byte("update"), signer)
-		ch2 := s2.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 1))
+		ch2 := s2.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 4))
 		replace(t, ch1, ch2, 4)
 	})
 
 	t.Run("different stamp index and newer timestamp", func(t *testing.T) {
 		batch := postagetesting.MustNewBatch()
 		s1 := soctesting.GenerateMockSocWithSigner(t, []byte("data"), signer)
-		ch1 := s1.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 0))
+		ch1 := s1.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 5))
 		s2 := soctesting.GenerateMockSocWithSigner(t, []byte("update"), signer)
-		ch2 := s2.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 1, 1))
+		ch2 := s2.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 1, 6))
 		replace(t, ch1, ch2, 6)
 	})
 
 	t.Run("not a soc and newer timestamp", func(t *testing.T) {
 		batch := postagetesting.MustNewBatch()
-		ch1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 0))
-		ch2 := swarm.NewChunk(ch1.Address(), []byte("update")).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 1))
+		ch1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 7))
+		ch2 := swarm.NewChunk(ch1.Address(), []byte("update")).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 8))
 		err := r.Put(ctx, ch1)
 		if err != nil {
 			t.Fatal(err)

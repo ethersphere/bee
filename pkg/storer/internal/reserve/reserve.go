@@ -123,7 +123,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			return fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
 		}
 
-		sameAddressOldChunkStamp, err := chunkstamp.LoadWithBatchID(s.IndexStore(), reserveNamespace, chunk.Address(), chunk.Stamp().BatchID())
+		sameAddressOldChunkStamp, err := chunkstamp.Load(s.IndexStore(), reserveNamespace, chunk.Address())
 		if err != nil && !errors.Is(err, storage.ErrNotFound) {
 			return err
 		}

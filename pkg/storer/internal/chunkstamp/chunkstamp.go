@@ -11,7 +11,7 @@ import (
 	"fmt"
 
 	"github.com/ethersphere/bee/v2/pkg/postage"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/storageutil"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
