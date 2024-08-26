@@ -9,6 +9,7 @@ import (
 	"errors"
 
 	"github.com/ethersphere/bee/v2/pkg/pusher"
+	"github.com/ethersphere/bee/v2/pkg/pushsync"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
@@ -56,7 +57,7 @@ func (db *DB) DirectUpload() PutterSession {
 							case <-db.quit:
 								return ErrDBQuit
 							case err := <-op.Err:
-								if errors.Is(err, pusher.ErrShallowReceipt) {
+								if errors.Is(err, pushsync.ErrShallowReceipt) {
 									logger.Debug("direct upload: shallow receipt received, retrying", "chunk", ch.Address())
 								} else if errors.Is(err, topology.ErrNotFound) {
 									logger.Debug("direct upload: no peers available, retrying", "chunk", ch.Address())

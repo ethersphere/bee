@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/v2/pkg/pusher"
+	"github.com/ethersphere/bee/v2/pkg/pushsync"
 	"github.com/ethersphere/bee/v2/pkg/retrieval"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	chunktesting "github.com/ethersphere/bee/v2/pkg/storage/testing"
@@ -207,7 +207,7 @@ func testNetStore(t *testing.T, newStorer func(r retrieval.Interface) (*storer.D
 					}
 					if count > 0 {
 						count--
-						op.Err <- pusher.ErrShallowReceipt
+						op.Err <- pushsync.ErrShallowReceipt
 					} else {
 						op.Err <- nil
 					}
