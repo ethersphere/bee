@@ -35,7 +35,7 @@ components:
           $ref: "#/components/schemas/PublicKey"
 
     BigInt:
-      description: Numeric string that represents integer which might exceeds `Number.MAX_SAFE_INTEGER` limit (2^53-1)
+      description: Numeric string that represents integer which might exceed `Number.MAX_SAFE_INTEGER` limit (2^53-1)
       type: string
       example: "1000000000000000000"
 
