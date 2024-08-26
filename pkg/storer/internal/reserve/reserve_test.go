@@ -13,9 +13,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
+	soctesting "github.com/ethersphere/bee/v2/pkg/soc/testing"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	chunk "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal"
@@ -133,6 +135,142 @@ func TestReserveChunkType(t *testing.T) {
 	if storedChunksSO != 0 {
 		t.Fatal("unexpected number of single owner chunks")
 	}
+}
+
+func TestSameChunkAddress(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	baseAddr := swarm.RandAddress(t)
+
+	ts := internal.NewInmemStorage()
+
+	r, err := reserve.New(
+		baseAddr,
+		ts,
+		0, kademlia.NewTopologyDriver(),
+		log.Noop,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	privKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := crypto.NewDefaultSigner(privKey)
+
+	t.Run("same stamp index and older timestamp", func(t *testing.T) {
+		batch := postagetesting.MustNewBatch()
+		s1 := soctesting.GenerateMockSocWithSigner(t, []byte("data"), signer)
+		ch1 := s1.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 1))
+		s2 := soctesting.GenerateMockSocWithSigner(t, []byte("update"), signer)
+		ch2 := s2.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 0))
+		err = r.Put(ctx, ch1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = r.Put(ctx, ch2)
+		if !errors.Is(err, storage.ErrOverwriteNewerChunk) {
+			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("different stamp index and older timestamp", func(t *testing.T) {
+		batch := postagetesting.MustNewBatch()
+		s1 := soctesting.GenerateMockSocWithSigner(t, []byte("data"), signer)
+		ch1 := s1.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 2))
+		s2 := soctesting.GenerateMockSocWithSigner(t, []byte("update"), signer)
+		ch2 := s2.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 1, 0))
+		err = r.Put(ctx, ch1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = r.Put(ctx, ch2)
+		if !errors.Is(err, storage.ErrOverwriteNewerChunk) {
+			t.Fatal("expected error")
+		}
+	})
+
+	replace := func(t *testing.T, ch1 swarm.Chunk, ch2 swarm.Chunk, ch1BinID, ch2BinID uint64) {
+		t.Helper()
+
+		err := r.Put(ctx, ch1)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = r.Put(ctx, ch2)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		ch1StampHash, err := ch1.Stamp().Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		ch2StampHash, err := ch2.Stamp().Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		bin := swarm.Proximity(baseAddr.Bytes(), ch1.Address().Bytes())
+		checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: bin, BatchID: ch1.Stamp().BatchID(), Address: ch1.Address(), StampHash: ch1StampHash}, true)
+		checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: bin, BatchID: ch2.Stamp().BatchID(), Address: ch2.Address(), StampHash: ch2StampHash}, false)
+		checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin, BinID: ch1BinID, StampHash: ch1StampHash}, true)
+		checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin, BinID: ch2BinID, StampHash: ch2StampHash}, false)
+		ch, err := ts.ChunkStore().Get(ctx, ch2.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(ch.Data(), ch2.Data()) {
+			t.Fatalf("expected chunk data to be updated")
+		}
+	}
+
+	t.Run("same stamp index and newer timestamp", func(t *testing.T) {
+		batch := postagetesting.MustNewBatch()
+		s1 := soctesting.GenerateMockSocWithSigner(t, []byte("data"), signer)
+		ch1 := s1.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 3))
+		s2 := soctesting.GenerateMockSocWithSigner(t, []byte("update"), signer)
+		ch2 := s2.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 4))
+		replace(t, ch1, ch2, 3, 4)
+	})
+
+	t.Run("different stamp index and newer timestamp", func(t *testing.T) {
+		batch := postagetesting.MustNewBatch()
+		s1 := soctesting.GenerateMockSocWithSigner(t, []byte("data"), signer)
+		ch1 := s1.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 5))
+		s2 := soctesting.GenerateMockSocWithSigner(t, []byte("update"), signer)
+		ch2 := s2.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 1, 6))
+		replace(t, ch1, ch2, 5, 6)
+	})
+
+	t.Run("not a soc and newer timestamp", func(t *testing.T) {
+		batch := postagetesting.MustNewBatch()
+		ch1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 7))
+		ch2 := swarm.NewChunk(ch1.Address(), []byte("update")).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 8))
+		err := r.Put(ctx, ch1)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = r.Put(ctx, ch2)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		ch, err := ts.ChunkStore().Get(ctx, ch2.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(ch.Data(), ch1.Data()) {
+			t.Fatalf("expected chunk data to not be updated")
+		}
+	})
 }
 
 func TestReplaceOldIndex(t *testing.T) {

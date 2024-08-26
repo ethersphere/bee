@@ -185,6 +185,12 @@ func Load(s storage.Reader, namespace string, chunk swarm.Chunk) (*Item, error) 
 	return item, nil
 }
 
+// LoadWithStamp returns stamp index record related to the given namespace and stamp.
+func LoadWithStamp(s storage.Reader, namespace string, stamp swarm.Stamp) (*Item, error) {
+	ch := swarm.NewChunk(swarm.EmptyAddress, nil).WithStamp(stamp)
+	return Load(s, namespace, ch)
+}
+
 // Store creates new or updated an existing stamp index
 // record related to the given namespace and chunk.
 func Store(s storage.IndexStore, namespace string, chunk swarm.Chunk) error {
