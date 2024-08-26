@@ -1264,6 +1264,7 @@ func TestOutofDepthPrune(t *testing.T) {
 
 		saturationPeers     = 4
 		overSaturationPeers = 16
+		pruneWakeup         = time.Millisecond * 100
 		pruneFuncImpl       *func(uint8)
 		pruneMux            = sync.Mutex{}
 		pruneFunc           = func(depth uint8) {
@@ -1278,6 +1279,7 @@ func TestOutofDepthPrune(t *testing.T) {
 			OverSaturationPeers: ptrInt(overSaturationPeers),
 			PruneFunc:           pruneFunc,
 			ExcludeFunc:         defaultExcludeFunc,
+			PruneWakeup:         &pruneWakeup,
 		})
 	)
 
