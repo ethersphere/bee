@@ -12,12 +12,9 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
-	"fmt"
-	"strconv"
 	"sync"
 	"time"
 
-	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/pushsync"
@@ -53,7 +50,6 @@ type Service struct {
 	storer            Storer
 	pushSyncer        pushsync.PushSyncer
 	validStamp        postage.ValidStampFn
-	radius            func() (uint8, error)
 	logger            log.Logger
 	metrics           metrics
 	quit              chan struct{}
@@ -71,13 +67,11 @@ const (
 
 var (
 	ErrInvalidAddress = errors.New("invalid address")
-	ErrShallowReceipt = errors.New("shallow receipt")
 )
 
 func New(
 	networkID uint64,
 	storer Storer,
-	radius func() (uint8, error),
 	pushSyncer pushsync.PushSyncer,
 	validStamp postage.ValidStampFn,
 	logger log.Logger,
@@ -89,7 +83,6 @@ func New(
 		storer:            storer,
 		pushSyncer:        pushSyncer,
 		validStamp:        validStamp,
-		radius:            radius,
 		logger:            logger.WithName(loggerName).Register(),
 		metrics:           newMetrics(),
 		quit:              make(chan struct{}),
@@ -110,14 +103,6 @@ func (s *Service) chunksWorker(warmupTime time.Duration) {
 	case <-time.After(warmupTime):
 	case <-s.quit:
 		return
-	}
-
-	// fetch the network radius before starting pusher worker
-	r, err := s.radius()
-	if err != nil {
-		s.logger.Error(err, "pusher: initial radius error")
-	} else {
-		s.logger.Info("pusher: warmup period complete", "radius", r)
 	}
 
 	var (
@@ -283,11 +268,15 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 			loggerV1.Error(err, "pusher: failed reporting chunk")
 			return true, err
 		}
-	case err == nil:
-		if err := s.checkReceipt(receipt, loggerV1); err != nil {
-			loggerV1.Error(err, "pusher: failed checking receipt", "chunk_address", op.Chunk.Address())
+	case errors.Is(err, pushsync.ErrShallowReceipt):
+		if retry := s.shallowReceipt(receipt); retry {
 			return true, err
 		}
+		if err := s.storer.Report(ctx, op.Chunk, storage.ChunkSynced); err != nil {
+			loggerV1.Error(err, "pusher: failed to report sync status")
+			return true, err
+		}
+	case err == nil:
 		if err := s.storer.Report(ctx, op.Chunk, storage.ChunkSynced); err != nil {
 			loggerV1.Error(err, "pusher: failed to report sync status")
 			return true, err
@@ -303,10 +292,7 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) error {
 	loggerV1 := logger.V(1).Build()
 
-	var (
-		receipt *pushsync.Receipt
-		err     error
-	)
+	var err error
 
 	defer func() {
 		s.inflight.delete(op.Chunk)
@@ -328,7 +314,7 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 		return err
 	}
 
-	switch receipt, err = s.pushSyncer.PushChunkToClosest(ctx, op.Chunk); {
+	switch _, err = s.pushSyncer.PushChunkToClosest(ctx, op.Chunk); {
 	case errors.Is(err, topology.ErrWantSelf):
 		// store the chunk
 		loggerV1.Debug("chunk stays here, i'm the closest node", "chunk_address", op.Chunk.Address())
@@ -336,46 +322,19 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 		if err != nil {
 			loggerV1.Error(err, "pusher: failed to store chunk")
 		}
-	case err == nil:
-		err = s.checkReceipt(receipt, loggerV1)
-		if err != nil {
-			loggerV1.Error(err, "pusher: failed checking receipt", "chunk_address", op.Chunk.Address())
-		}
-	default:
+	case err != nil:
 		loggerV1.Error(err, "pusher: failed PushChunkToClosest")
 	}
+
 	return err
 }
 
-func (s *Service) checkReceipt(receipt *pushsync.Receipt, loggerV1 log.Logger) error {
-	addr := receipt.Address
-	publicKey, err := crypto.Recover(receipt.Signature, addr.Bytes())
-	if err != nil {
-		return fmt.Errorf("pusher: receipt recover: %w", err)
+func (s *Service) shallowReceipt(receipt *pushsync.Receipt) bool {
+	if s.attempts.try(receipt.Address) {
+		return true
 	}
-
-	peer, err := crypto.NewOverlayAddress(*publicKey, s.networkID, receipt.Nonce)
-	if err != nil {
-		return fmt.Errorf("pusher: receipt storer address: %w", err)
-	}
-
-	po := swarm.Proximity(addr.Bytes(), peer.Bytes())
-
-	d, err := s.radius()
-	if err != nil {
-		return fmt.Errorf("pusher: storage radius: %w", err)
-	}
-
-	// if the receipt po is out of depth AND the receipt has not yet hit the maximum retry limit, reject the receipt.
-	if po < d && s.attempts.try(addr) {
-		s.metrics.ShallowReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
-		s.metrics.ShallowReceipt.Inc()
-		return fmt.Errorf("pusher: shallow receipt depth %d, want at least %d, chunk_address %s: %w", po, d, addr, ErrShallowReceipt)
-	}
-	loggerV1.Debug("chunk pushed", "chunk_address", addr, "peer_address", peer, "proximity_order", po)
-	s.metrics.ReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
-	s.attempts.delete(addr)
-	return nil
+	s.attempts.delete(receipt.Address)
+	return false
 }
 
 func (s *Service) AddFeed(c <-chan *Op) {

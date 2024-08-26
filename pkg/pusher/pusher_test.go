@@ -136,7 +136,6 @@ func TestChunkSyncing(t *testing.T) {
 		pushSyncService,
 		defaultMockValidStamp,
 		defaultRetryCount,
-		0,
 	)
 
 	t.Run("deferred", func(t *testing.T) {
@@ -184,7 +183,6 @@ func TestChunkStored(t *testing.T) {
 		pushSyncService,
 		defaultMockValidStamp,
 		defaultRetryCount,
-		0,
 	)
 
 	t.Run("deferred", func(t *testing.T) {
@@ -243,7 +241,6 @@ func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
 		pushSyncService,
 		defaultMockValidStamp,
 		defaultRetryCount,
-		0,
 	)
 
 	storer.chunks <- chunk
@@ -288,7 +285,6 @@ func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
 		pushSyncService,
 		defaultMockValidStamp,
 		defaultRetryCount,
-		0,
 	)
 
 	storer.chunks <- chunk
@@ -309,7 +305,7 @@ func TestPusherRetryShallow(t *testing.T) {
 		key, _      = crypto.GenerateSecp256k1Key()
 		signer      = crypto.NewDefaultSigner(key)
 		callCount   = int32(0)
-		retryCount  = 3
+		retryCount  = 3 // pushync will retry on behalf of push for shallow receipts, so no retries are made on the side of the pusher.
 	)
 	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
 		atomic.AddInt32(&callCount, 1)
@@ -319,7 +315,7 @@ func TestPusherRetryShallow(t *testing.T) {
 			Signature: signature,
 			Nonce:     block,
 		}
-		return receipt, nil
+		return receipt, pushsync.ErrShallowReceipt
 	})
 
 	storer := &mockStorer{
@@ -332,7 +328,6 @@ func TestPusherRetryShallow(t *testing.T) {
 		pushSyncService,
 		defaultMockValidStamp,
 		defaultRetryCount,
-		31,
 	)
 
 	// generate a chunk at PO 1 with closestPeer, meaning that we get a
@@ -383,7 +378,6 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 		pushSyncService,
 		validStamp,
 		defaultRetryCount,
-		0,
 	)
 
 	t.Run("deferred", func(t *testing.T) {
@@ -420,13 +414,10 @@ func createPusher(
 	pushSyncService pushsync.PushSyncer,
 	validStamp postage.ValidStampFn,
 	retryCount int,
-	radius uint8,
 ) *pusher.Service {
 	t.Helper()
 
-	radiusFunc := func() (uint8, error) { return radius, nil }
-
-	pusherService := pusher.New(1, storer, radiusFunc, pushSyncService, validStamp, log.Noop, 0, retryCount)
+	pusherService := pusher.New(1, storer, pushSyncService, validStamp, log.Noop, 0, retryCount)
 	testutil.CleanupCloser(t, pusherService)
 
 	return pusherService

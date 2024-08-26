@@ -884,12 +884,6 @@ func NewBee(
 
 	validStamp := postage.ValidStamp(batchStore)
 
-	pushSyncProtocol := pushsync.New(swarmAddress, nonce, p2ps, localStore, kad, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
-	b.pushSyncCloser = pushSyncProtocol
-
-	// set the pushSyncer in the PSS
-	pssService.SetPushSyncer(pushSyncProtocol)
-
 	nodeStatus := status.NewService(logger, p2ps, kad, beeNodeMode.String(), batchStore, localStore)
 	if err = p2ps.AddProtocol(nodeStatus.Protocol()); err != nil {
 		return nil, fmt.Errorf("status service: %w", err)
@@ -939,10 +933,16 @@ func NewBee(
 		}
 	}
 
+	pushSyncProtocol := pushsync.New(swarmAddress, networkID, nonce, p2ps, localStore, waitNetworkRFunc, kad, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
+	b.pushSyncCloser = pushSyncProtocol
+
+	// set the pushSyncer in the PSS
+	pssService.SetPushSyncer(pushSyncProtocol)
+
 	retrieval := retrieval.New(swarmAddress, waitNetworkRFunc, localStore, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
 	localStore.SetRetrievalService(retrieval)
 
-	pusherService := pusher.New(networkID, localStore, waitNetworkRFunc, pushSyncProtocol, validStamp, logger, warmupTime, pusher.DefaultRetryCount)
+	pusherService := pusher.New(networkID, localStore, pushSyncProtocol, validStamp, logger, warmupTime, pusher.DefaultRetryCount)
 	b.pusherCloser = pusherService
 
 	pusherService.AddFeed(localStore.PusherFeed())

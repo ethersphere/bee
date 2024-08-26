@@ -164,7 +164,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 		var preemptiveTicker <-chan time.Time
 
 		if !sourcePeerAddr.IsZero() {
-			skip.Add(chunkAddr, sourcePeerAddr, skippeers.MaxDuration)
+			skip.Forever(chunkAddr, sourcePeerAddr)
 		}
 
 		quit := make(chan struct{})
@@ -256,7 +256,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 					retry()
 					continue
 				}
-				skip.Add(chunkAddr, peer, skippeers.MaxDuration)
+				skip.Forever(chunkAddr, peer)
 
 				inflight++
 
