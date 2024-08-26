@@ -305,11 +305,11 @@ func (c *Collector) IsUnreachable(addr swarm.Address) bool {
 	return cs.ReachabilityStatus != p2p.ReachabilityStatusPublic
 }
 
-// FilterOp is a function type used to filter peers on certain fields.
-type FilterOp func(*Counters) bool
+// ExcludeOp is a function type used to filter peers on certain fields.
+type ExcludeOp func(*Counters) bool
 
 // Reachable is used to filter reachable or unreachable peers based on r.
-func Reachability(filterReachable bool) FilterOp {
+func Reachability(filterReachable bool) ExcludeOp {
 	return func(cs *Counters) bool {
 		reachble := cs.ReachabilityStatus == p2p.ReachabilityStatusPublic
 		if filterReachable {
@@ -320,7 +320,7 @@ func Reachability(filterReachable bool) FilterOp {
 }
 
 // Unreachable is used to filter unhealthy peers.
-func Health(filterHealthy bool) FilterOp {
+func Health(filterHealthy bool) ExcludeOp {
 	return func(cs *Counters) bool {
 		if filterHealthy {
 			return cs.Healthy
@@ -329,8 +329,8 @@ func Health(filterHealthy bool) FilterOp {
 	}
 }
 
-// Filter returns true if the addr does not pass any filter operation.
-func (c *Collector) Filter(addr swarm.Address, fop ...FilterOp) bool {
+// Exclude returns false if the addr passes all exclusion operations.
+func (c *Collector) Exclude(addr swarm.Address, fop ...ExcludeOp) bool {
 	val, ok := c.counters.Load(addr.ByteString())
 	if !ok {
 		return true
