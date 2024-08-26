@@ -927,7 +927,10 @@ func NewBee(
 
 		local, network := localStore.StorageRadius(), uint8(networkR.Load())
 		if local <= uint8(o.ReserveMinimumRadius) {
-			localStore.SetStorageRadius(uint8(o.ReserveMinimumRadius))
+			err := localStore.SetStorageRadius(uint8(o.ReserveMinimumRadius))
+			if err != nil {
+				logger.Error(err, "fail to add minimum radius to the reserve")
+			}
 			return max(network, uint8(o.ReserveMinimumRadius)), nil
 		} else {
 			return local, nil
