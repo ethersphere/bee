@@ -161,7 +161,7 @@ func (db *DB) reserveWorker(ctx context.Context) {
 				continue
 			}
 
-			if count < threshold(db.reserve.Capacity()) && db.syncer.SyncRate() == 0 && radius > 0 {
+			if count < threshold(db.reserve.Capacity()) && db.syncer.SyncRate() == 0 && radius > db.reserve.MinimumRadius() {
 				radius--
 				if err := db.reserve.SetRadius(radius); err != nil {
 					db.logger.Error(err, "reserve set radius")
@@ -412,13 +412,6 @@ func (db *DB) StorageRadius() uint8 {
 		return 0
 	}
 	return db.reserve.Radius()
-}
-
-func (db *DB) SetStorageRadius(rad uint8) error {
-	if db.reserve == nil {
-		return errors.New("reserve is not configured")
-	}
-	return db.reserve.SetRadius(rad)
 }
 
 func (db *DB) ReserveSize() int {

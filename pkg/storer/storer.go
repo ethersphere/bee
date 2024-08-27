@@ -384,6 +384,8 @@ type Options struct {
 
 	CacheCapacity      uint64
 	CacheMinEvictCount uint64
+
+	ReserveMinimumRadius uint
 }
 
 func defaultOptions() *Options {
@@ -545,6 +547,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			opts.ReserveCapacity,
 			opts.RadiusSetter,
 			logger,
+			opts.ReserveMinimumRadius,
 		)
 		if err != nil {
 			return nil, err
