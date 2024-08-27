@@ -41,6 +41,7 @@ func TestReserve(t *testing.T) {
 		ts,
 		0, kademlia.NewTopologyDriver(),
 		log.Noop,
+		1,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -92,6 +93,7 @@ func TestReserveChunkType(t *testing.T) {
 		ts,
 		0, kademlia.NewTopologyDriver(),
 		log.Noop,
+		1,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -150,6 +152,7 @@ func TestSameChunkAddress(t *testing.T) {
 		ts,
 		0, kademlia.NewTopologyDriver(),
 		log.Noop,
+		1,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -285,6 +288,7 @@ func TestReplaceOldIndex(t *testing.T) {
 		ts,
 		0, kademlia.NewTopologyDriver(),
 		log.Noop,
+		1,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -348,6 +352,7 @@ func TestEvict(t *testing.T) {
 		ts,
 		0, kademlia.NewTopologyDriver(),
 		log.Noop,
+		1,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -417,6 +422,7 @@ func TestEvictMaxCount(t *testing.T) {
 		ts,
 		0, kademlia.NewTopologyDriver(),
 		log.Noop,
+		1,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -477,6 +483,7 @@ func TestIterate(t *testing.T) {
 			ts,
 			0, kademlia.NewTopologyDriver(),
 			log.Noop,
+			1,
 		)
 		if err != nil {
 			t.Fatal(err)
