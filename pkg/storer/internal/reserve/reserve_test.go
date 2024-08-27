@@ -153,7 +153,7 @@ func TestSameChunkAddress(t *testing.T) {
 		0,
 		kademlia.NewTopologyDriver(),
 		log.Noop,
-		1,
+		uint(1),
 	)
 	if err != nil {
 		t.Fatal(err)
