@@ -293,7 +293,7 @@ func NewBee(
 			}
 
 			if nonceExists {
-				logger.Info("Override nonce %d to %d and clean state for neighborhood %s", nonce, newNonce, targetNeighborhood)
+				logger.Info("Override nonce %x to %x and clean state for neighborhood %s", nonce, newNonce, targetNeighborhood)
 				logger.Warning("you have another 10 seconds to change your mind and kill this process with CTRL-C...")
 				time.Sleep(10 * time.Second)
 
