@@ -446,6 +446,7 @@ type workerOpts struct {
 	reserveWakeupDuration time.Duration
 	reserveMinEvictCount  uint64
 	cacheMinEvictCount    uint64
+	minimumRadius         uint8
 }
 
 // New returns a newly constructed DB object which implements all the above
@@ -531,6 +532,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			reserveWakeupDuration: opts.ReserveWakeUpDuration,
 			reserveMinEvictCount:  opts.ReserveMinEvictCount,
 			cacheMinEvictCount:    opts.CacheMinEvictCount,
+			minimumRadius:         uint8(opts.ReserveMinimumRadius),
 		},
 		directUploadLimiter: make(chan struct{}, pusher.ConcurrentPushes),
 		pinIntegrity:        pinIntegrity,
@@ -547,7 +549,6 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			opts.ReserveCapacity,
 			opts.RadiusSetter,
 			logger,
-			opts.ReserveMinimumRadius,
 		)
 		if err != nil {
 			return nil, err

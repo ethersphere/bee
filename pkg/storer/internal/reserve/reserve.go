@@ -39,8 +39,6 @@ type Reserve struct {
 
 	multx *multex.Multex
 	st    transaction.Storage
-
-	minimumRadius uint
 }
 
 func New(
@@ -49,18 +47,15 @@ func New(
 	capacity int,
 	radiusSetter topology.SetStorageRadiuser,
 	logger log.Logger,
-	minimumRadius uint,
-
 ) (*Reserve, error) {
 
 	rs := &Reserve{
-		baseAddr:      baseAddr,
-		st:            st,
-		capacity:      capacity,
-		radiusSetter:  radiusSetter,
-		logger:        logger.WithName(reserveNamespace).Register(),
-		multx:         multex.New(),
-		minimumRadius: minimumRadius,
+		baseAddr:     baseAddr,
+		st:           st,
+		capacity:     capacity,
+		radiusSetter: radiusSetter,
+		logger:       logger.WithName(reserveNamespace).Register(),
+		multx:        multex.New(),
 	}
 
 	err := st.Run(context.Background(), func(s transaction.Store) error {
@@ -521,10 +516,6 @@ func (r *Reserve) IterateChunksItems(startBin uint8, cb func(*ChunkBinItem) (boo
 
 func (r *Reserve) Radius() uint8 {
 	return uint8(r.radius.Load())
-}
-
-func (r *Reserve) MinimumRadius() uint8 {
-	return uint8(r.minimumRadius)
 }
 
 func (r *Reserve) Size() int {
