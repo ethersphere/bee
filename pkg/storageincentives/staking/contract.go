@@ -29,6 +29,7 @@ var (
 	ErrInsufficientStake       = errors.New("insufficient stake")
 	ErrNotImplemented          = errors.New("not implemented")
 	ErrNotPaused               = errors.New("contract is not paused")
+	ErrUnexpectedLength        = errors.New("unexpected results length")
 
 	approveDescription       = "Approve tokens for stake deposit operations"
 	depositStakeDescription  = "Deposit Stake"
@@ -322,14 +323,13 @@ func (c *contract) getPotentialStake(ctx context.Context) (*big.Int, error) {
 	// committedStake uint256,
 	// potentialStake uint256,
 	// lastUpdatedBlockNumber uint256,
-	// isValue bool
 	results, err := c.stakingContractABI.Unpack("stakes", result)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(results) < 5 {
-		return nil, errors.New("unexpected empty results")
+	if len(results) < 4 {
+		return nil, ErrUnexpectedLength
 	}
 
 	return abi.ConvertType(results[2], new(big.Int)).(*big.Int), nil
