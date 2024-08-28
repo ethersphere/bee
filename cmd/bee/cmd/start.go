@@ -339,7 +339,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		NeighborhoodSuggester:         neighborhoodSuggester,
 		WhitelistedWithdrawalAddress:  c.config.GetStringSlice(optionNameWhitelistedWithdrawalAddress),
 		TrxDebugMode:                  c.config.GetBool(optionNameTransactionDebugMode),
-		ReserveMinimumRadius:          c.config.GetUint(optionReserveMinimumRadius),
+		MinimumStorageRadius:          c.config.GetUint(optionMinimumStorageRadius),
 	})
 
 	return b, err

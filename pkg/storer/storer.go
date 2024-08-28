@@ -385,7 +385,7 @@ type Options struct {
 	CacheCapacity      uint64
 	CacheMinEvictCount uint64
 
-	ReserveMinimumRadius uint
+	MinimumStorageRadius uint
 }
 
 func defaultOptions() *Options {
@@ -532,7 +532,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			reserveWakeupDuration: opts.ReserveWakeUpDuration,
 			reserveMinEvictCount:  opts.ReserveMinEvictCount,
 			cacheMinEvictCount:    opts.CacheMinEvictCount,
-			minimumRadius:         uint8(opts.ReserveMinimumRadius),
+			minimumRadius:         uint8(opts.MinimumStorageRadius),
 		},
 		directUploadLimiter: make(chan struct{}, pusher.ConcurrentPushes),
 		pinIntegrity:        pinIntegrity,

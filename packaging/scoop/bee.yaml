@@ -65,4 +65,4 @@ password-file: "./password"
 ## triggers connection to main network
 # mainnet: true
 ## minimum radius storage threshold
-# reserve-minimum-radius: 0
+# minimum-storage-radius: 0
