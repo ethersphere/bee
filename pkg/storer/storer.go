@@ -384,6 +384,8 @@ type Options struct {
 
 	CacheCapacity      uint64
 	CacheMinEvictCount uint64
+
+	ReserveMinimumRadius uint
 }
 
 func defaultOptions() *Options {
@@ -444,6 +446,7 @@ type workerOpts struct {
 	reserveWakeupDuration time.Duration
 	reserveMinEvictCount  uint64
 	cacheMinEvictCount    uint64
+	minimumRadius         uint8
 }
 
 // New returns a newly constructed DB object which implements all the above
@@ -529,6 +532,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			reserveWakeupDuration: opts.ReserveWakeUpDuration,
 			reserveMinEvictCount:  opts.ReserveMinEvictCount,
 			cacheMinEvictCount:    opts.CacheMinEvictCount,
+			minimumRadius:         uint8(opts.ReserveMinimumRadius),
 		},
 		directUploadLimiter: make(chan struct{}, pusher.ConcurrentPushes),
 		pinIntegrity:        pinIntegrity,
