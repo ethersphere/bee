@@ -40,6 +40,7 @@ var (
 
 var (
 	ErrPostageSyncingStalled = errors.New("postage syncing stalled")
+	ErrPostagePaused         = errors.New("postage contract is paused")
 )
 
 type BlockHeightContractFilterer interface {
@@ -112,6 +113,7 @@ func (l *listener) filterQuery(from, to *big.Int) ethereum.FilterQuery {
 				l.batchTopUpTopic,
 				l.batchDepthIncreaseTopic,
 				l.priceUpdateTopic,
+				l.pausedTopic,
 			},
 		},
 	}
@@ -176,7 +178,7 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 		)
 	case l.pausedTopic:
 		l.logger.Warning("Postage contract is paused.")
-		return context.Canceled
+		return ErrPostagePaused
 	default:
 		l.metrics.EventErrors.Inc()
 		return errors.New("unknown event")
