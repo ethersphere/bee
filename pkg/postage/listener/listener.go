@@ -112,6 +112,7 @@ func (l *listener) filterQuery(from, to *big.Int) ethereum.FilterQuery {
 				l.batchTopUpTopic,
 				l.batchDepthIncreaseTopic,
 				l.priceUpdateTopic,
+				l.pausedTopic,
 			},
 		},
 	}
