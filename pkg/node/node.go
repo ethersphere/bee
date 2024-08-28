@@ -758,11 +758,12 @@ func NewBee(
 		logger.Info("waiting to sync postage contract data, this may take a while... more info available in Debug loglevel")
 
 		paused, err := postageStampContractService.Paused(ctx)
-		if paused {
-			return nil, fmt.Errorf("postage contract is paused: %w", err)
-		}
 		if err != nil {
 			logger.Error(err, "Error checking postage contract is paused")
+		}
+
+		if paused {
+			return nil, errors.New("postage contract is paused")
 		}
 
 		if o.FullNodeMode {
