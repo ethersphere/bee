@@ -340,6 +340,8 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 		return nil
 	}
 
+	s.metrics.SentOffered.Add(float64(len(offer.Chunks)))
+
 	var want pb.Want
 	if err := r.ReadMsgWithContext(ctx, &want); err != nil {
 		return fmt.Errorf("read want: %w", err)
@@ -472,6 +474,7 @@ func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]sw
 		if bv.Get(i) {
 			ch := o.Chunks[i]
 			addr := swarm.NewAddress(ch.Address)
+			s.metrics.SentWanted.Inc()
 			c, err := s.store.ReserveGet(ctx, addr, ch.BatchID, ch.StampHash)
 			if err != nil {
 				s.logger.Debug("processing want: unable to find chunk", "chunk_address", addr, "batch_id", hex.EncodeToString(ch.BatchID))
