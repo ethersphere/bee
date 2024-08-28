@@ -34,7 +34,7 @@ type getStakeResponse struct {
 	StakedAmount *bigint.BigInt `json:"stakedAmount"`
 }
 type stakeTransactionReponse struct {
-	TxHash string `json:"txhash"`
+	TxHash string `json:"txHash"`
 }
 
 func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) {
