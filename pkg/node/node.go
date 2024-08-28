@@ -170,7 +170,7 @@ type Options struct {
 	NeighborhoodSuggester         string
 	WhitelistedWithdrawalAddress  []string
 	TrxDebugMode                  bool
-	ReserveMinimumRadius          uint
+	MinimumStorageRadius          uint
 }
 
 const (
@@ -718,7 +718,7 @@ func NewBee(
 		Logger:                    logger,
 		Tracer:                    tracer,
 		CacheMinEvictCount:        cacheMinEvictCount,
-		ReserveMinimumRadius:      o.ReserveMinimumRadius,
+		MinimumStorageRadius:      o.MinimumStorageRadius,
 	}
 
 	if o.FullNodeMode && !o.BootnodeMode {
@@ -927,8 +927,8 @@ func NewBee(
 		}
 
 		local, network := localStore.StorageRadius(), uint8(networkR.Load())
-		if local <= uint8(o.ReserveMinimumRadius) {
-			return max(network, uint8(o.ReserveMinimumRadius)), nil
+		if local <= uint8(o.MinimumStorageRadius) {
+			return max(network, uint8(o.MinimumStorageRadius)), nil
 		} else {
 			return local, nil
 		}

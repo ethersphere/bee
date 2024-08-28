@@ -83,7 +83,7 @@ const (
 	optionNameNeighborhoodSuggester        = "neighborhood-suggester"
 	optionNameWhitelistedWithdrawalAddress = "withdrawal-addresses-whitelist"
 	optionNameTransactionDebugMode         = "transaction-debug-mode"
-	optionReserveMinimumRadius             = "reserve-minimum-radius"
+	optionMinimumStorageRadius             = "minimum-storage-radius"
 )
 
 // nolint:gochecknoinits
@@ -295,7 +295,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameNeighborhoodSuggester, "https://api.swarmscan.io/v1/network/neighborhoods/suggestion", "suggester for target neighborhood")
 	cmd.Flags().StringSlice(optionNameWhitelistedWithdrawalAddress, []string{}, "withdrawal target addresses")
 	cmd.Flags().Bool(optionNameTransactionDebugMode, false, "skips the gas estimate step for contract transactions")
-	cmd.Flags().Uint(optionReserveMinimumRadius, 0, "minimum radius storage threshold")
+	cmd.Flags().Uint(optionMinimumStorageRadius, 0, "minimum radius storage threshold")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {
