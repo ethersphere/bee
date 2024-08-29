@@ -155,13 +155,10 @@ func TestSameChunkAddress(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	privKey, err := crypto.GenerateSecp256k1Key()
-	if err != nil {
-		t.Fatal(err)
-	}
-	signer := crypto.NewDefaultSigner(privKey)
+	binBinIDs := make(map[uint8]uint64)
 
 	t.Run("same stamp index and older timestamp", func(t *testing.T) {
+		signer := getSigner(t)
 		batch := postagetesting.MustNewBatch()
 		s1 := soctesting.GenerateMockSocWithSigner(t, []byte("data"), signer)
 		ch1 := s1.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 1))
@@ -171,6 +168,8 @@ func TestSameChunkAddress(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		bin := swarm.Proximity(baseAddr.Bytes(), ch1.Address().Bytes())
+		binBinIDs[bin] += 1
 		err = r.Put(ctx, ch2)
 		if !errors.Is(err, storage.ErrOverwriteNewerChunk) {
 			t.Fatal("expected error")
@@ -178,6 +177,7 @@ func TestSameChunkAddress(t *testing.T) {
 	})
 
 	t.Run("different stamp index and older timestamp", func(t *testing.T) {
+		signer := getSigner(t)
 		batch := postagetesting.MustNewBatch()
 		s1 := soctesting.GenerateMockSocWithSigner(t, []byte("data"), signer)
 		ch1 := s1.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 2))
@@ -187,6 +187,8 @@ func TestSameChunkAddress(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		bin := swarm.Proximity(baseAddr.Bytes(), ch1.Address().Bytes())
+		binBinIDs[bin] += 1
 		err = r.Put(ctx, ch2)
 		if !errors.Is(err, storage.ErrOverwriteNewerChunk) {
 			t.Fatal("expected error")
@@ -231,21 +233,27 @@ func TestSameChunkAddress(t *testing.T) {
 	}
 
 	t.Run("same stamp index and newer timestamp", func(t *testing.T) {
+		signer := getSigner(t)
 		batch := postagetesting.MustNewBatch()
 		s1 := soctesting.GenerateMockSocWithSigner(t, []byte("data"), signer)
 		ch1 := s1.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 3))
 		s2 := soctesting.GenerateMockSocWithSigner(t, []byte("update"), signer)
 		ch2 := s2.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 4))
-		replace(t, ch1, ch2, 3, 4)
+		bin := swarm.Proximity(baseAddr.Bytes(), ch1.Address().Bytes())
+		binBinIDs[bin] += 2
+		replace(t, ch1, ch2, binBinIDs[bin]-1, binBinIDs[bin])
 	})
 
 	t.Run("different stamp index and newer timestamp", func(t *testing.T) {
+		signer := getSigner(t)
 		batch := postagetesting.MustNewBatch()
 		s1 := soctesting.GenerateMockSocWithSigner(t, []byte("data"), signer)
 		ch1 := s1.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 5))
 		s2 := soctesting.GenerateMockSocWithSigner(t, []byte("update"), signer)
 		ch2 := s2.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 1, 6))
-		replace(t, ch1, ch2, 5, 6)
+		bin := swarm.Proximity(baseAddr.Bytes(), ch1.Address().Bytes())
+		binBinIDs[bin] += 2
+		replace(t, ch1, ch2, binBinIDs[bin]-1, binBinIDs[bin])
 	})
 
 	t.Run("not a soc and newer timestamp", func(t *testing.T) {
@@ -257,10 +265,16 @@ func TestSameChunkAddress(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		bin1 := swarm.Proximity(baseAddr.Bytes(), ch1.Address().Bytes())
+		binBinIDs[bin1] += 1
+
 		err = r.Put(ctx, ch2)
 		if err != nil {
 			t.Fatal(err)
 		}
+
+		bin2 := swarm.Proximity(baseAddr.Bytes(), ch2.Address().Bytes())
+		binBinIDs[bin2] += 1
 
 		ch, err := ts.ChunkStore().Get(ctx, ch2.Address())
 		if err != nil {
@@ -270,6 +284,72 @@ func TestSameChunkAddress(t *testing.T) {
 		if !bytes.Equal(ch.Data(), ch1.Data()) {
 			t.Fatalf("expected chunk data to not be updated")
 		}
+	})
+
+	t.Run("chunk with different batchID remains untouched", func(t *testing.T) {
+		noReplace := func(ch1, ch2 swarm.Chunk) {
+			t.Helper()
+			err = r.Put(ctx, ch1)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			err = r.Put(ctx, ch2)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			ch1StampHash, err := ch1.Stamp().Hash()
+			if err != nil {
+				t.Fatal(err)
+			}
+			ch2StampHash, err := ch2.Stamp().Hash()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			bin := swarm.Proximity(baseAddr.Bytes(), ch2.Address().Bytes())
+			binBinIDs[bin] += 2
+
+			// expect both entries in reserve
+			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: bin, BatchID: ch1.Stamp().BatchID(), Address: ch1.Address(), StampHash: ch1StampHash}, false)
+			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: bin, BatchID: ch2.Stamp().BatchID(), Address: ch2.Address(), StampHash: ch2StampHash}, false)
+			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin, BinID: binBinIDs[bin] - 1}, false)
+			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin, BinID: binBinIDs[bin]}, false)
+
+			// expect new chunk to NOT replace old one
+			ch, err := ts.ChunkStore().Get(ctx, ch2.Address())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(ch.Data(), ch1.Data()) {
+				t.Fatalf("expected chunk data to not be updated")
+			}
+		}
+
+		// soc
+		signer := getSigner(t)
+		batch := postagetesting.MustNewBatch()
+		s1 := soctesting.GenerateMockSocWithSigner(t, []byte("data"), signer)
+		ch1 := s1.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 3))
+		batch = postagetesting.MustNewBatch()
+		s2 := soctesting.GenerateMockSocWithSigner(t, []byte("update"), signer)
+		ch2 := s2.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 4))
+
+		if !bytes.Equal(ch1.Address().Bytes(), ch2.Address().Bytes()) {
+			t.Fatalf("expected chunk addresses to be the same")
+		}
+		noReplace(ch1, ch2)
+
+		// cac
+		batch = postagetesting.MustNewBatch()
+		ch1 = chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 5))
+		batch = postagetesting.MustNewBatch()
+		ch2 = swarm.NewChunk(ch1.Address(), []byte("update")).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 6))
+		if !bytes.Equal(ch1.Address().Bytes(), ch2.Address().Bytes()) {
+			t.Fatalf("expected chunk addresses to be the same")
+		}
+		noReplace(ch1, ch2)
 	})
 }
 
@@ -610,4 +690,13 @@ func checkChunk(t *testing.T, s transaction.ReadOnlyStore, ch swarm.Chunk, gone 
 	if !gone && !h {
 		t.Fatalf("expected entry %s", ch.Address())
 	}
+}
+
+func getSigner(t *testing.T) crypto.Signer {
+	t.Helper()
+	privKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return crypto.NewDefaultSigner(privKey)
 }
