@@ -674,6 +674,7 @@ func checkChunk(t *testing.T, s transaction.ReadOnlyStore, ch swarm.Chunk, gone 
 }
 
 func getSigner(t *testing.T) crypto.Signer {
+	t.Helper()
 	privKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
