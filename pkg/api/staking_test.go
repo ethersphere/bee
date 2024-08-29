@@ -26,7 +26,7 @@ func TestDepositStake(t *testing.T) {
 	t.Parallel()
 
 	txHash := common.HexToHash("0x1234")
-	minStake := big.NewInt(10000000000000000).String()
+	minStake := big.NewInt(100000000000000000).String()
 	depositStake := func(amount string) string {
 		return fmt.Sprintf("/stake/%s", amount)
 	}
