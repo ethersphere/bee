@@ -287,6 +287,47 @@ func TestSameChunkAddress(t *testing.T) {
 	})
 
 	t.Run("chunk with different batchID remains untouched", func(t *testing.T) {
+		noReplace := func(ch1, ch2 swarm.Chunk) {
+			t.Helper()
+			err = r.Put(ctx, ch1)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			err = r.Put(ctx, ch2)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			ch1StampHash, err := ch1.Stamp().Hash()
+			if err != nil {
+				t.Fatal(err)
+			}
+			ch2StampHash, err := ch2.Stamp().Hash()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			bin := swarm.Proximity(baseAddr.Bytes(), ch2.Address().Bytes())
+			binBinIDs[bin] += 2
+
+			// expect both entries in reserve
+			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: bin, BatchID: ch1.Stamp().BatchID(), Address: ch1.Address(), StampHash: ch1StampHash}, false)
+			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: bin, BatchID: ch2.Stamp().BatchID(), Address: ch2.Address(), StampHash: ch2StampHash}, false)
+			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin, BinID: binBinIDs[bin] - 1}, false)
+			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin, BinID: binBinIDs[bin]}, false)
+
+			// expect new chunk to NOT replace old one
+			ch, err := ts.ChunkStore().Get(ctx, ch2.Address())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(ch.Data(), ch1.Data()) {
+				t.Fatalf("expected chunk data to not be updated")
+			}
+		}
+
+		// soc
 		signer := getSigner(t)
 		batch := postagetesting.MustNewBatch()
 		s1 := soctesting.GenerateMockSocWithSigner(t, []byte("data"), signer)
@@ -295,42 +336,20 @@ func TestSameChunkAddress(t *testing.T) {
 		s2 := soctesting.GenerateMockSocWithSigner(t, []byte("update"), signer)
 		ch2 := s2.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 4))
 
-		err = r.Put(ctx, ch1)
-		if err != nil {
-			t.Fatal(err)
+		if !bytes.Equal(ch1.Address().Bytes(), ch2.Address().Bytes()) {
+			t.Fatalf("expected chunk addresses to be the same")
 		}
+		noReplace(ch1, ch2)
 
-		err = r.Put(ctx, ch2)
-		if err != nil {
-			t.Fatal(err)
+		// cac
+		batch = postagetesting.MustNewBatch()
+		ch1 = chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 5))
+		batch = postagetesting.MustNewBatch()
+		ch2 = swarm.NewChunk(ch1.Address(), []byte("update")).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 6))
+		if !bytes.Equal(ch1.Address().Bytes(), ch2.Address().Bytes()) {
+			t.Fatalf("expected chunk addresses to be the same")
 		}
-
-		ch1StampHash, err := ch1.Stamp().Hash()
-		if err != nil {
-			t.Fatal(err)
-		}
-		ch2StampHash, err := ch2.Stamp().Hash()
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		bin := swarm.Proximity(baseAddr.Bytes(), ch2.Address().Bytes())
-		binBinIDs[bin] += 2
-
-		// expect both entries in reserve
-		checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: bin, BatchID: ch1.Stamp().BatchID(), Address: ch1.Address(), StampHash: ch1StampHash}, false)
-		checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: bin, BatchID: ch2.Stamp().BatchID(), Address: ch2.Address(), StampHash: ch2StampHash}, false)
-		checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin, BinID: binBinIDs[bin] - 1}, false)
-		checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin, BinID: binBinIDs[bin]}, false)
-
-		// expect new chunk to NOT replace old one
-		ch, err := ts.ChunkStore().Get(ctx, ch2.Address())
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(ch.Data(), ch1.Data()) {
-			t.Fatalf("expected chunk data to not be updated")
-		}
+		noReplace(ch1, ch2)
 	})
 }
 
