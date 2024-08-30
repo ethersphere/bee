@@ -38,7 +38,7 @@ var (
 )
 
 type Contract interface {
-	DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error)
+	DepositStake(ctx context.Context, withdrawableStake *big.Int) (common.Hash, error)
 	ChangeStakeOverlay(ctx context.Context, nonce common.Hash) (common.Hash, error)
 	GetPotentialStake(ctx context.Context) (*big.Int, error)
 	GetWithdrawableStake(ctx context.Context) (*big.Int, error)
@@ -87,14 +87,14 @@ func New(
 	}
 }
 
-func (c *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
+func (c *contract) DepositStake(ctx context.Context, withdrawableStake *big.Int) (common.Hash, error) {
 	prevStakedAmount, err := c.GetPotentialStake(ctx)
 	if err != nil {
 		return common.Hash{}, err
 	}
 
 	if len(prevStakedAmount.Bits()) == 0 {
-		if stakedAmount.Cmp(MinimumStakeAmount) == -1 {
+		if withdrawableStake.Cmp(MinimumStakeAmount) == -1 {
 			return common.Hash{}, ErrInsufficientStakeAmount
 		}
 	}
@@ -104,16 +104,16 @@ func (c *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (com
 		return common.Hash{}, err
 	}
 
-	if balance.Cmp(stakedAmount) < 0 {
+	if balance.Cmp(withdrawableStake) < 0 {
 		return common.Hash{}, ErrInsufficientFunds
 	}
 
-	_, err = c.sendApproveTransaction(ctx, stakedAmount)
+	_, err = c.sendApproveTransaction(ctx, withdrawableStake)
 	if err != nil {
 		return common.Hash{}, err
 	}
 
-	receipt, err := c.sendDepositStakeTransaction(ctx, stakedAmount, c.overlayNonce)
+	receipt, err := c.sendDepositStakeTransaction(ctx, withdrawableStake, c.overlayNonce)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -133,28 +133,28 @@ func (c *contract) ChangeStakeOverlay(ctx context.Context, nonce common.Hash) (c
 }
 
 func (c *contract) GetPotentialStake(ctx context.Context) (*big.Int, error) {
-	stakedAmount, err := c.getPotentialStake(ctx)
+	withdrawableStake, err := c.getPotentialStake(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("staking contract: failed to get stake: %w", err)
 	}
-	return stakedAmount, nil
+	return withdrawableStake, nil
 }
 
 func (c *contract) GetWithdrawableStake(ctx context.Context) (*big.Int, error) {
-	stakedAmount, err := c.getwithdrawableStake(ctx)
+	withdrawableStake, err := c.getWithdrawableStake(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("staking contract: failed to get stake: %w", err)
 	}
-	return stakedAmount, nil
+	return withdrawableStake, nil
 }
 
 func (c *contract) WithdrawStake(ctx context.Context) (txHash common.Hash, err error) {
-	stakedAmount, err := c.getwithdrawableStake(ctx)
+	withdrawableStake, err := c.getWithdrawableStake(ctx)
 	if err != nil {
 		return
 	}
 
-	if stakedAmount.Cmp(big.NewInt(0)) <= 0 {
+	if withdrawableStake.Cmp(big.NewInt(0)) <= 0 {
 		return common.Hash{}, ErrInsufficientStake
 	}
 
@@ -292,15 +292,15 @@ func (c *contract) sendTransaction(ctx context.Context, callData []byte, desc st
 	return receipt, nil
 }
 
-func (c *contract) sendDepositStakeTransaction(ctx context.Context, stakedAmount *big.Int, nonce common.Hash) (*types.Receipt, error) {
-	callData, err := c.stakingContractABI.Pack("manageStake", nonce, stakedAmount)
+func (c *contract) sendDepositStakeTransaction(ctx context.Context, withdrawableStake *big.Int, nonce common.Hash) (*types.Receipt, error) {
+	callData, err := c.stakingContractABI.Pack("manageStake", nonce, withdrawableStake)
 	if err != nil {
 		return nil, err
 	}
 
 	receipt, err := c.sendTransaction(ctx, callData, depositStakeDescription)
 	if err != nil {
-		return nil, fmt.Errorf("deposit stake: stakedAmount %d: %w", stakedAmount, err)
+		return nil, fmt.Errorf("deposit stake: withdrawableStake %d: %w", withdrawableStake, err)
 	}
 
 	return receipt, nil
@@ -335,7 +335,7 @@ func (c *contract) getPotentialStake(ctx context.Context) (*big.Int, error) {
 	return abi.ConvertType(results[2], new(big.Int)).(*big.Int), nil
 }
 
-func (c *contract) getwithdrawableStake(ctx context.Context) (*big.Int, error) {
+func (c *contract) getWithdrawableStake(ctx context.Context) (*big.Int, error) {
 	callData, err := c.stakingContractABI.Pack("withdrawableStake")
 	if err != nil {
 		return nil, err
