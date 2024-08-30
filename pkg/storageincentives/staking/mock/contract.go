@@ -13,15 +13,15 @@ import (
 )
 
 type stakingContractMock struct {
-	depositStake     func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error)
+	depositStake     func(ctx context.Context, withdrawableStake *big.Int) (common.Hash, error)
 	getStake         func(ctx context.Context) (*big.Int, error)
 	withdrawAllStake func(ctx context.Context) (common.Hash, error)
 	migrateStake     func(ctx context.Context) (common.Hash, error)
 	isFrozen         func(ctx context.Context, block uint64) (bool, error)
 }
 
-func (s *stakingContractMock) DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
-	return s.depositStake(ctx, stakedAmount)
+func (s *stakingContractMock) DepositStake(ctx context.Context, withdrawableStake *big.Int) (common.Hash, error) {
+	return s.depositStake(ctx, withdrawableStake)
 }
 
 func (s *stakingContractMock) ChangeStakeOverlay(_ context.Context, h common.Hash) (common.Hash, error) {
@@ -62,7 +62,7 @@ func New(opts ...Option) staking.Contract {
 	return bs
 }
 
-func WithDepositStake(f func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error)) Option {
+func WithDepositStake(f func(ctx context.Context, withdrawableStake *big.Int) (common.Hash, error)) Option {
 	return func(mock *stakingContractMock) {
 		mock.depositStake = f
 	}
