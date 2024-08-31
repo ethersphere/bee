@@ -37,15 +37,16 @@ func step_06(st transaction.Storage) func() error {
 }
 
 func addStampHash(logger log.Logger, st transaction.Storage) (int64, int64, error) {
+
 	itemC := make(chan *reserve.BatchRadiusItemV1)
-	errC := make(chan error)
+
+	errC := make(chan error, 1)
 	doneC := make(chan any)
 	defer close(doneC)
 	defer close(errC)
 
 	var eg errgroup.Group
-	p := runtime.NumCPU()
-	eg.SetLimit(p)
+	eg.SetLimit(runtime.NumCPU())
 
 	var doneCount atomic.Int64
 	var seenCount int64
@@ -159,6 +160,22 @@ func addStampHash(logger log.Logger, st transaction.Storage) (int64, int64, erro
 	if err != nil {
 		return 0, 0, err
 	}
+
+	batchRadiusCnt, err := st.IndexStore().Count(&reserve.BatchRadiusItem{})
+	if err != nil {
+		return 0, 0, err
+	}
+
+	chunkBinCnt, err := st.IndexStore().Count(&reserve.ChunkBinItem{})
+	if err != nil {
+		return 0, 0, err
+	}
+
+	if batchRadiusCnt != chunkBinCnt {
+		return 0, 0, fmt.Errorf("index counts do not match, %d vs %d", batchRadiusCnt, chunkBinCnt)
+	}
+
+	logger.Info("migrated all chunk entries")
 
 	return seenCount, doneCount.Load(), nil
 }
