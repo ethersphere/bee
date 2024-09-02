@@ -23,6 +23,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/pullsync/pb"
+	"github.com/ethersphere/bee/v2/pkg/ratelimit"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer"
@@ -45,10 +46,11 @@ var (
 )
 
 const (
-	MaxCursor               = math.MaxUint64
-	DefaultMaxPage   uint64 = 250
-	pageTimeout             = time.Second
-	makeOfferTimeout        = 15 * time.Minute
+	MaxCursor                      = math.MaxUint64
+	DefaultMaxPage          uint64 = 250
+	pageTimeout                    = time.Second
+	makeOfferTimeout               = 15 * time.Minute
+	handleRequestsLimitRate        = time.Second * 5 // handle one request per 5 seconds (per peer), or max 50 chunks per second (maxPage chunks per 5 second)
 )
 
 // Interface is the PullSync interface.
@@ -74,6 +76,8 @@ type Syncer struct {
 
 	maxPage uint64
 
+	limiter *ratelimit.Limiter
+
 	Interface
 	io.Closer
 }
@@ -96,6 +100,7 @@ func New(
 		logger:     logger.WithName(loggerName).Register(),
 		quit:       make(chan struct{}),
 		maxPage:    maxPage,
+		limiter:    ratelimit.New(handleRequestsLimitRate, 5),
 	}
 }
 
@@ -113,7 +118,101 @@ func (s *Syncer) Protocol() p2p.ProtocolSpec {
 				Handler: s.cursorHandler,
 			},
 		},
+		DisconnectIn:  s.disconnect,
+		DisconnectOut: s.disconnect,
 	}
+}
+
+// handler handles an incoming request to sync an interval
+func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
+	select {
+	case <-s.quit:
+		return nil
+	default:
+		s.syncInProgress.Add(1)
+		defer s.syncInProgress.Add(-1)
+	}
+
+	if err := s.limiter.Wait(streamCtx, p.Address.ByteString(), 1); err != nil {
+		return fmt.Errorf("rate limiter: %w", err)
+	}
+
+	r := protobuf.NewReader(stream)
+	defer func() {
+		if err != nil {
+			_ = stream.Reset()
+		} else {
+			_ = stream.FullClose()
+		}
+	}()
+
+	ctx, cancel := context.WithCancel(streamCtx)
+	defer cancel()
+
+	go func() {
+		select {
+		case <-s.quit:
+			cancel()
+		case <-ctx.Done():
+			return
+		}
+	}()
+
+	var rn pb.Get
+	if err := r.ReadMsgWithContext(ctx, &rn); err != nil {
+		return fmt.Errorf("read get range: %w", err)
+	}
+
+	// recreate the reader to allow the first one to be garbage collected
+	// before the makeOffer function call, to reduce the total memory allocated
+	// while makeOffer is executing (waiting for the new chunks)
+	w, r := protobuf.NewWriterAndReader(stream)
+
+	// make an offer to the upstream peer in return for the requested range
+	offer, err := s.makeOffer(ctx, rn)
+	if err != nil {
+		return fmt.Errorf("make offer: %w", err)
+	}
+
+	if err := w.WriteMsgWithContext(ctx, offer); err != nil {
+		return fmt.Errorf("write offer: %w", err)
+	}
+
+	// we don't have any hashes to offer in this range (the
+	// interval is empty). nothing more to do
+	if len(offer.Chunks) == 0 {
+		return nil
+	}
+
+	s.metrics.SentOffered.Add(float64(len(offer.Chunks)))
+
+	var want pb.Want
+	if err := r.ReadMsgWithContext(ctx, &want); err != nil {
+		return fmt.Errorf("read want: %w", err)
+	}
+
+	chs, err := s.processWant(ctx, offer, &want)
+	if err != nil {
+		return fmt.Errorf("process want: %w", err)
+	}
+
+	for _, c := range chs {
+		var stamp []byte
+		if c.Stamp() != nil {
+			stamp, err = c.Stamp().MarshalBinary()
+			if err != nil {
+				return fmt.Errorf("serialise stamp: %w", err)
+			}
+		}
+
+		deliver := pb.Delivery{Address: c.Address().Bytes(), Data: c.Data(), Stamp: stamp}
+		if err := w.WriteMsgWithContext(ctx, &deliver); err != nil {
+			return fmt.Errorf("write delivery: %w", err)
+		}
+		s.metrics.Sent.Inc()
+	}
+
+	return nil
 }
 
 // Sync syncs a batch of chunks starting at a start BinID.
@@ -281,94 +380,6 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 	}
 
 	return topmost, chunksPut, chunkErr
-}
-
-// handler handles an incoming request to sync an interval
-func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
-	select {
-	case <-s.quit:
-		return nil
-	default:
-		s.syncInProgress.Add(1)
-		defer s.syncInProgress.Add(-1)
-	}
-
-	r := protobuf.NewReader(stream)
-	defer func() {
-		if err != nil {
-			_ = stream.Reset()
-		} else {
-			_ = stream.FullClose()
-		}
-	}()
-
-	ctx, cancel := context.WithCancel(streamCtx)
-	defer cancel()
-
-	go func() {
-		select {
-		case <-s.quit:
-			cancel()
-		case <-ctx.Done():
-			return
-		}
-	}()
-
-	var rn pb.Get
-	if err := r.ReadMsgWithContext(ctx, &rn); err != nil {
-		return fmt.Errorf("read get range: %w", err)
-	}
-
-	// recreate the reader to allow the first one to be garbage collected
-	// before the makeOffer function call, to reduce the total memory allocated
-	// while makeOffer is executing (waiting for the new chunks)
-	w, r := protobuf.NewWriterAndReader(stream)
-
-	// make an offer to the upstream peer in return for the requested range
-	offer, err := s.makeOffer(ctx, rn)
-	if err != nil {
-		return fmt.Errorf("make offer: %w", err)
-	}
-
-	if err := w.WriteMsgWithContext(ctx, offer); err != nil {
-		return fmt.Errorf("write offer: %w", err)
-	}
-
-	// we don't have any hashes to offer in this range (the
-	// interval is empty). nothing more to do
-	if len(offer.Chunks) == 0 {
-		return nil
-	}
-
-	s.metrics.SentOffered.Add(float64(len(offer.Chunks)))
-
-	var want pb.Want
-	if err := r.ReadMsgWithContext(ctx, &want); err != nil {
-		return fmt.Errorf("read want: %w", err)
-	}
-
-	chs, err := s.processWant(ctx, offer, &want)
-	if err != nil {
-		return fmt.Errorf("process want: %w", err)
-	}
-
-	for _, c := range chs {
-		var stamp []byte
-		if c.Stamp() != nil {
-			stamp, err = c.Stamp().MarshalBinary()
-			if err != nil {
-				return fmt.Errorf("serialise stamp: %w", err)
-			}
-		}
-
-		deliver := pb.Delivery{Address: c.Address().Bytes(), Data: c.Data(), Stamp: stamp}
-		if err := w.WriteMsgWithContext(ctx, &deliver); err != nil {
-			return fmt.Errorf("write delivery: %w", err)
-		}
-		s.metrics.Sent.Inc()
-	}
-
-	return nil
 }
 
 // makeOffer tries to assemble an offer for a given requested interval.
@@ -549,6 +560,11 @@ func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 		return fmt.Errorf("write ack: %w", err)
 	}
 
+	return nil
+}
+
+func (s *Syncer) disconnect(peer p2p.Peer) error {
+	s.limiter.Clear(peer.Address.ByteString())
 	return nil
 }
 

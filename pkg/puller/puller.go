@@ -356,11 +356,12 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 				loggerV2.Debug("syncWorker interval failed", "error", err, "peer_address", address, "bin", bin, "cursor", cursor, "start", start, "topmost", top)
 			}
 
+			_ = p.limiter.WaitN(ctx, count)
+
 			if isHistorical {
 				p.metrics.SyncedCounter.WithLabelValues("historical").Add(float64(count))
 				p.rate.Add(count)
 				// rate limit historical syncing
-				_ = p.limiter.WaitN(ctx, count)
 			} else {
 				p.metrics.SyncedCounter.WithLabelValues("live").Add(float64(count))
 			}

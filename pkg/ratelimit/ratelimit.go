@@ -8,6 +8,7 @@
 package ratelimit
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -45,6 +46,23 @@ func (l *Limiter) Allow(key string, count int) bool {
 	l.mtx.Unlock()
 
 	return limiter.AllowN(time.Now(), count)
+}
+
+// Wait blocks until the limier permits n events to happen.
+func (l *Limiter) Wait(ctx context.Context, key string, count int) error {
+	l.mtx.Lock()
+
+	limiter, ok := l.limiter[key]
+	if !ok {
+		limiter = rate.NewLimiter(l.rate, l.burst)
+		l.limiter[key] = limiter
+	}
+
+	// We are intentionally not defer calling Unlock in order to reduce locking extent.
+	// Individual limiter is capable for handling concurrent calls.
+	l.mtx.Unlock()
+
+	return limiter.WaitN(ctx, count)
 }
 
 // Clear deletes the limiter that belongs to 'key'
