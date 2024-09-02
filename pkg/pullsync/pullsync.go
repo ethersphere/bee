@@ -50,7 +50,7 @@ const (
 	DefaultMaxPage          uint64 = 250
 	pageTimeout                    = time.Second
 	makeOfferTimeout               = 15 * time.Minute
-	handleRequestsLimitRate        = time.Second * 5 // handle one request per 5 seconds (per peer), or max 50 chunks per second (maxPage chunks per 5 second)
+	handleRequestsLimitRate        = time.Second / 50 // handle max 50 chunks per second per peer (maxPage chunks per 5 second)
 )
 
 // Interface is the PullSync interface.
@@ -100,7 +100,7 @@ func New(
 		logger:     logger.WithName(loggerName).Register(),
 		quit:       make(chan struct{}),
 		maxPage:    maxPage,
-		limiter:    ratelimit.New(handleRequestsLimitRate, 5),
+		limiter:    ratelimit.New(handleRequestsLimitRate, int(maxPage)),
 	}
 }
 
@@ -125,16 +125,13 @@ func (s *Syncer) Protocol() p2p.ProtocolSpec {
 
 // handler handles an incoming request to sync an interval
 func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
+
 	select {
 	case <-s.quit:
 		return nil
 	default:
 		s.syncInProgress.Add(1)
 		defer s.syncInProgress.Add(-1)
-	}
-
-	if err := s.limiter.Wait(streamCtx, p.Address.ByteString(), 1); err != nil {
-		return fmt.Errorf("rate limiter: %w", err)
 	}
 
 	r := protobuf.NewReader(stream)
@@ -210,6 +207,11 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 			return fmt.Errorf("write delivery: %w", err)
 		}
 		s.metrics.Sent.Inc()
+	}
+
+	// slow down future requests
+	if err := s.limiter.Wait(streamCtx, p.Address.ByteString(), len(chs)); err != nil {
+		return fmt.Errorf("rate limiter: %w", err)
 	}
 
 	return nil
