@@ -258,9 +258,11 @@ func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uin
 	}
 
 	/*
-		The syncing behavior diverges for peers outside and winthin the storage radius.
+		The syncing behavior diverges for peers outside and within the storage radius.
 		For neighbor peers, we sync ALL bins greater than or equal to the storage radius.
 		For peers with PO lower than the storage radius, we must sync ONLY the bin that is the PO.
+		For peers peer with PO lower than the storage radius and even lower than the allowed minimum threshold,
+		no syncing is done.
 	*/
 
 	if peer.po >= storageRadius {
