@@ -165,6 +165,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 					if err != nil {
 						return fmt.Errorf("failed removing older chunk %s: %w", oldStampIndex.ChunkAddress, err)
 					}
+					r.size.Add(-1)
 				}
 			}
 
