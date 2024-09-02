@@ -5,6 +5,7 @@
 package ratelimit_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -39,5 +40,31 @@ func TestRateLimit(t *testing.T) {
 
 	if !limiter.Allow(key2, burst) {
 		t.Fatal("want allowed")
+	}
+}
+
+func TestWait(t *testing.T) {
+	t.Parallel()
+
+	var (
+		key   = "test"
+		rate  = time.Millisecond * 500
+		burst = 4
+	)
+
+	limiter := ratelimit.New(rate, burst)
+
+	if !limiter.Allow(key, burst) {
+		t.Fatal("want allowed")
+	}
+
+	now := time.Now()
+
+	if err := limiter.Wait(context.Background(), key, burst); err != nil {
+		t.Fatalf("got err %v", err)
+	}
+
+	if time.Since(now) < rate {
+		t.Fatalf("expected the limiter to wait at least %s", rate)
 	}
 }
