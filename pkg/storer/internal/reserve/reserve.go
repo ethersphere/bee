@@ -124,7 +124,9 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	r.multx.Lock(strconv.Itoa(int(bin)))
 	defer r.multx.Unlock(strconv.Itoa(int(bin)))
 
-	return r.st.Run(ctx, func(s transaction.Store) error {
+	var shouldIncReserveSize, shouldDecrReserveSize bool
+
+	err = r.st.Run(ctx, func(s transaction.Store) error {
 
 		oldStampIndex, loadedStampIndex, err := stampindex.LoadOrStore(s.IndexStore(), reserveNamespace, chunk)
 		if err != nil {
@@ -165,7 +167,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 					if err != nil {
 						return fmt.Errorf("failed removing older chunk %s: %w", oldStampIndex.ChunkAddress, err)
 					}
-					r.size.Add(-1)
+					shouldDecrReserveSize = true
 				}
 			}
 
@@ -280,11 +282,21 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 		}
 
 		if !loadedStampIndex {
-			r.size.Add(1)
+			shouldIncReserveSize = true
 		}
 
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	if shouldIncReserveSize {
+		r.size.Add(1)
+	}
+	if shouldDecrReserveSize {
+		r.size.Add(-1)
+	}
+	return nil
 }
 
 func (r *Reserve) deleteWithStamp(s transaction.Store, oldBatchRadiusItem *BatchRadiusItem, sameAddressOldChunkStamp swarm.Stamp) error {
