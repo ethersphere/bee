@@ -185,12 +185,8 @@ func addStampHash(logger log.Logger, st transaction.Storage) (int64, int64, erro
 		return 0, 0, err
 	}
 
-	if postBatchRadiusCnt != postChunkBinCnt {
-		return 0, 0, fmt.Errorf("post-migration check: index counts do not match, %d vs %d. It's recommended that the repair-reserve cmd is run first", postBatchRadiusCnt, postChunkBinCnt)
-	}
-
-	if preBatchRadiusCnt != postBatchRadiusCnt || preChunkBinCnt != postChunkBinCnt {
-		return 0, 0, fmt.Errorf("post-migration check: index counts do not match before and after, %d vs %d. It's recommended that the nuke is run to reset the node", postBatchRadiusCnt, postChunkBinCnt)
+	if postBatchRadiusCnt != postChunkBinCnt || preBatchRadiusCnt != postBatchRadiusCnt || preChunkBinCnt != postChunkBinCnt {
+		return 0, 0, fmt.Errorf("post-migration check: index counts do not match, %d vs %d. It's recommended that the nuke is run to reset the node", postBatchRadiusCnt, postChunkBinCnt)
 	}
 
 	return seenCount, doneCount.Load(), nil
