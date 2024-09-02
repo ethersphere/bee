@@ -43,7 +43,7 @@ func Test_Step_06(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	chunks := chunktest.GenerateTestRandomChunks(10)
+	chunks := chunktest.GenerateTestRandomChunks(100)
 	ctx := context.Background()
 
 	batchRadiusItems := make(map[string]oldAndNewItem[*reserve.BatchRadiusItemV1, *reserve.BatchRadiusItem])

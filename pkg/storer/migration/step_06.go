@@ -37,15 +37,30 @@ func step_06(st transaction.Storage) func() error {
 }
 
 func addStampHash(logger log.Logger, st transaction.Storage) (int64, int64, error) {
+
+	preBatchRadiusCnt, err := st.IndexStore().Count(&reserve.BatchRadiusItemV1{})
+	if err != nil {
+		return 0, 0, err
+	}
+
+	preChunkBinCnt, err := st.IndexStore().Count(&reserve.ChunkBinItemV1{})
+	if err != nil {
+		return 0, 0, err
+	}
+
+	if preBatchRadiusCnt != preChunkBinCnt {
+		return 0, 0, fmt.Errorf("pre-migration check: index counts do not match, %d vs %d. It's recommended that the repair-reserve cmd is run first", preBatchRadiusCnt, preChunkBinCnt)
+	}
+
 	itemC := make(chan *reserve.BatchRadiusItemV1)
-	errC := make(chan error)
+
+	errC := make(chan error, 1)
 	doneC := make(chan any)
 	defer close(doneC)
 	defer close(errC)
 
 	var eg errgroup.Group
-	p := runtime.NumCPU()
-	eg.SetLimit(p)
+	eg.SetLimit(runtime.NumCPU())
 
 	var doneCount atomic.Int64
 	var seenCount int64
@@ -99,9 +114,9 @@ func addStampHash(logger log.Logger, st transaction.Storage) (int64, int64, erro
 					return err
 				}
 				err = idxStore.Put(&reserve.BatchRadiusItem{
+					StampHash: stampHash,
 					Bin:       batchRadiusItemV1.Bin,
 					BatchID:   batchRadiusItemV1.BatchID,
-					StampHash: stampHash,
 					Address:   batchRadiusItemV1.Address,
 					BinID:     batchRadiusItemV1.BinID,
 				})
@@ -120,11 +135,11 @@ func addStampHash(logger log.Logger, st transaction.Storage) (int64, int64, erro
 
 				// same id. Will replace.
 				err = idxStore.Put(&reserve.ChunkBinItem{
+					StampHash: stampHash,
 					Bin:       chunkBinItemV1.Bin,
 					BinID:     chunkBinItemV1.BinID,
 					Address:   chunkBinItemV1.Address,
 					BatchID:   chunkBinItemV1.BatchID,
-					StampHash: stampHash,
 					ChunkType: chunkBinItemV1.ChunkType,
 				})
 				if err != nil {
@@ -133,9 +148,9 @@ func addStampHash(logger log.Logger, st transaction.Storage) (int64, int64, erro
 
 				// same id. Will replace.
 				stampIndexItem := &stampindex.Item{
+					StampHash:      stampHash,
 					BatchID:        chunkBinItemV1.BatchID,
 					StampIndex:     stamp.Index(),
-					StampHash:      stampHash,
 					StampTimestamp: stamp.Timestamp(),
 					ChunkAddress:   chunkBinItemV1.Address,
 				}
@@ -155,9 +170,23 @@ func addStampHash(logger log.Logger, st transaction.Storage) (int64, int64, erro
 		})
 	}
 
-	err := eg.Wait()
+	err = eg.Wait()
 	if err != nil {
 		return 0, 0, err
+	}
+
+	postBatchRadiusCnt, err := st.IndexStore().Count(&reserve.BatchRadiusItem{})
+	if err != nil {
+		return 0, 0, err
+	}
+
+	postChunkBinCnt, err := st.IndexStore().Count(&reserve.ChunkBinItem{})
+	if err != nil {
+		return 0, 0, err
+	}
+
+	if postBatchRadiusCnt != postChunkBinCnt || preBatchRadiusCnt != postBatchRadiusCnt || preChunkBinCnt != postChunkBinCnt {
+		return 0, 0, fmt.Errorf("post-migration check: index counts do not match, %d vs %d. It's recommended that the nuke is run to reset the node", postBatchRadiusCnt, postChunkBinCnt)
 	}
 
 	return seenCount, doneCount.Load(), nil
