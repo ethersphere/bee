@@ -48,17 +48,27 @@ func TestWait(t *testing.T) {
 
 	var (
 		key   = "test"
-		rate  = time.Millisecond * 500
+		rate  = time.Second
 		burst = 4
 	)
 
 	limiter := ratelimit.New(rate, burst)
 
-	if !limiter.Allow(key, burst) {
+	if !limiter.Allow(key, 1) {
 		t.Fatal("want allowed")
 	}
 
 	now := time.Now()
+
+	if err := limiter.Wait(context.Background(), key, 1); err != nil {
+		t.Fatalf("got err %v", err)
+	}
+
+	if time.Since(now) >= rate {
+		t.Fatal("expected the limiter to NOT wait")
+	}
+
+	now = time.Now()
 
 	if err := limiter.Wait(context.Background(), key, burst); err != nil {
 		t.Fatalf("got err %v", err)
