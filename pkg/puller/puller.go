@@ -289,9 +289,7 @@ func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uin
 			p.syncPeerBin(ctx, peer, peer.po, peer.cursors[peer.po])
 		}
 	} else {
-		for bin := uint8(0); bin < p.bins; bin++ {
-			peer.cancelBin(bin)
-		}
+		peer.stop()
 	}
 
 	return nil
