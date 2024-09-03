@@ -316,7 +316,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 	mockSteward := new(mockSteward.Steward)
 
 	mockStaking := stakingContractMock.New(
-		stakingContractMock.WithDepositStake(func(ctx context.Context, withdrawableStake *big.Int) (common.Hash, error) {
+		stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
 			return common.Hash{}, staking.ErrNotImplemented
 		}),
 		stakingContractMock.WithGetStake(func(ctx context.Context) (*big.Int, error) {
