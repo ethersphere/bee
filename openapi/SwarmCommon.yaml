@@ -641,7 +641,7 @@ components:
       type: object
       properties:
         withdrawableAmount:
-          $ref: "#/components/schemas/BigInt"      
+          $ref: "#/components/schemas/BigInt"
 
     StakeTransactionResponse:
       type: object
