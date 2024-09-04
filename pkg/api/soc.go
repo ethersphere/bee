@@ -11,8 +11,10 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/replicas"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	storer "github.com/ethersphere/bee/v2/pkg/storer"
@@ -45,11 +47,12 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	headers := struct {
-		BatchID        []byte        `map:"Swarm-Postage-Batch-Id"`
-		StampSig       []byte        `map:"Swarm-Postage-Stamp"`
-		Pin            bool          `map:"Swarm-Pin"`
-		Act            bool          `map:"Swarm-Act"`
-		HistoryAddress swarm.Address `map:"Swarm-Act-History-Address"`
+		BatchID        []byte           `map:"Swarm-Postage-Batch-Id"`
+		StampSig       []byte           `map:"Swarm-Postage-Stamp"`
+		Pin            bool             `map:"Swarm-Pin"`
+		RLevel         redundancy.Level `map:"Swarm-Redundancy-Level"`
+		Act            bool             `map:"Swarm-Act"`
+		HistoryAddress swarm.Address    `map:"Swarm-Act-History-Address"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -208,7 +211,8 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	err = putter.Put(r.Context(), sch)
+	replicaPutter := replicas.NewSocPutter(putter)
+	err = replicaPutter.Put(r.Context(), sch)
 	if err != nil {
 		logger.Debug("write chunk failed", "chunk_address", sch.Address(), "error", err)
 		logger.Error(nil, "write chunk failed")
