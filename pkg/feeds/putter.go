@@ -10,6 +10,7 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/replicas"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -53,7 +54,8 @@ func (u *Putter) Put(ctx context.Context, i Index, at int64, payload []byte) err
 	if err != nil {
 		return err
 	}
-	return u.putter.Put(ctx, ch)
+	putter := replicas.NewSocPutter(u.putter)
+	return putter.Put(ctx, ch)
 }
 
 func toChunk(at uint64, payload []byte) (swarm.Chunk, error) {
