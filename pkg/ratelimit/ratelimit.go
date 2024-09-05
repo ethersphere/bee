@@ -49,7 +49,7 @@ func (l *Limiter) Allow(key string, count int) bool {
 }
 
 // Wait blocks until the limier permits n events to happen.
-func (l *Limiter) Wait(ctx context.Context, key string, count int) error {
+func (l *Limiter) Wait(ctx context.Context, key string, count int) (bool, error) {
 	l.mtx.Lock()
 
 	limiter, ok := l.limiter[key]
@@ -62,7 +62,11 @@ func (l *Limiter) Wait(ctx context.Context, key string, count int) error {
 	// Individual limiter is capable for handling concurrent calls.
 	l.mtx.Unlock()
 
-	return limiter.WaitN(ctx, count)
+	if limiter.AllowN(time.Now(), count) {
+		return false, nil
+	}
+
+	return true, limiter.WaitN(ctx, count)
 }
 
 // Clear deletes the limiter that belongs to 'key'
