@@ -119,7 +119,7 @@ func New(ctx context.Context, g storage.Getter, putter storage.Putter, address s
 	return NewJoiner(ctx, g, putter, address, rootChunk)
 }
 
-// NewWithRoot creates a new Joiner with the already fetched root chunk.
+// NewJoiner creates a new Joiner with the already fetched root chunk.
 // A Joiner provides Read, Seek and Size functionalities.
 func NewJoiner(ctx context.Context, g storage.Getter, putter storage.Putter, address swarm.Address, rootChunk swarm.Chunk) (file.Joiner, int64, error) {
 	chunkData := rootChunk.Data()

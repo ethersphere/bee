@@ -49,7 +49,7 @@ func NewReadonly(getter storage.Getter) file.LoadSaver {
 	}
 }
 
-// NewReadonly returns a new read-only load-saver
+// NewReadonlyWithRootCh returns a new read-only load-saver
 // which will error on write.
 func NewReadonlyWithRootCh(getter storage.Getter, rootCh swarm.Chunk) file.LoadSaver {
 	return &loadSave{
