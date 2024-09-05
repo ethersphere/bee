@@ -58,25 +58,21 @@ func TestWait(t *testing.T) {
 		t.Fatal("want allowed")
 	}
 
-	now := time.Now()
-
-	rateLimited, err := limiter.Wait(context.Background(), key, 1)
+	waitDur, err := limiter.Wait(context.Background(), key, 1)
 	if err != nil {
 		t.Fatalf("got err %v", err)
 	}
 
-	if time.Since(now) >= rate || rateLimited {
-		t.Fatal("expected the limiter to NOT wait")
+	if waitDur != 0 {
+		t.Fatalf("expected the limiter to NOT wait, got %s", waitDur)
 	}
 
-	now = time.Now()
-
-	rateLimited, err = limiter.Wait(context.Background(), key, burst)
+	waitDur, err = limiter.Wait(context.Background(), key, burst)
 	if err != nil {
 		t.Fatalf("got err %v", err)
 	}
 
-	if time.Since(now) < rate || !rateLimited {
-		t.Fatalf("expected the limiter to wait at least %s", rate)
+	if waitDur < rate {
+		t.Fatalf("expected the limiter to wait at least %s, got %s", rate, waitDur)
 	}
 }
