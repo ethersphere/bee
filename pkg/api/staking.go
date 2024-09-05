@@ -31,7 +31,11 @@ func (s *Service) stakingAccessHandler(h http.Handler) http.Handler {
 }
 
 type getStakeResponse struct {
-	WithdrawableStake *bigint.BigInt `json:"withdrawableStake"`
+	StakedAmount *bigint.BigInt `json:"stakedAmount"`
+}
+
+type getWithdrawableResponse struct {
+	WithdrawableAmount *bigint.BigInt `json:"withdrawableAmount"`
 }
 type stakeTransactionReponse struct {
 	TxHash string `json:"txHash"`
@@ -81,7 +85,7 @@ func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) 
 func (s *Service) getPotentialStake(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_stake").Build()
 
-	withdrawableStake, err := s.stakingContract.GetPotentialStake(r.Context())
+	stakedAmount, err := s.stakingContract.GetPotentialStake(r.Context())
 	if err != nil {
 		logger.Debug("get staked amount failed", "overlayAddr", s.overlay, "error", err)
 		logger.Error(nil, "get staked amount failed")
@@ -89,13 +93,13 @@ func (s *Service) getPotentialStake(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonhttp.OK(w, getStakeResponse{WithdrawableStake: bigint.Wrap(withdrawableStake)})
+	jsonhttp.OK(w, getStakeResponse{StakedAmount: bigint.Wrap(stakedAmount)})
 }
 
 func (s *Service) getWithdrawableStakeHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_stake").Build()
 
-	withdrawableStake, err := s.stakingContract.GetWithdrawableStake(r.Context())
+	withdrawableAmount, err := s.stakingContract.GetWithdrawableStake(r.Context())
 	if err != nil {
 		logger.Debug("get staked amount failed", "overlayAddr", s.overlay, "error", err)
 		logger.Error(nil, "get staked amount failed")
@@ -103,7 +107,7 @@ func (s *Service) getWithdrawableStakeHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	jsonhttp.OK(w, getStakeResponse{WithdrawableStake: bigint.Wrap(withdrawableStake)})
+	jsonhttp.OK(w, getWithdrawableResponse{WithdrawableAmount: bigint.Wrap(withdrawableAmount)})
 }
 
 func (s *Service) withdrawStakeHandler(w http.ResponseWriter, r *http.Request) {

@@ -35,7 +35,7 @@ func TestDepositStake(t *testing.T) {
 		t.Parallel()
 
 		contract := stakingContractMock.New(
-			stakingContractMock.WithDepositStake(func(ctx context.Context, withdrawableStake *big.Int) (common.Hash, error) {
+			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
 				return txHash, nil
 			}),
 		)
@@ -48,7 +48,7 @@ func TestDepositStake(t *testing.T) {
 
 		invalidMinStake := big.NewInt(0).String()
 		contract := stakingContractMock.New(
-			stakingContractMock.WithDepositStake(func(ctx context.Context, withdrawableStake *big.Int) (common.Hash, error) {
+			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
 				return common.Hash{}, staking.ErrInsufficientStakeAmount
 			}),
 		)
@@ -61,7 +61,7 @@ func TestDepositStake(t *testing.T) {
 		t.Parallel()
 
 		contract := stakingContractMock.New(
-			stakingContractMock.WithDepositStake(func(ctx context.Context, withdrawableStake *big.Int) (common.Hash, error) {
+			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
 				return common.Hash{}, staking.ErrInsufficientFunds
 			}),
 		)
@@ -74,7 +74,7 @@ func TestDepositStake(t *testing.T) {
 		t.Parallel()
 
 		contract := stakingContractMock.New(
-			stakingContractMock.WithDepositStake(func(ctx context.Context, withdrawableStake *big.Int) (common.Hash, error) {
+			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
 				return common.Hash{}, fmt.Errorf("some error")
 			}),
 		)
@@ -87,7 +87,7 @@ func TestDepositStake(t *testing.T) {
 		t.Parallel()
 
 		contract := stakingContractMock.New(
-			stakingContractMock.WithDepositStake(func(ctx context.Context, withdrawableStake *big.Int) (common.Hash, error) {
+			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
 				gasLimit := sctx.GetGasLimit(ctx)
 				if gasLimit != 2000000 {
 					t.Fatalf("want 2000000, got %d", gasLimit)
@@ -118,7 +118,7 @@ func TestGetStakeCommitted(t *testing.T) {
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
 		jsonhttptest.Request(t, ts, http.MethodGet, "/stake", http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(&api.GetStakeResponse{WithdrawableStake: bigint.Wrap(big.NewInt(1))}))
+			jsonhttptest.WithExpectedJSONResponse(&api.GetStakeResponse{StakedAmount: bigint.Wrap(big.NewInt(1))}))
 	})
 
 	t.Run("with error", func(t *testing.T) {
@@ -148,7 +148,7 @@ func TestGetStakeWithdrawable(t *testing.T) {
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
 		jsonhttptest.Request(t, ts, http.MethodGet, "/stake/withdrawable", http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(&api.GetStakeResponse{WithdrawableStake: bigint.Wrap(big.NewInt(1))}))
+			jsonhttptest.WithExpectedJSONResponse(&api.GetWithdrawableResponse{WithdrawableAmount: bigint.Wrap(big.NewInt(1))}))
 	})
 
 	t.Run("with error", func(t *testing.T) {

@@ -2224,7 +2224,7 @@ paths:
         - Staking
       responses:
         "200":
-          $ref: "SwarmCommon.yaml#/components/schemas/GetStakeResponse"
+          $ref: "SwarmCommon.yaml#/components/schemas/GetWithdrawableResponse"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
