@@ -50,8 +50,8 @@ const (
 	DefaultMaxPage           uint64 = 250
 	pageTimeout                     = time.Second
 	makeOfferTimeout                = 15 * time.Minute
-	handleMaxChunksPerSecond        = 50
-	handleRequestsLimitRate         = time.Second / handleMaxChunksPerSecond // handle max 50 chunks per second per peer (maxPage chunks per 5 second)
+	handleMaxChunksPerSecond        = 100
+	handleRequestsLimitRate         = time.Second / handleMaxChunksPerSecond // handle max 100 chunks per second per peer (maxPage chunks per 5 second)
 )
 
 // Interface is the PullSync interface.
