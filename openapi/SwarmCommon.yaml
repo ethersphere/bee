@@ -634,7 +634,13 @@ components:
     GetStakeResponse:
       type: object
       properties:
-        withdrawableStake:
+        stakedAmount:
+          $ref: "#/components/schemas/BigInt"
+
+    GetWithdrawableResponse:
+      type: object
+      properties:
+        withdrawableAmount:
           $ref: "#/components/schemas/BigInt"
 
     StakeTransactionResponse:
