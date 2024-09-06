@@ -14,7 +14,7 @@ import (
 
 type Listener interface {
 	Register(address [32]byte, handler handler) (cleanup func())
-	Handler(c soc.SOC)
+	Handle(c soc.SOC)
 	Close() error
 }
 
@@ -55,8 +55,8 @@ func (l *listener) Register(address [32]byte, handler handler) (cleanup func()) 
 	}
 }
 
-// Handler is called by push/pull sync and passes the chunk its registered handler
-func (l *listener) Handler(c soc.SOC) {
+// Handle is called by push/pull sync and passes the chunk its registered handler
+func (l *listener) Handle(c soc.SOC) {
 	addr, err := c.Address()
 	if err != nil {
 		return // no handler
