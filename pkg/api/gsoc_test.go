@@ -81,7 +81,7 @@ func TestGsocWebsocketMultiHandler(t *testing.T) {
 	ch, _ = socCh.Sign(signer)
 	socCh, _ = soc.FromChunk(ch)
 
-	// close the websocket before calling pss with the message
+	// close the websocket before calling GSOC with the message
 	err = cl.WriteMessage(websocket.CloseMessage, []byte{})
 	if err != nil {
 		t.Fatal(err)
@@ -101,7 +101,7 @@ func TestGsocWebsocketMultiHandler(t *testing.T) {
 
 // TestGsocPong tests that the websocket api adheres to the websocket standard
 // and sends ping-pong messages to keep the connection alive.
-// The test opens a websocket, keeps it alive for 500ms, then receives a pss message.
+// The test opens a websocket, keeps it alive for 500ms, then receives a GSOC message.
 func TestGsocPong(t *testing.T) {
 	t.Parallel()
 	id := make([]byte, 32)
