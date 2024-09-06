@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
+	"github.com/ethersphere/bee/v2/pkg/replicas_soc"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -35,15 +36,15 @@ func (p *socPutter) Put(ctx context.Context, ch swarm.Chunk) (err error) {
 		return nil
 	}
 
-	rr := newSocReplicator(ch.Address(), rlevel)
+	rr := replicas_soc.NewSocReplicator(ch.Address(), rlevel)
 	errc := make(chan error, rlevel.GetReplicaCount())
 	wg := sync.WaitGroup{}
-	for r := range rr.c {
+	for r := range rr.C {
 		r := r
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			sch := swarm.NewChunk(swarm.NewAddress(r.addr), ch.Data())
+			sch := swarm.NewChunk(swarm.NewAddress(r.Addr), ch.Data())
 			err = p.putter.Put(ctx, sch)
 			errc <- err
 		}()

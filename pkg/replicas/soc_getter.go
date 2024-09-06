@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
+	"github.com/ethersphere/bee/v2/pkg/replicas_soc"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -72,8 +73,8 @@ func (g *socGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk
 	total := g.level.GetReplicaCount()
 
 	//
-	rr := newSocReplicator(addr, g.level)
-	next := rr.c
+	rr := replicas_soc.NewSocReplicator(addr, g.level)
+	next := rr.C
 	var wait <-chan time.Time // nil channel to disable case
 	// addresses used are doubling each period of search expansion
 	// (at intervals of RetryInterval)
@@ -96,7 +97,7 @@ func (g *socGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk
 			// ticker switches on the address channel
 		case <-wait:
 			wait = nil
-			next = rr.c
+			next = rr.C
 			level++
 			target = 1 << level
 			n = 0
@@ -112,7 +113,7 @@ func (g *socGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk
 			g.wg.Add(1)
 			go func() {
 				defer g.wg.Done()
-				ch, err := g.Getter.Get(ctx, swarm.NewAddress(so.addr))
+				ch, err := g.Getter.Get(ctx, swarm.NewAddress(so.Addr))
 				if err != nil {
 					errc <- err
 					return

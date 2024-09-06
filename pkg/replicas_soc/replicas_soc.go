@@ -8,11 +8,18 @@
 // - the replicas addresses can be deduced by retrievers only knowing the address
 // of the original content addressed chunk
 // - no new chunk validation rules are introduced
-package replicas
+package replicas_soc
 
 import (
+	"time"
+
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+)
+
+var (
+	// RetryInterval is the duration between successive additional requests
+	RetryInterval = 300 * time.Millisecond
 )
 
 // replicator running the find for replicas
@@ -21,25 +28,37 @@ type socReplicator struct {
 	queue  [16]*socReplica // to sort addresses according to di
 	exist  [30]bool        //  maps the 16 distinct nibbles on all levels
 	sizes  [5]int          // number of distinct neighnourhoods redcorded for each depth
-	c      chan *socReplica
+	C      chan *socReplica
 	rLevel redundancy.Level
 }
 
-// newSocReplicator replicator constructor
-func newSocReplicator(addr swarm.Address, rLevel redundancy.Level) *socReplicator {
+// NewSocReplicator replicator constructor
+func NewSocReplicator(addr swarm.Address, rLevel redundancy.Level) *socReplicator {
 	rr := &socReplicator{
 		addr:   addr.Bytes(),
 		sizes:  redundancy.GetReplicaCounts(),
-		c:      make(chan *socReplica, 16),
+		C:      make(chan *socReplica, 16),
 		rLevel: rLevel,
 	}
 	go rr.replicas()
 	return rr
 }
 
+func AllAddresses(addr swarm.Address) []swarm.Address {
+	r := redundancy.PARANOID
+	rr := NewSocReplicator(addr, r)
+	addresses := make([]swarm.Address, r.GetReplicaCount())
+	n := 0
+	for r := range rr.C {
+		addresses[n] = swarm.NewAddress(r.Addr)
+		n++
+	}
+	return addresses
+}
+
 // socReplica of the mined SOC chunk (address) that serve as replicas
 type socReplica struct {
-	addr  []byte // byte slice of the generated SOC address
+	Addr  []byte // byte slice of the generated SOC address
 	nonce uint8  // used nonce to generate the address
 }
 
@@ -57,7 +76,7 @@ func (rr *socReplicator) replicate(i uint8) (sp *socReplica) {
 // in successive sets of addresses.
 // I.e., the binary tree representing the new addresses prefix bits up to depth is balanced
 func (rr *socReplicator) replicas() {
-	defer close(rr.c)
+	defer close(rr.C)
 	n := 0
 	for i := uint8(0); n < rr.rLevel.GetReplicaCount() && i < 255; i++ {
 		// create soc replica (ID and address using constant owner)
@@ -71,7 +90,7 @@ func (rr *socReplicator) replicas() {
 			if r == nil {
 				break
 			}
-			rr.c <- r
+			rr.C <- r
 		}
 		n += m
 	}
@@ -82,7 +101,7 @@ func (rr *socReplicator) add(r *socReplica, rLevel redundancy.Level) (depth int,
 	if rLevel == redundancy.NONE {
 		return 0, 0
 	}
-	nh := nh(rLevel, r.addr)
+	nh := nh(rLevel, r.Addr)
 	if rr.exist[nh] {
 		return 0, 0
 	}
@@ -96,4 +115,16 @@ func (rr *socReplicator) add(r *socReplica, rLevel redundancy.Level) (depth int,
 		l = rLevel.GetReplicaCount()
 	}
 	return l, o
+}
+
+// UTILS
+
+// index bases needed to keep track how many addresses were mined for a level.
+var replicaIndexBases = [5]int{0, 2, 6, 14}
+
+// nh returns the lookup key based on the redundancy level
+// to be used as index to the replicators exist array
+func nh(rLevel redundancy.Level, addr []byte) int {
+	d := uint8(rLevel)
+	return replicaIndexBases[d-1] + int(addr[0]>>(8-d))
 }

@@ -7,6 +7,7 @@ package soc
 import (
 	"bytes"
 
+	"github.com/ethersphere/bee/v2/pkg/replicas_soc"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
@@ -26,5 +27,16 @@ func Valid(ch swarm.Chunk) bool {
 	if err != nil {
 		return false
 	}
-	return ch.Address().Equal(address)
+
+	// SOC dispersed replica validation
+	if !ch.Address().Equal(address) {
+		dispersedAddresses := replicas_soc.AllAddresses(ch.Address())
+		for _, v := range dispersedAddresses {
+			if v.Equal(ch.Address()) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
