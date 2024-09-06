@@ -45,7 +45,7 @@ func TestGsocWebsocketSingleHandler(t *testing.T) {
 	socCh := soc.New(id, ch)
 	ch, _ = socCh.Sign(signer)
 	socCh, _ = soc.FromChunk(ch)
-	g.Handler(*socCh)
+	g.Handle(*socCh)
 
 	go expectMessage(t, cl, respC, payload)
 	if err := <-respC; err != nil {
@@ -87,7 +87,7 @@ func TestGsocWebsocketMultiHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	g.Handler(*socCh)
+	g.Handle(*socCh)
 
 	go expectMessage(t, cl, respC, payload)
 	go expectMessage(t, cl2, respC, payload)
@@ -125,7 +125,7 @@ func TestGsocPong(t *testing.T) {
 	ch, _ = socCh.Sign(signer)
 	socCh, _ = soc.FromChunk(ch)
 
-	g.Handler(*socCh)
+	g.Handle(*socCh)
 
 	go expectMessage(t, cl, respC, nil)
 	if err := <-respC; err == nil || !strings.Contains(err.Error(), "i/o timeout") {
