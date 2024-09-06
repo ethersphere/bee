@@ -229,7 +229,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	if cac.Valid(chunk) {
 		go ps.unwrap(chunk)
 	} else if chunk, err := soc.FromChunk(chunk); err == nil {
-		go ps.gsocHandler(*chunk)
+		ps.gsocHandler(*chunk)
 	} else {
 		return swarm.ErrInvalidChunk
 	}
