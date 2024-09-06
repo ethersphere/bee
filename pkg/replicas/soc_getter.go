@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
-	"github.com/ethersphere/bee/v2/pkg/replicas_soc"
+	replicas_soc "github.com/ethersphere/bee/v2/pkg/replicas/soc"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"

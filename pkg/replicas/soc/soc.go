@@ -8,18 +8,11 @@
 // - the replicas addresses can be deduced by retrievers only knowing the address
 // of the original content addressed chunk
 // - no new chunk validation rules are introduced
-package replicas_soc
+package soc
 
 import (
-	"time"
-
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-)
-
-var (
-	// RetryInterval is the duration between successive additional requests
-	RetryInterval = 300 * time.Millisecond
 )
 
 // replicator running the find for replicas
