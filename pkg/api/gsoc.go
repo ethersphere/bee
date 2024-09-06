@@ -56,7 +56,7 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, socAddress []byte) {
 		ticker.Stop()
 		_ = conn.Close()
 	}()
-	cleanup := s.gsoc.Register([32]byte(socAddress), func(m []byte) {
+	cleanup := s.gsoc.Subscribe([32]byte(socAddress), func(m []byte) {
 		select {
 		case dataC <- m:
 		case <-gone:

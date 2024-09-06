@@ -13,7 +13,7 @@ import (
 )
 
 type Listener interface {
-	Register(address [32]byte, handler handler) (cleanup func())
+	Subscribe(address [32]byte, handler handler) (cleanup func())
 	Handle(c soc.SOC)
 	Close() error
 }
@@ -34,8 +34,8 @@ func New(logger log.Logger) Listener {
 	}
 }
 
-// Register allows the definition of a Handler func for a specific topic on the pss struct.
-func (l *listener) Register(address [32]byte, handler handler) (cleanup func()) {
+// Subscribe allows the definition of a Handler func for a specific topic on the pss struct.
+func (l *listener) Subscribe(address [32]byte, handler handler) (cleanup func()) {
 	l.handlersMu.Lock()
 	defer l.handlersMu.Unlock()
 

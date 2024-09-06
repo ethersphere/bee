@@ -52,8 +52,8 @@ func TestRegister(t *testing.T) {
 			msgChan <- struct{}{}
 		}
 	)
-	_ = g.Register([32]byte(address1.Bytes()), h1)
-	_ = g.Register([32]byte(address2.Bytes()), h2)
+	_ = g.Subscribe([32]byte(address1.Bytes()), h1)
+	_ = g.Subscribe([32]byte(address2.Bytes()), h2)
 
 	ch1, _ := cac.New(payload1)
 	socCh1 := soc.New(socId1, ch1)
@@ -66,7 +66,7 @@ func TestRegister(t *testing.T) {
 	socCh2, _ = soc.FromChunk(ch2)
 
 	// trigger soc upload on address1, check that only h1 is called
-	g.Handler(*socCh1)
+	g.Handle(*socCh1)
 
 	waitHandlerCallback(t, &msgChan, 1)
 
@@ -74,9 +74,9 @@ func TestRegister(t *testing.T) {
 	ensureCalls(t, &h2Calls, 0)
 
 	// register another handler on the first address
-	cleanup := g.Register([32]byte(address1.Bytes()), h3)
+	cleanup := g.Subscribe([32]byte(address1.Bytes()), h3)
 
-	g.Handler(*socCh1)
+	g.Handle(*socCh1)
 
 	waitHandlerCallback(t, &msgChan, 2)
 
@@ -86,7 +86,7 @@ func TestRegister(t *testing.T) {
 
 	cleanup() // remove the last handler
 
-	g.Handler(*socCh1)
+	g.Handle(*socCh1)
 
 	waitHandlerCallback(t, &msgChan, 1)
 
@@ -94,7 +94,7 @@ func TestRegister(t *testing.T) {
 	ensureCalls(t, &h2Calls, 0)
 	ensureCalls(t, &h3Calls, 1)
 
-	g.Handler(*socCh2)
+	g.Handle(*socCh2)
 
 	waitHandlerCallback(t, &msgChan, 1)
 
