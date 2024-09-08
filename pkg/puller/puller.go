@@ -361,7 +361,6 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 			if isHistorical {
 				p.metrics.SyncedCounter.WithLabelValues("historical").Add(float64(count))
 				p.rate.Add(count)
-				// rate limit historical syncing
 			} else {
 				p.metrics.SyncedCounter.WithLabelValues("live").Add(float64(count))
 			}

@@ -51,7 +51,7 @@ const (
 	pageTimeout                     = time.Second
 	makeOfferTimeout                = 15 * time.Minute
 	handleMaxChunksPerSecond        = 100
-	handleRequestsLimitRate         = time.Second / handleMaxChunksPerSecond // handle max 100 chunks per second per peer (maxPage chunks per 5 second)
+	handleRequestsLimitRate         = time.Second / handleMaxChunksPerSecond // handle max 100 chunks per second per peer
 )
 
 // Interface is the PullSync interface.
@@ -211,7 +211,7 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 	}
 
 	// slow down future requests
-	waitDur, err := s.limiter.Wait(streamCtx, p.Address.ByteString(), max(handleMaxChunksPerSecond, len(chs)))
+	waitDur, err := s.limiter.Wait(streamCtx, p.Address.ByteString(), max(1, len(chs)))
 	if err != nil {
 		return fmt.Errorf("rate limiter: %w", err)
 	}
