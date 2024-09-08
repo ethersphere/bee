@@ -188,7 +188,7 @@ func addStampHash(logger log.Logger, st transaction.Storage) (int64, int64, erro
 	}
 
 	if postBatchRadiusCnt != postChunkBinCnt || preBatchRadiusCnt != postBatchRadiusCnt || preChunkBinCnt != postChunkBinCnt {
-		return 0, 0, fmt.Errorf("post-migration check: index counts do not match, %d vs %d. It's recommended that the nuke is run to reset the node", postBatchRadiusCnt, postChunkBinCnt)
+		return 0, 0, fmt.Errorf("post-migration check: index counts do not match, %d vs %d. It's recommended that the nuke cmd is run to reset the node", postBatchRadiusCnt, postChunkBinCnt)
 	}
 
 	err = st.IndexStore().Iterate(storage.Query{
@@ -223,7 +223,7 @@ func addStampHash(logger log.Logger, st transaction.Storage) (int64, int64, erro
 	})
 
 	if err != nil {
-		return 0, 0, errors.New("post-migration check: items fields not match. It's recommended that the nuke is run to reset the node")
+		return 0, 0, errors.New("post-migration check: items fields not match. It's recommended that the nuke cmd is run to reset the node")
 	}
 
 	return seenCount, doneCount.Load(), nil
