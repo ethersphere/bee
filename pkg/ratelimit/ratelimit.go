@@ -33,35 +33,13 @@ func New(r time.Duration, burst int) *Limiter {
 
 // Allow checks if the limiter that belongs to 'key' has not exceeded the limit.
 func (l *Limiter) Allow(key string, count int) bool {
-	l.mtx.Lock()
-
-	limiter, ok := l.limiter[key]
-	if !ok {
-		limiter = rate.NewLimiter(l.rate, l.burst)
-		l.limiter[key] = limiter
-	}
-
-	// We are intentionally not defer calling Unlock in order to reduce locking extent.
-	// Individual limiter is capable for handling concurrent calls.
-	l.mtx.Unlock()
-
-	return limiter.AllowN(time.Now(), count)
+	return l.getLimiter(key).AllowN(time.Now(), count)
 }
 
-// Wait blocks until the limier permits n events to happen. Returns the duration the limiter waited for
-// to allows the number of events to occur.
+// Wait blocks until the limiter permits n events to happen. Returns the time duration
+// the limiter waited for to allow the number of events to occur.
 func (l *Limiter) Wait(ctx context.Context, key string, count int) (time.Duration, error) {
-	l.mtx.Lock()
-
-	limiter, ok := l.limiter[key]
-	if !ok {
-		limiter = rate.NewLimiter(l.rate, l.burst)
-		l.limiter[key] = limiter
-	}
-
-	// We are intentionally not defer calling Unlock in order to reduce locking extent.
-	// Individual limiter is capable for handling concurrent calls.
-	l.mtx.Unlock()
+	limiter := l.getLimiter(key)
 
 	n := time.Now()
 
@@ -75,8 +53,21 @@ func (l *Limiter) Wait(ctx context.Context, key string, count int) (time.Duratio
 }
 
 // Clear deletes the limiter that belongs to 'key'
-func (l *Limiter) Clear(key string) {
+func (l *Limiter) getLimiter(key string) *rate.Limiter {
+	l.mtx.Lock()
+	defer l.mtx.Unlock()
 
+	limiter, ok := l.limiter[key]
+	if !ok {
+		limiter = rate.NewLimiter(l.rate, l.burst)
+		l.limiter[key] = limiter
+	}
+
+	return limiter
+}
+
+// Clear deletes the limiter that belongs to 'key'
+func (l *Limiter) Clear(key string) {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 
