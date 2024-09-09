@@ -6,8 +6,6 @@ package chunkstamp
 
 import "github.com/ethersphere/bee/v2/pkg/swarm"
 
-type Item = item
-
 func (i *Item) WithNamespace(ns string) *Item {
 	i.namespace = []byte(ns)
 	return i

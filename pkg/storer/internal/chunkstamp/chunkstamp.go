@@ -29,27 +29,27 @@ var (
 	errUnmarshalInvalidChunkStampItemSize = errors.New("unmarshal chunkstamp.item: invalid size")
 )
 
-var _ storage.Item = (*item)(nil)
+var _ storage.Item = (*Item)(nil)
 
-// item is the index used to represent a stamp for a chunk.
+// Item is the index used to represent a stamp for a chunk.
 //
-// Going ahead we will support multiple stamps on chunks. This item will allow
+// Going ahead we will support multiple stamps on chunks. This Item will allow
 // mapping multiple stamps to a single address. For this reason, the address is
 // part of the Namespace and can be used to iterate on all the stamps for this
 // address.
-type item struct {
+type Item struct {
 	namespace []byte // The namespace of other related item.
 	address   swarm.Address
 	stamp     swarm.Stamp
 }
 
 // ID implements the storage.Item interface.
-func (i *item) ID() string {
+func (i *Item) ID() string {
 	return storageutil.JoinFields(string(i.stamp.BatchID()), string(i.stamp.Index()))
 }
 
 // Namespace implements the storage.Item interface.
-func (i *item) Namespace() string {
+func (i *Item) Namespace() string {
 	return storageutil.JoinFields("chunkStamp", string(i.namespace), i.address.ByteString())
 }
 
@@ -57,7 +57,7 @@ func (i *item) Namespace() string {
 // address is not part of the payload which is stored, as address is part of the
 // prefix, hence already known before querying this object. This will be reused
 // during unmarshaling.
-func (i *item) Marshal() ([]byte, error) {
+func (i *Item) Marshal() ([]byte, error) {
 	// The address is not part of the payload, but it is used to create the
 	// namespace so it is better if we check that the address is correctly
 	// set here before it is stored in the underlying storage.
@@ -88,7 +88,7 @@ func (i *item) Marshal() ([]byte, error) {
 }
 
 // Unmarshal implements the storage.Item interface.
-func (i *item) Unmarshal(bytes []byte) error {
+func (i *Item) Unmarshal(bytes []byte) error {
 	if len(bytes) < 8 {
 		return errUnmarshalInvalidChunkStampItemSize
 	}
@@ -102,7 +102,7 @@ func (i *item) Unmarshal(bytes []byte) error {
 		return errUnmarshalInvalidChunkStampItemAddress
 	}
 
-	ni := &item{address: i.address.Clone()}
+	ni := &Item{address: i.address.Clone()}
 	l := 8
 	ni.namespace = append(make([]byte, 0, nsLen), bytes[l:l+nsLen]...)
 	l += nsLen
@@ -119,11 +119,11 @@ func (i *item) Unmarshal(bytes []byte) error {
 }
 
 // Clone implements the storage.Item interface.
-func (i *item) Clone() storage.Item {
+func (i *Item) Clone() storage.Item {
 	if i == nil {
 		return nil
 	}
-	clone := &item{
+	clone := &Item{
 		namespace: append([]byte(nil), i.namespace...),
 		address:   i.address.Clone(),
 	}
@@ -134,7 +134,7 @@ func (i *item) Clone() storage.Item {
 }
 
 // String implements the storage.Item interface.
-func (i item) String() string {
+func (i Item) String() string {
 	return storageutil.JoinFields(i.Namespace(), i.ID())
 }
 
@@ -151,14 +151,14 @@ func LoadWithBatchID(s storage.Reader, namespace string, addr swarm.Address, bat
 	err := s.Iterate(
 		storage.Query{
 			Factory: func() storage.Item {
-				return &item{
+				return &Item{
 					namespace: []byte(namespace),
 					address:   addr,
 				}
 			},
 		},
 		func(res storage.Result) (bool, error) {
-			item := res.Entry.(*item)
+			item := res.Entry.(*Item)
 			if batchID == nil || bytes.Equal(batchID, item.stamp.BatchID()) {
 				stamp = item.stamp
 				found = true
@@ -180,7 +180,7 @@ func LoadWithBatchID(s storage.Reader, namespace string, addr swarm.Address, bat
 // Store creates new or updated an existing stamp index
 // record related to the given namespace and chunk.
 func Store(s storage.IndexStore, namespace string, chunk swarm.Chunk) error {
-	item := &item{
+	item := &Item{
 		namespace: []byte(namespace),
 		address:   chunk.Address(),
 		stamp:     chunk.Stamp(),
@@ -197,14 +197,14 @@ func DeleteAll(s storage.IndexStore, namespace string, addr swarm.Address) error
 	err := s.Iterate(
 		storage.Query{
 			Factory: func() storage.Item {
-				return &item{
+				return &Item{
 					namespace: []byte(namespace),
 					address:   addr,
 				}
 			},
 		},
 		func(res storage.Result) (bool, error) {
-			stamps = append(stamps, res.Entry.(*item).stamp)
+			stamps = append(stamps, res.Entry.(*Item).stamp)
 			return false, nil
 		},
 	)
@@ -216,7 +216,7 @@ func DeleteAll(s storage.IndexStore, namespace string, addr swarm.Address) error
 	for _, stamp := range stamps {
 		errs = errors.Join(
 			errs,
-			s.Delete(&item{
+			s.Delete(&Item{
 				namespace: []byte(namespace),
 				address:   addr,
 				stamp:     stamp,
@@ -235,7 +235,7 @@ func Delete(s storage.IndexStore, namespace string, addr swarm.Address, batchId 
 		}
 		return err
 	}
-	return s.Delete(&item{
+	return s.Delete(&Item{
 		namespace: []byte(namespace),
 		address:   addr,
 		stamp:     stamp,
@@ -248,7 +248,7 @@ func DeleteWithStamp(
 	addr swarm.Address,
 	stamp swarm.Stamp,
 ) error {
-	return writer.Delete(&item{
+	return writer.Delete(&Item{
 		namespace: []byte(namespace),
 		address:   addr,
 		stamp:     stamp,

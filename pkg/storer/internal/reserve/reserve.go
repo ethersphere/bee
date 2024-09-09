@@ -516,6 +516,101 @@ func (r *Reserve) IterateChunksItems(startBin uint8, cb func(*ChunkBinItem) (boo
 	return err
 }
 
+func (r *Reserve) Reset(ctx context.Context) error {
+
+	size := r.Size()
+
+	bRitems := make([]*BatchRadiusItem, 0, size)
+
+	err := r.st.IndexStore().Iterate(storage.Query{
+		Factory: func() storage.Item { return &BatchRadiusItem{} },
+	}, func(res storage.Result) (bool, error) {
+		bRitems = append(bRitems, res.Entry.(*BatchRadiusItem))
+		return false, nil
+	})
+	if err != nil {
+		return err
+	}
+
+	var eg errgroup.Group
+	eg.SetLimit(runtime.NumCPU())
+
+	// delete all chunks
+	for _, item := range bRitems {
+		func(item *BatchRadiusItem) {
+			eg.Go(func() error {
+				return r.st.Run(ctx, func(s transaction.Store) error {
+					return errors.Join(
+						s.ChunkStore().Delete(ctx, item.Address),
+						s.IndexStore().Delete(item),
+						s.IndexStore().Delete(&ChunkBinItem{Bin: item.Bin, BinID: item.BinID}),
+					)
+				})
+			})
+		}(item)
+	}
+
+	err = eg.Wait()
+	if err != nil {
+		return err
+	}
+
+	sitems := make([]*stampindex.Item, 0, size)
+	err = r.st.IndexStore().Iterate(storage.Query{
+		Factory: func() storage.Item { return &stampindex.Item{} },
+	}, func(res storage.Result) (bool, error) {
+		sitems = append(sitems, res.Entry.(*stampindex.Item))
+		return false, nil
+	})
+	if err != nil {
+		return err
+	}
+	for _, item := range sitems {
+		func(item *stampindex.Item) {
+			eg.Go(func() error {
+				return r.st.Run(ctx, func(s transaction.Store) error {
+					return s.IndexStore().Delete(item)
+				})
+			})
+		}(item)
+	}
+
+	err = eg.Wait()
+	if err != nil {
+		return err
+	}
+
+	citems := make([]*chunkstamp.Item, 0, size)
+	err = r.st.IndexStore().Iterate(storage.Query{
+		Factory: func() storage.Item { return &chunkstamp.Item{} },
+	}, func(res storage.Result) (bool, error) {
+		citems = append(citems, res.Entry.(*chunkstamp.Item))
+		return false, nil
+	})
+	if err != nil {
+		return err
+	}
+	// delete all chunks
+	for _, item := range citems {
+		func(item *chunkstamp.Item) {
+			eg.Go(func() error {
+				return r.st.Run(ctx, func(s transaction.Store) error {
+					return s.IndexStore().Delete(item)
+				})
+			})
+		}(item)
+	}
+
+	err = eg.Wait()
+	if err != nil {
+		return err
+	}
+
+	r.size.Store(0)
+
+	return nil
+}
+
 func (r *Reserve) Radius() uint8 {
 	return uint8(r.radius.Load())
 }
