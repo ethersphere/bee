@@ -61,7 +61,6 @@ type Service struct {
 	metrics           metrics
 	inLimiter         *ratelimit.Limiter
 	outLimiter        *ratelimit.Limiter
-	clearMtx          sync.Mutex
 	quit              chan struct{}
 	wg                sync.WaitGroup
 	peersChan         chan pb.Peers
@@ -243,13 +242,8 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 }
 
 func (s *Service) disconnect(peer p2p.Peer) error {
-
-	s.clearMtx.Lock()
-	defer s.clearMtx.Unlock()
-
 	s.inLimiter.Clear(peer.Address.ByteString())
 	s.outLimiter.Clear(peer.Address.ByteString())
-
 	return nil
 }
 
