@@ -224,3 +224,16 @@ func Delete(s storage.Writer, namespace string, chunk swarm.Chunk) error {
 	}
 	return nil
 }
+
+// DeleteWithStamp removes the related stamp index record from the storage.
+func DeleteWithStamp(s storage.Writer, namespace string, stamp swarm.Stamp) error {
+	item := &Item{
+		namespace:  []byte(namespace),
+		BatchID:    stamp.BatchID(),
+		StampIndex: stamp.Index(),
+	}
+	if err := s.Delete(item); err != nil {
+		return fmt.Errorf("failed to delete stampindex.Item %s: %w", item, err)
+	}
+	return nil
+}
