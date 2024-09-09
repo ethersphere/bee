@@ -535,7 +535,6 @@ func (r *Reserve) Reset(ctx context.Context) error {
 	var eg errgroup.Group
 	eg.SetLimit(runtime.NumCPU())
 
-	// delete all chunks
 	for _, item := range bRitems {
 		func(item *BatchRadiusItem) {
 			eg.Go(func() error {
@@ -590,7 +589,6 @@ func (r *Reserve) Reset(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	// delete all chunks
 	for _, item := range citems {
 		func(item *chunkstamp.Item) {
 			eg.Go(func() error {
