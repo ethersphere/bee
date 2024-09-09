@@ -163,6 +163,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 						"new_chunk", chunk.Address(),
 						"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
 					)
+					// remove index items and chunk data
 					err = r.removeChunk(ctx, s, oldStampIndex.ChunkAddress, oldStampIndex.BatchID, oldStampIndex.StampHash)
 					if err != nil {
 						return fmt.Errorf("failed removing older chunk %s: %w", oldStampIndex.ChunkAddress, err)
@@ -183,13 +184,23 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 				return err
 			}
 
+			// delete old chunk index items
+			err = errors.Join(
+				s.IndexStore().Delete(oldBatchRadiusItem),
+				s.IndexStore().Delete(&ChunkBinItem{Bin: oldBatchRadiusItem.Bin, BinID: oldBatchRadiusItem.BinID}),
+				stampindex.DeleteWithStamp(s.IndexStore(), reserveNamespace, sameAddressOldStamp),
+				chunkstamp.DeleteWithStamp(s.IndexStore(), reserveNamespace, oldBatchRadiusItem.Address, sameAddressOldStamp),
+			)
+			if err != nil {
+				return err
+			}
+
 			binID, err := r.IncBinID(s.IndexStore(), bin)
 			if err != nil {
 				return err
 			}
 
 			err = errors.Join(
-				r.deleteWithStamp(s, oldBatchRadiusItem, sameAddressOldStamp),
 				stampindex.Store(s.IndexStore(), reserveNamespace, chunk),
 				chunkstamp.Store(s.IndexStore(), reserveNamespace, chunk),
 				s.IndexStore().Put(&BatchRadiusItem{
@@ -297,15 +308,6 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 		r.size.Add(-1)
 	}
 	return nil
-}
-
-func (r *Reserve) deleteWithStamp(s transaction.Store, oldBatchRadiusItem *BatchRadiusItem, sameAddressOldChunkStamp swarm.Stamp) error {
-	return errors.Join(
-		s.IndexStore().Delete(oldBatchRadiusItem),
-		s.IndexStore().Delete(&ChunkBinItem{Bin: oldBatchRadiusItem.Bin, BinID: oldBatchRadiusItem.BinID}),
-		stampindex.Delete(s.IndexStore(), reserveNamespace, swarm.NewChunk(oldBatchRadiusItem.Address, nil).WithStamp(sameAddressOldChunkStamp)),
-		chunkstamp.DeleteWithStamp(s.IndexStore(), reserveNamespace, oldBatchRadiusItem.Address, sameAddressOldChunkStamp),
-	)
 }
 
 func (r *Reserve) Has(addr swarm.Address, batchID []byte, stampHash []byte) (bool, error) {

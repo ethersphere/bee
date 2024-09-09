@@ -5,7 +5,9 @@
 package migration
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"runtime"
@@ -186,7 +188,42 @@ func addStampHash(logger log.Logger, st transaction.Storage) (int64, int64, erro
 	}
 
 	if postBatchRadiusCnt != postChunkBinCnt || preBatchRadiusCnt != postBatchRadiusCnt || preChunkBinCnt != postChunkBinCnt {
-		return 0, 0, fmt.Errorf("post-migration check: index counts do not match, %d vs %d. It's recommended that the nuke is run to reset the node", postBatchRadiusCnt, postChunkBinCnt)
+		return 0, 0, fmt.Errorf("post-migration check: index counts do not match, %d vs %d. It's recommended that the nuke cmd is run to reset the node", postBatchRadiusCnt, postChunkBinCnt)
+	}
+
+	err = st.IndexStore().Iterate(storage.Query{
+		Factory: func() storage.Item { return new(reserve.ChunkBinItem) },
+	}, func(result storage.Result) (bool, error) {
+		item := result.Entry.(*reserve.ChunkBinItem)
+
+		batchRadiusItem := &reserve.BatchRadiusItem{BatchID: item.BatchID, Bin: item.Bin, Address: item.Address, StampHash: item.StampHash}
+		if err := st.IndexStore().Get(batchRadiusItem); err != nil {
+			return false, fmt.Errorf("batch radius item get: %w", err)
+		}
+
+		stamp, err := chunkstamp.LoadWithBatchID(st.IndexStore(), "reserve", item.Address, item.BatchID)
+		if err != nil {
+			return false, fmt.Errorf("stamp item get: %w", err)
+		}
+
+		stampIndex, err := stampindex.LoadWithStamp(st.IndexStore(), "reserve", stamp)
+		if err != nil {
+			return false, fmt.Errorf("stamp index get: %w", err)
+		}
+
+		if !bytes.Equal(item.StampHash, batchRadiusItem.StampHash) {
+			return false, fmt.Errorf("batch radius item stamp hash, %x vs %x", item.StampHash, batchRadiusItem.StampHash)
+		}
+
+		if !bytes.Equal(item.StampHash, stampIndex.StampHash) {
+			return false, fmt.Errorf("stamp index item stamp hash, %x vs %x", item.StampHash, stampIndex.StampHash)
+		}
+
+		return false, nil
+	})
+
+	if err != nil {
+		return 0, 0, errors.New("post-migration check: items fields not match. It's recommended that the nuke cmd is run to reset the node")
 	}
 
 	return seenCount, doneCount.Load(), nil
