@@ -101,6 +101,12 @@ func Test_Step_06(t *testing.T) {
 	err = localmigration.Step_06(store)()
 	require.NoError(t, err)
 
+	has, err := store.IndexStore().Has(&reserve.EpochItem{})
+	if has {
+		t.Fatal("epoch item should be deleted")
+	}
+	require.NoError(t, err)
+
 	checkBatchRadiusItems(t, store.IndexStore(), len(chunks), batchRadiusItems)
 	checkChunkBinItems(t, store.IndexStore(), len(chunks), chunkBinItems)
 	checkStampIndex(t, store.IndexStore(), len(chunks), stampIndexItems)
