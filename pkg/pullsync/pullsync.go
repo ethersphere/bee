@@ -50,7 +50,7 @@ const (
 	DefaultMaxPage           uint64 = 250
 	pageTimeout                     = time.Second
 	makeOfferTimeout                = 15 * time.Minute
-	handleMaxChunksPerSecond        = 100
+	handleMaxChunksPerSecond        = 250
 	handleRequestsLimitRate         = time.Second / handleMaxChunksPerSecond // handle max 100 chunks per second per peer
 )
 
@@ -194,6 +194,15 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 		return fmt.Errorf("process want: %w", err)
 	}
 
+	// slow down future requests
+	waitDur, err := s.limiter.Wait(streamCtx, p.Address.ByteString(), max(1, len(chs)))
+	if err != nil {
+		return fmt.Errorf("rate limiter: %w", err)
+	}
+	if waitDur > 0 {
+		s.logger.Debug("rate limited peer", "wait_duration", waitDur, "peer_address", p.Address)
+	}
+
 	for _, c := range chs {
 		var stamp []byte
 		if c.Stamp() != nil {
@@ -208,15 +217,6 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 			return fmt.Errorf("write delivery: %w", err)
 		}
 		s.metrics.Sent.Inc()
-	}
-
-	// slow down future requests
-	waitDur, err := s.limiter.Wait(streamCtx, p.Address.ByteString(), max(1, len(chs)))
-	if err != nil {
-		return fmt.Errorf("rate limiter: %w", err)
-	}
-	if waitDur > 0 {
-		s.logger.Debug("rate limited peer", "wait_duration", waitDur, "peer_address", p.Address)
 	}
 
 	return nil
