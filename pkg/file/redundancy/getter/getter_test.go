@@ -29,7 +29,7 @@ import (
 
 // TestGetter tests the retrieval of chunks with missing data shards
 // using the RACE strategy for a number of erasure code parameters
-func TestGetterRACE_FLAKY(t *testing.T) {
+func TestGetterRACE(t *testing.T) {
 	type getterTest struct {
 		bufSize    int
 		shardCnt   int
