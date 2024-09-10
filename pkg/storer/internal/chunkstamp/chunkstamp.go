@@ -17,8 +17,8 @@ import (
 )
 
 var (
-	// errMarshalInvalidChunkStampItemNamespace is returned during marshaling if the namespace is not set.
-	errMarshalInvalidChunkStampItemNamespace = errors.New("marshal chunkstamp.Item: invalid namespace")
+	// errMarshalInvalidChunkStampItemScope is returned during marshaling if the scope is not set.
+	errMarshalInvalidChunkStampItemScope = errors.New("marshal chunkstamp.Item: invalid scope")
 	// errMarshalInvalidChunkStampAddress is returned during marshaling if the address is zero.
 	errMarshalInvalidChunkStampItemAddress = errors.New("marshal chunkstamp.item: invalid address")
 	// errUnmarshalInvalidChunkStampAddress is returned during unmarshaling if the address is not set.
@@ -38,9 +38,9 @@ var _ storage.Item = (*Item)(nil)
 // part of the Namespace and can be used to iterate on all the stamps for this
 // address.
 type Item struct {
-	namespace []byte // The namespace of other related item.
-	address   swarm.Address
-	stamp     swarm.Stamp
+	scope   []byte // The scope of other related item.
+	address swarm.Address
+	stamp   swarm.Stamp
 }
 
 // ID implements the storage.Item interface.
@@ -50,7 +50,11 @@ func (i *Item) ID() string {
 
 // Namespace implements the storage.Item interface.
 func (i *Item) Namespace() string {
-	return storageutil.JoinFields("chunkStamp", string(i.namespace), i.address.ByteString())
+	return storageutil.JoinFields("chunkStamp", string(i.scope), i.address.ByteString())
+}
+
+func (i *Item) SetScope(ns []byte) {
+	i.scope = ns
 }
 
 // Marshal implements the storage.Item interface.
@@ -59,25 +63,25 @@ func (i *Item) Namespace() string {
 // during unmarshaling.
 func (i *Item) Marshal() ([]byte, error) {
 	// The address is not part of the payload, but it is used to create the
-	// namespace so it is better if we check that the address is correctly
+	// scope so it is better if we check that the address is correctly
 	// set here before it is stored in the underlying storage.
 
 	switch {
-	case len(i.namespace) == 0:
-		return nil, errMarshalInvalidChunkStampItemNamespace
+	case len(i.scope) == 0:
+		return nil, errMarshalInvalidChunkStampItemScope
 	case i.address.IsZero():
 		return nil, errMarshalInvalidChunkStampItemAddress
 	case i.stamp == nil:
 		return nil, errMarshalInvalidChunkStampItemStamp
 	}
 
-	buf := make([]byte, 8+len(i.namespace)+postage.StampSize)
+	buf := make([]byte, 8+len(i.scope)+postage.StampSize)
 
 	l := 0
-	binary.LittleEndian.PutUint64(buf[l:l+8], uint64(len(i.namespace)))
+	binary.LittleEndian.PutUint64(buf[l:l+8], uint64(len(i.scope)))
 	l += 8
-	copy(buf[l:l+len(i.namespace)], i.namespace)
-	l += len(i.namespace)
+	copy(buf[l:l+len(i.scope)], i.scope)
+	l += len(i.scope)
 	data, err := i.stamp.MarshalBinary()
 	if err != nil {
 		return nil, fmt.Errorf("unable to marshal chunkstamp.item: %w", err)
@@ -104,7 +108,7 @@ func (i *Item) Unmarshal(bytes []byte) error {
 
 	ni := &Item{address: i.address.Clone()}
 	l := 8
-	ni.namespace = append(make([]byte, 0, nsLen), bytes[l:l+nsLen]...)
+	ni.scope = append(make([]byte, 0, nsLen), bytes[l:l+nsLen]...)
 	l += nsLen
 	stamp := new(postage.Stamp)
 	if err := stamp.UnmarshalBinary(bytes[l : l+postage.StampSize]); err != nil {
@@ -124,8 +128,8 @@ func (i *Item) Clone() storage.Item {
 		return nil
 	}
 	clone := &Item{
-		namespace: append([]byte(nil), i.namespace...),
-		address:   i.address.Clone(),
+		scope:   append([]byte(nil), i.scope...),
+		address: i.address.Clone(),
 	}
 	if i.stamp != nil {
 		clone.stamp = i.stamp.Clone()
@@ -139,12 +143,12 @@ func (i Item) String() string {
 }
 
 // Load returns first found swarm.Stamp related to the given address.
-func Load(s storage.Reader, namespace string, addr swarm.Address) (swarm.Stamp, error) {
-	return LoadWithBatchID(s, namespace, addr, nil)
+func Load(s storage.Reader, scope string, addr swarm.Address) (swarm.Stamp, error) {
+	return LoadWithBatchID(s, scope, addr, nil)
 }
 
 // LoadWithBatchID returns swarm.Stamp related to the given address and batchID.
-func LoadWithBatchID(s storage.Reader, namespace string, addr swarm.Address, batchID []byte) (swarm.Stamp, error) {
+func LoadWithBatchID(s storage.Reader, scope string, addr swarm.Address, batchID []byte) (swarm.Stamp, error) {
 	var stamp swarm.Stamp
 
 	found := false
@@ -152,8 +156,8 @@ func LoadWithBatchID(s storage.Reader, namespace string, addr swarm.Address, bat
 		storage.Query{
 			Factory: func() storage.Item {
 				return &Item{
-					namespace: []byte(namespace),
-					address:   addr,
+					scope:   []byte(scope),
+					address: addr,
 				}
 			},
 		},
@@ -178,12 +182,12 @@ func LoadWithBatchID(s storage.Reader, namespace string, addr swarm.Address, bat
 }
 
 // Store creates new or updated an existing stamp index
-// record related to the given namespace and chunk.
-func Store(s storage.IndexStore, namespace string, chunk swarm.Chunk) error {
+// record related to the given scope and chunk.
+func Store(s storage.IndexStore, scope string, chunk swarm.Chunk) error {
 	item := &Item{
-		namespace: []byte(namespace),
-		address:   chunk.Address(),
-		stamp:     chunk.Stamp(),
+		scope:   []byte(scope),
+		address: chunk.Address(),
+		stamp:   chunk.Stamp(),
 	}
 	if err := s.Put(item); err != nil {
 		return fmt.Errorf("unable to put chunkstamp.item %s: %w", item, err)
@@ -192,14 +196,14 @@ func Store(s storage.IndexStore, namespace string, chunk swarm.Chunk) error {
 }
 
 // DeleteAll removes all swarm.Stamp related to the given address.
-func DeleteAll(s storage.IndexStore, namespace string, addr swarm.Address) error {
+func DeleteAll(s storage.IndexStore, scope string, addr swarm.Address) error {
 	var stamps []swarm.Stamp
 	err := s.Iterate(
 		storage.Query{
 			Factory: func() storage.Item {
 				return &Item{
-					namespace: []byte(namespace),
-					address:   addr,
+					scope:   []byte(scope),
+					address: addr,
 				}
 			},
 		},
@@ -217,9 +221,9 @@ func DeleteAll(s storage.IndexStore, namespace string, addr swarm.Address) error
 		errs = errors.Join(
 			errs,
 			s.Delete(&Item{
-				namespace: []byte(namespace),
-				address:   addr,
-				stamp:     stamp,
+				scope:   []byte(scope),
+				address: addr,
+				stamp:   stamp,
 			}),
 		)
 	}
@@ -227,8 +231,8 @@ func DeleteAll(s storage.IndexStore, namespace string, addr swarm.Address) error
 }
 
 // Delete removes a stamp associated with an chunk and batchID.
-func Delete(s storage.IndexStore, namespace string, addr swarm.Address, batchId []byte) error {
-	stamp, err := LoadWithBatchID(s, namespace, addr, batchId)
+func Delete(s storage.IndexStore, scope string, addr swarm.Address, batchId []byte) error {
+	stamp, err := LoadWithBatchID(s, scope, addr, batchId)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return nil
@@ -236,21 +240,21 @@ func Delete(s storage.IndexStore, namespace string, addr swarm.Address, batchId 
 		return err
 	}
 	return s.Delete(&Item{
-		namespace: []byte(namespace),
-		address:   addr,
-		stamp:     stamp,
+		scope:   []byte(scope),
+		address: addr,
+		stamp:   stamp,
 	})
 }
 
 func DeleteWithStamp(
 	writer storage.Writer,
-	namespace string,
+	scope string,
 	addr swarm.Address,
 	stamp swarm.Stamp,
 ) error {
 	return writer.Delete(&Item{
-		namespace: []byte(namespace),
-		address:   addr,
-		stamp:     stamp,
+		scope:   []byte(scope),
+		address: addr,
+		stamp:   stamp,
 	})
 }

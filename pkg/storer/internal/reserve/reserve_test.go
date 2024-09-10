@@ -772,8 +772,14 @@ func TestReset(t *testing.T) {
 
 	var chs []swarm.Chunk
 
-	for b := 0; b < 5; b++ {
-		for i := 1; i <= 50; i++ {
+	var (
+		bins         = 5
+		chunksPerBin = 100
+		total        = bins * chunksPerBin
+	)
+
+	for b := 0; b < bins; b++ {
+		for i := 1; i <= chunksPerBin; i++ {
 			ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, b)
 			err := r.Put(context.Background(), ch)
 			if err != nil {
@@ -794,12 +800,36 @@ func TestReset(t *testing.T) {
 		}
 	}
 
+	c, err := ts.IndexStore().Count(&reserve.BatchRadiusItem{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, c, total)
+	c, err = ts.IndexStore().Count(&reserve.ChunkBinItem{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, c, total)
+	c, err = ts.IndexStore().Count(&stampindex.Item{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, c, total)
+
+	cItem := &chunkstamp.Item{}
+	cItem.SetScope([]byte("reserve"))
+	c, err = ts.IndexStore().Count(cItem)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, c, total)
+
 	err = r.Reset(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	c, err := ts.IndexStore().Count(&reserve.BatchRadiusItem{})
+	c, err = ts.IndexStore().Count(&reserve.BatchRadiusItem{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -814,7 +844,8 @@ func TestReset(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.Equal(t, c, 0)
-	c, err = ts.IndexStore().Count(&chunkstamp.Item{})
+
+	c, err = ts.IndexStore().Count(cItem)
 	if err != nil {
 		t.Fatal(err)
 	}

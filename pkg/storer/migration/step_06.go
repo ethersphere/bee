@@ -164,7 +164,7 @@ func addStampHash(logger log.Logger, st transaction.Storage) (int64, int64, erro
 					StampTimestamp: stamp.Timestamp(),
 					ChunkAddress:   chunkBinItemV1.Address,
 				}
-				stampIndexItem.SetNamespace([]byte("reserve"))
+				stampIndexItem.SetScope([]byte("reserve"))
 				err = idxStore.Put(stampIndexItem)
 				if err != nil {
 					return err

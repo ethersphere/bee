@@ -227,7 +227,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 				return nil
 			}
 
-			r.logger.Warning("replacing soc in chunkstore", "address", chunk.Address())
+			r.logger.Debug("replacing soc in chunkstore", "address", chunk.Address())
 			return s.ChunkStore().Replace(ctx, chunk)
 		}
 
@@ -245,7 +245,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			// 3. Delete ALL old chunk related items from the reserve.
 			// 4. Update the stamp index.
 
-			err = r.removeChunk(ctx, s, oldStampIndex.ChunkAddress, chunk.Stamp().BatchID(), oldStampIndex.StampHash)
+			err = r.removeChunk(ctx, s, oldStampIndex.ChunkAddress, oldStampIndex.BatchID, oldStampIndex.StampHash)
 			if err != nil {
 				return fmt.Errorf("failed removing older chunk %s: %w", oldStampIndex.ChunkAddress, err)
 			}
@@ -516,6 +516,7 @@ func (r *Reserve) IterateChunksItems(startBin uint8, cb func(*ChunkBinItem) (boo
 	return err
 }
 
+// Reset removes all the entires in the reserve. Must be done before any calls to the reserve.
 func (r *Reserve) Reset(ctx context.Context) error {
 
 	size := r.Size()
@@ -536,23 +537,23 @@ func (r *Reserve) Reset(ctx context.Context) error {
 	eg.SetLimit(runtime.NumCPU())
 
 	for _, item := range bRitems {
-		func(item *BatchRadiusItem) {
-			eg.Go(func() error {
-				return r.st.Run(ctx, func(s transaction.Store) error {
-					return errors.Join(
-						s.ChunkStore().Delete(ctx, item.Address),
-						s.IndexStore().Delete(item),
-						s.IndexStore().Delete(&ChunkBinItem{Bin: item.Bin, BinID: item.BinID}),
-					)
-				})
+		item := item
+		eg.Go(func() error {
+			return r.st.Run(ctx, func(s transaction.Store) error {
+				return errors.Join(
+					s.ChunkStore().Delete(ctx, item.Address),
+					s.IndexStore().Delete(item),
+					s.IndexStore().Delete(&ChunkBinItem{Bin: item.Bin, BinID: item.BinID}),
+				)
 			})
-		}(item)
+		})
 	}
 
 	err = eg.Wait()
 	if err != nil {
 		return err
 	}
+	bRitems = nil
 
 	sitems := make([]*stampindex.Item, 0, size)
 	err = r.st.IndexStore().Iterate(storage.Query{
@@ -565,44 +566,22 @@ func (r *Reserve) Reset(ctx context.Context) error {
 		return err
 	}
 	for _, item := range sitems {
-		func(item *stampindex.Item) {
-			eg.Go(func() error {
-				return r.st.Run(ctx, func(s transaction.Store) error {
-					return s.IndexStore().Delete(item)
-				})
+		item := item
+		eg.Go(func() error {
+			return r.st.Run(ctx, func(s transaction.Store) error {
+				return errors.Join(
+					chunkstamp.DeleteAll(s.IndexStore(), reserveNamespace, item.ChunkAddress),
+					s.IndexStore().Delete(item),
+				)
 			})
-		}(item)
+		})
 	}
 
 	err = eg.Wait()
 	if err != nil {
 		return err
 	}
-
-	citems := make([]*chunkstamp.Item, 0, size)
-	err = r.st.IndexStore().Iterate(storage.Query{
-		Factory: func() storage.Item { return &chunkstamp.Item{} },
-	}, func(res storage.Result) (bool, error) {
-		citems = append(citems, res.Entry.(*chunkstamp.Item))
-		return false, nil
-	})
-	if err != nil {
-		return err
-	}
-	for _, item := range citems {
-		func(item *chunkstamp.Item) {
-			eg.Go(func() error {
-				return r.st.Run(ctx, func(s transaction.Store) error {
-					return s.IndexStore().Delete(item)
-				})
-			})
-		}(item)
-	}
-
-	err = eg.Wait()
-	if err != nil {
-		return err
-	}
+	sitems = nil
 
 	r.size.Store(0)
 
