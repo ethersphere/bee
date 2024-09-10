@@ -212,19 +212,6 @@ func Store(s storage.IndexStore, scope string, chunk swarm.Chunk) error {
 	return nil
 }
 
-// Delete removes the related stamp index record from the storage.
-func Delete(s storage.Writer, scope string, chunk swarm.Chunk) error {
-	item := &Item{
-		scope:      []byte(scope),
-		BatchID:    chunk.Stamp().BatchID(),
-		StampIndex: chunk.Stamp().Index(),
-	}
-	if err := s.Delete(item); err != nil {
-		return fmt.Errorf("failed to delete stampindex.Item %s: %w", item, err)
-	}
-	return nil
-}
-
 // DeleteWithStamp removes the related stamp index record from the storage.
 func DeleteWithStamp(s storage.Writer, scope string, stamp swarm.Stamp) error {
 	item := &Item{
