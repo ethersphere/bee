@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"errors"
 	"sync"
 	"testing"
 
@@ -59,6 +60,96 @@ func TestPersistIdempotence(t *testing.T) {
 		if !bytes.Equal(m, v[:]) {
 			t.Fatalf("expected value %x, got %x", v[:], m)
 		}
+	}
+}
+
+func TestPersistRemove(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		toAdd    []mantaray.NodeEntry
+		toRemove [][]byte
+	}{
+		{
+			name: "simple",
+			toAdd: []mantaray.NodeEntry{
+				{
+					Path: []byte("/"),
+					Metadata: map[string]string{
+						"index-document": "index.html",
+					},
+				},
+				{
+					Path: []byte("index.html"),
+				},
+				{
+					Path: []byte("img/1.png"),
+				},
+				{
+					Path: []byte("img/2.png"),
+				},
+				{
+					Path: []byte("robots.txt"),
+				},
+			},
+			toRemove: [][]byte{
+				[]byte("img/2.png"),
+			},
+		},
+	} {
+		ctx := context.Background()
+		var ls mantaray.LoadSaver = newMockLoadSaver()
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// add and persist
+			n := mantaray.New()
+			for i := 0; i < len(tc.toAdd); i++ {
+				c := tc.toAdd[i].Path
+				e := tc.toAdd[i].Entry
+				if len(e) == 0 {
+					e = append(make([]byte, 32-len(c)), c...)
+				}
+				m := tc.toAdd[i].Metadata
+				err := n.Add(ctx, c, e, m, ls)
+				if err != nil {
+					t.Fatalf("expected no error, got %v", err)
+				}
+			}
+			err := n.Save(ctx, ls)
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+
+			ref := n.Reference()
+
+			// reload and remove
+			nn := mantaray.NewNodeRef(ref)
+			for i := 0; i < len(tc.toRemove); i++ {
+				c := tc.toRemove[i]
+				err := nn.Remove(ctx, c, ls)
+				if err != nil {
+					t.Fatalf("expected no error, got %v", err)
+				}
+			}
+			err = nn.Save(ctx, ls)
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+			ref = nn.Reference()
+
+			// reload and lookup removed node
+			nnn := mantaray.NewNodeRef(ref)
+			for i := 0; i < len(tc.toRemove); i++ {
+				c := tc.toRemove[i]
+				n, err = nnn.LookupNode(ctx, c, ls)
+				if !errors.Is(err, mantaray.ErrNotFound) {
+					t.Fatalf("expected not found error, got %v", err)
+				}
+			}
+		})
 	}
 }
 
