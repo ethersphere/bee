@@ -362,6 +362,11 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		sentErrorsLeft = maxPushErrors
 	}
 
+	idAddress, err := soc.IdentityAddress(ch)
+	if err != nil {
+		return nil, err
+	}
+
 	resultChan := make(chan receiptResult)
 
 	retryC := make(chan struct{}, max(1, parallelForwards))
@@ -398,10 +403,10 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			// If no peer can be found from an origin peer, the origin peer may store the chunk.
 			// Non-origin peers store the chunk if the chunk is within depth.
 			// For non-origin peers, if the chunk is not within depth, they may store the chunk if they are the closest peer to the chunk.
-			fullSkip := append(skip.ChunkPeers(ch.Address()), ps.errSkip.ChunkPeers(ch.Address())...)
+			fullSkip := append(skip.ChunkPeers(idAddress), ps.errSkip.ChunkPeers(idAddress)...)
 			peer, err := ps.closestPeer(ch.Address(), origin, fullSkip)
 			if errors.Is(err, topology.ErrNotFound) {
-				if skip.PruneExpiresAfter(ch.Address(), overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
+				if skip.PruneExpiresAfter(idAddress, overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
 					if inflight == 0 {
 						if ps.fullNode {
 							if cac.Valid(ch) {
@@ -455,10 +460,10 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			action, err := ps.prepareCredit(ctx, peer, ch, origin)
 			if err != nil {
 				retry()
-				skip.Add(ch.Address(), peer, overDraftRefresh)
+				skip.Add(idAddress, peer, overDraftRefresh)
 				continue
 			}
-			skip.Forever(ch.Address(), peer)
+			skip.Forever(idAddress, peer)
 
 			ps.metrics.TotalSendAttempts.Inc()
 			inflight++
