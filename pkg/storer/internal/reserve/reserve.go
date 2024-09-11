@@ -518,9 +518,14 @@ func (r *Reserve) Reset(ctx context.Context) error {
 
 	size := r.Size()
 
+	err := r.st.Run(ctx, func(s transaction.Store) error { return s.IndexStore().Delete(&EpochItem{}) })
+	if err != nil {
+		return err
+	}
+
 	bRitems := make([]*BatchRadiusItem, 0, size)
 
-	err := r.st.IndexStore().Iterate(storage.Query{
+	err = r.st.IndexStore().Iterate(storage.Query{
 		Factory: func() storage.Item { return &BatchRadiusItem{} },
 	}, func(res storage.Result) (bool, error) {
 		bRitems = append(bRitems, res.Entry.(*BatchRadiusItem))
