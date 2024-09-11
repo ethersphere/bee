@@ -362,11 +362,11 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 	loggerV1 := logger.V(1).Build()
 
 	headers := struct {
-		Cache                 *bool            `map:"Swarm-Cache"`
-		Strategy              *getter.Strategy `map:"Swarm-Redundancy-Strategy"`
-		FallbackMode          *bool            `map:"Swarm-Redundancy-Fallback-Mode"`
-		RLevel                redundancy.Level `map:"Swarm-Redundancy-Level"`
-		ChunkRetrievalTimeout *string          `map:"Swarm-Chunk-Retrieval-Timeout"`
+		Cache                 *bool             `map:"Swarm-Cache"`
+		Strategy              *getter.Strategy  `map:"Swarm-Redundancy-Strategy"`
+		FallbackMode          *bool             `map:"Swarm-Redundancy-Fallback-Mode"`
+		RLevel                *redundancy.Level `map:"Swarm-Redundancy-Level"`
+		ChunkRetrievalTimeout *string           `map:"Swarm-Chunk-Retrieval-Timeout"`
 	}{}
 
 	if response := s.mapStructure(r.Header, &headers); response != nil {
@@ -388,7 +388,9 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 		jsonhttp.BadRequest(w, "could not parse headers")
 		return
 	}
-	ctx = redundancy.SetLevelInContext(ctx, headers.RLevel)
+	if headers.RLevel != nil {
+		ctx = redundancy.SetLevelInContext(ctx, *headers.RLevel)
+	}
 
 FETCH:
 	// read manifest entry
@@ -558,12 +560,12 @@ func (s *Service) serveManifestEntry(
 // downloadHandler contains common logic for downloading Swarm file from API
 func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *http.Request, reference swarm.Address, additionalHeaders http.Header, etag, headersOnly bool) {
 	headers := struct {
-		Strategy              *getter.Strategy `map:"Swarm-Redundancy-Strategy"`
-		RLevel                redundancy.Level `map:"Swarm-Redundancy-Level"`
-		FallbackMode          *bool            `map:"Swarm-Redundancy-Fallback-Mode"`
-		ChunkRetrievalTimeout *string          `map:"Swarm-Chunk-Retrieval-Timeout"`
-		LookaheadBufferSize   *int             `map:"Swarm-Lookahead-Buffer-Size"`
-		Cache                 *bool            `map:"Swarm-Cache"`
+		Strategy              *getter.Strategy  `map:"Swarm-Redundancy-Strategy"`
+		RLevel                *redundancy.Level `map:"Swarm-Redundancy-Level"`
+		FallbackMode          *bool             `map:"Swarm-Redundancy-Fallback-Mode"`
+		ChunkRetrievalTimeout *string           `map:"Swarm-Chunk-Retrieval-Timeout"`
+		LookaheadBufferSize   *int              `map:"Swarm-Lookahead-Buffer-Size"`
+		Cache                 *bool             `map:"Swarm-Cache"`
 	}{}
 
 	if response := s.mapStructure(r.Header, &headers); response != nil {
@@ -582,7 +584,9 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		jsonhttp.BadRequest(w, "could not parse headers")
 		return
 	}
-	ctx = redundancy.SetLevelInContext(ctx, headers.RLevel)
+	if headers.RLevel != nil {
+		ctx = redundancy.SetLevelInContext(ctx, *headers.RLevel)
+	}
 
 	reader, l, err := joiner.New(ctx, s.storer.Download(cache), s.storer.Cache(), reference)
 	if err != nil {
