@@ -824,6 +824,8 @@ func TestReset(t *testing.T) {
 	}
 	assert.Equal(t, c, total)
 
+	checkStore(t, ts.IndexStore(), &reserve.EpochItem{}, false)
+
 	err = r.Reset(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -850,6 +852,8 @@ func TestReset(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.Equal(t, c, 0)
+
+	checkStore(t, ts.IndexStore(), &reserve.EpochItem{}, true)
 
 	for _, c := range chs {
 		h, err := c.Stamp().Hash()
