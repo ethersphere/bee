@@ -576,6 +576,11 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	return db, nil
 }
 
+// Reset removes all entries
+func (db *DB) ResetReserve(ctx context.Context) error {
+	return db.reserve.Reset(ctx)
+}
+
 // Metrics returns set of prometheus collectors.
 func (db *DB) Metrics() []prometheus.Collector {
 	collectors := m.PrometheusCollectorsFromFields(db.metrics)

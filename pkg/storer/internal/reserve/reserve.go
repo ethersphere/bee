@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/stampindex"
@@ -26,7 +27,7 @@ import (
 	"resenje.org/multex"
 )
 
-const reserveNamespace = "reserve"
+const reserveScope = "reserve"
 
 type Reserve struct {
 	baseAddr     swarm.Address
@@ -54,7 +55,7 @@ func New(
 		st:           st,
 		capacity:     capacity,
 		radiusSetter: radiusSetter,
-		logger:       logger.WithName(reserveNamespace).Register(),
+		logger:       logger.WithName(reserveScope).Register(),
 		multx:        multex.New(),
 	}
 
@@ -128,19 +129,19 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 
 	err = r.st.Run(ctx, func(s transaction.Store) error {
 
-		oldStampIndex, loadedStampIndex, err := stampindex.LoadOrStore(s.IndexStore(), reserveNamespace, chunk)
+		oldStampIndex, loadedStampIndex, err := stampindex.LoadOrStore(s.IndexStore(), reserveScope, chunk)
 		if err != nil {
 			return fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
 		}
 
-		sameAddressOldStamp, err := chunkstamp.LoadWithBatchID(s.IndexStore(), reserveNamespace, chunk.Address(), chunk.Stamp().BatchID())
+		sameAddressOldStamp, err := chunkstamp.LoadWithBatchID(s.IndexStore(), reserveScope, chunk.Address(), chunk.Stamp().BatchID())
 		if err != nil && !errors.Is(err, storage.ErrNotFound) {
 			return err
 		}
 
 		// same chunk address, same batch
 		if sameAddressOldStamp != nil {
-			sameAddressOldStampIndex, err := stampindex.LoadWithStamp(s.IndexStore(), reserveNamespace, sameAddressOldStamp)
+			sameAddressOldStampIndex, err := stampindex.Load(s.IndexStore(), reserveScope, sameAddressOldStamp)
 			if err != nil {
 				return err
 			}
@@ -188,8 +189,8 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			err = errors.Join(
 				s.IndexStore().Delete(oldBatchRadiusItem),
 				s.IndexStore().Delete(&ChunkBinItem{Bin: oldBatchRadiusItem.Bin, BinID: oldBatchRadiusItem.BinID}),
-				stampindex.DeleteWithStamp(s.IndexStore(), reserveNamespace, sameAddressOldStamp),
-				chunkstamp.DeleteWithStamp(s.IndexStore(), reserveNamespace, oldBatchRadiusItem.Address, sameAddressOldStamp),
+				stampindex.Delete(s.IndexStore(), reserveScope, sameAddressOldStamp),
+				chunkstamp.DeleteWithStamp(s.IndexStore(), reserveScope, oldBatchRadiusItem.Address, sameAddressOldStamp),
 			)
 			if err != nil {
 				return err
@@ -201,8 +202,8 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			}
 
 			err = errors.Join(
-				stampindex.Store(s.IndexStore(), reserveNamespace, chunk),
-				chunkstamp.Store(s.IndexStore(), reserveNamespace, chunk),
+				stampindex.Store(s.IndexStore(), reserveScope, chunk),
+				chunkstamp.Store(s.IndexStore(), reserveScope, chunk),
 				s.IndexStore().Put(&BatchRadiusItem{
 					Bin:       bin,
 					BinID:     binID,
@@ -227,7 +228,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 				return nil
 			}
 
-			r.logger.Warning("replacing soc in chunkstore", "address", chunk.Address())
+			r.logger.Debug("replacing soc in chunkstore", "address", chunk.Address())
 			return s.ChunkStore().Replace(ctx, chunk)
 		}
 
@@ -245,7 +246,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			// 3. Delete ALL old chunk related items from the reserve.
 			// 4. Update the stamp index.
 
-			err = r.removeChunk(ctx, s, oldStampIndex.ChunkAddress, chunk.Stamp().BatchID(), oldStampIndex.StampHash)
+			err = r.removeChunk(ctx, s, oldStampIndex.ChunkAddress, oldStampIndex.BatchID, oldStampIndex.StampHash)
 			if err != nil {
 				return fmt.Errorf("failed removing older chunk %s: %w", oldStampIndex.ChunkAddress, err)
 			}
@@ -258,7 +259,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			)
 
 			// replace old stamp index.
-			err = stampindex.Store(s.IndexStore(), reserveNamespace, chunk)
+			err = stampindex.Store(s.IndexStore(), reserveScope, chunk)
 			if err != nil {
 				return fmt.Errorf("failed updating stamp index: %w", err)
 			}
@@ -270,7 +271,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 		}
 
 		err = errors.Join(
-			chunkstamp.Store(s.IndexStore(), reserveNamespace, chunk),
+			chunkstamp.Store(s.IndexStore(), reserveScope, chunk),
 			s.IndexStore().Put(&BatchRadiusItem{
 				Bin:       bin,
 				BinID:     binID,
@@ -325,7 +326,7 @@ func (r *Reserve) Get(ctx context.Context, addr swarm.Address, batchID []byte, s
 		return nil, err
 	}
 
-	stamp, err := chunkstamp.LoadWithBatchID(r.st.IndexStore(), reserveNamespace, addr, item.BatchID)
+	stamp, err := chunkstamp.LoadWithBatchID(r.st.IndexStore(), reserveScope, addr, item.BatchID)
 	if err != nil {
 		return nil, err
 	}
@@ -429,15 +430,11 @@ func RemoveChunkWithItem(
 
 	var errs error
 
-	stamp, _ := chunkstamp.LoadWithBatchID(trx.IndexStore(), reserveNamespace, item.Address, item.BatchID)
+	stamp, _ := chunkstamp.LoadWithBatchID(trx.IndexStore(), reserveScope, item.Address, item.BatchID)
 	if stamp != nil {
 		errs = errors.Join(
-			stampindex.Delete(
-				trx.IndexStore(),
-				reserveNamespace,
-				swarm.NewChunk(item.Address, nil).WithStamp(stamp),
-			),
-			chunkstamp.DeleteWithStamp(trx.IndexStore(), reserveNamespace, item.Address, stamp),
+			stampindex.Delete(trx.IndexStore(), reserveScope, stamp),
+			chunkstamp.DeleteWithStamp(trx.IndexStore(), reserveScope, item.Address, stamp),
 		)
 	}
 
@@ -483,7 +480,7 @@ func (r *Reserve) IterateChunks(startBin uint8, cb func(swarm.Chunk) (bool, erro
 			return false, err
 		}
 
-		stamp, err := chunkstamp.LoadWithBatchID(r.st.IndexStore(), reserveNamespace, item.Address, item.BatchID)
+		stamp, err := chunkstamp.LoadWithBatchID(r.st.IndexStore(), reserveScope, item.Address, item.BatchID)
 		if err != nil {
 			return false, err
 		}
@@ -514,6 +511,78 @@ func (r *Reserve) IterateChunksItems(startBin uint8, cb func(*ChunkBinItem) (boo
 	})
 
 	return err
+}
+
+// Reset removes all the entires in the reserve. Must be done before any calls to the reserve.
+func (r *Reserve) Reset(ctx context.Context) error {
+
+	size := r.Size()
+
+	bRitems := make([]*BatchRadiusItem, 0, size)
+
+	err := r.st.IndexStore().Iterate(storage.Query{
+		Factory: func() storage.Item { return &BatchRadiusItem{} },
+	}, func(res storage.Result) (bool, error) {
+		bRitems = append(bRitems, res.Entry.(*BatchRadiusItem))
+		return false, nil
+	})
+	if err != nil {
+		return err
+	}
+
+	var eg errgroup.Group
+	eg.SetLimit(runtime.NumCPU())
+
+	for _, item := range bRitems {
+		item := item
+		eg.Go(func() error {
+			return r.st.Run(ctx, func(s transaction.Store) error {
+				return errors.Join(
+					s.ChunkStore().Delete(ctx, item.Address),
+					s.IndexStore().Delete(item),
+					s.IndexStore().Delete(&ChunkBinItem{Bin: item.Bin, BinID: item.BinID}),
+				)
+			})
+		})
+	}
+
+	err = eg.Wait()
+	if err != nil {
+		return err
+	}
+	bRitems = nil
+
+	sitems := make([]*stampindex.Item, 0, size)
+	err = r.st.IndexStore().Iterate(storage.Query{
+		Factory: func() storage.Item { return &stampindex.Item{} },
+	}, func(res storage.Result) (bool, error) {
+		sitems = append(sitems, res.Entry.(*stampindex.Item))
+		return false, nil
+	})
+	if err != nil {
+		return err
+	}
+	for _, item := range sitems {
+		item := item
+		eg.Go(func() error {
+			return r.st.Run(ctx, func(s transaction.Store) error {
+				return errors.Join(
+					s.IndexStore().Delete(item),
+					chunkstamp.DeleteWithStamp(s.IndexStore(), reserveScope, item.ChunkAddress, postage.NewStamp(item.BatchID, item.StampIndex, item.StampTimestamp, nil)),
+				)
+			})
+		})
+	}
+
+	err = eg.Wait()
+	if err != nil {
+		return err
+	}
+	sitems = nil
+
+	r.size.Store(0)
+
+	return nil
 }
 
 func (r *Reserve) Radius() uint8 {

@@ -131,7 +131,7 @@ func TestReplaceOldIndex(t *testing.T) {
 			}
 
 			// Chunk 1 must be missing
-			item, err := stampindex.Load(storer.Storage().IndexStore(), "reserve", ch_1)
+			item, err := stampindex.Load(storer.Storage().IndexStore(), "reserve", ch_1.Stamp())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -683,7 +683,7 @@ func checkSaved(t *testing.T, st *storer.DB, ch swarm.Chunk, stampSaved, chunkSt
 	if !stampSaved {
 		stampWantedErr = storage.ErrNotFound
 	}
-	_, err := stampindex.Load(st.Storage().IndexStore(), "reserve", ch)
+	_, err := stampindex.Load(st.Storage().IndexStore(), "reserve", ch.Stamp())
 	if !errors.Is(err, stampWantedErr) {
 		t.Fatalf("wanted err %s, got err %s", stampWantedErr, err)
 	}

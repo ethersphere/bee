@@ -6,10 +6,8 @@ package chunkstamp
 
 import "github.com/ethersphere/bee/v2/pkg/swarm"
 
-type Item = item
-
 func (i *Item) WithNamespace(ns string) *Item {
-	i.namespace = []byte(ns)
+	i.scope = []byte(ns)
 	return i
 }
 
@@ -24,7 +22,7 @@ func (i *Item) WithStamp(stamp swarm.Stamp) *Item {
 }
 
 var (
-	ErrMarshalInvalidChunkStampItemNamespace = errMarshalInvalidChunkStampItemNamespace
+	ErrMarshalInvalidChunkStampItemNamespace = errMarshalInvalidChunkStampItemScope
 	ErrMarshalInvalidChunkStampItemAddress   = errMarshalInvalidChunkStampItemAddress
 	ErrUnmarshalInvalidChunkStampItemAddress = errUnmarshalInvalidChunkStampItemAddress
 	ErrMarshalInvalidChunkStampItemStamp     = errMarshalInvalidChunkStampItemStamp

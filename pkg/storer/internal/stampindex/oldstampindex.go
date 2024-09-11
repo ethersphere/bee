@@ -41,7 +41,7 @@ func (i ItemV1) Namespace() string {
 func (i ItemV1) Marshal() ([]byte, error) {
 	switch {
 	case len(i.namespace) == 0:
-		return nil, errStampItemMarshalNamespaceInvalid
+		return nil, errStampItemMarshalScopeInvalid
 	case len(i.BatchID) != swarm.HashSize:
 		return nil, errStampItemMarshalBatchIDInvalid
 	case len(i.StampIndex) != swarm.StampIndexSize:

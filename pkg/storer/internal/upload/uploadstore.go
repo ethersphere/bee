@@ -41,7 +41,7 @@ var (
 // pushItemSize is the size of a marshaled pushItem.
 const pushItemSize = 8 + 2*swarm.HashSize + 8
 
-const chunkStampNamespace = "upload"
+const uploadScope = "upload"
 
 var _ storage.Item = (*pushItem)(nil)
 
@@ -440,7 +440,7 @@ func (u *uploadPutter) Put(ctx context.Context, st transaction.Store, chunk swar
 		st.IndexStore().Put(ui),
 		st.IndexStore().Put(pi),
 		st.ChunkStore().Put(ctx, chunk),
-		chunkstamp.Store(st.IndexStore(), chunkStampNamespace, chunk),
+		chunkstamp.Store(st.IndexStore(), uploadScope, chunk),
 	)
 }
 
@@ -516,7 +516,7 @@ func (u *uploadPutter) Cleanup(st transaction.Storage) error {
 					return errors.Join(
 						s.IndexStore().Delete(ui),
 						s.ChunkStore().Delete(context.Background(), item.Address),
-						chunkstamp.Delete(s.IndexStore(), chunkStampNamespace, item.Address, item.BatchID),
+						chunkstamp.Delete(s.IndexStore(), uploadScope, item.Address, item.BatchID),
 						s.IndexStore().Delete(item),
 					)
 				})
@@ -614,7 +614,7 @@ func Report(ctx context.Context, st transaction.Store, chunk swarm.Chunk, state 
 
 	return errors.Join(
 		indexStore.Delete(pi),
-		chunkstamp.Delete(indexStore, chunkStampNamespace, pi.Address, pi.BatchID),
+		chunkstamp.Delete(indexStore, uploadScope, pi.Address, pi.BatchID),
 		st.ChunkStore().Delete(ctx, chunk.Address()),
 		indexStore.Delete(ui),
 	)
@@ -727,7 +727,7 @@ func IteratePending(ctx context.Context, s transaction.ReadOnlyStore, consumerFn
 			return true, err
 		}
 
-		stamp, err := chunkstamp.LoadWithBatchID(s.IndexStore(), chunkStampNamespace, chunk.Address(), pi.BatchID)
+		stamp, err := chunkstamp.LoadWithBatchID(s.IndexStore(), uploadScope, chunk.Address(), pi.BatchID)
 		if err != nil {
 			return true, err
 		}
