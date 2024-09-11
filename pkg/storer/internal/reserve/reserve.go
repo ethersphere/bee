@@ -141,7 +141,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 
 		// same chunk address, same batch
 		if sameAddressOldStamp != nil {
-			sameAddressOldStampIndex, err := stampindex.LoadWithStamp(s.IndexStore(), reserveScope, sameAddressOldStamp)
+			sameAddressOldStampIndex, err := stampindex.Load(s.IndexStore(), reserveScope, sameAddressOldStamp)
 			if err != nil {
 				return err
 			}
@@ -189,7 +189,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			err = errors.Join(
 				s.IndexStore().Delete(oldBatchRadiusItem),
 				s.IndexStore().Delete(&ChunkBinItem{Bin: oldBatchRadiusItem.Bin, BinID: oldBatchRadiusItem.BinID}),
-				stampindex.DeleteWithStamp(s.IndexStore(), reserveScope, sameAddressOldStamp),
+				stampindex.Delete(s.IndexStore(), reserveScope, sameAddressOldStamp),
 				chunkstamp.DeleteWithStamp(s.IndexStore(), reserveScope, oldBatchRadiusItem.Address, sameAddressOldStamp),
 			)
 			if err != nil {
@@ -433,7 +433,7 @@ func RemoveChunkWithItem(
 	stamp, _ := chunkstamp.LoadWithBatchID(trx.IndexStore(), reserveScope, item.Address, item.BatchID)
 	if stamp != nil {
 		errs = errors.Join(
-			stampindex.DeleteWithStamp(trx.IndexStore(), reserveScope, stamp),
+			stampindex.Delete(trx.IndexStore(), reserveScope, stamp),
 			chunkstamp.DeleteWithStamp(trx.IndexStore(), reserveScope, item.Address, stamp),
 		)
 	}

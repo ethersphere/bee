@@ -149,7 +149,7 @@ func LoadOrStore(
 	scope string,
 	chunk swarm.Chunk,
 ) (item *Item, loaded bool, err error) {
-	item, err = Load(s, scope, chunk)
+	item, err = Load(s, scope, chunk.Stamp())
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			stampHash, err := chunk.Stamp().Hash()
@@ -160,9 +160,9 @@ func LoadOrStore(
 				scope:          []byte(scope),
 				BatchID:        chunk.Stamp().BatchID(),
 				StampIndex:     chunk.Stamp().Index(),
-				StampHash:      stampHash,
 				StampTimestamp: chunk.Stamp().Timestamp(),
 				ChunkAddress:   chunk.Address(),
+				StampHash:      stampHash,
 			}, false, Store(s, scope, chunk)
 		}
 		return nil, false, err
@@ -170,25 +170,18 @@ func LoadOrStore(
 	return item, true, nil
 }
 
-// Load returns stamp index record related to the given scope and chunk.
-// The storage.ErrNotFound is returned if no record is found.
-func Load(s storage.Reader, scope string, chunk swarm.Chunk) (*Item, error) {
+// Load returns stamp index record related to the given scope and stamp.
+func Load(s storage.Reader, scope string, stamp swarm.Stamp) (*Item, error) {
 	item := &Item{
 		scope:      []byte(scope),
-		BatchID:    chunk.Stamp().BatchID(),
-		StampIndex: chunk.Stamp().Index(),
+		BatchID:    stamp.BatchID(),
+		StampIndex: stamp.Index(),
 	}
 	err := s.Get(item)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get stampindex.Item %s: %w", item, err)
 	}
 	return item, nil
-}
-
-// LoadWithStamp returns stamp index record related to the given scope and stamp.
-func LoadWithStamp(s storage.Reader, scope string, stamp swarm.Stamp) (*Item, error) {
-	ch := swarm.NewChunk(swarm.EmptyAddress, nil).WithStamp(stamp)
-	return Load(s, scope, ch)
 }
 
 // Store creates new or updated an existing stamp index
@@ -202,9 +195,9 @@ func Store(s storage.IndexStore, scope string, chunk swarm.Chunk) error {
 		scope:          []byte(scope),
 		BatchID:        chunk.Stamp().BatchID(),
 		StampIndex:     chunk.Stamp().Index(),
-		StampHash:      stampHash,
 		StampTimestamp: chunk.Stamp().Timestamp(),
 		ChunkAddress:   chunk.Address(),
+		StampHash:      stampHash,
 	}
 	if err := s.Put(item); err != nil {
 		return fmt.Errorf("failed to put stampindex.Item %s: %w", item, err)
@@ -212,8 +205,8 @@ func Store(s storage.IndexStore, scope string, chunk swarm.Chunk) error {
 	return nil
 }
 
-// DeleteWithStamp removes the related stamp index record from the storage.
-func DeleteWithStamp(s storage.Writer, scope string, stamp swarm.Stamp) error {
+// Delete removes the related stamp index record from the storage.
+func Delete(s storage.Writer, scope string, stamp swarm.Stamp) error {
 	item := &Item{
 		scope:      []byte(scope),
 		BatchID:    stamp.BatchID(),

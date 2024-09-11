@@ -214,7 +214,7 @@ func addStampHash(logger log.Logger, st transaction.Storage) (int64, int64, erro
 			return false, fmt.Errorf("stamp item get: %w", err)
 		}
 
-		stampIndex, err := stampindex.LoadWithStamp(st.IndexStore(), "reserve", stamp)
+		stampIndex, err := stampindex.Load(st.IndexStore(), "reserve", stamp)
 		if err != nil {
 			return false, fmt.Errorf("stamp index get: %w", err)
 		}

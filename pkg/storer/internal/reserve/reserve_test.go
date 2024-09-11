@@ -500,7 +500,7 @@ func TestReplaceOldIndex(t *testing.T) {
 	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: 2, StampHash: ch2StampHash}, false)
 	checkChunk(t, ts, ch2, false)
 
-	item, err := stampindex.Load(ts.IndexStore(), "reserve", ch2)
+	item, err := stampindex.Load(ts.IndexStore(), "reserve", ch2.Stamp())
 	if err != nil {
 		t.Fatal(err)
 	}
