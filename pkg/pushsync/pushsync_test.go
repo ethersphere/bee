@@ -136,6 +136,12 @@ func TestSocListener(t *testing.T) {
 		t.Fatal(err)
 	}
 	sch2 = sch2.WithStamp(chunk2.Stamp())
+	expectedPayload := chunk1.Data()
+	gsocListener := func(soc soc.SOC) {
+		if !bytes.Equal(soc.WrappedChunk().Data(), expectedPayload) {
+			t.Fatalf("unexpected SOC payload on GSOC listener. got %s, want %s", soc.WrappedChunk().Data(), expectedPayload)
+		}
+	}
 
 	// create a pivot node and a mocked closest node
 	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")   // base is 0000
@@ -149,7 +155,7 @@ func TestSocListener(t *testing.T) {
 
 	// pivot node needs the streamer since the chunk is intercepted by
 	// the chunk worker, then gets sent by opening a new stream
-	psPivot, _, _ := createGsocPushSyncNode(t, pivotNode, defaultPrices, recorder, nil, defaultSigner, mock.WithClosestPeer(closestPeer))
+	psPivot, _, _ := createGsocPushSyncNode(t, pivotNode, defaultPrices, recorder, gsocListener, defaultSigner, mock.WithClosestPeer(closestPeer))
 
 	// Trigger the sending of chunk to the closest node
 	receipt, err := psPivot.PushChunkToClosest(context.Background(), sch1)
@@ -168,6 +174,7 @@ func TestSocListener(t *testing.T) {
 	waitOnRecordAndTest(t, closestPeer, recorder, sch1.Address(), nil)
 
 	recorder.Reset()
+	expectedPayload = chunk2.Data()
 
 	// Trigger the sending of chunk to the closest node
 	receipt, err = psPivot.PushChunkToClosest(context.Background(), sch2)
