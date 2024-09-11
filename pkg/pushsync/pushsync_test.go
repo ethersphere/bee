@@ -115,6 +115,10 @@ func TestPushClosest(t *testing.T) {
 // and expects a receipt. The message is intercepted in the outgoing stream to check for correctness.
 func TestSocListener(t *testing.T) {
 	t.Parallel()
+	defaultSigner := cryptomock.New(cryptomock.WithSignFunc(func([]byte) ([]byte, error) {
+		return nil, nil
+	}))
+
 	// chunk data to upload
 	privKey, err := crypto.DecodeSecp256k1PrivateKey(swarm.MustParseHexAddress("b0baf37700000000000000000000000000000000000000000000000000000000").Bytes())
 	if err != nil {
@@ -870,7 +874,7 @@ func createPushSyncNodeWithRadius(
 
 	radiusFunc := func() (uint8, error) { return radius, nil }
 
-	ps := pushsync.New(addr, 1, blockHash.Bytes(), recorderDisconnecter, storer, radiusFunc, mockTopology, true, unwrap, validStamp, log.Noop, accountingmock.NewAccounting(), mockPricer, signer, nil, -1)
+	ps := pushsync.New(addr, 1, blockHash.Bytes(), recorderDisconnecter, storer, radiusFunc, mockTopology, true, unwrap, func(soc.SOC) {}, validStamp, log.Noop, accountingmock.NewAccounting(), mockPricer, signer, nil, -1)
 	t.Cleanup(func() { ps.Close() })
 
 	return ps, storer
