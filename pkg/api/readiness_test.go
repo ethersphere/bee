@@ -39,20 +39,18 @@ func TestReadiness(t *testing.T) {
 		probe.SetReady(api.ProbeStatusOK)
 		jsonhttptest.Request(t, testServer, http.MethodGet, "/readiness", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(api.ReadyStatusResponse{
-				Status:          "ready",
-				Version:         "-dev",
-				APIVersion:      "0.0.0",
-				DebugAPIVersion: "0.0.0",
+				Status:     "ready",
+				Version:    "-dev",
+				APIVersion: "0.0.0",
 			}))
 
 		// When we set readiness probe to NOK it should indicate that API is not ready
 		probe.SetReady(api.ProbeStatusNOK)
 		jsonhttptest.Request(t, testServer, http.MethodGet, "/readiness", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(api.ReadyStatusResponse{
-				Status:          "notReady",
-				Version:         "-dev",
-				APIVersion:      "0.0.0",
-				DebugAPIVersion: "0.0.0",
+				Status:     "notReady",
+				Version:    "-dev",
+				APIVersion: "0.0.0",
 			}))
 	})
 }

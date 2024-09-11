@@ -7,8 +7,8 @@ package api
 import (
 	"net/http"
 
-	"github.com/ethersphere/bee"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 )
 
 type ReadyStatusResponse healthStatusResponse
@@ -16,17 +16,15 @@ type ReadyStatusResponse healthStatusResponse
 func (s *Service) readinessHandler(w http.ResponseWriter, _ *http.Request) {
 	if s.probe.Ready() == ProbeStatusOK {
 		jsonhttp.OK(w, ReadyStatusResponse{
-			Status:          "ready",
-			Version:         bee.Version,
-			APIVersion:      Version,
-			DebugAPIVersion: DebugVersion,
+			Status:     "ready",
+			Version:    bee.Version,
+			APIVersion: Version,
 		})
 	} else {
 		jsonhttp.BadRequest(w, ReadyStatusResponse{
-			Status:          "notReady",
-			Version:         bee.Version,
-			APIVersion:      Version,
-			DebugAPIVersion: DebugVersion,
+			Status:     "notReady",
+			Version:    bee.Version,
+			APIVersion: Version,
 		})
 	}
 }
