@@ -27,6 +27,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	kademlia "github.com/ethersphere/bee/v2/pkg/topology/mock"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestReserve(t *testing.T) {
@@ -499,7 +500,7 @@ func TestReplaceOldIndex(t *testing.T) {
 	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: 2, StampHash: ch2StampHash}, false)
 	checkChunk(t, ts, ch2, false)
 
-	item, err := stampindex.Load(ts.IndexStore(), "reserve", ch2)
+	item, err := stampindex.Load(ts.IndexStore(), "reserve", ch2.Stamp())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -750,6 +751,116 @@ func TestIterate(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestReset(t *testing.T) {
+	t.Parallel()
+
+	baseAddr := swarm.RandAddress(t)
+
+	ts := internal.NewInmemStorage()
+
+	r, err := reserve.New(
+		baseAddr,
+		ts,
+		0, kademlia.NewTopologyDriver(),
+		log.Noop,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var chs []swarm.Chunk
+
+	var (
+		bins         = 5
+		chunksPerBin = 100
+		total        = bins * chunksPerBin
+	)
+
+	for b := 0; b < bins; b++ {
+		for i := 1; i <= chunksPerBin; i++ {
+			ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, b)
+			err := r.Put(context.Background(), ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			stampHash, err := ch.Stamp().Hash()
+			if err != nil {
+				t.Fatal(err)
+			}
+			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: uint8(b), BatchID: ch.Stamp().BatchID(), Address: ch.Address(), StampHash: stampHash}, false)
+			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: uint8(b), BinID: uint64(i), StampHash: stampHash}, false)
+			checkChunk(t, ts, ch, false)
+			_, err = r.Get(context.Background(), ch.Address(), ch.Stamp().BatchID(), stampHash)
+			if err != nil {
+				t.Fatal(err)
+			}
+			chs = append(chs, ch)
+		}
+	}
+
+	c, err := ts.IndexStore().Count(&reserve.BatchRadiusItem{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, c, total)
+	c, err = ts.IndexStore().Count(&reserve.ChunkBinItem{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, c, total)
+	c, err = ts.IndexStore().Count(&stampindex.Item{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, c, total)
+
+	cItem := &chunkstamp.Item{}
+	cItem.SetScope([]byte("reserve"))
+	c, err = ts.IndexStore().Count(cItem)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, c, total)
+
+	err = r.Reset(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c, err = ts.IndexStore().Count(&reserve.BatchRadiusItem{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, c, 0)
+	c, err = ts.IndexStore().Count(&reserve.ChunkBinItem{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, c, 0)
+	c, err = ts.IndexStore().Count(&stampindex.Item{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, c, 0)
+
+	c, err = ts.IndexStore().Count(cItem)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, c, 0)
+
+	for _, c := range chs {
+		h, err := c.Stamp().Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = r.Get(context.Background(), c.Address(), c.Stamp().BatchID(), h)
+		if !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("expected error %v, got %v", storage.ErrNotFound, err)
+		}
+	}
 }
 
 func checkStore(t *testing.T, s storage.Reader, k storage.Key, gone bool) {

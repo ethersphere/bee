@@ -10,6 +10,7 @@ package node
 import (
 	"context"
 	"crypto/ecdsa"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -277,7 +278,7 @@ func NewBee(
 		}
 	}
 
-	var changedOverlay bool
+	var changedOverlay, resetReserve bool
 	if targetNeighborhood != "" {
 		neighborhood, err := swarm.ParseBitStrAddress(targetNeighborhood)
 		if err != nil {
@@ -293,21 +294,19 @@ func NewBee(
 			}
 
 			if nonceExists {
-				logger.Info("Override nonce %x to %x and clean state for neighborhood %s", nonce, newNonce, targetNeighborhood)
+				logger.Info("Override nonce and clean state for neighborhood", "old_none", hex.EncodeToString(nonce), "new_nonce", hex.EncodeToString(newNonce))
 				logger.Warning("you have another 10 seconds to change your mind and kill this process with CTRL-C...")
 				time.Sleep(10 * time.Second)
 
-				dirsToNuke := []string{ioutil.DataPathLocalstore, ioutil.DataPathKademlia}
-				for _, dir := range dirsToNuke {
-					err := ioutil.RemoveContent(filepath.Join(o.DataDir, dir))
-					if err != nil {
-						return nil, fmt.Errorf("delete %s: %w", dir, err)
-					}
+				err := ioutil.RemoveContent(filepath.Join(o.DataDir, ioutil.DataPathKademlia))
+				if err != nil {
+					return nil, fmt.Errorf("delete %s: %w", ioutil.DataPathKademlia, err)
 				}
 
 				if err := stateStore.ClearForHopping(); err != nil {
 					return nil, fmt.Errorf("clearing stateStore %w", err)
 				}
+				resetReserve = true
 			}
 
 			swarmAddress = newSwarmAddress
@@ -735,6 +734,14 @@ func NewBee(
 	}
 	b.localstoreCloser = localStore
 	evictFn = func(id []byte) error { return localStore.EvictBatch(context.Background(), id) }
+
+	if resetReserve {
+		logger.Warning("resetting the reserve")
+		err := localStore.ResetReserve(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("reset reserve: %w", err)
+		}
+	}
 
 	actLogic := accesscontrol.NewLogic(session)
 	accesscontrol := accesscontrol.NewController(actLogic)
