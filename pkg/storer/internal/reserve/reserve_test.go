@@ -826,6 +826,12 @@ func TestReset(t *testing.T) {
 
 	checkStore(t, ts.IndexStore(), &reserve.EpochItem{}, false)
 
+	ids, _, err := r.LastBinIDs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, ids[0], uint64(chunksPerBin))
+
 	err = r.Reset(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -854,6 +860,11 @@ func TestReset(t *testing.T) {
 	assert.Equal(t, c, 0)
 
 	checkStore(t, ts.IndexStore(), &reserve.EpochItem{}, true)
+
+	_, _, err = r.LastBinIDs()
+	if !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("wanted %v, got %v", storage.ErrNotFound, err)
+	}
 
 	for _, c := range chs {
 		h, err := c.Stamp().Hash()
