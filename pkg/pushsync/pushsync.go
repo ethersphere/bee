@@ -443,7 +443,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			// all future requests should land directly into the neighborhood
 			if neighborsOnly && peerPO < rad {
-				skip.Forever(ch.Address(), peer)
+				skip.Forever(idAddress, peer)
 				continue
 			}
 
@@ -481,7 +481,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				case err == nil:
 					return result.receipt, nil
 				case errors.Is(err, ErrShallowReceipt):
-					ps.errSkip.Add(ch.Address(), result.peer, skiplistDur)
+					ps.errSkip.Add(idAddress, result.peer, skiplistDur)
 					return result.receipt, err
 				}
 			}
@@ -490,7 +490,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			ps.logger.Debug("could not push to peer", "chunk_address", ch.Address(), "peer_address", result.peer, "error", result.err)
 
 			sentErrorsLeft--
-			ps.errSkip.Add(ch.Address(), result.peer, skiplistDur)
+			ps.errSkip.Add(idAddress, result.peer, skiplistDur)
 
 			retry()
 		}
