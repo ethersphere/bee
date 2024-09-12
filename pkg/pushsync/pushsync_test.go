@@ -115,8 +115,12 @@ func TestPushClosest(t *testing.T) {
 // and expects a receipt. The message is intercepted in the outgoing stream to check for correctness.
 func TestSocListener(t *testing.T) {
 	t.Parallel()
-	defaultSigner := cryptomock.New(cryptomock.WithSignFunc(func([]byte) ([]byte, error) {
-		return nil, nil
+	defaultSigner := cryptomock.New(cryptomock.WithSignFunc(func(addr []byte) ([]byte, error) {
+		key, _ := crypto.GenerateSecp256k1Key()
+		signer := crypto.NewDefaultSigner(key)
+		signature, _ := signer.Sign(addr)
+
+		return signature, nil
 	}))
 
 	// chunk data to upload
@@ -149,7 +153,7 @@ func TestSocListener(t *testing.T) {
 
 	// create a pivot node and a mocked closest node
 	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")   // base is 0000
-	closestPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000") // binary 0110 -> po 1
+	closestPeer := swarm.MustParseHexAddress("8000000000000000000000000000000000000000000000000000000000000000") // binary 1000 -> po 1
 
 	// peer is the node responding to the chunk receipt message
 	// mock should return ErrWantSelf since there's no one to forward to
