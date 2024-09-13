@@ -97,6 +97,29 @@ func TestPersistRemove(t *testing.T) {
 				[]byte("img/2.png"),
 			},
 		},
+		{
+			name: "nested-prefix-is-not-collapsed",
+			toAdd: []mantaray.NodeEntry{
+				{
+					Path: []byte("index.html"),
+				},
+				{
+					Path: []byte("img/1.png"),
+				},
+				{
+					Path: []byte("img/2/test1.png"),
+				},
+				{
+					Path: []byte("img/2/test2.png"),
+				},
+				{
+					Path: []byte("robots.txt"),
+				},
+			},
+			toRemove: [][]byte{
+				[]byte("img/2/test1.png"),
+			},
+		},
 	} {
 		ctx := context.Background()
 		var ls mantaray.LoadSaver = newMockLoadSaver()
@@ -124,7 +147,6 @@ func TestPersistRemove(t *testing.T) {
 			}
 
 			ref := n.Reference()
-
 			// reload and remove
 			nn := mantaray.NewNodeRef(ref)
 			for i := 0; i < len(tc.toRemove); i++ {
@@ -134,10 +156,12 @@ func TestPersistRemove(t *testing.T) {
 					t.Fatalf("expected no error, got %v", err)
 				}
 			}
+
 			err = nn.Save(ctx, ls)
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}
+
 			ref = nn.Reference()
 
 			// reload and lookup removed node
