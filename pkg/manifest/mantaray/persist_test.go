@@ -168,7 +168,7 @@ func TestPersistRemove(t *testing.T) {
 			nnn := mantaray.NewNodeRef(ref)
 			for i := 0; i < len(tc.toRemove); i++ {
 				c := tc.toRemove[i]
-				n, err = nnn.LookupNode(ctx, c, ls)
+				_, err = nnn.LookupNode(ctx, c, ls)
 				if !errors.Is(err, mantaray.ErrNotFound) {
 					t.Fatalf("expected not found error, got %v", err)
 				}
