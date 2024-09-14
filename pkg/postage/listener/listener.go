@@ -329,7 +329,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 			events, err := l.ev.FilterLogs(ctx, l.filterQuery(big.NewInt(int64(from)), big.NewInt(int64(to))))
 			if err != nil {
 				l.metrics.BackendErrors.Inc()
-				l.logger.Warning("could not get logs", "error", err)
+				l.logger.Warning("could not get blockchain log", "error", err)
 				lastConfirmedBlock = 0
 				continue
 			}
