@@ -49,9 +49,6 @@ const (
 	optionNamePaymentEarly                 = "payment-early-percent"
 	optionNameResolverEndpoints            = "resolver-options"
 	optionNameBootnodeMode                 = "bootnode-mode"
-	optionNameClefSignerEnable             = "clef-signer-enable"
-	optionNameClefSignerEndpoint           = "clef-signer-endpoint"
-	optionNameClefSignerEthereumAddress    = "clef-signer-ethereum-address"
 	optionNameSwapEndpoint                 = "swap-endpoint" // deprecated: use rpc endpoint instead
 	optionNameBlockchainRpcEndpoint        = "blockchain-rpc-endpoint"
 	optionNameSwapFactoryAddress           = "swap-factory-address"
@@ -263,9 +260,6 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Int64(optionNamePaymentEarly, 50, "percentage below the peers payment threshold when we initiate settlement")
 	cmd.Flags().StringSlice(optionNameResolverEndpoints, []string{}, "ENS compatible API endpoint for a TLD and with contract address, can be repeated, format [tld:][contract-addr@]url")
 	cmd.Flags().Bool(optionNameBootnodeMode, false, "cause the node to always accept incoming connections")
-	cmd.Flags().Bool(optionNameClefSignerEnable, false, "enable clef signer")
-	cmd.Flags().String(optionNameClefSignerEndpoint, "", "clef signer endpoint")
-	cmd.Flags().String(optionNameClefSignerEthereumAddress, "", "blockchain address to use from clef signer")
 	cmd.Flags().String(optionNameSwapEndpoint, "", "swap blockchain endpoint") // deprecated: use rpc endpoint instead
 	cmd.Flags().String(optionNameBlockchainRpcEndpoint, "", "rpc blockchain endpoint")
 	cmd.Flags().String(optionNameSwapFactoryAddress, "", "swap factory addresses")
