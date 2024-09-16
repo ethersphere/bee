@@ -844,7 +844,6 @@ paths:
           name: swarm-postage-batch-id
           schema:
             $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
-          name: swarm-postage-batch-id
           required: true
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
           required: false
