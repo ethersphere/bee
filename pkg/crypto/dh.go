@@ -11,7 +11,6 @@ import (
 
 // DH is an interface allowing to generate shared keys for public key
 // using a salt from a known private key
-// TODO: implement clef support beside in-memory
 type DH interface {
 	SharedKey(public *ecdsa.PublicKey, salt []byte) ([]byte, error)
 }
