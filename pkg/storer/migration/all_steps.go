@@ -6,12 +6,12 @@ package migration
 
 import (
 	"github.com/ethersphere/bee/v2/pkg/log"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/migration"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 )
 
-// AfterInitSteps lists all migration steps for localstore IndexStore after the localstore is intiated.
+// AfterInitSteps lists all migration steps for localstore IndexStore after the localstore is initiated.
 func AfterInitSteps(
 	sharkyPath string,
 	sharkyNoOfShards int,
@@ -24,10 +24,11 @@ func AfterInitSteps(
 		3: ReserveRepairer(st, storage.ChunkType, logger),
 		4: step_04(sharkyPath, sharkyNoOfShards, st),
 		5: step_05(st),
+		6: step_06(st),
 	}
 }
 
-// BeforeInitSteps lists all migration steps for localstore IndexStore before the localstore is intiated.
+// BeforeInitSteps lists all migration steps for localstore IndexStore before the localstore is initiated.
 func BeforeInitSteps(st storage.BatchStore) migration.Steps {
 	return map[uint64]migration.StepFn{
 		1: RefCountSizeInc(st),

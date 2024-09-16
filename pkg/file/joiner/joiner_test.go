@@ -25,7 +25,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/file/splitter"
 	filetest "github.com/ethersphere/bee/v2/pkg/file/testing"
 	"github.com/ethersphere/bee/v2/pkg/log"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
 	testingc "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
@@ -254,7 +254,8 @@ func TestEncryptDecrypt(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			ctx := context.Background()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
 			pipe := builder.NewPipelineBuilder(ctx, store, true, 0)
 			testDataReader := bytes.NewReader(testData)
 			resultAddress, err := builder.FeedPipeline(ctx, pipe, testDataReader)
@@ -336,7 +337,8 @@ func TestSeek(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			ctx := context.Background()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
 
 			store := inmemchunkstore.New()
 			testutil.CleanupCloser(t, store)
@@ -613,7 +615,8 @@ func TestPrefetch(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			ctx := context.Background()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
 
 			store := inmemchunkstore.New()
 			testutil.CleanupCloser(t, store)
@@ -917,7 +920,8 @@ func TestJoinerIterateChunkAddresses_Encrypted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	pipe := builder.NewPipelineBuilder(ctx, store, true, 0)
 	testDataReader := bytes.NewReader(testData)
 	resultAddress, err := builder.FeedPipeline(ctx, pipe, testDataReader)
@@ -963,6 +967,7 @@ type mockPutter struct {
 	storage.ChunkStore
 	shards, parities chan swarm.Chunk
 	done             chan struct{}
+	mu               sync.Mutex
 }
 
 func newMockPutter(store storage.ChunkStore, shardCnt, parityCnt int) *mockPutter {
@@ -975,6 +980,8 @@ func newMockPutter(store storage.ChunkStore, shardCnt, parityCnt int) *mockPutte
 }
 
 func (m *mockPutter) Put(ctx context.Context, ch swarm.Chunk) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if len(m.shards) < cap(m.shards) {
 		m.shards <- ch
 		return nil
@@ -983,7 +990,7 @@ func (m *mockPutter) Put(ctx context.Context, ch swarm.Chunk) error {
 		m.parities <- ch
 		return nil
 	}
-	err := m.ChunkStore.Put(context.Background(), ch)
+	err := m.ChunkStore.Put(ctx, ch) // use passed context
 	select {
 	case m.done <- struct{}{}:
 	default:
@@ -996,12 +1003,16 @@ func (m *mockPutter) wait(ctx context.Context) {
 	case <-m.done:
 	case <-ctx.Done():
 	}
+	m.mu.Lock()
 	close(m.parities)
 	close(m.shards)
+	m.mu.Unlock()
 }
 
 func (m *mockPutter) store(cnt int) error {
 	n := 0
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for ch := range m.parities {
 		if err := m.ChunkStore.Put(context.Background(), ch); err != nil {
 			return err
@@ -1024,7 +1035,7 @@ func (m *mockPutter) store(cnt int) error {
 }
 
 // nolint:thelper
-func TestJoinerRedundancy_FLAKY(t *testing.T) {
+func TestJoinerRedundancy(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		rLevel       redundancy.Level
@@ -1111,7 +1122,8 @@ func TestJoinerRedundancy_FLAKY(t *testing.T) {
 			}
 			// all data can be read back
 			readCheck := func(t *testing.T, expErr error) {
-				ctx := context.Background()
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
 
 				decodeTimeoutStr := time.Second.String()
 				fallback := true
@@ -1133,6 +1145,7 @@ func TestJoinerRedundancy_FLAKY(t *testing.T) {
 				}
 				i := 0
 				eg, ectx := errgroup.WithContext(ctx)
+
 			scnt:
 				for ; i < shardCnt; i++ {
 					select {
@@ -1221,7 +1234,7 @@ func TestJoinerRedundancy_FLAKY(t *testing.T) {
 //  4. [positive test] download file using DATA with fallback to allow for
 //     reconstruction via erasure coding and succeed.
 //
-//  5. [positive test] after recovery chunks are saved, so fotgetting no longer
+//  5. [positive test] after recovery chunks are saved, so forgetting no longer
 //     repeat  3a/3b but this time succeed
 //
 // nolint:thelper
@@ -1235,7 +1248,8 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 			t.Fatal(err)
 		}
 		dataReader := pseudorand.NewReader(seed, size*swarm.ChunkSize)
-		ctx := context.Background()
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 		// ctx = redundancy.SetLevelInContext(ctx, rLevel)
 		ctx = redundancy.SetLevelInContext(ctx, redundancy.NONE)
 		pipe := builder.NewPipelineBuilder(ctx, store, encrypt, rLevel)
@@ -1247,9 +1261,10 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 		buf := make([]byte, expRead)
 		offset := mrand.Intn(size) * expRead
 		canReadRange := func(t *testing.T, s getter.Strategy, fallback bool, canRead bool) {
-			ctx := context.Background()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
 
-			decodingTimeoutStr := (200 * time.Millisecond).String()
+			decodingTimeoutStr := time.Second.String()
 
 			ctx, err := getter.SetConfigInContext(ctx, &s, &fallback, &decodingTimeoutStr, log.Noop)
 			if err != nil {
@@ -1394,6 +1409,14 @@ func (c *chunkStore) Put(_ context.Context, ch swarm.Chunk) error {
 	defer c.mu.Unlock()
 	c.chunks[ch.Address().ByteString()] = swarm.NewChunk(ch.Address(), ch.Data()).WithStamp(ch.Stamp())
 	return nil
+}
+
+func (c *chunkStore) Replace(_ context.Context, ch swarm.Chunk) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.chunks[ch.Address().ByteString()] = swarm.NewChunk(ch.Address(), ch.Data()).WithStamp(ch.Stamp())
+	return nil
+
 }
 
 func (c *chunkStore) Has(_ context.Context, addr swarm.Address) (bool, error) {

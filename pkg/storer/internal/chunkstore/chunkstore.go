@@ -94,6 +94,27 @@ func Put(ctx context.Context, s storage.IndexStore, sh storage.Sharky, ch swarm.
 	return s.Put(rIdx)
 }
 
+func Replace(ctx context.Context, s storage.IndexStore, sh storage.Sharky, ch swarm.Chunk) error {
+	rIdx := &RetrievalIndexItem{Address: ch.Address()}
+	err := s.Get(rIdx)
+	if err != nil {
+		return fmt.Errorf("chunk store: failed to read retrievalIndex for address %s: %w", ch.Address(), err)
+	}
+
+	err = sh.Release(ctx, rIdx.Location)
+	if err != nil {
+		return fmt.Errorf("chunkstore: failed to release sharky location: %w", err)
+	}
+
+	loc, err := sh.Write(ctx, ch.Data())
+	if err != nil {
+		return fmt.Errorf("chunk store: write to sharky failed: %w", err)
+	}
+	rIdx.Location = loc
+	rIdx.Timestamp = uint64(time.Now().Unix())
+	return s.Put(rIdx)
+}
+
 func Delete(ctx context.Context, s storage.IndexStore, sh storage.Sharky, addr swarm.Address) error {
 	rIdx := &RetrievalIndexItem{Address: addr}
 	err := s.Get(rIdx)

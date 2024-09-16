@@ -11,7 +11,6 @@ import (
 	"crypto/ecdsa"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -27,8 +26,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/accounting"
-	"github.com/ethersphere/bee/v2/pkg/auth"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
@@ -81,12 +80,17 @@ const (
 	SwarmOnlyRootChunk                = "Swarm-Only-Root-Chunk"
 	SwarmCollectionHeader             = "Swarm-Collection"
 	SwarmPostageBatchIdHeader         = "Swarm-Postage-Batch-Id"
+	SwarmPostageStampHeader           = "Swarm-Postage-Stamp"
 	SwarmDeferredUploadHeader         = "Swarm-Deferred-Upload"
 	SwarmRedundancyLevelHeader        = "Swarm-Redundancy-Level"
 	SwarmRedundancyStrategyHeader     = "Swarm-Redundancy-Strategy"
 	SwarmRedundancyFallbackModeHeader = "Swarm-Redundancy-Fallback-Mode"
 	SwarmChunkRetrievalTimeoutHeader  = "Swarm-Chunk-Retrieval-Timeout"
 	SwarmLookAheadBufferSizeHeader    = "Swarm-Lookahead-Buffer-Size"
+	SwarmActHeader                    = "Swarm-Act"
+	SwarmActTimestampHeader           = "Swarm-Act-Timestamp"
+	SwarmActPublisherHeader           = "Swarm-Act-Publisher"
+	SwarmActHistoryAddressHeader      = "Swarm-Act-History-Address"
 
 	ImmutableHeader = "Immutable"
 	GasPriceHeader  = "Gas-Price"
@@ -119,6 +123,11 @@ var (
 	errBatchUnusable                    = errors.New("batch not usable")
 	errUnsupportedDevNodeOperation      = errors.New("operation not supported in dev mode")
 	errOperationSupportedOnlyInFullMode = errors.New("operation is supported only in full mode")
+	errActDownload                      = errors.New("act download failed")
+	errActUpload                        = errors.New("act upload failed")
+	errActGranteeList                   = errors.New("failed to create or update grantee list")
+
+	batchIdOrStampSig = fmt.Sprintf("Either '%s' or '%s' header must be set in the request", SwarmPostageStampHeader, SwarmPostageBatchIdHeader)
 )
 
 // Storer interface provides the functionality required from the local storage
@@ -138,7 +147,6 @@ type PinIntegrity interface {
 }
 
 type Service struct {
-	auth            auth.Authenticator
 	storer          Storer
 	resolver        resolver.Interface
 	pss             pss.Interface
@@ -149,6 +157,7 @@ type Service struct {
 	feedFactory     feeds.Factory
 	signer          crypto.Signer
 	post            postage.Service
+	accesscontrol   accesscontrol.Controller
 	postageContract postagecontract.Interface
 	probe           *Probe
 	metricsRegistry *prometheus.Registry
@@ -163,7 +172,6 @@ type Service struct {
 	wsWg sync.WaitGroup // wait for all websockets to close on exit
 	quit chan struct{}
 
-	// from debug API
 	overlay           *swarm.Address
 	publicKey         ecdsa.PublicKey
 	pssPublicKey      ecdsa.PublicKey
@@ -230,7 +238,6 @@ func (s *Service) SetRedistributionAgent(redistributionAgent *storageincentives.
 type Options struct {
 	CORSAllowedOrigins []string
 	WsPingPeriod       time.Duration
-	Restricted         bool
 }
 
 type ExtraOptions struct {
@@ -247,6 +254,7 @@ type ExtraOptions struct {
 	Pss             pss.Interface
 	FeedFactory     feeds.Factory
 	Post            postage.Service
+	AccessControl   accesscontrol.Controller
 	PostageContract postagecontract.Interface
 	Staking         staking.Contract
 	Steward         steward.Interface
@@ -316,8 +324,7 @@ func New(
 }
 
 // Configure will create a and initialize a new API service.
-func (s *Service) Configure(signer crypto.Signer, auth auth.Authenticator, tracer *tracing.Tracer, o Options, e ExtraOptions, chainID int64, erc20 erc20.Service) {
-	s.auth = auth
+func (s *Service) Configure(signer crypto.Signer, tracer *tracing.Tracer, o Options, e ExtraOptions, chainID int64, erc20 erc20.Service) {
 	s.signer = signer
 	s.Options = o
 	s.tracer = tracer
@@ -330,6 +337,7 @@ func (s *Service) Configure(signer crypto.Signer, auth auth.Authenticator, trace
 	s.pss = e.Pss
 	s.feedFactory = e.FeedFactory
 	s.post = e.Post
+	s.accesscontrol = e.AccessControl
 	s.postageContract = e.PostageContract
 	s.steward = e.Steward
 	s.stakingContract = e.Staking
@@ -432,119 +440,6 @@ func (s *Service) resolveNameOrAddress(str string) (swarm.Address, error) {
 	return swarm.ZeroAddress, fmt.Errorf("%w: %w", errInvalidNameOrAddress, err)
 }
 
-type securityTokenRsp struct {
-	Key string `json:"key"`
-}
-
-type securityTokenReq struct {
-	Role   string `json:"role"`
-	Expiry int    `json:"expiry"` // duration in seconds
-}
-
-func (s *Service) authHandler(w http.ResponseWriter, r *http.Request) {
-	_, pass, ok := r.BasicAuth()
-
-	if !ok {
-		s.logger.Error(nil, "auth handler: missing basic auth")
-		w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-		jsonhttp.Unauthorized(w, "Unauthorized")
-		return
-	}
-
-	if !s.auth.Authorize(pass) {
-		s.logger.Error(nil, "auth handler: unauthorized")
-		w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-		jsonhttp.Unauthorized(w, "Unauthorized")
-		return
-	}
-
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		s.logger.Debug("auth handler: read request body failed", "error", err)
-		s.logger.Error(nil, "auth handler: read request body failed")
-		jsonhttp.BadRequest(w, "Read request body")
-		return
-	}
-
-	var payload securityTokenReq
-	if err = json.Unmarshal(body, &payload); err != nil {
-		s.logger.Debug("auth handler: unmarshal request body failed", "error", err)
-		s.logger.Error(nil, "auth handler: unmarshal request body failed")
-		jsonhttp.BadRequest(w, "Unmarshal json body")
-		return
-	}
-
-	key, err := s.auth.GenerateKey(payload.Role, time.Duration(payload.Expiry)*time.Second)
-	if errors.Is(err, auth.ErrExpiry) {
-		s.logger.Debug("auth handler: generate key failed", "error", err)
-		s.logger.Error(nil, "auth handler: generate key failed")
-		jsonhttp.BadRequest(w, "Expiry duration must be a positive number")
-		return
-	}
-	if err != nil {
-		s.logger.Debug("auth handler: add auth token failed", "error", err)
-		s.logger.Error(nil, "auth handler: add auth token failed")
-		jsonhttp.InternalServerError(w, "Error generating authorization token")
-		return
-	}
-
-	jsonhttp.Created(w, securityTokenRsp{
-		Key: key,
-	})
-}
-
-func (s *Service) refreshHandler(w http.ResponseWriter, r *http.Request) {
-	reqToken := r.Header.Get(AuthorizationHeader)
-	if !strings.HasPrefix(reqToken, "Bearer ") {
-		jsonhttp.Forbidden(w, "Missing bearer token")
-		return
-	}
-
-	keys := strings.Split(reqToken, "Bearer ")
-
-	if len(keys) != 2 || strings.Trim(keys[1], " ") == "" {
-		jsonhttp.Forbidden(w, "Missing security token")
-		return
-	}
-
-	authToken := keys[1]
-
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		s.logger.Debug("auth handler: read request body failed", "error", err)
-		s.logger.Error(nil, "auth handler: read request body failed")
-		jsonhttp.BadRequest(w, "Read request body")
-		return
-	}
-
-	var payload securityTokenReq
-	if err = json.Unmarshal(body, &payload); err != nil {
-		s.logger.Debug("auth handler: unmarshal request body failed", "error", err)
-		s.logger.Error(nil, "auth handler: unmarshal request body failed")
-		jsonhttp.BadRequest(w, "Unmarshal json body")
-		return
-	}
-
-	key, err := s.auth.RefreshKey(authToken, time.Duration(payload.Expiry)*time.Second)
-	if errors.Is(err, auth.ErrTokenExpired) {
-		s.logger.Debug("auth handler: refresh key failed", "error", err)
-		s.logger.Error(nil, "auth handler: refresh key failed")
-		jsonhttp.BadRequest(w, "Token expired")
-		return
-	}
-
-	if err != nil {
-		s.logger.Debug("auth handler: refresh token failed", "error", err)
-		s.logger.Error(nil, "auth handler: refresh token failed")
-		jsonhttp.InternalServerError(w, "Error refreshing authorization token")
-		return
-	}
-
-	jsonhttp.Created(w, securityTokenRsp{
-		Key: key,
-	})
-}
-
 func (s *Service) newTracingHandler(spanName string) func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -627,7 +522,7 @@ func (s *Service) corsHandler(h http.Handler) http.Handler {
 	allowedHeaders := []string{
 		"User-Agent", "Accept", "X-Requested-With", "Access-Control-Request-Headers", "Access-Control-Request-Method", "Accept-Ranges", "Content-Encoding",
 		AuthorizationHeader, AcceptEncodingHeader, ContentTypeHeader, ContentDispositionHeader, RangeHeader, OriginHeader,
-		SwarmTagHeader, SwarmPinHeader, SwarmEncryptHeader, SwarmIndexDocumentHeader, SwarmErrorDocumentHeader, SwarmCollectionHeader, SwarmPostageBatchIdHeader, SwarmDeferredUploadHeader, SwarmRedundancyLevelHeader, SwarmRedundancyStrategyHeader, SwarmRedundancyFallbackModeHeader, SwarmChunkRetrievalTimeoutHeader, SwarmLookAheadBufferSizeHeader, SwarmFeedIndexHeader, SwarmFeedIndexNextHeader, GasPriceHeader, GasLimitHeader, ImmutableHeader,
+		SwarmTagHeader, SwarmPinHeader, SwarmEncryptHeader, SwarmIndexDocumentHeader, SwarmErrorDocumentHeader, SwarmCollectionHeader, SwarmPostageBatchIdHeader, SwarmPostageStampHeader, SwarmDeferredUploadHeader, SwarmRedundancyLevelHeader, SwarmRedundancyStrategyHeader, SwarmRedundancyFallbackModeHeader, SwarmChunkRetrievalTimeoutHeader, SwarmLookAheadBufferSizeHeader, SwarmFeedIndexHeader, SwarmFeedIndexNextHeader, GasPriceHeader, GasLimitHeader, ImmutableHeader,
 	}
 	allowedHeadersStr := strings.Join(allowedHeaders, ", ")
 
@@ -793,15 +688,11 @@ func (p *putterSessionWrapper) Put(ctx context.Context, chunk swarm.Chunk) error
 }
 
 func (p *putterSessionWrapper) Done(ref swarm.Address) error {
-	err := p.PutterSession.Done(ref)
-	if err != nil {
-		return err
-	}
-	return p.save()
+	return errors.Join(p.PutterSession.Done(ref), p.save())
 }
 
 func (p *putterSessionWrapper) Cleanup() error {
-	return p.PutterSession.Cleanup()
+	return errors.Join(p.PutterSession.Cleanup(), p.save())
 }
 
 func (s *Service) getStamper(batchID []byte) (postage.Stamper, func() error, error) {
@@ -847,6 +738,35 @@ func (s *Service) newStamperPutter(ctx context.Context, opts putterOptions) (sto
 		PutterSession: session,
 		stamper:       stamper,
 		save:          save,
+	}, nil
+}
+
+func (s *Service) newStampedPutter(ctx context.Context, opts putterOptions, stamp *postage.Stamp) (storer.PutterSession, error) {
+	if !opts.Deferred && s.beeMode == DevMode {
+		return nil, errUnsupportedDevNodeOperation
+	}
+
+	storedBatch, err := s.batchStore.Get(stamp.BatchID())
+	if err != nil {
+		return nil, errInvalidPostageBatch
+	}
+
+	var session storer.PutterSession
+	if opts.Deferred || opts.Pin {
+		session, err = s.storer.Upload(ctx, opts.Pin, opts.TagID)
+		if err != nil {
+			return nil, fmt.Errorf("failed creating session: %w", err)
+		}
+	} else {
+		session = s.storer.DirectUpload()
+	}
+
+	stamper := postage.NewPresignedStamper(stamp, storedBatch.Owner)
+
+	return &putterSessionWrapper{
+		PutterSession: session,
+		stamper:       stamper,
+		save:          func() error { return nil },
 	}, nil
 }
 
@@ -905,11 +825,11 @@ func CalculateNumberOfChunks(contentLength int64, isEncrypted bool) int64 {
 	return int64(totalChunks) + 1
 }
 
-// defaultUploadMethod returns true for deferred when the defered header is not present.
-func defaultUploadMethod(deffered *bool) bool {
-	if deffered == nil {
+// defaultUploadMethod returns true for deferred when the deferred header is not present.
+func defaultUploadMethod(deferred *bool) bool {
+	if deferred == nil {
 		return true
 	}
 
-	return *deffered
+	return *deferred
 }

@@ -56,7 +56,7 @@ func newMetrics() metrics {
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "available_balance",
-			Help:      "Currently availeble chequebook balance.",
+			Help:      "Currently available chequebook balance.",
 		}),
 	}
 }

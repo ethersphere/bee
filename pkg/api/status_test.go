@@ -12,6 +12,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/status"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 )
@@ -26,15 +27,17 @@ func TestGetStatus(t *testing.T) {
 
 		mode := api.FullMode
 		ssr := api.StatusSnapshotResponse{
+			Proximity:               256,
 			BeeMode:                 mode.String(),
 			ReserveSize:             128,
 			ReserveSizeWithinRadius: 64,
 			PullsyncRate:            64,
 			StorageRadius:           8,
 			ConnectedPeers:          0,
-			NeighborhoodSize:        0,
+			NeighborhoodSize:        1,
 			BatchCommitment:         1,
 			IsReachable:             true,
+			LastSyncedBlock:         6092500,
 		}
 
 		ssMock := &statusSnapshotMock{
@@ -43,6 +46,7 @@ func TestGetStatus(t *testing.T) {
 			reserveSizeWithinRadius: ssr.ReserveSizeWithinRadius,
 			storageRadius:           ssr.StorageRadius,
 			commitment:              ssr.BatchCommitment,
+			chainState:              &postage.ChainState{Block: ssr.LastSyncedBlock},
 		}
 
 		statusSvc := status.NewService(
@@ -58,7 +62,6 @@ func TestGetStatus(t *testing.T) {
 
 		client, _, _, _ := newTestServer(t, testServerOptions{
 			BeeMode:    mode,
-			DebugAPI:   true,
 			NodeStatus: statusSvc,
 		})
 
@@ -71,8 +74,7 @@ func TestGetStatus(t *testing.T) {
 		t.Parallel()
 
 		client, _, _, _ := newTestServer(t, testServerOptions{
-			BeeMode:  api.DevMode,
-			DebugAPI: true,
+			BeeMode: api.DevMode,
 			NodeStatus: status.NewService(
 				log.Noop,
 				nil,
@@ -116,12 +118,14 @@ type statusSnapshotMock struct {
 	reserveSizeWithinRadius uint64
 	storageRadius           uint8
 	commitment              uint64
+	chainState              *postage.ChainState
 }
 
-func (m *statusSnapshotMock) SyncRate() float64           { return m.syncRate }
-func (m *statusSnapshotMock) ReserveSize() int            { return m.reserveSize }
-func (m *statusSnapshotMock) StorageRadius() uint8        { return m.storageRadius }
-func (m *statusSnapshotMock) Commitment() (uint64, error) { return m.commitment, nil }
+func (m *statusSnapshotMock) SyncRate() float64                  { return m.syncRate }
+func (m *statusSnapshotMock) ReserveSize() int                   { return m.reserveSize }
+func (m *statusSnapshotMock) StorageRadius() uint8               { return m.storageRadius }
+func (m *statusSnapshotMock) Commitment() (uint64, error)        { return m.commitment, nil }
+func (m *statusSnapshotMock) GetChainState() *postage.ChainState { return m.chainState }
 func (m *statusSnapshotMock) ReserveSizeWithinRadius() uint64 {
 	return m.reserveSizeWithinRadius
 }

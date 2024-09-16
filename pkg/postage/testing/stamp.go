@@ -8,6 +8,7 @@ import (
 	crand "crypto/rand"
 	"encoding/binary"
 	"io"
+	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/postage"
@@ -49,8 +50,10 @@ func MustNewStamp() *postage.Stamp {
 // MustNewValidStamp will generate a valid postage stamp with random data. Panics on errors.
 func MustNewValidStamp(signer crypto.Signer, addr swarm.Address) *postage.Stamp {
 	id := MustNewID()
-	index := MustNewID()[:8]
-	timestamp := MustNewID()[:8]
+	index := make([]byte, 8)
+	copy(index[:4], addr.Bytes()[:4])
+	timestamp := make([]byte, 8)
+	binary.BigEndian.PutUint64(timestamp, uint64(time.Now().UnixNano()))
 	sig := MustNewValidSignature(signer, addr, id, index, timestamp)
 	return postage.NewStamp(id, index, timestamp, sig)
 }

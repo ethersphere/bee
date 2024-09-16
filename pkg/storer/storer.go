@@ -151,8 +151,8 @@ type ReserveIterator interface {
 // ReserveStore is a logical component of the storer that deals with reserve
 // content. It will implement all the core functionality required for the protocols.
 type ReserveStore interface {
-	ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte) (swarm.Chunk, error)
-	ReserveHas(addr swarm.Address, batchID []byte) (bool, error)
+	ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte, stampHash []byte) (swarm.Chunk, error)
+	ReserveHas(addr swarm.Address, batchID []byte, stampHash []byte) (bool, error)
 	ReservePutter() storage.Putter
 	SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan *BinC, func(), <-chan error)
 	ReserveLastBinIDs() ([]uint64, uint64, error)
@@ -384,6 +384,8 @@ type Options struct {
 
 	CacheCapacity      uint64
 	CacheMinEvictCount uint64
+
+	MinimumStorageRadius uint
 }
 
 func defaultOptions() *Options {
@@ -444,6 +446,7 @@ type workerOpts struct {
 	reserveWakeupDuration time.Duration
 	reserveMinEvictCount  uint64
 	cacheMinEvictCount    uint64
+	minimumRadius         uint8
 }
 
 // New returns a newly constructed DB object which implements all the above
@@ -529,6 +532,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			reserveWakeupDuration: opts.ReserveWakeUpDuration,
 			reserveMinEvictCount:  opts.ReserveMinEvictCount,
 			cacheMinEvictCount:    opts.CacheMinEvictCount,
+			minimumRadius:         uint8(opts.MinimumStorageRadius),
 		},
 		directUploadLimiter: make(chan struct{}, pusher.ConcurrentPushes),
 		pinIntegrity:        pinIntegrity,
@@ -570,6 +574,11 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	go db.cacheWorker(ctx)
 
 	return db, nil
+}
+
+// Reset removes all entries
+func (db *DB) ResetReserve(ctx context.Context) error {
+	return db.reserve.Reset(ctx)
 }
 
 // Metrics returns set of prometheus collectors.

@@ -33,19 +33,19 @@ func TestNewStepOnIndex(t *testing.T) {
 
 		initialCount, err := store.Count(&obj{})
 		if err != nil {
-			t.Fatalf("count should successed: %v", err)
+			t.Fatalf("count should succeed: %v", err)
 		}
 		if initialCount != populateItemsCount {
 			t.Fatalf("have %d, want %d", initialCount, populateItemsCount)
 		}
 
 		if err := stepFn(); err != nil {
-			t.Fatalf("step migration should successed: %v", err)
+			t.Fatalf("step migration should succeed: %v", err)
 		}
 
 		afterStepCount, err := store.Count(&obj{})
 		if err != nil {
-			t.Fatalf("count should successed: %v", err)
+			t.Fatalf("count should succeed: %v", err)
 		}
 
 		if afterStepCount != initialCount {
@@ -73,7 +73,7 @@ func TestNewStepOnIndex(t *testing.T) {
 		)
 
 		if err := stepFn(); err != nil {
-			t.Fatalf("step migration should successed: %v", err)
+			t.Fatalf("step migration should succeed: %v", err)
 		}
 
 		assertItemsInRange(t, store, 10, populateItemsCount)
@@ -106,7 +106,7 @@ func TestNewStepOnIndex(t *testing.T) {
 		)
 
 		if err := stepFn(); err != nil {
-			t.Fatalf("step migration should successed: %v", err)
+			t.Fatalf("step migration should succeed: %v", err)
 		}
 
 		assertItemsInRange(t, store, minVal, populateItemsCount+minVal)
@@ -144,7 +144,7 @@ func TestNewStepOnIndex(t *testing.T) {
 		)
 
 		if err := step(); err != nil {
-			t.Fatalf("step migration should successed: %v", err)
+			t.Fatalf("step migration should succeed: %v", err)
 		}
 
 		assertItemsInRange(t, store, 0, populateItemsCount-10)
@@ -222,13 +222,13 @@ func TestStepIndex_BatchSize(t *testing.T) {
 			)
 
 			if err := stepFn(); err != nil {
-				t.Fatalf("step migration should successed: %v", err)
+				t.Fatalf("step migration should succeed: %v", err)
 			}
 
 			opsExpected := (2 * populateItemsCount) - 10
 			opsGot := len(updateItemCallMap) + len(deleteItemCallMap)
 			if opsExpected != opsGot {
-				t.Fatalf("updated and deleted items should add up to totat: got %d, want %d", opsGot, opsExpected)
+				t.Fatalf("updated and deleted items should add up to total: got %d, want %d", opsGot, opsExpected)
 			}
 		})
 	}
@@ -330,7 +330,7 @@ func populateStore(t *testing.T, s storage.Store, count int) {
 	for i := 0; i < count; i++ {
 		item := &obj{id: i, val: i}
 		if err := s.Put(item); err != nil {
-			t.Fatalf("populate store should successed: %v", err)
+			t.Fatalf("populate store should succeed: %v", err)
 		}
 	}
 }
@@ -340,7 +340,7 @@ func assertItemsInRange(t *testing.T, s storage.Store, from, to int) {
 
 	count, err := s.Count(&obj{})
 	if err != nil {
-		t.Fatalf("count should successed: %v", err)
+		t.Fatalf("count should succeed: %v", err)
 	}
 	if count != to-from {
 		t.Fatalf("have %d, want %d", count, (to - from))
@@ -360,7 +360,7 @@ func assertItemsInRange(t *testing.T, s storage.Store, from, to int) {
 		},
 	)
 	if err != nil {
-		t.Fatalf("populate store should successed: %v", err)
+		t.Fatalf("populate store should succeed: %v", err)
 	}
 
 }

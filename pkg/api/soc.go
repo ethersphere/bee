@@ -13,11 +13,13 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	storer "github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/gorilla/mux"
 )
@@ -47,17 +49,27 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	headers := struct {
-		BatchID []byte `map:"Swarm-Postage-Batch-Id" validate:"required"`
-		Pin     bool   `map:"Swarm-Pin"`
+		BatchID        []byte        `map:"Swarm-Postage-Batch-Id"`
+		StampSig       []byte        `map:"Swarm-Postage-Stamp"`
+		Pin            bool          `map:"Swarm-Pin"`
+		Act            bool          `map:"Swarm-Act"`
+		HistoryAddress swarm.Address `map:"Swarm-Act-History-Address"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
 		return
 	}
 
+	if len(headers.BatchID) == 0 && len(headers.StampSig) == 0 {
+		logger.Error(nil, batchIdOrStampSig)
+		jsonhttp.BadRequest(w, batchIdOrStampSig)
+		return
+	}
+
 	// if pinning header is set we do a deferred upload, else we do a direct upload
 	var (
 		tag uint64
+		err error
 	)
 	if headers.Pin {
 		session, err := s.storer.NewSession()
@@ -75,12 +87,33 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		tag = session.TagID
 	}
 
-	putter, err := s.newStamperPutter(r.Context(), putterOptions{
-		BatchID:  headers.BatchID,
-		TagID:    tag,
-		Pin:      headers.Pin,
-		Deferred: headers.Pin,
-	})
+	deferred := tag != 0
+
+	var putter storer.PutterSession
+	if len(headers.StampSig) != 0 {
+		stamp := postage.Stamp{}
+		if err := stamp.UnmarshalBinary(headers.StampSig); err != nil {
+			errorMsg := "Stamp deserialization failure"
+			logger.Debug(errorMsg, "error", err)
+			logger.Error(nil, errorMsg)
+			jsonhttp.BadRequest(w, errorMsg)
+			return
+		}
+
+		putter, err = s.newStampedPutter(r.Context(), putterOptions{
+			BatchID:  stamp.BatchID(),
+			TagID:    tag,
+			Pin:      headers.Pin,
+			Deferred: deferred,
+		}, &stamp)
+	} else {
+		putter, err = s.newStamperPutter(r.Context(), putterOptions{
+			BatchID:  headers.BatchID,
+			TagID:    tag,
+			Pin:      headers.Pin,
+			Deferred: deferred,
+		})
+	}
 	if err != nil {
 		logger.Debug("get putter failed", "error", err)
 		logger.Error(nil, "get putter failed")
@@ -159,6 +192,26 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	reference := sch.Address()
+	if headers.Act {
+		reference, err = s.actEncryptionHandler(r.Context(), w, putter, reference, headers.HistoryAddress)
+		if err != nil {
+			logger.Debug("access control upload failed", "error", err)
+			logger.Error(nil, "access control upload failed")
+			switch {
+			case errors.Is(err, accesscontrol.ErrNotFound):
+				jsonhttp.NotFound(w, "act or history entry not found")
+			case errors.Is(err, accesscontrol.ErrInvalidPublicKey) || errors.Is(err, accesscontrol.ErrSecretKeyInfinity):
+				jsonhttp.BadRequest(w, "invalid public key")
+			case errors.Is(err, accesscontrol.ErrUnexpectedType):
+				jsonhttp.BadRequest(w, "failed to create history")
+			default:
+				jsonhttp.InternalServerError(w, errActUpload)
+			}
+			return
+		}
+	}
+
 	err = putter.Put(r.Context(), sch)
 	if err != nil {
 		logger.Debug("write chunk failed", "chunk_address", sch.Address(), "error", err)
@@ -175,7 +228,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonhttp.Created(w, chunkAddressResponse{Reference: sch.Address()})
+	jsonhttp.Created(w, socPostResponse{Reference: reference})
 }
 
 func (s *Service) socGetHandler(w http.ResponseWriter, r *http.Request) {

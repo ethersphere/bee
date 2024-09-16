@@ -14,8 +14,12 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	mockbatchstore "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
+	testingpostage "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	testingsoc "github.com/ethersphere/bee/v2/pkg/soc/testing"
 	"github.com/ethersphere/bee/v2/pkg/spinlock"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
@@ -155,6 +159,41 @@ func TestSOC(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+
+		// TestPreSignedUpload tests that chunk can be uploaded with pre-signed postage stamp
+		t.Run("pre-signed upload", func(t *testing.T) {
+			t.Parallel()
+
+			var (
+				s               = testingsoc.GenerateMockSOC(t, testData)
+				storerMock      = mockstorer.New()
+				batchStore      = mockbatchstore.New()
+				client, _, _, _ = newTestServer(t, testServerOptions{
+					Storer:     storerMock,
+					BatchStore: batchStore,
+				})
+			)
+
+			// generate random postage batch and stamp
+			key, _ := crypto.GenerateSecp256k1Key()
+			signer := crypto.NewDefaultSigner(key)
+			owner, _ := signer.EthereumAddress()
+			stamp := testingpostage.MustNewValidStamp(signer, s.Address())
+			_ = batchStore.Save(&postage.Batch{
+				ID:    stamp.BatchID(),
+				Owner: owner.Bytes(),
+			})
+			stampBytes, _ := stamp.MarshalBinary()
+
+			// read off inserted chunk
+			go func() { <-storerMock.PusherFeed() }()
+
+			jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusCreated,
+				jsonhttptest.WithRequestHeader(api.SwarmPostageStampHeader, hex.EncodeToString(stampBytes)),
+				jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),
+			)
+		})
+
 		t.Run("err - batch empty", func(t *testing.T) {
 			s := testingsoc.GenerateMockSOC(t, testData)
 			hexbatch := hex.EncodeToString(batchEmpty)

@@ -8,7 +8,7 @@ import (
 	"context"
 	"sync"
 
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
@@ -74,6 +74,16 @@ func (c *ChunkStore) Delete(_ context.Context, addr swarm.Address) error {
 		c.chunks[addr.ByteString()] = chunkCount
 	}
 
+	return nil
+}
+
+func (c *ChunkStore) Replace(_ context.Context, ch swarm.Chunk) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	chunkCount := c.chunks[ch.Address().ByteString()]
+	chunkCount.chunk = ch
+	c.chunks[ch.Address().ByteString()] = chunkCount
 	return nil
 }
 

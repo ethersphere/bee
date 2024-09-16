@@ -24,6 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethersphere/bee/v2"
+	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	chaincfg "github.com/ethersphere/bee/v2/pkg/config"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/crypto/clef"
@@ -73,7 +74,6 @@ func (c *command) initStartCmd() (err error) {
 
 			fmt.Print(beeWelcomeMessage)
 			fmt.Printf("\n\nversion: %v - planned to be supported until %v, please follow https://ethswarm.org/\n\n", bee.Version, endSupportDate())
-			fmt.Printf("DEPRECATION NOTICE:\nThe Debug API is deprecated and will be removed in the next release, version [2.2.0].\nPlease update your integrations to use the main Bee API to avoid service disruptions.\n\n")
 			logger.Info("bee version", "version", bee.Version)
 
 			go startTimeBomb(logger)
@@ -93,7 +93,7 @@ func (c *command) initStartCmd() (err error) {
 			}()
 
 			// Building bee node can take up some time (because node.NewBee(...) is compute have function )
-			// Because of this we need to do it in background so that program could be terminated when interrupt singal is received
+			// Because of this we need to do it in background so that program could be terminated when interrupt signal is received
 			// while bee node is being constructed.
 			respC := buildBeeNodeAsync(ctx, c, cmd, logger)
 			var beeNode atomic.Value
@@ -214,11 +214,6 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		}
 	}
 
-	debugAPIAddr := c.config.GetString(optionNameDebugAPIAddr)
-	if !c.config.GetBool(optionNameDebugAPIEnable) {
-		debugAPIAddr = ""
-	}
-
 	signerConfig, err := c.configureSigner(cmd, logger)
 	if err != nil {
 		return nil, err
@@ -293,7 +288,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		neighborhoodSuggester = c.config.GetString(optionNameNeighborhoodSuggester)
 	}
 
-	b, err := node.NewBee(ctx, c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
+	b, err := node.NewBee(ctx, c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, signerConfig.session, &node.Options{
 		DataDir:                       c.config.GetString(optionNameDataDir),
 		CacheCapacity:                 c.config.GetUint64(optionNameCacheCapacity),
 		DBOpenFilesLimit:              c.config.GetUint64(optionNameDBOpenFilesLimit),
@@ -301,7 +296,6 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		DBWriteBufferSize:             c.config.GetUint64(optionNameDBWriteBufferSize),
 		DBDisableSeeksCompaction:      c.config.GetBool(optionNameDBDisableSeeksCompaction),
 		APIAddr:                       c.config.GetString(optionNameAPIAddr),
-		DebugAPIAddr:                  debugAPIAddr,
 		Addr:                          c.config.GetString(optionNameP2PAddr),
 		NATAddr:                       c.config.GetString(optionNameNATAddr),
 		EnableWS:                      c.config.GetBool(optionNameP2PWSEnable),
@@ -338,15 +332,14 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		MutexProfile:                  c.config.GetBool(optionNamePProfMutex),
 		StaticNodes:                   staticNodes,
 		AllowPrivateCIDRs:             c.config.GetBool(optionNameAllowPrivateCIDRs),
-		Restricted:                    c.config.GetBool(optionNameRestrictedAPI),
-		TokenEncryptionKey:            c.config.GetString(optionNameTokenEncryptionKey),
-		AdminPasswordHash:             c.config.GetString(optionNameAdminPasswordHash),
 		UsePostageSnapshot:            c.config.GetBool(optionNameUsePostageSnapshot),
 		EnableStorageIncentives:       c.config.GetBool(optionNameStorageIncentivesEnable),
 		StatestoreCacheCapacity:       c.config.GetUint64(optionNameStateStoreCacheCapacity),
 		TargetNeighborhood:            c.config.GetString(optionNameTargetNeighborhood),
 		NeighborhoodSuggester:         neighborhoodSuggester,
 		WhitelistedWithdrawalAddress:  c.config.GetStringSlice(optionNameWhitelistedWithdrawalAddress),
+		TrxDebugMode:                  c.config.GetBool(optionNameTransactionDebugMode),
+		MinimumStorageRadius:          c.config.GetUint(optionMinimumStorageRadius),
 	})
 
 	return b, err
@@ -373,6 +366,7 @@ type signerConfig struct {
 	publicKey        *ecdsa.PublicKey
 	libp2pPrivateKey *ecdsa.PrivateKey
 	pssPrivateKey    *ecdsa.PrivateKey
+	session          accesscontrol.Session
 }
 
 func waitForClef(logger log.Logger, maxRetries uint64, endpoint string) (externalSigner *external.ExternalSigner, err error) {
@@ -403,6 +397,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 	var signer crypto.Signer
 	var password string
 	var publicKey *ecdsa.PublicKey
+	var session accesscontrol.Session
 	if p := c.config.GetString(optionNamePassword); p != "" {
 		password = p
 	} else if pf := c.config.GetString(optionNamePasswordFile); pf != "" {
@@ -475,6 +470,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 		}
 		signer = crypto.NewDefaultSigner(swarmPrivateKey)
 		publicKey = &swarmPrivateKey.PublicKey
+		session = accesscontrol.NewDefaultSession(swarmPrivateKey)
 	}
 
 	logger.Info("swarm public key", "public_key", hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(publicKey)))
@@ -513,6 +509,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 		publicKey:        publicKey,
 		libp2pPrivateKey: libp2pPrivateKey,
 		pssPrivateKey:    pssPrivateKey,
+		session:          session,
 	}, nil
 }
 

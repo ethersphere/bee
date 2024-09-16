@@ -37,7 +37,7 @@ func TestExist(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// add for 50 miliseconds
+	// add for 50 milliseconds
 	if err := bl.Add(addr2, time.Millisecond*50, "", false); err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestPeers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// add for 50 miliseconds
+	// add for 50 milliseconds
 	if err := bl.Add(addr2, time.Millisecond*50, "r2", true); err != nil {
 		t.Fatal(err)
 	}

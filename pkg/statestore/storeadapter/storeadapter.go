@@ -198,6 +198,24 @@ func (s *StateStorerAdapter) Nuke() error {
 	return s.deleteKeys(keys)
 }
 
+func (s *StateStorerAdapter) ClearForHopping() error {
+	var (
+		prefixesToPreserve = []string{
+			"swap_chequebook", // to not redeploy chequebook contract
+			"batchstore",      // avoid unnecessary syncing
+			"transaction",     // to not resync blockchain transactions
+		}
+		keys []string
+		err  error
+	)
+
+	keys, err = s.collectKeysExcept(prefixesToPreserve)
+	if err != nil {
+		return fmt.Errorf("collect keys except: %w", err)
+	}
+	return s.deleteKeys(keys)
+}
+
 func (s *StateStorerAdapter) collectKeysExcept(prefixesToPreserve []string) (keys []string, err error) {
 	if err := s.Iterate("", func(k, v []byte) (bool, error) {
 		stk := string(k)

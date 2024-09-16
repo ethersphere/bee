@@ -38,7 +38,7 @@ func init() {
 	}
 }
 
-// TestEncyrption tests that the encyption writer works correctly.
+// TestEncyrption tests that the encryption writer works correctly.
 func TestEncryption(t *testing.T) {
 	t.Parallel()
 

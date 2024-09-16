@@ -63,7 +63,7 @@ type CollectionStat struct {
 }
 
 // NewCollection returns a putter wrapped around the passed storage.
-// The putter will add the chunk to Chunk store if it doesnt exists within this collection.
+// The putter will add the chunk to Chunk store if it doesn't exists within this collection.
 // It will create a new UUID for the collection which can be used to iterate on all the chunks
 // that are part of this collection. The root pin is only updated on successful close of this.
 // Calls to the Putter MUST be mutex locked to prevent concurrent upload data races.
@@ -116,7 +116,7 @@ func (c *collectionPutter) Put(ctx context.Context, st transaction.Store, ch swa
 
 	err = st.ChunkStore().Put(ctx, ch)
 	if err != nil {
-		return fmt.Errorf("pin store: failled putting chunk: %w", err)
+		return fmt.Errorf("pin store: failed putting chunk: %w", err)
 	}
 
 	return nil

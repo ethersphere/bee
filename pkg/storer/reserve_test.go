@@ -47,12 +47,20 @@ func TestIndexCollision(t *testing.T) {
 			t.Fatal("expected index collision error")
 		}
 
-		_, err = storer.ReserveGet(context.Background(), ch2.Address(), ch2.Stamp().BatchID())
+		ch1StampHash, err := ch1.Stamp().Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = storer.ReserveGet(context.Background(), ch2.Address(), ch2.Stamp().BatchID(), ch1StampHash)
 		if !errors.Is(err, storage.ErrNotFound) {
 			t.Fatal(err)
 		}
 
-		_, err = storer.ReserveGet(context.Background(), ch1.Address(), ch1.Stamp().BatchID())
+		ch2StampHash, err := ch1.Stamp().Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = storer.ReserveGet(context.Background(), ch1.Address(), ch1.Stamp().BatchID(), ch2StampHash)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -107,7 +115,11 @@ func TestReplaceOldIndex(t *testing.T) {
 
 			// Chunk 2 must be stored
 			checkSaved(t, storer, ch_2, true, true)
-			got, err := storer.ReserveGet(context.Background(), ch_2.Address(), ch_2.Stamp().BatchID())
+			ch2StampHash, err := ch_2.Stamp().Hash()
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := storer.ReserveGet(context.Background(), ch_2.Address(), ch_2.Stamp().BatchID(), ch2StampHash)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -119,7 +131,7 @@ func TestReplaceOldIndex(t *testing.T) {
 			}
 
 			// Chunk 1 must be missing
-			item, err := stampindex.Load(storer.Storage().IndexStore(), "reserve", ch_1)
+			item, err := stampindex.Load(storer.Storage().IndexStore(), "reserve", ch_1.Stamp())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -130,7 +142,12 @@ func TestReplaceOldIndex(t *testing.T) {
 			if !errors.Is(err, storage.ErrNotFound) {
 				t.Fatalf("wanted err %s, got err %s", storage.ErrNotFound, err)
 			}
-			_, err = storer.ReserveGet(context.Background(), ch_1.Address(), ch_1.Stamp().BatchID())
+
+			ch1StampHash, err := ch_1.Stamp().Hash()
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = storer.ReserveGet(context.Background(), ch_1.Address(), ch_1.Stamp().BatchID(), ch1StampHash)
 			if !errors.Is(err, storage.ErrNotFound) {
 				t.Fatal(err)
 			}
@@ -205,7 +222,11 @@ func TestEvictBatch(t *testing.T) {
 	reserve := st.Reserve()
 
 	for _, ch := range chunks {
-		has, err := st.ReserveHas(ch.Address(), ch.Stamp().BatchID())
+		stampHash, err := ch.Stamp().Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+		has, err := st.ReserveHas(ch.Address(), ch.Stamp().BatchID(), stampHash)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -297,7 +318,11 @@ func TestUnreserveCap(t *testing.T) {
 
 		for po, chunks := range chunksPO {
 			for _, ch := range chunks {
-				has, err := storer.ReserveHas(ch.Address(), ch.Stamp().BatchID())
+				stampHash, err := ch.Stamp().Hash()
+				if err != nil {
+					t.Fatal(err)
+				}
+				has, err := storer.ReserveHas(ch.Address(), ch.Stamp().BatchID(), stampHash)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -433,7 +458,7 @@ func TestRadiusManager(t *testing.T) {
 		waitForRadius(t, storer.Reserve(), 0)
 	})
 
-	t.Run("radius doesnt change due to non-zero pull rate", func(t *testing.T) {
+	t.Run("radius doesn't change due to non-zero pull rate", func(t *testing.T) {
 		t.Parallel()
 		storer, err := diskStorer(t, dbTestOps(baseAddr, 10, nil, nil, time.Millisecond*500))()
 		if err != nil {
@@ -658,7 +683,7 @@ func checkSaved(t *testing.T, st *storer.DB, ch swarm.Chunk, stampSaved, chunkSt
 	if !stampSaved {
 		stampWantedErr = storage.ErrNotFound
 	}
-	_, err := stampindex.Load(st.Storage().IndexStore(), "reserve", ch)
+	_, err := stampindex.Load(st.Storage().IndexStore(), "reserve", ch.Stamp())
 	if !errors.Is(err, stampWantedErr) {
 		t.Fatalf("wanted err %s, got err %s", stampWantedErr, err)
 	}

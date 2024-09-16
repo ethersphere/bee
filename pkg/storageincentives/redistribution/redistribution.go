@@ -30,38 +30,50 @@ type Contract interface {
 
 type contract struct {
 	overlay                   swarm.Address
+	owner                     common.Address
 	logger                    log.Logger
 	txService                 transaction.Service
 	incentivesContractAddress common.Address
 	incentivesContractABI     abi.ABI
+	gasLimit                  uint64
 }
 
 func New(
 	overlay swarm.Address,
+	owner common.Address,
 	logger log.Logger,
 	txService transaction.Service,
 	incentivesContractAddress common.Address,
 	incentivesContractABI abi.ABI,
+	setGasLimit bool,
 ) Contract {
+
+	var gasLimit uint64
+	if setGasLimit {
+		gasLimit = transaction.DefaultGasLimit
+	}
+
 	return &contract{
 		overlay:                   overlay,
+		owner:                     owner,
 		logger:                    logger.WithName(loggerName).Register(),
 		txService:                 txService,
 		incentivesContractAddress: incentivesContractAddress,
 		incentivesContractABI:     incentivesContractABI,
+		gasLimit:                  gasLimit,
 	}
 }
 
 // IsPlaying checks if the overlay is participating in the upcoming round.
 func (c *contract) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
-	callData, err := c.incentivesContractABI.Pack("isParticipatingInUpcomingRound", common.BytesToHash(c.overlay.Bytes()), depth)
+	callData, err := c.incentivesContractABI.Pack("isParticipatingInUpcomingRound", c.owner, depth)
 	if err != nil {
 		return false, err
 	}
 
 	result, err := c.callTx(ctx, callData)
 	if err != nil {
-		return false, fmt.Errorf("IsPlaying: overlay %v depth %d: %w", common.BytesToHash(c.overlay.Bytes()), depth, err)
+		return false, fmt.Errorf("IsPlaying: owner %v depth %d: %w", c.owner, depth, err)
 	}
 
 	results, err := c.incentivesContractABI.Unpack("isParticipatingInUpcomingRound", result)
@@ -101,7 +113,7 @@ func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs) (comm
 		To:                   &c.incentivesContractAddress,
 		Data:                 callData,
 		GasPrice:             sctx.GetGasPrice(ctx),
-		GasLimit:             sctx.GetGasLimit(ctx),
+		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
 		MinEstimatedGasLimit: 500_000,
 		Value:                big.NewInt(0),
 		Description:          "claim win transaction",
@@ -116,7 +128,7 @@ func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs) (comm
 
 // Commit submits the obfusHash hash by sending a transaction to the blockchain.
 func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint64) (common.Hash, error) {
-	callData, err := c.incentivesContractABI.Pack("commit", common.BytesToHash(obfusHash), common.BytesToHash(c.overlay.Bytes()), round)
+	callData, err := c.incentivesContractABI.Pack("commit", common.BytesToHash(obfusHash), round)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -124,14 +136,14 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint64) (
 		To:                   &c.incentivesContractAddress,
 		Data:                 callData,
 		GasPrice:             sctx.GetGasPrice(ctx),
-		GasLimit:             sctx.GetGasLimit(ctx),
+		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
 		MinEstimatedGasLimit: 500_000,
 		Value:                big.NewInt(0),
 		Description:          "commit transaction",
 	}
 	txHash, err := c.sendAndWait(ctx, request, 50)
 	if err != nil {
-		return txHash, fmt.Errorf("commit: obfusHash %v overlay %v: %w", common.BytesToHash(obfusHash), common.BytesToHash(c.overlay.Bytes()), err)
+		return txHash, fmt.Errorf("commit: obfusHash %v: %w", common.BytesToHash(obfusHash), err)
 	}
 
 	return txHash, nil
@@ -139,7 +151,7 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint64) (
 
 // Reveal submits the storageDepth, reserveCommitmentHash and RandomNonce in a transaction to blockchain.
 func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommitmentHash []byte, RandomNonce []byte) (common.Hash, error) {
-	callData, err := c.incentivesContractABI.Pack("reveal", common.BytesToHash(c.overlay.Bytes()), storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce))
+	callData, err := c.incentivesContractABI.Pack("reveal", storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce))
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -147,7 +159,7 @@ func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommit
 		To:                   &c.incentivesContractAddress,
 		Data:                 callData,
 		GasPrice:             sctx.GetGasPrice(ctx),
-		GasLimit:             sctx.GetGasLimit(ctx),
+		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
 		MinEstimatedGasLimit: 500_000,
 		Value:                big.NewInt(0),
 		Description:          "reveal transaction",

@@ -12,7 +12,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-const MaxDuration time.Duration = math.MaxInt64
+const maxDuration time.Duration = math.MaxInt64
 
 type List struct {
 	mtx sync.Mutex
@@ -55,6 +55,10 @@ func (l *List) worker() {
 	}
 }
 
+func (l *List) Forever(chunk, peer swarm.Address) {
+	l.Add(chunk, peer, maxDuration)
+}
+
 func (l *List) Add(chunk, peer swarm.Address, expire time.Duration) {
 
 	l.mtx.Lock()
@@ -62,8 +66,8 @@ func (l *List) Add(chunk, peer swarm.Address, expire time.Duration) {
 
 	var t int64
 
-	if expire == MaxDuration {
-		t = MaxDuration.Nanoseconds()
+	if expire == maxDuration {
+		t = maxDuration.Nanoseconds()
 	} else {
 		t = time.Now().Add(expire).UnixNano()
 	}

@@ -40,6 +40,8 @@ const (
 	recalcPeersDur = time.Minute * 5
 
 	maxChunksPerSecond = 1000 // roughly 4 MB/s
+
+	maxPODelta = 2 // the lowest level of proximity order (of peers) subtracted from the storage radius allowed for chunk syncing.
 )
 
 type Options struct {
@@ -256,12 +258,15 @@ func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uin
 	}
 
 	/*
-		The syncing behavior diverges for peers outside and winthin the storage radius.
+		The syncing behavior diverges for peers outside and within the storage radius.
 		For neighbor peers, we sync ALL bins greater than or equal to the storage radius.
 		For peers with PO lower than the storage radius, we must sync ONLY the bin that is the PO.
+		For peers peer with PO lower than the storage radius and even lower than the allowed minimum threshold,
+		no syncing is done.
 	*/
 
 	if peer.po >= storageRadius {
+
 		// cancel all bins lower than the storage radius
 		for bin := uint8(0); bin < storageRadius; bin++ {
 			peer.cancelBin(bin)
@@ -274,7 +279,7 @@ func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uin
 			}
 		}
 
-	} else {
+	} else if storageRadius-peer.po <= maxPODelta {
 		// cancel all non-po bins, if any
 		for bin := uint8(0); bin < p.bins; bin++ {
 			if bin != peer.po {
@@ -285,6 +290,8 @@ func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uin
 		if !peer.isBinSyncing(peer.po) {
 			p.syncPeerBin(ctx, peer, peer.po, peer.cursors[peer.po])
 		}
+	} else {
+		peer.stop()
 	}
 
 	return nil
@@ -308,7 +315,7 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 		var err error
 
 		for {
-			if isHistorical { // overide start with the next interval if historical syncing
+			if isHistorical { // override start with the next interval if historical syncing
 				start, err = p.nextPeerInterval(address, bin)
 				if err != nil {
 					p.metrics.SyncWorkerErrCounter.Inc()
@@ -343,17 +350,17 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 			if err != nil {
 				p.metrics.SyncWorkerErrCounter.Inc()
 				if errors.Is(err, p2p.ErrPeerNotFound) {
-					p.logger.Debug("syncWorker interval failed, quitting", "error", err, "peer_address", address, "bin", bin, "cursor", address, "start", start, "topmost", top)
+					p.logger.Debug("syncWorker interval failed, quitting", "error", err, "peer_address", address, "bin", bin, "cursor", cursor, "start", start, "topmost", top)
 					return
 				}
-				loggerV2.Debug("syncWorker interval failed", "error", err, "peer_address", address, "bin", bin, "cursor", address, "start", start, "topmost", top)
+				loggerV2.Debug("syncWorker interval failed", "error", err, "peer_address", address, "bin", bin, "cursor", cursor, "start", start, "topmost", top)
 			}
+
+			_ = p.limiter.WaitN(ctx, count)
 
 			if isHistorical {
 				p.metrics.SyncedCounter.WithLabelValues("historical").Add(float64(count))
 				p.rate.Add(count)
-				// rate limit historical syncing
-				_ = p.limiter.WaitN(ctx, count)
 			} else {
 				p.metrics.SyncedCounter.WithLabelValues("live").Add(float64(count))
 			}

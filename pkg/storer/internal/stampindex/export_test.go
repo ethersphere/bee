@@ -7,30 +7,31 @@ package stampindex
 import "github.com/ethersphere/bee/v2/pkg/swarm"
 
 var (
-	ErrStampItemMarshalNamespaceInvalid  = errStampItemMarshalNamespaceInvalid
+	ErrStampItemMarshalNamespaceInvalid  = errStampItemMarshalScopeInvalid
 	ErrStampItemMarshalBatchIndexInvalid = errStampItemMarshalBatchIndexInvalid
 	ErrStampItemMarshalBatchIDInvalid    = errStampItemMarshalBatchIDInvalid
 	ErrStampItemUnmarshalInvalidSize     = errStampItemUnmarshalInvalidSize
 )
 
 // NewItemWithValues creates a new Item with given values and fixed keys.
-func NewItemWithValues(batchTimestamp []byte, chunkAddress swarm.Address, chunkIsImmutable bool) *Item {
+func NewItemWithValues(batchTimestamp []byte, chunkAddress swarm.Address) *Item {
 	return &Item{
-		namespace:  []byte("test_namespace"),
-		batchID:    []byte{swarm.HashSize - 1: 9},
-		stampIndex: []byte{swarm.StampIndexSize - 1: 9},
+		scope:      []byte("test_namespace"),
+		BatchID:    []byte{swarm.HashSize - 1: 9},
+		StampIndex: []byte{swarm.StampIndexSize - 1: 9},
+		StampHash:  swarm.EmptyAddress.Bytes(),
 
-		StampTimestamp:   batchTimestamp,
-		ChunkAddress:     chunkAddress,
-		ChunkIsImmutable: chunkIsImmutable,
+		StampTimestamp: batchTimestamp,
+		ChunkAddress:   chunkAddress,
 	}
 }
 
 // NewItemWithKeys creates a new Item with given keys and zero values.
-func NewItemWithKeys(namespace string, batchID, batchIndex []byte) *Item {
+func NewItemWithKeys(namespace string, batchID, batchIndex, stampHash []byte) *Item {
 	return &Item{
-		namespace:  append([]byte(nil), namespace...),
-		batchID:    batchID,
-		stampIndex: batchIndex,
+		scope:      append([]byte(nil), namespace...),
+		BatchID:    batchID,
+		StampIndex: batchIndex,
+		StampHash:  stampHash,
 	}
 }

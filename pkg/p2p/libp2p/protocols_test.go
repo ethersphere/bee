@@ -180,7 +180,7 @@ func TestNewStreamMulti(t *testing.T) {
 		t.Fatal(err)
 	}
 	if atomic.LoadInt32(&h1calls) != 1 {
-		t.Fatal("handler should have been called but wasnt")
+		t.Fatal("handler should have been called but wasn't")
 	}
 	if atomic.LoadInt32(&h2calls) > 0 {
 		t.Fatal("handler should not have been called")

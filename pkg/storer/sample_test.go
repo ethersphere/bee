@@ -185,7 +185,7 @@ func assertSampleNoErrors(t *testing.T, sample storer.Sample) {
 		t.Fatalf("got unexpected failed chunk loads")
 	}
 	if sample.Stats.RogueChunk != 0 {
-		t.Fatalf("got unexpected rouge chunks")
+		t.Fatalf("got unexpected rogue chunks")
 	}
 	if sample.Stats.StampLoadFailed != 0 {
 		t.Fatalf("got unexpected failed stamp loads")

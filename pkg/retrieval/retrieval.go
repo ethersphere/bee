@@ -164,7 +164,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 		var preemptiveTicker <-chan time.Time
 
 		if !sourcePeerAddr.IsZero() {
-			skip.Add(chunkAddr, sourcePeerAddr, skippeers.MaxDuration)
+			skip.Forever(chunkAddr, sourcePeerAddr)
 		}
 
 		quit := make(chan struct{})
@@ -256,14 +256,14 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 					retry()
 					continue
 				}
-				skip.Add(chunkAddr, peer, skippeers.MaxDuration)
+				skip.Forever(chunkAddr, peer)
 
 				inflight++
 
 				go func() {
 					span, _, ctx := s.tracer.FollowSpanFromContext(spanCtx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: chunkAddr.String()})
 					defer span.Finish()
-					s.retrieveChunk(ctx, quit, chunkAddr, peer, resultC, action, origin, span)
+					s.retrieveChunk(ctx, quit, chunkAddr, peer, resultC, action, span)
 				}()
 
 			case res := <-resultC:
@@ -297,7 +297,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 	return v, nil
 }
 
-func (s *Service) retrieveChunk(ctx context.Context, quit chan struct{}, chunkAddr, peer swarm.Address, result chan retrievalResult, action accounting.Action, isOrigin bool, span opentracing.Span) {
+func (s *Service) retrieveChunk(ctx context.Context, quit chan struct{}, chunkAddr, peer swarm.Address, result chan retrievalResult, action accounting.Action, span opentracing.Span) {
 
 	var (
 		startTime = time.Now()

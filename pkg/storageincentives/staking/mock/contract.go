@@ -16,6 +16,7 @@ type stakingContractMock struct {
 	depositStake     func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error)
 	getStake         func(ctx context.Context) (*big.Int, error)
 	withdrawAllStake func(ctx context.Context) (common.Hash, error)
+	migrateStake     func(ctx context.Context) (common.Hash, error)
 	isFrozen         func(ctx context.Context, block uint64) (bool, error)
 }
 
@@ -23,12 +24,24 @@ func (s *stakingContractMock) DepositStake(ctx context.Context, stakedAmount *bi
 	return s.depositStake(ctx, stakedAmount)
 }
 
-func (s *stakingContractMock) GetStake(ctx context.Context) (*big.Int, error) {
+func (s *stakingContractMock) ChangeStakeOverlay(_ context.Context, h common.Hash) (common.Hash, error) {
+	return h, nil
+}
+
+func (s *stakingContractMock) GetPotentialStake(ctx context.Context) (*big.Int, error) {
 	return s.getStake(ctx)
 }
 
-func (s *stakingContractMock) WithdrawAllStake(ctx context.Context) (common.Hash, error) {
+func (s *stakingContractMock) GetWithdrawableStake(ctx context.Context) (*big.Int, error) {
+	return s.getStake(ctx)
+}
+
+func (s *stakingContractMock) WithdrawStake(ctx context.Context) (common.Hash, error) {
 	return s.withdrawAllStake(ctx)
+}
+
+func (s *stakingContractMock) MigrateStake(ctx context.Context) (common.Hash, error) {
+	return s.migrateStake(ctx)
 }
 
 func (s *stakingContractMock) IsOverlayFrozen(ctx context.Context, block uint64) (bool, error) {
@@ -61,9 +74,15 @@ func WithGetStake(f func(ctx context.Context) (*big.Int, error)) Option {
 	}
 }
 
-func WithWithdrawAllStake(f func(ctx context.Context) (common.Hash, error)) Option {
+func WithWithdrawStake(f func(ctx context.Context) (common.Hash, error)) Option {
 	return func(mock *stakingContractMock) {
 		mock.withdrawAllStake = f
+	}
+}
+
+func WithMigrateStake(f func(ctx context.Context) (common.Hash, error)) Option {
+	return func(mock *stakingContractMock) {
+		mock.migrateStake = f
 	}
 }
 

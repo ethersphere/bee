@@ -142,7 +142,7 @@ func (ps *service) StampIssuers() []*StampIssuer {
 func (ps *service) IssuerUsable(st *StampIssuer) bool {
 	cs := ps.postageStore.GetChainState()
 
-	// this checks atleast threshold blocks are seen on the blockchain after
+	// this checks at least threshold blocks are seen on the blockchain after
 	// the batch creation, before we start using a stamp issuer. The threshold
 	// is meant to allow enough time for upstream peers to see the batch and
 	// hence validate the stamps issued

@@ -13,7 +13,6 @@ REACHABILITY_OVERRIDE_PUBLIC ?= false
 BATCHFACTOR_OVERRIDE_PUBLIC ?= 5
 
 BEE_API_VERSION ?= "$(shell grep '^  version:' openapi/Swarm.yaml | awk '{print $$2}')"
-BEE_DEBUG_API_VERSION ?= "$(shell grep '^  version:' openapi/SwarmDebug.yaml | awk '{print $$2}')"
 
 VERSION ?= "$(shell git describe --tags --abbrev=0 | cut -c2-)"
 COMMIT_HASH ?= "$(shell git describe --long --dirty --always --match "" || true)"
@@ -24,7 +23,6 @@ LDFLAGS ?= -s -w \
 -X github.com/ethersphere/bee/v2.commitHash="$(COMMIT_HASH)" \
 -X github.com/ethersphere/bee/v2.commitTime="$(COMMIT_TIME)" \
 -X github.com/ethersphere/bee/v2/pkg/api.Version="$(BEE_API_VERSION)" \
--X github.com/ethersphere/bee/v2/pkg/api.DebugVersion="$(BEE_DEBUG_API_VERSION)" \
 -X github.com/ethersphere/bee/v2/pkg/p2p/libp2p.reachabilityOverridePublic="$(REACHABILITY_OVERRIDE_PUBLIC)" \
 -X github.com/ethersphere/bee/v2/pkg/postage/listener.batchFactorOverridePublic="$(BATCHFACTOR_OVERRIDE_PUBLIC)"
 

@@ -57,6 +57,17 @@ func TestCreateBatch(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
+		lastPriceCallData, err := postageStampContractABI.Pack("lastPrice")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		minValidityBlocksCallData, err := postageStampContractABI.Pack("minimumValidityBlocks")
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		counter := 0
 		contract := postagecontract.New(
 			owner,
@@ -115,6 +126,12 @@ func TestCreateBatch(t *testing.T) {
 								}
 							}
 						}
+						if bytes.Equal(lastPriceCallData, request.Data) {
+							return big.NewInt(2).FillBytes(make([]byte, 32)), nil
+						}
+						if bytes.Equal(minValidityBlocksCallData, request.Data) {
+							return big.NewInt(25).FillBytes(make([]byte, 32)), nil
+						}
 					}
 					return nil, errors.New("unexpected call")
 				}),
@@ -122,6 +139,7 @@ func TestCreateBatch(t *testing.T) {
 			postageMock,
 			postagestoreMock.New(),
 			true,
+			false,
 		)
 
 		_, returnedID, err := contract.CreateBatch(ctx, initialBalance, depth, false, label)
@@ -155,6 +173,7 @@ func TestCreateBatch(t *testing.T) {
 			postageMock.New(),
 			postagestoreMock.New(),
 			true,
+			false,
 		)
 
 		_, _, err := contract.CreateBatch(ctx, initialBalance, depth, false, label)
@@ -183,6 +202,7 @@ func TestCreateBatch(t *testing.T) {
 			postageMock.New(),
 			postagestoreMock.New(),
 			true,
+			false,
 		)
 
 		_, _, err := contract.CreateBatch(ctx, initialBalance, depth, false, label)
@@ -190,6 +210,52 @@ func TestCreateBatch(t *testing.T) {
 			t.Fatalf("expected error %v. got %v", postagecontract.ErrInsufficientFunds, err)
 		}
 	})
+
+	t.Run("insufficient validity", func(t *testing.T) {
+		depth := uint8(10)
+		totalAmount := big.NewInt(102399)
+
+		lastPriceCallData, err := postageStampContractABI.Pack("lastPrice")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		minValidityBlocksCallData, err := postageStampContractABI.Pack("minimumValidityBlocks")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		contract := postagecontract.New(
+			owner,
+			postageStampAddress,
+			postageStampContractABI,
+			bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if *request.To == bzzTokenAddress {
+						return big.NewInt(0).Add(totalAmount, big.NewInt(1)).FillBytes(make([]byte, 32)), nil
+					}
+					if bytes.Equal(lastPriceCallData, request.Data) {
+						return big.NewInt(2).FillBytes(make([]byte, 32)), nil
+					}
+					if bytes.Equal(minValidityBlocksCallData, request.Data) {
+						return big.NewInt(100).FillBytes(make([]byte, 32)), nil
+					}
+					return nil, errors.New("unexpected call")
+				}),
+			),
+			postageMock.New(),
+			postagestoreMock.New(),
+			true,
+			false,
+		)
+
+		_, _, err = contract.CreateBatch(ctx, initialBalance, depth, false, label)
+		if !errors.Is(err, postagecontract.ErrInsufficientValidity) {
+			t.Fatalf("expected error %v. got %v", postagecontract.ErrInsufficientValidity, err)
+		}
+	})
+
 }
 
 func newCreateEvent(postageContractAddress common.Address, batchId common.Hash) *types.Log {
@@ -290,6 +356,7 @@ func TestTopUpBatch(t *testing.T) {
 			postageMock,
 			batchStoreMock,
 			true,
+			false,
 		)
 
 		_, err = contract.TopUpBatch(ctx, batch.ID, topupBalance)
@@ -307,7 +374,7 @@ func TestTopUpBatch(t *testing.T) {
 		}
 	})
 
-	t.Run("batch doesnt exist", func(t *testing.T) {
+	t.Run("batch doesn't exist", func(t *testing.T) {
 		errNotFound := errors.New("not found")
 		contract := postagecontract.New(
 			owner,
@@ -318,6 +385,7 @@ func TestTopUpBatch(t *testing.T) {
 			postageMock.New(),
 			postagestoreMock.New(postagestoreMock.WithGetErr(errNotFound, 0)),
 			true,
+			false,
 		)
 
 		_, err := contract.TopUpBatch(ctx, postagetesting.MustNewID(), topupBalance)
@@ -347,6 +415,7 @@ func TestTopUpBatch(t *testing.T) {
 			postageMock.New(),
 			batchStoreMock,
 			true,
+			false,
 		)
 
 		_, err := contract.TopUpBatch(ctx, batch.ID, topupBalance)
@@ -476,6 +545,7 @@ func TestDiluteBatch(t *testing.T) {
 			postageMock,
 			batchStoreMock,
 			true,
+			false,
 		)
 
 		_, err = contract.DiluteBatch(ctx, batch.ID, newDepth)
@@ -493,7 +563,7 @@ func TestDiluteBatch(t *testing.T) {
 		}
 	})
 
-	t.Run("batch doesnt exist", func(t *testing.T) {
+	t.Run("batch doesn't exist", func(t *testing.T) {
 		errNotFound := errors.New("not found")
 		contract := postagecontract.New(
 			owner,
@@ -504,6 +574,7 @@ func TestDiluteBatch(t *testing.T) {
 			postageMock.New(),
 			postagestoreMock.New(postagestoreMock.WithGetErr(errNotFound, 0)),
 			true,
+			false,
 		)
 
 		_, err := contract.DiluteBatch(ctx, postagetesting.MustNewID(), uint8(17))
@@ -526,6 +597,7 @@ func TestDiluteBatch(t *testing.T) {
 			postageMock.New(),
 			batchStoreMock,
 			true,
+			false,
 		)
 
 		_, err := contract.DiluteBatch(ctx, batch.ID, batch.Depth-1)
@@ -602,6 +674,7 @@ func TestBatchExpirer(t *testing.T) {
 			postageMock,
 			postagestoreMock.New(),
 			true,
+			false,
 		)
 
 		err = contract.ExpireBatches(ctx)
@@ -635,6 +708,7 @@ func TestBatchExpirer(t *testing.T) {
 			postageMock,
 			postagestoreMock.New(),
 			true,
+			false,
 		)
 
 		err = contract.ExpireBatches(ctx)
@@ -668,6 +742,7 @@ func TestBatchExpirer(t *testing.T) {
 			postageMock,
 			postagestoreMock.New(),
 			true,
+			false,
 		)
 
 		err = contract.ExpireBatches(ctx)
@@ -744,6 +819,7 @@ func TestBatchExpirer(t *testing.T) {
 			postageMock,
 			postagestoreMock.New(),
 			true,
+			false,
 		)
 
 		err = contract.ExpireBatches(ctx)
@@ -778,6 +854,7 @@ func TestBatchExpirer(t *testing.T) {
 			postageMock,
 			postagestoreMock.New(),
 			true,
+			false,
 		)
 
 		err = contract.ExpireBatches(ctx)
@@ -814,6 +891,7 @@ func TestBatchExpirer(t *testing.T) {
 			postageMock,
 			postagestoreMock.New(),
 			true,
+			false,
 		)
 
 		err = contract.ExpireBatches(ctx)
@@ -863,6 +941,7 @@ func TestBatchExpirer(t *testing.T) {
 			postageMock,
 			postagestoreMock.New(),
 			true,
+			false,
 		)
 
 		err = contract.ExpireBatches(ctx)

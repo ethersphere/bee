@@ -85,6 +85,10 @@ func TestPutter(t *testing.T) {
 			defer store.Close()
 			p := replicas.NewPutter(store)
 
+			// original chunk
+			if err := store.Put(ctx, ch); err != nil {
+				t.Fatalf("expected no error. got %v", err)
+			}
 			if err := p.Put(ctx, ch); err != nil {
 				t.Fatalf("expected no error. got %v", err)
 			}
@@ -99,7 +103,7 @@ func TestPutter(t *testing.T) {
 				return false, nil
 			})
 			if !orig {
-				t.Fatal("origial chunk missing")
+				t.Fatal("original chunk missing")
 			}
 			t.Run("dispersion", func(t *testing.T) {
 				if err := dispersed(tc.level, ch, addrs); err != nil {

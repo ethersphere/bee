@@ -41,7 +41,7 @@ func Test_FetchNeighborhood(t *testing.T) {
 			wantError:        false,
 		},
 		{
-			name:             "inavlid suggester url",
+			name:             "invalid suggester url",
 			suggester:        "abc",
 			wantNeighborhood: "",
 			wantError:        true,

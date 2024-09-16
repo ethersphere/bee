@@ -25,7 +25,7 @@ var (
 //
 // The same hasher instance must not be called concurrently on more than one chunk.
 //
-// The same hasher instance is synchronously reuseable.
+// The same hasher instance is synchronously reusable.
 //
 // Sum gives back the tree to the pool and guaranteed to leave
 // the tree and itself in a state reusable for hashing a new chunk.

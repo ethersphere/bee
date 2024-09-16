@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 3.2.7
+  version: 4.1.0
   title: Common Data Types
   description: |
     \*****bzzz*****
@@ -35,7 +35,7 @@ components:
           $ref: "#/components/schemas/PublicKey"
 
     BigInt:
-      description: Numeric string that represents integer which might exceeds `Number.MAX_SAFE_INTEGER` limit (2^53-1)
+      description: Numeric string that represents integer which might exceed `Number.MAX_SAFE_INTEGER` limit (2^53-1)
       type: string
       example: "1000000000000000000"
 
@@ -86,6 +86,36 @@ components:
           $ref: "#/components/schemas/BigInt"
         ghostBalance:
           $ref: "#/components/schemas/BigInt"
+
+    ActGranteesCreateRequest:
+      type: object
+      properties:
+        grantees:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicKey"
+
+    ActGranteesPatchRequest:
+      type: object
+      properties:
+        add:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicKey"
+          description: List of grantees to add
+        revoke:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicKey"
+          description: List of grantees to revoke future access from
+
+    ActGranteesOperationResponse:
+      type: object
+      properties:
+        ref:
+          $ref: "#/components/schemas/SwarmEncryptedReference"
+        historyref:
+          $ref: "#/components/schemas/SwarmEncryptedReference"
 
     Balance:
       type: object
@@ -157,7 +187,6 @@ components:
                       $ref: "#/components/schemas/SwarmAddress"
                     metrics:
                       $ref: "#/components/schemas/PeerMetricsView"
-
 
     Cheque:
       type: object
@@ -241,6 +270,18 @@ components:
       type: string
       pattern: "^([A-Fa-f0-9]+)$"
       example: "cf880b8eeac5093fa27b0825906c600685"
+
+    Hex8Bytes:
+      description: Hexadecimal string representation of 8 bytes
+      type: string
+      pattern: "^([0-9a-fA-F]{16})$"
+      example: "1a2b3c4d5e6f7a8b"
+
+    Signature:
+      description: Hexadecimal string representation of cryptographic signature
+      type: string
+      pattern: "^([0-9a-fA-F]{130})$"
+      example: "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e"
 
     MultiAddress:
       type: string
@@ -340,8 +381,8 @@ components:
       type: string
 
     PssTargets:
-      pattern: '^[0-9a-fA-F]{1,6}(,[0-9a-fA-F]{1,6})*$'
-      description: List of hex string targets that are comma seprated and can have maximum length of 6
+      pattern: "^[0-9a-fA-F]{1,6}(,[0-9a-fA-F]{1,6})*$"
+      description: List of hex string targets that are comma separated and can have maximum length of 6
       type: string
 
     PssTopic:
@@ -366,6 +407,18 @@ components:
       properties:
         reference:
           $ref: "#/components/schemas/SwarmReference"
+
+    PostEnvelopeResponse:
+      type: object
+      properties:
+        issuer:
+          $ref: "#/components/schemas/EthereumAddress"
+        index:
+          $ref: "#/components/schemas/Hex8Bytes"
+        timestamp:
+          $ref: "#/components/schemas/Hex8Bytes"
+        signature:
+          $ref: "#/components/schemas/Signature"
 
     DebugPostageBatchesResponse:
       type: object
@@ -412,12 +465,14 @@ components:
       properties:
         beeMode:
           type: string
-          enum: [light, full, dev]
+          enum: [light, full, dev, ultra-light, unknown]
           description: >
             Gives back in what mode the Bee client has been started. The modes are mutually exclusive
             * `light` - light node; does not participate in forwarding or storing chunks
             * `full` - full node
             * `dev` - development mode; Bee client for development purposes, blockchain operations are mocked
+            * `ultra-light` - ultra-light node; a light node with chain disabled
+            * `unknown` - unknown mode
         chequebookEnabled:
           type: boolean
         swapEnabled:
@@ -428,18 +483,15 @@ components:
       properties:
         status:
           type: string
-          enum: [ok, nok]
+          enum: [ok, nok, unknown]
           description: >
             Indicates health state of node
             * `ok` - node is healthy
             * `nok` - node is not healthy
+            * `unknown` - health status is unknown
         version:
           type: string
         apiVersion:
-          type: string
-          default: "0.0.0"
-          description: The default value is set in case the bee binary was not build correctly.
-        debugApiVersion:
           type: string
           default: "0.0.0"
           description: The default value is set in case the bee binary was not build correctly.
@@ -583,19 +635,19 @@ components:
       type: object
       properties:
         stakedAmount:
-           $ref: "#/components/schemas/BigInt"
+          $ref: "#/components/schemas/BigInt"
 
-    StakeDepositResponse:
-          type: object
-          properties:
-            txHash:
-               $ref: "#/components/schemas/TransactionHash"
+    GetWithdrawableResponse:
+      type: object
+      properties:
+        withdrawableAmount:
+          $ref: "#/components/schemas/BigInt"
 
-    WithdrawAllStakeResponse:
-              type: object
-              properties:
-                txHash:
-                   $ref: "#/components/schemas/TransactionHash"
+    StakeTransactionResponse:
+      type: object
+      properties:
+        txHash:
+          $ref: "#/components/schemas/TransactionHash"
 
     SwarmOnlyReference:
       oneOf:
@@ -622,7 +674,6 @@ components:
           nullable: false
           items:
             $ref: "#/components/schemas/SwarmOnlyReference"
-
 
     SwarmReference:
       oneOf:
@@ -735,8 +786,8 @@ components:
           type: integer
         lastSelectedRound:
           type: integer
-        lastSampleDuration:
-          $ref: "#/components/schemas/Duration"
+        lastSampleDurationSeconds:
+          type: number
         block:
           type: integer
         reward:
@@ -812,7 +863,7 @@ components:
     LoggerTreeNode:
       type: object
       additionalProperties:
-          $ref: "#/components/schemas/LoggerTreeData"
+        $ref: "#/components/schemas/LoggerTreeData"
 
     Logger:
       type: object
@@ -830,7 +881,7 @@ components:
       type: object
       properties:
         tree:
-            $ref: "#/components/schemas/LoggerTreeNode"
+          $ref: "#/components/schemas/LoggerTreeNode"
         loggers:
           type: array
           items:
@@ -839,13 +890,14 @@ components:
     StatusSnapshotResponse:
       type: object
       properties:
-        peer:
+        overlay:
           $ref: "#/components/schemas/SwarmAddress"
         beeMode:
           type: string
           enum:
             - "light"
             - "full"
+            - "dev"
             - "ultra-light"
             - "unknown"
         proximity:
@@ -853,7 +905,7 @@ components:
         reserveSize:
           type: integer
         reserveSizeWithinRadius:
-          type: interger
+          type: integer
         pullsyncRate:
           type: number
         storageRadius:
@@ -869,6 +921,8 @@ components:
           type: integer
         isReachable:
           type: boolean
+        lastSyncedBlock:
+          type: integer
 
     StatusResponse:
       type: object
@@ -886,7 +940,7 @@ components:
           minimum: 0
           type: integer
         postageProof:
-          $ref: '#/components/schemas/ApiPostageProof'
+          $ref: "#/components/schemas/ApiPostageProof"
         proofSegments:
           items:
             type: string
@@ -908,7 +962,7 @@ components:
           type: string
         socProof:
           items:
-            $ref: '#/components/schemas/ApiSOCProof'
+            $ref: "#/components/schemas/ApiSOCProof"
           nullable: true
           type: array
 
@@ -916,11 +970,11 @@ components:
       type: object
       properties:
         proof1:
-          $ref: '#/components/schemas/ApiChunkInclusionProof'
+          $ref: "#/components/schemas/ApiChunkInclusionProof"
         proof2:
-          $ref: '#/components/schemas/ApiChunkInclusionProof'
+          $ref: "#/components/schemas/ApiChunkInclusionProof"
         proofLast:
-          $ref: '#/components/schemas/ApiChunkInclusionProof'
+          $ref: "#/components/schemas/ApiChunkInclusionProof"
 
     ApiPostageProof:
       type: object
@@ -940,9 +994,9 @@ components:
         duration:
           type: integer
         hash:
-          $ref: '#/components/schemas/SwarmAddress'
+          $ref: "#/components/schemas/SwarmAddress"
         proofs:
-          $ref: '#/components/schemas/ApiChunkInclusionProofs'
+          $ref: "#/components/schemas/ApiChunkInclusionProofs"
 
     ApiSOCProof:
       type: object
@@ -982,6 +1036,12 @@ components:
       schema:
         $ref: "#/components/schemas/HexString"
 
+    SwarmActHistoryAddress:
+      description: "Swarm address reference to the new ACT history entry"
+      schema:
+        $ref: "#/components/schemas/SwarmAddress"
+      required: false
+
     ETag:
       description: |
         The RFC7232 ETag header field in a response provides the current entity-
@@ -993,7 +1053,6 @@ components:
         type: string
 
   parameters:
-
     GasPriceParameter:
       in: header
       name: gas-price
@@ -1131,6 +1190,20 @@ components:
       schema:
         $ref: "#/components/schemas/SwarmAddress"
 
+    SwarmPostageStamp:
+      in: header
+      name: swarm-postage-stamp
+      description: |
+        Postage stamp for the corresponding chunk in the request. \
+        It is required if Swarm-Postage-Batch-Id header is missing \
+        It consists of: \
+        - batch ID - 0:32 bytes \
+        - postage index (bucket and bucket index) - 32:40 bytes \
+        - timestamp - 40:48 bytes \
+        - signature - 48:113 bytes
+      schema:
+        $ref: "#/components/schemas/HexString"
+
     SwarmDeferredUpload:
       in: header
       name: swarm-deferred-upload
@@ -1149,6 +1222,40 @@ components:
         default: "true"
       required: false
       description: "Determines if the download data should be cached on the node. By default the download will be cached"
+
+    SwarmAct:
+      in: header
+      name: swarm-act
+      schema:
+        type: boolean
+        default: "false"
+      required: false
+      description: "Determines if the uploaded data should be treated as ACT content"
+
+    SwarmActPublisher:
+      in: header
+      name: swarm-act-publisher
+      schema:
+        $ref: "#/components/schemas/PublicKey"
+      required: false
+      description: "ACT content publisher's public key"
+
+    SwarmActHistoryAddress:
+      in: header
+      name: swarm-act-history-address
+      schema:
+        $ref: "#/components/schemas/SwarmAddress"
+      required: false
+      description: "ACT history reference address"
+
+    SwarmActTimestamp:
+      in: header
+      name: swarm-act-timestamp
+      schema:
+        type: integer
+        format: int64
+      required: false
+      description: "ACT history Unix timestamp"
 
   responses:
     "200":

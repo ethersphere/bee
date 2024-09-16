@@ -110,7 +110,7 @@ func TestValidStamp(t *testing.T) {
 
 	ch.WithStamp(st)
 
-	// ensure the chunk doesnt have the batch details filled before we validate stamp
+	// ensure the chunk doesn't have the batch details filled before we validate stamp
 	if ch.Depth() == b.Depth || ch.BucketDepth() == b.BucketDepth {
 		t.Fatal("expected chunk to not have correct depth and bucket depth at start")
 	}

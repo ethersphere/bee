@@ -107,7 +107,7 @@ func (e *Encryption) Decrypt(data []byte) ([]byte, error) {
 }
 
 // Reset resets the counter. It is only safe to call after an encryption operation is completed
-// After Reset is called, the Encryption object can be re-used for other data
+// After Reset is called, the Encryption object can be reused for other data
 func (e *Encryption) Reset() {
 	e.index = 0
 }

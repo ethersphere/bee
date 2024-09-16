@@ -38,7 +38,7 @@ import (
 const spinLockWaitTime = time.Second * 5
 
 var nonConnectableAddress, _ = ma.NewMultiaddr(underlayBase + "16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkA")
-var defaultFilterFunc kademlia.FilterFunc = func(...im.FilterOp) kademlia.PeerFilterFunc {
+var defaultExcludeFunc kademlia.ExcludeFunc = func(...im.ExcludeOp) kademlia.PeerExcludeFunc {
 	return func(swarm.Address) bool { return false }
 }
 
@@ -55,7 +55,7 @@ func TestNeighborhoodDepth(t *testing.T) {
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
 			SaturationPeers: ptrInt(4),
-			FilterFunc:      defaultFilterFunc,
+			ExcludeFunc:     defaultExcludeFunc,
 		})
 	)
 	kad.SetStorageRadius(0)
@@ -351,7 +351,7 @@ func TestManage(t *testing.T) {
 		saturation               = kademlia.DefaultSaturationPeers
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
 			BitSuffixLength: ptrInt(-1),
-			FilterFunc:      defaultFilterFunc,
+			ExcludeFunc:     defaultExcludeFunc,
 		})
 	)
 
@@ -395,21 +395,21 @@ func TestManageWithBalancing(t *testing.T) {
 	var (
 		conns int32 // how many connect calls were made to the p2p mock
 
-		saturationFuncImpl *func(bin uint8, peers, connected *pslice.PSlice, _ kademlia.PeerFilterFunc) bool
-		saturationFunc     = func(bin uint8, peers, connected *pslice.PSlice, filter kademlia.PeerFilterFunc) bool {
+		saturationFuncImpl *func(bin uint8, connected *pslice.PSlice, _ kademlia.PeerExcludeFunc) bool
+		saturationFunc     = func(bin uint8, connected *pslice.PSlice, filter kademlia.PeerExcludeFunc) bool {
 			f := *saturationFuncImpl
-			return f(bin, peers, connected, filter)
+			return f(bin, connected, filter)
 		}
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
 			SaturationFunc:  saturationFunc,
 			SaturationPeers: ptrInt(4),
 			BitSuffixLength: ptrInt(2),
-			FilterFunc:      defaultFilterFunc,
+			ExcludeFunc:     defaultExcludeFunc,
 		})
 	)
 
 	// implement saturation function (while having access to Kademlia instance)
-	sfImpl := func(bin uint8, peers, connected *pslice.PSlice, _ kademlia.PeerFilterFunc) bool {
+	sfImpl := func(bin uint8, connected *pslice.PSlice, _ kademlia.PeerExcludeFunc) bool {
 		return false
 	}
 	saturationFuncImpl = &sfImpl
@@ -450,7 +450,7 @@ func TestBinSaturation(t *testing.T) {
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
 			SaturationPeers: ptrInt(2),
 			BitSuffixLength: ptrInt(-1),
-			FilterFunc:      defaultFilterFunc,
+			ExcludeFunc:     defaultExcludeFunc,
 		})
 	)
 
@@ -503,7 +503,7 @@ func TestOversaturation(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			FilterFunc: defaultFilterFunc,
+			ExcludeFunc: defaultExcludeFunc,
 		})
 	)
 
@@ -555,7 +555,7 @@ func TestOversaturationBootnode(t *testing.T) {
 			OverSaturationPeers: ptrInt(overSaturationPeers),
 			SaturationPeers:     ptrInt(4),
 			BootnodeMode:        true,
-			FilterFunc:          defaultFilterFunc,
+			ExcludeFunc:         defaultExcludeFunc,
 		})
 	)
 
@@ -586,7 +586,7 @@ func TestOversaturationBootnode(t *testing.T) {
 			connectOne(t, signer, kad, ab, addr, nil)
 			// check that pick works correctly
 			if !kad.Pick(p2p.Peer{Address: addr}) {
-				t.Fatal("should pick the peer but didnt")
+				t.Fatal("should pick the peer but didn't")
 			}
 		}
 		// see depth is still as expected
@@ -613,7 +613,7 @@ func TestBootnodeMaxConnections(t *testing.T) {
 			BootnodeOverSaturationPeers: ptrInt(bootnodeOverSaturationPeers),
 			SaturationPeers:             ptrInt(4),
 			BootnodeMode:                true,
-			FilterFunc:                  defaultFilterFunc,
+			ExcludeFunc:                 defaultExcludeFunc,
 		})
 	)
 
@@ -647,7 +647,7 @@ func TestBootnodeMaxConnections(t *testing.T) {
 			connectOne(t, signer, kad, ab, addr, nil)
 			// check that pick works correctly
 			if !kad.Pick(p2p.Peer{Address: addr}) {
-				t.Fatal("should pick the peer but didnt")
+				t.Fatal("should pick the peer but didn't")
 			}
 		}
 	}
@@ -704,7 +704,7 @@ func TestDiscoveryHooks(t *testing.T) {
 	var (
 		conns                    int32
 		_, kad, ab, disc, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			FilterFunc: defaultFilterFunc,
+			ExcludeFunc: defaultExcludeFunc,
 		})
 		p1, p2, p3 = swarm.RandAddress(t), swarm.RandAddress(t), swarm.RandAddress(t)
 	)
@@ -1031,7 +1031,7 @@ func TestClosestPeer(t *testing.T) {
 func TestKademlia_SubscribeTopologyChange(t *testing.T) {
 	t.Parallel()
 
-	testSignal := func(t *testing.T, k *kademlia.Kad, c <-chan struct{}) {
+	testSignal := func(t *testing.T, c <-chan struct{}) {
 		t.Helper()
 
 		select {
@@ -1059,7 +1059,7 @@ func TestKademlia_SubscribeTopologyChange(t *testing.T) {
 		addr := swarm.RandAddressAt(t, base, 9)
 		addOne(t, sg, kad, ab, addr)
 
-		testSignal(t, kad, c)
+		testSignal(t, c)
 	})
 
 	t.Run("single subscription, remove peer", func(t *testing.T) {
@@ -1077,10 +1077,10 @@ func TestKademlia_SubscribeTopologyChange(t *testing.T) {
 		addr := swarm.RandAddressAt(t, base, 9)
 		addOne(t, sg, kad, ab, addr)
 
-		testSignal(t, kad, c)
+		testSignal(t, c)
 
 		removeOne(kad, addr)
-		testSignal(t, kad, c)
+		testSignal(t, c)
 	})
 
 	t.Run("multiple subscriptions", func(t *testing.T) {
@@ -1102,8 +1102,8 @@ func TestKademlia_SubscribeTopologyChange(t *testing.T) {
 			addr := swarm.RandAddressAt(t, base, i)
 			addOne(t, sg, kad, ab, addr)
 		}
-		testSignal(t, kad, c1)
-		testSignal(t, kad, c2)
+		testSignal(t, c1)
+		testSignal(t, c2)
 	})
 
 	t.Run("multiple changes", func(t *testing.T) {
@@ -1123,14 +1123,14 @@ func TestKademlia_SubscribeTopologyChange(t *testing.T) {
 			addOne(t, sg, kad, ab, addr)
 		}
 
-		testSignal(t, kad, c)
+		testSignal(t, c)
 
 		for i := 0; i < 4; i++ {
 			addr := swarm.RandAddressAt(t, base, i)
 			addOne(t, sg, kad, ab, addr)
 		}
 
-		testSignal(t, kad, c)
+		testSignal(t, c)
 	})
 
 	t.Run("no depth change", func(t *testing.T) {
@@ -1264,6 +1264,7 @@ func TestOutofDepthPrune(t *testing.T) {
 
 		saturationPeers     = 4
 		overSaturationPeers = 16
+		pruneWakeup         = time.Millisecond * 100
 		pruneFuncImpl       *func(uint8)
 		pruneMux            = sync.Mutex{}
 		pruneFunc           = func(depth uint8) {
@@ -1277,7 +1278,8 @@ func TestOutofDepthPrune(t *testing.T) {
 			SaturationPeers:     ptrInt(saturationPeers),
 			OverSaturationPeers: ptrInt(overSaturationPeers),
 			PruneFunc:           pruneFunc,
-			FilterFunc:          defaultFilterFunc,
+			ExcludeFunc:         defaultExcludeFunc,
+			PruneWakeup:         &pruneWakeup,
 		})
 	)
 
@@ -1357,6 +1359,115 @@ func TestOutofDepthPrune(t *testing.T) {
 	waitBalanced(t, kad, 1)
 }
 
+// TestPruneExcludeOps tests that the prune bin func counts peers in each bin correctly using the peer's reachability status and does not over prune.
+func TestPruneExcludeOps(t *testing.T) {
+	t.Parallel()
+
+	var (
+		conns, failedConns int32 // how many connect calls were made to the p2p mock
+
+		saturationPeers     = 4
+		overSaturationPeers = 16
+		perBin              = 20
+		pruneFuncImpl       *func(uint8)
+		pruneMux            = sync.Mutex{}
+		pruneFunc           = func(depth uint8) {
+			pruneMux.Lock()
+			defer pruneMux.Unlock()
+			f := *pruneFuncImpl
+			f(depth)
+		}
+
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, &failedConns, kademlia.Options{
+			SaturationPeers:     ptrInt(saturationPeers),
+			OverSaturationPeers: ptrInt(overSaturationPeers),
+			PruneFunc:           pruneFunc,
+		})
+	)
+
+	kad.SetStorageRadius(0)
+
+	// implement empty prune func
+	pruneMux.Lock()
+	pruneImpl := func(uint8) {}
+	pruneFuncImpl = &(pruneImpl)
+	pruneMux.Unlock()
+
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	testutil.CleanupCloser(t, kad)
+
+	// bin 0,1 balanced, rest not
+	for i := 0; i < 6; i++ {
+		var peers []swarm.Address
+		if i < 2 {
+			peers = mineBin(t, base, i, perBin, true)
+		} else {
+			peers = mineBin(t, base, i, perBin, false)
+		}
+		for i, peer := range peers {
+			addOne(t, signer, kad, ab, peer)
+			if i < 4 {
+				kad.Reachable(peers[i], p2p.ReachabilityStatusPrivate)
+			} else {
+				kad.Reachable(peers[i], p2p.ReachabilityStatusPublic)
+			}
+		}
+		for i := 0; i < 4; i++ {
+		}
+		time.Sleep(time.Millisecond * 10)
+		kDepth(t, kad, i)
+	}
+
+	// check that bin 0, 1 are balanced, but not 2
+	waitBalanced(t, kad, 0)
+	waitBalanced(t, kad, 1)
+	if kad.IsBalanced(2) {
+		t.Fatal("bin 2 should not be balanced")
+	}
+
+	// wait for kademlia connectors and pruning to finish
+	time.Sleep(time.Millisecond * 500)
+
+	// check that no pruning has happened
+	bins := binSizes(kad)
+	for i := 0; i < 6; i++ {
+		if bins[i] <= overSaturationPeers {
+			t.Fatalf("bin %d, got %d, want more than %d", i, bins[i], overSaturationPeers)
+		}
+	}
+
+	kad.SetStorageRadius(6)
+
+	// set prune func to the default
+	pruneMux.Lock()
+	pruneImpl = func(depth uint8) {
+		kademlia.PruneOversaturatedBinsFunc(kad)(depth)
+	}
+	pruneFuncImpl = &(pruneImpl)
+	pruneMux.Unlock()
+
+	// add a peer to kick start pruning
+	addr := swarm.RandAddressAt(t, base, 6)
+	addOne(t, signer, kad, ab, addr)
+
+	// wait for kademlia connectors and pruning to finish
+	time.Sleep(time.Millisecond * 500)
+
+	// check bins have NOT been pruned because the peer count func excluded unreachable peers
+	bins = binSizes(kad)
+	for i := uint8(0); i < 5; i++ {
+		if bins[i] != perBin {
+			t.Fatalf("bin %d, got %d, want %d", i, bins[i], perBin)
+		}
+	}
+
+	// check that bin 0,1 remains balanced after pruning
+	waitBalanced(t, kad, 0)
+	waitBalanced(t, kad, 1)
+}
+
 func TestBootnodeProtectedNodes(t *testing.T) {
 	t.Parallel()
 
@@ -1378,7 +1489,7 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 			LowWaterMark:                ptrInt(0),
 			BootnodeMode:                true,
 			StaticNodes:                 protected,
-			FilterFunc:                  defaultFilterFunc,
+			ExcludeFunc:                 defaultExcludeFunc,
 		})
 	)
 
@@ -1468,7 +1579,7 @@ func TestAnnounceBgBroadcast_FLAKY(t *testing.T) {
 			}),
 		)
 		_, kad, ab, _, signer = newTestKademliaWithDiscovery(t, disc, &conns, nil, kademlia.Options{
-			FilterFunc: defaultFilterFunc,
+			ExcludeFunc: defaultExcludeFunc,
 		})
 	)
 
@@ -1537,7 +1648,7 @@ func TestAnnounceNeighborhoodToNeighbor(t *testing.T) {
 			}),
 		)
 		base, kad, ab, _, signer = newTestKademliaWithDiscovery(t, disc, &conns, nil, kademlia.Options{
-			FilterFunc:          defaultFilterFunc,
+			ExcludeFunc:         defaultExcludeFunc,
 			OverSaturationPeers: ptrInt(4),
 			SaturationPeers:     ptrInt(4),
 		})

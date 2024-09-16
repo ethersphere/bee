@@ -34,8 +34,6 @@ const (
 	optionNameP2PAddr                      = "p2p-addr"
 	optionNameNATAddr                      = "nat-addr"
 	optionNameP2PWSEnable                  = "p2p-ws-enable"
-	optionNameDebugAPIEnable               = "debug-api-enable"
-	optionNameDebugAPIAddr                 = "debug-api-addr"
 	optionNameBootnodes                    = "bootnode"
 	optionNameNetworkID                    = "network-id"
 	optionWelcomeMessage                   = "welcome-message"
@@ -78,15 +76,14 @@ const (
 	optionNameStaticNodes                  = "static-nodes"
 	optionNameAllowPrivateCIDRs            = "allow-private-cidrs"
 	optionNameSleepAfter                   = "sleep-after"
-	optionNameRestrictedAPI                = "restricted"
-	optionNameTokenEncryptionKey           = "token-encryption-key"
-	optionNameAdminPasswordHash            = "admin-password"
 	optionNameUsePostageSnapshot           = "use-postage-snapshot"
 	optionNameStorageIncentivesEnable      = "storage-incentives-enable"
 	optionNameStateStoreCacheCapacity      = "statestore-cache-capacity"
 	optionNameTargetNeighborhood           = "target-neighborhood"
 	optionNameNeighborhoodSuggester        = "neighborhood-suggester"
 	optionNameWhitelistedWithdrawalAddress = "withdrawal-addresses-whitelist"
+	optionNameTransactionDebugMode         = "transaction-debug-mode"
+	optionMinimumStorageRadius             = "minimum-storage-radius"
 )
 
 // nolint:gochecknoinits
@@ -141,10 +138,6 @@ func newCommand(opts ...option) (c *command, err error) {
 	}
 
 	if err := c.initStartDevCmd(); err != nil {
-		return nil, err
-	}
-
-	if err := c.initHasherCmd(); err != nil {
 		return nil, err
 	}
 
@@ -251,13 +244,11 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNameDBDisableSeeksCompaction, true, "disables db compactions triggered by seeks")
 	cmd.Flags().String(optionNamePassword, "", "password for decrypting keys")
 	cmd.Flags().String(optionNamePasswordFile, "", "path to a file that contains password for decrypting keys")
-	cmd.Flags().String(optionNameAPIAddr, ":1633", "HTTP API listen address")
+	cmd.Flags().String(optionNameAPIAddr, "127.0.0.1:1633", "HTTP API listen address")
 	cmd.Flags().String(optionNameP2PAddr, ":1634", "P2P listen address")
 	cmd.Flags().String(optionNameNATAddr, "", "NAT exposed address")
 	cmd.Flags().Bool(optionNameP2PWSEnable, false, "enable P2P WebSocket transport")
 	cmd.Flags().StringSlice(optionNameBootnodes, []string{""}, "initial nodes to connect to")
-	cmd.Flags().Bool(optionNameDebugAPIEnable, false, "enable debug HTTP API")
-	cmd.Flags().String(optionNameDebugAPIAddr, ":1635", "debug HTTP API listen address")
 	cmd.Flags().Uint64(optionNameNetworkID, chaincfg.Mainnet.NetworkID, "ID of the Swarm network")
 	cmd.Flags().StringSlice(optionCORSAllowedOrigins, []string{}, "origins with CORS headers enabled")
 	cmd.Flags().Bool(optionNameTracingEnabled, false, "enable tracing")
@@ -297,15 +288,14 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNamePProfMutex, false, "enable pprof mutex profile")
 	cmd.Flags().StringSlice(optionNameStaticNodes, []string{}, "protect nodes from getting kicked out on bootnode")
 	cmd.Flags().Bool(optionNameAllowPrivateCIDRs, false, "allow to advertise private CIDRs to the public network")
-	cmd.Flags().Bool(optionNameRestrictedAPI, false, "enable permission check on the http APIs")
-	cmd.Flags().String(optionNameTokenEncryptionKey, "", "admin username to get the security token")
-	cmd.Flags().String(optionNameAdminPasswordHash, "", "bcrypt hash of the admin password to get the security token")
 	cmd.Flags().Bool(optionNameUsePostageSnapshot, false, "bootstrap node using postage snapshot from the network")
 	cmd.Flags().Bool(optionNameStorageIncentivesEnable, true, "enable storage incentives feature")
 	cmd.Flags().Uint64(optionNameStateStoreCacheCapacity, 100_000, "lru memory caching capacity in number of statestore entries")
 	cmd.Flags().String(optionNameTargetNeighborhood, "", "neighborhood to target in binary format (ex: 111111001) for mining the initial overlay")
 	cmd.Flags().String(optionNameNeighborhoodSuggester, "https://api.swarmscan.io/v1/network/neighborhoods/suggestion", "suggester for target neighborhood")
 	cmd.Flags().StringSlice(optionNameWhitelistedWithdrawalAddress, []string{}, "withdrawal target addresses")
+	cmd.Flags().Bool(optionNameTransactionDebugMode, false, "skips the gas estimate step for contract transactions")
+	cmd.Flags().Uint(optionMinimumStorageRadius, 0, "minimum radius storage threshold")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {

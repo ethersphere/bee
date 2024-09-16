@@ -42,7 +42,6 @@ type ChainSnapshot struct {
 // on the current (highest available) block.
 type Storer interface {
 	ChainStateGetter
-	CommitmentGetter
 
 	Radius() uint8
 
@@ -80,6 +79,7 @@ type CommitmentGetter interface {
 }
 
 type ChainStateGetter interface {
+	CommitmentGetter
 	// GetChainState returns the stored chain state from the store.
 	GetChainState() *ChainState
 }

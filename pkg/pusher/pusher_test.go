@@ -107,7 +107,7 @@ func (m *mockStorer) ReservePutter() storage.Putter {
 	)
 }
 
-// TestSendChunkToPushSync sends a chunk to pushsync to be sent ot its closest peer and get a receipt.
+// TestSendChunkToPushSync sends a chunk to pushsync to be sent to its closest peer and get a receipt.
 // once the receipt is got this check to see if the localstore is updated to see if the chunk is set
 // as ModeSetSync status.
 func TestChunkSyncing(t *testing.T) {
@@ -136,7 +136,6 @@ func TestChunkSyncing(t *testing.T) {
 		pushSyncService,
 		defaultMockValidStamp,
 		defaultRetryCount,
-		0,
 	)
 
 	t.Run("deferred", func(t *testing.T) {
@@ -184,7 +183,6 @@ func TestChunkStored(t *testing.T) {
 		pushSyncService,
 		defaultMockValidStamp,
 		defaultRetryCount,
-		0,
 	)
 
 	t.Run("deferred", func(t *testing.T) {
@@ -221,7 +219,7 @@ func TestChunkStored(t *testing.T) {
 	})
 }
 
-// TestSendChunkAndReceiveInvalidReceipt sends a chunk to pushsync to be sent ot its closest peer and
+// TestSendChunkAndReceiveInvalidReceipt sends a chunk to pushsync to be sent to its closest peer and
 // get a invalid receipt (not with the address of the chunk sent). The test makes sure that this error
 // is received and the ModeSetSync is not set for the chunk.
 func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
@@ -243,7 +241,6 @@ func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
 		pushSyncService,
 		defaultMockValidStamp,
 		defaultRetryCount,
-		0,
 	)
 
 	storer.chunks <- chunk
@@ -256,7 +253,7 @@ func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
 	}
 }
 
-// TestSendChunkAndTimeoutinReceivingReceipt sends a chunk to pushsync to be sent ot its closest peer and
+// TestSendChunkAndTimeoutinReceivingReceipt sends a chunk to pushsync to be sent to its closest peer and
 // expects a timeout to get instead of getting a receipt. The test makes sure that timeout error
 // is received and the ModeSetSync is not set for the chunk.
 func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
@@ -288,7 +285,6 @@ func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
 		pushSyncService,
 		defaultMockValidStamp,
 		defaultRetryCount,
-		0,
 	)
 
 	storer.chunks <- chunk
@@ -309,7 +305,7 @@ func TestPusherRetryShallow(t *testing.T) {
 		key, _      = crypto.GenerateSecp256k1Key()
 		signer      = crypto.NewDefaultSigner(key)
 		callCount   = int32(0)
-		retryCount  = 3
+		retryCount  = 3 // pushync will retry on behalf of push for shallow receipts, so no retries are made on the side of the pusher.
 	)
 	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
 		atomic.AddInt32(&callCount, 1)
@@ -319,7 +315,7 @@ func TestPusherRetryShallow(t *testing.T) {
 			Signature: signature,
 			Nonce:     block,
 		}
-		return receipt, nil
+		return receipt, pushsync.ErrShallowReceipt
 	})
 
 	storer := &mockStorer{
@@ -332,7 +328,6 @@ func TestPusherRetryShallow(t *testing.T) {
 		pushSyncService,
 		defaultMockValidStamp,
 		defaultRetryCount,
-		31,
 	)
 
 	// generate a chunk at PO 1 with closestPeer, meaning that we get a
@@ -383,7 +378,6 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 		pushSyncService,
 		validStamp,
 		defaultRetryCount,
-		0,
 	)
 
 	t.Run("deferred", func(t *testing.T) {
@@ -420,13 +414,10 @@ func createPusher(
 	pushSyncService pushsync.PushSyncer,
 	validStamp postage.ValidStampFn,
 	retryCount int,
-	radius uint8,
 ) *pusher.Service {
 	t.Helper()
 
-	radiusFunc := func() (uint8, error) { return radius, nil }
-
-	pusherService := pusher.New(1, storer, radiusFunc, pushSyncService, validStamp, log.Noop, 0, retryCount)
+	pusherService := pusher.New(1, storer, pushSyncService, validStamp, log.Noop, 0, retryCount)
 	testutil.CleanupCloser(t, pusherService)
 
 	return pusherService

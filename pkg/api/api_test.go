@@ -23,10 +23,10 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
+	mockac "github.com/ethersphere/bee/v2/pkg/accesscontrol/mock"
 	accountingmock "github.com/ethersphere/bee/v2/pkg/accounting/mock"
 	"github.com/ethersphere/bee/v2/pkg/api"
-	"github.com/ethersphere/bee/v2/pkg/auth"
-	mockauth "github.com/ethersphere/bee/v2/pkg/auth/mock"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
@@ -102,11 +102,9 @@ type testServerOptions struct {
 	PostageContract    postagecontract.Interface
 	StakingContract    staking.Contract
 	Post               postage.Service
+	AccessControl      accesscontrol.Controller
 	Steward            steward.Interface
 	WsHeaders          http.Header
-	Authenticator      auth.Authenticator
-	DebugAPI           bool
-	Restricted         bool
 	DirectUpload       bool
 	Probe              *api.Probe
 
@@ -152,19 +150,16 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	if o.Post == nil {
 		o.Post = mockpost.New()
 	}
+	if o.AccessControl == nil {
+		o.AccessControl = mockac.New()
+	}
 	if o.BatchStore == nil {
 		o.BatchStore = mockbatchstore.New(mockbatchstore.WithAcceptAllExistsFunc()) // default is with accept-all Exists() func
 	}
 	if o.SyncStatus == nil {
 		o.SyncStatus = func() (bool, error) { return true, nil }
 	}
-	if o.Authenticator == nil {
-		o.Authenticator = &mockauth.Auth{
-			EnforceFunc: func(_, _, _ string) (bool, error) {
-				return true, nil
-			},
-		}
-	}
+
 	var chanStore *chanStorer
 
 	topologyDriver := topologymock.NewTopologyDriver(o.TopologyOpts...)
@@ -198,6 +193,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		Pss:             o.Pss,
 		FeedFactory:     o.Feeds,
 		Post:            o.Post,
+		AccessControl:   o.AccessControl,
 		PostageContract: o.PostageContract,
 		Steward:         o.Steward,
 		SyncStatus:      o.SyncStatus,
@@ -230,17 +226,14 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	})
 	testutil.CleanupCloser(t, tracerCloser)
 
-	s.Configure(signer, o.Authenticator, noOpTracer, api.Options{
+	s.Configure(signer, noOpTracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
 		WsPingPeriod:       o.WsPingPeriod,
-		Restricted:         o.Restricted,
 	}, extraOpts, 1, erc20)
-	if o.DebugAPI {
-		s.MountTechnicalDebug()
-		s.MountDebug()
-	} else {
-		s.MountAPI()
-	}
+
+	s.MountTechnicalDebug()
+	s.MountDebug()
+	s.MountAPI()
 
 	if o.DirectUpload {
 		chanStore = newChanStore(o.Storer.PusherFeed())
@@ -251,21 +244,6 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	t.Cleanup(ts.Close)
 
 	var (
-		httpClient = &http.Client{
-			Transport: web.RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
-				u, err := url.Parse(ts.URL + r.URL.String())
-				if err != nil {
-					return nil, err
-				}
-				r.URL = u
-				return ts.Client().Transport.RoundTrip(r)
-			}),
-		}
-		conn *websocket.Conn
-		err  error
-	)
-
-	if !o.DebugAPI {
 		httpClient = &http.Client{
 			Transport: web.RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
 				requestURL := r.URL.String()
@@ -287,7 +265,9 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 				return transport.RoundTrip(r)
 			}),
 		}
-	}
+		conn *websocket.Conn
+		err  error
+	)
 
 	if o.WsPath != "" {
 		u := url.URL{Scheme: "ws", Host: ts.Listener.Addr().String(), Path: o.WsPath}
@@ -396,7 +376,7 @@ func TestParseName(t *testing.T) {
 		signer := crypto.NewDefaultSigner(pk)
 
 		s := api.New(pk.PublicKey, pk.PublicKey, common.Address{}, nil, log, nil, nil, 1, false, false, nil, []string{"*"}, inmemstore.New())
-		s.Configure(signer, nil, nil, api.Options{}, api.ExtraOptions{Resolver: tC.res}, 1, nil)
+		s.Configure(signer, nil, api.Options{}, api.ExtraOptions{Resolver: tC.res}, 1, nil)
 		s.MountAPI()
 
 		tC := tC
@@ -603,7 +583,7 @@ func TestPostageDirectAndDeferred(t *testing.T) {
 				if found, _ := mockStorer.ChunkStore().Has(context.Background(), body.Reference); !found {
 					t.Fatal("chunk not found in the store")
 				}
-				// sleep to allow chanStorer to drain if any to ensure we havent seen the chunk
+				// sleep to allow chanStorer to drain if any to ensure we haven't seen the chunk
 				time.Sleep(100 * time.Millisecond)
 				if chanStorer.Has(body.Reference) {
 					t.Fatal("chunk was not expected to be present in direct channel")

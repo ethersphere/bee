@@ -43,7 +43,10 @@ var (
 	ErrAlreadyImported     = errors.New("already imported")
 )
 
-const DefaultTipBoostPercent = 20
+const (
+	DefaultTipBoostPercent = 20
+	DefaultGasLimit        = 1_000_000
+)
 
 // TxRequest describes a request for a transaction that can be executed.
 type TxRequest struct {
@@ -284,7 +287,7 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 			Data: request.Data,
 		})
 		if err != nil {
-			t.logger.Debug("estimage gas failed", "error", err)
+			t.logger.Debug("estimate gas failed", "error", err)
 			gasLimit = request.MinEstimatedGasLimit
 		}
 

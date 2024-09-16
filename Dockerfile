@@ -1,4 +1,4 @@
-FROM golang:1.21 AS build
+FROM golang:1.22 AS build
 
 WORKDIR /src
 # enable modules caching in separate layer
@@ -24,7 +24,7 @@ RUN mkdir -p /home/bee/.bee && chown 999:999 /home/bee/.bee
 
 COPY --from=build /src/dist/bee /usr/local/bin/bee
 
-EXPOSE 1633 1634 1635
+EXPOSE 1633 1634
 USER bee
 WORKDIR /home/bee
 VOLUME /home/bee/.bee

@@ -88,6 +88,20 @@ func (s *Stamp) Clone() swarm.Stamp {
 	}
 }
 
+// Hash returns the hash of the stamp.
+func (s *Stamp) Hash() ([]byte, error) {
+	hasher := swarm.NewHasher()
+	b, err := s.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	_, err = hasher.Write(b)
+	if err != nil {
+		return nil, err
+	}
+	return hasher.Sum(nil), nil
+}
+
 // MarshalBinary gives the byte slice serialisation of a stamp:
 // batchID[32]|index[8]|timestamp[8]|Signature[65].
 func (s *Stamp) MarshalBinary() ([]byte, error) {

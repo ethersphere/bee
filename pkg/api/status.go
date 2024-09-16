@@ -17,8 +17,8 @@ import (
 )
 
 type statusSnapshotResponse struct {
-	Peer                    string  `json:"peer"`
-	Proximity               uint8   `json:"proximity"`
+	Overlay                 string  `json:"overlay"`
+	Proximity               uint    `json:"proximity"`
 	BeeMode                 string  `json:"beeMode"`
 	ReserveSize             uint64  `json:"reserveSize"`
 	ReserveSizeWithinRadius uint64  `json:"reserveSizeWithinRadius"`
@@ -29,6 +29,7 @@ type statusSnapshotResponse struct {
 	RequestFailed           bool    `json:"requestFailed,omitempty"`
 	BatchCommitment         uint64  `json:"batchCommitment"`
 	IsReachable             bool    `json:"isReachable"`
+	LastSyncedBlock         uint64  `json:"lastSyncedBlock"`
 }
 
 type statusResponse struct {
@@ -71,7 +72,8 @@ func (s *Service) statusGetHandler(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	jsonhttp.OK(w, statusSnapshotResponse{
-		Peer:                    s.overlay.String(),
+		Proximity:               256,
+		Overlay:                 s.overlay.String(),
 		BeeMode:                 ss.BeeMode,
 		ReserveSize:             ss.ReserveSize,
 		ReserveSizeWithinRadius: ss.ReserveSizeWithinRadius,
@@ -81,6 +83,7 @@ func (s *Service) statusGetHandler(w http.ResponseWriter, _ *http.Request) {
 		NeighborhoodSize:        ss.NeighborhoodSize,
 		BatchCommitment:         ss.BatchCommitment,
 		IsReachable:             ss.IsReachable,
+		LastSyncedBlock:         ss.LastSyncedBlock,
 	})
 }
 
@@ -109,8 +112,8 @@ func (s *Service) statusGetPeersHandler(w http.ResponseWriter, r *http.Request) 
 			defer wg.Done()
 
 			snapshot := statusSnapshotResponse{
-				Peer:      address.String(),
-				Proximity: po,
+				Overlay:   address.String(),
+				Proximity: uint(po),
 			}
 
 			ss, err := s.statusService.PeerSnapshot(ctx, address)
@@ -127,6 +130,7 @@ func (s *Service) statusGetPeersHandler(w http.ResponseWriter, r *http.Request) 
 				snapshot.NeighborhoodSize = ss.NeighborhoodSize
 				snapshot.BatchCommitment = ss.BatchCommitment
 				snapshot.IsReachable = ss.IsReachable
+				snapshot.LastSyncedBlock = ss.LastSyncedBlock
 			}
 
 			mu.Lock()

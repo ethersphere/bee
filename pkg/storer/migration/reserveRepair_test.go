@@ -10,9 +10,10 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	chunktest "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	localmigration "github.com/ethersphere/bee/v2/pkg/storer/migration"
@@ -42,6 +43,10 @@ func TestReserveRepair(t *testing.T) {
 	for b := 0; b < 5; b++ {
 		for i := uint64(0); i < chunksPerPO; i++ {
 			ch := chunktest.GenerateTestRandomChunkAt(t, baseAddr, b)
+			stampHash, err := ch.Stamp().Hash()
+			if err != nil {
+				t.Fatal(err)
+			}
 			cb := &reserve.ChunkBinItem{
 				Bin: uint8(b),
 				// Assign 0 binID to all items to see if migration fixes this
@@ -49,8 +54,9 @@ func TestReserveRepair(t *testing.T) {
 				Address:   ch.Address(),
 				BatchID:   ch.Stamp().BatchID(),
 				ChunkType: swarm.ChunkTypeContentAddressed,
+				StampHash: stampHash,
 			}
-			err := store.Run(context.Background(), func(s transaction.Store) error {
+			err = store.Run(context.Background(), func(s transaction.Store) error {
 				return s.IndexStore().Put(cb)
 			})
 			if err != nil {
@@ -58,10 +64,11 @@ func TestReserveRepair(t *testing.T) {
 			}
 
 			br := &reserve.BatchRadiusItem{
-				BatchID: ch.Stamp().BatchID(),
-				Bin:     uint8(b),
-				Address: ch.Address(),
-				BinID:   0,
+				BatchID:   ch.Stamp().BatchID(),
+				Bin:       uint8(b),
+				Address:   ch.Address(),
+				BinID:     0,
+				StampHash: stampHash,
 			}
 			err = store.Run(context.Background(), func(s transaction.Store) error {
 				return s.IndexStore().Put(br)
@@ -76,6 +83,10 @@ func TestReserveRepair(t *testing.T) {
 			}
 
 			err = store.Run(context.Background(), func(s transaction.Store) error {
+				err := chunkstamp.Store(s.IndexStore(), "reserve", ch)
+				if err != nil {
+					return err
+				}
 				return s.ChunkStore().Put(context.Background(), ch)
 			})
 			if err != nil {

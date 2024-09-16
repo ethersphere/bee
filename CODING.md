@@ -199,16 +199,16 @@ The number in the first square bracket indicates the logger's V-level.
 
 The logger endpoint uses HTTP PUT requests to modify the verbosity of the logger(s).
 The request must have the following parameters `/loggers/{subsystem}/{verbosity}`.
-The `{subsytem}` parameter is the base64 version of the subsytem field or regular expression corresponding to multiple subsystems.
+The `{subsystem}` parameter is the base64 version of the subsystem field or regular expression corresponding to multiple subsystems.
 Since the loggers are arranged in tree structure, it is possible to turn on/off or change the logging level of the entire tree or just its branches with a single command.
 The verbosity can be one of `none`, `error`, `warning`, `info`, `debug` or a number in the range `1` to `1<<<31 - 1` to enable the verbosity of a particular V-level, if available for a given logger.
 A value of `all` will enable the highest verbosity of V-level.
 
 Examples:
 
-`curl -XPUT http://localhost:1635/loggers/bm9kZS8q/none` - will disable all loggers; `bm9kZS8q` is base64 encoded `node/*` regular expression.
+`curl -XPUT http://localhost:1633/loggers/bm9kZS8q/none` - will disable all loggers; `bm9kZS8q` is base64 encoded `node/*` regular expression.
 
-`curl -XPUT http://localhost:1635/loggers/bm9kZS9hcGlbMV1bXT4-ODI0NjM0OTMzMjU2/error` - will set the verbosity of the logger with the subsystem `node/api[1][]>>824634933256` to `error`.
+`curl -XPUT http://localhost:1633/loggers/bm9kZS9hcGlbMV1bXT4-ODI0NjM0OTMzMjU2/error` - will set the verbosity of the logger with the subsystem `node/api[1][]>>824634933256` to `error`.
 
 ## Commit Messages
 
