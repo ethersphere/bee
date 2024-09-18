@@ -572,7 +572,7 @@ func Report(ctx context.Context, st transaction.Store, chunk swarm.Chunk, state 
 			return nil
 		}
 
-		return fmt.Errorf("failed to read uploadItem %s: %w", ui.BatchID, err)
+		return fmt.Errorf("failed to read uploadItem %x: %w", ui.BatchID, err)
 	}
 
 	ti := &TagItem{TagID: ui.TagID}
