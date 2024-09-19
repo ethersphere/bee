@@ -182,7 +182,7 @@ func (s *Service) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 		ContentTypeHeader: {"application/octet-stream"},
 	}
 
-	s.downloadHandler(logger, w, r, address, additionalHeaders, true, false)
+	s.downloadHandler(logger, w, r, address, additionalHeaders, true, false, nil)
 }
 
 func (s *Service) bytesHeadHandler(w http.ResponseWriter, r *http.Request) {

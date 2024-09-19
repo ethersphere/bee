@@ -29,6 +29,7 @@ type loadSave struct {
 	getter     storage.Getter
 	putter     storage.Putter
 	pipelineFn func() pipeline.Interface
+	rootCh     swarm.Chunk
 }
 
 // New returns a new read-write load-saver.
@@ -48,14 +49,33 @@ func NewReadonly(getter storage.Getter) file.LoadSaver {
 	}
 }
 
+// NewReadonlyWithRootCh returns a new read-only load-saver
+// which will error on write.
+func NewReadonlyWithRootCh(getter storage.Getter, rootCh swarm.Chunk) file.LoadSaver {
+	return &loadSave{
+		getter: getter,
+		rootCh: rootCh,
+	}
+}
+
 func (ls *loadSave) Load(ctx context.Context, ref []byte) ([]byte, error) {
-	j, _, err := joiner.New(ctx, ls.getter, ls.putter, swarm.NewAddress(ref))
-	if err != nil {
-		return nil, err
+	var j file.Joiner
+	if ls.rootCh == nil || !bytes.Equal(ls.rootCh.Address().Bytes(), ref[:swarm.HashSize]) {
+		joiner, _, err := joiner.New(ctx, ls.getter, ls.putter, swarm.NewAddress(ref))
+		if err != nil {
+			return nil, err
+		}
+		j = joiner
+	} else {
+		joiner, _, err := joiner.NewJoiner(ctx, ls.getter, ls.putter, swarm.NewAddress(ref), ls.rootCh)
+		if err != nil {
+			return nil, err
+		}
+		j = joiner
 	}
 
 	buf := bytes.NewBuffer(nil)
-	_, err = file.JoinReadAll(ctx, j, buf)
+	_, err := file.JoinReadAll(ctx, j, buf)
 	if err != nil {
 		return nil, err
 	}

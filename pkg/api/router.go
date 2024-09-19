@@ -66,9 +66,13 @@ func (s *Service) MountAPI() {
 			"/bzz",
 			"/bytes",
 			"/chunks",
+			"/feeds",
+			"/soc",
 			rootPath + "/bzz",
 			rootPath + "/bytes",
 			rootPath + "/chunks",
+			rootPath + "/feeds",
+			rootPath + "/soc",
 		}
 
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -247,6 +251,7 @@ func (s *Service) mountAPI() {
 	})
 
 	handle("/soc/{owner}/{id}", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.socGetHandler),
 		"POST": web.ChainHandlers(
 			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkWithSpanSize),
 			web.FinalHandlerFunc(s.socUploadHandler),
