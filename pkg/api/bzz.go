@@ -557,7 +557,7 @@ func (s *Service) serveManifestEntry(
 	s.downloadHandler(logger, w, r, manifestEntry.Reference(), additionalHeaders, etag, headersOnly, nil)
 }
 
-// downloadHandler contains common logic for dowloading Swarm file from API
+// downloadHandler contains common logic for downloading Swarm file from API
 func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *http.Request, reference swarm.Address, additionalHeaders http.Header, etag, headersOnly bool, rootCh swarm.Chunk) {
 	headers := struct {
 		Strategy              *getter.Strategy `map:"Swarm-Redundancy-Strategy"`
