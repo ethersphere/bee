@@ -144,8 +144,7 @@ func (s *Service) transactionResendHandler(w http.ResponseWriter, r *http.Reques
 
 	err := s.transaction.ResendTransaction(r.Context(), paths.Hash)
 	if err != nil {
-		logger.Debug("resend transaction failed", "tx_hash", paths.Hash, "error", err)
-		logger.Error(nil, "resend transaction failed", "tx_hash", paths.Hash)
+		logger.Error(nil, "resend transaction failed", "tx_hash", paths.Hash, "error", err)
 		if errors.Is(err, transaction.ErrUnknownTransaction) {
 			jsonhttp.NotFound(w, errUnknownTransaction)
 		} else if errors.Is(err, transaction.ErrAlreadyImported) {
