@@ -317,6 +317,10 @@ func (s *Service) mountAPI() {
 		})),
 	)
 
+	handle("/layer2/subscribe/{streamName}", web.ChainHandlers(
+		web.FinalHandlerFunc(s.layer2WsHandler),
+	))
+
 	handle("/pss/subscribe/{topic}", web.ChainHandlers(
 		web.FinalHandlerFunc(s.pssWsHandler),
 	))
