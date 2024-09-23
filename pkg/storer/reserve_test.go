@@ -189,7 +189,8 @@ func TestEvictBatch(t *testing.T) {
 	}
 	st.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
 
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	var chunks []swarm.Chunk
 	var chunksPerPO uint64 = 10
