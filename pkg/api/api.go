@@ -49,10 +49,10 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/v2/pkg/status"
 	"github.com/ethersphere/bee/v2/pkg/steward"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storageincentives"
 	"github.com/ethersphere/bee/v2/pkg/storageincentives/staking"
-	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/ethersphere/bee/v2/pkg/topology/lightnode"
@@ -143,7 +143,8 @@ type Storer interface {
 }
 
 type PinIntegrity interface {
-	Check(ctx context.Context, logger log.Logger, pin string, out chan storer.PinStat)
+	Check(ctx context.Context, logger log.Logger, pin string, out chan storer.PinStat, stat chan storer.CorruptedPinChunk)
+	Repair(ctx context.Context, logger log.Logger, pin string, store storer.NetStore, res chan storer.RepairPinResult)
 }
 
 type Service struct {

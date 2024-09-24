@@ -10,18 +10,20 @@ import (
 	"os"
 	"path"
 	"sync"
-	"time"
-
 	"sync/atomic"
+	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/sharky"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/leveldbstore"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstore"
 	pinstore "github.com/ethersphere/bee/v2/pkg/storer/internal/pinning"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/util/syncutil"
 )
 
 // Validate ensures that all retrievalIndex chunks are correctly stored in sharky.
@@ -240,7 +242,9 @@ func ValidatePinCollectionChunks(ctx context.Context, basePath, pin, location st
 	defer f.Close()
 
 	var ch = make(chan PinStat)
-	go pv.Check(ctx, logger, pin, ch)
+	corrupted := make(chan CorruptedPinChunk)
+	go pv.Check(ctx, logger, pin, ch, corrupted)
+	go syncutil.Drain(corrupted)
 
 	for st := range ch {
 		report := fmt.Sprintf("%d\t%d\t%d\t%s\n", st.Invalid, st.Missing, st.Total, st.Ref)
@@ -264,7 +268,18 @@ type PinStat struct {
 	Total, Missing, Invalid int
 }
 
-func (p *PinIntegrity) Check(ctx context.Context, logger log.Logger, pin string, out chan PinStat) {
+type CorruptedPinChunk struct {
+	Ref              swarm.Address
+	Address          swarm.Address
+	Missing, Invalid bool
+}
+
+type RepairPinResult struct {
+	Chunk CorruptedPinChunk
+	Error error
+}
+
+func (p *PinIntegrity) Check(ctx context.Context, logger log.Logger, pin string, out chan PinStat, corrupted chan CorruptedPinChunk) {
 	var stats struct {
 		total, read, invalid atomic.Int32
 	}
@@ -272,6 +287,7 @@ func (p *PinIntegrity) Check(ctx context.Context, logger log.Logger, pin string,
 	n := time.Now()
 	defer func() {
 		close(out)
+		close(corrupted)
 		logger.Info("done", "duration", time.Since(n), "read", stats.read.Load(), "invalid", stats.invalid.Load(), "total", stats.total.Load())
 	}()
 
@@ -342,6 +358,11 @@ func (p *PinIntegrity) Check(ctx context.Context, logger log.Logger, pin string,
 					}
 					if !validChunk(item, buf[:item.Location.Length]) {
 						invalid.Add(1)
+						select {
+						case <-ctx.Done():
+							return
+						case corrupted <- CorruptedPinChunk{Ref: pin, Address: item.Address, Invalid: true}:
+						}
 					}
 				}
 			}()
@@ -362,6 +383,11 @@ func (p *PinIntegrity) Check(ctx context.Context, logger log.Logger, pin string,
 			rIdx := &chunkstore.RetrievalIndexItem{Address: addr}
 			if err := p.Store.Get(rIdx); err != nil {
 				missing.Add(1)
+				select {
+				case <-ctx.Done():
+					return true, nil
+				case corrupted <- CorruptedPinChunk{Ref: pin, Address: addr, Missing: true}:
+				}
 			} else {
 				select {
 				case <-ctx.Done():
@@ -397,6 +423,71 @@ func (p *PinIntegrity) Check(ctx context.Context, logger log.Logger, pin string,
 			Total:   int(total.Load()),
 			Missing: int(missing.Load()),
 			Invalid: int(invalid.Load())}:
+		}
+	}
+}
+
+func (p *PinIntegrity) Repair(ctx context.Context, logger log.Logger, pin string, netStore NetStore, res chan RepairPinResult) {
+	defer func() {
+		close(res)
+	}()
+
+	out := make(chan PinStat)
+	corrupted := make(chan CorruptedPinChunk)
+	go p.Check(ctx, logger, pin, out, corrupted)
+	go syncutil.Drain(out)
+
+	for v := range corrupted {
+		bStore := p.Store.(*leveldbstore.Store)
+		s := transaction.NewStorage(p.Sharky, bStore)
+
+		var ch swarm.Chunk
+		var err error
+		if v.Missing || v.Invalid {
+			ch, err = netStore.Download(false).Get(ctx, v.Address)
+			if err != nil {
+				r := RepairPinResult{
+					Chunk: v,
+					Error: fmt.Errorf("download failed: %s", err.Error()),
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case res <- r:
+				}
+			}
+		}
+
+		if v.Missing {
+			logger.Info("repairing missing chunk", "address", v.Address)
+			err = s.Run(ctx, func(st transaction.Store) error {
+				err = st.ChunkStore().Put(ctx, ch)
+				if err != nil {
+					return fmt.Errorf("put missing chunk: %w", err)
+				}
+				return nil
+			})
+		}
+
+		if v.Invalid {
+			logger.Info("repairing invalid chunk (replace)", "address", v.Address)
+			err = s.Run(ctx, func(st transaction.Store) error {
+				err = st.ChunkStore().Replace(ctx, ch)
+				if err != nil {
+					return fmt.Errorf("replacing invalid chunk: %w", err)
+				}
+				return nil
+			})
+		}
+
+		r := RepairPinResult{
+			Chunk: v,
+			Error: err,
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case res <- r:
 		}
 	}
 }

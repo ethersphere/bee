@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"sort"
 
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal"
 	pinstore "github.com/ethersphere/bee/v2/pkg/storer/internal/pinning"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"

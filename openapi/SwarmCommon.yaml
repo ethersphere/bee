@@ -666,6 +666,21 @@ components:
         invalid:
           type: integer
 
+    PinRepairResponse:
+      type: object
+      properties:
+        reference:
+          $ref: "#/components/schemas/SwarmOnlyReference"
+        address:
+          $ref: "#/components/schemas/SwarmOnlyReference"
+        issue:
+          type: string
+          enum:
+            - "missing"
+            - "invalid"
+        error:
+          type: string
+
     SwarmOnlyReferencesList:
       type: object
       properties:

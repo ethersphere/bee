@@ -15,9 +15,9 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	mockpost "github.com/ethersphere/bee/v2/pkg/postage/mock"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
-	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -233,9 +233,16 @@ type mockPinIntegrity struct {
 	Store  storage.Store
 }
 
-func (p *mockPinIntegrity) Check(ctx context.Context, logger log.Logger, pin string, out chan storer.PinStat) {
+func (p *mockPinIntegrity) Check(ctx context.Context, logger log.Logger, pin string, out chan storer.PinStat, stat chan storer.CorruptedPinChunk) {
 	if pin != pinRef {
 		p.tester.Fatal("bad pin", pin)
 	}
 	close(out)
+}
+
+func (p *mockPinIntegrity) Repair(ctx context.Context, logger log.Logger, pin string, netStore storer.NetStore, res chan storer.RepairPinResult) {
+	if pin != pinRef {
+		p.tester.Fatal("bad pin", pin)
+	}
+	close(res)
 }

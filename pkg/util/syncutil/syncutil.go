@@ -24,3 +24,9 @@ func WaitWithTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {
 		return false
 	}
 }
+
+// Drain drains the channel until it's closed.
+func Drain[T any](c <-chan T) {
+	for range c {
+	}
+}

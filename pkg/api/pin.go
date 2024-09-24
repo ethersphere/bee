@@ -12,9 +12,10 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/storage"
-	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/traversal"
+	"github.com/ethersphere/bee/v2/pkg/util/syncutil"
 	"github.com/gorilla/mux"
 	"golang.org/x/sync/semaphore"
 )
@@ -209,6 +210,13 @@ type PinIntegrityResponse struct {
 	Invalid   int           `json:"invalid"`
 }
 
+type PinRepairResponse struct {
+	Reference swarm.Address `json:"reference"`
+	Address   swarm.Address `json:"address"`
+	Issue     string        `json:"issue"`
+	Error     string        `json:"error"`
+}
+
 func (s *Service) pinIntegrityHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_pin_integrity").Build()
 
@@ -222,8 +230,9 @@ func (s *Service) pinIntegrityHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out := make(chan storer.PinStat)
-
-	go s.pinIntegrity.Check(r.Context(), logger, querie.Ref.String(), out)
+	corrupted := make(chan storer.CorruptedPinChunk)
+	go s.pinIntegrity.Check(r.Context(), logger, querie.Ref.String(), out, corrupted)
+	go syncutil.Drain(corrupted)
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -244,6 +253,50 @@ func (s *Service) pinIntegrityHandler(w http.ResponseWriter, r *http.Request) {
 			Total:     v.Total,
 			Missing:   v.Missing,
 			Invalid:   v.Invalid,
+		}
+		if err := enc.Encode(resp); err != nil {
+			break
+		}
+		flusher.Flush()
+	}
+}
+
+func (s *Service) repairPins(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("get_repair_pins").Build()
+	query := struct {
+		Ref swarm.Address `map:"ref"`
+	}{}
+
+	if response := s.mapStructure(r.URL.Query(), &query); response != nil {
+		response("invalid query params", logger, w)
+		return
+	}
+
+	res := make(chan storer.RepairPinResult)
+	go s.pinIntegrity.Repair(r.Context(), logger, query.Ref.String(), s.storer, res)
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+
+	w.Header().Set("Transfer-Encoding", "chunked")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+
+	enc := json.NewEncoder(w)
+	for v := range res {
+		issue := "missing"
+		if v.Chunk.Invalid {
+			issue = "invalid"
+		}
+		resp := PinRepairResponse{
+			Reference: v.Chunk.Ref,
+			Address:   v.Chunk.Address,
+			Issue:     issue,
+			Error:     v.Error.Error(),
 		}
 		if err := enc.Encode(resp); err != nil {
 			break
