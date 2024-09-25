@@ -233,11 +233,12 @@ type mockPinIntegrity struct {
 	Store  storage.Store
 }
 
-func (p *mockPinIntegrity) Check(ctx context.Context, logger log.Logger, pin string, out chan storer.PinStat, stat chan storer.CorruptedPinChunk) {
+func (p *mockPinIntegrity) Check(ctx context.Context, logger log.Logger, pin string, out chan storer.PinStat, corrupted chan storer.CorruptedPinChunk) {
 	if pin != pinRef {
 		p.tester.Fatal("bad pin", pin)
 	}
 	close(out)
+	close(corrupted)
 }
 
 func (p *mockPinIntegrity) Repair(ctx context.Context, logger log.Logger, pin string, netStore storer.NetStore, res chan storer.RepairPinResult) {

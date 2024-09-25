@@ -143,7 +143,7 @@ type Storer interface {
 }
 
 type PinIntegrity interface {
-	Check(ctx context.Context, logger log.Logger, pin string, out chan storer.PinStat, stat chan storer.CorruptedPinChunk)
+	Check(ctx context.Context, logger log.Logger, pin string, out chan storer.PinStat, corrupted chan storer.CorruptedPinChunk)
 	Repair(ctx context.Context, logger log.Logger, pin string, store storer.NetStore, res chan storer.RepairPinResult)
 }
 
