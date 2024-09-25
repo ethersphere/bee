@@ -324,7 +324,6 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 			Nonce:     r.Nonce,
 		}, err
 	}
-
 	if err != nil {
 		return nil, err
 	}
@@ -471,7 +470,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			go ps.push(ctx, resultChan, peer, ch, action)
 
 		case result := <-resultChan:
-
 			inflight--
 
 			ps.measurePushPeer(result.pushTime, result.err)
@@ -487,7 +485,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			}
 
 			ps.metrics.TotalFailedSendAttempts.Inc()
-			ps.logger.Debug("could not push to peer", "chunk_address", ch.Address(), "peer_address", result.peer, "error", result.err)
+			ps.logger.Debug("could not push to peer", "chunk_address", ch.Address(), "id_address", idAddress, "peer_address", result.peer, "error", result.err)
 
 			sentErrorsLeft--
 			ps.errSkip.Add(idAddress, result.peer, skiplistDur)
