@@ -138,38 +138,26 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 
 		// same chunk address, same batch
 		if sameAddressOldStamp != nil {
+			// index collision with another chunk
+			if loadedStampIndex && !chunk.Address().Equal(oldStampIndex.ChunkAddress) {
+				r.logger.Debug(
+					"replacing chunk stamp index",
+					"old_chunk", oldStampIndex.ChunkAddress,
+					"new_chunk", chunk.Address(),
+					"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
+				)
+				// remove index items and chunk data
+				err = r.removeChunk(ctx, s, oldStampIndex.ChunkAddress, oldStampIndex.BatchID, oldStampIndex.StampHash)
+				if err != nil {
+					return fmt.Errorf("failed removing older chunk %s: %w", oldStampIndex.ChunkAddress, err)
+				}
+				shouldDecrReserveSize = true
+			}
+
 			sameAddressOldStampIndex, err := stampindex.Load(s.IndexStore(), reserveScope, sameAddressOldStamp)
 			if err != nil {
 				return err
 			}
-			prev := binary.BigEndian.Uint64(sameAddressOldStampIndex.StampTimestamp)
-			curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
-			if prev >= curr {
-				return fmt.Errorf("overwrite same chunk. prev %d cur %d batch %s: %w", prev, curr, hex.EncodeToString(chunk.Stamp().BatchID()), storage.ErrOverwriteNewerChunk)
-			}
-
-			// index collision with another chunk
-			if loadedStampIndex {
-				prev := binary.BigEndian.Uint64(oldStampIndex.StampTimestamp)
-				if prev >= curr {
-					return fmt.Errorf("overwrite same chunk. prev %d cur %d batch %s: %w", prev, curr, hex.EncodeToString(chunk.Stamp().BatchID()), storage.ErrOverwriteNewerChunk)
-				}
-				if !chunk.Address().Equal(oldStampIndex.ChunkAddress) {
-					r.logger.Debug(
-						"replacing chunk stamp index",
-						"old_chunk", oldStampIndex.ChunkAddress,
-						"new_chunk", chunk.Address(),
-						"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
-					)
-					// remove index items and chunk data
-					err = r.removeChunk(ctx, s, oldStampIndex.ChunkAddress, oldStampIndex.BatchID, oldStampIndex.StampHash)
-					if err != nil {
-						return fmt.Errorf("failed removing older chunk %s: %w", oldStampIndex.ChunkAddress, err)
-					}
-					shouldDecrReserveSize = true
-				}
-			}
-
 			oldBatchRadiusItem := &BatchRadiusItem{
 				Bin:       bin,
 				Address:   chunk.Address(),
