@@ -5,6 +5,7 @@
 package reserve
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/hex"
@@ -139,10 +140,24 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			return err
 		}
 
-		// same chunk address, same batch
-		if sameAddressOldStamp != nil {
+		// same chunk address, same batch, same index
+		if sameAddressOldStamp != nil && bytes.Equal(sameAddressOldStamp.Index(), chunk.Stamp().Index()) {
+			sameAddressOldStampIndex, err := stampindex.Load(s.IndexStore(), reserveScope, sameAddressOldStamp)
+			if err != nil {
+				return err
+			}
+			prev := binary.BigEndian.Uint64(sameAddressOldStampIndex.StampTimestamp)
+			curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
+			if prev >= curr {
+				return fmt.Errorf("overwrite same chunk. prev %d cur %d batch %s: %w", prev, curr, hex.EncodeToString(chunk.Stamp().BatchID()), storage.ErrOverwriteNewerChunk)
+			}
+
 			// index collision with another chunk
 			if loadedStampIndex && !chunk.Address().Equal(oldStampIndex.ChunkAddress) {
+				prev := binary.BigEndian.Uint64(oldStampIndex.StampTimestamp)
+				if prev >= curr {
+					return fmt.Errorf("overwrite same chunk. prev %d cur %d batch %s: %w", prev, curr, hex.EncodeToString(chunk.Stamp().BatchID()), storage.ErrOverwriteNewerChunk)
+				}
 				r.logger.Debug(
 					"replacing chunk stamp index",
 					"old_chunk", oldStampIndex.ChunkAddress,
@@ -157,10 +172,6 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 				shouldDecrReserveSize = true
 			}
 
-			sameAddressOldStampIndex, err := stampindex.Load(s.IndexStore(), reserveScope, sameAddressOldStamp)
-			if err != nil {
-				return err
-			}
 			oldBatchRadiusItem := &BatchRadiusItem{
 				Bin:       bin,
 				Address:   chunk.Address(),
