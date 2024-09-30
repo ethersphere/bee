@@ -730,6 +730,10 @@ func NewBee(
 
 	localStore, err := storer.New(ctx, path, lo)
 	if err != nil {
+		// close the localstore to cleanup things like the sharky.
+		if errors.Is(err, storer.ErrMigration) {
+			return nil, errors.Join(localStore.Close(), fmt.Errorf("localstore: %w", err))
+		}
 		return nil, fmt.Errorf("localstore: %w", err)
 	}
 	b.localstoreCloser = localStore
