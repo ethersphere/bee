@@ -100,8 +100,9 @@ func New(
 //     if the new chunk has a higher stamp timestamp (regardless of batch type and chunk type, eg CAC & SOC).
 func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	// batchID lock, Put vs Eviction
-	r.multx.Lock(string(chunk.Stamp().BatchID()))
-	defer r.multx.Unlock(string(chunk.Stamp().BatchID()))
+	lockId := lockId(chunk.Stamp())
+	r.multx.Lock(lockId)
+	defer r.multx.Unlock(lockId)
 
 	stampHash, err := chunk.Stamp().Hash()
 	if err != nil {
@@ -651,4 +652,8 @@ func (r *Reserve) IncBinID(store storage.IndexStore, bin uint8) (uint64, error) 
 	item.BinID += 1
 
 	return item.BinID, store.Put(item)
+}
+
+func lockId(stamp swarm.Stamp) string {
+	return string(stamp.BatchID()) + string(stamp.Index())
 }
