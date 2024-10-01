@@ -51,7 +51,7 @@ func addStampHash(logger log.Logger, st transaction.Storage) (int64, int64, erro
 	}
 
 	if preBatchRadiusCnt != preChunkBinCnt {
-		return 0, 0, fmt.Errorf("pre-migration check: index counts do not match, %d vs %d. It's recommended that the repair-reserve cmd is run first", preBatchRadiusCnt, preChunkBinCnt)
+		return 0, 0, fmt.Errorf("pre-migration check: index counts do not match, %d vs %d", preBatchRadiusCnt, preChunkBinCnt)
 	}
 
 	// Delete epoch timestamp
