@@ -118,9 +118,6 @@ func New(
 func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 
 	chunkType := storage.ChunkType(chunk)
-	if chunkType == swarm.ChunkTypeUnspecified {
-		return errors.New("chunk type unspecified")
-	}
 
 	// batchID lock, Put vs Eviction
 	lockId := lockId(chunk.Stamp())
