@@ -47,8 +47,6 @@ import (
 	"resenje.org/multex"
 )
 
-var ErrMigration = errors.New("migration error")
-
 // PutterSession provides a session around the storage.Putter. The session on
 // successful completion commits all the operations or in case of error, rolls back
 // the state.
@@ -282,7 +280,7 @@ func initDiskRepository(
 
 	err = migration.Migrate(store, "core-migration", localmigration.BeforeInitSteps(store))
 	if err != nil {
-		return nil, nil, nil, errors.Join(ErrMigration, fmt.Errorf("failed core migration: %w", err))
+		return nil, nil, nil, fmt.Errorf("failed core migration: %w", err)
 	}
 
 	if opts.LdbStats.Load() != nil {
@@ -484,6 +482,12 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		}
 	}
 
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, dbCloser.Close())
+		}
+	}()
+
 	sharkyBasePath := ""
 	if dirPath != "" {
 		sharkyBasePath = path.Join(dirPath, sharkyPath)
@@ -497,7 +501,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		)
 	})
 	if err != nil {
-		return nil, errors.Join(ErrMigration, fmt.Errorf("failed regular migration: %w", err))
+		return nil, fmt.Errorf("failed regular migration: %w", err)
 	}
 
 	cacheObj, err := cache.New(ctx, st.IndexStore(), opts.CacheCapacity)
