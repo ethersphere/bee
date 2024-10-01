@@ -25,10 +25,26 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"golang.org/x/sync/errgroup"
-	"resenje.org/multex"
 )
 
 const reserveScope = "reserve"
+
+type multexLock struct {
+	mul map[string]struct{}
+	mu  chan struct{}
+}
+
+func (m *multexLock) Lock(id string) {
+	m.mu <- struct{}{}
+	m.mul[id] = struct{}{}
+	<-m.mu
+}
+
+func (m *multexLock) Unlock(id string) {
+	m.mu <- struct{}{}
+	delete(m.mul, id)
+	<-m.mu
+}
 
 type Reserve struct {
 	baseAddr     swarm.Address
@@ -39,7 +55,7 @@ type Reserve struct {
 	size     atomic.Int64
 	radius   atomic.Uint32
 
-	multx *multex.Multex
+	multx multexLock
 	st    transaction.Storage
 }
 
@@ -56,7 +72,7 @@ func New(
 		capacity:     capacity,
 		radiusSetter: radiusSetter,
 		logger:       logger.WithName(reserveScope).Register(),
-		multx:        multex.New(),
+		multx:        multexLock{mul: make(map[string]struct{}), mu: make(chan struct{}, 1)},
 	}
 
 	err := st.Run(context.Background(), func(s transaction.Store) error {
@@ -118,7 +134,6 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 		return nil
 	}
 
-	chunkType := storage.ChunkType(chunk)
 	bin := swarm.Proximity(r.baseAddr.Bytes(), chunk.Address().Bytes())
 
 	// bin lock
@@ -655,5 +670,5 @@ func (r *Reserve) IncBinID(store storage.IndexStore, bin uint8) (uint64, error) 
 }
 
 func lockId(stamp swarm.Stamp) string {
-	return string(stamp.BatchID()) + string(stamp.Index())
+	return fmt.Sprintf("%x-%x", stamp.BatchID(), stamp.Index())
 }
