@@ -115,6 +115,9 @@ func New(
 //  3. A new chunk that has the same address belonging to the same batch with an already stored chunk will overwrite the existing chunk
 //     if the new chunk has a higher stamp timestamp (regardless of batch type and chunk type, eg CAC & SOC).
 func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
+
+	chunkType := storage.ChunkType(chunk)
+
 	// batchID lock, Put vs Eviction
 	lockId := lockId(chunk.Stamp())
 	r.multx.Lock(lockId)
