@@ -448,6 +448,8 @@ func NewBee(
 		apiService.MountTechnicalDebug()
 		apiService.SetProbe(probe)
 
+		apiService.SetSwarmAddress(&swarmAddress)
+
 		apiServer := &http.Server{
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
@@ -1151,7 +1153,6 @@ func NewBee(
 		apiService.MountDebug()
 		apiService.MountAPI()
 
-		apiService.SetSwarmAddress(&swarmAddress)
 		apiService.SetRedistributionAgent(agent)
 	}
 
