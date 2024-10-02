@@ -38,7 +38,7 @@ type Reserve struct {
 	size     atomic.Int64
 	radius   atomic.Uint32
 
-	multx *multexLock
+	multx *swarm.MultexLock
 	st    transaction.Storage
 }
 
@@ -56,7 +56,7 @@ func New(
 		capacity:     capacity,
 		radiusSetter: radiusSetter,
 		logger:       logger.WithName(reserveScope).Register(),
-		multx:        newMultexLock(100),
+		multx:        swarm.NewMultexLock(100),
 	}
 
 	err := st.Run(context.Background(), func(s transaction.Store) error {
@@ -645,64 +645,4 @@ func (r *Reserve) IncBinID(store storage.IndexStore, bin uint8) (uint64, error) 
 
 func lockId(stamp swarm.Stamp) string {
 	return fmt.Sprintf("%x-%x", stamp.BatchID(), stamp.Index())
-}
-
-type multexLock struct {
-	mul   map[string]*chan struct{}
-	mu    chan struct{}
-	pool  []*chan struct{}
-	queue chan struct{}
-}
-
-func newMultexLock(poolSize uint) *multexLock {
-	pool := make([]*chan struct{}, poolSize)
-	multex := &multexLock{mul: make(map[string]*chan struct{}), mu: make(chan struct{}, 1), pool: pool, queue: make(chan struct{})}
-	for i := uint(0); i < poolSize; i++ {
-		ch := make(chan struct{}, 1)
-		pool[i] = &ch
-	}
-
-	return multex
-}
-
-func (m *multexLock) Lock(id string) {
-	m.mu <- struct{}{}
-	if m.mul[id] == nil {
-		m.mul[id] = m.getFromPool()
-	}
-	*m.mul[id] <- struct{}{}
-	<-m.mu
-}
-
-func (m *multexLock) Unlock(id string) {
-	m.mu <- struct{}{}
-	<-*m.mul[id]
-	m.throwToPool(m.mul[id])
-	delete(m.mul, id)
-	<-m.mu
-}
-
-// getFromPool returns a channel from the pool if available
-// assumes mu is locked
-func (m *multexLock) getFromPool() *chan struct{} {
-	for len(m.pool) == 0 {
-		// unlock mu until we get a channel from the pool
-		<-m.mu
-		<-m.queue
-		m.mu <- struct{}{}
-	}
-
-	ch := m.pool[len(m.pool)-1]
-	m.pool = m.pool[:len(m.pool)-1]
-
-	return ch
-}
-
-// throwToPool returns a channel to the pool
-// assumes mu is locked
-func (m *multexLock) throwToPool(ch *chan struct{}) {
-	m.pool = append(m.pool, ch)
-	if len(m.pool) == 1 { // since it was 0 before and some are waiting
-		m.queue <- struct{}{}
-	}
 }
