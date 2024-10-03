@@ -200,7 +200,7 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 			continue
 		}
 
-		if networkRadius > 0 && peer.status.StorageRadius < uint32(networkRadius-1) {
+		if networkRadius > 0 && peer.status.StorageRadius < uint32(networkRadius-2) {
 			s.logger.Debug("radius health failure", "radius", peer.status.StorageRadius, "peer_address", peer.addr)
 		} else if peer.dur.Seconds() > pDur {
 			s.logger.Debug("response duration below threshold", "duration", peer.dur, "peer_address", peer.addr)

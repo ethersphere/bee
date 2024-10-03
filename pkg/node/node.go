@@ -248,6 +248,12 @@ func NewBee(
 		}
 	}(b)
 
+	if o.ReserveCapacityDoubling < 0 || o.ReserveCapacityDoubling > 1 {
+		return nil, fmt.Errorf("config reserve capacity doubling has to be between default: 0 and maximum: 1")
+	}
+
+	reserveCapacity := (1 << o.ReserveCapacityDoubling) * storer.DefaultReserveCapacity
+
 	stateStore, stateStoreMetrics, err := InitStateStore(logger, o.DataDir, o.StatestoreCacheCapacity)
 	if err != nil {
 		return nil, err
@@ -352,14 +358,6 @@ func NewBee(
 
 	var batchStore postage.Storer = new(postage.NoOpBatchStore)
 	var evictFn func([]byte) error
-
-	var reserveCapacity int
-
-	if o.ReserveCapacityDoubling >= 0 && o.ReserveCapacityDoubling <= 1 {
-		reserveCapacity = 1 << (22 + o.ReserveCapacityDoubling)
-	} else {
-		return nil, fmt.Errorf("config reserve capacity doubling has to be between default: 0 and maximum: 1")
-	}
 
 	if chainEnabled {
 		batchStore, err = batchstore.New(
@@ -735,6 +733,7 @@ func NewBee(
 		lo.ReserveWakeUpDuration = reserveWakeUpDuration
 		lo.ReserveMinEvictCount = reserveMinEvictCount
 		lo.RadiusSetter = kad
+		lo.ReserveCapacityDoubling = o.ReserveCapacityDoubling
 	}
 
 	localStore, err := storer.New(ctx, path, lo)
