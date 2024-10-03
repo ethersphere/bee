@@ -280,7 +280,7 @@ func initDiskRepository(
 
 	err = migration.Migrate(store, "core-migration", localmigration.BeforeInitSteps(store))
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed core migration: %w", err)
+		return nil, nil, nil, errors.Join(store.Close(), fmt.Errorf("failed core migration: %w", err))
 	}
 
 	if opts.LdbStats.Load() != nil {
@@ -482,6 +482,12 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		}
 	}
 
+	defer func() {
+		if err != nil && dbCloser != nil {
+			err = errors.Join(err, dbCloser.Close())
+		}
+	}()
+
 	sharkyBasePath := ""
 	if dirPath != "" {
 		sharkyBasePath = path.Join(dirPath, sharkyPath)
@@ -495,7 +501,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		)
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed regular migration: %w", err)
 	}
 
 	cacheObj, err := cache.New(ctx, st.IndexStore(), opts.CacheCapacity)
