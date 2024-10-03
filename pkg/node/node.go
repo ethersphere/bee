@@ -172,6 +172,7 @@ type Options struct {
 	WhitelistedWithdrawalAddress  []string
 	TrxDebugMode                  bool
 	MinimumStorageRadius          uint
+	ReserveCapacity               int
 }
 
 const (
@@ -184,9 +185,7 @@ const (
 	minPaymentThreshold           = 2 * refreshRate           // minimal accepted payment threshold of full nodes
 	maxPaymentThreshold           = 24 * refreshRate          // maximal accepted payment threshold of full nodes
 	mainnetNetworkID              = uint64(1)                 //
-	ReserveCapacity               = 4_194_304                 // 2^22 chunks
 	reserveWakeUpDuration         = 15 * time.Minute          // time to wait before waking up reserveWorker
-	reserveTreshold               = ReserveCapacity * 5 / 10
 	reserveMinEvictCount          = 1_000
 	cacheMinEvictCount            = 10_000
 )
@@ -360,7 +359,7 @@ func NewBee(
 			func(id []byte) error {
 				return evictFn(id)
 			},
-			ReserveCapacity,
+			o.ReserveCapacity,
 			logger,
 		)
 		if err != nil {
@@ -722,7 +721,7 @@ func NewBee(
 
 	if o.FullNodeMode && !o.BootnodeMode {
 		// configure reserve only for full node
-		lo.ReserveCapacity = ReserveCapacity
+		lo.ReserveCapacity = o.ReserveCapacity
 		lo.ReserveWakeUpDuration = reserveWakeUpDuration
 		lo.ReserveMinEvictCount = reserveMinEvictCount
 		lo.RadiusSetter = kad
@@ -1034,6 +1033,7 @@ func NewBee(
 			}
 
 			isFullySynced := func() bool {
+				reserveTreshold := o.ReserveCapacity * 5 / 10
 				return localStore.ReserveSize() >= reserveTreshold && pullerService.SyncRate() == 0
 			}
 

@@ -14,7 +14,6 @@ import (
 
 	"github.com/ethersphere/bee/v2/cmd/bee/cmd"
 	"github.com/ethersphere/bee/v2/pkg/log"
-	"github.com/ethersphere/bee/v2/pkg/node"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	storagetest "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer"
@@ -32,10 +31,9 @@ func TestDBExportImport(t *testing.T) {
 
 	ctx := context.Background()
 	db1 := newTestDB(t, ctx, &storer.Options{
-		Batchstore:      new(postage.NoOpBatchStore),
-		RadiusSetter:    kademlia.NewTopologyDriver(),
-		Logger:          testutil.NewLogger(t),
-		ReserveCapacity: node.ReserveCapacity,
+		Batchstore:   new(postage.NoOpBatchStore),
+		RadiusSetter: kademlia.NewTopologyDriver(),
+		Logger:       testutil.NewLogger(t),
 	}, dir1)
 
 	chunks := make(map[string]int)
@@ -61,10 +59,9 @@ func TestDBExportImport(t *testing.T) {
 	}
 
 	db2 := newTestDB(t, ctx, &storer.Options{
-		Batchstore:      new(postage.NoOpBatchStore),
-		RadiusSetter:    kademlia.NewTopologyDriver(),
-		Logger:          testutil.NewLogger(t),
-		ReserveCapacity: node.ReserveCapacity,
+		Batchstore:   new(postage.NoOpBatchStore),
+		RadiusSetter: kademlia.NewTopologyDriver(),
+		Logger:       testutil.NewLogger(t),
 	}, dir2)
 
 	err = db2.ReserveIterateChunks(func(chunk swarm.Chunk) (bool, error) {
@@ -92,10 +89,9 @@ func TestDBExportImportPinning(t *testing.T) {
 
 	ctx := context.Background()
 	db1 := newTestDB(t, ctx, &storer.Options{
-		Batchstore:      new(postage.NoOpBatchStore),
-		RadiusSetter:    kademlia.NewTopologyDriver(),
-		Logger:          testutil.NewLogger(t),
-		ReserveCapacity: node.ReserveCapacity,
+		Batchstore:   new(postage.NoOpBatchStore),
+		RadiusSetter: kademlia.NewTopologyDriver(),
+		Logger:       testutil.NewLogger(t),
 	}, dir1)
 
 	chunks := make(map[string]int)
@@ -136,10 +132,9 @@ func TestDBExportImportPinning(t *testing.T) {
 	}
 
 	db2 := newTestDB(t, ctx, &storer.Options{
-		Batchstore:      new(postage.NoOpBatchStore),
-		RadiusSetter:    kademlia.NewTopologyDriver(),
-		Logger:          testutil.NewLogger(t),
-		ReserveCapacity: node.ReserveCapacity,
+		Batchstore:   new(postage.NoOpBatchStore),
+		RadiusSetter: kademlia.NewTopologyDriver(),
+		Logger:       testutil.NewLogger(t),
 	}, dir2)
 	addresses, err := db2.Pins()
 	if err != nil {
@@ -180,10 +175,9 @@ func TestDBNuke_FLAKY(t *testing.T) {
 	dataDir := t.TempDir()
 	ctx := context.Background()
 	db := newTestDB(t, ctx, &storer.Options{
-		Batchstore:      new(postage.NoOpBatchStore),
-		RadiusSetter:    kademlia.NewTopologyDriver(),
-		Logger:          log.Noop,
-		ReserveCapacity: node.ReserveCapacity,
+		Batchstore:   new(postage.NoOpBatchStore),
+		RadiusSetter: kademlia.NewTopologyDriver(),
+		Logger:       log.Noop,
 	}, dataDir)
 
 	nChunks := 10
@@ -210,10 +204,9 @@ func TestDBNuke_FLAKY(t *testing.T) {
 	}
 
 	db = newTestDB(t, ctx, &storer.Options{
-		Batchstore:      new(postage.NoOpBatchStore),
-		RadiusSetter:    kademlia.NewTopologyDriver(),
-		Logger:          log.Noop,
-		ReserveCapacity: node.ReserveCapacity,
+		Batchstore:   new(postage.NoOpBatchStore),
+		RadiusSetter: kademlia.NewTopologyDriver(),
+		Logger:       log.Noop,
 	}, path.Join(dataDir, "localstore"))
 	if err != nil {
 		t.Fatal(err)
@@ -235,10 +228,9 @@ func TestDBInfo(t *testing.T) {
 	dir1 := t.TempDir()
 	ctx := context.Background()
 	db1 := newTestDB(t, ctx, &storer.Options{
-		Batchstore:      new(postage.NoOpBatchStore),
-		RadiusSetter:    kademlia.NewTopologyDriver(),
-		Logger:          testutil.NewLogger(t),
-		ReserveCapacity: node.ReserveCapacity,
+		Batchstore:   new(postage.NoOpBatchStore),
+		RadiusSetter: kademlia.NewTopologyDriver(),
+		Logger:       testutil.NewLogger(t),
 	}, dir1)
 
 	nChunks := 10
@@ -265,7 +257,7 @@ func TestDBInfo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !strings.Contains(buf.String(), fmt.Sprintf("\"msg\"=\"reserve\" \"size_within_radius\"=%d \"total_size\"=%d \"capacity\"=%d", nChunks, nChunks, node.ReserveCapacity)) {
+	if !strings.Contains(buf.String(), fmt.Sprintf("\"msg\"=\"reserve\" \"size_within_radius\"=%d \"total_size\"=%d", nChunks, nChunks)) {
 		t.Fatal("reserve info not correct")
 	}
 }
