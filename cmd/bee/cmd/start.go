@@ -30,6 +30,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/node"
 	"github.com/ethersphere/bee/v2/pkg/resolver/multiresolver"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/kardianos/service"
 	"github.com/spf13/cobra"
@@ -283,6 +284,14 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		neighborhoodSuggester = c.config.GetString(optionNameNeighborhoodSuggester)
 	}
 
+	var reserveCapacity int
+	reserveCapacityHeight := c.config.GetInt(optionReserveCapacityHeight)
+	if reserveCapacityHeight > 0 && reserveCapacityHeight <= storer.MaxReserveCapacityHeight {
+		reserveCapacity = 1 << (22 + reserveCapacityHeight)
+	} else {
+		return nil, fmt.Errorf("config reserve capacity height value has to be between default: 0 and maximum: %d", storer.MaxReserveCapacityHeight)
+	}
+
 	b, err := node.NewBee(ctx, c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, signerConfig.session, &node.Options{
 		DataDir:                       c.config.GetString(optionNameDataDir),
 		CacheCapacity:                 c.config.GetUint64(optionNameCacheCapacity),
@@ -335,7 +344,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		WhitelistedWithdrawalAddress:  c.config.GetStringSlice(optionNameWhitelistedWithdrawalAddress),
 		TrxDebugMode:                  c.config.GetBool(optionNameTransactionDebugMode),
 		MinimumStorageRadius:          c.config.GetUint(optionMinimumStorageRadius),
-		ReserveCapacity:               1 << (22 + c.config.GetInt(optionReserveCapacityHeight)),
+		ReserveCapacity:               reserveCapacity,
 	})
 
 	return b, err

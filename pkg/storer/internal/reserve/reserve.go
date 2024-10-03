@@ -45,6 +45,7 @@ type Reserve struct {
 func New(
 	baseAddr swarm.Address,
 	st transaction.Storage,
+	maxCapacityHeight int,
 	capacity int,
 	radiusSetter topology.SetStorageRadiuser,
 	logger log.Logger,

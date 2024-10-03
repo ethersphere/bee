@@ -248,8 +248,6 @@ func NewBee(
 		}
 	}(b)
 
-	ReserveCapacity = o.ReserveCapacity
-
 	stateStore, stateStoreMetrics, err := InitStateStore(logger, o.DataDir, o.StatestoreCacheCapacity)
 	if err != nil {
 		return nil, err
@@ -1296,8 +1294,6 @@ func (b *Bee) Shutdown() error {
 }
 
 var ErrShutdownInProgress error = errors.New("shutdown in progress")
-
-var ReserveCapacity int = 1 << 22 // default reserve capacity
 
 func isChainEnabled(o *Options, swapEndpoint string, logger log.Logger) bool {
 	chainDisabled := swapEndpoint == ""

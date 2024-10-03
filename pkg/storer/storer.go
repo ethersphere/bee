@@ -239,7 +239,6 @@ const (
 	defaultDisableSeeksCompaction = false
 	defaultCacheCapacity          = uint64(1_000_000)
 	defaultBgCacheWorkers         = 16
-	defaultReserveCapacity        = 1 << 22
 
 	indexPath  = "indexstore"
 	sharkyPath = "sharky"
@@ -397,7 +396,7 @@ func defaultOptions() *Options {
 		LdbDisableSeeksCompaction: defaultDisableSeeksCompaction,
 		CacheCapacity:             defaultCacheCapacity,
 		Logger:                    log.Noop,
-		ReserveCapacity:           defaultReserveCapacity,
+		ReserveCapacity:           DefaultReserveCapacity,
 		ReserveWakeUpDuration:     time.Minute * 30,
 	}
 }
@@ -544,9 +543,12 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	}
 
 	if opts.ReserveCapacity > 0 {
+		ReserveCapacity = opts.ReserveCapacity
+
 		rs, err := reserve.New(
 			opts.Address,
 			st,
+			MaxReserveCapacityHeight,
 			opts.ReserveCapacity,
 			opts.RadiusSetter,
 			logger,

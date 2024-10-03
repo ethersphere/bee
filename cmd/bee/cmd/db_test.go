@@ -14,7 +14,6 @@ import (
 
 	"github.com/ethersphere/bee/v2/cmd/bee/cmd"
 	"github.com/ethersphere/bee/v2/pkg/log"
-	"github.com/ethersphere/bee/v2/pkg/node"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	storagetest "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer"
@@ -35,7 +34,7 @@ func TestDBExportImport(t *testing.T) {
 		Batchstore:      new(postage.NoOpBatchStore),
 		RadiusSetter:    kademlia.NewTopologyDriver(),
 		Logger:          testutil.NewLogger(t),
-		ReserveCapacity: node.ReserveCapacity,
+		ReserveCapacity: storer.ReserveCapacity,
 	}, dir1)
 
 	chunks := make(map[string]int)
@@ -64,7 +63,7 @@ func TestDBExportImport(t *testing.T) {
 		Batchstore:      new(postage.NoOpBatchStore),
 		RadiusSetter:    kademlia.NewTopologyDriver(),
 		Logger:          testutil.NewLogger(t),
-		ReserveCapacity: node.ReserveCapacity,
+		ReserveCapacity: storer.ReserveCapacity,
 	}, dir2)
 
 	err = db2.ReserveIterateChunks(func(chunk swarm.Chunk) (bool, error) {
@@ -95,7 +94,7 @@ func TestDBExportImportPinning(t *testing.T) {
 		Batchstore:      new(postage.NoOpBatchStore),
 		RadiusSetter:    kademlia.NewTopologyDriver(),
 		Logger:          testutil.NewLogger(t),
-		ReserveCapacity: node.ReserveCapacity,
+		ReserveCapacity: storer.ReserveCapacity,
 	}, dir1)
 
 	chunks := make(map[string]int)
@@ -139,7 +138,7 @@ func TestDBExportImportPinning(t *testing.T) {
 		Batchstore:      new(postage.NoOpBatchStore),
 		RadiusSetter:    kademlia.NewTopologyDriver(),
 		Logger:          testutil.NewLogger(t),
-		ReserveCapacity: node.ReserveCapacity,
+		ReserveCapacity: storer.ReserveCapacity,
 	}, dir2)
 	addresses, err := db2.Pins()
 	if err != nil {
@@ -183,7 +182,7 @@ func TestDBNuke_FLAKY(t *testing.T) {
 		Batchstore:      new(postage.NoOpBatchStore),
 		RadiusSetter:    kademlia.NewTopologyDriver(),
 		Logger:          log.Noop,
-		ReserveCapacity: node.ReserveCapacity,
+		ReserveCapacity: storer.ReserveCapacity,
 	}, dataDir)
 
 	nChunks := 10
@@ -213,7 +212,7 @@ func TestDBNuke_FLAKY(t *testing.T) {
 		Batchstore:      new(postage.NoOpBatchStore),
 		RadiusSetter:    kademlia.NewTopologyDriver(),
 		Logger:          log.Noop,
-		ReserveCapacity: node.ReserveCapacity,
+		ReserveCapacity: storer.ReserveCapacity,
 	}, path.Join(dataDir, "localstore"))
 	if err != nil {
 		t.Fatal(err)
@@ -238,7 +237,7 @@ func TestDBInfo(t *testing.T) {
 		Batchstore:      new(postage.NoOpBatchStore),
 		RadiusSetter:    kademlia.NewTopologyDriver(),
 		Logger:          testutil.NewLogger(t),
-		ReserveCapacity: node.ReserveCapacity,
+		ReserveCapacity: storer.ReserveCapacity,
 	}, dir1)
 
 	nChunks := 10
@@ -265,7 +264,7 @@ func TestDBInfo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !strings.Contains(buf.String(), fmt.Sprintf("\"msg\"=\"reserve\" \"size_within_radius\"=%d \"total_size\"=%d \"capacity\"=%d", nChunks, nChunks, node.ReserveCapacity)) {
+	if !strings.Contains(buf.String(), fmt.Sprintf("\"msg\"=\"reserve\" \"size_within_radius\"=%d \"total_size\"=%d \"capacity\"=%d", nChunks, nChunks, storer.ReserveCapacity)) {
 		t.Fatal("reserve info not correct")
 	}
 }
