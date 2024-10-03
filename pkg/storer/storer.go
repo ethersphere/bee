@@ -239,7 +239,7 @@ const (
 	defaultDisableSeeksCompaction = false
 	defaultCacheCapacity          = uint64(1_000_000)
 	defaultBgCacheWorkers         = 16
-	defaultReserveCapacity        = 1 << 23
+	defaultReserveCapacity        = 1 << 22
 
 	indexPath  = "indexstore"
 	sharkyPath = "sharky"

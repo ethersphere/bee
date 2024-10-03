@@ -81,10 +81,11 @@ func dbInfoCmd(cmd *cobra.Command) {
 			logger.Info("getting db indices with data-dir", "path", dataDir)
 
 			db, err := storer.New(cmd.Context(), dataDir, &storer.Options{
-				Logger:        logger,
-				RadiusSetter:  noopRadiusSetter{},
-				Batchstore:    new(postage.NoOpBatchStore),
-				CacheCapacity: 1_000_000,
+				Logger:          logger,
+				RadiusSetter:    noopRadiusSetter{},
+				Batchstore:      new(postage.NoOpBatchStore),
+				ReserveCapacity: node.ReserveCapacity,
+				CacheCapacity:   1_000_000,
 			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
@@ -162,9 +163,10 @@ func dbCompactCmd(cmd *cobra.Command) {
 			localstorePath := path.Join(dataDir, ioutil.DataPathLocalstore)
 
 			err = storer.Compact(context.Background(), localstorePath, &storer.Options{
-				Logger:       logger,
-				RadiusSetter: noopRadiusSetter{},
-				Batchstore:   new(postage.NoOpBatchStore),
+				Logger:          logger,
+				RadiusSetter:    noopRadiusSetter{},
+				Batchstore:      new(postage.NoOpBatchStore),
+				ReserveCapacity: node.ReserveCapacity,
 			}, validation)
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
@@ -216,9 +218,10 @@ func dbValidatePinsCmd(cmd *cobra.Command) {
 			localstorePath := path.Join(dataDir, ioutil.DataPathLocalstore)
 
 			err = storer.ValidatePinCollectionChunks(context.Background(), localstorePath, providedPin, outputLoc, &storer.Options{
-				Logger:       logger,
-				RadiusSetter: noopRadiusSetter{},
-				Batchstore:   new(postage.NoOpBatchStore),
+				Logger:          logger,
+				RadiusSetter:    noopRadiusSetter{},
+				Batchstore:      new(postage.NoOpBatchStore),
+				ReserveCapacity: node.ReserveCapacity,
 			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
@@ -277,10 +280,11 @@ func dbRepairReserve(cmd *cobra.Command) {
 			}()
 
 			db, err := storer.New(cmd.Context(), path.Join(dataDir, "localstore"), &storer.Options{
-				Logger:        logger,
-				RadiusSetter:  noopRadiusSetter{},
-				Batchstore:    new(postage.NoOpBatchStore),
-				CacheCapacity: 1_000_000,
+				Logger:          logger,
+				RadiusSetter:    noopRadiusSetter{},
+				Batchstore:      new(postage.NoOpBatchStore),
+				ReserveCapacity: node.ReserveCapacity,
+				CacheCapacity:   1_000_000,
 			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
@@ -340,9 +344,10 @@ func dbValidateCmd(cmd *cobra.Command) {
 			localstorePath := path.Join(dataDir, ioutil.DataPathLocalstore)
 
 			err = storer.ValidateRetrievalIndex(context.Background(), localstorePath, &storer.Options{
-				Logger:       logger,
-				RadiusSetter: noopRadiusSetter{},
-				Batchstore:   new(postage.NoOpBatchStore),
+				Logger:          logger,
+				RadiusSetter:    noopRadiusSetter{},
+				Batchstore:      new(postage.NoOpBatchStore),
+				ReserveCapacity: node.ReserveCapacity,
 			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
@@ -402,10 +407,11 @@ func dbExportReserveCmd(cmd *cobra.Command) {
 			logger.Info("starting export process with data-dir", "path", dataDir)
 
 			db, err := storer.New(cmd.Context(), dataDir, &storer.Options{
-				Logger:        logger,
-				RadiusSetter:  noopRadiusSetter{},
-				Batchstore:    new(postage.NoOpBatchStore),
-				CacheCapacity: 1_000_000,
+				Logger:          logger,
+				RadiusSetter:    noopRadiusSetter{},
+				Batchstore:      new(postage.NoOpBatchStore),
+				ReserveCapacity: node.ReserveCapacity,
+				CacheCapacity:   1_000_000,
 			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
@@ -484,10 +490,11 @@ func dbExportPinningCmd(cmd *cobra.Command) {
 
 			logger.Info("starting export process with data-dir", "path", dataDir)
 			db, err := storer.New(cmd.Context(), dataDir, &storer.Options{
-				Logger:        logger,
-				RadiusSetter:  noopRadiusSetter{},
-				Batchstore:    new(postage.NoOpBatchStore),
-				CacheCapacity: 1_000_000,
+				Logger:          logger,
+				RadiusSetter:    noopRadiusSetter{},
+				Batchstore:      new(postage.NoOpBatchStore),
+				ReserveCapacity: node.ReserveCapacity,
+				CacheCapacity:   1_000_000,
 			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
@@ -593,10 +600,11 @@ func dbImportReserveCmd(cmd *cobra.Command) {
 			fmt.Printf("starting import process with data-dir at %s\n", dataDir)
 
 			db, err := storer.New(cmd.Context(), dataDir, &storer.Options{
-				Logger:        logger,
-				RadiusSetter:  noopRadiusSetter{},
-				Batchstore:    new(postage.NoOpBatchStore),
-				CacheCapacity: 1_000_000,
+				Logger:          logger,
+				RadiusSetter:    noopRadiusSetter{},
+				Batchstore:      new(postage.NoOpBatchStore),
+				ReserveCapacity: node.ReserveCapacity,
+				CacheCapacity:   1_000_000,
 			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
@@ -676,10 +684,11 @@ func dbImportPinningCmd(cmd *cobra.Command) {
 			fmt.Printf("starting import process with data-dir at %s\n", dataDir)
 
 			db, err := storer.New(cmd.Context(), dataDir, &storer.Options{
-				Logger:        logger,
-				RadiusSetter:  noopRadiusSetter{},
-				Batchstore:    new(postage.NoOpBatchStore),
-				CacheCapacity: 1_000_000,
+				Logger:          logger,
+				RadiusSetter:    noopRadiusSetter{},
+				Batchstore:      new(postage.NoOpBatchStore),
+				ReserveCapacity: node.ReserveCapacity,
+				CacheCapacity:   1_000_000,
 			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
