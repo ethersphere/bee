@@ -172,7 +172,7 @@ type Options struct {
 	WhitelistedWithdrawalAddress  []string
 	TrxDebugMode                  bool
 	MinimumStorageRadius          uint
-	ReserveCapacity               int
+	ReserveCapacityDoubling       int
 }
 
 const (
@@ -353,13 +353,21 @@ func NewBee(
 	var batchStore postage.Storer = new(postage.NoOpBatchStore)
 	var evictFn func([]byte) error
 
+	var reserveCapacity int
+
+	if o.ReserveCapacityDoubling > 0 && o.ReserveCapacityDoubling <= 1 {
+		reserveCapacity = 1 << (22 + o.ReserveCapacityDoubling)
+	} else {
+		return nil, fmt.Errorf("config reserve capacity doubling has to be between default: 0 and maximum: 1")
+	}
+
 	if chainEnabled {
 		batchStore, err = batchstore.New(
 			stateStore,
 			func(id []byte) error {
 				return evictFn(id)
 			},
-			o.ReserveCapacity,
+			reserveCapacity,
 			logger,
 		)
 		if err != nil {
@@ -721,7 +729,7 @@ func NewBee(
 
 	if o.FullNodeMode && !o.BootnodeMode {
 		// configure reserve only for full node
-		lo.ReserveCapacity = o.ReserveCapacity
+		lo.ReserveCapacity = reserveCapacity
 		lo.ReserveWakeUpDuration = reserveWakeUpDuration
 		lo.ReserveMinEvictCount = reserveMinEvictCount
 		lo.RadiusSetter = kad
@@ -1033,7 +1041,7 @@ func NewBee(
 			}
 
 			isFullySynced := func() bool {
-				reserveTreshold := o.ReserveCapacity * 5 / 10
+				reserveTreshold := reserveCapacity * 5 / 10
 				return localStore.ReserveSize() >= reserveTreshold && pullerService.SyncRate() == 0
 			}
 

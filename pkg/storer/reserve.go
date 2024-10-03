@@ -28,12 +28,7 @@ const (
 	reserveUnreserved   = "reserveUnreserved"
 	batchExpiry         = "batchExpiry"
 	batchExpiryDone     = "batchExpiryDone"
-
-	MaxReserveCapacityHeight = 1
-	DefaultReserveCapacity   = 1 << 22
 )
-
-var ReserveCapacity int = DefaultReserveCapacity
 
 var errMaxRadius = errors.New("max radius reached")
 var reserveSizeWithinRadius atomic.Uint64

@@ -239,6 +239,7 @@ const (
 	defaultDisableSeeksCompaction = false
 	defaultCacheCapacity          = uint64(1_000_000)
 	defaultBgCacheWorkers         = 16
+	DefaultReserveCapacity        = 1 << 22 // 4194304 chunks
 
 	indexPath  = "indexstore"
 	sharkyPath = "sharky"
@@ -543,12 +544,9 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	}
 
 	if opts.ReserveCapacity > 0 {
-		ReserveCapacity = opts.ReserveCapacity
-
 		rs, err := reserve.New(
 			opts.Address,
 			st,
-			MaxReserveCapacityHeight,
 			opts.ReserveCapacity,
 			opts.RadiusSetter,
 			logger,
