@@ -355,7 +355,7 @@ func NewBee(
 
 	var reserveCapacity int
 
-	if o.ReserveCapacityDoubling > 0 && o.ReserveCapacityDoubling <= 1 {
+	if o.ReserveCapacityDoubling >= 0 && o.ReserveCapacityDoubling <= 1 {
 		reserveCapacity = 1 << (22 + o.ReserveCapacityDoubling)
 	} else {
 		return nil, fmt.Errorf("config reserve capacity doubling has to be between default: 0 and maximum: 1")
