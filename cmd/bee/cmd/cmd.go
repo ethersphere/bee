@@ -81,6 +81,7 @@ const (
 	optionNameWhitelistedWithdrawalAddress = "withdrawal-addresses-whitelist"
 	optionNameTransactionDebugMode         = "transaction-debug-mode"
 	optionMinimumStorageRadius             = "minimum-storage-radius"
+	optionReserveCapacityDoubling          = "reserve-capacity-doubling"
 )
 
 // nolint:gochecknoinits
@@ -290,6 +291,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().StringSlice(optionNameWhitelistedWithdrawalAddress, []string{}, "withdrawal target addresses")
 	cmd.Flags().Bool(optionNameTransactionDebugMode, false, "skips the gas estimate step for contract transactions")
 	cmd.Flags().Uint(optionMinimumStorageRadius, 0, "minimum radius storage threshold")
+	cmd.Flags().Int(optionReserveCapacityDoubling, 0, "reserve capacity doubling")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {

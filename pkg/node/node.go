@@ -172,6 +172,7 @@ type Options struct {
 	WhitelistedWithdrawalAddress  []string
 	TrxDebugMode                  bool
 	MinimumStorageRadius          uint
+	ReserveCapacityDoubling       int
 }
 
 const (
@@ -184,9 +185,7 @@ const (
 	minPaymentThreshold           = 2 * refreshRate           // minimal accepted payment threshold of full nodes
 	maxPaymentThreshold           = 24 * refreshRate          // maximal accepted payment threshold of full nodes
 	mainnetNetworkID              = uint64(1)                 //
-	ReserveCapacity               = 4_194_304                 // 2^22 chunks
 	reserveWakeUpDuration         = 15 * time.Minute          // time to wait before waking up reserveWorker
-	reserveTreshold               = ReserveCapacity * 5 / 10
 	reserveMinEvictCount          = 1_000
 	cacheMinEvictCount            = 10_000
 )
@@ -354,13 +353,21 @@ func NewBee(
 	var batchStore postage.Storer = new(postage.NoOpBatchStore)
 	var evictFn func([]byte) error
 
+	var reserveCapacity int
+
+	if o.ReserveCapacityDoubling >= 0 && o.ReserveCapacityDoubling <= 1 {
+		reserveCapacity = 1 << (22 + o.ReserveCapacityDoubling)
+	} else {
+		return nil, fmt.Errorf("config reserve capacity doubling has to be between default: 0 and maximum: 1")
+	}
+
 	if chainEnabled {
 		batchStore, err = batchstore.New(
 			stateStore,
 			func(id []byte) error {
 				return evictFn(id)
 			},
-			ReserveCapacity,
+			reserveCapacity,
 			logger,
 		)
 		if err != nil {
@@ -724,7 +731,7 @@ func NewBee(
 
 	if o.FullNodeMode && !o.BootnodeMode {
 		// configure reserve only for full node
-		lo.ReserveCapacity = ReserveCapacity
+		lo.ReserveCapacity = reserveCapacity
 		lo.ReserveWakeUpDuration = reserveWakeUpDuration
 		lo.ReserveMinEvictCount = reserveMinEvictCount
 		lo.RadiusSetter = kad
@@ -1036,6 +1043,7 @@ func NewBee(
 			}
 
 			isFullySynced := func() bool {
+				reserveTreshold := reserveCapacity * 5 / 10
 				return localStore.ReserveSize() >= reserveTreshold && pullerService.SyncRate() == 0
 			}
 

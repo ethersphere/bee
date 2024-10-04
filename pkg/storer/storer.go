@@ -239,6 +239,7 @@ const (
 	defaultDisableSeeksCompaction = false
 	defaultCacheCapacity          = uint64(1_000_000)
 	defaultBgCacheWorkers         = 16
+	DefaultReserveCapacity        = 1 << 22 // 4194304 chunks
 
 	indexPath  = "indexstore"
 	sharkyPath = "sharky"
@@ -396,7 +397,7 @@ func defaultOptions() *Options {
 		LdbDisableSeeksCompaction: defaultDisableSeeksCompaction,
 		CacheCapacity:             defaultCacheCapacity,
 		Logger:                    log.Noop,
-		ReserveCapacity:           4_194_304, // 2^22 chunks
+		ReserveCapacity:           DefaultReserveCapacity,
 		ReserveWakeUpDuration:     time.Minute * 30,
 	}
 }
