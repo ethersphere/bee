@@ -141,9 +141,9 @@ func (db *DB) ReserveSample(
 
 	// If the node has doubled their capacity by some factor, sampling process need to only pertain to the
 	// chunks of the selected neighborhood as determined by the anchor and the "network" radius and NOT the whole reseve.
-	// The sampling must select chunk with proximity greater than or equal to the regular network radius.
 	// The regular network storage radius of the network is the sum of the local radius and the doubling factor.
 	// For example, the regular radius is 11, but the local node has a doubling factor of 3, so the local radius will eventually drop to 8.
+	// So the sampling must only consider chunks with proximity 11 to the anchor.
 	neighborhoodProximity := storageRadius + uint8(db.reserveOptions.capacityDoubling)
 
 	// Phase 1: Iterate chunk addresses
