@@ -42,7 +42,7 @@ type peerStatus interface {
 
 type reserve interface {
 	storer.RadiusChecker
-	ReserveSize() int
+	ReserveCapacityDoubling() int
 }
 
 type service struct {
@@ -221,10 +221,12 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 		}
 	}
 
+	networkRadiusEstimation := s.reserve.StorageRadius() + uint8(s.reserve.ReserveCapacityDoubling())
+
 	selfHealth := true
-	if nHoodRadius == networkRadius && s.reserve.StorageRadius() != networkRadius {
+	if nHoodRadius == networkRadius && networkRadiusEstimation != networkRadius {
 		selfHealth = false
-		s.logger.Warning("node is unhealthy due to storage radius discrepancy", "self_radius", s.reserve.StorageRadius(), "network_radius", networkRadius)
+		s.logger.Warning("node is unhealthy due to storage radius discrepancy", "self_radius", networkRadiusEstimation, "network_radius", networkRadius)
 	}
 
 	s.isSelfHealthy.Store(selfHealth)

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/bits"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -84,7 +85,6 @@ func (db *DB) countWithinRadius(ctx context.Context) (int, error) {
 	radius := db.StorageRadius()
 
 	evictBatches := make(map[string]bool)
-
 	err := db.reserve.IterateChunksItems(0, func(ci *reserve.ChunkBinItem) (bool, error) {
 		if ci.Bin >= radius {
 			count++
@@ -412,6 +412,10 @@ func (db *DB) StorageRadius() uint8 {
 	return db.reserve.Radius()
 }
 
+func (db *DB) ReserveCapacityDoubling() int {
+	return db.reserveOptions.capacityDoubling
+}
+
 func (db *DB) ReserveSize() int {
 	if db.reserve == nil {
 		return 0
@@ -491,6 +495,95 @@ func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan
 	return out, func() {
 		doneOnce.Do(func() { close(done) })
 	}, errC
+}
+
+type NeighborhoodStat struct {
+	Address    swarm.Address
+	ChunkCount int
+}
+
+func (db *DB) NeighborhoodsStat(ctx context.Context) ([]*NeighborhoodStat, error) {
+
+	radius := db.StorageRadius()
+
+	networkRadius := radius + uint8(db.reserveOptions.capacityDoubling)
+
+	var neighs []*NeighborhoodStat
+	for _, n := range neighborhoodPrefixes(db.baseAddr, int(radius), db.reserveOptions.capacityDoubling) {
+		neighs = append(neighs, &NeighborhoodStat{Address: n})
+	}
+
+	err := db.reserve.IterateChunksItems(0, func(ch *reserve.ChunkBinItem) (bool, error) {
+		for _, n := range neighs {
+			if swarm.Proximity(ch.Address.Bytes(), n.Address.Bytes()) >= networkRadius {
+				n.ChunkCount++
+				break
+			}
+		}
+		return false, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return neighs, err
+}
+
+func neighborhoodPrefixes(base swarm.Address, radius int, suffixLength int) []swarm.Address {
+	bitCombinationsCount := int(math.Pow(2, float64(suffixLength)))
+	bitSuffixes := make([]uint8, bitCombinationsCount)
+
+	for i := 0; i < bitCombinationsCount; i++ {
+		bitSuffixes[i] = uint8(i)
+	}
+
+	binPrefixes := make([]swarm.Address, bitCombinationsCount)
+
+	// copy base address
+	for i := range binPrefixes {
+		binPrefixes[i] = base.Clone()
+	}
+
+	for j := range binPrefixes {
+		pseudoAddrBytes := binPrefixes[j].Bytes()
+
+		// set pseudo suffix
+		bitSuffixPos := suffixLength - 1
+		for l := radius + 0; l < radius+suffixLength+1; l++ {
+			index, pos := l/8, l%8
+
+			if hasBit(bitSuffixes[j], uint8(bitSuffixPos)) {
+				pseudoAddrBytes[index] = bits.Reverse8(setBit(bits.Reverse8(pseudoAddrBytes[index]), uint8(pos)))
+			} else {
+				pseudoAddrBytes[index] = bits.Reverse8(clearBit(bits.Reverse8(pseudoAddrBytes[index]), uint8(pos)))
+			}
+
+			bitSuffixPos--
+		}
+
+		// clear rest of the bits
+		for l := radius + suffixLength + 1; l < len(pseudoAddrBytes)*8; l++ {
+			index, pos := l/8, l%8
+			pseudoAddrBytes[index] = bits.Reverse8(clearBit(bits.Reverse8(pseudoAddrBytes[index]), uint8(pos)))
+		}
+	}
+
+	return binPrefixes
+}
+
+// Clears the bit at pos in n.
+func clearBit(n, pos uint8) uint8 {
+	mask := ^(uint8(1) << pos)
+	return n & mask
+}
+
+// Sets the bit at pos in the integer n.
+func setBit(n, pos uint8) uint8 {
+	return n | 1<<pos
+}
+
+func hasBit(n, pos uint8) bool {
+	return n&(1<<pos) > 0
 }
 
 // expiredBatchItem is a storage.Item implementation for expired batches.

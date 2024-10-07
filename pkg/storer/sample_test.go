@@ -142,8 +142,10 @@ func TestReserveSampler(t *testing.T) {
 }
 
 func TestReserveSamplerSisterNeighborhood(t *testing.T) {
+	t.Parallel()
+
 	const (
-		chunkCountPerPO       = 32
+		chunkCountPerPO       = 64
 		maxPO                 = 6
 		networkRadius   uint8 = 5
 		doublingFactor  uint8 = 2
@@ -170,8 +172,10 @@ func TestReserveSamplerSisterNeighborhood(t *testing.T) {
 	testF := func(t *testing.T, baseAddr swarm.Address, st *storer.DB) {
 		t.Helper()
 
+		count := 0
+		// local neighborhood
 		timeVar := uint64(time.Now().UnixNano())
-		chs := randChunks(baseAddr, int(localRadius), timeVar)
+		chs := randChunks(baseAddr, int(networkRadius), timeVar)
 		putter := st.ReservePutter()
 		for _, ch := range chs {
 			err := putter.Put(context.Background(), ch)
@@ -179,11 +183,12 @@ func TestReserveSamplerSisterNeighborhood(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+		count += len(chs)
 
 		sisterAnchor := swarm.RandAddressAt(t, baseAddr, int(localRadius))
 
 		// chunks belonging to the sister neighborhood
-		chs = randChunks(sisterAnchor, int(localRadius), timeVar)
+		chs = randChunks(sisterAnchor, int(networkRadius), timeVar)
 		putter = st.ReservePutter()
 		for _, ch := range chs {
 			err := putter.Put(context.Background(), ch)
@@ -191,8 +196,9 @@ func TestReserveSamplerSisterNeighborhood(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+		count += len(chs)
 
-		t.Run("reserve size", reserveSizeTest(st.Reserve(), chunkCountPerPO*maxPO))
+		t.Run("reserve size", reserveSizeTest(st.Reserve(), count))
 
 		t.Run("reserve sample", func(t *testing.T) {
 			sample, err := st.ReserveSample(context.TODO(), sisterAnchor.Bytes(), 0, timeVar, nil)

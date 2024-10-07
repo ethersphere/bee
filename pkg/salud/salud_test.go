@@ -17,6 +17,7 @@ import (
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	topMock "github.com/ethersphere/bee/v2/pkg/topology/mock"
+	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 )
 
 type peer struct {
@@ -116,6 +117,7 @@ func TestSelfUnhealthyRadius(t *testing.T) {
 	)
 
 	service := salud.New(statusM, topM, reserve, log.Noop, -1, "full", 0, 0.8, 0.8)
+	testutil.CleanupCloser(t, service)
 
 	err := spinlock.Wait(time.Minute, func() bool {
 		return len(topM.PeersHealth()) == len(peers)
@@ -127,9 +129,43 @@ func TestSelfUnhealthyRadius(t *testing.T) {
 	if service.IsHealthy() {
 		t.Fatalf("self should NOT be healthy")
 	}
+}
 
-	if err := service.Close(); err != nil {
+func TestSelfHealthyCapacityDoubling(t *testing.T) {
+	t.Parallel()
+	peers := []peer{
+		// fully healhy
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, BeeMode: "full"}, 0, true},
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, BeeMode: "full"}, 0, true},
+	}
+
+	statusM := &statusMock{make(map[string]peer)}
+	addrs := make([]swarm.Address, 0, len(peers))
+	for _, p := range peers {
+		addrs = append(addrs, p.addr)
+		statusM.peers[p.addr.ByteString()] = p
+	}
+
+	topM := topMock.NewTopologyDriver(topMock.WithPeers(addrs...))
+
+	reserve := mockstorer.NewReserve(
+		mockstorer.WithRadius(6),
+		mockstorer.WithReserveSize(100),
+		mockstorer.WithCapacityDoubling(2),
+	)
+
+	service := salud.New(statusM, topM, reserve, log.Noop, -1, "full", 0, 0.8, 0.8)
+	testutil.CleanupCloser(t, service)
+
+	err := spinlock.Wait(time.Minute, func() bool {
+		return len(topM.PeersHealth()) == len(peers)
+	})
+	if err != nil {
 		t.Fatal(err)
+	}
+
+	if !service.IsHealthy() {
+		t.Fatalf("self should be healthy")
 	}
 }
 
@@ -182,6 +218,7 @@ func TestUnsub(t *testing.T) {
 	topM := topMock.NewTopologyDriver(topMock.WithPeers(addrs...))
 
 	service := salud.New(&statusMock{make(map[string]peer)}, topM, mockstorer.NewReserve(), log.Noop, -1, "full", 0, 0.8, 0.8)
+	testutil.CleanupCloser(t, service)
 
 	c, unsub := service.SubscribeNetworkStorageRadius()
 	unsub()
@@ -190,10 +227,6 @@ func TestUnsub(t *testing.T) {
 	case <-c:
 		t.Fatal("should not have received an address")
 	case <-time.After(time.Second):
-	}
-
-	if err := service.Close(); err != nil {
-		t.Fatal(err)
 	}
 }
 
