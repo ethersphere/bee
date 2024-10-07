@@ -508,9 +508,10 @@ func (db *DB) NeighborhoodsStat(ctx context.Context) ([]*NeighborhoodStat, error
 
 	networkRadius := radius + uint8(db.reserveOptions.capacityDoubling)
 
-	var neighs []*NeighborhoodStat
-	for _, n := range neighborhoodPrefixes(db.baseAddr, int(radius), db.reserveOptions.capacityDoubling) {
-		neighs = append(neighs, &NeighborhoodStat{Address: n})
+	prefixes := neighborhoodPrefixes(db.baseAddr, int(radius), db.reserveOptions.capacityDoubling)
+	neighs := make([]*NeighborhoodStat, len(prefixes))
+	for i, n := range prefixes {
+		neighs[i] = &NeighborhoodStat{Address: n}
 	}
 
 	err := db.reserve.IterateChunksItems(0, func(ch *reserve.ChunkBinItem) (bool, error) {
