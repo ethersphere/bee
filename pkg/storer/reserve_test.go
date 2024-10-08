@@ -666,6 +666,97 @@ func TestSubscribeBinTrigger(t *testing.T) {
 	})
 }
 
+func TestNeighborhoodStats(t *testing.T) {
+	t.Parallel()
+
+	const (
+		chunkCountPerPO       = 32
+		maxPO                 = 6
+		networkRadius   uint8 = 5
+		doublingFactor  uint8 = 2
+		localRadius     uint8 = networkRadius - doublingFactor
+	)
+
+	mustParse := func(s string) swarm.Address {
+		addr, err := swarm.ParseBitStrAddress(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return addr
+	}
+
+	var (
+		baseAddr = mustParse("100000")
+		sister1  = mustParse("100010")
+		sister2  = mustParse("100100")
+		sister3  = mustParse("100110")
+	)
+
+	putChunks := func(addr swarm.Address, startingRadius int, st *storer.DB) {
+		putter := st.ReservePutter()
+		for i := 0; i < chunkCountPerPO; i++ {
+			ch := chunk.GenerateValidRandomChunkAt(addr, startingRadius)
+			err := putter.Put(context.Background(), ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	testF := func(t *testing.T, st *storer.DB) {
+		t.Helper()
+
+		putChunks(baseAddr, int(networkRadius), st)
+		putChunks(sister1, int(networkRadius), st)
+		putChunks(sister2, int(networkRadius), st)
+		putChunks(sister3, int(networkRadius), st)
+
+		time.Sleep(time.Second)
+
+		neighs, err := st.NeighborhoodsStat(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(neighs) != (1 << doublingFactor) {
+			t.Fatalf("number of neighborhoods does not matche. wanted %d, got %d", 1<<doublingFactor, len(neighs))
+		}
+
+		for _, n := range neighs {
+			if n.ChunkCount != chunkCountPerPO {
+				t.Fatalf("chunk count does not match. wanted %d, got %d", chunkCountPerPO, n.ChunkCount)
+			}
+		}
+
+		if !neighs[0].Address.Equal(baseAddr) || !neighs[1].Address.Equal(sister1) || !neighs[2].Address.Equal(sister2) || !neighs[3].Address.Equal(sister3) {
+			t.Fatal("chunk addresses do not match")
+		}
+	}
+
+	t.Run("disk", func(t *testing.T) {
+		t.Parallel()
+		opts := dbTestOps(baseAddr, 10000, nil, nil, time.Minute)
+		opts.ReserveCapacityDoubling = int(doublingFactor)
+		storer, err := diskStorer(t, opts)()
+		if err != nil {
+			t.Fatal(err)
+		}
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(localRadius))
+		testF(t, storer)
+	})
+	t.Run("mem", func(t *testing.T) {
+		t.Parallel()
+		opts := dbTestOps(baseAddr, 10000, nil, nil, time.Minute)
+		opts.ReserveCapacityDoubling = int(doublingFactor)
+		storer, err := diskStorer(t, opts)()
+		if err != nil {
+			t.Fatal(err)
+		}
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(localRadius))
+		testF(t, storer)
+	})
+}
+
 func reserveSizeTest(rs *reserve.Reserve, want int) func(t *testing.T) {
 	return func(t *testing.T) {
 		t.Helper()

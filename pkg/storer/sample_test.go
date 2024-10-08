@@ -58,13 +58,18 @@ func TestReserveSampler(t *testing.T) {
 
 		var sample1 storer.Sample
 
+		var (
+			radius uint8 = 5
+			anchor       = swarm.RandAddressAt(t, baseAddr, int(radius)).Bytes()
+		)
+
 		t.Run("reserve sample 1", func(t *testing.T) {
-			sample, err := st.ReserveSample(context.TODO(), []byte("anchor"), 5, timeVar, nil)
+			sample, err := st.ReserveSample(context.TODO(), anchor, radius, timeVar, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			assertValidSample(t, sample)
+			assertValidSample(t, sample, radius, anchor)
 			assertSampleNoErrors(t, sample)
 
 			if sample.Stats.NewIgnored != 0 {
@@ -92,7 +97,7 @@ func TestReserveSampler(t *testing.T) {
 		// Now we generate another sample with the older timestamp. This should give us
 		// the exact same sample, ensuring that none of the later chunks were considered.
 		t.Run("reserve sample 2", func(t *testing.T) {
-			sample, err := st.ReserveSample(context.TODO(), []byte("anchor"), 5, timeVar, nil)
+			sample, err := st.ReserveSample(context.TODO(), anchor, 5, timeVar, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -136,14 +141,137 @@ func TestReserveSampler(t *testing.T) {
 	})
 }
 
+func TestReserveSamplerSisterNeighborhood(t *testing.T) {
+	t.Parallel()
+
+	const (
+		chunkCountPerPO       = 64
+		maxPO                 = 6
+		networkRadius   uint8 = 5
+		doublingFactor  uint8 = 2
+		localRadius     uint8 = networkRadius - doublingFactor
+	)
+
+	randChunks := func(baseAddr swarm.Address, startingRadius int, timeVar uint64) []swarm.Chunk {
+		var chs []swarm.Chunk
+		for po := startingRadius; po < maxPO; po++ {
+			for i := 0; i < chunkCountPerPO; i++ {
+				ch := chunk.GenerateValidRandomChunkAt(baseAddr, po).WithBatch(3, 2, false)
+				if rand.Intn(2) == 0 { // 50% chance to wrap CAC into SOC
+					ch = chunk.GenerateTestRandomSoChunk(t, ch)
+				}
+
+				// override stamp timestamp to be before the consensus timestamp
+				ch = ch.WithStamp(postagetesting.MustNewStampWithTimestamp(timeVar))
+				chs = append(chs, ch)
+			}
+		}
+		return chs
+	}
+
+	testF := func(t *testing.T, baseAddr swarm.Address, st *storer.DB) {
+		t.Helper()
+
+		count := 0
+		// local neighborhood
+		timeVar := uint64(time.Now().UnixNano())
+		chs := randChunks(baseAddr, int(networkRadius), timeVar)
+		putter := st.ReservePutter()
+		for _, ch := range chs {
+			err := putter.Put(context.Background(), ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		count += len(chs)
+
+		sisterAnchor := swarm.RandAddressAt(t, baseAddr, int(localRadius))
+
+		// chunks belonging to the sister neighborhood
+		chs = randChunks(sisterAnchor, int(networkRadius), timeVar)
+		putter = st.ReservePutter()
+		for _, ch := range chs {
+			err := putter.Put(context.Background(), ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		count += len(chs)
+
+		t.Run("reserve size", reserveSizeTest(st.Reserve(), count))
+
+		t.Run("reserve sample", func(t *testing.T) {
+			sample, err := st.ReserveSample(context.TODO(), sisterAnchor.Bytes(), 0, timeVar, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			assertValidSample(t, sample, doublingFactor, baseAddr.Bytes())
+			assertSampleNoErrors(t, sample)
+
+			if sample.Stats.NewIgnored != 0 {
+				t.Fatalf("sample should not have ignored chunks")
+			}
+		})
+
+		t.Run("reserve sample 2", func(t *testing.T) {
+			sample, err := st.ReserveSample(context.TODO(), sisterAnchor.Bytes(), localRadius, timeVar, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			assertValidSample(t, sample, localRadius, baseAddr.Bytes())
+			assertSampleNoErrors(t, sample)
+
+			for _, s := range sample.Items {
+				if got := swarm.Proximity(s.ChunkAddress.Bytes(), baseAddr.Bytes()); got != localRadius {
+					t.Fatalf("promixity must be exactly %d, got %d", localRadius, got)
+				}
+			}
+
+			if sample.Stats.NewIgnored != 0 {
+				t.Fatalf("sample should not have ignored chunks")
+			}
+		})
+
+	}
+
+	t.Run("disk", func(t *testing.T) {
+		t.Parallel()
+		baseAddr := swarm.RandAddress(t)
+		opts := dbTestOps(baseAddr, 1000, nil, nil, time.Second)
+		opts.ValidStamp = func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil }
+		opts.ReserveCapacityDoubling = 2
+
+		storer, err := diskStorer(t, opts)()
+		if err != nil {
+			t.Fatal(err)
+		}
+		testF(t, baseAddr, storer)
+	})
+	t.Run("mem", func(t *testing.T) {
+		t.Parallel()
+		baseAddr := swarm.RandAddress(t)
+		opts := dbTestOps(baseAddr, 1000, nil, nil, time.Second)
+		opts.ValidStamp = func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil }
+		opts.ReserveCapacityDoubling = 2
+
+		storer, err := memStorer(t, opts)()
+		if err != nil {
+			t.Fatal(err)
+		}
+		testF(t, baseAddr, storer)
+	})
+}
+
 func TestRandSample(t *testing.T) {
 	t.Parallel()
 
 	sample := storer.RandSample(t, nil)
-	assertValidSample(t, sample)
+	assertValidSample(t, sample, 0, nil)
 }
 
-func assertValidSample(t *testing.T, sample storer.Sample) {
+func assertValidSample(t *testing.T, sample storer.Sample, minRadius uint8, anchor []byte) {
 	t.Helper()
 
 	// Assert that sample size is exactly storer.SampleSize
@@ -164,6 +292,9 @@ func assertValidSample(t *testing.T, sample storer.Sample) {
 		}
 		if item.Stamp == nil {
 			t.Fatalf("sample item [%d]: stamp should be set", i)
+		}
+		if got := swarm.Proximity(item.ChunkAddress.Bytes(), anchor); got < minRadius {
+			t.Fatalf("sample item [%d]: chunk should have proximity %d with the anchor, got %d", i, minRadius, got)
 		}
 	}
 	for i, item := range sample.Items {

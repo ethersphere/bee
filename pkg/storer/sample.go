@@ -139,6 +139,13 @@ func (db *DB) ReserveSample(
 
 	allStats.BatchesBelowValueDuration = time.Since(t)
 
+	// If the node has doubled their capacity by some factor, sampling process need to only pertain to the
+	// chunks of the selected neighborhood as determined by the anchor and the "network" radius and NOT the whole reseve.
+	// The regular network storage radius of the network is the sum of the local radius and the doubling factor.
+	// For example, the regular radius is 11, but the local node has a doubling factor of 3, so the local radius will eventually drop to 8.
+	// So the sampling must only consider chunks with proximity 11 to the anchor.
+	neighborhoodProximity := storageRadius + uint8(db.reserveOptions.capacityDoubling)
+
 	// Phase 1: Iterate chunk addresses
 	g.Go(func() error {
 		start := time.Now()
@@ -149,9 +156,12 @@ func (db *DB) ReserveSample(
 			addStats(stats)
 		}()
 
-		err := db.reserve.IterateChunksItems(storageRadius, func(chi *reserve.ChunkBinItem) (bool, error) {
+		err := db.reserve.IterateChunksItems(storageRadius, func(ch *reserve.ChunkBinItem) (bool, error) {
+			if swarm.Proximity(ch.Address.Bytes(), anchor) < neighborhoodProximity {
+				return false, nil
+			}
 			select {
-			case chunkC <- chi:
+			case chunkC <- ch:
 				stats.TotalIterated++
 				return false, nil
 			case <-ctx.Done():
