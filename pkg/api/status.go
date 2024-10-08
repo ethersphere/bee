@@ -6,6 +6,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"sort"
 	"sync"
@@ -34,6 +35,15 @@ type statusSnapshotResponse struct {
 
 type statusResponse struct {
 	Snapshots []statusSnapshotResponse `json:"snapshots"`
+}
+
+type statusNeighborhoodResponse struct {
+	Address    string `json:"address"`
+	ChunkCount int    `json:"chunkCount"`
+}
+
+type neighborhoodsResponse struct {
+	Neighborhoods []statusNeighborhoodResponse `json:"neighborhoods"`
 }
 
 // statusAccessHandler is a middleware that limits the number of simultaneous
@@ -158,4 +168,43 @@ func (s *Service) statusGetPeersHandler(w http.ResponseWriter, r *http.Request) 
 		return snapshots[i].Proximity < snapshots[j].Proximity
 	})
 	jsonhttp.OK(w, statusResponse{Snapshots: snapshots})
+}
+
+// statusGetHandler returns the current node status.
+func (s *Service) statusGetNeighborhoods(w http.ResponseWriter, _ *http.Request) {
+	logger := s.logger.WithName("get_status_neighborhoods").Build()
+
+	if s.beeMode == DevMode {
+		logger.Warning("status neighborhoods endpoint is disabled in dev mode")
+		jsonhttp.BadRequest(w, errUnsupportedDevNodeOperation)
+		return
+	}
+
+	var neighborhoods []statusNeighborhoodResponse
+
+	nhoods, err := s.statusService.NeighborhoodsSnapshot()
+	if err != nil {
+		logger.Debug("unable to get neighborhoods status", "error", err)
+		logger.Error(nil, "unable to get neighborhoods status")
+		jsonhttp.InternalServerError(w, "unable to get neighborhoods status")
+		return
+	}
+
+	if len(nhoods) == 0 {
+		jsonhttp.NotFound(w, "neighborhoods not found")
+		return
+	}
+
+	for _, n := range nhoods {
+		binaryAddr := ""
+		for _, b := range n.Address.Bytes() {
+			binaryAddr += fmt.Sprintf("%08b ", b)
+		}
+		neighborhoods = append(neighborhoods, statusNeighborhoodResponse{
+			Address:    binaryAddr,
+			ChunkCount: n.ChunkCount,
+		})
+	}
+
+	jsonhttp.OK(w, neighborhoodsResponse{Neighborhoods: neighborhoods})
 }

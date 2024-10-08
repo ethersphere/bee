@@ -16,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/status"
 	"github.com/ethersphere/bee/v2/pkg/status/internal/pb"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/google/go-cmp/cmp"
@@ -35,7 +36,7 @@ func TestStatus(t *testing.T) {
 		LastSyncedBlock:  6092500,
 	}
 
-	sssMock := &statusSnapshotMock{want}
+	sssMock := &statusSnapshotMock{want, nil}
 
 	peersIterMock := new(topologyPeersIterNoopMock)
 
@@ -115,7 +116,9 @@ func TestStatusLightNode(t *testing.T) {
 		StorageRadius:   100, // should be ignored
 		BatchCommitment: 1024,
 		LastSyncedBlock: 6092500,
-	}}
+	},
+		nil,
+	}
 
 	peersIterMock := new(topologyPeersIterNoopMock)
 
@@ -191,6 +194,7 @@ func (m *topologyPeersIterNoopMock) IsReachable() bool {
 //   - SyncReporter
 type statusSnapshotMock struct {
 	*pb.Snapshot
+	neighborhoods []*storer.NeighborhoodStat
 }
 
 func (m *statusSnapshotMock) SyncRate() float64           { return m.Snapshot.PullsyncRate }
@@ -202,4 +206,8 @@ func (m *statusSnapshotMock) GetChainState() *postage.ChainState {
 }
 func (m *statusSnapshotMock) ReserveSizeWithinRadius() uint64 {
 	return m.Snapshot.ReserveSizeWithinRadius
+}
+
+func (m *statusSnapshotMock) NeighborhoodsStat(ctx context.Context) ([]*storer.NeighborhoodStat, error) {
+	return m.neighborhoods, nil
 }
