@@ -121,7 +121,7 @@ type statusSnapshotMock struct {
 	storageRadius           uint8
 	commitment              uint64
 	chainState              *postage.ChainState
-	neighborhoods          []*storer.NeighborhoodStat
+	neighborhoods           []*storer.NeighborhoodStat
 }
 
 func (m *statusSnapshotMock) SyncRate() float64                  { return m.syncRate }
