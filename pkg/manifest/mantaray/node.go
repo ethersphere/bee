@@ -313,10 +313,26 @@ func (n *Node) Remove(ctx context.Context, path []byte, ls LoadSaver) error {
 	rest := path[len(f.prefix):]
 	if len(rest) == 0 {
 		// full path matched
+
+		// Make the ref all zeros to indicate that this node needs to re-uploaded
+		n.ref = zero32
+		// Set the refBytesSize to 32 so that unmarshall works properly
+		n.refBytesSize = len(n.ref)
+
+		// remove the fork
 		delete(n.forks, path[0])
 		return nil
 	}
-	return f.Node.Remove(ctx, rest, ls)
+	err := f.Node.Remove(ctx, rest, ls)
+	if err != nil {
+		return err
+	}
+	// Make the ref all zeros to indicate that this node needs to re-uploaded
+	n.ref = zero32
+	// Set the refBytesSize to 32 so that unmarshall works properly
+	n.refBytesSize = len(n.ref)
+
+	return nil
 }
 
 func common(a, b []byte) (c []byte) {
