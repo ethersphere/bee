@@ -502,7 +502,6 @@ func (r *Reserve) IterateChunksItems(startBin uint8, cb func(*ChunkBinItem) (boo
 		PrefixAtStart: true,
 	}, func(res storage.Result) (bool, error) {
 		item := res.Entry.(*ChunkBinItem)
-
 		stop, err := cb(item)
 		if stop || err != nil {
 			return true, err
