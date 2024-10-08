@@ -135,7 +135,7 @@ func (s *Service) LocalSnapshot() (*Snapshot, error) {
 
 func (s *Service) NeighborhoodsSnapshot() ([]*storer.NeighborhoodStat, error) {
 	var err error
-	var neighborhoods []*storer.NeighborhoodStat
+	neighborhoods := make([]*storer.NeighborhoodStat, 0)
 
 	if s.reserve != nil {
 		neighborhoods, err = s.reserve.NeighborhoodsStat(context.Background())

@@ -180,7 +180,7 @@ func (s *Service) statusGetNeighborhoods(w http.ResponseWriter, _ *http.Request)
 		return
 	}
 
-	var neighborhoods []statusNeighborhoodResponse
+	neighborhoods := make([]statusNeighborhoodResponse, 0)
 
 	nhoods, err := s.statusService.NeighborhoodsSnapshot()
 	if err != nil {
