@@ -193,11 +193,6 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, boost
 		return common.Hash{}, err
 	}
 
-	err = t.putNonce(nonce + 1)
-	if err != nil {
-		return common.Hash{}, err
-	}
-
 	txHash = signedTx.Hash()
 
 	err = t.store.Put(storedTransactionKey(txHash), StoredTransaction{
@@ -353,10 +348,6 @@ func (t *transactionService) suggestedFeeAndTip(ctx context.Context, gasPrice *b
 
 }
 
-func (t *transactionService) nonceKey() string {
-	return fmt.Sprintf("%s%x", noncePrefix, t.sender)
-}
-
 func storedTransactionKey(txHash common.Hash) string {
 	return fmt.Sprintf("%s%x", storedTransactionPrefix, txHash)
 }
@@ -371,26 +362,28 @@ func (t *transactionService) nextNonce(ctx context.Context) (uint64, error) {
 		return 0, err
 	}
 
-	var nonce uint64
-	err = t.store.Get(t.nonceKey(), &nonce)
+	pendingTxs, err := t.PendingTransactions()
 	if err != nil {
-		// If no nonce was found locally used whatever we get from the backend.
-		if errors.Is(err, storage.ErrNotFound) {
-			return onchainNonce, nil
-		}
 		return 0, err
 	}
 
-	// If the nonce onchain is larger than what we have there were external
-	// transactions and we need to update our nonce.
-	if onchainNonce > nonce {
-		return onchainNonce, nil
-	}
-	return nonce, nil
-}
+	pendingTxs = t.filterPendingTransactions(t.ctx, pendingTxs)
 
-func (t *transactionService) putNonce(nonce uint64) error {
-	return t.store.Put(t.nonceKey(), nonce)
+	// PendingNonceAt returns the nonce we should use, but we will
+	// compare this to our pending tx list, therefore the -1.
+	var maxNonce uint64 = onchainNonce - 1
+	for _, txHash := range pendingTxs {
+		trx, _, err := t.backend.TransactionByHash(ctx, txHash)
+
+		if err != nil {
+			t.logger.Error(err, "pending transaction not found", "tx", txHash)
+			return 0, err
+		}
+
+		maxNonce = max(maxNonce, trx.Nonce())
+	}
+
+	return maxNonce + 1, nil
 }
 
 // WaitForReceipt waits until either the transaction with the given hash has
