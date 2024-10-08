@@ -30,10 +30,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 )
 
-func nonceKey(sender common.Address) string {
-	return fmt.Sprintf("transaction_nonce_%x", sender)
-}
-
 func signerMockForTransaction(t *testing.T, signedTx *types.Transaction, sender common.Address, signerChainID *big.Int) crypto.Signer {
 	t.Helper()
 	return signermock.New(
@@ -64,10 +60,6 @@ func signerMockForTransaction(t *testing.T, signedTx *types.Transaction, sender 
 			}
 			if transaction.GasPrice().Cmp(signedTx.GasPrice()) != 0 {
 				t.Fatalf("signing transaction with wrong gasprice. wanted %d, got %d", signedTx.GasPrice(), transaction.GasPrice())
-			}
-
-			if transaction.Nonce() != signedTx.Nonce() {
-				t.Fatalf("signing transaction with wrong nonce. wanted %d, got %d", signedTx.Nonce(), transaction.Nonce())
 			}
 
 			return signedTx, nil
@@ -112,10 +104,6 @@ func TestTransactionSend(t *testing.T) {
 			Value: value,
 		}
 		store := storemock.NewStateStore()
-		err := store.Put(nonceKey(sender), nonce)
-		if err != nil {
-			t.Fatal(err)
-		}
 
 		transactionService, err := transaction.NewService(logger, sender,
 			backendmock.New(
@@ -165,15 +153,6 @@ func TestTransactionSend(t *testing.T) {
 
 		if !bytes.Equal(txHash.Bytes(), signedTx.Hash().Bytes()) {
 			t.Fatal("returning wrong transaction hash")
-		}
-
-		var storedNonce uint64
-		err = store.Get(nonceKey(sender), &storedNonce)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if storedNonce != nonce+1 {
-			t.Fatalf("nonce not stored correctly: want %d, got %d", nonce+1, storedNonce)
 		}
 
 		storedTransaction, err := transactionService.StoredTransaction(txHash)
@@ -238,10 +217,6 @@ func TestTransactionSend(t *testing.T) {
 			MinEstimatedGasLimit: estimatedGasLimit,
 		}
 		store := storemock.NewStateStore()
-		err := store.Put(nonceKey(sender), nonce)
-		if err != nil {
-			t.Fatal(err)
-		}
 
 		transactionService, err := transaction.NewService(logger, sender,
 			backendmock.New(
@@ -285,15 +260,6 @@ func TestTransactionSend(t *testing.T) {
 
 		if !bytes.Equal(txHash.Bytes(), signedTx.Hash().Bytes()) {
 			t.Fatal("returning wrong transaction hash")
-		}
-
-		var storedNonce uint64
-		err = store.Get(nonceKey(sender), &storedNonce)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if storedNonce != nonce+1 {
-			t.Fatalf("nonce not stored correctly: want %d, got %d", nonce+1, storedNonce)
 		}
 
 		storedTransaction, err := transactionService.StoredTransaction(txHash)
@@ -363,10 +329,6 @@ func TestTransactionSend(t *testing.T) {
 			Value: value,
 		}
 		store := storemock.NewStateStore()
-		err := store.Put(nonceKey(sender), nonce)
-		if err != nil {
-			t.Fatal(err)
-		}
 
 		transactionService, err := transaction.NewService(logger, sender,
 			backendmock.New(
@@ -416,15 +378,6 @@ func TestTransactionSend(t *testing.T) {
 
 		if !bytes.Equal(txHash.Bytes(), signedTx.Hash().Bytes()) {
 			t.Fatal("returning wrong transaction hash")
-		}
-
-		var storedNonce uint64
-		err = store.Get(nonceKey(sender), &storedNonce)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if storedNonce != nonce+1 {
-			t.Fatalf("nonce not stored correctly: want %d, got %d", nonce+1, storedNonce)
 		}
 
 		storedTransaction, err := transactionService.StoredTransaction(txHash)
@@ -534,15 +487,6 @@ func TestTransactionSend(t *testing.T) {
 		if !bytes.Equal(txHash.Bytes(), signedTx.Hash().Bytes()) {
 			t.Fatal("returning wrong transaction hash")
 		}
-
-		var storedNonce uint64
-		err = store.Get(nonceKey(sender), &storedNonce)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if storedNonce != nonce+1 {
-			t.Fatalf("did not store nonce correctly. wanted %d, got %d", nonce+1, storedNonce)
-		}
 	})
 
 	t.Run("send_skipped_nonce", func(t *testing.T) {
@@ -565,10 +509,6 @@ func TestTransactionSend(t *testing.T) {
 			Value: value,
 		}
 		store := storemock.NewStateStore()
-		err := store.Put(nonceKey(sender), nonce)
-		if err != nil {
-			t.Fatal(err)
-		}
 
 		transactionService, err := transaction.NewService(logger, sender,
 			backendmock.New(
@@ -613,15 +553,6 @@ func TestTransactionSend(t *testing.T) {
 
 		if !bytes.Equal(txHash.Bytes(), signedTx.Hash().Bytes()) {
 			t.Fatal("returning wrong transaction hash")
-		}
-
-		var storedNonce uint64
-		err = store.Get(nonceKey(sender), &storedNonce)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if storedNonce != nextNonce+1 {
-			t.Fatalf("did not store nonce correctly. wanted %d, got %d", nextNonce+1, storedNonce)
 		}
 	})
 }
