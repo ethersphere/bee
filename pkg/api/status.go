@@ -6,7 +6,6 @@ package api
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"sort"
 	"sync"
@@ -38,8 +37,9 @@ type statusResponse struct {
 }
 
 type statusNeighborhoodResponse struct {
-	Address                 string `json:"address"`
+	Neighborhood            string `json:"neighborhood"`
 	ReserveSizeWithinRadius int    `json:"reserveSizeWithinRadius"`
+	Proximity               uint8  `json:"proximity"`
 }
 
 type neighborhoodsResponse struct {
@@ -171,7 +171,7 @@ func (s *Service) statusGetPeersHandler(w http.ResponseWriter, r *http.Request) 
 }
 
 // statusGetHandler returns the current node status.
-func (s *Service) statusGetNeighborhoods(w http.ResponseWriter, _ *http.Request) {
+func (s *Service) statusGetNeighborhoods(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_status_neighborhoods").Build()
 
 	if s.beeMode == DevMode {
@@ -182,7 +182,7 @@ func (s *Service) statusGetNeighborhoods(w http.ResponseWriter, _ *http.Request)
 
 	neighborhoods := make([]statusNeighborhoodResponse, 0)
 
-	nhoods, err := s.statusService.NeighborhoodsSnapshot()
+	nhoods, err := s.storer.NeighborhoodsStat(r.Context())
 	if err != nil {
 		logger.Debug("unable to get neighborhoods status", "error", err)
 		logger.Error(nil, "unable to get neighborhoods status")
@@ -190,19 +190,11 @@ func (s *Service) statusGetNeighborhoods(w http.ResponseWriter, _ *http.Request)
 		return
 	}
 
-	if len(nhoods) == 0 {
-		jsonhttp.NotFound(w, "neighborhoods not found")
-		return
-	}
-
 	for _, n := range nhoods {
-		binaryAddr := ""
-		for _, b := range n.Address.Bytes() {
-			binaryAddr += fmt.Sprintf("%08b ", b)
-		}
 		neighborhoods = append(neighborhoods, statusNeighborhoodResponse{
-			Address:                 binaryAddr,
+			Neighborhood:            n.Neighborhood.String(),
 			ReserveSizeWithinRadius: n.ReserveSizeWithinRadius,
+			Proximity:               swarm.Proximity(s.overlay.Bytes(), n.Neighborhood.Bytes()),
 		})
 	}
 

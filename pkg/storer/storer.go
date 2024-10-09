@@ -177,6 +177,10 @@ type Debugger interface {
 	DebugInfo(context.Context) (Info, error)
 }
 
+type NeighborhoodStats interface {
+	NeighborhoodsStat(ctx context.Context) ([]*NeighborhoodStat, error)
+}
+
 type memFS struct {
 	afero.Fs
 }

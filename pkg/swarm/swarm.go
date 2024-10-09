@@ -327,3 +327,56 @@ func bytesToAddr(b []byte) Address {
 	copy(addr, b)
 	return NewAddress(addr)
 }
+
+type Neighborhood struct {
+	b []byte
+	r uint8
+}
+
+func NewNeighborhood(a Address, bits uint8) Neighborhood {
+	return Neighborhood{b: a.b, r: bits}
+}
+
+// String returns a bit string of the Neighborhood.
+func (n Neighborhood) String() string {
+	return bitStr(n.b, n.r)
+}
+
+// Equal returns true if two neighborhoods are identical.
+func (n Neighborhood) Equal(b Neighborhood) bool {
+	return bytes.Equal(n.b, b.b)
+}
+
+// Bytes returns bytes representation of the Neighborhood.
+func (n Neighborhood) Bytes() []byte {
+	return n.b
+}
+
+// Bytes returns bytes representation of the Neighborhood.
+func (n Neighborhood) Clone() Neighborhood {
+	if n.b == nil {
+		return Neighborhood{}
+	}
+	return Neighborhood{b: append(make([]byte, 0, len(n.b)), n.Bytes()...), r: n.r}
+}
+
+func bitStr(src []byte, bits uint8) string {
+
+	ret := ""
+
+	for _, b := range src {
+		for i := 7; i >= 0; i-- {
+			if b&(1<<i) > 0 {
+				ret += "1"
+			} else {
+				ret += "0"
+			}
+			bits--
+			if bits == 0 {
+				return ret
+			}
+		}
+	}
+
+	return ret
+}

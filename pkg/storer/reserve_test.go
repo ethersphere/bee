@@ -728,7 +728,10 @@ func TestNeighborhoodStats(t *testing.T) {
 			}
 		}
 
-		if !neighs[0].Address.Equal(baseAddr) || !neighs[1].Address.Equal(sister1) || !neighs[2].Address.Equal(sister2) || !neighs[3].Address.Equal(sister3) {
+		if !neighs[0].Neighborhood.Equal(swarm.NewNeighborhood(baseAddr, networkRadius)) ||
+			!neighs[1].Neighborhood.Equal(swarm.NewNeighborhood(sister1, networkRadius)) ||
+			!neighs[2].Neighborhood.Equal(swarm.NewNeighborhood(sister2, networkRadius)) ||
+			!neighs[3].Neighborhood.Equal(swarm.NewNeighborhood(sister3, networkRadius)) {
 			t.Fatal("chunk addresses do not match")
 		}
 	}
