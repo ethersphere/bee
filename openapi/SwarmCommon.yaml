@@ -938,7 +938,7 @@ components:
       properties:
         address:
           type: string
-        chunkCount:
+        reserveSizeWithinRadius:
           type: integer
 
     StatusNeighborhoodsResponse:

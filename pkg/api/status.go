@@ -38,8 +38,8 @@ type statusResponse struct {
 }
 
 type statusNeighborhoodResponse struct {
-	Address    string `json:"address"`
-	ChunkCount int    `json:"chunkCount"`
+	Address                 string `json:"address"`
+	ReserveSizeWithinRadius int    `json:"reserveSizeWithinRadius"`
 }
 
 type neighborhoodsResponse struct {
@@ -201,8 +201,8 @@ func (s *Service) statusGetNeighborhoods(w http.ResponseWriter, _ *http.Request)
 			binaryAddr += fmt.Sprintf("%08b ", b)
 		}
 		neighborhoods = append(neighborhoods, statusNeighborhoodResponse{
-			Address:    binaryAddr,
-			ChunkCount: n.ChunkCount,
+			Address:                 binaryAddr,
+			ReserveSizeWithinRadius: n.ReserveSizeWithinRadius,
 		})
 	}
 

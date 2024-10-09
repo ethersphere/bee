@@ -498,8 +498,8 @@ func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan
 }
 
 type NeighborhoodStat struct {
-	Address    swarm.Address
-	ChunkCount int
+	Address                 swarm.Address
+	ReserveSizeWithinRadius int
 }
 
 func (db *DB) NeighborhoodsStat(ctx context.Context) ([]*NeighborhoodStat, error) {
@@ -517,7 +517,7 @@ func (db *DB) NeighborhoodsStat(ctx context.Context) ([]*NeighborhoodStat, error
 	err := db.reserve.IterateChunksItems(0, func(ch *reserve.ChunkBinItem) (bool, error) {
 		for _, n := range neighs {
 			if swarm.Proximity(ch.Address.Bytes(), n.Address.Bytes()) >= networkRadius {
-				n.ChunkCount++
+				n.ReserveSizeWithinRadius++
 				break
 			}
 		}

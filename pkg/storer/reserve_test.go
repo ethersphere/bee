@@ -723,8 +723,8 @@ func TestNeighborhoodStats(t *testing.T) {
 		}
 
 		for _, n := range neighs {
-			if n.ChunkCount != chunkCountPerPO {
-				t.Fatalf("chunk count does not match. wanted %d, got %d", chunkCountPerPO, n.ChunkCount)
+			if n.ReserveSizeWithinRadius != chunkCountPerPO {
+				t.Fatalf("chunk count does not match. wanted %d, got %d", chunkCountPerPO, n.ReserveSizeWithinRadius)
 			}
 		}
 
@@ -735,7 +735,7 @@ func TestNeighborhoodStats(t *testing.T) {
 
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
-		opts := dbTestOps(baseAddr, 10000, nil, nil, time.Minute)
+		opts := dbTestOps(baseAddr, 100000, nil, nil, time.Minute)
 		opts.ReserveCapacityDoubling = int(doublingFactor)
 		storer, err := diskStorer(t, opts)()
 		if err != nil {
@@ -746,7 +746,7 @@ func TestNeighborhoodStats(t *testing.T) {
 	})
 	t.Run("mem", func(t *testing.T) {
 		t.Parallel()
-		opts := dbTestOps(baseAddr, 10000, nil, nil, time.Minute)
+		opts := dbTestOps(baseAddr, 100000, nil, nil, time.Minute)
 		opts.ReserveCapacityDoubling = int(doublingFactor)
 		storer, err := memStorer(t, opts)()
 		if err != nil {
