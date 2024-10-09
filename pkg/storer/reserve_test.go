@@ -748,7 +748,7 @@ func TestNeighborhoodStats(t *testing.T) {
 		t.Parallel()
 		opts := dbTestOps(baseAddr, 10000, nil, nil, time.Minute)
 		opts.ReserveCapacityDoubling = int(doublingFactor)
-		storer, err := diskStorer(t, opts)()
+		storer, err := memStorer(t, opts)()
 		if err != nil {
 			t.Fatal(err)
 		}
