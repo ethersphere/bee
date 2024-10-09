@@ -947,7 +947,7 @@ components:
       type: string
       description: Swarm address of a neighborhood in string binary format showing, usually limited to as many bits as the current storage radius.
       example: "011010111"
-    
+              
     StatusNeighborhoodsResponse:
       type: object
       properties:
