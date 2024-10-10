@@ -1032,15 +1032,16 @@ func NewBee(
 				logger.Warning("staked amount does not sufficiently cover the additional reserve capacity. Stake should be at least 2^h * 10 BZZ, where h is the number of doublings.")
 			}
 
-			tx, changed, err := stakingContract.ChangeHeight(ctx, uint8(o.ReserveCapacityDoubling))
-			if err != nil {
-				return nil, err
-			}
-			if changed {
-				logger.Info("changed new reserve capacity doubling height in the staking contract", "transaction", tx, "new_height", o.ReserveCapacityDoubling)
+			if stake.Cmp(big.NewInt(0)) > 0 {
+				tx, changed, err := stakingContract.ChangeHeight(ctx, uint8(o.ReserveCapacityDoubling))
+				if err != nil {
+					return nil, err
+				}
+				if changed {
+					logger.Info("changed new reserve capacity doubling height in the staking contract", "transaction", tx, "new_height", o.ReserveCapacityDoubling)
+				}
 			}
 		}
-
 	}
 
 	var (
