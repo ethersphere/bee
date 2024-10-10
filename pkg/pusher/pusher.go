@@ -18,7 +18,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/pushsync"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
@@ -261,6 +261,9 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 		err = s.storer.ReservePutter().Put(ctx, op.Chunk)
 		if err != nil {
 			loggerV1.Error(err, "pusher: failed to store chunk")
+			if errors.Is(err, storage.ErrNotConfigured) {
+				return false, err
+			}
 			return true, err
 		}
 		err = s.storer.Report(ctx, op.Chunk, storage.ChunkStored)

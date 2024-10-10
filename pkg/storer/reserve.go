@@ -297,6 +297,9 @@ func (db *DB) ReservePutter() storage.Putter {
 	return putterWithMetrics{
 		storage.PutterFunc(
 			func(ctx context.Context, chunk swarm.Chunk) error {
+				if db.reserve == nil {
+					return fmt.Errorf("reserve put: reserve is not configured: %w", storage.ErrNotConfigured)
+				}
 				err := db.reserve.Put(ctx, chunk)
 				if err != nil {
 					db.logger.Debug("reserve put error", "error", err)

@@ -77,6 +77,7 @@ var (
 	ErrNotFound        = errors.New("storage: not found")
 	ErrReferenceLength = errors.New("storage: invalid reference length")
 	ErrInvalidChunk    = errors.New("storage: invalid chunk")
+	ErrNotConfigured   = errors.New("storage: not configured")
 )
 
 // Query denotes the iteration attributes.
