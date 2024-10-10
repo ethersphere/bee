@@ -1004,19 +1004,43 @@ func NewBee(
 
 	stakingContract := staking.New(overlayEthAddress, stakingContractAddress, abiutil.MustParseABI(chainCfg.StakingABI), bzzTokenAddress, transactionService, common.BytesToHash(nonce), o.TrxDebugMode, uint8(o.ReserveCapacityDoubling))
 
-	if chainEnabled && changedOverlay {
-		stake, err := stakingContract.GetPotentialStake(ctx)
-		if err != nil {
-			return nil, errors.New("getting stake balance")
-		}
-		if stake.Cmp(big.NewInt(0)) > 0 {
-			logger.Debug("changing overlay address in staking contract")
-			tx, err := stakingContract.ChangeStakeOverlay(ctx, common.BytesToHash(nonce))
+	if chainEnabled {
+
+		if changedOverlay {
+			stake, err := stakingContract.GetPotentialStake(ctx)
 			if err != nil {
-				return nil, fmt.Errorf("cannot change staking overlay address: %v", err.Error())
+				return nil, err
 			}
-			logger.Info("overlay address changed in staking contract", "transaction", tx)
+			if stake.Cmp(big.NewInt(0)) > 0 {
+				logger.Debug("changing overlay address in staking contract")
+				tx, err := stakingContract.ChangeStakeOverlay(ctx, common.BytesToHash(nonce))
+				if err != nil {
+					return nil, fmt.Errorf("cannot change staking overlay address: %v", err.Error())
+				}
+				logger.Info("overlay address changed in staking contract", "transaction", tx)
+			}
 		}
+
+		if o.ReserveCapacityDoubling > 0 {
+			stake, err := stakingContract.GetPotentialStake(ctx)
+			if err != nil {
+				return nil, err
+			}
+			// Check if the staked amount is sufficient to cover the additional neighborhoods.
+			// The staked amount must be at least 2^h * MinimumStake.
+			if stake.Cmp(big.NewInt(0).Mul(big.NewInt(1<<o.ReserveCapacityDoubling), staking.MinimumStakeAmount)) < 0 {
+				logger.Warning("staked amount does not sufficiently cover the additional reserve capacity. Stake should be at least 2^h * 10 BZZ, where h is the number of doublings.")
+			}
+
+			tx, changed, err := stakingContract.ChangeHeight(ctx, uint8(o.ReserveCapacityDoubling))
+			if err != nil {
+				return nil, err
+			}
+			if changed {
+				logger.Info("changed new reserve capacity doubling height in the staking contract", "transaction", tx, "new_height", o.ReserveCapacityDoubling)
+			}
+		}
+
 	}
 
 	var (
