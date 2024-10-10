@@ -933,6 +933,30 @@ components:
           items:
             $ref: "#/components/schemas/StatusSnapshotResponse"
 
+    StatusNeighborhoodResponse:
+      type: object
+      properties:
+        neighborhood:
+          $ref: "#/components/schemas/Neighborhood"
+        reserveSizeWithinRadius:
+          type: integer
+        proximity:
+          type: integer
+
+    Neighborhood:
+      type: string
+      description: Swarm address of a neighborhood in string binary format, usually limited to as many bits as the current storage radius.
+      example: "011010111"
+
+    StatusNeighborhoodsResponse:
+      type: object
+      properties:
+        stamps:
+          type: array
+          nullable: false
+          items:
+            $ref: "#/components/schemas/StatusNeighborhoodResponse"
+
     ApiChunkInclusionProof:
       type: object
       properties:

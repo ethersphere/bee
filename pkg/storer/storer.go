@@ -177,6 +177,10 @@ type Debugger interface {
 	DebugInfo(context.Context) (Info, error)
 }
 
+type NeighborhoodStats interface {
+	NeighborhoodsStat(ctx context.Context) ([]*NeighborhoodStat, error)
+}
+
 type memFS struct {
 	afero.Fs
 }
@@ -279,7 +283,7 @@ func initDiskRepository(
 		return nil, nil, nil, fmt.Errorf("failed creating levelDB index store: %w", err)
 	}
 
-	err = migration.Migrate(store, "core-migration", localmigration.BeforeInitSteps(store))
+	err = migration.Migrate(store, "core-migration", localmigration.BeforeInitSteps(store, opts.Logger))
 	if err != nil {
 		return nil, nil, nil, errors.Join(store.Close(), fmt.Errorf("failed core migration: %w", err))
 	}

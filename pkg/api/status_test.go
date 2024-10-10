@@ -5,6 +5,7 @@
 package api_test
 
 import (
+	"context"
 	"net/http"
 	"testing"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/status"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 )
 
@@ -119,6 +121,7 @@ type statusSnapshotMock struct {
 	storageRadius           uint8
 	commitment              uint64
 	chainState              *postage.ChainState
+	neighborhoods           []*storer.NeighborhoodStat
 }
 
 func (m *statusSnapshotMock) SyncRate() float64                  { return m.syncRate }
@@ -128,4 +131,7 @@ func (m *statusSnapshotMock) Commitment() (uint64, error)        { return m.comm
 func (m *statusSnapshotMock) GetChainState() *postage.ChainState { return m.chainState }
 func (m *statusSnapshotMock) ReserveSizeWithinRadius() uint64 {
 	return m.reserveSizeWithinRadius
+}
+func (m *statusSnapshotMock) NeighborhoodsStat(ctx context.Context) ([]*storer.NeighborhoodStat, error) {
+	return m.neighborhoods, nil
 }

@@ -634,6 +634,14 @@ func (s *Service) mountBusinessDebug() {
 		),
 	})
 
+	handle("/status/neighborhoods", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			httpaccess.NewHTTPAccessSuppressLogHandler(),
+			s.statusAccessHandler,
+			web.FinalHandlerFunc(s.statusGetNeighborhoods),
+		),
+	})
+
 	handle("/rchash/{depth}/{anchor1}/{anchor2}", web.ChainHandlers(
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.rchash),
