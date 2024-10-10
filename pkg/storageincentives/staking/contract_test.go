@@ -25,6 +25,8 @@ import (
 
 var stakingContractABI = abiutil.MustParseABI(chaincfg.Testnet.StakingABI)
 
+const stakingHeight = uint8(0)
+
 func TestIsOverlayFrozen(t *testing.T) {
 	t.Parallel()
 
@@ -55,6 +57,7 @@ func TestIsOverlayFrozen(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		frozen, err := contract.IsOverlayFrozen(ctx, uint64(height-1))
@@ -95,7 +98,7 @@ func TestDepositStake(t *testing.T) {
 
 		totalAmount := big.NewInt(100000000000000000)
 		prevStake := big.NewInt(0)
-		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, stakedAmount)
+		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, stakedAmount, stakingHeight)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -143,6 +146,7 @@ func TestDepositStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.DepositStake(ctx, stakedAmount)
@@ -156,7 +160,7 @@ func TestDepositStake(t *testing.T) {
 
 		totalAmount := big.NewInt(100000000000000000)
 		prevStake := big.NewInt(2)
-		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, big.NewInt(100000000000000000))
+		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, big.NewInt(100000000000000000), stakingHeight)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -204,6 +208,7 @@ func TestDepositStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.DepositStake(ctx, stakedAmount)
@@ -243,6 +248,7 @@ func TestDepositStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err := contract.DepositStake(ctx, big.NewInt(0))
@@ -275,6 +281,7 @@ func TestDepositStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err := contract.DepositStake(ctx, big.NewInt(100000000000000000))
@@ -307,6 +314,7 @@ func TestDepositStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err := contract.DepositStake(ctx, big.NewInt(100000000000000000))
@@ -345,6 +353,7 @@ func TestDepositStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err := contract.DepositStake(ctx, stakedAmount)
@@ -394,6 +403,7 @@ func TestDepositStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.DepositStake(ctx, stakedAmount)
@@ -456,6 +466,7 @@ func TestDepositStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.DepositStake(ctx, stakedAmount)
@@ -516,6 +527,7 @@ func TestDepositStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.DepositStake(ctx, stakedAmount)
@@ -542,6 +554,7 @@ func TestDepositStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err := contract.DepositStake(ctx, stakedAmount)
@@ -566,7 +579,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		t.Parallel()
 
-		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, stakedAmount)
+		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, stakedAmount, stakingHeight)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -597,6 +610,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.ChangeStakeOverlay(ctx, nonce)
@@ -623,6 +637,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err := contract.ChangeStakeOverlay(ctx, nonce)
@@ -634,7 +649,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 	t.Run("invalid call data", func(t *testing.T) {
 		t.Parallel()
 
-		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, stakedAmount)
+		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, stakedAmount, stakingHeight)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -657,6 +672,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		newNonce := make([]byte, 32)
@@ -671,7 +687,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 	t.Run("transaction reverted", func(t *testing.T) {
 		t.Parallel()
 
-		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, stakedAmount)
+		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, stakedAmount, stakingHeight)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -702,6 +718,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.ChangeStakeOverlay(ctx, nonce)
@@ -713,7 +730,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 	t.Run("transaction error", func(t *testing.T) {
 		t.Parallel()
 
-		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, stakedAmount)
+		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, stakedAmount, stakingHeight)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -742,6 +759,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.ChangeStakeOverlay(ctx, nonce)
@@ -788,6 +806,7 @@ func TestGetCommittedStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		stakedAmount, err := contract.GetPotentialStake(ctx)
@@ -825,6 +844,7 @@ func TestGetCommittedStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.GetPotentialStake(ctx)
@@ -862,6 +882,7 @@ func TestGetCommittedStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.GetPotentialStake(ctx)
@@ -885,6 +906,7 @@ func TestGetCommittedStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err := contract.GetPotentialStake(ctx)
@@ -931,6 +953,7 @@ func TestGetWithdrawableStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		withdrawableStake, err := contract.GetWithdrawableStake(ctx)
@@ -968,6 +991,7 @@ func TestGetWithdrawableStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.GetPotentialStake(ctx)
@@ -991,6 +1015,7 @@ func TestGetWithdrawableStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err := contract.GetPotentialStake(ctx)
@@ -1057,6 +1082,7 @@ func TestWithdrawStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.WithdrawStake(ctx)
@@ -1092,6 +1118,7 @@ func TestWithdrawStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.WithdrawStake(ctx)
@@ -1149,6 +1176,7 @@ func TestWithdrawStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.WithdrawStake(ctx)
@@ -1204,6 +1232,7 @@ func TestWithdrawStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.WithdrawStake(ctx)
@@ -1237,6 +1266,7 @@ func TestWithdrawStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.WithdrawStake(ctx)
@@ -1312,6 +1342,7 @@ func TestMigrateStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.MigrateStake(ctx)
@@ -1346,6 +1377,7 @@ func TestMigrateStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.MigrateStake(ctx)
@@ -1426,6 +1458,7 @@ func TestMigrateStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.MigrateStake(ctx)
@@ -1490,6 +1523,7 @@ func TestMigrateStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.MigrateStake(ctx)
@@ -1524,6 +1558,7 @@ func TestMigrateStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.WithdrawStake(ctx)
@@ -1566,6 +1601,7 @@ func TestMigrateStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.MigrateStake(ctx)
