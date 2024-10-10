@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/sharky"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstore"
@@ -36,7 +37,7 @@ func Test_RefCntSize(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	assert.NoError(t, stepFn(store)())
+	assert.NoError(t, stepFn(store, log.Noop)())
 
 	// check if all entries are migrated.
 	for _, entry := range oldItems {

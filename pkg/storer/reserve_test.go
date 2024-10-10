@@ -670,9 +670,9 @@ func TestNeighborhoodStats(t *testing.T) {
 	t.Parallel()
 
 	const (
-		chunkCountPerPO       = 32
-		maxPO                 = 6
-		networkRadius   uint8 = 5
+		chunkCountPerPO       = 16
+		maxPO                 = 5
+		networkRadius   uint8 = 4
 		doublingFactor  uint8 = 2
 		localRadius     uint8 = networkRadius - doublingFactor
 	)
@@ -686,10 +686,10 @@ func TestNeighborhoodStats(t *testing.T) {
 	}
 
 	var (
-		baseAddr = mustParse("100000")
-		sister1  = mustParse("100010")
-		sister2  = mustParse("100100")
-		sister3  = mustParse("100110")
+		baseAddr = mustParse("10000")
+		sister1  = mustParse("10010")
+		sister2  = mustParse("10100")
+		sister3  = mustParse("10110")
 	)
 
 	putChunks := func(addr swarm.Address, startingRadius int, st *storer.DB) {
@@ -711,8 +711,6 @@ func TestNeighborhoodStats(t *testing.T) {
 		putChunks(sister2, int(networkRadius), st)
 		putChunks(sister3, int(networkRadius), st)
 
-		time.Sleep(time.Second)
-
 		neighs, err := st.NeighborhoodsStat(context.Background())
 		if err != nil {
 			t.Fatal(err)
@@ -724,7 +722,7 @@ func TestNeighborhoodStats(t *testing.T) {
 
 		for _, n := range neighs {
 			if n.ReserveSizeWithinRadius != chunkCountPerPO {
-				t.Fatalf("chunk count does not match. wanted %d, got %d", chunkCountPerPO, n.ReserveSizeWithinRadius)
+				t.Fatalf("chunk count does not match. wanted %d, got %d, prox %d", chunkCountPerPO, n.ReserveSizeWithinRadius, swarm.Proximity(baseAddr.Bytes(), n.Neighborhood.Bytes()))
 			}
 		}
 
@@ -738,24 +736,26 @@ func TestNeighborhoodStats(t *testing.T) {
 
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
-		opts := dbTestOps(baseAddr, 100000, nil, nil, time.Minute)
+		opts := dbTestOps(baseAddr, 1000, nil, nil, time.Minute)
 		opts.ReserveCapacityDoubling = int(doublingFactor)
 		storer, err := diskStorer(t, opts)()
 		if err != nil {
 			t.Fatal(err)
 		}
 		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(localRadius))
+		spinlock.Wait(time.Minute, func() bool { return storer.StorageRadius() == localRadius })
 		testF(t, storer)
 	})
 	t.Run("mem", func(t *testing.T) {
 		t.Parallel()
-		opts := dbTestOps(baseAddr, 100000, nil, nil, time.Minute)
+		opts := dbTestOps(baseAddr, 1000, nil, nil, time.Minute)
 		opts.ReserveCapacityDoubling = int(doublingFactor)
 		storer, err := memStorer(t, opts)()
 		if err != nil {
 			t.Fatal(err)
 		}
 		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(localRadius))
+		spinlock.Wait(time.Minute, func() bool { return storer.StorageRadius() == localRadius })
 		testF(t, storer)
 	})
 }
