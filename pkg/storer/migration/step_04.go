@@ -6,7 +6,6 @@ package migration
 
 import (
 	"context"
-	"os"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/sharky"
@@ -21,13 +20,14 @@ func step_04(
 	sharkyBasePath string,
 	sharkyNoOfShards int,
 	st transaction.Storage,
+	logger log.Logger,
 ) func() error {
 	return func() error {
 		// for in-mem store, skip this step
 		if sharkyBasePath == "" {
 			return nil
 		}
-		logger := log.NewLogger("migration-step-04", log.WithSink(os.Stdout))
+		logger := logger.WithName("migration-step-04").Register()
 
 		logger.Info("starting sharky recovery")
 		sharkyRecover, err := sharky.NewRecovery(sharkyBasePath, sharkyNoOfShards, swarm.SocMaxChunkSize)

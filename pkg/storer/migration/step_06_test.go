@@ -8,6 +8,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/sharky"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/leveldbstore"
@@ -98,7 +99,7 @@ func Test_Step_06(t *testing.T) {
 	}
 
 	require.NoError(t, err)
-	err = localmigration.Step_06(store)()
+	err = localmigration.Step_06(store, log.Noop)()
 	require.NoError(t, err)
 
 	has, err := store.IndexStore().Has(&reserve.EpochItem{})

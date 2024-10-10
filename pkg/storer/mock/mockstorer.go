@@ -225,3 +225,7 @@ func (m *mockStorer) IsWithinStorageRadius(_ swarm.Address) bool { return true }
 func (m *mockStorer) DebugInfo(_ context.Context) (storer.Info, error) {
 	return m.debugInfo, nil
 }
+
+func (m *mockStorer) NeighborhoodsStat(ctx context.Context) ([]*storer.NeighborhoodStat, error) {
+	return nil, nil
+}

@@ -5,6 +5,7 @@
 package swarm_test
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -188,6 +189,43 @@ func TestParseBitStr(t *testing.T) {
 			t.Fatal(err)
 		} else if got := swarm.Proximity(addr.Bytes(), tc.overlay.Bytes()); got < uint8(len(tc.bitStr)) {
 			t.Fatalf("got proximiy %d want %d", got, len(tc.bitStr))
+		}
+	}
+}
+
+func TestNeighborhood(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		overlay swarm.Address
+		bitStr  string
+	}{
+		{
+			swarm.MustParseHexAddress("5c32a2fe3d217af8c943fa665ebcfbdf7ab9af0cf1b2a1c8e5fc163dad2f5c7b"),
+			"010111000",
+		},
+		{
+			swarm.MustParseHexAddress("eac0903e59ff1c1a5f1d7d218b33f819b199aa0f68a19fd5fa02b7f84982b55d"),
+			"111010101",
+		},
+		{
+			swarm.MustParseHexAddress("70143dd2863ae07edfe7c1bfee75daea06226f0678e1117337d274492226bfe0"),
+			"011100000",
+		},
+	} {
+
+		n := swarm.NewNeighborhood(tc.overlay, uint8(len(tc.bitStr)))
+		if n.Equal(swarm.NewNeighborhood(swarm.RandAddress(t), uint8(len(tc.bitStr)))) {
+			t.Fatal("addresses not should match")
+		}
+		if !n.Equal(swarm.NewNeighborhood(tc.overlay, uint8(len(tc.bitStr)))) {
+			t.Fatal("addresses should match")
+		}
+		if !bytes.Equal(n.Bytes(), tc.overlay.Bytes()) {
+			t.Fatal("bytes should match")
+		}
+		if n.String() != tc.bitStr {
+			t.Fatal("bit str should match")
 		}
 	}
 }

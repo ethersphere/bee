@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/sharky"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
 	chunktest "github.com/ethersphere/bee/v2/pkg/storage/testing"
@@ -38,7 +39,7 @@ func Test_Step_04(t *testing.T) {
 	store := inmemstore.New()
 	storage := transaction.NewStorage(sharkyStore, store)
 
-	stepFn := localmigration.Step_04(sharkyDir, 1, storage)
+	stepFn := localmigration.Step_04(sharkyDir, 1, storage, log.Noop)
 
 	chunks := chunktest.GenerateTestRandomChunks(10)
 

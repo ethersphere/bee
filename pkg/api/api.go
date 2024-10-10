@@ -140,6 +140,7 @@ type Storer interface {
 	storer.LocalStore
 	storer.RadiusChecker
 	storer.Debugger
+	storer.NeighborhoodStats
 }
 
 type PinIntegrity interface {

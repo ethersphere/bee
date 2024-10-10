@@ -1005,7 +1005,7 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/FeedType"
           required: false
           description: "Feed indexing scheme (default: sequence)"
-        - $ref: "SwarmCommon.yaml#/components/headers/SwarmOnlyRootChunkParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmOnlyRootChunkParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyFallbackModeParameter"
@@ -2443,6 +2443,23 @@ paths:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/StatusResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        default:
+          description: Default response.
+
+  "/status/neighborhoods":
+    get:
+      summary: Get the current neighborhoods status of this node.
+      tags:
+        - Node Status
+      responses:
+        "200":
+          description: Returns the neighborhoods status of this node
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/StatusNeighborhoodsResponse"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         default:

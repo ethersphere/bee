@@ -7,7 +7,6 @@ package migration
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/storage"
@@ -16,9 +15,11 @@ import (
 )
 
 // step_05 is a migration step that removes all upload items from the store.
-func step_05(st transaction.Storage) func() error {
+func step_05(st transaction.Storage, logger log.Logger) func() error {
 	return func() error {
-		logger := log.NewLogger("migration-step-05", log.WithSink(os.Stdout))
+
+		logger := logger.WithName("migration-step-05").Register()
+
 		logger.Info("start removing upload items")
 
 		itemC := make(chan storage.Item)

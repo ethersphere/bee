@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
-	"os"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/sharky"
@@ -101,9 +100,10 @@ func (r OldRetrievalIndexItem) String() string {
 	return storageutil.JoinFields(r.Namespace(), r.ID())
 }
 
-func RefCountSizeInc(s storage.BatchStore) func() error {
+func RefCountSizeInc(s storage.BatchStore, logger log.Logger) func() error {
 	return func() error {
-		logger := log.NewLogger("migration-RefCountSizeInc", log.WithSink(os.Stdout))
+
+		logger := logger.WithName("migration-RefCountSizeInc").Register()
 
 		logger.Info("starting migration of replacing chunkstore items to increase refCnt capacity")
 

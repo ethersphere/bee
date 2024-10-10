@@ -194,7 +194,6 @@ func dbTestOps(baseAddr swarm.Address, reserveCapacity int, bs postage.Storer, r
 	opts.ReserveCapacity = reserveCapacity
 	opts.Batchstore = bs
 	opts.ReserveWakeUpDuration = reserveWakeUpTime
-	opts.Logger = log.Noop
 
 	return opts
 }

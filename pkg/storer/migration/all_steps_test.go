@@ -49,12 +49,12 @@ func TestPostSteps(t *testing.T) {
 
 	st := inmemstore.New()
 
-	assert.NotEmpty(t, localmigration.BeforeInitSteps(st))
+	assert.NotEmpty(t, localmigration.BeforeInitSteps(st, log.Noop))
 
 	t.Run("version numbers", func(t *testing.T) {
 		t.Parallel()
 
-		err := migration.ValidateVersions(localmigration.BeforeInitSteps(st))
+		err := migration.ValidateVersions(localmigration.BeforeInitSteps(st, log.Noop))
 		assert.NoError(t, err)
 	})
 
@@ -63,7 +63,7 @@ func TestPostSteps(t *testing.T) {
 
 		store := inmemstore.New()
 
-		err := migration.Migrate(store, "migration", localmigration.BeforeInitSteps(store))
+		err := migration.Migrate(store, "migration", localmigration.BeforeInitSteps(store, log.Noop))
 		assert.NoError(t, err)
 	})
 }
