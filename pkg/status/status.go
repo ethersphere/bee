@@ -13,7 +13,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/status/internal/pb"
-	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 )
@@ -40,7 +39,6 @@ type Reserve interface {
 	ReserveSize() int
 	ReserveSizeWithinRadius() uint64
 	StorageRadius() uint8
-	NeighborhoodsStat(ctx context.Context) ([]*storer.NeighborhoodStat, error)
 }
 
 type topologyDriver interface {
@@ -131,19 +129,6 @@ func (s *Service) LocalSnapshot() (*Snapshot, error) {
 		IsReachable:             s.topologyDriver.IsReachable(),
 		LastSyncedBlock:         s.chainState.GetChainState().Block,
 	}, nil
-}
-
-func (s *Service) NeighborhoodsSnapshot() ([]*storer.NeighborhoodStat, error) {
-	var err error
-	neighborhoods := make([]*storer.NeighborhoodStat, 0)
-
-	if s.reserve != nil {
-		neighborhoods, err = s.reserve.NeighborhoodsStat(context.Background())
-		if err != nil {
-			return neighborhoods, err
-		}
-	}
-	return neighborhoods, err
 }
 
 // PeerSnapshot sends request for status snapshot to the peer.
