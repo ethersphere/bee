@@ -743,7 +743,10 @@ func TestNeighborhoodStats(t *testing.T) {
 			t.Fatal(err)
 		}
 		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(localRadius))
-		spinlock.Wait(time.Minute, func() bool { return storer.StorageRadius() == localRadius })
+		err = spinlock.Wait(time.Minute, func() bool { return storer.StorageRadius() == localRadius })
+		if err != nil {
+			t.Fatal(err)
+		}
 		testF(t, storer)
 	})
 	t.Run("mem", func(t *testing.T) {
@@ -755,7 +758,10 @@ func TestNeighborhoodStats(t *testing.T) {
 			t.Fatal(err)
 		}
 		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(localRadius))
-		spinlock.Wait(time.Minute, func() bool { return storer.StorageRadius() == localRadius })
+		err = spinlock.Wait(time.Minute, func() bool { return storer.StorageRadius() == localRadius })
+		if err != nil {
+			t.Fatal(err)
+		}
 		testF(t, storer)
 	})
 }
