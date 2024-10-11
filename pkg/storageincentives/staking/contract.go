@@ -59,6 +59,7 @@ type contract struct {
 	transactionService     transaction.Service
 	overlayNonce           common.Hash
 	gasLimit               uint64
+	height                 uint8
 }
 
 func New(
@@ -69,6 +70,7 @@ func New(
 	transactionService transaction.Service,
 	nonce common.Hash,
 	setGasLimit bool,
+	height uint8,
 ) Contract {
 
 	var gasLimit uint64
@@ -84,6 +86,7 @@ func New(
 		transactionService:     transactionService,
 		overlayNonce:           nonce,
 		gasLimit:               gasLimit,
+		height:                 height,
 	}
 }
 
@@ -293,7 +296,7 @@ func (c *contract) sendTransaction(ctx context.Context, callData []byte, desc st
 }
 
 func (c *contract) sendDepositStakeTransaction(ctx context.Context, stakedAmount *big.Int, nonce common.Hash) (*types.Receipt, error) {
-	callData, err := c.stakingContractABI.Pack("manageStake", nonce, stakedAmount)
+	callData, err := c.stakingContractABI.Pack("manageStake", nonce, stakedAmount, c.height)
 	if err != nil {
 		return nil, err
 	}
