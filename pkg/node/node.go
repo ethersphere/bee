@@ -500,7 +500,7 @@ func NewBee(
 	}
 
 	erc20Service = erc20.New(transactionService, erc20Address)
-	
+
 	if o.SwapEnable {
 		if o.ChequebookEnable && chainEnabled {
 			chequebookService, err = InitChequebookService(
