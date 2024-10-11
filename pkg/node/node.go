@@ -489,19 +489,19 @@ func NewBee(
 		}
 	}
 
+	chequebookFactory, err = InitChequebookFactory(logger, chainBackend, chainID, transactionService, o.SwapFactoryAddress)
+	if err != nil {
+		return nil, err
+	}
+
+	erc20Address, err := chequebookFactory.ERC20Address(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("factory fail: %w", err)
+	}
+
+	erc20Service = erc20.New(transactionService, erc20Address)
+
 	if o.SwapEnable {
-		chequebookFactory, err = InitChequebookFactory(logger, chainBackend, chainID, transactionService, o.SwapFactoryAddress)
-		if err != nil {
-			return nil, err
-		}
-
-		erc20Address, err := chequebookFactory.ERC20Address(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("factory fail: %w", err)
-		}
-
-		erc20Service = erc20.New(transactionService, erc20Address)
-
 		if o.ChequebookEnable && chainEnabled {
 			chequebookService, err = InitChequebookService(
 				ctx,
