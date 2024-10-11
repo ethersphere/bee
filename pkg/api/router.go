@@ -508,10 +508,10 @@ func (s *Service) mountBusinessDebug() {
 			),
 		})
 
+		handle("/wallet", jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.walletHandler),
+		})
 		if s.swapEnabled {
-			handle("/wallet", jsonhttp.MethodHandler{
-				"GET": http.HandlerFunc(s.walletHandler),
-			})
 			handle("/wallet/withdraw/{coin}", jsonhttp.MethodHandler{
 				"POST": web.ChainHandlers(
 					s.gasConfigMiddleware("wallet withdraw"),
