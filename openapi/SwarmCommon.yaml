@@ -1016,7 +1016,7 @@ components:
       type: object
       properties:
         duration:
-          type: integer
+          type: number
         hash:
           $ref: "#/components/schemas/SwarmAddress"
         proofs:

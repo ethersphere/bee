@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
@@ -19,7 +18,7 @@ import (
 type RCHashResponse struct {
 	Hash     swarm.Address        `json:"hash"`
 	Proofs   ChunkInclusionProofs `json:"proofs"`
-	Duration time.Duration        `json:"duration"`
+	Duration float64              `json:"duration"`
 }
 
 type ChunkInclusionProofs struct {
@@ -132,7 +131,7 @@ func (s *Service) rchash(w http.ResponseWriter, r *http.Request) {
 
 	resp := RCHashResponse{
 		Hash:     swp.Hash,
-		Duration: swp.Duration,
+		Duration: swp.Duration.Seconds(),
 		Proofs:   renderChunkInclusionProofs(swp.Proofs),
 	}
 
