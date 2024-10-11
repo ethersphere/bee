@@ -44,7 +44,7 @@ type Contract interface {
 	GetWithdrawableStake(ctx context.Context) (*big.Int, error)
 	WithdrawStake(ctx context.Context) (common.Hash, error)
 	MigrateStake(ctx context.Context) (common.Hash, error)
-	ChangeHeight(ctx context.Context, height uint8) (common.Hash, bool, error)
+	UpdateHeight(ctx context.Context) (common.Hash, bool, error)
 	RedistributionStatuser
 }
 
@@ -136,19 +136,18 @@ func (c *contract) ChangeStakeOverlay(ctx context.Context, nonce common.Hash) (c
 	return receipt.TxHash, nil
 }
 
-// ChangeHeight submits the reserve doubling amount to the contract only if the height is a new value.
-func (c *contract) ChangeHeight(ctx context.Context, newHeight uint8) (common.Hash, bool, error) {
+// UpdateHeight submits the reserve doubling height to the contract only if the height is a new value.
+func (c *contract) UpdateHeight(ctx context.Context) (common.Hash, bool, error) {
 
-	h, err := c.height(ctx)
+	h, err := c.getHeight(ctx)
 	if err != nil {
 		return common.Hash{}, false, fmt.Errorf("staking contract: failed to read previous height: %w", err)
 	}
 
-	if h == newHeight {
+	if h == c.height {
 		return common.Hash{}, false, nil
 	}
 
-	// TODO: height
 	receipt, err := c.sendManageStakeTransaction(ctx, new(big.Int))
 	if err != nil {
 		return common.Hash{}, false, fmt.Errorf("staking contract: failed to write new height: %w", err)
@@ -318,7 +317,7 @@ func (c *contract) sendTransaction(ctx context.Context, callData []byte, desc st
 }
 
 func (c *contract) sendManageStakeTransaction(ctx context.Context, stakedAmount *big.Int) (*types.Receipt, error) {
-	callData, err := c.stakingContractABI.Pack("manageStake", c.overlayNonce, stakedAmount)
+	callData, err := c.stakingContractABI.Pack("manageStake", c.overlayNonce, stakedAmount, c.height)
 	if err != nil {
 		return nil, err
 	}
@@ -465,7 +464,7 @@ func (c *contract) paused(ctx context.Context) (bool, error) {
 	return results[0].(bool), nil
 }
 
-func (c *contract) height(ctx context.Context) (uint8, error) {
+func (c *contract) getHeight(ctx context.Context) (uint8, error) {
 	callData, err := c.stakingContractABI.Pack("heightOfAddress", c.owner)
 	if err != nil {
 		return 0, err
@@ -478,7 +477,7 @@ func (c *contract) height(ctx context.Context) (uint8, error) {
 	if err != nil {
 		return 0, err
 	}
-	results, err := c.stakingContractABI.Unpack("paused", result)
+	results, err := c.stakingContractABI.Unpack("heightOfAddress", result)
 	if err != nil {
 		return 0, err
 	}
