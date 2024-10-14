@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 )
 
 const (
@@ -293,64 +294,61 @@ func (c *chunk) Equal(cp Chunk) bool {
 	return c.Address().Equal(cp.Address()) && bytes.Equal(c.Data(), cp.Data())
 }
 
+// MultexLock is a structure that holds a map of locks for each id
+// and a pool of reusable locks to avoid unnecessary allocations.
 type MultexLock struct {
-	mul   map[string]*chan struct{}
-	mu    chan struct{}
-	pool  []*chan struct{}
-	queue chan struct{}
+	mu       sync.Mutex
+	locks    map[string]*sync.Mutex
+	lockPool sync.Pool
 }
 
-func NewMultexLock(poolSize uint) *MultexLock {
-	pool := make([]*chan struct{}, poolSize)
-	multex := &MultexLock{mul: make(map[string]*chan struct{}), mu: make(chan struct{}, 1), pool: pool, queue: make(chan struct{})}
-	for i := uint(0); i < poolSize; i++ {
-		ch := make(chan struct{}, 1)
-		pool[i] = &ch
+// NewMultexLock initializes a new Locker.
+func NewMultexLock() *MultexLock {
+	return &MultexLock{
+		locks: make(map[string]*sync.Mutex),
+		lockPool: sync.Pool{
+			New: func() interface{} {
+				return &sync.Mutex{}
+			},
+		},
+	}
+}
+
+// Lock locks the mutex for the given id.
+func (l *MultexLock) Lock(id string) {
+	l.mu.Lock()
+	fmt.Printf("could enter locking %s\n", id)
+	defer l.mu.Unlock()
+
+	lock, exists := l.locks[id]
+	if !exists {
+		// Get a new lock from the pool if it doesn't exist
+		lock = l.lockPool.Get().(*sync.Mutex)
+		l.locks[id] = lock
 	}
 
-	return multex
+	// Lock the mutex for the id
+	lock.Lock()
+	fmt.Printf("could lock %s\n", id)
 }
 
-func (m *MultexLock) Lock(id string) {
-	m.mu <- struct{}{}
-	if m.mul[id] == nil {
-		m.mul[id] = m.getFromPool()
+// Unlock unlocks the mutex for the given id.
+func (l *MultexLock) Unlock(id string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	lock, exists := l.locks[id]
+	if exists {
+		// Delete the lock from the map after unlocking
+		delete(l.locks, id)
+
+		// Unlock the mutex
+		lock.Unlock()
+
+		// Put the lock back into the pool for reuse
+		l.lockPool.Put(lock)
 	}
-	*m.mul[id] <- struct{}{}
-	<-m.mu
-}
-
-func (m *MultexLock) Unlock(id string) {
-	m.mu <- struct{}{}
-	<-*m.mul[id]
-	m.throwToPool(m.mul[id])
-	delete(m.mul, id)
-	<-m.mu
-}
-
-// getFromPool returns a channel from the pool if available
-// assumes mu is locked
-func (m *MultexLock) getFromPool() *chan struct{} {
-	for len(m.pool) == 0 {
-		// unlock mu until we get a channel from the pool
-		<-m.mu
-		<-m.queue
-		m.mu <- struct{}{}
-	}
-
-	ch := m.pool[len(m.pool)-1]
-	m.pool = m.pool[:len(m.pool)-1]
-
-	return ch
-}
-
-// throwToPool returns a channel to the pool
-// assumes mu is locked
-func (m *MultexLock) throwToPool(ch *chan struct{}) {
-	m.pool = append(m.pool, ch)
-	if len(m.pool) == 1 { // since it was 0 before and some are waiting
-		m.queue <- struct{}{}
-	}
+	fmt.Printf("unlockingggggggg %s\n", id)
 }
 
 var errBadCharacter = errors.New("bad character in binary address")

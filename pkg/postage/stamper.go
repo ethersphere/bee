@@ -22,6 +22,7 @@ var (
 // Stamper can issue stamps from the given address of chunk.
 type Stamper interface {
 	Stamp(swarm.Address) (*Stamp, error)
+	BatchId() []byte
 }
 
 // stamper connects a stampissuer with a signer.
@@ -47,13 +48,26 @@ func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
 		BatchID:      st.issuer.data.BatchID,
 		chunkAddress: addr,
 	}
-	switch err := st.store.Get(item); {
-	case err == nil:
+	lockKey := fmt.Sprintf("postageIdStamp-%x", st.issuer.data.BatchID)
+	fmt.Printf("stamper.go: Stamp: Locking StampLocker %s\n", lockKey)
+	StampLocker.Lock(lockKey)
+	defer StampLocker.Unlock(lockKey)
+	fmt.Printf("stamper.go: Stamp: Locking StampLocker LOCKED!!!!!!!!!!! %s\n", lockKey)
+
+	err := st.store.Get(item)
+	fmt.Printf("stamper.go: Stamp: err: %v\n", err)
+
+	if errors.Is(err, storage.ErrNotFound) {
+		bucket := ToBucket(st.issuer.BucketDepth(), addr)
+		item.BatchIndex = indexToBytes(bucket, 0)
 		item.BatchTimestamp = unixTime()
 		if err = st.store.Put(item); err != nil {
+			fmt.Printf("maybe does it go here?????????????????????? %s\n", err)
 			return nil, err
 		}
-	case errors.Is(err, storage.ErrNotFound):
+		fmt.Printf("all good with stamp %s\n", item)
+	} else if err == nil {
+		fmt.Printf("unknown territory semmingly$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$....\n")
 		item.BatchIndex, item.BatchTimestamp, err = st.issuer.increment(addr)
 		if err != nil {
 			return nil, err
@@ -61,7 +75,7 @@ func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
 		if err := st.store.Put(item); err != nil {
 			return nil, err
 		}
-	default:
+	} else {
 		return nil, fmt.Errorf("get stamp for %s: %w", item, err)
 	}
 
@@ -78,7 +92,13 @@ func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("stamper.go: Stamp: returning NewStamp(%x, %x, %x, %x)\n", st.issuer.data.BatchID, item.BatchIndex, item.BatchTimestamp, sig)
 	return NewStamp(st.issuer.data.BatchID, item.BatchIndex, item.BatchTimestamp, sig), nil
+}
+
+// BatchId gives back batch id of stamper
+func (st *stamper) BatchId() []byte {
+	return st.issuer.data.BatchID
 }
 
 type presignedStamper struct {
@@ -103,4 +123,8 @@ func (st *presignedStamper) Stamp(addr swarm.Address) (*Stamp, error) {
 	}
 
 	return st.stamp, nil
+}
+
+func (st *presignedStamper) BatchId() []byte {
+	return st.stamp.BatchID()
 }

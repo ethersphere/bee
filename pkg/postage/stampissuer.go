@@ -179,15 +179,14 @@ func NewStampIssuer(label, keyID string, batchID []byte, batchAmount *big.Int, b
 // bucket for a newly stamped chunk with given addr address.
 // Must be mutex locked before usage.
 func (si *StampIssuer) increment(addr swarm.Address) (batchIndex []byte, batchTimestamp []byte, err error) {
-	bIdx := toBucket(si.BucketDepth(), addr)
-	bCnt := si.data.Buckets[bIdx]
+	bIdx := ToBucket(si.BucketDepth(), addr)
+	fmt.Printf("0 ----------- bIdx: %d, bCnt: %d\n", bIdx, si.data.Buckets[bIdx])
 
-	if bCnt == si.BucketUpperBound() {
+	if si.data.Buckets[bIdx] == si.BucketUpperBound() {
 		if si.ImmutableFlag() {
 			return nil, nil, ErrBucketFull
 		}
 
-		bCnt = 0
 		si.data.Buckets[bIdx] = 0
 	}
 
@@ -195,8 +194,9 @@ func (si *StampIssuer) increment(addr swarm.Address) (batchIndex []byte, batchTi
 	if si.data.Buckets[bIdx] > si.data.MaxBucketCount {
 		si.data.MaxBucketCount = si.data.Buckets[bIdx]
 	}
+	fmt.Printf("0 ----------- bIdx: %d, bCnt: %d\n", bIdx, si.data.Buckets[bIdx])
 
-	return indexToBytes(bIdx, bCnt), unixTime(), nil
+	return indexToBytes(bIdx, si.data.Buckets[bIdx]), unixTime(), nil
 }
 
 // Label returns the label of the issuer.
@@ -329,9 +329,9 @@ func (s StampIssuerItem) String() string {
 
 var _ storage.Item = (*StampIssuerItem)(nil)
 
-// toBucket calculates the index of the collision bucket for a swarm address
+// ToBucket calculates the index of the collision bucket for a swarm address
 // bucket index := collision bucket depth number of bits as bigendian uint32
-func toBucket(depth uint8, addr swarm.Address) uint32 {
+func ToBucket(depth uint8, addr swarm.Address) uint32 {
 	return binary.BigEndian.Uint32(addr.Bytes()[:4]) >> (32 - depth)
 }
 

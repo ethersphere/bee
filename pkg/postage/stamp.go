@@ -215,15 +215,18 @@ func (s *Stamp) Valid(chunkAddr swarm.Address, ownerAddr []byte, depth, bucketDe
 	if err != nil {
 		return err
 	}
+	if !bytes.Equal(signerAddr, ownerAddr) {
+		return ErrOwnerMismatch
+	}
+	if s.index == nil || s.batchID == nil || s.timestamp == nil || s.sig == nil {
+		return fmt.Errorf("stamp is missing one of its requires properties")
+	}
 	bucket, index := BucketIndexFromBytes(s.index)
-	if toBucket(bucketDepth, chunkAddr) != bucket {
+	if ToBucket(bucketDepth, chunkAddr) != bucket {
 		return ErrBucketMismatch
 	}
 	if index >= 1<<int(depth-bucketDepth) {
 		return ErrInvalidIndex
-	}
-	if !bytes.Equal(signerAddr, ownerAddr) {
-		return ErrOwnerMismatch
 	}
 	return nil
 }

@@ -297,6 +297,9 @@ func (db *DB) ReservePutter() storage.Putter {
 	return putterWithMetrics{
 		storage.PutterFunc(
 			func(ctx context.Context, chunk swarm.Chunk) error {
+				// lockId := fmt.Sprintf("storer-reserve-%s", chunk.Address().String())
+				// reserveLocker.Lock(lockId)
+				// defer reserveLocker.Unlock(lockId)
 				err := db.reserve.Put(ctx, chunk)
 				if err != nil {
 					db.logger.Debug("reserve put error", "error", err)

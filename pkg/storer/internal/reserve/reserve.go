@@ -12,9 +12,10 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
-	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
@@ -29,8 +30,58 @@ import (
 
 const reserveScope = "reserve"
 
+type baseAddress struct {
+	sync.Mutex
+	b []byte
+}
+
+func (a *baseAddress) Clone() *baseAddress {
+	a.Lock()
+	defer a.Lock()
+
+	if a.b == nil {
+		return &baseAddress{}
+	}
+	copied := make([]byte, len(a.b))
+	copy(copied, a.b)
+	return &baseAddress{b: copied}
+}
+
+type AtomicByteArray struct {
+	data unsafe.Pointer
+}
+
+func NewAtomicByteArray(initialData []byte) *AtomicByteArray {
+	return &AtomicByteArray{
+		data: unsafe.Pointer(&initialData),
+	}
+}
+
+// Load atomically loads and returns a copy of the byte array
+func (a *AtomicByteArray) Bytes() []byte {
+	dataPtr := (*[]byte)(atomic.LoadPointer(&a.data))
+	if dataPtr == nil {
+		return nil
+	}
+	copyData := make([]byte, len(*dataPtr))
+	copy(copyData, *dataPtr)
+	return copyData
+}
+
+// Bytes returns bytes representation of the Address.
+func (a *baseAddress) Bytes() []byte {
+	a.Lock()
+	defer a.Lock()
+	copied := make([]byte, len(a.b))
+	copy(copied, a.b)
+	return copied
+}
+
 type Reserve struct {
-	baseAddr     swarm.Address
+	putBaseAddr *baseAddress
+	hasBaseAddr *baseAddress
+	getBaseAddr *baseAddress
+
 	radiusSetter topology.SetStorageRadiuser
 	logger       log.Logger
 
@@ -40,7 +91,35 @@ type Reserve struct {
 
 	multx *swarm.MultexLock
 	st    transaction.Storage
+	// mut   sync.Mutex
 }
+
+type Address struct {
+	sync.Mutex
+	b []byte
+}
+
+func (a *Address) Clone() Address {
+	a.Lock()
+	defer a.Unlock()
+
+	if a.b == nil {
+		return Address{}
+	}
+	copied := make([]byte, len(a.b))
+	copy(copied, a.b)
+	return Address{b: copied}
+}
+
+func (a *Address) Bytes() []byte {
+	a.Lock()
+	defer a.Unlock()
+	copied := make([]byte, len(a.b))
+	copy(copied, a.b)
+	return copied
+}
+
+var address Address
 
 func New(
 	baseAddr swarm.Address,
@@ -50,13 +129,17 @@ func New(
 	logger log.Logger,
 ) (*Reserve, error) {
 
+	address = Address{b: baseAddr.Clone().Bytes()}
+
 	rs := &Reserve{
-		baseAddr:     baseAddr,
+		putBaseAddr:  &baseAddress{b: baseAddr.Clone().Bytes()},
+		getBaseAddr:  &baseAddress{b: baseAddr.Clone().Bytes()},
+		hasBaseAddr:  &baseAddress{b: baseAddr.Clone().Bytes()},
 		st:           st,
 		capacity:     capacity,
 		radiusSetter: radiusSetter,
 		logger:       logger.WithName(reserveScope).Register(),
-		multx:        swarm.NewMultexLock(100),
+		multx:        swarm.NewMultexLock(),
 	}
 
 	err := st.Run(context.Background(), func(s transaction.Store) error {
@@ -99,47 +182,78 @@ func New(
 //  3. A new chunk that has the same address belonging to the same batch with an already stored chunk will overwrite the existing chunk
 //     if the new chunk has a higher stamp timestamp (regardless of batch type and chunk type, eg CAC & SOC).
 func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
-
+	fmt.Printf("hello put4444444444\n")
 	chunkType := storage.ChunkType(chunk)
+	chunkAddress := chunk.Address().Clone()
 
-	// batchID lock, Put vs Eviction
-	lockId := lockId(chunk.Stamp())
-	r.multx.Lock(lockId)
-	defer r.multx.Unlock(lockId)
+	fmt.Printf("before bucket calc , after chunkaddress \n")
+	bucket := postage.ToBucket(postage.BucketDepth, chunkAddress)
+	lockId := LockKey(bucket)
+	reserveLocker.Lock(lockId)
+	defer reserveLocker.Unlock(lockId)
+
+	fmt.Printf("after chunkaddress clone\n")
+
+	fmt.Printf("before baseaddr\n")
+	baseAddr := address.Bytes()
+	chunkAddrBytes := chunk.Address().Clone().Bytes()
+	fmt.Printf("between baseaddr\n")
+	fmt.Printf("after baseaddr\n")
+	bin := swarm.Proximity(baseAddr, chunkAddress.Bytes())
+	fmt.Printf("after Proximity\n")
+
+	// bin lock
+
+	// r.multx.Lock(strconv.Itoa(int(bin)))
+	// defer r.multx.Unlock(strconv.Itoa(int(bin)))
+
+	fmt.Printf("Reserve Put chunk stamp available: %x\n", chunk.Stamp().Index())
 
 	stampHash, err := chunk.Stamp().Hash()
 	if err != nil {
 		return err
 	}
 
+	batchId := chunk.Stamp().BatchID()[:]
+	fmt.Printf("after batchid %x\n", batchId)
+	// batchID lock, Put vs Eviction
+	// fmt.Printf("before batchid lock\n")
+	// r.multx.Lock(string(batchId))
+	// defer r.multx.Unlock(string(batchId))
+	// lockId2 := "putlock" + string(batchId)
+	// reserveLocker.Lock(lockId2)
+	// defer reserveLocker.Unlock(lockId2)
+
 	// check if the chunk with the same batch, stamp timestamp and index is already stored
-	has, err := r.Has(chunk.Address(), chunk.Stamp().BatchID(), stampHash)
+	item := &BatchRadiusItem{Bin: swarm.Proximity(baseAddr, chunkAddrBytes), BatchID: batchId, Address: chunkAddress, StampHash: stampHash}
+	fmt.Printf("Before has\n")
+	indexStore := r.IndexStore()
+	fmt.Printf("Got indexstore\n")
+	has, err := indexStore.Has(item)
+	fmt.Printf("after has, which is %v and error %s\n", has, err)
 	if err != nil {
 		return err
 	}
 	if has {
 		return nil
 	}
-
-	bin := swarm.Proximity(r.baseAddr.Bytes(), chunk.Address().Bytes())
-
-	// bin lock
-	r.multx.Lock(strconv.Itoa(int(bin)))
-	defer r.multx.Unlock(strconv.Itoa(int(bin)))
+	fmt.Printf("After has\n")
 
 	var shouldIncReserveSize, shouldDecrReserveSize bool
 
 	err = r.st.Run(ctx, func(s transaction.Store) error {
-
+		fmt.Printf("+-------------- Reserve Put chunk stamp available: %x\n", chunk.Stamp().Index())
 		oldStampIndex, loadedStampIndex, err := stampindex.LoadOrStore(s.IndexStore(), reserveScope, chunk)
 		if err != nil {
 			return fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
 		}
+		fmt.Printf("After load or store\n")
 
-		sameAddressOldStamp, err := chunkstamp.LoadWithBatchID(s.IndexStore(), reserveScope, chunk.Address(), chunk.Stamp().BatchID())
+		sameAddressOldStamp, err := chunkstamp.LoadWithBatchID(s.IndexStore(), reserveScope, chunkAddress, chunk.Stamp().BatchID())
 		if err != nil && !errors.Is(err, storage.ErrNotFound) {
 			return err
 		}
+		fmt.Printf("Hello0: %x\n", chunk.Stamp().Index())
 
 		// same chunk address, same batch
 		if sameAddressOldStamp != nil {
@@ -147,6 +261,8 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			if err != nil {
 				return err
 			}
+			fmt.Printf("Hello1: %x\n", chunk.Stamp().Index())
+			defer func() { fmt.Printf("Hello2: %x\n", chunk.Stamp().Index()) }()
 
 			// same index
 			if bytes.Equal(sameAddressOldStamp.Index(), chunk.Stamp().Index()) {
@@ -158,7 +274,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 
 				oldBatchRadiusItem := &BatchRadiusItem{
 					Bin:       bin,
-					Address:   chunk.Address(),
+					Address:   chunkAddress,
 					BatchID:   sameAddressOldStampIndex.BatchID,
 					StampHash: sameAddressOldStampIndex.StampHash,
 				}
@@ -190,15 +306,15 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 					s.IndexStore().Put(&BatchRadiusItem{
 						Bin:       bin,
 						BinID:     binID,
-						Address:   chunk.Address(),
-						BatchID:   chunk.Stamp().BatchID(),
+						Address:   chunkAddress,
+						BatchID:   batchId,
 						StampHash: stampHash,
 					}),
 					s.IndexStore().Put(&ChunkBinItem{
 						Bin:       bin,
 						BinID:     binID,
-						Address:   chunk.Address(),
-						BatchID:   chunk.Stamp().BatchID(),
+						Address:   chunkAddress,
+						BatchID:   batchId,
 						ChunkType: chunkType,
 						StampHash: stampHash,
 					}),
@@ -211,13 +327,13 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 					return nil
 				}
 
-				r.logger.Debug("replacing soc in chunkstore", "address", chunk.Address())
+				r.logger.Debug("replacing soc in chunkstore", "address", chunkAddress)
 				return s.ChunkStore().Replace(ctx, chunk)
 			}
 		}
 
 		// different address, same batch, index collision
-		if loadedStampIndex && !chunk.Address().Equal(oldStampIndex.ChunkAddress) {
+		if loadedStampIndex && !chunkAddress.Equal(oldStampIndex.ChunkAddress) {
 			prev := binary.BigEndian.Uint64(oldStampIndex.StampTimestamp)
 			curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
 			if prev >= curr {
@@ -230,7 +346,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			// 3. Delete ALL old chunk related items from the reserve.
 			// 4. Update the stamp index.
 
-			err = r.removeChunk(ctx, s, oldStampIndex.ChunkAddress, oldStampIndex.BatchID, oldStampIndex.StampHash)
+			err = r.removeChunk(ctx, s, oldStampIndex.ChunkAddress, oldStampIndex.BatchID, oldStampIndex.StampHash, baseAddr)
 			if err != nil {
 				return fmt.Errorf("failed removing older chunk %s: %w", oldStampIndex.ChunkAddress, err)
 			}
@@ -238,8 +354,8 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			r.logger.Warning(
 				"replacing chunk stamp index",
 				"old_chunk", oldStampIndex.ChunkAddress,
-				"new_chunk", chunk.Address(),
-				"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
+				"new_chunk", chunkAddress,
+				"batch_id", hex.EncodeToString(batchId),
 			)
 
 			// replace old stamp index.
@@ -259,15 +375,15 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			s.IndexStore().Put(&BatchRadiusItem{
 				Bin:       bin,
 				BinID:     binID,
-				Address:   chunk.Address(),
-				BatchID:   chunk.Stamp().BatchID(),
+				Address:   chunkAddress,
+				BatchID:   batchId,
 				StampHash: stampHash,
 			}),
 			s.IndexStore().Put(&ChunkBinItem{
 				Bin:       bin,
 				BinID:     binID,
-				Address:   chunk.Address(),
-				BatchID:   chunk.Stamp().BatchID(),
+				Address:   chunkAddress,
+				BatchID:   batchId,
 				ChunkType: chunkType,
 				StampHash: stampHash,
 			}),
@@ -296,21 +412,35 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 }
 
 func (r *Reserve) Has(addr swarm.Address, batchID []byte, stampHash []byte) (bool, error) {
-	item := &BatchRadiusItem{Bin: swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes()), BatchID: batchID, Address: addr, StampHash: stampHash}
-	return r.st.IndexStore().Has(item)
+	// r.mu <- struct{}{}
+	// lockId2 := "putlock" + string(batchID)
+	// reserveLocker.Lock(lockId2)
+	// defer reserveLocker.Unlock(lockId2)
+
+	// baseAddr := r.hasBaseAddr.Bytes()
+	fmt.Printf("before baseaddr reserve has\n")
+	baseAddr := address.Bytes()
+	// <-r.mu
+	item := &BatchRadiusItem{Bin: swarm.Proximity(baseAddr, addr.Bytes()), BatchID: batchID, Address: addr, StampHash: stampHash}
+	return r.IndexStore().Has(item)
 }
 
 func (r *Reserve) Get(ctx context.Context, addr swarm.Address, batchID []byte, stampHash []byte) (swarm.Chunk, error) {
-	r.multx.Lock(string(batchID))
-	defer r.multx.Unlock(string(batchID))
+	// lockId2 := "putlock" + string(batchID)
+	// reserveLocker.Lock(lockId2)
+	// defer reserveLocker.Unlock(lockId2)
 
-	item := &BatchRadiusItem{Bin: swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes()), BatchID: batchID, Address: addr, StampHash: stampHash}
-	err := r.st.IndexStore().Get(item)
+	// r.mu <- struct{}{}
+	baseAddr := r.getBaseAddr.Bytes()
+	// <-r.mu
+	indexStore := r.IndexStore()
+	item := &BatchRadiusItem{Bin: swarm.Proximity(baseAddr, addr.Bytes()), BatchID: batchID, Address: addr, StampHash: stampHash}
+	err := indexStore.Get(item)
 	if err != nil {
 		return nil, err
 	}
 
-	stamp, err := chunkstamp.LoadWithBatchID(r.st.IndexStore(), reserveScope, addr, item.BatchID)
+	stamp, err := chunkstamp.LoadWithBatchID(indexStore, reserveScope, addr, item.BatchID)
 	if err != nil {
 		return nil, err
 	}
@@ -340,7 +470,7 @@ func (r *Reserve) EvictBatchBin(
 		return 0, nil
 	}
 
-	err := r.st.IndexStore().Iterate(storage.Query{
+	err := r.IndexStore().Iterate(storage.Query{
 		Factory: func() storage.Item { return &BatchRadiusItem{} },
 		Prefix:  string(batchID),
 	}, func(res storage.Result) (bool, error) {
@@ -390,11 +520,12 @@ func (r *Reserve) removeChunk(
 	ctx context.Context,
 	trx transaction.Store,
 	chunkAddress swarm.Address,
+	baseAddr []byte,
 	batchID []byte,
 	stampHash []byte,
 ) error {
 	item := &BatchRadiusItem{
-		Bin:       swarm.Proximity(r.baseAddr.Bytes(), chunkAddress.Bytes()),
+		Bin:       swarm.Proximity(baseAddr, chunkAddress.Bytes()),
 		BatchID:   batchID,
 		Address:   chunkAddress,
 		StampHash: stampHash,
@@ -430,7 +561,7 @@ func RemoveChunkWithItem(
 }
 
 func (r *Reserve) IterateBin(bin uint8, startBinID uint64, cb func(swarm.Address, uint64, []byte, []byte) (bool, error)) error {
-	err := r.st.IndexStore().Iterate(storage.Query{
+	err := r.IndexStore().Iterate(storage.Query{
 		Factory:       func() storage.Item { return &ChunkBinItem{} },
 		Prefix:        binIDToString(bin, startBinID),
 		PrefixAtStart: true,
@@ -452,7 +583,8 @@ func (r *Reserve) IterateBin(bin uint8, startBinID uint64, cb func(swarm.Address
 }
 
 func (r *Reserve) IterateChunks(startBin uint8, cb func(swarm.Chunk) (bool, error)) error {
-	err := r.st.IndexStore().Iterate(storage.Query{
+	indexStore := r.IndexStore()
+	err := indexStore.Iterate(storage.Query{
 		Factory:       func() storage.Item { return &ChunkBinItem{} },
 		Prefix:        binIDToString(startBin, 0),
 		PrefixAtStart: true,
@@ -464,7 +596,7 @@ func (r *Reserve) IterateChunks(startBin uint8, cb func(swarm.Chunk) (bool, erro
 			return false, err
 		}
 
-		stamp, err := chunkstamp.LoadWithBatchID(r.st.IndexStore(), reserveScope, item.Address, item.BatchID)
+		stamp, err := chunkstamp.LoadWithBatchID(indexStore, reserveScope, item.Address, item.BatchID)
 		if err != nil {
 			return false, err
 		}
@@ -480,7 +612,7 @@ func (r *Reserve) IterateChunks(startBin uint8, cb func(swarm.Chunk) (bool, erro
 }
 
 func (r *Reserve) IterateChunksItems(startBin uint8, cb func(*ChunkBinItem) (bool, error)) error {
-	err := r.st.IndexStore().Iterate(storage.Query{
+	err := r.IndexStore().Iterate(storage.Query{
 		Factory:       func() storage.Item { return &ChunkBinItem{} },
 		Prefix:        binIDToString(startBin, 0),
 		PrefixAtStart: true,
@@ -503,8 +635,9 @@ func (r *Reserve) Reset(ctx context.Context) error {
 	size := r.Size()
 
 	bRitems := make([]*BatchRadiusItem, 0, size)
+	indexStore := r.IndexStore()
 
-	err := r.st.IndexStore().Iterate(storage.Query{
+	err := indexStore.Iterate(storage.Query{
 		Factory: func() storage.Item { return &BatchRadiusItem{} },
 	}, func(res storage.Result) (bool, error) {
 		bRitems = append(bRitems, res.Entry.(*BatchRadiusItem))
@@ -537,7 +670,7 @@ func (r *Reserve) Reset(ctx context.Context) error {
 	bRitems = nil
 
 	sitems := make([]*stampindex.Item, 0, size)
-	err = r.st.IndexStore().Iterate(storage.Query{
+	err = indexStore.Iterate(storage.Query{
 		Factory: func() storage.Item { return &stampindex.Item{} },
 	}, func(res storage.Result) (bool, error) {
 		sitems = append(sitems, res.Entry.(*stampindex.Item))
@@ -602,7 +735,8 @@ func (r *Reserve) SetRadius(rad uint8) error {
 
 func (r *Reserve) LastBinIDs() ([]uint64, uint64, error) {
 	var epoch EpochItem
-	err := r.st.IndexStore().Get(&epoch)
+	indexStore := r.IndexStore()
+	err := indexStore.Get(&epoch)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -611,7 +745,7 @@ func (r *Reserve) LastBinIDs() ([]uint64, uint64, error) {
 
 	for bin := uint8(0); bin < swarm.MaxBins; bin++ {
 		binItem := &BinItem{Bin: bin}
-		err := r.st.IndexStore().Get(binItem)
+		err := indexStore.Get(binItem)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				ids[bin] = 0
@@ -643,6 +777,8 @@ func (r *Reserve) IncBinID(store storage.IndexStore, bin uint8) (uint64, error) 
 	return item.BinID, store.Put(item)
 }
 
-func lockId(stamp swarm.Stamp) string {
-	return fmt.Sprintf("%x-%x", stamp.BatchID(), stamp.Index())
+func (r *Reserve) IndexStore() storage.Reader {
+	// r.mut.Lock()
+	// defer r.mut.Unlock()
+	return r.st.IndexStore()
 }
