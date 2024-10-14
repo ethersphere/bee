@@ -145,11 +145,11 @@ func TestReserveSamplerSisterNeighborhood(t *testing.T) {
 	t.Parallel()
 
 	const (
-		chunkCountPerPO       = 64
-		maxPO                 = 6
-		networkRadius   uint8 = 5
-		doublingFactor  uint8 = 2
-		localRadius     uint8 = networkRadius - doublingFactor
+		chunkCountPerPO             = 64
+		maxPO                       = 6
+		committedDepth        uint8 = 5
+		doubling              uint8 = 2
+		depthOfResponsibility uint8 = committedDepth - doubling
 	)
 
 	randChunks := func(baseAddr swarm.Address, startingRadius int, timeVar uint64) []swarm.Chunk {
@@ -175,7 +175,7 @@ func TestReserveSamplerSisterNeighborhood(t *testing.T) {
 		count := 0
 		// local neighborhood
 		timeVar := uint64(time.Now().UnixNano())
-		chs := randChunks(baseAddr, int(networkRadius), timeVar)
+		chs := randChunks(baseAddr, int(committedDepth), timeVar)
 		putter := st.ReservePutter()
 		for _, ch := range chs {
 			err := putter.Put(context.Background(), ch)
@@ -185,10 +185,10 @@ func TestReserveSamplerSisterNeighborhood(t *testing.T) {
 		}
 		count += len(chs)
 
-		sisterAnchor := swarm.RandAddressAt(t, baseAddr, int(localRadius))
+		sisterAnchor := swarm.RandAddressAt(t, baseAddr, int(depthOfResponsibility))
 
 		// chunks belonging to the sister neighborhood
-		chs = randChunks(sisterAnchor, int(networkRadius), timeVar)
+		chs = randChunks(sisterAnchor, int(committedDepth), timeVar)
 		putter = st.ReservePutter()
 		for _, ch := range chs {
 			err := putter.Put(context.Background(), ch)
@@ -201,12 +201,12 @@ func TestReserveSamplerSisterNeighborhood(t *testing.T) {
 		t.Run("reserve size", reserveSizeTest(st.Reserve(), count))
 
 		t.Run("reserve sample", func(t *testing.T) {
-			sample, err := st.ReserveSample(context.TODO(), sisterAnchor.Bytes(), 0, timeVar, nil)
+			sample, err := st.ReserveSample(context.TODO(), sisterAnchor.Bytes(), doubling, timeVar, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			assertValidSample(t, sample, doublingFactor, baseAddr.Bytes())
+			assertValidSample(t, sample, doubling, baseAddr.Bytes())
 			assertSampleNoErrors(t, sample)
 
 			if sample.Stats.NewIgnored != 0 {
@@ -215,17 +215,17 @@ func TestReserveSamplerSisterNeighborhood(t *testing.T) {
 		})
 
 		t.Run("reserve sample 2", func(t *testing.T) {
-			sample, err := st.ReserveSample(context.TODO(), sisterAnchor.Bytes(), localRadius, timeVar, nil)
+			sample, err := st.ReserveSample(context.TODO(), sisterAnchor.Bytes(), committedDepth, timeVar, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			assertValidSample(t, sample, localRadius, baseAddr.Bytes())
+			assertValidSample(t, sample, depthOfResponsibility, baseAddr.Bytes())
 			assertSampleNoErrors(t, sample)
 
 			for _, s := range sample.Items {
-				if got := swarm.Proximity(s.ChunkAddress.Bytes(), baseAddr.Bytes()); got != localRadius {
-					t.Fatalf("promixity must be exactly %d, got %d", localRadius, got)
+				if got := swarm.Proximity(s.ChunkAddress.Bytes(), baseAddr.Bytes()); got != depthOfResponsibility {
+					t.Fatalf("promixity must be exactly %d, got %d", depthOfResponsibility, got)
 				}
 			}
 

@@ -40,11 +40,6 @@ type peerStatus interface {
 	PeerSnapshot(ctx context.Context, peer swarm.Address) (*status.Snapshot, error)
 }
 
-type reserve interface {
-	storer.RadiusChecker
-	ReserveCapacityDoubling() int
-}
-
 type service struct {
 	wg            sync.WaitGroup
 	quit          chan struct{}
@@ -53,34 +48,38 @@ type service struct {
 	status        peerStatus
 	metrics       metrics
 	isSelfHealthy *atomic.Bool
-	reserve       reserve
+	reserve       storer.RadiusChecker
 
 	radiusSubsMtx sync.Mutex
 	radiusC       []chan uint8
+
+	capacityDoubling uint8
 }
 
 func New(
 	status peerStatus,
 	topology topologyDriver,
-	reserve reserve,
+	reserve storer.RadiusChecker,
 	logger log.Logger,
 	warmup time.Duration,
 	mode string,
 	minPeersPerbin int,
 	durPercentile float64,
 	connsPercentile float64,
+	capacityDoubling uint8,
 ) *service {
 
 	metrics := newMetrics()
 
 	s := &service{
-		quit:          make(chan struct{}),
-		logger:        logger.WithName(loggerName).Register(),
-		status:        status,
-		topology:      topology,
-		metrics:       metrics,
-		isSelfHealthy: atomic.NewBool(true),
-		reserve:       reserve,
+		quit:             make(chan struct{}),
+		logger:           logger.WithName(loggerName).Register(),
+		status:           status,
+		topology:         topology,
+		metrics:          metrics,
+		isSelfHealthy:    atomic.NewBool(true),
+		reserve:          reserve,
+		capacityDoubling: capacityDoubling,
 	}
 
 	s.wg.Add(1)
@@ -221,7 +220,7 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 		}
 	}
 
-	networkRadiusEstimation := s.reserve.StorageRadius() + uint8(s.reserve.ReserveCapacityDoubling())
+	networkRadiusEstimation := s.reserve.StorageRadius() + s.capacityDoubling
 
 	selfHealth := true
 	if nHoodRadius == networkRadius && networkRadiusEstimation != networkRadius {
