@@ -117,7 +117,7 @@ func getChunkType(chunk swarm.Chunk) swarm.ChunkType {
 // chunks of the selected neighborhood as determined by the anchor and the "committed depth" and NOT the whole reseve.
 // The committed depth is the sum of the radius and the doubling factor.
 // For example, the committed depth is 11, but the local node has a doubling factor of 3, so the
-// local radius will eventually drop to 8. So the sampling must only consider chunks with proximity 11 to the anchor.
+// local radius will eventually drop to 8. The sampling must only consider chunks with proximity 11 to the anchor.
 func (db *DB) ReserveSample(
 	ctx context.Context,
 	anchor []byte,

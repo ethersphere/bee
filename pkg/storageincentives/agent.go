@@ -392,7 +392,7 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 }
 
 func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
-	// minimum proximity between the achor and the overlay address
+	// minimum proximity between the achor and the stored chunks
 	commitedDepth := a.store.StorageRadius() + a.capacityDoubling
 
 	if a.state.IsFrozen() {
