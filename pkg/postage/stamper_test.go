@@ -33,7 +33,7 @@ func TestStamperStamping(t *testing.T) {
 		t.Helper()
 
 		chunkAddr := swarm.RandAddress(t)
-		stamp, err := stamper.Stamp(chunkAddr)
+		stamp, err := stamper.Stamp(chunkAddr, chunkAddr)
 		if err != nil {
 			t.Fatal(err)
 		}
