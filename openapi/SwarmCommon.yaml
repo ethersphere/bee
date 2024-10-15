@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 4.1.0
+  version: 4.2.0
   title: Common Data Types
   description: |
     \*****bzzz*****
@@ -241,6 +241,11 @@ components:
       description: Go time.Duration format
       type: string
       example: "5.0018ms"
+
+    Seconds:
+      description: Go time.Duration format in seconds
+      type: number
+      example: 30.5
 
     EthereumAddress:
       type: string
@@ -1015,8 +1020,8 @@ components:
     ApiRCHashResponse:
       type: object
       properties:
-        duration:
-          type: integer
+        durationSeconds:
+          $ref: "#/components/schemas/Seconds"
         hash:
           $ref: "#/components/schemas/SwarmAddress"
         proofs:
