@@ -354,6 +354,12 @@ func (s *Service) mountAPI() {
 		}),
 	))
 
+	handle("/pins/repair", web.ChainHandlers(
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.repairPins),
+		}),
+	))
+
 	handle("/pins/{reference}", web.ChainHandlers(
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET":    http.HandlerFunc(s.getPinnedRootHash),
