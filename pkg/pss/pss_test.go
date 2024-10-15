@@ -240,7 +240,7 @@ type stamper struct {
 	stamp *postage.Stamp
 }
 
-func (s *stamper) Stamp(_ swarm.Address) (*postage.Stamp, error) {
+func (s *stamper) Stamp(_, _ swarm.Address) (*postage.Stamp, error) {
 	stamp := postagetesting.MustNewStamp()
 	return stamp, nil
 }

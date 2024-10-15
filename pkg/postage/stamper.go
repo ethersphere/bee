@@ -21,7 +21,7 @@ var (
 
 // Stamper can issue stamps from the given address of chunk.
 type Stamper interface {
-	Stamp(swarm.Address) (*Stamp, error)
+	Stamp(idAddr, addr swarm.Address) (*Stamp, error)
 	BatchId() []byte
 }
 
@@ -40,13 +40,13 @@ func NewStamper(store storage.Store, issuer *StampIssuer, signer crypto.Signer) 
 
 // Stamp takes chunk, see if the chunk can be included in the batch and
 // signs it with the owner of the batch of this Stamp issuer.
-func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
+func (st *stamper) Stamp(addr, idAddr swarm.Address) (*Stamp, error) {
 	st.issuer.mtx.Lock()
 	defer st.issuer.mtx.Unlock()
 
 	item := &StampItem{
 		BatchID:      st.issuer.data.BatchID,
-		chunkAddress: addr,
+		chunkAddress: idAddr,
 	}
 	lockKey := fmt.Sprintf("postageIdStamp-%x", st.issuer.data.BatchID)
 	fmt.Printf("stamper.go: Stamp: Locking StampLocker %s\n", lockKey)
@@ -54,20 +54,13 @@ func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
 	defer StampLocker.Unlock(lockKey)
 	fmt.Printf("stamper.go: Stamp: Locking StampLocker LOCKED!!!!!!!!!!! %s\n", lockKey)
 
-	err := st.store.Get(item)
-	fmt.Printf("stamper.go: Stamp: err: %v\n", err)
-
-	if errors.Is(err, storage.ErrNotFound) {
-		bucket := ToBucket(st.issuer.BucketDepth(), addr)
-		item.BatchIndex = indexToBytes(bucket, 0)
+	switch err := st.store.Get(item); {
+	case err == nil:
 		item.BatchTimestamp = unixTime()
 		if err = st.store.Put(item); err != nil {
-			fmt.Printf("maybe does it go here?????????????????????? %s\n", err)
 			return nil, err
 		}
-		fmt.Printf("all good with stamp %s\n", item)
-	} else if err == nil {
-		fmt.Printf("unknown territory semmingly$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$....\n")
+	case errors.Is(err, storage.ErrNotFound):
 		item.BatchIndex, item.BatchTimestamp, err = st.issuer.increment(addr)
 		if err != nil {
 			return nil, err
@@ -75,7 +68,7 @@ func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
 		if err := st.store.Put(item); err != nil {
 			return nil, err
 		}
-	} else {
+	default:
 		return nil, fmt.Errorf("get stamp for %s: %w", item, err)
 	}
 
@@ -110,7 +103,7 @@ func NewPresignedStamper(stamp *Stamp, owner []byte) Stamper {
 	return &presignedStamper{stamp, owner}
 }
 
-func (st *presignedStamper) Stamp(addr swarm.Address) (*Stamp, error) {
+func (st *presignedStamper) Stamp(addr, _ swarm.Address) (*Stamp, error) {
 	// check stored stamp is against the chunk address
 	// Recover the public key from the signature
 	signerAddr, err := RecoverBatchOwner(addr, st.stamp)

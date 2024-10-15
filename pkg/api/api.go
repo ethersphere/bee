@@ -48,6 +48,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20"
+	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/status"
 	"github.com/ethersphere/bee/v2/pkg/steward"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
@@ -686,8 +687,12 @@ func (p *putterSessionWrapper) Put(ctx context.Context, chunk swarm.Chunk) error
 	// fmt.Printf("lockKey2123123123123: %v\n", lockKey)
 	// ApiLocker.Lock(lockKey)
 	// defer ApiLocker.Unlock(lockKey)
+	idAddress, err := soc.IdentityAddress(chunk)
+	if err != nil {
+		return err
+	}
 
-	stamp, err := p.stamper.Stamp(chunk.Address())
+	stamp, err := p.stamper.Stamp(chunk.Address(), idAddress)
 	if err != nil {
 		return err
 	}
