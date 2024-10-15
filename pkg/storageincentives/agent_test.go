@@ -41,6 +41,7 @@ func TestAgent(t *testing.T) {
 		limit          uint64
 		expectedCalls  bool
 		balance        *big.Int
+		doubling       uint8
 	}{{
 		name:           "3 blocks per phase, same block number returns twice",
 		blocksPerRound: 9,
@@ -49,6 +50,7 @@ func TestAgent(t *testing.T) {
 		expectedCalls:  true,
 		limit:          108, // computed with blocksPerRound * (exptectedCalls + 2)
 		balance:        bigBalance,
+		doubling:       1,
 	}, {
 		name:           "3 blocks per phase, block number returns every block",
 		blocksPerRound: 9,
@@ -57,6 +59,7 @@ func TestAgent(t *testing.T) {
 		expectedCalls:  true,
 		limit:          108,
 		balance:        bigBalance,
+		doubling:       0,
 	}, {
 		name:           "no expected calls - block number returns late after each phase",
 		blocksPerRound: 9,
@@ -65,6 +68,7 @@ func TestAgent(t *testing.T) {
 		expectedCalls:  false,
 		limit:          108,
 		balance:        bigBalance,
+		doubling:       0,
 	}, {
 		name:           "4 blocks per phase, block number returns every other block",
 		blocksPerRound: 12,
@@ -73,6 +77,7 @@ func TestAgent(t *testing.T) {
 		expectedCalls:  true,
 		limit:          144,
 		balance:        bigBalance,
+		doubling:       1,
 	}, {
 		// This test case is based on previous, but this time agent will not have enough
 		// balance to participate in the game so no calls are going to be made.
@@ -83,6 +88,7 @@ func TestAgent(t *testing.T) {
 		expectedCalls:  false,
 		limit:          144,
 		balance:        big.NewInt(0),
+		doubling:       1,
 	},
 	}
 
@@ -106,9 +112,12 @@ func TestAgent(t *testing.T) {
 				block:       tc.blocksPerRound,
 				balance:     tc.balance,
 			}
-			contract := &mockContract{}
 
-			service, _ := createService(t, addr, backend, contract, tc.blocksPerRound, tc.blocksPerPhase)
+			var radius uint8 = 8
+
+			contract := &mockContract{t: t, expectedRadius: radius + tc.doubling}
+
+			service, _ := createService(t, addr, backend, contract, tc.blocksPerRound, tc.blocksPerPhase, radius, tc.doubling)
 			testutil.CleanupCloser(t, service)
 
 			<-wait
@@ -156,7 +165,10 @@ func createService(
 	backend storageincentives.ChainBackend,
 	contract redistribution.Contract,
 	blocksPerRound uint64,
-	blocksPerPhase uint64) (*storageincentives.Agent, error) {
+	blocksPerPhase uint64,
+	radius uint8,
+	doubling uint8,
+) (*storageincentives.Agent, error) {
 	t.Helper()
 
 	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context) error {
@@ -168,7 +180,7 @@ func createService(
 	}))
 
 	reserve := resMock.NewReserve(
-		resMock.WithRadius(0),
+		resMock.WithRadius(radius),
 		resMock.WithSample(storer.RandSample(t, nil)),
 	)
 
@@ -189,6 +201,7 @@ func createService(
 		transactionmock.New(),
 		&mockHealth{},
 		log.Noop,
+		doubling,
 	)
 }
 
@@ -257,15 +270,20 @@ const (
 )
 
 type mockContract struct {
-	callsList []contractCall
-	mtx       sync.Mutex
+	callsList      []contractCall
+	mtx            sync.Mutex
+	expectedRadius uint8
+	t              *testing.T
 }
 
 func (m *mockContract) ReserveSalt(context.Context) ([]byte, error) {
 	return nil, nil
 }
 
-func (m *mockContract) IsPlaying(context.Context, uint8) (bool, error) {
+func (m *mockContract) IsPlaying(_ context.Context, r uint8) (bool, error) {
+	if r != m.expectedRadius {
+		m.t.Fatalf("isPlaying: expected radius %d, got %d", m.expectedRadius, r)
+	}
 	return true, nil
 }
 
@@ -290,9 +308,14 @@ func (m *mockContract) Commit(context.Context, []byte, uint64) (common.Hash, err
 	return common.Hash{}, nil
 }
 
-func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) (common.Hash, error) {
+func (m *mockContract) Reveal(_ context.Context, r uint8, _ []byte, _ []byte) (common.Hash, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
+
+	if r != m.expectedRadius {
+		m.t.Fatalf("reveal: expected radius %d, got %d", m.expectedRadius, r)
+	}
+
 	m.callsList = append(m.callsList, revealCall)
 	return common.Hash{}, nil
 }

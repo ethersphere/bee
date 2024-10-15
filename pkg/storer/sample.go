@@ -113,10 +113,15 @@ func getChunkType(chunk swarm.Chunk) swarm.ChunkType {
 // calculation within the round limits.
 // In order to optimize this we use a simple pipeline pattern:
 // Iterate chunk addresses -> Get the chunk data and calculate transformed hash -> Assemble the sample
+// If the node has doubled their capacity by some factor, sampling process need to only pertain to the
+// chunks of the selected neighborhood as determined by the anchor and the "committed depth" and NOT the whole reseve.
+// The committed depth is the sum of the radius and the doubling factor.
+// For example, the committed depth is 11, but the local node has a doubling factor of 3, so the
+// local radius will eventually drop to 8. The sampling must only consider chunks with proximity 11 to the anchor.
 func (db *DB) ReserveSample(
 	ctx context.Context,
 	anchor []byte,
-	storageRadius uint8,
+	commitedDepth uint8,
 	consensusTime uint64,
 	minBatchBalance *big.Int,
 ) (Sample, error) {
@@ -139,13 +144,6 @@ func (db *DB) ReserveSample(
 
 	allStats.BatchesBelowValueDuration = time.Since(t)
 
-	// If the node has doubled their capacity by some factor, sampling process need to only pertain to the
-	// chunks of the selected neighborhood as determined by the anchor and the "network" radius and NOT the whole reseve.
-	// The regular network storage radius of the network is the sum of the local radius and the doubling factor.
-	// For example, the regular radius is 11, but the local node has a doubling factor of 3, so the local radius will eventually drop to 8.
-	// So the sampling must only consider chunks with proximity 11 to the anchor.
-	neighborhoodProximity := storageRadius + uint8(db.reserveOptions.capacityDoubling)
-
 	// Phase 1: Iterate chunk addresses
 	g.Go(func() error {
 		start := time.Now()
@@ -156,8 +154,8 @@ func (db *DB) ReserveSample(
 			addStats(stats)
 		}()
 
-		err := db.reserve.IterateChunksItems(storageRadius, func(ch *reserve.ChunkBinItem) (bool, error) {
-			if swarm.Proximity(ch.Address.Bytes(), anchor) < neighborhoodProximity {
+		err := db.reserve.IterateChunksItems(db.StorageRadius(), func(ch *reserve.ChunkBinItem) (bool, error) {
+			if swarm.Proximity(ch.Address.Bytes(), anchor) < commitedDepth {
 				return false, nil
 			}
 			select {
@@ -318,12 +316,12 @@ func (db *DB) ReserveSample(
 	allStats.TotalDuration = time.Since(t)
 
 	if err := g.Wait(); err != nil {
-		db.logger.Info("reserve sampler finished with error", "err", err, "duration", time.Since(t), "storage_radius", storageRadius, "consensus_time_ns", consensusTime, "stats", fmt.Sprintf("%+v", allStats))
+		db.logger.Info("reserve sampler finished with error", "err", err, "duration", time.Since(t), "storage_radius", commitedDepth, "consensus_time_ns", consensusTime, "stats", fmt.Sprintf("%+v", allStats))
 
 		return Sample{}, fmt.Errorf("sampler: failed creating sample: %w", err)
 	}
 
-	db.logger.Info("reserve sampler finished", "duration", time.Since(t), "storage_radius", storageRadius, "consensus_time_ns", consensusTime, "stats", fmt.Sprintf("%+v", allStats))
+	db.logger.Info("reserve sampler finished", "duration", time.Since(t), "storage_radius", commitedDepth, "consensus_time_ns", consensusTime, "stats", fmt.Sprintf("%+v", allStats))
 
 	return Sample{Stats: *allStats, Items: sampleItems}, nil
 }

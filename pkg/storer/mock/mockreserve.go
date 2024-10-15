@@ -178,10 +178,6 @@ func (s *ReserveStore) ReserveSize() int {
 	return s.reservesize
 }
 
-func (s *ReserveStore) ReserveCapacityDoubling() int {
-	return s.capacityDoubling
-}
-
 func (s *ReserveStore) ReserveLastBinIDs() (curs []uint64, epoch uint64, err error) {
 	return s.cursors, s.epoch, s.cursorsErr
 }

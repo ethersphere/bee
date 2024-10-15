@@ -412,10 +412,6 @@ func (db *DB) StorageRadius() uint8 {
 	return db.reserve.Radius()
 }
 
-func (db *DB) ReserveCapacityDoubling() int {
-	return db.reserveOptions.capacityDoubling
-}
-
 func (db *DB) ReserveSize() int {
 	if db.reserve == nil {
 		return 0
