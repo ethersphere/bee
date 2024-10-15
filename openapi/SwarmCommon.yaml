@@ -242,6 +242,11 @@ components:
       type: string
       example: "5.0018ms"
 
+    Seconds:
+      description: Go time.Duration format in seconds
+      type: number
+      example: 30.5
+
     EthereumAddress:
       type: string
       pattern: "^[A-Fa-f0-9]{40}$"
@@ -1015,8 +1020,8 @@ components:
     ApiRCHashResponse:
       type: object
       properties:
-        duration:
-          type: number
+        durationSeconds:
+          $ref: "#/components/schemas/Seconds"
         hash:
           $ref: "#/components/schemas/SwarmAddress"
         proofs:
