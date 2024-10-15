@@ -188,7 +188,7 @@ func watchStart(watches []transactionWatch) time.Time {
 }
 
 // Time for transaction is checked if it is accepted for mining.
-const transactionWatchNotFoundTimeout = time.Duration(20 * time.Second)
+const transactionWatchNotFoundTimeout = 20 * time.Second
 
 // check pending checks the given block (number) for confirmed or cancelled transactions
 func (tm *transactionMonitor) checkPending(block uint64) error {
