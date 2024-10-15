@@ -6,6 +6,7 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 
@@ -23,6 +24,10 @@ import (
 type socPostResponse struct {
 	Reference swarm.Address `json:"reference"`
 }
+
+// func socLockKey(batchID, socAddr []byte) string {
+// 	return fmt.Sprintf("soc-lock-%x-%x", batchID, socAddr)
+// }
 
 func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("post_soc").Build()
@@ -83,6 +88,13 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		tag = session.TagID
 	}
 
+	socAddress, err := soc.CreateAddress(paths.ID, paths.Owner)
+	if err != nil {
+		logger.Error(err, "soc address creation failed")
+		jsonhttp.BadRequest(w, "soc address creation failed")
+		return
+	}
+
 	deferred := tag != 0
 
 	var putter storer.PutterSession
@@ -118,6 +130,9 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.UnprocessableEntity(w, "batch not usable yet or does not exist")
 		case errors.Is(err, postage.ErrNotFound):
 			jsonhttp.NotFound(w, "batch with id not found")
+		case errors.Is(err, postage.ErrBucketFull):
+			bucket := postage.ToBucket(postage.BucketDepth, socAddress)
+			jsonhttp.Conflict(w, fmt.Sprintf("batch %x is overissued in bucket %x for SOC address %x", headers.BatchID, bucket, socAddress))
 		case errors.Is(err, errInvalidPostageBatch):
 			jsonhttp.BadRequest(w, "invalid batch id")
 		case errors.Is(err, errUnsupportedDevNodeOperation):
@@ -199,6 +214,9 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case errors.Is(err, accesscontrol.ErrNotFound):
 				jsonhttp.NotFound(w, "act or history entry not found")
+			case errors.Is(err, postage.ErrBucketFull) || errors.Is(err, postage.ErrInvalidIndex):
+				bucket := postage.ToBucket(postage.BucketDepth, socAddress)
+				jsonhttp.Conflict(w, fmt.Sprintf("batch %x is overissued in bucket %x for ACT address %x", headers.BatchID, bucket, reference))
 			case errors.Is(err, accesscontrol.ErrInvalidPublicKey) || errors.Is(err, accesscontrol.ErrSecretKeyInfinity):
 				jsonhttp.BadRequest(w, "invalid public key")
 			case errors.Is(err, accesscontrol.ErrUnexpectedType):
@@ -211,19 +229,31 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err = putter.Put(r.Context(), sch)
-	if err != nil {
+	switch {
+	case errors.Is(err, postage.ErrBucketFull) || errors.Is(err, postage.ErrInvalidIndex):
+		bucket := postage.ToBucket(postage.BucketDepth, socAddress)
+		jsonhttp.Conflict(w, fmt.Sprintf("batch %x is overissued in bucket %x for SOC address %x", headers.BatchID, bucket, socAddress))
+		return
+	case err != nil:
 		logger.Debug("write chunk failed", "chunk_address", sch.Address(), "error", err)
 		logger.Error(nil, "write chunk failed")
 		jsonhttp.BadRequest(ow, "chunk write error")
 		return
+	default:
 	}
 
 	err = putter.Done(sch.Address())
-	if err != nil {
+	switch {
+	case errors.Is(err, postage.ErrBucketFull) || errors.Is(err, postage.ErrInvalidIndex):
+		bucket := postage.ToBucket(postage.BucketDepth, socAddress)
+		jsonhttp.Conflict(w, fmt.Sprintf("batch %x is overissued in bucket %x for SOC address %x", headers.BatchID, bucket, socAddress))
+		return
+	case err != nil:
 		logger.Debug("done split failed", "error", err)
 		logger.Error(nil, "done split failed")
 		jsonhttp.InternalServerError(ow, "done split failed")
 		return
+	default:
 	}
 
 	jsonhttp.Created(w, socPostResponse{Reference: reference})

@@ -61,8 +61,11 @@ func (db *DB) DirectUpload() PutterSession {
 									logger.Debug("direct upload: shallow receipt received, retrying", "chunk", ch.Address())
 								} else if errors.Is(err, topology.ErrNotFound) {
 									logger.Debug("direct upload: no peers available, retrying", "chunk", ch.Address())
+								} else if err == nil {
+									// success
+									return nil
 								} else {
-									return err
+									logger.Debug("direct upload: %v", err)
 								}
 							}
 						}
