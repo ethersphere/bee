@@ -71,7 +71,7 @@ func (a *AtomicByteArray) Bytes() []byte {
 // Bytes returns bytes representation of the Address.
 func (a *baseAddress) Bytes() []byte {
 	a.Lock()
-	defer a.Lock()
+	defer a.Unlock()
 	copied := make([]byte, len(a.b))
 	copy(copied, a.b)
 	return copied
@@ -182,78 +182,56 @@ func New(
 //  3. A new chunk that has the same address belonging to the same batch with an already stored chunk will overwrite the existing chunk
 //     if the new chunk has a higher stamp timestamp (regardless of batch type and chunk type, eg CAC & SOC).
 func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
-	fmt.Printf("hello put4444444444\n")
 	chunkType := storage.ChunkType(chunk)
 	chunkAddress := chunk.Address().Clone()
 
-	fmt.Printf("before bucket calc , after chunkaddress \n")
 	bucket := postage.ToBucket(postage.BucketDepth, chunkAddress)
 	lockId := LockKey(bucket)
-	reserveLocker.Lock(lockId)
-	defer reserveLocker.Unlock(lockId)
+	unlock := reserveLocker.Lock(lockId)
+	defer unlock()
 
-	fmt.Printf("after chunkaddress clone\n")
-
-	fmt.Printf("before baseaddr\n")
 	baseAddr := address.Bytes()
 	chunkAddrBytes := chunk.Address().Clone().Bytes()
-	fmt.Printf("between baseaddr\n")
-	fmt.Printf("after baseaddr\n")
 	bin := swarm.Proximity(baseAddr, chunkAddress.Bytes())
-	fmt.Printf("after Proximity\n")
 
 	// bin lock
 
 	// r.multx.Lock(strconv.Itoa(int(bin)))
 	// defer r.multx.Unlock(strconv.Itoa(int(bin)))
 
-	fmt.Printf("Reserve Put chunk stamp available: %x\n", chunk.Stamp().Index())
-
 	stampHash, err := chunk.Stamp().Hash()
 	if err != nil {
 		return err
 	}
 
-	batchId := chunk.Stamp().BatchID()[:]
-	fmt.Printf("after batchid %x\n", batchId)
 	// batchID lock, Put vs Eviction
-	// fmt.Printf("before batchid lock\n")
-	// r.multx.Lock(string(batchId))
-	// defer r.multx.Unlock(string(batchId))
-	// lockId2 := "putlock" + string(batchId)
-	// reserveLocker.Lock(lockId2)
-	// defer reserveLocker.Unlock(lockId2)
+	batchId := chunk.Stamp().BatchID()[:]
+	r.multx.Lock(string(batchId))
+	defer r.multx.Unlock(string(batchId))
 
 	// check if the chunk with the same batch, stamp timestamp and index is already stored
 	item := &BatchRadiusItem{Bin: swarm.Proximity(baseAddr, chunkAddrBytes), BatchID: batchId, Address: chunkAddress, StampHash: stampHash}
-	fmt.Printf("Before has\n")
 	indexStore := r.IndexStore()
-	fmt.Printf("Got indexstore\n")
 	has, err := indexStore.Has(item)
-	fmt.Printf("after has, which is %v and error %s\n", has, err)
 	if err != nil {
 		return err
 	}
 	if has {
 		return nil
 	}
-	fmt.Printf("After has\n")
 
 	var shouldIncReserveSize, shouldDecrReserveSize bool
 
 	err = r.st.Run(ctx, func(s transaction.Store) error {
-		fmt.Printf("+-------------- Reserve Put chunk stamp available: %x\n", chunk.Stamp().Index())
 		oldStampIndex, loadedStampIndex, err := stampindex.LoadOrStore(s.IndexStore(), reserveScope, chunk)
 		if err != nil {
 			return fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
 		}
-		fmt.Printf("After load or store\n")
 
 		sameAddressOldStamp, err := chunkstamp.LoadWithBatchID(s.IndexStore(), reserveScope, chunkAddress, chunk.Stamp().BatchID())
 		if err != nil && !errors.Is(err, storage.ErrNotFound) {
 			return err
 		}
-		fmt.Printf("Hello0: %x\n", chunk.Stamp().Index())
 
 		// same chunk address, same batch
 		if sameAddressOldStamp != nil {
@@ -261,8 +239,6 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			if err != nil {
 				return err
 			}
-			fmt.Printf("Hello1: %x\n", chunk.Stamp().Index())
-			defer func() { fmt.Printf("Hello2: %x\n", chunk.Stamp().Index()) }()
 
 			// same index
 			if bytes.Equal(sameAddressOldStamp.Index(), chunk.Stamp().Index()) {
@@ -412,27 +388,13 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 }
 
 func (r *Reserve) Has(addr swarm.Address, batchID []byte, stampHash []byte) (bool, error) {
-	// r.mu <- struct{}{}
-	// lockId2 := "putlock" + string(batchID)
-	// reserveLocker.Lock(lockId2)
-	// defer reserveLocker.Unlock(lockId2)
-
-	// baseAddr := r.hasBaseAddr.Bytes()
-	fmt.Printf("before baseaddr reserve has\n")
 	baseAddr := address.Bytes()
-	// <-r.mu
 	item := &BatchRadiusItem{Bin: swarm.Proximity(baseAddr, addr.Bytes()), BatchID: batchID, Address: addr, StampHash: stampHash}
 	return r.IndexStore().Has(item)
 }
 
 func (r *Reserve) Get(ctx context.Context, addr swarm.Address, batchID []byte, stampHash []byte) (swarm.Chunk, error) {
-	// lockId2 := "putlock" + string(batchID)
-	// reserveLocker.Lock(lockId2)
-	// defer reserveLocker.Unlock(lockId2)
-
-	// r.mu <- struct{}{}
 	baseAddr := r.getBaseAddr.Bytes()
-	// <-r.mu
 	indexStore := r.IndexStore()
 	item := &BatchRadiusItem{Bin: swarm.Proximity(baseAddr, addr.Bytes()), BatchID: batchID, Address: addr, StampHash: stampHash}
 	err := indexStore.Get(item)

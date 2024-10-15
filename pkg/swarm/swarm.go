@@ -315,9 +315,8 @@ func NewMultexLock() *MultexLock {
 }
 
 // Lock locks the mutex for the given id.
-func (l *MultexLock) Lock(id string) {
+func (l *MultexLock) Lock(id string) func() {
 	l.mu.Lock()
-	fmt.Printf("could enter locking %s\n", id)
 	defer l.mu.Unlock()
 
 	lock, exists := l.locks[id]
@@ -329,7 +328,8 @@ func (l *MultexLock) Lock(id string) {
 
 	// Lock the mutex for the id
 	lock.Lock()
-	fmt.Printf("could lock %s\n", id)
+
+	return func() { l.Unlock(id) }
 }
 
 // Unlock unlocks the mutex for the given id.
@@ -348,7 +348,6 @@ func (l *MultexLock) Unlock(id string) {
 		// Put the lock back into the pool for reuse
 		l.lockPool.Put(lock)
 	}
-	fmt.Printf("unlockingggggggg %s\n", id)
 }
 
 var errBadCharacter = errors.New("bad character in binary address")

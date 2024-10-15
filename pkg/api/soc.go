@@ -99,14 +99,6 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	var putter storer.PutterSession
 	if len(headers.StampSig) != 0 {
-		// batchId := headers.StampSig[:32]
-		// lockId := socLockKey(batchId, socAddress.Clone().Bytes())
-		// ApiLocker.Lock(lockId)
-		// defer func() {
-		// 	fmt.Printf("Unlocking %s\n", lockId)
-		// 	ApiLocker.Unlock(lockId)
-		// }()
-
 		stamp := postage.Stamp{}
 		if err := stamp.UnmarshalBinary(headers.StampSig); err != nil {
 			errorMsg := "Stamp deserialization failure"
@@ -123,13 +115,6 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 			Deferred: deferred,
 		}, &stamp)
 	} else {
-		// batchId := headers.BatchID
-		// lockId := socLockKey(batchId, socAddress.Clone().Bytes())
-		// ApiLocker.Lock(lockId)
-		// defer func() {
-		// 	fmt.Printf("Unlocking!!!! %s\n", lockId)
-		// 	ApiLocker.Unlock(lockId)
-		// }()
 		putter, err = s.newStamperPutter(r.Context(), putterOptions{
 			BatchID:  headers.BatchID,
 			TagID:    tag,
@@ -157,8 +142,6 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-
-	fmt.Printf("Itt még jó2")
 
 	ow := &cleanupOnErrWriter{
 		ResponseWriter: w,
@@ -245,9 +228,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	fmt.Printf("before put %s\n", err)
 	err = putter.Put(r.Context(), sch)
-	fmt.Printf("errir is at put %s\n", err)
 	switch {
 	case errors.Is(err, postage.ErrBucketFull) || errors.Is(err, postage.ErrInvalidIndex):
 		bucket := postage.ToBucket(postage.BucketDepth, socAddress)

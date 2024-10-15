@@ -684,7 +684,6 @@ type putterSessionWrapper struct {
 
 func (p *putterSessionWrapper) Put(ctx context.Context, chunk swarm.Chunk) error {
 	// lockKey := lockKey(chunk.Address())
-	// fmt.Printf("lockKey2123123123123: %v\n", lockKey)
 	// ApiLocker.Lock(lockKey)
 	// defer ApiLocker.Unlock(lockKey)
 	idAddress, err := soc.IdentityAddress(chunk)
@@ -737,10 +736,8 @@ func (s *Service) newStamperPutter(ctx context.Context, opts putterOptions) (sto
 
 	var session storer.PutterSession
 	if opts.Deferred || opts.Pin {
-		fmt.Printf("opts.Pin: %v, opts.TagID: %v deferred %v\n", opts.Pin, opts.TagID, opts.Deferred)
 		session, err = s.storer.Upload(ctx, opts.Pin, opts.TagID)
 	} else {
-		fmt.Printf("direktupload\n")
 		session = s.storer.DirectUpload()
 	}
 
@@ -767,18 +764,15 @@ func (s *Service) newStampedPutter(ctx context.Context, opts putterOptions, stam
 
 	var session storer.PutterSession
 	if opts.Deferred || opts.Pin {
-		fmt.Printf("opts.Pin2: %v, opts.TagID: %v deferred %v\n", opts.Pin, opts.TagID, opts.Deferred)
 		session, err = s.storer.Upload(ctx, opts.Pin, opts.TagID)
 		if err != nil {
 			return nil, fmt.Errorf("failed creating session: %w", err)
 		}
 	} else {
-		fmt.Printf("direktupload2\n")
 		session = s.storer.DirectUpload()
 	}
 
 	stamper := postage.NewPresignedStamper(stamp, storedBatch.Owner)
-	fmt.Print("Itt még jó\n")
 
 	return &putterSessionWrapper{
 		PutterSession: session,

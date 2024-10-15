@@ -7,7 +7,6 @@ package storer
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"github.com/ethersphere/bee/v2/pkg/pusher"
 	"github.com/ethersphere/bee/v2/pkg/pushsync"
@@ -28,19 +27,9 @@ func (db *DB) DirectUpload() PutterSession {
 	return &putterSession{
 		Putter: putterWithMetrics{
 			storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk) error {
-				fmt.Printf("DirectUpload chunk stamp available: %x\n", ch.Stamp().Index())
-				// this lock is needed to do not push chunks with the same stamp in the same time
-				// bucketId := postage.ToBucket(16, ch.Address())
-				// lockKey := lockKey(ch.Stamp().BatchID(), bucketId)
-				// lockKey := lockKey(bucketId)
-				// fmt.Printf("netstore put and locking %s\n", lockKey)
-				// netstoreLocker.Lock(lockKey)
-				// fmt.Printf("netstore locked\n")
 				db.directUploadLimiter <- struct{}{}
 				eg.Go(func() (err error) {
 					defer func() { <-db.directUploadLimiter }()
-					fmt.Printf("DirectUpload chunk stamp in go fund try to unlock after: %x\n", ch.Stamp().Index())
-					// defer netstoreLocker.Unlock(lockKey)
 
 					span, logger, ctx := db.tracer.FollowSpanFromContext(ctx, "put-direct-upload", db.logger)
 					defer func() {
@@ -60,7 +49,6 @@ func (db *DB) DirectUpload() PutterSession {
 						case <-db.quit:
 							return ErrDBQuit
 						case db.pusherFeed <- op:
-							fmt.Print("DirectUpload pusherFeed <- op\n")
 							select {
 							case <-ctx.Done():
 								return ctx.Err()
@@ -69,7 +57,6 @@ func (db *DB) DirectUpload() PutterSession {
 							case <-db.quit:
 								return ErrDBQuit
 							case err := <-op.Err:
-								fmt.Printf("DirectUpload error: %x %s\n", op.Chunk.Stamp(), err)
 								if errors.Is(err, pushsync.ErrShallowReceipt) {
 									logger.Debug("direct upload: shallow receipt received, retrying", "chunk", ch.Address())
 								} else if errors.Is(err, topology.ErrNotFound) {

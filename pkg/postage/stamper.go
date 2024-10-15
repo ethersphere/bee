@@ -48,11 +48,9 @@ func (st *stamper) Stamp(addr, idAddr swarm.Address) (*Stamp, error) {
 		BatchID:      st.issuer.data.BatchID,
 		chunkAddress: idAddr,
 	}
-	lockKey := fmt.Sprintf("postageIdStamp-%x", st.issuer.data.BatchID)
-	fmt.Printf("stamper.go: Stamp: Locking StampLocker %s\n", lockKey)
-	StampLocker.Lock(lockKey)
-	defer StampLocker.Unlock(lockKey)
-	fmt.Printf("stamper.go: Stamp: Locking StampLocker LOCKED!!!!!!!!!!! %s\n", lockKey)
+	lockKey := LockKey(st.issuer.data.BatchID)
+	unlock := StampLocker.Lock(lockKey)
+	defer unlock()
 
 	switch err := st.store.Get(item); {
 	case err == nil:
@@ -85,7 +83,6 @@ func (st *stamper) Stamp(addr, idAddr swarm.Address) (*Stamp, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("stamper.go: Stamp: returning NewStamp(%x, %x, %x, %x)\n", st.issuer.data.BatchID, item.BatchIndex, item.BatchTimestamp, sig)
 	return NewStamp(st.issuer.data.BatchID, item.BatchIndex, item.BatchTimestamp, sig), nil
 }
 

@@ -180,7 +180,6 @@ func NewStampIssuer(label, keyID string, batchID []byte, batchAmount *big.Int, b
 // Must be mutex locked before usage.
 func (si *StampIssuer) increment(addr swarm.Address) (batchIndex []byte, batchTimestamp []byte, err error) {
 	bIdx := ToBucket(si.BucketDepth(), addr)
-	fmt.Printf("0 ----------- bIdx: %d, bCnt: %d\n", bIdx, si.data.Buckets[bIdx])
 
 	if si.data.Buckets[bIdx] == si.BucketUpperBound() {
 		if si.ImmutableFlag() {
@@ -194,7 +193,6 @@ func (si *StampIssuer) increment(addr swarm.Address) (batchIndex []byte, batchTi
 	if si.data.Buckets[bIdx] > si.data.MaxBucketCount {
 		si.data.MaxBucketCount = si.data.Buckets[bIdx]
 	}
-	fmt.Printf("0 ----------- bIdx: %d, bCnt: %d\n", bIdx, si.data.Buckets[bIdx])
 
 	return indexToBytes(bIdx, si.data.Buckets[bIdx]), unixTime(), nil
 }

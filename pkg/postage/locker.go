@@ -15,6 +15,6 @@ func init() {
 	StampLocker = *swarm.NewMultexLock()
 }
 
-func LockKey(batchID, batchIndex []byte) string {
-	return fmt.Sprintf("%x-%x", batchID, batchIndex)
+func LockKey(batchID []byte) string {
+	return fmt.Sprintf("postage-%x", batchID)
 }

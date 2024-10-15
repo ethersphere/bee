@@ -58,16 +58,15 @@ type Storage interface {
 }
 
 type store struct {
-	sharky       *sharky.Store
-	bstore       storage.BatchStore
-	metrics      metrics
-	chunkLocker  *multex.Multex
-	muIndexStore chan struct{}
-	muChunkStore chan struct{}
+	sharky      *sharky.Store
+	bstore      storage.BatchStore
+	metrics     metrics
+	chunkLocker *multex.Multex
+	mu          chan struct{}
 }
 
 func NewStorage(sharky *sharky.Store, bstore storage.BatchStore) Storage {
-	return &store{sharky: sharky, bstore: bstore, metrics: newMetrics(), chunkLocker: multex.New(), muIndexStore: make(chan struct{}, 1), muChunkStore: make(chan struct{}, 1)}
+	return &store{sharky: sharky, bstore: bstore, metrics: newMetrics(), chunkLocker: multex.New(), mu: make(chan struct{}, 1)}
 }
 
 type transaction struct {
@@ -118,19 +117,16 @@ func (s *store) NewTransaction(ctx context.Context) (Transaction, func()) {
 }
 
 func (s *store) IndexStore() storage.Reader {
-	fmt.Printf("before transactionLocker.Lock(indexstore)\n")
-	s.muIndexStore <- struct{}{}
-	fmt.Printf("after transactionLocker.Lock(indexstore)\n")
-	defer func() { <-s.muIndexStore }()
+	s.mu <- struct{}{}
+	defer func() { <-s.mu }()
 	return &indexTrx{s.bstore, nil, s.metrics}
 }
 
 func (s *store) ChunkStore() storage.ReadOnlyChunkStore {
 	// transactionLocker.Lock("chunkstore")
 	// defer transactionLocker.Unlock("chunkstore")
-	s.muChunkStore <- struct{}{}
-	fmt.Printf("after chunkstore.Lock(indexstore)\n")
-	defer func() { <-s.muChunkStore }()
+	s.mu <- struct{}{}
+	defer func() { <-s.mu }()
 	indexStore := &indexTrx{s.bstore, nil, s.metrics}
 	sharyTrx := &sharkyTrx{s.sharky, s.metrics, nil, nil}
 	return &chunkStoreTrx{indexStore, sharyTrx, s.chunkLocker, nil, s.metrics, true}
@@ -225,43 +221,32 @@ type chunkStoreTrx struct {
 
 func (c *chunkStoreTrx) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
 	defer handleMetric("chunkstore_get", c.metrics)(&err)
-	lockId := LockKey(addr)
-	fmt.Printf("before transactionLocker.Lock(%s)\n", lockId)
-	transactionLocker.Lock(lockId)
-	fmt.Printf("transactionLocker.Lock(%s)\n", lockId)
-	defer transactionLocker.Unlock(lockId)
+	lockId := "get:" + LockKey(addr)
+	unlock := transactionLocker.Lock(lockId)
+	defer unlock()
 	ch, err = chunkstore.Get(ctx, c.indexStore, c.sharkyTrx, addr)
 	return ch, err
 }
 func (c *chunkStoreTrx) Has(ctx context.Context, addr swarm.Address) (_ bool, err error) {
-	fmt.Printf("Hellobello\n")
 	defer handleMetric("chunkstore_has", c.metrics)(&err)
 
-	// unlock := c.lock(addr)
-	// defer unlock()
 	lockId := "has:" + LockKey(addr)
-	fmt.Printf("before transactionLocker.Lock(%s)\n", lockId)
-	transactionLocker.Lock(lockId)
-	fmt.Printf("transactionLocker.Lock(%s)\n", lockId)
-	defer transactionLocker.Unlock(lockId)
+	unlock := transactionLocker.Lock(lockId)
+	defer unlock()
 	return chunkstore.Has(ctx, c.indexStore, addr)
 }
 func (c *chunkStoreTrx) Put(ctx context.Context, ch swarm.Chunk) (err error) {
 	defer handleMetric("chunkstore_put", c.metrics)(&err)
-	lockId := LockKey(ch.Address())
-	fmt.Printf("before transactionLocker.Lock put(%s)\n", lockId)
-	transactionLocker.Lock(lockId)
-	fmt.Printf("transactionLocker.Lock put(%s)\n", lockId)
-	defer transactionLocker.Unlock(lockId)
+	lockId := "put:" + LockKey(ch.Address())
+	unlock := transactionLocker.Lock(lockId)
+	defer unlock()
 	return chunkstore.Put(ctx, c.indexStore, c.sharkyTrx, ch)
 }
 func (c *chunkStoreTrx) Delete(ctx context.Context, addr swarm.Address) (err error) {
 	defer handleMetric("chunkstore_delete", c.metrics)(&err)
-	lockId := LockKey(addr)
-	fmt.Printf("before transactionLocker.Lock delete(%s)\n", lockId)
-	transactionLocker.Lock(lockId)
-	fmt.Printf("transactionLocker.Lock delete(%s)\n", lockId)
-	defer transactionLocker.Unlock(lockId)
+	lockId := "delete:" + LockKey(addr)
+	unlock := transactionLocker.Lock(lockId)
+	defer unlock()
 	return chunkstore.Delete(ctx, c.indexStore, c.sharkyTrx, addr)
 }
 func (c *chunkStoreTrx) Iterate(ctx context.Context, fn storage.IterateChunkFn) (err error) {
@@ -271,28 +256,10 @@ func (c *chunkStoreTrx) Iterate(ctx context.Context, fn storage.IterateChunkFn) 
 
 func (c *chunkStoreTrx) Replace(ctx context.Context, ch swarm.Chunk) (err error) {
 	defer handleMetric("chunkstore_replace", c.metrics)(&err)
-	lockId := LockKey(ch.Address())
-	fmt.Printf("before transactionLocker.Lock replace(%s)\n", lockId)
-	transactionLocker.Lock(lockId)
-	fmt.Printf("transactionLocker.Lock replace(%s)\n", lockId)
-	defer transactionLocker.Unlock(lockId)
+	lockId := "replace:" + LockKey(ch.Address())
+	unlock := transactionLocker.Lock(lockId)
+	defer unlock()
 	return chunkstore.Replace(ctx, c.indexStore, c.sharkyTrx, ch)
-}
-
-func (c *chunkStoreTrx) lock(addr swarm.Address) func() {
-	// directly lock
-	if c.readOnly {
-		c.globalLocker.Lock(addr.ByteString())
-		return func() { c.globalLocker.Unlock(addr.ByteString()) }
-	}
-
-	// lock chunk only once in the same transaction
-	if _, ok := c.lockedAddrs[addr.ByteString()]; !ok {
-		c.globalLocker.Lock(addr.ByteString())
-		c.lockedAddrs[addr.ByteString()] = struct{}{}
-	}
-
-	return func() {} // unlocking the chunk will be done in the Commit()
 }
 
 type indexTrx struct {
@@ -303,11 +270,9 @@ type indexTrx struct {
 
 func (s *indexTrx) Get(i storage.Item) error { return s.store.Get(i) }
 func (s *indexTrx) Has(k storage.Key) (bool, error) {
-	fmt.Printf("before transactionLocker.Lock()\n")
 	lockId := k.Namespace() + k.ID()
-	transactionLocker.Lock(lockId)
-	fmt.Printf("middle transactionLocker.Lock(%s)\n", lockId)
-	defer transactionLocker.Unlock(lockId)
+	unlock := transactionLocker.Lock(lockId)
+	defer unlock()
 	return s.store.Has(k)
 }
 func (s *indexTrx) GetSize(k storage.Key) (int, error) { return s.store.GetSize(k) }
@@ -318,10 +283,8 @@ func (s *indexTrx) Iterate(q storage.Query, f storage.IterateFn) (err error) {
 func (s *indexTrx) Count(k storage.Key) (int, error) { return s.store.Count(k) }
 func (s *indexTrx) Put(i storage.Item) error {
 	lockId := i.Namespace() + i.ID()
-	fmt.Printf("before transactionLocker.Lock(%s)\n", lockId)
-	transactionLocker.Lock(lockId)
-	fmt.Printf("middle transactionLocker.Lock(%s)\n", lockId)
-	defer transactionLocker.Unlock(lockId)
+	unlock := transactionLocker.Lock(lockId)
+	defer unlock()
 
 	return s.batch.Put(i)
 }
