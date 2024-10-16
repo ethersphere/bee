@@ -178,17 +178,17 @@ func (tm *transactionMonitor) hasWatches() bool {
 }
 
 func watchStart(watches []transactionWatch) time.Time {
-	var start time.Time
-	for _, w := range watches {
+	if len(watches) == 0 {
+		return time.Time{}
+	}
+	start := watches[0].start
+	for _, w := range watches[1:] {
 		if w.start.Before(start) {
 			start = w.start
 		}
 	}
 	return start
 }
-
-// Time for transaction is checked if it is accepted for mining.
-const transactionWatchNotFoundTimeout = 20 * time.Second
 
 // check pending checks the given block (number) for confirmed or cancelled transactions
 func (tm *transactionMonitor) checkPending(block uint64) error {
@@ -198,6 +198,8 @@ func (tm *transactionMonitor) checkPending(block uint64) error {
 		for txHash, watches := range watchMap {
 			receipt, err := tm.backend.TransactionReceipt(tm.ctx, txHash)
 			if err != nil {
+				// wait for a few blocks to be mined before considering a transaction not existing
+				transactionWatchNotFoundTimeout := 5 * tm.pollingInterval
 				if errors.Is(err, ethereum.NotFound) && watchStart(watches).Before(time.Now().Add(transactionWatchNotFoundTimeout)) {
 					// if both err and receipt are nil, there is no receipt
 					// the reason why we consider this only potentially cancelled is to catch cases where after a reorg the original transaction wins
