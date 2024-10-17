@@ -99,7 +99,7 @@ func (p *pss) Send(ctx context.Context, topic Topic, payload []byte, stamper pos
 		return err
 	}
 
-	stamp, err := stamper.Stamp(tc.Address())
+	stamp, err := stamper.Stamp(tc.Address(), tc.Address())
 	if err != nil {
 		return err
 	}

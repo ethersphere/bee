@@ -238,6 +238,7 @@ func ensureCalls(t *testing.T, calls *int, exp int) {
 
 type stamper struct{}
 
-func (s *stamper) Stamp(_ swarm.Address) (*postage.Stamp, error) {
-	return postagetesting.MustNewStamp(), nil
+func (s *stamper) Stamp(_, _ swarm.Address) (*postage.Stamp, error) {
+	stamp := postagetesting.MustNewStamp()
+	return stamp, nil
 }
