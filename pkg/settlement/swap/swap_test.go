@@ -190,7 +190,6 @@ func TestReceiveCheque(t *testing.T) {
 
 	peerDeductionFor := false
 
-	networkID := uint64(1)
 	addressbook := &addressbookMock{
 		chequebook: func(p swarm.Address) (common.Address, bool, error) {
 			if !peer.Equal(p) {
@@ -225,7 +224,7 @@ func TestReceiveCheque(t *testing.T) {
 		chequebookService,
 		chequeStore,
 		addressbook,
-		networkID,
+
 		&cashoutMock{},
 		observer,
 		common.Address{},
@@ -285,7 +284,6 @@ func TestReceiveChequeReject(t *testing.T) {
 			return nil, errReject
 		}),
 	)
-	networkID := uint64(1)
 	addressbook := &addressbookMock{
 		chequebook: func(p swarm.Address) (common.Address, bool, error) {
 			return chequebookAddress, true, nil
@@ -301,7 +299,7 @@ func TestReceiveChequeReject(t *testing.T) {
 		chequebookService,
 		chequeStore,
 		addressbook,
-		networkID,
+
 		&cashoutMock{},
 		observer,
 		common.Address{},
@@ -344,7 +342,6 @@ func TestReceiveChequeWrongChequebook(t *testing.T) {
 	}
 
 	chequeStore := mockchequestore.NewChequeStore()
-	networkID := uint64(1)
 	addressbook := &addressbookMock{
 		chequebook: func(p swarm.Address) (common.Address, bool, error) {
 			return common.HexToAddress("0xcfff"), true, nil
@@ -359,7 +356,7 @@ func TestReceiveChequeWrongChequebook(t *testing.T) {
 		chequebookService,
 		chequeStore,
 		addressbook,
-		networkID,
+
 		&cashoutMock{},
 		observer,
 		common.Address{},
@@ -391,7 +388,6 @@ func TestPay(t *testing.T) {
 	beneficiary := common.HexToAddress("0xcd")
 	peer := swarm.MustParseHexAddress("abcd")
 
-	networkID := uint64(1)
 	addressbook := &addressbookMock{
 		beneficiary: func(p swarm.Address) (common.Address, bool, error) {
 			if !peer.Equal(p) {
@@ -425,7 +421,7 @@ func TestPay(t *testing.T) {
 		mockchequebook.NewChequebook(),
 		mockchequestore.NewChequeStore(),
 		addressbook,
-		networkID,
+
 		&cashoutMock{},
 		observer,
 		common.Address{},
@@ -449,7 +445,6 @@ func TestPayIssueError(t *testing.T) {
 
 	peer := swarm.MustParseHexAddress("abcd")
 	errReject := errors.New("reject")
-	networkID := uint64(1)
 	addressbook := &addressbookMock{
 		beneficiary: func(p swarm.Address) (common.Address, bool, error) {
 			if !peer.Equal(p) {
@@ -470,7 +465,7 @@ func TestPayIssueError(t *testing.T) {
 		mockchequebook.NewChequebook(),
 		mockchequestore.NewChequeStore(),
 		addressbook,
-		networkID,
+
 		&cashoutMock{},
 		nil,
 		common.Address{},
@@ -504,7 +499,6 @@ func TestPayUnknownBeneficiary(t *testing.T) {
 
 	amount := big.NewInt(50)
 	peer := swarm.MustParseHexAddress("abcd")
-	networkID := uint64(1)
 	addressbook := &addressbookMock{
 		beneficiary: func(p swarm.Address) (common.Address, bool, error) {
 			if !peer.Equal(p) {
@@ -523,7 +517,7 @@ func TestPayUnknownBeneficiary(t *testing.T) {
 		mockchequebook.NewChequebook(),
 		mockchequestore.NewChequeStore(),
 		addressbook,
-		networkID,
+
 		&cashoutMock{},
 		observer,
 		common.Address{},
@@ -552,10 +546,9 @@ func TestHandshake(t *testing.T) {
 	store := mockstore.NewStateStore()
 
 	beneficiary := common.HexToAddress("0xcd")
-	networkID := uint64(1)
 	txHash := common.HexToHash("0x1")
 
-	peer, err := crypto.NewOverlayFromEthereumAddress(beneficiary[:], networkID, txHash.Bytes())
+	peer, err := crypto.NewOverlayFromEthereumAddress(beneficiary[:], 1, txHash.Bytes())
 
 	if err != nil {
 		t.Fatalf("crypto.NewOverlayFromEthereumAddress(...): unexpected error: %v", err)
@@ -583,7 +576,7 @@ func TestHandshake(t *testing.T) {
 				return nil
 			},
 		},
-		networkID,
+
 		&cashoutMock{},
 		nil,
 		common.Address{},
@@ -607,8 +600,7 @@ func TestHandshakeNewPeer(t *testing.T) {
 
 	beneficiary := common.HexToAddress("0xcd")
 	trx := common.HexToHash("0x1")
-	networkID := uint64(1)
-	peer, err := crypto.NewOverlayFromEthereumAddress(beneficiary[:], networkID, trx.Bytes())
+	peer, err := crypto.NewOverlayFromEthereumAddress(beneficiary[:], 1, trx.Bytes())
 
 	if err != nil {
 		t.Fatalf("crypto.NewOverlayFromEthereumAddress(...): unexpected error: %v", err)
@@ -636,7 +628,7 @@ func TestHandshakeNewPeer(t *testing.T) {
 				return nil
 			},
 		},
-		networkID,
+
 		&cashoutMock{},
 		nil,
 		common.Address{},
@@ -660,8 +652,7 @@ func TestMigratePeer(t *testing.T) {
 
 	beneficiary := common.HexToAddress("0xcd")
 	trx := common.HexToHash("0x1")
-	networkID := uint64(1)
-	peer, err := crypto.NewOverlayFromEthereumAddress(beneficiary[:], networkID, trx.Bytes())
+	peer, err := crypto.NewOverlayFromEthereumAddress(beneficiary[:], 1, trx.Bytes())
 
 	if err != nil {
 		t.Fatalf("crypto.NewOverlayFromEthereumAddress(...): unexpected error: %v", err)
@@ -681,7 +672,7 @@ func TestMigratePeer(t *testing.T) {
 				return nil
 			},
 		},
-		networkID,
+
 		&cashoutMock{},
 		nil,
 		common.Address{},
@@ -719,7 +710,6 @@ func TestCashout(t *testing.T) {
 		mockchequebook.NewChequebook(),
 		mockchequestore.NewChequeStore(),
 		addressbook,
-		uint64(1),
 		&cashoutMock{
 			cashCheque: func(ctx context.Context, c common.Address, r common.Address) (common.Hash, error) {
 				if c != theirChequebookAddress {
@@ -771,7 +761,6 @@ func TestCashoutStatus(t *testing.T) {
 		mockchequebook.NewChequebook(),
 		mockchequestore.NewChequeStore(),
 		addressbook,
-		uint64(1),
 		&cashoutMock{
 			cashoutStatus: func(ctx context.Context, c common.Address) (*chequebook.CashoutStatus, error) {
 				if c != theirChequebookAddress {
