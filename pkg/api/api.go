@@ -683,9 +683,6 @@ type putterSessionWrapper struct {
 }
 
 func (p *putterSessionWrapper) Put(ctx context.Context, chunk swarm.Chunk) error {
-<<<<<<< HEAD
-	stamp, err := p.stamper.Stamp(chunk.Address())
-=======
 	// lockKey := lockKey(chunk.Address())
 	// fmt.Printf("lockKey2123123123123: %v\n", lockKey)
 	// ApiLocker.Lock(lockKey)
@@ -696,7 +693,6 @@ func (p *putterSessionWrapper) Put(ctx context.Context, chunk swarm.Chunk) error
 	}
 
 	stamp, err := p.stamper.Stamp(chunk.Address(), idAddress)
->>>>>>> d2c86081 (fix: postage stamp for gsoc)
 	if err != nil {
 		return err
 	}
