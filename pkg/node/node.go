@@ -874,7 +874,6 @@ func NewBee(
 			p2ps,
 			logger,
 			stateStore,
-			networkID,
 			overlayEthAddress,
 			chequebookService,
 			chequeStore,

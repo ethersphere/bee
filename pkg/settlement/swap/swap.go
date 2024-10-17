@@ -60,12 +60,11 @@ type Service struct {
 	chequeStore    chequebook.ChequeStore
 	cashout        chequebook.CashoutService
 	addressbook    Addressbook
-	networkID      uint64
 	cashoutAddress common.Address
 }
 
 // New creates a new swap Service.
-func New(proto swapprotocol.Interface, logger log.Logger, store storage.StateStorer, chequebook chequebook.Service, chequeStore chequebook.ChequeStore, addressbook Addressbook, networkID uint64, cashout chequebook.CashoutService, accounting settlement.Accounting, cashoutAddress common.Address) *Service {
+func New(proto swapprotocol.Interface, logger log.Logger, store storage.StateStorer, chequebook chequebook.Service, chequeStore chequebook.ChequeStore, addressbook Addressbook, cashout chequebook.CashoutService, accounting settlement.Accounting, cashoutAddress common.Address) *Service {
 	return &Service{
 		proto:          proto,
 		logger:         logger.WithName(loggerName).Register(),
@@ -74,7 +73,6 @@ func New(proto swapprotocol.Interface, logger log.Logger, store storage.StateSto
 		chequebook:     chequebook,
 		chequeStore:    chequeStore,
 		addressbook:    addressbook,
-		networkID:      networkID,
 		cashout:        cashout,
 		accounting:     accounting,
 		cashoutAddress: cashoutAddress,
