@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/pushsync"
+	"github.com/ethersphere/bee/v2/pkg/soc"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
@@ -214,7 +215,11 @@ func (s *Service) chunksWorker(warmupTime time.Duration) {
 	for {
 		select {
 		case op := <-cc:
-			if s.inflight.set(op.Chunk) {
+			idAddress, err := soc.IdentityAddress(op.Chunk)
+			if err != nil {
+				op.Err <- err
+			}
+			if s.inflight.set(idAddress, op.Chunk.Stamp().BatchID()) {
 				if op.Direct {
 					select {
 					case op.Err <- nil:
@@ -240,8 +245,12 @@ func (s *Service) chunksWorker(warmupTime time.Duration) {
 
 func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (bool, error) {
 	loggerV1 := logger.V(1).Build()
+	idAddress, err := soc.IdentityAddress(op.Chunk)
+	if err != nil {
+		return true, err
+	}
 
-	defer s.inflight.delete(op.Chunk)
+	defer s.inflight.delete(idAddress, op.Chunk.Stamp().BatchID())
 
 	if _, err := s.validStamp(op.Chunk); err != nil {
 		loggerV1.Warning(
@@ -254,7 +263,7 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 		return false, errors.Join(err, s.storer.Report(ctx, op.Chunk, storage.ChunkCouldNotSync))
 	}
 
-	switch receipt, err := s.pushSyncer.PushChunkToClosest(ctx, op.Chunk); {
+	switch _, err := s.pushSyncer.PushChunkToClosest(ctx, op.Chunk); {
 	case errors.Is(err, topology.ErrWantSelf):
 		// store the chunk
 		loggerV1.Debug("chunk stays here, i'm the closest node", "chunk_address", op.Chunk.Address())
@@ -269,7 +278,7 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 			return true, err
 		}
 	case errors.Is(err, pushsync.ErrShallowReceipt):
-		if retry := s.shallowReceipt(receipt); retry {
+		if retry := s.shallowReceipt(idAddress); retry {
 			return true, err
 		}
 		if err := s.storer.Report(ctx, op.Chunk, storage.ChunkSynced); err != nil {
@@ -291,11 +300,13 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 
 func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) error {
 	loggerV1 := logger.V(1).Build()
-
-	var err error
+	idAddress, err := soc.IdentityAddress(op.Chunk)
+	if err != nil {
+		return err
+	}
 
 	defer func() {
-		s.inflight.delete(op.Chunk)
+		s.inflight.delete(idAddress, op.Chunk.Stamp().BatchID())
 		select {
 		case op.Err <- err:
 		default:
@@ -329,11 +340,11 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 	return err
 }
 
-func (s *Service) shallowReceipt(receipt *pushsync.Receipt) bool {
-	if s.attempts.try(receipt.Address) {
+func (s *Service) shallowReceipt(idAddress swarm.Address) bool {
+	if s.attempts.try(idAddress) {
 		return true
 	}
-	s.attempts.delete(receipt.Address)
+	s.attempts.delete(idAddress)
 	return false
 }
 

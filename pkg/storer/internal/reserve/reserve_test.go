@@ -197,12 +197,14 @@ func TestSameChunkAddress(t *testing.T) {
 		bin := swarm.Proximity(baseAddr.Bytes(), ch1.Address().Bytes())
 		binBinIDs[bin] += 1
 		err = r.Put(ctx, ch2)
-		if !errors.Is(err, storage.ErrOverwriteNewerChunk) {
-			t.Fatal("expected error")
+		if err != nil {
+			t.Fatal(err)
 		}
+		bin2 := swarm.Proximity(baseAddr.Bytes(), ch2.Address().Bytes())
+		binBinIDs[bin2] += 1
 		size2 := r.Size()
-		if size2-size1 != 1 {
-			t.Fatalf("expected reserve size to increase by 1, got %d", size2-size1)
+		if size2-size1 != 2 {
+			t.Fatalf("expected reserve size to increase by 2, got %d", size2-size1)
 		}
 	})
 
@@ -269,11 +271,20 @@ func TestSameChunkAddress(t *testing.T) {
 		s2 := soctesting.GenerateMockSocWithSigner(t, []byte("update"), signer)
 		ch2 := s2.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 1, 6))
 		bin := swarm.Proximity(baseAddr.Bytes(), ch1.Address().Bytes())
+		err := r.Put(ctx, ch1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = r.Put(ctx, ch2)
+		if err != nil {
+			t.Fatal(err)
+		}
 		binBinIDs[bin] += 2
-		replace(t, ch1, ch2, binBinIDs[bin]-1, binBinIDs[bin])
+		checkChunkInIndexStore(t, ts.IndexStore(), bin, binBinIDs[bin]-1, ch1)
+		checkChunkInIndexStore(t, ts.IndexStore(), bin, binBinIDs[bin], ch2)
 		size2 := r.Size()
-		if size2-size1 != 1 {
-			t.Fatalf("expected reserve size to increase by 1, got %d", size2-size1)
+		if size2-size1 != 2 {
+			t.Fatalf("expected reserve size to increase by 2, got %d", size2-size1)
 		}
 	})
 
@@ -435,16 +446,17 @@ func TestSameChunkAddress(t *testing.T) {
 		ch3BinID := binBinIDs[bin2]
 
 		checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: bin1, BatchID: ch1.Stamp().BatchID(), Address: ch1.Address(), StampHash: ch1StampHash}, true)
-		checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: bin2, BatchID: ch2.Stamp().BatchID(), Address: ch2.Address(), StampHash: ch2StampHash}, true)
+		// different index, same batch
+		checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: bin2, BatchID: ch2.Stamp().BatchID(), Address: ch2.Address(), StampHash: ch2StampHash}, false)
 		checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: bin2, BatchID: ch3.Stamp().BatchID(), Address: ch3.Address(), StampHash: ch3StampHash}, false)
 		checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin1, BinID: ch1BinID, StampHash: ch1StampHash}, true)
-		checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin2, BinID: ch2BinID, StampHash: ch2StampHash}, true)
+		checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin2, BinID: ch2BinID, StampHash: ch2StampHash}, false)
 		checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin2, BinID: ch3BinID, StampHash: ch3StampHash}, false)
 
 		size2 := r.Size()
 
-		// (ch1 + ch2) == 2 and then ch3 reduces reserve size by 1
-		if size2-size1 != 1 {
+		// (ch1 + ch2) == 2
+		if size2-size1 != 2 {
 			t.Fatalf("expected reserve size to increase by 1, got %d", size2-size1)
 		}
 	})
@@ -922,4 +934,15 @@ func getSigner(t *testing.T) crypto.Signer {
 		t.Fatal(err)
 	}
 	return crypto.NewDefaultSigner(privKey)
+}
+
+func checkChunkInIndexStore(t *testing.T, s storage.Reader, bin uint8, binId uint64, ch swarm.Chunk) {
+	t.Helper()
+	stampHash, err := ch.Stamp().Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	checkStore(t, s, &reserve.BatchRadiusItem{Bin: bin, BatchID: ch.Stamp().BatchID(), Address: ch.Address(), StampHash: stampHash}, false)
+	checkStore(t, s, &reserve.ChunkBinItem{Bin: bin, BinID: binId, StampHash: stampHash}, false)
 }
