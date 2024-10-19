@@ -25,7 +25,9 @@ const (
 	rootPath   = "/" + apiVersion
 )
 
-func (s *Service) MountAPI() {
+type MountOption func(*Service)
+
+func (s *Service) Mount(opts ...MountOption) {
 	router := mux.NewRouter()
 
 	router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
@@ -43,57 +45,71 @@ func (s *Service) MountAPI() {
 		web.NoCacheHeadersHandler,
 		web.FinalHandler(s.router),
 	)
+
+	for _, o := range opts {
+		o(s)
+	}
 }
 
-func (s *Service) EnableFullAPIAvailability() {
-	if s != nil {
-		s.isFullApiAvailable = true
+// WithFullAPI will enable all available endpoints, because some endpoints are not available during syncing.
+func WithFullAPI() MountOption {
+	return func(s *Service) {
+		s.EnableFullAPI()
+	}
+}
 
-		compressHandler := func(h http.Handler) http.Handler {
-			downloadEndpoints := []string{
-				"/bzz",
-				"/bytes",
-				"/chunks",
-				"/feeds",
-				"/soc",
-				rootPath + "/bzz",
-				rootPath + "/bytes",
-				rootPath + "/chunks",
-				rootPath + "/feeds",
-				rootPath + "/soc",
-			}
+// EnableFullAPI will enable all available endpoints, because some endpoints are not available during syncing.
+func (s *Service) EnableFullAPI() {
+	if s == nil {
+		return
+	}
 
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				// Skip compression for GET requests on download endpoints.
-				// This is done in order to preserve Content-Length header in response,
-				// because CompressHandler is always removing it.
-				if r.Method == http.MethodGet {
-					for _, endpoint := range downloadEndpoints {
-						if strings.HasPrefix(r.URL.Path, endpoint) {
-							h.ServeHTTP(w, r)
-							return
-						}
-					}
-				}
+	s.isFullAPIEnabled = true
 
-				if r.Method == http.MethodHead {
-					h.ServeHTTP(w, r)
-					return
-				}
-
-				handlers.CompressHandler(h).ServeHTTP(w, r)
-			})
+	compressHandler := func(h http.Handler) http.Handler {
+		downloadEndpoints := []string{
+			"/bzz",
+			"/bytes",
+			"/chunks",
+			"/feeds",
+			"/soc",
+			rootPath + "/bzz",
+			rootPath + "/bytes",
+			rootPath + "/chunks",
+			rootPath + "/feeds",
+			rootPath + "/soc",
 		}
 
-		s.Handler = web.ChainHandlers(
-			httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "api access"),
-			compressHandler,
-			s.responseCodeMetricsHandler,
-			s.pageviewMetricsHandler,
-			s.corsHandler,
-			web.FinalHandler(s.router),
-		)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Skip compression for GET requests on download endpoints.
+			// This is done in order to preserve Content-Length header in response,
+			// because CompressHandler is always removing it.
+			if r.Method == http.MethodGet {
+				for _, endpoint := range downloadEndpoints {
+					if strings.HasPrefix(r.URL.Path, endpoint) {
+						h.ServeHTTP(w, r)
+						return
+					}
+				}
+			}
+
+			if r.Method == http.MethodHead {
+				h.ServeHTTP(w, r)
+				return
+			}
+
+			handlers.CompressHandler(h).ServeHTTP(w, r)
+		})
 	}
+
+	s.Handler = web.ChainHandlers(
+		httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "api access"),
+		compressHandler,
+		s.responseCodeMetricsHandler,
+		s.pageviewMetricsHandler,
+		s.corsHandler,
+		web.FinalHandler(s.router),
+	)
 }
 
 func (s *Service) mountTechnicalDebug() {
@@ -171,7 +187,7 @@ func (s *Service) mountTechnicalDebug() {
 
 func (s *Service) checkRouteAvailability(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.isFullApiAvailable {
+		if !s.isFullAPIEnabled {
 			jsonhttp.ServiceUnavailable(w, "Node is syncing. This endpoint is unavailable. Try again later.")
 			return
 		}

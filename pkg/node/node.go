@@ -451,7 +451,7 @@ func NewBee(
 			stamperStore,
 		)
 
-		apiService.MountAPI()
+		apiService.Mount()
 		apiService.SetProbe(probe)
 
 		apiService.SetSwarmAddress(&swarmAddress)
@@ -1185,7 +1185,7 @@ func NewBee(
 			WsPingPeriod:       60 * time.Second,
 		}, extraOpts, chainID, erc20Service)
 
-		apiService.EnableFullAPIAvailability()
+		apiService.EnableFullAPI()
 
 		apiService.SetRedistributionAgent(agent)
 	}

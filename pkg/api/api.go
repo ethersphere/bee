@@ -217,7 +217,7 @@ type Service struct {
 
 	statusService *status.Service
 
-	isFullApiAvailable bool
+	isFullAPIEnabled bool
 }
 
 func (s *Service) SetP2P(p2p p2p.DebugService) {
