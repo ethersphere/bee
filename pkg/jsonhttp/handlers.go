@@ -45,7 +45,6 @@ func HandleMethods(methods map[string]http.Handler, body string, contentType str
 	w.Header().Set("Content-Type", contentType)
 	w.WriteHeader(http.StatusMethodNotAllowed)
 	fmt.Fprintln(w, body)
-
 }
 
 func NotFoundHandler(w http.ResponseWriter, _ *http.Request) {
