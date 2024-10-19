@@ -25,97 +25,75 @@ const (
 	rootPath   = "/" + apiVersion
 )
 
-func (s *Service) MountTechnicalDebug() {
+func (s *Service) MountAPI() {
 	router := mux.NewRouter()
 
-	router.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		jsonhttp.ServiceUnavailable(w, "Node is syncing. This endpoint is unavailable. Try again later.")
-	})
+	router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
 
 	s.router = router
 
 	s.mountTechnicalDebug()
-
-	s.Handler = web.ChainHandlers(
-		httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "api access"),
-		handlers.CompressHandler,
-		s.corsHandler,
-		web.NoCacheHeadersHandler,
-		web.FinalHandler(router),
-	)
-}
-
-func (s *Service) MountDebug() {
-	if s.router == nil {
-		s.router = mux.NewRouter()
-	}
-
 	s.mountBusinessDebug()
-
-	s.router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
-
-	s.Handler = web.ChainHandlers(
-		httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "api access"),
-		handlers.CompressHandler,
-		s.corsHandler,
-		web.NoCacheHeadersHandler,
-		web.FinalHandler(s.router),
-	)
-}
-
-func (s *Service) MountAPI() {
-	if s.router == nil {
-		s.router = mux.NewRouter()
-	}
-
 	s.mountAPI()
 
-	s.router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
-
-	compressHandler := func(h http.Handler) http.Handler {
-		downloadEndpoints := []string{
-			"/bzz",
-			"/bytes",
-			"/chunks",
-			"/feeds",
-			"/soc",
-			rootPath + "/bzz",
-			rootPath + "/bytes",
-			rootPath + "/chunks",
-			rootPath + "/feeds",
-			rootPath + "/soc",
-		}
-
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Skip compression for GET requests on download endpoints.
-			// This is done in order to preserve Content-Length header in response,
-			// because CompressHandler is always removing it.
-			if r.Method == http.MethodGet {
-				for _, endpoint := range downloadEndpoints {
-					if strings.HasPrefix(r.URL.Path, endpoint) {
-						h.ServeHTTP(w, r)
-						return
-					}
-				}
-			}
-
-			if r.Method == http.MethodHead {
-				h.ServeHTTP(w, r)
-				return
-			}
-
-			handlers.CompressHandler(h).ServeHTTP(w, r)
-		})
-	}
-
 	s.Handler = web.ChainHandlers(
 		httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "api access"),
-		compressHandler,
-		s.responseCodeMetricsHandler,
-		s.pageviewMetricsHandler,
+		handlers.CompressHandler,
 		s.corsHandler,
+		web.NoCacheHeadersHandler,
 		web.FinalHandler(s.router),
 	)
+}
+
+func (s *Service) EnableFullAPIAvailability() {
+	if s != nil {
+		s.isFullApiAvailable = true
+
+		compressHandler := func(h http.Handler) http.Handler {
+			downloadEndpoints := []string{
+				"/bzz",
+				"/bytes",
+				"/chunks",
+				"/feeds",
+				"/soc",
+				rootPath + "/bzz",
+				rootPath + "/bytes",
+				rootPath + "/chunks",
+				rootPath + "/feeds",
+				rootPath + "/soc",
+			}
+
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Skip compression for GET requests on download endpoints.
+				// This is done in order to preserve Content-Length header in response,
+				// because CompressHandler is always removing it.
+				if r.Method == http.MethodGet {
+					for _, endpoint := range downloadEndpoints {
+						if strings.HasPrefix(r.URL.Path, endpoint) {
+							h.ServeHTTP(w, r)
+							return
+						}
+					}
+				}
+
+				if r.Method == http.MethodHead {
+					h.ServeHTTP(w, r)
+					return
+				}
+
+				handlers.CompressHandler(h).ServeHTTP(w, r)
+			})
+		}
+
+		s.Handler = web.ChainHandlers(
+			httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "api access"),
+			compressHandler,
+			s.responseCodeMetricsHandler,
+			s.pageviewMetricsHandler,
+			s.corsHandler,
+			web.FinalHandler(s.router),
+		)
+	}
 }
 
 func (s *Service) mountTechnicalDebug() {
@@ -151,11 +129,11 @@ func (s *Service) mountTechnicalDebug() {
 		u.Path += "/"
 		http.Redirect(w, r, u.String(), http.StatusPermanentRedirect)
 	}))
+
 	s.router.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
 	s.router.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
 	s.router.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
 	s.router.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
-
 	s.router.PathPrefix("/debug/pprof/").Handler(http.HandlerFunc(pprof.Index))
 	s.router.Handle("/debug/vars", expvar.Handler())
 
@@ -165,12 +143,14 @@ func (s *Service) mountTechnicalDebug() {
 			web.FinalHandlerFunc(s.loggerGetHandler),
 		),
 	})
+
 	s.router.Handle("/loggers/{exp}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
 			httpaccess.NewHTTPAccessSuppressLogHandler(),
 			web.FinalHandlerFunc(s.loggerGetHandler),
 		),
 	})
+
 	s.router.Handle("/loggers/{exp}/{verbosity}", jsonhttp.MethodHandler{
 		"PUT": web.ChainHandlers(
 			httpaccess.NewHTTPAccessSuppressLogHandler(),
@@ -187,6 +167,16 @@ func (s *Service) mountTechnicalDebug() {
 		httpaccess.NewHTTPAccessSuppressLogHandler(),
 		web.FinalHandlerFunc(s.healthHandler),
 	))
+}
+
+func (s *Service) checkRouteAvailability(handler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !s.isFullApiAvailable {
+			jsonhttp.ServiceUnavailable(w, "Node is syncing. This endpoint is unavailable. Try again later.")
+			return
+		}
+		handler.ServeHTTP(w, r)
+	})
 }
 
 func (s *Service) mountAPI() {
@@ -208,8 +198,9 @@ func (s *Service) mountAPI() {
 
 	// handle is a helper closure which simplifies the router setup.
 	handle := func(path string, handler http.Handler) {
-		s.router.Handle(path, handler)
-		s.router.Handle(rootPath+path, handler)
+		routeHandler := s.checkRouteAvailability(handler)
+		s.router.Handle(path, routeHandler)
+		s.router.Handle(rootPath+path, routeHandler)
 	}
 
 	handle("/bytes", jsonhttp.MethodHandler{
@@ -395,14 +386,16 @@ func (s *Service) mountAPI() {
 
 func (s *Service) mountBusinessDebug() {
 	handle := func(path string, handler http.Handler) {
-		s.router.Handle(path, handler)
-		s.router.Handle(rootPath+path, handler)
+		routeHandler := s.checkRouteAvailability(handler)
+		s.router.Handle(path, routeHandler)
+		s.router.Handle(rootPath+path, routeHandler)
 	}
 
 	if s.transaction != nil {
 		handle("/transactions", jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.transactionListHandler),
 		})
+
 		handle("/transactions/{hash}", jsonhttp.MethodHandler{
 			"GET":    http.HandlerFunc(s.transactionDetailHandler),
 			"POST":   http.HandlerFunc(s.transactionResendHandler),
@@ -518,6 +511,7 @@ func (s *Service) mountBusinessDebug() {
 		handle("/wallet", jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.walletHandler),
 		})
+
 		if s.swapEnabled {
 			handle("/wallet/withdraw/{coin}", jsonhttp.MethodHandler{
 				"POST": web.ChainHandlers(

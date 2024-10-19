@@ -216,6 +216,8 @@ type Service struct {
 	redistributionAgent *storageincentives.Agent
 
 	statusService *status.Service
+
+	isFullApiAvailable bool
 }
 
 func (s *Service) SetP2P(p2p p2p.DebugService) {

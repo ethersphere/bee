@@ -450,7 +450,8 @@ func NewBee(
 			o.CORSAllowedOrigins,
 			stamperStore,
 		)
-		apiService.MountTechnicalDebug()
+
+		apiService.MountAPI()
 		apiService.SetProbe(probe)
 
 		apiService.SetSwarmAddress(&swarmAddress)
@@ -1184,8 +1185,7 @@ func NewBee(
 			WsPingPeriod:       60 * time.Second,
 		}, extraOpts, chainID, erc20Service)
 
-		apiService.MountDebug()
-		apiService.MountAPI()
+		apiService.EnableFullAPIAvailability()
 
 		apiService.SetRedistributionAgent(agent)
 	}

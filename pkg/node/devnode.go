@@ -137,7 +137,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		return nil, fmt.Errorf("blockchain address: %w", err)
 	}
 
-	var mockTransaction = transactionmock.New(transactionmock.WithPendingTransactionsFunc(func() ([]common.Hash, error) {
+	mockTransaction := transactionmock.New(transactionmock.WithPendingTransactionsFunc(func() ([]common.Hash, error) {
 		return []common.Hash{common.HexToHash("abcd")}, nil
 	}), transactionmock.WithResendTransactionFunc(func(ctx context.Context, txHash common.Hash) error {
 		return nil
@@ -303,13 +303,11 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		))
 	)
 
-	var (
-		// syncStatusFn mocks sync status because complete sync is required in order to curl certain apis e.g. /stamps.
-		// this allows accessing those apis by passing true to isDone in devNode.
-		syncStatusFn = func() (isDone bool, err error) {
-			return true, nil
-		}
-	)
+	// syncStatusFn mocks sync status because complete sync is required in order to curl certain apis e.g. /stamps.
+	// this allows accessing those apis by passing true to isDone in devNode.
+	syncStatusFn := func() (isDone bool, err error) {
+		return true, nil
+	}
 
 	mockFeeds := factory.New(localStore.Download(true))
 	mockResolver := resolverMock.NewResolver()
@@ -351,7 +349,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		SyncStatus:      syncStatusFn,
 	}
 
-	var erc20 = erc20mock.New(
+	erc20 := erc20mock.New(
 		erc20mock.WithBalanceOfFunc(func(ctx context.Context, address common.Address) (*big.Int, error) {
 			return big.NewInt(0), nil
 		}),
@@ -366,10 +364,9 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
 		WsPingPeriod:       60 * time.Second,
 	}, debugOpts, 1, erc20)
-	apiService.MountTechnicalDebug()
-	apiService.MountDebug()
-	apiService.MountAPI()
 
+	apiService.MountAPI()
+	apiService.EnableFullAPIAvailability()
 	apiService.SetProbe(probe)
 	apiService.SetP2P(p2ps)
 	apiService.SetSwarmAddress(&swarmAddress)
@@ -444,7 +441,6 @@ func pong(_ context.Context, _ swarm.Address, _ ...string) (rtt time.Duration, e
 }
 
 func randomAddress() (swarm.Address, error) {
-
 	b := make([]byte, 32)
 
 	_, err := rand.Read(b)
@@ -453,5 +449,4 @@ func randomAddress() (swarm.Address, error) {
 	}
 
 	return swarm.NewAddress(b), nil
-
 }
