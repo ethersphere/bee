@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 )
 
 const (
@@ -291,6 +292,62 @@ func (c *chunk) String() string {
 
 func (c *chunk) Equal(cp Chunk) bool {
 	return c.Address().Equal(cp.Address()) && bytes.Equal(c.Data(), cp.Data())
+}
+
+// MultexLock is a structure that holds a map of locks for each id
+// and a pool of reusable locks to avoid unnecessary allocations.
+type MultexLock struct {
+	mu       sync.Mutex
+	locks    map[string]*sync.Mutex
+	lockPool sync.Pool
+}
+
+// NewMultexLock initializes a new Locker.
+func NewMultexLock() *MultexLock {
+	return &MultexLock{
+		locks: make(map[string]*sync.Mutex),
+		lockPool: sync.Pool{
+			New: func() interface{} {
+				return &sync.Mutex{}
+			},
+		},
+	}
+}
+
+// Lock locks the mutex for the given id.
+func (l *MultexLock) Lock(id string) func() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	lock, exists := l.locks[id]
+	if !exists {
+		// Get a new lock from the pool if it doesn't exist
+		lock = l.lockPool.Get().(*sync.Mutex)
+		l.locks[id] = lock
+	}
+
+	// Lock the mutex for the id
+	lock.Lock()
+
+	return func() { l.Unlock(id) }
+}
+
+// Unlock unlocks the mutex for the given id.
+func (l *MultexLock) Unlock(id string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	lock, exists := l.locks[id]
+	if exists {
+		// Delete the lock from the map after unlocking
+		delete(l.locks, id)
+
+		// Unlock the mutex
+		lock.Unlock()
+
+		// Put the lock back into the pool for reuse
+		l.lockPool.Put(lock)
+	}
 }
 
 var errBadCharacter = errors.New("bad character in binary address")

@@ -17,6 +17,11 @@ func NewStamper() postage.Stamper {
 }
 
 // Stamp implements the Stamper interface. It returns an empty postage stamp.
-func (mockStamper) Stamp(_ swarm.Address) (*postage.Stamp, error) {
+func (mockStamper) Stamp(_, _ swarm.Address) (*postage.Stamp, error) {
 	return &postage.Stamp{}, nil
+}
+
+// Stamp implements the Stamper interface. It returns an empty postage stamp.
+func (mockStamper) BatchId() []byte {
+	return nil
 }

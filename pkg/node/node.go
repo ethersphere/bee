@@ -705,7 +705,7 @@ func NewBee(
 	}
 
 	lo := &storer.Options{
-		Address:                   swarmAddress,
+		Address:                   swarmAddress.Clone(),
 		CacheCapacity:             o.CacheCapacity,
 		LdbOpenFilesLimit:         o.DBOpenFilesLimit,
 		LdbBlockCacheCapacity:     o.DBBlockCacheCapacity,

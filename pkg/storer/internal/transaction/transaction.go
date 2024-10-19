@@ -62,10 +62,11 @@ type store struct {
 	bstore      storage.BatchStore
 	metrics     metrics
 	chunkLocker *multex.Multex
+	mu          chan struct{}
 }
 
 func NewStorage(sharky *sharky.Store, bstore storage.BatchStore) Storage {
-	return &store{sharky, bstore, newMetrics(), multex.New()}
+	return &store{sharky: sharky, bstore: bstore, metrics: newMetrics(), chunkLocker: multex.New(), mu: make(chan struct{}, 1)}
 }
 
 type transaction struct {
@@ -116,10 +117,16 @@ func (s *store) NewTransaction(ctx context.Context) (Transaction, func()) {
 }
 
 func (s *store) IndexStore() storage.Reader {
+	s.mu <- struct{}{}
+	defer func() { <-s.mu }()
 	return &indexTrx{s.bstore, nil, s.metrics}
 }
 
 func (s *store) ChunkStore() storage.ReadOnlyChunkStore {
+	// transactionLocker.Lock("chunkstore")
+	// defer transactionLocker.Unlock("chunkstore")
+	s.mu <- struct{}{}
+	defer func() { <-s.mu }()
 	indexStore := &indexTrx{s.bstore, nil, s.metrics}
 	sharyTrx := &sharkyTrx{s.sharky, s.metrics, nil, nil}
 	return &chunkStoreTrx{indexStore, sharyTrx, s.chunkLocker, nil, s.metrics, true}
@@ -214,26 +221,31 @@ type chunkStoreTrx struct {
 
 func (c *chunkStoreTrx) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
 	defer handleMetric("chunkstore_get", c.metrics)(&err)
-	unlock := c.lock(addr)
+	lockId := "get:" + LockKey(addr)
+	unlock := transactionLocker.Lock(lockId)
 	defer unlock()
 	ch, err = chunkstore.Get(ctx, c.indexStore, c.sharkyTrx, addr)
 	return ch, err
 }
 func (c *chunkStoreTrx) Has(ctx context.Context, addr swarm.Address) (_ bool, err error) {
 	defer handleMetric("chunkstore_has", c.metrics)(&err)
-	unlock := c.lock(addr)
+
+	lockId := "has:" + LockKey(addr)
+	unlock := transactionLocker.Lock(lockId)
 	defer unlock()
 	return chunkstore.Has(ctx, c.indexStore, addr)
 }
 func (c *chunkStoreTrx) Put(ctx context.Context, ch swarm.Chunk) (err error) {
 	defer handleMetric("chunkstore_put", c.metrics)(&err)
-	unlock := c.lock(ch.Address())
+	lockId := "put:" + LockKey(ch.Address())
+	unlock := transactionLocker.Lock(lockId)
 	defer unlock()
 	return chunkstore.Put(ctx, c.indexStore, c.sharkyTrx, ch)
 }
 func (c *chunkStoreTrx) Delete(ctx context.Context, addr swarm.Address) (err error) {
 	defer handleMetric("chunkstore_delete", c.metrics)(&err)
-	unlock := c.lock(addr)
+	lockId := "delete:" + LockKey(addr)
+	unlock := transactionLocker.Lock(lockId)
 	defer unlock()
 	return chunkstore.Delete(ctx, c.indexStore, c.sharkyTrx, addr)
 }
@@ -244,25 +256,10 @@ func (c *chunkStoreTrx) Iterate(ctx context.Context, fn storage.IterateChunkFn) 
 
 func (c *chunkStoreTrx) Replace(ctx context.Context, ch swarm.Chunk) (err error) {
 	defer handleMetric("chunkstore_replace", c.metrics)(&err)
-	unlock := c.lock(ch.Address())
+	lockId := "replace:" + LockKey(ch.Address())
+	unlock := transactionLocker.Lock(lockId)
 	defer unlock()
 	return chunkstore.Replace(ctx, c.indexStore, c.sharkyTrx, ch)
-}
-
-func (c *chunkStoreTrx) lock(addr swarm.Address) func() {
-	// directly lock
-	if c.readOnly {
-		c.globalLocker.Lock(addr.ByteString())
-		return func() { c.globalLocker.Unlock(addr.ByteString()) }
-	}
-
-	// lock chunk only once in the same transaction
-	if _, ok := c.lockedAddrs[addr.ByteString()]; !ok {
-		c.globalLocker.Lock(addr.ByteString())
-		c.lockedAddrs[addr.ByteString()] = struct{}{}
-	}
-
-	return func() {} // unlocking the chunk will be done in the Commit()
 }
 
 type indexTrx struct {
@@ -271,16 +268,27 @@ type indexTrx struct {
 	metrics metrics
 }
 
-func (s *indexTrx) Get(i storage.Item) error           { return s.store.Get(i) }
-func (s *indexTrx) Has(k storage.Key) (bool, error)    { return s.store.Has(k) }
+func (s *indexTrx) Get(i storage.Item) error { return s.store.Get(i) }
+func (s *indexTrx) Has(k storage.Key) (bool, error) {
+	lockId := k.Namespace() + k.ID()
+	unlock := transactionLocker.Lock(lockId)
+	defer unlock()
+	return s.store.Has(k)
+}
 func (s *indexTrx) GetSize(k storage.Key) (int, error) { return s.store.GetSize(k) }
 func (s *indexTrx) Iterate(q storage.Query, f storage.IterateFn) (err error) {
 	defer handleMetric("iterate", s.metrics)(&err)
 	return s.store.Iterate(q, f)
 }
 func (s *indexTrx) Count(k storage.Key) (int, error) { return s.store.Count(k) }
-func (s *indexTrx) Put(i storage.Item) error         { return s.batch.Put(i) }
-func (s *indexTrx) Delete(i storage.Item) error      { return s.batch.Delete(i) }
+func (s *indexTrx) Put(i storage.Item) error {
+	lockId := i.Namespace() + i.ID()
+	unlock := transactionLocker.Lock(lockId)
+	defer unlock()
+
+	return s.batch.Put(i)
+}
+func (s *indexTrx) Delete(i storage.Item) error { return s.batch.Delete(i) }
 
 type sharkyTrx struct {
 	sharky       *sharky.Store

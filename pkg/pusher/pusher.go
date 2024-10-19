@@ -127,6 +127,11 @@ func (s *Service) chunksWorker(warmupTime time.Duration) {
 			err      error
 			doRepeat bool
 		)
+		// lock op to prevent duplicate handling
+		// addr := op.Chunk.Address()
+		// k := lockKey(addr)
+		// PusherLocker.Lock(k)
+		// defer PusherLocker.Unlock(k)
 
 		defer func() {
 			// no peer was found which may mean that the node is suffering from connections issues
@@ -215,6 +220,10 @@ func (s *Service) chunksWorker(warmupTime time.Duration) {
 	for {
 		select {
 		case op := <-cc:
+			// lock op to prevent duplicate handling
+			// addr := op.Chunk.Address()
+			// k := lockKey(addr)
+			// PusherLocker.Lock(k)
 			idAddress, err := soc.IdentityAddress(op.Chunk)
 			if err != nil {
 				op.Err <- err
@@ -233,6 +242,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration) {
 			case sem <- struct{}{}:
 				wg.Add(1)
 				go push(op)
+				// PusherLocker.Unlock(k)
 			case <-s.quit:
 				return
 			}
