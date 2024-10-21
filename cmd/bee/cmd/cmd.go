@@ -291,7 +291,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().StringSlice(optionNameWhitelistedWithdrawalAddress, []string{}, "withdrawal target addresses")
 	cmd.Flags().Bool(optionNameTransactionDebugMode, false, "skips the gas estimate step for contract transactions")
 	cmd.Flags().Uint(optionMinimumStorageRadius, 0, "minimum radius storage threshold")
-	cmd.Flags().Int(optionReserveCapacityDoubling, 0, "reserve capacity doubling")
+	cmd.Flags().Int(optionReserveCapacityDoubling, 0, "number of the times the reserve capacity is doubled eg: capacity * 2^d. Stake should be at least 2^d * 10 BZZ in order to fully parcipate in the storage incentives for all of the neighborhoods.")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {
