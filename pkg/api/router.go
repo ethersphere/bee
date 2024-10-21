@@ -27,7 +27,11 @@ const (
 
 func (s *Service) MountTechnicalDebug() {
 	router := mux.NewRouter()
-	router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
+
+	router.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		jsonhttp.ServiceUnavailable(w, "Node is syncing. This endpoint is unavailable. Try again later.")
+	})
+
 	s.router = router
 
 	s.mountTechnicalDebug()
@@ -42,7 +46,13 @@ func (s *Service) MountTechnicalDebug() {
 }
 
 func (s *Service) MountDebug() {
+	if s.router == nil {
+		s.router = mux.NewRouter()
+	}
+
 	s.mountBusinessDebug()
+
+	s.router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
 
 	s.Handler = web.ChainHandlers(
 		httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "api access"),
@@ -56,10 +66,11 @@ func (s *Service) MountDebug() {
 func (s *Service) MountAPI() {
 	if s.router == nil {
 		s.router = mux.NewRouter()
-		s.router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
 	}
 
 	s.mountAPI()
+
+	s.router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
 
 	compressHandler := func(h http.Handler) http.Handler {
 		downloadEndpoints := []string{
@@ -422,10 +433,6 @@ func (s *Service) mountBusinessDebug() {
 	handle("/peers/{address}", jsonhttp.MethodHandler{
 		"DELETE": http.HandlerFunc(s.peerDisconnectHandler),
 	})
-
-	//handle("/chunks/{address}", jsonhttp.MethodHandler{
-	//	"GET": http.HandlerFunc(s.hasChunkHandler),
-	//})
 
 	handle("/topology", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.topologyHandler),
