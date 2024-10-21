@@ -599,6 +599,34 @@ func TestBlocklisting(t *testing.T) {
 	expectPeers(t, s2)
 }
 
+func TestReverseBlocklist(t *testing.T) {
+	t.Parallel()
+
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
+	s2, overlay2 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
+
+	s1Addr := serviceUnderlayAddress(t, s1)
+
+	_, err := s2.Connect(context.Background(), s1Addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expectPeers(t, s1, overlay2)
+	expectPeersEventually(t, s2, overlay1)
+
+	if err := s1.Blocklist(overlay2, 0, testBlocklistMsg); err != nil {
+		t.Fatal(err)
+	}
+
+	expectPeers(t, s1)
+	expectPeersEventually(t, s2)
+}
+
 func TestBlocklistedPeers(t *testing.T) {
 	t.Parallel()
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
