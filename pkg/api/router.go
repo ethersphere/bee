@@ -25,24 +25,18 @@ const (
 	rootPath   = "/" + apiVersion
 )
 
-func (s *Service) MountTechnicalDebug() {
+type MountOption func(*Service)
+
+func (s *Service) Mount(opts ...MountOption) {
 	router := mux.NewRouter()
+
 	router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
+
 	s.router = router
 
 	s.mountTechnicalDebug()
-
-	s.Handler = web.ChainHandlers(
-		httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "api access"),
-		handlers.CompressHandler,
-		s.corsHandler,
-		web.NoCacheHeadersHandler,
-		web.FinalHandler(router),
-	)
-}
-
-func (s *Service) MountDebug() {
 	s.mountBusinessDebug()
+	s.mountAPI()
 
 	s.Handler = web.ChainHandlers(
 		httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "api access"),
@@ -51,15 +45,26 @@ func (s *Service) MountDebug() {
 		web.NoCacheHeadersHandler,
 		web.FinalHandler(s.router),
 	)
+
+	for _, o := range opts {
+		o(s)
+	}
 }
 
-func (s *Service) MountAPI() {
-	if s.router == nil {
-		s.router = mux.NewRouter()
-		s.router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
+// WithFullAPI will enable all available endpoints, because some endpoints are not available during syncing.
+func WithFullAPI() MountOption {
+	return func(s *Service) {
+		s.EnableFullAPI()
+	}
+}
+
+// EnableFullAPI will enable all available endpoints, because some endpoints are not available during syncing.
+func (s *Service) EnableFullAPI() {
+	if s == nil {
+		return
 	}
 
-	s.mountAPI()
+	s.isFullAPIEnabled = true
 
 	compressHandler := func(h http.Handler) http.Handler {
 		downloadEndpoints := []string{
@@ -140,11 +145,11 @@ func (s *Service) mountTechnicalDebug() {
 		u.Path += "/"
 		http.Redirect(w, r, u.String(), http.StatusPermanentRedirect)
 	}))
+
 	s.router.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
 	s.router.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
 	s.router.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
 	s.router.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
-
 	s.router.PathPrefix("/debug/pprof/").Handler(http.HandlerFunc(pprof.Index))
 	s.router.Handle("/debug/vars", expvar.Handler())
 
@@ -154,12 +159,14 @@ func (s *Service) mountTechnicalDebug() {
 			web.FinalHandlerFunc(s.loggerGetHandler),
 		),
 	})
+
 	s.router.Handle("/loggers/{exp}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
 			httpaccess.NewHTTPAccessSuppressLogHandler(),
 			web.FinalHandlerFunc(s.loggerGetHandler),
 		),
 	})
+
 	s.router.Handle("/loggers/{exp}/{verbosity}", jsonhttp.MethodHandler{
 		"PUT": web.ChainHandlers(
 			httpaccess.NewHTTPAccessSuppressLogHandler(),
@@ -176,6 +183,16 @@ func (s *Service) mountTechnicalDebug() {
 		httpaccess.NewHTTPAccessSuppressLogHandler(),
 		web.FinalHandlerFunc(s.healthHandler),
 	))
+}
+
+func (s *Service) checkRouteAvailability(handler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !s.isFullAPIEnabled {
+			jsonhttp.ServiceUnavailable(w, "Node is syncing. This endpoint is unavailable. Try again later.")
+			return
+		}
+		handler.ServeHTTP(w, r)
+	})
 }
 
 func (s *Service) mountAPI() {
@@ -197,8 +214,9 @@ func (s *Service) mountAPI() {
 
 	// handle is a helper closure which simplifies the router setup.
 	handle := func(path string, handler http.Handler) {
-		s.router.Handle(path, handler)
-		s.router.Handle(rootPath+path, handler)
+		routeHandler := s.checkRouteAvailability(handler)
+		s.router.Handle(path, routeHandler)
+		s.router.Handle(rootPath+path, routeHandler)
 	}
 
 	handle("/bytes", jsonhttp.MethodHandler{
@@ -384,14 +402,16 @@ func (s *Service) mountAPI() {
 
 func (s *Service) mountBusinessDebug() {
 	handle := func(path string, handler http.Handler) {
-		s.router.Handle(path, handler)
-		s.router.Handle(rootPath+path, handler)
+		routeHandler := s.checkRouteAvailability(handler)
+		s.router.Handle(path, routeHandler)
+		s.router.Handle(rootPath+path, routeHandler)
 	}
 
 	if s.transaction != nil {
 		handle("/transactions", jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.transactionListHandler),
 		})
+
 		handle("/transactions/{hash}", jsonhttp.MethodHandler{
 			"GET":    http.HandlerFunc(s.transactionDetailHandler),
 			"POST":   http.HandlerFunc(s.transactionResendHandler),
@@ -422,10 +442,6 @@ func (s *Service) mountBusinessDebug() {
 	handle("/peers/{address}", jsonhttp.MethodHandler{
 		"DELETE": http.HandlerFunc(s.peerDisconnectHandler),
 	})
-
-	//handle("/chunks/{address}", jsonhttp.MethodHandler{
-	//	"GET": http.HandlerFunc(s.hasChunkHandler),
-	//})
 
 	handle("/topology", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.topologyHandler),
@@ -511,6 +527,7 @@ func (s *Service) mountBusinessDebug() {
 		handle("/wallet", jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.walletHandler),
 		})
+
 		if s.swapEnabled {
 			handle("/wallet/withdraw/{coin}", jsonhttp.MethodHandler{
 				"POST": web.ChainHandlers(
