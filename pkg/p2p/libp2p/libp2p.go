@@ -542,6 +542,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	}
 
 	peerUserAgent := appendSpace(s.peerUserAgent(s.ctx, peerID))
+	s.networkStatus.Store(int32(p2p.NetworkStatusAvailable))
 
 	loggerV1.Debug("stream handler: successfully connected to peer (inbound)", "addresses", i.BzzAddress.ShortString(), "light", i.LightString(), "user_agent", peerUserAgent)
 	s.logger.Debug("stream handler: successfully connected to peer (inbound)", "address", i.BzzAddress.Overlay, "light", i.LightString(), "user_agent", peerUserAgent)
