@@ -131,6 +131,9 @@ type testServerOptions struct {
 	NodeStatus          *status.Service
 	PinIntegrity        api.PinIntegrity
 	WhitelistedAddr     string
+	FullAPIDisabled     bool
+	ChequebookDisabled  bool
+	SwapDisabled        bool
 }
 
 func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.Conn, string, *chanStorer) {
@@ -207,7 +210,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		o.BeeMode = api.FullMode
 	}
 
-	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, []string{o.WhitelistedAddr}, o.Logger, transaction, o.BatchStore, o.BeeMode, true, true, backend, o.CORSAllowedOrigins, inmemstore.New())
+	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, []string{o.WhitelistedAddr}, o.Logger, transaction, o.BatchStore, o.BeeMode, !o.ChequebookDisabled, !o.SwapDisabled, backend, o.CORSAllowedOrigins, inmemstore.New())
 	testutil.CleanupCloser(t, s)
 
 	s.SetP2P(o.P2P)
@@ -231,7 +234,10 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		WsPingPeriod:       o.WsPingPeriod,
 	}, extraOpts, 1, erc20)
 
-	s.Mount(api.WithFullAPI())
+	s.Mount()
+	if !o.FullAPIDisabled {
+		s.EnableFullAPI()
+	}
 
 	if o.DirectUpload {
 		chanStore = newChanStore(o.Storer.PusherFeed())
@@ -375,7 +381,8 @@ func TestParseName(t *testing.T) {
 
 		s := api.New(pk.PublicKey, pk.PublicKey, common.Address{}, nil, log, nil, nil, 1, false, false, nil, []string{"*"}, inmemstore.New())
 		s.Configure(signer, nil, api.Options{}, api.ExtraOptions{Resolver: tC.res}, 1, nil)
-		s.Mount(api.WithFullAPI())
+		s.Mount()
+		s.EnableFullAPI()
 
 		tC := tC
 		t.Run(tC.desc, func(t *testing.T) {

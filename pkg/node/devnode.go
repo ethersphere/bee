@@ -365,7 +365,8 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		WsPingPeriod:       60 * time.Second,
 	}, debugOpts, 1, erc20)
 
-	apiService.Mount(api.WithFullAPI())
+	apiService.Mount()
+	apiService.EnableFullAPI()
 	apiService.SetProbe(probe)
 	apiService.SetP2P(p2ps)
 	apiService.SetSwarmAddress(&swarmAddress)

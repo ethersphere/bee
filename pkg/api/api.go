@@ -179,6 +179,7 @@ type Service struct {
 	ethereumAddress   common.Address
 	chequebookEnabled bool
 	swapEnabled       bool
+	fullAPIEnabled    bool
 
 	topologyDriver topology.Driver
 	p2p            p2p.DebugService
@@ -216,8 +217,6 @@ type Service struct {
 	redistributionAgent *storageincentives.Agent
 
 	statusService *status.Service
-
-	isFullAPIEnabled bool
 }
 
 func (s *Service) SetP2P(p2p p2p.DebugService) {
