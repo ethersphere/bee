@@ -528,9 +528,11 @@ func (s *Service) mountBusinessDebug() {
 	handle("/wallet/withdraw/{coin}", web.ChainHandlers(
 		s.checkChequebookAvailability,
 		s.checkSwapAvailability,
-		s.gasConfigMiddleware("wallet withdraw"),
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.walletWithdrawHandler),
+			"POST": web.ChainHandlers(
+				s.gasConfigMiddleware("wallet withdraw"),
+				web.FinalHandlerFunc(s.walletWithdrawHandler),
+			),
 		}),
 	))
 

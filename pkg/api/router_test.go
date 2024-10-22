@@ -100,7 +100,7 @@ func TestEndpointOptions(t *testing.T) {
 				{"/chequebook/deposit", []string{"POST"}, http.StatusNoContent},
 				{"/chequebook/withdraw", []string{"POST"}, http.StatusNoContent},
 				{"/wallet", []string{"GET"}, http.StatusNoContent},
-				{"/wallet/withdraw/{coin}", []string{"GET"}, http.StatusNoContent},
+				{"/wallet/withdraw/{coin}", []string{"POST"}, http.StatusNoContent},
 				{"/stamps", []string{"GET"}, http.StatusNoContent},
 				{"/stamps/{batch_id}", []string{"GET"}, http.StatusNoContent},
 				{"/stamps/{batch_id}/buckets", []string{"GET"}, http.StatusNoContent},
