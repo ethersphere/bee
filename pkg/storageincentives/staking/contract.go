@@ -103,6 +103,10 @@ func (c *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (com
 		}
 	}
 
+	if big.NewInt(0).Add(prevStakedAmount, stakedAmount).Cmp(big.NewInt(0).Mul(big.NewInt(1<<c.height), MinimumStakeAmount)) < 0 {
+		return common.Hash{}, fmt.Errorf("stake amount does not sufficiently cover the additional reserve capacity: %w", ErrInsufficientStakeAmount)
+	}
+
 	balance, err := c.getBalance(ctx)
 	if err != nil {
 		return common.Hash{}, err
