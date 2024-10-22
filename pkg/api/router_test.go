@@ -407,6 +407,7 @@ func TestEndpointOptions(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -420,6 +421,7 @@ func TestEndpointOptions(t *testing.T) {
 			}
 
 			for _, tt := range tc.expectedStatuses {
+				tt := tt
 				t.Run(tc.name+routeToName(tt.route), func(t *testing.T) {
 					resp := jsonhttptest.Request(t, testServer, http.MethodOptions, tt.route, tt.expectedStatus)
 
