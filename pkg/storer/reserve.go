@@ -126,6 +126,10 @@ func (db *DB) reserveWorker(ctx context.Context) {
 
 	_, _ = db.countWithinRadius(ctx)
 
+	if !db.reserve.IsWithinCapacity() {
+		db.events.Trigger(reserveOverCapacity)
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
