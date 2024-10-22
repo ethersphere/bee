@@ -173,6 +173,7 @@ type Options struct {
 	WhitelistedWithdrawalAddress  []string
 	TrxDebugMode                  bool
 	MinimumStorageRadius          uint
+	ReserveCapacityDoubling       int
 }
 
 const (
@@ -185,9 +186,7 @@ const (
 	minPaymentThreshold           = 2 * refreshRate           // minimal accepted payment threshold of full nodes
 	maxPaymentThreshold           = 24 * refreshRate          // maximal accepted payment threshold of full nodes
 	mainnetNetworkID              = uint64(1)                 //
-	ReserveCapacity               = 4_194_304                 // 2^22 chunks
 	reserveWakeUpDuration         = 15 * time.Minute          // time to wait before waking up reserveWorker
-	reserveTreshold               = ReserveCapacity * 5 / 10
 	reserveMinEvictCount          = 1_000
 	cacheMinEvictCount            = 10_000
 )
@@ -249,6 +248,12 @@ func NewBee(
 			}
 		}
 	}(b)
+
+	if o.ReserveCapacityDoubling < 0 || o.ReserveCapacityDoubling > 1 {
+		return nil, fmt.Errorf("config reserve capacity doubling has to be between default: 0 and maximum: 1")
+	}
+
+	reserveCapacity := (1 << o.ReserveCapacityDoubling) * storer.DefaultReserveCapacity
 
 	stateStore, stateStoreMetrics, err := InitStateStore(logger, o.DataDir, o.StatestoreCacheCapacity)
 	if err != nil {
@@ -361,7 +366,7 @@ func NewBee(
 			func(id []byte) error {
 				return evictFn(id)
 			},
-			ReserveCapacity,
+			reserveCapacity,
 			logger,
 		)
 		if err != nil {
@@ -449,6 +454,8 @@ func NewBee(
 		apiService.MountTechnicalDebug()
 		apiService.SetProbe(probe)
 
+		apiService.SetSwarmAddress(&swarmAddress)
+
 		apiServer := &http.Server{
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
@@ -483,19 +490,19 @@ func NewBee(
 		}
 	}
 
+	chequebookFactory, err = InitChequebookFactory(logger, chainBackend, chainID, transactionService, o.SwapFactoryAddress)
+	if err != nil {
+		return nil, err
+	}
+
+	erc20Address, err := chequebookFactory.ERC20Address(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("factory fail: %w", err)
+	}
+
+	erc20Service = erc20.New(transactionService, erc20Address)
+
 	if o.SwapEnable {
-		chequebookFactory, err = InitChequebookFactory(logger, chainBackend, chainID, transactionService, o.SwapFactoryAddress)
-		if err != nil {
-			return nil, err
-		}
-
-		erc20Address, err := chequebookFactory.ERC20Address(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("factory fail: %w", err)
-		}
-
-		erc20Service = erc20.New(transactionService, erc20Address)
-
 		if o.ChequebookEnable && chainEnabled {
 			chequebookService, err = InitChequebookService(
 				ctx,
@@ -723,10 +730,11 @@ func NewBee(
 
 	if o.FullNodeMode && !o.BootnodeMode {
 		// configure reserve only for full node
-		lo.ReserveCapacity = ReserveCapacity
+		lo.ReserveCapacity = reserveCapacity
 		lo.ReserveWakeUpDuration = reserveWakeUpDuration
 		lo.ReserveMinEvictCount = reserveMinEvictCount
 		lo.RadiusSetter = kad
+		lo.ReserveCapacityDoubling = o.ReserveCapacityDoubling
 	}
 
 	localStore, err := storer.New(ctx, path, lo)
@@ -900,7 +908,7 @@ func NewBee(
 		return nil, fmt.Errorf("status service: %w", err)
 	}
 
-	saludService := salud.New(nodeStatus, kad, localStore, logger, warmupTime, api.FullMode.String(), salud.DefaultMinPeersPerBin, salud.DefaultDurPercentile, salud.DefaultConnsPercentile)
+	saludService := salud.New(nodeStatus, kad, localStore, logger, warmupTime, api.FullMode.String(), salud.DefaultMinPeersPerBin, salud.DefaultDurPercentile, salud.DefaultConnsPercentile, uint8(o.ReserveCapacityDoubling))
 	b.saludCloser = saludService
 
 	rC, unsub := saludService.SubscribeNetworkStorageRadius()
@@ -944,7 +952,7 @@ func NewBee(
 		}
 	}
 
-	pushSyncProtocol := pushsync.New(swarmAddress, networkID, nonce, p2ps, localStore, waitNetworkRFunc, kad, o.FullNodeMode, pssService.TryUnwrap, gsocService.Handle, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
+	pushSyncProtocol := pushsync.New(swarmAddress, networkID, nonce, p2ps, localStore, waitNetworkRFunc, kad, o.FullNodeMode && !o.BootnodeMode, pssService.TryUnwrap, gsocService.Handle, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
 	b.pushSyncCloser = pushSyncProtocol
 
 	// set the pushSyncer in the PSS
@@ -996,20 +1004,46 @@ func NewBee(
 		stakingContractAddress = common.HexToAddress(o.StakingContractAddress)
 	}
 
-	stakingContract := staking.New(overlayEthAddress, stakingContractAddress, abiutil.MustParseABI(chainCfg.StakingABI), bzzTokenAddress, transactionService, common.BytesToHash(nonce), o.TrxDebugMode)
+	stakingContract := staking.New(overlayEthAddress, stakingContractAddress, abiutil.MustParseABI(chainCfg.StakingABI), bzzTokenAddress, transactionService, common.BytesToHash(nonce), o.TrxDebugMode, uint8(o.ReserveCapacityDoubling))
 
-	if chainEnabled && changedOverlay {
-		stake, err := stakingContract.GetPotentialStake(ctx)
-		if err != nil {
-			return nil, errors.New("getting stake balance")
-		}
-		if stake.Cmp(big.NewInt(0)) > 0 {
-			logger.Debug("changing overlay address in staking contract")
-			tx, err := stakingContract.ChangeStakeOverlay(ctx, common.BytesToHash(nonce))
+	if chainEnabled {
+
+		if changedOverlay {
+			stake, err := stakingContract.GetPotentialStake(ctx)
 			if err != nil {
-				return nil, fmt.Errorf("cannot change staking overlay address: %v", err.Error())
+				return nil, err
 			}
-			logger.Info("overlay address changed in staking contract", "transaction", tx)
+			if stake.Cmp(big.NewInt(0)) > 0 {
+				logger.Debug("changing overlay address in staking contract")
+				tx, err := stakingContract.ChangeStakeOverlay(ctx, common.BytesToHash(nonce))
+				if err != nil {
+					return nil, fmt.Errorf("cannot change staking overlay address: %v", err.Error())
+				}
+				logger.Info("overlay address changed in staking contract", "transaction", tx)
+			}
+		}
+
+		// make sure that the staking contract has the up to date height
+		tx, updated, err := stakingContract.UpdateHeight(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if updated {
+			logger.Info("updated new reserve capacity doubling height in the staking contract", "transaction", tx, "new_height", o.ReserveCapacityDoubling)
+		}
+
+		if o.ReserveCapacityDoubling > 0 {
+			stake, err := stakingContract.GetPotentialStake(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if stake.Cmp(big.NewInt(0)) > 0 {
+				// Check if the staked amount is sufficient to cover the additional neighborhoods.
+				// The staked amount must be at least 2^h * MinimumStake.
+				if stake.Cmp(big.NewInt(0).Mul(big.NewInt(1<<o.ReserveCapacityDoubling), staking.MinimumStakeAmount)) < 0 {
+					logger.Warning("staked amount does not sufficiently cover the additional reserve capacity. Stake should be at least 2^h * 10 BZZ, where h is the number extra doublings.")
+				}
+			}
 		}
 	}
 
@@ -1036,6 +1070,7 @@ func NewBee(
 			}
 
 			isFullySynced := func() bool {
+				reserveTreshold := reserveCapacity * 5 / 10
 				return localStore.ReserveSize() >= reserveTreshold && pullerService.SyncRate() == 0
 			}
 
@@ -1058,6 +1093,7 @@ func NewBee(
 				transactionService,
 				saludService,
 				logger,
+				uint8(o.ReserveCapacityDoubling),
 			)
 			if err != nil {
 				return nil, fmt.Errorf("storage incentives agent: %w", err)
@@ -1154,7 +1190,6 @@ func NewBee(
 		apiService.MountDebug()
 		apiService.MountAPI()
 
-		apiService.SetSwarmAddress(&swarmAddress)
 		apiService.SetRedistributionAgent(agent)
 	}
 

@@ -503,7 +503,6 @@ func (r *Reserve) IterateChunksItems(startBin uint8, cb func(*ChunkBinItem) (boo
 		PrefixAtStart: true,
 	}, func(res storage.Result) (bool, error) {
 		item := res.Entry.(*ChunkBinItem)
-
 		stop, err := cb(item)
 		if stop || err != nil {
 			return true, err
@@ -519,9 +518,18 @@ func (r *Reserve) Reset(ctx context.Context) error {
 
 	size := r.Size()
 
-	bRitems := make([]*BatchRadiusItem, 0, size)
+	// step 1: delete epoch timestamp
+	err := r.st.Run(ctx, func(s transaction.Store) error { return s.IndexStore().Delete(&EpochItem{}) })
+	if err != nil {
+		return err
+	}
 
-	err := r.st.IndexStore().Iterate(storage.Query{
+	var eg errgroup.Group
+	eg.SetLimit(runtime.NumCPU())
+
+	// step 2: delete batchRadiusItem, chunkBinItem, and the chunk data
+	bRitems := make([]*BatchRadiusItem, 0, size)
+	err = r.st.IndexStore().Iterate(storage.Query{
 		Factory: func() storage.Item { return &BatchRadiusItem{} },
 	}, func(res storage.Result) (bool, error) {
 		bRitems = append(bRitems, res.Entry.(*BatchRadiusItem))
@@ -530,10 +538,6 @@ func (r *Reserve) Reset(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-
-	var eg errgroup.Group
-	eg.SetLimit(runtime.NumCPU())
-
 	for _, item := range bRitems {
 		item := item
 		eg.Go(func() error {
@@ -553,6 +557,7 @@ func (r *Reserve) Reset(ctx context.Context) error {
 	}
 	bRitems = nil
 
+	// step 3: delete stampindex and chunkstamp
 	sitems := make([]*stampindex.Item, 0, size)
 	err = r.st.IndexStore().Iterate(storage.Query{
 		Factory: func() storage.Item { return &stampindex.Item{} },
@@ -580,6 +585,20 @@ func (r *Reserve) Reset(ctx context.Context) error {
 		return err
 	}
 	sitems = nil
+
+	// step 4: delete binItems
+	err = r.st.Run(context.Background(), func(s transaction.Store) error {
+		for i := uint8(0); i < swarm.MaxBins; i++ {
+			err := s.IndexStore().Delete(&BinItem{Bin: i})
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
 
 	r.size.Store(0)
 

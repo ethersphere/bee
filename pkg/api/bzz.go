@@ -23,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
+	"github.com/ethersphere/bee/v2/pkg/file"
 	"github.com/ethersphere/bee/v2/pkg/file/joiner"
 	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
@@ -362,10 +363,11 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 	loggerV1 := logger.V(1).Build()
 
 	headers := struct {
-		Cache                 *bool            `map:"Swarm-Cache"`
-		Strategy              *getter.Strategy `map:"Swarm-Redundancy-Strategy"`
-		FallbackMode          *bool            `map:"Swarm-Redundancy-Fallback-Mode"`
-		ChunkRetrievalTimeout *string          `map:"Swarm-Chunk-Retrieval-Timeout"`
+		Cache                 *bool             `map:"Swarm-Cache"`
+		Strategy              *getter.Strategy  `map:"Swarm-Redundancy-Strategy"`
+		FallbackMode          *bool             `map:"Swarm-Redundancy-Fallback-Mode"`
+		RLevel                *redundancy.Level `map:"Swarm-Redundancy-Level"`
+		ChunkRetrievalTimeout *string           `map:"Swarm-Chunk-Retrieval-Timeout"`
 	}{}
 
 	if response := s.mapStructure(r.Header, &headers); response != nil {
@@ -386,6 +388,9 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 		logger.Error(err, err.Error())
 		jsonhttp.BadRequest(w, "could not parse headers")
 		return
+	}
+	if headers.RLevel != nil {
+		ctx = redundancy.SetLevelInContext(ctx, *headers.RLevel)
 	}
 
 FETCH:
@@ -421,14 +426,17 @@ FETCH:
 				jsonhttp.NotFound(w, "no update found")
 				return
 			}
-			ref, _, err := parseFeedUpdate(ch)
+			wc, err := feeds.GetWrappedChunk(ctx, s.storer.ChunkStore(), ch)
 			if err != nil {
 				logger.Debug("bzz download: mapStructure feed update failed", "error", err)
 				logger.Error(nil, "bzz download: mapStructure feed update failed")
 				jsonhttp.InternalServerError(w, "mapStructure feed update")
 				return
 			}
-			address = ref
+			address = wc.Address()
+			// modify ls and init with non-existing wrapped chunk
+			ls = loadsave.NewReadonlyWithRootCh(s.storer.Download(cache), wc)
+
 			feedDereferenced = true
 			curBytes, err := cur.MarshalBinary()
 			if err != nil {
@@ -550,17 +558,18 @@ func (s *Service) serveManifestEntry(
 		additionalHeaders[ContentTypeHeader] = []string{mimeType}
 	}
 
-	s.downloadHandler(logger, w, r, manifestEntry.Reference(), additionalHeaders, etag, headersOnly)
+	s.downloadHandler(logger, w, r, manifestEntry.Reference(), additionalHeaders, etag, headersOnly, nil)
 }
 
 // downloadHandler contains common logic for downloading Swarm file from API
-func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *http.Request, reference swarm.Address, additionalHeaders http.Header, etag, headersOnly bool) {
+func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *http.Request, reference swarm.Address, additionalHeaders http.Header, etag, headersOnly bool, rootCh swarm.Chunk) {
 	headers := struct {
-		Strategy              *getter.Strategy `map:"Swarm-Redundancy-Strategy"`
-		FallbackMode          *bool            `map:"Swarm-Redundancy-Fallback-Mode"`
-		ChunkRetrievalTimeout *string          `map:"Swarm-Chunk-Retrieval-Timeout"`
-		LookaheadBufferSize   *int             `map:"Swarm-Lookahead-Buffer-Size"`
-		Cache                 *bool            `map:"Swarm-Cache"`
+		Strategy              *getter.Strategy  `map:"Swarm-Redundancy-Strategy"`
+		RLevel                *redundancy.Level `map:"Swarm-Redundancy-Level"`
+		FallbackMode          *bool             `map:"Swarm-Redundancy-Fallback-Mode"`
+		ChunkRetrievalTimeout *string           `map:"Swarm-Chunk-Retrieval-Timeout"`
+		LookaheadBufferSize   *int              `map:"Swarm-Lookahead-Buffer-Size"`
+		Cache                 *bool             `map:"Swarm-Cache"`
 	}{}
 
 	if response := s.mapStructure(r.Header, &headers); response != nil {
@@ -579,8 +588,19 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		jsonhttp.BadRequest(w, "could not parse headers")
 		return
 	}
+	if headers.RLevel != nil {
+		ctx = redundancy.SetLevelInContext(ctx, *headers.RLevel)
+	}
 
-	reader, l, err := joiner.New(ctx, s.storer.Download(cache), s.storer.Cache(), reference)
+	var (
+		reader file.Joiner
+		l      int64
+	)
+	if rootCh != nil {
+		reader, l, err = joiner.NewJoiner(ctx, s.storer.Download(cache), s.storer.Cache(), reference, rootCh)
+	} else {
+		reader, l, err = joiner.New(ctx, s.storer.Download(cache), s.storer.Cache(), reference)
+	}
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) || errors.Is(err, topology.ErrNotFound) {
 			logger.Debug("api download: not found ", "address", reference, "error", err)

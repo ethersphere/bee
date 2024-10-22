@@ -78,6 +78,12 @@ func WithReserveSize(s int) Option {
 	})
 }
 
+func WithCapacityDoubling(s int) Option {
+	return optionFunc(func(p *ReserveStore) {
+		p.capacityDoubling = s
+	})
+}
+
 func WithPutHook(f func(swarm.Chunk) error) Option {
 	return optionFunc(func(p *ReserveStore) {
 		p.putHook = f
@@ -106,8 +112,9 @@ type ReserveStore struct {
 	cursorsErr error
 	epoch      uint64
 
-	radius      uint8
-	reservesize int
+	radius           uint8
+	reservesize      int
+	capacityDoubling int
 
 	subResponses []chunksResponse
 	putHook      func(swarm.Chunk) error

@@ -20,21 +20,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ethereum/go-ethereum/accounts/external"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	chaincfg "github.com/ethersphere/bee/v2/pkg/config"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
-	"github.com/ethersphere/bee/v2/pkg/crypto/clef"
 	"github.com/ethersphere/bee/v2/pkg/keystore"
 	filekeystore "github.com/ethersphere/bee/v2/pkg/keystore/file"
 	memkeystore "github.com/ethersphere/bee/v2/pkg/keystore/mem"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/node"
 	"github.com/ethersphere/bee/v2/pkg/resolver/multiresolver"
-	"github.com/ethersphere/bee/v2/pkg/spinlock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/kardianos/service"
 	"github.com/spf13/cobra"
@@ -340,6 +335,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		WhitelistedWithdrawalAddress:  c.config.GetStringSlice(optionNameWhitelistedWithdrawalAddress),
 		TrxDebugMode:                  c.config.GetBool(optionNameTransactionDebugMode),
 		MinimumStorageRadius:          c.config.GetUint(optionMinimumStorageRadius),
+		ReserveCapacityDoubling:       c.config.GetInt(optionReserveCapacityDoubling),
 	})
 
 	return b, err
@@ -367,22 +363,6 @@ type signerConfig struct {
 	libp2pPrivateKey *ecdsa.PrivateKey
 	pssPrivateKey    *ecdsa.PrivateKey
 	session          accesscontrol.Session
-}
-
-func waitForClef(logger log.Logger, maxRetries uint64, endpoint string) (externalSigner *external.ExternalSigner, err error) {
-	var (
-		interval = time.Second * 5
-		timeout  = interval * time.Duration(maxRetries)
-	)
-
-	spinErr := spinlock.WaitWithInterval(timeout, interval, func() bool {
-		externalSigner, err = external.NewExternalSigner(endpoint)
-		return err == nil
-	})
-	if spinErr != nil {
-		logger.Warning("connect to clef signer failed", "error", err)
-	}
-	return
 }
 
 func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config *signerConfig, err error) {
@@ -427,51 +407,13 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 		}
 	}
 
-	if c.config.GetBool(optionNameClefSignerEnable) {
-		endpoint := c.config.GetString(optionNameClefSignerEndpoint)
-		if endpoint == "" {
-			endpoint, err = clef.DefaultIpcPath()
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		externalSigner, err := waitForClef(logger, 5, endpoint)
-		if err != nil {
-			return nil, err
-		}
-
-		clefRPC, err := rpc.Dial(endpoint)
-		if err != nil {
-			return nil, err
-		}
-
-		wantedAddress := c.config.GetString(optionNameClefSignerEthereumAddress)
-		var overlayEthAddress *common.Address = nil
-		// if wantedAddress was specified use that, otherwise clef account 0 will be selected.
-		if wantedAddress != "" {
-			ethAddress := common.HexToAddress(wantedAddress)
-			overlayEthAddress = &ethAddress
-		}
-
-		signer, err = clef.NewSigner(externalSigner, clefRPC, crypto.Recover, overlayEthAddress)
-		if err != nil {
-			return nil, err
-		}
-
-		publicKey, err = signer.PublicKey()
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		swarmPrivateKey, _, err := keystore.Key("swarm", password, crypto.EDGSecp256_K1)
-		if err != nil {
-			return nil, fmt.Errorf("swarm key: %w", err)
-		}
-		signer = crypto.NewDefaultSigner(swarmPrivateKey)
-		publicKey = &swarmPrivateKey.PublicKey
-		session = accesscontrol.NewDefaultSession(swarmPrivateKey)
+	swarmPrivateKey, _, err := keystore.Key("swarm", password, crypto.EDGSecp256_K1)
+	if err != nil {
+		return nil, fmt.Errorf("swarm key: %w", err)
 	}
+	signer = crypto.NewDefaultSigner(swarmPrivateKey)
+	publicKey = &swarmPrivateKey.PublicKey
+	session = accesscontrol.NewDefaultSession(swarmPrivateKey)
 
 	logger.Info("swarm public key", "public_key", hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(publicKey)))
 

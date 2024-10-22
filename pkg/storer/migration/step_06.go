@@ -9,7 +9,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"runtime"
 	"sync/atomic"
 	"time"
@@ -24,9 +23,10 @@ import (
 )
 
 // step_06 is a migration step that adds a stampHash to all BatchRadiusItems, ChunkBinItems and StampIndexItems.
-func step_06(st transaction.Storage) func() error {
+func step_06(st transaction.Storage, logger log.Logger) func() error {
 	return func() error {
-		logger := log.NewLogger("migration-step-06", log.WithSink(os.Stdout))
+		logger := logger.WithName("migration-step-06").Register()
+
 		logger.Info("start adding stampHash to BatchRadiusItems, ChunkBinItems and StampIndexItems")
 
 		seenCount, doneCount, err := addStampHash(logger, st)
@@ -51,7 +51,7 @@ func addStampHash(logger log.Logger, st transaction.Storage) (int64, int64, erro
 	}
 
 	if preBatchRadiusCnt != preChunkBinCnt {
-		return 0, 0, fmt.Errorf("pre-migration check: index counts do not match, %d vs %d. It's recommended that the repair-reserve cmd is run first", preBatchRadiusCnt, preChunkBinCnt)
+		return 0, 0, fmt.Errorf("pre-migration check: index counts do not match, %d vs %d", preBatchRadiusCnt, preChunkBinCnt)
 	}
 
 	// Delete epoch timestamp

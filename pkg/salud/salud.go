@@ -40,11 +40,6 @@ type peerStatus interface {
 	PeerSnapshot(ctx context.Context, peer swarm.Address) (*status.Snapshot, error)
 }
 
-type reserve interface {
-	storer.RadiusChecker
-	ReserveSize() int
-}
-
 type service struct {
 	wg            sync.WaitGroup
 	quit          chan struct{}
@@ -53,34 +48,38 @@ type service struct {
 	status        peerStatus
 	metrics       metrics
 	isSelfHealthy *atomic.Bool
-	reserve       reserve
+	reserve       storer.RadiusChecker
 
 	radiusSubsMtx sync.Mutex
 	radiusC       []chan uint8
+
+	capacityDoubling uint8
 }
 
 func New(
 	status peerStatus,
 	topology topologyDriver,
-	reserve reserve,
+	reserve storer.RadiusChecker,
 	logger log.Logger,
 	warmup time.Duration,
 	mode string,
 	minPeersPerbin int,
 	durPercentile float64,
 	connsPercentile float64,
+	capacityDoubling uint8,
 ) *service {
 
 	metrics := newMetrics()
 
 	s := &service{
-		quit:          make(chan struct{}),
-		logger:        logger.WithName(loggerName).Register(),
-		status:        status,
-		topology:      topology,
-		metrics:       metrics,
-		isSelfHealthy: atomic.NewBool(true),
-		reserve:       reserve,
+		quit:             make(chan struct{}),
+		logger:           logger.WithName(loggerName).Register(),
+		status:           status,
+		topology:         topology,
+		metrics:          metrics,
+		isSelfHealthy:    atomic.NewBool(true),
+		reserve:          reserve,
+		capacityDoubling: capacityDoubling,
 	}
 
 	s.wg.Add(1)
@@ -200,7 +199,7 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 			continue
 		}
 
-		if networkRadius > 0 && peer.status.StorageRadius < uint32(networkRadius-1) {
+		if networkRadius > 0 && peer.status.StorageRadius < uint32(networkRadius-2) {
 			s.logger.Debug("radius health failure", "radius", peer.status.StorageRadius, "peer_address", peer.addr)
 		} else if peer.dur.Seconds() > pDur {
 			s.logger.Debug("response duration below threshold", "duration", peer.dur, "peer_address", peer.addr)
@@ -221,10 +220,12 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 		}
 	}
 
+	networkRadiusEstimation := s.reserve.StorageRadius() + s.capacityDoubling
+
 	selfHealth := true
-	if nHoodRadius == networkRadius && s.reserve.StorageRadius() != networkRadius {
+	if nHoodRadius == networkRadius && networkRadiusEstimation != networkRadius {
 		selfHealth = false
-		s.logger.Warning("node is unhealthy due to storage radius discrepancy", "self_radius", s.reserve.StorageRadius(), "network_radius", networkRadius)
+		s.logger.Warning("node is unhealthy due to storage radius discrepancy", "self_radius", networkRadiusEstimation, "network_radius", networkRadius)
 	}
 
 	s.isSelfHealthy.Store(selfHealth)
