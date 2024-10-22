@@ -504,17 +504,21 @@ func (s *Service) mountBusinessDebug() {
 
 	handle("/chequebook/deposit", web.ChainHandlers(
 		s.checkChequebookAvailability,
-		s.gasConfigMiddleware("chequebook deposit"),
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"POST": http.HandlerFunc(s.chequebookDepositHandler),
+			"POST": web.ChainHandlers(
+				s.gasConfigMiddleware("chequebook deposit"),
+				web.FinalHandlerFunc(s.chequebookDepositHandler),
+			),
 		}),
 	))
 
 	handle("/chequebook/withdraw", web.ChainHandlers(
 		s.checkChequebookAvailability,
-		s.gasConfigMiddleware("chequebook withdraw"),
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"POST": http.HandlerFunc(s.chequebookWithdrawHandler),
+			"POST": web.ChainHandlers(
+				s.gasConfigMiddleware("chequebook withdraw"),
+				web.FinalHandlerFunc(s.chequebookWithdrawHandler),
+			),
 		}),
 	))
 
