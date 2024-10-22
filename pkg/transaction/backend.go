@@ -75,7 +75,7 @@ func WaitSynced(ctx context.Context, logger log.Logger, backend Backend, maxDela
 			return nil
 		}
 
-		logger.Info("still waiting for Gnosis to sync", "block_time", blockTime)
+		logger.Info("still waiting for blockchain RPC to sync", "block_time", blockTime)
 
 		select {
 		case <-ctx.Done():
