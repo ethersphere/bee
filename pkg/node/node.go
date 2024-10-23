@@ -1031,12 +1031,10 @@ func NewBee(
 				logger.Info("updated new reserve capacity doubling height in the staking contract", "transaction", tx, "new_height", o.ReserveCapacityDoubling)
 			}
 
-			if o.ReserveCapacityDoubling > 0 {
-				// Check if the staked amount is sufficient to cover the additional neighborhoods.
-				// The staked amount must be at least 2^h * MinimumStake.
-				if stake.Cmp(big.NewInt(0).Mul(big.NewInt(1<<o.ReserveCapacityDoubling), staking.MinimumStakeAmount)) < 0 {
-					logger.Warning("staked amount does not sufficiently cover the additional reserve capacity. Stake should be at least 2^h * 10 BZZ, where h is the number extra doublings.")
-				}
+			// Check if the staked amount is sufficient to cover the additional neighborhoods.
+			// The staked amount must be at least 2^h * MinimumStake.
+			if o.ReserveCapacityDoubling > 0 && stake.Cmp(big.NewInt(0).Mul(big.NewInt(1<<o.ReserveCapacityDoubling), staking.MinimumStakeAmount)) < 0 {
+				logger.Warning("staked amount does not sufficiently cover the additional reserve capacity. Stake should be at least 2^h * 10 BZZ, where h is the number extra doublings.")
 			}
 		}
 	}
