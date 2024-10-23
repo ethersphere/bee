@@ -47,6 +47,7 @@ import (
 	lp2pswarm "github.com/libp2p/go-libp2p/p2p/net/swarm"
 	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
+	webrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
 	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -156,6 +157,8 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	var listenAddrs []string
 	if ip4Addr != "" {
 		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s", ip4Addr, port))
+		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/udp/31336/webrtc-direct", ip4Addr))
+
 		if o.EnableWS {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/ws", ip4Addr, port))
 		}
@@ -243,6 +246,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	transports := []libp2p.Option{
 		libp2p.Transport(tcp.NewTCPTransport, tcp.DisableReuseport()),
+		libp2p.Transport(webrtc.New),
 	}
 
 	if o.EnableWS {
