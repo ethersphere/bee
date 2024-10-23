@@ -21,7 +21,8 @@ var (
 
 // Stamper can issue stamps from the given address of chunk.
 type Stamper interface {
-	Stamp(swarm.Address) (*Stamp, error)
+	Stamp(idAddr, addr swarm.Address) (*Stamp, error)
+	BatchId() []byte
 }
 
 // stamper connects a stampissuer with a signer.
@@ -39,13 +40,13 @@ func NewStamper(store storage.Store, issuer *StampIssuer, signer crypto.Signer) 
 
 // Stamp takes chunk, see if the chunk can be included in the batch and
 // signs it with the owner of the batch of this Stamp issuer.
-func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
+func (st *stamper) Stamp(addr, idAddr swarm.Address) (*Stamp, error) {
 	st.issuer.mtx.Lock()
 	defer st.issuer.mtx.Unlock()
 
 	item := &StampItem{
 		BatchID:      st.issuer.data.BatchID,
-		chunkAddress: addr,
+		chunkAddress: idAddr,
 	}
 	switch err := st.store.Get(item); {
 	case err == nil:
@@ -81,6 +82,11 @@ func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
 	return NewStamp(st.issuer.data.BatchID, item.BatchIndex, item.BatchTimestamp, sig), nil
 }
 
+// BatchId gives back batch id of stamper
+func (st *stamper) BatchId() []byte {
+	return st.issuer.data.BatchID
+}
+
 type presignedStamper struct {
 	stamp *Stamp
 	owner []byte
@@ -90,7 +96,7 @@ func NewPresignedStamper(stamp *Stamp, owner []byte) Stamper {
 	return &presignedStamper{stamp, owner}
 }
 
-func (st *presignedStamper) Stamp(addr swarm.Address) (*Stamp, error) {
+func (st *presignedStamper) Stamp(addr, _ swarm.Address) (*Stamp, error) {
 	// check stored stamp is against the chunk address
 	// Recover the public key from the signature
 	signerAddr, err := RecoverBatchOwner(addr, st.stamp)
@@ -103,4 +109,8 @@ func (st *presignedStamper) Stamp(addr swarm.Address) (*Stamp, error) {
 	}
 
 	return st.stamp, nil
+}
+
+func (st *presignedStamper) BatchId() []byte {
+	return st.stamp.BatchID()
 }
