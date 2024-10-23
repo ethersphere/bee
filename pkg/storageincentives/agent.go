@@ -225,7 +225,8 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		a.state.SetHealthy(a.health.IsHealthy())
 		go a.state.purgeStaleRoundData()
 
-		isFrozen, err := a.redistributionStatuser.IsOverlayFrozen(ctx, block)
+		// check if node is frozen starting from the next block
+		isFrozen, err := a.redistributionStatuser.IsOverlayFrozen(ctx, block+1)
 		if err != nil {
 			a.logger.Error(err, "error checking if stake is frozen")
 		} else {
