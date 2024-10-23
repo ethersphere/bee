@@ -26,6 +26,10 @@ const (
 )
 
 func (s *Service) Mount() {
+	if s == nil {
+		return
+	}
+
 	router := mux.NewRouter()
 
 	router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
@@ -35,23 +39,6 @@ func (s *Service) Mount() {
 	s.mountTechnicalDebug()
 	s.mountBusinessDebug()
 	s.mountAPI()
-
-	s.Handler = web.ChainHandlers(
-		httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "api access"),
-		handlers.CompressHandler,
-		s.corsHandler,
-		web.NoCacheHeadersHandler,
-		web.FinalHandler(s.router),
-	)
-}
-
-// EnableFullAPI will enable all available endpoints, because some endpoints are not available during syncing.
-func (s *Service) EnableFullAPI() {
-	if s == nil {
-		return
-	}
-
-	s.fullAPIEnabled = true
 
 	compressHandler := func(h http.Handler) http.Handler {
 		downloadEndpoints := []string{
@@ -97,6 +84,15 @@ func (s *Service) EnableFullAPI() {
 		s.corsHandler,
 		web.FinalHandler(s.router),
 	)
+}
+
+// EnableFullAPI will enable all available endpoints, because some endpoints are not available during syncing.
+func (s *Service) EnableFullAPI() {
+	if s == nil {
+		return
+	}
+
+	s.fullAPIEnabled = true
 }
 
 func (s *Service) mountTechnicalDebug() {
