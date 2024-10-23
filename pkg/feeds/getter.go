@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
+	"github.com/ethersphere/bee/v2/pkg/replicas"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -48,7 +50,9 @@ func (f *Getter) Get(ctx context.Context, i Index) (swarm.Chunk, error) {
 	if err != nil {
 		return nil, err
 	}
-	return f.getter.Get(ctx, addr)
+	rLevel := redundancy.GetLevelFromContext(ctx)
+	getter := replicas.NewSocGetter(f.getter, rLevel)
+	return getter.Get(ctx, addr)
 }
 
 func GetWrappedChunk(ctx context.Context, getter storage.Getter, ch swarm.Chunk) (swarm.Chunk, error) {
