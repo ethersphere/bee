@@ -84,9 +84,7 @@ func newErasureHashTrieWriter(
 func TestLevels(t *testing.T) {
 	t.Parallel()
 
-	var (
-		hashSize = 32
-	)
+	hashSize := 32
 
 	// to create a level wrap we need to do branching^(level-1) writes
 	for _, tc := range []struct {
@@ -134,8 +132,6 @@ func TestLevels(t *testing.T) {
 			writes: 16384,
 		},
 	} {
-
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
@@ -165,7 +161,7 @@ func TestLevels(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			//check the span. since write spans are 1 value 1, then expected span == tc.writes
+			// check the span. since write spans are 1 value 1, then expected span == tc.writes
 			sp := binary.LittleEndian.Uint64(rootch.Data()[:swarm.SpanSize])
 			if sp != uint64(tc.writes) {
 				t.Fatalf("want span %d got %d", tc.writes, sp)
@@ -312,7 +308,6 @@ func TestRedundancy(t *testing.T) {
 			parities:   116, // // 87 (full ch) + 29 (2 ref)
 		},
 	} {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			subCtx := redundancy.SetLevelInContext(ctx, tc.level)

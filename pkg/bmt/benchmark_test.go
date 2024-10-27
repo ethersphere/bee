@@ -60,7 +60,7 @@ func benchmarkSHA3(b *testing.B, n int) {
 // doing it on n testPoolSize each reusing the base hasher
 // the premise is that this is the minimum computation needed for a BMT
 // therefore this serves as a theoretical optimum for concurrent implementations
-func benchmarkBMTBaseline(b *testing.B, n int) {
+func benchmarkBMTBaseline(b *testing.B, _ int) {
 	b.Helper()
 
 	testData := testutil.RandBytesWithSeed(b, 4096, seed)

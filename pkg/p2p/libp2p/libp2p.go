@@ -556,7 +556,6 @@ func (s *Service) SetPickyNotifier(n p2p.PickyNotifier) {
 
 func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 	for _, ss := range p.StreamSpecs {
-		ss := ss
 		id := protocol.ID(p2p.NewSwarmStreamName(p.Name, p.Version, ss.Name))
 		matcher, err := s.protocolSemverMatcher(id)
 		if err != nil {

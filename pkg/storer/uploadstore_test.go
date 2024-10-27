@@ -89,7 +89,6 @@ func testUploadStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 			duplicate: true,
 		},
 	} {
-		tc := tc
 		testName := fmt.Sprintf("upload_%d_chunks", len(tc.chunks))
 		if tc.pin {
 			testName += "_with_pin"
@@ -436,7 +435,6 @@ func TestReporter(t *testing.T) {
 		t.Parallel()
 
 		testReporter(t, func() (*storer.DB, error) {
-
 			opts := dbTestOps(swarm.RandAddress(t), 0, nil, nil, time.Second)
 
 			return storer.New(context.Background(), "", opts)

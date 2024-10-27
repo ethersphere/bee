@@ -35,7 +35,8 @@ func TestOneSync(t *testing.T) {
 		cursors = []uint64{1000, 1000, 1000}
 		replies = []mockps.SyncReply{
 			{Bin: 1, Start: 1, Topmost: 1000, Peer: addr},
-			{Bin: 2, Start: 1, Topmost: 1001, Peer: addr}}
+			{Bin: 2, Start: 1, Topmost: 1001, Peer: addr},
+		}
 	)
 
 	_, _, kad, pullsync := newPuller(t, opts{
@@ -66,7 +67,8 @@ func TestSyncOutsideDepth(t *testing.T) {
 		replies = []mockps.SyncReply{
 			{Bin: 0, Start: 1, Topmost: 1000, Peer: addr2},
 			{Bin: 2, Start: 1, Topmost: 1000, Peer: addr},
-			{Bin: 3, Start: 1, Topmost: 1000, Peer: addr}}
+			{Bin: 3, Start: 1, Topmost: 1000, Peer: addr},
+		}
 	)
 
 	_, _, kad, pullsync := newPuller(t, opts{
@@ -177,7 +179,6 @@ func TestSyncIntervals(t *testing.T) {
 			},
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -474,9 +475,7 @@ func TestRadiusIncrease(t *testing.T) {
 func TestContinueSyncing(t *testing.T) {
 	t.Parallel()
 
-	var (
-		addr = swarm.RandAddress(t)
-	)
+	addr := swarm.RandAddress(t)
 
 	_, _, kad, pullsync := newPuller(t, opts{
 		kad: []kadMock.Option{
@@ -515,7 +514,8 @@ func TestPeerGone(t *testing.T) {
 		addr    = swarm.RandAddress(t)
 		replies = []mockps.SyncReply{
 			{Bin: 0, Start: 1, Topmost: 1001, Peer: addr},
-			{Bin: 1, Start: 1, Topmost: 1001, Peer: addr}}
+			{Bin: 1, Start: 1, Topmost: 1001, Peer: addr},
+		}
 	)
 
 	p, _, kad, pullsync := newPuller(t, opts{

@@ -118,8 +118,6 @@ func TestPushItem(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
-
 		t.Run(fmt.Sprintf("%s marshal/unmarshal", tc.name), func(t *testing.T) {
 			t.Parallel()
 
@@ -192,8 +190,6 @@ func TestTagItem(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
-
 		t.Run(fmt.Sprintf("%s marshal/unmarshal", tc.name), func(t *testing.T) {
 			t.Parallel()
 
@@ -307,8 +303,6 @@ func TestUploadItem(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
-
 		t.Run(fmt.Sprintf("%s marshal/unmarshal", tc.name), func(t *testing.T) {
 			t.Parallel()
 
@@ -360,8 +354,6 @@ func TestItemNextTagID(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
-
 		t.Run(fmt.Sprintf("%s marshal/unmarshal", tc.name), func(t *testing.T) {
 			t.Parallel()
 
@@ -410,8 +402,6 @@ func TestItemDirtyTagItem(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
-
 		t.Run(fmt.Sprintf("%s marshal/unmarshal", tc.name), func(t *testing.T) {
 			t.Parallel()
 
@@ -620,7 +610,6 @@ func TestChunkPutter(t *testing.T) {
 	})
 
 	t.Run("restart putter", func(t *testing.T) {
-
 		var putter internal.PutterCloserWithReference
 
 		err = ts.Run(context.Background(), func(s transaction.Store) error {
@@ -692,7 +681,6 @@ func TestChunkReporter(t *testing.T) {
 
 	for idx, chunk := range chunktest.GenerateTestRandomChunks(10) {
 		t.Run(fmt.Sprintf("chunk %s", chunk.Address()), func(t *testing.T) {
-
 			if err := ts.Run(context.Background(), func(s transaction.Store) error {
 				return putter.Put(context.Background(), s, chunk)
 			}); err != nil {

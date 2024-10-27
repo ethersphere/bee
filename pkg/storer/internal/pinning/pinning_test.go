@@ -34,7 +34,6 @@ func newTestStorage(t *testing.T) transaction.Storage {
 }
 
 func TestPinStore(t *testing.T) {
-
 	tests := make([]pinningCollection, 0, 3)
 
 	for _, tc := range []struct {
@@ -69,7 +68,6 @@ func TestPinStore(t *testing.T) {
 	t.Run("create new collections", func(t *testing.T) {
 		for tCount, tc := range tests {
 			t.Run(fmt.Sprintf("create collection %d", tCount), func(t *testing.T) {
-
 				var putter internal.PutterCloserWithReference
 				var err error
 				err = st.Run(context.Background(), func(s transaction.Store) error {
@@ -519,8 +517,6 @@ func TestPinCollectionItem(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
-
 		t.Run(fmt.Sprintf("%s marshal/unmarshal", tc.name), func(t *testing.T) {
 			t.Parallel()
 

@@ -75,7 +75,6 @@ func TestFeeder(t *testing.T) {
 			span:      5,
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			var results pipeline.PipeWriteArgs
@@ -179,7 +178,6 @@ func TestFeederFlush(t *testing.T) {
 			span:      3,
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
