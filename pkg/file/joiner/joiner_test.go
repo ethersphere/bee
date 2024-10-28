@@ -1149,6 +1149,7 @@ func TestJoinerRedundancy(t *testing.T) {
 						break scnt
 					default:
 					}
+					i := i
 					eg.Go(func() error {
 						chunkData := make([]byte, chunkSize)
 						n, err := joinReader.ReadAt(chunkData, int64(i*chunkSize))
