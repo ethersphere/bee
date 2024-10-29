@@ -290,10 +290,73 @@ func TestDepositStake(t *testing.T) {
 		}
 	})
 
-	t.Run("insufficient stake amount", func(t *testing.T) {
+	t.Run("sufficient stake amount extra height", func(t *testing.T) {
 		t.Parallel()
 
-		totalAmount := big.NewInt(0)
+		balance := big.NewInt(0).Mul(staking.MinimumStakeAmount, big.NewInt(2))
+		prevStake := staking.MinimumStakeAmount
+
+		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, staking.MinimumStakeAmount, stakingHeight)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		contract := staking.New(
+			owner,
+			stakingContractAddress,
+			stakingContractABI,
+			bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+					if *request.To == bzzTokenAddress {
+						return txHashApprove, nil
+					}
+					if *request.To == stakingContractAddress {
+						if !bytes.Equal(expectedCallData[:80], request.Data[:80]) {
+							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
+						}
+						return txHashDeposited, nil
+					}
+					return common.Hash{}, errors.New("sent to wrong contract")
+				}),
+				transactionMock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
+					if txHash == txHashDeposited {
+						return &types.Receipt{
+							Status: 1,
+						}, nil
+					}
+					if txHash == txHashApprove {
+						return &types.Receipt{
+							Status: 1,
+						}, nil
+					}
+					return nil, errors.New("unknown tx hash")
+				}),
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if *request.To == bzzTokenAddress {
+						return balance.FillBytes(make([]byte, 32)), nil
+					}
+					if *request.To == stakingContractAddress {
+						return getPotentialStakeResponse(t, prevStake), nil
+					}
+					return nil, errors.New("unexpected call")
+				}),
+			),
+			nonce,
+			false,
+			1,
+		)
+
+		_, err = contract.DepositStake(ctx, stakedAmount)
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("insufficient stake amount extra height", func(t *testing.T) {
+		t.Parallel()
+
+		totalAmount := big.NewInt(0).Mul(staking.MinimumStakeAmount, big.NewInt(10))
 		prevStake := big.NewInt(0)
 
 		contract := staking.New(
@@ -314,11 +377,11 @@ func TestDepositStake(t *testing.T) {
 			),
 			nonce,
 			false,
-			stakingHeight,
+			1,
 		)
 
-		_, err := contract.DepositStake(ctx, big.NewInt(100000000000000000))
-		if !errors.Is(err, staking.ErrInsufficientFunds) {
+		_, err := contract.DepositStake(ctx, stakedAmount)
+		if !errors.Is(err, staking.ErrInsufficientStakeAmount) {
 			t.Fatal(fmt.Errorf("wanted %w, got %w", staking.ErrInsufficientStakeAmount, err))
 		}
 	})
