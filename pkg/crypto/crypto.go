@@ -14,6 +14,7 @@ import (
 	"fmt"
 
 	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"golang.org/x/crypto/sha3"
 )
@@ -114,7 +115,7 @@ func NewEthereumAddress(p ecdsa.PublicKey) ([]byte, error) {
 	if p.X == nil || p.Y == nil {
 		return nil, errors.New("invalid public key")
 	}
-	pubBytes := elliptic.Marshal(btcec.S256(), p.X, p.Y)
+	pubBytes := crypto.S256().Marshal(p.X, p.Y)
 	pubHash, err := LegacyKeccak256(pubBytes[1:])
 	if err != nil {
 		return nil, err
