@@ -194,7 +194,7 @@ func (s *Service) statusGetNeighborhoods(w http.ResponseWriter, r *http.Request)
 		neighborhoods = append(neighborhoods, statusNeighborhoodResponse{
 			Neighborhood:            n.Neighborhood.String(),
 			ReserveSizeWithinRadius: n.ReserveSizeWithinRadius,
-			Proximity:               swarm.Proximity(s.overlay.Bytes(), n.Neighborhood.Bytes()),
+			Proximity:               n.Proximity,
 		})
 	}
 
