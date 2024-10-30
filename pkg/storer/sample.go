@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"hash"
 	"math/big"
+	"runtime"
 	"sort"
 	"sync"
 	"testing"
@@ -125,8 +126,9 @@ func (db *DB) ReserveSample(
 	consensusTime uint64,
 	minBatchBalance *big.Int,
 ) (Sample, error) {
+
 	g, ctx := errgroup.WithContext(ctx)
-	chunkC := make(chan *reserve.ChunkBinItem, 64)
+
 	allStats := &SampleStats{}
 	statsLock := sync.Mutex{}
 	addStats := func(stats SampleStats) {
@@ -143,6 +145,8 @@ func (db *DB) ReserveSample(
 	}
 
 	allStats.BatchesBelowValueDuration = time.Since(t)
+
+	chunkC := make(chan *reserve.ChunkBinItem)
 
 	// Phase 1: Iterate chunk addresses
 	g.Go(func() error {
@@ -170,15 +174,13 @@ func (db *DB) ReserveSample(
 	})
 
 	// Phase 2: Get the chunk data and calculate transformed hash
-	sampleItemChan := make(chan SampleItem, 64)
+	sampleItemChan := make(chan SampleItem)
 
 	prefixHasherFactory := func() hash.Hash {
 		return swarm.NewPrefixHasher(anchor)
 	}
 
-	const workers = 6
-
-	for i := 0; i < workers; i++ {
+	for i := 0; i < runtime.NumCPU(); i++ {
 		g.Go(func() error {
 			wstat := SampleStats{}
 			hasher := bmt.NewHasher(prefixHasherFactory)
@@ -241,6 +243,7 @@ func (db *DB) ReserveSample(
 	}()
 
 	sampleItems := make([]SampleItem, 0, SampleSize)
+
 	// insert function will insert the new item in its correct place. If the sample
 	// size goes beyond what we need we omit the last item.
 	insert := func(item SampleItem) {
@@ -376,13 +379,13 @@ func transformedAddressCAC(hasher *bmt.Hasher, chunk swarm.Chunk) (swarm.Address
 	return swarm.NewAddress(taddr), nil
 }
 
-func transformedAddressSOC(hasher *bmt.Hasher, chunk swarm.Chunk) (swarm.Address, error) {
+func transformedAddressSOC(hasher *bmt.Hasher, socChunk swarm.Chunk) (swarm.Address, error) {
 	// Calculate transformed address from wrapped chunk
-	sChunk, err := soc.FromChunk(chunk)
+	chunk, err := soc.UnwrapCAC(socChunk)
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
-	taddrCac, err := transformedAddressCAC(hasher, sChunk.WrappedChunk())
+	taddrCac, err := transformedAddressCAC(hasher, chunk)
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
