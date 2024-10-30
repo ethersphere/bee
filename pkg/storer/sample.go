@@ -320,18 +320,18 @@ func transformedAddressCAC(hasher *bmt.Hasher, chunk swarm.Chunk) (swarm.Address
 
 func transformedAddressSOC(hasher *bmt.Hasher, socChunk swarm.Chunk) (swarm.Address, error) {
 	// Calculate transformed address from wrapped chunk
-	chunk, err := soc.UnwrapCAC(socChunk)
+	cacChunk, err := soc.UnwrapCAC(socChunk)
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
-	taddrCac, err := transformedAddressCAC(hasher, chunk)
+	taddrCac, err := transformedAddressCAC(hasher, cacChunk)
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
 
 	// Hash address and transformed address to make transformed address for this SOC
 	sHasher := swarm.NewHasher()
-	if _, err := sHasher.Write(chunk.Address().Bytes()); err != nil {
+	if _, err := sHasher.Write(socChunk.Address().Bytes()); err != nil {
 		return swarm.ZeroAddress, err
 	}
 	if _, err := sHasher.Write(taddrCac.Bytes()); err != nil {
