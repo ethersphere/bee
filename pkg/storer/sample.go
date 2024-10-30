@@ -119,7 +119,10 @@ func (db *DB) ReserveSample(
 		return swarm.NewPrefixHasher(anchor)
 	}
 
-	for i := 0; i < runtime.NumCPU(); i++ {
+	workers := runtime.NumCPU()
+	db.logger.Debug("reserve sampler workers", "count", workers)
+
+	for i := 0; i < workers; i++ {
 		g.Go(func() error {
 			wstat := SampleStats{}
 			hasher := bmt.NewHasher(prefixHasherFactory)
