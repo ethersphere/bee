@@ -119,7 +119,7 @@ func (db *DB) ReserveSample(
 		return swarm.NewPrefixHasher(anchor)
 	}
 
-	workers := runtime.NumCPU()
+	workers := max(4, runtime.NumCPU())
 	db.logger.Debug("reserve sampler workers", "count", workers)
 
 	for i := 0; i < workers; i++ {
