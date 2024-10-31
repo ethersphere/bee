@@ -130,6 +130,22 @@ func (s *SOC) Sign(signer crypto.Signer) (swarm.Chunk, error) {
 	return s.Chunk()
 }
 
+// UnwrapCAC extracts the CAC inside the SOC.
+func UnwrapCAC(sch swarm.Chunk) (swarm.Chunk, error) {
+	chunkData := sch.Data()
+	if len(chunkData) < swarm.SocMinChunkSize {
+		return nil, errWrongChunkSize
+	}
+
+	cursor := swarm.HashSize + swarm.SocSignatureSize
+	ch, err := cac.NewWithDataSpan(chunkData[cursor:])
+	if err != nil {
+		return nil, err
+	}
+
+	return ch, nil
+}
+
 // FromChunk recreates a SOC representation from swarm.Chunk data.
 func FromChunk(sch swarm.Chunk) (*SOC, error) {
 	chunkData := sch.Data()
