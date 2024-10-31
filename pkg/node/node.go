@@ -104,6 +104,7 @@ type Bee struct {
 	accountingCloser         io.Closer
 	pullSyncCloser           io.Closer
 	pssCloser                io.Closer
+	gsocCloser               io.Closer
 	ethClientCloser          func()
 	transactionMonitorCloser io.Closer
 	transactionCloser        io.Closer
@@ -901,6 +902,7 @@ func NewBee(
 	pssService := pss.New(pssPrivateKey, logger)
 	gsocService := gsoc.New(logger)
 	b.pssCloser = pssService
+	b.gsocCloser = gsocService
 
 	validStamp := postage.ValidStamp(batchStore)
 
@@ -1256,10 +1258,14 @@ func (b *Bee) Shutdown() error {
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(7)
+	wg.Add(8)
 	go func() {
 		defer wg.Done()
 		tryClose(b.pssCloser, "pss")
+	}()
+	go func() {
+		defer wg.Done()
+		tryClose(b.gsocCloser, "gsoc")
 	}()
 	go func() {
 		defer wg.Done()
