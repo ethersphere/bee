@@ -21,7 +21,7 @@ var (
 
 // Stamper can issue stamps from the given address of chunk.
 type Stamper interface {
-	Stamp(idAddr, addr swarm.Address) (*Stamp, error)
+	Stamp(addr, idAddr swarm.Address) (*Stamp, error)
 	BatchId() []byte
 }
 
