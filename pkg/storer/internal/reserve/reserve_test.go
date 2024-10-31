@@ -465,7 +465,7 @@ func TestSameChunkAddress(t *testing.T) {
 
 		// (ch1 + ch2) == 2
 		if size2-size1 != 2 {
-			t.Fatalf("expected reserve size to increase by 1, got %d", size2-size1)
+			t.Fatalf("expected reserve size to increase by 2, got %d", size2-size1)
 		}
 	})
 
