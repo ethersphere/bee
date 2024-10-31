@@ -94,4 +94,5 @@ func (l *listener) Close() error {
 }
 
 // handler defines code to be executed upon reception of a GSOC sub message.
+// it is used as a parameter definition.
 type handler func([]byte)
