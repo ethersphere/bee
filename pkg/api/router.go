@@ -338,10 +338,6 @@ func (s *Service) mountAPI() {
 		),
 	})
 
-	handle("/pss/subscribe/{topic}", web.ChainHandlers(
-		web.FinalHandlerFunc(s.pssWsHandler),
-	))
-
 	handle("/gsoc/subscribe/{address}", web.ChainHandlers(
 		web.FinalHandlerFunc(s.gsocWsHandler),
 	))
