@@ -128,7 +128,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	r.multx.Lock(strconv.Itoa(int(bin)))
 	defer r.multx.Unlock(strconv.Itoa(int(bin)))
 
-	var shouldIncReserveSize, shouldDecrReserveSize bool
+	var shouldIncReserveSize bool
 
 	err = r.st.Run(ctx, func(s transaction.Store) error {
 
@@ -289,9 +289,6 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	}
 	if shouldIncReserveSize {
 		r.size.Add(1)
-	}
-	if shouldDecrReserveSize {
-		r.size.Add(-1)
 	}
 	return nil
 }
