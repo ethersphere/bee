@@ -25,7 +25,7 @@ type listener struct {
 	logger     log.Logger
 }
 
-// New returns a new pss service.
+// New returns a new GSOC listener service.
 func New(logger log.Logger) Listener {
 	return &listener{
 		logger:   logger,
@@ -34,7 +34,7 @@ func New(logger log.Logger) Listener {
 	}
 }
 
-// Subscribe allows the definition of a Handler func for a specific topic on the pss struct.
+// Subscribe allows the definition of a Handler func on a specific GSOC address.
 func (l *listener) Subscribe(address [32]byte, handler handler) (cleanup func()) {
 	l.handlersMu.Lock()
 	defer l.handlersMu.Unlock()
@@ -69,11 +69,8 @@ func (l *listener) Handle(c soc.SOC) {
 		"GSOC Address", addr,
 		"wrapped chunk address", c.WrappedChunk().Address())
 
-	var wg sync.WaitGroup
 	for _, hh := range h {
-		wg.Add(1)
 		go func(hh handler) {
-			defer wg.Done()
 			hh(c.WrappedChunk().Data()[swarm.SpanSize:])
 		}(*hh)
 	}
