@@ -399,7 +399,7 @@ func TestSameChunkAddress(t *testing.T) {
 	t.Run("same address but index collision with different chunk", func(t *testing.T) {
 		size1 := r.Size()
 		batch := postagetesting.MustNewBatch()
-		ch1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 0))
+		ch1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 1))
 		err = r.Put(ctx, ch1)
 		if err != nil {
 			t.Fatal(err)
@@ -414,7 +414,7 @@ func TestSameChunkAddress(t *testing.T) {
 
 		signer := getSigner(t)
 		s1 := soctesting.GenerateMockSocWithSigner(t, []byte("data"), signer)
-		ch2 := s1.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 1, 1))
+		ch2 := s1.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 1, 2))
 		err = r.Put(ctx, ch2)
 		if err != nil {
 			t.Fatal(err)
@@ -432,8 +432,16 @@ func TestSameChunkAddress(t *testing.T) {
 		checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin1, BinID: binBinIDs[bin1], StampHash: ch1StampHash}, false)
 		checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin2, BinID: binBinIDs[bin2], StampHash: ch2StampHash}, false)
 
+		// attempt to replace existing (unrelated) chunk that has timestamp
 		s2 := soctesting.GenerateMockSocWithSigner(t, []byte("update"), signer)
-		ch3 := s2.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 2))
+		ch3 := s2.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 0))
+		err = r.Put(ctx, ch3)
+		if !errors.Is(err, storage.ErrOverwriteNewerChunk) {
+			t.Fatal("expected error")
+		}
+
+		s2 = soctesting.GenerateMockSocWithSigner(t, []byte("update"), signer)
+		ch3 = s2.Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, 0, 3))
 		err = r.Put(ctx, ch3)
 		if err != nil {
 			t.Fatal(err)
