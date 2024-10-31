@@ -670,11 +670,11 @@ func TestNeighborhoodStats(t *testing.T) {
 	t.Parallel()
 
 	const (
-		chunkCountPerPO       = 16
-		maxPO                 = 5
-		networkRadius   uint8 = 4
-		doublingFactor  uint8 = 2
-		localRadius     uint8 = networkRadius - doublingFactor
+		chunkCountPerPO          = 16
+		maxPO                    = 5
+		committedDepth     uint8 = 4
+		doublingFactor     uint8 = 2
+		responsibiliyDepth uint8 = committedDepth - doublingFactor
 	)
 
 	mustParse := func(s string) swarm.Address {
@@ -706,10 +706,10 @@ func TestNeighborhoodStats(t *testing.T) {
 	testF := func(t *testing.T, st *storer.DB) {
 		t.Helper()
 
-		putChunks(baseAddr, int(networkRadius), st)
-		putChunks(sister1, int(networkRadius), st)
-		putChunks(sister2, int(networkRadius), st)
-		putChunks(sister3, int(networkRadius), st)
+		putChunks(baseAddr, int(committedDepth), st)
+		putChunks(sister1, int(committedDepth), st)
+		putChunks(sister2, int(committedDepth), st)
+		putChunks(sister3, int(committedDepth), st)
 
 		neighs, err := st.NeighborhoodsStat(context.Background())
 		if err != nil {
@@ -726,11 +726,18 @@ func TestNeighborhoodStats(t *testing.T) {
 			}
 		}
 
-		if !neighs[0].Neighborhood.Equal(swarm.NewNeighborhood(baseAddr, networkRadius)) ||
-			!neighs[1].Neighborhood.Equal(swarm.NewNeighborhood(sister1, networkRadius)) ||
-			!neighs[2].Neighborhood.Equal(swarm.NewNeighborhood(sister2, networkRadius)) ||
-			!neighs[3].Neighborhood.Equal(swarm.NewNeighborhood(sister3, networkRadius)) {
+		if !neighs[0].Neighborhood.Equal(swarm.NewNeighborhood(baseAddr, committedDepth)) ||
+			!neighs[1].Neighborhood.Equal(swarm.NewNeighborhood(sister1, committedDepth)) ||
+			!neighs[2].Neighborhood.Equal(swarm.NewNeighborhood(sister2, committedDepth)) ||
+			!neighs[3].Neighborhood.Equal(swarm.NewNeighborhood(sister3, committedDepth)) {
 			t.Fatal("chunk addresses do not match")
+		}
+
+		if neighs[0].Proximity != committedDepth ||
+			neighs[1].Proximity != 3 ||
+			neighs[2].Proximity != 2 ||
+			neighs[3].Proximity != 2 {
+			t.Fatalf("wrong proximity")
 		}
 	}
 
@@ -742,8 +749,8 @@ func TestNeighborhoodStats(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(localRadius))
-		err = spinlock.Wait(time.Minute, func() bool { return storer.StorageRadius() == localRadius })
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(responsibiliyDepth))
+		err = spinlock.Wait(time.Minute, func() bool { return storer.StorageRadius() == responsibiliyDepth })
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -757,8 +764,8 @@ func TestNeighborhoodStats(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(localRadius))
-		err = spinlock.Wait(time.Minute, func() bool { return storer.StorageRadius() == localRadius })
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(responsibiliyDepth))
+		err = spinlock.Wait(time.Minute, func() bool { return storer.StorageRadius() == responsibiliyDepth })
 		if err != nil {
 			t.Fatal(err)
 		}
