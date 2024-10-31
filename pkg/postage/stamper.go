@@ -21,6 +21,7 @@ var (
 
 // Stamper can issue stamps from the given address of chunk.
 type Stamper interface {
+	// addr is the request address of the chunk and idAddr is the identity address of the chunk.
 	Stamp(addr, idAddr swarm.Address) (*Stamp, error)
 	BatchId() []byte
 }
