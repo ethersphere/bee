@@ -112,7 +112,7 @@ func TestSelfUnhealthyRadius(t *testing.T) {
 	topM := topMock.NewTopologyDriver(topMock.WithPeers(addrs...))
 
 	reserve := mockstorer.NewReserve(
-		mockstorer.WithRadius(7),
+		mockstorer.WithRadius(6),
 		mockstorer.WithReserveSize(100),
 	)
 
@@ -149,7 +149,7 @@ func TestSelfHealthyCapacityDoubling(t *testing.T) {
 	topM := topMock.NewTopologyDriver(topMock.WithPeers(addrs...))
 
 	reserve := mockstorer.NewReserve(
-		mockstorer.WithRadius(6),
+		mockstorer.WithRadius(7),
 		mockstorer.WithReserveSize(100),
 	)
 
