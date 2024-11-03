@@ -12,7 +12,7 @@ env:
   REPLICA: 3
   RUN_TYPE: "PR RUN"
   SETUP_CONTRACT_IMAGE: "ethersphere/bee-localchain"
-  SETUP_CONTRACT_IMAGE_TAG: "0.9.2-rc1"
+  SETUP_CONTRACT_IMAGE_TAG: "0.9.2-rc6"
   BEELOCAL_BRANCH: "update-k3s-0.30.3"
   BEEKEEPER_BRANCH: "update-k8s-0.30.3"
   BEEKEEPER_METRICS_ENABLED: false

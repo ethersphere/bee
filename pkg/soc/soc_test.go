@@ -327,6 +327,15 @@ func TestFromChunk(t *testing.T) {
 	if !ch.Equal(recoveredSOC.WrappedChunk()) {
 		t.Fatalf("wrapped chunk mismatch. got %s want %s", recoveredSOC.WrappedChunk().Address(), ch.Address())
 	}
+
+	unwrapped, err := soc.UnwrapCAC(sch)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !ch.Equal(unwrapped) {
+		t.Fatalf("wrapped chunk mismatch. got %s want %s", recoveredSOC.WrappedChunk().Address(), ch.Address())
+	}
 }
 
 func TestCreateAddress(t *testing.T) {
