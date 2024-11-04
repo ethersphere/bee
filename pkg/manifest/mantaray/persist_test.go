@@ -145,7 +145,6 @@ func TestPersistRemove(t *testing.T) {
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}
-
 			ref := n.Reference()
 			// reload and remove
 			nn := mantaray.NewNodeRef(ref)
@@ -163,7 +162,6 @@ func TestPersistRemove(t *testing.T) {
 			}
 
 			ref = nn.Reference()
-
 			// reload and lookup removed node
 			nnn := mantaray.NewNodeRef(ref)
 			for i := 0; i < len(tc.toRemove); i++ {
