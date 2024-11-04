@@ -6,11 +6,13 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . ./
 
-RUN make binary
+ARG REACHABILITY_OVERRIDE_PUBLIC
+
+RUN make binary REACHABILITY_OVERRIDE_PUBLIC=${REACHABILITY_OVERRIDE_PUBLIC}
 
 FROM debian:12.7-slim
 
-ENV DEBIAN_FRONTEND noninteractive
+ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates; \
