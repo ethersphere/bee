@@ -331,7 +331,7 @@ func TestSameChunkAddress(t *testing.T) {
 		}
 
 		err = r.Put(ctx, ch4)
-		if err != nil {
+		if !errors.Is(err, storage.ErrOverwriteNewerChunk) {
 			t.Fatal(err)
 		}
 	})
