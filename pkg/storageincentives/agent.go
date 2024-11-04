@@ -70,7 +70,6 @@ type Agent struct {
 	chainStateGetter       postage.ChainStateGetter
 	commitLock             sync.Mutex
 	health                 Health
-	capacityDoubling       uint8
 }
 
 func New(overlay swarm.Address,
