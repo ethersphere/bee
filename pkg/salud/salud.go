@@ -195,7 +195,7 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 			continue
 		}
 
-		if networkRadius > 0 && peer.status.StorageRadius < uint32(networkRadius-2) {
+		if networkRadius > 0 && peer.status.CommitedDepth < uint32(networkRadius-2) {
 			s.logger.Debug("radius health failure", "radius", peer.status.CommitedDepth, "peer_address", peer.addr)
 		} else if peer.dur.Seconds() > pDur {
 			s.logger.Debug("response duration below threshold", "duration", peer.dur, "peer_address", peer.addr)
@@ -294,11 +294,11 @@ func (s *service) radius(peers []peer) (uint8, uint8) {
 	var nHoodRadius [swarm.MaxBins]int
 
 	for _, peer := range peers {
-		if peer.status.StorageRadius < uint32(swarm.MaxBins) {
+		if peer.status.CommitedDepth < uint32(swarm.MaxBins) {
 			if peer.neighbor {
-				nHoodRadius[peer.status.StorageRadius]++
+				nHoodRadius[peer.status.CommitedDepth]++
 			}
-			networkRadius[peer.status.StorageRadius]++
+			networkRadius[peer.status.CommitedDepth]++
 		}
 	}
 
