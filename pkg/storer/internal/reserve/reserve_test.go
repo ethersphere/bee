@@ -288,11 +288,13 @@ func TestSameChunkAddress(t *testing.T) {
 		}
 	})
 
-	t.Run("not a soc and newer timestamp", func(t *testing.T) {
+	t.Run("not a soc and different timestamps", func(t *testing.T) {
 		size1 := r.Size()
 		batch := postagetesting.MustNewBatch()
 		ch1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 7))
 		ch2 := swarm.NewChunk(ch1.Address(), []byte("update")).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 8))
+		ch3 := swarm.NewChunk(ch1.Address(), []byte("update")).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 6))
+		ch4 := swarm.NewChunk(ch1.Address(), []byte("update")).WithStamp(postagetesting.MustNewFields(batch.ID, 1, 6))
 		err := r.Put(ctx, ch1)
 		if err != nil {
 			t.Fatal(err)
@@ -321,6 +323,16 @@ func TestSameChunkAddress(t *testing.T) {
 		size2 := r.Size()
 		if size2-size1 != 1 {
 			t.Fatalf("expected reserve size to increase by 2, got %d", size2-size1)
+		}
+
+		err = r.Put(ctx, ch3)
+		if !errors.Is(err, storage.ErrOverwriteNewerChunk) {
+			t.Fatal(err)
+		}
+
+		err = r.Put(ctx, ch4)
+		if err != nil {
+			t.Fatal(err)
 		}
 	})
 
