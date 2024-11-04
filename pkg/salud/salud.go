@@ -52,8 +52,6 @@ type service struct {
 
 	radiusSubsMtx sync.Mutex
 	radiusC       []chan uint8
-
-	capacityDoubling uint8
 }
 
 func New(
@@ -66,20 +64,18 @@ func New(
 	minPeersPerbin int,
 	durPercentile float64,
 	connsPercentile float64,
-	capacityDoubling uint8,
 ) *service {
 
 	metrics := newMetrics()
 
 	s := &service{
-		quit:             make(chan struct{}),
-		logger:           logger.WithName(loggerName).Register(),
-		status:           status,
-		topology:         topology,
-		metrics:          metrics,
-		isSelfHealthy:    atomic.NewBool(true),
-		reserve:          reserve,
-		capacityDoubling: capacityDoubling,
+		quit:          make(chan struct{}),
+		logger:        logger.WithName(loggerName).Register(),
+		status:        status,
+		topology:      topology,
+		metrics:       metrics,
+		isSelfHealthy: atomic.NewBool(true),
+		reserve:       reserve,
 	}
 
 	s.wg.Add(1)
@@ -200,7 +196,7 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 		}
 
 		if networkRadius > 0 && peer.status.StorageRadius < uint32(networkRadius-2) {
-			s.logger.Debug("radius health failure", "radius", peer.status.StorageRadius, "peer_address", peer.addr)
+			s.logger.Debug("radius health failure", "radius", peer.status.CommitedDepth, "peer_address", peer.addr)
 		} else if peer.dur.Seconds() > pDur {
 			s.logger.Debug("response duration below threshold", "duration", peer.dur, "peer_address", peer.addr)
 		} else if peer.status.ConnectedPeers < pConns {
@@ -220,12 +216,10 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 		}
 	}
 
-	networkRadiusEstimation := s.reserve.StorageRadius() + s.capacityDoubling
-
 	selfHealth := true
-	if nHoodRadius == networkRadius && networkRadiusEstimation != networkRadius {
+	if nHoodRadius == networkRadius && s.reserve.CommitedDepth() != networkRadius {
 		selfHealth = false
-		s.logger.Warning("node is unhealthy due to storage radius discrepancy", "self_radius", networkRadiusEstimation, "network_radius", networkRadius)
+		s.logger.Warning("node is unhealthy due to storage radius discrepancy", "self_radius", s.reserve.CommitedDepth(), "network_radius", networkRadius)
 	}
 
 	s.isSelfHealthy.Store(selfHealth)

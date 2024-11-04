@@ -90,7 +90,6 @@ func New(overlay swarm.Address,
 	tranService transaction.Service,
 	health Health,
 	logger log.Logger,
-	capacityDoubling uint8,
 ) (*Agent, error) {
 	a := &Agent{
 		overlay:                overlay,
@@ -106,7 +105,6 @@ func New(overlay swarm.Address,
 		redistributionStatuser: redistributionStatuser,
 		health:                 health,
 		chainStateGetter:       chainStateGetter,
-		capacityDoubling:       capacityDoubling,
 	}
 
 	state, err := NewRedistributionState(logger, ethAddress, stateStore, erc20Service, tranService)
@@ -394,7 +392,7 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 
 func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	// minimum proximity between the achor and the stored chunks
-	commitedDepth := a.store.StorageRadius() + a.capacityDoubling
+	commitedDepth := a.store.CommitedDepth()
 
 	if a.state.IsFrozen() {
 		a.logger.Info("skipping round because node is frozen")

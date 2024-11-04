@@ -22,7 +22,7 @@ const loggerName = "status"
 
 const (
 	protocolName    = "status"
-	protocolVersion = "1.1.1"
+	protocolVersion = "1.1.2"
 	streamName      = "status"
 )
 
@@ -39,6 +39,7 @@ type Reserve interface {
 	ReserveSize() int
 	ReserveSizeWithinRadius() uint64
 	StorageRadius() uint8
+	CommitedDepth() uint8
 }
 
 type topologyDriver interface {
@@ -86,12 +87,14 @@ func (s *Service) LocalSnapshot() (*Snapshot, error) {
 		reserveSizeWithinRadius uint64
 		connectedPeers          uint64
 		neighborhoodSize        uint64
+		commitedDepth           uint8
 	)
 
 	if s.reserve != nil {
 		storageRadius = s.reserve.StorageRadius()
 		reserveSize = uint64(s.reserve.ReserveSize())
 		reserveSizeWithinRadius = s.reserve.ReserveSizeWithinRadius()
+		commitedDepth = s.reserve.CommitedDepth()
 	}
 
 	if s.sync != nil {
@@ -128,6 +131,7 @@ func (s *Service) LocalSnapshot() (*Snapshot, error) {
 		BatchCommitment:         commitment,
 		IsReachable:             s.topologyDriver.IsReachable(),
 		LastSyncedBlock:         s.chainState.GetChainState().Block,
+		CommitedDepth:           uint32(commitedDepth),
 	}, nil
 }
 

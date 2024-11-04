@@ -712,7 +712,6 @@ func createRedistributionAgentService(
 		tranService,
 		&mockHealth{},
 		log.Noop,
-		0,
 	)
 }
 

@@ -146,6 +146,11 @@ func (s *ReserveStore) SetStorageRadius(r uint8) {
 	s.radius = r
 	s.mtx.Unlock()
 }
+func (s *ReserveStore) CommitedDepth() uint8 {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	return s.radius + uint8(s.capacityDoubling)
+}
 
 // IntervalChunks returns a set of chunk in a requested interval.
 func (s *ReserveStore) SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan *storer.BinC, func(), <-chan error) {
