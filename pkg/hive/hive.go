@@ -121,6 +121,7 @@ func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, p
 
 		// If broadcasting limit is exceeded, return early
 		if !s.outLimiter.Allow(addressee.ByteString(), max) {
+			s.logger.Debug("[hive][broadcast] broadcast limit exceeded")
 			return nil
 		}
 
@@ -187,6 +188,7 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 		}
 
 		if !s.allowPrivateCIDRs && manet.IsPrivateAddr(addr.Underlay) {
+			s.logger.Debug("[hive][sendPeers] skipping private underlay address", "privatecidrs", s.allowPrivateCIDRs, "isPrivate", manet.IsPrivateAddr(addr.Underlay), "peer_address", p)
 			continue // Don't advertise private CIDRs to the public network.
 		}
 
@@ -198,6 +200,11 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 		})
 	}
 
+	var d []swarm.Address
+	for _, p := range peersRequest.Peers {
+		d = append(d, swarm.NewAddress(p.Overlay))
+	}
+	s.logger.Debug("[hive][sendPeers] sending peers", "to", peer, "data", d)
 	if err := w.WriteMsgWithContext(ctx, &peersRequest); err != nil {
 		return fmt.Errorf("write Peers message: %w", err)
 	}
@@ -215,6 +222,12 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 		_ = stream.Reset()
 		return fmt.Errorf("read requestPeers message: %w", err)
 	}
+
+	var d []swarm.Address
+	for _, p := range peersReq.Peers {
+		d = append(d, swarm.NewAddress(p.Overlay))
+	}
+	s.logger.Debug("[hive][peersHandler] received peers", "from", peer.Address, "data", d)
 
 	s.metrics.PeersHandlerPeers.Add(float64(len(peersReq.Peers)))
 

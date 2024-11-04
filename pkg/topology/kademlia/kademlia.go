@@ -1031,10 +1031,13 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 // Announce a newly connected peer to our connected peers, but also
 // notify the peer about our already connected peers
 func (k *Kad) Announce(ctx context.Context, peer swarm.Address, fullnode bool) error {
+	k.logger.Debug("[kad][announce] announcing to peer", "peer", peer)
 	var addrs []swarm.Address
 
 	depth := k.neighborhoodDepth()
 	isNeighbor := swarm.Proximity(peer.Bytes(), k.base.Bytes()) >= depth
+
+	k.logger.Debug("[kad][announce]", "isNeighbor", isNeighbor, "depth", depth, "peer", peer)
 
 outer:
 	for bin := uint8(0); bin < swarm.MaxBins; bin++ {
@@ -1044,6 +1047,7 @@ outer:
 			err            error
 		)
 
+		k.logger.Debug("[kad][announce] bin and neighbor check", "bin", bin, "depth", depth, "isNeighbor", isNeighbor)
 		if bin >= depth && isNeighbor {
 			connectedPeers = k.binPeers(bin, false) // broadcast all neighborhood peers
 		} else {
@@ -1052,6 +1056,8 @@ outer:
 				return err
 			}
 		}
+
+		k.logger.Debug("[kad][announce] connected peers", "connectedPeers", connectedPeers)
 
 		for _, connectedPeer := range connectedPeers {
 			if connectedPeer.Equal(peer) {
@@ -1087,6 +1093,7 @@ outer:
 		}
 	}
 
+	k.logger.Debug("[kad][announce] addresses to broadcast", "peer", peer, "addrs", addrs)
 	if len(addrs) == 0 {
 		return nil
 	}
@@ -1102,6 +1109,7 @@ outer:
 		k.logger.Error(err, "could not broadcast to peer", "peer_address", peer)
 		_ = k.p2p.Disconnect(peer, "failed broadcasting to peer")
 	}
+	k.logger.Debug("[kad][announce] broadcasted to peer", "peer", peer, "addrs", addrs)
 
 	return err
 }
