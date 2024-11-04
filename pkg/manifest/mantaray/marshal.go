@@ -287,6 +287,9 @@ func (n *Node) UnmarshalBinary(data []byte) error {
 		bb.fromBytes(data[offset:])
 		offset += 32 // skip forks
 		return bb.iter(func(b byte) error {
+			if refBytesSize == 0 {
+				return nil
+			}
 			f := &fork{}
 
 			if len(data) < offset+nodeForkTypeBytesSize {
@@ -296,7 +299,6 @@ func (n *Node) UnmarshalBinary(data []byte) error {
 			nodeType := data[offset]
 
 			nodeForkSize := nodeForkPreReferenceSize + refBytesSize
-
 			if nodeTypeIsWithMetadataType(nodeType) {
 				if len(data) < offset+nodeForkPreReferenceSize+refBytesSize+nodeForkMetadataBytesSize {
 					return fmt.Errorf("not enough bytes for node fork: %d (%d) on byte '%x': %w", (len(data) - offset), (nodeForkPreReferenceSize + refBytesSize + nodeForkMetadataBytesSize), []byte{b}, ErrInvalidManifest)

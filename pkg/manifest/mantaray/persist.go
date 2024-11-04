@@ -5,7 +5,6 @@
 package mantaray
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"golang.org/x/sync/errgroup"
@@ -61,7 +60,7 @@ func (n *Node) Save(ctx context.Context, s Saver) error {
 }
 
 func (n *Node) save(ctx context.Context, s Saver) error {
-	if n != nil && n.ref != nil && !bytes.Equal(n.ref, zero32) {
+	if n != nil && n.ref != nil {
 		return nil
 	}
 	select {
