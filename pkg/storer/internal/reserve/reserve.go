@@ -104,9 +104,8 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	chunkType := storage.ChunkType(chunk)
 
 	// batchID lock, Put vs Eviction
-	lockId := lockId(chunk.Stamp())
-	r.multx.Lock(lockId)
-	defer r.multx.Unlock(lockId)
+	r.multx.Lock(string(chunk.Stamp().BatchID()))
+	defer r.multx.Unlock(string(chunk.Stamp().BatchID()))
 
 	stampHash, err := chunk.Stamp().Hash()
 	if err != nil {
@@ -658,8 +657,4 @@ func (r *Reserve) IncBinID(store storage.IndexStore, bin uint8) (uint64, error) 
 	item.BinID += 1
 
 	return item.BinID, store.Put(item)
-}
-
-func lockId(stamp swarm.Stamp) string {
-	return fmt.Sprintf("%x-%x", stamp.BatchID(), stamp.Index())
 }
