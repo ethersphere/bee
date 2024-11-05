@@ -40,7 +40,7 @@ func TestGetStatus(t *testing.T) {
 			BatchCommitment:         1,
 			IsReachable:             true,
 			LastSyncedBlock:         6092500,
-			CommitedDepth:           1,
+			CommittedDepth:          1,
 		}
 
 		ssMock := &statusSnapshotMock{
@@ -50,7 +50,7 @@ func TestGetStatus(t *testing.T) {
 			storageRadius:           ssr.StorageRadius,
 			commitment:              ssr.BatchCommitment,
 			chainState:              &postage.ChainState{Block: ssr.LastSyncedBlock},
-			commitedDepth:           ssr.CommitedDepth,
+			committedDepth:          ssr.CommittedDepth,
 		}
 
 		statusSvc := status.NewService(
@@ -124,7 +124,7 @@ type statusSnapshotMock struct {
 	commitment              uint64
 	chainState              *postage.ChainState
 	neighborhoods           []*storer.NeighborhoodStat
-	commitedDepth           uint8
+	committedDepth          uint8
 }
 
 func (m *statusSnapshotMock) SyncRate() float64                  { return m.syncRate }
@@ -138,4 +138,4 @@ func (m *statusSnapshotMock) ReserveSizeWithinRadius() uint64 {
 func (m *statusSnapshotMock) NeighborhoodsStat(ctx context.Context) ([]*storer.NeighborhoodStat, error) {
 	return m.neighborhoods, nil
 }
-func (m *statusSnapshotMock) CommitedDepth() uint8 { return m.commitedDepth }
+func (m *statusSnapshotMock) CommittedDepth() uint8 { return m.committedDepth }

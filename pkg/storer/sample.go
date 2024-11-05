@@ -61,7 +61,7 @@ type Sample struct {
 func (db *DB) ReserveSample(
 	ctx context.Context,
 	anchor []byte,
-	commitedDepth uint8,
+	committedDepth uint8,
 	consensusTime uint64,
 	minBatchBalance *big.Int,
 ) (Sample, error) {
@@ -98,7 +98,7 @@ func (db *DB) ReserveSample(
 		}()
 
 		err := db.reserve.IterateChunksItems(db.StorageRadius(), func(ch *reserve.ChunkBinItem) (bool, error) {
-			if swarm.Proximity(ch.Address.Bytes(), anchor) < commitedDepth {
+			if swarm.Proximity(ch.Address.Bytes(), anchor) < committedDepth {
 				return false, nil
 			}
 			select {
@@ -261,12 +261,12 @@ func (db *DB) ReserveSample(
 	allStats.TotalDuration = time.Since(t)
 
 	if err := g.Wait(); err != nil {
-		db.logger.Info("reserve sampler finished with error", "err", err, "duration", time.Since(t), "storage_radius", commitedDepth, "consensus_time_ns", consensusTime, "stats", fmt.Sprintf("%+v", allStats))
+		db.logger.Info("reserve sampler finished with error", "err", err, "duration", time.Since(t), "storage_radius", committedDepth, "consensus_time_ns", consensusTime, "stats", fmt.Sprintf("%+v", allStats))
 
 		return Sample{}, fmt.Errorf("sampler: failed creating sample: %w", err)
 	}
 
-	db.logger.Info("reserve sampler finished", "duration", time.Since(t), "storage_radius", commitedDepth, "consensus_time_ns", consensusTime, "stats", fmt.Sprintf("%+v", allStats))
+	db.logger.Info("reserve sampler finished", "duration", time.Since(t), "storage_radius", committedDepth, "consensus_time_ns", consensusTime, "stats", fmt.Sprintf("%+v", allStats))
 
 	return Sample{Stats: *allStats, Items: sampleItems}, nil
 }

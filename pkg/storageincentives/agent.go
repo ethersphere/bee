@@ -391,14 +391,14 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 
 func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	// minimum proximity between the achor and the stored chunks
-	commitedDepth := a.store.CommitedDepth()
+	committedDepth := a.store.CommittedDepth()
 
 	if a.state.IsFrozen() {
 		a.logger.Info("skipping round because node is frozen")
 		return false, nil
 	}
 
-	isPlaying, err := a.contract.IsPlaying(ctx, commitedDepth)
+	isPlaying, err := a.contract.IsPlaying(ctx, committedDepth)
 	if err != nil {
 		a.metrics.ErrCheckIsPlaying.Inc()
 		return false, err
@@ -431,21 +431,21 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	}
 
 	now := time.Now()
-	sample, err := a.makeSample(ctx, commitedDepth)
+	sample, err := a.makeSample(ctx, committedDepth)
 	if err != nil {
 		return false, err
 	}
 	dur := time.Since(now)
 	a.metrics.SampleDuration.Set(dur.Seconds())
 
-	a.logger.Info("produced sample", "hash", sample.ReserveSampleHash, "radius", commitedDepth, "round", round)
+	a.logger.Info("produced sample", "hash", sample.ReserveSampleHash, "radius", committedDepth, "round", round)
 
 	a.state.SetSampleData(round, sample, dur)
 
 	return true, nil
 }
 
-func (a *Agent) makeSample(ctx context.Context, commitedDepth uint8) (SampleData, error) {
+func (a *Agent) makeSample(ctx context.Context, committedDepth uint8) (SampleData, error) {
 	salt, err := a.contract.ReserveSalt(ctx)
 	if err != nil {
 		return SampleData{}, err
@@ -456,7 +456,7 @@ func (a *Agent) makeSample(ctx context.Context, commitedDepth uint8) (SampleData
 		return SampleData{}, err
 	}
 
-	rSample, err := a.store.ReserveSample(ctx, salt, commitedDepth, uint64(timeLimiter), a.minBatchBalance())
+	rSample, err := a.store.ReserveSample(ctx, salt, committedDepth, uint64(timeLimiter), a.minBatchBalance())
 	if err != nil {
 		return SampleData{}, err
 	}
@@ -470,7 +470,7 @@ func (a *Agent) makeSample(ctx context.Context, commitedDepth uint8) (SampleData
 		Anchor1:            salt,
 		ReserveSampleItems: rSample.Items,
 		ReserveSampleHash:  sampleHash,
-		StorageRadius:      commitedDepth,
+		StorageRadius:      committedDepth,
 	}
 
 	return sample, nil

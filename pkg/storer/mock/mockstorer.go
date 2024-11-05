@@ -220,7 +220,7 @@ func (m *mockStorer) ChunkStore() storage.ReadOnlyChunkStore {
 
 func (m *mockStorer) StorageRadius() uint8 { return 0 }
 
-func (m *mockStorer) CommitedDepth() uint8 { return 0 }
+func (m *mockStorer) CommittedDepth() uint8 { return 0 }
 
 func (m *mockStorer) IsWithinStorageRadius(_ swarm.Address) bool { return true }
 

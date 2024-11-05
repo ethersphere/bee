@@ -33,7 +33,7 @@ func TestStatus(t *testing.T) {
 		NeighborhoodSize: 1,
 		IsReachable:      true,
 		LastSyncedBlock:  6092500,
-		CommitedDepth:    1,
+		CommittedDepth:   1,
 	}
 
 	sssMock := &statusSnapshotMock{want}
@@ -204,4 +204,4 @@ func (m *statusSnapshotMock) GetChainState() *postage.ChainState {
 func (m *statusSnapshotMock) ReserveSizeWithinRadius() uint64 {
 	return m.Snapshot.ReserveSizeWithinRadius
 }
-func (m *statusSnapshotMock) CommitedDepth() uint8 { return uint8(m.Snapshot.CommitedDepth) }
+func (m *statusSnapshotMock) CommittedDepth() uint8 { return uint8(m.Snapshot.CommittedDepth) }

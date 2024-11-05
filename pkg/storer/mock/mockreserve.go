@@ -146,7 +146,7 @@ func (s *ReserveStore) SetStorageRadius(r uint8) {
 	s.radius = r
 	s.mtx.Unlock()
 }
-func (s *ReserveStore) CommitedDepth() uint8 {
+func (s *ReserveStore) CommittedDepth() uint8 {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	return s.radius + uint8(s.capacityDoubling)

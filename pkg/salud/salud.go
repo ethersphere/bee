@@ -169,7 +169,7 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 		return
 	}
 
-	networkRadius, nHoodRadius := s.commitedDepth(peers)
+	networkRadius, nHoodRadius := s.committedDepth(peers)
 	avgDur := totaldur / float64(len(peers))
 	pDur := percentileDur(peers, durPercentile)
 	pConns := percentileConns(peers, connsPercentile)
@@ -195,8 +195,8 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 			continue
 		}
 
-		if networkRadius > 0 && peer.status.CommitedDepth < uint32(networkRadius-2) {
-			s.logger.Debug("radius health failure", "radius", peer.status.CommitedDepth, "peer_address", peer.addr)
+		if networkRadius > 0 && peer.status.CommittedDepth < uint32(networkRadius-2) {
+			s.logger.Debug("radius health failure", "radius", peer.status.CommittedDepth, "peer_address", peer.addr)
 		} else if peer.dur.Seconds() > pDur {
 			s.logger.Debug("response duration below threshold", "duration", peer.dur, "peer_address", peer.addr)
 		} else if peer.status.ConnectedPeers < pConns {
@@ -217,9 +217,9 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 	}
 
 	selfHealth := true
-	if nHoodRadius == networkRadius && s.reserve.CommitedDepth() != networkRadius {
+	if nHoodRadius == networkRadius && s.reserve.CommittedDepth() != networkRadius {
 		selfHealth = false
-		s.logger.Warning("node is unhealthy due to storage radius discrepancy", "self_radius", s.reserve.CommitedDepth(), "network_radius", networkRadius)
+		s.logger.Warning("node is unhealthy due to storage radius discrepancy", "self_radius", s.reserve.CommittedDepth(), "network_radius", networkRadius)
 	}
 
 	s.isSelfHealthy.Store(selfHealth)
@@ -288,17 +288,17 @@ func percentileConns(peers []peer, p float64) uint64 {
 }
 
 // radius finds the most common radius.
-func (s *service) commitedDepth(peers []peer) (uint8, uint8) {
+func (s *service) committedDepth(peers []peer) (uint8, uint8) {
 
 	var networkDepth [swarm.MaxBins]int
 	var nHoodDepth [swarm.MaxBins]int
 
 	for _, peer := range peers {
-		if peer.status.CommitedDepth < uint32(swarm.MaxBins) {
+		if peer.status.CommittedDepth < uint32(swarm.MaxBins) {
 			if peer.neighbor {
-				nHoodDepth[peer.status.CommitedDepth]++
+				nHoodDepth[peer.status.CommittedDepth]++
 			}
-			networkDepth[peer.status.CommitedDepth]++
+			networkDepth[peer.status.CommittedDepth]++
 		}
 	}
 
