@@ -169,7 +169,7 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 		return
 	}
 
-	networkRadius, nHoodRadius := s.radius(peers)
+	networkRadius, nHoodRadius := s.committedDepth(peers)
 	avgDur := totaldur / float64(len(peers))
 	pDur := percentileDur(peers, durPercentile)
 	pConns := percentileConns(peers, connsPercentile)
@@ -288,24 +288,24 @@ func percentileConns(peers []peer, p float64) uint64 {
 }
 
 // radius finds the most common radius.
-func (s *service) radius(peers []peer) (uint8, uint8) {
+func (s *service) committedDepth(peers []peer) (uint8, uint8) {
 
-	var networkRadius [swarm.MaxBins]int
-	var nHoodRadius [swarm.MaxBins]int
+	var networkDepth [swarm.MaxBins]int
+	var nHoodDepth [swarm.MaxBins]int
 
 	for _, peer := range peers {
 		if peer.status.CommitedDepth < uint32(swarm.MaxBins) {
 			if peer.neighbor {
-				nHoodRadius[peer.status.CommitedDepth]++
+				nHoodDepth[peer.status.CommitedDepth]++
 			}
-			networkRadius[peer.status.CommitedDepth]++
+			networkDepth[peer.status.CommitedDepth]++
 		}
 	}
 
-	networkR := maxIndex(networkRadius[:])
-	hoodR := maxIndex(nHoodRadius[:])
+	networkD := maxIndex(networkDepth[:])
+	hoodD := maxIndex(nHoodDepth[:])
 
-	return uint8(networkR), uint8(hoodR)
+	return uint8(networkD), uint8(hoodD)
 }
 
 // commitment finds the most common batch commitment.
