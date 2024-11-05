@@ -13,13 +13,13 @@ import (
 )
 
 type Listener interface {
-	Subscribe(address [32]byte, handler handler) (cleanup func())
+	Subscribe(address [32]byte, handler Handler) (cleanup func())
 	Handle(c *soc.SOC)
 	Close() error
 }
 
 type listener struct {
-	handlers   map[[32]byte][]*handler
+	handlers   map[[32]byte][]*Handler
 	handlersMu sync.Mutex
 	quit       chan struct{}
 	logger     log.Logger
@@ -29,13 +29,13 @@ type listener struct {
 func New(logger log.Logger) Listener {
 	return &listener{
 		logger:   logger,
-		handlers: make(map[[32]byte][]*handler),
+		handlers: make(map[[32]byte][]*Handler),
 		quit:     make(chan struct{}),
 	}
 }
 
 // Subscribe allows the definition of a Handler func on a specific GSOC address.
-func (l *listener) Subscribe(address [32]byte, handler handler) (cleanup func()) {
+func (l *listener) Subscribe(address [32]byte, handler Handler) (cleanup func()) {
 	l.handlersMu.Lock()
 	defer l.handlersMu.Unlock()
 
@@ -70,13 +70,13 @@ func (l *listener) Handle(c *soc.SOC) {
 		"wrapped chunk address", c.WrappedChunk().Address())
 
 	for _, hh := range h {
-		go func(hh handler) {
+		go func(hh Handler) {
 			hh(c.WrappedChunk().Data()[swarm.SpanSize:])
 		}(*hh)
 	}
 }
 
-func (p *listener) getHandlers(address [32]byte) []*handler {
+func (p *listener) getHandlers(address [32]byte) []*Handler {
 	p.handlersMu.Lock()
 	defer p.handlersMu.Unlock()
 
@@ -88,11 +88,11 @@ func (l *listener) Close() error {
 	l.handlersMu.Lock()
 	defer l.handlersMu.Unlock()
 
-	l.handlers = make(map[[32]byte][]*handler) //unset handlers on shutdown
+	l.handlers = make(map[[32]byte][]*Handler) //unset handlers on shutdown
 
 	return nil
 }
 
-// handler defines code to be executed upon reception of a GSOC sub message.
+// Handler defines code to be executed upon reception of a GSOC sub message.
 // it is used as a parameter definition.
-type handler func([]byte)
+type Handler func([]byte)
