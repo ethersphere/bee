@@ -354,7 +354,7 @@ func newPullSyncWithStamperValidator(
 	storage := mock.NewReserve(o...)
 	logger := log.Noop
 	unwrap := func(swarm.Chunk) {}
-	socHandler := func(soc.SOC) {}
+	socHandler := func(*soc.SOC) {}
 	ps := pullsync.New(
 		s,
 		storage,

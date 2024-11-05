@@ -14,7 +14,7 @@ import (
 
 type Listener interface {
 	Subscribe(address [32]byte, handler handler) (cleanup func())
-	Handle(c soc.SOC)
+	Handle(c *soc.SOC)
 	Close() error
 }
 
@@ -56,7 +56,7 @@ func (l *listener) Subscribe(address [32]byte, handler handler) (cleanup func())
 }
 
 // Handle is called by push/pull sync and passes the chunk its registered handler
-func (l *listener) Handle(c soc.SOC) {
+func (l *listener) Handle(c *soc.SOC) {
 	addr, err := c.Address()
 	if err != nil {
 		return // no handler
