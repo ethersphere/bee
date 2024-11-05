@@ -163,6 +163,7 @@ type ReserveStore interface {
 type RadiusChecker interface {
 	IsWithinStorageRadius(addr swarm.Address) bool
 	StorageRadius() uint8
+	CommittedDepth() uint8
 }
 
 // LocalStore is a read-only ChunkStore. It can be used to check if chunk is known

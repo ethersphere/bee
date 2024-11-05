@@ -182,6 +182,7 @@ func createService(
 	reserve := resMock.NewReserve(
 		resMock.WithRadius(radius),
 		resMock.WithSample(storer.RandSample(t, nil)),
+		resMock.WithCapacityDoubling(int(doubling)),
 	)
 
 	return storageincentives.New(
@@ -201,7 +202,6 @@ func createService(
 		transactionmock.New(),
 		&mockHealth{},
 		log.Noop,
-		doubling,
 	)
 }
 
