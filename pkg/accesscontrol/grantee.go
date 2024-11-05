@@ -7,11 +7,11 @@ package accesscontrol
 import (
 	"context"
 	"crypto/ecdsa"
-	"crypto/elliptic"
 	"errors"
 	"fmt"
 
 	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethersphere/bee/v2/pkg/file"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -85,7 +85,10 @@ func (g *GranteeListStruct) Add(addList []*ecdsa.PublicKey) error {
 
 // Save saves the grantee list to the underlying storage and returns the reference.
 func (g *GranteeListStruct) Save(ctx context.Context) (swarm.Address, error) {
-	data := serialize(g.grantees)
+	data, err := serialize(g.grantees)
+	if err != nil {
+		return swarm.ZeroAddress, fmt.Errorf("grantee serialize error: %w", err)
+	}
 	refBytes, err := g.loadSave.Save(ctx, data)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("grantee save error: %w", err)
@@ -140,16 +143,16 @@ func NewGranteeListReference(ctx context.Context, ls file.LoadSaver, reference s
 	}, nil
 }
 
-func serialize(publicKeys []*ecdsa.PublicKey) []byte {
+func serialize(publicKeys []*ecdsa.PublicKey) ([]byte, error) {
 	b := make([]byte, 0, len(publicKeys)*publicKeyLen)
 	for _, key := range publicKeys {
-		b = append(b, serializePublicKey(key)...)
+		// TODO: check if this is the correct way to serialize the public key
+		// Is this the only curve we support?
+		// Should we have switch case for different curves?
+		pubBytes := crypto.S256().Marshal(key.X, key.Y)
+		b = append(b, pubBytes...)
 	}
-	return b
-}
-
-func serializePublicKey(pub *ecdsa.PublicKey) []byte {
-	return elliptic.Marshal(pub.Curve, pub.X, pub.Y)
+	return b, nil
 }
 
 func deserialize(data []byte) []*ecdsa.PublicKey {

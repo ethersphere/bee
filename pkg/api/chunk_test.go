@@ -177,7 +177,6 @@ func TestChunkHandlersInvalidInputs(t *testing.T) {
 
 	method := http.MethodGet
 	for _, tc := range tests {
-		tc := tc
 		t.Run(method+" "+tc.name, func(t *testing.T) {
 			t.Parallel()
 

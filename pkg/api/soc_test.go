@@ -90,7 +90,7 @@ func TestSOC(t *testing.T) {
 
 		// try to fetch the same chunk
 		t.Run("chunks fetch", func(t *testing.T) {
-			rsrc := fmt.Sprintf("/chunks/" + s.Address().String())
+			rsrc := fmt.Sprintf("/chunks/%s", s.Address().String())
 			resp := request(t, client, http.MethodGet, rsrc, nil, http.StatusOK)
 			data, err := io.ReadAll(resp.Body)
 			if err != nil {
@@ -141,7 +141,6 @@ func TestSOC(t *testing.T) {
 		})
 
 		t.Run("ok batch", func(t *testing.T) {
-
 			s := testingsoc.GenerateMockSOC(t, testData)
 			hexbatch := hex.EncodeToString(batchOk)
 			client, _, _, chanStorer := newTestServer(t, testServerOptions{

@@ -145,8 +145,6 @@ func TestStampItem(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
-
 		t.Run(fmt.Sprintf("%s marshal/unmarshal", tc.name), func(t *testing.T) {
 			t.Parallel()
 
@@ -249,7 +247,6 @@ func TestUtilization(t *testing.T) {
 
 		t.Logf("depth: %d, actual utilization: %f", depth, float64(count)/math.Pow(2, float64(depth)))
 	}
-
 }
 
 func bytesToIndex(buf []byte) (bucket, index uint32) {

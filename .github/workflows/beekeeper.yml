@@ -8,7 +8,7 @@ on:
       - "**"
 
 env:
-  K3S_VERSION: "v1.22.17+k3s1"
+  K3S_VERSION: "v1.30.3+k3s1"
   REPLICA: 3
   RUN_TYPE: "PR RUN"
   SETUP_CONTRACT_IMAGE: "ethersphere/bee-localchain"
