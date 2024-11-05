@@ -116,7 +116,6 @@ func TestFinderFixIntervals(t *testing.T, nextf func() (bool, int64), finderf fu
 }
 
 func TestFinderIntervals(t *testing.T, nextf func() (bool, int64), finderf func(storage.Getter, *feeds.Feed) feeds.Lookup, updaterf func(putter storage.Putter, signer crypto.Signer, topic []byte) (feeds.Updater, error)) {
-
 	storer := &Timeout{inmemchunkstore.New()}
 	topicStr := "testtopic"
 	topic, err := crypto.LegacyKeccak256([]byte(topicStr))
@@ -188,7 +187,6 @@ func TestFinderRandomIntervals(t *testing.T, finderf func(storage.Getter, *feeds
 	t.Parallel()
 
 	for j := 0; j < 3; j++ {
-		j := j
 		t.Run(fmt.Sprintf("random intervals %d", j), func(t *testing.T) {
 			t.Parallel()
 

@@ -44,7 +44,6 @@ func TestReader_ReadMsg(t *testing.T) {
 			},
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -98,7 +97,6 @@ func TestReader_timeout(t *testing.T) {
 			},
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -164,7 +162,6 @@ func TestWriter(t *testing.T) {
 			},
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -210,7 +207,6 @@ func TestWriter_timeout(t *testing.T) {
 			},
 		},
 	} {
-		tc := tc
 		t.Run(tc.name+"WithContext", func(t *testing.T) {
 			t.Parallel()
 

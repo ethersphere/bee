@@ -147,7 +147,6 @@ func TestTraversalBytes(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		chunkCount := int(math.Ceil(float64(tc.dataSize) / swarm.ChunkSize))
 		t.Run(fmt.Sprintf("%d-chunk-%d-bytes", chunkCount, tc.dataSize), func(t *testing.T) {
 			t.Parallel()
@@ -242,7 +241,6 @@ func TestTraversalFiles(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		chunkCount := int(math.Ceil(float64(tc.filesSize) / swarm.ChunkSize))
 		t.Run(fmt.Sprintf("%d-chunk-%d-bytes", chunkCount, tc.filesSize), func(t *testing.T) {
 			t.Parallel()
@@ -403,7 +401,6 @@ func TestTraversalManifest(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(fmt.Sprintf("%s-%d-files-%d-chunks", defaultMediaType, len(tc.files), tc.wantHashCount), func(t *testing.T) {
 			t.Parallel()
 

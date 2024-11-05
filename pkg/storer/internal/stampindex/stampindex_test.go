@@ -87,8 +87,6 @@ func TestStampIndexItem(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
-
 		t.Run(fmt.Sprintf("%s marshal/unmarshal", tc.name), func(t *testing.T) {
 			t.Parallel()
 
@@ -116,10 +114,8 @@ func TestStoreLoadDeleteWithStamp(t *testing.T) {
 		ns := fmt.Sprintf("namespace_%d", i)
 		t.Run(ns, func(t *testing.T) {
 			t.Run("store new stamp index", func(t *testing.T) {
-
 				err := ts.Run(context.Background(), func(s transaction.Store) error {
 					return stampindex.Store(s.IndexStore(), ns, chunk)
-
 				})
 				if err != nil {
 					t.Fatalf("Store(...): unexpected error: %v", err)
@@ -164,7 +160,6 @@ func TestStoreLoadDeleteWithStamp(t *testing.T) {
 			})
 
 			t.Run("delete stored stamp index", func(t *testing.T) {
-
 				err := ts.Run(context.Background(), func(s transaction.Store) error {
 					return stampindex.Delete(s.IndexStore(), ns, chunk.Stamp())
 				})

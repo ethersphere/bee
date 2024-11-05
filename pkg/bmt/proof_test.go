@@ -44,7 +44,6 @@ func TestProofCorrectness(t *testing.T) {
 				t.Fatal("incorrect segment in proof")
 			}
 		}
-
 	}
 
 	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, 128, 128))
@@ -211,7 +210,6 @@ func TestProof(t *testing.T) {
 	}
 
 	for i := 0; i < 128; i++ {
-		i := i
 		t.Run(fmt.Sprintf("segmentIndex %d", i), func(t *testing.T) {
 			t.Parallel()
 

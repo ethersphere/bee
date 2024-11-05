@@ -161,11 +161,10 @@ Use the Golang [testing package](https://pkg.go.dev/testing) from the standard l
 
 ### Parallel Test Execution
 
-Run tests in parallel where possible but don't forget about variable scope gotchas.
+Run tests in parallel where possible.
 
 ```go
 for tc := range tt {
-  tc := tc // must not forget this
   t.Run(tc.name, func(t *testing.T) {
     t.Parallel()
     //execute

@@ -184,7 +184,6 @@ func TestStepIndex_BatchSize(t *testing.T) {
 
 	const populateItemsCount = 128
 	for i := 1; i <= 2*populateItemsCount; i <<= 1 {
-		i := i
 		t.Run(fmt.Sprintf("callback called once per item with batch size: %d", i), func(t *testing.T) {
 			t.Parallel()
 
@@ -362,5 +361,4 @@ func assertItemsInRange(t *testing.T, s storage.Store, from, to int) {
 	if err != nil {
 		t.Fatalf("populate store should succeed: %v", err)
 	}
-
 }

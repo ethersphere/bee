@@ -4,13 +4,12 @@ linters:
   enable:
     - asciicheck
     - bidichk
-    # - depguard disable temporary until this issue is resolved: https://github.com/golangci/golangci-lint/issues/3906
+    - copyloopvar
     - dogsled
     - durationcheck
     - errcheck
     - errname
     - errorlint
-    - exportloopref
     - forbidigo
     - gochecknoinits
     - goconst
@@ -33,6 +32,7 @@ linters:
     - typecheck
     - unconvert
     - unused
+    # - depguard disable temporary until this issue is resolved: https://github.com/golangci/golangci-lint/issues/3906
 
 linters-settings:
   govet:

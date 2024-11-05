@@ -210,10 +210,8 @@ func TestBzzUploadDownloadWithRedundancy_FLAKY(t *testing.T) {
 		})
 	}
 	for _, rLevel := range []redundancy.Level{1, 2, 3, 4} {
-		rLevel := rLevel
 		t.Run(fmt.Sprintf("level=%d", rLevel), func(t *testing.T) {
 			for _, encrypt := range []bool{false, true} {
-				encrypt := encrypt
 				shardCnt := rLevel.GetMaxShards()
 				parityCnt := rLevel.GetParities(shardCnt)
 				if encrypt {
@@ -230,7 +228,6 @@ func TestBzzUploadDownloadWithRedundancy_FLAKY(t *testing.T) {
 					case 3:
 						chunkCnt = shardCnt*shardCnt + 1
 					}
-					levels := levels
 					t.Run(fmt.Sprintf("encrypt=%v levels=%d chunks=%d", encrypt, levels, chunkCnt), func(t *testing.T) {
 						if levels > 2 && (encrypt == (rLevel%2 == 1)) {
 							t.Skip("skipping to save time")
@@ -619,7 +616,6 @@ func TestBzzFilesRangeRequests(t *testing.T) {
 	}
 
 	for _, upload := range uploads {
-		upload := upload
 		t.Run(upload.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -886,7 +882,6 @@ func Test_bzzDownloadHandler_invalidInputs(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -934,7 +929,6 @@ func TestInvalidBzzParams(t *testing.T) {
 			jsonhttptest.WithRequestBody(tr),
 			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, api.ContentTypeTar),
 		)
-
 	})
 
 	t.Run("batch exists", func(t *testing.T) {
@@ -962,7 +956,6 @@ func TestInvalidBzzParams(t *testing.T) {
 			jsonhttptest.WithRequestBody(tr),
 			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, api.ContentTypeTar),
 		)
-
 	})
 
 	t.Run("batch not found", func(t *testing.T) {
@@ -1057,7 +1050,6 @@ func TestInvalidBzzParams(t *testing.T) {
 		address := "f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b"
 		jsonhttptest.Request(t, client, http.MethodGet, fmt.Sprintf("/bzz/%s/", address), http.StatusNotFound)
 	})
-
 }
 
 // TestDirectUploadBzz tests that the direct upload endpoint give correct error message in dev mode

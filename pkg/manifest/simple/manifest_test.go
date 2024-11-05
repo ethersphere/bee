@@ -100,7 +100,6 @@ func TestEntries(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range makeTestCases(t) {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -164,7 +163,6 @@ func TestEntries(t *testing.T) {
 
 				checkLength(t, m, manifestLen-i-1)
 			}
-
 		})
 	}
 }
@@ -198,7 +196,6 @@ func TestMarshal(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range makeTestCases(t) {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -271,7 +268,6 @@ func TestHasPrefix(t *testing.T) {
 			},
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -294,7 +290,6 @@ func TestHasPrefix(t *testing.T) {
 					t.Errorf("expected prefix path %s to be %t, was %t", testPrefix, shouldExist, exists)
 				}
 			}
-
 		})
 	}
 }

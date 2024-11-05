@@ -116,8 +116,6 @@ func TestChunkStampItem(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
-
 		t.Run(fmt.Sprintf("%s marshal/unmarshal", tc.name), func(t *testing.T) {
 			t.Parallel()
 
@@ -225,7 +223,6 @@ func TestStoreLoadDelete(t *testing.T) {
 			})
 
 			t.Run("delete all stored stamp index", func(t *testing.T) {
-
 				if err := ts.Run(context.Background(), func(s transaction.Store) error {
 					return chunkstamp.Store(s.IndexStore(), ns, chunk)
 				}); err != nil {

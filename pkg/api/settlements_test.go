@@ -78,7 +78,6 @@ func TestSettlements(t *testing.T) {
 	if !equalSettlements(got, expected) {
 		t.Errorf("got settlements: %+v, expected: %+v", got, expected)
 	}
-
 }
 
 func TestSettlementsError(t *testing.T) {
@@ -208,7 +207,6 @@ func Test_peerSettlementsHandler_invalidInputs(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

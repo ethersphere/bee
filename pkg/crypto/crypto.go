@@ -14,6 +14,7 @@ import (
 	"fmt"
 
 	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"golang.org/x/crypto/sha3"
 )
@@ -29,7 +30,6 @@ const (
 
 // NewOverlayAddress constructs a Swarm Address from ECDSA public key.
 func NewOverlayAddress(p ecdsa.PublicKey, networkID uint64, nonce []byte) (swarm.Address, error) {
-
 	ethAddr, err := NewEthereumAddress(p)
 	if err != nil {
 		return swarm.ZeroAddress, err
@@ -44,7 +44,6 @@ func NewOverlayAddress(p ecdsa.PublicKey, networkID uint64, nonce []byte) (swarm
 
 // NewOverlayFromEthereumAddress constructs a Swarm Address for an Ethereum address.
 func NewOverlayFromEthereumAddress(ethAddr []byte, networkID uint64, nonce []byte) (swarm.Address, error) {
-
 	netIDBytes := make([]byte, 8)
 
 	binary.LittleEndian.PutUint64(netIDBytes, networkID)
@@ -116,7 +115,7 @@ func NewEthereumAddress(p ecdsa.PublicKey) ([]byte, error) {
 	if p.X == nil || p.Y == nil {
 		return nil, errors.New("invalid public key")
 	}
-	pubBytes := elliptic.Marshal(btcec.S256(), p.X, p.Y)
+	pubBytes := crypto.S256().Marshal(p.X, p.Y)
 	pubHash, err := LegacyKeccak256(pubBytes[1:])
 	if err != nil {
 		return nil, err

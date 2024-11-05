@@ -195,10 +195,10 @@ func (f *asyncFinder) At(ctx context.Context, at int64, after uint64) (ch swarm.
 }
 
 // at launches concurrent lookups at exponential intervals after the starting from further
-func (f *asyncFinder) at(ctx context.Context, at int64, min int, i *interval, c chan<- *result, quit <-chan struct{}) {
+func (f *asyncFinder) at(ctx context.Context, at int64, minValue int, i *interval, c chan<- *result, quit <-chan struct{}) {
 	var wg sync.WaitGroup
 
-	for l := i.level; l > min; l-- {
+	for l := i.level; l > minValue; l-- {
 		select {
 		case <-quit: // if the parent process quit
 			return

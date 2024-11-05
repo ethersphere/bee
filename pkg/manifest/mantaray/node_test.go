@@ -136,7 +136,6 @@ func TestAddAndLookupNode(t *testing.T) {
 		},
 	} {
 		ctx := context.Background()
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -264,7 +263,6 @@ func TestRemove(t *testing.T) {
 		},
 	} {
 		ctx := context.Background()
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -305,7 +303,6 @@ func TestRemove(t *testing.T) {
 					t.Fatalf("expected not found error, got %v", err)
 				}
 			}
-
 		})
 	}
 }
@@ -354,7 +351,6 @@ func TestHasPrefix(t *testing.T) {
 		},
 	} {
 		ctx := context.Background()
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -382,7 +378,6 @@ func TestHasPrefix(t *testing.T) {
 					t.Errorf("expected prefix path %s to be %t, was %t", testPrefix, shouldExist, exists)
 				}
 			}
-
 		})
 	}
 }

@@ -210,7 +210,6 @@ func TestConsumedBalances(t *testing.T) {
 	if !equalBalances(got, expected) {
 		t.Errorf("got balances: %v, expected: %v", got, expected)
 	}
-
 }
 
 func TestConsumedError(t *testing.T) {
@@ -328,7 +327,6 @@ func Test_peerBalanceHandler_invalidInputs(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -377,7 +375,6 @@ func Test_compensatedPeerBalanceHandler_invalidInputs(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

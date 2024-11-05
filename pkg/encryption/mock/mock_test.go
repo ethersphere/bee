@@ -62,7 +62,6 @@ func TestEncryptor_Encrypt(t *testing.T) {
 			wantErr: mock.ErrInvalidXORKey,
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -125,7 +124,6 @@ func TestEncryptor_Decrypt(t *testing.T) {
 			wantErr: mock.ErrInvalidXORKey,
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

@@ -88,7 +88,6 @@ func TestPssWebsocketSingleHandlerDeregister(t *testing.T) {
 	)
 
 	err := cl.SetReadDeadline(time.Now().Add(longTimeout))
-
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -435,7 +434,6 @@ func TestPssPostHandlerInvalidInputs(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -446,10 +444,12 @@ func TestPssPostHandlerInvalidInputs(t *testing.T) {
 	}
 }
 
-type pssSendFn func(context.Context, pss.Targets, swarm.Chunk) error
-type mpss struct {
-	f pssSendFn
-}
+type (
+	pssSendFn func(context.Context, pss.Targets, swarm.Chunk) error
+	mpss      struct {
+		f pssSendFn
+	}
+)
 
 func newMockPss(f pssSendFn) *mpss {
 	return &mpss{f}

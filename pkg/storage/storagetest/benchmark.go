@@ -65,8 +65,8 @@ func (g *randomValueGenerator) Value(i int) []byte {
 
 func makeRandomValueGenerator(r *rand.Rand, ratio float64, valueSize int) randomValueGenerator {
 	b := compressibleBytes(r, ratio, valueSize)
-	max := maxInt(valueSize, 1024*1024)
-	for len(b) < max {
+	maxVal := maxInt(valueSize, 1024*1024)
+	for len(b) < maxVal {
 		b = append(b, compressibleBytes(r, ratio, valueSize)...)
 	}
 	return randomValueGenerator{b: b, k: valueSize}
@@ -352,8 +352,8 @@ type batchDBWriter struct {
 	count int
 }
 
-func (w *batchDBWriter) commit(max int) {
-	if w.count >= max {
+func (w *batchDBWriter) commit(maxValue int) {
+	if w.count >= maxValue {
 		_ = w.batch.Commit()
 		w.count = 0
 		w.batch = w.db.Batch(context.Background())

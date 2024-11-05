@@ -119,9 +119,9 @@ func (h *Hasher) Sum(b []byte) []byte {
 // with every full segment calls processSection in a go routine.
 func (h *Hasher) Write(b []byte) (int, error) {
 	l := len(b)
-	max := h.maxSize - h.size
-	if l > max {
-		l = max
+	maxVal := h.maxSize - h.size
+	if l > maxVal {
+		l = maxVal
 	}
 	copy(h.bmt.buffer[h.size:], b)
 	secsize := 2 * h.segmentSize
@@ -129,7 +129,7 @@ func (h *Hasher) Write(b []byte) (int, error) {
 	h.offset = h.size % secsize
 	h.size += l
 	to := h.size / secsize
-	if l == max {
+	if l == maxVal {
 		to--
 	}
 	h.pos = to

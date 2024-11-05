@@ -241,7 +241,6 @@ func TestBroadcastPeers(t *testing.T) {
 	}
 
 	for name, tc := range testCases {
-		tc := tc
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
@@ -366,7 +365,6 @@ func readAndAssertPeersMsgs(in []byte, expectedLen int) ([]pb.Peers, error) {
 			return new(pb.Peers)
 		},
 	)
-
 	if err != nil {
 		return nil, err
 	}

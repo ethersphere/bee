@@ -84,8 +84,6 @@ func TestRetrievalIndexItem(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
-
 		t.Run(fmt.Sprintf("%s marshal/unmarshal", tc.name), func(t *testing.T) {
 			t.Parallel()
 
@@ -108,7 +106,7 @@ type memFS struct {
 }
 
 func (m *memFS) Open(path string) (fs.File, error) {
-	return m.Fs.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+	return m.Fs.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644)
 }
 
 func TestChunkStore(t *testing.T) {
