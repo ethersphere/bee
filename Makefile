@@ -1,3 +1,8 @@
+ifneq (,$(wildcard ./.env))
+	include .env
+	export
+endif
+
 GO ?= go
 GOBIN ?= $$($(GO) env GOPATH)/bin
 GOLANGCI_LINT ?= $(GOBIN)/golangci-lint
@@ -11,6 +16,7 @@ BEELOCAL_BRANCH ?= main
 BEEKEEPER_BRANCH ?= master
 REACHABILITY_OVERRIDE_PUBLIC ?= false
 BATCHFACTOR_OVERRIDE_PUBLIC ?= 5
+IMAGE ?= ethersphere/bee:latest
 
 BEE_API_VERSION ?= "$(shell grep '^  version:' openapi/Swarm.yaml | awk '{print $$2}')"
 
@@ -140,6 +146,10 @@ test-ci-flaky:
 build: export CGO_ENABLED=0
 build:
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" ./...
+
+.PHONY: docker-build
+docker-build:
+	docker build -t $(IMAGE) . --no-cache
 
 .PHONY: githooks
 githooks:

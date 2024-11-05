@@ -6,9 +6,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . ./
 
-ARG REACHABILITY_OVERRIDE_PUBLIC=false
-
-RUN make binary REACHABILITY_OVERRIDE_PUBLIC=${REACHABILITY_OVERRIDE_PUBLIC}
+RUN make binary
 
 FROM debian:12.7-slim
 
