@@ -66,7 +66,7 @@ func TestRegister(t *testing.T) {
 	socCh2, _ = soc.FromChunk(ch2)
 
 	// trigger soc upload on address1, check that only h1 is called
-	g.Handle(*socCh1)
+	g.Handle(socCh1)
 
 	waitHandlerCallback(t, &msgChan, 1)
 
@@ -76,7 +76,7 @@ func TestRegister(t *testing.T) {
 	// register another handler on the first address
 	cleanup := g.Subscribe([32]byte(address1.Bytes()), h3)
 
-	g.Handle(*socCh1)
+	g.Handle(socCh1)
 
 	waitHandlerCallback(t, &msgChan, 2)
 
@@ -86,7 +86,7 @@ func TestRegister(t *testing.T) {
 
 	cleanup() // remove the last handler
 
-	g.Handle(*socCh1)
+	g.Handle(socCh1)
 
 	waitHandlerCallback(t, &msgChan, 1)
 
@@ -94,7 +94,7 @@ func TestRegister(t *testing.T) {
 	ensureCalls(t, &h2Calls, 0)
 	ensureCalls(t, &h3Calls, 1)
 
-	g.Handle(*socCh2)
+	g.Handle(socCh2)
 
 	waitHandlerCallback(t, &msgChan, 1)
 

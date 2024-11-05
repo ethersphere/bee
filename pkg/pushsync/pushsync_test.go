@@ -145,7 +145,7 @@ func TestSocListener(t *testing.T) {
 	}
 	sch2 = sch2.WithStamp(chunk2.Stamp())
 	expectedPayload := chunk1.Data()
-	gsocListener := func(soc soc.SOC) {
+	gsocListener := func(soc *soc.SOC) {
 		if !bytes.Equal(soc.WrappedChunk().Data(), expectedPayload) {
 			t.Fatalf("unexpected SOC payload on GSOC listener. got %s, want %s", soc.WrappedChunk().Data(), expectedPayload)
 		}
@@ -468,7 +468,7 @@ func TestPushChunkToClosestErrorAttemptRetry(t *testing.T) {
 		}),
 	)
 
-	psPivot, pivotStorer := createPushSyncNodeWithAccounting(t, pivotNode, defaultPrices, recorder, nil, defaultSigner(chunk), pivotAccounting, log.Noop, func(soc.SOC) {}, mock.WithPeers(peer1, peer2, peer3, peer4))
+	psPivot, pivotStorer := createPushSyncNodeWithAccounting(t, pivotNode, defaultPrices, recorder, nil, defaultSigner(chunk), pivotAccounting, log.Noop, func(*soc.SOC) {}, mock.WithPeers(peer1, peer2, peer3, peer4))
 
 	// Trigger the sending of chunk to the closest node
 	receipt, err := psPivot.PushChunkToClosest(context.Background(), chunk)
@@ -645,15 +645,15 @@ func TestPropagateErrMsg(t *testing.T) {
 	captureLogger := log.NewLogger("test", log.WithSink(buf))
 
 	// Create the closest peer
-	psClosestPeer, _ := createPushSyncNodeWithAccounting(t, closestPeer, defaultPrices, nil, nil, faultySigner, accountingmock.NewAccounting(), log.Noop, func(soc.SOC) {}, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	psClosestPeer, _ := createPushSyncNodeWithAccounting(t, closestPeer, defaultPrices, nil, nil, faultySigner, accountingmock.NewAccounting(), log.Noop, func(*soc.SOC) {}, mock.WithClosestPeerErr(topology.ErrWantSelf))
 
 	// creating the pivot peer
-	psPivot, _ := createPushSyncNodeWithAccounting(t, pivotPeer, defaultPrices, nil, nil, defaultSigner(chunk), accountingmock.NewAccounting(), log.Noop, func(soc.SOC) {}, mock.WithPeers(closestPeer))
+	psPivot, _ := createPushSyncNodeWithAccounting(t, pivotPeer, defaultPrices, nil, nil, defaultSigner(chunk), accountingmock.NewAccounting(), log.Noop, func(*soc.SOC) {}, mock.WithPeers(closestPeer))
 
 	combinedRecorder := streamtest.New(streamtest.WithProtocols(psPivot.Protocol(), psClosestPeer.Protocol()), streamtest.WithBaseAddr(triggerPeer))
 
 	// Creating the trigger peer
-	psTriggerPeer, _ := createPushSyncNodeWithAccounting(t, triggerPeer, defaultPrices, combinedRecorder, nil, defaultSigner(chunk), accountingmock.NewAccounting(), captureLogger, func(soc.SOC) {}, mock.WithPeers(pivotPeer))
+	psTriggerPeer, _ := createPushSyncNodeWithAccounting(t, triggerPeer, defaultPrices, combinedRecorder, nil, defaultSigner(chunk), accountingmock.NewAccounting(), captureLogger, func(*soc.SOC) {}, mock.WithPeers(pivotPeer))
 
 	_, err := psTriggerPeer.PushChunkToClosest(context.Background(), chunk)
 	if err == nil {
@@ -829,7 +829,7 @@ func createPushSyncNode(
 ) (*pushsync.PushSync, *testStorer, accounting.Interface) {
 	t.Helper()
 	mockAccounting := accountingmock.NewAccounting()
-	ps, mstorer := createPushSyncNodeWithAccounting(t, addr, prices, recorder, unwrap, signer, mockAccounting, log.Noop, func(soc.SOC) {}, mockOpts...)
+	ps, mstorer := createPushSyncNodeWithAccounting(t, addr, prices, recorder, unwrap, signer, mockAccounting, log.Noop, func(*soc.SOC) {}, mockOpts...)
 	return ps, mstorer, mockAccounting
 }
 
@@ -838,7 +838,7 @@ func createGsocPushSyncNode(
 	addr swarm.Address,
 	prices pricerParameters,
 	recorder *streamtest.Recorder,
-	gsocListener func(soc.SOC),
+	gsocListener func(*soc.SOC),
 	signer crypto.Signer,
 	mockOpts ...mock.Option,
 ) (*pushsync.PushSync, *testStorer, accounting.Interface) {
@@ -878,7 +878,7 @@ func createPushSyncNodeWithRadius(
 
 	radiusFunc := func() (uint8, error) { return radius, nil }
 
-	ps := pushsync.New(addr, 1, blockHash.Bytes(), recorderDisconnecter, storer, radiusFunc, mockTopology, true, unwrap, func(soc.SOC) {}, validStamp, log.Noop, accountingmock.NewAccounting(), mockPricer, signer, nil, -1)
+	ps := pushsync.New(addr, 1, blockHash.Bytes(), recorderDisconnecter, storer, radiusFunc, mockTopology, true, unwrap, func(*soc.SOC) {}, validStamp, log.Noop, accountingmock.NewAccounting(), mockPricer, signer, nil, -1)
 	t.Cleanup(func() { ps.Close() })
 
 	return ps, storer
@@ -893,7 +893,7 @@ func createPushSyncNodeWithAccounting(
 	signer crypto.Signer,
 	acct accounting.Interface,
 	logger log.Logger,
-	gsocListener func(soc.SOC),
+	gsocListener func(*soc.SOC),
 	mockOpts ...mock.Option,
 ) (*pushsync.PushSync, *testStorer) {
 	t.Helper()
@@ -910,7 +910,7 @@ func createPushSyncNodeWithAccounting(
 		unwrap = func(swarm.Chunk) {}
 	}
 	if gsocListener == nil {
-		gsocListener = func(soc.SOC) {}
+		gsocListener = func(*soc.SOC) {}
 	}
 
 	validStamp := func(ch swarm.Chunk) (swarm.Chunk, error) {
