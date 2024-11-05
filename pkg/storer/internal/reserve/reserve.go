@@ -93,11 +93,11 @@ func New(
 }
 
 // Reserve Put has to handle multiple possible scenarios.
-//  1. Since the same chunk may belong to different postage batches, the reserve will support one chunk to many postage
-//     batches relationship.
+//  1. Since the same chunk may belong to different postage stamp indices, the reserve will support one chunk to many postage
+//     stamp indices relationship.
 //  2. A new chunk that shares the same stamp index belonging to the same batch with an already stored chunk will overwrite
 //     the existing chunk if the new chunk has a higher stamp timestamp (regardless of batch type).
-//  3. A new chunk that has the same address belonging to the same batch with an already stored chunk will overwrite the existing chunk
+//  3. A new chunk that has the same address belonging to the same stamp index with an already stored chunk will overwrite the existing chunk
 //     if the new chunk has a higher stamp timestamp (regardless of batch type and chunk type, eg CAC & SOC).
 func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 
