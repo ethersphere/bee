@@ -1,12 +1,18 @@
 FROM golang:1.23 AS build
 
+ARG REACHABILITY_OVERRIDE_PUBLIC=false
+ARG BATCHFACTOR_OVERRIDE_PUBLIC=5
+
 WORKDIR /src
 # enable modules caching in separate layer
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . ./
 
-RUN make binary
+# Run make binary with specified arguments
+RUN make binary \
+    REACHABILITY_OVERRIDE_PUBLIC=$REACHABILITY_OVERRIDE_PUBLIC \
+    BATCHFACTOR_OVERRIDE_PUBLIC=$BATCHFACTOR_OVERRIDE_PUBLIC
 
 FROM debian:12.7-slim
 

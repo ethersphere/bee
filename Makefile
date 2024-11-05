@@ -144,7 +144,10 @@ build:
 
 .PHONY: docker-build
 docker-build:
-	docker build -t $(IMAGE) . --no-cache
+	docker build \
+		--build-arg REACHABILITY_OVERRIDE_PUBLIC=$(REACHABILITY_OVERRIDE_PUBLIC) \
+		--build-arg BATCHFACTOR_OVERRIDE_PUBLIC=$(BATCHFACTOR_OVERRIDE_PUBLIC) \
+		-t $(IMAGE) . --no-cache
 
 .PHONY: githooks
 githooks:
