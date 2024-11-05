@@ -1,8 +1,3 @@
-ifneq (,$(wildcard ./.env))
-	include .env
-	export
-endif
-
 GO ?= go
 GOBIN ?= $$($(GO) env GOPATH)/bin
 GOLANGCI_LINT ?= $(GOBIN)/golangci-lint
