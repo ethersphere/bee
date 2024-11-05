@@ -169,7 +169,7 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 		return
 	}
 
-	networkRadius, nHoodRadius := s.committedDepth(peers)
+	networkRadius, nHoodRadius := s.commitedDepth(peers)
 	avgDur := totaldur / float64(len(peers))
 	pDur := percentileDur(peers, durPercentile)
 	pConns := percentileConns(peers, connsPercentile)
@@ -288,7 +288,7 @@ func percentileConns(peers []peer, p float64) uint64 {
 }
 
 // radius finds the most common radius.
-func (s *service) committedDepth(peers []peer) (uint8, uint8) {
+func (s *service) commitedDepth(peers []peer) (uint8, uint8) {
 
 	var networkDepth [swarm.MaxBins]int
 	var nHoodDepth [swarm.MaxBins]int
