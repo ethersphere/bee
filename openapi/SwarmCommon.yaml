@@ -928,6 +928,8 @@ components:
           type: boolean
         lastSyncedBlock:
           type: integer
+        committedDepth:
+          type: integer
 
     StatusResponse:
       type: object
