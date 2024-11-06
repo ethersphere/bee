@@ -143,12 +143,13 @@ build:
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" ./...
 
 .PHONY: docker-build
-docker-build:
-	docker build \
-		--build-arg REACHABILITY_OVERRIDE_PUBLIC=$(REACHABILITY_OVERRIDE_PUBLIC) \
-		--build-arg BATCHFACTOR_OVERRIDE_PUBLIC=$(BATCHFACTOR_OVERRIDE_PUBLIC) \
-		-f Dockerfile.dev \
-		-t $(IMAGE) . --no-cache
+docker-build: binary
+	@echo "Build flags: $(LDFLAGS)"
+	mkdir -p ./tmp
+	cp ./dist/bee ./tmp/bee
+	docker build -f Dockerfile.dev -t $(IMAGE) . --no-cache
+	rm -rf ./tmp
+	@echo "Docker image: $(IMAGE)"
 
 .PHONY: githooks
 githooks:
