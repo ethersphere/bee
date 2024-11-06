@@ -7,7 +7,6 @@ package mantaray
 import (
 	"bytes"
 	"context"
-
 	"encoding/hex"
 	"errors"
 	"reflect"
@@ -271,7 +270,6 @@ func Test_UnmarshalBinary(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

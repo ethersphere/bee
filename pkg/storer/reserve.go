@@ -416,6 +416,14 @@ func (db *DB) StorageRadius() uint8 {
 	return db.reserve.Radius()
 }
 
+func (db *DB) CommittedDepth() uint8 {
+	if db.reserve == nil {
+		return 0
+	}
+
+	return uint8(db.reserveOptions.capacityDoubling) + db.reserve.Radius()
+}
+
 func (db *DB) ReserveSize() int {
 	if db.reserve == nil {
 		return 0
@@ -500,23 +508,26 @@ func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan
 type NeighborhoodStat struct {
 	Neighborhood            swarm.Neighborhood
 	ReserveSizeWithinRadius int
+	Proximity               uint8
 }
 
 func (db *DB) NeighborhoodsStat(ctx context.Context) ([]*NeighborhoodStat, error) {
 
 	radius := db.StorageRadius()
-
-	networkRadius := radius + uint8(db.reserveOptions.capacityDoubling)
+	committedDepth := db.CommittedDepth()
 
 	prefixes := neighborhoodPrefixes(db.baseAddr, int(radius), db.reserveOptions.capacityDoubling)
 	neighs := make([]*NeighborhoodStat, len(prefixes))
 	for i, n := range prefixes {
-		neighs[i] = &NeighborhoodStat{swarm.NewNeighborhood(n, networkRadius), 0}
+		neighs[i] = &NeighborhoodStat{
+			Neighborhood:            swarm.NewNeighborhood(n, committedDepth),
+			ReserveSizeWithinRadius: 0,
+			Proximity:               min(committedDepth, swarm.Proximity(n.Bytes(), db.baseAddr.Bytes()))}
 	}
 
 	err := db.reserve.IterateChunksItems(0, func(ch *reserve.ChunkBinItem) (bool, error) {
 		for _, n := range neighs {
-			if swarm.Proximity(ch.Address.Bytes(), n.Neighborhood.Bytes()) >= networkRadius {
+			if swarm.Proximity(ch.Address.Bytes(), n.Neighborhood.Bytes()) >= committedDepth {
 				n.ReserveSizeWithinRadius++
 				break
 			}

@@ -25,4 +25,5 @@ message Snapshot {
   bool IsReachable = 8;
   uint64 ReserveSizeWithinRadius = 9;
   uint64 LastSyncedBlock = 10;
+  uint32 CommittedDepth = 11;
 }

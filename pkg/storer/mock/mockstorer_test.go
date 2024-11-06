@@ -83,7 +83,7 @@ func TestMockStorer(t *testing.T) {
 
 		want := storage.ErrNotFound
 		_, have := mockStorer.Session(1)
-		if !errors.Is(want, have) {
+		if !errors.Is(have, want) {
 			t.Fatalf("Session(): unexpected error: want %v have %v", want, have)
 		}
 	})

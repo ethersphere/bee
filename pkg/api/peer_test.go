@@ -240,7 +240,6 @@ func Test_peerConnectHandler_invalidInputs(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -289,7 +288,6 @@ func Test_peerDisconnectHandler_invalidInputs(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

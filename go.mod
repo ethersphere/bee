@@ -1,8 +1,8 @@
 module github.com/ethersphere/bee/v2
 
-go 1.22
+go 1.23
 
-toolchain go1.22.0
+toolchain go1.23.0
 
 require (
 	contrib.go.opencensus.io/exporter/prometheus v0.4.2
@@ -11,7 +11,7 @@ require (
 	github.com/coreos/go-semver v0.3.0
 	github.com/ethereum/go-ethereum v1.14.3
 	github.com/ethersphere/go-price-oracle-abi v0.2.0
-	github.com/ethersphere/go-storage-incentives-abi v0.9.2-rc5
+	github.com/ethersphere/go-storage-incentives-abi v0.9.2-rc6
 	github.com/ethersphere/go-sw3-abi v0.6.5
 	github.com/ethersphere/langos v1.0.0
 	github.com/go-playground/validator/v10 v10.11.1

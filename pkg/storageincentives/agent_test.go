@@ -42,58 +42,58 @@ func TestAgent(t *testing.T) {
 		expectedCalls  bool
 		balance        *big.Int
 		doubling       uint8
-	}{{
-		name:           "3 blocks per phase, same block number returns twice",
-		blocksPerRound: 9,
-		blocksPerPhase: 3,
-		incrementBy:    1,
-		expectedCalls:  true,
-		limit:          108, // computed with blocksPerRound * (exptectedCalls + 2)
-		balance:        bigBalance,
-		doubling:       1,
-	}, {
-		name:           "3 blocks per phase, block number returns every block",
-		blocksPerRound: 9,
-		blocksPerPhase: 3,
-		incrementBy:    1,
-		expectedCalls:  true,
-		limit:          108,
-		balance:        bigBalance,
-		doubling:       0,
-	}, {
-		name:           "no expected calls - block number returns late after each phase",
-		blocksPerRound: 9,
-		blocksPerPhase: 3,
-		incrementBy:    6,
-		expectedCalls:  false,
-		limit:          108,
-		balance:        bigBalance,
-		doubling:       0,
-	}, {
-		name:           "4 blocks per phase, block number returns every other block",
-		blocksPerRound: 12,
-		blocksPerPhase: 4,
-		incrementBy:    2,
-		expectedCalls:  true,
-		limit:          144,
-		balance:        bigBalance,
-		doubling:       1,
-	}, {
-		// This test case is based on previous, but this time agent will not have enough
-		// balance to participate in the game so no calls are going to be made.
-		name:           "no expected calls - insufficient balance",
-		blocksPerRound: 12,
-		blocksPerPhase: 4,
-		incrementBy:    2,
-		expectedCalls:  false,
-		limit:          144,
-		balance:        big.NewInt(0),
-		doubling:       1,
-	},
+	}{
+		{
+			name:           "3 blocks per phase, same block number returns twice",
+			blocksPerRound: 9,
+			blocksPerPhase: 3,
+			incrementBy:    1,
+			expectedCalls:  true,
+			limit:          108, // computed with blocksPerRound * (exptectedCalls + 2)
+			balance:        bigBalance,
+			doubling:       1,
+		}, {
+			name:           "3 blocks per phase, block number returns every block",
+			blocksPerRound: 9,
+			blocksPerPhase: 3,
+			incrementBy:    1,
+			expectedCalls:  true,
+			limit:          108,
+			balance:        bigBalance,
+			doubling:       0,
+		}, {
+			name:           "no expected calls - block number returns late after each phase",
+			blocksPerRound: 9,
+			blocksPerPhase: 3,
+			incrementBy:    6,
+			expectedCalls:  false,
+			limit:          108,
+			balance:        bigBalance,
+			doubling:       0,
+		}, {
+			name:           "4 blocks per phase, block number returns every other block",
+			blocksPerRound: 12,
+			blocksPerPhase: 4,
+			incrementBy:    2,
+			expectedCalls:  true,
+			limit:          144,
+			balance:        bigBalance,
+			doubling:       1,
+		}, {
+			// This test case is based on previous, but this time agent will not have enough
+			// balance to participate in the game so no calls are going to be made.
+			name:           "no expected calls - insufficient balance",
+			blocksPerRound: 12,
+			blocksPerPhase: 4,
+			incrementBy:    2,
+			expectedCalls:  false,
+			limit:          144,
+			balance:        big.NewInt(0),
+			doubling:       1,
+		},
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -182,6 +182,7 @@ func createService(
 	reserve := resMock.NewReserve(
 		resMock.WithRadius(radius),
 		resMock.WithSample(storer.RandSample(t, nil)),
+		resMock.WithCapacityDoubling(int(doubling)),
 	)
 
 	return storageincentives.New(
@@ -201,7 +202,6 @@ func createService(
 		transactionmock.New(),
 		&mockHealth{},
 		log.Noop,
-		doubling,
 	)
 }
 

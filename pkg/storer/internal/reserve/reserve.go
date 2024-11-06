@@ -50,7 +50,6 @@ func New(
 	radiusSetter topology.SetStorageRadiuser,
 	logger log.Logger,
 ) (*Reserve, error) {
-
 	rs := &Reserve{
 		baseAddr:     baseAddr,
 		st:           st,
@@ -130,7 +129,6 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	var shouldIncReserveSize bool
 
 	err = r.st.Run(ctx, func(s transaction.Store) error {
-
 		oldStampIndex, loadedStampIndex, err := stampindex.LoadOrStore(s.IndexStore(), reserveScope, chunk)
 		if err != nil {
 			return fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
@@ -327,7 +325,6 @@ func (r *Reserve) EvictBatchBin(
 	count int,
 	bin uint8,
 ) (int, error) {
-
 	r.multx.Lock(string(batchID))
 	defer r.multx.Unlock(string(batchID))
 
@@ -408,7 +405,6 @@ func RemoveChunkWithItem(
 	trx transaction.Store,
 	item *BatchRadiusItem,
 ) error {
-
 	var errs error
 
 	stamp, _ := chunkstamp.LoadWithBatchID(trx.IndexStore(), reserveScope, item.Address, item.BatchID)
@@ -495,7 +491,6 @@ func (r *Reserve) IterateChunksItems(startBin uint8, cb func(*ChunkBinItem) (boo
 
 // Reset removes all the entires in the reserve. Must be done before any calls to the reserve.
 func (r *Reserve) Reset(ctx context.Context) error {
-
 	size := r.Size()
 
 	// step 1: delete epoch timestamp
@@ -519,7 +514,6 @@ func (r *Reserve) Reset(ctx context.Context) error {
 		return err
 	}
 	for _, item := range bRitems {
-		item := item
 		eg.Go(func() error {
 			return r.st.Run(ctx, func(s transaction.Store) error {
 				return errors.Join(
@@ -549,7 +543,6 @@ func (r *Reserve) Reset(ctx context.Context) error {
 		return err
 	}
 	for _, item := range sitems {
-		item := item
 		eg.Go(func() error {
 			return r.st.Run(ctx, func(s transaction.Store) error {
 				return errors.Join(

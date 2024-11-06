@@ -33,7 +33,6 @@ func WithSubscribeResp(chunks []*storer.BinC, err error) Option {
 func WithChunks(chs ...swarm.Chunk) Option {
 	return optionFunc(func(p *ReserveStore) {
 		for _, c := range chs {
-			c := c
 			if c.Stamp() != nil {
 				stampHash, _ := c.Stamp().Hash()
 				p.chunks[c.Address().String()+string(c.Stamp().BatchID())+string(stampHash)] = c
@@ -141,10 +140,16 @@ func (s *ReserveStore) StorageRadius() uint8 {
 	defer s.mtx.Unlock()
 	return s.radius
 }
+
 func (s *ReserveStore) SetStorageRadius(r uint8) {
 	s.mtx.Lock()
 	s.radius = r
 	s.mtx.Unlock()
+}
+func (s *ReserveStore) CommittedDepth() uint8 {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	return s.radius + uint8(s.capacityDoubling)
 }
 
 // IntervalChunks returns a set of chunk in a requested interval.
@@ -199,7 +204,7 @@ func (s *ReserveStore) SetCalls() int {
 // Get chunks.
 func (s *ReserveStore) ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte, stampHash []byte) (swarm.Chunk, error) {
 	if s.evilAddr.Equal(addr) {
-		//inject the malicious chunk instead
+		// inject the malicious chunk instead
 		return s.evilChunk, nil
 	}
 
@@ -227,7 +232,6 @@ func (s *ReserveStore) put(_ context.Context, chs ...swarm.Chunk) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	for _, c := range chs {
-		c := c
 		if s.putHook != nil {
 			if err := s.putHook(c); err != nil {
 				return err

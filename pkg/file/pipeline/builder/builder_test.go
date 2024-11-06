@@ -87,7 +87,6 @@ func TestAllVectors(t *testing.T) {
 
 	for i := 1; i <= 20; i++ {
 		data, expect := test.GetVector(t, i)
-		i := i
 		t.Run(fmt.Sprintf("data length %d, vector %d", len(data), i), func(t *testing.T) {
 			t.Parallel()
 
