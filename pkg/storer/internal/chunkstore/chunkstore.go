@@ -93,7 +93,7 @@ func Put(ctx context.Context, s storage.IndexStore, sh storage.Sharky, ch swarm.
 	// Pull sync should sync the new SOC payload with the new stamp.
 	// TODO: remove this condition when postage stamping is refactored for GSOC.
 	chunkType := storage.ChunkType(ch)
-	if chunkType == swarm.ChunkTypeSingleOwner {
+	if !errors.Is(err, storage.ErrNotFound) && chunkType == swarm.ChunkTypeSingleOwner {
 		// replace old payload
 		err = sh.Release(ctx, rIdx.Location)
 		if err != nil {
