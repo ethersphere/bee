@@ -156,64 +156,6 @@ func TestChunkStore(t *testing.T) {
 		}
 	})
 
-	// TODO: remove this when postage stamping is refactored for GSOC.
-	t.Run("put two SOCs with different payloads", func(t *testing.T) {
-		key, _ := crypto.GenerateSecp256k1Key()
-		signer := crypto.NewDefaultSigner(key)
-
-		// chunk data to upload
-		chunk1 := chunktest.FixtureChunk("7000")
-		chunk2 := chunktest.FixtureChunk("0033")
-		id := make([]byte, swarm.HashSize)
-		s1 := soc.New(id, chunk1)
-		s2 := soc.New(id, chunk2)
-		sch1, err := s1.Sign(signer)
-		if err != nil {
-			t.Fatal(err)
-		}
-		sch1 = sch1.WithStamp(chunk1.Stamp())
-		sch2, err := s2.Sign(signer)
-		if err != nil {
-			t.Fatal(err)
-		}
-		sch2 = sch2.WithStamp(chunk2.Stamp())
-
-		// Put the first SOC into the chunk store
-		err = st.Run(context.Background(), func(s transaction.Store) error {
-			return s.ChunkStore().Put(context.TODO(), sch1)
-		})
-		if err != nil {
-			t.Fatalf("failed putting first single owner chunk: %v", err)
-		}
-
-		// Put the second SOC into the chunk store
-		err = st.Run(context.Background(), func(s transaction.Store) error {
-			return s.ChunkStore().Put(context.TODO(), sch2)
-		})
-		if err != nil {
-			t.Fatalf("failed putting second single owner chunk: %v", err)
-		}
-
-		// Retrieve the chunk from the chunk store
-		var retrievedChunk swarm.Chunk
-		err = st.Run(context.Background(), func(s transaction.Store) error {
-			retrievedChunk, err = s.ChunkStore().Get(context.TODO(), sch1.Address())
-			return err
-		})
-		if err != nil {
-			t.Fatalf("failed retrieving chunk: %v", err)
-		}
-		schRetrieved, err := soc.FromChunk(retrievedChunk)
-		if err != nil {
-			t.Fatalf("failed converting chunk to SOC: %v", err)
-		}
-
-		// Verify that the retrieved chunk contains the latest payload
-		if !bytes.Equal(chunk2.Data(), schRetrieved.WrappedChunk().Data()) {
-			t.Fatalf("expected payload %s, got %s", chunk2.Data(), schRetrieved.WrappedChunk().Data())
-		}
-	})
-
 	t.Run("get chunks", func(t *testing.T) {
 		for _, ch := range testChunks {
 			readCh, err := st.ChunkStore().Get(context.TODO(), ch.Address())
@@ -394,6 +336,64 @@ func TestChunkStore(t *testing.T) {
 		}
 		if count != 0 {
 			t.Fatalf("unexpected no of chunks, exp: %d, found: %d", 0, count)
+		}
+	})
+
+	// TODO: remove this when postage stamping is refactored for GSOC.
+	t.Run("put two SOCs with different payloads", func(t *testing.T) {
+		key, _ := crypto.GenerateSecp256k1Key()
+		signer := crypto.NewDefaultSigner(key)
+
+		// chunk data to upload
+		chunk1 := chunktest.FixtureChunk("7000")
+		chunk2 := chunktest.FixtureChunk("0033")
+		id := make([]byte, swarm.HashSize)
+		s1 := soc.New(id, chunk1)
+		s2 := soc.New(id, chunk2)
+		sch1, err := s1.Sign(signer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sch1 = sch1.WithStamp(chunk1.Stamp())
+		sch2, err := s2.Sign(signer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sch2 = sch2.WithStamp(chunk2.Stamp())
+
+		// Put the first SOC into the chunk store
+		err = st.Run(context.Background(), func(s transaction.Store) error {
+			return s.ChunkStore().Put(context.TODO(), sch1)
+		})
+		if err != nil {
+			t.Fatalf("failed putting first single owner chunk: %v", err)
+		}
+
+		// Put the second SOC into the chunk store
+		err = st.Run(context.Background(), func(s transaction.Store) error {
+			return s.ChunkStore().Put(context.TODO(), sch2)
+		})
+		if err != nil {
+			t.Fatalf("failed putting second single owner chunk: %v", err)
+		}
+
+		// Retrieve the chunk from the chunk store
+		var retrievedChunk swarm.Chunk
+		err = st.Run(context.Background(), func(s transaction.Store) error {
+			retrievedChunk, err = s.ChunkStore().Get(context.TODO(), sch1.Address())
+			return err
+		})
+		if err != nil {
+			t.Fatalf("failed retrieving chunk: %v", err)
+		}
+		schRetrieved, err := soc.FromChunk(retrievedChunk)
+		if err != nil {
+			t.Fatalf("failed converting chunk to SOC: %v", err)
+		}
+
+		// Verify that the retrieved chunk contains the latest payload
+		if !bytes.Equal(chunk2.Data(), schRetrieved.WrappedChunk().Data()) {
+			t.Fatalf("expected payload %s, got %s", chunk2.Data(), schRetrieved.WrappedChunk().Data())
 		}
 	})
 
