@@ -89,7 +89,26 @@ func Put(ctx context.Context, s storage.IndexStore, sh storage.Sharky, ch swarm.
 		return fmt.Errorf("chunk store: failed to read: %w", err)
 	}
 
-	rIdx.RefCnt++
+	// SOC will be replaced in the chunk store if it is already stored with the newer payload.
+	// Pull sync should sync the new SOC payload with the new stamp.
+	// TODO: remove this condition when postage stamping is refactored for GSOC.
+	chunkType := storage.ChunkType(ch)
+	if chunkType == swarm.ChunkTypeSingleOwner {
+		// replace old payload
+		err = sh.Release(ctx, rIdx.Location)
+		if err != nil {
+			return fmt.Errorf("chunkstore: failed to release sharky location: %w", err)
+		}
+
+		loc, err := sh.Write(ctx, ch.Data())
+		if err != nil {
+			return fmt.Errorf("chunk store: write to sharky failed: %w", err)
+		}
+		rIdx.Location = loc
+		rIdx.Timestamp = uint64(time.Now().Unix())
+	} else {
+		rIdx.RefCnt++
+	}
 
 	return s.Put(rIdx)
 }
