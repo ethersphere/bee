@@ -11,6 +11,7 @@ BEELOCAL_BRANCH ?= main
 BEEKEEPER_BRANCH ?= master
 REACHABILITY_OVERRIDE_PUBLIC ?= false
 BATCHFACTOR_OVERRIDE_PUBLIC ?= 5
+BEE_IMAGE ?= ethersphere/bee:latest
 
 BEE_API_VERSION ?= "$(shell grep '^  version:' openapi/Swarm.yaml | awk '{print $$2}')"
 
@@ -140,6 +141,15 @@ test-ci-flaky:
 build: export CGO_ENABLED=0
 build:
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" ./...
+
+.PHONY: docker-build
+docker-build: binary
+	@echo "Build flags: $(LDFLAGS)"
+	mkdir -p ./tmp
+	cp ./dist/bee ./tmp/bee
+	docker build -f Dockerfile.dev -t $(BEE_IMAGE) . --no-cache
+	rm -rf ./tmp
+	@echo "Docker image: $(BEE_IMAGE)"
 
 .PHONY: githooks
 githooks:
