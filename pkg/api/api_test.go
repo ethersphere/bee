@@ -697,7 +697,7 @@ func createRedistributionAgentService(
 		postageContract,
 		stakingContract,
 		mockstorer.NewReserve(),
-		func() bool { return true },
+		func(time.Time) bool { return true },
 		time.Millisecond*10,
 		blocksPerRound,
 		blocksPerPhase,

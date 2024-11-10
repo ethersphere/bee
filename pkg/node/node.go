@@ -1062,9 +1062,9 @@ func NewBee(
 				redistributionContractAddress = common.HexToAddress(o.RedistributionContractAddress)
 			}
 
-			isFullySynced := func() bool {
+			isFullySynced := func(startWarmupPeriod time.Time) bool {
 				reserveTreshold := reserveCapacity * 5 / 10
-				return localStore.ReserveSize() >= reserveTreshold && pullerService.SyncRate() == 0
+				return localStore.ReserveSize() >= reserveTreshold && pullerService.SyncRate() == 0 && time.Now().After(startWarmupPeriod.Add(warmupTime))
 			}
 
 			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), o.TrxDebugMode)
