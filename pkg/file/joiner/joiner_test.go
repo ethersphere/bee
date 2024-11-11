@@ -1405,7 +1405,7 @@ func (c *chunkStore) Put(_ context.Context, ch swarm.Chunk) error {
 	return nil
 }
 
-func (c *chunkStore) Replace(_ context.Context, ch swarm.Chunk) error {
+func (c *chunkStore) Replace(_ context.Context, ch swarm.Chunk, emplace bool) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.chunks[ch.Address().ByteString()] = swarm.NewChunk(ch.Address(), ch.Data()).WithStamp(ch.Stamp())

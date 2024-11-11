@@ -181,6 +181,44 @@ func LoadWithBatchID(s storage.Reader, scope string, addr swarm.Address, batchID
 	return stamp, nil
 }
 
+// LoadWithBatchID returns swarm.Stamp related to the given address and batchID.
+func LoadWithStampHash(s storage.Reader, scope string, addr swarm.Address, hash []byte) (swarm.Stamp, error) {
+	var stamp swarm.Stamp
+
+	found := false
+	err := s.Iterate(
+		storage.Query{
+			Factory: func() storage.Item {
+				return &Item{
+					scope:   []byte(scope),
+					address: addr,
+				}
+			},
+		},
+		func(res storage.Result) (bool, error) {
+			item := res.Entry.(*Item)
+			h, err := item.stamp.Hash()
+			if err != nil {
+				return false, err
+			}
+			if bytes.Equal(hash, h) {
+				stamp = item.stamp
+				found = true
+				return true, nil
+			}
+			return false, nil
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, fmt.Errorf("stamp not found for hash %x: %w", hash, storage.ErrNotFound)
+	}
+
+	return stamp, nil
+}
+
 // Store creates new or updated an existing stamp index
 // record related to the given scope and chunk.
 func Store(s storage.IndexStore, scope string, chunk swarm.Chunk) error {
