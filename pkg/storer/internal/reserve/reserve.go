@@ -129,25 +129,27 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	var shouldIncReserveSize bool
 
 	err = r.st.Run(ctx, func(s transaction.Store) error {
-		oldStampIndex, loadedStampIndex, err := stampindex.LoadOrStore(s.IndexStore(), reserveScope, chunk)
-		if err != nil {
-			return fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
-		}
 
 		sameAddressOldStamp, err := chunkstamp.LoadWithBatchID(s.IndexStore(), reserveScope, chunk.Address(), chunk.Stamp().BatchID())
 		if err != nil && !errors.Is(err, storage.ErrNotFound) {
 			return err
 		}
 
+		var sameAddressSoc = false
+
 		// same chunk address, same batch
 		if sameAddressOldStamp != nil {
-			sameAddressOldStampIndex, err := stampindex.Load(s.IndexStore(), reserveScope, sameAddressOldStamp)
-			if err != nil {
-				return err
+
+			if chunkType == swarm.ChunkTypeSingleOwner {
+				sameAddressSoc = true
 			}
 
-			// same index
-			if bytes.Equal(sameAddressOldStamp.Index(), chunk.Stamp().Index()) {
+			// index collision
+			if bytes.Equal(chunk.Stamp().Index(), sameAddressOldStamp.Index()) {
+				sameAddressOldStampIndex, err := stampindex.Load(s.IndexStore(), reserveScope, sameAddressOldStamp)
+				if err != nil {
+					return err
+				}
 				prev := binary.BigEndian.Uint64(sameAddressOldStampIndex.StampTimestamp)
 				curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
 				if prev >= curr {
@@ -214,6 +216,11 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			}
 		}
 
+		oldStampIndex, loadedStampIndex, err := stampindex.LoadOrStore(s.IndexStore(), reserveScope, chunk)
+		if err != nil {
+			return fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
+		}
+
 		// different address, same batch, index collision
 		if loadedStampIndex && !chunk.Address().Equal(oldStampIndex.ChunkAddress) {
 			prev := binary.BigEndian.Uint64(oldStampIndex.StampTimestamp)
@@ -269,10 +276,19 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 				ChunkType: chunkType,
 				StampHash: stampHash,
 			}),
-			s.ChunkStore().Put(ctx, chunk),
 		)
 		if err != nil {
 			return err
+		}
+
+		if sameAddressSoc {
+			if err := s.ChunkStore().Replace(ctx, chunk); err != nil {
+				return err
+			}
+		} else {
+			if err := s.ChunkStore().Put(ctx, chunk); err != nil {
+				return err
+			}
 		}
 
 		if !loadedStampIndex {

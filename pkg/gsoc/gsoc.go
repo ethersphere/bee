@@ -12,14 +12,18 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
+// Handler defines code to be executed upon reception of a GSOC sub message.
+// it is used as a parameter definition.
+type Handler func([]byte)
+
 type Listener interface {
-	Subscribe(address [32]byte, handler Handler) (cleanup func())
+	Subscribe(address swarm.Address, handler Handler) (cleanup func())
 	Handle(c *soc.SOC)
 	Close() error
 }
 
 type listener struct {
-	handlers   map[[32]byte][]*Handler
+	handlers   map[string][]*Handler
 	handlersMu sync.Mutex
 	quit       chan struct{}
 	logger     log.Logger
@@ -29,26 +33,26 @@ type listener struct {
 func New(logger log.Logger) Listener {
 	return &listener{
 		logger:   logger,
-		handlers: make(map[[32]byte][]*Handler),
+		handlers: make(map[string][]*Handler),
 		quit:     make(chan struct{}),
 	}
 }
 
 // Subscribe allows the definition of a Handler func on a specific GSOC address.
-func (l *listener) Subscribe(address [32]byte, handler Handler) (cleanup func()) {
+func (l *listener) Subscribe(address swarm.Address, handler Handler) (cleanup func()) {
 	l.handlersMu.Lock()
 	defer l.handlersMu.Unlock()
 
-	l.handlers[address] = append(l.handlers[address], &handler)
+	l.handlers[address.ByteString()] = append(l.handlers[address.ByteString()], &handler)
 
 	return func() {
 		l.handlersMu.Lock()
 		defer l.handlersMu.Unlock()
 
-		h := l.handlers[address]
+		h := l.handlers[address.ByteString()]
 		for i := 0; i < len(h); i++ {
 			if h[i] == &handler {
-				l.handlers[address] = append(h[:i], h[i+1:]...)
+				l.handlers[address.ByteString()] = append(h[:i], h[i+1:]...)
 				return
 			}
 		}
@@ -61,13 +65,11 @@ func (l *listener) Handle(c *soc.SOC) {
 	if err != nil {
 		return // no handler
 	}
-	h := l.getHandlers([32]byte(addr.Bytes()))
+	h := l.getHandlers(addr)
 	if h == nil {
 		return // no handler
 	}
-	l.logger.Info("new incoming GSOC message",
-		"GSOC Address", addr,
-		"wrapped chunk address", c.WrappedChunk().Address())
+	l.logger.Debug("new incoming GSOC message", "GSOC Address", addr, "wrapped chunk address", c.WrappedChunk().Address())
 
 	for _, hh := range h {
 		go func(hh Handler) {
@@ -76,11 +78,11 @@ func (l *listener) Handle(c *soc.SOC) {
 	}
 }
 
-func (p *listener) getHandlers(address [32]byte) []*Handler {
+func (p *listener) getHandlers(address swarm.Address) []*Handler {
 	p.handlersMu.Lock()
 	defer p.handlersMu.Unlock()
 
-	return p.handlers[address]
+	return p.handlers[address.ByteString()]
 }
 
 func (l *listener) Close() error {
@@ -88,11 +90,7 @@ func (l *listener) Close() error {
 	l.handlersMu.Lock()
 	defer l.handlersMu.Unlock()
 
-	l.handlers = make(map[[32]byte][]*Handler) //unset handlers on shutdown
+	l.handlers = make(map[string][]*Handler) //unset handlers on shutdown
 
 	return nil
 }
-
-// Handler defines code to be executed upon reception of a GSOC sub message.
-// it is used as a parameter definition.
-type Handler func([]byte)

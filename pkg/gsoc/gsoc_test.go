@@ -21,7 +21,7 @@ func TestRegister(t *testing.T) {
 	t.Parallel()
 
 	var (
-		g       = gsoc.New(log.NewLogger("test"))
+		g       = gsoc.New(log.Noop)
 		h1Calls = 0
 		h2Calls = 0
 		h3Calls = 0
@@ -52,8 +52,8 @@ func TestRegister(t *testing.T) {
 			msgChan <- struct{}{}
 		}
 	)
-	_ = g.Subscribe([32]byte(address1.Bytes()), h1)
-	_ = g.Subscribe([32]byte(address2.Bytes()), h2)
+	_ = g.Subscribe(address1, h1)
+	_ = g.Subscribe(address2, h2)
 
 	ch1, _ := cac.New(payload1)
 	socCh1 := soc.New(socId1, ch1)
@@ -74,7 +74,7 @@ func TestRegister(t *testing.T) {
 	ensureCalls(t, &h2Calls, 0)
 
 	// register another handler on the first address
-	cleanup := g.Subscribe([32]byte(address1.Bytes()), h3)
+	cleanup := g.Subscribe(address1, h3)
 
 	g.Handle(socCh1)
 

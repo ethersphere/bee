@@ -71,9 +71,8 @@ func Has(_ context.Context, r storage.Reader, addr swarm.Address) (bool, error) 
 
 func Put(ctx context.Context, s storage.IndexStore, sh storage.Sharky, ch swarm.Chunk) error {
 	var (
-		rIdx     = &RetrievalIndexItem{Address: ch.Address()}
-		loc      sharky.Location
-		inserted bool
+		rIdx = &RetrievalIndexItem{Address: ch.Address()}
+		loc  sharky.Location
 	)
 	err := s.Get(rIdx)
 	switch {
@@ -86,31 +85,11 @@ func Put(ctx context.Context, s storage.IndexStore, sh storage.Sharky, ch swarm.
 		}
 		rIdx.Location = loc
 		rIdx.Timestamp = uint64(time.Now().Unix())
-		inserted = true
 	case err != nil:
 		return fmt.Errorf("chunk store: failed to read: %w", err)
 	}
 
-	// SOC will be replaced in the chunk store if it is already stored with the newer payload.
-	// Pull sync should sync the new SOC payload with the new stamp.
-	// TODO: remove this condition when postage stamping is refactored for GSOC.
-	chunkType := storage.ChunkType(ch)
-	if !inserted && chunkType == swarm.ChunkTypeSingleOwner {
-		// replace old payload
-		err = sh.Release(ctx, rIdx.Location)
-		if err != nil {
-			return fmt.Errorf("chunkstore: failed to release sharky location: %w", err)
-		}
-
-		loc, err := sh.Write(ctx, ch.Data())
-		if err != nil {
-			return fmt.Errorf("chunk store: write to sharky failed: %w", err)
-		}
-		rIdx.Location = loc
-		rIdx.Timestamp = uint64(time.Now().Unix())
-	} else {
-		rIdx.RefCnt++
-	}
+	rIdx.RefCnt++
 
 	return s.Put(rIdx)
 }
