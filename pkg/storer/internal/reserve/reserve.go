@@ -282,13 +282,13 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 		}
 
 		if sameAddressSoc {
-			if err := s.ChunkStore().Replace(ctx, chunk); err != nil {
-				return err
-			}
+			err = s.ChunkStore().Replace(ctx, chunk)
 		} else {
-			if err := s.ChunkStore().Put(ctx, chunk); err != nil {
-				return err
-			}
+			err = s.ChunkStore().Put(ctx, chunk)
+		}
+
+		if err != nil {
+			return err
 		}
 
 		if !loadedStampIndex {
