@@ -325,7 +325,7 @@ func TestSameChunkAddress(t *testing.T) {
 	})
 
 	t.Run("chunk with different batchID remains untouched", func(t *testing.T) {
-		noReplace := func(ch1, ch2 swarm.Chunk) {
+		checkReplace := func(ch1, ch2 swarm.Chunk, replace bool) {
 			t.Helper()
 			err = r.Put(ctx, ch1)
 			if err != nil {
@@ -355,13 +355,12 @@ func TestSameChunkAddress(t *testing.T) {
 			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin, BinID: binBinIDs[bin] - 1}, false)
 			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin, BinID: binBinIDs[bin]}, false)
 
-			// expect new chunk to NOT replace old one
 			ch, err := ts.ChunkStore().Get(ctx, ch2.Address())
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !bytes.Equal(ch.Data(), ch1.Data()) {
-				t.Fatalf("expected chunk data to not be updated")
+			if replace && bytes.Equal(ch.Data(), ch1.Data()) {
+				t.Fatalf("expected chunk data to be updated")
 			}
 		}
 
@@ -379,7 +378,7 @@ func TestSameChunkAddress(t *testing.T) {
 		if !bytes.Equal(ch1.Address().Bytes(), ch2.Address().Bytes()) {
 			t.Fatalf("expected chunk addresses to be the same")
 		}
-		noReplace(ch1, ch2)
+		checkReplace(ch1, ch2, true)
 
 		// cac
 		batch = postagetesting.MustNewBatch()
@@ -389,7 +388,7 @@ func TestSameChunkAddress(t *testing.T) {
 		if !bytes.Equal(ch1.Address().Bytes(), ch2.Address().Bytes()) {
 			t.Fatalf("expected chunk addresses to be the same")
 		}
-		noReplace(ch1, ch2)
+		checkReplace(ch1, ch2, false)
 		size2 := r.Size()
 		if size2-size1 != 4 {
 			t.Fatalf("expected reserve size to increase by 4, got %d", size2-size1)
@@ -600,6 +599,73 @@ func TestEvict(t *testing.T) {
 			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: b, BinID: uint64(binID), StampHash: stampHash}, false)
 			checkChunk(t, ts, ch, false)
 		}
+	}
+}
+
+func TestEvictSOC(t *testing.T) {
+	t.Parallel()
+
+	baseAddr := swarm.RandAddress(t)
+	ts := internal.NewInmemStorage()
+
+	r, err := reserve.New(
+		baseAddr,
+		ts,
+		0, kademlia.NewTopologyDriver(),
+		log.Noop,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	batch := postagetesting.MustNewBatch()
+	signer := getSigner(t)
+
+	var chunks []swarm.Chunk
+
+	for i := 0; i < 10; i++ {
+		ch := soctesting.GenerateMockSocWithSigner(t, []byte{byte(i)}, signer).Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, uint64(i), uint64(i)))
+		chunks = append(chunks, ch)
+		err := r.Put(context.Background(), ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	bin := swarm.Proximity(baseAddr.Bytes(), chunks[0].Address().Bytes())
+
+	for i, ch := range chunks {
+		stampHash, err := ch.Stamp().Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+		checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: bin, BatchID: ch.Stamp().BatchID(), Address: ch.Address(), StampHash: stampHash}, false)
+		checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin, BinID: uint64(i + 1), StampHash: stampHash}, false)
+		checkChunk(t, ts, ch, false)
+	}
+
+	_, err = r.EvictBatchBin(context.Background(), batch.ID, 1, swarm.MaxBins)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkChunk(t, ts, chunks[9], false) // chunk should still persist, eg refCnt > 0
+
+	evicted, err := r.EvictBatchBin(context.Background(), batch.ID, 10, swarm.MaxBins)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if evicted != 9 {
+		t.Fatalf("wanted evicted count 10, got %d", evicted)
+	}
+
+	for i, ch := range chunks {
+		stampHash, err := ch.Stamp().Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+		checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: bin, BatchID: ch.Stamp().BatchID(), Address: ch.Address(), StampHash: stampHash}, true)
+		checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin, BinID: uint64(i + 1), StampHash: stampHash}, true)
+		checkChunk(t, ts, ch, true)
 	}
 }
 
