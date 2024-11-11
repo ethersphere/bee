@@ -985,7 +985,12 @@ func checkChunk(t *testing.T, s transaction.ReadOnlyStore, ch swarm.Chunk, gone 
 		t.Fatal(err)
 	}
 
-	_, err = chunkstamp.LoadWithBatchID(s.IndexStore(), "reserve", ch.Address(), ch.Stamp().BatchID())
+	hash, err := ch.Stamp().Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = chunkstamp.LoadWithStampHash(s.IndexStore(), "reserve", ch.Address(), hash)
 	if !gone && err != nil {
 		t.Fatal(err)
 	}

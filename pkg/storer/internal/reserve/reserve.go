@@ -99,8 +99,6 @@ func New(
 //     if the new chunk has a higher stamp timestamp (regardless of batch type and chunk type, eg CAC & SOC).
 func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 
-	chunkType := storage.ChunkType(chunk)
-
 	// batchID lock, Put vs Eviction
 	r.multx.Lock(string(chunk.Stamp().BatchID()))
 	defer r.multx.Unlock(string(chunk.Stamp().BatchID()))
@@ -118,6 +116,8 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	if has {
 		return nil
 	}
+
+	chunkType := storage.ChunkType(chunk)
 
 	bin := swarm.Proximity(r.baseAddr.Bytes(), chunk.Address().Bytes())
 
