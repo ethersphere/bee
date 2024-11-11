@@ -1,7 +1,7 @@
 // Copyright 2024 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
-package soc_test
+package storage_test
 
 import (
 	"encoding/hex"
@@ -10,10 +10,10 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/soc"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-// TestIdentityAddress tests the IdentityAddress function.
 func TestIdentityAddress(t *testing.T) {
 	t.Run("single owner chunk", func(t *testing.T) {
 		// Create a single owner chunk (SOC)
@@ -43,7 +43,7 @@ func TestIdentityAddress(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		idAddr, err := soc.IdentityAddress(schChunk)
+		idAddr, err := storage.IdentityAddress(schChunk)
 		if err != nil {
 			t.Fatalf("IdentityAddress returned error: %v", err)
 		}
@@ -66,7 +66,7 @@ func TestIdentityAddress(t *testing.T) {
 		}
 
 		// Call IdentityAddress with the CAC
-		addr, err := soc.IdentityAddress(cacChunk)
+		addr, err := storage.IdentityAddress(cacChunk)
 		if err != nil {
 			t.Fatalf("IdentityAddress returned error: %v", err)
 		}

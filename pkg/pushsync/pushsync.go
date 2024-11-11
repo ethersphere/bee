@@ -361,7 +361,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		sentErrorsLeft = maxPushErrors
 	}
 
-	idAddress, err := soc.IdentityAddress(ch)
+	idAddress, err := storage.IdentityAddress(ch)
 	if err != nil {
 		return nil, err
 	}
