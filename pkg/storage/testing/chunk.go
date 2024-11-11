@@ -91,10 +91,13 @@ func GenerateTestRandomChunkAt(tb testing.TB, target swarm.Address, po int) swar
 	addr := swarm.RandAddressAt(tb, target, po)
 	stamp := postagetesting.MustNewStamp()
 	return swarm.NewChunk(addr, data).WithStamp(stamp)
+
 }
 
 // GenerateTestRandomChunkAt generates an invalid (!) chunk with address of proximity order po wrt target.
-func GenerateValidRandomChunkAt(target swarm.Address, po int) swarm.Chunk {
+func GenerateValidRandomChunkAt(tb testing.TB, target swarm.Address, po int) swarm.Chunk {
+	tb.Helper()
+
 	data := make([]byte, swarm.ChunkSize)
 
 	var ch swarm.Chunk

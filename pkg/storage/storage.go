@@ -324,5 +324,5 @@ func IdentityAddress(chunk swarm.Chunk) (swarm.Address, error) {
 		return swarm.NewAddress(h.Sum(nil)), nil
 	}
 
-	return swarm.EmptyAddress, fmt.Errorf("identity address failed on chunk %s: %w", chunk, ErrUnknownChunkType)
+	return swarm.ZeroAddress, fmt.Errorf("identity address failed on chunk %s: %w", chunk, ErrUnknownChunkType)
 }
