@@ -270,6 +270,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 				return err
 			}
 			if has {
+				r.logger.Debug("replacing soc in chunkstore", "address", chunk.Address())
 				err = s.ChunkStore().Replace(ctx, chunk, true)
 			} else {
 				err = s.ChunkStore().Put(ctx, chunk)
