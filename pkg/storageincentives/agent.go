@@ -62,7 +62,7 @@ type Agent struct {
 	batchExpirer           postagecontract.PostageBatchExpirer
 	redistributionStatuser staking.RedistributionStatuser
 	store                  storer.Reserve
-	fullSyncedFunc         func(time.Time) bool
+	fullSyncedFunc         func() bool
 	overlay                swarm.Address
 	quit                   chan struct{}
 	wg                     sync.WaitGroup
@@ -79,7 +79,7 @@ func New(overlay swarm.Address,
 	batchExpirer postagecontract.PostageBatchExpirer,
 	redistributionStatuser staking.RedistributionStatuser,
 	store storer.Reserve,
-	fullSyncedFunc func(time.Time) bool,
+	fullSyncedFunc func() bool,
 	blockTime time.Duration,
 	blocksPerRound,
 	blocksPerPhase uint64,
@@ -113,10 +113,8 @@ func New(overlay swarm.Address,
 
 	a.state = state
 
-	startWarmupPeriod := time.Now()
-
 	a.wg.Add(1)
-	go a.start(blockTime, a.blocksPerRound, blocksPerPhase, startWarmupPeriod)
+	go a.start(blockTime, a.blocksPerRound, blocksPerPhase)
 
 	return a, nil
 }
@@ -127,7 +125,7 @@ func New(overlay swarm.Address,
 // If our neighborhood is selected to participate, a sample is created during the sample phase. In the commit phase,
 // the sample is submitted, and in the reveal phase, the obfuscation key from the commit phase is submitted.
 // Next, in the claim phase, we check if we've won, and the cycle repeats. The cycle must occur in the length of one round.
-func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, startWarmup time.Time) {
+func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase uint64) {
 	defer a.wg.Done()
 
 	phaseEvents := newEvents()
@@ -220,7 +218,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		a.logger.Info("entered new phase", "phase", currentPhase.String(), "round", round, "block", block)
 
 		a.state.SetCurrentEvent(currentPhase, round)
-		a.state.SetFullySynced(a.fullSyncedFunc(startWarmup))
+		a.state.SetFullySynced(a.fullSyncedFunc())
 		a.state.SetHealthy(a.health.IsHealthy())
 		go a.state.purgeStaleRoundData()
 

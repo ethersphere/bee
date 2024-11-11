@@ -192,7 +192,7 @@ func createService(
 		postageContract,
 		stakingContract,
 		reserve,
-		func(time.Time) bool { return true },
+		func() bool { return true },
 		time.Millisecond*100,
 		blocksPerRound,
 		blocksPerPhase,
