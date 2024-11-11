@@ -18,7 +18,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/pushsync"
-	"github.com/ethersphere/bee/v2/pkg/soc"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
@@ -217,7 +216,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration) {
 	for {
 		select {
 		case op := <-cc:
-			idAddress, err := soc.IdentityAddress(op.Chunk)
+			idAddress, err := storage.IdentityAddress(op.Chunk)
 			if err != nil {
 				op.Err <- err
 				continue

@@ -48,7 +48,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20"
-	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/status"
 	"github.com/ethersphere/bee/v2/pkg/steward"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
@@ -687,7 +686,7 @@ type putterSessionWrapper struct {
 }
 
 func (p *putterSessionWrapper) Put(ctx context.Context, chunk swarm.Chunk) error {
-	idAddress, err := soc.IdentityAddress(chunk)
+	idAddress, err := storage.IdentityAddress(chunk)
 	if err != nil {
 		return err
 	}

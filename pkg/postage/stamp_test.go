@@ -14,7 +14,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
-	"github.com/ethersphere/bee/v2/pkg/soc"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
 	chunktesting "github.com/ethersphere/bee/v2/pkg/storage/testing"
 )
@@ -104,7 +104,7 @@ func TestValidStamp(t *testing.T) {
 	// stamp on execution
 	ch := chunktesting.GenerateTestRandomChunk()
 
-	idAddress, err := soc.IdentityAddress(ch)
+	idAddress, err := storage.IdentityAddress(ch)
 	if err != nil {
 		t.Fatal(err)
 	}
