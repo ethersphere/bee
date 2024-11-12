@@ -18,8 +18,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/soc"
-	"github.com/ethersphere/bee/v2/pkg/storage"
-	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/gorilla/mux"
 )
@@ -51,7 +50,6 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	headers := struct {
 		BatchID        []byte        `map:"Swarm-Postage-Batch-Id"`
 		StampSig       []byte        `map:"Swarm-Postage-Stamp"`
-		Pin            bool          `map:"Swarm-Pin"`
 		Act            bool          `map:"Swarm-Act"`
 		HistoryAddress swarm.Address `map:"Swarm-Act-History-Address"`
 	}{}
@@ -66,30 +64,11 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// if pinning header is set we do a deferred upload, else we do a direct upload
 	var (
-		tag uint64
-		err error
+		putter storer.PutterSession
+		err    error
 	)
-	if headers.Pin {
-		session, err := s.storer.NewSession()
-		if err != nil {
-			logger.Debug("get or create tag failed", "error", err)
-			logger.Error(nil, "get or create tag failed")
-			switch {
-			case errors.Is(err, storage.ErrNotFound):
-				jsonhttp.NotFound(w, "tag not found")
-			default:
-				jsonhttp.InternalServerError(w, "cannot get or create tag")
-			}
-			return
-		}
-		tag = session.TagID
-	}
-
-	deferred := tag != 0
-
-	var putter storer.PutterSession
+	
 	if len(headers.StampSig) != 0 {
 		stamp := postage.Stamp{}
 		if err := stamp.UnmarshalBinary(headers.StampSig); err != nil {
@@ -102,16 +81,16 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 		putter, err = s.newStampedPutter(r.Context(), putterOptions{
 			BatchID:  stamp.BatchID(),
-			TagID:    tag,
-			Pin:      headers.Pin,
-			Deferred: deferred,
+			TagID:    0,
+			Pin:      false,
+			Deferred: false,
 		}, &stamp)
 	} else {
 		putter, err = s.newStamperPutter(r.Context(), putterOptions{
 			BatchID:  headers.BatchID,
-			TagID:    tag,
-			Pin:      headers.Pin,
-			Deferred: deferred,
+			TagID:    0,
+			Pin:      false,
+			Deferred: false,
 		})
 	}
 	if err != nil {
