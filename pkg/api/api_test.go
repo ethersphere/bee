@@ -633,6 +633,7 @@ type chanStorer struct {
 	lock   sync.Mutex
 	chunks map[string]struct{}
 	quit   chan struct{}
+	subs   []func(chunk swarm.Chunk)
 }
 
 func newChanStore(cc <-chan *pusher.Op) *chanStorer {
@@ -650,6 +651,9 @@ func (c *chanStorer) drain(cc <-chan *pusher.Op) {
 		case op := <-cc:
 			c.lock.Lock()
 			c.chunks[op.Chunk.Address().ByteString()] = struct{}{}
+			for _, h := range c.subs {
+				h(op.Chunk)
+			}
 			c.lock.Unlock()
 			op.Err <- nil
 		case <-c.quit:
@@ -668,6 +672,12 @@ func (c *chanStorer) Has(addr swarm.Address) bool {
 	c.lock.Unlock()
 
 	return ok
+}
+
+func (c *chanStorer) Subscribe(f func(chunk swarm.Chunk)) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.subs = append(c.subs, f)
 }
 
 func createRedistributionAgentService(
