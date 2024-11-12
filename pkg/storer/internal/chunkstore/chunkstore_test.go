@@ -386,6 +386,10 @@ func TestChunkStore(t *testing.T) {
 			err = st.Run(ctx, func(s transaction.Store) error {
 				return s.ChunkStore().Replace(ctx, ch2, tt.emplace)
 			})
+			if err != nil {
+				t.Fatal(err)
+			}
+
 			ch, err := st.ChunkStore().Get(ctx, ch2.Address())
 			if err != nil {
 				t.Fatal(err)
