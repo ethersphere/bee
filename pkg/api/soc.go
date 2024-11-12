@@ -68,7 +68,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		putter storer.PutterSession
 		err    error
 	)
-	
+
 	if len(headers.StampSig) != 0 {
 		stamp := postage.Stamp{}
 		if err := stamp.UnmarshalBinary(headers.StampSig); err != nil {
