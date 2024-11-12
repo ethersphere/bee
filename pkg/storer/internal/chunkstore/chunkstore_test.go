@@ -5,6 +5,7 @@
 package chunkstore_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -13,7 +14,9 @@ import (
 	"os"
 	"testing"
 
+	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/sharky"
+	soctesting "github.com/ethersphere/bee/v2/pkg/soc/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 
 	"github.com/ethersphere/bee/v2/pkg/storage"
@@ -333,6 +336,73 @@ func TestChunkStore(t *testing.T) {
 		}
 		if count != 0 {
 			t.Fatalf("unexpected no of chunks, exp: %d, found: %d", 0, count)
+		}
+	})
+
+	t.Run("replace chunk", func(t *testing.T) {
+		privKey, err := crypto.GenerateSecp256k1Key()
+		if err != nil {
+			t.Fatal(err)
+		}
+		signer := crypto.NewDefaultSigner(privKey)
+		ctx := context.Background()
+
+		ch1 := soctesting.GenerateMockSocWithSigner(t, []byte("data"), signer).Chunk()
+		err = st.Run(context.Background(), func(s transaction.Store) error {
+			return s.ChunkStore().Put(ctx, ch1)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		tests := []struct {
+			data         string
+			emplace      bool
+			wantRefCount uint32
+		}{
+			{
+				data:         "data1",
+				emplace:      true,
+				wantRefCount: 2,
+			},
+			{
+				data:         "data2",
+				emplace:      false,
+				wantRefCount: 2,
+			},
+			{
+				data:         "data3",
+				emplace:      true,
+				wantRefCount: 3,
+			},
+		}
+
+		for _, tt := range tests {
+			ch2 := soctesting.GenerateMockSocWithSigner(t, []byte(tt.data), signer).Chunk()
+			if !ch1.Address().Equal(ch2.Address()) {
+				t.Fatal("chunk addresses don't match")
+			}
+
+			err = st.Run(ctx, func(s transaction.Store) error {
+				return s.ChunkStore().Replace(ctx, ch2, tt.emplace)
+			})
+			ch, err := st.ChunkStore().Get(ctx, ch2.Address())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(ch.Data(), ch2.Data()) {
+				t.Fatalf("expected data override")
+			}
+
+			rIdx := &chunkstore.RetrievalIndexItem{Address: ch2.Address()}
+			err = st.IndexStore().Get(rIdx)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if rIdx.RefCnt != tt.wantRefCount {
+				t.Fatalf("expected ref count %d, got %d", tt.wantRefCount, rIdx.RefCnt)
+			}
 		}
 	})
 
