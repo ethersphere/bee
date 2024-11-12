@@ -100,6 +100,7 @@ func TestAccessLogicEachEndpointWithAct(t *testing.T) {
 		resp        struct {
 			Reference swarm.Address `json:"reference"`
 		}
+		direct bool
 	}{
 		{
 			name:        "bzz",
@@ -159,6 +160,7 @@ func TestAccessLogicEachEndpointWithAct(t *testing.T) {
 			data:        bytes.NewReader(sch.WrappedChunk.Data()),
 			expdata:     sch.Chunk().Data(),
 			contenttype: "binary/octet-stream",
+			direct:      true,
 		},
 	}
 
@@ -183,13 +185,24 @@ func TestAccessLogicEachEndpointWithAct(t *testing.T) {
 			upTestOpts = append(upTestOpts, jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"))
 		}
 		t.Run(v.name, func(t *testing.T) {
-			client, _, _, _ := newTestServer(t, testServerOptions{
+			client, _, _, chanStore := newTestServer(t, testServerOptions{
 				Storer:        storerMock,
 				Logger:        logger,
 				Post:          mockpost.New(mockpost.WithAcceptAll()),
 				PublicKey:     pk.PublicKey,
 				AccessControl: mockac.New(),
+				DirectUpload:  v.direct,
 			})
+
+			if chanStore != nil {
+				chanStore.Subscribe(func(chunk swarm.Chunk) {
+					err := storerMock.Put(context.Background(), chunk)
+					if err != nil {
+						t.Fatal(err)
+					}
+				})
+			}
+
 			header := jsonhttptest.Request(t, client, http.MethodPost, v.upurl, http.StatusCreated,
 				upTestOpts...,
 			)
