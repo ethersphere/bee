@@ -6,6 +6,7 @@ package api_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -74,13 +75,20 @@ func TestSOC(t *testing.T) {
 
 	t.Run("ok", func(t *testing.T) {
 		s := testingsoc.GenerateMockSOC(t, testData)
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, chanStore := newTestServer(t, testServerOptions{
 			Storer:       mockStorer,
 			Post:         newTestPostService(),
 			DirectUpload: true,
 		})
+
+		chanStore.Subscribe(func(ch swarm.Chunk) {
+			err := mockStorer.Put(context.Background(), ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
+
 		jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusCreated,
-			jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(api.SocPostResponse{

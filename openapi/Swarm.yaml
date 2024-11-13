@@ -869,8 +869,6 @@ paths:
           schema:
             $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
           required: true
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
-          required: false
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageStamp"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmAct"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
