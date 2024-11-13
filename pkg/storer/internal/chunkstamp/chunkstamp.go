@@ -181,7 +181,7 @@ func LoadWithBatchID(s storage.Reader, scope string, addr swarm.Address, batchID
 	return stamp, nil
 }
 
-// LoadWithBatchID returns swarm.Stamp related to the given address and batchID.
+// LoadWithStampHash returns swarm.Stamp related to the given address and stamphash.
 func LoadWithStampHash(s storage.Reader, scope string, addr swarm.Address, hash []byte) (swarm.Stamp, error) {
 	var stamp swarm.Stamp
 
