@@ -143,6 +143,9 @@ jobs:
       - name: Test soc
         id: soc
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-soc
+      - name: Test gsoc
+        id: gsoc
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-gsoc
       - name: Test pushsync (chunks)
         id: pushsync-chunks-1
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-pushsync-chunks
