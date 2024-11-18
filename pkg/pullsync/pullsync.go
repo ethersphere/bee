@@ -71,6 +71,7 @@ type Syncer struct {
 	store          storer.Reserve
 	quit           chan struct{}
 	unwrap         func(swarm.Chunk)
+	gsocHandler    func(*soc.SOC)
 	validStamp     postage.ValidStampFn
 	intervalsSF    singleflight.Group[string, *collectAddrsResult]
 	syncInProgress atomic.Int32
@@ -87,21 +88,23 @@ func New(
 	streamer p2p.Streamer,
 	store storer.Reserve,
 	unwrap func(swarm.Chunk),
+	gsocHandler func(*soc.SOC),
 	validStamp postage.ValidStampFn,
 	logger log.Logger,
 	maxPage uint64,
 ) *Syncer {
 
 	return &Syncer{
-		streamer:   streamer,
-		store:      store,
-		metrics:    newMetrics(),
-		unwrap:     unwrap,
-		validStamp: validStamp,
-		logger:     logger.WithName(loggerName).Register(),
-		quit:       make(chan struct{}),
-		maxPage:    maxPage,
-		limiter:    ratelimit.New(handleRequestsLimitRate, int(maxPage)),
+		streamer:    streamer,
+		store:       store,
+		metrics:     newMetrics(),
+		unwrap:      unwrap,
+		gsocHandler: gsocHandler,
+		validStamp:  validStamp,
+		logger:      logger.WithName(loggerName).Register(),
+		quit:        make(chan struct{}),
+		maxPage:     maxPage,
+		limiter:     ratelimit.New(handleRequestsLimitRate, int(maxPage)),
 	}
 }
 
@@ -356,7 +359,9 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 
 		if cac.Valid(chunk) {
 			go s.unwrap(chunk)
-		} else if !soc.Valid(chunk) {
+		} else if chunk, err := soc.FromChunk(chunk); err == nil {
+			s.gsocHandler(chunk)
+		} else {
 			s.logger.Debug("invalid cac/soc chunk", "error", swarm.ErrInvalidChunk, "peer_address", peer, "chunk", chunk)
 			chunkErr = errors.Join(chunkErr, swarm.ErrInvalidChunk)
 			s.metrics.ReceivedInvalidChunk.Inc()

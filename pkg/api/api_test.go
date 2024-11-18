@@ -32,6 +32,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
+	"github.com/ethersphere/bee/v2/pkg/gsoc"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	p2pmock "github.com/ethersphere/bee/v2/pkg/p2p/mock"
@@ -93,6 +94,7 @@ type testServerOptions struct {
 	StateStorer        storage.StateStorer
 	Resolver           resolver.Interface
 	Pss                pss.Interface
+	Gsoc               gsoc.Listener
 	WsPath             string
 	WsPingPeriod       time.Duration
 	Logger             log.Logger
@@ -194,6 +196,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		Storer:          o.Storer,
 		Resolver:        o.Resolver,
 		Pss:             o.Pss,
+		Gsoc:            o.Gsoc,
 		FeedFactory:     o.Feeds,
 		Post:            o.Post,
 		AccessControl:   o.AccessControl,
@@ -630,6 +633,7 @@ type chanStorer struct {
 	lock   sync.Mutex
 	chunks map[string]struct{}
 	quit   chan struct{}
+	subs   []func(chunk swarm.Chunk)
 }
 
 func newChanStore(cc <-chan *pusher.Op) *chanStorer {
@@ -647,6 +651,9 @@ func (c *chanStorer) drain(cc <-chan *pusher.Op) {
 		case op := <-cc:
 			c.lock.Lock()
 			c.chunks[op.Chunk.Address().ByteString()] = struct{}{}
+			for _, h := range c.subs {
+				h(op.Chunk)
+			}
 			c.lock.Unlock()
 			op.Err <- nil
 		case <-c.quit:
@@ -665,6 +672,12 @@ func (c *chanStorer) Has(addr swarm.Address) bool {
 	c.lock.Unlock()
 
 	return ok
+}
+
+func (c *chanStorer) Subscribe(f func(chunk swarm.Chunk)) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.subs = append(c.subs, f)
 }
 
 func createRedistributionAgentService(

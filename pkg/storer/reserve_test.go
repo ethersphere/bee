@@ -695,7 +695,7 @@ func TestNeighborhoodStats(t *testing.T) {
 	putChunks := func(addr swarm.Address, startingRadius int, st *storer.DB) {
 		putter := st.ReservePutter()
 		for i := 0; i < chunkCountPerPO; i++ {
-			ch := chunk.GenerateValidRandomChunkAt(addr, startingRadius)
+			ch := chunk.GenerateValidRandomChunkAt(t, addr, startingRadius)
 			err := putter.Put(context.Background(), ch)
 			if err != nil {
 				t.Fatal(err)

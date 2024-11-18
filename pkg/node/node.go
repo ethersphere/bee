@@ -32,6 +32,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/config"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/feeds/factory"
+	"github.com/ethersphere/bee/v2/pkg/gsoc"
 	"github.com/ethersphere/bee/v2/pkg/hive"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/metrics"
@@ -103,6 +104,7 @@ type Bee struct {
 	accountingCloser         io.Closer
 	pullSyncCloser           io.Closer
 	pssCloser                io.Closer
+	gsocCloser               io.Closer
 	ethClientCloser          func()
 	transactionMonitorCloser io.Closer
 	transactionCloser        io.Closer
@@ -898,7 +900,9 @@ func NewBee(
 	pricing.SetPaymentThresholdObserver(acc)
 
 	pssService := pss.New(pssPrivateKey, logger)
+	gsocService := gsoc.New(logger)
 	b.pssCloser = pssService
+	b.gsocCloser = gsocService
 
 	validStamp := postage.ValidStamp(batchStore)
 
@@ -951,7 +955,7 @@ func NewBee(
 		}
 	}
 
-	pushSyncProtocol := pushsync.New(swarmAddress, networkID, nonce, p2ps, localStore, waitNetworkRFunc, kad, o.FullNodeMode && !o.BootnodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
+	pushSyncProtocol := pushsync.New(swarmAddress, networkID, nonce, p2ps, localStore, waitNetworkRFunc, kad, o.FullNodeMode && !o.BootnodeMode, pssService.TryUnwrap, gsocService.Handle, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
 	b.pushSyncCloser = pushSyncProtocol
 
 	// set the pushSyncer in the PSS
@@ -965,7 +969,7 @@ func NewBee(
 
 	pusherService.AddFeed(localStore.PusherFeed())
 
-	pullSyncProtocol := pullsync.New(p2ps, localStore, pssService.TryUnwrap, validStamp, logger, pullsync.DefaultMaxPage)
+	pullSyncProtocol := pullsync.New(p2ps, localStore, pssService.TryUnwrap, gsocService.Handle, validStamp, logger, pullsync.DefaultMaxPage)
 	b.pullSyncCloser = pullSyncProtocol
 
 	retrieveProtocolSpec := retrieval.Protocol()
@@ -1118,6 +1122,7 @@ func NewBee(
 		Storer:          localStore,
 		Resolver:        multiResolver,
 		Pss:             pssService,
+		Gsoc:            gsocService,
 		FeedFactory:     feedFactory,
 		Post:            post,
 		AccessControl:   accesscontrol,
@@ -1253,10 +1258,14 @@ func (b *Bee) Shutdown() error {
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(7)
+	wg.Add(8)
 	go func() {
 		defer wg.Done()
 		tryClose(b.pssCloser, "pss")
+	}()
+	go func() {
+		defer wg.Done()
+		tryClose(b.gsocCloser, "gsoc")
 	}()
 	go func() {
 		defer wg.Done()

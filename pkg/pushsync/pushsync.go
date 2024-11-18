@@ -85,6 +85,7 @@ type PushSync struct {
 	store          Storer
 	topologyDriver topology.Driver
 	unwrap         func(swarm.Chunk)
+	gsocHandler    func(*soc.SOC)
 	logger         log.Logger
 	accounting     accounting.Interface
 	pricer         pricer.Interface
@@ -114,6 +115,7 @@ func New(
 	topology topology.Driver,
 	fullNode bool,
 	unwrap func(swarm.Chunk),
+	gsocHandler func(*soc.SOC),
 	validStamp postage.ValidStampFn,
 	logger log.Logger,
 	accounting accounting.Interface,
@@ -132,6 +134,7 @@ func New(
 		topologyDriver: topology,
 		fullNode:       fullNode,
 		unwrap:         unwrap,
+		gsocHandler:    gsocHandler,
 		logger:         logger.WithName(loggerName).Register(),
 		accounting:     accounting,
 		pricer:         pricer,
@@ -225,7 +228,9 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	if cac.Valid(chunk) {
 		go ps.unwrap(chunk)
-	} else if !soc.Valid(chunk) {
+	} else if chunk, err := soc.FromChunk(chunk); err == nil {
+		ps.gsocHandler(chunk)
+	} else {
 		return swarm.ErrInvalidChunk
 	}
 
@@ -319,7 +324,6 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 			Nonce:     r.Nonce,
 		}, err
 	}
-
 	if err != nil {
 		return nil, err
 	}
@@ -355,6 +359,11 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		defer ticker.Stop()
 		preemptiveTicker = ticker.C
 		sentErrorsLeft = maxPushErrors
+	}
+
+	idAddress, err := storage.IdentityAddress(ch)
+	if err != nil {
+		return nil, err
 	}
 
 	resultChan := make(chan receiptResult)
@@ -393,10 +402,10 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			// If no peer can be found from an origin peer, the origin peer may store the chunk.
 			// Non-origin peers store the chunk if the chunk is within depth.
 			// For non-origin peers, if the chunk is not within depth, they may store the chunk if they are the closest peer to the chunk.
-			fullSkip := append(skip.ChunkPeers(ch.Address()), ps.errSkip.ChunkPeers(ch.Address())...)
+			fullSkip := append(skip.ChunkPeers(idAddress), ps.errSkip.ChunkPeers(idAddress)...)
 			peer, err := ps.closestPeer(ch.Address(), origin, fullSkip)
 			if errors.Is(err, topology.ErrNotFound) {
-				if skip.PruneExpiresAfter(ch.Address(), overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
+				if skip.PruneExpiresAfter(idAddress, overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
 					if inflight == 0 {
 						if ps.fullNode {
 							if cac.Valid(ch) {
@@ -433,7 +442,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			// all future requests should land directly into the neighborhood
 			if neighborsOnly && peerPO < rad {
-				skip.Forever(ch.Address(), peer)
+				skip.Forever(idAddress, peer)
 				continue
 			}
 
@@ -450,10 +459,10 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			action, err := ps.prepareCredit(ctx, peer, ch, origin)
 			if err != nil {
 				retry()
-				skip.Add(ch.Address(), peer, overDraftRefresh)
+				skip.Add(idAddress, peer, overDraftRefresh)
 				continue
 			}
-			skip.Forever(ch.Address(), peer)
+			skip.Forever(idAddress, peer)
 
 			ps.metrics.TotalSendAttempts.Inc()
 			inflight++
@@ -461,7 +470,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			go ps.push(ctx, resultChan, peer, ch, action)
 
 		case result := <-resultChan:
-
 			inflight--
 
 			ps.measurePushPeer(result.pushTime, result.err)
@@ -471,16 +479,16 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				case err == nil:
 					return result.receipt, nil
 				case errors.Is(err, ErrShallowReceipt):
-					ps.errSkip.Add(ch.Address(), result.peer, skiplistDur)
+					ps.errSkip.Add(idAddress, result.peer, skiplistDur)
 					return result.receipt, err
 				}
 			}
 
 			ps.metrics.TotalFailedSendAttempts.Inc()
-			ps.logger.Debug("could not push to peer", "chunk_address", ch.Address(), "peer_address", result.peer, "error", result.err)
+			ps.logger.Debug("could not push to peer", "chunk_address", ch.Address(), "id_address", idAddress, "peer_address", result.peer, "error", result.err)
 
 			sentErrorsLeft--
-			ps.errSkip.Add(ch.Address(), result.peer, skiplistDur)
+			ps.errSkip.Add(idAddress, result.peer, skiplistDur)
 
 			retry()
 		}
