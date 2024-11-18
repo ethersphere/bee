@@ -42,7 +42,7 @@ type Hasser interface {
 // Replacer is the interface that wraps the basic Replace method.
 type Replacer interface {
 	// Replace a chunk in the store.
-	Replace(context.Context, swarm.Chunk) error
+	Replace(context.Context, swarm.Chunk, bool) error
 }
 
 // PutterFunc type is an adapter to allow the use of

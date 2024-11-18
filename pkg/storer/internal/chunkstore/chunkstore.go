@@ -94,7 +94,7 @@ func Put(ctx context.Context, s storage.IndexStore, sh storage.Sharky, ch swarm.
 	return s.Put(rIdx)
 }
 
-func Replace(ctx context.Context, s storage.IndexStore, sh storage.Sharky, ch swarm.Chunk) error {
+func Replace(ctx context.Context, s storage.IndexStore, sh storage.Sharky, ch swarm.Chunk, emplace bool) error {
 	rIdx := &RetrievalIndexItem{Address: ch.Address()}
 	err := s.Get(rIdx)
 	if err != nil {
@@ -112,6 +112,9 @@ func Replace(ctx context.Context, s storage.IndexStore, sh storage.Sharky, ch sw
 	}
 	rIdx.Location = loc
 	rIdx.Timestamp = uint64(time.Now().Unix())
+	if emplace {
+		rIdx.RefCnt++
+	}
 	return s.Put(rIdx)
 }
 

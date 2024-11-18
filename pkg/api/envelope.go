@@ -59,7 +59,7 @@ func (s *Service) envelopePostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stamp, err := stamper.Stamp(paths.Address)
+	stamp, err := stamper.Stamp(paths.Address, paths.Address)
 	if err != nil {
 		logger.Debug("split write all failed", "error", err)
 		logger.Error(nil, "split write all failed")

@@ -27,7 +27,7 @@ func TestReserveSampler(t *testing.T) {
 		var chs []swarm.Chunk
 		for po := 0; po < maxPO; po++ {
 			for i := 0; i < chunkCountPerPO; i++ {
-				ch := chunk.GenerateValidRandomChunkAt(baseAddr, po).WithBatch(3, 2, false)
+				ch := chunk.GenerateValidRandomChunkAt(t, baseAddr, po).WithBatch(3, 2, false)
 				if rand.Intn(2) == 0 { // 50% chance to wrap CAC into SOC
 					ch = chunk.GenerateTestRandomSoChunk(t, ch)
 				}
@@ -156,7 +156,7 @@ func TestReserveSamplerSisterNeighborhood(t *testing.T) {
 		var chs []swarm.Chunk
 		for po := startingRadius; po < maxPO; po++ {
 			for i := 0; i < chunkCountPerPO; i++ {
-				ch := chunk.GenerateValidRandomChunkAt(baseAddr, po).WithBatch(3, 2, false)
+				ch := chunk.GenerateValidRandomChunkAt(t, baseAddr, po).WithBatch(3, 2, false)
 				if rand.Intn(2) == 0 { // 50% chance to wrap CAC into SOC
 					ch = chunk.GenerateTestRandomSoChunk(t, ch)
 				}

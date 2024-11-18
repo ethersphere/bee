@@ -199,7 +199,7 @@ func ReserveRepairer(
 
 						item.BinID = newID(int(item.Bin))
 						if bytes.Equal(item.StampHash, swarm.EmptyAddress.Bytes()) {
-							stamp, err := chunkstamp.LoadWithBatchID(s.IndexStore(), "reserve", item.Address, item.BatchID)
+							stamp, err := chunkstamp.LoadWithStampHash(s.IndexStore(), "reserve", item.Address, item.StampHash)
 							if err != nil {
 								return err
 							}

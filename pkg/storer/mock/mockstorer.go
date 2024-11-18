@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/pusher"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
-	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"go.uber.org/atomic"
 )
@@ -230,4 +230,8 @@ func (m *mockStorer) DebugInfo(_ context.Context) (storer.Info, error) {
 
 func (m *mockStorer) NeighborhoodsStat(ctx context.Context) ([]*storer.NeighborhoodStat, error) {
 	return nil, nil
+}
+
+func (m *mockStorer) Put(ctx context.Context, ch swarm.Chunk) error {
+	return m.chunkStore.Put(ctx, ch)
 }

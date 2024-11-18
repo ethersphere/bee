@@ -33,7 +33,7 @@ func TestStamperStamping(t *testing.T) {
 		t.Helper()
 
 		chunkAddr := swarm.RandAddress(t)
-		stamp, err := stamper.Stamp(chunkAddr)
+		stamp, err := stamper.Stamp(chunkAddr, chunkAddr)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -71,12 +71,14 @@ func TestStamperStamping(t *testing.T) {
 		// issue another 15
 		// collision depth is 8, committed batch depth is 12, bucket volume 2^4
 		for i := 0; i < 14; i++ {
-			_, err = stamper.Stamp(swarm.RandAddressAt(t, chunkAddr, 8))
+			randAddr := swarm.RandAddressAt(t, chunkAddr, 8)
+			_, err = stamper.Stamp(randAddr, randAddr)
 			if err != nil {
 				t.Fatalf("error adding stamp at step %d: %v", i, err)
 			}
 		}
-		stamp, err := stamper.Stamp(swarm.RandAddressAt(t, chunkAddr, 8))
+		randAddr := swarm.RandAddressAt(t, chunkAddr, 8)
+		stamp, err := stamper.Stamp(randAddr, randAddr)
 		if err != nil {
 			t.Fatalf("error adding last stamp: %v", err)
 		}
@@ -95,13 +97,15 @@ func TestStamperStamping(t *testing.T) {
 		// issue another 15
 		// collision depth is 8, committed batch depth is 12, bucket volume 2^4
 		for i := 0; i < 15; i++ {
-			_, err = stamper.Stamp(swarm.RandAddressAt(t, chunkAddr, 8))
+			randAddr := swarm.RandAddressAt(t, chunkAddr, 8)
+			_, err = stamper.Stamp(randAddr, randAddr)
 			if err != nil {
 				t.Fatalf("error adding stamp at step %d: %v", i, err)
 			}
 		}
+		randAddr := swarm.RandAddressAt(t, chunkAddr, 8)
 		// the bucket should now be full, not allowing a stamp for the  pivot chunk
-		if _, err = stamper.Stamp(swarm.RandAddressAt(t, chunkAddr, 8)); !errors.Is(err, postage.ErrBucketFull) {
+		if _, err = stamper.Stamp(randAddr, randAddr); !errors.Is(err, postage.ErrBucketFull) {
 			t.Fatalf("expected ErrBucketFull, got %v", err)
 		}
 	})
@@ -117,7 +121,7 @@ func TestStamperStamping(t *testing.T) {
 			WithBatchIndex(index)
 		testSt := &testStore{Store: inmemstore.New(), stampItem: testItem}
 		stamper := postage.NewStamper(testSt, st, signer)
-		stamp, err := stamper.Stamp(chunkAddr)
+		stamp, err := stamper.Stamp(chunkAddr, chunkAddr)
 		if err != nil {
 			t.Fatal(err)
 		}

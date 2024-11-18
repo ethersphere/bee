@@ -236,8 +236,15 @@ func ensureCalls(t *testing.T, calls *int, exp int) {
 	}
 }
 
-type stamper struct{}
+type stamper struct {
+	stamp *postage.Stamp
+}
 
-func (s *stamper) Stamp(_ swarm.Address) (*postage.Stamp, error) {
-	return postagetesting.MustNewStamp(), nil
+func (s *stamper) Stamp(_, _ swarm.Address) (*postage.Stamp, error) {
+	stamp := postagetesting.MustNewStamp()
+	return stamp, nil
+}
+
+func (s *stamper) BatchId() []byte {
+	return s.stamp.BatchID()
 }

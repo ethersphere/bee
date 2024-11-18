@@ -185,10 +185,24 @@ func TestStoreLoadDelete(t *testing.T) {
 				}
 			})
 
-			t.Run("load stored chunk stamp with batch id", func(t *testing.T) {
+			t.Run("load stored chunk stamp with batch id and hash", func(t *testing.T) {
 				want := chunk.Stamp()
 
 				have, err := chunkstamp.LoadWithBatchID(ts.IndexStore(), ns, chunk.Address(), chunk.Stamp().BatchID())
+				if err != nil {
+					t.Fatalf("LoadWithBatchID(...): unexpected error: %v", err)
+				}
+
+				if diff := cmp.Diff(want, have, cmp.AllowUnexported(postage.Stamp{})); diff != "" {
+					t.Fatalf("LoadWithBatchID(...): mismatch (-want +have):\n%s", diff)
+				}
+
+				h, err := want.Hash()
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				have, err = chunkstamp.LoadWithStampHash(ts.IndexStore(), ns, chunk.Address(), h)
 				if err != nil {
 					t.Fatalf("LoadWithBatchID(...): unexpected error: %v", err)
 				}
