@@ -648,7 +648,9 @@ func TestEvictSOC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	checkChunk(t, ts, chunks[9], false) // chunk should still persist, eg refCnt > 0
+	if has, _ := ts.ChunkStore().Has(context.Background(), chunks[0].Address()); !has {
+		t.Fatal("same address chunk should still persist, eg refCnt > 0")
+	}
 
 	evicted, err := r.EvictBatchBin(context.Background(), batch.ID, 10, swarm.MaxBins)
 	if err != nil {
