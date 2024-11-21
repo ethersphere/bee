@@ -38,7 +38,7 @@ func IsBootnode(b bool) RecordOp {
 	return func(cs *Counters) {
 		cs.Lock()
 		defer cs.Unlock()
-		cs.isBootnode = b
+		cs.IsBootnode = b
 	}
 }
 
@@ -147,6 +147,7 @@ type Snapshot struct {
 	LatencyEWMA                time.Duration
 	Reachability               p2p.ReachabilityStatus
 	Healthy                    bool
+	IsBootnode                 bool
 }
 
 // persistentCounters is a helper struct used for persisting selected counters.
@@ -154,6 +155,7 @@ type persistentCounters struct {
 	PeerAddress       swarm.Address `json:"peerAddress"`
 	LastSeenTimestamp int64         `json:"lastSeenTimestamp"`
 	ConnTotalDuration time.Duration `json:"connTotalDuration"`
+	IsBootnode        bool          `json:"isBootnode"`
 }
 
 // Counters represents a collection of peer metrics
@@ -164,7 +166,7 @@ type Counters struct {
 	// Bookkeeping.
 	isLoggedIn  bool
 	peerAddress swarm.Address
-	isBootnode  bool
+	IsBootnode  bool
 
 	// Counters.
 	lastSeenTimestamp    int64
@@ -187,6 +189,7 @@ func (cs *Counters) UnmarshalJSON(b []byte) (err error) {
 	cs.peerAddress = val.PeerAddress
 	cs.lastSeenTimestamp = val.LastSeenTimestamp
 	cs.connTotalDuration = val.ConnTotalDuration
+	cs.IsBootnode = val.IsBootnode
 	cs.Unlock()
 	return nil
 }
@@ -198,6 +201,7 @@ func (cs *Counters) MarshalJSON() ([]byte, error) {
 		PeerAddress:       cs.peerAddress,
 		LastSeenTimestamp: cs.lastSeenTimestamp,
 		ConnTotalDuration: cs.connTotalDuration,
+		IsBootnode:        cs.IsBootnode,
 	}
 	cs.Unlock()
 	return json.Marshal(val)
@@ -224,6 +228,7 @@ func (cs *Counters) snapshot(t time.Time) *Snapshot {
 		LatencyEWMA:                cs.latencyEWMA,
 		Reachability:               cs.ReachabilityStatus,
 		Healthy:                    cs.Healthy,
+		IsBootnode:                 cs.IsBootnode,
 	}
 }
 
@@ -249,6 +254,7 @@ func NewCollector(db *shed.DB) (*Collector, error) {
 			peerAddress:       val.PeerAddress,
 			lastSeenTimestamp: val.LastSeenTimestamp,
 			connTotalDuration: val.ConnTotalDuration,
+			IsBootnode:        val.IsBootnode,
 		})
 	}
 
@@ -321,7 +327,7 @@ type ExcludeOp func(*Counters) bool
 // IsBootnode is used to filter bootnode peers.
 func Bootnode() ExcludeOp {
 	return func(cs *Counters) bool {
-		return cs.isBootnode
+		return cs.IsBootnode
 	}
 }
 
