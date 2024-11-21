@@ -193,3 +193,39 @@ func TestPeerMetricsCollector(t *testing.T) {
 		t.Fatalf("unexpected snapshot difference:\n%s", diff)
 	}
 }
+
+func TestExclude(t *testing.T) {
+	t.Parallel()
+
+	db, err := shed.NewDB("", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testutil.CleanupCloser(t, db)
+
+	mc, err := metrics.NewCollector(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var addr = swarm.RandAddress(t)
+
+	// record unhealthy, unreachable, bootnode
+	mc.Record(addr, metrics.PeerHealth(false), metrics.IsBootnode(true), metrics.PeerReachability(p2p.ReachabilityStatusPrivate))
+
+	if have, want := mc.Exclude(addr), false; have != want {
+		t.Fatal("should not exclude any")
+	}
+
+	if have, want := mc.Exclude(addr, metrics.Bootnode()), true; have != want {
+		t.Fatal("should exclude bootnodes")
+	}
+
+	if have, want := mc.Exclude(addr, metrics.Reachability(false)), true; have != want {
+		t.Fatal("should exclude unreachble")
+	}
+
+	if have, want := mc.Exclude(addr, metrics.Health(false)), true; have != want {
+		t.Fatal("should exclude unhealthy")
+	}
+}
