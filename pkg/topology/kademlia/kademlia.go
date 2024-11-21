@@ -744,7 +744,11 @@ func (k *Kad) balancedSlotPeers(pseudoAddr swarm.Address, peers []swarm.Address,
 	return ret
 }
 
-func (k *Kad) Start(_ context.Context) error {
+func (k *Kad) Start(ctx context.Context) error {
+
+	// always discover bootnodes on startup to exclude them from protocol requests
+	k.connectBootNodes(ctx)
+
 	k.wg.Add(1)
 	go k.manage()
 
