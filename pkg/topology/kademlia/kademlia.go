@@ -14,6 +14,7 @@ import (
 	"math/rand"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
@@ -201,6 +202,7 @@ type Kad struct {
 	bgBroadcastCtx    context.Context
 	bgBroadcastCancel context.CancelFunc
 	reachability      p2p.ReachabilityStatus
+	bootnodeOverlay   atomic.Value
 }
 
 // New returns a new Kademlia.
@@ -252,6 +254,8 @@ func New(
 		storageRadius:     swarm.MaxPO,
 	}
 
+	k.bootnodeOverlay.Store(swarm.ZeroAddress)
+
 	if k.opt.PruneFunc == nil {
 		k.opt.PruneFunc = k.pruneOversaturatedBins
 	}
@@ -265,7 +269,8 @@ func New(
 	if k.opt.ExcludeFunc == nil {
 		k.opt.ExcludeFunc = func(f ...im.ExcludeOp) peerExcludeFunc {
 			return func(peer swarm.Address) bool {
-				return k.collector.Exclude(peer, f...)
+				// exclude bootnode addresses as well
+				return k.collector.Exclude(peer, f...) || k.bootnodeOverlay.Load().(swarm.Address).Equal(peer)
 			}
 		}
 	}
@@ -838,6 +843,8 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 				return false, nil
 			}
 
+			k.bootnodeOverlay.Store(bzzAddress.Overlay)
+
 			if err := k.onConnected(ctx, bzzAddress.Overlay); err != nil {
 				return false, err
 			}
@@ -1316,7 +1323,7 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.
 func (k *Kad) EachConnectedPeer(f topology.EachPeerFunc, filter topology.Select) error {
 	filters := excludeOps(filter)
 	return k.connectedPeers.EachBin(func(addr swarm.Address, po uint8) (bool, bool, error) {
-		if len(filters) > 0 && k.opt.ExcludeFunc(filters...)(addr) {
+		if k.opt.ExcludeFunc(filters...)(addr) {
 			return false, false, nil
 		}
 		return f(addr, po)
@@ -1327,7 +1334,7 @@ func (k *Kad) EachConnectedPeer(f topology.EachPeerFunc, filter topology.Select)
 func (k *Kad) EachConnectedPeerRev(f topology.EachPeerFunc, filter topology.Select) error {
 	filters := excludeOps(filter)
 	return k.connectedPeers.EachBinRev(func(addr swarm.Address, po uint8) (bool, bool, error) {
-		if len(filters) > 0 && k.opt.ExcludeFunc(filters...)(addr) {
+		if k.opt.ExcludeFunc(filters...)(addr) {
 			return false, false, nil
 		}
 		return f(addr, po)

@@ -1200,18 +1200,21 @@ func TestStart(t *testing.T) {
 	t.Parallel()
 
 	var bootnodes []ma.Multiaddr
+	var bootnodesOverlays []swarm.Address
 	for i := 0; i < 10; i++ {
-		multiaddr, err := ma.NewMultiaddr(underlayBase + swarm.RandAddress(t).String())
+		overlay := swarm.RandAddress(t)
+
+		multiaddr, err := ma.NewMultiaddr(underlayBase + overlay.String())
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		bootnodes = append(bootnodes, multiaddr)
+		bootnodesOverlays = append(bootnodesOverlays, overlay)
 	}
 
 	t.Run("non-empty addressbook", func(t *testing.T) {
 		t.Parallel()
-		t.Skip("test flakes")
 
 		var conns, failedConns int32 // how many connect calls were made to the p2p mock
 		_, kad, ab, _, signer := newTestKademlia(t, &conns, &failedConns, kademlia.Options{Bootnodes: bootnodes})
@@ -1238,6 +1241,20 @@ func TestStart(t *testing.T) {
 
 		waitCounter(t, &conns, 3)
 		waitCounter(t, &failedConns, 0)
+
+		err := kad.EachConnectedPeer(func(addr swarm.Address, bin uint8) (stop bool, jumpToNext bool, err error) {
+			for _, b := range bootnodesOverlays {
+				fmt.Println(b, addr)
+				if b.Equal(addr) {
+					return false, false, errors.New("did not expect bootnode address from the iterator")
+				}
+			}
+			return false, false, nil
+
+		}, topology.Select{})
+		if err != nil {
+			t.Fatal(err)
+		}
 	})
 
 	t.Run("empty addressbook", func(t *testing.T) {
