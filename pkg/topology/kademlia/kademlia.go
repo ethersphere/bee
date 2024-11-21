@@ -14,7 +14,6 @@ import (
 	"math/rand"
 	"path/filepath"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
@@ -202,7 +201,6 @@ type Kad struct {
 	bgBroadcastCtx    context.Context
 	bgBroadcastCancel context.CancelFunc
 	reachability      p2p.ReachabilityStatus
-	bootnodeOverlay   atomic.Value
 }
 
 // New returns a new Kademlia.
@@ -254,8 +252,6 @@ func New(
 		storageRadius:     swarm.MaxPO,
 	}
 
-	k.bootnodeOverlay.Store(swarm.ZeroAddress)
-
 	if k.opt.PruneFunc == nil {
 		k.opt.PruneFunc = k.pruneOversaturatedBins
 	}
@@ -269,8 +265,7 @@ func New(
 	if k.opt.ExcludeFunc == nil {
 		k.opt.ExcludeFunc = func(f ...im.ExcludeOp) peerExcludeFunc {
 			return func(peer swarm.Address) bool {
-				// exclude bootnode addresses as well
-				return k.collector.Exclude(peer, f...) || k.bootnodeOverlay.Load().(swarm.Address).Equal(peer)
+				return k.collector.Exclude(peer, f...)
 			}
 		}
 	}
@@ -843,14 +838,12 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 				return false, nil
 			}
 
-			k.bootnodeOverlay.Store(bzzAddress.Overlay)
-
 			if err := k.onConnected(ctx, bzzAddress.Overlay); err != nil {
 				return false, err
 			}
 
 			k.metrics.TotalOutboundConnections.Inc()
-			k.collector.Record(bzzAddress.Overlay, im.PeerLogIn(time.Now(), im.PeerConnectionDirectionOutbound))
+			k.collector.Record(bzzAddress.Overlay, im.PeerLogIn(time.Now(), im.PeerConnectionDirectionOutbound), im.IsBootnode(true))
 			loggerV1.Debug("connected to bootnode", "bootnode_address", addr)
 			connected++
 
@@ -1068,8 +1061,7 @@ outer:
 			addrs = append(addrs, connectedPeer)
 
 			if !fullnode {
-				// we continue here so we dont gossip
-				// about lightnodes to others.
+				// dont gossip about lightnodes to others.
 				continue
 			}
 			// if kademlia is closing, dont enqueue anymore broadcast requests
@@ -1321,7 +1313,7 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.
 
 // EachConnectedPeer implements topology.PeerIterator interface.
 func (k *Kad) EachConnectedPeer(f topology.EachPeerFunc, filter topology.Select) error {
-	filters := excludeOps(filter)
+	filters := excludeFromIterator(filter)
 	return k.connectedPeers.EachBin(func(addr swarm.Address, po uint8) (bool, bool, error) {
 		if k.opt.ExcludeFunc(filters...)(addr) {
 			return false, false, nil
@@ -1332,7 +1324,7 @@ func (k *Kad) EachConnectedPeer(f topology.EachPeerFunc, filter topology.Select)
 
 // EachConnectedPeerRev implements topology.PeerIterator interface.
 func (k *Kad) EachConnectedPeerRev(f topology.EachPeerFunc, filter topology.Select) error {
-	filters := excludeOps(filter)
+	filters := excludeFromIterator(filter)
 	return k.connectedPeers.EachBinRev(func(addr swarm.Address, po uint8) (bool, bool, error) {
 		if k.opt.ExcludeFunc(filters...)(addr) {
 			return false, false, nil
@@ -1398,9 +1390,11 @@ func (k *Kad) SubscribeTopologyChange() (c <-chan struct{}, unsubscribe func()) 
 	return channel, unsubscribe
 }
 
-func excludeOps(filter topology.Select) []im.ExcludeOp {
+func excludeFromIterator(filter topology.Select) []im.ExcludeOp {
 
-	ops := make([]im.ExcludeOp, 0, 2)
+	ops := make([]im.ExcludeOp, 0, 3)
+
+	ops = append(ops, im.Bootnode())
 
 	if filter.Reachable {
 		ops = append(ops, im.Reachability(false))

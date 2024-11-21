@@ -33,6 +33,15 @@ const (
 // operation whose execution modifies a specific metrics.
 type RecordOp func(*Counters)
 
+// Bootnode will mark the peer metric as bootnode based on the bool arg.
+func IsBootnode(b bool) RecordOp {
+	return func(cs *Counters) {
+		cs.Lock()
+		defer cs.Unlock()
+		cs.isBootnode = b
+	}
+}
+
 // PeerLogIn will first update the current last seen to the give time t and as
 // the second it'll set the direction of the session connection to the given
 // value. The force flag will force the peer re-login if he's already logged in.
@@ -155,6 +164,7 @@ type Counters struct {
 	// Bookkeeping.
 	isLoggedIn  bool
 	peerAddress swarm.Address
+	isBootnode  bool
 
 	// Counters.
 	lastSeenTimestamp    int64
@@ -307,6 +317,13 @@ func (c *Collector) IsUnreachable(addr swarm.Address) bool {
 
 // ExcludeOp is a function type used to filter peers on certain fields.
 type ExcludeOp func(*Counters) bool
+
+// IsBootnode is used to filter bootnode peers.
+func Bootnode() ExcludeOp {
+	return func(cs *Counters) bool {
+		return cs.isBootnode
+	}
+}
 
 // Reachable is used to filter reachable or unreachable peers based on r.
 func Reachability(filterReachable bool) ExcludeOp {

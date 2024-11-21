@@ -1244,7 +1244,6 @@ func TestStart(t *testing.T) {
 
 		err := kad.EachConnectedPeer(func(addr swarm.Address, bin uint8) (stop bool, jumpToNext bool, err error) {
 			for _, b := range bootnodesOverlays {
-				fmt.Println(b, addr)
 				if b.Equal(addr) {
 					return false, false, errors.New("did not expect bootnode address from the iterator")
 				}
