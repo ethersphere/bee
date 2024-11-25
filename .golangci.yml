@@ -62,7 +62,7 @@ issues:
     - linters:
         - forbidigo
       path: cmd/bee/cmd
-      text: "use of `fmt.Print"   ## allow fmt.Print in cmd directory
+      text: "use of `fmt.Print" ## allow fmt.Print in cmd directory
     - linters:
         - dogsled
       path: pkg/api/(.+)_test\.go # temporally disable dogsled in api test files
@@ -70,9 +70,6 @@ issues:
         - dogsled
       path: pkg/pushsync/(.+)_test\.go # temporally disable dogsled in pushsync test files
       # temporally disable paralleltest in following packages
-    - linters:
-        - paralleltest
-      path: pkg/postage
     - linters:
         - paralleltest
       path: pkg/log

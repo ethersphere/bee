@@ -28,6 +28,8 @@ import (
 var postageStampContractABI = abiutil.MustParseABI(chaincfg.Testnet.PostageStampABI)
 
 func TestCreateBatch(t *testing.T) {
+	t.Parallel()
+
 	defer func(b uint8) {
 		postagecontract.BucketDepth = b
 	}(postagecontract.BucketDepth)
@@ -279,6 +281,8 @@ func newCreateEvent(postageContractAddress common.Address, batchId common.Hash) 
 }
 
 func TestTopUpBatch(t *testing.T) {
+	t.Parallel()
+
 	defer func(b uint8) {
 		postagecontract.BucketDepth = b
 	}(postagecontract.BucketDepth)
@@ -443,6 +447,8 @@ func newTopUpEvent(postageContractAddress common.Address, batch *postage.Batch) 
 }
 
 func TestDiluteBatch(t *testing.T) {
+	t.Parallel()
+
 	defer func(b uint8) {
 		postagecontract.BucketDepth = b
 	}(postagecontract.BucketDepth)
@@ -952,6 +958,8 @@ func TestBatchExpirer(t *testing.T) {
 }
 
 func TestLookupERC20Address(t *testing.T) {
+	t.Parallel()
+
 	postageStampContractAddress := common.HexToAddress("ffff")
 	erc20Address := common.HexToAddress("ffff")
 
