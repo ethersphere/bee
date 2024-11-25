@@ -619,6 +619,8 @@ func stateStorePut(t *testing.T, st storage.StateStorer, k string, v interface{}
 }
 
 func batchStoreGetBatch(t *testing.T, st postage.Storer, id []byte) *postage.Batch {
+	t.Helper()
+
 	b, err := st.Get(id)
 	if err != nil {
 		t.Fatalf("postage storer get: %v", err)
