@@ -263,17 +263,16 @@ func (s *Service) pinIntegrityHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) repairPins(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("post_repair_pins").Build()
-	query := struct {
-		Ref swarm.Address `map:"ref"`
+	paths := struct {
+		Reference swarm.Address `map:"reference" validate:"required"`
 	}{}
-
-	if response := s.mapStructure(r.URL.Query(), &query); response != nil {
-		response("invalid query params", logger, w)
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
 		return
 	}
 
 	res := make(chan storer.RepairPinResult)
-	go s.pinIntegrity.Repair(r.Context(), logger, query.Ref.String(), s.storer, res)
+	go s.pinIntegrity.Repair(r.Context(), logger, paths.Reference.String(), s.storer, res)
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {

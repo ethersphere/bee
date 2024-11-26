@@ -720,6 +720,30 @@ paths:
         default:
           description: Default response
 
+  "/pins/{reference}/repair":
+    post:
+      summary: Repair pinned chunks by fetching missing/invalid chunks from the network
+      tags:
+        - Pinning
+      parameters:
+        - in: path
+          name: reference
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmOnlyReference"
+          required: true
+          description: Swarm reference of the root hash.
+      responses:
+        "200":
+          description: List of repaired chunks
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/PinRepairResponse"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
   "/pins":
     get:
       summary: Get the list of pinned root hash references
@@ -756,30 +780,6 @@ paths:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/PinCheckResponse"
-        "500":
-          $ref: "SwarmCommon.yaml#/components/responses/500"
-        default:
-          description: Default response
-
-  "/pins/repair":
-    post:
-      summary: Repair pinned chunks by fetching missing/invalid chunks from the network
-      tags:
-        - Pinning
-      parameters:
-        - in: query
-          name: ref
-          schema:
-            $ref: "SwarmCommon.yaml#/components/schemas/SwarmOnlyReference"
-          required: false
-          description: The number of items to skip before starting to collect the result set.
-      responses:
-        "200":
-          description: List of repaired chunks
-          content:
-            application/json:
-              schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/PinRepairResponse"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
