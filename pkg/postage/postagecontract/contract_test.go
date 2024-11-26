@@ -30,10 +30,6 @@ var postageStampContractABI = abiutil.MustParseABI(chaincfg.Testnet.PostageStamp
 func TestCreateBatch(t *testing.T) {
 	t.Parallel()
 
-	defer func(b uint8) {
-		postagecontract.BucketDepth = b
-	}(postagecontract.BucketDepth)
-	postagecontract.BucketDepth = 9
 	owner := common.HexToAddress("abcd")
 	label := "label"
 	postageStampAddress := common.HexToAddress("ffff")
@@ -49,6 +45,7 @@ func TestCreateBatch(t *testing.T) {
 		txHashCreate := common.HexToHash("c3a7")
 		batchID := common.HexToHash("dddd")
 		postageMock := postageMock.New()
+		postagecontract.BucketDepth = 9
 
 		expectedCallDataForExpireLimitedBatches, err := postageStampContractABI.Pack("expireLimited", big.NewInt(50))
 		if err != nil {
@@ -165,6 +162,7 @@ func TestCreateBatch(t *testing.T) {
 
 	t.Run("invalid depth", func(t *testing.T) {
 		depth := uint8(9)
+		postagecontract.BucketDepth = 9
 
 		contract := postagecontract.New(
 			owner,
@@ -216,6 +214,7 @@ func TestCreateBatch(t *testing.T) {
 	t.Run("insufficient validity", func(t *testing.T) {
 		depth := uint8(10)
 		totalAmount := big.NewInt(102399)
+		postagecontract.BucketDepth = 9
 
 		lastPriceCallData, err := postageStampContractABI.Pack("lastPrice")
 		if err != nil {
@@ -283,10 +282,6 @@ func newCreateEvent(postageContractAddress common.Address, batchId common.Hash) 
 func TestTopUpBatch(t *testing.T) {
 	t.Parallel()
 
-	defer func(b uint8) {
-		postagecontract.BucketDepth = b
-	}(postagecontract.BucketDepth)
-	postagecontract.BucketDepth = 9
 	owner := common.HexToAddress("abcd")
 	postageStampAddress := common.HexToAddress("ffff")
 	bzzTokenAddress := common.HexToAddress("eeee")
@@ -449,10 +444,6 @@ func newTopUpEvent(postageContractAddress common.Address, batch *postage.Batch) 
 func TestDiluteBatch(t *testing.T) {
 	t.Parallel()
 
-	defer func(b uint8) {
-		postagecontract.BucketDepth = b
-	}(postagecontract.BucketDepth)
-	postagecontract.BucketDepth = 9
 	owner := common.HexToAddress("abcd")
 	postageStampAddress := common.HexToAddress("ffff")
 	bzzTokenAddress := common.HexToAddress("eeee")
