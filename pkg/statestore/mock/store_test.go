@@ -13,6 +13,7 @@ import (
 )
 
 func TestMockStateStore(t *testing.T) {
+	t.Parallel()
 	test.Run(t, func(t *testing.T) storage.StateStorer {
 		t.Helper()
 		return mock.NewStateStore()
