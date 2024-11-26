@@ -262,7 +262,7 @@ func (s *Service) pinIntegrityHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) repairPins(w http.ResponseWriter, r *http.Request) {
-	logger := s.logger.WithName("get_repair_pins").Build()
+	logger := s.logger.WithName("post_repair_pins").Build()
 	query := struct {
 		Ref swarm.Address `map:"ref"`
 	}{}

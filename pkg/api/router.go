@@ -356,7 +356,7 @@ func (s *Service) mountAPI() {
 
 	handle("/pins/repair", web.ChainHandlers(
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.repairPins),
+			"POST": http.HandlerFunc(s.repairPins),
 		}),
 	))
 

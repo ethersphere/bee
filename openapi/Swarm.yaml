@@ -762,7 +762,7 @@ paths:
           description: Default response
 
   "/pins/repair":
-    get:
+    post:
       summary: Repair pinned chunks by fetching missing/invalid chunks from the network
       tags:
         - Pinning
