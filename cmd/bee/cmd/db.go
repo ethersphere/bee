@@ -84,7 +84,7 @@ func dbInfoCmd(cmd *cobra.Command) {
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
-				ReserveCapacity: node.ReserveCapacity,
+				ReserveCapacity: storer.DefaultReserveCapacity,
 				CacheCapacity:   1_000_000,
 			})
 			if err != nil {
@@ -166,7 +166,7 @@ func dbCompactCmd(cmd *cobra.Command) {
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
-				ReserveCapacity: node.ReserveCapacity,
+				ReserveCapacity: storer.DefaultReserveCapacity,
 			}, validation)
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
@@ -221,7 +221,7 @@ func dbValidatePinsCmd(cmd *cobra.Command) {
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
-				ReserveCapacity: node.ReserveCapacity,
+				ReserveCapacity: storer.DefaultReserveCapacity,
 			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
@@ -283,7 +283,7 @@ func dbRepairReserve(cmd *cobra.Command) {
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
-				ReserveCapacity: node.ReserveCapacity,
+				ReserveCapacity: storer.DefaultReserveCapacity,
 				CacheCapacity:   1_000_000,
 			})
 			if err != nil {
@@ -347,7 +347,7 @@ func dbValidateCmd(cmd *cobra.Command) {
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
-				ReserveCapacity: node.ReserveCapacity,
+				ReserveCapacity: storer.DefaultReserveCapacity,
 			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
@@ -410,7 +410,7 @@ func dbExportReserveCmd(cmd *cobra.Command) {
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
-				ReserveCapacity: node.ReserveCapacity,
+				ReserveCapacity: storer.DefaultReserveCapacity,
 				CacheCapacity:   1_000_000,
 			})
 			if err != nil {
@@ -493,7 +493,7 @@ func dbExportPinningCmd(cmd *cobra.Command) {
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
-				ReserveCapacity: node.ReserveCapacity,
+				ReserveCapacity: storer.DefaultReserveCapacity,
 				CacheCapacity:   1_000_000,
 			})
 			if err != nil {
@@ -603,7 +603,7 @@ func dbImportReserveCmd(cmd *cobra.Command) {
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
-				ReserveCapacity: node.ReserveCapacity,
+				ReserveCapacity: storer.DefaultReserveCapacity,
 				CacheCapacity:   1_000_000,
 			})
 			if err != nil {
@@ -687,7 +687,7 @@ func dbImportPinningCmd(cmd *cobra.Command) {
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
-				ReserveCapacity: node.ReserveCapacity,
+				ReserveCapacity: storer.DefaultReserveCapacity,
 				CacheCapacity:   1_000_000,
 			})
 			if err != nil {

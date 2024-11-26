@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	"github.com/ethersphere/bee/v2/pkg/pullsync"
+	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	testingc "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer"
@@ -353,10 +354,12 @@ func newPullSyncWithStamperValidator(
 	storage := mock.NewReserve(o...)
 	logger := log.Noop
 	unwrap := func(swarm.Chunk) {}
+	socHandler := func(*soc.SOC) {}
 	ps := pullsync.New(
 		s,
 		storage,
 		unwrap,
+		socHandler,
 		validStamp,
 		logger,
 		maxPage,

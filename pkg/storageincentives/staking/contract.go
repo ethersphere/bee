@@ -44,6 +44,7 @@ type Contract interface {
 	GetWithdrawableStake(ctx context.Context) (*big.Int, error)
 	WithdrawStake(ctx context.Context) (common.Hash, error)
 	MigrateStake(ctx context.Context) (common.Hash, error)
+	UpdateHeight(ctx context.Context) (common.Hash, bool, error)
 	RedistributionStatuser
 }
 
@@ -59,6 +60,7 @@ type contract struct {
 	transactionService     transaction.Service
 	overlayNonce           common.Hash
 	gasLimit               uint64
+	height                 uint8
 }
 
 func New(
@@ -69,6 +71,7 @@ func New(
 	transactionService transaction.Service,
 	nonce common.Hash,
 	setGasLimit bool,
+	height uint8,
 ) Contract {
 
 	var gasLimit uint64
@@ -84,6 +87,7 @@ func New(
 		transactionService:     transactionService,
 		overlayNonce:           nonce,
 		gasLimit:               gasLimit,
+		height:                 height,
 	}
 }
 
@@ -97,6 +101,10 @@ func (c *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (com
 		if stakedAmount.Cmp(MinimumStakeAmount) == -1 {
 			return common.Hash{}, ErrInsufficientStakeAmount
 		}
+	}
+
+	if big.NewInt(0).Add(prevStakedAmount, stakedAmount).Cmp(big.NewInt(0).Mul(big.NewInt(1<<c.height), MinimumStakeAmount)) < 0 {
+		return common.Hash{}, fmt.Errorf("stake amount does not sufficiently cover the additional reserve capacity: %w", ErrInsufficientStakeAmount)
 	}
 
 	balance, err := c.getBalance(ctx)
@@ -113,7 +121,7 @@ func (c *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (com
 		return common.Hash{}, err
 	}
 
-	receipt, err := c.sendDepositStakeTransaction(ctx, stakedAmount, c.overlayNonce)
+	receipt, err := c.sendManageStakeTransaction(ctx, stakedAmount)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -124,12 +132,32 @@ func (c *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (com
 // ChangeStakeOverlay only changes the overlay address used in the redistribution game.
 func (c *contract) ChangeStakeOverlay(ctx context.Context, nonce common.Hash) (common.Hash, error) {
 	c.overlayNonce = nonce
-	receipt, err := c.sendDepositStakeTransaction(ctx, new(big.Int), c.overlayNonce)
+	receipt, err := c.sendManageStakeTransaction(ctx, new(big.Int))
 	if err != nil {
 		return common.Hash{}, err
 	}
 
 	return receipt.TxHash, nil
+}
+
+// UpdateHeight submits the reserve doubling height to the contract only if the height is a new value.
+func (c *contract) UpdateHeight(ctx context.Context) (common.Hash, bool, error) {
+
+	h, err := c.getHeight(ctx)
+	if err != nil {
+		return common.Hash{}, false, fmt.Errorf("staking contract: failed to read previous height: %w", err)
+	}
+
+	if h == c.height {
+		return common.Hash{}, false, nil
+	}
+
+	receipt, err := c.sendManageStakeTransaction(ctx, new(big.Int))
+	if err != nil {
+		return common.Hash{}, false, fmt.Errorf("staking contract: failed to write new height: %w", err)
+	}
+
+	return receipt.TxHash, true, nil
 }
 
 func (c *contract) GetPotentialStake(ctx context.Context) (*big.Int, error) {
@@ -225,7 +253,7 @@ func (c *contract) sendApproveTransaction(ctx context.Context, amount *big.Int) 
 		To:          &c.bzzTokenAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    65000,
+		GasLimit:    max(sctx.GetGasLimit(ctx), c.gasLimit),
 		Value:       big.NewInt(0),
 		Description: approveDescription,
 	}
@@ -292,8 +320,8 @@ func (c *contract) sendTransaction(ctx context.Context, callData []byte, desc st
 	return receipt, nil
 }
 
-func (c *contract) sendDepositStakeTransaction(ctx context.Context, stakedAmount *big.Int, nonce common.Hash) (*types.Receipt, error) {
-	callData, err := c.stakingContractABI.Pack("manageStake", nonce, stakedAmount)
+func (c *contract) sendManageStakeTransaction(ctx context.Context, stakedAmount *big.Int) (*types.Receipt, error) {
+	callData, err := c.stakingContractABI.Pack("manageStake", c.overlayNonce, stakedAmount, c.height)
 	if err != nil {
 		return nil, err
 	}
@@ -438,4 +466,29 @@ func (c *contract) paused(ctx context.Context) (bool, error) {
 	}
 
 	return results[0].(bool), nil
+}
+
+func (c *contract) getHeight(ctx context.Context) (uint8, error) {
+	callData, err := c.stakingContractABI.Pack("heightOfAddress", c.owner)
+	if err != nil {
+		return 0, err
+	}
+
+	result, err := c.transactionService.Call(ctx, &transaction.TxRequest{
+		To:   &c.stakingContractAddress,
+		Data: callData,
+	})
+	if err != nil {
+		return 0, err
+	}
+	results, err := c.stakingContractABI.Unpack("heightOfAddress", result)
+	if err != nil {
+		return 0, err
+	}
+
+	if len(results) == 0 {
+		return 0, errors.New("unexpected empty results")
+	}
+
+	return results[0].(uint8), nil
 }

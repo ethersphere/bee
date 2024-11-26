@@ -542,6 +542,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	}
 
 	peerUserAgent := appendSpace(s.peerUserAgent(s.ctx, peerID))
+	s.networkStatus.Store(int32(p2p.NetworkStatusAvailable))
 
 	loggerV1.Debug("stream handler: successfully connected to peer (inbound)", "addresses", i.BzzAddress.ShortString(), "light", i.LightString(), "user_agent", peerUserAgent)
 	s.logger.Debug("stream handler: successfully connected to peer (inbound)", "address", i.BzzAddress.Overlay, "light", i.LightString(), "user_agent", peerUserAgent)
@@ -555,7 +556,6 @@ func (s *Service) SetPickyNotifier(n p2p.PickyNotifier) {
 
 func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 	for _, ss := range p.StreamSpecs {
-		ss := ss
 		id := protocol.ID(p2p.NewSwarmStreamName(p.Name, p.Version, ss.Name))
 		matcher, err := s.protocolSemverMatcher(id)
 		if err != nil {

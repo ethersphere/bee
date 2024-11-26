@@ -76,3 +76,5 @@ password-file: "/usr/local/var/lib/swarm-bee/password"
 # mainnet: true
 # ## minimum radius storage threshold
 # minimum-storage-radius: 0
+## reserve capacity doubling (default 0, maximum 1)
+reserve-capacity-doubling: 0

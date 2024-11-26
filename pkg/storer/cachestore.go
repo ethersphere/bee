@@ -40,8 +40,8 @@ func (db *DB) cacheWorker(ctx context.Context) {
 			}
 
 			evict := size - capc
-			if evict < db.opts.cacheMinEvictCount { // evict at least a min count
-				evict = db.opts.cacheMinEvictCount
+			if evict < db.reserveOptions.cacheMinEvictCount { // evict at least a min count
+				evict = db.reserveOptions.cacheMinEvictCount
 			}
 
 			dur := captureDuration(time.Now())

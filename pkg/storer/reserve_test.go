@@ -666,6 +666,113 @@ func TestSubscribeBinTrigger(t *testing.T) {
 	})
 }
 
+func TestNeighborhoodStats(t *testing.T) {
+	t.Parallel()
+
+	const (
+		chunkCountPerPO          = 16
+		maxPO                    = 5
+		committedDepth     uint8 = 4
+		doublingFactor     uint8 = 2
+		responsibiliyDepth uint8 = committedDepth - doublingFactor
+	)
+
+	mustParse := func(s string) swarm.Address {
+		addr, err := swarm.ParseBitStrAddress(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return addr
+	}
+
+	var (
+		baseAddr = mustParse("10000")
+		sister1  = mustParse("10010")
+		sister2  = mustParse("10100")
+		sister3  = mustParse("10110")
+	)
+
+	putChunks := func(addr swarm.Address, startingRadius int, st *storer.DB) {
+		putter := st.ReservePutter()
+		for i := 0; i < chunkCountPerPO; i++ {
+			ch := chunk.GenerateValidRandomChunkAt(t, addr, startingRadius)
+			err := putter.Put(context.Background(), ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	testF := func(t *testing.T, st *storer.DB) {
+		t.Helper()
+
+		putChunks(baseAddr, int(committedDepth), st)
+		putChunks(sister1, int(committedDepth), st)
+		putChunks(sister2, int(committedDepth), st)
+		putChunks(sister3, int(committedDepth), st)
+
+		neighs, err := st.NeighborhoodsStat(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(neighs) != (1 << doublingFactor) {
+			t.Fatalf("number of neighborhoods does not matche. wanted %d, got %d", 1<<doublingFactor, len(neighs))
+		}
+
+		for _, n := range neighs {
+			if n.ReserveSizeWithinRadius != chunkCountPerPO {
+				t.Fatalf("chunk count does not match. wanted %d, got %d, prox %d", chunkCountPerPO, n.ReserveSizeWithinRadius, swarm.Proximity(baseAddr.Bytes(), n.Neighborhood.Bytes()))
+			}
+		}
+
+		if !neighs[0].Neighborhood.Equal(swarm.NewNeighborhood(baseAddr, committedDepth)) ||
+			!neighs[1].Neighborhood.Equal(swarm.NewNeighborhood(sister1, committedDepth)) ||
+			!neighs[2].Neighborhood.Equal(swarm.NewNeighborhood(sister2, committedDepth)) ||
+			!neighs[3].Neighborhood.Equal(swarm.NewNeighborhood(sister3, committedDepth)) {
+			t.Fatal("chunk addresses do not match")
+		}
+
+		if neighs[0].Proximity != committedDepth ||
+			neighs[1].Proximity != 3 ||
+			neighs[2].Proximity != 2 ||
+			neighs[3].Proximity != 2 {
+			t.Fatalf("wrong proximity")
+		}
+	}
+
+	t.Run("disk", func(t *testing.T) {
+		t.Parallel()
+		opts := dbTestOps(baseAddr, 1000, nil, nil, time.Minute)
+		opts.ReserveCapacityDoubling = int(doublingFactor)
+		storer, err := diskStorer(t, opts)()
+		if err != nil {
+			t.Fatal(err)
+		}
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(responsibiliyDepth))
+		err = spinlock.Wait(time.Minute, func() bool { return storer.StorageRadius() == responsibiliyDepth })
+		if err != nil {
+			t.Fatal(err)
+		}
+		testF(t, storer)
+	})
+	t.Run("mem", func(t *testing.T) {
+		t.Parallel()
+		opts := dbTestOps(baseAddr, 1000, nil, nil, time.Minute)
+		opts.ReserveCapacityDoubling = int(doublingFactor)
+		storer, err := memStorer(t, opts)()
+		if err != nil {
+			t.Fatal(err)
+		}
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(responsibiliyDepth))
+		err = spinlock.Wait(time.Minute, func() bool { return storer.StorageRadius() == responsibiliyDepth })
+		if err != nil {
+			t.Fatal(err)
+		}
+		testF(t, storer)
+	})
+}
+
 func reserveSizeTest(rs *reserve.Reserve, want int) func(t *testing.T) {
 	return func(t *testing.T) {
 		t.Helper()

@@ -19,9 +19,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storage/storageutil"
 )
 
-var (
-	errStep = errors.New("step error")
-)
+var errStep = errors.New("step error")
 
 func TestLatestVersion(t *testing.T) {
 	t.Parallel()
@@ -159,7 +157,6 @@ func TestValidateVersions(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			if err := migration.ValidateVersions(tt.input); (err != nil) != tt.wantErr {
@@ -329,10 +326,10 @@ func TestTagIDAddressItem_MarshalAndUnmarshal(t *testing.T) {
 				Item:    &migration.StorageVersionItem{Version: rand.Uint64()},
 				Factory: func() storage.Item { return new(migration.StorageVersionItem) },
 			},
-		}}
+		},
+	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			storagetest.TestItemMarshalAndUnmarshal(t, tc.test)

@@ -1,4 +1,4 @@
-FROM golang:1.22 AS build
+FROM golang:1.23 AS build
 
 WORKDIR /src
 # enable modules caching in separate layer
@@ -8,9 +8,9 @@ COPY . ./
 
 RUN make binary
 
-FROM debian:12.4-slim
+FROM debian:12.7-slim
 
-ENV DEBIAN_FRONTEND noninteractive
+ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates; \

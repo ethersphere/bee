@@ -5,6 +5,7 @@
 package api_test
 
 import (
+	"context"
 	"net/http"
 	"testing"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/status"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 )
 
@@ -38,6 +40,7 @@ func TestGetStatus(t *testing.T) {
 			BatchCommitment:         1,
 			IsReachable:             true,
 			LastSyncedBlock:         6092500,
+			CommittedDepth:          1,
 		}
 
 		ssMock := &statusSnapshotMock{
@@ -47,6 +50,7 @@ func TestGetStatus(t *testing.T) {
 			storageRadius:           ssr.StorageRadius,
 			commitment:              ssr.BatchCommitment,
 			chainState:              &postage.ChainState{Block: ssr.LastSyncedBlock},
+			committedDepth:          ssr.CommittedDepth,
 		}
 
 		statusSvc := status.NewService(
@@ -119,6 +123,8 @@ type statusSnapshotMock struct {
 	storageRadius           uint8
 	commitment              uint64
 	chainState              *postage.ChainState
+	neighborhoods           []*storer.NeighborhoodStat
+	committedDepth          uint8
 }
 
 func (m *statusSnapshotMock) SyncRate() float64                  { return m.syncRate }
@@ -129,3 +135,7 @@ func (m *statusSnapshotMock) GetChainState() *postage.ChainState { return m.chai
 func (m *statusSnapshotMock) ReserveSizeWithinRadius() uint64 {
 	return m.reserveSizeWithinRadius
 }
+func (m *statusSnapshotMock) NeighborhoodsStat(ctx context.Context) ([]*storer.NeighborhoodStat, error) {
+	return m.neighborhoods, nil
+}
+func (m *statusSnapshotMock) CommittedDepth() uint8 { return m.committedDepth }

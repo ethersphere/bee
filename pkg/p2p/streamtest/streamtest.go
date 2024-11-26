@@ -96,6 +96,13 @@ func New(opts ...Option) *Recorder {
 	return r
 }
 
+func (r *Recorder) Reset() {
+	r.recordsMu.Lock()
+	defer r.recordsMu.Unlock()
+
+	r.records = make(map[string][]*Record)
+}
+
 func (r *Recorder) SetProtocols(protocols ...p2p.ProtocolSpec) {
 	r.protocols = append(r.protocols, protocols...)
 }

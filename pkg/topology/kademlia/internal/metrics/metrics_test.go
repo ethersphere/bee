@@ -116,6 +116,18 @@ func TestPeerMetricsCollector(t *testing.T) {
 		t.Fatalf("Snapshot(%q, ...): session connection duration counter mismatch: have %q; want %q", addr, have, want)
 	}
 
+	// Bootnode.
+	mc.Record(addr, metrics.IsBootnode(false))
+	ss = snapshot(t, mc, t2, addr)
+	if have, want := ss.IsBootnode, false; have != want {
+		t.Fatalf("Snapshot(%q, ...): latency mismatch: have %v; want %v", addr, have, want)
+	}
+	mc.Record(addr, metrics.IsBootnode(true))
+	ss = snapshot(t, mc, t2, addr)
+	if have, want := ss.IsBootnode, true; have != want {
+		t.Fatalf("Snapshot(%q, ...): is bootnode mismatch: have %v; want %v", addr, have, want)
+	}
+
 	// Latency.
 	mc.Record(addr, metrics.PeerLatency(t4))
 	ss = snapshot(t, mc, t2, addr)
@@ -188,8 +200,45 @@ func TestPeerMetricsCollector(t *testing.T) {
 	want = &metrics.Snapshot{
 		LastSeenTimestamp:       ss.LastSeenTimestamp,
 		ConnectionTotalDuration: 2 * ss.ConnectionTotalDuration, // 2x because we've already logout with t3 and login with t1 again.
+		IsBootnode:              true,
 	}
 	if diff := cmp.Diff(have, want); diff != "" {
 		t.Fatalf("unexpected snapshot difference:\n%s", diff)
+	}
+}
+
+func TestExclude(t *testing.T) {
+	t.Parallel()
+
+	db, err := shed.NewDB("", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testutil.CleanupCloser(t, db)
+
+	mc, err := metrics.NewCollector(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var addr = swarm.RandAddress(t)
+
+	// record unhealthy, unreachable, bootnode
+	mc.Record(addr, metrics.PeerHealth(false), metrics.IsBootnode(true), metrics.PeerReachability(p2p.ReachabilityStatusPrivate))
+
+	if have, want := mc.Exclude(addr), false; have != want {
+		t.Fatal("should not exclude any")
+	}
+
+	if have, want := mc.Exclude(addr, metrics.Bootnode()), true; have != want {
+		t.Fatal("should exclude bootnodes")
+	}
+
+	if have, want := mc.Exclude(addr, metrics.Reachability(false)), true; have != want {
+		t.Fatal("should exclude unreachble")
+	}
+
+	if have, want := mc.Exclude(addr, metrics.Health(false)), true; have != want {
+		t.Fatal("should exclude unhealthy")
 	}
 }

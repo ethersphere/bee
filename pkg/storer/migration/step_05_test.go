@@ -8,6 +8,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/sharky"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/leveldbstore"
@@ -98,7 +99,7 @@ func Test_Step_05(t *testing.T) {
 
 	wantCount(t, store.IndexStore(), 10)
 
-	err = localmigration.Step_05(store)()
+	err = localmigration.Step_05(store, log.Noop)()
 	if err != nil {
 		t.Fatalf("step 05: %v", err)
 	}

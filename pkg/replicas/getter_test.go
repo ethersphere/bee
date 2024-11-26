@@ -181,7 +181,6 @@ func TestGetter(t *testing.T) {
 				}
 				// if j <= c, the original chunk should be retrieved and the context should be cancelled
 				t.Run("retrievals cancelled", func(t *testing.T) {
-
 					select {
 					case <-time.After(100 * time.Millisecond):
 						t.Fatal("timed out waiting for context to be cancelled")
@@ -233,17 +232,16 @@ func TestGetter(t *testing.T) {
 					}
 					return
 				}
-				max := 2
-				for i := 1; i < tc.level && max < tc.found; i++ {
-					max = max * 2
+				maxValue := 2
+				for i := 1; i < tc.level && maxValue < tc.found; i++ {
+					maxValue = maxValue * 2
 				}
-				if attempts > max {
-					t.Fatalf("too many attempts to retrieve a replica: want at most %v. got %v. latencies %v", max, attempts, latencies)
+				if attempts > maxValue {
+					t.Fatalf("too many attempts to retrieve a replica: want at most %v. got %v. latencies %v", maxValue, attempts, latencies)
 				}
 			})
 
 			t.Run("dispersion", func(t *testing.T) {
-
 				if err := dispersed(redundancy.Level(tc.level), ch, addresses); err != nil {
 					t.Fatalf("addresses are not dispersed: %v", err)
 				}

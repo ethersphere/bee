@@ -33,6 +33,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
+	"github.com/ethersphere/bee/v2/pkg/gsoc"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
@@ -140,6 +141,7 @@ type Storer interface {
 	storer.LocalStore
 	storer.RadiusChecker
 	storer.Debugger
+	storer.NeighborhoodStats
 }
 
 type PinIntegrity interface {
@@ -151,6 +153,7 @@ type Service struct {
 	storer          Storer
 	resolver        resolver.Interface
 	pss             pss.Interface
+	gsoc            gsoc.Listener
 	steward         steward.Interface
 	logger          log.Logger
 	loggerV1        log.Logger
@@ -179,6 +182,7 @@ type Service struct {
 	ethereumAddress   common.Address
 	chequebookEnabled bool
 	swapEnabled       bool
+	fullAPIEnabled    bool
 
 	topologyDriver topology.Driver
 	p2p            p2p.DebugService
@@ -253,6 +257,7 @@ type ExtraOptions struct {
 	Storer          Storer
 	Resolver        resolver.Interface
 	Pss             pss.Interface
+	Gsoc            gsoc.Listener
 	FeedFactory     feeds.Factory
 	Post            postage.Service
 	AccessControl   accesscontrol.Controller
@@ -336,6 +341,7 @@ func (s *Service) Configure(signer crypto.Signer, tracer *tracing.Tracer, o Opti
 	s.storer = e.Storer
 	s.resolver = e.Resolver
 	s.pss = e.Pss
+	s.gsoc = e.Gsoc
 	s.feedFactory = e.FeedFactory
 	s.post = e.Post
 	s.accesscontrol = e.AccessControl
@@ -681,7 +687,12 @@ type putterSessionWrapper struct {
 }
 
 func (p *putterSessionWrapper) Put(ctx context.Context, chunk swarm.Chunk) error {
-	stamp, err := p.stamper.Stamp(chunk.Address())
+	idAddress, err := storage.IdentityAddress(chunk)
+	if err != nil {
+		return err
+	}
+
+	stamp, err := p.stamper.Stamp(chunk.Address(), idAddress)
 	if err != nil {
 		return err
 	}

@@ -25,6 +25,8 @@ import (
 
 var stakingContractABI = abiutil.MustParseABI(chaincfg.Testnet.StakingABI)
 
+const stakingHeight = uint8(0)
+
 func TestIsOverlayFrozen(t *testing.T) {
 	t.Parallel()
 
@@ -55,6 +57,7 @@ func TestIsOverlayFrozen(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		frozen, err := contract.IsOverlayFrozen(ctx, uint64(height-1))
@@ -95,7 +98,7 @@ func TestDepositStake(t *testing.T) {
 
 		totalAmount := big.NewInt(100000000000000000)
 		prevStake := big.NewInt(0)
-		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, stakedAmount)
+		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, stakedAmount, stakingHeight)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -143,6 +146,7 @@ func TestDepositStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.DepositStake(ctx, stakedAmount)
@@ -156,7 +160,7 @@ func TestDepositStake(t *testing.T) {
 
 		totalAmount := big.NewInt(100000000000000000)
 		prevStake := big.NewInt(2)
-		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, big.NewInt(100000000000000000))
+		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, big.NewInt(100000000000000000), stakingHeight)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -204,6 +208,7 @@ func TestDepositStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.DepositStake(ctx, stakedAmount)
@@ -243,6 +248,7 @@ func TestDepositStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err := contract.DepositStake(ctx, big.NewInt(0))
@@ -275,6 +281,7 @@ func TestDepositStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err := contract.DepositStake(ctx, big.NewInt(100000000000000000))
@@ -283,10 +290,73 @@ func TestDepositStake(t *testing.T) {
 		}
 	})
 
-	t.Run("insufficient stake amount", func(t *testing.T) {
+	t.Run("sufficient stake amount extra height", func(t *testing.T) {
 		t.Parallel()
 
-		totalAmount := big.NewInt(0)
+		balance := big.NewInt(0).Mul(staking.MinimumStakeAmount, big.NewInt(2))
+		prevStake := staking.MinimumStakeAmount
+
+		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, staking.MinimumStakeAmount, stakingHeight)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		contract := staking.New(
+			owner,
+			stakingContractAddress,
+			stakingContractABI,
+			bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+					if *request.To == bzzTokenAddress {
+						return txHashApprove, nil
+					}
+					if *request.To == stakingContractAddress {
+						if !bytes.Equal(expectedCallData[:80], request.Data[:80]) {
+							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
+						}
+						return txHashDeposited, nil
+					}
+					return common.Hash{}, errors.New("sent to wrong contract")
+				}),
+				transactionMock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
+					if txHash == txHashDeposited {
+						return &types.Receipt{
+							Status: 1,
+						}, nil
+					}
+					if txHash == txHashApprove {
+						return &types.Receipt{
+							Status: 1,
+						}, nil
+					}
+					return nil, errors.New("unknown tx hash")
+				}),
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if *request.To == bzzTokenAddress {
+						return balance.FillBytes(make([]byte, 32)), nil
+					}
+					if *request.To == stakingContractAddress {
+						return getPotentialStakeResponse(t, prevStake), nil
+					}
+					return nil, errors.New("unexpected call")
+				}),
+			),
+			nonce,
+			false,
+			1,
+		)
+
+		_, err = contract.DepositStake(ctx, stakedAmount)
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("insufficient stake amount extra height", func(t *testing.T) {
+		t.Parallel()
+
+		totalAmount := big.NewInt(0).Mul(staking.MinimumStakeAmount, big.NewInt(10))
 		prevStake := big.NewInt(0)
 
 		contract := staking.New(
@@ -307,10 +377,11 @@ func TestDepositStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			1,
 		)
 
-		_, err := contract.DepositStake(ctx, big.NewInt(100000000000000000))
-		if !errors.Is(err, staking.ErrInsufficientFunds) {
+		_, err := contract.DepositStake(ctx, stakedAmount)
+		if !errors.Is(err, staking.ErrInsufficientStakeAmount) {
 			t.Fatal(fmt.Errorf("wanted %w, got %w", staking.ErrInsufficientStakeAmount, err))
 		}
 	})
@@ -345,6 +416,7 @@ func TestDepositStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err := contract.DepositStake(ctx, stakedAmount)
@@ -394,6 +466,7 @@ func TestDepositStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.DepositStake(ctx, stakedAmount)
@@ -456,6 +529,7 @@ func TestDepositStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.DepositStake(ctx, stakedAmount)
@@ -516,6 +590,7 @@ func TestDepositStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.DepositStake(ctx, stakedAmount)
@@ -542,9 +617,269 @@ func TestDepositStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err := contract.DepositStake(ctx, stakedAmount)
+		if err == nil {
+			t.Fatalf("expected error")
+		}
+	})
+}
+
+func TestChangeHeight(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	owner := common.HexToAddress("abcd")
+	stakingContractAddress := common.HexToAddress("ffff")
+	bzzTokenAddress := common.HexToAddress("eeee")
+	nonce := common.BytesToHash(make([]byte, 32))
+	txHashDeposited := common.HexToHash("c3a7")
+	stakedAmount := big.NewInt(0)
+	txHashApprove := common.HexToHash("abb0")
+
+	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
+		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, stakedAmount, stakingHeight)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		contract := staking.New(
+			owner,
+			stakingContractAddress,
+			stakingContractABI,
+			bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+					if *request.To == stakingContractAddress {
+						if !bytes.Equal(expectedCallData[:80], request.Data[:80]) {
+							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
+						}
+						return txHashDeposited, nil
+					}
+					return common.Hash{}, errors.New("sent to wrong contract")
+				}),
+				transactionMock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
+					if txHash == txHashDeposited {
+						return &types.Receipt{
+							Status: 1,
+						}, nil
+					}
+					if txHash == txHashApprove {
+						return &types.Receipt{
+							Status: 1,
+						}, nil
+					}
+					return nil, errors.New("unknown tx hash")
+				}),
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if *request.To == stakingContractAddress {
+						ret := make([]byte, 32)
+						ret[1] = stakingHeight
+						return ret, nil
+					}
+					return nil, errors.New("unexpected call")
+				}),
+			),
+			nonce,
+			false,
+			stakingHeight,
+		)
+
+		_, updated, err := contract.UpdateHeight(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if updated {
+			t.Fatal("expected height not to change")
+		}
+	})
+
+	t.Run("ok - height increased", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			oldHeight uint8 = 0
+			newHeight uint8 = 1
+		)
+
+		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, stakedAmount, newHeight)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		contract := staking.New(
+			owner,
+			stakingContractAddress,
+			stakingContractABI,
+			bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+					if *request.To == stakingContractAddress {
+						if !bytes.Equal(expectedCallData[:80], request.Data[:80]) {
+							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
+						}
+						return txHashDeposited, nil
+					}
+					return common.Hash{}, errors.New("sent to wrong contract")
+				}),
+				transactionMock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
+					if txHash == txHashDeposited {
+						return &types.Receipt{
+							Status: 1,
+						}, nil
+					}
+					if txHash == txHashApprove {
+						return &types.Receipt{
+							Status: 1,
+						}, nil
+					}
+					return nil, errors.New("unknown tx hash")
+				}),
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if *request.To == stakingContractAddress {
+						ret := make([]byte, 32)
+						ret[31] = oldHeight
+						return ret, nil
+					}
+					return nil, errors.New("unexpected call")
+				}),
+			),
+			nonce,
+			false,
+			newHeight,
+		)
+
+		_, updated, err := contract.UpdateHeight(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !updated {
+			t.Fatal("expected height to change")
+		}
+	})
+
+	t.Run("ok - height decreased", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			oldHeight uint8 = 1
+			newHeight uint8 = 0
+		)
+
+		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, stakedAmount, newHeight)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		contract := staking.New(
+			owner,
+			stakingContractAddress,
+			stakingContractABI,
+			bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+					if *request.To == stakingContractAddress {
+						if !bytes.Equal(expectedCallData[:80], request.Data[:80]) {
+							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
+						}
+						return txHashDeposited, nil
+					}
+					return common.Hash{}, errors.New("sent to wrong contract")
+				}),
+				transactionMock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
+					if txHash == txHashDeposited {
+						return &types.Receipt{
+							Status: 1,
+						}, nil
+					}
+					if txHash == txHashApprove {
+						return &types.Receipt{
+							Status: 1,
+						}, nil
+					}
+					return nil, errors.New("unknown tx hash")
+				}),
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if *request.To == stakingContractAddress {
+						ret := make([]byte, 32)
+						ret[31] = oldHeight
+						return ret, nil
+					}
+					return nil, errors.New("unexpected call")
+				}),
+			),
+			nonce,
+			false,
+			newHeight,
+		)
+
+		_, updated, err := contract.UpdateHeight(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !updated {
+			t.Fatal("expected height to change")
+		}
+	})
+
+	t.Run("send tx failed", func(t *testing.T) {
+		t.Parallel()
+
+		prevStake := big.NewInt(0)
+
+		contract := staking.New(
+			owner,
+			stakingContractAddress,
+			stakingContractABI,
+			bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+					return common.Hash{}, errors.New("sent to wrong contract")
+				}),
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if *request.To == stakingContractAddress {
+						return prevStake.FillBytes(make([]byte, 32)), nil
+					}
+					return nil, errors.New("unexpected call")
+				}),
+			),
+			nonce,
+			false,
+			stakingHeight,
+		)
+
+		_, err := contract.DepositStake(ctx, stakedAmount)
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("transaction error in call", func(t *testing.T) {
+		t.Parallel()
+
+		contract := staking.New(
+			owner,
+			stakingContractAddress,
+			stakingContractABI,
+			bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if *request.To == stakingContractAddress {
+						return nil, errors.New("some error")
+					}
+					return nil, errors.New("unexpected call")
+				}),
+			),
+			nonce,
+			false,
+			stakingHeight,
+		)
+
+		_, _, err := contract.UpdateHeight(ctx)
 		if err == nil {
 			t.Fatalf("expected error")
 		}
@@ -566,7 +901,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		t.Parallel()
 
-		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, stakedAmount)
+		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, stakedAmount, stakingHeight)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -597,6 +932,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.ChangeStakeOverlay(ctx, nonce)
@@ -623,6 +959,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err := contract.ChangeStakeOverlay(ctx, nonce)
@@ -634,7 +971,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 	t.Run("invalid call data", func(t *testing.T) {
 		t.Parallel()
 
-		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, stakedAmount)
+		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, stakedAmount, stakingHeight)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -657,6 +994,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		newNonce := make([]byte, 32)
@@ -671,7 +1009,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 	t.Run("transaction reverted", func(t *testing.T) {
 		t.Parallel()
 
-		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, stakedAmount)
+		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, stakedAmount, stakingHeight)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -702,6 +1040,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.ChangeStakeOverlay(ctx, nonce)
@@ -713,7 +1052,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 	t.Run("transaction error", func(t *testing.T) {
 		t.Parallel()
 
-		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, stakedAmount)
+		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, stakedAmount, stakingHeight)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -742,6 +1081,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.ChangeStakeOverlay(ctx, nonce)
@@ -788,6 +1128,7 @@ func TestGetCommittedStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		stakedAmount, err := contract.GetPotentialStake(ctx)
@@ -825,6 +1166,7 @@ func TestGetCommittedStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.GetPotentialStake(ctx)
@@ -862,6 +1204,7 @@ func TestGetCommittedStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.GetPotentialStake(ctx)
@@ -885,6 +1228,7 @@ func TestGetCommittedStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err := contract.GetPotentialStake(ctx)
@@ -931,6 +1275,7 @@ func TestGetWithdrawableStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		withdrawableStake, err := contract.GetWithdrawableStake(ctx)
@@ -968,6 +1313,7 @@ func TestGetWithdrawableStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.GetPotentialStake(ctx)
@@ -991,6 +1337,7 @@ func TestGetWithdrawableStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err := contract.GetPotentialStake(ctx)
@@ -1057,6 +1404,7 @@ func TestWithdrawStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.WithdrawStake(ctx)
@@ -1092,6 +1440,7 @@ func TestWithdrawStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.WithdrawStake(ctx)
@@ -1149,6 +1498,7 @@ func TestWithdrawStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.WithdrawStake(ctx)
@@ -1204,6 +1554,7 @@ func TestWithdrawStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.WithdrawStake(ctx)
@@ -1237,6 +1588,7 @@ func TestWithdrawStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.WithdrawStake(ctx)
@@ -1312,6 +1664,7 @@ func TestMigrateStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.MigrateStake(ctx)
@@ -1346,6 +1699,7 @@ func TestMigrateStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.MigrateStake(ctx)
@@ -1426,6 +1780,7 @@ func TestMigrateStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.MigrateStake(ctx)
@@ -1490,6 +1845,7 @@ func TestMigrateStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.MigrateStake(ctx)
@@ -1524,6 +1880,7 @@ func TestMigrateStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.WithdrawStake(ctx)
@@ -1566,6 +1923,7 @@ func TestMigrateStake(t *testing.T) {
 			),
 			nonce,
 			false,
+			stakingHeight,
 		)
 
 		_, err = contract.MigrateStake(ctx)

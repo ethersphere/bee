@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 7.1.1
+  version: 7.2.0
   title: Bee API
   description: "A list of the currently provided Interfaces to interact with the swarm, implementing file operations and sending messages"
 
@@ -842,6 +842,28 @@ paths:
         default:
           description: Default response
 
+  "/gsoc/subscribe/{address}":
+    get:
+      summary: Subscribe to GSOC payloads
+      tags:
+        - GSOC
+        - Subscribe
+        - Websocket
+      parameters:
+        - in: path
+          name: reference
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
+          required: true
+          description: "Single Owner Chunk address (which may have multiple payloads)"
+      responses:
+        "200":
+          description: Returns a WebSocket with a subscription for incoming message data on the requested SOC address.
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
   "/soc/{owner}/{id}":
     post:
       summary: Upload single owner chunk
@@ -871,8 +893,6 @@ paths:
           schema:
             $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
           required: true
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
-          required: false
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageStamp"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmAct"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
@@ -1029,7 +1049,7 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/FeedType"
           required: false
           description: "Feed indexing scheme (default: sequence)"
-        - $ref: "SwarmCommon.yaml#/components/headers/SwarmOnlyRootChunkParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmOnlyRootChunkParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyFallbackModeParameter"
@@ -2467,6 +2487,23 @@ paths:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/StatusResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        default:
+          description: Default response.
+
+  "/status/neighborhoods":
+    get:
+      summary: Get the current neighborhoods status of this node.
+      tags:
+        - Node Status
+      responses:
+        "200":
+          description: Returns the neighborhoods status of this node
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/StatusNeighborhoodsResponse"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         default:

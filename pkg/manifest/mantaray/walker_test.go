@@ -50,8 +50,6 @@ func TestWalkNode(t *testing.T) {
 		},
 	} {
 		ctx := context.Background()
-		tc := tc
-
 		createTree := func(t *testing.T, toAdd [][]byte) *mantaray.Node {
 			t.Helper()
 
@@ -87,7 +85,6 @@ func TestWalkNode(t *testing.T) {
 			walkedCount := 0
 
 			walker := func(path []byte, node *mantaray.Node, err error) error {
-
 				if !pathExistsInRightSequence(path, tc.expected, walkedCount) {
 					return fmt.Errorf("walkFn returned unexpected path: %s", path)
 				}
@@ -123,7 +120,6 @@ func TestWalkNode(t *testing.T) {
 			walkedCount := 0
 
 			walker := func(path []byte, node *mantaray.Node, err error) error {
-
 				if !pathExistsInRightSequence(path, tc.expected, walkedCount) {
 					return fmt.Errorf("walkFn returned unexpected path: %s", path)
 				}

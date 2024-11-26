@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/pusher"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
-	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"go.uber.org/atomic"
 )
@@ -220,8 +220,18 @@ func (m *mockStorer) ChunkStore() storage.ReadOnlyChunkStore {
 
 func (m *mockStorer) StorageRadius() uint8 { return 0 }
 
+func (m *mockStorer) CommittedDepth() uint8 { return 0 }
+
 func (m *mockStorer) IsWithinStorageRadius(_ swarm.Address) bool { return true }
 
 func (m *mockStorer) DebugInfo(_ context.Context) (storer.Info, error) {
 	return m.debugInfo, nil
+}
+
+func (m *mockStorer) NeighborhoodsStat(ctx context.Context) ([]*storer.NeighborhoodStat, error) {
+	return nil, nil
+}
+
+func (m *mockStorer) Put(ctx context.Context, ch swarm.Chunk) error {
+	return m.chunkStore.Put(ctx, ch)
 }

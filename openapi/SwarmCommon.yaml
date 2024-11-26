@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 4.1.0
+  version: 4.2.0
   title: Common Data Types
   description: |
     \*****bzzz*****
@@ -241,6 +241,11 @@ components:
       description: Go time.Duration format
       type: string
       example: "5.0018ms"
+
+    Seconds:
+      description: Go time.Duration format in seconds
+      type: number
+      example: 30.5
 
     EthereumAddress:
       type: string
@@ -938,6 +943,8 @@ components:
           type: boolean
         lastSyncedBlock:
           type: integer
+        committedDepth:
+          type: integer
 
     StatusResponse:
       type: object
@@ -947,6 +954,30 @@ components:
           nullable: false
           items:
             $ref: "#/components/schemas/StatusSnapshotResponse"
+
+    StatusNeighborhoodResponse:
+      type: object
+      properties:
+        neighborhood:
+          $ref: "#/components/schemas/Neighborhood"
+        reserveSizeWithinRadius:
+          type: integer
+        proximity:
+          type: integer
+
+    Neighborhood:
+      type: string
+      description: Swarm address of a neighborhood in string binary format, usually limited to as many bits as the current storage radius.
+      example: "011010111"
+
+    StatusNeighborhoodsResponse:
+      type: object
+      properties:
+        stamps:
+          type: array
+          nullable: false
+          items:
+            $ref: "#/components/schemas/StatusNeighborhoodResponse"
 
     ApiChunkInclusionProof:
       type: object
@@ -1006,8 +1037,8 @@ components:
     ApiRCHashResponse:
       type: object
       properties:
-        duration:
-          type: integer
+        durationSeconds:
+          $ref: "#/components/schemas/Seconds"
         hash:
           $ref: "#/components/schemas/SwarmAddress"
         proofs:

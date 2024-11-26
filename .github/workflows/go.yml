@@ -67,10 +67,10 @@ jobs:
       if: github.ref != 'refs/heads/master'
       uses: wagoid/commitlint-github-action@v5
     - name: GolangCI-Lint
-      uses: golangci/golangci-lint-action@v4
+      uses: golangci/golangci-lint-action@v6
       with:
         skip-cache: false
-        version: v1.54.1
+        version: v1.61.0
     - name: Whitespace check
       run: make check-whitespace
     - name: go mod tidy check

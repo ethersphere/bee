@@ -230,7 +230,7 @@ func TestJoinerMalformed(t *testing.T) {
 func TestEncryptDecrypt(t *testing.T) {
 	t.Parallel()
 
-	var tests = []struct {
+	tests := []struct {
 		chunkLength int
 	}{
 		{10},
@@ -243,7 +243,6 @@ func TestEncryptDecrypt(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("Encrypt %d bytes", tt.chunkLength), func(t *testing.T) {
 			t.Parallel()
 
@@ -333,7 +332,6 @@ func TestSeek(t *testing.T) {
 			size: 2*swarm.ChunkSize*swarm.ChunkSize + 1000,
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -611,7 +609,6 @@ func TestPrefetch(t *testing.T) {
 			expRead:    100000,
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -1074,7 +1071,6 @@ func TestJoinerRedundancy(t *testing.T) {
 			true,
 		},
 	} {
-		tc := tc
 		t.Run(fmt.Sprintf("redundancy=%d encryption=%t", tc.rLevel, tc.encryptChunk), func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -1339,12 +1335,10 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 	r2level := []int{2, 1, 2, 3, 2}
 	encryptChunk := []bool{false, false, true, true, true}
 	for _, rLevel := range []redundancy.Level{0, 1, 2, 3, 4} {
-		rLevel := rLevel
 		// speeding up tests by skipping some of them
 		t.Run(fmt.Sprintf("rLevel=%v", rLevel), func(t *testing.T) {
 			t.Parallel()
 			for _, encrypt := range []bool{false, true} {
-				encrypt := encrypt
 				shardCnt := rLevel.GetMaxShards()
 				if encrypt {
 					shardCnt = rLevel.GetMaxEncShards()
@@ -1411,12 +1405,11 @@ func (c *chunkStore) Put(_ context.Context, ch swarm.Chunk) error {
 	return nil
 }
 
-func (c *chunkStore) Replace(_ context.Context, ch swarm.Chunk) error {
+func (c *chunkStore) Replace(_ context.Context, ch swarm.Chunk, emplace bool) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.chunks[ch.Address().ByteString()] = swarm.NewChunk(ch.Address(), ch.Data()).WithStamp(ch.Stamp())
 	return nil
-
 }
 
 func (c *chunkStore) Has(_ context.Context, addr swarm.Address) (bool, error) {

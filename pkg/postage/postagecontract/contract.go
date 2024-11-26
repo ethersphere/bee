@@ -170,7 +170,7 @@ func (c *postageContract) sendApproveTransaction(ctx context.Context, amount *bi
 		To:          &c.bzzTokenAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    65000,
+		GasLimit:    max(sctx.GetGasLimit(ctx), c.gasLimit),
 		Value:       big.NewInt(0),
 		Description: approveDescription,
 	}

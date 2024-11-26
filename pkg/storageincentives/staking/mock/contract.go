@@ -28,6 +28,10 @@ func (s *stakingContractMock) ChangeStakeOverlay(_ context.Context, h common.Has
 	return h, nil
 }
 
+func (s *stakingContractMock) UpdateHeight(_ context.Context) (common.Hash, bool, error) {
+	return common.Hash{}, false, nil
+}
+
 func (s *stakingContractMock) GetPotentialStake(ctx context.Context) (*big.Int, error) {
 	return s.getStake(ctx)
 }

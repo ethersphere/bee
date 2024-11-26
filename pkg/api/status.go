@@ -30,10 +30,21 @@ type statusSnapshotResponse struct {
 	BatchCommitment         uint64  `json:"batchCommitment"`
 	IsReachable             bool    `json:"isReachable"`
 	LastSyncedBlock         uint64  `json:"lastSyncedBlock"`
+	CommittedDepth          uint8   `json:"committedDepth"`
 }
 
 type statusResponse struct {
 	Snapshots []statusSnapshotResponse `json:"snapshots"`
+}
+
+type statusNeighborhoodResponse struct {
+	Neighborhood            string `json:"neighborhood"`
+	ReserveSizeWithinRadius int    `json:"reserveSizeWithinRadius"`
+	Proximity               uint8  `json:"proximity"`
+}
+
+type neighborhoodsResponse struct {
+	Neighborhoods []statusNeighborhoodResponse `json:"neighborhoods"`
 }
 
 // statusAccessHandler is a middleware that limits the number of simultaneous
@@ -84,6 +95,7 @@ func (s *Service) statusGetHandler(w http.ResponseWriter, _ *http.Request) {
 		BatchCommitment:         ss.BatchCommitment,
 		IsReachable:             ss.IsReachable,
 		LastSyncedBlock:         ss.LastSyncedBlock,
+		CommittedDepth:          uint8(ss.CommittedDepth),
 	})
 }
 
@@ -131,6 +143,7 @@ func (s *Service) statusGetPeersHandler(w http.ResponseWriter, r *http.Request) 
 				snapshot.BatchCommitment = ss.BatchCommitment
 				snapshot.IsReachable = ss.IsReachable
 				snapshot.LastSyncedBlock = ss.LastSyncedBlock
+				snapshot.CommittedDepth = uint8(ss.CommittedDepth)
 			}
 
 			mu.Lock()
@@ -158,4 +171,35 @@ func (s *Service) statusGetPeersHandler(w http.ResponseWriter, r *http.Request) 
 		return snapshots[i].Proximity < snapshots[j].Proximity
 	})
 	jsonhttp.OK(w, statusResponse{Snapshots: snapshots})
+}
+
+// statusGetHandler returns the current node status.
+func (s *Service) statusGetNeighborhoods(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("get_status_neighborhoods").Build()
+
+	if s.beeMode == DevMode {
+		logger.Warning("status neighborhoods endpoint is disabled in dev mode")
+		jsonhttp.BadRequest(w, errUnsupportedDevNodeOperation)
+		return
+	}
+
+	neighborhoods := make([]statusNeighborhoodResponse, 0)
+
+	nhoods, err := s.storer.NeighborhoodsStat(r.Context())
+	if err != nil {
+		logger.Debug("unable to get neighborhoods status", "error", err)
+		logger.Error(nil, "unable to get neighborhoods status")
+		jsonhttp.InternalServerError(w, "unable to get neighborhoods status")
+		return
+	}
+
+	for _, n := range nhoods {
+		neighborhoods = append(neighborhoods, statusNeighborhoodResponse{
+			Neighborhood:            n.Neighborhood.String(),
+			ReserveSizeWithinRadius: n.ReserveSizeWithinRadius,
+			Proximity:               n.Proximity,
+		})
+	}
+
+	jsonhttp.OK(w, neighborhoodsResponse{Neighborhoods: neighborhoods})
 }
