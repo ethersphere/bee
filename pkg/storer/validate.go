@@ -472,7 +472,7 @@ func (p *PinIntegrity) Repair(ctx context.Context, logger log.Logger, pin string
 		if v.Invalid {
 			logger.Info("repairing invalid chunk (replace)", "address", v.Address)
 			err = s.Run(ctx, func(st transaction.Store) error {
-				err = st.ChunkStore().Replace(ctx, ch)
+				err = st.ChunkStore().Replace(ctx, ch, false)
 				if err != nil {
 					return fmt.Errorf("replacing invalid chunk: %w", err)
 				}
