@@ -6,6 +6,7 @@ package api
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -192,7 +194,7 @@ func (s *Service) bytesHeadHandler(w http.ResponseWriter, r *http.Request) {
 		Address swarm.Address `map:"address,resolve" validate:"required"`
 	}{}
 	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
-		response("invalid path params", logger, w)
+		respondWithError(w, http.StatusBadRequest, "Invalid path parameters", "Ensure address is provided", logger)
 		return
 	}
 
@@ -202,14 +204,14 @@ func (s *Service) bytesHeadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	getter := s.storer.Download(true)
-
 	ch, err := getter.Get(r.Context(), address)
 	if err != nil {
 		logger.Debug("get root chunk failed", "chunk_address", address, "error", err)
-		logger.Error(nil, "get rook chunk failed")
-		w.WriteHeader(http.StatusNotFound)
+		logger.Error(nil, "get root chunk failed")
+		respondWithError(w, http.StatusNotFound, "Chunk not found", "The requested chunk could not be retrieved", logger)
 		return
 	}
+
 	w.Header().Add("Access-Control-Expose-Headers", "Accept-Ranges, Content-Encoding")
 	w.Header().Add(ContentTypeHeader, "application/octet-stream")
 	var span int64
@@ -217,9 +219,21 @@ func (s *Service) bytesHeadHandler(w http.ResponseWriter, r *http.Request) {
 	if cac.Valid(ch) {
 		span = int64(binary.LittleEndian.Uint64(ch.Data()[:swarm.SpanSize]))
 	} else {
-		// soc
 		span = int64(len(ch.Data()))
 	}
 	w.Header().Set(ContentLengthHeader, strconv.FormatInt(span, 10))
 	w.WriteHeader(http.StatusOK) // HEAD requests do not write a body
+}
+
+func respondWithError(w http.ResponseWriter, status int, title, detail string, logger log.Logger) {
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(status)
+	errorResponse := map[string]interface{}{
+		"type":   "about:blank", // Or a URI if you have one
+		"title":  title,
+		"status": status,
+		"detail": detail,
+	}
+	logger.Error(nil, title) // Optionally log the error
+	json.NewEncoder(w).Encode(errorResponse)
 }

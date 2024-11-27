@@ -270,7 +270,23 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       responses:
         "200":
-          description: Chunk exists
+          description: The chunk exists.
+          headers:
+            Content-Type:
+              description: The MIME type of the resource (e.g., application/octet-stream).
+              schema:
+                type: string
+                example: application/octet-stream
+            Content-Length:
+              description: The size of the chunk in bytes.
+              schema:
+                type: integer
+                example: 1024
+            Access-Control-Expose-Headers:
+              description: Headers exposed for CORS.
+              schema:
+                type: string
+                example: Accept-Ranges, Content-Encoding
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
