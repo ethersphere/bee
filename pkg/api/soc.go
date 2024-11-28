@@ -248,7 +248,7 @@ func (s *Service) socGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	socCh, err := soc.FromChunk(sch)
 	if err != nil {
-		logger.Error(err, "chunk is not a signle owner chunk")
+		logger.Error(err, "chunk is not a single owner chunk")
 		jsonhttp.InternalServerError(w, "chunk is not a single owner chunk")
 		return
 	}
