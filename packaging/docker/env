@@ -71,11 +71,59 @@
 # BEE_TRACING_ENDPOINT=127.0.0.1:6831
 ## service name identifier for tracing (default bee)
 # BEE_TRACING_SERVICE_NAME=bee
-## proof-of-identity transaction hash
-# BEE_TRANSACTION=
 ## log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace (default info)
 # BEE_VERBOSITY=info
 ## send a welcome message string during handshakes
 # BEE_WELCOME_MESSAGE=
 ## triggers connection to main network
 # BEE_MAINNET=
+## minimum radius storage threshold
+# BEE_MINIMUM_STORAGE_RADIUS=
+## reserve capacity doubling (default 0, maximum 1)
+# BEE_RESERVE-CAPACITY-DOUBLING=0
+## allow to advertise private CIDRs to the public network
+# BEE_ALLOW_PRIVATE_CIDRS=false
+## enable forwarded content caching
+# BEE_CACHE_RETRIEVAL=false
+## enable chequebook
+# BEE_CHEQUEBOOK_ENABLE=true
+## help for printconfig
+# BEE_HELP=false
+## suggester for target neighborhood
+# BEE_NEIGHBORHOOD_SUGGESTER=https://api.swarmscan.io/v1/network/neighborhoods/suggestion
+## postage stamp contract start block number
+# BEE_POSTAGE_STAMP_START_BLOCK="0"
+## enable pprof mutex profile
+# BEE_PPROF_MUTEX=false
+## enable pprof block profile
+# BEE_PPROF_PROFILE=false
+## price oracle contract address
+# BEE_PRICE_ORACLE_ADDRESS=
+## redistribution contract address
+# BEE_REDISTRIBUTION_ADDRESS=
+## forces the node to resync postage contract data
+# BEE_RESYNC=false
+## staking contract address
+# BEE_STAKING_ADDRESS=
+## lru memory caching capacity in number of statestore entries
+# BEE_STATESTORE_CACHE_CAPACITY="100000"
+## protect nodes from getting kicked out on bootnode
+# BEE_STATIC_NODES=
+## enable storage incentives feature
+# BEE_STORAGE_INCENTIVES_ENABLE=true
+## neighborhood to target in binary format (ex: 111111001) for mining the initial overlay
+# BEE_TARGET_NEIGHBORHOOD=
+## host to send tracing data
+# BEE_TRACING_HOST=
+## port to send tracing data
+# BEE_TRACING_PORT=
+## service name identifier for tracing
+# BEE_TRACING_SERVICE_NAME=
+## skips the gas estimate step for contract transactions
+# BEE_TRANSACTION_DEBUG_MODE=false
+## bootstrap node using postage snapshot from the network
+# BEE_USE_POSTAGE_SNAPSHOT=false
+## time to warmup the node before some major protocols can be kicked off
+# BEE_WARMUP_TIME=
+## withdrawal target addresses
+# BEE_WITHDRAWAL_ADDRESSES_WHITELIST=
