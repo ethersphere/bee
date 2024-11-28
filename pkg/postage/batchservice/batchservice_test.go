@@ -64,7 +64,9 @@ func (m *mockBatchListener) HandleDepthIncrease(_ []byte, _ uint8) {
 
 var _ postage.BatchEventListener = (*mockBatchListener)(nil)
 
-func TestBatchServiceCreate_FLAKY(t *testing.T) {
+func TestBatchServiceCreate(t *testing.T) {
+	t.Parallel()
+
 	testChainState := postagetesting.NewChainState()
 
 	validateNoBatch := func(t *testing.T, testBatch *postage.Batch, st *mock.BatchStore) {
@@ -240,6 +242,8 @@ func TestBatchServiceCreate_FLAKY(t *testing.T) {
 }
 
 func TestBatchServiceTopUp(t *testing.T) {
+	t.Parallel()
+
 	testBatch := postagetesting.MustNewBatch()
 	testNormalisedBalance := big.NewInt(2000000000000)
 	testTopUpAmount := big.NewInt(1000)
@@ -341,6 +345,8 @@ func TestBatchServiceTopUp(t *testing.T) {
 }
 
 func TestBatchServiceUpdateDepth(t *testing.T) {
+	t.Parallel()
+
 	const testNewDepth = 30
 	testNormalisedBalance := big.NewInt(2000000000000)
 	testBatch := postagetesting.MustNewBatch()
@@ -443,6 +449,8 @@ func TestBatchServiceUpdateDepth(t *testing.T) {
 }
 
 func TestBatchServiceUpdatePrice(t *testing.T) {
+	t.Parallel()
+
 	testChainState := postagetesting.NewChainState()
 	testChainState.CurrentPrice = big.NewInt(100000)
 	testNewPrice := big.NewInt(20000000)
@@ -477,6 +485,8 @@ func TestBatchServiceUpdatePrice(t *testing.T) {
 	})
 }
 func TestBatchServiceUpdateBlockNumber(t *testing.T) {
+	t.Parallel()
+
 	testChainState := &postage.ChainState{
 		Block:        1,
 		CurrentPrice: big.NewInt(100),
@@ -501,6 +511,8 @@ func TestBatchServiceUpdateBlockNumber(t *testing.T) {
 }
 
 func TestTransactionOk(t *testing.T) {
+	t.Parallel()
+
 	svc, store, s := newTestStoreAndService(t)
 	if err := svc.Start(context.Background(), 10, nil); err != nil {
 		t.Fatal(err)
@@ -528,6 +540,8 @@ func TestTransactionOk(t *testing.T) {
 }
 
 func TestTransactionError(t *testing.T) {
+	t.Parallel()
+
 	svc, store, s := newTestStoreAndService(t)
 	if err := svc.Start(context.Background(), 10, nil); err != nil {
 		t.Fatal(err)
@@ -551,6 +565,8 @@ func TestTransactionError(t *testing.T) {
 }
 
 func TestChecksum(t *testing.T) {
+	t.Parallel()
+
 	s := mocks.NewStateStore()
 	store := mock.New()
 	mockHash := &hs{}
@@ -572,6 +588,8 @@ func TestChecksum(t *testing.T) {
 }
 
 func TestChecksumResync(t *testing.T) {
+	t.Parallel()
+
 	s := mocks.NewStateStore()
 	store := mock.New()
 	mockHash := &hs{}

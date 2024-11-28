@@ -14,6 +14,8 @@ import (
 )
 
 func TestBatchStore(t *testing.T) {
+	t.Parallel()
+
 	const testCnt = 3
 
 	testBatch := postagetesting.MustNewBatch(
@@ -54,6 +56,8 @@ func TestBatchStore(t *testing.T) {
 }
 
 func TestBatchStorePutChainState(t *testing.T) {
+	t.Parallel()
+
 	const testCnt = 3
 
 	testChainState := postagetesting.NewChainState()
@@ -74,6 +78,8 @@ func TestBatchStorePutChainState(t *testing.T) {
 }
 
 func TestBatchStoreWithBatch(t *testing.T) {
+	t.Parallel()
+
 	testBatch := postagetesting.MustNewBatch()
 	batchStore := mock.New(
 		mock.WithBatch(testBatch),

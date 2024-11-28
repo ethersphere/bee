@@ -45,6 +45,8 @@ func toBatchBlock(block uint64) uint64 {
 }
 
 func TestListener(t *testing.T) {
+	t.Parallel()
+
 	const (
 		blockNumber = uint64(500)
 		timeout     = 5 * time.Second
@@ -417,6 +419,8 @@ func TestListener(t *testing.T) {
 }
 
 func TestListenerBatchState(t *testing.T) {
+	t.Parallel()
+
 	ev := newEventUpdaterMock()
 	mf := newMockFilterer()
 
