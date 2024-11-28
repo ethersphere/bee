@@ -225,7 +225,7 @@ func TestReserveSamplerSisterNeighborhood(t *testing.T) {
 
 			for _, s := range sample.Items {
 				if got := swarm.Proximity(s.ChunkAddress.Bytes(), baseAddr.Bytes()); got != depthOfResponsibility {
-					t.Fatalf("promixity must be exactly %d, got %d", depthOfResponsibility, got)
+					t.Fatalf("proximity must be exactly %d, got %d", depthOfResponsibility, got)
 				}
 			}
 
