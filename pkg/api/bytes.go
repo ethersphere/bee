@@ -192,7 +192,7 @@ func (s *Service) bytesHeadHandler(w http.ResponseWriter, r *http.Request) {
 		Address swarm.Address `map:"address,resolve" validate:"required"`
 	}{}
 	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
-		response("invalid path params", logger, w)
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
@@ -202,14 +202,14 @@ func (s *Service) bytesHeadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	getter := s.storer.Download(true)
-
 	ch, err := getter.Get(r.Context(), address)
 	if err != nil {
 		logger.Debug("get root chunk failed", "chunk_address", address, "error", err)
-		logger.Error(nil, "get rook chunk failed")
+		logger.Error(nil, "get root chunk failed")
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
+
 	w.Header().Add("Access-Control-Expose-Headers", "Accept-Ranges, Content-Encoding")
 	w.Header().Add(ContentTypeHeader, "application/octet-stream")
 	var span int64
@@ -217,7 +217,6 @@ func (s *Service) bytesHeadHandler(w http.ResponseWriter, r *http.Request) {
 	if cac.Valid(ch) {
 		span = int64(binary.LittleEndian.Uint64(ch.Data()[:swarm.SpanSize]))
 	} else {
-		// soc
 		span = int64(len(ch.Data()))
 	}
 	w.Header().Set(ContentLengthHeader, strconv.FormatInt(span, 10))
