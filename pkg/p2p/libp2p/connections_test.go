@@ -433,7 +433,8 @@ func TestDoubleConnectOnAllAddresses(t *testing.T) {
 		notifier: mockNotifier(noopCf, noopDf, true),
 		libp2pOpts: libp2p.Options{
 			FullNode: true,
-		}})
+		},
+	})
 	addrs, err := s1.Addresses()
 	if err != nil {
 		t.Fatal(err)
@@ -1019,7 +1020,6 @@ func TestWithDisconnectStreams(t *testing.T) {
 
 func TestWithBlocklistStreams(t *testing.T) {
 	t.Parallel()
-	t.Skip("this test always fails")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -1369,9 +1369,11 @@ type (
 	reachableFunc    func(swarm.Address, p2p.ReachabilityStatus)
 )
 
-var noopCf = func(context.Context, p2p.Peer, bool) error { return nil }
-var noopDf = func(p2p.Peer) {}
-var noopAnnounce = func(context.Context, swarm.Address, bool) error { return nil }
-var noopAnnounceTo = func(context.Context, swarm.Address, swarm.Address, bool) error { return nil }
-var noopReachability = func(p2p.ReachabilityStatus) {}
-var noopReachable = func(swarm.Address, p2p.ReachabilityStatus) {}
+var (
+	noopCf           = func(context.Context, p2p.Peer, bool) error { return nil }
+	noopDf           = func(p2p.Peer) {}
+	noopAnnounce     = func(context.Context, swarm.Address, bool) error { return nil }
+	noopAnnounceTo   = func(context.Context, swarm.Address, swarm.Address, bool) error { return nil }
+	noopReachability = func(p2p.ReachabilityStatus) {}
+	noopReachable    = func(swarm.Address, p2p.ReachabilityStatus) {}
+)
