@@ -14,6 +14,7 @@ import (
 )
 
 func TestPersistentStateStore(t *testing.T) {
+	t.Parallel()
 	test.Run(t, func(t *testing.T) storage.StateStorer {
 		t.Helper()
 

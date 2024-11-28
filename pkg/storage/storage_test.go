@@ -16,6 +16,7 @@ import (
 
 func TestIdentityAddress(t *testing.T) {
 	t.Run("single owner chunk", func(t *testing.T) {
+		t.Parallel()
 		// Create a single owner chunk (SOC)
 		owner := common.HexToAddress("8d3766440f0d7b949a5e32995d09619a7f86e632")
 		// signature of hash(id + chunk address of foo)
@@ -58,6 +59,7 @@ func TestIdentityAddress(t *testing.T) {
 	})
 
 	t.Run("content addressed chunk", func(t *testing.T) {
+		t.Parallel()
 		// Create a content addressed chunk (CAC)
 		data := []byte("data")
 		cacChunk, err := cac.New(data)
