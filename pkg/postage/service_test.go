@@ -26,6 +26,8 @@ import (
 // TestSaveLoad tests the idempotence of saving and loading the postage.Service
 // with all the active stamp issuers.
 func TestSaveLoad(t *testing.T) {
+	t.Parallel()
+
 	store := inmemstore.New()
 	defer store.Close()
 	pstore := pstoremock.New()
@@ -74,6 +76,8 @@ func TestSaveLoad(t *testing.T) {
 }
 
 func TestGetStampIssuer(t *testing.T) {
+	t.Parallel()
+
 	store := inmemstore.New()
 	defer store.Close()
 	chainID := int64(0)
@@ -208,6 +212,8 @@ func TestGetStampIssuer(t *testing.T) {
 }
 
 func TestSetExpired(t *testing.T) {
+	t.Parallel()
+
 	store := inmemstore.New()
 	testutil.CleanupCloser(t, store)
 
