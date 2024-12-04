@@ -7,7 +7,6 @@ package mantaray
 import (
 	"context"
 	"errors"
-
 	"golang.org/x/sync/errgroup"
 )
 
