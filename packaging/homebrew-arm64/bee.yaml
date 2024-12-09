@@ -66,8 +66,6 @@ password-file: "/opt/homebrew/var/lib/swarm-bee/password"
 # tracing-endpoint: "127.0.0.1:6831"
 ## service name identifier for tracing (default "bee")
 # tracing-service-name: "bee"
-## proof-of-identity transaction hash
-# transaction: ""
 ## log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace (default "info")
 # verbosity: "info"
 ## send a welcome message string during handshakes
@@ -78,3 +76,47 @@ password-file: "/opt/homebrew/var/lib/swarm-bee/password"
 # minimum-storage-radius: 0
 ## reserve capacity doubling (default 0, maximum 1)
 reserve-capacity-doubling: 0
+## allow to advertise private CIDRs to the public network
+# allow-private-cidrs: false
+## enable forwarded content caching
+# cache-retrieval: true
+## enable chequebook
+# chequebook-enable: true
+## help for printconfig
+# help: false
+## suggester for target neighborhood
+# neighborhood-suggester: https://api.swarmscan.io/v1/network/neighborhoods/suggestion
+## postage stamp contract start block number
+# postage-stamp-start-block: "0"
+## enable pprof mutex profile
+# pprof-mutex: false
+## enable pprof block profile
+# pprof-profile: false
+## price oracle contract address
+# price-oracle-address: ""
+## redistribution contract address
+# redistribution-address: ""
+## forces the node to resync postage contract data
+# resync: false
+## staking contract address
+# staking-address: ""
+## lru memory caching capacity in number of statestore entries
+# statestore-cache-capacity: "100000"
+## protect nodes from getting kicked out on bootnode
+# static-nodes: []
+## enable storage incentives feature
+# storage-incentives-enable: true
+## neighborhood to target in binary format (ex: 111111001) for mining the initial overlay
+# target-neighborhood: ""
+## host to send tracing data
+# tracing-host: ""
+## port to send tracing data
+# tracing-port: ""
+## skips the gas estimate step for contract transactions
+# transaction-debug-mode: false
+## bootstrap node using postage snapshot from the network
+# use-postage-snapshot: false
+## time to warmup the node before some major protocols can be kicked off
+# warmup-time: 30s
+## withdrawal target addresses
+# withdrawal-addresses-whitelist: []
