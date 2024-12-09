@@ -14,8 +14,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
-	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/gorilla/websocket"
 )
@@ -56,7 +56,7 @@ func (s *Service) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	// if tag not specified use direct upload
-	putter, err := s.newStamperPutter(r.Context(), putterOptions{
+	putter, err := s.newStamperPutter(context.Background(), putterOptions{
 		BatchID:  headers.BatchID,
 		TagID:    tag,
 		Deferred: tag != 0,
