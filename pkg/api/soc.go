@@ -5,13 +5,9 @@
 package api
 
 import (
-	"bytes"
-	"encoding/hex"
 	"errors"
 	"io"
 	"net/http"
-	"strconv"
-	"strings"
 
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/cac"
@@ -210,67 +206,4 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonhttp.Created(w, socPostResponse{Reference: reference})
-}
-
-func (s *Service) socGetHandler(w http.ResponseWriter, r *http.Request) {
-	logger := s.logger.WithName("get_soc").Build()
-
-	paths := struct {
-		Owner []byte `map:"owner" validate:"required"`
-		ID    []byte `map:"id" validate:"required"`
-	}{}
-	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
-		response("invalid path params", logger, w)
-		return
-	}
-
-	headers := struct {
-		OnlyRootChunk bool `map:"Swarm-Only-Root-Chunk"`
-	}{}
-	if response := s.mapStructure(r.Header, &headers); response != nil {
-		response("invalid header params", logger, w)
-		return
-	}
-
-	address, err := soc.CreateAddress(paths.ID, paths.Owner)
-	if err != nil {
-		logger.Error(err, "soc address cannot be created")
-		jsonhttp.BadRequest(w, "soc address cannot be created")
-		return
-	}
-
-	getter := s.storer.Download(true)
-	sch, err := getter.Get(r.Context(), address)
-	if err != nil {
-		logger.Error(err, "soc retrieval has been failed")
-		jsonhttp.NotFound(w, "requested chunk cannot be retrieved")
-		return
-	}
-	socCh, err := soc.FromChunk(sch)
-	if err != nil {
-		logger.Error(err, "chunk is not a single owner chunk")
-		jsonhttp.InternalServerError(w, "chunk is not a single owner chunk")
-		return
-	}
-
-	sig := socCh.Signature()
-	wc := socCh.WrappedChunk()
-
-	additionalHeaders := http.Header{
-		ContentTypeHeader:               {"application/octet-stream"},
-		SwarmSocSignatureHeader:         {hex.EncodeToString(sig)},
-		"Access-Control-Expose-Headers": {SwarmSocSignatureHeader},
-	}
-
-	if headers.OnlyRootChunk {
-		w.Header().Set(ContentLengthHeader, strconv.Itoa(len(wc.Data())))
-		// include additional headers
-		for name, values := range additionalHeaders {
-			w.Header().Set(name, strings.Join(values, ", "))
-		}
-		_, _ = io.Copy(w, bytes.NewReader(wc.Data()))
-		return
-	}
-
-	s.downloadHandler(logger, w, r, wc.Address(), additionalHeaders, true, false, wc)
 }

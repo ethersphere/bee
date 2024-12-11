@@ -5,13 +5,11 @@
 package api_test
 
 import (
-	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"math/big"
 	"net/http"
 	"testing"
@@ -19,7 +17,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/api"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
 	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
-	"github.com/ethersphere/bee/v2/pkg/file/splitter"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -27,10 +24,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	mockpost "github.com/ethersphere/bee/v2/pkg/postage/mock"
 	testingsoc "github.com/ethersphere/bee/v2/pkg/soc/testing"
-	testingc "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 )
 
 const ownerString = "8d3766440f0d7b949a5e32995d09619a7f86e632"
@@ -49,22 +44,13 @@ func TestFeed_Get(t *testing.T) {
 		}
 		mockStorer = mockstorer.New()
 	)
-	putter, err := mockStorer.Upload(context.Background(), false, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	mockWrappedCh := testingc.FixtureChunk("0033")
-	err = putter.Put(context.Background(), mockWrappedCh)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	t.Run("with at", func(t *testing.T) {
 		t.Parallel()
 
 		var (
 			timestamp       = int64(12121212)
-			ch              = toChunk(t, uint64(timestamp), mockWrappedCh.Address().Bytes())
+			ch              = toChunk(t, uint64(timestamp), expReference.Bytes())
 			look            = newMockLookup(12, 0, ch, nil, &id{}, &id{})
 			factory         = newMockFactory(look)
 			idBytes, _      = (&id{}).MarshalBinary()
@@ -75,7 +61,7 @@ func TestFeed_Get(t *testing.T) {
 		)
 
 		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", "12"), http.StatusOK,
-			jsonhttptest.WithExpectedResponse(mockWrappedCh.Data()[swarm.SpanSize:]),
+			jsonhttptest.WithExpectedJSONResponse(api.FeedReferenceResponse{Reference: expReference}),
 			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedIndexHeader, hex.EncodeToString(idBytes)),
 		)
 	})
@@ -85,7 +71,7 @@ func TestFeed_Get(t *testing.T) {
 
 		var (
 			timestamp  = int64(12121212)
-			ch         = toChunk(t, uint64(timestamp), mockWrappedCh.Address().Bytes())
+			ch         = toChunk(t, uint64(timestamp), expReference.Bytes())
 			look       = newMockLookup(-1, 2, ch, nil, &id{}, &id{})
 			factory    = newMockFactory(look)
 			idBytes, _ = (&id{}).MarshalBinary()
@@ -97,101 +83,9 @@ func TestFeed_Get(t *testing.T) {
 		)
 
 		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusOK,
-			jsonhttptest.WithExpectedResponse(mockWrappedCh.Data()[swarm.SpanSize:]),
-			jsonhttptest.WithExpectedContentLength(len(mockWrappedCh.Data()[swarm.SpanSize:])),
+			jsonhttptest.WithExpectedJSONResponse(api.FeedReferenceResponse{Reference: expReference}),
 			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedIndexHeader, hex.EncodeToString(idBytes)),
 		)
-	})
-
-	t.Run("chunk wrapping", func(t *testing.T) {
-		t.Parallel()
-
-		testData := []byte{0, 1, 2, 3, 4, 5, 6, 7, 8}
-
-		var (
-			ch         = testingsoc.GenerateMockSOC(t, testData).Chunk()
-			look       = newMockLookup(-1, 2, ch, nil, &id{}, &id{})
-			factory    = newMockFactory(look)
-			idBytes, _ = (&id{}).MarshalBinary()
-
-			client, _, _, _ = newTestServer(t, testServerOptions{
-				Storer: mockStorer,
-				Feeds:  factory,
-			})
-		)
-
-		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusOK,
-			jsonhttptest.WithExpectedResponse(testData),
-			jsonhttptest.WithExpectedContentLength(len(testData)),
-			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedIndexHeader, hex.EncodeToString(idBytes)),
-		)
-	})
-
-	t.Run("legacy payload with non existing wrapped chunk", func(t *testing.T) {
-		t.Parallel()
-
-		wrappedRef := make([]byte, swarm.HashSize)
-		_ = copy(wrappedRef, mockWrappedCh.Address().Bytes())
-		wrappedRef[0]++
-
-		var (
-			ch      = toChunk(t, uint64(12121212), wrappedRef)
-			look    = newMockLookup(-1, 2, ch, nil, &id{}, &id{})
-			factory = newMockFactory(look)
-
-			client, _, _, _ = newTestServer(t, testServerOptions{
-				Storer: mockStorer,
-				Feeds:  factory,
-			})
-		)
-
-		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusNotFound)
-	})
-
-	t.Run("bigger payload than one chunk", func(t *testing.T) {
-		t.Parallel()
-
-		testDataLen := 5000
-		testData := testutil.RandBytesWithSeed(t, testDataLen, 1)
-		s := splitter.NewSimpleSplitter(putter)
-		addr, err := s.Split(context.Background(), io.NopCloser(bytes.NewReader(testData)), int64(testDataLen), false)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		// get root ch addr then add wrap it with soc
-		testRootCh, err := mockStorer.ChunkStore().Get(context.Background(), addr)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var (
-			ch         = testingsoc.GenerateMockSOCWithSpan(t, testRootCh.Data()).Chunk()
-			look       = newMockLookup(-1, 2, ch, nil, &id{}, &id{})
-			factory    = newMockFactory(look)
-			idBytes, _ = (&id{}).MarshalBinary()
-
-			client, _, _, _ = newTestServer(t, testServerOptions{
-				Storer: mockStorer,
-				Feeds:  factory,
-			})
-		)
-
-		t.Run("retrieve chunk tree", func(t *testing.T) {
-			jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusOK,
-				jsonhttptest.WithExpectedResponse(testData),
-				jsonhttptest.WithExpectedContentLength(testDataLen),
-				jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedIndexHeader, hex.EncodeToString(idBytes)),
-			)
-		})
-
-		t.Run("retrieve only wrapped chunk", func(t *testing.T) {
-			jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusOK,
-				jsonhttptest.WithRequestHeader(api.SwarmOnlyRootChunk, "true"),
-				jsonhttptest.WithExpectedResponse(testRootCh.Data()),
-				jsonhttptest.WithExpectedContentLength(len(testRootCh.Data())),
-				jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedIndexHeader, hex.EncodeToString(idBytes)),
-			)
-		})
 	})
 }
 
