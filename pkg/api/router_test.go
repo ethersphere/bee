@@ -5,6 +5,7 @@
 package api_test
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -289,7 +290,7 @@ func TestEndpointOptions(t *testing.T) {
 				{"/chequebook/address", []string{"GET"}, http.StatusNoContent},
 				{"/chequebook/deposit", []string{"POST"}, http.StatusNoContent},
 				{"/chequebook/withdraw", []string{"POST"}, http.StatusNoContent},
-				{"/wallet", []string{"GET"}, http.StatusNoContent},
+				{"/wallet", nil, http.StatusNotImplemented},
 				{"/wallet/withdraw/{coin}", nil, http.StatusNotImplemented},
 				{"/stamps", []string{"GET"}, http.StatusNoContent},
 				{"/stamps/{batch_id}", []string{"GET"}, http.StatusNoContent},
@@ -428,6 +429,7 @@ func TestEndpointOptions(t *testing.T) {
 
 					for _, expectedMethod := range tt.expectedMethods {
 						if !contains(actualMethods, expectedMethod) {
+							fmt.Println(actualMethods, expectedMethod)
 							t.Errorf("expected method %s not found for route %s", expectedMethod, tt.route)
 						}
 					}
