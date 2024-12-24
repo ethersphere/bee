@@ -532,6 +532,7 @@ func (s *Service) mountBusinessDebug() {
 
 	handle("/wallet", web.ChainHandlers(
 		s.checkChequebookAvailability,
+		s.checkSwapAvailability,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.walletHandler),
 		}),
