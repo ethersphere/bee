@@ -5,7 +5,6 @@
 package api_test
 
 import (
-	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -429,7 +428,6 @@ func TestEndpointOptions(t *testing.T) {
 
 					for _, expectedMethod := range tt.expectedMethods {
 						if !contains(actualMethods, expectedMethod) {
-							fmt.Println(actualMethods, expectedMethod)
 							t.Errorf("expected method %s not found for route %s", expectedMethod, tt.route)
 						}
 					}
