@@ -289,7 +289,7 @@ func TestEndpointOptions(t *testing.T) {
 				{"/chequebook/address", []string{"GET"}, http.StatusNoContent},
 				{"/chequebook/deposit", []string{"POST"}, http.StatusNoContent},
 				{"/chequebook/withdraw", []string{"POST"}, http.StatusNoContent},
-				{"/wallet", []string{"GET"}, http.StatusNoContent},
+				{"/wallet", nil, http.StatusNotImplemented},
 				{"/wallet/withdraw/{coin}", nil, http.StatusNotImplemented},
 				{"/stamps", []string{"GET"}, http.StatusNoContent},
 				{"/stamps/{batch_id}", []string{"GET"}, http.StatusNoContent},
