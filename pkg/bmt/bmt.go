@@ -34,7 +34,6 @@ type Hasher struct {
 	bmt    *tree       // prebuilt BMT resource for flowcontrol and proofs
 	size   int         // bytes written to Hasher since last Reset()
 	pos    int         // index of rightmost currently open segment
-	offset int         // offset (cursor position) within currently open segment
 	result chan []byte // result channel
 	errc   chan error  // error channel
 	span   []byte      // The span of the data subsumed under the chunk
@@ -49,7 +48,7 @@ func NewHasher(hasherFact func() hash.Hash) *Hasher {
 		result: make(chan []byte),
 		errc:   make(chan error, 1),
 		span:   make([]byte, SpanSize),
-		bmt:    newTree(conf.segmentSize, conf.maxSize, conf.depth, conf.hasher),
+		bmt:    newTree(conf.maxSize, conf.depth, conf.hasher),
 	}
 }
 
@@ -126,7 +125,6 @@ func (h *Hasher) Write(b []byte) (int, error) {
 	copy(h.bmt.buffer[h.size:], b)
 	secsize := 2 * h.segmentSize
 	from := h.size / secsize
-	h.offset = h.size % secsize
 	h.size += l
 	to := h.size / secsize
 	if l == maxVal {
@@ -143,7 +141,6 @@ func (h *Hasher) Write(b []byte) (int, error) {
 func (h *Hasher) Reset() {
 	h.pos = 0
 	h.size = 0
-	h.offset = 0
 	copy(h.span, zerospan)
 }
 
