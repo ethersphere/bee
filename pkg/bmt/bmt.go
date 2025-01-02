@@ -179,7 +179,6 @@ func (h *Hasher) processSection(i int, final bool) {
 // since hashing the parent is synchronous the same hasher can be used.
 func (h *Hasher) writeNode(n *node, isLeft bool, s []byte) {
 	var err error
-	level := 1
 	for {
 		// at the root of the bmt just write the result to the result channel
 		if n == nil {
@@ -208,7 +207,6 @@ func (h *Hasher) writeNode(n *node, isLeft bool, s []byte) {
 		}
 		isLeft = n.isLeft
 		n = n.parent
-		level++
 	}
 }
 
