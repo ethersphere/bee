@@ -77,21 +77,23 @@ func TestFinderBasic(t *testing.T, finderf func(storage.Getter, *feeds.Feed) fee
 		if err != nil {
 			t.Fatal(err)
 		}
-		soc, err := feeds.Latest(ctx, finder, 0)
+		ch, err := feeds.Latest(ctx, finder, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if soc == nil {
+		if ch == nil {
 			t.Fatalf("expected to find update, got none")
 		}
 		exp := payload
-		cac, err := feeds.FromChunk(soc)
+		ts, payload, err := feeds.FromChunk(ch)
 		if err != nil {
 			t.Fatal(err)
 		}
-		payload = cac.Data()[swarm.SpanSize:]
 		if !bytes.Equal(payload, exp) {
 			t.Fatalf("result mismatch. want %8x... got %8x...", exp, payload)
+		}
+		if ts != uint64(at) {
+			t.Fatalf("timestamp mismatch: expected %v, got %v", at, ts)
 		}
 	})
 }
@@ -153,6 +155,18 @@ func TestFinderIntervals(t *testing.T, nextf func() (bool, int64), finderf func(
 			}
 			if ch == nil {
 				t.Fatalf("expected to find update, got none")
+			}
+			ts, payload, err := feeds.FromChunk(ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			content := binary.BigEndian.Uint64(payload)
+			if content != uint64(at) {
+				t.Fatalf("payload mismatch: expected %v, got %v", at, content)
+			}
+
+			if ts != uint64(at) {
+				t.Fatalf("timestamp mismatch: expected %v, got %v", at, ts)
 			}
 
 			if current != nil {

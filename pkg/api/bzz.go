@@ -23,7 +23,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
-	"github.com/ethersphere/bee/v2/pkg/file"
 	"github.com/ethersphere/bee/v2/pkg/file/joiner"
 	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
@@ -426,17 +425,14 @@ FETCH:
 				jsonhttp.NotFound(w, "no update found")
 				return
 			}
-			wc, err := feeds.GetWrappedChunk(ctx, s.storer.Download(cache), ch)
+			ref, _, err := parseFeedUpdate(ch)
 			if err != nil {
 				logger.Debug("bzz download: mapStructure feed update failed", "error", err)
 				logger.Error(nil, "bzz download: mapStructure feed update failed")
 				jsonhttp.InternalServerError(w, "mapStructure feed update")
 				return
 			}
-			address = wc.Address()
-			// modify ls and init with non-existing wrapped chunk
-			ls = loadsave.NewReadonlyWithRootCh(s.storer.Download(cache), wc)
-
+			address = ref
 			feedDereferenced = true
 			curBytes, err := cur.MarshalBinary()
 			if err != nil {
@@ -558,11 +554,11 @@ func (s *Service) serveManifestEntry(
 		additionalHeaders[ContentTypeHeader] = []string{mimeType}
 	}
 
-	s.downloadHandler(logger, w, r, manifestEntry.Reference(), additionalHeaders, etag, headersOnly, nil)
+	s.downloadHandler(logger, w, r, manifestEntry.Reference(), additionalHeaders, etag, headersOnly)
 }
 
 // downloadHandler contains common logic for downloading Swarm file from API
-func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *http.Request, reference swarm.Address, additionalHeaders http.Header, etag, headersOnly bool, rootCh swarm.Chunk) {
+func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *http.Request, reference swarm.Address, additionalHeaders http.Header, etag, headersOnly bool) {
 	headers := struct {
 		Strategy              *getter.Strategy  `map:"Swarm-Redundancy-Strategy"`
 		RLevel                *redundancy.Level `map:"Swarm-Redundancy-Level"`
@@ -592,15 +588,7 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		ctx = redundancy.SetLevelInContext(ctx, *headers.RLevel)
 	}
 
-	var (
-		reader file.Joiner
-		l      int64
-	)
-	if rootCh != nil {
-		reader, l, err = joiner.NewJoiner(ctx, s.storer.Download(cache), s.storer.Cache(), reference, rootCh)
-	} else {
-		reader, l, err = joiner.New(ctx, s.storer.Download(cache), s.storer.Cache(), reference)
-	}
+	reader, l, err := joiner.New(ctx, s.storer.Download(cache), s.storer.Cache(), reference)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) || errors.Is(err, topology.ErrNotFound) {
 			logger.Debug("api download: not found ", "address", reference, "error", err)
