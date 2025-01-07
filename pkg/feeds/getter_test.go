@@ -28,22 +28,40 @@ func TestGetWrappedChunk(t *testing.T) {
 		t.Fatal("data mismatch")
 	}
 
-	// old format (ts + ref)
-	timestamp := make([]byte, 8)
-	binary.BigEndian.PutUint64(timestamp, 1)
-	ch = soctesting.GenerateMockSOC(t, append(timestamp, wch.Address().Bytes()...)).Chunk()
-
-	err = storer.Put(context.Background(), wch)
-	if err != nil {
-		t.Fatal(err)
+	// old format
+	tt := []struct {
+		name string
+		addr []byte
+	}{
+		{
+			name: "unencrypted",
+			addr: wch.Address().Bytes(),
+		},
+		{
+			name: "encrypted",
+			addr: append(wch.Address().Bytes(), wch.Address().Bytes()...),
+		},
 	}
 
-	wch, err = GetWrappedChunk(context.Background(), storer.ChunkStore(), ch)
-	if err != nil {
-		t.Fatal(err)
-	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			timestamp := make([]byte, 8)
+			binary.BigEndian.PutUint64(timestamp, 1)
+			ch = soctesting.GenerateMockSOC(t, append(timestamp, tc.addr...)).Chunk()
 
-	if !bytes.Equal(wch.Data()[8:], []byte("data")) {
-		t.Fatal("data mismatch")
+			err = storer.Put(context.Background(), wch)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			wch, err = GetWrappedChunk(context.Background(), storer.ChunkStore(), ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if !bytes.Equal(wch.Data()[8:], []byte("data")) {
+				t.Fatal("data mismatch")
+			}
+		})
 	}
 }
