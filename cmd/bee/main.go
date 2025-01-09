@@ -14,7 +14,6 @@ import (
 func main() {
 	if err := cmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
-		fmt.Fprintln(os.Stderr, "Use -h flag for help") // log to trigger the CI
 		os.Exit(1)
 	}
 }
