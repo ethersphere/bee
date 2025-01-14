@@ -173,6 +173,9 @@ jobs:
       - name: Test act
         id: act
         run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks ci-act; do echo "waiting for act..."; sleep .3; done'
+      - name: Test feeds
+        id: feeds
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-feed
       - name: Collect debug artifacts
         if: failure()
         run: |

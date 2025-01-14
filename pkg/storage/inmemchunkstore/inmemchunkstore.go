@@ -32,7 +32,7 @@ func (c *ChunkStore) Get(_ context.Context, addr swarm.Address) (swarm.Chunk, er
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	chunk, ok := c.chunks[addr.ByteString()]
+	chunk, ok := c.chunks[c.key(addr)]
 	if !ok {
 		return nil, storage.ErrNotFound
 	}
@@ -43,12 +43,12 @@ func (c *ChunkStore) Put(_ context.Context, ch swarm.Chunk) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	chunkCount, ok := c.chunks[ch.Address().ByteString()]
+	chunkCount, ok := c.chunks[c.key(ch.Address())]
 	if !ok {
 		chunkCount.chunk = swarm.NewChunk(ch.Address(), ch.Data()).WithStamp(ch.Stamp())
 	}
 	chunkCount.count++
-	c.chunks[ch.Address().ByteString()] = chunkCount
+	c.chunks[c.key(ch.Address())] = chunkCount
 
 	return nil
 }
@@ -57,7 +57,7 @@ func (c *ChunkStore) Has(_ context.Context, addr swarm.Address) (bool, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	_, exists := c.chunks[addr.ByteString()]
+	_, exists := c.chunks[c.key(addr)]
 
 	return exists, nil
 }
@@ -66,12 +66,12 @@ func (c *ChunkStore) Delete(_ context.Context, addr swarm.Address) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	chunkCount := c.chunks[addr.ByteString()]
+	chunkCount := c.chunks[c.key(addr)]
 	chunkCount.count--
 	if chunkCount.count <= 0 {
 		delete(c.chunks, addr.ByteString())
 	} else {
-		c.chunks[addr.ByteString()] = chunkCount
+		c.chunks[c.key(addr)] = chunkCount
 	}
 
 	return nil
@@ -81,12 +81,12 @@ func (c *ChunkStore) Replace(_ context.Context, ch swarm.Chunk, emplace bool) er
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	chunkCount := c.chunks[ch.Address().ByteString()]
+	chunkCount := c.chunks[c.key(ch.Address())]
 	chunkCount.chunk = ch
 	if emplace {
 		chunkCount.count++
 	}
-	c.chunks[ch.Address().ByteString()] = chunkCount
+	c.chunks[c.key(ch.Address())] = chunkCount
 
 	return nil
 }
@@ -110,4 +110,11 @@ func (c *ChunkStore) Iterate(_ context.Context, fn storage.IterateChunkFn) error
 
 func (c *ChunkStore) Close() error {
 	return nil
+}
+
+func (c *ChunkStore) key(addr swarm.Address) string {
+	if len(addr.Bytes()) < swarm.HashSize {
+		return addr.ByteString()
+	}
+	return string(addr.Bytes()[:swarm.HashSize])
 }
