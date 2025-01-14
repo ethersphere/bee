@@ -123,7 +123,6 @@ func TestPersistRemove(t *testing.T) {
 	} {
 		ctx := context.Background()
 		var ls mantaray.LoadSaver = newMockLoadSaver()
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
