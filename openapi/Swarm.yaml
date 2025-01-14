@@ -2290,20 +2290,6 @@ paths:
         default:
           description: Default response
 
-  "/stake/migrate":
-    post:
-      summary: Withdraws all past staked amount back to the wallet.
-      description: Be aware, the endpoint call only be called when the contract is paused and is in the process of being migrated to a new contract.
-      tags:
-        - Staking
-      responses:
-        "200":
-          $ref: "SwarmCommon.yaml#/components/schemas/StakeTransactionResponse"
-        "500":
-          $ref: "SwarmCommon.yaml#/components/responses/500"
-        default:
-          description: Default response
-
   "/stake/withdrawable":
     get:
       summary: Get the withdrawable staked amount.
