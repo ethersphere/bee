@@ -116,8 +116,6 @@ func newNode(index int, parent *node, hasher hash.Hash) *node {
 }
 
 // newTree initialises a tree by building up the nodes of a BMT
-//
-// segmentSize is stipulated to be the size of the hash.
 func newTree(maxsize, depth int, hashfunc func() hash.Hash) *tree {
 	n := newNode(0, nil, hashfunc())
 	prevlevel := []*node{n}
