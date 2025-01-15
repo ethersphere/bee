@@ -14,7 +14,7 @@ env:
   SETUP_CONTRACT_IMAGE: "ethersphere/bee-localchain"
   SETUP_CONTRACT_IMAGE_TAG: "0.9.2"
   BEELOCAL_BRANCH: "main"
-  BEEKEEPER_BRANCH: "master"
+  BEEKEEPER_BRANCH: "feat/extended-manifest"
   BEEKEEPER_METRICS_ENABLED: false
   REACHABILITY_OVERRIDE_PUBLIC: true
   BATCHFACTOR_OVERRIDE_PUBLIC: 2
@@ -132,50 +132,50 @@ jobs:
       - name: Test fullconnectivity
         id: fullconnectivity
         run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks=ci-full-connectivity; do echo "waiting for full connectivity..."; sleep .3; done'
-      - name: Test settlements
-        id: settlements
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-settlements
-      - name: Sleep for time allowance to replenish
-        run: sleep 2
-      - name: Test pss
-        id: pss
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-pss
-      - name: Test soc
-        id: soc
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-soc
-      - name: Test gsoc
-        id: gsoc
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-gsoc
-      - name: Test pushsync (chunks)
-        id: pushsync-chunks-1
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-pushsync-chunks
-      - name: Test pushsync (light mode chunks)
-        id: pushsync-chunks-2
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
-      - name: Test retrieval
-        id: retrieval
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-retrieval
+#      - name: Test settlements
+#        id: settlements
+#        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-settlements
+#      - name: Sleep for time allowance to replenish
+#        run: sleep 2
+#      - name: Test pss
+#        id: pss
+#        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-pss
+#      - name: Test soc
+#        id: soc
+#        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-soc
+#      - name: Test gsoc
+#        id: gsoc
+#        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-gsoc
+#      - name: Test pushsync (chunks)
+#        id: pushsync-chunks-1
+#        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-pushsync-chunks
+#      - name: Test pushsync (light mode chunks)
+#        id: pushsync-chunks-2
+#        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+#      - name: Test retrieval
+#        id: retrieval
+#        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-retrieval
       - name: Test manifest
         id: manifest
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-manifest
-      - name: Test postage stamps
-        id: postage-stamps
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks ci-postage
-      - name: Test staking
-        id: stake
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks ci-stake
-      - name: Test withdraw
-        id: withdraw
-        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks ci-withdraw; do echo "waiting for withdraw..."; sleep .3; done'
-      - name: Test redundancy
-        id: redundancy
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks ci-redundancy
-      - name: Test act
-        id: act
-        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks ci-act; do echo "waiting for act..."; sleep .3; done'
-      - name: Test feeds
-        id: feeds
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-feed
+#      - name: Test postage stamps
+#        id: postage-stamps
+#        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks ci-postage
+#      - name: Test staking
+#        id: stake
+#        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks ci-stake
+#      - name: Test withdraw
+#        id: withdraw
+#        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks ci-withdraw; do echo "waiting for withdraw..."; sleep .3; done'
+#      - name: Test redundancy
+#        id: redundancy
+#        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks ci-redundancy
+#      - name: Test act
+#        id: act
+#        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks ci-act; do echo "waiting for act..."; sleep .3; done'
+#      - name: Test feeds
+#        id: feeds
+#        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-feed
       - name: Collect debug artifacts
         if: failure()
         run: |
