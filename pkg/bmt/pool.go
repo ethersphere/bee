@@ -65,7 +65,7 @@ func NewPool(c *Conf) *Pool {
 		c:    make(chan *tree, c.capacity),
 	}
 	for i := 0; i < c.capacity; i++ {
-		p.c <- newTree(p.segmentSize, p.maxSize, p.depth, p.hasher)
+		p.c <- newTree(p.maxSize, p.depth, p.hasher)
 	}
 	return p
 }
@@ -116,9 +116,7 @@ func newNode(index int, parent *node, hasher hash.Hash) *node {
 }
 
 // newTree initialises a tree by building up the nodes of a BMT
-//
-// segmentSize is stipulated to be the size of the hash.
-func newTree(segmentSize, maxsize, depth int, hashfunc func() hash.Hash) *tree {
+func newTree(maxsize, depth int, hashfunc func() hash.Hash) *tree {
 	n := newNode(0, nil, hashfunc())
 	prevlevel := []*node{n}
 	// iterate over levels and creates 2^(depth-level) nodes
