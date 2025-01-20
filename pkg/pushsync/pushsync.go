@@ -528,6 +528,7 @@ func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptRes
 		select {
 		case resultChan <- receiptResult{pushTime: now, peer: peer, err: err, receipt: receipt}:
 		case <-parentCtx.Done():
+			ps.logger.Debug("push result parent context canceled", "chunk_address", ch.Address(), "peer_address", peer)
 		}
 	}()
 
