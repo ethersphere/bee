@@ -334,6 +334,8 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 		if retry := s.shallowReceipt(op.identityAddress); retry {
 			return err
 		}
+		// out of attempts for retry, swallow error
+		err = nil
 	case err != nil:
 		loggerV1.Error(err, "pusher: failed PushChunkToClosest")
 	}
@@ -366,7 +368,7 @@ func (s *Service) Close() error {
 	// Wait for chunks worker to finish
 	select {
 	case <-s.chunksWorkerQuitC:
-	case <-time.After(6 * time.Second):
+	case <-time.After(10 * time.Second):
 	}
 	return nil
 }
