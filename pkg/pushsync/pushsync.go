@@ -388,8 +388,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	skip := skippeers.NewList()
 	defer skip.Close()
 
-	neighborsOnly := false
-
 	for sentErrorsLeft > 0 {
 		select {
 		case <-ctx.Done():
@@ -434,22 +432,14 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				if inflight == 0 {
 					return nil, err
 				}
+				// inflight request in progress, wait for it's result
 				ps.logger.Debug("next peer", "chunk_address", ch.Address(), "error", err)
-				continue
-			}
-
-			peerPO := swarm.Proximity(peer.Bytes(), ch.Address().Bytes())
-
-			// all future requests should land directly into the neighborhood
-			if neighborsOnly && peerPO < rad {
-				skip.Forever(idAddress, peer)
 				continue
 			}
 
 			// since we can reach into the neighborhood of the chunk
 			// act as the multiplexer and push the chunk in parallel to multiple peers
-			if peerPO >= rad {
-				neighborsOnly = true
+			if swarm.Proximity(peer.Bytes(), ch.Address().Bytes()) >= rad {
 				for ; parallelForwards > 0; parallelForwards-- {
 					retry()
 					sentErrorsLeft++
@@ -514,6 +504,8 @@ func (ps *PushSync) closestPeer(chunkAddress swarm.Address, origin bool, skipLis
 }
 
 func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptResult, peer swarm.Address, ch swarm.Chunk, action accounting.Action) {
+
+	// here we use a background timeout context because we do not want another push attempt to cancel this one
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTTL)
 	defer cancel()
 

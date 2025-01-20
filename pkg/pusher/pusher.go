@@ -330,6 +330,10 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 		if err != nil {
 			loggerV1.Error(err, "pusher: failed to store chunk")
 		}
+	case errors.Is(err, pushsync.ErrShallowReceipt):
+		if retry := s.shallowReceipt(op.identityAddress); retry {
+			return err
+		}
 	case err != nil:
 		loggerV1.Error(err, "pusher: failed PushChunkToClosest")
 	}
