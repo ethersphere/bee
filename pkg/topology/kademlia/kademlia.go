@@ -49,7 +49,7 @@ const (
 
 // Default option values
 const (
-	defaultBitSuffixLength             = 4 // the number of bits used to create pseudo addresses for balancing, 2^4, 16 addresses
+	defaultBitSuffixLength             = 2 // the number of bits used to create pseudo addresses for balancing, 2^2, 8 addresses
 	defaultLowWaterMark                = 3 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
 	defaultSaturationPeers             = 8
 	defaultOverSaturationPeers         = 18
@@ -121,6 +121,8 @@ type kadOptions struct {
 	BroadcastBinSize            int
 	LowWaterMark                int
 }
+
+var saturationCounts = [swarm.MaxBins]int{64, 32, 16, 12, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8}
 
 func newKadOptions(o Options) kadOptions {
 	ko := kadOptions{
@@ -874,7 +876,7 @@ func binSaturated(oversaturationAmount int, staticNode staticPeerFunc) binSatura
 			return false, false, nil
 		})
 
-		return size >= oversaturationAmount
+		return size >= saturationCounts[bin]
 	}
 }
 
@@ -889,7 +891,7 @@ func binPruneCount(oversaturationAmount int, staticNode staticPeerFunc) pruneCou
 			return false, false, nil
 		})
 
-		return size, size - oversaturationAmount
+		return size, size - saturationCounts[bin]
 	}
 }
 
