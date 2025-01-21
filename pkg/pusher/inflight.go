@@ -58,6 +58,7 @@ type attempts struct {
 func (a *attempts) try(idAddress swarm.Address) bool {
 	a.mtx.Lock()
 	defer a.mtx.Unlock()
+
 	key := idAddress.ByteString()
 	a.attempts[key]++
 	return a.attempts[key] < a.retryCount
