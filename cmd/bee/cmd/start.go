@@ -68,6 +68,7 @@ func (c *command) initStartCmd() (err error) {
 			}
 
 			fmt.Print(beeWelcomeMessage)
+			time.Sleep(5 * time.Second)
 			fmt.Printf("\n\nversion: %v - planned to be supported until %v, please follow https://ethswarm.org/\n\n", bee.Version, endSupportDate())
 			logger.Info("bee version", "version", bee.Version)
 
