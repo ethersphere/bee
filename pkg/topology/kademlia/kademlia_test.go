@@ -1898,6 +1898,7 @@ func mineBin(t *testing.T, base swarm.Address, bin, count int, isBalanced bool) 
 	}
 
 	if isBalanced {
+
 		prefixes := kademlia.GenerateCommonBinPrefixes(base, kademlia.DefaultBitSuffixLength)
 		for i := 0; i < int(math.Pow(2, float64(kademlia.DefaultBitSuffixLength))); i++ {
 			rndAddrs[i] = prefixes[bin][i]
