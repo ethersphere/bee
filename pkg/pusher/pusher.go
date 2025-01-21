@@ -277,7 +277,7 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 			return true, err
 		}
 	case errors.Is(err, pushsync.ErrShallowReceipt):
-		if retry := s.shallowReceipt(op.identityAddress); retry {
+		if s.shallowReceipt(op.identityAddress) {
 			return true, err
 		}
 		if err := s.storer.Report(ctx, op.Chunk, storage.ChunkSynced); err != nil {
@@ -331,7 +331,7 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 			loggerV1.Error(err, "pusher: failed to store chunk")
 		}
 	case errors.Is(err, pushsync.ErrShallowReceipt):
-		if retry := s.shallowReceipt(op.identityAddress); retry {
+		if s.shallowReceipt(op.identityAddress) {
 			return err
 		}
 		// out of attempts for retry, swallow error
