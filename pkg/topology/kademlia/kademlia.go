@@ -123,9 +123,9 @@ type kadOptions struct {
 }
 
 var (
-	saturationCounts = [swarm.MaxBins]int{64, 32, 16, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8}
-	prefixBits       = [swarm.MaxBins]int{6, 5, 4, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3}
-	// prefixBits       = [swarm.MaxBins]int{5, 4, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2}
+	oversaturationCounts = [swarm.MaxBins]int{64, 32, 16, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8}
+	suffixBits           = [swarm.MaxBins]int{5, 4, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2}
+	// prefixBits       = [swarm.MaxBins]int{6, 5, 4, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3}
 )
 
 func newKadOptions(o Options) kadOptions {
@@ -266,7 +266,7 @@ func New(
 		}
 	}
 
-	k.commonBinPrefixes = generateCommonBinPrefixes(k.base, prefixBits[:])
+	k.commonBinPrefixes = generateCommonBinPrefixes(k.base, suffixBits[:])
 
 	k.bgBroadcastCtx, k.bgBroadcastCancel = context.WithCancel(context.Background())
 
@@ -309,12 +309,12 @@ func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnI
 
 			// Connect to closest known peer which we haven't tried connecting to recently.
 
-			_, exists := nClosePeerInSlice(binConnectedPeers, pseudoAddr, noopSanctionedPeerFn, uint8(i+prefixBits[i]+1))
+			_, exists := nClosePeerInSlice(binConnectedPeers, pseudoAddr, noopSanctionedPeerFn, uint8(i+suffixBits[i]+1))
 			if exists {
 				continue
 			}
 
-			closestKnownPeer, exists := nClosePeerInSlice(binPeers, pseudoAddr, skipPeers, uint8(i+prefixBits[i]+1))
+			closestKnownPeer, exists := nClosePeerInSlice(binPeers, pseudoAddr, skipPeers, uint8(i+suffixBits[i]+1))
 			if !exists {
 				continue
 			}
@@ -730,7 +730,7 @@ func (k *Kad) balancedSlotPeers(pseudoAddr swarm.Address, peers []swarm.Address,
 	var ret []swarm.Address
 
 	for _, peer := range peers {
-		if int(swarm.ExtendedProximity(peer.Bytes(), pseudoAddr.Bytes())) >= po+prefixBits[po]+1 {
+		if int(swarm.ExtendedProximity(peer.Bytes(), pseudoAddr.Bytes())) >= po+suffixBits[po]+1 {
 			ret = append(ret, peer)
 		}
 	}
@@ -868,7 +868,7 @@ func binSaturated(staticNode staticPeerFunc) binSaturationFunc {
 			return false, false, nil
 		})
 
-		return size >= saturationCounts[bin]
+		return size >= oversaturationCounts[bin]
 	}
 }
 
@@ -883,7 +883,7 @@ func binPruneCount(staticNode staticPeerFunc) pruneCountFunc {
 			return false, false, nil
 		})
 
-		return size, size - saturationCounts[bin]
+		return size, size - oversaturationCounts[bin]
 	}
 }
 
