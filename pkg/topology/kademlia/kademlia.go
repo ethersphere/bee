@@ -123,8 +123,8 @@ type kadOptions struct {
 }
 
 var (
-	oversaturationCounts = [swarm.MaxBins]int{64, 32, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16}
-	suffixBits           = [swarm.MaxBins]int{5, 4, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3}
+	oversaturationCounts = [swarm.MaxBins]int{36, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18}
+	suffixBits           = [swarm.MaxBins]int{5, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4}
 )
 
 func newKadOptions(o Options) kadOptions {
@@ -290,30 +290,29 @@ func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnI
 
 	depth := k.neighborhoodDepth()
 
-	for i := range k.commonBinPrefixes {
+	for bin := range k.commonBinPrefixes {
 
-		binPeersLength := k.knownPeers.BinSize(uint8(i))
+		binPeersLength := k.knownPeers.BinSize(uint8(bin))
 
 		// balancer should skip on bins where neighborhood connector would connect to peers anyway
 		// and there are not enough peers in known addresses to properly balance the bin
-		if i >= int(depth) && binPeersLength < len(k.commonBinPrefixes[i]) {
+		if bin >= int(depth) && binPeersLength < len(k.commonBinPrefixes[bin]) {
 			continue
 		}
 
-		binPeers := k.knownPeers.BinPeers(uint8(i))
-		binConnectedPeers := k.connectedPeers.BinPeers(uint8(i))
+		binPeers := k.knownPeers.BinPeers(uint8(bin))
+		binConnectedPeers := k.connectedPeers.BinPeers(uint8(bin))
 
-		for j := range k.commonBinPrefixes[i] {
-			pseudoAddr := k.commonBinPrefixes[i][j]
+		for j := range k.commonBinPrefixes[bin] {
+			pseudoAddr := k.commonBinPrefixes[bin][j]
 
 			// Connect to closest known peer which we haven't tried connecting to recently.
-
-			_, exists := nClosePeerInSlice(binConnectedPeers, pseudoAddr, noopSanctionedPeerFn, uint8(i+suffixBits[i]+1))
+			_, exists := nClosePeerInSlice(binConnectedPeers, pseudoAddr, noopSanctionedPeerFn, uint8(bin+suffixBits[bin]+1))
 			if exists {
 				continue
 			}
 
-			closestKnownPeer, exists := nClosePeerInSlice(binPeers, pseudoAddr, skipPeers, uint8(i+suffixBits[i]+1))
+			closestKnownPeer, exists := nClosePeerInSlice(binPeers, pseudoAddr, skipPeers, uint8(bin+suffixBits[bin]+1))
 			if !exists {
 				continue
 			}

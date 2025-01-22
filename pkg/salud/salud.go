@@ -184,6 +184,11 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 
 	s.logger.Debug("computed", "avg_dur", avgDur, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius, "batch_commitment", commitment)
 
+	// sort peers by duration, highest first
+	sort.Slice(peers, func(i, j int) bool {
+		return peers[i].dur > peers[j].dur // descending
+	})
+
 	for _, peer := range peers {
 
 		var healthy bool
