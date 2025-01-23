@@ -1240,7 +1240,7 @@ components:
       name: swarm-deferred-upload
       schema:
         type: boolean
-        default: "false"
+        default: "true"
       required: false
       description: >
         Determines if the uploaded data should be sent to the network immediately or in a deferred fashion. By default the upload will be direct.
