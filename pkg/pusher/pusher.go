@@ -63,12 +63,8 @@ type Service struct {
 
 const (
 	traceDuration     = 30 * time.Second // duration for every root tracing span
-	ConcurrentPushes  = 100              // how many chunks to push simultaneously
+	ConcurrentPushes  = swarm.Branches   // how many chunks to push simultaneously
 	DefaultRetryCount = 6
-)
-
-var (
-	ErrInvalidAddress = errors.New("invalid address")
 )
 
 func New(
