@@ -51,7 +51,7 @@ type Service struct {
 	networkID         uint64
 	storer            Storer
 	pushSyncer        pushsync.PushSyncer
-	validStamp        postage.ValidStampFn
+	batchExist        postage.BatchExist
 	logger            log.Logger
 	metrics           metrics
 	quit              chan struct{}
@@ -75,7 +75,7 @@ func New(
 	networkID uint64,
 	storer Storer,
 	pushSyncer pushsync.PushSyncer,
-	validStamp postage.ValidStampFn,
+	batchExist postage.BatchExist,
 	logger log.Logger,
 	warmupTime time.Duration,
 	retryCount int,
@@ -84,7 +84,7 @@ func New(
 		networkID:         networkID,
 		storer:            storer,
 		pushSyncer:        pushSyncer,
-		validStamp:        validStamp,
+		batchExist:        batchExist,
 		logger:            logger.WithName(loggerName).Register(),
 		metrics:           newMetrics(),
 		quit:              make(chan struct{}),
@@ -251,14 +251,14 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 
 	defer s.inflight.delete(op.identityAddress, op.Chunk.Stamp().BatchID())
 
-	if _, err := s.validStamp(op.Chunk); err != nil {
-		loggerV1.Warning(
-			"stamp with is no longer valid, skipping syncing for chunk",
+	ok, err := s.batchExist.Exists(op.Chunk.Stamp().BatchID())
+	if !ok || err != nil {
+		logger.Warning(
+			"stamp is no longer valid, skipping syncing for chunk",
 			"batch_id", hex.EncodeToString(op.Chunk.Stamp().BatchID()),
 			"chunk_address", op.Chunk.Address(),
 			"error", err,
 		)
-
 		return false, errors.Join(err, s.storer.Report(ctx, op.Chunk, storage.ChunkCouldNotSync))
 	}
 
@@ -311,10 +311,10 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 		}
 	}()
 
-	_, err = s.validStamp(op.Chunk)
-	if err != nil {
+	ok, err := s.batchExist.Exists(op.Chunk.Stamp().BatchID())
+	if !ok || err != nil {
 		logger.Warning(
-			"stamp with is no longer valid, skipping direct upload for chunk",
+			"stamp is no longer valid, skipping direct upload for chunk",
 			"batch_id", hex.EncodeToString(op.Chunk.Stamp().BatchID()),
 			"chunk_address", op.Chunk.Address(),
 			"error", err,

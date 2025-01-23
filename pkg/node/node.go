@@ -723,7 +723,7 @@ func NewBee(
 		Batchstore:                batchStore,
 		StateStore:                stateStore,
 		RadiusSetter:              kad,
-		WarmupDuration:            o.WarmupTime,
+		WarmupDuration:            warmupTime,
 		Logger:                    logger,
 		Tracer:                    tracer,
 		CacheMinEvictCount:        cacheMinEvictCount,
@@ -964,7 +964,7 @@ func NewBee(
 	retrieval := retrieval.New(swarmAddress, waitNetworkRFunc, localStore, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
 	localStore.SetRetrievalService(retrieval)
 
-	pusherService := pusher.New(networkID, localStore, pushSyncProtocol, validStamp, logger, warmupTime, pusher.DefaultRetryCount)
+	pusherService := pusher.New(networkID, localStore, pushSyncProtocol, batchStore, logger, warmupTime, pusher.DefaultRetryCount)
 	b.pusherCloser = pusherService
 
 	pusherService.AddFeed(localStore.PusherFeed())

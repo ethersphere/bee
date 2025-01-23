@@ -76,7 +76,7 @@ func TestPushClosest(t *testing.T) {
 
 	// pivot node needs the streamer since the chunk is intercepted by
 	// the chunk worker, then gets sent by opening a new stream
-	psPivot, _, pivotAccounting := createPushSyncNode(t, pivotNode, defaultPrices, recorder, nil, defaultSigner(chunk), mock.WithClosestPeer(closestPeer))
+	psPivot, pivotStorer, pivotAccounting := createPushSyncNode(t, pivotNode, defaultPrices, recorder, nil, defaultSigner(chunk), mock.WithClosestPeer(closestPeer))
 
 	// Trigger the sending of chunk to the closest node
 	receipt, err := psPivot.PushChunkToClosest(context.Background(), chunk)
@@ -93,6 +93,12 @@ func TestPushClosest(t *testing.T) {
 
 	// this intercepts the incoming receipt message
 	waitOnRecordAndTest(t, closestPeer, recorder, chunk.Address(), nil)
+
+	found, _ := pivotStorer.hasReported(t, chunk.Address())
+	if found {
+		t.Fatalf("chunk %s reported", chunk.Address())
+	}
+
 	balance, err := pivotAccounting.Balance(closestPeer)
 	if err != nil {
 		t.Fatal(err)
@@ -245,7 +251,7 @@ func TestShallowReceipt(t *testing.T) {
 func TestPushChunkToClosest(t *testing.T) {
 	t.Parallel()
 	// chunk data to upload
-	chunk := testingc.FixtureChunk("7000")
+	chunk := testingc.FixtureChunk("7000").WithTagID(1)
 
 	// create a pivot node and a mocked closest node
 	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")   // base is 0000
@@ -318,7 +324,7 @@ func TestPushChunkToNextClosest(t *testing.T) {
 	t.Skip("flaky test")
 
 	// chunk data to upload
-	chunk := testingc.FixtureChunk("7000")
+	chunk := testingc.FixtureChunk("7000").WithTagID(1)
 
 	// create a pivot node and a mocked closest node
 	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // base is 0000
@@ -428,7 +434,7 @@ func TestPushChunkToClosestErrorAttemptRetry(t *testing.T) {
 	t.Parallel()
 
 	// chunk data to upload
-	chunk := testingc.FixtureChunk("7000")
+	chunk := testingc.FixtureChunk("7000").WithTagID(1)
 
 	// create a pivot node and a mocked closest node
 	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // base is 0000
