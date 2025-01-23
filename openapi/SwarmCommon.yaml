@@ -1243,7 +1243,7 @@ components:
         default: "true"
       required: false
       description: >
-        Determines if the uploaded data should be sent to the network immediately or in a deferred fashion. By default the upload will be direct.
+        Determines if the uploaded data should be sent to the network immediately or in a deferred fashion. By default the upload will be deferred.
 
     SwarmCache:
       in: header
