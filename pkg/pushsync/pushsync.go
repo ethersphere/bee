@@ -289,8 +289,6 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	case errors.Is(err, topology.ErrWantSelf):
 		stored, reason = true, "want self"
 		return store(ctx)
-	case errors.Is(err, ErrShallowReceipt):
-		fallthrough
 	case err == nil:
 		ps.metrics.Forwarder.Inc()
 
@@ -469,6 +467,11 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			ps.measurePushPeer(result.pushTime, result.err)
 
 			if result.err == nil {
+
+				if !origin { // forwarder nodes do not need to check the receipt
+					return result.receipt, nil
+				}
+
 				switch err := ps.checkReceipt(result.receipt); {
 				case err == nil:
 					return result.receipt, nil
