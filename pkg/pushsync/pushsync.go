@@ -96,6 +96,8 @@ type PushSync struct {
 	fullNode       bool
 	errSkip        *skippeers.List
 	warmupPeriod   time.Time
+
+	shallowReceiptTolerance int
 }
 
 type receiptResult struct {
@@ -123,26 +125,28 @@ func New(
 	signer crypto.Signer,
 	tracer *tracing.Tracer,
 	warmupTime time.Duration,
+	shallowReceiptTolerance int,
 ) *PushSync {
 	ps := &PushSync{
-		address:        address,
-		radius:         radius,
-		networkID:      networkID,
-		nonce:          nonce,
-		streamer:       streamer,
-		store:          store,
-		topologyDriver: topology,
-		fullNode:       fullNode,
-		unwrap:         unwrap,
-		gsocHandler:    gsocHandler,
-		logger:         logger.WithName(loggerName).Register(),
-		accounting:     accounting,
-		pricer:         pricer,
-		metrics:        newMetrics(),
-		tracer:         tracer,
-		signer:         signer,
-		errSkip:        skippeers.NewList(),
-		warmupPeriod:   time.Now().Add(warmupTime),
+		address:                 address,
+		radius:                  radius,
+		networkID:               networkID,
+		nonce:                   nonce,
+		streamer:                streamer,
+		store:                   store,
+		topologyDriver:          topology,
+		fullNode:                fullNode,
+		unwrap:                  unwrap,
+		gsocHandler:             gsocHandler,
+		logger:                  logger.WithName(loggerName).Register(),
+		accounting:              accounting,
+		pricer:                  pricer,
+		metrics:                 newMetrics(),
+		tracer:                  tracer,
+		signer:                  signer,
+		errSkip:                 skippeers.NewList(),
+		warmupPeriod:            time.Now().Add(warmupTime),
+		shallowReceiptTolerance: shallowReceiptTolerance,
 	}
 
 	ps.validStamp = ps.validStampWrapper(validStamp)
@@ -236,6 +240,11 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	price := ps.pricer.Price(chunkAddress)
 
+	rad, err := ps.radius()
+	if err != nil {
+		return fmt.Errorf("pushsync: storage radius: %w", err)
+	}
+
 	store := func(ctx context.Context) error {
 		ps.metrics.Storer.Inc()
 
@@ -263,17 +272,12 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 		attemptedWrite = true
 
-		receipt := pb.Receipt{Address: chunkToPut.Address().Bytes(), Signature: signature, Nonce: ps.nonce}
+		receipt := pb.Receipt{Address: chunkToPut.Address().Bytes(), Signature: signature, Nonce: ps.nonce, StorageRadius: uint32(rad)}
 		if err := w.WriteMsgWithContext(ctx, &receipt); err != nil {
 			return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 		}
 
 		return debit.Apply()
-	}
-
-	rad, err := ps.radius()
-	if err != nil {
-		return fmt.Errorf("pushsync: storage radius: %w", err)
 	}
 
 	if ps.topologyDriver.IsReachable() && swarm.Proximity(ps.address.Bytes(), chunkAddress.Bytes()) >= rad {
@@ -566,7 +570,7 @@ func (ps *PushSync) checkReceipt(receipt *pb.Receipt) error {
 		return fmt.Errorf("pushsync: storage radius: %w", err)
 	}
 
-	if po < d {
+	if po < (d-uint8(ps.shallowReceiptTolerance)) || uint32(po) < receipt.StorageRadius {
 		ps.metrics.ShallowReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
 		ps.metrics.ShallowReceipt.Inc()
 		ps.logger.Debug("shallow receipt", "chunk_address", addr, "peer_address", peer, "proximity_order", po)
