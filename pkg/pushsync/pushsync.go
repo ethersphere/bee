@@ -618,7 +618,7 @@ func (ps *PushSync) pushChunkToPeer(ctx context.Context, peer swarm.Address, ch 
 	// if the chunk has a tag, then it's from a local deferred upload
 	if ch.TagID() != 0 {
 		err = ps.store.Report(ctx, ch, storage.ChunkSent)
-		if err != nil {
+		if err != nil && !errors.Is(err, storage.ErrNotFound) {
 			err = fmt.Errorf("tag %d increment: %w", ch.TagID(), err)
 			return
 		}

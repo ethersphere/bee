@@ -249,7 +249,7 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 
 	ok, err := s.batchExist.Exists(op.Chunk.Stamp().BatchID())
 	if !ok || err != nil {
-		logger.Warning(
+		loggerV1.Warning(
 			"stamp is no longer valid, skipping syncing for chunk",
 			"batch_id", hex.EncodeToString(op.Chunk.Stamp().BatchID()),
 			"chunk_address", op.Chunk.Address(),
@@ -309,7 +309,7 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 
 	ok, err := s.batchExist.Exists(op.Chunk.Stamp().BatchID())
 	if !ok || err != nil {
-		logger.Warning(
+		loggerV1.Warning(
 			"stamp is no longer valid, skipping direct upload for chunk",
 			"batch_id", hex.EncodeToString(op.Chunk.Stamp().BatchID()),
 			"chunk_address", op.Chunk.Address(),
