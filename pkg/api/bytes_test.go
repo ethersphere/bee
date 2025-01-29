@@ -113,6 +113,8 @@ func TestBytes(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodGet, resource+"/"+expHash, http.StatusOK,
 			jsonhttptest.WithExpectedContentLength(len(content)),
 			jsonhttptest.WithExpectedResponse(content),
+			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.ContentDispositionHeader),
+			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "application/octet-stream"),
 		)
 	})
 

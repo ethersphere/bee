@@ -304,7 +304,7 @@ func (s *Service) fileUploadHandler(
 		span.SetTag("tagID", tagID)
 	}
 	w.Header().Set(ETagHeader, fmt.Sprintf("%q", reference.String()))
-	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
+	w.Header().Set(AccessControlExposeHeaders, SwarmTagHeader)
 
 	jsonhttp.Created(w, bzzUploadResponse{
 		Reference: reference,
@@ -451,7 +451,7 @@ FETCH:
 			// we should implement an append functionality for this specific header,
 			// since different parts of handlers might be overriding others' values
 			// resulting in inconsistent headers in the response.
-			w.Header().Set("Access-Control-Expose-Headers", SwarmFeedIndexHeader)
+			w.Header().Set(AccessControlExposeHeaders, SwarmFeedIndexHeader)
 			goto FETCH
 		}
 	}
@@ -623,7 +623,7 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		w.Header().Set(ETagHeader, fmt.Sprintf("%q", reference))
 	}
 	w.Header().Set(ContentLengthHeader, strconv.FormatInt(l, 10))
-	w.Header().Add("Access-Control-Expose-Headers", ContentDispositionHeader)
+	w.Header().Add(AccessControlExposeHeaders, ContentDispositionHeader)
 
 	if headersOnly {
 		w.WriteHeader(http.StatusOK)

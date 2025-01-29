@@ -1090,3 +1090,25 @@ func TestDirectUploadBzz(t *testing.T) {
 		}),
 	)
 }
+
+// TODO
+// func TestBzzDownloadHeaders(t *testing.T) {
+// 	mockStorer := mockstorer.New()
+// 	testServer, _, _, _ := newTestServer(t, testServerOptions{
+// 		Storer: mockStorer,
+// 	})
+
+// 	t.Run("bzzDownloadHandler", func(t *testing.T) {
+// 		address := swarm.MustParseHexAddress("7f34a413c060ee777996bce734eaad7a76923fcfa222bf8eab9871812c8ed6a1")
+
+// 		value := []byte("data data data")
+// 		if err := mockStorer.Cache().Put(context.Background(), swarm.NewChunk(address, value)); err != nil {
+// 			t.Fatal(err)
+// 		}
+
+// 		jsonhttptest.Request(t, testServer, http.MethodGet, "/bzz/"+address.String(), http.StatusOK,
+// 			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.ContentDispositionHeader),
+// 			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "application/octet-stream"),
+// 		)
+// 	})
+// }

@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"net/http"
 	"testing"
 	"time"
@@ -99,28 +98,22 @@ func TestSOC(t *testing.T) {
 		// try to fetch the same chunk
 		t.Run("chunks fetch", func(t *testing.T) {
 			rsrc := fmt.Sprintf("/chunks/%s", s.Address().String())
-			resp := request(t, client, http.MethodGet, rsrc, nil, http.StatusOK)
-			data, err := io.ReadAll(resp.Body)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			if !bytes.Equal(s.Chunk().Data(), data) {
-				t.Fatal("data retrieved doesn't match uploaded content")
-			}
+			jsonhttptest.Request(t, client, http.MethodGet, rsrc, http.StatusOK,
+				jsonhttptest.WithExpectedResponse(s.Chunk().Data()),
+				jsonhttptest.WithExpectedContentLength(len(s.Chunk().Data())),
+				jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "binary/octet-stream"),
+			)
 		})
 
 		t.Run("soc fetch", func(t *testing.T) {
 			rsrc := fmt.Sprintf("/soc/%s/%s", hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID))
-			resp := request(t, client, http.MethodGet, rsrc, nil, http.StatusOK)
-			data, err := io.ReadAll(resp.Body)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			if !bytes.Equal(s.WrappedChunk.Data()[swarm.SpanSize:], data) {
-				t.Fatal("data retrieved doesn't match uploaded content")
-			}
+			jsonhttptest.Request(t, client, http.MethodGet, rsrc, http.StatusOK,
+				jsonhttptest.WithExpectedResponse(s.WrappedChunk.Data()[swarm.SpanSize:]),
+				jsonhttptest.WithExpectedContentLength(len(s.WrappedChunk.Data()[swarm.SpanSize:])),
+				jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.SwarmSocSignatureHeader),
+				jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.ContentDispositionHeader),
+				jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "application/octet-stream"),
+			)
 		})
 	})
 

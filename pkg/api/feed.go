@@ -11,7 +11,6 @@ import (
 	"io"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -134,18 +133,20 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	sig := socCh.Signature()
 
 	additionalHeaders := http.Header{
-		ContentTypeHeader:               {"application/octet-stream"},
-		SwarmFeedIndexHeader:            {hex.EncodeToString(curBytes)},
-		SwarmFeedIndexNextHeader:        {hex.EncodeToString(nextBytes)},
-		SwarmSocSignatureHeader:         {hex.EncodeToString(sig)},
-		"Access-Control-Expose-Headers": {SwarmFeedIndexHeader, SwarmFeedIndexNextHeader, SwarmSocSignatureHeader},
+		ContentTypeHeader:          {"application/octet-stream"},
+		SwarmFeedIndexHeader:       {hex.EncodeToString(curBytes)},
+		SwarmFeedIndexNextHeader:   {hex.EncodeToString(nextBytes)},
+		SwarmSocSignatureHeader:    {hex.EncodeToString(sig)},
+		AccessControlExposeHeaders: {SwarmFeedIndexHeader, SwarmFeedIndexNextHeader, SwarmSocSignatureHeader},
 	}
 
 	if headers.OnlyRootChunk {
 		w.Header().Set(ContentLengthHeader, strconv.Itoa(len(wc.Data())))
 		// include additional headers
 		for name, values := range additionalHeaders {
-			w.Header().Set(name, strings.Join(values, ", "))
+			for _, value := range values {
+				w.Header().Add(name, value)
+			}
 		}
 		_, _ = io.Copy(w, bytes.NewReader(wc.Data()))
 		return

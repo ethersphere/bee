@@ -12,7 +12,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"io"
 	"math/big"
 	"net"
 	"net/http"
@@ -292,23 +291,6 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	}
 
 	return httpClient, conn, ts.Listener.Addr().String(), chanStore
-}
-
-func request(t *testing.T, client *http.Client, method, resource string, body io.Reader, responseCode int) *http.Response {
-	t.Helper()
-
-	req, err := http.NewRequestWithContext(context.TODO(), method, resource, body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.StatusCode != responseCode {
-		t.Fatalf("got response status %s, want %v %s", resp.Status, responseCode, http.StatusText(responseCode))
-	}
-	return resp
 }
 
 func pipelineFactory(s storage.Putter, encrypt bool, rLevel redundancy.Level) func() pipeline.Interface {
