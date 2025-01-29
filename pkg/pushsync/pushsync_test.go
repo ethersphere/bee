@@ -271,7 +271,7 @@ func TestShallowReceiptTolerance(t *testing.T) {
 	chunkProximity := 2
 
 	pivotRadius := 4
-	pivotTolerance := 2
+	pivotTolerance := uint8(2)
 
 	// create a pivot node and a mocked closest node
 	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")
@@ -923,7 +923,7 @@ func createPushSyncNodeWithRadius(
 	unwrap func(swarm.Chunk),
 	signer crypto.Signer,
 	radius uint8,
-	shallowReceiptTolerance int,
+	shallowReceiptTolerance uint8,
 	mockOpts ...mock.Option,
 ) (*pushsync.PushSync, *testStorer) {
 	t.Helper()

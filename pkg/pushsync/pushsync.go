@@ -97,7 +97,7 @@ type PushSync struct {
 	errSkip        *skippeers.List
 	warmupPeriod   time.Time
 
-	shallowReceiptTolerance int
+	shallowReceiptTolerance uint8
 }
 
 type receiptResult struct {
@@ -125,7 +125,7 @@ func New(
 	signer crypto.Signer,
 	tracer *tracing.Tracer,
 	warmupTime time.Duration,
-	shallowReceiptTolerance int,
+	shallowReceiptTolerance uint8,
 ) *PushSync {
 	ps := &PushSync{
 		address:                 address,
@@ -568,15 +568,20 @@ func (ps *PushSync) checkReceipt(receipt *pb.Receipt) error {
 
 	po := swarm.Proximity(addr.Bytes(), peer.Bytes())
 
-	d, err := ps.radius()
+	r, err := ps.radius()
 	if err != nil {
 		return fmt.Errorf("pushsync: storage radius: %w", err)
 	}
 
-	if po < (d-uint8(ps.shallowReceiptTolerance)) || uint32(po) < receipt.StorageRadius {
+	var tolerance uint8
+	if r >= ps.shallowReceiptTolerance { // check for underflow of uint8
+		tolerance = r - ps.shallowReceiptTolerance
+	}
+
+	if po < tolerance || uint32(po) < receipt.StorageRadius {
 		ps.metrics.ShallowReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
 		ps.metrics.ShallowReceipt.Inc()
-		ps.logger.Debug("shallow receipt", "chunk_address", addr, "peer_address", peer, "proximity_order", po)
+		ps.logger.Debug("shallow receipt", "chunk_address", addr, "peer_address", peer, "proximity_order", po, "peer_radius", receipt.StorageRadius, "self_radius", r)
 		return ErrShallowReceipt
 	}
 
