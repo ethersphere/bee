@@ -1091,24 +1091,54 @@ func TestDirectUploadBzz(t *testing.T) {
 	)
 }
 
-// TODO
-// func TestBzzDownloadHeaders(t *testing.T) {
-// 	mockStorer := mockstorer.New()
-// 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-// 		Storer: mockStorer,
-// 	})
+func TestBzzDownloadHeaders(t *testing.T) {
+	t.Parallel()
+	t.Run("bzzDownloadHandler", func(t *testing.T) {
+		var (
+			data                = []byte("<h1>Swarm Hello World!</h1>")
+			logger              = log.Noop
+			storer              = mockstorer.New()
+			testServer, _, _, _ = newTestServer(t, testServerOptions{
+				Storer: storer,
+				Logger: logger,
+				Post:   mockpost.New(mockpost.WithAcceptAll()),
+			})
+		)
+		// tar all the test case files
+		tarReader := tarFiles(t, []f{
+			{
+				data:     data,
+				name:     "\"index.html\"",
+				dir:      "",
+				filePath: "./index.html",
+			},
+		})
 
-// 	t.Run("bzzDownloadHandler", func(t *testing.T) {
-// 		address := swarm.MustParseHexAddress("7f34a413c060ee777996bce734eaad7a76923fcfa222bf8eab9871812c8ed6a1")
+		var resp api.BzzUploadResponse
 
-// 		value := []byte("data data data")
-// 		if err := mockStorer.Cache().Put(context.Background(), swarm.NewChunk(address, value)); err != nil {
-// 			t.Fatal(err)
-// 		}
+		options := []jsonhttptest.Option{
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(tarReader),
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, api.ContentTypeTar),
+			jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
+			jsonhttptest.WithUnmarshalJSONResponse(&resp),
+			jsonhttptest.WithRequestHeader(api.SwarmIndexDocumentHeader, "index.html"),
+		}
 
-// 		jsonhttptest.Request(t, testServer, http.MethodGet, "/bzz/"+address.String(), http.StatusOK,
-// 			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.ContentDispositionHeader),
-// 			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "application/octet-stream"),
-// 		)
-// 	})
-// }
+		// verify directory tar upload response
+		jsonhttptest.Request(t, testServer, http.MethodPost, "/bzz", http.StatusCreated, options...)
+
+		if resp.Reference.String() == "" {
+			t.Fatalf("expected file reference, did not got any")
+		}
+
+		jsonhttptest.Request(t, testServer, http.MethodGet, "/bzz/"+resp.Reference.String(), http.StatusOK,
+			jsonhttptest.WithExpectedResponse(data),
+			jsonhttptest.WithExpectedContentLength(len(data)),
+			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.ContentDispositionHeader),
+			jsonhttptest.WithExpectedResponseHeader(api.ContentDispositionHeader, `inline; filename="index.html"`),
+			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "text/html; charset=utf-8"),
+		)
+	})
+}

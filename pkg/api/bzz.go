@@ -551,7 +551,7 @@ func (s *Service) serveManifestEntry(
 	mtdt := manifestEntry.Metadata()
 	if fname, ok := mtdt[manifest.EntryMetadataFilenameKey]; ok {
 		fname = filepath.Base(fname) // only keep the file name
-		additionalHeaders[ContentDispositionHeader] = []string{fmt.Sprintf("inline; filename=\"%s\"", fname)}
+		additionalHeaders[ContentDispositionHeader] = []string{fmt.Sprintf("inline; filename=\"%s\"", escapeQuotes(fname))}
 	}
 	if mimeType, ok := mtdt[manifest.EntryMetadataContentTypeKey]; ok {
 		additionalHeaders[ContentTypeHeader] = []string{mimeType}
