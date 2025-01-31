@@ -19,7 +19,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy/getter"
 	"github.com/ethersphere/bee/v2/pkg/replicas"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"golang.org/x/sync/errgroup"
 )
@@ -408,9 +408,9 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 			}
 
 			// not a shard
-			if i >= shardCnt {
-				return nil
-			}
+			//if i >= shardCnt {
+			//	return nil
+			//}
 
 			ch, err := g.Get(ectx, addr)
 			if err != nil {
