@@ -408,9 +408,9 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 			}
 
 			// not a shard
-			//if i >= shardCnt {
-			//	return nil
-			//}
+			if i >= shardCnt {
+				return nil
+			}
 
 			ch, err := g.Get(ectx, addr)
 			if err != nil {
