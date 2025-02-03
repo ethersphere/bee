@@ -49,7 +49,7 @@ const (
 
 // Default option values
 const (
-	defaultBitSuffixLength             = 4 // the number of bits used to create pseudo addresses for balancing, 2^4, 16 addresses
+	defaultBitSuffixLength             = 4 // the number of bits used to create pseudo addresses for balancing, 2^2, 8 addresses
 	defaultLowWaterMark                = 3 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
 	defaultSaturationPeers             = 8
 	defaultOverSaturationPeers         = 18
@@ -111,16 +111,21 @@ type kadOptions struct {
 	StaticNodes    []swarm.Address
 	ExcludeFunc    excludeFunc
 
-	TimeToRetry                 time.Duration
-	ShortRetry                  time.Duration
-	PruneWakeup                 time.Duration
-	BitSuffixLength             int // additional depth of common prefix for bin
+	TimeToRetry time.Duration
+	ShortRetry  time.Duration
+	PruneWakeup time.Duration
+	// BitSuffixLength             int // additional depth of common prefix for bin
 	SaturationPeers             int
 	OverSaturationPeers         int
 	BootnodeOverSaturationPeers int
 	BroadcastBinSize            int
 	LowWaterMark                int
 }
+
+var (
+	oversaturationCounts = [swarm.MaxBins]int{36, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18}
+	suffixBits           = [swarm.MaxBins]int{5, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4}
+)
 
 func newKadOptions(o Options) kadOptions {
 	ko := kadOptions{
@@ -132,12 +137,10 @@ func newKadOptions(o Options) kadOptions {
 		StaticNodes:    o.StaticNodes,
 		ExcludeFunc:    o.ExcludeFunc,
 		// copy or use default
-		TimeToRetry:                 defaultValDuration(o.TimeToRetry, defaultTimeToRetry),
-		ShortRetry:                  defaultValDuration(o.ShortRetry, defaultShortRetry),
-		PruneWakeup:                 defaultValDuration(o.PruneWakeup, defaultPruneWakeup),
-		BitSuffixLength:             defaultValInt(o.BitSuffixLength, defaultBitSuffixLength),
-		SaturationPeers:             defaultValInt(o.SaturationPeers, defaultSaturationPeers),
-		OverSaturationPeers:         defaultValInt(o.OverSaturationPeers, defaultOverSaturationPeers),
+		TimeToRetry: defaultValDuration(o.TimeToRetry, defaultTimeToRetry),
+		ShortRetry:  defaultValDuration(o.ShortRetry, defaultShortRetry),
+		PruneWakeup: defaultValDuration(o.PruneWakeup, defaultPruneWakeup),
+		// BitSuffixLength:             defaultValInt(o.BitSuffixLength, defaultBitSuffixLength),
 		BootnodeOverSaturationPeers: defaultValInt(o.BootnodeOverSaturationPeers, defaultBootNodeOverSaturationPeers),
 		BroadcastBinSize:            defaultValInt(o.BroadcastBinSize, defaultBroadcastBinSize),
 		LowWaterMark:                defaultValInt(o.LowWaterMark, defaultLowWaterMark),
@@ -165,11 +168,7 @@ func defaultValDuration(v *time.Duration, d time.Duration) time.Duration {
 }
 
 func makeSaturationFunc(o kadOptions) binSaturationFunc {
-	os := o.OverSaturationPeers
-	if o.BootnodeMode {
-		os = o.BootnodeOverSaturationPeers
-	}
-	return binSaturated(os, isStaticPeer(o.StaticNodes))
+	return binSaturated(isStaticPeer(o.StaticNodes))
 }
 
 // Kad is the Swarm forwarding kademlia implementation.
@@ -256,11 +255,7 @@ func New(
 		k.opt.PruneFunc = k.pruneOversaturatedBins
 	}
 
-	os := k.opt.OverSaturationPeers
-	if k.opt.BootnodeMode {
-		os = k.opt.BootnodeOverSaturationPeers
-	}
-	k.opt.PruneCountFunc = binPruneCount(os, isStaticPeer(k.opt.StaticNodes))
+	k.opt.PruneCountFunc = binPruneCount(isStaticPeer(k.opt.StaticNodes))
 
 	if k.opt.ExcludeFunc == nil {
 		k.opt.ExcludeFunc = func(f ...im.ExcludeOp) peerExcludeFunc {
@@ -270,9 +265,7 @@ func New(
 		}
 	}
 
-	if k.opt.BitSuffixLength > 0 {
-		k.commonBinPrefixes = generateCommonBinPrefixes(k.base, k.opt.BitSuffixLength)
-	}
+	k.commonBinPrefixes = generateCommonBinPrefixes(k.base, suffixBits[:])
 
 	k.bgBroadcastCtx, k.bgBroadcastCancel = context.WithCancel(context.Background())
 
@@ -297,30 +290,29 @@ func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnI
 
 	depth := k.neighborhoodDepth()
 
-	for i := range k.commonBinPrefixes {
+	for bin := range k.commonBinPrefixes {
 
-		binPeersLength := k.knownPeers.BinSize(uint8(i))
+		binPeersLength := k.knownPeers.BinSize(uint8(bin))
 
 		// balancer should skip on bins where neighborhood connector would connect to peers anyway
 		// and there are not enough peers in known addresses to properly balance the bin
-		if i >= int(depth) && binPeersLength < len(k.commonBinPrefixes[i]) {
+		if bin >= int(depth) && binPeersLength < len(k.commonBinPrefixes[bin]) {
 			continue
 		}
 
-		binPeers := k.knownPeers.BinPeers(uint8(i))
-		binConnectedPeers := k.connectedPeers.BinPeers(uint8(i))
+		binPeers := k.knownPeers.BinPeers(uint8(bin))
+		binConnectedPeers := k.connectedPeers.BinPeers(uint8(bin))
 
-		for j := range k.commonBinPrefixes[i] {
-			pseudoAddr := k.commonBinPrefixes[i][j]
+		for j := range k.commonBinPrefixes[bin] {
+			pseudoAddr := k.commonBinPrefixes[bin][j]
 
 			// Connect to closest known peer which we haven't tried connecting to recently.
-
-			_, exists := nClosePeerInSlice(binConnectedPeers, pseudoAddr, noopSanctionedPeerFn, uint8(i+k.opt.BitSuffixLength+1))
+			_, exists := nClosePeerInSlice(binConnectedPeers, pseudoAddr, noopSanctionedPeerFn, uint8(bin+suffixBits[bin]+1))
 			if exists {
 				continue
 			}
 
-			closestKnownPeer, exists := nClosePeerInSlice(binPeers, pseudoAddr, skipPeers, uint8(i+k.opt.BitSuffixLength+1))
+			closestKnownPeer, exists := nClosePeerInSlice(binPeers, pseudoAddr, skipPeers, uint8(bin+suffixBits[bin]+1))
 			if !exists {
 				continue
 			}
@@ -736,7 +728,7 @@ func (k *Kad) balancedSlotPeers(pseudoAddr swarm.Address, peers []swarm.Address,
 	var ret []swarm.Address
 
 	for _, peer := range peers {
-		if int(swarm.ExtendedProximity(peer.Bytes(), pseudoAddr.Bytes())) >= po+k.opt.BitSuffixLength+1 {
+		if int(swarm.ExtendedProximity(peer.Bytes(), pseudoAddr.Bytes())) >= po+suffixBits[po]+1 {
 			ret = append(ret, peer)
 		}
 	}
@@ -864,7 +856,7 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 // binSaturated indicates whether a certain bin is saturated or not.
 // when a bin is not saturated it means we would like to proactively
 // initiate connections to other peers in the bin.
-func binSaturated(oversaturationAmount int, staticNode staticPeerFunc) binSaturationFunc {
+func binSaturated(staticNode staticPeerFunc) binSaturationFunc {
 	return func(bin uint8, connected *pslice.PSlice, exclude peerExcludeFunc) bool {
 		size := 0
 		_ = connected.EachBin(func(addr swarm.Address, po uint8) (bool, bool, error) {
@@ -874,12 +866,12 @@ func binSaturated(oversaturationAmount int, staticNode staticPeerFunc) binSatura
 			return false, false, nil
 		})
 
-		return size >= oversaturationAmount
+		return size >= oversaturationCounts[bin]
 	}
 }
 
 // binPruneCount counts how many peers should be pruned from a bin.
-func binPruneCount(oversaturationAmount int, staticNode staticPeerFunc) pruneCountFunc {
+func binPruneCount(staticNode staticPeerFunc) pruneCountFunc {
 	return func(bin uint8, connected *pslice.PSlice, exclude peerExcludeFunc) (int, int) {
 		size := 0
 		_ = connected.EachBin(func(addr swarm.Address, po uint8) (bool, bool, error) {
@@ -889,7 +881,7 @@ func binPruneCount(oversaturationAmount int, staticNode staticPeerFunc) pruneCou
 			return false, false, nil
 		})
 
-		return size, size - oversaturationAmount
+		return size, size - oversaturationCounts[bin]
 	}
 }
 
