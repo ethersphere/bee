@@ -1279,7 +1279,15 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.
 		closest = k.base
 	}
 
-	err := k.EachConnectedPeerRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
+	prox := swarm.Proximity(k.base.Bytes(), addr.Bytes())
+
+	// iterate starting from bin 0 to the maximum bin
+	err := k.EachConnectedPeerRev(func(peer swarm.Address, bin uint8) (bool, bool, error) {
+
+		if bin > prox && !closest.IsZero() {
+			return true, false, nil
+		}
+
 		if swarm.ContainsAddress(skipPeers, peer) {
 			return false, false, nil
 		}
@@ -1317,9 +1325,9 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.
 
 // EachConnectedPeer implements topology.PeerIterator interface.
 func (k *Kad) EachConnectedPeer(f topology.EachPeerFunc, filter topology.Select) error {
-	filters := excludeFromIterator(filter)
+	excludeFunc := k.opt.ExcludeFunc(excludeFromIterator(filter)...)
 	return k.connectedPeers.EachBin(func(addr swarm.Address, po uint8) (bool, bool, error) {
-		if k.opt.ExcludeFunc(filters...)(addr) {
+		if excludeFunc(addr) {
 			return false, false, nil
 		}
 		return f(addr, po)
@@ -1328,9 +1336,9 @@ func (k *Kad) EachConnectedPeer(f topology.EachPeerFunc, filter topology.Select)
 
 // EachConnectedPeerRev implements topology.PeerIterator interface.
 func (k *Kad) EachConnectedPeerRev(f topology.EachPeerFunc, filter topology.Select) error {
-	filters := excludeFromIterator(filter)
+	excludeFunc := k.opt.ExcludeFunc(excludeFromIterator(filter)...)
 	return k.connectedPeers.EachBinRev(func(addr swarm.Address, po uint8) (bool, bool, error) {
-		if k.opt.ExcludeFunc(filters...)(addr) {
+		if excludeFunc(addr) {
 			return false, false, nil
 		}
 		return f(addr, po)
@@ -1397,7 +1405,6 @@ func (k *Kad) SubscribeTopologyChange() (c <-chan struct{}, unsubscribe func()) 
 func excludeFromIterator(filter topology.Select) []im.ExcludeOp {
 
 	ops := make([]im.ExcludeOp, 0, 3)
-
 	ops = append(ops, im.Bootnode())
 
 	if filter.Reachable {

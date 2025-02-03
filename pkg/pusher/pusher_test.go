@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
+	batchstoremock "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
 	"github.com/ethersphere/bee/v2/pkg/pusher"
 	"github.com/ethersphere/bee/v2/pkg/pushsync"
 	pushsyncmock "github.com/ethersphere/bee/v2/pkg/pushsync/mock"
@@ -33,9 +34,9 @@ const spinTimeout = time.Second * 3
 
 var (
 	block                 = common.HexToHash("0x1").Bytes()
-	defaultMockValidStamp = func(ch swarm.Chunk) (swarm.Chunk, error) {
-		return ch, nil
-	}
+	defaultMockBatchStore = batchstoremock.New(batchstoremock.WithExistsFunc(func(b []byte) (bool, error) {
+		return true, nil
+	}))
 	defaultRetryCount = 3
 )
 
@@ -134,7 +135,7 @@ func TestChunkSyncing(t *testing.T) {
 		t,
 		storer,
 		pushSyncService,
-		defaultMockValidStamp,
+		defaultMockBatchStore,
 		defaultRetryCount,
 	)
 
@@ -181,7 +182,7 @@ func TestChunkStored(t *testing.T) {
 		t,
 		storer,
 		pushSyncService,
-		defaultMockValidStamp,
+		defaultMockBatchStore,
 		defaultRetryCount,
 	)
 
@@ -239,7 +240,7 @@ func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
 		t,
 		storer,
 		pushSyncService,
-		defaultMockValidStamp,
+		defaultMockBatchStore,
 		defaultRetryCount,
 	)
 
@@ -283,7 +284,7 @@ func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
 		t,
 		storer,
 		pushSyncService,
-		defaultMockValidStamp,
+		defaultMockBatchStore,
 		defaultRetryCount,
 	)
 
@@ -326,7 +327,7 @@ func TestPusherRetryShallow(t *testing.T) {
 		t,
 		storer,
 		pushSyncService,
-		defaultMockValidStamp,
+		defaultMockBatchStore,
 		defaultRetryCount,
 	)
 
@@ -364,9 +365,10 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 	})
 
 	wantErr := errors.New("dummy error")
-	validStamp := func(ch swarm.Chunk) (swarm.Chunk, error) {
-		return nil, wantErr
-	}
+
+	bmock := batchstoremock.New(batchstoremock.WithExistsFunc(func(b []byte) (bool, error) {
+		return false, wantErr
+	}))
 
 	storer := &mockStorer{
 		chunks: make(chan swarm.Chunk),
@@ -376,7 +378,7 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 		t,
 		storer,
 		pushSyncService,
-		validStamp,
+		bmock,
 		defaultRetryCount,
 	)
 
@@ -412,7 +414,7 @@ func createPusher(
 	t *testing.T,
 	storer pusher.Storer,
 	pushSyncService pushsync.PushSyncer,
-	validStamp postage.ValidStampFn,
+	validStamp postage.BatchExist,
 	retryCount int,
 ) *pusher.Service {
 	t.Helper()
