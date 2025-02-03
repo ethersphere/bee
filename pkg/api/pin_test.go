@@ -100,6 +100,16 @@ func TestPinHandlers(t *testing.T) {
 		checkPinHandlers(t, client, rootHash, true)
 	})
 
+	t.Run("no pins", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodGet, "/pins", http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(struct {
+				References []swarm.Address `json:"references"`
+			}{
+				References: make([]swarm.Address, 0),
+			}),
+		)
+	})
+
 	t.Run("bytes missing", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, "/pins/"+swarm.RandAddress(t).String(), http.StatusNotFound)
 	})

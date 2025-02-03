@@ -359,6 +359,20 @@ func TestPinStore(t *testing.T) {
 			t.Fatalf("unexpected error on close, want: %v, got: %v", pinstore.ErrCollectionRootAddressIsZero, err)
 		}
 	})
+
+	t.Run("have 0 pins", func(t *testing.T) {
+		pins, err := pinstore.Pins(internal.NewInmemStorage().IndexStore())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(pins) != 0 {
+			t.Fatalf("expected 0 pins, found %d", len(pins))
+		}
+
+		if pins == nil {
+			t.Fatal("pins is nil")
+		}
+	})
 }
 
 func TestCleanup(t *testing.T) {
