@@ -98,13 +98,14 @@ const (
 	GasLimitHeader  = "Gas-Limit"
 	ETagHeader      = "ETag"
 
-	AuthorizationHeader      = "Authorization"
-	AcceptEncodingHeader     = "Accept-Encoding"
-	ContentTypeHeader        = "Content-Type"
-	ContentDispositionHeader = "Content-Disposition"
-	ContentLengthHeader      = "Content-Length"
-	RangeHeader              = "Range"
-	OriginHeader             = "Origin"
+	AuthorizationHeader        = "Authorization"
+	AcceptEncodingHeader       = "Accept-Encoding"
+	ContentTypeHeader          = "Content-Type"
+	ContentDispositionHeader   = "Content-Disposition"
+	ContentLengthHeader        = "Content-Length"
+	RangeHeader                = "Range"
+	OriginHeader               = "Origin"
+	AccessControlExposeHeaders = "Access-Control-Expose-Headers"
 )
 
 const (

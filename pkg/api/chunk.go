@@ -216,7 +216,7 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(SwarmTagHeader, fmt.Sprint(tag))
 	}
 
-	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
+	w.Header().Set(AccessControlExposeHeaders, SwarmTagHeader)
 	jsonhttp.Created(w, chunkAddressResponse{Reference: reference})
 }
 

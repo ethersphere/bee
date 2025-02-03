@@ -11,7 +11,6 @@ import (
 	"io"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/cac"
@@ -257,16 +256,18 @@ func (s *Service) socGetHandler(w http.ResponseWriter, r *http.Request) {
 	wc := socCh.WrappedChunk()
 
 	additionalHeaders := http.Header{
-		ContentTypeHeader:               {"application/octet-stream"},
-		SwarmSocSignatureHeader:         {hex.EncodeToString(sig)},
-		"Access-Control-Expose-Headers": {SwarmSocSignatureHeader},
+		ContentTypeHeader:          {"application/octet-stream"},
+		SwarmSocSignatureHeader:    {hex.EncodeToString(sig)},
+		AccessControlExposeHeaders: {SwarmSocSignatureHeader},
 	}
 
 	if headers.OnlyRootChunk {
 		w.Header().Set(ContentLengthHeader, strconv.Itoa(len(wc.Data())))
 		// include additional headers
 		for name, values := range additionalHeaders {
-			w.Header().Set(name, strings.Join(values, ", "))
+			for _, value := range values {
+				w.Header().Add(name, value)
+			}
 		}
 		_, _ = io.Copy(w, bytes.NewReader(wc.Data()))
 		return
