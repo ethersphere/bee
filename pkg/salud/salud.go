@@ -184,6 +184,11 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 
 	s.logger.Debug("computed", "avg_dur", avgDur, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius, "batch_commitment", commitment)
 
+	// sort peers by duration, highest first to give priority to the fastest peers
+	sort.Slice(peers, func(i, j int) bool {
+		return peers[i].dur > peers[j].dur // descending
+	})
+
 	for _, peer := range peers {
 
 		var healthy bool
@@ -196,13 +201,13 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 		}
 
 		if networkRadius > 0 && peer.status.CommittedDepth < uint32(networkRadius-2) {
-			s.logger.Debug("radius health failure", "radius", peer.status.CommittedDepth, "peer_address", peer.addr)
+			s.logger.Debug("radius health failure", "radius", peer.status.CommittedDepth, "peer_address", peer.addr, "bin", peer.bin)
 		} else if peer.dur.Seconds() > pDur {
-			s.logger.Debug("response duration below threshold", "duration", peer.dur, "peer_address", peer.addr)
+			s.logger.Debug("response duration below threshold", "duration", peer.dur, "peer_address", peer.addr, "bin", peer.bin)
 		} else if peer.status.ConnectedPeers < pConns {
-			s.logger.Debug("connections count below threshold", "connections", peer.status.ConnectedPeers, "peer_address", peer.addr)
+			s.logger.Debug("connections count below threshold", "connections", peer.status.ConnectedPeers, "peer_address", peer.addr, "bin", peer.bin)
 		} else if peer.status.BatchCommitment != commitment {
-			s.logger.Debug("batch commitment check failure", "commitment", peer.status.BatchCommitment, "peer_address", peer.addr)
+			s.logger.Debug("batch commitment check failure", "commitment", peer.status.BatchCommitment, "peer_address", peer.addr, "bin", peer.bin)
 		} else {
 			healthy = true
 		}

@@ -86,6 +86,7 @@ func (l *List) ChunkPeers(ch swarm.Address) (peers []swarm.Address) {
 	now := time.Now().UnixNano()
 
 	if p, ok := l.skip[ch.ByteString()]; ok {
+		peers = make([]swarm.Address, 0, len(p))
 		for peer, exp := range p {
 			if exp > now {
 				peers = append(peers, swarm.NewAddress([]byte(peer)))

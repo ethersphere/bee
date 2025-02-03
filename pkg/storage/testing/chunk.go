@@ -94,7 +94,7 @@ func GenerateTestRandomChunkAt(tb testing.TB, target swarm.Address, po int) swar
 
 }
 
-// GenerateTestRandomChunkAt generates an invalid (!) chunk with address of proximity order po wrt target.
+// GenerateTestRandomChunkAt generates an valid chunk with address of proximity order po wrt target.
 func GenerateValidRandomChunkAt(tb testing.TB, target swarm.Address, po int) swarm.Chunk {
 	tb.Helper()
 

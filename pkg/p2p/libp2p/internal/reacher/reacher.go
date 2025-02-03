@@ -18,7 +18,7 @@ import (
 
 const (
 	pingTimeout        = time.Second * 15
-	workers            = 8
+	workers            = 16
 	retryAfterDuration = time.Minute * 5
 )
 
@@ -32,8 +32,8 @@ type reacher struct {
 	mu    sync.Mutex
 	peers map[string]*peer
 
-	work chan struct{}
-	quit chan struct{}
+	newPeer chan struct{}
+	quit    chan struct{}
 
 	pinger   p2p.Pinger
 	notifier p2p.ReachableNotifier
@@ -53,7 +53,7 @@ type Options struct {
 func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier, o *Options) *reacher {
 
 	r := &reacher{
-		work:     make(chan struct{}, 1),
+		newPeer:  make(chan struct{}, 1),
 		quit:     make(chan struct{}),
 		pinger:   streamer,
 		peers:    make(map[string]*peer),
@@ -103,7 +103,7 @@ func (r *reacher) manage() {
 			select {
 			case <-r.quit:
 				return
-			case <-r.work:
+			case <-r.newPeer:
 				continue
 			case <-time.After(tryAfter):
 				continue
@@ -115,12 +115,12 @@ func (r *reacher) manage() {
 			select {
 			case <-r.quit:
 				return
-			case <-r.work:
+			case <-r.newPeer:
 				continue
 			}
 		}
 
-		// send p to channel
+		// ping peer
 		select {
 		case <-r.quit:
 			return
@@ -135,10 +135,6 @@ func (r *reacher) ping(c chan *peer, ctx context.Context) {
 
 	for p := range c {
 
-		r.mu.Lock()
-		overlay := p.overlay
-		r.mu.Unlock()
-
 		now := time.Now()
 
 		ctxt, cancel := context.WithTimeout(ctx, r.options.PingTimeout)
@@ -149,14 +145,12 @@ func (r *reacher) ping(c chan *peer, ctx context.Context) {
 		if err == nil {
 			r.metrics.Pings.WithLabelValues("success").Inc()
 			r.metrics.PingTime.WithLabelValues("success").Observe(time.Since(now).Seconds())
-			r.notifier.Reachable(overlay, p2p.ReachabilityStatusPublic)
+			r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPublic)
 		} else {
 			r.metrics.Pings.WithLabelValues("failure").Inc()
 			r.metrics.PingTime.WithLabelValues("failure").Observe(time.Since(now).Seconds())
-			r.notifier.Reachable(overlay, p2p.ReachabilityStatusPrivate)
+			r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPrivate)
 		}
-
-		r.notifyManage()
 	}
 }
 
@@ -191,13 +185,6 @@ func (r *reacher) tryAcquirePeer() (*peer, time.Duration) {
 	return nil, time.Until(nextClosest)
 }
 
-func (r *reacher) notifyManage() {
-	select {
-	case r.work <- struct{}{}:
-	default:
-	}
-}
-
 // Connected adds a new peer to the queue for testing reachability.
 func (r *reacher) Connected(overlay swarm.Address, addr ma.Multiaddr) {
 	r.mu.Lock()
@@ -207,7 +194,10 @@ func (r *reacher) Connected(overlay swarm.Address, addr ma.Multiaddr) {
 		r.peers[overlay.ByteString()] = &peer{overlay: overlay, addr: addr}
 	}
 
-	r.notifyManage()
+	select {
+	case r.newPeer <- struct{}{}:
+	default:
+	}
 }
 
 // Disconnected removes a peer from the queue.
