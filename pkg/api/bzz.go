@@ -304,7 +304,7 @@ func (s *Service) fileUploadHandler(
 		span.SetTag("tagID", tagID)
 	}
 	w.Header().Set(ETagHeader, fmt.Sprintf("%q", reference.String()))
-	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
+	w.Header().Set(AccessControlExposeHeaders, SwarmTagHeader)
 
 	jsonhttp.Created(w, bzzUploadResponse{
 		Reference: reference,
@@ -412,7 +412,7 @@ FETCH:
 	// go on normally.
 	if !feedDereferenced {
 		if l, err := s.manifestFeed(ctx, m); err == nil {
-			//we have a feed manifest here
+			// we have a feed manifest here
 			ch, cur, _, err := l.At(ctx, time.Now().Unix(), 0)
 			if err != nil {
 				logger.Debug("bzz download: feed lookup failed", "error", err)
@@ -451,7 +451,7 @@ FETCH:
 			// we should implement an append functionality for this specific header,
 			// since different parts of handlers might be overriding others' values
 			// resulting in inconsistent headers in the response.
-			w.Header().Set("Access-Control-Expose-Headers", SwarmFeedIndexHeader)
+			w.Header().Set(AccessControlExposeHeaders, SwarmFeedIndexHeader)
 			goto FETCH
 		}
 	}
@@ -551,8 +551,7 @@ func (s *Service) serveManifestEntry(
 	mtdt := manifestEntry.Metadata()
 	if fname, ok := mtdt[manifest.EntryMetadataFilenameKey]; ok {
 		fname = filepath.Base(fname) // only keep the file name
-		additionalHeaders[ContentDispositionHeader] =
-			[]string{fmt.Sprintf("inline; filename=\"%s\"", fname)}
+		additionalHeaders[ContentDispositionHeader] = []string{fmt.Sprintf("inline; filename=\"%s\"", escapeQuotes(fname))}
 	}
 	if mimeType, ok := mtdt[manifest.EntryMetadataContentTypeKey]; ok {
 		additionalHeaders[ContentTypeHeader] = []string{mimeType}
@@ -616,13 +615,15 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 
 	// include additional headers
 	for name, values := range additionalHeaders {
-		w.Header().Set(name, strings.Join(values, "; "))
+		for _, value := range values {
+			w.Header().Add(name, value)
+		}
 	}
 	if etag {
 		w.Header().Set(ETagHeader, fmt.Sprintf("%q", reference))
 	}
 	w.Header().Set(ContentLengthHeader, strconv.FormatInt(l, 10))
-	w.Header().Set("Access-Control-Expose-Headers", ContentDispositionHeader)
+	w.Header().Add(AccessControlExposeHeaders, ContentDispositionHeader)
 
 	if headersOnly {
 		w.WriteHeader(http.StatusOK)

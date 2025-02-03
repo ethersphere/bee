@@ -155,7 +155,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	span.LogFields(olog.Bool("success", true))
 
-	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
+	w.Header().Set(AccessControlExposeHeaders, SwarmTagHeader)
 	jsonhttp.Created(w, bytesPostResponse{
 		Reference: encryptedReference,
 	})
@@ -210,7 +210,7 @@ func (s *Service) bytesHeadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Add("Access-Control-Expose-Headers", "Accept-Ranges, Content-Encoding")
+	w.Header().Add(AccessControlExposeHeaders, "Accept-Ranges, Content-Encoding")
 	w.Header().Add(ContentTypeHeader, "application/octet-stream")
 	var span int64
 

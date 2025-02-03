@@ -134,7 +134,7 @@ func (s *Service) dirUploadHandler(
 		w.Header().Set(SwarmTagHeader, fmt.Sprint(tag))
 		span.LogFields(olog.Bool("success", true))
 	}
-	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
+	w.Header().Set(AccessControlExposeHeaders, SwarmTagHeader)
 	jsonhttp.Created(w, bzzUploadResponse{
 		Reference: encryptedReference,
 	})
@@ -153,7 +153,6 @@ func storeDir(
 	errorFilename string,
 	rLevel redundancy.Level,
 ) (swarm.Address, error) {
-
 	logger := tracing.NewLoggerWithTraceID(ctx, log)
 	loggerV1 := logger.V(1).Build()
 
