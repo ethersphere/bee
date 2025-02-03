@@ -406,6 +406,12 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 			if j.refLength == encryption.ReferenceSize && i < shardCnt {
 				addr = swarm.NewAddress(data[cursor : cursor+swarm.HashSize*2])
 			}
+
+			// not a shard
+			if i >= shardCnt {
+				return nil
+			}
+
 			ch, err := g.Get(ectx, addr)
 			if err != nil {
 				return err
