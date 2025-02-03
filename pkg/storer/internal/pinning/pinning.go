@@ -86,7 +86,6 @@ type collectionPutter struct {
 // Put adds a chunk to the pin collection.
 // The user of the putter MUST mutex lock the call to prevent data-races across multiple upload sessions.
 func (c *collectionPutter) Put(ctx context.Context, st transaction.Store, ch swarm.Chunk) error {
-
 	// do not allow any Puts after putter was closed
 	if c.closed {
 		return errPutterAlreadyClosed
@@ -129,7 +128,6 @@ func (c *collectionPutter) Close(st storage.IndexStore, root swarm.Address) erro
 
 	collection := &pinCollectionItem{Addr: root}
 	has, err := st.Has(collection)
-
 	if err != nil {
 		return fmt.Errorf("pin store: check previous root: %w", err)
 	}
@@ -176,7 +174,6 @@ func (c *collectionPutter) Cleanup(st transaction.Storage) error {
 
 // CleanupDirty will iterate over all the dirty collections and delete them.
 func CleanupDirty(st transaction.Storage) error {
-
 	dirtyCollections := make([]*dirtyCollection, 0)
 	err := st.IndexStore().Iterate(
 		storage.Query{
@@ -212,7 +209,7 @@ func HasPin(st storage.Reader, root swarm.Address) (bool, error) {
 
 // Pins lists all the added pinning collections.
 func Pins(st storage.Reader) ([]swarm.Address, error) {
-	var pins []swarm.Address
+	pins := make([]swarm.Address, 0)
 	err := st.Iterate(storage.Query{
 		Factory:      func() storage.Item { return new(pinCollectionItem) },
 		ItemProperty: storage.QueryItemID,
@@ -258,7 +255,6 @@ func deleteCollectionChunks(ctx context.Context, st transaction.Storage, collect
 					)
 				})
 			})
-
 		}(item)
 	}
 
