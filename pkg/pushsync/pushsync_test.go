@@ -76,7 +76,7 @@ func TestPushClosest(t *testing.T) {
 
 	// pivot node needs the streamer since the chunk is intercepted by
 	// the chunk worker, then gets sent by opening a new stream
-	psPivot, _, pivotAccounting := createPushSyncNode(t, pivotNode, defaultPrices, recorder, nil, defaultSigner(chunk), mock.WithClosestPeer(closestPeer))
+	psPivot, pivotStorer, pivotAccounting := createPushSyncNode(t, pivotNode, defaultPrices, recorder, nil, defaultSigner(chunk), mock.WithClosestPeer(closestPeer))
 
 	// Trigger the sending of chunk to the closest node
 	receipt, err := psPivot.PushChunkToClosest(context.Background(), chunk)
@@ -93,6 +93,12 @@ func TestPushClosest(t *testing.T) {
 
 	// this intercepts the incoming receipt message
 	waitOnRecordAndTest(t, closestPeer, recorder, chunk.Address(), nil)
+
+	found, _ := pivotStorer.hasReported(t, chunk.Address())
+	if found {
+		t.Fatalf("chunk %s reported", chunk.Address())
+	}
+
 	balance, err := pivotAccounting.Balance(closestPeer)
 	if err != nil {
 		t.Fatal(err)
@@ -215,13 +221,13 @@ func TestShallowReceipt(t *testing.T) {
 
 	// peer is the node responding to the chunk receipt message
 	// mock should return ErrWantSelf since there's no one to forward to
-	psPeer, _ := createPushSyncNodeWithRadius(t, closestPeer, defaultPrices, nil, nil, defaultSigner(chunk), highPO, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	psPeer, _ := createPushSyncNodeWithRadius(t, closestPeer, defaultPrices, nil, nil, defaultSigner(chunk), highPO, 0, mock.WithClosestPeerErr(topology.ErrWantSelf))
 
 	recorder := streamtest.New(streamtest.WithProtocols(psPeer.Protocol()), streamtest.WithBaseAddr(pivotNode))
 
 	// pivot node needs the streamer since the chunk is intercepted by
 	// the chunk worker, then gets sent by opening a new stream
-	psPivot, _ := createPushSyncNodeWithRadius(t, pivotNode, defaultPrices, recorder, nil, defaultSigner(chunk), highPO, mock.WithClosestPeer(closestPeer))
+	psPivot, _ := createPushSyncNodeWithRadius(t, pivotNode, defaultPrices, recorder, nil, defaultSigner(chunk), highPO, 0, mock.WithClosestPeer(closestPeer))
 
 	// Trigger the sending of chunk to the closest node
 	receipt, err := psPivot.PushChunkToClosest(context.Background(), chunk)
@@ -240,12 +246,73 @@ func TestShallowReceipt(t *testing.T) {
 	waitOnRecordAndTest(t, closestPeer, recorder, chunk.Address(), nil)
 }
 
+// TestShallowReceiptTolerance sends back a shallow receipt but because of the tolerance level, the origin node accepts the receipts.
+func TestShallowReceiptTolerance(t *testing.T) {
+	t.Parallel()
+
+	key, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	signer := crypto.NewDefaultSigner(key)
+
+	pubKey, err := signer.PublicKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	closestPeer, err := crypto.NewOverlayAddress(*pubKey, 1, blockHash.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	storerRadius := 2
+	chunkProximity := 2
+
+	pivotRadius := 4
+	pivotTolerance := uint8(2)
+
+	// create a pivot node and a mocked closest node
+	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")
+
+	chunk := testingc.GenerateValidRandomChunkAt(t, closestPeer, chunkProximity)
+
+	// peer is the node responding to the chunk receipt message
+	// mock should return ErrWantSelf since there's no one to forward to
+	psPeer, _ := createPushSyncNodeWithRadius(t, closestPeer, defaultPrices, nil, nil, signer, uint8(storerRadius), 0, mock.WithClosestPeerErr(topology.ErrWantSelf))
+
+	recorder := streamtest.New(streamtest.WithProtocols(psPeer.Protocol()), streamtest.WithBaseAddr(pivotNode))
+
+	// pivot node needs the streamer since the chunk is intercepted by
+	// the chunk worker, then gets sent by opening a new stream
+	psPivot, _ := createPushSyncNodeWithRadius(t, pivotNode, defaultPrices, recorder, nil, nil, uint8(pivotRadius), pivotTolerance, mock.WithClosestPeer(closestPeer))
+
+	// Trigger the sending of chunk to the closest node
+	receipt, err := psPivot.PushChunkToClosest(context.Background(), chunk)
+	if !chunk.Address().Equal(receipt.Address) {
+		t.Fatal("invalid receipt")
+	}
+	if err != nil {
+		t.Fatalf("got %v, want %v", err, nil)
+	}
+	if got := swarm.Proximity(receipt.Address.Bytes(), closestPeer.Bytes()); got < uint8(chunkProximity) {
+		t.Fatalf("got %v, want at least %v", got, chunkProximity)
+	}
+
+	// this intercepts the outgoing delivery message
+	waitOnRecordAndTest(t, closestPeer, recorder, chunk.Address(), chunk.Data())
+
+	// this intercepts the incoming receipt message
+	waitOnRecordAndTest(t, closestPeer, recorder, chunk.Address(), nil)
+}
+
 // PushChunkToClosest tests the sending of chunk to closest peer from the origination source perspective.
 // it also checks whether the tags are incremented properly if they are present
 func TestPushChunkToClosest(t *testing.T) {
 	t.Parallel()
 	// chunk data to upload
-	chunk := testingc.FixtureChunk("7000")
+	chunk := testingc.FixtureChunk("7000").WithTagID(1)
 
 	// create a pivot node and a mocked closest node
 	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")   // base is 0000
@@ -318,7 +385,7 @@ func TestPushChunkToNextClosest(t *testing.T) {
 	t.Skip("flaky test")
 
 	// chunk data to upload
-	chunk := testingc.FixtureChunk("7000")
+	chunk := testingc.FixtureChunk("7000").WithTagID(1)
 
 	// create a pivot node and a mocked closest node
 	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // base is 0000
@@ -428,7 +495,7 @@ func TestPushChunkToClosestErrorAttemptRetry(t *testing.T) {
 	t.Parallel()
 
 	// chunk data to upload
-	chunk := testingc.FixtureChunk("7000")
+	chunk := testingc.FixtureChunk("7000").WithTagID(1)
 
 	// create a pivot node and a mocked closest node
 	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // base is 0000
@@ -856,6 +923,7 @@ func createPushSyncNodeWithRadius(
 	unwrap func(swarm.Chunk),
 	signer crypto.Signer,
 	radius uint8,
+	shallowReceiptTolerance uint8,
 	mockOpts ...mock.Option,
 ) (*pushsync.PushSync, *testStorer) {
 	t.Helper()
@@ -878,7 +946,7 @@ func createPushSyncNodeWithRadius(
 
 	radiusFunc := func() (uint8, error) { return radius, nil }
 
-	ps := pushsync.New(addr, 1, blockHash.Bytes(), recorderDisconnecter, storer, radiusFunc, mockTopology, true, unwrap, func(*soc.SOC) {}, validStamp, log.Noop, accountingmock.NewAccounting(), mockPricer, signer, nil, -1)
+	ps := pushsync.New(addr, 1, blockHash.Bytes(), recorderDisconnecter, storer, radiusFunc, mockTopology, true, unwrap, func(*soc.SOC) {}, validStamp, log.Noop, accountingmock.NewAccounting(), mockPricer, signer, nil, -1, shallowReceiptTolerance)
 	t.Cleanup(func() { ps.Close() })
 
 	return ps, storer
@@ -919,7 +987,7 @@ func createPushSyncNodeWithAccounting(
 
 	radiusFunc := func() (uint8, error) { return 0, nil }
 
-	ps := pushsync.New(addr, 1, blockHash.Bytes(), recorderDisconnecter, storer, radiusFunc, mockTopology, true, unwrap, gsocListener, validStamp, logger, acct, mockPricer, signer, nil, -1)
+	ps := pushsync.New(addr, 1, blockHash.Bytes(), recorderDisconnecter, storer, radiusFunc, mockTopology, true, unwrap, gsocListener, validStamp, logger, acct, mockPricer, signer, nil, -1, 0)
 	t.Cleanup(func() { ps.Close() })
 
 	return ps, storer
