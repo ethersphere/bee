@@ -100,7 +100,8 @@ func TestDBSplitChunks(t *testing.T) {
 	// split the file manually and compare output with the split commands output.
 	putter := &putter{chunks: make(map[string]swarm.Chunk)}
 	p := requestPipelineFn(putter, false, redundancy.Level(3))
-	_, err = p(context.Background(), bytes.NewReader(buf))
+	ctx := redundancy.SetLevelInContext(context.Background(), redundancy.Level(3))
+	_, err = p(ctx, bytes.NewReader(buf))
 	if err != nil {
 		t.Fatal(err)
 	}
