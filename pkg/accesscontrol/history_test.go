@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline/builder"
+	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -37,7 +38,7 @@ func TestSingleNodeHistoryLookup(t *testing.T) {
 	t.Parallel()
 	storer := mockstorer.New()
 	ctx := context.Background()
-	ls := loadsave.New(storer.ChunkStore(), storer.Cache(), pipelineFactory(storer.Cache(), false))
+	ls := loadsave.New(storer.ChunkStore(), storer.Cache(), pipelineFactory(storer.Cache(), false), redundancy.DefaultLevel)
 
 	h, err := accesscontrol.NewHistory(ls)
 	assertNoError(t, "create history", err)
@@ -61,7 +62,7 @@ func TestMultiNodeHistoryLookup(t *testing.T) {
 	t.Parallel()
 	storer := mockstorer.New()
 	ctx := context.Background()
-	ls := loadsave.New(storer.ChunkStore(), storer.Cache(), pipelineFactory(storer.Cache(), false))
+	ls := loadsave.New(storer.ChunkStore(), storer.Cache(), pipelineFactory(storer.Cache(), false), redundancy.DefaultLevel)
 
 	h, err := accesscontrol.NewHistory(ls)
 	assertNoError(t, "create history", err)
@@ -133,7 +134,7 @@ func TestHistoryStore(t *testing.T) {
 	t.Parallel()
 	storer := mockstorer.New()
 	ctx := context.Background()
-	ls := loadsave.New(storer.ChunkStore(), storer.Cache(), pipelineFactory(storer.Cache(), false))
+	ls := loadsave.New(storer.ChunkStore(), storer.Cache(), pipelineFactory(storer.Cache(), false), redundancy.DefaultLevel)
 
 	h1, err := accesscontrol.NewHistory(ls)
 	assertNoError(t, "create history", err)

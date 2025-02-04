@@ -39,13 +39,7 @@ type hashTrieWriter struct {
 	replicaPutter          storage.Putter // putter to save dispersed replicas of the root chunk
 }
 
-func NewHashTrieWriter(
-	ctx context.Context,
-	refLen int,
-	rParams redundancy.RedundancyParams,
-	pipelineFn pipeline.PipelineFunc,
-	replicaPutter storage.Putter,
-) pipeline.ChainWriter {
+func NewHashTrieWriter(ctx context.Context, refLen int, rParams redundancy.RedundancyParams, pipelineFn pipeline.PipelineFunc, replicaPutter storage.Putter, rLevel redundancy.Level, ) pipeline.ChainWriter {
 	h := &hashTrieWriter{
 		ctx:                    ctx,
 		refSize:                refLen,
@@ -56,7 +50,7 @@ func NewHashTrieWriter(
 		chunkCounters:          make([]uint8, 9),
 		effectiveChunkCounters: make([]uint8, 9),
 		maxChildrenChunks:      uint8(rParams.MaxShards() + rParams.Parities(rParams.MaxShards())),
-		replicaPutter:          replicas.NewPutter(replicaPutter),
+		replicaPutter:          replicas.NewPutter(replicaPutter, rLevel),
 	}
 	h.parityChunkFn = func(level int, span, address []byte) error {
 		return h.writeToIntermediateLevel(level, true, span, address, []byte{})

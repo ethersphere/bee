@@ -35,7 +35,7 @@ import (
 //nolint:ireturn
 func prepareHistoryFixture(storer api.Storer) (accesscontrol.History, swarm.Address) {
 	ctx := context.Background()
-	ls := loadsave.New(storer.ChunkStore(), storer.Cache(), pipelineFactory(storer.Cache(), false, redundancy.NONE))
+	ls := loadsave.New(storer.ChunkStore(), storer.Cache(), pipelineFactory(storer.Cache(), false, redundancy.NONE), redundancy.DefaultLevel)
 
 	h, _ := accesscontrol.NewHistory(ls)
 

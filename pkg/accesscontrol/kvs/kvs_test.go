@@ -31,7 +31,7 @@ func requestPipelineFactory(ctx context.Context, s storage.Putter, encrypt bool,
 }
 
 func createLs() file.LoadSaver {
-	return loadsave.New(mockStorer.ChunkStore(), mockStorer.Cache(), requestPipelineFactory(context.Background(), mockStorer.Cache(), false, redundancy.NONE))
+	return loadsave.New(mockStorer.ChunkStore(), mockStorer.Cache(), requestPipelineFactory(context.Background(), mockStorer.Cache(), false, redundancy.NONE), redundancy.DefaultLevel)
 }
 
 func keyValuePair(t *testing.T) ([]byte, []byte) {

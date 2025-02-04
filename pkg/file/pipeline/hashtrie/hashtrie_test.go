@@ -77,7 +77,7 @@ func newErasureHashTrieWriter(
 	}
 
 	r := redundancy.New(rLevel, encryptChunks, ppf)
-	ht := hashtrie.NewHashTrieWriter(ctx, hashSize, r, pf, replicaPutter)
+	ht := hashtrie.NewHashTrieWriter(ctx, hashSize, r, pf, replicaPutter, rLevel)
 	return r, ht
 }
 
@@ -141,7 +141,7 @@ func TestLevels(t *testing.T) {
 				return bmt.NewBmtWriter(lsw)
 			}
 
-			ht := hashtrie.NewHashTrieWriter(ctx, hashSize, redundancy.New(0, false, pf), pf, s)
+			ht := hashtrie.NewHashTrieWriter(ctx, hashSize, redundancy.New(0, false, pf), pf, s, 0)
 
 			for i := 0; i < tc.writes; i++ {
 				a := &pipeline.PipeWriteArgs{Ref: addr.Bytes(), Span: span}
@@ -194,7 +194,7 @@ func TestLevels_TrieFull(t *testing.T) {
 			Params: *r,
 		}
 
-		ht = hashtrie.NewHashTrieWriter(ctx, hashSize, rMock, pf, s)
+		ht = hashtrie.NewHashTrieWriter(ctx, hashSize, rMock, pf, s, 0)
 	)
 
 	// to create a level wrap we need to do branching^(level-1) writes
@@ -235,7 +235,7 @@ func TestRegression(t *testing.T) {
 			lsw := store.NewStoreWriter(ctx, s, nil)
 			return bmt.NewBmtWriter(lsw)
 		}
-		ht = hashtrie.NewHashTrieWriter(ctx, hashSize, redundancy.New(0, false, pf), pf, s)
+		ht = hashtrie.NewHashTrieWriter(ctx, hashSize, redundancy.New(0, false, pf), pf, s, 0)
 	)
 	binary.LittleEndian.PutUint64(span, 4096)
 
@@ -310,14 +310,12 @@ func TestRedundancy(t *testing.T) {
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			subCtx := redundancy.SetLevelInContext(ctx, tc.level)
-
 			s := inmemchunkstore.New()
 			intermediateChunkCounter := mock.NewChainWriter()
 			parityChunkCounter := mock.NewChainWriter()
 			replicaChunkCounter := &replicaPutter{Putter: s}
 
-			r, ht := newErasureHashTrieWriter(subCtx, s, tc.level, tc.encryption, intermediateChunkCounter, parityChunkCounter, replicaChunkCounter)
+			r, ht := newErasureHashTrieWriter(ctx, s, tc.level, tc.encryption, intermediateChunkCounter, parityChunkCounter, replicaChunkCounter)
 
 			// write data to the hashTrie
 			var key []byte
@@ -345,7 +343,7 @@ func TestRedundancy(t *testing.T) {
 				t.Errorf("effective chunks should be %d. Got: %d", tc.writes, intermediateChunkCounter.ChainWriteCalls())
 			}
 
-			rootch, err := s.Get(subCtx, swarm.NewAddress(ref[:swarm.HashSize]))
+			rootch, err := s.Get(ctx, swarm.NewAddress(ref[:swarm.HashSize]))
 			if err != nil {
 				t.Fatal(err)
 			}
