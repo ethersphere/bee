@@ -39,7 +39,7 @@ type hashTrieWriter struct {
 	replicaPutter          storage.Putter // putter to save dispersed replicas of the root chunk
 }
 
-func NewHashTrieWriter(ctx context.Context, refLen int, rParams redundancy.RedundancyParams, pipelineFn pipeline.PipelineFunc, replicaPutter storage.Putter, rLevel redundancy.Level, ) pipeline.ChainWriter {
+func NewHashTrieWriter(ctx context.Context, refLen int, rParams redundancy.RedundancyParams, pipelineFn pipeline.PipelineFunc, replicaPutter storage.Putter, rLevel redundancy.Level) pipeline.ChainWriter {
 	h := &hashTrieWriter{
 		ctx:                    ctx,
 		refSize:                refLen,
