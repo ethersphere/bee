@@ -57,6 +57,7 @@ func TestAddresses(t *testing.T) {
 				Overlay:      &overlay,
 				Underlay:     addresses,
 				Ethereum:     ethereumAddress,
+				ChainAddress: ethereumAddress,
 				PublicKey:    hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&privateKey.PublicKey)),
 				PSSPublicKey: hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&pssPrivateKey.PublicKey)),
 			}),
