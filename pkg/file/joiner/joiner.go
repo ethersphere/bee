@@ -375,10 +375,6 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 	default:
 	}
 
-	eg, ectx := errgroup.WithContext(ctx)
-
-	var wg sync.WaitGroup
-
 	eSize, err := file.ChunkPayloadSize(data)
 	if err != nil {
 		return err
@@ -398,29 +394,31 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 			continue
 		}
 
-		wg.Add(1)
-		eg.Go(func() error {
-			defer wg.Done()
+		if j.refLength == encryption.ReferenceSize && i < shardCnt {
+			addr = swarm.NewAddress(data[cursor : cursor+swarm.HashSize*2])
+		}
 
-			if j.refLength == encryption.ReferenceSize && i < shardCnt {
-				addr = swarm.NewAddress(data[cursor : cursor+swarm.HashSize*2])
-			}
-			ch, err := g.Get(ectx, addr)
-			if err != nil {
-				return err
-			}
+		// not a shard
+		if i >= shardCnt {
+			continue
+		}
 
-			chunkData := ch.Data()[8:]
-			subtrieLevel, subtrieSpan := j.chunkToSpan(ch.Data())
-			_, parities := file.ReferenceCount(uint64(subtrieSpan), subtrieLevel, j.refLength != swarm.HashSize)
+		ch, err := g.Get(ctx, addr)
+		if err != nil {
+			return err
+		}
 
-			return j.processChunkAddresses(ectx, fn, chunkData, subtrieSpan, parities)
-		})
+		chunkData := ch.Data()[8:]
+		subtrieLevel, subtrieSpan := j.chunkToSpan(ch.Data())
+		_, parities := file.ReferenceCount(uint64(subtrieSpan), subtrieLevel, j.refLength != swarm.HashSize)
 
-		wg.Wait()
+		err = j.processChunkAddresses(ctx, fn, chunkData, subtrieSpan, parities)
+		if err != nil {
+			return err
+		}
 	}
 
-	return eg.Wait()
+	return nil
 }
 
 func (j *joiner) Size() int64 {
