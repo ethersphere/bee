@@ -18,7 +18,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/mock"
 	"github.com/ethersphere/bee/v2/pkg/steward"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -48,8 +48,6 @@ func TestSteward(t *testing.T) {
 		s              = steward.New(store, localRetrieval, inmem)
 		stamper        = postagetesting.NewStamper()
 	)
-	ctx = redundancy.SetLevelInContext(ctx, redundancy.NONE)
-
 	n, err := rand.Read(data)
 	if n != cap(data) {
 		t.Fatal("short read")
@@ -58,7 +56,7 @@ func TestSteward(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	pipe := builder.NewPipelineBuilder(ctx, chunkStore, false, 0)
+	pipe := builder.NewPipelineBuilder(ctx, chunkStore, false, redundancy.NONE)
 	addr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))
 	if err != nil {
 		t.Fatal(err)
@@ -127,6 +125,11 @@ type localRetriever struct {
 }
 
 func (lr *localRetriever) RetrieveChunk(ctx context.Context, addr, sourceAddr swarm.Address) (chunk swarm.Chunk, err error) {
+	ch, err := lr.Get(ctx, addr)
+	if err != nil {
+		return nil, err
+	}
+
 	lr.mu.Lock()
 	defer lr.mu.Unlock()
 
@@ -134,5 +137,5 @@ func (lr *localRetriever) RetrieveChunk(ctx context.Context, addr, sourceAddr sw
 		lr.retrievedChunks = make(map[string]struct{})
 	}
 	lr.retrievedChunks[addr.String()] = struct{}{}
-	return lr.Get(ctx, addr)
+	return ch, nil
 }

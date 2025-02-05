@@ -818,7 +818,7 @@ func TestFeedIndirection(t *testing.T) {
 		t.Fatal(err)
 	}
 	m, err := manifest.NewDefaultManifest(
-		loadsave.New(storer.ChunkStore(), storer.Cache(), pipelineFactory(storer.Cache(), false, 0)),
+		loadsave.New(storer.ChunkStore(), storer.Cache(), pipelineFactory(storer.Cache(), false, 0), redundancy.DefaultLevel),
 		false,
 	)
 	if err != nil {

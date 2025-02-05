@@ -25,8 +25,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/manifest"
 	"github.com/ethersphere/bee/v2/pkg/postage"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
-	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
 	"github.com/opentracing/opentracing-go"
@@ -157,7 +157,7 @@ func storeDir(
 	loggerV1 := logger.V(1).Build()
 
 	p := requestPipelineFn(putter, encrypt, rLevel)
-	ls := loadsave.New(getter, putter, requestPipelineFactory(ctx, putter, encrypt, rLevel))
+	ls := loadsave.New(getter, putter, requestPipelineFactory(ctx, putter, encrypt, rLevel), rLevel)
 
 	dirManifest, err := manifest.NewDefaultManifest(ls, encrypt)
 	if err != nil {

@@ -19,6 +19,7 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/api"
 	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
+	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/v2/pkg/manifest"
@@ -282,7 +283,7 @@ func TestDirs(t *testing.T) {
 			// verify manifest content
 			verifyManifest, err := manifest.NewDefaultManifestReference(
 				resp.Reference,
-				loadsave.NewReadonly(storer.ChunkStore()),
+				loadsave.NewReadonly(storer.ChunkStore(), redundancy.DefaultLevel),
 			)
 			if err != nil {
 				t.Fatal(err)

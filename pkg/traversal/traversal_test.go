@@ -17,9 +17,10 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline/builder"
+	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/manifest"
 	testingsoc "github.com/ethersphere/bee/v2/pkg/soc/testing"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/traversal"
@@ -166,7 +167,7 @@ func TestTraversalBytes(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			err = traversal.New(storerMock, storerMock).Traverse(ctx, address, iter.Next)
+			err = traversal.New(storerMock, storerMock, redundancy.DefaultLevel).Traverse(ctx, address, iter.Next)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -260,7 +261,7 @@ func TestTraversalFiles(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			ls := loadsave.New(storerMock, storerMock, pipelineFactory(storerMock, false))
+			ls := loadsave.New(storerMock, storerMock, pipelineFactory(storerMock, false), redundancy.DefaultLevel)
 			fManifest, err := manifest.NewDefaultManifest(ls, false)
 			if err != nil {
 				t.Fatal(err)
@@ -292,7 +293,7 @@ func TestTraversalFiles(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			err = traversal.New(storerMock, storerMock).Traverse(ctx, address, iter.Next)
+			err = traversal.New(storerMock, storerMock, redundancy.DefaultLevel).Traverse(ctx, address, iter.Next)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -418,7 +419,7 @@ func TestTraversalManifest(t *testing.T) {
 			}
 			wantHashes = append(wantHashes, tc.manifestHashes...)
 
-			ls := loadsave.New(storerMock, storerMock, pipelineFactory(storerMock, false))
+			ls := loadsave.New(storerMock, storerMock, pipelineFactory(storerMock, false), redundancy.DefaultLevel)
 			dirManifest, err := manifest.NewMantarayManifest(ls, false)
 			if err != nil {
 				t.Fatal(err)
@@ -449,7 +450,7 @@ func TestTraversalManifest(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			err = traversal.New(storerMock, storerMock).Traverse(ctx, address, iter.Next)
+			err = traversal.New(storerMock, storerMock, redundancy.DefaultLevel).Traverse(ctx, address, iter.Next)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -487,7 +488,7 @@ func TestTraversalSOC(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = traversal.New(store, store).Traverse(ctx, sch.Address(), iter.Next)
+	err = traversal.New(store, store, 0).Traverse(ctx, sch.Address(), iter.Next)
 	if err != nil {
 		t.Fatal(err)
 	}

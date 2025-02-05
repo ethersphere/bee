@@ -55,7 +55,7 @@ func New(o ...Option) accesscontrol.Controller {
 		refMap:     make(map[string]swarm.Address),
 		publisher:  "",
 		encrypter:  encryption.New(encryption.Key("b6ee086390c280eeb9824c331a4427596f0c8510d5564bc1b6168d0059a46e2b"), 0, 0, sha3.NewLegacyKeccak256),
-		ls:         loadsave.New(storer.ChunkStore(), storer.Cache(), requestPipelineFactory(context.Background(), storer.Cache(), false, redundancy.NONE)),
+		ls:         loadsave.New(storer.ChunkStore(), storer.Cache(), requestPipelineFactory(context.Background(), storer.Cache(), false, redundancy.NONE), redundancy.DefaultLevel),
 	}
 	for _, v := range o {
 		v.apply(m)

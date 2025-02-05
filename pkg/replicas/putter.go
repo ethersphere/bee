@@ -21,23 +21,26 @@ import (
 // putter extends the original putter to a concurrent multiputter
 type putter struct {
 	putter storage.Putter
+	rLevel redundancy.Level
 }
 
 // NewPutter is the putter constructor
-func NewPutter(p storage.Putter) storage.Putter {
-	return &putter{p}
+func NewPutter(p storage.Putter, rLevel redundancy.Level) storage.Putter {
+	return &putter{
+		putter: p,
+		rLevel: rLevel,
+	}
 }
 
 // Put makes the getter satisfy the storage.Getter interface
 func (p *putter) Put(ctx context.Context, ch swarm.Chunk) (err error) {
-	rlevel := redundancy.GetLevelFromContext(ctx)
 	errs := []error{}
-	if rlevel == 0 {
+	if p.rLevel == 0 {
 		return nil
 	}
 
-	rr := newReplicator(ch.Address(), rlevel)
-	errc := make(chan error, rlevel.GetReplicaCount())
+	rr := newReplicator(ch.Address(), p.rLevel)
+	errc := make(chan error, p.rLevel.GetReplicaCount())
 	wg := sync.WaitGroup{}
 	for r := range rr.c {
 		wg.Add(1)
