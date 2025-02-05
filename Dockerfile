@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN mkdir -p /home/bee/.bee && chown 999:999 /home/bee/.bee
 
 COPY --from=build /src/dist/bee /usr/local/bin/bee
+COPY --from=build /src/packaging/bee-get-addr /usr/local/bin/bee-get-addr
 
 EXPOSE 1633 1634
 USER bee
