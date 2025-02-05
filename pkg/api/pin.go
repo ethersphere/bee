@@ -10,9 +10,10 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/storage"
-	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/traversal"
 	"github.com/gorilla/mux"
@@ -52,7 +53,7 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 	}
 
 	getter := s.storer.Download(true)
-	traverser := traversal.New(getter, s.storer.Cache(), 0)
+	traverser := traversal.New(getter, s.storer.Cache(), redundancy.DefaultLevel)
 
 	sem := semaphore.NewWeighted(100)
 	var errTraverse error
