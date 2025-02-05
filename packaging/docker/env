@@ -80,7 +80,7 @@
 ## minimum radius storage threshold
 # BEE_MINIMUM_STORAGE_RADIUS=
 ## reserve capacity doubling (default 0, maximum 1)
-# BEE_RESERVE-CAPACITY-DOUBLING=0
+# BEE_RESERVE_CAPACITY_DOUBLING=0
 ## allow to advertise private CIDRs to the public network
 # BEE_ALLOW_PRIVATE_CIDRS=false
 ## enable forwarded content caching
