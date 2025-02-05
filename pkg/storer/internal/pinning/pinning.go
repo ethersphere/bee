@@ -13,7 +13,7 @@ import (
 	"runtime"
 
 	"github.com/ethersphere/bee/v2/pkg/encryption"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"golang.org/x/sync/errgroup"
 
