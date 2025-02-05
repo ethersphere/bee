@@ -24,6 +24,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/file"
 	"github.com/ethersphere/bee/v2/pkg/file/joiner"
 	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
+	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/hive"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/manifest"
@@ -35,7 +36,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/v2/pkg/spinlock"
 	"github.com/ethersphere/bee/v2/pkg/storage"
-	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/ethersphere/bee/v2/pkg/topology/kademlia"
@@ -279,7 +280,7 @@ func getLatestSnapshot(
 	st storage.Getter,
 	address swarm.Address,
 ) (swarm.Chunk, error) {
-	ls := loadsave.NewReadonly(st)
+	ls := loadsave.NewReadonly(st, redundancy.DefaultLevel)
 	feedFactory := factory.New(st)
 
 	m, err := manifest.NewDefaultManifestReference(

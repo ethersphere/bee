@@ -87,8 +87,6 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		deferred = defaultUploadMethod(headers.Deferred)
 	)
 
-	ctx = redundancy.SetLevelInContext(ctx, headers.RLevel)
-
 	if deferred || headers.Pin {
 		tag, err = s.getOrCreateSessionID(headers.SwarmTag)
 		if err != nil {
@@ -213,7 +211,7 @@ func (s *Service) fileUploadHandler(
 	}
 
 	factory := requestPipelineFactory(ctx, putter, encrypt, rLevel)
-	l := loadsave.New(s.storer.ChunkStore(), s.storer.Cache(), factory)
+	l := loadsave.New(s.storer.ChunkStore(), s.storer.Cache(), factory, rLevel)
 
 	m, err := manifest.NewDefaultManifest(l, encrypt)
 	if err != nil {
@@ -379,7 +377,12 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 		cache = *headers.Cache
 	}
 
-	ls := loadsave.NewReadonly(s.storer.Download(cache))
+	rLevel := redundancy.DefaultLevel
+	if headers.RLevel != nil {
+		rLevel = *headers.RLevel
+	}
+
+	ls := loadsave.NewReadonly(s.storer.Download(cache), rLevel)
 	feedDereferenced := false
 
 	ctx := r.Context()
@@ -388,9 +391,6 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 		logger.Error(err, err.Error())
 		jsonhttp.BadRequest(w, "could not parse headers")
 		return
-	}
-	if headers.RLevel != nil {
-		ctx = redundancy.SetLevelInContext(ctx, *headers.RLevel)
 	}
 
 FETCH:
@@ -435,7 +435,7 @@ FETCH:
 			}
 			address = wc.Address()
 			// modify ls and init with non-existing wrapped chunk
-			ls = loadsave.NewReadonlyWithRootCh(s.storer.Download(cache), wc)
+			ls = loadsave.NewReadonlyWithRootCh(s.storer.Download(cache), wc, rLevel)
 
 			feedDereferenced = true
 			curBytes, err := cur.MarshalBinary()
@@ -587,8 +587,9 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		jsonhttp.BadRequest(w, "could not parse headers")
 		return
 	}
+	rLevel := redundancy.DefaultLevel
 	if headers.RLevel != nil {
-		ctx = redundancy.SetLevelInContext(ctx, *headers.RLevel)
+		rLevel = *headers.RLevel
 	}
 
 	var (
@@ -598,7 +599,7 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 	if rootCh != nil {
 		reader, l, err = joiner.NewJoiner(ctx, s.storer.Download(cache), s.storer.Cache(), reference, rootCh)
 	} else {
-		reader, l, err = joiner.New(ctx, s.storer.Download(cache), s.storer.Cache(), reference)
+		reader, l, err = joiner.New(ctx, s.storer.Download(cache), s.storer.Cache(), reference, rLevel)
 	}
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) || errors.Is(err, topology.ErrNotFound) {

@@ -15,10 +15,11 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/file/joiner"
 	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
+	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/manifest"
 	"github.com/ethersphere/bee/v2/pkg/manifest/mantaray"
 	"github.com/ethersphere/bee/v2/pkg/soc"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
@@ -29,20 +30,21 @@ type Traverser interface {
 }
 
 // New constructs for a new Traverser.
-func New(getter storage.Getter, putter storage.Putter) Traverser {
-	return &service{getter: getter, putter: putter}
+func New(getter storage.Getter, putter storage.Putter, rLevel redundancy.Level) Traverser {
+	return &service{getter: getter, putter: putter, rLevel: rLevel}
 }
 
 // service is implementation of Traverser using storage.Storer as its storage.
 type service struct {
 	getter storage.Getter
 	putter storage.Putter
+	rLevel redundancy.Level
 }
 
 // Traverse implements Traverser.Traverse method.
 func (s *service) Traverse(ctx context.Context, addr swarm.Address, iterFn swarm.AddressIterFunc) error {
 	processBytes := func(ref swarm.Address) error {
-		j, _, err := joiner.New(ctx, s.getter, s.putter, ref)
+		j, _, err := joiner.New(ctx, s.getter, s.putter, ref, s.rLevel)
 		if err != nil {
 			return fmt.Errorf("traversal: joiner error on %q: %w", ref, err)
 		}
@@ -65,7 +67,7 @@ func (s *service) Traverse(ctx context.Context, addr swarm.Address, iterFn swarm
 		}
 	}
 
-	ls := loadsave.NewReadonly(s.getter)
+	ls := loadsave.NewReadonly(s.getter, s.rLevel)
 	switch mf, err := manifest.NewDefaultManifestReference(addr, ls); {
 	case errors.Is(err, manifest.ErrInvalidManifestType):
 		break

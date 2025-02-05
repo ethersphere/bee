@@ -11,10 +11,11 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/retrieval"
 	"github.com/ethersphere/bee/v2/pkg/storage"
-	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/ethersphere/bee/v2/pkg/traversal"
@@ -40,8 +41,8 @@ type steward struct {
 func New(ns storer.NetStore, r retrieval.Interface, joinerPutter storage.Putter) Interface {
 	return &steward{
 		netStore:     ns,
-		traverser:    traversal.New(ns.Download(true), joinerPutter),
-		netTraverser: traversal.New(&netGetter{r}, joinerPutter),
+		traverser:    traversal.New(ns.Download(true), joinerPutter, redundancy.DefaultLevel),
+		netTraverser: traversal.New(&netGetter{r}, joinerPutter, redundancy.DefaultLevel),
 		netGetter:    r,
 	}
 }

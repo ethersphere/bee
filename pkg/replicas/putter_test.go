@@ -75,15 +75,13 @@ func TestPutter(t *testing.T) {
 				t.Fatal(err)
 			}
 			ctx := context.Background()
-			ctx = redundancy.SetLevelInContext(ctx, tc.level)
-
 			ch, err := cac.New(buf)
 			if err != nil {
 				t.Fatal(err)
 			}
 			store := inmemchunkstore.New()
 			defer store.Close()
-			p := replicas.NewPutter(store)
+			p := replicas.NewPutter(store, tc.level)
 
 			// original chunk
 			if err := store.Put(ctx, ch); err != nil {
@@ -178,14 +176,13 @@ func TestPutter(t *testing.T) {
 				ctx := context.Background()
 				ctx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
 				defer cancel()
-				ctx = redundancy.SetLevelInContext(ctx, tc.level)
 				ch, err := cac.New(buf)
 				if err != nil {
 					t.Fatal(err)
 				}
 				store := inmemchunkstore.New()
 				defer store.Close()
-				p := replicas.NewPutter(tc.f(&testBasePutter{store: store}))
+				p := replicas.NewPutter(tc.f(&testBasePutter{store: store}), tc.level)
 				errs := p.Put(ctx, ch)
 				for _, err := range tc.err {
 					if !errors.Is(errs, err) {

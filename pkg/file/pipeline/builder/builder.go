@@ -18,7 +18,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline/hashtrie"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline/store"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
@@ -35,13 +35,7 @@ func NewPipelineBuilder(ctx context.Context, s storage.Putter, encrypt bool, rLe
 // writes are supported. The pipeline flow is: Data -> Feeder -> BMT -> Storage -> HashTrie.
 func newPipeline(ctx context.Context, s storage.Putter, rLevel redundancy.Level) pipeline.Interface {
 	pipeline := newShortPipelineFunc(ctx, s)
-	tw := hashtrie.NewHashTrieWriter(
-		ctx,
-		swarm.HashSize,
-		redundancy.New(rLevel, false, pipeline),
-		pipeline,
-		s,
-	)
+	tw := hashtrie.NewHashTrieWriter(ctx, swarm.HashSize, redundancy.New(rLevel, false, pipeline), pipeline, s, rLevel)
 	lsw := store.NewStoreWriter(ctx, s, tw)
 	b := bmt.NewBmtWriter(lsw)
 	return feeder.NewChunkFeederWriter(swarm.ChunkSize, b)
@@ -62,13 +56,7 @@ func newShortPipelineFunc(ctx context.Context, s storage.Putter) func() pipeline
 // Note that the encryption writer will mutate the data to contain the encrypted span, but the span field
 // with the unencrypted span is preserved.
 func newEncryptionPipeline(ctx context.Context, s storage.Putter, rLevel redundancy.Level) pipeline.Interface {
-	tw := hashtrie.NewHashTrieWriter(
-		ctx,
-		swarm.HashSize+encryption.KeyLength,
-		redundancy.New(rLevel, true, newShortPipelineFunc(ctx, s)),
-		newShortEncryptionPipelineFunc(ctx, s),
-		s,
-	)
+	tw := hashtrie.NewHashTrieWriter(ctx, swarm.HashSize+encryption.KeyLength, redundancy.New(rLevel, true, newShortPipelineFunc(ctx, s)), newShortEncryptionPipelineFunc(ctx, s), s, rLevel)
 	lsw := store.NewStoreWriter(ctx, s, tw)
 	b := bmt.NewBmtWriter(lsw)
 	enc := enc.NewEncryptionWriter(encryption.NewChunkEncrypter(), b)

@@ -110,8 +110,7 @@ func splitRefs(cmd *cobra.Command) {
 			defer writer.Close()
 
 			p := requestPipelineFn(store, false, redundancy.Level(rLevel))
-			ctx := redundancy.SetLevelInContext(cmd.Context(), redundancy.Level(rLevel))
-			rootRef, err := p(ctx, reader)
+			rootRef, err := p(cmd.Context(), reader)
 			if err != nil {
 				return fmt.Errorf("pipeline: %w", err)
 			}
@@ -201,8 +200,7 @@ func splitChunks(cmd *cobra.Command) {
 			})
 
 			p := requestPipelineFn(store, false, redundancy.Level(rLevel))
-			ctx := redundancy.SetLevelInContext(cmd.Context(), redundancy.Level(rLevel))
-			rootRef, err := p(ctx, reader)
+			rootRef, err := p(cmd.Context(), reader)
 			if err != nil {
 				return fmt.Errorf("pipeline: %w", err)
 			}
