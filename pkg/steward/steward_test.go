@@ -125,6 +125,11 @@ type localRetriever struct {
 }
 
 func (lr *localRetriever) RetrieveChunk(ctx context.Context, addr, sourceAddr swarm.Address) (chunk swarm.Chunk, err error) {
+	ch, err := lr.Get(ctx, addr)
+	if err != nil {
+		return nil, err
+	}
+
 	lr.mu.Lock()
 	defer lr.mu.Unlock()
 
@@ -132,5 +137,5 @@ func (lr *localRetriever) RetrieveChunk(ctx context.Context, addr, sourceAddr sw
 		lr.retrievedChunks = make(map[string]struct{})
 	}
 	lr.retrievedChunks[addr.String()] = struct{}{}
-	return lr.Get(ctx, addr)
+	return ch, nil
 }
