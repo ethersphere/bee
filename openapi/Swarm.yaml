@@ -839,8 +839,6 @@ paths:
       summary: Subscribe to GSOC payloads
       tags:
         - GSOC
-        - Subscribe
-        - Websocket
       parameters:
         - in: path
           name: reference
