@@ -16,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/file"
 	"github.com/ethersphere/bee/v2/pkg/file/joiner"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline/builder"
+	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	test "github.com/ethersphere/bee/v2/pkg/file/testing"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -62,7 +63,7 @@ func testSplitThenJoin(t *testing.T) {
 	}
 
 	// then join
-	r, l, err := joiner.New(ctx, store, store, resultAddress, 0)
+	r, l, err := joiner.New(ctx, store, store, resultAddress, redundancy.DefaultLevel)
 	if err != nil {
 		t.Fatal(err)
 	}
