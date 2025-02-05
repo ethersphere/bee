@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/log/httpaccess"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/felixge/fgprof"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -137,6 +138,7 @@ func (s *Service) mountTechnicalDebug() {
 		http.Redirect(w, r, u.String(), http.StatusPermanentRedirect)
 	}))
 
+	s.router.Handle("/debug/fgprof", fgprof.Handler())
 	s.router.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
 	s.router.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
 	s.router.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
