@@ -144,7 +144,7 @@ func New(
 		metrics:                 newMetrics(),
 		tracer:                  tracer,
 		signer:                  signer,
-		errSkip:                 skippeers.NewList(),
+		errSkip:                 skippeers.NewList(time.Minute),
 		warmupPeriod:            time.Now().Add(warmupTime),
 		shallowReceiptTolerance: shallowReceiptTolerance,
 	}
@@ -387,7 +387,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		return nil, fmt.Errorf("pushsync: storage radius: %w", err)
 	}
 
-	skip := skippeers.NewList()
+	skip := skippeers.NewList(0)
 	defer skip.Close()
 
 	for sentErrorsLeft > 0 {

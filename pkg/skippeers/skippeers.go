@@ -25,24 +25,26 @@ type List struct {
 	wg sync.WaitGroup
 }
 
-func NewList() *List {
+func NewList(workerWakeUpDur time.Duration) *List {
 	l := &List{
 		skip: make(map[string]map[string]int64),
 		durC: make(chan time.Duration),
 		quit: make(chan struct{}),
 	}
 
-	l.wg.Add(1)
-	go l.worker()
+	if workerWakeUpDur > 0 {
+		l.wg.Add(1)
+		go l.worker(workerWakeUpDur)
+	}
 
 	return l
 }
 
-func (l *List) worker() {
+func (l *List) worker(d time.Duration) {
 
 	defer l.wg.Done()
 
-	ticker := time.NewTicker(time.Minute)
+	ticker := time.NewTicker(d)
 	defer ticker.Stop()
 
 	for {
