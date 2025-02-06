@@ -25,16 +25,16 @@ type List struct {
 	wg sync.WaitGroup
 }
 
-func NewList(wakupDuration time.Duration) *List {
+func NewList(workerWakeUpDur time.Duration) *List {
 	l := &List{
 		skip: make(map[string]map[string]int64),
 		durC: make(chan time.Duration),
 		quit: make(chan struct{}),
 	}
 
-	if wakupDuration > 0 {
+	if workerWakeUpDur > 0 {
 		l.wg.Add(1)
-		go l.worker(wakupDuration)
+		go l.worker(workerWakeUpDur)
 	}
 
 	return l
