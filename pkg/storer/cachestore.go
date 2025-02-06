@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"time"
 
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -39,7 +39,7 @@ func (db *DB) cacheWorker(ctx context.Context) {
 				continue
 			}
 
-			evict := size - capc
+			evict := uint64(size - capc)
 			if evict < db.reserveOptions.cacheMinEvictCount { // evict at least a min count
 				evict = db.reserveOptions.cacheMinEvictCount
 			}
