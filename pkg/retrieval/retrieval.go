@@ -104,7 +104,7 @@ func New(
 		metrics:       newMetrics(),
 		tracer:        tracer,
 		caching:       forwarderCaching,
-		errSkip:       skippeers.NewList(),
+		errSkip:       skippeers.NewList(time.Minute),
 	}
 }
 
@@ -158,7 +158,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 
 	v, _, err := s.singleflight.Do(ctx, flightRoute, func(ctx context.Context) (swarm.Chunk, error) {
 
-		skip := skippeers.NewList()
+		skip := skippeers.NewList(0)
 		defer skip.Close()
 
 		var preemptiveTicker <-chan time.Time
