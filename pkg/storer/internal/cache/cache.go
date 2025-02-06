@@ -14,7 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"golang.org/x/sync/errgroup"
@@ -61,12 +61,14 @@ func New(ctx context.Context, store storage.Reader, capacity uint64) (*Cache, er
 }
 
 // Size returns the current size of the cache.
-func (c *Cache) Size() uint64 {
-	return uint64(c.size.Load())
+func (c *Cache) Size() int64 {
+	return c.size.Load()
 }
 
 // Capacity returns the capacity of the cache.
-func (c *Cache) Capacity() uint64 { return uint64(c.capacity) }
+func (c *Cache) Capacity() int64 {
+	return int64(c.capacity)
+}
 
 // Putter returns a Storage.Putter instance which adds the chunk to the underlying
 // chunkstore and also adds a Cache entry for the chunk.
