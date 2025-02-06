@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"time"
 
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -43,7 +43,7 @@ func (c *Cache) RemoveOldestMaxBatch(ctx context.Context, st transaction.Storage
 
 func (c *Cache) State(store storage.Reader) CacheState {
 	state := CacheState{}
-	state.Size = c.Size()
+	state.Size = uint64(c.Size())
 	runner := swarm.ZeroAddress
 
 	err := store.Iterate(
