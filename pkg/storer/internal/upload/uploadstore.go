@@ -574,29 +574,39 @@ func Report(ctx context.Context, st transaction.Store, chunk swarm.Chunk, state 
 
 		return fmt.Errorf("failed to read uploadItem %x: %w", ui.BatchID, err)
 	}
+	if ui.TagID > 0 {
+		ti := &TagItem{TagID: ui.TagID}
+		err = indexStore.Get(ti)
+		if err != nil {
+			ui.TagID = 0
+			err = indexStore.Put(ui)
+			if err != nil {
+				return fmt.Errorf("failed updating empty tag for chunk: %w", err)
+			}
 
-	ti := &TagItem{TagID: ui.TagID}
-	err = indexStore.Get(ti)
-	if err != nil {
-		return fmt.Errorf("failed getting tag: %w", err)
-	}
+			if state == storage.ChunkSent {
+				return nil
+			}
 
-	switch state {
-	case storage.ChunkSent:
-		ti.Sent++
-	case storage.ChunkStored:
-		ti.Stored++
-		// also mark it as synced
-		fallthrough
-	case storage.ChunkSynced:
-		ti.Synced++
-	case storage.ChunkCouldNotSync:
-		break
-	}
+			return fmt.Errorf("failed getting tag: %w", err)
+		}
+		switch state {
+		case storage.ChunkSent:
+			ti.Sent++
+		case storage.ChunkStored:
+			ti.Stored++
+			// also mark it as synced
+			fallthrough
+		case storage.ChunkSynced:
+			ti.Synced++
+		case storage.ChunkCouldNotSync:
+			break
+		}
 
-	err = indexStore.Put(ti)
-	if err != nil {
-		return fmt.Errorf("failed updating tag: %w", err)
+		err = indexStore.Put(ti)
+		if err != nil {
+			return fmt.Errorf("failed updating tag: %w", err)
+		}
 	}
 
 	if state == storage.ChunkSent {
