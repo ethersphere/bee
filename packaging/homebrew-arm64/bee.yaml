@@ -9,8 +9,7 @@
 # # rpc blockchain endpoint
 # blockchain-rpc-endpoint: ""
 # # initial nodes to connect to
-# bootnode:
-# - /dnsaddr/mainnet.ethswarm.org
+# bootnode: ["/dnsaddr/mainnet.ethswarm.org"]
 # # cause the node to always accept incoming connections
 # bootnode-mode: false
 # # cache capacity in chunks, multiply by 4096 to get approximate capacity in bytes
