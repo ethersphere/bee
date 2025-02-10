@@ -13,7 +13,7 @@ import (
 func (s *Store) Batch(ctx context.Context) storage.Batch {
 	return &Batch{
 		ctx:   ctx,
-		batch: new(pebble.Batch),
+		batch: s.db.NewBatch(),
 		store: s,
 	}
 }
