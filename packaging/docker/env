@@ -5,8 +5,8 @@
 ## HTTP API listen address (default 127.0.0.1:1633)
 # BEE_API_ADDR=127.0.0.1:1633
 ## chain block time (default 15)
-# BEE_BLOCK_TIME=15
-## initial nodes to connect to (default [/dnsaddr/testnet.ethswarm.org])
+# BEE_BLOCK_TIME=5
+## initial nodes to connect to (default [/dnsaddr/mainnet.ethswarm.org])
 # BEE_BOOTNODE=[/dnsaddr/testnet.ethswarm.org]
 ## cause the node to always accept incoming connections
 # BEE_BOOTNODE_MODE=false
