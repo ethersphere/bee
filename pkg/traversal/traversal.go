@@ -67,23 +67,34 @@ func (s *service) Traverse(ctx context.Context, addr swarm.Address, iterFn swarm
 		}
 	}
 
-	ls := loadsave.NewReadonly(s.getter, s.rLevel)
-	switch mf, err := manifest.NewDefaultManifestReference(addr, ls); {
-	case errors.Is(err, manifest.ErrInvalidManifestType):
-		break
-	case err != nil:
-		return fmt.Errorf("traversal: unable to create manifest reference for %q: %w", addr, err)
-	default:
-		err := mf.IterateAddresses(ctx, processBytes)
-		if errors.Is(err, mantaray.ErrTooShort) || errors.Is(err, mantaray.ErrInvalidVersionHash) {
-			// Based on the returned errors we conclude that it might
-			// not be a manifest, so we try non-manifest processing.
+	j, _, err := joiner.New(ctx, s.getter, s.putter, addr, s.rLevel)
+	if err != nil {
+		return err
+	}
+
+	// Heuristic determination if the reference represents a manifest reference.
+	// The assumption is that if the root chunk span is less than or equal to swarm.ChunkSize,
+	// then the reference is likely a manifest reference. This is because manifest holds metadata
+	// that points to the actual data file, and this metadata is assumed to be small - Less than or equal to swarm.ChunkSize.
+	if j.Size() <= swarm.ChunkSize {
+		ls := loadsave.NewReadonly(s.getter, s.rLevel)
+		switch mf, err := manifest.NewDefaultManifestReference(addr, ls); {
+		case errors.Is(err, manifest.ErrInvalidManifestType):
 			break
+		case err != nil:
+			return fmt.Errorf("traversal: unable to create manifest reference for %q: %w", addr, err)
+		default:
+			err := mf.IterateAddresses(ctx, processBytes)
+			if errors.Is(err, mantaray.ErrTooShort) || errors.Is(err, mantaray.ErrInvalidVersionHash) {
+				// Based on the returned errors we conclude that it might
+				// not be a manifest, so we try non-manifest processing.
+				break
+			}
+			if err != nil {
+				return fmt.Errorf("traversal: unable to process bytes for %q: %w", addr, err)
+			}
+			return nil
 		}
-		if err != nil {
-			return fmt.Errorf("traversal: unable to process bytes for %q: %w", addr, err)
-		}
-		return nil
 	}
 
 	// Non-manifest processing.
