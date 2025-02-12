@@ -11,17 +11,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/intervalstore"
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/puller"
-	mockps "github.com/ethersphere/bee/pkg/pullsync/mock"
-	"github.com/ethersphere/bee/pkg/spinlock"
-	"github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/storage"
-	resMock "github.com/ethersphere/bee/pkg/storer/mock"
-	"github.com/ethersphere/bee/pkg/swarm"
-	kadMock "github.com/ethersphere/bee/pkg/topology/kademlia/mock"
-	"github.com/ethersphere/bee/pkg/util/testutil"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/puller"
+	"github.com/ethersphere/bee/v2/pkg/puller/intervalstore"
+	mockps "github.com/ethersphere/bee/v2/pkg/pullsync/mock"
+	"github.com/ethersphere/bee/v2/pkg/spinlock"
+	"github.com/ethersphere/bee/v2/pkg/statestore/leveldb"
+	"github.com/ethersphere/bee/v2/pkg/statestore/mock"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	resMock "github.com/ethersphere/bee/v2/pkg/storer/mock"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	kadMock "github.com/ethersphere/bee/v2/pkg/topology/kademlia/mock"
+	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -34,7 +35,8 @@ func TestOneSync(t *testing.T) {
 		cursors = []uint64{1000, 1000, 1000}
 		replies = []mockps.SyncReply{
 			{Bin: 1, Start: 1, Topmost: 1000, Peer: addr},
-			{Bin: 2, Start: 1, Topmost: 1001, Peer: addr}}
+			{Bin: 2, Start: 1, Topmost: 1001, Peer: addr},
+		}
 	)
 
 	_, _, kad, pullsync := newPuller(t, opts{
@@ -65,7 +67,8 @@ func TestSyncOutsideDepth(t *testing.T) {
 		replies = []mockps.SyncReply{
 			{Bin: 0, Start: 1, Topmost: 1000, Peer: addr2},
 			{Bin: 2, Start: 1, Topmost: 1000, Peer: addr},
-			{Bin: 3, Start: 1, Topmost: 1000, Peer: addr}}
+			{Bin: 3, Start: 1, Topmost: 1000, Peer: addr},
+		}
 	)
 
 	_, _, kad, pullsync := newPuller(t, opts{
@@ -176,7 +179,6 @@ func TestSyncIntervals(t *testing.T) {
 			},
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -228,7 +230,7 @@ func TestPeerDisconnected(t *testing.T) {
 	kad.Trigger()
 	time.Sleep(50 * time.Millisecond)
 	if p.IsSyncing(addr) {
-		t.Fatalf("peer is syncing but shouldnt")
+		t.Fatalf("peer is syncing but shouldn't")
 	}
 }
 
@@ -267,7 +269,7 @@ func TestEpochReset(t *testing.T) {
 	kad.Trigger()
 	time.Sleep(100 * time.Millisecond)
 	if p.IsSyncing(addr) {
-		t.Fatalf("peer is syncing but shouldnt")
+		t.Fatalf("peer is syncing but shouldn't")
 	}
 
 	beforeCalls := pullsync.SyncCalls(addr)
@@ -327,25 +329,31 @@ func TestBinReset(t *testing.T) {
 	}
 }
 
-func TestRadiusDecrease(t *testing.T) {
+func TestRadiusDecreaseNeighbor(t *testing.T) {
 	t.Parallel()
 
+	base := swarm.RandAddress(t)
+	peerAddr := swarm.RandAddressAt(t, base, 2)
+
 	var (
-		addr    = swarm.RandAddress(t)
 		cursors = []uint64{1000, 1000, 1000, 1000}
 		replies = []mockps.SyncReply{
-			{Bin: 2, Start: 1, Topmost: 1000, Peer: addr},
-			{Bin: 3, Start: 1, Topmost: 1000, Peer: addr},
-			{Bin: 1, Start: 1, Topmost: 1000, Peer: addr},
+			{Bin: 0, Start: 1, Topmost: 1000, Peer: peerAddr},
+			{Bin: 1, Start: 1, Topmost: 1000, Peer: peerAddr},
+			{Bin: 2, Start: 1, Topmost: 1000, Peer: peerAddr},
+			{Bin: 3, Start: 1, Topmost: 1000, Peer: peerAddr},
+			{Bin: 0, Start: 1, Topmost: 1000, Peer: peerAddr},
+			{Bin: 1, Start: 1, Topmost: 1000, Peer: peerAddr},
 		}
 	)
 
-	rs := resMock.NewReserve(resMock.WithRadius(2))
+	// at first, sync all bins
+	rs := resMock.NewReserve(resMock.WithRadius(0))
 
-	_, _, kad, pullsync := newPuller(t, opts{
+	_, _, kad, pullsync := newPulleAddr(t, base, opts{
 		kad: []kadMock.Option{
 			kadMock.WithEachPeerRevCalls(
-				kadMock.AddrTuple{Addr: addr, PO: 2},
+				kadMock.AddrTuple{Addr: peerAddr, PO: 2},
 			),
 		},
 		pullSync: []mockps.Option{mockps.WithCursors(cursors, 0), mockps.WithReplies(replies...)},
@@ -353,16 +361,70 @@ func TestRadiusDecrease(t *testing.T) {
 		rs:       rs,
 	})
 
-	time.Sleep(100 * time.Millisecond)
-	kad.Trigger()
-	waitSyncCalledBins(t, pullsync, addr, 2, 3)
+	waitSyncCalledBins(t, pullsync, peerAddr, 0, 1, 2, 3)
 
+	// sync all bins >= 2, as this peer is still within depth
+	rs.SetStorageRadius(2)
+	kad.Trigger()
+	time.Sleep(time.Millisecond * 250)
+
+	// peer is still within depth, resync bins < 2
 	pullsync.ResetCalls(swarm.ZeroAddress)
-	rs.SetStorageRadius(1)
+	rs.SetStorageRadius(0)
 	kad.Trigger()
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(time.Millisecond * 250)
 
-	waitSyncCalledBins(t, pullsync, addr, 1)
+	waitSyncCalledBins(t, pullsync, peerAddr, 0, 1)
+}
+
+func TestRadiusDecreaseNonNeighbor(t *testing.T) {
+	t.Parallel()
+
+	base := swarm.RandAddress(t)
+	peerAddr := swarm.RandAddressAt(t, base, 1)
+
+	var (
+		cursors = []uint64{1000, 1000, 1000, 1000}
+		replies = []mockps.SyncReply{
+			{Bin: 0, Start: 1, Topmost: 1000, Peer: peerAddr},
+			{Bin: 1, Start: 1, Topmost: 1000, Peer: peerAddr},
+			{Bin: 2, Start: 1, Topmost: 1000, Peer: peerAddr},
+			{Bin: 3, Start: 1, Topmost: 1000, Peer: peerAddr},
+			{Bin: 0, Start: 1, Topmost: 1000, Peer: peerAddr},
+			{Bin: 1, Start: 1, Topmost: 1000, Peer: peerAddr},
+			{Bin: 2, Start: 1, Topmost: 1000, Peer: peerAddr},
+			{Bin: 3, Start: 1, Topmost: 1000, Peer: peerAddr},
+		}
+	)
+
+	// at first, sync all bins
+	rs := resMock.NewReserve(resMock.WithRadius(0))
+
+	_, _, kad, pullsync := newPulleAddr(t, base, opts{
+		kad: []kadMock.Option{
+			kadMock.WithEachPeerRevCalls(
+				kadMock.AddrTuple{Addr: peerAddr, PO: 2},
+			),
+		},
+		pullSync: []mockps.Option{mockps.WithCursors(cursors, 0), mockps.WithReplies(replies...)},
+		bins:     4,
+		rs:       rs,
+	})
+
+	waitSyncCalledBins(t, pullsync, peerAddr, 0, 1, 2, 3)
+
+	// syncs bin 2 only as this peer is out of depth
+	rs.SetStorageRadius(3)
+	kad.Trigger()
+	time.Sleep(time.Millisecond * 250)
+
+	// peer is now within depth, resync all bins
+	pullsync.ResetCalls(swarm.ZeroAddress)
+	rs.SetStorageRadius(0)
+	kad.Trigger()
+	time.Sleep(time.Millisecond * 250)
+
+	waitSyncCalledBins(t, pullsync, peerAddr, 0, 1, 2, 3)
 }
 
 func TestRadiusIncrease(t *testing.T) {
@@ -404,7 +466,7 @@ func TestRadiusIncrease(t *testing.T) {
 		t.Fatalf("peer is not syncing but should")
 	}
 	if p.IsBinSyncing(addr, 2) {
-		t.Fatalf("peer is syncing but shouldnt")
+		t.Fatalf("peer is syncing but shouldn't")
 	}
 }
 
@@ -413,9 +475,7 @@ func TestRadiusIncrease(t *testing.T) {
 func TestContinueSyncing(t *testing.T) {
 	t.Parallel()
 
-	var (
-		addr = swarm.RandAddress(t)
-	)
+	addr := swarm.RandAddress(t)
 
 	_, _, kad, pullsync := newPuller(t, opts{
 		kad: []kadMock.Option{
@@ -438,11 +498,12 @@ func TestContinueSyncing(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 	kad.Trigger()
-	time.Sleep(time.Second)
 
-	calls := len(pullsync.SyncCalls(addr))
-	if calls != 1 {
-		t.Fatalf("unexpected amount of calls, got %d", calls)
+	err := spinlock.Wait(time.Second, func() bool {
+		return len(pullsync.SyncCalls(addr)) == 1
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -453,7 +514,8 @@ func TestPeerGone(t *testing.T) {
 		addr    = swarm.RandAddress(t)
 		replies = []mockps.SyncReply{
 			{Bin: 0, Start: 1, Topmost: 1001, Peer: addr},
-			{Bin: 1, Start: 1, Topmost: 1001, Peer: addr}}
+			{Bin: 1, Start: 1, Topmost: 1001, Peer: addr},
+		}
 	)
 
 	p, _, kad, pullsync := newPuller(t, opts{
@@ -491,7 +553,7 @@ func TestPeerGone(t *testing.T) {
 	}
 
 	if p.IsSyncing(addr) {
-		t.Fatalf("peer is syncing but shouldnt")
+		t.Fatalf("peer is syncing but shouldn't")
 	}
 }
 
@@ -583,18 +645,47 @@ type opts struct {
 func newPuller(t *testing.T, ops opts) (*puller.Puller, storage.StateStorer, *kadMock.Mock, *mockps.PullSyncMock) {
 	t.Helper()
 
-	s := mock.NewStateStore()
+	logger := log.Noop
+
+	s, err := leveldb.NewStateStore(t.TempDir(), logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	ps := mockps.NewPullSync(ops.pullSync...)
 	kad := kadMock.NewMockKademlia(ops.kad...)
-	logger := log.Noop
 
 	o := puller.Options{
 		Bins: ops.bins,
 	}
-	p := puller.New(s, kad, ops.rs, ps, nil, logger, o)
+	p := puller.New(swarm.RandAddress(t), s, kad, ops.rs, ps, nil, logger, o)
 	p.Start(context.Background())
 
-	testutil.CleanupCloser(t, p)
+	testutil.CleanupCloser(t, p, s)
+
+	return p, s, kad, ps
+}
+
+func newPulleAddr(t *testing.T, addr swarm.Address, ops opts) (*puller.Puller, storage.StateStorer, *kadMock.Mock, *mockps.PullSyncMock) {
+	t.Helper()
+
+	logger := log.Noop
+
+	s, err := leveldb.NewStateStore(t.TempDir(), logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ps := mockps.NewPullSync(ops.pullSync...)
+	kad := kadMock.NewMockKademlia(ops.kad...)
+
+	o := puller.Options{
+		Bins: ops.bins,
+	}
+	p := puller.New(addr, s, kad, ops.rs, ps, nil, logger, o)
+	p.Start(context.Background())
+
+	testutil.CleanupCloser(t, p, s)
 
 	return p, s, kad, ps
 }
@@ -609,7 +700,7 @@ func newPullerWithState(t *testing.T, s storage.StateStorer, ops opts) (*puller.
 	o := puller.Options{
 		Bins: ops.bins,
 	}
-	p := puller.New(s, kad, ops.rs, ps, nil, logger, o)
+	p := puller.New(swarm.RandAddress(t), s, kad, ops.rs, ps, nil, logger, o)
 	p.Start(context.Background())
 
 	testutil.CleanupCloser(t, p)

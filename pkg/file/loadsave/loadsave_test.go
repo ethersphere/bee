@@ -11,12 +11,13 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/file/loadsave"
-	"github.com/ethersphere/bee/pkg/file/pipeline"
-	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
+	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
+	"github.com/ethersphere/bee/v2/pkg/file/pipeline/builder"
+	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 var (
@@ -28,7 +29,7 @@ func TestLoadSave(t *testing.T) {
 	t.Parallel()
 
 	store := inmemchunkstore.New()
-	ls := loadsave.New(store, pipelineFn(store))
+	ls := loadsave.New(store, store, pipelineFn(store), redundancy.DefaultLevel)
 	ref, err := ls.Save(context.Background(), data)
 
 	if err != nil {
@@ -51,7 +52,7 @@ func TestReadonlyLoadSave(t *testing.T) {
 
 	store := inmemchunkstore.New()
 	factory := pipelineFn(store)
-	ls := loadsave.NewReadonly(store)
+	ls := loadsave.NewReadonly(store, redundancy.DefaultLevel)
 	_, err := ls.Save(context.Background(), data)
 	if !errors.Is(err, loadsave.ErrReadonlyLoadSave) {
 		t.Fatal("expected error but got none")
@@ -73,6 +74,6 @@ func TestReadonlyLoadSave(t *testing.T) {
 
 func pipelineFn(s storage.Putter) func() pipeline.Interface {
 	return func() pipeline.Interface {
-		return builder.NewPipelineBuilder(context.Background(), s, false)
+		return builder.NewPipelineBuilder(context.Background(), s, false, 0)
 	}
 }

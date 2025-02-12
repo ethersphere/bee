@@ -8,14 +8,13 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/manifest/simple"
+	"github.com/ethersphere/bee/v2/pkg/manifest/simple"
 )
 
 func TestWalkEntry(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range makeTestCases(t) {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

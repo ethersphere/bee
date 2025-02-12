@@ -13,12 +13,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/file/joiner"
-	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
-	test "github.com/ethersphere/bee/pkg/file/testing"
-	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/file"
+	"github.com/ethersphere/bee/v2/pkg/file/joiner"
+	"github.com/ethersphere/bee/v2/pkg/file/pipeline/builder"
+	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
+	test "github.com/ethersphere/bee/v2/pkg/file/testing"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 var (
@@ -48,7 +49,7 @@ func testSplitThenJoin(t *testing.T) {
 		paramstring = strings.Split(t.Name(), "/")
 		dataIdx, _  = strconv.ParseInt(paramstring[1], 10, 0)
 		store       = inmemchunkstore.New()
-		p           = builder.NewPipelineBuilder(context.Background(), store, false)
+		p           = builder.NewPipelineBuilder(context.Background(), store, false, 0)
 		data, _     = test.GetVector(t, int(dataIdx))
 	)
 
@@ -62,7 +63,7 @@ func testSplitThenJoin(t *testing.T) {
 	}
 
 	// then join
-	r, l, err := joiner.New(ctx, store, resultAddress)
+	r, l, err := joiner.New(ctx, store, store, resultAddress, redundancy.DefaultLevel)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -12,9 +12,9 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/util/testutil"
+	"github.com/ethersphere/bee/v2/pkg/file"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 )
 
 // TestChunkPipe verifies that the reads are correctly buffered for
@@ -34,7 +34,6 @@ func TestChunkPipe(t *testing.T) {
 		{swarm.ChunkSize, swarm.ChunkSize},            // on, on
 	}
 	for i, tc := range dataWrites {
-		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
 
@@ -130,7 +129,6 @@ func TestCopyBuffer(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(fmt.Sprintf("buf_%-4d/data_size_%d", tc.readBufferSize, tc.dataSize), func(t *testing.T) {
 			t.Parallel()
 
@@ -197,7 +195,7 @@ func reader(t *testing.T, bufferSize int, r io.Reader, c chan<- readResult) {
 
 	defer close(c)
 
-	var buf = make([]byte, bufferSize)
+	buf := make([]byte, bufferSize)
 	for {
 		n, err := r.Read(buf)
 		if errors.Is(err, io.EOF) {

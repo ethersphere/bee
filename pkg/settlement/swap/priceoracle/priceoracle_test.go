@@ -10,15 +10,15 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/settlement/swap/priceoracle"
-	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
-	"github.com/ethersphere/bee/pkg/util/abiutil"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/settlement/swap/priceoracle"
+	transactionmock "github.com/ethersphere/bee/v2/pkg/transaction/mock"
+	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
 	"github.com/ethersphere/go-price-oracle-abi/priceoracleabi"
 )
 
 var (
-	priceOracleABI = abiutil.MustParseABI(priceoracleabi.PriceOracleABIv0_1_0)
+	priceOracleABI = abiutil.MustParseABI(priceoracleabi.PriceOracleABIv0_2_0)
 )
 
 func TestExchangeGetPrice(t *testing.T) {

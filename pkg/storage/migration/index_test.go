@@ -9,9 +9,9 @@ import (
 	"reflect"
 	"testing"
 
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/inmemstore"
-	"github.com/ethersphere/bee/pkg/storage/migration"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
+	"github.com/ethersphere/bee/v2/pkg/storage/migration"
 )
 
 func TestNewStepOnIndex(t *testing.T) {
@@ -25,6 +25,7 @@ func TestNewStepOnIndex(t *testing.T) {
 		populateStore(t, store, populateItemsCount)
 
 		stepFn := migration.NewStepOnIndex(
+			store,
 			storage.Query{
 				Factory: newObjFactory,
 			},
@@ -32,19 +33,19 @@ func TestNewStepOnIndex(t *testing.T) {
 
 		initialCount, err := store.Count(&obj{})
 		if err != nil {
-			t.Fatalf("count should successed: %v", err)
+			t.Fatalf("count should succeed: %v", err)
 		}
 		if initialCount != populateItemsCount {
 			t.Fatalf("have %d, want %d", initialCount, populateItemsCount)
 		}
 
-		if err := stepFn(store); err != nil {
-			t.Fatalf("step migration should successed: %v", err)
+		if err := stepFn(); err != nil {
+			t.Fatalf("step migration should succeed: %v", err)
 		}
 
 		afterStepCount, err := store.Count(&obj{})
 		if err != nil {
-			t.Fatalf("count should successed: %v", err)
+			t.Fatalf("count should succeed: %v", err)
 		}
 
 		if afterStepCount != initialCount {
@@ -59,7 +60,7 @@ func TestNewStepOnIndex(t *testing.T) {
 		store := inmemstore.New()
 		populateStore(t, store, populateItemsCount)
 
-		stepFn := migration.NewStepOnIndex(
+		stepFn := migration.NewStepOnIndex(store,
 			storage.Query{
 				Factory:      newObjFactory,
 				ItemProperty: storage.QueryItem,
@@ -71,8 +72,8 @@ func TestNewStepOnIndex(t *testing.T) {
 			migration.WithOpPerBatch(3),
 		)
 
-		if err := stepFn(store); err != nil {
-			t.Fatalf("step migration should successed: %v", err)
+		if err := stepFn(); err != nil {
+			t.Fatalf("step migration should succeed: %v", err)
 		}
 
 		assertItemsInRange(t, store, 10, populateItemsCount)
@@ -86,7 +87,7 @@ func TestNewStepOnIndex(t *testing.T) {
 		store := inmemstore.New()
 		populateStore(t, store, populateItemsCount)
 
-		stepFn := migration.NewStepOnIndex(
+		stepFn := migration.NewStepOnIndex(store,
 			storage.Query{
 				Factory:      newObjFactory,
 				ItemProperty: storage.QueryItem,
@@ -104,8 +105,8 @@ func TestNewStepOnIndex(t *testing.T) {
 			migration.WithOpPerBatch(3),
 		)
 
-		if err := stepFn(store); err != nil {
-			t.Fatalf("step migration should successed: %v", err)
+		if err := stepFn(); err != nil {
+			t.Fatalf("step migration should succeed: %v", err)
 		}
 
 		assertItemsInRange(t, store, minVal, populateItemsCount+minVal)
@@ -119,6 +120,7 @@ func TestNewStepOnIndex(t *testing.T) {
 		populateStore(t, store, populateItemsCount)
 
 		step := migration.NewStepOnIndex(
+			store,
 			storage.Query{
 				Factory:      newObjFactory,
 				ItemProperty: storage.QueryItem,
@@ -141,8 +143,8 @@ func TestNewStepOnIndex(t *testing.T) {
 			migration.WithOpPerBatch(3),
 		)
 
-		if err := step(store); err != nil {
-			t.Fatalf("step migration should successed: %v", err)
+		if err := step(); err != nil {
+			t.Fatalf("step migration should succeed: %v", err)
 		}
 
 		assertItemsInRange(t, store, 0, populateItemsCount-10)
@@ -156,6 +158,7 @@ func TestNewStepOnIndex(t *testing.T) {
 		populateStore(t, store, populateItemsCount)
 
 		step := migration.NewStepOnIndex(
+			store,
 			storage.Query{
 				Factory:      newObjFactory,
 				ItemProperty: storage.QueryItem,
@@ -168,7 +171,7 @@ func TestNewStepOnIndex(t *testing.T) {
 			migration.WithOpPerBatch(3),
 		)
 
-		if err := step(store); err == nil {
+		if err := step(); err == nil {
 			t.Fatalf("step migration should fail")
 		}
 
@@ -181,7 +184,6 @@ func TestStepIndex_BatchSize(t *testing.T) {
 
 	const populateItemsCount = 128
 	for i := 1; i <= 2*populateItemsCount; i <<= 1 {
-		i := i
 		t.Run(fmt.Sprintf("callback called once per item with batch size: %d", i), func(t *testing.T) {
 			t.Parallel()
 
@@ -192,6 +194,7 @@ func TestStepIndex_BatchSize(t *testing.T) {
 			updateItemCallMap := make(map[int]struct{})
 
 			stepFn := migration.NewStepOnIndex(
+				store,
 				storage.Query{
 					Factory:      newObjFactory,
 					ItemProperty: storage.QueryItem,
@@ -217,14 +220,14 @@ func TestStepIndex_BatchSize(t *testing.T) {
 				migration.WithOpPerBatch(i),
 			)
 
-			if err := stepFn(store); err != nil {
-				t.Fatalf("step migration should successed: %v", err)
+			if err := stepFn(); err != nil {
+				t.Fatalf("step migration should succeed: %v", err)
 			}
 
 			opsExpected := (2 * populateItemsCount) - 10
 			opsGot := len(updateItemCallMap) + len(deleteItemCallMap)
 			if opsExpected != opsGot {
-				t.Fatalf("updated and deleted items should add up to totat: got %d, want %d", opsGot, opsExpected)
+				t.Fatalf("updated and deleted items should add up to total: got %d, want %d", opsGot, opsExpected)
 			}
 		})
 	}
@@ -326,7 +329,7 @@ func populateStore(t *testing.T, s storage.Store, count int) {
 	for i := 0; i < count; i++ {
 		item := &obj{id: i, val: i}
 		if err := s.Put(item); err != nil {
-			t.Fatalf("populate store should successed: %v", err)
+			t.Fatalf("populate store should succeed: %v", err)
 		}
 	}
 }
@@ -336,7 +339,7 @@ func assertItemsInRange(t *testing.T, s storage.Store, from, to int) {
 
 	count, err := s.Count(&obj{})
 	if err != nil {
-		t.Fatalf("count should successed: %v", err)
+		t.Fatalf("count should succeed: %v", err)
 	}
 	if count != to-from {
 		t.Fatalf("have %d, want %d", count, (to - from))
@@ -356,7 +359,6 @@ func assertItemsInRange(t *testing.T, s storage.Store, from, to int) {
 		},
 	)
 	if err != nil {
-		t.Fatalf("populate store should successed: %v", err)
+		t.Fatalf("populate store should succeed: %v", err)
 	}
-
 }

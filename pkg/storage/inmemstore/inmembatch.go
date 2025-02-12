@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"sync"
 
-	storage "github.com/ethersphere/bee/pkg/storage"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
 )
 
 // batchOp represents a batch operations.
@@ -38,12 +38,12 @@ type Batch struct {
 }
 
 // Batch implements storage.BatchedStore interface Batch method.
-func (s *Store) Batch(ctx context.Context) (storage.Batch, error) {
+func (s *Store) Batch(ctx context.Context) storage.Batch {
 	return &Batch{
 		ctx:   ctx,
 		ops:   make(map[string]batchOp),
 		store: s,
-	}, nil
+	}
 }
 
 // Put implements storage.Batch interface Put method.

@@ -6,13 +6,12 @@ package feeds
 
 import (
 	"context"
-	"encoding/binary"
 
-	"github.com/ethersphere/bee/pkg/cac"
-	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/soc"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/soc"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 // Updater is the generic interface f
@@ -39,12 +38,12 @@ func NewPutter(putter storage.Putter, signer crypto.Signer, topic []byte) (*Putt
 }
 
 // Put pushes an update to the feed through the chunk stores
-func (u *Putter) Put(ctx context.Context, i Index, at int64, payload []byte) error {
+func (u *Putter) Put(ctx context.Context, i Index, payload []byte) error {
 	id, err := u.Feed.Update(i).Id()
 	if err != nil {
 		return err
 	}
-	cac, err := toChunk(uint64(at), payload)
+	cac, err := toChunk(payload)
 	if err != nil {
 		return err
 	}
@@ -56,8 +55,6 @@ func (u *Putter) Put(ctx context.Context, i Index, at int64, payload []byte) err
 	return u.putter.Put(ctx, ch)
 }
 
-func toChunk(at uint64, payload []byte) (swarm.Chunk, error) {
-	ts := make([]byte, 8)
-	binary.BigEndian.PutUint64(ts, at)
-	return cac.New(append(ts, payload...))
+func toChunk(payload []byte) (swarm.Chunk, error) {
+	return cac.New(payload)
 }

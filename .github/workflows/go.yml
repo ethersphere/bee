@@ -21,9 +21,9 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
     - name: Checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
     - name: Setup Go
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v5
       with:
         cache: true
         go-version-file: go.mod
@@ -41,9 +41,9 @@ jobs:
     continue-on-error: ${{ github.ref == 'refs/heads/master' }}
     steps:
     - name: Checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
     - name: Setup Go
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v5
       with:
         cache: true
         go-version-file: go.mod
@@ -55,11 +55,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         fetch-depth: 0
     - name: Setup Go
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v5
       with:
         cache: false
         go-version-file: go.mod
@@ -67,10 +67,10 @@ jobs:
       if: github.ref != 'refs/heads/master'
       uses: wagoid/commitlint-github-action@v5
     - name: GolangCI-Lint
-      uses: golangci/golangci-lint-action@v3
+      uses: golangci/golangci-lint-action@v6
       with:
         skip-cache: false
-        version: v1.54.1
+        version: v1.61.0
     - name: Whitespace check
       run: make check-whitespace
     - name: go mod tidy check
@@ -81,9 +81,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
     - name: Setup Go
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v5
       with:
         cache: false
         go-version-file: go.mod
@@ -109,11 +109,11 @@ jobs:
     if: github.ref == 'refs/heads/master'
     steps:
     - name: Checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         fetch-depth: 0
     - name: Setup Go
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v5
       with:
         cache: false
         go-version-file: go.mod

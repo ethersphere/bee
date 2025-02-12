@@ -7,8 +7,8 @@ package pinstore
 import (
 	"fmt"
 
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 type (
@@ -27,7 +27,7 @@ var (
 
 var NewUUID = newUUID
 
-func GetStat(st storage.Store, root swarm.Address) (CollectionStat, error) {
+func GetStat(st storage.Reader, root swarm.Address) (CollectionStat, error) {
 	collection := &pinCollectionItem{Addr: root}
 	err := st.Get(collection)
 	if err != nil {

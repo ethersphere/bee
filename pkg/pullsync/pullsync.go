@@ -8,26 +8,26 @@ package pullsync
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"math"
-	"strconv"
 	"sync/atomic"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/bitvector"
-	"github.com/ethersphere/bee/pkg/cac"
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/p2p/protobuf"
-	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/pullsync/pb"
-	"github.com/ethersphere/bee/pkg/soc"
-	"github.com/ethersphere/bee/pkg/storage"
-	storer "github.com/ethersphere/bee/pkg/storer"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"resenje.org/multex"
+	"github.com/ethersphere/bee/v2/pkg/bitvector"
+	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/pullsync/pb"
+	"github.com/ethersphere/bee/v2/pkg/ratelimit"
+	"github.com/ethersphere/bee/v2/pkg/soc"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"resenje.org/singleflight"
 )
 
@@ -36,7 +36,7 @@ const loggerName = "pullsync"
 
 const (
 	protocolName     = "pullsync"
-	protocolVersion  = "1.3.0"
+	protocolVersion  = "1.4.0"
 	streamName       = "pullsync"
 	cursorStreamName = "cursors"
 )
@@ -46,10 +46,12 @@ var (
 )
 
 const (
-	MaxCursor               = math.MaxUint64
-	DefaultMaxPage   uint64 = 250
-	pageTimeout             = time.Second
-	makeOfferTimeout        = 5 * time.Minute
+	MaxCursor                       = math.MaxUint64
+	DefaultMaxPage           uint64 = 250
+	pageTimeout                     = time.Second
+	makeOfferTimeout                = 15 * time.Minute
+	handleMaxChunksPerSecond        = 250
+	handleRequestsLimitRate         = time.Second / handleMaxChunksPerSecond // handle max `handleMaxChunksPerSecond` chunks per second per peer
 )
 
 // Interface is the PullSync interface.
@@ -69,12 +71,14 @@ type Syncer struct {
 	store          storer.Reserve
 	quit           chan struct{}
 	unwrap         func(swarm.Chunk)
+	gsocHandler    func(*soc.SOC)
 	validStamp     postage.ValidStampFn
 	intervalsSF    singleflight.Group[string, *collectAddrsResult]
 	syncInProgress atomic.Int32
-	binLock        *multex.Multex
 
 	maxPage uint64
+
+	limiter *ratelimit.Limiter
 
 	Interface
 	io.Closer
@@ -84,21 +88,23 @@ func New(
 	streamer p2p.Streamer,
 	store storer.Reserve,
 	unwrap func(swarm.Chunk),
+	gsocHandler func(*soc.SOC),
 	validStamp postage.ValidStampFn,
 	logger log.Logger,
 	maxPage uint64,
 ) *Syncer {
 
 	return &Syncer{
-		streamer:   streamer,
-		store:      store,
-		metrics:    newMetrics(),
-		unwrap:     unwrap,
-		validStamp: validStamp,
-		logger:     logger.WithName(loggerName).Register(),
-		quit:       make(chan struct{}),
-		maxPage:    maxPage,
-		binLock:    multex.New(),
+		streamer:    streamer,
+		store:       store,
+		metrics:     newMetrics(),
+		unwrap:      unwrap,
+		gsocHandler: gsocHandler,
+		validStamp:  validStamp,
+		logger:      logger.WithName(loggerName).Register(),
+		quit:        make(chan struct{}),
+		maxPage:     maxPage,
+		limiter:     ratelimit.New(handleRequestsLimitRate, int(maxPage)),
 	}
 }
 
@@ -116,7 +122,107 @@ func (s *Syncer) Protocol() p2p.ProtocolSpec {
 				Handler: s.cursorHandler,
 			},
 		},
+		DisconnectIn:  s.disconnect,
+		DisconnectOut: s.disconnect,
 	}
+}
+
+// handler handles an incoming request to sync an interval
+func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
+
+	select {
+	case <-s.quit:
+		return nil
+	default:
+		s.syncInProgress.Add(1)
+		defer s.syncInProgress.Add(-1)
+	}
+
+	r := protobuf.NewReader(stream)
+	defer func() {
+		if err != nil {
+			_ = stream.Reset()
+		} else {
+			_ = stream.FullClose()
+		}
+	}()
+
+	ctx, cancel := context.WithCancel(streamCtx)
+	defer cancel()
+
+	go func() {
+		select {
+		case <-s.quit:
+			cancel()
+		case <-ctx.Done():
+			return
+		}
+	}()
+
+	var rn pb.Get
+	if err := r.ReadMsgWithContext(ctx, &rn); err != nil {
+		return fmt.Errorf("read get range: %w", err)
+	}
+
+	// recreate the reader to allow the first one to be garbage collected
+	// before the makeOffer function call, to reduce the total memory allocated
+	// while makeOffer is executing (waiting for the new chunks)
+	w, r := protobuf.NewWriterAndReader(stream)
+
+	// make an offer to the upstream peer in return for the requested range
+	offer, err := s.makeOffer(ctx, rn)
+	if err != nil {
+		return fmt.Errorf("make offer: %w", err)
+	}
+
+	if err := w.WriteMsgWithContext(ctx, offer); err != nil {
+		return fmt.Errorf("write offer: %w", err)
+	}
+
+	// we don't have any hashes to offer in this range (the
+	// interval is empty). nothing more to do
+	if len(offer.Chunks) == 0 {
+		return nil
+	}
+
+	s.metrics.SentOffered.Add(float64(len(offer.Chunks)))
+
+	var want pb.Want
+	if err := r.ReadMsgWithContext(ctx, &want); err != nil {
+		return fmt.Errorf("read want: %w", err)
+	}
+
+	chs, err := s.processWant(ctx, offer, &want)
+	if err != nil {
+		return fmt.Errorf("process want: %w", err)
+	}
+
+	// slow down future requests
+	waitDur, err := s.limiter.Wait(streamCtx, p.Address.ByteString(), max(1, len(chs)))
+	if err != nil {
+		return fmt.Errorf("rate limiter: %w", err)
+	}
+	if waitDur > 0 {
+		s.logger.Debug("rate limited peer", "wait_duration", waitDur, "peer_address", p.Address)
+	}
+
+	for _, c := range chs {
+		var stamp []byte
+		if c.Stamp() != nil {
+			stamp, err = c.Stamp().MarshalBinary()
+			if err != nil {
+				return fmt.Errorf("serialise stamp: %w", err)
+			}
+		}
+
+		deliver := pb.Delivery{Address: c.Address().Bytes(), Data: c.Data(), Stamp: stamp}
+		if err := w.WriteMsgWithContext(ctx, &deliver); err != nil {
+			return fmt.Errorf("write delivery: %w", err)
+		}
+		s.metrics.Sent.Inc()
+	}
+
+	return nil
 }
 
 // Sync syncs a batch of chunks starting at a start BinID.
@@ -173,6 +279,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 
 		addr := offer.Chunks[i].Address
 		batchID := offer.Chunks[i].BatchID
+		stampHash := offer.Chunks[i].StampHash
 		if len(addr) != swarm.HashSize {
 			return 0, 0, fmt.Errorf("inconsistent hash length")
 		}
@@ -185,14 +292,14 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		}
 		s.metrics.Offered.Inc()
 		if s.store.IsWithinStorageRadius(a) {
-			have, err = s.store.ReserveHas(a, batchID)
+			have, err = s.store.ReserveHas(a, batchID, stampHash)
 			if err != nil {
 				s.logger.Debug("storage has", "error", err)
-				continue
+				return 0, 0, err
 			}
 
 			if !have {
-				wantChunks[a.ByteString()+string(batchID)] = struct{}{}
+				wantChunks[a.ByteString()+string(batchID)+string(stampHash)] = struct{}{}
 				ctr++
 				s.metrics.Wanted.Inc()
 				bv.Set(i)
@@ -228,14 +335,20 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 			chunkErr = errors.Join(chunkErr, err)
 			continue
 		}
+		stampHash, err := stamp.Hash()
+		if err != nil {
+			chunkErr = errors.Join(chunkErr, err)
+			continue
+		}
 
-		if _, ok := wantChunks[addr.ByteString()+string(stamp.BatchID())]; !ok {
+		wantChunkID := addr.ByteString() + string(stamp.BatchID()) + string(stampHash)
+		if _, ok := wantChunks[wantChunkID]; !ok {
 			s.logger.Debug("want chunks", "error", ErrUnsolicitedChunk, "peer_address", peer, "chunk_address", addr)
 			chunkErr = errors.Join(chunkErr, ErrUnsolicitedChunk)
 			continue
 		}
 
-		delete(wantChunks, addr.ByteString()+string(stamp.BatchID()))
+		delete(wantChunks, wantChunkID)
 
 		chunk, err := s.validStamp(newChunk.WithStamp(stamp))
 		if err != nil {
@@ -246,7 +359,9 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 
 		if cac.Valid(chunk) {
 			go s.unwrap(chunk)
-		} else if !soc.Valid(chunk) {
+		} else if chunk, err := soc.FromChunk(chunk); err == nil {
+			s.gsocHandler(chunk)
+		} else {
 			s.logger.Debug("invalid cac/soc chunk", "error", swarm.ErrInvalidChunk, "peer_address", peer, "chunk", chunk)
 			chunkErr = errors.Join(chunkErr, swarm.ErrInvalidChunk)
 			s.metrics.ReceivedInvalidChunk.Inc()
@@ -261,18 +376,11 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		s.metrics.Delivered.Add(float64(len(chunksToPut)))
 		s.metrics.LastReceived.WithLabelValues(fmt.Sprintf("%d", bin)).Add(float64(len(chunksToPut)))
 
-		// if we have parallel sync workers for the same bin, we need to rate limit them
-		// in order to not overload the storage with unnecessary requests as there is
-		// a chance that the same chunk is being synced by multiple workers.
-		key := strconv.Itoa(int(bin))
-		s.binLock.Lock(key)
-		defer s.binLock.Unlock(key)
-
 		for _, c := range chunksToPut {
 			if err := s.store.ReservePutter().Put(ctx, c); err != nil {
 				// in case of these errors, no new items are added to the storage, so it
 				// is safe to continue with the next chunk
-				if errors.Is(err, storage.ErrOverwriteNewerChunk) || errors.Is(err, storage.ErrOverwriteOfImmutableBatch) {
+				if errors.Is(err, storage.ErrOverwriteNewerChunk) {
 					s.logger.Debug("overwrite newer chunk", "error", err, "peer_address", peer, "chunk", c)
 					chunkErr = errors.Join(chunkErr, err)
 					continue
@@ -284,92 +392,6 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 	}
 
 	return topmost, chunksPut, chunkErr
-}
-
-// handler handles an incoming request to sync an interval
-func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
-	select {
-	case <-s.quit:
-		return nil
-	default:
-		s.syncInProgress.Add(1)
-		defer s.syncInProgress.Add(-1)
-	}
-
-	r := protobuf.NewReader(stream)
-	defer func() {
-		if err != nil {
-			_ = stream.Reset()
-		} else {
-			_ = stream.FullClose()
-		}
-	}()
-
-	ctx, cancel := context.WithCancel(streamCtx)
-	defer cancel()
-
-	go func() {
-		select {
-		case <-s.quit:
-			cancel()
-		case <-ctx.Done():
-			return
-		}
-	}()
-
-	var rn pb.Get
-	if err := r.ReadMsgWithContext(ctx, &rn); err != nil {
-		return fmt.Errorf("read get range: %w", err)
-	}
-
-	// recreate the reader to allow the first one to be garbage collected
-	// before the makeOffer function call, to reduce the total memory allocated
-	// while makeOffer is executing (waiting for the new chunks)
-	w, r := protobuf.NewWriterAndReader(stream)
-
-	// make an offer to the upstream peer in return for the requested range
-	offer, err := s.makeOffer(ctx, rn)
-	if err != nil {
-		return fmt.Errorf("make offer: %w", err)
-	}
-
-	if err := w.WriteMsgWithContext(ctx, offer); err != nil {
-		return fmt.Errorf("write offer: %w", err)
-	}
-
-	// we don't have any hashes to offer in this range (the
-	// interval is empty). nothing more to do
-	if len(offer.Chunks) == 0 {
-		return nil
-	}
-
-	var want pb.Want
-	if err := r.ReadMsgWithContext(ctx, &want); err != nil {
-		return fmt.Errorf("read want: %w", err)
-	}
-
-	chs, err := s.processWant(ctx, offer, &want)
-	if err != nil {
-		return fmt.Errorf("process want: %w", err)
-	}
-
-	for _, c := range chs {
-		var stamp []byte
-		if c.Stamp() != nil {
-			stamp, err = c.Stamp().MarshalBinary()
-			if err != nil {
-				return fmt.Errorf("serialise stamp: %w", err)
-			}
-		}
-
-		deliver := pb.Delivery{Address: c.Address().Bytes(), Data: c.Data(), Stamp: stamp}
-		if err := w.WriteMsgWithContext(ctx, &deliver); err != nil {
-			return fmt.Errorf("write delivery: %w", err)
-		}
-		s.metrics.Sent.Inc()
-	}
-
-	return nil
 }
 
 // makeOffer tries to assemble an offer for a given requested interval.
@@ -387,7 +409,7 @@ func (s *Syncer) makeOffer(ctx context.Context, rn pb.Get) (*pb.Offer, error) {
 	o.Topmost = top
 	o.Chunks = make([]*pb.Chunk, 0, len(addrs))
 	for _, v := range addrs {
-		o.Chunks = append(o.Chunks, &pb.Chunk{Address: v.Address.Bytes(), BatchID: v.BatchID})
+		o.Chunks = append(o.Chunks, &pb.Chunk{Address: v.Address.Bytes(), BatchID: v.BatchID, StampHash: v.StampHash})
 	}
 	return o, nil
 }
@@ -429,7 +451,7 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 					break LOOP // The stream has been closed.
 				}
 
-				chs = append(chs, &storer.BinC{Address: c.Address, BatchID: c.BatchID})
+				chs = append(chs, &storer.BinC{Address: c.Address, BatchID: c.BatchID, StampHash: c.StampHash})
 				if c.BinID > topmost {
 					topmost = c.BinID
 				}
@@ -475,9 +497,10 @@ func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]sw
 		if bv.Get(i) {
 			ch := o.Chunks[i]
 			addr := swarm.NewAddress(ch.Address)
-			c, err := s.store.ReserveGet(ctx, addr, ch.BatchID)
+			s.metrics.SentWanted.Inc()
+			c, err := s.store.ReserveGet(ctx, addr, ch.BatchID, ch.StampHash)
 			if err != nil {
-				s.logger.Debug("processing want: unable to find chunk", "chunk_address", addr, "batch_id", ch.BatchID)
+				s.logger.Debug("processing want: unable to find chunk", "chunk_address", addr, "batch_id", hex.EncodeToString(ch.BatchID))
 				chunks = append(chunks, swarm.NewChunk(swarm.ZeroAddress, nil))
 				s.metrics.MissingChunks.Inc()
 				continue
@@ -549,6 +572,11 @@ func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 		return fmt.Errorf("write ack: %w", err)
 	}
 
+	return nil
+}
+
+func (s *Syncer) disconnect(peer p2p.Peer) error {
+	s.limiter.Clear(peer.Address.ByteString())
 	return nil
 }
 

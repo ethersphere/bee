@@ -1,4 +1,4 @@
-FROM golang:1.21 AS build
+FROM golang:1.23 AS build
 
 WORKDIR /src
 # enable modules caching in separate layer
@@ -8,9 +8,9 @@ COPY . ./
 
 RUN make binary
 
-FROM debian:11.5-slim
+FROM debian:12.7-slim
 
-ENV DEBIAN_FRONTEND noninteractive
+ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates; \
@@ -24,7 +24,7 @@ RUN mkdir -p /home/bee/.bee && chown 999:999 /home/bee/.bee
 
 COPY --from=build /src/dist/bee /usr/local/bin/bee
 
-EXPOSE 1633 1634 1635
+EXPOSE 1633 1634
 USER bee
 WORKDIR /home/bee
 VOLUME /home/bee/.bee

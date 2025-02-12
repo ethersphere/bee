@@ -12,11 +12,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/status"
-	"github.com/ethersphere/bee/pkg/storer"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/status"
+	"github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/topology"
 	"go.uber.org/atomic"
 )
 
@@ -40,11 +40,6 @@ type peerStatus interface {
 	PeerSnapshot(ctx context.Context, peer swarm.Address) (*status.Snapshot, error)
 }
 
-type reserve interface {
-	storer.RadiusChecker
-	ReserveSize() int
-}
-
 type service struct {
 	wg            sync.WaitGroup
 	quit          chan struct{}
@@ -53,7 +48,7 @@ type service struct {
 	status        peerStatus
 	metrics       metrics
 	isSelfHealthy *atomic.Bool
-	reserve       reserve
+	reserve       storer.RadiusChecker
 
 	radiusSubsMtx sync.Mutex
 	radiusC       []chan uint8
@@ -62,7 +57,7 @@ type service struct {
 func New(
 	status peerStatus,
 	topology topologyDriver,
-	reserve reserve,
+	reserve storer.RadiusChecker,
 	logger log.Logger,
 	warmup time.Duration,
 	mode string,
@@ -174,7 +169,7 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 		return
 	}
 
-	networkRadius, nHoodRadius := s.radius(peers)
+	networkRadius, nHoodRadius := s.committedDepth(peers)
 	avgDur := totaldur / float64(len(peers))
 	pDur := percentileDur(peers, durPercentile)
 	pConns := percentileConns(peers, connsPercentile)
@@ -189,6 +184,11 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 
 	s.logger.Debug("computed", "avg_dur", avgDur, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius, "batch_commitment", commitment)
 
+	// sort peers by duration, highest first to give priority to the fastest peers
+	sort.Slice(peers, func(i, j int) bool {
+		return peers[i].dur > peers[j].dur // descending
+	})
+
 	for _, peer := range peers {
 
 		var healthy bool
@@ -200,14 +200,14 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 			continue
 		}
 
-		if networkRadius > 0 && peer.status.StorageRadius < uint32(networkRadius-1) {
-			s.logger.Debug("radius health failure", "radius", peer.status.StorageRadius, "peer_address", peer.addr)
+		if networkRadius > 0 && peer.status.CommittedDepth < uint32(networkRadius-2) {
+			s.logger.Debug("radius health failure", "radius", peer.status.CommittedDepth, "peer_address", peer.addr, "bin", peer.bin)
 		} else if peer.dur.Seconds() > pDur {
-			s.logger.Debug("response duration below threshold", "duration", peer.dur, "peer_address", peer.addr)
+			s.logger.Debug("response duration below threshold", "duration", peer.dur, "peer_address", peer.addr, "bin", peer.bin)
 		} else if peer.status.ConnectedPeers < pConns {
-			s.logger.Debug("connections count below threshold", "connections", peer.status.ConnectedPeers, "peer_address", peer.addr)
+			s.logger.Debug("connections count below threshold", "connections", peer.status.ConnectedPeers, "peer_address", peer.addr, "bin", peer.bin)
 		} else if peer.status.BatchCommitment != commitment {
-			s.logger.Debug("batch commitment check failure", "commitment", peer.status.BatchCommitment, "peer_address", peer.addr)
+			s.logger.Debug("batch commitment check failure", "commitment", peer.status.BatchCommitment, "peer_address", peer.addr, "bin", peer.bin)
 		} else {
 			healthy = true
 		}
@@ -222,9 +222,9 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 	}
 
 	selfHealth := true
-	if s.reserve.StorageRadius() != networkRadius {
+	if nHoodRadius == networkRadius && s.reserve.CommittedDepth() != networkRadius {
 		selfHealth = false
-		s.logger.Warning("node is unhealthy due to storage radius discrepency", "self_radius", s.reserve.StorageRadius(), "network_radius", networkRadius)
+		s.logger.Warning("node is unhealthy due to storage radius discrepancy", "self_radius", s.reserve.CommittedDepth(), "network_radius", networkRadius)
 	}
 
 	s.isSelfHealthy.Store(selfHealth)
@@ -293,24 +293,24 @@ func percentileConns(peers []peer, p float64) uint64 {
 }
 
 // radius finds the most common radius.
-func (s *service) radius(peers []peer) (uint8, uint8) {
+func (s *service) committedDepth(peers []peer) (uint8, uint8) {
 
-	var networkRadius [swarm.MaxBins]int
-	var nHoodRadius [swarm.MaxBins]int
+	var networkDepth [swarm.MaxBins]int
+	var nHoodDepth [swarm.MaxBins]int
 
 	for _, peer := range peers {
-		if peer.status.StorageRadius < uint32(swarm.MaxBins) {
+		if peer.status.CommittedDepth < uint32(swarm.MaxBins) {
 			if peer.neighbor {
-				nHoodRadius[peer.status.StorageRadius]++
+				nHoodDepth[peer.status.CommittedDepth]++
 			}
-			networkRadius[peer.status.StorageRadius]++
+			networkDepth[peer.status.CommittedDepth]++
 		}
 	}
 
-	networkR := maxIndex(networkRadius[:])
-	hoodR := maxIndex(nHoodRadius[:])
+	networkD := maxIndex(networkDepth[:])
+	hoodD := maxIndex(nHoodDepth[:])
 
-	return uint8(networkR), uint8(hoodR)
+	return uint8(networkD), uint8(hoodD)
 }
 
 // commitment finds the most common batch commitment.

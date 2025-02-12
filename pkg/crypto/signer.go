@@ -10,10 +10,11 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/btcd/btcec/v2"
+	btcecdsa "github.com/btcsuite/btcd/btcec/v2/ecdsa"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethersphere/bee/pkg/crypto/eip712"
+	"github.com/ethersphere/bee/v2/pkg/crypto/eip712"
 )
 
 var (
@@ -59,8 +60,11 @@ func Recover(signature, data []byte) (*ecdsa.PublicKey, error) {
 		return nil, err
 	}
 
-	p, _, err := btcec.RecoverCompact(btcec.S256(), btcsig, hash)
-	return (*ecdsa.PublicKey)(p), err
+	pbk, _, err := btcecdsa.RecoverCompact(btcsig, hash)
+	if err != nil {
+		return nil, err
+	}
+	return pbk.ToECDSA(), err
 }
 
 type defaultSigner struct {
@@ -135,7 +139,8 @@ func (d *defaultSigner) SignTypedData(typedData *eip712.TypedData) ([]byte, erro
 
 // sign the provided hash and convert it to the ethereum (r,s,v) format.
 func (d *defaultSigner) sign(sighash []byte, isCompressedKey bool) ([]byte, error) {
-	signature, err := btcec.SignCompact(btcec.S256(), (*btcec.PrivateKey)(d.key), sighash, false)
+	pvk, _ := btcec.PrivKeyFromBytes(d.key.D.Bytes())
+	signature, err := btcecdsa.SignCompact(pvk, sighash, false)
 	if err != nil {
 		return nil, err
 	}
@@ -167,6 +172,9 @@ func RecoverEIP712(signature []byte, data *eip712.TypedData) (*ecdsa.PublicKey, 
 		return nil, err
 	}
 
-	p, _, err := btcec.RecoverCompact(btcec.S256(), btcsig, sighash)
-	return (*ecdsa.PublicKey)(p), err
+	pbk, _, err := btcecdsa.RecoverCompact(btcsig, sighash)
+	if err != nil {
+		return nil, err
+	}
+	return pbk.ToECDSA(), err
 }

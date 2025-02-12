@@ -14,7 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethersphere/bee/pkg/transaction"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
 type transactionServiceMock struct {
@@ -95,6 +95,10 @@ func (m *transactionServiceMock) TransactionFee(ctx context.Context, txHash comm
 		return m.transactionFee(ctx, txHash)
 	}
 	return big.NewInt(0), nil
+}
+
+func (m *transactionServiceMock) UnwrapABIError(_ context.Context, _ *transaction.TxRequest, err error, _ map[string]abi.Error) error {
+	return err
 }
 
 // Option is the option passed to the mock Chequebook service

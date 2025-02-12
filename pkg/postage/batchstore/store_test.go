@@ -10,16 +10,16 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/postage/batchstore"
-	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
-	postagetest "github.com/ethersphere/bee/pkg/postage/testing"
-	"github.com/ethersphere/bee/pkg/statestore/leveldb"
-	"github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/util/testutil"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/postage/batchstore"
+	mockpost "github.com/ethersphere/bee/v2/pkg/postage/mock"
+	postagetest "github.com/ethersphere/bee/v2/pkg/postage/testing"
+	"github.com/ethersphere/bee/v2/pkg/statestore/leveldb"
+	"github.com/ethersphere/bee/v2/pkg/statestore/mock"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 )
 
 var noopEvictFn = func([]byte) error { return nil }
@@ -27,6 +27,7 @@ var noopEvictFn = func([]byte) error { return nil }
 const defaultCapacity = 2 ^ 22
 
 func TestBatchStore_Get(t *testing.T) {
+	t.Parallel()
 	testBatch := postagetest.MustNewBatch()
 
 	stateStore := mock.NewStateStore()
@@ -42,6 +43,7 @@ func TestBatchStore_Get(t *testing.T) {
 }
 
 func TestBatchStore_Iterate(t *testing.T) {
+	t.Parallel()
 	testBatch := postagetest.MustNewBatch()
 	key := batchstore.BatchKey(testBatch.ID)
 
@@ -63,6 +65,7 @@ func TestBatchStore_Iterate(t *testing.T) {
 }
 
 func TestBatchStore_IterateStopsEarly(t *testing.T) {
+	t.Parallel()
 	testBatch1 := postagetest.MustNewBatch()
 	key1 := batchstore.BatchKey(testBatch1.ID)
 
@@ -113,6 +116,7 @@ func TestBatchStore_IterateStopsEarly(t *testing.T) {
 }
 
 func TestBatchStore_SaveAndUpdate(t *testing.T) {
+	t.Parallel()
 	testBatch := postagetest.MustNewBatch()
 	key := batchstore.BatchKey(testBatch.ID)
 
@@ -157,6 +161,7 @@ func TestBatchStore_SaveAndUpdate(t *testing.T) {
 }
 
 func TestBatchStore_GetChainState(t *testing.T) {
+	t.Parallel()
 	testChainState := postagetest.NewChainState()
 
 	stateStore := mock.NewStateStore()
@@ -171,6 +176,7 @@ func TestBatchStore_GetChainState(t *testing.T) {
 }
 
 func TestBatchStore_PutChainState(t *testing.T) {
+	t.Parallel()
 	testChainState := postagetest.NewChainState()
 
 	stateStore := mock.NewStateStore()
@@ -183,6 +189,7 @@ func TestBatchStore_PutChainState(t *testing.T) {
 }
 
 func TestBatchStore_Reset(t *testing.T) {
+	t.Parallel()
 	testChainState := postagetest.NewChainState()
 	testBatch := postagetest.MustNewBatch(
 		postagetest.WithValue(15),
@@ -222,7 +229,7 @@ func TestBatchStore_Reset(t *testing.T) {
 
 	// we expect one key in the statestore since the schema name
 	// will always be there.
-	if c != 1 {
+	if c != 0 {
 		t.Fatalf("expected only one key in statestore, got %d", c)
 	}
 }
@@ -236,7 +243,7 @@ type testBatch struct {
 // TestBatchSave adds batches to the batchstore, and after each batch, checks
 // the reserve state radius.
 func TestBatchSave(t *testing.T) {
-
+	t.Parallel()
 	totalCapacity := batchstore.Exp2(5)
 
 	defaultDepth := uint8(8)
@@ -310,7 +317,7 @@ func TestBatchSave(t *testing.T) {
 // TestBatchUpdate adds an initial group of batches to the batchstore and one by one
 // updates their depth and value fields while checking the batchstore radius values.
 func TestBatchUpdate(t *testing.T) {
-
+	t.Parallel()
 	totalCapacity := batchstore.Exp2(5)
 
 	defaultDepth := uint8(8)
@@ -328,7 +335,7 @@ func TestBatchUpdate(t *testing.T) {
 	// state after the batch is saved/updated. Unlike depth updates, value updates
 	// that are above cumulative amount should NOT result in any radius changes.
 	// Value updates that are less than or equal to the cumulative amount trigger
-	// the eviction for the the batch, as such, radius may be altered.
+	// the eviction for the batch, as such, radius may be altered.
 
 	tcs := []testCase{
 		{
@@ -381,7 +388,7 @@ func TestBatchUpdate(t *testing.T) {
 
 		var batches []*postage.Batch
 
-		// add initial groupd of batches
+		// add initial group of batches
 		for _, b := range tc.add {
 			newBatch := addBatch(t, store, b.depth, b.value)
 			batches = append(batches, newBatch)
@@ -406,7 +413,7 @@ func TestBatchUpdate(t *testing.T) {
 // TestPutChainState add a group of batches to the batchstore, and after updating the chainstate,
 // checks the batchstore radius reflects the updates.
 func TestPutChainState(t *testing.T) {
-
+	t.Parallel()
 	totalCapacity := batchstore.Exp2(5)
 
 	defaultDepth := uint8(8)
@@ -481,6 +488,7 @@ func TestPutChainState(t *testing.T) {
 }
 
 func TestBatchExpiry(t *testing.T) {
+	t.Parallel()
 	store := setupBatchStore(t, defaultCapacity)
 
 	batch := postagetest.MustNewBatch(
@@ -512,6 +520,7 @@ func TestBatchExpiry(t *testing.T) {
 }
 
 func TestUnexpiredBatch(t *testing.T) {
+	t.Parallel()
 	store := setupBatchStore(t, defaultCapacity)
 
 	batch := postagetest.MustNewBatch(
@@ -571,7 +580,6 @@ func setupBatchStore(t *testing.T, capacity int) postage.Storer {
 }
 
 func checkState(t *testing.T, name string, store postage.Storer, radius uint8) {
-
 	t.Helper()
 
 	if radius != store.Radius() {
@@ -580,7 +588,6 @@ func checkState(t *testing.T, name string, store postage.Storer, radius uint8) {
 }
 
 func addBatch(t *testing.T, s postage.Storer, depth uint8, value int) *postage.Batch {
-
 	t.Helper()
 
 	batch := postagetest.MustNewBatch(

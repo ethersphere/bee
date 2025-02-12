@@ -13,7 +13,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 )
 
 func TestRespond_defaults(t *testing.T) {
@@ -174,7 +174,6 @@ func TestRespond_special(t *testing.T) {
 			wantMessage: "2.4.8.16",
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

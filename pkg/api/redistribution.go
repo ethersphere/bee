@@ -6,29 +6,28 @@ package api
 
 import (
 	"net/http"
-	"time"
 
-	"github.com/ethersphere/bee/pkg/bigint"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/ethersphere/bee/v2/pkg/bigint"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/tracing"
 )
 
 type redistributionStatusResponse struct {
-	MinimumGasFunds    *bigint.BigInt `json:"minimumGasFunds"`
-	HasSufficientFunds bool           `json:"hasSufficientFunds"`
-	IsFrozen           bool           `json:"isFrozen"`
-	IsFullySynced      bool           `json:"isFullySynced"`
-	Phase              string         `json:"phase"`
-	Round              uint64         `json:"round"`
-	LastWonRound       uint64         `json:"lastWonRound"`
-	LastPlayedRound    uint64         `json:"lastPlayedRound"`
-	LastFrozenRound    uint64         `json:"lastFrozenRound"`
-	LastSelectedRound  uint64         `json:"lastSelectedRound"`
-	LastSampleDuration time.Duration  `json:"lastSampleDuration"`
-	Block              uint64         `json:"block"`
-	Reward             *bigint.BigInt `json:"reward"`
-	Fees               *bigint.BigInt `json:"fees"`
-	IsHealthy          bool           `json:"isHealthy"`
+	MinimumGasFunds           *bigint.BigInt `json:"minimumGasFunds"`
+	HasSufficientFunds        bool           `json:"hasSufficientFunds"`
+	IsFrozen                  bool           `json:"isFrozen"`
+	IsFullySynced             bool           `json:"isFullySynced"`
+	Phase                     string         `json:"phase"`
+	Round                     uint64         `json:"round"`
+	LastWonRound              uint64         `json:"lastWonRound"`
+	LastPlayedRound           uint64         `json:"lastPlayedRound"`
+	LastFrozenRound           uint64         `json:"lastFrozenRound"`
+	LastSelectedRound         uint64         `json:"lastSelectedRound"`
+	LastSampleDurationSeconds float64        `json:"lastSampleDurationSeconds"`
+	Block                     uint64         `json:"block"`
+	Reward                    *bigint.BigInt `json:"reward"`
+	Fees                      *bigint.BigInt `json:"fees"`
+	IsHealthy                 bool           `json:"isHealthy"`
 }
 
 func (s *Service) redistributionStatusHandler(w http.ResponseWriter, r *http.Request) {
@@ -56,20 +55,20 @@ func (s *Service) redistributionStatusHandler(w http.ResponseWriter, r *http.Req
 	}
 
 	jsonhttp.OK(w, redistributionStatusResponse{
-		MinimumGasFunds:    bigint.Wrap(minGasFunds),
-		HasSufficientFunds: hasSufficientFunds,
-		IsFrozen:           status.IsFrozen,
-		IsFullySynced:      status.IsFullySynced,
-		Phase:              status.Phase.String(),
-		LastWonRound:       status.LastWonRound,
-		LastPlayedRound:    status.LastPlayedRound,
-		LastFrozenRound:    status.LastFrozenRound,
-		LastSelectedRound:  status.LastSelectedRound,
-		LastSampleDuration: status.SampleDuration,
-		Round:              status.Round,
-		Block:              status.Block,
-		Reward:             bigint.Wrap(status.Reward),
-		Fees:               bigint.Wrap(status.Fees),
-		IsHealthy:          status.IsHealthy,
+		MinimumGasFunds:           bigint.Wrap(minGasFunds),
+		HasSufficientFunds:        hasSufficientFunds,
+		IsFrozen:                  status.IsFrozen,
+		IsFullySynced:             status.IsFullySynced,
+		Phase:                     status.Phase.String(),
+		LastWonRound:              status.LastWonRound,
+		LastPlayedRound:           status.LastPlayedRound,
+		LastFrozenRound:           status.LastFrozenRound,
+		LastSelectedRound:         status.LastSelectedRound,
+		LastSampleDurationSeconds: status.SampleDuration.Seconds(),
+		Round:                     status.Round,
+		Block:                     status.Block,
+		Reward:                    bigint.Wrap(status.Reward),
+		Fees:                      bigint.Wrap(status.Fees),
+		IsHealthy:                 status.IsHealthy,
 	})
 }

@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/log"
 )
 
 func Example() {

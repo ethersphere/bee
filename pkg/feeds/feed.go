@@ -15,10 +15,10 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/soc"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/soc"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 var ErrFeedTypeNotFound = errors.New("no such feed type")
@@ -107,7 +107,7 @@ func NewUpdate(f *Feed, idx Index, timestamp int64, payload, sig []byte) (swarm.
 	if err != nil {
 		return nil, fmt.Errorf("update: %w", err)
 	}
-	cac, err := toChunk(uint64(timestamp), payload)
+	cac, err := toChunk(payload)
 	if err != nil {
 		return nil, fmt.Errorf("toChunk: %w", err)
 	}

@@ -11,21 +11,20 @@ import (
 	"strconv"
 	"testing"
 
-	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
-	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
-	"github.com/ethersphere/bee/pkg/swarm"
+	mockpost "github.com/ethersphere/bee/v2/pkg/postage/mock"
+	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 )
 
 func tagsWithIdResource(id uint64) string { return fmt.Sprintf("/tags/%d", id) }
 
 // nolint:paralleltest
 func TestTags(t *testing.T) {
-
 	var (
 		tagsResource    = "/tags"
 		storerMock      = mockstorer.New()
@@ -222,9 +221,7 @@ func TestTagsHandlersInvalidInputs(t *testing.T) {
 	}}
 
 	for _, method := range []string{http.MethodGet, http.MethodDelete, http.MethodPatch} {
-		method := method
 		for _, tc := range tests {
-			tc := tc
 			t.Run(method+" "+tc.name, func(t *testing.T) {
 				t.Parallel()
 

@@ -9,10 +9,10 @@ import (
 	"errors"
 	"testing"
 
-	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
-	"github.com/ethersphere/bee/pkg/swarm"
+	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	chunktest "github.com/ethersphere/bee/v2/pkg/storage/testing"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 // TestChunkStore runs a correctness test suite on a given ChunkStore.
@@ -46,7 +46,7 @@ func TestChunkStore(t *testing.T, st storage.ChunkStore) {
 				t.Fatalf("failed getting chunk: %v", err)
 			}
 			if !readCh.Equal(ch) {
-				t.Fatal("read chunk doesnt match")
+				t.Fatal("read chunk doesn't match")
 			}
 		}
 	})
@@ -95,6 +95,15 @@ func TestChunkStore(t *testing.T, st storage.ChunkStore) {
 				if err != nil {
 					t.Fatalf("failed deleting chunk: %v", err)
 				}
+				_, err = st.Get(context.TODO(), ch.Address())
+				if err != nil {
+					t.Fatalf("expected no error, found: %v", err)
+				}
+				// delete twice as it was put twice
+				err = st.Delete(context.TODO(), ch.Address())
+				if err != nil {
+					t.Fatalf("failed deleting chunk: %v", err)
+				}
 			}
 		}
 	})
@@ -121,7 +130,7 @@ func TestChunkStore(t *testing.T, st storage.ChunkStore) {
 					t.Fatalf("failed getting chunk: %v", err)
 				}
 				if !readCh.Equal(ch) {
-					t.Fatal("read chunk doesnt match")
+					t.Fatal("read chunk doesn't match")
 				}
 				exists, err := st.Has(context.TODO(), ch.Address())
 				if err != nil {
@@ -145,13 +154,6 @@ func TestChunkStore(t *testing.T, st storage.ChunkStore) {
 		}
 		if count != 25 {
 			t.Fatalf("unexpected no of chunks, exp: %d, found: %d", 25, count)
-		}
-	})
-
-	t.Run("close store", func(t *testing.T) {
-		err := st.Close()
-		if err != nil {
-			t.Fatalf("unexpected error during close: %v", err)
 		}
 	})
 }

@@ -8,7 +8,7 @@ import (
 	"encoding/binary"
 	"hash"
 
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 var _ Hash = (*Hasher)(nil)
@@ -25,7 +25,7 @@ var (
 //
 // The same hasher instance must not be called concurrently on more than one chunk.
 //
-// The same hasher instance is synchronously reuseable.
+// The same hasher instance is synchronously reusable.
 //
 // Sum gives back the tree to the pool and guaranteed to leave
 // the tree and itself in a state reusable for hashing a new chunk.
@@ -34,10 +34,22 @@ type Hasher struct {
 	bmt    *tree       // prebuilt BMT resource for flowcontrol and proofs
 	size   int         // bytes written to Hasher since last Reset()
 	pos    int         // index of rightmost currently open segment
-	offset int         // offset (cursor position) within currently open segment
 	result chan []byte // result channel
 	errc   chan error  // error channel
 	span   []byte      // The span of the data subsumed under the chunk
+}
+
+// NewHasher gives back an instance of a Hasher struct
+func NewHasher(hasherFact func() hash.Hash) *Hasher {
+	conf := NewConf(hasherFact, swarm.BmtBranches, 32)
+
+	return &Hasher{
+		Conf:   conf,
+		result: make(chan []byte),
+		errc:   make(chan error, 1),
+		span:   make([]byte, SpanSize),
+		bmt:    newTree(conf.maxSize, conf.depth, conf.hasher),
+	}
 }
 
 // Capacity returns the maximum amount of bytes that will be processed by this hasher implementation.
@@ -106,17 +118,16 @@ func (h *Hasher) Sum(b []byte) []byte {
 // with every full segment calls processSection in a go routine.
 func (h *Hasher) Write(b []byte) (int, error) {
 	l := len(b)
-	max := h.maxSize - h.size
-	if l > max {
-		l = max
+	maxVal := h.maxSize - h.size
+	if l > maxVal {
+		l = maxVal
 	}
 	copy(h.bmt.buffer[h.size:], b)
 	secsize := 2 * h.segmentSize
 	from := h.size / secsize
-	h.offset = h.size % secsize
 	h.size += l
 	to := h.size / secsize
-	if l == max {
+	if l == maxVal {
 		to--
 	}
 	h.pos = to
@@ -130,7 +141,6 @@ func (h *Hasher) Write(b []byte) (int, error) {
 func (h *Hasher) Reset() {
 	h.pos = 0
 	h.size = 0
-	h.offset = 0
 	copy(h.span, zerospan)
 }
 
@@ -169,7 +179,6 @@ func (h *Hasher) processSection(i int, final bool) {
 // since hashing the parent is synchronous the same hasher can be used.
 func (h *Hasher) writeNode(n *node, isLeft bool, s []byte) {
 	var err error
-	level := 1
 	for {
 		// at the root of the bmt just write the result to the result channel
 		if n == nil {
@@ -198,7 +207,6 @@ func (h *Hasher) writeNode(n *node, isLeft bool, s []byte) {
 		}
 		isLeft = n.isLeft
 		n = n.parent
-		level++
 	}
 }
 

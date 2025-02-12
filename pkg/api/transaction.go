@@ -12,10 +12,10 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethersphere/bee/pkg/bigint"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/sctx"
-	"github.com/ethersphere/bee/pkg/transaction"
+	"github.com/ethersphere/bee/v2/pkg/bigint"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/sctx"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/gorilla/mux"
 )
 
@@ -144,8 +144,7 @@ func (s *Service) transactionResendHandler(w http.ResponseWriter, r *http.Reques
 
 	err := s.transaction.ResendTransaction(r.Context(), paths.Hash)
 	if err != nil {
-		logger.Debug("resend transaction failed", "tx_hash", paths.Hash, "error", err)
-		logger.Error(nil, "resend transaction failed", "tx_hash", paths.Hash)
+		logger.Error(nil, "resend transaction failed", "tx_hash", paths.Hash, "error", err)
 		if errors.Is(err, transaction.ErrUnknownTransaction) {
 			jsonhttp.NotFound(w, errUnknownTransaction)
 		} else if errors.Is(err, transaction.ErrAlreadyImported) {

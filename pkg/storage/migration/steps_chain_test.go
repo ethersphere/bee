@@ -7,9 +7,9 @@ package migration_test
 import (
 	"testing"
 
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/inmemstore"
-	"github.com/ethersphere/bee/pkg/storage/migration"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
+	"github.com/ethersphere/bee/v2/pkg/storage/migration"
 )
 
 func TestNewStepsChain(t *testing.T) {
@@ -30,6 +30,7 @@ func TestNewStepsChain(t *testing.T) {
 		// behavior where each should remove only one element from store
 		if i%2 == 0 {
 			stepFn = migration.NewStepOnIndex(
+				store,
 				storage.Query{
 					Factory:      newObjFactory,
 					ItemProperty: storage.QueryItem,
@@ -40,8 +41,8 @@ func TestNewStepsChain(t *testing.T) {
 				}),
 			)
 		} else {
-			stepFn = func(s storage.BatchedStore) error {
-				return s.Delete(&obj{id: valForRemoval})
+			stepFn = func() error {
+				return store.Delete(&obj{id: valForRemoval})
 			}
 		}
 
@@ -49,13 +50,13 @@ func TestNewStepsChain(t *testing.T) {
 	}
 
 	stepFn := migration.NewStepsChain(stepsFn...)
-	if err := stepFn(store); err != nil {
-		t.Fatalf("step migration should successed: %v", err)
+	if err := stepFn(); err != nil {
+		t.Fatalf("step migration should succeed: %v", err)
 	}
 
 	afterStepCount, err := store.Count(&obj{})
 	if err != nil {
-		t.Fatalf("count should successed: %v", err)
+		t.Fatalf("count should succeed: %v", err)
 	}
 
 	expectedCount := populateItemsCount - 10

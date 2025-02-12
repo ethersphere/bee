@@ -8,14 +8,13 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
-	"os"
 
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/sharky"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/storageutil"
-	"github.com/ethersphere/bee/pkg/storer/internal/chunkstore"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/sharky"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/storageutil"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstore"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 const oldRretrievalIndexItemSize = swarm.HashSize + 8 + sharky.LocationSize + 1
@@ -101,60 +100,58 @@ func (r OldRetrievalIndexItem) String() string {
 	return storageutil.JoinFields(r.Namespace(), r.ID())
 }
 
-func RefCountSizeInc(s storage.BatchedStore) error {
+func RefCountSizeInc(s storage.BatchStore, logger log.Logger) func() error {
+	return func() error {
 
-	logger := log.NewLogger("migration-RefCountSizeInc", log.WithSink(os.Stdout))
+		logger := logger.WithName("migration-RefCountSizeInc").Register()
 
-	logger.Info("starting migration of replacing chunkstore items to increase refCnt capacity")
+		logger.Info("starting migration of replacing chunkstore items to increase refCnt capacity")
 
-	var itemsToDelete []*OldRetrievalIndexItem
+		var itemsToDelete []*OldRetrievalIndexItem
 
-	err := s.Iterate(
-		storage.Query{
-			Factory: func() storage.Item { return &OldRetrievalIndexItem{} },
-		},
-		func(res storage.Result) (bool, error) {
-			item := res.Entry.(*OldRetrievalIndexItem)
-			itemsToDelete = append(itemsToDelete, item)
-			return false, nil
-		},
-	)
-	if err != nil {
-		return err
-	}
-
-	for i := 0; i < len(itemsToDelete); i += 10000 {
-		end := i + 10000
-		if end > len(itemsToDelete) {
-			end = len(itemsToDelete)
-		}
-
-		b, err := s.Batch(context.Background())
+		err := s.Iterate(
+			storage.Query{
+				Factory: func() storage.Item { return &OldRetrievalIndexItem{} },
+			},
+			func(res storage.Result) (bool, error) {
+				item := res.Entry.(*OldRetrievalIndexItem)
+				itemsToDelete = append(itemsToDelete, item)
+				return false, nil
+			},
+		)
 		if err != nil {
 			return err
 		}
 
-		for _, item := range itemsToDelete[i:end] {
+		for i := 0; i < len(itemsToDelete); i += 10000 {
+			end := i + 10000
+			if end > len(itemsToDelete) {
+				end = len(itemsToDelete)
+			}
 
-			//create new
-			err = b.Put(&chunkstore.RetrievalIndexItem{
-				Address:   item.Address,
-				Timestamp: item.Timestamp,
-				Location:  item.Location,
-				RefCnt:    uint32(item.RefCnt),
-			})
+			b := s.Batch(context.Background())
+			for _, item := range itemsToDelete[i:end] {
+
+				//create new
+				err = b.Put(&chunkstore.RetrievalIndexItem{
+					Address:   item.Address,
+					Timestamp: item.Timestamp,
+					Location:  item.Location,
+					RefCnt:    uint32(item.RefCnt),
+				})
+				if err != nil {
+					return err
+				}
+			}
+
+			err = b.Commit()
 			if err != nil {
 				return err
 			}
 		}
 
-		err = b.Commit()
-		if err != nil {
-			return err
-		}
+		logger.Info("migration complete")
+
+		return nil
 	}
-
-	logger.Info("migration complete")
-
-	return nil
 }

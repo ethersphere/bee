@@ -4,13 +4,12 @@ linters:
   enable:
     - asciicheck
     - bidichk
-    # - depguard disable temporary until this issue is resolved: https://github.com/golangci/golangci-lint/issues/3906
+    - copyloopvar
     - dogsled
     - durationcheck
     - errcheck
     - errname
     - errorlint
-    - exportloopref
     - forbidigo
     - gochecknoinits
     - goconst
@@ -33,6 +32,7 @@ linters:
     - typecheck
     - unconvert
     - unused
+    # - depguard disable temporary until this issue is resolved: https://github.com/golangci/golangci-lint/issues/3906
 
 linters-settings:
   govet:
@@ -62,7 +62,7 @@ issues:
     - linters:
         - forbidigo
       path: cmd/bee/cmd
-      text: "use of `fmt.Print"   ## allow fmt.Print in cmd directory
+      text: "use of `fmt.Print" ## allow fmt.Print in cmd directory
     - linters:
         - dogsled
       path: pkg/api/(.+)_test\.go # temporally disable dogsled in api test files
@@ -72,16 +72,4 @@ issues:
       # temporally disable paralleltest in following packages
     - linters:
         - paralleltest
-      path: pkg/postage
-    - linters:
-        - paralleltest
       path: pkg/log
-    - linters:
-        - paralleltest
-      path: pkg/statestore
-    - linters:
-        - paralleltest
-      path: pkg/storer
-    - linters:
-        - paralleltest
-      path: pkg/storage

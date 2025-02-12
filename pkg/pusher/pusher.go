@@ -12,19 +12,19 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
-	"fmt"
-	"strconv"
 	"sync"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/pushsync"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology"
-	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/pushsync"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/topology"
+	"github.com/ethersphere/bee/v2/pkg/tracing"
+	"github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go/ext"
+	olog "github.com/opentracing/opentracing-go/log"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -34,6 +34,9 @@ type Op struct {
 	Chunk  swarm.Chunk
 	Err    chan error
 	Direct bool
+	Span   opentracing.Span
+
+	identityAddress swarm.Address
 }
 
 type OpChan <-chan *Op
@@ -48,8 +51,7 @@ type Service struct {
 	networkID         uint64
 	storer            Storer
 	pushSyncer        pushsync.PushSyncer
-	validStamp        postage.ValidStampFn
-	radius            func() (uint8, error)
+	batchExist        postage.BatchExist
 	logger            log.Logger
 	metrics           metrics
 	quit              chan struct{}
@@ -61,23 +63,16 @@ type Service struct {
 
 const (
 	traceDuration     = 30 * time.Second // duration for every root tracing span
-	ConcurrentPushes  = 100              // how many chunks to push simultaneously
+	ConcurrentPushes  = swarm.Branches   // how many chunks to push simultaneously
 	DefaultRetryCount = 6
-)
-
-var (
-	ErrInvalidAddress = errors.New("invalid address")
-	ErrShallowReceipt = errors.New("shallow recipt")
 )
 
 func New(
 	networkID uint64,
 	storer Storer,
-	radius func() (uint8, error),
 	pushSyncer pushsync.PushSyncer,
-	validStamp postage.ValidStampFn,
+	batchExist postage.BatchExist,
 	logger log.Logger,
-	tracer *tracing.Tracer,
 	warmupTime time.Duration,
 	retryCount int,
 ) *Service {
@@ -85,8 +80,7 @@ func New(
 		networkID:         networkID,
 		storer:            storer,
 		pushSyncer:        pushSyncer,
-		validStamp:        validStamp,
-		radius:            radius,
+		batchExist:        batchExist,
 		logger:            logger.WithName(loggerName).Register(),
 		metrics:           newMetrics(),
 		quit:              make(chan struct{}),
@@ -95,13 +89,13 @@ func New(
 		attempts:          &attempts{retryCount: retryCount, attempts: make(map[string]int)},
 		smuggler:          make(chan OpChan),
 	}
-	go p.chunksWorker(warmupTime, tracer)
+	go p.chunksWorker(warmupTime)
 	return p
 }
 
 // chunksWorker is a loop that keeps looking for chunks that are locally uploaded ( by monitoring pushIndex )
 // and pushes them to the closest peer and get a receipt.
-func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer) {
+func (s *Service) chunksWorker(warmupTime time.Duration) {
 	defer close(s.chunksWorkerQuitC)
 	select {
 	case <-time.After(warmupTime):
@@ -109,37 +103,21 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		return
 	}
 
-	// fetch the network radius before starting pusher worker
-	r, err := s.radius()
-	if err != nil {
-		s.logger.Error(err, "pusher: initial radius error")
-	} else {
-		s.logger.Info("pusher: warmup period complete", "radius", r)
-	}
-
 	var (
-		cctx, cancel      = context.WithCancel(context.Background())
-		mtx               sync.Mutex
-		wg                sync.WaitGroup
-		span, logger, ctx = tracer.StartSpanFromContext(cctx, "pusher-sync-batch", s.logger)
-		timer             = time.NewTimer(traceDuration)
-		sem               = make(chan struct{}, ConcurrentPushes)
-		cc                = make(chan *Op)
+		ctx, cancel = context.WithCancel(context.Background())
+		sem         = make(chan struct{}, ConcurrentPushes)
+		cc          = make(chan *Op)
 	)
 
 	// inflight.set handles the backpressure for the maximum amount of inflight chunks
 	// and duplicate handling.
-	chunks, unsubscribe := s.storer.SubscribePush(cctx)
+	chunks, unsubscribe := s.storer.SubscribePush(ctx)
 	defer func() {
 		unsubscribe()
 		cancel()
 	}()
 
-	ctxLogger := func() (context.Context, log.Logger) {
-		mtx.Lock()
-		defer mtx.Unlock()
-		return ctx, logger
-	}
+	var wg sync.WaitGroup
 
 	push := func(op *Op) {
 		var (
@@ -168,38 +146,32 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		}()
 
 		s.metrics.TotalToPush.Inc()
-		ctx, logger := ctxLogger()
 		startTime := time.Now()
 
-		if op.Direct {
-			err = s.pushDirect(ctx, logger, op)
+		spanCtx := ctx
+		if op.Span != nil {
+			spanCtx = tracing.WithContext(spanCtx, op.Span.Context())
 		} else {
-			doRepeat, err = s.pushDeferred(ctx, logger, op)
+			op.Span = opentracing.NoopTracer{}.StartSpan("noOp")
+		}
+
+		if op.Direct {
+			err = s.pushDirect(spanCtx, s.logger, op)
+		} else {
+			doRepeat, err = s.pushDeferred(spanCtx, s.logger, op)
 		}
 
 		if err != nil {
 			s.metrics.TotalErrors.Inc()
 			s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
+			ext.LogError(op.Span, err)
+		} else {
+			op.Span.LogFields(olog.Bool("success", true))
 		}
 
 		s.metrics.SyncTime.Observe(time.Since(startTime).Seconds())
 		s.metrics.TotalSynced.Inc()
 	}
-
-	go func() {
-		for {
-			select {
-			case <-s.quit:
-				return
-			case <-timer.C:
-				// reset the span
-				mtx.Lock()
-				span.Finish()
-				span, logger, ctx = tracer.StartSpanFromContext(cctx, "pusher-sync-batch", s.logger)
-				mtx.Unlock()
-			}
-		}
-	}()
 
 	go func() {
 		for {
@@ -240,7 +212,13 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 	for {
 		select {
 		case op := <-cc:
-			if s.inflight.set(op.Chunk) {
+			idAddress, err := storage.IdentityAddress(op.Chunk)
+			if err != nil {
+				op.Err <- err
+				continue
+			}
+			op.identityAddress = idAddress
+			if s.inflight.set(idAddress, op.Chunk.Stamp().BatchID()) {
 				if op.Direct {
 					select {
 					case op.Err <- nil:
@@ -267,20 +245,20 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (bool, error) {
 	loggerV1 := logger.V(1).Build()
 
-	defer s.inflight.delete(op.Chunk)
+	defer s.inflight.delete(op.identityAddress, op.Chunk.Stamp().BatchID())
 
-	if _, err := s.validStamp(op.Chunk); err != nil {
+	ok, err := s.batchExist.Exists(op.Chunk.Stamp().BatchID())
+	if !ok || err != nil {
 		loggerV1.Warning(
-			"stamp with is no longer valid, skipping syncing for chunk",
+			"stamp is no longer valid, skipping syncing for chunk",
 			"batch_id", hex.EncodeToString(op.Chunk.Stamp().BatchID()),
 			"chunk_address", op.Chunk.Address(),
 			"error", err,
 		)
-
 		return false, errors.Join(err, s.storer.Report(ctx, op.Chunk, storage.ChunkCouldNotSync))
 	}
 
-	switch receipt, err := s.pushSyncer.PushChunkToClosest(ctx, op.Chunk); {
+	switch _, err := s.pushSyncer.PushChunkToClosest(ctx, op.Chunk); {
 	case errors.Is(err, topology.ErrWantSelf):
 		// store the chunk
 		loggerV1.Debug("chunk stays here, i'm the closest node", "chunk_address", op.Chunk.Address())
@@ -294,11 +272,15 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 			loggerV1.Error(err, "pusher: failed reporting chunk")
 			return true, err
 		}
-	case err == nil:
-		if err := s.checkReceipt(receipt, loggerV1); err != nil {
-			loggerV1.Error(err, "pusher: failed checking receipt")
+	case errors.Is(err, pushsync.ErrShallowReceipt):
+		if s.shallowReceipt(op.identityAddress) {
 			return true, err
 		}
+		if err := s.storer.Report(ctx, op.Chunk, storage.ChunkSynced); err != nil {
+			loggerV1.Error(err, "pusher: failed to report sync status")
+			return true, err
+		}
+	case err == nil:
 		if err := s.storer.Report(ctx, op.Chunk, storage.ChunkSynced); err != nil {
 			loggerV1.Error(err, "pusher: failed to report sync status")
 			return true, err
@@ -314,13 +296,10 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) error {
 	loggerV1 := logger.V(1).Build()
 
-	var (
-		receipt *pushsync.Receipt
-		err     error
-	)
+	var err error
 
 	defer func() {
-		s.inflight.delete(op.Chunk)
+		s.inflight.delete(op.identityAddress, op.Chunk.Stamp().BatchID())
 		select {
 		case op.Err <- err:
 		default:
@@ -328,10 +307,10 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 		}
 	}()
 
-	_, err = s.validStamp(op.Chunk)
-	if err != nil {
-		logger.Warning(
-			"stamp with is no longer valid, skipping direct upload for chunk",
+	ok, err := s.batchExist.Exists(op.Chunk.Stamp().BatchID())
+	if !ok || err != nil {
+		loggerV1.Warning(
+			"stamp is no longer valid, skipping direct upload for chunk",
 			"batch_id", hex.EncodeToString(op.Chunk.Stamp().BatchID()),
 			"chunk_address", op.Chunk.Address(),
 			"error", err,
@@ -339,7 +318,7 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 		return err
 	}
 
-	switch receipt, err = s.pushSyncer.PushChunkToClosest(ctx, op.Chunk); {
+	switch _, err = s.pushSyncer.PushChunkToClosest(ctx, op.Chunk); {
 	case errors.Is(err, topology.ErrWantSelf):
 		// store the chunk
 		loggerV1.Debug("chunk stays here, i'm the closest node", "chunk_address", op.Chunk.Address())
@@ -347,52 +326,32 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 		if err != nil {
 			loggerV1.Error(err, "pusher: failed to store chunk")
 		}
-	case err == nil:
-		err = s.checkReceipt(receipt, loggerV1)
-		if err != nil {
-			loggerV1.Error(err, "pusher: failed checking receipt")
+	case errors.Is(err, pushsync.ErrShallowReceipt):
+		if s.shallowReceipt(op.identityAddress) {
+			return err
 		}
-	default:
+		// out of attempts for retry, swallow error
+		err = nil
+	case err != nil:
 		loggerV1.Error(err, "pusher: failed PushChunkToClosest")
 	}
+
 	return err
 }
 
-func (s *Service) checkReceipt(receipt *pushsync.Receipt, loggerV1 log.Logger) error {
-	addr := receipt.Address
-	publicKey, err := crypto.Recover(receipt.Signature, addr.Bytes())
-	if err != nil {
-		return fmt.Errorf("pusher: receipt recover: %w", err)
+func (s *Service) shallowReceipt(idAddress swarm.Address) bool {
+	if s.attempts.try(idAddress) {
+		return true
 	}
-
-	peer, err := crypto.NewOverlayAddress(*publicKey, s.networkID, receipt.Nonce)
-	if err != nil {
-		return fmt.Errorf("pusher: receipt storer address: %w", err)
-	}
-
-	po := swarm.Proximity(addr.Bytes(), peer.Bytes())
-
-	d, err := s.radius()
-	if err != nil {
-		return fmt.Errorf("pusher: storage radius: %w", err)
-	}
-
-	// if the receipt po is out of depth AND the receipt has not yet hit the maximum retry limit, reject the receipt.
-	if po < d && s.attempts.try(addr) {
-		s.metrics.ShallowReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
-		s.metrics.ShallowReceipt.Inc()
-		return fmt.Errorf("pusher: shallow receipt depth %d, want at least %d, chunk_address %s: %w", po, d, addr, ErrShallowReceipt)
-	}
-	loggerV1.Debug("chunk pushed", "chunk_address", addr, "peer_address", peer, "proximity_order", po)
-	s.metrics.ReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
-	s.attempts.delete(addr)
-	return nil
+	s.attempts.delete(idAddress)
+	return false
 }
 
 func (s *Service) AddFeed(c <-chan *Op) {
 	go func() {
 		select {
 		case s.smuggler <- c:
+			s.logger.Info("got a chunk being smuggled")
 		case <-s.quit:
 		}
 	}()
@@ -405,7 +364,7 @@ func (s *Service) Close() error {
 	// Wait for chunks worker to finish
 	select {
 	case <-s.chunksWorkerQuitC:
-	case <-time.After(6 * time.Second):
+	case <-time.After(10 * time.Second):
 	}
 	return nil
 }

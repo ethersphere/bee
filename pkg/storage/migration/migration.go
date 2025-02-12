@@ -10,13 +10,13 @@ import (
 	"fmt"
 	"sort"
 
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/storageutil"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/storageutil"
 )
 
 type (
 	// StepFn is a function that migrates the storage to the next version
-	StepFn func(storage.BatchedStore) error
+	StepFn func() error
 	// Steps is a map of versions and their migration functions
 	Steps = map[uint64]StepFn
 )
@@ -30,7 +30,7 @@ var (
 // Migrate migrates the storage to the latest version.
 // The steps are separated by groups so different lists of steps can run individually, for example,
 // two groups of migrations that run before and after the storer is initialized.
-func Migrate(s storage.BatchedStore, group string, sm Steps) error {
+func Migrate(s storage.IndexStore, group string, sm Steps) error {
 	if err := ValidateVersions(sm); err != nil {
 		return err
 	}
@@ -45,7 +45,7 @@ func Migrate(s storage.BatchedStore, group string, sm Steps) error {
 		if !ok {
 			return nil
 		}
-		err := stepFn(s)
+		err := stepFn()
 		if err != nil {
 			return err
 		}
@@ -127,7 +127,7 @@ func (s StorageVersionItem) String() string {
 }
 
 // Version returns the current version of the storage
-func Version(s storage.Store, group string) (uint64, error) {
+func Version(s storage.Reader, group string) (uint64, error) {
 	item := StorageVersionItem{Group: group}
 	err := s.Get(&item)
 	if err != nil {
@@ -140,7 +140,7 @@ func Version(s storage.Store, group string) (uint64, error) {
 }
 
 // setVersion sets the current version of the storage
-func setVersion(s storage.Store, v uint64, g string) error {
+func setVersion(s storage.Writer, v uint64, g string) error {
 	return s.Put(&StorageVersionItem{Version: v, Group: g})
 }
 

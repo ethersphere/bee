@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	storage "github.com/ethersphere/bee/pkg/storage"
-	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
-	storer "github.com/ethersphere/bee/pkg/storer"
-	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
-	"github.com/ethersphere/bee/pkg/swarm"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	chunktesting "github.com/ethersphere/bee/v2/pkg/storage/testing"
+	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -83,7 +83,7 @@ func TestMockStorer(t *testing.T) {
 
 		want := storage.ErrNotFound
 		_, have := mockStorer.Session(1)
-		if !errors.Is(want, have) {
+		if !errors.Is(have, want) {
 			t.Fatalf("Session(): unexpected error: want %v have %v", want, have)
 		}
 	})

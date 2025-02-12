@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/p2p"
-	pingpongmock "github.com/ethersphere/bee/pkg/pingpong/mock"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/v2/pkg/p2p"
+	pingpongmock "github.com/ethersphere/bee/v2/pkg/pingpong/mock"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 func TestPingpong(t *testing.T) {
@@ -39,7 +39,6 @@ func TestPingpong(t *testing.T) {
 	})
 
 	ts, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI: true,
 		Pingpong: pingpongService,
 	})
 
@@ -79,7 +78,7 @@ func TestPingpong(t *testing.T) {
 func Test_pingpongHandler_invalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+	client, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name    string
@@ -114,7 +113,6 @@ func Test_pingpongHandler_invalidInputs(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

@@ -11,7 +11,8 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 func TestGenerateSecp256k1Key(t *testing.T) {
@@ -250,5 +251,62 @@ func TestNewEthereumAddress(t *testing.T) {
 	}
 	if !bytes.Equal(address, expectAddress) {
 		t.Fatalf("address mismatch %x %x", address, expectAddress)
+	}
+}
+
+func TestNewOverlayFromEthereumAddress(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		wantAddress     swarm.Address
+		overlayID       uint64
+		hash            []byte
+		expectedAddress string
+	}{
+		{
+			wantAddress:     swarm.MustParseHexAddress("1815cac638d1525b47f848daf02b7953e4edd15c"),
+			overlayID:       1,
+			hash:            common.HexToHash("0x1").Bytes(),
+			expectedAddress: "a38f7a814d4b249ae9d3821e9b898019c78ac9abe248fff171782c32a3849a17",
+		},
+		{
+			wantAddress:     swarm.MustParseHexAddress("1815cac638d1525b47f848daf02b7953e4edd15c"),
+			overlayID:       1,
+			hash:            common.HexToHash("0x2").Bytes(),
+			expectedAddress: "c63c10b1728dfc463c64c264f71a621fe640196979375840be42dc496b702610",
+		},
+		{
+			wantAddress:     swarm.MustParseHexAddress("d26bc1715e933bd5f8fad16310042f13abc16159"),
+			overlayID:       2,
+			hash:            common.HexToHash("0x1").Bytes(),
+			expectedAddress: "9f421f9149b8e31e238cfbdc6e5e833bacf1e42f77f60874d49291292858968e",
+		},
+		{
+			wantAddress:     swarm.MustParseHexAddress("ac485e3c63dcf9b4cda9f007628bb0b6fed1c063"),
+			overlayID:       1,
+			hash:            common.HexToHash("0x0").Bytes(),
+			expectedAddress: "fe3a6d582c577404fb19df64a44e00d3a3b71230a8464c0dd34af3f0791b45f2",
+		},
+	}
+
+	for _, tc := range testCases {
+
+		gotAddress, err := crypto.NewOverlayFromEthereumAddress(tc.wantAddress.Bytes(), tc.overlayID, tc.hash)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if l := len(gotAddress.Bytes()); l != swarm.HashSize {
+			t.Errorf("got address length %v, want %v", l, swarm.HashSize)
+		}
+
+		wantAddress, err := swarm.ParseHexAddress(tc.expectedAddress)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !wantAddress.Equal(gotAddress) {
+			t.Errorf("Expected %s, but got %s", wantAddress, gotAddress)
+		}
 	}
 }

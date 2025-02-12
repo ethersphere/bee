@@ -11,11 +11,11 @@ import (
 
 	"go.uber.org/goleak"
 
-	"github.com/ethersphere/bee/pkg/blocker"
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/util/testutil"
+	"github.com/ethersphere/bee/v2/pkg/blocker"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 )
 
 const (
@@ -61,7 +61,7 @@ func TestBlocksAfterFlagTimeout(t *testing.T) {
 	}
 
 	time.Sleep(flagTime / 2)
-	b.Flag(addr) // check thats this flag call does not overide previous call
+	b.Flag(addr) // check that this flag call does not override previous call
 	if len(blockedC) != 0 {
 		t.Fatal("blocker did not wait flag duration")
 	}
@@ -95,7 +95,7 @@ func TestUnflagBeforeBlock(t *testing.T) {
 	b.Flag(addr)
 
 	time.Sleep(flagTime / 2)
-	b.Flag(addr) // check thats this flag call does not overide previous call
+	b.Flag(addr) // check that this flag call does not override previous call
 
 	b.Unflag(addr)
 

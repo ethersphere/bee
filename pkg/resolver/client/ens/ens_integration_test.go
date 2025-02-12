@@ -10,13 +10,13 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/resolver/client/ens"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/resolver/client/ens"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 func TestENSIntegration(t *testing.T) {
 	// TODO: consider using a stable gateway instead of INFURA.
-	defaultEndpoint := "https://goerli.infura.io/v3/59d83a5a4be74f86b9851190c802297b"
+	defaultEndpoint := "https://sepolia.infura.io/v3/59d83a5a4be74f86b9851190c802297b"
 	defaultAddr := swarm.MustParseHexAddress("00cb23598c2e520b6a6aae3ddc94fed4435a2909690bdd709bf9d9e7c2aadfad")
 
 	testCases := []struct {

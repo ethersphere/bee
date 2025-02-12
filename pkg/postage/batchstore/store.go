@@ -11,11 +11,12 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"sync"
 	"sync/atomic"
 
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -47,6 +48,8 @@ type store struct {
 	logger  log.Logger
 
 	batchExpiry postage.BatchExpiryHandler
+
+	mtx sync.RWMutex
 }
 
 // New constructs a new postage batch store.
@@ -96,6 +99,13 @@ func (s *store) GetChainState() *postage.ChainState {
 
 // Get returns a batch from the batchstore with the given ID.
 func (s *store) Get(id []byte) (*postage.Batch, error) {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	return s.get(id)
+}
+
+func (s *store) get(id []byte) (*postage.Batch, error) {
+
 	b := &postage.Batch{}
 	err := s.store.Get(batchKey(id), b)
 	if err != nil {
@@ -106,6 +116,9 @@ func (s *store) Get(id []byte) (*postage.Batch, error) {
 
 // Exists is implementation of postage.Storer interface Exists method.
 func (s *store) Exists(id []byte) (bool, error) {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+
 	switch err := s.store.Get(batchKey(id), new(postage.Batch)); {
 	case err == nil:
 		return true, nil
@@ -130,6 +143,9 @@ func (s *store) Iterate(cb func(*postage.Batch) (bool, error)) error {
 // Save is implementation of postage.Storer interface Save method.
 // This method has side effects; it also updates the radius of the node if successful.
 func (s *store) Save(batch *postage.Batch) error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
 	switch err := s.store.Get(batchKey(batch.ID), new(postage.Batch)); {
 	case errors.Is(err, storage.ErrNotFound):
 		if err := s.store.Put(batchKey(batch.ID), batch); err != nil {
@@ -153,6 +169,8 @@ func (s *store) Save(batch *postage.Batch) error {
 // Update is implementation of postage.Storer interface Update method.
 // This method has side effects; it also updates the radius of the node if successful.
 func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
 
 	oldBatch := &postage.Batch{}
 
@@ -189,6 +207,9 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 // This method has side effects; it purges expired batches and unreserves underfunded
 // ones before it stores the chain state in the store.
 func (s *store) PutChainState(cs *postage.ChainState) error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
 	s.cs.Store(cs)
 
 	s.logger.Debug("put chain state", "block", cs.Block, "amount", cs.TotalAmount.Int64(), "price", cs.CurrentPrice.Int64())
@@ -207,6 +228,9 @@ func (s *store) PutChainState(cs *postage.ChainState) error {
 }
 
 func (s *store) Commitment() (uint64, error) {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+
 	var totalCommitment int
 	err := s.store.Iterate(batchKeyPrefix, func(key, value []byte) (bool, error) {
 
@@ -227,6 +251,9 @@ func (s *store) Commitment() (uint64, error) {
 
 // Reset is implementation of postage.Storer interface Reset method.
 func (s *store) Reset() error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
 	const prefix = "batchstore_"
 	if err := s.store.Iterate(prefix, func(k, _ []byte) (bool, error) {
 		return false, s.store.Delete(string(k))
@@ -275,7 +302,7 @@ func (s *store) cleanup() error {
 
 	err := s.store.Iterate(valueKeyPrefix, func(key, value []byte) (stop bool, err error) {
 
-		b, err := s.Get(valueKeyToID(key))
+		b, err := s.get(valueKeyToID(key))
 		if err != nil {
 			return false, err
 		}

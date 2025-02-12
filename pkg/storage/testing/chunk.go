@@ -21,12 +21,12 @@ import (
 	"crypto/rand"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/cac"
-	"github.com/ethersphere/bee/pkg/crypto"
-	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
-	"github.com/ethersphere/bee/pkg/soc"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/util/testutil"
+	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
+	"github.com/ethersphere/bee/v2/pkg/soc"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 )
 
 // GenerateTestRandomChunk generates a valid content addressed chunk.
@@ -91,10 +91,13 @@ func GenerateTestRandomChunkAt(tb testing.TB, target swarm.Address, po int) swar
 	addr := swarm.RandAddressAt(tb, target, po)
 	stamp := postagetesting.MustNewStamp()
 	return swarm.NewChunk(addr, data).WithStamp(stamp)
+
 }
 
-// GenerateTestRandomChunkAt generates an invalid (!) chunk with address of proximity order po wrt target.
-func GenerateValidRandomChunkAt(target swarm.Address, po int) swarm.Chunk {
+// GenerateTestRandomChunkAt generates an valid chunk with address of proximity order po wrt target.
+func GenerateValidRandomChunkAt(tb testing.TB, target swarm.Address, po int) swarm.Chunk {
+	tb.Helper()
+
 	data := make([]byte, swarm.ChunkSize)
 
 	var ch swarm.Chunk

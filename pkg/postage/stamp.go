@@ -6,12 +6,13 @@ package postage
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 
-	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 // StampSize is the number of bytes in the serialisation of a stamp
@@ -87,6 +88,20 @@ func (s *Stamp) Clone() swarm.Stamp {
 	}
 }
 
+// Hash returns the hash of the stamp.
+func (s *Stamp) Hash() ([]byte, error) {
+	hasher := swarm.NewHasher()
+	b, err := s.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	_, err = hasher.Write(b)
+	if err != nil {
+		return nil, err
+	}
+	return hasher.Sum(nil), nil
+}
+
 // MarshalBinary gives the byte slice serialisation of a stamp:
 // batchID[32]|index[8]|timestamp[8]|Signature[65].
 func (s *Stamp) MarshalBinary() ([]byte, error) {
@@ -115,6 +130,35 @@ func (s *Stamp) UnmarshalBinary(buf []byte) error {
 	s.index = buf[32:40]
 	s.timestamp = buf[40:48]
 	s.sig = buf[48:]
+	return nil
+}
+
+type stampJson struct {
+	BatchID   []byte `json:"batchID"`
+	Index     []byte `json:"index"`
+	Timestamp []byte `json:"timestamp"`
+	Sig       []byte `json:"sig"`
+}
+
+func (s *Stamp) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&stampJson{
+		s.batchID,
+		s.index,
+		s.timestamp,
+		s.sig,
+	})
+}
+
+func (a *Stamp) UnmarshalJSON(b []byte) error {
+	v := &stampJson{}
+	err := json.Unmarshal(b, v)
+	if err != nil {
+		return err
+	}
+	a.batchID = v.BatchID
+	a.index = v.Index
+	a.timestamp = v.Timestamp
+	a.sig = v.Sig
 	return nil
 }
 
@@ -157,7 +201,7 @@ func ValidStamp(batchStore Storer) ValidStampFn {
 		if err = NewStamp(stamp.BatchID(), stamp.Index(), stamp.Timestamp(), stamp.Sig()).Valid(chunk.Address(), b.Owner, b.Depth, b.BucketDepth, b.Immutable); err != nil {
 			return nil, err
 		}
-		return chunk.WithStamp(stamp).WithBatch(0, b.Depth, b.BucketDepth, b.Immutable), nil // TODO: remove radius arg
+		return chunk.WithStamp(stamp).WithBatch(b.Depth, b.BucketDepth, b.Immutable), nil
 	}
 }
 

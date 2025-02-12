@@ -12,10 +12,10 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/cac"
-	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/soc"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/soc"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 func TestNew(t *testing.T) {
@@ -44,6 +44,41 @@ func TestNew(t *testing.T) {
 
 	if !bytes.Equal(chunkData[swarm.SpanSize:], payload) {
 		t.Fatalf("payload mismatch. got %x want %x", chunkData[swarm.SpanSize:], payload)
+	}
+}
+
+func TestReplica(t *testing.T) {
+	sig, err := hex.DecodeString("5acd384febc133b7b245e5ddc62d82d2cded9182d2716126cd8844509af65a053deb418208027f548e3e88343af6f84a8772fb3cebc0a1833a0ea7ec0c1348311b")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	payload := []byte("foo")
+	ch, err := cac.New(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	id := make([]byte, swarm.HashSize)
+	s, err := soc.NewSigned(id, ch, swarm.ReplicasOwner, sig)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ch, err = s.Chunk()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sch, err := soc.FromChunk(swarm.NewChunk(swarm.EmptyAddress, ch.Data()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch, err = sch.Chunk()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !soc.Valid(ch) {
+		t.Fatal("invalid soc chunk")
 	}
 }
 
@@ -290,6 +325,15 @@ func TestFromChunk(t *testing.T) {
 	}
 
 	if !ch.Equal(recoveredSOC.WrappedChunk()) {
+		t.Fatalf("wrapped chunk mismatch. got %s want %s", recoveredSOC.WrappedChunk().Address(), ch.Address())
+	}
+
+	unwrapped, err := soc.UnwrapCAC(sch)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !ch.Equal(unwrapped) {
 		t.Fatalf("wrapped chunk mismatch. got %s want %s", recoveredSOC.WrappedChunk().Address(), ch.Address())
 	}
 }

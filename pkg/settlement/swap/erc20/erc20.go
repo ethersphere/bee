@@ -11,14 +11,14 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/sctx"
-	"github.com/ethersphere/bee/pkg/transaction"
-	"github.com/ethersphere/bee/pkg/util/abiutil"
+	"github.com/ethersphere/bee/v2/pkg/sctx"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
+	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
 
 var (
-	erc20ABI     = abiutil.MustParseABI(sw3abi.ERC20ABIv0_3_1)
+	erc20ABI     = abiutil.MustParseABI(sw3abi.ERC20ABIv0_6_5)
 	errDecodeABI = errors.New("could not decode abi data")
 )
 

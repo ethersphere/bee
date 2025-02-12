@@ -18,16 +18,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/addressbook"
-	"github.com/ethersphere/bee/pkg/discovery"
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/shed"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology"
-	im "github.com/ethersphere/bee/pkg/topology/kademlia/internal/metrics"
-	"github.com/ethersphere/bee/pkg/topology/kademlia/internal/waitnext"
-	"github.com/ethersphere/bee/pkg/topology/pslice"
+	"github.com/ethersphere/bee/v2/pkg/addressbook"
+	"github.com/ethersphere/bee/v2/pkg/discovery"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/shed"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/topology"
+	im "github.com/ethersphere/bee/v2/pkg/topology/kademlia/internal/metrics"
+	"github.com/ethersphere/bee/v2/pkg/topology/kademlia/internal/waitnext"
+	"github.com/ethersphere/bee/v2/pkg/topology/pslice"
+	"github.com/ethersphere/bee/v2/pkg/util/ioutil"
 	ma "github.com/multiformats/go-multiaddr"
 	"golang.org/x/sync/errgroup"
 )
@@ -53,11 +54,12 @@ const (
 	defaultBitSuffixLength             = 4 // the number of bits used to create pseudo addresses for balancing, 2^4, 16 addresses
 	defaultLowWaterMark                = 3 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
 	defaultSaturationPeers             = 8
-	defaultOverSaturationPeers         = 20
+	defaultOverSaturationPeers         = 18
 	defaultBootNodeOverSaturationPeers = 20
 	defaultShortRetry                  = 30 * time.Second
 	defaultTimeToRetry                 = 2 * defaultShortRetry
-	defaultBroadcastBinSize            = 4
+	defaultPruneWakeup                 = 5 * time.Minute
+	defaultBroadcastBinSize            = 2
 )
 
 var (
@@ -68,12 +70,13 @@ var (
 )
 
 type (
-	binSaturationFunc  func(bin uint8, peers, connected *pslice.PSlice, filter peerFilterFunc) bool
+	binSaturationFunc  func(bin uint8, connected *pslice.PSlice, exclude peerExcludeFunc) bool
 	sanctionedPeerFunc func(peer swarm.Address) bool
 	pruneFunc          func(depth uint8)
+	pruneCountFunc     func(bin uint8, connected *pslice.PSlice, exclude peerExcludeFunc) (int, int)
 	staticPeerFunc     func(peer swarm.Address) bool
-	peerFilterFunc     func(peer swarm.Address) bool
-	filtersFunc        func(...im.FilterOp) peerFilterFunc
+	peerExcludeFunc    func(peer swarm.Address) bool
+	excludeFunc        func(...im.ExcludeOp) peerExcludeFunc
 )
 
 var noopSanctionedPeerFn = func(_ swarm.Address) bool { return false }
@@ -81,16 +84,18 @@ var noopSanctionedPeerFn = func(_ swarm.Address) bool { return false }
 // Options for injecting services to Kademlia.
 type Options struct {
 	SaturationFunc binSaturationFunc
+	PruneCountFunc pruneCountFunc
 	Bootnodes      []ma.Multiaddr
 	BootnodeMode   bool
 	PruneFunc      pruneFunc
 	StaticNodes    []swarm.Address
-	FilterFunc     filtersFunc
+	ExcludeFunc    excludeFunc
 	DataDir        string
 
 	BitSuffixLength             *int
 	TimeToRetry                 *time.Duration
 	ShortRetry                  *time.Duration
+	PruneWakeup                 *time.Duration
 	SaturationPeers             *int
 	OverSaturationPeers         *int
 	BootnodeOverSaturationPeers *int
@@ -103,12 +108,14 @@ type kadOptions struct {
 	SaturationFunc binSaturationFunc
 	Bootnodes      []ma.Multiaddr
 	BootnodeMode   bool
+	PruneCountFunc pruneCountFunc
 	PruneFunc      pruneFunc
 	StaticNodes    []swarm.Address
-	FilterFunc     filtersFunc
+	ExcludeFunc    excludeFunc
 
 	TimeToRetry                 time.Duration
 	ShortRetry                  time.Duration
+	PruneWakeup                 time.Duration
 	BitSuffixLength             int // additional depth of common prefix for bin
 	SaturationPeers             int
 	OverSaturationPeers         int
@@ -125,10 +132,11 @@ func newKadOptions(o Options) kadOptions {
 		BootnodeMode:   o.BootnodeMode,
 		PruneFunc:      o.PruneFunc,
 		StaticNodes:    o.StaticNodes,
-		FilterFunc:     o.FilterFunc,
+		ExcludeFunc:    o.ExcludeFunc,
 		// copy or use default
 		TimeToRetry:                 defaultValDuration(o.TimeToRetry, defaultTimeToRetry),
 		ShortRetry:                  defaultValDuration(o.ShortRetry, defaultShortRetry),
+		PruneWakeup:                 defaultValDuration(o.PruneWakeup, defaultPruneWakeup),
 		BitSuffixLength:             defaultValInt(o.BitSuffixLength, defaultBitSuffixLength),
 		SaturationPeers:             defaultValInt(o.SaturationPeers, defaultSaturationPeers),
 		OverSaturationPeers:         defaultValInt(o.OverSaturationPeers, defaultOverSaturationPeers),
@@ -216,7 +224,7 @@ func New(
 	if o.DataDir == "" {
 		logger.Warning("using in-mem store for kademlia metrics, no state will be persisted")
 	} else {
-		o.DataDir = filepath.Join(o.DataDir, "kademlia-metrics")
+		o.DataDir = filepath.Join(o.DataDir, ioutil.DataPathKademlia)
 	}
 	sdb, err := shed.NewDB(o.DataDir, nil)
 	if err != nil {
@@ -255,10 +263,16 @@ func New(
 		k.opt.PruneFunc = k.pruneOversaturatedBins
 	}
 
-	if k.opt.FilterFunc == nil {
-		k.opt.FilterFunc = func(f ...im.FilterOp) peerFilterFunc {
+	os := k.opt.OverSaturationPeers
+	if k.opt.BootnodeMode {
+		os = k.opt.BootnodeOverSaturationPeers
+	}
+	k.opt.PruneCountFunc = binPruneCount(os, isStaticPeer(k.opt.StaticNodes))
+
+	if k.opt.ExcludeFunc == nil {
+		k.opt.ExcludeFunc = func(f ...im.ExcludeOp) peerExcludeFunc {
 			return func(peer swarm.Address) bool {
-				return k.collector.Filter(peer, f...)
+				return k.collector.Exclude(peer, f...)
 			}
 		}
 	}
@@ -433,11 +447,9 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 			return
 		case errors.Is(err, p2p.ErrPeerBlocklisted):
 			k.logger.Debug("peer still in blocklist", "peer_address", bzzAddr)
-			k.logger.Warning("peer still in blocklist")
 			return
 		case err != nil:
 			k.logger.Debug("peer not reachable from kademlia", "peer_address", bzzAddr, "error", err)
-			k.logger.Warning("peer not reachable when attempting to connect")
 			return
 		}
 
@@ -450,7 +462,7 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 
 		k.recalcDepth()
 
-		k.logger.Info("connected to peer", "peer_address", peer.addr, "proximity_order", peer.po)
+		k.logger.Debug("connected to peer", "peer_address", peer.addr, "proximity_order", peer.po)
 		k.notifyManageLoop()
 		k.notifyPeerSig()
 	}
@@ -535,6 +547,21 @@ func (k *Kad) manage() {
 				return
 			case <-k.quit:
 				return
+			case <-time.After(k.opt.PruneWakeup):
+				k.opt.PruneFunc(k.neighborhoodDepth())
+			}
+		}
+	}()
+
+	k.wg.Add(1)
+	go func() {
+		defer k.wg.Done()
+		for {
+			select {
+			case <-k.halt:
+				return
+			case <-k.quit:
+				return
 			case <-time.After(5 * time.Minute):
 				start := time.Now()
 				loggerV1.Debug("starting to flush metrics", "start_time", start)
@@ -559,7 +586,7 @@ func (k *Kad) manage() {
 				return
 			case <-k.quit:
 				return
-			case <-time.After(5 * time.Minute):
+			case <-time.After(15 * time.Minute):
 				var neighbors []swarm.Address
 				_ = k.connectedPeers.EachBin(func(addr swarm.Address, bin uint8) (stop bool, jumpToNext bool, err error) {
 					if bin < k.neighborhoodDepth() {
@@ -612,8 +639,6 @@ func (k *Kad) manage() {
 
 			depth := k.neighborhoodDepth()
 
-			k.opt.PruneFunc(depth)
-
 			loggerV1.Debug("connector finished", "elapsed", time.Since(start), "old_depth", oldDepth, "new_depth", depth)
 
 			k.metrics.CurrentDepth.Set(float64(depth))
@@ -659,12 +684,19 @@ func (k *Kad) pruneOversaturatedBins(depth uint8) {
 			return
 		}
 
-		binPeersCount := k.connectedPeers.BinSize(uint8(i))
-		if binPeersCount <= k.opt.OverSaturationPeers {
+		// skip to next bin if prune count is zero or fewer
+		oldCount, pruneCount := k.opt.PruneCountFunc(uint8(i), k.connectedPeers, k.opt.ExcludeFunc(im.Reachability(false)))
+		if pruneCount <= 0 {
 			continue
 		}
 
-		for j := 0; j < len(k.commonBinPrefixes[i]) && k.connectedPeers.BinSize(uint8(i)) > k.opt.OverSaturationPeers; j++ {
+		for j := 0; j < len(k.commonBinPrefixes[i]); j++ {
+
+			// skip to next bin if prune count is zero or fewer
+			_, pruneCount := k.opt.PruneCountFunc(uint8(i), k.connectedPeers, k.opt.ExcludeFunc(im.Reachability(false)))
+			if pruneCount <= 0 {
+				break
+			}
 
 			binPeers := k.connectedPeers.BinPeers(uint8(i))
 			peers := k.balancedSlotPeers(k.commonBinPrefixes[i][j], binPeers, i)
@@ -690,7 +722,7 @@ func (k *Kad) pruneOversaturatedBins(depth uint8) {
 				if unreachablePeer.IsZero() {
 					disconnectPeer = peers[rand.Intn(len(peers))]
 				} else {
-					disconnectPeer = unreachablePeer // pick unrechable peer
+					disconnectPeer = unreachablePeer // pick unreachable peer
 				}
 			}
 
@@ -700,7 +732,9 @@ func (k *Kad) pruneOversaturatedBins(depth uint8) {
 			}
 		}
 
-		k.logger.Debug("pruning", "bin", i, "oldBinSize", binPeersCount, "newBinSize", k.connectedPeers.BinSize(uint8(i)))
+		newCount, _ := k.opt.PruneCountFunc(uint8(i), k.connectedPeers, k.opt.ExcludeFunc(im.Reachability(false)))
+
+		k.logger.Debug("pruning", "bin", i, "oldBinSize", oldCount, "newBinSize", newCount)
 	}
 }
 
@@ -709,8 +743,7 @@ func (k *Kad) balancedSlotPeers(pseudoAddr swarm.Address, peers []swarm.Address,
 	var ret []swarm.Address
 
 	for _, peer := range peers {
-		peerPo := swarm.ExtendedProximity(peer.Bytes(), pseudoAddr.Bytes())
-		if int(peerPo) >= po+k.opt.BitSuffixLength+1 {
+		if int(swarm.ExtendedProximity(peer.Bytes(), pseudoAddr.Bytes())) >= po+k.opt.BitSuffixLength+1 {
 			ret = append(ret, peer)
 		}
 	}
@@ -718,7 +751,11 @@ func (k *Kad) balancedSlotPeers(pseudoAddr swarm.Address, peers []swarm.Address,
 	return ret
 }
 
-func (k *Kad) Start(_ context.Context) error {
+func (k *Kad) Start(ctx context.Context) error {
+
+	// always discover bootnodes on startup to exclude them from protocol requests
+	k.connectBootNodes(ctx)
+
 	k.wg.Add(1)
 	go k.manage()
 
@@ -832,16 +869,31 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 // when a bin is not saturated it means we would like to proactively
 // initiate connections to other peers in the bin.
 func binSaturated(oversaturationAmount int, staticNode staticPeerFunc) binSaturationFunc {
-	return func(bin uint8, peers, connected *pslice.PSlice, filter peerFilterFunc) bool {
+	return func(bin uint8, connected *pslice.PSlice, exclude peerExcludeFunc) bool {
 		size := 0
 		_ = connected.EachBin(func(addr swarm.Address, po uint8) (bool, bool, error) {
-			if po == bin && !filter(addr) && !staticNode(addr) {
+			if po == bin && !exclude(addr) && !staticNode(addr) {
 				size++
 			}
 			return false, false, nil
 		})
 
 		return size >= oversaturationAmount
+	}
+}
+
+// binPruneCount counts how many peers should be pruned from a bin.
+func binPruneCount(oversaturationAmount int, staticNode staticPeerFunc) pruneCountFunc {
+	return func(bin uint8, connected *pslice.PSlice, exclude peerExcludeFunc) (int, int) {
+		size := 0
+		_ = connected.EachBin(func(addr swarm.Address, po uint8) (bool, bool, error) {
+			if po == bin && !exclude(addr) && !staticNode(addr) {
+				size++
+			}
+			return false, false, nil
+		})
+
+		return size, size - oversaturationAmount
 	}
 }
 
@@ -853,7 +905,7 @@ func (k *Kad) recalcDepth() {
 
 	var (
 		peers                 = k.connectedPeers
-		filter                = k.opt.FilterFunc(im.Reachability(false))
+		exclude               = k.opt.ExcludeFunc(im.Reachability(false))
 		binCount              = 0
 		shallowestUnsaturated = uint8(0)
 		depth                 uint8
@@ -866,7 +918,7 @@ func (k *Kad) recalcDepth() {
 	}
 
 	_ = peers.EachBinRev(func(addr swarm.Address, bin uint8) (bool, bool, error) {
-		if filter(addr) {
+		if exclude(addr) {
 			return false, false, nil
 		}
 		if bin == shallowestUnsaturated {
@@ -898,7 +950,7 @@ func (k *Kad) recalcDepth() {
 		candidate = uint8(0)
 	)
 	_ = peers.EachBin(func(addr swarm.Address, po uint8) (bool, bool, error) {
-		if filter(addr) {
+		if exclude(addr) {
 			return false, false, nil
 		}
 		peersCtr++
@@ -917,7 +969,7 @@ func (k *Kad) recalcDepth() {
 }
 
 // connect connects to a peer and gossips its address to our connected peers,
-// as well as sends the peers we are connected to to the newly connected peer
+// as well as sends the peers we are connected to the newly connected peer
 func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) error {
 	k.logger.Debug("attempting connect to peer", "peer_address", peer)
 
@@ -1017,8 +1069,7 @@ outer:
 			addrs = append(addrs, connectedPeer)
 
 			if !fullnode {
-				// we continue here so we dont gossip
-				// about lightnodes to others.
+				// dont gossip about lightnodes to others.
 				continue
 			}
 			// if kademlia is closing, dont enqueue anymore broadcast requests
@@ -1087,7 +1138,7 @@ func (k *Kad) Pick(peer p2p.Peer) bool {
 		return true
 	}
 	po := swarm.Proximity(k.base.Bytes(), peer.Address.Bytes())
-	oversaturated := k.opt.SaturationFunc(po, k.knownPeers, k.connectedPeers, k.opt.FilterFunc(im.Reachability(false)))
+	oversaturated := k.opt.SaturationFunc(po, k.connectedPeers, k.opt.ExcludeFunc(im.Reachability(false)))
 	// pick the peer if we are not oversaturated
 	if !oversaturated {
 		return true
@@ -1135,7 +1186,7 @@ func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool
 	address := peer.Address
 	po := swarm.Proximity(k.base.Bytes(), address.Bytes())
 
-	if overSaturated := k.opt.SaturationFunc(po, k.knownPeers, k.connectedPeers, k.opt.FilterFunc(im.Reachability(false))); overSaturated {
+	if overSaturated := k.opt.SaturationFunc(po, k.connectedPeers, k.opt.ExcludeFunc(im.Reachability(false))); overSaturated {
 		if k.bootnode {
 			randPeer, err := k.randomPeer(po)
 			if err != nil {
@@ -1172,7 +1223,7 @@ func (k *Kad) onConnected(ctx context.Context, addr swarm.Address) error {
 
 // Disconnected is called when peer disconnects.
 func (k *Kad) Disconnected(peer p2p.Peer) {
-	k.logger.Info("disconnected peer", "peer_address", peer.Address)
+	k.logger.Debug("disconnected peer", "peer_address", peer.Address)
 
 	k.connectedPeers.Remove(peer.Address)
 
@@ -1232,9 +1283,16 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.
 		closest = k.base
 	}
 
-	err := k.EachConnectedPeerRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
+	prox := swarm.Proximity(k.base.Bytes(), addr.Bytes())
+
+	// iterate starting from bin 0 to the maximum bin
+	err := k.EachConnectedPeerRev(func(peer swarm.Address, bin uint8) (bool, bool, error) {
 		if swarm.ContainsAddress(skipPeers, peer) {
 			return false, false, nil
+		}
+
+		if bin > prox && !closest.IsZero() {
+			return true, false, nil
 		}
 
 		if closest.IsZero() {
@@ -1270,10 +1328,9 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.
 
 // EachConnectedPeer implements topology.PeerIterator interface.
 func (k *Kad) EachConnectedPeer(f topology.EachPeerFunc, filter topology.Select) error {
-	filters := filterOps(filter)
-
+	excludeFunc := k.opt.ExcludeFunc(excludeFromIterator(filter)...)
 	return k.connectedPeers.EachBin(func(addr swarm.Address, po uint8) (bool, bool, error) {
-		if len(filters) > 0 && k.opt.FilterFunc(filters...)(addr) {
+		if excludeFunc(addr) {
 			return false, false, nil
 		}
 		return f(addr, po)
@@ -1282,16 +1339,13 @@ func (k *Kad) EachConnectedPeer(f topology.EachPeerFunc, filter topology.Select)
 
 // EachConnectedPeerRev implements topology.PeerIterator interface.
 func (k *Kad) EachConnectedPeerRev(f topology.EachPeerFunc, filter topology.Select) error {
-	filters := filterOps(filter)
+	excludeFunc := k.opt.ExcludeFunc(excludeFromIterator(filter)...)
 	return k.connectedPeers.EachBinRev(func(addr swarm.Address, po uint8) (bool, bool, error) {
-		if len(filters) > 0 && k.opt.FilterFunc(filters...)(addr) {
+		if excludeFunc(addr) {
 			return false, false, nil
 		}
 		return f(addr, po)
 	})
-}
-func (k *Kad) PeersCount(filter topology.Select) int {
-	return k.connectedPeers.Length()
 }
 
 // Reachable sets the peer reachability status.
@@ -1351,9 +1405,10 @@ func (k *Kad) SubscribeTopologyChange() (c <-chan struct{}, unsubscribe func()) 
 	return channel, unsubscribe
 }
 
-func filterOps(filter topology.Select) []im.FilterOp {
+func excludeFromIterator(filter topology.Select) []im.ExcludeOp {
 
-	ops := make([]im.FilterOp, 0, 2)
+	ops := make([]im.ExcludeOp, 0, 3)
+	ops = append(ops, im.Bootnode())
 
 	if filter.Reachable {
 		ops = append(ops, im.Reachability(false))

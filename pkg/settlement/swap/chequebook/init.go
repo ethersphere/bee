@@ -13,12 +13,12 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	chaincfg "github.com/ethersphere/bee/pkg/config"
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/sctx"
-	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/transaction"
+	chaincfg "github.com/ethersphere/bee/v2/pkg/config"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/sctx"
+	"github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
 const (
@@ -132,12 +132,6 @@ func Init(
 	erc20Service erc20.Service,
 ) (chequebookService Service, err error) {
 	logger = logger.WithName(loggerName).Register()
-
-	// verify that the supplied factory is valid
-	err = chequebookFactory.VerifyBytecode(ctx)
-	if err != nil {
-		return nil, err
-	}
 
 	var chequebookAddress common.Address
 	err = stateStore.Get(chequebookKey, &chequebookAddress)

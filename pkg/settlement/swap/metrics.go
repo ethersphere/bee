@@ -5,7 +5,7 @@
 package swap
 
 import (
-	m "github.com/ethersphere/bee/pkg/metrics"
+	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -56,7 +56,7 @@ func newMetrics() metrics {
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "available_balance",
-			Help:      "Currently availeble chequebook balance.",
+			Help:      "Currently available chequebook balance.",
 		}),
 	}
 }

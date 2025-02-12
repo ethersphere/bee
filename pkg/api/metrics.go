@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/ethersphere/bee"
-	m "github.com/ethersphere/bee/pkg/metrics"
+	"github.com/ethersphere/bee/v2"
+	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 )
@@ -108,9 +108,6 @@ type UpgradedResponseWriter interface {
 	http.Pusher
 	http.Hijacker
 	http.Flusher
-	// staticcheck SA1019 CloseNotifier interface is required by gorilla compress handler
-	// nolint:staticcheck
-	http.CloseNotifier
 }
 
 type responseWriter struct {

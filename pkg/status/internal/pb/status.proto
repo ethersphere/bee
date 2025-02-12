@@ -23,4 +23,7 @@ message Snapshot {
   string BeeMode = 6;
   uint64 BatchCommitment = 7;
   bool IsReachable = 8;
+  uint64 ReserveSizeWithinRadius = 9;
+  uint64 LastSyncedBlock = 10;
+  uint32 CommittedDepth = 11;
 }

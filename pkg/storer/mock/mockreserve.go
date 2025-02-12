@@ -9,9 +9,9 @@ import (
 	"math/big"
 	"sync"
 
-	storage "github.com/ethersphere/bee/pkg/storage"
-	storer "github.com/ethersphere/bee/pkg/storer"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 type chunksResponse struct {
@@ -33,9 +33,9 @@ func WithSubscribeResp(chunks []*storer.BinC, err error) Option {
 func WithChunks(chs ...swarm.Chunk) Option {
 	return optionFunc(func(p *ReserveStore) {
 		for _, c := range chs {
-			c := c
 			if c.Stamp() != nil {
-				p.chunks[c.Address().String()+string(c.Stamp().BatchID())] = c
+				stampHash, _ := c.Stamp().Hash()
+				p.chunks[c.Address().String()+string(c.Stamp().BatchID())+string(stampHash)] = c
 			} else {
 				p.chunks[c.Address().String()] = c
 			}
@@ -77,6 +77,12 @@ func WithReserveSize(s int) Option {
 	})
 }
 
+func WithCapacityDoubling(s int) Option {
+	return optionFunc(func(p *ReserveStore) {
+		p.capacityDoubling = s
+	})
+}
+
 func WithPutHook(f func(swarm.Chunk) error) Option {
 	return optionFunc(func(p *ReserveStore) {
 		p.putHook = f
@@ -105,8 +111,9 @@ type ReserveStore struct {
 	cursorsErr error
 	epoch      uint64
 
-	radius      uint8
-	reservesize int
+	radius           uint8
+	reservesize      int
+	capacityDoubling int
 
 	subResponses []chunksResponse
 	putHook      func(swarm.Chunk) error
@@ -133,10 +140,16 @@ func (s *ReserveStore) StorageRadius() uint8 {
 	defer s.mtx.Unlock()
 	return s.radius
 }
+
 func (s *ReserveStore) SetStorageRadius(r uint8) {
 	s.mtx.Lock()
 	s.radius = r
 	s.mtx.Unlock()
+}
+func (s *ReserveStore) CommittedDepth() uint8 {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	return s.radius + uint8(s.capacityDoubling)
 }
 
 // IntervalChunks returns a set of chunk in a requested interval.
@@ -153,7 +166,7 @@ func (s *ReserveStore) SubscribeBin(ctx context.Context, bin uint8, start uint64
 	go func() {
 		for _, c := range r.chunks {
 			select {
-			case out <- &storer.BinC{Address: c.Address, BatchID: c.BatchID, BinID: c.BinID}:
+			case out <- &storer.BinC{Address: c.Address, BatchID: c.BatchID, BinID: c.BinID, StampHash: c.StampHash}:
 			case <-ctx.Done():
 				select {
 				case errC <- ctx.Err():
@@ -189,13 +202,13 @@ func (s *ReserveStore) SetCalls() int {
 }
 
 // Get chunks.
-func (s *ReserveStore) ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte) (swarm.Chunk, error) {
+func (s *ReserveStore) ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte, stampHash []byte) (swarm.Chunk, error) {
 	if s.evilAddr.Equal(addr) {
-		//inject the malicious chunk instead
+		// inject the malicious chunk instead
 		return s.evilChunk, nil
 	}
 
-	if v, ok := s.chunks[addr.String()+string(batchID)]; ok {
+	if v, ok := s.chunks[addr.String()+string(batchID)+string(stampHash)]; ok {
 		return v, nil
 	}
 
@@ -219,20 +232,23 @@ func (s *ReserveStore) put(_ context.Context, chs ...swarm.Chunk) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	for _, c := range chs {
-		c := c
 		if s.putHook != nil {
 			if err := s.putHook(c); err != nil {
 				return err
 			}
 		}
-		s.chunks[c.Address().String()+string(c.Stamp().BatchID())] = c
+		stampHash, err := c.Stamp().Hash()
+		if err != nil {
+			return err
+		}
+		s.chunks[c.Address().String()+string(c.Stamp().BatchID())+string(stampHash)] = c
 	}
 	return nil
 }
 
 // Has chunks.
-func (s *ReserveStore) ReserveHas(addr swarm.Address, batchID []byte) (bool, error) {
-	if _, ok := s.chunks[addr.String()+string(batchID)]; !ok {
+func (s *ReserveStore) ReserveHas(addr swarm.Address, batchID []byte, stampHash []byte) (bool, error) {
+	if _, ok := s.chunks[addr.String()+string(batchID)+string(stampHash)]; !ok {
 		return false, nil
 	}
 	return true, nil

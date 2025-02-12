@@ -5,16 +5,15 @@
 package chequebook
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/sctx"
-	"github.com/ethersphere/bee/pkg/transaction"
-	"github.com/ethersphere/bee/pkg/util/abiutil"
+	"github.com/ethersphere/bee/v2/pkg/sctx"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
+	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
 	"golang.org/x/net/context"
 )
@@ -24,7 +23,7 @@ var (
 	ErrNotDeployedByFactory = errors.New("chequebook not deployed by factory")
 	errDecodeABI            = errors.New("could not decode abi data")
 
-	factoryABI                  = abiutil.MustParseABI(sw3abi.SimpleSwapFactoryABIv0_4_0)
+	factoryABI                  = abiutil.MustParseABI(sw3abi.SimpleSwapFactoryABIv0_6_5)
 	simpleSwapDeployedEventType = factoryABI.Events["SimpleSwapDeployed"]
 )
 
@@ -36,8 +35,6 @@ type Factory interface {
 	Deploy(ctx context.Context, issuer common.Address, defaultHardDepositTimeoutDuration *big.Int, nonce common.Hash) (common.Hash, error)
 	// WaitDeployed waits for the deployment transaction to confirm and returns the chequebook address
 	WaitDeployed(ctx context.Context, txHash common.Hash) (common.Address, error)
-	// VerifyBytecode checks that the factory is valid.
-	VerifyBytecode(ctx context.Context) error
 	// VerifyChequebook checks that the supplied chequebook has been deployed by this factory.
 	VerifyChequebook(ctx context.Context, chequebook common.Address) error
 }
@@ -45,30 +42,19 @@ type Factory interface {
 type factory struct {
 	backend            transaction.Backend
 	transactionService transaction.Service
-	address            common.Address   // address of the factory to use for deployments
-	legacyAddresses    []common.Address // addresses of old factories which were allowed for deployment
+	address            common.Address // address of the factory to use for deployments
 }
 
 type simpleSwapDeployedEvent struct {
 	ContractAddress common.Address
 }
 
-// the bytecode of factories which can be used for deployment
-var currentDeployVersion []byte = common.FromHex(sw3abi.SimpleSwapFactoryDeployedBinv0_4_0)
-
-// the bytecode of factories from which we accept chequebooks
-var supportedVersions = [][]byte{
-	currentDeployVersion,
-	common.FromHex(sw3abi.SimpleSwapFactoryDeployedBinv0_3_1),
-}
-
 // NewFactory creates a new factory service for the provided factory contract.
-func NewFactory(backend transaction.Backend, transactionService transaction.Service, address common.Address, legacyAddresses []common.Address) Factory {
+func NewFactory(backend transaction.Backend, transactionService transaction.Service, address common.Address) Factory {
 	return &factory{
 		backend:            backend,
 		transactionService: transactionService,
 		address:            address,
-		legacyAddresses:    legacyAddresses,
 	}
 }
 
@@ -110,36 +96,6 @@ func (c *factory) WaitDeployed(ctx context.Context, txHash common.Hash) (common.
 	}
 
 	return event.ContractAddress, nil
-}
-
-// VerifyBytecode checks that the factory is valid.
-func (c *factory) VerifyBytecode(ctx context.Context) (err error) {
-	code, err := c.backend.CodeAt(ctx, c.address, nil)
-	if err != nil {
-		return err
-	}
-
-	if !bytes.Equal(code, currentDeployVersion) {
-		return ErrInvalidFactory
-	}
-
-LOOP:
-	for _, factoryAddress := range c.legacyAddresses {
-		code, err := c.backend.CodeAt(ctx, factoryAddress, nil)
-		if err != nil {
-			return err
-		}
-
-		for _, referenceCode := range supportedVersions {
-			if bytes.Equal(code, referenceCode) {
-				continue LOOP
-			}
-		}
-
-		return fmt.Errorf("failed to find matching bytecode for factory %x: %w", factoryAddress, ErrInvalidFactory)
-	}
-
-	return nil
 }
 
 func (c *factory) verifyChequebookAgainstFactory(ctx context.Context, factory, chequebook common.Address) (bool, error) {
@@ -184,17 +140,6 @@ func (c *factory) VerifyChequebook(ctx context.Context, chequebook common.Addres
 	if deployed {
 		return nil
 	}
-
-	for _, factoryAddress := range c.legacyAddresses {
-		deployed, err := c.verifyChequebookAgainstFactory(ctx, factoryAddress, chequebook)
-		if err != nil {
-			return err
-		}
-		if deployed {
-			return nil
-		}
-	}
-
 	return ErrNotDeployedByFactory
 }
 

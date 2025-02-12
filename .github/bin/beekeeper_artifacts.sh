@@ -45,7 +45,7 @@ if [[ "$endpoint" != http* ]]
 then
   endpoint=https://$endpoint
 fi
-fname=artifacts_${VERTAG}.tar.gz
+fname=artifacts_${GITHUB_RUN_ID}.tar.gz
 tar -cz dump | aws --endpoint-url "$endpoint" s3 cp - s3://"$BUCKET_NAME"/"$fname"
 aws --endpoint-url "$endpoint" s3api put-object-acl --bucket "$BUCKET_NAME" --acl public-read --key "$fname"
 out="== Uploaded debugging artifacts to https://${BUCKET_NAME}.${AWS_ENDPOINT}/$fname =="

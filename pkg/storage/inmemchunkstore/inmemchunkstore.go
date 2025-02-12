@@ -8,18 +8,23 @@ import (
 	"context"
 	"sync"
 
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 type ChunkStore struct {
 	mu     sync.Mutex
-	chunks map[string]swarm.Chunk
+	chunks map[string]chunkCount
+}
+
+type chunkCount struct {
+	chunk swarm.Chunk
+	count int
 }
 
 func New() *ChunkStore {
 	return &ChunkStore{
-		chunks: make(map[string]swarm.Chunk),
+		chunks: make(map[string]chunkCount),
 	}
 }
 
@@ -27,22 +32,23 @@ func (c *ChunkStore) Get(_ context.Context, addr swarm.Address) (swarm.Chunk, er
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	chunk, ok := c.chunks[addr.ByteString()]
+	chunk, ok := c.chunks[c.key(addr)]
 	if !ok {
 		return nil, storage.ErrNotFound
 	}
-	return chunk, nil
+	return chunk.chunk, nil
 }
 
 func (c *ChunkStore) Put(_ context.Context, ch swarm.Chunk) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	chunk, ok := c.chunks[ch.Address().ByteString()]
+	chunkCount, ok := c.chunks[c.key(ch.Address())]
 	if !ok {
-		chunk = swarm.NewChunk(ch.Address(), ch.Data()).WithStamp(ch.Stamp())
+		chunkCount.chunk = swarm.NewChunk(ch.Address(), ch.Data()).WithStamp(ch.Stamp())
 	}
-	c.chunks[ch.Address().ByteString()] = chunk
+	chunkCount.count++
+	c.chunks[c.key(ch.Address())] = chunkCount
 
 	return nil
 }
@@ -51,7 +57,7 @@ func (c *ChunkStore) Has(_ context.Context, addr swarm.Address) (bool, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	_, exists := c.chunks[addr.ByteString()]
+	_, exists := c.chunks[c.key(addr)]
 
 	return exists, nil
 }
@@ -60,7 +66,27 @@ func (c *ChunkStore) Delete(_ context.Context, addr swarm.Address) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	delete(c.chunks, addr.ByteString())
+	chunkCount := c.chunks[c.key(addr)]
+	chunkCount.count--
+	if chunkCount.count <= 0 {
+		delete(c.chunks, addr.ByteString())
+	} else {
+		c.chunks[c.key(addr)] = chunkCount
+	}
+
+	return nil
+}
+
+func (c *ChunkStore) Replace(_ context.Context, ch swarm.Chunk, emplace bool) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	chunkCount := c.chunks[c.key(ch.Address())]
+	chunkCount.chunk = ch
+	if emplace {
+		chunkCount.count++
+	}
+	c.chunks[c.key(ch.Address())] = chunkCount
 
 	return nil
 }
@@ -69,8 +95,8 @@ func (c *ChunkStore) Iterate(_ context.Context, fn storage.IterateChunkFn) error
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	for _, chunk := range c.chunks {
-		stop, err := fn(chunk)
+	for _, chunkCount := range c.chunks {
+		stop, err := fn(chunkCount.chunk)
 		if err != nil {
 			return err
 		}
@@ -84,4 +110,11 @@ func (c *ChunkStore) Iterate(_ context.Context, fn storage.IterateChunkFn) error
 
 func (c *ChunkStore) Close() error {
 	return nil
+}
+
+func (c *ChunkStore) key(addr swarm.Address) string {
+	if len(addr.Bytes()) < swarm.HashSize {
+		return addr.ByteString()
+	}
+	return string(addr.Bytes()[:swarm.HashSize])
 }

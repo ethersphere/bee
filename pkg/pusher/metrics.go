@@ -5,7 +5,7 @@
 package pusher
 
 import (
-	m "github.com/ethersphere/bee/pkg/metrics"
+	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -16,11 +16,6 @@ type metrics struct {
 	MarkAndSweepTime prometheus.Histogram
 	SyncTime         prometheus.Histogram
 	ErrorTime        prometheus.Histogram
-
-	ReceiptDepth        *prometheus.CounterVec
-	ShallowReceiptDepth *prometheus.CounterVec
-
-	ShallowReceipt prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -58,30 +53,6 @@ func newMetrics() metrics {
 			Name:      "error_time",
 			Help:      "Histogram of time spent before giving up on syncing a chunk.",
 			Buckets:   []float64{0.1, 0.25, 0.5, 1, 2.5, 5, 10, 60},
-		}),
-		ReceiptDepth: prometheus.NewCounterVec(
-			prometheus.CounterOpts{
-				Namespace: m.Namespace,
-				Subsystem: subsystem,
-				Name:      "receipt_depth",
-				Help:      "Counter of receipts received at different depths.",
-			},
-			[]string{"depth"},
-		),
-		ShallowReceiptDepth: prometheus.NewCounterVec(
-			prometheus.CounterOpts{
-				Namespace: m.Namespace,
-				Subsystem: subsystem,
-				Name:      "shallow_receipt_depth",
-				Help:      "Counter of shallow receipts received at different depths.",
-			},
-			[]string{"depth"},
-		),
-		ShallowReceipt: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "shallow_receipt",
-			Help:      "Total shallow receipts.",
 		}),
 	}
 }

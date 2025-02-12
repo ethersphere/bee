@@ -11,10 +11,10 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -72,7 +72,7 @@ func TestGetLoggers(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+	client, _, _, _ := newTestServer(t, testServerOptions{})
 	jsonhttptest.Request(t, client, http.MethodGet, "/loggers", http.StatusOK,
 		jsonhttptest.WithUnmarshalJSONResponse(&have),
 	)
@@ -88,7 +88,7 @@ func TestSetLoggerVerbosity(t *testing.T) {
 		api.ReplaceLogSetVerbosityByExp(fn)
 	}(api.LogSetVerbosityByExp)
 
-	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+	client, _, _, _ := newTestServer(t, testServerOptions{})
 
 	type data struct {
 		exp string
@@ -130,11 +130,11 @@ func TestSetLoggerVerbosity(t *testing.T) {
 			)
 
 			if have.exp != tc.want.exp {
-				t.Errorf("exp missmatch: want: %q; have: %q", tc.want.exp, have.exp)
+				t.Errorf("exp mismatch: want: %q; have: %q", tc.want.exp, have.exp)
 			}
 
 			if have.ver != tc.want.ver {
-				t.Errorf("verbosity missmatch: want: %q; have: %q", tc.want.ver, have.ver)
+				t.Errorf("verbosity mismatch: want: %q; have: %q", tc.want.ver, have.ver)
 			}
 		})
 	}
@@ -143,7 +143,7 @@ func TestSetLoggerVerbosity(t *testing.T) {
 func Test_loggerGetHandler_invalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+	client, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name string
@@ -178,7 +178,6 @@ func Test_loggerGetHandler_invalidInputs(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -192,7 +191,7 @@ func Test_loggerGetHandler_invalidInputs(t *testing.T) {
 func Test_loggerSetVerbosityHandler_invalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+	client, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name      string
@@ -244,7 +243,6 @@ func Test_loggerSetVerbosityHandler_invalidInputs(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

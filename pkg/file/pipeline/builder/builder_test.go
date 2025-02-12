@@ -12,18 +12,18 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
-	test "github.com/ethersphere/bee/pkg/file/testing"
-	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/util/testutil"
+	"github.com/ethersphere/bee/v2/pkg/file/pipeline/builder"
+	test "github.com/ethersphere/bee/v2/pkg/file/testing"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 )
 
 func TestPartialWrites(t *testing.T) {
 	t.Parallel()
 
 	m := inmemchunkstore.New()
-	p := builder.NewPipelineBuilder(context.Background(), m, false)
+	p := builder.NewPipelineBuilder(context.Background(), m, false, 0)
 	_, _ = p.Write([]byte("hello "))
 	_, _ = p.Write([]byte("world"))
 
@@ -41,7 +41,7 @@ func TestHelloWorld(t *testing.T) {
 	t.Parallel()
 
 	m := inmemchunkstore.New()
-	p := builder.NewPipelineBuilder(context.Background(), m, false)
+	p := builder.NewPipelineBuilder(context.Background(), m, false, 0)
 
 	data := []byte("hello world")
 	_, err := p.Write(data)
@@ -64,7 +64,7 @@ func TestEmpty(t *testing.T) {
 	t.Parallel()
 
 	m := inmemchunkstore.New()
-	p := builder.NewPipelineBuilder(context.Background(), m, false)
+	p := builder.NewPipelineBuilder(context.Background(), m, false, 0)
 
 	data := []byte{}
 	_, err := p.Write(data)
@@ -87,12 +87,11 @@ func TestAllVectors(t *testing.T) {
 
 	for i := 1; i <= 20; i++ {
 		data, expect := test.GetVector(t, i)
-		i := i
 		t.Run(fmt.Sprintf("data length %d, vector %d", len(data), i), func(t *testing.T) {
 			t.Parallel()
 
 			m := inmemchunkstore.New()
-			p := builder.NewPipelineBuilder(context.Background(), m, false)
+			p := builder.NewPipelineBuilder(context.Background(), m, false, 0)
 
 			_, err := p.Write(data)
 			if err != nil {
@@ -155,7 +154,7 @@ func benchmarkPipeline(b *testing.B, count int) {
 
 	data := testutil.RandBytes(b, count)
 	m := inmemchunkstore.New()
-	p := builder.NewPipelineBuilder(context.Background(), m, false)
+	p := builder.NewPipelineBuilder(context.Background(), m, false, 0)
 
 	b.StartTimer()
 

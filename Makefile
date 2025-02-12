@@ -1,7 +1,7 @@
 GO ?= go
 GOBIN ?= $$($(GO) env GOPATH)/bin
 GOLANGCI_LINT ?= $(GOBIN)/golangci-lint
-GOLANGCI_LINT_VERSION ?= v1.55.0
+GOLANGCI_LINT_VERSION ?= v1.61.0
 GOGOPROTOBUF ?= protoc-gen-gogofaster
 GOGOPROTOBUF_VERSION ?= v1.3.1
 BEEKEEPER_INSTALL_DIR ?= $(GOBIN)
@@ -11,22 +11,21 @@ BEELOCAL_BRANCH ?= main
 BEEKEEPER_BRANCH ?= master
 REACHABILITY_OVERRIDE_PUBLIC ?= false
 BATCHFACTOR_OVERRIDE_PUBLIC ?= 5
+BEE_IMAGE ?= ethersphere/bee:latest
 
 BEE_API_VERSION ?= "$(shell grep '^  version:' openapi/Swarm.yaml | awk '{print $$2}')"
-BEE_DEBUG_API_VERSION ?= "$(shell grep '^  version:' openapi/SwarmDebug.yaml | awk '{print $$2}')"
 
 VERSION ?= "$(shell git describe --tags --abbrev=0 | cut -c2-)"
 COMMIT_HASH ?= "$(shell git describe --long --dirty --always --match "" || true)"
 CLEAN_COMMIT ?= "$(shell git describe --long --always --match "" || true)"
 COMMIT_TIME ?= "$(shell git show -s --format=%ct $(CLEAN_COMMIT) || true)"
 LDFLAGS ?= -s -w \
--X github.com/ethersphere/bee.version="$(VERSION)" \
--X github.com/ethersphere/bee.commitHash="$(COMMIT_HASH)" \
--X github.com/ethersphere/bee.commitTime="$(COMMIT_TIME)" \
--X github.com/ethersphere/bee/pkg/api.Version="$(BEE_API_VERSION)" \
--X github.com/ethersphere/bee/pkg/api.DebugVersion="$(BEE_DEBUG_API_VERSION)" \
--X github.com/ethersphere/bee/pkg/p2p/libp2p.reachabilityOverridePublic="$(REACHABILITY_OVERRIDE_PUBLIC)" \
--X github.com/ethersphere/bee/pkg/postage/listener.batchFactorOverridePublic="$(BATCHFACTOR_OVERRIDE_PUBLIC)"
+-X github.com/ethersphere/bee/v2.version="$(VERSION)" \
+-X github.com/ethersphere/bee/v2.commitHash="$(COMMIT_HASH)" \
+-X github.com/ethersphere/bee/v2.commitTime="$(COMMIT_TIME)" \
+-X github.com/ethersphere/bee/v2/pkg/api.Version="$(BEE_API_VERSION)" \
+-X github.com/ethersphere/bee/v2/pkg/p2p/libp2p.reachabilityOverridePublic="$(REACHABILITY_OVERRIDE_PUBLIC)" \
+-X github.com/ethersphere/bee/v2/pkg/postage/listener.batchFactorOverridePublic="$(BATCHFACTOR_OVERRIDE_PUBLIC)"
 
 .PHONY: all
 all: build lint test-race binary
@@ -142,6 +141,15 @@ test-ci-flaky:
 build: export CGO_ENABLED=0
 build:
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" ./...
+
+.PHONY: docker-build
+docker-build: binary
+	@echo "Build flags: $(LDFLAGS)"
+	mkdir -p ./tmp
+	cp ./dist/bee ./tmp/bee
+	docker build -f Dockerfile.dev -t $(BEE_IMAGE) . --no-cache
+	rm -rf ./tmp
+	@echo "Docker image: $(BEE_IMAGE)"
 
 .PHONY: githooks
 githooks:

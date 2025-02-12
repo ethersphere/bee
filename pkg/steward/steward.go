@@ -11,13 +11,14 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/retrieval"
-	"github.com/ethersphere/bee/pkg/storage"
-	storer "github.com/ethersphere/bee/pkg/storer"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology"
-	"github.com/ethersphere/bee/pkg/traversal"
+	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/retrieval"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/topology"
+	"github.com/ethersphere/bee/v2/pkg/traversal"
 )
 
 type Interface interface {
@@ -34,13 +35,15 @@ type steward struct {
 	netStore     storer.NetStore
 	traverser    traversal.Traverser
 	netTraverser traversal.Traverser
+	netGetter    retrieval.Interface
 }
 
-func New(ns storer.NetStore, r retrieval.Interface) Interface {
+func New(ns storer.NetStore, r retrieval.Interface, joinerPutter storage.Putter) Interface {
 	return &steward{
 		netStore:     ns,
-		traverser:    traversal.New(ns.Download(true)),
-		netTraverser: traversal.New(&netGetter{r}),
+		traverser:    traversal.New(ns.Download(true), joinerPutter, redundancy.DefaultLevel),
+		netTraverser: traversal.New(&netGetter{r}, joinerPutter, redundancy.DefaultLevel),
+		netGetter:    r,
 	}
 }
 
@@ -59,7 +62,7 @@ func (s *steward) Reupload(ctx context.Context, root swarm.Address, stamper post
 			return err
 		}
 
-		stamp, err := stamper.Stamp(c.Address())
+		stamp, err := stamper.Stamp(c.Address(), c.Address())
 		if err != nil {
 			return fmt.Errorf("stamping chunk %s: %w", c.Address(), err)
 		}
@@ -79,8 +82,11 @@ func (s *steward) Reupload(ctx context.Context, root swarm.Address, stamper post
 
 // IsRetrievable implements Interface.IsRetrievable method.
 func (s *steward) IsRetrievable(ctx context.Context, root swarm.Address) (bool, error) {
-	noop := func(leaf swarm.Address) error { return nil }
-	switch err := s.netTraverser.Traverse(ctx, root, noop); {
+	fn := func(a swarm.Address) error {
+		_, err := s.netGetter.RetrieveChunk(ctx, a, swarm.ZeroAddress)
+		return err
+	}
+	switch err := s.netTraverser.Traverse(ctx, root, fn); {
 	case errors.Is(err, storage.ErrNotFound):
 		return false, nil
 	case errors.Is(err, topology.ErrNotFound):

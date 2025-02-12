@@ -10,32 +10,44 @@ import (
 	"crypto/rand"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
-	postagetesting "github.com/ethersphere/bee/pkg/postage/mock"
-	"github.com/ethersphere/bee/pkg/steward"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
-	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/file/pipeline/builder"
+	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
+	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/mock"
+	"github.com/ethersphere/bee/v2/pkg/steward"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
+	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
+
+type counter struct {
+	storage.ChunkStore
+	count atomic.Int32
+}
+
+func (c *counter) Put(ctx context.Context, ch swarm.Chunk) (err error) {
+	c.count.Add(1)
+	return c.ChunkStore.Put(ctx, ch)
+}
 
 func TestSteward(t *testing.T) {
 	t.Parallel()
+	inmem := &counter{ChunkStore: inmemchunkstore.New()}
 
 	var (
 		ctx            = context.Background()
 		chunks         = 1000
 		data           = make([]byte, chunks*4096) //1k chunks
-		chunkStore     = inmemchunkstore.New()
+		chunkStore     = inmem
 		store          = mockstorer.NewWithChunkStore(chunkStore)
 		localRetrieval = &localRetriever{ChunkStore: chunkStore}
-		s              = steward.New(store, localRetrieval)
+		s              = steward.New(store, localRetrieval, inmem)
 		stamper        = postagetesting.NewStamper()
 	)
-
 	n, err := rand.Read(data)
 	if n != cap(data) {
 		t.Fatal("short read")
@@ -44,21 +56,13 @@ func TestSteward(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	pipe := builder.NewPipelineBuilder(ctx, chunkStore, false)
+	pipe := builder.NewPipelineBuilder(ctx, chunkStore, false, redundancy.NONE)
 	addr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	chunkCount := 0
-	err = chunkStore.Iterate(context.Background(), func(ch swarm.Chunk) (bool, error) {
-		chunkCount++
-		return false, nil
-	})
-	if err != nil {
-		t.Fatalf("failed iterating: %v", err)
-	}
-
+	chunkCount := int(inmem.count.Load())
 	done := make(chan struct{})
 	errc := make(chan error, 1)
 	go func() {
@@ -121,6 +125,11 @@ type localRetriever struct {
 }
 
 func (lr *localRetriever) RetrieveChunk(ctx context.Context, addr, sourceAddr swarm.Address) (chunk swarm.Chunk, err error) {
+	ch, err := lr.Get(ctx, addr)
+	if err != nil {
+		return nil, err
+	}
+
 	lr.mu.Lock()
 	defer lr.mu.Unlock()
 
@@ -128,5 +137,5 @@ func (lr *localRetriever) RetrieveChunk(ctx context.Context, addr, sourceAddr sw
 		lr.retrievedChunks = make(map[string]struct{})
 	}
 	lr.retrievedChunks[addr.String()] = struct{}{}
-	return lr.Get(ctx, addr)
+	return ch, nil
 }

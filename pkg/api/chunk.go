@@ -12,12 +12,15 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/ethersphere/bee/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
+	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/soc"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/gorilla/mux"
 )
 
@@ -29,8 +32,11 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("post_chunk").Build()
 
 	headers := struct {
-		BatchID  []byte `map:"Swarm-Postage-Batch-Id" validate:"required"`
-		SwarmTag uint64 `map:"Swarm-Tag"`
+		BatchID        []byte        `map:"Swarm-Postage-Batch-Id"`
+		StampSig       []byte        `map:"Swarm-Postage-Stamp"`
+		SwarmTag       uint64        `map:"Swarm-Tag"`
+		Act            bool          `map:"Swarm-Act"`
+		HistoryAddress swarm.Address `map:"Swarm-Act-History-Address"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -56,20 +62,45 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if len(headers.BatchID) == 0 && len(headers.StampSig) == 0 {
+		logger.Error(nil, batchIdOrStampSig)
+		jsonhttp.BadRequest(w, batchIdOrStampSig)
+		return
+	}
+
 	// Currently the localstore supports session based uploads. We don't want to
 	// create new session for single chunk uploads. So if the chunk upload is not
 	// part of a session already, then we directly push the chunk. This way we dont
 	// need to go through the UploadStore.
 	deferred := tag != 0
 
-	putter, err := s.newStamperPutter(r.Context(), putterOptions{
-		BatchID:  headers.BatchID,
-		TagID:    tag,
-		Deferred: deferred,
-	})
+	var putter storer.PutterSession
+	if len(headers.StampSig) != 0 {
+		stamp := postage.Stamp{}
+		if err := stamp.UnmarshalBinary(headers.StampSig); err != nil {
+			errorMsg := "Stamp deserialization failure"
+			logger.Debug(errorMsg, "error", err)
+			logger.Error(nil, errorMsg)
+			jsonhttp.BadRequest(w, errorMsg)
+			return
+		}
+
+		putter, err = s.newStampedPutter(r.Context(), putterOptions{
+			BatchID:  stamp.BatchID(),
+			TagID:    tag,
+			Deferred: deferred,
+		}, &stamp)
+	} else {
+		putter, err = s.newStamperPutter(r.Context(), putterOptions{
+			BatchID:  headers.BatchID,
+			TagID:    tag,
+			Deferred: deferred,
+		})
+	}
 	if err != nil {
-		logger.Debug("get putter failed", "error", err)
-		logger.Error(nil, "get putter failed")
+		errorMsg := "get putter failed"
+		logger.Debug(errorMsg, "error", err)
+		logger.Error(nil, errorMsg)
 		switch {
 		case errors.Is(err, errBatchUnusable) || errors.Is(err, postage.ErrNotUsable):
 			jsonhttp.UnprocessableEntity(w, "batch not usable yet or does not exist")
@@ -80,7 +111,7 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, errUnsupportedDevNodeOperation):
 			jsonhttp.BadRequest(w, errUnsupportedDevNodeOperation)
 		default:
-			jsonhttp.BadRequest(w, nil)
+			jsonhttp.BadRequest(w, errorMsg)
 		}
 		return
 	}
@@ -111,10 +142,51 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	chunk, err := cac.NewWithDataSpan(data)
 	if err != nil {
+		// not a valid cac chunk. Check if it's a replica soc chunk.
 		logger.Debug("chunk upload: create chunk failed", "error", err)
-		logger.Error(nil, "chunk upload: create chunk error")
-		jsonhttp.InternalServerError(ow, "create chunk error")
-		return
+
+		// FromChunk only uses the chunk data to recreate the soc chunk. So the address is irrelevant.
+		sch, err := soc.FromChunk(swarm.NewChunk(swarm.EmptyAddress, data))
+		if err != nil {
+			logger.Debug("chunk upload: create soc chunk from data failed", "error", err)
+			logger.Error(nil, "chunk upload: create chunk error")
+			jsonhttp.InternalServerError(ow, "create chunk error")
+			return
+		}
+		chunk, err = sch.Chunk()
+		if err != nil {
+			logger.Debug("chunk upload: create chunk from soc failed", "error", err)
+			logger.Error(nil, "chunk upload: create chunk error")
+			jsonhttp.InternalServerError(ow, "create chunk error")
+			return
+		}
+
+		if !soc.Valid(chunk) {
+			logger.Debug("chunk upload: invalid soc chunk")
+			logger.Error(nil, "chunk upload: create chunk error")
+			jsonhttp.InternalServerError(ow, "create chunk error")
+			return
+		}
+	}
+
+	reference := chunk.Address()
+	if headers.Act {
+		reference, err = s.actEncryptionHandler(r.Context(), w, putter, reference, headers.HistoryAddress)
+		if err != nil {
+			logger.Debug("access control upload failed", "error", err)
+			logger.Error(nil, "access control upload failed")
+			switch {
+			case errors.Is(err, accesscontrol.ErrNotFound):
+				jsonhttp.NotFound(w, "act or history entry not found")
+			case errors.Is(err, accesscontrol.ErrInvalidPublicKey) || errors.Is(err, accesscontrol.ErrSecretKeyInfinity):
+				jsonhttp.BadRequest(w, "invalid public key")
+			case errors.Is(err, accesscontrol.ErrUnexpectedType):
+				jsonhttp.BadRequest(w, "failed to create history")
+			default:
+				jsonhttp.InternalServerError(w, errActUpload)
+			}
+			return
+		}
 	}
 
 	err = putter.Put(r.Context(), chunk)
@@ -124,6 +196,8 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
 			jsonhttp.PaymentRequired(ow, "batch is overissued")
+		case errors.Is(err, postage.ErrInvalidBatchSignature):
+			jsonhttp.BadRequest(ow, "stamp signature is invalid")
 		default:
 			jsonhttp.InternalServerError(ow, "chunk write error")
 		}
@@ -142,13 +216,25 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(SwarmTagHeader, fmt.Sprint(tag))
 	}
 
-	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
-	jsonhttp.Created(w, chunkAddressResponse{Reference: chunk.Address()})
+	w.Header().Set(AccessControlExposeHeaders, SwarmTagHeader)
+	jsonhttp.Created(w, chunkAddressResponse{Reference: reference})
 }
 
 func (s *Service) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_chunk_by_address").Build()
 	loggerV1 := logger.V(1).Build()
+
+	headers := struct {
+		Cache *bool `map:"Swarm-Cache"`
+	}{}
+	if response := s.mapStructure(r.Header, &headers); response != nil {
+		response("invalid header params", logger, w)
+		return
+	}
+	cache := true
+	if headers.Cache != nil {
+		cache = *headers.Cache
+	}
 
 	paths := struct {
 		Address swarm.Address `map:"address,resolve" validate:"required"`
@@ -158,15 +244,20 @@ func (s *Service) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chunk, err := s.storer.Download(true).Get(r.Context(), paths.Address)
+	address := paths.Address
+	if v := getAddressFromContext(r.Context()); !v.IsZero() {
+		address = v
+	}
+
+	chunk, err := s.storer.Download(cache).Get(r.Context(), address)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			loggerV1.Debug("chunk not found", "address", paths.Address)
+			loggerV1.Debug("chunk not found", "address", address)
 			jsonhttp.NotFound(w, "chunk not found")
 			return
 
 		}
-		logger.Debug("read chunk failed", "chunk_address", paths.Address, "error", err)
+		logger.Debug("read chunk failed", "chunk_address", address, "error", err)
 		logger.Error(nil, "read chunk failed")
 		jsonhttp.InternalServerError(w, "read chunk failed")
 		return

@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 )
 
 func TestCORSHeaders(t *testing.T) {
@@ -79,7 +79,6 @@ func TestCORSHeaders(t *testing.T) {
 			wantCORS:       false,
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -116,7 +115,6 @@ func TestCORSHeaders(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 // TestCors tests whether CORs work correctly with OPTIONS method
@@ -135,9 +133,10 @@ func TestCors(t *testing.T) {
 		{
 			endpoint:        "bzz",
 			expectedMethods: "POST",
-		}, {
+		},
+		{
 			endpoint:        "bzz/0101011",
-			expectedMethods: "GET",
+			expectedMethods: "GET, HEAD",
 		},
 		{
 			endpoint:        "chunks",
@@ -156,7 +155,6 @@ func TestCors(t *testing.T) {
 			expectedMethods: "GET, HEAD",
 		},
 	} {
-		tc := tc
 		t.Run(tc.endpoint, func(t *testing.T) {
 			t.Parallel()
 
@@ -212,7 +210,6 @@ func TestCorsStatus(t *testing.T) {
 			allowedMethods:    "GET, HEAD",
 		},
 	} {
-		tc := tc
 		t.Run(tc.endpoint, func(t *testing.T) {
 			t.Parallel()
 

@@ -10,8 +10,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/tracing"
 )
 
 // NewHTTPAccessSuppressLogHandler creates a
@@ -81,7 +81,7 @@ func NewHTTPAccessLogHandler(logger log.Logger, tracer *tracing.Tracer, message 
 				fields = append(fields, "x-real-ip", v)
 			}
 
-			logger.WithValues(fields...).Build().Info(message)
+			logger.WithValues(fields...).Build().Debug(message)
 		})
 	}
 }

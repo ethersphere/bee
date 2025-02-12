@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/postage"
-	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
-	pullerMock "github.com/ethersphere/bee/pkg/puller/mock"
-	chunk "github.com/ethersphere/bee/pkg/storage/testing"
-	storer "github.com/ethersphere/bee/pkg/storer"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
+	pullerMock "github.com/ethersphere/bee/v2/pkg/puller/mock"
+	chunk "github.com/ethersphere/bee/v2/pkg/storage/testing"
+	"github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 // TestCompact creates two batches and puts chunks belonging to both batches.
@@ -28,7 +28,7 @@ func TestCompact(t *testing.T) {
 	ctx := context.Background()
 	basePath := t.TempDir()
 
-	opts := dbTestOps(baseAddr, 10_000, nil, nil, time.Second)
+	opts := dbTestOps(baseAddr, 10_000, nil, nil, time.Minute)
 	opts.CacheCapacity = 0
 
 	st, err := storer.New(ctx, basePath, opts)
@@ -55,13 +55,13 @@ func TestCompact(t *testing.T) {
 		}
 	}
 
+	c, unsub := st.Events().Subscribe("batchExpiryDone")
+	t.Cleanup(unsub)
+
 	err = st.EvictBatch(ctx, evictBatch.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	c, unsub := st.Events().Subscribe("batchExpiryDone")
-	t.Cleanup(unsub)
 	<-c
 
 	time.Sleep(time.Second)
@@ -92,7 +92,11 @@ func TestCompact(t *testing.T) {
 	}
 
 	for _, ch := range chunks {
-		has, err := st.ReserveHas(ch.Address(), ch.Stamp().BatchID())
+		stampHash, err := ch.Stamp().Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+		has, err := st.ReserveHas(ch.Address(), ch.Stamp().BatchID(), stampHash)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -122,7 +126,7 @@ func TestCompactNoEvictions(t *testing.T) {
 	ctx := context.Background()
 	basePath := t.TempDir()
 
-	opts := dbTestOps(baseAddr, 10_000, nil, nil, time.Second)
+	opts := dbTestOps(baseAddr, 10_000, nil, nil, time.Minute)
 	opts.CacheCapacity = 0
 
 	st, err := storer.New(ctx, basePath, opts)
@@ -174,7 +178,11 @@ func TestCompactNoEvictions(t *testing.T) {
 	}
 
 	for _, ch := range chunks {
-		has, err := st.ReserveHas(ch.Address(), ch.Stamp().BatchID())
+		stampHash, err := ch.Stamp().Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+		has, err := st.ReserveHas(ch.Address(), ch.Stamp().BatchID(), stampHash)
 		if err != nil {
 			t.Fatal(err)
 		}

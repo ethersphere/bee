@@ -7,33 +7,38 @@ package pusher
 import (
 	"sync"
 
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 type inflight struct {
 	mtx      sync.Mutex
-	inflight map[string]struct{}
+	inflight map[[64]byte]struct{}
 }
 
 func newInflight() *inflight {
 	return &inflight{
-		inflight: make(map[string]struct{}),
+		inflight: make(map[[64]byte]struct{}),
 	}
 }
 
-func (i *inflight) delete(ch swarm.Chunk) {
-	key := ch.Address().ByteString() + string(ch.Stamp().BatchID())
+func (i *inflight) delete(idAddress swarm.Address, batchID []byte) {
+	var key [64]byte
+	copy(key[:32], idAddress.Bytes())
+	copy(key[32:], batchID)
+
 	i.mtx.Lock()
 	delete(i.inflight, key)
 	i.mtx.Unlock()
 }
 
-func (i *inflight) set(ch swarm.Chunk) bool {
+func (i *inflight) set(idAddress swarm.Address, batchID []byte) bool {
+	var key [64]byte
+	copy(key[:32], idAddress.Bytes())
+	copy(key[32:], batchID)
 
 	i.mtx.Lock()
 	defer i.mtx.Unlock()
 
-	key := ch.Address().ByteString() + string(ch.Stamp().BatchID())
 	if _, ok := i.inflight[key]; ok {
 		return true
 	}
@@ -50,16 +55,17 @@ type attempts struct {
 
 // try to log a chunk sync attempt. returns false when
 // maximum amount of attempts have been reached.
-func (a *attempts) try(ch swarm.Address) bool {
+func (a *attempts) try(idAddress swarm.Address) bool {
 	a.mtx.Lock()
 	defer a.mtx.Unlock()
-	key := ch.ByteString()
+
+	key := idAddress.ByteString()
 	a.attempts[key]++
 	return a.attempts[key] < a.retryCount
 }
 
-func (a *attempts) delete(ch swarm.Address) {
+func (a *attempts) delete(idAddress swarm.Address) {
 	a.mtx.Lock()
-	delete(a.attempts, ch.ByteString())
+	delete(a.attempts, idAddress.ByteString())
 	a.mtx.Unlock()
 }

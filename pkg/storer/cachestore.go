@@ -10,9 +10,9 @@ import (
 	"fmt"
 	"time"
 
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storer/internal"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 const (
@@ -34,20 +34,18 @@ func (db *DB) cacheWorker(ctx context.Context) {
 			return
 		case <-overCapTrigger:
 
-			var (
-				size = db.cacheObj.Size()
-				capc = db.cacheObj.Capacity()
-			)
+			size, capc := db.cacheObj.Size(), db.cacheObj.Capacity()
 			if size <= capc {
 				continue
 			}
 
-			evict := min(1_000, (size - capc))
+			evict := uint64(size - capc)
+			if evict < db.reserveOptions.cacheMinEvictCount { // evict at least a min count
+				evict = db.reserveOptions.cacheMinEvictCount
+			}
 
 			dur := captureDuration(time.Now())
-			err := db.Execute(ctx, func(s internal.Storage) error {
-				return db.cacheObj.RemoveOldest(ctx, s, s.ChunkStore(), evict)
-			})
+			err := db.cacheObj.RemoveOldest(ctx, db.storage, evict)
 			db.metrics.MethodCallsDuration.WithLabelValues("cachestore", "RemoveOldest").Observe(dur())
 			if err != nil {
 				db.metrics.MethodCalls.WithLabelValues("cachestore", "RemoveOldest", "failure").Inc()
@@ -67,19 +65,18 @@ func (db *DB) cacheWorker(ctx context.Context) {
 func (db *DB) Lookup() storage.Getter {
 	return getterWithMetrics{
 		storage.GetterFunc(func(ctx context.Context, address swarm.Address) (swarm.Chunk, error) {
-			txnRepo, commit, rollback := db.repo.NewTx(ctx)
-			ch, err := db.cacheObj.Getter(txnRepo).Get(ctx, address)
+			ch, err := db.cacheObj.Getter(db.storage).Get(ctx, address)
 			switch {
 			case err == nil:
-				return ch, commit()
+				return ch, nil
 			case errors.Is(err, storage.ErrNotFound):
 				// here we would ideally have nothing to do but just to return this
 				// error to the client. The commit is mainly done to end the txn.
-				return nil, errors.Join(err, commit())
+				return nil, err
 			}
 			// if we are here, it means there was some unexpected error, in which
 			// case we need to rollback any changes that were already made.
-			return nil, fmt.Errorf("cache.Get: %w", errors.Join(err, rollback()))
+			return nil, fmt.Errorf("cache.Get: %w", err)
 		}),
 		db.metrics,
 		"cachestore",
@@ -91,12 +88,11 @@ func (db *DB) Cache() storage.Putter {
 	return putterWithMetrics{
 		storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk) error {
 			defer db.triggerCacheEviction()
-			txnRepo, commit, rollback := db.repo.NewTx(ctx)
-			err := db.cacheObj.Putter(txnRepo).Put(ctx, ch)
+			err := db.cacheObj.Putter(db.storage).Put(ctx, ch)
 			if err != nil {
-				return fmt.Errorf("cache.Put: %w", errors.Join(err, rollback()))
+				return fmt.Errorf("cache.Put: %w", err)
 			}
-			return errors.Join(err, commit())
+			return nil
 		}),
 		db.metrics,
 		"cachestore",
@@ -104,7 +100,7 @@ func (db *DB) Cache() storage.Putter {
 }
 
 // CacheShallowCopy creates cache entries with the expectation that the chunk already exists in the chunkstore.
-func (db *DB) CacheShallowCopy(ctx context.Context, store internal.Storage, addrs ...swarm.Address) error {
+func (db *DB) CacheShallowCopy(ctx context.Context, store transaction.Storage, addrs ...swarm.Address) error {
 	defer db.triggerCacheEviction()
 	dur := captureDuration(time.Now())
 	err := db.cacheObj.ShallowCopy(ctx, store, addrs...)

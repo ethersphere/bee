@@ -7,7 +7,6 @@ package upload_test
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
@@ -16,13 +15,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/postage"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/storagetest"
-	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
-	"github.com/ethersphere/bee/pkg/storer/internal"
-	"github.com/ethersphere/bee/pkg/storer/internal/upload"
-	"github.com/ethersphere/bee/pkg/swarm"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/storagetest"
+	chunktest "github.com/ethersphere/bee/v2/pkg/storage/testing"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/upload"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 )
@@ -119,8 +118,6 @@ func TestPushItem(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
-
 		t.Run(fmt.Sprintf("%s marshal/unmarshal", tc.name), func(t *testing.T) {
 			t.Parallel()
 
@@ -193,8 +190,6 @@ func TestTagItem(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
-
 		t.Run(fmt.Sprintf("%s marshal/unmarshal", tc.name), func(t *testing.T) {
 			t.Parallel()
 
@@ -308,8 +303,6 @@ func TestUploadItem(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
-
 		t.Run(fmt.Sprintf("%s marshal/unmarshal", tc.name), func(t *testing.T) {
 			t.Parallel()
 
@@ -361,8 +354,6 @@ func TestItemNextTagID(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
-
 		t.Run(fmt.Sprintf("%s marshal/unmarshal", tc.name), func(t *testing.T) {
 			t.Parallel()
 
@@ -411,8 +402,6 @@ func TestItemDirtyTagItem(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
-
 		t.Run(fmt.Sprintf("%s marshal/unmarshal", tc.name), func(t *testing.T) {
 			t.Parallel()
 
@@ -430,17 +419,10 @@ func TestItemDirtyTagItem(t *testing.T) {
 	}
 }
 
-func newTestStorage(t *testing.T) internal.BatchedStorage {
+func newTestStorage(t *testing.T) transaction.Storage {
 	t.Helper()
 
-	storg, closer := internal.NewInmemStorage()
-	t.Cleanup(func() {
-		err := closer()
-		if err != nil {
-			t.Errorf("failed closing storage: %v", err)
-		}
-	})
-
+	storg := internal.NewInmemStorage()
 	return storg
 }
 
@@ -449,27 +431,34 @@ func TestChunkPutter(t *testing.T) {
 
 	ts := newTestStorage(t)
 
-	tag, err := upload.NextTag(ts.IndexStore())
+	tx, done := ts.NewTransaction(context.Background())
+	defer done()
+	tag, err := upload.NextTag(tx.IndexStore())
 	if err != nil {
 		t.Fatalf("failed creating tag: %v", err)
 	}
 
-	putter, err := upload.NewPutter(ts, tag.TagID)
+	putter, err := upload.NewPutter(tx.IndexStore(), tag.TagID)
 	if err != nil {
 		t.Fatalf("failed creating putter: %v", err)
 	}
+	_ = tx.Commit()
 
 	for _, chunk := range chunktest.GenerateTestRandomChunks(10) {
 		t.Run(fmt.Sprintf("chunk %s", chunk.Address()), func(t *testing.T) {
 			t.Run("put new chunk", func(t *testing.T) {
-				err := putter.Put(context.Background(), ts, ts.IndexStore(), chunk)
+				err := ts.Run(context.Background(), func(s transaction.Store) error {
+					return putter.Put(context.Background(), s, chunk)
+				})
 				if err != nil {
 					t.Fatalf("Put(...): unexpected error: %v", err)
 				}
 			})
 
 			t.Run("put existing chunk", func(t *testing.T) {
-				err := putter.Put(context.Background(), ts, ts.IndexStore(), chunk)
+				err := ts.Run(context.Background(), func(s transaction.Store) error {
+					return putter.Put(context.Background(), s, chunk)
+				})
 				if err != nil {
 					t.Fatalf("Put(...): unexpected error: %v", err)
 				}
@@ -520,7 +509,7 @@ func TestChunkPutter(t *testing.T) {
 					t.Fatalf("Get(...): unexpected error: %v", err)
 				}
 				if want := chunk; !want.Equal(have) {
-					t.Fatalf("Get(...): chunk missmatch:\nwant: %x\nhave: %x", want, have)
+					t.Fatalf("Get(...): chunk mismatch:\nwant: %x\nhave: %x", want, have)
 				}
 			})
 		})
@@ -528,20 +517,27 @@ func TestChunkPutter(t *testing.T) {
 
 	t.Run("iterate all", func(t *testing.T) {
 		count := 0
-		err := upload.IterateAll(ts.IndexStore(), func(addr swarm.Address, synced bool) (bool, error) {
-			count++
-			if synced {
-				t.Fatal("expected synced to be false")
-			}
-			has, err := ts.ChunkStore().Has(context.Background(), addr)
-			if err != nil {
-				t.Fatalf("unexpected error in Has(...): %v", err)
-			}
-			if !has {
-				t.Fatalf("expected chunk to be present %s", addr.String())
-			}
-			return false, nil
-		})
+		err := ts.IndexStore().Iterate(
+			storage.Query{
+				Factory: func() storage.Item { return new(upload.UploadItem) },
+			},
+			func(r storage.Result) (bool, error) {
+				address := swarm.NewAddress([]byte(r.ID[:32]))
+				synced := r.Entry.(*upload.UploadItem).Synced != 0
+				count++
+				if synced {
+					t.Fatal("expected synced to be false")
+				}
+				has, err := ts.ChunkStore().Has(context.Background(), address)
+				if err != nil {
+					t.Fatalf("unexpected error in Has(...): %v", err)
+				}
+				if !has {
+					t.Fatalf("expected chunk to be present %s", address.String())
+				}
+				return false, nil
+			},
+		)
 		if err != nil {
 			t.Fatalf("IterateAll(...): unexpected error %v", err)
 		}
@@ -553,12 +549,19 @@ func TestChunkPutter(t *testing.T) {
 	t.Run("close with reference", func(t *testing.T) {
 		addr := swarm.RandAddress(t)
 
-		err := putter.Close(ts, ts.IndexStore(), addr)
+		err := ts.Run(context.Background(), func(s transaction.Store) error {
+			return putter.Close(s.IndexStore(), addr)
+		})
 		if err != nil {
 			t.Fatalf("Close(...): unexpected error %v", err)
 		}
 
-		ti, err := upload.TagInfo(ts.IndexStore(), tag.TagID)
+		var ti upload.TagItem
+
+		err = ts.Run(context.Background(), func(s transaction.Store) error {
+			ti, err = upload.TagInfo(s.IndexStore(), tag.TagID)
+			return err
+		})
 		if err != nil {
 			t.Fatalf("TagInfo(...): unexpected error %v", err)
 		}
@@ -573,32 +576,63 @@ func TestChunkPutter(t *testing.T) {
 		if diff := cmp.Diff(wantTI, ti); diff != "" {
 			t.Fatalf("Get(...): unexpected TagItem (-want +have):\n%s", diff)
 		}
+
+		t.Run("iterate all tag items", func(t *testing.T) {
+			var tagItemsCount, uploaded, synced uint64
+			err := upload.IterateAllTagItems(ts.IndexStore(), func(ti *upload.TagItem) (bool, error) {
+				uploaded += ti.Split
+				synced += ti.Synced
+				tagItemsCount++
+				return false, nil
+			})
+			if err != nil {
+				t.Fatalf("IterateAllTagItems(...): unexpected error %v", err)
+			}
+			if tagItemsCount != 1 {
+				t.Fatalf("unexpected tagItemsCount: want 1 have %d", tagItemsCount)
+			}
+			if uploaded != 20 {
+				t.Fatalf("unexpected uploaded: want 20 have %d", uploaded)
+			}
+			if synced != 0 {
+				t.Fatalf("unexpected synced: want 0 have %d", synced)
+			}
+		})
 	})
 
 	t.Run("error after close", func(t *testing.T) {
-		err := putter.Put(context.Background(), ts, ts.IndexStore(), chunktest.GenerateTestRandomChunk())
+		err := ts.Run(context.Background(), func(s transaction.Store) error {
+			return putter.Put(context.Background(), s, chunktest.GenerateTestRandomChunk())
+		})
 		if !errors.Is(err, upload.ErrPutterAlreadyClosed) {
 			t.Fatalf("unexpected error, expected: %v, got: %v", upload.ErrPutterAlreadyClosed, err)
 		}
 	})
 
 	t.Run("restart putter", func(t *testing.T) {
-		putter, err = upload.NewPutter(ts, tag.TagID)
+		var putter internal.PutterCloserWithReference
+
+		err = ts.Run(context.Background(), func(s transaction.Store) error {
+			putter, err = upload.NewPutter(s.IndexStore(), tag.TagID)
+			return err
+		})
 		if err != nil {
 			t.Fatalf("failed creating putter: %v", err)
 		}
 
 		for _, chunk := range chunktest.GenerateTestRandomChunks(5) {
-			err := putter.Put(context.Background(), ts, ts.IndexStore(), chunk)
-			if err != nil {
+			if err := ts.Run(context.Background(), func(s transaction.Store) error {
+				return putter.Put(context.Background(), s, chunk)
+			}); err != nil {
 				t.Fatalf("Put(...): unexpected error: %v", err)
 			}
 		}
 
 		// close with different address
 		addr := swarm.RandAddress(t)
-		err = putter.Close(ts, ts.IndexStore(), addr)
-		if err != nil {
+		if err := ts.Run(context.Background(), func(s transaction.Store) error {
+			return putter.Close(s.IndexStore(), addr)
+		}); err != nil {
 			t.Fatalf("Close(...): unexpected error %v", err)
 		}
 
@@ -626,54 +660,61 @@ func TestChunkReporter(t *testing.T) {
 
 	ts := newTestStorage(t)
 
-	tag, err := upload.NextTag(ts.IndexStore())
-	if err != nil {
+	var (
+		tag    upload.TagItem
+		putter internal.PutterCloserWithReference
+		err    error
+	)
+	if err := ts.Run(context.Background(), func(s transaction.Store) error {
+		tag, err = upload.NextTag(s.IndexStore())
+		return err
+	}); err != nil {
 		t.Fatalf("failed creating tag: %v", err)
 	}
 
-	putter, err := upload.NewPutter(ts, tag.TagID)
-	if err != nil {
+	if err := ts.Run(context.Background(), func(s transaction.Store) error {
+		putter, err = upload.NewPutter(s.IndexStore(), tag.TagID)
+		return err
+	}); err != nil {
 		t.Fatalf("failed creating putter: %v", err)
 	}
 
 	for idx, chunk := range chunktest.GenerateTestRandomChunks(10) {
 		t.Run(fmt.Sprintf("chunk %s", chunk.Address()), func(t *testing.T) {
-			err := putter.Put(context.Background(), ts, ts.IndexStore(), chunk)
-			if err != nil {
+			if err := ts.Run(context.Background(), func(s transaction.Store) error {
+				return putter.Put(context.Background(), s, chunk)
+			}); err != nil {
 				t.Fatalf("Put(...): unexpected error: %v", err)
 			}
 
-			t.Run("mark sent", func(t *testing.T) {
-				err := upload.Report(context.Background(), ts, chunk, storage.ChunkSent)
-				if err != nil {
+			report := func(ch swarm.Chunk, state int) {
+				t.Helper()
+				if err := ts.Run(context.Background(), func(s transaction.Store) error {
+					return upload.Report(context.Background(), s, ch, state)
+				}); err != nil {
 					t.Fatalf("Report(...): unexpected error: %v", err)
 				}
+			}
+
+			t.Run("mark sent", func(t *testing.T) {
+				report(chunk, storage.ChunkSent)
 			})
 
 			if idx < 4 {
 				t.Run("mark stored", func(t *testing.T) {
-					err := upload.Report(context.Background(), ts, chunk, storage.ChunkStored)
-					if err != nil {
-						t.Fatalf("Report(...): unexpected error: %v", err)
-					}
+					report(chunk, storage.ChunkStored)
 				})
 			}
 
 			if idx >= 4 && idx < 8 {
 				t.Run("mark synced", func(t *testing.T) {
-					err := upload.Report(context.Background(), ts, chunk, storage.ChunkSynced)
-					if err != nil {
-						t.Fatalf("Report(...): unexpected error: %v", err)
-					}
+					report(chunk, storage.ChunkSynced)
 				})
 			}
 
 			if idx >= 8 {
 				t.Run("mark could not sync", func(t *testing.T) {
-					err := upload.Report(context.Background(), ts, chunk, storage.ChunkCouldNotSync)
-					if err != nil {
-						t.Fatalf("Report(...): unexpected error: %v", err)
-					}
+					report(chunk, storage.ChunkCouldNotSync)
 				})
 			}
 
@@ -711,20 +752,12 @@ func TestChunkReporter(t *testing.T) {
 					Address: chunk.Address(),
 					BatchID: chunk.Stamp().BatchID(),
 				}
-				err = ts.IndexStore().Get(ui)
+				has, err := ts.IndexStore().Has(ui)
 				if err != nil {
-					t.Fatalf("Get(...): unexpected error: %v", err)
+					t.Fatalf("unexpected error: %v", err)
 				}
-				wantUI := &upload.UploadItem{
-					Address:  chunk.Address(),
-					BatchID:  chunk.Stamp().BatchID(),
-					TagID:    tag.TagID,
-					Uploaded: now().UnixNano(),
-					Synced:   now().UnixNano(),
-				}
-
-				if diff := cmp.Diff(wantUI, ui); diff != "" {
-					t.Fatalf("Get(...): unexpected UploadItem (-want +have):\n%s", diff)
+				if has {
+					t.Fatalf("expected to not be found: %s", ui)
 				}
 
 				pi := &upload.PushItem{
@@ -732,7 +765,7 @@ func TestChunkReporter(t *testing.T) {
 					Address:   chunk.Address(),
 					BatchID:   chunk.Stamp().BatchID(),
 				}
-				has, err := ts.IndexStore().Has(pi)
+				has, err = ts.IndexStore().Has(pi)
 				if err != nil {
 					t.Fatalf("Has(...): unexpected error: %v", err)
 				}
@@ -754,12 +787,16 @@ func TestChunkReporter(t *testing.T) {
 	t.Run("close with reference", func(t *testing.T) {
 		addr := swarm.RandAddress(t)
 
-		err := putter.Close(ts, ts.IndexStore(), addr)
+		err := ts.Run(context.Background(), func(s transaction.Store) error { return putter.Close(s.IndexStore(), addr) })
 		if err != nil {
 			t.Fatalf("Close(...): unexpected error %v", err)
 		}
 
-		ti, err := upload.TagInfo(ts.IndexStore(), tag.TagID)
+		var ti upload.TagItem
+		err = ts.Run(context.Background(), func(s transaction.Store) error {
+			ti, err = upload.TagInfo(s.IndexStore(), tag.TagID)
+			return err
+		})
 		if err != nil {
 			t.Fatalf("TagInfo(...): unexpected error %v", err)
 		}
@@ -780,102 +817,20 @@ func TestChunkReporter(t *testing.T) {
 	})
 }
 
-func TestStampIndexHandling(t *testing.T) {
-	t.Parallel()
-
-	ts := newTestStorage(t)
-
-	tag, err := upload.NextTag(ts.IndexStore())
-	if err != nil {
-		t.Fatalf("failed creating tag: %v", err)
-	}
-
-	putter, err := upload.NewPutter(ts, tag.TagID)
-	if err != nil {
-		t.Fatalf("failed creating putter: %v", err)
-	}
-
-	t.Run("put chunk with immutable batch", func(t *testing.T) {
-		chunk := chunktest.GenerateTestRandomChunk()
-		chunk = chunk.WithBatch(
-			chunk.Radius(),
-			chunk.Depth(),
-			chunk.BucketDepth(),
-			true,
-		)
-		if err := putter.Put(context.Background(), ts, ts.IndexStore(), chunk); err != nil {
-			t.Fatalf("Put(...): unexpected error: %v", err)
-		}
-
-		chunk2 := chunktest.GenerateTestRandomChunk().WithStamp(chunk.Stamp())
-
-		want := upload.ErrOverwriteOfImmutableBatch
-		have := putter.Put(context.Background(), ts, ts.IndexStore(), chunk2)
-		if !errors.Is(have, want) {
-			t.Fatalf("Put(...): unexpected error:\n\twant: %v\n\thave: %v", want, have)
-		}
-	})
-
-	t.Run("put existing index with older batch timestamp", func(t *testing.T) {
-		chunk := chunktest.GenerateTestRandomChunk()
-		if err := putter.Put(context.Background(), ts, ts.IndexStore(), chunk); err != nil {
-			t.Fatalf("Put(...): unexpected error: %v", err)
-		}
-
-		decTS := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
-		encTS := make([]byte, 8)
-		binary.BigEndian.PutUint64(encTS, decTS-1)
-
-		stamp := postage.NewStamp(
-			chunk.Stamp().BatchID(),
-			chunk.Stamp().Index(),
-			encTS,
-			chunk.Stamp().Sig(),
-		)
-
-		chunk2 := chunktest.GenerateTestRandomChunk().WithStamp(stamp)
-
-		want := upload.ErrOverwriteOfNewerBatch
-		have := putter.Put(context.Background(), ts, ts.IndexStore(), chunk2)
-		if !errors.Is(have, want) {
-			t.Fatalf("Put(...): unexpected error:\n\twant: %v\n\thave: %v", want, have)
-		}
-	})
-
-	t.Run("put existing chunk with newer batch timestamp", func(t *testing.T) {
-		chunk := chunktest.GenerateTestRandomChunk()
-		if err := putter.Put(context.Background(), ts, ts.IndexStore(), chunk); err != nil {
-			t.Fatalf("Put(...): unexpected error: %v", err)
-		}
-
-		decTS := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
-		encTS := make([]byte, 8)
-		binary.BigEndian.PutUint64(encTS, decTS+1)
-
-		stamp := postage.NewStamp(
-			chunk.Stamp().BatchID(),
-			chunk.Stamp().Index(),
-			encTS,
-			chunk.Stamp().Sig(),
-		)
-
-		chunk2 := chunktest.GenerateTestRandomChunk().WithStamp(stamp)
-
-		if err := putter.Put(context.Background(), ts, ts.IndexStore(), chunk2); err != nil {
-			t.Fatalf("Put(...): unexpected error: %v", err)
-		}
-	})
-}
-
 func TestNextTagID(t *testing.T) {
 	t.Parallel()
 
 	ts := newTestStorage(t)
 
 	for i := 1; i < 4; i++ {
-		tag, err := upload.NextTag(ts.IndexStore())
+		var tag upload.TagItem
+		var err error
+		err = ts.Run(context.Background(), func(s transaction.Store) error {
+			tag, err = upload.NextTag(s.IndexStore())
+			return err
+		})
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("failed creating tag: %v", err)
 		}
 
 		if tag.TagID != uint64(i) {
@@ -901,11 +856,16 @@ func TestListTags(t *testing.T) {
 
 	want := make([]upload.TagItem, 10)
 	for i := range want {
-		ti, err := upload.NextTag(ts.IndexStore())
+		var tag upload.TagItem
+		var err error
+		err = ts.Run(context.Background(), func(s transaction.Store) error {
+			tag, err = upload.NextTag(s.IndexStore())
+			return err
+		})
 		if err != nil {
 			t.Fatalf("failed creating tag: %v", err)
 		}
-		want[i] = ti
+		want[i] = tag
 	}
 
 	have, err := upload.ListAllTags(ts.IndexStore())
@@ -915,7 +875,7 @@ func TestListTags(t *testing.T) {
 
 	opts := cmpopts.SortSlices(func(i, j upload.TagItem) bool { return i.TagID < j.TagID })
 	if diff := cmp.Diff(want, have, opts); diff != "" {
-		t.Fatalf("upload.ListAllTags(): missmatch (-want +have):\n%s", diff)
+		t.Fatalf("upload.ListAllTags(): mismatch (-want +have):\n%s", diff)
 	}
 }
 
@@ -925,7 +885,7 @@ func TestIterate(t *testing.T) {
 	ts := newTestStorage(t)
 
 	t.Run("on empty storage does not call the callback fn", func(t *testing.T) {
-		err := upload.Iterate(context.Background(), ts, func(chunk swarm.Chunk) (bool, error) {
+		err := upload.IteratePending(context.Background(), ts, func(chunk swarm.Chunk) (bool, error) {
 			t.Fatal("unexpected call")
 			return false, nil
 		})
@@ -935,29 +895,38 @@ func TestIterate(t *testing.T) {
 	})
 
 	t.Run("iterates chunks", func(t *testing.T) {
-		tag, err := upload.NextTag(ts.IndexStore())
+		var tag upload.TagItem
+		var err error
+		err = ts.Run(context.Background(), func(s transaction.Store) error {
+			tag, err = upload.NextTag(s.IndexStore())
+			return err
+		})
 		if err != nil {
 			t.Fatalf("failed creating tag: %v", err)
 		}
 
-		putter, err := upload.NewPutter(ts, tag.TagID)
+		var putter internal.PutterCloserWithReference
+		err = ts.Run(context.Background(), func(s transaction.Store) error {
+			putter, err = upload.NewPutter(s.IndexStore(), tag.TagID)
+			return err
+		})
 		if err != nil {
 			t.Fatalf("failed creating putter: %v", err)
 		}
 
 		chunk1, chunk2 := chunktest.GenerateTestRandomChunk(), chunktest.GenerateTestRandomChunk()
-		err = putter.Put(context.Background(), ts, ts.IndexStore(), chunk1)
+		err = put(t, ts, putter, chunk1)
 		if err != nil {
 			t.Fatalf("session.Put(...): unexpected error: %v", err)
 		}
-		err = putter.Put(context.Background(), ts, ts.IndexStore(), chunk2)
+		err = put(t, ts, putter, chunk2)
 		if err != nil {
 			t.Fatalf("session.Put(...): unexpected error: %v", err)
 		}
 
 		var count int
 
-		err = upload.Iterate(context.Background(), ts, func(chunk swarm.Chunk) (bool, error) {
+		err = upload.IteratePending(context.Background(), ts, func(chunk swarm.Chunk) (bool, error) {
 			count++
 			if !chunk.Equal(chunk1) && !chunk.Equal(chunk2) {
 				return true, fmt.Errorf("unknown chunk %s", chunk.Address())
@@ -972,12 +941,12 @@ func TestIterate(t *testing.T) {
 			t.Fatalf("expected to iterate 0 chunks, got: %v", count)
 		}
 
-		err = putter.Close(ts, ts.IndexStore(), swarm.ZeroAddress)
+		err = ts.Run(context.Background(), func(s transaction.Store) error { return putter.Close(s.IndexStore(), swarm.ZeroAddress) })
 		if err != nil {
 			t.Fatalf("Close(...) error: %v", err)
 		}
 
-		err = upload.Iterate(context.Background(), ts, func(chunk swarm.Chunk) (bool, error) {
+		err = upload.IteratePending(context.Background(), ts, func(chunk swarm.Chunk) (bool, error) {
 			count++
 			if !chunk.Equal(chunk1) && !chunk.Equal(chunk2) {
 				return true, fmt.Errorf("unknown chunk %s", chunk.Address())
@@ -999,12 +968,19 @@ func TestDeleteTag(t *testing.T) {
 
 	ts := newTestStorage(t)
 
-	tag, err := upload.NextTag(ts.IndexStore())
+	var tag upload.TagItem
+	var err error
+	err = ts.Run(context.Background(), func(s transaction.Store) error {
+		tag, err = upload.NextTag(s.IndexStore())
+		return err
+	})
 	if err != nil {
-		t.Fatal("failed creating tag", err)
+		t.Fatalf("failed creating tag: %v", err)
 	}
 
-	err = upload.DeleteTag(ts.IndexStore(), tag.TagID)
+	err = ts.Run(context.Background(), func(s transaction.Store) error {
+		return upload.DeleteTag(s.IndexStore(), tag.TagID)
+	})
 	if err != nil {
 		t.Fatalf("upload.DeleteTag(): unexpected error: %v", err)
 	}
@@ -1020,18 +996,27 @@ func TestBatchIDForChunk(t *testing.T) {
 
 	ts := newTestStorage(t)
 
-	tag, err := upload.NextTag(ts.IndexStore())
+	var tag upload.TagItem
+	var err error
+	err = ts.Run(context.Background(), func(s transaction.Store) error {
+		tag, err = upload.NextTag(s.IndexStore())
+		return err
+	})
 	if err != nil {
 		t.Fatalf("failed creating tag: %v", err)
 	}
 
-	putter, err := upload.NewPutter(ts, tag.TagID)
+	var putter internal.PutterCloserWithReference
+	err = ts.Run(context.Background(), func(s transaction.Store) error {
+		putter, err = upload.NewPutter(s.IndexStore(), tag.TagID)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("failed creating putter: %v", err)
 	}
 
 	chunk := chunktest.GenerateTestRandomChunk()
-	if err := putter.Put(context.Background(), ts, ts.IndexStore(), chunk); err != nil {
+	if err := put(t, ts, putter, chunk); err != nil {
 		t.Fatalf("Put(...): unexpected error: %v", err)
 	}
 
@@ -1052,18 +1037,28 @@ func TestCleanup(t *testing.T) {
 		t.Parallel()
 
 		ts := newTestStorage(t)
-		tag, err := upload.NextTag(ts.IndexStore())
+
+		var tag upload.TagItem
+		var err error
+		err = ts.Run(context.Background(), func(s transaction.Store) error {
+			tag, err = upload.NextTag(s.IndexStore())
+			return err
+		})
 		if err != nil {
-			t.Fatal("failed creating tag", err)
+			t.Fatalf("failed creating tag: %v", err)
 		}
 
-		putter, err := upload.NewPutter(ts, tag.TagID)
+		var putter internal.PutterCloserWithReference
+		err = ts.Run(context.Background(), func(s transaction.Store) error {
+			putter, err = upload.NewPutter(s.IndexStore(), tag.TagID)
+			return err
+		})
 		if err != nil {
-			t.Fatal("failed creating putter", err)
+			t.Fatalf("failed creating putter: %v", err)
 		}
 
 		chunk := chunktest.GenerateTestRandomChunk()
-		err = putter.Put(context.Background(), ts, ts.IndexStore(), chunk)
+		err = put(t, ts, putter, chunk)
 		if err != nil {
 			t.Fatal("session.Put(...): unexpected error", err)
 		}
@@ -1074,7 +1069,7 @@ func TestCleanup(t *testing.T) {
 		}
 
 		count := 0
-		_ = upload.Iterate(context.Background(), ts, func(chunk swarm.Chunk) (bool, error) {
+		_ = upload.IteratePending(context.Background(), ts, func(chunk swarm.Chunk) (bool, error) {
 			count++
 			return false, nil
 		})
@@ -1091,18 +1086,28 @@ func TestCleanup(t *testing.T) {
 		t.Parallel()
 
 		ts := newTestStorage(t)
-		tag, err := upload.NextTag(ts.IndexStore())
+
+		var tag upload.TagItem
+		var err error
+		err = ts.Run(context.Background(), func(s transaction.Store) error {
+			tag, err = upload.NextTag(s.IndexStore())
+			return err
+		})
 		if err != nil {
-			t.Fatal("failed creating tag", err)
+			t.Fatalf("failed creating tag: %v", err)
 		}
 
-		putter, err := upload.NewPutter(ts, tag.TagID)
+		var putter internal.PutterCloserWithReference
+		err = ts.Run(context.Background(), func(s transaction.Store) error {
+			putter, err = upload.NewPutter(s.IndexStore(), tag.TagID)
+			return err
+		})
 		if err != nil {
-			t.Fatal("failed creating putter", err)
+			t.Fatalf("failed creating putter: %v", err)
 		}
 
 		chunk := chunktest.GenerateTestRandomChunk()
-		err = putter.Put(context.Background(), ts, ts.IndexStore(), chunk)
+		err = put(t, ts, putter, chunk)
 		if err != nil {
 			t.Fatal("session.Put(...): unexpected error", err)
 		}
@@ -1113,7 +1118,7 @@ func TestCleanup(t *testing.T) {
 		}
 
 		count := 0
-		_ = upload.Iterate(context.Background(), ts, func(chunk swarm.Chunk) (bool, error) {
+		_ = upload.IteratePending(context.Background(), ts, func(chunk swarm.Chunk) (bool, error) {
 			count++
 			return false, nil
 		})
@@ -1124,5 +1129,12 @@ func TestCleanup(t *testing.T) {
 		if _, err := ts.ChunkStore().Get(context.Background(), chunk.Address()); !errors.Is(err, storage.ErrNotFound) {
 			t.Fatalf("expected chunk not found error, got: %v", err)
 		}
+	})
+}
+
+func put(t *testing.T, ts transaction.Storage, putter internal.PutterCloserWithReference, ch swarm.Chunk) error {
+	t.Helper()
+	return ts.Run(context.Background(), func(s transaction.Store) error {
+		return putter.Put(context.Background(), s, ch)
 	})
 }

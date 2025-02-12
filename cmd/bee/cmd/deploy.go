@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ethersphere/bee/pkg/node"
-	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
+	"github.com/ethersphere/bee/v2/pkg/node"
+	"github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20"
 	"github.com/spf13/cobra"
 )
 
@@ -71,14 +71,7 @@ func (c *command) initDeployCmd() error {
 			defer swapBackend.Close()
 			defer transactionMonitor.Close()
 
-			chequebookFactory, err := node.InitChequebookFactory(
-				logger,
-				swapBackend,
-				chainID,
-				transactionService,
-				factoryAddress,
-				nil,
-			)
+			chequebookFactory, err := node.InitChequebookFactory(logger, swapBackend, chainID, transactionService, factoryAddress)
 			if err != nil {
 				return err
 			}

@@ -9,14 +9,15 @@ import (
 	"context"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/p2p/protobuf"
-	"github.com/ethersphere/bee/pkg/p2p/streamtest"
-	"github.com/ethersphere/bee/pkg/status"
-	"github.com/ethersphere/bee/pkg/status/internal/pb"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology"
+	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/v2/pkg/p2p/streamtest"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/status"
+	"github.com/ethersphere/bee/v2/pkg/status/internal/pb"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -24,12 +25,15 @@ func TestStatus(t *testing.T) {
 	t.Parallel()
 
 	want := &pb.Snapshot{
-		BeeMode:         api.FullMode.String(),
-		ReserveSize:     128,
-		PullsyncRate:    64,
-		StorageRadius:   8,
-		BatchCommitment: 1024,
-		IsReachable:     true,
+		BeeMode:          api.FullMode.String(),
+		ReserveSize:      128,
+		PullsyncRate:     64,
+		StorageRadius:    8,
+		BatchCommitment:  1024,
+		NeighborhoodSize: 1,
+		IsReachable:      true,
+		LastSyncedBlock:  6092500,
+		CommittedDepth:   1,
 	}
 
 	sssMock := &statusSnapshotMock{want}
@@ -96,12 +100,14 @@ func TestStatusLightNode(t *testing.T) {
 	t.Parallel()
 
 	want := &pb.Snapshot{
-		BeeMode:         api.LightMode.String(),
-		ReserveSize:     0,
-		PullsyncRate:    0,
-		StorageRadius:   0,
-		BatchCommitment: 1024,
-		IsReachable:     true,
+		BeeMode:          api.LightMode.String(),
+		ReserveSize:      0,
+		PullsyncRate:     0,
+		StorageRadius:    0,
+		BatchCommitment:  1024,
+		IsReachable:      true,
+		NeighborhoodSize: 1,
+		LastSyncedBlock:  6092500,
 	}
 
 	sssMock := &statusSnapshotMock{&pb.Snapshot{
@@ -109,6 +115,7 @@ func TestStatusLightNode(t *testing.T) {
 		PullsyncRate:    100, // should be ignored
 		StorageRadius:   100, // should be ignored
 		BatchCommitment: 1024,
+		LastSyncedBlock: 6092500,
 	}}
 
 	peersIterMock := new(topologyPeersIterNoopMock)
@@ -191,3 +198,10 @@ func (m *statusSnapshotMock) SyncRate() float64           { return m.Snapshot.Pu
 func (m *statusSnapshotMock) ReserveSize() int            { return int(m.Snapshot.ReserveSize) }
 func (m *statusSnapshotMock) StorageRadius() uint8        { return uint8(m.Snapshot.StorageRadius) }
 func (m *statusSnapshotMock) Commitment() (uint64, error) { return m.Snapshot.BatchCommitment, nil }
+func (m *statusSnapshotMock) GetChainState() *postage.ChainState {
+	return &postage.ChainState{Block: m.Snapshot.LastSyncedBlock}
+}
+func (m *statusSnapshotMock) ReserveSizeWithinRadius() uint64 {
+	return m.Snapshot.ReserveSizeWithinRadius
+}
+func (m *statusSnapshotMock) CommittedDepth() uint8 { return uint8(m.Snapshot.CommittedDepth) }

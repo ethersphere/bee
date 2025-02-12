@@ -10,6 +10,7 @@ package node
 import (
 	"context"
 	"crypto/ecdsa"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -19,61 +20,61 @@ import (
 	"net/http"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/accounting"
-	"github.com/ethersphere/bee/pkg/addressbook"
-	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/auth"
-	"github.com/ethersphere/bee/pkg/config"
-	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/feeds/factory"
-	"github.com/ethersphere/bee/pkg/hive"
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/metrics"
-	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/p2p/libp2p"
-	"github.com/ethersphere/bee/pkg/pingpong"
-	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/postage/batchservice"
-	"github.com/ethersphere/bee/pkg/postage/batchstore"
-	"github.com/ethersphere/bee/pkg/postage/listener"
-	"github.com/ethersphere/bee/pkg/postage/postagecontract"
-	"github.com/ethersphere/bee/pkg/pricer"
-	"github.com/ethersphere/bee/pkg/pricing"
-	"github.com/ethersphere/bee/pkg/pss"
-	"github.com/ethersphere/bee/pkg/puller"
-	"github.com/ethersphere/bee/pkg/pullsync"
-	"github.com/ethersphere/bee/pkg/pusher"
-	"github.com/ethersphere/bee/pkg/pushsync"
-	"github.com/ethersphere/bee/pkg/resolver/multiresolver"
-	"github.com/ethersphere/bee/pkg/retrieval"
-	"github.com/ethersphere/bee/pkg/salud"
-	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
-	"github.com/ethersphere/bee/pkg/settlement/swap"
-	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
-	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
-	"github.com/ethersphere/bee/pkg/settlement/swap/priceoracle"
-	"github.com/ethersphere/bee/pkg/status"
-	"github.com/ethersphere/bee/pkg/steward"
-	"github.com/ethersphere/bee/pkg/storageincentives"
-	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
-	"github.com/ethersphere/bee/pkg/storageincentives/staking"
-	storer "github.com/ethersphere/bee/pkg/storer"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology"
-	"github.com/ethersphere/bee/pkg/topology/kademlia"
-	"github.com/ethersphere/bee/pkg/topology/lightnode"
-	"github.com/ethersphere/bee/pkg/tracing"
-	"github.com/ethersphere/bee/pkg/transaction"
-	"github.com/ethersphere/bee/pkg/util/ioutil"
-	"github.com/ethersphere/bee/pkg/util/nbhdutil"
-	"github.com/ethersphere/bee/pkg/util/syncutil"
+	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
+	"github.com/ethersphere/bee/v2/pkg/accounting"
+	"github.com/ethersphere/bee/v2/pkg/addressbook"
+	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/config"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/feeds/factory"
+	"github.com/ethersphere/bee/v2/pkg/gsoc"
+	"github.com/ethersphere/bee/v2/pkg/hive"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/metrics"
+	"github.com/ethersphere/bee/v2/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p"
+	"github.com/ethersphere/bee/v2/pkg/pingpong"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/postage/batchservice"
+	"github.com/ethersphere/bee/v2/pkg/postage/batchstore"
+	"github.com/ethersphere/bee/v2/pkg/postage/listener"
+	"github.com/ethersphere/bee/v2/pkg/postage/postagecontract"
+	"github.com/ethersphere/bee/v2/pkg/pricer"
+	"github.com/ethersphere/bee/v2/pkg/pricing"
+	"github.com/ethersphere/bee/v2/pkg/pss"
+	"github.com/ethersphere/bee/v2/pkg/puller"
+	"github.com/ethersphere/bee/v2/pkg/pullsync"
+	"github.com/ethersphere/bee/v2/pkg/pusher"
+	"github.com/ethersphere/bee/v2/pkg/pushsync"
+	"github.com/ethersphere/bee/v2/pkg/resolver/multiresolver"
+	"github.com/ethersphere/bee/v2/pkg/retrieval"
+	"github.com/ethersphere/bee/v2/pkg/salud"
+	"github.com/ethersphere/bee/v2/pkg/settlement/pseudosettle"
+	"github.com/ethersphere/bee/v2/pkg/settlement/swap"
+	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
+	"github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20"
+	"github.com/ethersphere/bee/v2/pkg/settlement/swap/priceoracle"
+	"github.com/ethersphere/bee/v2/pkg/status"
+	"github.com/ethersphere/bee/v2/pkg/steward"
+	"github.com/ethersphere/bee/v2/pkg/storageincentives"
+	"github.com/ethersphere/bee/v2/pkg/storageincentives/redistribution"
+	"github.com/ethersphere/bee/v2/pkg/storageincentives/staking"
+	"github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/topology"
+	"github.com/ethersphere/bee/v2/pkg/topology/kademlia"
+	"github.com/ethersphere/bee/v2/pkg/topology/lightnode"
+	"github.com/ethersphere/bee/v2/pkg/tracing"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
+	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
+	"github.com/ethersphere/bee/v2/pkg/util/ioutil"
+	"github.com/ethersphere/bee/v2/pkg/util/nbhdutil"
+	"github.com/ethersphere/bee/v2/pkg/util/syncutil"
 	"github.com/hashicorp/go-multierror"
 	ma "github.com/multiformats/go-multiaddr"
 	promc "github.com/prometheus/client_golang/prometheus"
@@ -90,7 +91,6 @@ type Bee struct {
 	ctxCancel                context.CancelFunc
 	apiCloser                io.Closer
 	apiServer                *http.Server
-	debugAPIServer           *http.Server
 	resolverCloser           io.Closer
 	errorLogWriter           io.Writer
 	tracerCloser             io.Closer
@@ -104,6 +104,7 @@ type Bee struct {
 	accountingCloser         io.Closer
 	pullSyncCloser           io.Closer
 	pssCloser                io.Closer
+	gsocCloser               io.Closer
 	ethClientCloser          func()
 	transactionMonitorCloser io.Closer
 	transactionCloser        io.Closer
@@ -118,6 +119,7 @@ type Bee struct {
 	shutdownInProgress       bool
 	shutdownMutex            sync.Mutex
 	syncingStopped           *syncutil.Signaler
+	accesscontrolCloser      io.Closer
 }
 
 type Options struct {
@@ -128,11 +130,10 @@ type Options struct {
 	DBBlockCacheCapacity          uint64
 	DBDisableSeeksCompaction      bool
 	APIAddr                       string
-	DebugAPIAddr                  string
 	Addr                          string
 	NATAddr                       string
-	EnableQUIC                    bool
 	EnableWS                      bool
+	EnableQUIC                    bool
 	WelcomeMessage                string
 	Bootnodes                     []string
 	CORSAllowedOrigins            []string
@@ -148,7 +149,6 @@ type Options struct {
 	BootnodeMode                  bool
 	BlockchainRpcEndpoint         string
 	SwapFactoryAddress            string
-	SwapLegacyFactoryAddresses    []string
 	SwapInitialDeposit            string
 	SwapEnable                    bool
 	ChequebookEnable              bool
@@ -167,28 +167,30 @@ type Options struct {
 	MutexProfile                  bool
 	StaticNodes                   []swarm.Address
 	AllowPrivateCIDRs             bool
-	Restricted                    bool
-	TokenEncryptionKey            string
-	AdminPasswordHash             string
 	UsePostageSnapshot            bool
 	EnableStorageIncentives       bool
 	StatestoreCacheCapacity       uint64
 	TargetNeighborhood            string
+	NeighborhoodSuggester         string
+	WhitelistedWithdrawalAddress  []string
+	TrxDebugMode                  bool
+	MinimumStorageRadius          uint
+	ReserveCapacityDoubling       int
 }
 
 const (
-	refreshRate                   = int64(4500000)            // accounting units refreshed per second
+	refreshRate                   = int64(4_500_000)          // accounting units refreshed per second
 	lightFactor                   = 10                        // downscale payment thresholds and their change rate, and refresh rates by this for light nodes
 	lightRefreshRate              = refreshRate / lightFactor // refresh rate used by / for light nodes
-	basePrice                     = 10000                     // minimal price for retrieval and pushsync requests of maximum proximity
+	basePrice                     = 10_000                    // minimal price for retrieval and pushsync requests of maximum proximity
 	postageSyncingStallingTimeout = 10 * time.Minute          //
 	postageSyncingBackoffTimeout  = 5 * time.Second           //
 	minPaymentThreshold           = 2 * refreshRate           // minimal accepted payment threshold of full nodes
 	maxPaymentThreshold           = 24 * refreshRate          // maximal accepted payment threshold of full nodes
 	mainnetNetworkID              = uint64(1)                 //
-	ReserveCapacity               = 4_194_304                 // 2^22 chunks
 	reserveWakeUpDuration         = 15 * time.Minute          // time to wait before waking up reserveWorker
-	reserveTreshold               = ReserveCapacity * 5 / 10
+	reserveMinEvictCount          = 1_000
+	cacheMinEvictCount            = 10_000
 )
 
 func NewBee(
@@ -200,6 +202,7 @@ func NewBee(
 	logger log.Logger,
 	libp2pPrivateKey,
 	pssPrivateKey *ecdsa.PrivateKey,
+	session accesscontrol.Session,
 	o *Options,
 ) (b *Bee, err error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
@@ -248,20 +251,22 @@ func NewBee(
 		}
 	}(b)
 
+	if !o.FullNodeMode && o.ReserveCapacityDoubling != 0 {
+		return nil, fmt.Errorf("reserve capacity doubling is only allowed for full nodes")
+	}
+
+	const maxAllowedDoubling = 1
+	if o.ReserveCapacityDoubling < 0 || o.ReserveCapacityDoubling > maxAllowedDoubling {
+		return nil, fmt.Errorf("config reserve capacity doubling has to be between default: 0 and maximum: 1")
+	}
+	var shallowReceiptTolerance = maxAllowedDoubling - o.ReserveCapacityDoubling
+
+	reserveCapacity := (1 << o.ReserveCapacityDoubling) * storer.DefaultReserveCapacity
+
 	stateStore, stateStoreMetrics, err := InitStateStore(logger, o.DataDir, o.StatestoreCacheCapacity)
 	if err != nil {
 		return nil, err
 	}
-	b.stateStoreCloser = stateStore
-
-	// Check if the the batchstore exists. If not, we can assume it's missing
-	// due to a migration or it's a fresh install.
-	batchStoreExists, err := batchStoreExists(stateStore)
-	if err != nil {
-		return nil, fmt.Errorf("batchstore: exists: %w", err)
-	}
-
-	addressbook := addressbook.New(stateStore)
 
 	pubKey, err := signer.PublicKey()
 	if err != nil {
@@ -278,28 +283,69 @@ func NewBee(
 		return nil, fmt.Errorf("compute overlay address: %w", err)
 	}
 
-	if nonceExists && o.TargetNeighborhood != "" {
-		logger.Warning("an overlay has already been created before, skipping targeting the selected neighborhood")
+	targetNeighborhood := o.TargetNeighborhood
+	if targetNeighborhood == "" && !nonceExists && o.NeighborhoodSuggester != "" {
+		logger.Info("fetching target neighborhood from suggester", "url", o.NeighborhoodSuggester)
+		targetNeighborhood, err = nbhdutil.FetchNeighborhood(&http.Client{}, o.NeighborhoodSuggester)
+		if err != nil {
+			return nil, fmt.Errorf("neighborhood suggestion: %w", err)
+		}
 	}
 
-	if !nonceExists {
-		// mine the overlay
-		if o.TargetNeighborhood != "" {
-			logger.Info("mining an overlay address for the fresh node to target the selected neighborhood", "target", o.TargetNeighborhood)
-			swarmAddress, nonce, err = nbhdutil.MineOverlay(ctx, *pubKey, networkID, o.TargetNeighborhood)
+	var changedOverlay, resetReserve bool
+	if targetNeighborhood != "" {
+		neighborhood, err := swarm.ParseBitStrAddress(targetNeighborhood)
+		if err != nil {
+			return nil, fmt.Errorf("invalid neighborhood. %s", targetNeighborhood)
+		}
+
+		if swarm.Proximity(swarmAddress.Bytes(), neighborhood.Bytes()) < uint8(len(targetNeighborhood)) {
+			// mine the overlay
+			logger.Info("mining a new overlay address to target the selected neighborhood", "target", targetNeighborhood)
+			newSwarmAddress, newNonce, err := nbhdutil.MineOverlay(ctx, *pubKey, networkID, targetNeighborhood)
 			if err != nil {
 				return nil, fmt.Errorf("mine overlay address: %w", err)
 			}
-		}
 
-		err = setOverlay(stateStore, swarmAddress, nonce)
-		if err != nil {
-			return nil, fmt.Errorf("statestore: save new overlay: %w", err)
+			if nonceExists {
+				logger.Info("Override nonce and clean state for neighborhood", "old_none", hex.EncodeToString(nonce), "new_nonce", hex.EncodeToString(newNonce))
+				logger.Warning("you have another 10 seconds to change your mind and kill this process with CTRL-C...")
+				time.Sleep(10 * time.Second)
+
+				err := ioutil.RemoveContent(filepath.Join(o.DataDir, ioutil.DataPathKademlia))
+				if err != nil {
+					return nil, fmt.Errorf("delete %s: %w", ioutil.DataPathKademlia, err)
+				}
+
+				if err := stateStore.ClearForHopping(); err != nil {
+					return nil, fmt.Errorf("clearing stateStore %w", err)
+				}
+				resetReserve = true
+			}
+
+			swarmAddress = newSwarmAddress
+			nonce = newNonce
+			err = setOverlay(stateStore, swarmAddress, nonce)
+			if err != nil {
+				return nil, fmt.Errorf("statestore: save new overlay: %w", err)
+			}
+			changedOverlay = true
 		}
 	}
 
+	b.stateStoreCloser = stateStore
+	// Check if the batchstore exists. If not, we can assume it's missing
+	// due to a migration or it's a fresh install.
+	batchStoreExists, err := batchStoreExists(stateStore)
+	if err != nil {
+		return nil, fmt.Errorf("batchstore: exists: %w", err)
+	}
+
+	addressbook := addressbook.New(stateStore)
+
 	logger.Info("using overlay address", "address", swarmAddress)
 
+	// this will set overlay if it was not set before
 	if err = checkOverlay(stateStore, swarmAddress); err != nil {
 		return nil, fmt.Errorf("check overlay address: %w", err)
 	}
@@ -328,7 +374,7 @@ func NewBee(
 			func(id []byte) error {
 				return evictFn(id)
 			},
-			ReserveCapacity,
+			reserveCapacity,
 			logger,
 		)
 		if err != nil {
@@ -359,16 +405,6 @@ func NewBee(
 	b.transactionCloser = tracerCloser
 	b.transactionMonitorCloser = transactionMonitor
 
-	var authenticator auth.Authenticator
-
-	if o.Restricted {
-		if authenticator, err = auth.New(o.TokenEncryptionKey, o.AdminPasswordHash, logger); err != nil {
-			return nil, fmt.Errorf("authenticator: %w", err)
-		}
-		logger.Info("starting with restricted APIs")
-	}
-
-	// set up basic debug api endpoints for debugging and /health endpoint
 	beeNodeMode := api.LightMode
 	if o.FullNodeMode {
 		beeNodeMode = api.FullMode
@@ -393,65 +429,26 @@ func NewBee(
 	}
 	b.stamperStoreCloser = stamperStore
 
-	var debugService *api.Service
+	var apiService *api.Service
 
-	if o.DebugAPIAddr != "" {
+	if o.APIAddr != "" {
 		if o.MutexProfile {
 			_ = runtime.SetMutexProfileFraction(1)
 		}
-
 		if o.BlockProfile {
 			runtime.SetBlockProfileRate(1)
 		}
 
-		debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)
+		apiListener, err := net.Listen("tcp", o.APIAddr)
 		if err != nil {
-			return nil, fmt.Errorf("debug api listener: %w", err)
+			return nil, fmt.Errorf("api listener: %w", err)
 		}
 
-		debugService = api.New(
-			*publicKey,
-			pssPrivateKey.PublicKey,
-			overlayEthAddress,
-			logger,
-			transactionService,
-			batchStore,
-			beeNodeMode,
-			o.ChequebookEnable,
-			o.SwapEnable,
-			chainBackend,
-			o.CORSAllowedOrigins,
-			stamperStore,
-		)
-		debugService.MountTechnicalDebug()
-		debugService.SetProbe(probe)
-
-		debugAPIServer := &http.Server{
-			IdleTimeout:       30 * time.Second,
-			ReadHeaderTimeout: 3 * time.Second,
-			Handler:           debugService,
-			ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
-		}
-
-		go func() {
-			logger.Info("starting debug server", "address", debugAPIListener.Addr())
-
-			if err := debugAPIServer.Serve(debugAPIListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				logger.Debug("debug api server failed to start", "error", err)
-				logger.Error(nil, "debug api server failed to start")
-			}
-		}()
-
-		b.debugAPIServer = debugAPIServer
-	}
-
-	var apiService *api.Service
-
-	if o.Restricted {
 		apiService = api.New(
 			*publicKey,
 			pssPrivateKey.PublicKey,
 			overlayEthAddress,
+			o.WhitelistedWithdrawalAddress,
 			logger,
 			transactionService,
 			batchStore,
@@ -462,19 +459,17 @@ func NewBee(
 			o.CORSAllowedOrigins,
 			stamperStore,
 		)
-		apiService.MountTechnicalDebug()
+
+		apiService.Mount()
 		apiService.SetProbe(probe)
+
+		apiService.SetSwarmAddress(&swarmAddress)
 
 		apiServer := &http.Server{
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
 			Handler:           apiService,
 			ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
-		}
-
-		apiListener, err := net.Listen("tcp", o.APIAddr)
-		if err != nil {
-			return nil, fmt.Errorf("api listener: %w", err)
 		}
 
 		go func() {
@@ -505,20 +500,9 @@ func NewBee(
 	}
 
 	if o.SwapEnable {
-		chequebookFactory, err = InitChequebookFactory(
-			logger,
-			chainBackend,
-			chainID,
-			transactionService,
-			o.SwapFactoryAddress,
-			o.SwapLegacyFactoryAddresses,
-		)
+		chequebookFactory, err = InitChequebookFactory(logger, chainBackend, chainID, transactionService, o.SwapFactoryAddress)
 		if err != nil {
 			return nil, err
-		}
-
-		if err = chequebookFactory.VerifyBytecode(ctx); err != nil {
-			return nil, fmt.Errorf("factory fail: %w", err)
 		}
 
 		erc20Address, err := chequebookFactory.ERC20Address(ctx)
@@ -557,8 +541,6 @@ func NewBee(
 			transactionService,
 		)
 	}
-
-	apiService.SetSwarmAddress(&swarmAddress)
 
 	lightNodes := lightnode.NewContainer(swarmAddress)
 
@@ -609,15 +591,9 @@ func NewBee(
 			addr,
 			swarmAddress,
 			nonce,
-			chainID,
-			overlayEthAddress,
 			addressbook,
 			bootnodes,
 			lightNodes,
-			chequebookService,
-			chequeStore,
-			cashoutService,
-			transactionService,
 			stateStore,
 			signer,
 			networkID,
@@ -633,8 +609,8 @@ func NewBee(
 
 	var registry *promc.Registry
 
-	if debugService != nil {
-		registry = debugService.MetricsRegistry()
+	if apiService != nil {
+		registry = apiService.MetricsRegistry()
 	}
 
 	p2ps, err := libp2p.New(ctx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
@@ -685,10 +661,7 @@ func NewBee(
 		return nil, errors.New("no known postage stamp addresses for this network")
 	}
 
-	postageStampContractABI, err := abi.JSON(strings.NewReader(chainCfg.PostageStampABI))
-	if err != nil {
-		return nil, fmt.Errorf("unable to parse postage stamp ABI: %w", err)
-	}
+	postageStampContractABI := abiutil.MustParseABI(chainCfg.PostageStampABI)
 
 	bzzTokenAddress, err := postagecontract.LookupERC20Address(ctx, transactionService, postageStampContractAddress, postageStampContractABI, chainEnabled)
 	if err != nil {
@@ -704,6 +677,7 @@ func NewBee(
 		post,
 		batchStore,
 		chainEnabled,
+		o.TrxDebugMode,
 	)
 
 	eventListener = listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
@@ -744,7 +718,7 @@ func NewBee(
 
 	if o.DataDir != "" {
 		logger.Info("using datadir", "path", o.DataDir)
-		path = filepath.Join(o.DataDir, "localstore")
+		path = filepath.Join(o.DataDir, ioutil.DataPathLocalstore)
 	}
 
 	lo := &storer.Options{
@@ -757,15 +731,20 @@ func NewBee(
 		Batchstore:                batchStore,
 		StateStore:                stateStore,
 		RadiusSetter:              kad,
-		WarmupDuration:            o.WarmupTime,
+		WarmupDuration:            warmupTime,
 		Logger:                    logger,
+		Tracer:                    tracer,
+		CacheMinEvictCount:        cacheMinEvictCount,
+		MinimumStorageRadius:      o.MinimumStorageRadius,
 	}
 
 	if o.FullNodeMode && !o.BootnodeMode {
 		// configure reserve only for full node
-		lo.ReserveCapacity = ReserveCapacity
+		lo.ReserveCapacity = reserveCapacity
 		lo.ReserveWakeUpDuration = reserveWakeUpDuration
+		lo.ReserveMinEvictCount = reserveMinEvictCount
 		lo.RadiusSetter = kad
+		lo.ReserveCapacityDoubling = o.ReserveCapacityDoubling
 	}
 
 	localStore, err := storer.New(ctx, path, lo)
@@ -774,6 +753,18 @@ func NewBee(
 	}
 	b.localstoreCloser = localStore
 	evictFn = func(id []byte) error { return localStore.EvictBatch(context.Background(), id) }
+
+	if resetReserve {
+		logger.Warning("resetting the reserve")
+		err := localStore.ResetReserve(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("reset reserve: %w", err)
+		}
+	}
+
+	actLogic := accesscontrol.NewLogic(session)
+	accesscontrol := accesscontrol.NewController(actLogic)
+	b.accesscontrolCloser = accesscontrol
 
 	var (
 		syncErr    atomic.Value
@@ -791,6 +782,16 @@ func NewBee(
 
 	if batchSvc != nil && chainEnabled {
 		logger.Info("waiting to sync postage contract data, this may take a while... more info available in Debug loglevel")
+
+		paused, err := postageStampContractService.Paused(ctx)
+		if err != nil {
+			logger.Error(err, "Error checking postage contract is paused")
+		}
+
+		if paused {
+			return nil, errors.New("postage contract is paused")
+		}
+
 		if o.FullNodeMode {
 			err = batchSvc.Start(ctx, postageSyncStart, initBatchState)
 			syncStatus.Store(true)
@@ -810,6 +811,7 @@ func NewBee(
 				}
 			}()
 		}
+
 	}
 
 	minThreshold := big.NewInt(2 * refreshRate)
@@ -906,15 +908,11 @@ func NewBee(
 	pricing.SetPaymentThresholdObserver(acc)
 
 	pssService := pss.New(pssPrivateKey, logger)
+	gsocService := gsoc.New(logger)
 	b.pssCloser = pssService
+	b.gsocCloser = gsocService
 
 	validStamp := postage.ValidStamp(batchStore)
-
-	pushSyncProtocol := pushsync.New(swarmAddress, nonce, p2ps, localStore, kad, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
-	b.pushSyncCloser = pushSyncProtocol
-
-	// set the pushSyncer in the PSS
-	pssService.SetPushSyncer(pushSyncProtocol)
 
 	nodeStatus := status.NewService(logger, p2ps, kad, beeNodeMode.String(), batchStore, localStore)
 	if err = p2ps.AddProtocol(nodeStatus.Protocol()); err != nil {
@@ -948,14 +946,6 @@ func NewBee(
 		}
 	}()
 
-	radiusFunc := func() (uint8, error) {
-		currentRadius := localStore.StorageRadius()
-		if currentRadius == 0 { // the radius has not been set by localstore yet
-			currentRadius = uint8(networkR.Load())
-		}
-		return currentRadius, nil
-	}
-
 	waitNetworkRFunc := func() (uint8, error) {
 		if networkR.Load() == uint32(swarm.MaxBins) {
 			select {
@@ -965,18 +955,29 @@ func NewBee(
 			}
 		}
 
-		return radiusFunc()
+		local, network := localStore.StorageRadius(), uint8(networkR.Load())
+		if local <= uint8(o.MinimumStorageRadius) {
+			return max(network, uint8(o.MinimumStorageRadius)), nil
+		} else {
+			return local, nil
+		}
 	}
 
-	retrieval := retrieval.New(swarmAddress, radiusFunc, localStore, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
+	pushSyncProtocol := pushsync.New(swarmAddress, networkID, nonce, p2ps, localStore, waitNetworkRFunc, kad, o.FullNodeMode && !o.BootnodeMode, pssService.TryUnwrap, gsocService.Handle, validStamp, logger, acc, pricer, signer, tracer, warmupTime, uint8(shallowReceiptTolerance))
+	b.pushSyncCloser = pushSyncProtocol
+
+	// set the pushSyncer in the PSS
+	pssService.SetPushSyncer(pushSyncProtocol)
+
+	retrieval := retrieval.New(swarmAddress, waitNetworkRFunc, localStore, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
 	localStore.SetRetrievalService(retrieval)
 
-	pusherService := pusher.New(networkID, localStore, waitNetworkRFunc, pushSyncProtocol, validStamp, logger, tracer, warmupTime, pusher.DefaultRetryCount)
+	pusherService := pusher.New(networkID, localStore, pushSyncProtocol, batchStore, logger, warmupTime, pusher.DefaultRetryCount)
 	b.pusherCloser = pusherService
 
 	pusherService.AddFeed(localStore.PusherFeed())
 
-	pullSyncProtocol := pullsync.New(p2ps, localStore, pssService.TryUnwrap, validStamp, logger, pullsync.DefaultMaxPage)
+	pullSyncProtocol := pullsync.New(p2ps, localStore, pssService.TryUnwrap, gsocService.Handle, validStamp, logger, pullsync.DefaultMaxPage)
 	b.pullSyncCloser = pullSyncProtocol
 
 	retrieveProtocolSpec := retrieval.Protocol()
@@ -1014,11 +1015,42 @@ func NewBee(
 		stakingContractAddress = common.HexToAddress(o.StakingContractAddress)
 	}
 
-	stakingContractABI, err := abi.JSON(strings.NewReader(chainCfg.StakingABI))
-	if err != nil {
-		return nil, fmt.Errorf("unable to parse staking ABI: %w", err)
+	stakingContract := staking.New(overlayEthAddress, stakingContractAddress, abiutil.MustParseABI(chainCfg.StakingABI), bzzTokenAddress, transactionService, common.BytesToHash(nonce), o.TrxDebugMode, uint8(o.ReserveCapacityDoubling))
+
+	if chainEnabled {
+
+		stake, err := stakingContract.GetPotentialStake(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		if stake.Cmp(big.NewInt(0)) > 0 {
+
+			if changedOverlay {
+				logger.Debug("changing overlay address in staking contract")
+				tx, err := stakingContract.ChangeStakeOverlay(ctx, common.BytesToHash(nonce))
+				if err != nil {
+					return nil, fmt.Errorf("cannot change staking overlay address: %v", err.Error())
+				}
+				logger.Info("overlay address changed in staking contract", "transaction", tx)
+			}
+
+			// make sure that the staking contract has the up to date height
+			tx, updated, err := stakingContract.UpdateHeight(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if updated {
+				logger.Info("updated new reserve capacity doubling height in the staking contract", "transaction", tx, "new_height", o.ReserveCapacityDoubling)
+			}
+
+			// Check if the staked amount is sufficient to cover the additional neighborhoods.
+			// The staked amount must be at least 2^h * MinimumStake.
+			if o.ReserveCapacityDoubling > 0 && stake.Cmp(big.NewInt(0).Mul(big.NewInt(1<<o.ReserveCapacityDoubling), staking.MinimumStakeAmount)) < 0 {
+				logger.Warning("staked amount does not sufficiently cover the additional reserve capacity. Stake should be at least 2^h * 10 BZZ, where h is the number extra doublings.")
+			}
+		}
 	}
-	stakingContract := staking.New(swarmAddress, overlayEthAddress, stakingContractAddress, stakingContractABI, bzzTokenAddress, transactionService, common.BytesToHash(nonce))
 
 	var (
 		pullerService *puller.Puller
@@ -1026,7 +1058,7 @@ func NewBee(
 	)
 
 	if o.FullNodeMode && !o.BootnodeMode {
-		pullerService = puller.New(stateStore, kad, localStore, pullSyncProtocol, p2ps, logger, puller.Options{})
+		pullerService = puller.New(swarmAddress, stateStore, kad, localStore, pullSyncProtocol, p2ps, logger, puller.Options{})
 		b.pullerCloser = pullerService
 
 		localStore.StartReserveWorker(ctx, pullerService, waitNetworkRFunc)
@@ -1041,16 +1073,15 @@ func NewBee(
 				}
 				redistributionContractAddress = common.HexToAddress(o.RedistributionContractAddress)
 			}
-			redistributionContractABI, err := abi.JSON(strings.NewReader(chainCfg.RedistributionABI))
-			if err != nil {
-				return nil, fmt.Errorf("unable to parse redistribution ABI: %w", err)
-			}
 
+			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), o.TrxDebugMode)
+
+			startWarmupPeriod := time.Now()
 			isFullySynced := func() bool {
-				return localStore.ReserveSize() >= reserveTreshold && pullerService.SyncRate() == 0
+				reserveTreshold := reserveCapacity * 5 / 10
+				return localStore.ReserveSize() >= reserveTreshold && pullerService.SyncRate() == 0 && time.Now().After(startWarmupPeriod.Add(warmupTime))
 			}
 
-			redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionContractAddress, redistributionContractABI)
 			agent, err = storageincentives.New(
 				swarmAddress,
 				overlayEthAddress,
@@ -1085,7 +1116,7 @@ func NewBee(
 	b.resolverCloser = multiResolver
 
 	feedFactory := factory.New(localStore.Download(true))
-	steward := steward.New(localStore, retrieval)
+	steward := steward.New(localStore, retrieval, localStore.Cache())
 
 	extraOpts := api.ExtraOptions{
 		Pingpong:        pingPong,
@@ -1099,118 +1130,73 @@ func NewBee(
 		Storer:          localStore,
 		Resolver:        multiResolver,
 		Pss:             pssService,
+		Gsoc:            gsocService,
 		FeedFactory:     feedFactory,
 		Post:            post,
+		AccessControl:   accesscontrol,
 		PostageContract: postageStampContractService,
 		Staking:         stakingContract,
 		Steward:         steward,
 		SyncStatus:      syncStatusFn,
 		NodeStatus:      nodeStatus,
+		PinIntegrity:    localStore.PinIntegrity(),
 		AddressBook:     addressbook,
 	}
 
 	if o.APIAddr != "" {
-		if apiService == nil {
-			apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, beeNodeMode, o.ChequebookEnable, o.SwapEnable, chainBackend, o.CORSAllowedOrigins, stamperStore)
-			apiService.SetProbe(probe)
-			apiService.SetRedistributionAgent(agent)
-		}
-
-		apiService.Configure(signer, authenticator, tracer, api.Options{
-			CORSAllowedOrigins: o.CORSAllowedOrigins,
-			WsPingPeriod:       60 * time.Second,
-			Restricted:         o.Restricted,
-		}, extraOpts, chainID, erc20Service)
-
-		apiService.MountAPI()
-
-		if !o.Restricted {
-			apiServer := &http.Server{
-				IdleTimeout:       30 * time.Second,
-				ReadHeaderTimeout: 3 * time.Second,
-				Handler:           apiService,
-				ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
-			}
-
-			apiListener, err := net.Listen("tcp", o.APIAddr)
-			if err != nil {
-				return nil, fmt.Errorf("api listener: %w", err)
-			}
-
-			go func() {
-				logger.Info("starting api server", "address", apiListener.Addr())
-				if err := apiServer.Serve(apiListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-					logger.Debug("api server failed to start", "error", err)
-					logger.Error(nil, "api server failed to start")
-				}
-			}()
-
-			b.apiServer = apiServer
-			b.apiCloser = apiService
-		} else {
-			// in Restricted mode we mount debug endpoints
-			apiService.MountDebug(o.Restricted)
-		}
-	}
-
-	if o.DebugAPIAddr != "" {
 		// register metrics from components
-		debugService.MustRegisterMetrics(p2ps.Metrics()...)
-		debugService.MustRegisterMetrics(pingPong.Metrics()...)
-		debugService.MustRegisterMetrics(acc.Metrics()...)
-		debugService.MustRegisterMetrics(localStore.Metrics()...)
-		debugService.MustRegisterMetrics(kad.Metrics()...)
-		debugService.MustRegisterMetrics(saludService.Metrics()...)
-		debugService.MustRegisterMetrics(stateStoreMetrics.Metrics()...)
+		apiService.MustRegisterMetrics(p2ps.Metrics()...)
+		apiService.MustRegisterMetrics(pingPong.Metrics()...)
+		apiService.MustRegisterMetrics(acc.Metrics()...)
+		apiService.MustRegisterMetrics(localStore.Metrics()...)
+		apiService.MustRegisterMetrics(kad.Metrics()...)
+		apiService.MustRegisterMetrics(saludService.Metrics()...)
+		apiService.MustRegisterMetrics(stateStoreMetrics.Metrics()...)
 
 		if pullerService != nil {
-			debugService.MustRegisterMetrics(pullerService.Metrics()...)
+			apiService.MustRegisterMetrics(pullerService.Metrics()...)
 		}
 
 		if agent != nil {
-			debugService.MustRegisterMetrics(agent.Metrics()...)
+			apiService.MustRegisterMetrics(agent.Metrics()...)
 		}
 
-		debugService.MustRegisterMetrics(pushSyncProtocol.Metrics()...)
-		debugService.MustRegisterMetrics(pusherService.Metrics()...)
-		debugService.MustRegisterMetrics(pullSyncProtocol.Metrics()...)
-		debugService.MustRegisterMetrics(retrieval.Metrics()...)
-		debugService.MustRegisterMetrics(lightNodes.Metrics()...)
-		debugService.MustRegisterMetrics(hive.Metrics()...)
+		apiService.MustRegisterMetrics(pushSyncProtocol.Metrics()...)
+		apiService.MustRegisterMetrics(pusherService.Metrics()...)
+		apiService.MustRegisterMetrics(pullSyncProtocol.Metrics()...)
+		apiService.MustRegisterMetrics(retrieval.Metrics()...)
+		apiService.MustRegisterMetrics(lightNodes.Metrics()...)
+		apiService.MustRegisterMetrics(hive.Metrics()...)
 
 		if bs, ok := batchStore.(metrics.Collector); ok {
-			debugService.MustRegisterMetrics(bs.Metrics()...)
+			apiService.MustRegisterMetrics(bs.Metrics()...)
 		}
 		if ls, ok := eventListener.(metrics.Collector); ok {
-			debugService.MustRegisterMetrics(ls.Metrics()...)
+			apiService.MustRegisterMetrics(ls.Metrics()...)
 		}
 		if pssServiceMetrics, ok := pssService.(metrics.Collector); ok {
-			debugService.MustRegisterMetrics(pssServiceMetrics.Metrics()...)
+			apiService.MustRegisterMetrics(pssServiceMetrics.Metrics()...)
 		}
 		if swapBackendMetrics, ok := chainBackend.(metrics.Collector); ok {
-			debugService.MustRegisterMetrics(swapBackendMetrics.Metrics()...)
-		}
-		if apiService != nil {
-			debugService.MustRegisterMetrics(apiService.Metrics()...)
-		}
-		if l, ok := logger.(metrics.Collector); ok {
-			debugService.MustRegisterMetrics(l.Metrics()...)
-		}
-		debugService.MustRegisterMetrics(pseudosettleService.Metrics()...)
-		if swapService != nil {
-			debugService.MustRegisterMetrics(swapService.Metrics()...)
+			apiService.MustRegisterMetrics(swapBackendMetrics.Metrics()...)
 		}
 
-		debugService.Configure(signer, authenticator, tracer, api.Options{
+		if l, ok := logger.(metrics.Collector); ok {
+			apiService.MustRegisterMetrics(l.Metrics()...)
+		}
+		apiService.MustRegisterMetrics(pseudosettleService.Metrics()...)
+		if swapService != nil {
+			apiService.MustRegisterMetrics(swapService.Metrics()...)
+		}
+
+		apiService.Configure(signer, tracer, api.Options{
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			WsPingPeriod:       60 * time.Second,
-			Restricted:         o.Restricted,
 		}, extraOpts, chainID, erc20Service)
 
-		debugService.SetP2P(p2ps)
-		debugService.SetSwarmAddress(&swarmAddress)
-		debugService.MountDebug(false)
-		debugService.SetRedistributionAgent(agent)
+		apiService.EnableFullAPI()
+
+		apiService.SetRedistributionAgent(agent)
 	}
 
 	if err := kad.Start(ctx); err != nil {
@@ -1276,24 +1262,19 @@ func (b *Bee) Shutdown() error {
 			return nil
 		})
 	}
-	if b.debugAPIServer != nil {
-		eg.Go(func() error {
-			if err := b.debugAPIServer.Shutdown(ctx); err != nil {
-				return fmt.Errorf("debug api server: %w", err)
-			}
-			return nil
-		})
-	}
-
 	if err := eg.Wait(); err != nil {
 		mErr = multierror.Append(mErr, err)
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(7)
+	wg.Add(8)
 	go func() {
 		defer wg.Done()
 		tryClose(b.pssCloser, "pss")
+	}()
+	go func() {
+		defer wg.Done()
+		tryClose(b.gsocCloser, "gsoc")
 	}()
 	go func() {
 		defer wg.Done()
@@ -1348,6 +1329,7 @@ func (b *Bee) Shutdown() error {
 		c()
 	}
 
+	tryClose(b.accesscontrolCloser, "accesscontrol")
 	tryClose(b.tracerCloser, "tracer")
 	tryClose(b.topologyCloser, "topology driver")
 	tryClose(b.storageIncetivesCloser, "storage incentives agent")

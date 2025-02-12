@@ -16,17 +16,17 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/postage/postagecontract"
-	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
-	"github.com/ethersphere/bee/pkg/storageincentives/staking"
-	storer "github.com/ethersphere/bee/pkg/storer"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/transaction"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/postage/postagecontract"
+	"github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storageincentives/redistribution"
+	"github.com/ethersphere/bee/v2/pkg/storageincentives/staking"
+	"github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
 const loggerName = "storageincentives"
@@ -131,7 +131,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	phaseEvents := newEvents()
 	defer phaseEvents.Close()
 
-	logPhaseResult := func(phase PhaseType, round uint64, err error) {
+	logErr := func(phase PhaseType, round uint64, err error) {
 		if err != nil {
 			a.logger.Error(err, "phase failed", "phase", phase, "round", round)
 		}
@@ -142,13 +142,13 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 		round, _ := a.state.currentRoundAndPhase()
 		err := a.handleCommit(ctx, round)
-		logPhaseResult(commit, round, err)
+		logErr(commit, round, err)
 	})
 
 	phaseEvents.On(reveal, func(ctx context.Context) {
 		phaseEvents.Cancel(commit, sample)
 		round, _ := a.state.currentRoundAndPhase()
-		logPhaseResult(reveal, round, a.handleReveal(ctx, round))
+		logErr(reveal, round, a.handleReveal(ctx, round))
 	})
 
 	phaseEvents.On(claim, func(ctx context.Context) {
@@ -156,13 +156,13 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		phaseEvents.Publish(sample)
 
 		round, _ := a.state.currentRoundAndPhase()
-		logPhaseResult(claim, round, a.handleClaim(ctx, round))
+		logErr(claim, round, a.handleClaim(ctx, round))
 	})
 
 	phaseEvents.On(sample, func(ctx context.Context) {
 		round, _ := a.state.currentRoundAndPhase()
 		isPhasePlayed, err := a.handleSample(ctx, round)
-		logPhaseResult(sample, round, err)
+		logErr(sample, round, err)
 
 		// Sample handled could potentially take long time, therefore it could overlap with commit
 		// phase of next round. When that case happens commit event needs to be triggered once more
@@ -222,7 +222,8 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		a.state.SetHealthy(a.health.IsHealthy())
 		go a.state.purgeStaleRoundData()
 
-		isFrozen, err := a.redistributionStatuser.IsOverlayFrozen(ctx, block)
+		// check if node is frozen starting from the next block
+		isFrozen, err := a.redistributionStatuser.IsOverlayFrozen(ctx, block+1)
 		if err != nil {
 			a.logger.Error(err, "error checking if stake is frozen")
 		} else {
@@ -353,7 +354,22 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 		a.logger.Info("could not set balance", "err", err)
 	}
 
-	txHash, err := a.contract.Claim(ctx)
+	sampleData, exists := a.state.SampleData(round - 1)
+	if !exists {
+		return fmt.Errorf("sample not found")
+	}
+
+	anchor2, err := a.contract.ReserveSalt(ctx)
+	if err != nil {
+		a.logger.Info("failed getting anchor after second reveal", "err", err)
+	}
+
+	proofs, err := makeInclusionProofs(sampleData.ReserveSampleItems, sampleData.Anchor1, anchor2)
+	if err != nil {
+		return fmt.Errorf("making inclusion proofs: %w", err)
+	}
+
+	txHash, err := a.contract.Claim(ctx, proofs)
 	if err != nil {
 		a.metrics.ErrClaim.Inc()
 		return fmt.Errorf("claiming win: %w", err)
@@ -374,14 +390,15 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 }
 
 func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
-	storageRadius := a.store.StorageRadius()
+	// minimum proximity between the achor and the stored chunks
+	committedDepth := a.store.CommittedDepth()
 
 	if a.state.IsFrozen() {
 		a.logger.Info("skipping round because node is frozen")
 		return false, nil
 	}
 
-	isPlaying, err := a.contract.IsPlaying(ctx, storageRadius)
+	isPlaying, err := a.contract.IsPlaying(ctx, committedDepth)
 	if err != nil {
 		a.metrics.ErrCheckIsPlaying.Inc()
 		return false, err
@@ -414,19 +431,21 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	}
 
 	now := time.Now()
-	sample, err := a.makeSample(ctx, storageRadius)
+	sample, err := a.makeSample(ctx, committedDepth)
 	if err != nil {
 		return false, err
 	}
+	dur := time.Since(now)
+	a.metrics.SampleDuration.Set(dur.Seconds())
 
-	a.logger.Info("produced sample", "hash", sample.ReserveSampleHash, "radius", sample.StorageRadius, "round", round)
+	a.logger.Info("produced sample", "hash", sample.ReserveSampleHash, "radius", committedDepth, "round", round)
 
-	a.state.SetSampleData(round, sample, time.Since(now))
+	a.state.SetSampleData(round, sample, dur)
 
 	return true, nil
 }
 
-func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData, error) {
+func (a *Agent) makeSample(ctx context.Context, committedDepth uint8) (SampleData, error) {
 	salt, err := a.contract.ReserveSalt(ctx)
 	if err != nil {
 		return SampleData{}, err
@@ -437,12 +456,10 @@ func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData
 		return SampleData{}, err
 	}
 
-	t := time.Now()
-	rSample, err := a.store.ReserveSample(ctx, salt, storageRadius, uint64(timeLimiter), a.minBatchBalance())
+	rSample, err := a.store.ReserveSample(ctx, salt, committedDepth, uint64(timeLimiter), a.minBatchBalance())
 	if err != nil {
 		return SampleData{}, err
 	}
-	a.metrics.SampleDuration.Set(time.Since(t).Seconds())
 
 	sampleHash, err := sampleHash(rSample.Items)
 	if err != nil {
@@ -450,8 +467,10 @@ func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData
 	}
 
 	sample := SampleData{
-		ReserveSampleHash: sampleHash,
-		StorageRadius:     storageRadius,
+		Anchor1:            salt,
+		ReserveSampleItems: rSample.Items,
+		ReserveSampleHash:  sampleHash,
+		StorageRadius:      committedDepth,
 	}
 
 	return sample, nil
@@ -493,7 +512,7 @@ func (a *Agent) commit(ctx context.Context, sample SampleData, round uint64) err
 		return err
 	}
 
-	txHash, err := a.contract.Commit(ctx, obfuscatedHash, big.NewInt(int64(round)))
+	txHash, err := a.contract.Commit(ctx, obfuscatedHash, round)
 	if err != nil {
 		a.metrics.ErrCommit.Inc()
 		return err
@@ -538,14 +557,16 @@ func (a *Agent) Status() (*Status, error) {
 }
 
 type SampleWithProofs struct {
-	Items    []storer.SampleItem
-	Hash     swarm.Address
-	Duration time.Duration
+	Hash     swarm.Address                       `json:"hash"`
+	Proofs   redistribution.ChunkInclusionProofs `json:"proofs"`
+	Duration time.Duration                       `json:"duration"`
 }
 
+// SampleWithProofs is called only by rchash API
 func (a *Agent) SampleWithProofs(
 	ctx context.Context,
 	anchor1 []byte,
+	anchor2 []byte,
 	storageRadius uint8,
 ) (SampleWithProofs, error) {
 	sampleStartTime := time.Now()
@@ -562,12 +583,17 @@ func (a *Agent) SampleWithProofs(
 
 	hash, err := sampleHash(rSample.Items)
 	if err != nil {
-		return SampleWithProofs{}, fmt.Errorf("sample hash: %w:", err)
+		return SampleWithProofs{}, fmt.Errorf("sample hash: %w", err)
+	}
+
+	proofs, err := makeInclusionProofs(rSample.Items, anchor1, anchor2)
+	if err != nil {
+		return SampleWithProofs{}, fmt.Errorf("make proofs: %w", err)
 	}
 
 	return SampleWithProofs{
-		Items:    rSample.Items,
 		Hash:     hash,
+		Proofs:   proofs,
 		Duration: time.Since(sampleStartTime),
 	}, nil
 }

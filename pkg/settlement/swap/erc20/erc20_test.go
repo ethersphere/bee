@@ -10,14 +10,14 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
-	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
-	"github.com/ethersphere/bee/pkg/util/abiutil"
+	"github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20"
+	transactionmock "github.com/ethersphere/bee/v2/pkg/transaction/mock"
+	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
 
 var (
-	erc20ABI = abiutil.MustParseABI(sw3abi.ERC20ABIv0_3_1)
+	erc20ABI = abiutil.MustParseABI(sw3abi.ERC20ABIv0_6_5)
 )
 
 func TestBalanceOf(t *testing.T) {

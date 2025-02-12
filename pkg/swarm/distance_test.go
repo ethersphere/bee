@@ -7,7 +7,7 @@ package swarm_test
 import (
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 type distanceTest struct {

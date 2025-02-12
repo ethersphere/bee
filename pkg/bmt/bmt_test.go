@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/bmt"
-	"github.com/ethersphere/bee/pkg/bmt/reference"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/util/testutil"
+	"github.com/ethersphere/bee/v2/pkg/bmt"
+	"github.com/ethersphere/bee/v2/pkg/bmt/reference"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -60,7 +60,6 @@ func TestHasherEmptyData(t *testing.T) {
 	t.Parallel()
 
 	for _, count := range testSegmentCounts {
-		count := count
 		t.Run(fmt.Sprintf("%d_segments", count), func(t *testing.T) {
 			t.Parallel()
 
@@ -88,14 +87,13 @@ func TestSyncHasherCorrectness(t *testing.T) {
 	testData := testutil.RandBytesWithSeed(t, 4096, seed)
 
 	for _, count := range testSegmentCounts {
-		count := count
 		t.Run(fmt.Sprintf("segments_%v", count), func(t *testing.T) {
 			t.Parallel()
-			max := count * hashSize
+			maxValue := count * hashSize
 			var incr int
 			capacity := 1
 			pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, count, capacity))
-			for n := 0; n <= max; n += incr {
+			for n := 0; n <= maxValue; n += incr {
 				h := pool.Get()
 				incr = 1 + rand.Intn(5)
 				err := testHasherCorrectness(h, testData, n, count)
@@ -177,8 +175,6 @@ func TestBMTWriterBuffers(t *testing.T) {
 	t.Parallel()
 
 	for i, count := range testSegmentCounts {
-		i, count := i, count
-
 		t.Run(fmt.Sprintf("%d_segments", count), func(t *testing.T) {
 			t.Parallel()
 

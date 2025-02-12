@@ -15,8 +15,8 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/pss"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/pss"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/hashicorp/go-multierror"
 	"github.com/multiformats/go-multiaddr"
 )
@@ -346,4 +346,10 @@ func flattenValue(val reflect.Value) reflect.Value {
 		return val.Index(0)
 	}
 	return val
+}
+
+var quoteEscaper = strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
+
+func escapeQuotes(s string) string {
+	return quoteEscaper.Replace(s)
 }

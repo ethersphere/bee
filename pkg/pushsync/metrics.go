@@ -5,7 +5,7 @@
 package pushsync
 
 import (
-	m "github.com/ethersphere/bee/pkg/metrics"
+	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -24,6 +24,10 @@ type metrics struct {
 	Storer                  prometheus.Counter
 	TotalHandlerTime        prometheus.HistogramVec
 	PushToPeerTime          prometheus.HistogramVec
+
+	ReceiptDepth        *prometheus.CounterVec
+	ShallowReceiptDepth *prometheus.CounterVec
+	ShallowReceipt      prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -117,6 +121,30 @@ func newMetrics() metrics {
 				Name:      "push_peer_time",
 				Help:      "Histogram for time taken to push a chunk to a peer.",
 			}, []string{"status"},
+		),
+		ShallowReceiptDepth: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "shallow_receipt_depth",
+				Help:      "Counter of shallow receipts received at different depths.",
+			},
+			[]string{"depth"},
+		),
+		ShallowReceipt: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "shallow_receipt",
+			Help:      "Total shallow receipts.",
+		}),
+		ReceiptDepth: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "receipt_depth",
+				Help:      "Counter of receipts received at different depths.",
+			},
+			[]string{"depth"},
 		),
 	}
 }

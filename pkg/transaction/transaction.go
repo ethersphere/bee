@@ -5,6 +5,7 @@
 package transaction
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -14,12 +15,14 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/sctx"
-	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/sctx"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"golang.org/x/net/context"
 )
 
@@ -40,7 +43,10 @@ var (
 	ErrAlreadyImported     = errors.New("already imported")
 )
 
-const DefaultTipBoostPercent = 20
+const (
+	DefaultTipBoostPercent = 20
+	DefaultGasLimit        = 1_000_000
+)
 
 // TxRequest describes a request for a transaction that can be executed.
 type TxRequest struct {
@@ -94,6 +100,9 @@ type Service interface {
 	CancelTransaction(ctx context.Context, originalTxHash common.Hash) (common.Hash, error)
 	// TransactionFee retrieves the transaction fee
 	TransactionFee(ctx context.Context, txHash common.Hash) (*big.Int, error)
+	// UnwrapABIError tries to unwrap the ABI error if the given error is not nil.
+	// The original error is wrapped together with the ABI error if it exists.
+	UnwrapABIError(ctx context.Context, req *TxRequest, err error, abiErrors map[string]abi.Error) error
 }
 
 type transactionService struct {
@@ -180,11 +189,6 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, boost
 	loggerV1.Debug("sending transaction", "tx", signedTx.Hash(), "nonce", nonce)
 
 	err = t.backend.SendTransaction(ctx, signedTx)
-	if err != nil {
-		return common.Hash{}, err
-	}
-
-	err = t.putNonce(nonce + 1)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -278,7 +282,8 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 			Data: request.Data,
 		})
 		if err != nil {
-			return nil, err
+			t.logger.Debug("estimate gas failed", "error", err)
+			gasLimit = request.MinEstimatedGasLimit
 		}
 
 		gasLimit += gasLimit / 4 // add 25% on top
@@ -343,10 +348,6 @@ func (t *transactionService) suggestedFeeAndTip(ctx context.Context, gasPrice *b
 
 }
 
-func (t *transactionService) nonceKey() string {
-	return fmt.Sprintf("%s%x", noncePrefix, t.sender)
-}
-
 func storedTransactionKey(txHash common.Hash) string {
 	return fmt.Sprintf("%s%x", storedTransactionPrefix, txHash)
 }
@@ -361,26 +362,28 @@ func (t *transactionService) nextNonce(ctx context.Context) (uint64, error) {
 		return 0, err
 	}
 
-	var nonce uint64
-	err = t.store.Get(t.nonceKey(), &nonce)
+	pendingTxs, err := t.PendingTransactions()
 	if err != nil {
-		// If no nonce was found locally used whatever we get from the backend.
-		if errors.Is(err, storage.ErrNotFound) {
-			return onchainNonce, nil
-		}
 		return 0, err
 	}
 
-	// If the nonce onchain is larger than what we have there were external
-	// transactions and we need to update our nonce.
-	if onchainNonce > nonce {
-		return onchainNonce, nil
-	}
-	return nonce, nil
-}
+	pendingTxs = t.filterPendingTransactions(t.ctx, pendingTxs)
 
-func (t *transactionService) putNonce(nonce uint64) error {
-	return t.store.Put(t.nonceKey(), nonce)
+	// PendingNonceAt returns the nonce we should use, but we will
+	// compare this to our pending tx list, therefore the -1.
+	var maxNonce uint64 = onchainNonce - 1
+	for _, txHash := range pendingTxs {
+		trx, _, err := t.backend.TransactionByHash(ctx, txHash)
+
+		if err != nil {
+			t.logger.Error(err, "pending transaction not found", "tx", txHash)
+			return 0, err
+		}
+
+		maxNonce = max(maxNonce, trx.Nonce())
+	}
+
+	return maxNonce + 1, nil
 }
 
 // WaitForReceipt waits until either the transaction with the given hash has
@@ -583,4 +586,63 @@ func (t *transactionService) TransactionFee(ctx context.Context, txHash common.H
 		return nil, err
 	}
 	return trx.Cost(), nil
+}
+
+func (t *transactionService) UnwrapABIError(ctx context.Context, req *TxRequest, err error, abiErrors map[string]abi.Error) error {
+	if err == nil {
+		return nil
+	}
+
+	_, cErr := t.Call(ctx, req)
+	if cErr == nil {
+		return err
+	}
+	err = fmt.Errorf("%w: %s", err, cErr) //nolint:errorlint
+
+	var derr rpc.DataError
+	if !errors.As(cErr, &derr) {
+		return err
+	}
+
+	res, ok := derr.ErrorData().(string)
+	if !ok {
+		return err
+	}
+	buf := common.FromHex(res)
+
+	if reason, uErr := abi.UnpackRevert(buf); uErr == nil {
+		return fmt.Errorf("%w: %s", err, reason)
+	}
+
+	for _, abiError := range abiErrors {
+		if !bytes.Equal(buf[:4], abiError.ID[:4]) {
+			continue
+		}
+
+		data, uErr := abiError.Unpack(buf)
+		if uErr != nil {
+			continue
+		}
+
+		values, ok := data.([]interface{})
+		if !ok {
+			values = make([]interface{}, len(abiError.Inputs))
+			for i := range values {
+				values[i] = "?"
+			}
+		}
+
+		params := make([]string, len(abiError.Inputs))
+		for i, input := range abiError.Inputs {
+			if input.Name == "" {
+				input.Name = fmt.Sprintf("arg%d", i)
+			}
+			params[i] = fmt.Sprintf("%s=%v", input.Name, values[i])
+
+		}
+
+		return fmt.Errorf("%w: %s(%s)", err, abiError.Name, strings.Join(params, ","))
+	}
+
+	return err
 }

@@ -13,8 +13,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/opentracing/opentracing-go"
 	"github.com/uber/jaeger-client-go"
 	"github.com/uber/jaeger-client-go/config"
@@ -99,6 +99,25 @@ func (t *Tracer) StartSpanFromContext(ctx context.Context, operationName string,
 	var span opentracing.Span
 	if parentContext := FromContext(ctx); parentContext != nil {
 		opts = append(opts, opentracing.ChildOf(parentContext))
+		span = t.tracer.StartSpan(operationName, opts...)
+	} else {
+		span = t.tracer.StartSpan(operationName, opts...)
+	}
+	sc := span.Context()
+	return span, loggerWithTraceID(sc, l), WithContext(ctx, sc)
+}
+
+// FollowSpanFromContext starts a new tracing span that is either a root one or
+// follows an existing one from the provided Context. If logger is provided, a new
+// log Entry will be returned with "traceID" log field.
+func (t *Tracer) FollowSpanFromContext(ctx context.Context, operationName string, l log.Logger, opts ...opentracing.StartSpanOption) (opentracing.Span, log.Logger, context.Context) {
+	if t == nil {
+		t = noopTracer
+	}
+
+	var span opentracing.Span
+	if parentContext := FromContext(ctx); parentContext != nil {
+		opts = append(opts, opentracing.FollowsFrom(parentContext))
 		span = t.tracer.StartSpan(operationName, opts...)
 	} else {
 		span = t.tracer.StartSpan(operationName, opts...)

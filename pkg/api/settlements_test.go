@@ -11,13 +11,13 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/bigint"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/settlement"
-	"github.com/ethersphere/bee/pkg/settlement/swap/mock"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/bigint"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/v2/pkg/settlement"
+	"github.com/ethersphere/bee/v2/pkg/settlement/swap/mock"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 func TestSettlements(t *testing.T) {
@@ -39,7 +39,6 @@ func TestSettlements(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI: true,
 		SwapOpts: []mock.Option{mock.WithSettlementsSentFunc(settlementsSentFunc), mock.WithSettlementsRecvFunc(settlementsRecvFunc)},
 	})
 
@@ -79,7 +78,6 @@ func TestSettlements(t *testing.T) {
 	if !equalSettlements(got, expected) {
 		t.Errorf("got settlements: %+v, expected: %+v", got, expected)
 	}
-
 }
 
 func TestSettlementsError(t *testing.T) {
@@ -90,7 +88,6 @@ func TestSettlementsError(t *testing.T) {
 		return nil, wantErr
 	}
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI: true,
 		SwapOpts: []mock.Option{mock.WithSettlementsSentFunc(settlementsSentFunc)},
 	})
 
@@ -110,7 +107,6 @@ func TestSettlementsPeers(t *testing.T) {
 		return big.NewInt(1000000000000000000), nil
 	}
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI: true,
 		SwapOpts: []mock.Option{mock.WithSettlementSentFunc(settlementSentFunc)},
 	})
 
@@ -138,7 +134,6 @@ func TestSettlementsPeersNoSettlements(t *testing.T) {
 		t.Parallel()
 
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI: true,
 			SwapOpts: []mock.Option{
 				mock.WithSettlementSentFunc(errFunc),
 				mock.WithSettlementRecvFunc(noErrFunc),
@@ -158,7 +153,6 @@ func TestSettlementsPeersNoSettlements(t *testing.T) {
 		t.Parallel()
 
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI: true,
 			SwapOpts: []mock.Option{
 				mock.WithSettlementSentFunc(noErrFunc),
 				mock.WithSettlementRecvFunc(errFunc),
@@ -178,7 +172,7 @@ func TestSettlementsPeersNoSettlements(t *testing.T) {
 func Test_peerSettlementsHandler_invalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+	client, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name string
@@ -213,7 +207,6 @@ func Test_peerSettlementsHandler_invalidInputs(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -233,7 +226,6 @@ func TestSettlementsPeersError(t *testing.T) {
 		return nil, wantErr
 	}
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI: true,
 		SwapOpts: []mock.Option{mock.WithSettlementSentFunc(settlementSentFunc)},
 	})
 

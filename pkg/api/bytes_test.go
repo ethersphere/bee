@@ -12,14 +12,14 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/log"
-	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
-	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
-	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	mockbatchstore "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
+	mockpost "github.com/ethersphere/bee/v2/pkg/postage/mock"
+	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"gitlab.com/nolash/go-mockbytes"
 )
 
@@ -113,6 +113,8 @@ func TestBytes(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodGet, resource+"/"+expHash, http.StatusOK,
 			jsonhttptest.WithExpectedContentLength(len(content)),
 			jsonhttptest.WithExpectedResponse(content),
+			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.ContentDispositionHeader),
+			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "application/octet-stream"),
 		)
 	})
 
@@ -271,7 +273,6 @@ func TestBytesInvalidStamp(t *testing.T) {
 			jsonhttptest.WithRequestBody(bytes.NewReader(content)),
 		)
 	})
-
 }
 
 func TestBytesUploadHandlerInvalidInputs(t *testing.T) {
@@ -314,7 +315,6 @@ func TestBytesUploadHandlerInvalidInputs(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -364,7 +364,6 @@ func TestBytesGetHandlerInvalidInputs(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

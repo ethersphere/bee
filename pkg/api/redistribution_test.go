@@ -11,13 +11,13 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/storageincentives"
-	"github.com/ethersphere/bee/pkg/transaction/backendmock"
-	"github.com/ethersphere/bee/pkg/transaction/mock"
+	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
+	statestore "github.com/ethersphere/bee/v2/pkg/statestore/mock"
+	"github.com/ethersphere/bee/v2/pkg/storageincentives"
+	"github.com/ethersphere/bee/v2/pkg/transaction/backendmock"
+	"github.com/ethersphere/bee/v2/pkg/transaction/mock"
 )
 
 func TestRedistributionStatus(t *testing.T) {
@@ -36,7 +36,6 @@ func TestRedistributionStatus(t *testing.T) {
 			t.Errorf("redistribution put state: %v", err)
 		}
 		srv, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:    true,
 			StateStorer: store,
 			TransactionOpts: []mock.Option{
 				mock.WithTransactionFeeFunc(func(ctx context.Context, txHash common.Hash) (*big.Int, error) {
@@ -61,7 +60,6 @@ func TestRedistributionStatus(t *testing.T) {
 		t.Parallel()
 
 		srv, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:    true,
 			BeeMode:     api.LightMode,
 			StateStorer: statestore.NewStateStore(),
 			TransactionOpts: []mock.Option{

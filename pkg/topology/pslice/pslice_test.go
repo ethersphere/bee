@@ -9,9 +9,9 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 
-	"github.com/ethersphere/bee/pkg/topology/pslice"
+	"github.com/ethersphere/bee/v2/pkg/topology/pslice"
 )
 
 // TestShallowestEmpty tests that ShallowestEmpty functionality works correctly.
@@ -92,7 +92,7 @@ func TestNoPanicOnEmptyRemove(t *testing.T) {
 	t.Parallel()
 
 	base := swarm.RandAddress(t)
-	var ps = pslice.New(4, base)
+	ps := pslice.New(4, base)
 
 	addr1 := swarm.RandAddressAt(t, base, 2)
 	addr2 := swarm.RandAddressAt(t, base, 2)
@@ -209,7 +209,7 @@ func TestIteratorError(t *testing.T) {
 
 	err := ps.EachBin(f)
 	if !errors.Is(err, e) {
-		t.Fatal("didnt get expected error")
+		t.Fatal("didn't get expected error")
 	}
 }
 
@@ -276,7 +276,6 @@ func TestBinPeers(t *testing.T) {
 			label:      "full-bins",
 		},
 	} {
-		tc := tc
 		t.Run(tc.label, func(t *testing.T) {
 			t.Parallel()
 
@@ -314,7 +313,6 @@ func TestBinPeers(t *testing.T) {
 }
 
 func isEqual(a, b []swarm.Address) bool {
-
 	if len(a) != len(b) {
 		return false
 	}
@@ -359,7 +357,6 @@ func TestIteratorsJumpStop(t *testing.T) {
 	// // check that the stop functionality works correctly
 	testIterator(t, ps, true, true, 1, []swarm.Address{peers[9]})
 	testIteratorRev(t, ps, true, true, 1, []swarm.Address{peers[0]})
-
 }
 
 func testIteratorRev(t *testing.T, ps *pslice.PSlice, skipNext, stop bool, iterations int, peerseq []swarm.Address) {

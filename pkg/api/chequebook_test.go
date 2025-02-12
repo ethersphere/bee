@@ -13,16 +13,16 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/bigint"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/sctx"
-	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
-	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook/mock"
-	swapmock "github.com/ethersphere/bee/pkg/settlement/swap/mock"
+	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/bigint"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/v2/pkg/sctx"
+	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
+	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook/mock"
+	swapmock "github.com/ethersphere/bee/v2/pkg/settlement/swap/mock"
 
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 func TestChequebookBalance(t *testing.T) {
@@ -40,7 +40,6 @@ func TestChequebookBalance(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI: true,
 		ChequebookOpts: []mock.Option{
 			mock.WithChequebookBalanceFunc(chequebookBalanceFunc),
 			mock.WithChequebookAvailableBalanceFunc(chequebookAvailableBalanceFunc),
@@ -71,7 +70,6 @@ func TestChequebookBalanceError(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI:       true,
 		ChequebookOpts: []mock.Option{mock.WithChequebookBalanceFunc(chequebookBalanceFunc)},
 	})
 
@@ -95,7 +93,6 @@ func TestChequebookAvailableBalanceError(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI: true,
 		ChequebookOpts: []mock.Option{
 			mock.WithChequebookBalanceFunc(chequebookBalanceFunc),
 			mock.WithChequebookAvailableBalanceFunc(chequebookAvailableBalanceFunc),
@@ -118,7 +115,6 @@ func TestChequebookAddress(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI:       true,
 		ChequebookOpts: []mock.Option{mock.WithChequebookAddressFunc(chequebookAddressFunc)},
 	})
 
@@ -154,7 +150,6 @@ func TestChequebookWithdraw(t *testing.T) {
 		}
 
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:       true,
 			ChequebookOpts: []mock.Option{mock.WithChequebookWithdrawFunc(chequebookWithdrawFunc)},
 		})
 
@@ -184,7 +179,6 @@ func TestChequebookWithdraw(t *testing.T) {
 		}
 
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:       true,
 			ChequebookOpts: []mock.Option{mock.WithChequebookWithdrawFunc(chequebookWithdrawFunc)},
 		})
 
@@ -218,7 +212,6 @@ func TestChequebookDeposit(t *testing.T) {
 		}
 
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:       true,
 			ChequebookOpts: []mock.Option{mock.WithChequebookDepositFunc(chequebookDepositFunc)},
 		})
 
@@ -249,7 +242,6 @@ func TestChequebookDeposit(t *testing.T) {
 		}
 
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:       true,
 			ChequebookOpts: []mock.Option{mock.WithChequebookDepositFunc(chequebookDepositFunc)},
 		})
 
@@ -358,7 +350,6 @@ func TestChequebookLastCheques(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI: true,
 		SwapOpts: []swapmock.Option{swapmock.WithLastReceivedChequesFunc(lastReceivedChequesFunc), swapmock.WithLastSentChequesFunc(lastSentChequesFunc)},
 	})
 
@@ -427,7 +418,6 @@ func TestChequebookLastCheques(t *testing.T) {
 	if !LastChequesEqual(got, expected) {
 		t.Fatalf("Got: \n %+v \n\n Expected: \n %+v \n\n", got, expected)
 	}
-
 }
 
 func TestChequebookLastChequesPeer(t *testing.T) {
@@ -442,7 +432,6 @@ func TestChequebookLastChequesPeer(t *testing.T) {
 	sig := make([]byte, 65)
 
 	lastSentChequeFunc := func(swarm.Address) (*chequebook.SignedCheque, error) {
-
 		sig := make([]byte, 65)
 
 		lastSentCheque := &chequebook.SignedCheque{
@@ -458,7 +447,6 @@ func TestChequebookLastChequesPeer(t *testing.T) {
 	}
 
 	lastReceivedChequeFunc := func(swarm.Address) (*chequebook.SignedCheque, error) {
-
 		lastReceivedCheque := &chequebook.SignedCheque{
 			Cheque: chequebook.Cheque{
 				Beneficiary:      beneficiary0,
@@ -472,7 +460,6 @@ func TestChequebookLastChequesPeer(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI: true,
 		SwapOpts: []swapmock.Option{swapmock.WithLastReceivedChequeFunc(lastReceivedChequeFunc), swapmock.WithLastSentChequeFunc(lastSentChequeFunc)},
 	})
 
@@ -498,7 +485,6 @@ func TestChequebookLastChequesPeer(t *testing.T) {
 	if !reflect.DeepEqual(got, expected) {
 		t.Fatalf("Got: \n %+v \n\n Expected: \n %+v \n\n", got, expected)
 	}
-
 }
 
 func TestChequebookCashout(t *testing.T) {
@@ -512,7 +498,6 @@ func TestChequebookCashout(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI: true,
 		SwapOpts: []swapmock.Option{swapmock.WithCashChequeFunc(cashChequeFunc)},
 	})
 
@@ -543,7 +528,6 @@ func TestChequebookCashout_CustomGas(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI: true,
 		SwapOpts: []swapmock.Option{swapmock.WithCashChequeFunc(cashChequeFunc)},
 	})
 
@@ -619,7 +603,6 @@ func TestChequebookCashoutStatus(t *testing.T) {
 		}
 
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI: true,
 			SwapOpts: []swapmock.Option{swapmock.WithCashoutStatusFunc(cashoutStatusFunc)},
 		})
 
@@ -667,7 +650,6 @@ func TestChequebookCashoutStatus(t *testing.T) {
 		}
 
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI: true,
 			SwapOpts: []swapmock.Option{swapmock.WithCashoutStatusFunc(cashoutStatusFunc)},
 		})
 
@@ -706,7 +688,6 @@ func TestChequebookCashoutStatus(t *testing.T) {
 		}
 
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI: true,
 			SwapOpts: []swapmock.Option{swapmock.WithCashoutStatusFunc(cashoutStatusFunc)},
 		})
 
@@ -733,7 +714,7 @@ func TestChequebookCashoutStatus(t *testing.T) {
 func Test_chequebookLastPeerHandler_invalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+	client, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name string
@@ -768,7 +749,6 @@ func Test_chequebookLastPeerHandler_invalidInputs(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -780,7 +760,6 @@ func Test_chequebookLastPeerHandler_invalidInputs(t *testing.T) {
 }
 
 func LastChequesEqual(a, b *api.ChequebookLastChequesResponse) bool {
-
 	var state bool
 
 	for akeys := range a.LastCheques {

@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 3.2.6
+  version: 4.3.0
   title: Common Data Types
   description: |
     \*****bzzz*****
@@ -29,13 +29,15 @@ components:
             $ref: "#/components/schemas/P2PUnderlay"
         ethereum:
           $ref: "#/components/schemas/EthereumAddress"
+        chain_address:
+          $ref: "#/components/schemas/EthereumAddress"
         publicKey:
           $ref: "#/components/schemas/PublicKey"
         pssPublicKey:
           $ref: "#/components/schemas/PublicKey"
 
     BigInt:
-      description: Numeric string that represents integer which might exceeds `Number.MAX_SAFE_INTEGER` limit (2^53-1)
+      description: Numeric string that represents integer which might exceed `Number.MAX_SAFE_INTEGER` limit (2^53-1)
       type: string
       example: "1000000000000000000"
 
@@ -86,6 +88,36 @@ components:
           $ref: "#/components/schemas/BigInt"
         ghostBalance:
           $ref: "#/components/schemas/BigInt"
+
+    ActGranteesCreateRequest:
+      type: object
+      properties:
+        grantees:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicKey"
+
+    ActGranteesPatchRequest:
+      type: object
+      properties:
+        add:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicKey"
+          description: List of grantees to add
+        revoke:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicKey"
+          description: List of grantees to revoke future access from
+
+    ActGranteesOperationResponse:
+      type: object
+      properties:
+        ref:
+          $ref: "#/components/schemas/SwarmEncryptedReference"
+        historyref:
+          $ref: "#/components/schemas/SwarmEncryptedReference"
 
     Balance:
       type: object
@@ -158,7 +190,6 @@ components:
                     metrics:
                       $ref: "#/components/schemas/PeerMetricsView"
 
-
     Cheque:
       type: object
       properties:
@@ -213,6 +244,11 @@ components:
       type: string
       example: "5.0018ms"
 
+    Seconds:
+      description: Go time.Duration format in seconds
+      type: number
+      example: 30.5
+
     EthereumAddress:
       type: string
       pattern: "^[A-Fa-f0-9]{40}$"
@@ -241,6 +277,18 @@ components:
       type: string
       pattern: "^([A-Fa-f0-9]+)$"
       example: "cf880b8eeac5093fa27b0825906c600685"
+
+    Hex8Bytes:
+      description: Hexadecimal string representation of 8 bytes
+      type: string
+      pattern: "^([0-9a-fA-F]{16})$"
+      example: "1a2b3c4d5e6f7a8b"
+
+    Signature:
+      description: Hexadecimal string representation of cryptographic signature
+      type: string
+      pattern: "^([0-9a-fA-F]{130})$"
+      example: "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e"
 
     MultiAddress:
       type: string
@@ -351,8 +399,8 @@ components:
       type: string
 
     PssTargets:
-      pattern: '^[0-9a-fA-F]{1,6}(,[0-9a-fA-F]{1,6})*$'
-      description: List of hex string targets that are comma seprated and can have maximum length of 6
+      pattern: "^[0-9a-fA-F]{1,6}(,[0-9a-fA-F]{1,6})*$"
+      description: List of hex string targets that are comma separated and can have maximum length of 6
       type: string
 
     PssTopic:
@@ -377,6 +425,18 @@ components:
       properties:
         reference:
           $ref: "#/components/schemas/SwarmReference"
+
+    PostEnvelopeResponse:
+      type: object
+      properties:
+        issuer:
+          $ref: "#/components/schemas/EthereumAddress"
+        index:
+          $ref: "#/components/schemas/Hex8Bytes"
+        timestamp:
+          $ref: "#/components/schemas/Hex8Bytes"
+        signature:
+          $ref: "#/components/schemas/Signature"
 
     DebugPostageBatchesResponse:
       type: object
@@ -423,12 +483,14 @@ components:
       properties:
         beeMode:
           type: string
-          enum: [light, full, dev]
+          enum: [light, full, dev, ultra-light, unknown]
           description: >
             Gives back in what mode the Bee client has been started. The modes are mutually exclusive
             * `light` - light node; does not participate in forwarding or storing chunks
             * `full` - full node
             * `dev` - development mode; Bee client for development purposes, blockchain operations are mocked
+            * `ultra-light` - ultra-light node; a light node with chain disabled
+            * `unknown` - unknown mode
         chequebookEnabled:
           type: boolean
         swapEnabled:
@@ -439,18 +501,15 @@ components:
       properties:
         status:
           type: string
-          enum: [ok, nok]
+          enum: [ok, nok, unknown]
           description: >
             Indicates health state of node
             * `ok` - node is healthy
             * `nok` - node is not healthy
+            * `unknown` - health status is unknown
         version:
           type: string
         apiVersion:
-          type: string
-          default: "0.0.0"
-          description: The default value is set in case the bee binary was not build correctly.
-        debugApiVersion:
           type: string
           default: "0.0.0"
           description: The default value is set in case the bee binary was not build correctly.
@@ -594,29 +653,41 @@ components:
       type: object
       properties:
         stakedAmount:
-           $ref: "#/components/schemas/BigInt"
+          $ref: "#/components/schemas/BigInt"
 
-    StakeDepositResponse:
-          type: object
-          properties:
-            txHash:
-               $ref: "#/components/schemas/TransactionHash"
+    GetWithdrawableResponse:
+      type: object
+      properties:
+        withdrawableAmount:
+          $ref: "#/components/schemas/BigInt"
 
-    WithdrawAllStakeResponse:
-              type: object
-              properties:
-                txHash:
-                   $ref: "#/components/schemas/TransactionHash"
+    StakeTransactionResponse:
+      type: object
+      properties:
+        txHash:
+          $ref: "#/components/schemas/TransactionHash"
 
     SwarmOnlyReference:
       oneOf:
         - $ref: "#/components/schemas/SwarmAddress"
         - $ref: "#/components/schemas/SwarmEncryptedReference"
 
+    PinCheckResponse:
+      type: object
+      properties:
+        reference:
+          $ref: "#/components/schemas/SwarmOnlyReference"
+        total:
+          type: integer
+        missing:
+          type: integer
+        invalid:
+          type: integer
+
     SwarmOnlyReferencesList:
       type: object
       properties:
-        references:
+        reference:
           type: array
           nullable: false
           items:
@@ -733,8 +804,8 @@ components:
           type: integer
         lastSelectedRound:
           type: integer
-        lastSampleDuration:
-          $ref: "#/components/schemas/Duration"
+        lastSampleDurationSeconds:
+          type: number
         block:
           type: integer
         reward:
@@ -810,7 +881,7 @@ components:
     LoggerTreeNode:
       type: object
       additionalProperties:
-          $ref: "#/components/schemas/LoggerTreeData"
+        $ref: "#/components/schemas/LoggerTreeData"
 
     Logger:
       type: object
@@ -828,7 +899,7 @@ components:
       type: object
       properties:
         tree:
-            $ref: "#/components/schemas/LoggerTreeNode"
+          $ref: "#/components/schemas/LoggerTreeNode"
         loggers:
           type: array
           items:
@@ -837,18 +908,21 @@ components:
     StatusSnapshotResponse:
       type: object
       properties:
-        peer:
+        overlay:
           $ref: "#/components/schemas/SwarmAddress"
+        proximity:
+          type: integer
         beeMode:
           type: string
           enum:
             - "light"
             - "full"
+            - "dev"
             - "ultra-light"
             - "unknown"
-        proximity:
-          type: integer
         reserveSize:
+          type: integer
+        reserveSizeWithinRadius:
           type: integer
         pullsyncRate:
           type: number
@@ -861,20 +935,130 @@ components:
         requestFailed:
           nullable: true
           type: boolean
-        BatchCommitment:
+        batchCommitment:
           type: integer
         isReachable:
           type: boolean
+        lastSyncedBlock:
+          type: integer
+        committedDepth:
+          type: integer
 
-    StatusResponse:
+    StatusPeersResponse:
       type: object
       properties:
-        stamps:
+        snapshots:
           type: array
           nullable: false
           items:
             $ref: "#/components/schemas/StatusSnapshotResponse"
 
+    StatusNeighborhoodResponse:
+      type: object
+      properties:
+        neighborhood:
+          $ref: "#/components/schemas/Neighborhood"
+        reserveSizeWithinRadius:
+          type: integer
+        proximity:
+          type: integer
+
+    Neighborhood:
+      type: string
+      description: Swarm address of a neighborhood in string binary format, usually limited to as many bits as the current storage radius.
+      example: "011010111"
+
+    StatusNeighborhoodsResponse:
+      type: object
+      properties:
+        neighborhoods:
+          type: array
+          nullable: false
+          items:
+            $ref: "#/components/schemas/StatusNeighborhoodResponse"
+
+    ApiChunkInclusionProof:
+      type: object
+      properties:
+        chunkSpan:
+          minimum: 0
+          type: integer
+        postageProof:
+          $ref: "#/components/schemas/ApiPostageProof"
+        proofSegments:
+          items:
+            type: string
+          nullable: true
+          type: array
+        proofSegments2:
+          items:
+            type: string
+          nullable: true
+          type: array
+        proofSegments3:
+          items:
+            type: string
+          nullable: true
+          type: array
+        proveSegment:
+          type: string
+        proveSegment2:
+          type: string
+        socProof:
+          items:
+            $ref: "#/components/schemas/ApiSOCProof"
+          nullable: true
+          type: array
+
+    ApiChunkInclusionProofs:
+      type: object
+      properties:
+        proof1:
+          $ref: "#/components/schemas/ApiChunkInclusionProof"
+        proof2:
+          $ref: "#/components/schemas/ApiChunkInclusionProof"
+        proofLast:
+          $ref: "#/components/schemas/ApiChunkInclusionProof"
+
+    ApiPostageProof:
+      type: object
+      properties:
+        index:
+          type: string
+        postageId:
+          type: string
+        signature:
+          type: string
+        timeStamp:
+          type: string
+
+    ApiRCHashResponse:
+      type: object
+      properties:
+        durationSeconds:
+          $ref: "#/components/schemas/Seconds"
+        hash:
+          $ref: "#/components/schemas/SwarmAddress"
+        proofs:
+          $ref: "#/components/schemas/ApiChunkInclusionProofs"
+
+    ApiSOCProof:
+      type: object
+      properties:
+        chunkAddr:
+          type: string
+        identifier:
+          type: string
+        signature:
+          type: string
+        signer:
+          type: string
+
+    WalletTxResponse:
+      type: object
+      properties:
+        transactionHash:
+          $ref: "#/components/schemas/TransactionHash"
   headers:
     SwarmTag:
       description: "Tag UID"
@@ -891,6 +1075,17 @@ components:
       schema:
         $ref: "#/components/schemas/HexString"
 
+    SwarmSocSignature:
+      description: "Attached digital signature of the Single Owner Chunk"
+      schema:
+        $ref: "#/components/schemas/HexString"
+
+    SwarmActHistoryAddress:
+      description: "Swarm address reference to the new ACT history entry"
+      schema:
+        $ref: "#/components/schemas/SwarmAddress"
+      required: false
+
     ETag:
       description: |
         The RFC7232 ETag header field in a response provides the current entity-
@@ -902,7 +1097,6 @@ components:
         type: string
 
   parameters:
-
     GasPriceParameter:
       in: header
       name: gas-price
@@ -945,6 +1139,60 @@ components:
       description: >
         Represents the encrypting state of the file
 
+    SwarmRedundancyLevelParameter:
+      in: header
+      name: swarm-redundancy-level
+      schema:
+        type: integer
+        enum: [0, 1, 2, 3, 4]
+      required: false
+      description: >
+        Add redundancy to the data being uploaded so that downloaders can download it with better UX.
+        0 value is default and does not add any redundancy to the file.
+
+    SwarmRedundancyStrategyParameter:
+      in: header
+      name: swarm-redundancy-strategy
+      schema:
+        type: integer
+        enum: [0, 1, 2, 3]
+      required: false
+      description: >
+        Specify the retrieve strategy on redundant data.
+        The numbers stand for NONE, DATA, PROX and RACE, respectively.
+        Strategy NONE means no prefetching takes place.
+        Strategy DATA means only data chunks are prefetched.
+        Strategy PROX means only chunks that are close to the node are prefetched.
+        Strategy RACE means all chunks are prefetched: n data chunks and k parity chunks. The first n chunks to arrive are used to reconstruct the file.
+        Multiple strategies can be used in a fallback cascade if the swarm redundancy fallback mode is set to true.
+        The default strategy is NONE, DATA, falling back to PROX, falling back to RACE
+
+    SwarmRedundancyFallbackModeParameter:
+      in: header
+      name: swarm-redundancy-fallback-mode
+      schema:
+        type: boolean
+      required: false
+      description: >
+        Specify if the retrieve strategies (chunk prefetching on redundant data) are used in a fallback cascade. The default is true.
+
+    SwarmChunkRetrievalTimeoutParameter:
+      in: header
+      name: swarm-chunk-retrieval-timeout
+      schema:
+        $ref: "#/components/schemas/Duration"
+      required: false
+      description: >
+        Specify the timeout for chunk retrieval. The default is 30 seconds.
+
+    SwarmOnlyRootChunkParameter:
+      in: header
+      name: swarm-only-root-chunk
+      schema:
+        type: boolean
+      required: false
+      description: "Returns only the root chunk of the content"
+
     ContentTypePreserved:
       in: header
       name: Content-Type
@@ -986,17 +1234,76 @@ components:
       schema:
         $ref: "#/components/schemas/SwarmAddress"
 
+    SwarmPostageStamp:
+      in: header
+      name: swarm-postage-stamp
+      description: |
+        Postage stamp for the corresponding chunk in the request. \
+        It is required if Swarm-Postage-Batch-Id header is missing \
+        It consists of: \
+        - batch ID - 0:32 bytes \
+        - postage index (bucket and bucket index) - 32:40 bytes \
+        - timestamp - 40:48 bytes \
+        - signature - 48:113 bytes
+      schema:
+        $ref: "#/components/schemas/HexString"
+
     SwarmDeferredUpload:
       in: header
       name: swarm-deferred-upload
       schema:
         type: boolean
-        default: "false"
+        default: "true"
       required: false
       description: >
-        Determines if the uploaded data should be sent to the network immediately or in a deferred fashion. By default the upload will be direct.
+        Determines if the uploaded data should be sent to the network immediately or in a deferred fashion. By default the upload will be deferred.
+
+    SwarmCache:
+      in: header
+      name: swarm-cache
+      schema:
+        type: boolean
+        default: "true"
+      required: false
+      description: "Determines if the download data should be cached on the node. By default the download will be cached"
+
+    SwarmAct:
+      in: header
+      name: swarm-act
+      schema:
+        type: boolean
+        default: "false"
+      required: false
+      description: "Determines if the uploaded data should be treated as ACT content"
+
+    SwarmActPublisher:
+      in: header
+      name: swarm-act-publisher
+      schema:
+        $ref: "#/components/schemas/PublicKey"
+      required: false
+      description: "ACT content publisher's public key"
+
+    SwarmActHistoryAddress:
+      in: header
+      name: swarm-act-history-address
+      schema:
+        $ref: "#/components/schemas/SwarmAddress"
+      required: false
+      description: "ACT history reference address"
+
+    SwarmActTimestamp:
+      in: header
+      name: swarm-act-timestamp
+      schema:
+        type: integer
+        format: int64
+      required: false
+      description: "ACT history Unix timestamp"
 
   responses:
+    "200":
+      description: OK.
     "204":
       description: The resource was deleted successfully.
     "400":

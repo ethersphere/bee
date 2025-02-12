@@ -9,17 +9,17 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	ldb "github.com/syndtr/goleveldb/leveldb"
 )
 
 // Batch implements storage.BatchedStore interface Batch method.
-func (s *Store) Batch(ctx context.Context) (storage.Batch, error) {
+func (s *Store) Batch(ctx context.Context) storage.Batch {
 	return &Batch{
 		ctx:   ctx,
 		batch: new(ldb.Batch),
 		store: s,
-	}, nil
+	}
 }
 
 type Batch struct {

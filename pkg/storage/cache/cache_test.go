@@ -7,9 +7,10 @@ package cache_test
 import (
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/storage/cache"
-	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
-	"github.com/ethersphere/bee/pkg/storage/storagetest"
+	"github.com/ethersphere/bee/v2/pkg/storage/cache"
+	"github.com/ethersphere/bee/v2/pkg/storage/leveldbstore"
+	"github.com/ethersphere/bee/v2/pkg/storage/storagetest"
+	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 )
 
 func TestCache(t *testing.T) {
@@ -19,6 +20,7 @@ func TestCache(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create store failed: %v", err)
 	}
+	testutil.CleanupCloser(t, store)
 
 	cache, err := cache.Wrap(store, 100_000)
 	if err != nil {

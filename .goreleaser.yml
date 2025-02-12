@@ -1,5 +1,7 @@
 project_name: bee
 
+version: 2
+
 release:
   prerelease: auto
 
@@ -15,11 +17,10 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X github.com/ethersphere/bee.version={{ .Version }}
-      - -X github.com/ethersphere/bee.commitHash={{ .ShortCommit }}
-      - -X github.com/ethersphere/bee.commitTime={{ .CommitTimestamp }}
-      - -X github.com/ethersphere/bee/pkg/api.Version={{ .Env.BEE_API_VERSION }}
-      - -X github.com/ethersphere/bee/pkg/debugapi.Version={{ .Env.BEE_DEBUG_API_VERSION }}
+      - -X github.com/ethersphere/bee/v2.version={{ .Version }}
+      - -X github.com/ethersphere/bee/v2.commitHash={{ .ShortCommit }}
+      - -X github.com/ethersphere/bee/v2.commitTime={{ .CommitTimestamp }}
+      - -X github.com/ethersphere/bee/v2/pkg/api.Version={{ .Env.BEE_API_VERSION }}
     env:
       - CGO_ENABLED=0
     goos:
@@ -39,11 +40,10 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X github.com/ethersphere/bee.version={{ .Version }}
-      - -X github.com/ethersphere/bee.commitHash={{ .ShortCommit }}
-      - -X github.com/ethersphere/bee.commitTime={{ .CommitTimestamp }}
-      - -X github.com/ethersphere/bee/pkg/api.Version={{ .Env.BEE_API_VERSION }}
-      - -X github.com/ethersphere/bee/pkg/debugapi.Version={{ .Env.BEE_DEBUG_API_VERSION }}
+      - -X github.com/ethersphere/bee/v2.version={{ .Version }}
+      - -X github.com/ethersphere/bee/v2.commitHash={{ .ShortCommit }}
+      - -X github.com/ethersphere/bee/v2.commitTime={{ .CommitTimestamp }}
+      - -X github.com/ethersphere/bee/v2/pkg/api.Version={{ .Env.BEE_API_VERSION }}
     env:
       - CGO_ENABLED=0
     goos:
@@ -65,11 +65,10 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X github.com/ethersphere/bee.version={{ .Version }}
-      - -X github.com/ethersphere/bee.commitHash={{ .ShortCommit }}
-      - -X github.com/ethersphere/bee.commitTime={{ .CommitTimestamp }}
-      - -X github.com/ethersphere/bee/pkg/api.Version={{ .Env.BEE_API_VERSION }}
-      - -X github.com/ethersphere/bee/pkg/debugapi.Version={{ .Env.BEE_DEBUG_API_VERSION }}
+      - -X github.com/ethersphere/bee/v2.version={{ .Version }}
+      - -X github.com/ethersphere/bee/v2.commitHash={{ .ShortCommit }}
+      - -X github.com/ethersphere/bee/v2.commitTime={{ .CommitTimestamp }}
+      - -X github.com/ethersphere/bee/v2/pkg/api.Version={{ .Env.BEE_API_VERSION }}
     env:
       - CGO_ENABLED=0
     goos:
@@ -85,11 +84,10 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X github.com/ethersphere/bee.version={{ .Version }}
-      - -X github.com/ethersphere/bee.commitHash={{ .ShortCommit }}
-      - -X github.com/ethersphere/bee.commitTime={{ .CommitTimestamp }}
-      - -X github.com/ethersphere/bee/pkg/api.Version={{ .Env.BEE_API_VERSION }}
-      - -X github.com/ethersphere/bee/pkg/debugapi.Version={{ .Env.BEE_DEBUG_API_VERSION }}
+      - -X github.com/ethersphere/bee/v2.version={{ .Version }}
+      - -X github.com/ethersphere/bee/v2.commitHash={{ .ShortCommit }}
+      - -X github.com/ethersphere/bee/v2.commitTime={{ .CommitTimestamp }}
+      - -X github.com/ethersphere/bee/v2/pkg/api.Version={{ .Env.BEE_API_VERSION }}
     env:
       - CGO_ENABLED=0
     goos:
@@ -104,11 +102,10 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X github.com/ethersphere/bee.version={{ .Version }}
-      - -X github.com/ethersphere/bee.commitHash={{ .ShortCommit }}
-      - -X github.com/ethersphere/bee.commitTime={{ .CommitTimestamp }}
-      - -X github.com/ethersphere/bee/pkg/api.Version={{ .Env.BEE_API_VERSION }}
-      - -X github.com/ethersphere/bee/pkg/debugapi.Version={{ .Env.BEE_DEBUG_API_VERSION }}
+      - -X github.com/ethersphere/bee/v2.version={{ .Version }}
+      - -X github.com/ethersphere/bee/v2.commitHash={{ .ShortCommit }}
+      - -X github.com/ethersphere/bee/v2.commitTime={{ .CommitTimestamp }}
+      - -X github.com/ethersphere/bee/v2/pkg/api.Version={{ .Env.BEE_API_VERSION }}
     env:
       - CGO_ENABLED=0
     goos:
@@ -132,7 +129,6 @@ signs:
 archives:
   -
     id: scoop
-    rlcp: true
     builds:
     - windows
     name_template: "{{ tolower .ProjectName }}-{{ tolower .Os }}-{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
@@ -145,7 +141,6 @@ archives:
   -
     name_template: "{{ tolower .ProjectName }}-{{ tolower .Os }}-{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
     format: binary
-    rlcp: true
     builds:
     - linux
     - windows
@@ -153,7 +148,6 @@ archives:
     - darwin-arm64
   -
     id: homebrew-amd64
-    rlcp: true
     builds:
     - darwin-amd64
     name_template: "{{ tolower .ProjectName }}-{{ tolower .Os }}-{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
@@ -165,7 +159,6 @@ archives:
     - README.md
   -
     id: homebrew-arm64
-    rlcp: true
     builds:
     - darwin-arm64
     name_template: "{{ tolower .ProjectName }}-{{ tolower .Os }}-{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
@@ -252,7 +245,7 @@ publishers:
 
 scoops:
   - url_template: "https://github.com/ethersphere/bee/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
-    bucket:
+    repository:
       owner: ethersphere
       name: scoop
       token: "{{ .Env.SCOOP_PAT }}"
@@ -288,7 +281,7 @@ scoops:
 
 brews:
   - name: swarm-bee
-    tap:
+    repository:
       owner: ethersphere
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_PAT }}"

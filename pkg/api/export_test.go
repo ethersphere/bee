@@ -5,8 +5,8 @@
 package api
 
 import (
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 type (
@@ -18,8 +18,6 @@ type (
 	TagRequest            = tagRequest
 	ListTagsResponse      = listTagsResponse
 	IsRetrievableResponse = isRetrievableResponse
-	SecurityTokenResponse = securityTokenRsp
-	SecurityTokenRequest  = securityTokenReq
 )
 
 var (
@@ -38,6 +36,8 @@ var (
 	ErrInvalidNameOrAddress             = errInvalidNameOrAddress
 	ErrUnsupportedDevNodeOperation      = errUnsupportedDevNodeOperation
 	ErrOperationSupportedOnlyInFullMode = errOperationSupportedOnlyInFullMode
+	ErrActDownload                      = errActDownload
+	ErrActUpload                        = errActUpload
 )
 
 var (
@@ -55,10 +55,6 @@ var (
 
 func (s *Service) ResolveNameOrAddress(str string) (swarm.Address, error) {
 	return s.resolveNameOrAddress(str)
-}
-
-func CalculateNumberOfChunks(contentLength int64, isEncrypted bool) int64 {
-	return calculateNumberOfChunks(contentLength, isEncrypted)
 }
 
 type (
@@ -99,8 +95,10 @@ type (
 	PostageStampBucketsResponse       = postageStampBucketsResponse
 	BucketData                        = bucketData
 	WalletResponse                    = walletResponse
+	WalletTxResponse                  = walletTxResponse
 	GetStakeResponse                  = getStakeResponse
-	WithdrawAllStakeResponse          = withdrawAllStakeResponse
+	GetWithdrawableResponse           = getWithdrawableResponse
+	StakeTransactionReponse           = stakeTransactionReponse
 	StatusSnapshotResponse            = statusSnapshotResponse
 	StatusResponse                    = statusResponse
 )

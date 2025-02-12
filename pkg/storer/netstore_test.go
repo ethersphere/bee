@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/pusher"
-	"github.com/ethersphere/bee/pkg/retrieval"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
-	storer "github.com/ethersphere/bee/pkg/storer"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/pushsync"
+	"github.com/ethersphere/bee/v2/pkg/retrieval"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	chunktesting "github.com/ethersphere/bee/v2/pkg/storage/testing"
+	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 type testRetrieval struct {
@@ -87,7 +87,7 @@ func testNetStore(t *testing.T, newStorer func(r retrieval.Interface) (*storer.D
 				t.Fatalf("unexpected no of pusher ops want 10 have %d", count)
 			}
 
-			verifyChunks(t, lstore.Repo(), chunks, false)
+			verifyChunks(t, lstore.Storage(), chunks, false)
 		})
 
 		t.Run("pusher error", func(t *testing.T) {
@@ -145,7 +145,7 @@ func testNetStore(t *testing.T, newStorer func(r retrieval.Interface) (*storer.D
 				t.Fatalf("session.Cleanup(): unexpected error: %v", err)
 			}
 
-			verifyChunks(t, lstore.Repo(), chunks, false)
+			verifyChunks(t, lstore.Storage(), chunks, false)
 		})
 
 		t.Run("context cancellation", func(t *testing.T) {
@@ -185,7 +185,7 @@ func testNetStore(t *testing.T, newStorer func(r retrieval.Interface) (*storer.D
 				t.Fatalf("unexpected no of pusher ops want 5 have %d", count)
 			}
 
-			verifyChunks(t, lstore.Repo(), chunks, false)
+			verifyChunks(t, lstore.Storage(), chunks, false)
 		})
 
 		t.Run("shallow receipt retry", func(t *testing.T) {
@@ -207,7 +207,7 @@ func testNetStore(t *testing.T, newStorer func(r retrieval.Interface) (*storer.D
 					}
 					if count > 0 {
 						count--
-						op.Err <- pusher.ErrShallowReceipt
+						op.Err <- pushsync.ErrShallowReceipt
 					} else {
 						op.Err <- nil
 					}
@@ -230,56 +230,56 @@ func testNetStore(t *testing.T, newStorer func(r retrieval.Interface) (*storer.D
 				t.Fatalf("unexpected no of pusher ops want 0 have %d", count)
 			}
 		})
-	})
 
-	t.Run("download", func(t *testing.T) {
-		t.Parallel()
-
-		t.Run("with cache", func(t *testing.T) {
+		t.Run("download", func(t *testing.T) {
 			t.Parallel()
 
-			chunks := chunktesting.GenerateTestRandomChunks(10)
+			t.Run("with cache", func(t *testing.T) {
+				t.Parallel()
 
-			lstore, err := newStorer(&testRetrieval{fn: func(address swarm.Address) (swarm.Chunk, error) {
-				for _, ch := range chunks[5:] {
-					if ch.Address().Equal(address) {
-						return ch, nil
+				chunks := chunktesting.GenerateTestRandomChunks(10)
+
+				lstore, err := newStorer(&testRetrieval{fn: func(address swarm.Address) (swarm.Chunk, error) {
+					for _, ch := range chunks[5:] {
+						if ch.Address().Equal(address) {
+							return ch, nil
+						}
 					}
-				}
-				return nil, storage.ErrNotFound
-			}})
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			// Add some chunks to Cache to simulate local retrieval.
-			for idx, ch := range chunks {
-				if idx < 5 {
-					err := lstore.Cache().Put(context.TODO(), ch)
-					if err != nil {
-						t.Fatalf("cache.Put(...): unexpected error: %v", err)
-					}
-				} else {
-					break
-				}
-			}
-
-			getter := lstore.Download(true)
-
-			for idx, ch := range chunks {
-				readCh, err := getter.Get(context.TODO(), ch.Address())
+					return nil, storage.ErrNotFound
+				}})
 				if err != nil {
-					t.Fatalf("download.Get(...): unexpected error: %v idx %d", err, idx)
+					t.Fatal(err)
 				}
-				if !readCh.Equal(ch) {
-					t.Fatalf("incorrect chunk read: address %s", readCh.Address())
+
+				// Add some chunks to Cache to simulate local retrieval.
+				for idx, ch := range chunks {
+					if idx < 5 {
+						err := lstore.Cache().Put(context.TODO(), ch)
+						if err != nil {
+							t.Fatalf("cache.Put(...): unexpected error: %v", err)
+						}
+					} else {
+						break
+					}
 				}
-			}
 
-			t.Cleanup(lstore.WaitForBgCacheWorkers())
+				getter := lstore.Download(true)
 
-			// After download is complete all chunks should be in the local storage.
-			verifyChunks(t, lstore.Repo(), chunks, true)
+				for idx, ch := range chunks {
+					readCh, err := getter.Get(context.TODO(), ch.Address())
+					if err != nil {
+						t.Fatalf("download.Get(...): unexpected error: %v idx %d", err, idx)
+					}
+					if !readCh.Equal(ch) {
+						t.Fatalf("incorrect chunk read: address %s", readCh.Address())
+					}
+				}
+
+				t.Cleanup(lstore.WaitForBgCacheWorkers())
+
+				// After download is complete all chunks should be in the local storage.
+				verifyChunks(t, lstore.Storage(), chunks, true)
+			})
 		})
 
 		t.Run("no cache", func(t *testing.T) {
@@ -324,8 +324,8 @@ func testNetStore(t *testing.T, newStorer func(r retrieval.Interface) (*storer.D
 			}
 
 			// only the chunks that were already in cache should be present
-			verifyChunks(t, lstore.Repo(), chunks[:5], true)
-			verifyChunks(t, lstore.Repo(), chunks[5:], false)
+			verifyChunks(t, lstore.Storage(), chunks[:5], true)
+			verifyChunks(t, lstore.Storage(), chunks[5:], false)
 		})
 	})
 }

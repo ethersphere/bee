@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/breaker"
+	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/breaker"
 )
 
 func TestExecute(t *testing.T) {
@@ -73,7 +73,6 @@ func TestExecute(t *testing.T) {
 	}
 
 	for name, tc := range testCases {
-		tc := tc
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 

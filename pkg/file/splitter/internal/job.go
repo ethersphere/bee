@@ -10,12 +10,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ethersphere/bee/pkg/cac"
-	"github.com/ethersphere/bee/pkg/encryption"
-	"github.com/ethersphere/bee/pkg/file"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"golang.org/x/crypto/sha3"
+	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/encryption"
+	"github.com/ethersphere/bee/v2/pkg/file"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 // maximum amount of file tree levels this file hasher component can handle
@@ -256,21 +255,13 @@ func (s *SimpleSplitterJob) encryptChunkData(chunkData []byte) ([]byte, encrypti
 
 func (s *SimpleSplitterJob) encrypt(chunkData []byte) (encryption.Key, []byte, []byte, error) {
 	key := encryption.GenerateRandomKey(encryption.KeyLength)
-	encryptedSpan, err := s.newSpanEncryption(key).Encrypt(chunkData[:8])
+	encryptedSpan, err := encryption.NewSpanEncryption(key).Encrypt(chunkData[:8])
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	encryptedData, err := s.newDataEncryption(key).Encrypt(chunkData[8:])
+	encryptedData, err := encryption.NewDataEncryption(key).Encrypt(chunkData[8:])
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	return key, encryptedSpan, encryptedData, nil
-}
-
-func (s *SimpleSplitterJob) newSpanEncryption(key encryption.Key) encryption.Interface {
-	return encryption.New(key, 0, uint32(swarm.ChunkSize/s.refSize), sha3.NewLegacyKeccak256)
-}
-
-func (s *SimpleSplitterJob) newDataEncryption(key encryption.Key) encryption.Interface {
-	return encryption.New(key, int(swarm.ChunkSize), 0, sha3.NewLegacyKeccak256)
 }

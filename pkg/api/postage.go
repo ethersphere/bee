@@ -13,12 +13,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/bigint"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/postage/postagecontract"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/ethersphere/bee/v2/pkg/bigint"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/postage/postagecontract"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/tracing"
 	"github.com/gorilla/mux"
 )
 
@@ -118,6 +118,12 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 			logger.Debug("create batch: invalid depth", "error", err)
 			logger.Error(nil, "create batch: invalid depth")
 			jsonhttp.BadRequest(w, "invalid depth")
+			return
+		}
+		if errors.Is(err, postagecontract.ErrInsufficientValidity) {
+			logger.Debug("create batch: insufficient validity", "error", err)
+			logger.Error(nil, "create batch: insufficient validity")
+			jsonhttp.BadRequest(w, "insufficient amount for 24h minimum validity")
 			return
 		}
 		logger.Debug("create batch: create failed", "error", err)

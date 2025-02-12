@@ -5,11 +5,15 @@
 package soc_test
 
 import (
+	"crypto/rand"
+	"io"
 	"strings"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/soc"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/soc"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 // TestValid verifies that the validator can detect
@@ -29,6 +33,60 @@ func TestValid(t *testing.T) {
 	if !soc.Valid(sch) {
 		t.Fatal("valid chunk evaluates to invalid")
 	}
+}
+
+// TestValidDispersedReplica verifies that the validator can detect
+// valid dispersed replicas chunks.
+func TestValidDispersedReplica(t *testing.T) {
+	t.Parallel()
+
+	t.Run("valid", func(t *testing.T) {
+		privKey, _ := crypto.DecodeSecp256k1PrivateKey(append([]byte{1}, make([]byte, 31)...))
+		signer := crypto.NewDefaultSigner(privKey)
+
+		chData := make([]byte, swarm.ChunkSize)
+		_, _ = io.ReadFull(rand.Reader, chData)
+		ch, err := cac.New(chData)
+		if err != nil {
+			t.Fatal(err)
+		}
+		id := append([]byte{1}, ch.Address().Bytes()[1:]...)
+
+		socCh, err := soc.New(id, ch).Sign(signer)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// check valid chunk
+		if !soc.Valid(socCh) {
+			t.Fatal("dispersed replica chunk is invalid")
+		}
+	})
+
+	t.Run("invalid", func(t *testing.T) {
+		privKey, _ := crypto.DecodeSecp256k1PrivateKey(append([]byte{1}, make([]byte, 31)...))
+		signer := crypto.NewDefaultSigner(privKey)
+
+		chData := make([]byte, swarm.ChunkSize)
+		_, _ = io.ReadFull(rand.Reader, chData)
+		ch, err := cac.New(chData)
+		if err != nil {
+			t.Fatal(err)
+		}
+		id := append([]byte{1}, ch.Address().Bytes()[1:]...)
+		// change to invalid ID
+		id[2] += 1
+
+		socCh, err := soc.New(id, ch).Sign(signer)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// check valid chunk
+		if soc.Valid(socCh) {
+			t.Fatal("dispersed replica should be invalid")
+		}
+	})
 }
 
 // TestInvalid verifies that the validator can detect chunks
@@ -115,7 +173,6 @@ func TestInvalid(t *testing.T) {
 			},
 		},
 	} {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 

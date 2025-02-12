@@ -11,12 +11,12 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/accounting"
-	"github.com/ethersphere/bee/pkg/accounting/mock"
-	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/bigint"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/v2/pkg/accounting"
+	"github.com/ethersphere/bee/v2/pkg/accounting/mock"
+	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/bigint"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 )
 
 func TestAccountingInfo(t *testing.T) {
@@ -56,7 +56,6 @@ func TestAccountingInfo(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI:       true,
 		AccountingOpts: []mock.Option{mock.WithPeerAccountingFunc(accountingFunc)},
 	})
 
@@ -112,7 +111,6 @@ func TestAccountingInfoError(t *testing.T) {
 		return nil, wantErr
 	}
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI:       true,
 		AccountingOpts: []mock.Option{mock.WithPeerAccountingFunc(accountingFunc)},
 	})
 

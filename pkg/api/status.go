@@ -11,27 +11,40 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/topology"
 )
 
 type statusSnapshotResponse struct {
-	Peer             string  `json:"peer"`
-	Proximity        uint8   `json:"proximity"`
-	BeeMode          string  `json:"beeMode"`
-	ReserveSize      uint64  `json:"reserveSize"`
-	PullsyncRate     float64 `json:"pullsyncRate"`
-	StorageRadius    uint8   `json:"storageRadius"`
-	ConnectedPeers   uint64  `json:"connectedPeers"`
-	NeighborhoodSize uint64  `json:"neighborhoodSize"`
-	RequestFailed    bool    `json:"requestFailed,omitempty"`
-	BatchCommitment  uint64  `json:"batchCommitment"`
-	IsReachable      bool    `json:"isReachable"`
+	Overlay                 string  `json:"overlay"`
+	Proximity               uint    `json:"proximity"`
+	BeeMode                 string  `json:"beeMode"`
+	ReserveSize             uint64  `json:"reserveSize"`
+	ReserveSizeWithinRadius uint64  `json:"reserveSizeWithinRadius"`
+	PullsyncRate            float64 `json:"pullsyncRate"`
+	StorageRadius           uint8   `json:"storageRadius"`
+	ConnectedPeers          uint64  `json:"connectedPeers"`
+	NeighborhoodSize        uint64  `json:"neighborhoodSize"`
+	RequestFailed           bool    `json:"requestFailed,omitempty"`
+	BatchCommitment         uint64  `json:"batchCommitment"`
+	IsReachable             bool    `json:"isReachable"`
+	LastSyncedBlock         uint64  `json:"lastSyncedBlock"`
+	CommittedDepth          uint8   `json:"committedDepth"`
 }
 
 type statusResponse struct {
 	Snapshots []statusSnapshotResponse `json:"snapshots"`
+}
+
+type statusNeighborhoodResponse struct {
+	Neighborhood            string `json:"neighborhood"`
+	ReserveSizeWithinRadius int    `json:"reserveSizeWithinRadius"`
+	Proximity               uint8  `json:"proximity"`
+}
+
+type neighborhoodsResponse struct {
+	Neighborhoods []statusNeighborhoodResponse `json:"neighborhoods"`
 }
 
 // statusAccessHandler is a middleware that limits the number of simultaneous
@@ -70,15 +83,19 @@ func (s *Service) statusGetHandler(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	jsonhttp.OK(w, statusSnapshotResponse{
-		Peer:             s.overlay.String(),
-		BeeMode:          ss.BeeMode,
-		ReserveSize:      ss.ReserveSize,
-		PullsyncRate:     ss.PullsyncRate,
-		StorageRadius:    uint8(ss.StorageRadius),
-		ConnectedPeers:   ss.ConnectedPeers,
-		NeighborhoodSize: ss.NeighborhoodSize,
-		BatchCommitment:  ss.BatchCommitment,
-		IsReachable:      ss.IsReachable,
+		Proximity:               256,
+		Overlay:                 s.overlay.String(),
+		BeeMode:                 ss.BeeMode,
+		ReserveSize:             ss.ReserveSize,
+		ReserveSizeWithinRadius: ss.ReserveSizeWithinRadius,
+		PullsyncRate:            ss.PullsyncRate,
+		StorageRadius:           uint8(ss.StorageRadius),
+		ConnectedPeers:          ss.ConnectedPeers,
+		NeighborhoodSize:        ss.NeighborhoodSize,
+		BatchCommitment:         ss.BatchCommitment,
+		IsReachable:             ss.IsReachable,
+		LastSyncedBlock:         ss.LastSyncedBlock,
+		CommittedDepth:          uint8(ss.CommittedDepth),
 	})
 }
 
@@ -107,8 +124,8 @@ func (s *Service) statusGetPeersHandler(w http.ResponseWriter, r *http.Request) 
 			defer wg.Done()
 
 			snapshot := statusSnapshotResponse{
-				Peer:      address.String(),
-				Proximity: po,
+				Overlay:   address.String(),
+				Proximity: uint(po),
 			}
 
 			ss, err := s.statusService.PeerSnapshot(ctx, address)
@@ -118,12 +135,15 @@ func (s *Service) statusGetPeersHandler(w http.ResponseWriter, r *http.Request) 
 			} else {
 				snapshot.BeeMode = ss.BeeMode
 				snapshot.ReserveSize = ss.ReserveSize
+				snapshot.ReserveSizeWithinRadius = ss.ReserveSizeWithinRadius
 				snapshot.PullsyncRate = ss.PullsyncRate
 				snapshot.StorageRadius = uint8(ss.StorageRadius)
 				snapshot.ConnectedPeers = ss.ConnectedPeers
 				snapshot.NeighborhoodSize = ss.NeighborhoodSize
 				snapshot.BatchCommitment = ss.BatchCommitment
 				snapshot.IsReachable = ss.IsReachable
+				snapshot.LastSyncedBlock = ss.LastSyncedBlock
+				snapshot.CommittedDepth = uint8(ss.CommittedDepth)
 			}
 
 			mu.Lock()
@@ -151,4 +171,35 @@ func (s *Service) statusGetPeersHandler(w http.ResponseWriter, r *http.Request) 
 		return snapshots[i].Proximity < snapshots[j].Proximity
 	})
 	jsonhttp.OK(w, statusResponse{Snapshots: snapshots})
+}
+
+// statusGetHandler returns the current node status.
+func (s *Service) statusGetNeighborhoods(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("get_status_neighborhoods").Build()
+
+	if s.beeMode == DevMode {
+		logger.Warning("status neighborhoods endpoint is disabled in dev mode")
+		jsonhttp.BadRequest(w, errUnsupportedDevNodeOperation)
+		return
+	}
+
+	neighborhoods := make([]statusNeighborhoodResponse, 0)
+
+	nhoods, err := s.storer.NeighborhoodsStat(r.Context())
+	if err != nil {
+		logger.Debug("unable to get neighborhoods status", "error", err)
+		logger.Error(nil, "unable to get neighborhoods status")
+		jsonhttp.InternalServerError(w, "unable to get neighborhoods status")
+		return
+	}
+
+	for _, n := range nhoods {
+		neighborhoods = append(neighborhoods, statusNeighborhoodResponse{
+			Neighborhood:            n.Neighborhood.String(),
+			ReserveSizeWithinRadius: n.ReserveSizeWithinRadius,
+			Proximity:               n.Proximity,
+		})
+	}
+
+	jsonhttp.OK(w, neighborhoodsResponse{Neighborhoods: neighborhoods})
 }

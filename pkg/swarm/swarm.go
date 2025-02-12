@@ -38,6 +38,12 @@ var (
 )
 
 var (
+	// Ethereum Address for SOC owner of Dispersed Replicas
+	// generated from private key 0x0100000000000000000000000000000000000000000000000000000000000000
+	ReplicasOwner, _ = hex.DecodeString("dc5b20847f43d67928f49cd4f85d696b5a7617b5")
+)
+
+var (
 	// EmptyAddress is the address that is all zeroes.
 	EmptyAddress = NewAddress(make([]byte, HashSize))
 	// ZeroAddress is the address that has no value.
@@ -171,8 +177,6 @@ type Chunk interface {
 	Stamp() Stamp
 	// WithStamp attaches a postage stamp to the chunk.
 	WithStamp(Stamp) Chunk
-	// Radius is the PO above which the batch is preserved.
-	Radius() uint8
 	// Depth returns the batch depth of the stamp - allowed batch size = 2^{depth}.
 	Depth() uint8
 	// BucketDepth returns the bucket depth of the batch of the stamp - always < depth.
@@ -180,7 +184,7 @@ type Chunk interface {
 	// Immutable returns whether the batch is immutable
 	Immutable() bool
 	// WithBatch attaches batch parameters to the chunk.
-	WithBatch(radius, depth, bucketDepth uint8, immutable bool) Chunk
+	WithBatch(depth, bucketDepth uint8, immutable bool) Chunk
 	// Equal checks if the chunk is equal to another.
 	Equal(Chunk) bool
 }
@@ -200,6 +204,7 @@ func (ct ChunkType) String() string {
 	}
 }
 
+// DO NOT CHANGE ORDER
 const (
 	ChunkTypeUnspecified ChunkType = iota
 	ChunkTypeContentAddressed
@@ -213,6 +218,7 @@ type Stamp interface {
 	Sig() []byte
 	Timestamp() []byte
 	Clone() Stamp
+	Hash() ([]byte, error)
 	encoding.BinaryMarshaler
 	encoding.BinaryUnmarshaler
 }
@@ -222,7 +228,6 @@ type chunk struct {
 	sdata       []byte
 	tagID       uint32
 	stamp       Stamp
-	radius      uint8
 	depth       uint8
 	bucketDepth uint8
 	immutable   bool
@@ -245,8 +250,7 @@ func (c *chunk) WithStamp(stamp Stamp) Chunk {
 	return c
 }
 
-func (c *chunk) WithBatch(radius, depth, bucketDepth uint8, immutable bool) Chunk {
-	c.radius = radius
+func (c *chunk) WithBatch(depth, bucketDepth uint8, immutable bool) Chunk {
 	c.depth = depth
 	c.bucketDepth = bucketDepth
 	c.immutable = immutable
@@ -267,10 +271,6 @@ func (c *chunk) TagID() uint32 {
 
 func (c *chunk) Stamp() Stamp {
 	return c.stamp
-}
-
-func (c *chunk) Radius() uint8 {
-	return c.radius
 }
 
 func (c *chunk) Depth() uint8 {
@@ -326,4 +326,57 @@ func bytesToAddr(b []byte) Address {
 	addr := make([]byte, HashSize)
 	copy(addr, b)
 	return NewAddress(addr)
+}
+
+type Neighborhood struct {
+	b []byte
+	r uint8
+}
+
+func NewNeighborhood(a Address, bits uint8) Neighborhood {
+	return Neighborhood{b: a.b, r: bits}
+}
+
+// String returns a bit string of the Neighborhood.
+func (n Neighborhood) String() string {
+	return bitStr(n.b, n.r)
+}
+
+// Equal returns true if two neighborhoods are identical.
+func (n Neighborhood) Equal(b Neighborhood) bool {
+	return bytes.Equal(n.b, b.b)
+}
+
+// Bytes returns bytes representation of the Neighborhood.
+func (n Neighborhood) Bytes() []byte {
+	return n.b
+}
+
+// Bytes returns bytes representation of the Neighborhood.
+func (n Neighborhood) Clone() Neighborhood {
+	if n.b == nil {
+		return Neighborhood{}
+	}
+	return Neighborhood{b: append(make([]byte, 0, len(n.b)), n.Bytes()...), r: n.r}
+}
+
+func bitStr(src []byte, bits uint8) string {
+
+	ret := ""
+
+	for _, b := range src {
+		for i := 7; i >= 0; i-- {
+			if b&(1<<i) > 0 {
+				ret += "1"
+			} else {
+				ret += "0"
+			}
+			bits--
+			if bits == 0 {
+				return ret
+			}
+		}
+	}
+
+	return ret
 }

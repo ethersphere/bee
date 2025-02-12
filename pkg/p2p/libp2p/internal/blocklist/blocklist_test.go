@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/blocklist"
-	"github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/blocklist"
+	"github.com/ethersphere/bee/v2/pkg/statestore/mock"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 func TestExist(t *testing.T) {
@@ -37,7 +37,7 @@ func TestExist(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// add for 50 miliseconds
+	// add for 50 milliseconds
 	if err := bl.Add(addr2, time.Millisecond*50, "", false); err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestPeers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// add for 50 miliseconds
+	// add for 50 milliseconds
 	if err := bl.Add(addr2, time.Millisecond*50, "r2", true); err != nil {
 		t.Fatal(err)
 	}

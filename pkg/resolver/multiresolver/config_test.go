@@ -8,7 +8,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/resolver/multiresolver"
+	"github.com/ethersphere/bee/v2/pkg/resolver/multiresolver"
 )
 
 func TestParseConnectionStrings(t *testing.T) {
@@ -118,7 +118,6 @@ func TestParseConnectionStrings(t *testing.T) {
 		},
 	}
 	for _, tC := range testCases {
-		tC := tC
 		t.Run(tC.desc, func(t *testing.T) {
 			t.Parallel()
 

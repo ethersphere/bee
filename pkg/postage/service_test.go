@@ -13,19 +13,21 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/postage"
-	pstoremock "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
-	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/inmemstore"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/util/testutil"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	pstoremock "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
+	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 )
 
 // TestSaveLoad tests the idempotence of saving and loading the postage.Service
 // with all the active stamp issuers.
 func TestSaveLoad(t *testing.T) {
+	t.Parallel()
+
 	store := inmemstore.New()
 	defer store.Close()
 	pstore := pstoremock.New()
@@ -74,6 +76,8 @@ func TestSaveLoad(t *testing.T) {
 }
 
 func TestGetStampIssuer(t *testing.T) {
+	t.Parallel()
+
 	store := inmemstore.New()
 	defer store.Close()
 	chainID := int64(0)
@@ -208,6 +212,8 @@ func TestGetStampIssuer(t *testing.T) {
 }
 
 func TestSetExpired(t *testing.T) {
+	t.Parallel()
+
 	store := inmemstore.New()
 	testutil.CleanupCloser(t, store)
 
@@ -223,33 +229,32 @@ func TestSetExpired(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = store.Put(postage.NewStampItem().WithChunkAddress(swarm.RandAddress(t)).WithBatchID(batch))
+	itemExists := postage.NewStampItem().WithChunkAddress(swarm.RandAddress(t)).WithBatchID(batch)
+	err = store.Put(itemExists)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = store.Put(postage.NewStampItem().WithChunkAddress(swarm.RandAddress(t)).WithBatchID(notExistsBatch))
+	itemNotExists := postage.NewStampItem().WithChunkAddress(swarm.RandAddress(t)).WithBatchID(notExistsBatch)
+	err = store.Put(itemNotExists)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	issuer := newTestStampIssuer(t, 1000)
-	err = ps.Add(issuer)
+	err = ps.Add(newTestStampIssuerID(t, 1000, itemExists.BatchID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = ps.Add(newTestStampIssuerID(t, 1000, itemNotExists.BatchID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = ps.HandleStampExpiry(context.Background(), itemNotExists.BatchID)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, _, err = ps.GetStampIssuer(issuer.ID())
-	if !errors.Is(err, postage.ErrNotUsable) {
-		t.Fatalf("expected %v, got %v", postage.ErrNotUsable, err)
-	}
-
-	err = ps.HandleStampExpiry(context.Background(), issuer.ID())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_, _, err = ps.GetStampIssuer(issuer.ID())
+	_, _, err = ps.GetStampIssuer(itemNotExists.BatchID)
 	if !errors.Is(err, postage.ErrNotFound) {
 		t.Fatalf("expected %v, got %v", postage.ErrNotFound, err)
 	}
@@ -278,6 +283,16 @@ func TestSetExpired(t *testing.T) {
 		},
 	)
 	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = store.Get(itemExists)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = store.Get(itemNotExists)
+	if err == nil {
 		t.Fatal(err)
 	}
 

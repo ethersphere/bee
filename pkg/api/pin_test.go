@@ -5,16 +5,21 @@
 package api_test
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
-	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	mockpost "github.com/ethersphere/bee/v2/pkg/postage/mock"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
+	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 func checkPinHandlers(t *testing.T, client *http.Client, rootHash string, createPin bool) {
@@ -95,6 +100,16 @@ func TestPinHandlers(t *testing.T) {
 		checkPinHandlers(t, client, rootHash, true)
 	})
 
+	t.Run("no pins", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodGet, "/pins", http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(struct {
+				References []swarm.Address `json:"references"`
+			}{
+				References: make([]swarm.Address, 0),
+			}),
+		)
+	})
+
 	t.Run("bytes missing", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, "/pins/"+swarm.RandAddress(t).String(), http.StatusNotFound)
 	})
@@ -131,7 +146,6 @@ func TestPinHandlers(t *testing.T) {
 		rootHash = strings.Trim(header.Get(api.ETagHeader), "\"")
 		checkPinHandlers(t, client, rootHash, false)
 	})
-
 }
 
 func TestPinHandlersInvalidInputs(t *testing.T) {
@@ -172,9 +186,7 @@ func TestPinHandlersInvalidInputs(t *testing.T) {
 	}}
 
 	for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodDelete} {
-		method := method
 		for _, tc := range tests {
-			tc := tc
 			t.Run(method+" "+tc.name, func(t *testing.T) {
 				t.Parallel()
 
@@ -184,4 +196,52 @@ func TestPinHandlersInvalidInputs(t *testing.T) {
 			})
 		}
 	}
+}
+
+const pinRef = "620fcd78c7ce54da2d1b7cc2274a02e190cbe8fecbc3bd244690ab6517ce8f39"
+
+func TestIntegrityHandler(t *testing.T) {
+	t.Parallel()
+
+	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+		testServer, _, _, _ := newTestServer(t, testServerOptions{
+			PinIntegrity: &mockPinIntegrity{
+				Store:  inmemstore.New(),
+				tester: t,
+			},
+		})
+
+		endp := "/pins/check?ref=" + pinRef
+
+		// When probe is not set health endpoint should indicate that node is not healthy
+		jsonhttptest.Request(t, testServer, http.MethodGet, endp, http.StatusOK, jsonhttptest.WithExpectedResponse(nil))
+	})
+
+	t.Run("wrong hash format", func(t *testing.T) {
+		t.Parallel()
+		testServer, _, _, _ := newTestServer(t, testServerOptions{
+			PinIntegrity: &mockPinIntegrity{
+				Store:  inmemstore.New(),
+				tester: t,
+			},
+		})
+
+		endp := "/pins/check?ref=0xbadhash"
+
+		// When probe is not set health endpoint should indicate that node is not healthy
+		jsonhttptest.Request(t, testServer, http.MethodGet, endp, http.StatusBadRequest, jsonhttptest.WithExpectedResponse(nil))
+	})
+}
+
+type mockPinIntegrity struct {
+	tester *testing.T
+	Store  storage.Store
+}
+
+func (p *mockPinIntegrity) Check(ctx context.Context, logger log.Logger, pin string, out chan storer.PinStat) {
+	if pin != pinRef {
+		p.tester.Fatal("bad pin", pin)
+	}
+	close(out)
 }

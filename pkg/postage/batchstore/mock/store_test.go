@@ -9,11 +9,13 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/postage/batchstore/mock"
-	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
+	"github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
+	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
 )
 
 func TestBatchStore(t *testing.T) {
+	t.Parallel()
+
 	const testCnt = 3
 
 	testBatch := postagetesting.MustNewBatch(
@@ -54,6 +56,8 @@ func TestBatchStore(t *testing.T) {
 }
 
 func TestBatchStorePutChainState(t *testing.T) {
+	t.Parallel()
+
 	const testCnt = 3
 
 	testChainState := postagetesting.NewChainState()
@@ -74,6 +78,8 @@ func TestBatchStorePutChainState(t *testing.T) {
 }
 
 func TestBatchStoreWithBatch(t *testing.T) {
+	t.Parallel()
+
 	testBatch := postagetesting.MustNewBatch()
 	batchStore := mock.New(
 		mock.WithBatch(testBatch),

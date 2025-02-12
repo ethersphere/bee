@@ -35,7 +35,7 @@ These are work items that are good if you're contributing to the codebase for th
 
 - Performance optimizations
 
-  The best way to propose any optimizations would be to provide the relevant data to describe the problem and then also the same data after the optimizations are done. Keep in mind, Bee nodes work in a distributed system, so changes that would seem good locally may not hold in some cases. The Bee client in debug mode can show you metrics as well as pprof information. This can be used to demonstrate the optimizations.
+  The best way to propose any optimizations would be to provide the relevant data to describe the problem and then also the same data after the optimizations are done. Keep in mind, Bee nodes work in a distributed system, so changes that would seem good locally may not hold in some cases. The Bee client can show you metrics as well as pprof information. This can be used to demonstrate the optimizations.
 
   - Concurrency related optimizations
 
@@ -57,7 +57,7 @@ These are work items that are good if you're contributing to the codebase for th
 
   - Core network abstractions
 
-    `p2p`, `topology`, `accouting`.
+    `p2p`, `topology`, `accounting`.
 
   - Core storage abstractions
 

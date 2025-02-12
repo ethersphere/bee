@@ -17,6 +17,17 @@ type Proof struct {
 	Index         int
 }
 
+// Hash overrides base hash function of Hasher to fill buffer with zeros until chunk length
+func (p Prover) Hash(b []byte) ([]byte, error) {
+	for i := p.size; i < p.maxSize; i += len(zerosection) {
+		_, err := p.Hasher.Write(zerosection)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return p.Hasher.Hash(b)
+}
+
 // Proof returns the inclusion proof of the i-th data segment
 func (p Prover) Proof(i int) Proof {
 	index := i
@@ -35,27 +46,40 @@ func (p Prover) Proof(i int) Proof {
 
 	secsize := 2 * p.segmentSize
 	offset := i * secsize
-	section := p.bmt.buffer[offset : offset+secsize]
-	return Proof{section, sisters, p.span, index}
+	section := make([]byte, secsize)
+	copy(section, p.bmt.buffer[offset:offset+secsize])
+	segment, firstSegmentSister := section[:p.segmentSize], section[p.segmentSize:]
+	if index%2 != 0 {
+		segment, firstSegmentSister = firstSegmentSister, segment
+	}
+	sisters = append([][]byte{firstSegmentSister}, sisters...)
+	return Proof{segment, sisters, p.span, index}
 }
 
 // Verify returns the bmt hash obtained from the proof which can then be checked against
 // the BMT hash of the chunk
 func (p Prover) Verify(i int, proof Proof) (root []byte, err error) {
+	var section []byte
+	if i%2 == 0 {
+		section = append(append(section, proof.ProveSegment...), proof.ProofSegments[0]...)
+	} else {
+		section = append(append(section, proof.ProofSegments[0]...), proof.ProveSegment...)
+	}
 	i = i / 2
 	n := p.bmt.leaves[i]
+	hasher := p.hasher()
 	isLeft := n.isLeft
-	root, err = doHash(n.hasher, proof.ProveSegment)
+	root, err = doHash(hasher, section)
 	if err != nil {
 		return nil, err
 	}
 	n = n.parent
 
-	for _, sister := range proof.ProofSegments {
+	for _, sister := range proof.ProofSegments[1:] {
 		if isLeft {
-			root, err = doHash(n.hasher, root, sister)
+			root, err = doHash(hasher, root, sister)
 		} else {
-			root, err = doHash(n.hasher, sister, root)
+			root, err = doHash(hasher, sister, root)
 		}
 		if err != nil {
 			return nil, err
@@ -63,7 +87,7 @@ func (p Prover) Verify(i int, proof Proof) (root []byte, err error) {
 		isLeft = n.isLeft
 		n = n.parent
 	}
-	return sha3hash(proof.Span, root)
+	return doHash(hasher, proof.Span, root)
 }
 
 func (n *node) getSister(isLeft bool) []byte {

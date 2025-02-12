@@ -7,8 +7,8 @@ package api
 import (
 	"net/http"
 
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/gorilla/mux"
 )
 
@@ -23,9 +23,14 @@ func (s *Service) hasChunkHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	has, err := s.storer.ChunkStore().Has(r.Context(), paths.Address)
+	address := paths.Address
+	if v := getAddressFromContext(r.Context()); !v.IsZero() {
+		address = v
+	}
+
+	has, err := s.storer.ChunkStore().Has(r.Context(), address)
 	if err != nil {
-		logger.Debug("has chunk failed", "chunk_address", paths.Address, "error", err)
+		logger.Debug("has chunk failed", "chunk_address", address, "error", err)
 		jsonhttp.BadRequest(w, err)
 		return
 	}

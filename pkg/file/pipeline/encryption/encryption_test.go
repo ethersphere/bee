@@ -9,10 +9,10 @@ import (
 	"encoding/binary"
 	"testing"
 
-	mockenc "github.com/ethersphere/bee/pkg/encryption/mock"
-	"github.com/ethersphere/bee/pkg/file/pipeline"
-	"github.com/ethersphere/bee/pkg/file/pipeline/encryption"
-	mock "github.com/ethersphere/bee/pkg/file/pipeline/mock"
+	mockenc "github.com/ethersphere/bee/v2/pkg/encryption/mock"
+	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
+	"github.com/ethersphere/bee/v2/pkg/file/pipeline/encryption"
+	mock "github.com/ethersphere/bee/v2/pkg/file/pipeline/mock"
 )
 
 var (
@@ -38,7 +38,7 @@ func init() {
 	}
 }
 
-// TestEncyrption tests that the encyption writer works correctly.
+// TestEncyrption tests that the encryption writer works correctly.
 func TestEncryption(t *testing.T) {
 	t.Parallel()
 

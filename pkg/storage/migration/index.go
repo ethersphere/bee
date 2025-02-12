@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 
-	storage "github.com/ethersphere/bee/pkg/storage"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
 )
 
 var ErrItemIDShouldntChange = errors.New("item.ID shouldn't be changing after update")
@@ -62,11 +62,11 @@ func (o *options) applyAll(opts []option) {
 // NewStepOnIndex creates new migration step with update and/or delete operation.
 // Migration will iterate on all elements selected by query and delete or update items
 // based on supplied callback functions.
-func NewStepOnIndex(query storage.Query, opts ...option) StepFn {
+func NewStepOnIndex(s storage.BatchStore, query storage.Query, opts ...option) StepFn {
 	o := defaultOptions()
 	o.applyAll(opts)
 
-	return func(s storage.BatchedStore) error {
+	return func() error {
 		return stepOnIndex(s, query, o)
 	}
 }

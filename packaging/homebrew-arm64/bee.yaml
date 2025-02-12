@@ -1,82 +1,122 @@
 ## Bee configuration - https://docs.ethswarm.org/docs/working-with-bee/configuration
 
-## HTTP API listen address (default ":1633")
-# api-addr: :1633
-## chain block time (default 15)
-# block-time: 15
-## initial nodes to connect to (default [/dnsaddr/mainnet.ethswarm.org])
-# bootnode: [/dnsaddr/mainnet.ethswarm.org]
+## allow to advertise private CIDRs to the public network
+# allow-private-cidrs: false
+## HTTP API listen address
+# api-addr: 127.0.0.1:1633
+## chain block time
+# block-time: "5"
+## rpc blockchain endpoint
+# blockchain-rpc-endpoint: ""
+## initial nodes to connect to
+# bootnode: ["/dnsaddr/mainnet.ethswarm.org"]
 ## cause the node to always accept incoming connections
 # bootnode-mode: false
-## config file (default is /home/<user>/.bee.yaml)
-config: /opt/homebrew/etc/swarm-bee/bee.yaml
+## cache capacity in chunks, multiply by 4096 to get approximate capacity in bytes
+# cache-capacity: "1000000"
+## enable forwarded content caching
+# cache-retrieval: true
+## enable chequebook
+# chequebook-enable: true
+## config file (default is $HOME/.bee.yaml)
+config: "/opt/homebrew/etc/swarm-bee/bee.yaml"
 ## origins with CORS headers enabled
 # cors-allowed-origins: []
-## data directory (default "/home/<user>/.bee")
-data-dir: /opt/homebrew/var/lib/swarm-bee
-## cache capacity in chunks, multiply by 4096 to get approximate capacity in bytes
-# cache-capacity: 1000000
-## number of open files allowed by database
-# db-open-files-limit: 200
+## data directory
+data-dir: "/opt/homebrew/var/lib/swarm-bee"
 ## size of block cache of the database in bytes
-# db-block-cache-capacity: 33554432
-## size of the database write buffer in bytes
-# db-write-buffer-size: 33554432
+# db-block-cache-capacity: "33554432"
 ## disables db compactions triggered by seeks
-# db-disable-seeks-compaction: false
-## debug HTTP API listen address (default ":1635")
-debug-api-addr: 127.0.0.1:1635
-## enable debug HTTP API
-debug-api-enable: true
+# db-disable-seeks-compaction: true
+## number of open files allowed by database
+# db-open-files-limit: "200"
+## size of the database write buffer in bytes
+# db-write-buffer-size: "33554432"
 ## cause the node to start in full mode
 # full-node: false
+## help for printconfig
+# help: false
+## triggers connect to main net bootnodes.
+# mainnet: true
+## minimum radius storage threshold
+# minimum-storage-radius: "0"
 ## NAT exposed address
 # nat-addr: ""
-## ID of the Swarm network (default 1)
-# network-id: 1
-## P2P listen address (default ":1634")
+## suggester for target neighborhood
+# neighborhood-suggester: https://api.swarmscan.io/v1/network/neighborhoods/suggestion
+## ID of the Swarm network
+# network-id: "1"
+## P2P listen address
 # p2p-addr: :1634
 ## enable P2P WebSocket transport
 # p2p-ws-enable: false
 ## password for decrypting keys
 # password: ""
 ## path to a file that contains password for decrypting keys
-password-file: /opt/homebrew/var/lib/swarm-bee/password
-## percentage below the peers payment threshold when we initiate settlement (default 50)
+password-file: "/opt/homebrew/var/lib/swarm-bee/password"
+## percentage below the peers payment threshold when we initiate settlement
 # payment-early-percent: 50
-## threshold in BZZ where you expect to get paid from your peers (default 100000000)
-# payment-threshold: 100000000
-## excess debt above payment threshold in percentages where you disconnect from your peer (default 25)
+## threshold in BZZ where you expect to get paid from your peers
+# payment-threshold: "13500000"
+## excess debt above payment threshold in percentages where you disconnect from your peer
 # payment-tolerance-percent: 25
 ## postage stamp contract address
 # postage-stamp-address: ""
+## postage stamp contract start block number
+# postage-stamp-start-block: "0"
+## enable pprof mutex profile
+# pprof-mutex: false
+## enable pprof block profile
+# pprof-profile: false
+## price oracle contract address
+# price-oracle-address: ""
+## redistribution contract address
+# redistribution-address: ""
+## reserve capacity doubling
+# reserve-capacity-doubling: 0
 ## ENS compatible API endpoint for a TLD and with contract address, can be repeated, format [tld:][contract-addr@]url
 # resolver-options: []
-## enable swap (default true)
-# swap-enable: true
-## swap blockchain endpoint (default "") [deprecated]
-# swap-endpoint: ""
-## blockchain rpc endpoint (default "")
-# blockchain-rpc-endpoint: ""
-## swap factory address
-# swap-factory-address: ""
-## legacy swap factory addresses
-# swap-legacy-factory-addresses: ""
-## initial deposit if deploying a new chequebook (default 0)
-# swap-initial-deposit: 0
-## gas price in wei to use for deployment and funding (default "")
+## forces the node to resync postage contract data
+# resync: false
+## staking contract address
+# staking-address: ""
+## lru memory caching capacity in number of statestore entries
+# statestore-cache-capacity: "100000"
+## protect nodes from getting kicked out on bootnode
+# static-nodes: []
+## enable storage incentives feature
+# storage-incentives-enable: true
+## gas price in wei to use for deployment and funding
 # swap-deployment-gas-price: ""
+## enable swap
+# swap-enable: false
+## swap blockchain endpoint
+# swap-endpoint: ""
+## swap factory addresses
+# swap-factory-address: ""
+## initial deposit if deploying a new chequebook
+# swap-initial-deposit: "0"
+## neighborhood to target in binary format (ex: 111111001) for mining the initial overlay
+# target-neighborhood: ""
 ## enable tracing
 # tracing-enable: false
-## endpoint to send tracing data (default "127.0.0.1:6831")
+## endpoint to send tracing data
 # tracing-endpoint: 127.0.0.1:6831
-## service name identifier for tracing (default "bee")
+## host to send tracing data
+# tracing-host: ""
+## port to send tracing data
+# tracing-port: ""
+## service name identifier for tracing
 # tracing-service-name: bee
-## proof-of-identity transaction hash
-# transaction: ""
-## log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace (default "info")
+## skips the gas estimate step for contract transactions
+# transaction-debug-mode: false
+## bootstrap node using postage snapshot from the network
+# use-postage-snapshot: false
+## log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace
 # verbosity: info
+## time to warmup the node before some major protocols can be kicked off
+# warmup-time: 5m0s
 ## send a welcome message string during handshakes
 # welcome-message: ""
-## triggers connection to main network
-# mainnet: true
+## withdrawal target addresses
+# withdrawal-addresses-whitelist: []

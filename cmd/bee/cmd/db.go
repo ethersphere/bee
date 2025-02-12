@@ -18,15 +18,23 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/node"
-	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storer"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/node"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/puller"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/storer/migration"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/util/ioutil"
 	"github.com/spf13/cobra"
 )
 
-const optionNameValidation = "validate"
+const (
+	optionNameValidation     = "validate"
+	optionNameValidationPin  = "validate-pin"
+	optionNameCollectionPin  = "pin"
+	optionNameOutputLocation = "output"
+)
 
 func (c *command) initDBCmd() {
 	cmd := &cobra.Command{
@@ -40,6 +48,8 @@ func (c *command) initDBCmd() {
 	dbInfoCmd(cmd)
 	dbCompactCmd(cmd)
 	dbValidateCmd(cmd)
+	dbValidatePinsCmd(cmd)
+	dbRepairReserve(cmd)
 
 	c.root.AddCommand(cmd)
 }
@@ -74,7 +84,8 @@ func dbInfoCmd(cmd *cobra.Command) {
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
-				ReserveCapacity: node.ReserveCapacity,
+				ReserveCapacity: storer.DefaultReserveCapacity,
+				CacheCapacity:   1_000_000,
 			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
@@ -122,7 +133,12 @@ func dbCompactCmd(cmd *cobra.Command) {
 			if err != nil {
 				logger.Error(err, "getting sleep value failed")
 			}
-			defer func() { time.Sleep(d) }()
+			defer func() {
+				if d > 0 {
+					logger.Info("command has finished, sleeping...", "duration", d.String())
+					time.Sleep(d)
+				}
+			}()
 
 			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
 			if err != nil {
@@ -144,13 +160,13 @@ func dbCompactCmd(cmd *cobra.Command) {
 			time.Sleep(10 * time.Second)
 			logger.Warning("proceeding with database compaction...")
 
-			localstorePath := path.Join(dataDir, "localstore")
+			localstorePath := path.Join(dataDir, ioutil.DataPathLocalstore)
 
 			err = storer.Compact(context.Background(), localstorePath, &storer.Options{
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
-				ReserveCapacity: node.ReserveCapacity,
+				ReserveCapacity: storer.DefaultReserveCapacity,
 			}, validation)
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
@@ -162,6 +178,137 @@ func dbCompactCmd(cmd *cobra.Command) {
 	c.Flags().String(optionNameDataDir, "", "data directory")
 	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
 	c.Flags().Bool(optionNameValidation, false, "run chunk validation checks before and after the compaction")
+	c.Flags().Duration(optionNameSleepAfter, time.Duration(0), "time to sleep after the operation finished")
+	cmd.AddCommand(c)
+}
+
+func dbValidatePinsCmd(cmd *cobra.Command) {
+	c := &cobra.Command{
+		Use:   "validate-pin",
+		Short: "Validates pin collection chunks with sharky store.",
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			v, err := cmd.Flags().GetString(optionNameVerbosity)
+			if err != nil {
+				return fmt.Errorf("get verbosity: %w", err)
+			}
+			v = strings.ToLower(v)
+			logger, err := newLogger(cmd, v)
+			if err != nil {
+				return fmt.Errorf("new logger: %w", err)
+			}
+
+			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
+			if err != nil {
+				return fmt.Errorf("get data-dir: %w", err)
+			}
+			if dataDir == "" {
+				return errors.New("no data-dir provided")
+			}
+
+			providedPin, err := cmd.Flags().GetString(optionNameCollectionPin)
+			if err != nil {
+				return fmt.Errorf("read pin option: %w", err)
+			}
+
+			outputLoc, err := cmd.Flags().GetString(optionNameOutputLocation)
+			if err != nil {
+				return fmt.Errorf("read location option: %w", err)
+			}
+
+			localstorePath := path.Join(dataDir, ioutil.DataPathLocalstore)
+
+			err = storer.ValidatePinCollectionChunks(context.Background(), localstorePath, providedPin, outputLoc, &storer.Options{
+				Logger:          logger,
+				RadiusSetter:    noopRadiusSetter{},
+				Batchstore:      new(postage.NoOpBatchStore),
+				ReserveCapacity: storer.DefaultReserveCapacity,
+			})
+			if err != nil {
+				return fmt.Errorf("localstore: %w", err)
+			}
+
+			return nil
+		},
+	}
+	c.Flags().String(optionNameDataDir, "", "data directory")
+	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
+	c.Flags().String(optionNameCollectionPin, "", "only validate given pin")
+	c.Flags().String(optionNameOutputLocation, "", "location and name of the output file")
+	cmd.AddCommand(c)
+}
+
+func dbRepairReserve(cmd *cobra.Command) {
+	c := &cobra.Command{
+		Use:   "repair-reserve",
+		Short: "Repairs the reserve by resetting the binIDs and removes dangling entries.",
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			v, err := cmd.Flags().GetString(optionNameVerbosity)
+			if err != nil {
+				return fmt.Errorf("get verbosity: %w", err)
+			}
+			v = strings.ToLower(v)
+			logger, err := newLogger(cmd, v)
+			if err != nil {
+				return fmt.Errorf("new logger: %w", err)
+			}
+
+			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
+			if err != nil {
+				return fmt.Errorf("get data-dir: %w", err)
+			}
+			if dataDir == "" {
+				return errors.New("no data-dir provided")
+			}
+
+			logger.Warning("Repair will recreate the reserve entries based on the chunk availability in the chunkstore. The epoch time and bin IDs will be reset.")
+			logger.Warning("The pullsync peer sync intervals are reset so on the next run, the node will perform historical syncing.")
+			logger.Warning("This is a destructive process. If the process is stopped for any reason, the reserve may become corrupted.")
+			logger.Warning("To prevent permanent loss of data, data should be backed up before running the cmd.")
+			logger.Warning("You have another 10 seconds to change your mind and kill this process with CTRL-C...")
+			time.Sleep(10 * time.Second)
+			logger.Warning("proceeding with repair...")
+
+			d, err := cmd.Flags().GetDuration(optionNameSleepAfter)
+			if err != nil {
+				logger.Error(err, "getting sleep value failed")
+			}
+			defer func() {
+				if d > 0 {
+					logger.Info("command has finished, sleeping...", "duration", d.String())
+					time.Sleep(d)
+				}
+			}()
+
+			db, err := storer.New(cmd.Context(), path.Join(dataDir, "localstore"), &storer.Options{
+				Logger:          logger,
+				RadiusSetter:    noopRadiusSetter{},
+				Batchstore:      new(postage.NoOpBatchStore),
+				ReserveCapacity: storer.DefaultReserveCapacity,
+				CacheCapacity:   1_000_000,
+			})
+			if err != nil {
+				return fmt.Errorf("localstore: %w", err)
+			}
+			defer db.Close()
+
+			err = migration.ReserveRepairer(db.Storage(), storage.ChunkType, logger)()
+			if err != nil {
+				return fmt.Errorf("repair: %w", err)
+			}
+
+			stateStore, _, err := node.InitStateStore(logger, dataDir, 1000)
+			if err != nil {
+				return fmt.Errorf("new statestore: %w", err)
+			}
+			defer stateStore.Close()
+
+			return stateStore.Iterate(puller.IntervalPrefix, func(key, val []byte) (stop bool, err error) {
+				return false, stateStore.Delete(string(key))
+			})
+		},
+	}
+	c.Flags().String(optionNameDataDir, "", "data directory")
+	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
 	c.Flags().Duration(optionNameSleepAfter, time.Duration(0), "time to sleep after the operation finished")
 	cmd.AddCommand(c)
 }
@@ -194,13 +341,13 @@ func dbValidateCmd(cmd *cobra.Command) {
 			logger.Warning("    Progress logged at Info level.")
 			logger.Warning("    SOC chunks logged at Debug level.")
 
-			localstorePath := path.Join(dataDir, "localstore")
+			localstorePath := path.Join(dataDir, ioutil.DataPathLocalstore)
 
-			err = storer.Validate(context.Background(), localstorePath, &storer.Options{
+			err = storer.ValidateRetrievalIndex(context.Background(), localstorePath, &storer.Options{
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
-				ReserveCapacity: node.ReserveCapacity,
+				ReserveCapacity: storer.DefaultReserveCapacity,
 			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
@@ -263,7 +410,8 @@ func dbExportReserveCmd(cmd *cobra.Command) {
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
-				ReserveCapacity: node.ReserveCapacity,
+				ReserveCapacity: storer.DefaultReserveCapacity,
+				CacheCapacity:   1_000_000,
 			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
@@ -345,7 +493,8 @@ func dbExportPinningCmd(cmd *cobra.Command) {
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
-				ReserveCapacity: 4_194_304,
+				ReserveCapacity: storer.DefaultReserveCapacity,
+				CacheCapacity:   1_000_000,
 			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
@@ -454,7 +603,8 @@ func dbImportReserveCmd(cmd *cobra.Command) {
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
-				ReserveCapacity: node.ReserveCapacity,
+				ReserveCapacity: storer.DefaultReserveCapacity,
+				CacheCapacity:   1_000_000,
 			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
@@ -537,7 +687,8 @@ func dbImportPinningCmd(cmd *cobra.Command) {
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
-				ReserveCapacity: 4_194_304,
+				ReserveCapacity: storer.DefaultReserveCapacity,
+				CacheCapacity:   1_000_000,
 			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
@@ -618,8 +769,8 @@ func dbNukeCmd(cmd *cobra.Command) {
 		optionNameForgetOverlay = "forget-overlay"
 		optionNameForgetStamps  = "forget-stamps"
 
-		localstore   = "localstore"
-		kademlia     = "kademlia-metrics"
+		localstore   = ioutil.DataPathLocalstore
+		kademlia     = ioutil.DataPathKademlia
 		statestore   = "statestore"
 		stamperstore = "stamperstore"
 	)
@@ -641,8 +792,12 @@ func dbNukeCmd(cmd *cobra.Command) {
 			if err != nil {
 				logger.Error(err, "getting sleep value failed")
 			}
-
-			defer func() { time.Sleep(d) }()
+			defer func() {
+				if d > 0 {
+					logger.Info("command has finished, sleeping...", "duration", d.String())
+					time.Sleep(d)
+				}
+			}()
 
 			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
 			if err != nil {
@@ -684,6 +839,8 @@ func dbNukeCmd(cmd *cobra.Command) {
 				return nil
 			}
 
+			logger.Info("nuking statestore...")
+
 			forgetStamps, err := cmd.Flags().GetBool(optionNameForgetStamps)
 			if err != nil {
 				return fmt.Errorf("get forget stamps: %w", err)
@@ -709,12 +866,13 @@ func dbNukeCmd(cmd *cobra.Command) {
 					return fmt.Errorf("remove stamperstore: %w", err)
 				}
 			}
+
 			return nil
 		}}
 	c.Flags().String(optionNameDataDir, "", "data directory")
 	c.Flags().String(optionNameVerbosity, "trace", "verbosity level")
 	c.Flags().Duration(optionNameSleepAfter, time.Duration(0), "time to sleep after the operation finished")
-	c.Flags().Bool(optionNameForgetOverlay, false, "forget the overlay and deploy a new chequebook on next bootup")
+	c.Flags().Bool(optionNameForgetOverlay, false, "forget the overlay and deploy a new chequebook on next boot-up")
 	c.Flags().Bool(optionNameForgetStamps, false, "forget the existing stamps belonging to the node. even when forgotten, they will show up again after a chain resync")
 	cmd.AddCommand(c)
 }
@@ -740,7 +898,7 @@ func removeContent(path string) error {
 			return err
 		}
 	}
-	return os.Remove(path)
+	return nil
 }
 
 func MarshalChunkToBinary(c swarm.Chunk) ([]byte, error) {

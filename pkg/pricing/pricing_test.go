@@ -11,13 +11,13 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/p2p/protobuf"
-	"github.com/ethersphere/bee/pkg/p2p/streamtest"
-	"github.com/ethersphere/bee/pkg/pricing"
-	"github.com/ethersphere/bee/pkg/pricing/pb"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/v2/pkg/p2p/streamtest"
+	"github.com/ethersphere/bee/v2/pkg/pricing"
+	"github.com/ethersphere/bee/v2/pkg/pricing/pb"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 type testThresholdObserver struct {
@@ -111,7 +111,7 @@ func TestAnnouncePaymentWithInsufficientThreshold(t *testing.T) {
 
 	observer := &testThresholdObserver{}
 
-	minThreshold := big.NewInt(1_000_000) // above requested threashold
+	minThreshold := big.NewInt(1_000_000) // above requested threshold
 
 	recipient := pricing.New(nil, logger, testThreshold, testLightThreshold, minThreshold)
 	recipient.SetPaymentThresholdObserver(observer)

@@ -16,9 +16,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/btcsuite/btcd/btcec"
-	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/keystore"
+	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/keystore"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/scrypt"
 	"golang.org/x/crypto/sha3"
@@ -83,7 +83,11 @@ func encryptKey(k *ecdsa.PrivateKey, password string, edg keystore.EDG) ([]byte,
 		}
 		addr = a
 	case elliptic.P256():
-		addr = elliptic.Marshal(elliptic.P256(), k.PublicKey.X, k.PublicKey.Y)
+		privKey, err := k.ECDH()
+		if err != nil {
+			return nil, fmt.Errorf("generate key: %w", err)
+		}
+		addr = privKey.PublicKey().Bytes()
 	default:
 		return nil, fmt.Errorf("unsupported curve: %v", k.PublicKey.Curve)
 	}

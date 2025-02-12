@@ -10,15 +10,17 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/inmemstore"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 // TestStamperStamping tests if the stamp created by the stamper is valid.
 func TestStamperStamping(t *testing.T) {
+	t.Parallel()
+
 	privKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
@@ -33,7 +35,7 @@ func TestStamperStamping(t *testing.T) {
 		t.Helper()
 
 		chunkAddr := swarm.RandAddress(t)
-		stamp, err := stamper.Stamp(chunkAddr)
+		stamp, err := stamper.Stamp(chunkAddr, chunkAddr)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -71,12 +73,14 @@ func TestStamperStamping(t *testing.T) {
 		// issue another 15
 		// collision depth is 8, committed batch depth is 12, bucket volume 2^4
 		for i := 0; i < 14; i++ {
-			_, err = stamper.Stamp(swarm.RandAddressAt(t, chunkAddr, 8))
+			randAddr := swarm.RandAddressAt(t, chunkAddr, 8)
+			_, err = stamper.Stamp(randAddr, randAddr)
 			if err != nil {
 				t.Fatalf("error adding stamp at step %d: %v", i, err)
 			}
 		}
-		stamp, err := stamper.Stamp(swarm.RandAddressAt(t, chunkAddr, 8))
+		randAddr := swarm.RandAddressAt(t, chunkAddr, 8)
+		stamp, err := stamper.Stamp(randAddr, randAddr)
 		if err != nil {
 			t.Fatalf("error adding last stamp: %v", err)
 		}
@@ -95,54 +99,44 @@ func TestStamperStamping(t *testing.T) {
 		// issue another 15
 		// collision depth is 8, committed batch depth is 12, bucket volume 2^4
 		for i := 0; i < 15; i++ {
-			_, err = stamper.Stamp(swarm.RandAddressAt(t, chunkAddr, 8))
+			randAddr := swarm.RandAddressAt(t, chunkAddr, 8)
+			_, err = stamper.Stamp(randAddr, randAddr)
 			if err != nil {
 				t.Fatalf("error adding stamp at step %d: %v", i, err)
 			}
 		}
+		randAddr := swarm.RandAddressAt(t, chunkAddr, 8)
 		// the bucket should now be full, not allowing a stamp for the  pivot chunk
-		if _, err = stamper.Stamp(swarm.RandAddressAt(t, chunkAddr, 8)); !errors.Is(err, postage.ErrBucketFull) {
+		if _, err = stamper.Stamp(randAddr, randAddr); !errors.Is(err, postage.ErrBucketFull) {
 			t.Fatalf("expected ErrBucketFull, got %v", err)
 		}
 	})
 
-	t.Run("incorrect old index", func(t *testing.T) {
+	t.Run("reuse index but get new timestamp for mutable or immutable batch", func(t *testing.T) {
 		st := newTestStampIssuerMutability(t, 1000, false)
 		chunkAddr := swarm.RandAddress(t)
 		bIdx := postage.ToBucket(st.BucketDepth(), chunkAddr)
-		index := postage.IndexToBytes(bIdx, 100)
+		index := postage.IndexToBytes(bIdx, 4)
 		testItem := postage.NewStampItem().
 			WithBatchID(st.ID()).
 			WithChunkAddress(chunkAddr).
 			WithBatchIndex(index)
 		testSt := &testStore{Store: inmemstore.New(), stampItem: testItem}
 		stamper := postage.NewStamper(testSt, st, signer)
-		stamp, err := stamper.Stamp(chunkAddr)
+		stamp, err := stamper.Stamp(chunkAddr, chunkAddr)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := stamp.Valid(chunkAddr, owner, 12, 8, true); err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-		if bytes.Equal(stamp.Index(), testItem.BatchIndex) {
-			t.Fatalf("expected index to be different, got %x", stamp.Index())
-		}
-	})
-
-	t.Run("incorrect old index immutable", func(t *testing.T) {
-		st := newTestStampIssuerMutability(t, 1000, true)
-		chunkAddr := swarm.RandAddress(t)
-		bIdx := postage.ToBucket(st.BucketDepth(), chunkAddr)
-		index := postage.IndexToBytes(bIdx, 100)
-		testItem := postage.NewStampItem().
-			WithBatchID(st.ID()).
-			WithChunkAddress(chunkAddr).
-			WithBatchIndex(index)
-		testSt := &testStore{Store: inmemstore.New(), stampItem: testItem}
-		stamper := postage.NewStamper(testSt, st, signer)
-		_, err := stamper.Stamp(chunkAddr)
-		if !errors.Is(err, postage.ErrOverwriteImmutableIndex) {
-			t.Fatalf("got err %v, wanted %v", err, postage.ErrOverwriteImmutableIndex)
+		for _, mutability := range []bool{true, false} {
+			if err := stamp.Valid(chunkAddr, owner, 12, 8, mutability); err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+			if bytes.Equal(stamp.Timestamp(), testItem.BatchTimestamp) {
+				t.Fatalf("expected timestamp to be different, got %x", stamp.Index())
+			}
+			if !bytes.Equal(stamp.Index(), testItem.BatchIndex) {
+				t.Fatalf("expected index to be the same, got %x", stamp.Index())
+			}
 		}
 	})
 

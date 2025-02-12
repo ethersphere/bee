@@ -7,9 +7,9 @@ package epochs
 import (
 	"context"
 
-	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/feeds"
-	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/feeds"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
 )
 
 var _ feeds.Updater = (*updater)(nil)
@@ -34,7 +34,7 @@ func NewUpdater(putter storage.Putter, signer crypto.Signer, topic []byte) (feed
 // Update pushes an update to the feed through the chunk stores
 func (u *updater) Update(ctx context.Context, at int64, payload []byte) error {
 	e := next(u.epoch, u.last, uint64(at))
-	err := u.Put(ctx, e, at, payload)
+	err := u.Put(ctx, e, payload)
 	if err != nil {
 		return err
 	}

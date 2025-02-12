@@ -12,13 +12,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/accounting"
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/p2p"
-	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
-	"github.com/ethersphere/bee/pkg/statestore/mock"
+	"github.com/ethersphere/bee/v2/pkg/accounting"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/p2p"
+	p2pmock "github.com/ethersphere/bee/v2/pkg/p2p/mock"
+	"github.com/ethersphere/bee/v2/pkg/statestore/mock"
 
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 const (
@@ -656,7 +656,7 @@ func TestAccountingCallSettlement(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Credit until payment treshold
+	// Credit until payment threshold
 	err = creditAction.Apply()
 	if err != nil {
 		t.Fatal(err)
@@ -779,7 +779,7 @@ func TestAccountingCallSettlementMonetary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Credit until payment treshold
+	// Credit until payment threshold
 	err = creditAction.Apply()
 	if err != nil {
 		t.Fatal(err)
@@ -803,7 +803,7 @@ func TestAccountingCallSettlementMonetary(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Credit until payment treshold
+	// Credit until payment threshold
 	err = creditAction.Apply()
 	if err != nil {
 		t.Fatal(err)
@@ -909,7 +909,7 @@ func TestAccountingCallSettlementTooSoon(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Credit until payment treshold
+	// Credit until payment threshold
 	err = creditAction.Apply()
 	if err != nil {
 		t.Fatal(err)
@@ -944,7 +944,7 @@ func TestAccountingCallSettlementTooSoon(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Credit until payment treshold
+	// Credit until payment threshold
 	err = creditAction.Apply()
 	if err != nil {
 		t.Fatal(err)

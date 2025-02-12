@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-const MaxDuration time.Duration = math.MaxInt64
+const maxDuration time.Duration = math.MaxInt64
 
 type List struct {
 	mtx sync.Mutex
@@ -25,24 +25,26 @@ type List struct {
 	wg sync.WaitGroup
 }
 
-func NewList() *List {
+func NewList(workerWakeUpDur time.Duration) *List {
 	l := &List{
 		skip: make(map[string]map[string]int64),
 		durC: make(chan time.Duration),
 		quit: make(chan struct{}),
 	}
 
-	l.wg.Add(1)
-	go l.worker()
+	if workerWakeUpDur > 0 {
+		l.wg.Add(1)
+		go l.worker(workerWakeUpDur)
+	}
 
 	return l
 }
 
-func (l *List) worker() {
+func (l *List) worker(d time.Duration) {
 
 	defer l.wg.Done()
 
-	ticker := time.NewTicker(time.Minute)
+	ticker := time.NewTicker(d)
 	defer ticker.Stop()
 
 	for {
@@ -55,6 +57,10 @@ func (l *List) worker() {
 	}
 }
 
+func (l *List) Forever(chunk, peer swarm.Address) {
+	l.Add(chunk, peer, maxDuration)
+}
+
 func (l *List) Add(chunk, peer swarm.Address, expire time.Duration) {
 
 	l.mtx.Lock()
@@ -62,8 +68,8 @@ func (l *List) Add(chunk, peer swarm.Address, expire time.Duration) {
 
 	var t int64
 
-	if expire == MaxDuration {
-		t = MaxDuration.Nanoseconds()
+	if expire == maxDuration {
+		t = maxDuration.Nanoseconds()
 	} else {
 		t = time.Now().Add(expire).UnixNano()
 	}
@@ -82,6 +88,7 @@ func (l *List) ChunkPeers(ch swarm.Address) (peers []swarm.Address) {
 	now := time.Now().UnixNano()
 
 	if p, ok := l.skip[ch.ByteString()]; ok {
+		peers = make([]swarm.Address, 0, len(p))
 		for peer, exp := range p {
 			if exp > now {
 				peers = append(peers, swarm.NewAddress([]byte(peer)))

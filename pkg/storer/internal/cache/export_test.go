@@ -5,11 +5,13 @@
 package cache
 
 import (
+	"context"
 	"fmt"
 	"time"
 
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 type (
@@ -35,9 +37,13 @@ type CacheState struct {
 	Size uint64
 }
 
-func (c *Cache) State(store storage.Store) CacheState {
+func (c *Cache) RemoveOldestMaxBatch(ctx context.Context, st transaction.Storage, count uint64, batchCnt int) error {
+	return c.RemoveOldest(ctx, st, count)
+}
+
+func (c *Cache) State(store storage.Reader) CacheState {
 	state := CacheState{}
-	state.Size = c.Size()
+	state.Size = uint64(c.Size())
 	runner := swarm.ZeroAddress
 
 	err := store.Iterate(
@@ -66,7 +72,7 @@ func (c *Cache) State(store storage.Store) CacheState {
 }
 
 func (c *Cache) IterateOldToNew(
-	st storage.Store,
+	st storage.Reader,
 	start, end swarm.Address,
 	iterateFn func(ch swarm.Address) (bool, error),
 ) error {

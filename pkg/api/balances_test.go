@@ -11,13 +11,13 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/accounting"
-	"github.com/ethersphere/bee/pkg/accounting/mock"
-	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/bigint"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/accounting"
+	"github.com/ethersphere/bee/v2/pkg/accounting/mock"
+	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/bigint"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 func TestBalances(t *testing.T) {
@@ -32,7 +32,6 @@ func TestBalances(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI:       true,
 		AccountingOpts: []mock.Option{mock.WithCompensatedBalancesFunc(compensatedBalancesFunc)},
 	})
 
@@ -72,7 +71,6 @@ func TestBalancesError(t *testing.T) {
 		return nil, wantErr
 	}
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI:       true,
 		AccountingOpts: []mock.Option{mock.WithCompensatedBalancesFunc(compensatedBalancesFunc)},
 	})
 
@@ -92,7 +90,6 @@ func TestBalancesPeers(t *testing.T) {
 		return big.NewInt(100000000000000000), nil
 	}
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI:       true,
 		AccountingOpts: []mock.Option{mock.WithCompensatedBalanceFunc(compensatedBalanceFunc)},
 	})
 
@@ -113,7 +110,6 @@ func TestBalancesPeersError(t *testing.T) {
 		return nil, wantErr
 	}
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI:       true,
 		AccountingOpts: []mock.Option{mock.WithCompensatedBalanceFunc(compensatedBalanceFunc)},
 	})
 
@@ -133,7 +129,6 @@ func TestBalancesPeersNoBalance(t *testing.T) {
 		return nil, accounting.ErrPeerNoBalance
 	}
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI:       true,
 		AccountingOpts: []mock.Option{mock.WithCompensatedBalanceFunc(compensatedBalanceFunc)},
 	})
 
@@ -186,7 +181,6 @@ func TestConsumedBalances(t *testing.T) {
 		return ret, err
 	}
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI:       true,
 		AccountingOpts: []mock.Option{mock.WithBalancesFunc(balancesFunc)},
 	})
 
@@ -216,7 +210,6 @@ func TestConsumedBalances(t *testing.T) {
 	if !equalBalances(got, expected) {
 		t.Errorf("got balances: %v, expected: %v", got, expected)
 	}
-
 }
 
 func TestConsumedError(t *testing.T) {
@@ -227,7 +220,6 @@ func TestConsumedError(t *testing.T) {
 		return nil, wantErr
 	}
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI:       true,
 		AccountingOpts: []mock.Option{mock.WithBalancesFunc(balancesFunc)},
 	})
 
@@ -247,7 +239,6 @@ func TestConsumedPeers(t *testing.T) {
 		return big.NewInt(1000000000000000000), nil
 	}
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI:       true,
 		AccountingOpts: []mock.Option{mock.WithBalanceFunc(balanceFunc)},
 	})
 
@@ -268,7 +259,6 @@ func TestConsumedPeersError(t *testing.T) {
 		return nil, wantErr
 	}
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI:       true,
 		AccountingOpts: []mock.Option{mock.WithBalanceFunc(balanceFunc)},
 	})
 
@@ -288,7 +278,6 @@ func TestConsumedPeersNoBalance(t *testing.T) {
 		return nil, accounting.ErrPeerNoBalance
 	}
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI:       true,
 		AccountingOpts: []mock.Option{mock.WithBalanceFunc(balanceFunc)},
 	})
 
@@ -303,7 +292,7 @@ func TestConsumedPeersNoBalance(t *testing.T) {
 func Test_peerBalanceHandler_invalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+	client, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name string
@@ -338,7 +327,6 @@ func Test_peerBalanceHandler_invalidInputs(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -352,7 +340,7 @@ func Test_peerBalanceHandler_invalidInputs(t *testing.T) {
 func Test_compensatedPeerBalanceHandler_invalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+	client, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name string
@@ -387,7 +375,6 @@ func Test_compensatedPeerBalanceHandler_invalidInputs(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

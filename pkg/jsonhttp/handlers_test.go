@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 )
 
 func TestMethodHandler(t *testing.T) {
@@ -173,7 +173,6 @@ func TestNewMaxBodyBytesHandler(t *testing.T) {
 			wantCode:             http.StatusRequestEntityTooLarge,
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

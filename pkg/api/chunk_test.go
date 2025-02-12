@@ -7,23 +7,27 @@ package api_test
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/log"
-	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
-	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
-	"github.com/ethersphere/bee/pkg/spinlock"
-	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	mockbatchstore "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
+	mockpost "github.com/ethersphere/bee/v2/pkg/postage/mock"
+	"github.com/ethersphere/bee/v2/pkg/spinlock"
+	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 
-	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	testingc "github.com/ethersphere/bee/pkg/storage/testing"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
+	testingpostage "github.com/ethersphere/bee/v2/pkg/postage/testing"
+	testingc "github.com/ethersphere/bee/v2/pkg/storage/testing"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 // nolint:paralleltest,tparallel
@@ -173,7 +177,6 @@ func TestChunkHandlersInvalidInputs(t *testing.T) {
 
 	method := http.MethodGet
 	for _, tc := range tests {
-		tc := tc
 		t.Run(method+" "+tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -267,5 +270,40 @@ func TestChunkDirectUpload(t *testing.T) {
 			Message: api.ErrUnsupportedDevNodeOperation.Error(),
 			Code:    http.StatusBadRequest,
 		}),
+	)
+}
+
+// // TestPreSignedUpload tests that chunk can be uploaded with pre-signed postage stamp
+func TestPreSignedUpload(t *testing.T) {
+	t.Parallel()
+
+	var (
+		chunksEndpoint  = "/chunks"
+		chunk           = testingc.GenerateTestRandomChunk()
+		storerMock      = mockstorer.New()
+		batchStore      = mockbatchstore.New()
+		client, _, _, _ = newTestServer(t, testServerOptions{
+			Storer:     storerMock,
+			BatchStore: batchStore,
+		})
+	)
+
+	// generate random postage batch and stamp
+	key, _ := crypto.GenerateSecp256k1Key()
+	signer := crypto.NewDefaultSigner(key)
+	owner, _ := signer.EthereumAddress()
+	stamp := testingpostage.MustNewValidStamp(signer, chunk.Address())
+	_ = batchStore.Save(&postage.Batch{
+		ID:    stamp.BatchID(),
+		Owner: owner.Bytes(),
+	})
+	stampBytes, _ := stamp.MarshalBinary()
+
+	// read off inserted chunk
+	go func() { <-storerMock.PusherFeed() }()
+
+	jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
+		jsonhttptest.WithRequestHeader(api.SwarmPostageStampHeader, hex.EncodeToString(stampBytes)),
+		jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 	)
 }

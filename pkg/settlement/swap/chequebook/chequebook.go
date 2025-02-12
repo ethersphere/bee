@@ -13,11 +13,11 @@ import (
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/sctx"
-	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/transaction"
-	"github.com/ethersphere/bee/pkg/util/abiutil"
+	"github.com/ethersphere/bee/v2/pkg/sctx"
+	"github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
+	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
 
@@ -38,7 +38,7 @@ var (
 	// ErrInsufficientFunds is the error when the chequebook has not enough free funds for a user action
 	ErrInsufficientFunds = errors.New("insufficient token balance")
 
-	chequebookABI          = abiutil.MustParseABI(sw3abi.ERC20SimpleSwapABIv0_3_1)
+	chequebookABI          = abiutil.MustParseABI(sw3abi.ERC20SimpleSwapABIv0_6_5)
 	chequeCashedEventType  = chequebookABI.Events["ChequeCashed"]
 	chequeBouncedEventType = chequebookABI.Events["ChequeBounced"]
 )
@@ -61,7 +61,7 @@ type Service interface {
 	Issue(ctx context.Context, beneficiary common.Address, amount *big.Int, sendChequeFunc SendChequeFunc) (*big.Int, error)
 	// LastCheque returns the last cheque we issued for the beneficiary.
 	LastCheque(beneficiary common.Address) (*SignedCheque, error)
-	// LastCheque returns the last cheques for all beneficiaries.
+	// LastCheques returns the last cheques for all beneficiaries.
 	LastCheques() (map[common.Address]*SignedCheque, error)
 }
 
@@ -284,7 +284,7 @@ func keyBeneficiary(key []byte, prefix string) (beneficiary common.Address, err 
 	return common.HexToAddress(split[1]), nil
 }
 
-// LastCheque returns the last cheques for all beneficiaries.
+// LastCheques returns the last cheques for all beneficiaries.
 func (s *service) LastCheques() (map[common.Address]*SignedCheque, error) {
 	result := make(map[common.Address]*SignedCheque)
 	err := s.store.Iterate(lastIssuedChequeKeyPrefix, func(key, val []byte) (stop bool, err error) {

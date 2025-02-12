@@ -10,14 +10,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/postage"
-	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
-	"github.com/ethersphere/bee/pkg/pss"
-	"github.com/ethersphere/bee/pkg/pushsync"
-	pushsyncmock "github.com/ethersphere/bee/pkg/pushsync/mock"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
+	"github.com/ethersphere/bee/v2/pkg/pss"
+	"github.com/ethersphere/bee/v2/pkg/pushsync"
+	pushsyncmock "github.com/ethersphere/bee/v2/pkg/pushsync/mock"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 // TestSend creates a trojan chunk and sends it using push sync
@@ -236,8 +236,15 @@ func ensureCalls(t *testing.T, calls *int, exp int) {
 	}
 }
 
-type stamper struct{}
+type stamper struct {
+	stamp *postage.Stamp
+}
 
-func (s *stamper) Stamp(_ swarm.Address) (*postage.Stamp, error) {
-	return postagetesting.MustNewStamp(), nil
+func (s *stamper) Stamp(_, _ swarm.Address) (*postage.Stamp, error) {
+	stamp := postagetesting.MustNewStamp()
+	return stamp, nil
+}
+
+func (s *stamper) BatchId() []byte {
+	return s.stamp.BatchID()
 }

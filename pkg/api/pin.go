@@ -5,14 +5,17 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"sync"
 
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/traversal"
+	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/traversal"
 	"github.com/gorilla/mux"
 	"golang.org/x/sync/semaphore"
 )
@@ -50,7 +53,7 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 	}
 
 	getter := s.storer.Download(true)
-	traverser := traversal.New(getter)
+	traverser := traversal.New(getter, s.storer.Cache(), redundancy.DefaultLevel)
 
 	sem := semaphore.NewWeighted(100)
 	var errTraverse error
@@ -198,4 +201,54 @@ func (s *Service) listPinnedRootHashes(w http.ResponseWriter, r *http.Request) {
 	}{
 		References: pinned,
 	})
+}
+
+type PinIntegrityResponse struct {
+	Reference swarm.Address `json:"reference"`
+	Total     int           `json:"total"`
+	Missing   int           `json:"missing"`
+	Invalid   int           `json:"invalid"`
+}
+
+func (s *Service) pinIntegrityHandler(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("get_pin_integrity").Build()
+
+	querie := struct {
+		Ref swarm.Address `map:"ref"`
+	}{}
+
+	if response := s.mapStructure(r.URL.Query(), &querie); response != nil {
+		response("invalid query params", logger, w)
+		return
+	}
+
+	out := make(chan storer.PinStat)
+
+	go s.pinIntegrity.Check(r.Context(), logger, querie.Ref.String(), out)
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+
+	w.Header().Set("Transfer-Encoding", "chunked")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+
+	enc := json.NewEncoder(w)
+
+	for v := range out {
+		resp := PinIntegrityResponse{
+			Reference: v.Ref,
+			Total:     v.Total,
+			Missing:   v.Missing,
+			Invalid:   v.Invalid,
+		}
+		if err := enc.Encode(resp); err != nil {
+			break
+		}
+		flusher.Flush()
+	}
 }

@@ -11,8 +11,8 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
-	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/crypto/eip712"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/crypto/eip712"
 )
 
 // Cheque represents a cheque for a SimpleSwap chequebook
@@ -28,7 +28,7 @@ type SignedCheque struct {
 	Signature []byte
 }
 
-// chequebookDomain computes chainId-dependant EIP712 domain
+// chequebookDomain computes chainId-dependent EIP712 domain
 func chequebookDomain(chainID int64) eip712.TypedDataDomain {
 	return eip712.TypedDataDomain{
 		Name:    "Chequebook",

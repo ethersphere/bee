@@ -12,11 +12,12 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethersphere/bee/pkg/transaction"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
 type backendMock struct {
 	codeAt             func(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error)
+	callContract       func(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error)
 	sendTransaction    func(ctx context.Context, tx *types.Transaction) error
 	suggestGasPrice    func(ctx context.Context) (*big.Int, error)
 	suggestGasTipCap   func(ctx context.Context) (*big.Int, error)
@@ -38,7 +39,10 @@ func (m *backendMock) CodeAt(ctx context.Context, contract common.Address, block
 	return nil, errors.New("not implemented")
 }
 
-func (*backendMock) CallContract(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
+func (m *backendMock) CallContract(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
+	if m.callContract != nil {
+		return m.callContract(ctx, call, blockNumber)
+	}
 	return nil, errors.New("not implemented")
 }
 
@@ -160,6 +164,12 @@ type Option interface {
 type optionFunc func(*backendMock)
 
 func (f optionFunc) apply(r *backendMock) { f(r) }
+
+func WithCallContractFunc(f func(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error)) Option {
+	return optionFunc(func(s *backendMock) {
+		s.callContract = f
+	})
+}
 
 func WithCodeAtFunc(f func(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error)) Option {
 	return optionFunc(func(s *backendMock) {

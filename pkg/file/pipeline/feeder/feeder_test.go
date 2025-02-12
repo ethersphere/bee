@@ -10,8 +10,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/file/pipeline"
-	"github.com/ethersphere/bee/pkg/file/pipeline/feeder"
+	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
+	"github.com/ethersphere/bee/v2/pkg/file/pipeline/feeder"
 )
 
 // TestFeeder tests that partial writes work correctly.
@@ -75,7 +75,6 @@ func TestFeeder(t *testing.T) {
 			span:      5,
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			var results pipeline.PipeWriteArgs
@@ -179,7 +178,6 @@ func TestFeederFlush(t *testing.T) {
 			span:      3,
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

@@ -14,9 +14,9 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethersphere/bee/pkg/sctx"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/transaction"
+	"github.com/ethersphere/bee/v2/pkg/sctx"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
 var (
@@ -61,7 +61,7 @@ type CashChequeResult struct {
 	TotalPayout      *big.Int       // total amount that was paid out in this call
 	CumulativePayout *big.Int       // cumulative payout of the cheque that was cashed
 	CallerPayout     *big.Int       // payout for the caller of cashCheque
-	Bounced          bool           // indicates wether parts of the cheque bounced
+	Bounced          bool           // indicates whether parts of the cheque bounced
 }
 
 // cashoutAction is the data we store for a cashout

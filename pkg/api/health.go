@@ -7,23 +7,21 @@ package api
 import (
 	"net/http"
 
-	"github.com/ethersphere/bee"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 )
 
 type healthStatusResponse struct {
-	Status          string `json:"status"`
-	Version         string `json:"version"`
-	APIVersion      string `json:"apiVersion"`
-	DebugAPIVersion string `json:"debugApiVersion"`
+	Status     string `json:"status"`
+	Version    string `json:"version"`
+	APIVersion string `json:"apiVersion"`
 }
 
 func (s *Service) healthHandler(w http.ResponseWriter, _ *http.Request) {
 	status := s.probe.Healthy()
 	jsonhttp.OK(w, healthStatusResponse{
-		Status:          status.String(),
-		Version:         bee.Version,
-		APIVersion:      Version,
-		DebugAPIVersion: DebugVersion,
+		Status:     status.String(),
+		Version:    bee.Version,
+		APIVersion: Version,
 	})
 }

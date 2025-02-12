@@ -9,13 +9,12 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/keystore"
+	"github.com/ethersphere/bee/v2/pkg/keystore"
 )
 
 // Service is a utility testing function that can be used to test
 // implementations of the keystore.Service interface.
-func Service(t *testing.T, s keystore.Service) {
+func Service(t *testing.T, s keystore.Service, edg keystore.EDG) {
 	t.Helper()
 
 	exists, err := s.Exists("swarm")
@@ -27,7 +26,6 @@ func Service(t *testing.T, s keystore.Service) {
 		t.Fatal("should not exist")
 	}
 
-	edg := crypto.EDGSecp256_K1
 	// create a new swarm key
 	k1, created, err := s.Key("swarm", "pass123456", edg)
 	if err != nil {

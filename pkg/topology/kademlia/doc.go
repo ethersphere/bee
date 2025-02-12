@@ -10,7 +10,7 @@ A thorough explanation of the logic in the `manage()` forever loop:
 The `manageC` channel gets triggered every time there's a change in the
 information regarding peers we know about. This can be a result of: (1) A peer
 has disconnected from us (2) A peer has been added to the list of
-known peers (from discovery, debugapi, bootnode flag or just because it
+known peers (from discovery, api, bootnode flag or just because it
 was persisted in the address book and the node has been restarted).
 
 So the information has been changed, and potentially upon disconnection,
@@ -58,7 +58,7 @@ will try to connect to us in order to satisfy their own connectivity thresholds
 
 We should allow other nodes to dial in, in order to help them maintain a healthy topolgy.
 It could be, however, that we would need to mark-and-sweep certain connections once a
-theorical upper bound has been reached.
+theoretical upper bound has been reached.
 
 Depth calculation explained:
 When we calculate depth we must keep in mind the following constraints:

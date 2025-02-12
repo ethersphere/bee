@@ -12,15 +12,14 @@ import (
 	"sort"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/sharky"
-	"github.com/ethersphere/bee/pkg/storer/internal/chunkstore"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/sharky"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstore"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 // Compact minimizes sharky disk usage by, using the current sharky locations from the storer,
 // relocating chunks starting from the end of the used slots to the first available slots.
 func Compact(ctx context.Context, basePath string, opts *Options, validate bool) error {
-
 	logger := opts.Logger
 
 	store, err := initStore(basePath, opts)
@@ -63,7 +62,7 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 		items := make([]*chunkstore.RetrievalIndexItem, 0, 1_000_000)
 		// we deliberately choose to iterate the whole store again for each shard
 		// so that we do not store all the items in memory (for operators with huge localstores)
-		_ = chunkstore.Iterate(store, func(item *chunkstore.RetrievalIndexItem) error {
+		_ = chunkstore.IterateItems(store, func(item *chunkstore.RetrievalIndexItem) error {
 			if item.Location.Shard == uint8(shard) {
 				items = append(items, item)
 			}
@@ -74,6 +73,9 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 			return items[i].Location.Slot < items[j].Location.Slot
 		})
 
+		if len(items) < 1 {
+			return errors.New("no data to compact")
+		}
 		lastUsedSlot := items[len(items)-1].Location.Slot
 		slots := make([]*chunkstore.RetrievalIndexItem, lastUsedSlot+1) // marks free and used slots
 		for _, l := range items {
@@ -86,11 +88,7 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 		start := uint32(0)
 		end := lastUsedSlot
 
-		batch, err := store.Batch(ctx)
-		if err != nil {
-			return err
-		}
-
+		batch := store.Batch(ctx)
 		for start <= end {
 
 			if slots[start] != nil {

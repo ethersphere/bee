@@ -9,16 +9,17 @@ import (
 	"net/http"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/multiformats/go-multiaddr"
 )
 
 type addressesResponse struct {
 	Overlay      *swarm.Address        `json:"overlay"`
 	Underlay     []multiaddr.Multiaddr `json:"underlay"`
-	Ethereum     common.Address        `json:"ethereum"`
+	Ethereum     common.Address        `json:"ethereum"` // deprecated
+	ChainAddress common.Address        `json:"chain_address"`
 	PublicKey    string                `json:"publicKey"`
 	PSSPublicKey string                `json:"pssPublicKey"`
 }
@@ -43,6 +44,7 @@ func (s *Service) addressesHandler(w http.ResponseWriter, _ *http.Request) {
 		Overlay:      s.overlay,
 		Underlay:     underlay,
 		Ethereum:     s.ethereumAddress,
+		ChainAddress: s.ethereumAddress,
 		PublicKey:    hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&s.publicKey)),
 		PSSPublicKey: hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&s.pssPublicKey)),
 	})

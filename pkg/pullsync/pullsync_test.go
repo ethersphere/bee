@@ -11,17 +11,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/p2p/streamtest"
-	"github.com/ethersphere/bee/pkg/postage"
-	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
-	"github.com/ethersphere/bee/pkg/pullsync"
-	"github.com/ethersphere/bee/pkg/storage"
-	testingc "github.com/ethersphere/bee/pkg/storage/testing"
-	"github.com/ethersphere/bee/pkg/storer"
-	mock "github.com/ethersphere/bee/pkg/storer/mock"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/p2p/streamtest"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
+	"github.com/ethersphere/bee/v2/pkg/pullsync"
+	"github.com/ethersphere/bee/v2/pkg/soc"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	testingc "github.com/ethersphere/bee/v2/pkg/storage/testing"
+	"github.com/ethersphere/bee/v2/pkg/storer"
+	mock "github.com/ethersphere/bee/v2/pkg/storer/mock"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 var (
@@ -46,10 +47,12 @@ func init() {
 	for i := 0; i < n; i++ {
 		chunks[i] = testingc.GenerateTestRandomChunk()
 		addrs[i] = chunks[i].Address()
+		stampHash, _ := chunks[i].Stamp().Hash()
 		results[i] = &storer.BinC{
-			Address: addrs[i],
-			BatchID: chunks[i].Stamp().BatchID(),
-			BinID:   uint64(i),
+			Address:   addrs[i],
+			BatchID:   chunks[i].Stamp().BatchID(),
+			BinID:     uint64(i),
+			StampHash: stampHash,
 		}
 	}
 }
@@ -158,10 +161,15 @@ func TestIncoming_WantErrors(t *testing.T) {
 
 	tResults := make([]*storer.BinC, len(tChunks))
 	for i, c := range tChunks {
+		stampHash, err := c.Stamp().Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
 		tResults[i] = &storer.BinC{
-			Address: c.Address(),
-			BatchID: c.Stamp().BatchID(),
-			BinID:   uint64(i + 5), // start from a higher bin id
+			Address:   c.Address(),
+			BatchID:   c.Stamp().BatchID(),
+			BinID:     uint64(i + 5), // start from a higher bin id
+			StampHash: stampHash,
 		}
 	}
 
@@ -305,7 +313,11 @@ func TestGetCursorsError(t *testing.T) {
 func haveChunks(t *testing.T, s *mock.ReserveStore, chunks ...swarm.Chunk) {
 	t.Helper()
 	for _, c := range chunks {
-		have, err := s.ReserveHas(c.Address(), c.Stamp().BatchID())
+		stampHash, err := c.Stamp().Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+		have, err := s.ReserveHas(c.Address(), c.Stamp().BatchID(), stampHash)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -342,10 +354,12 @@ func newPullSyncWithStamperValidator(
 	storage := mock.NewReserve(o...)
 	logger := log.Noop
 	unwrap := func(swarm.Chunk) {}
+	socHandler := func(*soc.SOC) {}
 	ps := pullsync.New(
 		s,
 		storage,
 		unwrap,
+		socHandler,
 		validStamp,
 		logger,
 		maxPage,

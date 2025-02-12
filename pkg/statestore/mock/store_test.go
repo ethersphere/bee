@@ -7,12 +7,13 @@ package mock_test
 import (
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/statestore/test"
-	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/statestore/mock"
+	"github.com/ethersphere/bee/v2/pkg/statestore/test"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 )
 
 func TestMockStateStore(t *testing.T) {
+	t.Parallel()
 	test.Run(t, func(t *testing.T) storage.StateStorer {
 		t.Helper()
 		return mock.NewStateStore()

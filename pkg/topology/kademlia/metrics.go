@@ -5,7 +5,7 @@
 package kademlia
 
 import (
-	m "github.com/ethersphere/bee/pkg/metrics"
+	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -144,7 +144,7 @@ func newMetrics() metrics {
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "blocklist",
-			Help:      "The nubmer of times peers have been blocklisted.",
+			Help:      "The number of times peers have been blocklisted.",
 		}),
 		ReachabilityStatus: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{

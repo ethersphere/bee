@@ -12,19 +12,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/postage"
-	batchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
-	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
-	pullerMock "github.com/ethersphere/bee/pkg/puller/mock"
-	"github.com/ethersphere/bee/pkg/spinlock"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/storagetest"
-	chunk "github.com/ethersphere/bee/pkg/storage/testing"
-	"github.com/ethersphere/bee/pkg/storer"
-	"github.com/ethersphere/bee/pkg/storer/internal/chunkstamp"
-	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
-	"github.com/ethersphere/bee/pkg/storer/internal/stampindex"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	batchstore "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
+	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
+	pullerMock "github.com/ethersphere/bee/v2/pkg/puller/mock"
+	"github.com/ethersphere/bee/v2/pkg/spinlock"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/storagetest"
+	chunk "github.com/ethersphere/bee/v2/pkg/storage/testing"
+	"github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/stampindex"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 func TestIndexCollision(t *testing.T) {
@@ -47,12 +47,20 @@ func TestIndexCollision(t *testing.T) {
 			t.Fatal("expected index collision error")
 		}
 
-		_, err = storer.ReserveGet(context.Background(), ch2.Address(), ch2.Stamp().BatchID())
+		ch1StampHash, err := ch1.Stamp().Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = storer.ReserveGet(context.Background(), ch2.Address(), ch2.Stamp().BatchID(), ch1StampHash)
 		if !errors.Is(err, storage.ErrNotFound) {
 			t.Fatal(err)
 		}
 
-		_, err = storer.ReserveGet(context.Background(), ch1.Address(), ch1.Stamp().BatchID())
+		ch2StampHash, err := ch1.Stamp().Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = storer.ReserveGet(context.Background(), ch1.Address(), ch1.Stamp().BatchID(), ch2StampHash)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -107,7 +115,11 @@ func TestReplaceOldIndex(t *testing.T) {
 
 			// Chunk 2 must be stored
 			checkSaved(t, storer, ch_2, true, true)
-			got, err := storer.ReserveGet(context.Background(), ch_2.Address(), ch_2.Stamp().BatchID())
+			ch2StampHash, err := ch_2.Stamp().Hash()
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := storer.ReserveGet(context.Background(), ch_2.Address(), ch_2.Stamp().BatchID(), ch2StampHash)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -119,18 +131,23 @@ func TestReplaceOldIndex(t *testing.T) {
 			}
 
 			// Chunk 1 must be missing
-			item, err := stampindex.Load(storer.Repo().IndexStore(), "reserve", ch_1)
+			item, err := stampindex.Load(storer.Storage().IndexStore(), "reserve", ch_1.Stamp())
 			if err != nil {
 				t.Fatal(err)
 			}
 			if !item.ChunkAddress.Equal(ch_2.Address()) {
 				t.Fatalf("wanted addr %s, got %s", ch_1.Address(), item.ChunkAddress)
 			}
-			_, err = chunkstamp.Load(storer.Repo().IndexStore(), "reserve", ch_1.Address())
+			_, err = chunkstamp.Load(storer.Storage().IndexStore(), "reserve", ch_1.Address())
 			if !errors.Is(err, storage.ErrNotFound) {
 				t.Fatalf("wanted err %s, got err %s", storage.ErrNotFound, err)
 			}
-			_, err = storer.ReserveGet(context.Background(), ch_1.Address(), ch_1.Stamp().BatchID())
+
+			ch1StampHash, err := ch_1.Stamp().Hash()
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = storer.ReserveGet(context.Background(), ch_1.Address(), ch_1.Stamp().BatchID(), ch1StampHash)
 			if !errors.Is(err, storage.ErrNotFound) {
 				t.Fatal(err)
 			}
@@ -193,24 +210,23 @@ func TestEvictBatch(t *testing.T) {
 		}
 	}
 
+	c, unsub := st.Events().Subscribe("batchExpiryDone")
+	t.Cleanup(unsub)
+
 	err = st.EvictBatch(ctx, evictBatch.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	c, unsub := st.Events().Subscribe("batchExpiryDone")
-	t.Cleanup(unsub)
-	gotUnreserveSignal := make(chan struct{})
-	go func() {
-		defer close(gotUnreserveSignal)
-		<-c
-	}()
-	<-gotUnreserveSignal
+	<-c
 
 	reserve := st.Reserve()
 
 	for _, ch := range chunks {
-		has, err := st.ReserveHas(ch.Address(), ch.Stamp().BatchID())
+		stampHash, err := ch.Stamp().Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+		has, err := st.ReserveHas(ch.Address(), ch.Stamp().BatchID(), stampHash)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -219,7 +235,7 @@ func TestEvictBatch(t *testing.T) {
 			if has {
 				t.Fatal("store should NOT have chunk")
 			}
-			checkSaved(t, st, ch, false, true)
+			checkSaved(t, st, ch, false, false)
 		} else if !has {
 			t.Fatal("store should have chunk")
 			checkSaved(t, st, ch, true, true)
@@ -302,7 +318,11 @@ func TestUnreserveCap(t *testing.T) {
 
 		for po, chunks := range chunksPO {
 			for _, ch := range chunks {
-				has, err := storer.ReserveHas(ch.Address(), ch.Stamp().BatchID())
+				stampHash, err := ch.Stamp().Hash()
+				if err != nil {
+					t.Fatal(err)
+				}
+				has, err := storer.ReserveHas(ch.Address(), ch.Stamp().BatchID(), stampHash)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -310,7 +330,7 @@ func TestUnreserveCap(t *testing.T) {
 					if has {
 						t.Fatal("store should NOT have chunk at PO", po)
 					}
-					checkSaved(t, storer, ch, false, true)
+					checkSaved(t, storer, ch, false, false)
 				} else if !has {
 					t.Fatal("store should have chunk at PO", po)
 				} else {
@@ -429,20 +449,18 @@ func TestRadiusManager(t *testing.T) {
 		}
 
 		waitForSize(t, storer.Reserve(), 10)
-
 		waitForRadius(t, storer.Reserve(), 3)
 
 		err = storer.EvictBatch(context.Background(), batch.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
-
 		waitForRadius(t, storer.Reserve(), 0)
 	})
 
-	t.Run("radius doesnt change due to non-zero pull rate", func(t *testing.T) {
+	t.Run("radius doesn't change due to non-zero pull rate", func(t *testing.T) {
 		t.Parallel()
-		storer, err := diskStorer(t, dbTestOps(baseAddr, 10, nil, nil, time.Millisecond*10))()
+		storer, err := diskStorer(t, dbTestOps(baseAddr, 10, nil, nil, time.Millisecond*500))()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -648,6 +666,113 @@ func TestSubscribeBinTrigger(t *testing.T) {
 	})
 }
 
+func TestNeighborhoodStats(t *testing.T) {
+	t.Parallel()
+
+	const (
+		chunkCountPerPO          = 16
+		maxPO                    = 5
+		committedDepth     uint8 = 4
+		doublingFactor     uint8 = 2
+		responsibiliyDepth uint8 = committedDepth - doublingFactor
+	)
+
+	mustParse := func(s string) swarm.Address {
+		addr, err := swarm.ParseBitStrAddress(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return addr
+	}
+
+	var (
+		baseAddr = mustParse("10000")
+		sister1  = mustParse("10010")
+		sister2  = mustParse("10100")
+		sister3  = mustParse("10110")
+	)
+
+	putChunks := func(addr swarm.Address, startingRadius int, st *storer.DB) {
+		putter := st.ReservePutter()
+		for i := 0; i < chunkCountPerPO; i++ {
+			ch := chunk.GenerateValidRandomChunkAt(t, addr, startingRadius)
+			err := putter.Put(context.Background(), ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	testF := func(t *testing.T, st *storer.DB) {
+		t.Helper()
+
+		putChunks(baseAddr, int(committedDepth), st)
+		putChunks(sister1, int(committedDepth), st)
+		putChunks(sister2, int(committedDepth), st)
+		putChunks(sister3, int(committedDepth), st)
+
+		neighs, err := st.NeighborhoodsStat(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(neighs) != (1 << doublingFactor) {
+			t.Fatalf("number of neighborhoods does not matche. wanted %d, got %d", 1<<doublingFactor, len(neighs))
+		}
+
+		for _, n := range neighs {
+			if n.ReserveSizeWithinRadius != chunkCountPerPO {
+				t.Fatalf("chunk count does not match. wanted %d, got %d, prox %d", chunkCountPerPO, n.ReserveSizeWithinRadius, swarm.Proximity(baseAddr.Bytes(), n.Neighborhood.Bytes()))
+			}
+		}
+
+		if !neighs[0].Neighborhood.Equal(swarm.NewNeighborhood(baseAddr, committedDepth)) ||
+			!neighs[1].Neighborhood.Equal(swarm.NewNeighborhood(sister1, committedDepth)) ||
+			!neighs[2].Neighborhood.Equal(swarm.NewNeighborhood(sister2, committedDepth)) ||
+			!neighs[3].Neighborhood.Equal(swarm.NewNeighborhood(sister3, committedDepth)) {
+			t.Fatal("chunk addresses do not match")
+		}
+
+		if neighs[0].Proximity != committedDepth ||
+			neighs[1].Proximity != 3 ||
+			neighs[2].Proximity != 2 ||
+			neighs[3].Proximity != 2 {
+			t.Fatalf("wrong proximity")
+		}
+	}
+
+	t.Run("disk", func(t *testing.T) {
+		t.Parallel()
+		opts := dbTestOps(baseAddr, 1000, nil, nil, time.Minute)
+		opts.ReserveCapacityDoubling = int(doublingFactor)
+		storer, err := diskStorer(t, opts)()
+		if err != nil {
+			t.Fatal(err)
+		}
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(responsibiliyDepth))
+		err = spinlock.Wait(time.Minute, func() bool { return storer.StorageRadius() == responsibiliyDepth })
+		if err != nil {
+			t.Fatal(err)
+		}
+		testF(t, storer)
+	})
+	t.Run("mem", func(t *testing.T) {
+		t.Parallel()
+		opts := dbTestOps(baseAddr, 1000, nil, nil, time.Minute)
+		opts.ReserveCapacityDoubling = int(doublingFactor)
+		storer, err := memStorer(t, opts)()
+		if err != nil {
+			t.Fatal(err)
+		}
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(responsibiliyDepth))
+		err = spinlock.Wait(time.Minute, func() bool { return storer.StorageRadius() == responsibiliyDepth })
+		if err != nil {
+			t.Fatal(err)
+		}
+		testF(t, storer)
+	})
+}
+
 func reserveSizeTest(rs *reserve.Reserve, want int) func(t *testing.T) {
 	return func(t *testing.T) {
 		t.Helper()
@@ -665,11 +790,11 @@ func checkSaved(t *testing.T, st *storer.DB, ch swarm.Chunk, stampSaved, chunkSt
 	if !stampSaved {
 		stampWantedErr = storage.ErrNotFound
 	}
-	_, err := stampindex.Load(st.Repo().IndexStore(), "reserve", ch)
+	_, err := stampindex.Load(st.Storage().IndexStore(), "reserve", ch.Stamp())
 	if !errors.Is(err, stampWantedErr) {
 		t.Fatalf("wanted err %s, got err %s", stampWantedErr, err)
 	}
-	_, err = chunkstamp.Load(st.Repo().IndexStore(), "reserve", ch.Address())
+	_, err = chunkstamp.Load(st.Storage().IndexStore(), "reserve", ch.Address())
 	if !errors.Is(err, stampWantedErr) {
 		t.Fatalf("wanted err %s, got err %s", stampWantedErr, err)
 	}
@@ -678,7 +803,7 @@ func checkSaved(t *testing.T, st *storer.DB, ch swarm.Chunk, stampSaved, chunkSt
 	if !chunkStoreSaved {
 		chunkStoreWantedErr = storage.ErrNotFound
 	}
-	gotCh, err := st.Repo().ChunkStore().Get(context.Background(), ch.Address())
+	gotCh, err := st.Storage().ChunkStore().Get(context.Background(), ch.Address())
 	if !errors.Is(err, chunkStoreWantedErr) {
 		t.Fatalf("wanted err %s, got err %s", chunkStoreWantedErr, err)
 	}

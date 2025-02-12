@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/tracing"
 	"github.com/gorilla/mux"
 )
 
@@ -28,5 +28,5 @@ func (s *Service) subdomainHandler(w http.ResponseWriter, r *http.Request) {
 		paths.Path = strings.TrimRight(paths.Path, "/") + "/" // NOTE: leave one slash if there was some.
 	}
 
-	s.serveReference(logger, paths.Subdomain, paths.Path, w, r)
+	s.serveReference(logger, paths.Subdomain, paths.Path, w, r, false)
 }

@@ -5,10 +5,11 @@
 package ratelimit_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/ratelimit"
+	"github.com/ethersphere/bee/v2/pkg/ratelimit"
 )
 
 func TestRateLimit(t *testing.T) {
@@ -39,5 +40,39 @@ func TestRateLimit(t *testing.T) {
 
 	if !limiter.Allow(key2, burst) {
 		t.Fatal("want allowed")
+	}
+}
+
+func TestWait(t *testing.T) {
+	t.Parallel()
+
+	var (
+		key   = "test"
+		rate  = time.Second
+		burst = 4
+	)
+
+	limiter := ratelimit.New(rate, burst)
+
+	if !limiter.Allow(key, 1) {
+		t.Fatal("want allowed")
+	}
+
+	waitDur, err := limiter.Wait(context.Background(), key, 1)
+	if err != nil {
+		t.Fatalf("got err %v", err)
+	}
+
+	if waitDur != 0 {
+		t.Fatalf("expected the limiter to NOT wait, got %s", waitDur)
+	}
+
+	waitDur, err = limiter.Wait(context.Background(), key, burst)
+	if err != nil {
+		t.Fatalf("got err %v", err)
+	}
+
+	if waitDur < rate {
+		t.Fatalf("expected the limiter to wait at least %s, got %s", rate, waitDur)
 	}
 }

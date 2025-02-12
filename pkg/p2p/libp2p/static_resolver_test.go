@@ -8,7 +8,7 @@ import (
 	"net"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/p2p/libp2p"
+	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -88,7 +88,6 @@ func TestStaticAddressResolver(t *testing.T) {
 			want:              "/dns/ipv4and6.com/tcp/30777/p2p/16Uiu2HAkyyGKpjBiCkVqCKoJa6RzzZw9Nr7hGogsMPcdad1KyMmd",
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

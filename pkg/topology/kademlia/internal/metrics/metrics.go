@@ -13,9 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/shed"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/shed"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
@@ -32,6 +32,15 @@ const (
 // RecordOp is a definition of a peer metrics Record
 // operation whose execution modifies a specific metrics.
 type RecordOp func(*Counters)
+
+// Bootnode will mark the peer metric as bootnode based on the bool arg.
+func IsBootnode(b bool) RecordOp {
+	return func(cs *Counters) {
+		cs.Lock()
+		defer cs.Unlock()
+		cs.IsBootnode = b
+	}
+}
 
 // PeerLogIn will first update the current last seen to the give time t and as
 // the second it'll set the direction of the session connection to the given
@@ -138,6 +147,7 @@ type Snapshot struct {
 	LatencyEWMA                time.Duration
 	Reachability               p2p.ReachabilityStatus
 	Healthy                    bool
+	IsBootnode                 bool
 }
 
 // persistentCounters is a helper struct used for persisting selected counters.
@@ -145,6 +155,7 @@ type persistentCounters struct {
 	PeerAddress       swarm.Address `json:"peerAddress"`
 	LastSeenTimestamp int64         `json:"lastSeenTimestamp"`
 	ConnTotalDuration time.Duration `json:"connTotalDuration"`
+	IsBootnode        bool          `json:"isBootnode"`
 }
 
 // Counters represents a collection of peer metrics
@@ -155,6 +166,7 @@ type Counters struct {
 	// Bookkeeping.
 	isLoggedIn  bool
 	peerAddress swarm.Address
+	IsBootnode  bool
 
 	// Counters.
 	lastSeenTimestamp    int64
@@ -177,6 +189,7 @@ func (cs *Counters) UnmarshalJSON(b []byte) (err error) {
 	cs.peerAddress = val.PeerAddress
 	cs.lastSeenTimestamp = val.LastSeenTimestamp
 	cs.connTotalDuration = val.ConnTotalDuration
+	cs.IsBootnode = val.IsBootnode
 	cs.Unlock()
 	return nil
 }
@@ -188,6 +201,7 @@ func (cs *Counters) MarshalJSON() ([]byte, error) {
 		PeerAddress:       cs.peerAddress,
 		LastSeenTimestamp: cs.lastSeenTimestamp,
 		ConnTotalDuration: cs.connTotalDuration,
+		IsBootnode:        cs.IsBootnode,
 	}
 	cs.Unlock()
 	return json.Marshal(val)
@@ -214,6 +228,7 @@ func (cs *Counters) snapshot(t time.Time) *Snapshot {
 		LatencyEWMA:                cs.latencyEWMA,
 		Reachability:               cs.ReachabilityStatus,
 		Healthy:                    cs.Healthy,
+		IsBootnode:                 cs.IsBootnode,
 	}
 }
 
@@ -239,6 +254,7 @@ func NewCollector(db *shed.DB) (*Collector, error) {
 			peerAddress:       val.PeerAddress,
 			lastSeenTimestamp: val.LastSeenTimestamp,
 			connTotalDuration: val.ConnTotalDuration,
+			IsBootnode:        val.IsBootnode,
 		})
 	}
 
@@ -305,11 +321,18 @@ func (c *Collector) IsUnreachable(addr swarm.Address) bool {
 	return cs.ReachabilityStatus != p2p.ReachabilityStatusPublic
 }
 
-// FilterOp is a function type used to filter peers on certain fields.
-type FilterOp func(*Counters) bool
+// ExcludeOp is a function type used to filter peers on certain fields.
+type ExcludeOp func(*Counters) bool
+
+// IsBootnode is used to filter bootnode peers.
+func Bootnode() ExcludeOp {
+	return func(cs *Counters) bool {
+		return cs.IsBootnode
+	}
+}
 
 // Reachable is used to filter reachable or unreachable peers based on r.
-func Reachability(filterReachable bool) FilterOp {
+func Reachability(filterReachable bool) ExcludeOp {
 	return func(cs *Counters) bool {
 		reachble := cs.ReachabilityStatus == p2p.ReachabilityStatusPublic
 		if filterReachable {
@@ -320,7 +343,7 @@ func Reachability(filterReachable bool) FilterOp {
 }
 
 // Unreachable is used to filter unhealthy peers.
-func Health(filterHealthy bool) FilterOp {
+func Health(filterHealthy bool) ExcludeOp {
 	return func(cs *Counters) bool {
 		if filterHealthy {
 			return cs.Healthy
@@ -329,8 +352,8 @@ func Health(filterHealthy bool) FilterOp {
 	}
 }
 
-// Filter returns true if the addr does not pass any filter operation.
-func (c *Collector) Filter(addr swarm.Address, fop ...FilterOp) bool {
+// Exclude returns false if the addr passes all exclusion operations.
+func (c *Collector) Exclude(addr swarm.Address, fop ...ExcludeOp) bool {
 	val, ok := c.counters.Load(addr.ByteString())
 	if !ok {
 		return true

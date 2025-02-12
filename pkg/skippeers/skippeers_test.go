@@ -8,14 +8,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/skippeers"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/skippeers"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 func TestPruneExpiresAfter(t *testing.T) {
 	t.Parallel()
 
-	skipList := skippeers.NewList()
+	skipList := skippeers.NewList(0)
 	t.Cleanup(func() { skipList.Close() })
 
 	chunk := swarm.RandAddress(t)
@@ -58,7 +58,7 @@ func TestPruneExpiresAfter(t *testing.T) {
 func TestPeerWait(t *testing.T) {
 	t.Parallel()
 
-	skipList := skippeers.NewList()
+	skipList := skippeers.NewList(0)
 	t.Cleanup(func() { skipList.Close() })
 
 	chunk1 := swarm.RandAddress(t)
@@ -103,5 +103,42 @@ func TestPeerWait(t *testing.T) {
 
 	if len(skipList.ChunkPeers(chunk2)) != 0 {
 		t.Fatal("entry should be pruned")
+	}
+}
+
+func TestPruneWorker(t *testing.T) {
+	t.Parallel()
+
+	chunk1 := swarm.RandAddress(t)
+	chunk2 := swarm.RandAddress(t)
+	peer1 := swarm.RandAddress(t)
+	peer2 := swarm.RandAddress(t)
+
+	skipList := skippeers.NewList(time.Millisecond * 500)
+	t.Cleanup(func() { skipList.Close() })
+
+	skipList.Add(chunk1, peer1, time.Second)
+	if !swarm.ContainsAddress(skipList.ChunkPeers(chunk1), peer1) {
+		t.Fatal("peer should be in skiplist")
+	}
+
+	skipList.Add(chunk2, peer1, time.Second)
+	if !swarm.ContainsAddress(skipList.ChunkPeers(chunk2), peer1) {
+		t.Fatal("peer should be in skiplist")
+	}
+
+	skipList.Add(chunk2, peer2, time.Minute)
+	if !swarm.ContainsAddress(skipList.ChunkPeers(chunk2), peer1) {
+		t.Fatal("peer should be in skiplist")
+	}
+
+	time.Sleep(time.Millisecond * 1600)
+
+	if len(skipList.ChunkPeers(chunk1)) != 0 {
+		t.Fatal("entry should be pruned")
+	}
+
+	if len(skipList.ChunkPeers(chunk2)) != 1 || !swarm.ContainsAddress(skipList.ChunkPeers(chunk2), peer2) {
+		t.Fatal("peer2 should be in skiplist")
 	}
 }

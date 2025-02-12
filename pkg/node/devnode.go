@@ -17,73 +17,70 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	mockAccounting "github.com/ethersphere/bee/pkg/accounting/mock"
-	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/auth"
-	"github.com/ethersphere/bee/pkg/bzz"
-	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/feeds/factory"
-	"github.com/ethersphere/bee/pkg/log"
-	mockP2P "github.com/ethersphere/bee/pkg/p2p/mock"
-	mockPingPong "github.com/ethersphere/bee/pkg/pingpong/mock"
-	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/postage/batchstore"
-	mockPost "github.com/ethersphere/bee/pkg/postage/mock"
-	"github.com/ethersphere/bee/pkg/postage/postagecontract"
-	mockPostContract "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
-	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
-	"github.com/ethersphere/bee/pkg/pss"
-	"github.com/ethersphere/bee/pkg/pushsync"
-	mockPushsync "github.com/ethersphere/bee/pkg/pushsync/mock"
-	resolverMock "github.com/ethersphere/bee/pkg/resolver/mock"
-	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
-	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
-	mockchequebook "github.com/ethersphere/bee/pkg/settlement/swap/chequebook/mock"
-	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
-	swapmock "github.com/ethersphere/bee/pkg/settlement/swap/mock"
-	"github.com/ethersphere/bee/pkg/statestore/leveldb"
-	mockSteward "github.com/ethersphere/bee/pkg/steward/mock"
-	"github.com/ethersphere/bee/pkg/storage/inmemstore"
-	"github.com/ethersphere/bee/pkg/storageincentives/staking"
-	stakingContractMock "github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
-	"github.com/ethersphere/bee/pkg/storer"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology/lightnode"
-	mockTopology "github.com/ethersphere/bee/pkg/topology/mock"
-	"github.com/ethersphere/bee/pkg/tracing"
-	"github.com/ethersphere/bee/pkg/transaction"
-	"github.com/ethersphere/bee/pkg/transaction/backendmock"
-	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
-	"github.com/ethersphere/bee/pkg/util/ioutil"
+	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
+	mockAccounting "github.com/ethersphere/bee/v2/pkg/accounting/mock"
+	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/bzz"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/feeds/factory"
+	"github.com/ethersphere/bee/v2/pkg/gsoc"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	mockP2P "github.com/ethersphere/bee/v2/pkg/p2p/mock"
+	mockPingPong "github.com/ethersphere/bee/v2/pkg/pingpong/mock"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/postage/batchstore"
+	mockPost "github.com/ethersphere/bee/v2/pkg/postage/mock"
+	"github.com/ethersphere/bee/v2/pkg/postage/postagecontract"
+	mockPostContract "github.com/ethersphere/bee/v2/pkg/postage/postagecontract/mock"
+	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
+	"github.com/ethersphere/bee/v2/pkg/pss"
+	"github.com/ethersphere/bee/v2/pkg/pushsync"
+	mockPushsync "github.com/ethersphere/bee/v2/pkg/pushsync/mock"
+	resolverMock "github.com/ethersphere/bee/v2/pkg/resolver/mock"
+	"github.com/ethersphere/bee/v2/pkg/settlement/pseudosettle"
+	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
+	mockchequebook "github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook/mock"
+	erc20mock "github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20/mock"
+	swapmock "github.com/ethersphere/bee/v2/pkg/settlement/swap/mock"
+	"github.com/ethersphere/bee/v2/pkg/statestore/leveldb"
+	mockSteward "github.com/ethersphere/bee/v2/pkg/steward/mock"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
+	"github.com/ethersphere/bee/v2/pkg/storageincentives/staking"
+	stakingContractMock "github.com/ethersphere/bee/v2/pkg/storageincentives/staking/mock"
+	"github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/topology/lightnode"
+	mockTopology "github.com/ethersphere/bee/v2/pkg/topology/mock"
+	"github.com/ethersphere/bee/v2/pkg/tracing"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
+	"github.com/ethersphere/bee/v2/pkg/transaction/backendmock"
+	transactionmock "github.com/ethersphere/bee/v2/pkg/transaction/mock"
+	"github.com/ethersphere/bee/v2/pkg/util/ioutil"
 	"github.com/hashicorp/go-multierror"
 	"github.com/multiformats/go-multiaddr"
 	"golang.org/x/sync/errgroup"
 )
 
 type DevBee struct {
-	tracerCloser     io.Closer
-	stateStoreCloser io.Closer
-	localstoreCloser io.Closer
-	apiCloser        io.Closer
-	pssCloser        io.Closer
-	errorLogWriter   io.Writer
-	apiServer        *http.Server
-	debugAPIServer   *http.Server
+	tracerCloser        io.Closer
+	stateStoreCloser    io.Closer
+	localstoreCloser    io.Closer
+	apiCloser           io.Closer
+	pssCloser           io.Closer
+	accesscontrolCloser io.Closer
+	errorLogWriter      io.Writer
+	apiServer           *http.Server
 }
 
 type DevOptions struct {
 	Logger                   log.Logger
 	APIAddr                  string
-	DebugAPIAddr             string
 	CORSAllowedOrigins       []string
 	DBOpenFilesLimit         uint64
 	ReserveCapacity          uint64
 	DBWriteBufferSize        uint64
 	DBBlockCacheCapacity     uint64
 	DBDisableSeeksCompaction bool
-	Restricted               bool
-	TokenEncryptionKey       string
-	AdminPasswordHash        string
 }
 
 // NewDevBee starts the bee instance in 'development' mode
@@ -141,16 +138,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		return nil, fmt.Errorf("blockchain address: %w", err)
 	}
 
-	var authenticator auth.Authenticator
-
-	if o.Restricted {
-		if authenticator, err = auth.New(o.TokenEncryptionKey, o.AdminPasswordHash, logger); err != nil {
-			return nil, fmt.Errorf("authenticator: %w", err)
-		}
-		logger.Info("starting with restricted APIs")
-	}
-
-	var mockTransaction = transactionmock.New(transactionmock.WithPendingTransactionsFunc(func() ([]common.Hash, error) {
+	mockTransaction := transactionmock.New(transactionmock.WithPendingTransactionsFunc(func() ([]common.Hash, error) {
 		return []common.Hash{common.HexToHash("abcd")}, nil
 	}), transactionmock.WithResendTransactionFunc(func(ctx context.Context, txHash common.Hash) error {
 		return nil
@@ -194,37 +182,6 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		}
 	}(probe)
 
-	var debugApiService *api.Service
-
-	if o.DebugAPIAddr != "" {
-		debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)
-		if err != nil {
-			return nil, fmt.Errorf("debug api listener: %w", err)
-		}
-
-		debugApiService = api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, mockTransaction, batchStore, api.DevMode, true, true, chainBackend, o.CORSAllowedOrigins, inmemstore.New())
-		debugAPIServer := &http.Server{
-			IdleTimeout:       30 * time.Second,
-			ReadHeaderTimeout: 3 * time.Second,
-			Handler:           debugApiService,
-			ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
-		}
-
-		debugApiService.MountTechnicalDebug()
-		debugApiService.SetProbe(probe)
-
-		go func() {
-			logger.Info("starting debug api server", "address", debugAPIListener.Addr())
-
-			if err := debugAPIServer.Serve(debugAPIListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				logger.Debug("debug api server failed to start", "error", err)
-				logger.Error(nil, "debug api server failed to start")
-			}
-		}()
-
-		b.debugAPIServer = debugAPIServer
-	}
-
 	localStore, err := storer.New(context.Background(), "", &storer.Options{
 		Logger:        logger,
 		CacheCapacity: 1_000_000,
@@ -233,6 +190,11 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		return nil, fmt.Errorf("localstore: %w", err)
 	}
 	b.localstoreCloser = localStore
+
+	session := accesscontrol.NewDefaultSession(mockKey)
+	actLogic := accesscontrol.NewLogic(session)
+	accesscontrol := accesscontrol.NewController(actLogic)
+	b.accesscontrolCloser = accesscontrol
 
 	pssService := pss.New(mockKey, logger)
 	b.pssCloser = pssService
@@ -342,13 +304,11 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		))
 	)
 
-	var (
-		// syncStatusFn mocks sync status because complete sync is required in order to curl certain apis e.g. /stamps.
-		// this allows accessing those apis by passing true to isDone in devNode.
-		syncStatusFn = func() (isDone bool, err error) {
-			return true, nil
-		}
-	)
+	// syncStatusFn mocks sync status because complete sync is required in order to curl certain apis e.g. /stamps.
+	// this allows accessing those apis by passing true to isDone in devNode.
+	syncStatusFn := func() (isDone bool, err error) {
+		return true, nil
+	}
 
 	mockFeeds := factory.New(localStore.Download(true))
 	mockResolver := resolverMock.NewResolver()
@@ -361,7 +321,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		stakingContractMock.WithGetStake(func(ctx context.Context) (*big.Int, error) {
 			return nil, staking.ErrNotImplemented
 		}),
-		stakingContractMock.WithWithdrawAllStake(func(ctx context.Context) (common.Hash, error) {
+		stakingContractMock.WithWithdrawStake(func(ctx context.Context) (common.Hash, error) {
 			return common.Hash{}, staking.ErrNotImplemented
 		}),
 		stakingContractMock.WithIsFrozen(func(ctx context.Context, block uint64) (bool, error) {
@@ -381,15 +341,17 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		Storer:          localStore,
 		Resolver:        mockResolver,
 		Pss:             pssService,
+		Gsoc:            gsoc.New(logger),
 		FeedFactory:     mockFeeds,
 		Post:            post,
+		AccessControl:   accesscontrol,
 		PostageContract: postageContract,
 		Staking:         mockStaking,
 		Steward:         mockSteward,
 		SyncStatus:      syncStatusFn,
 	}
 
-	var erc20 = erc20mock.New(
+	erc20 := erc20mock.New(
 		erc20mock.WithBalanceOfFunc(func(ctx context.Context, address common.Address) (*big.Int, error) {
 			return big.NewInt(0), nil
 		}),
@@ -398,33 +360,18 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		}),
 	)
 
-	apiService := api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, mockTransaction, batchStore, api.DevMode, true, true, chainBackend, o.CORSAllowedOrigins, inmemstore.New())
+	apiService := api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, nil, logger, mockTransaction, batchStore, api.DevMode, true, true, chainBackend, o.CORSAllowedOrigins, inmemstore.New())
 
-	apiService.Configure(signer, authenticator, tracer, api.Options{
+	apiService.Configure(signer, tracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
 		WsPingPeriod:       60 * time.Second,
-		Restricted:         o.Restricted,
 	}, debugOpts, 1, erc20)
-	apiService.MountAPI()
+
+	apiService.Mount()
+	apiService.EnableFullAPI()
 	apiService.SetProbe(probe)
-
-	if o.Restricted {
-		apiService.SetP2P(p2ps)
-		apiService.SetSwarmAddress(&swarmAddress)
-		apiService.MountDebug(true)
-	}
-
-	if o.DebugAPIAddr != "" {
-		debugApiService.SetP2P(p2ps)
-		debugApiService.SetSwarmAddress(&swarmAddress)
-		debugApiService.MountDebug(false)
-
-		debugApiService.Configure(signer, authenticator, tracer, api.Options{
-			CORSAllowedOrigins: o.CORSAllowedOrigins,
-			WsPingPeriod:       60 * time.Second,
-			Restricted:         o.Restricted,
-		}, debugOpts, 1, erc20)
-	}
+	apiService.SetP2P(p2ps)
+	apiService.SetSwarmAddress(&swarmAddress)
 
 	apiListener, err := net.Listen("tcp", o.APIAddr)
 	if err != nil {
@@ -478,23 +425,15 @@ func (b *DevBee) Shutdown() error {
 			return nil
 		})
 	}
-	if b.debugAPIServer != nil {
-		eg.Go(func() error {
-			if err := b.debugAPIServer.Shutdown(ctx); err != nil {
-				return fmt.Errorf("debug api server: %w", err)
-			}
-			return nil
-		})
-	}
-
 	if err := eg.Wait(); err != nil {
 		mErr = multierror.Append(mErr, err)
 	}
 
 	tryClose(b.pssCloser, "pss")
+	tryClose(b.accesscontrolCloser, "accesscontrol")
 	tryClose(b.tracerCloser, "tracer")
 	tryClose(b.stateStoreCloser, "statestore")
-	tryClose(b.localstoreCloser, "localstore")
+	tryClose(b.localstoreCloser, ioutil.DataPathLocalstore)
 
 	return mErr
 }
@@ -504,7 +443,6 @@ func pong(_ context.Context, _ swarm.Address, _ ...string) (rtt time.Duration, e
 }
 
 func randomAddress() (swarm.Address, error) {
-
 	b := make([]byte, 32)
 
 	_, err := rand.Read(b)
@@ -513,5 +451,4 @@ func randomAddress() (swarm.Address, error) {
 	}
 
 	return swarm.NewAddress(b), nil
-
 }

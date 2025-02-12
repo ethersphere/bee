@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/spinlock"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/spinlock"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -94,6 +94,13 @@ func New(opts ...Option) *Recorder {
 		o.apply(r)
 	}
 	return r
+}
+
+func (r *Recorder) Reset() {
+	r.recordsMu.Lock()
+	defer r.recordsMu.Unlock()
+
+	r.records = make(map[string][]*Record)
 }
 
 func (r *Recorder) SetProtocols(protocols ...p2p.ProtocolSpec) {

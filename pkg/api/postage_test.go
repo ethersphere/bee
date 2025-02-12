@@ -18,19 +18,19 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 
-	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/bigint"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/postage/batchstore/mock"
-	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
-	"github.com/ethersphere/bee/pkg/postage/postagecontract"
-	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
-	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
-	"github.com/ethersphere/bee/pkg/sctx"
-	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
-	"github.com/ethersphere/bee/pkg/transaction/backendmock"
+	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/bigint"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
+	mockpost "github.com/ethersphere/bee/v2/pkg/postage/mock"
+	"github.com/ethersphere/bee/v2/pkg/postage/postagecontract"
+	contractMock "github.com/ethersphere/bee/v2/pkg/postage/postagecontract/mock"
+	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
+	"github.com/ethersphere/bee/v2/pkg/sctx"
+	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
+	"github.com/ethersphere/bee/v2/pkg/transaction/backendmock"
 )
 
 func TestPostageCreateStamp(t *testing.T) {
@@ -65,7 +65,6 @@ func TestPostageCreateStamp(t *testing.T) {
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:        true,
 			PostageContract: contract,
 		})
 
@@ -90,7 +89,6 @@ func TestPostageCreateStamp(t *testing.T) {
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:        true,
 			PostageContract: contract,
 		})
 
@@ -111,7 +109,6 @@ func TestPostageCreateStamp(t *testing.T) {
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:        true,
 			PostageContract: contract,
 		})
 
@@ -132,7 +129,6 @@ func TestPostageCreateStamp(t *testing.T) {
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:        true,
 			PostageContract: contract,
 		})
 
@@ -161,7 +157,6 @@ func TestPostageCreateStamp(t *testing.T) {
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:        true,
 			PostageContract: contract,
 		})
 
@@ -182,7 +177,6 @@ func TestPostageCreateStamp(t *testing.T) {
 		t.Parallel()
 
 		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:   true,
 			SyncStatus: func() (bool, error) { return false, nil },
 		})
 
@@ -197,7 +191,6 @@ func TestPostageCreateStamp(t *testing.T) {
 		t.Parallel()
 
 		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:   true,
 			SyncStatus: func() (bool, error) { return true, errors.New("oops") },
 		})
 
@@ -223,7 +216,7 @@ func TestPostageGetStamps(t *testing.T) {
 		t.Parallel()
 
 		bs := mock.New(mock.WithChainState(cs), mock.WithBatch(b))
-		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: mp, BatchStore: bs, BlockTime: 2 * time.Second})
+		ts, _, _, _ := newTestServer(t, testServerOptions{Post: mp, BatchStore: bs, BlockTime: 2 * time.Second})
 
 		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampsResponse{
@@ -259,7 +252,7 @@ func TestPostageGetStamps(t *testing.T) {
 		}
 		ecs := &postage.ChainState{Block: 10, TotalAmount: big.NewInt(15), CurrentPrice: big.NewInt(12)}
 		ebs := mock.New(mock.WithChainState(ecs))
-		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: emp, BatchStore: ebs, BlockTime: 2 * time.Second})
+		ts, _, _, _ := newTestServer(t, testServerOptions{Post: emp, BatchStore: ebs, BlockTime: 2 * time.Second})
 
 		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps/"+hex.EncodeToString(eb.ID), http.StatusNotFound,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
@@ -281,7 +274,7 @@ func TestGetAllBatches(t *testing.T) {
 	mp := mockpost.New(mockpost.WithIssuer(si))
 	cs := &postage.ChainState{Block: 10, TotalAmount: big.NewInt(5), CurrentPrice: big.NewInt(2)}
 	bs := mock.New(mock.WithChainState(cs), mock.WithBatch(b))
-	ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: mp, BatchStore: bs, BlockTime: 2 * time.Second})
+	ts, _, _, _ := newTestServer(t, testServerOptions{Post: mp, BatchStore: bs, BlockTime: 2 * time.Second})
 
 	oneBatch := struct {
 		Batches []api.PostageBatchResponse `json:"batches"`
@@ -318,7 +311,7 @@ func TestPostageGetStamp(t *testing.T) {
 	mp := mockpost.New(mockpost.WithIssuer(si))
 	cs := &postage.ChainState{Block: 10, TotalAmount: big.NewInt(5), CurrentPrice: big.NewInt(2)}
 	bs := mock.New(mock.WithChainState(cs), mock.WithBatch(b))
-	ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: mp, BatchStore: bs, BlockTime: 2 * time.Second})
+	ts, _, _, _ := newTestServer(t, testServerOptions{Post: mp, BatchStore: bs, BlockTime: 2 * time.Second})
 
 	t.Run("ok", func(t *testing.T) {
 		t.Parallel()
@@ -346,7 +339,7 @@ func TestPostageGetBuckets(t *testing.T) {
 
 	si := postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)
 	mp := mockpost.New(mockpost.WithIssuer(si))
-	ts, _, _, _ := newTestServer(t, testServerOptions{Post: mp, DebugAPI: true})
+	ts, _, _, _ := newTestServer(t, testServerOptions{Post: mp})
 	buckets := make([]api.BucketData, 1024)
 	for i := range buckets {
 		buckets[i] = api.BucketData{BucketID: uint32(i)}
@@ -369,11 +362,10 @@ func TestPostageGetBuckets(t *testing.T) {
 		t.Parallel()
 
 		mpNotFound := mockpost.New()
-		tsNotFound, _, _, _ := newTestServer(t, testServerOptions{Post: mpNotFound, DebugAPI: true})
+		tsNotFound, _, _, _ := newTestServer(t, testServerOptions{Post: mpNotFound})
 
 		jsonhttptest.Request(t, tsNotFound, http.MethodGet, "/stamps/"+batchOkStr+"/buckets", http.StatusNotFound)
 	})
-
 }
 
 func TestReserveState(t *testing.T) {
@@ -383,7 +375,6 @@ func TestReserveState(t *testing.T) {
 		t.Parallel()
 
 		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:   true,
 			BatchStore: mock.New(mock.WithRadius(5)),
 			Storer:     mockstorer.New(),
 		})
@@ -397,7 +388,6 @@ func TestReserveState(t *testing.T) {
 		t.Parallel()
 
 		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:   true,
 			BatchStore: mock.New(),
 			Storer:     mockstorer.New(),
 		})
@@ -406,6 +396,7 @@ func TestReserveState(t *testing.T) {
 		)
 	})
 }
+
 func TestChainState(t *testing.T) {
 	t.Parallel()
 
@@ -418,7 +409,6 @@ func TestChainState(t *testing.T) {
 			CurrentPrice: big.NewInt(5),
 		}
 		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:   true,
 			BatchStore: mock.New(mock.WithChainState(cs)),
 			BackendOpts: []backendmock.Option{backendmock.WithBlockNumberFunc(func(ctx context.Context) (uint64, error) {
 				return 1, nil
@@ -433,7 +423,6 @@ func TestChainState(t *testing.T) {
 			}),
 		)
 	})
-
 }
 
 func TestPostageTopUpStamp(t *testing.T) {
@@ -460,7 +449,6 @@ func TestPostageTopUpStamp(t *testing.T) {
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:        true,
 			PostageContract: contract,
 		})
 
@@ -490,7 +478,6 @@ func TestPostageTopUpStamp(t *testing.T) {
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:        true,
 			PostageContract: contract,
 		})
 
@@ -512,7 +499,6 @@ func TestPostageTopUpStamp(t *testing.T) {
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:        true,
 			PostageContract: contract,
 		})
 
@@ -533,7 +519,6 @@ func TestPostageTopUpStamp(t *testing.T) {
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:        true,
 			PostageContract: contract,
 		})
 
@@ -557,7 +542,6 @@ func TestPostageTopUpStamp(t *testing.T) {
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:        true,
 			PostageContract: contract,
 		})
 
@@ -595,7 +579,6 @@ func TestPostageDiluteStamp(t *testing.T) {
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:        true,
 			PostageContract: contract,
 		})
 
@@ -625,7 +608,6 @@ func TestPostageDiluteStamp(t *testing.T) {
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:        true,
 			PostageContract: contract,
 		})
 
@@ -647,7 +629,6 @@ func TestPostageDiluteStamp(t *testing.T) {
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:        true,
 			PostageContract: contract,
 		})
 
@@ -668,7 +649,6 @@ func TestPostageDiluteStamp(t *testing.T) {
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:        true,
 			PostageContract: contract,
 		})
 
@@ -692,7 +672,6 @@ func TestPostageDiluteStamp(t *testing.T) {
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:        true,
 			PostageContract: contract,
 		})
 
@@ -703,7 +682,6 @@ func TestPostageDiluteStamp(t *testing.T) {
 				TxHash:  txHash.String(),
 			}),
 		)
-
 	})
 }
 
@@ -790,8 +768,6 @@ func TestPostageAccessHandler(t *testing.T) {
 
 	for _, op1 := range success {
 		for _, op2 := range failure {
-			op1 := op1
-			op2 := op2
 			t.Run(op1.name+"-"+op2.name, func(t *testing.T) {
 				t.Parallel()
 
@@ -812,7 +788,6 @@ func TestPostageAccessHandler(t *testing.T) {
 				)
 
 				ts, _, _, _ := newTestServer(t, testServerOptions{
-					DebugAPI:        true,
 					PostageContract: contract,
 				})
 
@@ -837,7 +812,7 @@ func TestPostageAccessHandler(t *testing.T) {
 func Test_postageCreateHandler_invalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+	client, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name   string
@@ -887,7 +862,7 @@ func Test_postageCreateHandler_invalidInputs(t *testing.T) {
 func Test_postageGetStampBucketsHandler_invalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+	client, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name    string
@@ -935,7 +910,6 @@ func Test_postageGetStampBucketsHandler_invalidInputs(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -949,7 +923,7 @@ func Test_postageGetStampBucketsHandler_invalidInputs(t *testing.T) {
 func Test_postageGetStampHandler_invalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+	client, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name    string
@@ -997,7 +971,6 @@ func Test_postageGetStampHandler_invalidInputs(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -1012,7 +985,7 @@ func Test_postageGetStampHandler_invalidInputs(t *testing.T) {
 func Test_postageTopUpHandler_invalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+	client, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name    string
@@ -1091,7 +1064,7 @@ func Test_postageTopUpHandler_invalidInputs(t *testing.T) {
 func Test_postageDiluteHandler_invalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+	client, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name    string

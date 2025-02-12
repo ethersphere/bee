@@ -8,9 +8,9 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	storer "github.com/ethersphere/bee/pkg/storer"
-	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/v2/pkg/storer"
+	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 )
 
 func TestDebugStorage(t *testing.T) {
@@ -35,8 +35,7 @@ func TestDebugStorage(t *testing.T) {
 		}
 
 		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI: true,
-			Storer:   mockstorer.NewWithDebugInfo(want),
+			Storer: mockstorer.NewWithDebugInfo(want),
 		})
 
 		jsonhttptest.Request(t, ts, http.MethodGet, "/debugstore", http.StatusOK,

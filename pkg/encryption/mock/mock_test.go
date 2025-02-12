@@ -9,7 +9,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/encryption/mock"
+	"github.com/ethersphere/bee/v2/pkg/encryption/mock"
 )
 
 var errTest = errors.New("test error")
@@ -62,7 +62,6 @@ func TestEncryptor_Encrypt(t *testing.T) {
 			wantErr: mock.ErrInvalidXORKey,
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -125,7 +124,6 @@ func TestEncryptor_Decrypt(t *testing.T) {
 			wantErr: mock.ErrInvalidXORKey,
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

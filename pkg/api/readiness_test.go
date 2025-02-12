@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 )
 
 func TestReadiness(t *testing.T) {
@@ -37,10 +37,20 @@ func TestReadiness(t *testing.T) {
 
 		// When we set readiness probe to OK it should indicate that API is ready
 		probe.SetReady(api.ProbeStatusOK)
-		jsonhttptest.Request(t, testServer, http.MethodGet, "/readiness", http.StatusOK)
+		jsonhttptest.Request(t, testServer, http.MethodGet, "/readiness", http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(api.ReadyStatusResponse{
+				Status:     "ready",
+				Version:    "-dev",
+				APIVersion: "0.0.0",
+			}))
 
 		// When we set readiness probe to NOK it should indicate that API is not ready
 		probe.SetReady(api.ProbeStatusNOK)
-		jsonhttptest.Request(t, testServer, http.MethodGet, "/readiness", http.StatusBadRequest)
+		jsonhttptest.Request(t, testServer, http.MethodGet, "/readiness", http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(api.ReadyStatusResponse{
+				Status:     "notReady",
+				Version:    "-dev",
+				APIVersion: "0.0.0",
+			}))
 	})
 }

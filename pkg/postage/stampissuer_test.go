@@ -16,10 +16,10 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/postage"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/storagetest"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/storagetest"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"golang.org/x/sync/errgroup"
@@ -27,6 +27,8 @@ import (
 
 // TestStampIssuerMarshalling tests the idempotence  of binary marshal/unmarshal.
 func TestStampIssuerMarshalling(t *testing.T) {
+	t.Parallel()
+
 	want := newTestStampIssuer(t, 1000)
 	buf, err := want.MarshalBinary()
 	if err != nil {
@@ -52,6 +54,20 @@ func TestStampIssuerMarshalling(t *testing.T) {
 func newTestStampIssuer(t *testing.T, block uint64) *postage.StampIssuer {
 	t.Helper()
 	return newTestStampIssuerMutability(t, block, true)
+}
+
+func newTestStampIssuerID(t *testing.T, block uint64, id []byte) *postage.StampIssuer {
+	t.Helper()
+	return postage.NewStampIssuer(
+		"label",
+		"keyID",
+		id,
+		big.NewInt(3),
+		16,
+		8,
+		block,
+		true,
+	)
 }
 
 func newTestStampIssuerMutability(t *testing.T, block uint64, immutable bool) *postage.StampIssuer {
@@ -131,8 +147,6 @@ func TestStampItem(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
-
 		t.Run(fmt.Sprintf("%s marshal/unmarshal", tc.name), func(t *testing.T) {
 			t.Parallel()
 
@@ -235,7 +249,6 @@ func TestUtilization(t *testing.T) {
 
 		t.Logf("depth: %d, actual utilization: %f", depth, float64(count)/math.Pow(2, float64(depth)))
 	}
-
 }
 
 func bytesToIndex(buf []byte) (bucket, index uint32) {

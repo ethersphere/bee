@@ -7,12 +7,19 @@ package mem_test
 import (
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/keystore/mem"
-	"github.com/ethersphere/bee/pkg/keystore/test"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/keystore/mem"
+	"github.com/ethersphere/bee/v2/pkg/keystore/test"
 )
 
 func TestService(t *testing.T) {
 	t.Parallel()
 
-	test.Service(t, mem.New())
+	t.Run("EDGSecp256_K1", func(t *testing.T) {
+		test.Service(t, mem.New(), crypto.EDGSecp256_K1)
+	})
+
+	t.Run("EDGSecp256_R1", func(t *testing.T) {
+		test.Service(t, mem.New(), crypto.EDGSecp256_R1)
+	})
 }

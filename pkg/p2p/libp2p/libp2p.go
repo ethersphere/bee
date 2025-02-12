@@ -17,23 +17,21 @@ import (
 	"sync"
 	"time"
 
-	ocprom "contrib.go.opencensus.io/exporter/prometheus"
-	"github.com/ethersphere/bee"
-	"github.com/ethersphere/bee/pkg/addressbook"
-	"github.com/ethersphere/bee/pkg/bzz"
-	beecrypto "github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/log"
-	m2 "github.com/ethersphere/bee/pkg/metrics"
-	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/blocklist"
-	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/breaker"
-	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
-	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/reacher"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology"
-	"github.com/ethersphere/bee/pkg/topology/lightnode"
-	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/ethersphere/bee/v2"
+	"github.com/ethersphere/bee/v2/pkg/addressbook"
+	"github.com/ethersphere/bee/v2/pkg/bzz"
+	beecrypto "github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/blocklist"
+	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/breaker"
+	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/handshake"
+	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/reacher"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/topology"
+	"github.com/ethersphere/bee/v2/pkg/topology/lightnode"
+	"github.com/ethersphere/bee/v2/pkg/tracing"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/event"
@@ -46,17 +44,21 @@ import (
 	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
-	rcmgrObs "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	lp2pswarm "github.com/libp2p/go-libp2p/p2p/net/swarm"
 	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
+
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multistream"
-	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 	"golang.org/x/exp/maps"
+
+	ocprom "contrib.go.opencensus.io/exporter/prometheus"
+	m2 "github.com/ethersphere/bee/v2/pkg/metrics"
+	rcmgrObs "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -251,6 +253,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	transports := []libp2p.Option{
 		libp2p.Transport(tcp.NewTCPTransport, tcp.DisableReuseport()),
 	}
+
 	if o.EnableQUIC {
 		transports = append(transports, libp2p.Transport(libp2pquic.NewTransport))
 	}
@@ -500,7 +503,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 				// kick another node to fit this one in
 				p, err := s.lightNodes.RandomPeer(peer.Address)
 				if err != nil {
-					s.logger.Debug("stream handler: cant find a peer slot for light node", "error", err)
+					s.logger.Debug("stream handler: can't find a peer slot for light node", "error", err)
 					_ = s.Disconnect(peer.Address, "unable to find peer slot for light node")
 					return
 				} else {
@@ -551,6 +554,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	}
 
 	peerUserAgent := appendSpace(s.peerUserAgent(s.ctx, peerID))
+	s.networkStatus.Store(int32(p2p.NetworkStatusAvailable))
 
 	loggerV1.Debug("stream handler: successfully connected to peer (inbound)", "addresses", i.BzzAddress.ShortString(), "light", i.LightString(), "user_agent", peerUserAgent)
 	s.logger.Debug("stream handler: successfully connected to peer (inbound)", "address", i.BzzAddress.Overlay, "light", i.LightString(), "user_agent", peerUserAgent)
@@ -564,7 +568,6 @@ func (s *Service) SetPickyNotifier(n p2p.PickyNotifier) {
 
 func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 	for _, ss := range p.StreamSpecs {
-		ss := ss
 		id := protocol.ID(p2p.NewSwarmStreamName(p.Name, p.Version, ss.Name))
 		matcher, err := s.protocolSemverMatcher(id)
 		if err != nil {
@@ -660,6 +663,7 @@ func (s *Service) Addresses() ([]ma.Multiaddr, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		addresses[a.String()] = a
 	}
 	if s.natAddrResolver != nil {

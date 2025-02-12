@@ -9,10 +9,10 @@ import (
 	"math/big"
 	"net/http"
 
-	"github.com/ethersphere/bee/pkg/bigint"
+	"github.com/ethersphere/bee/v2/pkg/bigint"
 
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/storageincentives/staking"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/storageincentives/staking"
 	"github.com/gorilla/mux"
 )
 
@@ -33,12 +33,12 @@ func (s *Service) stakingAccessHandler(h http.Handler) http.Handler {
 type getStakeResponse struct {
 	StakedAmount *bigint.BigInt `json:"stakedAmount"`
 }
-type stakeDepositResponse struct {
-	TxHash string `json:"txhash"`
-}
 
-type withdrawAllStakeResponse struct {
-	TxHash string `json:"txhash"`
+type getWithdrawableResponse struct {
+	WithdrawableAmount *bigint.BigInt `json:"withdrawableAmount"`
+}
+type stakeTransactionReponse struct {
+	TxHash string `json:"txHash"`
 }
 
 func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) {
@@ -77,15 +77,15 @@ func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) 
 		jsonhttp.InternalServerError(w, "cannot stake")
 		return
 	}
-	jsonhttp.OK(w, stakeDepositResponse{
+	jsonhttp.OK(w, stakeTransactionReponse{
 		TxHash: txHash.String(),
 	})
 }
 
-func (s *Service) getStakedAmountHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) getPotentialStake(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_stake").Build()
 
-	stakedAmount, err := s.stakingContract.GetStake(r.Context())
+	stakedAmount, err := s.stakingContract.GetPotentialStake(r.Context())
 	if err != nil {
 		logger.Debug("get staked amount failed", "overlayAddr", s.overlay, "error", err)
 		logger.Error(nil, "get staked amount failed")
@@ -96,10 +96,24 @@ func (s *Service) getStakedAmountHandler(w http.ResponseWriter, r *http.Request)
 	jsonhttp.OK(w, getStakeResponse{StakedAmount: bigint.Wrap(stakedAmount)})
 }
 
-func (s *Service) withdrawAllStakeHandler(w http.ResponseWriter, r *http.Request) {
-	logger := s.logger.WithName("delete_withdraw_all_stake").Build()
+func (s *Service) getWithdrawableStakeHandler(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("get_stake").Build()
 
-	txHash, err := s.stakingContract.WithdrawAllStake(r.Context())
+	withdrawableAmount, err := s.stakingContract.GetWithdrawableStake(r.Context())
+	if err != nil {
+		logger.Debug("get staked amount failed", "overlayAddr", s.overlay, "error", err)
+		logger.Error(nil, "get staked amount failed")
+		jsonhttp.InternalServerError(w, "get staked amount failed")
+		return
+	}
+
+	jsonhttp.OK(w, getWithdrawableResponse{WithdrawableAmount: bigint.Wrap(withdrawableAmount)})
+}
+
+func (s *Service) withdrawStakeHandler(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("withdraw_stake").Build()
+
+	txHash, err := s.stakingContract.WithdrawStake(r.Context())
 	if err != nil {
 		if errors.Is(err, staking.ErrInsufficientStake) {
 			logger.Debug("insufficient stake", "overlayAddr", s.overlay, "error", err)
@@ -113,5 +127,31 @@ func (s *Service) withdrawAllStakeHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	jsonhttp.OK(w, withdrawAllStakeResponse{TxHash: txHash.String()})
+	jsonhttp.OK(w, stakeTransactionReponse{TxHash: txHash.String()})
+}
+
+func (s *Service) migrateStakeHandler(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("migrate_stake").Build()
+
+	txHash, err := s.stakingContract.MigrateStake(r.Context())
+	if err != nil {
+		if errors.Is(err, staking.ErrInsufficientStake) {
+			logger.Debug("insufficient stake", "overlayAddr", s.overlay, "error", err)
+			logger.Error(nil, "insufficient stake")
+			jsonhttp.BadRequest(w, "insufficient stake to migrate")
+			return
+		}
+		if errors.Is(err, staking.ErrNotPaused) {
+			logger.Debug("contract is not paused", "error", err)
+			logger.Error(nil, "contract is not paused")
+			jsonhttp.BadRequest(w, "contract is not paused")
+			return
+		}
+		logger.Debug("migrate stake failed", "error", err)
+		logger.Error(nil, "migrate stake failed")
+		jsonhttp.InternalServerError(w, "cannot migrate stake")
+		return
+	}
+
+	jsonhttp.OK(w, stakeTransactionReponse{TxHash: txHash.String()})
 }

@@ -9,8 +9,8 @@ import (
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 var (
@@ -38,7 +38,7 @@ type Addressbook interface {
 	PutChequebook(peer swarm.Address, chequebook common.Address) error
 	// AddDeductionFor peer stores the flag indicating the peer have already issued a cheque that has been deducted
 	AddDeductionFor(peer swarm.Address) error
-	// AddDeductionFor peer stores the flag indicating the peer have already received a cheque that has been deducted
+	// AddDeductionBy peer stores the flag indicating the peer have already issued a cheque that has been deducted
 	AddDeductionBy(peer swarm.Address) error
 	// GetDeductionFor returns whether a peer have already issued a cheque that has been deducted
 	GetDeductionFor(peer swarm.Address) (bool, error)

@@ -20,14 +20,14 @@ import (
 
 	"golang.org/x/sync/semaphore"
 
-	"github.com/ethersphere/bee/pkg/addressbook"
-	"github.com/ethersphere/bee/pkg/bzz"
-	"github.com/ethersphere/bee/pkg/hive/pb"
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/p2p/protobuf"
-	"github.com/ethersphere/bee/pkg/ratelimit"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/addressbook"
+	"github.com/ethersphere/bee/v2/pkg/bzz"
+	"github.com/ethersphere/bee/v2/pkg/hive/pb"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/v2/pkg/ratelimit"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
@@ -61,7 +61,6 @@ type Service struct {
 	metrics           metrics
 	inLimiter         *ratelimit.Limiter
 	outLimiter        *ratelimit.Limiter
-	clearMtx          sync.Mutex
 	quit              chan struct{}
 	wg                sync.WaitGroup
 	peersChan         chan pb.Peers
@@ -111,17 +110,17 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 var ErrShutdownInProgress = errors.New("shutdown in progress")
 
 func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, peers ...swarm.Address) error {
-	max := maxBatchSize
+	maxSize := maxBatchSize
 	s.metrics.BroadcastPeers.Inc()
 	s.metrics.BroadcastPeersPeers.Add(float64(len(peers)))
 
 	for len(peers) > 0 {
-		if max > len(peers) {
-			max = len(peers)
+		if maxSize > len(peers) {
+			maxSize = len(peers)
 		}
 
 		// If broadcasting limit is exceeded, return early
-		if !s.outLimiter.Allow(addressee.ByteString(), max) {
+		if !s.outLimiter.Allow(addressee.ByteString(), maxSize) {
 			return nil
 		}
 
@@ -131,11 +130,11 @@ func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, p
 		default:
 		}
 
-		if err := s.sendPeers(ctx, addressee, peers[:max]); err != nil {
+		if err := s.sendPeers(ctx, addressee, peers[:maxSize]); err != nil {
 			return err
 		}
 
-		peers = peers[max:]
+		peers = peers[maxSize:]
 	}
 
 	return nil
@@ -243,13 +242,8 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 }
 
 func (s *Service) disconnect(peer p2p.Peer) error {
-
-	s.clearMtx.Lock()
-	defer s.clearMtx.Unlock()
-
 	s.inLimiter.Clear(peer.Address.ByteString())
 	s.outLimiter.Clear(peer.Address.ByteString())
-
 	return nil
 }
 
@@ -283,13 +277,11 @@ func (s *Service) startCheckPeersHandler() {
 }
 
 func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
-
 	var peersToAdd []swarm.Address
 	mtx := sync.Mutex{}
 	wg := sync.WaitGroup{}
 
 	addPeer := func(newPeer *pb.BzzAddress, multiUnderlay ma.Multiaddr) {
-
 		err := s.sem.Acquire(ctx, 1)
 		if err != nil {
 			return
@@ -340,7 +332,6 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 			peersToAdd = append(peersToAdd, bzzAddress.Overlay)
 			mtx.Unlock()
 		}()
-
 	}
 
 	for _, p := range peers.Peers {

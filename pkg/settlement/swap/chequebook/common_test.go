@@ -9,7 +9,7 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
+	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
 )
 
 type chequeSignerMock struct {
@@ -24,7 +24,6 @@ type factoryMock struct {
 	erc20Address     func(ctx context.Context) (common.Address, error)
 	deploy           func(ctx context.Context, issuer common.Address, defaultHardDepositTimeoutDuration *big.Int, nonce common.Hash) (common.Hash, error)
 	waitDeployed     func(ctx context.Context, txHash common.Hash) (common.Address, error)
-	verifyBytecode   func(ctx context.Context) error
 	verifyChequebook func(ctx context.Context, chequebook common.Address) error
 }
 
@@ -39,11 +38,6 @@ func (m *factoryMock) Deploy(ctx context.Context, issuer common.Address, default
 
 func (m *factoryMock) WaitDeployed(ctx context.Context, txHash common.Hash) (common.Address, error) {
 	return m.waitDeployed(ctx, txHash)
-}
-
-// VerifyBytecode checks that the factory is valid.
-func (m *factoryMock) VerifyBytecode(ctx context.Context) error {
-	return m.verifyBytecode(ctx)
 }
 
 // VerifyChequebook checks that the supplied chequebook has been deployed by this factory.

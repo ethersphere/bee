@@ -14,8 +14,8 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -499,8 +499,6 @@ func TestMapStructure(t *testing.T) {
 		want: &mapSwarmAddressTest{SwarmAddressVal: swarm.MustParseHexAddress("1234567890abcdef")},
 	}}
 	for _, tc := range tests {
-		tc := tc
-
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

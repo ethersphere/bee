@@ -12,10 +12,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/sharky"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storer/internal/chunkstore"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/sharky"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstore"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 const (
@@ -51,10 +51,9 @@ func sharkyRecovery(ctx context.Context, sharkyBasePath string, store storage.St
 		}
 	}()
 
-	locationResultC := make(chan chunkstore.LocationResult)
-	chunkstore.IterateLocations(ctx, store, locationResultC)
+	c := chunkstore.IterateLocations(ctx, store)
 
-	if err := addLocations(locationResultC, sharkyRecover); err != nil {
+	if err := addLocations(c, sharkyRecover); err != nil {
 		return closer, err
 	}
 

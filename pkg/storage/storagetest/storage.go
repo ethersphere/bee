@@ -18,10 +18,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/encryption"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/storageutil"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/encryption"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/storageutil"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -166,11 +166,11 @@ func checkTestItemEqual(t *testing.T, a, b storage.Item) {
 	t.Helper()
 
 	if a.Namespace() != b.Namespace() {
-		t.Fatalf("namespace doesnt match %s and %s", a.Namespace(), b.Namespace())
+		t.Fatalf("namespace doesn't match %s and %s", a.Namespace(), b.Namespace())
 	}
 
 	if a.ID() != b.ID() {
-		t.Fatalf("ID doesnt match %s and %s %d %d", a.ID(), b.ID(), len(a.ID()), len(b.ID()))
+		t.Fatalf("ID doesn't match %s and %s %d %d", a.ID(), b.ID(), len(a.ID()), len(b.ID()))
 	}
 
 	buf1, err := a.Marshal()
@@ -357,7 +357,7 @@ func TestStore(t *testing.T, s storage.Store) {
 				t.Fatalf("failed getting count: %v", err)
 			}
 			if cnt != obj1Cnt {
-				t.Fatalf("count missmatch: want %d have %d", obj1Cnt, cnt)
+				t.Fatalf("count mismatch: want %d have %d", obj1Cnt, cnt)
 			}
 		})
 		t.Run("obj2", func(t *testing.T) {
@@ -366,7 +366,7 @@ func TestStore(t *testing.T, s storage.Store) {
 				t.Fatalf("failed getting count: %v", err)
 			}
 			if cnt != obj2Cnt {
-				t.Fatalf("count missmatch: want %d, have %d", obj2Cnt, cnt)
+				t.Fatalf("count mismatch: want %d, have %d", obj2Cnt, cnt)
 			}
 		})
 	})
@@ -434,7 +434,7 @@ func TestStore(t *testing.T, s storage.Store) {
 				t.Fatalf("unexpected no of entries in iteration exp %d found %d", obj1WithPrefixCnt, idx)
 			}
 		})
-		t.Run("obj2 decending", func(t *testing.T) {
+		t.Run("obj2 descending", func(t *testing.T) {
 			idx := 7
 			err := s.Iterate(storage.Query{
 				Factory:      func() storage.Item { return new(obj2) },
@@ -477,7 +477,7 @@ func TestStore(t *testing.T, s storage.Store) {
 				t.Fatalf("unexpected no of entries in iteration exp %d found %d", obj1Cnt, idx)
 			}
 		})
-		t.Run("obj2 decending", func(t *testing.T) {
+		t.Run("obj2 descending", func(t *testing.T) {
 			idx := 8
 			err := s.Iterate(storage.Query{
 				Factory:      func() storage.Item { return new(obj2) },
@@ -793,7 +793,7 @@ func TestItemMarshalAndUnmarshal(t *testing.T, test *ItemMarshalAndUnmarshalTest
 
 	want, have := test.Item, item2
 	if !cmp.Equal(want, have, test.CmpOpts...) {
-		t.Errorf("Marshal/Unmarshal mismatch (-want +have):\n%s", cmp.Diff(want, have))
+		t.Errorf("Marshal/Unmarshal mismatch (-want +have):\n%s", cmp.Diff(want, have, test.CmpOpts...))
 	}
 }
 
@@ -851,7 +851,7 @@ func BenchmarkStore(b *testing.B, s storage.Store) {
 
 // BenchmarkBatchedStore provides a benchmark suite for the
 // storage.BatchedStore. Only the Write and Delete methods are tested.
-func BenchmarkBatchedStore(b *testing.B, bs storage.BatchedStore) {
+func BenchmarkBatchedStore(b *testing.B, bs storage.BatchStore) {
 	b.Run("WriteInBatches", func(b *testing.B) {
 		BenchmarkWriteInBatches(b, bs)
 	})
@@ -946,9 +946,9 @@ func BenchmarkWriteSequential(b *testing.B, db storage.Store) {
 	doWrite(b, db, g)
 }
 
-func BenchmarkWriteInBatches(b *testing.B, bs storage.BatchedStore) {
+func BenchmarkWriteInBatches(b *testing.B, bs storage.BatchStore) {
 	g := newSequentialEntryGenerator(b.N)
-	batch, _ := bs.Batch(context.Background())
+	batch := bs.Batch(context.Background())
 	resetBenchmark(b)
 	for i := 0; i < b.N; i++ {
 		key := g.Key(i)
@@ -965,7 +965,7 @@ func BenchmarkWriteInBatches(b *testing.B, bs storage.BatchedStore) {
 	}
 }
 
-func BenchmarkWriteInFixedSizeBatches(b *testing.B, bs storage.BatchedStore) {
+func BenchmarkWriteInFixedSizeBatches(b *testing.B, bs storage.BatchStore) {
 	g := newSequentialEntryGenerator(b.N)
 	writer := newBatchDBWriter(bs)
 	resetBenchmark(b)
@@ -1016,11 +1016,11 @@ func BenchmarkDeleteSequential(b *testing.B, db storage.Store) {
 	doDelete(b, db, g)
 }
 
-func BenchmarkDeleteInBatches(b *testing.B, bs storage.BatchedStore) {
+func BenchmarkDeleteInBatches(b *testing.B, bs storage.BatchStore) {
 	g := newSequentialEntryGenerator(b.N)
 	doWrite(b, bs, g)
 	resetBenchmark(b)
-	batch, _ := bs.Batch(context.Background())
+	batch := bs.Batch(context.Background())
 	for i := 0; i < b.N; i++ {
 		item := &obj1{
 			Id: string(g.Key(i)),
@@ -1034,7 +1034,7 @@ func BenchmarkDeleteInBatches(b *testing.B, bs storage.BatchedStore) {
 	}
 }
 
-func BenchmarkDeleteInFixedSizeBatches(b *testing.B, bs storage.BatchedStore) {
+func BenchmarkDeleteInFixedSizeBatches(b *testing.B, bs storage.BatchStore) {
 	g := newSequentialEntryGenerator(b.N)
 	doWrite(b, bs, g)
 	resetBenchmark(b)

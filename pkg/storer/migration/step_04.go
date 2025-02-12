@@ -6,13 +6,12 @@ package migration
 
 import (
 	"context"
-	"os"
 
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/sharky"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storer/internal/chunkstore"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/sharky"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstore"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 // step_04 is the fourth step of the migration. It forces a sharky recovery to
@@ -20,13 +19,15 @@ import (
 func step_04(
 	sharkyBasePath string,
 	sharkyNoOfShards int,
-) func(st storage.BatchedStore) error {
-	return func(st storage.BatchedStore) error {
+	st transaction.Storage,
+	logger log.Logger,
+) func() error {
+	return func() error {
 		// for in-mem store, skip this step
 		if sharkyBasePath == "" {
 			return nil
 		}
-		logger := log.NewLogger("migration-step-04", log.WithSink(os.Stdout))
+		logger := logger.WithName("migration-step-04").Register()
 
 		logger.Info("starting sharky recovery")
 		sharkyRecover, err := sharky.NewRecovery(sharkyBasePath, sharkyNoOfShards, swarm.SocMaxChunkSize)
@@ -34,10 +35,9 @@ func step_04(
 			return err
 		}
 
-		locationResultC := make(chan chunkstore.LocationResult)
-		chunkstore.IterateLocations(context.Background(), st, locationResultC)
+		c := chunkstore.IterateLocations(context.Background(), st.IndexStore())
 
-		for res := range locationResultC {
+		for res := range c {
 			if res.Err != nil {
 				return res.Err
 			}

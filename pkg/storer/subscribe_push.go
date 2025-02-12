@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/storer/internal/upload"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/upload"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 const subscribePushEventKey = "subscribe-push"
@@ -35,12 +35,9 @@ func (db *DB) SubscribePush(ctx context.Context) (<-chan swarm.Chunk, func()) {
 		defer close(chunks)
 		for {
 
-			var count int
-
-			err := upload.Iterate(ctx, db.repo, func(chunk swarm.Chunk) (bool, error) {
+			err := upload.IteratePending(ctx, db.storage, func(chunk swarm.Chunk) (bool, error) {
 				select {
 				case chunks <- chunk:
-					count++
 					return false, nil
 				case <-stopChan:
 					// gracefully stop the iteration

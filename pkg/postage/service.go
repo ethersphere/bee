@@ -14,8 +14,8 @@ import (
 	"math/big"
 	"sync"
 
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -142,7 +142,7 @@ func (ps *service) StampIssuers() []*StampIssuer {
 func (ps *service) IssuerUsable(st *StampIssuer) bool {
 	cs := ps.postageStore.GetChainState()
 
-	// this checks atleast threshold blocks are seen on the blockchain after
+	// this checks at least threshold blocks are seen on the blockchain after
 	// the batch creation, before we start using a stamp issuer. The threshold
 	// is meant to allow enough time for upstream peers to see the batch and
 	// hence validate the stamps issued
@@ -174,8 +174,8 @@ func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func() error, e
 
 // save persists the specified stamp issuer to the stamperstore.
 func (ps *service) save(st *StampIssuer) error {
-	st.bucketMtx.Lock()
-	defer st.bucketMtx.Unlock()
+	st.mtx.Lock()
+	defer st.mtx.Unlock()
 
 	if err := ps.store.Put(&StampIssuerItem{
 		Issuer: st,
@@ -198,7 +198,7 @@ func (ps *service) Close() error {
 // HandleStampExpiry handles stamp expiry for a given id.
 func (ps *service) HandleStampExpiry(ctx context.Context, id []byte) error {
 
-	exists, err := ps.removeIssuer(ctx, id)
+	exists, err := ps.removeIssuer(id)
 	if err != nil {
 		return err
 	}
@@ -245,7 +245,7 @@ func (ps *service) removeStampItems(ctx context.Context, batchID []byte) error {
 }
 
 // SetExpired removes all expired batches from the stamp issuers.
-func (ps *service) removeIssuer(ctx context.Context, batchID []byte) (bool, error) {
+func (ps *service) removeIssuer(batchID []byte) (bool, error) {
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()
 

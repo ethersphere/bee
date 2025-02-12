@@ -11,10 +11,10 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/p2p/mock"
+	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/v2/pkg/p2p/mock"
 )
 
 func TestGetWelcomeMessage(t *testing.T) {
@@ -23,7 +23,6 @@ func TestGetWelcomeMessage(t *testing.T) {
 	const DefaultTestWelcomeMessage = "Hello World!"
 
 	srv, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI: true,
 		P2P: mock.New(mock.WithGetWelcomeMessageFunc(func() string {
 			return DefaultTestWelcomeMessage
 		}))})
@@ -75,8 +74,7 @@ func TestSetWelcomeMessage(t *testing.T) {
 			mockP2P := mock.New()
 
 			srv, _, _, _ := newTestServer(t, testServerOptions{
-				DebugAPI: true,
-				P2P:      mockP2P,
+				P2P: mockP2P,
 			})
 
 			if tC.wantMessage == "" {
@@ -112,7 +110,6 @@ func TestSetWelcomeMessageInternalServerError(t *testing.T) {
 	testURL := "/welcome-message"
 
 	srv, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI: true,
 		P2P: mock.New(mock.WithSetWelcomeMessageFunc(func(string) error {
 			return testError
 		})),

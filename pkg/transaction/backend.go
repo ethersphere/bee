@@ -13,7 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/log"
 )
 
 // Backend is the minimum of blockchain backend functions we need.
@@ -75,7 +75,7 @@ func WaitSynced(ctx context.Context, logger log.Logger, backend Backend, maxDela
 			return nil
 		}
 
-		logger.Info("still waiting for Ethereum to sync", "block_time", blockTime)
+		logger.Info("still waiting for blockchain RPC to sync", "block_time", blockTime)
 
 		select {
 		case <-ctx.Done():

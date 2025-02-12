@@ -9,9 +9,9 @@ import (
 	"errors"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/bzz"
-	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/bzz"
+	"github.com/ethersphere/bee/v2/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -65,7 +65,7 @@ func WithBlocklistedPeersFunc(f func() ([]p2p.BlockListedPeer, error)) Option {
 	})
 }
 
-// WithAddressesFunc sets the mock implementation of the Adresses function
+// WithAddressesFunc sets the mock implementation of the Addresses function
 func WithAddressesFunc(f func() ([]ma.Multiaddr, error)) Option {
 	return optionFunc(func(s *Service) {
 		s.addressesFunc = f

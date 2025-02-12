@@ -8,9 +8,9 @@ import (
 	"context"
 	"errors"
 
-	"github.com/ethersphere/bee/pkg/feeds"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/feeds"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 var _ feeds.Lookup = (*finder)(nil)
@@ -51,10 +51,7 @@ func (f *finder) common(ctx context.Context, at int64, after uint64) (*epoch, sw
 			}
 			return e, nil, err
 		}
-		ts, err := feeds.UpdatedAt(ch)
-		if err != nil {
-			return e, nil, err
-		}
+		ts := e.length() * e.start
 		if ts <= uint64(at) {
 			return e, ch, nil
 		}
@@ -78,10 +75,7 @@ func (f *finder) at(ctx context.Context, at uint64, e *epoch, ch swarm.Chunk) (s
 	}
 	// epoch found
 	// check if timestamp is later then target
-	ts, err := feeds.UpdatedAt(uch)
-	if err != nil {
-		return nil, err
-	}
+	ts := e.length() * e.start
 	if ts > at {
 		if e.isLeft() {
 			return ch, nil
@@ -131,10 +125,7 @@ func (f *asyncFinder) get(ctx context.Context, at int64, e *epoch) (swarm.Chunk,
 		}
 		return nil, nil
 	}
-	ts, err := feeds.UpdatedAt(u)
-	if err != nil {
-		return nil, err
-	}
+	ts := e.length() * e.start
 	diff := at - int64(ts)
 	if diff < 0 {
 		return nil, nil

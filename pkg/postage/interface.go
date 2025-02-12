@@ -42,15 +42,12 @@ type ChainSnapshot struct {
 // on the current (highest available) block.
 type Storer interface {
 	ChainStateGetter
-	CommitmentGetter
+	BatchExist
 
 	Radius() uint8
 
 	// Get returns a batch from the store with the given ID.
 	Get([]byte) (*Batch, error)
-
-	// Exists reports whether batch referenced by the give id exists.
-	Exists([]byte) (bool, error)
 
 	// Iterate iterates through stored batches.
 	Iterate(func(*Batch) (bool, error)) error
@@ -74,12 +71,18 @@ type Storer interface {
 	SetBatchExpiryHandler(BatchExpiryHandler)
 }
 
+type BatchExist interface {
+	// Exists reports whether batch referenced by the give id exists.
+	Exists([]byte) (bool, error)
+}
+
 // StorageRadiusSetter is used to calculate total batch commitment of the network.
 type CommitmentGetter interface {
 	Commitment() (uint64, error)
 }
 
 type ChainStateGetter interface {
+	CommitmentGetter
 	// GetChainState returns the stored chain state from the store.
 	GetChainState() *ChainState
 }

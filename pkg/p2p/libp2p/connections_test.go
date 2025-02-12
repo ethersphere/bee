@@ -16,15 +16,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/addressbook"
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/p2p/libp2p"
-	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
-	"github.com/ethersphere/bee/pkg/spinlock"
-	"github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology/lightnode"
+	"github.com/ethersphere/bee/v2/pkg/addressbook"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p"
+	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/handshake"
+	"github.com/ethersphere/bee/v2/pkg/spinlock"
+	"github.com/ethersphere/bee/v2/pkg/statestore/mock"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/topology/lightnode"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 
 	libp2pm "github.com/libp2p/go-libp2p"
@@ -153,7 +153,7 @@ func TestLightPeerLimit(t *testing.T) {
 // TestStreamsMaxIncomingLimit validates that a session between peers can
 // sustain up to the maximal configured concurrent streams, that all further
 // streams will result with ErrReset error, and that when the number of
-// concurrent streams is bellow the limit, new streams are created without
+// concurrent streams is below the limit, new streams are created without
 // errors.
 func TestStreamsMaxIncomingLimit(t *testing.T) {
 	t.Parallel()
@@ -433,7 +433,8 @@ func TestDoubleConnectOnAllAddresses(t *testing.T) {
 		notifier: mockNotifier(noopCf, noopDf, true),
 		libp2pOpts: libp2p.Options{
 			FullNode: true,
-		}})
+		},
+	})
 	addrs, err := s1.Addresses()
 	if err != nil {
 		t.Fatal(err)
@@ -597,6 +598,34 @@ func TestBlocklisting(t *testing.T) {
 
 	expectPeersEventually(t, s1)
 	expectPeers(t, s2)
+}
+
+func TestReverseBlocklist(t *testing.T) {
+	t.Parallel()
+
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
+	s2, overlay2 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
+
+	s1Addr := serviceUnderlayAddress(t, s1)
+
+	_, err := s2.Connect(context.Background(), s1Addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expectPeers(t, s1, overlay2)
+	expectPeersEventually(t, s2, overlay1)
+
+	if err := s1.Blocklist(overlay2, 0, testBlocklistMsg); err != nil {
+		t.Fatal(err)
+	}
+
+	expectPeers(t, s1)
+	expectPeersEventually(t, s2)
 }
 
 func TestBlocklistedPeers(t *testing.T) {
@@ -927,7 +956,7 @@ func TestTopologyOverSaturated(t *testing.T) {
 	// s2 connects to s1, thus the notifier on s1 should be called on Connect
 	_, err := s2.Connect(ctx, addr)
 	if err == nil {
-		t.Fatal("expected connect to fail but it didnt")
+		t.Fatal("expected connect to fail but it didn't")
 	}
 
 	expectPeers(t, s1)
@@ -991,7 +1020,6 @@ func TestWithDisconnectStreams(t *testing.T) {
 
 func TestWithBlocklistStreams(t *testing.T) {
 	t.Parallel()
-	t.Skip("this test always fails")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -1372,9 +1400,11 @@ type (
 	reachableFunc    func(swarm.Address, p2p.ReachabilityStatus)
 )
 
-var noopCf = func(context.Context, p2p.Peer, bool) error { return nil }
-var noopDf = func(p2p.Peer) {}
-var noopAnnounce = func(context.Context, swarm.Address, bool) error { return nil }
-var noopAnnounceTo = func(context.Context, swarm.Address, swarm.Address, bool) error { return nil }
-var noopReachability = func(p2p.ReachabilityStatus) {}
-var noopReachable = func(swarm.Address, p2p.ReachabilityStatus) {}
+var (
+	noopCf           = func(context.Context, p2p.Peer, bool) error { return nil }
+	noopDf           = func(p2p.Peer) {}
+	noopAnnounce     = func(context.Context, swarm.Address, bool) error { return nil }
+	noopAnnounceTo   = func(context.Context, swarm.Address, swarm.Address, bool) error { return nil }
+	noopReachability = func(p2p.ReachabilityStatus) {}
+	noopReachable    = func(swarm.Address, p2p.ReachabilityStatus) {}
+)

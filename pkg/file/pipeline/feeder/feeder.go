@@ -7,8 +7,8 @@ package feeder
 import (
 	"encoding/binary"
 
-	"github.com/ethersphere/bee/pkg/file/pipeline"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 const span = swarm.SpanSize
@@ -89,7 +89,7 @@ func (f *chunkFeeder) Write(b []byte) (int, error) {
 }
 
 // Sum flushes any pending data to subsequent writers and returns
-// the cryptographic root-hash respresenting the data written to
+// the cryptographic root-hash representing the data written to
 // the feeder.
 func (f *chunkFeeder) Sum() ([]byte, error) {
 	// flush existing data in the buffer

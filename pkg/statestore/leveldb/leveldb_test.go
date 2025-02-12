@@ -7,13 +7,14 @@ package leveldb_test
 import (
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/statestore/leveldb"
-	"github.com/ethersphere/bee/pkg/statestore/test"
-	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/statestore/leveldb"
+	"github.com/ethersphere/bee/v2/pkg/statestore/test"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 )
 
 func TestPersistentStateStore(t *testing.T) {
+	t.Parallel()
 	test.Run(t, func(t *testing.T) storage.StateStorer {
 		t.Helper()
 
@@ -42,25 +43,4 @@ func TestPersistentStateStore(t *testing.T) {
 
 		return store
 	})
-}
-
-func TestGetSchemaName(t *testing.T) {
-	dir := t.TempDir()
-
-	store, err := leveldb.NewStateStore(dir, log.Noop)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := store.Close(); err != nil {
-			t.Fatal(err)
-		}
-	})
-	n, err := store.GetSchemaName() // expect current
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != leveldb.DbSchemaCurrent {
-		t.Fatalf("wanted current db schema but got '%s'", n)
-	}
 }

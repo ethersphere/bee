@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 func TestNewHasher(t *testing.T) {
@@ -66,7 +66,7 @@ func TestNewTrHasher(t *testing.T) {
 
 	// Run tests cases against TrHasher
 	for _, tc := range tests {
-		h := swarm.NewTrHasher(tc.prefix)
+		h := swarm.NewPrefixHasher(tc.prefix)
 
 		_, err := h.Write(tc.plaintext)
 		if err != nil {

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 )
 
 const (
@@ -225,5 +225,5 @@ func testStoreIterator(t *testing.T, store storage.StateStorer, prefix string, s
 func testEmpty(t *testing.T, store storage.StateStorer) {
 	t.Helper()
 
-	testStoreIterator(t, store, "", 1) // 1 because of the schema entry.
+	testStoreIterator(t, store, "", 0)
 }

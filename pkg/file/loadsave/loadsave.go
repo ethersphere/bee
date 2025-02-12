@@ -11,12 +11,13 @@ import (
 	"context"
 	"errors"
 
-	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/file/joiner"
-	"github.com/ethersphere/bee/pkg/file/pipeline"
-	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/file"
+	"github.com/ethersphere/bee/v2/pkg/file/joiner"
+	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
+	"github.com/ethersphere/bee/v2/pkg/file/pipeline/builder"
+	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 var errReadonlyLoadSave = errors.New("readonly manifest loadsaver")
@@ -27,33 +28,59 @@ var errReadonlyLoadSave = errors.New("readonly manifest loadsaver")
 // load all of the subtrie of a given hash in memory.
 type loadSave struct {
 	getter     storage.Getter
+	putter     storage.Putter
 	pipelineFn func() pipeline.Interface
+	rootCh     swarm.Chunk
+	rLevel     redundancy.Level
 }
 
 // New returns a new read-write load-saver.
-func New(getter storage.Getter, pipelineFn func() pipeline.Interface) file.LoadSaver {
+func New(getter storage.Getter, putter storage.Putter, pipelineFn func() pipeline.Interface, rLevel redundancy.Level) file.LoadSaver {
 	return &loadSave{
 		getter:     getter,
+		putter:     putter,
 		pipelineFn: pipelineFn,
+		rLevel:     rLevel,
 	}
 }
 
 // NewReadonly returns a new read-only load-saver
 // which will error on write.
-func NewReadonly(getter storage.Getter) file.LoadSaver {
+func NewReadonly(getter storage.Getter, rLevel redundancy.Level) file.LoadSaver {
 	return &loadSave{
 		getter: getter,
+		rLevel: rLevel,
+	}
+}
+
+// NewReadonlyWithRootCh returns a new read-only load-saver
+// which will error on write.
+func NewReadonlyWithRootCh(getter storage.Getter, rootCh swarm.Chunk, rLevel redundancy.Level) file.LoadSaver {
+	return &loadSave{
+		getter: getter,
+		rootCh: rootCh,
+		rLevel: rLevel,
 	}
 }
 
 func (ls *loadSave) Load(ctx context.Context, ref []byte) ([]byte, error) {
-	j, _, err := joiner.New(ctx, ls.getter, swarm.NewAddress(ref))
-	if err != nil {
-		return nil, err
+	var j file.Joiner
+	if ls.rootCh == nil || !bytes.Equal(ls.rootCh.Address().Bytes(), ref[:swarm.HashSize]) {
+		joiner, _, err := joiner.New(ctx, ls.getter, ls.putter, swarm.NewAddress(ref), ls.rLevel)
+		if err != nil {
+			return nil, err
+		}
+		j = joiner
+	} else {
+		joiner, _, err := joiner.NewJoiner(ctx, ls.getter, ls.putter, swarm.NewAddress(ref), ls.rootCh)
+		if err != nil {
+			return nil, err
+		}
+		j = joiner
 	}
 
 	buf := bytes.NewBuffer(nil)
-	_, err = file.JoinReadAll(ctx, j, buf)
+	_, err := file.JoinReadAll(ctx, j, buf)
 	if err != nil {
 		return nil, err
 	}

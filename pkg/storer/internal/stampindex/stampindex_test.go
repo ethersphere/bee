@@ -5,29 +5,27 @@
 package stampindex_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
 
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/storagetest"
-	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
-	"github.com/ethersphere/bee/pkg/storer/internal"
-	"github.com/ethersphere/bee/pkg/storer/internal/stampindex"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/storagetest"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
+
+	chunktest "github.com/ethersphere/bee/v2/pkg/storage/testing"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/stampindex"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
+	"github.com/stretchr/testify/assert"
 )
 
 // newTestStorage is a helper function that creates a new storage.
-func newTestStorage(t *testing.T) internal.Storage {
+func newTestStorage(t *testing.T) transaction.Storage {
 	t.Helper()
-
-	inmemStorage, closer := internal.NewInmemStorage()
-	t.Cleanup(func() {
-		if err := closer(); err != nil {
-			t.Errorf("failed closing the storage: %v", err)
-		}
-	})
+	inmemStorage := internal.NewInmemStorage()
 	return inmemStorage
 }
 
@@ -40,7 +38,7 @@ func TestStampIndexItem(t *testing.T) {
 	}{{
 		name: "zero namespace",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item:       stampindex.NewItemWithKeys("", nil, nil),
+			Item:       stampindex.NewItemWithKeys("", nil, nil, nil),
 			Factory:    func() storage.Item { return new(stampindex.Item) },
 			MarshalErr: stampindex.ErrStampItemMarshalNamespaceInvalid,
 			CmpOpts:    []cmp.Option{cmp.AllowUnexported(stampindex.Item{})},
@@ -48,7 +46,7 @@ func TestStampIndexItem(t *testing.T) {
 	}, {
 		name: "zero batchID",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item:       stampindex.NewItemWithKeys("test_namespace", nil, nil),
+			Item:       stampindex.NewItemWithKeys("test_namespace", nil, nil, nil),
 			Factory:    func() storage.Item { return new(stampindex.Item) },
 			MarshalErr: stampindex.ErrStampItemMarshalBatchIDInvalid,
 			CmpOpts:    []cmp.Option{cmp.AllowUnexported(stampindex.Item{})},
@@ -56,7 +54,7 @@ func TestStampIndexItem(t *testing.T) {
 	}, {
 		name: "zero batchIndex",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item:       stampindex.NewItemWithKeys("test_namespace", []byte{swarm.HashSize - 1: 9}, nil),
+			Item:       stampindex.NewItemWithKeys("test_namespace", []byte{swarm.HashSize - 1: 9}, nil, nil),
 			Factory:    func() storage.Item { return new(stampindex.Item) },
 			MarshalErr: stampindex.ErrStampItemMarshalBatchIndexInvalid,
 			CmpOpts:    []cmp.Option{cmp.AllowUnexported(stampindex.Item{})},
@@ -64,22 +62,14 @@ func TestStampIndexItem(t *testing.T) {
 	}, {
 		name: "valid values",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item: stampindex.NewItemWithValues(
-				[]byte{swarm.StampTimestampSize - 1: 9},
-				swarm.RandAddress(t),
-				false,
-			),
+			Item:    stampindex.NewItemWithValues([]byte{swarm.StampTimestampSize - 1: 9}, swarm.RandAddress(t)),
 			Factory: func() storage.Item { return new(stampindex.Item) },
 			CmpOpts: []cmp.Option{cmp.AllowUnexported(stampindex.Item{})},
 		},
 	}, {
 		name: "max values",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item: stampindex.NewItemWithValues(
-				storagetest.MaxBatchTimestampBytes[:],
-				swarm.NewAddress(storagetest.MaxAddressBytes[:]),
-				true,
-			),
+			Item:    stampindex.NewItemWithValues(storagetest.MaxBatchTimestampBytes[:], swarm.NewAddress(storagetest.MaxAddressBytes[:])),
 			Factory: func() storage.Item { return new(stampindex.Item) },
 			CmpOpts: []cmp.Option{cmp.AllowUnexported(stampindex.Item{})},
 		},
@@ -97,8 +87,6 @@ func TestStampIndexItem(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
-
 		t.Run(fmt.Sprintf("%s marshal/unmarshal", tc.name), func(t *testing.T) {
 			t.Parallel()
 
@@ -116,7 +104,7 @@ func TestStampIndexItem(t *testing.T) {
 	}
 }
 
-func TestStoreLoadDelete(t *testing.T) {
+func TestStoreLoadDeleteWithStamp(t *testing.T) {
 	t.Parallel()
 
 	ts := newTestStorage(t)
@@ -126,25 +114,22 @@ func TestStoreLoadDelete(t *testing.T) {
 		ns := fmt.Sprintf("namespace_%d", i)
 		t.Run(ns, func(t *testing.T) {
 			t.Run("store new stamp index", func(t *testing.T) {
-				err := stampindex.Store(ts.IndexStore(), ns, chunk)
+				err := ts.Run(context.Background(), func(s transaction.Store) error {
+					return stampindex.Store(s.IndexStore(), ns, chunk)
+				})
 				if err != nil {
 					t.Fatalf("Store(...): unexpected error: %v", err)
 				}
 
-				want := stampindex.NewItemWithKeys(
-					ns,
-					chunk.Stamp().BatchID(),
-					chunk.Stamp().Index(),
-				)
+				stampHash, err := chunk.Stamp().Hash()
+				if err != nil {
+					t.Fatal(err)
+				}
+				want := stampindex.NewItemWithKeys(ns, chunk.Stamp().BatchID(), chunk.Stamp().Index(), stampHash)
 				want.StampTimestamp = chunk.Stamp().Timestamp()
 				want.ChunkAddress = chunk.Address()
-				want.ChunkIsImmutable = chunk.Immutable()
 
-				have := stampindex.NewItemWithKeys(
-					ns,
-					chunk.Stamp().BatchID(),
-					chunk.Stamp().Index(),
-				)
+				have := stampindex.NewItemWithKeys(ns, chunk.Stamp().BatchID(), chunk.Stamp().Index(), stampHash)
 				err = ts.IndexStore().Get(have)
 				if err != nil {
 					t.Fatalf("Get(...): unexpected error: %v", err)
@@ -156,16 +141,15 @@ func TestStoreLoadDelete(t *testing.T) {
 			})
 
 			t.Run("load stored stamp index", func(t *testing.T) {
-				want := stampindex.NewItemWithKeys(
-					ns,
-					chunk.Stamp().BatchID(),
-					chunk.Stamp().Index(),
-				)
+				stampHash, err := chunk.Stamp().Hash()
+				if err != nil {
+					t.Fatal(err)
+				}
+				want := stampindex.NewItemWithKeys(ns, chunk.Stamp().BatchID(), chunk.Stamp().Index(), stampHash)
 				want.StampTimestamp = chunk.Stamp().Timestamp()
 				want.ChunkAddress = chunk.Address()
-				want.ChunkIsImmutable = chunk.Immutable()
 
-				have, err := stampindex.Load(ts.IndexStore(), ns, chunk)
+				have, err := stampindex.Load(ts.IndexStore(), ns, chunk.Stamp())
 				if err != nil {
 					t.Fatalf("Load(...): unexpected error: %v", err)
 				}
@@ -176,12 +160,14 @@ func TestStoreLoadDelete(t *testing.T) {
 			})
 
 			t.Run("delete stored stamp index", func(t *testing.T) {
-				err := stampindex.Delete(ts.IndexStore(), ns, chunk)
+				err := ts.Run(context.Background(), func(s transaction.Store) error {
+					return stampindex.Delete(s.IndexStore(), ns, chunk.Stamp())
+				})
 				if err != nil {
 					t.Fatalf("Delete(...): unexpected error: %v", err)
 				}
 
-				have, err := stampindex.Load(ts.IndexStore(), ns, chunk)
+				have, err := stampindex.Load(ts.IndexStore(), ns, chunk.Stamp())
 				if have != nil {
 					t.Fatalf("Load(...): unexpected item %v", have)
 				}
@@ -221,30 +207,33 @@ func TestLoadOrStore(t *testing.T) {
 	for i, chunk := range chunks {
 		ns := fmt.Sprintf("namespace_%d", i)
 		t.Run(ns, func(t *testing.T) {
-			want := stampindex.NewItemWithKeys(
-				ns,
-				chunk.Stamp().BatchID(),
-				chunk.Stamp().Index(),
-			)
+			stampHash, err := chunk.Stamp().Hash()
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := stampindex.NewItemWithKeys(ns, chunk.Stamp().BatchID(), chunk.Stamp().Index(), stampHash)
 			want.StampTimestamp = chunk.Stamp().Timestamp()
 			want.ChunkAddress = chunk.Address()
-			want.ChunkIsImmutable = chunk.Immutable()
 
-			r, w := ts.IndexStore(), ts.IndexStore()
+			trx, done := ts.NewTransaction(context.Background())
 
-			have, loaded, err := stampindex.LoadOrStore(r, w, ns, chunk)
+			have, loaded, err := stampindex.LoadOrStore(trx.IndexStore(), ns, chunk)
 			if err != nil {
 				t.Fatalf("LoadOrStore(...): unexpected error: %v", err)
 			}
 			if loaded {
 				t.Fatalf("LoadOrStore(...): unexpected loaded flag")
 			}
-
 			if diff := cmp.Diff(want, have, cmp.AllowUnexported(stampindex.Item{})); diff != "" {
 				t.Fatalf("Get(...): mismatch (-want +have):\n%s", diff)
 			}
+			assert.NoError(t, trx.Commit())
+			done()
 
-			have, loaded, err = stampindex.LoadOrStore(r, w, ns, chunk)
+			trx, done = ts.NewTransaction(context.Background())
+			defer done()
+
+			have, loaded, err = stampindex.LoadOrStore(trx.IndexStore(), ns, chunk)
 			if err != nil {
 				t.Fatalf("LoadOrStore(...): unexpected error: %v", err)
 			}
@@ -255,6 +244,7 @@ func TestLoadOrStore(t *testing.T) {
 			if diff := cmp.Diff(want, have, cmp.AllowUnexported(stampindex.Item{})); diff != "" {
 				t.Fatalf("Get(...): mismatch (-want +have):\n%s", diff)
 			}
+			assert.NoError(t, trx.Commit())
 
 			cnt := 0
 			err = ts.IndexStore().Iterate(

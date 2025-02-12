@@ -12,15 +12,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ethersphere/bee/cmd/bee/cmd"
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/node"
-	"github.com/ethersphere/bee/pkg/postage"
-	storagetest "github.com/ethersphere/bee/pkg/storage/testing"
-	"github.com/ethersphere/bee/pkg/storer"
-	"github.com/ethersphere/bee/pkg/swarm"
-	kademlia "github.com/ethersphere/bee/pkg/topology/mock"
-	"github.com/ethersphere/bee/pkg/util/testutil"
+	"github.com/ethersphere/bee/v2/cmd/bee/cmd"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	storagetest "github.com/ethersphere/bee/v2/pkg/storage/testing"
+	"github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	kademlia "github.com/ethersphere/bee/v2/pkg/topology/mock"
+	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 )
 
 func TestDBExportImport(t *testing.T) {
@@ -35,7 +34,7 @@ func TestDBExportImport(t *testing.T) {
 		Batchstore:      new(postage.NoOpBatchStore),
 		RadiusSetter:    kademlia.NewTopologyDriver(),
 		Logger:          testutil.NewLogger(t),
-		ReserveCapacity: node.ReserveCapacity,
+		ReserveCapacity: storer.DefaultReserveCapacity,
 	}, dir1)
 
 	chunks := make(map[string]int)
@@ -46,7 +45,6 @@ func TestDBExportImport(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		fmt.Println("put chunk: ", ch.Address().String())
 		chunks[ch.Address().String()] = 0
 	}
 	db1.Close()
@@ -65,7 +63,7 @@ func TestDBExportImport(t *testing.T) {
 		Batchstore:      new(postage.NoOpBatchStore),
 		RadiusSetter:    kademlia.NewTopologyDriver(),
 		Logger:          testutil.NewLogger(t),
-		ReserveCapacity: node.ReserveCapacity,
+		ReserveCapacity: storer.DefaultReserveCapacity,
 	}, dir2)
 
 	err = db2.ReserveIterateChunks(func(chunk swarm.Chunk) (bool, error) {
@@ -96,7 +94,7 @@ func TestDBExportImportPinning(t *testing.T) {
 		Batchstore:      new(postage.NoOpBatchStore),
 		RadiusSetter:    kademlia.NewTopologyDriver(),
 		Logger:          testutil.NewLogger(t),
-		ReserveCapacity: node.ReserveCapacity,
+		ReserveCapacity: storer.DefaultReserveCapacity,
 	}, dir1)
 
 	chunks := make(map[string]int)
@@ -115,7 +113,6 @@ func TestDBExportImportPinning(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			fmt.Println("collection ", rootAddr.String(), " put chunk: ", ch.Address().String())
 			chunks[ch.Address().String()] = 0
 		}
 		err = collection.Done(rootAddr)
@@ -125,16 +122,9 @@ func TestDBExportImportPinning(t *testing.T) {
 		pins[rootAddr.String()] = nil
 	}
 
-	addresses, err := db1.Pins()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, addr := range addresses {
-		fmt.Println("pin: ", addr.String())
-	}
 	db1.Close()
 
-	err = newCommand(t, cmd.WithArgs("db", "export", "pinning", export, "--data-dir", dir1)).Execute()
+	err := newCommand(t, cmd.WithArgs("db", "export", "pinning", export, "--data-dir", dir1)).Execute()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,9 +138,9 @@ func TestDBExportImportPinning(t *testing.T) {
 		Batchstore:      new(postage.NoOpBatchStore),
 		RadiusSetter:    kademlia.NewTopologyDriver(),
 		Logger:          testutil.NewLogger(t),
-		ReserveCapacity: node.ReserveCapacity,
+		ReserveCapacity: storer.DefaultReserveCapacity,
 	}, dir2)
-	addresses, err = db2.Pins()
+	addresses, err := db2.Pins()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +182,7 @@ func TestDBNuke_FLAKY(t *testing.T) {
 		Batchstore:      new(postage.NoOpBatchStore),
 		RadiusSetter:    kademlia.NewTopologyDriver(),
 		Logger:          log.Noop,
-		ReserveCapacity: node.ReserveCapacity,
+		ReserveCapacity: storer.DefaultReserveCapacity,
 	}, dataDir)
 
 	nChunks := 10
@@ -222,7 +212,7 @@ func TestDBNuke_FLAKY(t *testing.T) {
 		Batchstore:      new(postage.NoOpBatchStore),
 		RadiusSetter:    kademlia.NewTopologyDriver(),
 		Logger:          log.Noop,
-		ReserveCapacity: node.ReserveCapacity,
+		ReserveCapacity: storer.DefaultReserveCapacity,
 	}, path.Join(dataDir, "localstore"))
 	if err != nil {
 		t.Fatal(err)
@@ -247,7 +237,7 @@ func TestDBInfo(t *testing.T) {
 		Batchstore:      new(postage.NoOpBatchStore),
 		RadiusSetter:    kademlia.NewTopologyDriver(),
 		Logger:          testutil.NewLogger(t),
-		ReserveCapacity: node.ReserveCapacity,
+		ReserveCapacity: storer.DefaultReserveCapacity,
 	}, dir1)
 
 	nChunks := 10
@@ -274,7 +264,7 @@ func TestDBInfo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !strings.Contains(buf.String(), fmt.Sprintf("\"msg\"=\"reserve\" \"size_within_radius\"=%d \"total_size\"=%d \"capacity\"=%d", nChunks, nChunks, node.ReserveCapacity)) {
+	if !strings.Contains(buf.String(), fmt.Sprintf("\"msg\"=\"reserve\" \"size_within_radius\"=%d \"total_size\"=%d \"capacity\"=%d", nChunks, nChunks, storer.DefaultReserveCapacity)) {
 		t.Fatal("reserve info not correct")
 	}
 }

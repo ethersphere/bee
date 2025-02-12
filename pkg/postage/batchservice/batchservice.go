@@ -14,9 +14,9 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -168,7 +168,7 @@ func (svc *batchService) TopUp(id []byte, totalAmout, normalisedBalance *big.Int
 	return nil
 }
 
-// UpdateDepth implements the EventUpdater inteface. It sets the new depth of a
+// UpdateDepth implements the EventUpdater interface. It sets the new depth of a
 // batch with the given ID.
 func (svc *batchService) UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int, txHash common.Hash) error {
 	b, err := svc.storer.Get(id)

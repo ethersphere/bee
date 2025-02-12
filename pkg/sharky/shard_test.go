@@ -8,7 +8,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/sharky"
+	"github.com/ethersphere/bee/v2/pkg/sharky"
 )
 
 func TestLocationSerialization(t *testing.T) {
@@ -31,7 +31,6 @@ func TestLocationSerialization(t *testing.T) {
 			Length: math.MaxUint16,
 		},
 	} {
-		tc := tc
 		t.Run(fmt.Sprintf("%d_%d_%d", tc.Shard, tc.Slot, tc.Length), func(t *testing.T) {
 			t.Parallel()
 

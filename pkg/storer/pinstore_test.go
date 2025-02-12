@@ -6,15 +6,13 @@ package storer_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 	"time"
 
-	storage "github.com/ethersphere/bee/pkg/storage"
-	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
-	storer "github.com/ethersphere/bee/pkg/storer"
-	"github.com/ethersphere/bee/pkg/swarm"
+	chunktesting "github.com/ethersphere/bee/v2/pkg/storage/testing"
+	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 func testPinStore(t *testing.T, newStorer func() (*storer.DB, error)) {
@@ -71,7 +69,7 @@ func testPinStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 					t.Fatalf("session.Done(...): unexpected error: %v", err)
 				}
 			}
-			verifyPinCollection(t, lstore.Repo(), tc.chunks[0], tc.chunks, !tc.fail)
+			verifyPinCollection(t, lstore.Storage(), tc.chunks[0], tc.chunks, !tc.fail)
 		})
 	}
 
@@ -106,26 +104,53 @@ func testPinStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 				t.Fatalf("DeletePin(...): unexpected error: %v", err)
 			}
 
-			verifyPinCollection(t, lstore.Repo(), testCases[2].chunks[0], testCases[2].chunks, false)
+			verifyPinCollection(t, lstore.Storage(), testCases[2].chunks[0], testCases[2].chunks, false)
 		})
-		t.Run("rollback", func(t *testing.T) {
-			want := errors.New("dummy error")
-			lstore.SetRepoStoreDeleteHook(func(item storage.Item) error {
-				// return error for delete of second last item in collection
-				// this should trigger a rollback
-				if item.ID() == testCases[0].chunks[8].Address().ByteString() {
-					return want
-				}
-				return nil
-			})
+	})
 
-			have := lstore.DeletePin(context.TODO(), testCases[0].chunks[0].Address())
-			if !errors.Is(have, want) {
-				t.Fatalf("DeletePin(...): unexpected error: want %v have %v", want, have)
+	t.Run("duplicate parallel upload does not leave orphaned chunks", func(t *testing.T) {
+		chunks := chunktesting.GenerateTestRandomChunks(4)
+
+		session1, err := lstore.NewCollection(context.TODO())
+		if err != nil {
+			t.Fatalf("NewCollection(...): unexpected error: %v", err)
+		}
+
+		session2, err := lstore.NewCollection(context.TODO())
+		if err != nil {
+			t.Fatalf("NewCollection2(...): unexpected error: %v", err)
+		}
+
+		for _, ch := range chunks {
+			err := session2.Put(context.TODO(), ch)
+			if err != nil {
+				t.Fatalf("session2.Put(...): unexpected error: %v", err)
+				t.Fatal(err)
 			}
 
-			verifyPinCollection(t, lstore.Repo(), testCases[0].chunks[0], testCases[0].chunks, true)
-		})
+			err = session1.Put(context.TODO(), ch)
+			if err != nil {
+				t.Fatalf("session1.Put(...): unexpected error: %v", err)
+				t.Fatal(err)
+			}
+		}
+
+		err = session1.Done(chunks[0].Address())
+		if err != nil {
+			t.Fatalf("session1.Done(...): unexpected error: %v", err)
+		}
+
+		err = session2.Done(chunks[0].Address())
+		if err == nil {
+			t.Fatalf("session2.Done(...): expected error, got nil")
+		}
+
+		if err := session2.Cleanup(); err != nil {
+			t.Fatalf("session2.Done(...): unexpected error: %v", err)
+		}
+
+		verifyPinCollection(t, lstore.Storage(), chunks[0], chunks, true)
+		verifyChunkRefCount(t, lstore.Storage(), chunks)
 	})
 }
 

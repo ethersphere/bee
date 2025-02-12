@@ -10,10 +10,10 @@ import (
 	"path"
 	"strings"
 
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/resolver"
-	"github.com/ethersphere/bee/pkg/resolver/cidv1"
-	"github.com/ethersphere/bee/pkg/resolver/client/ens"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/resolver"
+	"github.com/ethersphere/bee/v2/pkg/resolver/cidv1"
+	"github.com/ethersphere/bee/v2/pkg/resolver/client/ens"
 	"github.com/hashicorp/go-multierror"
 )
 
@@ -74,7 +74,7 @@ func NewMultiResolver(opts ...Option) *MultiResolver {
 		return mr
 	}
 
-	// Attempt to conect to each resolver using the connection string.
+	// Attempt to connect to each resolver using the connection string.
 	for _, c := range mr.cfgs {
 
 		// NOTE: if we want to create a specific client based on the TLD
@@ -118,7 +118,7 @@ func (mr *MultiResolver) PushResolver(tld string, r resolver.Interface) {
 	mr.resolvers[tld] = append(mr.resolvers[tld], r)
 }
 
-// PopResolver will pop the last reslover from the name resolution chain for the
+// PopResolver will pop the last resolver from the name resolution chain for the
 // given TLD. An empty TLD will pop from the default resolver chain.
 func (mr *MultiResolver) PopResolver(tld string) error {
 	l := len(mr.resolvers[tld])
@@ -129,7 +129,7 @@ func (mr *MultiResolver) PopResolver(tld string) error {
 	return nil
 }
 
-// ChainCount retruns the number of resolvers in a resolver chain for the given
+// ChainCount returns the number of resolvers in a resolver chain for the given
 // tld.
 // TLD names should be prepended with a dot (eg ".tld"). An empty TLD will
 // return the number of resolvers in the default resolver chain.

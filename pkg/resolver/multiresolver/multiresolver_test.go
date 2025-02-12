@@ -10,11 +10,11 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/resolver"
-	"github.com/ethersphere/bee/pkg/resolver/mock"
-	"github.com/ethersphere/bee/pkg/resolver/multiresolver"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/resolver"
+	"github.com/ethersphere/bee/v2/pkg/resolver/mock"
+	"github.com/ethersphere/bee/v2/pkg/resolver/multiresolver"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 type Address = swarm.Address
@@ -76,7 +76,6 @@ func TestPushResolver(t *testing.T) {
 	}
 
 	for _, tC := range testCases {
-		tC := tC
 		t.Run(tC.desc, func(t *testing.T) {
 			t.Parallel()
 
@@ -241,7 +240,6 @@ func TestResolve(t *testing.T) {
 	}
 
 	for _, tC := range testCases {
-		tC := tC
 		t.Run(tC.name, func(t *testing.T) {
 			t.Parallel()
 

@@ -10,9 +10,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/migration"
-	"github.com/ethersphere/bee/pkg/storage/storageutil"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/migration"
+	"github.com/ethersphere/bee/v2/pkg/storage/storageutil"
 )
 
 // stateStoreNamespace is the namespace used for state storage.
@@ -198,6 +198,24 @@ func (s *StateStorerAdapter) Nuke() error {
 	return s.deleteKeys(keys)
 }
 
+func (s *StateStorerAdapter) ClearForHopping() error {
+	var (
+		prefixesToPreserve = []string{
+			"swap_chequebook", // to not redeploy chequebook contract
+			"batchstore",      // avoid unnecessary syncing
+			"transaction",     // to not resync blockchain transactions
+		}
+		keys []string
+		err  error
+	)
+
+	keys, err = s.collectKeysExcept(prefixesToPreserve)
+	if err != nil {
+		return fmt.Errorf("collect keys except: %w", err)
+	}
+	return s.deleteKeys(keys)
+}
+
 func (s *StateStorerAdapter) collectKeysExcept(prefixesToPreserve []string) (keys []string, err error) {
 	if err := s.Iterate("", func(k, v []byte) (bool, error) {
 		stk := string(k)
@@ -229,8 +247,8 @@ func (s *StateStorerAdapter) deleteKeys(keys []string) error {
 }
 
 // NewStateStorerAdapter creates a new StateStorerAdapter.
-func NewStateStorerAdapter(storage storage.BatchedStore) (*StateStorerAdapter, error) {
-	err := migration.Migrate(storage, "migration", allSteps())
+func NewStateStorerAdapter(storage storage.Store) (*StateStorerAdapter, error) {
+	err := migration.Migrate(storage, "migration", allSteps(storage))
 	if err != nil {
 		return nil, err
 	}

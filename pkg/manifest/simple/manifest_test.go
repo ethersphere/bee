@@ -9,8 +9,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/manifest/simple"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/manifest/simple"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 func TestNilPath(t *testing.T) {
@@ -100,7 +100,6 @@ func TestEntries(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range makeTestCases(t) {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -164,7 +163,6 @@ func TestEntries(t *testing.T) {
 
 				checkLength(t, m, manifestLen-i-1)
 			}
-
 		})
 	}
 }
@@ -192,13 +190,12 @@ func checkEntry(t *testing.T, m simple.Manifest, reference, path string) {
 }
 
 // TestMarshal verifies that created manifests are successfully marshalled and unmarshalled.
-// This function wil add all test case entries to a manifest and marshal it.
+// This function will add all test case entries to a manifest and marshal it.
 // After, it will unmarshal the result, and verify that it is equal to the original manifest.
 func TestMarshal(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range makeTestCases(t) {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -271,7 +268,6 @@ func TestHasPrefix(t *testing.T) {
 			},
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -294,7 +290,6 @@ func TestHasPrefix(t *testing.T) {
 					t.Errorf("expected prefix path %s to be %t, was %t", testPrefix, shouldExist, exists)
 				}
 			}
-
 		})
 	}
 }

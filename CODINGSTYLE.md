@@ -62,7 +62,7 @@ Prefer american spellings over British spellings, avoid Latin abbreviations.
 // unmarshalling
 // cancelling
 // cancelled
-// cancelation
+// cancellation
 ```
 
 </td><td>
@@ -161,11 +161,10 @@ Use the Golang [testing package](https://pkg.go.dev/testing) from the standard l
 
 ### Parallel Test Execution
 
-Run tests in parallel where possible but don't forget about variable scope gotchas.
+Run tests in parallel where possible.
 
 ```go
 for tc := range tt {
-  tc := tc // must not forget this
   t.Run(tc.name, func(t *testing.T) {
     t.Parallel()
     //execute
@@ -189,18 +188,22 @@ Name tests with a compact name that reflects their scenario. Don't try to specif
 <thead><tr><th>Bad</th><th>Good</th></tr></thead>
 <tbody>
 <tr><td>
+
 ```go
 func TestSomethingBySettingVarToFive(t *testing.T) {
   ...
 }
 ```
+
 </td><td>
+
 ```go
 // TestSomething tests that something works correctly by doing this and that.
 func TestSomething(t *testing.T) {
   ...
 }
 ```
+
 </td>
 </td></tr>
 </tbody></table>
@@ -217,14 +220,15 @@ func TestScenario_CornerCase(t *testing.T) {
 ```
 
 Ideally, try to use nested tests that would cause the test runner to automatically assemble the different test cases in separate entries:
+
 ```go
 func TestSomething(t *testing.T) {
   ...
   t.Run("edge case", func(t *testing.T) { ... })
 }
+```
 
-Lastly, please, goodness, don't use the word "fail" when naming tests. Since the go test runner uses the same keyword to denote failed tests, this just prolongs the search for relevant information when inspecting build artifacts.
-
+Avoid using the word "fail" when naming tests. Since the go test runner uses the same keyword to denote failed tests, this just prolongs the search for relevant information when inspecting build artifacts.
 
 ## Group Declarations by Meaning
 
@@ -247,10 +251,8 @@ var (
   _                 Interface = (*Accounting)(nil)
   balancesPrefix    = "accounting_balance_"
   someOtherPrefix   = "some_other_balance_"
-  ErrLimitExceeded  = errors.New("limit exeeded")
+  ErrLimitExceeded  = errors.New("limit exceeded")
 )
-
-
 ```
 
 </td><td>
@@ -270,12 +272,11 @@ var ( // or const
   someOtherPrefix = "some_other_balance_"
 )
 
-var ErrLimitExceeded = errors.New("limit exeeded)
+var ErrLimitExceeded = errors.New("limit exceeded")
 ```
 
 </td></tr>
 </tbody></table>
-
 
 ## Make Zero-value Useful
 
@@ -817,7 +818,9 @@ return p.count
 </td></tr>
 </tbody></table>
 
-Defer has an extremely small overhead and should be avoided only if you can prove that your function execution time is in the order of nanoseconds. The readability win of using defers is worth the miniscule cost of using them. This is especially true for larger methods that have more than simple memory accesses, where the other computations are more significant than the `defer`.
+Defer has an extremely small overhead and should be avoided only if you can prove that your function execution time is in the order of nanoseconds. The readability win of using defers is worth the minuscule cost of using them. This is especially true for larger methods that have more than simple memory accesses, where the other computations are more significant than the `defer`.
+
+Most importantly the deferred function is going to be executed even in the case of a panic, so we avoid leaving some mutex on 'lock' and potentially leaving the system in an inconsistent state.
 
 ## Channel Size is One or None
 
