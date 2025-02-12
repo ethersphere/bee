@@ -25,6 +25,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	mockac "github.com/ethersphere/bee/v2/pkg/accesscontrol/mock"
 	accountingmock "github.com/ethersphere/bee/v2/pkg/accounting/mock"
+	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/api"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
@@ -170,6 +171,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	acc := accountingmock.NewAccounting(o.AccountingOpts...)
 	settlement := swapmock.New(o.SwapOpts...)
 	chequebook := chequebookmock.NewChequebook(o.ChequebookOpts...)
+	addressBook := addressbook.New(statestore.NewStateStore())
 	ln := lightnode.NewContainer(o.Overlay)
 
 	transaction := transactionmock.New(o.TransactionOpts...)
@@ -205,6 +207,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		Staking:         o.StakingContract,
 		NodeStatus:      o.NodeStatus,
 		PinIntegrity:    o.PinIntegrity,
+		AddressBook:     addressBook,
 	}
 
 	// By default bee mode is set to full mode.
