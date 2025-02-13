@@ -382,10 +382,10 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 		rLevel = *headers.RLevel
 	}
 
-	ls := loadsave.NewReadonly(s.storer.Download(cache), rLevel)
+	ctx := r.Context()
+	ls := loadsave.New(s.storer.Download(true), s.storer.Cache(), nil, redundancy.DefaultLevel)
 	feedDereferenced := false
 
-	ctx := r.Context()
 	ctx, err := getter.SetConfigInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout, logger)
 	if err != nil {
 		logger.Error(err, err.Error())
