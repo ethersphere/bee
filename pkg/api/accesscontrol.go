@@ -126,7 +126,7 @@ func (s *Service) actDecryptionHandler() func(h http.Handler) http.Handler {
 				cache = *headers.Cache
 			}
 			ctx := r.Context()
-			ls := loadsave.NewReadonly(s.storer.Download(cache), redundancy.DefaultLevel)
+			ls := loadsave.NewReadonly(s.storer.Download(cache), s.storer.Cache(), redundancy.DefaultLevel)
 			reference, err := s.accesscontrol.DownloadHandler(ctx, ls, paths.Address, headers.Publisher, *headers.HistoryAddress, timestamp)
 			if err != nil {
 				logger.Debug("access control download failed", "error", err)
@@ -206,7 +206,7 @@ func (s *Service) actListGranteesHandler(w http.ResponseWriter, r *http.Request)
 		cache = *headers.Cache
 	}
 	publisher := &s.publicKey
-	ls := loadsave.NewReadonly(s.storer.Download(cache), redundancy.DefaultLevel)
+	ls := loadsave.NewReadonly(s.storer.Download(cache), s.storer.Cache(), redundancy.DefaultLevel)
 	grantees, err := s.accesscontrol.Get(r.Context(), ls, publisher, paths.GranteesAddress)
 	if err != nil {
 		logger.Debug("could not get grantees", "error", err)
