@@ -574,21 +574,28 @@ func Report(ctx context.Context, st transaction.Store, chunk swarm.Chunk, state 
 
 		return fmt.Errorf("failed to read uploadItem %x: %w", ui.BatchID, err)
 	}
+
 	if ui.TagID > 0 {
 		ti := &TagItem{TagID: ui.TagID}
 		err = indexStore.Get(ti)
 		if err != nil {
-			ui.TagID = 0
-			err = indexStore.Put(ui)
-			if err != nil {
-				return fmt.Errorf("failed updating empty tag for chunk: %w", err)
-			}
+			if errors.Is(err, storage.ErrNotFound) { // tag was deleted by user
+				if state == storage.ChunkSent {
+					ui.TagID = 0
+					err = indexStore.Put(ui)
+					if err != nil {
+						return fmt.Errorf("failed updating empty tag for chunk: %w", err)
+					}
 
-			if state == storage.ChunkSent {
-				return nil
-			}
+					return nil
+				}
 
-			return fmt.Errorf("failed getting tag: %w", err)
+				// state != sent
+				// TODO: delete upload item and everything else
+
+			} else {
+				return fmt.Errorf("failed getting tag: %w", err)
+			}
 		}
 		switch state {
 		case storage.ChunkSent:
