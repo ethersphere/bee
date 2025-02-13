@@ -283,7 +283,7 @@ func TestDirs(t *testing.T) {
 			// verify manifest content
 			verifyManifest, err := manifest.NewDefaultManifestReference(
 				resp.Reference,
-				loadsave.NewReadonly(storer.ChunkStore(), redundancy.DefaultLevel),
+				loadsave.NewReadonly(storer.ChunkStore(), storer.Cache(), redundancy.DefaultLevel),
 			)
 			if err != nil {
 				t.Fatal(err)

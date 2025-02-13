@@ -52,7 +52,7 @@ func TestReadonlyLoadSave(t *testing.T) {
 
 	store := inmemchunkstore.New()
 	factory := pipelineFn(store)
-	ls := loadsave.NewReadonly(store, redundancy.DefaultLevel)
+	ls := loadsave.NewReadonly(store, store, redundancy.DefaultLevel)
 	_, err := ls.Save(context.Background(), data)
 	if !errors.Is(err, loadsave.ErrReadonlyLoadSave) {
 		t.Fatal("expected error but got none")
