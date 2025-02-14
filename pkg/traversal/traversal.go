@@ -77,7 +77,7 @@ func (s *service) Traverse(ctx context.Context, addr swarm.Address, iterFn swarm
 	// then the reference is likely a manifest reference. This is because manifest holds metadata
 	// that points to the actual data file, and this metadata is assumed to be small - Less than or equal to swarm.ChunkSize.
 	if j.Size() <= swarm.ChunkSize {
-		ls := loadsave.NewReadonly(s.getter, s.rLevel)
+		ls := loadsave.NewReadonly(s.getter, s.putter, s.rLevel)
 		switch mf, err := manifest.NewDefaultManifestReference(addr, ls); {
 		case errors.Is(err, manifest.ErrInvalidManifestType):
 			break

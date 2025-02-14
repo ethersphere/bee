@@ -211,7 +211,7 @@ func bootstrapNode(
 		ctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 
-		snapshotRootCh, err = getLatestSnapshot(ctx, localStore.Download(true), snapshotFeed)
+		snapshotRootCh, err = getLatestSnapshot(ctx, localStore.Download(true), localStore.Cache(), snapshotFeed)
 		if err != nil {
 			logger.Warning("bootstrap: fetching snapshot failed", "error", err)
 			continue
@@ -278,9 +278,10 @@ func waitPeers(kad *kademlia.Kad) error {
 func getLatestSnapshot(
 	ctx context.Context,
 	st storage.Getter,
+	putter storage.Putter,
 	address swarm.Address,
 ) (swarm.Chunk, error) {
-	ls := loadsave.NewReadonly(st, redundancy.DefaultLevel)
+	ls := loadsave.NewReadonly(st, putter, redundancy.DefaultLevel)
 	feedFactory := factory.New(st)
 
 	m, err := manifest.NewDefaultManifestReference(

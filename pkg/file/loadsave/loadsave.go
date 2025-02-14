@@ -46,18 +46,20 @@ func New(getter storage.Getter, putter storage.Putter, pipelineFn func() pipelin
 
 // NewReadonly returns a new read-only load-saver
 // which will error on write.
-func NewReadonly(getter storage.Getter, rLevel redundancy.Level) file.LoadSaver {
+func NewReadonly(getter storage.Getter, putter storage.Putter, rLevel redundancy.Level) file.LoadSaver {
 	return &loadSave{
 		getter: getter,
+		putter: putter,
 		rLevel: rLevel,
 	}
 }
 
 // NewReadonlyWithRootCh returns a new read-only load-saver
 // which will error on write.
-func NewReadonlyWithRootCh(getter storage.Getter, rootCh swarm.Chunk, rLevel redundancy.Level) file.LoadSaver {
+func NewReadonlyWithRootCh(getter storage.Getter, putter storage.Putter, rootCh swarm.Chunk, rLevel redundancy.Level) file.LoadSaver {
 	return &loadSave{
 		getter: getter,
+		putter: putter,
 		rootCh: rootCh,
 		rLevel: rLevel,
 	}
