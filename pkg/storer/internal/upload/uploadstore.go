@@ -564,6 +564,24 @@ func Report(ctx context.Context, st transaction.Store, chunk swarm.Chunk, state 
 
 	indexStore := st.IndexStore()
 
+	deleteFunc := func() error {
+		// Once the chunk is stored/synced/failed to sync, it is deleted from the upload store as
+		// we no longer need to keep track of this chunk. We also need to cleanup
+		// the pushItem.
+		pi := &pushItem{
+			Timestamp: ui.Uploaded,
+			Address:   chunk.Address(),
+			BatchID:   chunk.Stamp().BatchID(),
+		}
+
+		return errors.Join(
+			indexStore.Delete(pi),
+			chunkstamp.Delete(indexStore, uploadScope, pi.Address, pi.BatchID),
+			st.ChunkStore().Delete(ctx, chunk.Address()),
+			indexStore.Delete(ui),
+		)
+	}
+
 	err := indexStore.Get(ui)
 	if err != nil {
 		// because of the nature of the feed mechanism of the uploadstore/pusher, a chunk that is in inflight may be sent more than once to the pusher.
@@ -591,7 +609,7 @@ func Report(ctx context.Context, st transaction.Store, chunk swarm.Chunk, state 
 				}
 
 				// state != sent
-				// TODO: delete upload item and everything else
+				return deleteFunc()
 
 			} else {
 				return fmt.Errorf("failed getting tag: %w", err)
@@ -620,21 +638,7 @@ func Report(ctx context.Context, st transaction.Store, chunk swarm.Chunk, state 
 		return nil
 	}
 
-	// Once the chunk is stored/synced/failed to sync, it is deleted from the upload store as
-	// we no longer need to keep track of this chunk. We also need to cleanup
-	// the pushItem.
-	pi := &pushItem{
-		Timestamp: ui.Uploaded,
-		Address:   chunk.Address(),
-		BatchID:   chunk.Stamp().BatchID(),
-	}
-
-	return errors.Join(
-		indexStore.Delete(pi),
-		chunkstamp.Delete(indexStore, uploadScope, pi.Address, pi.BatchID),
-		st.ChunkStore().Delete(ctx, chunk.Address()),
-		indexStore.Delete(ui),
-	)
+	return deleteFunc()
 }
 
 var (
