@@ -869,8 +869,6 @@ func TestDeleteTagReporter(t *testing.T) {
 			t.Fatalf("Get(...): unexpected error: %v", err)
 		}
 
-		fmt.Println(tagItem.TagID)
-
 		if err := ts.Run(context.Background(), func(s transaction.Store) error {
 			return s.IndexStore().Delete(tagItem)
 		}); err != nil {
