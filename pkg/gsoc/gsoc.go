@@ -73,6 +73,7 @@ func (l *listener) Handle(c *soc.SOC) {
 
 	for _, hh := range h {
 		go func(hh Handler) {
+			l.logger.Debug("handling GSOC message", "GSOC Address", addr, "wrapped chunk address", c.WrappedChunk().Address(), "data", c.WrappedChunk().Data()[swarm.SpanSize:])
 			hh(c.WrappedChunk().Data()[swarm.SpanSize:])
 		}(*hh)
 	}
