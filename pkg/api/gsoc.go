@@ -78,6 +78,7 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, socAddress swarm.Address
 	for {
 		select {
 		case b := <-dataC:
+			s.logger.Debug("gsoc ws: sending message", "address", socAddress, "data", b)
 			err = conn.SetWriteDeadline(time.Now().Add(writeDeadline))
 			if err != nil {
 				s.logger.Debug("gsoc ws: set write deadline failed", "error", err)
