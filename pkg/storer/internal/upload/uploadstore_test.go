@@ -893,6 +893,51 @@ func TestDeleteTagReporter(t *testing.T) {
 		})
 	})
 
+	t.Run("delete tag while uploading and not sent", func(t *testing.T) {
+		// Generate a chunk.
+		chunk := chunktest.GenerateTestRandomChunks(1)[0]
+
+		// Store the chunk (which creates the uploadItem).
+		if err := ts.Run(context.Background(), func(s transaction.Store) error {
+			return putter.Put(context.Background(), s, chunk)
+		}); err != nil {
+			t.Fatalf("Put(...): unexpected error: %v", err)
+		}
+
+		// Confirm the upload item exists.
+		ui := &upload.UploadItem{
+			Address: chunk.Address(),
+			BatchID: chunk.Stamp().BatchID(),
+		}
+		if err := ts.Run(context.Background(), func(s transaction.Store) error {
+			return s.IndexStore().Get(ui)
+		}); err != nil {
+			t.Fatalf("Get(...): unexpected error: %v", err)
+		}
+
+		// Delete the tag item to simulate a user deleting it.
+		tagItem := &upload.TagItem{TagID: tag.TagID}
+		if err := ts.Run(context.Background(), func(s transaction.Store) error {
+			return s.IndexStore().Delete(tagItem)
+		}); err != nil {
+			t.Fatalf("Delete(...): unexpected error: %v", err)
+		}
+
+		// Now report with a state other than ChunkSent, e.g. ChunkStored.
+		if err := ts.Run(context.Background(), func(s transaction.Store) error {
+			return upload.Report(context.Background(), s, chunk, storage.ChunkStored)
+		}); err != nil {
+			t.Fatalf("Report(...): unexpected error: %v", err)
+		}
+
+		// Verify that the upload item was deleted (cleanup via deleteFunc).
+		if err := ts.Run(context.Background(), func(s transaction.Store) error {
+			return s.IndexStore().Get(ui)
+		}); !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("expected uploadItem to be deleted, got error: %v", err)
+		}
+	})
+
 }
 
 func TestNextTagID(t *testing.T) {
