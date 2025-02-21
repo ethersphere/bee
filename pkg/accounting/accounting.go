@@ -1498,7 +1498,7 @@ func (a *Accounting) decreaseOriginatedBalanceTo(peer swarm.Address, limit *big.
 	return nil
 }
 
-// decreaseOriginatedBalanceTo decreases the originated balance by provided amount even below 0
+// decreaseOriginatedBalanceBy decreases the originated balance by provided amount even below 0
 func (a *Accounting) decreaseOriginatedBalanceBy(peer swarm.Address, amount *big.Int) error {
 	loggerV2 := a.logger.V(2).Register()
 

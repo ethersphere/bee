@@ -182,7 +182,7 @@ func TestAccountingAddBalance(t *testing.T) {
 	}
 }
 
-// TestAccountingAddBalance does several accounting actions and verifies the balance after each steep
+// TestAccountingAddOriginatedBalance does several accounting actions and verifies the balance after each steep
 func TestAccountingAddOriginatedBalance(t *testing.T) {
 	t.Parallel()
 
@@ -415,7 +415,7 @@ func TestAccountingReserve(t *testing.T) {
 	}
 }
 
-// TestAccountingReserve tests that reserve returns an error if the payment threshold would be exceeded,
+// TestAccountingReserveAheadOfTime tests that reserve returns an error if the payment threshold would be exceeded,
 // but extends this limit by 'n' (max 2) seconds worth of refresh rate if last refreshment was 'n' seconds ago.
 func TestAccountingReserveAheadOfTime(t *testing.T) {
 	t.Parallel()
@@ -1196,7 +1196,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 	}
 }
 
-// TestAccountingNotifyPayment tests that payments adjust the balance
+// TestAccountingNotifyPaymentReceived tests that payments adjust the balance
 func TestAccountingNotifyPaymentReceived(t *testing.T) {
 	t.Parallel()
 
