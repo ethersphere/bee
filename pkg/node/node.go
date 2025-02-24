@@ -190,6 +190,7 @@ const (
 	reserveWakeUpDuration         = 15 * time.Minute          // time to wait before waking up reserveWorker
 	reserveMinEvictCount          = 1_000
 	cacheMinEvictCount            = 10_000
+	maxAllowedDoubling            = 1
 )
 
 func NewBee(
@@ -254,9 +255,8 @@ func NewBee(
 		return nil, fmt.Errorf("reserve capacity doubling is only allowed for full nodes")
 	}
 
-	const maxAllowedDoubling = 1
 	if o.ReserveCapacityDoubling < 0 || o.ReserveCapacityDoubling > maxAllowedDoubling {
-		return nil, fmt.Errorf("config reserve capacity doubling has to be between default: 0 and maximum: 1")
+		return nil, fmt.Errorf("config reserve capacity doubling has to be between default: 0 and maximum: %d", maxAllowedDoubling)
 	}
 	var shallowReceiptTolerance = maxAllowedDoubling - o.ReserveCapacityDoubling
 
