@@ -456,6 +456,11 @@ func (u *uploadPutter) Close(s storage.IndexStore, addr swarm.Address) error {
 	ti := &TagItem{TagID: u.tagID}
 	err := s.Get(ti)
 	if err != nil {
+		// If the tag is not found, it might have been removed or never existed.
+		// In this case, there’s no need to update or delete it—so simply return.
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil
+		}
 		return fmt.Errorf("failed reading tag while closing: %w", err)
 	}
 
