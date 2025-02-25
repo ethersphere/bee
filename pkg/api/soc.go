@@ -172,6 +172,14 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	err = putter.Put(r.Context(), sch)
+	if err != nil {
+		logger.Debug("write chunk failed", "chunk_address", sch.Address(), "error", err)
+		logger.Error(nil, "write chunk failed")
+		jsonhttp.BadRequest(ow, "chunk write error")
+		return
+	}
+
 	reference := sch.Address()
 	if headers.Act {
 		reference, err = s.actEncryptionHandler(r.Context(), w, putter, reference, headers.HistoryAddress)
@@ -190,14 +198,6 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-	}
-
-	err = putter.Put(r.Context(), sch)
-	if err != nil {
-		logger.Debug("write chunk failed", "chunk_address", sch.Address(), "error", err)
-		logger.Error(nil, "write chunk failed")
-		jsonhttp.BadRequest(ow, "chunk write error")
-		return
 	}
 
 	err = putter.Done(sch.Address())

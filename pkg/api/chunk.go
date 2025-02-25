@@ -169,6 +169,21 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	err = putter.Put(r.Context(), chunk)
+	if err != nil {
+		logger.Debug("chunk upload: write chunk failed", "chunk_address", chunk.Address(), "error", err)
+		logger.Error(nil, "chunk upload: write chunk failed")
+		switch {
+		case errors.Is(err, postage.ErrBucketFull):
+			jsonhttp.PaymentRequired(ow, "batch is overissued")
+		case errors.Is(err, postage.ErrInvalidBatchSignature):
+			jsonhttp.BadRequest(ow, "stamp signature is invalid")
+		default:
+			jsonhttp.InternalServerError(ow, "chunk write error")
+		}
+		return
+	}
+
 	reference := chunk.Address()
 	if headers.Act {
 		reference, err = s.actEncryptionHandler(r.Context(), w, putter, reference, headers.HistoryAddress)
@@ -187,21 +202,6 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-	}
-
-	err = putter.Put(r.Context(), chunk)
-	if err != nil {
-		logger.Debug("chunk upload: write chunk failed", "chunk_address", chunk.Address(), "error", err)
-		logger.Error(nil, "chunk upload: write chunk failed")
-		switch {
-		case errors.Is(err, postage.ErrBucketFull):
-			jsonhttp.PaymentRequired(ow, "batch is overissued")
-		case errors.Is(err, postage.ErrInvalidBatchSignature):
-			jsonhttp.BadRequest(ow, "stamp signature is invalid")
-		default:
-			jsonhttp.InternalServerError(ow, "chunk write error")
-		}
-		return
 	}
 
 	err = putter.Done(swarm.ZeroAddress)
