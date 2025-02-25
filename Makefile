@@ -91,6 +91,14 @@ lint: linter
 linter:
 	test -f $(GOLANGCI_LINT) || curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$($(GO) env GOPATH)/bin $(GOLANGCI_LINT_VERSION)
 
+.PHONY: install-govulncheck
+install-govulncheck:
+	@command -v govulncheck >/dev/null 2>&1 || go install golang.org/x/vuln/cmd/govulncheck@latest
+
+.PHONY: govulncheck
+govulncheck: install-govulncheck binary
+	govulncheck -mode=binary ./dist/bee
+
 .PHONY: check-whitespace
 check-whitespace:
 	TREE=$$(git hash-object -t tree /dev/null); \
