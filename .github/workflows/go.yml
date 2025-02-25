@@ -106,12 +106,21 @@ jobs:
     name: Vulnerability Check
     runs-on: ubuntu-latest
     steps:
-      - id: govulncheck
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Run govulncheck
+        id: govulncheck
         uses: golang/govulncheck-action@v1
         with:
           go-version-file: go.mod
           go-package: ./...
-          output-format: text
+          output-format: sarif
+          output-file: govulncheck.sarif
+      - name: Upload SARIF to GitHub Code Scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: govulncheck.sarif
   trigger-beekeeper:
     name: Trigger Beekeeper
     runs-on: ubuntu-latest
