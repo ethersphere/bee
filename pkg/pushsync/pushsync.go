@@ -24,11 +24,11 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/pushsync/pb"
 	"github.com/ethersphere/bee/v2/pkg/skippeers"
 	"github.com/ethersphere/bee/v2/pkg/soc"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
-	opentracing "github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	olog "github.com/opentracing/opentracing-go/log"
 )
@@ -233,6 +233,11 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	if cac.Valid(chunk) {
 		go ps.unwrap(chunk)
 	} else if chunk, err := soc.FromChunk(chunk); err == nil {
+		addr, err := chunk.Address()
+		if err != nil {
+			return err
+		}
+		ps.logger.Debug("handle gsoc", "peer_address", p.Address, "chunk_address", addr, "wrapped_chunk_address", chunk.WrappedChunk().Address())
 		ps.gsocHandler(chunk)
 	} else {
 		return swarm.ErrInvalidChunk
