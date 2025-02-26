@@ -360,6 +360,12 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		if cac.Valid(chunk) {
 			go s.unwrap(chunk)
 		} else if chunk, err := soc.FromChunk(chunk); err == nil {
+			addr, err := chunk.Address()
+			if err != nil {
+				chunkErr = errors.Join(chunkErr, err)
+				continue
+			}
+			s.logger.Debug("sync gsoc", "peer_address", peer, "chunk_address", addr, "wrapped_chunk_address", chunk.WrappedChunk().Address())
 			s.gsocHandler(chunk)
 		} else {
 			s.logger.Debug("invalid cac/soc chunk", "error", swarm.ErrInvalidChunk, "peer_address", peer, "chunk", chunk)
