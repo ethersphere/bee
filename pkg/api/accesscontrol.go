@@ -154,32 +154,30 @@ func (s *Service) actDecryptionHandler() func(h http.Handler) http.Handler {
 // uploads the encrypted reference, history and kvs to the store.
 func (s *Service) actEncryptionHandler(
 	ctx context.Context,
-	w http.ResponseWriter,
 	putter storer.PutterSession,
 	reference swarm.Address,
 	historyRootHash swarm.Address,
-) (swarm.Address, error) {
+) (swarm.Address, swarm.Address, error) {
 	publisherPublicKey := &s.publicKey
 	ls := loadsave.New(s.storer.Download(true), s.storer.Cache(), requestPipelineFactory(ctx, putter, false, redundancy.NONE), redundancy.DefaultLevel)
 	storageReference, historyReference, encryptedReference, err := s.accesscontrol.UploadHandler(ctx, ls, reference, publisherPublicKey, historyRootHash)
 	if err != nil {
-		return swarm.ZeroAddress, err
+		return swarm.ZeroAddress, swarm.ZeroAddress, err
 	}
 	// only need to upload history and kvs if a new history is created,
 	// meaning that the publisher uploaded to the history for the first time
 	if !historyReference.Equal(historyRootHash) {
 		err = putter.Done(storageReference)
 		if err != nil {
-			return swarm.ZeroAddress, fmt.Errorf("done split key-value store failed: %w", err)
+			return swarm.ZeroAddress, swarm.ZeroAddress, fmt.Errorf("done split key-value store failed: %w", err)
 		}
 		err = putter.Done(historyReference)
 		if err != nil {
-			return swarm.ZeroAddress, fmt.Errorf("done split history failed: %w", err)
+			return swarm.ZeroAddress, swarm.ZeroAddress, fmt.Errorf("done split history failed: %w", err)
 		}
 	}
 
-	w.Header().Set(SwarmActHistoryAddressHeader, historyReference.String())
-	return encryptedReference, nil
+	return encryptedReference, historyReference, nil
 }
 
 // actListGranteesHandler is a middleware that decrypts the given address and returns the list of grantees,
