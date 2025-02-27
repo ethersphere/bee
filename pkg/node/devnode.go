@@ -25,7 +25,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/feeds/factory"
 	"github.com/ethersphere/bee/v2/pkg/gsoc"
 	"github.com/ethersphere/bee/v2/pkg/log"
-	"github.com/ethersphere/bee/v2/pkg/metrics/registery"
+	"github.com/ethersphere/bee/v2/pkg/metrics/registry"
 	mockP2P "github.com/ethersphere/bee/v2/pkg/p2p/mock"
 	mockPingPong "github.com/ethersphere/bee/v2/pkg/pingpong/mock"
 	"github.com/ethersphere/bee/v2/pkg/postage"
@@ -361,7 +361,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		}),
 	)
 
-	apiService := api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, nil, logger, mockTransaction, batchStore, api.DevMode, true, true, chainBackend, o.CORSAllowedOrigins, inmemstore.New(), registery.NewRegistry(false).MetricsRegistry())
+	apiService := api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, nil, logger, mockTransaction, batchStore, api.DevMode, true, true, chainBackend, o.CORSAllowedOrigins, inmemstore.New(), registry.NewRegistry(false).MetricsRegistry())
 
 	apiService.Configure(signer, tracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,

@@ -37,7 +37,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/hive"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/metrics"
-	"github.com/ethersphere/bee/v2/pkg/metrics/registery"
+	"github.com/ethersphere/bee/v2/pkg/metrics/registry"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/v2/pkg/pingpong"
@@ -430,11 +430,11 @@ func NewBee(
 	b.stamperStoreCloser = stamperStore
 
 	var apiService *api.Service
-	var metricsRegistery *registery.Registry
+	var metricsRegistery *registry.Registry
 
 	if o.APIAddr != "" {
 
-		metricsRegistery = registery.NewRegistry(false)
+		metricsRegistery = registry.NewRegistry(false)
 
 		if o.MutexProfile {
 			_ = runtime.SetMutexProfileFraction(1)
