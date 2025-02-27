@@ -282,6 +282,7 @@ func New(
 	chainBackend transaction.Backend,
 	cors []string,
 	stamperStore storage.Store,
+	registery *prometheus.Registry,
 ) *Service {
 	s := new(Service)
 
@@ -297,7 +298,7 @@ func New(
 	s.transaction = transaction
 	s.batchStore = batchStore
 	s.chainBackend = chainBackend
-	s.metricsRegistry = newDebugMetrics()
+	s.metricsRegistry = registery
 	s.preMapHooks = map[string]func(v string) (string, error){
 		"mimeMediaType": func(v string) (string, error) {
 			typ, _, err := mime.ParseMediaType(v)

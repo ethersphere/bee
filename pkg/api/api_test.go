@@ -34,6 +34,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/gsoc"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/metrics/registery"
 	p2pmock "github.com/ethersphere/bee/v2/pkg/p2p/mock"
 	"github.com/ethersphere/bee/v2/pkg/pingpong"
 	"github.com/ethersphere/bee/v2/pkg/postage"
@@ -212,7 +213,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		o.BeeMode = api.FullMode
 	}
 
-	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, []string{o.WhitelistedAddr}, o.Logger, transaction, o.BatchStore, o.BeeMode, !o.ChequebookDisabled, !o.SwapDisabled, backend, o.CORSAllowedOrigins, inmemstore.New())
+	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, []string{o.WhitelistedAddr}, o.Logger, transaction, o.BatchStore, o.BeeMode, !o.ChequebookDisabled, !o.SwapDisabled, backend, o.CORSAllowedOrigins, inmemstore.New(), registery.NewRegistry(false).MetricsRegistry())
 	testutil.CleanupCloser(t, s)
 
 	s.SetP2P(o.P2P)
@@ -364,7 +365,7 @@ func TestParseName(t *testing.T) {
 		pk, _ := crypto.GenerateSecp256k1Key()
 		signer := crypto.NewDefaultSigner(pk)
 
-		s := api.New(pk.PublicKey, pk.PublicKey, common.Address{}, nil, log, nil, nil, 1, false, false, nil, []string{"*"}, inmemstore.New())
+		s := api.New(pk.PublicKey, pk.PublicKey, common.Address{}, nil, log, nil, nil, 1, false, false, nil, []string{"*"}, inmemstore.New(), registery.NewRegistry(false).MetricsRegistry())
 		s.Configure(signer, nil, api.Options{}, api.ExtraOptions{Resolver: tC.res}, 1, nil)
 		s.Mount()
 		s.EnableFullAPI()

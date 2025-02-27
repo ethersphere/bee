@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -36,6 +37,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/hive"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/metrics"
+	"github.com/ethersphere/bee/v2/pkg/metrics/registery"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/v2/pkg/pingpong"
@@ -77,7 +79,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/util/syncutil"
 	"github.com/hashicorp/go-multierror"
 	ma "github.com/multiformats/go-multiaddr"
-	promc "github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/sha3"
 	"golang.org/x/sync/errgroup"
 )
@@ -429,8 +430,12 @@ func NewBee(
 	b.stamperStoreCloser = stamperStore
 
 	var apiService *api.Service
+	var metricsRegistery *registery.Registry
 
 	if o.APIAddr != "" {
+
+		metricsRegistery = registery.NewRegistry(false)
+
 		if o.MutexProfile {
 			_ = runtime.SetMutexProfileFraction(1)
 		}
@@ -457,6 +462,7 @@ func NewBee(
 			chainBackend,
 			o.CORSAllowedOrigins,
 			stamperStore,
+			metricsRegistery.MetricsRegistry(),
 		)
 
 		apiService.Mount()
@@ -606,12 +612,6 @@ func NewBee(
 		}
 	}
 
-	var registry *promc.Registry
-
-	if apiService != nil {
-		registry = apiService.MetricsRegistry()
-	}
-
 	p2ps, err := libp2p.New(ctx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
 		PrivateKey:      libp2pPrivateKey,
 		NATAddr:         o.NATAddr,
@@ -620,7 +620,7 @@ func NewBee(
 		FullNode:        o.FullNodeMode,
 		Nonce:           nonce,
 		ValidateOverlay: chainEnabled,
-		Registry:        registry,
+		Registry:        metricsRegistery.MetricsRegistry(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
@@ -1142,48 +1142,72 @@ func NewBee(
 
 	if o.APIAddr != "" {
 		// register metrics from components
-		apiService.MustRegisterMetrics(p2ps.Metrics()...)
-		apiService.MustRegisterMetrics(pingPong.Metrics()...)
-		apiService.MustRegisterMetrics(acc.Metrics()...)
-		apiService.MustRegisterMetrics(localStore.Metrics()...)
-		apiService.MustRegisterMetrics(kad.Metrics()...)
-		apiService.MustRegisterMetrics(saludService.Metrics()...)
-		apiService.MustRegisterMetrics(stateStoreMetrics.Metrics()...)
+		metricsRegistery.MustRegister(p2ps.Metrics()...)
+		metricsRegistery.MustRegister(pingPong.Metrics()...)
+		metricsRegistery.MustRegister(acc.Metrics()...)
+		metricsRegistery.MustRegister(localStore.Metrics()...)
+		metricsRegistery.MustRegister(kad.Metrics()...)
+		metricsRegistery.MustRegister(saludService.Metrics()...)
+		metricsRegistery.MustRegister(stateStoreMetrics.Metrics()...)
 
 		if pullerService != nil {
-			apiService.MustRegisterMetrics(pullerService.Metrics()...)
+			metricsRegistery.MustRegister(pullerService.Metrics()...)
 		}
 
 		if agent != nil {
-			apiService.MustRegisterMetrics(agent.Metrics()...)
+			metricsRegistery.MustRegister(agent.Metrics()...)
 		}
 
-		apiService.MustRegisterMetrics(pushSyncProtocol.Metrics()...)
-		apiService.MustRegisterMetrics(pusherService.Metrics()...)
-		apiService.MustRegisterMetrics(pullSyncProtocol.Metrics()...)
-		apiService.MustRegisterMetrics(retrieval.Metrics()...)
-		apiService.MustRegisterMetrics(lightNodes.Metrics()...)
-		apiService.MustRegisterMetrics(hive.Metrics()...)
+		metricsRegistery.MustRegister(pushSyncProtocol.Metrics()...)
+		metricsRegistery.MustRegister(pusherService.Metrics()...)
+		metricsRegistery.MustRegister(pullSyncProtocol.Metrics()...)
+		metricsRegistery.MustRegister(retrieval.Metrics()...)
+		metricsRegistery.MustRegister(lightNodes.Metrics()...)
+		metricsRegistery.MustRegister(hive.Metrics()...)
+
+		// TODO: remove this when we have a push metrics opt in configuration
+		if true {
+
+			// TODO: remove this when we have an exclude option in the configuration
+			exclude := []string{"pullsync"}
+			include := []string{"pusher", "pushsync", "pullsync", "localstore"}
+
+			for _, m := range include {
+				if slices.Contains(exclude, m) {
+					continue
+				}
+				switch m {
+				case "pusher":
+					metricsRegistery.MustPushRegister(pusherService.Metrics()...)
+				case "pushsync":
+					metricsRegistery.MustPushRegister(pushSyncProtocol.Metrics()...)
+				case "pullsync":
+					metricsRegistery.MustPushRegister(pullSyncProtocol.Metrics()...)
+				case "localstore":
+					metricsRegistery.MustPushRegister(localStore.Metrics()...)
+				}
+			}
+		}
 
 		if bs, ok := batchStore.(metrics.Collector); ok {
-			apiService.MustRegisterMetrics(bs.Metrics()...)
+			metricsRegistery.MustRegister(bs.Metrics()...)
 		}
 		if ls, ok := eventListener.(metrics.Collector); ok {
-			apiService.MustRegisterMetrics(ls.Metrics()...)
+			metricsRegistery.MustRegister(ls.Metrics()...)
 		}
 		if pssServiceMetrics, ok := pssService.(metrics.Collector); ok {
-			apiService.MustRegisterMetrics(pssServiceMetrics.Metrics()...)
+			metricsRegistery.MustRegister(pssServiceMetrics.Metrics()...)
 		}
 		if swapBackendMetrics, ok := chainBackend.(metrics.Collector); ok {
-			apiService.MustRegisterMetrics(swapBackendMetrics.Metrics()...)
+			metricsRegistery.MustRegister(swapBackendMetrics.Metrics()...)
+		}
+		if l, ok := logger.(metrics.Collector); ok {
+			metricsRegistery.MustRegister(l.Metrics()...)
 		}
 
-		if l, ok := logger.(metrics.Collector); ok {
-			apiService.MustRegisterMetrics(l.Metrics()...)
-		}
-		apiService.MustRegisterMetrics(pseudosettleService.Metrics()...)
+		metricsRegistery.MustRegister(pseudosettleService.Metrics()...)
 		if swapService != nil {
-			apiService.MustRegisterMetrics(swapService.Metrics()...)
+			metricsRegistery.MustRegister(swapService.Metrics()...)
 		}
 
 		apiService.Configure(signer, tracer, api.Options{
