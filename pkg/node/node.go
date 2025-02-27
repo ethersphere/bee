@@ -20,7 +20,6 @@ import (
 	"net/http"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -1168,14 +1167,10 @@ func NewBee(
 		// TODO: remove this when we have a push metrics opt in configuration
 		if true {
 
-			// TODO: remove this when we have an exclude option in the configuration
-			exclude := []string{"pullsync"}
+			// TODO: remove this when we have an include option in the configuration
 			include := []string{"pusher", "pushsync", "pullsync", "localstore"}
 
 			for _, m := range include {
-				if slices.Contains(exclude, m) {
-					continue
-				}
 				switch m {
 				case "pusher":
 					metricsRegistery.MustPushRegister(pusherService.Metrics()...)
