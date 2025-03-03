@@ -39,6 +39,7 @@ func NewRegistry(push bool) *Registry {
 		Help:      "Bee information.",
 		ConstLabels: prometheus.Labels{
 			"version": bee.Version,
+			"mode":    "full" | "light" | "ultralight",
 		},
 	})
 
