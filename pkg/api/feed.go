@@ -65,8 +65,8 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	headers := struct {
-		OnlyRootChunk        bool `map:"Swarm-Only-Root-Chunk"`
-		LegacyFeedResolution bool `map:"Legacy-Feed-Resolution"`
+		OnlyRootChunk     bool `map:"Swarm-Only-Root-Chunk"`
+		LegacyFeedResolve bool `map:"Swarm-Feed-Legacy-Resolve"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -103,7 +103,7 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wc, err := feeds.GetWrappedChunk(r.Context(), s.storer.Download(false), ch, headers.LegacyFeedResolution)
+	wc, err := feeds.GetWrappedChunk(r.Context(), s.storer.Download(false), ch, headers.LegacyFeedResolve)
 	if err != nil {
 		logger.Error(nil, "wrapped chunk cannot be retrieved")
 		jsonhttp.NotFound(w, "wrapped chunk cannot be retrieved")
