@@ -9,10 +9,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/ethersphere/bee/v2"
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/collectors"
 )
 
 const bytesInKB = 1000
@@ -133,34 +131,4 @@ func (rw *responseWriter) WriteHeader(code int) {
 	rw.statusCode = code
 	rw.UpgradedResponseWriter.WriteHeader(code)
 	rw.wroteHeader = true
-}
-
-func newDebugMetrics() (r *prometheus.Registry) {
-	r = prometheus.NewRegistry()
-
-	// register standard metrics
-	r.MustRegister(
-		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{
-			Namespace: m.Namespace,
-		}),
-		collectors.NewGoCollector(),
-		prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: m.Namespace,
-			Name:      "info",
-			Help:      "Bee information.",
-			ConstLabels: prometheus.Labels{
-				"version": bee.Version,
-			},
-		}),
-	)
-
-	return r
-}
-
-func (s *Service) MetricsRegistry() *prometheus.Registry {
-	return s.metricsRegistry
-}
-
-func (s *Service) MustRegisterMetrics(cs ...prometheus.Collector) {
-	s.metricsRegistry.MustRegister(cs...)
 }
