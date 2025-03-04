@@ -794,16 +794,21 @@ func TestFeedIndirection(t *testing.T) {
 		t.Fatalf("expected file reference, did not got any")
 	}
 
+	// get root chunk of data
+	// and wrap it in a feed
+	rootChunk, err := storer.ChunkStore().Get(context.Background(), resp.Reference)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// now use the "content" to mock the feed lookup
 	// also, use the mocked mantaray chunks that unmarshal
 	// into a real manifest with the mocked feed values when
 	// called from the bzz endpoint. then call the bzz endpoint with
 	// the pregenerated feed root manifest hash
 
-	feedUpdate := toChunk(t, 121212, resp.Reference.Bytes())
-
 	var (
-		look                = newMockLookup(-1, 0, feedUpdate, nil, &id{}, nil)
+		look                = newMockLookup(-1, 0, rootChunk, nil, &id{}, nil)
 		factory             = newMockFactory(look)
 		bzzDownloadResource = func(addr, path string) string { return "/bzz/" + addr + "/" + path }
 		ctx                 = context.Background()
@@ -813,7 +818,6 @@ func TestFeedIndirection(t *testing.T) {
 		Logger: logger,
 		Feeds:  factory,
 	})
-	err := storer.Cache().Put(ctx, feedUpdate)
 	if err != nil {
 		t.Fatal(err)
 	}
