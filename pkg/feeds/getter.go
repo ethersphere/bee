@@ -62,6 +62,9 @@ func GetWrappedChunk(ctx context.Context, getter storage.Getter, ch swarm.Chunk,
 	if legacyResolve {
 		ref, err := legacyPayload(wc)
 		if err != nil {
+			if errors.Is(err, errNotLegacyPayload) {
+				return wc, nil
+			}
 			return nil, err
 		}
 		wc, err = getter.Get(ctx, ref)
