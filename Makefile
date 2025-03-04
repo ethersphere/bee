@@ -12,6 +12,7 @@ BEEKEEPER_BRANCH ?= master
 REACHABILITY_OVERRIDE_PUBLIC ?= false
 BATCHFACTOR_OVERRIDE_PUBLIC ?= 5
 BEE_IMAGE ?= ethersphere/bee:latest
+PLATFORM ?= linux/amd64
 
 BEE_API_VERSION ?= "$(shell grep '^  version:' openapi/Swarm.yaml | awk '{print $$2}')"
 
@@ -142,13 +143,14 @@ build: export CGO_ENABLED=0
 build:
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" ./...
 
+# example: make docker-build PLATFORM=linux/amd64 BEE_IMAGE=ethersphere/bee:latest REACHABILITY_OVERRIDE_PUBLIC=false BATCHFACTOR_OVERRIDE_PUBLIC=5
 .PHONY: docker-build
-docker-build: binary
-	@echo "Build flags: $(LDFLAGS)"
-	mkdir -p ./tmp
-	cp ./dist/bee ./tmp/bee
-	docker build -f Dockerfile.dev -t $(BEE_IMAGE) . --no-cache
-	rm -rf ./tmp
+docker-build:
+	docker build -f Dockerfile.dev \
+		--platform $(PLATFORM) \
+		-t $(BEE_IMAGE) . \
+		--build-arg REACHABILITY_OVERRIDE_PUBLIC=$(REACHABILITY_OVERRIDE_PUBLIC) \
+		--build-arg BATCHFACTOR_OVERRIDE_PUBLIC=$(BATCHFACTOR_OVERRIDE_PUBLIC)
 	@echo "Docker image: $(BEE_IMAGE)"
 
 .PHONY: githooks
