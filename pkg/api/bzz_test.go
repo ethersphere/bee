@@ -26,6 +26,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/manifest"
 	mockbatchstore "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
 	mockpost "github.com/ethersphere/bee/v2/pkg/postage/mock"
+	testingsoc "github.com/ethersphere/bee/v2/pkg/soc/testing"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -796,19 +797,20 @@ func TestFeedIndirection(t *testing.T) {
 
 	// get root chunk of data
 	// and wrap it in a feed
-	rootChunk, err := storer.ChunkStore().Get(context.Background(), resp.Reference)
+	rootCh, err := storer.ChunkStore().Get(context.Background(), resp.Reference)
 	if err != nil {
 		t.Fatal(err)
 	}
+	socRootCh := testingsoc.GenerateMockSOC(t, rootCh.Data()[swarm.SpanSize:]).Chunk()
 
-	// now use the "content" to mock the feed lookup
+	// now use the "content" root chunk to mock the feed lookup
 	// also, use the mocked mantaray chunks that unmarshal
 	// into a real manifest with the mocked feed values when
 	// called from the bzz endpoint. then call the bzz endpoint with
 	// the pregenerated feed root manifest hash
 
 	var (
-		look                = newMockLookup(-1, 0, rootChunk, nil, &id{}, nil)
+		look                = newMockLookup(-1, 0, socRootCh, nil, &id{}, nil)
 		factory             = newMockFactory(look)
 		bzzDownloadResource = func(addr, path string) string { return "/bzz/" + addr + "/" + path }
 		ctx                 = context.Background()
