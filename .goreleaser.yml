@@ -9,7 +9,8 @@ git:
   prerelease_suffix: "-"
 
 builds:
-  - id: linux
+  # Stable Builds (skip RCs)
+  - id: linux-stable
     main: ./cmd/bee
     binary: bee
     flags:
@@ -32,7 +33,9 @@ builds:
       - arm
     goarm:
       - 7
-  - id: linux-slim
+    skip: '{{ ne .Prerelease "" }}' # Skip if RC
+
+  - id: linux-slim-stable
     main: ./cmd/bee
     binary: bee-slim
     flags:
@@ -57,7 +60,9 @@ builds:
     hooks:
       post:
         - upx --best "{{ .Path }}"
-  - id: windows
+    skip: '{{ ne .Prerelease "" }}' # Skip if RC
+
+  - id: windows-stable
     main: ./cmd/bee
     binary: bee
     flags:
@@ -76,7 +81,9 @@ builds:
     goarch:
       - amd64
       - 386
-  - id: darwin-amd64
+    skip: '{{ ne .Prerelease "" }}' # Skip if RC
+
+  - id: darwin-amd64-stable
     main: ./cmd/bee
     binary: bee
     flags:
@@ -94,7 +101,9 @@ builds:
       - darwin
     goarch:
       - amd64
-  - id: darwin-arm64
+    skip: '{{ ne .Prerelease "" }}' # Skip if RC
+
+  - id: darwin-arm64-stable
     main: ./cmd/bee
     binary: bee
     flags:
@@ -112,6 +121,121 @@ builds:
       - darwin
     goarch:
       - arm64
+    skip: '{{ ne .Prerelease "" }}' # Skip if RC
+
+  # RC Builds (skip stable releases)
+  - id: linux-rc
+    main: ./cmd/bee
+    binary: bee
+    flags:
+      - -v
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/ethersphere/bee/v2.version={{ .Version }}
+      - -X github.com/ethersphere/bee/v2.commitHash={{ .ShortCommit }}
+      - -X github.com/ethersphere/bee/v2.commitTime={{ .CommitTimestamp }}
+      - -X github.com/ethersphere/bee/v2/pkg/api.Version={{ .Env.BEE_API_VERSION }}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - 386
+      - arm64
+      - arm
+    goarm:
+      - 7
+    skip: '{{ eq .Prerelease "" }}' # Skip if stable
+
+  - id: linux-slim-rc
+    main: ./cmd/bee
+    binary: bee-slim
+    flags:
+      - -v
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/ethersphere/bee/v2.version={{ .Version }}
+      - -X github.com/ethersphere/bee/v2.commitHash={{ .ShortCommit }}
+      - -X github.com/ethersphere/bee/v2.commitTime={{ .CommitTimestamp }}
+      - -X github.com/ethersphere/bee/v2/pkg/api.Version={{ .Env.BEE_API_VERSION }}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - 7
+    hooks:
+      post:
+        - upx --best "{{ .Path }}"
+    skip: '{{ eq .Prerelease "" }}' # Skip if stable
+
+  - id: windows-rc
+    main: ./cmd/bee
+    binary: bee
+    flags:
+      - -v
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/ethersphere/bee/v2.version={{ .Version }}
+      - -X github.com/ethersphere/bee/v2.commitHash={{ .ShortCommit }}
+      - -X github.com/ethersphere/bee/v2.commitTime={{ .CommitTimestamp }}
+      - -X github.com/ethersphere/bee/v2/pkg/api.Version={{ .Env.BEE_API_VERSION }}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - windows
+    goarch:
+      - amd64
+      - 386
+    skip: '{{ eq .Prerelease "" }}' # Skip if stable
+
+  - id: darwin-amd64-rc
+    main: ./cmd/bee
+    binary: bee
+    flags:
+      - -v
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/ethersphere/bee/v2.version={{ .Version }}
+      - -X github.com/ethersphere/bee/v2.commitHash={{ .ShortCommit }}
+      - -X github.com/ethersphere/bee/v2.commitTime={{ .CommitTimestamp }}
+      - -X github.com/ethersphere/bee/v2/pkg/api.Version={{ .Env.BEE_API_VERSION }}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - amd64
+    skip: '{{ eq .Prerelease "" }}' # Skip if stable
+
+  - id: darwin-arm64-rc
+    main: ./cmd/bee
+    binary: bee
+    flags:
+      - -v
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/ethersphere/bee/v2.version={{ .Version }}
+      - -X github.com/ethersphere/bee/v2.commitHash={{ .ShortCommit }}
+      - -X github.com/ethersphere/bee/v2.commitTime={{ .CommitTimestamp }}
+      - -X github.com/ethersphere/bee/v2/pkg/api.Version={{ .Env.BEE_API_VERSION }}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - arm64
+    skip: '{{ eq .Prerelease "" }}' # Skip if stable
 
 snapshot:
   name_template: "{{.Tag}}-snapshot"
@@ -135,7 +259,8 @@ signs:
 archives:
   - id: scoop
     builds:
-      - windows
+      - windows-stable
+      - windows-rc # Include both for scoop if desired
     name_template: "{{ tolower .ProjectName }}-{{ tolower .Os }}-{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
     format: zip
     wrap_in_directory: false
@@ -146,13 +271,18 @@ archives:
   - name_template: "{{ tolower .ProjectName }}-{{ tolower .Os }}-{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
     format: binary
     builds:
-      - linux
-      - windows
-      - darwin-amd64
-      - darwin-arm64
+      - linux-stable
+      - linux-rc
+      - windows-stable
+      - windows-rc
+      - darwin-amd64-stable
+      - darwin-amd64-rc
+      - darwin-arm64-stable
+      - darwin-arm64-rc
   - id: homebrew-amd64
     builds:
-      - darwin-amd64
+      - darwin-amd64-stable
+      - darwin-amd64-rc # Include both for Homebrew (filtered later)
     name_template: "{{ tolower .ProjectName }}-{{ tolower .Os }}-{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
     files:
       - src: "packaging/homebrew-amd64/*"
@@ -162,7 +292,8 @@ archives:
       - README.md
   - id: homebrew-arm64
     builds:
-      - darwin-arm64
+      - darwin-arm64-stable
+      - darwin-arm64-rc # Include both for Homebrew (filtered later)
     name_template: "{{ tolower .ProjectName }}-{{ tolower .Os }}-{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
     files:
       - src: "packaging/homebrew-arm64/*"
@@ -177,27 +308,18 @@ nfpms:
       {{- tolower .Version }}_
       {{- if eq .Arch "arm" }}armhf
       {{- else }}{{ tolower .Arch }}{{ end }}
-
     id: packages
-
     vendor: Swarm Foundation
-
     homepage: https://www.ethswarm.org
-
     maintainer: Swarm Devops <devops@ethswarm.org>
-
     description: Ethereum Swarm node
-
     license: GPL-3
-
     dependencies:
       - ca-certificates
       - adduser
-
     formats:
       - deb
       - rpm
-
     contents:
       - src: packaging/bee.service
         dst: /lib/systemd/system/bee.service
@@ -209,7 +331,6 @@ nfpms:
       - src: packaging/default
         dst: /etc/default/bee
         type: config
-
     overrides:
       deb:
         dependencies:
@@ -235,8 +356,9 @@ nfpms:
           postinstall: ./packaging/rpm/post
           preremove: ./packaging/rpm/preun
           postremove: ./packaging/rpm/postun
-
     bindir: /usr/bin
+    builds:
+      - linux-stable # Only stable Linux builds for nfpms
 
 publishers:
   - name: gemfury
@@ -251,23 +373,16 @@ scoops:
       owner: ethersphere
       name: scoop
       token: "{{ .Env.SCOOP_PAT }}"
-
     commit_author:
       name: bee-worker
       email: bee-worker@ethswarm.org
-
     commit_msg_template: "Scoop update for {{ .ProjectName }} version {{ .Tag }}"
-
     homepage: "https://github.com/ethersphere/bee"
-
     description: "Swarm client implemented in Go."
-
     license: BSD-3-Clause
-
     persist:
       - "data"
       - "packaging/scoop/bee.yaml"
-
     post_install:
       - "Write-Host 'Running postinstall command'"
       - "if(!(Test-Path $persist_dir\\bee.yaml)){New-Item -ItemType SymbolicLink -Path \"$persist_dir\\bee.yaml\" -Target \"$persist_dir\\packaging\\scoop\\bee.yaml\" | Out-Null}"
@@ -329,7 +444,8 @@ dockers:
       - "quay.io/ethersphere/bee:{{ .Version }}-amd64"
     use: buildx
     ids:
-      - linux
+      - linux-stable
+      - linux-rc
     goarch: amd64
     dockerfile: Dockerfile.goreleaser
     build_flag_templates:
@@ -344,7 +460,8 @@ dockers:
       - "quay.io/ethersphere/bee:{{ .Version }}-armv7"
     use: buildx
     ids:
-      - linux
+      - linux-stable
+      - linux-rc
     goarch: arm
     goarm: 7
     dockerfile: Dockerfile.goreleaser
@@ -360,7 +477,8 @@ dockers:
       - "quay.io/ethersphere/bee:{{ .Version }}-arm64v8"
     use: buildx
     ids:
-      - linux
+      - linux-stable
+      - linux-rc
     goarch: arm64
     dockerfile: Dockerfile.goreleaser
     build_flag_templates:
@@ -375,7 +493,8 @@ dockers:
       - "quay.io/ethersphere/bee:{{ .Version }}-amd64-slim"
     use: buildx
     ids:
-      - linux-slim
+      - linux-slim-stable
+      - linux-slim-rc
     goarch: amd64
     dockerfile: Dockerfile.scratch
     build_flag_templates:
@@ -390,7 +509,8 @@ dockers:
       - "quay.io/ethersphere/bee:{{ .Version }}-armv7-slim"
     use: buildx
     ids:
-      - linux-slim
+      - linux-slim-stable
+      - linux-slim-rc
     goarch: arm
     goarm: 7
     dockerfile: Dockerfile.scratch
@@ -406,7 +526,8 @@ dockers:
       - "quay.io/ethersphere/bee:{{ .Version }}-arm64v8-slim"
     use: buildx
     ids:
-      - linux-slim
+      - linux-slim-stable
+      - linux-slim-rc
     goarch: arm64
     dockerfile: Dockerfile.scratch
     build_flag_templates:
@@ -416,6 +537,7 @@ dockers:
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
       - "--label=org.opencontainers.image.version={{.Version}}-slim"
+
 docker_manifests:
   - name_template: ethersphere/bee:{{ .Major }}
     image_templates:
