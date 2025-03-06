@@ -5,6 +5,7 @@
 package events
 
 import (
+	"slices"
 	"sync"
 )
 
@@ -33,7 +34,7 @@ func (b *Subscriber) Subscribe(str string) (<-chan struct{}, func()) {
 		for i, s := range b.subs[str] {
 			if s == c {
 				b.subs[str][i] = nil
-				b.subs[str] = append(b.subs[str][:i], b.subs[str][i+1:]...)
+				b.subs[str] = slices.Delete(b.subs[str], i, i+1)
 				break
 			}
 		}

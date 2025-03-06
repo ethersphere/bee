@@ -454,62 +454,46 @@ func (u *uploadPutter) Put(ctx context.Context, st transaction.Store, chunk swar
 // with a swarm reference. This can be useful while keeping track of uploads through
 // the tags. It will update the tag. This will be filled with the Split and Seen count
 // by the Putter.
-func (u *uploadPutter) Close(st transaction.Storage, addr swarm.Address) error {
+func (u *uploadPutter) Close(s storage.IndexStore, addr swarm.Address) error {
 	if u.closed {
 		return nil
 	}
-	defer func() {
-		u.closed = true
-	}()
 
-	if err := u.Cleanup(st); err != nil {
-		return fmt.Errorf("cleanup failed on close, root_ref %s: %w", addr, err)
+	u.closed = true
+
+	ti := &TagItem{TagID: u.tagID}
+	err := s.Get(ti)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return s.Delete(&dirtyTagItem{TagID: u.tagID})
+		}
+		return fmt.Errorf("failed reading tag while closing: %w", err)
 	}
 
-	return st.Run(context.Background(), func(s transaction.Store) error {
+	ti.Split += u.split
+	ti.Seen += u.seen
 
-		ti := &TagItem{TagID: u.tagID}
-		err := s.IndexStore().Get(ti)
-		if err != nil {
-			if errors.Is(err, storage.ErrNotFound) {
-				return nil
-			}
-			return fmt.Errorf("failed reading tag while closing: %w", err)
-		}
+	if !addr.IsZero() {
+		ti.Address = addr.Clone()
+	}
 
-		ti.Split += u.split
-		ti.Seen += u.seen
-
-		if !addr.IsZero() {
-			ti.Address = addr.Clone()
-		}
-
-		return s.IndexStore().Put(ti)
-	})
+	return errors.Join(
+		s.Put(ti),
+		s.Delete(&dirtyTagItem{TagID: u.tagID}),
+	)
 }
 
-func (u *uploadPutter) Cleanup(st transaction.Storage) error {
-	if u.closed {
-		return errPutterAlreadyClosed
-	}
+func Cleanup(st transaction.Storage, tag uint64) error {
 
 	itemsToDelete := make([]*pushItem, 0)
 
-	di := &dirtyTagItem{TagID: u.tagID}
-	err := st.IndexStore().Get(di)
-	if err != nil {
-		return fmt.Errorf("failed reading dirty tag while cleaning up: %w", err)
-	}
-
-	err = st.IndexStore().Iterate(
+	err := st.IndexStore().Iterate(
 		storage.Query{
-			Factory:       func() storage.Item { return &pushItem{} },
-			PrefixAtStart: true,
-			Prefix:        fmt.Sprintf("%d", di.Started),
+			Factory: func() storage.Item { return &pushItem{} },
 		},
 		func(res storage.Result) (bool, error) {
 			pi := res.Entry.(*pushItem)
-			if pi.TagID == u.tagID {
+			if pi.TagID == tag {
 				itemsToDelete = append(itemsToDelete, pi)
 			}
 			return false, nil
@@ -540,7 +524,7 @@ func (u *uploadPutter) Cleanup(st transaction.Storage) error {
 	return errors.Join(
 		eg.Wait(),
 		st.Run(context.Background(), func(s transaction.Store) error {
-			return s.IndexStore().Delete(di)
+			return s.IndexStore().Delete(&dirtyTagItem{TagID: tag})
 		}),
 	)
 }
@@ -564,7 +548,7 @@ func CleanupDirty(st transaction.Storage) error {
 	}
 
 	for _, di := range dirtyTags {
-		err = errors.Join(err, (&uploadPutter{tagID: di.TagID}).Cleanup(st))
+		err = errors.Join(err, Cleanup(st, di.TagID))
 	}
 
 	return err
@@ -572,17 +556,17 @@ func CleanupDirty(st transaction.Storage) error {
 
 // Report is the implementation of the PushReporter interface.
 // Must be mutex locked.
-func Report(st transaction.Store, tag uint64, update *TagUpdate) error {
+func Report(st storage.IndexStore, tag uint64, update *TagUpdate) (bool, error) {
 
 	ti := &TagItem{TagID: tag}
-	err := st.IndexStore().Get(ti)
+	err := st.Get(ti)
 	if err != nil {
 		if !errors.Is(err, storage.ErrNotFound) {
-			return fmt.Errorf("failed getting tag: %w", err)
+			return false, fmt.Errorf("failed getting tag: %w", err)
 		}
 
 		// tag is missing, no need update it
-		return nil
+		return false, nil
 	}
 
 	// update the tag
@@ -590,7 +574,7 @@ func Report(st transaction.Store, tag uint64, update *TagUpdate) error {
 	ti.Stored += update.Stored
 	ti.Synced += update.Synced
 
-	return st.IndexStore().Put(ti)
+	return ti.Synced >= ti.Split, st.Put(ti)
 }
 
 var (
@@ -683,9 +667,11 @@ func ListAllTags(st storage.Reader) ([]TagItem, error) {
 	return tags, nil
 }
 
-func IteratePending(ctx context.Context, s transaction.ReadOnlyStore, consumerFn func(chunk swarm.Chunk) (bool, error)) error {
+func IteratePending(ctx context.Context, s transaction.ReadOnlyStore, start int64, consumerFn func(chunk swarm.Chunk, ts int64) (bool, error)) error {
 	return s.IndexStore().Iterate(storage.Query{
-		Factory: func() storage.Item { return &pushItem{} },
+		Factory:       func() storage.Item { return &pushItem{} },
+		PrefixAtStart: true,
+		Prefix:        fmt.Sprintf("%d", start),
 	}, func(r storage.Result) (bool, error) {
 		pi := r.Entry.(*pushItem)
 		has, err := s.IndexStore().Has(&dirtyTagItem{TagID: pi.TagID})
@@ -709,7 +695,7 @@ func IteratePending(ctx context.Context, s transaction.ReadOnlyStore, consumerFn
 			WithStamp(stamp).
 			WithTagID(pi.TagID)
 
-		return consumerFn(chunk)
+		return consumerFn(chunk, pi.Timestamp)
 	})
 }
 

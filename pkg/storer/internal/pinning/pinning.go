@@ -67,7 +67,7 @@ type CollectionStat struct {
 // It will create a new UUID for the collection which can be used to iterate on all the chunks
 // that are part of this collection. The root pin is only updated on successful close of this.
 // Calls to the Putter MUST be mutex locked to prevent concurrent upload data races.
-func NewCollection(st storage.IndexStore) (internal.PutterCloserWithReference, error) {
+func NewCollection(st storage.IndexStore) (internal.PutterCloserCleanerWithReference, error) {
 	newCollectionUUID := newUUID()
 	err := st.Put(&dirtyCollection{UUID: newCollectionUUID})
 	if err != nil {
@@ -121,40 +121,35 @@ func (c *collectionPutter) Put(ctx context.Context, st transaction.Store, ch swa
 	return nil
 }
 
-func (c *collectionPutter) Close(st transaction.Storage, root swarm.Address) error {
+func (c *collectionPutter) Close(st storage.IndexStore, root swarm.Address) error {
 	if root.IsZero() {
 		return errCollectionRootAddressIsZero
 	}
 
-	return st.Run(context.Background(), func(s transaction.Store) error {
+	collection := &pinCollectionItem{Addr: root}
+	has, err := st.Has(collection)
+	if err != nil {
+		return fmt.Errorf("pin store: check previous root: %w", err)
+	}
 
-		collection := &pinCollectionItem{Addr: root}
-		has, err := s.IndexStore().Has(collection)
-		if err != nil {
-			return fmt.Errorf("pin store: check previous root: %w", err)
-		}
+	if has {
+		return ErrDuplicatePinCollection
+	}
 
-		if has {
-			return ErrDuplicatePinCollection
-		}
+	// Save the root pin reference.
+	c.collection.Addr = root
+	err = st.Put(c.collection)
+	if err != nil {
+		return fmt.Errorf("pin store: failed updating collection: %w", err)
+	}
 
-		// Save the root pin reference.
-		c.collection.Addr = root
-		err = s.IndexStore().Put(c.collection)
-		if err != nil {
-			return fmt.Errorf("pin store: failed updating collection: %w", err)
-		}
+	err = st.Delete(&dirtyCollection{UUID: c.collection.UUID})
+	if err != nil {
+		return fmt.Errorf("pin store: failed deleting dirty collection: %w", err)
+	}
 
-		err = s.IndexStore().Delete(&dirtyCollection{UUID: c.collection.UUID})
-		if err != nil {
-			return fmt.Errorf("pin store: failed deleting dirty collection: %w", err)
-		}
-
-		c.closed = true
-		return nil
-
-	})
-
+	c.closed = true
+	return nil
 }
 
 func (c *collectionPutter) Cleanup(st transaction.Storage) error {

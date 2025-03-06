@@ -146,6 +146,9 @@ func (s *Service) chunksWorker(warmupTime time.Duration) {
 
 			wg.Done()
 			<-sem
+
+			s.inflight.delete(op.identityAddress, op.Chunk.Stamp().BatchID())
+
 			if reAttempt {
 				select {
 				case cc <- op:
@@ -254,12 +257,6 @@ func (s *Service) chunksWorker(warmupTime time.Duration) {
 func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (repeat bool, err error) {
 	loggerV1 := logger.V(1).Build()
 
-	defer func() {
-		if !repeat {
-			s.inflight.delete(op.identityAddress, op.Chunk.Stamp().BatchID())
-		}
-	}()
-
 	ok, err := s.batchExist.Exists(op.Chunk.Stamp().BatchID())
 	if !ok || err != nil {
 		loggerV1.Warning(
@@ -314,9 +311,6 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) (re
 		case op.Err <- err:
 		default:
 			loggerV1.Error(err, "pusher: failed to return error for direct upload")
-		}
-		if !reAttempt {
-			s.inflight.delete(op.identityAddress, op.Chunk.Stamp().BatchID())
 		}
 	}()
 

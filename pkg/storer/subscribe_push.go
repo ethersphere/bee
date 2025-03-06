@@ -33,11 +33,14 @@ func (db *DB) SubscribePush(ctx context.Context) (<-chan swarm.Chunk, func()) {
 		// close the returned chunkInfo channel at the end to
 		// signal that the subscription is done
 		defer close(chunks)
+
+		var last int64 = 0
 		for {
 
-			err := upload.IteratePending(ctx, db.storage, func(chunk swarm.Chunk) (bool, error) {
+			err := upload.IteratePending(ctx, db.storage, last, func(chunk swarm.Chunk, ts int64) (bool, error) {
 				select {
 				case chunks <- chunk:
+					last = ts
 					return false, nil
 				case <-stopChan:
 					// gracefully stop the iteration

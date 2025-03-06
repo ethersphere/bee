@@ -115,6 +115,7 @@ func testUploadStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 			}
 
 			for _, ch := range tc.chunks {
+				ch.WithTagID(tag.TagID)
 				err := session.Put(context.TODO(), ch)
 				if err != nil {
 					t.Fatalf("session.Put(...): unexpected error: %v", err)
@@ -344,14 +345,12 @@ func TestUploadStore(t *testing.T) {
 
 	t.Run("inmem", func(t *testing.T) {
 		t.Parallel()
-
 		testUploadStore(t, func() (*storer.DB, error) {
 			return storer.New(context.Background(), "", dbTestOps(swarm.RandAddress(t), 0, nil, nil, time.Second))
 		})
 	})
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
-
 		testUploadStore(t, diskStorer(t, dbTestOps(swarm.RandAddress(t), 0, nil, nil, time.Second)))
 	})
 }
@@ -377,6 +376,7 @@ func testReporter(t *testing.T, newStorer func() (*storer.DB, error)) {
 	}
 
 	for _, ch := range chunks {
+		ch.WithTagID(session.TagID)
 		err = putter.Put(context.Background(), ch)
 		if err != nil {
 			t.Fatal(err)
@@ -390,42 +390,43 @@ func testReporter(t *testing.T, newStorer func() (*storer.DB, error)) {
 		t.Fatal(err)
 	}
 
-	t.Run("report", func(t *testing.T) {
-		t.Run("commit", func(t *testing.T) {
-			err := lstore.Report(context.Background(), chunks[0], storage.ChunkSynced)
-			if err != nil {
-				t.Fatalf("Report(...): unexpected error %v", err)
-			}
+	s, unsub := lstore.Events().Subscribe("reportEnd")
+	t.Cleanup(unsub)
 
-			wantTI := storer.SessionInfo{
-				TagID:     session.TagID,
-				Split:     3,
-				Seen:      0,
-				Sent:      0,
-				Synced:    1,
-				Stored:    0,
-				StartedAt: session.StartedAt,
-				Address:   root.Address(),
-			}
+	err = lstore.Report(context.Background(), chunks[0], storage.ChunkSynced)
+	if err != nil {
+		t.Fatalf("Report(...): unexpected error %v", err)
+	}
 
-			gotTI, err := lstore.Session(session.TagID)
-			if err != nil {
-				t.Fatalf("Session(...): unexpected error: %v", err)
-			}
+	<-s
 
-			if diff := cmp.Diff(wantTI, gotTI); diff != "" {
-				t.Fatalf("unexpected tag item (-want +have):\n%s", diff)
-			}
+	wantTI := storer.SessionInfo{
+		TagID:     session.TagID,
+		Split:     3,
+		Seen:      0,
+		Sent:      0,
+		Synced:    1,
+		Stored:    0,
+		StartedAt: session.StartedAt,
+		Address:   root.Address(),
+	}
 
-			has, err := lstore.Storage().ChunkStore().Has(context.Background(), chunks[0].Address())
-			if err != nil {
-				t.Fatalf("ChunkStore.Has(...): unexpected error: %v", err)
-			}
-			if !has {
-				t.Fatalf("expected chunk %s to not be found", chunks[0].Address())
-			}
-		})
-	})
+	gotTI, err := lstore.Session(session.TagID)
+	if err != nil {
+		t.Fatalf("Session(...): unexpected error: %v", err)
+	}
+
+	if diff := cmp.Diff(wantTI, gotTI); diff != "" {
+		t.Fatalf("unexpected tag item (-want +have):\n%s", diff)
+	}
+
+	has, err := lstore.Storage().ChunkStore().Has(context.Background(), chunks[0].Address())
+	if err != nil {
+		t.Fatalf("ChunkStore.Has(...): unexpected error: %v", err)
+	}
+	if !has {
+		t.Fatalf("expected chunk %s to not be found", chunks[0].Address())
+	}
 }
 
 func TestReporter(t *testing.T) {

@@ -19,7 +19,11 @@ import (
 // swarm reference associated with this session.
 type PutterCloserWithReference interface {
 	Put(context.Context, transaction.Store, swarm.Chunk) error
-	Close(transaction.Storage, swarm.Address) error
+	Close(storage.IndexStore, swarm.Address) error
+}
+
+type PutterCloserCleanerWithReference interface {
+	PutterCloserWithReference
 	Cleanup(transaction.Storage) error
 }
 

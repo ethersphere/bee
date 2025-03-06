@@ -19,7 +19,7 @@ import (
 // NewCollection is the implementation of the PinStore.NewCollection method.
 func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 	var (
-		pinningPutter internal.PutterCloserWithReference
+		pinningPutter internal.PutterCloserCleanerWithReference
 		err           error
 	)
 	err = db.storage.Run(ctx, func(store transaction.Store) error {
@@ -51,7 +51,7 @@ func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 			unlock := db.Lock(uploadsLock)
 			defer unlock()
 			return db.storage.Run(ctx, func(s transaction.Store) error {
-				return pinningPutter.Close(db.storage, address)
+				return pinningPutter.Close(s.IndexStore(), address)
 			})
 		},
 		cleanup: func() error {
