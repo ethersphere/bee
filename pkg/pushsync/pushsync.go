@@ -287,7 +287,16 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	if ps.topologyDriver.IsReachable() && swarm.Proximity(ps.address.Bytes(), chunkAddress.Bytes()) >= rad {
 		stored, reason = true, "is within AOR"
-		return store(ctx)
+		err = store(ctx)
+		if err != nil {
+			return err
+		}
+
+		err = ps.forwardToClosest(ctx, chunk, p.Address)
+		if err != nil {
+			ps.logger.Error(nil, "failed to forward to closest peer", "chunk_address", chunk.Address(), "error", err)
+		}
+		return nil
 	}
 
 	switch receipt, err := ps.pushToClosest(ctx, chunk, false); {
@@ -316,6 +325,42 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return fmt.Errorf("handler: push to closest chunk %s: %w", chunkAddress, err)
 
 	}
+}
+
+func (ps *PushSync) forwardToClosest(ctx context.Context, ch swarm.Chunk, sender swarm.Address) error {
+	peer, err := ps.closestPeer(ch.Address(), true, nil)
+	if err != nil {
+		if errors.Is(err, topology.ErrNotFound) || errors.Is(err, topology.ErrWantSelf) {
+			return nil
+		}
+		return err
+	}
+	ps.metrics.Forwarder.Inc()
+	ps.metrics.TotalSendAttempts.Inc()
+	resultChan := make(chan receiptResult)
+	action, err := ps.prepareCredit(ctx, peer, ch, false)
+	if err != nil {
+		return err
+	}
+	go ps.push(ctx, resultChan, peer, ch, action)
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case result := <-resultChan:
+		if result.err != nil {
+			return result.err
+		}
+	}
+
+	ps.logger.Debug("forwarded to closest peer", "chunk_address", ch.Address(), "peer_address", peer)
+	price := ps.pricer.Price(ch.Address())
+	debit, err := ps.accounting.PrepareDebit(ctx, sender, price)
+	if err != nil {
+		return err
+	}
+	defer debit.Cleanup()
+	return debit.Apply()
 }
 
 // PushChunkToClosest sends chunk to the closest peer by opening a stream. It then waits for

@@ -19,6 +19,7 @@ type mock struct {
 	peers           []swarm.Address
 	depth           uint8
 	closestPeer     swarm.Address
+	closestPeerFunc func() (swarm.Address, error)
 	closestPeerErr  error
 	peersErr        error
 	addPeersErr     error
@@ -51,6 +52,12 @@ func WithNeighborhoodDepth(dd uint8) Option {
 func WithClosestPeer(addr swarm.Address) Option {
 	return optionFunc(func(d *mock) {
 		d.closestPeer = addr
+	})
+}
+
+func WithClosestPeerFunc(f func() (swarm.Address, error)) Option {
+	return optionFunc(func(d *mock) {
+		d.closestPeerFunc = f
 	})
 }
 
@@ -127,6 +134,10 @@ func (d *mock) Peers() []swarm.Address {
 }
 
 func (d *mock) ClosestPeer(addr swarm.Address, wantSelf bool, _ topology.Select, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error) {
+	if d.closestPeerFunc != nil {
+		return d.closestPeerFunc()
+	}
+
 	if len(skipPeers) == 0 {
 		if d.closestPeerErr != nil {
 			return d.closestPeer, d.closestPeerErr
