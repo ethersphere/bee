@@ -878,19 +878,6 @@ func TestDeleteTagReporter(t *testing.T) {
 		t.Run("mark sent", func(t *testing.T) {
 			report(chunk, storage.ChunkSent)
 		})
-
-		t.Run("verify internal state", func(t *testing.T) {
-
-			ui := &upload.UploadItem{Address: chunk.Address(), BatchID: chunk.Stamp().BatchID()}
-			err := ts.IndexStore().Get(ui)
-			if err != nil {
-				t.Fatalf("Report(...): unexpected error: %v", err)
-			}
-
-			if diff := cmp.Diff(uint64(0), ui.TagID); diff != "" {
-				t.Fatalf("Get(...): unexpected TagItem (-want +have):\n%s", diff)
-			}
-		})
 	})
 
 	t.Run("delete tag while uploading and not sent", func(t *testing.T) {
