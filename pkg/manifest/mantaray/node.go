@@ -311,8 +311,11 @@ func (n *Node) Remove(ctx context.Context, path []byte, ls LoadSaver) error {
 		return ErrNotFound
 	}
 	rest := path[len(f.prefix):]
+	defer func() {
+		n.ref = nil
+	}()
 	if len(rest) == 0 {
-		// full path matched
+
 		delete(n.forks, path[0])
 		return nil
 	}
