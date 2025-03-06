@@ -565,9 +565,18 @@ func CleanupDirty(st transaction.Storage) error {
 // Report is the implementation of the PushReporter interface.
 func Report(ctx context.Context, st transaction.Store, chunk swarm.Chunk, state storage.ChunkState) error {
 
-	ui := &uploadItem{Address: chunk.Address(), BatchID: chunk.Stamp().BatchID()}
-
 	indexStore := st.IndexStore()
+
+	ui := &uploadItem{Address: chunk.Address(), BatchID: chunk.Stamp().BatchID()}
+	err := indexStore.Get(ui)
+	if err != nil {
+		// because of the nature of the feed mechanism of the uploadstore/pusher, a chunk that is in inflight may be sent more than once to the pusher.
+		// this is because the chunks are removed from the queue only when they are synced, not at the start of the upload
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil
+		}
+		return fmt.Errorf("failed to read uploadItem %x: %w", ui.BatchID, err)
+	}
 
 	// Once the chunk is stored/synced/failed to sync, it is deleted from the upload store as
 	// we no longer need to keep track of this chunk. We also need to cleanup
@@ -576,35 +585,12 @@ func Report(ctx context.Context, st transaction.Store, chunk swarm.Chunk, state 
 		if state == storage.ChunkSent {
 			return nil
 		}
-
-		pi := &pushItem{
-			Timestamp: ui.Uploaded,
-			Address:   chunk.Address(),
-			BatchID:   chunk.Stamp().BatchID(),
-		}
-
 		return errors.Join(
-			indexStore.Delete(pi),
-			chunkstamp.Delete(indexStore, uploadScope, pi.Address, pi.BatchID),
+			indexStore.Delete(&pushItem{Timestamp: ui.Uploaded, Address: chunk.Address(), BatchID: chunk.Stamp().BatchID()}),
+			chunkstamp.DeleteWithStamp(indexStore, uploadScope, chunk.Address(), chunk.Stamp()),
 			st.ChunkStore().Delete(ctx, chunk.Address()),
 			indexStore.Delete(ui),
 		)
-	}
-
-	err := indexStore.Get(ui)
-	if err != nil {
-		// because of the nature of the feed mechanism of the uploadstore/pusher, a chunk that is in inflight may be sent more than once to the pusher.
-		// this is because the chunks are removed from the queue only when they are synced, not at the start of the upload
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil
-		}
-
-		return fmt.Errorf("failed to read uploadItem %x: %w", ui.BatchID, err)
-	}
-
-	// tag is missing
-	if ui.TagID == 0 {
-		return deleteFunc()
 	}
 
 	ti := &TagItem{TagID: ui.TagID}
@@ -614,12 +600,7 @@ func Report(ctx context.Context, st transaction.Store, chunk swarm.Chunk, state 
 			return fmt.Errorf("failed getting tag: %w", err)
 		}
 
-		ui.TagID = 0
-		err = indexStore.Put(ui)
-		if err != nil {
-			return fmt.Errorf("failed updating empty tag for chunk: %w", err)
-		}
-
+		// tag is missing, no need update it
 		return deleteFunc()
 	}
 
