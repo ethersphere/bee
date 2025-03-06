@@ -336,9 +336,12 @@ func (ps *PushSync) forwardToClosest(ctx context.Context, ch swarm.Chunk, sender
 		return err
 	}
 	ps.metrics.Forwarder.Inc()
-
+	ps.metrics.TotalSendAttempts.Inc()
 	resultChan := make(chan receiptResult)
 	action, err := ps.prepareCredit(ctx, peer, ch, false)
+	if err != nil {
+		return err
+	}
 	go ps.push(ctx, resultChan, peer, ch, action)
 
 	select {
