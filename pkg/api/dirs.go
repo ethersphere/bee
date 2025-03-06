@@ -102,8 +102,9 @@ func (s *Service) dirUploadHandler(
 	}
 
 	encryptedReference := reference
+	historyReference := swarm.ZeroAddress
 	if act {
-		encryptedReference, err = s.actEncryptionHandler(r.Context(), w, putter, reference, historyAddress)
+		encryptedReference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, historyAddress)
 		if err != nil {
 			logger.Debug("access control upload failed", "error", err)
 			logger.Error(nil, "access control upload failed")
@@ -135,6 +136,10 @@ func (s *Service) dirUploadHandler(
 		span.LogFields(olog.Bool("success", true))
 	}
 	w.Header().Set(AccessControlExposeHeaders, SwarmTagHeader)
+	if act {
+		w.Header().Set(SwarmActHistoryAddressHeader, historyReference.String())
+		w.Header().Add(AccessControlExposeHeaders, SwarmActHistoryAddressHeader)
+	}
 	jsonhttp.Created(w, bzzUploadResponse{
 		Reference: encryptedReference,
 	})

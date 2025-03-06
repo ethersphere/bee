@@ -280,8 +280,9 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	encryptedReference := ref
+	historyReference := swarm.ZeroAddress
 	if headers.Act {
-		encryptedReference, err = s.actEncryptionHandler(r.Context(), w, putter, ref, headers.HistoryAddress)
+		encryptedReference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, ref, headers.HistoryAddress)
 		if err != nil {
 			logger.Debug("access control upload failed", "error", err)
 			logger.Error(nil, "access control upload failed")
@@ -307,5 +308,9 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if headers.Act {
+		w.Header().Set(SwarmActHistoryAddressHeader, historyReference.String())
+		w.Header().Set(AccessControlExposeHeaders, SwarmActHistoryAddressHeader)
+	}
 	jsonhttp.Created(w, feedReferenceResponse{Reference: encryptedReference})
 }

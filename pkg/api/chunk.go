@@ -185,8 +185,9 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	reference := chunk.Address()
+	historyReference := swarm.ZeroAddress
 	if headers.Act {
-		reference, err = s.actEncryptionHandler(r.Context(), w, putter, reference, headers.HistoryAddress)
+		reference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, headers.HistoryAddress)
 		if err != nil {
 			logger.Debug("access control upload failed", "error", err)
 			logger.Error(nil, "access control upload failed")
@@ -217,6 +218,10 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set(AccessControlExposeHeaders, SwarmTagHeader)
+	if headers.Act {
+		w.Header().Set(SwarmActHistoryAddressHeader, historyReference.String())
+		w.Header().Add(AccessControlExposeHeaders, SwarmActHistoryAddressHeader)
+	}
 	jsonhttp.Created(w, chunkAddressResponse{Reference: reference})
 }
 
