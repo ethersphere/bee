@@ -77,6 +77,7 @@ func TestFeed_Get(t *testing.T) {
 
 		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", "12"), http.StatusOK,
 			jsonhttptest.WithExpectedResponse(mockWrappedCh.Data()[swarm.SpanSize:]),
+			jsonhttptest.WithRequestHeader(api.SwarmLegacyFeedResolve, "true"),
 			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedIndexHeader, hex.EncodeToString(idBytes)),
 			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.SwarmFeedIndexHeader),
 			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.SwarmFeedIndexNextHeader),
@@ -86,7 +87,7 @@ func TestFeed_Get(t *testing.T) {
 		)
 	})
 
-	t.Run("latest", func(t *testing.T) {
+	t.Run("latest with legacy payload", func(t *testing.T) {
 		t.Parallel()
 
 		var (
@@ -103,6 +104,7 @@ func TestFeed_Get(t *testing.T) {
 		)
 
 		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusOK,
+			jsonhttptest.WithRequestHeader(api.SwarmLegacyFeedResolve, "true"),
 			jsonhttptest.WithExpectedResponse(mockWrappedCh.Data()[swarm.SpanSize:]),
 			jsonhttptest.WithExpectedContentLength(len(mockWrappedCh.Data()[swarm.SpanSize:])),
 			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedIndexHeader, hex.EncodeToString(idBytes)),
@@ -161,7 +163,9 @@ func TestFeed_Get(t *testing.T) {
 			})
 		)
 
-		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusNotFound)
+		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusNotFound,
+			jsonhttptest.WithRequestHeader(api.SwarmLegacyFeedResolve, "true"),
+		)
 	})
 
 	t.Run("bigger payload than one chunk", func(t *testing.T) {
