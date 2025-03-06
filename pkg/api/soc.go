@@ -181,8 +181,9 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	reference := sch.Address()
+	historyReference := swarm.ZeroAddress
 	if headers.Act {
-		reference, err = s.actEncryptionHandler(r.Context(), w, putter, reference, headers.HistoryAddress)
+		reference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, headers.HistoryAddress)
 		if err != nil {
 			logger.Debug("access control upload failed", "error", err)
 			logger.Error(nil, "access control upload failed")
@@ -206,6 +207,10 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		logger.Error(nil, "done split failed")
 		jsonhttp.InternalServerError(ow, "done split failed")
 		return
+	}
+	if headers.Act {
+		w.Header().Set(SwarmActHistoryAddressHeader, historyReference.String())
+		w.Header().Set(AccessControlExposeHeaders, SwarmActHistoryAddressHeader)
 	}
 
 	jsonhttp.Created(w, socPostResponse{Reference: reference})

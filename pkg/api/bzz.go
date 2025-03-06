@@ -267,8 +267,9 @@ func (s *Service) fileUploadHandler(
 	logger.Debug("store", "manifest_reference", manifestReference)
 
 	reference := manifestReference
+	historyReference := swarm.ZeroAddress
 	if act {
-		reference, err = s.actEncryptionHandler(r.Context(), w, putter, reference, historyAddress)
+		reference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, historyAddress)
 		if err != nil {
 			logger.Debug("access control upload failed", "error", err)
 			logger.Error(nil, "access control upload failed")
@@ -303,6 +304,10 @@ func (s *Service) fileUploadHandler(
 	}
 	w.Header().Set(ETagHeader, fmt.Sprintf("%q", reference.String()))
 	w.Header().Set(AccessControlExposeHeaders, SwarmTagHeader)
+	if act {
+		w.Header().Set(SwarmActHistoryAddressHeader, historyReference.String())
+		w.Header().Add(AccessControlExposeHeaders, SwarmActHistoryAddressHeader)
+	}
 
 	jsonhttp.Created(w, bzzUploadResponse{
 		Reference: reference,
