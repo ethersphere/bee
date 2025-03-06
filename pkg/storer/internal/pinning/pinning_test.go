@@ -93,9 +93,7 @@ func TestPinStore(t *testing.T) {
 					}
 				}
 
-				if err := st.Run(context.Background(), func(s transaction.Store) error {
-					return putter.Close(s.IndexStore(), tc.root.Address())
-				}); err != nil {
+				if err := putter.Close(st, tc.root.Address()); err != nil {
 					t.Fatal(err)
 				}
 			})
@@ -278,9 +276,7 @@ func TestPinStore(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = st.Run(context.Background(), func(s transaction.Store) error {
-			return putter.Close(s.IndexStore(), root.Address())
-		})
+		err = putter.Close(st, root.Address())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -315,16 +311,12 @@ func TestPinStore(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = st.Run(context.Background(), func(s transaction.Store) error {
-			return putter.Close(s.IndexStore(), root.Address())
-		})
+		err = putter.Close(st, root.Address())
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		err = st.Run(context.Background(), func(s transaction.Store) error {
-			return putter.Close(s.IndexStore(), root.Address())
-		})
+		err = putter.Close(st, root.Address())
 		if err == nil || !errors.Is(err, pinstore.ErrDuplicatePinCollection) {
 			t.Fatalf("unexpected error during CLose, want: %v, got: %v", pinstore.ErrDuplicatePinCollection, err)
 		}
@@ -352,9 +344,7 @@ func TestPinStore(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = st.Run(context.Background(), func(s transaction.Store) error {
-			return putter.Close(s.IndexStore(), swarm.ZeroAddress)
-		})
+		err = putter.Close(st, swarm.ZeroAddress)
 		if !errors.Is(err, pinstore.ErrCollectionRootAddressIsZero) {
 			t.Fatalf("unexpected error on close, want: %v, got: %v", pinstore.ErrCollectionRootAddressIsZero, err)
 		}

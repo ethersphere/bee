@@ -458,6 +458,9 @@ func (u *uploadPutter) Close(st transaction.Storage, addr swarm.Address) error {
 	if u.closed {
 		return nil
 	}
+	defer func() {
+		u.closed = true
+	}()
 
 	if err := u.Cleanup(st); err != nil {
 		return fmt.Errorf("cleanup failed on close, root_ref %s: %w", addr, err)
@@ -469,8 +472,7 @@ func (u *uploadPutter) Close(st transaction.Storage, addr swarm.Address) error {
 		err := s.IndexStore().Get(ti)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
-				u.closed = true
-				return s.IndexStore().Delete(&dirtyTagItem{TagID: u.tagID})
+				return nil
 			}
 			return fmt.Errorf("failed reading tag while closing: %w", err)
 		}
@@ -482,19 +484,13 @@ func (u *uploadPutter) Close(st transaction.Storage, addr swarm.Address) error {
 			ti.Address = addr.Clone()
 		}
 
-		u.closed = true
-
-		return errors.Join(
-			s.IndexStore().Put(ti),
-			s.IndexStore().Delete(&dirtyTagItem{TagID: u.tagID}),
-		)
+		return s.IndexStore().Put(ti)
 	})
-
 }
 
 func (u *uploadPutter) Cleanup(st transaction.Storage) error {
 	if u.closed {
-		return nil
+		return errPutterAlreadyClosed
 	}
 
 	itemsToDelete := make([]*pushItem, 0)
@@ -530,12 +526,11 @@ func (u *uploadPutter) Cleanup(st transaction.Storage) error {
 		func(item *pushItem) {
 			eg.Go(func() error {
 				return st.Run(context.Background(), func(s transaction.Store) error {
-					ui := &uploadItem{Address: item.Address, BatchID: item.BatchID}
 					return errors.Join(
-						s.IndexStore().Delete(ui),
+						s.IndexStore().Delete(item),
+						s.IndexStore().Delete(&uploadItem{Address: item.Address, BatchID: item.BatchID}),
 						s.ChunkStore().Delete(context.Background(), item.Address),
 						chunkstamp.Delete(s.IndexStore(), uploadScope, item.Address, item.BatchID),
-						s.IndexStore().Delete(item),
 					)
 				})
 			})
@@ -545,7 +540,7 @@ func (u *uploadPutter) Cleanup(st transaction.Storage) error {
 	return errors.Join(
 		eg.Wait(),
 		st.Run(context.Background(), func(s transaction.Store) error {
-			return s.IndexStore().Delete(&dirtyTagItem{TagID: u.tagID})
+			return s.IndexStore().Delete(di)
 		}),
 	)
 }
@@ -577,7 +572,7 @@ func CleanupDirty(st transaction.Storage) error {
 
 // Report is the implementation of the PushReporter interface.
 // Must be mutex locked.
-func Report(ctx context.Context, st transaction.Store, tag uint64, update *TagUpdate) error {
+func Report(st transaction.Store, tag uint64, update *TagUpdate) error {
 
 	ti := &TagItem{TagID: tag}
 	err := st.IndexStore().Get(ti)
@@ -591,9 +586,9 @@ func Report(ctx context.Context, st transaction.Store, tag uint64, update *TagUp
 	}
 
 	// update the tag
-	ti.Sent += uint64(update.Sent)
-	ti.Stored += uint64(update.Stored)
-	ti.Synced += uint64(update.Synced)
+	ti.Sent += update.Sent
+	ti.Stored += update.Stored
+	ti.Synced += update.Synced
 
 	return st.IndexStore().Put(ti)
 }
@@ -712,7 +707,7 @@ func IteratePending(ctx context.Context, s transaction.ReadOnlyStore, consumerFn
 
 		chunk = chunk.
 			WithStamp(stamp).
-			WithTagID(uint32(pi.TagID))
+			WithTagID(pi.TagID)
 
 		return consumerFn(chunk)
 	})

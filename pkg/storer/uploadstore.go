@@ -30,17 +30,20 @@ func (db *DB) Report(ctx context.Context, chunk swarm.Chunk, state storage.Chunk
 	db.tagCache.Lock()
 	defer db.tagCache.Unlock()
 
-	if _, ok := db.tagCache.tags[chunk.TagID()]; !ok {
-		db.tagCache.tags[chunk.TagID()] = &upload.TagUpdate{}
+	update, ok := db.tagCache.tags[chunk.TagID()]
+	if !ok {
+		update = &upload.TagUpdate{}
+		db.tagCache.tags[chunk.TagID()] = update
 	}
 
 	switch state {
 	case storage.ChunkSent:
-		db.tagCache.tags[chunk.TagID()].Sent++
+		update.Sent++
 	case storage.ChunkSynced:
-		db.tagCache.tags[chunk.TagID()].Synced++
+		update.Synced++
 	case storage.ChunkStored:
-		db.tagCache.tags[chunk.TagID()].Stored++
+		update.Synced++
+		update.Stored++
 	}
 
 	db.events.Trigger(reportEvent)
@@ -50,10 +53,10 @@ func (db *DB) Report(ctx context.Context, chunk swarm.Chunk, state storage.Chunk
 
 func (db *DB) reporter(ctx context.Context) {
 
+	defer db.inFlight.Done()
+
 	reportEvent, unsubscribe := db.events.Subscribe(reportEvent)
 	defer unsubscribe()
-
-	// todo: wait group add
 
 	for {
 		select {
@@ -63,20 +66,19 @@ func (db *DB) reporter(ctx context.Context) {
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(time.Second):
-
-				db.tagCache.Lock()
+			case <-time.After(time.Second * 5):
 				unlock := db.Lock(uploadsLock)
+				db.tagCache.Lock()
 				for id, t := range db.tagCache.tags {
-					err := db.storage.Run(ctx, func(s transaction.Store) error {
-						return upload.Report(ctx, s, uint64(id), t)
-					})
-					if err != nil {
-						// todo: log
+					if err := db.storage.Run(ctx, func(s transaction.Store) error {
+						return upload.Report(s, id, t)
+					}); err != nil {
+						db.logger.Debug("report failed", "error", err)
 					}
 				}
-				unlock()
+				db.tagCache.tags = make(map[uint64]*upload.TagUpdate) // reset
 				db.tagCache.Unlock()
+				unlock()
 			}
 		}
 	}

@@ -20,17 +20,14 @@ import (
 
 // DirectUpload is the implementation of the NetStore.DirectUpload method.
 func (db *DB) DirectUpload() PutterSession {
-	// egCtx will allow early exit of Put operations if we have
-	// already encountered error.
+
 	eg := errgroup.Group{}
+	eg.SetLimit(pusher.ConcurrentPushes)
 
 	return &putterSession{
 		Putter: putterWithMetrics{
 			storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk) error {
-				db.directUploadLimiter <- struct{}{}
 				eg.Go(func() (err error) {
-					defer func() { <-db.directUploadLimiter }()
-
 					span, logger, ctx := db.tracer.FollowSpanFromContext(ctx, "put-direct-upload", db.logger)
 					defer func() {
 						if err != nil {

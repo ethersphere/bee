@@ -419,7 +419,7 @@ type cacheLimiter struct {
 
 type tagCache struct {
 	sync.Mutex
-	tags map[uint32]*upload.TagUpdate
+	tags map[uint64]*upload.TagUpdate
 }
 
 // DB implements all the component stores described above.
@@ -427,18 +427,17 @@ type DB struct {
 	logger log.Logger
 	tracer *tracing.Tracer
 
-	metrics             metrics
-	storage             transaction.Storage
-	multex              *multex.Multex
-	cacheObj            *cache.Cache
-	retrieval           retrieval.Interface
-	pusherFeed          chan *pusher.Op
-	quit                chan struct{}
-	cacheLimiter        cacheLimiter
-	dbCloser            io.Closer
-	subscriptionsWG     sync.WaitGroup
-	events              *events.Subscriber
-	directUploadLimiter chan struct{}
+	metrics         metrics
+	storage         transaction.Storage
+	multex          *multex.Multex
+	cacheObj        *cache.Cache
+	retrieval       retrieval.Interface
+	pusherFeed      chan *pusher.Op
+	quit            chan struct{}
+	cacheLimiter    cacheLimiter
+	dbCloser        io.Closer
+	subscriptionsWG sync.WaitGroup
+	events          *events.Subscriber
 
 	reserve          *reserve.Reserve
 	inFlight         sync.WaitGroup
@@ -556,10 +555,9 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			minimumRadius:      uint8(opts.MinimumStorageRadius),
 			capacityDoubling:   opts.ReserveCapacityDoubling,
 		},
-		directUploadLimiter: make(chan struct{}, pusher.ConcurrentPushes),
-		pinIntegrity:        pinIntegrity,
+		pinIntegrity: pinIntegrity,
 		tagCache: &tagCache{
-			tags: make(map[uint32]*upload.TagUpdate),
+			tags: make(map[uint64]*upload.TagUpdate),
 		},
 	}
 
@@ -598,6 +596,9 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	db.inFlight.Add(1)
 	go db.cacheWorker(ctx)
 
+	db.inFlight.Add(1)
+	go db.reporter(ctx)
+
 	return db, nil
 }
 
@@ -618,9 +619,9 @@ func (db *DB) Metrics() []prometheus.Collector {
 func (db *DB) Close() error {
 	close(db.quit)
 
-	bgReserveWorkersClosed := make(chan struct{})
+	bgWorkersClosed := make(chan struct{})
 	go func() {
-		defer close(bgReserveWorkersClosed)
+		defer close(bgWorkersClosed)
 		if !syncutil.WaitWithTimeout(&db.inFlight, 5*time.Second) {
 			db.logger.Warning("db shutting down with running goroutines")
 		}
@@ -647,7 +648,7 @@ func (db *DB) Close() error {
 		defer close(done)
 		<-closerDone
 		<-bgCacheWorkersClosed
-		<-bgReserveWorkersClosed
+		<-bgWorkersClosed
 	}()
 
 	select {

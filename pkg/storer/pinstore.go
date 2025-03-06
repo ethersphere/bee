@@ -51,7 +51,7 @@ func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 			unlock := db.Lock(uploadsLock)
 			defer unlock()
 			return db.storage.Run(ctx, func(s transaction.Store) error {
-				return pinningPutter.Close(s.IndexStore(), address)
+				return pinningPutter.Close(db.storage, address)
 			})
 		},
 		cleanup: func() error {

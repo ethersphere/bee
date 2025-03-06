@@ -90,9 +90,7 @@ func Test_Step_05(t *testing.T) {
 		t.Fatalf("put chunk: %v", err)
 	}
 
-	err = store.Run(ctx, func(s transaction.Store) error {
-		return putter.Close(s.IndexStore(), swarm.RandAddress(t))
-	})
+	err = putter.Close(store, swarm.RandAddress(t))
 	if err != nil {
 		t.Fatalf("close putter: %v", err)
 	}
