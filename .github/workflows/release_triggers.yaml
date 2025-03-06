@@ -10,21 +10,17 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    outputs:
+      version: ${{ steps.get-version.outputs.VERSION }}  # Define job output
     steps:
       - name: Get the released tags version
         id: get-version
         run: |
           REF="${{ github.event.workflow_run.head_branch }}"
-          echo ::set-output name=VERSION::${REF/refs\/tags\//}
-      - name: Trigger Bee Factory image build
-        uses: peter-evans/repository-dispatch@v1
-        with:
-          token: ${{ secrets.GHA_PAT_BASIC }}
-          repository: ethersphere/bee-factory
-          event-type: build-images
-          client-payload: '{"tag": "${{ steps.get-version.outputs.VERSION }}"}'
+          VERSION=${REF/refs\/tags\//}
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"  # Use GITHUB_OUTPUT
       - name: Trigger repo publishing
-        uses: peter-evans/repository-dispatch@v1
+        uses: peter-evans/repository-dispatch@v3 # Use a more current version
         with:
           token: ${{ secrets.GHA_PAT_BASIC }}
           repository: ethersphere/repos
