@@ -67,6 +67,15 @@ const (
 	DefaultRetryCount = 6
 )
 
+/*
+	The pusher now only deletes inflight chunks when the pusher is done syncing with the chunk.
+
+	which means that the uploadstore does not have to immediately delete the pusher Item.
+
+
+
+*/
+
 func New(
 	networkID uint64,
 	storer Storer,
@@ -121,8 +130,8 @@ func (s *Service) chunksWorker(warmupTime time.Duration) {
 
 	push := func(op *Op) {
 		var (
-			err      error
-			doRepeat bool
+			err       error
+			reAttempt bool
 		)
 
 		defer func() {
@@ -137,7 +146,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration) {
 
 			wg.Done()
 			<-sem
-			if doRepeat {
+			if reAttempt {
 				select {
 				case cc <- op:
 				case <-s.quit:
@@ -156,9 +165,9 @@ func (s *Service) chunksWorker(warmupTime time.Duration) {
 		}
 
 		if op.Direct {
-			err = s.pushDirect(spanCtx, s.logger, op)
+			reAttempt, err = s.pushDirect(spanCtx, s.logger, op)
 		} else {
-			doRepeat, err = s.pushDeferred(spanCtx, s.logger, op)
+			reAttempt, err = s.pushDeferred(spanCtx, s.logger, op)
 		}
 
 		if err != nil {
@@ -242,10 +251,14 @@ func (s *Service) chunksWorker(warmupTime time.Duration) {
 
 }
 
-func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (bool, error) {
+func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (repeat bool, err error) {
 	loggerV1 := logger.V(1).Build()
 
-	defer s.inflight.delete(op.identityAddress, op.Chunk.Stamp().BatchID())
+	defer func() {
+		if !repeat {
+			s.inflight.delete(op.identityAddress, op.Chunk.Stamp().BatchID())
+		}
+	}()
 
 	ok, err := s.batchExist.Exists(op.Chunk.Stamp().BatchID())
 	if !ok || err != nil {
@@ -293,17 +306,17 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 	return false, nil
 }
 
-func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) error {
+func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) (reAttempt bool, err error) {
 	loggerV1 := logger.V(1).Build()
 
-	var err error
-
 	defer func() {
-		s.inflight.delete(op.identityAddress, op.Chunk.Stamp().BatchID())
 		select {
 		case op.Err <- err:
 		default:
 			loggerV1.Error(err, "pusher: failed to return error for direct upload")
+		}
+		if !reAttempt {
+			s.inflight.delete(op.identityAddress, op.Chunk.Stamp().BatchID())
 		}
 	}()
 
@@ -315,7 +328,7 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 			"chunk_address", op.Chunk.Address(),
 			"error", err,
 		)
-		return err
+		return false, err
 	}
 
 	switch _, err = s.pushSyncer.PushChunkToClosest(ctx, op.Chunk); {
@@ -328,7 +341,7 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 		}
 	case errors.Is(err, pushsync.ErrShallowReceipt):
 		if s.shallowReceipt(op.identityAddress) {
-			return err
+			return true, err
 		}
 		// out of attempts for retry, swallow error
 		err = nil
@@ -336,7 +349,11 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 		loggerV1.Error(err, "pusher: failed PushChunkToClosest")
 	}
 
-	return err
+	if err != nil {
+		return true, err
+	}
+
+	return false, nil
 }
 
 func (s *Service) shallowReceipt(idAddress swarm.Address) bool {

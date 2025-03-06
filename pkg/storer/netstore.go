@@ -22,7 +22,7 @@ import (
 func (db *DB) DirectUpload() PutterSession {
 	// egCtx will allow early exit of Put operations if we have
 	// already encountered error.
-	eg, egCtx := errgroup.WithContext(context.Background())
+	eg := errgroup.Group{}
 
 	return &putterSession{
 		Putter: putterWithMetrics{
@@ -39,34 +39,29 @@ func (db *DB) DirectUpload() PutterSession {
 						span.Finish()
 					}()
 
-					for {
-						op := &pusher.Op{Chunk: ch, Err: make(chan error, 1), Direct: true, Span: span}
+					op := &pusher.Op{Chunk: ch, Err: make(chan error, 1), Direct: true, Span: span}
+					select {
+					case <-ctx.Done():
+						return ctx.Err()
+					case <-db.quit:
+						return ErrDBQuit
+					case db.pusherFeed <- op:
 						select {
 						case <-ctx.Done():
 							return ctx.Err()
-						case <-egCtx.Done():
-							return egCtx.Err()
 						case <-db.quit:
 							return ErrDBQuit
-						case db.pusherFeed <- op:
-							select {
-							case <-ctx.Done():
-								return ctx.Err()
-							case <-egCtx.Done():
-								return egCtx.Err()
-							case <-db.quit:
-								return ErrDBQuit
-							case err := <-op.Err:
-								if errors.Is(err, pushsync.ErrShallowReceipt) {
-									logger.Debug("direct upload: shallow receipt received, retrying", "chunk", ch.Address())
-								} else if errors.Is(err, topology.ErrNotFound) {
-									logger.Debug("direct upload: no peers available, retrying", "chunk", ch.Address())
-								} else {
-									return err
-								}
+						case err := <-op.Err:
+							if errors.Is(err, pushsync.ErrShallowReceipt) {
+								logger.Debug("direct upload: shallow receipt received, retrying", "chunk", ch.Address())
+							} else if errors.Is(err, topology.ErrNotFound) {
+								logger.Debug("direct upload: no peers available, retrying", "chunk", ch.Address())
+							} else {
+								return err
 							}
 						}
 					}
+					return nil
 				})
 				return nil
 			}),

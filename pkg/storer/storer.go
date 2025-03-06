@@ -417,6 +417,11 @@ type cacheLimiter struct {
 	cancel context.CancelFunc
 }
 
+type tagCache struct {
+	sync.Mutex
+	tags map[uint32]*upload.TagUpdate
+}
+
 // DB implements all the component stores described above.
 type DB struct {
 	logger log.Logger
@@ -446,6 +451,8 @@ type DB struct {
 	reserveOptions   reserveOpts
 
 	pinIntegrity *PinIntegrity
+
+	tagCache *tagCache
 }
 
 type reserveOpts struct {
@@ -551,6 +558,9 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		},
 		directUploadLimiter: make(chan struct{}, pusher.ConcurrentPushes),
 		pinIntegrity:        pinIntegrity,
+		tagCache: &tagCache{
+			tags: make(map[uint32]*upload.TagUpdate),
+		},
 	}
 
 	if db.validStamp == nil {

@@ -360,6 +360,12 @@ func (i dirtyTagItem) String() string {
 	return storageutil.JoinFields(i.Namespace(), i.ID())
 }
 
+type TagUpdate struct {
+	Sent   uint64
+	Stored uint64
+	Synced uint64
+}
+
 var (
 	// errPutterAlreadyClosed is returned when trying to Put a new chunk
 	// after the putter has been closed.
@@ -448,36 +454,42 @@ func (u *uploadPutter) Put(ctx context.Context, st transaction.Store, chunk swar
 // with a swarm reference. This can be useful while keeping track of uploads through
 // the tags. It will update the tag. This will be filled with the Split and Seen count
 // by the Putter.
-func (u *uploadPutter) Close(s storage.IndexStore, addr swarm.Address) error {
+func (u *uploadPutter) Close(st transaction.Storage, addr swarm.Address) error {
 	if u.closed {
 		return nil
 	}
 
-	ti := &TagItem{TagID: u.tagID}
-	err := s.Get(ti)
-	if err != nil {
-		// If the tag is not found, it might have been removed or never existed.
-		// In this case, there’s no need to update or delete it—so simply return.
-		if errors.Is(err, storage.ErrNotFound) {
-			u.closed = true
-			return s.Delete(&dirtyTagItem{TagID: u.tagID})
+	if err := u.Cleanup(st); err != nil {
+		return fmt.Errorf("cleanup failed on close, root_ref %s: %w", addr, err)
+	}
+
+	return st.Run(context.Background(), func(s transaction.Store) error {
+
+		ti := &TagItem{TagID: u.tagID}
+		err := s.IndexStore().Get(ti)
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				u.closed = true
+				return s.IndexStore().Delete(&dirtyTagItem{TagID: u.tagID})
+			}
+			return fmt.Errorf("failed reading tag while closing: %w", err)
 		}
-		return fmt.Errorf("failed reading tag while closing: %w", err)
-	}
 
-	ti.Split += u.split
-	ti.Seen += u.seen
+		ti.Split += u.split
+		ti.Seen += u.seen
 
-	if !addr.IsZero() {
-		ti.Address = addr.Clone()
-	}
+		if !addr.IsZero() {
+			ti.Address = addr.Clone()
+		}
 
-	u.closed = true
+		u.closed = true
 
-	return errors.Join(
-		s.Put(ti),
-		s.Delete(&dirtyTagItem{TagID: u.tagID}),
-	)
+		return errors.Join(
+			s.IndexStore().Put(ti),
+			s.IndexStore().Delete(&dirtyTagItem{TagID: u.tagID}),
+		)
+	})
+
 }
 
 func (u *uploadPutter) Cleanup(st transaction.Storage) error {
@@ -564,64 +576,26 @@ func CleanupDirty(st transaction.Storage) error {
 }
 
 // Report is the implementation of the PushReporter interface.
-func Report(ctx context.Context, st transaction.Store, chunk swarm.Chunk, state storage.ChunkState) error {
+// Must be mutex locked.
+func Report(ctx context.Context, st transaction.Store, tag uint64, update *TagUpdate) error {
 
-	indexStore := st.IndexStore()
-
-	ui := &uploadItem{Address: chunk.Address(), BatchID: chunk.Stamp().BatchID()}
-	err := indexStore.Get(ui)
-	if err != nil {
-		// because of the nature of the feed mechanism of the uploadstore/pusher, a chunk that is in inflight may be sent more than once to the pusher.
-		// this is because the chunks are removed from the queue only when they are synced, not at the start of the upload
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil
-		}
-		return fmt.Errorf("failed to read uploadItem %x: %w", ui.BatchID, err)
-	}
-
-	// Once the chunk is stored/synced/failed to sync, it is deleted from the upload store as
-	// we no longer need to keep track of this chunk. We also need to cleanup
-	// the pushItem.
-	deleteFunc := func() error {
-		if state == storage.ChunkSent {
-			return nil
-		}
-		return errors.Join(
-			indexStore.Delete(&pushItem{Timestamp: ui.Uploaded, Address: chunk.Address(), BatchID: chunk.Stamp().BatchID()}),
-			chunkstamp.DeleteWithStamp(indexStore, uploadScope, chunk.Address(), chunk.Stamp()),
-			st.ChunkStore().Delete(ctx, chunk.Address()),
-			indexStore.Delete(ui),
-		)
-	}
-
-	ti := &TagItem{TagID: ui.TagID}
-	err = indexStore.Get(ti)
+	ti := &TagItem{TagID: tag}
+	err := st.IndexStore().Get(ti)
 	if err != nil {
 		if !errors.Is(err, storage.ErrNotFound) {
 			return fmt.Errorf("failed getting tag: %w", err)
 		}
 
 		// tag is missing, no need update it
-		return deleteFunc()
+		return nil
 	}
 
 	// update the tag
-	switch state {
-	case storage.ChunkSent:
-		ti.Sent++
-	case storage.ChunkStored:
-		ti.Stored++
-		ti.Synced++
-	case storage.ChunkSynced:
-		ti.Synced++
-	}
+	ti.Sent += uint64(update.Sent)
+	ti.Stored += uint64(update.Stored)
+	ti.Synced += uint64(update.Synced)
 
-	err = indexStore.Put(ti)
-	if err != nil {
-		return fmt.Errorf("failed updating tag: %w", err)
-	}
-
-	return deleteFunc()
+	return st.IndexStore().Put(ti)
 }
 
 var (
