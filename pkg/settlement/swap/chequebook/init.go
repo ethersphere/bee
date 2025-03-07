@@ -105,9 +105,9 @@ func checkBalance(
 			case <-time.After(balanceCheckBackoffDuration):
 			case <-timeoutCtx.Done():
 				if insufficientERC20 {
-					return fmt.Errorf("insufficient %s for initial deposit", swarmTokenName)
+					return fmt.Errorf("insufficient %s for deploying chequebook", swarmTokenName)
 				} else {
-					return fmt.Errorf("insufficient %s for initial deposit", nativeTokenName)
+					return fmt.Errorf("insufficient %s for deploying chequebook", nativeTokenName)
 				}
 			}
 			continue
