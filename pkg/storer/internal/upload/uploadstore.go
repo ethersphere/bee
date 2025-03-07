@@ -464,9 +464,6 @@ func (u *uploadPutter) Close(s storage.IndexStore, addr swarm.Address) error {
 	ti := &TagItem{TagID: u.tagID}
 	err := s.Get(ti)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return s.Delete(&dirtyTagItem{TagID: u.tagID})
-		}
 		return fmt.Errorf("failed reading tag while closing: %w", err)
 	}
 
@@ -524,7 +521,17 @@ func Cleanup(st transaction.Storage, tag uint64) error {
 	return errors.Join(
 		eg.Wait(),
 		st.Run(context.Background(), func(s transaction.Store) error {
-			return s.IndexStore().Delete(&dirtyTagItem{TagID: tag})
+			ti := &TagItem{TagID: tag}
+			err := s.IndexStore().Get(ti)
+			if err != nil {
+				return err
+			}
+			ti.Split = 0 // all chunks deleted
+			return errors.Join(
+				s.IndexStore().Delete(&dirtyTagItem{TagID: tag}),
+				s.IndexStore().Put(ti),
+			)
+
 		}),
 	)
 }
@@ -561,12 +568,7 @@ func Report(st storage.IndexStore, tag uint64, update *TagUpdate) (bool, error) 
 	ti := &TagItem{TagID: tag}
 	err := st.Get(ti)
 	if err != nil {
-		if !errors.Is(err, storage.ErrNotFound) {
-			return false, fmt.Errorf("failed getting tag: %w", err)
-		}
-
-		// tag is missing, no need update it
-		return false, nil
+		return false, fmt.Errorf("failed getting tag: %w", err)
 	}
 
 	// update the tag
@@ -700,7 +702,25 @@ func IteratePending(ctx context.Context, s transaction.ReadOnlyStore, start int6
 }
 
 // DeleteTag deletes TagItem associated with the given tagID.
-func DeleteTag(st storage.Writer, tagID uint64) error {
+// Returns error if the an upload is ongoing or syncing has not yet completed.
+func DeleteTag(st storage.IndexStore, tagID uint64) error {
+
+	if has, err := st.Has(&dirtyTagItem{TagID: tagID}); has {
+		return storage.ErrSessionNotOver
+	} else if err != nil {
+		return err
+	}
+
+	ti := &TagItem{TagID: tagID}
+	err := st.Get(ti)
+	if err != nil {
+		return err
+	}
+
+	if ti.Split > 0 && ti.Synced < ti.Split {
+		return storage.ErrSessionNotOver
+	}
+
 	if err := st.Delete(&TagItem{TagID: tagID}); err != nil {
 		return fmt.Errorf("uploadstore: failed to delete tag %d: %w", tagID, err)
 	}

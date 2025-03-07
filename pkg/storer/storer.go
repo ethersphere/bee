@@ -419,7 +419,8 @@ type cacheLimiter struct {
 
 type tagCache struct {
 	sync.Mutex
-	tags map[uint64]*upload.TagUpdate
+	updates map[uint64]*upload.TagUpdate
+	wakeup  chan struct{}
 }
 
 // DB implements all the component stores described above.
@@ -557,7 +558,8 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		},
 		pinIntegrity: pinIntegrity,
 		tagCache: &tagCache{
-			tags: make(map[uint64]*upload.TagUpdate),
+			updates: make(map[uint64]*upload.TagUpdate),
+			wakeup:  make(chan struct{}, 1),
 		},
 	}
 
@@ -597,7 +599,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	go db.cacheWorker(ctx)
 
 	db.inFlight.Add(1)
-	go db.reporter(ctx)
+	go db.reportWorker(ctx)
 
 	return db, nil
 }

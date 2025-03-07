@@ -21,7 +21,6 @@ import (
 
 const uploadsLock = "pin-upload-store"
 
-const reportEvent = "reportStart"
 const reportedEvent = "reportEnd"
 
 // Report implements the storage.PushReporter by wrapping the internal reporter
@@ -31,10 +30,10 @@ func (db *DB) Report(ctx context.Context, chunk swarm.Chunk, state storage.Chunk
 	db.tagCache.Lock()
 	defer db.tagCache.Unlock()
 
-	update, ok := db.tagCache.tags[chunk.TagID()]
+	update, ok := db.tagCache.updates[chunk.TagID()]
 	if !ok {
 		update = &upload.TagUpdate{}
-		db.tagCache.tags[chunk.TagID()] = update
+		db.tagCache.updates[chunk.TagID()] = update
 	}
 
 	switch state {
@@ -47,17 +46,17 @@ func (db *DB) Report(ctx context.Context, chunk swarm.Chunk, state storage.Chunk
 		update.Stored++
 	}
 
-	db.events.Trigger(reportEvent)
+	select {
+	case db.tagCache.wakeup <- struct{}{}:
+	default:
+	}
 
 	return nil
 }
 
-func (db *DB) reporter(ctx context.Context) {
+func (db *DB) reportWorker(ctx context.Context) {
 
 	defer db.inFlight.Done()
-
-	reportEvent, unsubscribe := db.events.Subscribe(reportEvent)
-	defer unsubscribe()
 
 	for {
 		select {
@@ -65,36 +64,39 @@ func (db *DB) reporter(ctx context.Context) {
 			return
 		case <-db.quit:
 			return
-		case <-reportEvent:
+		case <-db.tagCache.wakeup:
 
 			unlock := db.Lock(uploadsLock)
 			db.tagCache.Lock()
-			for id, t := range db.tagCache.tags {
+			for tag, t := range db.tagCache.updates {
 
-				var cleanup bool
-				var err error
+				var (
+					cleanup bool
+					err     error
+				)
 
 				if err = db.storage.Run(ctx, func(s transaction.Store) error {
-					cleanup, err = upload.Report(s.IndexStore(), id, t)
+					cleanup, err = upload.Report(s.IndexStore(), tag, t)
 					return err
 				}); err != nil {
 					db.logger.Debug("report failed", "error", err)
 				}
 				if cleanup {
 					go func() {
-						err := upload.Cleanup(db.storage, id)
+						err := upload.Cleanup(db.storage, tag)
 						if err != nil {
-							db.logger.Debug("cleanup failed", "tag", id, "error", err)
+							db.logger.Debug("cleanup failed", "tag", tag, "error", err)
 						}
 					}()
 				}
 			}
-			db.tagCache.tags = make(map[uint64]*upload.TagUpdate) // reset
+			db.tagCache.updates = make(map[uint64]*upload.TagUpdate) // reset
 			db.tagCache.Unlock()
 			unlock()
 
 			db.events.Trigger(reportedEvent)
 
+			// slowdown
 			select {
 			case <-ctx.Done():
 				return
@@ -222,6 +224,8 @@ func (db *DB) Session(tagID uint64) (SessionInfo, error) {
 
 // DeleteSession is the implementation of the UploadStore.DeleteSession method.
 func (db *DB) DeleteSession(tagID uint64) error {
+	unlock := db.Lock(uploadsLock)
+	defer unlock()
 	return db.storage.Run(context.Background(), func(s transaction.Store) error {
 		return upload.DeleteTag(s.IndexStore(), tagID)
 	})

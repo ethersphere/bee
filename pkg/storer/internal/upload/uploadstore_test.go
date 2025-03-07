@@ -836,7 +836,7 @@ func TestChunkReporter(t *testing.T) {
 	})
 }
 
-func TestDeleteTagReporter(t *testing.T) {
+func TestDeleteTagWhileUploading(t *testing.T) {
 
 	t.Parallel()
 
@@ -862,95 +862,143 @@ func TestDeleteTagReporter(t *testing.T) {
 		t.Fatalf("failed creating putter: %v", err)
 	}
 
-	t.Run("delete tag while uploading", func(t *testing.T) {
+	// Generate a chunk.
+	chunk := chunktest.GenerateTestRandomChunks(1)[0]
+	chunk.WithTagID(tag.TagID)
 
-		chunk := chunktest.GenerateTestRandomChunks(1)[0]
+	// Store the chunk (which creates the uploadItem).
+	if err := ts.Run(context.Background(), func(s transaction.Store) error {
+		return putter.Put(context.Background(), s, chunk)
+	}); err != nil {
+		t.Fatalf("Put(...): unexpected error: %v", err)
+	}
 
-		chunk.WithTagID(tag.TagID)
-
-		if err := ts.Run(context.Background(), func(s transaction.Store) error {
-			return putter.Put(context.Background(), s, chunk)
-		}); err != nil {
-			t.Fatalf("Put(...): unexpected error: %v", err)
-		}
-
-		report := func(ch swarm.Chunk, u *upload.TagUpdate) {
-			t.Helper()
-			if err := ts.Run(context.Background(), func(s transaction.Store) error {
-				_, err := upload.Report(s.IndexStore(), ch.TagID(), u)
-				return err
-			}); err != nil {
-				t.Fatalf("Report(...): unexpected error: %v", err)
-			}
-		}
-
-		tagItem := &upload.TagItem{TagID: tag.TagID}
-		if err := ts.Run(context.Background(), func(s transaction.Store) error {
-			return s.IndexStore().Get(tagItem)
-		}); err != nil {
-			t.Fatalf("Get(...): unexpected error: %v", err)
-		}
-
-		if err := ts.Run(context.Background(), func(s transaction.Store) error {
-			return s.IndexStore().Delete(tagItem)
-		}); err != nil {
-			t.Fatalf("Put(...): unexpected error: %v", err)
-		}
-
-		report(chunk, &upload.TagUpdate{Sent: 1})
+	err = ts.Run(context.Background(), func(s transaction.Store) error {
+		return upload.DeleteTag(s.IndexStore(), tag.TagID)
 	})
+	if !errors.Is(err, storage.ErrSessionNotOver) {
+		t.Fatalf("DeleteTag(...): unexpected error: %v", err)
+	}
+}
 
-	t.Run("delete tag while uploading and not sent", func(t *testing.T) {
-		// Generate a chunk.
-		chunk := chunktest.GenerateTestRandomChunks(1)[0]
+func TestDeleteTagWhileSyncing(t *testing.T) {
+
+	t.Parallel()
+
+	ts := newTestStorage(t)
+
+	var (
+		tag    upload.TagItem
+		putter internal.PutterCloserWithReference
+		err    error
+	)
+
+	if err := ts.Run(context.Background(), func(s transaction.Store) error {
+		tag, err = upload.NextTag(s.IndexStore())
+		return err
+	}); err != nil {
+		t.Fatalf("failed creating tag: %v", err)
+	}
+
+	if err := ts.Run(context.Background(), func(s transaction.Store) error {
+		putter, err = upload.NewPutter(s.IndexStore(), tag.TagID)
+		return err
+	}); err != nil {
+		t.Fatalf("failed creating putter: %v", err)
+	}
+
+	// Generate a chunk.
+	chunk := chunktest.GenerateTestRandomChunks(1)[0]
+	chunk.WithTagID(tag.TagID)
+
+	// Store the chunk (which creates the uploadItem).
+	if err := ts.Run(context.Background(), func(s transaction.Store) error {
+		return putter.Put(context.Background(), s, chunk)
+	}); err != nil {
+		t.Fatalf("Put(...): unexpected error: %v", err)
+	}
+
+	if err := ts.Run(context.Background(), func(s transaction.Store) error {
+		return putter.Close(s.IndexStore(), chunk.Address())
+	}); err != nil {
+		t.Fatalf("Close(...): unexpected error: %v", err)
+	}
+
+	err = ts.Run(context.Background(), func(s transaction.Store) error {
+		return upload.DeleteTag(s.IndexStore(), tag.TagID)
+	})
+	if !errors.Is(err, storage.ErrSessionNotOver) {
+		t.Fatalf("DeleteTag(...): unexpected error: %v", err)
+	}
+}
+
+func TestDeleteTag(t *testing.T) {
+	t.Parallel()
+
+	ts := newTestStorage(t)
+
+	var (
+		tag    upload.TagItem
+		putter internal.PutterCloserWithReference
+		err    error
+	)
+
+	if err := ts.Run(context.Background(), func(s transaction.Store) error {
+		tag, err = upload.NextTag(s.IndexStore())
+		return err
+	}); err != nil {
+		t.Fatalf("failed creating tag: %v", err)
+	}
+
+	if err := ts.Run(context.Background(), func(s transaction.Store) error {
+		putter, err = upload.NewPutter(s.IndexStore(), tag.TagID)
+		return err
+	}); err != nil {
+		t.Fatalf("failed creating putter: %v", err)
+	}
+
+	// Generate a chunk.
+	chunks := chunktest.GenerateTestRandomChunks(10)
+	for _, chunk := range chunks {
 		chunk.WithTagID(tag.TagID)
-
 		// Store the chunk (which creates the uploadItem).
 		if err := ts.Run(context.Background(), func(s transaction.Store) error {
 			return putter.Put(context.Background(), s, chunk)
 		}); err != nil {
 			t.Fatalf("Put(...): unexpected error: %v", err)
 		}
+	}
 
-		// Confirm the upload item exists.
-		ui := &upload.UploadItem{
-			Address: chunk.Address(),
-			BatchID: chunk.Stamp().BatchID(),
-		}
-		if err := ts.Run(context.Background(), func(s transaction.Store) error {
-			return s.IndexStore().Get(ui)
-		}); err != nil {
-			t.Fatalf("Get(...): unexpected error: %v", err)
-		}
+	if err := ts.Run(context.Background(), func(s transaction.Store) error {
+		return putter.Close(s.IndexStore(), chunks[0].Address())
+	}); err != nil {
+		t.Fatalf("Close(...): unexpected error: %v", err)
+	}
 
-		// Delete the tag item to simulate a user deleting it.
-		tagItem := &upload.TagItem{TagID: tag.TagID}
-		if err := ts.Run(context.Background(), func(s transaction.Store) error {
-			return s.IndexStore().Delete(tagItem)
-		}); err != nil {
-			t.Fatalf("Delete(...): unexpected error: %v", err)
-		}
+	err = upload.Cleanup(ts, tag.TagID)
+	if err != nil {
+		t.Fatalf("Cleanup(...): unexpected error: %v", err)
+	}
 
-		// Now report with a state other than ChunkSent, e.g. ChunkStored.
-		if err := ts.Run(context.Background(), func(s transaction.Store) error {
-			_, err := upload.Report(s.IndexStore(), chunk.TagID(), &upload.TagUpdate{Stored: 1})
-			return err
-		}); err != nil {
-			t.Fatalf("Report(...): unexpected error: %v", err)
-		}
-
-		if err := upload.Cleanup(ts, tag.TagID); err != nil {
-			t.Fatalf("Close(...): unexpected error %v", err)
-		}
-
-		// Verify that the upload item was deleted (cleanup via deleteFunc).
-		if err := ts.Run(context.Background(), func(s transaction.Store) error {
-			return s.IndexStore().Get(ui)
-		}); !errors.Is(err, storage.ErrNotFound) {
-			t.Fatalf("expected uploadItem to be deleted, got error: %v", err)
-		}
+	err = ts.Run(context.Background(), func(s transaction.Store) error {
+		_, err = upload.Report(s.IndexStore(), tag.TagID, &upload.TagUpdate{Synced: uint64(len(chunks))})
+		return err
 	})
+	if err != nil {
+		t.Fatalf("DeleteTag(...): unexpected error: %v", err)
+	}
 
+	err = ts.Run(context.Background(), func(s transaction.Store) error {
+		return upload.DeleteTag(s.IndexStore(), tag.TagID)
+	})
+	if err != nil {
+		t.Fatalf("DeleteTag(...): unexpected error: %v", err)
+	}
+
+	_, err = upload.TagInfo(ts.IndexStore(), tag.TagID)
+	if !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("want: %v; have: %v", storage.ErrNotFound, err)
+	}
 }
 
 func TestNextTagID(t *testing.T) {
@@ -1095,34 +1143,6 @@ func TestIterate(t *testing.T) {
 			t.Fatalf("expected to iterate 0 chunks, got: %v", count)
 		}
 	})
-}
-
-func TestDeleteTag(t *testing.T) {
-	t.Parallel()
-
-	ts := newTestStorage(t)
-
-	var tag upload.TagItem
-	var err error
-	err = ts.Run(context.Background(), func(s transaction.Store) error {
-		tag, err = upload.NextTag(s.IndexStore())
-		return err
-	})
-	if err != nil {
-		t.Fatalf("failed creating tag: %v", err)
-	}
-
-	err = ts.Run(context.Background(), func(s transaction.Store) error {
-		return upload.DeleteTag(s.IndexStore(), tag.TagID)
-	})
-	if err != nil {
-		t.Fatalf("upload.DeleteTag(): unexpected error: %v", err)
-	}
-
-	_, err = upload.TagInfo(ts.IndexStore(), tag.TagID)
-	if !errors.Is(err, storage.ErrNotFound) {
-		t.Fatalf("want: %v; have: %v", storage.ErrNotFound, err)
-	}
 }
 
 func TestBatchIDForChunk(t *testing.T) {
