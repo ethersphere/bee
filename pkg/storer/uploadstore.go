@@ -109,6 +109,10 @@ func (db *DB) reportWorker(ctx context.Context) {
 			db.tagCache.synced = db.tagCache.synced[len(synced):]
 			db.tagCache.Unlock()
 
+			if err := eg.Wait(); err != nil {
+				db.logger.Debug("sync cleanup failed", "error", err)
+			}
+
 			db.events.Trigger(reportedEvent)
 
 			// slowdown
