@@ -693,8 +693,7 @@ func TestChunkReporter(t *testing.T) {
 			report := func(ch swarm.Chunk, u *upload.TagUpdate) {
 				t.Helper()
 				if err := ts.Run(context.Background(), func(s transaction.Store) error {
-					_, err := upload.Report(s.IndexStore(), ch.TagID(), u)
-					return err
+					return upload.Report(s.IndexStore(), ch.TagID(), u)
 				}); err != nil {
 					t.Fatalf("Report(...): unexpected error: %v", err)
 				}
@@ -766,21 +765,21 @@ func TestChunkReporter(t *testing.T) {
 			t.Fatalf("TagInfo(...): unexpected error %v", err)
 		}
 
-		var cleanup bool
 		// report more synced to trigger cleanup
 		err = ts.Run(context.Background(), func(s transaction.Store) error {
-			cleanup, err = upload.Report(s.IndexStore(), tag.TagID, &upload.TagUpdate{Synced: 2})
-			return err
+			return upload.Report(s.IndexStore(), tag.TagID, &upload.TagUpdate{Synced: 2})
 		})
 		if err != nil {
 			t.Fatalf("Report(...): unexpected error %v", err)
 		}
-		if !cleanup {
-			t.Fatalf("expected cleanup to be true")
-		}
-		err = upload.Cleanup(ts, tag.TagID)
-		if err != nil {
-			t.Fatalf("Cleanup(...): unexpected error %v", err)
+
+		for _, c := range chunks {
+			err = ts.Run(context.Background(), func(s transaction.Store) error {
+				return upload.Synced(s, c.Address(), c.Stamp().BatchID())
+			})
+			if err != nil {
+				t.Fatalf("Synced(...): unexpected error %v", err)
+			}
 		}
 
 		wantTI := upload.TagItem{
@@ -981,8 +980,7 @@ func TestDeleteTag(t *testing.T) {
 	}
 
 	err = ts.Run(context.Background(), func(s transaction.Store) error {
-		_, err = upload.Report(s.IndexStore(), tag.TagID, &upload.TagUpdate{Synced: uint64(len(chunks))})
-		return err
+		return upload.Report(s.IndexStore(), tag.TagID, &upload.TagUpdate{Synced: uint64(len(chunks))})
 	})
 	if err != nil {
 		t.Fatalf("DeleteTag(...): unexpected error: %v", err)

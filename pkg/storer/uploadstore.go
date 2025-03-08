@@ -99,6 +99,7 @@ func (db *DB) reportWorker(ctx context.Context) {
 				eg.Go(func() error {
 					unlock := db.Lock(addrKey(s.address))
 					defer unlock()
+
 					return db.storage.Run(ctx, func(st transaction.Store) error {
 						return upload.Synced(st, s.address, s.batchID)
 					})
@@ -163,6 +164,7 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 			storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
 				unlock := db.Lock(addrKey(chunk.Address())) // protect against multiple upload of same chunk
 				defer unlock()
+
 				return errors.Join(
 					db.storage.Run(ctx, func(s transaction.Store) error {
 						return uploadPutter.Put(ctx, s, chunk)
