@@ -88,12 +88,12 @@ func (db *DB) reportWorker(ctx context.Context) {
 			//reset
 			db.tagCache.updates = make(map[uint64]*upload.TagUpdate)
 
-			eg := errgroup.Group{}
-			eg.SetLimit(runtime.NumCPU())
-
 			synced := db.tagCache.synced[:]
 
 			db.tagCache.Unlock()
+
+			eg := errgroup.Group{}
+			eg.SetLimit(runtime.NumCPU())
 
 			for _, s := range synced {
 				eg.Go(func() error {

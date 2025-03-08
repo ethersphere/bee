@@ -694,8 +694,8 @@ func ListAllTags(st storage.Reader) ([]TagItem, error) {
 func IteratePending(ctx context.Context, s transaction.ReadOnlyStore, start int64, consumerFn func(chunk swarm.Chunk, ts int64) (bool, error)) error {
 	return s.IndexStore().Iterate(storage.Query{
 		Factory:       func() storage.Item { return &pushItem{} },
-		PrefixAtStart: true,
 		Prefix:        fmt.Sprintf("%d", start),
+		PrefixAtStart: true,
 	}, func(r storage.Result) (bool, error) {
 		pi := r.Entry.(*pushItem)
 		has, err := s.IndexStore().Has(&dirtyTagItem{TagID: pi.TagID})
