@@ -364,8 +364,6 @@ func initDiskRepository(
 	return transaction.NewStorage(sharky, store), pinIntegrity, closer(store, sharky, recoveryCloser), nil
 }
 
-const lockKeyNewSession string = "new_session"
-
 // Options provides a container to configure different things in the storer.
 type Options struct {
 	// These are options related to levelDB. Currently, the underlying storage used is levelDB.

@@ -19,8 +19,10 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-const uploadsLock = "pin-upload-store"
+func chunkKey(ch swarm.Chunk) string { return fmt.Sprintf("upload-chunk-%s", ch) }
+func sessionKey(tag uint64) string   { return fmt.Sprintf("upload-session-%d", tag) }
 
+const lockKeyNewSession string = "new_session"
 const reportedEvent = "reportEnd"
 
 // Report implements the storage.PushReporter by wrapping the internal reporter
@@ -66,9 +68,10 @@ func (db *DB) reportWorker(ctx context.Context) {
 			return
 		case <-db.tagCache.wakeup:
 
-			unlock := db.Lock(uploadsLock)
 			db.tagCache.Lock()
 			for tag, t := range db.tagCache.updates {
+
+				unlock := db.Lock(sessionKey(tag))
 
 				var (
 					cleanup bool
@@ -83,16 +86,19 @@ func (db *DB) reportWorker(ctx context.Context) {
 				}
 				if cleanup {
 					go func() {
+						unlock := db.Lock(sessionKey(tag))
+						defer unlock()
 						err := upload.Cleanup(db.storage, tag)
 						if err != nil {
 							db.logger.Debug("cleanup failed", "tag", tag, "error", err)
 						}
 					}()
 				}
+
+				unlock()
 			}
 			db.tagCache.updates = make(map[uint64]*upload.TagUpdate) // reset
 			db.tagCache.Unlock()
-			unlock()
 
 			db.events.Trigger(reportedEvent)
 
@@ -142,7 +148,7 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 	return &putterSession{
 		Putter: putterWithMetrics{
 			storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
-				unlock := db.Lock(uploadsLock)
+				unlock := db.Lock(chunkKey(chunk)) // protect against multiple upload of same chunk
 				defer unlock()
 				return errors.Join(
 					db.storage.Run(ctx, func(s transaction.Store) error {
@@ -163,7 +169,7 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 		},
 		done: func(address swarm.Address) error {
 			defer db.events.Trigger(subscribePushEventKey)
-			unlock := db.Lock(uploadsLock)
+			unlock := db.Lock(sessionKey(tagID))
 			defer unlock()
 
 			return errors.Join(
@@ -186,7 +192,7 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 		},
 		cleanup: func() error {
 			defer db.events.Trigger(subscribePushEventKey)
-			unlock := db.Lock(uploadsLock)
+			unlock := db.Lock(sessionKey(tagID))
 			defer unlock()
 
 			return errors.Join(
@@ -224,7 +230,7 @@ func (db *DB) Session(tagID uint64) (SessionInfo, error) {
 
 // DeleteSession is the implementation of the UploadStore.DeleteSession method.
 func (db *DB) DeleteSession(tagID uint64) error {
-	unlock := db.Lock(uploadsLock)
+	unlock := db.Lock(sessionKey(tagID))
 	defer unlock()
 	return db.storage.Run(context.Background(), func(s transaction.Store) error {
 		return upload.DeleteTag(s.IndexStore(), tagID)

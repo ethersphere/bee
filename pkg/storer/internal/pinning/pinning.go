@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"sync"
 
 	"github.com/ethersphere/bee/v2/pkg/encryption"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
@@ -79,6 +80,7 @@ func NewCollection(st storage.IndexStore) (internal.PutterCloserCleanerWithRefer
 }
 
 type collectionPutter struct {
+	sync.Mutex
 	collection *pinCollectionItem
 	closed     bool
 }
@@ -86,6 +88,9 @@ type collectionPutter struct {
 // Put adds a chunk to the pin collection.
 // The user of the putter MUST mutex lock the call to prevent data-races across multiple upload sessions.
 func (c *collectionPutter) Put(ctx context.Context, st transaction.Store, ch swarm.Chunk) error {
+	c.Lock()
+	defer c.Unlock()
+
 	// do not allow any Puts after putter was closed
 	if c.closed {
 		return errPutterAlreadyClosed

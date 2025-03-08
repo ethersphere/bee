@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"runtime"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/encryption"
@@ -381,6 +382,7 @@ var (
 )
 
 type uploadPutter struct {
+	sync.Mutex
 	tagID  uint64
 	split  uint64
 	seen   uint64
@@ -415,6 +417,9 @@ func NewPutter(s storage.IndexStore, tagID uint64) (internal.PutterCloserWithRef
 // - add chunk to the chunkstore till it is synced
 // The user of the putter MUST mutex lock the call to prevent data-races across multiple upload sessions.
 func (u *uploadPutter) Put(ctx context.Context, st transaction.Store, chunk swarm.Chunk) error {
+	u.Lock()
+	defer u.Unlock()
+
 	if u.closed {
 		return errPutterAlreadyClosed
 	}
@@ -455,6 +460,9 @@ func (u *uploadPutter) Put(ctx context.Context, st transaction.Store, chunk swar
 // the tags. It will update the tag. This will be filled with the Split and Seen count
 // by the Putter.
 func (u *uploadPutter) Close(s storage.IndexStore, addr swarm.Address) error {
+	u.Lock()
+	defer u.Unlock()
+
 	if u.closed {
 		return nil
 	}
