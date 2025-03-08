@@ -162,22 +162,21 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 	return &putterSession{
 		Putter: putterWithMetrics{
 			storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
-				unlock := db.Lock(addrKey(chunk.Address())) // protect against multiple upload of same chunk
+				unlock := db.Lock(addrKey(chunk.Address())) // protect against multiple uploads of same chunk
 				defer unlock()
 
-				return errors.Join(
-					db.storage.Run(ctx, func(s transaction.Store) error {
-						return uploadPutter.Put(ctx, s, chunk)
-					}),
-					func() error {
-						if pinningPutter != nil {
-							return db.storage.Run(ctx, func(s transaction.Store) error {
-								return pinningPutter.Put(ctx, s, chunk)
-							})
-						}
-						return nil
-					}(),
-				)
+				if err := db.storage.Run(ctx, func(s transaction.Store) error {
+					return uploadPutter.Put(ctx, s, chunk)
+				}); err != nil {
+					return err
+				}
+
+				if pinningPutter != nil {
+					return db.storage.Run(ctx, func(s transaction.Store) error {
+						return pinningPutter.Put(ctx, s, chunk)
+					})
+				}
+				return nil
 			}),
 			db.metrics,
 			"uploadstore",
@@ -187,38 +186,34 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 			unlock := db.Lock(sessionKey(tagID))
 			defer unlock()
 
-			return errors.Join(
-				db.storage.Run(ctx, func(s transaction.Store) error {
-					return uploadPutter.Close(s.IndexStore(), address)
-				}),
-				func() error {
-					if pinningPutter != nil {
-						pinErr := db.storage.Run(ctx, func(s transaction.Store) error {
-							return pinningPutter.Close(s.IndexStore(), address)
-						})
-						if errors.Is(pinErr, pinstore.ErrDuplicatePinCollection) {
-							pinErr = pinningPutter.Cleanup(db.storage)
-						}
-						return pinErr
-					}
-					return nil
-				}(),
-			)
+			if err := db.storage.Run(ctx, func(s transaction.Store) error {
+				return uploadPutter.Close(s.IndexStore(), address)
+			}); err != nil {
+				return err
+			}
+			if pinningPutter != nil {
+				err := db.storage.Run(ctx, func(s transaction.Store) error {
+					return pinningPutter.Close(s.IndexStore(), address)
+				})
+				if errors.Is(err, pinstore.ErrDuplicatePinCollection) {
+					return pinningPutter.Cleanup(db.storage)
+				}
+				return err
+			}
+			return nil
 		},
 		cleanup: func() error {
 			defer db.events.Trigger(subscribePushEventKey)
 			unlock := db.Lock(sessionKey(tagID))
 			defer unlock()
 
-			return errors.Join(
-				upload.Cleanup(db.storage, tagID),
-				func() error {
-					if pinningPutter != nil {
-						return pinningPutter.Cleanup(db.storage)
-					}
-					return nil
-				}(),
-			)
+			if err := upload.Cleanup(db.storage, tagID); err != nil {
+				return err
+			}
+			if pinningPutter != nil {
+				return pinningPutter.Cleanup(db.storage)
+			}
+			return nil
 		},
 	}, nil
 }

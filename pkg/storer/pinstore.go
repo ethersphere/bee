@@ -41,6 +41,7 @@ func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 				func(ctx context.Context, chunk swarm.Chunk) error {
 					unlock := db.Lock(addrKey(chunk.Address()))
 					defer unlock()
+
 					return db.storage.Run(ctx, func(s transaction.Store) error {
 						return pinningPutter.Put(ctx, s, chunk)
 					})
@@ -52,6 +53,7 @@ func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 		done: func(address swarm.Address) error {
 			unlock := db.Lock(uploadsLock)
 			defer unlock()
+
 			return db.storage.Run(ctx, func(s transaction.Store) error {
 				return pinningPutter.Close(s.IndexStore(), address)
 			})
@@ -59,6 +61,7 @@ func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 		cleanup: func() error {
 			unlock := db.Lock(uploadsLock)
 			defer unlock()
+
 			return pinningPutter.Cleanup(db.storage)
 		},
 	}, nil

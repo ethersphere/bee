@@ -160,6 +160,9 @@ func (c *collectionPutter) Close(st storage.IndexStore, root swarm.Address) erro
 }
 
 func (c *collectionPutter) Cleanup(st transaction.Storage) error {
+	c.Lock()
+	defer c.Unlock()
+
 	if c.closed {
 		return nil
 	}
