@@ -415,7 +415,6 @@ func NewPutter(s storage.IndexStore, tagID uint64) (internal.PutterCloserWithRef
 // - uploadItem entry to keep track of this chunk.
 // - pushItem entry to make it available for PushSubscriber
 // - add chunk to the chunkstore till it is synced
-// The user of the putter MUST mutex lock the call to prevent data-races across multiple upload sessions.
 func (u *uploadPutter) Put(ctx context.Context, st transaction.Store, chunk swarm.Chunk) error {
 	u.Lock()
 	defer u.Unlock()
@@ -488,6 +487,64 @@ func (u *uploadPutter) Close(s storage.IndexStore, addr swarm.Address) error {
 	)
 }
 
+// Report is the implementation of the PushReporter interface.
+func Report(st storage.IndexStore, tag uint64, update *TagUpdate) error {
+
+	ti := &TagItem{TagID: tag}
+	err := st.Get(ti)
+	if err != nil {
+		return fmt.Errorf("failed getting tag: %w", err)
+	}
+
+	// update the tag
+	ti.Sent += update.Sent
+	ti.Stored += update.Stored
+	ti.Synced += update.Synced
+
+	return st.Put(ti)
+}
+
+func Synced(s transaction.Store, addr swarm.Address, batchID []byte) error {
+
+	item := &uploadItem{Address: addr, BatchID: batchID}
+	err := s.IndexStore().Get(item)
+	if err != nil {
+		return err
+	}
+
+	return errors.Join(
+		s.IndexStore().Delete(item),
+		s.IndexStore().Delete(&pushItem{Timestamp: item.Uploaded, Address: item.Address, BatchID: item.BatchID}),
+		s.ChunkStore().Delete(context.Background(), item.Address),
+		chunkstamp.Delete(s.IndexStore(), uploadScope, item.Address, item.BatchID),
+	)
+}
+
+// CleanupDirty does a best-effort cleanup of dirty tags. This is called on startup.
+func CleanupDirty(st transaction.Storage) error {
+	dirtyTags := make([]*dirtyTagItem, 0)
+
+	err := st.IndexStore().Iterate(
+		storage.Query{
+			Factory: func() storage.Item { return &dirtyTagItem{} },
+		},
+		func(res storage.Result) (bool, error) {
+			di := res.Entry.(*dirtyTagItem)
+			dirtyTags = append(dirtyTags, di)
+			return false, nil
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("failed iterating dirty tags: %w", err)
+	}
+
+	for _, di := range dirtyTags {
+		err = errors.Join(err, Cleanup(st, di.TagID))
+	}
+
+	return err
+}
+
 func Cleanup(st transaction.Storage, tag uint64) error {
 
 	itemsToDelete := make([]*pushItem, 0)
@@ -542,49 +599,6 @@ func Cleanup(st transaction.Storage, tag uint64) error {
 
 		}),
 	)
-}
-
-// CleanupDirty does a best-effort cleanup of dirty tags. This is called on startup.
-func CleanupDirty(st transaction.Storage) error {
-	dirtyTags := make([]*dirtyTagItem, 0)
-
-	err := st.IndexStore().Iterate(
-		storage.Query{
-			Factory: func() storage.Item { return &dirtyTagItem{} },
-		},
-		func(res storage.Result) (bool, error) {
-			di := res.Entry.(*dirtyTagItem)
-			dirtyTags = append(dirtyTags, di)
-			return false, nil
-		},
-	)
-	if err != nil {
-		return fmt.Errorf("failed iterating dirty tags: %w", err)
-	}
-
-	for _, di := range dirtyTags {
-		err = errors.Join(err, Cleanup(st, di.TagID))
-	}
-
-	return err
-}
-
-// Report is the implementation of the PushReporter interface.
-// Must be mutex locked.
-func Report(st storage.IndexStore, tag uint64, update *TagUpdate) (bool, error) {
-
-	ti := &TagItem{TagID: tag}
-	err := st.Get(ti)
-	if err != nil {
-		return false, fmt.Errorf("failed getting tag: %w", err)
-	}
-
-	// update the tag
-	ti.Sent += update.Sent
-	ti.Stored += update.Stored
-	ti.Synced += update.Synced
-
-	return ti.Synced >= ti.Split, st.Put(ti)
 }
 
 var (

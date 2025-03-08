@@ -415,9 +415,15 @@ type cacheLimiter struct {
 	cancel context.CancelFunc
 }
 
+type chunkBatch struct {
+	address swarm.Address
+	batchID []byte
+}
+
 type tagCache struct {
 	sync.Mutex
 	updates map[uint64]*upload.TagUpdate
+	synced  []chunkBatch
 	wakeup  chan struct{}
 }
 

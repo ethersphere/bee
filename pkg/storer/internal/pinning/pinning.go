@@ -86,7 +86,6 @@ type collectionPutter struct {
 }
 
 // Put adds a chunk to the pin collection.
-// The user of the putter MUST mutex lock the call to prevent data-races across multiple upload sessions.
 func (c *collectionPutter) Put(ctx context.Context, st transaction.Store, ch swarm.Chunk) error {
 	c.Lock()
 	defer c.Unlock()
@@ -127,6 +126,9 @@ func (c *collectionPutter) Put(ctx context.Context, st transaction.Store, ch swa
 }
 
 func (c *collectionPutter) Close(st storage.IndexStore, root swarm.Address) error {
+	c.Lock()
+	defer c.Unlock()
+
 	if root.IsZero() {
 		return errCollectionRootAddressIsZero
 	}

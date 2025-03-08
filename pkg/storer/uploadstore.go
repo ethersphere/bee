@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 	"sort"
 	"time"
 
@@ -17,10 +18,11 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/upload"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"golang.org/x/sync/errgroup"
 )
 
-func chunkKey(ch swarm.Chunk) string { return fmt.Sprintf("upload-chunk-%s", ch) }
-func sessionKey(tag uint64) string   { return fmt.Sprintf("upload-session-%d", tag) }
+func addrKey(ch swarm.Address) string { return fmt.Sprintf("upload-chunk-%s", ch) }
+func sessionKey(tag uint64) string    { return fmt.Sprintf("upload-session-%d", tag) }
 
 const lockKeyNewSession string = "new_session"
 const reportedEvent = "reportEnd"
@@ -41,11 +43,12 @@ func (db *DB) Report(ctx context.Context, chunk swarm.Chunk, state storage.Chunk
 	switch state {
 	case storage.ChunkSent:
 		update.Sent++
+	case storage.ChunkStored:
+		update.Stored++
+		fallthrough
 	case storage.ChunkSynced:
 		update.Synced++
-	case storage.ChunkStored:
-		update.Synced++
-		update.Stored++
+		db.tagCache.synced = append(db.tagCache.synced, chunkBatch{chunk.Address(), chunk.Stamp().BatchID()})
 	}
 
 	select {
@@ -73,31 +76,37 @@ func (db *DB) reportWorker(ctx context.Context) {
 
 				unlock := db.Lock(sessionKey(tag))
 
-				var (
-					cleanup bool
-					err     error
-				)
-
-				if err = db.storage.Run(ctx, func(s transaction.Store) error {
-					cleanup, err = upload.Report(s.IndexStore(), tag, t)
-					return err
+				if err := db.storage.Run(ctx, func(s transaction.Store) error {
+					return upload.Report(s.IndexStore(), tag, t)
 				}); err != nil {
 					db.logger.Debug("report failed", "error", err)
-				}
-				if cleanup {
-					go func() {
-						unlock := db.Lock(sessionKey(tag))
-						defer unlock()
-						err := upload.Cleanup(db.storage, tag)
-						if err != nil {
-							db.logger.Debug("cleanup failed", "tag", tag, "error", err)
-						}
-					}()
 				}
 
 				unlock()
 			}
-			db.tagCache.updates = make(map[uint64]*upload.TagUpdate) // reset
+
+			//reset
+			db.tagCache.updates = make(map[uint64]*upload.TagUpdate)
+
+			eg := errgroup.Group{}
+			eg.SetLimit(runtime.NumCPU())
+
+			synced := db.tagCache.synced[:]
+
+			db.tagCache.Unlock()
+
+			for _, s := range synced {
+				eg.Go(func() error {
+					unlock := db.Lock(addrKey(s.address))
+					defer unlock()
+					return db.storage.Run(ctx, func(st transaction.Store) error {
+						return upload.Synced(st, s.address, s.batchID)
+					})
+				})
+			}
+
+			db.tagCache.Lock()
+			db.tagCache.synced = db.tagCache.synced[len(synced):]
 			db.tagCache.Unlock()
 
 			db.events.Trigger(reportedEvent)
@@ -148,7 +157,7 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 	return &putterSession{
 		Putter: putterWithMetrics{
 			storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
-				unlock := db.Lock(chunkKey(chunk)) // protect against multiple upload of same chunk
+				unlock := db.Lock(addrKey(chunk.Address())) // protect against multiple upload of same chunk
 				defer unlock()
 				return errors.Join(
 					db.storage.Run(ctx, func(s transaction.Store) error {
