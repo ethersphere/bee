@@ -67,15 +67,6 @@ const (
 	DefaultRetryCount = 6
 )
 
-/*
-	The pusher now only deletes inflight chunks when the pusher is done syncing with the chunk.
-
-	which means that the uploadstore does not have to immediately delete the pusher Item.
-
-
-
-*/
-
 func New(
 	networkID uint64,
 	storer Storer,
@@ -129,36 +120,12 @@ func (s *Service) chunksWorker(warmupTime time.Duration) {
 	var wg sync.WaitGroup
 
 	push := func(op *Op) {
-		var (
-			err       error
-			reAttempt bool
-		)
 
 		defer func() {
-			// no peer was found which may mean that the node is suffering from connections issues
-			// we must slow down the pusher to prevent constant retries
-			if errors.Is(err, topology.ErrNotFound) {
-				select {
-				case <-time.After(time.Second * 5):
-				case <-s.quit:
-				}
-			}
-
 			wg.Done()
 			<-sem
-
 			s.inflight.delete(op.identityAddress, op.Chunk.Stamp().BatchID())
-
-			if reAttempt {
-				select {
-				case cc <- op:
-				case <-s.quit:
-				}
-			}
 		}()
-
-		s.metrics.TotalToPush.Inc()
-		startTime := time.Now()
 
 		spanCtx := ctx
 		if op.Span != nil {
@@ -167,22 +134,46 @@ func (s *Service) chunksWorker(warmupTime time.Duration) {
 			op.Span = opentracing.NoopTracer{}.StartSpan("noOp")
 		}
 
-		if op.Direct {
-			reAttempt, err = s.pushDirect(spanCtx, s.logger, op)
-		} else {
-			reAttempt, err = s.pushDeferred(spanCtx, s.logger, op)
-		}
+		for reAttempt := true; reAttempt; {
 
-		if err != nil {
-			s.metrics.TotalErrors.Inc()
-			s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
-			ext.LogError(op.Span, err)
-		} else {
-			op.Span.LogFields(olog.Bool("success", true))
-		}
+			select {
+			case <-s.quit:
+				return
+			default:
+			}
 
-		s.metrics.SyncTime.Observe(time.Since(startTime).Seconds())
-		s.metrics.TotalSynced.Inc()
+			var err error
+
+			s.metrics.TotalToPush.Inc()
+			startTime := time.Now()
+
+			if op.Direct {
+				reAttempt, err = s.pushDirect(spanCtx, s.logger, op)
+			} else {
+				reAttempt, err = s.pushDeferred(spanCtx, s.logger, op)
+			}
+
+			if err != nil {
+				s.metrics.TotalErrors.Inc()
+				s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
+				ext.LogError(op.Span, err)
+			} else {
+				op.Span.LogFields(olog.Bool("success", true))
+			}
+
+			s.metrics.SyncTime.Observe(time.Since(startTime).Seconds())
+			s.metrics.TotalSynced.Inc()
+
+			// no peer was found which may mean that the node is suffering from connections issues
+			// we must slow down the pusher to prevent constant retries
+			if errors.Is(err, topology.ErrNotFound) {
+				select {
+				case <-time.After(time.Second * 5):
+				case <-s.quit:
+					return
+				}
+			}
+		}
 	}
 
 	go func() {

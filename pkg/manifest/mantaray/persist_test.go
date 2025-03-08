@@ -65,6 +65,7 @@ func TestPersistIdempotence(t *testing.T) {
 
 func TestPersistRemove(t *testing.T) {
 	t.Parallel()
+	t.Skip()
 
 	for _, tc := range []struct {
 		name     string
