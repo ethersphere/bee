@@ -16,7 +16,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-const uploadsLock = "pin-upload-store"
+const pinningDoneLock = "pinning-done"
 
 // NewCollection is the implementation of the PinStore.NewCollection method.
 func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
@@ -39,7 +39,7 @@ func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 		Putter: putterWithMetrics{
 			storage.PutterFunc(
 				func(ctx context.Context, chunk swarm.Chunk) error {
-					unlock := db.Lock(addrKey(chunk.Address()))
+					unlock := db.Lock(addrKey(chunk.Address())) // protect against multiple uploads of same chunk
 					defer unlock()
 
 					return db.storage.Run(ctx, func(s transaction.Store) error {
@@ -51,7 +51,7 @@ func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 			"pinstore",
 		},
 		done: func(address swarm.Address) error {
-			unlock := db.Lock(uploadsLock)
+			unlock := db.Lock(pinningDoneLock)
 			defer unlock()
 
 			return db.storage.Run(ctx, func(s transaction.Store) error {
@@ -59,7 +59,7 @@ func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 			})
 		},
 		cleanup: func() error {
-			unlock := db.Lock(uploadsLock)
+			unlock := db.Lock(pinningDoneLock)
 			defer unlock()
 
 			return pinningPutter.Cleanup(db.storage)
@@ -79,7 +79,7 @@ func (db *DB) DeletePin(ctx context.Context, root swarm.Address) (err error) {
 		}
 	}()
 
-	unlock := db.Lock(uploadsLock)
+	unlock := db.Lock(pinningDoneLock)
 	defer unlock()
 
 	return pinstore.DeletePin(ctx, db.storage, root)

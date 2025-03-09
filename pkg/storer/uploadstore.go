@@ -192,6 +192,10 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 				return err
 			}
 			if pinningPutter != nil {
+
+				unlock := db.Lock(pinningDoneLock)
+				defer unlock()
+
 				err := db.storage.Run(ctx, func(s transaction.Store) error {
 					return pinningPutter.Close(s.IndexStore(), address)
 				})
@@ -211,6 +215,9 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 				return err
 			}
 			if pinningPutter != nil {
+				unlock := db.Lock(pinningDoneLock)
+				defer unlock()
+
 				return pinningPutter.Cleanup(db.storage)
 			}
 			return nil
