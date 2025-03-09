@@ -20,6 +20,10 @@ import (
 type PutterCloserWithReference interface {
 	Put(context.Context, transaction.Store, swarm.Chunk) error
 	Close(storage.IndexStore, swarm.Address) error
+}
+
+type PutterCloserCleanerWithReference interface {
+	PutterCloserWithReference
 	Cleanup(transaction.Storage) error
 }
 

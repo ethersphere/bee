@@ -364,8 +364,6 @@ func initDiskRepository(
 	return transaction.NewStorage(sharky, store), pinIntegrity, closer(store, sharky, recoveryCloser), nil
 }
 
-const lockKeyNewSession string = "new_session"
-
 // Options provides a container to configure different things in the storer.
 type Options struct {
 	// These are options related to levelDB. Currently, the underlying storage used is levelDB.
@@ -417,23 +415,34 @@ type cacheLimiter struct {
 	cancel context.CancelFunc
 }
 
+type chunkBatch struct {
+	address swarm.Address
+	batchID []byte
+}
+
+type tagCache struct {
+	sync.Mutex
+	updates map[uint64]*upload.TagUpdate
+	synced  []chunkBatch
+	wakeup  chan struct{}
+}
+
 // DB implements all the component stores described above.
 type DB struct {
 	logger log.Logger
 	tracer *tracing.Tracer
 
-	metrics             metrics
-	storage             transaction.Storage
-	multex              *multex.Multex
-	cacheObj            *cache.Cache
-	retrieval           retrieval.Interface
-	pusherFeed          chan *pusher.Op
-	quit                chan struct{}
-	cacheLimiter        cacheLimiter
-	dbCloser            io.Closer
-	subscriptionsWG     sync.WaitGroup
-	events              *events.Subscriber
-	directUploadLimiter chan struct{}
+	metrics         metrics
+	storage         transaction.Storage
+	multex          *multex.Multex
+	cacheObj        *cache.Cache
+	retrieval       retrieval.Interface
+	pusherFeed      chan *pusher.Op
+	quit            chan struct{}
+	cacheLimiter    cacheLimiter
+	dbCloser        io.Closer
+	subscriptionsWG sync.WaitGroup
+	events          *events.Subscriber
 
 	reserve          *reserve.Reserve
 	inFlight         sync.WaitGroup
@@ -446,6 +455,8 @@ type DB struct {
 	reserveOptions   reserveOpts
 
 	pinIntegrity *PinIntegrity
+
+	tagCache *tagCache
 }
 
 type reserveOpts struct {
@@ -549,8 +560,11 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			minimumRadius:      uint8(opts.MinimumStorageRadius),
 			capacityDoubling:   opts.ReserveCapacityDoubling,
 		},
-		directUploadLimiter: make(chan struct{}, pusher.ConcurrentPushes),
-		pinIntegrity:        pinIntegrity,
+		pinIntegrity: pinIntegrity,
+		tagCache: &tagCache{
+			updates: make(map[uint64]*upload.TagUpdate),
+			wakeup:  make(chan struct{}, 1),
+		},
 	}
 
 	if db.validStamp == nil {
@@ -588,6 +602,9 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	db.inFlight.Add(1)
 	go db.cacheWorker(ctx)
 
+	db.inFlight.Add(1)
+	go db.reportWorker(ctx)
+
 	return db, nil
 }
 
@@ -608,9 +625,9 @@ func (db *DB) Metrics() []prometheus.Collector {
 func (db *DB) Close() error {
 	close(db.quit)
 
-	bgReserveWorkersClosed := make(chan struct{})
+	bgWorkersClosed := make(chan struct{})
 	go func() {
-		defer close(bgReserveWorkersClosed)
+		defer close(bgWorkersClosed)
 		if !syncutil.WaitWithTimeout(&db.inFlight, 5*time.Second) {
 			db.logger.Warning("db shutting down with running goroutines")
 		}
@@ -637,7 +654,7 @@ func (db *DB) Close() error {
 		defer close(done)
 		<-closerDone
 		<-bgCacheWorkersClosed
-		<-bgReserveWorkersClosed
+		<-bgWorkersClosed
 	}()
 
 	select {

@@ -78,6 +78,7 @@ var (
 	ErrNotFound        = errors.New("storage: not found")
 	ErrReferenceLength = errors.New("storage: invalid reference length")
 	ErrInvalidChunk    = errors.New("storage: invalid chunk")
+	ErrSessionNotOver  = errors.New("syncing of upload is not complete")
 )
 
 // Query denotes the iteration attributes.

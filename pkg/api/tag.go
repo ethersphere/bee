@@ -111,6 +111,12 @@ func (s *Service) deleteTagHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.NotFound(w, "tag not present")
 			return
 		}
+		if errors.Is(err, storage.ErrSessionNotOver) {
+			logger.Debug("syncing not complete", "tag_id", paths.TagID)
+			logger.Error(nil, "syncing not complete")
+			jsonhttp.BadRequest(w, "syncing not complete")
+			return
+		}
 		logger.Debug("get tag failed", "tag_id", paths.TagID, "error", err)
 		logger.Error(nil, "get tag failed", "tag_id", paths.TagID)
 		jsonhttp.InternalServerError(w, "cannot get tag")

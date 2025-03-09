@@ -338,7 +338,7 @@ func TestPusherRetryShallow(t *testing.T) {
 
 	storer.chunks <- chunk
 
-	err := spinlock.Wait(spinTimeout, func() bool {
+	err := spinlock.Wait(time.Minute*5, func() bool {
 		c := int(atomic.LoadInt32(&callCount))
 		return c == retryCount
 	})

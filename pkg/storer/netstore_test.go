@@ -198,7 +198,7 @@ func testNetStore(t *testing.T, newStorer func(r retrieval.Interface) (*storer.D
 				t.Fatal(err)
 			}
 
-			count := 3
+			count := 1
 			go func() {
 				for op := range lstore.PusherFeed() {
 					if !op.Chunk.Equal(chunk) {

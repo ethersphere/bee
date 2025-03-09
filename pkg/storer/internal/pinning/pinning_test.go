@@ -385,7 +385,7 @@ func TestCleanup(t *testing.T) {
 		chunks := chunktest.GenerateTestRandomChunks(5)
 
 		var (
-			putter internal.PutterCloserWithReference
+			putter internal.PutterCloserCleanerWithReference
 			err    error
 		)
 		err = st.Run(context.Background(), func(s transaction.Store) error {

@@ -120,33 +120,12 @@ func (s *Service) chunksWorker(warmupTime time.Duration) {
 	var wg sync.WaitGroup
 
 	push := func(op *Op) {
-		var (
-			err      error
-			doRepeat bool
-		)
 
 		defer func() {
-			// no peer was found which may mean that the node is suffering from connections issues
-			// we must slow down the pusher to prevent constant retries
-			if errors.Is(err, topology.ErrNotFound) {
-				select {
-				case <-time.After(time.Second * 5):
-				case <-s.quit:
-				}
-			}
-
 			wg.Done()
 			<-sem
-			if doRepeat {
-				select {
-				case cc <- op:
-				case <-s.quit:
-				}
-			}
+			s.inflight.delete(op.identityAddress, op.Chunk.Stamp().BatchID())
 		}()
-
-		s.metrics.TotalToPush.Inc()
-		startTime := time.Now()
 
 		spanCtx := ctx
 		if op.Span != nil {
@@ -155,22 +134,46 @@ func (s *Service) chunksWorker(warmupTime time.Duration) {
 			op.Span = opentracing.NoopTracer{}.StartSpan("noOp")
 		}
 
-		if op.Direct {
-			err = s.pushDirect(spanCtx, s.logger, op)
-		} else {
-			doRepeat, err = s.pushDeferred(spanCtx, s.logger, op)
-		}
+		for reAttempt := true; reAttempt; {
 
-		if err != nil {
-			s.metrics.TotalErrors.Inc()
-			s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
-			ext.LogError(op.Span, err)
-		} else {
-			op.Span.LogFields(olog.Bool("success", true))
-		}
+			select {
+			case <-s.quit:
+				return
+			default:
+			}
 
-		s.metrics.SyncTime.Observe(time.Since(startTime).Seconds())
-		s.metrics.TotalSynced.Inc()
+			var err error
+
+			s.metrics.TotalToPush.Inc()
+			startTime := time.Now()
+
+			if op.Direct {
+				reAttempt, err = s.pushDirect(spanCtx, s.logger, op)
+			} else {
+				reAttempt, err = s.pushDeferred(spanCtx, s.logger, op)
+			}
+
+			if err != nil {
+				s.metrics.TotalErrors.Inc()
+				s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
+				ext.LogError(op.Span, err)
+			} else {
+				op.Span.LogFields(olog.Bool("success", true))
+			}
+
+			s.metrics.SyncTime.Observe(time.Since(startTime).Seconds())
+			s.metrics.TotalSynced.Inc()
+
+			// no peer was found which may mean that the node is suffering from connections issues
+			// we must slow down the pusher to prevent constant retries
+			if errors.Is(err, topology.ErrNotFound) {
+				select {
+				case <-time.After(time.Second * 5):
+				case <-s.quit:
+					return
+				}
+			}
+		}
 	}
 
 	go func() {
@@ -242,10 +245,8 @@ func (s *Service) chunksWorker(warmupTime time.Duration) {
 
 }
 
-func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (bool, error) {
+func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (repeat bool, err error) {
 	loggerV1 := logger.V(1).Build()
-
-	defer s.inflight.delete(op.identityAddress, op.Chunk.Stamp().BatchID())
 
 	ok, err := s.batchExist.Exists(op.Chunk.Stamp().BatchID())
 	if !ok || err != nil {
@@ -293,13 +294,10 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 	return false, nil
 }
 
-func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) error {
+func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) (reAttempt bool, err error) {
 	loggerV1 := logger.V(1).Build()
 
-	var err error
-
 	defer func() {
-		s.inflight.delete(op.identityAddress, op.Chunk.Stamp().BatchID())
 		select {
 		case op.Err <- err:
 		default:
@@ -315,7 +313,7 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 			"chunk_address", op.Chunk.Address(),
 			"error", err,
 		)
-		return err
+		return false, err
 	}
 
 	switch _, err = s.pushSyncer.PushChunkToClosest(ctx, op.Chunk); {
@@ -328,7 +326,7 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 		}
 	case errors.Is(err, pushsync.ErrShallowReceipt):
 		if s.shallowReceipt(op.identityAddress) {
-			return err
+			return true, err
 		}
 		// out of attempts for retry, swallow error
 		err = nil
@@ -336,7 +334,11 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 		loggerV1.Error(err, "pusher: failed PushChunkToClosest")
 	}
 
-	return err
+	if err != nil {
+		return true, err
+	}
+
+	return false, nil
 }
 
 func (s *Service) shallowReceipt(idAddress swarm.Address) bool {

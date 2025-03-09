@@ -20,17 +20,14 @@ import (
 
 // DirectUpload is the implementation of the NetStore.DirectUpload method.
 func (db *DB) DirectUpload() PutterSession {
-	// egCtx will allow early exit of Put operations if we have
-	// already encountered error.
-	eg, egCtx := errgroup.WithContext(context.Background())
+
+	eg := errgroup.Group{}
+	eg.SetLimit(pusher.ConcurrentPushes)
 
 	return &putterSession{
 		Putter: putterWithMetrics{
 			storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk) error {
-				db.directUploadLimiter <- struct{}{}
 				eg.Go(func() (err error) {
-					defer func() { <-db.directUploadLimiter }()
-
 					span, logger, ctx := db.tracer.FollowSpanFromContext(ctx, "put-direct-upload", db.logger)
 					defer func() {
 						if err != nil {
@@ -39,34 +36,29 @@ func (db *DB) DirectUpload() PutterSession {
 						span.Finish()
 					}()
 
-					for {
-						op := &pusher.Op{Chunk: ch, Err: make(chan error, 1), Direct: true, Span: span}
+					op := &pusher.Op{Chunk: ch, Err: make(chan error, 1), Direct: true, Span: span}
+					select {
+					case <-ctx.Done():
+						return ctx.Err()
+					case <-db.quit:
+						return ErrDBQuit
+					case db.pusherFeed <- op:
 						select {
 						case <-ctx.Done():
 							return ctx.Err()
-						case <-egCtx.Done():
-							return egCtx.Err()
 						case <-db.quit:
 							return ErrDBQuit
-						case db.pusherFeed <- op:
-							select {
-							case <-ctx.Done():
-								return ctx.Err()
-							case <-egCtx.Done():
-								return egCtx.Err()
-							case <-db.quit:
-								return ErrDBQuit
-							case err := <-op.Err:
-								if errors.Is(err, pushsync.ErrShallowReceipt) {
-									logger.Debug("direct upload: shallow receipt received, retrying", "chunk", ch.Address())
-								} else if errors.Is(err, topology.ErrNotFound) {
-									logger.Debug("direct upload: no peers available, retrying", "chunk", ch.Address())
-								} else {
-									return err
-								}
+						case err := <-op.Err:
+							if errors.Is(err, pushsync.ErrShallowReceipt) {
+								logger.Debug("direct upload: shallow receipt received, retrying", "chunk", ch.Address())
+							} else if errors.Is(err, topology.ErrNotFound) {
+								logger.Debug("direct upload: no peers available, retrying", "chunk", ch.Address())
+							} else {
+								return err
 							}
 						}
 					}
+					return nil
 				})
 				return nil
 			}),

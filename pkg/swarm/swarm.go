@@ -170,9 +170,9 @@ type Chunk interface {
 	// Data returns the chunk data.
 	Data() []byte
 	// TagID returns the tag ID for this chunk.
-	TagID() uint32
+	TagID() uint64
 	// WithTagID attaches the tag ID to the chunk.
-	WithTagID(t uint32) Chunk
+	WithTagID(t uint64) Chunk
 	// Stamp returns the postage stamp associated with this chunk.
 	Stamp() Stamp
 	// WithStamp attaches a postage stamp to the chunk.
@@ -226,7 +226,7 @@ type Stamp interface {
 type chunk struct {
 	addr        Address
 	sdata       []byte
-	tagID       uint32
+	tagID       uint64
 	stamp       Stamp
 	depth       uint8
 	bucketDepth uint8
@@ -240,7 +240,7 @@ func NewChunk(addr Address, data []byte) Chunk {
 	}
 }
 
-func (c *chunk) WithTagID(t uint32) Chunk {
+func (c *chunk) WithTagID(t uint64) Chunk {
 	c.tagID = t
 	return c
 }
@@ -265,7 +265,7 @@ func (c *chunk) Data() []byte {
 	return c.sdata
 }
 
-func (c *chunk) TagID() uint32 {
+func (c *chunk) TagID() uint64 {
 	return c.tagID
 }
 

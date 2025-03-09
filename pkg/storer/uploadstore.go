@@ -8,7 +8,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 	"sort"
+	"time"
 
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal"
@@ -16,25 +18,114 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/upload"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"golang.org/x/sync/errgroup"
 )
 
-const uploadsLock = "pin-upload-store"
+func addrKey(ch swarm.Address) string { return fmt.Sprintf("upload-chunk-%s", ch) }
+func sessionKey(tag uint64) string    { return fmt.Sprintf("upload-session-%d", tag) }
+
+const lockKeyNewSession string = "new_session"
+const reportedEvent = "reportEnd"
 
 // Report implements the storage.PushReporter by wrapping the internal reporter
 // with a transaction.
 func (db *DB) Report(ctx context.Context, chunk swarm.Chunk, state storage.ChunkState) error {
 
-	unlock := db.Lock(uploadsLock)
-	defer unlock()
+	db.tagCache.Lock()
+	defer db.tagCache.Unlock()
 
-	err := db.storage.Run(ctx, func(s transaction.Store) error {
-		return upload.Report(ctx, s, chunk, state)
-	})
-	if err != nil {
-		return fmt.Errorf("reporter.Report: %w", err)
+	update, ok := db.tagCache.updates[chunk.TagID()]
+	if !ok {
+		update = &upload.TagUpdate{}
+		db.tagCache.updates[chunk.TagID()] = update
+	}
+
+	switch state {
+	case storage.ChunkSent:
+		update.Sent++
+	case storage.ChunkStored:
+		update.Stored++
+		fallthrough
+	case storage.ChunkSynced:
+		update.Synced++
+		db.tagCache.synced = append(db.tagCache.synced, chunkBatch{chunk.Address(), chunk.Stamp().BatchID()})
+	}
+
+	select {
+	case db.tagCache.wakeup <- struct{}{}:
+	default:
 	}
 
 	return nil
+}
+
+func (db *DB) reportWorker(ctx context.Context) {
+
+	defer db.inFlight.Done()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-db.quit:
+			return
+		case <-db.tagCache.wakeup:
+
+			db.tagCache.Lock()
+			for tag, t := range db.tagCache.updates {
+
+				unlock := db.Lock(sessionKey(tag))
+
+				if err := db.storage.Run(ctx, func(s transaction.Store) error {
+					return upload.Report(s.IndexStore(), tag, t)
+				}); err != nil {
+					db.logger.Debug("report failed", "error", err)
+				}
+
+				unlock()
+			}
+
+			//reset
+			db.tagCache.updates = make(map[uint64]*upload.TagUpdate)
+
+			synced := db.tagCache.synced[:]
+
+			db.tagCache.Unlock()
+
+			eg := errgroup.Group{}
+			eg.SetLimit(runtime.NumCPU())
+
+			for _, s := range synced {
+				eg.Go(func() error {
+					unlock := db.Lock(addrKey(s.address))
+					defer unlock()
+
+					return db.storage.Run(ctx, func(st transaction.Store) error {
+						return upload.Synced(st, s.address, s.batchID)
+					})
+				})
+			}
+
+			db.tagCache.Lock()
+			db.tagCache.synced = db.tagCache.synced[len(synced):]
+			db.tagCache.Unlock()
+
+			if err := eg.Wait(); err != nil {
+				db.logger.Debug("sync cleanup failed", "error", err)
+			}
+
+			db.events.Trigger(reportedEvent)
+
+			// slowdown
+			select {
+			case <-ctx.Done():
+				return
+			case <-db.quit:
+				return
+			case <-time.After(time.Second * 5):
+			}
+		}
+	}
 }
 
 // Upload is the implementation of UploadStore.Upload method.
@@ -45,7 +136,7 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 
 	var (
 		uploadPutter  internal.PutterCloserWithReference
-		pinningPutter internal.PutterCloserWithReference
+		pinningPutter internal.PutterCloserCleanerWithReference
 		err           error
 	)
 
@@ -71,61 +162,65 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 	return &putterSession{
 		Putter: putterWithMetrics{
 			storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
-				unlock := db.Lock(uploadsLock)
+				unlock := db.Lock(addrKey(chunk.Address())) // protect against multiple uploads of same chunk
 				defer unlock()
-				return errors.Join(
-					db.storage.Run(ctx, func(s transaction.Store) error {
-						return uploadPutter.Put(ctx, s, chunk)
-					}),
-					func() error {
-						if pinningPutter != nil {
-							return db.storage.Run(ctx, func(s transaction.Store) error {
-								return pinningPutter.Put(ctx, s, chunk)
-							})
-						}
-						return nil
-					}(),
-				)
+
+				if err := db.storage.Run(ctx, func(s transaction.Store) error {
+					return uploadPutter.Put(ctx, s, chunk)
+				}); err != nil {
+					return err
+				}
+
+				if pinningPutter != nil {
+					return db.storage.Run(ctx, func(s transaction.Store) error {
+						return pinningPutter.Put(ctx, s, chunk)
+					})
+				}
+				return nil
 			}),
 			db.metrics,
 			"uploadstore",
 		},
 		done: func(address swarm.Address) error {
 			defer db.events.Trigger(subscribePushEventKey)
-			unlock := db.Lock(uploadsLock)
+			unlock := db.Lock(sessionKey(tagID))
 			defer unlock()
 
-			return errors.Join(
-				db.storage.Run(ctx, func(s transaction.Store) error {
-					return uploadPutter.Close(s.IndexStore(), address)
-				}),
-				func() error {
-					if pinningPutter != nil {
-						return db.storage.Run(ctx, func(s transaction.Store) error {
-							pinErr := pinningPutter.Close(s.IndexStore(), address)
-							if errors.Is(pinErr, pinstore.ErrDuplicatePinCollection) {
-								pinErr = pinningPutter.Cleanup(db.storage)
-							}
-							return pinErr
-						})
-					}
-					return nil
-				}(),
-			)
+			if err := db.storage.Run(ctx, func(s transaction.Store) error {
+				return uploadPutter.Close(s.IndexStore(), address)
+			}); err != nil {
+				return err
+			}
+			if pinningPutter != nil {
+
+				unlock := db.Lock(pinningDoneLock)
+				defer unlock()
+
+				err := db.storage.Run(ctx, func(s transaction.Store) error {
+					return pinningPutter.Close(s.IndexStore(), address)
+				})
+				if errors.Is(err, pinstore.ErrDuplicatePinCollection) {
+					return pinningPutter.Cleanup(db.storage)
+				}
+				return err
+			}
+			return nil
 		},
 		cleanup: func() error {
 			defer db.events.Trigger(subscribePushEventKey)
-			unlock := db.Lock(uploadsLock)
+			unlock := db.Lock(sessionKey(tagID))
 			defer unlock()
-			return errors.Join(
-				uploadPutter.Cleanup(db.storage),
-				func() error {
-					if pinningPutter != nil {
-						return pinningPutter.Cleanup(db.storage)
-					}
-					return nil
-				}(),
-			)
+
+			if err := upload.Cleanup(db.storage, tagID); err != nil {
+				return err
+			}
+			if pinningPutter != nil {
+				unlock := db.Lock(pinningDoneLock)
+				defer unlock()
+
+				return pinningPutter.Cleanup(db.storage)
+			}
+			return nil
 		},
 	}, nil
 }
@@ -152,6 +247,8 @@ func (db *DB) Session(tagID uint64) (SessionInfo, error) {
 
 // DeleteSession is the implementation of the UploadStore.DeleteSession method.
 func (db *DB) DeleteSession(tagID uint64) error {
+	unlock := db.Lock(sessionKey(tagID))
+	defer unlock()
 	return db.storage.Run(context.Background(), func(s transaction.Store) error {
 		return upload.DeleteTag(s.IndexStore(), tagID)
 	})

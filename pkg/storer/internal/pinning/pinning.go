@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"sync"
 
 	"github.com/ethersphere/bee/v2/pkg/encryption"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
@@ -67,7 +68,7 @@ type CollectionStat struct {
 // It will create a new UUID for the collection which can be used to iterate on all the chunks
 // that are part of this collection. The root pin is only updated on successful close of this.
 // Calls to the Putter MUST be mutex locked to prevent concurrent upload data races.
-func NewCollection(st storage.IndexStore) (internal.PutterCloserWithReference, error) {
+func NewCollection(st storage.IndexStore) (internal.PutterCloserCleanerWithReference, error) {
 	newCollectionUUID := newUUID()
 	err := st.Put(&dirtyCollection{UUID: newCollectionUUID})
 	if err != nil {
@@ -79,13 +80,16 @@ func NewCollection(st storage.IndexStore) (internal.PutterCloserWithReference, e
 }
 
 type collectionPutter struct {
+	sync.Mutex
 	collection *pinCollectionItem
 	closed     bool
 }
 
 // Put adds a chunk to the pin collection.
-// The user of the putter MUST mutex lock the call to prevent data-races across multiple upload sessions.
 func (c *collectionPutter) Put(ctx context.Context, st transaction.Store, ch swarm.Chunk) error {
+	c.Lock()
+	defer c.Unlock()
+
 	// do not allow any Puts after putter was closed
 	if c.closed {
 		return errPutterAlreadyClosed
@@ -122,6 +126,9 @@ func (c *collectionPutter) Put(ctx context.Context, st transaction.Store, ch swa
 }
 
 func (c *collectionPutter) Close(st storage.IndexStore, root swarm.Address) error {
+	c.Lock()
+	defer c.Unlock()
+
 	if root.IsZero() {
 		return errCollectionRootAddressIsZero
 	}
@@ -153,6 +160,9 @@ func (c *collectionPutter) Close(st storage.IndexStore, root swarm.Address) erro
 }
 
 func (c *collectionPutter) Cleanup(st transaction.Storage) error {
+	c.Lock()
+	defer c.Unlock()
+
 	if c.closed {
 		return nil
 	}
