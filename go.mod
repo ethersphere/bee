@@ -146,7 +146,7 @@ require (
 	github.com/quic-go/quic-go v0.42.0 // indirect
 	github.com/quic-go/webtransport-go v0.6.0 // indirect
 	github.com/raulk/go-watchdog v1.3.0 // indirect
-	github.com/shirou/gopsutil v3.21.5+incompatible // indirect
+	github.com/shirou/gopsutil v3.21.5+incompatible
 	github.com/smartystreets/assertions v1.1.1 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/spf13/cast v1.3.0 // indirect
