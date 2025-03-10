@@ -320,18 +320,18 @@ func TestForwardToClosest(t *testing.T) {
 	closestPeer := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
 
 	// Create the closest peer
-	psClosestPeer, _, _ := createPushSyncNode(t, closestPeer, defaultPrices, nil, nil, defaultSigner(chunk), mock.WithClosestPeerErr(topology.ErrWantSelf))
+	psClosestPeer, _, closestAccounting := createPushSyncNode(t, closestPeer, defaultPrices, nil, nil, defaultSigner(chunk), mock.WithClosestPeerErr(topology.ErrWantSelf))
 
 	recorder1 := streamtest.New(streamtest.WithProtocols(psClosestPeer.Protocol()), streamtest.WithBaseAddr(pivotPeer))
 
 	// creating the pivot peer
-	psPivot, _, _ := createPushSyncNode(t, pivotPeer, defaultPrices, recorder1, nil, defaultSigner(chunk), mock.WithClosestPeerFunc(func() (swarm.Address, error) {
+	psPivot, _, pivotAccounting := createPushSyncNode(t, pivotPeer, defaultPrices, recorder1, nil, defaultSigner(chunk), mock.WithClosestPeerFunc(func() (swarm.Address, error) {
 		return closestPeer, nil
 	}))
 	recorder2 := streamtest.New(streamtest.WithProtocols(psPivot.Protocol()), streamtest.WithBaseAddr(triggerPeer))
 
 	// Creating the trigger peer
-	psTriggerPeer, _, _ := createPushSyncNode(t, triggerPeer, defaultPrices, recorder2, nil, defaultSigner(chunk), mock.WithClosestPeer(pivotPeer))
+	psTriggerPeer, _, triggerAccounting := createPushSyncNode(t, triggerPeer, defaultPrices, recorder2, nil, defaultSigner(chunk), mock.WithClosestPeer(pivotPeer))
 
 	receipt, err := psTriggerPeer.PushChunkToClosest(context.Background(), chunk)
 	if err != nil {
@@ -354,6 +354,49 @@ func TestForwardToClosest(t *testing.T) {
 
 	// In pivot peer,  intercept the incoming delivery chunk from the trigger peer and check for correctness
 	waitOnRecordAndTest(t, pivotPeer, recorder2, chunk.Address(), chunk.Data())
+
+	tests := []struct {
+		name string
+		peer swarm.Address
+		acc  accounting.Interface
+		want int64
+	}{
+		{
+			name: "trigger-pivot",
+			peer: pivotPeer,
+			acc:  triggerAccounting,
+			want: -int64(fixedPrice),
+		},
+		{
+			name: "pivot-trigger",
+			peer: triggerPeer,
+			acc:  pivotAccounting,
+			want: int64(fixedPrice),
+		},
+		{
+			name: "pivot-closest",
+			peer: closestPeer,
+			acc:  pivotAccounting,
+			want: -int64(fixedPrice),
+		},
+		{
+			name: "closest-pivot",
+			peer: pivotPeer,
+			acc:  closestAccounting,
+			want: int64(fixedPrice),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			balance, err := tt.acc.Balance(tt.peer)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if balance.Int64() != tt.want {
+				t.Fatalf("unexpected balance. want %d got %d", tt.want, balance)
+			}
+		})
+	}
 }
 
 // PushChunkToClosest tests the sending of chunk to closest peer from the origination source perspective.

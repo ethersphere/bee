@@ -292,7 +292,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			return err
 		}
 
-		err = ps.forwardToClosest(ctx, chunk, p.Address)
+		err = ps.forwardToClosest(ctx, chunk, ps.address)
 		if err != nil {
 			ps.logger.Error(nil, "failed to forward to closest peer", "chunk_address", chunk.Address(), "error", err)
 		}
