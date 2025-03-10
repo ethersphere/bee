@@ -142,7 +142,7 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	s.fileUploadHandler(ctx, logger, span, ow, r, putter, headers.Encrypt, tag, headers.RLevel, headers.Act, headers.HistoryAddress)
 }
 
-// fileUploadResponse is returned when an HTTP request to upload a file is successful
+// bzzUploadResponse is returned when an HTTP request to upload a file is successful
 type bzzUploadResponse struct {
 	Reference swarm.Address `json:"reference"`
 }

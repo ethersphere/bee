@@ -76,7 +76,7 @@ type BatchExist interface {
 	Exists([]byte) (bool, error)
 }
 
-// StorageRadiusSetter is used to calculate total batch commitment of the network.
+// CommitmentGetter is used to calculate total batch commitment of the network.
 type CommitmentGetter interface {
 	Commitment() (uint64, error)
 }
