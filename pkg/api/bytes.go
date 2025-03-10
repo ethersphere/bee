@@ -109,7 +109,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		logger.Error(nil, "split write all failed")
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
-			jsonhttp.PaymentRequired(ow, "batch is over issued")
+			jsonhttp.PaymentRequired(ow, "batch is overissued")
 		default:
 			jsonhttp.InternalServerError(ow, "split write all failed")
 		}
