@@ -83,37 +83,37 @@ func (r *Registry) PushWorker(ctx context.Context, path string, job string, logg
 	ctx, cancel := context.WithCancel(ctx)
 
 	go func() {
-        ticker := time.NewTicker(time.Minute)
-        defer ticker.Stop()
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
 
-        for {
-            select {
-            case <-ctx.Done():
-                return
-            case <-ticker.C:
-                // Collect CPU metrics
-                percentages, err := cpu.Percent(0, false)
-                if err == nil && len(percentages) > 0 {
-                    r.cpuGauge.Set(percentages[0])
-                } else if err != nil {
-                    logger.Debug("failed to collect CPU metrics", "error", err)
-                }
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				// Collect CPU metrics
+				percentages, err := cpu.Percent(0, false)
+				if err == nil && len(percentages) > 0 {
+					r.cpuGauge.Set(percentages[0])
+				} else if err != nil {
+					logger.Debug("failed to collect CPU metrics", "error", err)
+				}
 
-                // Collect memory metrics
-                vm, err := mem.VirtualMemory()
-                if err == nil {
-                    r.memGauge.Set(vm.UsedPercent)
-                } else {
-                    logger.Debug("failed to collect memory metrics", "error", err)
-                }
+				// Collect memory metrics
+				vm, err := mem.VirtualMemory()
+				if err == nil {
+					r.memGauge.Set(vm.UsedPercent)
+				} else {
+					logger.Debug("failed to collect memory metrics", "error", err)
+				}
 
-                // Push metrics
-                if err := metricsPusher.Push(); err != nil {
-                    logger.Debug("metrics push failed", "error", err)
-                }
-            }
-        }
-    }()
+				// Push metrics
+				if err := metricsPusher.Push(); err != nil {
+					logger.Debug("metrics push failed", "error", err)
+				}
+			}
+		}
+	}()
 
 	return func() error {
 		cancel()
