@@ -433,7 +433,7 @@ func NewBee(
 
 	if o.APIAddr != "" {
 
-		metricsRegistery = registry.NewRegistry(false)
+		metricsRegistery = registry.NewRegistry(false, beeNodeMode.String())
 
 		if o.MutexProfile {
 			_ = runtime.SetMutexProfileFraction(1)
