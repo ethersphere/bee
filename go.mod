@@ -45,7 +45,6 @@ require (
 	go.uber.org/atomic v1.11.0
 	go.uber.org/goleak v1.3.0
 	golang.org/x/crypto v0.23.0
-	golang.org/x/exp v0.0.0-20240213143201-ec583247a57a
 	golang.org/x/net v0.25.0
 	golang.org/x/sync v0.7.0
 	golang.org/x/sys v0.20.0
@@ -56,6 +55,8 @@ require (
 	resenje.org/singleflight v0.4.0
 	resenje.org/web v0.4.3
 )
+
+require golang.org/x/exp v0.0.0-20240213143201-ec583247a57a // indirect
 
 require (
 	github.com/BurntSushi/toml v1.1.0 // indirect
