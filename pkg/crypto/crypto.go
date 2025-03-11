@@ -120,7 +120,7 @@ func NewEthereumAddress(p ecdsa.PublicKey) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return pubHash[12:], err
+	return pubHash[12:], nil
 }
 
 func LegacyKeccak256(data []byte) ([]byte, error) {
@@ -130,5 +130,5 @@ func LegacyKeccak256(data []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return hasher.Sum(nil), err
+	return hasher.Sum(nil), nil
 }
