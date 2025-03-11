@@ -70,7 +70,7 @@ paths:
               $ref: "SwarmCommon.yaml#/components/schemas/ActGranteesCreateRequest"
       responses:
         "201":
-          description: Ok
+          description: OK
           content:
             application/json:
               schema:
@@ -94,7 +94,7 @@ paths:
           description: Grantee list reference
       responses:
         "200":
-          description: Ok
+          description: OK
           content:
             application/json:
               schema:
@@ -150,7 +150,7 @@ paths:
               $ref: "SwarmCommon.yaml#/components/schemas/ActGranteesPatchRequest"
       responses:
         "200":
-          description: Ok
+          description: OK
           content:
             application/json:
               schema:
@@ -205,7 +205,7 @@ paths:
               format: binary
       responses:
         "201":
-          description: Ok
+          description: OK
           headers:
             "swarm-tag":
               $ref: "SwarmCommon.yaml#/components/headers/SwarmTag"
@@ -318,7 +318,7 @@ paths:
               format: binary
       responses:
         "201":
-          description: Ok
+          description: OK
           headers:
             "swarm-tag":
               description: Tag UID if it was passed to the request `swarm-tag` header.
@@ -405,7 +405,7 @@ paths:
               format: binary
       responses:
         "201":
-          description: Ok
+          description: OK
           headers:
             "swarm-tag":
               $ref: "SwarmCommon.yaml#/components/headers/SwarmTag"
@@ -448,7 +448,7 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       responses:
         "200":
-          description: Ok
+          description: OK
           # "swarm-feed-index":
           #   $ref: "SwarmCommon.yaml#/components/headers/SwarmFeedIndex"
           content:
@@ -511,7 +511,7 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmChunkRetrievalTimeoutParameter"
       responses:
         "200":
-          description: Ok
+          description: OK
           content:
             application/octet-stream:
               schema:
@@ -654,7 +654,7 @@ paths:
               $ref: "SwarmCommon.yaml#/components/schemas/Address"
       responses:
         "200":
-          description: Ok
+          description: OK
           content:
             application/json:
               schema:
@@ -1111,7 +1111,7 @@ paths:
           description: Postage batch to use for re-upload. If none is provided and the file was uploaded on the same node before, it will reuse the same batch. If not found, it will return error. If a new batch is provided, the chunks are stamped again with the new batch.
       responses:
         "200":
-          description: Ok
+          description: OK
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
@@ -1392,7 +1392,7 @@ paths:
           required: true
       responses:
         "201":
-          description: Ok
+          description: OK
           content:
             application/json:
               schema:
@@ -2296,7 +2296,11 @@ paths:
         - Staking
       responses:
         "200":
-          $ref: "SwarmCommon.yaml#/components/schemas/GetWithdrawableResponse"
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/GetWithdrawableResponse"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -2311,7 +2315,11 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       responses:
         "200":
-          $ref: "SwarmCommon.yaml#/components/schemas/StakeTransactionResponse"
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/StakeTransactionResponse"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "500":
@@ -2336,7 +2344,11 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       responses:
         "200":
-          $ref: "SwarmCommon.yaml#/components/schemas/StakeTransactionResponse"
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/StakeTransactionResponse"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "500":
@@ -2352,7 +2364,11 @@ paths:
         - Staking
       responses:
         "200":
-          $ref: "SwarmCommon.yaml#/components/schemas/GetStakeResponse"
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/GetStakeResponse"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -2367,7 +2383,11 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       responses:
         "200":
-          $ref: "SwarmCommon.yaml#/components/schemas/StakeTransactionResponse"
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/StakeTransactionResponse"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "500":
