@@ -5,6 +5,7 @@
 package kademlia
 
 import (
+	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/ethersphere/bee/v2/pkg/topology/pslice"
@@ -96,4 +97,12 @@ func closestPeer(peers *pslice.PSlice, addr swarm.Address) (swarm.Address, error
 
 func (k *Kad) Trigger() {
 	k.manageC <- struct{}{}
+}
+
+func (k *Kad) AdressBook() addressbook.Interface {
+	return k.addressBook
+}
+
+func (k *Kad) Address() swarm.Address {
+	return k.base
 }
