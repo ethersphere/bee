@@ -190,7 +190,7 @@ func (m putterWithMetrics) Put(ctx context.Context, chunk swarm.Chunk) error {
 
 var _ storage.Getter = (*getterWithMetrics)(nil)
 
-// putterWithMetrics wraps storage.Putter and adds metrics.
+// getterWithMetrics wraps storage.Getter and adds metrics.
 type getterWithMetrics struct {
 	storage.Getter
 
