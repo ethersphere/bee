@@ -4,12 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"runtime"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	cryptomock "github.com/ethersphere/bee/v2/pkg/crypto/mock"
+	"github.com/ethersphere/bee/v2/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/ethersphere/bee/v2/pkg/topology/kademlia"
 	"github.com/ethersphere/bee/v2/pkg/util/testutil"
+	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -34,9 +40,10 @@ The end goal is to help engineers understand the different behaviors, design bet
 
 func TestNetwork(t *testing.T) {
 
-	var kads []*kademlia.Kad
+	count := 1000
+	kads := make([]*kademlia.Kad, 0, count)
 
-	for range 100 {
+	for range count {
 		var (
 			conns           int32
 			_, kad, _, _, _ = newTestKademlia(t, &conns, nil, kademlia.Options{})
@@ -50,18 +57,40 @@ func TestNetwork(t *testing.T) {
 		kad.SetStorageRadius(11)
 	}
 
+	var eg errgroup.Group
+	eg.SetLimit(runtime.NumCPU())
+
 	for i, k1 := range kads {
-		for j, k2 := range kads {
-			if i == j {
-				continue
+		eg.Go(func() error {
+			for j, k2 := range kads {
+				if i == j {
+					continue
+				}
+				if j%2 == 0 {
+					addOne(t, defaultSigner(), k1, k1.AdressBook(), k2.Address())
+				} else {
+					connectOne(t, defaultSigner(), k1, k1.AdressBook(), k2.Address(), nil)
+				}
+				k1.Reachable(k2.Address(), p2p.ReachabilityStatusPublic)
+				k1.UpdatePeerHealth(k2.Address(), true, time.Second)
 			}
-			addOne(t, defaultSigner(), k1, k1.AdressBook(), k2.Address())
-		}
-		fmt.Println(i)
+			fmt.Println(i)
+			return nil
+		})
+	}
+	err := eg.Wait()
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	for _, k := range kads {
-		p, _ := json.MarshalIndent(k.Snapshot(), "", "\t")
-		fmt.Println(string(p))
+	p, _ := json.MarshalIndent(kads[0].Snapshot(), "", "\t")
+	fmt.Println(string(p))
+
+	a := swarm.RandAddress(t)
+	closest, err := kads[0].ClosestPeer(a, false, topology.Select{})
+	if err != nil {
+		t.Fatal(err)
 	}
+
+	fmt.Println("closest", a, closest)
 }
