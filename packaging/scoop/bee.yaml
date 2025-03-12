@@ -86,12 +86,8 @@ password-file: "./password"
 # static-nodes: []
 ## enable storage incentives feature
 # storage-incentives-enable: true
-## gas price in wei to use for deployment and funding
-# swap-deployment-gas-price: ""
 ## enable swap
 # swap-enable: false
-## swap blockchain endpoint
-# swap-endpoint: ""
 ## swap factory addresses
 # swap-factory-address: ""
 ## initial deposit if deploying a new chequebook
