@@ -1,9 +1,6 @@
 module github.com/ethersphere/bee/v2
 
 go 1.23
-
-toolchain go1.23.0
-
 require (
 	contrib.go.opencensus.io/exporter/prometheus v0.4.2
 	github.com/armon/go-radix v1.0.0
@@ -44,11 +41,11 @@ require (
 	gitlab.com/nolash/go-mockbytes v0.0.7
 	go.uber.org/atomic v1.11.0
 	go.uber.org/goleak v1.3.0
-	golang.org/x/crypto v0.23.0
-	golang.org/x/net v0.25.0
-	golang.org/x/sync v0.7.0
-	golang.org/x/sys v0.20.0
-	golang.org/x/term v0.20.0
+	golang.org/x/crypto v0.35.0
+	golang.org/x/net v0.36.0
+	golang.org/x/sync v0.11.0
+	golang.org/x/sys v0.30.0
+	golang.org/x/term v0.29.0
 	golang.org/x/time v0.5.0
 	gopkg.in/yaml.v2 v2.4.0
 	resenje.org/multex v0.1.0
@@ -167,8 +164,8 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/mod v0.17.0 // indirect
-	golang.org/x/text v0.15.0 // indirect
-	golang.org/x/tools v0.20.0 // indirect
+	golang.org/x/text v0.22.0 // indirect
+	golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d // indirect
 	google.golang.org/protobuf v1.33.0 // indirect
 	gopkg.in/ini.v1 v1.57.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
