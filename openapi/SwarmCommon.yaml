@@ -830,24 +830,6 @@ components:
         isRetrievable:
           type: boolean
 
-    SecurityTokenRequest:
-      type: object
-      properties:
-        role:
-          type: string
-          nullable: false
-        expiry:
-          type: integer
-          nullable: false
-          description: Expiration time in seconds
-
-    SecurityTokenResponse:
-      type: object
-      properties:
-        key:
-          type: string
-          nullable: false
-
     LoggerExp:
       type: string
       description: Base 64 encoded regular expression or subsystem string.
