@@ -461,7 +461,7 @@ func NewBee(
 
 		apiService.Mount()
 		apiService.SetProbe(probe)
-		apiService.SetWarmupTime(time.Now().Add(o.WarmupTime))
+		apiService.SetIsWarmingUp(true)
 		apiService.SetSwarmAddress(&swarmAddress)
 
 		apiServer := &http.Server{
@@ -1004,6 +1004,10 @@ func NewBee(
 	if err = p2ps.AddProtocol(pullSyncProtocolSpec); err != nil {
 		return nil, fmt.Errorf("pullsync protocol: %w", err)
 	}
+
+	time.AfterFunc(warmupTime, func() {
+		apiService.SetIsWarmingUp(false)
+	})
 
 	stakingContractAddress := chainCfg.StakingAddress
 	if o.StakingContractAddress != "" {

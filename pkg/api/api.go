@@ -220,7 +220,7 @@ type Service struct {
 	redistributionAgent *storageincentives.Agent
 
 	statusService *status.Service
-	warmupTime    time.Time
+	isWarmingUp   bool
 }
 
 func (s *Service) SetP2P(p2p p2p.DebugService) {
@@ -388,8 +388,8 @@ func (s *Service) SetProbe(probe *Probe) {
 	s.probe = probe
 }
 
-func (s *Service) SetWarmupTime(t time.Time) {
-	s.warmupTime = t
+func (s *Service) SetIsWarmingUp(v bool) {
+	s.isWarmingUp = v
 }
 
 // Close hangs up running websockets on shutdown.

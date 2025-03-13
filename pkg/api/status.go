@@ -97,7 +97,7 @@ func (s *Service) statusGetHandler(w http.ResponseWriter, _ *http.Request) {
 		IsReachable:             ss.IsReachable,
 		LastSyncedBlock:         ss.LastSyncedBlock,
 		CommittedDepth:          uint8(ss.CommittedDepth),
-		IsWarmingUp:             time.Now().Before(s.warmupTime),
+		IsWarmingUp:             s.isWarmingUp,
 	})
 }
 

@@ -8,7 +8,6 @@ import (
 	"context"
 	"net/http"
 	"testing"
-	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/api"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
@@ -42,7 +41,6 @@ func TestGetStatus(t *testing.T) {
 			IsReachable:             true,
 			LastSyncedBlock:         6092500,
 			CommittedDepth:          1,
-			IsWarmingUp:             true,
 		}
 
 		ssMock := &statusSnapshotMock{
@@ -69,7 +67,6 @@ func TestGetStatus(t *testing.T) {
 		client, _, _, _ := newTestServer(t, testServerOptions{
 			BeeMode:    mode,
 			NodeStatus: statusSvc,
-			WarmupTime: time.Second,
 		})
 
 		jsonhttptest.Request(t, client, http.MethodGet, url, http.StatusOK,
