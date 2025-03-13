@@ -31,6 +31,7 @@ type statusSnapshotResponse struct {
 	IsReachable             bool    `json:"isReachable"`
 	LastSyncedBlock         uint64  `json:"lastSyncedBlock"`
 	CommittedDepth          uint8   `json:"committedDepth"`
+	IsWarmingUp             bool    `json:"isWarmingUp"`
 }
 
 type statusResponse struct {
@@ -96,6 +97,7 @@ func (s *Service) statusGetHandler(w http.ResponseWriter, _ *http.Request) {
 		IsReachable:             ss.IsReachable,
 		LastSyncedBlock:         ss.LastSyncedBlock,
 		CommittedDepth:          uint8(ss.CommittedDepth),
+		IsWarmingUp:             time.Now().Before(s.warmupTime),
 	})
 }
 

@@ -461,7 +461,7 @@ func NewBee(
 
 		apiService.Mount()
 		apiService.SetProbe(probe)
-
+		apiService.SetWarmupTime(time.Now().Add(o.WarmupTime))
 		apiService.SetSwarmAddress(&swarmAddress)
 
 		apiServer := &http.Server{

@@ -932,6 +932,8 @@ components:
           type: integer
         committedDepth:
           type: integer
+        isWarmingUp:
+          type: boolean
 
     StatusPeersResponse:
       type: object

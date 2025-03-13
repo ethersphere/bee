@@ -135,6 +135,7 @@ type testServerOptions struct {
 	FullAPIDisabled     bool
 	ChequebookDisabled  bool
 	SwapDisabled        bool
+	WarmupTime          time.Duration
 }
 
 func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.Conn, string, *chanStorer) {
@@ -225,6 +226,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 
 	s.SetSwarmAddress(&o.Overlay)
 	s.SetProbe(o.Probe)
+	s.SetWarmupTime(time.Now().Add(o.WarmupTime))
 
 	noOpTracer, tracerCloser, _ := tracing.NewTracer(&tracing.Options{
 		Enabled: false,
