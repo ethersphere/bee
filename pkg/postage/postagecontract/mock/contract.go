@@ -40,7 +40,7 @@ func (s *contractMock) Paused(ctx context.Context) (bool, error) {
 	return s.paused(ctx)
 }
 
-// Option is a an option passed to New
+// Option is an option passed to New
 type Option func(*contractMock)
 
 // New creates a new mock BatchStore.

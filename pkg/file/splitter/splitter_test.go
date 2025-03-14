@@ -36,7 +36,7 @@ func TestSplitIncomplete(t *testing.T) {
 }
 
 // TestSplitSingleChunk hashes one single chunk and verifies
-// that that corresponding chunk exist in the store afterwards.
+// that corresponding chunk exist in the store afterwards.
 func TestSplitSingleChunk(t *testing.T) {
 	t.Parallel()
 
