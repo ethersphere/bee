@@ -5,9 +5,6 @@ info:
   title: Bee API
   description: "A list of the currently provided Interfaces to interact with the swarm, implementing file operations and sending messages"
 
-security:
-  - {}
-
 externalDocs:
   description: Browse the documentation @ the Swarm Docs
   url: "https://docs.ethswarm.org"
@@ -1175,8 +1172,6 @@ paths:
   "/balances":
     get:
       summary: Get the balances with all known peers including prepaid services
-      security:
-        - bearerAuth: []
       tags:
         - Balance
       responses:
@@ -1194,8 +1189,6 @@ paths:
   "/balances/{address}":
     get:
       summary: Get the balances with a specific peer including prepaid services
-      security:
-        - bearerAuth: []
       tags:
         - Balance
       parameters:
@@ -1222,8 +1215,6 @@ paths:
   "/blocklist":
     get:
       summary: Get a list of blocklisted peers
-      security:
-        - bearerAuth: []
       tags:
         - Connectivity
       responses:
@@ -1241,8 +1232,6 @@ paths:
   "/consumed":
     get:
       summary: Get the past due consumption balances with all known peers
-      security:
-        - bearerAuth: []
       tags:
         - Balance
       responses:
@@ -1260,8 +1249,6 @@ paths:
   "/consumed/{address}":
     get:
       summary: Get the past due consumption balance with a specific peer
-      security:
-        - bearerAuth: []
       tags:
         - Balance
       parameters:
@@ -1288,8 +1275,6 @@ paths:
   "/chequebook/address":
     get:
       summary: Get the address of the chequebook contract used
-      security:
-        - bearerAuth: []
       tags:
         - Chequebook
       responses:
@@ -1303,8 +1288,6 @@ paths:
   "/chequebook/balance":
     get:
       summary: Get the balance of the chequebook
-      security:
-        - bearerAuth: []
       tags:
         - Chequebook
       responses:
@@ -1409,8 +1392,6 @@ paths:
   "/connect/{multiAddress}":
     post:
       summary: Connect to address
-      security:
-        - bearerAuth: []
       tags:
         - Connectivity
       parameters:
@@ -1438,8 +1419,6 @@ paths:
   "/reservestate":
     get:
       summary: Get reserve state
-      security:
-        - bearerAuth: []
       tags:
         - Status
       responses:
@@ -1455,8 +1434,6 @@ paths:
   "/chainstate":
     get:
       summary: Get chain state
-      security:
-        - bearerAuth: []
       tags:
         - Status
       responses:
@@ -1487,8 +1464,6 @@ paths:
   "/peers":
     get:
       summary: Get a list of peers
-      security:
-        - bearerAuth: []
       tags:
         - Connectivity
       responses:
@@ -1504,8 +1479,6 @@ paths:
   "/peers/{address}":
     delete:
       summary: Remove peer
-      security:
-        - bearerAuth: []
       tags:
         - Connectivity
       parameters:
@@ -1532,8 +1505,6 @@ paths:
   "/pingpong/{address}":
     post:
       summary: Try connection to node
-      security:
-        - bearerAuth: []
       tags:
         - Connectivity
       parameters:
@@ -1562,8 +1533,6 @@ paths:
   "/settlements/{address}":
     get:
       summary: Get amount of sent and received from settlements with a peer
-      security:
-        - bearerAuth: []
       tags:
         - Settlements
       parameters:
@@ -1590,8 +1559,6 @@ paths:
   "/settlements":
     get:
       summary: Get settlements with all known peers and total amount sent or received
-      security:
-        - bearerAuth: []
       tags:
         - Settlements
       responses:
@@ -1609,8 +1576,6 @@ paths:
   "/timesettlements":
     get:
       summary: Get time based settlements with all known peers and total amount sent or received
-      security:
-        - bearerAuth: []
       tags:
         - Settlements
       responses:
@@ -1628,8 +1593,6 @@ paths:
   "/topology":
     get:
       summary: Get topology of known network
-      security:
-        - bearerAuth: []
       tags:
         - Connectivity
       responses:
@@ -1643,8 +1606,6 @@ paths:
   "/welcome-message":
     get:
       summary: Get configured P2P welcome message
-      security:
-        - bearerAuth: []
       tags:
         - Connectivity
       responses:
@@ -1660,8 +1621,6 @@ paths:
           description: Default response
     post:
       summary: Set P2P welcome message
-      security:
-        - bearerAuth: []
       tags:
         - Connectivity
       requestBody:
@@ -1686,8 +1645,6 @@ paths:
   "/chequebook/cashout/{peer-id}":
     get:
       summary: Get last cashout action for the peer
-      security:
-        - bearerAuth: []
       parameters:
         - in: path
           name: peer-id
@@ -1712,8 +1669,6 @@ paths:
           description: Default response
     post:
       summary: Cashout the last cheque for the peer
-      security:
-        - bearerAuth: []
       parameters:
         - in: path
           name: peer-id
@@ -1744,8 +1699,6 @@ paths:
   "/chequebook/cheque/{peer-id}":
     get:
       summary: Get last cheques for the peer
-      security:
-        - bearerAuth: []
       parameters:
         - in: path
           name: peer-id
@@ -1772,8 +1725,6 @@ paths:
   "/chequebook/cheque":
     get:
       summary: Get last cheques for all peers
-      security:
-        - bearerAuth: []
       tags:
         - Chequebook
       responses:
@@ -1793,8 +1744,6 @@ paths:
   "/chequebook/deposit":
     post:
       summary: Deposit tokens from overlay address into chequebook
-      security:
-        - bearerAuth: []
       parameters:
         - in: query
           name: amount
@@ -1822,8 +1771,6 @@ paths:
   "/chequebook/withdraw":
     post:
       summary: Withdraw tokens from the chequebook to the overlay address
-      security:
-        - bearerAuth: []
       parameters:
         - in: query
           name: amount
@@ -1943,8 +1890,6 @@ paths:
   "/stamps":
     get:
       summary: Get stamps for this node
-      security:
-        - bearerAuth: []
       tags:
         - Postage Stamps
       responses:
@@ -1970,8 +1915,6 @@ paths:
         description: Swarm address of the stamp
     get:
       summary: Get an individual postage batch status
-      security:
-        - bearerAuth: []
       tags:
         - Postage Stamps
       responses:
@@ -1998,8 +1941,6 @@ paths:
         description: Swarm address of the stamp
     get:
       summary: Get extended bucket data of a batch
-      security:
-        - bearerAuth: []
       tags:
         - Postage Stamps
       responses:
@@ -2019,8 +1960,6 @@ paths:
   "/stamps/{amount}/{depth}":
     post:
       summary: Buy a new postage batch.
-      security:
-        - bearerAuth: []
       description: |
         Be aware, this endpoint creates an on-chain transactions and transfers BZZ from the node's Ethereum account and hence directly manipulates the wallet balance!
       tags:
@@ -2148,8 +2087,6 @@ paths:
   "/batches":
     get:
       summary: Get all globally available batches that were purchased by all nodes.
-      security:
-        - bearerAuth: []
       tags:
         - Postage Stamps
       responses:
@@ -2504,14 +2441,3 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         default:
           description: Default response.
-
-components:
-  securitySchemes:
-    basicAuth:
-      type: http
-      scheme: basic
-
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: SecurityToken
