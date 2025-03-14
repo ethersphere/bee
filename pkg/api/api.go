@@ -50,10 +50,10 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/v2/pkg/status"
 	"github.com/ethersphere/bee/v2/pkg/steward"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storageincentives"
 	"github.com/ethersphere/bee/v2/pkg/storageincentives/staking"
-	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/ethersphere/bee/v2/pkg/topology/lightnode"
@@ -220,6 +220,7 @@ type Service struct {
 	redistributionAgent *storageincentives.Agent
 
 	statusService *status.Service
+	isWarmingUp   bool
 }
 
 func (s *Service) SetP2P(p2p p2p.DebugService) {
@@ -385,6 +386,10 @@ func (s *Service) Configure(signer crypto.Signer, tracer *tracing.Tracer, o Opti
 
 func (s *Service) SetProbe(probe *Probe) {
 	s.probe = probe
+}
+
+func (s *Service) SetIsWarmingUp(v bool) {
+	s.isWarmingUp = v
 }
 
 // Close hangs up running websockets on shutdown.
