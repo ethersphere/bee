@@ -158,7 +158,6 @@ type Options struct {
 	PriceOracleAddress            string
 	RedistributionContractAddress string
 	BlockTime                     time.Duration
-	DeployGasPrice                string
 	WarmupTime                    time.Duration
 	ChainID                       int64
 	Resync                        bool
@@ -258,7 +257,7 @@ func NewBee(
 	if o.ReserveCapacityDoubling < 0 || o.ReserveCapacityDoubling > maxAllowedDoubling {
 		return nil, fmt.Errorf("config reserve capacity doubling has to be between default: 0 and maximum: %d", maxAllowedDoubling)
 	}
-	var shallowReceiptTolerance = maxAllowedDoubling - o.ReserveCapacityDoubling
+	shallowReceiptTolerance := maxAllowedDoubling - o.ReserveCapacityDoubling
 
 	reserveCapacity := (1 << o.ReserveCapacityDoubling) * storer.DefaultReserveCapacity
 
@@ -523,7 +522,6 @@ func NewBee(
 				transactionService,
 				chequebookFactory,
 				o.SwapInitialDeposit,
-				o.DeployGasPrice,
 				erc20Service,
 			)
 			if err != nil {

@@ -49,13 +49,11 @@ const (
 	optionNamePaymentEarly                 = "payment-early-percent"
 	optionNameResolverEndpoints            = "resolver-options"
 	optionNameBootnodeMode                 = "bootnode-mode"
-	optionNameSwapEndpoint                 = "swap-endpoint" // deprecated: use rpc endpoint instead
 	optionNameBlockchainRpcEndpoint        = "blockchain-rpc-endpoint"
 	optionNameSwapFactoryAddress           = "swap-factory-address"
 	optionNameSwapInitialDeposit           = "swap-initial-deposit"
 	optionNameSwapEnable                   = "swap-enable"
 	optionNameChequebookEnable             = "chequebook-enable"
-	optionNameSwapDeploymentGasPrice       = "swap-deployment-gas-price"
 	optionNameFullNode                     = "full-node"
 	optionNamePostageContractAddress       = "postage-stamp-address"
 	optionNamePostageContractStartBlock    = "postage-stamp-start-block"
@@ -261,7 +259,6 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Int64(optionNamePaymentEarly, 50, "percentage below the peers payment threshold when we initiate settlement")
 	cmd.Flags().StringSlice(optionNameResolverEndpoints, []string{}, "ENS compatible API endpoint for a TLD and with contract address, can be repeated, format [tld:][contract-addr@]url")
 	cmd.Flags().Bool(optionNameBootnodeMode, false, "cause the node to always accept incoming connections")
-	cmd.Flags().String(optionNameSwapEndpoint, "", "swap blockchain endpoint") // deprecated: use rpc endpoint instead
 	cmd.Flags().String(optionNameBlockchainRpcEndpoint, "", "rpc blockchain endpoint")
 	cmd.Flags().String(optionNameSwapFactoryAddress, "", "swap factory addresses")
 	cmd.Flags().String(optionNameSwapInitialDeposit, "0", "initial deposit if deploying a new chequebook")
@@ -274,7 +271,6 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameRedistributionAddress, "", "redistribution contract address")
 	cmd.Flags().String(optionNameStakingAddress, "", "staking contract address")
 	cmd.Flags().Uint64(optionNameBlockTime, 5, "chain block time")
-	cmd.Flags().String(optionNameSwapDeploymentGasPrice, "", "gas price in wei to use for deployment and funding")
 	cmd.Flags().Duration(optionWarmUpTime, time.Minute*5, "time to warmup the node before some major protocols can be kicked off")
 	cmd.Flags().Bool(optionNameMainNet, true, "triggers connect to main net bootnodes.")
 	cmd.Flags().Bool(optionNameRetrievalCaching, true, "enable forwarded content caching")
