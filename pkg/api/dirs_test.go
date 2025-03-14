@@ -49,7 +49,7 @@ func TestDirs(t *testing.T) {
 			jsonhttptest.WithRequestBody(bytes.NewReader(nil)),
 			jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: api.InvalidRequest.Error(),
+				Message: api.ErrInvalidRequest.Error(),
 				Code:    http.StatusBadRequest,
 			}),
 			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, api.ContentTypeTar),
@@ -66,7 +66,7 @@ func TestDirs(t *testing.T) {
 			jsonhttptest.WithRequestBody(file),
 			jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: api.DirectoryStoreError.Error(),
+				Message: api.ErrDirectoryStore.Error(),
 				Code:    http.StatusInternalServerError,
 			}),
 			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, api.ContentTypeTar),
@@ -86,7 +86,7 @@ func TestDirs(t *testing.T) {
 			jsonhttptest.WithRequestBody(tarReader),
 			jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: api.InvalidContentType.Error(),
+				Message: api.ErrInvalidContentType.Error(),
 				Code:    http.StatusBadRequest,
 			}),
 			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "other"),
@@ -372,7 +372,6 @@ func TestDirs(t *testing.T) {
 				// check error document
 				validateAltPath(t, "_non_existent_file_path_", errorDocumentPath)
 			}
-
 		}
 		t.Run(tc.name, func(t *testing.T) {
 			t.Run("tar_upload", func(t *testing.T) {
@@ -520,7 +519,7 @@ func TestDirsEmtpyDir(t *testing.T) {
 		jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "true"),
 		jsonhttptest.WithRequestHeader(api.ContentTypeHeader, api.ContentTypeTar),
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: api.EmptyDir.Error(),
+			Message: api.ErrEmptyDir.Error(),
 			Code:    http.StatusBadRequest,
 		}),
 	)
@@ -543,7 +542,7 @@ func tarFiles(t *testing.T, files []f) *bytes.Buffer {
 		// create tar header and write it
 		hdr := &tar.Header{
 			Name: filePath,
-			Mode: 0600,
+			Mode: 0o600,
 			Size: int64(len(file.data)),
 		}
 		if err := tw.WriteHeader(hdr); err != nil {
@@ -572,7 +571,7 @@ func tarEmptyDir(t *testing.T) *bytes.Buffer {
 
 	hdr := &tar.Header{
 		Name: "empty/",
-		Mode: 0600,
+		Mode: 0o600,
 	}
 
 	if err := tw.WriteHeader(hdr); err != nil {
@@ -605,11 +604,9 @@ func multipartFiles(t *testing.T, files []f) (*bytes.Buffer, string) {
 		contentType := file.header.Get(api.ContentTypeHeader)
 		if contentType != "" {
 			hdr.Set(api.ContentTypeHeader, contentType)
-
 		}
 		if len(file.data) > 0 {
 			hdr.Set(api.ContentLengthHeader, strconv.Itoa(len(file.data)))
-
 		}
 		part, err := mw.CreatePart(hdr)
 		if err != nil {
