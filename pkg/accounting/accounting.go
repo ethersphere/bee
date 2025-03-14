@@ -134,7 +134,7 @@ type accountingPeer struct {
 	refreshReservedBalance         *big.Int // amount debt potentially decreased during an ongoing refreshment
 	ghostBalance                   *big.Int // amount potentially could have been debited for but was not
 	paymentThreshold               *big.Int // the threshold at which the peer expects us to pay
-	earlyPayment                   *big.Int // individual early payment threshold calculated from from payment threshold and early payment percentage
+	earlyPayment                   *big.Int // individual early payment threshold calculated from payment threshold and early payment percentage
 	paymentThresholdForPeer        *big.Int // individual payment threshold at which the peer is expected to pay
 	disconnectLimit                *big.Int // individual disconnect threshold calculated from tolerance and payment threshold for peer
 	refreshTimestampMilliseconds   int64    // last time we attempted and succeeded time-based settlement

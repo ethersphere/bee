@@ -79,7 +79,7 @@ func TestDelivery(t *testing.T) {
 	)
 
 	// client mock storer does not store any data at this point
-	// but should be checked at at the end of the test for the
+	// but should be checked at the end of the test for the
 	// presence of the chunk address key and value to ensure delivery
 	// was successful
 	clientMockStorer := &testStorer{ChunkStore: inmemchunkstore.New()}

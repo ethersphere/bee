@@ -52,7 +52,7 @@ func (s *stakingContractMock) IsOverlayFrozen(ctx context.Context, block uint64)
 	return s.isFrozen(ctx, block)
 }
 
-// Option is a an option passed to New
+// Option is an option passed to New
 type Option func(mock *stakingContractMock)
 
 // New creates a new mock BatchStore.
