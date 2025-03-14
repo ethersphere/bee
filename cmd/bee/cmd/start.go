@@ -273,12 +273,6 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		return nil, errors.New("static nodes can only be configured on bootnodes")
 	}
 
-	swapEndpoint := c.config.GetString(optionNameSwapEndpoint)
-	blockchainRpcEndpoint := c.config.GetString(optionNameBlockchainRpcEndpoint)
-	if swapEndpoint != "" {
-		blockchainRpcEndpoint = swapEndpoint
-	}
-
 	var neighborhoodSuggester string
 	if networkID == chaincfg.Mainnet.NetworkID {
 		neighborhoodSuggester = c.config.GetString(optionNameNeighborhoodSuggester)
@@ -307,7 +301,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		PaymentEarly:                  c.config.GetInt64(optionNamePaymentEarly),
 		ResolverConnectionCfgs:        resolverCfgs,
 		BootnodeMode:                  bootNode,
-		BlockchainRpcEndpoint:         blockchainRpcEndpoint,
+		BlockchainRpcEndpoint:         c.config.GetString(optionNameBlockchainRpcEndpoint),
 		SwapFactoryAddress:            c.config.GetString(optionNameSwapFactoryAddress),
 		SwapInitialDeposit:            c.config.GetString(optionNameSwapInitialDeposit),
 		SwapEnable:                    c.config.GetBool(optionNameSwapEnable),
@@ -319,7 +313,6 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		RedistributionContractAddress: c.config.GetString(optionNameRedistributionAddress),
 		StakingContractAddress:        c.config.GetString(optionNameStakingAddress),
 		BlockTime:                     networkConfig.blockTime,
-		DeployGasPrice:                c.config.GetString(optionNameSwapDeploymentGasPrice),
 		WarmupTime:                    c.config.GetDuration(optionWarmUpTime),
 		ChainID:                       networkConfig.chainID,
 		RetrievalCaching:              c.config.GetBool(optionNameRetrievalCaching),
