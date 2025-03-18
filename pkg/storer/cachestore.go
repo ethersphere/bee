@@ -83,6 +83,18 @@ func (db *DB) Lookup() storage.Getter {
 	}
 }
 
+// Metadata returns the metadata of the chunk from the cache.
+func (db *DB) CacheMetadata(address swarm.Address) (*storage.CacheMetadata, error) {
+	entry, err := db.cacheObj.Metadata(db.storage.IndexStore(), address)
+	if err != nil {
+		return nil, err
+	}
+	return &storage.CacheMetadata{
+		Address:         entry.Address,
+		CreateTimestamp: entry.CreateTimestamp,
+	}, nil
+}
+
 // Cache is the implementation of the CacheStore.Cache method.
 func (db *DB) Cache() storage.Putter {
 	return putterWithMetrics{

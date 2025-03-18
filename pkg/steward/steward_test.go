@@ -124,7 +124,7 @@ type localRetriever struct {
 	retrievedChunks map[string]struct{}
 }
 
-func (lr *localRetriever) RetrieveChunk(ctx context.Context, addr, sourceAddr swarm.Address) (chunk swarm.Chunk, err error) {
+func (lr *localRetriever) RetrieveChunk(ctx context.Context, address, sourcePeerAddr swarm.Address, maxSocCachedDur time.Duration) (chunk swarm.Chunk, err error) {
 	ch, err := lr.Get(ctx, addr)
 	if err != nil {
 		return nil, err

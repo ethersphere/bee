@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/ethersphere/bee/v2/pkg/soc"
 	"runtime"
 	"strconv"
 	"sync/atomic"
@@ -26,7 +27,7 @@ var now = time.Now
 // exported for migration
 type CacheEntryItem = cacheEntry
 
-const cacheEntrySize = swarm.HashSize + 8
+const cacheEntrySize = swarm.HashSize + 32
 
 var _ storage.Item = (*cacheEntry)(nil)
 
@@ -70,6 +71,16 @@ func (c *Cache) Capacity() int64 {
 	return int64(c.capacity)
 }
 
+// Metadata returns the metadata of the chunk from the cache.
+func (c *Cache) Metadata(st storage.Reader, address swarm.Address) (*CacheEntryItem, error) {
+	entry := &cacheEntry{Address: address}
+	err := st.Get(entry)
+	if err != nil {
+		return nil, err
+	}
+	return entry, nil
+}
+
 // Putter returns a Storage.Putter instance which adds the chunk to the underlying
 // chunkstore and also adds a Cache entry for the chunk.
 func (c *Cache) Putter(store transaction.Storage) storage.Putter {
@@ -87,12 +98,14 @@ func (c *Cache) Putter(store transaction.Storage) storage.Putter {
 			return fmt.Errorf("failed checking has cache entry: %w", err)
 		}
 
-		// if chunk is already part of cache, return found.
-		if found {
+		_, err = soc.FromChunk(chunk)
+		// if a cac is already part of cache, return found.
+		if found && err != nil {
 			return nil
 		}
 
 		newEntry.AccessTimestamp = now().UnixNano()
+		newEntry.CreateTimestamp = newEntry.AccessTimestamp
 		err = trx.IndexStore().Put(newEntry)
 		if err != nil {
 			return fmt.Errorf("failed adding cache entry: %w", err)
@@ -104,6 +117,10 @@ func (c *Cache) Putter(store transaction.Storage) storage.Putter {
 		})
 		if err != nil {
 			return fmt.Errorf("failed adding cache order index: %w", err)
+		}
+
+		if found {
+			return nil
 		}
 
 		err = trx.ChunkStore().Put(ctx, chunk)
@@ -321,6 +338,7 @@ func (c *Cache) ShallowCopy(
 type cacheEntry struct {
 	Address         swarm.Address
 	AccessTimestamp int64
+	CreateTimestamp int64
 }
 
 func (c *cacheEntry) ID() string { return c.Address.ByteString() }
@@ -333,10 +351,15 @@ func (c *cacheEntry) Marshal() ([]byte, error) {
 		return nil, errMarshalCacheEntryInvalidAddress
 	}
 	if c.AccessTimestamp <= 0 {
-		return nil, errMarshalCacheEntryInvalidTimestamp
+		return nil, fmt.Errorf("acces timestamp: %w", errMarshalCacheEntryInvalidTimestamp)
+	}
+	if c.CreateTimestamp <= 0 {
+		return nil, fmt.Errorf("create timestamp: %w", errMarshalCacheEntryInvalidTimestamp)
 	}
 	copy(entryBuf[:swarm.HashSize], c.Address.Bytes())
 	binary.LittleEndian.PutUint64(entryBuf[swarm.HashSize:], uint64(c.AccessTimestamp))
+	binary.LittleEndian.PutUint64(entryBuf[swarm.HashSize+8:], uint64(c.AccessTimestamp))
+
 	return entryBuf, nil
 }
 
@@ -347,6 +370,7 @@ func (c *cacheEntry) Unmarshal(buf []byte) error {
 	newEntry := new(cacheEntry)
 	newEntry.Address = swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), buf[:swarm.HashSize]...))
 	newEntry.AccessTimestamp = int64(binary.LittleEndian.Uint64(buf[swarm.HashSize:]))
+	newEntry.CreateTimestamp = int64(binary.LittleEndian.Uint64(buf[swarm.HashSize+8:]))
 	*c = *newEntry
 	return nil
 }
@@ -358,14 +382,16 @@ func (c *cacheEntry) Clone() storage.Item {
 	return &cacheEntry{
 		Address:         c.Address.Clone(),
 		AccessTimestamp: c.AccessTimestamp,
+		CreateTimestamp: c.CreateTimestamp,
 	}
 }
 
 func (c cacheEntry) String() string {
 	return fmt.Sprintf(
-		"cacheEntry { Address: %s AccessTimestamp: %s }",
+		"cacheEntry { Address: %s AccessTimestamp: %s, CreateTimestamp: %s }",
 		c.Address,
 		time.Unix(c.AccessTimestamp, 0).UTC().Format(time.RFC3339),
+		time.Unix(c.CreateTimestamp, 0).UTC().Format(time.RFC3339),
 	)
 }
 

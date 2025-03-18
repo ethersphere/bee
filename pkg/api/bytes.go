@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 	"net/http"
 	"strconv"
 
@@ -204,7 +205,7 @@ func (s *Service) bytesHeadHandler(w http.ResponseWriter, r *http.Request) {
 		address = v
 	}
 
-	getter := s.storer.Download(true)
+	getter := s.storer.Download(&storer.DownloadOpts{Cache: true})
 	ch, err := getter.Get(r.Context(), address)
 	if err != nil {
 		logger.Debug("get root chunk failed", "chunk_address", address, "error", err)

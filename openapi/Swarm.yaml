@@ -933,6 +933,7 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyFallbackModeParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmChunkRetrievalTimeoutParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmMaxSocCacheDur"
       responses:
         "200":
           description: Related Single Owner Chunk data

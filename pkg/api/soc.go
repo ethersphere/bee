@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/cac"
@@ -229,7 +230,8 @@ func (s *Service) socGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	headers := struct {
-		OnlyRootChunk bool `map:"Swarm-Only-Root-Chunk"`
+		OnlyRootChunk  bool           `map:"Swarm-Only-Root-Chunk"`
+		MaxSocCacheDur *time.Duration `map:"Swarm-Max-Soc-Cache-Dur"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -243,7 +245,11 @@ func (s *Service) socGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	getter := s.storer.Download(true)
+	maxSocCacheDur := time.Duration(-1)
+	if headers.MaxSocCacheDur != nil {
+		maxSocCacheDur = *headers.MaxSocCacheDur
+	}
+	getter := s.storer.Download(&storer.DownloadOpts{Cache: true, MaxSocCacheDur: &maxSocCacheDur})
 	sch, err := getter.Get(r.Context(), address)
 	if err != nil {
 		logger.Error(err, "soc retrieval has been failed")

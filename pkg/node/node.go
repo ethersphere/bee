@@ -1115,7 +1115,7 @@ func NewBee(
 	)
 	b.resolverCloser = multiResolver
 
-	feedFactory := factory.New(localStore.Download(true))
+	feedFactory := factory.New(localStore.Download(nil))
 	steward := steward.New(localStore, retrieval, localStore.Cache())
 
 	extraOpts := api.ExtraOptions{
@@ -1340,7 +1340,7 @@ func (b *Bee) Shutdown() error {
 	return mErr
 }
 
-var ErrShutdownInProgress error = errors.New("shutdown in progress")
+var ErrShutdownInProgress = errors.New("shutdown in progress")
 
 func isChainEnabled(o *Options, swapEndpoint string, logger log.Logger) bool {
 	chainDisabled := swapEndpoint == ""

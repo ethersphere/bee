@@ -188,6 +188,16 @@ func (m *mockStorer) Lookup() storage.Getter {
 	return m.chunkStore
 }
 
+func (m *mockStorer) CacheMetadata(address swarm.Address) (*storage.CacheMetadata, error) {
+	c, err := m.chunkStore.Get(context.Background(), address)
+	if err != nil {
+		return nil, err
+	}
+	return &storage.CacheMetadata{
+		Address: c.Address(),
+	}, nil
+}
+
 func (m *mockStorer) Cache() storage.Putter {
 	return m.chunkStore
 }
@@ -206,7 +216,7 @@ func (m *mockStorer) DirectUpload() storer.PutterSession {
 	}
 }
 
-func (m *mockStorer) Download(_ bool) storage.Getter {
+func (m *mockStorer) Download(opts *storer.DownloadOpts) storage.Getter {
 	return m.chunkStore
 }
 

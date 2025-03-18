@@ -326,3 +326,9 @@ func IdentityAddress(chunk swarm.Chunk) (swarm.Address, error) {
 
 	return swarm.ZeroAddress, fmt.Errorf("identity address failed on chunk %s: %w", chunk, ErrUnknownChunkType)
 }
+
+// CacheMetadata represents metadata about an entry in the cache store.
+type CacheMetadata struct {
+	Address         swarm.Address
+	CreateTimestamp int64
+}

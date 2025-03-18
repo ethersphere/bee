@@ -254,7 +254,7 @@ func (s *Service) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 		address = v
 	}
 
-	chunk, err := s.storer.Download(cache).Get(r.Context(), address)
+	chunk, err := s.storer.Download(&storer.DownloadOpts{Cache: cache}).Get(r.Context(), address)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			loggerV1.Debug("chunk not found", "address", address)

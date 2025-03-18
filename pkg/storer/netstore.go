@@ -7,15 +7,17 @@ package storer
 import (
 	"context"
 	"errors"
-
+	"fmt"
 	"github.com/ethersphere/bee/v2/pkg/pusher"
 	"github.com/ethersphere/bee/v2/pkg/pushsync"
+	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/opentracing/opentracing-go/ext"
 	olog "github.com/opentracing/opentracing-go/log"
 	"golang.org/x/sync/errgroup"
+	"time"
 )
 
 // DirectUpload is the implementation of the NetStore.DirectUpload method.
@@ -78,8 +80,18 @@ func (db *DB) DirectUpload() PutterSession {
 	}
 }
 
+type DownloadOpts struct {
+	Cache          bool
+	MaxSocCacheDur *time.Duration
+}
+
 // Download is the implementation of the NetStore.Download method.
-func (db *DB) Download(cache bool) storage.Getter {
+func (db *DB) Download(opts *DownloadOpts) storage.Getter {
+	maxSocCacheDur := time.Duration(-1)
+	if opts != nil && opts.MaxSocCacheDur != nil {
+		maxSocCacheDur = *opts.MaxSocCacheDur
+	}
+	cache := opts != nil && opts.Cache
 	return getterWithMetrics{
 		storage.GetterFunc(func(ctx context.Context, address swarm.Address) (ch swarm.Chunk, err error) {
 
@@ -93,16 +105,49 @@ func (db *DB) Download(cache bool) storage.Getter {
 				span.Finish()
 			}()
 
+			var cachedCh swarm.Chunk
 			ch, err = db.Lookup().Get(ctx, address)
 			switch {
 			case err == nil:
 				span.LogFields(olog.String("step", "chunk found locally"))
-				return ch, nil
+				sch, err := soc.FromChunk(ch)
+				if err != nil {
+					return ch, nil
+				}
+				if maxSocCacheDur < 0 {
+					return ch, nil
+				}
+				expired := false
+				m, err := db.CacheMetadata(address)
+				if err != nil {
+					if !errors.Is(err, storage.ErrNotFound) {
+						return nil, fmt.Errorf("get metadata: %w", err)
+					}
+					expired = true
+				} else {
+					expired = time.Since(time.Unix(0, m.CreateTimestamp)) > maxSocCacheDur
+				}
+				if !expired {
+					return ch, nil
+				}
+				socAddr, err := sch.Address()
+				if err != nil {
+					return nil, err
+				}
+				db.logger.Debug("soc expired in cache. Retrieving from network", "address", socAddr)
+				cachedCh = ch
+				fallthrough
 			case errors.Is(err, storage.ErrNotFound):
 				span.LogFields(olog.String("step", "retrieve chunk from network"))
 				if db.retrieval != nil {
 					// if chunk is not found locally, retrieve it from the network
-					ch, err = db.retrieval.RetrieveChunk(ctx, address, swarm.ZeroAddress)
+					ch, err = db.retrieval.RetrieveChunk(ctx, address, swarm.ZeroAddress, maxSocCacheDur)
+
+					// if chunk cannot be retried from the network, return the cached chunk if it exists
+					if (errors.Is(err, storage.ErrNotFound) || errors.Is(err, topology.ErrNotFound)) && cachedCh != nil {
+						ch = cachedCh
+						err = nil
+					}
 					if err == nil && cache {
 						select {
 						case <-ctx.Done():

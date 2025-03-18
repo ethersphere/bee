@@ -20,10 +20,10 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/pricer"
-	pb "github.com/ethersphere/bee/v2/pkg/retrieval/pb"
+	"github.com/ethersphere/bee/v2/pkg/retrieval/pb"
 	"github.com/ethersphere/bee/v2/pkg/skippeers"
 	"github.com/ethersphere/bee/v2/pkg/soc"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
@@ -38,7 +38,7 @@ const loggerName = "retrieval"
 
 const (
 	protocolName    = "retrieval"
-	protocolVersion = "1.4.0"
+	protocolVersion = "1.4.1"
 	streamName      = "retrieval"
 )
 
@@ -50,7 +50,7 @@ type Interface interface {
 	// a source peer address, for the case that we are requesting the chunk for another peer. In case the request
 	// originates at the current node (i.e. no forwarding involved), the caller should use swarm.ZeroAddress
 	// as the value for sourcePeerAddress.
-	RetrieveChunk(ctx context.Context, address, sourcePeerAddr swarm.Address) (chunk swarm.Chunk, err error)
+	RetrieveChunk(ctx context.Context, address, sourcePeerAddr swarm.Address, maxSocCachedDur time.Duration) (chunk swarm.Chunk, err error)
 }
 
 type retrievalResult struct {
@@ -62,6 +62,7 @@ type retrievalResult struct {
 type Storer interface {
 	Cache() storage.Putter
 	Lookup() storage.Getter
+	CacheMetadata(address swarm.Address) (*storage.CacheMetadata, error)
 }
 
 type Service struct {
@@ -131,7 +132,7 @@ const (
 	maxMultiplexForwards = 2
 )
 
-func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr swarm.Address) (swarm.Chunk, error) {
+func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr swarm.Address, maxSocCachedDur time.Duration) (swarm.Chunk, error) {
 	loggerV1 := s.logger
 
 	s.metrics.RequestCounter.Inc()
@@ -263,7 +264,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 				go func() {
 					span, _, ctx := s.tracer.FollowSpanFromContext(spanCtx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: chunkAddr.String()})
 					defer span.Finish()
-					s.retrieveChunk(ctx, quit, chunkAddr, peer, resultC, action, span)
+					s.retrieveChunk(ctx, quit, chunkAddr, peer, resultC, action, span, 0)
 				}()
 
 			case res := <-resultC:
@@ -297,7 +298,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 	return v, nil
 }
 
-func (s *Service) retrieveChunk(ctx context.Context, quit chan struct{}, chunkAddr, peer swarm.Address, result chan retrievalResult, action accounting.Action, span opentracing.Span) {
+func (s *Service) retrieveChunk(ctx context.Context, quit chan struct{}, chunkAddr, peer swarm.Address, result chan retrievalResult, action accounting.Action, span opentracing.Span, maxSocCachedDur time.Duration) {
 
 	var (
 		startTime = time.Now()
@@ -338,7 +339,7 @@ func (s *Service) retrieveChunk(ctx context.Context, quit chan struct{}, chunkAd
 	}()
 
 	w, r := protobuf.NewWriterAndReader(stream)
-	err = w.WriteMsgWithContext(ctx, &pb.Request{Addr: chunkAddr.Bytes()})
+	err = w.WriteMsgWithContext(ctx, &pb.Request{Addr: chunkAddr.Bytes(), MaxSocCacheDur: maxSocCachedDur.Nanoseconds()})
 	if err != nil {
 		err = fmt.Errorf("write request: %w peer %s", err, peer.String())
 		return
@@ -466,13 +467,42 @@ func (s *Service) handler(p2pctx context.Context, p p2p.Peer, stream p2p.Stream)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			// forward the request
-			chunk, err = s.RetrieveChunk(ctx, addr, p.Address)
+			chunk, err = s.RetrieveChunk(ctx, addr, p.Address, time.Duration(req.MaxSocCacheDur))
 			if err != nil {
 				return fmt.Errorf("retrieve chunk: %w", err)
 			}
 			forwarded = true
 		} else {
 			return fmt.Errorf("get from store: %w", err)
+		}
+	}
+
+	// Checks if the cached SOC is older than the requested duration.
+	// If it is, it will try to retrieve the chunk from the network, falling back to the expired chunk.
+	_, socErr := soc.FromChunk(chunk)
+	if err == nil && socErr == nil && !forwarded && req.MaxSocCacheDur >= 0 {
+		expired := false
+		m, err := s.storer.CacheMetadata(addr)
+		if err != nil {
+			if !errors.Is(err, storage.ErrNotFound) {
+				return fmt.Errorf("get metadata: %w", err)
+			}
+			expired = true // if we cannot retrieve metadata, we assume it is expired
+		} else {
+			expired = time.Since(time.Unix(0, m.CreateTimestamp)) > time.Duration(req.MaxSocCacheDur)
+		}
+
+		if expired {
+			chunk1, err := s.RetrieveChunk(ctx, addr, p.Address, 0)
+			if err != nil {
+				if !errors.Is(err, storage.ErrNotFound) && !errors.Is(err, topology.ErrNotFound) {
+					return fmt.Errorf("retrieve chunk: %w", err)
+				}
+				s.logger.Debug("cannot retrieve fresh SOC from network, returning expired cached SOC", "chunk", addr)
+			} else {
+				chunk = chunk1
+				forwarded = true
+			}
 		}
 	}
 

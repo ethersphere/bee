@@ -24,7 +24,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/pricer"
 	pricermock "github.com/ethersphere/bee/v2/pkg/pricer/mock"
 	"github.com/ethersphere/bee/v2/pkg/retrieval"
-	pb "github.com/ethersphere/bee/v2/pkg/retrieval/pb"
+	"github.com/ethersphere/bee/v2/pkg/retrieval/pb"
 	"github.com/ethersphere/bee/v2/pkg/spinlock"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
@@ -49,6 +49,14 @@ type testStorer struct {
 func (t *testStorer) Lookup() storage.Getter { return t.ChunkStore }
 
 func (t *testStorer) Cache() storage.Putter { return t.ChunkStore }
+
+func (t *testStorer) CacheMetadata(address swarm.Address) (*storage.CacheMetadata, error) {
+	ch, err := t.ChunkStore.Get(context.Background(), address)
+	if err != nil {
+		return nil, err
+	}
+	return &storage.CacheMetadata{Address: ch.Address()}, nil
+}
 
 // TestDelivery tests that a naive request -> delivery flow works.
 func TestDelivery(t *testing.T) {
@@ -89,7 +97,7 @@ func TestDelivery(t *testing.T) {
 	client := createRetrieval(t, clientAddr, clientMockStorer, recorder, mt, logger, clientMockAccounting, pricerMock, nil, false)
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
-	v, err := client.RetrieveChunk(ctx, chunk.Address(), swarm.ZeroAddress)
+	v, err := client.RetrieveChunk(ctx, chunk.Address(), swarm.ZeroAddress, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +226,7 @@ func TestWaitForInflight(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*30)
 	defer cancel()
 
-	v, err := client.RetrieveChunk(ctx, chunk.Address(), swarm.ZeroAddress)
+	v, err := client.RetrieveChunk(ctx, chunk.Address(), swarm.ZeroAddress, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +266,7 @@ func TestRetrieveChunk(t *testing.T) {
 
 		client := createRetrieval(t, clientAddress, nil, recorder, mt, logger, accountingmock.NewAccounting(), pricer, nil, false)
 
-		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress)
+		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -325,7 +333,7 @@ func TestRetrieveChunk(t *testing.T) {
 			t.Fatalf("forwarder node already has chunk")
 		}
 
-		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress)
+		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -392,7 +400,7 @@ func TestRetrieveChunk(t *testing.T) {
 			false,
 		)
 
-		_, err := client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress)
+		_, err := client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress, 0)
 		if err == nil {
 			t.Fatal("should have received an error")
 		}
@@ -473,7 +481,7 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 
 		client := createRetrieval(t, clientAddress, nil, recorder, closetPeers, logger, accountingmock.NewAccounting(), pricerMock, nil, false)
 
-		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress)
+		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -511,7 +519,7 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 
 		client := createRetrieval(t, clientAddress, nil, recorder, closetPeers, logger, accountingmock.NewAccounting(), pricerMock, nil, false)
 
-		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress)
+		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -578,7 +586,7 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 
 		client := createRetrieval(t, clientAddress, nil, recorder, closetPeers, logger, clientMockAccounting, pricerMock, nil, false)
 
-		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress)
+		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -636,7 +644,7 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 			t.Fatalf("forwarder node already has chunk")
 		}
 
-		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress)
+		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress, 0)
 		if err != nil {
 			t.Fatal(err)
 		}

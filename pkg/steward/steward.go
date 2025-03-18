@@ -41,7 +41,7 @@ type steward struct {
 func New(ns storer.NetStore, r retrieval.Interface, joinerPutter storage.Putter) Interface {
 	return &steward{
 		netStore:     ns,
-		traverser:    traversal.New(ns.Download(true), joinerPutter, redundancy.DefaultLevel),
+		traverser:    traversal.New(ns.Download(&storer.DownloadOpts{Cache: true}), joinerPutter, redundancy.DefaultLevel),
 		netTraverser: traversal.New(&netGetter{r}, joinerPutter, redundancy.DefaultLevel),
 		netGetter:    r,
 	}
@@ -54,7 +54,7 @@ func New(ns storer.NetStore, r retrieval.Interface, joinerPutter storage.Putter)
 // advisable to pin the content locally before trying to reupload it.
 func (s *steward) Reupload(ctx context.Context, root swarm.Address, stamper postage.Stamper) error {
 	uploaderSession := s.netStore.DirectUpload()
-	getter := s.netStore.Download(false)
+	getter := s.netStore.Download(&storer.DownloadOpts{Cache: false})
 
 	fn := func(addr swarm.Address) error {
 		c, err := getter.Get(ctx, addr)
@@ -83,7 +83,7 @@ func (s *steward) Reupload(ctx context.Context, root swarm.Address, stamper post
 // IsRetrievable implements Interface.IsRetrievable method.
 func (s *steward) IsRetrievable(ctx context.Context, root swarm.Address) (bool, error) {
 	fn := func(a swarm.Address) error {
-		_, err := s.netGetter.RetrieveChunk(ctx, a, swarm.ZeroAddress)
+		_, err := s.netGetter.RetrieveChunk(ctx, a, swarm.ZeroAddress, 0)
 		return err
 	}
 	switch err := s.netTraverser.Traverse(ctx, root, fn); {
@@ -106,5 +106,5 @@ type netGetter struct {
 
 // Get implements the storage Getter.Get interface.
 func (ng *netGetter) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
-	return ng.retrieval.RetrieveChunk(ctx, addr, swarm.ZeroAddress)
+	return ng.retrieval.RetrieveChunk(ctx, addr, swarm.ZeroAddress, 0)
 }

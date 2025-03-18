@@ -73,7 +73,7 @@ type localRetriever struct {
 	getter storage.Getter
 }
 
-func (lr *localRetriever) RetrieveChunk(ctx context.Context, addr, sourceAddr swarm.Address) (chunk swarm.Chunk, err error) {
+func (lr *localRetriever) RetrieveChunk(ctx context.Context, addr, sourceAddr swarm.Address, maxSocCachedDur time.Duration) (chunk swarm.Chunk, err error) {
 	ch, err := lr.getter.Get(ctx, addr)
 	if err != nil {
 		return nil, fmt.Errorf("retrieve chunk %s: %w", addr, err)

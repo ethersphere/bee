@@ -13,9 +13,9 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/pushsync"
 	"github.com/ethersphere/bee/v2/pkg/retrieval"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	chunktesting "github.com/ethersphere/bee/v2/pkg/storage/testing"
-	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
@@ -23,7 +23,7 @@ type testRetrieval struct {
 	fn func(swarm.Address) (swarm.Chunk, error)
 }
 
-func (t *testRetrieval) RetrieveChunk(_ context.Context, address swarm.Address, _ swarm.Address) (swarm.Chunk, error) {
+func (t *testRetrieval) RetrieveChunk(ctx context.Context, address, sourcePeerAddr swarm.Address, maxSocCachedDur time.Duration) (swarm.Chunk, error) {
 	return t.fn(address)
 }
 
@@ -263,7 +263,7 @@ func testNetStore(t *testing.T, newStorer func(r retrieval.Interface) (*storer.D
 					}
 				}
 
-				getter := lstore.Download(true)
+				getter := lstore.Download(nil)
 
 				for idx, ch := range chunks {
 					readCh, err := getter.Get(context.TODO(), ch.Address())
@@ -311,7 +311,7 @@ func testNetStore(t *testing.T, newStorer func(r retrieval.Interface) (*storer.D
 				}
 			}
 
-			getter := lstore.Download(false)
+			getter := lstore.Download(nil)
 
 			for _, ch := range chunks {
 				readCh, err := getter.Get(context.TODO(), ch.Address())

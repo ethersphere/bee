@@ -52,7 +52,7 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	getter := s.storer.Download(true)
+	getter := s.storer.Download(&storer.DownloadOpts{Cache: true})
 	traverser := traversal.New(getter, s.storer.Cache(), redundancy.DefaultLevel)
 
 	sem := semaphore.NewWeighted(100)

@@ -388,7 +388,7 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 	}
 
 	ctx := r.Context()
-	ls := loadsave.NewReadonly(s.storer.Download(cache), s.storer.Cache(), redundancy.DefaultLevel)
+	ls := loadsave.NewReadonly(s.storer.Download(&storer.DownloadOpts{Cache: cache}), s.storer.Cache(), redundancy.DefaultLevel)
 	feedDereferenced := false
 
 	ctx, err := getter.SetConfigInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout, logger)
@@ -431,7 +431,7 @@ FETCH:
 				jsonhttp.NotFound(w, "no update found")
 				return
 			}
-			wc, err := feeds.GetWrappedChunk(ctx, s.storer.Download(cache), ch)
+			wc, err := feeds.GetWrappedChunk(ctx, s.storer.Download(&storer.DownloadOpts{Cache: cache}), ch)
 			if err != nil {
 				logger.Debug("bzz download: mapStructure feed update failed", "error", err)
 				logger.Error(nil, "bzz download: mapStructure feed update failed")
@@ -440,7 +440,7 @@ FETCH:
 			}
 			address = wc.Address()
 			// modify ls and init with non-existing wrapped chunk
-			ls = loadsave.NewReadonlyWithRootCh(s.storer.Download(cache), s.storer.Cache(), wc, rLevel)
+			ls = loadsave.NewReadonlyWithRootCh(s.storer.Download(&storer.DownloadOpts{Cache: cache}), s.storer.Cache(), wc, rLevel)
 
 			feedDereferenced = true
 			curBytes, err := cur.MarshalBinary()
@@ -602,9 +602,9 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		l      int64
 	)
 	if rootCh != nil {
-		reader, l, err = joiner.NewJoiner(ctx, s.storer.Download(cache), s.storer.Cache(), reference, rootCh)
+		reader, l, err = joiner.NewJoiner(ctx, s.storer.Download(&storer.DownloadOpts{Cache: cache}), s.storer.Cache(), reference, rootCh)
 	} else {
-		reader, l, err = joiner.New(ctx, s.storer.Download(cache), s.storer.Cache(), reference, rLevel)
+		reader, l, err = joiner.New(ctx, s.storer.Download(&storer.DownloadOpts{Cache: cache}), s.storer.Cache(), reference, rLevel)
 	}
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) || errors.Is(err, topology.ErrNotFound) {

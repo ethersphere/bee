@@ -114,6 +114,9 @@ type CacheStore interface {
 	// This will add the chunk to underlying store as well as new indexes which
 	// will keep track of the chunk in the cache.
 	Cache() storage.Putter
+
+	// CacheMetadata returns the metadata of the chunk from the cache.
+	CacheMetadata(address swarm.Address) (*storage.CacheMetadata, error)
 }
 
 // NetStore is a logical component of the storer that deals with network. It will
@@ -125,7 +128,7 @@ type NetStore interface {
 	// Download provides a getter which can be used to download data. If the data
 	// is found locally, its returned immediately, otherwise it is retrieved from
 	// the network.
-	Download(cache bool) storage.Getter
+	Download(opts *DownloadOpts) storage.Getter
 	// PusherFeed is the feed for direct push chunks. This can be used by the
 	// pusher component to push out the chunks.
 	PusherFeed() <-chan *pusher.Op
@@ -662,7 +665,7 @@ func (db *DB) StartReserveWorker(ctx context.Context, s Syncer, radius func() (u
 
 type noopRetrieval struct{}
 
-func (noopRetrieval) RetrieveChunk(_ context.Context, _ swarm.Address, _ swarm.Address) (swarm.Chunk, error) {
+func (noopRetrieval) RetrieveChunk(ctx context.Context, address, sourcePeerAddr swarm.Address, maxSocCachedDur time.Duration) (swarm.Chunk, error) {
 	return nil, storage.ErrNotFound
 }
 

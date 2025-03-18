@@ -310,7 +310,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		return true, nil
 	}
 
-	mockFeeds := factory.New(localStore.Download(true))
+	mockFeeds := factory.New(localStore.Download(nil))
 	mockResolver := resolverMock.NewResolver()
 	mockSteward := new(mockSteward.Steward)
 

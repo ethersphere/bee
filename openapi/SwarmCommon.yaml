@@ -1231,6 +1231,15 @@ components:
       description: >
         Determines if the uploaded data should be sent to the network immediately or in a deferred fashion. By default the upload will be deferred.
 
+    SwarmMaxSocCacheDur:
+      in: header
+      name: swarm-max-soc-cache-dur
+      schema:
+          $ref: "#/components/schemas/Duration"
+      required: false
+      description: >
+          Maximum duration for which a node will return a cached soc or fetch a new one from the network. If not set, the node will return the cached soc if it has it.
+
     SwarmCache:
       in: header
       name: swarm-cache
