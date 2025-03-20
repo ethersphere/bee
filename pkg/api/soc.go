@@ -14,8 +14,10 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/replicas"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -47,10 +49,11 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	headers := struct {
-		BatchID        []byte        `map:"Swarm-Postage-Batch-Id"`
-		StampSig       []byte        `map:"Swarm-Postage-Stamp"`
-		Act            bool          `map:"Swarm-Act"`
-		HistoryAddress swarm.Address `map:"Swarm-Act-History-Address"`
+		BatchID        []byte            `map:"Swarm-Postage-Batch-Id"`
+		StampSig       []byte            `map:"Swarm-Postage-Stamp"`
+		Act            bool              `map:"Swarm-Act"`
+		HistoryAddress swarm.Address     `map:"Swarm-Act-History-Address"`
+		RLevel         *redundancy.Level `map:"Swarm-Redundancy-Level"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -64,11 +67,23 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var (
-		putter storer.PutterSession
-		err    error
+		basePutter storer.PutterSession
+		putter     storer.PutterSession
+		err        error
 	)
 
+	rLevel := redundancy.DefaultLevel
+	if headers.RLevel != nil {
+		rLevel = *headers.RLevel
+	}
+
 	if len(headers.StampSig) != 0 {
+		if headers.RLevel != nil {
+			logger.Error(nil, "redundancy level is not supported with stamp signature")
+			jsonhttp.BadRequest(w, "redundancy level is not supported with stamp signature")
+			return
+		}
+		rLevel = redundancy.NONE
 		stamp := postage.Stamp{}
 		if err := stamp.UnmarshalBinary(headers.StampSig); err != nil {
 			errorMsg := "Stamp deserialization failure"
@@ -91,6 +106,10 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 			Pin:      false,
 			Deferred: false,
 		})
+		basePutter = putter
+		if rLevel != redundancy.NONE {
+			putter = replicas.NewSocPutter(putter, rLevel)
+		}
 	}
 	if err != nil {
 		logger.Debug("get putter failed", "error", err)
@@ -183,7 +202,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	reference := sch.Address()
 	historyReference := swarm.ZeroAddress
 	if headers.Act {
-		reference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, headers.HistoryAddress)
+		reference, historyReference, err = s.actEncryptionHandler(r.Context(), basePutter, reference, headers.HistoryAddress)
 		if err != nil {
 			logger.Debug("access control upload failed", "error", err)
 			logger.Error(nil, "access control upload failed")
@@ -229,11 +248,16 @@ func (s *Service) socGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	headers := struct {
-		OnlyRootChunk bool `map:"Swarm-Only-Root-Chunk"`
+		OnlyRootChunk bool              `map:"Swarm-Only-Root-Chunk"`
+		RLevel        *redundancy.Level `map:"Swarm-Redundancy-Level"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
 		return
+	}
+	rLevel := redundancy.DefaultLevel
+	if headers.RLevel != nil {
+		rLevel = *headers.RLevel
 	}
 
 	address, err := soc.CreateAddress(paths.ID, paths.Owner)
@@ -244,6 +268,9 @@ func (s *Service) socGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	getter := s.storer.Download(true)
+	if rLevel != 0 {
+		getter = replicas.NewSocGetter(getter, rLevel)
+	}
 	sch, err := getter.Get(r.Context(), address)
 	if err != nil {
 		logger.Error(err, "soc retrieval has been failed")

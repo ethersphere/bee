@@ -6,6 +6,7 @@ package soc
 
 import (
 	"bytes"
+	"math"
 
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -26,5 +27,21 @@ func Valid(ch swarm.Chunk) bool {
 	if err != nil {
 		return false
 	}
-	return ch.Address().Equal(address)
+	defaultSoc := ch.Address().Equal(address)
+	if !defaultSoc {
+		// check whether the SOC chunk is a replica
+		for i := uint8(0); i < math.MaxUint8; i++ {
+			rAddr, err := hash([]byte{i}, ch.Address().Bytes())
+			if err != nil {
+				return false
+			}
+
+			if ch.Address().Equal(swarm.NewAddress(rAddr)) {
+				return true
+			}
+		}
+	} else {
+		return true
+	}
+	return false
 }
