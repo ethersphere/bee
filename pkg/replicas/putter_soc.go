@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -19,12 +20,12 @@ import (
 // socPutter is the private implementation of the public storage.Putter interface
 // socPutter extends the original putter to a concurrent multiputter
 type socPutter struct {
-	putter storer.PutterSession
+	putter storage.Putter
 	rLevel redundancy.Level
 }
 
 // NewSocPutter is the putter constructor
-func NewSocPutter(p storer.PutterSession, rLevel redundancy.Level) storer.PutterSession {
+func NewSocPutter(p storage.Putter, rLevel redundancy.Level) storage.Putter {
 	return &socPutter{
 		putter: p,
 		rLevel: rLevel,
@@ -65,10 +66,26 @@ func (p *socPutter) Put(ctx context.Context, ch swarm.Chunk) (err error) {
 	return errors.Join(errs...)
 }
 
-func (p *socPutter) Cleanup() error {
-	return p.putter.Cleanup()
+// socPutterSession extends the original socPutter
+type socPutterSession struct {
+	socPutter
+	ps storer.PutterSession
 }
 
-func (p *socPutter) Done(addr swarm.Address) error {
-	return p.putter.Done(addr)
+// NewSocPutter is the putterSession constructor
+func NewSocPutterSession(p storer.PutterSession, rLevel redundancy.Level) storer.PutterSession {
+	return &socPutterSession{
+		socPutter{
+			putter: p,
+			rLevel: rLevel,
+		}, p,
+	}
+}
+
+func (p *socPutterSession) Cleanup() error {
+	return p.ps.Cleanup()
+}
+
+func (p *socPutterSession) Done(addr swarm.Address) error {
+	return p.ps.Done(addr)
 }

@@ -108,7 +108,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		})
 		basePutter = putter
 		if rLevel != redundancy.NONE {
-			putter = replicas.NewSocPutter(putter, rLevel)
+			putter = replicas.NewSocPutterSession(putter, rLevel)
 		}
 	}
 	if err != nil {
