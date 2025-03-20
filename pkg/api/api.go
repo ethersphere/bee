@@ -28,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/accounting"
+	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
@@ -191,6 +192,7 @@ type Service struct {
 	chequebook     chequebook.Service
 	pseudosettle   settlement.Interface
 	pingpong       pingpong.Interface
+	addressBook    addressbook.Getter
 
 	batchStore   postage.Storer
 	stamperStore storage.Store
@@ -269,6 +271,7 @@ type ExtraOptions struct {
 	SyncStatus      func() (bool, error)
 	NodeStatus      *status.Service
 	PinIntegrity    PinIntegrity
+	AddressBook     addressbook.Getter
 }
 
 func New(
@@ -350,6 +353,7 @@ func (s *Service) Configure(signer crypto.Signer, tracer *tracing.Tracer, o Opti
 	s.postageContract = e.PostageContract
 	s.steward = e.Steward
 	s.stakingContract = e.Staking
+	s.addressBook = e.AddressBook
 
 	s.pingpong = e.Pingpong
 	s.topologyDriver = e.TopologyDriver
