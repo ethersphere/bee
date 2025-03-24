@@ -7,6 +7,7 @@ package status
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
@@ -15,6 +16,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/status/internal/pb"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/expfmt"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -53,10 +56,16 @@ type Service struct {
 	streamer       p2p.Streamer
 	topologyDriver topologyDriver
 
-	beeMode    string
-	reserve    Reserve
-	sync       SyncReporter
-	chainState postage.ChainStateGetter
+	beeMode         string
+	reserve         Reserve
+	sync            SyncReporter
+	chainState      postage.ChainStateGetter
+	metricsRegistry *prometheus.Registry
+}
+
+type Metrics struct {
+	UploadSpeed   prometheus.Histogram
+	DownloadSpeed prometheus.Histogram
 }
 
 // NewService creates a new status service.
@@ -67,14 +76,16 @@ func NewService(
 	beeMode string,
 	chainState postage.ChainStateGetter,
 	reserve Reserve,
+	metricsRegistry *prometheus.Registry,
 ) *Service {
 	return &Service{
-		logger:         logger.WithName(loggerName).Register(),
-		streamer:       streamer,
-		topologyDriver: topology,
-		beeMode:        beeMode,
-		chainState:     chainState,
-		reserve:        reserve,
+		logger:          logger.WithName(loggerName).Register(),
+		streamer:        streamer,
+		topologyDriver:  topology,
+		beeMode:         beeMode,
+		chainState:      chainState,
+		reserve:         reserve,
+		metricsRegistry: metricsRegistry,
 	}
 }
 
@@ -120,6 +131,11 @@ func (s *Service) LocalSnapshot() (*Snapshot, error) {
 		return nil, fmt.Errorf("iterate connected peers: %w", err)
 	}
 
+	metrics, err := s.encodeMetrics()
+	if err != nil {
+		return nil, fmt.Errorf("encode metrics: %w", err)
+	}
+
 	return &Snapshot{
 		BeeMode:                 s.beeMode,
 		ReserveSize:             reserveSize,
@@ -132,6 +148,7 @@ func (s *Service) LocalSnapshot() (*Snapshot, error) {
 		IsReachable:             s.topologyDriver.IsReachable(),
 		LastSyncedBlock:         s.chainState.GetChainState().Block,
 		CommittedDepth:          uint32(committedDepth),
+		Metrics:                 metrics,
 	}, nil
 }
 
@@ -203,4 +220,25 @@ func (s *Service) handler(ctx context.Context, _ p2p.Peer, stream p2p.Stream) er
 
 func (s *Service) SetSync(sync SyncReporter) {
 	s.sync = sync
+}
+
+func (s *Service) encodeMetrics() (string, error) {
+	if s.metricsRegistry == nil {
+		return "", nil
+	}
+
+	metricFamilies, err := s.metricsRegistry.Gather()
+	if err != nil {
+		return "", fmt.Errorf("gather metrics: %w", err)
+	}
+
+	var metricsBuilder strings.Builder
+	encoder := expfmt.NewEncoder(&metricsBuilder, expfmt.NewFormat(expfmt.TypeTextPlain))
+	for _, m := range metricFamilies {
+		if err := encoder.Encode(m); err != nil {
+			return "", fmt.Errorf("encode metric %s: %w", m.GetName(), err)
+		}
+	}
+
+	return metricsBuilder.String(), nil
 }

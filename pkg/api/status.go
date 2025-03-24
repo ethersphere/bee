@@ -32,6 +32,7 @@ type statusSnapshotResponse struct {
 	LastSyncedBlock         uint64  `json:"lastSyncedBlock"`
 	CommittedDepth          uint8   `json:"committedDepth"`
 	IsWarmingUp             bool    `json:"isWarmingUp"`
+	Metrics                 string  `json:"metrics,omitempty"`
 }
 
 type statusResponse struct {
@@ -98,6 +99,7 @@ func (s *Service) statusGetHandler(w http.ResponseWriter, _ *http.Request) {
 		LastSyncedBlock:         ss.LastSyncedBlock,
 		CommittedDepth:          uint8(ss.CommittedDepth),
 		IsWarmingUp:             s.isWarmingUp,
+		Metrics:                 ss.Metrics,
 	})
 }
 
@@ -146,6 +148,7 @@ func (s *Service) statusGetPeersHandler(w http.ResponseWriter, r *http.Request) 
 				snapshot.IsReachable = ss.IsReachable
 				snapshot.LastSyncedBlock = ss.LastSyncedBlock
 				snapshot.CommittedDepth = uint8(ss.CommittedDepth)
+				snapshot.Metrics = ss.Metrics
 			}
 
 			mu.Lock()

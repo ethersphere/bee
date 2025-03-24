@@ -105,3 +105,12 @@ func newMetrics() metrics {
 func (s *Service) Metrics() []prometheus.Collector {
 	return m.PrometheusCollectorsFromFields(s.metrics)
 }
+
+// StatusMetrics exposes metrics that are exposed on the status protocol.
+func (s *Service) StatusMetrics() []prometheus.Collector {
+	return []prometheus.Collector{
+		s.metrics.RequestAttempts,
+		s.metrics.ChunkRetrieveTime,
+		s.metrics.RequestDurationTime,
+	}
+}

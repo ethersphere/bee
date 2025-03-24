@@ -506,6 +506,32 @@ func (s *Service) contentLengthMetricMiddleware() func(h http.Handler) http.Hand
 	}
 }
 
+func (s *Service) downloadSpeedMetricMiddleware() func(h http.Handler) http.Handler {
+	return func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			now := time.Now()
+			h.ServeHTTP(w, r)
+
+			if rw, ok := w.(*responseWriter); ok {
+				speed := float64(rw.size) / time.Since(now).Seconds()
+				s.metrics.DownloadSpeed.Observe(speed)
+			}
+		})
+	}
+}
+
+func (s *Service) uploadSpeedMetricMiddleware() func(h http.Handler) http.Handler {
+	return func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			now := time.Now()
+			h.ServeHTTP(w, r)
+
+			speed := float64(r.ContentLength) / time.Since(now).Seconds()
+			s.metrics.UploadSpeed.Observe(speed)
+		})
+	}
+}
+
 // gasConfigMiddleware can be used by the APIs that allow block chain transactions to set
 // gas price and gas limit through the HTTP API headers.
 func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) http.Handler {
