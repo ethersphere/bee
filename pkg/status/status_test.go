@@ -50,7 +50,7 @@ test_response_duration_seconds_bucket{test="label",le="+Inf"} 7
 test_response_duration_seconds_sum{test="label"} 78.15
 test_response_duration_seconds_count{test="label"} 7
 `,
-			"test_upload_count": "# HELP test_upload_count \n# TYPE test_upload_count counter\ntest_upload_count 12\n",
+			"test_upload_count_total": "# HELP test_upload_count_total \n# TYPE test_upload_count_total counter\ntest_upload_count_total 12\n",
 		},
 	}
 
@@ -68,7 +68,7 @@ test_response_duration_seconds_count{test="label"} 7
 
 	g := prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "test",
-		Name:      "upload_count",
+		Name:      "upload_count_total",
 	})
 
 	metricsRegistry.MustRegister(h)
