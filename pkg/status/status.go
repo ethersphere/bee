@@ -222,23 +222,25 @@ func (s *Service) SetSync(sync SyncReporter) {
 	s.sync = sync
 }
 
-func (s *Service) encodeMetrics() (string, error) {
+func (s *Service) encodeMetrics() (map[string]string, error) {
 	if s.metricsRegistry == nil {
-		return "", nil
+		return nil, nil
 	}
 
 	metricFamilies, err := s.metricsRegistry.Gather()
 	if err != nil {
-		return "", fmt.Errorf("gather metrics: %w", err)
+		return nil, fmt.Errorf("gather metrics: %w", err)
 	}
 
-	var metricsBuilder strings.Builder
-	encoder := expfmt.NewEncoder(&metricsBuilder, expfmt.NewFormat(expfmt.TypeTextPlain))
+	metrics := make(map[string]string, len(metricFamilies))
 	for _, m := range metricFamilies {
+		var metricsBuilder strings.Builder
+		encoder := expfmt.NewEncoder(&metricsBuilder, expfmt.NewFormat(expfmt.TypeTextPlain))
 		if err := encoder.Encode(m); err != nil {
-			return "", fmt.Errorf("encode metric %s: %w", m.GetName(), err)
+			return nil, fmt.Errorf("encode metric %s: %w", m.GetName(), err)
 		}
+		metrics[m.GetName()] = metricsBuilder.String()
 	}
 
-	return metricsBuilder.String(), nil
+	return metrics, nil
 }

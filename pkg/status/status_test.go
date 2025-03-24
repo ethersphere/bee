@@ -35,7 +35,8 @@ func TestStatus(t *testing.T) {
 		IsReachable:      true,
 		LastSyncedBlock:  6092500,
 		CommittedDepth:   1,
-		Metrics: `# HELP test_response_duration_seconds Histogram of API response durations.
+		Metrics: map[string]string{
+			"test_response_duration_seconds": `# HELP test_response_duration_seconds Histogram of API response durations.
 # TYPE test_response_duration_seconds histogram
 test_response_duration_seconds_bucket{test="label",le="0.01"} 1
 test_response_duration_seconds_bucket{test="label",le="0.1"} 1
@@ -49,6 +50,8 @@ test_response_duration_seconds_bucket{test="label",le="+Inf"} 7
 test_response_duration_seconds_sum{test="label"} 78.15
 test_response_duration_seconds_count{test="label"} 7
 `,
+			"test_upload_count": "# HELP test_upload_count \n# TYPE test_upload_count counter\ntest_upload_count 12\n",
+		},
 	}
 
 	metricsRegistry := prometheus.NewRegistry()
@@ -63,7 +66,17 @@ test_response_duration_seconds_count{test="label"} 7
 		},
 	})
 
+	g := prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "test",
+		Name:      "upload_count",
+	})
+
 	metricsRegistry.MustRegister(h)
+	metricsRegistry.MustRegister(g)
+
+	for range 12 {
+		g.Inc()
+	}
 
 	points := []float64{0.25, 5.2, 1.5, 1, 5.2, 0, 65}
 	var sum float64
