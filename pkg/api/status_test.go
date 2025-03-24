@@ -60,6 +60,7 @@ func TestGetStatus(t *testing.T) {
 			mode.String(),
 			ssMock,
 			ssMock,
+			status.Metrics{},
 		)
 
 		statusSvc.SetSync(ssMock)
@@ -86,6 +87,7 @@ func TestGetStatus(t *testing.T) {
 				"",
 				nil,
 				nil,
+				status.Metrics{},
 			),
 		})
 

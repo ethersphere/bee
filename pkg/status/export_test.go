@@ -9,3 +9,5 @@ const (
 	ProtocolVersion = protocolVersion
 	StreamName      = streamName
 )
+
+var NewHistogram = newHistogram

@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethersphere/bee/v2"
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
+	"github.com/ethersphere/bee/v2/pkg/status"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 )
@@ -29,6 +30,8 @@ type metrics struct {
 	ResponseCodeCounts *prometheus.CounterVec
 
 	ContentApiDuration prometheus.HistogramVec
+	UploadSpeed        prometheus.Histogram
+	DownloadSpeed      prometheus.Histogram
 }
 
 func newMetrics() metrics {
@@ -64,6 +67,20 @@ func newMetrics() metrics {
 			Help:      "Histogram of file upload API response durations.",
 			Buckets:   []float64{0.5, 1, 2.5, 5, 10, 30, 60},
 		}, []string{"filesize", "method"}),
+		UploadSpeed: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "upload_speed",
+			Help:      "Histogram of upload speed in MiB/s.",
+			Buckets:   []float64{0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5},
+		}),
+		DownloadSpeed: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "download_speed",
+			Help:      "Histogram of download speed in MiB/s.",
+			Buckets:   []float64{0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 6, 7, 8, 9},
+		}),
 	}
 }
 
@@ -102,6 +119,13 @@ func (s *Service) responseCodeMetricsHandler(h http.Handler) http.Handler {
 	})
 }
 
+func (s *Service) StatusMetrics() status.Metrics {
+	return status.Metrics{
+		UploadSpeed:   s.metrics.UploadSpeed,
+		DownloadSpeed: s.metrics.DownloadSpeed,
+	}
+}
+
 // UpgradedResponseWriter adds more functionality on top of ResponseWriter
 type UpgradedResponseWriter interface {
 	http.ResponseWriter
@@ -114,16 +138,23 @@ type responseWriter struct {
 	UpgradedResponseWriter
 	statusCode  int
 	wroteHeader bool
+	size        int
 }
 
 func newResponseWriter(w http.ResponseWriter) *responseWriter {
 	// StatusOK is called by default if nothing else is called
 	uw := w.(UpgradedResponseWriter)
-	return &responseWriter{uw, http.StatusOK, false}
+	return &responseWriter{uw, http.StatusOK, false, 0}
 }
 
 func (rw *responseWriter) Status() int {
 	return rw.statusCode
+}
+
+func (rr *responseWriter) Write(b []byte) (int, error) {
+	size, err := rr.UpgradedResponseWriter.Write(b)
+	rr.size += size
+	return size, err
 }
 
 func (rw *responseWriter) WriteHeader(code int) {

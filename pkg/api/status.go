@@ -12,26 +12,29 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/status"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 )
 
 type statusSnapshotResponse struct {
-	Overlay                 string  `json:"overlay"`
-	Proximity               uint    `json:"proximity"`
-	BeeMode                 string  `json:"beeMode"`
-	ReserveSize             uint64  `json:"reserveSize"`
-	ReserveSizeWithinRadius uint64  `json:"reserveSizeWithinRadius"`
-	PullsyncRate            float64 `json:"pullsyncRate"`
-	StorageRadius           uint8   `json:"storageRadius"`
-	ConnectedPeers          uint64  `json:"connectedPeers"`
-	NeighborhoodSize        uint64  `json:"neighborhoodSize"`
-	RequestFailed           bool    `json:"requestFailed,omitempty"`
-	BatchCommitment         uint64  `json:"batchCommitment"`
-	IsReachable             bool    `json:"isReachable"`
-	LastSyncedBlock         uint64  `json:"lastSyncedBlock"`
-	CommittedDepth          uint8   `json:"committedDepth"`
-	IsWarmingUp             bool    `json:"isWarmingUp"`
+	Overlay                 string                   `json:"overlay"`
+	Proximity               uint                     `json:"proximity"`
+	BeeMode                 string                   `json:"beeMode"`
+	ReserveSize             uint64                   `json:"reserveSize"`
+	ReserveSizeWithinRadius uint64                   `json:"reserveSizeWithinRadius"`
+	PullsyncRate            float64                  `json:"pullsyncRate"`
+	StorageRadius           uint8                    `json:"storageRadius"`
+	ConnectedPeers          uint64                   `json:"connectedPeers"`
+	NeighborhoodSize        uint64                   `json:"neighborhoodSize"`
+	RequestFailed           bool                     `json:"requestFailed,omitempty"`
+	BatchCommitment         uint64                   `json:"batchCommitment"`
+	IsReachable             bool                     `json:"isReachable"`
+	LastSyncedBlock         uint64                   `json:"lastSyncedBlock"`
+	CommittedDepth          uint8                    `json:"committedDepth"`
+	IsWarmingUp             bool                     `json:"isWarmingUp"`
+	UploadSpeed             *statusHistogramResponse `json:"uploadSpeed,omitempty"`
+	DownloadSpeed           *statusHistogramResponse `json:"downloadSpeed,omitempty"`
 }
 
 type statusResponse struct {
@@ -46,6 +49,51 @@ type statusNeighborhoodResponse struct {
 
 type neighborhoodsResponse struct {
 	Neighborhoods []statusNeighborhoodResponse `json:"neighborhoods"`
+}
+
+func newStatusHistogramResponse(h *status.Histogram) *statusHistogramResponse {
+	if h == nil {
+		return nil
+	}
+	labels := make([]statusLabelResponse, 0, len(h.Labels))
+	for _, l := range h.Labels {
+		labels = append(labels, statusLabelResponse{
+			Name:  l.Name,
+			Value: l.Value,
+		})
+	}
+
+	buckets := make([]statusHistogramBucketResponse, 0, len(h.Buckets))
+	for _, b := range h.Buckets {
+		buckets = append(buckets, statusHistogramBucketResponse{
+			CumulativeCount: b.CumulativeCount,
+			UpperBound:      b.UpperBound,
+		})
+	}
+
+	return &statusHistogramResponse{
+		Labels:      labels,
+		SampleSum:   h.SampleSum,
+		SampleCount: h.SampleCount,
+		Buckets:     buckets,
+	}
+}
+
+type statusHistogramResponse struct {
+	Labels      []statusLabelResponse           `json:"labels,omitempty"`
+	SampleSum   float64                         `json:"sampleSum,omitempty"`
+	SampleCount uint64                          `json:"sampleCount,omitempty"`
+	Buckets     []statusHistogramBucketResponse `json:"buckets,omitempty"`
+}
+
+type statusLabelResponse struct {
+	Name  string `json:"name,omitempty"`
+	Value string `json:"value,omitempty"`
+}
+
+type statusHistogramBucketResponse struct {
+	CumulativeCount uint64  `json:"cumulativeCount,omitempty"`
+	UpperBound      float64 `json:"upperBound,omitempty"`
 }
 
 // statusAccessHandler is a middleware that limits the number of simultaneous
@@ -98,6 +146,8 @@ func (s *Service) statusGetHandler(w http.ResponseWriter, _ *http.Request) {
 		LastSyncedBlock:         ss.LastSyncedBlock,
 		CommittedDepth:          uint8(ss.CommittedDepth),
 		IsWarmingUp:             s.isWarmingUp,
+		UploadSpeed:             newStatusHistogramResponse(ss.UploadSpeed),
+		DownloadSpeed:           newStatusHistogramResponse(ss.DownloadSpeed),
 	})
 }
 

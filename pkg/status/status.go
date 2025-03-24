@@ -15,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/status/internal/pb"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -28,6 +29,8 @@ const (
 
 // Snapshot is the current snapshot of the system.
 type Snapshot pb.Snapshot
+
+type Histogram = pb.Histogram
 
 // SyncReporter defines the interface to report syncing rate.
 type SyncReporter interface {
@@ -57,6 +60,12 @@ type Service struct {
 	reserve    Reserve
 	sync       SyncReporter
 	chainState postage.ChainStateGetter
+	metrics    Metrics
+}
+
+type Metrics struct {
+	UploadSpeed   prometheus.Histogram
+	DownloadSpeed prometheus.Histogram
 }
 
 // NewService creates a new status service.
@@ -67,6 +76,7 @@ func NewService(
 	beeMode string,
 	chainState postage.ChainStateGetter,
 	reserve Reserve,
+	metrics Metrics,
 ) *Service {
 	return &Service{
 		logger:         logger.WithName(loggerName).Register(),
@@ -75,6 +85,7 @@ func NewService(
 		beeMode:        beeMode,
 		chainState:     chainState,
 		reserve:        reserve,
+		metrics:        metrics,
 	}
 }
 
@@ -120,6 +131,15 @@ func (s *Service) LocalSnapshot() (*Snapshot, error) {
 		return nil, fmt.Errorf("iterate connected peers: %w", err)
 	}
 
+	downloadSpeedMetric, err := getMetric(s.metrics.DownloadSpeed)
+	if err != nil {
+		return nil, fmt.Errorf("get download speed metric: %w", err)
+	}
+	uploadSpeedMetric, err := getMetric(s.metrics.UploadSpeed)
+	if err != nil {
+		return nil, fmt.Errorf("get upload speed metric: %w", err)
+	}
+
 	return &Snapshot{
 		BeeMode:                 s.beeMode,
 		ReserveSize:             reserveSize,
@@ -132,6 +152,8 @@ func (s *Service) LocalSnapshot() (*Snapshot, error) {
 		IsReachable:             s.topologyDriver.IsReachable(),
 		LastSyncedBlock:         s.chainState.GetChainState().Block,
 		CommittedDepth:          uint32(committedDepth),
+		UploadSpeed:             newHistogram(uploadSpeedMetric),
+		DownloadSpeed:           newHistogram(downloadSpeedMetric),
 	}, nil
 }
 

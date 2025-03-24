@@ -26,4 +26,36 @@ message Snapshot {
   uint64 ReserveSizeWithinRadius = 9;
   uint64 LastSyncedBlock = 10;
   uint32 CommittedDepth = 11;
+  Histogram UploadSpeed = 12;
+  Histogram DownloadSpeed = 13;
+}
+
+message Histogram {
+  // Optional.
+  repeated Label labels = 1;
+
+  // Optional.
+  double SampleSum = 2;
+
+  // Optional.
+  uint64 SampleCount = 3;
+
+  // Optional.
+  repeated Bucket Buckets = 4;
+
+  message Bucket {
+    // Required.
+    uint64 CumulativeCount = 1;
+
+    // Optional.
+    double UpperBound = 2;
+  }
+}
+
+message Label {
+  // Required.
+  string name = 1;
+
+  // Required.
+  string value = 2;
 }
