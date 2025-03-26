@@ -509,25 +509,19 @@ func (s *Service) contentLengthMetricMiddleware() func(h http.Handler) http.Hand
 func (s *Service) downloadSpeedMetricMiddleware() func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			now := time.Now()
+			start := time.Now()
 			h.ServeHTTP(w, r)
 
-			if rw, ok := w.(*responseWriter); ok {
-				speed := float64(rw.size) / time.Since(now).Seconds()
-				s.metrics.DownloadSpeed.Observe(speed)
+			rw, ok := w.(*responseWriter)
+			if !ok {
+				return
 			}
-		})
-	}
-}
+			if rw.Status() != http.StatusOK {
+				return
+			}
 
-func (s *Service) uploadSpeedMetricMiddleware() func(h http.Handler) http.Handler {
-	return func(h http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			now := time.Now()
-			h.ServeHTTP(w, r)
-
-			speed := float64(r.ContentLength) / time.Since(now).Seconds()
-			s.metrics.UploadSpeed.Observe(speed)
+			speed := float64(rw.size) / time.Since(start).Seconds()
+			s.metrics.DownloadSpeed.Observe(speed)
 		})
 	}
 }
