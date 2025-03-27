@@ -913,9 +913,6 @@ func NewBee(
 
 	// metrics exposed on the status protocol
 	statusMetricsRegistry := prometheus.NewRegistry()
-	if apiService != nil {
-		statusMetricsRegistry.MustRegister(apiService.StatusMetrics()...)
-	}
 	if localStore != nil {
 		statusMetricsRegistry.MustRegister(localStore.StatusMetrics()...)
 	}
@@ -1211,6 +1208,9 @@ func NewBee(
 		apiService.EnableFullAPI()
 
 		apiService.SetRedistributionAgent(agent)
+
+		// api metrics are constructed on api.Service.Configure
+		statusMetricsRegistry.MustRegister(apiService.StatusMetrics()...)
 	}
 
 	if err := kad.Start(ctx); err != nil {
