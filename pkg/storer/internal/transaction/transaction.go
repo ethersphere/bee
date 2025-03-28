@@ -146,6 +146,13 @@ func (s *store) Metrics() []prometheus.Collector {
 	return m.PrometheusCollectorsFromFields(s.metrics)
 }
 
+// StatusMetrics exposes metrics that are exposed on the status protocol.
+func (s *store) StatusMetrics() []prometheus.Collector {
+	return []prometheus.Collector{
+		s.metrics.MethodDuration,
+	}
+}
+
 func (s *store) Close() error {
 	return errors.Join(s.bstore.Close(), s.sharky.Close())
 }

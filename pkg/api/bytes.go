@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/cac"
@@ -70,6 +71,8 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		span.SetTag("tagID", tag)
 	}
+
+	defer s.observeUploadSpeed(w, r, time.Now(), "bytes", deferred)
 
 	putter, err := s.newStamperPutter(ctx, putterOptions{
 		BatchID:  headers.BatchID,

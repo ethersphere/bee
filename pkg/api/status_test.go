@@ -60,6 +60,7 @@ func TestGetStatus(t *testing.T) {
 			mode.String(),
 			ssMock,
 			ssMock,
+			nil,
 		)
 
 		statusSvc.SetSync(ssMock)
@@ -84,6 +85,7 @@ func TestGetStatus(t *testing.T) {
 				nil,
 				new(topologyPeersIterNoopMock),
 				"",
+				nil,
 				nil,
 				nil,
 			),
