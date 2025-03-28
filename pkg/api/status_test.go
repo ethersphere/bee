@@ -42,22 +42,6 @@ func TestGetStatus(t *testing.T) {
 			IsReachable:             true,
 			LastSyncedBlock:         6092500,
 			CommittedDepth:          1,
-			Metrics: map[string]string{
-				"test_response_duration_seconds": `# HELP test_response_duration_seconds Histogram of API response durations.
-# TYPE test_response_duration_seconds histogram
-test_response_duration_seconds_bucket{test="label",le="0.01"} 1
-test_response_duration_seconds_bucket{test="label",le="0.1"} 1
-test_response_duration_seconds_bucket{test="label",le="0.25"} 2
-test_response_duration_seconds_bucket{test="label",le="0.5"} 2
-test_response_duration_seconds_bucket{test="label",le="1"} 3
-test_response_duration_seconds_bucket{test="label",le="2.5"} 4
-test_response_duration_seconds_bucket{test="label",le="5"} 4
-test_response_duration_seconds_bucket{test="label",le="10"} 6
-test_response_duration_seconds_bucket{test="label",le="+Inf"} 7
-test_response_duration_seconds_sum{test="label"} 78.15
-test_response_duration_seconds_count{test="label"} 7
-`,
-			},
 		}
 
 		ssMock := &statusSnapshotMock{
