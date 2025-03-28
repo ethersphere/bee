@@ -123,3 +123,10 @@ func newMetrics() metrics {
 func (s *Service) Metrics() []prometheus.Collector {
 	return append(m.PrometheusCollectorsFromFields(s.metrics), s.handshakeService.Metrics()...)
 }
+
+// StatusMetrics exposes metrics that are exposed on the status protocol.
+func (s *Service) StatusMetrics() []prometheus.Collector {
+	return []prometheus.Collector{
+		s.metrics.HeadersExchangeDuration,
+	}
+}

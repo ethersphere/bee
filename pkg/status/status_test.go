@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/google/go-cmp/cmp"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func TestStatus(t *testing.T) {
@@ -34,6 +35,58 @@ func TestStatus(t *testing.T) {
 		IsReachable:      true,
 		LastSyncedBlock:  6092500,
 		CommittedDepth:   1,
+		Metrics: map[string]string{
+			"test_response_duration_seconds": `# HELP test_response_duration_seconds Histogram of API response durations.
+# TYPE test_response_duration_seconds histogram
+test_response_duration_seconds_bucket{test="label",le="0.01"} 1
+test_response_duration_seconds_bucket{test="label",le="0.1"} 1
+test_response_duration_seconds_bucket{test="label",le="0.25"} 2
+test_response_duration_seconds_bucket{test="label",le="0.5"} 2
+test_response_duration_seconds_bucket{test="label",le="1"} 3
+test_response_duration_seconds_bucket{test="label",le="2.5"} 4
+test_response_duration_seconds_bucket{test="label",le="5"} 4
+test_response_duration_seconds_bucket{test="label",le="10"} 6
+test_response_duration_seconds_bucket{test="label",le="+Inf"} 7
+test_response_duration_seconds_sum{test="label"} 78.15
+test_response_duration_seconds_count{test="label"} 7
+`,
+			"test_upload_count_total": `# HELP test_upload_count_total This metric is just for test.
+# TYPE test_upload_count_total counter
+test_upload_count_total 12
+`,
+		},
+	}
+
+	metricsRegistry := prometheus.NewRegistry()
+
+	h := prometheus.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "test",
+		Name:      "response_duration_seconds",
+		Help:      "Histogram of API response durations.",
+		Buckets:   []float64{0.01, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
+		ConstLabels: prometheus.Labels{
+			"test": "label",
+		},
+	})
+
+	g := prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "test",
+		Help:      "This metric is just for test.",
+		Name:      "upload_count_total",
+	})
+
+	metricsRegistry.MustRegister(h)
+	metricsRegistry.MustRegister(g)
+
+	for range 12 {
+		g.Inc()
+	}
+
+	points := []float64{0.25, 5.2, 1.5, 1, 5.2, 0, 65}
+	var sum float64
+	for _, p := range points {
+		h.Observe(p)
+		sum += p
 	}
 
 	sssMock := &statusSnapshotMock{want}
@@ -47,13 +100,14 @@ func TestStatus(t *testing.T) {
 		want.BeeMode,
 		sssMock,
 		sssMock,
+		metricsRegistry,
 	)
 
 	peer1.SetSync(sssMock)
 
 	recorder := streamtest.New(streamtest.WithProtocols(peer1.Protocol()))
 
-	peer2 := status.NewService(log.Noop, recorder, peersIterMock, "", nil, nil)
+	peer2 := status.NewService(log.Noop, recorder, peersIterMock, "", nil, nil, nil)
 
 	address := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 
@@ -127,11 +181,12 @@ func TestStatusLightNode(t *testing.T) {
 		want.BeeMode,
 		sssMock,
 		nil,
+		nil,
 	)
 
 	recorder := streamtest.New(streamtest.WithProtocols(peer1.Protocol()))
 
-	peer2 := status.NewService(log.Noop, recorder, peersIterMock, "", nil, nil)
+	peer2 := status.NewService(log.Noop, recorder, peersIterMock, "", nil, nil, nil)
 
 	address := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 

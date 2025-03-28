@@ -29,6 +29,8 @@ type metrics struct {
 	ResponseCodeCounts *prometheus.CounterVec
 
 	ContentApiDuration prometheus.HistogramVec
+	UploadSpeed        *prometheus.HistogramVec
+	DownloadSpeed      *prometheus.HistogramVec
 }
 
 func newMetrics() metrics {
@@ -64,6 +66,20 @@ func newMetrics() metrics {
 			Help:      "Histogram of file upload API response durations.",
 			Buckets:   []float64{0.5, 1, 2.5, 5, 10, 30, 60},
 		}, []string{"filesize", "method"}),
+		UploadSpeed: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "upload_speed",
+			Help:      "Histogram of upload speed in B/s.",
+			Buckets:   []float64{0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5},
+		}, []string{"endpoint", "mode"}),
+		DownloadSpeed: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "download_speed",
+			Help:      "Histogram of download speed in B/s.",
+			Buckets:   []float64{0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 6, 7, 8, 9},
+		}, []string{"endpoint"}),
 	}
 }
 
@@ -80,6 +96,14 @@ func toFileSizeBucket(bytes int64) int64 {
 
 func (s *Service) Metrics() []prometheus.Collector {
 	return m.PrometheusCollectorsFromFields(s.metrics)
+}
+
+// StatusMetrics exposes metrics that are exposed on the status protocol.
+func (s *Service) StatusMetrics() []prometheus.Collector {
+	return []prometheus.Collector{
+		s.metrics.UploadSpeed,
+		s.metrics.DownloadSpeed,
+	}
 }
 
 func (s *Service) pageviewMetricsHandler(h http.Handler) http.Handler {
@@ -114,16 +138,23 @@ type responseWriter struct {
 	UpgradedResponseWriter
 	statusCode  int
 	wroteHeader bool
+	size        int
 }
 
 func newResponseWriter(w http.ResponseWriter) *responseWriter {
 	// StatusOK is called by default if nothing else is called
 	uw := w.(UpgradedResponseWriter)
-	return &responseWriter{uw, http.StatusOK, false}
+	return &responseWriter{uw, http.StatusOK, false, 0}
 }
 
 func (rw *responseWriter) Status() int {
 	return rw.statusCode
+}
+
+func (rr *responseWriter) Write(b []byte) (int, error) {
+	size, err := rr.UpgradedResponseWriter.Write(b)
+	rr.size += size
+	return size, err
 }
 
 func (rw *responseWriter) WriteHeader(code int) {

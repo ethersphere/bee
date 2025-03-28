@@ -563,7 +563,6 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 		}
 
 		s.host.SetStreamHandlerMatch(id, matcher, func(streamlibp2p network.Stream) {
-			start := time.Now()
 			peerID := streamlibp2p.Conn().RemotePeer()
 			overlay, found := s.peers.overlay(peerID)
 			if !found {
@@ -581,6 +580,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			stream := newStream(streamlibp2p, s.metrics)
 
 			// exchange headers
+			headersStartTime := time.Now()
 			ctx, cancel := context.WithTimeout(s.ctx, s.HeadersRWTimeout)
 			defer cancel()
 			if err := handleHeaders(ctx, ss.Headler, stream, overlay); err != nil {
@@ -588,7 +588,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 				_ = stream.Reset()
 				return
 			}
-			s.metrics.HeadersExchangeDuration.Observe(time.Since(start).Seconds())
+			s.metrics.HeadersExchangeDuration.Observe(time.Since(headersStartTime).Seconds())
 
 			ctx, cancel = context.WithCancel(s.ctx)
 

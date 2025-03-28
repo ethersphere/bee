@@ -77,6 +77,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/util/syncutil"
 	"github.com/hashicorp/go-multierror"
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/prometheus/client_golang/prometheus"
 	promc "github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/sha3"
 	"golang.org/x/sync/errgroup"
@@ -910,7 +911,16 @@ func NewBee(
 
 	validStamp := postage.ValidStamp(batchStore)
 
-	nodeStatus := status.NewService(logger, p2ps, kad, beeNodeMode.String(), batchStore, localStore)
+	// metrics exposed on the status protocol
+	statusMetricsRegistry := prometheus.NewRegistry()
+	if localStore != nil {
+		statusMetricsRegistry.MustRegister(localStore.StatusMetrics()...)
+	}
+	if p2ps != nil {
+		statusMetricsRegistry.MustRegister(p2ps.StatusMetrics()...)
+	}
+
+	nodeStatus := status.NewService(logger, p2ps, kad, beeNodeMode.String(), batchStore, localStore, statusMetricsRegistry)
 	if err = p2ps.AddProtocol(nodeStatus.Protocol()); err != nil {
 		return nil, fmt.Errorf("status service: %w", err)
 	}
@@ -967,6 +977,8 @@ func NewBee(
 
 	retrieval := retrieval.New(swarmAddress, waitNetworkRFunc, localStore, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
 	localStore.SetRetrievalService(retrieval)
+
+	statusMetricsRegistry.MustRegister(retrieval.StatusMetrics()...)
 
 	pusherService := pusher.New(networkID, localStore, pushSyncProtocol, batchStore, logger, warmupTime, pusher.DefaultRetryCount)
 	b.pusherCloser = pusherService
@@ -1196,6 +1208,9 @@ func NewBee(
 		apiService.EnableFullAPI()
 
 		apiService.SetRedistributionAgent(agent)
+
+		// api metrics are constructed on api.Service.Configure
+		statusMetricsRegistry.MustRegister(apiService.StatusMetrics()...)
 	}
 
 	if err := kad.Start(ctx); err != nil {
