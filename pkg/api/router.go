@@ -243,6 +243,7 @@ func (s *Service) mountAPI() {
 	handle("/bytes/{address}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
 			s.contentLengthMetricMiddleware(),
+			s.downloadSpeedMetricMiddleware("bytes"),
 			s.newTracingHandler("bytes-download"),
 			s.actDecryptionHandler(),
 			web.FinalHandlerFunc(s.bytesGetHandler),
@@ -325,7 +326,7 @@ func (s *Service) mountAPI() {
 			s.contentLengthMetricMiddleware(),
 			s.newTracingHandler("bzz-download"),
 			s.actDecryptionHandler(),
-			s.downloadSpeedMetricMiddleware(),
+			s.downloadSpeedMetricMiddleware("bzz"),
 			web.FinalHandlerFunc(s.bzzDownloadHandler),
 		),
 		"HEAD": web.ChainHandlers(

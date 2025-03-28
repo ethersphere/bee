@@ -87,24 +87,7 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		deferred = defaultUploadMethod(headers.Deferred)
 	)
 
-	defer func(start time.Time) {
-		rw, ok := w.(*responseWriter)
-		if !ok {
-			return
-		}
-
-		if rw.Status() != http.StatusOK && rw.Status() != http.StatusCreated {
-			return
-		}
-
-		mode := "direct"
-		if deferred {
-			mode = "deferred"
-		}
-
-		speed := float64(r.ContentLength) / time.Since(start).Seconds()
-		s.metrics.UploadSpeed.WithLabelValues(mode).Observe(speed)
-	}(time.Now())
+	defer s.observeUploadSpeed(w, r, time.Now(), "bzz", deferred)
 
 	if deferred || headers.Pin {
 		tag, err = s.getOrCreateSessionID(headers.SwarmTag)

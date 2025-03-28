@@ -30,7 +30,7 @@ type metrics struct {
 
 	ContentApiDuration prometheus.HistogramVec
 	UploadSpeed        *prometheus.HistogramVec
-	DownloadSpeed      prometheus.Histogram
+	DownloadSpeed      *prometheus.HistogramVec
 }
 
 func newMetrics() metrics {
@@ -72,14 +72,14 @@ func newMetrics() metrics {
 			Name:      "upload_speed",
 			Help:      "Histogram of upload speed in B/s.",
 			Buckets:   []float64{0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5},
-		}, []string{"mode"}),
-		DownloadSpeed: prometheus.NewHistogram(prometheus.HistogramOpts{
+		}, []string{"endpoint", "mode"}),
+		DownloadSpeed: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "download_speed",
 			Help:      "Histogram of download speed in B/s.",
 			Buckets:   []float64{0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 6, 7, 8, 9},
-		}),
+		}, []string{"endpoint"}),
 	}
 }
 

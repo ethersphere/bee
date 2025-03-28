@@ -506,7 +506,7 @@ func (s *Service) contentLengthMetricMiddleware() func(h http.Handler) http.Hand
 	}
 }
 
-func (s *Service) downloadSpeedMetricMiddleware() func(h http.Handler) http.Handler {
+func (s *Service) downloadSpeedMetricMiddleware(endpoint string) func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
@@ -521,9 +521,32 @@ func (s *Service) downloadSpeedMetricMiddleware() func(h http.Handler) http.Hand
 			}
 
 			speed := float64(rw.size) / time.Since(start).Seconds()
-			s.metrics.DownloadSpeed.Observe(speed)
+			s.metrics.DownloadSpeed.WithLabelValues(endpoint).Observe(speed)
 		})
 	}
+}
+
+// observeUploadSpeed measures the speed of the upload and sets appropriate
+// labels to the metrics. This function can be called as a deferred function in
+// side of handler. This functions is not in a form of a middleware to more
+// directly pass the deferred flag.
+func (s *Service) observeUploadSpeed(w http.ResponseWriter, r *http.Request, start time.Time, endpoint string, deferred bool) {
+	rw, ok := w.(*responseWriter)
+	if !ok {
+		return
+	}
+
+	if rw.Status() != http.StatusOK && rw.Status() != http.StatusCreated {
+		return
+	}
+
+	mode := "direct"
+	if deferred {
+		mode = "deferred"
+	}
+
+	speed := float64(r.ContentLength) / time.Since(start).Seconds()
+	s.metrics.UploadSpeed.WithLabelValues(endpoint, mode).Observe(speed)
 }
 
 // gasConfigMiddleware can be used by the APIs that allow block chain transactions to set
