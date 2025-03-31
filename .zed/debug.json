@@ -1,0 +1,17 @@
+[
+  {
+    "label": "Launch Bee",
+    "type": "go",
+    "request": "launch",
+    "program": "${workspaceFolder}/cmd/bee/main.go",
+    "cwd": "${workspaceFolder}",
+    "args": [
+      "start",
+      "--config",
+      "${env:HOME}/Work/ethswarm/configs/mainnet.yaml"
+    ],
+    "adapter": "custom",
+    "command": "dlv dap --listen=127.0.0.1:38697",
+    "connection": "tcp"
+  }
+]
