@@ -15,7 +15,6 @@ import (
 	"path"
 	"path/filepath"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -289,9 +288,9 @@ func initDiskRepository(
 		return nil, nil, nil, errors.Join(store.Close(), fmt.Errorf("failed core migration: %w", err))
 	}
 
-	if opts.LdbStats.Load() != nil {
+	if opts.LdbStats != nil {
 		go func() {
-			ldbStats := opts.LdbStats.Load()
+			ldbStats := opts.LdbStats
 			logger := log.NewLogger(loggerName).Register()
 			ticker := time.NewTicker(15 * time.Second)
 			defer ticker.Stop()
@@ -369,7 +368,7 @@ const lockKeyNewSession string = "new_session"
 // Options provides a container to configure different things in the storer.
 type Options struct {
 	// These are options related to levelDB. Currently, the underlying storage used is levelDB.
-	LdbStats                  atomic.Pointer[prometheus.HistogramVec]
+	LdbStats                  *prometheus.HistogramVec
 	LdbOpenFilesLimit         uint64
 	LdbBlockCacheCapacity     uint64
 	LdbWriteBufferSize        uint64
@@ -476,7 +475,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 
 	lock := multex.New()
 	metrics := newMetrics()
-	opts.LdbStats.CompareAndSwap(nil, &metrics.LevelDBStats)
+	opts.LdbStats = metrics.LevelDBStats
 
 	if dirPath == "" {
 		st, dbCloser, err = initInmemRepository()
