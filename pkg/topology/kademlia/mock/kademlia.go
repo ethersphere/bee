@@ -107,7 +107,7 @@ func (m *Mock) EachConnectedPeer(f topology.EachPeerFunc, _ topology.Select) err
 	return nil
 }
 
-// EachPeerRev iterates from farthest bin to closest
+// EachConnectedPeerRev iterates from farthest bin to closest
 func (m *Mock) EachConnectedPeerRev(f topology.EachPeerFunc, _ topology.Select) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()

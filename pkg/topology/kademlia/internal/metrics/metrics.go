@@ -33,7 +33,7 @@ const (
 // operation whose execution modifies a specific metrics.
 type RecordOp func(*Counters)
 
-// Bootnode will mark the peer metric as bootnode based on the bool arg.
+// IsBootnode will mark the peer metric as bootnode based on the bool arg.
 func IsBootnode(b bool) RecordOp {
 	return func(cs *Counters) {
 		cs.Lock()
@@ -324,7 +324,7 @@ func (c *Collector) IsUnreachable(addr swarm.Address) bool {
 // ExcludeOp is a function type used to filter peers on certain fields.
 type ExcludeOp func(*Counters) bool
 
-// IsBootnode is used to filter bootnode peers.
+// Bootnode is used to filter bootnode peers.
 func Bootnode() ExcludeOp {
 	return func(cs *Counters) bool {
 		return cs.IsBootnode
