@@ -206,13 +206,13 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 	if len(resolverEndpoints) > 0 {
 		resolverCfgs, err = multiresolver.ParseConnectionStrings(resolverEndpoints)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("parse resolver endpoints: %w", err)
 		}
 	}
 
 	signerConfig, err := c.configureSigner(cmd, logger)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("configure signer: %w", err)
 	}
 
 	bootNode := c.config.GetBool(optionNameBootnodeMode)
