@@ -19,11 +19,11 @@ type metrics struct {
 	TotalOutgoing           prometheus.Counter
 	TotalOutgoingErrors     prometheus.Counter
 	InvalidStampErrors      prometheus.Counter
-	StampValidationTime     prometheus.HistogramVec
+	StampValidationTime     *prometheus.HistogramVec
 	Forwarder               prometheus.Counter
 	Storer                  prometheus.Counter
-	TotalHandlerTime        prometheus.HistogramVec
-	PushToPeerTime          prometheus.HistogramVec
+	TotalHandlerTime        *prometheus.HistogramVec
+	PushToPeerTime          *prometheus.HistogramVec
 
 	ReceiptDepth        *prometheus.CounterVec
 	ShallowReceiptDepth *prometheus.CounterVec
@@ -88,7 +88,7 @@ func newMetrics() metrics {
 			Name:      "invalid_stamps",
 			Help:      "No of invalid stamp errors.",
 		}),
-		StampValidationTime: *prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		StampValidationTime: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "stamp_validation_time",
@@ -106,7 +106,7 @@ func newMetrics() metrics {
 			Name:      "storer",
 			Help:      "No of times the peer is a storer node.",
 		}),
-		TotalHandlerTime: *prometheus.NewHistogramVec(
+		TotalHandlerTime: prometheus.NewHistogramVec(
 			prometheus.HistogramOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
@@ -114,7 +114,7 @@ func newMetrics() metrics {
 				Help:      "Histogram for time taken for the handler.",
 			}, []string{"status"},
 		),
-		PushToPeerTime: *prometheus.NewHistogramVec(
+		PushToPeerTime: prometheus.NewHistogramVec(
 			prometheus.HistogramOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,

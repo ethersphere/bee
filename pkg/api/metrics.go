@@ -28,7 +28,7 @@ type metrics struct {
 	PingRequestCount   prometheus.Counter
 	ResponseCodeCounts *prometheus.CounterVec
 
-	ContentApiDuration prometheus.HistogramVec
+	ContentApiDuration *prometheus.HistogramVec
 	UploadSpeed        *prometheus.HistogramVec
 	DownloadSpeed      *prometheus.HistogramVec
 }
@@ -59,7 +59,7 @@ func newMetrics() metrics {
 			},
 			[]string{"code", "method"},
 		),
-		ContentApiDuration: *prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		ContentApiDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "content_api_duration",

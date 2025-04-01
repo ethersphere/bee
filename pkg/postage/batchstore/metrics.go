@@ -12,7 +12,7 @@ import (
 type metrics struct {
 	Commitment        prometheus.Gauge
 	Radius            prometheus.Gauge
-	UnreserveDuration prometheus.HistogramVec
+	UnreserveDuration *prometheus.HistogramVec
 }
 
 func newMetrics() metrics {
@@ -31,7 +31,7 @@ func newMetrics() metrics {
 			Name:      "radius",
 			Help:      "Radius of responsibility observed by the batchstore.",
 		}),
-		UnreserveDuration: *prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		UnreserveDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "unreserve_duration",

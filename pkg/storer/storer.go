@@ -476,7 +476,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 
 	lock := multex.New()
 	metrics := newMetrics()
-	opts.LdbStats.CompareAndSwap(nil, &metrics.LevelDBStats)
+	opts.LdbStats.CompareAndSwap(nil, metrics.LevelDBStats)
 
 	if dirPath == "" {
 		st, dbCloser, err = initInmemRepository()

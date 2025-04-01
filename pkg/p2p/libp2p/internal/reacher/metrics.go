@@ -10,21 +10,21 @@ import (
 )
 
 type metrics struct {
-	Pings    prometheus.CounterVec
-	PingTime prometheus.HistogramVec
+	Pings    *prometheus.CounterVec
+	PingTime *prometheus.HistogramVec
 }
 
 func newMetrics() metrics {
 	subsystem := "reacher"
 
 	return metrics{
-		Pings: *prometheus.NewCounterVec(prometheus.CounterOpts{
+		Pings: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "pings",
 			Help:      "Ping counter.",
 		}, []string{"status"}),
-		PingTime: *prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		PingTime: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "ping_timer",
