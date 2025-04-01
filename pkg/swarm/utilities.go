@@ -48,7 +48,7 @@ func ContainsChunkWithAddress(chunks []Chunk, a Address) bool {
 	return IndexOfChunkWithAddress(chunks, a) != -1
 }
 
-// ContainsChunkWithAddress reports whether Chunk with data d is present in chunks.
+// ContainsChunkWithData reports whether Chunk with data d is present in chunks.
 func ContainsChunkWithData(chunks []Chunk, d []byte) bool {
 	for _, c := range chunks {
 		if c != nil && bytes.Equal(c.Data(), d) {
