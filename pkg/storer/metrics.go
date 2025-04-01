@@ -17,8 +17,8 @@ import (
 
 // metrics groups storer related prometheus counters.
 type metrics struct {
-	MethodCalls             prometheus.CounterVec
-	MethodCallsDuration     prometheus.HistogramVec
+	MethodCalls             *prometheus.CounterVec
+	MethodCallsDuration     *prometheus.HistogramVec
 	ReserveSize             prometheus.Gauge
 	ReserveSizeWithinRadius prometheus.Gauge
 	ReserveCleanup          prometheus.Counter
@@ -28,7 +28,7 @@ type metrics struct {
 	ExpiredChunkCount       prometheus.Counter
 	OverCapTriggerCount     prometheus.Counter
 	ExpiredBatchCount       prometheus.Counter
-	LevelDBStats            prometheus.HistogramVec
+	LevelDBStats            *prometheus.HistogramVec
 	ExpiryTriggersCount     prometheus.Counter
 	ExpiryRunsCount         prometheus.Counter
 
@@ -40,7 +40,7 @@ func newMetrics() metrics {
 	const subsystem = "localstore"
 
 	return metrics{
-		MethodCalls: *prometheus.NewCounterVec(
+		MethodCalls: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
@@ -49,7 +49,7 @@ func newMetrics() metrics {
 			},
 			[]string{"component", "method", "status"},
 		),
-		MethodCallsDuration: *prometheus.NewHistogramVec(
+		MethodCallsDuration: prometheus.NewHistogramVec(
 			prometheus.HistogramOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
@@ -138,7 +138,7 @@ func newMetrics() metrics {
 				Help:      "Number of batches expired, that were processed.",
 			},
 		),
-		LevelDBStats: *prometheus.NewHistogramVec(
+		LevelDBStats: prometheus.NewHistogramVec(
 			prometheus.HistogramOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
