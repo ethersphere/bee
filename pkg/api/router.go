@@ -377,8 +377,13 @@ func (s *Service) mountAPI() {
 		"GET":    http.HandlerFunc(s.getPinnedRootHash),
 		"POST":   http.HandlerFunc(s.pinRootHash),
 		"DELETE": http.HandlerFunc(s.unpinRootHash),
-	},
-	)
+	})
+
+	handle("/pins/{reference}/repair", web.ChainHandlers(
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"POST": http.HandlerFunc(s.repairPins),
+		}),
+	))
 
 	handle("/stewardship/{address}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.stewardshipGetHandler),
