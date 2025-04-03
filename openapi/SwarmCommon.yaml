@@ -368,7 +368,18 @@ components:
           type: array
           nullable: false
           items:
-            $ref: "#/components/schemas/Address"
+            type: object
+            properties:
+              address:
+                $ref: "#/components/schemas/Address"
+              fullNode:
+                type: boolean
+              underlay:
+                type: array
+                nullable: true
+                items:
+                  $ref: "SwarmCommon.yaml#/components/schemas/MultiAddress"
+
 
     BlockListedPeers:
       type: array

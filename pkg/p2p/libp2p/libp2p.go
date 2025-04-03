@@ -46,12 +46,14 @@ import (
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	lp2pswarm "github.com/libp2p/go-libp2p/p2p/net/swarm"
 	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
+	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
 
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multistream"
 	"go.uber.org/atomic"
+	"golang.org/x/exp/maps"
 
 	ocprom "contrib.go.opencensus.io/exporter/prometheus"
 	m2 "github.com/ethersphere/bee/v2/pkg/metrics"
@@ -122,6 +124,7 @@ type lightnodes interface {
 type Options struct {
 	PrivateKey       *ecdsa.PrivateKey
 	NATAddr          string
+	EnableQUIC       bool
 	EnableWS         bool
 	FullNode         bool
 	LightNodeLimit   int
@@ -156,6 +159,9 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	var listenAddrs []string
 	if ip4Addr != "" {
 		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s", ip4Addr, port))
+		if o.EnableQUIC {
+			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/udp/%s/quic-v1", ip4Addr, port))
+		}
 		if o.EnableWS {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/ws", ip4Addr, port))
 		}
@@ -163,6 +169,9 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	if ip6Addr != "" {
 		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s", ip6Addr, port))
+		if o.EnableQUIC {
+			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/udp/%s/quic-v1", ip6Addr, port))
+		}
 		if o.EnableWS {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/ws", ip6Addr, port))
 		}
@@ -245,6 +254,9 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		libp2p.Transport(tcp.NewTCPTransport, tcp.DisableReuseport()),
 	}
 
+	if o.EnableQUIC {
+		transports = append(transports, libp2p.Transport(libp2pquic.NewTransport))
+	}
 	if o.EnableWS {
 		transports = append(transports, libp2p.Transport(ws.New))
 	}
@@ -644,24 +656,27 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 	return nil
 }
 
-func (s *Service) Addresses() (addresses []ma.Multiaddr, err error) {
+func (s *Service) Addresses() ([]ma.Multiaddr, error) {
+	addresses := make(map[string]ma.Multiaddr)
 	for _, addr := range s.host.Addrs() {
 		a, err := buildUnderlayAddress(addr, s.host.ID())
 		if err != nil {
 			return nil, err
 		}
 
-		addresses = append(addresses, a)
+		addresses[a.String()] = a
 	}
-	if s.natAddrResolver != nil && len(addresses) > 0 {
-		a, err := s.natAddrResolver.Resolve(addresses[0])
-		if err != nil {
-			return nil, err
+	if s.natAddrResolver != nil {
+		for _, addr := range addresses {
+			a, err := s.natAddrResolver.Resolve(addr)
+			if err != nil {
+				return nil, err
+			}
+			addresses[a.String()] = a
 		}
-		addresses = append(addresses, a)
 	}
 
-	return addresses, nil
+	return maps.Values(addresses), nil
 }
 
 func (s *Service) NATManager() basichost.NATManager {
@@ -695,7 +710,7 @@ func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration, reaso
 }
 
 func buildHostAddress(peerID libp2ppeer.ID) (ma.Multiaddr, error) {
-	return ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", peerID.String()))
+	return ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", peerID))
 }
 
 func buildUnderlayAddress(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) {

@@ -56,20 +56,26 @@ func (r *staticAddressResolver) Resolve(observedAddress ma.Multiaddr) (ma.Multia
 		return observedAddress, nil
 	}
 
-	var multiProto string
+	var elements []string
 	if r.multiProto != "" {
-		multiProto = r.multiProto
+		elements = append(elements, r.multiProto)
 	} else {
-		multiProto = strings.Join(observedAddrSplit[:3], "/")
+		elements = append(elements, observedAddrSplit[:3]...)
 	}
 
-	var port string
+	elements = append(elements, observedAddrSplit[3])
+
 	if r.port != "" {
-		port = r.port
+		elements = append(elements, r.port)
 	} else {
-		port = observedAddrSplit[4]
+		elements = append(elements, observedAddrSplit[4])
 	}
-	a, err := ma.NewMultiaddr(multiProto + "/" + observedAddrSplit[3] + "/" + port)
+
+	if len(observedAddrSplit) > 5 {
+		elements = append(elements, observedAddrSplit[5:]...)
+	}
+
+	a, err := ma.NewMultiaddr(strings.Join(elements, "/"))
 	if err != nil {
 		return nil, err
 	}
