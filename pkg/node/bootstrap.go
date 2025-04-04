@@ -98,6 +98,7 @@ func bootstrapNode(
 	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
 		PrivateKey:     libp2pPrivateKey,
 		NATAddr:        o.NATAddr,
+		WSAddr:         o.WSAddr,
 		EnableWS:       o.EnableWS,
 		WelcomeMessage: o.WelcomeMessage,
 		FullNode:       false,

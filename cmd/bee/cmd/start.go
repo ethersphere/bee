@@ -287,6 +287,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		DBDisableSeeksCompaction:      c.config.GetBool(optionNameDBDisableSeeksCompaction),
 		APIAddr:                       c.config.GetString(optionNameAPIAddr),
 		Addr:                          c.config.GetString(optionNameP2PAddr),
+		WSAddr:                        c.config.GetString(optionNameWSAddr),
 		NATAddr:                       c.config.GetString(optionNameNATAddr),
 		EnableWS:                      c.config.GetBool(optionNameP2PWSEnable),
 		WelcomeMessage:                c.config.GetString(optionWelcomeMessage),
