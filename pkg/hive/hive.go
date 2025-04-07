@@ -187,7 +187,7 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 		}
 
 		if !s.allowPrivateCIDRs && manet.IsPrivateAddr(addr.Underlay) {
-			continue // Don't advertise private CIDRs to the public network.
+			// continue // Don't advertise private CIDRs to the public network.
 		}
 
 		peersRequest.Peers = append(peersRequest.Peers, &pb.BzzAddress{
