@@ -63,6 +63,7 @@ type AdvertisableAddressResolver interface {
 // Service can perform initiate or handle a handshake between peers.
 type Service struct {
 	signer                crypto.Signer
+	webRTCListenAddrs     [][]byte
 	advertisableAddresser AdvertisableAddressResolver
 	overlay               swarm.Address
 	fullNode              bool
@@ -96,8 +97,11 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 		return nil, ErrWelcomeMessageLength
 	}
 
+	var rtcAddrList0 [][]byte
+
 	svc := &Service{
 		signer:                signer,
+		webRTCListenAddrs:     rtcAddrList0,
 		advertisableAddresser: advertisableAddresser,
 		overlay:               overlay,
 		networkID:             networkID,
@@ -111,6 +115,11 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 	svc.welcomeMessage.Store(welcomeMessage)
 
 	return svc, nil
+}
+
+func (s *Service) SetRTCListenAddrs(a [][]byte) {
+
+	s.webRTCListenAddrs = a
 }
 
 func (s *Service) SetPicker(n p2p.Picker) {
@@ -189,9 +198,10 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 	welcomeMessage := s.GetWelcomeMessage()
 	msg := &pb.Ack{
 		Address: &pb.BzzAddress{
-			Underlay:  advertisableUnderlayBytes,
-			Overlay:   bzzAddress.Overlay.Bytes(),
-			Signature: bzzAddress.Signature,
+			Underlay:    advertisableUnderlayBytes,
+			Overlay:     bzzAddress.Overlay.Bytes(),
+			Signature:   bzzAddress.Signature,
+			RTCUnderlay: s.webRTCListenAddrs,
 		},
 		NetworkID:      s.networkID,
 		FullNode:       s.fullNode,
@@ -267,9 +277,10 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 		},
 		Ack: &pb.Ack{
 			Address: &pb.BzzAddress{
-				Underlay:  advertisableUnderlayBytes,
-				Overlay:   bzzAddress.Overlay.Bytes(),
-				Signature: bzzAddress.Signature,
+				Underlay:    advertisableUnderlayBytes,
+				Overlay:     bzzAddress.Overlay.Bytes(),
+				Signature:   bzzAddress.Signature,
+				RTCUnderlay: s.webRTCListenAddrs,
 			},
 			NetworkID:      s.networkID,
 			FullNode:       s.fullNode,
@@ -336,7 +347,7 @@ func buildFullMA(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) 
 }
 
 func (s *Service) parseCheckAck(ack *pb.Ack) (*bzz.Address, error) {
-	bzzAddress, err := bzz.ParseAddress(ack.Address.Underlay, ack.Address.Overlay, ack.Address.Signature, ack.Nonce, s.validateOverlay, s.networkID)
+	bzzAddress, err := bzz.ParseAddress(ack.Address.Underlay, ack.Address.Overlay, ack.Address.Signature, ack.Nonce, ack.Address.RTCUnderlay, s.validateOverlay, s.networkID)
 	if err != nil {
 		return nil, ErrInvalidAck
 	}

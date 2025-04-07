@@ -193,6 +193,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	}()
 
 	var ch pb.Delivery
+
 	if err = r.ReadMsgWithContext(ctx, &ch); err != nil {
 		return fmt.Errorf("pushsync read delivery: %w", err)
 	}

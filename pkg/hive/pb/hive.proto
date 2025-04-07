@@ -17,4 +17,5 @@ message BzzAddress {
     bytes Signature = 2;
     bytes Overlay = 3;
     bytes Nonce = 4;
+    repeated bytes RTCUnderlays = 5;
 }
