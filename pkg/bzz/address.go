@@ -113,10 +113,6 @@ func (a *Address) Equal(b *Address) bool {
 }
 
 func multiaddrEqual(a, b ma.Multiaddr) bool {
-	if a == nil || b == nil {
-		return a == b
-	}
-
 	return a.Equal(b)
 }
 
