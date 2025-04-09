@@ -210,6 +210,14 @@ func mapStructure(input, output interface{}, hooks map[string]func(v string) (st
 		case reflect.String:
 			field.SetString(value)
 		case reflect.Slice:
+			if field.Type() == reflect.TypeOf(multiaddr.Multiaddr(nil)) {
+				val, err := multiaddr.NewMultiaddr(value)
+				if err != nil {
+					return err
+				}
+				field.Set(reflect.ValueOf(val))
+				return nil
+			}
 			if value == "" {
 				return nil // Nil slice.
 			}
