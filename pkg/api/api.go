@@ -50,10 +50,10 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/v2/pkg/status"
 	"github.com/ethersphere/bee/v2/pkg/steward"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storageincentives"
 	"github.com/ethersphere/bee/v2/pkg/storageincentives/staking"
-	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/ethersphere/bee/v2/pkg/topology/lightnode"
@@ -78,6 +78,7 @@ const (
 	SwarmSocSignatureHeader           = "Swarm-Soc-Signature"
 	SwarmFeedIndexHeader              = "Swarm-Feed-Index"
 	SwarmFeedIndexNextHeader          = "Swarm-Feed-Index-Next"
+	SwarmLegacyFeedResolve            = "Swarm-Feed-Legacy-Resolve"
 	SwarmOnlyRootChunk                = "Swarm-Only-Root-Chunk"
 	SwarmCollectionHeader             = "Swarm-Collection"
 	SwarmPostageBatchIdHeader         = "Swarm-Postage-Batch-Id"
@@ -220,6 +221,7 @@ type Service struct {
 	redistributionAgent *storageincentives.Agent
 
 	statusService *status.Service
+	isWarmingUp   bool
 }
 
 func (s *Service) SetP2P(p2p p2p.DebugService) {
@@ -387,6 +389,10 @@ func (s *Service) SetProbe(probe *Probe) {
 	s.probe = probe
 }
 
+func (s *Service) SetIsWarmingUp(v bool) {
+	s.isWarmingUp = v
+}
+
 // Close hangs up running websockets on shutdown.
 func (s *Service) Close() error {
 	s.logger.Info("api shutting down")
@@ -498,6 +504,49 @@ func (s *Service) contentLengthMetricMiddleware() func(h http.Handler) http.Hand
 			}
 		})
 	}
+}
+
+func (s *Service) downloadSpeedMetricMiddleware(endpoint string) func(h http.Handler) http.Handler {
+	return func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+			h.ServeHTTP(w, r)
+
+			rw, ok := w.(*responseWriter)
+			if !ok {
+				return
+			}
+			if rw.Status() != http.StatusOK {
+				return
+			}
+
+			speed := float64(rw.size) / time.Since(start).Seconds()
+			s.metrics.DownloadSpeed.WithLabelValues(endpoint).Observe(speed)
+		})
+	}
+}
+
+// observeUploadSpeed measures the speed of the upload and sets appropriate
+// labels to the metrics. This function can be called as a deferred function in
+// side of handler. This functions is not in a form of a middleware to more
+// directly pass the deferred flag.
+func (s *Service) observeUploadSpeed(w http.ResponseWriter, r *http.Request, start time.Time, endpoint string, deferred bool) {
+	rw, ok := w.(*responseWriter)
+	if !ok {
+		return
+	}
+
+	if rw.Status() != http.StatusOK && rw.Status() != http.StatusCreated {
+		return
+	}
+
+	mode := "direct"
+	if deferred {
+		mode = "deferred"
+	}
+
+	speed := float64(r.ContentLength) / time.Since(start).Seconds()
+	s.metrics.UploadSpeed.WithLabelValues(endpoint, mode).Observe(speed)
 }
 
 // gasConfigMiddleware can be used by the APIs that allow block chain transactions to set

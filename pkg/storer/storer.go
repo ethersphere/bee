@@ -476,7 +476,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 
 	lock := multex.New()
 	metrics := newMetrics()
-	opts.LdbStats.CompareAndSwap(nil, &metrics.LevelDBStats)
+	opts.LdbStats.CompareAndSwap(nil, metrics.LevelDBStats)
 
 	if dirPath == "" {
 		st, dbCloser, err = initInmemRepository()
@@ -602,6 +602,23 @@ func (db *DB) Metrics() []prometheus.Collector {
 	if v, ok := db.storage.(m.Collector); ok {
 		collectors = append(collectors, v.Metrics()...)
 	}
+	return collectors
+}
+
+// StatusMetrics exposes metrics that are exposed on the status protocol.
+func (db *DB) StatusMetrics() []prometheus.Collector {
+	collectors := []prometheus.Collector{
+		db.metrics.MethodCallsDuration,
+	}
+
+	type Collector interface {
+		StatusMetrics() []prometheus.Collector
+	}
+
+	if v, ok := db.storage.(Collector); ok {
+		collectors = append(collectors, v.StatusMetrics()...)
+	}
+
 	return collectors
 }
 

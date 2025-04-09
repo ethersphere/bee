@@ -77,6 +77,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/util/syncutil"
 	"github.com/hashicorp/go-multierror"
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/prometheus/client_golang/prometheus"
 	promc "github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/sha3"
 	"golang.org/x/sync/errgroup"
@@ -263,12 +264,12 @@ func NewBee(
 
 	stateStore, stateStoreMetrics, err := InitStateStore(logger, o.DataDir, o.StatestoreCacheCapacity)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("init state store: %w", err)
 	}
 
 	pubKey, err := signer.PublicKey()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("signer public key: %w", err)
 	}
 
 	nonce, nonceExists, err := overlayNonceExists(stateStore)
@@ -460,7 +461,7 @@ func NewBee(
 
 		apiService.Mount()
 		apiService.SetProbe(probe)
-
+		apiService.SetIsWarmingUp(true)
 		apiService.SetSwarmAddress(&swarmAddress)
 
 		apiServer := &http.Server{
@@ -500,7 +501,7 @@ func NewBee(
 	if o.SwapEnable {
 		chequebookFactory, err = InitChequebookFactory(logger, chainBackend, chainID, transactionService, o.SwapFactoryAddress)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("init chequebook factory: %w", err)
 		}
 
 		erc20Address, err := chequebookFactory.ERC20Address(ctx)
@@ -525,7 +526,7 @@ func NewBee(
 				erc20Service,
 			)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("init chequebook service: %w", err)
 			}
 		}
 
@@ -661,7 +662,7 @@ func NewBee(
 
 	bzzTokenAddress, err := postagecontract.LookupERC20Address(ctx, transactionService, postageStampContractAddress, postageStampContractABI, chainEnabled)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("lookup erc20 postage address: %w", err)
 	}
 
 	postageStampContractService = postagecontract.New(
@@ -681,7 +682,7 @@ func NewBee(
 
 	batchSvc, err = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("init batch service: %w", err)
 	}
 
 	// Construct protocols.
@@ -892,7 +893,7 @@ func NewBee(
 			transactionService,
 		)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("init swap service: %w", err)
 		}
 		b.priceOracleCloser = priceOracle
 
@@ -910,7 +911,16 @@ func NewBee(
 
 	validStamp := postage.ValidStamp(batchStore)
 
-	nodeStatus := status.NewService(logger, p2ps, kad, beeNodeMode.String(), batchStore, localStore)
+	// metrics exposed on the status protocol
+	statusMetricsRegistry := prometheus.NewRegistry()
+	if localStore != nil {
+		statusMetricsRegistry.MustRegister(localStore.StatusMetrics()...)
+	}
+	if p2ps != nil {
+		statusMetricsRegistry.MustRegister(p2ps.StatusMetrics()...)
+	}
+
+	nodeStatus := status.NewService(logger, p2ps, kad, beeNodeMode.String(), batchStore, localStore, statusMetricsRegistry)
 	if err = p2ps.AddProtocol(nodeStatus.Protocol()); err != nil {
 		return nil, fmt.Errorf("status service: %w", err)
 	}
@@ -968,6 +978,8 @@ func NewBee(
 	retrieval := retrieval.New(swarmAddress, waitNetworkRFunc, localStore, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
 	localStore.SetRetrievalService(retrieval)
 
+	statusMetricsRegistry.MustRegister(retrieval.StatusMetrics()...)
+
 	pusherService := pusher.New(networkID, localStore, pushSyncProtocol, batchStore, logger, warmupTime, pusher.DefaultRetryCount)
 	b.pusherCloser = pusherService
 
@@ -1003,6 +1015,10 @@ func NewBee(
 		return nil, fmt.Errorf("pullsync protocol: %w", err)
 	}
 
+	time.AfterFunc(warmupTime, func() {
+		apiService.SetIsWarmingUp(false)
+	})
+
 	stakingContractAddress := chainCfg.StakingAddress
 	if o.StakingContractAddress != "" {
 		if !common.IsHexAddress(o.StakingContractAddress) {
@@ -1017,7 +1033,7 @@ func NewBee(
 
 		stake, err := stakingContract.GetPotentialStake(ctx)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("get potential stake: %w", err)
 		}
 
 		if stake.Cmp(big.NewInt(0)) > 0 {
@@ -1034,7 +1050,7 @@ func NewBee(
 			// make sure that the staking contract has the up to date height
 			tx, updated, err := stakingContract.UpdateHeight(ctx)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("update height in staking contract: %w", err)
 			}
 			if updated {
 				logger.Info("updated new reserve capacity doubling height in the staking contract", "transaction", tx, "new_height", o.ReserveCapacityDoubling)
@@ -1192,14 +1208,17 @@ func NewBee(
 		apiService.EnableFullAPI()
 
 		apiService.SetRedistributionAgent(agent)
+
+		// api metrics are constructed on api.Service.Configure
+		statusMetricsRegistry.MustRegister(apiService.StatusMetrics()...)
 	}
 
 	if err := kad.Start(ctx); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("start kademlia: %w", err)
 	}
 
 	if err := p2ps.Ready(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("p2ps ready: %w", err)
 	}
 
 	return b, nil
@@ -1336,7 +1355,7 @@ func (b *Bee) Shutdown() error {
 	return mErr
 }
 
-var ErrShutdownInProgress error = errors.New("shutdown in progress")
+var ErrShutdownInProgress = errors.New("shutdown in progress")
 
 func isChainEnabled(o *Options, swapEndpoint string, logger log.Logger) bool {
 	chainDisabled := swapEndpoint == ""

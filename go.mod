@@ -30,7 +30,7 @@ require (
 	github.com/multiformats/go-multihash v0.2.3
 	github.com/multiformats/go-multistream v0.6.0
 	github.com/opentracing/opentracing-go v1.2.0
-	github.com/prometheus/client_golang v1.21.0
+	github.com/prometheus/client_golang v1.21.1
 	github.com/spf13/afero v1.6.0
 	github.com/spf13/cobra v1.5.0
 	github.com/spf13/viper v1.7.0

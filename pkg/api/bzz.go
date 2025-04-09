@@ -87,6 +87,8 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		deferred = defaultUploadMethod(headers.Deferred)
 	)
 
+	defer s.observeUploadSpeed(w, r, time.Now(), "bzz", deferred)
+
 	if deferred || headers.Pin {
 		tag, err = s.getOrCreateSessionID(headers.SwarmTag)
 		if err != nil {
@@ -431,7 +433,7 @@ FETCH:
 				jsonhttp.NotFound(w, "no update found")
 				return
 			}
-			wc, err := feeds.GetWrappedChunk(ctx, s.storer.Download(cache), ch)
+			wc, err := feeds.GetWrappedChunk(ctx, s.storer.Download(cache), ch, false)
 			if err != nil {
 				logger.Debug("bzz download: mapStructure feed update failed", "error", err)
 				logger.Error(nil, "bzz download: mapStructure feed update failed")
