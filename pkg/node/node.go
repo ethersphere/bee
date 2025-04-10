@@ -744,6 +744,8 @@ func NewBee(
 		lo.ReserveCapacityDoubling = o.ReserveCapacityDoubling
 	}
 
+	logger.Info("just minor change to trigger the workflow")
+
 	localStore, err := storer.New(ctx, path, lo)
 	if err != nil {
 		return nil, fmt.Errorf("localstore: %w", err)
