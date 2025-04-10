@@ -59,6 +59,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/priceoracle"
+	"github.com/ethersphere/bee/v2/pkg/stabilization"
 	"github.com/ethersphere/bee/v2/pkg/status"
 	"github.com/ethersphere/bee/v2/pkg/steward"
 	"github.com/ethersphere/bee/v2/pkg/storageincentives"
@@ -124,57 +125,57 @@ type Bee struct {
 }
 
 type Options struct {
-	DataDir                       string
+	Addr                          string
+	AllowPrivateCIDRs             bool
+	APIAddr                       string
+	BlockchainRpcEndpoint         string
+	BlockProfile                  bool
+	BlockTime                     time.Duration
+	BootnodeMode                  bool
+	Bootnodes                     []string
 	CacheCapacity                 uint64
-	DBOpenFilesLimit              uint64
-	DBWriteBufferSize             uint64
+	ChainID                       int64
+	ChequebookEnable              bool
+	CORSAllowedOrigins            []string
+	DataDir                       string
 	DBBlockCacheCapacity          uint64
 	DBDisableSeeksCompaction      bool
-	APIAddr                       string
-	Addr                          string
-	NATAddr                       string
+	DBOpenFilesLimit              uint64
+	DBWriteBufferSize             uint64
+	EnableStorageIncentives       bool
 	EnableWS                      bool
-	WelcomeMessage                string
-	Bootnodes                     []string
-	CORSAllowedOrigins            []string
+	FullNodeMode                  bool
 	Logger                        log.Logger
+	MinimumStorageRadius          uint
+	MutexProfile                  bool
+	NATAddr                       string
+	NeighborhoodSuggester         string
+	PaymentEarly                  int64
+	PaymentThreshold              string
+	PaymentTolerance              int64
+	PostageContractAddress        string
+	PostageContractStartBlock     uint64
+	PriceOracleAddress            string
+	RedistributionContractAddress string
+	ReserveCapacityDoubling       int
+	ResolverConnectionCfgs        []multiresolver.ConnectionConfig
+	Resync                        bool
+	RetrievalCaching              bool
+	StakingContractAddress        string
+	StatestoreCacheCapacity       uint64
+	StaticNodes                   []swarm.Address
+	SwapEnable                    bool
+	SwapFactoryAddress            string
+	SwapInitialDeposit            string
+	TargetNeighborhood            string
 	TracingEnabled                bool
 	TracingEndpoint               string
 	TracingServiceName            string
-	PaymentThreshold              string
-	PaymentTolerance              int64
-	PaymentEarly                  int64
-	ResolverConnectionCfgs        []multiresolver.ConnectionConfig
-	RetrievalCaching              bool
-	BootnodeMode                  bool
-	BlockchainRpcEndpoint         string
-	SwapFactoryAddress            string
-	SwapInitialDeposit            string
-	SwapEnable                    bool
-	ChequebookEnable              bool
-	FullNodeMode                  bool
-	PostageContractAddress        string
-	PostageContractStartBlock     uint64
-	StakingContractAddress        string
-	PriceOracleAddress            string
-	RedistributionContractAddress string
-	BlockTime                     time.Duration
-	WarmupTime                    time.Duration
-	ChainID                       int64
-	Resync                        bool
-	BlockProfile                  bool
-	MutexProfile                  bool
-	StaticNodes                   []swarm.Address
-	AllowPrivateCIDRs             bool
-	UsePostageSnapshot            bool
-	EnableStorageIncentives       bool
-	StatestoreCacheCapacity       uint64
-	TargetNeighborhood            string
-	NeighborhoodSuggester         string
-	WhitelistedWithdrawalAddress  []string
 	TrxDebugMode                  bool
-	MinimumStorageRadius          uint
-	ReserveCapacityDoubling       int
+	UsePostageSnapshot            bool
+	WarmupTime                    time.Duration
+	WelcomeMessage                string
+	WhitelistedWithdrawalAddress  []string
 }
 
 const (
@@ -701,7 +702,16 @@ func NewBee(
 
 	var swapService *swap.Service
 
-	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, logger,
+	detector, err := stabilization.NewDetector(stabilization.Config{
+		RelativeSlowdownFactor: 10,
+		MinSlowSamples:         10,
+		WarmupTime:             warmupTime,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("rate stabilizer: %w", err)
+	}
+
+	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, detector, logger,
 		kademlia.Options{Bootnodes: bootnodes, BootnodeMode: o.BootnodeMode, StaticNodes: o.StaticNodes, DataDir: o.DataDir})
 	if err != nil {
 		return nil, fmt.Errorf("unable to create kademlia: %w", err)
@@ -728,7 +738,7 @@ func NewBee(
 		Batchstore:                batchStore,
 		StateStore:                stateStore,
 		RadiusSetter:              kad,
-		WarmupDuration:            warmupTime,
+		StabilizationSubscriber:   detector,
 		Logger:                    logger,
 		Tracer:                    tracer,
 		CacheMinEvictCount:        cacheMinEvictCount,
@@ -925,7 +935,7 @@ func NewBee(
 		return nil, fmt.Errorf("status service: %w", err)
 	}
 
-	saludService := salud.New(nodeStatus, kad, localStore, logger, warmupTime, api.FullMode.String(), salud.DefaultMinPeersPerBin, salud.DefaultDurPercentile, salud.DefaultConnsPercentile)
+	saludService := salud.New(nodeStatus, kad, localStore, logger, detector, api.FullMode.String(), salud.DefaultMinPeersPerBin, salud.DefaultDurPercentile, salud.DefaultConnsPercentile)
 	b.saludCloser = saludService
 
 	rC, unsub := saludService.SubscribeNetworkStorageRadius()
@@ -969,7 +979,7 @@ func NewBee(
 		}
 	}
 
-	pushSyncProtocol := pushsync.New(swarmAddress, networkID, nonce, p2ps, localStore, waitNetworkRFunc, kad, o.FullNodeMode && !o.BootnodeMode, pssService.TryUnwrap, gsocService.Handle, validStamp, logger, acc, pricer, signer, tracer, warmupTime, uint8(shallowReceiptTolerance))
+	pushSyncProtocol := pushsync.New(swarmAddress, networkID, nonce, p2ps, localStore, waitNetworkRFunc, kad, o.FullNodeMode && !o.BootnodeMode, pssService.TryUnwrap, gsocService.Handle, validStamp, logger, acc, pricer, signer, tracer, detector, uint8(shallowReceiptTolerance))
 	b.pushSyncCloser = pushSyncProtocol
 
 	// set the pushSyncer in the PSS
@@ -980,7 +990,7 @@ func NewBee(
 
 	statusMetricsRegistry.MustRegister(retrieval.StatusMetrics()...)
 
-	pusherService := pusher.New(networkID, localStore, pushSyncProtocol, batchStore, logger, warmupTime, pusher.DefaultRetryCount)
+	pusherService := pusher.New(networkID, localStore, pushSyncProtocol, batchStore, logger, detector, pusher.DefaultRetryCount)
 	b.pusherCloser = pusherService
 
 	pusherService.AddFeed(localStore.PusherFeed())
@@ -1015,9 +1025,10 @@ func NewBee(
 		return nil, fmt.Errorf("pullsync protocol: %w", err)
 	}
 
-	time.AfterFunc(warmupTime, func() {
+	go func() {
+		<-detector.Subscribe()
 		apiService.SetIsWarmingUp(false)
-	})
+	}()
 
 	stakingContractAddress := chainCfg.StakingAddress
 	if o.StakingContractAddress != "" {
@@ -1088,10 +1099,9 @@ func NewBee(
 
 			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), o.TrxDebugMode)
 
-			startWarmupPeriod := time.Now()
 			isFullySynced := func() bool {
 				reserveTreshold := reserveCapacity * 5 / 10
-				return localStore.ReserveSize() >= reserveTreshold && pullerService.SyncRate() == 0 && time.Now().After(startWarmupPeriod.Add(warmupTime))
+				return localStore.ReserveSize() >= reserveTreshold && pullerService.SyncRate() == 0 && detector.IsStabilized()
 			}
 
 			agent, err = storageincentives.New(

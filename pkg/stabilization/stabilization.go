@@ -20,7 +20,9 @@ import (
 type Subscriber interface {
 	// Subscribe returns a channel that will receive a notification when the
 	// stabilization reaches the Stabilized state.
-	Subscribe() (c <-chan struct{}, cancel func())
+	Subscribe() (c <-chan struct{})
+	// IsStabilized returns true if the detector is in the Stabilized state.
+	IsStabilized() bool
 }
 
 // RateState represents the detected state of the event rate.
@@ -37,7 +39,7 @@ const (
 )
 
 const (
-	subscriptionTopic int = 100
+	subscriptionTopic int = 0
 	maxDuration           = time.Duration(math.MaxInt64)
 )
 
@@ -64,6 +66,8 @@ type Config struct {
 	// WarmupTime: If stabilization is not detected naturally within this duration
 	// after the peak starts, stabilization will be forced. Set to 0 to disable.
 	WarmupTime time.Duration
+	// Clock: Optional custom clock for testing. Defaults to SystemClock if nil.
+	Clock Clock
 }
 
 // Detector detects when a high-frequency burst of events ("peak")
@@ -88,6 +92,7 @@ type Detector struct {
 	totalCount           int
 	trigger              *feed.Trigger[int]
 	warmupTimer          *time.Timer
+	clock                Clock
 
 	// Callbacks; do not call back into the detector it could cause deadlocks
 	OnPeakStart    func(startTime time.Time)
@@ -109,10 +114,16 @@ func NewDetector(cfg Config) (*Detector, error) {
 		return nil, errors.New("WarmupTime cannot be negative")
 	}
 
+	clock := cfg.Clock
+	if clock == nil {
+		clock = SystemClock
+	}
+
 	return &Detector{
 		relativeSlowdownFactor: cfg.RelativeSlowdownFactor,
 		minSlowSamples:         cfg.MinSlowSamples,
 		warmupTime:             cfg.WarmupTime,
+		clock:                  clock,
 		currentState:           StateIdle,
 		minDuration:            maxDuration,
 		trigger:                feed.NewTrigger[int](),
@@ -130,7 +141,7 @@ func (d *Detector) Record() time.Time {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
 
-	t := time.Now()
+	t := d.clock.Now()
 	d.recordAt(t)
 	return t
 }
@@ -203,11 +214,7 @@ func (d *Detector) recordAt(t time.Time) {
 		if isSlow {
 			d.consecutiveSlowCount++
 			if d.consecutiveSlowCount >= d.minSlowSamples {
-				d.currentState = StateStabilized
-				if d.OnStabilized != nil {
-					d.OnStabilized(t, d.totalCount)
-				}
-				d.trigger.Trigger(subscriptionTopic)
+				d.transitionToStabilized(t)
 			}
 		} else {
 			// Fast. Reset the slow count. Stay in InPeak state.
@@ -250,8 +257,20 @@ func (d *Detector) Reset() {
 	d.peakRateTimestamp = time.Time{}
 }
 
-func (d *Detector) Subscribe() (c <-chan struct{}, cancel func()) {
-	return d.trigger.Subscribe(subscriptionTopic)
+func (d *Detector) Subscribe() (c <-chan struct{}) {
+	c, _ = d.trigger.Subscribe(subscriptionTopic)
+	return c
+}
+
+func (d *Detector) IsStabilized() bool {
+	if d == nil {
+		return true
+	}
+
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+
+	return d.currentState == StateStabilized
 }
 
 func (d *Detector) startWarmupTimer(t time.Time) {
@@ -264,11 +283,22 @@ func (d *Detector) startWarmupTimer(t time.Time) {
 		defer d.mutex.Unlock()
 
 		if d.currentState == StateInPeak {
-			d.currentState = StateStabilized
-			if d.OnStabilized != nil {
-				d.OnStabilized(t, d.totalCount)
-			}
-			d.trigger.Trigger(subscriptionTopic)
+			d.transitionToStabilized(t)
 		}
 	})
+}
+
+func (d *Detector) transitionToStabilized(t time.Time) {
+	if d.warmupTimer != nil {
+		d.warmupTimer.Stop()
+		d.warmupTimer = nil
+	}
+
+	if d.currentState == StateInPeak {
+		d.currentState = StateStabilized
+		if d.OnStabilized != nil {
+			d.OnStabilized(t, d.totalCount)
+		}
+		d.trigger.Trigger(subscriptionTopic)
+	}
 }

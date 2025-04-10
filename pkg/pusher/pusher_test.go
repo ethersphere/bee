@@ -22,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/pushsync"
 	pushsyncmock "github.com/ethersphere/bee/v2/pkg/pushsync/mock"
 	"github.com/ethersphere/bee/v2/pkg/spinlock"
+	ssmock "github.com/ethersphere/bee/v2/pkg/stabilization/mock"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	testingc "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -419,7 +420,7 @@ func createPusher(
 ) *pusher.Service {
 	t.Helper()
 
-	pusherService := pusher.New(1, storer, pushSyncService, validStamp, log.Noop, 0, retryCount)
+	pusherService := pusher.New(1, storer, pushSyncService, validStamp, log.Noop, ssmock.NewSubscriber(true), retryCount)
 	testutil.CleanupCloser(t, pusherService)
 
 	return pusherService

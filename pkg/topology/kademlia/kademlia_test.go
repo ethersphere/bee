@@ -26,6 +26,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	p2pmock "github.com/ethersphere/bee/v2/pkg/p2p/mock"
 	"github.com/ethersphere/bee/v2/pkg/spinlock"
+	"github.com/ethersphere/bee/v2/pkg/stabilization"
 	mockstate "github.com/ethersphere/bee/v2/pkg/statestore/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
@@ -37,10 +38,12 @@ import (
 
 const spinLockWaitTime = time.Second * 5
 
-var nonConnectableAddress, _ = ma.NewMultiaddr(underlayBase + "16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkA")
-var defaultExcludeFunc kademlia.ExcludeFunc = func(...im.ExcludeOp) kademlia.PeerExcludeFunc {
-	return func(swarm.Address) bool { return false }
-}
+var (
+	nonConnectableAddress, _                      = ma.NewMultiaddr(underlayBase + "16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkA")
+	defaultExcludeFunc       kademlia.ExcludeFunc = func(...im.ExcludeOp) kademlia.PeerExcludeFunc {
+		return func(swarm.Address) bool { return false }
+	}
+)
 
 // TestNeighborhoodDepth tests that the kademlia depth changes correctly
 // according to the change to known peers slice. This inadvertently tests
@@ -192,7 +195,6 @@ func TestNeighborhoodDepth(t *testing.T) {
 	if !kad.IsWithinConnectionDepth(addrs[0]) {
 		t.Fatal("expected address to be within depth")
 	}
-
 }
 
 // Run the same test with reachability filter and setting the peers are reachable
@@ -494,7 +496,6 @@ func TestBinSaturation(t *testing.T) {
 	addOne(t, signer, kad, ab, addr)
 
 	waitCounter(t, &conns, 1)
-
 }
 
 func TestOversaturation(t *testing.T) {
@@ -950,7 +951,16 @@ func TestClosestPeer(t *testing.T) {
 	disc := mock.NewDiscovery()
 	ab := addressbook.New(mockstate.NewStateStore())
 
-	kad, err := kademlia.New(base, ab, disc, p2pMock(t, ab, nil, nil, nil), logger, kademlia.Options{})
+	detector, err := stabilization.NewDetector(stabilization.Config{
+		RelativeSlowdownFactor: 10,
+		MinSlowSamples:         10,
+		WarmupTime:             1 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	kad, err := kademlia.New(base, ab, disc, p2pMock(t, ab, nil, nil, nil), detector, logger, kademlia.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1160,7 +1170,7 @@ func TestKademlia_SubscribeTopologyChange(t *testing.T) {
 func TestSnapshot_FLAKY(t *testing.T) {
 	t.Parallel()
 
-	var conns = new(int32)
+	conns := new(int32)
 	sa, kad, ab, _, signer := newTestKademlia(t, conns, nil, kademlia.Options{})
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -1265,7 +1275,6 @@ func TestStart(t *testing.T) {
 				}
 			}
 			return false, false, nil
-
 		}, topology.Select{})
 		if err != nil {
 			t.Fatal(err)
@@ -1887,7 +1896,7 @@ func (b *boolgen) Bool() bool {
 func mineBin(t *testing.T, base swarm.Address, bin, count int, isBalanced bool) []swarm.Address {
 	t.Helper()
 
-	var rndAddrs = make([]swarm.Address, count)
+	rndAddrs := make([]swarm.Address, count)
 
 	if count < 8 && isBalanced {
 		t.Fatal("peersCount must be greater than 8 for balanced bins")
@@ -1914,7 +1923,6 @@ func mineBin(t *testing.T, base swarm.Address, bin, count int, isBalanced bool) 
 }
 
 func setBits(data []byte, startBit, bitCount int, b int) {
-
 	index := startBit / 8
 	bitPos := startBit % 8
 
@@ -1958,6 +1966,15 @@ func newTestKademliaWithAddrDiscovery(
 ) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
 	t.Helper()
 
+	detector, err := stabilization.NewDetector(stabilization.Config{
+		RelativeSlowdownFactor: 10,
+		MinSlowSamples:         10,
+		WarmupTime:             1 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	var (
 		pk, _  = beeCrypto.GenerateSecp256k1Key()                       // random private key
 		signer = beeCrypto.NewDefaultSigner(pk)                         // signer
@@ -1966,7 +1983,7 @@ func newTestKademliaWithAddrDiscovery(
 		p2p    = p2pMock(t, ab, signer, connCounter, failedConnCounter) // p2p mock
 		logger = log.Noop                                               // logger
 	)
-	kad, err := kademlia.New(base, ab, disc, p2p, logger, kadOpts)
+	kad, err := kademlia.New(base, ab, disc, p2p, detector, logger, kadOpts)
 	if err != nil {
 		t.Fatal(err)
 	}

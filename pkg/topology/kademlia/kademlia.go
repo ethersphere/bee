@@ -211,6 +211,7 @@ func New(
 	addressbook addressbook.Interface,
 	discovery discovery.Driver,
 	p2pSvc p2p.Service,
+	detector *stabilization.Detector,
 	logger log.Logger,
 	o Options,
 ) (*Kad, error) {
@@ -231,27 +232,6 @@ func New(
 	}
 
 	opt := newKadOptions(o)
-
-	detector, err := stabilization.NewDetector(stabilization.Config{
-		RelativeSlowdownFactor: 10,
-		MinSlowSamples:         10,
-		WarmupTime:             5 * time.Minute,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("rate stabilizer: %w", err)
-	}
-
-	detector.OnPeakStart = func(t time.Time) {
-		logger.Info("rateStabilizer: START", "timestamp", t)
-	}
-
-	detector.OnStabilized = func(t time.Time, counter int) {
-		logger.Info("rateStabilizer: STABLE", "timestamp", t, "counter", counter)
-	}
-
-	detector.OnRateIncrease = func(t time.Time, minDuration time.Duration) {
-		logger.Info("rateStabilizer: RATE", "timestamp", t, "minDuration", minDuration)
-	}
 
 	k = &Kad{
 		opt:               opt,
