@@ -79,7 +79,6 @@ import (
 	"github.com/hashicorp/go-multierror"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/prometheus/client_golang/prometheus"
-	promc "github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/sha3"
 	"golang.org/x/sync/errgroup"
 )
@@ -606,7 +605,7 @@ func NewBee(
 		}
 	}
 
-	var registry *promc.Registry
+	var registry *prometheus.Registry
 
 	if apiService != nil {
 		registry = apiService.MetricsRegistry()
@@ -703,12 +702,24 @@ func NewBee(
 	var swapService *swap.Service
 
 	detector, err := stabilization.NewDetector(stabilization.Config{
-		RelativeSlowdownFactor: 10,
-		MinSlowSamples:         10,
+		RelativeSlowdownFactor: 100,
+		MinSlowSamples:         20,
 		WarmupTime:             warmupTime,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("rate stabilizer: %w", err)
+	}
+
+	detector.OnPeakStart = func(t time.Time) {
+		logger.Info("rateStabilizer: START", "timestamp", t)
+	}
+
+	detector.OnStabilized = func(t time.Time, counter int) {
+		logger.Info("rateStabilizer: STABLE", "timestamp", t, "counter", counter)
+	}
+
+	detector.OnRateIncrease = func(t time.Time, minDuration time.Duration) {
+		logger.Info("rateStabilizer: RATE", "timestamp", t, "minDuration", minDuration)
 	}
 
 	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, detector, logger,
