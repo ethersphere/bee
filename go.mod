@@ -56,6 +56,8 @@ require (
 	resenje.org/web v0.4.3
 )
 
+require resenje.org/feed v0.1.2 // indirect
+
 require (
 	github.com/BurntSushi/toml v1.1.0 // indirect
 	github.com/Microsoft/go-winio v0.6.1 // indirect
