@@ -17,6 +17,12 @@ import (
 	"resenje.org/feed"
 )
 
+type Subscriber interface {
+	// Subscribe returns a channel that will receive a notification when the
+	// stabilization reaches the Stabilized state.
+	Subscribe() (c <-chan struct{}, cancel func())
+}
+
 // RateState represents the detected state of the event rate.
 type RateState int
 
@@ -30,7 +36,10 @@ const (
 	StateStabilized
 )
 
-const subscriptionTopic int = 100
+const (
+	subscriptionTopic int = 100
+	maxDuration           = time.Duration(math.MaxInt64)
+)
 
 func (rs RateState) String() string {
 	switch rs {
@@ -78,6 +87,7 @@ type Detector struct {
 	peakRateTimestamp    time.Time
 	totalCount           int
 	trigger              *feed.Trigger[int]
+	warmupTimer          *time.Timer
 
 	// Callbacks; do not call back into the detector it could cause deadlocks
 	OnPeakStart    func(startTime time.Time)
@@ -104,7 +114,7 @@ func NewDetector(cfg Config) (*Detector, error) {
 		minSlowSamples:         cfg.MinSlowSamples,
 		warmupTime:             cfg.WarmupTime,
 		currentState:           StateIdle,
-		minDuration:            time.Duration(math.MaxInt64), // Initialize to max duration
+		minDuration:            maxDuration,
 		trigger:                feed.NewTrigger[int](),
 	}, nil
 }
@@ -133,7 +143,6 @@ func (d *Detector) recordAt(t time.Time) {
 	}
 
 	d.totalCount++
-	maxDuration := time.Duration(math.MaxInt64)
 
 	if !d.hasRecordedEvent {
 		// First event recorded
@@ -158,7 +167,7 @@ func (d *Detector) recordAt(t time.Time) {
 			d.OnRateIncrease(t, duration)
 		}
 		if d.warmupTime > 0 {
-			go d.startWarmupTimer(t)
+			d.startWarmupTimer(t)
 		}
 
 	case StateInPeak:
@@ -226,10 +235,16 @@ func (d *Detector) Reset() {
 
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
+
+	if d.warmupTimer != nil {
+		d.warmupTimer.Stop()
+		d.warmupTimer = nil
+	}
+
 	d.currentState = StateIdle
 	d.hasRecordedEvent = false
 	d.consecutiveSlowCount = 0
-	d.minDuration = time.Duration(math.MaxInt64)
+	d.minDuration = maxDuration
 	d.totalCount = 0
 	d.lastTimestamp = time.Time{}
 	d.peakRateTimestamp = time.Time{}
@@ -240,14 +255,20 @@ func (d *Detector) Subscribe() (c <-chan struct{}, cancel func()) {
 }
 
 func (d *Detector) startWarmupTimer(t time.Time) {
-	<-time.After(d.warmupTime)
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
-	if d.currentState == StateInPeak {
-		d.currentState = StateStabilized
-		if d.OnStabilized != nil {
-			d.OnStabilized(t, d.totalCount)
-		}
-		d.trigger.Trigger(subscriptionTopic)
+	if d.warmupTimer != nil {
+		d.warmupTimer.Stop()
 	}
+
+	d.warmupTimer = time.AfterFunc(d.warmupTime, func() {
+		d.mutex.Lock()
+		defer d.mutex.Unlock()
+
+		if d.currentState == StateInPeak {
+			d.currentState = StateStabilized
+			if d.OnStabilized != nil {
+				d.OnStabilized(t, d.totalCount)
+			}
+			d.trigger.Trigger(subscriptionTopic)
+		}
+	})
 }
