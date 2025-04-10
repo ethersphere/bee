@@ -1,3 +1,11 @@
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// Package stabilization provides a rate stabilization detector.
+// It detects when a high-frequency burst of events ("peak")
+// stabilizes into a period of significantly lower frequency.
+// It uses a dynamic threshold based on the minimum interval observed during the peak.
 package stabilization
 
 import (
@@ -5,6 +13,8 @@ import (
 	"math"
 	"sync"
 	"time"
+
+	"resenje.org/feed"
 )
 
 // RateState represents the detected state of the event rate.
@@ -20,6 +30,8 @@ const (
 	StateStabilized
 )
 
+const subscriptionTopic int = 100
+
 func (rs RateState) String() string {
 	switch rs {
 	case StateIdle:
@@ -33,6 +45,18 @@ func (rs RateState) String() string {
 	}
 }
 
+type Config struct {
+	// RelativeSlowdownFactor: Multiplier for the peak's minimum interval duration
+	// to determine the "slow" threshold. Must be > 1.0.
+	RelativeSlowdownFactor float64
+	// MinSlowSamples: The number of consecutive "slow" events required to detect
+	// natural stabilization. Must be >= 1.
+	MinSlowSamples int
+	// WarmupTime: If stabilization is not detected naturally within this duration
+	// after the peak starts, stabilization will be forced. Set to 0 to disable.
+	WarmupTime time.Duration
+}
+
 // Detector detects when a high-frequency burst of events ("peak")
 // stabilizes into a period of significantly lower frequency.
 // It uses a dynamic threshold based on the minimum interval observed during the peak.
@@ -43,6 +67,7 @@ type Detector struct {
 	// Configuration
 	relativeSlowdownFactor float64
 	minSlowSamples         int
+	warmupTime             time.Duration
 
 	// State
 	lastTimestamp        time.Time
@@ -52,6 +77,7 @@ type Detector struct {
 	minDuration          time.Duration
 	peakRateTimestamp    time.Time
 	totalCount           int
+	trigger              *feed.Trigger[int]
 
 	// Callbacks; do not call back into the detector it could cause deadlocks
 	OnPeakStart    func(startTime time.Time)
@@ -60,22 +86,26 @@ type Detector struct {
 }
 
 // NewDetector creates a new detector.
-//   - relativeSlowdownFactor: Multiplier for the peak's minimum interval duration
-//     to determine the "slow" threshold. Must be > 1.0.
-//   - minSlowSamples: The number of consecutive "slow" events required to detect stabilization. Must be >= 1.
-func NewDetector(relativeSlowdownFactor float64, minSlowSamples int) (*Detector, error) {
-	if relativeSlowdownFactor <= 1.0 {
-		return nil, errors.New("relativeSlowdownFactor must be greater than 1.0")
+func NewDetector(cfg Config) (*Detector, error) {
+	if cfg.RelativeSlowdownFactor <= 1.0 {
+		return nil, errors.New("RelativeSlowdownFactor must be greater than 1.0")
 	}
-	if minSlowSamples < 1 {
-		return nil, errors.New("minSlowSamples must be at least 1")
+
+	if cfg.MinSlowSamples < 1 {
+		return nil, errors.New("MinSlowSamples must be at least 1")
+	}
+
+	if cfg.WarmupTime < 0 {
+		return nil, errors.New("WarmupTime cannot be negative")
 	}
 
 	return &Detector{
-		relativeSlowdownFactor: relativeSlowdownFactor,
-		minSlowSamples:         minSlowSamples,
+		relativeSlowdownFactor: cfg.RelativeSlowdownFactor,
+		minSlowSamples:         cfg.MinSlowSamples,
+		warmupTime:             cfg.WarmupTime,
 		currentState:           StateIdle,
-		minDuration:            time.Duration(math.MaxInt64), // max duration to start
+		minDuration:            time.Duration(math.MaxInt64), // Initialize to max duration
+		trigger:                feed.NewTrigger[int](),
 	}, nil
 }
 
@@ -127,6 +157,9 @@ func (d *Detector) recordAt(t time.Time) {
 		if d.OnRateIncrease != nil && duration > 0 {
 			d.OnRateIncrease(t, duration)
 		}
+		if d.warmupTime > 0 {
+			go d.startWarmupTimer(t)
+		}
 
 	case StateInPeak:
 		if duration <= 0 {
@@ -165,6 +198,7 @@ func (d *Detector) recordAt(t time.Time) {
 				if d.OnStabilized != nil {
 					d.OnStabilized(t, d.totalCount)
 				}
+				d.trigger.Trigger(subscriptionTopic)
 			}
 		} else {
 			// Fast. Reset the slow count. Stay in InPeak state.
@@ -197,4 +231,23 @@ func (d *Detector) Reset() {
 	d.consecutiveSlowCount = 0
 	d.minDuration = time.Duration(math.MaxInt64)
 	d.totalCount = 0
+	d.lastTimestamp = time.Time{}
+	d.peakRateTimestamp = time.Time{}
+}
+
+func (d *Detector) Subscribe() (c <-chan struct{}, cancel func()) {
+	return d.trigger.Subscribe(subscriptionTopic)
+}
+
+func (d *Detector) startWarmupTimer(t time.Time) {
+	<-time.After(d.warmupTime)
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+	if d.currentState == StateInPeak {
+		d.currentState = StateStabilized
+		if d.OnStabilized != nil {
+			d.OnStabilized(t, d.totalCount)
+		}
+		d.trigger.Trigger(subscriptionTopic)
+	}
 }

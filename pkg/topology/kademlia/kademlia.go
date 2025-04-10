@@ -232,7 +232,11 @@ func New(
 
 	opt := newKadOptions(o)
 
-	detector, err := stabilization.NewDetector(10, 10)
+	detector, err := stabilization.NewDetector(stabilization.Config{
+		RelativeSlowdownFactor: 10,
+		MinSlowSamples:         10,
+		WarmupTime:             5 * time.Minute,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("rate stabilizer: %w", err)
 	}
