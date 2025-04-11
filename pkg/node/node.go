@@ -1039,6 +1039,7 @@ func NewBee(
 
 	go func() {
 		<-detector.Subscribe()
+		logger.Info("stabilization detector: WARMUP")
 		apiService.SetIsWarmingUp(false)
 	}()
 
@@ -1113,6 +1114,7 @@ func NewBee(
 
 			isFullySynced := func() bool {
 				reserveTreshold := reserveCapacity * 5 / 10
+				logger.Info("checking if localstore is fully synced", "reserveTreshold", reserveTreshold, "stabilized", detector.IsStabilized(), "syncRate", pullerService.SyncRate())
 				return localStore.ReserveSize() >= reserveTreshold && pullerService.SyncRate() == 0 && detector.IsStabilized()
 			}
 

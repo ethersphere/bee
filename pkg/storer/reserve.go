@@ -59,6 +59,7 @@ func (db *DB) startReserveWorkers(
 
 	select {
 	case <-db.reserveOptions.stabilizationSubscriber.Subscribe():
+		db.logger.Info("reserve: stabilization achieved")
 	case <-db.quit:
 		return
 	}
