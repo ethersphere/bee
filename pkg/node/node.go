@@ -578,6 +578,27 @@ func NewBee(
 		return nil, fmt.Errorf("invalid payment early: %d", o.PaymentEarly)
 	}
 
+	detector, err := stabilization.NewDetector(stabilization.Config{
+		RelativeSlowdownFactor: 100,
+		MinSlowSamples:         20,
+		WarmupTime:             warmupTime,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("rate stabilizer: %w", err)
+	}
+
+	detector.OnPeakStart = func(t time.Time) {
+		logger.Info("rateStabilizer: START", "timestamp", t)
+	}
+
+	detector.OnStabilized = func(t time.Time, counter int) {
+		logger.Info("rateStabilizer: STABLE", "timestamp", t, "counter", counter)
+	}
+
+	detector.OnRateIncrease = func(t time.Time, minDuration time.Duration) {
+		logger.Info("rateStabilizer: RATE", "timestamp", t, "minDuration", minDuration)
+	}
+
 	var initBatchState *postage.ChainSnapshot
 	// Bootstrap node with postage snapshot only if it is running on mainnet, is a fresh
 	// install or explicitly asked by user to resync
@@ -597,6 +618,7 @@ func NewBee(
 			networkID,
 			log.Noop,
 			libp2pPrivateKey,
+			detector,
 			o,
 		)
 		logger.Info("bootstrapper created", "elapsed", time.Since(start))
@@ -700,27 +722,6 @@ func NewBee(
 	b.hiveCloser = hive
 
 	var swapService *swap.Service
-
-	detector, err := stabilization.NewDetector(stabilization.Config{
-		RelativeSlowdownFactor: 100,
-		MinSlowSamples:         20,
-		WarmupTime:             warmupTime,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("rate stabilizer: %w", err)
-	}
-
-	detector.OnPeakStart = func(t time.Time) {
-		logger.Info("rateStabilizer: START", "timestamp", t)
-	}
-
-	detector.OnStabilized = func(t time.Time, counter int) {
-		logger.Info("rateStabilizer: STABLE", "timestamp", t, "counter", counter)
-	}
-
-	detector.OnRateIncrease = func(t time.Time, minDuration time.Duration) {
-		logger.Info("rateStabilizer: RATE", "timestamp", t, "minDuration", minDuration)
-	}
 
 	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, detector, logger,
 		kademlia.Options{Bootnodes: bootnodes, BootnodeMode: o.BootnodeMode, StaticNodes: o.StaticNodes, DataDir: o.DataDir})
