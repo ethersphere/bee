@@ -173,9 +173,10 @@ func (d *Detector) recordAt(t time.Time) {
 		if d.OnRateIncrease != nil && duration > 0 {
 			d.OnRateIncrease(t, duration)
 		}
-		if d.warmupTime > 0 {
-			d.startWarmupTimer(t)
-		}
+		// if d.warmupTime > 0 {
+		// 	d.startWarmupTimer(t)
+		// }
+		d.startWarmupTimer(t)
 
 	case StateInPeak:
 		if duration <= 0 {
