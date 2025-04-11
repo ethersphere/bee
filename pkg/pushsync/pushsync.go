@@ -24,6 +24,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/pushsync/pb"
 	"github.com/ethersphere/bee/v2/pkg/skippeers"
 	"github.com/ethersphere/bee/v2/pkg/soc"
+	"github.com/ethersphere/bee/v2/pkg/stabilization"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
@@ -77,25 +78,25 @@ type Storer interface {
 }
 
 type PushSync struct {
-	address        swarm.Address
-	networkID      uint64
-	radius         func() (uint8, error)
-	nonce          []byte
-	streamer       p2p.StreamerDisconnecter
-	store          Storer
-	topologyDriver topology.Driver
-	unwrap         func(swarm.Chunk)
-	gsocHandler    func(*soc.SOC)
-	logger         log.Logger
-	accounting     accounting.Interface
-	pricer         pricer.Interface
-	metrics        metrics
-	tracer         *tracing.Tracer
-	validStamp     postage.ValidStampFn
-	signer         crypto.Signer
-	fullNode       bool
-	errSkip        *skippeers.List
-	warmupPeriod   time.Time
+	address                 swarm.Address
+	networkID               uint64
+	radius                  func() (uint8, error)
+	nonce                   []byte
+	streamer                p2p.StreamerDisconnecter
+	store                   Storer
+	topologyDriver          topology.Driver
+	unwrap                  func(swarm.Chunk)
+	gsocHandler             func(*soc.SOC)
+	logger                  log.Logger
+	accounting              accounting.Interface
+	pricer                  pricer.Interface
+	metrics                 metrics
+	tracer                  *tracing.Tracer
+	validStamp              postage.ValidStampFn
+	signer                  crypto.Signer
+	fullNode                bool
+	errSkip                 *skippeers.List
+	stabilizationSubscriber stabilization.Subscriber
 
 	shallowReceiptTolerance uint8
 }
@@ -124,7 +125,7 @@ func New(
 	pricer pricer.Interface,
 	signer crypto.Signer,
 	tracer *tracing.Tracer,
-	warmupTime time.Duration,
+	stabilizationSubscriber stabilization.Subscriber,
 	shallowReceiptTolerance uint8,
 ) *PushSync {
 	ps := &PushSync{
@@ -145,7 +146,7 @@ func New(
 		tracer:                  tracer,
 		signer:                  signer,
 		errSkip:                 skippeers.NewList(time.Minute),
-		warmupPeriod:            time.Now().Add(warmupTime),
+		stabilizationSubscriber: stabilizationSubscriber,
 		shallowReceiptTolerance: shallowReceiptTolerance,
 	}
 
@@ -357,8 +358,7 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 
 // pushToClosest attempts to push the chunk into the network.
 func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bool) (*pb.Receipt, error) {
-
-	if !ps.warmedUp() {
+	if !ps.stabilizationSubscriber.IsStabilized() {
 		return nil, ErrWarmup
 	}
 
@@ -423,7 +423,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			fullSkip := append(skip.ChunkPeers(idAddress), ps.errSkip.ChunkPeers(idAddress)...)
 			peer, err := ps.closestPeer(ch.Address(), origin, fullSkip)
 			if errors.Is(err, topology.ErrNotFound) {
-				if skip.PruneExpiresAfter(idAddress, overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
+				if skip.PruneExpiresAfter(idAddress, overDraftRefresh) == 0 { // no overdraft peers, we have depleted ALL peers
 					if inflight == 0 {
 						if ps.fullNode {
 							if cac.Valid(ch) {
@@ -513,7 +513,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 }
 
 func (ps *PushSync) closestPeer(chunkAddress swarm.Address, origin bool, skipList []swarm.Address) (swarm.Address, error) {
-
 	includeSelf := ps.fullNode && !origin
 
 	peer, err := ps.topologyDriver.ClosestPeer(chunkAddress, includeSelf, topology.Select{Reachable: true, Healthy: true}, skipList...)
@@ -529,7 +528,6 @@ func (ps *PushSync) closestPeer(chunkAddress swarm.Address, origin bool, skipLis
 }
 
 func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptResult, peer swarm.Address, ch swarm.Chunk, action accounting.Action) {
-
 	// here we use a background timeout context because we do not want another push attempt to cancel this one
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTTL)
 	defer cancel()
@@ -571,7 +569,6 @@ func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptRes
 }
 
 func (ps *PushSync) checkReceipt(receipt *pb.Receipt) error {
-
 	addr := swarm.NewAddress(receipt.Address)
 
 	publicKey, err := crypto.Recover(receipt.Signature, addr.Bytes())
@@ -610,7 +607,6 @@ func (ps *PushSync) checkReceipt(receipt *pb.Receipt) error {
 }
 
 func (ps *PushSync) pushChunkToPeer(ctx context.Context, peer swarm.Address, ch swarm.Chunk) (receipt *pb.Receipt, err error) {
-
 	streamer, err := ps.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
 		return nil, fmt.Errorf("new stream for peer %s: %w", peer.String(), err)
@@ -697,8 +693,4 @@ func (ps *PushSync) validStampWrapper(f postage.ValidStampFn) postage.ValidStamp
 
 func (s *PushSync) Close() error {
 	return s.errSkip.Close()
-}
-
-func (ps *PushSync) warmedUp() bool {
-	return time.Now().After(ps.warmupPeriod)
 }

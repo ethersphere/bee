@@ -59,6 +59,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/priceoracle"
+	"github.com/ethersphere/bee/v2/pkg/stabilization"
 	"github.com/ethersphere/bee/v2/pkg/status"
 	"github.com/ethersphere/bee/v2/pkg/steward"
 	"github.com/ethersphere/bee/v2/pkg/storageincentives"
@@ -78,7 +79,6 @@ import (
 	"github.com/hashicorp/go-multierror"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/prometheus/client_golang/prometheus"
-	promc "github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/sha3"
 	"golang.org/x/sync/errgroup"
 )
@@ -124,57 +124,57 @@ type Bee struct {
 }
 
 type Options struct {
-	DataDir                       string
+	Addr                          string
+	AllowPrivateCIDRs             bool
+	APIAddr                       string
+	BlockchainRpcEndpoint         string
+	BlockProfile                  bool
+	BlockTime                     time.Duration
+	BootnodeMode                  bool
+	Bootnodes                     []string
 	CacheCapacity                 uint64
-	DBOpenFilesLimit              uint64
-	DBWriteBufferSize             uint64
+	ChainID                       int64
+	ChequebookEnable              bool
+	CORSAllowedOrigins            []string
+	DataDir                       string
 	DBBlockCacheCapacity          uint64
 	DBDisableSeeksCompaction      bool
-	APIAddr                       string
-	Addr                          string
-	NATAddr                       string
+	DBOpenFilesLimit              uint64
+	DBWriteBufferSize             uint64
+	EnableStorageIncentives       bool
 	EnableWS                      bool
-	WelcomeMessage                string
-	Bootnodes                     []string
-	CORSAllowedOrigins            []string
+	FullNodeMode                  bool
 	Logger                        log.Logger
+	MinimumStorageRadius          uint
+	MutexProfile                  bool
+	NATAddr                       string
+	NeighborhoodSuggester         string
+	PaymentEarly                  int64
+	PaymentThreshold              string
+	PaymentTolerance              int64
+	PostageContractAddress        string
+	PostageContractStartBlock     uint64
+	PriceOracleAddress            string
+	RedistributionContractAddress string
+	ReserveCapacityDoubling       int
+	ResolverConnectionCfgs        []multiresolver.ConnectionConfig
+	Resync                        bool
+	RetrievalCaching              bool
+	StakingContractAddress        string
+	StatestoreCacheCapacity       uint64
+	StaticNodes                   []swarm.Address
+	SwapEnable                    bool
+	SwapFactoryAddress            string
+	SwapInitialDeposit            string
+	TargetNeighborhood            string
 	TracingEnabled                bool
 	TracingEndpoint               string
 	TracingServiceName            string
-	PaymentThreshold              string
-	PaymentTolerance              int64
-	PaymentEarly                  int64
-	ResolverConnectionCfgs        []multiresolver.ConnectionConfig
-	RetrievalCaching              bool
-	BootnodeMode                  bool
-	BlockchainRpcEndpoint         string
-	SwapFactoryAddress            string
-	SwapInitialDeposit            string
-	SwapEnable                    bool
-	ChequebookEnable              bool
-	FullNodeMode                  bool
-	PostageContractAddress        string
-	PostageContractStartBlock     uint64
-	StakingContractAddress        string
-	PriceOracleAddress            string
-	RedistributionContractAddress string
-	BlockTime                     time.Duration
-	WarmupTime                    time.Duration
-	ChainID                       int64
-	Resync                        bool
-	BlockProfile                  bool
-	MutexProfile                  bool
-	StaticNodes                   []swarm.Address
-	AllowPrivateCIDRs             bool
-	UsePostageSnapshot            bool
-	EnableStorageIncentives       bool
-	StatestoreCacheCapacity       uint64
-	TargetNeighborhood            string
-	NeighborhoodSuggester         string
-	WhitelistedWithdrawalAddress  []string
 	TrxDebugMode                  bool
-	MinimumStorageRadius          uint
-	ReserveCapacityDoubling       int
+	UsePostageSnapshot            bool
+	WarmupTime                    time.Duration
+	WelcomeMessage                string
+	WhitelistedWithdrawalAddress  []string
 }
 
 const (
@@ -578,6 +578,27 @@ func NewBee(
 		return nil, fmt.Errorf("invalid payment early: %d", o.PaymentEarly)
 	}
 
+	detector, err := stabilization.NewDetector(stabilization.Config{
+		RelativeSlowdownFactor: 100,
+		MinSlowSamples:         20,
+		WarmupTime:             warmupTime,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("rate stabilizer: %w", err)
+	}
+
+	detector.OnPeakStart = func(t time.Time) {
+		logger.Info("rateStabilizer: START", "timestamp", t)
+	}
+
+	detector.OnStabilized = func(t time.Time, counter int) {
+		logger.Info("rateStabilizer: STABLE", "timestamp", t, "counter", counter)
+	}
+
+	detector.OnRateIncrease = func(t time.Time, minDuration time.Duration) {
+		logger.Info("rateStabilizer: RATE", "timestamp", t, "minDuration", minDuration)
+	}
+
 	var initBatchState *postage.ChainSnapshot
 	// Bootstrap node with postage snapshot only if it is running on mainnet, is a fresh
 	// install or explicitly asked by user to resync
@@ -597,6 +618,7 @@ func NewBee(
 			networkID,
 			log.Noop,
 			libp2pPrivateKey,
+			detector,
 			o,
 		)
 		logger.Info("bootstrapper created", "elapsed", time.Since(start))
@@ -605,7 +627,7 @@ func NewBee(
 		}
 	}
 
-	var registry *promc.Registry
+	var registry *prometheus.Registry
 
 	if apiService != nil {
 		registry = apiService.MetricsRegistry()
@@ -701,7 +723,7 @@ func NewBee(
 
 	var swapService *swap.Service
 
-	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, logger,
+	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, detector, logger,
 		kademlia.Options{Bootnodes: bootnodes, BootnodeMode: o.BootnodeMode, StaticNodes: o.StaticNodes, DataDir: o.DataDir})
 	if err != nil {
 		return nil, fmt.Errorf("unable to create kademlia: %w", err)
@@ -728,7 +750,7 @@ func NewBee(
 		Batchstore:                batchStore,
 		StateStore:                stateStore,
 		RadiusSetter:              kad,
-		WarmupDuration:            warmupTime,
+		StabilizationSubscriber:   detector,
 		Logger:                    logger,
 		Tracer:                    tracer,
 		CacheMinEvictCount:        cacheMinEvictCount,
@@ -925,7 +947,7 @@ func NewBee(
 		return nil, fmt.Errorf("status service: %w", err)
 	}
 
-	saludService := salud.New(nodeStatus, kad, localStore, logger, warmupTime, api.FullMode.String(), salud.DefaultMinPeersPerBin, salud.DefaultDurPercentile, salud.DefaultConnsPercentile)
+	saludService := salud.New(nodeStatus, kad, localStore, logger, detector, api.FullMode.String(), salud.DefaultMinPeersPerBin, salud.DefaultDurPercentile, salud.DefaultConnsPercentile)
 	b.saludCloser = saludService
 
 	rC, unsub := saludService.SubscribeNetworkStorageRadius()
@@ -969,7 +991,7 @@ func NewBee(
 		}
 	}
 
-	pushSyncProtocol := pushsync.New(swarmAddress, networkID, nonce, p2ps, localStore, waitNetworkRFunc, kad, o.FullNodeMode && !o.BootnodeMode, pssService.TryUnwrap, gsocService.Handle, validStamp, logger, acc, pricer, signer, tracer, warmupTime, uint8(shallowReceiptTolerance))
+	pushSyncProtocol := pushsync.New(swarmAddress, networkID, nonce, p2ps, localStore, waitNetworkRFunc, kad, o.FullNodeMode && !o.BootnodeMode, pssService.TryUnwrap, gsocService.Handle, validStamp, logger, acc, pricer, signer, tracer, detector, uint8(shallowReceiptTolerance))
 	b.pushSyncCloser = pushSyncProtocol
 
 	// set the pushSyncer in the PSS
@@ -980,7 +1002,7 @@ func NewBee(
 
 	statusMetricsRegistry.MustRegister(retrieval.StatusMetrics()...)
 
-	pusherService := pusher.New(networkID, localStore, pushSyncProtocol, batchStore, logger, warmupTime, pusher.DefaultRetryCount)
+	pusherService := pusher.New(networkID, localStore, pushSyncProtocol, batchStore, logger, detector, pusher.DefaultRetryCount)
 	b.pusherCloser = pusherService
 
 	pusherService.AddFeed(localStore.PusherFeed())
@@ -1015,9 +1037,11 @@ func NewBee(
 		return nil, fmt.Errorf("pullsync protocol: %w", err)
 	}
 
-	time.AfterFunc(warmupTime, func() {
+	go func() {
+		<-detector.Subscribe()
+		logger.Info("stabilization detector: WARMUP")
 		apiService.SetIsWarmingUp(false)
-	})
+	}()
 
 	stakingContractAddress := chainCfg.StakingAddress
 	if o.StakingContractAddress != "" {
@@ -1088,10 +1112,10 @@ func NewBee(
 
 			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), o.TrxDebugMode)
 
-			startWarmupPeriod := time.Now()
 			isFullySynced := func() bool {
 				reserveTreshold := reserveCapacity * 5 / 10
-				return localStore.ReserveSize() >= reserveTreshold && pullerService.SyncRate() == 0 && time.Now().After(startWarmupPeriod.Add(warmupTime))
+				logger.Info("checking if localstore is fully synced", "reserveTreshold", reserveTreshold, "stabilized", detector.IsStabilized(), "syncRate", pullerService.SyncRate())
+				return localStore.ReserveSize() >= reserveTreshold && pullerService.SyncRate() == 0 && detector.IsStabilized()
 			}
 
 			agent, err = storageincentives.New(

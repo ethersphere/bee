@@ -26,6 +26,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/pushsync"
 	"github.com/ethersphere/bee/v2/pkg/pushsync/pb"
 	"github.com/ethersphere/bee/v2/pkg/soc"
+	ssmock "github.com/ethersphere/bee/v2/pkg/stabilization/mock"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	testingc "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -489,7 +490,7 @@ func TestPushChunkToNextClosest(t *testing.T) {
 
 	psPeer2, _, peerAccounting2 := createPushSyncNode(t, peer2, defaultPrices, nil, nil, defaultSigner(chunk), mock.WithClosestPeerErr(topology.ErrWantSelf))
 
-	var fail = true
+	fail := true
 	var lock sync.Mutex
 
 	recorder := streamtest.New(
@@ -1036,7 +1037,7 @@ func createPushSyncNodeWithRadius(
 
 	radiusFunc := func() (uint8, error) { return radius, nil }
 
-	ps := pushsync.New(addr, 1, blockHash.Bytes(), recorderDisconnecter, storer, radiusFunc, mockTopology, true, unwrap, func(*soc.SOC) {}, validStamp, log.Noop, accountingmock.NewAccounting(), mockPricer, signer, nil, -1, shallowReceiptTolerance)
+	ps := pushsync.New(addr, 1, blockHash.Bytes(), recorderDisconnecter, storer, radiusFunc, mockTopology, true, unwrap, func(*soc.SOC) {}, validStamp, log.Noop, accountingmock.NewAccounting(), mockPricer, signer, nil, ssmock.NewSubscriber(true), shallowReceiptTolerance)
 	t.Cleanup(func() { ps.Close() })
 
 	return ps, storer
@@ -1077,7 +1078,7 @@ func createPushSyncNodeWithAccounting(
 
 	radiusFunc := func() (uint8, error) { return 0, nil }
 
-	ps := pushsync.New(addr, 1, blockHash.Bytes(), recorderDisconnecter, storer, radiusFunc, mockTopology, true, unwrap, gsocListener, validStamp, logger, acct, mockPricer, signer, nil, -1, 0)
+	ps := pushsync.New(addr, 1, blockHash.Bytes(), recorderDisconnecter, storer, radiusFunc, mockTopology, true, unwrap, gsocListener, validStamp, logger, acct, mockPricer, signer, nil, ssmock.NewSubscriber(true), 0)
 	t.Cleanup(func() { ps.Close() })
 
 	return ps, storer
