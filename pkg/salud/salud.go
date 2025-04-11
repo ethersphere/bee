@@ -91,6 +91,7 @@ func (s *service) worker(stabilizationSubscriber stabilization.Subscriber, mode 
 	case <-s.quit:
 		return
 	case <-stabilizationSubscriber.Subscribe():
+		s.logger.Info("salud: stabilization achieved")
 	}
 
 	for {

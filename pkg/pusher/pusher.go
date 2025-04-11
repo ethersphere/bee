@@ -100,6 +100,7 @@ func (s *Service) chunksWorker(stabilizationSubscriber stabilization.Subscriber)
 	defer close(s.chunksWorkerQuitC)
 	select {
 	case <-stabilizationSubscriber.Subscribe():
+		s.logger.Info("pusher: stabilization achieved")
 	case <-s.quit:
 		return
 	}

@@ -257,7 +257,6 @@ func (d *Detector) Subscribe() (c <-chan struct{}) {
 func (d *Detector) IsStabilized() bool {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
-
 	return d.currentState == StateStabilized
 }
 
