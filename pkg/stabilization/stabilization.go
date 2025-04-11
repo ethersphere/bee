@@ -134,10 +134,6 @@ func NewDetector(cfg Config) (*Detector, error) {
 // Returns the timestamp of the recorded event.
 // If the state is already Stabilized, this function does nothing.
 func (d *Detector) Record() time.Time {
-	if d == nil {
-		return time.Time{}
-	}
-
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
 
@@ -225,10 +221,6 @@ func (d *Detector) recordAt(t time.Time) {
 
 // State returns the current detected rate state.
 func (d *Detector) State() RateState {
-	if d == nil {
-		return StateIdle
-	}
-
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
 	return d.currentState
@@ -263,10 +255,6 @@ func (d *Detector) Subscribe() (c <-chan struct{}) {
 }
 
 func (d *Detector) IsStabilized() bool {
-	if d == nil {
-		return true
-	}
-
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
 

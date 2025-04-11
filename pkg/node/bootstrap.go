@@ -73,6 +73,7 @@ func bootstrapNode(
 	networkID uint64,
 	logger log.Logger,
 	libp2pPrivateKey *ecdsa.PrivateKey,
+	detector *stabilization.Detector,
 	o *Options,
 ) (snapshot *postage.ChainSnapshot, retErr error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
@@ -115,15 +116,6 @@ func bootstrapNode(
 		return nil, fmt.Errorf("hive service: %w", err)
 	}
 	b.hiveCloser = hive
-
-	detector, err := stabilization.NewDetector(stabilization.Config{
-		RelativeSlowdownFactor: 10,
-		MinSlowSamples:         10,
-		WarmupTime:             0,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("rate stabilizer: %w", err)
-	}
 
 	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, detector, logger,
 		kademlia.Options{Bootnodes: bootnodes, BootnodeMode: o.BootnodeMode, StaticNodes: o.StaticNodes, DataDir: o.DataDir})
