@@ -3,20 +3,21 @@
 // license that can be found in the LICENSE file.
 
 // Package stabilization provides a rate stabilization detector.
-// It detects when a high-frequency burst of events ("peak")
-// stabilizes into a period of significantly lower frequency.
-// It uses a dynamic threshold based on the minimum interval observed during the peak.
+// It detects when the rate of events becomes stable over a
+// configured number of time periods.
 package stabilization
 
 import (
 	"errors"
-	"math"
 	"sync"
 	"time"
 
 	"resenje.org/feed"
 )
 
+var _ Subscriber = (*Detector)(nil)
+
+// Subscriber defines the interface for stabilization subscription.
 type Subscriber interface {
 	// Subscribe returns a channel that will receive a notification when the
 	// stabilization reaches the Stabilized state.
@@ -25,30 +26,29 @@ type Subscriber interface {
 	IsStabilized() bool
 }
 
-// RateState represents the detected state of the event rate.
+// RateState represents the detected state of the event rate stabilization.
 type RateState int
 
 const (
-	// StateIdle indicates no recent peak activity or initial state.
+	// StateIdle indicates the detector is inactive, waiting for the first event.
 	StateIdle RateState = iota
-	// StateInPeak indicates a high-frequency burst of events is occurring.
-	StateInPeak
-	// StateStabilized indicates the rate has slowed down significantly after a peak
-	// and the detector will remain in this state.
+	// StateMonitoring indicates events are being recorded and checked for rate stability over periods.
+	StateMonitoring
+	// StateStabilized indicates the event rate has been consistent for the configured
+	// number of periods, or the warmup time has elapsed. The detector will remain in this state.
 	StateStabilized
 )
 
 const (
 	subscriptionTopic int = 0
-	maxDuration           = time.Duration(math.MaxInt64)
 )
 
 func (rs RateState) String() string {
 	switch rs {
 	case StateIdle:
 		return "Idle"
-	case StateInPeak:
-		return "InPeak"
+	case StateMonitoring:
+		return "Monitoring"
 	case StateStabilized:
 		return "Stabilized"
 	default:
@@ -56,62 +56,65 @@ func (rs RateState) String() string {
 	}
 }
 
+// Config holds the configuration parameters for the rate stabilization detector.
 type Config struct {
-	// RelativeSlowdownFactor: Multiplier for the peak's minimum interval duration
-	// to determine the "slow" threshold. Must be > 1.0.
-	RelativeSlowdownFactor float64
-	// MinSlowSamples: The number of consecutive "slow" events required to detect
-	// natural stabilization. Must be >= 1.
-	MinSlowSamples int
-	// WarmupTime: If stabilization is not detected naturally within this duration
-	// after the peak starts, stabilization will be forced. Set to 0 to disable.
+	// PeriodDuration is the length of each time period for calculating event rates.
+	// Must be greater than zero.
+	PeriodDuration time.Duration
+	// NumPeriodsForStabilization is the number of consecutive recent periods to check
+	// for rate stabilization. Must be at least 2.
+	NumPeriodsForStabilization int
+	// StabilizationFactor is the maximum allowed relative difference between the highest
+	// and lowest event counts in the stabilization window.
+	StabilizationFactor float64
+	// WarmupTime forces stabilization if not detected naturally within this duration
+	// after monitoring starts. Set to 0 or negative to disable.
 	WarmupTime time.Duration
-	// Clock: Optional custom clock for testing. Defaults to SystemClock if nil.
+	// Clock is an optional custom clock for testing. Defaults to SystemClock if nil.
 	Clock Clock
 }
 
-// Detector detects when a high-frequency burst of events ("peak")
-// stabilizes into a period of significantly lower frequency.
-// It uses a dynamic threshold based on the minimum interval observed during the peak.
-// Once stabilization is detected, it remains in the Stabilized state indefinitely.
+// Detector detects when the rate of events stabilizes over a defined period.
+// It calculates the number of events per period and checks if the rates
+// in the last 'NumPeriodsForStabilization' are similar within a given factor.
 type Detector struct {
 	mutex sync.Mutex
 
 	// Configuration
-	relativeSlowdownFactor float64
-	minSlowSamples         int
-	warmupTime             time.Duration
+	periodDuration             time.Duration
+	numPeriodsForStabilization int
+	stabilizationFactor        float64
+	warmupTime                 time.Duration
+	clock                      Clock
 
 	// State
-	lastTimestamp        time.Time
-	hasRecordedEvent     bool
-	consecutiveSlowCount int
-	currentState         RateState
-	minDuration          time.Duration
-	peakRateTimestamp    time.Time
-	totalCount           int
-	trigger              *feed.Trigger[int]
-	warmupTimer          *time.Timer
-	clock                Clock
+	currentState        RateState
+	periodCounts        []int       // Stores counts for the last NumPeriodsForStabilization periods
+	currentPeriodCount  int         // Event count for the *current* active period
+	totalCount          int         // Total events recorded since the start or last reset
+	monitoringStartTime time.Time   // Time when monitoring state began
+	periodTimer         *time.Timer // Timer triggering end of periods
+	warmupTimer         *time.Timer // Timer for forced stabilization fallback
+	trigger             *feed.Trigger[int]
 
-	// Callbacks; do not call back into the detector it could cause deadlocks
-	OnPeakStart    func(startTime time.Time)
-	OnRateIncrease func(t time.Time, minDuration time.Duration)
-	OnStabilized   func(t time.Time, totalCount int)
+	// Callbacks - DO NOT call back into the detector from these; it can cause deadlocks.
+	OnMonitoringStart func(t time.Time)
+	OnPeriodComplete  func(t time.Time, rate int) // Rate is events in the completed period
+	OnStabilized      func(t time.Time, totalCount int)
 }
 
-// NewDetector creates a new detector.
+// NewDetector creates a new rate stabilization detector.
 func NewDetector(cfg Config) (*Detector, error) {
-	if cfg.RelativeSlowdownFactor <= 1.0 {
-		return nil, errors.New("RelativeSlowdownFactor must be greater than 1.0")
+	if cfg.PeriodDuration <= 0 {
+		return nil, errors.New("PeriodDuration must be positive")
 	}
 
-	if cfg.MinSlowSamples < 1 {
-		return nil, errors.New("MinSlowSamples must be at least 1")
+	if cfg.NumPeriodsForStabilization < 2 {
+		return nil, errors.New("NumPeriodsForStabilization must be at least 2")
 	}
 
-	if cfg.WarmupTime < 0 {
-		return nil, errors.New("WarmupTime cannot be negative")
+	if cfg.StabilizationFactor < 0.0 {
+		return nil, errors.New("StabilizationFactor must be non-negative")
 	}
 
 	clock := cfg.Clock
@@ -120,104 +123,45 @@ func NewDetector(cfg Config) (*Detector, error) {
 	}
 
 	return &Detector{
-		relativeSlowdownFactor: cfg.RelativeSlowdownFactor,
-		minSlowSamples:         cfg.MinSlowSamples,
-		warmupTime:             cfg.WarmupTime,
-		clock:                  clock,
-		currentState:           StateIdle,
-		minDuration:            maxDuration,
-		trigger:                feed.NewTrigger[int](),
+		periodDuration:             cfg.PeriodDuration,
+		numPeriodsForStabilization: cfg.NumPeriodsForStabilization,
+		stabilizationFactor:        cfg.StabilizationFactor,
+		warmupTime:                 cfg.WarmupTime,
+		clock:                      clock,
+		currentState:               StateIdle,
+		periodCounts:               make([]int, 0, cfg.NumPeriodsForStabilization),
+		trigger:                    feed.NewTrigger[int](),
 	}, nil
 }
 
-// Record records an event timestamp and updates the detection state.
-// Returns the timestamp of the recorded event.
-// If the state is already Stabilized, this function does nothing.
+// Record signals that an event has occurred. It updates the internal state
+// and may trigger state transitions or callbacks.
+// Returns the timestamp when the event was recorded.
+// If the state is already Stabilized, this function does nothing and returns zero time.
 func (d *Detector) Record() time.Time {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
 
-	t := d.clock.Now()
-	d.recordAt(t)
-	return t
-}
-
-// recordAt records a specific event timestamp and updates the detection state.
-// If the state is already Stabilized, this function does nothing.
-func (d *Detector) recordAt(t time.Time) {
 	if d.currentState == StateStabilized {
-		return
+		return time.Time{}
+	}
+
+	t := d.clock.Now()
+
+	if d.currentState == StateIdle {
+		d.currentState = StateMonitoring
+		d.monitoringStartTime = t
+		if d.OnMonitoringStart != nil {
+			d.OnMonitoringStart(t)
+		}
+		d.startPeriodTimer()
+		d.startWarmupTimer(t)
 	}
 
 	d.totalCount++
+	d.currentPeriodCount++
 
-	if !d.hasRecordedEvent {
-		// First event recorded
-		d.lastTimestamp = t
-		d.hasRecordedEvent = true
-		return
-	}
-
-	duration := t.Sub(d.lastTimestamp) // Calculate duration since the last event
-	d.lastTimestamp = t                // Update last timestamp for the *next* calculation
-
-	switch d.currentState {
-	case StateIdle:
-		d.currentState = StateInPeak
-		d.minDuration = duration
-		d.peakRateTimestamp = t
-		d.consecutiveSlowCount = 0
-		if d.OnPeakStart != nil {
-			d.OnPeakStart(t)
-		}
-		if d.OnRateIncrease != nil && duration > 0 {
-			d.OnRateIncrease(t, duration)
-		}
-		// if d.warmupTime > 0 {
-		// 	d.startWarmupTimer(t)
-		// }
-		d.startWarmupTimer(t)
-
-	case StateInPeak:
-		if duration <= 0 {
-			// Treat anomalies as "fast" events by resetting the slow count
-			d.consecutiveSlowCount = 0
-			return
-		}
-
-		// Update minimum duration if this event is faster
-		if duration < d.minDuration {
-			d.minDuration = duration
-			d.peakRateTimestamp = t
-			if d.OnRateIncrease != nil {
-				d.OnRateIncrease(t, duration)
-			}
-		}
-
-		// Check if the current interval is "slow" relative to the peak minimum
-		isSlow := false
-		if d.minDuration < maxDuration && d.minDuration > 0 {
-			dynamicSlowThreshold := time.Duration(float64(d.minDuration) * d.relativeSlowdownFactor)
-			// Handle potential overflow
-			if dynamicSlowThreshold < d.minDuration {
-				dynamicSlowThreshold = maxDuration
-			}
-
-			if duration >= dynamicSlowThreshold {
-				isSlow = true
-			}
-		}
-
-		if isSlow {
-			d.consecutiveSlowCount++
-			if d.consecutiveSlowCount >= d.minSlowSamples {
-				d.transitionToStabilized(t)
-			}
-		} else {
-			// Fast. Reset the slow count. Stay in InPeak state.
-			d.consecutiveSlowCount = 0
-		}
-	}
+	return t
 }
 
 // State returns the current detected rate state.
@@ -227,7 +171,8 @@ func (d *Detector) State() RateState {
 	return d.currentState
 }
 
-// Reset resets the detector to its initial state, allowing it to detect a new stabilization cycle.
+// Reset resets the detector to its initial StateIdle, clearing all counts and timers.
+// This allows the detector to monitor for stabilization again.
 func (d *Detector) Reset() {
 	if d == nil {
 		return
@@ -236,29 +181,89 @@ func (d *Detector) Reset() {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
 
+	if d.periodTimer != nil {
+		d.periodTimer.Stop()
+		d.periodTimer = nil
+	}
 	if d.warmupTimer != nil {
 		d.warmupTimer.Stop()
 		d.warmupTimer = nil
 	}
-
 	d.currentState = StateIdle
-	d.hasRecordedEvent = false
-	d.consecutiveSlowCount = 0
-	d.minDuration = maxDuration
+	d.periodCounts = make([]int, 0, d.numPeriodsForStabilization)
+	d.currentPeriodCount = 0
 	d.totalCount = 0
-	d.lastTimestamp = time.Time{}
-	d.peakRateTimestamp = time.Time{}
+	d.monitoringStartTime = time.Time{}
 }
 
+// Subscribe returns a channel that receives an empty struct notification
+// when the detector transitions to the StateStabilized.
+// The channel is buffered and closed after the notification.
 func (d *Detector) Subscribe() (c <-chan struct{}) {
-	c, _ = d.trigger.Subscribe(subscriptionTopic)
+	c, _ = d.trigger.Subscribe(subscriptionTopic) // Ignores the unsubscribe function
 	return c
 }
 
+// IsStabilized returns true if the detector is currently in the StateStabilized.
 func (d *Detector) IsStabilized() bool {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
 	return d.currentState == StateStabilized
+}
+
+func (d *Detector) startPeriodTimer() {
+	d.periodTimer = time.AfterFunc(d.periodDuration, func() {
+		d.mutex.Lock()
+		if d.currentState != StateMonitoring {
+			d.mutex.Unlock()
+			return
+		}
+
+		// Process the period
+		completedCount := d.currentPeriodCount
+		d.periodCounts = append(d.periodCounts, completedCount)
+		if len(d.periodCounts) > d.numPeriodsForStabilization {
+			d.periodCounts = d.periodCounts[1:]
+		}
+		d.currentPeriodCount = 0
+
+		if d.OnPeriodComplete != nil {
+			d.OnPeriodComplete(d.clock.Now(), completedCount)
+		}
+
+		// Check for stabilization
+		if len(d.periodCounts) == d.numPeriodsForStabilization {
+			min := d.periodCounts[0]
+			max := d.periodCounts[0]
+			for _, count := range d.periodCounts[1:] {
+				if count < min {
+					min = count
+				}
+				if count > max {
+					max = count
+				}
+			}
+			if min == max || (min > 0 && float64(max-min)/float64(min) <= d.stabilizationFactor) {
+				d.currentState = StateStabilized
+				if d.periodTimer != nil {
+					d.periodTimer.Stop()
+				}
+				if d.warmupTimer != nil {
+					d.warmupTimer.Stop()
+				}
+				if d.OnStabilized != nil {
+					d.OnStabilized(d.clock.Now(), d.totalCount)
+				}
+				d.trigger.Trigger(subscriptionTopic)
+				d.mutex.Unlock()
+				return
+			}
+		}
+
+		// Schedule the next period
+		d.startPeriodTimer()
+		d.mutex.Unlock()
+	})
 }
 
 func (d *Detector) startWarmupTimer(t time.Time) {
@@ -270,23 +275,15 @@ func (d *Detector) startWarmupTimer(t time.Time) {
 		d.mutex.Lock()
 		defer d.mutex.Unlock()
 
-		if d.currentState == StateInPeak {
-			d.transitionToStabilized(t)
+		if d.currentState == StateMonitoring {
+			d.currentState = StateStabilized
+			if d.periodTimer != nil {
+				d.periodTimer.Stop()
+			}
+			if d.OnStabilized != nil {
+				d.OnStabilized(t, d.totalCount)
+			}
+			d.trigger.Trigger(subscriptionTopic)
 		}
 	})
-}
-
-func (d *Detector) transitionToStabilized(t time.Time) {
-	if d.warmupTimer != nil {
-		d.warmupTimer.Stop()
-		d.warmupTimer = nil
-	}
-
-	if d.currentState == StateInPeak {
-		d.currentState = StateStabilized
-		if d.OnStabilized != nil {
-			d.OnStabilized(t, d.totalCount)
-		}
-		d.trigger.Trigger(subscriptionTopic)
-	}
 }

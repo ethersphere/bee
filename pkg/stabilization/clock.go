@@ -14,5 +14,9 @@ func (sc *systemClock) Now() time.Time {
 	return time.Now()
 }
 
+func (c systemClock) AfterFunc(d time.Duration, f func()) *time.Timer {
+	return time.AfterFunc(d, f)
+}
+
 // Use SystemClock as the default
 var SystemClock Clock = &systemClock{}
