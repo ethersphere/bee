@@ -128,7 +128,7 @@ func NewDetector(cfg Config) (*Detector, error) {
 		clock = SystemClock
 	}
 
-	//
+	// minimumPeriods is the total number of periods to wait before checking for stabilization.
 	minimumPeriods := cfg.MinimumPeriods + cfg.NumPeriodsForStabilization
 
 	return &Detector{
