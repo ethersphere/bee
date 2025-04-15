@@ -581,12 +581,14 @@ func NewBee(
 	detector, err := stabilization.NewDetector(stabilization.Config{
 		PeriodDuration:             2 * time.Second,
 		NumPeriodsForStabilization: 5,
-		StabilizationFactor:        5,
+		StabilizationFactor:        3,
+		MinimumPeriods:             2,
 		WarmupTime:                 warmupTime,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("rate stabilizer: %w", err)
 	}
+	defer detector.Close()
 
 	detector.OnMonitoringStart = func(t time.Time) {
 		logger.Info("rateStabilizer: START", "timestamp", t)
@@ -596,8 +598,8 @@ func NewBee(
 		logger.Info("rateStabilizer: STABLE", "timestamp", t, "counter", totalCount)
 	}
 
-	detector.OnPeriodComplete = func(periodEndTime time.Time, rate int) {
-		logger.Info("rateStabilizer: RATE", "timestamp", periodEndTime, "rate", rate)
+	detector.OnPeriodComplete = func(t time.Time, periodCount int, stDev float64) {
+		logger.Info("rateStabilizer: RATE", "timestamp", t, "periodCount", periodCount, "stDev", stDev)
 	}
 
 	var initBatchState *postage.ChainSnapshot

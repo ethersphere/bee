@@ -9,10 +9,25 @@ package stabilization
 
 import (
 	"errors"
+	"math"
 	"sync"
 	"time"
 
 	"resenje.org/feed"
+)
+
+const (
+	// StateIdle indicates the detector is inactive, waiting for the first event.
+	StateIdle RateState = iota
+	// StateMonitoring indicates events are being recorded and checked for rate stability over periods.
+	StateMonitoring
+	// StateStabilized indicates the event rate has been consistent for the configured
+	// number of periods, or the warmup time has elapsed. The detector will remain in this state.
+	StateStabilized
+)
+
+const (
+	subscriptionTopic int = 0
 )
 
 var _ Subscriber = (*Detector)(nil)
@@ -28,20 +43,6 @@ type Subscriber interface {
 
 // RateState represents the detected state of the event rate stabilization.
 type RateState int
-
-const (
-	// StateIdle indicates the detector is inactive, waiting for the first event.
-	StateIdle RateState = iota
-	// StateMonitoring indicates events are being recorded and checked for rate stability over periods.
-	StateMonitoring
-	// StateStabilized indicates the event rate has been consistent for the configured
-	// number of periods, or the warmup time has elapsed. The detector will remain in this state.
-	StateStabilized
-)
-
-const (
-	subscriptionTopic int = 0
-)
 
 func (rs RateState) String() string {
 	switch rs {
@@ -59,16 +60,18 @@ func (rs RateState) String() string {
 // Config holds the configuration parameters for the rate stabilization detector.
 type Config struct {
 	// PeriodDuration is the length of each time period for calculating event rates.
-	// Must be greater than zero.
+	// Must be greater than zero. Time between measurements.
 	PeriodDuration time.Duration
+	// MinimumPeriods is the number of initial periods to wait *before*
+	// the NumPeriodsForStabilization window is considered for stabilization checks.
+	MinimumPeriods int
 	// NumPeriodsForStabilization is the number of consecutive recent periods to check
 	// for rate stabilization. Must be at least 2.
 	NumPeriodsForStabilization int
-	// StabilizationFactor is the maximum allowed relative difference between the highest
-	// and lowest event counts in the stabilization window.
+	// Stability threshold: Maximum acceptable deviation (lower = more strict).
 	StabilizationFactor float64
 	// WarmupTime forces stabilization if not detected naturally within this duration
-	// after monitoring starts. Set to 0 or negative to disable.
+	// after monitoring starts.
 	WarmupTime time.Duration
 	// Clock is an optional custom clock for testing. Defaults to SystemClock if nil.
 	Clock Clock
@@ -84,22 +87,21 @@ type Detector struct {
 	periodDuration             time.Duration
 	numPeriodsForStabilization int
 	stabilizationFactor        float64
+	minimumPeriods             int
 	warmupTime                 time.Duration
 	clock                      Clock
 
 	// State
-	currentState        RateState
-	periodCounts        []int       // Stores counts for the last NumPeriodsForStabilization periods
-	currentPeriodCount  int         // Event count for the *current* active period
-	totalCount          int         // Total events recorded since the start or last reset
-	monitoringStartTime time.Time   // Time when monitoring state began
-	periodTimer         *time.Timer // Timer triggering end of periods
-	warmupTimer         *time.Timer // Timer for forced stabilization fallback
-	trigger             *feed.Trigger[int]
+	currentState           RateState
+	totalCount             int
+	currentPeriodCount     int
+	currentPeriodStartTime time.Time
+	periodCounts           []int
+	trigger                *feed.Trigger[int]
+	warmupTimer            *time.Timer
 
-	// Callbacks - DO NOT call back into the detector from these; it can cause deadlocks.
 	OnMonitoringStart func(t time.Time)
-	OnPeriodComplete  func(t time.Time, rate int) // Rate is events in the completed period
+	OnPeriodComplete  func(t time.Time, countInPeriod int, stDev float64)
 	OnStabilized      func(t time.Time, totalCount int)
 }
 
@@ -117,20 +119,28 @@ func NewDetector(cfg Config) (*Detector, error) {
 		return nil, errors.New("StabilizationFactor must be non-negative")
 	}
 
+	if cfg.MinimumPeriods < 0 {
+		return nil, errors.New("MinimumPeriods must be non-negative")
+	}
+
 	clock := cfg.Clock
 	if clock == nil {
 		clock = SystemClock
 	}
 
+	//
+	minimumPeriods := cfg.MinimumPeriods + cfg.NumPeriodsForStabilization
+
 	return &Detector{
 		periodDuration:             cfg.PeriodDuration,
 		numPeriodsForStabilization: cfg.NumPeriodsForStabilization,
 		stabilizationFactor:        cfg.StabilizationFactor,
+		minimumPeriods:             minimumPeriods,
 		warmupTime:                 cfg.WarmupTime,
 		clock:                      clock,
 		currentState:               StateIdle,
-		periodCounts:               make([]int, 0, cfg.NumPeriodsForStabilization),
 		trigger:                    feed.NewTrigger[int](),
+		periodCounts:               make([]int, 0, minimumPeriods),
 	}, nil
 }
 
@@ -146,20 +156,45 @@ func (d *Detector) Record() time.Time {
 		return time.Time{}
 	}
 
+	d.totalCount++
 	t := d.clock.Now()
 
-	if d.currentState == StateIdle {
+	switch d.currentState {
+	case StateIdle:
 		d.currentState = StateMonitoring
-		d.monitoringStartTime = t
+		d.currentPeriodStartTime = t
+		d.currentPeriodCount = 1
 		if d.OnMonitoringStart != nil {
 			d.OnMonitoringStart(t)
 		}
-		d.startPeriodTimer()
 		d.startWarmupTimer(t)
-	}
 
-	d.totalCount++
-	d.currentPeriodCount++
+	case StateMonitoring:
+		for t.Sub(d.currentPeriodStartTime) >= d.periodDuration {
+			completedPeriodEndTime := d.currentPeriodStartTime.Add(d.periodDuration)
+
+			d.periodCounts = append(d.periodCounts, d.currentPeriodCount)
+			if len(d.periodCounts) > d.minimumPeriods {
+				// remove old periods
+				d.periodCounts = d.periodCounts[len(d.periodCounts)-d.minimumPeriods:]
+			}
+
+			isStable, stDev := d.checkStabilized()
+
+			if d.OnPeriodComplete != nil {
+				d.OnPeriodComplete(completedPeriodEndTime, d.currentPeriodCount, stDev)
+			}
+
+			d.currentPeriodCount = 0                          // reset the count for the next period
+			d.currentPeriodStartTime = completedPeriodEndTime // start of the next period
+
+			if isStable {
+				d.setStabilized(t)
+				return t
+			}
+		}
+		d.currentPeriodCount++
+	}
 
 	return t
 }
@@ -169,31 +204,6 @@ func (d *Detector) State() RateState {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
 	return d.currentState
-}
-
-// Reset resets the detector to its initial StateIdle, clearing all counts and timers.
-// This allows the detector to monitor for stabilization again.
-func (d *Detector) Reset() {
-	if d == nil {
-		return
-	}
-
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
-
-	if d.periodTimer != nil {
-		d.periodTimer.Stop()
-		d.periodTimer = nil
-	}
-	if d.warmupTimer != nil {
-		d.warmupTimer.Stop()
-		d.warmupTimer = nil
-	}
-	d.currentState = StateIdle
-	d.periodCounts = make([]int, 0, d.numPeriodsForStabilization)
-	d.currentPeriodCount = 0
-	d.totalCount = 0
-	d.monitoringStartTime = time.Time{}
 }
 
 // Subscribe returns a channel that receives an empty struct notification
@@ -211,59 +221,25 @@ func (d *Detector) IsStabilized() bool {
 	return d.currentState == StateStabilized
 }
 
-func (d *Detector) startPeriodTimer() {
-	d.periodTimer = time.AfterFunc(d.periodDuration, func() {
-		d.mutex.Lock()
-		if d.currentState != StateMonitoring {
-			d.mutex.Unlock()
-			return
-		}
+// Close stops the detector and releases any resources.
+func (d *Detector) Close() {
+	if d == nil {
+		return
+	}
 
-		// Process the period
-		completedCount := d.currentPeriodCount
-		d.periodCounts = append(d.periodCounts, completedCount)
-		if len(d.periodCounts) > d.numPeriodsForStabilization {
-			d.periodCounts = d.periodCounts[1:]
-		}
-		d.currentPeriodCount = 0
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
 
-		if d.OnPeriodComplete != nil {
-			d.OnPeriodComplete(d.clock.Now(), completedCount)
-		}
+	if d.warmupTimer != nil {
+		d.warmupTimer.Stop()
+		d.warmupTimer = nil
+	}
 
-		// Check for stabilization
-		if len(d.periodCounts) == d.numPeriodsForStabilization {
-			min := d.periodCounts[0]
-			max := d.periodCounts[0]
-			for _, count := range d.periodCounts[1:] {
-				if count < min {
-					min = count
-				}
-				if count > max {
-					max = count
-				}
-			}
-			if min == max || (min > 0 && float64(max-min)/float64(min) <= d.stabilizationFactor) {
-				d.currentState = StateStabilized
-				if d.periodTimer != nil {
-					d.periodTimer.Stop()
-				}
-				if d.warmupTimer != nil {
-					d.warmupTimer.Stop()
-				}
-				if d.OnStabilized != nil {
-					d.OnStabilized(d.clock.Now(), d.totalCount)
-				}
-				d.trigger.Trigger(subscriptionTopic)
-				d.mutex.Unlock()
-				return
-			}
-		}
-
-		// Schedule the next period
-		d.startPeriodTimer()
-		d.mutex.Unlock()
-	})
+	d.currentState = StateIdle
+	d.totalCount = 0
+	d.currentPeriodCount = 0
+	d.currentPeriodStartTime = time.Time{}
+	d.periodCounts = d.periodCounts[:0]
 }
 
 func (d *Detector) startWarmupTimer(t time.Time) {
@@ -276,14 +252,60 @@ func (d *Detector) startWarmupTimer(t time.Time) {
 		defer d.mutex.Unlock()
 
 		if d.currentState == StateMonitoring {
-			d.currentState = StateStabilized
-			if d.periodTimer != nil {
-				d.periodTimer.Stop()
-			}
-			if d.OnStabilized != nil {
-				d.OnStabilized(t, d.totalCount)
-			}
-			d.trigger.Trigger(subscriptionTopic)
+			d.setStabilized(t)
 		}
 	})
+}
+
+func (d *Detector) setStabilized(t time.Time) {
+	if d.warmupTimer != nil {
+		d.warmupTimer.Stop()
+		d.warmupTimer = nil
+	}
+
+	if d.currentState == StateMonitoring {
+		d.currentState = StateStabilized
+		if d.OnStabilized != nil {
+			d.OnStabilized(t, d.totalCount)
+		}
+		d.trigger.Trigger(subscriptionTopic)
+	}
+}
+
+func (d *Detector) checkStabilized() (bool, float64) {
+	if len(d.periodCounts) < d.minimumPeriods {
+		return false, math.NaN()
+	}
+
+	startIndex := len(d.periodCounts) - d.numPeriodsForStabilization
+	relevantCounts := d.periodCounts[startIndex:]
+	stDev := calculateStDev(relevantCounts)
+
+	isStabilized := !math.IsNaN(stDev) && stDev < d.stabilizationFactor
+
+	return isStabilized, stDev
+}
+
+func calculateStDev(relevantCounts []int) float64 {
+	n := len(relevantCounts)
+	if n < 2 {
+		return math.NaN()
+	}
+
+	var sum float64
+	for _, count := range relevantCounts {
+		sum += float64(count)
+	}
+	mean := sum / float64(n)
+
+	sumSquaredDiff := 0.0
+	for _, count := range relevantCounts {
+		diff := float64(count) - mean
+		sumSquaredDiff += diff * diff
+	}
+
+	// sample variance
+	variance := sumSquaredDiff / float64(n-1)
+
+	return math.Sqrt(variance)
 }
