@@ -74,7 +74,7 @@ func New(
 	pushSyncer pushsync.PushSyncer,
 	batchExist postage.BatchExist,
 	logger log.Logger,
-	stabilizationSubscriber stabilization.Subscriber,
+	stabilizer stabilization.Subscriber,
 	retryCount int,
 ) *Service {
 	p := &Service{
@@ -90,17 +90,17 @@ func New(
 		attempts:          &attempts{retryCount: retryCount, attempts: make(map[string]int)},
 		smuggler:          make(chan OpChan),
 	}
-	go p.chunksWorker(stabilizationSubscriber)
+	go p.chunksWorker(stabilizer)
 	return p
 }
 
 // chunksWorker is a loop that keeps looking for chunks that are locally uploaded ( by monitoring pushIndex )
 // and pushes them to the closest peer and get a receipt.
-func (s *Service) chunksWorker(stabilizationSubscriber stabilization.Subscriber) {
+func (s *Service) chunksWorker(stabilizer stabilization.Subscriber) {
 	defer close(s.chunksWorkerQuitC)
 	select {
-	case <-stabilizationSubscriber.Subscribe():
-		s.logger.Info("pusher: stabilization achieved")
+	case <-stabilizer.Subscribe():
+		s.logger.Debug("Event rate stabilization achieved")
 	case <-s.quit:
 		return
 	}

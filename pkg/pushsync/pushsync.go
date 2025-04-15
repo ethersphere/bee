@@ -78,25 +78,25 @@ type Storer interface {
 }
 
 type PushSync struct {
-	address                 swarm.Address
-	networkID               uint64
-	radius                  func() (uint8, error)
-	nonce                   []byte
-	streamer                p2p.StreamerDisconnecter
-	store                   Storer
-	topologyDriver          topology.Driver
-	unwrap                  func(swarm.Chunk)
-	gsocHandler             func(*soc.SOC)
-	logger                  log.Logger
-	accounting              accounting.Interface
-	pricer                  pricer.Interface
-	metrics                 metrics
-	tracer                  *tracing.Tracer
-	validStamp              postage.ValidStampFn
-	signer                  crypto.Signer
-	fullNode                bool
-	errSkip                 *skippeers.List
-	stabilizationSubscriber stabilization.Subscriber
+	address        swarm.Address
+	networkID      uint64
+	radius         func() (uint8, error)
+	nonce          []byte
+	streamer       p2p.StreamerDisconnecter
+	store          Storer
+	topologyDriver topology.Driver
+	unwrap         func(swarm.Chunk)
+	gsocHandler    func(*soc.SOC)
+	logger         log.Logger
+	accounting     accounting.Interface
+	pricer         pricer.Interface
+	metrics        metrics
+	tracer         *tracing.Tracer
+	validStamp     postage.ValidStampFn
+	signer         crypto.Signer
+	fullNode       bool
+	errSkip        *skippeers.List
+	stabilizer     stabilization.Subscriber
 
 	shallowReceiptTolerance uint8
 }
@@ -125,7 +125,7 @@ func New(
 	pricer pricer.Interface,
 	signer crypto.Signer,
 	tracer *tracing.Tracer,
-	stabilizationSubscriber stabilization.Subscriber,
+	stabilizer stabilization.Subscriber,
 	shallowReceiptTolerance uint8,
 ) *PushSync {
 	ps := &PushSync{
@@ -146,7 +146,7 @@ func New(
 		tracer:                  tracer,
 		signer:                  signer,
 		errSkip:                 skippeers.NewList(time.Minute),
-		stabilizationSubscriber: stabilizationSubscriber,
+		stabilizer:              stabilizer,
 		shallowReceiptTolerance: shallowReceiptTolerance,
 	}
 
@@ -358,7 +358,7 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 
 // pushToClosest attempts to push the chunk into the network.
 func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bool) (*pb.Receipt, error) {
-	if !ps.stabilizationSubscriber.IsStabilized() {
+	if !ps.stabilizer.IsStabilized() {
 		return nil, ErrWarmup
 	}
 

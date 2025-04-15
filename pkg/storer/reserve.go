@@ -58,8 +58,8 @@ func (db *DB) startReserveWorkers(
 	go db.reserveWorker(ctx)
 
 	select {
-	case <-db.reserveOptions.stabilizationSubscriber.Subscribe():
-		db.logger.Info("reserve: stabilization achieved")
+	case <-db.reserveOptions.stabilizer.Subscribe():
+		db.logger.Debug("Event rate stabilization achieved")
 	case <-db.quit:
 		return
 	}
