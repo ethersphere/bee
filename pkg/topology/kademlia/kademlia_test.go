@@ -952,10 +952,10 @@ func TestClosestPeer(t *testing.T) {
 	ab := addressbook.New(mockstate.NewStateStore())
 
 	detector, err := stabilization.NewDetector(stabilization.Config{
-		PeriodDuration:             2 * time.Second,
+		PeriodDuration:             1 * time.Second,
 		NumPeriodsForStabilization: 2,
 		StabilizationFactor:        1,
-		WarmupTime:                 1 * time.Second,
+		WarmupTime:                 0 * time.Second,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1968,10 +1968,10 @@ func newTestKademliaWithAddrDiscovery(
 	t.Helper()
 
 	detector, err := stabilization.NewDetector(stabilization.Config{
-		PeriodDuration:             2 * time.Second,
+		PeriodDuration:             1 * time.Second,
 		NumPeriodsForStabilization: 2,
 		StabilizationFactor:        1,
-		WarmupTime:                 1 * time.Second,
+		WarmupTime:                 0 * time.Second,
 	})
 	if err != nil {
 		t.Fatal(err)
