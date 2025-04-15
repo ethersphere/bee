@@ -134,6 +134,7 @@ type Options struct {
 	Addr                          string
 	NATAddr                       string
 	EnableWS                      bool
+	EnableQUIC                    bool
 	WelcomeMessage                string
 	Bootnodes                     []string
 	CORSAllowedOrigins            []string
@@ -614,6 +615,7 @@ func NewBee(
 	p2ps, err := libp2p.New(ctx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
 		PrivateKey:      libp2pPrivateKey,
 		NATAddr:         o.NATAddr,
+		EnableQUIC:      o.EnableQUIC,
 		EnableWS:        o.EnableWS,
 		WelcomeMessage:  o.WelcomeMessage,
 		FullNode:        o.FullNodeMode,
@@ -1152,6 +1154,7 @@ func NewBee(
 		SyncStatus:      syncStatusFn,
 		NodeStatus:      nodeStatus,
 		PinIntegrity:    localStore.PinIntegrity(),
+		AddressBook:     addressbook,
 	}
 
 	if o.APIAddr != "" {

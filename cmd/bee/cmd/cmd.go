@@ -34,6 +34,7 @@ const (
 	optionNameP2PAddr                      = "p2p-addr"
 	optionNameNATAddr                      = "nat-addr"
 	optionNameP2PWSEnable                  = "p2p-ws-enable"
+	optionNameP2PQUICEnable                = "p2p-quic-enable"
 	optionNameBootnodes                    = "bootnode"
 	optionNameNetworkID                    = "network-id"
 	optionWelcomeMessage                   = "welcome-message"
@@ -244,6 +245,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameP2PAddr, ":1634", "P2P listen address")
 	cmd.Flags().String(optionNameNATAddr, "", "NAT exposed address")
 	cmd.Flags().Bool(optionNameP2PWSEnable, false, "enable P2P WebSocket transport")
+	cmd.Flags().Bool(optionNameP2PQUICEnable, true, "enable P2P QUIC transport")
 	cmd.Flags().StringSlice(optionNameBootnodes, []string{"/dnsaddr/mainnet.ethswarm.org"}, "initial nodes to connect to")
 	cmd.Flags().Uint64(optionNameNetworkID, chaincfg.Mainnet.NetworkID, "ID of the Swarm network")
 	cmd.Flags().StringSlice(optionCORSAllowedOrigins, []string{}, "origins with CORS headers enabled")
