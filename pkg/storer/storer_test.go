@@ -14,7 +14,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	batchstore "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
-	ssmock "github.com/ethersphere/bee/v2/pkg/stabilization/mock"
+	stabilmock "github.com/ethersphere/bee/v2/pkg/stabilization/mock"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/migration"
 	"github.com/ethersphere/bee/v2/pkg/storer"
@@ -194,7 +194,7 @@ func dbTestOps(baseAddr swarm.Address, reserveCapacity int, bs postage.Storer, r
 	opts.ReserveCapacity = reserveCapacity
 	opts.Batchstore = bs
 	opts.ReserveWakeUpDuration = reserveWakeUpTime
-	opts.StabilizationSubscriber = ssmock.NewSubscriber(true)
+	opts.Stabilizer = stabilmock.NewSubscriber(true)
 
 	return opts
 }

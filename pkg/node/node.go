@@ -591,15 +591,15 @@ func NewBee(
 	defer detector.Close()
 
 	detector.OnMonitoringStart = func(t time.Time) {
-		logger.Info("rateStabilizer: START", "timestamp", t)
+		logger.Info("Rate stabilization monitoring started", "startTime", t)
 	}
 
 	detector.OnStabilized = func(t time.Time, totalCount int) {
-		logger.Info("rateStabilizer: STABLE", "timestamp", t, "counter", totalCount)
+		logger.Debug("Event rate stabilized", "stabilizationTime", t, "totalEventCount", totalCount)
 	}
 
 	detector.OnPeriodComplete = func(t time.Time, periodCount int, stDev float64) {
-		logger.Info("rateStabilizer: RATE", "timestamp", t, "periodCount", periodCount, "stDev", stDev)
+		logger.Info("Rate stabilization period completed", "periodEndTime", t, "eventsInPeriod", periodCount, "rateStdDev", stDev)
 	}
 
 	var initBatchState *postage.ChainSnapshot
@@ -753,7 +753,7 @@ func NewBee(
 		Batchstore:                batchStore,
 		StateStore:                stateStore,
 		RadiusSetter:              kad,
-		StabilizationSubscriber:   detector,
+		Stabilizer:                detector,
 		Logger:                    logger,
 		Tracer:                    tracer,
 		CacheMinEvictCount:        cacheMinEvictCount,
@@ -1042,7 +1042,7 @@ func NewBee(
 
 	go func() {
 		<-detector.Subscribe()
-		logger.Info("stabilization detector: WARMUP")
+		logger.Debug("Event rate stabilization achieved")
 		apiService.SetIsWarmingUp(false)
 	}()
 
@@ -1117,7 +1117,7 @@ func NewBee(
 
 			isFullySynced := func() bool {
 				reserveTreshold := reserveCapacity * 5 / 10
-				logger.Info("checking if localstore is fully synced", "reserveTreshold", reserveTreshold, "stabilized", detector.IsStabilized(), "syncRate", pullerService.SyncRate())
+				logger.Debug("Sync status check evaluated", "stabilized", detector.IsStabilized())
 				return localStore.ReserveSize() >= reserveTreshold && pullerService.SyncRate() == 0 && detector.IsStabilized()
 			}
 

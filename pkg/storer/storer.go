@@ -380,12 +380,12 @@ type Options struct {
 	Logger                    log.Logger
 	Tracer                    *tracing.Tracer
 
-	Address                 swarm.Address
-	StabilizationSubscriber stabilization.Subscriber
-	Batchstore              postage.Storer
-	ValidStamp              postage.ValidStampFn
-	RadiusSetter            topology.SetStorageRadiuser
-	StateStore              storage.StateStorer
+	Address      swarm.Address
+	Stabilizer   stabilization.Subscriber
+	Batchstore   postage.Storer
+	ValidStamp   postage.ValidStampFn
+	RadiusSetter topology.SetStorageRadiuser
+	StateStore   storage.StateStorer
 
 	ReserveCapacity         int
 	ReserveWakeUpDuration   time.Duration
@@ -452,12 +452,12 @@ type DB struct {
 }
 
 type reserveOpts struct {
-	stabilizationSubscriber stabilization.Subscriber
-	wakeupDuration          time.Duration
-	minEvictCount           uint64
-	cacheMinEvictCount      uint64
-	minimumRadius           uint8
-	capacityDoubling        int
+	stabilizer         stabilization.Subscriber
+	wakeupDuration     time.Duration
+	minEvictCount      uint64
+	cacheMinEvictCount uint64
+	minimumRadius      uint8
+	capacityDoubling   int
 }
 
 // New returns a newly constructed DB object which implements all the above
@@ -545,12 +545,12 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		events:           events.NewSubscriber(),
 		reserveBinEvents: events.NewSubscriber(),
 		reserveOptions: reserveOpts{
-			stabilizationSubscriber: opts.StabilizationSubscriber,
-			wakeupDuration:          opts.ReserveWakeUpDuration,
-			minEvictCount:           opts.ReserveMinEvictCount,
-			cacheMinEvictCount:      opts.CacheMinEvictCount,
-			minimumRadius:           uint8(opts.MinimumStorageRadius),
-			capacityDoubling:        opts.ReserveCapacityDoubling,
+			stabilizer:         opts.Stabilizer,
+			wakeupDuration:     opts.ReserveWakeUpDuration,
+			minEvictCount:      opts.ReserveMinEvictCount,
+			cacheMinEvictCount: opts.CacheMinEvictCount,
+			minimumRadius:      uint8(opts.MinimumStorageRadius),
+			capacityDoubling:   opts.ReserveCapacityDoubling,
 		},
 		directUploadLimiter: make(chan struct{}, pusher.ConcurrentPushes),
 		pinIntegrity:        pinIntegrity,
