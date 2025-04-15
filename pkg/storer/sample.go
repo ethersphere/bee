@@ -54,7 +54,7 @@ type Sample struct {
 // In order to optimize this we use a simple pipeline pattern:
 // Iterate chunk addresses -> Get the chunk data and calculate transformed hash -> Assemble the sample
 // If the node has doubled their capacity by some factor, sampling process need to only pertain to the
-// chunks of the selected neighborhood as determined by the anchor and the "committed depth" and NOT the whole reseve.
+// chunks of the selected neighborhood as determined by the anchor and the "committed depth" and NOT the whole reserve.
 // The committed depth is the sum of the radius and the doubling factor.
 // For example, the committed depth is 11, but the local node has a doubling factor of 3, so the
 // local radius will eventually drop to 8. The sampling must only consider chunks with proximity 11 to the anchor.

@@ -497,7 +497,7 @@ func (r *Reserve) IterateChunksItems(startBin uint8, cb func(*ChunkBinItem) (boo
 	return err
 }
 
-// Reset removes all the entires in the reserve. Must be done before any calls to the reserve.
+// Reset removes all the entries in the reserve. Must be done before any calls to the reserve.
 func (r *Reserve) Reset(ctx context.Context) error {
 	size := r.Size()
 

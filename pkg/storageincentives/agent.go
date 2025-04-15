@@ -390,7 +390,7 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 }
 
 func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
-	// minimum proximity between the achor and the stored chunks
+	// minimum proximity between the anchor and the stored chunks
 	committedDepth := a.store.CommittedDepth()
 
 	if a.state.IsFrozen() {
