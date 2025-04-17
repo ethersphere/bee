@@ -1,3 +1,6 @@
+// Copyright 2025 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
 package stabilization_test
 
 import (
@@ -120,7 +123,8 @@ func TestDetector_StateTransitions(t *testing.T) {
 		stabilizedTotalCount = totalCount // Store the count
 	}
 
-	stabilizedCh := d.Subscribe()
+	stabilizedCh, cancel := d.Subscribe()
+	defer cancel()
 
 	if d.State() != stabilization.StateIdle {
 		t.Fatalf("Expected initial state Idle, got %s", d.State())

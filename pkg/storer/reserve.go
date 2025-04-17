@@ -57,9 +57,12 @@ func (db *DB) startReserveWorkers(
 	db.inFlight.Add(1)
 	go db.reserveWorker(ctx)
 
+	sub, unsubscribe := db.reserveOptions.startupStabilizer.Subscribe()
+	defer unsubscribe()
+
 	select {
-	case <-db.reserveOptions.stabilizer.Subscribe():
-		db.logger.Debug("Event rate stabilization achieved")
+	case <-sub:
+		db.logger.Debug("node warmup check completed")
 	case <-db.quit:
 		return
 	}

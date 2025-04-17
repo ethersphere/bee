@@ -194,7 +194,7 @@ func dbTestOps(baseAddr swarm.Address, reserveCapacity int, bs postage.Storer, r
 	opts.ReserveCapacity = reserveCapacity
 	opts.Batchstore = bs
 	opts.ReserveWakeUpDuration = reserveWakeUpTime
-	opts.Stabilizer = stabilmock.NewSubscriber(true)
+	opts.StartupStabilizer = stabilmock.NewSubscriber(true)
 
 	return opts
 }

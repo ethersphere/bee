@@ -1,4 +1,4 @@
-// Copyright 2020 The Swarm Authors. All rights reserved.
+// Copyright 2025 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -36,7 +36,7 @@ var _ Subscriber = (*Detector)(nil)
 type Subscriber interface {
 	// Subscribe returns a channel that will receive a notification when the
 	// stabilization reaches the Stabilized state.
-	Subscribe() (c <-chan struct{})
+	Subscribe() (c <-chan struct{}, cancel func())
 	// IsStabilized returns true if the detector is in the Stabilized state.
 	IsStabilized() bool
 }
@@ -206,12 +206,12 @@ func (d *Detector) State() RateState {
 	return d.currentState
 }
 
-// Subscribe returns a channel that receives an empty struct notification
-// when the detector transitions to the StateStabilized.
-// The channel is buffered and closed after the notification.
-func (d *Detector) Subscribe() (c <-chan struct{}) {
-	c, _ = d.trigger.Subscribe(subscriptionTopic) // Ignores the unsubscribe function
-	return c
+// Subscribe returns a channel (c) signaling stabilization and a cancel function.
+// The channel notifies when stabilization is triggered (or immediately if already stable).
+// Calling cancel() when the subscription is no longer needed is recommended
+// to unsubscribe and release associated resources promptly.
+func (d *Detector) Subscribe() (c <-chan struct{}, cancel func()) {
+	return d.trigger.Subscribe(subscriptionTopic)
 }
 
 // IsStabilized returns true if the detector is currently in the StateStabilized.

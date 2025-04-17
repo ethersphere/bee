@@ -380,12 +380,12 @@ type Options struct {
 	Logger                    log.Logger
 	Tracer                    *tracing.Tracer
 
-	Address      swarm.Address
-	Stabilizer   stabilization.Subscriber
-	Batchstore   postage.Storer
-	ValidStamp   postage.ValidStampFn
-	RadiusSetter topology.SetStorageRadiuser
-	StateStore   storage.StateStorer
+	Address           swarm.Address
+	StartupStabilizer stabilization.Subscriber
+	Batchstore        postage.Storer
+	ValidStamp        postage.ValidStampFn
+	RadiusSetter      topology.SetStorageRadiuser
+	StateStore        storage.StateStorer
 
 	ReserveCapacity         int
 	ReserveWakeUpDuration   time.Duration
@@ -452,7 +452,7 @@ type DB struct {
 }
 
 type reserveOpts struct {
-	stabilizer         stabilization.Subscriber
+	startupStabilizer  stabilization.Subscriber
 	wakeupDuration     time.Duration
 	minEvictCount      uint64
 	cacheMinEvictCount uint64
@@ -545,7 +545,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		events:           events.NewSubscriber(),
 		reserveBinEvents: events.NewSubscriber(),
 		reserveOptions: reserveOpts{
-			stabilizer:         opts.Stabilizer,
+			startupStabilizer:  opts.StartupStabilizer,
 			wakeupDuration:     opts.ReserveWakeUpDuration,
 			minEvictCount:      opts.ReserveMinEvictCount,
 			cacheMinEvictCount: opts.CacheMinEvictCount,
