@@ -28,7 +28,6 @@ func New(windowsSize time.Duration) *Rate {
 		windowSize: windowsSize.Milliseconds(),
 		now:        func() time.Time { return time.Now() },
 	}
-
 }
 
 // add uses the current time and rounds it down to a window
@@ -62,7 +61,6 @@ func (r *Rate) Rate() float64 {
 // cleanup removes windows older than the most recent two windows.
 // Must be called under lock.
 func (r *Rate) cleanup() {
-
 	window := r.now().UnixMilli() / r.windowSize
 	for k := range r.windows {
 		if k <= window-2 {
