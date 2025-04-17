@@ -586,20 +586,20 @@ func NewBee(
 		WarmupTime:                 warmupTime,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("rate stabilizer: %w", err)
+		return nil, fmt.Errorf("rate stabilizer configuration failed: %w", err)
 	}
 	defer detector.Close()
 
 	detector.OnMonitoringStart = func(t time.Time) {
-		logger.Info("Rate stabilization monitoring started", "startTime", t)
+		logger.Info("node warmup check initiated. monitoring activity rate to determine readiness.", "startTime", t)
 	}
 
 	detector.OnStabilized = func(t time.Time, totalCount int) {
-		logger.Debug("Event rate stabilized", "stabilizationTime", t, "totalEventCount", totalCount)
+		logger.Info("node warmup complete. system is considered stable and ready.", "stabilizationTime", t, "totalMonitoredEvents", totalCount)
 	}
 
 	detector.OnPeriodComplete = func(t time.Time, periodCount int, stDev float64) {
-		logger.Info("Rate stabilization period completed", "periodEndTime", t, "eventsInPeriod", periodCount, "rateStdDev", stDev)
+		logger.Debug("node warmup check: period complete.", "periodEndTime", t, "eventsInPeriod", periodCount, "rateStdDev", stDev)
 	}
 
 	var initBatchState *postage.ChainSnapshot
@@ -753,7 +753,7 @@ func NewBee(
 		Batchstore:                batchStore,
 		StateStore:                stateStore,
 		RadiusSetter:              kad,
-		Stabilizer:                detector,
+		StartupStabilizer:         detector,
 		Logger:                    logger,
 		Tracer:                    tracer,
 		CacheMinEvictCount:        cacheMinEvictCount,
@@ -1041,8 +1041,10 @@ func NewBee(
 	}
 
 	go func() {
-		<-detector.Subscribe()
-		logger.Debug("Event rate stabilization achieved")
+		sub, unsubscribe := detector.Subscribe()
+		defer unsubscribe()
+		<-sub
+		logger.Info("node warmup stabilization complete, updating API status")
 		apiService.SetIsWarmingUp(false)
 	}()
 

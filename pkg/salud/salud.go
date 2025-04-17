@@ -60,7 +60,7 @@ func New(
 	topology topologyDriver,
 	reserve storer.RadiusChecker,
 	logger log.Logger,
-	stabilizer stabilization.Subscriber,
+	startupStabilizer stabilization.Subscriber,
 	mode string,
 	minPeersPerbin int,
 	durPercentile float64,
@@ -79,19 +79,22 @@ func New(
 	}
 
 	s.wg.Add(1)
-	go s.worker(stabilizer, mode, minPeersPerbin, durPercentile, connsPercentile)
+	go s.worker(startupStabilizer, mode, minPeersPerbin, durPercentile, connsPercentile)
 
 	return s
 }
 
-func (s *service) worker(stabilizer stabilization.Subscriber, mode string, minPeersPerbin int, durPercentile float64, connsPercentile float64) {
+func (s *service) worker(startupStabilizer stabilization.Subscriber, mode string, minPeersPerbin int, durPercentile float64, connsPercentile float64) {
 	defer s.wg.Done()
+
+	sub, unsubscribe := startupStabilizer.Subscribe()
+	defer unsubscribe()
 
 	select {
 	case <-s.quit:
 		return
-	case <-stabilizer.Subscribe():
-		s.logger.Debug("Event rate stabilization achieved")
+	case <-sub:
+		s.logger.Debug("node warmup check completed")
 	}
 
 	for {
