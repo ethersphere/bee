@@ -119,10 +119,14 @@ func (r *peerRegistry) peers() []p2p.Peer {
 	r.mu.RLock()
 	peers := make([]p2p.Peer, 0, len(r.overlays))
 	for p, a := range r.overlays {
-		peers = append(peers, p2p.Peer{
+		peer := p2p.Peer{
 			Address:  a,
 			FullNode: r.full[p],
-		})
+		}
+		for conn := range r.connections[p] {
+			peer.Connections = append(peer.Connections, conn.RemoteMultiaddr())
+		}
+		peers = append(peers, peer)
 	}
 	r.mu.RUnlock()
 	sort.Slice(peers, func(i, j int) bool {
