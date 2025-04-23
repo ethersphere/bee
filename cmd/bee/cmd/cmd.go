@@ -174,6 +174,8 @@ func Execute() (err error) {
 func (c *command) initGlobalFlags() {
 	globalFlags := c.root.PersistentFlags()
 	globalFlags.StringVar(&c.cfgFile, "config", "", "config file (default is $HOME/.bee.yaml)")
+	globalFlags.String(optionNameDataDir, filepath.Join(c.homeDir, ".bee"), "data directory")
+	globalFlags.String(optionNameVerbosity, "info", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
 }
 
 func (c *command) initCommandVariables() error {
@@ -215,6 +217,12 @@ func (c *command) initConfig() (err error) {
 			return err
 		}
 	}
+
+	errBind := config.BindPFlags(c.root.PersistentFlags())
+	if errBind != nil {
+		return fmt.Errorf("failed to bind persistent flags: %w", errBind)
+	}
+
 	c.config = config
 	return nil
 }
