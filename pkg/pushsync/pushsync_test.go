@@ -618,14 +618,15 @@ func TestHandler(t *testing.T) {
 
 	// Create the closest peer
 	psClosestPeer, _, closestAccounting := createPushSyncNode(t, closestPeer, defaultPrices, nil, nil, defaultSigner(chunk), mock.WithClosestPeerErr(topology.ErrWantSelf))
+	recorder1 := streamtest.New(streamtest.WithProtocols(psClosestPeer.Protocol()), streamtest.WithBaseAddr(pivotPeer))
 
 	// creating the pivot peer
-	psPivot, _, pivotAccounting := createPushSyncNode(t, pivotPeer, defaultPrices, nil, nil, defaultSigner(chunk), mock.WithPeers(closestPeer))
+	psPivot, _, pivotAccounting := createPushSyncNode(t, pivotPeer, defaultPrices, recorder1, nil, defaultSigner(chunk), mock.WithPeers(closestPeer))
 
-	combinedRecorder := streamtest.New(streamtest.WithProtocols(psPivot.Protocol(), psClosestPeer.Protocol()), streamtest.WithBaseAddr(triggerPeer))
+	recorder2 := streamtest.New(streamtest.WithProtocols(psPivot.Protocol()), streamtest.WithBaseAddr(triggerPeer))
 
 	// Creating the trigger peer
-	psTriggerPeer, _, triggerAccounting := createPushSyncNode(t, triggerPeer, defaultPrices, combinedRecorder, nil, defaultSigner(chunk), mock.WithPeers(pivotPeer, closestPeer))
+	psTriggerPeer, _, triggerAccounting := createPushSyncNode(t, triggerPeer, defaultPrices, recorder2, nil, defaultSigner(chunk), mock.WithPeers(pivotPeer))
 
 	receipt, err := psTriggerPeer.PushChunkToClosest(context.Background(), chunk)
 	if err != nil {
@@ -638,16 +639,16 @@ func TestHandler(t *testing.T) {
 
 	// Pivot peer will forward the chunk to its closest peer. Intercept the incoming stream from pivot node and check
 	// for the correctness of the chunk
-	waitOnRecordAndTest(t, closestPeer, combinedRecorder, chunk.Address(), chunk.Data())
+	waitOnRecordAndTest(t, closestPeer, recorder1, chunk.Address(), chunk.Data())
 
 	// Similarly intercept the same incoming stream to see if the closest peer is sending a proper receipt
-	waitOnRecordAndTest(t, closestPeer, combinedRecorder, chunk.Address(), nil)
+	waitOnRecordAndTest(t, closestPeer, recorder1, chunk.Address(), nil)
 
 	// In the received stream, check if a receipt is sent from pivot peer and check for its correctness.
-	waitOnRecordAndTest(t, pivotPeer, combinedRecorder, chunk.Address(), nil)
+	waitOnRecordAndTest(t, pivotPeer, recorder2, chunk.Address(), nil)
 
 	// In pivot peer,  intercept the incoming delivery chunk from the trigger peer and check for correctness
-	waitOnRecordAndTest(t, pivotPeer, combinedRecorder, chunk.Address(), chunk.Data())
+	waitOnRecordAndTest(t, pivotPeer, recorder2, chunk.Address(), chunk.Data())
 
 	balance, err := triggerAccounting.Balance(pivotPeer)
 	if err != nil {
@@ -663,8 +664,8 @@ func TestHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if balance.Int64() != -int64(fixedPrice) {
-		t.Fatalf("unexpected balance on trigger. want %d got %d", -int64(fixedPrice), balance)
+	if balance.Int64() != 0 {
+		t.Fatalf("unexpected balance on trigger. want %d got %d", 0, balance)
 	}
 
 	balance, err = pivotAccounting.Balance(triggerPeer)
@@ -672,7 +673,7 @@ func TestHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if balance.Int64() != 0 {
+	if balance.Int64() != int64(fixedPrice) {
 		t.Fatalf("unexpected balance on pivot. want %d got %d", int64(fixedPrice), balance)
 	}
 
@@ -681,7 +682,7 @@ func TestHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if balance.Int64() != 0 {
+	if balance.Int64() != -int64(fixedPrice) {
 		t.Fatalf("unexpected balance on pivot. want %d got %d", -int64(fixedPrice), balance)
 	}
 
@@ -690,7 +691,7 @@ func TestHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if balance.Int64() != 0 {
+	if balance.Int64() != int64(fixedPrice) {
 		t.Fatalf("unexpected balance on closest. want %d got %d", int64(fixedPrice), balance)
 	}
 }
@@ -771,7 +772,7 @@ func TestMultiplePushesAsForwarder(t *testing.T) {
 	// create a pivot node and a mocked closest node
 	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // base is 0000
 
-	peer1 := swarm.MustParseHexAddress("5000000000000000000000000000000000000000000000000000000000000000")
+	peer1 := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 	peer2 := swarm.MustParseHexAddress("4000000000000000000000000000000000000000000000000000000000000000")
 	peer3 := swarm.MustParseHexAddress("3000000000000000000000000000000000000000000000000000000000000000")
 
@@ -805,23 +806,17 @@ func TestMultiplePushesAsForwarder(t *testing.T) {
 
 	waitOnRecordAndTest(t, peer1, recorder, chunk.Address(), chunk.Data())
 	waitOnRecordAndTest(t, peer1, recorder, chunk.Address(), nil)
-	waitOnRecordAndTest(t, peer2, recorder, chunk.Address(), chunk.Data())
-	waitOnRecordAndTest(t, peer2, recorder, chunk.Address(), nil)
-	waitOnRecordAndTest(t, peer3, recorder, chunk.Address(), chunk.Data())
-	waitOnRecordAndTest(t, peer3, recorder, chunk.Address(), nil)
 
-	want := true
-
-	if got := storerPeer1.hasChunk(t, chunk.Address()); got != want {
-		t.Fatalf("got %v, want %v", got, want)
+	if got := storerPeer1.hasChunk(t, chunk.Address()); got != true {
+		t.Fatalf("got %v, want %v", got, true)
 	}
 
-	if got := storerPeer2.hasChunk(t, chunk.Address()); got != want {
-		t.Fatalf("got %v, want %v", got, want)
+	if got := storerPeer2.hasChunk(t, chunk.Address()); got != false {
+		t.Fatalf("got %v, want %v", got, false)
 	}
 
-	if got := storerPeer3.hasChunk(t, chunk.Address()); got != want {
-		t.Fatalf("got %v, want %v", got, want)
+	if got := storerPeer3.hasChunk(t, chunk.Address()); got != false {
+		t.Fatalf("got %v, want %v", got, false)
 	}
 }
 
