@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/stabilization"
 	"github.com/ethersphere/bee/v2/pkg/status"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -59,13 +60,12 @@ func New(
 	topology topologyDriver,
 	reserve storer.RadiusChecker,
 	logger log.Logger,
-	warmup time.Duration,
+	startupStabilizer stabilization.Subscriber,
 	mode string,
 	minPeersPerbin int,
 	durPercentile float64,
 	connsPercentile float64,
 ) *service {
-
 	metrics := newMetrics()
 
 	s := &service{
@@ -79,19 +79,22 @@ func New(
 	}
 
 	s.wg.Add(1)
-	go s.worker(warmup, mode, minPeersPerbin, durPercentile, connsPercentile)
+	go s.worker(startupStabilizer, mode, minPeersPerbin, durPercentile, connsPercentile)
 
 	return s
-
 }
 
-func (s *service) worker(warmup time.Duration, mode string, minPeersPerbin int, durPercentile float64, connsPercentile float64) {
+func (s *service) worker(startupStabilizer stabilization.Subscriber, mode string, minPeersPerbin int, durPercentile float64, connsPercentile float64) {
 	defer s.wg.Done()
+
+	sub, unsubscribe := startupStabilizer.Subscribe()
+	defer unsubscribe()
 
 	select {
 	case <-s.quit:
 		return
-	case <-time.After(warmup):
+	case <-sub:
+		s.logger.Debug("node warmup check completed")
 	}
 
 	for {
@@ -124,7 +127,6 @@ type peer struct {
 // per count, the most common storage radius, and the batch commitment, and based on these values, marks peers as unhealhy that fall beyond
 // the allowed thresholds.
 func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, connsPercentile float64) {
-
 	var (
 		mtx      sync.Mutex
 		wg       sync.WaitGroup
@@ -269,7 +271,6 @@ func (s *service) SubscribeNetworkStorageRadius() (<-chan uint8, func()) {
 // percentileDur finds the p percentile of response duration.
 // Less is better.
 func percentileDur(peers []peer, p float64) float64 {
-
 	index := int(float64(len(peers)) * p)
 
 	sort.Slice(peers, func(i, j int) bool {
@@ -282,7 +283,6 @@ func percentileDur(peers []peer, p float64) float64 {
 // percentileConns finds the p percentile of connection count.
 // More is better.
 func percentileConns(peers []peer, p float64) uint64 {
-
 	index := int(float64(len(peers)) * p)
 
 	sort.Slice(peers, func(i, j int) bool {
@@ -294,7 +294,6 @@ func percentileConns(peers []peer, p float64) uint64 {
 
 // radius finds the most common radius.
 func (s *service) committedDepth(peers []peer) (uint8, uint8) {
-
 	var networkDepth [swarm.MaxBins]int
 	var nHoodDepth [swarm.MaxBins]int
 
@@ -315,7 +314,6 @@ func (s *service) committedDepth(peers []peer) (uint8, uint8) {
 
 // commitment finds the most common batch commitment.
 func commitment(peers []peer) uint64 {
-
 	commitments := make(map[uint64]int)
 
 	for _, peer := range peers {
@@ -338,7 +336,6 @@ func commitment(peers []peer) uint64 {
 }
 
 func maxIndex(n []int) int {
-
 	maxValue := 0
 	index := 0
 	for i, c := range n {

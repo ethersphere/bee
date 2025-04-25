@@ -110,7 +110,7 @@ password-file: "./password"
 # use-postage-snapshot: false
 ## log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace
 # verbosity: info
-## time to warmup the node before some major protocols can be kicked off
+## maximum node warmup duration; proceeds when stable or after this time
 # warmup-time: 5m0s
 ## send a welcome message string during handshakes
 # welcome-message: ""

@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	batchstore "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
+	stabilmock "github.com/ethersphere/bee/v2/pkg/stabilization/mock"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/migration"
 	"github.com/ethersphere/bee/v2/pkg/storer"
@@ -178,7 +179,6 @@ func TestNew(t *testing.T) {
 }
 
 func dbTestOps(baseAddr swarm.Address, reserveCapacity int, bs postage.Storer, radiusSetter topology.SetStorageRadiuser, reserveWakeUpTime time.Duration) *storer.Options {
-
 	opts := storer.DefaultOptions()
 
 	if radiusSetter == nil {
@@ -194,6 +194,7 @@ func dbTestOps(baseAddr swarm.Address, reserveCapacity int, bs postage.Storer, r
 	opts.ReserveCapacity = reserveCapacity
 	opts.Batchstore = bs
 	opts.ReserveWakeUpDuration = reserveWakeUpTime
+	opts.StartupStabilizer = stabilmock.NewSubscriber(true)
 
 	return opts
 }

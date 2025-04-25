@@ -464,7 +464,6 @@ func (p *Puller) resetIntervals(oldRadius uint8) (err error) {
 	for bin := uint8(0); bin < p.bins; bin++ {
 		err = errors.Join(err,
 			p.statestore.Iterate(binIntervalKey(bin), func(key, _ []byte) (stop bool, err error) {
-
 				po := swarm.Proximity(addressFromKey(key).Bytes(), p.base.Bytes())
 
 				// 1. for neighbor peers, only reset the bins below the current radius

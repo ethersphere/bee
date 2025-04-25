@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/stabilization"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
@@ -187,7 +188,7 @@ type memFS struct {
 }
 
 func (m *memFS) Open(path string) (fs.File, error) {
-	return m.Fs.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+	return m.Fs.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644)
 }
 
 type dirFS struct {
@@ -195,11 +196,13 @@ type dirFS struct {
 }
 
 func (d *dirFS) Open(path string) (fs.File, error) {
-	return os.OpenFile(filepath.Join(d.basedir, path), os.O_RDWR|os.O_CREATE, 0644)
+	return os.OpenFile(filepath.Join(d.basedir, path), os.O_RDWR|os.O_CREATE, 0o644)
 }
 
-var sharkyNoOfShards = 32
-var ErrDBQuit = errors.New("db quit")
+var (
+	sharkyNoOfShards = 32
+	ErrDBQuit        = errors.New("db quit")
+)
 
 type closerFn func() error
 
@@ -254,7 +257,7 @@ func initStore(basePath string, opts *Options) (*leveldbstore.Store, error) {
 	ldbBasePath := path.Join(basePath, indexPath)
 
 	if _, err := os.Stat(ldbBasePath); os.IsNotExist(err) {
-		err := os.MkdirAll(ldbBasePath, 0777)
+		err := os.MkdirAll(ldbBasePath, 0o777)
 		if err != nil {
 			return nil, err
 		}
@@ -336,7 +339,7 @@ func initDiskRepository(
 	sharkyBasePath := path.Join(basePath, sharkyPath)
 
 	if _, err := os.Stat(sharkyBasePath); os.IsNotExist(err) {
-		err := os.Mkdir(sharkyBasePath, 0777)
+		err := os.Mkdir(sharkyBasePath, 0o777)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -377,12 +380,12 @@ type Options struct {
 	Logger                    log.Logger
 	Tracer                    *tracing.Tracer
 
-	Address        swarm.Address
-	WarmupDuration time.Duration
-	Batchstore     postage.Storer
-	ValidStamp     postage.ValidStampFn
-	RadiusSetter   topology.SetStorageRadiuser
-	StateStore     storage.StateStorer
+	Address           swarm.Address
+	StartupStabilizer stabilization.Subscriber
+	Batchstore        postage.Storer
+	ValidStamp        postage.ValidStampFn
+	RadiusSetter      topology.SetStorageRadiuser
+	StateStore        storage.StateStorer
 
 	ReserveCapacity         int
 	ReserveWakeUpDuration   time.Duration
@@ -449,7 +452,7 @@ type DB struct {
 }
 
 type reserveOpts struct {
-	warmupDuration     time.Duration
+	startupStabilizer  stabilization.Subscriber
 	wakeupDuration     time.Duration
 	minEvictCount      uint64
 	cacheMinEvictCount uint64
@@ -542,7 +545,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		events:           events.NewSubscriber(),
 		reserveBinEvents: events.NewSubscriber(),
 		reserveOptions: reserveOpts{
-			warmupDuration:     opts.WarmupDuration,
+			startupStabilizer:  opts.StartupStabilizer,
 			wakeupDuration:     opts.ReserveWakeUpDuration,
 			minEvictCount:      opts.ReserveMinEvictCount,
 			cacheMinEvictCount: opts.CacheMinEvictCount,

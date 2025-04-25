@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/shed"
+	"github.com/ethersphere/bee/v2/pkg/stabilization"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	im "github.com/ethersphere/bee/v2/pkg/topology/kademlia/internal/metrics"
@@ -201,6 +202,7 @@ type Kad struct {
 	bgBroadcastCtx    context.Context
 	bgBroadcastCancel context.CancelFunc
 	reachability      p2p.ReachabilityStatus
+	detector          *stabilization.Detector
 }
 
 // New returns a new Kademlia.
@@ -209,6 +211,7 @@ func New(
 	addressbook addressbook.Interface,
 	discovery discovery.Driver,
 	p2pSvc p2p.Service,
+	detector *stabilization.Detector,
 	logger log.Logger,
 	o Options,
 ) (*Kad, error) {
@@ -250,6 +253,7 @@ func New(
 		metrics:           newMetrics(),
 		staticPeer:        isStaticPeer(opt.StaticNodes),
 		storageRadius:     swarm.MaxPO,
+		detector:          detector,
 	}
 
 	if k.opt.PruneFunc == nil {
@@ -277,6 +281,7 @@ func New(
 	k.bgBroadcastCtx, k.bgBroadcastCancel = context.WithCancel(context.Background())
 
 	k.metrics.ReachabilityStatus.WithLabelValues(p2p.ReachabilityStatusUnknown.String()).Set(0)
+
 	return k, nil
 }
 
@@ -354,12 +359,10 @@ func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnI
 // connectNeighbours attempts to connect to the neighbours
 // which were not considered by the connectBalanced method.
 func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerConnInfo) {
-
 	sent := 0
 	var currentPo uint8 = 0
 
 	_ = k.knownPeers.EachBinRev(func(addr swarm.Address, po uint8) (bool, bool, error) {
-
 		// out of depth, skip bin
 		if po < k.neighborhoodDepth() {
 			return false, true, nil
@@ -493,10 +496,9 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 			}
 		}
 	}
-	for i := 0; i < 32; i++ {
+
+	for range 32 {
 		go connAttempt(balanceChan)
-	}
-	for i := 0; i < 32; i++ {
 		go connAttempt(neighbourhoodChan)
 	}
 }
@@ -670,7 +672,6 @@ func (k *Kad) manage() {
 // pruneOversaturatedBins disconnects out of depth peers from oversaturated bins
 // while maintaining the balance of the bin and favoring healthy and reachable peers.
 func (k *Kad) pruneOversaturatedBins(depth uint8) {
-
 	for i := range k.commonBinPrefixes {
 
 		if i >= int(depth) {
@@ -697,8 +698,8 @@ func (k *Kad) pruneOversaturatedBins(depth uint8) {
 				continue
 			}
 
-			var disconnectPeer = swarm.ZeroAddress
-			var unreachablePeer = swarm.ZeroAddress
+			disconnectPeer := swarm.ZeroAddress
+			unreachablePeer := swarm.ZeroAddress
 			for _, peer := range peers {
 				if ss := k.collector.Inspect(peer); ss != nil {
 					if !ss.Healthy {
@@ -732,7 +733,6 @@ func (k *Kad) pruneOversaturatedBins(depth uint8) {
 }
 
 func (k *Kad) balancedSlotPeers(pseudoAddr swarm.Address, peers []swarm.Address, po int) []swarm.Address {
-
 	var ret []swarm.Address
 
 	for _, peer := range peers {
@@ -745,7 +745,6 @@ func (k *Kad) balancedSlotPeers(pseudoAddr swarm.Address, peers []swarm.Address,
 }
 
 func (k *Kad) Start(ctx context.Context) error {
-
 	// always discover bootnodes on startup to exclude them from protocol requests
 	k.connectBootNodes(ctx)
 
@@ -895,7 +894,6 @@ func binPruneCount(oversaturationAmount int, staticNode staticPeerFunc) pruneCou
 
 // recalcDepth calculates, assigns the new depth, and returns if depth has changed
 func (k *Kad) recalcDepth() {
-
 	k.depthMu.Lock()
 	defer k.depthMu.Unlock()
 
@@ -1029,6 +1027,8 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 		return errOverlayMismatch
 	}
 
+	k.detector.Record()
+
 	return k.Announce(ctx, peer, true)
 }
 
@@ -1078,7 +1078,6 @@ outer:
 			default:
 			}
 			go func(connectedPeer swarm.Address) {
-
 				// Create a new deadline ctx to prevent goroutine pile up
 				cCtx, cCancel := context.WithTimeout(k.bgBroadcastCtx, time.Minute)
 				defer cCancel()
@@ -1144,9 +1143,7 @@ func (k *Kad) Pick(peer p2p.Peer) bool {
 }
 
 func (k *Kad) binPeers(bin uint8, reachable bool) (peers []swarm.Address) {
-
 	_ = k.EachConnectedPeerRev(func(p swarm.Address, po uint8) (bool, bool, error) {
-
 		if po == bin {
 			peers = append(peers, p)
 			return false, false, nil
@@ -1157,7 +1154,6 @@ func (k *Kad) binPeers(bin uint8, reachable bool) (peers []swarm.Address) {
 		}
 
 		return false, true, nil
-
 	}, topology.Select{Reachable: reachable})
 
 	return
@@ -1206,13 +1202,11 @@ func (k *Kad) onConnected(ctx context.Context, addr swarm.Address) error {
 
 	k.knownPeers.Add(addr)
 	k.connectedPeers.Add(addr)
-
 	k.waitNext.Remove(addr)
-
 	k.recalcDepth()
-
 	k.notifyManageLoop()
 	k.notifyPeerSig()
+	k.detector.Record()
 
 	return nil
 }
@@ -1305,7 +1299,6 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.
 		}
 		return false, false, nil
 	}, filter)
-
 	if err != nil {
 		return swarm.Address{}, err
 	}
@@ -1402,7 +1395,6 @@ func (k *Kad) SubscribeTopologyChange() (c <-chan struct{}, unsubscribe func()) 
 }
 
 func excludeFromIterator(filter topology.Select) []im.ExcludeOp {
-
 	ops := make([]im.ExcludeOp, 0, 3)
 	ops = append(ops, im.Bootnode())
 
@@ -1425,7 +1417,6 @@ func (k *Kad) neighborhoodDepth() uint8 {
 }
 
 func (k *Kad) SetStorageRadius(d uint8) {
-
 	k.depthMu.Lock()
 	defer k.depthMu.Unlock()
 
