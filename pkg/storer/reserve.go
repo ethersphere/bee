@@ -31,8 +31,10 @@ const (
 	batchExpiryDone     = "batchExpiryDone"
 )
 
-var errMaxRadius = errors.New("max radius reached")
-var reserveSizeWithinRadius atomic.Uint64
+var (
+	errMaxRadius            = errors.New("max radius reached")
+	reserveSizeWithinRadius atomic.Uint64
+)
 
 type Syncer interface {
 	// Number of active historical syncing jobs.
@@ -55,8 +57,12 @@ func (db *DB) startReserveWorkers(
 	db.inFlight.Add(1)
 	go db.reserveWorker(ctx)
 
+	sub, unsubscribe := db.reserveOptions.startupStabilizer.Subscribe()
+	defer unsubscribe()
+
 	select {
-	case <-time.After(db.reserveOptions.warmupDuration):
+	case <-sub:
+		db.logger.Debug("node warmup check completed")
 	case <-db.quit:
 		return
 	}
@@ -79,7 +85,6 @@ func (db *DB) startReserveWorkers(
 }
 
 func (db *DB) countWithinRadius(ctx context.Context) (int, error) {
-
 	count := 0
 	missing := 0
 	radius := db.StorageRadius()
@@ -176,7 +181,6 @@ func (db *DB) reserveWorker(ctx context.Context) {
 }
 
 func (db *DB) evictExpiredBatches(ctx context.Context) error {
-
 	batches, err := db.getExpiredBatches()
 	if err != nil {
 		return err
@@ -512,7 +516,6 @@ type NeighborhoodStat struct {
 }
 
 func (db *DB) NeighborhoodsStat(ctx context.Context) ([]*NeighborhoodStat, error) {
-
 	radius := db.StorageRadius()
 	committedDepth := db.CommittedDepth()
 
@@ -522,7 +525,8 @@ func (db *DB) NeighborhoodsStat(ctx context.Context) ([]*NeighborhoodStat, error
 		neighs[i] = &NeighborhoodStat{
 			Neighborhood:            swarm.NewNeighborhood(n, committedDepth),
 			ReserveSizeWithinRadius: 0,
-			Proximity:               min(committedDepth, swarm.Proximity(n.Bytes(), db.baseAddr.Bytes()))}
+			Proximity:               min(committedDepth, swarm.Proximity(n.Bytes(), db.baseAddr.Bytes())),
+		}
 	}
 
 	err := db.reserve.IterateChunksItems(0, func(ch *reserve.ChunkBinItem) (bool, error) {
