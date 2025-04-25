@@ -1,9 +1,9 @@
-FROM debian:12.7-slim
+FROM debian:12.10-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates; \
+    ca-certificates; \
     groupadd -r bee --gid 999; \
     useradd -r -g bee --uid 999 --no-log-init -m bee;
 
