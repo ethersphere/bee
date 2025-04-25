@@ -262,7 +262,7 @@ func NewBee(
 
 	reserveCapacity := (1 << o.ReserveCapacityDoubling) * storer.DefaultReserveCapacity
 
-	stateStore, stateStoreMetrics, err := InitStateStore(logger, o.DataDir, o.StatestoreCacheCapacity)
+	stateStore, stateStoreMetrics, maxImportedBatchStart, err := InitStateStore(logger, o.DataDir, o.StatestoreCacheCapacity)
 	if err != nil {
 		return nil, fmt.Errorf("init state store: %w", err)
 	}
@@ -657,6 +657,7 @@ func NewBee(
 	} else if !found {
 		return nil, errors.New("no known postage stamp addresses for this network")
 	}
+	postageSyncStart = max(postageSyncStart, maxImportedBatchStart)
 
 	postageStampContractABI := abiutil.MustParseABI(chainCfg.PostageStampABI)
 

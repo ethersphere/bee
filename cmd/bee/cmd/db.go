@@ -297,7 +297,7 @@ func dbRepairReserve(cmd *cobra.Command) {
 				return fmt.Errorf("repair: %w", err)
 			}
 
-			stateStore, _, err := node.InitStateStore(logger, dataDir, 1000)
+			stateStore, _, _, err := node.InitStateStore(logger, dataDir, 1000)
 			if err != nil {
 				return fmt.Errorf("new statestore: %w", err)
 			}
@@ -884,7 +884,7 @@ func dbNukeCmd(cmd *cobra.Command) {
 				return fmt.Errorf("get forget stamps: %w", err)
 			}
 
-			stateStore, _, err := node.InitStateStore(logger, dataDir, 1000)
+			stateStore, _, _, err := node.InitStateStore(logger, dataDir, 1000)
 			if err != nil {
 				return fmt.Errorf("new statestore: %w", err)
 			}

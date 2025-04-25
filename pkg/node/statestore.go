@@ -27,26 +27,28 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storage/leveldbstore"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	ldb "github.com/syndtr/goleveldb/leveldb"
+	"github.com/syndtr/goleveldb/leveldb/opt"
+	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
-// go:embed batches/batchstore_embed.json
+//go:embed batches/batchstore_embed.json
 var embeddedBatchstoreImportData []byte
 
 const (
-	// Prefix used by storeadapter for StateStorer keys
 	stateStoreAdapterPrefix = "ss/"
 
-	// Prefixes used by batchstore WITHIN the state store
 	batchstoreBatchKeyPrefix = "batchstore_batch_"
 	batchstoreValueKeyPrefix = "batchstore_value_"
-
-	// Filename for optional EXTERNAL batchstore import override
-	batchstoreExternalImportFilename = "batchstore_import.json"
 )
 
 // batchKeyForLevelDB constructs the full raw key used in LevelDB for a batch entry.
 func batchKeyForLevelDB(batchID []byte) []byte {
 	return []byte(stateStoreAdapterPrefix + batchstoreBatchKeyPrefix + string(batchID))
+}
+
+// batchDBPrefix returns the raw LevelDB key prefix used for batch entries.
+func batchDBPrefix() []byte {
+	return []byte(stateStoreAdapterPrefix + batchstoreBatchKeyPrefix)
 }
 
 // valueKeyForLevelDB constructs the full raw key used in LevelDB for a batch value index entry.
@@ -60,10 +62,13 @@ func valueKeyForLevelDB(val *big.Int, batchID []byte) []byte {
 // InitStateStore will initialize the stateStore with the given path to the
 // data directory. When given an empty directory path, the function will instead
 // initialize an in-memory state store that will not be persisted.
-func InitStateStore(logger log.Logger, dataDir string, cacheCapacity uint64) (storage.StateStorerManager, metrics.Collector, error) {
-	var statestorePath string
-	var statestoreExistedBefore bool
-	var err error
+func InitStateStore(logger log.Logger, dataDir string, cacheCapacity uint64) (storage.StateStorerManager, metrics.Collector, uint64, error) {
+	var (
+		statestorePath          string
+		statestoreExistedBefore bool
+		maxImportedBatchStart   uint64 = 0
+		err                     error
+	)
 
 	if dataDir == "" {
 		logger.Warning("using in-mem state store, no node state will be persisted")
@@ -71,59 +76,116 @@ func InitStateStore(logger log.Logger, dataDir string, cacheCapacity uint64) (st
 		statestoreExistedBefore = false
 	} else {
 		statestorePath = filepath.Join(dataDir, "statestore")
-		_, err = os.Stat(statestorePath)
-		if err == nil {
+		_, statErr := os.Stat(statestorePath)
+		if statErr == nil {
 			statestoreExistedBefore = true
-		} else if os.IsNotExist(err) {
+		} else if os.IsNotExist(statErr) {
 			statestoreExistedBefore = false
 		} else {
-			return nil, nil, fmt.Errorf("stat %s: %w", statestorePath, err)
+			return nil, nil, 0, fmt.Errorf("stat %s: %w", statestorePath, statErr)
 		}
 	}
 
 	// Initialize the underlying LevelDB store
-	ldb, err := leveldbstore.New(statestorePath, nil)
+	ldbStore, err := leveldbstore.New(statestorePath, nil)
 	if err != nil {
-		return nil, nil, fmt.Errorf("init leveldbstore: %w", err)
+		return nil, nil, 0, fmt.Errorf("init leveldbstore: %w", err)
 	}
 
-	// Attempt import ONLY if statestore is newly created AND not in-memory
-	if !statestoreExistedBefore && dataDir != "" {
-		rawDB := ldb.DB() // Get raw DB for direct import writes
+	var successfulInit bool = false
+	defer func() {
+		if !successfulInit {
+			if cerr := ldbStore.Close(); cerr != nil {
+				logger.Error(cerr, "failed closing state store after init error")
+			}
+		}
+	}()
 
-		// --- Check ONLY embedded data ---
-		if len(embeddedBatchstoreImportData) > 0 {
-			logger.Info("new statestore detected, attempting import from embedded batch data...")
-			err = importBatchesFromData(logger, rawDB, embeddedBatchstoreImportData, "embedded") // Pass embedded data
-			if err != nil {
-				_ = ldb.Close() // Close DB if import fails critically
-				return nil, nil, fmt.Errorf("embedded batchstore import failed: %w", err)
+	// --- Batch Import Logic ---
+	if dataDir != "" { // Only perform checks and imports for persistent stores
+		rawDB := ldbStore.DB()
+		shouldImportBatches := false
+
+		// Check if any batch data already exists in the DB using the helper function
+		batchesExist, checkErr := hasExistingBatches(rawDB)
+		if checkErr != nil {
+			err = fmt.Errorf("failed to check for existing batches: %w", checkErr) // Assign to outer err
+			return nil, nil, 0, err                                                // Return error, defer will close ldbStore
+		}
+
+		if !batchesExist {
+			// No batches found in the database. Trigger import.
+			shouldImportBatches = true
+			if statestoreExistedBefore {
+				logger.Info("statestore exists but contains no batches, attempting import from embedded batch data...")
+			} else {
+				logger.Info("new statestore detected, attempting import from embedded batch data...")
 			}
 		} else {
-			logger.Info("new statestore detected, but no embedded batch data found. Skipping import.")
+			logger.Info("statestore already contains batch data, skipping import.")
+		}
+
+		// Perform import if needed
+		if shouldImportBatches {
+			if len(embeddedBatchstoreImportData) > 0 {
+				maxImportedBatchStart, err = importBatchesFromData(logger, rawDB, embeddedBatchstoreImportData, "embedded")
+				if err != nil {
+					err = fmt.Errorf("embedded batchstore import failed: %w", err) // Assign to outer err
+					return nil, nil, 0, err                                        // Return error, defer will close ldbStore
+				}
+			} else {
+				logger.Info("statestore requires import, but no embedded batch data found. Skipping import.")
+			}
 		}
 	}
+	// --- End Batch Import Logic ---
 
-	caching, err := cache.Wrap(ldb, int(cacheCapacity))
+	// Wrap in cache
+	caching, err := cache.Wrap(ldbStore, int(cacheCapacity))
 	if err != nil {
-		_ = ldb.Close()
-		return nil, nil, fmt.Errorf("wrap leveldbstore in cache: %w", err)
+		err = fmt.Errorf("wrap leveldbstore in cache: %w", err) // Assign to outer err
+		return nil, nil, 0, err                                 // Return error, defer will close ldbStore
 	}
 
+	// Create adapter
 	stateStore, err := storeadapter.NewStateStorerAdapter(caching)
 	if err != nil {
-		_ = ldb.Close()
-		return nil, nil, fmt.Errorf("create store adapter: %w", err)
+		err = fmt.Errorf("create store adapter: %w", err) // Assign to outer err
+		return nil, nil, 0, err                           // Return error, defer will close ldbStore
 	}
 
-	return stateStore, caching, nil
+	successfulInit = true // Mark init as successful, preventing deferred close
+	return stateStore, caching, maxImportedBatchStart, nil
 }
 
-func importBatchesFromData(logger log.Logger, rawDB *ldb.DB, data []byte, source string) error {
+// hasExistingBatches checks if any key with the batch prefix exists in the LevelDB database.
+func hasExistingBatches(db *ldb.DB) (bool, error) {
+	prefix := batchDBPrefix()
+	// Create an iterator for the given prefix. Don't fill the cache for this check.
+	iter := db.NewIterator(util.BytesPrefix(prefix), &opt.ReadOptions{DontFillCache: true})
+	defer iter.Release() // Ensure iterator is always released
+
+	// Try to move to the first key matching the prefix.
+	// iter.Next() returns true if a key was found, false otherwise.
+	found := iter.Next()
+
+	// Check for any errors during iterator creation or the Next() call.
+	if err := iter.Error(); err != nil {
+		return false, fmt.Errorf("iterator error during batch check: %w", err)
+	}
+
+	// Return whether a key was found and no error occurred.
+	return found, nil
+}
+
+func importBatchesFromData(logger log.Logger, rawDB *ldb.DB, data []byte, source string) (uint64, error) {
 	logger.Info("starting batch import process...", "source", source)
 	startTime := time.Now()
-	var importedCount uint64
-	var skippedCount uint64
+	var (
+		importedCount uint64
+		skippedCount  uint64
+		maxStartBlock uint64 = 0 // Initialize max start block
+	)
 
 	dataReader := bytes.NewReader(data)
 	scanner := bufio.NewScanner(dataReader)
@@ -148,6 +210,10 @@ func importBatchesFromData(logger log.Logger, rawDB *ldb.DB, data []byte, source
 			continue
 		}
 
+		if batch.Start > maxStartBlock {
+			maxStartBlock = batch.Start
+		}
+
 		// Marshal batch back to binary for storage
 		marshaledBatch, marshalErr := batch.MarshalBinary()
 		if marshalErr != nil {
@@ -166,10 +232,8 @@ func importBatchesFromData(logger log.Logger, rawDB *ldb.DB, data []byte, source
 		ldbBatch.Put(levelDbKeyValue, []byte{}) // Value index key has empty value
 
 		if errWrite := rawDB.Write(ldbBatch, nil); errWrite != nil {
-			// Return error to stop the entire import process if DB write fails
-			return fmt.Errorf("failed to write batch %s to leveldb (source: %s): %w", hex.EncodeToString(batch.ID), source, errWrite)
+			return maxStartBlock, fmt.Errorf("failed to write batch %s to leveldb (source: %s): %w", hex.EncodeToString(batch.ID), source, errWrite)
 		}
-		// --- End LevelDB Batch ---
 
 		importedCount++
 		if importedCount > 0 && importedCount%5000 == 0 {
@@ -177,9 +241,7 @@ func importBatchesFromData(logger log.Logger, rawDB *ldb.DB, data []byte, source
 		}
 	}
 
-	// Check for scanner errors (e.g., incomplete data)
 	if scanErr := scanner.Err(); scanErr != nil {
-		// Log as a warning, as some data might have been imported successfully
 		logger.Warning("error scanning batch import data", "source", source, "error", scanErr)
 	}
 
@@ -189,15 +251,7 @@ func importBatchesFromData(logger log.Logger, rawDB *ldb.DB, data []byte, source
 		"skipped_count", skippedCount,
 		"total_time", time.Since(startTime).Round(time.Millisecond),
 	)
-	return nil // Import successful or finished with non-critical errors
-}
-
-// Helper for logging snippets
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
+	return maxStartBlock, scanner.Err()
 }
 
 // InitStamperStore will create new stamper store with the given path to the

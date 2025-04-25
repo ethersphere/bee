@@ -35,7 +35,7 @@ func (c *command) initDeployCmd() error {
 			factoryAddress := c.config.GetString(optionNameSwapFactoryAddress)
 			swapInitialDeposit := c.config.GetString(optionNameSwapInitialDeposit)
 			blockchainRpcEndpoint := c.config.GetString(optionNameBlockchainRpcEndpoint)
-			stateStore, _, err := node.InitStateStore(logger, dataDir, 1000)
+			stateStore, _, _, err := node.InitStateStore(logger, dataDir, 1000)
 			if err != nil {
 				return err
 			}
