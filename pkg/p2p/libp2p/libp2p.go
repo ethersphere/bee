@@ -242,11 +242,13 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		)
 	}
 
-	transports := []libp2p.Option{
-		libp2p.Transport(tcp.NewTCPTransport, tcp.DisableReuseport()),
+	transports := []libp2p.Option{}
+
+	if !(runtime.GOOS == "js") && !(runtime.GOOS == "wasi") {
+		transports = append(transports, libp2p.Transport(tcp.NewTCPTransport, tcp.DisableReuseport()))
 	}
 
-	if o.EnableWS {
+	if o.EnableWS || runtime.GOOS == "js" || runtime.GOOS == "wasi" {
 		transports = append(transports, libp2p.Transport(ws.New))
 	}
 
