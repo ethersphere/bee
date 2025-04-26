@@ -13,7 +13,7 @@ const wasi = new WASI({
   args: ['printconfig']
 })
 const bytes = await fs.readFile(
-  path.join(import.meta.dirname, './bee'),
+  path.join(import.meta.dirname, './dist/bee.wasm'),
 )
 const { instance } = await WebAssembly.instantiate(bytes, {
   wasi_snapshot_preview1: wasi.wasiImport,
