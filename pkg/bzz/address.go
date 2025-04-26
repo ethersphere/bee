@@ -113,11 +113,14 @@ func (a *Address) Equal(b *Address) bool {
 }
 
 func multiaddrEqual(a, b ma.Multiaddr) bool {
-	if a == nil || b == nil {
-		return a == b
+	switch {
+	case a == nil && b == nil:
+		return true
+	case a == nil || b == nil:
+		return false
+	default:
+		return a.Equal(b)
 	}
-
-	return a.Equal(b)
 }
 
 func (a *Address) MarshalJSON() ([]byte, error) {
