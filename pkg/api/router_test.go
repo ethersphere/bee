@@ -6,6 +6,7 @@ package api_test
 
 import (
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -438,10 +439,5 @@ func TestEndpointOptions(t *testing.T) {
 }
 
 func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(slice, item)
 }
