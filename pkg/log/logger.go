@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"reflect"
 	"strings"
@@ -17,6 +18,8 @@ import (
 	"github.com/hashicorp/go-multierror"
 	"github.com/prometheus/client_golang/prometheus"
 )
+
+const fixedSize = 14
 
 var _ Logger = (*logger)(nil)
 
@@ -219,7 +222,12 @@ func (l *logger) setVerbosity(v Level) {
 // log logs the given msg and key-value pairs with the given level
 // and the given message category caller (if enabled) to the sink.
 func (l *logger) log(vl Level, mc MessageCategory, err error, msg string, keysAndValues ...interface{}) error {
-	base := make([]interface{}, 0, 14+len(keysAndValues))
+	kvLen := len(keysAndValues)
+	if kvLen > math.MaxInt-fixedSize {
+		return fmt.Errorf("too many key-value pairs provided (%d), exceeds capacity limit", kvLen)
+	}
+	cap := fixedSize + kvLen
+	base := make([]interface{}, 0, cap)
 	if l.formatter.opts.logTimestamp {
 		base = append(base, "time", time.Now().Format(l.formatter.opts.timestampLayout))
 	}
