@@ -775,12 +775,14 @@ func TestMultiplePushesAsForwarder(t *testing.T) {
 	peer1 := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 	peer2 := swarm.MustParseHexAddress("4000000000000000000000000000000000000000000000000000000000000000")
 	peer3 := swarm.MustParseHexAddress("3000000000000000000000000000000000000000000000000000000000000000")
+	closestPeer := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
+	psClosestPeer, storerClosestPeer := createPushSyncNodeWithRadius(t, closestPeer, defaultPrices, nil, nil, defaultSigner(chunk), 5, 10, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	recorder0 := streamtest.New(streamtest.WithProtocols(psClosestPeer.Protocol()), streamtest.WithBaseAddr(pivotNode))
 
 	// peer is the node responding to the chunk receipt message
-	// mock should return ErrWantSelf since there's no one to forward to
-	psPeer1, storerPeer1, _ := createPushSyncNode(t, peer1, defaultPrices, nil, nil, defaultSigner(chunk), mock.WithClosestPeerErr(topology.ErrWantSelf))
-	psPeer2, storerPeer2, _ := createPushSyncNode(t, peer2, defaultPrices, nil, nil, defaultSigner(chunk), mock.WithClosestPeerErr(topology.ErrWantSelf))
-	psPeer3, storerPeer3, _ := createPushSyncNode(t, peer3, defaultPrices, nil, nil, defaultSigner(chunk), mock.WithClosestPeerErr(topology.ErrWantSelf))
+	psPeer1, storerPeer1 := createPushSyncNodeWithRadius(t, peer1, defaultPrices, recorder0, nil, defaultSigner(chunk), 5, 10, mock.WithClosestPeer(closestPeer))
+	psPeer2, storerPeer2 := createPushSyncNodeWithRadius(t, peer2, defaultPrices, recorder0, nil, defaultSigner(chunk), 5, 10, mock.WithClosestPeer(closestPeer))
+	psPeer3, storerPeer3 := createPushSyncNodeWithRadius(t, peer3, defaultPrices, recorder0, nil, defaultSigner(chunk), 5, 10, mock.WithClosestPeer(closestPeer))
 
 	recorder := streamtest.New(
 		streamtest.WithPeerProtocols(
@@ -793,10 +795,10 @@ func TestMultiplePushesAsForwarder(t *testing.T) {
 		streamtest.WithBaseAddr(pivotNode),
 	)
 
-	psPivot, _, _ := createPushSyncNode(t, pivotNode, defaultPrices, recorder, nil, defaultSigner(chunk), mock.WithPeers(peer1, peer2, peer3))
+	psPivot, _ := createPushSyncNodeWithRadius(t, pivotNode, defaultPrices, recorder, nil, defaultSigner(chunk), 2, 10, mock.WithPeers(peer1, peer2, peer3))
 
 	receipt, err := psPivot.PushChunkToClosest(context.Background(), chunk)
-	if err != nil {
+	if err != nil && !errors.Is(err, pushsync.ErrShallowReceipt) {
 		t.Fatal(err)
 	}
 
@@ -806,9 +808,13 @@ func TestMultiplePushesAsForwarder(t *testing.T) {
 
 	waitOnRecordAndTest(t, peer1, recorder, chunk.Address(), chunk.Data())
 	waitOnRecordAndTest(t, peer1, recorder, chunk.Address(), nil)
+	waitOnRecordAndTest(t, peer2, recorder, chunk.Address(), chunk.Data())
+	waitOnRecordAndTest(t, peer2, recorder, chunk.Address(), nil)
+	waitOnRecordAndTest(t, peer3, recorder, chunk.Address(), chunk.Data())
+	waitOnRecordAndTest(t, peer3, recorder, chunk.Address(), nil)
 
-	if got := storerPeer1.hasChunk(t, chunk.Address()); got != true {
-		t.Fatalf("got %v, want %v", got, true)
+	if got := storerPeer1.hasChunk(t, chunk.Address()); got != false {
+		t.Fatalf("got %v, want %v", got, false)
 	}
 
 	if got := storerPeer2.hasChunk(t, chunk.Address()); got != false {
@@ -817,6 +823,10 @@ func TestMultiplePushesAsForwarder(t *testing.T) {
 
 	if got := storerPeer3.hasChunk(t, chunk.Address()); got != false {
 		t.Fatalf("got %v, want %v", got, false)
+	}
+
+	if got := storerClosestPeer.hasChunk(t, chunk.Address()); got != true {
+		t.Fatalf("got %v, want %v", got, true)
 	}
 }
 

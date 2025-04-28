@@ -551,6 +551,7 @@ func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptRes
 		return
 	}
 
+	ps.logger.Debug("chunk sent", "chunk_address", ch.Address().String(), "peer_address", peer)
 	ps.metrics.TotalSent.Inc()
 
 	err = action.Apply()
