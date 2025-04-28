@@ -32,6 +32,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/ethersphere/bee/v2/pkg/topology/mock"
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 )
 
 const (
@@ -775,14 +777,21 @@ func TestMultiplePushesAsForwarder(t *testing.T) {
 	peer1 := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 	peer2 := swarm.MustParseHexAddress("4000000000000000000000000000000000000000000000000000000000000000")
 	peer3 := swarm.MustParseHexAddress("3000000000000000000000000000000000000000000000000000000000000000")
+	peer4 := swarm.MustParseHexAddress("7100000000000000000000000000000000000000000000000000000000000000")
 	closestPeer := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
+
 	psClosestPeer, storerClosestPeer := createPushSyncNodeWithRadius(t, closestPeer, defaultPrices, nil, nil, defaultSigner(chunk), 5, 10, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	recorder0 := streamtest.New(streamtest.WithProtocols(psClosestPeer.Protocol()), streamtest.WithBaseAddr(pivotNode))
 
-	// peer is the node responding to the chunk receipt message
-	psPeer1, storerPeer1 := createPushSyncNodeWithRadius(t, peer1, defaultPrices, recorder0, nil, defaultSigner(chunk), 5, 10, mock.WithClosestPeer(closestPeer))
-	psPeer2, storerPeer2 := createPushSyncNodeWithRadius(t, peer2, defaultPrices, recorder0, nil, defaultSigner(chunk), 5, 10, mock.WithClosestPeer(closestPeer))
-	psPeer3, storerPeer3 := createPushSyncNodeWithRadius(t, peer3, defaultPrices, recorder0, nil, defaultSigner(chunk), 5, 10, mock.WithClosestPeer(closestPeer))
+	// rad=0
+	// should not multiplex because nodes are in AOR. Expects 1 send to closestPeer only.
+	// should store chunk as nodes are in AOR
+	psPeer1, storerPeer1, _ := createPushSyncNode(t, peer1, defaultPrices, recorder0, nil, defaultSigner(chunk), mock.WithPeers(closestPeer, peer4))
+	psPeer2, storerPeer2, _ := createPushSyncNode(t, peer2, defaultPrices, recorder0, nil, defaultSigner(chunk), mock.WithPeers(closestPeer, peer4))
+	psPeer3, storerPeer3, _ := createPushSyncNode(t, peer3, defaultPrices, recorder0, nil, defaultSigner(chunk), mock.WithPeers(closestPeer, peer4))
+
+	// should not store chunk as no one forwards to it
+	psPeer4, storerPeer4, _ := createPushSyncNode(t, peer3, defaultPrices, nil, nil, defaultSigner(chunk))
 
 	recorder := streamtest.New(
 		streamtest.WithPeerProtocols(
@@ -795,7 +804,10 @@ func TestMultiplePushesAsForwarder(t *testing.T) {
 		streamtest.WithBaseAddr(pivotNode),
 	)
 
-	psPivot, _ := createPushSyncNodeWithRadius(t, pivotNode, defaultPrices, recorder, nil, defaultSigner(chunk), 2, 10, mock.WithPeers(peer1, peer2, peer3))
+	// rad=2, pivot-peer1 po=3, pivot-chunk po=1
+	// should multiplex because pivot is not in AOR and can reach AOR. Expects 3 sends. 1 initial to peer1, 2 multiplex forwards to peer2 and peer3
+	// should not store chunk as node is not in AOR
+	psPivot, storerPivot := createPushSyncNodeWithRadius(t, pivotNode, defaultPrices, recorder, nil, defaultSigner(chunk), 2, 10, mock.WithPeers(peer1, peer2, peer3))
 
 	receipt, err := psPivot.PushChunkToClosest(context.Background(), chunk)
 	if err != nil && !errors.Is(err, pushsync.ErrShallowReceipt) {
@@ -813,20 +825,78 @@ func TestMultiplePushesAsForwarder(t *testing.T) {
 	waitOnRecordAndTest(t, peer3, recorder, chunk.Address(), chunk.Data())
 	waitOnRecordAndTest(t, peer3, recorder, chunk.Address(), nil)
 
-	if got := storerPeer1.hasChunk(t, chunk.Address()); got != false {
-		t.Fatalf("got %v, want %v", got, false)
+	tests := []struct {
+		name          string
+		ps            *pushsync.PushSync
+		storer        *testStorer
+		wantSentCount int
+		wantChunk     bool
+	}{
+		{
+			name:          "pivot",
+			ps:            psPivot,
+			storer:        storerPivot,
+			wantChunk:     false,
+			wantSentCount: 3,
+		},
+		{
+			name:          "peer1",
+			ps:            psPeer1,
+			storer:        storerPeer1,
+			wantChunk:     true,
+			wantSentCount: 1,
+		},
+		{
+			name:          "peer2",
+			ps:            psPeer1,
+			storer:        storerPeer2,
+			wantChunk:     true,
+			wantSentCount: 1,
+		},
+		{
+			name:          "peer3",
+			ps:            psPeer3,
+			storer:        storerPeer3,
+			wantChunk:     true,
+			wantSentCount: 1,
+		},
+		{
+			name:          "peer4",
+			ps:            psPeer4,
+			storer:        storerPeer4,
+			wantChunk:     false,
+			wantSentCount: 0,
+		},
+		{
+			name:          "closestPeer",
+			ps:            psClosestPeer,
+			storer:        storerClosestPeer,
+			wantChunk:     true,
+			wantSentCount: 0,
+		},
 	}
 
-	if got := storerPeer2.hasChunk(t, chunk.Address()); got != false {
-		t.Fatalf("got %v, want %v", got, false)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.ps != nil {
+				dto := &dto.Metric{}
+				totalSent := tt.ps.Metrics()[0].(prometheus.Metric)
+				err = totalSent.Write(dto)
+				if err != nil {
+					t.Fatalf("failed to write metric: %v", err)
+				}
+				got := *dto.GetCounter().Value
+				if got != float64(tt.wantSentCount) {
+					t.Fatalf("got %v, want %v", got, float64(tt.wantSentCount))
+				}
+			}
 
-	if got := storerPeer3.hasChunk(t, chunk.Address()); got != false {
-		t.Fatalf("got %v, want %v", got, false)
-	}
-
-	if got := storerClosestPeer.hasChunk(t, chunk.Address()); got != true {
-		t.Fatalf("got %v, want %v", got, true)
+			if tt.storer != nil {
+				if got := tt.storer.hasChunk(t, chunk.Address()); got != tt.wantChunk {
+					t.Fatalf("got %v, want %v", got, tt.wantChunk)
+				}
+			}
+		})
 	}
 }
 
