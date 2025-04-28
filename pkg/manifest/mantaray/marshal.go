@@ -135,7 +135,7 @@ func (n *Node) MarshalBinary() (bytes []byte, err error) {
 
 	indexBytes := make([]byte, 32)
 
-	var index = &bitsForBytes{}
+	index := &bitsForBytes{}
 	for k := range n.forks {
 		index.set(k)
 	}
@@ -404,18 +404,26 @@ func (f *fork) bytes() (b []byte, err error) {
 			return b, err1
 		}
 
-		metadataJSONBytesSizeWithSize := len(metadataJSONBytes) + nodeForkMetadataBytesSize
+		initialMetadataLen := len(metadataJSONBytes)
+		if initialMetadataLen > int(maxUint16) {
+			return b, ErrMetadataTooLarge
+		}
+
+		metadataJSONBytesSizeWithSize := initialMetadataLen + nodeForkMetadataBytesSize
+
+		var paddingLength int
 
 		// pad JSON bytes if necessary
 		if metadataJSONBytesSizeWithSize < nodeObfuscationKeySize {
-			paddingLength := nodeObfuscationKeySize - metadataJSONBytesSizeWithSize
-			padding := make([]byte, paddingLength)
-			for i := range padding {
-				padding[i] = '\n'
+			paddingLength = nodeObfuscationKeySize - metadataJSONBytesSizeWithSize
+		} else {
+			remainder := metadataJSONBytesSizeWithSize % nodeObfuscationKeySize
+			if remainder != 0 {
+				paddingLength = nodeObfuscationKeySize - remainder
 			}
-			metadataJSONBytes = append(metadataJSONBytes, padding...)
-		} else if metadataJSONBytesSizeWithSize > nodeObfuscationKeySize {
-			paddingLength := nodeObfuscationKeySize - metadataJSONBytesSizeWithSize%nodeObfuscationKeySize
+		}
+
+		if paddingLength > 0 {
 			padding := make([]byte, paddingLength)
 			for i := range padding {
 				padding[i] = '\n'
@@ -449,7 +457,7 @@ func nodeRefBytes(f *fork) []byte {
 func encryptDecrypt(input, key []byte) []byte {
 	output := make([]byte, len(input))
 
-	for i := 0; i < len(input); i++ {
+	for i := range input {
 		output[i] = input[i] ^ key[i%len(key)]
 	}
 
