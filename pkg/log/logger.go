@@ -226,8 +226,8 @@ func (l *logger) log(vl Level, mc MessageCategory, err error, msg string, keysAn
 	if kvLen > math.MaxInt-fixedSize {
 		return fmt.Errorf("too many key-value pairs provided (%d), exceeds capacity limit", kvLen)
 	}
-	cap := fixedSize + kvLen
-	base := make([]interface{}, 0, cap)
+	capacity := fixedSize + kvLen
+	base := make([]interface{}, 0, capacity)
 	if l.formatter.opts.logTimestamp {
 		base = append(base, "time", time.Now().Format(l.formatter.opts.timestampLayout))
 	}
