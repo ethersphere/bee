@@ -22,7 +22,7 @@ import (
 
 const (
 	dbExportBatchKeyPrefix   = "ss/batchstore_batch_"
-	batchstoreExportFilename = "pkg/node/batches/batchstore_embed.json"
+	batchstoreExportFilename = "pkg/postage/batchservice/batchstore_embed.json"
 )
 
 // runExportBatchstore exports batchstore batch data as NDJSON (Newline Delimited JSON).

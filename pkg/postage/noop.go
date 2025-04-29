@@ -24,6 +24,8 @@ func (b *NoOpBatchStore) Get([]byte) (*Batch, error) { return nil, ErrChainDisab
 
 func (b *NoOpBatchStore) Exists([]byte) (bool, error) { return false, nil }
 
+func (b *NoOpBatchStore) HasExistingBatches() (bool, error) { return false, nil }
+
 func (b *NoOpBatchStore) Iterate(func(*Batch) (bool, error)) error { return nil }
 
 func (b *NoOpBatchStore) Save(*Batch) error { return nil }

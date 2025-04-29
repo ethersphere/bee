@@ -32,7 +32,7 @@ func (c *command) initInitCmd() (err error) {
 			}
 
 			dataDir := c.config.GetString(optionNameDataDir)
-			stateStore, _, _, err := node.InitStateStore(logger, dataDir, 1000)
+			stateStore, _, err := node.InitStateStore(logger, dataDir, 1000)
 			if err != nil {
 				return err
 			}

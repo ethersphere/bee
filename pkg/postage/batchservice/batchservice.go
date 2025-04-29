@@ -5,13 +5,17 @@
 package batchservice
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	_ "embed"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"hash"
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -22,6 +26,9 @@ import (
 
 // loggerName is the tree path name of the logger for this package.
 const loggerName = "batchservice"
+
+//go:embed batchstore_embed.json
+var embeddedBatchstoreImportData []byte
 
 const (
 	dirtyDBKey    = "batchservice_dirty_db"
@@ -272,9 +279,90 @@ func (svc *batchService) Start(ctx context.Context, startBlock uint64, initState
 		startBlock = initState.LastBlockNumber
 	}
 
+	batchesExist, checkErr := svc.storer.HasExistingBatches()
+	if checkErr != nil {
+		svc.logger.Warning("failed to check for existing batches: %w", checkErr)
+	}
+
+	if !batchesExist {
+		maxImportedBatchStart, _ := svc.importBatchesFromData(ctx, embeddedBatchstoreImportData, "embedded")
+		if maxImportedBatchStart > startBlock {
+			startBlock = maxImportedBatchStart
+		}
+	}
+
 	syncedChan := svc.listener.Listen(ctx, startBlock+1, svc, initState)
 
 	return <-syncedChan
+}
+
+// ImportBatchesFromData imports batch data using the storage.Store interface.
+// It uses batching provided by the storage.Store for efficiency.
+// It returns the maximum 'Start' block number found in the imported batches.
+func (svc *batchService) importBatchesFromData(ctx context.Context, data []byte, source string) (uint64, error) {
+	svc.logger.Info("starting batch import process using storage interface...", "source", source)
+	startTime := time.Now()
+	var (
+		importedCount uint64
+		skippedCount  uint64
+		maxStartBlock uint64 = 0
+	)
+
+	dataReader := bytes.NewReader(data)
+	scanner := bufio.NewScanner(dataReader)
+
+	for scanner.Scan() {
+		select {
+		case <-ctx.Done():
+			return maxStartBlock, ctx.Err()
+		default:
+		}
+
+		line := scanner.Bytes()
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+
+		var batch postage.Batch
+		if err := json.Unmarshal(line, &batch); err != nil {
+			svc.logger.Warning("failed to unmarshal line in batch import data, skipping line", "source", source, "error", err, "line_snippet", string(line[:min(len(line), 100)]))
+			skippedCount++
+			continue
+		}
+
+		if len(batch.ID) != 32 {
+			svc.logger.Warning("imported batch has invalid ID length, skipping", "source", source, "line_snippet", string(line[:min(len(line), 100)]))
+			skippedCount++
+			continue
+		}
+
+		if batch.Start > maxStartBlock {
+			maxStartBlock = batch.Start
+		}
+
+		if err := svc.Create(batch.ID, batch.Owner, big.NewInt(0), batch.Value, batch.Depth, batch.BucketDepth, batch.Immutable, common.Hash{}); err != nil {
+			svc.logger.Warning("failed to add batch item to storage batch, skipping", "source", source, "batch_id", hex.EncodeToString(batch.ID), "error", err)
+			skippedCount++
+			continue
+		}
+
+		importedCount++
+
+	}
+
+	scanErr := scanner.Err()
+	if scanErr != nil {
+		svc.logger.Error(scanErr, "error scanning batch import data", "source", source)
+	}
+
+	svc.logger.Info("batch import process finished",
+		"source", source,
+		"imported_count", importedCount,
+		"skipped_count", skippedCount,
+		"max_start_block", maxStartBlock,
+		"total_time", time.Since(startTime).Round(time.Millisecond),
+	)
+	return maxStartBlock, scanErr
 }
 
 // updateChecksum updates the batchservice checksum once an event gets

@@ -69,6 +69,8 @@ type Storer interface {
 	Reset() error
 
 	SetBatchExpiryHandler(BatchExpiryHandler)
+
+	HasExistingBatches() (bool, error)
 }
 
 type BatchExist interface {

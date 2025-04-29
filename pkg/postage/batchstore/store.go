@@ -114,6 +114,22 @@ func (s *store) get(id []byte) (*postage.Batch, error) {
 	return b, nil
 }
 
+func (s *store) HasExistingBatches() (bool, error) {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+
+	found := false
+	err := s.store.Iterate(batchKeyPrefix, func(key, value []byte) (bool, error) {
+		found = true
+		return true, nil
+	})
+
+	if err != nil {
+		return false, fmt.Errorf("iteration error during batch check: %w", err)
+	}
+	return found, nil
+}
+
 // Exists is implementation of postage.Storer interface Exists method.
 func (s *store) Exists(id []byte) (bool, error) {
 	s.mtx.RLock()
