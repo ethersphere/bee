@@ -156,14 +156,18 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	var listenAddrs []string
 	if ip4Addr != "" {
-		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s", ip4Addr, port))
+		if runtime.GOOS != "js" && runtime.GOOS != "wasi" && runtime.GOOS != "wasm" {
+			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s", ip4Addr, port))
+		}
 		if o.EnableWS {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/ws", ip4Addr, port))
 		}
 	}
 
 	if ip6Addr != "" {
-		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s", ip6Addr, port))
+		if runtime.GOOS != "js" && runtime.GOOS != "wasi" && runtime.GOOS != "wasm" {
+			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s", ip6Addr, port))
+		}
 		if o.EnableWS {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/ws", ip6Addr, port))
 		}
