@@ -46,6 +46,7 @@ import (
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	lp2pswarm "github.com/libp2p/go-libp2p/p2p/net/swarm"
 	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
+
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
 
@@ -244,11 +245,11 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	transports := []libp2p.Option{}
 
-	if !(runtime.GOOS == "js") && !(runtime.GOOS == "wasi") {
-		transports = append(transports, libp2p.Transport(tcp.NewTCPTransport, tcp.DisableReuseport()))
+	if runtime.GOOS != "js" && runtime.GOOS != "wasi" && runtime.GOOS != "wasm" {
+		transports = append(transports, libp2p.Transport(tcp.NewTCPTransport))
 	}
 
-	if o.EnableWS || runtime.GOOS == "js" || runtime.GOOS == "wasi" {
+	if o.EnableWS || runtime.GOOS == "js" || runtime.GOOS == "wasi" || runtime.GOOS == "wasm" {
 		transports = append(transports, libp2p.Transport(ws.New))
 	}
 
