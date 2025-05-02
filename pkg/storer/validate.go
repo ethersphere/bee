@@ -22,6 +22,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstore"
 	pinstore "github.com/ethersphere/bee/v2/pkg/storer/internal/pinning"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+
+	universalFs "github.com/ethersphere/bee/v2/pkg/fs"
 )
 
 // Validate ensures that all retrievalIndex chunks are correctly stored in sharky.
@@ -228,7 +230,7 @@ func ValidatePinCollectionChunks(ctx context.Context, basePath, pin, location st
 
 	location = path.Join(fileLoc, fileName)
 
-	f, err := os.OpenFile(location, os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := universalFs.OpenFile(location, os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("open output file for writing: %w", err)
 	}

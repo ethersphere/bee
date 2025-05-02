@@ -7,7 +7,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-package file
+package fs
 
 import (
 	"fmt"
@@ -66,7 +66,7 @@ func (fi fsFileInfo) Sys() interface{} {
 	return nil
 }
 
-var _ osFile = &fsFile{}
+var _ OsFile = &fsFile{}
 
 // fsFile is an implementation of osFile for JavaScript/Wasm. It's backed
 // by fs.
@@ -213,14 +213,14 @@ func fsStat(path string) (fileInfo os.FileInfo, err error) {
 	return fsFileInfo{Value: rawFileInfo, path: path}, nil
 }
 
-func osOpen(path string) (osFile, error) {
+func osOpen(path string) (OsFile, error) {
 	if isfsSupported() {
 		return fsOpenFile(path, os.O_RDONLY, os.ModePerm)
 	}
 	return os.Open(path)
 }
 
-func fsOpenFile(path string, flag int, perm os.FileMode) (file osFile, err error) {
+func fsOpenFile(path string, flag int, perm os.FileMode) (file OsFile, err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			if jsErr, ok := e.(js.Error); ok {
@@ -378,7 +378,7 @@ var writeLocks = map[string]struct{}{}
 type fsFileLock struct {
 	path     string
 	readOnly bool
-	file     osFile
+	file     OsFile
 }
 
 func isErrInvalid(err error) bool {
@@ -450,6 +450,16 @@ func jsRenameSync(oldPath string, newPath string) {
 	waitForCallbackResults(resultsChan, errChan)
 }
 
+func jsWriteFileSync(filename string, data []byte, perm os.FileMode) {
+	callback, resultsChan, errChan := makeAutoReleaseCallback()
+	uint8arr := js.Global().Get("Uint8Array").New(len(data))
+	js.CopyBytesToJS(uint8arr, data)
+	opts := js.Global().Get("Object").New()
+	opts.Set("mode", int(perm))
+	js.Global().Get("ZenFS").Call("writeFile", filename, uint8arr, opts, callback)
+	waitForCallbackResults(resultsChan, errChan)
+}
+
 // makeAutoReleaseCallback creates and returns a js.Func that can be used as a
 // callback. The callback will be released immediately after being called. The
 // callback assumes the JavaScript callback convention and accepts two
@@ -492,4 +502,71 @@ func waitForCallbackResults(resultsChan chan js.Value, errChan chan error) js.Va
 		// Expected to be recovered up the call stack.
 		panic(err)
 	}
+}
+
+func writeFile(filename string, data []byte, perm os.FileMode) error {
+	jsWriteFileSync(filename, data, perm)
+	return nil
+}
+
+func osOpenFile(name string, flag int, perm os.FileMode) (OsFile, error) {
+	if isfsSupported() {
+		return fsOpenFile(name, flag, perm)
+	}
+	return os.OpenFile(name, flag, perm)
+}
+
+func (f *fsFile) WriteAt(b []byte, off int64) (n int, err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			if jsErr, ok := e.(js.Error); ok {
+				err = convertJSError(jsErr)
+			}
+		}
+	}()
+	uint8arr := js.Global().Get("Uint8Array").New(len(b))
+	js.CopyBytesToJS(uint8arr, b)
+	rawBytesWritten := jsWriteSync(f.fd, uint8arr, 0, len(b), int(off))
+	bytesWritten := rawBytesWritten.Int()
+	if bytesWritten != len(b) {
+		return bytesWritten, io.ErrShortWrite
+	}
+	if err := f.Sync(); err != nil {
+		return bytesWritten, err
+	}
+	return bytesWritten, nil
+}
+func (f *fsFile) Truncate(size int64) (err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			if jsErr, ok := e.(js.Error); ok {
+				err = convertJSError(jsErr)
+			}
+		}
+	}()
+	js.Global().Get("ZenFS").Call("ftruncateSync", f.fd, size)
+	return nil
+}
+
+func osRemove(name string) error {
+	if isfsSupported() {
+		return fsRemove(name)
+	}
+	return os.Remove(name)
+}
+
+func fsRemove(name string) (err error) {
+	defer func() {
+		if e := recover(); e != nil {
+			if jsErr, ok := e.(js.Error); ok {
+				err = convertJSError(jsErr)
+			}
+		}
+	}()
+	jsUnlinkSync(name)
+	return nil
+}
+
+func (f *fsFile) WriteString(s string) (n int, err error) {
+	return f.Write([]byte(s))
 }

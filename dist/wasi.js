@@ -77,8 +77,12 @@ await fs.promises.writeFile(
   },
 )
 
-const files = await fs.promises.readdir('/home/user/.bee/keys')
-console.log('Files in ~/.bee/keys:', files)
+
+setInterval(async () => {
+  const files = await fs.promises.readdir('/home/user/.bee', {recursive: true})
+
+  console.log(files)
+}, 1000)
 
 window.ZenFS = fs
 
@@ -93,6 +97,7 @@ const bootstrapMultiaddrs = [
   '/ip4/127.0.0.1/tcp/1634/ws/p2p/QmXAyvZ5BksNKha3PUixzz4jwCkmi1UNfd4LNCgscaWEPW',
 ]
 
+
 go.argv = [
   'bee.wasm',
   'start',
@@ -106,6 +111,7 @@ go.argv = [
   '--data-dir',
   '/home/user/.bee'
 ]
+
 
 await WebAssembly.instantiateStreaming(fetch('bee.wasm'), {
   ...go.importObject,

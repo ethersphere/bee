@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
+	fs "github.com/ethersphere/bee/v2/pkg/fs"
 	"github.com/ethersphere/bee/v2/pkg/keystore"
 )
 
@@ -29,7 +30,7 @@ func New(dir string) *Service {
 func (s *Service) Exists(name string) (bool, error) {
 	filename := s.keyFilename(name)
 
-	data, err := ReadFile(filename)
+	data, err := fs.ReadFile(filename)
 	if err != nil && !os.IsNotExist(err) {
 		return false, fmt.Errorf("read private key: %w", err)
 	}
@@ -53,11 +54,11 @@ func (s *Service) SetKey(name, password string, edg keystore.EDG) (*ecdsa.Privat
 
 	filename := s.keyFilename(name)
 
-	if err := MkdirAll(filepath.Dir(filename), 0700); err != nil {
+	if err := fs.MkdirAll(filepath.Dir(filename), 0700); err != nil {
 		return nil, err
 	}
 
-	if err := os.WriteFile(filename, d, 0600); err != nil {
+	if err := fs.WriteFile(filename, d, 0600); err != nil {
 		return nil, err
 	}
 
@@ -67,7 +68,7 @@ func (s *Service) SetKey(name, password string, edg keystore.EDG) (*ecdsa.Privat
 func (s *Service) Key(name, password string, edg keystore.EDG) (pk *ecdsa.PrivateKey, created bool, err error) {
 	filename := s.keyFilename(name)
 
-	data, err := ReadFile(filename)
+	data, err := fs.ReadFile(filename)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, false, fmt.Errorf("read private key: %w", err)
 	}

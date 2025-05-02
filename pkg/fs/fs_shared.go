@@ -4,17 +4,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-package file
+package fs
 
 import (
 	"io"
 	"os"
+	"path/filepath"
 )
 
 // osFile is an interface for interacting with a file. In Go, the underlying
 // type of osFile is always simply *os.File. In JavaScript/Wasm, the underlying
 // type is a wrapper type which mimics the functionality of os.File.
-type osFile interface {
+type OsFile interface {
 	// Stat returns the FileInfo structure describing file. If there is an error,
 	// it will be of type *PathError.
 	Stat() (os.FileInfo, error)
@@ -44,6 +45,10 @@ type osFile interface {
 	// SetDeadline, any pending I/O operations will be canceled and return
 	// immediately with an error.
 	Close() error
+
+	WriteAt([]byte, int64) (int, error)
+	Truncate(size int64) error
+	WriteString(s string) (n int, err error)
 }
 
 func ReadFile(filename string) ([]byte, error) {
@@ -58,4 +63,27 @@ func ReadFile(filename string) ([]byte, error) {
 
 func MkdirAll(path string, perm os.FileMode) error {
 	return osMkdirAll(path, perm)
+}
+
+func Open(name string) (OsFile, error) {
+	return osOpen(name)
+}
+
+func OpenFile(name string, flag int, perm os.FileMode) (OsFile, error) {
+	return osOpenFile(name, flag, perm)
+}
+
+func WriteFile(filename string, data []byte, perm os.FileMode) error {
+	if err := MkdirAll(filepath.Dir(filename), 0o755); err != nil {
+		return err
+	}
+	return writeFile(filename, data, perm)
+}
+
+func Stat(name string) (os.FileInfo, error) {
+	return fsStat(name)
+}
+
+func Remove(name string) error {
+	return osRemove(name)
 }
