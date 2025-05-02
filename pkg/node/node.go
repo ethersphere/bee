@@ -724,6 +724,8 @@ func NewBee(
 	}
 	b.hiveCloser = hive
 
+	fmt.Println("Supported protocols: ", p2ps.Protocols())
+
 	var swapService *swap.Service
 
 	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, detector, logger,

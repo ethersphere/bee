@@ -1,6 +1,3 @@
-//go:build js && wasm
-// +build js,wasm
-
 // Copyright 2020 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
@@ -50,9 +47,9 @@ import (
 	lp2pswarm "github.com/libp2p/go-libp2p/p2p/net/swarm"
 	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
 
-	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
-	// ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
 	wswasm "github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/wswasm"
+	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
+	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multistream"
 	"go.uber.org/atomic"
@@ -60,6 +57,7 @@ import (
 	ocprom "contrib.go.opencensus.io/exporter/prometheus"
 	m2 "github.com/ethersphere/bee/v2/pkg/metrics"
 	rcmgrObs "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
+	noisetransport "github.com/libp2p/go-libp2p/p2p/security/noise"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -173,7 +171,12 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		}
 	}
 
-	security := libp2p.DefaultSecurity
+	var security libp2p.Option
+	if runtime.GOOS == "js" || runtime.GOOS == "wasm" {
+		security = libp2p.Security(noisetransport.ID, noisetransport.New)
+	} else {
+		security = libp2p.DefaultSecurity
+	}
 	libp2pPeerstore, err := pstoremem.NewPeerstore()
 	if err != nil {
 		return nil, err
@@ -254,8 +257,12 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		transports = append(transports, libp2p.Transport(tcp.NewTCPTransport))
 	}
 
-	if o.EnableWS || runtime.GOOS == "js" || runtime.GOOS == "wasi" || runtime.GOOS == "wasm" {
-		transports = append(transports, libp2p.Transport(wswasm.New))
+	if o.EnableWS {
+		if runtime.GOOS == "js" || runtime.GOOS == "wasi" || runtime.GOOS == "wasm" {
+			transports = append(transports, libp2p.Transport(wswasm.New))
+		} else {
+			transports = append(transports, libp2p.Transport(ws.New))
+		}
 	}
 
 	opts = append(opts, transports...)
@@ -266,6 +273,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	h, err := o.hostFactory(opts...)
+
 	if err != nil {
 		return nil, err
 	}
@@ -561,6 +569,10 @@ func (s *Service) SetPickyNotifier(n p2p.PickyNotifier) {
 	s.handshakeService.SetPicker(n)
 	s.notifier = n
 	s.reacher = reacher.New(s, n, nil)
+}
+
+func (s *Service) Protocols() []protocol.ID {
+	return s.host.Mux().Protocols()
 }
 
 func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
@@ -932,17 +944,20 @@ func (s *Service) BlocklistedPeers() ([]p2p.BlockListedPeer, error) {
 func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers p2p.Headers, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {
 	select {
 	case <-ctx.Done():
+		s.logger.Debug("NewStream: context done", "overlay", overlay)
 		return nil, ctx.Err()
 	default:
 	}
 
 	peerID, found := s.peers.peerID(overlay)
 	if !found {
+		s.logger.Debug("NewStream: peer ID not found", "overlay", overlay)
 		return nil, p2p.ErrPeerNotFound
 	}
-
+	s.logger.Debug("NewStream: opening stream", "peerID", peerID, "protocol", protocolName, "version", protocolVersion, "stream", streamName)
 	streamlibp2p, err := s.newStreamForPeerID(ctx, peerID, protocolName, protocolVersion, streamName)
 	if err != nil {
+		s.logger.Debug("NewStream: failed to open stream for peerID", "peerID", peerID, "error", err)
 		return nil, fmt.Errorf("new stream for peerid: %w", err)
 	}
 
@@ -953,6 +968,7 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 		headers = make(p2p.Headers)
 	}
 	if err := s.tracer.AddContextHeader(ctx, headers); err != nil && !errors.Is(err, tracing.ErrContextNotFound) {
+		s.logger.Debug("NewStream: failed to add context header", "peerID", peerID, "error", err)
 		_ = stream.Reset()
 		return nil, fmt.Errorf("new stream add context header fail: %w", err)
 	}
@@ -961,10 +977,11 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 	ctx, cancel := context.WithTimeout(ctx, s.HeadersRWTimeout)
 	defer cancel()
 	if err := sendHeaders(ctx, headers, stream); err != nil {
+		s.logger.Debug("NewStream: failed to send headers", "peerID", peerID, "error", err)
 		_ = stream.Reset()
 		return nil, fmt.Errorf("send headers: %w", err)
 	}
-
+	s.logger.Debug("NewStream: stream successfully created", "peerID", peerID, "protocol", protocolName, "version", protocolVersion, "stream", streamName)
 	return stream, nil
 }
 

@@ -7,12 +7,15 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/libp2p/go-libp2p/core/network"
+	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
 )
 
 type websocketNetConn struct {
 	conn    *websocket.Conn
-	raddr   net.Addr
-	laddr   net.Addr
+	laddr   ma.Multiaddr
+	raddr   ma.Multiaddr
 	readBuf []byte
 	readPos int
 	readCtx context.Context
@@ -28,20 +31,26 @@ func (w *websocketNetConn) Read(p []byte) (int, error) {
 		w.readPos += n
 		return n, nil
 	}
-
-	// Read next message
-	msgType, data, err := w.conn.Read(w.readCtx)
-	if err != nil {
-		return 0, err
+	for {
+		// Read next message
+		msgType, data, err := w.conn.Read(w.readCtx)
+		if err != nil {
+			return 0, err
+		}
+		if msgType != websocket.MessageBinary {
+			// Skip non-binary frames (e.g., ping/pong/text)
+			continue
+		}
+		if len(data) == 0 {
+			// Skip empty binary frames
+			continue
+		}
+		w.readBuf = data
+		w.readPos = 0
+		break
 	}
-	if msgType != websocket.MessageBinary {
-		return 0, fmt.Errorf("unexpected message type: %v", msgType)
-	}
 
-	w.readBuf = data
-	w.readPos = 0
-
-	// Recurse to pull from the new buffer
+	// Now buffer has data, so read from it
 	return w.Read(p)
 }
 
@@ -57,15 +66,46 @@ func (w *websocketNetConn) Close() error {
 	return w.conn.Close(websocket.StatusNormalClosure, "closing")
 }
 
-func (w *websocketNetConn) LocalAddr() net.Addr {
+func (w *websocketNetConn) LocalMultiaddr() ma.Multiaddr {
 	return w.laddr
 }
 
-func (w *websocketNetConn) RemoteAddr() net.Addr {
+func (w *websocketNetConn) RemoteMultiaddr() ma.Multiaddr {
 	return w.raddr
+}
+
+func (w *websocketNetConn) LocalAddr() net.Addr {
+	return &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 1634}
+}
+
+func (w *websocketNetConn) RemoteAddr() net.Addr {
+	return &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 1634}
 }
 
 // WASM websockets don’t support deadlines, just stub
 func (w *websocketNetConn) SetDeadline(t time.Time) error      { return nil }
 func (w *websocketNetConn) SetReadDeadline(t time.Time) error  { return nil }
 func (w *websocketNetConn) SetWriteDeadline(t time.Time) error { return nil }
+
+func newConn(raw *websocket.Conn, scope network.ConnManagementScope, ctx context.Context, rna net.TCPAddr, lna net.TCPAddr) *websocketNetConn {
+	laddr, err := manet.FromNetAddr(&lna)
+
+	if err != nil {
+		fmt.Errorf("BUG: invalid localaddr on websocket conn", lna)
+		return nil
+	}
+	raddr, err := manet.FromNetAddr(&rna)
+	if err != nil {
+		fmt.Errorf("BUG: invalid remoteaddr on websocket conn", rna)
+		return nil
+	}
+
+	c := &websocketNetConn{
+		conn:    raw,
+		raddr:   raddr,
+		laddr:   laddr,
+		readCtx: ctx,
+	}
+
+	return c
+}

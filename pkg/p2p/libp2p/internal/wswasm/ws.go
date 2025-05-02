@@ -75,23 +75,24 @@ func (t *WebsocketTransport) maDial(ctx context.Context, raddr ma.Multiaddr, sco
 
 	wsurl, err := parseMultiaddr(raddr)
 	if err != nil {
+		scope.Done()
 		return nil, fmt.Errorf("failed to parse multiaddr: %w", err)
 	}
 
-	wscon, _, err := ws.Dial(ctx, wsurl.String(), nil)
+	wscon, _, err := ws.Dial(ctx, wsurl.String(), &ws.DialOptions{
+		Subprotocols: []string{"libp2p"},
+	})
 
 	if err != nil {
+		scope.Done()
 		return nil, fmt.Errorf("failed to dial websocket: %w", err)
 	}
 
-	mnc, err := manet.WrapNetConn(&websocketNetConn{
-		conn:    wscon,
-		raddr:   &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 1634},
-		laddr:   &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0},
-		readCtx: ctx,
-	})
+	mnc, err := manet.WrapNetConn(newConn(wscon, scope, ctx, net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 1634}, net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0}))
+
 	if err != nil {
 		wscon.Close(ws.StatusInternalError, "failed to wrap net conn")
+		scope.Done()
 		return nil, fmt.Errorf("failed to wrap net conn: %w", err)
 	}
 	return mnc, nil
