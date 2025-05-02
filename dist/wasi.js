@@ -89,6 +89,10 @@ go.env = {
   PATH: '/usr/bin:/usr/local/bin',
 }
 
+const bootstrapMultiaddrs = [
+  '/ip4/127.0.0.1/tcp/1634/ws/p2p/QmXAyvZ5BksNKha3PUixzz4jwCkmi1UNfd4LNCgscaWEPW',
+]
+
 go.argv = [
   'bee.wasm',
   'start',
@@ -97,37 +101,28 @@ go.argv = [
   '--verbosity',
   'debug',
   '--p2p-ws-enable',
+  '--bootnode',
+  bootstrapMultiaddrs[0],
   '--data-dir',
-  '',
+  '/home/user/.bee'
 ]
 
-// await ZenFS.promises.writeFile('/home/user/.bee/config.yaml', `resolver-options: []`)
-
-// import { createLibp2p } from 'https://esm.sh/libp2p@2.8.5'
-// import { webSockets } from 'https://esm.sh/@libp2p/websockets@9.2.10'
-
-// const node = await createLibp2p({
-//   transports: [
-//     webSockets(),
-//   ],
-// })
-// await node.start()
-
-// await WebAssembly.instantiateStreaming(fetch('bee.wasm'), {
-//   ...go.importObject,
-//   fs: {
-//     readFile: async (path) => {
-//       try {
-//         const data = await fs.promises.readFile(path, 'utf8')
-//         return new TextEncoder().encode(data)
-//       } catch (error) {
-//         console.error('Error reading file:', path, error)
-//         throw error
-//       }
-//     },
-//   },
-// }).then(
-//   (result) => {
-//     go.run(result.instance)
-//   },
-// )
+await WebAssembly.instantiateStreaming(fetch('bee.wasm'), {
+  ...go.importObject,
+  fs: {
+    ...fs,
+    readFile: async (path) => {
+      try {
+        const data = await fs.promises.readFile(path, 'utf8')
+        return new TextEncoder().encode(data)
+      } catch (error) {
+        console.error('Error reading file:', path, error)
+        throw error
+      }
+    },
+  },
+}).then(
+  (result) => {
+    go.run(result.instance)
+  },
+)

@@ -1,7 +1,9 @@
+//go:build js && wasm
+// +build js,wasm
+
 // Copyright 2020 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
-
 package libp2p
 
 import (
@@ -44,12 +46,13 @@ import (
 	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
+	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	lp2pswarm "github.com/libp2p/go-libp2p/p2p/net/swarm"
 	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
 
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
-	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
-
+	// ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
+	wswasm "github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/wswasm"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multistream"
 	"go.uber.org/atomic"
@@ -155,21 +158,18 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	var listenAddrs []string
-	if ip4Addr != "" {
-		if runtime.GOOS != "js" && runtime.GOOS != "wasi" && runtime.GOOS != "wasm" {
+	if runtime.GOOS != "js" && runtime.GOOS != "wasi" && runtime.GOOS != "wasm" {
+		if ip4Addr != "" {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s", ip4Addr, port))
+			if o.EnableWS {
+				listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/ws", ip4Addr, port))
+			}
 		}
-		if o.EnableWS {
-			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/ws", ip4Addr, port))
-		}
-	}
-
-	if ip6Addr != "" {
-		if runtime.GOOS != "js" && runtime.GOOS != "wasi" && runtime.GOOS != "wasm" {
+		if ip6Addr != "" {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s", ip6Addr, port))
-		}
-		if o.EnableWS {
-			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/ws", ip6Addr, port))
+			if o.EnableWS {
+				listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/ws", ip6Addr, port))
+			}
 		}
 	}
 
@@ -226,6 +226,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		libp2p.Peerstore(libp2pPeerstore),
 		libp2p.UserAgent(userAgent()),
 		libp2p.ResourceManager(rm),
+		libp2p.Muxer("/yamux/1.0.0", yamux.DefaultTransport),
 	}
 
 	if o.NATAddr == "" {
@@ -254,7 +255,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	if o.EnableWS || runtime.GOOS == "js" || runtime.GOOS == "wasi" || runtime.GOOS == "wasm" {
-		transports = append(transports, libp2p.Transport(ws.New))
+		transports = append(transports, libp2p.Transport(wswasm.New))
 	}
 
 	opts = append(opts, transports...)
@@ -975,6 +976,7 @@ func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, 
 			s.logger.Debug("stream experienced unexpected early close")
 			_ = st.Close()
 		}
+
 		var errNotSupported multistream.ErrNotSupported[protocol.ID]
 		if errors.As(err, &errNotSupported) {
 			return nil, p2p.NewIncompatibleStreamError(err)
