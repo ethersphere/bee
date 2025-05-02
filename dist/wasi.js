@@ -78,12 +78,6 @@ await fs.promises.writeFile(
 )
 
 
-setInterval(async () => {
-  const files = await fs.promises.readdir('/home/user/.bee', {recursive: true})
-
-  console.log(files)
-}, 1000)
-
 window.ZenFS = fs
 
 const go = new Go()
@@ -94,7 +88,7 @@ go.env = {
 }
 
 const bootstrapMultiaddrs = [
-  '/ip4/127.0.0.1/tcp/1634/ws/p2p/QmXAyvZ5BksNKha3PUixzz4jwCkmi1UNfd4LNCgscaWEPW',
+  '/ip4/127.0.0.1/tcp/1634/ws/p2p/QmRigRhN1G7YVaCyKax2Xswu9Rht56hB7emrA8AJtUVU1y',
 ]
 
 
