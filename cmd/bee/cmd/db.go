@@ -50,7 +50,6 @@ func (c *command) initDBCmd() {
 	dbValidateCmd(cmd)
 	dbValidatePinsCmd(cmd)
 	dbRepairReserve(cmd)
-	c.addDbExportBatchstoreCmd(cmd)
 
 	c.root.AddCommand(cmd)
 }
@@ -558,43 +557,6 @@ func dbExportPinningCmd(cmd *cobra.Command) {
 		},
 	}
 	cmd.AddCommand(c)
-}
-
-func (c *command) addDbExportBatchstoreCmd(parent *cobra.Command) {
-	cmd := &cobra.Command{
-		Use:   "export-batchstore",
-		Short: "Exports batchstore data (batches) from the statestore to an NDJSON file.",
-		Long: `Scans the statestore LevelDB for keys related to the batchstore
-(batches) and writes them as Newline Delimited JSON (NDJSON) to
-pkg/node/batches/batchstore_import_embed.json. This file can be embedded
-and imported by the node for initializing a new statestore.`,
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) (err error) {
-			v := c.config.GetString(optionNameVerbosity)
-			logger, err := newLogger(cmd, v)
-			if err != nil {
-				return fmt.Errorf("new logger: %w", err)
-			}
-
-			dataDir := c.config.GetString(optionNameDataDir)
-			if dataDir == "" {
-				return errors.New("--" + optionNameDataDir + " is required")
-			}
-
-			// Call the core export logic function (defined in export_batchstore.go)
-			if err := runExportBatchstore(logger, dataDir); err != nil {
-				logger.Error(err, "batchstore export failed")
-				return err
-			}
-			return nil
-		},
-		PreRunE: func(cmd *cobra.Command, args []string) error {
-			// No specific flags need binding since flags are inherited from root/parent
-			return nil
-		},
-	}
-
-	parent.AddCommand(cmd)
 }
 
 func dbImportCmd(cmd *cobra.Command) {
