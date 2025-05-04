@@ -1,6 +1,6 @@
 module github.com/ethersphere/bee/v2
 
-go 1.24
+go 1.24.0
 
 require (
 	contrib.go.opencensus.io/exporter/prometheus v0.4.2
@@ -36,6 +36,7 @@ require (
 	github.com/spf13/viper v1.20.1
 	github.com/stretchr/testify v1.10.0
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
+	github.com/talentlessguy/go-libp2p-wasmws v0.0.0-20250504020205-9349c06cdcd6
 	github.com/uber/jaeger-client-go v2.24.0+incompatible
 	github.com/vmihailenco/msgpack/v5 v5.3.4
 	github.com/wealdtech/go-ens/v3 v3.5.1
@@ -82,7 +83,7 @@ require (
 	github.com/btcsuite/btcd/chaincfg/chainhash v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/codahale/hdrhistogram v0.0.0-00010101000000-000000000000 // indirect
-	github.com/coder/websocket v1.8.13
+	github.com/coder/websocket v1.8.13 // indirect
 	github.com/consensys/bavard v0.1.30 // indirect
 	github.com/consensys/gnark-crypto v0.17.0 // indirect
 	github.com/crate-crypto/go-kzg-4844 v1.1.0 // indirect

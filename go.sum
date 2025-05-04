@@ -941,6 +941,8 @@ github.com/subosito/gotenv v1.6.0 h1:9NlTDc1FTs4qu0DDq7AEtTPNw6SVm7uBMsUCUjABIf8
 github.com/subosito/gotenv v1.6.0/go.mod h1:Dk4QP5c2W3ibzajGcXpNraDfq2IrhjMIvMSWPKKo0FU=
 github.com/supranational/blst v0.3.14 h1:xNMoHRJOTwMn63ip6qoWJ2Ymgvj7E2b9jY2FAwY+qRo=
 github.com/supranational/blst v0.3.14/go.mod h1:jZJtfjgudtNl4en1tzwPIV3KjUnQUvG3/j+w+fVonLw=
+github.com/talentlessguy/go-libp2p-wasmws v0.0.0-20250504020205-9349c06cdcd6 h1:xQwV3nQPRDj32vKO3RKGvqZsSdzK5agDoicf+A4eok8=
+github.com/talentlessguy/go-libp2p-wasmws v0.0.0-20250504020205-9349c06cdcd6/go.mod h1:La1gBJydxFJu57QUVeRGbGfXJkdicEDr/fyPlpAZbao=
 github.com/tarm/serial v0.0.0-20180830185346-98f6abe2eb07/go.mod h1:kDXzergiv9cbyO7IOYJZWg1U88JhDg3PB6klq9Hg2pA=
 github.com/tdewolff/minify/v2 v2.7.3/go.mod h1:BkDSm8aMMT0ALGmpt7j3Ra7nLUgZL0qhyrAHXwxcy5w=
 github.com/tdewolff/parse/v2 v2.4.2/go.mod h1:WzaJpRSbwq++EIQHYIRTpbYKNA3gn9it1Ik++q4zyho=

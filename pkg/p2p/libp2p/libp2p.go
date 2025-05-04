@@ -44,20 +44,21 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
+
 	lp2pswarm "github.com/libp2p/go-libp2p/p2p/net/swarm"
 	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
 
-	wswasm "github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/wswasm"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multistream"
+	wasmws "github.com/talentlessguy/go-libp2p-wasmws"
 	"go.uber.org/atomic"
 
 	ocprom "contrib.go.opencensus.io/exporter/prometheus"
 	m2 "github.com/ethersphere/bee/v2/pkg/metrics"
 	rcmgrObs "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
-	noisetransport "github.com/libp2p/go-libp2p/p2p/security/noise"
+	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -173,7 +174,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	var security libp2p.Option
 	if runtime.GOOS == "js" || runtime.GOOS == "wasm" {
-		security = libp2p.Security(noisetransport.ID, noisetransport.New)
+		security = libp2p.Security(noise.ID, noise.New)
 	} else {
 		security = libp2p.DefaultSecurity
 	}
@@ -259,7 +260,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	if o.EnableWS {
 		if runtime.GOOS == "js" || runtime.GOOS == "wasi" || runtime.GOOS == "wasm" {
-			transports = append(transports, libp2p.Transport(wswasm.New))
+			transports = append(transports, libp2p.Transport(wasmws.New))
 		} else {
 			transports = append(transports, libp2p.Transport(ws.New))
 		}
