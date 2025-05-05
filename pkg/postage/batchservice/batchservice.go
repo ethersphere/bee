@@ -7,6 +7,7 @@ package batchservice
 import (
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"context"
 	_ "embed"
 	"encoding/hex"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/storage"
@@ -27,7 +29,7 @@ import (
 // loggerName is the tree path name of the logger for this package.
 const loggerName = "batchservice"
 
-//go:embed batchstore_embed.json
+//go:embed batchstore.jsonl.gz
 var embeddedBatchstoreImportData []byte
 
 const (
@@ -296,25 +298,31 @@ func (svc *batchService) Start(ctx context.Context, startBlock uint64, initState
 	return <-syncedChan
 }
 
-// ImportBatchesFromData imports batch data using the storage.Store interface.
-// It uses batching provided by the storage.Store for efficiency.
-// It returns the maximum 'Start' block number found in the imported batches.
+// ImportBatchesFromData imports batch data by processing log events from the provided data source.
+// It expects data to be in JSONL format, where each line is a JSON representation of an ethereum/core/types.Log.
+// It returns the maximum block number encountered in the processed logs.
 func (svc *batchService) importBatchesFromData(ctx context.Context, data []byte, source string) (uint64, error) {
-	svc.logger.Info("starting batch import process using storage interface...", "source", source)
+	svc.logger.Info("starting batch import process from events...", "source", source)
 	startTime := time.Now()
 	var (
 		importedCount uint64
 		skippedCount  uint64
-		maxStartBlock uint64 = 0
+		maxBlock      uint64 = 0
 	)
 
 	dataReader := bytes.NewReader(data)
-	scanner := bufio.NewScanner(dataReader)
+	gzipReader, err := gzip.NewReader(dataReader)
+	if err != nil {
+		svc.logger.Error(err, "failed to create gzip reader for batch import", "source", source)
+		return 0, fmt.Errorf("create gzip reader: %w", err)
+	}
+	defer gzipReader.Close()
+	scanner := bufio.NewScanner(gzipReader)
 
 	for scanner.Scan() {
 		select {
 		case <-ctx.Done():
-			return maxStartBlock, ctx.Err()
+			return maxBlock, ctx.Err()
 		default:
 		}
 
@@ -323,25 +331,24 @@ func (svc *batchService) importBatchesFromData(ctx context.Context, data []byte,
 			continue
 		}
 
-		var batch postage.Batch
-		if err := json.Unmarshal(line, &batch); err != nil {
-			svc.logger.Warning("failed to unmarshal line in batch import data, skipping line", "source", source, "error", err, "line_snippet", string(line[:min(len(line), 100)]))
+		var logEntry types.Log
+		if err := json.Unmarshal(line, &logEntry); err != nil {
+			svc.logger.Warning("failed to unmarshal log event, skipping line", "source", source, "error", err, "line_snippet", string(line[:min(len(line), 100)]))
 			skippedCount++
 			continue
 		}
 
-		if len(batch.ID) != 32 {
-			svc.logger.Warning("imported batch has invalid ID length, skipping", "source", source, "line_snippet", string(line[:min(len(line), 100)]))
-			skippedCount++
-			continue
+		if logEntry.BlockNumber > maxBlock {
+			maxBlock = logEntry.BlockNumber
 		}
 
-		if batch.Start > maxStartBlock {
-			maxStartBlock = batch.Start
-		}
-
-		if err := svc.Create(batch.ID, batch.Owner, big.NewInt(0), batch.Value, batch.Depth, batch.BucketDepth, batch.Immutable, common.Hash{}); err != nil {
-			svc.logger.Warning("failed to add batch item to storage batch, skipping", "source", source, "batch_id", hex.EncodeToString(batch.ID), "error", err)
+		// Process the log event using the EventProcessor
+		if err := svc.listener.ProcessEvent(logEntry, svc); err != nil {
+			if errors.Is(err, ErrZeroValueBatch) {
+				svc.logger.Debug("skipped processing event", "source", source, "block", logEntry.BlockNumber, "tx_hash", logEntry.TxHash, "log_index", logEntry.Index, "reason", err)
+			} else {
+				svc.logger.Warning("failed to process event, skipping", "source", source, "block", logEntry.BlockNumber, "tx_hash", logEntry.TxHash, "log_index", logEntry.Index, "error", err)
+			}
 			skippedCount++
 			continue
 		}
@@ -357,12 +364,12 @@ func (svc *batchService) importBatchesFromData(ctx context.Context, data []byte,
 
 	svc.logger.Info("batch import process finished",
 		"source", source,
-		"imported_count", importedCount,
-		"skipped_count", skippedCount,
-		"max_start_block", maxStartBlock,
+		"processed_event_count", importedCount,
+		"skipped_event_count", skippedCount,
+		"max_block_number", maxBlock,
 		"total_time", time.Since(startTime).Round(time.Millisecond),
 	)
-	return maxStartBlock, scanErr
+	return maxBlock, scanErr
 }
 
 // updateChecksum updates the batchservice checksum once an event gets

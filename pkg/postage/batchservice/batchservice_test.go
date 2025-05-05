@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/postage/batchservice"
@@ -37,6 +38,10 @@ func (*mockListener) Listen(ctx context.Context, from uint64, updater postage.Ev
 	c <- nil
 	return c
 }
+func (*mockListener) ProcessEvent(log types.Log, updater postage.EventUpdater) error {
+	return nil
+}
+
 func (*mockListener) Close() error { return nil }
 
 func newMockListener() *mockListener {

@@ -93,6 +93,7 @@ type ChainStateGetter interface {
 type Listener interface {
 	io.Closer
 	Listen(ctx context.Context, from uint64, updater EventUpdater, initState *ChainSnapshot) <-chan error
+	ProcessEvent(log types.Log, updater EventUpdater) error
 }
 
 type BatchEventListener interface {

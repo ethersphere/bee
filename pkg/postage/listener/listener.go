@@ -119,7 +119,7 @@ func (l *listener) filterQuery(from, to *big.Int) ethereum.FilterQuery {
 	}
 }
 
-func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error {
+func (l *listener) ProcessEvent(e types.Log, updater postage.EventUpdater) error {
 	defer l.metrics.EventsProcessed.Inc()
 	switch e.Topics[0] {
 	case l.batchCreatedTopic:
@@ -203,7 +203,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 			if err != nil {
 				return err
 			}
-			if err = l.processEvent(e, updater); err != nil {
+			if err = l.ProcessEvent(e, updater); err != nil {
 				// if we have a zero value batch - silence & log then move on
 				if !errors.Is(err, batchservice.ErrZeroValueBatch) {
 					return err
