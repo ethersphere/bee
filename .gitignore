@@ -30,3 +30,4 @@ _testmain.go
 .DS_Store
 
 dist/bee*
+dist/sw_bundle.js

@@ -1,0 +1,17 @@
+{
+  "name": "dist",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest",
+    "esbuild": "^0.25.3"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@zenfs/core": "^2.2.0"
+  },
+  "scripts": {
+    "build": "bunx esbuild sw.js --bundle --platform=browser > sw_bundle.js"
+  }
+}
