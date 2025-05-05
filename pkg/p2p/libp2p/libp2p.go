@@ -52,11 +52,16 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multistream"
 	"go.uber.org/atomic"
+	"go.uber.org/zap"
 
 	ocprom "contrib.go.opencensus.io/exporter/prometheus"
 	m2 "github.com/ethersphere/bee/v2/pkg/metrics"
 	rcmgrObs "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/prometheus/client_golang/prometheus"
+
+	p2pforge "github.com/ipshipyard/p2p-forge/client"
+
+	"github.com/caddyserver/certmagic"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -213,6 +218,37 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	var natManager basichost.NATManager
 
+	// AutoTLS
+	certLoaded := make(chan bool, 1) // Create a channel to signal when the cert is loaded
+
+	p2pforgeLogger, err := zap.NewProduction()
+	if err != nil {
+		return nil, err
+	}
+	defer p2pforgeLogger.Sync() // flushes buffer, if any
+	sugar := p2pforgeLogger.Sugar()
+
+	certManager, err := p2pforge.NewP2PForgeCertMgr(
+		p2pforge.WithCAEndpoint(p2pforge.DefaultCAEndpoint), // test CA endpoint
+
+		// Configure where to store certificate
+		p2pforge.WithCertificateStorage(&certmagic.FileStorage{Path: "p2p-forge-certs"}),
+
+		// Configure logger to use
+		p2pforge.WithLogger(sugar),
+
+		// User-Agent to use during DNS-01 ACME challenge
+		p2pforge.WithUserAgent(userAgent()),
+
+		// Optional extra delay before the initial registration
+		p2pforge.WithRegistrationDelay(10*time.Second),
+
+		// Optional hook called once certificate is ready
+		p2pforge.WithOnCertLoaded(func() {
+			certLoaded <- true
+		}),
+	)
+
 	opts := []libp2p.Option{
 		libp2p.ShareTCPListener(),
 		libp2p.ListenAddrStrings(listenAddrs...),
@@ -247,7 +283,8 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	if o.EnableWS {
-		transports = append(transports, libp2p.Transport(ws.New))
+		transports = append(transports, libp2p.Transport(ws.New, ws.WithTLSConfig(certManager.TLSConfig())))
+		opts = append(opts, libp2p.AddrsFactory(certManager.AddressFactory()))
 	}
 
 	opts = append(opts, transports...)
@@ -261,6 +298,8 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	if err != nil {
 		return nil, err
 	}
+
+	certManager.ProvideHost(h)
 
 	// Support same non default security and transport options as
 	// original host.
