@@ -171,9 +171,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse certificate: %v", err)
 		}
-		if cert.Subject.CommonName != cert.Issuer.CommonName {
-			return nil, fmt.Errorf("certificate common name does not match issuer common name")
-		}
+
 		if len(cert.DNSNames) > 0 {
 			dnsName = cert.DNSNames[0]
 		}
@@ -186,9 +184,9 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		if o.EnableWS {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/ws", ip4Addr, port))
 			if o.SSLCertFile != "" && o.SSLKeyFile != "" {
-				listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/wss", ip6Addr, port))
+				listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/ws", ip4Addr, port))
 				if dnsName != "" {
-					listenAddrs = append(listenAddrs, fmt.Sprintf("/dns4/%s/tcp/%s/ws", dnsName, port))
+					listenAddrs = append(listenAddrs, fmt.Sprintf("/dns4/%s/tcp/%s/tls/ws", dnsName, port))
 				}
 			}
 		}
@@ -199,13 +197,15 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		if o.EnableWS {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/ws", ip6Addr, port))
 			if o.SSLCertFile != "" && o.SSLKeyFile != "" {
-				listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/wss", ip6Addr, port))
+				listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/ws", ip6Addr, port))
 				if dnsName != "" {
-					listenAddrs = append(listenAddrs, fmt.Sprintf("/dns6/%s/tcp/%s/ws", dnsName, port))
+					listenAddrs = append(listenAddrs, fmt.Sprintf("/dns6/%s/tcp/%s/tls/ws", dnsName, port))
 				}
 			}
 		}
 	}
+
+	fmt.Println(listenAddrs)
 
 	security := libp2p.DefaultSecurity
 	libp2pPeerstore, err := pstoremem.NewPeerstore()
