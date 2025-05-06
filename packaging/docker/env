@@ -123,7 +123,7 @@
 # BEE_TRANSACTION_DEBUG_MODE=false
 ## bootstrap node using postage snapshot from the network
 # BEE_USE_POSTAGE_SNAPSHOT=false
-## time to warmup the node before some major protocols can be kicked off
+## maximum node warmup duration; proceeds when stable or after this time
 # BEE_WARMUP_TIME=
 ## withdrawal target addresses
 # BEE_WITHDRAWAL_ADDRESSES_WHITELIST=

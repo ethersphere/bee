@@ -1,8 +1,6 @@
 module github.com/ethersphere/bee/v2
 
-go 1.24.0
-
-toolchain go1.24.2
+go 1.24
 
 require (
 	contrib.go.opencensus.io/exporter/prometheus v0.4.2
@@ -45,38 +43,17 @@ require (
 	gitlab.com/nolash/go-mockbytes v0.0.7
 	go.uber.org/atomic v1.11.0
 	go.uber.org/goleak v1.3.0
-	golang.org/x/crypto v0.31.0
-	golang.org/x/net v0.33.0
-	golang.org/x/sync v0.10.0
-	golang.org/x/sys v0.28.0
-	golang.org/x/term v0.27.0
+	golang.org/x/crypto v0.36.0
+	golang.org/x/net v0.38.0
+	golang.org/x/sync v0.12.0
+	golang.org/x/sys v0.31.0
+	golang.org/x/term v0.30.0
 	golang.org/x/time v0.5.0
 	gopkg.in/yaml.v2 v2.4.0
+	resenje.org/feed v0.1.2
 	resenje.org/multex v0.1.0
 	resenje.org/singleflight v0.4.0
 	resenje.org/web v0.4.3
-)
-
-require (
-	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
-	github.com/pion/datachannel v1.5.10 // indirect
-	github.com/pion/dtls/v2 v2.2.12 // indirect
-	github.com/pion/ice/v2 v2.3.37 // indirect
-	github.com/pion/interceptor v0.1.37 // indirect
-	github.com/pion/logging v0.2.2 // indirect
-	github.com/pion/mdns v0.0.12 // indirect
-	github.com/pion/randutil v0.1.0 // indirect
-	github.com/pion/rtcp v1.2.15 // indirect
-	github.com/pion/rtp v1.8.10 // indirect
-	github.com/pion/sctp v1.8.35 // indirect
-	github.com/pion/sdp/v3 v3.0.9 // indirect
-	github.com/pion/srtp/v2 v2.0.20 // indirect
-	github.com/pion/stun v0.6.1 // indirect
-	github.com/pion/transport/v2 v2.2.10 // indirect
-	github.com/pion/transport/v3 v3.0.7 // indirect
-	github.com/pion/turn/v2 v2.1.6 // indirect
-	github.com/pion/webrtc/v3 v3.3.5 // indirect
-	github.com/wlynxg/anet v0.0.5 // indirect
 )
 
 require (
@@ -110,6 +87,7 @@ require (
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-playground/locales v0.14.0 // indirect
 	github.com/go-playground/universal-translator v0.18.0 // indirect
+	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/snappy v0.0.5-0.20220116011046-fa5810519dcb // indirect
@@ -157,6 +135,23 @@ require (
 	github.com/opencontainers/runtime-spec v1.2.0 // indirect
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
 	github.com/pelletier/go-toml v1.8.0 // indirect
+	github.com/pion/datachannel v1.5.10 // indirect
+	github.com/pion/dtls/v2 v2.2.12 // indirect
+	github.com/pion/ice/v2 v2.3.37 // indirect
+	github.com/pion/interceptor v0.1.37 // indirect
+	github.com/pion/logging v0.2.2 // indirect
+	github.com/pion/mdns v0.0.12 // indirect
+	github.com/pion/randutil v0.1.0 // indirect
+	github.com/pion/rtcp v1.2.15 // indirect
+	github.com/pion/rtp v1.8.10 // indirect
+	github.com/pion/sctp v1.8.35 // indirect
+	github.com/pion/sdp/v3 v3.0.9 // indirect
+	github.com/pion/srtp/v2 v2.0.20 // indirect
+	github.com/pion/stun v0.6.1 // indirect
+	github.com/pion/transport/v2 v2.2.10 // indirect
+	github.com/pion/transport/v3 v3.0.7 // indirect
+	github.com/pion/turn/v2 v2.1.6 // indirect
+	github.com/pion/webrtc/v3 v3.3.5 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/prometheus/client_model v0.6.1 // indirect
@@ -180,6 +175,7 @@ require (
 	github.com/uber/jaeger-lib v2.2.0+incompatible // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/wealdtech/go-multicodec v1.4.0 // indirect
+	github.com/wlynxg/anet v0.0.5 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.uber.org/dig v1.18.0 // indirect
 	go.uber.org/fx v1.23.0 // indirect
@@ -188,7 +184,7 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67 // indirect
 	golang.org/x/mod v0.22.0 // indirect
-	golang.org/x/text v0.21.0 // indirect
+	golang.org/x/text v0.23.0 // indirect
 	golang.org/x/tools v0.28.0 // indirect
 	google.golang.org/protobuf v1.36.1 // indirect
 	gopkg.in/ini.v1 v1.57.0 // indirect
