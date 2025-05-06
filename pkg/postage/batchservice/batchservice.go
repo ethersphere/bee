@@ -20,6 +20,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	archive "github.com/ethersphere/batch-archive"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/storage"
@@ -28,9 +29,6 @@ import (
 
 // loggerName is the tree path name of the logger for this package.
 const loggerName = "batchservice"
-
-//go:embed batchstore.jsonl.gz
-var embeddedBatchstoreImportData []byte
 
 const (
 	dirtyDBKey    = "batchservice_dirty_db"
@@ -286,8 +284,8 @@ func (svc *batchService) Start(ctx context.Context, startBlock uint64, initState
 		svc.logger.Warning("failed to check for existing batches: %w", checkErr)
 	}
 
-	if !batchesExist {
-		maxImportedBatchStart, _ := svc.importBatchesFromData(ctx, embeddedBatchstoreImportData, "embedded")
+	if !batchesExist && !dirty && !svc.resync {
+		maxImportedBatchStart, _ := svc.importBatchesFromData(ctx, archive.GetBatchSnapshot(true), "embedded")
 		if maxImportedBatchStart > startBlock {
 			startBlock = maxImportedBatchStart
 		}
