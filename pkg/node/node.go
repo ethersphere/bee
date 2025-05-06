@@ -175,6 +175,8 @@ type Options struct {
 	WarmupTime                    time.Duration
 	WelcomeMessage                string
 	WhitelistedWithdrawalAddress  []string
+	SSLCertFile                   string
+	SSLKeyFile                    string
 }
 
 const (

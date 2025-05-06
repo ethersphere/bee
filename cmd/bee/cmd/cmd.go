@@ -80,6 +80,9 @@ const (
 	optionNameTransactionDebugMode         = "transaction-debug-mode"
 	optionMinimumStorageRadius             = "minimum-storage-radius"
 	optionReserveCapacityDoubling          = "reserve-capacity-doubling"
+
+	optionNameSSLCertFile = "ssl-cert-file"
+	optionNameSSLKeyFile  = "ssl-key-file"
 )
 
 // nolint:gochecknoinits
@@ -288,6 +291,9 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNameTransactionDebugMode, false, "skips the gas estimate step for contract transactions")
 	cmd.Flags().Uint(optionMinimumStorageRadius, 0, "minimum radius storage threshold")
 	cmd.Flags().Int(optionReserveCapacityDoubling, 0, "reserve capacity doubling")
+	cmd.Flags().String(optionNameSSLCertFile, "", "SSL certificate file")
+	cmd.Flags().String(optionNameSSLKeyFile, "", "SSL key file")
+
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {
