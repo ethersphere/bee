@@ -243,7 +243,7 @@ const (
 	defaultWriteBufferSize        = uint64(32 * 1024 * 1024)
 	defaultDisableSeeksCompaction = false
 	defaultCacheCapacity          = uint64(1_000_000)
-	defaultBgCacheWorkers         = 16
+	defaultBgCacheWorkers         = 32
 	DefaultReserveCapacity        = 1 << 22 // 4194304 chunks
 
 	indexPath  = "indexstore"
