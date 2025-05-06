@@ -160,6 +160,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	var tlsCert tls.Certificate
 	var dnsName string
 
+	fmt.Println("Certificate files: ", o.SSLCertFile, o.SSLKeyFile)
 	if o.SSLCertFile != "" && o.SSLKeyFile != "" {
 		x509Cert, err := tls.LoadX509KeyPair(o.SSLCertFile, o.SSLKeyFile)
 		if err != nil {
@@ -177,6 +178,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			dnsName = cert.DNSNames[0]
 		}
 	}
+	fmt.Println("DNS Name", dnsName)
 
 	var listenAddrs []string
 	if ip4Addr != "" {

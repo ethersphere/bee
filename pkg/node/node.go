@@ -647,6 +647,8 @@ func NewBee(
 		Nonce:           nonce,
 		ValidateOverlay: chainEnabled,
 		Registry:        registry,
+		SSLCertFile:     o.SSLCertFile,
+		SSLKeyFile:      o.SSLKeyFile,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
