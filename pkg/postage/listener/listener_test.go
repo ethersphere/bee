@@ -595,7 +595,7 @@ func (u *updater) UpdateBlockNumber(blockNumber uint64) error {
 	return u.blockNumberUpdateError
 }
 
-func (u *updater) Start(ctx context.Context, bno uint64, cs *postage.ChainSnapshot) error {
+func (u *updater) Start(ctx context.Context, bno uint64, cs *postage.ChainSnapshot, mainnet bool) error {
 	return nil
 }
 

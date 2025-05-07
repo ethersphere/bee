@@ -519,7 +519,7 @@ func TestTransactionOk(t *testing.T) {
 	t.Parallel()
 
 	svc, store, s := newTestStoreAndService(t)
-	if err := svc.Start(context.Background(), 10, nil); err != nil {
+	if err := svc.Start(context.Background(), 10, nil, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -535,7 +535,7 @@ func TestTransactionOk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := svc2.Start(context.Background(), 10, nil); err != nil {
+	if err := svc2.Start(context.Background(), 10, nil, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -548,7 +548,7 @@ func TestTransactionError(t *testing.T) {
 	t.Parallel()
 
 	svc, store, s := newTestStoreAndService(t)
-	if err := svc.Start(context.Background(), 10, nil); err != nil {
+	if err := svc.Start(context.Background(), 10, nil, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -560,7 +560,7 @@ func TestTransactionError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := svc2.Start(context.Background(), 10, nil); err != nil {
+	if err := svc2.Start(context.Background(), 10, nil, false); err != nil {
 		t.Fatal(err)
 	}
 

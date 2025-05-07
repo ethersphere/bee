@@ -246,7 +246,7 @@ func (svc *batchService) TransactionEnd() error {
 
 var ErrInterruped = errors.New("postage sync interrupted")
 
-func (svc *batchService) Start(ctx context.Context, startBlock uint64, initState *postage.ChainSnapshot) (err error) {
+func (svc *batchService) Start(ctx context.Context, startBlock uint64, initState *postage.ChainSnapshot, mainnet bool) (err error) {
 	dirty := false
 	err = svc.stateStore.Get(dirtyDBKey, &dirty)
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {
@@ -270,6 +270,18 @@ func (svc *batchService) Start(ctx context.Context, startBlock uint64, initState
 		svc.logger.Warning("batch service: batch store has been reset. your node will now resync chain data. this might take a while...")
 	}
 
+	batchesExist, checkErr := svc.storer.HasExistingBatches()
+	if checkErr != nil {
+		svc.logger.Warning("failed to check for existing batches: %w", checkErr)
+	}
+
+	if mainnet && !batchesExist && !dirty && !svc.resync {
+		maxImportedBatchStart, _ := svc.importBatchesFromData(ctx, archive.GetBatchSnapshot(true), "embedded")
+		if maxImportedBatchStart > startBlock {
+			startBlock = maxImportedBatchStart
+		}
+	}
+
 	cs := svc.storer.GetChainState()
 	if cs.Block > startBlock {
 		startBlock = cs.Block
@@ -277,18 +289,6 @@ func (svc *batchService) Start(ctx context.Context, startBlock uint64, initState
 
 	if initState != nil && initState.LastBlockNumber > startBlock {
 		startBlock = initState.LastBlockNumber
-	}
-
-	batchesExist, checkErr := svc.storer.HasExistingBatches()
-	if checkErr != nil {
-		svc.logger.Warning("failed to check for existing batches: %w", checkErr)
-	}
-
-	if !batchesExist && !dirty && !svc.resync {
-		maxImportedBatchStart, _ := svc.importBatchesFromData(ctx, archive.GetBatchSnapshot(true), "embedded")
-		if maxImportedBatchStart > startBlock {
-			startBlock = maxImportedBatchStart
-		}
 	}
 
 	syncedChan := svc.listener.Listen(ctx, startBlock+1, svc, initState)
@@ -351,6 +351,7 @@ func (svc *batchService) importBatchesFromData(ctx context.Context, data []byte,
 			continue
 		}
 
+		svc.UpdateBlockNumber(maxBlock)
 		importedCount++
 
 	}

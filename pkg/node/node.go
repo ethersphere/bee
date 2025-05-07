@@ -815,7 +815,7 @@ func NewBee(
 		}
 
 		if o.FullNodeMode {
-			err = batchSvc.Start(ctx, postageSyncStart, initBatchState)
+			err = batchSvc.Start(ctx, postageSyncStart, initBatchState, networkID == mainnetNetworkID)
 			syncStatus.Store(true)
 			if err != nil {
 				syncErr.Store(err)
@@ -824,7 +824,7 @@ func NewBee(
 		} else {
 			go func() {
 				logger.Info("started postage contract data sync in the background...")
-				err := batchSvc.Start(ctx, postageSyncStart, initBatchState)
+				err := batchSvc.Start(ctx, postageSyncStart, initBatchState, networkID == mainnetNetworkID)
 				syncStatus.Store(true)
 				if err != nil {
 					syncErr.Store(err)
