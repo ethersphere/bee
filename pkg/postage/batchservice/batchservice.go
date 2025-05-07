@@ -317,6 +317,10 @@ func (svc *batchService) importBatchesFromData(ctx context.Context, data []byte,
 	defer gzipReader.Close()
 	scanner := bufio.NewScanner(gzipReader)
 
+	if err := svc.TransactionStart(); err != nil {
+		return maxBlock, err
+	}
+
 	for scanner.Scan() {
 		select {
 		case <-ctx.Done():
@@ -336,6 +340,11 @@ func (svc *batchService) importBatchesFromData(ctx context.Context, data []byte,
 			continue
 		}
 
+		err = svc.UpdateBlockNumber(logEntry.BlockNumber)
+		if err != nil {
+			return maxBlock, err
+		}
+
 		if logEntry.BlockNumber > maxBlock {
 			maxBlock = logEntry.BlockNumber
 		}
@@ -351,12 +360,16 @@ func (svc *batchService) importBatchesFromData(ctx context.Context, data []byte,
 			continue
 		}
 
-		err = svc.UpdateBlockNumber(maxBlock)
-		if err != nil {
-			return maxBlock, err
-		}
 		importedCount++
 
+	}
+	err = svc.UpdateBlockNumber(maxBlock)
+	if err != nil {
+		return maxBlock, err
+	}
+
+	if err := svc.TransactionEnd(); err != nil {
+		return maxBlock, err
 	}
 
 	scanErr := scanner.Err()
