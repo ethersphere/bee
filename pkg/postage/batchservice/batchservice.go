@@ -351,7 +351,10 @@ func (svc *batchService) importBatchesFromData(ctx context.Context, data []byte,
 			continue
 		}
 
-		svc.UpdateBlockNumber(maxBlock)
+		err = svc.UpdateBlockNumber(maxBlock)
+		if err != nil {
+			return maxBlock, err
+		}
 		importedCount++
 
 	}
