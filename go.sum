@@ -240,8 +240,8 @@ github.com/ethereum/c-kzg-4844 v1.0.0/go.mod h1:VewdlzQmpT5QSrVhbBuGoCdFJkpaJlO1
 github.com/ethereum/go-ethereum v1.10.4/go.mod h1:nEE0TP5MtxGzOMd7egIrbPJMQBnhVU3ELNxhBglIzhg=
 github.com/ethereum/go-ethereum v1.14.3 h1:5zvnAqLtnCZrU9uod1JCvHWJbPMURzYFHfc2eHz4PHA=
 github.com/ethereum/go-ethereum v1.14.3/go.mod h1:1STrq471D0BQbCX9He0hUj4bHxX2k6mt5nOQJhDNOJ8=
-github.com/ethersphere/go-price-oracle-abi v0.6.3-rc4 h1:KkR1b9vgQ6N0s51DTT1nU2I2DaeURSMkNH5du6YKpHM=
-github.com/ethersphere/go-price-oracle-abi v0.6.3-rc4/go.mod h1:sI/Qj4/zJ23/b1enzwMMv0/hLTpPNVNacEwCWjo6yBk=
+github.com/ethersphere/go-price-oracle-abi v0.6.7 h1:SRWonJL7GA0LJfpdEUErT4R2B5WRCM+KSQn6l7SPUto=
+github.com/ethersphere/go-price-oracle-abi v0.6.7/go.mod h1:sI/Qj4/zJ23/b1enzwMMv0/hLTpPNVNacEwCWjo6yBk=
 github.com/ethersphere/go-storage-incentives-abi v0.9.3-rc3 h1:uuowc0ekcipVwYkn1Rud9LySZ094hrDq2/YfRKyjbbQ=
 github.com/ethersphere/go-storage-incentives-abi v0.9.3-rc3/go.mod h1:SXvJVtM4sEsaSKD0jc1ClpDLw8ErPoROZDme4Wrc/Nc=
 github.com/ethersphere/go-sw3-abi v0.6.5 h1:M5dcIe1zQYvGpY2K07UNkNU9Obc4U+A1fz68Ho/Q+XE=
