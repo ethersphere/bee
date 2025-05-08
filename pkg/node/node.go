@@ -802,7 +802,7 @@ func NewBee(
 		}
 	)
 
-	if !batchStoreExists && (networkID == mainnetNetworkID) {
+	if !o.Resync && !batchStoreExists && (networkID == mainnetNetworkID) {
 		chainBackend, err := NewSnapshotBlockHeightContractFilterer(logger)
 		if err != nil {
 			logger.Debug("failed to initialize batch snapshot chain backend", "error", err)
@@ -815,8 +815,11 @@ func NewBee(
 				return nil, fmt.Errorf("init batch service: %w", err)
 			}
 
-			if err := batchSvc.Start(ctx, postageSyncStart, initBatchState); err != nil {
-				return nil, err
+			err = batchSvc.Start(ctx, postageSyncStart, initBatchState)
+			syncStatus.Store(true)
+			if err != nil {
+				syncErr.Store(err)
+				return nil, fmt.Errorf("unable to start batch service: %w", err)
 			}
 
 			if err := eventListener.Close(); err != nil {

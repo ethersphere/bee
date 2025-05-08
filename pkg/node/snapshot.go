@@ -1,3 +1,7 @@
+// Copyright 2025 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package node
 
 import (
@@ -91,19 +95,17 @@ func (f *SnapshotBlockHeightContractFilterer) parseLogs(reader io.Reader) error 
 
 func (f *SnapshotBlockHeightContractFilterer) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
 	f.logger.Debug("filtering pre-loaded logs", "total_logs", len(f.loadedLogs), "query", query)
-	
-	var filtered []types.Log
-	
+
+	filtered := make([]types.Log, 0, len(f.loadedLogs))
+
 	for _, log := range f.loadedLogs {
-		// Filter by block range
 		if query.FromBlock != nil && log.BlockNumber < query.FromBlock.Uint64() {
 			continue
 		}
 		if query.ToBlock != nil && log.BlockNumber > query.ToBlock.Uint64() {
 			continue
 		}
-		
-		// Filter by addresses
+
 		if len(query.Addresses) > 0 {
 			addressMatch := false
 			for _, addr := range query.Addresses {
@@ -116,25 +118,20 @@ func (f *SnapshotBlockHeightContractFilterer) FilterLogs(ctx context.Context, qu
 				continue
 			}
 		}
-		
-		// Filter by topics
+
 		if len(query.Topics) > 0 {
 			topicMatch := true
-			
-			// We have a max of 4 topics in Ethereum logs
+
 			for i := 0; i < len(query.Topics) && i < 4; i++ {
-				// Skip if no filter for this topic position or empty filter array
 				if i >= len(query.Topics) || len(query.Topics[i]) == 0 {
 					continue
 				}
-				
-				// If we're filtering for this topic position but log doesn't have enough topics
+
 				if i >= len(log.Topics) {
 					topicMatch = false
 					break
 				}
-				
-				// Check if this topic matches any in the filter array for this position
+
 				hasMatch := false
 				for _, topic := range query.Topics[i] {
 					if log.Topics[i] == topic {
@@ -142,22 +139,21 @@ func (f *SnapshotBlockHeightContractFilterer) FilterLogs(ctx context.Context, qu
 						break
 					}
 				}
-				
+
 				if !hasMatch {
 					topicMatch = false
 					break
 				}
 			}
-			
+
 			if !topicMatch {
 				continue
 			}
 		}
-		
-		// If we got here, log passed all filters
+
 		filtered = append(filtered, log)
 	}
-	
+
 	f.logger.Debug("filtered logs", "input_count", len(f.loadedLogs), "output_count", len(filtered))
 	return filtered, nil
 }
