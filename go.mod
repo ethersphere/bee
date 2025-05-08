@@ -1,6 +1,8 @@
 module github.com/ethersphere/bee/v2
 
-go 1.24
+go 1.24.0
+
+toolchain go1.24.2
 
 require (
 	contrib.go.opencensus.io/exporter/prometheus v0.4.2
@@ -54,6 +56,8 @@ require (
 	resenje.org/singleflight v0.4.0
 	resenje.org/web v0.4.3
 )
+
+require github.com/ethersphere/batch-archive v0.0.2
 
 require (
 	github.com/BurntSushi/toml v1.1.0 // indirect

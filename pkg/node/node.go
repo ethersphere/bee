@@ -802,6 +802,31 @@ func NewBee(
 		}
 	)
 
+	if !batchStoreExists && (networkID == mainnetNetworkID) {
+		chainBackend, err := NewSnapshotBlockHeightContractFilterer(logger)
+		if err != nil {
+			logger.Debug("failed to initialize batch snapshot chain backend", "error", err)
+		} else {
+			eventListener := listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
+			b.listenerCloser = eventListener
+
+			batchSvc, err := batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
+			if err != nil {
+				return nil, fmt.Errorf("init batch service: %w", err)
+			}
+
+			if err := batchSvc.Start(ctx, postageSyncStart, initBatchState); err != nil {
+				return nil, err
+			}
+
+			if err := eventListener.Close(); err != nil {
+				return nil, err
+			}
+
+			postageSyncStart = chainBackend.maxBlockHeight
+		}
+	}
+
 	if batchSvc != nil && chainEnabled {
 		logger.Info("waiting to sync postage contract data, this may take a while... more info available in Debug loglevel")
 
