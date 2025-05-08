@@ -808,7 +808,6 @@ func NewBee(
 			logger.Debug("failed to initialize batch snapshot chain backend", "error", err)
 		} else {
 			eventListener := listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
-			b.listenerCloser = eventListener
 
 			batchSvc, err := batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
 			if err != nil {
