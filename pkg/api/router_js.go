@@ -170,4 +170,21 @@ func (s *Service) mountAPI() {
 		"GET": http.HandlerFunc(s.stewardshipGetHandler),
 		"PUT": http.HandlerFunc(s.stewardshipPutHandler),
 	})
+
+	// stub endpoints
+	handle("/pss/send/{topic}/{targets}", web.ChainHandlers(
+		web.FinalHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotImplemented)
+		}),
+	))
+
+	handle("/pss/subscribe/{topic}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotImplemented)
+	}))
+
+	handle("/gsoc/subscribe/{address}", web.ChainHandlers(
+		web.FinalHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotImplemented)
+		}),
+	))
 }
