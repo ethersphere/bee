@@ -18,6 +18,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	sharedFs "github.com/ethersphere/bee/v2/pkg/fs"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/stabilization"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
@@ -196,7 +197,7 @@ type dirFS struct {
 }
 
 func (d *dirFS) Open(path string) (fs.File, error) {
-	return os.OpenFile(filepath.Join(d.basedir, path), os.O_RDWR|os.O_CREATE, 0o644)
+	return sharedFs.OpenFile(filepath.Join(d.basedir, path), os.O_RDWR|os.O_CREATE, 0o644)
 }
 
 var (

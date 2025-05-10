@@ -6,9 +6,15 @@ package p2p
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/rand"
+	"net"
+	"net/http"
+	"strings"
+	"time"
 
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
@@ -21,12 +27,108 @@ func isDNSProtocol(protoCode int) bool {
 	return false
 }
 
+// CustomDNSResolver implements madns.BasicResolver interface
+type CustomDNSResolver struct {
+	client *http.Client
+}
+
+func NewCustomDNSResolver() *CustomDNSResolver {
+	return &CustomDNSResolver{
+		client: &http.Client{
+			Timeout: 5 * time.Second,
+		},
+	}
+}
+
+type dnsResponse struct {
+	Answer []struct {
+		Type int    `json:"type"`
+		Data string `json:"data"`
+	} `json:"Answer"`
+}
+
+func (r *CustomDNSResolver) LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr, error) {
+	// Use Google's DNS-over-HTTPS API
+	url := fmt.Sprintf("https://dns.google/resolve?name=%s&type=A", host)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	resp, err := r.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("dns query: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	var dnsResp dnsResponse
+	if err := json.Unmarshal(body, &dnsResp); err != nil {
+		return nil, fmt.Errorf("parse response: %w", err)
+	}
+
+	var addrs []net.IPAddr
+	for _, answer := range dnsResp.Answer {
+		if answer.Type == 1 { // A record
+			ip := net.ParseIP(answer.Data)
+			if ip != nil {
+				addrs = append(addrs, net.IPAddr{IP: ip})
+			}
+		}
+	}
+	return addrs, nil
+}
+
+func (r *CustomDNSResolver) LookupTXT(ctx context.Context, name string) ([]string, error) {
+	// Use Google's DNS-over-HTTPS API
+	url := fmt.Sprintf("https://dns.google/resolve?name=%s&type=TXT", name)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	resp, err := r.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("dns query: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	var dnsResp dnsResponse
+	if err := json.Unmarshal(body, &dnsResp); err != nil {
+		return nil, fmt.Errorf("parse response: %w", err)
+	}
+
+	var txts []string
+	for _, answer := range dnsResp.Answer {
+		if answer.Type == 16 { // TXT record
+			// Remove quotes from TXT record data
+			txt := strings.Trim(answer.Data, "\"")
+			txts = append(txts, txt)
+		}
+	}
+	return txts, nil
+}
+
 func Discover(ctx context.Context, addr ma.Multiaddr, f func(ma.Multiaddr) (bool, error)) (bool, error) {
 	if comp, _ := ma.SplitFirst(addr); !isDNSProtocol(comp.Protocol().Code) {
 		return f(addr)
 	}
 
-	dnsResolver := madns.DefaultResolver
+	// Create a custom DNS resolver using Google's DNS-over-HTTPS
+	customResolver := NewCustomDNSResolver()
+	dnsResolver, err := madns.NewResolver(madns.WithDefaultResolver(customResolver))
+	if err != nil {
+		return false, fmt.Errorf("create dns resolver: %w", err)
+	}
 	addrs, err := dnsResolver.Resolve(ctx, addr)
 	if err != nil {
 		return false, fmt.Errorf("dns resolve address %s: %w", addr, err)

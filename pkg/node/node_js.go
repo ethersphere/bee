@@ -1,13 +1,6 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
-// Copyright 2020 The Swarm Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
-// Package node defines the concept of a Bee node
-// by bootstrapping and injecting all necessary
-// dependencies.
 package node
 
 import (
@@ -18,7 +11,6 @@ import (
 	"fmt"
 	stdlog "log"
 	"math/big"
-	"net"
 	"net/http"
 	"path/filepath"
 	"runtime"
@@ -79,6 +71,8 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/sha3"
+
+	wasmhttp "github.com/nlepage/go-wasm-http-server/v2"
 )
 
 func NewBee(
@@ -326,11 +320,6 @@ func NewBee(
 			runtime.SetBlockProfileRate(1)
 		}
 
-		apiListener, err := net.Listen("tcp", o.APIAddr)
-		if err != nil {
-			return nil, fmt.Errorf("api listener: %w", err)
-		}
-
 		apiService = api.New(
 			*publicKey,
 			pssPrivateKey.PublicKey,
@@ -360,9 +349,9 @@ func NewBee(
 		}
 
 		go func() {
-			logger.Info("starting debug & api server", "address", apiListener.Addr())
+			logger.Info("starting debug & api server", "address")
 
-			if err := apiServer.Serve(apiListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			if _, err := wasmhttp.Serve(apiServer.Handler); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				logger.Debug("debug & api server failed to start", "error", err)
 				logger.Error(nil, "debug & api server failed to start")
 			}
