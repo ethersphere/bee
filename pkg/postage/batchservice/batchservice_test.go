@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/postage/batchservice"
@@ -37,6 +38,10 @@ func (*mockListener) Listen(ctx context.Context, from uint64, updater postage.Ev
 	c <- nil
 	return c
 }
+func (*mockListener) ProcessEvent(log types.Log, updater postage.EventUpdater) error {
+	return nil
+}
+
 func (*mockListener) Close() error { return nil }
 
 func newMockListener() *mockListener {
@@ -514,7 +519,7 @@ func TestTransactionOk(t *testing.T) {
 	t.Parallel()
 
 	svc, store, s := newTestStoreAndService(t)
-	if err := svc.Start(context.Background(), 10, nil); err != nil {
+	if err := svc.Start(context.Background(), 10, nil, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -530,7 +535,7 @@ func TestTransactionOk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := svc2.Start(context.Background(), 10, nil); err != nil {
+	if err := svc2.Start(context.Background(), 10, nil, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -543,7 +548,7 @@ func TestTransactionError(t *testing.T) {
 	t.Parallel()
 
 	svc, store, s := newTestStoreAndService(t)
-	if err := svc.Start(context.Background(), 10, nil); err != nil {
+	if err := svc.Start(context.Background(), 10, nil, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -555,7 +560,7 @@ func TestTransactionError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := svc2.Start(context.Background(), 10, nil); err != nil {
+	if err := svc2.Start(context.Background(), 10, nil, false); err != nil {
 		t.Fatal(err)
 	}
 

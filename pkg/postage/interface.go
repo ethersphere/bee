@@ -21,7 +21,7 @@ type EventUpdater interface {
 	UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int, txHash common.Hash) error
 	UpdatePrice(price *big.Int, txHash common.Hash) error
 	UpdateBlockNumber(blockNumber uint64) error
-	Start(ctx context.Context, startBlock uint64, initState *ChainSnapshot) error
+	Start(ctx context.Context, startBlock uint64, initState *ChainSnapshot, mainnet bool) error
 
 	TransactionStart() error
 	TransactionEnd() error
@@ -69,6 +69,8 @@ type Storer interface {
 	Reset() error
 
 	SetBatchExpiryHandler(BatchExpiryHandler)
+
+	HasExistingBatches() (bool, error)
 }
 
 type BatchExist interface {
@@ -91,6 +93,7 @@ type ChainStateGetter interface {
 type Listener interface {
 	io.Closer
 	Listen(ctx context.Context, from uint64, updater EventUpdater, initState *ChainSnapshot) <-chan error
+	ProcessEvent(log types.Log, updater EventUpdater) error
 }
 
 type BatchEventListener interface {

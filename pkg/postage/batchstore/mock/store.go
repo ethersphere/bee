@@ -31,7 +31,8 @@ type BatchStore struct {
 	updateErrDelayCnt     int
 	resetCallCount        int
 
-	existsFn func([]byte) (bool, error)
+	existsFn             func([]byte) (bool, error)
+	hasExistingBatchesFn func() (bool, error)
 
 	mtx sync.Mutex
 }
@@ -212,6 +213,17 @@ func (bs *BatchStore) Exists(id []byte) (bool, error) {
 		return bs.existsFn(id)
 	}
 	return bytes.Equal(bs.id, id), nil
+}
+
+// HasExistingBatches checks if any batch exists in the store.
+func (bs *BatchStore) HasExistingBatches() (bool, error) {
+	bs.mtx.Lock()
+	defer bs.mtx.Unlock()
+
+	if bs.hasExistingBatchesFn != nil {
+		return bs.hasExistingBatchesFn()
+	}
+	return bs.batch != nil, nil
 }
 
 func (bs *BatchStore) Reset() error {
