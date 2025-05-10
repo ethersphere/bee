@@ -107,7 +107,7 @@ async function main() {
 
   // Bootstrap addresses
   const bootstrapMultiaddrs = [
-    '/ip4/127.0.0.1/tcp/1634/ws/p2p/QmRigRhN1G7YVaCyKax2Xswu9Rht56hB7emrA8AJtUVU1y',
+    '/ip4/127.0.0.1/tcp/1634/ws/p2p/QmUJTt8gQY8UJNHLLv1p5Wt4qmyp55yBXuXTn1Hfc3ZdkM',
   ]
 
   go.argv = [

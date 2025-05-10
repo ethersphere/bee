@@ -175,4 +175,4 @@ clean:
 FORCE:
 
 wasm:
-	GOOS=wasip1 GOARCH=wasm go build -o ./dist/bee.wasm ./cmd/bee
+	GOOS=js GOARCH=wasm go build -o ./dist/bee.wasm ./cmd/bee

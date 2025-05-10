@@ -37,7 +37,7 @@ require (
 	github.com/spf13/viper v1.20.1
 	github.com/stretchr/testify v1.10.0
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
-	github.com/talentlessguy/go-libp2p-wasmws v0.0.0-20250504020205-9349c06cdcd6
+	github.com/talentlessguy/go-libp2p-wasmws v0.0.0-20250510182446-bf2e2bb1a916
 	github.com/uber/jaeger-client-go v2.24.0+incompatible
 	github.com/vmihailenco/msgpack/v5 v5.3.4
 	github.com/wealdtech/go-ens/v3 v3.5.1
@@ -49,7 +49,7 @@ require (
 	golang.org/x/sync v0.13.0
 	golang.org/x/sys v0.32.0
 	golang.org/x/term v0.31.0
-	golang.org/x/time v0.9.0
+	golang.org/x/time v0.11.0
 	gopkg.in/yaml.v2 v2.4.0
 	resenje.org/feed v0.1.2
 	resenje.org/multex v0.1.0

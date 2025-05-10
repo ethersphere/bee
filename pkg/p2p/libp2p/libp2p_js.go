@@ -1,5 +1,5 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
 package libp2p
 
@@ -32,46 +32,15 @@ import (
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	rcmgrObs "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
-	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
-	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
+	"github.com/libp2p/go-libp2p/p2p/security/noise"
+	wasmws "github.com/talentlessguy/go-libp2p-wasmws"
 )
 
 func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
-	host, port, err := net.SplitHostPort(addr)
-	if err != nil {
-		return nil, fmt.Errorf("address: %w", err)
-	}
-
-	ip4Addr := "0.0.0.0"
-	ip6Addr := "::"
-
-	if host != "" {
-		ip := net.ParseIP(host)
-		if ip4 := ip.To4(); ip4 != nil {
-			ip4Addr = ip4.String()
-			ip6Addr = ""
-		} else if ip6 := ip.To16(); ip6 != nil {
-			ip6Addr = ip6.String()
-			ip4Addr = ""
-		}
-	}
 
 	var listenAddrs []string
 
-	if ip4Addr != "" {
-		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s", ip4Addr, port))
-		if o.EnableWS {
-			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/ws", ip4Addr, port))
-		}
-	}
-	if ip6Addr != "" {
-		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s", ip6Addr, port))
-		if o.EnableWS {
-			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/ws", ip6Addr, port))
-		}
-	}
-
-	var security = libp2p.DefaultSecurity
+	var security libp2p.Option = libp2p.Security(noise.ID, noise.New)
 
 	libp2pPeerstore, err := pstoremem.NewPeerstore()
 	if err != nil {
@@ -149,10 +118,8 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	transports := []libp2p.Option{}
 
-	transports = append(transports, libp2p.Transport(tcp.NewTCPTransport))
-
 	if o.EnableWS {
-		transports = append(transports, libp2p.Transport(ws.New))
+		transports = append(transports, libp2p.Transport(wasmws.New))
 	}
 
 	opts = append(opts, transports...)

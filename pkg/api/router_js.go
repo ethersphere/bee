@@ -1,5 +1,5 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
 package api
 
@@ -65,11 +65,6 @@ func (s *Service) mountAPI() {
 			web.FinalHandlerFunc(s.chunkUploadHandler),
 		),
 	})
-
-	handle("/chunks/stream", web.ChainHandlers(
-		s.newTracingHandler("chunks-stream-upload"),
-		web.FinalHandlerFunc(s.chunkUploadStreamHandler),
-	))
 
 	handle("/chunks/{address}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
@@ -138,19 +133,6 @@ func (s *Service) mountAPI() {
 			web.FinalHandlerFunc(s.bzzHeadHandler),
 		),
 	})
-
-	handle("/pss/send/{topic}/{targets}", jsonhttp.MethodHandler{
-		"POST": web.ChainHandlers(
-			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkSize),
-			web.FinalHandlerFunc(s.pssPostHandler),
-		),
-	})
-
-	handle("/pss/subscribe/{topic}", http.HandlerFunc(s.pssWsHandler))
-
-	handle("/gsoc/subscribe/{address}", web.ChainHandlers(
-		web.FinalHandlerFunc(s.gsocWsHandler),
-	))
 
 	handle("/tags", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.listTagsHandler),
