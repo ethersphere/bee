@@ -7,6 +7,8 @@ package libp2p
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"net"
@@ -123,6 +125,8 @@ type Options struct {
 	PrivateKey       *ecdsa.PrivateKey
 	NATAddr          string
 	EnableWS         bool
+	SSLCertFile      string
+	SSLKeyFile       string
 	FullNode         bool
 	LightNodeLimit   int
 	WelcomeMessage   string
@@ -153,11 +157,38 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		}
 	}
 
+	var tlsCert tls.Certificate
+	var dnsName string
+
+	fmt.Println("Certificate files: ", o.SSLCertFile, o.SSLKeyFile)
+	if o.SSLCertFile != "" && o.SSLKeyFile != "" {
+		x509Cert, err := tls.LoadX509KeyPair(o.SSLCertFile, o.SSLKeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load certificate: %v", err)
+		}
+		tlsCert = x509Cert
+		cert, err := x509.ParseCertificate(x509Cert.Certificate[0])
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse certificate: %v", err)
+		}
+
+		if len(cert.DNSNames) > 0 {
+			dnsName = cert.DNSNames[0]
+		}
+	}
+	fmt.Println("DNS Name", dnsName)
+
 	var listenAddrs []string
 	if ip4Addr != "" {
 		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s", ip4Addr, port))
 		if o.EnableWS {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/ws", ip4Addr, port))
+			if o.SSLCertFile != "" && o.SSLKeyFile != "" {
+				listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/ws", ip4Addr, port))
+				if dnsName != "" {
+					listenAddrs = append(listenAddrs, fmt.Sprintf("/dns4/%s/tcp/%s/tls/ws", dnsName, port))
+				}
+			}
 		}
 	}
 
@@ -165,8 +196,16 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s", ip6Addr, port))
 		if o.EnableWS {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/ws", ip6Addr, port))
+			if o.SSLCertFile != "" && o.SSLKeyFile != "" {
+				listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/ws", ip6Addr, port))
+				if dnsName != "" {
+					listenAddrs = append(listenAddrs, fmt.Sprintf("/dns6/%s/tcp/%s/tls/ws", dnsName, port))
+				}
+			}
 		}
 	}
+
+	fmt.Println(listenAddrs)
 
 	security := libp2p.DefaultSecurity
 	libp2pPeerstore, err := pstoremem.NewPeerstore()
@@ -247,7 +286,14 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	if o.EnableWS {
-		transports = append(transports, libp2p.Transport(ws.New))
+		if o.SSLCertFile != "" && o.SSLKeyFile != "" {
+			transports = append(transports, libp2p.Transport(ws.New, ws.WithTLSConfig(&tls.Config{
+				Certificates: []tls.Certificate{tlsCert},
+				MinVersion:   tls.VersionTLS12,
+			})))
+		} else {
+			transports = append(transports, libp2p.Transport(ws.New))
+		}
 	}
 
 	opts = append(opts, transports...)

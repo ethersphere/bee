@@ -175,6 +175,8 @@ type Options struct {
 	WarmupTime                    time.Duration
 	WelcomeMessage                string
 	WhitelistedWithdrawalAddress  []string
+	SSLCertFile                   string
+	SSLKeyFile                    string
 }
 
 const (
@@ -645,6 +647,8 @@ func NewBee(
 		Nonce:           nonce,
 		ValidateOverlay: chainEnabled,
 		Registry:        registry,
+		SSLCertFile:     o.SSLCertFile,
+		SSLKeyFile:      o.SSLKeyFile,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
