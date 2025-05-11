@@ -122,6 +122,8 @@ async function main() {
     bootstrapMultiaddrs[0],
     '--data-dir',
     '/home/user/.bee',
+    '--chequebook-enable',
+    'false'
   ]
 
   // Override Go's `fs.readFile` with ZenFS readFile functionality
