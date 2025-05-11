@@ -37,7 +37,7 @@ require (
 	github.com/spf13/viper v1.20.1
 	github.com/stretchr/testify v1.10.0
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
-	github.com/talentlessguy/go-libp2p-wasmws v0.0.0-20250510182446-bf2e2bb1a916
+	github.com/talentlessguy/go-libp2p-wasmws v0.0.0-20250511171608-cdbf28c9b557
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 	github.com/wealdtech/go-ens/v3 v3.6.0

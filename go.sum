@@ -672,6 +672,8 @@ github.com/supranational/blst v0.3.14 h1:xNMoHRJOTwMn63ip6qoWJ2Ymgvj7E2b9jY2FAwY
 github.com/supranational/blst v0.3.14/go.mod h1:jZJtfjgudtNl4en1tzwPIV3KjUnQUvG3/j+w+fVonLw=
 github.com/talentlessguy/go-libp2p-wasmws v0.0.0-20250510182446-bf2e2bb1a916 h1:7P1PIWJOkUTqSSPdQn58Twfs7B0OMjr6lu30LaspDWg=
 github.com/talentlessguy/go-libp2p-wasmws v0.0.0-20250510182446-bf2e2bb1a916/go.mod h1:VMDhyipoXH+ISg5oyGayEJlu4Ecgy2N5YJFjjFfT9Uw=
+github.com/talentlessguy/go-libp2p-wasmws v0.0.0-20250511171608-cdbf28c9b557 h1:g8/2rrNAnmIb3My8fo+d6Nk7YB8vKFfL0UP+rziEzuU=
+github.com/talentlessguy/go-libp2p-wasmws v0.0.0-20250511171608-cdbf28c9b557/go.mod h1:VMDhyipoXH+ISg5oyGayEJlu4Ecgy2N5YJFjjFfT9Uw=
 github.com/tarm/serial v0.0.0-20180830185346-98f6abe2eb07/go.mod h1:kDXzergiv9cbyO7IOYJZWg1U88JhDg3PB6klq9Hg2pA=
 github.com/tklauser/go-sysconf v0.3.15 h1:VE89k0criAymJ/Os65CSn1IXaol+1wrsFHEB8Ol49K4=
 github.com/tklauser/go-sysconf v0.3.15/go.mod h1:Dmjwr6tYFIseJw7a3dRLJfsHAMXZ3nEnL/aZY+0IuI4=
