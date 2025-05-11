@@ -428,7 +428,7 @@ type DB struct {
 
 	metrics             metrics
 	storage             transaction.Storage
-	multex              *multex.Multex
+	multex              *multex.Multex[any]
 	cacheObj            *cache.Cache
 	retrieval           retrieval.Interface
 	pusherFeed          chan *pusher.Op
@@ -478,7 +478,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		opts.Logger = log.Noop
 	}
 
-	lock := multex.New()
+	lock := multex.New[any]()
 	metrics := newMetrics()
 	opts.LdbStats.CompareAndSwap(nil, metrics.LevelDBStats)
 

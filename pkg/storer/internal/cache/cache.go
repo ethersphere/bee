@@ -42,7 +42,7 @@ var (
 type Cache struct {
 	size     atomic.Int64
 	capacity int
-	glock    *multex.Multex // blocks Get and Put ops while shallow copy is running.
+	glock    *multex.Multex[any] // blocks Get and Put ops while shallow copy is running.
 }
 
 // New creates a new Cache component with the specified capacity. The store is used
@@ -54,7 +54,7 @@ func New(ctx context.Context, store storage.Reader, capacity uint64) (*Cache, er
 		return nil, fmt.Errorf("failed counting cache entries: %w", err)
 	}
 
-	c := &Cache{capacity: int(capacity), glock: multex.New()}
+	c := &Cache{capacity: int(capacity), glock: multex.New[any]()}
 	c.size.Store(int64(count))
 
 	return c, nil

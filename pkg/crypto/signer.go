@@ -140,10 +140,7 @@ func (d *defaultSigner) SignTypedData(typedData *eip712.TypedData) ([]byte, erro
 // sign the provided hash and convert it to the ethereum (r,s,v) format.
 func (d *defaultSigner) sign(sighash []byte, isCompressedKey bool) ([]byte, error) {
 	pvk, _ := btcec.PrivKeyFromBytes(d.key.D.Bytes())
-	signature, err := btcecdsa.SignCompact(pvk, sighash, false)
-	if err != nil {
-		return nil, err
-	}
+	signature := btcecdsa.SignCompact(pvk, sighash, false)
 
 	// Convert to Ethereum signature format with 'recovery id' v at the end.
 	v := signature[0]

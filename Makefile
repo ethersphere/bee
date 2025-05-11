@@ -177,4 +177,4 @@ FORCE:
 wasm:
 	GOOS=js GOARCH=wasm go build -o ./dist/bee.wasm ./cmd/bee
 wasm-release:
-	go build -trimpath -o ./dist/bee.wasm -ldflags="-s -w" ./cmd/bee
+	GOOS=js GOARCH=wasm go build -trimpath -o ./dist/bee.wasm -ldflags="-s -w" ./cmd/bee

@@ -38,7 +38,7 @@ type Reserve struct {
 	size     atomic.Int64
 	radius   atomic.Uint32
 
-	multx *multex.Multex
+	multx *multex.Multex[any]
 	st    transaction.Storage
 }
 
@@ -55,7 +55,7 @@ func New(
 		capacity:     capacity,
 		radiusSetter: radiusSetter,
 		logger:       logger.WithName(reserveScope).Register(),
-		multx:        multex.New(),
+		multx:        multex.New[any](),
 	}
 
 	err := st.Run(context.Background(), func(s transaction.Store) error {
