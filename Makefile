@@ -176,3 +176,5 @@ FORCE:
 
 wasm:
 	GOOS=js GOARCH=wasm go build -o ./dist/bee.wasm ./cmd/bee
+wasm-release:
+	go build -trimpath -tags="noquic notls" -o ./dist/bee.wasm -ldflags="-s -w" ./cmd/bee

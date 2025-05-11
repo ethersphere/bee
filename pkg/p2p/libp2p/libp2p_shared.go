@@ -681,20 +681,17 @@ func (s *Service) BlocklistedPeers() ([]p2p.BlockListedPeer, error) {
 func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers p2p.Headers, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {
 	select {
 	case <-ctx.Done():
-		s.logger.Debug("NewStream: context done", "overlay", overlay)
 		return nil, ctx.Err()
 	default:
 	}
 
 	peerID, found := s.peers.peerID(overlay)
 	if !found {
-		s.logger.Debug("NewStream: peer ID not found", "overlay", overlay)
 		return nil, p2p.ErrPeerNotFound
 	}
-	s.logger.Debug("NewStream: opening stream", "peerID", peerID, "protocol", protocolName, "version", protocolVersion, "stream", streamName)
+
 	streamlibp2p, err := s.newStreamForPeerID(ctx, peerID, protocolName, protocolVersion, streamName)
 	if err != nil {
-		s.logger.Debug("NewStream: failed to open stream for peerID", "peerID", peerID, "error", err)
 		return nil, fmt.Errorf("new stream for peerid: %w", err)
 	}
 
@@ -705,7 +702,7 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 		headers = make(p2p.Headers)
 	}
 	if err := s.tracer.AddContextHeader(ctx, headers); err != nil && !errors.Is(err, tracing.ErrContextNotFound) {
-		s.logger.Debug("NewStream: failed to add context header", "peerID", peerID, "error", err)
+
 		_ = stream.Reset()
 		return nil, fmt.Errorf("new stream add context header fail: %w", err)
 	}
@@ -714,11 +711,9 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 	ctx, cancel := context.WithTimeout(ctx, s.HeadersRWTimeout)
 	defer cancel()
 	if err := sendHeaders(ctx, headers, stream); err != nil {
-		s.logger.Debug("NewStream: failed to send headers", "peerID", peerID, "error", err)
 		_ = stream.Reset()
 		return nil, fmt.Errorf("send headers: %w", err)
 	}
-	s.logger.Debug("NewStream: stream successfully created", "peerID", peerID, "protocol", protocolName, "version", protocolVersion, "stream", streamName)
 	return stream, nil
 }
 

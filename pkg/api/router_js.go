@@ -4,11 +4,15 @@
 package api
 
 import (
+	"expvar"
 	"fmt"
 	"net/http"
 
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/log/httpaccess"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/felixge/fgprof"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"resenje.org/web"
 )
 
@@ -171,20 +175,66 @@ func (s *Service) mountAPI() {
 		"PUT": http.HandlerFunc(s.stewardshipPutHandler),
 	})
 
-	// stub endpoints
-	handle("/pss/send/{topic}/{targets}", web.ChainHandlers(
-		web.FinalHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNotImplemented)
-		}),
+}
+func (s *Service) mountTechnicalDebug() {
+	s.router.Handle("/node", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.nodeGetHandler),
+	})
+
+	s.router.Handle("/addresses", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.addressesHandler),
+	})
+
+	s.router.Handle("/chainstate", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.chainStateHandler),
+	})
+
+	s.router.Handle("/debugstore", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			httpaccess.NewHTTPAccessSuppressLogHandler(),
+			web.FinalHandlerFunc(s.debugStorage),
+		),
+	})
+
+	s.router.Path("/metrics").Handler(web.ChainHandlers(
+		httpaccess.NewHTTPAccessSuppressLogHandler(),
+		web.FinalHandler(promhttp.InstrumentMetricHandler(
+			s.metricsRegistry,
+			promhttp.HandlerFor(s.metricsRegistry, promhttp.HandlerOpts{}),
+		)),
 	))
 
-	handle("/pss/subscribe/{topic}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotImplemented)
-	}))
+	s.router.Handle("/debug/fgprof", fgprof.Handler())
+	s.router.Handle("/debug/vars", expvar.Handler())
 
-	handle("/gsoc/subscribe/{address}", web.ChainHandlers(
-		web.FinalHandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNotImplemented)
-		}),
+	s.router.Handle("/loggers", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			httpaccess.NewHTTPAccessSuppressLogHandler(),
+			web.FinalHandlerFunc(s.loggerGetHandler),
+		),
+	})
+
+	s.router.Handle("/loggers/{exp}", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			httpaccess.NewHTTPAccessSuppressLogHandler(),
+			web.FinalHandlerFunc(s.loggerGetHandler),
+		),
+	})
+
+	s.router.Handle("/loggers/{exp}/{verbosity}", jsonhttp.MethodHandler{
+		"PUT": web.ChainHandlers(
+			httpaccess.NewHTTPAccessSuppressLogHandler(),
+			web.FinalHandlerFunc(s.loggerSetVerbosityHandler),
+		),
+	})
+
+	s.router.Handle("/readiness", web.ChainHandlers(
+		httpaccess.NewHTTPAccessSuppressLogHandler(),
+		web.FinalHandlerFunc(s.readinessHandler),
+	))
+
+	s.router.Handle("/health", web.ChainHandlers(
+		httpaccess.NewHTTPAccessSuppressLogHandler(),
+		web.FinalHandlerFunc(s.healthHandler),
 	))
 }
