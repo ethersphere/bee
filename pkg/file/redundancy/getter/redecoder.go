@@ -6,6 +6,7 @@ package getter
 
 import (
 	"context"
+	"errors"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/storage"
@@ -19,8 +20,8 @@ type RecoveryFactory func() storage.Getter
 // from the network, and only falls back to recovery if the network fetch fails.
 // This is used to handle cases where previously recovered chunks have been evicted from cache.
 type ReDecoder struct {
-	fetcher         storage.Getter    // Direct fetcher (usually netstore)
-	recoveryFactory RecoveryFactory   // Factory function to create recovery decoder on demand
+	fetcher         storage.Getter  // Direct fetcher (usually netstore)
+	recoveryFactory RecoveryFactory // Factory function to create recovery decoder on demand
 	logger          log.Logger
 }
 
@@ -45,7 +46,7 @@ func (rd *ReDecoder) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, 
 	}
 
 	// Only attempt recovery if the chunk was not found
-	if err != storage.ErrNotFound {
+	if errors.Is(err, storage.ErrNotFound) {
 		return nil, err
 	}
 
