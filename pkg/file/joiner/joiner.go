@@ -65,6 +65,22 @@ func fingerprint(addrs []swarm.Address) string {
 	return string(h.Sum(nil))
 }
 
+// createRemoveCallback returns a function that handles the cleanup after a recovery attempt
+func (g *decoderCache) createRemoveCallback(key string) func(error) {
+	return func(err error) {
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		if err != nil {
+			// signals that a new getter is needed to reattempt to recover the data
+			delete(g.cache, key)
+		} else {
+			// signals that the chunks were fetched/recovered/cached so a future getter is not needed
+			// The nil value indicates a successful recovery
+			g.cache[key] = nil
+		}
+	}
+}
+
 // GetOrCreate returns a decoder for the given chunk address
 func (g *decoderCache) GetOrCreate(addrs []swarm.Address, shardCnt int) storage.Getter {
 
@@ -83,22 +99,23 @@ func (g *decoderCache) GetOrCreate(addrs []swarm.Address, shardCnt int) storage.
 	d, ok := g.cache[key]
 	if ok {
 		if d == nil {
-			return g.fetcher
+			// The nil value indicates a previous successful recovery
+			// Create a new decoder but only use it as fallback if network fetch fails
+			decoderCallback := g.createRemoveCallback(key)
+
+			// Create a factory function that will instantiate the decoder only when needed
+			recoveryFactory := func() storage.Getter {
+				g.config.Logger.Debug("lazy-creating recovery decoder after fetch failed", "key", key)
+				return getter.New(addrs, shardCnt, g.fetcher, g.putter, decoderCallback, g.config)
+			}
+
+			return getter.NewReDecoder(g.fetcher, recoveryFactory, g.config.Logger)
 		}
 		return d
 	}
-	remove := func(err error) {
-		g.mu.Lock()
-		defer g.mu.Unlock()
-		if err != nil {
-			// signals that a new getter is needed to reattempt to recover the data
-			delete(g.cache, key)
-		} else {
-			// signals that the chunks were fetched/recovered/cached so a future getter is not needed
-			g.cache[key] = nil
-		}
-	}
-	d = getter.New(addrs, shardCnt, g.fetcher, g.putter, remove, g.config)
+
+	removeCallback := g.createRemoveCallback(key)
+	d = getter.New(addrs, shardCnt, g.fetcher, g.putter, removeCallback, g.config)
 	g.cache[key] = d
 	return d
 }
