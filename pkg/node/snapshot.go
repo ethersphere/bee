@@ -13,21 +13,23 @@ import (
 	"fmt"
 	"io"
 
+	"slices"
+
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/core/types"
 	archive "github.com/ethersphere/batch-archive"
 	"github.com/ethersphere/bee/v2/pkg/log"
 )
 
-type SnapshotBlockHeightContractFilterer struct {
+type SnapshotLogFilterer struct {
 	logger         log.Logger
 	loadedLogs     []types.Log
 	maxBlockHeight uint64
 	isLoaded       bool
 }
 
-func NewSnapshotBlockHeightContractFilterer(logger log.Logger) (*SnapshotBlockHeightContractFilterer, error) {
-	f := &SnapshotBlockHeightContractFilterer{
+func NewSnapshotLogFilterer(logger log.Logger) (*SnapshotLogFilterer, error) {
+	f := &SnapshotLogFilterer{
 		logger: logger,
 	}
 
@@ -38,7 +40,7 @@ func NewSnapshotBlockHeightContractFilterer(logger log.Logger) (*SnapshotBlockHe
 	return f, nil
 }
 
-func (f *SnapshotBlockHeightContractFilterer) loadAndProcessSnapshot() error {
+func (f *SnapshotLogFilterer) loadAndProcessSnapshot() error {
 	f.logger.Info("loading batch snapshot during construction")
 	data := archive.GetBatchSnapshot(true)
 
@@ -60,7 +62,7 @@ func (f *SnapshotBlockHeightContractFilterer) loadAndProcessSnapshot() error {
 	return nil
 }
 
-func (f *SnapshotBlockHeightContractFilterer) parseLogs(reader io.Reader) error {
+func (f *SnapshotLogFilterer) parseLogs(reader io.Reader) error {
 	var parsedLogs []types.Log
 	var currentMaxBlockHeight uint64
 	scanner := bufio.NewScanner(reader)
@@ -93,7 +95,7 @@ func (f *SnapshotBlockHeightContractFilterer) parseLogs(reader io.Reader) error 
 	return nil
 }
 
-func (f *SnapshotBlockHeightContractFilterer) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
+func (f *SnapshotLogFilterer) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
 	f.logger.Debug("filtering pre-loaded logs", "total_logs", len(f.loadedLogs), "query", query)
 
 	filtered := make([]types.Log, 0, len(f.loadedLogs))
@@ -107,13 +109,7 @@ func (f *SnapshotBlockHeightContractFilterer) FilterLogs(ctx context.Context, qu
 		}
 
 		if len(query.Addresses) > 0 {
-			addressMatch := false
-			for _, addr := range query.Addresses {
-				if log.Address == addr {
-					addressMatch = true
-					break
-				}
-			}
+			addressMatch := slices.Contains(query.Addresses, log.Address)
 			if !addressMatch {
 				continue
 			}
@@ -132,13 +128,7 @@ func (f *SnapshotBlockHeightContractFilterer) FilterLogs(ctx context.Context, qu
 					break
 				}
 
-				hasMatch := false
-				for _, topic := range query.Topics[i] {
-					if log.Topics[i] == topic {
-						hasMatch = true
-						break
-					}
-				}
+				hasMatch := slices.Contains(query.Topics[i], log.Topics[i])
 
 				if !hasMatch {
 					topicMatch = false
@@ -158,6 +148,6 @@ func (f *SnapshotBlockHeightContractFilterer) FilterLogs(ctx context.Context, qu
 	return filtered, nil
 }
 
-func (f *SnapshotBlockHeightContractFilterer) BlockNumber(_ context.Context) (uint64, error) {
+func (f *SnapshotLogFilterer) BlockNumber(_ context.Context) (uint64, error) {
 	return f.maxBlockHeight, nil
 }

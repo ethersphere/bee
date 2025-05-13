@@ -803,7 +803,7 @@ func NewBee(
 	)
 
 	if !o.Resync && !batchStoreExists && (networkID == mainnetNetworkID) {
-		chainBackend, err := NewSnapshotBlockHeightContractFilterer(logger)
+		chainBackend, err := NewSnapshotLogFilterer(logger)
 		if err != nil {
 			logger.Debug("failed to initialize batch snapshot chain backend", "error", err)
 		} else {
@@ -811,21 +811,20 @@ func NewBee(
 
 			batchSvc, err := batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
 			if err != nil {
-				return nil, fmt.Errorf("init batch service: %w", err)
+				logger.Error(err, "failed to initialize batch service from snapshot, continuing outside snapshot block...")
+			} else {
+				err = batchSvc.Start(ctx, postageSyncStart, initBatchState)
+				syncStatus.Store(true)
+				if err != nil {
+					syncErr.Store(err)
+					logger.Error(err, "failed to start batch service from snapshot, continuing outside snapshot block...")
+				} else {
+					postageSyncStart = chainBackend.maxBlockHeight
+				}
 			}
-
-			err = batchSvc.Start(ctx, postageSyncStart, initBatchState)
-			syncStatus.Store(true)
-			if err != nil {
-				syncErr.Store(err)
-				return nil, fmt.Errorf("unable to start batch service: %w", err)
+			if errClose := eventListener.Close(); errClose != nil {
+				logger.Error(errClose, "failed to close event listener (snapshot) failure")
 			}
-
-			if err := eventListener.Close(); err != nil {
-				return nil, err
-			}
-
-			postageSyncStart = chainBackend.maxBlockHeight
 		}
 	}
 
