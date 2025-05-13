@@ -10,8 +10,8 @@ require (
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2
 	github.com/coreos/go-semver v0.3.0
 	github.com/ethereum/go-ethereum v1.14.3
-	github.com/ethersphere/go-price-oracle-abi v0.2.0
-	github.com/ethersphere/go-storage-incentives-abi v0.9.2
+	github.com/ethersphere/go-price-oracle-abi v0.6.8
+	github.com/ethersphere/go-storage-incentives-abi v0.9.3-rc3
 	github.com/ethersphere/go-sw3-abi v0.6.5
 	github.com/ethersphere/langos v1.0.0
 	github.com/go-playground/validator/v10 v10.11.1
