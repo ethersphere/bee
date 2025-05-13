@@ -148,8 +148,8 @@ github.com/ethereum/go-verkle v0.2.2 h1:I2W0WjnrFUIzzVPwm8ykY+7pL2d4VhlsePn4j7cn
 github.com/ethereum/go-verkle v0.2.2/go.mod h1:M3b90YRnzqKyyzBEWJGqj8Qff4IDeXnzFw0P9bFw3uk=
 github.com/ethersphere/go-price-oracle-abi v0.6.8 h1:23Y0msO4ZRvB9o1NRdFDd0eewlnx37XxQm2DKbL6Qk8=
 github.com/ethersphere/go-price-oracle-abi v0.6.8/go.mod h1:sI/Qj4/zJ23/b1enzwMMv0/hLTpPNVNacEwCWjo6yBk=
-github.com/ethersphere/go-storage-incentives-abi v0.9.2 h1:6Pmxuj48LBTxayzwADNYmcbiqj6ongoRWwWV4Wp1EPo=
-github.com/ethersphere/go-storage-incentives-abi v0.9.2/go.mod h1:SXvJVtM4sEsaSKD0jc1ClpDLw8ErPoROZDme4Wrc/Nc=
+github.com/ethersphere/go-storage-incentives-abi v0.9.3-rc3 h1:uuowc0ekcipVwYkn1Rud9LySZ094hrDq2/YfRKyjbbQ=
+github.com/ethersphere/go-storage-incentives-abi v0.9.3-rc3/go.mod h1:SXvJVtM4sEsaSKD0jc1ClpDLw8ErPoROZDme4Wrc/Nc=
 github.com/ethersphere/go-sw3-abi v0.6.5 h1:M5dcIe1zQYvGpY2K07UNkNU9Obc4U+A1fz68Ho/Q+XE=
 github.com/ethersphere/go-sw3-abi v0.6.5/go.mod h1:BmpsvJ8idQZdYEtWnvxA8POYQ8Rl/NhyCdF0zLMOOJU=
 github.com/ethersphere/langos v1.0.0 h1:NBtNKzXTTRSue95uOlzPN4py7Aofs0xWPzyj4AI1Vcc=
@@ -670,8 +670,6 @@ github.com/subosito/gotenv v1.6.0 h1:9NlTDc1FTs4qu0DDq7AEtTPNw6SVm7uBMsUCUjABIf8
 github.com/subosito/gotenv v1.6.0/go.mod h1:Dk4QP5c2W3ibzajGcXpNraDfq2IrhjMIvMSWPKKo0FU=
 github.com/supranational/blst v0.3.14 h1:xNMoHRJOTwMn63ip6qoWJ2Ymgvj7E2b9jY2FAwY+qRo=
 github.com/supranational/blst v0.3.14/go.mod h1:jZJtfjgudtNl4en1tzwPIV3KjUnQUvG3/j+w+fVonLw=
-github.com/talentlessguy/go-libp2p-wasmws v0.0.0-20250510182446-bf2e2bb1a916 h1:7P1PIWJOkUTqSSPdQn58Twfs7B0OMjr6lu30LaspDWg=
-github.com/talentlessguy/go-libp2p-wasmws v0.0.0-20250510182446-bf2e2bb1a916/go.mod h1:VMDhyipoXH+ISg5oyGayEJlu4Ecgy2N5YJFjjFfT9Uw=
 github.com/talentlessguy/go-libp2p-wasmws v0.0.0-20250511171608-cdbf28c9b557 h1:g8/2rrNAnmIb3My8fo+d6Nk7YB8vKFfL0UP+rziEzuU=
 github.com/talentlessguy/go-libp2p-wasmws v0.0.0-20250511171608-cdbf28c9b557/go.mod h1:VMDhyipoXH+ISg5oyGayEJlu4Ecgy2N5YJFjjFfT9Uw=
 github.com/tarm/serial v0.0.0-20180830185346-98f6abe2eb07/go.mod h1:kDXzergiv9cbyO7IOYJZWg1U88JhDg3PB6klq9Hg2pA=
