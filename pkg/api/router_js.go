@@ -11,7 +11,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/log/httpaccess"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-	"github.com/felixge/fgprof"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"resenje.org/web"
 )
@@ -204,7 +203,6 @@ func (s *Service) mountTechnicalDebug() {
 		)),
 	))
 
-	s.router.Handle("/debug/fgprof", fgprof.Handler())
 	s.router.Handle("/debug/vars", expvar.Handler())
 
 	s.router.Handle("/loggers", jsonhttp.MethodHandler{
