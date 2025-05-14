@@ -1,4 +1,3 @@
-/dist
 /.idea
 /.vscode
 /tmp
@@ -29,3 +28,6 @@ _testmain.go
 *.prof
 
 .DS_Store
+
+dist/bee*
+dist/sw_bundle.js

@@ -15,6 +15,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"runtime"
 	"sync"
 	"time"
 
@@ -187,7 +188,7 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 		}
 
 		if !s.allowPrivateCIDRs && manet.IsPrivateAddr(addr.Underlay) {
-			continue // Don't advertise private CIDRs to the public network.
+			// continue // Don't advertise private CIDRs to the public network.
 		}
 
 		peersRequest.Peers = append(peersRequest.Peers, &pb.BzzAddress{
@@ -282,6 +283,22 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 	wg := sync.WaitGroup{}
 
 	addPeer := func(newPeer *pb.BzzAddress, multiUnderlay ma.Multiaddr) {
+		if runtime.GOOS == "js" || runtime.GOOS == "wasi" || runtime.GOOS == "wasm" {
+			wsProto := false
+			ma.ForEach(multiUnderlay, func(c ma.Component) bool {
+				if c.Protocol().Name == "ws" {
+					wsProto = true
+					return false
+				}
+				return true
+			})
+
+			if !wsProto {
+				s.logger.Debug("skipping non-websocket peer", "peer_address", hex.EncodeToString(newPeer.Overlay), "underlay", multiUnderlay)
+				return
+			}
+		}
+
 		err := s.sem.Acquire(ctx, 1)
 		if err != nil {
 			return

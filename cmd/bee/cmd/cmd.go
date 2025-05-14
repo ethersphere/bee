@@ -88,12 +88,11 @@ func init() {
 }
 
 type command struct {
-	root             *cobra.Command
-	config           *viper.Viper
-	passwordReader   passwordReader
-	cfgFile          string
-	homeDir          string
-	isWindowsService bool
+	root           *cobra.Command
+	config         *viper.Viper
+	passwordReader passwordReader
+	cfgFile        string
+	homeDir        string
 }
 
 type option func(*command)
@@ -124,10 +123,6 @@ func newCommand(opts ...option) (c *command, err error) {
 	}
 
 	c.initGlobalFlags()
-
-	if err := c.initCommandVariables(); err != nil {
-		return nil, err
-	}
 
 	if err := c.initStartCmd(); err != nil {
 		return nil, err
@@ -174,17 +169,6 @@ func Execute() (err error) {
 func (c *command) initGlobalFlags() {
 	globalFlags := c.root.PersistentFlags()
 	globalFlags.StringVar(&c.cfgFile, "config", "", "config file (default is $HOME/.bee.yaml)")
-}
-
-func (c *command) initCommandVariables() error {
-	isWindowsService, err := isWindowsService()
-	if err != nil {
-		return fmt.Errorf("failed to determine if we are running in service: %w", err)
-	}
-
-	c.isWindowsService = isWindowsService
-
-	return nil
 }
 
 func (c *command) initConfig() (err error) {

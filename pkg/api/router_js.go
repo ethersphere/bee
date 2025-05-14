@@ -1,5 +1,5 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
 package api
 
@@ -7,12 +7,10 @@ import (
 	"expvar"
 	"fmt"
 	"net/http"
-	"net/http/pprof"
 
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/log/httpaccess"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-	"github.com/felixge/fgprof"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"resenje.org/web"
 )
@@ -70,11 +68,6 @@ func (s *Service) mountAPI() {
 			web.FinalHandlerFunc(s.chunkUploadHandler),
 		),
 	})
-
-	handle("/chunks/stream", web.ChainHandlers(
-		s.newTracingHandler("chunks-stream-upload"),
-		web.FinalHandlerFunc(s.chunkUploadStreamHandler),
-	))
 
 	handle("/chunks/{address}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
@@ -144,19 +137,6 @@ func (s *Service) mountAPI() {
 		),
 	})
 
-	handle("/pss/send/{topic}/{targets}", jsonhttp.MethodHandler{
-		"POST": web.ChainHandlers(
-			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkSize),
-			web.FinalHandlerFunc(s.pssPostHandler),
-		),
-	})
-
-	handle("/pss/subscribe/{topic}", http.HandlerFunc(s.pssWsHandler))
-
-	handle("/gsoc/subscribe/{address}", web.ChainHandlers(
-		web.FinalHandlerFunc(s.gsocWsHandler),
-	))
-
 	handle("/tags", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.listTagsHandler),
 		"POST": web.ChainHandlers(
@@ -193,8 +173,8 @@ func (s *Service) mountAPI() {
 		"GET": http.HandlerFunc(s.stewardshipGetHandler),
 		"PUT": http.HandlerFunc(s.stewardshipPutHandler),
 	})
-}
 
+}
 func (s *Service) mountTechnicalDebug() {
 	s.router.Handle("/node", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.nodeGetHandler),
@@ -223,18 +203,6 @@ func (s *Service) mountTechnicalDebug() {
 		)),
 	))
 
-	s.router.Handle("/debug/pprof", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		u := r.URL
-		u.Path += "/"
-		http.Redirect(w, r, u.String(), http.StatusPermanentRedirect)
-	}))
-
-	s.router.Handle("/debug/fgprof", fgprof.Handler())
-	s.router.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
-	s.router.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
-	s.router.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
-	s.router.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
-	s.router.PathPrefix("/debug/pprof/").Handler(http.HandlerFunc(pprof.Index))
 	s.router.Handle("/debug/vars", expvar.Handler())
 
 	s.router.Handle("/loggers", jsonhttp.MethodHandler{

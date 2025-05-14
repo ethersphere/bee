@@ -61,11 +61,11 @@ type store struct {
 	sharky      *sharky.Store
 	bstore      storage.BatchStore
 	metrics     metrics
-	chunkLocker *multex.Multex
+	chunkLocker *multex.Multex[any]
 }
 
 func NewStorage(sharky *sharky.Store, bstore storage.BatchStore) Storage {
-	return &store{sharky, bstore, newMetrics(), multex.New()}
+	return &store{sharky, bstore, newMetrics(), multex.New[any]()}
 }
 
 type transaction struct {
@@ -213,7 +213,7 @@ func (t *transaction) ChunkStore() storage.ChunkStore {
 type chunkStoreTrx struct {
 	indexStore   storage.IndexStore
 	sharkyTrx    *sharkyTrx
-	globalLocker *multex.Multex
+	globalLocker *multex.Multex[any]
 	lockedAddrs  map[string]struct{}
 	metrics      metrics
 	readOnly     bool
