@@ -803,29 +803,27 @@ func NewBee(
 	)
 
 	if !o.Resync && !batchStoreExists && (networkID == mainnetNetworkID) {
-		chainBackend, err := NewSnapshotLogFilterer(logger)
-		if err != nil {
-			logger.Debug("failed to initialize batch snapshot chain backend", "error", err)
-		} else {
-			eventListener := listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
+		chainBackend := NewSnapshotLogFilterer(logger)
 
-			batchSvc, err := batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
+		snapshotEventListener := listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
+
+		snapshotBatchSvc, err := batchservice.New(stateStore, batchStore, logger, snapshotEventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
+		if err != nil {
+			logger.Error(err, "failed to initialize batch service from snapshot, continuing outside snapshot block...")
+		} else {
+			err = snapshotBatchSvc.Start(ctx, postageSyncStart, initBatchState)
+			syncStatus.Store(true)
 			if err != nil {
-				logger.Error(err, "failed to initialize batch service from snapshot, continuing outside snapshot block...")
+				syncErr.Store(err)
+				logger.Error(err, "failed to start batch service from snapshot, continuing outside snapshot block...")
 			} else {
-				err = batchSvc.Start(ctx, postageSyncStart, initBatchState)
-				syncStatus.Store(true)
-				if err != nil {
-					syncErr.Store(err)
-					logger.Error(err, "failed to start batch service from snapshot, continuing outside snapshot block...")
-				} else {
-					postageSyncStart = chainBackend.maxBlockHeight
-				}
-			}
-			if errClose := eventListener.Close(); errClose != nil {
-				logger.Error(errClose, "failed to close event listener (snapshot) failure")
+				postageSyncStart = chainBackend.maxBlockHeight
 			}
 		}
+		if errClose := snapshotEventListener.Close(); errClose != nil {
+			logger.Error(errClose, "failed to close event listener (snapshot) failure")
+		}
+
 	}
 
 	if batchSvc != nil && chainEnabled {
