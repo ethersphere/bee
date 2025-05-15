@@ -13,25 +13,25 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-// RecoveryFactory is a function that creates a recovery decoder on demand
-type RecoveryFactory func() storage.Getter
+// Recovery is a function that creates a recovery decoder on demand
+type Recovery func() storage.Getter
 
 // ReDecoder is a wrapper around a Getter that first attempts to fetch a chunk directly
 // from the network, and only falls back to recovery if the network fetch fails.
 // This is used to handle cases where previously recovered chunks have been evicted from cache.
 type ReDecoder struct {
-	fetcher         storage.Getter  // Direct fetcher (usually netstore)
-	recoveryFactory RecoveryFactory // Factory function to create recovery decoder on demand
-	logger          log.Logger
+	fetcher  storage.Getter // Direct fetcher (usually netstore)
+	recovery Recovery       // Factory function to create recovery decoder on demand
+	logger   log.Logger
 }
 
 // NewReDecoder creates a new ReDecoder instance with the provided fetcher and recovery factory.
 // The recovery decoder will only be created if needed (when network fetch fails).
-func NewReDecoder(fetcher storage.Getter, recoveryFactory RecoveryFactory, logger log.Logger) *ReDecoder {
+func NewReDecoder(fetcher storage.Getter, recovery Recovery, logger log.Logger) *ReDecoder {
 	return &ReDecoder{
-		fetcher:         fetcher,
-		recoveryFactory: recoveryFactory,
-		logger:          logger,
+		fetcher:  fetcher,
+		recovery: recovery,
+		logger:   logger,
 	}
 }
 
@@ -54,7 +54,7 @@ func (rd *ReDecoder) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, 
 	rd.logger.Debug("chunk not found in network, creating recovery decoder", "address", addr)
 
 	// Create the recovery decoder on demand
-	recovery := rd.recoveryFactory()
+	recovery := rd.recovery()
 
 	// Attempt to recover the chunk
 	return recovery.Get(ctx, addr)

@@ -104,12 +104,12 @@ func (g *decoderCache) GetOrCreate(addrs []swarm.Address, shardCnt int) storage.
 			decoderCallback := g.createRemoveCallback(key)
 
 			// Create a factory function that will instantiate the decoder only when needed
-			recoveryFactory := func() storage.Getter {
+			recovery := func() storage.Getter {
 				g.config.Logger.Debug("lazy-creating recovery decoder after fetch failed", "key", key)
 				return getter.New(addrs, shardCnt, g.fetcher, g.putter, decoderCallback, g.config)
 			}
 
-			return getter.NewReDecoder(g.fetcher, recoveryFactory, g.config.Logger)
+			return getter.NewReDecoder(g.fetcher, recovery, g.config.Logger)
 		}
 		return d
 	}
