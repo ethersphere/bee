@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"hash"
 	"math/big"
-	"runtime"
 	"sort"
 	"sync"
 	"testing"
@@ -85,7 +84,7 @@ func (db *DB) ReserveSample(
 
 	allStats.BatchesBelowValueDuration = time.Since(t)
 
-	chunkC := make(chan *reserve.ChunkBinItem)
+	chunkC := make(chan *reserve.ChunkBinItem, 64)
 
 	// Phase 1: Iterate chunk addresses
 	g.Go(func() error {
@@ -113,13 +112,13 @@ func (db *DB) ReserveSample(
 	})
 
 	// Phase 2: Get the chunk data and calculate transformed hash
-	sampleItemChan := make(chan SampleItem)
+	sampleItemChan := make(chan SampleItem, 64)
 
 	prefixHasherFactory := func() hash.Hash {
 		return swarm.NewPrefixHasher(anchor)
 	}
 
-	workers := max(4, runtime.NumCPU())
+	workers := 6
 	db.logger.Debug("reserve sampler workers", "count", workers)
 
 	for i := 0; i < workers; i++ {
