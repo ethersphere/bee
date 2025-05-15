@@ -6,6 +6,7 @@ package api_test
 
 import (
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -427,7 +428,7 @@ func TestEndpointOptions(t *testing.T) {
 					actualMethods := strings.Split(allowHeader, ", ")
 
 					for _, expectedMethod := range tt.expectedMethods {
-						if !contains(actualMethods, expectedMethod) {
+						if !slices.Contains(actualMethods, expectedMethod) {
 							t.Errorf("expected method %s not found for route %s", expectedMethod, tt.route)
 						}
 					}
@@ -437,11 +438,3 @@ func TestEndpointOptions(t *testing.T) {
 	}
 }
 
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
-}

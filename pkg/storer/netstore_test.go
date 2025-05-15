@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -52,13 +53,7 @@ func testNetStore(t *testing.T, newStorer func(r retrieval.Interface) (*storer.D
 				for {
 					select {
 					case op := <-lstore.PusherFeed():
-						found := false
-						for _, ch := range chunks {
-							if op.Chunk.Equal(ch) {
-								found = true
-								break
-							}
-						}
+						found := slices.ContainsFunc(chunks, op.Chunk.Equal)
 						if !found {
 							op.Err <- fmt.Errorf("incorrect chunk for push: have %s", op.Chunk.Address())
 							continue
@@ -110,13 +105,7 @@ func testNetStore(t *testing.T, newStorer func(r retrieval.Interface) (*storer.D
 				for {
 					select {
 					case op := <-lstore.PusherFeed():
-						found := false
-						for _, ch := range chunks {
-							if op.Chunk.Equal(ch) {
-								found = true
-								break
-							}
-						}
+						found := slices.ContainsFunc(chunks, op.Chunk.Equal)
 						if !found {
 							op.Err <- fmt.Errorf("incorrect chunk for push: have %s", op.Chunk.Address())
 							continue
