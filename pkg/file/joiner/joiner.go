@@ -83,7 +83,6 @@ func (g *decoderCache) createRemoveCallback(key string) func(error) {
 
 // GetOrCreate returns a decoder for the given chunk address
 func (g *decoderCache) GetOrCreate(addrs []swarm.Address, shardCnt int) storage.Getter {
-
 	// since a recovery decoder is not allowed, simply return the underlying netstore
 	if g.config.Strict && g.config.Strategy == getter.NONE {
 		return g.fetcher
@@ -109,7 +108,7 @@ func (g *decoderCache) GetOrCreate(addrs []swarm.Address, shardCnt int) storage.
 				g.mu.Lock()
 				defer g.mu.Unlock()
 				d, ok := g.cache[key]
-				if ok {
+				if ok && d != nil {
 					return d
 				}
 				d = getter.New(addrs, shardCnt, g.fetcher, g.putter, decoderCallback, g.config)
