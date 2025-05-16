@@ -46,7 +46,7 @@ func (rd *ReDecoder) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, 
 	}
 
 	// Only attempt recovery if the chunk was not found
-	if errors.Is(err, storage.ErrNotFound) {
+	if !errors.Is(err, storage.ErrNotFound) {
 		return nil, err
 	}
 
