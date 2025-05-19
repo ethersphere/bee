@@ -29,9 +29,7 @@ type SnapshotLogFilterer struct {
 	logger         log.Logger
 	loadedLogs     []types.Log
 	maxBlockHeight uint64
-	isLoaded       bool
 	initOnce       sync.Once
-	initErr        error
 }
 
 func NewSnapshotLogFilterer(logger log.Logger) *SnapshotLogFilterer {
@@ -42,26 +40,24 @@ func NewSnapshotLogFilterer(logger log.Logger) *SnapshotLogFilterer {
 
 // loadSnapshot is responsible for loading and processing the snapshot data.
 // It is intended to be called exactly once by initOnce.Do.
-func (f *SnapshotLogFilterer) loadSnapshot() {
+func (f *SnapshotLogFilterer) loadSnapshot() error {
 	f.logger.Info("loading batch snapshot")
 	data := archive.GetBatchSnapshot()
 	dataReader := bytes.NewReader(data)
 	gzipReader, err := gzip.NewReader(dataReader)
 	if err != nil {
 		f.logger.Error(err, "failed to create gzip reader for batch import")
-		f.initErr = fmt.Errorf("create gzip reader: %w", err)
-		return
+		return fmt.Errorf("create gzip reader: %w", err)
 	}
 	defer gzipReader.Close()
 
 	if err := f.parseLogs(gzipReader); err != nil {
 		f.logger.Error(err, "failed to parse logs from snapshot")
-		f.initErr = err
-		return
+		return err
 	}
 
-	f.isLoaded = true
-	f.logger.Info("batch snapshot loaded and sorted successfully", "log_count", len(f.loadedLogs), "max_block_height", f.maxBlockHeight)
+	f.logger.Info("batch snapshot loaded successfully", "log_count", len(f.loadedLogs), "max_block_height", f.maxBlockHeight)
+	return nil
 }
 
 func (f *SnapshotLogFilterer) parseLogs(reader io.Reader) error {
@@ -92,16 +88,16 @@ func (f *SnapshotLogFilterer) parseLogs(reader io.Reader) error {
 
 // ensureLoaded calls loadSnapshot via sync.Once to ensure thread-safe, one-time initialization.
 func (f *SnapshotLogFilterer) ensureLoaded() error {
-	f.initOnce.Do(f.loadSnapshot)
-	return f.initErr
+	var err error
+	f.initOnce.Do(func() {
+		err = f.loadSnapshot()
+	})
+	return err
 }
 
 func (f *SnapshotLogFilterer) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
 	if err := f.ensureLoaded(); err != nil {
 		return nil, fmt.Errorf("failed to ensure snapshot was loaded for FilterLogs: %w", err)
-	}
-	if !f.isLoaded {
-		return nil, fmt.Errorf("snapshot not loaded, cannot filter logs (initialization might have failed without an error)")
 	}
 
 	f.logger.Debug("filtering pre-loaded logs", "total_logs", len(f.loadedLogs), "query_from_block", query.FromBlock, "query_to_block", query.ToBlock, "query_addresses_count", len(query.Addresses), "query_topics_count", len(query.Topics))
@@ -160,9 +156,6 @@ func (f *SnapshotLogFilterer) FilterLogs(ctx context.Context, query ethereum.Fil
 func (f *SnapshotLogFilterer) BlockNumber(_ context.Context) (uint64, error) {
 	if err := f.ensureLoaded(); err != nil {
 		return 0, fmt.Errorf("failed to ensure snapshot was loaded for BlockNumber: %w", err)
-	}
-	if !f.isLoaded {
-		return 0, fmt.Errorf("snapshot not loaded, cannot get block number")
 	}
 	return f.maxBlockHeight, nil
 }
