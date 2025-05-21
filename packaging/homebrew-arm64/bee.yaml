@@ -78,6 +78,8 @@ password-file: "/opt/homebrew/var/lib/swarm-bee/password"
 # resolver-options: []
 ## forces the node to resync postage contract data
 # resync: false
+## skip postage snapshot
+# skip-postage-snapshot: false
 ## staking contract address
 # staking-address: ""
 ## lru memory caching capacity in number of statestore entries

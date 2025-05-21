@@ -160,6 +160,7 @@ type Options struct {
 	ResolverConnectionCfgs        []multiresolver.ConnectionConfig
 	Resync                        bool
 	RetrievalCaching              bool
+	SkipPostageSnapshot           bool
 	StakingContractAddress        string
 	StatestoreCacheCapacity       uint64
 	StaticNodes                   []swarm.Address
@@ -802,7 +803,7 @@ func NewBee(
 		}
 	)
 
-	if !o.Resync && !batchStoreExists && (networkID == mainnetNetworkID) {
+	if !o.SkipPostageSnapshot && !batchStoreExists && (networkID == mainnetNetworkID) {
 		chainBackend := NewSnapshotLogFilterer(logger)
 
 		snapshotEventListener := listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
