@@ -160,6 +160,7 @@ type Options struct {
 	ResolverConnectionCfgs        []multiresolver.ConnectionConfig
 	Resync                        bool
 	RetrievalCaching              bool
+	SkipPostageSnapshot           bool
 	StakingContractAddress        string
 	StatestoreCacheCapacity       uint64
 	StaticNodes                   []swarm.Address
@@ -801,6 +802,30 @@ func NewBee(
 			return isDone, err
 		}
 	)
+
+	if !o.SkipPostageSnapshot && !batchStoreExists && (networkID == mainnetNetworkID) {
+		chainBackend := NewSnapshotLogFilterer(logger)
+
+		snapshotEventListener := listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
+
+		snapshotBatchSvc, err := batchservice.New(stateStore, batchStore, logger, snapshotEventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
+		if err != nil {
+			logger.Error(err, "failed to initialize batch service from snapshot, continuing outside snapshot block...")
+		} else {
+			err = snapshotBatchSvc.Start(ctx, postageSyncStart, initBatchState)
+			syncStatus.Store(true)
+			if err != nil {
+				syncErr.Store(err)
+				logger.Error(err, "failed to start batch service from snapshot, continuing outside snapshot block...")
+			} else {
+				postageSyncStart = chainBackend.maxBlockHeight
+			}
+		}
+		if errClose := snapshotEventListener.Close(); errClose != nil {
+			logger.Error(errClose, "failed to close event listener (snapshot) failure")
+		}
+
+	}
 
 	if batchSvc != nil && chainEnabled {
 		logger.Info("waiting to sync postage contract data, this may take a while... more info available in Debug loglevel")
