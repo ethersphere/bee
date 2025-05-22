@@ -214,7 +214,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	var natManager basichost.NATManager
 
 	opts := []libp2p.Option{
-		libp2p.ShareTCPListener(),
 		libp2p.ListenAddrStrings(listenAddrs...),
 		security,
 		// Use dedicated peerstore instead the global DefaultPeerstore
