@@ -49,7 +49,7 @@ data-dir: "/var/lib/bee"
 ## P2P listen address
 # p2p-addr: :1634
 ## enable P2P WebSocket transport
-# p2p-ws-enable: true
+# p2p-ws-enable: false
 ## password for decrypting keys
 # password: ""
 ## path to a file that contains password for decrypting keys
