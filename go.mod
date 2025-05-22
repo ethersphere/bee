@@ -58,8 +58,6 @@ require (
 	resenje.org/web v0.4.3
 )
 
-require github.com/onsi/ginkgo v1.16.5 // indirect
-
 require (
 	github.com/BurntSushi/toml v1.1.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
