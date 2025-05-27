@@ -956,7 +956,8 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 		return nil, fmt.Errorf("new stream for peerid: %w", err)
 	}
 
-	// Check if BOTH local and remote peer support trace headers
+	stream := newStream(streamlibp2p, s.metrics)
+
 	peerCaps := s.peers.capabilities(overlay)
 	localSupportsTrace := s.handshakeService.SupportsTraceHeaders()
 	remoteSupportsTrace := peerCaps != nil && peerCaps.TraceHeaders
@@ -964,9 +965,7 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 
 	s.logger.Debug("NewStream capability check", "overlay", overlay, "local_supports", localSupportsTrace, "remote_supports", remoteSupportsTrace, "peer_caps", peerCaps, "both_support", bothSupportTrace)
 
-	// Create stream - only exchange headers if both support trace headers
-	stream := newStream(streamlibp2p, s.metrics)
-
+	// Only exchange headers if BOTH local and remote peer support trace headers
 	if bothSupportTrace {
 		// Both support trace headers - exchange them with timeout
 		if headers == nil {
