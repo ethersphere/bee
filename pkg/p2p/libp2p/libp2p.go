@@ -124,7 +124,6 @@ type Options struct {
 	NATAddr            string
 	EnableWS           bool
 	FullNode           bool
-	EnableTraceHeaders bool
 	LightNodeLimit     int
 	WelcomeMessage     string
 	Nonce              []byte
@@ -132,6 +131,7 @@ type Options struct {
 	hostFactory        func(...libp2p.Option) (host.Host, error)
 	HeadersRWTimeout   time.Duration
 	Registry           *prometheus.Registry
+	EnableTraceHeaders bool
 }
 
 func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
