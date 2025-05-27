@@ -438,7 +438,6 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		return
 	}
 
-	// Store capabilities in peer registry - now each peer knows the other's capabilities
 	if exists := s.peers.addIfNotExists(stream.Conn(), overlay, i.Capabilities); exists {
 		s.logger.Debug("stream handler: peer already exists", "peer_address", overlay)
 		if err = handshakeStream.FullClose(); err != nil {
