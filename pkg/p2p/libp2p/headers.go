@@ -34,23 +34,21 @@ func sendHeaders(ctx context.Context, headers p2p.Headers, stream *stream) error
 func handleHeaders(ctx context.Context, headler p2p.HeadlerFunc, stream *stream, peerAddress swarm.Address) error {
 	w, r := protobuf.NewWriterAndReader(stream)
 
-	incomingHeaders := new(pb.Headers)
-	if err := r.ReadMsgWithContext(ctx, incomingHeaders); err != nil {
+	headers := new(pb.Headers)
+	if err := r.ReadMsgWithContext(ctx, headers); err != nil {
 		return fmt.Errorf("read message: %w", err)
 	}
 
-	stream.headers = headersPBToP2P(incomingHeaders)
+	stream.headers = headersPBToP2P(headers)
 
-	var responseHeaders p2p.Headers
+	var h p2p.Headers
 	if headler != nil {
-		responseHeaders = headler(stream.headers, peerAddress)
-	} else {
-		responseHeaders = make(p2p.Headers)
+		h = headler(stream.headers, peerAddress)
 	}
 
-	stream.responseHeaders = responseHeaders
+	stream.responseHeaders = h
 
-	if err := w.WriteMsgWithContext(ctx, headersP2PToPB(responseHeaders)); err != nil {
+	if err := w.WriteMsgWithContext(ctx, headersP2PToPB(h)); err != nil {
 		return fmt.Errorf("write message: %w", err)
 	}
 	return nil
