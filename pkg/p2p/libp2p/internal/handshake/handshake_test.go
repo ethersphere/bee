@@ -20,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/handshake/mock"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/handshake/pb"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 
 	libp2ppeer "github.com/libp2p/go-libp2p/core/peer"
 	ma "github.com/multiformats/go-multiaddr"
@@ -91,16 +92,22 @@ func TestHandshake(t *testing.T) {
 
 	node1Info := handshake.Info{
 		BzzAddress: node1BzzAddress,
-		FullNode:   true,
+		Capabilities: &pb.Capabilities{
+			FullNode:     true,
+			TraceHeaders: true,
+		},
 	}
 	node2Info := handshake.Info{
 		BzzAddress: node2BzzAddress,
-		FullNode:   true,
+		Capabilities: &pb.Capabilities{
+			FullNode:     true,
+			TraceHeaders: true,
+		},
 	}
 
 	aaddresser := &AdvertisableAddresserMock{}
 
-	handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nonce, testWelcomeMessage, true, node1AddrInfo.ID, logger)
+	handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, true, nonce, testWelcomeMessage, true, node1AddrInfo.ID, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,20 +119,23 @@ func TestHandshake(t *testing.T) {
 		stream2 := mock.NewStream(&buffer2, &buffer1)
 
 		w, r := protobuf.NewWriterAndReader(stream2)
-		if err := w.WriteMsg(&pb.SynAck{
-			Syn: &pb.Syn{
-				ObservedUnderlay: node1maBinary,
-			},
-			Ack: &pb.Ack{
-				Address: &pb.BzzAddress{
-					Underlay:  node2maBinary,
-					Overlay:   node2BzzAddress.Overlay.Bytes(),
-					Signature: node2BzzAddress.Signature,
+		if err := w.WriteMsg(&pb.Handshake{
+			Payload: &pb.Handshake_SynAck{
+				SynAck: &pb.HandshakeSynAck{
+					ObservedUnderlay: node1maBinary,
+					Address: &pb.BzzAddress{
+						Underlay:  node2maBinary,
+						Overlay:   node2BzzAddress.Overlay.Bytes(),
+						Signature: node2BzzAddress.Signature,
+					},
+					NetworkID: networkID,
+					Capabilities: &pb.Capabilities{
+						FullNode:     true,
+						TraceHeaders: true,
+					},
+					Nonce:          nonce,
+					WelcomeMessage: testWelcomeMessage,
 				},
-				NetworkID:      networkID,
-				FullNode:       true,
-				Nonce:          nonce,
-				WelcomeMessage: testWelcomeMessage,
 			},
 		}); err != nil {
 			t.Fatal(err)
@@ -141,18 +151,24 @@ func TestHandshake(t *testing.T) {
 
 		testInfo(t, *res, node2Info)
 
-		var syn pb.Syn
-		if err := r.ReadMsg(&syn); err != nil {
+		var synMsg pb.Handshake
+		if err := r.ReadMsg(&synMsg); err != nil {
 			t.Fatal(err)
 		}
 
-		if !bytes.Equal(syn.ObservedUnderlay, node2maBinary) {
-			t.Fatal("bad syn")
+		syn := synMsg.GetSyn()
+		if syn == nil || !bytes.Equal(syn.ObservedUnderlay, node2maBinary) {
+			t.Fatalf("got bad syn")
 		}
 
-		var ack pb.Ack
-		if err := r.ReadMsg(&ack); err != nil {
+		var ackMsg pb.Handshake
+		if err := r.ReadMsg(&ackMsg); err != nil {
 			t.Fatal(err)
+		}
+
+		ack := ackMsg.GetAck()
+		if ack == nil {
+			t.Fatal("expected ack message")
 		}
 
 		if !bytes.Equal(ack.Address.Overlay, node1BzzAddress.Overlay.Bytes()) {
@@ -167,7 +183,7 @@ func TestHandshake(t *testing.T) {
 		if ack.NetworkID != networkID {
 			t.Fatal("bad ack - networkID")
 		}
-		if ack.FullNode != true {
+		if ack.Capabilities.FullNode != true {
 			t.Fatal("bad ack - full node")
 		}
 
@@ -177,7 +193,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handshake - picker error", func(t *testing.T) {
-		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nonce, "", true, node1AddrInfo.ID, logger)
+		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, true, nonce, "", true, node1AddrInfo.ID, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -190,21 +206,32 @@ func TestHandshake(t *testing.T) {
 		stream2 := mock.NewStream(&buffer2, &buffer1)
 
 		w := protobuf.NewWriter(stream2)
-		if err := w.WriteMsg(&pb.Syn{
-			ObservedUnderlay: node1maBinary,
+		if err := w.WriteMsg(&pb.Handshake{
+			Payload: &pb.Handshake_Syn{
+				Syn: &pb.HandshakeSyn{
+					ObservedUnderlay: node1maBinary,
+				},
+			},
 		}); err != nil {
 			t.Fatal(err)
 		}
 
-		if err := w.WriteMsg(&pb.Ack{
-			Address: &pb.BzzAddress{
-				Underlay:  node2maBinary,
-				Overlay:   node2BzzAddress.Overlay.Bytes(),
-				Signature: node2BzzAddress.Signature,
+		if err := w.WriteMsg(&pb.Handshake{
+			Payload: &pb.Handshake_Ack{
+				Ack: &pb.HandshakeAck{
+					Address: &pb.BzzAddress{
+						Underlay:  node2maBinary,
+						Overlay:   node2BzzAddress.Overlay.Bytes(),
+						Signature: node2BzzAddress.Signature,
+					},
+					NetworkID: networkID,
+					Capabilities: &pb.Capabilities{
+						FullNode:     true,
+						TraceHeaders: true,
+					},
+					Nonce: nonce,
+				},
 			},
-			NetworkID: networkID,
-			Nonce:     nonce,
-			FullNode:  true,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -220,7 +247,7 @@ func TestHandshake(t *testing.T) {
 		const LongMessage = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Morbi consectetur urna ut lorem sollicitudin posuere. Donec sagittis laoreet sapien."
 
 		expectedErr := handshake.ErrWelcomeMessageLength
-		_, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nil, LongMessage, true, node1AddrInfo.ID, logger)
+		_, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, true, nil, LongMessage, true, node1AddrInfo.ID, logger)
 		if err == nil || err.Error() != expectedErr.Error() {
 			t.Fatal("expected:", expectedErr, "got:", err)
 		}
@@ -289,22 +316,24 @@ func TestHandshake(t *testing.T) {
 		stream2 := mock.NewStream(&buffer2, &buffer1)
 
 		w := protobuf.NewWriter(stream2)
-		if err := w.WriteMsg(&pb.SynAck{
-			Syn: &pb.Syn{
-				ObservedUnderlay: node1maBinary,
-			},
-			Ack: &pb.Ack{
-				Address: &pb.BzzAddress{
-					Underlay:  node2maBinary,
-					Overlay:   node2BzzAddress.Overlay.Bytes(),
-					Signature: node2BzzAddress.Signature,
+		if err := w.WriteMsg(&pb.Handshake{
+			Payload: &pb.Handshake_SynAck{
+				SynAck: &pb.HandshakeSynAck{
+					ObservedUnderlay: node1maBinary,
+					Address: &pb.BzzAddress{
+						Underlay:  node2maBinary,
+						Overlay:   node2BzzAddress.Overlay.Bytes(),
+						Signature: node2BzzAddress.Signature,
+					},
+					NetworkID: networkID,
+					Capabilities: &pb.Capabilities{
+						FullNode:     true,
+						TraceHeaders: true,
+					},
+					Nonce: nonce,
 				},
-				Nonce:     nonce,
-				NetworkID: networkID,
-				FullNode:  true,
 			},
-		},
-		); err != nil {
+		}); err != nil {
 			t.Fatal(err)
 		}
 
@@ -325,18 +354,21 @@ func TestHandshake(t *testing.T) {
 		stream2 := mock.NewStream(&buffer2, &buffer1)
 
 		w := protobuf.NewWriter(stream2)
-		if err := w.WriteMsg(&pb.SynAck{
-			Syn: &pb.Syn{
-				ObservedUnderlay: node1maBinary,
-			},
-			Ack: &pb.Ack{
-				Address: &pb.BzzAddress{
-					Underlay:  node2maBinary,
-					Overlay:   node2BzzAddress.Overlay.Bytes(),
-					Signature: node2BzzAddress.Signature,
+		if err := w.WriteMsg(&pb.Handshake{
+			Payload: &pb.Handshake_SynAck{
+				SynAck: &pb.HandshakeSynAck{
+					ObservedUnderlay: node1maBinary,
+					Address: &pb.BzzAddress{
+						Underlay:  node2maBinary,
+						Overlay:   node2BzzAddress.Overlay.Bytes(),
+						Signature: node2BzzAddress.Signature,
+					},
+					NetworkID: 5,
+					Capabilities: &pb.Capabilities{
+						FullNode:     true,
+						TraceHeaders: true,
+					},
 				},
-				NetworkID: 5,
-				FullNode:  true,
 			},
 		}); err != nil {
 			t.Fatal(err)
@@ -359,23 +391,26 @@ func TestHandshake(t *testing.T) {
 		stream2 := mock.NewStream(&buffer2, &buffer1)
 
 		w := protobuf.NewWriter(stream2)
-		if err := w.WriteMsg(&pb.SynAck{
-			Syn: &pb.Syn{
-				ObservedUnderlay: node1maBinary,
-			},
-			Ack: &pb.Ack{
-				Address: &pb.BzzAddress{
-					Underlay:  node2maBinary,
-					Overlay:   node2BzzAddress.Overlay.Bytes(),
-					Signature: node1BzzAddress.Signature,
+		if err := w.WriteMsg(&pb.Handshake{
+			Payload: &pb.Handshake_SynAck{
+				SynAck: &pb.HandshakeSynAck{
+					ObservedUnderlay: node1maBinary,
+					Address: &pb.BzzAddress{
+						Underlay:  node2maBinary,
+						Overlay:   node2BzzAddress.Overlay.Bytes(),
+						Signature: node1BzzAddress.Signature,
+					},
+					NetworkID: networkID,
+					Capabilities: &pb.Capabilities{
+						FullNode:     true,
+						TraceHeaders: true,
+					},
 				},
-				NetworkID: networkID,
-				FullNode:  true,
 			},
 		}); err != nil {
 			t.Fatal(err)
 		}
-		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nonce, testWelcomeMessage, true, node1AddrInfo.ID, logger)
+		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, true, nonce, testWelcomeMessage, true, node1AddrInfo.ID, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -402,18 +437,21 @@ func TestHandshake(t *testing.T) {
 		}()
 
 		w, _ := protobuf.NewWriterAndReader(stream2)
-		if err := w.WriteMsg(&pb.SynAck{
-			Syn: &pb.Syn{
-				ObservedUnderlay: node1maBinary,
-			},
-			Ack: &pb.Ack{
-				Address: &pb.BzzAddress{
-					Underlay:  node2maBinary,
-					Overlay:   node2BzzAddress.Overlay.Bytes(),
-					Signature: node2BzzAddress.Signature,
+		if err := w.WriteMsg(&pb.Handshake{
+			Payload: &pb.Handshake_SynAck{
+				SynAck: &pb.HandshakeSynAck{
+					ObservedUnderlay: node1maBinary,
+					Address: &pb.BzzAddress{
+						Underlay:  node2maBinary,
+						Overlay:   node2BzzAddress.Overlay.Bytes(),
+						Signature: node2BzzAddress.Signature,
+					},
+					NetworkID: networkID,
+					Capabilities: &pb.Capabilities{
+						FullNode:     true,
+						TraceHeaders: true,
+					},
 				},
-				NetworkID: networkID,
-				FullNode:  true,
 			},
 		}); err != nil {
 			t.Fatal(err)
@@ -432,7 +470,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - OK", func(t *testing.T) {
-		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nonce, "", true, node1AddrInfo.ID, logger)
+		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, true, nonce, "", true, node1AddrInfo.ID, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -442,21 +480,32 @@ func TestHandshake(t *testing.T) {
 		stream2 := mock.NewStream(&buffer2, &buffer1)
 
 		w := protobuf.NewWriter(stream2)
-		if err := w.WriteMsg(&pb.Syn{
-			ObservedUnderlay: node1maBinary,
+		if err := w.WriteMsg(&pb.Handshake{
+			Payload: &pb.Handshake_Syn{
+				Syn: &pb.HandshakeSyn{
+					ObservedUnderlay: node1maBinary,
+				},
+			},
 		}); err != nil {
 			t.Fatal(err)
 		}
 
-		if err := w.WriteMsg(&pb.Ack{
-			Address: &pb.BzzAddress{
-				Underlay:  node2maBinary,
-				Overlay:   node2BzzAddress.Overlay.Bytes(),
-				Signature: node2BzzAddress.Signature,
+		if err := w.WriteMsg(&pb.Handshake{
+			Payload: &pb.Handshake_Ack{
+				Ack: &pb.HandshakeAck{
+					Address: &pb.BzzAddress{
+						Underlay:  node2maBinary,
+						Overlay:   node2BzzAddress.Overlay.Bytes(),
+						Signature: node2BzzAddress.Signature,
+					},
+					NetworkID: networkID,
+					Capabilities: &pb.Capabilities{
+						FullNode:     true,
+						TraceHeaders: true,
+					},
+					Nonce: nonce,
+				},
 			},
-			NetworkID: networkID,
-			Nonce:     nonce,
-			FullNode:  true,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -469,28 +518,29 @@ func TestHandshake(t *testing.T) {
 		testInfo(t, *res, node2Info)
 
 		_, r := protobuf.NewWriterAndReader(stream2)
-		var got pb.SynAck
-		if err := r.ReadMsg(&got); err != nil {
+		var gotMsg pb.Handshake
+		if err := r.ReadMsg(&gotMsg); err != nil {
 			t.Fatal(err)
 		}
 
-		if !bytes.Equal(got.Syn.ObservedUnderlay, node2maBinary) {
-			t.Fatalf("got bad syn")
+		got := gotMsg.GetSynAck()
+		if got == nil || !bytes.Equal(got.ObservedUnderlay, node2maBinary) {
+			t.Fatalf("got bad syn_ack")
 		}
 
-		bzzAddress, err := bzz.ParseAddress(got.Ack.Address.Underlay, got.Ack.Address.Overlay, got.Ack.Address.Signature, got.Ack.Nonce, true, got.Ack.NetworkID)
+		bzzAddress, err := bzz.ParseAddress(got.Address.Underlay, got.Address.Overlay, got.Address.Signature, got.Nonce, true, got.NetworkID)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		testInfo(t, node1Info, handshake.Info{
-			BzzAddress: bzzAddress,
-			FullNode:   got.Ack.FullNode,
+			BzzAddress:   bzzAddress,
+			Capabilities: got.Capabilities,
 		})
 	})
 
 	t.Run("Handle - read error ", func(t *testing.T) {
-		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nil, "", true, node1AddrInfo.ID, logger)
+		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, true, nil, "", true, node1AddrInfo.ID, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -509,7 +559,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - write error ", func(t *testing.T) {
-		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nil, "", true, node1AddrInfo.ID, logger)
+		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, true, nil, "", true, node1AddrInfo.ID, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -519,8 +569,12 @@ func TestHandshake(t *testing.T) {
 		stream := mock.NewStream(&buffer, &buffer)
 		stream.SetWriteErr(testErr, 1)
 		w := protobuf.NewWriter(stream)
-		if err := w.WriteMsg(&pb.Syn{
-			ObservedUnderlay: node1maBinary,
+		if err := w.WriteMsg(&pb.Handshake{
+			Payload: &pb.Handshake_Syn{
+				Syn: &pb.HandshakeSyn{
+					ObservedUnderlay: node1maBinary,
+				},
+			},
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -536,7 +590,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - ack read error ", func(t *testing.T) {
-		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nil, "", true, node1AddrInfo.ID, logger)
+		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, true, nil, "", true, node1AddrInfo.ID, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -548,8 +602,12 @@ func TestHandshake(t *testing.T) {
 		stream2 := mock.NewStream(&buffer2, &buffer1)
 		stream1.SetReadErr(testErr, 1)
 		w := protobuf.NewWriter(stream2)
-		if err := w.WriteMsg(&pb.Syn{
-			ObservedUnderlay: node1maBinary,
+		if err := w.WriteMsg(&pb.Handshake{
+			Payload: &pb.Handshake_Syn{
+				Syn: &pb.HandshakeSyn{
+					ObservedUnderlay: node1maBinary,
+				},
+			},
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -565,7 +623,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - networkID mismatch ", func(t *testing.T) {
-		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nil, "", true, node1AddrInfo.ID, logger)
+		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, true, nil, "", true, node1AddrInfo.ID, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -575,20 +633,31 @@ func TestHandshake(t *testing.T) {
 		stream2 := mock.NewStream(&buffer2, &buffer1)
 
 		w := protobuf.NewWriter(stream2)
-		if err := w.WriteMsg(&pb.Syn{
-			ObservedUnderlay: node1maBinary,
+		if err := w.WriteMsg(&pb.Handshake{
+			Payload: &pb.Handshake_Syn{
+				Syn: &pb.HandshakeSyn{
+					ObservedUnderlay: node1maBinary,
+				},
+			},
 		}); err != nil {
 			t.Fatal(err)
 		}
 
-		if err := w.WriteMsg(&pb.Ack{
-			Address: &pb.BzzAddress{
-				Underlay:  node2maBinary,
-				Overlay:   node2BzzAddress.Overlay.Bytes(),
-				Signature: node2BzzAddress.Signature,
+		if err := w.WriteMsg(&pb.Handshake{
+			Payload: &pb.Handshake_Ack{
+				Ack: &pb.HandshakeAck{
+					Address: &pb.BzzAddress{
+						Underlay:  node2maBinary,
+						Overlay:   node2BzzAddress.Overlay.Bytes(),
+						Signature: node2BzzAddress.Signature,
+					},
+					NetworkID: 5,
+					Capabilities: &pb.Capabilities{
+						FullNode:     true,
+						TraceHeaders: true,
+					},
+				},
 			},
-			NetworkID: 5,
-			FullNode:  true,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -604,7 +673,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - invalid ack", func(t *testing.T) {
-		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nil, "", true, node1AddrInfo.ID, logger)
+		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, true, nil, "", true, node1AddrInfo.ID, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -614,20 +683,31 @@ func TestHandshake(t *testing.T) {
 		stream2 := mock.NewStream(&buffer2, &buffer1)
 
 		w := protobuf.NewWriter(stream2)
-		if err := w.WriteMsg(&pb.Syn{
-			ObservedUnderlay: node1maBinary,
+		if err := w.WriteMsg(&pb.Handshake{
+			Payload: &pb.Handshake_Syn{
+				Syn: &pb.HandshakeSyn{
+					ObservedUnderlay: node1maBinary,
+				},
+			},
 		}); err != nil {
 			t.Fatal(err)
 		}
 
-		if err := w.WriteMsg(&pb.Ack{
-			Address: &pb.BzzAddress{
-				Underlay:  node2maBinary,
-				Overlay:   node2BzzAddress.Overlay.Bytes(),
-				Signature: node1BzzAddress.Signature,
+		if err := w.WriteMsg(&pb.Handshake{
+			Payload: &pb.Handshake_Ack{
+				Ack: &pb.HandshakeAck{
+					Address: &pb.BzzAddress{
+						Underlay:  node2maBinary,
+						Overlay:   node2BzzAddress.Overlay.Bytes(),
+						Signature: node1BzzAddress.Signature,
+					},
+					NetworkID: networkID,
+					Capabilities: &pb.Capabilities{
+						FullNode:     true,
+						TraceHeaders: true,
+					},
+				},
 			},
-			NetworkID: networkID,
-			FullNode:  true,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -639,7 +719,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - advertisable error", func(t *testing.T) {
-		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nil, "", true, node1AddrInfo.ID, logger)
+		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, true, nil, "", true, node1AddrInfo.ID, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -655,8 +735,12 @@ func TestHandshake(t *testing.T) {
 		}()
 
 		w := protobuf.NewWriter(stream2)
-		if err := w.WriteMsg(&pb.Syn{
-			ObservedUnderlay: node1maBinary,
+		if err := w.WriteMsg(&pb.Handshake{
+			Payload: &pb.Handshake_Syn{
+				Syn: &pb.HandshakeSyn{
+					ObservedUnderlay: node1maBinary,
+				},
+			},
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -687,8 +771,78 @@ func (p *picker) Pick(peer p2p.Peer) bool {
 // testInfo validates if two Info instances are equal.
 func testInfo(t *testing.T, got, want handshake.Info) {
 	t.Helper()
-	if !got.BzzAddress.Equal(want.BzzAddress) || got.FullNode != want.FullNode {
+	if !got.BzzAddress.Equal(want.BzzAddress) || 
+		got.Capabilities.FullNode != want.Capabilities.FullNode ||
+		got.Capabilities.TraceHeaders != want.Capabilities.TraceHeaders {
 		t.Fatalf("got info %+v, want %+v", got, want)
+	}
+}
+
+func TestInfo_CapabilitiesReuse(t *testing.T) {
+	// Test that Info struct reuses the protobuf Capabilities object
+	// instead of creating separate boolean fields, reducing allocations
+	
+	capabilities := &pb.Capabilities{
+		FullNode:     true,
+		TraceHeaders: true,
+	}
+	
+	// Create a valid BZZ address using existing test helper
+	privateKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := crypto.NewDefaultSigner(privateKey)
+	
+	overlay := swarm.RandAddress(t)
+	underlay, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/1234")
+	nonce := make([]byte, 32)
+	
+	bzzAddr, err := bzz.NewAddress(signer, underlay, overlay, 1, nonce)
+	if err != nil {
+		t.Fatal(err)
+	}
+	
+	info := handshake.Info{
+		BzzAddress:   bzzAddr,
+		Capabilities: capabilities,
+	}
+	
+	// Verify that the same protobuf object is being used
+	if info.Capabilities != capabilities {
+		t.Fatal("Info.Capabilities should reuse the same protobuf object")
+	}
+	
+	// Verify that capabilities can be accessed correctly
+	if !info.Capabilities.FullNode {
+		t.Fatal("Expected FullNode to be true")
+	}
+	
+	if !info.Capabilities.TraceHeaders {
+		t.Fatal("Expected TraceHeaders to be true")
+	}
+	
+	// Verify LightString method works
+	lightStr := info.LightString()
+	if lightStr != "" {
+		t.Fatalf("Expected empty string for full node, got %q", lightStr)
+	}
+	
+	// Test light node
+	lightCapabilities := &pb.Capabilities{
+		FullNode:     false,
+		TraceHeaders: false,
+	}
+	
+	lightInfo := handshake.Info{
+		BzzAddress:   bzzAddr,
+		Capabilities: lightCapabilities,
+	}
+	
+	lightStr = lightInfo.LightString()
+	expected := " (light)"
+	if lightStr != expected {
+		t.Fatalf("Expected %q for light node, got %q", expected, lightStr)
 	}
 }
 

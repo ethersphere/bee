@@ -124,6 +124,7 @@ type Options struct {
 	NATAddr          string
 	EnableWS         bool
 	FullNode         bool
+	EnableTraceHeaders bool
 	LightNodeLimit   int
 	WelcomeMessage   string
 	Nonce            []byte
@@ -304,7 +305,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		advertisableAddresser = natAddrResolver
 	}
 
-	handshakeService, err := handshake.New(signer, advertisableAddresser, overlay, networkID, o.FullNode, o.Nonce, o.WelcomeMessage, o.ValidateOverlay, h.ID(), logger)
+	handshakeService, err := handshake.New(signer, advertisableAddresser, overlay, networkID, o.FullNode, o.EnableTraceHeaders, o.Nonce, o.WelcomeMessage, o.ValidateOverlay, h.ID(), logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}
@@ -437,7 +438,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		return
 	}
 
-	if exists := s.peers.addIfNotExists(stream.Conn(), overlay, i.FullNode); exists {
+	if exists := s.peers.addIfNotExists(stream.Conn(), overlay, i.Capabilities.FullNode, i.Capabilities.TraceHeaders); exists {
 		s.logger.Debug("stream handler: peer already exists", "peer_address", overlay)
 		if err = handshakeStream.FullClose(); err != nil {
 			s.logger.Debug("stream handler: could not close stream", "peer_address", overlay, "error", err)
@@ -454,7 +455,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		return
 	}
 
-	if i.FullNode {
+	if i.Capabilities.FullNode {
 		err = s.addressbook.Put(i.BzzAddress.Overlay, *i.BzzAddress)
 		if err != nil {
 			s.logger.Debug("stream handler: addressbook put error", "peer_id", peerID, "error", err)
@@ -464,7 +465,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		}
 	}
 
-	peer := p2p.Peer{Address: overlay, FullNode: i.FullNode, EthereumAddress: i.BzzAddress.EthereumAddress}
+	peer := p2p.Peer{Address: overlay, FullNode: i.Capabilities.FullNode, EthereumAddress: i.BzzAddress.EthereumAddress}
 
 	s.protocolsmu.RLock()
 	for _, tn := range s.protocols {
@@ -480,10 +481,10 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	s.protocolsmu.RUnlock()
 
 	if s.notifier != nil {
-		if !i.FullNode {
+		if !i.Capabilities.FullNode {
 			s.lightNodes.Connected(s.ctx, peer)
 			// light node announces explicitly
-			if err := s.notifier.Announce(s.ctx, peer.Address, i.FullNode); err != nil {
+			if err := s.notifier.Announce(s.ctx, peer.Address, i.Capabilities.FullNode); err != nil {
 				s.logger.Debug("stream handler: notifier.Announce failed", "peer", peer.Address, "error", err)
 			}
 
@@ -524,7 +525,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 					if err := s.notifier.AnnounceTo(s.ctx, addressee, peer, fullnode); err != nil {
 						s.logger.Debug("stream handler: notifier.AnnounceTo failed", "addressee", addressee, "peer", peer, "error", err)
 					}
-				}(addr, peer.Address, i.FullNode)
+				}(addr, peer.Address, i.Capabilities.FullNode)
 				return false, false, nil
 			})
 		}
@@ -579,25 +580,32 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 
 			stream := newStream(streamlibp2p, s.metrics)
 
-			// exchange headers
+			// Only exchange headers if both peers support trace headers
 			headersStartTime := time.Now()
 			ctx, cancel := context.WithTimeout(s.ctx, s.HeadersRWTimeout)
 			defer cancel()
-			if err := handleHeaders(ctx, ss.Headler, stream, overlay); err != nil {
+			
+			// Check if both peers support trace headers to determine if we should use actual headers
+			localSupportsTraceHeaders := s.handshakeService.SupportsTraceHeaders()
+			peerSupportsTraceHeaders, found := s.peers.traceHeadersSupport(overlay)
+			useTraceHeaders := localSupportsTraceHeaders && found && peerSupportsTraceHeaders
+			
+			if err := handleHeadersWithCapability(ctx, ss.Headler, stream, overlay, useTraceHeaders); err != nil {
 				s.logger.Debug("handle protocol: handle headers failed", "protocol", p.Name, "version", p.Version, "stream", ss.Name, "peer", overlay, "error", err)
 				_ = stream.Reset()
 				return
 			}
+			
 			s.metrics.HeadersExchangeDuration.Observe(time.Since(headersStartTime).Seconds())
 
-			ctx, cancel = context.WithCancel(s.ctx)
+			ctxStream, cancelStream := context.WithCancel(s.ctx)
 
-			s.peers.addStream(peerID, streamlibp2p, cancel)
+			s.peers.addStream(peerID, streamlibp2p, cancelStream)
 			defer s.peers.removeStream(peerID, streamlibp2p)
 
 			// tracing: get span tracing context and add it to the context
 			// silently ignore if the peer is not providing tracing
-			ctx, err := s.tracer.WithContextFromHeaders(ctx, stream.Headers())
+			ctxStream, err = s.tracer.WithContextFromHeaders(ctxStream, stream.Headers())
 			if err != nil && !errors.Is(err, tracing.ErrContextNotFound) {
 				s.logger.Debug("handle protocol: get tracing context failed", "protocol", p.Name, "version", p.Version, "stream", ss.Name, "peer", overlay, "error", err)
 				_ = stream.Reset()
@@ -608,7 +616,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			loggerV1 := logger.V(1).Build()
 
 			s.metrics.HandledStreamCount.Inc()
-			if err := ss.Handler(ctx, p2p.Peer{Address: overlay, FullNode: full}, stream); err != nil {
+			if err := ss.Handler(ctxStream, p2p.Peer{Address: overlay, FullNode: full}, stream); err != nil {
 				var de *p2p.DisconnectError
 				if errors.As(err, &de) {
 					loggerV1.Debug("libp2p handler: disconnecting due to disconnect error", "protocol", p.Name, "address", overlay)
@@ -758,7 +766,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 		return nil, fmt.Errorf("handshake: %w", err)
 	}
 
-	if !i.FullNode {
+	if !i.Capabilities.FullNode {
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(info.ID)
 		return nil, p2p.ErrDialLightNode
@@ -782,7 +790,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 		return nil, p2p.ErrPeerBlocklisted
 	}
 
-	if exists := s.peers.addIfNotExists(stream.Conn(), overlay, i.FullNode); exists {
+	if exists := s.peers.addIfNotExists(stream.Conn(), overlay, i.Capabilities.FullNode, i.Capabilities.TraceHeaders); exists {
 		if err := handshakeStream.FullClose(); err != nil {
 			_ = s.Disconnect(overlay, "failed closing handshake stream after connect")
 			return nil, fmt.Errorf("peer exists, full close: %w", err)
@@ -796,7 +804,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 		return nil, fmt.Errorf("connect full close %w", err)
 	}
 
-	if i.FullNode {
+	if i.Capabilities.FullNode {
 		err = s.addressbook.Put(overlay, *i.BzzAddress)
 		if err != nil {
 			_ = s.Disconnect(overlay, "failed storing peer in addressbook")
@@ -807,7 +815,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	s.protocolsmu.RLock()
 	for _, tn := range s.protocols {
 		if tn.ConnectOut != nil {
-			if err := tn.ConnectOut(ctx, p2p.Peer{Address: overlay, FullNode: i.FullNode, EthereumAddress: i.BzzAddress.EthereumAddress}); err != nil {
+			if err := tn.ConnectOut(ctx, p2p.Peer{Address: overlay, FullNode: i.Capabilities.FullNode, EthereumAddress: i.BzzAddress.EthereumAddress}); err != nil {
 				s.logger.Debug("connectOut: failed to connect", "protocol", tn.Name, "version", tn.Version, "peer", overlay, "error", err)
 				_ = s.Disconnect(overlay, "failed to process outbound connection notifier")
 				s.protocolsmu.RUnlock()
@@ -948,10 +956,14 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 		return nil, fmt.Errorf("new stream add context header fail: %w", err)
 	}
 
-	// exchange headers
-	ctx, cancel := context.WithTimeout(ctx, s.HeadersRWTimeout)
+	// Only exchange headers if both peers support trace headers
+	localSupportsTraceHeaders := s.handshakeService.SupportsTraceHeaders()
+	peerSupportsTraceHeaders, found := s.peers.traceHeadersSupport(overlay)
+	useTraceHeaders := localSupportsTraceHeaders && found && peerSupportsTraceHeaders
+	
+	ctxTimeout, cancel := context.WithTimeout(ctx, s.HeadersRWTimeout)
 	defer cancel()
-	if err := sendHeaders(ctx, headers, stream); err != nil {
+	if err := sendHeadersWithCapability(ctxTimeout, headers, stream, useTraceHeaders); err != nil {
 		_ = stream.Reset()
 		return nil, fmt.Errorf("send headers: %w", err)
 	}

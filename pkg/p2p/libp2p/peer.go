@@ -18,12 +18,13 @@ import (
 )
 
 type peerRegistry struct {
-	underlays   map[string]libp2ppeer.ID                    // map overlay address to underlay peer id
-	overlays    map[libp2ppeer.ID]swarm.Address             // map underlay peer id to overlay address
-	full        map[libp2ppeer.ID]bool                      // map to track whether a node is full or light node (true=full)
-	connections map[libp2ppeer.ID]map[network.Conn]struct{} // list of connections for safe removal on Disconnect notification
-	streams     map[libp2ppeer.ID]map[network.Stream]context.CancelFunc
-	mu          sync.RWMutex
+	underlays    map[string]libp2ppeer.ID                    // map overlay address to underlay peer id
+	overlays     map[libp2ppeer.ID]swarm.Address             // map underlay peer id to overlay address
+	full         map[libp2ppeer.ID]bool                      // map to track whether a node is full or light node (true=full)
+	traceHeaders map[libp2ppeer.ID]bool                      // map to track whether a node supports trace headers
+	connections  map[libp2ppeer.ID]map[network.Conn]struct{} // list of connections for safe removal on Disconnect notification
+	streams      map[libp2ppeer.ID]map[network.Stream]context.CancelFunc
+	mu           sync.RWMutex
 
 	//nolint:misspell
 	disconnecter     disconnecter // peerRegistry notifies libp2p on peer disconnection
@@ -36,11 +37,12 @@ type disconnecter interface {
 
 func newPeerRegistry() *peerRegistry {
 	return &peerRegistry{
-		underlays:   make(map[string]libp2ppeer.ID),
-		overlays:    make(map[libp2ppeer.ID]swarm.Address),
-		full:        make(map[libp2ppeer.ID]bool),
-		connections: make(map[libp2ppeer.ID]map[network.Conn]struct{}),
-		streams:     make(map[libp2ppeer.ID]map[network.Stream]context.CancelFunc),
+		underlays:    make(map[string]libp2ppeer.ID),
+		overlays:     make(map[libp2ppeer.ID]swarm.Address),
+		full:         make(map[libp2ppeer.ID]bool),
+		traceHeaders: make(map[libp2ppeer.ID]bool),
+		connections:  make(map[libp2ppeer.ID]map[network.Conn]struct{}),
+		streams:      make(map[libp2ppeer.ID]map[network.Stream]context.CancelFunc),
 
 		Notifiee: new(network.NoopNotifiee),
 	}
@@ -131,7 +133,7 @@ func (r *peerRegistry) peers() []p2p.Peer {
 	return peers
 }
 
-func (r *peerRegistry) addIfNotExists(c network.Conn, overlay swarm.Address, full bool) (exists bool) {
+func (r *peerRegistry) addIfNotExists(c network.Conn, overlay swarm.Address, full bool, traceHeaders bool) (exists bool) {
 	peerID := c.RemotePeer()
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -151,6 +153,7 @@ func (r *peerRegistry) addIfNotExists(c network.Conn, overlay swarm.Address, ful
 	r.underlays[overlay.ByteString()] = peerID
 	r.overlays[peerID] = overlay
 	r.full[peerID] = full
+	r.traceHeaders[peerID] = traceHeaders
 	return false
 
 }
@@ -217,9 +220,22 @@ func (r *peerRegistry) remove(overlay swarm.Address) (found, full bool, peerID l
 	delete(r.streams, peerID)
 	full = r.full[peerID]
 	delete(r.full, peerID)
+	delete(r.traceHeaders, peerID)
 	r.mu.Unlock()
 
 	return found, full, peerID
+}
+
+func (r *peerRegistry) traceHeadersSupport(overlay swarm.Address) (traceHeaders bool, found bool) {
+	peerID, exists := r.peerID(overlay)
+	if !exists {
+		return false, false
+	}
+
+	r.mu.RLock()
+	traceHeaders, found = r.traceHeaders[peerID]
+	r.mu.RUnlock()
+	return traceHeaders, found
 }
 
 func (r *peerRegistry) setDisconnecter(d disconnecter) {

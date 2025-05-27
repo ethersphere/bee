@@ -15,9 +15,20 @@ import (
 )
 
 func sendHeaders(ctx context.Context, headers p2p.Headers, stream *stream) error {
+	return sendHeadersWithCapability(ctx, headers, stream, true)
+}
+
+func sendHeadersWithCapability(ctx context.Context, headers p2p.Headers, stream *stream, useTraceHeaders bool) error {
 	w, r := protobuf.NewWriterAndReader(stream)
 
-	if err := w.WriteMsgWithContext(ctx, headersP2PToPB(headers)); err != nil {
+	var headersToSend p2p.Headers
+	if useTraceHeaders {
+		headersToSend = headers
+	} else {
+		headersToSend = make(p2p.Headers)
+	}
+
+	if err := w.WriteMsgWithContext(ctx, headersP2PToPB(headersToSend)); err != nil {
 		return fmt.Errorf("write message: %w", err)
 	}
 
@@ -26,12 +37,20 @@ func sendHeaders(ctx context.Context, headers p2p.Headers, stream *stream) error
 		return fmt.Errorf("read message: %w", err)
 	}
 
-	stream.headers = headersPBToP2P(h)
+	if useTraceHeaders {
+		stream.headers = headersPBToP2P(h)
+	} else {
+		stream.headers = make(p2p.Headers)
+	}
 
 	return nil
 }
 
 func handleHeaders(ctx context.Context, headler p2p.HeadlerFunc, stream *stream, peerAddress swarm.Address) error {
+	return handleHeadersWithCapability(ctx, headler, stream, peerAddress, true)
+}
+
+func handleHeadersWithCapability(ctx context.Context, headler p2p.HeadlerFunc, stream *stream, peerAddress swarm.Address, useTraceHeaders bool) error {
 	w, r := protobuf.NewWriterAndReader(stream)
 
 	headers := new(pb.Headers)
@@ -39,14 +58,24 @@ func handleHeaders(ctx context.Context, headler p2p.HeadlerFunc, stream *stream,
 		return fmt.Errorf("read message: %w", err)
 	}
 
-	stream.headers = headersPBToP2P(headers)
-
-	var h p2p.Headers
-	if headler != nil {
-		h = headler(stream.headers, peerAddress)
+	if useTraceHeaders {
+		stream.headers = headersPBToP2P(headers)
+	} else {
+		stream.headers = make(p2p.Headers)
 	}
 
-	stream.responseHeaders = h
+	var h p2p.Headers
+	if useTraceHeaders && headler != nil {
+		h = headler(stream.headers, peerAddress)
+	} else {
+		h = make(p2p.Headers)
+	}
+
+	if useTraceHeaders {
+		stream.responseHeaders = h
+	} else {
+		stream.responseHeaders = make(p2p.Headers)
+	}
 
 	if err := w.WriteMsgWithContext(ctx, headersP2PToPB(h)); err != nil {
 		return fmt.Errorf("write message: %w", err)
