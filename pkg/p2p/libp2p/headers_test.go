@@ -149,7 +149,7 @@ func TestHeaders_noTraceCapability(t *testing.T) {
 
 	var gotHeaders p2p.Headers
 	handled := make(chan struct{})
-	
+
 	if err := s1.AddProtocol(newTestProtocol(func(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
 		if ctx == nil {
 			t.Fatal("missing context")
@@ -210,7 +210,7 @@ func TestHeaders_mixedCapability(t *testing.T) {
 
 	var gotHeaders p2p.Headers
 	handled := make(chan struct{})
-	
+
 	if err := s1.AddProtocol(newTestProtocol(func(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
 		if ctx == nil {
 			t.Fatal("missing context")
@@ -275,7 +275,7 @@ func TestHeaders_withHeadersWhenCapabilityMismatch(t *testing.T) {
 
 	var gotHeaders p2p.Headers
 	handled := make(chan struct{})
-	
+
 	if err := s1.AddProtocol(newTestProtocol(func(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
 		if ctx == nil {
 			t.Fatal("missing context")

@@ -771,7 +771,7 @@ func (p *picker) Pick(peer p2p.Peer) bool {
 // testInfo validates if two Info instances are equal.
 func testInfo(t *testing.T, got, want handshake.Info) {
 	t.Helper()
-	if !got.BzzAddress.Equal(want.BzzAddress) || 
+	if !got.BzzAddress.Equal(want.BzzAddress) ||
 		got.Capabilities.FullNode != want.Capabilities.FullNode ||
 		got.Capabilities.TraceHeaders != want.Capabilities.TraceHeaders {
 		t.Fatalf("got info %+v, want %+v", got, want)
@@ -781,64 +781,64 @@ func testInfo(t *testing.T, got, want handshake.Info) {
 func TestInfo_CapabilitiesReuse(t *testing.T) {
 	// Test that Info struct reuses the protobuf Capabilities object
 	// instead of creating separate boolean fields, reducing allocations
-	
+
 	capabilities := &pb.Capabilities{
 		FullNode:     true,
 		TraceHeaders: true,
 	}
-	
+
 	// Create a valid BZZ address using existing test helper
 	privateKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
 	}
 	signer := crypto.NewDefaultSigner(privateKey)
-	
+
 	overlay := swarm.RandAddress(t)
 	underlay, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/1234")
 	nonce := make([]byte, 32)
-	
+
 	bzzAddr, err := bzz.NewAddress(signer, underlay, overlay, 1, nonce)
 	if err != nil {
 		t.Fatal(err)
 	}
-	
+
 	info := handshake.Info{
 		BzzAddress:   bzzAddr,
 		Capabilities: capabilities,
 	}
-	
+
 	// Verify that the same protobuf object is being used
 	if info.Capabilities != capabilities {
 		t.Fatal("Info.Capabilities should reuse the same protobuf object")
 	}
-	
+
 	// Verify that capabilities can be accessed correctly
 	if !info.Capabilities.FullNode {
 		t.Fatal("Expected FullNode to be true")
 	}
-	
+
 	if !info.Capabilities.TraceHeaders {
 		t.Fatal("Expected TraceHeaders to be true")
 	}
-	
+
 	// Verify LightString method works
 	lightStr := info.LightString()
 	if lightStr != "" {
 		t.Fatalf("Expected empty string for full node, got %q", lightStr)
 	}
-	
+
 	// Test light node
 	lightCapabilities := &pb.Capabilities{
 		FullNode:     false,
 		TraceHeaders: false,
 	}
-	
+
 	lightInfo := handshake.Info{
 		BzzAddress:   bzzAddr,
 		Capabilities: lightCapabilities,
 	}
-	
+
 	lightStr = lightInfo.LightString()
 	expected := " (light)"
 	if lightStr != expected {
