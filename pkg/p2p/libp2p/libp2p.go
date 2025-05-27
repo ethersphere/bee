@@ -359,7 +359,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, fmt.Errorf("protocol version match %s: %w", id, err)
 	}
 
-	// Handshake protocol NEVER exchanges headers - capabilities are unknown at this point
 	s.host.SetStreamHandlerMatch(id, matcher, s.handleIncoming)
 
 	connMetricNotify := newConnMetricNotify(s.metrics)
@@ -411,7 +410,6 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	}
 
 	peerID := stream.Conn().RemotePeer()
-	// Handshake stream NEVER has headers - capabilities are unknown at this point
 	handshakeStream := newStream(stream, s.metrics)
 	i, err := s.handshakeService.Handle(s.ctx, handshakeStream, stream.Conn().RemoteMultiaddr(), peerID)
 	if err != nil {
