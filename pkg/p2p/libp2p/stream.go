@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/p2p"
@@ -27,16 +26,10 @@ type stream struct {
 	headers         p2p.Headers
 	responseHeaders p2p.Headers
 	metrics         metrics
-	mu              sync.RWMutex
 }
 
 func newStream(s network.Stream, metrics metrics) *stream {
-	return &stream{
-		Stream:          s,
-		metrics:         metrics,
-		headers:         make(p2p.Headers),
-		responseHeaders: make(p2p.Headers),
-	}
+	return &stream{Stream: s, metrics: metrics}
 }
 
 func newStreamWithHeaders(s network.Stream, metrics metrics, ctx context.Context, headler p2p.HeadlerFunc, peerAddress swarm.Address, headers p2p.Headers) (*stream, error) {
@@ -54,27 +47,11 @@ func newStreamWithHeaders(s network.Stream, metrics metrics, ctx context.Context
 	return stream, nil
 }
 func (s *stream) Headers() p2p.Headers {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	// Return a copy to prevent external modifications
-	headers := make(p2p.Headers)
-	for k, v := range s.headers {
-		headers[k] = v
-	}
-	return headers
+	return s.headers
 }
 
 func (s *stream) ResponseHeaders() p2p.Headers {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	// Return a copy to prevent external modifications
-	headers := make(p2p.Headers)
-	for k, v := range s.responseHeaders {
-		headers[k] = v
-	}
-	return headers
+	return s.responseHeaders
 }
 
 func (s *stream) Reset() error {
