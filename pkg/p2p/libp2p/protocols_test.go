@@ -317,7 +317,14 @@ func TestDisconnectError(t *testing.T) {
 
 	// error is not checked as opening a new stream should cause disconnect from s1 which is async and can make errors in newStream function
 	// it is important to validate that disconnect will happen after NewStream()
-	_, _ = s2.NewStream(ctx, overlay1, nil, testProtocolName, testProtocolVersion, testStreamName)
+	stream, _ := s2.NewStream(ctx, overlay1, nil, testProtocolName, testProtocolVersion, testStreamName)
+	
+	// Write data to trigger the protocol handler
+	if stream != nil {
+		_, _ = stream.Write([]byte("test"))
+		stream.Close()
+	}
+	
 	expectPeersEventually(t, s1)
 }
 
