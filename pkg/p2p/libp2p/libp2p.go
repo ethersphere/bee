@@ -990,7 +990,6 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 
 func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, protocolName, protocolVersion, streamName string) (network.Stream, error) {
 	swarmStreamName := p2p.NewSwarmStreamName(protocolName, protocolVersion, streamName)
-	fmt.Printf("Creating stream %s to %s\n", swarmStreamName, peerID)
 	st, err := s.host.NewStream(ctx, peerID, protocol.ID(swarmStreamName))
 	if err != nil {
 		if st != nil {
