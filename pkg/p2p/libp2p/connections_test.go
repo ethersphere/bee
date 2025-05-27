@@ -237,7 +237,7 @@ func TestStreamsMaxIncomingLimit(t *testing.T) {
 		} else {
 			activeStreamCount++
 		}
-		
+
 		// Small delay to avoid overwhelming
 		if i%100 == 0 && i > 0 {
 			time.Sleep(time.Millisecond)
@@ -251,7 +251,7 @@ func TestStreamsMaxIncomingLimit(t *testing.T) {
 	handlerCallCount := len(streams)
 	streamsMu.Unlock()
 
-	t.Logf("Results: %d placeholders created, %d successfully activated, %d write errors, %d handlers called", 
+	t.Logf("Results: %d placeholders created, %d successfully activated, %d write errors, %d handlers called",
 		len(createdStreams), activeStreamCount, writeErrors, handlerCallCount)
 
 	// Verify the resource manager enforced the 5000 stream limit
