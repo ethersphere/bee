@@ -584,7 +584,6 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			localSupportsTrace := s.handshakeService.SupportsTraceHeaders()
 			remoteSupportsTrace := peerCaps != nil && peerCaps.TraceHeaders
 			bothSupportTrace := localSupportsTrace && remoteSupportsTrace
-
 			var stream *stream
 			var err error
 
@@ -959,7 +958,6 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 	localSupportsTrace := s.handshakeService.SupportsTraceHeaders()
 	remoteSupportsTrace := peerCaps != nil && peerCaps.TraceHeaders
 	bothSupportTrace := localSupportsTrace && remoteSupportsTrace
-
 	// Only exchange headers if BOTH local and remote peer support trace headers
 	if bothSupportTrace {
 		// Both support trace headers - exchange them with timeout
