@@ -981,7 +981,7 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 
 		ctxTimeout, cancel := context.WithTimeout(ctx, s.HeadersRWTimeout)
 		defer cancel()
-		if err := sendOptionalHeaders(ctxTimeout, headers, stream); err != nil {
+		if err := sendHeaders(ctxTimeout, headers, stream); err != nil {
 			_ = stream.Reset()
 			return nil, fmt.Errorf("send headers: %w", err)
 		}

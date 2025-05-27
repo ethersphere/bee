@@ -47,7 +47,7 @@ func newStreamWithHeaders(s network.Stream, metrics metrics, ctx context.Context
 		responseHeaders: make(p2p.Headers),
 	}
 
-	if err := handleOptionalHeaders(ctx, headler, stream, peerAddress, headers); err != nil {
+	if err := handleHeaders(ctx, headler, stream, peerAddress, headers); err != nil {
 		return nil, err
 	}
 
