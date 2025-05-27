@@ -202,7 +202,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	// The resource manager expects a limiter, se we create one from our limits.
 	limiter := rcmgr.NewFixedLimiter(limits)
 
-	str, err := rcmgr.NewStatsTraceReporter()
+	str, err := rcmgrObs.NewStatsTraceReporter()
 	if err != nil {
 		return nil, err
 	}
