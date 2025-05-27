@@ -1,126 +1,126 @@
 name: Go
 
 on:
-  push:
-    paths-ignore:
-      - packaging/**
-    branches:
-      - 'master'
-  pull_request:
-    paths-ignore:
-      - packaging/**
-    branches:
-      - '**'
+    push:
+        paths-ignore:
+            - packaging/**
+        branches:
+            - "master"
+    pull_request:
+        paths-ignore:
+            - packaging/**
+        branches:
+            - "**"
 
 jobs:
-  test:
-    name: Test
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-    - name: Setup Go
-      uses: actions/setup-go@v5
-      with:
-        cache: true
-        go-version-file: go.mod
-    - name: Build
-      run: make build
-    - name: Test with race detector (Ubuntu and MacOS)
-      if: matrix.os != 'windows-latest'
-      run: make test-ci-race
-    - name: Test without race detector (Windows)
-      if: matrix.os == 'windows-latest'
-      run: make test-ci
-  test-flaky:
-    name: Test (flaky)
-    runs-on: ubuntu-latest
-    continue-on-error: ${{ github.ref == 'refs/heads/master' }}
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-    - name: Setup Go
-      uses: actions/setup-go@v5
-      with:
-        cache: true
-        go-version-file: go.mod
-    - name: Run flaky test
-      run: make test-ci-flaky
-      continue-on-error: ${{ github.ref == 'refs/heads/master' }}
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-    - name: Setup Go
-      uses: actions/setup-go@v5
-      with:
-        cache: false
-        go-version-file: go.mod
-    - name: Commit linting
-      if: github.ref != 'refs/heads/master'
-      uses: wagoid/commitlint-github-action@v5
-    - name: GolangCI-Lint
-      uses: golangci/golangci-lint-action@v6
-      with:
-        skip-cache: false
-        version: v2.1.6
-    - name: Whitespace check
-      run: make check-whitespace
-    - name: go mod tidy check
-      uses: katexochen/go-tidy-check@v2
-  coverage:
-    name: Coverage Report
-    if: github.ref == 'refs/heads/master'
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-    - name: Setup Go
-      uses: actions/setup-go@v5
-      with:
-        cache: false
-        go-version-file: go.mod
-    - name: Cache Go Modules
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cache/go-build
-          ~/go/pkg/mod
-        key: ${{ runner.os }}-go-coverage-${{ hashFiles('**/go.sum') }}
-    - name: Test with code coverage
-      run: make cover=1 test-ci
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v5
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        fail_ci_if_error: true
-        files: ./cover.out
-  trigger-beekeeper:
-    name: Trigger Beekeeper
-    runs-on: ubuntu-latest
-    needs: [test, lint, coverage]
-    if: github.ref == 'refs/heads/master'
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-    - name: Setup Go
-      uses: actions/setup-go@v5
-      with:
-        cache: false
-        go-version-file: go.mod
-    - name: Trigger Beekeeper
-      uses: peter-evans/repository-dispatch@v2
-      with:
-        token: ${{ secrets.GHA_PAT_BASIC }}
-        repository: ${{ github.repository }}
-        event-type: trigger-beekeeper
-        client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}"}'
+    test:
+        name: Test
+        runs-on: ${{ matrix.os }}
+        strategy:
+            matrix:
+                os: [ubuntu-latest, macos-latest, windows-latest]
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+            - name: Setup Go
+              uses: actions/setup-go@v5
+              with:
+                  cache: true
+                  go-version-file: go.mod
+            - name: Build
+              run: make build
+            - name: Test with race detector (Ubuntu and MacOS)
+              if: matrix.os != 'windows-latest'
+              run: make test-ci-race
+            - name: Test without race detector (Windows)
+              if: matrix.os == 'windows-latest'
+              run: make test-ci
+    test-flaky:
+        name: Test (flaky)
+        runs-on: ubuntu-latest
+        continue-on-error: ${{ github.ref == 'refs/heads/master' }}
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+            - name: Setup Go
+              uses: actions/setup-go@v5
+              with:
+                  cache: true
+                  go-version-file: go.mod
+            - name: Run flaky test
+              run: make test-ci-flaky
+              continue-on-error: ${{ github.ref == 'refs/heads/master' }}
+    lint:
+        name: Lint
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+            - name: Setup Go
+              uses: actions/setup-go@v5
+              with:
+                  cache: false
+                  go-version-file: go.mod
+            - name: Commit linting
+              if: github.ref != 'refs/heads/master'
+              uses: wagoid/commitlint-github-action@v5
+            - name: GolangCI-Lint
+              uses: golangci/golangci-lint-action@v7
+              with:
+                  skip-cache: false
+                  version: v2.1.6
+            - name: Whitespace check
+              run: make check-whitespace
+            - name: go mod tidy check
+              uses: katexochen/go-tidy-check@v2
+    coverage:
+        name: Coverage Report
+        if: github.ref == 'refs/heads/master'
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+            - name: Setup Go
+              uses: actions/setup-go@v5
+              with:
+                  cache: false
+                  go-version-file: go.mod
+            - name: Cache Go Modules
+              uses: actions/cache@v4
+              with:
+                  path: |
+                      ~/.cache/go-build
+                      ~/go/pkg/mod
+                  key: ${{ runner.os }}-go-coverage-${{ hashFiles('**/go.sum') }}
+            - name: Test with code coverage
+              run: make cover=1 test-ci
+            - name: Upload coverage to Codecov
+              uses: codecov/codecov-action@v5
+              with:
+                  token: ${{ secrets.CODECOV_TOKEN }}
+                  fail_ci_if_error: true
+                  files: ./cover.out
+    trigger-beekeeper:
+        name: Trigger Beekeeper
+        runs-on: ubuntu-latest
+        needs: [test, lint, coverage]
+        if: github.ref == 'refs/heads/master'
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+            - name: Setup Go
+              uses: actions/setup-go@v5
+              with:
+                  cache: false
+                  go-version-file: go.mod
+            - name: Trigger Beekeeper
+              uses: peter-evans/repository-dispatch@v2
+              with:
+                  token: ${{ secrets.GHA_PAT_BASIC }}
+                  repository: ${{ github.repository }}
+                  event-type: trigger-beekeeper
+                  client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}"}'
