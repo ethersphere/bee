@@ -44,6 +44,7 @@ import (
 	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
+	rcmgrObs "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	lp2pswarm "github.com/libp2p/go-libp2p/p2p/net/swarm"
 	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
@@ -175,7 +176,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	if o.Registry != nil {
-		rcmgr.MustRegisterWith(o.Registry)
+		rcmgrObs.MustRegisterWith(o.Registry)
 	}
 
 	_, err = ocprom.NewExporter(ocprom.Options{
@@ -186,11 +187,20 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 
-	// Use scaled default limits as base and override specific stream limits
-	baseLimits := rcmgr.InfiniteLimits
+	// Tweak certain settings
+	cfg := rcmgr.PartialLimitConfig{
+		System: rcmgr.ResourceLimits{
+			Streams:         IncomingStreamCountLimit + OutgoingStreamCountLimit,
+			StreamsOutbound: OutgoingStreamCountLimit,
+			StreamsInbound:  IncomingStreamCountLimit,
+		},
+	}
+
+	// Create our limits by using our cfg and replacing the default values with values from `scaledDefaultLimits`
+	limits := cfg.Build(rcmgr.InfiniteLimits)
 
 	// The resource manager expects a limiter, se we create one from our limits.
-	limiter := rcmgr.NewFixedLimiter(baseLimits)
+	limiter := rcmgr.NewFixedLimiter(limits)
 
 	str, err := rcmgr.NewStatsTraceReporter()
 	if err != nil {
