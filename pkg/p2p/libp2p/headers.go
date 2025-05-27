@@ -9,73 +9,54 @@ import (
 	"fmt"
 
 	"github.com/ethersphere/bee/v2/pkg/p2p"
-	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/headers/pb"
+	headerspb "github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/headers/pb"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-func sendOptionalHeaders(ctx context.Context, headers p2p.Headers, stream *stream, useTraceHeaders bool) error {
+func sendOptionalHeaders(ctx context.Context, headers p2p.Headers, stream *stream) error {
 	w, r := protobuf.NewWriterAndReader(stream)
 
-	var headersToSend p2p.Headers
-	if useTraceHeaders {
-		headersToSend = headers
-	} else {
-		headersToSend = make(p2p.Headers)
-	}
-
-	if err := w.WriteMsgWithContext(ctx, headersP2PToPB(headersToSend)); err != nil {
+	if err := w.WriteMsgWithContext(ctx, headersP2PToPB(headers)); err != nil {
 		return fmt.Errorf("write message: %w", err)
 	}
 
-	h := new(pb.Headers)
+	h := new(headerspb.Headers)
 	if err := r.ReadMsgWithContext(ctx, h); err != nil {
 		return fmt.Errorf("read message: %w", err)
 	}
 
-	if useTraceHeaders {
-		stream.headers = headersPBToP2P(h)
-	} else {
-		stream.headers = make(p2p.Headers)
-	}
+	stream.headers = headersPBToP2P(h)
 
 	return nil
 }
 
-func handleOptionalHeaders(ctx context.Context, headler p2p.HeadlerFunc, stream *stream, peerAddress swarm.Address, useTraceHeaders bool) error {
+func handleOptionalHeaders(ctx context.Context, headler p2p.HeadlerFunc, stream *stream, peerAddress swarm.Address, headers p2p.Headers) error {
 	w, r := protobuf.NewWriterAndReader(stream)
 
-	headers := new(pb.Headers)
-	if err := r.ReadMsgWithContext(ctx, headers); err != nil {
+	incomingHeaders := new(headerspb.Headers)
+	if err := r.ReadMsgWithContext(ctx, incomingHeaders); err != nil {
 		return fmt.Errorf("read message: %w", err)
 	}
 
-	if useTraceHeaders {
-		stream.headers = headersPBToP2P(headers)
+	stream.headers = headersPBToP2P(incomingHeaders)
+
+	var responseHeaders p2p.Headers
+	if headler != nil {
+		responseHeaders = headler(stream.headers, peerAddress)
 	} else {
-		stream.headers = make(p2p.Headers)
+		responseHeaders = headers
 	}
 
-	var h p2p.Headers
-	if useTraceHeaders && headler != nil {
-		h = headler(stream.headers, peerAddress)
-	} else {
-		h = make(p2p.Headers)
-	}
+	stream.responseHeaders = responseHeaders
 
-	if useTraceHeaders {
-		stream.responseHeaders = h
-	} else {
-		stream.responseHeaders = make(p2p.Headers)
-	}
-
-	if err := w.WriteMsgWithContext(ctx, headersP2PToPB(h)); err != nil {
+	if err := w.WriteMsgWithContext(ctx, headersP2PToPB(responseHeaders)); err != nil {
 		return fmt.Errorf("write message: %w", err)
 	}
 	return nil
 }
 
-func headersPBToP2P(h *pb.Headers) p2p.Headers {
+func headersPBToP2P(h *headerspb.Headers) p2p.Headers {
 	p2ph := make(p2p.Headers)
 	for _, rh := range h.Headers {
 		p2ph[rh.Key] = rh.Value
@@ -83,11 +64,11 @@ func headersPBToP2P(h *pb.Headers) p2p.Headers {
 	return p2ph
 }
 
-func headersP2PToPB(h p2p.Headers) *pb.Headers {
-	pbh := new(pb.Headers)
-	pbh.Headers = make([]*pb.Header, 0)
+func headersP2PToPB(h p2p.Headers) *headerspb.Headers {
+	pbh := new(headerspb.Headers)
+	pbh.Headers = make([]*headerspb.Header, 0)
 	for key, value := range h {
-		pbh.Headers = append(pbh.Headers, &pb.Header{
+		pbh.Headers = append(pbh.Headers, &headerspb.Header{
 			Key:   key,
 			Value: value,
 		})

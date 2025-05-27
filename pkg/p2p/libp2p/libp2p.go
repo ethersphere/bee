@@ -186,17 +186,20 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 
-	// Tweak certain settings
+	// Use scaled default limits as base and override specific stream limits
+	baseLimits := rcmgr.DefaultLimits.AutoScale()
+
+	// Configure resource manager with proper stream limits
 	cfg := rcmgr.PartialLimitConfig{
 		System: rcmgr.ResourceLimits{
 			Streams:         IncomingStreamCountLimit + OutgoingStreamCountLimit,
-			StreamsOutbound: OutgoingStreamCountLimit,
 			StreamsInbound:  IncomingStreamCountLimit,
+			StreamsOutbound: OutgoingStreamCountLimit,
 		},
 	}
 
-	// Create our limits by using our cfg and replacing the default values with values from `scaledDefaultLimits`
-	limits := cfg.Build(rcmgr.InfiniteLimits)
+	// Build limits using scaled defaults as base for proper system-wide enforcement
+	limits := cfg.Build(baseLimits)
 
 	// The resource manager expects a limiter, se we create one from our limits.
 	limiter := rcmgr.NewFixedLimiter(limits)
@@ -358,6 +361,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, fmt.Errorf("protocol version match %s: %w", id, err)
 	}
 
+	// Handshake protocol NEVER exchanges headers - capabilities are unknown at this point
 	s.host.SetStreamHandlerMatch(id, matcher, s.handleIncoming)
 
 	connMetricNotify := newConnMetricNotify(s.metrics)
@@ -409,6 +413,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	}
 
 	peerID := stream.Conn().RemotePeer()
+	// Handshake stream NEVER has headers - capabilities are unknown at this point
 	handshakeStream := newStream(stream, s.metrics)
 	i, err := s.handshakeService.Handle(s.ctx, handshakeStream, stream.Conn().RemoteMultiaddr(), peerID)
 	if err != nil {
@@ -437,7 +442,8 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		return
 	}
 
-	if exists := s.peers.addIfNotExists(stream.Conn(), overlay, i.Capabilities.FullNode, i.Capabilities.TraceHeaders); exists {
+	// Store capabilities in peer registry - now each peer knows the other's capabilities
+	if exists := s.peers.addIfNotExists(stream.Conn(), overlay, i.Capabilities); exists {
 		s.logger.Debug("stream handler: peer already exists", "peer_address", overlay)
 		if err = handshakeStream.FullClose(); err != nil {
 			s.logger.Debug("stream handler: could not close stream", "peer_address", overlay, "error", err)
@@ -577,25 +583,33 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 				return
 			}
 
-			// Only exchange headers if both peers support trace headers
-			headersStartTime := time.Now()
-			ctx, cancel := context.WithTimeout(s.ctx, s.HeadersRWTimeout)
-			defer cancel()
+			// Check if BOTH local and remote peer support trace headers
+			// At this point, handshake has completed and capabilities are known
+			peerCaps := s.peers.capabilities(overlay)
+			localSupportsTrace := s.handshakeService.SupportsTraceHeaders()
+			remoteSupportsTrace := peerCaps != nil && peerCaps.TraceHeaders
+			bothSupportTrace := localSupportsTrace && remoteSupportsTrace
 
-			// Check if both peers support trace headers to determine if we should use actual headers
-			localSupportsTraceHeaders := s.handshakeService.SupportsTraceHeaders()
-			peerSupportsTraceHeaders, found := s.peers.traceHeadersSupport(overlay)
-			useTraceHeaders := localSupportsTraceHeaders && found && peerSupportsTraceHeaders
+			var stream *stream
+			var err error
 
-			// Create stream with headers set atomically during creation
-			stream, err := newStreamWithHeaders(streamlibp2p, s.metrics, ctx, ss.Headler, overlay, useTraceHeaders)
-			if err != nil {
-				s.logger.Debug("handle protocol: handle headers failed", "protocol", p.Name, "version", p.Version, "stream", ss.Name, "peer", overlay, "error", err)
-				_ = streamlibp2p.Reset()
-				return
+			if bothSupportTrace {
+				// Both support trace headers - exchange them with timeout
+				headersStartTime := time.Now()
+				ctx, cancel := context.WithTimeout(s.ctx, s.HeadersRWTimeout)
+				defer cancel()
+
+				stream, err = newStreamWithHeaders(streamlibp2p, s.metrics, ctx, ss.Headler, overlay, make(p2p.Headers))
+				if err != nil {
+					s.logger.Debug("handle protocol: handle headers failed", "protocol", p.Name, "version", p.Version, "stream", ss.Name, "peer", overlay, "error", err)
+					_ = streamlibp2p.Reset()
+					return
+				}
+				s.metrics.HeadersExchangeDuration.Observe(time.Since(headersStartTime).Seconds())
+			} else {
+				// NO header exchange - nothing on wire
+				stream = newStream(streamlibp2p, s.metrics)
 			}
-
-			s.metrics.HeadersExchangeDuration.Observe(time.Since(headersStartTime).Seconds())
 
 			ctxStream, cancelStream := context.WithCancel(s.ctx)
 
@@ -611,7 +625,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 				return
 			}
 
-			logger := tracing.NewLoggerWithTraceID(ctx, s.logger)
+			logger := tracing.NewLoggerWithTraceID(ctxStream, s.logger)
 			loggerV1 := logger.V(1).Build()
 
 			s.metrics.HandledStreamCount.Inc()
@@ -789,7 +803,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 		return nil, p2p.ErrPeerBlocklisted
 	}
 
-	if exists := s.peers.addIfNotExists(stream.Conn(), overlay, i.Capabilities.FullNode, i.Capabilities.TraceHeaders); exists {
+	if exists := s.peers.addIfNotExists(stream.Conn(), overlay, i.Capabilities); exists {
 		if err := handshakeStream.FullClose(); err != nil {
 			_ = s.Disconnect(overlay, "failed closing handshake stream after connect")
 			return nil, fmt.Errorf("peer exists, full close: %w", err)
@@ -944,28 +958,35 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 		return nil, fmt.Errorf("new stream for peerid: %w", err)
 	}
 
+	// Check if BOTH local and remote peer support trace headers
+	peerCaps := s.peers.capabilities(overlay)
+	localSupportsTrace := s.handshakeService.SupportsTraceHeaders()
+	remoteSupportsTrace := peerCaps != nil && peerCaps.TraceHeaders
+	bothSupportTrace := localSupportsTrace && remoteSupportsTrace
+
+	s.logger.Debug("NewStream capability check", "overlay", overlay, "local_supports", localSupportsTrace, "remote_supports", remoteSupportsTrace, "peer_caps", peerCaps, "both_support", bothSupportTrace)
+
+	// Create stream - only exchange headers if both support trace headers
 	stream := newStream(streamlibp2p, s.metrics)
 
-	// tracing: add span context header
-	if headers == nil {
-		headers = make(p2p.Headers)
-	}
-	if err := s.tracer.AddContextHeader(ctx, headers); err != nil && !errors.Is(err, tracing.ErrContextNotFound) {
-		_ = stream.Reset()
-		return nil, fmt.Errorf("new stream add context header fail: %w", err)
-	}
+	if bothSupportTrace {
+		// Both support trace headers - exchange them with timeout
+		if headers == nil {
+			headers = make(p2p.Headers)
+		}
+		if err := s.tracer.AddContextHeader(ctx, headers); err != nil && !errors.Is(err, tracing.ErrContextNotFound) {
+			_ = stream.Reset()
+			return nil, fmt.Errorf("new stream add context header fail: %w", err)
+		}
 
-	// Only exchange headers if both peers support trace headers
-	localSupportsTraceHeaders := s.handshakeService.SupportsTraceHeaders()
-	peerSupportsTraceHeaders, found := s.peers.traceHeadersSupport(overlay)
-	useTraceHeaders := localSupportsTraceHeaders && found && peerSupportsTraceHeaders
-
-	ctxTimeout, cancel := context.WithTimeout(ctx, s.HeadersRWTimeout)
-	defer cancel()
-	if err := sendOptionalHeaders(ctxTimeout, headers, stream, useTraceHeaders); err != nil {
-		_ = stream.Reset()
-		return nil, fmt.Errorf("send headers: %w", err)
+		ctxTimeout, cancel := context.WithTimeout(ctx, s.HeadersRWTimeout)
+		defer cancel()
+		if err := sendOptionalHeaders(ctxTimeout, headers, stream); err != nil {
+			_ = stream.Reset()
+			return nil, fmt.Errorf("send headers: %w", err)
+		}
 	}
+	// If not both supporting trace headers, skip header exchange entirely - no wire communication
 
 	return stream, nil
 }
