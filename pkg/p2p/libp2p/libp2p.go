@@ -55,7 +55,6 @@ import (
 
 	ocprom "contrib.go.opencensus.io/exporter/prometheus"
 	m2 "github.com/ethersphere/bee/v2/pkg/metrics"
-	rcmgrObs "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -120,18 +119,18 @@ type lightnodes interface {
 }
 
 type Options struct {
-	PrivateKey       *ecdsa.PrivateKey
-	NATAddr          string
-	EnableWS         bool
-	FullNode         bool
+	PrivateKey         *ecdsa.PrivateKey
+	NATAddr            string
+	EnableWS           bool
+	FullNode           bool
 	EnableTraceHeaders bool
-	LightNodeLimit   int
-	WelcomeMessage   string
-	Nonce            []byte
-	ValidateOverlay  bool
-	hostFactory      func(...libp2p.Option) (host.Host, error)
-	HeadersRWTimeout time.Duration
-	Registry         *prometheus.Registry
+	LightNodeLimit     int
+	WelcomeMessage     string
+	Nonce              []byte
+	ValidateOverlay    bool
+	hostFactory        func(...libp2p.Option) (host.Host, error)
+	HeadersRWTimeout   time.Duration
+	Registry           *prometheus.Registry
 }
 
 func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
@@ -176,7 +175,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	if o.Registry != nil {
-		rcmgrObs.MustRegisterWith(o.Registry)
+		rcmgr.MustRegisterWith(o.Registry)
 	}
 
 	_, err = ocprom.NewExporter(ocprom.Options{
@@ -202,7 +201,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	// The resource manager expects a limiter, se we create one from our limits.
 	limiter := rcmgr.NewFixedLimiter(limits)
 
-	str, err := rcmgrObs.NewStatsTraceReporter()
+	str, err := rcmgr.NewStatsTraceReporter()
 	if err != nil {
 		return nil, err
 	}
@@ -584,18 +583,18 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			headersStartTime := time.Now()
 			ctx, cancel := context.WithTimeout(s.ctx, s.HeadersRWTimeout)
 			defer cancel()
-			
+
 			// Check if both peers support trace headers to determine if we should use actual headers
 			localSupportsTraceHeaders := s.handshakeService.SupportsTraceHeaders()
 			peerSupportsTraceHeaders, found := s.peers.traceHeadersSupport(overlay)
 			useTraceHeaders := localSupportsTraceHeaders && found && peerSupportsTraceHeaders
-			
+
 			if err := handleOptionalHeaders(ctx, ss.Headler, stream, overlay, useTraceHeaders); err != nil {
 				s.logger.Debug("handle protocol: handle headers failed", "protocol", p.Name, "version", p.Version, "stream", ss.Name, "peer", overlay, "error", err)
 				_ = stream.Reset()
 				return
 			}
-			
+
 			s.metrics.HeadersExchangeDuration.Observe(time.Since(headersStartTime).Seconds())
 
 			ctxStream, cancelStream := context.WithCancel(s.ctx)
@@ -960,7 +959,7 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 	localSupportsTraceHeaders := s.handshakeService.SupportsTraceHeaders()
 	peerSupportsTraceHeaders, found := s.peers.traceHeadersSupport(overlay)
 	useTraceHeaders := localSupportsTraceHeaders && found && peerSupportsTraceHeaders
-	
+
 	ctxTimeout, cancel := context.WithTimeout(ctx, s.HeadersRWTimeout)
 	defer cancel()
 	if err := sendOptionalHeaders(ctxTimeout, headers, stream, useTraceHeaders); err != nil {

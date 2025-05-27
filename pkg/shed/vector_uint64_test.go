@@ -56,7 +56,7 @@ func TestUint64Vector(t *testing.T) {
 		}
 
 		for _, index := range []uint64{0, 1, 2, 5, 100} {
-			var want uint64 = 42 + index
+			var want = 42 + index
 			err = bins.Put(index, want)
 			if err != nil {
 				t.Fatal(err)
@@ -70,7 +70,7 @@ func TestUint64Vector(t *testing.T) {
 			}
 
 			t.Run("overwrite", func(t *testing.T) {
-				var want uint64 = 84 + index
+				var want = 84 + index
 				err = bins.Put(index, want)
 				if err != nil {
 					t.Fatal(err)
@@ -97,7 +97,7 @@ func TestUint64Vector(t *testing.T) {
 
 		for _, index := range []uint64{0, 1, 2, 3, 5, 10} {
 			batch := new(leveldb.Batch)
-			var want uint64 = 43 + index
+			var want = 43 + index
 			bins.PutInBatch(batch, index, want)
 			err = db.WriteBatch(batch)
 			if err != nil {
@@ -113,7 +113,7 @@ func TestUint64Vector(t *testing.T) {
 
 			t.Run("overwrite", func(t *testing.T) {
 				batch := new(leveldb.Batch)
-				var want uint64 = 85 + index
+				var want = 85 + index
 				bins.PutInBatch(batch, index, want)
 				err = db.WriteBatch(batch)
 				if err != nil {
