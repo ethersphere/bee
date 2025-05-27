@@ -9,7 +9,7 @@ import (
 	"fmt"
 
 	"github.com/ethersphere/bee/v2/pkg/p2p"
-	headerspb "github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/headers/pb"
+	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/headers/pb"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -21,7 +21,7 @@ func sendOptionalHeaders(ctx context.Context, headers p2p.Headers, stream *strea
 		return fmt.Errorf("write message: %w", err)
 	}
 
-	h := new(headerspb.Headers)
+	h := new(pb.Headers)
 	if err := r.ReadMsgWithContext(ctx, h); err != nil {
 		return fmt.Errorf("read message: %w", err)
 	}
@@ -34,7 +34,7 @@ func sendOptionalHeaders(ctx context.Context, headers p2p.Headers, stream *strea
 func handleOptionalHeaders(ctx context.Context, headler p2p.HeadlerFunc, stream *stream, peerAddress swarm.Address, headers p2p.Headers) error {
 	w, r := protobuf.NewWriterAndReader(stream)
 
-	incomingHeaders := new(headerspb.Headers)
+	incomingHeaders := new(pb.Headers)
 	if err := r.ReadMsgWithContext(ctx, incomingHeaders); err != nil {
 		return fmt.Errorf("read message: %w", err)
 	}
@@ -56,7 +56,7 @@ func handleOptionalHeaders(ctx context.Context, headler p2p.HeadlerFunc, stream 
 	return nil
 }
 
-func headersPBToP2P(h *headerspb.Headers) p2p.Headers {
+func headersPBToP2P(h *pb.Headers) p2p.Headers {
 	p2ph := make(p2p.Headers)
 	for _, rh := range h.Headers {
 		p2ph[rh.Key] = rh.Value
@@ -64,11 +64,11 @@ func headersPBToP2P(h *headerspb.Headers) p2p.Headers {
 	return p2ph
 }
 
-func headersP2PToPB(h p2p.Headers) *headerspb.Headers {
-	pbh := new(headerspb.Headers)
-	pbh.Headers = make([]*headerspb.Header, 0)
+func headersP2PToPB(h p2p.Headers) *pb.Headers {
+	pbh := new(pb.Headers)
+	pbh.Headers = make([]*pb.Header, 0)
 	for key, value := range h {
-		pbh.Headers = append(pbh.Headers, &headerspb.Header{
+		pbh.Headers = append(pbh.Headers, &pb.Header{
 			Key:   key,
 			Value: value,
 		})
