@@ -14,11 +14,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-func sendHeaders(ctx context.Context, headers p2p.Headers, stream *stream) error {
-	return sendHeadersWithCapability(ctx, headers, stream, true)
-}
-
-func sendHeadersWithCapability(ctx context.Context, headers p2p.Headers, stream *stream, useTraceHeaders bool) error {
+func sendOptionalHeaders(ctx context.Context, headers p2p.Headers, stream *stream, useTraceHeaders bool) error {
 	w, r := protobuf.NewWriterAndReader(stream)
 
 	var headersToSend p2p.Headers
@@ -46,11 +42,7 @@ func sendHeadersWithCapability(ctx context.Context, headers p2p.Headers, stream 
 	return nil
 }
 
-func handleHeaders(ctx context.Context, headler p2p.HeadlerFunc, stream *stream, peerAddress swarm.Address) error {
-	return handleHeadersWithCapability(ctx, headler, stream, peerAddress, true)
-}
-
-func handleHeadersWithCapability(ctx context.Context, headler p2p.HeadlerFunc, stream *stream, peerAddress swarm.Address, useTraceHeaders bool) error {
+func handleOptionalHeaders(ctx context.Context, headler p2p.HeadlerFunc, stream *stream, peerAddress swarm.Address, useTraceHeaders bool) error {
 	w, r := protobuf.NewWriterAndReader(stream)
 
 	headers := new(pb.Headers)
