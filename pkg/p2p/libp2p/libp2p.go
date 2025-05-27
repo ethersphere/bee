@@ -961,8 +961,6 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 	remoteSupportsTrace := peerCaps != nil && peerCaps.TraceHeaders
 	bothSupportTrace := localSupportsTrace && remoteSupportsTrace
 
-	s.logger.Debug("NewStream capability check", "overlay", overlay, "local_supports", localSupportsTrace, "remote_supports", remoteSupportsTrace, "peer_caps", peerCaps, "both_support", bothSupportTrace)
-
 	// Only exchange headers if BOTH local and remote peer support trace headers
 	if bothSupportTrace {
 		// Both support trace headers - exchange them with timeout
@@ -981,7 +979,6 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 			return nil, fmt.Errorf("send headers: %w", err)
 		}
 	}
-	// If not both supporting trace headers, skip header exchange entirely - no wire communication
 
 	return stream, nil
 }
