@@ -43,6 +43,7 @@ const (
 	optionNameTracingHost                  = "tracing-host"
 	optionNameTracingPort                  = "tracing-port"
 	optionNameTracingServiceName           = "tracing-service-name"
+	optionNameEnableTraceHeaders           = "enable-trace-headers"
 	optionNameVerbosity                    = "verbosity"
 	optionNamePaymentThreshold             = "payment-threshold"
 	optionNamePaymentTolerance             = "payment-tolerance-percent"
@@ -253,6 +254,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameTracingHost, "", "host to send tracing data")
 	cmd.Flags().String(optionNameTracingPort, "", "port to send tracing data")
 	cmd.Flags().String(optionNameTracingServiceName, "bee", "service name identifier for tracing")
+	cmd.Flags().Bool(optionNameEnableTraceHeaders, false, "enable trace headers capability for p2p streams")
 	cmd.Flags().String(optionNameVerbosity, "info", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
 	cmd.Flags().String(optionWelcomeMessage, "", "send a welcome message string during handshakes")
 	cmd.Flags().String(optionNamePaymentThreshold, "13500000", "threshold in BZZ where you expect to get paid from your peers")

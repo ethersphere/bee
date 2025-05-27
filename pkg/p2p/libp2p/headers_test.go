@@ -27,10 +27,13 @@ func TestHeaders(t *testing.T) {
 	defer cancel()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
-		FullNode: true,
+		FullNode:           true,
+		EnableTraceHeaders: true,
 	}})
 
-	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
+	s2, overlay2 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		EnableTraceHeaders: true,
+	}})
 
 	var gotHeaders p2p.Headers
 	handled := make(chan struct{})
@@ -78,10 +81,13 @@ func TestHeaders_empty(t *testing.T) {
 	defer cancel()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
-		FullNode: true,
+		FullNode:           true,
+		EnableTraceHeaders: true,
 	}})
 
-	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
+	s2, overlay2 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		EnableTraceHeaders: true,
+	}})
 
 	var gotHeaders p2p.Headers
 	handled := make(chan struct{})
@@ -105,6 +111,9 @@ func TestHeaders_empty(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Wait for connection to be fully established and peer capabilities to be registered
+	expectPeers(t, s2, overlay1)
+
 	stream, err := s2.NewStream(ctx, overlay1, nil, testProtocolName, testProtocolVersion, testStreamName)
 	if err != nil {
 		t.Fatal(err)
@@ -119,6 +128,193 @@ func TestHeaders_empty(t *testing.T) {
 
 	if len(gotHeaders) != 0 {
 		t.Errorf("got headers %+v, want none", gotHeaders)
+	}
+}
+
+func TestHeaders_noTraceCapability(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Both services have trace headers disabled - headers should be skipped
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode:           true,
+		EnableTraceHeaders: false,
+	}})
+
+	s2, overlay2 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		EnableTraceHeaders: false,
+	}})
+
+	var gotHeaders p2p.Headers
+	handled := make(chan struct{})
+	
+	if err := s1.AddProtocol(newTestProtocol(func(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
+		if ctx == nil {
+			t.Fatal("missing context")
+		}
+		if !p.Address.Equal(overlay2) {
+			t.Fatalf("got peer %v, want %v", p.Address, overlay2)
+		}
+		gotHeaders = stream.Headers()
+		close(handled)
+		return nil
+	})); err != nil {
+		t.Fatal(err)
+	}
+
+	addr := serviceUnderlayAddress(t, s1)
+
+	if _, err := s2.Connect(ctx, addr); err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for connection to be fully established and peer capabilities to be registered
+	expectPeers(t, s2, overlay1)
+
+	// Since both peers have trace headers disabled, no headers should be exchanged
+	stream, err := s2.NewStream(ctx, overlay1, nil, testProtocolName, testProtocolVersion, testStreamName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+
+	select {
+	case <-handled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for handler")
+	}
+
+	// Headers should be empty since trace headers capability is disabled
+	if len(gotHeaders) != 0 {
+		t.Errorf("expected no headers when trace capability disabled, got %+v", gotHeaders)
+	}
+}
+
+func TestHeaders_mixedCapability(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// s1 supports trace headers, s2 does not - headers should be skipped
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode:           true,
+		EnableTraceHeaders: true,
+	}})
+
+	s2, overlay2 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		EnableTraceHeaders: false,
+	}})
+
+	var gotHeaders p2p.Headers
+	handled := make(chan struct{})
+	
+	if err := s1.AddProtocol(newTestProtocol(func(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
+		if ctx == nil {
+			t.Fatal("missing context")
+		}
+		if !p.Address.Equal(overlay2) {
+			t.Fatalf("got peer %v, want %v", p.Address, overlay2)
+		}
+		gotHeaders = stream.Headers()
+		close(handled)
+		return nil
+	})); err != nil {
+		t.Fatal(err)
+	}
+
+	addr := serviceUnderlayAddress(t, s1)
+
+	if _, err := s2.Connect(ctx, addr); err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for connection to be fully established and peer capabilities to be registered
+	expectPeers(t, s2, overlay1)
+
+	stream, err := s2.NewStream(ctx, overlay1, nil, testProtocolName, testProtocolVersion, testStreamName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+
+	select {
+	case <-handled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for handler")
+	}
+
+	// Headers should be empty since capabilities don't match
+	if len(gotHeaders) != 0 {
+		t.Errorf("expected no headers when capabilities don't match, got %+v", gotHeaders)
+	}
+}
+
+func TestHeaders_withHeadersWhenCapabilityMismatch(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// s1 supports trace headers, s2 does not - even when headers are provided, they should be ignored
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode:           true,
+		EnableTraceHeaders: true,
+	}})
+
+	s2, overlay2 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		EnableTraceHeaders: false,
+	}})
+
+	headers := p2p.Headers{
+		"test-header-key": []byte("header-value"),
+		"other-key":       []byte("other-value"),
+	}
+
+	var gotHeaders p2p.Headers
+	handled := make(chan struct{})
+	
+	if err := s1.AddProtocol(newTestProtocol(func(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
+		if ctx == nil {
+			t.Fatal("missing context")
+		}
+		if !p.Address.Equal(overlay2) {
+			t.Fatalf("got peer %v, want %v", p.Address, overlay2)
+		}
+		gotHeaders = stream.Headers()
+		close(handled)
+		return nil
+	})); err != nil {
+		t.Fatal(err)
+	}
+
+	addr := serviceUnderlayAddress(t, s1)
+
+	if _, err := s2.Connect(ctx, addr); err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for connection to be fully established and peer capabilities to be registered
+	expectPeers(t, s2, overlay1)
+
+	// Try to send headers when capabilities don't match - they should be ignored
+	stream, err := s2.NewStream(ctx, overlay1, headers, testProtocolName, testProtocolVersion, testStreamName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+
+	select {
+	case <-handled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for handler")
+	}
+
+	// Headers should be empty since capabilities don't match, even though we tried to send some
+	if len(gotHeaders) != 0 {
+		t.Errorf("expected no headers when capabilities don't match, got %+v", gotHeaders)
 	}
 }
 
@@ -138,10 +334,13 @@ func TestHeadler(t *testing.T) {
 	defer cancel()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
-		FullNode: true,
+		FullNode:           true,
+		EnableTraceHeaders: true,
 	}})
 
-	s2, _ := newService(t, 1, libp2pServiceOpts{})
+	s2, _ := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		EnableTraceHeaders: true,
+	}})
 
 	var gotReceivedHeaders p2p.Headers
 	handled := make(chan struct{})
