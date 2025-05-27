@@ -31,7 +31,7 @@ func sendHeaders(ctx context.Context, headers p2p.Headers, stream *stream) error
 	return nil
 }
 
-func handleHeaders(ctx context.Context, headler p2p.HeadlerFunc, stream *stream, peerAddress swarm.Address, headers p2p.Headers) error {
+func handleHeaders(ctx context.Context, headler p2p.HeadlerFunc, stream *stream, peerAddress swarm.Address) error {
 	w, r := protobuf.NewWriterAndReader(stream)
 
 	incomingHeaders := new(pb.Headers)
@@ -45,7 +45,7 @@ func handleHeaders(ctx context.Context, headler p2p.HeadlerFunc, stream *stream,
 	if headler != nil {
 		responseHeaders = headler(stream.headers, peerAddress)
 	} else {
-		responseHeaders = headers
+		responseHeaders = make(p2p.Headers)
 	}
 
 	stream.responseHeaders = responseHeaders
