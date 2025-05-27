@@ -577,8 +577,6 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 				return
 			}
 
-			stream := newStream(streamlibp2p, s.metrics)
-
 			// Only exchange headers if both peers support trace headers
 			headersStartTime := time.Now()
 			ctx, cancel := context.WithTimeout(s.ctx, s.HeadersRWTimeout)
@@ -589,9 +587,11 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			peerSupportsTraceHeaders, found := s.peers.traceHeadersSupport(overlay)
 			useTraceHeaders := localSupportsTraceHeaders && found && peerSupportsTraceHeaders
 
-			if err := handleOptionalHeaders(ctx, ss.Headler, stream, overlay, useTraceHeaders); err != nil {
+			// Create stream with headers set atomically during creation
+			stream, err := newStreamWithHeaders(streamlibp2p, s.metrics, ctx, ss.Headler, overlay, useTraceHeaders)
+			if err != nil {
 				s.logger.Debug("handle protocol: handle headers failed", "protocol", p.Name, "version", p.Version, "stream", ss.Name, "peer", overlay, "error", err)
-				_ = stream.Reset()
+				_ = streamlibp2p.Reset()
 				return
 			}
 
