@@ -590,7 +590,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			peerSupportsTraceHeaders, found := s.peers.traceHeadersSupport(overlay)
 			useTraceHeaders := localSupportsTraceHeaders && found && peerSupportsTraceHeaders
 			
-			if err := handleHeadersWithCapability(ctx, ss.Headler, stream, overlay, useTraceHeaders); err != nil {
+			if err := handleOptionalHeaders(ctx, ss.Headler, stream, overlay, useTraceHeaders); err != nil {
 				s.logger.Debug("handle protocol: handle headers failed", "protocol", p.Name, "version", p.Version, "stream", ss.Name, "peer", overlay, "error", err)
 				_ = stream.Reset()
 				return
@@ -963,7 +963,7 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 	
 	ctxTimeout, cancel := context.WithTimeout(ctx, s.HeadersRWTimeout)
 	defer cancel()
-	if err := sendHeadersWithCapability(ctxTimeout, headers, stream, useTraceHeaders); err != nil {
+	if err := sendOptionalHeaders(ctxTimeout, headers, stream, useTraceHeaders); err != nil {
 		_ = stream.Reset()
 		return nil, fmt.Errorf("send headers: %w", err)
 	}
