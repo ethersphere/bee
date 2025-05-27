@@ -46,18 +46,18 @@ func newStreamWithHeaders(s network.Stream, metrics metrics, ctx context.Context
 		headers:         make(p2p.Headers),
 		responseHeaders: make(p2p.Headers),
 	}
-	
+
 	// Handle headers during creation to avoid race conditions
 	if err := handleOptionalHeaders(ctx, headler, stream, peerAddress, useTraceHeaders); err != nil {
 		return nil, err
 	}
-	
+
 	return stream, nil
 }
 func (s *stream) Headers() p2p.Headers {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	// Return a copy to prevent external modifications
 	headers := make(p2p.Headers)
 	for k, v := range s.headers {
@@ -69,7 +69,7 @@ func (s *stream) Headers() p2p.Headers {
 func (s *stream) ResponseHeaders() p2p.Headers {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	// Return a copy to prevent external modifications
 	headers := make(p2p.Headers)
 	for k, v := range s.responseHeaders {
