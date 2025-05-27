@@ -187,22 +187,10 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	// Use scaled default limits as base and override specific stream limits
-	baseLimits := rcmgr.DefaultLimits.AutoScale()
-
-	// Configure resource manager with proper stream limits
-	cfg := rcmgr.PartialLimitConfig{
-		System: rcmgr.ResourceLimits{
-			Streams:         IncomingStreamCountLimit + OutgoingStreamCountLimit,
-			StreamsInbound:  IncomingStreamCountLimit,
-			StreamsOutbound: OutgoingStreamCountLimit,
-		},
-	}
-
-	// Build limits using scaled defaults as base for proper system-wide enforcement
-	limits := cfg.Build(baseLimits)
+	baseLimits := rcmgr.InfiniteLimits
 
 	// The resource manager expects a limiter, se we create one from our limits.
-	limiter := rcmgr.NewFixedLimiter(limits)
+	limiter := rcmgr.NewFixedLimiter(baseLimits)
 
 	str, err := rcmgr.NewStatsTraceReporter()
 	if err != nil {
@@ -993,6 +981,7 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 
 func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, protocolName, protocolVersion, streamName string) (network.Stream, error) {
 	swarmStreamName := p2p.NewSwarmStreamName(protocolName, protocolVersion, streamName)
+	fmt.Printf("Creating stream %s to %s\n", swarmStreamName, peerID)
 	st, err := s.host.NewStream(ctx, peerID, protocol.ID(swarmStreamName))
 	if err != nil {
 		if st != nil {
