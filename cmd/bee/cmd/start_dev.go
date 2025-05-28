@@ -1,5 +1,5 @@
-//go:build !windows
-// +build !windows
+//go:build !windows && !js
+// +build !windows,!js
 
 // Copyright 2021 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style

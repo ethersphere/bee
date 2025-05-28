@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"strconv"
 
 	ocprom "contrib.go.opencensus.io/exporter/prometheus"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
@@ -24,10 +23,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/tracing"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
-	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/protocol"
-	"github.com/libp2p/go-libp2p/p2p/host/autonat"
-	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	rcmgrObs "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
@@ -84,8 +80,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 
-	var natManager basichost.NATManager
-
 	opts := []libp2p.Option{
 		libp2p.ShareTCPListener(),
 		libp2p.ListenAddrStrings(listenAddrs...),
@@ -95,15 +89,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		libp2p.UserAgent(userAgent()),
 		libp2p.ResourceManager(rm),
 		libp2p.Muxer("/yamux/1.0.0", yamux.DefaultTransport),
-	}
-
-	if o.NATAddr == "" {
-		opts = append(opts,
-			libp2p.NATManager(func(n network.Network) basichost.NATManager {
-				natManager = basichost.NewNATManager(n)
-				return natManager
-			}),
-		)
 	}
 
 	if o.PrivateKey != nil {
@@ -140,24 +125,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	dialer, err := o.hostFactory(append(transports, security)...)
 	if err != nil {
 		return nil, err
-	}
-
-	options := []autonat.Option{autonat.EnableService(dialer.Network())}
-
-	val, err := strconv.ParseBool(reachabilityOverridePublic)
-	if err != nil {
-		return nil, err
-	}
-	if val {
-		options = append(options, autonat.WithReachability(network.ReachabilityPublic))
-	}
-
-	// If you want to help other peers to figure out if they are behind
-	// NATs, you can launch the server-side of AutoNAT too (AutoRelay
-	// already runs the client)
-	var autoNAT autonat.AutoNAT
-	if autoNAT, err = autonat.New(h, options...); err != nil {
-		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
 	if o.HeadersRWTimeout == 0 {
@@ -197,7 +164,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	s := &Service{
 		ctx:               ctx,
 		host:              h,
-		natManager:        natManager,
+		natManager:        nil,
 		natAddrResolver:   natAddrResolver,
 		autonatDialer:     dialer,
 		pingDialer:        pingDialer,
@@ -215,7 +182,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		halt:              make(chan struct{}),
 		lightNodes:        lightNodes,
 		HeadersRWTimeout:  o.HeadersRWTimeout,
-		autoNAT:           autoNAT,
+		autoNAT:           nil,
 	}
 
 	peerRegistry.setDisconnecter(s)

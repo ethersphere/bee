@@ -1,5 +1,5 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
 package cmd
 
@@ -33,10 +33,6 @@ func newCommand(opts ...option) (c *command, err error) {
 	c.initGlobalFlags()
 
 	if err := c.initStartCmd(); err != nil {
-		return nil, err
-	}
-
-	if err := c.initStartDevCmd(); err != nil {
 		return nil, err
 	}
 
