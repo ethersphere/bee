@@ -174,7 +174,6 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		ResolverConnectionCfgs:        resolverCfgs,
 		Resync:                        c.config.GetBool(optionNameResync),
 		RetrievalCaching:              c.config.GetBool(optionNameRetrievalCaching),
-		SkipPostageSnapshot:           c.config.GetBool(optionSkipPostageSnapshot),
 		StakingContractAddress:        c.config.GetString(optionNameStakingAddress),
 		StatestoreCacheCapacity:       c.config.GetUint64(optionNameStateStoreCacheCapacity),
 		StaticNodes:                   staticNodes,

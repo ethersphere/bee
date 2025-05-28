@@ -21,7 +21,7 @@ import (
 )
 
 var (
-	factoryABI              = abiutil.MustParseABI(sw3abi.SimpleSwapFactoryABIv0_6_9)
+	factoryABI              = abiutil.MustParseABI(sw3abi.SimpleSwapFactoryABIv0_6_5)
 	simpleSwapDeployedEvent = factoryABI.Events["SimpleSwapDeployed"]
 )
 
