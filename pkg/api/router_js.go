@@ -184,10 +184,6 @@ func (s *Service) mountTechnicalDebug() {
 		"GET": http.HandlerFunc(s.addressesHandler),
 	})
 
-	s.router.Handle("/chainstate", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.chainStateHandler),
-	})
-
 	s.router.Handle("/debugstore", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
 			httpaccess.NewHTTPAccessSuppressLogHandler(),
@@ -235,4 +231,122 @@ func (s *Service) mountTechnicalDebug() {
 		httpaccess.NewHTTPAccessSuppressLogHandler(),
 		web.FinalHandlerFunc(s.healthHandler),
 	))
+}
+
+func (s *Service) mountBusinessDebug() {
+	handle := func(path string, handler http.Handler) {
+		routeHandler := s.checkRouteAvailability(handler)
+		s.router.Handle(path, routeHandler)
+		s.router.Handle(rootPath+path, routeHandler)
+	}
+
+	if s.transaction != nil {
+		handle("/transactions", jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.transactionListHandler),
+		})
+
+		handle("/transactions/{hash}", jsonhttp.MethodHandler{
+			"GET":    http.HandlerFunc(s.transactionDetailHandler),
+			"POST":   http.HandlerFunc(s.transactionResendHandler),
+			"DELETE": http.HandlerFunc(s.transactionCancelHandler),
+		})
+	}
+
+	handle("/peers", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.peersHandler),
+	})
+
+	handle("/pingpong/{address}", jsonhttp.MethodHandler{
+		"POST": http.HandlerFunc(s.pingpongHandler),
+	})
+
+	handle("/connect/{multi-address:.+}", jsonhttp.MethodHandler{
+		"POST": http.HandlerFunc(s.peerConnectHandler),
+	})
+
+	handle("/blocklist", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.blocklistedPeersHandler),
+	})
+
+	handle("/peers/{address}", jsonhttp.MethodHandler{
+		"DELETE": http.HandlerFunc(s.peerDisconnectHandler),
+	})
+
+	handle("/topology", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.topologyHandler),
+	})
+
+	handle("/welcome-message", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.getWelcomeMessageHandler),
+		"POST": web.ChainHandlers(
+			jsonhttp.NewMaxBodyBytesHandler(welcomeMessageMaxRequestSize),
+			web.FinalHandlerFunc(s.setWelcomeMessageHandler),
+		),
+	})
+
+	handle("/balances", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.compensatedBalancesHandler),
+	})
+
+	handle("/balances/{peer}", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.compensatedPeerBalanceHandler),
+	})
+
+	handle("/consumed", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.balancesHandler),
+	})
+
+	handle("/consumed/{peer}", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.peerBalanceHandler),
+	})
+
+	handle("/timesettlements", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.settlementsHandlerPseudosettle),
+	})
+
+	handle("/settlements", web.ChainHandlers(
+		s.checkSwapAvailability,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.settlementsHandler),
+		}),
+	))
+
+	handle("/settlements/{peer}", web.ChainHandlers(
+		s.checkSwapAvailability,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.peerSettlementsHandler),
+		}),
+	))
+
+	handle("/accounting", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.accountingInfoHandler),
+	})
+
+	handle("/redistributionstate", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.redistributionStatusHandler),
+	})
+
+	handle("/status", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			httpaccess.NewHTTPAccessSuppressLogHandler(),
+			web.FinalHandlerFunc(s.statusGetHandler),
+		),
+	})
+
+	handle("/status/peers", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			httpaccess.NewHTTPAccessSuppressLogHandler(),
+			s.statusAccessHandler,
+			web.FinalHandlerFunc(s.statusGetPeersHandler),
+		),
+	})
+
+	handle("/status/neighborhoods", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			httpaccess.NewHTTPAccessSuppressLogHandler(),
+			s.statusAccessHandler,
+			web.FinalHandlerFunc(s.statusGetNeighborhoods),
+		),
+	})
+
 }
