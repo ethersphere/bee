@@ -4,14 +4,12 @@
 package api
 
 import (
-	"expvar"
 	"fmt"
 	"net/http"
 
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/log/httpaccess"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"resenje.org/web"
 )
 
@@ -41,22 +39,16 @@ func (s *Service) mountAPI() {
 
 	handle("/bytes", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
-			s.contentLengthMetricMiddleware(),
-			s.newTracingHandler("bytes-upload"),
 			web.FinalHandlerFunc(s.bytesUploadHandler),
 		),
 	})
 
 	handle("/bytes/{address}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
-			s.contentLengthMetricMiddleware(),
-			s.downloadSpeedMetricMiddleware("bytes"),
-			s.newTracingHandler("bytes-download"),
 			s.actDecryptionHandler(),
 			web.FinalHandlerFunc(s.bytesGetHandler),
 		),
 		"HEAD": web.ChainHandlers(
-			s.newTracingHandler("bytes-head"),
 			s.actDecryptionHandler(),
 			web.FinalHandlerFunc(s.bytesHeadHandler),
 		),
@@ -102,8 +94,6 @@ func (s *Service) mountAPI() {
 
 	handle("/bzz", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
-			s.contentLengthMetricMiddleware(),
-			s.newTracingHandler("bzz-upload"),
 			web.FinalHandlerFunc(s.bzzUploadHandler),
 		),
 	})
@@ -125,10 +115,7 @@ func (s *Service) mountAPI() {
 
 	handle("/bzz/{address}/{path:.*}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
-			s.contentLengthMetricMiddleware(),
-			s.newTracingHandler("bzz-download"),
 			s.actDecryptionHandler(),
-			s.downloadSpeedMetricMiddleware("bzz"),
 			web.FinalHandlerFunc(s.bzzDownloadHandler),
 		),
 		"HEAD": web.ChainHandlers(
@@ -191,16 +178,6 @@ func (s *Service) mountTechnicalDebug() {
 		),
 	})
 
-	s.router.Path("/metrics").Handler(web.ChainHandlers(
-		httpaccess.NewHTTPAccessSuppressLogHandler(),
-		web.FinalHandler(promhttp.InstrumentMetricHandler(
-			s.metricsRegistry,
-			promhttp.HandlerFor(s.metricsRegistry, promhttp.HandlerOpts{}),
-		)),
-	))
-
-	s.router.Handle("/debug/vars", expvar.Handler())
-
 	s.router.Handle("/loggers", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
 			httpaccess.NewHTTPAccessSuppressLogHandler(),
@@ -238,18 +215,6 @@ func (s *Service) mountBusinessDebug() {
 		routeHandler := s.checkRouteAvailability(handler)
 		s.router.Handle(path, routeHandler)
 		s.router.Handle(rootPath+path, routeHandler)
-	}
-
-	if s.transaction != nil {
-		handle("/transactions", jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.transactionListHandler),
-		})
-
-		handle("/transactions/{hash}", jsonhttp.MethodHandler{
-			"GET":    http.HandlerFunc(s.transactionDetailHandler),
-			"POST":   http.HandlerFunc(s.transactionResendHandler),
-			"DELETE": http.HandlerFunc(s.transactionCancelHandler),
-		})
 	}
 
 	handle("/peers", jsonhttp.MethodHandler{
@@ -317,14 +282,6 @@ func (s *Service) mountBusinessDebug() {
 			"GET": http.HandlerFunc(s.peerSettlementsHandler),
 		}),
 	))
-
-	handle("/accounting", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.accountingInfoHandler),
-	})
-
-	handle("/redistributionstate", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.redistributionStatusHandler),
-	})
 
 	handle("/status", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
