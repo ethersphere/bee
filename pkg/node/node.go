@@ -79,6 +79,118 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/sha3"
+	"golang.org/x/sync/errgroup"
+)
+
+// LoggerName is the tree path name of the logger for this package.
+const LoggerName = "node"
+
+type Bee struct {
+	p2pService               io.Closer
+	p2pHalter                p2p.Halter
+	ctxCancel                context.CancelFunc
+	apiCloser                io.Closer
+	apiServer                *http.Server
+	resolverCloser           io.Closer
+	errorLogWriter           io.Writer
+	tracerCloser             io.Closer
+	stateStoreCloser         io.Closer
+	stamperStoreCloser       io.Closer
+	localstoreCloser         io.Closer
+	topologyCloser           io.Closer
+	topologyHalter           topology.Halter
+	pusherCloser             io.Closer
+	pullerCloser             io.Closer
+	accountingCloser         io.Closer
+	pullSyncCloser           io.Closer
+	pssCloser                io.Closer
+	gsocCloser               io.Closer
+	ethClientCloser          func()
+	transactionMonitorCloser io.Closer
+	transactionCloser        io.Closer
+	listenerCloser           io.Closer
+	postageServiceCloser     io.Closer
+	priceOracleCloser        io.Closer
+	hiveCloser               io.Closer
+	saludCloser              io.Closer
+	storageIncetivesCloser   io.Closer
+	pushSyncCloser           io.Closer
+	retrievalCloser          io.Closer
+	shutdownInProgress       bool
+	shutdownMutex            sync.Mutex
+	syncingStopped           *syncutil.Signaler
+	accesscontrolCloser      io.Closer
+}
+
+type Options struct {
+	Addr                          string
+	AllowPrivateCIDRs             bool
+	APIAddr                       string
+	BlockchainRpcEndpoint         string
+	BlockProfile                  bool
+	BlockTime                     time.Duration
+	BootnodeMode                  bool
+	Bootnodes                     []string
+	CacheCapacity                 uint64
+	ChainID                       int64
+	ChequebookEnable              bool
+	CORSAllowedOrigins            []string
+	DataDir                       string
+	DBBlockCacheCapacity          uint64
+	DBDisableSeeksCompaction      bool
+	DBOpenFilesLimit              uint64
+	DBWriteBufferSize             uint64
+	EnableStorageIncentives       bool
+	EnableWS                      bool
+	FullNodeMode                  bool
+	Logger                        log.Logger
+	MinimumStorageRadius          uint
+	MutexProfile                  bool
+	NATAddr                       string
+	NeighborhoodSuggester         string
+	PaymentEarly                  int64
+	PaymentThreshold              string
+	PaymentTolerance              int64
+	PostageContractAddress        string
+	PostageContractStartBlock     uint64
+	PriceOracleAddress            string
+	RedistributionContractAddress string
+	ReserveCapacityDoubling       int
+	ResolverConnectionCfgs        []multiresolver.ConnectionConfig
+	Resync                        bool
+	RetrievalCaching              bool
+	SkipPostageSnapshot           bool
+	StakingContractAddress        string
+	StatestoreCacheCapacity       uint64
+	StaticNodes                   []swarm.Address
+	SwapEnable                    bool
+	SwapFactoryAddress            string
+	SwapInitialDeposit            string
+	TargetNeighborhood            string
+	TracingEnabled                bool
+	TracingEndpoint               string
+	TracingServiceName            string
+	TrxDebugMode                  bool
+	UsePostageSnapshot            bool
+	WarmupTime                    time.Duration
+	WelcomeMessage                string
+	WhitelistedWithdrawalAddress  []string
+}
+
+const (
+	refreshRate                   = int64(4_500_000)          // accounting units refreshed per second
+	lightFactor                   = 10                        // downscale payment thresholds and their change rate, and refresh rates by this for light nodes
+	lightRefreshRate              = refreshRate / lightFactor // refresh rate used by / for light nodes
+	basePrice                     = 10_000                    // minimal price for retrieval and pushsync requests of maximum proximity
+	postageSyncingStallingTimeout = 10 * time.Minute          //
+	postageSyncingBackoffTimeout  = 5 * time.Second           //
+	minPaymentThreshold           = 2 * refreshRate           // minimal accepted payment threshold of full nodes
+	maxPaymentThreshold           = 24 * refreshRate          // maximal accepted payment threshold of full nodes
+	mainnetNetworkID              = uint64(1)                 //
+	reserveWakeUpDuration         = 15 * time.Minute          // time to wait before waking up reserveWorker
+	reserveMinEvictCount          = 1_000
+	cacheMinEvictCount            = 10_000
+	maxAllowedDoubling            = 1
 )
 
 func NewBee(
@@ -691,6 +803,30 @@ func NewBee(
 			return isDone, err
 		}
 	)
+
+	if !o.SkipPostageSnapshot && !batchStoreExists && (networkID == mainnetNetworkID) {
+		chainBackend := NewSnapshotLogFilterer(logger)
+
+		snapshotEventListener := listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
+
+		snapshotBatchSvc, err := batchservice.New(stateStore, batchStore, logger, snapshotEventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
+		if err != nil {
+			logger.Error(err, "failed to initialize batch service from snapshot, continuing outside snapshot block...")
+		} else {
+			err = snapshotBatchSvc.Start(ctx, postageSyncStart, initBatchState)
+			syncStatus.Store(true)
+			if err != nil {
+				syncErr.Store(err)
+				logger.Error(err, "failed to start batch service from snapshot, continuing outside snapshot block...")
+			} else {
+				postageSyncStart = chainBackend.maxBlockHeight
+			}
+		}
+		if errClose := snapshotEventListener.Close(); errClose != nil {
+			logger.Error(errClose, "failed to close event listener (snapshot) failure")
+		}
+
+	}
 
 	if batchSvc != nil && chainEnabled {
 		logger.Info("waiting to sync postage contract data, this may take a while... more info available in Debug loglevel")

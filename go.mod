@@ -2,15 +2,18 @@ module github.com/ethersphere/bee/v2
 
 go 1.24.0
 
+toolchain go1.24.2
+
 require (
 	contrib.go.opencensus.io/exporter/prometheus v0.4.2
 	github.com/armon/go-radix v1.0.0
 	github.com/btcsuite/btcd/btcec/v2 v2.3.4
 	github.com/coreos/go-semver v0.3.1
 	github.com/ethereum/go-ethereum v1.15.11
+	github.com/ethersphere/batch-archive v0.0.3
 	github.com/ethersphere/go-price-oracle-abi v0.6.8
 	github.com/ethersphere/go-storage-incentives-abi v0.9.3-rc3
-	github.com/ethersphere/go-sw3-abi v0.6.5
+	github.com/ethersphere/go-sw3-abi v0.6.9
 	github.com/ethersphere/langos v1.0.0
 	github.com/go-playground/validator/v10 v10.26.0
 	github.com/gogo/protobuf v1.3.2
@@ -78,6 +81,7 @@ require (
 	github.com/pion/webrtc/v4 v4.1.0 // indirect
 	github.com/sagikazarmark/locafero v0.9.0 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect
+	github.com/wlynxg/anet v0.0.5 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.uber.org/automaxprocs v1.6.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
@@ -175,7 +179,6 @@ require (
 	github.com/uber/jaeger-lib v2.4.1+incompatible // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/wealdtech/go-multicodec v1.4.0 // indirect
-	github.com/wlynxg/anet v0.0.5 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.uber.org/dig v1.18.2 // indirect
 	go.uber.org/fx v1.23.0 // indirect

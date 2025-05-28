@@ -80,6 +80,7 @@ const (
 	optionNameTransactionDebugMode         = "transaction-debug-mode"
 	optionMinimumStorageRadius             = "minimum-storage-radius"
 	optionReserveCapacityDoubling          = "reserve-capacity-doubling"
+	optionSkipPostageSnapshot              = "skip-postage-snapshot"
 )
 
 // nolint:gochecknoinits
@@ -227,7 +228,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameAPIAddr, "127.0.0.1:1633", "HTTP API listen address")
 	cmd.Flags().String(optionNameP2PAddr, ":1634", "P2P listen address")
 	cmd.Flags().String(optionNameNATAddr, "", "NAT exposed address")
-	cmd.Flags().Bool(optionNameP2PWSEnable, true, "enable P2P WebSocket transport")
+	cmd.Flags().Bool(optionNameP2PWSEnable, false, "enable P2P WebSocket transport")
 	cmd.Flags().StringSlice(optionNameBootnodes, []string{"/dnsaddr/mainnet.ethswarm.org"}, "initial nodes to connect to")
 	cmd.Flags().Uint64(optionNameNetworkID, chaincfg.Mainnet.NetworkID, "ID of the Swarm network")
 	cmd.Flags().StringSlice(optionCORSAllowedOrigins, []string{}, "origins with CORS headers enabled")
@@ -272,6 +273,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNameTransactionDebugMode, false, "skips the gas estimate step for contract transactions")
 	cmd.Flags().Uint(optionMinimumStorageRadius, 0, "minimum radius storage threshold")
 	cmd.Flags().Int(optionReserveCapacityDoubling, 0, "reserve capacity doubling")
+	cmd.Flags().Bool(optionSkipPostageSnapshot, false, "skip postage snapshot")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {
