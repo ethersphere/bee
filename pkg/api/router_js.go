@@ -6,12 +6,66 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/log/httpaccess"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/gorilla/handlers"
 	"resenje.org/web"
 )
+
+// EnableFullAPI will enable all available endpoints, because some endpoints are not available during syncing.
+func (s *Service) EnableFullAPI() {
+	if s == nil {
+		return
+	}
+
+	s.fullAPIEnabled = true
+
+	compressHandler := func(h http.Handler) http.Handler {
+		downloadEndpoints := []string{
+			"/bzz",
+			"/bytes",
+			"/chunks",
+			"/feeds",
+			"/soc",
+			rootPath + "/bzz",
+			rootPath + "/bytes",
+			rootPath + "/chunks",
+			rootPath + "/feeds",
+			rootPath + "/soc",
+		}
+
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Skip compression for GET requests on download endpoints.
+			// This is done in order to preserve Content-Length header in response,
+			// because CompressHandler is always removing it.
+			if r.Method == http.MethodGet {
+				for _, endpoint := range downloadEndpoints {
+					if strings.HasPrefix(r.URL.Path, endpoint) {
+						h.ServeHTTP(w, r)
+						return
+					}
+				}
+			}
+
+			if r.Method == http.MethodHead {
+				h.ServeHTTP(w, r)
+				return
+			}
+
+			handlers.CompressHandler(h).ServeHTTP(w, r)
+		})
+	}
+
+	s.Handler = web.ChainHandlers(
+		httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "api access"),
+		compressHandler,
+		s.corsHandler,
+		web.FinalHandler(s.router),
+	)
+}
 
 func (s *Service) mountAPI() {
 	subdomainRouter := s.router.Host("{subdomain:.*}.swarm.localhost").Subrouter()
