@@ -1,5 +1,5 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
 package storer
 
@@ -22,20 +22,7 @@ func (db *DB) evictBatch(
 	evictCount int,
 	upToBin uint8,
 ) (evicted int, err error) {
-	dur := captureDuration(time.Now())
 	defer func() {
-		db.metrics.ReserveSize.Set(float64(db.reserve.Size()))
-		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "EvictBatch").Observe(dur())
-		if err == nil {
-			db.metrics.MethodCalls.WithLabelValues("reserve", "EvictBatch", "success").Inc()
-		} else {
-			db.metrics.MethodCalls.WithLabelValues("reserve", "EvictBatch", "failure").Inc()
-		}
-		if upToBin == swarm.MaxBins {
-			db.metrics.ExpiredChunkCount.Add(float64(evicted))
-		} else {
-			db.metrics.EvictedChunkCount.Add(float64(evicted))
-		}
 		db.logger.Debug(
 			"reserve eviction",
 			"uptoBin", upToBin,
@@ -49,13 +36,9 @@ func (db *DB) evictBatch(
 }
 
 func (db *DB) ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte, stampHash []byte) (ch swarm.Chunk, err error) {
-	dur := captureDuration(time.Now())
+
 	defer func() {
-		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "ReserveGet").Observe(dur())
-		if err == nil || errors.Is(err, storage.ErrNotFound) {
-			db.metrics.MethodCalls.WithLabelValues("reserve", "ReserveGet", "success").Inc()
-		} else {
-			db.metrics.MethodCalls.WithLabelValues("reserve", "ReserveGet", "failure").Inc()
+		if err != nil && !errors.Is(err, storage.ErrNotFound) {
 			db.logger.Debug("reserve get error", "error", err)
 		}
 	}()
@@ -64,13 +47,9 @@ func (db *DB) ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte
 }
 
 func (db *DB) ReserveHas(addr swarm.Address, batchID []byte, stampHash []byte) (has bool, err error) {
-	dur := captureDuration(time.Now())
+
 	defer func() {
-		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "ReserveHas").Observe(dur())
-		if err == nil {
-			db.metrics.MethodCalls.WithLabelValues("reserve", "ReserveHas", "success").Inc()
-		} else {
-			db.metrics.MethodCalls.WithLabelValues("reserve", "ReserveHas", "failure").Inc()
+		if err != nil {
 			db.logger.Debug("reserve has error", "error", err)
 		}
 	}()
@@ -80,38 +59,23 @@ func (db *DB) ReserveHas(addr swarm.Address, batchID []byte, stampHash []byte) (
 
 // ReservePutter returns a Putter for inserting chunks into the reserve.
 func (db *DB) ReservePutter() storage.Putter {
-	return putterWithMetrics{
-		storage.PutterFunc(
-			func(ctx context.Context, chunk swarm.Chunk) error {
-				err := db.reserve.Put(ctx, chunk)
-				if err != nil {
-					db.logger.Debug("reserve put error", "error", err)
-					return fmt.Errorf("reserve putter.Put: %w", err)
-				}
-				db.reserveBinEvents.Trigger(string(db.po(chunk.Address())))
-				if !db.reserve.IsWithinCapacity() {
-					db.events.Trigger(reserveOverCapacity)
-				}
-				db.metrics.ReserveSize.Set(float64(db.reserve.Size()))
-				return nil
-			},
-		),
-		db.metrics,
-		"reserve",
-	}
+	return storage.PutterFunc(
+		func(ctx context.Context, chunk swarm.Chunk) error {
+			err := db.reserve.Put(ctx, chunk)
+			if err != nil {
+				db.logger.Debug("reserve put error", "error", err)
+				return fmt.Errorf("reserve putter.Put: %w", err)
+			}
+			db.reserveBinEvents.Trigger(string(db.po(chunk.Address())))
+			if !db.reserve.IsWithinCapacity() {
+				db.events.Trigger(reserveOverCapacity)
+			}
+			return nil
+		},
+	)
 }
 
 func (db *DB) unreserve(ctx context.Context) (err error) {
-	dur := captureDuration(time.Now())
-	defer func() {
-		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "unreserve").Observe(dur())
-		if err == nil {
-			db.metrics.MethodCalls.WithLabelValues("reserve", "unreserve", "success").Inc()
-		} else {
-			db.metrics.MethodCalls.WithLabelValues("reserve", "unreserve", "failure").Inc()
-		}
-	}()
-
 	radius := db.reserve.Radius()
 	defer db.events.Trigger(reserveUnreserved)
 
@@ -172,7 +136,6 @@ func (db *DB) unreserve(ctx context.Context) (err error) {
 		radius++
 		db.logger.Info("reserve radius increase", "radius", radius)
 		_ = db.reserve.SetRadius(radius)
-		db.metrics.StorageRadius.Set(float64(radius))
 	}
 
 	return errMaxRadius
@@ -210,8 +173,6 @@ func (db *DB) startReserveWorkers(
 	err = db.reserve.SetRadius(r)
 	if err != nil {
 		db.logger.Error(err, "reserve set radius")
-	} else {
-		db.metrics.StorageRadius.Set(float64(r))
 	}
 
 	// syncing can now begin now that the reserver worker is running
@@ -244,8 +205,6 @@ func (db *DB) countWithinRadius(ctx context.Context) (int, error) {
 		err = errors.Join(err, db.EvictBatch(ctx, []byte(batch)))
 	}
 
-	db.metrics.ReserveSizeWithinRadius.Set(float64(count))
-	db.metrics.ReserveMissingBatch.Set(float64(missing))
 	reserveSizeWithinRadius.Store(uint64(count))
 
 	return count, err
@@ -288,7 +247,6 @@ func (db *DB) reserveWorker(ctx context.Context) {
 
 		case <-overCapTrigger:
 
-			db.metrics.OverCapTriggerCount.Inc()
 			if err := db.unreserve(ctx); err != nil {
 				db.logger.Warning("reserve worker unreserve", "error", err)
 			}
@@ -307,7 +265,7 @@ func (db *DB) reserveWorker(ctx context.Context) {
 				if err := db.reserve.SetRadius(radius); err != nil {
 					db.logger.Error(err, "reserve set radius")
 				}
-				db.metrics.StorageRadius.Set(float64(radius))
+
 				db.logger.Info("reserve radius decrease", "radius", radius)
 			}
 		}

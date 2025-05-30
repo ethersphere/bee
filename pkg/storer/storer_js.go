@@ -1,5 +1,5 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
 package storer
 
@@ -22,14 +22,10 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/upload"
+	localmigration "github.com/ethersphere/bee/v2/pkg/storer/migration"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
-	"github.com/prometheus/client_golang/prometheus"
 	"resenje.org/multex"
-
-	localmigration "github.com/ethersphere/bee/v2/pkg/storer/migration"
-
-	m "github.com/ethersphere/bee/v2/pkg/metrics"
 )
 
 // DB implements all the component stores described above.
@@ -37,7 +33,6 @@ type DB struct {
 	logger log.Logger
 	tracer *tracing.Tracer
 
-	metrics             metrics
 	storage             transaction.Storage
 	multex              *multex.Multex[any]
 	cacheObj            *cache.Cache
@@ -81,8 +76,6 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	}
 
 	lock := multex.New[any]()
-	metrics := newMetrics()
-	opts.LdbStats.CompareAndSwap(nil, metrics.LevelDBStats)
 
 	if dirPath == "" {
 		st, dbCloser, err = initInmemRepository()
@@ -127,7 +120,6 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 
 	clCtx, clCancel := context.WithCancel(ctx)
 	db := &DB{
-		metrics:    metrics,
 		storage:    st,
 		logger:     logger,
 		tracer:     opts.Tracer,
@@ -176,10 +168,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		}
 		db.reserve = rs
 
-		db.metrics.StorageRadius.Set(float64(rs.Radius()))
-		db.metrics.ReserveSize.Set(float64(rs.Size()))
 	}
-	db.metrics.CacheSize.Set(float64(db.cacheObj.Size()))
 
 	// Cleanup any dirty state in upload and pinning stores, this could happen
 	// in case of dirty shutdowns
@@ -195,30 +184,4 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	go db.cacheWorker(ctx)
 
 	return db, nil
-}
-
-// StatusMetrics exposes metrics that are exposed on the status protocol.
-func (db *DB) StatusMetrics() []prometheus.Collector {
-	collectors := []prometheus.Collector{
-		db.metrics.MethodCallsDuration,
-	}
-
-	type Collector interface {
-		StatusMetrics() []prometheus.Collector
-	}
-
-	if v, ok := db.storage.(Collector); ok {
-		collectors = append(collectors, v.StatusMetrics()...)
-	}
-
-	return collectors
-}
-
-// Metrics returns set of prometheus collectors.
-func (db *DB) Metrics() []prometheus.Collector {
-	collectors := m.PrometheusCollectorsFromFields(db.metrics)
-	if v, ok := db.storage.(m.Collector); ok {
-		collectors = append(collectors, v.Metrics()...)
-	}
-	return collectors
 }

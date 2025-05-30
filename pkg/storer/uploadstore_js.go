@@ -1,5 +1,5 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
 package storer
 
@@ -48,27 +48,23 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 	}
 
 	return &putterSession{
-		Putter: putterWithMetrics{
-			storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
-				unlock := db.Lock(uploadsLock)
-				defer unlock()
-				return errors.Join(
-					db.storage.Run(ctx, func(s transaction.Store) error {
-						return uploadPutter.Put(ctx, s, chunk)
-					}),
-					func() error {
-						if pinningPutter != nil {
-							return db.storage.Run(ctx, func(s transaction.Store) error {
-								return pinningPutter.Put(ctx, s, chunk)
-							})
-						}
-						return nil
-					}(),
-				)
-			}),
-			db.metrics,
-			"uploadstore",
-		},
+		Putter: storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
+			unlock := db.Lock(uploadsLock)
+			defer unlock()
+			return errors.Join(
+				db.storage.Run(ctx, func(s transaction.Store) error {
+					return uploadPutter.Put(ctx, s, chunk)
+				}),
+				func() error {
+					if pinningPutter != nil {
+						return db.storage.Run(ctx, func(s transaction.Store) error {
+							return pinningPutter.Put(ctx, s, chunk)
+						})
+					}
+					return nil
+				}(),
+			)
+		}),
 		done: func(address swarm.Address) error {
 			defer db.events.Trigger(subscribePushEventKey)
 			unlock := db.Lock(uploadsLock)

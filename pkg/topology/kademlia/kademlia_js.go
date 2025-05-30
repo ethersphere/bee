@@ -1,5 +1,5 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
 package kademlia
 
@@ -50,7 +50,6 @@ type Kad struct {
 	done              chan struct{} // signal that `manage` has quit
 	wg                sync.WaitGroup
 	waitNext          *waitnext.WaitNext
-	metrics           metrics
 	staticPeer        staticPeerFunc
 	bgBroadcastCtx    context.Context
 	bgBroadcastCancel context.CancelFunc
@@ -103,7 +102,6 @@ func New(
 		quit:              make(chan struct{}),
 		halt:              make(chan struct{}),
 		done:              make(chan struct{}),
-		metrics:           newMetrics(),
 		staticPeer:        isStaticPeer(opt.StaticNodes),
 		storageRadius:     swarm.MaxPO,
 		detector:          detector,
@@ -133,8 +131,6 @@ func New(
 
 	k.bgBroadcastCtx, k.bgBroadcastCancel = context.WithCancel(context.Background())
 
-	k.metrics.ReachabilityStatus.WithLabelValues(p2p.ReachabilityStatusUnknown.String()).Set(0)
-
 	return k, nil
 }
 
@@ -142,7 +138,6 @@ func New(
 func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnInfo) {
 	skipPeers := func(peer swarm.Address) bool {
 		if k.waitNext.Waiting(peer) {
-			k.metrics.TotalBeforeExpireWaits.Inc()
 			return true
 		}
 		return false
@@ -234,7 +229,6 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 		}
 
 		if k.waitNext.Waiting(addr) {
-			k.metrics.TotalBeforeExpireWaits.Inc()
 			return false, false, nil
 		}
 
@@ -301,7 +295,6 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 
 		k.connectedPeers.Add(peer.addr)
 
-		k.metrics.TotalOutboundConnections.Inc()
 		k.collector.Record(peer.addr, im.PeerLogIn(time.Now(), im.PeerConnectionDirectionOutbound))
 
 		k.recalcDepth()
@@ -326,7 +319,6 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 				addr := peer.addr.String()
 
 				if k.waitNext.Waiting(peer.addr) {
-					k.metrics.TotalBeforeExpireWaits.Inc()
 					wg.Done()
 					continue
 				}
@@ -401,10 +393,8 @@ func (k *Kad) manage() {
 				start := time.Now()
 				loggerV1.Debug("starting to flush metrics", "start_time", start)
 				if err := k.collector.Flush(); err != nil {
-					k.metrics.InternalMetricsFlushTotalErrors.Inc()
 					k.logger.Debug("unable to flush metrics counters to the persistent store", "error", err)
 				} else {
-					k.metrics.InternalMetricsFlushTime.Observe(time.Since(start).Seconds())
 					loggerV1.Debug("flush metrics done", "elapsed", time.Since(start))
 				}
 			}
@@ -458,11 +448,6 @@ func (k *Kad) manage() {
 			}
 
 			if k.bootnode {
-				depth := k.neighborhoodDepth()
-
-				k.metrics.CurrentDepth.Set(float64(depth))
-				k.metrics.CurrentlyKnownPeers.Set(float64(k.knownPeers.Length()))
-				k.metrics.CurrentlyConnectedPeers.Set(float64(k.connectedPeers.Length()))
 
 				continue
 			}
@@ -475,10 +460,6 @@ func (k *Kad) manage() {
 			depth := k.neighborhoodDepth()
 
 			loggerV1.Debug("connector finished", "elapsed", time.Since(start), "old_depth", oldDepth, "new_depth", depth)
-
-			k.metrics.CurrentDepth.Set(float64(depth))
-			k.metrics.CurrentlyKnownPeers.Set(float64(k.knownPeers.Length()))
-			k.metrics.CurrentlyConnectedPeers.Set(float64(k.connectedPeers.Length()))
 
 			if k.connectedPeers.Length() == 0 {
 				select {
@@ -501,9 +482,6 @@ func (k *Kad) manage() {
 					k.logger.Error(err, "unable to set peers reachability status")
 				}
 
-				for status, count := range rs {
-					k.metrics.PeersReachabilityStatus.WithLabelValues(status).Set(count)
-				}
 			}
 		}
 	}
@@ -527,7 +505,6 @@ func (k *Kad) Start(ctx context.Context) error {
 		default:
 		}
 		var (
-			start     = time.Now()
 			addresses []swarm.Address
 		)
 
@@ -544,7 +521,6 @@ func (k *Kad) Start(ctx context.Context) error {
 			return
 		}
 		k.AddPeers(addresses...)
-		k.metrics.StartAddAddressBookOverlaysTime.Observe(time.Since(start).Seconds())
 	}()
 
 	// trigger the first manage loop immediately so that
@@ -576,7 +552,6 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 			bzzAddress, err := k.p2p.Connect(ctx, addr)
 
 			attempts++
-			k.metrics.TotalBootNodesConnectionAttempts.Inc()
 
 			if err != nil {
 				if !errors.Is(err, p2p.ErrAlreadyConnected) {
@@ -592,7 +567,6 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 				return false, err
 			}
 
-			k.metrics.TotalOutboundConnections.Inc()
 			k.collector.Record(bzzAddress.Overlay, im.PeerLogIn(time.Now(), im.PeerConnectionDirectionOutbound), im.IsBootnode(true))
 			loggerV1.Debug("connected to bootnode", "bootnode_address", addr)
 			connected++
@@ -614,8 +588,6 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 
 	ctx, cancel := context.WithTimeout(ctx, peerConnectionAttemptTimeout)
 	defer cancel()
-
-	k.metrics.TotalOutboundConnectionAttempts.Inc()
 
 	switch i, err := k.p2p.Connect(ctx, ma); {
 	case errors.Is(err, p2p.ErrNetworkUnavailable):
@@ -646,7 +618,6 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 			failedAttempts++
 		}
 
-		k.metrics.TotalOutboundConnectionFailedAttempts.Inc()
 		k.collector.Record(peer, im.IncSessionConnectionRetry())
 
 		maxAttempts := maxConnAttempts
@@ -678,7 +649,6 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 }
 
 func (k *Kad) Pick(peer p2p.Peer) bool {
-	k.metrics.PickCalls.Inc()
 	if k.bootnode || !peer.FullNode {
 		// shortcircuit for bootnode mode AND light node peers - always accept connections,
 		// at least until we find a better solution.
@@ -690,7 +660,6 @@ func (k *Kad) Pick(peer p2p.Peer) bool {
 	if !oversaturated {
 		return true
 	}
-	k.metrics.PickCallsFalse.Inc()
 	return false
 }
 
@@ -699,7 +668,6 @@ func (k *Kad) Pick(peer p2p.Peer) bool {
 func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool) (err error) {
 	defer func() {
 		if err == nil {
-			k.metrics.TotalInboundConnections.Inc()
 			k.collector.Record(peer.Address, im.PeerLogIn(time.Now(), im.PeerConnectionDirectionInbound))
 		}
 	}()
@@ -732,7 +700,6 @@ func (k *Kad) Disconnected(peer p2p.Peer) {
 
 	k.waitNext.SetTryAfter(peer.Address, time.Now().Add(k.opt.TimeToRetry))
 
-	k.metrics.TotalInboundDisconnections.Inc()
 	k.collector.Record(peer.Address, im.PeerLogOut(time.Now()))
 
 	k.recalcDepth()
@@ -750,7 +717,6 @@ func (k *Kad) UpdateReachability(status p2p.ReachabilityStatus) {
 	}
 	k.logger.Debug("reachability updated", "reachability", status)
 	k.reachability = status
-	k.metrics.ReachabilityStatus.WithLabelValues(status.String()).Set(0)
 }
 
 func (k *Kad) SetStorageRadius(d uint8) {
@@ -762,7 +728,6 @@ func (k *Kad) SetStorageRadius(d uint8) {
 	}
 
 	k.storageRadius = d
-	k.metrics.CurrentStorageDepth.Set(float64(k.storageRadius))
 	k.logger.Debug("kademlia set storage radius", "radius", k.storageRadius)
 
 	k.notifyManageLoop()

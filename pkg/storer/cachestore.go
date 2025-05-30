@@ -1,6 +1,5 @@
-// Copyright 2023 The Swarm Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+//go:build !js
+// +build !js
 
 package storer
 
@@ -10,13 +9,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ethersphere/bee/v2/pkg/storage"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-)
-
-const (
-	cacheOverCapacity = "cacheOverCapacity"
 )
 
 func (db *DB) cacheWorker(ctx context.Context) {

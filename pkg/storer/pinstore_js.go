@@ -1,12 +1,11 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
 package storer
 
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal"
@@ -33,19 +32,16 @@ func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 	}
 
 	return &putterSession{
-		Putter: putterWithMetrics{
-			storage.PutterFunc(
-				func(ctx context.Context, chunk swarm.Chunk) error {
-					unlock := db.Lock(uploadsLock)
-					defer unlock()
-					return db.storage.Run(ctx, func(s transaction.Store) error {
-						return pinningPutter.Put(ctx, s, chunk)
-					})
-				},
-			),
-			db.metrics,
-			"pinstore",
-		},
+		Putter: storage.PutterFunc(
+			func(ctx context.Context, chunk swarm.Chunk) error {
+				unlock := db.Lock(uploadsLock)
+				defer unlock()
+				return db.storage.Run(ctx, func(s transaction.Store) error {
+					return pinningPutter.Put(ctx, s, chunk)
+				})
+			},
+		),
+
 		done: func(address swarm.Address) error {
 			unlock := db.Lock(uploadsLock)
 			defer unlock()
@@ -63,15 +59,6 @@ func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 
 // DeletePin is the implementation of the PinStore.DeletePin method.
 func (db *DB) DeletePin(ctx context.Context, root swarm.Address) (err error) {
-	dur := captureDuration(time.Now())
-	defer func() {
-		db.metrics.MethodCallsDuration.WithLabelValues("pinstore", "DeletePin").Observe(dur())
-		if err == nil {
-			db.metrics.MethodCalls.WithLabelValues("pinstore", "DeletePin", "success").Inc()
-		} else {
-			db.metrics.MethodCalls.WithLabelValues("pinstore", "DeletePin", "failure").Inc()
-		}
-	}()
 
 	unlock := db.Lock(uploadsLock)
 	defer unlock()
@@ -81,30 +68,12 @@ func (db *DB) DeletePin(ctx context.Context, root swarm.Address) (err error) {
 
 // Pins is the implementation of the PinStore.Pins method.
 func (db *DB) Pins() (address []swarm.Address, err error) {
-	dur := captureDuration(time.Now())
-	defer func() {
-		db.metrics.MethodCallsDuration.WithLabelValues("pinstore", "Pins").Observe(dur())
-		if err == nil {
-			db.metrics.MethodCalls.WithLabelValues("pinstore", "Pins", "success").Inc()
-		} else {
-			db.metrics.MethodCalls.WithLabelValues("pinstore", "Pins", "failure").Inc()
-		}
-	}()
 
 	return pinstore.Pins(db.storage.IndexStore())
 }
 
 // HasPin is the implementation of the PinStore.HasPin method.
 func (db *DB) HasPin(root swarm.Address) (has bool, err error) {
-	dur := captureDuration(time.Now())
-	defer func() {
-		db.metrics.MethodCallsDuration.WithLabelValues("pinstore", "HasPin").Observe(dur())
-		if err == nil {
-			db.metrics.MethodCalls.WithLabelValues("pinstore", "HasPin", "success").Inc()
-		} else {
-			db.metrics.MethodCalls.WithLabelValues("pinstore", "HasPin", "failure").Inc()
-		}
-	}()
 
 	return pinstore.HasPin(db.storage.IndexStore(), root)
 }
