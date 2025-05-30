@@ -190,15 +190,6 @@ func (ls *lockWriter) Write(bs []byte) (int, error) {
 	return n, err
 }
 
-// Options specifies parameters that affect logger behavior.
-type Options struct {
-	sink       io.Writer
-	verbosity  Level
-	levelHooks levelHooks
-	fmtOptions fmtOptions
-	logMetrics *metrics
-}
-
 // Option represent Options parameters modifier.
 type Option func(*Options)
 
@@ -286,16 +277,5 @@ func WithLevelHooks(l Level, hooks ...Hook) Option {
 		default:
 			opts.levelHooks[l] = append(opts.levelHooks[l], hooks...)
 		}
-	}
-}
-
-// WithLogMetrics tells the logger to collect metrics about log messages.
-func WithLogMetrics() Option {
-	return func(opts *Options) {
-		if opts.logMetrics != nil {
-			return
-		}
-		opts.logMetrics = newLogMetrics()
-		WithLevelHooks(VerbosityAll, opts.logMetrics)(opts)
 	}
 }

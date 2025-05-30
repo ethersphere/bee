@@ -3,7 +3,14 @@
 
 package cmd
 
-import "github.com/spf13/cobra"
+import (
+	"fmt"
+	"io"
+
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/node"
+	"github.com/spf13/cobra"
+)
 
 func newCommand(opts ...option) (c *command, err error) {
 	c = &command{
@@ -59,4 +66,39 @@ func newCommand(opts ...option) (c *command, err error) {
 	}
 
 	return c, nil
+}
+
+func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {
+	var (
+		sink   = cmd.OutOrStdout()
+		vLevel = log.VerbosityNone
+	)
+
+	switch verbosity {
+	case "0", "silent":
+		sink = io.Discard
+	case "1", "error":
+		vLevel = log.VerbosityError
+	case "2", "warn":
+		vLevel = log.VerbosityWarning
+	case "3", "info":
+		vLevel = log.VerbosityInfo
+	case "4", "debug":
+		vLevel = log.VerbosityDebug
+	case "5", "trace":
+		vLevel = log.VerbosityDebug + 1 // For backwards compatibility, just enable v1 debugging as trace.
+	default:
+		return nil, fmt.Errorf("unknown verbosity level %q", verbosity)
+	}
+
+	log.ModifyDefaults(
+		log.WithTimestamp(),
+		log.WithLogMetrics(),
+	)
+
+	return log.NewLogger(
+		node.LoggerName,
+		log.WithSink(sink),
+		log.WithVerbosity(vLevel),
+	).Register(), nil
 }

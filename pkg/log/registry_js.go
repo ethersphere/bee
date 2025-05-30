@@ -1,5 +1,5 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
 package log
 
@@ -39,7 +39,6 @@ func NewLogger(name string, opts ...Option) Logger {
 		verbosity:  options.verbosity,
 		sink:       options.sink,
 		levelHooks: options.levelHooks,
-		metrics:    options.logMetrics,
 	}
 	l.builder = &builder{
 		l:        l,

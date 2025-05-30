@@ -1,14 +1,9 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
 package log
 
-import (
-	"io"
-
-	m "github.com/ethersphere/bee/v2/pkg/metrics"
-	"github.com/prometheus/client_golang/prometheus"
-)
+import "io"
 
 // logger implements the Logger interface.
 type logger struct {
@@ -33,12 +28,4 @@ type logger struct {
 	// levelHooks allow triggering of registered hooks
 	// on their associated severity log levels.
 	levelHooks levelHooks
-
-	// metrics collects basic statistics about logged messages.
-	metrics *metrics
-}
-
-// Metrics implements metrics.Collector interface.
-func (l *logger) Metrics() []prometheus.Collector {
-	return m.PrometheusCollectorsFromFields(l.metrics)
 }
