@@ -1,6 +1,3 @@
-//go:build !js
-// +build !js
-
 package pusher
 
 import (
@@ -27,7 +24,6 @@ type Service struct {
 	pushSyncer        pushsync.PushSyncer
 	batchExist        postage.BatchExist
 	logger            log.Logger
-	metrics           metrics
 	quit              chan struct{}
 	chunksWorkerQuitC chan struct{}
 	inflight          *inflight
@@ -45,12 +41,12 @@ func New(
 	retryCount int,
 ) *Service {
 	p := &Service{
-		networkID:         networkID,
-		storer:            storer,
-		pushSyncer:        pushSyncer,
-		batchExist:        batchExist,
-		logger:            logger.WithName(loggerName).Register(),
-		metrics:           newMetrics(),
+		networkID:  networkID,
+		storer:     storer,
+		pushSyncer: pushSyncer,
+		batchExist: batchExist,
+		logger:     logger.WithName(loggerName).Register(),
+
 		quit:              make(chan struct{}),
 		chunksWorkerQuitC: make(chan struct{}),
 		inflight:          newInflight(),
@@ -118,9 +114,6 @@ func (s *Service) chunksWorker(startupStabilizer stabilization.Subscriber) {
 			}
 		}()
 
-		s.metrics.TotalToPush.Inc()
-		startTime := time.Now()
-
 		spanCtx := ctx
 		if op.Span != nil {
 			spanCtx = tracing.WithContext(spanCtx, op.Span.Context())
@@ -135,15 +128,10 @@ func (s *Service) chunksWorker(startupStabilizer stabilization.Subscriber) {
 		}
 
 		if err != nil {
-			s.metrics.TotalErrors.Inc()
-			s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
 			ext.LogError(op.Span, err)
 		} else {
 			op.Span.LogFields(olog.Bool("success", true))
 		}
-
-		s.metrics.SyncTime.Observe(time.Since(startTime).Seconds())
-		s.metrics.TotalSynced.Inc()
 	}
 
 	go func() {
