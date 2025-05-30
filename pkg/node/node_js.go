@@ -28,7 +28,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/gsoc"
 	"github.com/ethersphere/bee/v2/pkg/hive"
 	"github.com/ethersphere/bee/v2/pkg/log"
-	"github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/v2/pkg/pingpong"
@@ -144,7 +143,7 @@ func NewBee(
 
 	reserveCapacity := (1 << o.ReserveCapacityDoubling) * storer.DefaultReserveCapacity
 
-	stateStore, stateStoreMetrics, err := InitStateStore(logger, o.DataDir, o.StatestoreCacheCapacity)
+	stateStore, _, err := InitStateStore(logger, o.DataDir, o.StatestoreCacheCapacity)
 	if err != nil {
 		return nil, fmt.Errorf("init state store: %w", err)
 	}
@@ -508,10 +507,6 @@ func NewBee(
 	}
 
 	var registry *prometheus.Registry
-
-	if apiService != nil {
-		registry = apiService.MetricsRegistry()
-	}
 
 	p2ps, err := libp2p.New(ctx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
 		PrivateKey:      libp2pPrivateKey,
@@ -1064,49 +1059,6 @@ func NewBee(
 
 	if o.APIAddr != "" {
 		// register metrics from components
-		apiService.MustRegisterMetrics(p2ps.Metrics()...)
-		apiService.MustRegisterMetrics(pingPong.Metrics()...)
-		apiService.MustRegisterMetrics(acc.Metrics()...)
-		apiService.MustRegisterMetrics(localStore.Metrics()...)
-		apiService.MustRegisterMetrics(kad.Metrics()...)
-		apiService.MustRegisterMetrics(saludService.Metrics()...)
-		apiService.MustRegisterMetrics(stateStoreMetrics.Metrics()...)
-
-		if pullerService != nil {
-			apiService.MustRegisterMetrics(pullerService.Metrics()...)
-		}
-
-		if agent != nil {
-			apiService.MustRegisterMetrics(agent.Metrics()...)
-		}
-
-		apiService.MustRegisterMetrics(pushSyncProtocol.Metrics()...)
-		apiService.MustRegisterMetrics(pusherService.Metrics()...)
-		apiService.MustRegisterMetrics(pullSyncProtocol.Metrics()...)
-		apiService.MustRegisterMetrics(retrieval.Metrics()...)
-		apiService.MustRegisterMetrics(lightNodes.Metrics()...)
-		apiService.MustRegisterMetrics(hive.Metrics()...)
-
-		if bs, ok := batchStore.(metrics.Collector); ok {
-			apiService.MustRegisterMetrics(bs.Metrics()...)
-		}
-		if ls, ok := eventListener.(metrics.Collector); ok {
-			apiService.MustRegisterMetrics(ls.Metrics()...)
-		}
-		if pssServiceMetrics, ok := pssService.(metrics.Collector); ok {
-			apiService.MustRegisterMetrics(pssServiceMetrics.Metrics()...)
-		}
-		if swapBackendMetrics, ok := chainBackend.(metrics.Collector); ok {
-			apiService.MustRegisterMetrics(swapBackendMetrics.Metrics()...)
-		}
-
-		if l, ok := logger.(metrics.Collector); ok {
-			apiService.MustRegisterMetrics(l.Metrics()...)
-		}
-		apiService.MustRegisterMetrics(pseudosettleService.Metrics()...)
-		if swapService != nil {
-			apiService.MustRegisterMetrics(swapService.Metrics()...)
-		}
 
 		apiService.Configure(signer, tracer, api.Options{
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
@@ -1117,8 +1069,6 @@ func NewBee(
 
 		apiService.SetRedistributionAgent(agent)
 
-		// api metrics are constructed on api.Service.Configure
-		statusMetricsRegistry.MustRegister(apiService.StatusMetrics()...)
 	}
 
 	if err := kad.Start(ctx); err != nil {

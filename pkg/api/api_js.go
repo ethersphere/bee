@@ -1,5 +1,9 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
+
+// Copyright 2020 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
 
 package api
 
@@ -9,11 +13,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"mime"
-	"net/http"
 	"reflect"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
@@ -33,7 +34,6 @@ func (s *Service) Configure(signer crypto.Signer, tracer *tracing.Tracer, o Opti
 	s.signer = signer
 	s.Options = o
 	s.tracer = tracer
-	s.metrics = newMetrics()
 
 	s.quit = make(chan struct{})
 
@@ -110,7 +110,6 @@ func New(
 	s.transaction = transaction
 	s.batchStore = batchStore
 	s.chainBackend = chainBackend
-	s.metricsRegistry = newDebugMetrics()
 	s.preMapHooks = map[string]func(v string) (string, error){
 		"mimeMediaType": func(v string) (string, error) {
 			typ, _, err := mime.ParseMediaType(v)
@@ -140,77 +139,4 @@ func New(
 	}
 
 	return s
-}
-
-func (s *Service) contentLengthMetricMiddleware() func(h http.Handler) http.Handler {
-	return func(h http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			now := time.Now()
-			h.ServeHTTP(w, r)
-			switch r.Method {
-			case http.MethodGet:
-				hdr := w.Header().Get(ContentLengthHeader)
-				if hdr == "" {
-					s.logger.Debug("content length header not found")
-					return
-				}
-
-				contentLength, err := strconv.Atoi(hdr)
-				if err != nil {
-					s.logger.Debug("int conversion failed", "content_length", hdr, "error", err)
-					return
-				}
-				if contentLength > 0 {
-					s.metrics.ContentApiDuration.WithLabelValues(strconv.FormatInt(toFileSizeBucket(int64(contentLength)), 10), r.Method).Observe(time.Since(now).Seconds())
-				}
-			case http.MethodPost:
-				if r.ContentLength > 0 {
-					s.metrics.ContentApiDuration.WithLabelValues(strconv.FormatInt(toFileSizeBucket(r.ContentLength), 10), r.Method).Observe(time.Since(now).Seconds())
-				}
-			}
-		})
-	}
-}
-
-func (s *Service) downloadSpeedMetricMiddleware(endpoint string) func(h http.Handler) http.Handler {
-	return func(h http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			start := time.Now()
-			h.ServeHTTP(w, r)
-
-			rw, ok := w.(*responseWriter)
-			if !ok {
-				return
-			}
-			if rw.Status() != http.StatusOK {
-				return
-			}
-
-			speed := float64(rw.size) / time.Since(start).Seconds()
-			s.metrics.DownloadSpeed.WithLabelValues(endpoint).Observe(speed)
-		})
-	}
-}
-
-// observeUploadSpeed measures the speed of the upload and sets appropriate
-// labels to the metrics. This function can be called as a deferred function in
-// side of handler. This functions is not in a form of a middleware to more
-// directly pass the deferred flag.
-func (s *Service) observeUploadSpeed(w http.ResponseWriter, r *http.Request, start time.Time, endpoint string, deferred bool) {
-	rw, ok := w.(*responseWriter)
-	if !ok {
-		return
-	}
-
-	if rw.Status() != http.StatusOK && rw.Status() != http.StatusCreated {
-		return
-	}
-
-	mode := "direct"
-	if deferred {
-		mode = "deferred"
-	}
-
-	speed := float64(r.ContentLength) / time.Since(start).Seconds()
-	s.metrics.UploadSpeed.WithLabelValues(endpoint, mode).Observe(speed)
 }

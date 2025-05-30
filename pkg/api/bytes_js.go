@@ -1,5 +1,5 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
 package api
 
@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
@@ -61,8 +60,6 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		span.SetTag("tagID", tag)
 	}
-
-	defer s.observeUploadSpeed(w, r, time.Now(), "bytes", deferred)
 
 	putter, err := s.newStamperPutter(ctx, putterOptions{
 		BatchID:  headers.BatchID,

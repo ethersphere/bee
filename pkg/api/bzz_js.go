@@ -1,12 +1,12 @@
-//go:build !js
-// +build !js
+// go:build js
+//go:build js
+// +build js
 
 package api
 
 import (
 	"errors"
 	"net/http"
-	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
@@ -43,8 +43,6 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		err      error
 		deferred = defaultUploadMethod(headers.Deferred)
 	)
-
-	defer s.observeUploadSpeed(w, r, time.Now(), "bzz", deferred)
 
 	if deferred || headers.Pin {
 		tag, err = s.getOrCreateSessionID(headers.SwarmTag)
