@@ -513,7 +513,6 @@ func NewBee(
 		FullNode:        o.FullNodeMode,
 		Nonce:           nonce,
 		ValidateOverlay: chainEnabled,
-		Registry:        nil,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)

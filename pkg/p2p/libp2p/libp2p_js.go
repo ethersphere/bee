@@ -5,6 +5,7 @@ package libp2p
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"net"
@@ -72,6 +73,19 @@ type Service struct {
 	autoNAT           autonat.AutoNAT
 }
 
+type Options struct {
+	PrivateKey       *ecdsa.PrivateKey
+	NATAddr          string
+	EnableWS         bool
+	FullNode         bool
+	LightNodeLimit   int
+	WelcomeMessage   string
+	Nonce            []byte
+	ValidateOverlay  bool
+	hostFactory      func(...libp2p.Option) (host.Host, error)
+	HeadersRWTimeout time.Duration
+}
+
 func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
 
 	var listenAddrs []string
@@ -81,10 +95,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	libp2pPeerstore, err := pstoremem.NewPeerstore()
 	if err != nil {
 		return nil, err
-	}
-
-	if o.Registry != nil {
-		rcmgrObs.MustRegisterWith(o.Registry)
 	}
 
 	// Tweak certain settings

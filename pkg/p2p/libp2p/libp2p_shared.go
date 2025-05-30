@@ -5,7 +5,6 @@ package libp2p
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"net"
@@ -19,9 +18,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/reacher"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
-	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/event"
-	"github.com/libp2p/go-libp2p/core/host"
 	libp2ppeer "github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/protocol"
@@ -31,8 +28,6 @@ import (
 	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
 
 	ma "github.com/multiformats/go-multiaddr"
-
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -63,20 +58,6 @@ type lightnodes interface {
 	Count() int
 	RandomPeer(swarm.Address) (swarm.Address, error)
 	EachPeer(pf topology.EachPeerFunc) error
-}
-
-type Options struct {
-	PrivateKey       *ecdsa.PrivateKey
-	NATAddr          string
-	EnableWS         bool
-	FullNode         bool
-	LightNodeLimit   int
-	WelcomeMessage   string
-	Nonce            []byte
-	ValidateOverlay  bool
-	hostFactory      func(...libp2p.Option) (host.Host, error)
-	HeadersRWTimeout time.Duration
-	Registry         *prometheus.Registry
 }
 
 func (s *Service) reachabilityWorker() error {

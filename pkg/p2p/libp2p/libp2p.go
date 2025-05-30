@@ -5,6 +5,7 @@ package libp2p
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"net"
@@ -43,6 +44,7 @@ import (
 	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multistream"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 )
 
@@ -74,6 +76,20 @@ type Service struct {
 	networkStatus     atomic.Int32
 	HeadersRWTimeout  time.Duration
 	autoNAT           autonat.AutoNAT
+}
+
+type Options struct {
+	PrivateKey       *ecdsa.PrivateKey
+	NATAddr          string
+	EnableWS         bool
+	FullNode         bool
+	LightNodeLimit   int
+	WelcomeMessage   string
+	Nonce            []byte
+	ValidateOverlay  bool
+	hostFactory      func(...libp2p.Option) (host.Host, error)
+	HeadersRWTimeout time.Duration
+	Registry         *prometheus.Registry
 }
 
 func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
