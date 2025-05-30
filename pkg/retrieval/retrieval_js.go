@@ -1,5 +1,5 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
 package retrieval
 
@@ -37,7 +37,6 @@ type Service struct {
 	singleflight  singleflight.Group[string, swarm.Chunk]
 	logger        log.Logger
 	accounting    accounting.Interface
-	metrics       metrics
 	pricer        pricer.Interface
 	tracer        *tracing.Tracer
 	caching       bool
@@ -65,7 +64,6 @@ func New(
 		logger:        logger.WithName(loggerName).Register(),
 		accounting:    accounting,
 		pricer:        pricer,
-		metrics:       newMetrics(),
 		tracer:        tracer,
 		caching:       forwarderCaching,
 		errSkip:       skippeers.NewList(time.Minute),
@@ -74,8 +72,6 @@ func New(
 
 func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr swarm.Address) (swarm.Chunk, error) {
 	loggerV1 := s.logger
-
-	s.metrics.RequestCounter.Inc()
 
 	origin := sourcePeerAddr.IsZero()
 
@@ -89,11 +85,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 	}
 
 	totalRetrieveAttempts := 0
-	requestStartTime := time.Now()
-	defer func() {
-		s.metrics.RequestDurationTime.Observe(time.Since(requestStartTime).Seconds())
-		s.metrics.RequestAttempts.Observe(float64(totalRetrieveAttempts))
-	}()
 
 	spanCtx := context.WithoutCancel(ctx)
 
@@ -147,7 +138,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 			case <-retryC:
 
 				totalRetrieveAttempts++
-				s.metrics.PeerRequestCounter.Inc()
 
 				fullSkip := append(skip.ChunkPeers(chunkAddr), s.errSkip.ChunkPeers(chunkAddr)...)
 				peer, err := s.closestPeer(chunkAddr, fullSkip, origin)
@@ -228,12 +218,9 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 		return nil, storage.ErrNotFound
 	})
 	if err != nil {
-		s.metrics.RequestFailureCounter.Inc()
 		s.logger.Debug("retrieval failed", "chunk_address", chunkAddr, "error", err)
 		return nil, err
 	}
-
-	s.metrics.RequestSuccessCounter.Inc()
 
 	return v, nil
 }
@@ -241,16 +228,14 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 func (s *Service) retrieveChunk(ctx context.Context, quit chan struct{}, chunkAddr, peer swarm.Address, result chan retrievalResult, action accounting.Action, span opentracing.Span) {
 
 	var (
-		startTime = time.Now()
-		err       error
-		chunk     swarm.Chunk
+		err   error
+		chunk swarm.Chunk
 	)
 
 	defer func() {
 		action.Cleanup()
 		if err != nil {
 			ext.LogError(span, err)
-			s.metrics.TotalErrors.Inc()
 		} else {
 			span.LogFields(olog.Bool("success", true))
 		}
@@ -295,13 +280,9 @@ func (s *Service) retrieveChunk(ctx context.Context, quit chan struct{}, chunkAd
 		return
 	}
 
-	s.metrics.ChunkRetrieveTime.Observe(time.Since(startTime).Seconds())
-	s.metrics.TotalRetrieved.Inc()
-
 	chunk = swarm.NewChunk(chunkAddr, d.Data)
 	if !cac.Valid(chunk) {
 		if !soc.Valid(chunk) {
-			s.metrics.InvalidChunkRetrieved.Inc()
 			err = swarm.ErrInvalidChunk
 			return
 		}
@@ -313,7 +294,6 @@ func (s *Service) retrieveChunk(ctx context.Context, quit chan struct{}, chunkAd
 func (s *Service) prepareCredit(ctx context.Context, peer, chunk swarm.Address, origin bool) (accounting.Action, error) {
 
 	price := s.pricer.PeerPrice(peer, chunk)
-	s.metrics.ChunkPrice.Observe(float64(price))
 
 	creditAction, err := s.accounting.PrepareCredit(ctx, peer, price, origin)
 	if err != nil {

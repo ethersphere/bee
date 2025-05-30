@@ -812,12 +812,6 @@ func NewBee(
 
 	// metrics exposed on the status protocol
 	statusMetricsRegistry := prometheus.NewRegistry()
-	if localStore != nil {
-		statusMetricsRegistry.MustRegister(localStore.StatusMetrics()...)
-	}
-	if p2ps != nil {
-		statusMetricsRegistry.MustRegister(p2ps.StatusMetrics()...)
-	}
 
 	nodeStatus := status.NewService(logger, p2ps, kad, beeNodeMode.String(), batchStore, localStore, statusMetricsRegistry)
 	if err = p2ps.AddProtocol(nodeStatus.Protocol()); err != nil {
@@ -876,8 +870,6 @@ func NewBee(
 
 	retrieval := retrieval.New(swarmAddress, waitNetworkRFunc, localStore, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
 	localStore.SetRetrievalService(retrieval)
-
-	statusMetricsRegistry.MustRegister(retrieval.StatusMetrics()...)
 
 	pusherService := pusher.New(networkID, localStore, pushSyncProtocol, batchStore, logger, detector, pusher.DefaultRetryCount)
 	b.pusherCloser = pusherService
