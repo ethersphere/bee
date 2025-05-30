@@ -1,5 +1,5 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
 package accounting
 
@@ -14,7 +14,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/pricing"
-	"github.com/ethersphere/bee/v2/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -45,7 +44,6 @@ type Accounting struct {
 	// lower bound for the value of issued cheques
 	minimumPayment      *big.Int
 	pricing             pricing.Interface
-	metrics             metrics
 	wg                  sync.WaitGroup
 	p2p                 p2p.Service
 	timeNow             func() time.Time
@@ -82,7 +80,6 @@ func NewAccounting(
 		logger:                   logger.WithName(loggerName).Register(),
 		store:                    Store,
 		pricing:                  Pricing,
-		metrics:                  newMetrics(),
 		refreshRate:              new(big.Int).Set(refreshRate),
 		lightRefreshRate:         new(big.Int).Div(refreshRate, big.NewInt(lightFactor)),
 		timeNow:                  time.Now,
@@ -111,7 +108,6 @@ func (a *Accounting) PrepareCredit(ctx context.Context, peer swarm.Address, pric
 		return nil, errors.New("connection not initialized yet")
 	}
 
-	a.metrics.AccountingReserveCount.Inc()
 	bigPrice := new(big.Int).SetUint64(price)
 
 	threshold := accountingPeer.earlyPayment
@@ -132,7 +128,6 @@ func (a *Accounting) PrepareCredit(ctx context.Context, peer swarm.Address, pric
 	if increasedExpectedDebtReduced.Cmp(threshold) >= 0 && currentBalance.Cmp(big.NewInt(0)) < 0 {
 		err = a.settle(peer, accountingPeer)
 		if err != nil {
-			a.metrics.SettleErrorCount.Inc()
 			return nil, fmt.Errorf("failed to settle with peer %v: %w", peer, err)
 		}
 
@@ -153,7 +148,6 @@ func (a *Accounting) PrepareCredit(ctx context.Context, peer swarm.Address, pric
 	// if expectedDebt would still exceed the paymentThreshold at this point block this request
 	// this can happen if there is a large number of concurrent requests to the same peer
 	if increasedExpectedDebt.Cmp(overdraftLimit) > 0 {
-		a.metrics.AccountingBlocksCount.Inc()
 		return nil, ErrOverdraft
 	}
 
@@ -190,9 +184,6 @@ func (c *creditAction) Apply() error {
 	if err != nil {
 		return fmt.Errorf("failed to persist balance: %w", err)
 	}
-
-	c.accounting.metrics.TotalCreditedAmount.Add(float64(c.price.Int64()))
-	c.accounting.metrics.CreditEventsCount.Inc()
 
 	if c.price.Cmp(c.accountingPeer.reservedBalance) > 0 {
 		c.accounting.logger.Error(nil, "attempting to release more balance than was reserved for peer", "peer_address", c.peer)
@@ -244,9 +235,6 @@ func (c *creditAction) Apply() error {
 		return fmt.Errorf("failed to persist originated balance: %w", err)
 	}
 
-	c.accounting.metrics.TotalOriginatedCreditedAmount.Add(float64(c.price.Int64()))
-	c.accounting.metrics.OriginatedCreditEventsCount.Inc()
-
 	// debt if all reserved operations are successfully credited and all shadow reserved operations are debited including debt created by surplus balance
 	// in other words this the debt the other node sees if everything pending is successful
 	increasedExpectedDebtReduced := new(big.Int).Sub(increasedExpectedDebt, c.accountingPeer.shadowReservedBalance)
@@ -276,7 +264,7 @@ func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, rece
 
 	if receivedError != nil {
 		accountingPeer.lastSettlementFailureTimestamp = a.timeNow().Unix()
-		a.metrics.PaymentErrorCount.Inc()
+
 		a.logger.Warning("payment failure", "error", receivedError)
 		return
 	}
@@ -320,20 +308,9 @@ func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, attemptedAmount, 
 
 	// if specific error is received increment metrics
 	if receivedError != nil {
-		switch {
-		case errors.Is(receivedError, pseudosettle.ErrRefreshmentAboveExpected):
-			a.metrics.ErrRefreshmentAboveExpected.Inc()
-		case errors.Is(receivedError, pseudosettle.ErrTimeOutOfSyncAlleged):
-			a.metrics.ErrTimeOutOfSyncAlleged.Inc()
-		case errors.Is(receivedError, pseudosettle.ErrTimeOutOfSyncRecent):
-			a.metrics.ErrTimeOutOfSyncRecent.Inc()
-		case errors.Is(receivedError, pseudosettle.ErrTimeOutOfSyncInterval):
-			a.metrics.ErrTimeOutOfSyncInterval.Inc()
-		}
 
 		// if refreshment failed with connected peer, blocklist
 		if !errors.Is(receivedError, p2p.ErrPeerNotFound) {
-			a.metrics.AccountingDisconnectsEnforceRefreshCount.Inc()
 			_ = a.blocklist(peer, 1, "failed to refresh")
 		}
 		a.logger.Error(receivedError, "notifyrefreshmentsent failed to refresh")
@@ -363,7 +340,7 @@ func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, attemptedAmount, 
 	if expectedAllowance.Cmp(amount) > 0 {
 		// if expectation is not met, blocklist peer
 		a.logger.Error(nil, "accepted lower payment than expected", "pseudosettle peer", peer)
-		a.metrics.ErrRefreshmentBelowExpected.Inc()
+
 		_ = a.blocklist(peer, 1, "failed to meet expectation for allowance")
 		return
 	}
@@ -410,11 +387,6 @@ func (d *debitAction) Apply() error {
 	d.applied = true
 	d.accountingPeer.shadowReservedBalance = new(big.Int).Sub(d.accountingPeer.shadowReservedBalance, d.price)
 
-	tot, _ := big.NewFloat(0).SetInt(d.price).Float64()
-
-	a.metrics.TotalDebitedAmount.Add(tot)
-	a.metrics.DebitEventsCount.Inc()
-
 	timeElapsedInSeconds := a.timeNow().Unix() - d.accountingPeer.refreshReceivedTimestamp
 	if timeElapsedInSeconds > 1 {
 		timeElapsedInSeconds = 1
@@ -430,8 +402,6 @@ func (d *debitAction) Apply() error {
 	disconnectLimit := new(big.Int).Add(d.accountingPeer.disconnectLimit, refreshDue)
 
 	if nextBalance.Cmp(disconnectLimit) >= 0 {
-		// peer too much in debt
-		a.metrics.AccountingDisconnectsOverdrawCount.Inc()
 
 		disconnectFor, err := a.blocklistUntil(d.peer, 1)
 		if err != nil {
@@ -457,6 +427,6 @@ func (a *Accounting) Disconnect(peer swarm.Address) {
 		}
 		accountingPeer.connected = false
 		_ = a.p2p.Blocklist(peer, time.Duration(disconnectFor)*time.Second, "accounting disconnect")
-		a.metrics.AccountingDisconnectsReconnectCount.Inc()
+
 	}
 }

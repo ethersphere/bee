@@ -8,7 +8,6 @@ package api
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"io"
@@ -16,14 +15,11 @@ import (
 	"math/big"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 	"unicode/utf8"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/accounting"
-	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline/builder"
@@ -41,7 +37,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/settlement"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
-	"github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/v2/pkg/status"
 	"github.com/ethersphere/bee/v2/pkg/steward"
 	"github.com/ethersphere/bee/v2/pkg/storage"
@@ -52,12 +47,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/ethersphere/bee/v2/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
-	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/go-playground/validator/v10"
-	"github.com/gorilla/mux"
 	"github.com/hashicorp/go-multierror"
-	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/sync/semaphore"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -142,80 +133,6 @@ type Storer interface {
 
 type PinIntegrity interface {
 	Check(ctx context.Context, logger log.Logger, pin string, out chan storer.PinStat)
-}
-
-type Service struct {
-	storer          Storer
-	resolver        resolver.Interface
-	pss             pss.Interface
-	gsoc            gsoc.Listener
-	steward         steward.Interface
-	logger          log.Logger
-	loggerV1        log.Logger
-	tracer          *tracing.Tracer
-	feedFactory     feeds.Factory
-	signer          crypto.Signer
-	post            postage.Service
-	accesscontrol   accesscontrol.Controller
-	postageContract postagecontract.Interface
-	probe           *Probe
-	metricsRegistry *prometheus.Registry
-	stakingContract staking.Contract
-	Options
-
-	http.Handler
-	router *mux.Router
-
-	metrics metrics
-
-	wsWg sync.WaitGroup // wait for all websockets to close on exit
-	quit chan struct{}
-
-	overlay           *swarm.Address
-	publicKey         ecdsa.PublicKey
-	pssPublicKey      ecdsa.PublicKey
-	ethereumAddress   common.Address
-	chequebookEnabled bool
-	swapEnabled       bool
-	fullAPIEnabled    bool
-
-	topologyDriver topology.Driver
-	p2p            p2p.DebugService
-	accounting     accounting.Interface
-	chequebook     chequebook.Service
-	pseudosettle   settlement.Interface
-	pingpong       pingpong.Interface
-
-	batchStore   postage.Storer
-	stamperStore storage.Store
-	pinIntegrity PinIntegrity
-
-	syncStatus func() (bool, error)
-
-	swap        swap.Interface
-	transaction transaction.Service
-	lightNodes  *lightnode.Container
-	blockTime   time.Duration
-
-	statusSem        *semaphore.Weighted
-	postageSem       *semaphore.Weighted
-	stakingSem       *semaphore.Weighted
-	cashOutChequeSem *semaphore.Weighted
-	beeMode          BeeNodeMode
-
-	chainBackend transaction.Backend
-	erc20Service erc20.Service
-	chainID      int64
-
-	whitelistedWithdrawalAddress []common.Address
-
-	preMapHooks map[string]func(v string) (string, error)
-	validate    *validator.Validate
-
-	redistributionAgent *storageincentives.Agent
-
-	statusService *status.Service
-	isWarmingUp   bool
 }
 
 func (s *Service) SetP2P(p2p p2p.DebugService) {

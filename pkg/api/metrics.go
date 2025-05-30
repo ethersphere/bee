@@ -22,6 +22,20 @@ const bytesInKB = 1000
 
 var fileSizeBucketsKBytes = []int64{100, 500, 2500, 4999, 5000, 10000}
 
+type metrics struct {
+	// all metrics fields must be exported
+	// to be able to return them by Metrics()
+	// using reflection
+	RequestCount       prometheus.Counter
+	ResponseDuration   prometheus.Histogram
+	PingRequestCount   prometheus.Counter
+	ResponseCodeCounts *prometheus.CounterVec
+
+	ContentApiDuration *prometheus.HistogramVec
+	UploadSpeed        *prometheus.HistogramVec
+	DownloadSpeed      *prometheus.HistogramVec
+}
+
 func newMetrics() metrics {
 	subsystem := "api"
 
