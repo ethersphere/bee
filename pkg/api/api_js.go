@@ -49,7 +49,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/go-playground/validator/v10"
 	"github.com/gorilla/mux"
-	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -68,7 +67,6 @@ type Service struct {
 	accesscontrol   accesscontrol.Controller
 	postageContract postagecontract.Interface
 	probe           *Probe
-	metricsRegistry *prometheus.Registry
 	stakingContract staking.Contract
 	Options
 

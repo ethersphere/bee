@@ -11,12 +11,10 @@ import (
 	"sync"
 	"time"
 
-	ocprom "contrib.go.opencensus.io/exporter/prometheus"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 	beecrypto "github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
-	m2 "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/blocklist"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/breaker"
@@ -87,14 +85,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	if o.Registry != nil {
 		rcmgrObs.MustRegisterWith(o.Registry)
-	}
-
-	_, err = ocprom.NewExporter(ocprom.Options{
-		Namespace: m2.Namespace,
-		Registry:  o.Registry,
-	})
-	if err != nil {
-		return nil, err
 	}
 
 	// Tweak certain settings
