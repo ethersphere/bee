@@ -1,5 +1,5 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
 package pushsync
 
@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/accounting"
@@ -44,7 +43,6 @@ type PushSync struct {
 	logger         log.Logger
 	accounting     accounting.Interface
 	pricer         pricer.Interface
-	metrics        metrics
 	tracer         *tracing.Tracer
 	validStamp     postage.ValidStampFn
 	signer         crypto.Signer
@@ -89,7 +87,6 @@ func New(
 		logger:                  logger.WithName(loggerName).Register(),
 		accounting:              accounting,
 		pricer:                  pricer,
-		metrics:                 newMetrics(),
 		tracer:                  tracer,
 		signer:                  signer,
 		errSkip:                 skippeers.NewList(time.Minute),
@@ -104,7 +101,6 @@ func New(
 // handler handles chunk delivery from other node and forwards to its destination node.
 // If the current node is the destination, it stores in the local store and sends a receipt.
 func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
-	now := time.Now()
 
 	w, r := protobuf.NewWriterAndReader(stream)
 	var attemptedWrite bool
@@ -114,14 +110,12 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	defer func() {
 		if err != nil {
-			ps.metrics.TotalHandlerTime.WithLabelValues("failure").Observe(time.Since(now).Seconds())
-			ps.metrics.TotalHandlerErrors.Inc()
+
 			if !attemptedWrite {
 				_ = w.WriteMsgWithContext(ctx, &pb.Receipt{Err: err.Error()})
 			}
 			_ = stream.Reset()
 		} else {
-			ps.metrics.TotalHandlerTime.WithLabelValues("success").Observe(time.Since(now).Seconds())
 			_ = stream.FullClose()
 		}
 	}()
@@ -130,8 +124,6 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	if err = r.ReadMsgWithContext(ctx, &ch); err != nil {
 		return fmt.Errorf("pushsync read delivery: %w", err)
 	}
-
-	ps.metrics.TotalReceived.Inc()
 
 	chunk := swarm.NewChunk(swarm.NewAddress(ch.Address), ch.Data)
 	chunkAddress := chunk.Address()
@@ -186,7 +178,6 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	}
 
 	store := func(ctx context.Context) error {
-		ps.metrics.Storer.Inc()
 
 		chunkToPut, err := ps.validStamp(chunk)
 		if err != nil {
@@ -230,7 +221,6 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		stored, reason = true, "want self"
 		return store(ctx)
 	case err == nil:
-		ps.metrics.Forwarder.Inc()
 
 		debit, err := ps.accounting.PrepareDebit(ctx, p.Address, price)
 		if err != nil {
@@ -247,7 +237,6 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 		return debit.Apply()
 	default:
-		ps.metrics.Forwarder.Inc()
 		return fmt.Errorf("handler: push to closest chunk %s: %w", chunkAddress, err)
 
 	}
@@ -257,7 +246,6 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 // a receipt from that peer and returns error or nil based on the receiving and
 // the validity of the receipt.
 func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Receipt, error) {
-	ps.metrics.TotalOutgoing.Inc()
 	r, err := ps.pushToClosest(ctx, ch, true)
 	if errors.Is(err, ErrShallowReceipt) {
 		return &Receipt{
@@ -285,8 +273,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-
-	ps.metrics.TotalRequests.Inc()
 
 	var (
 		sentErrorsLeft   = 1
@@ -395,7 +381,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			}
 			skip.Forever(idAddress, peer)
 
-			ps.metrics.TotalSendAttempts.Inc()
 			inflight++
 
 			go ps.push(ctx, resultChan, peer, ch, action)
@@ -420,7 +405,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				}
 			}
 
-			ps.metrics.TotalFailedSendAttempts.Inc()
 			ps.logger.Debug("could not push to peer", "chunk_address", ch.Address(), "id_address", idAddress, "peer_address", result.peer, "error", result.err)
 
 			sentErrorsLeft--
@@ -469,8 +453,6 @@ func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptRes
 		return
 	}
 
-	ps.metrics.TotalSent.Inc()
-
 	err = action.Apply()
 }
 
@@ -500,38 +482,24 @@ func (ps *PushSync) checkReceipt(receipt *pb.Receipt) error {
 	}
 
 	if po < tolerance || uint32(po) < receipt.StorageRadius {
-		ps.metrics.ShallowReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
-		ps.metrics.ShallowReceipt.Inc()
+
 		ps.logger.Debug("shallow receipt", "chunk_address", addr, "peer_address", peer, "proximity_order", po, "peer_radius", receipt.StorageRadius, "self_radius", r)
 		return ErrShallowReceipt
 	}
 
-	ps.metrics.ReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
 	ps.logger.Debug("chunk pushed", "chunk_address", addr, "peer_address", peer, "proximity_order", po)
 
 	return nil
 }
 
 func (ps *PushSync) measurePushPeer(t time.Time, err error) {
-	var status string
-	if err != nil {
-		status = "failure"
-	} else {
-		status = "success"
-	}
-	ps.metrics.PushToPeerTime.WithLabelValues(status).Observe(time.Since(t).Seconds())
+
 }
 
 func (ps *PushSync) validStampWrapper(f postage.ValidStampFn) postage.ValidStampFn {
 	return func(c swarm.Chunk) (swarm.Chunk, error) {
-		t := time.Now()
 		chunk, err := f(c)
-		if err != nil {
-			ps.metrics.InvalidStampErrors.Inc()
-			ps.metrics.StampValidationTime.WithLabelValues("failure").Observe(time.Since(t).Seconds())
-		} else {
-			ps.metrics.StampValidationTime.WithLabelValues("success").Observe(time.Since(t).Seconds())
-		}
+
 		return chunk, err
 	}
 }
