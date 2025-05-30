@@ -68,7 +68,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/util/nbhdutil"
 	"github.com/ethersphere/bee/v2/pkg/util/syncutil"
 	ma "github.com/multiformats/go-multiaddr"
-	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/sha3"
 
 	wasmhttp "github.com/nlepage/go-wasm-http-server/v2"
@@ -506,8 +505,6 @@ func NewBee(
 		}
 	}
 
-	var registry *prometheus.Registry
-
 	p2ps, err := libp2p.New(ctx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
 		PrivateKey:      libp2pPrivateKey,
 		NATAddr:         o.NATAddr,
@@ -516,7 +513,7 @@ func NewBee(
 		FullNode:        o.FullNodeMode,
 		Nonce:           nonce,
 		ValidateOverlay: chainEnabled,
-		Registry:        registry,
+		Registry:        nil,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
@@ -810,10 +807,7 @@ func NewBee(
 
 	validStamp := postage.ValidStamp(batchStore)
 
-	// metrics exposed on the status protocol
-	statusMetricsRegistry := prometheus.NewRegistry()
-
-	nodeStatus := status.NewService(logger, p2ps, kad, beeNodeMode.String(), batchStore, localStore, statusMetricsRegistry)
+	nodeStatus := status.NewService(logger, p2ps, kad, beeNodeMode.String(), batchStore, localStore, nil)
 	if err = p2ps.AddProtocol(nodeStatus.Protocol()); err != nil {
 		return nil, fmt.Errorf("status service: %w", err)
 	}

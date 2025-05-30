@@ -1,5 +1,5 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
 package libp2p
 
@@ -15,20 +15,17 @@ type stream struct {
 	network.Stream
 	headers         map[string][]byte
 	responseHeaders map[string][]byte
-	metrics         metrics
 }
 
-func newStream(s network.Stream, metrics metrics) *stream {
-	return &stream{Stream: s, metrics: metrics}
+func newStream(s network.Stream) *stream {
+	return &stream{Stream: s}
 }
 
 func (s *stream) Reset() error {
-	defer s.metrics.StreamResetCount.Inc()
 	return s.Stream.Reset()
 }
 
 func (s *stream) FullClose() error {
-	defer s.metrics.ClosedStreamCount.Inc()
 	// close the stream to make sure it is gc'd
 	defer s.Close()
 
