@@ -1,12 +1,11 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
 package sharky
 
 import (
 	"context"
 	"io/fs"
-	"strconv"
 	"sync"
 )
 
@@ -21,7 +20,7 @@ type Store struct {
 	shards      []*shard        // shards
 	wg          *sync.WaitGroup // count started operations
 	quit        chan struct{}   // quit channel
-	metrics     metrics
+
 }
 
 // New constructs a sharded blobstore
@@ -37,7 +36,6 @@ func New(basedir fs.FS, shardCnt int, maxDataSize int) (*Store, error) {
 		shards:      make([]*shard, shardCnt),
 		wg:          &sync.WaitGroup{},
 		quit:        make(chan struct{}),
-		metrics:     newMetrics(),
 	}
 	for i := range store.shards {
 		s, err := store.create(uint8(i), maxDataSize, basedir)
@@ -46,7 +44,6 @@ func New(basedir fs.FS, shardCnt int, maxDataSize int) (*Store, error) {
 		}
 		store.shards[i] = s
 	}
-	store.metrics.ShardCount.Set(float64(len(store.shards)))
 
 	return store, nil
 }
@@ -56,27 +53,9 @@ func New(basedir fs.FS, shardCnt int, maxDataSize int) (*Store, error) {
 func (s *Store) Read(ctx context.Context, loc Location, buf []byte) (err error) {
 	sh := s.shards[loc.Shard]
 	select {
-	case sh.reads <- read{ctx: ctx, buf: buf[:loc.Length], slot: loc.Slot}:
-		s.metrics.TotalReadCalls.Inc()
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-sh.quit:
-		return ErrQuitting
-	}
-
-	// it is important that this select would NEVER respect the context
-	// cancellation. this would result in a deadlock on the shard, since
-	// the result of the operation must be drained from errc, allowing the
-	// shard to be able to handle new operations (#2932).
-	select {
-	case err = <-sh.errc:
-		if err != nil {
-			s.metrics.TotalReadCallsErr.Inc()
-		}
-		return err
-	case <-s.quit:
-		// we need to make sure that the forever loop in shard.go can
-		// always return due to shutdown in case this goroutine goes away.
 		return ErrQuitting
 	}
 }
@@ -90,15 +69,7 @@ func (s *Store) Read(ctx context.Context, loc Location, buf []byte) (err error) 
 func (s *Store) Release(ctx context.Context, loc Location) error {
 	sh := s.shards[loc.Shard]
 	err := sh.release(ctx, loc.Slot)
-	s.metrics.TotalReleaseCalls.Inc()
-	if err == nil {
-		shard := strconv.Itoa(int(sh.index))
-		s.metrics.CurrentShardSize.WithLabelValues(shard).Dec()
-		s.metrics.ShardFragmentation.WithLabelValues(shard).Sub(float64(s.maxDataSize - int(loc.Length)))
-		s.metrics.LastReleasedShardSlot.WithLabelValues(shard).Set(float64(loc.Slot))
-	} else {
-		s.metrics.TotalReleaseCallsErr.Inc()
-	}
+
 	return err
 }
 
@@ -114,8 +85,6 @@ func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error
 	c := make(chan entry, 1) // buffer the channel to avoid blocking in shard.process on quit or context done
 
 	select {
-	case s.writes <- write{data, c}:
-		s.metrics.TotalWriteCalls.Inc()
 	case <-s.quit:
 		return loc, ErrQuitting
 	case <-ctx.Done():
@@ -124,14 +93,7 @@ func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error
 
 	select {
 	case e := <-c:
-		if e.err == nil {
-			shard := strconv.Itoa(int(e.loc.Shard))
-			s.metrics.CurrentShardSize.WithLabelValues(shard).Inc()
-			s.metrics.ShardFragmentation.WithLabelValues(shard).Add(float64(s.maxDataSize - int(e.loc.Length)))
-			s.metrics.LastAllocatedShardSlot.WithLabelValues(shard).Set(float64(e.loc.Slot))
-		} else {
-			s.metrics.TotalWriteCallsErr.Inc()
-		}
+
 		return e.loc, e.err
 	case <-s.quit:
 		return loc, ErrQuitting
