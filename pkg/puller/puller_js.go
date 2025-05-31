@@ -1,5 +1,5 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
 package puller
 
@@ -30,8 +30,7 @@ type Puller struct {
 	syncer      pullsync.Interface
 	blockLister p2p.Blocklister
 
-	metrics metrics
-	logger  log.Logger
+	logger log.Logger
 
 	syncPeers    map[string]*syncPeer // index is bin, map key is peer address
 	syncPeersMtx sync.Mutex
@@ -70,7 +69,6 @@ func New(
 		topology:    topology,
 		radius:      reserveState,
 		syncer:      pullSync,
-		metrics:     newMetrics(),
 		logger:      logger.WithName(loggerName).Register(),
 		syncPeers:   make(map[string]*syncPeer),
 		bins:        bins,
@@ -92,11 +90,8 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 	peer.setBinCancel(cancel, bin)
 
 	sync := func(isHistorical bool, address swarm.Address, start uint64) {
-		p.metrics.SyncWorkerCounter.Inc()
-
 		defer p.wg.Done()
 		defer peer.wg.Done()
-		defer p.metrics.SyncWorkerCounter.Dec()
 
 		var err error
 
@@ -104,7 +99,6 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 			if isHistorical { // override start with the next interval if historical syncing
 				start, err = p.nextPeerInterval(address, bin)
 				if err != nil {
-					p.metrics.SyncWorkerErrCounter.Inc()
 					p.logger.Error(err, "syncWorker nextPeerInterval failed, quitting")
 					return
 				}
@@ -122,19 +116,15 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 			default:
 			}
 
-			p.metrics.SyncWorkerIterCounter.Inc()
-
 			syncStart := time.Now()
 			top, count, err := p.syncer.Sync(ctx, address, bin, start)
 
 			if top == math.MaxUint64 {
-				p.metrics.MaxUintErrCounter.Inc()
 				p.logger.Error(nil, "syncWorker max uint64 encountered, quitting", "peer_address", address, "bin", bin, "from", start, "topmost", top)
 				return
 			}
 
 			if err != nil {
-				p.metrics.SyncWorkerErrCounter.Inc()
 				if errors.Is(err, p2p.ErrPeerNotFound) {
 					p.logger.Debug("syncWorker interval failed, quitting", "error", err, "peer_address", address, "bin", bin, "cursor", cursor, "start", start, "topmost", top)
 					return
@@ -145,16 +135,12 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 			_ = p.limiter.WaitN(ctx, count)
 
 			if isHistorical {
-				p.metrics.SyncedCounter.WithLabelValues("historical").Add(float64(count))
 				p.rate.Add(count)
-			} else {
-				p.metrics.SyncedCounter.WithLabelValues("live").Add(float64(count))
 			}
 
 			// pulled at least one chunk
 			if top >= start {
 				if err := p.addPeerInterval(address, bin, start, top); err != nil {
-					p.metrics.SyncWorkerErrCounter.Inc()
 					p.logger.Error(err, "syncWorker could not persist interval for peer, quitting", "peer_address", address)
 					return
 				}

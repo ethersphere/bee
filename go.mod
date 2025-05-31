@@ -198,4 +198,4 @@ replace github.com/syndtr/goleveldb => ../goleveldb
 
 replace github.com/libp2p/go-libp2p => ../go-libp2p
 
-replace github.com/ethereum/go-ethereum => ../go-ethereum
+// replace github.com/ethereum/go-ethereum => ../go-ethereum

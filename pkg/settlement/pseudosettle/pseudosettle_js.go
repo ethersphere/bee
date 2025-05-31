@@ -1,5 +1,5 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
 package pseudosettle
 
@@ -25,7 +25,6 @@ type Service struct {
 	logger           log.Logger
 	store            storage.StateStorer
 	accounting       settlement.Accounting
-	metrics          metrics
 	refreshRate      *big.Int
 	lightRefreshRate *big.Int
 	p2pService       p2p.Service
@@ -38,7 +37,6 @@ func New(streamer p2p.Streamer, logger log.Logger, store storage.StateStorer, ac
 	return &Service{
 		streamer:         streamer,
 		logger:           logger.WithName(loggerName).Register(),
-		metrics:          newMetrics(),
 		store:            store,
 		accounting:       accounting,
 		p2pService:       p2pService,
@@ -56,7 +54,6 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
-			s.metrics.ReceivedPseudoSettlementsErrors.Inc()
 		} else {
 			stream.FullClose()
 		}
@@ -119,9 +116,6 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		return err
 	}
 
-	receivedPaymentF64, _ := big.NewFloat(0).SetInt(paymentAmount).Float64()
-	s.metrics.TotalReceivedPseudoSettlements.Add(receivedPaymentF64)
-	s.metrics.ReceivedPseudoSettlements.Inc()
 	return s.accounting.NotifyRefreshmentReceived(p.Address, paymentAmount, timestamp)
 }
 
@@ -132,12 +126,6 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 	defer cancel()
 
 	var err error
-
-	defer func() {
-		if err != nil {
-			s.metrics.SentPseudoSettlementsErrors.Inc()
-		}
-	}()
 
 	var lastTime lastPayment
 	err = s.store.Get(totalKey(peer, SettlementSentPrefix), &lastTime)
@@ -220,10 +208,6 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 		s.accounting.NotifyRefreshmentSent(peer, nil, nil, 0, 0, err)
 		return
 	}
-
-	amountFloat, _ := new(big.Float).SetInt(acceptedAmount).Float64()
-	s.metrics.TotalSentPseudoSettlements.Add(amountFloat)
-	s.metrics.SentPseudoSettlements.Inc()
 
 	s.accounting.NotifyRefreshmentSent(peer, amount, acceptedAmount, checkTime, allegedInterval, nil)
 }

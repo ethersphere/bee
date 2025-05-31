@@ -1,5 +1,5 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
 package batchstore
 
@@ -24,7 +24,6 @@ type store struct {
 
 	radius  atomic.Uint32
 	evictFn evictFn // evict function
-	metrics metrics // metrics
 	logger  log.Logger
 
 	batchExpiry postage.BatchExpiryHandler
@@ -59,7 +58,6 @@ func New(st storage.StateStorer, ev evictFn, capacity int, logger log.Logger) (p
 		capacity: capacity,
 		store:    st,
 		evictFn:  ev,
-		metrics:  newMetrics(),
 		logger:   logger.WithName(loggerName).Register(),
 	}
 	s.cs.Store(cs)
@@ -91,8 +89,6 @@ func (s *store) computeRadius() error {
 		return err
 	}
 
-	s.metrics.Commitment.Set(float64(totalCommitment))
-
 	var radius uint8
 	if totalCommitment > s.capacity {
 		// totalCommitment/node_capacity = 2^R
@@ -100,7 +96,6 @@ func (s *store) computeRadius() error {
 		radius = uint8(math.Ceil(math.Log2(float64(totalCommitment) / float64(s.capacity))))
 	}
 
-	s.metrics.Radius.Set(float64(radius))
 	s.radius.Store(uint32(radius))
 
 	return s.store.Put(reserveRadiusKey, &radius)

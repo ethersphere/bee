@@ -1,5 +1,5 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
 package cache
 
@@ -13,8 +13,7 @@ import (
 type Cache struct {
 	storage.IndexStore
 
-	lru     *lru.Cache[string, []byte]
-	metrics metrics
+	lru *lru.Cache[string, []byte]
 }
 
 // Wrap adds a layer of in-memory caching to storage.Reader Get and Has operations.
@@ -26,7 +25,7 @@ func Wrap(store storage.IndexStore, capacity int) (*Cache, error) {
 		return nil, err
 	}
 
-	return &Cache{store, lru, newMetrics()}, nil
+	return &Cache{store, lru}, nil
 }
 
 // Get implements storage.Store interface.
@@ -35,7 +34,6 @@ func Wrap(store storage.IndexStore, capacity int) (*Cache, error) {
 // it from the underlying store.
 func (c *Cache) Get(i storage.Item) error {
 	if val, ok := c.lru.Get(key(i)); ok {
-		c.metrics.CacheHit.Inc()
 		return i.Unmarshal(val)
 	}
 
@@ -43,7 +41,6 @@ func (c *Cache) Get(i storage.Item) error {
 		return err
 	}
 
-	c.metrics.CacheMiss.Inc()
 	c.add(i)
 
 	return nil
@@ -55,10 +52,9 @@ func (c *Cache) Get(i storage.Item) error {
 // it from the underlying store.
 func (c *Cache) Has(k storage.Key) (bool, error) {
 	if _, ok := c.lru.Get(key(k)); ok {
-		c.metrics.CacheHit.Inc()
+
 		return true, nil
 	}
 
-	c.metrics.CacheMiss.Inc()
 	return c.IndexStore.Has(k)
 }

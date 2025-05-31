@@ -1,5 +1,5 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
 package pingpong
 
@@ -22,7 +22,6 @@ type Service struct {
 	streamer p2p.Streamer
 	logger   log.Logger
 	tracer   *tracing.Tracer
-	metrics  metrics
 }
 
 func New(streamer p2p.Streamer, logger log.Logger, tracer *tracing.Tracer) *Service {
@@ -30,7 +29,6 @@ func New(streamer p2p.Streamer, logger log.Logger, tracer *tracing.Tracer) *Serv
 		streamer: streamer,
 		logger:   logger.WithName(loggerName).Register(),
 		tracer:   tracer,
-		metrics:  newMetrics(),
 	}
 }
 
@@ -56,7 +54,6 @@ func (s *Service) Ping(ctx context.Context, address swarm.Address, msgs ...strin
 		}); err != nil {
 			return 0, fmt.Errorf("write message: %w", err)
 		}
-		s.metrics.PingSentCount.Inc()
 
 		if err := r.ReadMsgWithContext(ctx, &pong); err != nil {
 			if errors.Is(err, io.EOF) {
@@ -65,7 +62,6 @@ func (s *Service) Ping(ctx context.Context, address swarm.Address, msgs ...strin
 			return 0, fmt.Errorf("read message: %w", err)
 		}
 
-		s.metrics.PongReceivedCount.Inc()
 	}
 	return time.Since(start), nil
 }
@@ -85,14 +81,12 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 			}
 			return fmt.Errorf("read message: %w", err)
 		}
-		s.metrics.PingReceivedCount.Inc()
 
 		if err := w.WriteMsgWithContext(ctx, &pb.Pong{
 			Response: "{" + ping.Greeting + "}",
 		}); err != nil {
 			return fmt.Errorf("write message: %w", err)
 		}
-		s.metrics.PongSentCount.Inc()
 	}
 	return nil
 }

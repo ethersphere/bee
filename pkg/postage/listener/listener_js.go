@@ -1,5 +1,5 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
 package listener
 
@@ -30,7 +30,6 @@ type listener struct {
 	postageStampContractABI     abi.ABI
 	quit                        chan struct{}
 	wg                          sync.WaitGroup
-	metrics                     metrics
 	stallingTimeout             time.Duration
 	backoffTime                 time.Duration
 	syncingStopped              *syncutil.Signaler
@@ -61,7 +60,6 @@ func New(
 		postageStampContractAddress: postageStampContractAddress,
 		postageStampContractABI:     postageStampContractABI,
 		quit:                        make(chan struct{}),
-		metrics:                     newMetrics(),
 		stallingTimeout:             stallingTimeout,
 		backoffTime:                 backoffTime,
 
@@ -74,7 +72,6 @@ func New(
 }
 
 func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error {
-	defer l.metrics.EventsProcessed.Inc()
 	switch e.Topics[0] {
 	case l.batchCreatedTopic:
 		c := &batchCreatedEvent{}
@@ -82,7 +79,6 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 		if err != nil {
 			return err
 		}
-		l.metrics.CreatedCounter.Inc()
 		return updater.Create(
 			c.BatchId[:],
 			c.Owner.Bytes(),
@@ -99,7 +95,6 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 		if err != nil {
 			return err
 		}
-		l.metrics.TopupCounter.Inc()
 		return updater.TopUp(
 			c.BatchId[:],
 			c.TopupAmount,
@@ -112,7 +107,7 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 		if err != nil {
 			return err
 		}
-		l.metrics.DepthCounter.Inc()
+
 		return updater.UpdateDepth(
 			c.BatchId[:],
 			c.NewDepth,
@@ -125,7 +120,6 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 		if err != nil {
 			return err
 		}
-		l.metrics.PriceCounter.Inc()
 		return updater.UpdatePrice(
 			c.Price,
 			e.TxHash,
@@ -134,7 +128,6 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 		l.logger.Warning("Postage contract is paused.")
 		return ErrPostagePaused
 	default:
-		l.metrics.EventErrors.Inc()
 		return errors.New("unknown event")
 	}
 }
@@ -152,7 +145,6 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 		}
 
 		for _, e := range events {
-			startEv := time.Now()
 			err := updater.UpdateBlockNumber(e.BlockNumber)
 			if err != nil {
 				return err
@@ -164,7 +156,6 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 				}
 				l.logger.Debug("failed processing event", "error", err)
 			}
-			totalTimeMetric(l.metrics.EventProcessDuration, startEv)
 		}
 
 		err := updater.UpdateBlockNumber(to)
@@ -239,16 +230,12 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 			}
 			paged = false
 
-			start := time.Now()
-
-			l.metrics.BackendCalls.Inc()
 			to, err := l.ev.BlockNumber(ctx)
 			if err != nil {
 				if errors.Is(err, context.Canceled) {
 					return nil
 				}
 
-				l.metrics.BackendErrors.Inc()
 				l.logger.Warning("could not get block number", "error", err)
 				lastConfirmedBlock = 0
 				continue
@@ -278,11 +265,9 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 			} else {
 				closeOnce.Do(func() { synced <- nil })
 			}
-			l.metrics.BackendCalls.Inc()
 
 			events, err := l.ev.FilterLogs(ctx, l.filterQuery(big.NewInt(int64(from)), big.NewInt(int64(to))))
 			if err != nil {
-				l.metrics.BackendErrors.Inc()
 				l.logger.Warning("could not get blockchain log", "error", err)
 				lastConfirmedBlock = 0
 				continue
@@ -294,8 +279,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 
 			from = to + 1
 			lastProgress = time.Now()
-			totalTimeMetric(l.metrics.PageProcessDuration, start)
-			l.metrics.PagesProcessed.Inc()
+
 		}
 	}
 

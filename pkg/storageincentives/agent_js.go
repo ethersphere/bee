@@ -1,5 +1,5 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
 package storageincentives
 
@@ -27,7 +27,6 @@ import (
 
 type Agent struct {
 	logger                 log.Logger
-	metrics                metrics
 	backend                ChainBackend
 	blocksPerRound         uint64
 	contract               redistribution.Contract
@@ -64,7 +63,6 @@ func New(overlay swarm.Address,
 ) (*Agent, error) {
 	a := &Agent{
 		overlay:                overlay,
-		metrics:                newMetrics(),
 		backend:                backend,
 		logger:                 logger.WithName(loggerName).Register(),
 		contract:               contract,
@@ -156,10 +154,8 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		ctx, cancel := context.WithTimeout(ctx, blockTime*time.Duration(blocksPerRound))
 		defer cancel()
 
-		a.metrics.BackendCalls.Inc()
 		block, err := a.backend.BlockNumber(ctx)
 		if err != nil {
-			a.metrics.BackendErrors.Inc()
 			a.logger.Error(err, "getting block number")
 			return
 		}
@@ -167,8 +163,6 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		a.state.SetCurrentBlock(block)
 
 		round := block / blocksPerRound
-
-		a.metrics.Round.Set(float64(round))
 
 		p := block % blocksPerRound
 		if p < blocksPerPhase {
@@ -185,7 +179,6 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 
 		prevPhase = currentPhase
-		a.metrics.CurrentPhase.Set(float64(currentPhase))
 
 		a.logger.Info("entered new phase", "phase", currentPhase.String(), "round", round, "block", block)
 
@@ -245,12 +238,9 @@ func (a *Agent) handleReveal(ctx context.Context, round uint64) error {
 		return fmt.Errorf("sample not found in reveal phase")
 	}
 
-	a.metrics.RevealPhase.Inc()
-
 	rsh := sample.ReserveSampleHash.Bytes()
 	txHash, err := a.contract.Reveal(ctx, sample.StorageRadius, rsh, commitKey)
 	if err != nil {
-		a.metrics.ErrReveal.Inc()
 		return err
 	}
 	a.state.AddFee(ctx, txHash)
@@ -267,11 +257,8 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 		return nil
 	}
 
-	a.metrics.ClaimPhase.Inc()
-
 	isWinner, err := a.contract.IsWinner(ctx)
 	if err != nil {
-		a.metrics.ErrWinner.Inc()
 		return err
 	}
 
@@ -282,7 +269,6 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 	}
 
 	a.state.SetLastWonRound(round)
-	a.metrics.Winner.Inc()
 
 	// In case when there are too many expired batches, Claim trx could runs out of gas.
 	// To prevent this, node should first expire batches before Claiming a reward.
@@ -315,7 +301,6 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 
 	txHash, err := a.contract.Claim(ctx, proofs)
 	if err != nil {
-		a.metrics.ErrClaim.Inc()
 		return fmt.Errorf("claiming win: %w", err)
 	}
 
@@ -344,7 +329,6 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 
 	isPlaying, err := a.contract.IsPlaying(ctx, committedDepth)
 	if err != nil {
-		a.metrics.ErrCheckIsPlaying.Inc()
 		return false, err
 	}
 	if !isPlaying {
@@ -352,7 +336,6 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 		return false, nil
 	}
 	a.state.SetLastSelectedRound(round + 1)
-	a.metrics.NeighborhoodSelected.Inc()
 	a.logger.Info("neighbourhood chosen", "round", round)
 
 	if !a.state.IsFullySynced() {
@@ -370,7 +353,7 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 		return false, fmt.Errorf("has enough funds to play: %w", err)
 	} else if !hasFunds {
 		a.logger.Info("insufficient funds to play in next round", "round", round)
-		a.metrics.InsufficientFundsToPlay.Inc()
+
 		return false, nil
 	}
 
@@ -380,7 +363,6 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 		return false, err
 	}
 	dur := time.Since(now)
-	a.metrics.SampleDuration.Set(dur.Seconds())
 
 	a.logger.Info("produced sample", "hash", sample.ReserveSampleHash, "radius", committedDepth, "round", round)
 
@@ -392,10 +374,8 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 func (a *Agent) getPreviousRoundTime(ctx context.Context) (time.Duration, error) {
 	previousRoundBlockNumber := ((a.state.currentBlock() / a.blocksPerRound) - 1) * a.blocksPerRound
 
-	a.metrics.BackendCalls.Inc()
 	timeLimiterBlock, err := a.backend.HeaderByNumber(ctx, new(big.Int).SetUint64(previousRoundBlockNumber))
 	if err != nil {
-		a.metrics.BackendErrors.Inc()
 		return 0, err
 	}
 
@@ -403,7 +383,6 @@ func (a *Agent) getPreviousRoundTime(ctx context.Context) (time.Duration, error)
 }
 
 func (a *Agent) commit(ctx context.Context, sample SampleData, round uint64) error {
-	a.metrics.CommitPhase.Inc()
 
 	key := make([]byte, swarm.HashSize)
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
@@ -418,7 +397,6 @@ func (a *Agent) commit(ctx context.Context, sample SampleData, round uint64) err
 
 	txHash, err := a.contract.Commit(ctx, obfuscatedHash, round)
 	if err != nil {
-		a.metrics.ErrCommit.Inc()
 		return err
 	}
 	a.state.AddFee(ctx, txHash)

@@ -1,5 +1,5 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
 package swap
 
@@ -23,7 +23,6 @@ type Service struct {
 	logger         log.Logger
 	store          storage.StateStorer
 	accounting     settlement.Accounting
-	metrics        metrics
 	chequebook     chequebook.Service
 	chequeStore    chequebook.ChequeStore
 	cashout        chequebook.CashoutService
@@ -38,7 +37,6 @@ func New(proto swapprotocol.Interface, logger log.Logger, store storage.StateSto
 		proto:          proto,
 		logger:         logger.WithName(loggerName).Register(),
 		store:          store,
-		metrics:        newMetrics(),
 		chequebook:     chequebook,
 		chequeStore:    chequeStore,
 		addressbook:    addressbook,
@@ -62,7 +60,6 @@ func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 
 	receivedAmount, err := s.chequeStore.ReceiveCheque(ctx, cheque, exchangeRate, deduction)
 	if err != nil {
-		s.metrics.ChequesRejected.Inc()
 		return fmt.Errorf("rejecting cheque: %w", err)
 	}
 
@@ -82,10 +79,6 @@ func (s *Service) ReceiveCheque(ctx context.Context, peer swarm.Address, cheque 
 			return err
 		}
 	}
-
-	tot, _ := big.NewFloat(0).SetInt(receivedAmount).Float64()
-	s.metrics.TotalReceived.Add(tot)
-	s.metrics.ChequesReceived.Inc()
 
 	return s.accounting.NotifyPaymentReceived(peer, amount)
 }
@@ -111,16 +104,11 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 		return
 	}
 
-	balance, err := s.proto.EmitCheque(ctx, peer, beneficiary, amount, s.chequebook.Issue)
+	_, err = s.proto.EmitCheque(ctx, peer, beneficiary, amount, s.chequebook.Issue)
 
 	if err != nil {
 		return
 	}
 
-	bal, _ := big.NewFloat(0).SetInt(balance).Float64()
-	s.metrics.AvailableBalance.Set(bal)
 	s.accounting.NotifyPaymentSent(peer, amount, nil)
-	amountFloat, _ := big.NewFloat(0).SetInt(amount).Float64()
-	s.metrics.TotalSent.Add(amountFloat)
-	s.metrics.ChequesSent.Inc()
 }

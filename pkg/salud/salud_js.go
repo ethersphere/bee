@@ -1,5 +1,5 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
 package salud
 
@@ -23,7 +23,6 @@ type service struct {
 	logger        log.Logger
 	topology      topologyDriver
 	status        peerStatus
-	metrics       metrics
 	isSelfHealthy *atomic.Bool
 	reserve       storer.RadiusChecker
 
@@ -42,14 +41,12 @@ func New(
 	durPercentile float64,
 	connsPercentile float64,
 ) *service {
-	metrics := newMetrics()
 
 	s := &service{
 		quit:          make(chan struct{}),
 		logger:        logger.WithName(loggerName).Register(),
 		status:        status,
 		topology:      topology,
-		metrics:       metrics,
 		isSelfHealthy: atomic.NewBool(true),
 		reserve:       reserve,
 	}
@@ -114,13 +111,6 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 	pConns := percentileConns(peers, connsPercentile)
 	commitment := commitment(peers)
 
-	s.metrics.AvgDur.Set(avgDur)
-	s.metrics.PDur.Set(pDur)
-	s.metrics.PConns.Set(float64(pConns))
-	s.metrics.NetworkRadius.Set(float64(networkRadius))
-	s.metrics.NeighborhoodRadius.Set(float64(nHoodRadius))
-	s.metrics.Commitment.Set(float64(commitment))
-
 	s.logger.Debug("computed", "avg_dur", avgDur, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius, "batch_commitment", commitment)
 
 	// sort peers by duration, highest first to give priority to the fastest peers
@@ -134,7 +124,6 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 
 		// every bin should have at least some peers, healthy or not
 		if bins[peer.bin] <= minPeersPerbin {
-			s.metrics.Healthy.Inc()
 			s.topology.UpdatePeerHealth(peer.addr, true, peer.dur)
 			continue
 		}
@@ -153,9 +142,7 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 
 		s.topology.UpdatePeerHealth(peer.addr, healthy, peer.dur)
 		if healthy {
-			s.metrics.Healthy.Inc()
 		} else {
-			s.metrics.Unhealthy.Inc()
 			bins[peer.bin]--
 		}
 	}

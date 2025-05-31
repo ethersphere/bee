@@ -1,5 +1,5 @@
-//go:build !js
-// +build !js
+//go:build js
+// +build js
 
 package shed
 
@@ -15,9 +15,8 @@ import (
 // It provides a schema functionality to store fields and indexes
 // information about naming and types.
 type DB struct {
-	ldb     *leveldb.DB
-	metrics metrics
-	quit    chan struct{} // Quit channel to stop the metrics collection before closing the database
+	ldb  *leveldb.DB
+	quit chan struct{} // Quit channel to stop the metrics collection before closing the database
 }
 
 // NewDBWrap returns new DB which uses the given ldb as its underlying storage.
@@ -28,8 +27,7 @@ func NewDBWrap(ldb *leveldb.DB) (db *DB, err error) {
 	}
 
 	db = &DB{
-		ldb:     ldb,
-		metrics: newMetrics(),
+		ldb: ldb,
 	}
 
 	if _, err = db.getSchema(); err != nil {
@@ -56,10 +54,8 @@ func NewDBWrap(ldb *leveldb.DB) (db *DB, err error) {
 func (db *DB) Put(key, value []byte) (err error) {
 	err = db.ldb.Put(key, value, nil)
 	if err != nil {
-		db.metrics.PutFailCounter.Inc()
 		return err
 	}
-	db.metrics.PutCounter.Inc()
 	return nil
 }
 
@@ -67,14 +63,8 @@ func (db *DB) Put(key, value []byte) (err error) {
 func (db *DB) Get(key []byte) (value []byte, err error) {
 	value, err = db.ldb.Get(key, nil)
 	if err != nil {
-		if errors.Is(err, leveldb.ErrNotFound) {
-			db.metrics.GetNotFoundCounter.Inc()
-		} else {
-			db.metrics.GetFailCounter.Inc()
-		}
 		return nil, err
 	}
-	db.metrics.GetCounter.Inc()
 	return value, nil
 }
 
@@ -82,10 +72,8 @@ func (db *DB) Get(key []byte) (value []byte, err error) {
 func (db *DB) Has(key []byte) (yes bool, err error) {
 	yes, err = db.ldb.Has(key, nil)
 	if err != nil {
-		db.metrics.HasFailCounter.Inc()
 		return false, err
 	}
-	db.metrics.HasCounter.Inc()
 	return yes, nil
 }
 
@@ -93,16 +81,13 @@ func (db *DB) Has(key []byte) (yes bool, err error) {
 func (db *DB) Delete(key []byte) (err error) {
 	err = db.ldb.Delete(key, nil)
 	if err != nil {
-		db.metrics.DeleteFailCounter.Inc()
 		return err
 	}
-	db.metrics.DeleteCounter.Inc()
 	return nil
 }
 
 // NewIterator wraps LevelDB NewIterator method to increment metrics counter.
 func (db *DB) NewIterator() iterator.Iterator {
-	db.metrics.IteratorCounter.Inc()
 	return db.ldb.NewIterator(nil, nil)
 }
 
@@ -110,9 +95,7 @@ func (db *DB) NewIterator() iterator.Iterator {
 func (db *DB) WriteBatch(batch *leveldb.Batch) (err error) {
 	err = db.ldb.Write(batch, nil)
 	if err != nil {
-		db.metrics.WriteBatchFailCounter.Inc()
 		return err
 	}
-	db.metrics.WriteBatchCounter.Inc()
 	return nil
 }
