@@ -181,35 +181,6 @@ func (s *Service) BlocklistedPeers() ([]p2p.BlockListedPeer, error) {
 	return s.blocklist.Peers()
 }
 
-func (s *Service) Close() error {
-	if err := s.libp2pPeerstore.Close(); err != nil {
-		return err
-	}
-	if s.natManager != nil {
-		if err := s.natManager.Close(); err != nil {
-			return err
-		}
-	}
-	if err := s.autonatDialer.Close(); err != nil {
-		return err
-	}
-	if err := s.pingDialer.Close(); err != nil {
-		return err
-	}
-	if s.reacher != nil {
-		if err := s.reacher.Close(); err != nil {
-			return err
-		}
-	}
-	if s.autoNAT != nil {
-		if err := s.autoNAT.Close(); err != nil {
-			return err
-		}
-	}
-
-	return s.host.Close()
-}
-
 // SetWelcomeMessage sets the welcome message for the handshake protocol.
 func (s *Service) SetWelcomeMessage(val string) error {
 	return s.handshakeService.SetWelcomeMessage(val)

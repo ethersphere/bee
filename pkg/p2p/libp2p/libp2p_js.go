@@ -31,7 +31,6 @@ import (
 	libp2ppeer "github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/protocol"
-	"github.com/libp2p/go-libp2p/p2p/host/autonat"
 	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
@@ -49,7 +48,6 @@ type Service struct {
 	host              host.Host
 	natManager        basichost.NATManager
 	natAddrResolver   *staticAddressResolver
-	autonatDialer     host.Host
 	pingDialer        host.Host
 	libp2pPeerstore   peerstore.Peerstore
 	networkID         uint64
@@ -70,7 +68,6 @@ type Service struct {
 	reacher           p2p.Reacher
 	networkStatus     atomic.Int32
 	HeadersRWTimeout  time.Duration
-	autoNAT           autonat.AutoNAT
 }
 
 type Options struct {
@@ -162,13 +159,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 
-	// Support same non default security and transport options as
-	// original host.
-	dialer, err := o.hostFactory(append(transports, security)...)
-	if err != nil {
-		return nil, err
-	}
-
 	if o.HeadersRWTimeout == 0 {
 		o.HeadersRWTimeout = defaultHeadersRWTimeout
 	}
@@ -208,7 +198,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		host:              h,
 		natManager:        nil,
 		natAddrResolver:   natAddrResolver,
-		autonatDialer:     dialer,
 		pingDialer:        pingDialer,
 		handshakeService:  handshakeService,
 		libp2pPeerstore:   libp2pPeerstore,
@@ -223,7 +212,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		halt:              make(chan struct{}),
 		lightNodes:        lightNodes,
 		HeadersRWTimeout:  o.HeadersRWTimeout,
-		autoNAT:           nil,
 	}
 
 	peerRegistry.setDisconnecter(s)
@@ -725,4 +713,26 @@ func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, 
 		return nil, fmt.Errorf("create stream %s to %s: %w", swarmStreamName, peerID, err)
 	}
 	return st, nil
+}
+
+func (s *Service) Close() error {
+	if err := s.libp2pPeerstore.Close(); err != nil {
+		return err
+	}
+	if s.natManager != nil {
+		if err := s.natManager.Close(); err != nil {
+			return err
+		}
+	}
+
+	if err := s.pingDialer.Close(); err != nil {
+		return err
+	}
+	if s.reacher != nil {
+		if err := s.reacher.Close(); err != nil {
+			return err
+		}
+	}
+
+	return s.host.Close()
 }

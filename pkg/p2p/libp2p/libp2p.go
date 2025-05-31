@@ -842,3 +842,32 @@ func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, 
 	s.metrics.CreatedStreamCount.Inc()
 	return st, nil
 }
+
+func (s *Service) Close() error {
+	if err := s.libp2pPeerstore.Close(); err != nil {
+		return err
+	}
+	if s.natManager != nil {
+		if err := s.natManager.Close(); err != nil {
+			return err
+		}
+	}
+	if err := s.autonatDialer.Close(); err != nil {
+		return err
+	}
+	if err := s.pingDialer.Close(); err != nil {
+		return err
+	}
+	if s.reacher != nil {
+		if err := s.reacher.Close(); err != nil {
+			return err
+		}
+	}
+	if s.autoNAT != nil {
+		if err := s.autoNAT.Close(); err != nil {
+			return err
+		}
+	}
+
+	return s.host.Close()
+}
