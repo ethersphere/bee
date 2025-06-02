@@ -27,6 +27,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/util/ioutil"
 	"github.com/spf13/cobra"
+
+	fs "github.com/ethersphere/bee/v2/pkg/fs"
 )
 
 const (
@@ -615,7 +617,7 @@ func dbImportReserveCmd(cmd *cobra.Command) {
 			if args[0] == "-" {
 				in = os.Stdin
 			} else {
-				f, err := os.Open(args[0])
+				f, err := fs.Open(args[0])
 				if err != nil {
 					return fmt.Errorf("opening input file: %w", err)
 				}
@@ -699,7 +701,7 @@ func dbImportPinningCmd(cmd *cobra.Command) {
 			if args[0] == "-" {
 				in = os.Stdin
 			} else {
-				f, err := os.Open(args[0])
+				f, err := fs.Open(args[0])
 				if err != nil {
 					return fmt.Errorf("error opening input file: %w", err)
 				}

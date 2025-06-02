@@ -1,13 +1,38 @@
-// Copyright 2022 The Swarm Authors. All rights reserved.
+//go:build !js
+// +build !js
+
+// Copyright 2021 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
 package log
 
 import (
+	"io"
+
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 )
+
+// Options specifies parameters that affect logger behavior.
+type Options struct {
+	sink       io.Writer
+	verbosity  Level
+	levelHooks levelHooks
+	fmtOptions fmtOptions
+	logMetrics *metrics
+}
+
+// WithLogMetrics tells the logger to collect metrics about log messages.
+func WithLogMetrics() Option {
+	return func(opts *Options) {
+		if opts.logMetrics != nil {
+			return
+		}
+		opts.logMetrics = newLogMetrics()
+		WithLevelHooks(VerbosityAll, opts.logMetrics)(opts)
+	}
+}
 
 // metrics groups various metrics counters for statistical reasons.
 type metrics struct {

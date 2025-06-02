@@ -1,9 +1,6 @@
-// Copyright 2020 The Swarm Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+//go:build !js
+// +build !js
 
-// Package pingpong exposes the simple ping-pong protocol
-// which measures round-trip-time with other peers.
 package pingpong
 
 import (
@@ -21,19 +18,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/tracing"
 )
 
-// loggerName is the tree path name of the logger for this package.
-const loggerName = "pinpong"
-
-const (
-	protocolName    = "pingpong"
-	protocolVersion = "1.0.0"
-	streamName      = "pingpong"
-)
-
-type Interface interface {
-	Ping(ctx context.Context, address swarm.Address, msgs ...string) (rtt time.Duration, err error)
-}
-
 type Service struct {
 	streamer p2p.Streamer
 	logger   log.Logger
@@ -47,19 +31,6 @@ func New(streamer p2p.Streamer, logger log.Logger, tracer *tracing.Tracer) *Serv
 		logger:   logger.WithName(loggerName).Register(),
 		tracer:   tracer,
 		metrics:  newMetrics(),
-	}
-}
-
-func (s *Service) Protocol() p2p.ProtocolSpec {
-	return p2p.ProtocolSpec{
-		Name:    protocolName,
-		Version: protocolVersion,
-		StreamSpecs: []p2p.StreamSpec{
-			{
-				Name:    streamName,
-				Handler: s.handler,
-			},
-		},
 	}
 }
 

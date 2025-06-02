@@ -1,6 +1,5 @@
-// Copyright 2020 The Swarm Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+//go:build !js
+// +build !js
 
 package api
 
@@ -16,39 +15,9 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/felixge/fgprof"
 	"github.com/gorilla/handlers"
-	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"resenje.org/web"
 )
-
-const (
-	apiVersion = "v1" // Only one api version exists, this should be configurable with more.
-	rootPath   = "/" + apiVersion
-)
-
-func (s *Service) Mount() {
-	if s == nil {
-		return
-	}
-
-	router := mux.NewRouter()
-
-	router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
-
-	s.router = router
-
-	s.mountTechnicalDebug()
-	s.mountBusinessDebug()
-	s.mountAPI()
-
-	s.Handler = web.ChainHandlers(
-		httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "api access"),
-		handlers.CompressHandler,
-		s.corsHandler,
-		web.NoCacheHeadersHandler,
-		web.FinalHandler(router),
-	)
-}
 
 // EnableFullAPI will enable all available endpoints, because some endpoints are not available during syncing.
 func (s *Service) EnableFullAPI() {
@@ -102,110 +71,6 @@ func (s *Service) EnableFullAPI() {
 		s.corsHandler,
 		web.FinalHandler(s.router),
 	)
-}
-
-func (s *Service) mountTechnicalDebug() {
-	s.router.Handle("/node", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.nodeGetHandler),
-	})
-
-	s.router.Handle("/addresses", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.addressesHandler),
-	})
-
-	s.router.Handle("/chainstate", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.chainStateHandler),
-	})
-
-	s.router.Handle("/debugstore", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
-			httpaccess.NewHTTPAccessSuppressLogHandler(),
-			web.FinalHandlerFunc(s.debugStorage),
-		),
-	})
-
-	s.router.Path("/metrics").Handler(web.ChainHandlers(
-		httpaccess.NewHTTPAccessSuppressLogHandler(),
-		web.FinalHandler(promhttp.InstrumentMetricHandler(
-			s.metricsRegistry,
-			promhttp.HandlerFor(s.metricsRegistry, promhttp.HandlerOpts{}),
-		)),
-	))
-
-	s.router.Handle("/debug/pprof", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		u := r.URL
-		u.Path += "/"
-		http.Redirect(w, r, u.String(), http.StatusPermanentRedirect)
-	}))
-
-	s.router.Handle("/debug/fgprof", fgprof.Handler())
-	s.router.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
-	s.router.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
-	s.router.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
-	s.router.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
-	s.router.PathPrefix("/debug/pprof/").Handler(http.HandlerFunc(pprof.Index))
-	s.router.Handle("/debug/vars", expvar.Handler())
-
-	s.router.Handle("/loggers", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
-			httpaccess.NewHTTPAccessSuppressLogHandler(),
-			web.FinalHandlerFunc(s.loggerGetHandler),
-		),
-	})
-
-	s.router.Handle("/loggers/{exp}", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
-			httpaccess.NewHTTPAccessSuppressLogHandler(),
-			web.FinalHandlerFunc(s.loggerGetHandler),
-		),
-	})
-
-	s.router.Handle("/loggers/{exp}/{verbosity}", jsonhttp.MethodHandler{
-		"PUT": web.ChainHandlers(
-			httpaccess.NewHTTPAccessSuppressLogHandler(),
-			web.FinalHandlerFunc(s.loggerSetVerbosityHandler),
-		),
-	})
-
-	s.router.Handle("/readiness", web.ChainHandlers(
-		httpaccess.NewHTTPAccessSuppressLogHandler(),
-		web.FinalHandlerFunc(s.readinessHandler),
-	))
-
-	s.router.Handle("/health", web.ChainHandlers(
-		httpaccess.NewHTTPAccessSuppressLogHandler(),
-		web.FinalHandlerFunc(s.healthHandler),
-	))
-}
-
-func (s *Service) checkRouteAvailability(handler http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.fullAPIEnabled {
-			jsonhttp.ServiceUnavailable(w, "Node is syncing. This endpoint is unavailable. Try again later.")
-			return
-		}
-		handler.ServeHTTP(w, r)
-	})
-}
-
-func (s *Service) checkSwapAvailability(handler http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.swapEnabled {
-			jsonhttp.NotImplemented(w, "Swap is disabled. This endpoint is unavailable.")
-			return
-		}
-		handler.ServeHTTP(w, r)
-	})
-}
-
-func (s *Service) checkChequebookAvailability(handler http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.chequebookEnabled {
-			jsonhttp.NotImplemented(w, "Chequebook is disabled. This endpoint is unavailable.")
-			return
-		}
-		handler.ServeHTTP(w, r)
-	})
 }
 
 func (s *Service) mountAPI() {
@@ -384,6 +249,80 @@ func (s *Service) mountAPI() {
 		"GET": http.HandlerFunc(s.stewardshipGetHandler),
 		"PUT": http.HandlerFunc(s.stewardshipPutHandler),
 	})
+}
+
+func (s *Service) mountTechnicalDebug() {
+	s.router.Handle("/node", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.nodeGetHandler),
+	})
+
+	s.router.Handle("/addresses", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.addressesHandler),
+	})
+
+	s.router.Handle("/chainstate", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.chainStateHandler),
+	})
+
+	s.router.Handle("/debugstore", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			httpaccess.NewHTTPAccessSuppressLogHandler(),
+			web.FinalHandlerFunc(s.debugStorage),
+		),
+	})
+
+	s.router.Path("/metrics").Handler(web.ChainHandlers(
+		httpaccess.NewHTTPAccessSuppressLogHandler(),
+		web.FinalHandler(promhttp.InstrumentMetricHandler(
+			s.metricsRegistry,
+			promhttp.HandlerFor(s.metricsRegistry, promhttp.HandlerOpts{}),
+		)),
+	))
+
+	s.router.Handle("/debug/pprof", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u := r.URL
+		u.Path += "/"
+		http.Redirect(w, r, u.String(), http.StatusPermanentRedirect)
+	}))
+
+	s.router.Handle("/debug/fgprof", fgprof.Handler())
+	s.router.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
+	s.router.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
+	s.router.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
+	s.router.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
+	s.router.PathPrefix("/debug/pprof/").Handler(http.HandlerFunc(pprof.Index))
+	s.router.Handle("/debug/vars", expvar.Handler())
+
+	s.router.Handle("/loggers", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			httpaccess.NewHTTPAccessSuppressLogHandler(),
+			web.FinalHandlerFunc(s.loggerGetHandler),
+		),
+	})
+
+	s.router.Handle("/loggers/{exp}", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			httpaccess.NewHTTPAccessSuppressLogHandler(),
+			web.FinalHandlerFunc(s.loggerGetHandler),
+		),
+	})
+
+	s.router.Handle("/loggers/{exp}/{verbosity}", jsonhttp.MethodHandler{
+		"PUT": web.ChainHandlers(
+			httpaccess.NewHTTPAccessSuppressLogHandler(),
+			web.FinalHandlerFunc(s.loggerSetVerbosityHandler),
+		),
+	})
+
+	s.router.Handle("/readiness", web.ChainHandlers(
+		httpaccess.NewHTTPAccessSuppressLogHandler(),
+		web.FinalHandlerFunc(s.readinessHandler),
+	))
+
+	s.router.Handle("/health", web.ChainHandlers(
+		httpaccess.NewHTTPAccessSuppressLogHandler(),
+		web.FinalHandlerFunc(s.healthHandler),
+	))
 }
 
 func (s *Service) mountBusinessDebug() {

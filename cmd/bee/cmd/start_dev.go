@@ -1,3 +1,6 @@
+//go:build !windows && !js
+// +build !windows,!js
+
 // Copyright 2021 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
@@ -12,7 +15,6 @@ import (
 	"syscall"
 
 	"github.com/ethersphere/bee/v2/pkg/node"
-	"github.com/kardianos/service"
 	"github.com/spf13/cobra"
 )
 
@@ -31,14 +33,6 @@ func (c *command) initStartDevCmd() (err error) {
 			logger, err := newLogger(cmd, v)
 			if err != nil {
 				return fmt.Errorf("new logger: %w", err)
-			}
-
-			if c.isWindowsService {
-				var err error
-				logger, err = createWindowsEventLogger(serviceName, logger)
-				if err != nil {
-					return fmt.Errorf("failed to create windows logger %w", err)
-				}
 			}
 
 			beeASCII := `
@@ -105,24 +99,9 @@ func (c *command) initStartDevCmd() (err error) {
 				},
 			}
 
-			if c.isWindowsService {
-				s, err := service.New(p, &service.Config{
-					Name:        serviceName,
-					DisplayName: "Bee",
-					Description: "Bee, Swarm client.",
-				})
-				if err != nil {
-					return err
-				}
-
-				if err = s.Run(); err != nil {
-					return err
-				}
-			} else {
-				// start blocks until some interrupt is received
-				p.start()
-				p.stop()
-			}
+			// start blocks until some interrupt is received
+			p.start()
+			p.stop()
 
 			return nil
 		},

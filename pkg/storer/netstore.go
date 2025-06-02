@@ -1,6 +1,5 @@
-// Copyright 2023 The Swarm Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+//go:build !js
+// +build !js
 
 package storer
 
@@ -10,12 +9,13 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/pusher"
 	"github.com/ethersphere/bee/v2/pkg/pushsync"
-	"github.com/ethersphere/bee/v2/pkg/storage"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/opentracing/opentracing-go/ext"
-	olog "github.com/opentracing/opentracing-go/log"
 	"golang.org/x/sync/errgroup"
+
+	olog "github.com/opentracing/opentracing-go/log"
 )
 
 // DirectUpload is the implementation of the NetStore.DirectUpload method.
@@ -132,9 +132,4 @@ func (db *DB) Download(cache bool) storage.Getter {
 		db.metrics,
 		"netstore",
 	}
-}
-
-// PusherFeed is the implementation of the NetStore.PusherFeed method.
-func (db *DB) PusherFeed() <-chan *pusher.Op {
-	return db.pusherFeed
 }

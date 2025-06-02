@@ -24,7 +24,7 @@ import (
 var (
 	BucketDepth = uint8(16)
 
-	erc20ABI = abiutil.MustParseABI(sw3abi.ERC20ABIv0_6_9)
+	erc20ABI = abiutil.MustParseABI(sw3abi.ERC20ABIv0_6_5)
 
 	ErrBatchCreate          = errors.New("batch creation failed")
 	ErrInsufficientFunds    = errors.New("insufficient token balance")

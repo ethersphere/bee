@@ -1,6 +1,5 @@
-// Copyright 2023 The Swarm Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+//go:build !js
+// +build !js
 
 package storer
 
@@ -9,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal"
 	pinstore "github.com/ethersphere/bee/v2/pkg/storer/internal/pinning"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
@@ -108,8 +107,4 @@ func (db *DB) HasPin(root swarm.Address) (has bool, err error) {
 	}()
 
 	return pinstore.HasPin(db.storage.IndexStore(), root)
-}
-
-func (db *DB) IteratePinCollection(root swarm.Address, iterateFn func(swarm.Address) (bool, error)) error {
-	return pinstore.IterateCollection(db.storage.IndexStore(), root, iterateFn)
 }

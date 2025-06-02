@@ -49,7 +49,7 @@ data-dir: "/var/lib/bee"
 ## P2P listen address
 # p2p-addr: :1634
 ## enable P2P WebSocket transport
-# p2p-ws-enable: false
+# p2p-ws-enable: true
 ## password for decrypting keys
 # password: ""
 ## path to a file that contains password for decrypting keys
@@ -78,8 +78,6 @@ password-file: "/var/lib/bee/password"
 # resolver-options: []
 ## forces the node to resync postage contract data
 # resync: false
-## skip postage snapshot
-# skip-postage-snapshot: false
 ## staking contract address
 # staking-address: ""
 ## lru memory caching capacity in number of statestore entries

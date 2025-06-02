@@ -1,6 +1,5 @@
-// Copyright 2021 The Swarm Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+//go:build !js
+// +build !js
 
 package wrapped
 
@@ -12,11 +11,8 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethersphere/bee/v2/pkg/transaction"
-)
 
-var (
-	_ transaction.Backend = (*wrappedBackend)(nil)
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
 type wrappedBackend struct {
@@ -200,8 +196,4 @@ func (b *wrappedBackend) ChainID(ctx context.Context) (*big.Int, error) {
 		return nil, err
 	}
 	return chainID, nil
-}
-
-func (b *wrappedBackend) Close() {
-	b.backend.Close()
 }

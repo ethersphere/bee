@@ -18,6 +18,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/spf13/cobra"
+
+	fs "github.com/ethersphere/bee/v2/pkg/fs"
 )
 
 // putter is a putter that stores all the split chunk addresses of a file
@@ -89,7 +91,7 @@ func splitRefs(cmd *cobra.Command) {
 				return fmt.Errorf("new logger: %w", err)
 			}
 
-			reader, err := os.Open(inputFileName)
+			reader, err := fs.Open(inputFileName)
 			if err != nil {
 				return fmt.Errorf("open input file: %w", err)
 			}
@@ -179,7 +181,7 @@ func splitChunks(cmd *cobra.Command) {
 			if err != nil {
 				return fmt.Errorf("new logger: %w", err)
 			}
-			reader, err := os.Open(inputFileName)
+			reader, err := fs.Open(inputFileName)
 			if err != nil {
 				return fmt.Errorf("open input file: %w", err)
 			}
