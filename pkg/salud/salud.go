@@ -194,7 +194,7 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 	s.metrics.NetworkRadius.Set(float64(networkRadius))
 	s.metrics.NeighborhoodRadius.Set(float64(nHoodRadius))
 	s.metrics.Commitment.Set(float64(commitment))
-	
+
 	s.logger.Debug("computed", "avg_dur", avgDur, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius, "batch_commitment", commitment)
 
 	// sort peers by duration, highest first to give priority to the fastest peers
