@@ -25,8 +25,10 @@ import (
 const loggerName = "salud"
 
 const (
-	wakeup                 = time.Minute * 5
 	requestTimeout         = time.Second * 10
+	initialBackoffDelay    = 5 * time.Second
+	maxBackoffDelay        = 5 * time.Minute
+	backoffFactor          = 2
 	DefaultMinPeersPerBin  = 4
 	DefaultDurPercentile   = 0.4 // consider 40% as healthy, lower percentile = stricter duration check
 	DefaultConnsPercentile = 0.8 // consider 80% as healthy, lower percentile = stricter conns check
@@ -97,14 +99,20 @@ func (s *service) worker(startupStabilizer stabilization.Subscriber, mode string
 		s.logger.Debug("node warmup check completed")
 	}
 
-	for {
+	currentDelay := initialBackoffDelay
 
+	for {
 		s.salud(mode, minPeersPerbin, durPercentile, connsPercentile)
 
 		select {
 		case <-s.quit:
 			return
-		case <-time.After(wakeup):
+		case <-time.After(currentDelay):
+		}
+
+		currentDelay *= time.Duration(backoffFactor)
+		if currentDelay > maxBackoffDelay {
+			currentDelay = maxBackoffDelay
 		}
 	}
 }
@@ -135,7 +143,7 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 		bins     [swarm.MaxBins]int
 	)
 
-	_ = s.topology.EachConnectedPeer(func(addr swarm.Address, bin uint8) (stop bool, jumpToNext bool, err error) {
+	err := s.topology.EachConnectedPeer(func(addr swarm.Address, bin uint8) (stop bool, jumpToNext bool, err error) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -164,6 +172,9 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 		}()
 		return false, false, nil
 	}, topology.Select{})
+	if err != nil {
+		s.logger.Error(err, "error iterating over connected peers", "mode", mode)
+	}
 
 	wg.Wait()
 
@@ -183,7 +194,7 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 	s.metrics.NetworkRadius.Set(float64(networkRadius))
 	s.metrics.NeighborhoodRadius.Set(float64(nHoodRadius))
 	s.metrics.Commitment.Set(float64(commitment))
-
+	
 	s.logger.Debug("computed", "avg_dur", avgDur, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius, "batch_commitment", commitment)
 
 	// sort peers by duration, highest first to give priority to the fastest peers
