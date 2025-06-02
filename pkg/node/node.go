@@ -1353,8 +1353,8 @@ func (b *Bee) Shutdown() error {
 		{b.saludCloser, "salud"},
 	}
 
+	wg.Add(len(closers))
 	for _, nc := range closers {
-		wg.Add(1)
 		go func(c io.Closer, name string) {
 			defer wg.Done()
 			tryClose(c, name)
