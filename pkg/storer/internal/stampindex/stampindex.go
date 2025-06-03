@@ -213,7 +213,7 @@ func Delete(s storage.Writer, scope string, stamp swarm.Stamp) error {
 		StampIndex: stamp.Index(),
 	}
 	if err := s.Delete(item); err != nil {
-		return fmt.Errorf("failed to delete stampindex.Item %s: %w", item, err)
+		return fmt.Errorf("failed to delete stampindex.Item %s: %w", item.ID(), err)
 	}
 	return nil
 }
