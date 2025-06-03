@@ -413,4 +413,7 @@ func (m noOpChainBackend) FilterLogs(context.Context, ethereum.FilterQuery) ([]t
 func (m noOpChainBackend) ChainID(context.Context) (*big.Int, error) {
 	return big.NewInt(m.chainID), nil
 }
-func (m noOpChainBackend) Close() {}
+
+func (m noOpChainBackend) Close() error {
+	return nil
+}

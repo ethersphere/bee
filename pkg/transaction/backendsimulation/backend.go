@@ -151,6 +151,7 @@ func (m *simulatedBackend) HeaderByNumber(ctx context.Context, number *big.Int) 
 func (m *simulatedBackend) BalanceAt(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error) {
 	return nil, errors.New("not implemented")
 }
+
 func (m *simulatedBackend) NonceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error) {
 	nonce, ok := m.noncesAt[AccountAtKey{Account: account, BlockNumber: blockNumber.Uint64()}]
 	if ok {
@@ -168,5 +169,6 @@ func (m *simulatedBackend) ChainID(ctx context.Context) (*big.Int, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (m *simulatedBackend) Close() {
+func (m *simulatedBackend) Close() error {
+	return nil
 }
