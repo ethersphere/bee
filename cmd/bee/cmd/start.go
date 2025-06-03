@@ -296,6 +296,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		DBOpenFilesLimit:              c.config.GetUint64(optionNameDBOpenFilesLimit),
 		DBWriteBufferSize:             c.config.GetUint64(optionNameDBWriteBufferSize),
 		EnableStorageIncentives:       c.config.GetBool(optionNameStorageIncentivesEnable),
+		EnableTraceHeaders:            c.config.GetBool(optionNameEnableTraceHeaders),
 		EnableWS:                      c.config.GetBool(optionNameP2PWSEnable),
 		FullNodeMode:                  fullNode,
 		Logger:                        logger,
