@@ -33,8 +33,7 @@ type Backend interface {
 	NonceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error)
 	FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error)
 	ChainID(ctx context.Context) (*big.Int, error)
-
-	Close()
+	Close() error
 }
 
 // IsSynced will check if we are synced with the given blockchain backend. This

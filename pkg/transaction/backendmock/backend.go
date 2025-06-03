@@ -127,6 +127,7 @@ func (m *backendMock) BalanceAt(ctx context.Context, address common.Address, blo
 	}
 	return nil, errors.New("not implemented")
 }
+
 func (m *backendMock) NonceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error) {
 	if m.nonceAt != nil {
 		return m.nonceAt(ctx, account, blockNumber)
@@ -145,7 +146,8 @@ func (m *backendMock) ChainID(ctx context.Context) (*big.Int, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (m *backendMock) Close() {
+func (m *backendMock) Close() error {
+	return nil
 }
 
 func New(opts ...Option) transaction.Backend {

@@ -12,19 +12,18 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
-var (
-	_ transaction.Backend = (*wrappedBackend)(nil)
-)
+var _ transaction.Backend = (*wrappedBackend)(nil)
 
 type wrappedBackend struct {
-	backend transaction.Backend
+	backend *ethclient.Client
 	metrics metrics
 }
 
-func NewBackend(backend transaction.Backend) transaction.Backend {
+func NewBackend(backend *ethclient.Client) transaction.Backend {
 	return &wrappedBackend{
 		backend: backend,
 		metrics: newMetrics(),
@@ -202,6 +201,7 @@ func (b *wrappedBackend) ChainID(ctx context.Context) (*big.Int, error) {
 	return chainID, nil
 }
 
-func (b *wrappedBackend) Close() {
+func (b *wrappedBackend) Close() error {
 	b.backend.Close()
+	return nil
 }

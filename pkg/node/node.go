@@ -106,7 +106,7 @@ type Bee struct {
 	pullSyncCloser           io.Closer
 	pssCloser                io.Closer
 	gsocCloser               io.Closer
-	ethClientCloser          func()
+	ethClientCloser          io.Closer
 	transactionMonitorCloser io.Closer
 	transactionCloser        io.Closer
 	listenerCloser           io.Closer
@@ -394,7 +394,7 @@ func NewBee(
 	if err != nil {
 		return nil, fmt.Errorf("init chain: %w", err)
 	}
-	b.ethClientCloser = chainBackend.Close
+	b.ethClientCloser = chainBackend
 
 	logger.Info("using chain with network network", "chain_id", chainID, "network_id", networkID)
 
@@ -1282,6 +1282,12 @@ func (b *Bee) SyncingStopped() chan struct{} {
 	return b.syncingStopped.C
 }
 
+// namedCloser is a helper struct to associate a closer with its name.
+type namedCloser struct {
+	closer io.Closer
+	name   string
+}
+
 func (b *Bee) Shutdown() error {
 	var mErr error
 
@@ -1335,42 +1341,27 @@ func (b *Bee) Shutdown() error {
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(8)
-	go func() {
-		defer wg.Done()
-		tryClose(b.pssCloser, "pss")
-	}()
-	go func() {
-		defer wg.Done()
-		tryClose(b.gsocCloser, "gsoc")
-	}()
-	go func() {
-		defer wg.Done()
-		tryClose(b.pusherCloser, "pusher")
-	}()
-	go func() {
-		defer wg.Done()
-		tryClose(b.pullerCloser, "puller")
-	}()
-	go func() {
-		defer wg.Done()
-		tryClose(b.accountingCloser, "accounting")
-	}()
+
+	closers := []namedCloser{
+		{b.pssCloser, "pss"},
+		{b.gsocCloser, "gsoc"},
+		{b.pusherCloser, "pusher"},
+		{b.pullerCloser, "puller"},
+		{b.accountingCloser, "accounting"},
+		{b.pullSyncCloser, "pull sync"},
+		{b.hiveCloser, "hive"},
+		{b.saludCloser, "salud"},
+	}
+
+	wg.Add(len(closers))
+	for _, nc := range closers {
+		go func(c io.Closer, name string) {
+			defer wg.Done()
+			tryClose(c, name)
+		}(nc.closer, nc.name)
+	}
 
 	b.ctxCancel()
-	go func() {
-		defer wg.Done()
-		tryClose(b.pullSyncCloser, "pull sync")
-	}()
-	go func() {
-		defer wg.Done()
-		tryClose(b.hiveCloser, "hive")
-	}()
-	go func() {
-		defer wg.Done()
-		tryClose(b.saludCloser, "salud")
-	}()
-
 	wg.Wait()
 
 	tryClose(b.p2pService, "p2p server")
@@ -1393,10 +1384,7 @@ func (b *Bee) Shutdown() error {
 
 	wg.Wait()
 
-	if c := b.ethClientCloser; c != nil {
-		c()
-	}
-
+	tryClose(b.ethClientCloser, "eth client")
 	tryClose(b.accesscontrolCloser, "accesscontrol")
 	tryClose(b.tracerCloser, "tracer")
 	tryClose(b.topologyCloser, "topology driver")
