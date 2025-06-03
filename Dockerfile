@@ -19,6 +19,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     groupadd -r bee --gid 999; \
     useradd -r -g bee --uid 999 --no-log-init -m bee;
 
+RUN apt-get install curl -y --no-install-recommends
+
 # make sure mounted volumes have correct permissions
 RUN mkdir -p /home/bee/.bee && chown 999:999 /home/bee/.bee
 
