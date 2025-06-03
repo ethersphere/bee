@@ -26,7 +26,7 @@ const loggerName = "salud"
 
 const (
 	requestTimeout         = time.Second * 10
-	initialBackoffDelay    = 5 * time.Second
+	initialBackoffDelay    = 10 * time.Second
 	maxBackoffDelay        = 5 * time.Minute
 	backoffFactor          = 2
 	DefaultMinPeersPerBin  = 4
