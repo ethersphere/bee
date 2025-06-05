@@ -67,8 +67,8 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var (
-		basePutter storer.PutterSession
-		putter     storer.PutterSession
+		basePutter storer.PutterSession // the putter used to store regular chunks
+		putter     storer.PutterSession // the putter used to store SOC replica chunks
 		err        error
 	)
 
@@ -83,7 +83,6 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.BadRequest(w, "redundancy level is not supported with stamp signature")
 			return
 		}
-		rLevel = redundancy.NONE
 		stamp := postage.Stamp{}
 		if err := stamp.UnmarshalBinary(headers.StampSig); err != nil {
 			errorMsg := "Stamp deserialization failure"
@@ -99,6 +98,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 			Pin:      false,
 			Deferred: false,
 		}, &stamp)
+		basePutter = putter
 	} else {
 		putter, err = s.newStamperPutter(r.Context(), putterOptions{
 			BatchID:  headers.BatchID,
