@@ -90,6 +90,9 @@ func TestSocPutter(t *testing.T) {
 			}
 			// create soc from cac
 			id := make([]byte, swarm.HashSize)
+			if _, err := rand.Read(id); err != nil {
+				t.Fatal(err)
+			}
 			s := soc.New(id, ch)
 			sch, err := s.Sign(signer)
 			if err != nil {
@@ -197,6 +200,9 @@ func TestSocPutter(t *testing.T) {
 				}
 
 				id := make([]byte, swarm.HashSize)
+				if _, err := rand.Read(id); err != nil {
+					t.Fatal(err)
+				}
 				s := soc.New(id, ch)
 				sch, err := s.Sign(signer)
 				if err != nil {
