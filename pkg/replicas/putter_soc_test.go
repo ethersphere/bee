@@ -150,6 +150,7 @@ func TestSocPutter(t *testing.T) {
 				atomic.StoreInt32(i, 0)
 				tbp.putErrors = func(ctx context.Context, _ swarm.Address) error {
 					j := atomic.AddInt32(i, 1)
+					<-time.After(10 * time.Millisecond)
 					if j == 6 {
 						return errTestA
 					}
