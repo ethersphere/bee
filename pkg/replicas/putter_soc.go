@@ -33,10 +33,10 @@ func NewSocPutter(p storage.Putter, rLevel redundancy.Level) storage.Putter {
 }
 
 // Put makes the putter satisfy the storage.Putter interface
-func (p *socPutter) Put(ctx context.Context, ch swarm.Chunk) (err error) {
+func (p *socPutter) Put(ctx context.Context, ch swarm.Chunk) error {
 	errs := []error{}
 	// Put base chunk first
-	if err = p.putter.Put(ctx, ch); err != nil {
+	if err := p.putter.Put(ctx, ch); err != nil {
 		return err
 	}
 	if p.rLevel == 0 {
@@ -51,9 +51,7 @@ func (p *socPutter) Put(ctx context.Context, ch swarm.Chunk) (err error) {
 		go func() {
 			defer wg.Done()
 			sch := swarm.NewChunk(swarm.NewAddress(r.addr), ch.Data())
-			if err == nil {
-				err = p.putter.Put(ctx, sch)
-			}
+			err := p.putter.Put(ctx, sch)
 			errc <- err
 		}()
 	}
