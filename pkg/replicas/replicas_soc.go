@@ -48,10 +48,10 @@ type socReplica struct {
 // replicate returns a replica params structure seeded with a byte of entropy as argument
 func (rr *socReplicator) replicate(i uint8) (sp *socReplica) {
 	// calculate SOC replica address for potential replica
-	h := swarm.NewHasher()
-	_, _ = h.Write([]byte{i})
-	_, _ = h.Write(rr.addr)
-	return &socReplica{addr: h.Sum(nil), nonce: i}
+	addr := make([]byte, 32)
+	copy(addr, rr.addr)
+	addr[0] = i
+	return &socReplica{addr: addr, nonce: i}
 }
 
 // replicas enumerates replica parameters (nonce) pushing it in a channel given as argument
