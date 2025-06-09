@@ -371,7 +371,7 @@ func (t *transactionService) nextNonce(ctx context.Context) (uint64, error) {
 
 	// PendingNonceAt returns the nonce we should use, but we will
 	// compare this to our pending tx list, therefore the -1.
-	var maxNonce uint64 = onchainNonce - 1
+	var maxNonce = onchainNonce - 1
 	for _, txHash := range pendingTxs {
 		trx, _, err := t.backend.TransactionByHash(ctx, txHash)
 
@@ -419,7 +419,7 @@ func (t *transactionService) WatchSentTransaction(txHash common.Hash) (<-chan ty
 }
 
 func (t *transactionService) PendingTransactions() ([]common.Hash, error) {
-	var txHashes []common.Hash = make([]common.Hash, 0)
+	var txHashes = make([]common.Hash, 0)
 	err := t.store.Iterate(pendingTransactionPrefix, func(key, value []byte) (stop bool, err error) {
 		txHash := common.HexToHash(strings.TrimPrefix(string(key), pendingTransactionPrefix))
 		txHashes = append(txHashes, txHash)
