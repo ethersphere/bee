@@ -107,7 +107,7 @@ async function main() {
 
   // Bootstrap addresses
   const bootstrapMultiaddrs = [
-    '/ip4/127.0.0.1/tcp/1634/ws/p2p/QmVQhnaTT84UBfW5EPivTd6SP2Rq62pCLKawtugPtd3yXH',
+    '/ip4/127.0.0.1/tcp/1634/ws/p2p/QmbPUii1SGZ6hKiSQjgWV9WuGCmSGSA2L2RBpFQBHPHrTF',
     // '/ip4/172.26.20.131/tcp/1634/ws/p2p/QmVQhnaTT84UBfW5EPivTd6SP2Rq62pCLKawtugPtd3yXH',
     // '/ip4/188.245.222.246/tcp/1634/ws/p2p/QmccBpjXGFUS8ZydhUnZYLcMvTNcNSjF5ntyMS8sCfz3o2'
   ]
@@ -124,8 +124,9 @@ async function main() {
     '--verbosity',
     'debug',
     // '--blockchain-rpc-endpoint',
-    // 'wss://ethereum-sepolia-rpc.publicnode.com',
+    // 'https://ethereum-sepolia-rpc.publicnode.com/ac5b7f52aabd778861c2588f872f15c5fc34f0b343ec3d18ac2e91f5526e9c2b',
     '--mainnet=false',
+    '--network-id=5',
   ]
 
   // Override Go's `fs.readFile` with ZenFS readFile functionality
