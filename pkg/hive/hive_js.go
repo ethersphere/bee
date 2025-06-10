@@ -175,19 +175,40 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 	wg := sync.WaitGroup{}
 
 	addPeer := func(newPeer *pb.BzzAddress, multiUnderlay ma.Multiaddr) {
-		wsProto := false
-		ma.ForEach(multiUnderlay, func(c ma.Component) bool {
-			if c.Protocol().Name == "ws" {
-				wsProto = true
-				return false
-			}
-			return true
-		})
+		parts := ma.Split(multiUnderlay)
 
-		if !wsProto {
-			s.logger.Debug("skipping non-websocket peer", "peer_address", hex.EncodeToString(newPeer.Overlay), "underlay", multiUnderlay)
-			return
+		var baseParts []ma.Component
+		var p2pID string
+
+		for _, c := range parts {
+			switch c.Protocol().Name {
+			case "ws", "wss":
+				continue // skip if already present
+			case "p2p":
+				p2pID = c.Value()
+			default:
+				baseParts = append(baseParts, c)
+			}
 		}
+
+		baseAddr, _ := ma.NewMultiaddr("")
+		for _, c := range baseParts {
+			componentStr := "/" + c.Protocol().Name + "/" + c.Value()
+			component, err := ma.NewMultiaddr(componentStr)
+			if err != nil {
+				s.logger.Error(errors.New("invalid multiaddr component"), "component", componentStr, "error", err)
+				return
+			}
+			baseAddr = baseAddr.Encapsulate(component)
+		}
+
+		// Add /ws and /p2p
+		baseAddr = baseAddr.Encapsulate(ma.StringCast("/ws"))
+		if p2pID != "" {
+			baseAddr = baseAddr.Encapsulate(ma.StringCast("/p2p/" + p2pID))
+		}
+
+		s.logger.Debug("rewritten multiaddr to use websocket", "peer_address", hex.EncodeToString(newPeer.Overlay), "ws_underlay", baseAddr.String())
 
 		err := s.sem.Acquire(ctx, 1)
 		if err != nil {
@@ -206,15 +227,15 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 			defer cancel()
 
 			// check if the underlay is usable by doing a raw ping using libp2p
-			if _, err := s.streamer.Ping(ctx, multiUnderlay); err != nil {
+			if _, err := s.streamer.Ping(ctx, baseAddr); err != nil {
 
-				s.logger.Debug("unreachable peer underlay", "peer_address", hex.EncodeToString(newPeer.Overlay), "underlay", multiUnderlay)
+				s.logger.Debug("unreachable peer underlay", "peer_address", hex.EncodeToString(newPeer.Overlay), "underlay", multiUnderlay, "error", err)
 				return
 			}
 
 			bzzAddress := bzz.Address{
 				Overlay:   swarm.NewAddress(newPeer.Overlay),
-				Underlay:  multiUnderlay,
+				Underlay:  baseAddr,
 				Signature: newPeer.Signature,
 				Nonce:     newPeer.Nonce,
 			}
