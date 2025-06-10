@@ -44,7 +44,7 @@ var (
 )
 
 const (
-	DefaultTipBoostPercent = 20
+	DefaultTipBoostPercent = 100
 	DefaultGasLimit        = 1_000_000
 )
 
@@ -345,7 +345,6 @@ func (t *transactionService) suggestedFeeAndTip(ctx context.Context, gasPrice *b
 	t.logger.Debug("prepare transaction", "gas_price", gasPrice, "gas_max_fee", gasFeeCap, "gas_max_tip", gasTipCap)
 
 	return gasFeeCap, gasTipCap, nil
-
 }
 
 func storedTransactionKey(txHash common.Hash) string {
@@ -374,7 +373,6 @@ func (t *transactionService) nextNonce(ctx context.Context) (uint64, error) {
 	var maxNonce uint64 = onchainNonce - 1
 	for _, txHash := range pendingTxs {
 		trx, _, err := t.backend.TransactionByHash(ctx, txHash)
-
 		if err != nil {
 			t.logger.Error(err, "pending transaction not found", "tx", txHash)
 			return 0, err
@@ -438,7 +436,6 @@ func (t *transactionService) filterPendingTransactions(ctx context.Context, txHa
 
 	for _, txHash := range txHashes {
 		_, isPending, err := t.backend.TransactionByHash(ctx, txHash)
-
 		// When error occurres consider transaction as pending (so this transaction won't be filtered out),
 		// unless it was not found
 		if err != nil {
