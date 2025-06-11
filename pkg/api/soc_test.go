@@ -215,6 +215,8 @@ func TestSOC(t *testing.T) {
 func TestSOCWithRedundancy(t *testing.T) {
 
 	testWithRedundancy := func(t *testing.T, redundancyLevel int) {
+		t.Helper()
+
 		t.Run(fmt.Sprintf("redundancy=%d", redundancyLevel), func(t *testing.T) {
 			testData := []byte(fmt.Sprintf("redundant-soc-data-%d", redundancyLevel))
 
