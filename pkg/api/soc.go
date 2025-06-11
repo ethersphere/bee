@@ -72,7 +72,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		err        error
 	)
 
-	rLevel := redundancy.DefaultLevel
+	rLevel := redundancy.DefaultLevel //TODO: base level should be zero instead
 	if headers.RLevel != nil {
 		rLevel = *headers.RLevel
 	}

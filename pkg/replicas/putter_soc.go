@@ -50,6 +50,7 @@ func (p *socPutter) Put(ctx context.Context, ch swarm.Chunk) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			// create a new chunk with the replica address
 			sch := swarm.NewChunk(swarm.NewAddress(r.addr), ch.Data())
 			err := p.putter.Put(ctx, sch)
 			errc <- err
