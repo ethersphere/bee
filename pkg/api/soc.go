@@ -220,7 +220,12 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	err = putter.Done(sch.Address())
+	// do not pass sch.Address() since it causes error on parallel GSOC uploads
+	// in case of deferred upload
+	// pkg/storer/internal/pinning/pinning.go:collectionPutter.Close -> throws error if pin true but that is not a valid use-case at SOC upload
+	// pkg/storer/internal/upload/uploadstore.go:uploadPutter.Close -> updates tagID, and the address would be set along with it -> not necessary
+	// in case of directupload it only waits for the waitgroup for chunk upload and do not use swarm address
+	err = putter.Done(swarm.Address{})
 	if err != nil {
 		logger.Debug("done split failed", "error", err)
 		logger.Error(nil, "done split failed")
