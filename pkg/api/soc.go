@@ -73,10 +73,11 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		err        error
 	)
 
-	rLevel := redundancy.DefaultLevel //TODO: base level should be zero instead
-	if headers.RLevel != nil {
-		rLevel = *headers.RLevel
-	}
+	// if rLevel > 0 then it can cause error on parallel upload with a great chance
+	// because of multiple writes on the same postage index
+	// https://github.com/ethersphere/bee/actions/runs/15605098232/job/43952677866?pr=5057
+	// the solution would be either ignoring the error for dispersed replicas or do sequential upload
+	rLevel := *headers.RLevel
 
 	if len(headers.StampSig) != 0 {
 		if headers.RLevel != nil {
