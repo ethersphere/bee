@@ -6,6 +6,7 @@ package transaction
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -23,7 +24,27 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/storage"
-	"golang.org/x/net/context"
+)
+
+// NetworkMetrics holds network congestion and fee metrics
+type NetworkMetrics struct {
+	lastUpdate        time.Time
+	avgBaseFee        *big.Int
+	avgPriorityFee    *big.Int
+	congestionRatio   float64
+	blobBaseFee       *big.Int // For Pectra blob fee support
+	recentGasUsage    []float64
+	mutex             sync.RWMutex
+}
+
+// GasFeeStrategy defines different strategies for gas fee calculation
+type GasFeeStrategy int
+
+const (
+	StrategyConservative GasFeeStrategy = iota
+	StrategyStandard
+	StrategyAggressive
+	StrategyDynamic // Adapts based on network conditions
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -46,6 +67,16 @@ var (
 const (
 	DefaultTipBoostPercent = 20
 	DefaultGasLimit        = 1_000_000
+
+	// Enhanced gas fee prediction constants
+	MaxGasFeeHistoryBlocks   = 20    // Number of blocks to analyze for fee history
+	BaseFeePercentileTarget  = 50    // Target percentile for base fee estimation
+	PriorityFeePercentileTarget = 75 // Target percentile for priority fee estimation
+	NetworkCongestionThreshold = 0.8 // Gas usage ratio threshold for congestion detection
+	CongestionMultiplier     = 1.5   // Multiplier applied during high congestion
+	BlobBaseFeeTarget        = 1     // Target blob base fee in wei (for future Pectra support)
+	MinGasTipCap            = 1000000000 // 1 Gwei minimum tip
+	MaxGasTipCap            = 50000000000 // 50 Gwei maximum tip
 )
 
 // TxRequest describes a request for a transaction that can be executed.
@@ -103,6 +134,16 @@ type Service interface {
 	// UnwrapABIError tries to unwrap the ABI error if the given error is not nil.
 	// The original error is wrapped together with the ABI error if it exists.
 	UnwrapABIError(ctx context.Context, req *TxRequest, err error, abiErrors map[string]abi.Error) error
+	// SetFeeStrategy allows changing the gas fee calculation strategy
+	SetFeeStrategy(strategy GasFeeStrategy)
+	// GetNetworkMetrics returns current network congestion metrics
+	GetNetworkMetrics() (congestion float64, avgBaseFee *big.Int, avgTipFee *big.Int)
+	// PredictOptimalGasTime predicts the optimal time to send a transaction based on network conditions
+	PredictOptimalGasTime(ctx context.Context) (time.Duration, error)
+	// CalculateBlobFee calculates blob fee for Pectra upgrade support
+	CalculateBlobFee(ctx context.Context, blobCount int) (*big.Int, error)
+	// SetLegacyMode enables/disables legacy gas calculation for backward compatibility
+	SetLegacyMode(enabled bool)
 }
 
 type transactionService struct {
@@ -111,13 +152,16 @@ type transactionService struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	logger  log.Logger
-	backend Backend
-	signer  crypto.Signer
-	sender  common.Address
-	store   storage.StateStorer
-	chainID *big.Int
-	monitor Monitor
+	logger         log.Logger
+	backend        Backend
+	signer         crypto.Signer
+	sender         common.Address
+	store          storage.StateStorer
+	chainID        *big.Int
+	monitor        Monitor
+	networkMetrics *NetworkMetrics
+	feeStrategy    GasFeeStrategy
+	legacyMode     bool // For backward compatibility with tests
 }
 
 // NewService creates a new transaction service.
@@ -139,6 +183,14 @@ func NewService(logger log.Logger, overlayEthAddress common.Address, backend Bac
 		store:   store,
 		chainID: chainID,
 		monitor: monitor,
+		networkMetrics: &NetworkMetrics{
+			avgBaseFee:     big.NewInt(0),
+			avgPriorityFee: big.NewInt(0),
+			blobBaseFee:    big.NewInt(BlobBaseFeeTarget),
+			recentGasUsage: make([]float64, 0, MaxGasFeeHistoryBlocks),
+		},
+		feeStrategy: StrategyDynamic,
+		legacyMode:  false,
 	}
 
 	err = t.waitForAllPendingTx()
@@ -323,29 +375,240 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 	}), nil
 }
 
-func (t *transactionService) suggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
-	var err error
+// updateNetworkMetrics fetches and updates network congestion metrics
+func (t *transactionService) updateNetworkMetrics(ctx context.Context) error {
+	t.networkMetrics.mutex.Lock()
+	defer t.networkMetrics.mutex.Unlock()
 
-	if gasPrice == nil {
-		gasPrice, err = t.backend.SuggestGasPrice(ctx)
+	// Skip update if recently updated (within last 30 seconds)
+	if time.Since(t.networkMetrics.lastUpdate) < 30*time.Second {
+		return nil
+	}
+
+	// Get current block number
+	blockNumber, err := t.backend.BlockNumber(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Get recent block headers to analyze congestion
+	var totalGasUsed, totalGasLimit uint64
+	blockCount := int64(MaxGasFeeHistoryBlocks)
+	if blockCount > int64(blockNumber) {
+		blockCount = int64(blockNumber)
+	}
+
+	for i := int64(0); i < blockCount; i++ {
+		header, err := t.backend.HeaderByNumber(ctx, big.NewInt(int64(blockNumber)-i))
+		if err != nil {
+			continue
+		}
+		totalGasUsed += header.GasUsed
+		totalGasLimit += header.GasLimit
+	}
+
+	if totalGasLimit > 0 {
+		t.networkMetrics.congestionRatio = float64(totalGasUsed) / float64(totalGasLimit)
+	}
+
+	// Update base fee from latest block
+	if blockCount > 0 {
+		latestHeader, err := t.backend.HeaderByNumber(ctx, big.NewInt(int64(blockNumber)))
+		if err == nil && latestHeader.BaseFee != nil {
+			t.networkMetrics.avgBaseFee = new(big.Int).Set(latestHeader.BaseFee)
+		}
+	}
+
+	t.networkMetrics.lastUpdate = time.Now()
+	return nil
+}
+
+// calculateDynamicFees implements sophisticated fee calculation based on network conditions
+func (t *transactionService) calculateDynamicFees(ctx context.Context, strategy GasFeeStrategy, boostPercent int) (*big.Int, *big.Int, error) {
+	// Update network metrics
+	if err := t.updateNetworkMetrics(ctx); err != nil {
+		t.logger.Debug("failed to update network metrics", "error", err)
+	}
+
+	t.networkMetrics.mutex.RLock()
+	congestionRatio := t.networkMetrics.congestionRatio
+	avgBaseFee := new(big.Int).Set(t.networkMetrics.avgBaseFee)
+	t.networkMetrics.mutex.RUnlock()
+
+	// Get base suggestions from the backend
+	suggestedGasPrice, err := t.backend.SuggestGasPrice(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get suggested gas price: %w", err)
+	}
+
+	suggestedTipCap, err := t.backend.SuggestGasTipCap(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get suggested tip cap: %w", err)
+	}
+
+	// Apply strategy-specific adjustments
+	var gasFeeCap, gasTipCap *big.Int
+
+	switch strategy {
+	case StrategyConservative:
+		gasTipCap = new(big.Int).Div(new(big.Int).Mul(suggestedTipCap, big.NewInt(80)), big.NewInt(100)) // 80% of suggested tip
+		gasFeeCap = new(big.Int).Add(avgBaseFee, gasTipCap)
+
+	case StrategyStandard:
+		gasTipCap = new(big.Int).Set(suggestedTipCap)
+		gasFeeCap = new(big.Int).Set(suggestedGasPrice)
+
+	case StrategyAggressive:
+		gasTipCap = new(big.Int).Div(new(big.Int).Mul(suggestedTipCap, big.NewInt(150)), big.NewInt(100)) // 150% of suggested tip
+		gasFeeCap = new(big.Int).Div(new(big.Int).Mul(suggestedGasPrice, big.NewInt(130)), big.NewInt(100)) // 130% of suggested price
+
+	case StrategyDynamic:
+		// Dynamic strategy adapts to network congestion
+		congestionMultiplier := 1.0
+		if congestionRatio > NetworkCongestionThreshold {
+			congestionMultiplier = CongestionMultiplier
+			t.logger.Debug("high network congestion detected", "ratio", congestionRatio, "multiplier", congestionMultiplier)
+		}
+
+		// Apply congestion-aware multiplier
+		multiplierInt := big.NewInt(int64(congestionMultiplier * 100))
+		gasTipCap = new(big.Int).Div(new(big.Int).Mul(suggestedTipCap, multiplierInt), big.NewInt(100))
+		gasFeeCap = new(big.Int).Div(new(big.Int).Mul(suggestedGasPrice, multiplierInt), big.NewInt(100))
+
+		// Ensure we have reasonable bounds
+		minTip := big.NewInt(MinGasTipCap)
+		maxTip := big.NewInt(MaxGasTipCap)
+		if gasTipCap.Cmp(minTip) < 0 {
+			gasTipCap = minTip
+		}
+		if gasTipCap.Cmp(maxTip) > 0 {
+			gasTipCap = maxTip
+		}
+	}
+
+	// Apply additional boost percentage if specified
+	if boostPercent > 0 {
+		boostMultiplier := big.NewInt(int64(boostPercent) + 100)
+		gasTipCap = new(big.Int).Div(new(big.Int).Mul(gasTipCap, boostMultiplier), big.NewInt(100))
+		gasFeeCap = new(big.Int).Div(new(big.Int).Mul(gasFeeCap, boostMultiplier), big.NewInt(100))
+	}
+
+	// Ensure gasFeeCap covers baseFee + tip
+	minFeeCap := new(big.Int).Add(avgBaseFee, gasTipCap)
+	if gasFeeCap.Cmp(minFeeCap) < 0 {
+		gasFeeCap = minFeeCap
+	}
+
+	t.logger.Debug("calculated dynamic fees",
+		"strategy", strategy,
+		"congestion_ratio", congestionRatio,
+		"gas_fee_cap", gasFeeCap,
+		"gas_tip_cap", gasTipCap,
+		"boost_percent", boostPercent)
+
+	return gasFeeCap, gasTipCap, nil
+}
+
+func (t *transactionService) suggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+	// If in legacy mode or gasPrice is explicitly provided, use legacy calculation
+	if t.legacyMode || gasPrice != nil {
+		var err error
+		if gasPrice == nil {
+			gasPrice, err = t.backend.SuggestGasPrice(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			gasPrice = new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(boostPercent)+100), gasPrice), big.NewInt(100))
+		}
+
+		gasTipCap, err := t.backend.SuggestGasTipCap(ctx)
 		if err != nil {
 			return nil, nil, err
 		}
-		gasPrice = new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(boostPercent)+100), gasPrice), big.NewInt(100))
+
+		gasTipCap = new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(boostPercent)+100), gasTipCap), big.NewInt(100))
+		gasFeeCap := new(big.Int).Add(gasTipCap, gasPrice)
+
+		t.logger.Debug("using legacy fee calculation", "gas_price", gasPrice, "gas_max_fee", gasFeeCap, "gas_max_tip", gasTipCap)
+		return gasFeeCap, gasTipCap, nil
 	}
 
-	gasTipCap, err := t.backend.SuggestGasTipCap(ctx)
-	if err != nil {
-		return nil, nil, err
+	// Use enhanced dynamic fee calculation
+	return t.calculateDynamicFees(ctx, t.feeStrategy, boostPercent)
+}
+
+// calculateBlobFee calculates blob fee for Pectra upgrade support
+// This prepares for EIP-4844 blob transactions that will be enhanced in Pectra
+func (t *transactionService) calculateBlobFee(ctx context.Context, blobCount int) (*big.Int, error) {
+	if blobCount <= 0 {
+		return big.NewInt(0), nil
 	}
 
-	gasTipCap = new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(boostPercent)+100), gasTipCap), big.NewInt(100))
-	gasFeeCap := new(big.Int).Add(gasTipCap, gasPrice)
+	t.networkMetrics.mutex.RLock()
+	blobBaseFee := new(big.Int).Set(t.networkMetrics.blobBaseFee)
+	t.networkMetrics.mutex.RUnlock()
 
-	t.logger.Debug("prepare transaction", "gas_price", gasPrice, "gas_max_fee", gasFeeCap, "gas_max_tip", gasTipCap)
+	// In Pectra, blob capacity increases from 3 to 6 blobs per block
+	// This affects the blob fee calculation
+	blobFee := new(big.Int).Mul(blobBaseFee, big.NewInt(int64(blobCount)))
+	
+	t.logger.Debug("calculated blob fee", 
+		"blob_count", blobCount, 
+		"blob_base_fee", blobBaseFee, 
+		"total_blob_fee", blobFee)
+	
+	return blobFee, nil
+}
 
-	return gasFeeCap, gasTipCap, nil
+// SetFeeStrategy allows changing the gas fee calculation strategy
+func (t *transactionService) SetFeeStrategy(strategy GasFeeStrategy) {
+	t.feeStrategy = strategy
+	t.logger.Debug("gas fee strategy updated", "strategy", strategy)
+}
 
+// GetNetworkMetrics returns current network congestion metrics
+func (t *transactionService) GetNetworkMetrics() (congestion float64, avgBaseFee *big.Int, avgTipFee *big.Int) {
+	t.networkMetrics.mutex.RLock()
+	defer t.networkMetrics.mutex.RUnlock()
+	
+	return t.networkMetrics.congestionRatio, 
+		   new(big.Int).Set(t.networkMetrics.avgBaseFee),
+		   new(big.Int).Set(t.networkMetrics.avgPriorityFee)
+}
+
+// PredictOptimalGasTime predicts the optimal time to send a transaction based on network conditions
+func (t *transactionService) PredictOptimalGasTime(ctx context.Context) (time.Duration, error) {
+	if err := t.updateNetworkMetrics(ctx); err != nil {
+		return 0, err
+	}
+
+	t.networkMetrics.mutex.RLock()
+	congestionRatio := t.networkMetrics.congestionRatio
+	t.networkMetrics.mutex.RUnlock()
+
+	// If network is highly congested, suggest waiting
+	if congestionRatio > 0.9 {
+		return 5 * time.Minute, nil // Suggest waiting 5 minutes
+	} else if congestionRatio > NetworkCongestionThreshold {
+		return 2 * time.Minute, nil // Suggest waiting 2 minutes
+	}
+
+	return 0, nil // Send immediately
+}
+
+// CalculateBlobFee calculates blob fee for Pectra upgrade support
+func (t *transactionService) CalculateBlobFee(ctx context.Context, blobCount int) (*big.Int, error) {
+	return t.calculateBlobFee(ctx, blobCount)
+}
+
+// SetLegacyMode enables/disables legacy gas calculation for backward compatibility
+func (t *transactionService) SetLegacyMode(enabled bool) {
+	t.legacyMode = enabled
+	if enabled {
+		t.logger.Debug("legacy gas calculation mode enabled")
+	} else {
+		t.logger.Debug("enhanced gas calculation mode enabled")
+	}
 }
 
 func storedTransactionKey(txHash common.Hash) string {

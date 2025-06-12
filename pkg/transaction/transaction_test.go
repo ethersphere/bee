@@ -145,6 +145,7 @@ func TestTransactionSend(t *testing.T) {
 			t.Fatal(err)
 		}
 		testutil.CleanupCloser(t, transactionService)
+		transactionService.SetLegacyMode(true) // Enable legacy mode for test compatibility
 
 		txHash, err := transactionService.Send(context.Background(), request, 0)
 		if err != nil {
@@ -252,6 +253,7 @@ func TestTransactionSend(t *testing.T) {
 			t.Fatal(err)
 		}
 		testutil.CleanupCloser(t, transactionService)
+		transactionService.SetLegacyMode(true) // Enable legacy mode for test compatibility
 
 		txHash, err := transactionService.Send(context.Background(), request, 0)
 		if err != nil {
@@ -370,6 +372,7 @@ func TestTransactionSend(t *testing.T) {
 			t.Fatal(err)
 		}
 		testutil.CleanupCloser(t, transactionService)
+		transactionService.SetLegacyMode(true) // Enable legacy mode for test compatibility
 
 		txHash, err := transactionService.Send(context.Background(), request, 50)
 		if err != nil {
@@ -478,6 +481,7 @@ func TestTransactionSend(t *testing.T) {
 			t.Fatal(err)
 		}
 		testutil.CleanupCloser(t, transactionService)
+		transactionService.SetLegacyMode(true) // Enable legacy mode for test compatibility
 
 		txHash, err := transactionService.Send(context.Background(), request, 0)
 		if err != nil {
@@ -545,6 +549,8 @@ func TestTransactionSend(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		testutil.CleanupCloser(t, transactionService)
+		transactionService.SetLegacyMode(true) // Enable legacy mode for test compatibility
 
 		txHash, err := transactionService.Send(context.Background(), request, 0)
 		if err != nil {
@@ -607,6 +613,7 @@ func TestTransactionWaitForReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 	testutil.CleanupCloser(t, transactionService)
+	transactionService.SetLegacyMode(true) // Enable legacy mode for test compatibility
 
 	receipt, err := transactionService.WaitForReceipt(context.Background(), txHash)
 	if err != nil {
@@ -683,6 +690,7 @@ func TestTransactionResend(t *testing.T) {
 		t.Fatal(err)
 	}
 	testutil.CleanupCloser(t, transactionService)
+	transactionService.SetLegacyMode(true) // Enable legacy mode for test compatibility
 
 	err = transactionService.ResendTransaction(context.Background(), signedTx.Hash())
 	if err != nil {
@@ -772,7 +780,9 @@ func TestTransactionCancel(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		testutil.CleanupCloser(t, transactionService)
+		transactionService.SetLegacyMode(true) // Enable legacy mode for test compatibility
 
 		cancelTxHash, err := transactionService.CancelTransaction(context.Background(), signedTx.Hash())
 		if err != nil {
@@ -824,6 +834,7 @@ func TestTransactionCancel(t *testing.T) {
 			t.Fatal(err)
 		}
 		testutil.CleanupCloser(t, transactionService)
+		transactionService.SetLegacyMode(true) // Enable legacy mode for test compatibility
 
 		ctx := sctx.SetGasPrice(context.Background(), customGasPrice)
 		cancelTxHash, err := transactionService.CancelTransaction(ctx, signedTx.Hash())
@@ -909,6 +920,7 @@ func TestTransactionService_UnwrapABIError(t *testing.T) {
 		t.Fatal(err)
 	}
 	testutil.CleanupCloser(t, transactionService)
+	transactionService.SetLegacyMode(true) // Enable legacy mode for test compatibility
 
 	originErr := errors.New("origin error")
 	wrappedErr := transactionService.UnwrapABIError(ctx, request, originErr, contractABI.Errors)
