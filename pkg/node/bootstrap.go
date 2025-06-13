@@ -326,7 +326,7 @@ func getLatestSnapshot(
 	}
 	f := feeds.New(topic, common.BytesToAddress(owner))
 
-	l, err := feedFactory.NewLookup(*t, f)
+	l, err := feedFactory.NewLookup(*t, f, nil)
 	if err != nil {
 		return nil, fmt.Errorf("feed lookup failed: %w", err)
 	}
