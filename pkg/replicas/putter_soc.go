@@ -48,13 +48,13 @@ func (p *socPutter) Put(ctx context.Context, ch swarm.Chunk) error {
 	wg := sync.WaitGroup{}
 	for r := range rr.c {
 		wg.Add(1)
-		go func() {
+		go func(r *socReplica) {
 			defer wg.Done()
 			// create a new chunk with the replica address
 			sch := swarm.NewChunk(swarm.NewAddress(r.addr), ch.Data())
 			err := p.putter.Put(ctx, sch)
 			errc <- err
-		}()
+		}(r)
 	}
 
 	wg.Wait()
