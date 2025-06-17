@@ -18,7 +18,7 @@ func Test_RandAddress(t *testing.T) {
 	assertNotZeroAddress(t, addr)
 }
 
-// TestRandAddressAt checks that RandAddressAt generates a correct random address
+// Test_RandAddressAt checks that RandAddressAt generates a correct random address
 // at a given proximity order. It compares the number of leading equal bits in the generated
 // address to the base address.
 func Test_RandAddressAt(t *testing.T) {
