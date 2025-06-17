@@ -343,19 +343,18 @@ func (t *transactionService) suggestedFeeAndTip(ctx context.Context, gasPrice *b
 	var gasFeeCap *big.Int
 
 	if gasPrice == nil {
-		latestBlock, err := t.backend.BlockByNumber(ctx, nil)
+		latestBlockHeader, err := t.backend.HeaderByNumber(ctx, nil)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to get latest block: %w", err)
 		}
 
-		baseFee := latestBlock.BaseFee()
-		if baseFee == nil {
+		if latestBlockHeader.BaseFee == nil {
 			return nil, nil, ErrEIP1559NotSupported
 		}
 
 		// gasFeeCap = (2 * baseFee) + gasTipCap
 		gasFeeCap = new(big.Int).Add(
-			new(big.Int).Mul(baseFee, big.NewInt(2)),
+			new(big.Int).Mul(latestBlockHeader.BaseFee, big.NewInt(2)),
 			gasTipCap,
 		)
 	} else {
@@ -395,7 +394,7 @@ func (t *transactionService) nextNonce(ctx context.Context) (uint64, error) {
 
 	// PendingNonceAt returns the nonce we should use, but we will
 	// compare this to our pending tx list, therefore the -1.
-	var maxNonce uint64 = onchainNonce - 1
+	var maxNonce = onchainNonce - 1
 	for _, txHash := range pendingTxs {
 		trx, _, err := t.backend.TransactionByHash(ctx, txHash)
 		if err != nil {
@@ -442,7 +441,7 @@ func (t *transactionService) WatchSentTransaction(txHash common.Hash) (<-chan ty
 }
 
 func (t *transactionService) PendingTransactions() ([]common.Hash, error) {
-	var txHashes []common.Hash = make([]common.Hash, 0)
+	var txHashes = make([]common.Hash, 0)
 	err := t.store.Iterate(pendingTransactionPrefix, func(key, value []byte) (stop bool, err error) {
 		txHash := common.HexToHash(strings.TrimPrefix(string(key), pendingTransactionPrefix))
 		txHashes = append(txHashes, txHash)
