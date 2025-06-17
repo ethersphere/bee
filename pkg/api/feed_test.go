@@ -345,18 +345,15 @@ func (l *redundancyMockLookup) At(ctx context.Context, at int64, after uint64) (
 	chunk, cur, next := l.lastChunkFn()
 
 	// Create redundancy SOC getter if redundancy level is set
-	if l.redundancyLevel > 0 {
-		redGetter := replicas.NewSocGetter(l.getter, l.redundancyLevel)
+	redGetter := replicas.NewSocGetter(l.getter, l.redundancyLevel)
 
-		// Try to get the chunk with redundancy
-		redChunk, err := redGetter.Get(ctx, chunk.Address())
-		if err == nil {
-			// Use the chunk retrieved with redundancy
-			return redChunk, cur, next, nil
-		}
+	// Try to get the chunk with redundancy
+	redChunk, err := redGetter.Get(ctx, chunk.Address())
+	if err != nil {
+		return nil, nil, nil, err
 	}
-
-	return chunk, cur, next, nil
+	// Use the chunk retrieved with redundancy
+	return redChunk, cur, next, nil
 }
 
 // TestFeedAPIWithRedundancy tests the feed API with SOC redundancy
