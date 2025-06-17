@@ -41,10 +41,11 @@ var (
 	ErrTransactionReverted = errors.New("transaction reverted")
 	ErrUnknownTransaction  = errors.New("unknown transaction")
 	ErrAlreadyImported     = errors.New("already imported")
+	ErrEIP1559NotSupported = errors.New("network does not appear to support EIP-1559 (no baseFee)")
 )
 
 const (
-	DefaultTipBoostPercent = 100
+	DefaultTipBoostPercent = 25
 	DefaultGasLimit        = 1_000_000
 )
 
@@ -324,25 +325,46 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 }
 
 func (t *transactionService) suggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
-	var err error
-
-	if gasPrice == nil {
-		gasPrice, err = t.backend.SuggestGasPrice(ctx)
-		if err != nil {
-			return nil, nil, err
-		}
-		gasPrice = new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(boostPercent)+100), gasPrice), big.NewInt(100))
-	}
-
 	gasTipCap, err := t.backend.SuggestGasTipCap(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	gasTipCap = new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(boostPercent)+100), gasTipCap), big.NewInt(100))
-	gasFeeCap := new(big.Int).Add(gasTipCap, gasPrice)
+	multiplier := big.NewInt(int64(boostPercent) + 100)
+	gasTipCap.Mul(gasTipCap, multiplier).Div(gasTipCap, big.NewInt(100))
 
-	t.logger.Debug("prepare transaction", "gas_price", gasPrice, "gas_max_fee", gasFeeCap, "gas_max_tip", gasTipCap)
+	minimumTip := big.NewInt(1_500_000_000) // 1.5 Gwei
+	if gasTipCap.Cmp(minimumTip) < 0 {
+		gasTipCap = new(big.Int).Set(minimumTip)
+	}
+
+	var gasFeeCap *big.Int
+
+	if gasPrice == nil {
+		latestBlock, err := t.backend.BlockByNumber(ctx, nil)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get latest block: %w", err)
+		}
+
+		baseFee := latestBlock.BaseFee()
+		if baseFee == nil {
+			return nil, nil, ErrEIP1559NotSupported
+		}
+
+		// gasFeeCap = (2 * baseFee) + gasTipCap
+		gasFeeCap = new(big.Int).Add(
+			new(big.Int).Mul(baseFee, big.NewInt(2)),
+			gasTipCap,
+		)
+	} else {
+		gasFeeCap = new(big.Int).Set(gasPrice)
+		if gasTipCap.Cmp(gasFeeCap) > 0 {
+			t.logger.Warning("gas tip cap is higher than gas fee cap, using gas fee cap as gas tip cap", "gas_tip_cap", gasTipCap, "gas_fee_cap", gasFeeCap)
+			gasTipCap = new(big.Int).Set(gasFeeCap)
+		}
+	}
+
+	t.logger.Debug("prepare transaction", "gas_max_fee", gasFeeCap, "gas_max_tip", gasTipCap)
 
 	return gasFeeCap, gasTipCap, nil
 }

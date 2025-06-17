@@ -346,6 +346,11 @@ type noOpChainBackend struct {
 	chainID int64
 }
 
+// BlockByNumber implements transaction.Backend.
+func (m *noOpChainBackend) BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error) {
+	return nil, postagecontract.ErrChainDisabled
+}
+
 func (m noOpChainBackend) Metrics() []prometheus.Collector {
 	return nil
 }

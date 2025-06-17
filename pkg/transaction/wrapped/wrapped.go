@@ -201,6 +201,20 @@ func (b *wrappedBackend) ChainID(ctx context.Context) (*big.Int, error) {
 	return chainID, nil
 }
 
+// BlockByNumber implements transaction.Backend.
+func (b *wrappedBackend) BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error) {
+	b.metrics.TotalRPCCalls.Inc()
+	b.metrics.BlockByNumberCalls.Inc()
+	block, err := b.backend.BlockByNumber(ctx, number)
+	if err != nil {
+		if !errors.Is(err, ethereum.NotFound) {
+			b.metrics.TotalRPCErrors.Inc()
+		}
+		return nil, err
+	}
+	return block, nil
+}
+
 func (b *wrappedBackend) Close() error {
 	b.backend.Close()
 	return nil
