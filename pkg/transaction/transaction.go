@@ -45,9 +45,10 @@ var (
 )
 
 const (
-	DefaultTipBoostPercent        = 25
-	RedistributionTipBoostPercent = 50
 	DefaultGasLimit               = 1_000_000
+	DefaultTipBoostPercent        = 25
+	MinimumGasTipCap              = 1_500_000_000 // 1.5 Gwei
+	RedistributionTipBoostPercent = 50
 )
 
 // TxRequest describes a request for a transaction that can be executed.
@@ -334,7 +335,7 @@ func (t *transactionService) suggestedFeeAndTip(ctx context.Context, gasPrice *b
 	multiplier := big.NewInt(int64(boostPercent) + 100)
 	gasTipCap = new(big.Int).Div(new(big.Int).Mul(gasTipCap, multiplier), big.NewInt(100))
 
-	minimumTip := big.NewInt(1_500_000_000) // 1.5 Gwei
+	minimumTip := big.NewInt(MinimumGasTipCap)
 	if gasTipCap.Cmp(minimumTip) < 0 {
 		gasTipCap = new(big.Int).Set(minimumTip)
 	}

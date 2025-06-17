@@ -700,6 +700,7 @@ func TestTransactionCancel(t *testing.T) {
 	nonce := uint64(10)
 	data := []byte{1, 2, 3, 4}
 	gasPrice := big.NewInt(1000)
+	baseFee := big.NewInt(1000)
 	gasTip := big.NewInt(100)
 	gasFee := big.NewInt(1100)
 	gasLimit := uint64(100000)
@@ -757,11 +758,16 @@ func TestTransactionCancel(t *testing.T) {
 					}
 					return nil
 				}),
-				backendmock.WithSuggestGasPriceFunc(func(ctx context.Context) (*big.Int, error) {
-					return gasPrice, nil
-				}),
 				backendmock.WithSuggestGasTipCapFunc(func(ctx context.Context) (*big.Int, error) {
 					return gasTip, nil
+				}),
+				backendmock.WithBlockByNumberFunc(func(ctx context.Context, number *big.Int) (*types.Block, error) {
+					if number != nil {
+						return nil, errors.New("block not found")
+					}
+					return types.NewBlock(&types.Header{
+						BaseFee: baseFee,
+					}, nil, nil, nil), nil
 				}),
 			),
 			signerMockForTransaction(t, cancelTx, recipient, chainID),
