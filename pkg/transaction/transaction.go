@@ -45,8 +45,9 @@ var (
 )
 
 const (
-	DefaultTipBoostPercent = 25
-	DefaultGasLimit        = 1_000_000
+	DefaultTipBoostPercent        = 25
+	RedistributionTipBoostPercent = 50
+	DefaultGasLimit               = 1_000_000
 )
 
 // TxRequest describes a request for a transaction that can be executed.
@@ -227,8 +228,8 @@ func (t *transactionService) waitForPendingTx(txHash common.Hash) {
 	t.wg.Add(1)
 	go func() {
 		defer t.wg.Done()
-		switch _, err := t.WaitForReceipt(t.ctx, txHash); {
-		case err == nil:
+		switch _, err := t.WaitForReceipt(t.ctx, txHash); err {
+		case nil:
 			t.logger.Info("pending transaction confirmed", "tx", txHash)
 			err = t.store.Delete(pendingTransactionKey(txHash))
 			if err != nil {
@@ -287,7 +288,7 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 			gasLimit = request.MinEstimatedGasLimit
 		}
 
-		gasLimit += gasLimit / 4 // add 25% on top
+		gasLimit += gasLimit / 2 // add 50% buffer to the estimated gas limit
 		if gasLimit < request.MinEstimatedGasLimit {
 			gasLimit = request.MinEstimatedGasLimit
 		}
@@ -331,7 +332,7 @@ func (t *transactionService) suggestedFeeAndTip(ctx context.Context, gasPrice *b
 	}
 
 	multiplier := big.NewInt(int64(boostPercent) + 100)
-	gasTipCap.Mul(gasTipCap, multiplier).Div(gasTipCap, big.NewInt(100))
+	gasTipCap = new(big.Int).Div(new(big.Int).Mul(gasTipCap, multiplier), big.NewInt(100))
 
 	minimumTip := big.NewInt(1_500_000_000) // 1.5 Gwei
 	if gasTipCap.Cmp(minimumTip) < 0 {
@@ -358,10 +359,11 @@ func (t *transactionService) suggestedFeeAndTip(ctx context.Context, gasPrice *b
 		)
 	} else {
 		gasFeeCap = new(big.Int).Set(gasPrice)
-		if gasTipCap.Cmp(gasFeeCap) > 0 {
-			t.logger.Warning("gas tip cap is higher than gas fee cap, using gas fee cap as gas tip cap", "gas_tip_cap", gasTipCap, "gas_fee_cap", gasFeeCap)
-			gasTipCap = new(big.Int).Set(gasFeeCap)
-		}
+	}
+
+	if gasTipCap.Cmp(gasFeeCap) > 0 {
+		t.logger.Warning("gas tip cap is higher than gas fee cap, using gas fee cap as gas tip cap", "gas_tip_cap", gasTipCap, "gas_fee_cap", gasFeeCap)
+		gasTipCap = new(big.Int).Set(gasFeeCap)
 	}
 
 	t.logger.Debug("prepare transaction", "gas_max_fee", gasFeeCap, "gas_max_tip", gasTipCap)

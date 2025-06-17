@@ -47,7 +47,6 @@ func New(
 	incentivesContractABI abi.ABI,
 	setGasLimit bool,
 ) Contract {
-
 	var gasLimit uint64
 	if setGasLimit {
 		gasLimit = transaction.DefaultGasLimit
@@ -118,7 +117,7 @@ func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs) (comm
 		Value:                big.NewInt(0),
 		Description:          "claim win transaction",
 	}
-	txHash, err := c.sendAndWait(ctx, request, 50)
+	txHash, err := c.sendAndWait(ctx, request, transaction.RedistributionTipBoostPercent)
 	if err != nil {
 		return txHash, fmt.Errorf("claim: %w", err)
 	}
@@ -141,7 +140,7 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint64) (
 		Value:                big.NewInt(0),
 		Description:          "commit transaction",
 	}
-	txHash, err := c.sendAndWait(ctx, request, 50)
+	txHash, err := c.sendAndWait(ctx, request, transaction.RedistributionTipBoostPercent)
 	if err != nil {
 		return txHash, fmt.Errorf("commit: obfusHash %v: %w", common.BytesToHash(obfusHash), err)
 	}
@@ -164,7 +163,7 @@ func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommit
 		Value:                big.NewInt(0),
 		Description:          "reveal transaction",
 	}
-	txHash, err := c.sendAndWait(ctx, request, 50)
+	txHash, err := c.sendAndWait(ctx, request, transaction.RedistributionTipBoostPercent)
 	if err != nil {
 		return txHash, fmt.Errorf("reveal: storageDepth %d reserveCommitmentHash %v RandomNonce %v: %w", storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce), err)
 	}
