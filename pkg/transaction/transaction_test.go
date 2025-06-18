@@ -31,7 +31,7 @@ import (
 )
 
 var (
-	minimumTip = big.NewInt(1_500_000_000)
+	minimumTip = big.NewInt(transaction.MinimumGasTipCap)
 	baseFee    = big.NewInt(3_000_000_000)
 )
 
@@ -312,8 +312,7 @@ func TestTransactionSend(t *testing.T) {
 	t.Run("sendWithBoost", func(t *testing.T) {
 		t.Parallel()
 
-		tipBoostPercent := 50
-		multiplier := big.NewInt(int64(tipBoostPercent) + 100)
+		multiplier := big.NewInt(int64(transaction.DefaultTipBoostPercent) + 100)
 		suggestedGasTipWithBoost := new(big.Int).Div(new(big.Int).Mul(suggestedGasTip, multiplier), big.NewInt(100))
 		gasFeeCapWithBoost := new(big.Int).Add(new(big.Int).Mul(baseFee, big.NewInt(2)), suggestedGasTipWithBoost)
 
@@ -378,7 +377,7 @@ func TestTransactionSend(t *testing.T) {
 		}
 		testutil.CleanupCloser(t, transactionService)
 
-		txHash, err := transactionService.Send(context.Background(), request, tipBoostPercent)
+		txHash, err := transactionService.Send(context.Background(), request, transaction.DefaultTipBoostPercent)
 		if err != nil {
 			t.Fatal(err)
 		}
