@@ -114,6 +114,9 @@ func TestSocPutter(t *testing.T) {
 					orig = true
 					return false, nil
 				}
+				if !soc.Valid(chunk) {
+					t.Fatalf("chunk %v is not a valid SOC chunk", chunk.Address())
+				}
 				addrs = append(addrs, chunk.Address())
 				return false, nil
 			})
