@@ -25,7 +25,7 @@ type ChainConfig struct {
 	StakingAddress         common.Address
 	PostageStampAddress    common.Address
 	RedistributionAddress  common.Address
-	SwapPriceOracleAddress common.Address
+	SwapPriceOracleAddress common.Address // Swap swear and swindle (S3) Contracts
 	CurrentFactoryAddress  common.Address
 
 	// ABIs.
