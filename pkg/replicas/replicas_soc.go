@@ -50,8 +50,13 @@ func (rr *socReplicator) replicate(i uint8) (sp *socReplica) {
 	// calculate SOC replica address for potential replica
 	addr := make([]byte, 32)
 	copy(addr, rr.addr)
-	addr[0] = i
-	return &socReplica{addr: addr, nonce: i}
+	seed1 := addr[i%32]
+	seed2 := addr[(i+13)%32]
+	addr[0] = i ^ seed1 ^ seed2
+	// this somehow does not give enough randomness
+	// addr[0] &= 0x0f
+	// addr[0] |= (i ^ rand) & 0xf0 // set first 4 bits to the nonce
+	return &socReplica{addr: addr, nonce: addr[0]}
 }
 
 // replicas enumerates replica parameters (nonce) pushing it in a channel given as argument
