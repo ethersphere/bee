@@ -27,6 +27,7 @@ type metrics struct {
 	SendTransactionCalls    prometheus.Counter
 	FilterLogsCalls         prometheus.Counter
 	ChainIDCalls            prometheus.Counter
+	BlockByNumberCalls      prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -128,6 +129,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "calls_chain_id",
 			Help:      "Count of eth_chainId rpc calls",
+		}),
+		BlockByNumberCalls: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "calls_block_by_number",
+			Help:      "Count of eth_getBlockByNumber rpc calls",
 		}),
 	}
 }

@@ -108,7 +108,7 @@ func (m *backendMock) BlockNumber(ctx context.Context) (uint64, error) {
 }
 
 func (m *backendMock) BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error) {
-	if m.blockNumber != nil {
+	if m.blockByNumber != nil {
 		return m.blockByNumber(ctx, number)
 	}
 	return nil, errors.New("not implemented")
@@ -136,7 +136,7 @@ func (m *backendMock) NonceAt(ctx context.Context, account common.Address, block
 }
 
 func (m *backendMock) SuggestGasTipCap(ctx context.Context) (*big.Int, error) {
-	if m.suggestGasPrice != nil {
+	if m.suggestGasTipCap != nil {
 		return m.suggestGasTipCap(ctx)
 	}
 	return nil, errors.New("not implemented")
