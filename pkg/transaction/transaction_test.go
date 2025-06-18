@@ -357,9 +357,6 @@ func TestTransactionSend(t *testing.T) {
 					return suggestedGasTip, nil
 				}),
 				backendmock.WithHeaderbyNumberFunc(func(ctx context.Context, number *big.Int) (*types.Header, error) {
-					return &types.Header{BaseFee: big.NewInt(1000)}, nil
-				}),
-				backendmock.WithHeaderbyNumberFunc(func(ctx context.Context, number *big.Int) (*types.Header, error) {
 					return &types.Header{BaseFee: baseFee}, nil
 				}),
 			),
