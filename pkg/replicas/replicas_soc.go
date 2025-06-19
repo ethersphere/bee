@@ -49,6 +49,10 @@ func (rr *socReplicator) replicate(i uint8, bitsRequired uint8) (sp *socReplica)
 	// zero out the first leading bitsRequired bits of addr[0] and set mirroredBits of `i`
 	addr[0] &= 0xFF >> bitsRequired
 	addr[0] |= mirroredBits
+	if addr[0] == rr.addr[0] {
+		// xor MSB after the mirrored bits because the iteration found the original address
+		addr[0] ^= 1 << (bitsRequired - 1)
+	}
 	return &socReplica{addr: addr, nonce: addr[0]}
 }
 
