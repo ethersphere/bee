@@ -11,18 +11,14 @@
 package replicas
 
 import (
-	"math"
-
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 // socReplicator running the find for replicas
 type socReplicator struct {
-	addr   []byte          // chunk address
-	queue  [16]*socReplica // to sort addresses according to di
-	exist  [30]bool        //  maps the 16 distinct nibbles on all levels
-	sizes  [5]int          // number of distinct neighbourhoods redcorded for each depth
+	addr   []byte // chunk address
+	sizes  [5]int // number of distinct neighbourhoods redcorded for each depth
 	c      chan *socReplica
 	rLevel redundancy.Level
 }
@@ -46,16 +42,13 @@ type socReplica struct {
 }
 
 // replicate returns a replica params structure seeded with a byte of entropy as argument
-func (rr *socReplicator) replicate(i uint8) (sp *socReplica) {
-	// calculate SOC replica address for potential replica
+func (rr *socReplicator) replicate(i uint8, bitsRequired uint8) (sp *socReplica) {
 	addr := make([]byte, 32)
 	copy(addr, rr.addr)
-	seed1 := addr[i%32]
-	seed2 := addr[(i+13)%32]
-	addr[0] = i ^ seed1 ^ seed2
-	// this somehow does not give enough randomness
-	// addr[0] &= 0x0f
-	// addr[0] |= (i ^ rand) & 0xf0 // set first 4 bits to the nonce
+	mirroredBits := mirrorBitsToMSB(i, bitsRequired)
+	// zero out the first leading bitsRequired bits of addr[0] and set mirroredBits of `i`
+	addr[0] &= 0xFF >> bitsRequired
+	addr[0] |= mirroredBits
 	return &socReplica{addr: addr, nonce: addr[0]}
 }
 
@@ -65,42 +58,39 @@ func (rr *socReplicator) replicate(i uint8) (sp *socReplica) {
 // I.e., the binary tree representing the new addresses prefix bits up to depth is balanced
 func (rr *socReplicator) replicas() {
 	defer close(rr.c)
-	n := 0
-	for i := uint8(0); n < rr.rLevel.GetReplicaCount() && i < math.MaxUint8; i++ {
+	// number of bits required to represent all replicas
+	bitsRequired := countBitsRequired(uint8(rr.rLevel.GetReplicaCount() - 1))
+	// replicate iteration saturates all leading bits in generated addresses until bitsRequired
+	for i := uint8(0); i < uint8(rr.rLevel.GetReplicaCount()); i++ {
 		// create soc replica (with address and nonce)
-		// the soc is added to neighbourhoods of depths in the closed interval [from...to]
-		r := rr.replicate(i)
-		d, m := rr.add(r, rr.rLevel)
-		if d == 0 {
-			continue
-		}
-		for m, r = range rr.queue[n:] {
-			if r == nil {
-				break
-			}
-			rr.c <- r
-		}
-		n += m
+		r := rr.replicate(i, bitsRequired)
+		rr.c <- r
 	}
 }
 
-// add inserts the soc replica into a replicator so that addresses are balanced
-func (rr *socReplicator) add(r *socReplica, rLevel redundancy.Level) (depth int, rank int) {
-	if rLevel == redundancy.NONE {
-		return 0, 0
+// mirrorBitsToMSB mirrors the lowest n bits of v to the most significant bits of a byte.
+// For example, mirrorBitsToMSB(0b00001101, 4) == 0b10110000
+func mirrorBitsToMSB(v byte, n uint8) byte {
+	var res byte
+	for i := uint8(0); i < n; i++ {
+		if (v & (1 << i)) != 0 {
+			res |= (1 << (7 - i))
+		}
 	}
-	nh := nh(rLevel, r.addr)
-	if rr.exist[nh] {
-		return 0, 0
+	return res
+}
+
+// countBitsRequired returns the minimum number of bits required to represent value v.
+// For 0, it returns 1 (we need 1 bit to represent 0).
+func countBitsRequired(v uint8) uint8 {
+	if v == 0 {
+		return 1
 	}
-	rr.exist[nh] = true
-	l, o := rr.add(r, rLevel.Decrement())
-	d := uint8(rLevel) - 1
-	if l == 0 {
-		o = rr.sizes[d]
-		rr.sizes[d]++
-		rr.queue[o] = r
-		l = rLevel.GetReplicaCount()
+
+	var bits uint8
+	for v > 0 {
+		bits++
+		v >>= 1
 	}
-	return l, o
+	return bits
 }
