@@ -11,5 +11,13 @@ var (
 )
 
 func Wait(g storage.Getter) {
-	g.(*getter).wg.Wait()
+	if g, ok := g.(*getter); ok {
+		g.wg.Wait()
+		return
+	}
+	if g, ok := g.(*socGetter); ok {
+		g.wg.Wait()
+		return
+	}
+	panic("g is not a replicas.Getter")
 }
