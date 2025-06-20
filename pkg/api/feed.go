@@ -23,6 +23,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/manifest/mantaray"
 	"github.com/ethersphere/bee/v2/pkg/manifest/simple"
 	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/replicas"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer"
@@ -65,16 +66,22 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	headers := struct {
-		OnlyRootChunk     bool `map:"Swarm-Only-Root-Chunk"`
-		LegacyFeedResolve bool `map:"Swarm-Feed-Legacy-Resolve"`
+		OnlyRootChunk     bool             `map:"Swarm-Only-Root-Chunk"`
+		LegacyFeedResolve bool             `map:"Swarm-Feed-Legacy-Resolve"`
+		RedundancyLevel   redundancy.Level `map:"Swarm-Redundancy-Level"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
 		return
 	}
 
+	getter := s.storer.Download(false)
+	if headers.RedundancyLevel > redundancy.NONE {
+		getter = replicas.NewSocGetter(getter, headers.RedundancyLevel)
+	}
+
 	f := feeds.New(paths.Topic, paths.Owner)
-	lookup, err := s.feedFactory.NewLookup(feeds.Sequence, f)
+	lookup, err := s.feedFactory.NewLookup(feeds.Sequence, f, getter)
 	if err != nil {
 		logger.Debug("new lookup failed", "owner", paths.Owner, "error", err)
 		logger.Error(nil, "new lookup failed")
@@ -103,7 +110,7 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wc, err := feeds.GetWrappedChunk(r.Context(), s.storer.Download(false), ch, headers.LegacyFeedResolve)
+	wc, err := feeds.GetWrappedChunk(r.Context(), getter, ch, headers.LegacyFeedResolve)
 	if err != nil {
 		logger.Error(nil, "wrapped chunk cannot be retrieved")
 		jsonhttp.NotFound(w, "wrapped chunk cannot be retrieved")
@@ -170,11 +177,12 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	headers := struct {
-		BatchID        []byte        `map:"Swarm-Postage-Batch-Id" validate:"required"`
-		Pin            bool          `map:"Swarm-Pin"`
-		Deferred       *bool         `map:"Swarm-Deferred-Upload"`
-		Act            bool          `map:"Swarm-Act"`
-		HistoryAddress swarm.Address `map:"Swarm-Act-History-Address"`
+		BatchID         []byte           `map:"Swarm-Postage-Batch-Id" validate:"required"`
+		Pin             bool             `map:"Swarm-Pin"`
+		Deferred        *bool            `map:"Swarm-Deferred-Upload"`
+		Act             bool             `map:"Swarm-Act"`
+		HistoryAddress  swarm.Address    `map:"Swarm-Act-History-Address"`
+		RedundancyLevel redundancy.Level `map:"Swarm-Redundancy-Level"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -231,7 +239,9 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		logger:         logger,
 	}
 
-	l := loadsave.New(s.storer.ChunkStore(), s.storer.Cache(), requestPipelineFactory(r.Context(), putter, false, 0), redundancy.DefaultLevel)
+	rLevel := headers.RedundancyLevel
+
+	l := loadsave.New(s.storer.ChunkStore(), s.storer.Cache(), requestPipelineFactory(r.Context(), putter, false, 0), rLevel)
 	feedManifest, err := manifest.NewDefaultManifest(l, false)
 	if err != nil {
 		logger.Debug("create manifest failed", "error", err)
