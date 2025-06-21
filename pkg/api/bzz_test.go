@@ -530,7 +530,7 @@ func TestBzzFiles(t *testing.T) {
 	})
 }
 
-// TestRangeRequests validates that all endpoints are serving content with
+// TestBzzFilesRangeRequests validates that all endpoints are serving content with
 // respect to HTTP Range headers.
 func TestBzzFilesRangeRequests(t *testing.T) {
 	t.Parallel()
