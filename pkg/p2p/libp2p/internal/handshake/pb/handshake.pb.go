@@ -22,22 +22,27 @@ var _ = math.Inf
 // proto package needs to be updated.
 const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
-type Syn struct {
-	ObservedUnderlay []byte `protobuf:"bytes,1,opt,name=ObservedUnderlay,proto3" json:"ObservedUnderlay,omitempty"`
+type Handshake struct {
+	// Types that are valid to be assigned to Payload:
+	//
+	//	*Handshake_Syn
+	//	*Handshake_SynAck
+	//	*Handshake_Ack
+	Payload isHandshake_Payload `protobuf_oneof:"payload"`
 }
 
-func (m *Syn) Reset()         { *m = Syn{} }
-func (m *Syn) String() string { return proto.CompactTextString(m) }
-func (*Syn) ProtoMessage()    {}
-func (*Syn) Descriptor() ([]byte, []int) {
+func (m *Handshake) Reset()         { *m = Handshake{} }
+func (m *Handshake) String() string { return proto.CompactTextString(m) }
+func (*Handshake) ProtoMessage()    {}
+func (*Handshake) Descriptor() ([]byte, []int) {
 	return fileDescriptor_a77305914d5d202f, []int{0}
 }
-func (m *Syn) XXX_Unmarshal(b []byte) error {
+func (m *Handshake) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *Syn) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *Handshake) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_Syn.Marshal(b, m, deterministic)
+		return xxx_messageInfo_Handshake.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -47,45 +52,140 @@ func (m *Syn) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
-func (m *Syn) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_Syn.Merge(m, src)
+func (m *Handshake) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Handshake.Merge(m, src)
 }
-func (m *Syn) XXX_Size() int {
+func (m *Handshake) XXX_Size() int {
 	return m.Size()
 }
-func (m *Syn) XXX_DiscardUnknown() {
-	xxx_messageInfo_Syn.DiscardUnknown(m)
+func (m *Handshake) XXX_DiscardUnknown() {
+	xxx_messageInfo_Handshake.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_Syn proto.InternalMessageInfo
+var xxx_messageInfo_Handshake proto.InternalMessageInfo
 
-func (m *Syn) GetObservedUnderlay() []byte {
+type isHandshake_Payload interface {
+	isHandshake_Payload()
+	MarshalTo([]byte) (int, error)
+	Size() int
+}
+
+type Handshake_Syn struct {
+	Syn *HandshakeSyn `protobuf:"bytes,1,opt,name=syn,proto3,oneof" json:"syn,omitempty"`
+}
+type Handshake_SynAck struct {
+	SynAck *HandshakeSynAck `protobuf:"bytes,2,opt,name=syn_ack,json=synAck,proto3,oneof" json:"syn_ack,omitempty"`
+}
+type Handshake_Ack struct {
+	Ack *HandshakeAck `protobuf:"bytes,3,opt,name=ack,proto3,oneof" json:"ack,omitempty"`
+}
+
+func (*Handshake_Syn) isHandshake_Payload()    {}
+func (*Handshake_SynAck) isHandshake_Payload() {}
+func (*Handshake_Ack) isHandshake_Payload()    {}
+
+func (m *Handshake) GetPayload() isHandshake_Payload {
+	if m != nil {
+		return m.Payload
+	}
+	return nil
+}
+
+func (m *Handshake) GetSyn() *HandshakeSyn {
+	if x, ok := m.GetPayload().(*Handshake_Syn); ok {
+		return x.Syn
+	}
+	return nil
+}
+
+func (m *Handshake) GetSynAck() *HandshakeSynAck {
+	if x, ok := m.GetPayload().(*Handshake_SynAck); ok {
+		return x.SynAck
+	}
+	return nil
+}
+
+func (m *Handshake) GetAck() *HandshakeAck {
+	if x, ok := m.GetPayload().(*Handshake_Ack); ok {
+		return x.Ack
+	}
+	return nil
+}
+
+// XXX_OneofWrappers is for the internal use of the proto package.
+func (*Handshake) XXX_OneofWrappers() []interface{} {
+	return []interface{}{
+		(*Handshake_Syn)(nil),
+		(*Handshake_SynAck)(nil),
+		(*Handshake_Ack)(nil),
+	}
+}
+
+type HandshakeSyn struct {
+	ObservedUnderlay []byte `protobuf:"bytes,1,opt,name=ObservedUnderlay,proto3" json:"ObservedUnderlay,omitempty"`
+}
+
+func (m *HandshakeSyn) Reset()         { *m = HandshakeSyn{} }
+func (m *HandshakeSyn) String() string { return proto.CompactTextString(m) }
+func (*HandshakeSyn) ProtoMessage()    {}
+func (*HandshakeSyn) Descriptor() ([]byte, []int) {
+	return fileDescriptor_a77305914d5d202f, []int{1}
+}
+func (m *HandshakeSyn) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *HandshakeSyn) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_HandshakeSyn.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *HandshakeSyn) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_HandshakeSyn.Merge(m, src)
+}
+func (m *HandshakeSyn) XXX_Size() int {
+	return m.Size()
+}
+func (m *HandshakeSyn) XXX_DiscardUnknown() {
+	xxx_messageInfo_HandshakeSyn.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_HandshakeSyn proto.InternalMessageInfo
+
+func (m *HandshakeSyn) GetObservedUnderlay() []byte {
 	if m != nil {
 		return m.ObservedUnderlay
 	}
 	return nil
 }
 
-type Ack struct {
-	Address        *BzzAddress `protobuf:"bytes,1,opt,name=Address,proto3" json:"Address,omitempty"`
-	NetworkID      uint64      `protobuf:"varint,2,opt,name=NetworkID,proto3" json:"NetworkID,omitempty"`
-	FullNode       bool        `protobuf:"varint,3,opt,name=FullNode,proto3" json:"FullNode,omitempty"`
-	Nonce          []byte      `protobuf:"bytes,4,opt,name=Nonce,proto3" json:"Nonce,omitempty"`
-	WelcomeMessage string      `protobuf:"bytes,99,opt,name=WelcomeMessage,proto3" json:"WelcomeMessage,omitempty"`
+type HandshakeSynAck struct {
+	ObservedUnderlay []byte        `protobuf:"bytes,1,opt,name=ObservedUnderlay,proto3" json:"ObservedUnderlay,omitempty"`
+	Address          *BzzAddress   `protobuf:"bytes,2,opt,name=Address,proto3" json:"Address,omitempty"`
+	NetworkID        uint64        `protobuf:"varint,3,opt,name=NetworkID,proto3" json:"NetworkID,omitempty"`
+	Capabilities     *Capabilities `protobuf:"bytes,4,opt,name=capabilities,proto3" json:"capabilities,omitempty"`
+	Nonce            []byte        `protobuf:"bytes,5,opt,name=Nonce,proto3" json:"Nonce,omitempty"`
+	WelcomeMessage   string        `protobuf:"bytes,99,opt,name=WelcomeMessage,proto3" json:"WelcomeMessage,omitempty"`
 }
 
-func (m *Ack) Reset()         { *m = Ack{} }
-func (m *Ack) String() string { return proto.CompactTextString(m) }
-func (*Ack) ProtoMessage()    {}
-func (*Ack) Descriptor() ([]byte, []int) {
-	return fileDescriptor_a77305914d5d202f, []int{1}
+func (m *HandshakeSynAck) Reset()         { *m = HandshakeSynAck{} }
+func (m *HandshakeSynAck) String() string { return proto.CompactTextString(m) }
+func (*HandshakeSynAck) ProtoMessage()    {}
+func (*HandshakeSynAck) Descriptor() ([]byte, []int) {
+	return fileDescriptor_a77305914d5d202f, []int{2}
 }
-func (m *Ack) XXX_Unmarshal(b []byte) error {
+func (m *HandshakeSynAck) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *Ack) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *HandshakeSynAck) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_Ack.Marshal(b, m, deterministic)
+		return xxx_messageInfo_HandshakeSynAck.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -95,70 +195,80 @@ func (m *Ack) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
-func (m *Ack) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_Ack.Merge(m, src)
+func (m *HandshakeSynAck) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_HandshakeSynAck.Merge(m, src)
 }
-func (m *Ack) XXX_Size() int {
+func (m *HandshakeSynAck) XXX_Size() int {
 	return m.Size()
 }
-func (m *Ack) XXX_DiscardUnknown() {
-	xxx_messageInfo_Ack.DiscardUnknown(m)
+func (m *HandshakeSynAck) XXX_DiscardUnknown() {
+	xxx_messageInfo_HandshakeSynAck.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_Ack proto.InternalMessageInfo
+var xxx_messageInfo_HandshakeSynAck proto.InternalMessageInfo
 
-func (m *Ack) GetAddress() *BzzAddress {
+func (m *HandshakeSynAck) GetObservedUnderlay() []byte {
+	if m != nil {
+		return m.ObservedUnderlay
+	}
+	return nil
+}
+
+func (m *HandshakeSynAck) GetAddress() *BzzAddress {
 	if m != nil {
 		return m.Address
 	}
 	return nil
 }
 
-func (m *Ack) GetNetworkID() uint64 {
+func (m *HandshakeSynAck) GetNetworkID() uint64 {
 	if m != nil {
 		return m.NetworkID
 	}
 	return 0
 }
 
-func (m *Ack) GetFullNode() bool {
+func (m *HandshakeSynAck) GetCapabilities() *Capabilities {
 	if m != nil {
-		return m.FullNode
+		return m.Capabilities
 	}
-	return false
+	return nil
 }
 
-func (m *Ack) GetNonce() []byte {
+func (m *HandshakeSynAck) GetNonce() []byte {
 	if m != nil {
 		return m.Nonce
 	}
 	return nil
 }
 
-func (m *Ack) GetWelcomeMessage() string {
+func (m *HandshakeSynAck) GetWelcomeMessage() string {
 	if m != nil {
 		return m.WelcomeMessage
 	}
 	return ""
 }
 
-type SynAck struct {
-	Syn *Syn `protobuf:"bytes,1,opt,name=Syn,proto3" json:"Syn,omitempty"`
-	Ack *Ack `protobuf:"bytes,2,opt,name=Ack,proto3" json:"Ack,omitempty"`
+type HandshakeAck struct {
+	Address        *BzzAddress   `protobuf:"bytes,1,opt,name=Address,proto3" json:"Address,omitempty"`
+	NetworkID      uint64        `protobuf:"varint,2,opt,name=NetworkID,proto3" json:"NetworkID,omitempty"`
+	Capabilities   *Capabilities `protobuf:"bytes,3,opt,name=capabilities,proto3" json:"capabilities,omitempty"`
+	Nonce          []byte        `protobuf:"bytes,4,opt,name=Nonce,proto3" json:"Nonce,omitempty"`
+	WelcomeMessage string        `protobuf:"bytes,99,opt,name=WelcomeMessage,proto3" json:"WelcomeMessage,omitempty"`
 }
 
-func (m *SynAck) Reset()         { *m = SynAck{} }
-func (m *SynAck) String() string { return proto.CompactTextString(m) }
-func (*SynAck) ProtoMessage()    {}
-func (*SynAck) Descriptor() ([]byte, []int) {
-	return fileDescriptor_a77305914d5d202f, []int{2}
+func (m *HandshakeAck) Reset()         { *m = HandshakeAck{} }
+func (m *HandshakeAck) String() string { return proto.CompactTextString(m) }
+func (*HandshakeAck) ProtoMessage()    {}
+func (*HandshakeAck) Descriptor() ([]byte, []int) {
+	return fileDescriptor_a77305914d5d202f, []int{3}
 }
-func (m *SynAck) XXX_Unmarshal(b []byte) error {
+func (m *HandshakeAck) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *SynAck) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *HandshakeAck) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_SynAck.Marshal(b, m, deterministic)
+		return xxx_messageInfo_HandshakeAck.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -168,30 +278,103 @@ func (m *SynAck) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
-func (m *SynAck) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_SynAck.Merge(m, src)
+func (m *HandshakeAck) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_HandshakeAck.Merge(m, src)
 }
-func (m *SynAck) XXX_Size() int {
+func (m *HandshakeAck) XXX_Size() int {
 	return m.Size()
 }
-func (m *SynAck) XXX_DiscardUnknown() {
-	xxx_messageInfo_SynAck.DiscardUnknown(m)
+func (m *HandshakeAck) XXX_DiscardUnknown() {
+	xxx_messageInfo_HandshakeAck.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_SynAck proto.InternalMessageInfo
+var xxx_messageInfo_HandshakeAck proto.InternalMessageInfo
 
-func (m *SynAck) GetSyn() *Syn {
+func (m *HandshakeAck) GetAddress() *BzzAddress {
 	if m != nil {
-		return m.Syn
+		return m.Address
 	}
 	return nil
 }
 
-func (m *SynAck) GetAck() *Ack {
+func (m *HandshakeAck) GetNetworkID() uint64 {
 	if m != nil {
-		return m.Ack
+		return m.NetworkID
+	}
+	return 0
+}
+
+func (m *HandshakeAck) GetCapabilities() *Capabilities {
+	if m != nil {
+		return m.Capabilities
 	}
 	return nil
+}
+
+func (m *HandshakeAck) GetNonce() []byte {
+	if m != nil {
+		return m.Nonce
+	}
+	return nil
+}
+
+func (m *HandshakeAck) GetWelcomeMessage() string {
+	if m != nil {
+		return m.WelcomeMessage
+	}
+	return ""
+}
+
+type Capabilities struct {
+	FullNode     bool `protobuf:"varint,1,opt,name=full_node,json=fullNode,proto3" json:"full_node,omitempty"`
+	TraceHeaders bool `protobuf:"varint,2,opt,name=trace_headers,json=traceHeaders,proto3" json:"trace_headers,omitempty"`
+}
+
+func (m *Capabilities) Reset()         { *m = Capabilities{} }
+func (m *Capabilities) String() string { return proto.CompactTextString(m) }
+func (*Capabilities) ProtoMessage()    {}
+func (*Capabilities) Descriptor() ([]byte, []int) {
+	return fileDescriptor_a77305914d5d202f, []int{4}
+}
+func (m *Capabilities) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *Capabilities) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_Capabilities.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *Capabilities) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Capabilities.Merge(m, src)
+}
+func (m *Capabilities) XXX_Size() int {
+	return m.Size()
+}
+func (m *Capabilities) XXX_DiscardUnknown() {
+	xxx_messageInfo_Capabilities.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_Capabilities proto.InternalMessageInfo
+
+func (m *Capabilities) GetFullNode() bool {
+	if m != nil {
+		return m.FullNode
+	}
+	return false
+}
+
+func (m *Capabilities) GetTraceHeaders() bool {
+	if m != nil {
+		return m.TraceHeaders
+	}
+	return false
 }
 
 type BzzAddress struct {
@@ -204,7 +387,7 @@ func (m *BzzAddress) Reset()         { *m = BzzAddress{} }
 func (m *BzzAddress) String() string { return proto.CompactTextString(m) }
 func (*BzzAddress) ProtoMessage()    {}
 func (*BzzAddress) Descriptor() ([]byte, []int) {
-	return fileDescriptor_a77305914d5d202f, []int{3}
+	return fileDescriptor_a77305914d5d202f, []int{5}
 }
 func (m *BzzAddress) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -255,39 +438,49 @@ func (m *BzzAddress) GetOverlay() []byte {
 }
 
 func init() {
-	proto.RegisterType((*Syn)(nil), "handshake.Syn")
-	proto.RegisterType((*Ack)(nil), "handshake.Ack")
-	proto.RegisterType((*SynAck)(nil), "handshake.SynAck")
+	proto.RegisterType((*Handshake)(nil), "handshake.Handshake")
+	proto.RegisterType((*HandshakeSyn)(nil), "handshake.HandshakeSyn")
+	proto.RegisterType((*HandshakeSynAck)(nil), "handshake.HandshakeSynAck")
+	proto.RegisterType((*HandshakeAck)(nil), "handshake.HandshakeAck")
+	proto.RegisterType((*Capabilities)(nil), "handshake.Capabilities")
 	proto.RegisterType((*BzzAddress)(nil), "handshake.BzzAddress")
 }
 
 func init() { proto.RegisterFile("handshake.proto", fileDescriptor_a77305914d5d202f) }
 
 var fileDescriptor_a77305914d5d202f = []byte{
-	// 318 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x64, 0x91, 0xcd, 0x4a, 0xc3, 0x40,
-	0x14, 0x85, 0x3b, 0x4d, 0xed, 0xcf, 0xb5, 0x54, 0x19, 0x14, 0x82, 0x94, 0x10, 0xb2, 0x90, 0xe0,
-	0xa2, 0xa2, 0x3e, 0x41, 0x8b, 0x08, 0x82, 0xb6, 0x30, 0x41, 0x04, 0x57, 0xa6, 0x99, 0x4b, 0x2b,
-	0x89, 0x33, 0x65, 0xa6, 0xad, 0xa4, 0x4f, 0xe1, 0x93, 0xf8, 0x1c, 0x2e, 0xbb, 0x74, 0x29, 0xed,
-	0x8b, 0x48, 0xa6, 0x3f, 0xd1, 0xba, 0x3c, 0xe7, 0x9e, 0x99, 0xf9, 0xce, 0x1d, 0x38, 0x18, 0x86,
-	0x82, 0xeb, 0x61, 0x18, 0x63, 0x6b, 0xa4, 0xe4, 0x58, 0xd2, 0xda, 0xd6, 0xf0, 0x2e, 0xc0, 0x0a,
-	0x52, 0x41, 0xcf, 0xe0, 0xb0, 0xd7, 0xd7, 0xa8, 0xa6, 0xc8, 0x1f, 0x04, 0x47, 0x95, 0x84, 0xa9,
-	0x4d, 0x5c, 0xe2, 0xd7, 0xd9, 0x3f, 0xdf, 0xfb, 0x20, 0x60, 0xb5, 0xa3, 0x98, 0x9e, 0x43, 0xa5,
-	0xcd, 0xb9, 0x42, 0xad, 0x4d, 0x74, 0xff, 0xf2, 0xb8, 0x95, 0x3f, 0xd4, 0x99, 0xcd, 0xd6, 0x43,
-	0xb6, 0x49, 0xd1, 0x26, 0xd4, 0xba, 0x38, 0x7e, 0x93, 0x2a, 0xbe, 0xbd, 0xb6, 0x8b, 0x2e, 0xf1,
-	0x4b, 0x2c, 0x37, 0xe8, 0x09, 0x54, 0x6f, 0x26, 0x49, 0xd2, 0x95, 0x1c, 0x6d, 0xcb, 0x25, 0x7e,
-	0x95, 0x6d, 0x35, 0x3d, 0x82, 0xbd, 0xae, 0x14, 0x11, 0xda, 0x25, 0xc3, 0xb4, 0x12, 0xf4, 0x14,
-	0x1a, 0x8f, 0x98, 0x44, 0xf2, 0x15, 0xef, 0x51, 0xeb, 0x70, 0x80, 0x76, 0xe4, 0x12, 0xbf, 0xc6,
-	0x76, 0x5c, 0xef, 0x0e, 0xca, 0x41, 0x2a, 0x32, 0x64, 0xd7, 0xb4, 0x5d, 0xe3, 0x36, 0x7e, 0xe1,
-	0x06, 0xa9, 0x60, 0x66, 0x11, 0xae, 0xe9, 0x66, 0xe8, 0xfe, 0x26, 0xda, 0x51, 0xcc, 0xb2, 0x91,
-	0xf7, 0x0c, 0x90, 0x97, 0xcb, 0xa8, 0x77, 0x16, 0xb6, 0xd5, 0x59, 0xdf, 0xe0, 0x65, 0x20, 0xc2,
-	0xf1, 0x44, 0xa1, 0xb9, 0xb1, 0xce, 0x72, 0x83, 0xda, 0x50, 0xe9, 0x4d, 0x57, 0x07, 0x2d, 0x33,
-	0xdb, 0xc8, 0x4e, 0xf3, 0x73, 0xe1, 0x90, 0xf9, 0xc2, 0x21, 0xdf, 0x0b, 0x87, 0xbc, 0x2f, 0x9d,
-	0xc2, 0x7c, 0xe9, 0x14, 0xbe, 0x96, 0x4e, 0xe1, 0xa9, 0x38, 0xea, 0xf7, 0xcb, 0xe6, 0x0f, 0xaf,
-	0x7e, 0x02, 0x00, 0x00, 0xff, 0xff, 0x87, 0xa7, 0x49, 0x00, 0xd6, 0x01, 0x00, 0x00,
+	// 438 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x9c, 0x53, 0xc1, 0x6e, 0xd3, 0x40,
+	0x10, 0xf5, 0x26, 0x69, 0x13, 0x0f, 0x86, 0xa2, 0x15, 0x08, 0xab, 0x54, 0x56, 0x65, 0x24, 0x54,
+	0x81, 0x54, 0x24, 0x10, 0x17, 0x38, 0x35, 0x70, 0x08, 0x07, 0x52, 0xb4, 0x15, 0x42, 0xe2, 0x12,
+	0xd6, 0xde, 0xa1, 0xb1, 0x6c, 0x76, 0xad, 0x5d, 0xb7, 0xc8, 0xfd, 0x01, 0xae, 0xfc, 0x05, 0xbf,
+	0xc2, 0xb1, 0xc7, 0x1e, 0x51, 0xf2, 0x23, 0xc8, 0xeb, 0x26, 0x36, 0xa9, 0x2a, 0xd4, 0xdc, 0x3c,
+	0x6f, 0xde, 0x9b, 0x99, 0xf7, 0x6c, 0xc3, 0xd6, 0x94, 0x4b, 0x61, 0xa6, 0x3c, 0xc5, 0xfd, 0x5c,
+	0xab, 0x42, 0x51, 0x77, 0x09, 0x84, 0xbf, 0x08, 0xb8, 0xa3, 0x45, 0x45, 0x9f, 0x42, 0xd7, 0x94,
+	0xd2, 0x27, 0xbb, 0x64, 0xef, 0xd6, 0xf3, 0x07, 0xfb, 0x8d, 0x6e, 0x49, 0x39, 0x2a, 0xe5, 0xc8,
+	0x61, 0x15, 0x8b, 0xbe, 0x84, 0xbe, 0x29, 0xe5, 0x84, 0xc7, 0xa9, 0xdf, 0xb1, 0x82, 0xed, 0x6b,
+	0x04, 0x07, 0x71, 0x3a, 0x72, 0xd8, 0xa6, 0xb1, 0x4f, 0xd5, 0x8e, 0x4a, 0xd2, 0xbd, 0x7e, 0x47,
+	0xcd, 0xaf, 0x58, 0x43, 0x17, 0xfa, 0x39, 0x2f, 0x33, 0xc5, 0x45, 0xf8, 0x0a, 0xbc, 0xf6, 0x50,
+	0xfa, 0x04, 0xee, 0x1e, 0x46, 0x06, 0xf5, 0x29, 0x8a, 0x8f, 0x52, 0xa0, 0xce, 0x78, 0x69, 0x0f,
+	0xf7, 0xd8, 0x15, 0x3c, 0xfc, 0xd1, 0x81, 0xad, 0x95, 0x8b, 0x6e, 0xa2, 0xa7, 0xcf, 0xa0, 0x7f,
+	0x20, 0x84, 0x46, 0x63, 0x2e, 0xad, 0xde, 0x6f, 0xdd, 0x3d, 0x3c, 0x3b, 0xbb, 0x6c, 0xb2, 0x05,
+	0x8b, 0xee, 0x80, 0x3b, 0xc6, 0xe2, 0xbb, 0xd2, 0xe9, 0xbb, 0xb7, 0xd6, 0x6a, 0x8f, 0x35, 0x00,
+	0x7d, 0x0d, 0x5e, 0xcc, 0x73, 0x1e, 0x25, 0x59, 0x52, 0x24, 0x68, 0xfc, 0xde, 0x95, 0x2c, 0xde,
+	0xb4, 0xda, 0xec, 0x1f, 0x32, 0xbd, 0x07, 0x1b, 0x63, 0x25, 0x63, 0xf4, 0x37, 0xec, 0xb1, 0x75,
+	0x41, 0x1f, 0xc3, 0x9d, 0x4f, 0x98, 0xc5, 0xea, 0x1b, 0xbe, 0x47, 0x63, 0xf8, 0x31, 0xfa, 0xf1,
+	0x2e, 0xd9, 0x73, 0xd9, 0x0a, 0x1a, 0x5e, 0x90, 0x56, 0x8c, 0x55, 0x0c, 0x2d, 0x6b, 0xe4, 0xe6,
+	0xd6, 0x3a, 0xff, 0xb3, 0xd6, 0x5d, 0xcb, 0x5a, 0x6f, 0x1d, 0x6b, 0x1f, 0xc0, 0x6b, 0xcf, 0xa6,
+	0x0f, 0xc1, 0xfd, 0x7a, 0x92, 0x65, 0x13, 0xa9, 0x04, 0x5a, 0x6f, 0x03, 0x36, 0xa8, 0x80, 0xb1,
+	0x12, 0x48, 0x1f, 0xc1, 0xed, 0x42, 0xf3, 0x18, 0x27, 0x53, 0xe4, 0x02, 0x75, 0xfd, 0x5e, 0x07,
+	0xcc, 0xb3, 0xe0, 0xa8, 0xc6, 0xc2, 0x2f, 0x00, 0x4d, 0x02, 0x74, 0x1b, 0x06, 0x2b, 0x1f, 0xca,
+	0xb2, 0xae, 0x42, 0x39, 0x4a, 0x8e, 0x25, 0x2f, 0x4e, 0x34, 0xda, 0x51, 0x1e, 0x6b, 0x00, 0xea,
+	0x43, 0xff, 0xf0, 0xb4, 0x16, 0x76, 0x6d, 0x6f, 0x51, 0x0e, 0x77, 0x7e, 0xcf, 0x02, 0x72, 0x3e,
+	0x0b, 0xc8, 0x9f, 0x59, 0x40, 0x7e, 0xce, 0x03, 0xe7, 0x7c, 0x1e, 0x38, 0x17, 0xf3, 0xc0, 0xf9,
+	0xdc, 0xc9, 0xa3, 0x68, 0xd3, 0xfe, 0xae, 0x2f, 0xfe, 0x06, 0x00, 0x00, 0xff, 0xff, 0xb7, 0x0a,
+	0x0e, 0x1c, 0xc1, 0x03, 0x00, 0x00,
 }
 
-func (m *Syn) Marshal() (dAtA []byte, err error) {
+func (m *Handshake) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -297,12 +490,107 @@ func (m *Syn) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *Syn) MarshalTo(dAtA []byte) (int, error) {
+func (m *Handshake) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *Syn) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *Handshake) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.Payload != nil {
+		{
+			size := m.Payload.Size()
+			i -= size
+			if _, err := m.Payload.MarshalTo(dAtA[i:]); err != nil {
+				return 0, err
+			}
+		}
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *Handshake_Syn) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Handshake_Syn) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Syn != nil {
+		{
+			size, err := m.Syn.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintHandshake(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Handshake_SynAck) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Handshake_SynAck) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.SynAck != nil {
+		{
+			size, err := m.SynAck.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintHandshake(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x12
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Handshake_Ack) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Handshake_Ack) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Ack != nil {
+		{
+			size, err := m.Ack.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintHandshake(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x1a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *HandshakeSyn) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *HandshakeSyn) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *HandshakeSyn) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -317,7 +605,7 @@ func (m *Syn) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *Ack) Marshal() (dAtA []byte, err error) {
+func (m *HandshakeSynAck) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -327,12 +615,87 @@ func (m *Ack) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *Ack) MarshalTo(dAtA []byte) (int, error) {
+func (m *HandshakeSynAck) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *Ack) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *HandshakeSynAck) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.WelcomeMessage) > 0 {
+		i -= len(m.WelcomeMessage)
+		copy(dAtA[i:], m.WelcomeMessage)
+		i = encodeVarintHandshake(dAtA, i, uint64(len(m.WelcomeMessage)))
+		i--
+		dAtA[i] = 0x6
+		i--
+		dAtA[i] = 0x9a
+	}
+	if len(m.Nonce) > 0 {
+		i -= len(m.Nonce)
+		copy(dAtA[i:], m.Nonce)
+		i = encodeVarintHandshake(dAtA, i, uint64(len(m.Nonce)))
+		i--
+		dAtA[i] = 0x2a
+	}
+	if m.Capabilities != nil {
+		{
+			size, err := m.Capabilities.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintHandshake(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x22
+	}
+	if m.NetworkID != 0 {
+		i = encodeVarintHandshake(dAtA, i, uint64(m.NetworkID))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.Address != nil {
+		{
+			size, err := m.Address.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintHandshake(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.ObservedUnderlay) > 0 {
+		i -= len(m.ObservedUnderlay)
+		copy(dAtA[i:], m.ObservedUnderlay)
+		i = encodeVarintHandshake(dAtA, i, uint64(len(m.ObservedUnderlay)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *HandshakeAck) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *HandshakeAck) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *HandshakeAck) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -353,15 +716,17 @@ func (m *Ack) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x22
 	}
-	if m.FullNode {
-		i--
-		if m.FullNode {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
+	if m.Capabilities != nil {
+		{
+			size, err := m.Capabilities.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintHandshake(dAtA, i, uint64(size))
 		}
 		i--
-		dAtA[i] = 0x18
+		dAtA[i] = 0x1a
 	}
 	if m.NetworkID != 0 {
 		i = encodeVarintHandshake(dAtA, i, uint64(m.NetworkID))
@@ -383,7 +748,7 @@ func (m *Ack) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *SynAck) Marshal() (dAtA []byte, err error) {
+func (m *Capabilities) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -393,39 +758,35 @@ func (m *SynAck) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *SynAck) MarshalTo(dAtA []byte) (int, error) {
+func (m *Capabilities) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *SynAck) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *Capabilities) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if m.Ack != nil {
-		{
-			size, err := m.Ack.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintHandshake(dAtA, i, uint64(size))
+	if m.TraceHeaders {
+		i--
+		if m.TraceHeaders {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
 		}
 		i--
-		dAtA[i] = 0x12
+		dAtA[i] = 0x10
 	}
-	if m.Syn != nil {
-		{
-			size, err := m.Syn.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintHandshake(dAtA, i, uint64(size))
+	if m.FullNode {
+		i--
+		if m.FullNode {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
 		}
 		i--
-		dAtA[i] = 0xa
+		dAtA[i] = 0x8
 	}
 	return len(dAtA) - i, nil
 }
@@ -485,7 +846,55 @@ func encodeVarintHandshake(dAtA []byte, offset int, v uint64) int {
 	dAtA[offset] = uint8(v)
 	return base
 }
-func (m *Syn) Size() (n int) {
+func (m *Handshake) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Payload != nil {
+		n += m.Payload.Size()
+	}
+	return n
+}
+
+func (m *Handshake_Syn) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Syn != nil {
+		l = m.Syn.Size()
+		n += 1 + l + sovHandshake(uint64(l))
+	}
+	return n
+}
+func (m *Handshake_SynAck) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.SynAck != nil {
+		l = m.SynAck.Size()
+		n += 1 + l + sovHandshake(uint64(l))
+	}
+	return n
+}
+func (m *Handshake_Ack) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Ack != nil {
+		l = m.Ack.Size()
+		n += 1 + l + sovHandshake(uint64(l))
+	}
+	return n
+}
+func (m *HandshakeSyn) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -498,12 +907,16 @@ func (m *Syn) Size() (n int) {
 	return n
 }
 
-func (m *Ack) Size() (n int) {
+func (m *HandshakeSynAck) Size() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
+	l = len(m.ObservedUnderlay)
+	if l > 0 {
+		n += 1 + l + sovHandshake(uint64(l))
+	}
 	if m.Address != nil {
 		l = m.Address.Size()
 		n += 1 + l + sovHandshake(uint64(l))
@@ -511,8 +924,9 @@ func (m *Ack) Size() (n int) {
 	if m.NetworkID != 0 {
 		n += 1 + sovHandshake(uint64(m.NetworkID))
 	}
-	if m.FullNode {
-		n += 2
+	if m.Capabilities != nil {
+		l = m.Capabilities.Size()
+		n += 1 + l + sovHandshake(uint64(l))
 	}
 	l = len(m.Nonce)
 	if l > 0 {
@@ -525,19 +939,45 @@ func (m *Ack) Size() (n int) {
 	return n
 }
 
-func (m *SynAck) Size() (n int) {
+func (m *HandshakeAck) Size() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.Syn != nil {
-		l = m.Syn.Size()
+	if m.Address != nil {
+		l = m.Address.Size()
 		n += 1 + l + sovHandshake(uint64(l))
 	}
-	if m.Ack != nil {
-		l = m.Ack.Size()
+	if m.NetworkID != 0 {
+		n += 1 + sovHandshake(uint64(m.NetworkID))
+	}
+	if m.Capabilities != nil {
+		l = m.Capabilities.Size()
 		n += 1 + l + sovHandshake(uint64(l))
+	}
+	l = len(m.Nonce)
+	if l > 0 {
+		n += 1 + l + sovHandshake(uint64(l))
+	}
+	l = len(m.WelcomeMessage)
+	if l > 0 {
+		n += 2 + l + sovHandshake(uint64(l))
+	}
+	return n
+}
+
+func (m *Capabilities) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.FullNode {
+		n += 2
+	}
+	if m.TraceHeaders {
+		n += 2
 	}
 	return n
 }
@@ -569,7 +1009,7 @@ func sovHandshake(x uint64) (n int) {
 func sozHandshake(x uint64) (n int) {
 	return sovHandshake(uint64((x << 1) ^ uint64((int64(x) >> 63))))
 }
-func (m *Syn) Unmarshal(dAtA []byte) error {
+func (m *Handshake) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -592,10 +1032,168 @@ func (m *Syn) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: Syn: wiretype end group for non-group")
+			return fmt.Errorf("proto: Handshake: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: Syn: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: Handshake: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Syn", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowHandshake
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthHandshake
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthHandshake
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &HandshakeSyn{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Payload = &Handshake_Syn{v}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SynAck", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowHandshake
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthHandshake
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthHandshake
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &HandshakeSynAck{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Payload = &Handshake_SynAck{v}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Ack", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowHandshake
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthHandshake
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthHandshake
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &HandshakeAck{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Payload = &Handshake_Ack{v}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipHandshake(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthHandshake
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthHandshake
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *HandshakeSyn) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowHandshake
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: HandshakeSyn: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: HandshakeSyn: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -656,7 +1254,7 @@ func (m *Syn) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *Ack) Unmarshal(dAtA []byte) error {
+func (m *HandshakeSynAck) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -679,10 +1277,254 @@ func (m *Ack) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: Ack: wiretype end group for non-group")
+			return fmt.Errorf("proto: HandshakeSynAck: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: Ack: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: HandshakeSynAck: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ObservedUnderlay", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowHandshake
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthHandshake
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthHandshake
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ObservedUnderlay = append(m.ObservedUnderlay[:0], dAtA[iNdEx:postIndex]...)
+			if m.ObservedUnderlay == nil {
+				m.ObservedUnderlay = []byte{}
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Address", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowHandshake
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthHandshake
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthHandshake
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Address == nil {
+				m.Address = &BzzAddress{}
+			}
+			if err := m.Address.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NetworkID", wireType)
+			}
+			m.NetworkID = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowHandshake
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.NetworkID |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Capabilities", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowHandshake
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthHandshake
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthHandshake
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Capabilities == nil {
+				m.Capabilities = &Capabilities{}
+			}
+			if err := m.Capabilities.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Nonce", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowHandshake
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthHandshake
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthHandshake
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Nonce = append(m.Nonce[:0], dAtA[iNdEx:postIndex]...)
+			if m.Nonce == nil {
+				m.Nonce = []byte{}
+			}
+			iNdEx = postIndex
+		case 99:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field WelcomeMessage", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowHandshake
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthHandshake
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthHandshake
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.WelcomeMessage = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipHandshake(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthHandshake
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthHandshake
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *HandshakeAck) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowHandshake
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: HandshakeAck: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: HandshakeAck: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -741,10 +1583,10 @@ func (m *Ack) Unmarshal(dAtA []byte) error {
 				}
 			}
 		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field FullNode", wireType)
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Capabilities", wireType)
 			}
-			var v int
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowHandshake
@@ -754,12 +1596,28 @@ func (m *Ack) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				v |= int(b&0x7F) << shift
+				msglen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			m.FullNode = bool(v != 0)
+			if msglen < 0 {
+				return ErrInvalidLengthHandshake
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthHandshake
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Capabilities == nil {
+				m.Capabilities = &Capabilities{}
+			}
+			if err := m.Capabilities.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Nonce", wireType)
@@ -850,7 +1708,7 @@ func (m *Ack) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *SynAck) Unmarshal(dAtA []byte) error {
+func (m *Capabilities) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -873,17 +1731,17 @@ func (m *SynAck) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: SynAck: wiretype end group for non-group")
+			return fmt.Errorf("proto: Capabilities: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: SynAck: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: Capabilities: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Syn", wireType)
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field FullNode", wireType)
 			}
-			var msglen int
+			var v int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowHandshake
@@ -893,33 +1751,17 @@ func (m *SynAck) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				msglen |= int(b&0x7F) << shift
+				v |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			if msglen < 0 {
-				return ErrInvalidLengthHandshake
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthHandshake
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.Syn == nil {
-				m.Syn = &Syn{}
-			}
-			if err := m.Syn.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
+			m.FullNode = bool(v != 0)
 		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Ack", wireType)
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TraceHeaders", wireType)
 			}
-			var msglen int
+			var v int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowHandshake
@@ -929,28 +1771,12 @@ func (m *SynAck) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				msglen |= int(b&0x7F) << shift
+				v |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			if msglen < 0 {
-				return ErrInvalidLengthHandshake
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthHandshake
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.Ack == nil {
-				m.Ack = &Ack{}
-			}
-			if err := m.Ack.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
+			m.TraceHeaders = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := skipHandshake(dAtA[iNdEx:])
