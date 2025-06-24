@@ -83,7 +83,13 @@ func (f *SnapshotLogFilterer) parseLogs(reader io.Reader) error {
 			if err == io.EOF {
 				break
 			}
-			return fmt.Errorf("%w: failed to decode log event: %w", listener.ErrParseSnapshot, err)
+			return fmt.Errorf("%w: failed to decode log event at position %d: %w", listener.ErrParseSnapshot, len(parsedLogs), err)
+		}
+
+		// Validate sorting order (required for binary search in FilterLogs)
+		if logEntry.BlockNumber < currentMaxBlockHeight {
+			return fmt.Errorf("%w: snapshot data is not sorted by block number at index %d (block %d < %d)",
+				listener.ErrParseSnapshot, len(parsedLogs), logEntry.BlockNumber, currentMaxBlockHeight)
 		}
 
 		if logEntry.BlockNumber > currentMaxBlockHeight {

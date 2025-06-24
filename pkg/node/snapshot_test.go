@@ -67,6 +67,20 @@ func TestNewSnapshotLogFilterer(t *testing.T) {
 		assert.ErrorIs(t, err, listener.ErrParseSnapshot)
 	})
 
+	t.Run("non-sorted", func(t *testing.T) {
+		t.Parallel()
+		logs := []types.Log{
+			{BlockNumber: 1, Topics: []common.Hash{}},
+			{BlockNumber: 3, Topics: []common.Hash{}},
+			{BlockNumber: 2, Topics: []common.Hash{}},
+		}
+		getter := newMockSnapshotGetter(makeSnapshotData(logs))
+		filterer := node.NewSnapshotLogFilterer(log.Noop, getter)
+
+		_, err := filterer.BlockNumber(context.Background())
+		assert.ErrorIs(t, err, listener.ErrParseSnapshot)
+	})
+
 	t.Run("get block number", func(t *testing.T) {
 		t.Parallel()
 		logs := []types.Log{
