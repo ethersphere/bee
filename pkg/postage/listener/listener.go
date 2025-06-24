@@ -7,7 +7,6 @@ package listener
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math/big"
 	"strconv"
 	"sync"
@@ -42,7 +41,7 @@ var (
 var (
 	ErrPostageSyncingStalled = errors.New("postage syncing stalled")
 	ErrPostagePaused         = errors.New("postage contract is paused")
-	ErrParseSnapshot         = fmt.Errorf("failed to parse snapshot data")
+	ErrParseSnapshot         = errors.New("failed to parse snapshot data")
 )
 
 type BlockHeightContractFilterer interface {

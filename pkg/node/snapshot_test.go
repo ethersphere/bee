@@ -58,12 +58,12 @@ func TestNewSnapshotLogFilterer(t *testing.T) {
 		t.Parallel()
 		var buf bytes.Buffer
 		gz := gzip.NewWriter(&buf)
-		gz.Write([]byte("not-a-log-entry"))
+		_, err := gz.Write([]byte("not-a-log-entry"))
+		require.NoError(t, err)
 		gz.Close()
 		getter := newMockSnapshotGetter(buf.Bytes())
 		filterer := node.NewSnapshotLogFilterer(log.Noop, getter)
-
-		_, err := filterer.BlockNumber(context.Background())
+		_, err = filterer.BlockNumber(context.Background())
 		assert.ErrorIs(t, err, listener.ErrParseSnapshot)
 	})
 
