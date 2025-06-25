@@ -25,16 +25,28 @@ import (
 
 var _ listener.BlockHeightContractFilterer = (*SnapshotLogFilterer)(nil)
 
+type SnapshotGetter interface {
+	GetBatchSnapshot() []byte
+}
+
+type archiveSnapshotGetter struct{}
+
+func (a archiveSnapshotGetter) GetBatchSnapshot() []byte {
+	return archive.GetBatchSnapshot()
+}
+
 type SnapshotLogFilterer struct {
 	logger         log.Logger
 	loadedLogs     []types.Log
 	maxBlockHeight uint64
 	initOnce       sync.Once
+	getter         SnapshotGetter
 }
 
-func NewSnapshotLogFilterer(logger log.Logger) *SnapshotLogFilterer {
+func NewSnapshotLogFilterer(logger log.Logger, getter SnapshotGetter) *SnapshotLogFilterer {
 	return &SnapshotLogFilterer{
 		logger: logger,
+		getter: getter,
 	}
 }
 
@@ -42,7 +54,7 @@ func NewSnapshotLogFilterer(logger log.Logger) *SnapshotLogFilterer {
 // It is intended to be called exactly once by initOnce.Do.
 func (f *SnapshotLogFilterer) loadSnapshot() error {
 	f.logger.Info("loading batch snapshot")
-	data := archive.GetBatchSnapshot()
+	data := f.getter.GetBatchSnapshot()
 	dataReader := bytes.NewReader(data)
 	gzipReader, err := gzip.NewReader(dataReader)
 	if err != nil {
@@ -71,8 +83,13 @@ func (f *SnapshotLogFilterer) parseLogs(reader io.Reader) error {
 			if err == io.EOF {
 				break
 			}
-			f.logger.Warning("failed to decode log event, skipping", "error", err)
-			continue
+			return fmt.Errorf("%w: failed to decode log event at position %d: %w", listener.ErrParseSnapshot, len(parsedLogs), err)
+		}
+
+		// Validate sorting order (required for binary search in FilterLogs)
+		if logEntry.BlockNumber < currentMaxBlockHeight {
+			return fmt.Errorf("%w: snapshot data is not sorted by block number at index %d (block %d < %d)",
+				listener.ErrParseSnapshot, len(parsedLogs), logEntry.BlockNumber, currentMaxBlockHeight)
 		}
 
 		if logEntry.BlockNumber > currentMaxBlockHeight {

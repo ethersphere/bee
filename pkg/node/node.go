@@ -804,7 +804,7 @@ func NewBee(
 	)
 
 	if !o.SkipPostageSnapshot && !batchStoreExists && (networkID == mainnetNetworkID) {
-		chainBackend := NewSnapshotLogFilterer(logger)
+		chainBackend := NewSnapshotLogFilterer(logger, archiveSnapshotGetter{})
 
 		snapshotEventListener := listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
 
