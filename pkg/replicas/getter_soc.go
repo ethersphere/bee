@@ -22,7 +22,7 @@ import (
 // to a multiplexed variant that fetches chunks with replicas for SOC.
 //
 // the strategy to retrieve a chunk that has replicas can be configured with a few parameters:
-//   - RetryInterval: the delay before a new batch of replicas is fetched.
+//   - SOCRetryInterval: the delay before a new batch of replicas is fetched.
 //   - depth: 2^{depth} is the total number of additional replicas that have been uploaded
 //     (by default, it is assumed to be 4, ie. total of 16)
 //   - (not implemented) pivot: replicas with address in the proximity of pivot will be tried first
@@ -31,6 +31,8 @@ type socGetter struct {
 	storage.Getter
 	level redundancy.Level
 }
+
+var SOCRetryInterval = 300 * time.Millisecond
 
 // NewSocGetter is the getter constructor
 func NewSocGetter(g storage.Getter, level redundancy.Level) storage.Getter {
@@ -76,7 +78,7 @@ func (g *socGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk
 	var wait <-chan time.Time // nil channel to disable case
 	// addresses used are doubling each period of search expansion
 	// (at intervals of RetryInterval)
-	ticker := time.NewTicker(RetryInterval)
+	ticker := time.NewTicker(SOCRetryInterval)
 	defer ticker.Stop()
 	for level := uint8(0); level <= uint8(g.level); {
 		select {

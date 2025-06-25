@@ -2,6 +2,9 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// This file was created as a copy of the original putter_test.go file
+// and tailored to the socPutter implementation.
+
 package replicas_test
 
 import (

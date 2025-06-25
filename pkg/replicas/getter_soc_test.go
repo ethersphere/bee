@@ -1,6 +1,9 @@
-// Copyright 2023 The Swarm Authors. All rights reserved.
+// Copyright 2025 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
+
+// This file is a copy of the original getter_test.go file
+// and tailored to socGetter implementation.
 
 package replicas_test
 
@@ -103,9 +106,9 @@ func TestSOCGetter(t *testing.T) {
 	}
 
 	// reset retry interval to speed up tests
-	retryInterval := replicas.RetryInterval
-	defer func() { replicas.RetryInterval = retryInterval }()
-	replicas.RetryInterval = 100 * time.Millisecond
+	retryInterval := replicas.SOCRetryInterval
+	defer func() { replicas.SOCRetryInterval = retryInterval }()
+	replicas.SOCRetryInterval = 100 * time.Millisecond
 
 	// run the tests
 	for _, tc := range tests {
@@ -117,7 +120,7 @@ func TestSOCGetter(t *testing.T) {
 			store.now = time.Now()
 			ctx, cancel := context.WithCancel(context.Background())
 			if tc.found > tc.count {
-				wait := replicas.RetryInterval / 2 * time.Duration(1+2*tc.level)
+				wait := replicas.SOCRetryInterval / 2 * time.Duration(1+2*tc.level)
 				go func() {
 					time.Sleep(wait)
 					cancel()
