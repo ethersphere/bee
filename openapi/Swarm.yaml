@@ -883,6 +883,7 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageStamp"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmAct"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
       requestBody:
         required: true
         description: The SOC binary data is composed of the span (8 bytes) and the at most 4KB payload.
@@ -930,6 +931,7 @@ paths:
           description: Arbitrary identifier of the related data
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmOnlyRootChunkParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyFallbackModeParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmChunkRetrievalTimeoutParameter"
@@ -981,6 +983,7 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmAct"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
       responses:
         "201":
           description: Created
@@ -1044,6 +1047,7 @@ paths:
           description: "Resolves feed payloads in legacy structure (timestamp, content address)."
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmOnlyRootChunkParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyFallbackModeParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmChunkRetrievalTimeoutParameter"
