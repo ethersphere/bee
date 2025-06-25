@@ -86,7 +86,7 @@ func DecodeSecp256k1PrivateKey(data []byte) (*ecdsa.PrivateKey, error) {
 	return pvk.ToECDSA(), nil
 }
 
-// GenerateSecp256k1Key generates an ECDSA private key using
+// GenerateSecp256r1Key generates an ECDSA private key using
 // secp256k1 elliptic curve.
 func GenerateSecp256r1Key() (*ecdsa.PrivateKey, error) {
 	return ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
