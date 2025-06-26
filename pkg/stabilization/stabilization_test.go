@@ -190,7 +190,7 @@ func TestDetector_StateTransitions(t *testing.T) {
 	if stabilizedTotalCount != expectedTotalCount {
 		t.Errorf("OnStabilized total count mismatch: expected %d, got %d", expectedTotalCount, stabilizedTotalCount)
 	}
-	if !d.IsStabilized() {
+	if !d.IsReady() {
 		t.Error("IsStabilized() should return true")
 	}
 	if periodCompletedCount != 2 {

@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"go.uber.org/atomic"
+	"resenje.org/feed"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -37,6 +38,7 @@ const (
 type topologyDriver interface {
 	UpdatePeerHealth(peer swarm.Address, health bool, dur time.Duration)
 	topology.PeerIterator
+	NeighborhoodDepth() uint8
 }
 
 type peerStatus interface {
@@ -55,6 +57,10 @@ type service struct {
 
 	radiusSubsMtx sync.Mutex
 	radiusC       []chan uint8
+
+	readinessMtx    sync.Mutex
+	isReady         bool
+	readinessSignal *feed.Trigger[int]
 }
 
 func New(
@@ -71,13 +77,14 @@ func New(
 	metrics := newMetrics()
 
 	s := &service{
-		quit:          make(chan struct{}),
-		logger:        logger.WithName(loggerName).Register(),
-		status:        status,
-		topology:      topology,
-		metrics:       metrics,
-		isSelfHealthy: atomic.NewBool(true),
-		reserve:       reserve,
+		quit:            make(chan struct{}),
+		logger:          logger.WithName(loggerName).Register(),
+		status:          status,
+		topology:        topology,
+		metrics:         metrics,
+		isSelfHealthy:   atomic.NewBool(true),
+		reserve:         reserve,
+		readinessSignal: feed.NewTrigger[int](),
 	}
 
 	s.wg.Add(1)
@@ -96,13 +103,21 @@ func (s *service) worker(startupStabilizer stabilization.Subscriber, mode string
 	case <-s.quit:
 		return
 	case <-sub:
-		s.logger.Debug("node warmup check completed")
+		s.logger.Debug("node warmup check completed, starting salud checks")
 	}
 
 	currentDelay := initialBackoffDelay
 
 	for {
 		s.salud(mode, minPeersPerbin, durPercentile, connsPercentile)
+
+		// If the node is not yet ready, check if the bin population is sufficient to become ready.
+		if !s.IsReady() {
+			s.logger.Info("checkBinPopulation", "minPeersPerbin", minPeersPerbin)
+			if s.checkBinPopulation(minPeersPerbin) {
+				s.setReady()
+			}
+		}
 
 		select {
 		case <-s.quit:
@@ -245,8 +260,69 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 	s.publishRadius(networkRadius)
 }
 
+// checkBinPopulation verifies that each bin up to the neighborhood depth
+// has at least a minimum number of peers.
+func (s *service) checkBinPopulation(minPeersPerBin int) bool {
+	depth := s.topology.NeighborhoodDepth()
+	s.logger.Info("starting bin population check", "neighborhood_depth", depth)
+
+	if depth == 0 {
+		s.logger.Debug("skipping bin population check, neighborhood is not yet deep enough")
+		return false // Not ready if depth is 0
+	}
+
+	binCounts := make([]int, depth+1)
+	err := s.topology.EachConnectedPeer(func(_ swarm.Address, bin uint8) (bool, bool, error) {
+		if bin <= depth {
+			binCounts[bin]++
+		}
+		return false, false, nil
+	}, topology.Select{})
+	if err != nil {
+		s.logger.Error(err, "bin population check: failed to iterate peers")
+		return false
+	}
+
+	allBinsPopulated := true
+	for i := uint8(0); i <= depth; i++ {
+		if binCounts[i] < minPeersPerBin {
+			s.logger.Info("underpopulated bin detected", "bin", i, "peer_count", binCounts[i], "minimum_required", minPeersPerBin)
+			allBinsPopulated = false
+		}
+	}
+
+	if allBinsPopulated {
+		s.logger.Info("all bins are sufficiently populated")
+	}
+
+	return allBinsPopulated
+}
+
+func (s *service) setReady() {
+	s.readinessMtx.Lock()
+	defer s.readinessMtx.Unlock()
+
+	if s.isReady {
+		return
+	}
+
+	s.isReady = true
+	s.readinessSignal.Trigger(1)
+	s.logger.Info("salud service is now ready")
+}
+
 func (s *service) IsHealthy() bool {
 	return s.isSelfHealthy.Load()
+}
+
+func (s *service) IsReady() bool {
+	s.readinessMtx.Lock()
+	defer s.readinessMtx.Unlock()
+	return s.isReady
+}
+
+func (s *service) Subscribe() (c <-chan struct{}, cancel func()) {
+	return s.readinessSignal.Subscribe(1)
 }
 
 func (s *service) publishRadius(r uint8) {
