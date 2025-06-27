@@ -61,6 +61,7 @@ type service struct {
 	readinessMtx    sync.Mutex
 	isReady         bool
 	readinessSignal *feed.Trigger[int]
+	warmupTimer     *time.Timer
 }
 
 func New(
@@ -73,6 +74,7 @@ func New(
 	minPeersPerbin int,
 	durPercentile float64,
 	connsPercentile float64,
+	warmupTime time.Duration,
 ) *service {
 	metrics := newMetrics()
 
@@ -85,6 +87,7 @@ func New(
 		isSelfHealthy:   atomic.NewBool(true),
 		reserve:         reserve,
 		readinessSignal: feed.NewTrigger[int](),
+		warmupTimer:     time.NewTimer(warmupTime),
 	}
 
 	s.wg.Add(1)
@@ -107,13 +110,13 @@ func (s *service) worker(startupStabilizer stabilization.Subscriber, mode string
 	}
 
 	currentDelay := initialBackoffDelay
+	warmupTimerC := s.warmupTimer.C
 
 	for {
 		s.salud(mode, minPeersPerbin, durPercentile, connsPercentile)
 
-		// If the node is not yet ready, check if the bin population is sufficient to become ready.
 		if !s.IsReady() {
-			s.logger.Info("checkBinPopulation", "minPeersPerbin", minPeersPerbin)
+			s.logger.Info("node is not yet ready, checking bin population", "minPeersPerbin", minPeersPerbin)
 			if s.checkBinPopulation(minPeersPerbin) {
 				s.setReady()
 			}
@@ -122,6 +125,9 @@ func (s *service) worker(startupStabilizer stabilization.Subscriber, mode string
 		select {
 		case <-s.quit:
 			return
+		case <-warmupTimerC:
+			s.setReady()
+			warmupTimerC = nil
 		case <-time.After(currentDelay):
 		}
 
@@ -309,6 +315,11 @@ func (s *service) setReady() {
 	s.isReady = true
 	s.readinessSignal.Trigger(1)
 	s.logger.Info("salud service is now ready")
+
+	if s.warmupTimer != nil {
+		s.warmupTimer.Stop()
+		s.warmupTimer = nil
+	}
 }
 
 func (s *service) IsHealthy() bool {

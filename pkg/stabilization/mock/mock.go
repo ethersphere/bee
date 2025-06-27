@@ -22,6 +22,6 @@ func (s *subscriber) Subscribe() (<-chan struct{}, func()) {
 	return c, func() {}
 }
 
-func (s *subscriber) IsStabilized() bool {
+func (s *subscriber) IsReady() bool {
 	return s.stable
 }
