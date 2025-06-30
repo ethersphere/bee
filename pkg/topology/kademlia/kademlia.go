@@ -300,7 +300,7 @@ func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnI
 		return false
 	}
 
-	depth := k.NeighborhoodDepth()
+	depth := k.StorageRadius()
 
 	for i := range k.commonBinPrefixes {
 
@@ -364,7 +364,7 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 
 	_ = k.knownPeers.EachBinRev(func(addr swarm.Address, po uint8) (bool, bool, error) {
 		// out of depth, skip bin
-		if po < k.NeighborhoodDepth() {
+		if po < k.StorageRadius() {
 			return false, true, nil
 		}
 
@@ -543,7 +543,7 @@ func (k *Kad) manage() {
 			case <-k.quit:
 				return
 			case <-time.After(k.opt.PruneWakeup):
-				k.opt.PruneFunc(k.NeighborhoodDepth())
+				k.opt.PruneFunc(k.StorageRadius())
 			}
 		}
 	}()
@@ -584,7 +584,7 @@ func (k *Kad) manage() {
 			case <-time.After(15 * time.Minute):
 				var neighbors []swarm.Address
 				_ = k.connectedPeers.EachBin(func(addr swarm.Address, bin uint8) (stop bool, jumpToNext bool, err error) {
-					if bin < k.NeighborhoodDepth() {
+					if bin < k.StorageRadius() {
 						return true, false, nil
 					}
 					neighbors = append(neighbors, addr)
@@ -618,7 +618,7 @@ func (k *Kad) manage() {
 			}
 
 			if k.bootnode {
-				depth := k.NeighborhoodDepth()
+				depth := k.StorageRadius()
 
 				k.metrics.CurrentDepth.Set(float64(depth))
 				k.metrics.CurrentlyKnownPeers.Set(float64(k.knownPeers.Length()))
@@ -627,12 +627,12 @@ func (k *Kad) manage() {
 				continue
 			}
 
-			oldDepth := k.NeighborhoodDepth()
+			oldDepth := k.StorageRadius()
 			k.connectBalanced(&wg, balanceChan)
 			k.connectNeighbours(&wg, neighbourhoodChan)
 			wg.Wait()
 
-			depth := k.NeighborhoodDepth()
+			depth := k.StorageRadius()
 
 			loggerV1.Debug("connector finished", "elapsed", time.Since(start), "old_depth", oldDepth, "new_depth", depth)
 
@@ -1005,7 +1005,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 		k.collector.Record(peer, im.IncSessionConnectionRetry())
 
 		maxAttempts := maxConnAttempts
-		if swarm.Proximity(k.base.Bytes(), peer.Bytes()) >= k.NeighborhoodDepth() {
+		if swarm.Proximity(k.base.Bytes(), peer.Bytes()) >= k.StorageRadius() {
 			maxAttempts = maxNeighborAttempts
 		}
 
@@ -1037,7 +1037,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 func (k *Kad) Announce(ctx context.Context, peer swarm.Address, fullnode bool) error {
 	var addrs []swarm.Address
 
-	depth := k.NeighborhoodDepth()
+	depth := k.StorageRadius()
 	isNeighbor := swarm.Proximity(peer.Bytes(), k.base.Bytes()) >= depth
 
 outer:
@@ -1408,8 +1408,8 @@ func excludeFromIterator(filter topology.Select) []im.ExcludeOp {
 	return ops
 }
 
-// NeighborhoodDepth returns the current Kademlia depth.
-func (k *Kad) NeighborhoodDepth() uint8 {
+// StorageRadius returns the current storage radius.
+func (k *Kad) StorageRadius() uint8 {
 	k.depthMu.RLock()
 	defer k.depthMu.RUnlock()
 	return k.storageRadius
@@ -1478,7 +1478,7 @@ func (k *Kad) Snapshot() *topology.KadParams {
 		Connected:           k.connectedPeers.Length(),
 		Timestamp:           time.Now(),
 		NNLowWatermark:      k.opt.LowWaterMark,
-		Depth:               k.NeighborhoodDepth(),
+		Depth:               k.StorageRadius(),
 		Reachability:        k.reachability.String(),
 		NetworkAvailability: k.p2p.NetworkStatus().String(),
 		Bins: topology.KadBins{

@@ -38,7 +38,7 @@ const (
 type topologyDriver interface {
 	UpdatePeerHealth(peer swarm.Address, health bool, dur time.Duration)
 	topology.PeerIterator
-	NeighborhoodDepth() uint8
+	StorageRadius() uint8
 }
 
 type peerStatus interface {
@@ -269,7 +269,7 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 // checkBinPopulation verifies that each bin up to the neighborhood depth
 // has at least a minimum number of peers.
 func (s *service) checkBinPopulation(minPeersPerBin int) bool {
-	depth := s.topology.NeighborhoodDepth()
+	depth := s.topology.StorageRadius()
 	s.logger.Info("starting bin population check", "neighborhood_depth", depth)
 
 	if depth == 0 {

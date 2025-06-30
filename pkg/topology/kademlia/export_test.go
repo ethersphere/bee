@@ -23,8 +23,10 @@ const (
 	DefaultOverSaturationPeers = defaultOverSaturationPeers
 )
 
-type PeerExcludeFunc = peerExcludeFunc
-type ExcludeFunc = excludeFunc
+type (
+	PeerExcludeFunc = peerExcludeFunc
+	ExcludeFunc     = excludeFunc
+)
 
 func (k *Kad) IsWithinConnectionDepth(addr swarm.Address) bool {
 	return swarm.Proximity(k.base.Bytes(), addr.Bytes()) >= k.ConnectionDepth()
@@ -34,12 +36,6 @@ func (k *Kad) ConnectionDepth() uint8 {
 	k.depthMu.RLock()
 	defer k.depthMu.RUnlock()
 	return k.depth
-}
-
-func (k *Kad) StorageRadius() uint8 {
-	k.depthMu.RLock()
-	defer k.depthMu.RUnlock()
-	return k.storageRadius
 }
 
 // IsBalanced returns if Kademlia is balanced to bin.

@@ -45,13 +45,13 @@ var (
 	}
 )
 
-// TestNeighborhoodDepth tests that the kademlia depth changes correctly
+// TestStorageRadius tests that the kademlia depth changes correctly
 // according to the change to known peers slice. This inadvertently tests
 // the functionality in `manage()` method, however this is not the main aim of the
 // test, since depth calculation happens there and in the disconnect method.
 // A more in depth testing of the functionality in `manage()` is explicitly
 // tested in TestManage below.
-func TestNeighborhoodDepth(t *testing.T) {
+func TestStorageRadius(t *testing.T) {
 	t.Parallel()
 
 	var (
@@ -198,7 +198,7 @@ func TestNeighborhoodDepth(t *testing.T) {
 }
 
 // Run the same test with reachability filter and setting the peers are reachable
-func TestNeighborhoodDepthWithReachability(t *testing.T) {
+func TestStorageRadiusWithReachability(t *testing.T) {
 	t.Parallel()
 
 	var (
