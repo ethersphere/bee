@@ -28,6 +28,9 @@ type mockStorer struct {
 	activeSessions map[uint64]*storer.SessionInfo
 	chunkPushC     chan *pusher.Op
 	debugInfo      storer.Info
+
+	storageRadius  uint8
+	committedDepth uint8
 }
 
 type putterSession struct {
@@ -218,9 +221,9 @@ func (m *mockStorer) ChunkStore() storage.ReadOnlyChunkStore {
 	return m.chunkStore
 }
 
-func (m *mockStorer) StorageRadius() uint8 { return 0 }
+func (m *mockStorer) StorageRadius() uint8 { return m.storageRadius }
 
-func (m *mockStorer) CommittedDepth() uint8 { return 0 }
+func (m *mockStorer) CommittedDepth() uint8 { return m.committedDepth }
 
 func (m *mockStorer) IsWithinStorageRadius(_ swarm.Address) bool { return true }
 
@@ -234,4 +237,16 @@ func (m *mockStorer) NeighborhoodsStat(ctx context.Context) ([]*storer.Neighborh
 
 func (m *mockStorer) Put(ctx context.Context, ch swarm.Chunk) error {
 	return m.chunkStore.Put(ctx, ch)
+}
+
+func (m *mockStorer) SetStorageRadius(radius uint8) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.storageRadius = radius
+}
+
+func (m *mockStorer) SetCommittedDepth(depth uint8) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.committedDepth = depth
 }
