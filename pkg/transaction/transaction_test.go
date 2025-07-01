@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -848,12 +849,17 @@ func TestTransactionCancel(t *testing.T) {
 			signerMockForTransaction(t, cancelTx, recipient, chainID),
 			store,
 			chainID,
-			monitormock.New(),
+			monitormock.New(monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
+				errC := make(chan error, 1)
+				go func() {
+					errC <- transaction.ErrTransactionCancelled
+				}()
+				return nil, errC, nil
+			})),
 		)
 		if err != nil {
 			t.Fatal(err)
 		}
-		testutil.CleanupCloser(t, transactionService)
 
 		cancelTxHash, err := transactionService.CancelTransaction(context.Background(), signedTx.Hash())
 		if err != nil {
@@ -862,6 +868,19 @@ func TestTransactionCancel(t *testing.T) {
 
 		if cancelTx.Hash() != cancelTxHash {
 			t.Fatalf("returned wrong hash. wanted %v, got %v", cancelTx.Hash(), cancelTxHash)
+		}
+
+		time.Sleep(100 * time.Millisecond) // wait for the cancel transaction to be processed
+		defer testutil.CleanupCloser(t, transactionService)
+		pending, err := transactionService.PendingTransactions()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if slices.Contains(pending, cancelTxHash) {
+			t.Fatal("cancel transaction is still pending")
+		}
+		if slices.Contains(pending, signedTx.Hash()) {
+			t.Fatal("cancelled transaction is still pending")
 		}
 	})
 
