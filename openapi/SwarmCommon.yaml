@@ -768,6 +768,12 @@ components:
         walletAddress:
           $ref: "#/components/schemas/EthereumAddress"
 
+    WithdrawCoin:
+      type: string
+      enum:
+        - "bzz"
+        - "nativetoken"
+
     RedistributionStatusResponse:
       type: object
       properties:
