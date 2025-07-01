@@ -270,14 +270,14 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 // has at least a minimum number of peers.
 func (s *service) checkBinPopulation(minPeersPerBin int) bool {
 	depth := s.topology.StorageRadius()
-	s.logger.Info("starting bin population check", "neighborhood_depth", depth)
+	s.logger.Info("starting bin population check", "storage_radius", depth)
 
-	if depth == 0 {
-		s.logger.Debug("skipping bin population check, neighborhood is not yet deep enough")
+	if depth == 0 || depth >= swarm.MaxBins-1 {
+		s.logger.Debug("skipping bin population check", "depth", depth)
 		return false // Not ready if depth is 0
 	}
 
-	binCounts := make([]int, depth+1)
+	binCounts := make([]int, depth)
 	err := s.topology.EachConnectedPeer(func(_ swarm.Address, bin uint8) (bool, bool, error) {
 		if bin <= depth {
 			binCounts[bin]++
@@ -290,7 +290,7 @@ func (s *service) checkBinPopulation(minPeersPerBin int) bool {
 	}
 
 	allBinsPopulated := true
-	for i := uint8(0); i <= depth; i++ {
+	for i := range depth {
 		if binCounts[i] < minPeersPerBin {
 			s.logger.Info("underpopulated bin detected", "bin", i, "peer_count", binCounts[i], "minimum_required", minPeersPerBin)
 			allBinsPopulated = false
