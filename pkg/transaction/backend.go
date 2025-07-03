@@ -22,8 +22,8 @@ type Backend interface {
 	CallContract(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error)
 	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)
 	PendingNonceAt(ctx context.Context, account common.Address) (uint64, error)
-	SuggestGasPrice(ctx context.Context) (*big.Int, error)
 	SuggestGasTipCap(ctx context.Context) (*big.Int, error)
+	SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error)
 	EstimateGas(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error)
 	SendTransaction(ctx context.Context, tx *types.Transaction) error
 	TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error)

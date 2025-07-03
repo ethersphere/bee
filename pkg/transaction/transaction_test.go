@@ -26,12 +26,13 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/ethersphere/bee/v2/pkg/transaction/backendmock"
 	"github.com/ethersphere/bee/v2/pkg/transaction/monitormock"
+	"github.com/ethersphere/bee/v2/pkg/transaction/wrapped"
 	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
 	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 )
 
 var (
-	minimumTip = big.NewInt(transaction.MinimumGasTipCap)
+	minimumTip = big.NewInt(wrapped.MinimumGasTipCap)
 	baseFee    = big.NewInt(3_000_000_000)
 )
 

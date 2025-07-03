@@ -60,7 +60,7 @@ func checkBalance(
 		minimumEth := big.NewInt(0)
 
 		if gasPrice == nil {
-			gasPrice, err = swapBackend.SuggestGasPrice(timeoutCtx)
+			gasPrice, _, err = swapBackend.SuggestedFeeAndTip(timeoutCtx, gasPrice, 0)
 			if err != nil {
 				return err
 			}
