@@ -65,7 +65,7 @@ func checkBalance(
 				return err
 			}
 
-			minimumEth = gasPrice.Mul(gasPrice, big.NewInt(250000))
+			minimumEth = new(big.Int).Mul(gasPrice, big.NewInt(250000))
 		}
 
 		insufficientERC20 := erc20Balance.Cmp(swapInitialDeposit) < 0

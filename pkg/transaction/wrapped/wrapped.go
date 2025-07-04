@@ -17,7 +17,11 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
-const MinimumGasTipCap = 1_500_000_000 // 1.5 Gwei
+const (
+	MinimumGasTipCap  = 1_500_000_000 // 1.5 Gwei
+	PercentageDivisor = 100
+	BaseFeeMultiplier = 2
+)
 
 var (
 	_                      transaction.Backend = (*wrappedBackend)(nil)
@@ -215,44 +219,48 @@ func (b *wrappedBackend) Close() error {
 	return nil
 }
 
-// SuggestedFeeAndTip implements transaction.Backend.
+// SuggestedFeeAndTip calculates the recommended gasFeeCap and gasTipCap for a transaction.
 func (b *wrappedBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
-	gasTipCap, err := b.SuggestGasTipCap(ctx)
+	gasTipCap, err := b.backend.SuggestGasTipCap(ctx)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to suggest gas tip cap: %w", err)
 	}
 
-	multiplier := big.NewInt(int64(boostPercent) + 100)
-	gasTipCap = new(big.Int).Div(new(big.Int).Mul(gasTipCap, multiplier), big.NewInt(100))
+	if boostPercent != 0 {
+		// multiplier: 100 + boostPercent (e.g., 110 for 10% boost)
+		multiplier := new(big.Int).Add(big.NewInt(int64(PercentageDivisor)), big.NewInt(int64(boostPercent)))
+		// gasTipCap = gasTipCap * (100 + boostPercent) / 100
+		gasTipCap.Mul(gasTipCap, multiplier).Div(gasTipCap, big.NewInt(int64(PercentageDivisor)))
+	}
 
 	minimumTip := big.NewInt(MinimumGasTipCap)
 	if gasTipCap.Cmp(minimumTip) < 0 {
-		gasTipCap = new(big.Int).Set(minimumTip)
+		gasTipCap.Set(minimumTip)
 	}
 
 	var gasFeeCap *big.Int
 
 	if gasPrice == nil {
-		latestBlockHeader, err := b.HeaderByNumber(ctx, nil)
+		latestBlockHeader, err := b.backend.HeaderByNumber(ctx, nil)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to get latest block: %w", err)
+			return nil, nil, fmt.Errorf("failed to get latest block header: %w", err)
 		}
 
-		if latestBlockHeader.BaseFee == nil {
+		if latestBlockHeader == nil || latestBlockHeader.BaseFee == nil {
 			return nil, nil, ErrEIP1559NotSupported
 		}
 
-		// gasFeeCap = (2 * baseFee) + gasTipCap
-		gasFeeCap = new(big.Int).Add(
-			new(big.Int).Mul(latestBlockHeader.BaseFee, big.NewInt(2)),
-			gasTipCap,
-		)
+		// EIP-1559: gasFeeCap = (2 * baseFee) + gasTipCap
+		gasFeeCap = new(big.Int).Mul(latestBlockHeader.BaseFee, big.NewInt(int64(BaseFeeMultiplier)))
+		gasFeeCap.Add(gasFeeCap, gasTipCap)
+
 	} else {
 		gasFeeCap = new(big.Int).Set(gasPrice)
 	}
 
+	// gasTipCap cannot exceed gasFeeCap
 	if gasTipCap.Cmp(gasFeeCap) > 0 {
-		gasTipCap = new(big.Int).Set(gasFeeCap)
+		gasTipCap.Set(gasFeeCap)
 	}
 
 	return gasFeeCap, gasTipCap, nil
