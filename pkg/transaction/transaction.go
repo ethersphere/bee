@@ -44,6 +44,7 @@ var (
 )
 
 const (
+	MinimumGasTipCap       = 1_500_000_000 // 1.5 Gwei
 	DefaultGasLimit        = 1_000_000
 	DefaultTipBoostPercent = 25
 )

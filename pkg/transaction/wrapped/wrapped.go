@@ -18,9 +18,8 @@ import (
 )
 
 const (
-	MinimumGasTipCap  = 1_500_000_000 // 1.5 Gwei
-	PercentageDivisor = 100
-	BaseFeeMultiplier = 2
+	percentageDivisor = 100
+	baseFeeMultiplier = 2
 )
 
 var (
@@ -228,12 +227,12 @@ func (b *wrappedBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.I
 
 	if boostPercent != 0 {
 		// multiplier: 100 + boostPercent (e.g., 110 for 10% boost)
-		multiplier := new(big.Int).Add(big.NewInt(int64(PercentageDivisor)), big.NewInt(int64(boostPercent)))
+		multiplier := new(big.Int).Add(big.NewInt(int64(percentageDivisor)), big.NewInt(int64(boostPercent)))
 		// gasTipCap = gasTipCap * (100 + boostPercent) / 100
-		gasTipCap.Mul(gasTipCap, multiplier).Div(gasTipCap, big.NewInt(int64(PercentageDivisor)))
+		gasTipCap.Mul(gasTipCap, multiplier).Div(gasTipCap, big.NewInt(int64(percentageDivisor)))
 	}
 
-	minimumTip := big.NewInt(MinimumGasTipCap)
+	minimumTip := big.NewInt(transaction.MinimumGasTipCap)
 	if gasTipCap.Cmp(minimumTip) < 0 {
 		gasTipCap.Set(minimumTip)
 	}
@@ -251,7 +250,7 @@ func (b *wrappedBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.I
 		}
 
 		// EIP-1559: gasFeeCap = (2 * baseFee) + gasTipCap
-		gasFeeCap = new(big.Int).Mul(latestBlockHeader.BaseFee, big.NewInt(int64(BaseFeeMultiplier)))
+		gasFeeCap = new(big.Int).Mul(latestBlockHeader.BaseFee, big.NewInt(int64(baseFeeMultiplier)))
 		gasFeeCap.Add(gasFeeCap, gasTipCap)
 
 	} else {
