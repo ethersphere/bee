@@ -286,6 +286,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return debit.Apply()
 	}
 
+	ps.logger.Debug("[handler] received", "isReachable", ps.topologyDriver.IsReachable(), "prox", swarm.Proximity(ps.address.Bytes(), chunkAddress.Bytes()), "rad", rad)
 	if ps.topologyDriver.IsReachable() && swarm.Proximity(ps.address.Bytes(), chunkAddress.Bytes()) >= rad {
 		stored, reason = true, "is within AOR"
 		return store(ctx)
@@ -410,7 +411,9 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			fullSkip := append(skip.ChunkPeers(idAddress), ps.errSkip.ChunkPeers(idAddress)...)
 			peer, err := ps.closestPeer(ch.Address(), origin, fullSkip)
 			if errors.Is(err, topology.ErrNotFound) {
-				if skip.PruneExpiresAfter(idAddress, overDraftRefresh) == 0 { // no overdraft peers, we have depleted ALL peers
+				pruned := skip.PruneExpiresAfter(idAddress, overDraftRefresh)
+				ps.logger.Debug("closest peer not found", "chunk_address", ch.Address(), "peer_address", peer, "origin", origin, "skip_list", fullSkip, "error", err, "pruned", pruned, "inflight", inflight)
+				if pruned == 0 { // no overdraft peers, we have depleted ALL peers
 					if inflight == 0 {
 						if ps.fullNode {
 							if cac.Valid(ch) {
