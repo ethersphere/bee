@@ -232,18 +232,6 @@ func (r *RedistributionState) SetBalance(ctx context.Context) error {
 	return nil
 }
 
-func (r *RedistributionState) SampleData(round uint64) (SampleData, bool) {
-	r.mtx.Lock()
-	defer r.mtx.Unlock()
-
-	rd, ok := r.status.RoundData[round]
-	if !ok || rd.SampleData == nil {
-		return SampleData{}, false
-	}
-
-	return *rd.SampleData, true
-}
-
 func (r *RedistributionState) SetSampleData(round uint64, sd SampleData, dur time.Duration) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
@@ -256,18 +244,6 @@ func (r *RedistributionState) SetSampleData(round uint64, sd SampleData, dur tim
 	r.save()
 }
 
-func (r *RedistributionState) CommitKey(round uint64) ([]byte, bool) {
-	r.mtx.Lock()
-	defer r.mtx.Unlock()
-
-	rd, ok := r.status.RoundData[round]
-	if !ok || rd.CommitKey == nil {
-		return nil, false
-	}
-
-	return rd.CommitKey, true
-}
-
 func (r *RedistributionState) SetCommitKey(round uint64, commitKey []byte) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
@@ -277,14 +253,6 @@ func (r *RedistributionState) SetCommitKey(round uint64, commitKey []byte) {
 	r.status.RoundData[round] = rd
 
 	r.save()
-}
-
-func (r *RedistributionState) HasRevealed(round uint64) bool {
-	r.mtx.Lock()
-	defer r.mtx.Unlock()
-
-	rd := r.status.RoundData[round]
-	return rd.HasRevealed
 }
 
 func (r *RedistributionState) SetHealthy(isHealthy bool) {
@@ -347,4 +315,88 @@ func (r *RedistributionState) purgeStaleRoundData() {
 	if hasChanged {
 		r.save()
 	}
+}
+
+// GetCommitData atomically checks if commit exists and gets sample data
+func (r *RedistributionState) GetCommitData(commitRound, sampleRound uint64) (commitExists bool, sample SampleData, sampleExists bool) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	// Check if already committed
+	rd, ok := r.status.RoundData[commitRound]
+	if ok && rd.CommitKey != nil {
+		return true, SampleData{}, false
+	}
+
+	// Get sample data
+	sampleRd, ok := r.status.RoundData[sampleRound]
+	if !ok || sampleRd.SampleData == nil {
+		return false, SampleData{}, false
+	}
+
+	return false, *sampleRd.SampleData, true
+}
+
+// GetRevealData gets commit key and sample data in a single lock acquisition
+func (r *RedistributionState) GetRevealData(commitRound, sampleRound uint64) (commitKey []byte, commitExists bool, sample SampleData, sampleExists bool) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	// Get commit key
+	commitRd, ok := r.status.RoundData[commitRound]
+	if !ok || commitRd.CommitKey == nil {
+		return nil, false, SampleData{}, false
+	}
+
+	// Get sample data
+	sampleRd, ok := r.status.RoundData[sampleRound]
+	if !ok || sampleRd.SampleData == nil {
+		return commitRd.CommitKey, true, SampleData{}, false
+	}
+
+	return commitRd.CommitKey, true, *sampleRd.SampleData, true
+}
+
+// GetClaimData gets reveal status and sample data in a single lock acquisition
+func (r *RedistributionState) GetClaimData(revealRound, sampleRound uint64) (hasRevealed bool, sample SampleData, sampleExists bool) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	// Check if revealed
+	revealRd := r.status.RoundData[revealRound]
+	if !revealRd.HasRevealed {
+		return false, SampleData{}, false
+	}
+
+	// Get sample data
+	sampleRd, ok := r.status.RoundData[sampleRound]
+	if !ok || sampleRd.SampleData == nil {
+		return true, SampleData{}, false
+	}
+
+	return true, *sampleRd.SampleData, true
+}
+
+// hasSampleData - only for testing purposes
+func (r *RedistributionState) hasSampleData(round uint64) bool {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	rd, ok := r.status.RoundData[round]
+	return ok && rd.SampleData != nil
+}
+
+// hasCommitKey - only for testing purposes
+func (r *RedistributionState) hasCommitKey(round uint64) bool {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	rd, ok := r.status.RoundData[round]
+	return ok && rd.CommitKey != nil
+}
+
+// hasRevealed - only for testing purposes
+func (r *RedistributionState) hasRevealed(round uint64) bool {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	rd, ok := r.status.RoundData[round]
+	return ok && rd.HasRevealed
 }
