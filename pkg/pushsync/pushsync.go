@@ -457,6 +457,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			}
 
 			action, err := ps.prepareCredit(ctx, peer, ch, origin)
+			ps.logger.Debug("preparing credit to closest peer", "error", err, "chunk_address", ch.Address(), "peer_address", peer, "origin", origin)
 			if err != nil {
 				retry()
 				skip.Add(idAddress, peer, overDraftRefresh)
