@@ -27,7 +27,7 @@ func TestRateFirstBucket(t *testing.T) {
 	}
 }
 
-// // TestIgnoreOldBuckets tests that the buckets older than the most recent two buckets are ignored in rate calculation.
+// TestIgnoreOldBuckets tests that the buckets older than the most recent two buckets are ignored in rate calculation.
 func TestIgnoreOldBuckets(t *testing.T) {
 	t.Parallel()
 
