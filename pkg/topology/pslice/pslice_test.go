@@ -354,7 +354,7 @@ func TestIteratorsJumpStop(t *testing.T) {
 	testIterator(t, ps, true, false, 4, []swarm.Address{peers[9], peers[6], peers[3], peers[0]})
 	testIteratorRev(t, ps, true, false, 4, []swarm.Address{peers[0], peers[3], peers[6], peers[9]})
 
-	// // check that the stop functionality works correctly
+	// check that the stop functionality works correctly
 	testIterator(t, ps, true, true, 1, []swarm.Address{peers[9]})
 	testIteratorRev(t, ps, true, true, 1, []swarm.Address{peers[0]})
 }
