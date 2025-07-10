@@ -87,21 +87,75 @@ func TestState(t *testing.T) {
 	if diff := cmp.Diff(want, *got, opt...); diff != "" {
 		t.Errorf("result mismatch (-want +have):\n%s", diff)
 	}
-
 }
 
 func TestStateRoundData(t *testing.T) {
 	t.Parallel()
 
-	t.Run("sample data", func(t *testing.T) {
+	t.Run("GetCommitData - sample data access", func(t *testing.T) {
 		t.Parallel()
 
 		state := createRedistribution(t, nil, nil)
 
-		_, exists := state.SampleData(1)
-		if exists {
-			t.Error("should not exists")
+		// Test when no sample data exists
+		commitExists, _, sampleExists := state.GetCommitData(1, 1)
+		if commitExists {
+			t.Error("commit should not exist")
 		}
+		if sampleExists {
+			t.Error("sample should not exist")
+		}
+
+		// Add sample data
+		savedSample := SampleData{
+			ReserveSampleHash: swarm.RandAddress(t),
+			StorageRadius:     3,
+		}
+		state.SetSampleData(1, savedSample, 0)
+
+		// Test when sample data exists but no commit
+		commitExists, sample, sampleExists := state.GetCommitData(1, 1)
+		if commitExists {
+			t.Error("commit should not exist")
+		}
+		if !sampleExists {
+			t.Error("sample should exist")
+		}
+		if diff := cmp.Diff(savedSample, sample); diff != "" {
+			t.Errorf("sample mismatch (-want +have):\n%s", diff)
+		}
+
+		// Add commit key
+		savedKey := testutil.RandBytes(t, swarm.HashSize)
+		state.SetCommitKey(1, savedKey)
+
+		// Test when both exist - should return commit exists but no sample
+		commitExists, _, sampleExists = state.GetCommitData(1, 1)
+		if !commitExists {
+			t.Error("commit should exist")
+		}
+		if sampleExists {
+			t.Error("sample should not be returned when commit exists")
+		}
+	})
+
+	t.Run("GetRevealData - commit key and sample data access", func(t *testing.T) {
+		t.Parallel()
+
+		state := createRedistribution(t, nil, nil)
+
+		// Test when no data exists
+		_, commitExists, _, sampleExists := state.GetRevealData(1, 1)
+		if commitExists {
+			t.Error("commit should not exist")
+		}
+		if sampleExists {
+			t.Error("sample should not exist")
+		}
+
+		// Add commit key and sample data
+		savedKey := testutil.RandBytes(t, swarm.HashSize)
+		state.SetCommitKey(1, savedKey)
 
 		savedSample := SampleData{
 			ReserveSampleHash: swarm.RandAddress(t),
@@ -109,53 +163,76 @@ func TestStateRoundData(t *testing.T) {
 		}
 		state.SetSampleData(1, savedSample, 0)
 
-		sample, exists := state.SampleData(1)
-		if !exists {
-			t.Error("should exist")
+		// Test when both exist
+		commitKey, commitExists, sample, sampleExists := state.GetRevealData(1, 1)
+		if !commitExists {
+			t.Error("commit should exist")
+		}
+		if !sampleExists {
+			t.Error("sample should exist")
+		}
+		if diff := cmp.Diff(savedKey, commitKey); diff != "" {
+			t.Errorf("commit key mismatch (-want +have):\n%s", diff)
+		}
+		if diff := cmp.Diff(savedSample, sample); diff != "" {
+			t.Errorf("sample mismatch (-want +have):\n%s", diff)
+		}
+
+		// Test when only commit exists
+		_, commitExists, _, sampleExists = state.GetRevealData(1, 2)
+		if !commitExists {
+			t.Error("commit should exist")
+		}
+		if sampleExists {
+			t.Error("sample should not exist for different round")
+		}
+	})
+
+	t.Run("GetClaimData - reveal status and sample data access", func(t *testing.T) {
+		t.Parallel()
+
+		state := createRedistribution(t, nil, nil)
+
+		// Test when not revealed
+		hasRevealed, _, sampleExists := state.GetClaimData(1, 1)
+		if hasRevealed {
+			t.Error("should not be revealed")
+		}
+		if sampleExists {
+			t.Error("sample should not exist")
+		}
+
+		// Set revealed
+		state.SetHasRevealed(1)
+
+		// Test when revealed but no sample
+		hasRevealed, _, sampleExists = state.GetClaimData(1, 1)
+		if !hasRevealed {
+			t.Error("should be revealed")
+		}
+		if sampleExists {
+			t.Error("sample should not exist")
+		}
+
+		// Add sample data
+		savedSample := SampleData{
+			ReserveSampleHash: swarm.RandAddress(t),
+			StorageRadius:     3,
+		}
+		state.SetSampleData(1, savedSample, 0)
+
+		// Test when both revealed and sample exist
+		hasRevealed, sample, sampleExists := state.GetClaimData(1, 1)
+		if !hasRevealed {
+			t.Error("should be revealed")
+		}
+		if !sampleExists {
+			t.Error("sample should exist")
 		}
 		if diff := cmp.Diff(savedSample, sample); diff != "" {
 			t.Errorf("sample mismatch (-want +have):\n%s", diff)
 		}
 	})
-
-	t.Run("commit key", func(t *testing.T) {
-		t.Parallel()
-
-		state := createRedistribution(t, nil, nil)
-
-		_, exists := state.CommitKey(1)
-		if exists {
-			t.Error("should not exists")
-		}
-
-		savedKey := testutil.RandBytes(t, swarm.HashSize)
-		state.SetCommitKey(1, savedKey)
-
-		key, exists := state.CommitKey(1)
-		if !exists {
-			t.Error("should exist")
-		}
-		if diff := cmp.Diff(savedKey, key); diff != "" {
-			t.Errorf("key mismatch (-want +have):\n%s", diff)
-		}
-	})
-
-	t.Run("has revealed", func(t *testing.T) {
-		t.Parallel()
-
-		state := createRedistribution(t, nil, nil)
-
-		if state.HasRevealed(1) {
-			t.Error("should not be revealed")
-		}
-
-		state.SetHasRevealed(1)
-
-		if !state.HasRevealed(1) {
-			t.Error("should be revealed")
-		}
-	})
-
 }
 
 func TestPurgeRoundData(t *testing.T) {
@@ -186,20 +263,17 @@ func TestPurgeRoundData(t *testing.T) {
 			}
 		}
 
-		_, exists1 := state.SampleData(round)
-		_, exists2 := state.CommitKey(round)
-		exists3 := state.HasRevealed(round)
-
-		check(exists1)
-		check(exists2)
-		check(exists3)
+		// Check sample data, commit key, and revealed status directly
+		check(state.hasSampleData(round))
+		check(state.hasCommitKey(round))
+		check(state.hasRevealed(round))
 	}
 
 	const roundsCount = 100
 	hasRoundData := make([]bool, roundsCount)
 
 	// Populate data at random rounds
-	for i := uint64(0); i < roundsCount; i++ {
+	for i := range uint64(roundsCount) {
 		v := rand.Int()%2 == 0
 		hasRoundData[i] = v
 		if v {
@@ -210,7 +284,7 @@ func TestPurgeRoundData(t *testing.T) {
 
 	// Run purge successively and assert that all data is purged up to
 	// currentRound - purgeDataOlderThenXRounds
-	for i := uint64(0); i < roundsCount; i++ {
+	for i := range uint64(roundsCount) {
 		state.SetCurrentEvent(0, i)
 		state.purgeStaleRoundData()
 
@@ -229,7 +303,7 @@ func TestPurgeRoundData(t *testing.T) {
 	state.purgeStaleRoundData()
 
 	// One more time assert that everything was purged
-	for i := uint64(0); i < roundsCount; i++ {
+	for i := range uint64(roundsCount) {
 		assertHasDataAtRound(i, false)
 	}
 }

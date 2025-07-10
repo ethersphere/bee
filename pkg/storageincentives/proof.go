@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"hash"
 	"math/big"
+	"sync"
 
 	"github.com/ethersphere/bee/v2/pkg/bmt"
 	"github.com/ethersphere/bee/v2/pkg/bmtpool"
@@ -20,6 +21,14 @@ import (
 )
 
 var errProofCreation = errors.New("reserve commitment hasher: failure in proof creation")
+
+// Pool for reusing content buffers to reduce allocations
+var contentBufferPool = sync.Pool{
+	New: func() interface{} {
+		buf := make([]byte, storer.SampleSize*2*swarm.HashSize)
+		return &buf
+	},
+}
 
 // spanOffset returns the byte index of chunkdata where the spansize starts
 func spanOffset(sampleItem storer.SampleItem) uint8 {
@@ -49,11 +58,21 @@ func makeInclusionProofs(
 	}
 
 	require3 := storer.SampleSize - 1
-	require1 := new(big.Int).Mod(new(big.Int).SetBytes(anchor2), big.NewInt(int64(require3))).Uint64()
-	require2 := new(big.Int).Mod(new(big.Int).SetBytes(anchor2), big.NewInt(int64(require3-1))).Uint64()
+
+	// Pre-compute big.Int values to avoid repeated allocations
+	anchor2BigInt := new(big.Int).SetBytes(anchor2)
+	require3BigInt := big.NewInt(int64(require3))
+	require3Minus1BigInt := big.NewInt(int64(require3 - 1))
+	segmentIndexBigInt := big.NewInt(int64(128))
+
+	require1 := new(big.Int).Mod(anchor2BigInt, require3BigInt).Uint64()
+	require2 := new(big.Int).Mod(anchor2BigInt, require3Minus1BigInt).Uint64()
 	if require2 >= require1 {
 		require2++
 	}
+
+	// Pre-compute segment index once
+	segmentIndex := int(new(big.Int).Mod(anchor2BigInt, segmentIndexBigInt).Uint64())
 
 	prefixHasherFactory := func() hash.Hash {
 		return swarm.NewPrefixHasher(anchor1)
@@ -82,98 +101,23 @@ func makeInclusionProofs(
 	bmtpool.Put(rccontent.Hasher)
 
 	// Witness1 proofs
-	segmentIndex := int(new(big.Int).Mod(new(big.Int).SetBytes(anchor2), big.NewInt(int64(128))).Uint64())
-	// OG chunk proof
-	chunk1Content := bmt.Prover{Hasher: bmtpool.Get()}
-	chunk1Offset := spanOffset(reserveSampleItems[require1])
-	chunk1Content.SetHeader(reserveSampleItems[require1].ChunkData[chunk1Offset : chunk1Offset+swarm.SpanSize])
-	chunk1ContentPayload := reserveSampleItems[require1].ChunkData[chunk1Offset+swarm.SpanSize:]
-	_, err = chunk1Content.Write(chunk1ContentPayload)
+	// (segmentIndex already computed above)
+	proof1p2, proof1p3, err := processChunkProof(reserveSampleItems[require1], segmentIndex, prefixHasherPool)
 	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errProofCreation
+		return redistribution.ChunkInclusionProofs{}, err
 	}
-	_, err = chunk1Content.Hash(nil)
-	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errProofCreation
-	}
-	proof1p2 := chunk1Content.Proof(segmentIndex)
-	// TR chunk proof
-	chunk1TrContent := bmt.Prover{Hasher: prefixHasherPool.Get()}
-	chunk1TrContent.SetHeader(reserveSampleItems[require1].ChunkData[chunk1Offset : chunk1Offset+swarm.SpanSize])
-	_, err = chunk1TrContent.Write(chunk1ContentPayload)
-	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errProofCreation
-	}
-	_, err = chunk1TrContent.Hash(nil)
-	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errProofCreation
-	}
-	proof1p3 := chunk1TrContent.Proof(segmentIndex)
-	// cleanup
-	bmtpool.Put(chunk1Content.Hasher)
-	prefixHasherPool.Put(chunk1TrContent.Hasher)
 
 	// Witness2 proofs
-	// OG Chunk proof
-	chunk2Offset := spanOffset(reserveSampleItems[require2])
-	chunk2Content := bmt.Prover{Hasher: bmtpool.Get()}
-	chunk2ContentPayload := reserveSampleItems[require2].ChunkData[chunk2Offset+swarm.SpanSize:]
-	chunk2Content.SetHeader(reserveSampleItems[require2].ChunkData[chunk2Offset : chunk2Offset+swarm.SpanSize])
-	_, err = chunk2Content.Write(chunk2ContentPayload)
+	proof2p2, proof2p3, err := processChunkProof(reserveSampleItems[require2], segmentIndex, prefixHasherPool)
 	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errProofCreation
+		return redistribution.ChunkInclusionProofs{}, err
 	}
-	_, err = chunk2Content.Hash(nil)
-	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errProofCreation
-	}
-	proof2p2 := chunk2Content.Proof(segmentIndex)
-	// TR Chunk proof
-	chunk2TrContent := bmt.Prover{Hasher: prefixHasherPool.Get()}
-	chunk2TrContent.SetHeader(reserveSampleItems[require2].ChunkData[chunk2Offset : chunk2Offset+swarm.SpanSize])
-	_, err = chunk2TrContent.Write(chunk2ContentPayload)
-	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errProofCreation
-	}
-	_, err = chunk2TrContent.Hash(nil)
-	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errProofCreation
-	}
-	proof2p3 := chunk2TrContent.Proof(segmentIndex)
-	// cleanup
-	bmtpool.Put(chunk2Content.Hasher)
-	prefixHasherPool.Put(chunk2TrContent.Hasher)
 
 	// Witness3 proofs
-	// OG Chunk proof
-	chunkLastOffset := spanOffset(reserveSampleItems[require3])
-	chunkLastContent := bmt.Prover{Hasher: bmtpool.Get()}
-	chunkLastContent.SetHeader(reserveSampleItems[require3].ChunkData[chunkLastOffset : chunkLastOffset+swarm.SpanSize])
-	chunkLastContentPayload := reserveSampleItems[require3].ChunkData[chunkLastOffset+swarm.SpanSize:]
-	_, err = chunkLastContent.Write(chunkLastContentPayload)
+	proofLastp2, proofLastp3, err := processChunkProof(reserveSampleItems[require3], segmentIndex, prefixHasherPool)
 	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errProofCreation
+		return redistribution.ChunkInclusionProofs{}, err
 	}
-	_, err = chunkLastContent.Hash(nil)
-	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errProofCreation
-	}
-	proofLastp2 := chunkLastContent.Proof(segmentIndex)
-	// TR Chunk Proof
-	chunkLastTrContent := bmt.Prover{Hasher: prefixHasherPool.Get()}
-	chunkLastTrContent.SetHeader(reserveSampleItems[require3].ChunkData[chunkLastOffset : chunkLastOffset+swarm.SpanSize])
-	_, err = chunkLastTrContent.Write(chunkLastContentPayload)
-	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errProofCreation
-	}
-	_, err = chunkLastTrContent.Hash(nil)
-	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errProofCreation
-	}
-	proofLastp3 := chunkLastTrContent.Proof(segmentIndex)
-	// cleanup
-	bmtpool.Put(chunkLastContent.Hasher)
-	prefixHasherPool.Put(chunkLastTrContent.Hasher)
 
 	// map to output and add SOC related data if it is necessary
 	A, err := redistribution.NewChunkInclusionProof(proof1p1, proof1p2, proof1p3, reserveSampleItems[require1])
@@ -195,11 +139,60 @@ func makeInclusionProofs(
 	}, nil
 }
 
+// Helper function to process chunk proofs, reducing code duplication
+func processChunkProof(
+	sampleItem storer.SampleItem,
+	segmentIndex int,
+	prefixHasherPool *bmt.Pool,
+) (ogProof, trProof bmt.Proof, err error) {
+	offset := spanOffset(sampleItem)
+
+	// OG chunk proof
+	ogContent := bmt.Prover{Hasher: bmtpool.Get()}
+	defer bmtpool.Put(ogContent.Hasher)
+
+	ogContent.SetHeader(sampleItem.ChunkData[offset : offset+swarm.SpanSize])
+	payload := sampleItem.ChunkData[offset+swarm.SpanSize:]
+
+	if _, err = ogContent.Write(payload); err != nil {
+		return bmt.Proof{}, bmt.Proof{}, errProofCreation
+	}
+	if _, err = ogContent.Hash(nil); err != nil {
+		return bmt.Proof{}, bmt.Proof{}, errProofCreation
+	}
+	ogProof = ogContent.Proof(segmentIndex)
+
+	// TR chunk proof
+	trContent := bmt.Prover{Hasher: prefixHasherPool.Get()}
+	defer prefixHasherPool.Put(trContent.Hasher)
+
+	trContent.SetHeader(sampleItem.ChunkData[offset : offset+swarm.SpanSize])
+	if _, err = trContent.Write(payload); err != nil {
+		return bmt.Proof{}, bmt.Proof{}, errProofCreation
+	}
+	if _, err = trContent.Hash(nil); err != nil {
+		return bmt.Proof{}, bmt.Proof{}, errProofCreation
+	}
+	trProof = trContent.Proof(segmentIndex)
+
+	return ogProof, trProof, nil
+}
+
 func sampleChunk(items []storer.SampleItem) (swarm.Chunk, error) {
 	contentSize := len(items) * 2 * swarm.HashSize
 
+	// Get buffer from pool to reduce allocations
+	contentPtr := contentBufferPool.Get().(*[]byte)
+	defer contentBufferPool.Put(contentPtr)
+
+	content := *contentPtr
+	if cap(content) < contentSize {
+		content = make([]byte, contentSize)
+	} else {
+		content = content[:contentSize]
+	}
+
 	pos := 0
-	content := make([]byte, contentSize)
 	for _, s := range items {
 		copy(content[pos:], s.ChunkAddress.Bytes())
 		pos += swarm.HashSize
