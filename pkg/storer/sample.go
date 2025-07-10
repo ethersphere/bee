@@ -65,7 +65,6 @@ func (db *DB) ReserveSample(
 	consensusTime uint64,
 	minBatchBalance *big.Int,
 ) (Sample, error) {
-
 	g, ctx := errgroup.WithContext(ctx)
 
 	allStats := &SampleStats{}
@@ -85,9 +84,14 @@ func (db *DB) ReserveSample(
 
 	allStats.BatchesBelowValueDuration = time.Since(t)
 
-	chunkC := make(chan *reserve.ChunkBinItem)
+	// Use buffered channels to reduce blocking between phases
+	workers := max(4, runtime.NumCPU())
+	chunkChanBuffer := min(1000, workers*10)
+	sampleChanBuffer := min(500, workers*5)
 
-	// Phase 1: Iterate chunk addresses
+	chunkC := make(chan *reserve.ChunkBinItem, chunkChanBuffer)
+
+	// Phase 1: Iterate chunk addresses with pre-filtering
 	g.Go(func() error {
 		start := time.Now()
 		stats := SampleStats{}
@@ -101,6 +105,20 @@ func (db *DB) ReserveSample(
 			if swarm.Proximity(ch.Address.Bytes(), anchor) < committedDepth {
 				return false, nil
 			}
+
+			// Pre-filter by batch balance to avoid loading chunks unnecessarily
+			if _, found := excludedBatchIDs[string(ch.BatchID)]; found {
+				stats.BelowBalanceIgnored++
+				return false, nil
+			}
+
+			// Pre-filter by chunk type to avoid loading invalid chunks
+			if ch.ChunkType != swarm.ChunkTypeSingleOwner &&
+				ch.ChunkType != swarm.ChunkTypeContentAddressed {
+				stats.RogueChunk++
+				return false, nil
+			}
+
 			select {
 			case chunkC <- ch:
 				stats.TotalIterated++
@@ -113,16 +131,15 @@ func (db *DB) ReserveSample(
 	})
 
 	// Phase 2: Get the chunk data and calculate transformed hash
-	sampleItemChan := make(chan SampleItem)
+	sampleItemChan := make(chan SampleItem, sampleChanBuffer)
 
 	prefixHasherFactory := func() hash.Hash {
 		return swarm.NewPrefixHasher(anchor)
 	}
 
-	workers := max(4, runtime.NumCPU())
 	db.logger.Debug("reserve sampler workers", "count", workers)
 
-	for i := 0; i < workers; i++ {
+	for range workers {
 		g.Go(func() error {
 			wstat := SampleStats{}
 			hasher := bmt.NewHasher(prefixHasherFactory)
@@ -131,20 +148,6 @@ func (db *DB) ReserveSample(
 			}()
 
 			for chItem := range chunkC {
-				// exclude chunks who's batches balance are below minimum
-				if _, found := excludedBatchIDs[string(chItem.BatchID)]; found {
-					wstat.BelowBalanceIgnored++
-
-					continue
-				}
-
-				// Skip chunks if they are not SOC or CAC
-				if chItem.ChunkType != swarm.ChunkTypeSingleOwner &&
-					chItem.ChunkType != swarm.ChunkTypeContentAddressed {
-					wstat.RogueChunk++
-					continue
-				}
-
 				chunkLoadStart := time.Now()
 
 				chunk, err := db.ChunkStore().Get(ctx, chItem.Address)

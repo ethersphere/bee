@@ -139,7 +139,6 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 	phaseEvents.On(commit, func(ctx context.Context) {
 		phaseEvents.Cancel(claim)
-
 		round, _ := a.state.currentRoundAndPhase()
 		err := a.handleCommit(ctx, round)
 		logErr(commit, round, err)
@@ -154,7 +153,6 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	phaseEvents.On(claim, func(ctx context.Context) {
 		phaseEvents.Cancel(reveal)
 		phaseEvents.Publish(sample)
-
 		round, _ := a.state.currentRoundAndPhase()
 		logErr(claim, round, a.handleClaim(ctx, round))
 	})
@@ -215,7 +213,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		prevPhase = currentPhase
 		a.metrics.CurrentPhase.Set(float64(currentPhase))
 
-		a.logger.Info("entered new phase", "phase", currentPhase.String(), "round", round, "block", block)
+		a.logger.Info("entered new phase", "phase", currentPhase.String(), "round", round, "block", block, "blockInRound", p)
 
 		a.state.SetCurrentEvent(currentPhase, round)
 		a.state.SetFullySynced(a.fullSyncedFunc())
@@ -245,7 +243,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	phaseCheckInterval := blockTime
 	// optimization, we do not need to check the phase change at every new block
 	if blocksPerPhase > 10 {
-		phaseCheckInterval = blockTime * 5
+		phaseCheckInterval = blockTime * 3
 	}
 
 	for {
@@ -276,8 +274,7 @@ func (a *Agent) handleCommit(ctx context.Context, round uint64) error {
 		return nil
 	}
 
-	err := a.commit(ctx, sample, round)
-	if err != nil {
+	if err := a.commit(ctx, sample, round); err != nil {
 		return err
 	}
 
@@ -342,8 +339,7 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 
 	// In case when there are too many expired batches, Claim trx could runs out of gas.
 	// To prevent this, node should first expire batches before Claiming a reward.
-	err = a.batchExpirer.ExpireBatches(ctx)
-	if err != nil {
+	if err = a.batchExpirer.ExpireBatches(ctx); err != nil {
 		a.logger.Info("expire batches failed", "err", err)
 		// Even when error happens, proceed with claim handler
 		// because this should not prevent node from claiming a reward
@@ -407,6 +403,7 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 		a.logger.Info("not playing in this round")
 		return false, nil
 	}
+
 	a.state.SetLastSelectedRound(round + 1)
 	a.metrics.NeighborhoodSelected.Inc()
 	a.logger.Info("neighbourhood chosen", "round", round)
