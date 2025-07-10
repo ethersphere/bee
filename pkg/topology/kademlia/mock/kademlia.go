@@ -127,7 +127,7 @@ func (m *Mock) IsReachable() bool {
 	return true
 }
 
-func (m *Mock) NeighborhoodDepth() uint8 {
+func (m *Mock) StorageRadius() uint8 {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
