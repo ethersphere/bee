@@ -7,6 +7,7 @@ package wrapped
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum"
@@ -16,7 +17,15 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
-var _ transaction.Backend = (*wrappedBackend)(nil)
+const (
+	percentageDivisor = 100
+	baseFeeMultiplier = 2
+)
+
+var (
+	_                      transaction.Backend = (*wrappedBackend)(nil)
+	ErrEIP1559NotSupported                     = errors.New("network does not appear to support EIP-1559 (no baseFee)")
+)
 
 type wrappedBackend struct {
 	backend *ethclient.Client
@@ -135,20 +144,9 @@ func (b *wrappedBackend) PendingNonceAt(ctx context.Context, account common.Addr
 	return nonce, nil
 }
 
-func (b *wrappedBackend) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
-	b.metrics.TotalRPCCalls.Inc()
-	b.metrics.SuggestGasPriceCalls.Inc()
-	gasPrice, err := b.backend.SuggestGasPrice(ctx)
-	if err != nil {
-		b.metrics.TotalRPCErrors.Inc()
-		return nil, err
-	}
-	return gasPrice, nil
-}
-
 func (b *wrappedBackend) SuggestGasTipCap(ctx context.Context) (*big.Int, error) {
 	b.metrics.TotalRPCCalls.Inc()
-	b.metrics.SuggestGasPriceCalls.Inc()
+	b.metrics.SuggestGasTipCapCalls.Inc()
 	gasTipCap, err := b.backend.SuggestGasTipCap(ctx)
 	if err != nil {
 		b.metrics.TotalRPCErrors.Inc()
@@ -218,4 +216,51 @@ func (b *wrappedBackend) BlockByNumber(ctx context.Context, number *big.Int) (*t
 func (b *wrappedBackend) Close() error {
 	b.backend.Close()
 	return nil
+}
+
+// SuggestedFeeAndTip calculates the recommended gasFeeCap and gasTipCap for a transaction.
+func (b *wrappedBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+	gasTipCap, err := b.backend.SuggestGasTipCap(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to suggest gas tip cap: %w", err)
+	}
+
+	if boostPercent != 0 {
+		// multiplier: 100 + boostPercent (e.g., 110 for 10% boost)
+		multiplier := new(big.Int).Add(big.NewInt(int64(percentageDivisor)), big.NewInt(int64(boostPercent)))
+		// gasTipCap = gasTipCap * (100 + boostPercent) / 100
+		gasTipCap.Mul(gasTipCap, multiplier).Div(gasTipCap, big.NewInt(int64(percentageDivisor)))
+	}
+
+	minimumTip := big.NewInt(transaction.MinimumGasTipCap)
+	if gasTipCap.Cmp(minimumTip) < 0 {
+		gasTipCap.Set(minimumTip)
+	}
+
+	var gasFeeCap *big.Int
+
+	if gasPrice == nil {
+		latestBlockHeader, err := b.backend.HeaderByNumber(ctx, nil)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get latest block header: %w", err)
+		}
+
+		if latestBlockHeader == nil || latestBlockHeader.BaseFee == nil {
+			return nil, nil, ErrEIP1559NotSupported
+		}
+
+		// EIP-1559: gasFeeCap = (2 * baseFee) + gasTipCap
+		gasFeeCap = new(big.Int).Mul(latestBlockHeader.BaseFee, big.NewInt(int64(baseFeeMultiplier)))
+		gasFeeCap.Add(gasFeeCap, gasTipCap)
+
+	} else {
+		gasFeeCap = new(big.Int).Set(gasPrice)
+	}
+
+	// gasTipCap cannot exceed gasFeeCap
+	if gasTipCap.Cmp(gasFeeCap) > 0 {
+		gasTipCap.Set(gasFeeCap)
+	}
+
+	return gasFeeCap, gasTipCap, nil
 }
