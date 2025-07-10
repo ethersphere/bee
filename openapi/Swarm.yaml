@@ -2215,7 +2215,7 @@ paths:
           name: coin
           required: true
           schema:
-            $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
+            $ref: "SwarmCommon.yaml#/components/schemas/WithdrawCoin"
       responses:
         "200":
           content:
