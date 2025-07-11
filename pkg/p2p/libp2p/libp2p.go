@@ -220,6 +220,12 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		libp2p.Peerstore(libp2pPeerstore),
 		libp2p.UserAgent(userAgent()),
 		libp2p.ResourceManager(rm),
+		libp2p.EnableHolePunching(),
+		libp2p.EnableRelay(),
+	}
+
+	if o.FullNode {
+		opts = append(opts, libp2p.EnableRelayService())
 	}
 
 	if o.NATAddr == "" {
