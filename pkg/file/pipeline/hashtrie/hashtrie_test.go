@@ -305,7 +305,7 @@ func TestRedundancy(t *testing.T) {
 			level:      redundancy.PARANOID,
 			encryption: true,
 			writes:     21,  // 21 encrypted chunk references fit into one chunk + 1 carrier
-			parities:   116, // // 87 (full ch) + 29 (2 ref)
+			parities:   116, // 87 (full ch) + 29 (2 ref)
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {

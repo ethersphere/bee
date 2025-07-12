@@ -30,7 +30,7 @@ const loggerName = "listener"
 const (
 	blockPage          = 5000      // how many blocks to sync every time we page
 	tailSize           = 4         // how many blocks to tail from the tip of the chain
-	defaultBatchFactor = uint64(5) // // minimal number of blocks to sync at once
+	defaultBatchFactor = uint64(5) // minimal number of blocks to sync at once
 )
 
 var (

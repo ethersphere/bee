@@ -14,5 +14,5 @@ assignees: ''
 <!-- A (draft) PR always references the task it belongs to. -->
 # Task
 
-## Acceptance criterea
+## Acceptance criteria
 <!-- how to verify when this task is completed? -->
