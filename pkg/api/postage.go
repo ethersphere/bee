@@ -394,7 +394,7 @@ func (s *Service) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
 		Radius:                  s.batchStore.Radius(),
 		StorageRadius:           s.storer.StorageRadius(),
 		Commitment:              commitment,
-		ReserveCapacityDoubling: s.storer.CommittedDepth() - s.storer.StorageRadius(),
+		ReserveCapacityDoubling: s.storer.CapacityDoubling(),
 	})
 }
 

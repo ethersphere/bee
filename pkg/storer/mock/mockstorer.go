@@ -225,6 +225,10 @@ func (m *mockStorer) StorageRadius() uint8 { return m.storageRadius }
 
 func (m *mockStorer) CommittedDepth() uint8 { return m.committedDepth }
 
+func (m *mockStorer) CapacityDoubling() uint8 {
+	return m.committedDepth - m.storageRadius
+}
+
 func (m *mockStorer) IsWithinStorageRadius(_ swarm.Address) bool { return true }
 
 func (m *mockStorer) DebugInfo(_ context.Context) (storer.Info, error) {
