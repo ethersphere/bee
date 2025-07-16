@@ -388,4 +388,41 @@ func TestMonitorWatchTransaction(t *testing.T) {
 		}
 	})
 
+	t.Run("missing transaction", func(t *testing.T) {
+		t.Parallel()
+		var blocks []backendsimulation.Block
+		for i := range transaction.MaxBlocksToWait + 1 {
+			blocks = append(blocks, backendsimulation.Block{Number: uint64(i)})
+		}
+		monitor := transaction.NewMonitor(
+			logger,
+			backendsimulation.New(
+				backendsimulation.WithBlocks(blocks...),
+			),
+			sender,
+			pollingInterval,
+			cancellationDepth,
+		)
+
+		receiptC, errC, err := monitor.WatchTransaction(txHash, nonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		select {
+		case <-receiptC:
+			t.Fatal("got receipt")
+		case err := <-errC:
+			if !errors.Is(err, transaction.ErrTransactionCancelled) {
+				t.Fatalf("got wrong error. wanted %v, got %v", transaction.ErrTransactionCancelled, err)
+			}
+		case <-time.After(testTimeout):
+			t.Fatal("timed out")
+		}
+
+		err = monitor.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
 }
