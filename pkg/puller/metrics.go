@@ -15,6 +15,7 @@ type metrics struct {
 	SyncedCounter         *prometheus.CounterVec // number of synced chunks
 	SyncWorkerErrCounter  prometheus.Counter     // count number of errors
 	MaxUintErrCounter     prometheus.Counter     // how many times we got maxuint as topmost
+	HistoricalSyncTime    prometheus.Histogram   // time from start until historical sync completes
 }
 
 func newMetrics() metrics {
@@ -50,6 +51,13 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "max_uint_errors",
 			Help:      "Total max uint errors.",
+		}),
+		HistoricalSyncTime: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "historical_sync_time_seconds",
+			Help:      "Time from start until historical sync completes in seconds.",
+			Buckets:   []float64{1, 5, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200},
 		}),
 	}
 }
