@@ -336,7 +336,7 @@ func getLatestSnapshot(
 		return nil, err
 	}
 
-	return feeds.GetWrappedChunk(ctx, st, u, false)
+	return feeds.GetWrappedChunk(ctx, st, u)
 }
 
 func batchStoreExists(s storage.StateStorer) (bool, error) {
