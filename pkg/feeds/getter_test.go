@@ -17,24 +17,18 @@ import (
 func TestGetWrappedChunk(t *testing.T) {
 	storer := mockstorer.New()
 
-	data := []byte("data")
 	// new format (wraps chunk)
-	ch := soctesting.GenerateMockSOC(t, data).Chunk()
-	wch, err := GetWrappedChunk(context.Background(), storer.ChunkStore(), ch, false)
+	ch := soctesting.GenerateMockSOC(t, []byte("data")).Chunk()
+	wch, err := GetWrappedChunk(context.Background(), storer.ChunkStore(), ch)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if !bytes.Equal(wch.Data()[8:], data) {
+	if !bytes.Equal(wch.Data()[8:], []byte("data")) {
 		t.Fatal("data mismatch")
 	}
 
 	// old format
-	err = storer.Put(context.Background(), wch)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	tt := []struct {
 		name string
 		addr []byte
@@ -55,30 +49,19 @@ func TestGetWrappedChunk(t *testing.T) {
 			binary.BigEndian.PutUint64(timestamp, 1)
 			ch = soctesting.GenerateMockSOC(t, append(timestamp, tc.addr...)).Chunk()
 
-			wch, err = GetWrappedChunk(context.Background(), storer.ChunkStore(), ch, true)
+			err = storer.Put(context.Background(), wch)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			if !bytes.Equal(wch.Data()[8:], data) {
+			wch, err = GetWrappedChunk(context.Background(), storer.ChunkStore(), ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if !bytes.Equal(wch.Data()[8:], []byte("data")) {
 				t.Fatal("data mismatch")
 			}
 		})
 	}
-
-	t.Run("returns feed legacy payload", func(t *testing.T) {
-		timestamp := make([]byte, 8)
-		binary.BigEndian.PutUint64(timestamp, 1)
-		feedChData := append(timestamp, wch.Address().Bytes()...)
-		ch = soctesting.GenerateMockSOC(t, feedChData).Chunk()
-
-		wch, err = GetWrappedChunk(context.Background(), storer.ChunkStore(), ch, false)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if !bytes.Equal(wch.Data()[8:], feedChData) {
-			t.Fatal("data should be similar as old legacy feed payload format.")
-		}
-	})
 }
