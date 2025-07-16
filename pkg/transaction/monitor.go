@@ -200,9 +200,10 @@ func (tm *transactionMonitor) checkPending(block uint64) error {
 			if err != nil {
 				// wait for a few blocks to be mined before considering a transaction not existing
 				transactionWatchNotFoundTimeout := 5 * tm.pollingInterval
-				if errors.Is(err, ethereum.NotFound) && watchStart(watches).Before(time.Now().Add(transactionWatchNotFoundTimeout)) {
-					// if both err and receipt are nil, there is no receipt
-					// the reason why we consider this only potentially cancelled is to catch cases where after a reorg the original transaction wins
+				if errors.Is(err, ethereum.NotFound) {
+					if watchStart(watches).Add(transactionWatchNotFoundTimeout).Before(time.Now()) {
+						cancelledNonces = append(cancelledNonces, nonceGroup)
+					}
 					continue
 				}
 				return err
