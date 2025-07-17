@@ -36,7 +36,7 @@ type Signer interface {
 
 // addEthereumPrefix adds the ethereum prefix to the data.
 func addEthereumPrefix(data []byte) []byte {
-	return []byte(fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(data), data))
+	return fmt.Appendf(nil, "\x19Ethereum Signed Message:\n%d%s", len(data), data)
 }
 
 // hashWithEthereumPrefix returns the hash that should be signed for the given data.
