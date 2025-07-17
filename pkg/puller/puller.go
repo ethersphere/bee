@@ -60,11 +60,6 @@ type Puller struct {
 	metrics metrics
 	logger  log.Logger
 
-	// Historical sync tracking
-	syncStartTime      time.Time
-	historicalSyncsMtx sync.Mutex
-	activeSyncs        int
-
 	syncPeers    map[string]*syncPeer // index is bin, map key is peer address
 	syncPeersMtx sync.Mutex
 	intervalMtx  sync.Mutex
@@ -119,10 +114,6 @@ func (p *Puller) Start(ctx context.Context) {
 	p.start.Do(func() {
 		cctx, cancel := context.WithCancel(ctx)
 		p.cancel = cancel
-
-		// Initialize historical sync tracking
-		p.syncStartTime = time.Now()
-		p.activeSyncs = 0
 
 		p.wg.Add(1)
 		go p.manage(cctx)
@@ -317,27 +308,6 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 	sync := func(isHistorical bool, address swarm.Address, start uint64) {
 		p.metrics.SyncWorkerCounter.Inc()
 
-		// Track historical sync start
-		if isHistorical {
-			p.historicalSyncsMtx.Lock()
-			p.activeSyncs++
-			p.historicalSyncsMtx.Unlock()
-		}
-
-		defer func() {
-			// Track historical sync completion and observe metrics if all syncs finished
-			if isHistorical {
-				p.historicalSyncsMtx.Lock()
-				p.activeSyncs--
-				if p.activeSyncs == 0 {
-					// All historical syncs have completed, observe the total sync time
-					elapsed := time.Since(p.syncStartTime).Seconds()
-					p.metrics.HistoricalSyncTime.Observe(elapsed)
-					p.logger.Info("all historical syncs completed", "elapsed_seconds", elapsed)
-				}
-				p.historicalSyncsMtx.Unlock()
-			}
-		}()
 		defer p.wg.Done()
 		defer peer.wg.Done()
 		defer p.metrics.SyncWorkerCounter.Dec()
