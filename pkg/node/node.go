@@ -208,6 +208,7 @@ func NewBee(
 ) (b *Bee, err error) {
 	// start time for node warmup duration measurement
 	warmupStartTime := time.Now()
+	var pullSyncStartTime time.Time
 
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
@@ -608,7 +609,7 @@ func NewBee(
 	)
 	prometheus.MustRegister(nodeWarmupDuration)
 
-	detector.OnStabilized = func(t time.Time, totalCount int) {
+	warmupMeasurement := func(t time.Time, totalCount int) {
 		warmupDuration := t.Sub(warmupStartTime).Seconds()
 		logger.Info("node warmup complete. system is considered stable and ready.",
 			"stabilizationTime", t,
@@ -617,7 +618,9 @@ func NewBee(
 
 		// Record the warmup duration in the prometheus metric
 		nodeWarmupDuration.Observe(warmupDuration)
+		pullSyncStartTime = t
 	}
+	detector.OnStabilized = warmupMeasurement
 
 	detector.OnPeriodComplete = func(t time.Time, periodCount int, stDev float64) {
 		logger.Debug("node warmup check: period complete.", "periodEndTime", t, "eventsInPeriod", periodCount, "rateStdDev", stDev)
@@ -1149,6 +1152,45 @@ func NewBee(
 
 		localStore.StartReserveWorker(ctx, pullerService, waitNetworkRFunc)
 		nodeStatus.SetSync(pullerService)
+
+		// measure full sync duration
+		detector.OnStabilized = func(t time.Time, totalCount int) {
+			warmupMeasurement(t, totalCount)
+			fullSyncDuration := prometheus.NewHistogram(
+				prometheus.HistogramOpts{
+					Namespace: metrics.Namespace,
+					Subsystem: "init",
+					Name:      "full_sync_duration_seconds",
+					Help:      "Duration in seconds for node warmup to complete",
+				},
+			)
+			prometheus.MustRegister(fullSyncDuration)
+
+			reserveTreshold := reserveCapacity >> 1
+			isFullySynced := func() bool {
+				return pullerService.SyncRate() == 0 && localStore.ReserveSize() >= reserveTreshold
+			}
+
+			syncCheckTicker := time.NewTicker(time.Second)
+			go func() {
+				defer syncCheckTicker.Stop()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case <-syncCheckTicker.C:
+						synced := isFullySynced()
+						logger.Debug("sync status check", "synced", synced, "reserveSize", localStore.ReserveSize(), "threshold", reserveTreshold, "syncRate", pullerService.SyncRate())
+						if synced {
+							fullSyncTime := pullSyncStartTime.Sub(t)
+							fullSyncDuration.Observe(fullSyncTime.Seconds())
+							syncCheckTicker.Stop()
+							return
+						}
+					}
+				}
+			}()
+		}
 
 		if o.EnableStorageIncentives {
 
