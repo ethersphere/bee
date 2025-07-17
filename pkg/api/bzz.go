@@ -435,7 +435,7 @@ FETCH:
 				jsonhttp.NotFound(w, "no update found")
 				return
 			}
-			wc, err := feeds.GetWrappedChunk(ctx, s.storer.Download(cache), ch, false)
+			wc, err := feeds.GetWrappedChunk(ctx, s.storer.Download(cache), ch)
 			if err != nil {
 				logger.Debug("bzz download: mapStructure feed update failed", "error", err)
 				logger.Error(nil, "bzz download: mapStructure feed update failed")

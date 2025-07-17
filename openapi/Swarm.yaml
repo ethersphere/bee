@@ -1039,12 +1039,6 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/FeedType"
           required: false
           description: "Feed indexing scheme (default: sequence)"
-        - in: header
-          name: legacy-feed-resolution
-          schema:
-            type: boolean
-          required: false
-          description: "Resolves feed payloads in legacy structure (timestamp, content address)."
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmOnlyRootChunkParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
@@ -2219,7 +2213,7 @@ paths:
           name: coin
           required: true
           schema:
-            $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
+            $ref: "SwarmCommon.yaml#/components/schemas/WithdrawCoin"
       responses:
         "200":
           content:

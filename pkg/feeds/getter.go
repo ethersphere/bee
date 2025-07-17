@@ -50,7 +50,7 @@ func (f *Getter) Get(ctx context.Context, i Index) (swarm.Chunk, error) {
 	return f.getter.Get(ctx, addr)
 }
 
-func GetWrappedChunk(ctx context.Context, getter storage.Getter, ch swarm.Chunk, legacyResolve bool) (swarm.Chunk, error) {
+func GetWrappedChunk(ctx context.Context, getter storage.Getter, ch swarm.Chunk) (swarm.Chunk, error) {
 	wc, err := FromChunk(ch)
 	if err != nil {
 		return nil, err
@@ -59,16 +59,16 @@ func GetWrappedChunk(ctx context.Context, getter storage.Getter, ch swarm.Chunk,
 	// possible values right now:
 	// unencrypted ref: span+timestamp+ref => 8+8+32=48
 	// encrypted ref: span+timestamp+ref+decryptKey => 8+8+64=80
-	// legacy soc does not need special getter for replicas
-	if legacyResolve {
-		ref, err := legacyPayload(wc)
-		if err != nil {
-			return nil, err
+	ref, err := legacyPayload(wc)
+	if err != nil {
+		if errors.Is(err, errNotLegacyPayload) {
+			return wc, nil
 		}
-		wc, err = getter.Get(ctx, ref)
-		if err != nil {
-			return nil, err
-		}
+		return nil, err
+	}
+	wc, err = getter.Get(ctx, ref)
+	if err != nil {
+		return nil, err
 	}
 
 	return wc, nil

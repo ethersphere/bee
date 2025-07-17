@@ -808,7 +808,7 @@ func TestFeedIndirection(t *testing.T) {
 	}
 	socRootCh := testingsoc.GenerateMockSOC(t, rootCh.Data()[swarm.SpanSize:]).Chunk()
 
-	// now use the "content" root chunk to mock the feed lookup
+	// now use the "content" to mock the feed lookup
 	// also, use the mocked mantaray chunks that unmarshal
 	// into a real manifest with the mocked feed values when
 	// called from the bzz endpoint. then call the bzz endpoint with
