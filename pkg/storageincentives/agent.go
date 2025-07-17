@@ -192,6 +192,8 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 			return
 		}
 
+		a.logger.Debug("retrieved block number", "block", block, "round", block/blocksPerRound)
+
 		a.state.SetCurrentBlock(block)
 
 		round := block / blocksPerRound
@@ -215,12 +217,12 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		prevPhase = currentPhase
 		a.metrics.CurrentPhase.Set(float64(currentPhase))
 
-		a.logger.Info("entered new phase", "phase", currentPhase.String(), "round", round, "block", block)
+		a.logger.Info("entered new phase", "phase", currentPhase.String(), "round", round, "block", block, "blockInRound", p)
 
 		a.state.SetCurrentEvent(currentPhase, round)
 		a.state.SetFullySynced(a.fullSyncedFunc())
 		a.state.SetHealthy(a.health.IsHealthy())
-		go a.state.purgeStaleRoundData()
+		a.state.purgeStaleRoundData()
 
 		// check if node is frozen starting from the next block
 		isFrozen, err := a.redistributionStatuser.IsOverlayFrozen(ctx, block+1)
@@ -245,7 +247,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	phaseCheckInterval := blockTime
 	// optimization, we do not need to check the phase change at every new block
 	if blocksPerPhase > 10 {
-		phaseCheckInterval = blockTime * 5
+		phaseCheckInterval = blockTime * 2
 	}
 
 	for {
@@ -264,14 +266,13 @@ func (a *Agent) handleCommit(ctx context.Context, round uint64) error {
 	a.commitLock.Lock()
 	defer a.commitLock.Unlock()
 
-	if _, exists := a.state.CommitKey(round); exists {
+	commitExists, sample, sampleExists := a.state.GetCommitData(round, round-1)
+	if commitExists {
 		// already committed on this round, phase is skipped
 		return nil
 	}
 
-	// the sample has to come from previous round to be able to commit it
-	sample, exists := a.state.SampleData(round - 1)
-	if !exists {
+	if !sampleExists {
 		// In absence of sample, phase is skipped
 		return nil
 	}
@@ -287,16 +288,14 @@ func (a *Agent) handleCommit(ctx context.Context, round uint64) error {
 }
 
 func (a *Agent) handleReveal(ctx context.Context, round uint64) error {
-	// reveal requires the commitKey from the same round
-	commitKey, exists := a.state.CommitKey(round)
-	if !exists {
+	commitKey, commitExists, sample, sampleExists := a.state.GetRevealData(round, round-1)
+
+	if !commitExists {
 		// In absence of commitKey, phase is skipped
 		return nil
 	}
 
-	// reveal requires sample from previous round
-	sample, exists := a.state.SampleData(round - 1)
-	if !exists {
+	if !sampleExists {
 		// Sample must have been saved so far
 		return fmt.Errorf("sample not found in reveal phase")
 	}
@@ -317,10 +316,16 @@ func (a *Agent) handleReveal(ctx context.Context, round uint64) error {
 }
 
 func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
-	hasRevealed := a.state.HasRevealed(round)
+	hasRevealed, sampleData, sampleExists := a.state.GetClaimData(round, round-1)
+
 	if !hasRevealed {
 		// When there was no reveal in same round, phase is skipped
 		return nil
+	}
+
+	if !sampleExists {
+		// Sample must have been saved so far
+		return fmt.Errorf("sample not found in claim phase")
 	}
 
 	a.metrics.ClaimPhase.Inc()
@@ -352,11 +357,6 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 	errBalance := a.state.SetBalance(ctx)
 	if errBalance != nil {
 		a.logger.Info("could not set balance", "err", err)
-	}
-
-	sampleData, exists := a.state.SampleData(round - 1)
-	if !exists {
-		return fmt.Errorf("sample not found")
 	}
 
 	anchor2, err := a.contract.ReserveSalt(ctx)
