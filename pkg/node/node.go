@@ -206,6 +206,9 @@ func NewBee(
 	session accesscontrol.Session,
 	o *Options,
 ) (b *Bee, err error) {
+	// start time for node warmup duration measurement
+	warmupStartTime := time.Now()
+
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -595,8 +598,25 @@ func NewBee(
 		logger.Info("node warmup check initiated. monitoring activity rate to determine readiness.", "startTime", t)
 	}
 
+	nodeWarmupDuration := prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Namespace: metrics.Namespace,
+			Subsystem: "init",
+			Name:      "warmup_duration_seconds",
+			Help:      "Duration in seconds for node warmup to complete",
+		},
+	)
+	prometheus.MustRegister(nodeWarmupDuration)
+
 	detector.OnStabilized = func(t time.Time, totalCount int) {
-		logger.Info("node warmup complete. system is considered stable and ready.", "stabilizationTime", t, "totalMonitoredEvents", totalCount)
+		warmupDuration := t.Sub(warmupStartTime).Seconds()
+		logger.Info("node warmup complete. system is considered stable and ready.",
+			"stabilizationTime", t,
+			"totalMonitoredEvents", totalCount,
+			"warmupDurationSeconds", warmupDuration)
+
+		// Record the warmup duration in the prometheus metric
+		nodeWarmupDuration.Observe(warmupDuration)
 	}
 
 	detector.OnPeriodComplete = func(t time.Time, periodCount int, stDev float64) {
