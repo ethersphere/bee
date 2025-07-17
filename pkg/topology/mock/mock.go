@@ -42,7 +42,7 @@ func WithAddPeersErr(err error) Option {
 	})
 }
 
-func WithNeighborhoodDepth(dd uint8) Option {
+func WithStorageRadius(dd uint8) Option {
 	return optionFunc(func(d *mock) {
 		d.depth = dd
 	})
@@ -184,7 +184,7 @@ func (d *mock) SubscribeTopologyChange() (c <-chan struct{}, unsubscribe func())
 	return c, unsubscribe
 }
 
-func (m *mock) NeighborhoodDepth() uint8 {
+func (m *mock) StorageRadius() uint8 {
 	return m.depth
 }
 

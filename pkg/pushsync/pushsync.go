@@ -345,7 +345,7 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 
 // pushToClosest attempts to push the chunk into the network.
 func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bool) (*pb.Receipt, error) {
-	if !ps.stabilizer.IsStabilized() {
+	if !ps.stabilizer.IsReady() {
 		return nil, ErrWarmup
 	}
 

@@ -37,8 +37,8 @@ type Subscriber interface {
 	// Subscribe returns a channel that will receive a notification when the
 	// stabilization reaches the Stabilized state.
 	Subscribe() (c <-chan struct{}, cancel func())
-	// IsStabilized returns true if the detector is in the Stabilized state.
-	IsStabilized() bool
+	// IsReady returns true if the detector is in the Stabilized state.
+	IsReady() bool
 }
 
 // RateState represents the detected state of the event rate stabilization.
@@ -214,8 +214,8 @@ func (d *Detector) Subscribe() (c <-chan struct{}, cancel func()) {
 	return d.trigger.Subscribe(subscriptionTopic)
 }
 
-// IsStabilized returns true if the detector is currently in the StateStabilized.
-func (d *Detector) IsStabilized() bool {
+// IsReady returns true if the detector is currently in the StateStabilized.
+func (d *Detector) IsReady() bool {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
 	return d.currentState == StateStabilized
