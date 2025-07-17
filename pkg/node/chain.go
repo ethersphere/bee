@@ -373,12 +373,12 @@ func (m noOpChainBackend) PendingNonceAt(context.Context, common.Address) (uint6
 	panic("chain no op: PendingNonceAt")
 }
 
-func (m noOpChainBackend) SuggestGasPrice(context.Context) (*big.Int, error) {
-	panic("chain no op: SuggestGasPrice")
+func (m noOpChainBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+	panic("chain no op: SuggestedFeeAndTip")
 }
 
 func (m noOpChainBackend) SuggestGasTipCap(context.Context) (*big.Int, error) {
-	panic("chain no op: SuggestGasPrice")
+	panic("chain no op: SuggestGasTipCap")
 }
 
 func (m noOpChainBackend) EstimateGas(context.Context, ethereum.CallMsg) (uint64, error) {

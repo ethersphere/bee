@@ -136,6 +136,9 @@ func TestTransactionSend(t *testing.T) {
 				backendmock.WithHeaderbyNumberFunc(func(ctx context.Context, number *big.Int) (*types.Header, error) {
 					return &types.Header{BaseFee: baseFee}, nil
 				}),
+				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+					return gasFeeCap, suggestedGasTip, nil
+				}),
 			),
 			signerMockForTransaction(t, signedTx, sender, chainID),
 			store,
@@ -242,6 +245,9 @@ func TestTransactionSend(t *testing.T) {
 				}),
 				backendmock.WithHeaderbyNumberFunc(func(ctx context.Context, number *big.Int) (*types.Header, error) {
 					return &types.Header{BaseFee: baseFee}, nil
+				}),
+				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+					return gasFeeCap, suggestedGasTip, nil
 				}),
 			),
 			signerMockForTransaction(t, signedTx, sender, chainID),
@@ -359,6 +365,9 @@ func TestTransactionSend(t *testing.T) {
 				backendmock.WithHeaderbyNumberFunc(func(ctx context.Context, number *big.Int) (*types.Header, error) {
 					return &types.Header{BaseFee: baseFee}, nil
 				}),
+				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+					return gasFeeCapWithBoost, suggestedGasTip, nil
+				}),
 			),
 			signerMockForTransaction(t, signedTx, sender, chainID),
 			store,
@@ -471,6 +480,9 @@ func TestTransactionSend(t *testing.T) {
 				backendmock.WithHeaderbyNumberFunc(func(ctx context.Context, number *big.Int) (*types.Header, error) {
 					return &types.Header{BaseFee: baseFee}, nil
 				}),
+				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+					return gasFeeCap, suggestedGasTip, nil
+				}),
 			),
 			signerMockForTransaction(t, signedTx, sender, chainID),
 			store,
@@ -538,6 +550,9 @@ func TestTransactionSend(t *testing.T) {
 				}),
 				backendmock.WithHeaderbyNumberFunc(func(ctx context.Context, number *big.Int) (*types.Header, error) {
 					return &types.Header{BaseFee: baseFee}, nil
+				}),
+				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+					return gasFeeCap, suggestedGasTip, nil
 				}),
 			),
 			signerMockForTransaction(t, signedTx, sender, chainID),
@@ -607,6 +622,9 @@ func TestTransactionSend(t *testing.T) {
 				}),
 				backendmock.WithHeaderbyNumberFunc(func(ctx context.Context, number *big.Int) (*types.Header, error) {
 					return &types.Header{BaseFee: baseFee}, nil
+				}),
+				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+					return customGasFeeCap, customGasFeeCap, nil
 				}),
 			),
 			signerMockForTransaction(t, signedTx, sender, chainID),
@@ -754,6 +772,9 @@ func TestTransactionResend(t *testing.T) {
 			backendmock.WithHeaderbyNumberFunc(func(ctx context.Context, number *big.Int) (*types.Header, error) {
 				return &types.Header{BaseFee: baseFee}, nil
 			}),
+			backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+				return gasFeeCap, gasTip, nil
+			}),
 		),
 		signerMockForTransaction(t, signedTx, recipient, chainID),
 		store,
@@ -844,6 +865,9 @@ func TestTransactionCancel(t *testing.T) {
 				backendmock.WithHeaderbyNumberFunc(func(ctx context.Context, number *big.Int) (*types.Header, error) {
 					return &types.Header{BaseFee: baseFee}, nil
 				}),
+				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+					return fee, minimumTip, nil
+				}),
 			),
 			signerMockForTransaction(t, cancelTx, recipient, chainID),
 			store,
@@ -879,7 +903,7 @@ func TestTransactionCancel(t *testing.T) {
 			Value:     big.NewInt(0),
 			Gas:       21000,
 			GasFeeCap: gasFeeCap,
-			GasTipCap: gasTip,
+			GasTipCap: gasTipCap,
 			Data:      []byte{},
 		})
 
@@ -893,6 +917,9 @@ func TestTransactionCancel(t *testing.T) {
 				}),
 				backendmock.WithSuggestGasTipCapFunc(func(ctx context.Context) (*big.Int, error) {
 					return gasTip, nil
+				}),
+				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+					return gasFee, gasTip, nil
 				}),
 			),
 			signerMockForTransaction(t, cancelTx, recipient, chainID),
