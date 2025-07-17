@@ -39,7 +39,7 @@ const (
 	ProbeStatusNOK ProbeStatus = 0
 )
 
-// Probe structure holds flags which indicate node healthiness (sometimes refert also as liveness) and readiness.
+// Probe structure holds flags which indicate node healthiness (sometimes referred also as liveness) and readiness.
 type Probe struct {
 	// Healthy probe indicates if node, due to any reason, needs to restarted.
 	healthy ProbeStatus
