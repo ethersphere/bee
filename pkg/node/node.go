@@ -1168,7 +1168,7 @@ func NewBee(
 
 			reserveTreshold := reserveCapacity >> 1
 			isFullySynced := func() bool {
-				return pullerService.SyncRate() == 0 && localStore.ReserveSize() >= reserveTreshold
+				return pullerService.SyncRate() == 0 && saludService.IsHealthy() && localStore.ReserveSize() >= reserveTreshold
 			}
 
 			syncCheckTicker := time.NewTicker(time.Second)
