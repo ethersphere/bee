@@ -112,7 +112,7 @@ func TestInvalid(t *testing.T) {
 			name: "wrong soc address",
 			chunk: func() swarm.Chunk {
 				wrongAddressBytes := socAddress.Clone().Bytes()
-				wrongAddressBytes[0] = 255 - wrongAddressBytes[0]
+				wrongAddressBytes[1] = 255 - wrongAddressBytes[1]
 				wrongAddress := swarm.NewAddress(wrongAddressBytes)
 				data := makeSocData()
 				return swarm.NewChunk(wrongAddress, data)
