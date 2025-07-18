@@ -206,7 +206,7 @@ func TestSOCGetter(t *testing.T) {
 			t.Run("latency", func(t *testing.T) {
 				counts := redundancy.GetReplicaCounts()
 				for i, latency := range latencies {
-					multiplier := latency / replicas.RetryInterval
+					multiplier := latency / replicas.SOCRetryInterval
 					if multiplier > 0 && i < counts[multiplier-1] {
 						t.Fatalf("incorrect latency for retrieving replica %d: %v", i, err)
 					}
