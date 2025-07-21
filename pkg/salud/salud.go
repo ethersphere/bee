@@ -205,7 +205,7 @@ func (s *service) salud(mode string, durPercentile float64, connsPercentile floa
 		if networkRadius > 0 && peer.status.CommittedDepth < uint32(networkRadius-2) {
 			s.logger.Debug("radius health failure", "radius", peer.status.CommittedDepth, "peer_address", peer.addr, "bin", peer.bin)
 		} else if peer.dur.Seconds() > pDur {
-			s.logger.Debug("response duration below threshold", "duration", peer.dur, "peer_address", peer.addr, "bin", peer.bin)
+			s.logger.Debug("response duration above threshold", "duration", peer.dur, "peer_address", peer.addr, "bin", peer.bin)
 		} else if peer.status.ConnectedPeers < pConns {
 			s.logger.Debug("connections count below threshold", "connections", peer.status.ConnectedPeers, "peer_address", peer.addr, "bin", peer.bin)
 		} else if peer.status.BatchCommitment != commitment {
