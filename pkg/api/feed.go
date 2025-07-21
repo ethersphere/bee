@@ -53,8 +53,9 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	queries := struct {
-		At    int64  `map:"at"`
-		After uint64 `map:"after"`
+		At                int64  `map:"at"`
+		After             uint64 `map:"after"`
+		FeedLegacyResolve bool   `map:"swarm-feed-legacy-resolve"`
 	}{}
 	if response := s.mapStructure(r.URL.Query(), &queries); response != nil {
 		response("invalid query params", logger, w)
@@ -65,8 +66,7 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	headers := struct {
-		OnlyRootChunk     bool `map:"Swarm-Only-Root-Chunk"`
-		LegacyFeedResolve bool `map:"Swarm-Feed-Legacy-Resolve"`
+		OnlyRootChunk bool `map:"Swarm-Only-Root-Chunk"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -103,7 +103,7 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wc, err := feeds.GetWrappedChunk(r.Context(), s.storer.Download(false), ch, headers.LegacyFeedResolve)
+	wc, err := feeds.GetWrappedChunk(r.Context(), s.storer.Download(false), ch, queries.FeedLegacyResolve)
 	if err != nil {
 		logger.Error(nil, "wrapped chunk cannot be retrieved")
 		jsonhttp.NotFound(w, "wrapped chunk cannot be retrieved")
