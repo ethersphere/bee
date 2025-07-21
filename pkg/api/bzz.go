@@ -337,7 +337,15 @@ func (s *Service) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		paths.Path = strings.TrimRight(paths.Path, "/") + "/" // NOTE: leave one slash if there was some.
 	}
 
-	s.serveReference(logger, address, paths.Path, w, r, false)
+	queries := struct {
+		FeedLegacyResolve bool `map:"swarm-feed-legacy-resolve"`
+	}{}
+	if response := s.mapStructure(r.URL.Query(), &queries); response != nil {
+		response("invalid query params", logger, w)
+		return
+	}
+
+	s.serveReference(logger, address, paths.Path, w, r, false, queries.FeedLegacyResolve)
 }
 
 func (s *Service) bzzHeadHandler(w http.ResponseWriter, r *http.Request) {
@@ -352,6 +360,14 @@ func (s *Service) bzzHeadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	queries := struct {
+		FeedLegacyResolve bool `map:"swarm-feed-legacy-resolve"`
+	}{}
+	if response := s.mapStructure(r.URL.Query(), &queries); response != nil {
+		response("invalid query params", logger, w)
+		return
+	}
+
 	address := paths.Address
 	if v := getAddressFromContext(r.Context()); !v.IsZero() {
 		address = v
@@ -361,10 +377,10 @@ func (s *Service) bzzHeadHandler(w http.ResponseWriter, r *http.Request) {
 		paths.Path = strings.TrimRight(paths.Path, "/") + "/" // NOTE: leave one slash if there was some.
 	}
 
-	s.serveReference(logger, address, paths.Path, w, r, true)
+	s.serveReference(logger, address, paths.Path, w, r, true, queries.FeedLegacyResolve)
 }
 
-func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathVar string, w http.ResponseWriter, r *http.Request, headerOnly bool) {
+func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathVar string, w http.ResponseWriter, r *http.Request, headerOnly bool, feedLegacyResolve bool) {
 	loggerV1 := logger.V(1).Build()
 
 	headers := struct {
@@ -433,7 +449,7 @@ FETCH:
 				jsonhttp.NotFound(w, "no update found")
 				return
 			}
-			wc, err := feeds.GetWrappedChunk(ctx, s.storer.Download(cache), ch, false)
+			wc, err := feeds.GetWrappedChunk(ctx, s.storer.Download(cache), ch, feedLegacyResolve)
 			if err != nil {
 				logger.Debug("bzz download: mapStructure feed update failed", "error", err)
 				logger.Error(nil, "bzz download: mapStructure feed update failed")
