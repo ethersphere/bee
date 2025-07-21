@@ -435,6 +435,7 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
           description: Swarm address of content
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmFeedLegacyResolve"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyFallbackModeParameter"
@@ -503,6 +504,7 @@ paths:
             type: string
           required: true
           description: Path to the file in the collection.
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmFeedLegacyResolve"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyFallbackModeParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmChunkRetrievalTimeoutParameter"
@@ -1036,12 +1038,7 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/FeedType"
           required: false
           description: "Feed indexing scheme (default: sequence)"
-        - in: header
-          name: legacy-feed-resolution
-          schema:
-            type: boolean
-          required: false
-          description: "Resolves feed payloads in legacy structure (timestamp, content address)."
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmFeedLegacyResolve"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmOnlyRootChunkParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"

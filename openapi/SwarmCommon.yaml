@@ -1280,6 +1280,14 @@ components:
       required: false
       description: "ACT history Unix timestamp"
 
+    SwarmFeedLegacyResolve:
+      in: query
+      name: swarm-feed-legacy-resolve
+      schema:
+        type: boolean
+      required: false
+      description: "Resolves feed payloads in legacy structure (timestamp, content address)."
+
   responses:
     "200":
       description: OK.
