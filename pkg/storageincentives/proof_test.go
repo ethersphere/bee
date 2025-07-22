@@ -69,13 +69,13 @@ func TestMakeInclusionProofsRegression(t *testing.T) {
 	// generate chunks that will be used as sample
 	sampleChunks := make([]swarm.Chunk, 0, sampleSize)
 	for i := 0; i < sampleSize; i++ {
-		ch, err := cac.New([]byte(fmt.Sprintf("Unstoppable data! Chunk #%d", i+1)))
+		ch, err := cac.New(fmt.Appendf(nil, "Unstoppable data! Chunk #%d", i+1))
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		if i%2 == 0 {
-			id, err := crypto.LegacyKeccak256([]byte(fmt.Sprintf("ID #%d", i+1)))
+			id, err := crypto.LegacyKeccak256(fmt.Appendf(nil, "ID #%d", i+1))
 			if err != nil {
 				t.Fatal(err)
 			}
