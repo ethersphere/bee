@@ -22,7 +22,7 @@ type substr string
 type point struct{ x, y int }
 
 func (p point) MarshalText() ([]byte, error) {
-	return []byte(fmt.Sprintf("(%d, %d)", p.x, p.y)), nil
+	return fmt.Appendf(nil, "(%d, %d)", p.x, p.y), nil
 }
 
 // pointErr implements encoding.TextMarshaler but returns an error.
