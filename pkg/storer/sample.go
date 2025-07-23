@@ -126,7 +126,10 @@ func (db *DB) ReserveSample(
 	for i := 0; i < workers; i++ {
 		g.Go(func() error {
 			wstat := SampleStats{}
+			// Initialize BMT hasher for transformed address calculation
 			hasher := bmt.NewHasher(prefixHasherFactory)
+			// Initialize standard hasher for SOC operations
+			standardHasher := swarm.NewHasher()
 			defer func() {
 				addStats(wstat)
 			}()
@@ -158,7 +161,7 @@ func (db *DB) ReserveSample(
 				wstat.ChunkLoadDuration += time.Since(chunkLoadStart)
 
 				taddrStart := time.Now()
-				taddr, err := transformedAddress(hasher, chunk, chItem.ChunkType)
+				taddr, err := transformedAddress(hasher, standardHasher, chunk, chItem.ChunkType)
 				if err != nil {
 					return err
 				}
@@ -294,12 +297,12 @@ func (db *DB) batchesBelowValue(until *big.Int) (map[string]struct{}, error) {
 	return res, err
 }
 
-func transformedAddress(hasher *bmt.Hasher, chunk swarm.Chunk, chType swarm.ChunkType) (swarm.Address, error) {
+func transformedAddress(hasher *bmt.Hasher, standardHasher hash.Hash, chunk swarm.Chunk, chType swarm.ChunkType) (swarm.Address, error) {
 	switch chType {
 	case swarm.ChunkTypeContentAddressed:
 		return transformedAddressCAC(hasher, chunk)
 	case swarm.ChunkTypeSingleOwner:
-		return transformedAddressSOC(hasher, chunk)
+		return transformedAddressSOC(hasher, standardHasher, chunk)
 	default:
 		return swarm.ZeroAddress, fmt.Errorf("chunk type [%v] is not valid", chType)
 	}
@@ -322,7 +325,7 @@ func transformedAddressCAC(hasher *bmt.Hasher, chunk swarm.Chunk) (swarm.Address
 	return swarm.NewAddress(taddr), nil
 }
 
-func transformedAddressSOC(hasher *bmt.Hasher, socChunk swarm.Chunk) (swarm.Address, error) {
+func transformedAddressSOC(hasher *bmt.Hasher, standardHasher hash.Hash, socChunk swarm.Chunk) (swarm.Address, error) {
 	// Calculate transformed address from wrapped chunk
 	cacChunk, err := soc.UnwrapCAC(socChunk)
 	if err != nil {
@@ -334,15 +337,16 @@ func transformedAddressSOC(hasher *bmt.Hasher, socChunk swarm.Chunk) (swarm.Addr
 	}
 
 	// Hash address and transformed address to make transformed address for this SOC
-	sHasher := swarm.NewHasher()
-	if _, err := sHasher.Write(socChunk.Address().Bytes()); err != nil {
+	// Reuse the standardHasher instead of creating a new one
+	standardHasher.Reset()
+	if _, err := standardHasher.Write(socChunk.Address().Bytes()); err != nil {
 		return swarm.ZeroAddress, err
 	}
-	if _, err := sHasher.Write(taddrCac.Bytes()); err != nil {
+	if _, err := standardHasher.Write(taddrCac.Bytes()); err != nil {
 		return swarm.ZeroAddress, err
 	}
 
-	return swarm.NewAddress(sHasher.Sum(nil)), nil
+	return swarm.NewAddress(standardHasher.Sum(nil)), nil
 }
 
 type SampleStats struct {
@@ -406,8 +410,10 @@ func MakeSampleUsingChunks(chunks []swarm.Chunk, anchor []byte) (Sample, error) 
 		return swarm.NewPrefixHasher(anchor)
 	}
 	items := make([]SampleItem, len(chunks))
+	prefixHasher := bmt.NewHasher(prefixHasherFactory)
+	standardHasher := swarm.NewHasher()
 	for i, ch := range chunks {
-		tr, err := transformedAddress(bmt.NewHasher(prefixHasherFactory), ch, getChunkType(ch))
+		tr, err := transformedAddress(prefixHasher, standardHasher, ch, getChunkType(ch))
 		if err != nil {
 			return Sample{}, err
 		}
