@@ -13,8 +13,8 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
+	"github.com/ethersphere/bee/v2/pkg/transaction/backend"
 )
 
 const (
@@ -28,12 +28,12 @@ var (
 )
 
 type wrappedBackend struct {
-	backend          *ethclient.Client
+	backend          backend.Backend
 	metrics          metrics
 	minimumGasTipCap int64
 }
 
-func NewBackend(backend *ethclient.Client, minimumGasTipCap uint64) transaction.Backend {
+func NewBackend(backend backend.Backend, minimumGasTipCap uint64) transaction.Backend {
 	return &wrappedBackend{
 		backend:          backend,
 		minimumGasTipCap: int64(minimumGasTipCap),
@@ -215,9 +215,8 @@ func (b *wrappedBackend) BlockByNumber(ctx context.Context, number *big.Int) (*t
 	return block, nil
 }
 
-func (b *wrappedBackend) Close() error {
+func (b *wrappedBackend) Close() {
 	b.backend.Close()
-	return nil
 }
 
 // SuggestedFeeAndTip calculates the recommended gasFeeCap and gasTipCap for a transaction.

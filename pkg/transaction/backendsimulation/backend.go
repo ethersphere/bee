@@ -169,6 +169,4 @@ func (m *simulatedBackend) ChainID(ctx context.Context) (*big.Int, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (m *simulatedBackend) Close() error {
-	return nil
-}
+func (m *simulatedBackend) Close() {}

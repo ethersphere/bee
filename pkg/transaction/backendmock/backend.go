@@ -146,9 +146,7 @@ func (m *backendMock) ChainID(ctx context.Context) (*big.Int, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (m *backendMock) Close() error {
-	return nil
-}
+func (m *backendMock) Close() {}
 
 func New(opts ...Option) transaction.Backend {
 	mock := new(backendMock)

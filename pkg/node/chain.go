@@ -420,6 +420,4 @@ func (m noOpChainBackend) ChainID(context.Context) (*big.Int, error) {
 	return big.NewInt(m.chainID), nil
 }
 
-func (m noOpChainBackend) Close() error {
-	return nil
-}
+func (m noOpChainBackend) Close() {}
