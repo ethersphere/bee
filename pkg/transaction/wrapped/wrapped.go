@@ -28,14 +28,16 @@ var (
 )
 
 type wrappedBackend struct {
-	backend *ethclient.Client
-	metrics metrics
+	backend          *ethclient.Client
+	metrics          metrics
+	minimumGasTipCap int64
 }
 
-func NewBackend(backend *ethclient.Client) transaction.Backend {
+func NewBackend(backend *ethclient.Client, minimumGasTipCap uint64) transaction.Backend {
 	return &wrappedBackend{
-		backend: backend,
-		metrics: newMetrics(),
+		backend:          backend,
+		minimumGasTipCap: int64(minimumGasTipCap),
+		metrics:          newMetrics(),
 	}
 }
 
@@ -238,7 +240,7 @@ func (b *wrappedBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.I
 		gasTipCap.Mul(gasTipCap, multiplier).Div(gasTipCap, big.NewInt(int64(percentageDivisor)))
 	}
 
-	minimumTip := big.NewInt(transaction.MinimumGasTipCap)
+	minimumTip := big.NewInt(b.minimumGasTipCap)
 	if gasTipCap.Cmp(minimumTip) < 0 {
 		gasTipCap.Set(minimumTip)
 	}

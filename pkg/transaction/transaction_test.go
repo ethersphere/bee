@@ -31,7 +31,7 @@ import (
 )
 
 var (
-	minimumTip = big.NewInt(transaction.MinimumGasTipCap)
+	minimumTip = big.NewInt(1_500_000_000)
 	baseFee    = big.NewInt(3_000_000_000)
 )
 

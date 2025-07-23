@@ -145,6 +145,7 @@ type Options struct {
 	EnableWS                      bool
 	FullNodeMode                  bool
 	Logger                        log.Logger
+	MinimumGasTipCap              uint64
 	MinimumStorageRadius          uint
 	MutexProfile                  bool
 	NATAddr                       string
@@ -390,7 +391,9 @@ func NewBee(
 		o.ChainID,
 		signer,
 		o.BlockTime,
-		chainEnabled)
+		chainEnabled,
+		o.MinimumGasTipCap,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("init chain: %w", err)
 	}
