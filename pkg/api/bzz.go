@@ -451,6 +451,18 @@ FETCH:
 			}
 			wc, err := feeds.GetWrappedChunk(ctx, s.storer.Download(cache), ch, feedLegacyResolve)
 			if err != nil {
+				if errors.Is(err, feeds.ErrNotLegacyPayload) {
+					logger.Debug("bzz: download: feed is not a legacy payload")
+					logger.Error(err, "bzz download: feed is not a legacy payload")
+					jsonhttp.BadRequest(w, "bzz download: feed is not a legacy payload")
+					return
+				}
+				if _, ok := err.(feeds.ErrWrappedChunkNotFound); ok {
+					logger.Debug("bzz download: feed pointing to the wrapped chunk not found", "error", err)
+					logger.Error(err, "bzz download: feed pointing to the wrapped chunk not found")
+					jsonhttp.NotFound(w, "bzz download: feed pointing to the wrapped chunk not found")
+					return
+				}
 				logger.Debug("bzz download: mapStructure feed update failed", "error", err)
 				logger.Error(nil, "bzz download: mapStructure feed update failed")
 				jsonhttp.InternalServerError(w, "mapStructure feed update")

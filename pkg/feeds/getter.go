@@ -15,7 +15,15 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-var errNotLegacyPayload = errors.New("feed update is not in the legacy payload structure")
+var ErrNotLegacyPayload = errors.New("feed update is not in the legacy payload structure")
+
+type ErrWrappedChunkNotFound struct {
+	Ref []byte
+}
+
+func (e ErrWrappedChunkNotFound) Error() string {
+	return fmt.Sprintf("feed pointing to the wrapped chunk not found: %x", e.Ref)
+}
 
 // Lookup is the interface for time based feed lookup
 type Lookup interface {
@@ -66,7 +74,7 @@ func GetWrappedChunk(ctx context.Context, getter storage.Getter, ch swarm.Chunk,
 		}
 		wc, err = getter.Get(ctx, ref)
 		if err != nil {
-			return nil, err
+			return nil, ErrWrappedChunkNotFound{Ref: ref.Bytes()}
 		}
 	}
 
@@ -86,7 +94,7 @@ func FromChunk(ch swarm.Chunk) (swarm.Chunk, error) {
 func legacyPayload(wrappedChunk swarm.Chunk) (swarm.Address, error) {
 	cacData := wrappedChunk.Data()
 	if !(len(cacData) == 16+swarm.HashSize || len(cacData) == 16+swarm.HashSize*2) {
-		return swarm.ZeroAddress, errNotLegacyPayload
+		return swarm.ZeroAddress, ErrNotLegacyPayload
 	}
 
 	return swarm.NewAddress(cacData[16:]), nil
