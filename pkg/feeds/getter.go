@@ -17,11 +17,11 @@ import (
 
 var ErrNotLegacyPayload = errors.New("feed update is not in the legacy payload structure")
 
-type ErrWrappedChunkNotFound struct {
+type WrappedChunkNotFoundError struct {
 	Ref []byte
 }
 
-func (e ErrWrappedChunkNotFound) Error() string {
+func (e WrappedChunkNotFoundError) Error() string {
 	return fmt.Sprintf("feed pointing to the wrapped chunk not found: %x", e.Ref)
 }
 
@@ -74,7 +74,7 @@ func GetWrappedChunk(ctx context.Context, getter storage.Getter, ch swarm.Chunk,
 		}
 		wc, err = getter.Get(ctx, ref)
 		if err != nil {
-			return nil, ErrWrappedChunkNotFound{Ref: ref.Bytes()}
+			return nil, WrappedChunkNotFoundError{Ref: ref.Bytes()}
 		}
 	}
 

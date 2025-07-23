@@ -457,7 +457,7 @@ FETCH:
 					jsonhttp.BadRequest(w, "bzz download: feed is not a legacy payload")
 					return
 				}
-				if _, ok := err.(feeds.ErrWrappedChunkNotFound); ok {
+				if errors.As(err, &feeds.WrappedChunkNotFoundError{}) {
 					logger.Debug("bzz download: feed pointing to the wrapped chunk not found", "error", err)
 					logger.Error(err, "bzz download: feed pointing to the wrapped chunk not found")
 					jsonhttp.NotFound(w, "bzz download: feed pointing to the wrapped chunk not found")
