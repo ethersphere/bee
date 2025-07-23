@@ -35,6 +35,7 @@ type SampleItem struct {
 	ChunkAddress       swarm.Address
 	ChunkData          []byte
 	Stamp              *postage.Stamp
+	ChunkType          swarm.ChunkType
 }
 
 type Sample struct {
@@ -169,6 +170,7 @@ func (db *DB) ReserveSample(
 					ChunkAddress:       chunk.Address(),
 					ChunkData:          chunk.Data(),
 					Stamp:              postage.NewStamp(chItem.BatchID, nil, nil, nil),
+					ChunkType:          chItem.ChunkType,
 				}:
 				case <-ctx.Done():
 					return ctx.Err()
@@ -198,9 +200,8 @@ func (db *DB) ReserveSample(
 				break
 			} else if item.TransformedAddress.Compare(sItem.TransformedAddress) == 0 { // ensuring to pass the check order function of redistribution contract
 				// replace the chunk at index if the chunk is CAC
-				ch := swarm.NewChunk(item.ChunkAddress, item.ChunkData)
-				_, err := soc.FromChunk(ch)
-				if err != nil {
+				if item.ChunkType == swarm.ChunkTypeContentAddressed {
+					// CAC always replaces
 					sampleItems[i] = item
 				}
 				return
