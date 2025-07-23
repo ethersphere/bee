@@ -189,7 +189,7 @@ func (db *DB) ReserveSample(
 		close(sampleItemChan)
 	}()
 
-	sampleItems := make([]SampleItem, 0, SampleSize)
+	sampleItems := make([]SampleItem, 0, SampleSize+1)
 
 	// insert function will insert the new item in its correct place. If the sample
 	// size goes beyond what we need we omit the last item.
