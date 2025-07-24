@@ -129,6 +129,8 @@ func makeChunks(t *testing.T, signer crypto.Signer, sampleSize int, filterSOCAdd
 		eg.Go(func() (err error) {
 			offset := i * 4
 			found := 0
+			hasher := trHasher()
+			standardHasher := swarm.NewHasher()
 			for seed := uint32(1); ; seed++ {
 				select {
 				case <-ectx.Done():
@@ -148,7 +150,7 @@ func makeChunks(t *testing.T, signer crypto.Signer, sampleSize int, filterSOCAdd
 				if !filterSOCAddr(addr) {
 					continue
 				}
-				hasher := trHasher()
+				hasher.Reset()
 				data := s.WrappedChunk().Data()
 				hasher.(*bmt.Hasher).SetHeader(data[:8])
 				_, err = hasher.Write(data[8:])
@@ -158,10 +160,15 @@ func makeChunks(t *testing.T, signer crypto.Signer, sampleSize int, filterSOCAdd
 				trAddr := hasher.Sum(nil)
 				// hashing the transformed wrapped chunk address with the SOC address
 				// to arrive at a unique transformed SOC address despite identical payloads
-				trSocAddr, err := soc.CreateAddress(addr.Bytes(), trAddr)
-				if err != nil {
+				standardHasher.Reset()
+				if _, err := standardHasher.Write(addr.Bytes()); err != nil {
 					return err
 				}
+				if _, err := standardHasher.Write(trAddr); err != nil {
+					return err
+				}
+
+				trSocAddr := swarm.NewAddress(standardHasher.Sum(nil))
 				ok, err := filterTrAddr(trSocAddr)
 				if err != nil {
 					return err
