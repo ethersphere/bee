@@ -29,7 +29,6 @@ const (
 	initialBackoffDelay    = 10 * time.Second
 	maxBackoffDelay        = 5 * time.Minute
 	backoffFactor          = 2
-	DefaultMinPeersPerBin  = 4
 	DefaultDurPercentile   = 0.4 // consider 40% as healthy, lower percentile = stricter duration check
 	DefaultConnsPercentile = 0.8 // consider 80% as healthy, lower percentile = stricter conns check
 )
@@ -64,7 +63,6 @@ func New(
 	logger log.Logger,
 	startupStabilizer stabilization.Subscriber,
 	mode string,
-	minPeersPerbin int,
 	durPercentile float64,
 	connsPercentile float64,
 ) *service {
@@ -81,12 +79,12 @@ func New(
 	}
 
 	s.wg.Add(1)
-	go s.worker(startupStabilizer, mode, minPeersPerbin, durPercentile, connsPercentile)
+	go s.worker(startupStabilizer, mode, durPercentile, connsPercentile)
 
 	return s
 }
 
-func (s *service) worker(startupStabilizer stabilization.Subscriber, mode string, minPeersPerbin int, durPercentile float64, connsPercentile float64) {
+func (s *service) worker(startupStabilizer stabilization.Subscriber, mode string, durPercentile float64, connsPercentile float64) {
 	defer s.wg.Done()
 
 	sub, unsubscribe := startupStabilizer.Subscribe()
@@ -102,7 +100,7 @@ func (s *service) worker(startupStabilizer stabilization.Subscriber, mode string
 	currentDelay := initialBackoffDelay
 
 	for {
-		s.salud(mode, minPeersPerbin, durPercentile, connsPercentile)
+		s.salud(mode, durPercentile, connsPercentile)
 
 		select {
 		case <-s.quit:
@@ -134,13 +132,12 @@ type peer struct {
 // salud acquires the status snapshot of every peer and computes an nth percentile of response duration and connected
 // per count, the most common storage radius, and the batch commitment, and based on these values, marks peers as unhealhy that fall beyond
 // the allowed thresholds.
-func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, connsPercentile float64) {
+func (s *service) salud(mode string, durPercentile float64, connsPercentile float64) {
 	var (
 		mtx      sync.Mutex
 		wg       sync.WaitGroup
 		totaldur float64
 		peers    []peer
-		bins     [swarm.MaxBins]int
 	)
 
 	err := s.topology.EachConnectedPeer(func(addr swarm.Address, bin uint8) (stop bool, jumpToNext bool, err error) {
@@ -165,7 +162,6 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 			}
 
 			mtx.Lock()
-			bins[bin]++
 			totaldur += dur.Seconds()
 			peers = append(peers, peer{snapshot, dur, addr, bin, s.reserve.IsWithinStorageRadius(addr)})
 			mtx.Unlock()
@@ -206,17 +202,10 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 
 		var healthy bool
 
-		// every bin should have at least some peers, healthy or not
-		if bins[peer.bin] <= minPeersPerbin {
-			s.metrics.Healthy.Inc()
-			s.topology.UpdatePeerHealth(peer.addr, true, peer.dur)
-			continue
-		}
-
 		if networkRadius > 0 && peer.status.CommittedDepth < uint32(networkRadius-2) {
 			s.logger.Debug("radius health failure", "radius", peer.status.CommittedDepth, "peer_address", peer.addr, "bin", peer.bin)
 		} else if peer.dur.Seconds() > pDur {
-			s.logger.Debug("response duration below threshold", "duration", peer.dur, "peer_address", peer.addr, "bin", peer.bin)
+			s.logger.Debug("response duration above threshold", "duration", peer.dur, "peer_address", peer.addr, "bin", peer.bin)
 		} else if peer.status.ConnectedPeers < pConns {
 			s.logger.Debug("connections count below threshold", "connections", peer.status.ConnectedPeers, "peer_address", peer.addr, "bin", peer.bin)
 		} else if peer.status.BatchCommitment != commitment {
@@ -230,7 +219,6 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 			s.metrics.Healthy.Inc()
 		} else {
 			s.metrics.Unhealthy.Inc()
-			bins[peer.bin]--
 		}
 	}
 
