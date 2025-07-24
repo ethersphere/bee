@@ -113,7 +113,7 @@ func (db *DB) ReserveSample(
 	})
 
 	// Phase 2: Get the chunk data and calculate transformed hash
-	sampleItemChan := make(chan SampleItem, workers)
+	sampleItemChan := make(chan SampleItem, 3*workers)
 
 	prefixHasherFactory := func() hash.Hash {
 		return swarm.NewPrefixHasher(anchor)
