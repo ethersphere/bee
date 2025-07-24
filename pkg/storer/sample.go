@@ -417,6 +417,7 @@ func MakeSampleUsingChunks(chunks []swarm.Chunk, anchor []byte) (Sample, error) 
 			ChunkAddress:       ch.Address(),
 			ChunkData:          ch.Data(),
 			Stamp:              newStamp(ch.Stamp()),
+			ChunkType:          getChunkType(ch),
 		}
 	}
 
