@@ -210,6 +210,9 @@ func NewBee(
 	warmupStartTime := time.Now()
 	var pullSyncStartTime time.Time
 
+	nodeMetrics := newMetrics()
+	nodeMetrics.RegisterMetrics()
+
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -599,16 +602,6 @@ func NewBee(
 		logger.Info("node warmup check initiated. monitoring activity rate to determine readiness.", "startTime", t)
 	}
 
-	nodeWarmupDuration := prometheus.NewHistogram(
-		prometheus.HistogramOpts{
-			Namespace: metrics.Namespace,
-			Subsystem: "init",
-			Name:      "warmup_duration_seconds",
-			Help:      "Duration in seconds for node warmup to complete",
-		},
-	)
-	prometheus.MustRegister(nodeWarmupDuration)
-
 	warmupMeasurement := func(t time.Time, totalCount int) {
 		warmupDuration := t.Sub(warmupStartTime).Seconds()
 		logger.Info("node warmup complete. system is considered stable and ready.",
@@ -617,7 +610,7 @@ func NewBee(
 			"warmupDurationSeconds", warmupDuration)
 
 		// Record the warmup duration in the prometheus metric
-		nodeWarmupDuration.Observe(warmupDuration)
+		nodeMetrics.WarmupDuration.Observe(warmupDuration)
 		pullSyncStartTime = t
 	}
 	detector.OnStabilized = warmupMeasurement
@@ -1156,15 +1149,6 @@ func NewBee(
 		// measure full sync duration
 		detector.OnStabilized = func(t time.Time, totalCount int) {
 			warmupMeasurement(t, totalCount)
-			fullSyncDuration := prometheus.NewHistogram(
-				prometheus.HistogramOpts{
-					Namespace: metrics.Namespace,
-					Subsystem: "init",
-					Name:      "full_sync_duration_seconds",
-					Help:      "Duration in seconds for node warmup to complete",
-				},
-			)
-			prometheus.MustRegister(fullSyncDuration)
 
 			reserveTreshold := reserveCapacity >> 1
 			isFullySynced := func() bool {
@@ -1183,7 +1167,7 @@ func NewBee(
 						logger.Debug("sync status check", "synced", synced, "reserveSize", localStore.ReserveSize(), "threshold", reserveTreshold, "syncRate", pullerService.SyncRate())
 						if synced {
 							fullSyncTime := pullSyncStartTime.Sub(t)
-							fullSyncDuration.Observe(fullSyncTime.Seconds())
+							nodeMetrics.FullSyncDuration.Observe(fullSyncTime.Seconds())
 							syncCheckTicker.Stop()
 							return
 						}
