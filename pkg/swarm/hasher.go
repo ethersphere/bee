@@ -43,5 +43,5 @@ func NewPrefixHasher(prefix []byte) hash.Hash {
 }
 
 func (h *PrefixHasher) Reset() {
-	h.ImportState(h.initialState)
+	_ = h.ImportState(h.initialState)
 }
