@@ -198,6 +198,16 @@ func (s *Service) checkSwapAvailability(handler http.Handler) http.Handler {
 	})
 }
 
+func (s *Service) checkStorageIncentivesAvailability(handler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.redistributionAgent == nil {
+			jsonhttp.NotImplemented(w, "Storage incentives are disabled. This endpoint is unavailable.")
+			return
+		}
+		handler.ServeHTTP(w, r)
+	})
+}
+
 func (s *Service) checkChequebookAvailability(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !s.chequebookEnabled {
