@@ -428,6 +428,13 @@ func (db *DB) CommittedDepth() uint8 {
 	return uint8(db.reserveOptions.capacityDoubling) + db.reserve.Radius()
 }
 
+func (db *DB) CapacityDoubling() uint8 {
+	if db.reserve == nil {
+		return 0
+	}
+	return uint8(db.reserveOptions.capacityDoubling)
+}
+
 func (db *DB) ReserveSize() int {
 	if db.reserve == nil {
 		return 0
