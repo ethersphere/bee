@@ -8,21 +8,38 @@ package handshake;
 
 option go_package = "pb";
 
-message Syn {
+message Handshake {
+    oneof payload {
+        HandshakeSyn syn = 1;
+        HandshakeSynAck syn_ack = 2;
+        HandshakeAck ack = 3;
+    }
+}
+
+message HandshakeSyn {
     bytes ObservedUnderlay = 1;
 }
 
-message Ack {
-    BzzAddress Address = 1;
-    uint64 NetworkID = 2;
-    bool FullNode = 3;
-    bytes Nonce = 4;
-    string WelcomeMessage  = 99;
+message HandshakeSynAck {
+    bytes ObservedUnderlay = 1;
+    BzzAddress Address = 2;
+    uint64 NetworkID = 3;
+    Capabilities capabilities = 4;
+    bytes Nonce = 5;
+    string WelcomeMessage = 99;
 }
 
-message SynAck {
-    Syn Syn = 1;
-    Ack Ack = 2;
+message HandshakeAck {
+    BzzAddress Address = 1;
+    uint64 NetworkID = 2;
+    Capabilities capabilities = 3;
+    bytes Nonce = 4;
+    string WelcomeMessage = 99;
+}
+
+message Capabilities {
+    bool full_node = 1;
+    bool trace_headers = 2;
 }
 
 message BzzAddress {
