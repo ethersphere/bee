@@ -299,6 +299,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		EnableWS:                      c.config.GetBool(optionNameP2PWSEnable),
 		FullNodeMode:                  fullNode,
 		Logger:                        logger,
+		MinimumGasTipCap:              c.config.GetUint64(optionNameMinimumGasTipCap),
 		MinimumStorageRadius:          c.config.GetUint(optionMinimumStorageRadius),
 		MutexProfile:                  c.config.GetBool(optionNamePProfMutex),
 		NATAddr:                       c.config.GetString(optionNameNATAddr),

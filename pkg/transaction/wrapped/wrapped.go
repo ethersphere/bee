@@ -7,26 +7,37 @@ package wrapped
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
+	"github.com/ethersphere/bee/v2/pkg/transaction/backend"
 )
 
-var _ transaction.Backend = (*wrappedBackend)(nil)
+const (
+	percentageDivisor = 100
+	baseFeeMultiplier = 2
+)
+
+var (
+	_                      transaction.Backend = (*wrappedBackend)(nil)
+	ErrEIP1559NotSupported                     = errors.New("network does not appear to support EIP-1559 (no baseFee)")
+)
 
 type wrappedBackend struct {
-	backend *ethclient.Client
-	metrics metrics
+	backend          backend.Backend
+	metrics          metrics
+	minimumGasTipCap int64
 }
 
-func NewBackend(backend *ethclient.Client) transaction.Backend {
+func NewBackend(backend backend.Backend, minimumGasTipCap uint64) transaction.Backend {
 	return &wrappedBackend{
-		backend: backend,
-		metrics: newMetrics(),
+		backend:          backend,
+		minimumGasTipCap: int64(minimumGasTipCap),
+		metrics:          newMetrics(),
 	}
 }
 
@@ -135,20 +146,9 @@ func (b *wrappedBackend) PendingNonceAt(ctx context.Context, account common.Addr
 	return nonce, nil
 }
 
-func (b *wrappedBackend) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
-	b.metrics.TotalRPCCalls.Inc()
-	b.metrics.SuggestGasPriceCalls.Inc()
-	gasPrice, err := b.backend.SuggestGasPrice(ctx)
-	if err != nil {
-		b.metrics.TotalRPCErrors.Inc()
-		return nil, err
-	}
-	return gasPrice, nil
-}
-
 func (b *wrappedBackend) SuggestGasTipCap(ctx context.Context) (*big.Int, error) {
 	b.metrics.TotalRPCCalls.Inc()
-	b.metrics.SuggestGasPriceCalls.Inc()
+	b.metrics.SuggestGasTipCapCalls.Inc()
 	gasTipCap, err := b.backend.SuggestGasTipCap(ctx)
 	if err != nil {
 		b.metrics.TotalRPCErrors.Inc()
@@ -215,7 +215,46 @@ func (b *wrappedBackend) BlockByNumber(ctx context.Context, number *big.Int) (*t
 	return block, nil
 }
 
-func (b *wrappedBackend) Close() error {
+func (b *wrappedBackend) Close() {
 	b.backend.Close()
-	return nil
+}
+
+// SuggestedFeeAndTip calculates the recommended gasFeeCap and gasTipCap for a transaction.
+func (b *wrappedBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+	if gasPrice != nil {
+		// 1. gasFeeCap: The absolute maximum price per gas does not exceed the user's specified price.
+		// 2. gasTipCap: The entire amount (gasPrice - baseFee) can be used as a priority fee.
+		return new(big.Int).Set(gasPrice), new(big.Int).Set(gasPrice), nil
+	}
+
+	gasTipCap, err := b.backend.SuggestGasTipCap(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to suggest gas tip cap: %w", err)
+	}
+
+	if boostPercent != 0 {
+		// multiplier: 100 + boostPercent (e.g., 110 for 10% boost)
+		multiplier := new(big.Int).Add(big.NewInt(int64(percentageDivisor)), big.NewInt(int64(boostPercent)))
+		// gasTipCap = gasTipCap * (100 + boostPercent) / 100
+		gasTipCap.Mul(gasTipCap, multiplier).Div(gasTipCap, big.NewInt(int64(percentageDivisor)))
+	}
+
+	minimumTip := big.NewInt(b.minimumGasTipCap)
+	if gasTipCap.Cmp(minimumTip) < 0 {
+		gasTipCap.Set(minimumTip)
+	}
+
+	latestBlockHeader, err := b.backend.HeaderByNumber(ctx, nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get latest block header: %w", err)
+	}
+	if latestBlockHeader == nil || latestBlockHeader.BaseFee == nil {
+		return nil, nil, ErrEIP1559NotSupported
+	}
+
+	// EIP-1559: gasFeeCap = (2 * baseFee) + gasTipCap
+	gasFeeCap := new(big.Int).Mul(latestBlockHeader.BaseFee, big.NewInt(int64(baseFeeMultiplier)))
+	gasFeeCap.Add(gasFeeCap, gasTipCap)
+
+	return gasFeeCap, gasTipCap, nil
 }
