@@ -1188,14 +1188,3 @@ func TestBzzDownloadHeaders(t *testing.T) {
 		jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "text/html; charset=utf-8"),
 	)
 }
-
-// func toLegacyChunk(t *testing.T, at uint64, payload []byte) swarm.Chunk {
-// 	t.Helper()
-
-// 	ts := make([]byte, 8)
-// 	binary.BigEndian.PutUint64(ts, at)
-// 	content := append(ts, payload...)
-
-// 	s := testingsoc.GenerateMockSOC(t, content)
-// 	return s.Chunk()
-// }
