@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash"
+	"math"
 	"math/big"
 	"runtime"
 	"sort"
@@ -124,17 +125,76 @@ func (db *DB) ReserveSample(
 	db.logger.Debug("reserve sampler workers", "count", workers)
 
 	for i := 0; i < workers; i++ {
+		workerID := i
 		g.Go(func() error {
 			wstat := SampleStats{}
 			// Initialize BMT hasher for transformed address calculation
 			hasher := bmt.NewHasher(prefixHasherFactory)
 			// Initialize standard hasher for SOC operations
 			standardHasher := swarm.NewHasher()
+
+			// Track wait times
+			var (
+				waitTimes     []float64
+				lastChunkTime time.Time
+				minWait       float64 = math.MaxFloat64 // Initialize to max value
+				maxWait       float64 = 0
+				sumWait       float64 = 0
+				countWait     int     = 0
+				workerIDStr           = fmt.Sprintf("%d", workerID)
+			)
+
 			defer func() {
 				addStats(wstat)
+
+				// Report final statistics before termination
+				if countWait > 0 {
+					avgWait := sumWait / float64(countWait)
+
+					// Calculate standard deviation
+					var sumSquares float64 = 0
+					for _, wt := range waitTimes {
+						diff := wt - avgWait
+						sumSquares += diff * diff
+					}
+					stdDev := math.Sqrt(sumSquares / float64(countWait))
+
+					// Report to Prometheus - only summary statistics, not individual observations
+					db.metrics.SamplingWorkerStats.WithLabelValues(workerIDStr, "min").Set(minWait)
+					db.metrics.SamplingWorkerStats.WithLabelValues(workerIDStr, "max").Set(maxWait)
+					db.metrics.SamplingWorkerStats.WithLabelValues(workerIDStr, "avg").Set(avgWait)
+					db.metrics.SamplingWorkerStats.WithLabelValues(workerIDStr, "stddev").Set(stdDev)
+					db.metrics.SamplingWorkerStats.WithLabelValues(workerIDStr, "count").Set(float64(countWait))
+
+					db.logger.Debug("sampling worker statistics",
+						"worker_id", workerID,
+						"min_wait", minWait,
+						"max_wait", maxWait,
+						"avg_wait", avgWait,
+						"stddev", stdDev,
+						"count", countWait,
+					)
+				}
 			}()
 
 			for chItem := range chunkC {
+				// Measure wait time between chunks
+				now := time.Now()
+				if !lastChunkTime.IsZero() {
+					waitTime := now.Sub(lastChunkTime).Seconds()
+					waitTimes = append(waitTimes, waitTime)
+
+					// Update statistics
+					if waitTime < minWait {
+						minWait = waitTime
+					}
+					if waitTime > maxWait {
+						maxWait = waitTime
+					}
+					sumWait += waitTime
+					countWait++
+				}
+
 				// exclude chunks who's batches balance are below minimum
 				if _, found := excludedBatchIDs[string(chItem.BatchID)]; found {
 					wstat.BelowBalanceIgnored++
@@ -178,6 +238,8 @@ func (db *DB) ReserveSample(
 				case <-ctx.Done():
 					return ctx.Err()
 				}
+
+				lastChunkTime = time.Now()
 			}
 
 			return nil
