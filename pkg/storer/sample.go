@@ -70,11 +70,22 @@ func (db *DB) ReserveSample(
 	g, ctx := errgroup.WithContext(ctx)
 
 	allStats := &SampleStats{}
+	// Track total wait time across all workers
+	var totalWaitTime int64
+	var waitTimeLock sync.Mutex
+
 	statsLock := sync.Mutex{}
 	addStats := func(stats SampleStats) {
 		statsLock.Lock()
 		allStats.add(stats)
 		statsLock.Unlock()
+	}
+
+	// Function to safely add worker wait times to the total
+	addWaitTime := func(waitTime int64) {
+		waitTimeLock.Lock()
+		totalWaitTime += waitTime
+		waitTimeLock.Unlock()
 	}
 
 	t := time.Now()
@@ -124,17 +135,39 @@ func (db *DB) ReserveSample(
 	db.logger.Debug("reserve sampler workers", "count", workers)
 
 	for i := 0; i < workers; i++ {
+		workerID := i
 		g.Go(func() error {
 			wstat := SampleStats{}
 			// Initialize BMT hasher for transformed address calculation
 			hasher := bmt.NewHasher(prefixHasherFactory)
 			// Initialize standard hasher for SOC operations
 			standardHasher := swarm.NewHasher()
+
+			// Track wait times
+			var (
+				lastChunkTime time.Time
+				waitTime      int64 = 0
+			)
+
 			defer func() {
 				addStats(wstat)
+				addWaitTime(waitTime)
+
+				db.logger.Debug("sampling worker statistics",
+					"worker_id", workerID,
+					"wait_time", waitTime,
+				)
 			}()
 
 			for chItem := range chunkC {
+				// Measure wait time between chunks
+				now := time.Now()
+				if !lastChunkTime.IsZero() {
+					chunkWaitTime := now.Sub(lastChunkTime).Nanoseconds()
+					// Simply add to total wait time
+					waitTime += chunkWaitTime
+				}
+
 				// exclude chunks who's batches balance are below minimum
 				if _, found := excludedBatchIDs[string(chItem.BatchID)]; found {
 					wstat.BelowBalanceIgnored++
@@ -178,6 +211,8 @@ func (db *DB) ReserveSample(
 				case <-ctx.Done():
 					return ctx.Err()
 				}
+
+				lastChunkTime = time.Now()
 			}
 
 			return nil
@@ -263,6 +298,10 @@ func (db *DB) ReserveSample(
 	addStats(stats)
 
 	allStats.TotalDuration = time.Since(t)
+
+	// Set the total wait time metric
+	db.metrics.WaitChunkRetrievalTime.Set(float64(totalWaitTime))
+	db.logger.Debug("total chunk retrieval wait time", "wait_time", totalWaitTime)
 
 	if err := g.Wait(); err != nil {
 		db.logger.Info("reserve sampler finished with error", "err", err, "duration", time.Since(t), "storage_radius", committedDepth, "consensus_time_ns", consensusTime, "stats", fmt.Sprintf("%+v", allStats))
@@ -430,7 +469,6 @@ func MakeSampleUsingChunks(chunks []swarm.Chunk, anchor []byte) (Sample, error) 
 	sort.Slice(items, func(i, j int) bool {
 		return items[i].TransformedAddress.Compare(items[j].TransformedAddress) == -1
 	})
-
 	return Sample{Items: items}, nil
 }
 
