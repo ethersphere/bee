@@ -5,7 +5,9 @@
 package joiner_test
 
 import (
+	"bytes"
 	"context"
+	"strconv"
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/cac"
@@ -32,14 +34,12 @@ func TestReDecoderFlow(t *testing.T) {
 	// Create real data chunks with proper content
 	dataShards := make([][]byte, dataShardCount)
 	for i := 0; i < dataShardCount; i++ {
-		// Create chunks with span + data
+		// Create chunks with simpler test data
 		dataShards[i] = make([]byte, swarm.ChunkWithSpanSize)
-		// First 8 bytes are span
-		copy(dataShards[i][:8], []byte{0, 0, 0, 0, 0, 0, 0x10, 0}) // 4KB span
-		// Rest is actual data
-		for j := 8; j < swarm.ChunkWithSpanSize; j++ {
-			dataShards[i][j] = byte((i*16 + j) % 256) // Distinct data for each chunk
-		}
+		// Create a unique string for this shard
+		testData := []byte("test-data-" + strconv.Itoa(i))
+		// Copy as much as will fit
+		copy(dataShards[i], testData)
 	}
 
 	// Create parity chunks using Reed-Solomon encoding
@@ -80,20 +80,8 @@ func TestReDecoderFlow(t *testing.T) {
 
 	// Select a data chunk to be missing (which will be recovered)
 	missingChunkIndex := 2 // The third data chunk will be missing
-
-	// Store all chunks except the missing one
 	mockStore := inmemchunkstore.New()
-	for i := 0; i < totalShardCount; i++ {
-		if i != missingChunkIndex {
-			if err := mockStore.Put(ctx, chunks[i]); err != nil {
-				t.Fatalf("Failed to store chunk %d: %v", i, err)
-			}
-		}
-	}
-
 	netFetcher := newMockNetworkFetcher(addresses, addresses[missingChunkIndex])
-
-	// Create a decoder config
 	config := getter.Config{
 		Strategy: getter.RACE,
 		Logger:   log.Noop,
@@ -115,6 +103,16 @@ func TestReDecoderFlow(t *testing.T) {
 	// Verify the recovered chunk has the correct content
 	if !recoveredChunk.Address().Equal(addresses[missingChunkIndex]) {
 		t.Fatalf("Recovered chunk has incorrect address")
+	}
+
+	// Verify the recovered chunk has the correct content
+	recoveredData := recoveredChunk.Data()
+	expectedData := chunks[missingChunkIndex].Data()
+	if len(recoveredData) != len(expectedData) {
+		t.Fatalf("Recovered chunk has incorrect data length: got %d, want %d", len(recoveredData), len(expectedData))
+	}
+	if !bytes.Equal(recoveredData, expectedData) {
+		t.Fatalf("Recovered chunk has incorrect data")
 	}
 	// Check if the recovered chunk is now in the store
 	_, err = mockStore.Get(ctx, addresses[missingChunkIndex])
@@ -158,6 +156,16 @@ func TestReDecoderFlow(t *testing.T) {
 	if !retrievedChunk.Address().Equal(addresses[missingChunkIndex]) {
 		t.Fatalf("Retrieved chunk has incorrect address")
 	}
+
+	// Also verify the data content matches
+	retrievedData := retrievedChunk.Data()
+	expectedData = chunks[missingChunkIndex].Data()
+	if len(retrievedData) != len(expectedData) {
+		t.Fatalf("Retrieved chunk has incorrect data length: got %d, want %d", len(retrievedData), len(expectedData))
+	}
+	if !bytes.Equal(retrievedData, expectedData) {
+		t.Fatalf("Retrieved chunk has incorrect data")
+	}
 }
 
 // Mock implementation of storage.Getter for testing
@@ -181,8 +189,21 @@ func (m *mockNetworkFetcher) Get(ctx context.Context, addr swarm.Address) (swarm
 		return nil, storage.ErrNotFound
 	}
 
-	// Simulate successful fetch for other addresses
-	data := make([]byte, swarm.ChunkSize)
-	copy(data, []byte("test-data-"+addr.String()))
+	// Find the index of this address in the all addresses list
+	var index int
+	for i, a := range m.allAddresses {
+		if addr.Equal(a) {
+			index = i
+			break
+		}
+	}
+
+	// Generate data using the same pattern as in the test
+	data := make([]byte, swarm.ChunkWithSpanSize)
+	// Create a unique string for this shard
+	testData := []byte("test-data-" + strconv.Itoa(index))
+	// Copy as much as will fit
+	copy(data, testData)
+
 	return swarm.NewChunk(addr, data), nil
 }
