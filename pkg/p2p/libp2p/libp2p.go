@@ -358,7 +358,9 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		case *p2pforge.P2PForgeCertMgr:
 			cm.ProvideHost(h) // Call func field
 		case *MockP2PForgeCertMgr:
-			cm.ProvideHost(h) // Call func field
+			if err := cm.ProvideHost(h); err != nil {
+				return nil, fmt.Errorf("failed to provide host to MockP2PForgeCertMgr: %w", err)
+			}
 		default:
 			return nil, fmt.Errorf("unknown cert manager type")
 		}

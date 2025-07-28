@@ -1,9 +1,11 @@
+// Copyright 2025 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
 package libp2p
 
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
 	"sync"
 
 	"github.com/libp2p/go-libp2p/config"
@@ -105,7 +107,6 @@ func (m *MockP2PForgeCertMgr) Start() error {
 	m.started = true
 	if m.onCertLoaded != nil {
 		go func() {
-			fmt.Println("MockP2PForgeCertMgr: calling onCertLoaded")
 			m.onCertLoaded()
 		}()
 	}
