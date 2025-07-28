@@ -8,6 +8,7 @@ require (
 	contrib.go.opencensus.io/exporter/prometheus v0.4.2
 	github.com/armon/go-radix v1.0.0
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2
+	github.com/caddyserver/certmagic v0.23.0
 	github.com/coreos/go-semver v0.3.0
 	github.com/ethereum/go-ethereum v1.15.11
 	github.com/ethersphere/batch-archive v0.0.4
@@ -25,6 +26,7 @@ require (
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/ipfs/go-cid v0.5.0
+	github.com/ipshipyard/p2p-forge v0.6.0
 	github.com/kardianos/service v1.2.2
 	github.com/klauspost/reedsolomon v1.11.8
 	github.com/libp2p/go-libp2p v0.42.0
@@ -152,7 +154,7 @@ require (
 	github.com/pion/turn/v4 v4.0.2 // indirect
 	github.com/pion/webrtc/v4 v4.1.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.64.0
 	github.com/prometheus/procfs v0.16.1 // indirect
@@ -180,7 +182,7 @@ require (
 	go.uber.org/fx v1.24.0 // indirect
 	go.uber.org/mock v0.5.2 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	go.uber.org/zap v1.27.0 // indirect
+	go.uber.org/zap v1.27.0
 	golang.org/x/exp v0.0.0-20250606033433-dcc06ee1d476 // indirect
 	golang.org/x/mod v0.25.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
@@ -190,6 +192,11 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
 	rsc.io/tmplfunc v0.0.3 // indirect
+	github.com/caddyserver/zerossl v0.1.3 // indirect
+	github.com/libdns/libdns v1.0.0-beta.1 // indirect
+	github.com/mholt/acmez/v3 v3.1.2 // indirect
+	github.com/zeebo/blake3 v0.2.4 // indirect
+	go.uber.org/zap/exp v0.3.0 // indirect
 )
 
 replace github.com/codahale/hdrhistogram => github.com/HdrHistogram/hdrhistogram-go v0.0.0-20200919145931-8dac23c8dac1
