@@ -791,7 +791,7 @@ func TestMultiplePushesAsForwarder(t *testing.T) {
 	psPeer3, storerPeer3, _ := createPushSyncNode(t, peer3, defaultPrices, recorder0, nil, defaultSigner(chunk), mock.WithPeers(closestPeer, peer4))
 
 	// should not store chunk as no one forwards to it
-	psPeer4, storerPeer4, _ := createPushSyncNode(t, peer3, defaultPrices, nil, nil, defaultSigner(chunk))
+	psPeer4, storerPeer4, _ := createPushSyncNode(t, peer4, defaultPrices, nil, nil, defaultSigner(chunk))
 
 	recorder := streamtest.New(
 		streamtest.WithPeerProtocols(
@@ -804,7 +804,7 @@ func TestMultiplePushesAsForwarder(t *testing.T) {
 		streamtest.WithBaseAddr(pivotNode),
 	)
 
-	// rad=2, pivot-peer1 po=3, pivot-chunk po=1
+	// rad=2, pivot-chunk po=1, pivot-peer1 po=1, pivot-peer2 po=1, pivot-peer3 po=2
 	// should multiplex because pivot is not in AOR and can reach AOR. Expects 3 sends. 1 initial to peer1, 2 multiplex forwards to peer2 and peer3
 	// should not store chunk as node is not in AOR
 	psPivot, storerPivot := createPushSyncNodeWithRadius(t, pivotNode, defaultPrices, recorder, nil, defaultSigner(chunk), 2, 10, mock.WithPeers(peer1, peer2, peer3))
@@ -848,7 +848,7 @@ func TestMultiplePushesAsForwarder(t *testing.T) {
 		},
 		{
 			name:          "peer2",
-			ps:            psPeer1,
+			ps:            psPeer2,
 			storer:        storerPeer2,
 			wantChunk:     true,
 			wantSentCount: 1,
