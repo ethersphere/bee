@@ -5,11 +5,13 @@
 package libp2p
 
 import (
+	"context"
 	"errors"
 	"io"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/libp2p/go-libp2p/core/network"
 )
 
@@ -21,13 +23,28 @@ var _ p2p.Stream = (*stream)(nil)
 
 type stream struct {
 	network.Stream
-	headers         map[string][]byte
-	responseHeaders map[string][]byte
+	headers         p2p.Headers
+	responseHeaders p2p.Headers
 	metrics         metrics
 }
 
 func newStream(s network.Stream, metrics metrics) *stream {
 	return &stream{Stream: s, metrics: metrics}
+}
+
+func newStreamWithHeaders(s network.Stream, metrics metrics, ctx context.Context, headler p2p.HeadlerFunc, peerAddress swarm.Address, headers p2p.Headers) (*stream, error) {
+	stream := &stream{
+		Stream:          s,
+		metrics:         metrics,
+		headers:         make(p2p.Headers),
+		responseHeaders: make(p2p.Headers),
+	}
+
+	if err := handleHeaders(ctx, headler, stream, peerAddress); err != nil {
+		return nil, err
+	}
+
+	return stream, nil
 }
 func (s *stream) Headers() p2p.Headers {
 	return s.headers

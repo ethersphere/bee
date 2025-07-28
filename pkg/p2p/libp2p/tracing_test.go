@@ -37,10 +37,13 @@ func TestTracing(t *testing.T) {
 	defer closer2.Close()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
-		FullNode: true,
+		FullNode:           true,
+		EnableTraceHeaders: true,
 	}})
 
-	s2, _ := newService(t, 1, libp2pServiceOpts{})
+	s2, _ := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		EnableTraceHeaders: true,
+	}})
 
 	var handledTracingSpan string
 	handled := make(chan struct{})
