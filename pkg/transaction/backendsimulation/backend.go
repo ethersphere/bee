@@ -7,6 +7,7 @@ package backendsimulation
 import (
 	"context"
 	"errors"
+	"maps"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum"
@@ -74,15 +75,11 @@ func (m *simulatedBackend) advanceBlock() {
 	m.blockNumber = block.Number
 
 	if block.Receipts != nil {
-		for hash, receipt := range block.Receipts {
-			m.receipts[hash] = receipt
-		}
+		maps.Copy(m.receipts, block.Receipts)
 	}
 
 	if block.NoncesAt != nil {
-		for addr, nonce := range block.NoncesAt {
-			m.noncesAt[addr] = nonce
-		}
+		maps.Copy(m.noncesAt, block.NoncesAt)
 	}
 }
 
