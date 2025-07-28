@@ -71,7 +71,7 @@ func (db *DB) ReserveSample(
 
 	allStats := &SampleStats{}
 	// Track total wait time across all workers
-	var totalWaitTime uint64
+	var totalWaitTime int64
 	var waitTimeLock sync.Mutex
 
 	statsLock := sync.Mutex{}
@@ -82,7 +82,7 @@ func (db *DB) ReserveSample(
 	}
 
 	// Function to safely add worker wait times to the total
-	addWaitTime := func(waitTime uint64) {
+	addWaitTime := func(waitTime int64) {
 		waitTimeLock.Lock()
 		totalWaitTime += waitTime
 		waitTimeLock.Unlock()
@@ -146,7 +146,7 @@ func (db *DB) ReserveSample(
 			// Track wait times
 			var (
 				lastChunkTime time.Time
-				waitTime      uint64 = 0
+				waitTime      int64 = 0
 			)
 
 			defer func() {
@@ -165,7 +165,7 @@ func (db *DB) ReserveSample(
 				if !lastChunkTime.IsZero() {
 					chunkWaitTime := now.Sub(lastChunkTime).Nanoseconds()
 					// Simply add to total wait time
-					waitTime += uint64(chunkWaitTime)
+					waitTime += chunkWaitTime
 				}
 
 				// exclude chunks who's batches balance are below minimum
