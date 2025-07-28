@@ -10,7 +10,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash"
-	"math"
 	"math/big"
 	"runtime"
 	"sort"
@@ -71,11 +70,22 @@ func (db *DB) ReserveSample(
 	g, ctx := errgroup.WithContext(ctx)
 
 	allStats := &SampleStats{}
+	// Track total wait time across all workers
+	var totalWaitTime uint64
+	var waitTimeLock sync.Mutex
+
 	statsLock := sync.Mutex{}
 	addStats := func(stats SampleStats) {
 		statsLock.Lock()
 		allStats.add(stats)
 		statsLock.Unlock()
+	}
+
+	// Function to safely add worker wait times to the total
+	addWaitTime := func(waitTime uint64) {
+		waitTimeLock.Lock()
+		totalWaitTime += waitTime
+		waitTimeLock.Unlock()
 	}
 
 	t := time.Now()
@@ -135,64 +145,27 @@ func (db *DB) ReserveSample(
 
 			// Track wait times
 			var (
-				waitTimes     []float64
 				lastChunkTime time.Time
-				minWait       float64 = math.MaxFloat64 // Initialize to max value
-				maxWait       float64 = 0
-				sumWait       float64 = 0
-				countWait     int     = 0
-				workerIDStr           = fmt.Sprintf("%d", workerID)
+				waitTime      uint64 = 0
 			)
 
 			defer func() {
 				addStats(wstat)
+				addWaitTime(waitTime)
 
-				// Report final statistics before termination
-				if countWait > 0 {
-					avgWait := sumWait / float64(countWait)
-
-					// Calculate standard deviation
-					var sumSquares float64 = 0
-					for _, wt := range waitTimes {
-						diff := wt - avgWait
-						sumSquares += diff * diff
-					}
-					stdDev := math.Sqrt(sumSquares / float64(countWait))
-
-					// Report to Prometheus - only summary statistics, not individual observations
-					db.metrics.SamplingWorkerStats.WithLabelValues(workerIDStr, "min").Set(minWait)
-					db.metrics.SamplingWorkerStats.WithLabelValues(workerIDStr, "max").Set(maxWait)
-					db.metrics.SamplingWorkerStats.WithLabelValues(workerIDStr, "avg").Set(avgWait)
-					db.metrics.SamplingWorkerStats.WithLabelValues(workerIDStr, "stddev").Set(stdDev)
-					db.metrics.SamplingWorkerStats.WithLabelValues(workerIDStr, "count").Set(float64(countWait))
-
-					db.logger.Debug("sampling worker statistics",
-						"worker_id", workerID,
-						"min_wait", minWait,
-						"max_wait", maxWait,
-						"avg_wait", avgWait,
-						"stddev", stdDev,
-						"count", countWait,
-					)
-				}
+				db.logger.Debug("sampling worker statistics",
+					"worker_id", workerID,
+					"wait_time", waitTime,
+				)
 			}()
 
 			for chItem := range chunkC {
 				// Measure wait time between chunks
 				now := time.Now()
 				if !lastChunkTime.IsZero() {
-					waitTime := now.Sub(lastChunkTime).Seconds()
-					waitTimes = append(waitTimes, waitTime)
-
-					// Update statistics
-					if waitTime < minWait {
-						minWait = waitTime
-					}
-					if waitTime > maxWait {
-						maxWait = waitTime
-					}
-					sumWait += waitTime
-					countWait++
+					chunkWaitTime := now.Sub(lastChunkTime).Nanoseconds()
+					// Simply add to total wait time
+					waitTime += uint64(chunkWaitTime)
 				}
 
 				// exclude chunks who's batches balance are below minimum
@@ -325,6 +298,10 @@ func (db *DB) ReserveSample(
 	addStats(stats)
 
 	allStats.TotalDuration = time.Since(t)
+
+	// Set the total wait time metric
+	db.metrics.WaitChunkRetrievalTime.Set(float64(totalWaitTime))
+	db.logger.Debug("total chunk retrieval wait time", "wait_time", totalWaitTime)
 
 	if err := g.Wait(); err != nil {
 		db.logger.Info("reserve sampler finished with error", "err", err, "duration", time.Since(t), "storage_radius", committedDepth, "consensus_time_ns", consensusTime, "stats", fmt.Sprintf("%+v", allStats))
@@ -492,7 +469,6 @@ func MakeSampleUsingChunks(chunks []swarm.Chunk, anchor []byte) (Sample, error) 
 	sort.Slice(items, func(i, j int) bool {
 		return items[i].TransformedAddress.Compare(items[j].TransformedAddress) == -1
 	})
-
 	return Sample{Items: items}, nil
 }
 
