@@ -21,8 +21,8 @@ import (
 var ErrTransactionCancelled = errors.New("transaction cancelled")
 var ErrMonitorClosed = errors.New("monitor closed")
 
-// MaxBlocksToWait is the maximum number of blocks to wait before considering a missing transaction as cancelled.
-const MaxBlocksToWait = 5
+// maxBlocksToWait is the maximum number of blocks to wait before considering a missing transaction as cancelled.
+const maxBlocksToWait = 5
 
 // Monitor is a nonce-based watcher for transaction confirmations.
 // Instead of watching transactions individually, the senders nonce is monitored and transactions are checked based on this.
@@ -202,7 +202,7 @@ func (tm *transactionMonitor) checkPending(block uint64) error {
 			receipt, err := tm.backend.TransactionReceipt(tm.ctx, txHash)
 			if err != nil {
 				// wait for a few blocks to be mined before considering a transaction not existing
-				transactionWatchNotFoundTimeout := MaxBlocksToWait * tm.pollingInterval
+				transactionWatchNotFoundTimeout := maxBlocksToWait * tm.pollingInterval
 				if errors.Is(err, ethereum.NotFound) {
 					if watchStart(watches).Add(transactionWatchNotFoundTimeout).Before(time.Now()) {
 						cancelledNonces = append(cancelledNonces, nonceGroup)

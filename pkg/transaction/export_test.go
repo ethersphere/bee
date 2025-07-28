@@ -6,4 +6,5 @@ package transaction
 
 var (
 	StoredTransactionKey = storedTransactionKey
+	MaxBlocksToWait      = maxBlocksToWait
 )
