@@ -34,6 +34,7 @@ type libp2pServiceOpts struct {
 	libp2pOpts  libp2p.Options
 	lightNodes  *lightnode.Container
 	notifier    p2p.PickyNotifier
+	CertManager libp2p.P2PForgeCertMgr
 }
 
 // newService constructs a new libp2p service.
@@ -80,6 +81,10 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 	}
 	opts := o.libp2pOpts
 	opts.Nonce = nonce
+
+	if o.CertManager != nil {
+		opts.CertManager = o.CertManager
+	}
 
 	s, err = libp2p.New(ctx, crypto.NewDefaultSigner(swarmKey), networkID, overlay, addr, o.Addressbook, statestore, o.lightNodes, o.Logger, nil, opts)
 	if err != nil {

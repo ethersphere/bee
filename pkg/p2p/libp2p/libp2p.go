@@ -7,6 +7,7 @@ package libp2p
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -34,6 +35,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
 	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p/config"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -85,6 +87,13 @@ const (
 	OutgoingStreamCountLimit = 10_000
 )
 
+type P2PForgeCertMgr interface {
+	Start() error
+	Stop()
+	TLSConfig() *tls.Config
+	AddressFactory() config.AddrsFactory
+}
+
 type Service struct {
 	ctx               context.Context
 	host              host.Host
@@ -113,6 +122,7 @@ type Service struct {
 	networkStatus     atomic.Int32
 	HeadersRWTimeout  time.Duration
 	autoNAT           autonat.AutoNAT
+	certManager       P2PForgeCertMgr
 }
 
 type lightnodes interface {
@@ -138,6 +148,7 @@ type Options struct {
 	hostFactory       func(...libp2p.Option) (host.Host, error)
 	HeadersRWTimeout  time.Duration
 	Registry          *prometheus.Registry
+	CertManager       P2PForgeCertMgr
 }
 
 func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
@@ -220,40 +231,50 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	var natManager basichost.NATManager
 
-	var certManager *p2pforge.P2PForgeCertMgr
+	var certManager P2PForgeCertMgr
 	var certLoaded chan bool
 	if o.AutoTLSEnabled && o.EnableWS {
 		certLoaded = make(chan bool, 1) // Channel to signal when the cert is loaded
 
-		p2pforgeLogger, err := zap.NewProduction()
-		if err != nil {
-			return nil, err
-		}
-		defer p2pforgeLogger.Sync()
-		sugar := p2pforgeLogger.Sugar()
+		if o.CertManager != nil {
+			certManager = o.CertManager
+		} else {
+			p2pforgeLogger, err := zap.NewProduction()
+			if err != nil {
+				return nil, err
+			}
+			defer func() {
+				if err := p2pforgeLogger.Sync(); err != nil {
+					logger.Error(err, "failed to close p2pforge logger")
+				}
+			}()
+			sugar := p2pforgeLogger.Sugar()
 
-		// Use Bee's data dir for storage
-		storagePath := o.AutoTLSStorageDir
-		if storagePath == "" {
-			storagePath = "./p2p-forge-certs" // TODO: change this Fallback path
+			// Use AutoTLS storage dir
+			// storagePath := o.AutoTLSStorageDir
+			// if storagePath == "" {
+			// 	storagePath = filepath.Join(os.Getenv("HOME"), ".bee", "p2p-forge-certs") // Fallback to ~/.bee/p2p-forge-certs
+			// }
+			certManager, err = p2pforge.NewP2PForgeCertMgr(
+				//p2pforge.WithCAEndpoint(p2pforge.DefaultProductionCAEndpoint),
+				p2pforge.WithCAEndpoint(p2pforge.DefaultCAEndpoint), // TODO: Update to production for latest
+				// p2pforge.WithCertificateStorage(&certmagic.FileStorage{Path: storagePath}),
+				p2pforge.WithCertificateStorage(&certmagic.FileStorage{Path: "p2p-forge-certs"}), // TODO: update to a cert. file
+				p2pforge.WithLogger(sugar),
+				p2pforge.WithUserAgent(userAgent()),
+				p2pforge.WithRegistrationDelay(10*time.Second),
+				p2pforge.WithOnCertLoaded(func() {
+					certLoaded <- true
+				}),
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to initialize AutoTLS: %w", err)
+			}
 		}
-		certManager, err = p2pforge.NewP2PForgeCertMgr(
-			//p2pforge.WithCAEndpoint(p2pforge.DefaultProductionCAEndpoint),
-			p2pforge.WithCAEndpoint(p2pforge.DefaultCAEndpoint), // TODO: Update to production for latest
-			// p2pforge.WithCertificateStorage(&certmagic.FileStorage{Path: storagePath}),
-			p2pforge.WithCertificateStorage(&certmagic.FileStorage{Path: "p2p-forge-certs"}), // TODO: update to a cert. file
-			p2pforge.WithLogger(sugar),
-			p2pforge.WithUserAgent(userAgent()),
-			p2pforge.WithRegistrationDelay(10*time.Second),
-			p2pforge.WithOnCertLoaded(func() {
-				certLoaded <- true
-			}),
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize AutoTLS: %w", err)
+		if err := certManager.Start(); err != nil {
+			return nil, fmt.Errorf("failed to start AutoTLS certificate manager: %w", err)
 		}
 
-		certManager.Start()
 		defer func() {
 			if err != nil {
 				certManager.Stop()
@@ -279,7 +300,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		libp2p.Peerstore(libp2pPeerstore),
 		libp2p.UserAgent(userAgent()),
 		libp2p.ResourceManager(rm),
-		libp2p.NATPortMap(),
 		libp2p.EnableAutoNATv2(),
 	}
 
@@ -290,6 +310,10 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 				return natManager
 			}),
 		)
+	}
+
+	if o.FullNode {
+		opts = append(opts, libp2p.EnableRelayService())
 	}
 
 	if o.PrivateKey != nil {
@@ -329,9 +353,16 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	if o.AutoTLSEnabled && o.EnableWS {
-		certManager.ProvideHost(h)
+		// Handle ProvideHost via type assertion
+		switch cm := certManager.(type) {
+		case *p2pforge.P2PForgeCertMgr:
+			cm.ProvideHost(h) // Call func field
+		case *MockP2PForgeCertMgr:
+			cm.ProvideHost(h) // Call func field
+		default:
+			return nil, fmt.Errorf("unknown cert manager type")
+		}
 	}
-
 	// Support same non default security and transport options as
 	// original host.
 	dialer, err := o.hostFactory(append(transports, security)...)
@@ -420,6 +451,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		lightNodes:        lightNodes,
 		HeadersRWTimeout:  o.HeadersRWTimeout,
 		autoNAT:           autoNAT,
+		certManager:       certManager,
 	}
 
 	peerRegistry.setDisconnecter(s)
@@ -1059,6 +1091,9 @@ func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, 
 }
 
 func (s *Service) Close() error {
+	if s.certManager != nil {
+		s.certManager.Stop()
+	}
 	if err := s.libp2pPeerstore.Close(); err != nil {
 		return err
 	}
