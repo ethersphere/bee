@@ -136,11 +136,13 @@ type peer struct {
 // the allowed thresholds.
 func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, connsPercentile float64) {
 	var (
-		mtx      sync.Mutex
-		wg       sync.WaitGroup
-		totaldur float64
-		peers    []peer
-		bins     [swarm.MaxBins]int
+		mtx                  sync.Mutex
+		wg                   sync.WaitGroup
+		totaldur             float64
+		peers                []peer
+		bins                 [swarm.MaxBins]int
+		neighborhoodPeers    []peer
+		neighborhoodTotalDur float64
 	)
 
 	err := s.topology.EachConnectedPeer(func(addr swarm.Address, bin uint8) (stop bool, jumpToNext bool, err error) {
@@ -167,7 +169,12 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 			mtx.Lock()
 			bins[bin]++
 			totaldur += dur.Seconds()
-			peers = append(peers, peer{snapshot, dur, addr, bin, s.reserve.IsWithinStorageRadius(addr)})
+			peer := peer{snapshot, dur, addr, bin, s.reserve.IsWithinStorageRadius(addr)}
+			peers = append(peers, peer)
+			if peer.neighbor {
+				neighborhoodPeers = append(neighborhoodPeers, peer)
+				neighborhoodTotalDur += dur.Seconds()
+			}
 			mtx.Unlock()
 		}()
 		return false, false, nil
@@ -188,6 +195,20 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 	pConns := percentileConns(peers, connsPercentile)
 	commitment := commitment(peers)
 
+	if len(neighborhoodPeers) > 0 {
+		neighborhoodAvgDur := neighborhoodTotalDur / float64(len(neighborhoodPeers))
+
+		s.metrics.NeighborhoodAvgDur.Set(neighborhoodAvgDur)
+		s.metrics.NeighborCount.Set(float64(len(neighborhoodPeers)))
+
+		s.logger.Debug("neighborhood metrics", "avg_dur", neighborhoodAvgDur, "count", len(neighborhoodPeers))
+	} else {
+		s.metrics.NeighborhoodAvgDur.Set(0)
+		s.metrics.NeighborCount.Set(0)
+
+		s.logger.Debug("no neighborhood peers found for metrics")
+	}
+
 	s.metrics.AvgDur.Set(avgDur)
 	s.metrics.PDur.Set(pDur)
 	s.metrics.PConns.Set(float64(pConns))
@@ -195,7 +216,7 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 	s.metrics.NeighborhoodRadius.Set(float64(nHoodRadius))
 	s.metrics.Commitment.Set(float64(commitment))
 
-	s.logger.Debug("computed", "avg_dur", avgDur, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius, "batch_commitment", commitment)
+	s.logger.Debug("computed", "avg_dur", avgDur, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius, "batch_commitment", commitment, "neighborhood_peers", len(neighborhoodPeers))
 
 	// sort peers by duration, highest first to give priority to the fastest peers
 	sort.Slice(peers, func(i, j int) bool {
