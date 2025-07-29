@@ -46,8 +46,8 @@ func TestRedistributionStatus(t *testing.T) {
 				backendmock.WithBalanceAt(func(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error) {
 					return big.NewInt(100000000), nil
 				}),
-				backendmock.WithSuggestGasPriceFunc(func(ctx context.Context) (*big.Int, error) {
-					return big.NewInt(1), nil
+				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+					return big.NewInt(1), big.NewInt(2), nil
 				}),
 			},
 		})
