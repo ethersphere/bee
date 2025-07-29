@@ -19,8 +19,6 @@ type metrics struct {
 	ReserveSizePercentErr prometheus.Gauge
 	Healthy               prometheus.Counter
 	Unhealthy             prometheus.Counter
-	
-	// Neighborhood-specific metrics
 	NeighborhoodAvgDur    prometheus.Gauge
 	NeighborCount         prometheus.Gauge
 }
