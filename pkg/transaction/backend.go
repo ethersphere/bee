@@ -28,11 +28,7 @@ type Backend interface {
 // with the given maxDelay as the maximum duration we can be behind the block
 // time.
 func IsSynced(ctx context.Context, backend Backend, maxDelay time.Duration) (bool, time.Time, error) {
-	number, err := backend.BlockNumber(ctx)
-	if err != nil {
-		return false, time.Time{}, err
-	}
-	header, err := backend.HeaderByNumber(ctx, big.NewInt(int64(number)))
+	header, err := backend.HeaderByNumber(ctx, nil)
 	if errors.Is(err, ethereum.NotFound) {
 		return false, time.Time{}, nil
 	}
