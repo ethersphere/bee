@@ -22,7 +22,6 @@ func TestIsSynced(t *testing.T) {
 	maxDelay := 10 * time.Second
 	now := time.Now().UTC()
 	ctx := context.Background()
-	blockNumber := uint64(100)
 
 	t.Run("synced", func(t *testing.T) {
 		t.Parallel()
@@ -30,12 +29,9 @@ func TestIsSynced(t *testing.T) {
 		synced, _, err := transaction.IsSynced(
 			ctx,
 			backendmock.New(
-				backendmock.WithBlockNumberFunc(func(c context.Context) (uint64, error) {
-					return blockNumber, nil
-				}),
 				backendmock.WithHeaderbyNumberFunc(func(ctx context.Context, number *big.Int) (*types.Header, error) {
-					if number.Uint64() != blockNumber {
-						return nil, errors.New("called with wrong block number")
+					if number != nil {
+						return nil, errors.New("latest block should be called with nil")
 					}
 					return &types.Header{
 						Time: uint64(now.Unix()),
@@ -58,12 +54,9 @@ func TestIsSynced(t *testing.T) {
 		synced, _, err := transaction.IsSynced(
 			ctx,
 			backendmock.New(
-				backendmock.WithBlockNumberFunc(func(c context.Context) (uint64, error) {
-					return blockNumber, nil
-				}),
 				backendmock.WithHeaderbyNumberFunc(func(ctx context.Context, number *big.Int) (*types.Header, error) {
-					if number.Uint64() != blockNumber {
-						return nil, errors.New("called with wrong block number")
+					if number != nil {
+						return nil, errors.New("latest block should be called with nil")
 					}
 					return &types.Header{
 						Time: uint64(now.Add(-maxDelay).Unix()),
@@ -87,12 +80,9 @@ func TestIsSynced(t *testing.T) {
 		_, _, err := transaction.IsSynced(
 			ctx,
 			backendmock.New(
-				backendmock.WithBlockNumberFunc(func(c context.Context) (uint64, error) {
-					return blockNumber, nil
-				}),
 				backendmock.WithHeaderbyNumberFunc(func(ctx context.Context, number *big.Int) (*types.Header, error) {
-					if number.Uint64() != blockNumber {
-						return nil, errors.New("called with wrong block number")
+					if number != nil {
+						return nil, errors.New("latest block should be called with nil")
 					}
 					return nil, expectedErr
 				}),
