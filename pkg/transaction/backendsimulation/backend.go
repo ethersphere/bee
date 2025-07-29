@@ -83,19 +83,7 @@ func (m *simulatedBackend) advanceBlock() {
 	}
 }
 
-func (m *simulatedBackend) BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (m *simulatedBackend) CodeAt(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error) {
-	return nil, errors.New("not implemented")
-}
-
 func (*simulatedBackend) CallContract(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (*simulatedBackend) PendingCodeAt(ctx context.Context, account common.Address) ([]byte, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -103,8 +91,8 @@ func (m *simulatedBackend) PendingNonceAt(ctx context.Context, account common.Ad
 	return 0, errors.New("not implemented")
 }
 
-func (m *simulatedBackend) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
-	return nil, errors.New("not implemented")
+func (m *simulatedBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+	return nil, nil, errors.New("not implemented")
 }
 
 func (m *simulatedBackend) EstimateGas(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error) {
@@ -116,10 +104,6 @@ func (m *simulatedBackend) SendTransaction(ctx context.Context, tx *types.Transa
 }
 
 func (*simulatedBackend) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (*simulatedBackend) SubscribeFilterLogs(ctx context.Context, query ethereum.FilterQuery, ch chan<- types.Log) (ethereum.Subscription, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -166,6 +150,4 @@ func (m *simulatedBackend) ChainID(ctx context.Context) (*big.Int, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (m *simulatedBackend) Close() error {
-	return nil
-}
+func (m *simulatedBackend) Close() {}
