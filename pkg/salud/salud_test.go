@@ -72,7 +72,7 @@ func TestSalud(t *testing.T) {
 		mockstorer.WithCapacityDoubling(2),
 	)
 
-	service := salud.New(statusM, topM, reserve, log.Noop, stabilmock.NewSubscriber(true), "full", 0, 0.8, 0.8)
+	service := salud.New(statusM, topM, reserve, log.Noop, stabilmock.NewSubscriber(true), "full", 0.8, 0.8)
 
 	err := spinlock.Wait(time.Minute, func() bool {
 		return len(topM.PeersHealth()) == len(peers)
@@ -119,7 +119,7 @@ func TestSelfUnhealthyRadius(t *testing.T) {
 		mockstorer.WithCapacityDoubling(0),
 	)
 
-	service := salud.New(statusM, topM, reserve, log.Noop, stabilmock.NewSubscriber(true), "full", 0, 0.8, 0.8)
+	service := salud.New(statusM, topM, reserve, log.Noop, stabilmock.NewSubscriber(true), "full", 0.8, 0.8)
 	testutil.CleanupCloser(t, service)
 
 	err := spinlock.Wait(time.Minute, func() bool {
@@ -157,7 +157,7 @@ func TestSelfHealthyCapacityDoubling(t *testing.T) {
 		mockstorer.WithCapacityDoubling(2),
 	)
 
-	service := salud.New(statusM, topM, reserve, log.Noop, stabilmock.NewSubscriber(true), "full", 0, 0.8, 0.8)
+	service := salud.New(statusM, topM, reserve, log.Noop, stabilmock.NewSubscriber(true), "full", 0.8, 0.8)
 	testutil.CleanupCloser(t, service)
 
 	err := spinlock.Wait(time.Minute, func() bool {
@@ -187,7 +187,7 @@ func TestSubToRadius(t *testing.T) {
 
 	topM := topMock.NewTopologyDriver(topMock.WithPeers(addrs...))
 
-	service := salud.New(&statusMock{make(map[string]peer)}, topM, mockstorer.NewReserve(), log.Noop, stabilmock.NewSubscriber(true), "full", 0, 0.8, 0.8)
+	service := salud.New(&statusMock{make(map[string]peer)}, topM, mockstorer.NewReserve(), log.Noop, stabilmock.NewSubscriber(true), "full", 0.8, 0.8)
 
 	c, unsub := service.SubscribeNetworkStorageRadius()
 	t.Cleanup(unsub)
@@ -220,7 +220,7 @@ func TestUnsub(t *testing.T) {
 
 	topM := topMock.NewTopologyDriver(topMock.WithPeers(addrs...))
 
-	service := salud.New(&statusMock{make(map[string]peer)}, topM, mockstorer.NewReserve(), log.Noop, stabilmock.NewSubscriber(true), "full", 0, 0.8, 0.8)
+	service := salud.New(&statusMock{make(map[string]peer)}, topM, mockstorer.NewReserve(), log.Noop, stabilmock.NewSubscriber(true), "full", 0.8, 0.8)
 	testutil.CleanupCloser(t, service)
 
 	c, unsub := service.SubscribeNetworkStorageRadius()

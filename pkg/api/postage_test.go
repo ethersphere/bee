@@ -374,13 +374,18 @@ func TestReserveState(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		t.Parallel()
 
+		s := mockstorer.New()
+		s.SetStorageRadius(3)
+		s.SetCommittedDepth(5)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
 			BatchStore: mock.New(mock.WithRadius(5)),
-			Storer:     mockstorer.New(),
+			Storer:     s,
 		})
 		jsonhttptest.Request(t, ts, http.MethodGet, "/reservestate", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.ReserveStateResponse{
-				Radius: 5,
+				Radius:                  5,
+				StorageRadius:           3,
+				ReserveCapacityDoubling: 2,
 			}),
 		)
 	})

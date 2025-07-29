@@ -152,6 +152,12 @@ func (s *ReserveStore) CommittedDepth() uint8 {
 	return s.radius + uint8(s.capacityDoubling)
 }
 
+func (s *ReserveStore) CapacityDoubling() uint8 {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	return uint8(s.capacityDoubling)
+}
+
 // IntervalChunks returns a set of chunk in a requested interval.
 func (s *ReserveStore) SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan *storer.BinC, func(), <-chan error) {
 	s.mtx.Lock()
