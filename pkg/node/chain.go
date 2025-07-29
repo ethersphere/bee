@@ -32,7 +32,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/ethersphere/bee/v2/pkg/transaction/wrapped"
-	"github.com/ethersphere/go-sw3-abi/sw3abi"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -347,17 +346,8 @@ type noOpChainBackend struct {
 	chainID int64
 }
 
-// BlockByNumber implements transaction.Backend.
-func (m *noOpChainBackend) BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error) {
-	return nil, postagecontract.ErrChainDisabled
-}
-
 func (m noOpChainBackend) Metrics() []prometheus.Collector {
 	return nil
-}
-
-func (m noOpChainBackend) CodeAt(context.Context, common.Address, *big.Int) ([]byte, error) {
-	return common.FromHex(sw3abi.SimpleSwapFactoryDeployedBinv0_6_9), nil
 }
 
 func (m noOpChainBackend) CallContract(context.Context, ethereum.CallMsg, *big.Int) ([]byte, error) {

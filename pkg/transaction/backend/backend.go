@@ -13,15 +13,13 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
-// Backend is the interface that an ethclient.Client satisfies.
-type Backend interface {
+// Geth is the interface that an ethclient.Client satisfies.
+type Geth interface {
 	BalanceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (*big.Int, error)
-	BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error)
 	BlockNumber(ctx context.Context) (uint64, error)
 	CallContract(ctx context.Context, msg ethereum.CallMsg, blockNumber *big.Int) ([]byte, error)
 	ChainID(ctx context.Context) (*big.Int, error)
 	Close()
-	CodeAt(ctx context.Context, account common.Address, blockNumber *big.Int) ([]byte, error)
 	EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint64, error)
 	FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error)
 	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)

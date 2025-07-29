@@ -19,7 +19,7 @@ import (
 
 // Backend is the minimum of blockchain backend functions we need.
 type Backend interface {
-	backend.Backend
+	backend.Geth
 	SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error)
 }
 

@@ -7,7 +7,6 @@ package wrapped
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum"
@@ -17,23 +16,17 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/transaction/backend"
 )
 
-const (
-	percentageDivisor = 100
-	baseFeeMultiplier = 2
-)
-
 var (
-	_                      transaction.Backend = (*wrappedBackend)(nil)
-	ErrEIP1559NotSupported                     = errors.New("network does not appear to support EIP-1559 (no baseFee)")
+	_ transaction.Backend = (*wrappedBackend)(nil)
 )
 
 type wrappedBackend struct {
-	backend          backend.Backend
+	backend          backend.Geth
 	metrics          metrics
 	minimumGasTipCap int64
 }
 
-func NewBackend(backend backend.Backend, minimumGasTipCap uint64) transaction.Backend {
+func NewBackend(backend backend.Geth, minimumGasTipCap uint64) transaction.Backend {
 	return &wrappedBackend{
 		backend:          backend,
 		minimumGasTipCap: int64(minimumGasTipCap),
@@ -113,17 +106,6 @@ func (b *wrappedBackend) NonceAt(ctx context.Context, account common.Address, bl
 	return nonce, nil
 }
 
-func (b *wrappedBackend) CodeAt(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error) {
-	b.metrics.TotalRPCCalls.Inc()
-	b.metrics.CodeAtCalls.Inc()
-	code, err := b.backend.CodeAt(ctx, contract, blockNumber)
-	if err != nil {
-		b.metrics.TotalRPCErrors.Inc()
-		return nil, err
-	}
-	return code, nil
-}
-
 func (b *wrappedBackend) CallContract(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
 	b.metrics.TotalRPCCalls.Inc()
 	b.metrics.CallContractCalls.Inc()
@@ -201,60 +183,6 @@ func (b *wrappedBackend) ChainID(ctx context.Context) (*big.Int, error) {
 	return chainID, nil
 }
 
-// BlockByNumber implements transaction.Backend.
-func (b *wrappedBackend) BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error) {
-	b.metrics.TotalRPCCalls.Inc()
-	b.metrics.BlockByNumberCalls.Inc()
-	block, err := b.backend.BlockByNumber(ctx, number)
-	if err != nil {
-		if !errors.Is(err, ethereum.NotFound) {
-			b.metrics.TotalRPCErrors.Inc()
-		}
-		return nil, err
-	}
-	return block, nil
-}
-
 func (b *wrappedBackend) Close() {
 	b.backend.Close()
-}
-
-// SuggestedFeeAndTip calculates the recommended gasFeeCap and gasTipCap for a transaction.
-func (b *wrappedBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
-	if gasPrice != nil {
-		// 1. gasFeeCap: The absolute maximum price per gas does not exceed the user's specified price.
-		// 2. gasTipCap: The entire amount (gasPrice - baseFee) can be used as a priority fee.
-		return new(big.Int).Set(gasPrice), new(big.Int).Set(gasPrice), nil
-	}
-
-	gasTipCap, err := b.backend.SuggestGasTipCap(ctx)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to suggest gas tip cap: %w", err)
-	}
-
-	if boostPercent != 0 {
-		// multiplier: 100 + boostPercent (e.g., 110 for 10% boost)
-		multiplier := new(big.Int).Add(big.NewInt(int64(percentageDivisor)), big.NewInt(int64(boostPercent)))
-		// gasTipCap = gasTipCap * (100 + boostPercent) / 100
-		gasTipCap.Mul(gasTipCap, multiplier).Div(gasTipCap, big.NewInt(int64(percentageDivisor)))
-	}
-
-	minimumTip := big.NewInt(b.minimumGasTipCap)
-	if gasTipCap.Cmp(minimumTip) < 0 {
-		gasTipCap.Set(minimumTip)
-	}
-
-	latestBlockHeader, err := b.backend.HeaderByNumber(ctx, nil)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get latest block header: %w", err)
-	}
-	if latestBlockHeader == nil || latestBlockHeader.BaseFee == nil {
-		return nil, nil, ErrEIP1559NotSupported
-	}
-
-	// EIP-1559: gasFeeCap = (2 * baseFee) + gasTipCap
-	gasFeeCap := new(big.Int).Mul(latestBlockHeader.BaseFee, big.NewInt(int64(baseFeeMultiplier)))
-	gasFeeCap.Add(gasFeeCap, gasTipCap)
-
-	return gasFeeCap, gasTipCap, nil
 }

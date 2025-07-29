@@ -18,7 +18,6 @@ type metrics struct {
 	BlockNumberCalls        prometheus.Counter
 	BlockHeaderCalls        prometheus.Counter
 	BalanceCalls            prometheus.Counter
-	CodeAtCalls             prometheus.Counter
 	NonceAtCalls            prometheus.Counter
 	PendingNonceCalls       prometheus.Counter
 	CallContractCalls       prometheus.Counter
@@ -27,7 +26,6 @@ type metrics struct {
 	SendTransactionCalls    prometheus.Counter
 	FilterLogsCalls         prometheus.Counter
 	ChainIDCalls            prometheus.Counter
-	BlockByNumberCalls      prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -76,12 +74,6 @@ func newMetrics() metrics {
 			Name:      "calls_balance",
 			Help:      "Count of eth_getBalance rpc calls",
 		}),
-		CodeAtCalls: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "calls_code_at",
-			Help:      "Count of eth_getCode rpc calls",
-		}),
 		NonceAtCalls: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
@@ -129,12 +121,6 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "calls_chain_id",
 			Help:      "Count of eth_chainId rpc calls",
-		}),
-		BlockByNumberCalls: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "calls_block_by_number",
-			Help:      "Count of eth_getBlockByNumber rpc calls",
 		}),
 	}
 }
