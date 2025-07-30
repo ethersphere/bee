@@ -270,16 +270,18 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			if err != nil {
 				return nil, fmt.Errorf("failed to initialize AutoTLS: %w", err)
 			}
+
+			// if the creation of the service fails, we must stop the cert manager
+			defer func() {
+				if err != nil {
+					certManager.Stop()
+				}
+			}()
 		}
+
 		if err := certManager.Start(); err != nil {
 			return nil, fmt.Errorf("failed to start AutoTLS certificate manager: %w", err)
 		}
-
-		defer func() {
-			if err != nil {
-				certManager.Stop()
-			}
-		}()
 
 		// Wait for certificate to be loaded
 		// select {
