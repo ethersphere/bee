@@ -282,7 +282,6 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		AllowPrivateCIDRs:             c.config.GetBool(optionNameAllowPrivateCIDRs),
 		APIAddr:                       c.config.GetString(optionNameAPIAddr),
 		AutoTLSEnabled:                c.config.GetBool(optionAutoTLSEnabled),
-		AutoTLSDomain:                 c.config.GetString(optionAutoTLSDomain),
 		AutoTLSStorageDir:             c.config.GetString(optionAutoTLSStorageDir),
 		BlockchainRpcEndpoint:         c.config.GetString(optionNameBlockchainRpcEndpoint),
 		BlockProfile:                  c.config.GetBool(optionNamePProfBlock),

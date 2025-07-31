@@ -138,7 +138,6 @@ type Options struct {
 	NATAddr           string
 	EnableWS          bool
 	AutoTLSEnabled    bool   // Flag for AutoTLS
-	AutoTLSDomain     string // Domain for AutoTLS (e.g., "libp2p.direct")
 	AutoTLSStorageDir string // Data directory for cert storage
 	FullNode          bool
 	LightNodeLimit    int
@@ -230,9 +229,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	var certManager P2PForgeCertMgr
-	// var certLoaded chan bool
 	if o.AutoTLSEnabled && o.EnableWS {
-		// certLoaded = make(chan bool, 1) // Channel to signal when the cert is loaded
 
 		if o.CertManager != nil {
 			certManager = o.CertManager
@@ -253,9 +250,15 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			if storagePath == "" {
 				storagePath = filepath.Join("./", "p2p-forge-certs") // Fallback to ./p2p-forge-certs
 			}
+			if err := os.MkdirAll(storagePath, 0700); err != nil {
+				return nil, fmt.Errorf("failed to create certificate storage directory %s: %w", storagePath, err)
+			}
+
 			certManager, err = p2pforge.NewP2PForgeCertMgr(
+				p2pforge.WithForgeDomain(p2pforge.DefaultForgeDomain),
+				p2pforge.WithForgeRegistrationEndpoint(p2pforge.DefaultForgeEndpoint),
 				p2pforge.WithCAEndpoint(p2pforge.DefaultCAEndpoint),
-				p2pforge.WithCertificateStorage(&certmagic.FileStorage{Path: storagePath}), // TODO: update to a cert. file
+				p2pforge.WithCertificateStorage(&certmagic.FileStorage{Path: storagePath}),
 				p2pforge.WithLogger(sugar),
 				p2pforge.WithUserAgent(userAgent()),
 				p2pforge.WithRegistrationDelay(0),
@@ -263,6 +266,9 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			if err != nil {
 				return nil, fmt.Errorf("failed to initialize AutoTLS: %w", err)
 			}
+
+			// for local testing purposes
+			// certManager = NewMockP2PForgeCertMgr(nil)
 
 			// if the creation of the service fails, we must stop the cert manager
 			defer func() {
@@ -276,15 +282,17 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			return nil, fmt.Errorf("failed to start AutoTLS certificate manager: %w", err)
 		}
 
-		// Wait for certificate to be loaded
-		// select {
-		// case <-certLoaded:
-		// 	logger.Info("AutoTLS certificate loaded successfully")
-		// case <-time.After(60 * time.Second):
-		// 	return nil, fmt.Errorf("AutoTLS certificate not loaded in time")
-		// case <-ctx.Done():
-		// 	return nil, ctx.Err()
-		// }
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		for certManager.TLSConfig() == nil || len(certManager.TLSConfig().Certificates) == 0 {
+			select {
+			case <-ctx.Done():
+				return nil, fmt.Errorf("AutoTLS certificate not loaded: %w", ctx.Err())
+			case <-time.After(1 * time.Second):
+				logger.Debug("Waiting for AutoTLS certificate")
+			}
+		}
+		logger.Info("AutoTLS certificate loaded successfully")
 
 	}
 

@@ -6,6 +6,7 @@ package libp2p
 import (
 	"context"
 	"crypto/tls"
+	"strings"
 	"sync"
 
 	"github.com/libp2p/go-libp2p/config"
@@ -123,14 +124,23 @@ func (m *MockP2PForgeCertMgr) Stop() {
 }
 
 func (m *MockP2PForgeCertMgr) TLSConfig() *tls.Config {
-	return &tls.Config{
-		MinVersion: tls.VersionTLS12,
+	cert, err := tls.LoadX509KeyPair("cert/cert.pem", "cert/key.pem")
+	if err != nil {
+		return nil
 	}
+	return &tls.Config{Certificates: []tls.Certificate{cert}}
 }
 
 func (m *MockP2PForgeCertMgr) AddressFactory() config.AddrsFactory {
 	return func(addrs []ma.Multiaddr) []ma.Multiaddr {
-		return addrs
+		var newAddrs []ma.Multiaddr
+		for _, addr := range addrs {
+			s := addr.String()
+			s = strings.Replace(s, "/ws", "/wss", 1)
+			newAddr, _ := ma.NewMultiaddr(s)
+			newAddrs = append(newAddrs, newAddr)
+		}
+		return newAddrs
 	}
 }
 
