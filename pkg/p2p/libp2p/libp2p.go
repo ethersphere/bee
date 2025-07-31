@@ -217,7 +217,8 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		libp2p.UserAgent(userAgent()),
 		libp2p.ResourceManager(rm),
 		libp2p.NATPortMap(),
-		libp2p.EnableNATService(),
+		libp2p.DisableRelay(),
+		// libp2p.EnableNATService(),
 		libp2p.EnableAutoNATv2(),
 	}
 
@@ -780,6 +781,17 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	if err := handshakeStream.FullClose(); err != nil {
 		_ = s.Disconnect(overlay, "could not fully close handshake stream after connect")
 		return nil, fmt.Errorf("connect full close %w", err)
+	}
+
+	pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second) // Short timeout for the ping
+	defer cancel()
+	if _, err := s.Ping(pingCtx, addr); err != nil {
+		_ = s.Disconnect(overlay, "peer disconnected immediately after handshake")
+		return nil, p2p.ErrPeerNotFound
+	}
+
+	if !s.peers.Exists(overlay) {
+		return nil, p2p.ErrPeerNotFound
 	}
 
 	if i.FullNode {
