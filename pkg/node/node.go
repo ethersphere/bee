@@ -127,9 +127,6 @@ type Options struct {
 	Addr                          string
 	AllowPrivateCIDRs             bool
 	APIAddr                       string
-	AutoTLSEnabled                bool
-	AutoTLSDomain                 string
-	AutoTLSStorageDir             string
 	BlockchainRpcEndpoint         string
 	BlockProfile                  bool
 	BlockTime                     time.Duration

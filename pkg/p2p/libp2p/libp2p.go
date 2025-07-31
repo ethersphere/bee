@@ -118,20 +118,17 @@ type lightnodes interface {
 }
 
 type Options struct {
-	PrivateKey        *ecdsa.PrivateKey
-	NATAddr           string
-	EnableWS          bool
-	AutoTLSEnabled    bool   // Flag for AutoTLS
-	AutoTLSDomain     string // Domain for AutoTLS (e.g., "libp2p.direct")
-	AutoTLSStorageDir string // Data directory for cert storage
-	FullNode          bool
-	LightNodeLimit    int
-	WelcomeMessage    string
-	Nonce             []byte
-	ValidateOverlay   bool
-	hostFactory       func(...libp2p.Option) (host.Host, error)
-	HeadersRWTimeout  time.Duration
-	Registry          *prometheus.Registry
+	PrivateKey       *ecdsa.PrivateKey
+	NATAddr          string
+	EnableWS         bool
+	FullNode         bool
+	LightNodeLimit   int
+	WelcomeMessage   string
+	Nonce            []byte
+	ValidateOverlay  bool
+	hostFactory      func(...libp2p.Option) (host.Host, error)
+	HeadersRWTimeout time.Duration
+	Registry         *prometheus.Registry
 }
 
 func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
