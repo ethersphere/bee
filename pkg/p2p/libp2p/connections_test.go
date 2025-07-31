@@ -493,20 +493,6 @@ func TestConnectWithEnabledWSTransports(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	libp2pOpts := libp2p.WithHostFactory(
-		func(...libp2pm.Option) (host.Host, error) {
-			host, err := bhost.NewHost(swarmt.GenSwarm(t), &bhost.HostOpts{EnablePing: true})
-			if err != nil {
-				t.Fatalf("start host: %v", err)
-			}
-			host.Start()
-			return host, nil
-		},
-	)
-	libp2pOpts.AutoTLSEnabled = true
-	libp2pOpts.EnableWS = true
-	libp2pOpts.FullNode = true
-
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{
 		libp2pOpts: libp2p.Options{
 			EnableWS: true,
