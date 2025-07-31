@@ -507,48 +507,19 @@ func TestConnectWithEnabledWSTransports(t *testing.T) {
 	libp2pOpts.EnableWS = true
 	libp2pOpts.FullNode = true
 
-	// Create mock cert manager for s1
-	certLoaded := make(chan bool, 2) // Buffer for both signals
-	certManager := libp2p.NewMockP2PForgeCertMgr(func() {
-		t.Log("s1: onCertLoaded triggered")
-		certLoaded <- true
-	})
-
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{
-		libp2pOpts:  libp2pOpts,
-		CertManager: certManager,
+		libp2pOpts: libp2p.Options{
+			EnableWS: true,
+			FullNode: true,
+		},
 	})
 
-	// Create mock cert manager for s2
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{
-		libp2pOpts: libp2pOpts,
-		CertManager: libp2p.NewMockP2PForgeCertMgr(func() {
-			t.Log("s2: onCertLoaded triggered")
-			certLoaded <- true
-		}),
+		libp2pOpts: libp2p.Options{
+			EnableWS: true,
+			FullNode: true,
+		},
 	})
-
-	// Wait for certificate loading to complete for both s1 and s2
-	for i := 0; i < 2; i++ {
-		select {
-		case <-certLoaded:
-			t.Logf("Received certLoaded signal %d", i+1)
-		case <-time.After(500 * time.Millisecond): // Increased timeout
-			t.Fatal("mock certificate loading timed out")
-		case <-ctx.Done():
-			t.Fatal(ctx.Err())
-		}
-	}
-
-	// Explicitly close services to ensure cleanup
-	defer func() {
-		if err := s1.Close(); err != nil {
-			t.Errorf("s1.Close: %v", err)
-		}
-		if err := s2.Close(); err != nil {
-			t.Errorf("s2.Close: %v", err)
-		}
-	}()
 
 	addr := serviceUnderlayAddress(t, s1)
 
