@@ -1,0 +1,54 @@
+[
+  {
+    "label": "Launch Bee (testnet)",
+    "adapter": "Delve",
+    "request": "launch",
+    "mode": "debug",
+    "program": "./cmd/bee",
+    "args": [
+      "start",
+      "--config",
+      "/Users/cmartinconi/Work/ethswarm/configs/testnet.yaml"
+    ],
+    "cwd": "${ZED_WORKTREE_ROOT}",
+    "stopOnEntry": false
+  },
+  {
+    "label": "Launch Bee (light testnet)",
+    "adapter": "Delve",
+    "request": "launch",
+    "mode": "debug",
+    "program": "./cmd/bee",
+    "args": [
+      "start",
+      "--config",
+      "/Users/cmartinconi/Work/ethswarm/configs/light_testnet.yaml"
+    ],
+    "cwd": "${ZED_WORKTREE_ROOT}",
+    "stopOnEntry": false
+  },
+  {
+    "label": "Launch Bee (Sepolia)",
+    "adapter": "Delve",
+    "request": "launch",
+    "mode": "debug",
+    "program": "./cmd/bee",
+    "args": ["start", "--config", "${HOME}/Work/ethswarm/configs/sepolia.yaml"],
+    "cwd": "${ZED_WORKTREE_ROOT}",
+    "stopOnEntry": false
+  },
+  {
+    "label": "Launch Bee (Mainnet)",
+    "adapter": "Delve",
+    "request": "launch",
+    "mode": "debug",
+    "program": "./cmd/bee",
+    "args": [
+      "start",
+      "--config",
+      "/Users/cmartinconi/Work/ethswarm/configs/mainnet.yaml"
+    ],
+    "cwd": "${ZED_WORKTREE_ROOT}",
+    "stopOnEntry": false
+  }
+]

@@ -82,6 +82,9 @@ const (
 	optionReserveCapacityDoubling          = "reserve-capacity-doubling"
 	optionSkipPostageSnapshot              = "skip-postage-snapshot"
 	optionNameMinimumGasTipCap             = "minimum-gas-tip-cap"
+	optionAutoTLSEnabled                   = "autotls"
+	optionAutoTLSDomain                    = "autotls-domain"
+	optionAutoTLSStorageDir                = "autotls-storage-dir"
 )
 
 // nolint:gochecknoinits
@@ -292,6 +295,9 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Int(optionReserveCapacityDoubling, 0, "reserve capacity doubling")
 	cmd.Flags().Bool(optionSkipPostageSnapshot, false, "skip postage snapshot")
 	cmd.Flags().Uint64(optionNameMinimumGasTipCap, 0, "minimum gas tip cap in wei for transactions, 0 means use suggested gas tip cap")
+	cmd.Flags().Bool(optionAutoTLSEnabled, true, "Enable AutoTLS for secure WebSocket connections")
+	cmd.Flags().String(optionAutoTLSDomain, "libp2p.direct", "Domain suffix for AutoTLS certificates")
+	cmd.Flags().String(optionAutoTLSStorageDir, "", "Data directory for certificate storage (default ~/.bee)")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {

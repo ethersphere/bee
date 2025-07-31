@@ -409,7 +409,12 @@ func TestPing(t *testing.T) {
 	s1, _ := newService(t, 1, libp2pServiceOpts{
 		libp2pOpts: libp2p.WithHostFactory(
 			func(...libp2pm.Option) (host.Host, error) {
-				return bhost.NewHost(swarmt.GenSwarm(t), &bhost.HostOpts{EnablePing: true})
+				host, err := bhost.NewHost(swarmt.GenSwarm(t), &bhost.HostOpts{EnablePing: true})
+				if err != nil {
+					t.Fatalf("start host: %v", err)
+				}
+				host.Start()
+				return host, nil
 			},
 		),
 	})
