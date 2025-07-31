@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -44,7 +45,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/host/autonat"
-	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	lp2pswarm "github.com/libp2p/go-libp2p/p2p/net/swarm"
@@ -97,7 +97,6 @@ type P2PForgeCertMgr interface {
 type Service struct {
 	ctx               context.Context
 	host              host.Host
-	natManager        basichost.NATManager
 	natAddrResolver   *staticAddressResolver
 	autonatDialer     host.Host
 	pingDialer        host.Host
@@ -122,6 +121,7 @@ type Service struct {
 	networkStatus     atomic.Int32
 	HeadersRWTimeout  time.Duration
 	autoNAT           autonat.AutoNAT
+	enableWS          bool
 	certManager       P2PForgeCertMgr
 }
 
@@ -229,12 +229,10 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 
-	var natManager basichost.NATManager
-
 	var certManager P2PForgeCertMgr
-	var certLoaded chan bool
+	// var certLoaded chan bool
 	if o.AutoTLSEnabled && o.EnableWS {
-		certLoaded = make(chan bool, 1) // Channel to signal when the cert is loaded
+		// certLoaded = make(chan bool, 1) // Channel to signal when the cert is loaded
 
 		if o.CertManager != nil {
 			certManager = o.CertManager
@@ -251,20 +249,16 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			sugar := p2pforgeLogger.Sugar()
 
 			// Use AutoTLS storage dir
-			// storagePath := o.AutoTLSStorageDir
-			// if storagePath == "" {
-			// 	storagePath = filepath.Join(os.Getenv("HOME"), ".bee", "p2p-forge-certs") // Fallback to ~/.bee/p2p-forge-certs
-			// }
+			storagePath := o.AutoTLSStorageDir
+			if storagePath == "" {
+				storagePath = filepath.Join("./", "p2p-forge-certs") // Fallback to ./p2p-forge-certs
+			}
 			certManager, err = p2pforge.NewP2PForgeCertMgr(
 				p2pforge.WithCAEndpoint(p2pforge.DefaultCAEndpoint),
-				// p2pforge.WithCertificateStorage(&certmagic.FileStorage{Path: storagePath}),
-				p2pforge.WithCertificateStorage(&certmagic.FileStorage{Path: "p2p-forge-certs"}), // TODO: update to a cert. file
+				p2pforge.WithCertificateStorage(&certmagic.FileStorage{Path: storagePath}), // TODO: update to a cert. file
 				p2pforge.WithLogger(sugar),
 				p2pforge.WithUserAgent(userAgent()),
-				p2pforge.WithRegistrationDelay(10*time.Second),
-				p2pforge.WithOnCertLoaded(func() {
-					certLoaded <- true
-				}),
+				p2pforge.WithRegistrationDelay(0),
 			)
 			if err != nil {
 				return nil, fmt.Errorf("failed to initialize AutoTLS: %w", err)
@@ -301,15 +295,9 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		libp2p.Peerstore(libp2pPeerstore),
 		libp2p.UserAgent(userAgent()),
 		libp2p.ResourceManager(rm),
-	}
-
-	if o.NATAddr == "" {
-		opts = append(opts,
-			libp2p.NATManager(func(n network.Network) basichost.NATManager {
-				natManager = basichost.NewNATManager(n)
-				return natManager
-			}),
-		)
+		libp2p.NATPortMap(),
+		libp2p.DisableRelay(),
+		libp2p.EnableAutoNATv2(),
 	}
 
 	if o.PrivateKey != nil {
@@ -323,7 +311,8 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	transports := []libp2p.Option{
-		libp2p.Transport(tcp.NewTCPTransport, tcp.DisableReuseport()),
+		libp2p.Transport(tcp.NewTCPTransport),
+		libp2p.ShareTCPListener(),
 	}
 
 	if o.EnableWS {
@@ -430,7 +419,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	s := &Service{
 		ctx:               ctx,
 		host:              h,
-		natManager:        natManager,
 		natAddrResolver:   natAddrResolver,
 		autonatDialer:     dialer,
 		pingDialer:        pingDialer,
@@ -447,6 +435,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		ready:             make(chan struct{}),
 		halt:              make(chan struct{}),
 		lightNodes:        lightNodes,
+		enableWS:          o.EnableWS,
 		HeadersRWTimeout:  o.HeadersRWTimeout,
 		autoNAT:           autoNAT,
 	}
@@ -757,7 +746,6 @@ func (s *Service) Addresses() (addresses []ma.Multiaddr, err error) {
 		if err != nil {
 			return nil, err
 		}
-
 		addresses = append(addresses, a)
 	}
 	if s.natAddrResolver != nil && len(addresses) > 0 {
@@ -765,14 +753,25 @@ func (s *Service) Addresses() (addresses []ma.Multiaddr, err error) {
 		if err != nil {
 			return nil, err
 		}
-		addresses = append(addresses, a)
+		// Remove /p2p/<ID> to append /ws before it
+		hostAddr, err := buildHostAddress(s.host.ID())
+		if err != nil {
+			return nil, err
+		}
+		baseAddr := a.Decapsulate(hostAddr)
+		addresses = append(addresses, a) // Add plain NAT address
+
+		// Append NAT address with /ws if WebSocket is enabled
+		if s.enableWS {
+			wsNatAddr, err := ma.NewMultiaddr(baseAddr.String() + "/ws")
+			if err != nil {
+				return nil, fmt.Errorf("failed to append /ws to NAT address: %w", err)
+			}
+			wsNatAddr = wsNatAddr.Encapsulate(hostAddr) // Add /p2p/<ID> after /ws
+			addresses = append(addresses, wsNatAddr)
+		}
 	}
-
 	return addresses, nil
-}
-
-func (s *Service) NATManager() basichost.NATManager {
-	return s.natManager
 }
 
 func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration, reason string) error {
@@ -901,6 +900,17 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	if err := handshakeStream.FullClose(); err != nil {
 		_ = s.Disconnect(overlay, "could not fully close handshake stream after connect")
 		return nil, fmt.Errorf("connect full close %w", err)
+	}
+
+	pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second) // Short timeout for the ping
+	defer cancel()
+	if _, err := s.Ping(pingCtx, addr); err != nil {
+		_ = s.Disconnect(overlay, "peer disconnected immediately after handshake")
+		return nil, p2p.ErrPeerNotFound
+	}
+
+	if !s.peers.Exists(overlay) {
+		return nil, p2p.ErrPeerNotFound
 	}
 
 	if i.FullNode {
@@ -1094,11 +1104,6 @@ func (s *Service) Close() error {
 
 	if err := s.libp2pPeerstore.Close(); err != nil {
 		return err
-	}
-	if s.natManager != nil {
-		if err := s.natManager.Close(); err != nil {
-			return err
-		}
 	}
 	if err := s.autonatDialer.Close(); err != nil {
 		return err
