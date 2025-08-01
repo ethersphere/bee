@@ -77,6 +77,16 @@ func (db *DB) ReserveSample(
 
 	t := time.Now()
 
+	// Record metrics for ReserveSample
+	defer func() {
+		duration := time.Since(t)
+		if err := g.Wait(); err != nil {
+			db.metrics.ReserveSampleDuration.WithLabelValues("failure").Observe(duration.Seconds())
+		} else {
+			db.metrics.ReserveSampleDuration.WithLabelValues("success").Observe(duration.Seconds())
+		}
+	}()
+
 	excludedBatchIDs, err := db.batchesBelowValue(minBatchBalance)
 	if err != nil {
 		db.logger.Error(err, "get batches below value")
@@ -85,6 +95,7 @@ func (db *DB) ReserveSample(
 	allStats.BatchesBelowValueDuration = time.Since(t)
 
 	workers := max(4, runtime.NumCPU())
+	db.metrics.ReserveSampleWorkers.Set(float64(workers))
 	chunkC := make(chan *reserve.ChunkBinItem, 3*workers)
 
 	// Phase 1: Iterate chunk addresses
@@ -104,6 +115,7 @@ func (db *DB) ReserveSample(
 			select {
 			case chunkC <- ch:
 				stats.TotalIterated++
+				db.metrics.ReserveSampleChunksIterated.Inc()
 				return false, nil
 			case <-ctx.Done():
 				return false, ctx.Err()
@@ -133,7 +145,6 @@ func (db *DB) ReserveSample(
 				// exclude chunks who's batches balance are below minimum
 				if _, found := excludedBatchIDs[string(chItem.BatchID)]; found {
 					wstat.BelowBalanceIgnored++
-
 					continue
 				}
 
@@ -149,18 +160,22 @@ func (db *DB) ReserveSample(
 				chunk, err := db.ChunkStore().Get(ctx, chItem.Address)
 				if err != nil {
 					wstat.ChunkLoadFailed++
+					db.metrics.ReserveSampleChunksLoadFailed.Inc()
 					db.logger.Debug("failed loading chunk", "chunk_address", chItem.Address, "error", err)
 					continue
 				}
 
 				wstat.ChunkLoadDuration += time.Since(chunkLoadStart)
+				db.metrics.ReserveSampleChunksLoaded.Inc()
 
 				taddrStart := time.Now()
 				taddr, err := transformedAddress(hasher, chunk, chItem.ChunkType)
 				if err != nil {
 					return err
 				}
-				wstat.TaddrDuration += time.Since(taddrStart)
+				taddrDuration := time.Since(taddrStart)
+				wstat.TaddrDuration += taddrDuration
+				db.metrics.ReserveSampleTaddrDuration.WithLabelValues(chItem.ChunkType.String()).Observe(taddrDuration.Seconds())
 
 				select {
 				case sampleItemChan <- SampleItem{
@@ -224,8 +239,6 @@ func (db *DB) ReserveSample(
 		}
 
 		if le(item.TransformedAddress, currentMaxAddr) || len(sampleItems) < SampleSize {
-			start := time.Now()
-
 			stamp, err := chunkstamp.LoadWithBatchID(db.storage.IndexStore(), "reserve", item.ChunkAddress, item.Stamp.BatchID())
 			if err != nil {
 				stats.StampLoadFailed++
@@ -241,13 +254,18 @@ func (db *DB) ReserveSample(
 				continue
 			}
 
+			stampValidStart := time.Now()
 			if _, err := db.validStamp(ch); err != nil {
 				stats.InvalidStamp++
+				db.metrics.ReserveSampleStampValidDuration.WithLabelValues("invalid").Observe(time.Since(stampValidStart).Seconds())
 				db.logger.Debug("invalid stamp for chunk", "chunk_address", ch.Address(), "error", err)
 				continue
 			}
 
-			stats.ValidStampDuration += time.Since(start)
+			stampValidDuration := time.Since(stampValidStart)
+			stats.ValidStampDuration += stampValidDuration
+			db.metrics.ReserveSampleStampValidations.Inc()
+			db.metrics.ReserveSampleStampValidDuration.WithLabelValues("valid").Observe(stampValidDuration.Seconds())
 
 			item.Stamp = postage.NewStamp(stamp.BatchID(), stamp.Index(), stamp.Timestamp(), stamp.Sig())
 
@@ -266,6 +284,9 @@ func (db *DB) ReserveSample(
 	}
 
 	db.logger.Info("reserve sampler finished", "duration", time.Since(t), "storage_radius", committedDepth, "consensus_time_ns", consensusTime, "stats", fmt.Sprintf("%+v", allStats))
+
+	// Record final sample size
+	db.metrics.ReserveSampleSize.Set(float64(len(sampleItems)))
 
 	return Sample{Stats: *allStats, Items: sampleItems}, nil
 }
@@ -382,7 +403,7 @@ func RandSample(t *testing.T, anchor []byte) Sample {
 	t.Helper()
 
 	chunks := make([]swarm.Chunk, SampleSize)
-	for i := 0; i < SampleSize; i++ {
+	for i := range SampleSize {
 		ch := chunk.GenerateTestRandomChunk()
 		if i%3 == 0 {
 			ch = chunk.GenerateTestRandomSoChunk(t, ch)

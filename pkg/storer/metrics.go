@@ -33,6 +33,17 @@ type metrics struct {
 	ExpiryRunsCount         prometheus.Counter
 
 	ReserveMissingBatch prometheus.Gauge
+
+	// ReserveSample metrics
+	ReserveSampleDuration           *prometheus.HistogramVec
+	ReserveSampleChunksIterated     prometheus.Counter
+	ReserveSampleChunksLoaded       prometheus.Counter
+	ReserveSampleChunksLoadFailed   prometheus.Counter
+	ReserveSampleTaddrDuration      *prometheus.HistogramVec
+	ReserveSampleStampValidations   prometheus.Counter
+	ReserveSampleStampValidDuration *prometheus.HistogramVec
+	ReserveSampleSize               prometheus.Gauge
+	ReserveSampleWorkers            prometheus.Gauge
 }
 
 // newMetrics is a convenient constructor for creating new metrics.
@@ -161,6 +172,85 @@ func newMetrics() metrics {
 				Subsystem: subsystem,
 				Name:      "expiry_run_count",
 				Help:      "Number of times the expiry worker was fired.",
+			},
+		),
+		// ReserveSample metrics
+		ReserveSampleDuration: prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "reserve_sample_duration",
+				Help:      "Duration of ReserveSample operations.",
+				Buckets:   prometheus.DefBuckets,
+			},
+			[]string{"status"},
+		),
+		ReserveSampleChunksIterated: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "reserve_sample_chunks_iterated",
+				Help:      "Total number of chunks iterated during ReserveSample.",
+			},
+		),
+		ReserveSampleChunksLoaded: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "reserve_sample_chunks_loaded",
+				Help:      "Total number of chunks successfully loaded during ReserveSample.",
+			},
+		),
+		ReserveSampleChunksLoadFailed: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "reserve_sample_chunks_load_failed",
+				Help:      "Total number of chunks that failed to load during ReserveSample.",
+			},
+		),
+		ReserveSampleTaddrDuration: prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "reserve_sample_taddr_duration",
+				Help:      "Duration of transformed address calculations during ReserveSample.",
+				Buckets:   prometheus.DefBuckets,
+			},
+			[]string{"chunk_type"},
+		),
+		ReserveSampleStampValidations: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "reserve_sample_stamp_validations",
+				Help:      "Total number of stamp validations during ReserveSample.",
+			},
+		),
+		ReserveSampleStampValidDuration: prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "reserve_sample_stamp_valid_duration",
+				Help:      "Duration of stamp validations during ReserveSample.",
+				Buckets:   prometheus.DefBuckets,
+			},
+			[]string{"status"},
+		),
+		ReserveSampleSize: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "reserve_sample_size",
+				Help:      "Number of items in the final ReserveSample.",
+			},
+		),
+		ReserveSampleWorkers: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "reserve_sample_workers",
+				Help:      "Number of parallel workers used in ReserveSample.",
 			},
 		),
 	}

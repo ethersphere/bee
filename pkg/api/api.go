@@ -109,9 +109,8 @@ const (
 )
 
 const (
-	multiPartFormData  = "multipart/form-data"
-	contentTypeTar     = "application/x-tar"
-	boolHeaderSetValue = "true"
+	multiPartFormData = "multipart/form-data"
+	contentTypeTar    = "application/x-tar"
 )
 
 var (
