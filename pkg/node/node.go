@@ -127,6 +127,8 @@ type Options struct {
 	Addr                          string
 	AllowPrivateCIDRs             bool
 	APIAddr                       string
+	AutoTLSEnabled                bool
+	AutoTLSStorageDir             string
 	BlockchainRpcEndpoint         string
 	BlockProfile                  bool
 	BlockTime                     time.Duration
@@ -641,14 +643,16 @@ func NewBee(
 	}
 
 	p2ps, err := libp2p.New(ctx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
-		PrivateKey:      libp2pPrivateKey,
-		NATAddr:         o.NATAddr,
-		EnableWS:        o.EnableWS,
-		WelcomeMessage:  o.WelcomeMessage,
-		FullNode:        o.FullNodeMode,
-		Nonce:           nonce,
-		ValidateOverlay: chainEnabled,
-		Registry:        registry,
+		PrivateKey:        libp2pPrivateKey,
+		NATAddr:           o.NATAddr,
+		EnableWS:          o.EnableWS,
+		AutoTLSEnabled:    o.AutoTLSEnabled,
+		AutoTLSStorageDir: o.AutoTLSStorageDir,
+		WelcomeMessage:    o.WelcomeMessage,
+		FullNode:          o.FullNodeMode,
+		Nonce:             nonce,
+		ValidateOverlay:   chainEnabled,
+		Registry:          registry,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
