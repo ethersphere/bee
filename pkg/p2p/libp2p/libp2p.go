@@ -175,6 +175,9 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s", ip4Addr, port))
 		if o.EnableWS {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/ws", ip4Addr, port))
+			if o.AutoTLSEnabled {
+				listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/0.0.0.0/tcp/5500/tls/sni/*.%s/ws", p2pforge.DefaultForgeDomain))
+			}
 		}
 	}
 
@@ -182,6 +185,9 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s", ip6Addr, port))
 		if o.EnableWS {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/ws", ip6Addr, port))
+			if o.AutoTLSEnabled {
+				listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/::/tcp/5500/tls/sni/*.%s/ws", p2pforge.DefaultForgeDomain))
+			}
 		}
 	}
 
@@ -228,11 +234,19 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 
+	certLoaded := make(chan bool, 1)
+
 	var certManager P2PForgeCertMgr
 	if o.AutoTLSEnabled && o.EnableWS {
 
 		if o.CertManager != nil {
 			certManager = o.CertManager
+
+			if mocker, ok := certManager.(*MockP2PForgeCertMgr); ok {
+				mocker.SetOnCertLoaded(func() {
+					certLoaded <- true
+				})
+			}
 		} else {
 			p2pforgeLogger, err := zap.NewProduction()
 			if err != nil {
@@ -257,11 +271,14 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			certManager, err = p2pforge.NewP2PForgeCertMgr(
 				p2pforge.WithForgeDomain(p2pforge.DefaultForgeDomain),
 				p2pforge.WithForgeRegistrationEndpoint(p2pforge.DefaultForgeEndpoint),
-				p2pforge.WithCAEndpoint(p2pforge.DefaultCAEndpoint),
+				p2pforge.WithCAEndpoint(certmagic.LetsEncryptStagingCA),
 				p2pforge.WithCertificateStorage(&certmagic.FileStorage{Path: storagePath}),
 				p2pforge.WithLogger(sugar),
 				p2pforge.WithUserAgent(userAgent()),
 				p2pforge.WithRegistrationDelay(0),
+				p2pforge.WithOnCertLoaded(func() {
+					certLoaded <- true
+				}),
 			)
 			if err != nil {
 				return nil, fmt.Errorf("failed to initialize AutoTLS: %w", err)
@@ -282,17 +299,17 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			return nil, fmt.Errorf("failed to start AutoTLS certificate manager: %w", err)
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
-		for certManager.TLSConfig() == nil || len(certManager.TLSConfig().Certificates) == 0 {
-			select {
-			case <-ctx.Done():
-				return nil, fmt.Errorf("AutoTLS certificate not loaded: %w", ctx.Err())
-			case <-time.After(1 * time.Second):
-				logger.Debug("Waiting for AutoTLS certificate")
-			}
-		}
-		logger.Info("AutoTLS certificate loaded successfully")
+		// ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		// defer cancel()
+		// for certManager.TLSConfig() == nil || len(certManager.TLSConfig().Certificates) == 0 {
+		// 	select {
+		// 	case <-ctx.Done():
+		// 		return nil, fmt.Errorf("AutoTLS certificate not loaded: %w", ctx.Err())
+		// 	case <-time.After(1 * time.Second):
+		// 		logger.Debug("Waiting for AutoTLS certificate")
+		// 	}
+		// }
+		// logger.Info("AutoTLS certificate loaded successfully")
 
 	}
 
@@ -460,6 +477,38 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	matcher, err := s.protocolSemverMatcher(id)
 	if err != nil {
 		return nil, fmt.Errorf("protocol version match %s: %w", id, err)
+	}
+
+	logger.Info("Waiting for AutoTLS certificate to be loaded...")
+	waitCtx, cancel := context.WithTimeout(s.ctx, 1*time.Minute)
+	defer cancel()
+
+	if o.AutoTLSEnabled && o.EnableWS {
+		// Wait for the certificate to be loaded by the background process
+		select {
+		case <-certLoaded:
+			logger.Info("AutoTLS certificate loaded successfully.")
+
+			// Log the public dialable addresses using the AddressFactory.
+			if s.certManager != nil {
+				publicAddrs := s.certManager.AddressFactory()(h.Addrs())
+				for _, addr := range publicAddrs {
+					logger.Info("Node is dialable on public WSS address", "address", addr)
+				}
+			} else {
+				// Fallback to logging listener addresses if certManager is not available
+				logger.Info("AutoTLS cert loaded, but certManager is nil. Logging listener addresses as a fallback.")
+				for _, addr := range h.Addrs() {
+					logger.Info("Listening on address", "addr", addr)
+				}
+			}
+		case <-waitCtx.Done():
+			// If the context is cancelled, Stop the certificate manager and return an error
+			if certManager != nil {
+				certManager.Stop()
+			}
+			return nil, fmt.Errorf("timed out waiting for AutoTLS certificate: %w", waitCtx.Err())
+		}
 	}
 
 	s.host.SetStreamHandlerMatch(id, matcher, s.handleIncoming)

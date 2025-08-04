@@ -184,6 +184,12 @@ CdYKvjVOHj5GNMQ6QJ3b1MDmUOeSgaN7NIY7SuKlKT54nYkplej9cd/4h1DpjHar
 	return &tls.Config{Certificates: []tls.Certificate{cert}}
 }
 
+func (m *MockP2PForgeCertMgr) SetOnCertLoaded(cb func()) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.onCertLoaded = cb
+}
+
 func (m *MockP2PForgeCertMgr) AddressFactory() config.AddrsFactory {
 	return func(addrs []ma.Multiaddr) []ma.Multiaddr {
 		return addrs
