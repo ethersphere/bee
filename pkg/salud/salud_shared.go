@@ -21,8 +21,10 @@ import (
 const loggerName = "salud"
 
 const (
-	wakeup                 = time.Minute * 5
 	requestTimeout         = time.Second * 10
+	initialBackoffDelay    = 10 * time.Second
+	maxBackoffDelay        = 5 * time.Minute
+	backoffFactor          = 2
 	DefaultMinPeersPerBin  = 4
 	DefaultDurPercentile   = 0.4 // consider 40% as healthy, lower percentile = stricter duration check
 	DefaultConnsPercentile = 0.8 // consider 80% as healthy, lower percentile = stricter conns check
@@ -50,14 +52,20 @@ func (s *service) worker(startupStabilizer stabilization.Subscriber, mode string
 		s.logger.Debug("node warmup check completed")
 	}
 
-	for {
+	currentDelay := initialBackoffDelay
 
+	for {
 		s.salud(mode, minPeersPerbin, durPercentile, connsPercentile)
 
 		select {
 		case <-s.quit:
 			return
-		case <-time.After(wakeup):
+		case <-time.After(currentDelay):
+		}
+
+		currentDelay *= time.Duration(backoffFactor)
+		if currentDelay > maxBackoffDelay {
+			currentDelay = maxBackoffDelay
 		}
 	}
 }

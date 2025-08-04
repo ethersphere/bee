@@ -69,7 +69,7 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 		bins     [swarm.MaxBins]int
 	)
 
-	_ = s.topology.EachConnectedPeer(func(addr swarm.Address, bin uint8) (stop bool, jumpToNext bool, err error) {
+	err := s.topology.EachConnectedPeer(func(addr swarm.Address, bin uint8) (stop bool, jumpToNext bool, err error) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -98,6 +98,9 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 		}()
 		return false, false, nil
 	}, topology.Select{})
+	if err != nil {
+		s.logger.Error(err, "error iterating over connected peers", "mode", mode)
+	}
 
 	wg.Wait()
 

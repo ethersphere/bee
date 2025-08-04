@@ -15,7 +15,7 @@ import (
 )
 
 // loggerName is the tree path name of the logger for this package.
-const loggerName = "pinpong"
+const loggerName = "pingpong"
 
 const (
 	protocolName    = "pingpong"
