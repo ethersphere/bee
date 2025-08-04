@@ -463,6 +463,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		enableWS:          o.EnableWS,
 		HeadersRWTimeout:  o.HeadersRWTimeout,
 		autoNAT:           autoNAT,
+		certManager:       certManager,
 	}
 
 	peerRegistry.setDisconnecter(s)
@@ -488,20 +489,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		select {
 		case <-certLoaded:
 			logger.Info("AutoTLS certificate loaded successfully.")
-
-			// Log the public dialable addresses using the AddressFactory.
-			if s.certManager != nil {
-				publicAddrs := s.certManager.AddressFactory()(h.Addrs())
-				for _, addr := range publicAddrs {
-					logger.Info("Node is dialable on public WSS address", "address", addr)
-				}
-			} else {
-				// Fallback to logging listener addresses if certManager is not available
-				logger.Info("AutoTLS cert loaded, but certManager is nil. Logging listener addresses as a fallback.")
-				for _, addr := range h.Addrs() {
-					logger.Info("Listening on address", "addr", addr)
-				}
-			}
 		case <-waitCtx.Done():
 			// If the context is cancelled, Stop the certificate manager and return an error
 			if certManager != nil {
