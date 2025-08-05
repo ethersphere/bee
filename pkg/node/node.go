@@ -106,7 +106,6 @@ type Bee struct {
 	pullSyncCloser           io.Closer
 	pssCloser                io.Closer
 	gsocCloser               io.Closer
-	ethClientCloser          io.Closer
 	transactionMonitorCloser io.Closer
 	transactionCloser        io.Closer
 	listenerCloser           io.Closer
@@ -121,6 +120,7 @@ type Bee struct {
 	shutdownMutex            sync.Mutex
 	syncingStopped           *syncutil.Signaler
 	accesscontrolCloser      io.Closer
+	ethClientCloser          func()
 }
 
 type Options struct {
@@ -145,6 +145,7 @@ type Options struct {
 	EnableWS                      bool
 	FullNodeMode                  bool
 	Logger                        log.Logger
+	MinimumGasTipCap              uint64
 	MinimumStorageRadius          uint
 	MutexProfile                  bool
 	NATAddr                       string
@@ -390,11 +391,13 @@ func NewBee(
 		o.ChainID,
 		signer,
 		o.BlockTime,
-		chainEnabled)
+		chainEnabled,
+		o.MinimumGasTipCap,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("init chain: %w", err)
 	}
-	b.ethClientCloser = chainBackend
+	b.ethClientCloser = chainBackend.Close
 
 	logger.Info("using chain with network network", "chain_id", chainID, "network_id", networkID)
 
@@ -803,7 +806,7 @@ func NewBee(
 		}
 	)
 
-	if !o.SkipPostageSnapshot && !batchStoreExists && (networkID == mainnetNetworkID) {
+	if !o.SkipPostageSnapshot && !batchStoreExists && (networkID == mainnetNetworkID) && beeNodeMode != api.UltraLightMode {
 		chainBackend := NewSnapshotLogFilterer(logger, archiveSnapshotGetter{})
 
 		snapshotEventListener := listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
@@ -975,7 +978,7 @@ func NewBee(
 		return nil, fmt.Errorf("status service: %w", err)
 	}
 
-	saludService := salud.New(nodeStatus, kad, localStore, logger, detector, api.FullMode.String(), salud.DefaultMinPeersPerBin, salud.DefaultDurPercentile, salud.DefaultConnsPercentile)
+	saludService := salud.New(nodeStatus, kad, localStore, logger, detector, api.FullMode.String(), salud.DefaultDurPercentile, salud.DefaultConnsPercentile)
 	b.saludCloser = saludService
 
 	rC, unsub := saludService.SubscribeNetworkStorageRadius()
@@ -1384,7 +1387,10 @@ func (b *Bee) Shutdown() error {
 
 	wg.Wait()
 
-	tryClose(b.ethClientCloser, "eth client")
+	if b.ethClientCloser != nil {
+		b.ethClientCloser()
+	}
+
 	tryClose(b.accesscontrolCloser, "accesscontrol")
 	tryClose(b.tracerCloser, "tracer")
 	tryClose(b.topologyCloser, "topology driver")
