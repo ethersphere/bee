@@ -21,7 +21,7 @@ type chunkFeeder struct {
 	wrote     int64
 }
 
-// newChunkFeederWriter creates a new chunkFeeder that allows for partial
+// NewChunkFeederWriter creates a new chunkFeeder that allows for partial
 // writes into the pipeline. Any pending data in the buffer is flushed to
 // subsequent writers when Sum() is called.
 func NewChunkFeederWriter(size int, next pipeline.ChainWriter) pipeline.Interface {

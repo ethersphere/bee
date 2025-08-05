@@ -308,7 +308,7 @@ func TestShallowReceiptTolerance(t *testing.T) {
 	waitOnRecordAndTest(t, closestPeer, recorder, chunk.Address(), nil)
 }
 
-// PushChunkToClosest tests the sending of chunk to closest peer from the origination source perspective.
+// TestPushChunkToClosest tests the sending of chunk to closest peer from the origination source perspective.
 // it also checks whether the tags are incremented properly if they are present
 func TestPushChunkToClosest(t *testing.T) {
 	t.Parallel()
