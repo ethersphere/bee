@@ -41,7 +41,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/host/autonat"
-	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	lp2pswarm "github.com/libp2p/go-libp2p/p2p/net/swarm"
@@ -84,7 +83,6 @@ const (
 type Service struct {
 	ctx               context.Context
 	host              host.Host
-	natManager        basichost.NATManager
 	natAddrResolver   *staticAddressResolver
 	autonatDialer     host.Host
 	pingDialer        host.Host
@@ -211,8 +209,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 
-	var natManager basichost.NATManager
-
 	opts := []libp2p.Option{
 		libp2p.ListenAddrStrings(listenAddrs...),
 		security,
@@ -220,15 +216,10 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		libp2p.Peerstore(libp2pPeerstore),
 		libp2p.UserAgent(userAgent()),
 		libp2p.ResourceManager(rm),
-	}
-
-	if o.NATAddr == "" {
-		opts = append(opts,
-			libp2p.NATManager(func(n network.Network) basichost.NATManager {
-				natManager = basichost.NewNATManager(n)
-				return natManager
-			}),
-		)
+		libp2p.NATPortMap(),
+		libp2p.DisableRelay(),
+		// libp2p.EnableNATService(),
+		libp2p.EnableAutoNATv2(),
 	}
 
 	if o.PrivateKey != nil {
@@ -242,7 +233,8 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	transports := []libp2p.Option{
-		libp2p.Transport(tcp.NewTCPTransport, tcp.DisableReuseport()),
+		libp2p.Transport(tcp.NewTCPTransport),
+		libp2p.ShareTCPListener(),
 	}
 
 	if o.EnableWS {
@@ -323,7 +315,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	s := &Service{
 		ctx:               ctx,
 		host:              h,
-		natManager:        natManager,
 		natAddrResolver:   natAddrResolver,
 		autonatDialer:     dialer,
 		pingDialer:        pingDialer,
@@ -664,10 +655,6 @@ func (s *Service) Addresses() (addresses []ma.Multiaddr, err error) {
 	return addresses, nil
 }
 
-func (s *Service) NATManager() basichost.NATManager {
-	return s.natManager
-}
-
 func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration, reason string) error {
 	loggerV1 := s.logger.V(1).Register()
 
@@ -794,6 +781,17 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	if err := handshakeStream.FullClose(); err != nil {
 		_ = s.Disconnect(overlay, "could not fully close handshake stream after connect")
 		return nil, fmt.Errorf("connect full close %w", err)
+	}
+
+	pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second) // Short timeout for the ping
+	defer cancel()
+	if _, err := s.Ping(pingCtx, addr); err != nil {
+		_ = s.Disconnect(overlay, "peer disconnected immediately after handshake")
+		return nil, p2p.ErrPeerNotFound
+	}
+
+	if !s.peers.Exists(overlay) {
+		return nil, p2p.ErrPeerNotFound
 	}
 
 	if i.FullNode {
@@ -983,11 +981,6 @@ func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, 
 func (s *Service) Close() error {
 	if err := s.libp2pPeerstore.Close(); err != nil {
 		return err
-	}
-	if s.natManager != nil {
-		if err := s.natManager.Close(); err != nil {
-			return err
-		}
 	}
 	if err := s.autonatDialer.Close(); err != nil {
 		return err
