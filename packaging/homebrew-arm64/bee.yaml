@@ -120,3 +120,15 @@ password-file: "/opt/homebrew/var/lib/swarm-bee/password"
 # welcome-message: ""
 ## withdrawal target addresses
 # withdrawal-addresses-whitelist: []
+## enable autotls (default: false)
+# autotls: false
+## autotls port
+# autotls-port: "5500"
+## autotls certificate storage directory (default: ~/.bee/p2p-forge-certs)
+# autotls-storage-dir: ""
+## forge domain
+# forge-domain: ""
+## forge registration endpoint
+# forge-registration-endpoint: ""
+## ca endpoint
+# ca-endpoint: ""

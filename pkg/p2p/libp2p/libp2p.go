@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -134,20 +133,24 @@ type lightnodes interface {
 }
 
 type Options struct {
-	PrivateKey        *ecdsa.PrivateKey
-	NATAddr           string
-	EnableWS          bool
-	AutoTLSEnabled    bool   // Flag for AutoTLS
-	AutoTLSStorageDir string // Data directory for cert storage
-	FullNode          bool
-	LightNodeLimit    int
-	WelcomeMessage    string
-	Nonce             []byte
-	ValidateOverlay   bool
-	hostFactory       func(...libp2p.Option) (host.Host, error)
-	HeadersRWTimeout  time.Duration
-	Registry          *prometheus.Registry
-	CertManager       P2PForgeCertMgr
+	PrivateKey                *ecdsa.PrivateKey
+	NATAddr                   string
+	EnableWS                  bool
+	AutoTLSEnabled            bool // Flag for AutoTLS
+	AutoTLSPort               string
+	AutoTLSStorageDir         string // Data directory for cert storage
+	CAEndpoint                string
+	ForgeDomain               string
+	ForgeRegistrationEndpoint string
+	FullNode                  bool
+	LightNodeLimit            int
+	WelcomeMessage            string
+	Nonce                     []byte
+	ValidateOverlay           bool
+	hostFactory               func(...libp2p.Option) (host.Host, error)
+	HeadersRWTimeout          time.Duration
+	Registry                  *prometheus.Registry
+	CertManager               P2PForgeCertMgr
 }
 
 func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
@@ -176,7 +179,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		if o.EnableWS {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/ws", ip4Addr, port))
 			if o.AutoTLSEnabled {
-				listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/0.0.0.0/tcp/5500/tls/sni/*.%s/ws", p2pforge.DefaultForgeDomain))
+				listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/0.0.0.0/tcp/%s/tls/sni/*.%s/ws", o.AutoTLSPort, p2pforge.DefaultForgeDomain))
 			}
 		}
 	}
@@ -186,7 +189,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		if o.EnableWS {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/ws", ip6Addr, port))
 			if o.AutoTLSEnabled {
-				listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/::/tcp/5500/tls/sni/*.%s/ws", p2pforge.DefaultForgeDomain))
+				listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/::/tcp/%s/tls/sni/*.%s/ws", o.AutoTLSPort, p2pforge.DefaultForgeDomain))
 			}
 		}
 	}
@@ -261,17 +264,14 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 			// Use AutoTLS storage dir
 			storagePath := o.AutoTLSStorageDir
-			if storagePath == "" {
-				storagePath = filepath.Join("./", "p2p-forge-certs") // Fallback to ./p2p-forge-certs
-			}
 			if err := os.MkdirAll(storagePath, 0700); err != nil {
 				return nil, fmt.Errorf("failed to create certificate storage directory %s: %w", storagePath, err)
 			}
 
 			certManager, err = p2pforge.NewP2PForgeCertMgr(
-				p2pforge.WithForgeDomain(p2pforge.DefaultForgeDomain),
-				p2pforge.WithForgeRegistrationEndpoint(p2pforge.DefaultForgeEndpoint),
-				p2pforge.WithCAEndpoint(certmagic.LetsEncryptStagingCA),
+				p2pforge.WithForgeDomain(o.ForgeDomain),
+				p2pforge.WithForgeRegistrationEndpoint(o.ForgeRegistrationEndpoint),
+				p2pforge.WithCAEndpoint(o.CAEndpoint),
 				p2pforge.WithCertificateStorage(&certmagic.FileStorage{Path: storagePath}),
 				p2pforge.WithLogger(sugar),
 				p2pforge.WithUserAgent(userAgent()),
