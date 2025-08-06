@@ -392,6 +392,24 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		advertisableAddresser = natAddrResolver
 	}
 
+	logger.Info("Waiting for AutoTLS certificate to be loaded...")
+	waitCtx, cancel := context.WithTimeout(ctx, 1*time.Minute)
+	defer cancel()
+
+	if o.AutoTLSEnabled && o.EnableWS {
+		// Wait for the certificate to be loaded by the background process
+		select {
+		case <-certLoaded:
+			logger.Info("AutoTLS certificate loaded successfully.")
+		case <-waitCtx.Done():
+			// If the context is cancelled, Stop the certificate manager and return an error
+			if certManager != nil {
+				certManager.Stop()
+			}
+			return nil, fmt.Errorf("timed out waiting for AutoTLS certificate: %w", waitCtx.Err())
+		}
+	}
+
 	handshakeService, err := handshake.New(signer, advertisableAddresser, overlay, networkID, o.FullNode, o.Nonce, o.WelcomeMessage, o.ValidateOverlay, h.ID(), logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
@@ -446,24 +464,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	matcher, err := s.protocolSemverMatcher(id)
 	if err != nil {
 		return nil, fmt.Errorf("protocol version match %s: %w", id, err)
-	}
-
-	logger.Info("Waiting for AutoTLS certificate to be loaded...")
-	waitCtx, cancel := context.WithTimeout(s.ctx, 1*time.Minute)
-	defer cancel()
-
-	if o.AutoTLSEnabled && o.EnableWS {
-		// Wait for the certificate to be loaded by the background process
-		select {
-		case <-certLoaded:
-			logger.Info("AutoTLS certificate loaded successfully.")
-		case <-waitCtx.Done():
-			// If the context is cancelled, Stop the certificate manager and return an error
-			if certManager != nil {
-				certManager.Stop()
-			}
-			return nil, fmt.Errorf("timed out waiting for AutoTLS certificate: %w", waitCtx.Err())
-		}
 	}
 
 	s.host.SetStreamHandlerMatch(id, matcher, s.handleIncoming)
