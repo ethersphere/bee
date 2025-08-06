@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/caddyserver/certmagic"
 	"github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/bzz"
@@ -52,11 +53,14 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multistream"
 	"go.uber.org/atomic"
+	"go.uber.org/zap"
 
 	ocprom "contrib.go.opencensus.io/exporter/prometheus"
 	m2 "github.com/ethersphere/bee/v2/pkg/metrics"
 	rcmgrObs "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/prometheus/client_golang/prometheus"
+
+	p2pforge "github.com/ipshipyard/p2p-forge/client"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -109,6 +113,8 @@ type Service struct {
 	networkStatus     atomic.Int32
 	HeadersRWTimeout  time.Duration
 	autoNAT           autonat.AutoNAT
+	enableWS          bool
+	certManager       *p2pforge.P2PForgeCertMgr
 }
 
 type lightnodes interface {
@@ -120,17 +126,24 @@ type lightnodes interface {
 }
 
 type Options struct {
-	PrivateKey       *ecdsa.PrivateKey
-	NATAddr          string
-	EnableWS         bool
-	FullNode         bool
-	LightNodeLimit   int
-	WelcomeMessage   string
-	Nonce            []byte
-	ValidateOverlay  bool
-	hostFactory      func(...libp2p.Option) (host.Host, error)
-	HeadersRWTimeout time.Duration
-	Registry         *prometheus.Registry
+	PrivateKey                *ecdsa.PrivateKey
+	NATAddr                   string
+	EnableWS                  bool
+	AutoTLSEnabled            bool // Flag for AutoTLS
+	AutoTLSPort               string
+	AutoTLSStorageDir         string // Data directory for cert storage
+	CAEndpoint                string
+	ForgeDomain               string
+	ForgeRegistrationEndpoint string
+	FullNode                  bool
+	LightNodeLimit            int
+	WelcomeMessage            string
+	Nonce                     []byte
+	ValidateOverlay           bool
+	hostFactory               func(...libp2p.Option) (host.Host, error)
+	HeadersRWTimeout          time.Duration
+	Registry                  *prometheus.Registry
+	CertManager               *p2pforge.P2PForgeCertMgr
 }
 
 func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
@@ -158,6 +171,9 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s", ip4Addr, port))
 		if o.EnableWS {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/ws", ip4Addr, port))
+			if o.AutoTLSEnabled {
+				listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/0.0.0.0/tcp/%s/tls/sni/*.%s/ws", o.AutoTLSPort, o.ForgeDomain))
+			}
 		}
 	}
 
@@ -165,6 +181,9 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s", ip6Addr, port))
 		if o.EnableWS {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/ws", ip6Addr, port))
+			if o.AutoTLSEnabled {
+				listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/::/tcp/%s/tls/sni/*.%s/ws", o.AutoTLSPort, o.ForgeDomain))
+			}
 		}
 	}
 
@@ -213,6 +232,60 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	var natManager basichost.NATManager
 
+	certLoaded := make(chan bool, 1)
+
+	var certManager *p2pforge.P2PForgeCertMgr
+	if o.AutoTLSEnabled && o.EnableWS {
+
+		if o.CertManager != nil {
+			certManager = o.CertManager
+
+		} else {
+			p2pforgeLogger, err := zap.NewProduction()
+			if err != nil {
+				return nil, err
+			}
+			defer func() {
+				if err := p2pforgeLogger.Sync(); err != nil {
+					logger.Error(err, "failed to close p2pforge logger")
+				}
+			}()
+			sugar := p2pforgeLogger.Sugar()
+
+			// Use AutoTLS storage dir
+			storagePath := o.AutoTLSStorageDir
+			if err := os.MkdirAll(storagePath, 0700); err != nil {
+				return nil, fmt.Errorf("failed to create certificate storage directory %s: %w", storagePath, err)
+			}
+
+			certManager, err = p2pforge.NewP2PForgeCertMgr(
+				p2pforge.WithForgeDomain(o.ForgeDomain),
+				p2pforge.WithForgeRegistrationEndpoint(o.ForgeRegistrationEndpoint),
+				p2pforge.WithCAEndpoint(o.CAEndpoint),
+				p2pforge.WithCertificateStorage(&certmagic.FileStorage{Path: storagePath}),
+				p2pforge.WithLogger(sugar),
+				p2pforge.WithUserAgent(userAgent()),
+				p2pforge.WithRegistrationDelay(0),
+				p2pforge.WithOnCertLoaded(func() {
+					certLoaded <- true
+				}),
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to initialize AutoTLS: %w", err)
+			}
+
+			defer func() {
+				if err != nil {
+					certManager.Stop()
+				}
+			}()
+		}
+
+		if err := certManager.Start(); err != nil {
+			return nil, fmt.Errorf("failed to start AutoTLS certificate manager: %w", err)
+		}
+	}
+
 	opts := []libp2p.Option{
 		libp2p.ListenAddrStrings(listenAddrs...),
 		security,
@@ -246,7 +319,13 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	if o.EnableWS {
-		transports = append(transports, libp2p.Transport(ws.New))
+		if o.AutoTLSEnabled {
+			wsOpt := ws.WithTLSConfig(certManager.TLSConfig())
+			opts = append(opts, libp2p.AddrsFactory(certManager.AddressFactory()))
+			transports = append(transports, libp2p.Transport(ws.New, wsOpt))
+		} else {
+			transports = append(transports, libp2p.Transport(ws.New))
+		}
 	}
 
 	opts = append(opts, transports...)
@@ -260,6 +339,8 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	if err != nil {
 		return nil, err
 	}
+
+	certManager.ProvideHost(h)
 
 	// Support same non default security and transport options as
 	// original host.
@@ -284,6 +365,13 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	var autoNAT autonat.AutoNAT
 	if autoNAT, err = autonat.New(h, options...); err != nil {
 		return nil, fmt.Errorf("autonat: %w", err)
+	}
+
+	if o.AutoTLSEnabled && o.EnableWS {
+		// Check reachability for AutoTLS
+		if autoNAT.Status() != network.ReachabilityPublic {
+			logger.Warning("Node not publicly reachable; AutoTLS may fail")
+		}
 	}
 
 	if o.HeadersRWTimeout == 0 {
@@ -342,6 +430,8 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		lightNodes:        lightNodes,
 		HeadersRWTimeout:  o.HeadersRWTimeout,
 		autoNAT:           autoNAT,
+		enableWS:          o.EnableWS,
+		certManager:       o.CertManager,
 	}
 
 	peerRegistry.setDisconnecter(s)
@@ -356,6 +446,24 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	matcher, err := s.protocolSemverMatcher(id)
 	if err != nil {
 		return nil, fmt.Errorf("protocol version match %s: %w", id, err)
+	}
+
+	logger.Info("Waiting for AutoTLS certificate to be loaded...")
+	waitCtx, cancel := context.WithTimeout(s.ctx, 1*time.Minute)
+	defer cancel()
+
+	if o.AutoTLSEnabled && o.EnableWS {
+		// Wait for the certificate to be loaded by the background process
+		select {
+		case <-certLoaded:
+			logger.Info("AutoTLS certificate loaded successfully.")
+		case <-waitCtx.Done():
+			// If the context is cancelled, Stop the certificate manager and return an error
+			if certManager != nil {
+				certManager.Stop()
+			}
+			return nil, fmt.Errorf("timed out waiting for AutoTLS certificate: %w", waitCtx.Err())
+		}
 	}
 
 	s.host.SetStreamHandlerMatch(id, matcher, s.handleIncoming)

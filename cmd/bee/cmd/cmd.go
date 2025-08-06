@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/node"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	p2pforge "github.com/ipshipyard/p2p-forge/client"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -82,6 +83,12 @@ const (
 	optionReserveCapacityDoubling          = "reserve-capacity-doubling"
 	optionSkipPostageSnapshot              = "skip-postage-snapshot"
 	optionNameMinimumGasTipCap             = "minimum-gas-tip-cap"
+	optionAutoTLSEnabled                   = "autotls"
+	optionAutoTLSPort                      = "autotls-port"
+	optionAutoTLSStorageDir                = "autotls-storage-dir"
+	optionForgeDomain                      = "forge-domain"
+	optionForgeRegistrationEndpoint        = "forge-registration-endpoint"
+	optionCAEndpoint                       = "ca-endpoint"
 )
 
 // nolint:gochecknoinits
@@ -292,6 +299,12 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Int(optionReserveCapacityDoubling, 0, "reserve capacity doubling")
 	cmd.Flags().Bool(optionSkipPostageSnapshot, false, "skip postage snapshot")
 	cmd.Flags().Uint64(optionNameMinimumGasTipCap, 0, "minimum gas tip cap in wei for transactions, 0 means use suggested gas tip cap")
+	cmd.Flags().Bool(optionAutoTLSEnabled, true, "Enable AutoTLS for secure WebSocket connections")
+	cmd.Flags().String(optionAutoTLSPort, "5500", "AutoTLS port")
+	cmd.Flags().String(optionAutoTLSStorageDir, "~/.bee/p2p-forge-certs", "Data directory for certificate storage (default ~/.bee/p2p-forge-certs)")
+	cmd.Flags().String(optionForgeDomain, p2pforge.DefaultForgeDomain, "forge domain")
+	cmd.Flags().String(optionForgeRegistrationEndpoint, p2pforge.DefaultForgeEndpoint, "forge registration endpoint")
+	cmd.Flags().String(optionCAEndpoint, p2pforge.DefaultCAEndpoint, "certificate authority endpoint")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {
