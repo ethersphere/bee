@@ -51,11 +51,23 @@ func (st *stamper) Stamp(addr, idAddr swarm.Address) (*Stamp, error) {
 	}
 	switch err := st.store.Get(item); {
 	case err == nil:
-		item.BatchTimestamp = unixTime()
-		if err = st.store.Put(item); err != nil {
+		toSign, err := ToSignDigest(
+			addr.Bytes(),
+			st.issuer.data.BatchID,
+			item.BatchIndex,
+			item.BatchTimestamp,
+		)
+		if err != nil {
 			return nil, err
 		}
+		sig, err := st.signer.Sign(toSign)
+		if err != nil {
+			return nil, err
+		}
+		// DEDUPLICATION: Recreate stamp used before instead of creating new one
+		return NewStamp(st.issuer.data.BatchID, item.BatchIndex, item.BatchTimestamp, sig), nil
 	case errors.Is(err, storage.ErrNotFound):
+		// Create new stamp
 		item.BatchIndex, item.BatchTimestamp, err = st.issuer.increment(addr)
 		if err != nil {
 			return nil, err
