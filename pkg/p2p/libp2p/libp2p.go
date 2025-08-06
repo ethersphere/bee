@@ -232,6 +232,8 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	var natManager basichost.NATManager
 
+	certLoaded := make(chan bool, 1)
+
 	var certManager *p2pforge.P2PForgeCertMgr
 	if o.AutoTLSEnabled && o.EnableWS {
 
@@ -264,6 +266,9 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 				p2pforge.WithLogger(sugar),
 				p2pforge.WithUserAgent(userAgent()),
 				p2pforge.WithRegistrationDelay(0),
+				p2pforge.WithOnCertLoaded(func() {
+					certLoaded <- true
+				}),
 			)
 			if err != nil {
 				return nil, fmt.Errorf("failed to initialize AutoTLS: %w", err)
@@ -386,6 +391,24 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			return nil, fmt.Errorf("static nat: %w", err)
 		}
 		advertisableAddresser = natAddrResolver
+	}
+
+	logger.Info("Waiting for AutoTLS certificate to be loaded...")
+	waitCtx, cancel := context.WithTimeout(ctx, 1*time.Minute)
+	defer cancel()
+
+	if o.AutoTLSEnabled && o.EnableWS {
+		// Wait for the certificate to be loaded by the background process
+		select {
+		case <-certLoaded:
+			logger.Info("AutoTLS certificate loaded successfully.")
+		case <-waitCtx.Done():
+			// If the context is cancelled, Stop the certificate manager and return an error
+			if certManager != nil {
+				certManager.Stop()
+			}
+			return nil, fmt.Errorf("timed out waiting for AutoTLS certificate: %w", waitCtx.Err())
+		}
 	}
 
 	handshakeService, err := handshake.New(signer, advertisableAddresser, overlay, networkID, o.FullNode, o.Nonce, o.WelcomeMessage, o.ValidateOverlay, h.ID(), logger)
