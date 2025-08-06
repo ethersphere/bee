@@ -339,8 +339,9 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	if err != nil {
 		return nil, err
 	}
-
-	certManager.ProvideHost(h)
+	if o.AutoTLSEnabled && o.EnableWS {
+		certManager.ProvideHost(h)
+	}
 
 	// Support same non default security and transport options as
 	// original host.
