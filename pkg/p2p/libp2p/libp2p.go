@@ -341,13 +341,13 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	if o.EnableWS {
-		if o.AutoTLSEnabled {
-			wsOpt := ws.WithTLSConfig(certManager.TLSConfig())
-			opts = append(opts, libp2p.AddrsFactory(certManager.AddressFactory()))
-			transports = append(transports, libp2p.Transport(ws.New, wsOpt))
-		} else {
-			transports = append(transports, libp2p.Transport(ws.New))
-		}
+		// if o.AutoTLSEnabled {
+		// 	wsOpt := ws.WithTLSConfig(certManager.TLSConfig())
+		// 	opts = append(opts, libp2p.AddrsFactory(certManager.AddressFactory()))
+		// 	transports = append(transports, libp2p.Transport(ws.New, wsOpt))
+		// } else {
+		transports = append(transports, libp2p.Transport(ws.New))
+		// }
 	}
 
 	opts = append(opts, transports...)
