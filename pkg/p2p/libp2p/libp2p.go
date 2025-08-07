@@ -799,7 +799,6 @@ func (s *Service) Addresses() (addresses []ma.Multiaddr, err error) {
 		if err != nil {
 			return nil, err
 		}
-
 		addresses = append(addresses, a)
 	}
 	if s.natAddrResolver != nil && len(addresses) > 0 {
@@ -807,9 +806,24 @@ func (s *Service) Addresses() (addresses []ma.Multiaddr, err error) {
 		if err != nil {
 			return nil, err
 		}
-		addresses = append(addresses, a)
-	}
+		// Remove /p2p/<ID> to append /ws before it
+		hostAddr, err := buildHostAddress(s.host.ID())
+		if err != nil {
+			return nil, err
+		}
+		baseAddr := a.Decapsulate(hostAddr)
+		addresses = append(addresses, a) // Add plain NAT address
 
+		// Append NAT address with /ws if WebSocket is enabled
+		if s.enableWS {
+			wsNatAddr, err := ma.NewMultiaddr(baseAddr.String() + "/ws")
+			if err != nil {
+				return nil, fmt.Errorf("failed to append /ws to NAT address: %w", err)
+			}
+			wsNatAddr = wsNatAddr.Encapsulate(hostAddr) // Add /p2p/<ID> after /ws
+			addresses = append(addresses, wsNatAddr)
+		}
+	}
 	return addresses, nil
 }
 
