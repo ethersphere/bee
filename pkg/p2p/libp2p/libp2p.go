@@ -295,6 +295,52 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		libp2p.ResourceManager(rm),
 	}
 
+	// if o.AutoTLSEnabled && o.EnableWS {
+	// 	customOption := func(cfg *config.Config) error {
+	// 		certManagerFactory := certManager.AddressFactory()
+
+	// 		wssAddrs := certManagerFactory(cfg.ListenAddrs)
+
+	// 		cfg.ListenAddrs = append(cfg.ListenAddrs, wssAddrs...)
+
+	// 		// (Optional but recommended) Deduplicate the final list of addresses.
+	// 		addrSet := make(map[string]struct{})
+	// 		deduplicatedAddrs := make([]ma.Multiaddr, 0, len(cfg.ListenAddrs))
+	// 		for _, addr := range cfg.ListenAddrs {
+	// 			if _, exists := addrSet[addr.String()]; !exists {
+	// 				addrSet[addr.String()] = struct{}{}
+	// 				deduplicatedAddrs = append(deduplicatedAddrs, addr)
+	// 			}
+	// 		}
+	// 		cfg.ListenAddrs = deduplicatedAddrs
+
+	// 		return nil
+	// 	}
+
+	// 	// 2. Add your custom option to the main list of options.
+	// 	// You do NOT use libp2p.AddrsFactory() at all.
+	// 	opts = append(opts, customOption)
+	// }
+
+	if o.AutoTLSEnabled && o.EnableWS {
+		announceAddrs := make([]ma.Multiaddr, 0, len(listenAddrs))
+		for _, addrStr := range listenAddrs {
+			addr, err := ma.NewMultiaddr(addrStr)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse listen address '%s': %w", addrStr, err)
+			}
+			announceAddrs = append(announceAddrs, addr)
+		}
+		// Create the libp2p option with an inline factory function.
+		// This factory has the correct signature and simply returns your pre-parsed list of addresses,
+		// ignoring the input addresses.
+		addrsFactoryOption := libp2p.AddrsFactory(func(_ []ma.Multiaddr) []ma.Multiaddr {
+			return announceAddrs
+		})
+		// Add the new option to your list.
+		opts = append(opts, addrsFactoryOption)
+	}
+
 	if o.NATAddr == "" {
 		opts = append(opts,
 			libp2p.NATManager(func(n network.Network) basichost.NATManager {
@@ -319,13 +365,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	if o.EnableWS {
-		if o.AutoTLSEnabled {
-			wsOpt := ws.WithTLSConfig(certManager.TLSConfig())
-			opts = append(opts, libp2p.AddrsFactory(certManager.AddressFactory()))
-			transports = append(transports, libp2p.Transport(ws.New, wsOpt))
-		} else {
-			transports = append(transports, libp2p.Transport(ws.New))
-		}
+		transports = append(transports, libp2p.Transport(ws.New))
 	}
 
 	opts = append(opts, transports...)
