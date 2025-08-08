@@ -299,18 +299,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			return nil, fmt.Errorf("failed to start AutoTLS certificate manager: %w", err)
 		}
 
-		// ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		// defer cancel()
-		// for certManager.TLSConfig() == nil || len(certManager.TLSConfig().Certificates) == 0 {
-		// 	select {
-		// 	case <-ctx.Done():
-		// 		return nil, fmt.Errorf("AutoTLS certificate not loaded: %w", ctx.Err())
-		// 	case <-time.After(1 * time.Second):
-		// 		logger.Debug("Waiting for AutoTLS certificate")
-		// 	}
-		// }
-		// logger.Info("AutoTLS certificate loaded successfully")
-
 	}
 
 	opts := []libp2p.Option{
@@ -341,13 +329,12 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	if o.EnableWS {
-		// if o.AutoTLSEnabled {
-		// 	wsOpt := ws.WithTLSConfig(certManager.TLSConfig())
-		// 	opts = append(opts, libp2p.AddrsFactory(certManager.AddressFactory()))
-		// 	transports = append(transports, libp2p.Transport(ws.New, wsOpt))
-		// } else {
-		transports = append(transports, libp2p.Transport(ws.New))
-		// }
+		if o.AutoTLSEnabled {
+			wsOpt := ws.WithTLSConfig(certManager.TLSConfig())
+			transports = append(transports, libp2p.Transport(ws.New, wsOpt))
+		} else {
+			transports = append(transports, libp2p.Transport(ws.New))
+		}
 	}
 
 	opts = append(opts, transports...)
