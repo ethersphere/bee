@@ -449,7 +449,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		HeadersRWTimeout:  o.HeadersRWTimeout,
 		autoNAT:           autoNAT,
 		enableWS:          o.EnableWS,
-		certManager:       o.CertManager,
+		certManager:       certManager,
 	}
 
 	peerRegistry.setDisconnecter(s)
