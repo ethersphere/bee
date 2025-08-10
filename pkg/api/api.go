@@ -220,7 +220,9 @@ type Service struct {
 	redistributionAgent *storageincentives.Agent
 
 	statusService *status.Service
-	isWarmingUp   bool
+	nukeService   *NukeService
+
+	isWarmingUp bool
 }
 
 func (s *Service) SetP2P(p2p p2p.DebugService) {
@@ -238,6 +240,12 @@ func (s *Service) SetSwarmAddress(addr *swarm.Address) {
 func (s *Service) SetRedistributionAgent(redistributionAgent *storageincentives.Agent) {
 	if s != nil {
 		s.redistributionAgent = redistributionAgent
+	}
+}
+
+func (s *Service) SetNukeService(nukeService *NukeService) {
+	if s != nil {
+		s.nukeService = nukeService
 	}
 }
 
