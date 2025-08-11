@@ -324,8 +324,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	transports := []libp2p.Option{
-		libp2p.Transport(tcp.NewTCPTransport),
-		libp2p.ShareTCPListener(),
+		libp2p.Transport(tcp.NewTCPTransport, tcp.DisableReuseport()),
 	}
 
 	if o.EnableWS {
