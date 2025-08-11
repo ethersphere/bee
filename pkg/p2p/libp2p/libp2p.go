@@ -7,6 +7,7 @@ package libp2p
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -34,6 +35,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
 	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p/config"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -85,6 +87,14 @@ const (
 	OutgoingStreamCountLimit = 10_000
 )
 
+// CertificateManager defines the interface for managing TLS certificates.
+type CertificateManager interface {
+	Start() error
+	Stop()
+	TLSConfig() *tls.Config
+	AddressFactory() config.AddrsFactory
+}
+
 type Service struct {
 	ctx               context.Context
 	host              host.Host
@@ -114,7 +124,7 @@ type Service struct {
 	HeadersRWTimeout  time.Duration
 	autoNAT           autonat.AutoNAT
 	enableWS          bool
-	certManager       *p2pforge.P2PForgeCertMgr
+	certManager       CertificateManager
 }
 
 type lightnodes interface {
@@ -143,7 +153,7 @@ type Options struct {
 	hostFactory               func(...libp2p.Option) (host.Host, error)
 	HeadersRWTimeout          time.Duration
 	Registry                  *prometheus.Registry
-	CertManager               *p2pforge.P2PForgeCertMgr
+	CertManager               CertificateManager
 }
 
 func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
@@ -234,12 +244,16 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	certLoaded := make(chan bool, 1)
 
-	var certManager *p2pforge.P2PForgeCertMgr
+	var certManager CertificateManager
 	if o.AutoTLSEnabled && o.EnableWS {
 
 		if o.CertManager != nil {
 			certManager = o.CertManager
-
+			if mocker, ok := certManager.(*MockP2PForgeCertMgr); ok {
+				mocker.SetOnCertLoaded(func() {
+					certLoaded <- true
+				})
+			}
 		} else {
 			p2pforgeLogger, err := zap.NewProduction()
 			if err != nil {
@@ -339,9 +353,17 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 	if o.AutoTLSEnabled && o.EnableWS {
-		certManager.ProvideHost(h)
+		switch cm := certManager.(type) {
+		case *p2pforge.P2PForgeCertMgr:
+			cm.ProvideHost(h)
+		case *MockP2PForgeCertMgr:
+			if err := cm.ProvideHost(h); err != nil {
+				return nil, fmt.Errorf("failed to provide host to MockP2PForgeCertMgr: %w", err)
+			}
+		default:
+			return nil, fmt.Errorf("unknown cert manager type")
+		}
 	}
-
 	// Support same non default security and transport options as
 	// original host.
 	dialer, err := o.hostFactory(append(transports, security)...)
@@ -916,6 +938,17 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	if err := handshakeStream.FullClose(); err != nil {
 		_ = s.Disconnect(overlay, "could not fully close handshake stream after connect")
 		return nil, fmt.Errorf("connect full close %w", err)
+	}
+
+	pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second) // Short timeout for the ping
+	defer cancel()
+	if _, err := s.Ping(pingCtx, addr); err != nil {
+		_ = s.Disconnect(overlay, "peer disconnected immediately after handshake")
+		return nil, p2p.ErrPeerNotFound
+	}
+
+	if !s.peers.Exists(overlay) {
+		return nil, p2p.ErrPeerNotFound
 	}
 
 	if i.FullNode {
