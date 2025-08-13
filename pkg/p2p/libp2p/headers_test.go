@@ -23,8 +23,7 @@ func TestHeaders(t *testing.T) {
 		"other-key":       []byte("other-value"),
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
 		FullNode: true,
@@ -74,8 +73,7 @@ func TestHeaders(t *testing.T) {
 func TestHeaders_empty(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
 		FullNode: true,
@@ -134,8 +132,7 @@ func TestHeadler(t *testing.T) {
 		"other-sent-key":  []byte("other-sent-value"),
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
 		FullNode: true,
