@@ -59,8 +59,7 @@ func TestAddresses(t *testing.T) {
 func TestConnectDisconnect(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
 		FullNode: true,
@@ -88,8 +87,7 @@ func TestConnectDisconnect(t *testing.T) {
 func TestConnectToLightPeer(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	s1, _ := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
 		FullNode: false,
@@ -110,8 +108,7 @@ func TestConnectToLightPeer(t *testing.T) {
 func TestLightPeerLimit(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	var (
 		limit     = 3
@@ -160,8 +157,7 @@ func TestStreamsMaxIncomingLimit(t *testing.T) {
 
 	maxIncomingStreams := 5000
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
 		FullNode: true,
@@ -283,8 +279,7 @@ func TestStreamsMaxIncomingLimit(t *testing.T) {
 func TestDoubleConnect(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
 		FullNode: true,
@@ -311,8 +306,7 @@ func TestDoubleConnect(t *testing.T) {
 func TestDoubleDisconnect(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
 		FullNode: true,
@@ -347,8 +341,7 @@ func TestDoubleDisconnect(t *testing.T) {
 func TestMultipleConnectDisconnect(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
 		FullNode: true,
@@ -392,8 +385,7 @@ func TestMultipleConnectDisconnect(t *testing.T) {
 func TestConnectDisconnectOnAllAddresses(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
 		FullNode: true,
@@ -426,8 +418,7 @@ func TestConnectDisconnectOnAllAddresses(t *testing.T) {
 func TestDoubleConnectOnAllAddresses(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{
 		notifier: mockNotifier(noopCf, noopDf, true),
@@ -471,8 +462,7 @@ func TestDoubleConnectOnAllAddresses(t *testing.T) {
 func TestDifferentNetworkIDs(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	s1, _ := newService(t, 1, libp2pServiceOpts{})
 	s2, _ := newService(t, 2, libp2pServiceOpts{})
@@ -490,8 +480,7 @@ func TestDifferentNetworkIDs(t *testing.T) {
 func TestConnectWithEnabledWSTransports(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{
 		libp2pOpts: libp2p.Options{
@@ -521,8 +510,7 @@ func TestConnectWithEnabledWSTransports(t *testing.T) {
 func TestConnectRepeatHandshake(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
 		FullNode: true,
@@ -970,8 +958,7 @@ func TestWithDisconnectStreams(t *testing.T) {
 
 	const headersRWTimeout = 60 * time.Second
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
 		FullNode:         true,
@@ -1021,8 +1008,7 @@ func TestWithDisconnectStreams(t *testing.T) {
 func TestWithBlocklistStreams(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
 		FullNode: true,
@@ -1073,8 +1059,7 @@ func TestWithBlocklistStreams(t *testing.T) {
 func TestUserAgentLogging(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	// use concurrent-safe buffers as handlers are logging concurrently
 	s1Logs := new(buffer)
