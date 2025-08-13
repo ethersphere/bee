@@ -56,8 +56,7 @@ func TestJoinerSingleChunk(t *testing.T) {
 
 	store := inmemchunkstore.New()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	// create the chunk to
 	mockAddrHex := fmt.Sprintf("%064s", "2a")
@@ -95,8 +94,7 @@ func TestJoinerDecryptingStore_NormalChunk(t *testing.T) {
 
 	st := inmemchunkstore.New()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	// create the chunk to
 	mockAddrHex := fmt.Sprintf("%064s", "2a")
@@ -134,8 +132,7 @@ func TestJoinerWithReference(t *testing.T) {
 
 	st := inmemchunkstore.New()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	// create root chunk and two data chunks referenced in the root chunk
 	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
@@ -185,8 +182,7 @@ func TestJoinerMalformed(t *testing.T) {
 
 	store := inmemchunkstore.New()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	subTrie := []byte{8085: 1}
 	pb := builder.NewPipelineBuilder(ctx, store, false, 0)
@@ -253,8 +249,7 @@ func TestEncryptDecrypt(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			ctx := t.Context()
 			pipe := builder.NewPipelineBuilder(ctx, store, true, 0)
 			testDataReader := bytes.NewReader(testData)
 			resultAddress, err := builder.FeedPipeline(ctx, pipe, testDataReader)
@@ -335,8 +330,7 @@ func TestSeek(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			ctx := t.Context()
 
 			store := inmemchunkstore.New()
 			testutil.CleanupCloser(t, store)
@@ -612,8 +606,7 @@ func TestPrefetch(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			ctx := t.Context()
 
 			store := inmemchunkstore.New()
 			testutil.CleanupCloser(t, store)
@@ -917,8 +910,7 @@ func TestJoinerIterateChunkAddresses_Encrypted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	pipe := builder.NewPipelineBuilder(ctx, store, true, 0)
 	testDataReader := bytes.NewReader(testData)
 	resultAddress, err := builder.FeedPipeline(ctx, pipe, testDataReader)
@@ -1072,8 +1064,7 @@ func TestJoinerRedundancy(t *testing.T) {
 		},
 	} {
 		t.Run(fmt.Sprintf("redundancy=%d encryption=%t", tc.rLevel, tc.encryptChunk), func(t *testing.T) {
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			ctx := t.Context()
 			shardCnt := tc.rLevel.GetMaxShards()
 			parityCnt := tc.rLevel.GetParities(shardCnt)
 			if tc.encryptChunk {

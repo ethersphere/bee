@@ -58,15 +58,13 @@ func TestTracing(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	connectContext, connectCancel := context.WithCancel(context.Background())
-	defer connectCancel()
+	connectContext := t.Context()
 
 	if _, err := s2.Connect(connectContext, addr); err != nil {
 		t.Fatal(err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	span, _, ctx := tracer2.StartSpanFromContext(ctx, "test-p2p-client", nil)
 	defer span.Finish()
