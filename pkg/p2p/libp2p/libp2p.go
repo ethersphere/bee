@@ -307,6 +307,8 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		libp2p.Peerstore(libp2pPeerstore),
 		libp2p.UserAgent(userAgent()),
 		libp2p.ResourceManager(rm),
+		libp2p.DisableRelay(),
+		libp2p.NATPortMap(),
 	}
 
 	if o.PrivateKey != nil {
@@ -344,20 +346,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 
-	if o.AutoTLSEnabled && o.EnableWS {
-		// Handle ProvideHost via type assertion
-		switch cm := certManager.(type) {
-		case *p2pforge.P2PForgeCertMgr:
-			cm.ProvideHost(h) // Call func field
-		case *MockP2PForgeCertMgr:
-			if err := cm.ProvideHost(h); err != nil {
-				return nil, fmt.Errorf("failed to provide host to MockP2PForgeCertMgr: %w", err)
-			}
-		default:
-			return nil, fmt.Errorf("unknown cert manager type")
-		}
-	}
-
 	// Support same non default security and transport options as
 	// original host.
 	dialer, err := o.hostFactory(append(transports, security)...)
@@ -391,6 +379,20 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			return nil, fmt.Errorf("static nat: %w", err)
 		}
 		advertisableAddresser = natAddrResolver
+	}
+
+	if o.AutoTLSEnabled && o.EnableWS {
+		// Handle ProvideHost via type assertion
+		switch cm := certManager.(type) {
+		case *p2pforge.P2PForgeCertMgr:
+			cm.ProvideHost(dialer) // Call func field
+		case *MockP2PForgeCertMgr:
+			if err := cm.ProvideHost(dialer); err != nil {
+				return nil, fmt.Errorf("failed to provide host to MockP2PForgeCertMgr: %w", err)
+			}
+		default:
+			return nil, fmt.Errorf("unknown cert manager type")
+		}
 	}
 
 	logger.Info("Waiting for AutoTLS certificate to be loaded...")
