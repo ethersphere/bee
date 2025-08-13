@@ -1158,7 +1158,7 @@ func NewBee(
 				return pullerService.SyncRate() == 0 && saludService.IsHealthy() && localStore.ReserveSize() >= reserveTreshold
 			}
 
-			syncCheckTicker := time.NewTicker(time.Second)
+			syncCheckTicker := time.NewTicker(2 * time.Second)
 			go func() {
 				defer syncCheckTicker.Stop()
 				for {
