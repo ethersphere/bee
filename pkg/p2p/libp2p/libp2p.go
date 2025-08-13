@@ -121,6 +121,7 @@ type Service struct {
 	HeadersRWTimeout  time.Duration
 	enableWS          bool
 	certManager       P2PForgeCertMgr
+	autoNAT           autonat.AutoNAT
 }
 
 type lightnodes interface {
@@ -157,10 +158,8 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	if err != nil {
 		return nil, fmt.Errorf("address: %w", err)
 	}
-
 	ip4Addr := "0.0.0.0"
 	ip6Addr := "::"
-
 	if host != "" {
 		ip := net.ParseIP(host)
 		if ip4 := ip.To4(); ip4 != nil {
@@ -171,7 +170,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			ip4Addr = ""
 		}
 	}
-
 	var listenAddrs []string
 	if ip4Addr != "" {
 		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s", ip4Addr, port))
@@ -182,7 +180,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			}
 		}
 	}
-
 	if ip6Addr != "" {
 		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s", ip6Addr, port))
 		if o.EnableWS {
@@ -192,17 +189,14 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			}
 		}
 	}
-
 	security := libp2p.DefaultSecurity
 	libp2pPeerstore, err := pstoremem.NewPeerstore()
 	if err != nil {
 		return nil, err
 	}
-
 	if o.Registry != nil {
 		rcmgrObs.MustRegisterWith(o.Registry)
 	}
-
 	_, err = ocprom.NewExporter(ocprom.Options{
 		Namespace: m2.Namespace,
 		Registry:  o.Registry,
@@ -210,7 +204,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	if err != nil {
 		return nil, err
 	}
-
 	// Tweak certain settings
 	cfg := rcmgr.PartialLimitConfig{
 		System: rcmgr.ResourceLimits{
@@ -219,31 +212,23 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			StreamsInbound:  IncomingStreamCountLimit,
 		},
 	}
-
 	// Create our limits by using our cfg and replacing the default values with values from `scaledDefaultLimits`
 	limits := cfg.Build(rcmgr.InfiniteLimits)
-
 	// The resource manager expects a limiter, se we create one from our limits.
 	limiter := rcmgr.NewFixedLimiter(limits)
-
 	str, err := rcmgrObs.NewStatsTraceReporter()
 	if err != nil {
 		return nil, err
 	}
-
 	rm, err := rcmgr.NewResourceManager(limiter, rcmgr.WithTraceReporter(str))
 	if err != nil {
 		return nil, err
 	}
-
 	certLoaded := make(chan bool, 1)
-
 	var certManager P2PForgeCertMgr
 	if o.AutoTLSEnabled && o.EnableWS {
-
 		if o.CertManager != nil {
 			certManager = o.CertManager
-
 			if mocker, ok := certManager.(*MockP2PForgeCertMgr); ok {
 				mocker.SetOnCertLoaded(func() {
 					certLoaded <- true
@@ -260,13 +245,11 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 				}
 			}()
 			sugar := p2pforgeLogger.Sugar()
-
 			// Use AutoTLS storage dir
 			storagePath := o.AutoTLSStorageDir
 			if err := os.MkdirAll(storagePath, 0700); err != nil {
 				return nil, fmt.Errorf("failed to create certificate storage directory %s: %w", storagePath, err)
 			}
-
 			certManager, err = p2pforge.NewP2PForgeCertMgr(
 				p2pforge.WithForgeDomain(o.ForgeDomain),
 				p2pforge.WithForgeRegistrationEndpoint(o.ForgeRegistrationEndpoint),
@@ -282,10 +265,8 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			if err != nil {
 				return nil, fmt.Errorf("failed to initialize AutoTLS: %w", err)
 			}
-
 			// for local testing purposes
 			// certManager = NewMockP2PForgeCertMgr(nil)
-
 			// if the creation of the service fails, we must stop the cert manager
 			defer func() {
 				if err != nil {
@@ -293,13 +274,10 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 				}
 			}()
 		}
-
 		if err := certManager.Start(); err != nil {
 			return nil, fmt.Errorf("failed to start AutoTLS certificate manager: %w", err)
 		}
-
 	}
-
 	opts := []libp2p.Option{
 		libp2p.ListenAddrStrings(listenAddrs...),
 		security,
@@ -310,7 +288,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		libp2p.DisableRelay(),
 		libp2p.NATPortMap(),
 	}
-
 	if o.PrivateKey != nil {
 		myKey, _, err := crypto.ECDSAKeyPairFromKey(o.PrivateKey)
 		if err != nil {
@@ -320,11 +297,9 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			libp2p.Identity(myKey),
 		)
 	}
-
 	transports := []libp2p.Option{
 		libp2p.Transport(tcp.NewTCPTransport, tcp.DisableReuseport()),
 	}
-
 	if o.EnableWS {
 		if o.AutoTLSEnabled {
 			wsOpt := ws.WithTLSConfig(certManager.TLSConfig())
@@ -333,28 +308,35 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			transports = append(transports, libp2p.Transport(ws.New))
 		}
 	}
-
 	opts = append(opts, transports...)
-
 	if o.hostFactory == nil {
 		// Use the default libp2p host creation
 		o.hostFactory = libp2p.New
 	}
-
 	h, err := o.hostFactory(opts...)
 	if err != nil {
 		return nil, err
 	}
-
+	if o.AutoTLSEnabled && o.EnableWS {
+		// Handle ProvideHost via type assertion
+		switch cm := certManager.(type) {
+		case *p2pforge.P2PForgeCertMgr:
+			cm.ProvideHost(h) // Call func field
+		case *MockP2PForgeCertMgr:
+			if err := cm.ProvideHost(h); err != nil {
+				return nil, fmt.Errorf("failed to provide host to MockP2PForgeCertMgr: %w", err)
+			}
+		default:
+			return nil, fmt.Errorf("unknown cert manager type")
+		}
+	}
 	// Support same non default security and transport options as
 	// original host.
 	dialer, err := o.hostFactory(append(transports, security)...)
 	if err != nil {
 		return nil, err
 	}
-
 	options := []autonat.Option{autonat.EnableService(dialer.Network())}
-
 	val, err := strconv.ParseBool(reachabilityOverridePublic)
 	if err != nil {
 		return nil, err
@@ -362,11 +344,20 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	if val {
 		options = append(options, autonat.WithReachability(network.ReachabilityPublic))
 	}
+	// NEW: Enhanced AutoNAT options
+	options = append(options,
+		autonat.WithSchedule(1*time.Minute, 15*time.Minute), // Retry every 1m when uncertain, refresh every 15m when stable
+		autonat.WithThrottling(30, 10*time.Minute),          // Limit to 30 global probes every 10m when serving
+	)
 
+	// NEW: Create AutoNAT instance
+	var autoNAT autonat.AutoNAT
+	if autoNAT, err = autonat.New(h, options...); err != nil {
+		return nil, fmt.Errorf("autonat: %w", err)
+	}
 	if o.HeadersRWTimeout == 0 {
 		o.HeadersRWTimeout = defaultHeadersRWTimeout
 	}
-
 	var advertisableAddresser handshake.AdvertisableAddressResolver
 	var natAddrResolver *staticAddressResolver
 	if o.NATAddr == "" {
@@ -381,25 +372,10 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		advertisableAddresser = natAddrResolver
 	}
 
-	if o.AutoTLSEnabled && o.EnableWS {
-		// Handle ProvideHost via type assertion
-		switch cm := certManager.(type) {
-		case *p2pforge.P2PForgeCertMgr:
-			cm.ProvideHost(dialer) // Call func field
-		case *MockP2PForgeCertMgr:
-			if err := cm.ProvideHost(dialer); err != nil {
-				return nil, fmt.Errorf("failed to provide host to MockP2PForgeCertMgr: %w", err)
-			}
-		default:
-			return nil, fmt.Errorf("unknown cert manager type")
-		}
-	}
-
 	handshakeService, err := handshake.New(signer, advertisableAddresser, overlay, networkID, o.FullNode, o.Nonce, o.WelcomeMessage, o.ValidateOverlay, h.ID(), logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}
-
 	// Create a new dialer for libp2p ping protocol. This ensures that the protocol
 	// uses a different set of keys to do ping. It prevents inconsistencies in peerstore as
 	// the addresses used are not dialable and hence should be cleaned up. We should create
@@ -409,7 +385,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	if err != nil {
 		return nil, err
 	}
-
 	peerRegistry := newPeerRegistry()
 	s := &Service{
 		ctx:               ctx,
@@ -433,28 +408,34 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		enableWS:          o.EnableWS,
 		HeadersRWTimeout:  o.HeadersRWTimeout,
 		certManager:       certManager,
+		autoNAT:           autoNAT, // NEW: Assign instance
 	}
 
-	peerRegistry.setDisconnecter(s)
-
-	s.lightNodeLimit = defaultLightNodeLimit
-	if o.LightNodeLimit > 0 {
-		s.lightNodeLimit = o.LightNodeLimit
-	}
-
-	// Construct protocols.
-	id := protocol.ID(p2p.NewSwarmStreamName(handshake.ProtocolName, handshake.ProtocolVersion, handshake.StreamName))
-	matcher, err := s.protocolSemverMatcher(id)
+	// NEW: Subscribe to AutoNAT events for dynamic updates
+	sub, err := h.EventBus().Subscribe(new(event.EvtLocalReachabilityChanged))
 	if err != nil {
-		return nil, fmt.Errorf("protocol version match %s: %w", id, err)
+		return nil, fmt.Errorf("autonat event subscribe: %w", err)
 	}
-
-	s.host.SetStreamHandlerMatch(id, matcher, s.handleIncoming)
+	go func() {
+		defer sub.Close()
+		for e := range sub.Out() {
+			evt := e.(event.EvtLocalReachabilityChanged)
+			s.notifier.UpdateReachability(p2p.ReachabilityStatus(evt.Reachability))
+			if evt.Reachability != network.ReachabilityPublic && o.AutoTLSEnabled && o.EnableWS {
+				logger.Warning("Reachability changed to non-public; AutoTLS may fail", "new_status", evt.Reachability.String())
+			}
+		}
+	}()
+	// NEW: Initial check (as in your original snippet)
+	if o.AutoTLSEnabled && o.EnableWS {
+		if autoNAT.Status() != network.ReachabilityPublic {
+			logger.Warning("Node not publicly reachable; AutoTLS may fail")
+		}
+	}
 
 	logger.Info("Waiting for AutoTLS certificate to be loaded...")
-	waitCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	waitCtx, cancel := context.WithTimeout(ctx, 1*time.Minute)
 	defer cancel()
-
 	if o.AutoTLSEnabled && o.EnableWS {
 		// Wait for the certificate to be loaded by the background process
 		select {
@@ -469,6 +450,18 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		}
 	}
 
+	peerRegistry.setDisconnecter(s)
+	s.lightNodeLimit = defaultLightNodeLimit
+	if o.LightNodeLimit > 0 {
+		s.lightNodeLimit = o.LightNodeLimit
+	}
+	// Construct protocols.
+	id := protocol.ID(p2p.NewSwarmStreamName(handshake.ProtocolName, handshake.ProtocolVersion, handshake.StreamName))
+	matcher, err := s.protocolSemverMatcher(id)
+	if err != nil {
+		return nil, fmt.Errorf("protocol version match %s: %w", id, err)
+	}
+	s.host.SetStreamHandlerMatch(id, matcher, s.handleIncoming)
 	connMetricNotify := newConnMetricNotify(s.metrics)
 	h.Network().Notify(peerRegistry) // update peer registry on network events
 	h.Network().Notify(connMetricNotify)
