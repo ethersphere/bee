@@ -301,7 +301,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Uint64(optionNameMinimumGasTipCap, 0, "minimum gas tip cap in wei for transactions, 0 means use suggested gas tip cap")
 	cmd.Flags().Bool(optionAutoTLSEnabled, true, "Enable AutoTLS for secure WebSocket connections")
 	cmd.Flags().String(optionAutoTLSPort, "5500", "AutoTLS port")
-	cmd.Flags().String(optionAutoTLSStorageDir, "./p2p-forge-certs", "Data directory for certificate storage (default ~/.bee/p2p-forge-certs)")
+	cmd.Flags().String(optionAutoTLSStorageDir, "./p2p-forge-certs", "Data directory for certificate storage (default ./p2p-forge-certs)")
 	cmd.Flags().String(optionForgeDomain, p2pforge.DefaultForgeDomain, "forge domain")
 	cmd.Flags().String(optionForgeRegistrationEndpoint, p2pforge.DefaultForgeEndpoint, "forge registration endpoint")
 	cmd.Flags().String(optionCAEndpoint, p2pforge.DefaultCATestEndpoint, "certificate authority endpoint")
