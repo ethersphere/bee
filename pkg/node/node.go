@@ -127,12 +127,16 @@ type Options struct {
 	Addr                          string
 	AllowPrivateCIDRs             bool
 	APIAddr                       string
+	AutoTLSEnabled                bool
+	AutoTLSPort                   string
+	AutoTLSStorageDir             string
 	BlockchainRpcEndpoint         string
 	BlockProfile                  bool
 	BlockTime                     time.Duration
 	BootnodeMode                  bool
 	Bootnodes                     []string
 	CacheCapacity                 uint64
+	CAEndpoint                    string
 	ChainID                       int64
 	ChequebookEnable              bool
 	CORSAllowedOrigins            []string
@@ -143,6 +147,8 @@ type Options struct {
 	DBWriteBufferSize             uint64
 	EnableStorageIncentives       bool
 	EnableWS                      bool
+	ForgeDomain                   string
+	ForgeRegistrationEndpoint     string
 	FullNodeMode                  bool
 	Logger                        log.Logger
 	MinimumGasTipCap              uint64
@@ -641,14 +647,20 @@ func NewBee(
 	}
 
 	p2ps, err := libp2p.New(ctx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
-		PrivateKey:      libp2pPrivateKey,
-		NATAddr:         o.NATAddr,
-		EnableWS:        o.EnableWS,
-		WelcomeMessage:  o.WelcomeMessage,
-		FullNode:        o.FullNodeMode,
-		Nonce:           nonce,
-		ValidateOverlay: chainEnabled,
-		Registry:        registry,
+		PrivateKey:                libp2pPrivateKey,
+		NATAddr:                   o.NATAddr,
+		EnableWS:                  o.EnableWS,
+		AutoTLSEnabled:            o.AutoTLSEnabled,
+		AutoTLSPort:               o.AutoTLSPort,
+		AutoTLSStorageDir:         o.AutoTLSStorageDir,
+		ForgeDomain:               o.ForgeDomain,
+		ForgeRegistrationEndpoint: o.ForgeRegistrationEndpoint,
+		CAEndpoint:                o.CAEndpoint,
+		WelcomeMessage:            o.WelcomeMessage,
+		FullNode:                  o.FullNodeMode,
+		Nonce:                     nonce,
+		ValidateOverlay:           chainEnabled,
+		Registry:                  registry,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
