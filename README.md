@@ -7,7 +7,7 @@
 [![API OpenAPI Specs](https://img.shields.io/badge/openapi-api-blue)](https://docs.ethswarm.org/api/)
 ![Docker Pulls](https://img.shields.io/docker/pulls/ethersphere/bee)
 ![GitHub all releases](https://img.shields.io/github/downloads/ethersphere/bee/total)
-![GitHub](https://img.shields.io/github/license/ethersphere/bee)
+[![GitHub](https://img.shields.io/github/license/ethersphere/bee)](https://github.com/ethersphere/bee/blob/master/LICENSE)
 
 ## DISCLAIMER
 
