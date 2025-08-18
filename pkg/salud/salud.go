@@ -138,7 +138,7 @@ func (s *service) salud(mode string, durPercentile float64, connsPercentile floa
 		wg                   sync.WaitGroup
 		totaldur             float64
 		peers                []peer
-		neighborhoodPeers    []peer
+		neighborhoodPeers    uint
 		neighborhoodTotalDur float64
 	)
 
@@ -168,7 +168,7 @@ func (s *service) salud(mode string, durPercentile float64, connsPercentile floa
 			peer := peer{snapshot, dur, addr, bin, s.reserve.IsWithinStorageRadius(addr)}
 			peers = append(peers, peer)
 			if peer.neighbor {
-				neighborhoodPeers = append(neighborhoodPeers, peer)
+				neighborhoodPeers++
 				neighborhoodTotalDur += dur.Seconds()
 			}
 			mtx.Unlock()
@@ -191,13 +191,13 @@ func (s *service) salud(mode string, durPercentile float64, connsPercentile floa
 	pConns := percentileConns(peers, connsPercentile)
 	commitment := commitment(peers)
 
-	if len(neighborhoodPeers) > 0 {
-		neighborhoodAvgDur := neighborhoodTotalDur / float64(len(neighborhoodPeers))
+	if neighborhoodPeers > 0 {
+		neighborhoodAvgDur := neighborhoodTotalDur / float64(neighborhoodPeers)
 
 		s.metrics.NeighborhoodAvgDur.Set(neighborhoodAvgDur)
-		s.metrics.NeighborCount.Set(float64(len(neighborhoodPeers)))
+		s.metrics.NeighborCount.Set(float64(neighborhoodPeers))
 
-		s.logger.Debug("neighborhood metrics", "avg_dur", neighborhoodAvgDur, "count", len(neighborhoodPeers))
+		s.logger.Debug("neighborhood metrics", "avg_dur", neighborhoodAvgDur, "count", neighborhoodPeers)
 	} else {
 		s.metrics.NeighborhoodAvgDur.Set(0)
 		s.metrics.NeighborCount.Set(0)
@@ -212,7 +212,7 @@ func (s *service) salud(mode string, durPercentile float64, connsPercentile floa
 	s.metrics.NeighborhoodRadius.Set(float64(nHoodRadius))
 	s.metrics.Commitment.Set(float64(commitment))
 
-	s.logger.Debug("computed", "avg_dur", avgDur, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius, "batch_commitment", commitment, "neighborhood_peers", len(neighborhoodPeers))
+	s.logger.Debug("computed", "avg_dur", avgDur, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius, "batch_commitment", commitment, "neighborhood_peers", neighborhoodPeers)
 
 	// sort peers by duration, highest first to give priority to the fastest peers
 	sort.Slice(peers, func(i, j int) bool {
