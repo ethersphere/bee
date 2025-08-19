@@ -246,13 +246,13 @@ func (p *Puller) recalcPeers(ctx context.Context, storageRadius uint8) {
 }
 
 func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uint8) error {
+	peer.mtx.Lock()
+	defer peer.mtx.Unlock()
+
 	if peer.ud == -1 { // not neighbor
 		peer.stop()
 		return nil
 	}
-	peer.mtx.Lock()
-	defer peer.mtx.Unlock()
-
 	// If the peer's epoch has changed (indicating a reserve reset or storage change on the peer):
 	//   - Cancel all ongoing bin syncs for this peer.
 	//   - Reset all previously synced intervals for this peer (to force a fresh sync).
