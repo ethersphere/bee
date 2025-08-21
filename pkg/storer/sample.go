@@ -132,8 +132,7 @@ func (db *DB) ReserveSample(
 
 	db.logger.Debug("reserve sampler workers", "count", workers)
 
-	for i := 0; i < workers; i++ {
-		workerID := i
+	for range workers {
 		g.Go(func() error {
 			wstat := SampleStats{}
 			hasher := bmt.NewHasher(prefixHasherFactory)
@@ -147,11 +146,6 @@ func (db *DB) ReserveSample(
 			defer func() {
 				addStats(wstat)
 				addWaitTime(waitTime)
-
-				db.logger.Debug("sampling worker statistics",
-					"worker_id", workerID,
-					"wait_time", waitTime,
-				)
 			}()
 
 			for chItem := range chunkC {
