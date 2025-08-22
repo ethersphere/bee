@@ -176,6 +176,26 @@ func (s *Service) mountTechnicalDebug() {
 		httpaccess.NewHTTPAccessSuppressLogHandler(),
 		web.FinalHandlerFunc(s.healthHandler),
 	))
+
+	// Nuke service endpoints
+	s.router.Handle("/nuke", jsonhttp.MethodHandler{
+		"POST": web.ChainHandlers(
+			httpaccess.NewHTTPAccessSuppressLogHandler(),
+			web.FinalHandlerFunc(s.nukeHandler),
+		),
+	})
+
+	s.router.Handle("/nuke/status", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			httpaccess.NewHTTPAccessSuppressLogHandler(),
+			web.FinalHandlerFunc(s.nukeStatusHandler),
+		),
+	})
+
+	s.router.Handle("/nuke/readiness", web.ChainHandlers(
+		httpaccess.NewHTTPAccessSuppressLogHandler(),
+		web.FinalHandlerFunc(s.nukeReadinessHandler),
+	))
 }
 
 func (s *Service) checkRouteAvailability(handler http.Handler) http.Handler {
