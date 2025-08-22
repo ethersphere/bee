@@ -15,7 +15,15 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-var errNotLegacyPayload = errors.New("feed update is not in the legacy payload structure")
+var ErrNotLegacyPayload = errors.New("feed update is not in the legacy payload structure")
+
+type WrappedChunkNotFoundError struct {
+	Ref []byte
+}
+
+func (e WrappedChunkNotFoundError) Error() string {
+	return fmt.Sprintf("feed pointing to the wrapped chunk not found: %x", e.Ref)
+}
 
 // Lookup is the interface for time based feed lookup
 type Lookup interface {
@@ -50,7 +58,7 @@ func (f *Getter) Get(ctx context.Context, i Index) (swarm.Chunk, error) {
 	return f.getter.Get(ctx, addr)
 }
 
-func GetWrappedChunk(ctx context.Context, getter storage.Getter, ch swarm.Chunk) (swarm.Chunk, error) {
+func GetWrappedChunk(ctx context.Context, getter storage.Getter, ch swarm.Chunk, legacyResolve bool) (swarm.Chunk, error) {
 	wc, err := FromChunk(ch)
 	if err != nil {
 		return nil, err
@@ -59,16 +67,15 @@ func GetWrappedChunk(ctx context.Context, getter storage.Getter, ch swarm.Chunk)
 	// possible values right now:
 	// unencrypted ref: span+timestamp+ref => 8+8+32=48
 	// encrypted ref: span+timestamp+ref+decryptKey => 8+8+64=80
-	ref, err := legacyPayload(wc)
-	if err != nil {
-		if errors.Is(err, errNotLegacyPayload) {
-			return wc, nil
+	if legacyResolve {
+		ref, err := legacyPayload(wc)
+		if err != nil {
+			return nil, err
 		}
-		return nil, err
-	}
-	wc, err = getter.Get(ctx, ref)
-	if err != nil {
-		return nil, err
+		wc, err = getter.Get(ctx, ref)
+		if err != nil {
+			return nil, WrappedChunkNotFoundError{Ref: ref.Bytes()}
+		}
 	}
 
 	return wc, nil
@@ -87,7 +94,7 @@ func FromChunk(ch swarm.Chunk) (swarm.Chunk, error) {
 func legacyPayload(wrappedChunk swarm.Chunk) (swarm.Address, error) {
 	cacData := wrappedChunk.Data()
 	if !(len(cacData) == 16+swarm.HashSize || len(cacData) == 16+swarm.HashSize*2) {
-		return swarm.ZeroAddress, errNotLegacyPayload
+		return swarm.ZeroAddress, ErrNotLegacyPayload
 	}
 
 	return swarm.NewAddress(cacData[16:]), nil
