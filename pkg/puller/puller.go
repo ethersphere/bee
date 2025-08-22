@@ -157,8 +157,10 @@ func (p *Puller) manage(ctx context.Context) {
 
 		var neighbors []swarm.Address
 		_ = p.topology.EachConnectedPeerRev(func(addr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
-			if _, ok := p.syncPeers[addr.ByteString()]; !ok {
+			if syncPeer, ok := p.syncPeers[addr.ByteString()]; !ok {
 				p.syncPeers[addr.ByteString()] = newSyncPeer(addr, p.bins, po)
+			} else {
+				syncPeer.ud = -1
 			}
 			if po >= newRadius {
 				neighbors = append(neighbors, addr)
