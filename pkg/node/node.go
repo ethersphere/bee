@@ -212,7 +212,6 @@ func NewBee(
 	var pullSyncStartTime time.Time
 
 	nodeMetrics := newMetrics()
-	nodeMetrics.RegisterMetrics()
 
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
@@ -1266,6 +1265,7 @@ func NewBee(
 		apiService.MustRegisterMetrics(kad.Metrics()...)
 		apiService.MustRegisterMetrics(saludService.Metrics()...)
 		apiService.MustRegisterMetrics(stateStoreMetrics.Metrics()...)
+		apiService.MustRegisterMetrics(Metrics(nodeMetrics)...)
 
 		if pullerService != nil {
 			apiService.MustRegisterMetrics(pullerService.Metrics()...)
