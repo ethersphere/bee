@@ -462,10 +462,7 @@ func TestRadiusIncrease(t *testing.T) {
 	rs.SetStorageRadius(2)
 	kad.Trigger()
 	time.Sleep(100 * time.Millisecond)
-	if !p.IsBinSyncing(addr, 1) {
-		t.Fatalf("peer is not syncing but should")
-	}
-	if p.IsBinSyncing(addr, 2) {
+	if p.IsBinSyncing(addr, 1) || p.IsBinSyncing(addr, 2) || p.IsBinSyncing(addr, 3) {
 		t.Fatalf("peer is syncing but shouldn't")
 	}
 }
