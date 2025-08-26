@@ -309,7 +309,7 @@ func TestBinReset(t *testing.T) {
 				kadMock.AddrTuple{Addr: addr, PO: 2},
 			),
 		},
-		pullSync: []mockps.Option{mockps.WithCursors(cursors, 0), mockps.WithReplies(mockps.SyncReply{Bin: 1, Start: 1, Topmost: 1, Peer: addr})},
+		pullSync: []mockps.Option{mockps.WithCursors(cursors, 0), mockps.WithReplies(mockps.SyncReply{Bin: 2, Start: 1, Topmost: 1, Peer: addr})}, // bin must be at least radius to sync
 		bins:     3,
 		rs:       resMock.NewReserve(resMock.WithRadius(2)),
 	})
@@ -543,8 +543,8 @@ func TestPeerGone(t *testing.T) {
 
 	beforeCalls := pullsync.SyncCalls(addr)
 
-	if len(beforeCalls) != 2 { // sync both bins because UD is 0 and that is the only peer
-		t.Fatalf("unexpected amount of calls, got %d, want 2", len(beforeCalls))
+	if len(beforeCalls) != 1 {
+		t.Fatalf("unexpected amount of calls, got %d, want 1", len(beforeCalls))
 	}
 
 	kad.ResetPeers()

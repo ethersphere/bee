@@ -175,7 +175,7 @@ func (p *Puller) manage(ctx context.Context) {
 
 		// minUd := uint8(255)
 		for i, target := range neighbors {
-			maxUd := uint8(0)
+			maxUd := uint8(newRadius) // do not want to sync below radius
 
 			// find the uniqueness depth, within which they are the only peer in the set
 			for j, neighbor := range neighbors {
