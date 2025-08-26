@@ -11,8 +11,16 @@ var PeerIntervalKey = peerIntervalKey
 func (p *Puller) IsSyncing(addr swarm.Address) bool {
 	p.syncPeersMtx.Lock()
 	defer p.syncPeersMtx.Unlock()
-	_, ok := p.syncPeers[addr.ByteString()]
-	return ok
+	peer, ok := p.syncPeers[addr.ByteString()]
+	if !ok {
+		return false
+	}
+	for bin := range p.bins {
+		if peer.isBinSyncing(bin) {
+			return true
+		}
+	}
+	return false
 }
 
 func (p *Puller) IsBinSyncing(addr swarm.Address, bin uint8) bool {
