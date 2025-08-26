@@ -71,7 +71,7 @@ func TestSyncOutsideDepth(t *testing.T) {
 		}
 	)
 
-	_, _, kad, pullsync := newPuller(t, opts{
+	p, _, kad, pullsync := newPuller(t, opts{
 		kad: []kadMock.Option{
 			kadMock.WithEachPeerRevCalls(
 				kadMock.AddrTuple{Addr: addr, PO: 2},
@@ -86,11 +86,16 @@ func TestSyncOutsideDepth(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	kad.Trigger()
 
+	if !p.IsSyncing(addr) {
+		t.Fatalf("peer is not syncing but should")
+	}
+	if p.IsSyncing(addr2) {
+		t.Fatalf("peer is syncing but shouldn't") // because not neighbor
+	}
+
 	waitCursorsCalled(t, pullsync, addr)
-	waitCursorsCalled(t, pullsync, addr2)
 
 	waitSyncCalledBins(t, pullsync, addr, 2, 3)
-	waitSyncCalledBins(t, pullsync, addr2, 0)
 }
 
 func TestSyncIntervals(t *testing.T) {
@@ -212,7 +217,7 @@ func TestPeerDisconnected(t *testing.T) {
 	p, _, kad, pullsync := newPuller(t, opts{
 		kad: []kadMock.Option{
 			kadMock.WithEachPeerRevCalls(
-				kadMock.AddrTuple{Addr: addr, PO: 1},
+				kadMock.AddrTuple{Addr: addr, PO: 2},
 			),
 		},
 		pullSync: []mockps.Option{mockps.WithCursors(cursors, 0)},
@@ -222,10 +227,10 @@ func TestPeerDisconnected(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 	kad.Trigger()
-	waitCursorsCalled(t, pullsync, addr)
 	if !p.IsSyncing(addr) {
 		t.Fatalf("peer is not syncing but should")
 	}
+	waitCursorsCalled(t, pullsync, addr)
 	kad.ResetPeers()
 	kad.Trigger()
 	time.Sleep(50 * time.Millisecond)
@@ -298,10 +303,10 @@ func TestBinReset(t *testing.T) {
 		cursors = []uint64{1000, 1000, 1000}
 	)
 
-	_, s, kad, pullsync := newPuller(t, opts{
+	p, s, kad, pullsync := newPuller(t, opts{
 		kad: []kadMock.Option{
 			kadMock.WithEachPeerRevCalls(
-				kadMock.AddrTuple{Addr: addr, PO: 1},
+				kadMock.AddrTuple{Addr: addr, PO: 2},
 			),
 		},
 		pullSync: []mockps.Option{mockps.WithCursors(cursors, 0), mockps.WithReplies(mockps.SyncReply{Bin: 1, Start: 1, Topmost: 1, Peer: addr})},
@@ -313,6 +318,9 @@ func TestBinReset(t *testing.T) {
 
 	kad.Trigger()
 
+	if !p.IsSyncing(addr) {
+		t.Fatalf("peer is not syncing but should")
+	}
 	waitCursorsCalled(t, pullsync, addr)
 	waitSync(t, pullsync, addr)
 
@@ -463,7 +471,7 @@ func TestRadiusIncrease(t *testing.T) {
 	kad.Trigger()
 	time.Sleep(100 * time.Millisecond)
 	if p.IsBinSyncing(addr, 1) || p.IsBinSyncing(addr, 2) || p.IsBinSyncing(addr, 3) {
-		t.Fatalf("peer is syncing but shouldn't")
+		t.Fatalf("peer is syncing but shouldn't because it is not a neighbor")
 	}
 }
 
@@ -535,8 +543,8 @@ func TestPeerGone(t *testing.T) {
 
 	beforeCalls := pullsync.SyncCalls(addr)
 
-	if len(beforeCalls) != 1 {
-		t.Fatalf("unexpected amount of calls, got %d, want 1", len(beforeCalls))
+	if len(beforeCalls) != 2 { // sync both bins because UD is 0 and that is the only peer
+		t.Fatalf("unexpected amount of calls, got %d, want 2", len(beforeCalls))
 	}
 
 	kad.ResetPeers()
