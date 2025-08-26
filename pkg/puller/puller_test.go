@@ -90,12 +90,66 @@ func TestSyncOutsideDepth(t *testing.T) {
 		t.Fatalf("peer is not syncing but should")
 	}
 	if p.IsSyncing(addr2) {
-		t.Fatalf("peer is syncing but shouldn't") // because not neighbor
+		t.Fatalf("peer is syncing but shouldn't because not neighbor")
 	}
 
 	waitCursorsCalled(t, pullsync, addr)
 
 	waitSyncCalledBins(t, pullsync, addr, 2, 3)
+}
+
+// test that addresses not cover full range of radius
+func TestAddressesNotCoverRange(t *testing.T) {
+	t.Parallel()
+
+	// calculate addresses where PO is greater than storage radius for all neighbors
+	storageRadius := uint8(0)
+	base := swarm.RandAddress(t)
+	firstBitDiffer := storageRadius + 1 // common prefix in neighbor addresses, their POs must be this number.
+	addr1Bytes := base.Clone().Bytes()
+	addr1Bytes[firstBitDiffer/8] ^= 1 << (7 - (firstBitDiffer % 8))
+	addr1 := swarm.NewAddress(addr1Bytes)
+	udIndex := firstBitDiffer + 2 // their UDs will be this number + 1
+	addr2Bytes := addr1.Clone().Bytes()
+	addr2Bytes[udIndex/8] ^= (1 << (7 - (udIndex % 8)))
+	addr2 := swarm.NewAddress(addr2Bytes)
+
+	var (
+		cursors = []uint64{0, 0, 0, 0, 0}
+		replies = []mockps.SyncReply{
+			{Bin: storageRadius, Start: 1, Topmost: 1, Peer: addr1},
+			{Bin: storageRadius, Start: 1, Topmost: 1, Peer: addr2},
+			{Bin: storageRadius + 1, Start: 1, Topmost: 1, Peer: addr1},
+			{Bin: storageRadius + 1, Start: 1, Topmost: 1, Peer: addr2},
+			{Bin: storageRadius + 2, Start: 1, Topmost: 1, Peer: addr1},
+			{Bin: storageRadius + 2, Start: 1, Topmost: 1, Peer: addr2},
+			{Bin: storageRadius + 3, Start: 1, Topmost: 1, Peer: addr1},
+			{Bin: storageRadius + 3, Start: 1, Topmost: 1, Peer: addr2},
+		}
+		revCalls = kadMock.MakeAddrTupleForRevCalls(base, addr1, addr2)
+	)
+
+	p, _, kad, _ := newPuller(t, opts{
+		kad: []kadMock.Option{kadMock.WithEachPeerRevCalls(
+			revCalls...,
+		)},
+		pullSync: []mockps.Option{mockps.WithCursors(cursors, 0), mockps.WithReplies(replies...)},
+		bins:     5,
+		rs:       resMock.NewReserve(resMock.WithRadius(storageRadius)),
+	})
+
+	time.Sleep(100 * time.Millisecond)
+	kad.Trigger()
+
+	if !p.IsBinSyncing(addr1, udIndex+1) || !p.IsBinSyncing(addr2, udIndex+1) {
+		t.Fatalf("peers should sync bin = uniqueness depth")
+	}
+	if !p.IsBinSyncing(addr1, udIndex) || !p.IsBinSyncing(addr2, udIndex) {
+		t.Fatalf("peers should sync bin = uniqueness depth - 1 > storage radius")
+	}
+	if !p.IsBinSyncing(addr1, storageRadius) && !p.IsBinSyncing(addr2, storageRadius) {
+		t.Fatalf("no peer sync bin = storage radius")
+	}
 }
 
 func TestSyncIntervals(t *testing.T) {
