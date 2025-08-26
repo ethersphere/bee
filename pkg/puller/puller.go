@@ -310,9 +310,9 @@ func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uin
 		peer.cancelBin(bin)
 	}
 
-	// sync all bins >= uniqueness depth or peer PO equals to bin
+	// sync all bins >= uniqueness depth
 	for bin, cur := range peer.cursors {
-		if (bin >= int(peer.ud) || bin == int(peer.po)) && !peer.isBinSyncing(uint8(bin)) {
+		if bin >= int(peer.ud) && !peer.isBinSyncing(uint8(bin)) {
 			p.syncPeerBin(ctx, peer, uint8(bin), cur)
 		}
 	}
@@ -563,8 +563,8 @@ type syncPeer struct {
 	address        swarm.Address
 	binCancelFuncs map[uint8]func() // slice of context cancel funcs for historical sync. index is bin
 	po             uint8
-	ud             int8 // uniqueness depth (-1 if not neighbor)
-	cursors        []uint64
+	ud             int8     // uniqueness depth (-1 if not neighbor)
+	cursors        []uint64 // index is bin, value is cursor
 
 	mtx sync.Mutex
 	wg  sync.WaitGroup
