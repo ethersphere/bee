@@ -212,10 +212,10 @@ func TestLegacyCompatibility(t *testing.T) {
 	})
 }
 
-func mustNewMultiaddr(t testing.TB, s string) multiaddr.Multiaddr {
+func mustNewMultiaddr(tb testing.TB, s string) multiaddr.Multiaddr {
 	a, err := multiaddr.NewMultiaddr(s)
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 	return a
 }
