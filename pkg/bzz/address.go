@@ -43,12 +43,9 @@ type addressJSON struct {
 }
 
 func NewAddress(signer crypto.Signer, underlay ma.Multiaddr, overlay swarm.Address, networkID uint64, nonce []byte) (*Address, error) {
-	underlayBinary, err := underlay.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
+	underlaysBinary := SerializeUnderlays([]ma.Multiaddr{underlay}) // todo: support multiple underlay addresses
 
-	signature, err := signer.Sign(generateSignData(underlayBinary, overlay.Bytes(), networkID))
+	signature, err := signer.Sign(generateSignData(underlaysBinary, overlay.Bytes(), networkID))
 	if err != nil {
 		return nil, err
 	}
