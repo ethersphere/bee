@@ -213,6 +213,8 @@ func TestLegacyCompatibility(t *testing.T) {
 }
 
 func mustNewMultiaddr(tb testing.TB, s string) multiaddr.Multiaddr {
+	tb.Helper()
+
 	a, err := multiaddr.NewMultiaddr(s)
 	if err != nil {
 		tb.Fatal(err)
