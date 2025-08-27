@@ -27,7 +27,7 @@ func newMetrics() nodeMetrics {
 				Name:      "warmup_duration_seconds",
 				Help:      "Duration in seconds for node warmup to complete",
 				// middle range should be more infrequent (because of addressbook)
-				Buckets: []float64{10, 12, 14, 16, 18, 20, 30, 45, 60, 90, 120, 180, 240, 300, 400, 420, 440, 460, 480, 550, 600},
+				Buckets: []float64{10, 20, 25, 30, 35, 40, 45, 50, 60, 70, 90, 120, 180, 240, 300, 350, 380, 400, 420, 440, 460, 480, 550, 600},
 			},
 		),
 		FullSyncDuration: prometheus.NewHistogram(
