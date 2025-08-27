@@ -146,10 +146,17 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return nil, fmt.Errorf("read synack message: %w", err)
 	}
 
-	observedUnderlay, err := ma.NewMultiaddrBytes(resp.Syn.ObservedUnderlay)
+	observedUnderlays, err := bzz.DeserializeUnderlays(resp.Syn.ObservedUnderlay)
 	if err != nil {
 		return nil, ErrInvalidSyn
 	}
+
+	if len(observedUnderlays) == 0 {
+		return nil, errors.New("no observed underlay sent")
+	}
+
+	// handle only the first underlay, for now
+	observedUnderlay := observedUnderlays[0]
 
 	observedUnderlayAddrInfo, err := libp2ppeer.AddrInfoFromP2pAddr(observedUnderlay)
 	if err != nil {
@@ -171,11 +178,6 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return nil, err
 	}
 
-	advertisableUnderlayBytes, err := bzzAddress.Underlay.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
-
 	if resp.Ack.NetworkID != s.networkID {
 		return nil, ErrNetworkIDIncompatible
 	}
@@ -189,7 +191,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 	welcomeMessage := s.GetWelcomeMessage()
 	msg := &pb.Ack{
 		Address: &pb.BzzAddress{
-			Underlay:  advertisableUnderlayBytes,
+			Underlay:  bzz.SerializeUnderlays([]ma.Multiaddr{bzzAddress.Underlay}), // todo: add more underlays when bzz.Address supports multiple Underlays
 			Overlay:   bzzAddress.Overlay.Bytes(),
 			Signature: bzzAddress.Signature,
 		},
@@ -239,10 +241,17 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 	}
 	s.metrics.SynRx.Inc()
 
-	observedUnderlay, err := ma.NewMultiaddrBytes(syn.ObservedUnderlay)
+	observedUnderlays, err := bzz.DeserializeUnderlays(syn.ObservedUnderlay)
 	if err != nil {
 		return nil, ErrInvalidSyn
 	}
+
+	if len(observedUnderlays) == 0 {
+		return nil, errors.New("no observed underlay sent")
+	}
+
+	// handle only the first underlay, for now
+	observedUnderlay := observedUnderlays[0]
 
 	advertisableUnderlay, err := s.advertisableAddresser.Resolve(observedUnderlay)
 	if err != nil {

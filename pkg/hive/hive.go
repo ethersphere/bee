@@ -192,7 +192,7 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 
 		peersRequest.Peers = append(peersRequest.Peers, &pb.BzzAddress{
 			Overlay:   addr.Overlay.Bytes(),
-			Underlay:  addr.Underlay.Bytes(),
+			Underlay:  bzz.SerializeUnderlays([]ma.Multiaddr{addr.Underlay}), // todo: add more underlays when bzz.Address supports multiple Underlays
 			Signature: addr.Signature,
 			Nonce:     addr.Nonce,
 		})
@@ -334,12 +334,19 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 
 	for _, p := range peers.Peers {
 
-		multiUnderlay, err := ma.NewMultiaddrBytes(p.Underlay)
+		multiUnderlays, err := bzz.DeserializeUnderlays(p.Underlay)
 		if err != nil {
 			s.metrics.PeerUnderlayErr.Inc()
 			s.logger.Debug("multi address underlay", "error", err)
 			continue
 		}
+
+		if len(multiUnderlays) == 0 {
+			continue // no underlays sent
+		}
+
+		// handle only the first underlay, for now
+		multiUnderlay := multiUnderlays[0]
 
 		// if peer exists already in the addressBook
 		// and if the underlays match, skip

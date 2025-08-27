@@ -77,10 +77,18 @@ func ParseAddress(underlay, overlay, signature, nonce []byte, validateOverlay bo
 		}
 	}
 
-	multiUnderlay, err := ma.NewMultiaddrBytes(underlay)
+	multiUnderlays, err := DeserializeUnderlays(underlay)
 	if err != nil {
+		return nil, fmt.Errorf("deserialize underlays: %w: %w", ErrInvalidAddress, err)
+	}
+
+	if len(multiUnderlays) == 0 {
+		// no underlays sent
 		return nil, ErrInvalidAddress
 	}
+
+	// handle only the first underlay, for now
+	multiUnderlay := multiUnderlays[0]
 
 	ethAddress, err := crypto.NewEthereumAddress(*recoveredPK)
 	if err != nil {

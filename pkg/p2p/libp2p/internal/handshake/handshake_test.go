@@ -42,14 +42,11 @@ func TestHandshake(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	node1maBinary, err := node1ma.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	node2maBinary, err := node2ma.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	node1maBinary := bzz.SerializeUnderlays([]ma.Multiaddr{node1ma}) // todo: add more underlays when bzz.Address supports multiple Underlays
+
+	node2maBinary := bzz.SerializeUnderlays([]ma.Multiaddr{node2ma}) // todo: add more underlays when bzz.Address supports multiple Underlays
+
 	node1AddrInfo, err := libp2ppeer.AddrInfoFromP2pAddr(node1ma)
 	if err != nil {
 		t.Fatal(err)
