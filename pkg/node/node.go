@@ -612,7 +612,6 @@ func NewBee(
 			"totalMonitoredEvents", totalCount,
 			"warmupDurationSeconds", warmupDuration)
 
-		// Record the warmup duration in the prometheus metric
 		nodeMetrics.WarmupDuration.Observe(warmupDuration)
 		pullSyncStartTime = t
 	}
@@ -1167,10 +1166,11 @@ func NewBee(
 						return
 					case <-syncCheckTicker.C:
 						synced := isFullySynced()
-						logger.Debug("sync status check", "synced", synced, "reserveSize", localStore.ReserveSize(), "threshold", reserveTreshold, "syncRate", pullerService.SyncRate())
+						logger.Debug("sync status check", "synced", synced, "reserveSize", localStore.ReserveSize(), "syncRate", pullerService.SyncRate())
 						if synced {
 							fullSyncTime := pullSyncStartTime.Sub(t)
-							nodeMetrics.FullSyncDuration.Observe(fullSyncTime.Seconds())
+							logger.Info("full sync duration", "duration", fullSyncTime)
+							nodeMetrics.FullSyncDuration.Observe(fullSyncTime.Minutes())
 							syncCheckTicker.Stop()
 							return
 						}
