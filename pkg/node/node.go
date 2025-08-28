@@ -1265,7 +1265,7 @@ func NewBee(
 		apiService.MustRegisterMetrics(kad.Metrics()...)
 		apiService.MustRegisterMetrics(saludService.Metrics()...)
 		apiService.MustRegisterMetrics(stateStoreMetrics.Metrics()...)
-		apiService.MustRegisterMetrics(Metrics(nodeMetrics)...)
+		apiService.MustRegisterMetrics(getMetrics(nodeMetrics)...)
 
 		if pullerService != nil {
 			apiService.MustRegisterMetrics(pullerService.Metrics()...)

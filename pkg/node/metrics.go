@@ -39,6 +39,6 @@ func newMetrics() nodeMetrics {
 	}
 }
 
-func Metrics(nodeMetrics nodeMetrics) []prometheus.Collector {
+func getMetrics(nodeMetrics nodeMetrics) []prometheus.Collector {
 	return metrics.PrometheusCollectorsFromFields(nodeMetrics)
 }
