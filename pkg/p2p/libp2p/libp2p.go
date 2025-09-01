@@ -284,9 +284,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 				return nil, fmt.Errorf("failed to initialize AutoTLS: %w", err)
 			}
 
-			// for local testing purposes
-			// certManager = NewMockP2PForgeCertMgr(nil)
-
 			// if the creation of the service fails, we must stop the cert manager
 			defer func() {
 				if err != nil {
