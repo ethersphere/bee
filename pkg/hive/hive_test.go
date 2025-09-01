@@ -77,7 +77,7 @@ func TestHandlerRateLimit(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		bzzAddr, err := bzz.NewAddress(signer, underlay, overlay, networkID, nonce)
+		bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{underlay}, overlay, networkID, nonce)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -145,7 +145,7 @@ func TestBroadcastPeers(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		bzzAddr, err := bzz.NewAddress(signer, underlay, overlay, networkID, nonce)
+		bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{underlay}, overlay, networkID, nonce)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -159,7 +159,7 @@ func TestBroadcastPeers(t *testing.T) {
 
 		wantMsgs[i/hive.MaxBatchSize].Peers = append(wantMsgs[i/hive.MaxBatchSize].Peers, &pb.BzzAddress{
 			Overlay:   bzzAddresses[i].Overlay.Bytes(),
-			Underlay:  bzz.SerializeUnderlays([]ma.Multiaddr{bzzAddresses[i].Underlay}), // todo: add more underlays when bzz.Address supports multiple Underlays
+			Underlay:  bzz.SerializeUnderlays(bzzAddresses[i].Underlay),
 			Signature: bzzAddresses[i].Signature,
 			Nonce:     nonce,
 		})
@@ -223,8 +223,10 @@ func TestBroadcastPeers(t *testing.T) {
 			allowPrivateCIDRs: true,
 			pingErr: func(addr ma.Multiaddr) (rtt time.Duration, err error) {
 				for _, v := range bzzAddresses[10:15] {
-					if v.Underlay.Equal(addr) {
-						return rtt, errors.New("ping failure")
+					for _, underlay := range v.Underlay {
+						if underlay.Equal(addr) {
+							return rtt, errors.New("ping failure")
+						}
 					}
 				}
 				return rtt, nil
