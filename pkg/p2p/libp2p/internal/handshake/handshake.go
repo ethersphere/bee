@@ -155,25 +155,27 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return nil, errors.New("no observed underlay sent")
 	}
 
-	// handle only the first underlay, for now
-	observedUnderlay := observedUnderlays[0]
+	advertisableUnderlays := make([]ma.Multiaddr, len(observedUnderlays))
+	for i, observedUnderlay := range observedUnderlays {
+		observedUnderlayAddrInfo, err := libp2ppeer.AddrInfoFromP2pAddr(observedUnderlay)
+		if err != nil {
+			return nil, fmt.Errorf("extract addr from P2P: %w", err)
+		}
 
-	observedUnderlayAddrInfo, err := libp2ppeer.AddrInfoFromP2pAddr(observedUnderlay)
-	if err != nil {
-		return nil, fmt.Errorf("extract addr from P2P: %w", err)
+		if s.libp2pID != observedUnderlayAddrInfo.ID {
+			// NOTE eventually we will return error here, but for now we want to gather some statistics
+			s.logger.Warning("received peer ID does not match ours", "their", observedUnderlayAddrInfo.ID, "ours", s.libp2pID)
+		}
+
+		advertisableUnderlay, err := s.advertisableAddresser.Resolve(observedUnderlay)
+		if err != nil {
+			return nil, err
+		}
+
+		advertisableUnderlays[i] = advertisableUnderlay
 	}
 
-	if s.libp2pID != observedUnderlayAddrInfo.ID {
-		// NOTE eventually we will return error here, but for now we want to gather some statistics
-		s.logger.Warning("received peer ID does not match ours", "their", observedUnderlayAddrInfo.ID, "ours", s.libp2pID)
-	}
-
-	advertisableUnderlay, err := s.advertisableAddresser.Resolve(observedUnderlay)
-	if err != nil {
-		return nil, err
-	}
-
-	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlay, s.overlay, s.networkID, s.nonce)
+	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce)
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +193,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 	welcomeMessage := s.GetWelcomeMessage()
 	msg := &pb.Ack{
 		Address: &pb.BzzAddress{
-			Underlay:  bzz.SerializeUnderlays([]ma.Multiaddr{bzzAddress.Underlay}), // todo: add more underlays when bzz.Address supports multiple Underlays
+			Underlay:  bzz.SerializeUnderlays(bzzAddress.Underlay),
 			Overlay:   bzzAddress.Overlay.Bytes(),
 			Signature: bzzAddress.Signature,
 		},
@@ -250,20 +252,22 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 		return nil, errors.New("no observed underlay sent")
 	}
 
-	// handle only the first underlay, for now
-	observedUnderlay := observedUnderlays[0]
+	advertisableUnderlays := make([]ma.Multiaddr, len(observedUnderlays))
+	for i, observedUnderlay := range observedUnderlays {
+		advertisableUnderlay, err := s.advertisableAddresser.Resolve(observedUnderlay)
+		if err != nil {
+			return nil, err
+		}
+		advertisableUnderlays[i] = advertisableUnderlay
+	}
 
-	advertisableUnderlay, err := s.advertisableAddresser.Resolve(observedUnderlay)
+	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce)
 	if err != nil {
 		return nil, err
 	}
 
-	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlay, s.overlay, s.networkID, s.nonce)
-	if err != nil {
-		return nil, err
-	}
-
-	advertisableUnderlayBytes, err := bzzAddress.Underlay.MarshalBinary()
+	// TODO support multiple underlays
+	advertisableUnderlayBytes, err := bzzAddress.Underlay[0].MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
@@ -276,7 +280,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 		},
 		Ack: &pb.Ack{
 			Address: &pb.BzzAddress{
-				Underlay:  advertisableUnderlayBytes,
+				Underlay:  advertisableUnderlayBytes, // TODO check how to decerialize
 				Overlay:   bzzAddress.Overlay.Bytes(),
 				Signature: bzzAddress.Signature,
 			},

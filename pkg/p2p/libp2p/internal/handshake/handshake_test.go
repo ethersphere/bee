@@ -73,7 +73,7 @@ func TestHandshake(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	node1BzzAddress, err := bzz.NewAddress(signer1, node1ma, addr, networkID, nonce)
+	node1BzzAddress, err := bzz.NewAddress(signer1, []ma.Multiaddr{node1ma}, addr, networkID, nonce)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestHandshake(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	node2BzzAddress, err := bzz.NewAddress(signer2, node2ma, addr2, networkID, nonce)
+	node2BzzAddress, err := bzz.NewAddress(signer2, []ma.Multiaddr{node2ma}, addr2, networkID, nonce)
 	if err != nil {
 		t.Fatal(err)
 	}

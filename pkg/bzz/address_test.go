@@ -35,7 +35,7 @@ func TestBzzAddress(t *testing.T) {
 	}
 	signer1 := crypto.NewDefaultSigner(privateKey1)
 
-	bzzAddress, err := bzz.NewAddress(signer1, node1ma, overlay, 3, nonce)
+	bzzAddress, err := bzz.NewAddress(signer1, []ma.Multiaddr{node1ma}, overlay, 3, nonce)
 	if err != nil {
 		t.Fatal(err)
 	}

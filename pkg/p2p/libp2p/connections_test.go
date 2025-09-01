@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/ethersphere/bee/v2/pkg/bzz"
 	"io"
 	"math/rand"
 	"reflect"
@@ -1266,7 +1267,7 @@ func checkAddressbook(t *testing.T, ab addressbook.Getter, overlay swarm.Address
 		t.Fatalf("overlay mismatch. got %s want %s", addr.Overlay, overlay)
 	}
 
-	if !addr.Underlay.Equal(underlay) {
+	if !bzz.IsUnderlayEqual(addr.Underlay, []ma.Multiaddr{underlay}) {
 		t.Fatalf("underlay mismatch. got %s, want %s", addr.Underlay, underlay)
 	}
 }

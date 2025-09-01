@@ -105,7 +105,7 @@ type Options struct {
 // kadOptions are made from Options with default values set
 type kadOptions struct {
 	SaturationFunc binSaturationFunc
-	Bootnodes      []ma.Multiaddr
+	Bootnodes      []ma.Multiaddr // TODO each of bootnodes will have multiple addresses
 	BootnodeMode   bool
 	PruneCountFunc pruneCountFunc
 	PruneFunc      pruneFunc
@@ -826,7 +826,7 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 			if attempts >= maxBootNodeAttempts {
 				return true, nil
 			}
-			bzzAddress, err := k.p2p.Connect(ctx, addr)
+			bzzAddress, err := k.p2p.Connect(ctx, []ma.Multiaddr{addr}) // TODO use multiple underlay addresses, after bootnodes would support it
 
 			attempts++
 			k.metrics.TotalBootNodesConnectionAttempts.Inc()
@@ -964,7 +964,7 @@ func (k *Kad) recalcDepth() {
 
 // connect connects to a peer and gossips its address to our connected peers,
 // as well as sends the peers we are connected to the newly connected peer
-func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) error {
+func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma []ma.Multiaddr) error {
 	k.logger.Debug("attempting connect to peer", "peer_address", peer)
 
 	ctx, cancel := context.WithTimeout(ctx, peerConnectionAttemptTimeout)

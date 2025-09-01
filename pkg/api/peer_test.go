@@ -45,7 +45,7 @@ func TestConnect(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	bzzAddress, err := bzz.NewAddress(crypto.NewDefaultSigner(privateKey), underlama, overlay, 0, nil)
+	bzzAddress, err := bzz.NewAddress(crypto.NewDefaultSigner(privateKey), []ma.Multiaddr{underlama}, overlay, 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -28,7 +27,7 @@ var ErrInvalidAddress = errors.New("invalid address")
 // It consists of a peers underlay (physical) address, overlay (topology) address and signature.
 // Signature is used to verify the `Overlay/Underlay` pair, as it is based on `underlay|networkID`, signed with the public key of Overlay address
 type Address struct {
-	Underlay        ma.Multiaddr
+	Underlay        []ma.Multiaddr
 	Overlay         swarm.Address
 	Signature       []byte
 	Nonce           []byte
@@ -36,14 +35,14 @@ type Address struct {
 }
 
 type addressJSON struct {
-	Overlay   string `json:"overlay"`
-	Underlay  string `json:"underlay"`
-	Signature string `json:"signature"`
-	Nonce     string `json:"transaction"`
+	Overlay   string   `json:"overlay"`
+	Underlay  []string `json:"underlay"`
+	Signature string   `json:"signature"`
+	Nonce     string   `json:"transaction"`
 }
 
-func NewAddress(signer crypto.Signer, underlay ma.Multiaddr, overlay swarm.Address, networkID uint64, nonce []byte) (*Address, error) {
-	underlaysBinary := SerializeUnderlays([]ma.Multiaddr{underlay}) // todo: support multiple underlay addresses
+func NewAddress(signer crypto.Signer, underlays []ma.Multiaddr, overlay swarm.Address, networkID uint64, nonce []byte) (*Address, error) {
+	underlaysBinary := SerializeUnderlays(underlays)
 
 	signature, err := signer.Sign(generateSignData(underlaysBinary, overlay.Bytes(), networkID))
 	if err != nil {
@@ -51,7 +50,7 @@ func NewAddress(signer crypto.Signer, underlay ma.Multiaddr, overlay swarm.Addre
 	}
 
 	return &Address{
-		Underlay:  underlay,
+		Underlay:  underlays,
 		Overlay:   overlay,
 		Signature: signature,
 		Nonce:     nonce,
@@ -84,16 +83,13 @@ func ParseAddress(underlay, overlay, signature, nonce []byte, validateOverlay bo
 		return nil, ErrInvalidAddress
 	}
 
-	// handle only the first underlay, for now
-	multiUnderlay := multiUnderlays[0]
-
 	ethAddress, err := crypto.NewEthereumAddress(*recoveredPK)
 	if err != nil {
 		return nil, fmt.Errorf("extract blockchain address: %w: %w", err, ErrInvalidAddress)
 	}
 
 	return &Address{
-		Underlay:        multiUnderlay,
+		Underlay:        multiUnderlays,
 		Overlay:         swarm.NewAddress(overlay),
 		Signature:       signature,
 		Nonce:           nonce,
@@ -114,21 +110,46 @@ func (a *Address) Equal(b *Address) bool {
 		return a == b
 	}
 
-	return a.Overlay.Equal(b.Overlay) && multiaddrEqual(a.Underlay, b.Underlay) && bytes.Equal(a.Signature, b.Signature) && bytes.Equal(a.Nonce, b.Nonce)
+	return a.Overlay.Equal(b.Overlay) && IsUnderlayEqual(a.Underlay, b.Underlay) && bytes.Equal(a.Signature, b.Signature) && bytes.Equal(a.Nonce, b.Nonce)
 }
 
-func multiaddrEqual(a, b ma.Multiaddr) bool {
-	if a == nil || b == nil {
-		return a == b
+func IsUnderlayEqual(a, b []ma.Multiaddr) bool {
+	if len(a) != len(b) {
+		return false
 	}
 
-	return a.Equal(b)
+	toMap := func(addrs []ma.Multiaddr) map[string]int {
+		m := make(map[string]int, len(addrs))
+		for _, addr := range addrs {
+			m[addr.String()]++
+		}
+		return m
+	}
+
+	ma := toMap(a)
+	mb := toMap(b)
+
+	if len(ma) != len(mb) {
+		return false
+	}
+
+	for k, v := range ma {
+		if mb[k] != v {
+			return false
+		}
+	}
+	return true
 }
 
 func (a *Address) MarshalJSON() ([]byte, error) {
+	underlays := make([]string, len(a.Underlay))
+	for i, underlay := range a.Underlay {
+		underlays[i] = underlay.String()
+	}
+
 	return json.Marshal(&addressJSON{
 		Overlay:   a.Overlay.String(),
-		Underlay:  a.Underlay.String(),
+		Underlay:  underlays,
 		Signature: base64.StdEncoding.EncodeToString(a.Signature),
 		Nonce:     common.Bytes2Hex(a.Nonce),
 	})
@@ -148,23 +169,43 @@ func (a *Address) UnmarshalJSON(b []byte) error {
 
 	a.Overlay = addr
 
-	m, err := ma.NewMultiaddr(v.Underlay)
+	multiaddrs, err := stringsToMultiAddr(v.Underlay)
 	if err != nil {
 		return err
 	}
 
-	a.Underlay = m
+	a.Underlay = multiaddrs
 	a.Signature, err = base64.StdEncoding.DecodeString(v.Signature)
 	a.Nonce = common.Hex2Bytes(v.Nonce)
 	return err
 }
 
 func (a *Address) String() string {
-	return fmt.Sprintf("[Underlay: %v, Overlay %v, Signature %x, Transaction %x]", a.Underlay, a.Overlay, a.Signature, a.Nonce)
+	return fmt.Sprintf("[Underlay: %v, Overlay %v, Signature %x, Transaction %x]", a.underlaysToString(), a.Overlay, a.Signature, a.Nonce)
 }
 
 // ShortString returns shortened versions of bzz address in a format: [Overlay, Underlay]
 // It can be used for logging
 func (a *Address) ShortString() string {
-	return fmt.Sprintf("[Overlay: %s, Underlay: %s]", a.Overlay.String(), a.Underlay.String())
+	return fmt.Sprintf("[Overlay: %s, Underlays: %v]", a.Overlay.String(), a.underlaysToString())
+}
+
+func (a *Address) underlaysToString() []string {
+	underlays := make([]string, len(a.Underlay))
+	for i, underlay := range a.Underlay {
+		underlays[i] = underlay.String()
+	}
+	return underlays
+}
+
+func stringsToMultiAddr(addrs []string) ([]ma.Multiaddr, error) {
+	multiAddrs := make([]ma.Multiaddr, len(addrs))
+	for i, addr := range addrs {
+		multiAddr, err := ma.NewMultiaddr(addr)
+		if err != nil {
+			return nil, err
+		}
+		multiAddrs[i] = multiAddr
+	}
+	return multiAddrs, nil
 }

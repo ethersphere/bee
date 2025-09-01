@@ -31,6 +31,7 @@ func (s *Service) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// TODO read addresses correctly
 	bzzAddr, err := s.p2p.Connect(r.Context(), paths.MultiAddress)
 	if err != nil {
 		logger.Debug("p2p connect failed", "addresses", paths.MultiAddress, "error", err)
