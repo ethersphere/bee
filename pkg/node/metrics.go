@@ -39,8 +39,6 @@ func newMetrics() nodeMetrics {
 	}
 }
 
-// RegisterMetrics registers all metrics from the package
-func (m nodeMetrics) RegisterMetrics() {
-	prometheus.MustRegister(m.WarmupDuration)
-	prometheus.MustRegister(m.FullSyncDuration)
+func getMetrics(nodeMetrics nodeMetrics) []prometheus.Collector {
+	return metrics.PrometheusCollectorsFromFields(nodeMetrics)
 }

@@ -40,7 +40,8 @@ func TestSocMine(t *testing.T) {
 	}
 	// the transformed address hasher factory function
 	prefixhasher := func() hash.Hash { return swarm.NewPrefixHasher(prefix) }
-	trHasher := func() hash.Hash { return bmt.NewHasher(prefixhasher) }
+	// Create a pool for efficient hasher reuse
+	trHasherPool := bmt.NewPool(bmt.NewConf(prefixhasher, swarm.BmtBranches, 8))
 	// the bignum cast of the maximum sample value (upper bound on transformed addresses as a 256-bit article)
 	// this constant is for a minimum reserve size of 2 million chunks with sample size of 16
 	// = 1.284401 * 10^71 = 1284401 + 66 0-s
@@ -79,13 +80,13 @@ func TestSocMine(t *testing.T) {
 	// for sanity check: given a filterSOCAddr requiring a 0 leading bit (chance of 1/2)
 	// we expect an overall rough 4 million chunks to be mined to create this sample
 	// for 8 workers that is half a million round on average per worker
-	err = makeChunks(t, signer, sampleSize, filterSOCAddr, filterTrAddr, trHasher)
+	err = makeChunks(t, signer, sampleSize, filterSOCAddr, filterTrAddr, trHasherPool)
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
-func makeChunks(t *testing.T, signer crypto.Signer, sampleSize int, filterSOCAddr func(swarm.Address) bool, filterTrAddr func(swarm.Address) (bool, error), trHasher func() hash.Hash) error {
+func makeChunks(t *testing.T, signer crypto.Signer, sampleSize int, filterSOCAddr func(swarm.Address) bool, filterTrAddr func(swarm.Address) (bool, error), trHasherPool *bmt.Pool) error {
 	t.Helper()
 
 	// set owner address from signer
@@ -129,6 +130,8 @@ func makeChunks(t *testing.T, signer crypto.Signer, sampleSize int, filterSOCAdd
 		eg.Go(func() (err error) {
 			offset := i * 4
 			found := 0
+			// Get one hasher per goroutine from the pool to avoid race conditions
+			hasher := trHasherPool.Get()
 			for seed := uint32(1); ; seed++ {
 				select {
 				case <-ectx.Done():
@@ -148,9 +151,9 @@ func makeChunks(t *testing.T, signer crypto.Signer, sampleSize int, filterSOCAdd
 				if !filterSOCAddr(addr) {
 					continue
 				}
-				hasher := trHasher()
 				data := s.WrappedChunk().Data()
-				hasher.(*bmt.Hasher).SetHeader(data[:8])
+				hasher.Reset()
+				hasher.SetHeader(data[:8])
 				_, err = hasher.Write(data[8:])
 				if err != nil {
 					return err
