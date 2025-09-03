@@ -24,14 +24,13 @@ func (s *Service) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 
 	mux.Vars(r)["multi-address"] = "/" + mux.Vars(r)["multi-address"]
 	paths := struct {
-		MultiAddress multiaddr.Multiaddr `map:"multi-address" validate:"required"`
+		MultiAddress []multiaddr.Multiaddr `map:"multi-address" validate:"required"`
 	}{}
 	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
 		response("invalid path params", logger, w)
 		return
 	}
 
-	// TODO read addresses correctly
 	bzzAddr, err := s.p2p.Connect(r.Context(), paths.MultiAddress)
 	if err != nil {
 		logger.Debug("p2p connect failed", "addresses", paths.MultiAddress, "error", err)

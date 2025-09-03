@@ -2026,11 +2026,14 @@ func p2pMock(t *testing.T, ab addressbook.Interface, signer beeCrypto.Signer, co
 	t.Helper()
 
 	p2ps := p2pmock.New(
-		p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
-			if addr.Equal(nonConnectableAddress) {
-				_ = atomic.AddInt32(failedCounter, 1)
-				return nil, errors.New("non reachable node")
+		p2pmock.WithConnectFunc(func(ctx context.Context, addrs []ma.Multiaddr) (*bzz.Address, error) {
+			for _, addr := range addrs {
+				if addr.Equal(nonConnectableAddress) {
+					_ = atomic.AddInt32(failedCounter, 1)
+					return nil, errors.New("non reachable node")
+				}
 			}
+
 			if counter != nil {
 				_ = atomic.AddInt32(counter, 1)
 			}
@@ -2041,13 +2044,13 @@ func p2pMock(t *testing.T, ab addressbook.Interface, signer beeCrypto.Signer, co
 			}
 
 			for _, a := range addresses {
-				if bzz.IsUnderlayEqual(a.Underlay, []ma.Multiaddr{addr}) {
+				if bzz.IsUnderlayEqual(a.Underlay, addrs) {
 					return &a, nil
 				}
 			}
 
 			address := swarm.RandAddress(t)
-			bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{addr}, address, 0, nil)
+			bzzAddr, err := bzz.NewAddress(signer, addrs, address, 0, nil)
 			if err != nil {
 				return nil, err
 			}

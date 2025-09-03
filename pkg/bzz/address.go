@@ -36,7 +36,7 @@ type Address struct {
 
 type addressJSON struct {
 	Overlay   string   `json:"overlay"`
-	Underlay  []string `json:"underlay"`
+	Underlays []string `json:"underlays"`
 	Signature string   `json:"signature"`
 	Nonce     string   `json:"transaction"`
 }
@@ -113,28 +113,39 @@ func (a *Address) Equal(b *Address) bool {
 	return a.Overlay.Equal(b.Overlay) && IsUnderlayEqual(a.Underlay, b.Underlay) && bytes.Equal(a.Signature, b.Signature) && bytes.Equal(a.Nonce, b.Nonce)
 }
 
+func IsAtLeastOneUnderlayEqual(a, b []ma.Multiaddr) bool {
+	if len(a) == 0 || len(b) == 0 {
+		return false
+	}
+	for i := 0; i < len(a); i++ {
+		for j := 0; j < len(b); j++ {
+			if a[i] != nil && b[j] != nil && a[i].Equal(b[j]) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func IsUnderlayEqual(a, b []ma.Multiaddr) bool {
 	if len(a) != len(b) {
 		return false
 	}
 
-	toMap := func(addrs []ma.Multiaddr) map[string]int {
-		m := make(map[string]int, len(addrs))
-		for _, addr := range addrs {
-			m[addr.String()]++
+	used := make([]bool, len(b))
+	for i := 0; i < len(a); i++ {
+		found := false
+		for j := 0; j < len(b); j++ {
+			if used[j] {
+				continue
+			}
+			if a[i].Equal(b[j]) {
+				used[j] = true
+				found = true
+				break
+			}
 		}
-		return m
-	}
-
-	ma := toMap(a)
-	mb := toMap(b)
-
-	if len(ma) != len(mb) {
-		return false
-	}
-
-	for k, v := range ma {
-		if mb[k] != v {
+		if !found {
 			return false
 		}
 	}
@@ -142,14 +153,9 @@ func IsUnderlayEqual(a, b []ma.Multiaddr) bool {
 }
 
 func (a *Address) MarshalJSON() ([]byte, error) {
-	underlays := make([]string, len(a.Underlay))
-	for i, underlay := range a.Underlay {
-		underlays[i] = underlay.String()
-	}
-
 	return json.Marshal(&addressJSON{
 		Overlay:   a.Overlay.String(),
-		Underlay:  underlays,
+		Underlays: a.underlaysToString(),
 		Signature: base64.StdEncoding.EncodeToString(a.Signature),
 		Nonce:     common.Bytes2Hex(a.Nonce),
 	})
@@ -169,7 +175,7 @@ func (a *Address) UnmarshalJSON(b []byte) error {
 
 	a.Overlay = addr
 
-	multiaddrs, err := stringsToMultiAddr(v.Underlay)
+	multiaddrs, err := stringsToMultiAddr(v.Underlays)
 	if err != nil {
 		return err
 	}

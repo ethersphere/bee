@@ -266,12 +266,6 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 		return nil, err
 	}
 
-	// TODO support multiple underlays
-	advertisableUnderlayBytes, err := bzzAddress.Underlay[0].MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
-
 	welcomeMessage := s.GetWelcomeMessage()
 
 	if err := w.WriteMsgWithContext(ctx, &pb.SynAck{
@@ -280,7 +274,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 		},
 		Ack: &pb.Ack{
 			Address: &pb.BzzAddress{
-				Underlay:  advertisableUnderlayBytes, // TODO check how to decerialize
+				Underlay:  bzz.SerializeUnderlays(bzzAddress.Underlay), // TODO check how to decerialize
 				Overlay:   bzzAddress.Overlay.Bytes(),
 				Signature: bzzAddress.Signature,
 			},
