@@ -51,7 +51,7 @@ func (r *peerRegistry) Exists(overlay swarm.Address) (found bool) {
 	return found
 }
 
-// Disconnect removes the peer from registry in disconnect.
+// Disconnected removes the peer from registry in disconnect.
 // peerRegistry has to be set by network.Network.Notify().
 func (r *peerRegistry) Disconnected(_ network.Network, c network.Conn) {
 	peerID := c.RemotePeer()
