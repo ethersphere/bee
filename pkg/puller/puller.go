@@ -150,52 +150,37 @@ func (p *Puller) manage(ctx context.Context) {
 			}
 			p.logger.Debug("radius decrease", "old_radius", prevRadius, "new_radius", newRadius)
 		}
+		// TODO check neighborhood or radius have changed or not
 		prevRadius = newRadius
 
 		// peersDisconnected is used to mark and prune peers that are no longer connected.
 		peersDisconnected := maps.Clone(p.syncPeers)
 
-		var neighbors []swarm.Address
+		// make pullsync binary tree of neighbors by their address
+		bt := newTreeNode[syncPeer](nil, nil, newRadius)
 		_ = p.topology.EachConnectedPeerRev(func(addr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
-			if syncPeer, ok := p.syncPeers[addr.ByteString()]; !ok {
-				p.syncPeers[addr.ByteString()] = newSyncPeer(addr, p.bins, po)
+			syncPeer, ok := p.syncPeers[addr.ByteString()]
+			if !ok {
+				syncPeer = newSyncPeer(addr, p.bins, po)
+				p.syncPeers[addr.ByteString()] = syncPeer
 			} else {
-				syncPeer.ud = -1
+				syncPeer.syncBins = make([]bool, p.bins)
 			}
 			if po >= newRadius {
-				neighbors = append(neighbors, addr)
+				_ = bt.Put(addr.Bytes(), syncPeer) // all peers are unique and have the same key length, panic should not happen
 			}
 			delete(peersDisconnected, addr.ByteString())
 			return false, false, nil
 		}, topology.Select{})
 
+		// assign bins to each peer for syncing if peerset or radius changed
+		// bt.traverse()
+
 		for _, peer := range peersDisconnected {
 			p.disconnectPeer(peer.address)
 		}
 
-		// minUd := uint8(255)
-		for i, target := range neighbors {
-			maxUd := newRadius // do not want to sync below radius
-
-			// find the uniqueness depth, within which they are the only peer in the set
-			for j, neighbor := range neighbors {
-				if i == j {
-					continue
-				}
-
-				ud := swarm.Proximity(target.Bytes(), neighbor.Bytes()) + 1
-				if ud > maxUd {
-					maxUd = ud
-				}
-			}
-			p.syncPeers[target.ByteString()].ud = int8(maxUd)
-
-			// if maxUd < minUd {
-			// 	minUd = maxUd
-			// }
-		}
-
-		p.recalcPeers(ctx, newRadius)
+		p.recalcPeers(ctx)
 	}
 
 	tick := time.NewTicker(recalcPeersDur)
@@ -230,7 +215,7 @@ func (p *Puller) disconnectPeer(addr swarm.Address) {
 
 // recalcPeers starts or stops syncing process for peers per bin depending on the current sync radius.
 // Must be called under lock.
-func (p *Puller) recalcPeers(ctx context.Context, storageRadius uint8) {
+func (p *Puller) recalcPeers(ctx context.Context) {
 	var wg sync.WaitGroup
 	for _, peer := range p.syncPeers {
 		wg.Add(1)
@@ -238,20 +223,19 @@ func (p *Puller) recalcPeers(ctx context.Context, storageRadius uint8) {
 		go func(peer *syncPeer) {
 			defer p.wg.Done()
 			defer wg.Done()
-			if err := p.syncPeer(ctx, peer, storageRadius); err != nil {
+			if err := p.syncPeer(ctx, peer); err != nil {
 				p.logger.Debug("sync peer failed", "peer_address", peer.address, "error", err)
 			}
 		}(peer)
-		// TODO: sync bins above or equal to storageRadius not covered by syncpeer
 	}
 	wg.Wait()
 }
 
-func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uint8) error {
+func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer) error {
 	peer.mtx.Lock()
 	defer peer.mtx.Unlock()
 
-	if peer.ud == -1 { // not neighbor
+	if len(peer.syncBins) == 0 { // no bin is assigned for syncing
 		peer.stop()
 		return nil
 	}
@@ -292,28 +276,20 @@ func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uin
 		return errCursorsLength
 	}
 
-	// sync PO bin only
-	if !peer.isBinSyncing(peer.po) {
-		p.syncPeerBin(ctx, peer, peer.po, peer.cursors[peer.po])
-	}
-
 	/*
-		The syncing behavior diverges for peers outside and within the storage radius.
-		For neighbor peers, we sync ALL bins greater than or equal to the storage radius.
-		For peers with PO lower than the storage radius, we must sync ONLY the bin that is the PO.
-		For peers peer with PO lower than the storage radius and even lower than the allowed minimum threshold,
-		no syncing is done.
+		All chunks above storage radius need to be syncronized only once.
+		For that, the puller must be aware of how neighbors cover the chunks by their bins together.
+		Based on that information, the puller will assign bins to each peer for sync.
+		So this point all bins need to be known for a peer for syncing.
 	*/
 
-	// cancel all bins lower than the storage radius
-	for bin := uint8(0); bin < storageRadius; bin++ {
-		peer.cancelBin(bin)
-	}
-
-	// sync all bins >= uniqueness depth
-	for bin, cur := range peer.cursors {
-		if bin >= int(peer.ud) && !peer.isBinSyncing(uint8(bin)) {
-			p.syncPeerBin(ctx, peer, uint8(bin), cur)
+	for bin, forSync := range peer.syncBins {
+		if forSync {
+			if !peer.isBinSyncing(uint8(bin)) {
+				p.syncPeerBin(ctx, peer, uint8(bin), peer.cursors[bin])
+			}
+		} else {
+			peer.cancelBin(uint8(bin))
 		}
 	}
 
@@ -563,7 +539,7 @@ type syncPeer struct {
 	address        swarm.Address
 	binCancelFuncs map[uint8]func() // slice of context cancel funcs for historical sync. index is bin
 	po             uint8
-	ud             int8     // uniqueness depth (-1 if not neighbor)
+	syncBins       []bool   // index is bin, value is syncing or not. will be set during folding in the puller neighborhood tree
 	cursors        []uint64 // index is bin, value is cursor
 
 	mtx sync.Mutex
@@ -575,7 +551,7 @@ func newSyncPeer(addr swarm.Address, bins, po uint8) *syncPeer {
 		address:        addr,
 		binCancelFuncs: make(map[uint8]func(), bins),
 		po:             po,
-		ud:             -1, // calculated later when all neighbors are collected
+		syncBins:       make([]bool, bins),
 	}
 }
 
