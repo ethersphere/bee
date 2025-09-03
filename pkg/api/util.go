@@ -253,7 +253,7 @@ func mapStructure(input, output interface{}, hooks map[string]func(v string) (st
 			}
 		case reflect.Interface:
 			switch field.Type() {
-			case reflect.TypeOf((*multiaddr.Multiaddr)(nil)).Elem():
+			case reflect.TypeFor[multiaddr.Multiaddr]():
 				val, err := multiaddr.NewMultiaddr(value)
 				if err != nil {
 					return err
