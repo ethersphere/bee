@@ -421,7 +421,7 @@ func TestPing(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	if _, err := s2.Ping(ctx, addr); err != nil {
+	if _, err := s2.Ping(ctx, addr[0]); err != nil {
 		t.Fatal(err)
 	}
 }
