@@ -71,7 +71,7 @@ func TestSyncOutsideDepth(t *testing.T) {
 		}
 	)
 
-	_, _, kad, pullsync := newPuller(t, opts{
+	p, _, kad, pullsync := newPuller(t, opts{
 		kad: []kadMock.Option{
 			kadMock.WithEachPeerRevCalls(
 				kadMock.AddrTuple{Addr: addr, PO: 2},
@@ -86,11 +86,70 @@ func TestSyncOutsideDepth(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	kad.Trigger()
 
+	if !p.IsSyncing(addr) {
+		t.Fatalf("peer is not syncing but should")
+	}
+	if p.IsSyncing(addr2) {
+		t.Fatalf("peer is syncing but shouldn't because not neighbor")
+	}
+
 	waitCursorsCalled(t, pullsync, addr)
-	waitCursorsCalled(t, pullsync, addr2)
 
 	waitSyncCalledBins(t, pullsync, addr, 2, 3)
-	waitSyncCalledBins(t, pullsync, addr2, 0)
+}
+
+// test that addresses not cover full range of radius
+func TestAddressesNotCoverRange(t *testing.T) {
+	t.Parallel()
+
+	// calculate addresses where PO is greater than storage radius for all neighbors
+	storageRadius := uint8(0)
+	base := swarm.RandAddress(t)
+	firstBitDiffer := storageRadius + 1 // common prefix in neighbor addresses, their POs must be this number.
+	addr1Bytes := base.Clone().Bytes()
+	addr1Bytes[firstBitDiffer/8] ^= 1 << (7 - (firstBitDiffer % 8))
+	addr1 := swarm.NewAddress(addr1Bytes)
+	udIndex := firstBitDiffer + 2 // their UDs will be this number + 1
+	addr2Bytes := addr1.Clone().Bytes()
+	addr2Bytes[udIndex/8] ^= (1 << (7 - (udIndex % 8)))
+	addr2 := swarm.NewAddress(addr2Bytes)
+
+	var (
+		cursors = []uint64{0, 0, 0, 0, 0}
+		replies = []mockps.SyncReply{
+			{Bin: storageRadius, Start: 1, Topmost: 1, Peer: addr1},
+			{Bin: storageRadius, Start: 1, Topmost: 1, Peer: addr2},
+			{Bin: storageRadius + 1, Start: 1, Topmost: 1, Peer: addr1},
+			{Bin: storageRadius + 1, Start: 1, Topmost: 1, Peer: addr2},
+			{Bin: storageRadius + 2, Start: 1, Topmost: 1, Peer: addr1},
+			{Bin: storageRadius + 2, Start: 1, Topmost: 1, Peer: addr2},
+			{Bin: storageRadius + 3, Start: 1, Topmost: 1, Peer: addr1},
+			{Bin: storageRadius + 3, Start: 1, Topmost: 1, Peer: addr2},
+		}
+		revCalls = kadMock.MakeAddrTupleForRevCalls(base, addr1, addr2)
+	)
+
+	p, _, kad, _ := newPuller(t, opts{
+		kad: []kadMock.Option{kadMock.WithEachPeerRevCalls(
+			revCalls...,
+		)},
+		pullSync: []mockps.Option{mockps.WithCursors(cursors, 0), mockps.WithReplies(replies...)},
+		bins:     5,
+		rs:       resMock.NewReserve(resMock.WithRadius(storageRadius)),
+	})
+
+	time.Sleep(100 * time.Millisecond)
+	kad.Trigger()
+
+	if !p.IsBinSyncing(addr1, udIndex+1) || !p.IsBinSyncing(addr2, udIndex+1) {
+		t.Fatalf("peers should sync bin = uniqueness depth")
+	}
+	if !p.IsBinSyncing(addr1, udIndex) || !p.IsBinSyncing(addr2, udIndex) {
+		t.Fatalf("peers should sync bin = uniqueness depth - 1 > storage radius")
+	}
+	if !p.IsBinSyncing(addr1, storageRadius) && !p.IsBinSyncing(addr2, storageRadius) {
+		t.Fatalf("no peer sync bin = storage radius")
+	}
 }
 
 func TestSyncIntervals(t *testing.T) {
@@ -212,7 +271,7 @@ func TestPeerDisconnected(t *testing.T) {
 	p, _, kad, pullsync := newPuller(t, opts{
 		kad: []kadMock.Option{
 			kadMock.WithEachPeerRevCalls(
-				kadMock.AddrTuple{Addr: addr, PO: 1},
+				kadMock.AddrTuple{Addr: addr, PO: 2},
 			),
 		},
 		pullSync: []mockps.Option{mockps.WithCursors(cursors, 0)},
@@ -222,10 +281,10 @@ func TestPeerDisconnected(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 	kad.Trigger()
-	waitCursorsCalled(t, pullsync, addr)
 	if !p.IsSyncing(addr) {
 		t.Fatalf("peer is not syncing but should")
 	}
+	waitCursorsCalled(t, pullsync, addr)
 	kad.ResetPeers()
 	kad.Trigger()
 	time.Sleep(50 * time.Millisecond)
@@ -298,13 +357,13 @@ func TestBinReset(t *testing.T) {
 		cursors = []uint64{1000, 1000, 1000}
 	)
 
-	_, s, kad, pullsync := newPuller(t, opts{
+	p, s, kad, pullsync := newPuller(t, opts{
 		kad: []kadMock.Option{
 			kadMock.WithEachPeerRevCalls(
-				kadMock.AddrTuple{Addr: addr, PO: 1},
+				kadMock.AddrTuple{Addr: addr, PO: 2},
 			),
 		},
-		pullSync: []mockps.Option{mockps.WithCursors(cursors, 0), mockps.WithReplies(mockps.SyncReply{Bin: 1, Start: 1, Topmost: 1, Peer: addr})},
+		pullSync: []mockps.Option{mockps.WithCursors(cursors, 0), mockps.WithReplies(mockps.SyncReply{Bin: 2, Start: 1, Topmost: 1, Peer: addr})}, // bin must be at least radius to sync
 		bins:     3,
 		rs:       resMock.NewReserve(resMock.WithRadius(2)),
 	})
@@ -313,6 +372,9 @@ func TestBinReset(t *testing.T) {
 
 	kad.Trigger()
 
+	if !p.IsSyncing(addr) {
+		t.Fatalf("peer is not syncing but should")
+	}
 	waitCursorsCalled(t, pullsync, addr)
 	waitSync(t, pullsync, addr)
 
@@ -462,11 +524,8 @@ func TestRadiusIncrease(t *testing.T) {
 	rs.SetStorageRadius(2)
 	kad.Trigger()
 	time.Sleep(100 * time.Millisecond)
-	if !p.IsBinSyncing(addr, 1) {
-		t.Fatalf("peer is not syncing but should")
-	}
-	if p.IsBinSyncing(addr, 2) {
-		t.Fatalf("peer is syncing but shouldn't")
+	if p.IsBinSyncing(addr, 1) || p.IsBinSyncing(addr, 2) || p.IsBinSyncing(addr, 3) {
+		t.Fatalf("peer is syncing but shouldn't because it is not a neighbor")
 	}
 }
 
