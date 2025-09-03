@@ -825,7 +825,7 @@ func TestAddressBookPrune(t *testing.T) {
 	}
 	testutil.CleanupCloser(t, kad)
 
-	nonConnPeer, err := bzz.NewAddress(signer, nonConnectableAddress, swarm.RandAddressAt(t, base, 1), 0, nil)
+	nonConnPeer, err := bzz.NewAddress(signer, []ma.Multiaddr{nonConnectableAddress}, swarm.RandAddressAt(t, base, 1), 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -903,7 +903,7 @@ func TestAddressBookQuickPrune_FLAKY(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 
-	nonConnPeer, err := bzz.NewAddress(signer, nonConnectableAddress, swarm.RandAddressAt(t, base, 1), 0, nil)
+	nonConnPeer, err := bzz.NewAddress(signer, []ma.Multiaddr{nonConnectableAddress}, swarm.RandAddressAt(t, base, 1), 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1237,7 +1237,7 @@ func TestStart(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			bzzAddr, err := bzz.NewAddress(signer, multiaddr, peer, 0, nil)
+			bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{multiaddr}, peer, 0, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -2026,11 +2026,14 @@ func p2pMock(t *testing.T, ab addressbook.Interface, signer beeCrypto.Signer, co
 	t.Helper()
 
 	p2ps := p2pmock.New(
-		p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
-			if addr.Equal(nonConnectableAddress) {
-				_ = atomic.AddInt32(failedCounter, 1)
-				return nil, errors.New("non reachable node")
+		p2pmock.WithConnectFunc(func(ctx context.Context, addrs []ma.Multiaddr) (*bzz.Address, error) {
+			for _, addr := range addrs {
+				if addr.Equal(nonConnectableAddress) {
+					_ = atomic.AddInt32(failedCounter, 1)
+					return nil, errors.New("non reachable node")
+				}
 			}
+
 			if counter != nil {
 				_ = atomic.AddInt32(counter, 1)
 			}
@@ -2041,13 +2044,13 @@ func p2pMock(t *testing.T, ab addressbook.Interface, signer beeCrypto.Signer, co
 			}
 
 			for _, a := range addresses {
-				if a.Underlay.Equal(addr) {
+				if bzz.IsUnderlayEqual(a.Underlay, addrs) {
 					return &a, nil
 				}
 			}
 
 			address := swarm.RandAddress(t)
-			bzzAddr, err := bzz.NewAddress(signer, addr, address, 0, nil)
+			bzzAddr, err := bzz.NewAddress(signer, addrs, address, 0, nil)
 			if err != nil {
 				return nil, err
 			}
@@ -2082,7 +2085,7 @@ func connectOne(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addre
 		t.Fatal(err)
 	}
 
-	bzzAddr, err := bzz.NewAddress(signer, multiaddr, peer, 0, nil)
+	bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{multiaddr}, peer, 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2102,7 +2105,7 @@ func addOne(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addressbo
 	if err != nil {
 		t.Fatal(err)
 	}
-	bzzAddr, err := bzz.NewAddress(signer, multiaddr, peer, 0, nil)
+	bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{multiaddr}, peer, 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
