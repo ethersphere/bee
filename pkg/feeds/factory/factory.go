@@ -19,12 +19,17 @@ func New(getter storage.Getter) feeds.Factory {
 	return &factory{getter}
 }
 
-func (f *factory) NewLookup(t feeds.Type, feed *feeds.Feed) (feeds.Lookup, error) {
+func (f *factory) NewLookup(t feeds.Type, feed *feeds.Feed, specialGetter storage.Getter) (feeds.Lookup, error) {
+	getter := f.Getter
+	if specialGetter != nil {
+		getter = specialGetter
+	}
+
 	switch t {
 	case feeds.Sequence:
-		return sequence.NewAsyncFinder(f.Getter, feed), nil
+		return sequence.NewAsyncFinder(getter, feed), nil
 	case feeds.Epoch:
-		return epochs.NewAsyncFinder(f.Getter, feed), nil
+		return epochs.NewAsyncFinder(getter, feed), nil
 	}
 
 	return nil, feeds.ErrFeedTypeNotFound
