@@ -10,7 +10,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-var errShouldNeverHappen = errors.New("should never happen in case of keys have the same length and method was called from root")
+var errShouldNeverHappen = errors.New("should never happen in case of keys have the same length, bits of those are matching until the starting level and method was called from root")
 
 // TreeNode is a leaf compacted binary tree
 // representing the address space of the neighborhood
@@ -76,10 +76,9 @@ func (t *TreeNode[T]) Put(key []byte, p *T) *TreeNode[T] {
 	return c
 }
 
-// traverse assigns bins to each peer for syncing by traversing the tree
-// func (t *TreeNode[T]) traverse() {
-// 	// TODO
-// }
+func (p TreeNode[T]) isLeaf() bool {
+	return p.V != nil
+}
 
 func newTreeNode[T any](key []byte, p *T, level uint8) *TreeNode[T] {
 	return &TreeNode[T]{
@@ -101,4 +100,78 @@ func bitOfBytes(bytes []byte, bitIndex uint8) (uint8, error) {
 
 	b := bytes[byteIndex]
 	return (b >> bitPosition) & 1, nil
+}
+
+func newPeerTreeNode(key []byte, p *peerTreeNodeValue, level uint8) *peerTreeNode {
+	return &peerTreeNode{
+		TreeNode: &TreeNode[peerTreeNodeValue]{
+			K: key,
+			V: p,
+			L: level,
+			C: [2]*TreeNode[peerTreeNodeValue]{},
+		},
+	}
+}
+
+// All properties of a peer that are needed for bin assignment
+type peerTreeNodeValue struct {
+	SyncBins []bool
+}
+
+// peerTreeNode is a specialized TreeNode for managing sync peers
+type peerTreeNode struct {
+	*TreeNode[peerTreeNodeValue]
+}
+
+// BinAssignment assigns bins to each peer for syncing by traversing the tree
+func (t *peerTreeNode) BinAssignment() (peers []*peerTreeNodeValue) {
+	if t.isLeaf() {
+		bl := uint8(len(t.V.SyncBins))
+		for i := t.L; i < bl; i++ {
+			t.V.SyncBins[i] = true
+		}
+
+		return []*peerTreeNodeValue{t.V}
+	}
+	// handle compactible nodes and nodes with both children
+	for i := 1; i >= 0; i-- {
+		if t.C[1-i] != nil {
+			l := (&peerTreeNode{t.C[1-i]}).BinAssignment()
+			peers = append(peers, l...)
+			if t.C[i] == nil {
+				// choose one of the leaves to add level bin
+				p := selectSyncPeer(peers)
+				p.SyncBins[t.L] = true
+			}
+		}
+	}
+	return peers
+}
+
+// selectSyncPeer selects a peer from many to sync the bin
+// that should include the same chunks among the peers
+// current strategy: it returns the peer with the least number of bins assigned
+// assumes peers array has one element at least
+func selectSyncPeer(peers []*peerTreeNodeValue) *peerTreeNodeValue {
+	minPeer := peers[0]
+	minCount := countTrue(minPeer.SyncBins)
+	for i := 1; i < len(peers); i++ {
+		count := countTrue(peers[i].SyncBins)
+		if count < minCount {
+			minPeer = peers[i]
+			minCount = count
+		}
+	}
+	return minPeer
+}
+
+// countTrue returns the number of true values in a boolean slice.
+func countTrue(arr []bool) int {
+	count := 0
+	for _, v := range arr {
+		if v {
+			count++
+		}
+	}
+	return count
 }
