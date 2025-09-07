@@ -6,7 +6,14 @@ package puller
 
 import "github.com/ethersphere/bee/v2/pkg/swarm"
 
-var PeerIntervalKey = peerIntervalKey
+type (
+	PeerTreeNodeValue = peerTreeNodeValue
+)
+
+var (
+	PeerIntervalKey = peerIntervalKey
+	NewPeerTreeNode = newPeerTreeNode
+)
 
 // NewTreeNode is a wrapper for the generic newTreeNode function for testing
 func NewTreeNode[T any](key []byte, p *T, level uint8) *TreeNode[T] {
