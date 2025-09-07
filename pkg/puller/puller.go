@@ -132,7 +132,7 @@ func (p *Puller) manage(ctx context.Context) {
 
 	var prevRadius uint8
 
-	onChange := func() {
+	changeCheck := func() {
 		p.syncPeersMtx.Lock()
 		defer p.syncPeersMtx.Unlock()
 
@@ -150,14 +150,14 @@ func (p *Puller) manage(ctx context.Context) {
 			}
 			p.logger.Debug("radius decrease", "old_radius", prevRadius, "new_radius", newRadius)
 		}
-		// TODO check neighborhood or radius have changed or not
+		changed := newRadius != prevRadius
 		prevRadius = newRadius
 
 		// peersDisconnected is used to mark and prune peers that are no longer connected.
 		peersDisconnected := maps.Clone(p.syncPeers)
 
 		// make pullsync binary tree of neighbors by their address
-		bt := newTreeNode[syncPeer](nil, nil, newRadius)
+		bt := newPeerTreeNode(nil, nil, newRadius)
 		_ = p.topology.EachConnectedPeerRev(func(addr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
 			syncPeer, ok := p.syncPeers[addr.ByteString()]
 			if !ok {
@@ -167,17 +167,24 @@ func (p *Puller) manage(ctx context.Context) {
 				syncPeer.syncBins = make([]bool, p.bins)
 			}
 			if po >= newRadius {
-				_ = bt.Put(addr.Bytes(), syncPeer) // all peers are unique and have the same key length, panic should not happen
+				if !ok {
+					changed = true
+				}
+				_ = bt.Put(addr.Bytes(), &peerTreeNodeValue{SyncBins: syncPeer.syncBins})
 			}
 			delete(peersDisconnected, addr.ByteString())
 			return false, false, nil
 		}, topology.Select{})
 
-		// assign bins to each peer for syncing if peerset or radius changed
-		// bt.traverse()
-
 		for _, peer := range peersDisconnected {
+			if peer.po >= newRadius {
+				changed = true
+			}
 			p.disconnectPeer(peer.address)
+		}
+		// assign bins to each peer for syncing if peerset or radius changed
+		if changed {
+			_ = bt.BinAssignment()
 		}
 
 		p.recalcPeers(ctx)
@@ -188,7 +195,7 @@ func (p *Puller) manage(ctx context.Context) {
 
 	for {
 
-		onChange()
+		changeCheck()
 
 		select {
 		case <-ctx.Done():
@@ -235,7 +242,7 @@ func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer) error {
 	peer.mtx.Lock()
 	defer peer.mtx.Unlock()
 
-	if len(peer.syncBins) == 0 { // no bin is assigned for syncing
+	if peer.po < p.radius.StorageRadius() { // no bin is assigned for syncing
 		peer.stop()
 		return nil
 	}
@@ -553,6 +560,10 @@ func newSyncPeer(addr swarm.Address, bins, po uint8) *syncPeer {
 		po:             po,
 		syncBins:       make([]bool, bins),
 	}
+}
+
+func (p *syncPeer) GetSyncBins() []bool {
+	return p.syncBins
 }
 
 // called when peer disconnects or on shutdown, cleans up ongoing sync operations
