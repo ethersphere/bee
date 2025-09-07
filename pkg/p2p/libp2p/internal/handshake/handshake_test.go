@@ -38,24 +38,38 @@ func TestHandshake(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	node1ma2, err := ma.NewMultiaddr("/ip6/::1/tcp/46881/p2p/16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkA")
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	node2ma, err := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/1634/p2p/16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkS")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	node1maBinary := bzz.SerializeUnderlays([]ma.Multiaddr{node1ma}) // todo: add more underlays when bzz.Address supports multiple Underlays
+	node2ma2, err := ma.NewMultiaddr("/ip4/10.34.35.60/tcp/35315/p2p/16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkS")
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	node2maBinary := bzz.SerializeUnderlays([]ma.Multiaddr{node2ma}) // todo: add more underlays when bzz.Address supports multiple Underlays
+	node1maBinary := bzz.SerializeUnderlays([]ma.Multiaddr{node1ma, node1ma2})
+
+	node2maBinary := bzz.SerializeUnderlays([]ma.Multiaddr{node2ma, node2ma2})
 
 	node1AddrInfo, err := libp2ppeer.AddrInfoFromP2pAddr(node1ma)
 	if err != nil {
 		t.Fatal(err)
 	}
+	node1AddrInfo.Addrs = []ma.Multiaddr{node1ma, node1ma2} // TODO how to deal with multiple underlay addresses correctly ?
+
 	node2AddrInfo, err := libp2ppeer.AddrInfoFromP2pAddr(node2ma)
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	node2AddrInfo.Addrs = []ma.Multiaddr{node2ma, node2ma2} // TODO same question here
 	privateKey1, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
@@ -73,7 +87,7 @@ func TestHandshake(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	node1BzzAddress, err := bzz.NewAddress(signer1, []ma.Multiaddr{node1ma}, addr, networkID, nonce)
+	node1BzzAddress, err := bzz.NewAddress(signer1, []ma.Multiaddr{node1ma, node1ma2}, addr, networkID, nonce)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +95,7 @@ func TestHandshake(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	node2BzzAddress, err := bzz.NewAddress(signer2, []ma.Multiaddr{node2ma}, addr2, networkID, nonce)
+	node2BzzAddress, err := bzz.NewAddress(signer2, []ma.Multiaddr{node2ma, node2ma2}, addr2, networkID, nonce)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +145,7 @@ func TestHandshake(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		res, err := handshakeService.Handshake(context.Background(), stream1, node2AddrInfo.Addrs[0], node2AddrInfo.ID)
+		res, err := handshakeService.Handshake(context.Background(), stream1, node2AddrInfo.Addrs, node2AddrInfo.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -251,7 +265,7 @@ func TestHandshake(t *testing.T) {
 		expectedErr := fmt.Errorf("write syn message: %w", testErr)
 		stream := &mock.Stream{}
 		stream.SetWriteErr(testErr, 0)
-		res, err := handshakeService.Handshake(context.Background(), stream, node2AddrInfo.Addrs[0], node2AddrInfo.ID)
+		res, err := handshakeService.Handshake(context.Background(), stream, node2AddrInfo.Addrs, node2AddrInfo.ID)
 		if err == nil || err.Error() != expectedErr.Error() {
 			t.Fatal("expected:", expectedErr, "got:", err)
 		}
@@ -266,7 +280,7 @@ func TestHandshake(t *testing.T) {
 		expectedErr := fmt.Errorf("read synack message: %w", testErr)
 		stream := mock.NewStream(nil, &bytes.Buffer{})
 		stream.SetReadErr(testErr, 0)
-		res, err := handshakeService.Handshake(context.Background(), stream, node2AddrInfo.Addrs[0], node2AddrInfo.ID)
+		res, err := handshakeService.Handshake(context.Background(), stream, node2AddrInfo.Addrs, node2AddrInfo.ID)
 		if err == nil || err.Error() != expectedErr.Error() {
 			t.Fatal("expected:", expectedErr, "got:", err)
 		}
@@ -305,7 +319,7 @@ func TestHandshake(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		res, err := handshakeService.Handshake(context.Background(), stream1, node2AddrInfo.Addrs[0], node2AddrInfo.ID)
+		res, err := handshakeService.Handshake(context.Background(), stream1, node2AddrInfo.Addrs, node2AddrInfo.ID)
 		if err == nil || err.Error() != expectedErr.Error() {
 			t.Fatal("expected:", expectedErr, "got:", err)
 		}
@@ -339,7 +353,7 @@ func TestHandshake(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		res, err := handshakeService.Handshake(context.Background(), stream1, node2AddrInfo.Addrs[0], node2AddrInfo.ID)
+		res, err := handshakeService.Handshake(context.Background(), stream1, node2AddrInfo.Addrs, node2AddrInfo.ID)
 		if res != nil {
 			t.Fatal("res should be nil")
 		}
@@ -376,7 +390,7 @@ func TestHandshake(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		res, err := handshakeService.Handshake(context.Background(), stream1, node2AddrInfo.Addrs[0], node2AddrInfo.ID)
+		res, err := handshakeService.Handshake(context.Background(), stream1, node2AddrInfo.Addrs, node2AddrInfo.ID)
 		if res != nil {
 			t.Fatal("res should be nil")
 		}
@@ -416,7 +430,7 @@ func TestHandshake(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		res, err := handshakeService.Handshake(context.Background(), stream1, node2AddrInfo.Addrs[0], node2AddrInfo.ID)
+		res, err := handshakeService.Handshake(context.Background(), stream1, node2AddrInfo.Addrs, node2AddrInfo.ID)
 		if !errors.Is(err, testError) {
 			t.Fatalf("expected error %v got %v", testError, err)
 
@@ -471,7 +485,7 @@ func TestHandshake(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if !bytes.Equal(got.Syn.ObservedUnderlay, node2maBinary) {
+		if !bytes.Equal(got.Syn.ObservedUnderlay, node2ma.Bytes()) && !bytes.Equal(got.Syn.ObservedUnderlay, node2ma2.Bytes()) {
 			t.Fatalf("got bad syn")
 		}
 

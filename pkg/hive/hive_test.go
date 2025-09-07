@@ -109,6 +109,7 @@ func TestHandlerRateLimit(t *testing.T) {
 	}
 }
 
+// TODO add test for multiple underlay addresses
 func TestBroadcastPeers(t *testing.T) {
 	t.Parallel()
 

@@ -518,9 +518,8 @@ func TestConnectRepeatHandshake(t *testing.T) {
 	}})
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
-	addr := serviceUnderlayAddress(t, s1)
-
-	_, err := s2.Connect(ctx, addr)
+	addrs := serviceUnderlayAddress(t, s1)
+	_, err := s2.Connect(ctx, addrs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -528,7 +527,7 @@ func TestConnectRepeatHandshake(t *testing.T) {
 	expectPeers(t, s2, overlay1)
 	expectPeersEventually(t, s1, overlay2)
 
-	info, err := libp2ppeer.AddrInfoFromP2pAddr(addr[0])
+	info, err := libp2ppeer.AddrInfoFromP2pAddr(addrs[0])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -538,7 +537,7 @@ func TestConnectRepeatHandshake(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := s2.HandshakeService().Handshake(ctx, s2.WrapStream(stream), info.Addrs[0], info.ID); err != nil {
+	if _, err := s2.HandshakeService().Handshake(ctx, s2.WrapStream(stream), info.Addrs, info.ID); err != nil {
 		t.Fatal(err)
 	}
 
