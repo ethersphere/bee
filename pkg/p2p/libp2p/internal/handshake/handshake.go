@@ -118,25 +118,20 @@ func (s *Service) SetPicker(n p2p.Picker) {
 }
 
 // Handshake initiates a handshake with a peer.
-func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiaddr ma.Multiaddr, peerID libp2ppeer.ID) (i *Info, err error) {
+func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiaddrs []ma.Multiaddr, peerID libp2ppeer.ID) (i *Info, err error) {
 	loggerV1 := s.logger.V(1).Register()
 
 	ctx, cancel := context.WithTimeout(ctx, handshakeTimeout)
 	defer cancel()
 
 	w, r := protobuf.NewWriterAndReader(stream)
-	fullRemoteMA, err := buildFullMA(peerMultiaddr, peerID)
-	if err != nil {
-		return nil, err
-	}
-
-	fullRemoteMABytes, err := fullRemoteMA.MarshalBinary()
+	fullRemoteMAs, err := buildFullMAs(peerMultiaddrs, peerID)
 	if err != nil {
 		return nil, err
 	}
 
 	if err := w.WriteMsgWithContext(ctx, &pb.Syn{
-		ObservedUnderlay: fullRemoteMABytes,
+		ObservedUnderlay: bzz.SerializeUnderlays(fullRemoteMAs),
 	}); err != nil {
 		return nil, fmt.Errorf("write syn message: %w", err)
 	}
@@ -231,11 +226,6 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 		return nil, err
 	}
 
-	fullRemoteMABytes, err := fullRemoteMA.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
-
 	var syn pb.Syn
 	if err := r.ReadMsgWithContext(ctx, &syn); err != nil {
 		s.metrics.SynRxFailed.Inc()
@@ -270,11 +260,11 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 
 	if err := w.WriteMsgWithContext(ctx, &pb.SynAck{
 		Syn: &pb.Syn{
-			ObservedUnderlay: fullRemoteMABytes,
+			ObservedUnderlay: bzz.SerializeUnderlays([]ma.Multiaddr{fullRemoteMA}),
 		},
 		Ack: &pb.Ack{
 			Address: &pb.BzzAddress{
-				Underlay:  bzz.SerializeUnderlays(bzzAddress.Underlay), // TODO check how to decerialize
+				Underlay:  bzz.SerializeUnderlays(bzzAddress.Underlay),
 				Overlay:   bzzAddress.Overlay.Bytes(),
 				Signature: bzzAddress.Signature,
 			},
@@ -338,7 +328,22 @@ func (s *Service) GetWelcomeMessage() string {
 	return s.welcomeMessage.Load().(string)
 }
 
+func buildFullMAs(addrs []ma.Multiaddr, peerID libp2ppeer.ID) ([]ma.Multiaddr, error) {
+	fullMAs := make([]ma.Multiaddr, len(addrs))
+	for i, addr := range addrs {
+		res, err := buildFullMA(addr, peerID)
+		if err != nil {
+			return nil, err
+		}
+		fullMAs[i] = res
+	}
+	return fullMAs, nil
+}
+
 func buildFullMA(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) {
+	if _, err := addr.ValueForProtocol(ma.P_P2P); err == nil {
+		return addr, nil
+	}
 	return ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", addr.String(), peerID.String()))
 }
 

@@ -538,7 +538,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	}
 
 	if s.reacher != nil {
-		s.reacher.Connected(overlay, i.BzzAddress.Underlay[0]) // TODO support multiple underlay addresses
+		s.reacher.Connected(overlay, stream.Conn().RemoteMultiaddr())
 	}
 
 	peerUserAgent := appendSpace(s.peerUserAgent(s.ctx, peerID))
@@ -743,7 +743,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	}
 
 	handshakeStream := newStream(stream, s.metrics)
-	i, err := s.handshakeService.Handshake(ctx, handshakeStream, stream.Conn().RemoteMultiaddr(), stream.Conn().RemotePeer())
+	i, err := s.handshakeService.Handshake(ctx, handshakeStream, addrs, stream.Conn().RemotePeer())
 	if err != nil {
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(info.ID)

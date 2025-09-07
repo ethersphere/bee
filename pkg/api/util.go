@@ -227,7 +227,7 @@ func mapStructure(input, output interface{}, hooks map[string]func(v string) (st
 			}
 
 			// 2) []byte -> []multiaddr.Multiaddr
-			if elemT.Kind() == reflect.Interface && // TODO add test case
+			if elemT.Kind() == reflect.Interface &&
 				elemT == reflect.TypeOf((*multiaddr.Multiaddr)(nil)).Elem() {
 
 				parts := strings.Split(value, ",")
