@@ -186,21 +186,24 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 			return err
 		}
 
-		var isPrivate bool
-		for _, underlay := range addr.Underlay {
-			if !s.allowPrivateCIDRs && manet.IsPrivateAddr(underlay) {
-				isPrivate = true
-				break
+		var advertisableUnderlays []ma.Multiaddr
+		if s.allowPrivateCIDRs {
+			advertisableUnderlays = addr.Underlay
+		} else {
+			for _, u := range addr.Underlay {
+				// filter private underlays
+				if !manet.IsPrivateAddr(u) {
+					advertisableUnderlays = append(advertisableUnderlays, u)
+				}
 			}
-		}
-
-		if isPrivate {
-			continue // Don't advertise private CIDRs to the public network.
+			if len(advertisableUnderlays) == 0 {
+				continue
+			}
 		}
 
 		peersRequest.Peers = append(peersRequest.Peers, &pb.BzzAddress{
 			Overlay:   addr.Overlay.Bytes(),
-			Underlay:  bzz.SerializeUnderlays(addr.Underlay),
+			Underlay:  bzz.SerializeUnderlays(advertisableUnderlays),
 			Signature: addr.Signature,
 			Nonce:     addr.Nonce,
 		})
