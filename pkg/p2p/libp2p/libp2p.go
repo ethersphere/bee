@@ -830,7 +830,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 func normalizeAddrsSamePeer(addrs []ma.Multiaddr) (libp2ppeer.ID, []ma.Multiaddr, error) {
 	var id libp2ppeer.ID
 	seen := make(map[string]struct{})
-	var remotes []ma.Multiaddr
+	remotes := make([]ma.Multiaddr, 0)
 
 	for _, a := range addrs {
 		info, err := libp2ppeer.AddrInfoFromP2pAddr(a)
