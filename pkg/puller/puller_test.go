@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"testing"
 	"time"
 
@@ -98,33 +99,29 @@ func TestSyncOutsideDepth(t *testing.T) {
 	waitSyncCalledBins(t, pullsync, addr, 2, 3)
 }
 
-// test that addresses not cover full range of radius
-func TestAddressesNotCoverRange(t *testing.T) {
+// test that addresses cover full range of radius
+func TestAddressesCoverage(t *testing.T) {
 	t.Parallel()
 
-	// calculate addresses where PO is greater than storage radius for all neighbors
 	storageRadius := uint8(0)
-	base := swarm.RandAddress(t)
-	firstBitDiffer := storageRadius + 1 // common prefix in neighbor addresses, their POs must be this number.
-	addr1Bytes := base.Clone().Bytes()
-	addr1Bytes[firstBitDiffer/8] ^= 1 << (7 - (firstBitDiffer % 8))
-	addr1 := swarm.NewAddress(addr1Bytes)
-	udIndex := firstBitDiffer + 2 // their UDs will be this number + 1
-	addr2Bytes := addr1.Clone().Bytes()
-	addr2Bytes[udIndex/8] ^= (1 << (7 - (udIndex % 8)))
-	addr2 := swarm.NewAddress(addr2Bytes)
+	base := swarm.NewAddress([]byte{byte(rand.Intn(256))})
+	addr1 := swarm.NewAddress([]byte{0b01100000})
+	addr2 := swarm.NewAddress([]byte{0b01110001})
+	supportBins := uint8(6)
 
 	var (
-		cursors = []uint64{0, 0, 0, 0, 0}
+		cursors = make([]uint64, supportBins)
 		replies = []mockps.SyncReply{
-			{Bin: storageRadius, Start: 1, Topmost: 1, Peer: addr1},
-			{Bin: storageRadius, Start: 1, Topmost: 1, Peer: addr2},
-			{Bin: storageRadius + 1, Start: 1, Topmost: 1, Peer: addr1},
-			{Bin: storageRadius + 1, Start: 1, Topmost: 1, Peer: addr2},
-			{Bin: storageRadius + 2, Start: 1, Topmost: 1, Peer: addr1},
-			{Bin: storageRadius + 2, Start: 1, Topmost: 1, Peer: addr2},
-			{Bin: storageRadius + 3, Start: 1, Topmost: 1, Peer: addr1},
-			{Bin: storageRadius + 3, Start: 1, Topmost: 1, Peer: addr2},
+			{Bin: 0, Start: 1, Topmost: 1, Peer: addr1},
+			{Bin: 0, Start: 1, Topmost: 1, Peer: addr2},
+			{Bin: 1, Start: 1, Topmost: 1, Peer: addr1},
+			{Bin: 1, Start: 1, Topmost: 1, Peer: addr2},
+			{Bin: 2, Start: 1, Topmost: 1, Peer: addr1},
+			{Bin: 2, Start: 1, Topmost: 1, Peer: addr2},
+			{Bin: 3, Start: 1, Topmost: 1, Peer: addr1},
+			{Bin: 3, Start: 1, Topmost: 1, Peer: addr2},
+			{Bin: 4, Start: 1, Topmost: 1, Peer: addr1},
+			{Bin: 4, Start: 1, Topmost: 1, Peer: addr2},
 		}
 		revCalls = kadMock.MakeAddrTupleForRevCalls(base, addr1, addr2)
 	)
@@ -134,22 +131,47 @@ func TestAddressesNotCoverRange(t *testing.T) {
 			revCalls...,
 		)},
 		pullSync: []mockps.Option{mockps.WithCursors(cursors, 0), mockps.WithReplies(replies...)},
-		bins:     5,
+		bins:     supportBins,
 		rs:       resMock.NewReserve(resMock.WithRadius(storageRadius)),
 	})
+
+	onlyOneTrue := func(bin uint8, addrs ...swarm.Address) {
+		hadOneTrue := false
+		for _, addr := range addrs {
+			if p.IsBinSyncing(addr, bin) {
+				if hadOneTrue {
+					t.Fatalf("expected only one true")
+				}
+				hadOneTrue = true
+			}
+		}
+		if !hadOneTrue {
+			t.Fatalf("expected exactly one true")
+		}
+	}
+
+	allFalse := func(bin uint8, addrs ...swarm.Address) {
+		for _, addr := range addrs {
+			if p.IsBinSyncing(addr, bin) {
+				t.Fatalf("expected node %x node do not sync bin %d", addr, bin)
+			}
+		}
+	}
 
 	time.Sleep(100 * time.Millisecond)
 	kad.Trigger()
 
-	if !p.IsBinSyncing(addr1, udIndex+1) || !p.IsBinSyncing(addr2, udIndex+1) {
-		t.Fatalf("peers should sync bin = uniqueness depth")
+	// all bin syncing >= ud
+	for bin := uint8(4); bin < supportBins; bin++ {
+		if !p.IsBinSyncing(addr1, bin) || !p.IsBinSyncing(addr2, bin) {
+			t.Fatalf("peers should sync their unique bin = %d", bin)
+		}
 	}
-	if !p.IsBinSyncing(addr1, udIndex) || !p.IsBinSyncing(addr2, udIndex) {
-		t.Fatalf("peers should sync bin = uniqueness depth - 1 > storage radius")
-	}
-	if !p.IsBinSyncing(addr1, storageRadius) && !p.IsBinSyncing(addr2, storageRadius) {
-		t.Fatalf("no peer sync bin = storage radius")
-	}
+
+	allFalse(3, addr1, addr2) // PO of addr1, addr2
+	onlyOneTrue(2, addr1, addr2)
+	onlyOneTrue(1, addr1, addr2)
+	onlyOneTrue(0, addr1, addr2)
 }
 
 func TestSyncIntervals(t *testing.T) {
