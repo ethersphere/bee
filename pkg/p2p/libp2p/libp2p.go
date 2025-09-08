@@ -279,6 +279,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 				p2pforge.WithCertificateStorage(&certmagic.FileStorage{Path: storagePath}),
 				p2pforge.WithLogger(sugar),
 				p2pforge.WithUserAgent(userAgent()),
+				p2pforge.WithAllowPrivateForgeAddrs(),
 				p2pforge.WithRegistrationDelay(0),
 				p2pforge.WithOnCertLoaded(func() {
 					certLoaded <- true
