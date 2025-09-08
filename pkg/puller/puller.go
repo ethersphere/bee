@@ -165,10 +165,12 @@ func (p *Puller) manage(ctx context.Context) {
 				p.syncPeers[addr.ByteString()] = syncPeer
 				if po >= newRadius {
 					changed = true
-					_ = bt.Put(addr.Bytes(), &peerTreeNodeValue{SyncBins: syncPeer.syncBins})
 				}
 			} else {
 				syncPeer.syncBins = make([]bool, p.bins)
+			}
+			if po >= newRadius {
+				_ = bt.Put(addr.Bytes(), &peerTreeNodeValue{SyncBins: syncPeer.syncBins})
 			}
 			delete(peersDisconnected, addr.ByteString())
 			return false, false, nil
