@@ -21,14 +21,14 @@ type AddrTuple struct {
 }
 
 func MakeAddrTupleForRevCalls(base swarm.Address, addrs ...swarm.Address) []AddrTuple {
-	var tuples []AddrTuple
+	var at []AddrTuple
 	for _, addr := range addrs {
-		tuples = append(tuples, AddrTuple{Addr: addr, PO: swarm.Proximity(base.Bytes(), addr.Bytes())})
+		at = append(at, AddrTuple{Addr: addr, PO: swarm.Proximity(base.Bytes(), addr.Bytes())})
 	}
-	sort.Slice(tuples, func(i, j int) bool {
-		return tuples[i].PO > tuples[j].PO
+	sort.Slice(at, func(i, j int) bool {
+		return at[i].PO > at[j].PO
 	})
-	return tuples
+	return at
 }
 
 func WithEachPeerRevCalls(addrs ...AddrTuple) Option {
