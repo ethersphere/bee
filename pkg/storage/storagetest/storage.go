@@ -950,7 +950,7 @@ func BenchmarkWriteInBatches(b *testing.B, bs storage.BatchStore) {
 	g := newSequentialEntryGenerator(b.N)
 	batch := bs.Batch(context.Background())
 	resetBenchmark(b)
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		key := g.Key(i)
 		item := &obj1{
 			Id:  string(key),
@@ -969,7 +969,7 @@ func BenchmarkWriteInFixedSizeBatches(b *testing.B, bs storage.BatchStore) {
 	g := newSequentialEntryGenerator(b.N)
 	writer := newBatchDBWriter(bs)
 	resetBenchmark(b)
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		writer.Put(g.Key(i), g.Value(i))
 	}
 }
@@ -1021,7 +1021,7 @@ func BenchmarkDeleteInBatches(b *testing.B, bs storage.BatchStore) {
 	doWrite(b, bs, g)
 	resetBenchmark(b)
 	batch := bs.Batch(context.Background())
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		item := &obj1{
 			Id: string(g.Key(i)),
 		}
@@ -1039,7 +1039,7 @@ func BenchmarkDeleteInFixedSizeBatches(b *testing.B, bs storage.BatchStore) {
 	doWrite(b, bs, g)
 	resetBenchmark(b)
 	writer := newBatchDBWriter(bs)
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		writer.Delete(g.Key(i))
 	}
 }
