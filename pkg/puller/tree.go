@@ -92,7 +92,7 @@ func newTreeNode[T any](key []byte, p *T, level uint8) *TreeNode[T] {
 // bitOfBytes extracts the bit at the specified index from a byte slice.
 // Returns 0 or 1 based on the bit value at the given position.
 func bitOfBytes(bytes []byte, bitIndex uint8) (uint8, error) {
-	if bitIndex >= uint8(len(bytes)*8) {
+	if int(bitIndex) >= len(bytes)*8 {
 		return 0, errors.New("bit index out of range")
 	}
 	byteIndex := bitIndex / 8
