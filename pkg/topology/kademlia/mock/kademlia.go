@@ -21,7 +21,7 @@ type AddrTuple struct {
 }
 
 func MakeAddrTupleForRevCalls(base swarm.Address, addrs ...swarm.Address) []AddrTuple {
-	var at []AddrTuple
+	at := make([]AddrTuple, 0, len(addrs))
 	for _, addr := range addrs {
 		at = append(at, AddrTuple{Addr: addr, PO: swarm.Proximity(base.Bytes(), addr.Bytes())})
 	}
