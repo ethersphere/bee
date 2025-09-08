@@ -20,6 +20,7 @@ func NewTreeNode[T any](key []byte, p *T, level uint8) *TreeNode[T] {
 	return newTreeNode(key, p, level)
 }
 
+// IsSyncing returns true if any of the bins is syncing
 func (p *Puller) IsSyncing(addr swarm.Address) bool {
 	p.syncPeersMtx.Lock()
 	defer p.syncPeersMtx.Unlock()

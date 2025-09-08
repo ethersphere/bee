@@ -163,21 +163,20 @@ func (p *Puller) manage(ctx context.Context) {
 			if !ok {
 				syncPeer = newSyncPeer(addr, p.bins, po)
 				p.syncPeers[addr.ByteString()] = syncPeer
+				if po >= newRadius {
+					changed = true
+					_ = bt.Put(addr.Bytes(), &peerTreeNodeValue{SyncBins: syncPeer.syncBins})
+				}
 			} else {
 				syncPeer.syncBins = make([]bool, p.bins)
-			}
-			if po >= newRadius {
-				if !ok {
-					changed = true
-				}
-				_ = bt.Put(addr.Bytes(), &peerTreeNodeValue{SyncBins: syncPeer.syncBins})
 			}
 			delete(peersDisconnected, addr.ByteString())
 			return false, false, nil
 		}, topology.Select{})
 
 		for _, peer := range peersDisconnected {
-			if peer.po >= newRadius {
+			// if prevRadius was smaller, we need to take out it from the tree
+			if peer.po >= min(newRadius, prevRadius) {
 				changed = true
 			}
 			p.disconnectPeer(peer.address)
@@ -185,9 +184,8 @@ func (p *Puller) manage(ctx context.Context) {
 		// assign bins to each peer for syncing if peerset or radius changed
 		if changed {
 			_ = bt.BinAssignment()
+			p.recalcPeers(ctx)
 		}
-
-		p.recalcPeers(ctx)
 	}
 
 	tick := time.NewTicker(recalcPeersDur)
