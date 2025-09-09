@@ -75,15 +75,28 @@ func (db *DB) ReserveSample(
 		statsLock.Unlock()
 	}
 
+	workers := max(4, runtime.NumCPU())
 	t := time.Now()
+
+	// Reset all ReserveSample gauges at the start of each run
+	db.metrics.ReserveSampleChunksIterated.Set(0)
+	db.metrics.ReserveSampleChunksLoadFailed.Set(0)
+	db.metrics.ReserveSampleStampValidations.Set(0)
 
 	// Record metrics for ReserveSample
 	defer func() {
 		duration := time.Since(t)
+		// Set the final values for all ReserveSample gauges
+		db.metrics.ReserveSampleChunksIterated.Set(float64(allStats.TotalIterated))
+		db.metrics.ReserveSampleChunksLoadFailed.Set(float64(allStats.ChunkLoadFailed))
+		db.metrics.ReserveSampleStampValidations.Set(float64(allStats.SampleInserts)) // This represents successful validations
+		// Record the distribution of chunks per run
+		db.metrics.ReserveSampleChunksPerRun.Observe(float64(allStats.TotalIterated))
+		// Wait for all operations to complete before recording metrics
 		if err := g.Wait(); err != nil {
-			db.metrics.ReserveSampleDuration.WithLabelValues("failure").Observe(duration.Seconds())
+			db.metrics.ReserveSampleDuration.WithLabelValues("failure", fmt.Sprintf("%d", workers), fmt.Sprintf("%d", allStats.TotalIterated)).Observe(duration.Seconds())
 		} else {
-			db.metrics.ReserveSampleDuration.WithLabelValues("success").Observe(duration.Seconds())
+			db.metrics.ReserveSampleDuration.WithLabelValues("success", fmt.Sprintf("%d", workers), fmt.Sprintf("%d", allStats.TotalIterated)).Observe(duration.Seconds())
 		}
 	}()
 
@@ -94,7 +107,6 @@ func (db *DB) ReserveSample(
 
 	allStats.BatchesBelowValueDuration = time.Since(t)
 
-	workers := max(4, runtime.NumCPU())
 	db.metrics.ReserveSampleWorkers.Set(float64(workers))
 	chunkC := make(chan *reserve.ChunkBinItem, 3*workers)
 
@@ -115,7 +127,6 @@ func (db *DB) ReserveSample(
 			select {
 			case chunkC <- ch:
 				stats.TotalIterated++
-				db.metrics.ReserveSampleChunksIterated.Inc()
 				return false, nil
 			case <-ctx.Done():
 				return false, ctx.Err()
@@ -158,15 +169,15 @@ func (db *DB) ReserveSample(
 				chunkLoadStart := time.Now()
 
 				chunk, err := db.ChunkStore().Get(ctx, chItem.Address)
+				chunkLoadDuration := time.Since(chunkLoadStart)
+
 				if err != nil {
 					wstat.ChunkLoadFailed++
-					db.metrics.ReserveSampleChunksLoadFailed.Inc()
 					db.logger.Debug("failed loading chunk", "chunk_address", chItem.Address, "error", err)
 					continue
 				}
 
-				wstat.ChunkLoadDuration += time.Since(chunkLoadStart)
-				db.metrics.ReserveSampleChunksLoaded.Inc()
+				wstat.ChunkLoadDuration += chunkLoadDuration
 
 				taddrStart := time.Now()
 				taddr, err := transformedAddress(hasher, chunk, chItem.ChunkType)
@@ -175,7 +186,7 @@ func (db *DB) ReserveSample(
 				}
 				taddrDuration := time.Since(taddrStart)
 				wstat.TaddrDuration += taddrDuration
-				db.metrics.ReserveSampleTaddrDuration.WithLabelValues(chItem.ChunkType.String()).Observe(taddrDuration.Seconds())
+				db.metrics.ReserveSampleTaddrDuration.WithLabelValues(chItem.ChunkType.String()).Observe(float64(taddrDuration.Milliseconds()))
 
 				select {
 				case sampleItemChan <- SampleItem{
@@ -257,15 +268,14 @@ func (db *DB) ReserveSample(
 			stampValidStart := time.Now()
 			if _, err := db.validStamp(ch); err != nil {
 				stats.InvalidStamp++
-				db.metrics.ReserveSampleStampValidDuration.WithLabelValues("invalid").Observe(time.Since(stampValidStart).Seconds())
+				db.metrics.ReserveSampleStampValidDuration.WithLabelValues("invalid").Observe(float64(time.Since(stampValidStart).Milliseconds()))
 				db.logger.Debug("invalid stamp for chunk", "chunk_address", ch.Address(), "error", err)
 				continue
 			}
 
 			stampValidDuration := time.Since(stampValidStart)
 			stats.ValidStampDuration += stampValidDuration
-			db.metrics.ReserveSampleStampValidations.Inc()
-			db.metrics.ReserveSampleStampValidDuration.WithLabelValues("valid").Observe(stampValidDuration.Seconds())
+			db.metrics.ReserveSampleStampValidDuration.WithLabelValues("valid").Observe(float64(stampValidDuration.Milliseconds()))
 
 			item.Stamp = postage.NewStamp(stamp.BatchID(), stamp.Index(), stamp.Timestamp(), stamp.Sig())
 
@@ -284,9 +294,6 @@ func (db *DB) ReserveSample(
 	}
 
 	db.logger.Info("reserve sampler finished", "duration", time.Since(t), "storage_radius", committedDepth, "consensus_time_ns", consensusTime, "stats", fmt.Sprintf("%+v", allStats))
-
-	// Record final sample size
-	db.metrics.ReserveSampleSize.Set(float64(len(sampleItems)))
 
 	return Sample{Stats: *allStats, Items: sampleItems}, nil
 }
@@ -383,7 +390,6 @@ type SampleStats struct {
 
 func (s *SampleStats) add(other SampleStats) {
 	s.TotalDuration += other.TotalDuration
-	s.TotalIterated += other.TotalIterated
 	s.IterationDuration += other.IterationDuration
 	s.SampleInserts += other.SampleInserts
 	s.NewIgnored += other.NewIgnored
