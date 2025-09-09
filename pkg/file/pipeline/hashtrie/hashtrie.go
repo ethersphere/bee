@@ -109,7 +109,7 @@ func (h *hashTrieWriter) writeToDataLevel(span, ref, key, data []byte) error {
 	return h.rParams.ChunkWrite(0, data, h.parityChunkFn)
 }
 
-// wrapLevel wraps an existing level and writes the resulting hash to the following level
+// wrapFullLevel wraps an existing level and writes the resulting hash to the following level
 // then truncates the current level data by shifting the cursors.
 // Steps are performed in the following order:
 //   - take all of the data in the current level
