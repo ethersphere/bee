@@ -406,6 +406,7 @@ func (s *SampleStats) add(other SampleStats) {
 	s.ChunkLoadDuration += other.ChunkLoadDuration
 	s.ChunkLoadFailed += other.ChunkLoadFailed
 	s.StampLoadFailed += other.StampLoadFailed
+	s.TotalIterated += other.TotalIterated
 }
 
 // RandSample returns Sample with random values.
