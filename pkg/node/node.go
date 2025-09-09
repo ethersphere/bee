@@ -212,7 +212,6 @@ func NewBee(
 	var pullSyncStartTime time.Time
 
 	nodeMetrics := newMetrics()
-	nodeMetrics.RegisterMetrics()
 
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
@@ -612,7 +611,6 @@ func NewBee(
 			"totalMonitoredEvents", totalCount,
 			"warmupDurationSeconds", warmupDuration)
 
-		// Record the warmup duration in the prometheus metric
 		nodeMetrics.WarmupDuration.Observe(warmupDuration)
 		pullSyncStartTime = t
 	}
@@ -1167,10 +1165,11 @@ func NewBee(
 						return
 					case <-syncCheckTicker.C:
 						synced := isFullySynced()
-						logger.Debug("sync status check", "synced", synced, "reserveSize", localStore.ReserveSize(), "threshold", reserveTreshold, "syncRate", pullerService.SyncRate())
+						logger.Debug("sync status check", "synced", synced, "reserveSize", localStore.ReserveSize(), "syncRate", pullerService.SyncRate())
 						if synced {
 							fullSyncTime := pullSyncStartTime.Sub(t)
-							nodeMetrics.FullSyncDuration.Observe(fullSyncTime.Seconds())
+							logger.Info("full sync duration", "duration", fullSyncTime)
+							nodeMetrics.FullSyncDuration.Observe(fullSyncTime.Minutes())
 							syncCheckTicker.Stop()
 							return
 						}
@@ -1266,6 +1265,7 @@ func NewBee(
 		apiService.MustRegisterMetrics(kad.Metrics()...)
 		apiService.MustRegisterMetrics(saludService.Metrics()...)
 		apiService.MustRegisterMetrics(stateStoreMetrics.Metrics()...)
+		apiService.MustRegisterMetrics(getMetrics(nodeMetrics)...)
 
 		if pullerService != nil {
 			apiService.MustRegisterMetrics(pullerService.Metrics()...)
