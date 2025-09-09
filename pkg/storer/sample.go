@@ -86,14 +86,18 @@ func (db *DB) ReserveSample(
 	// Record metrics for ReserveSample
 	defer func() {
 		duration := time.Since(t)
+		// Wait for all operations to complete first
+		err := g.Wait()
+
 		// Set the final values for all ReserveSample gauges
 		db.metrics.ReserveSampleChunksIterated.Set(float64(allStats.TotalIterated))
 		db.metrics.ReserveSampleChunksLoadFailed.Set(float64(allStats.ChunkLoadFailed))
 		db.metrics.ReserveSampleStampValidations.Set(float64(allStats.SampleInserts)) // This represents successful validations
 		// Record the distribution of chunks per run
 		db.metrics.ReserveSampleChunksPerRun.Observe(float64(allStats.TotalIterated))
-		// Wait for all operations to complete before recording metrics
-		if err := g.Wait(); err != nil {
+
+		// Record duration metrics with correct stats
+		if err != nil {
 			db.metrics.ReserveSampleDuration.WithLabelValues("failure", fmt.Sprintf("%d", workers), fmt.Sprintf("%d", allStats.TotalIterated)).Observe(duration.Seconds())
 		} else {
 			db.metrics.ReserveSampleDuration.WithLabelValues("success", fmt.Sprintf("%d", workers), fmt.Sprintf("%d", allStats.TotalIterated)).Observe(duration.Seconds())
