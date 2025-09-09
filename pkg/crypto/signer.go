@@ -89,7 +89,7 @@ func (d *defaultSigner) Sign(data []byte) (signature []byte, err error) {
 		return nil, err
 	}
 
-	return d.sign(hash, true)
+	return d.sign(hash, false)
 }
 
 // SignTx signs an ethereum transaction.
@@ -140,7 +140,7 @@ func (d *defaultSigner) SignTypedData(typedData *eip712.TypedData) ([]byte, erro
 // sign the provided hash and convert it to the ethereum (r,s,v) format.
 func (d *defaultSigner) sign(sighash []byte, isCompressedKey bool) ([]byte, error) {
 	pvk, _ := btcec.PrivKeyFromBytes(d.key.D.Bytes())
-	signature, err := btcecdsa.SignCompact(pvk, sighash, false)
+	signature, err := btcecdsa.SignCompact(pvk, sighash, isCompressedKey)
 	if err != nil {
 		return nil, err
 	}
