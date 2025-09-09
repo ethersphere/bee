@@ -207,6 +207,12 @@ func NewBee(
 	session accesscontrol.Session,
 	o *Options,
 ) (b *Bee, err error) {
+	// start time for node warmup duration measurement
+	warmupStartTime := time.Now()
+	var pullSyncStartTime time.Time
+
+	nodeMetrics := newMetrics()
+
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -598,9 +604,17 @@ func NewBee(
 		logger.Info("node warmup check initiated. monitoring activity rate to determine readiness.", "startTime", t)
 	}
 
-	detector.OnStabilized = func(t time.Time, totalCount int) {
-		logger.Info("node warmup complete. system is considered stable and ready.", "stabilizationTime", t, "totalMonitoredEvents", totalCount)
+	warmupMeasurement := func(t time.Time, totalCount int) {
+		warmupDuration := t.Sub(warmupStartTime).Seconds()
+		logger.Info("node warmup complete. system is considered stable and ready.",
+			"stabilizationTime", t,
+			"totalMonitoredEvents", totalCount,
+			"warmupDurationSeconds", warmupDuration)
+
+		nodeMetrics.WarmupDuration.Observe(warmupDuration)
+		pullSyncStartTime = t
 	}
+	detector.OnStabilized = warmupMeasurement
 
 	detector.OnPeriodComplete = func(t time.Time, periodCount int, stDev float64) {
 		logger.Debug("node warmup check: period complete.", "periodEndTime", t, "eventsInPeriod", periodCount, "rateStdDev", stDev)
@@ -1133,6 +1147,37 @@ func NewBee(
 		localStore.StartReserveWorker(ctx, pullerService, waitNetworkRFunc)
 		nodeStatus.SetSync(pullerService)
 
+		// measure full sync duration
+		detector.OnStabilized = func(t time.Time, totalCount int) {
+			warmupMeasurement(t, totalCount)
+
+			reserveTreshold := reserveCapacity >> 1
+			isFullySynced := func() bool {
+				return pullerService.SyncRate() == 0 && saludService.IsHealthy() && localStore.ReserveSize() >= reserveTreshold
+			}
+
+			syncCheckTicker := time.NewTicker(2 * time.Second)
+			go func() {
+				defer syncCheckTicker.Stop()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case <-syncCheckTicker.C:
+						synced := isFullySynced()
+						logger.Debug("sync status check", "synced", synced, "reserveSize", localStore.ReserveSize(), "syncRate", pullerService.SyncRate())
+						if synced {
+							fullSyncTime := pullSyncStartTime.Sub(t)
+							logger.Info("full sync duration", "duration", fullSyncTime)
+							nodeMetrics.FullSyncDuration.Observe(fullSyncTime.Minutes())
+							syncCheckTicker.Stop()
+							return
+						}
+					}
+				}
+			}()
+		}
+
 		if o.EnableStorageIncentives {
 
 			redistributionContractAddress := chainCfg.RedistributionAddress
@@ -1220,6 +1265,7 @@ func NewBee(
 		apiService.MustRegisterMetrics(kad.Metrics()...)
 		apiService.MustRegisterMetrics(saludService.Metrics()...)
 		apiService.MustRegisterMetrics(stateStoreMetrics.Metrics()...)
+		apiService.MustRegisterMetrics(getMetrics(nodeMetrics)...)
 
 		if pullerService != nil {
 			apiService.MustRegisterMetrics(pullerService.Metrics()...)
