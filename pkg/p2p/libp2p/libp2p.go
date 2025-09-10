@@ -13,7 +13,6 @@ import (
 	"net"
 	"os"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -43,7 +42,6 @@ import (
 	libp2ppeer "github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/protocol"
-	"github.com/libp2p/go-libp2p/p2p/host/autonat"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	lp2pswarm "github.com/libp2p/go-libp2p/p2p/net/swarm"
@@ -361,16 +359,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	dialer, err := o.hostFactory(append(transports, security)...)
 	if err != nil {
 		return nil, err
-	}
-
-	options := []autonat.Option{autonat.EnableService(dialer.Network())}
-
-	val, err := strconv.ParseBool(reachabilityOverridePublic)
-	if err != nil {
-		return nil, err
-	}
-	if val {
-		options = append(options, autonat.WithReachability(network.ReachabilityPublic))
 	}
 
 	if o.HeadersRWTimeout == 0 {
