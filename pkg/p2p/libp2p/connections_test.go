@@ -1266,7 +1266,7 @@ func checkAddressbook(t *testing.T, ab addressbook.Getter, overlay swarm.Address
 		t.Fatalf("overlay mismatch. got %s want %s", addr.Overlay, overlay)
 	}
 
-	if !bzz.IsUnderlayEqual(addr.Underlay, underlays) {
+	if !bzz.AreUnderlaysEqual(addr.Underlay, underlays) {
 		t.Fatalf("underlay mismatch. got %s, want %s", addr.Underlay, underlays)
 	}
 }

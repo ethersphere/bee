@@ -7,6 +7,7 @@ package hive_test
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
@@ -63,8 +64,12 @@ func TestHandlerRateLimit(t *testing.T) {
 
 	peers := make([]swarm.Address, hive.LimitBurst+1)
 	for i := range peers {
+		underlay1, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/" + strconv.Itoa(i))
+		if err != nil {
+			t.Fatal(err)
+		}
 
-		underlay, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/" + strconv.Itoa(i))
+		underlay2, err := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/" + strconv.Itoa(i))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -77,7 +82,7 @@ func TestHandlerRateLimit(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{underlay}, overlay, networkID, nonce)
+		bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{underlay1, underlay2}, overlay, networkID, nonce)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -108,8 +113,6 @@ func TestHandlerRateLimit(t *testing.T) {
 		t.Fatal("want nil error")
 	}
 }
-
-// TODO add test for multiple underlay addresses
 func TestBroadcastPeers(t *testing.T) {
 	t.Parallel()
 
@@ -128,15 +131,32 @@ func TestBroadcastPeers(t *testing.T) {
 		wantMsgs = append(wantMsgs, pb.Peers{Peers: []*pb.BzzAddress{}})
 	}
 
+	last := 2*hive.MaxBatchSize - 1
+
 	for i := 0; i < 2*hive.MaxBatchSize; i++ {
-		base := "/ip4/127.0.0.1/udp/"
-		if i == 2*hive.MaxBatchSize-1 {
-			base = "/ip4/1.1.1.1/udp/" // The last underlay has public address.
+		var underlays []ma.Multiaddr
+		if i == last {
+			u, err := ma.NewMultiaddr("/ip4/1.1.1.1/udp/" + strconv.Itoa(i)) // public
+			if err != nil {
+				t.Fatal(err)
+			}
+			u2, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/" + strconv.Itoa(i))
+			if err != nil {
+				t.Fatal(err)
+			}
+			underlays = []ma.Multiaddr{u, u2}
+		} else {
+			n := (i % 3) + 1
+			for j := 0; j < n; j++ {
+				port := i + j*10000
+				u, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/" + strconv.Itoa(port))
+				if err != nil {
+					t.Fatal(err)
+				}
+				underlays = append(underlays, u)
+			}
 		}
-		underlay, err := ma.NewMultiaddr(base + strconv.Itoa(i))
-		if err != nil {
-			t.Fatal(err)
-		}
+
 		pk, err := crypto.GenerateSecp256k1Key()
 		if err != nil {
 			t.Fatal(err)
@@ -146,15 +166,14 @@ func TestBroadcastPeers(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{underlay}, overlay, networkID, nonce)
+		bzzAddr, err := bzz.NewAddress(signer, underlays, overlay, networkID, nonce)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		bzzAddresses = append(bzzAddresses, *bzzAddr)
 		overlays = append(overlays, bzzAddr.Overlay)
-		err = addressbook.Put(bzzAddr.Overlay, *bzzAddr)
-		if err != nil {
+		if err := addressbook.Put(bzzAddr.Overlay, *bzzAddr); err != nil {
 			t.Fatal(err)
 		}
 
@@ -233,12 +252,35 @@ func TestBroadcastPeers(t *testing.T) {
 				return rtt, nil
 			},
 		},
-		"Ok - don't advertise private CIDRs": {
+		"Ok - don't advertise private CIDRs only": {
 			addresee:          overlays[len(overlays)-1],
 			peers:             overlays[:15],
 			wantMsgs:          []pb.Peers{{}},
 			wantOverlays:      nil,
 			wantBzzAddresses:  nil,
+			allowPrivateCIDRs: false,
+		},
+		"Ok - don't advertise private CIDRs only (but include one public peer)": {
+			addresee: overlays[0],
+			peers:    overlays[58:],
+			wantMsgs: []pb.Peers{{Peers: []*pb.BzzAddress{
+				{
+					Overlay:   bzzAddresses[len(bzzAddresses)-1].Overlay.Bytes(),
+					Underlay:  bzz.SerializeUnderlays([]ma.Multiaddr{bzzAddresses[len(bzzAddresses)-1].Underlay[0]}),
+					Signature: bzzAddresses[len(bzzAddresses)-1].Signature,
+					Nonce:     nonce,
+				},
+			}}},
+			wantOverlays: []swarm.Address{overlays[len(overlays)-1]},
+			wantBzzAddresses: []bzz.Address{
+				{
+					Underlay:        []ma.Multiaddr{bzzAddresses[len(bzzAddresses)-1].Underlay[0]},
+					Overlay:         bzzAddresses[len(bzzAddresses)-1].Overlay,
+					Signature:       bzzAddresses[len(bzzAddresses)-1].Signature,
+					Nonce:           bzzAddresses[len(bzzAddresses)-1].Nonce,
+					EthereumAddress: bzzAddresses[len(bzzAddresses)-1].EthereumAddress,
+				},
+			},
 			allowPrivateCIDRs: false,
 		},
 	}
@@ -267,6 +309,7 @@ func TestBroadcastPeers(t *testing.T) {
 
 			// create a hive client that will do broadcast
 			client := hive.New(recorder, addressbook, networkID, false, tc.allowPrivateCIDRs, logger)
+
 			if err := client.BroadcastPeers(context.Background(), tc.addresee, tc.peers...); err != nil {
 				t.Fatal(err)
 			}
@@ -287,9 +330,9 @@ func TestBroadcastPeers(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-
-				if fmt.Sprint(messages[0]) != fmt.Sprint(tc.wantMsgs[i]) {
-					t.Errorf("Messages got %v, want %v", messages, tc.wantMsgs)
+				err = ComparePeerMsgs(messages[0].Peers, tc.wantMsgs[i].Peers)
+				if err != nil {
+					t.Errorf("error %v", err.Error())
 				}
 			}
 
@@ -323,10 +366,6 @@ func expectOverlaysEventually(t *testing.T, exporter ab.Interface, wantOverlays 
 		if !swarm.ContainsAddress(overlays, v) {
 			t.Errorf("overlay %s expected but not found", v.String())
 		}
-	}
-
-	if t.Failed() {
-		t.Errorf("overlays got %v, want %v", overlays, wantOverlays)
 	}
 }
 
@@ -382,4 +421,44 @@ func readAndAssertPeersMsgs(in []byte, expectedLen int) ([]pb.Peers, error) {
 	}
 
 	return peers, nil
+}
+
+func ComparePeerMsgs(got, want []*pb.BzzAddress) error {
+	gotMap := flattenByOverlay(got)
+	wantMap := flattenByOverlay(want)
+
+	for ovlHex, w := range wantMap {
+		g, ok := gotMap[ovlHex]
+		if !ok {
+			return fmt.Errorf("expected peer %s, but not found", ovlHex)
+		}
+		if !bytes.Equal(g.Underlay, w.Underlay) {
+			return fmt.Errorf("peer %s: underlays (got=%s want=%s)", ovlHex, g.Underlay, w.Underlay)
+		}
+		if !bytes.Equal(g.Signature, w.Signature) {
+			return fmt.Errorf("peer %s: expected signatures (got=%s want=%s)",
+				ovlHex, shortHex(g.Signature), shortHex(w.Signature))
+		}
+		if !bytes.Equal(g.Nonce, w.Nonce) {
+			return fmt.Errorf("peer %s: expected nonce (got=%s want=%s)",
+				ovlHex, shortHex(g.Nonce), shortHex(w.Nonce))
+		}
+	}
+	return nil
+}
+
+func flattenByOverlay(batches []*pb.BzzAddress) map[string]*pb.BzzAddress {
+	m := make(map[string]*pb.BzzAddress)
+	for _, batch := range batches {
+		m[hex.EncodeToString(batch.Overlay)] = batch
+	}
+	return m
+}
+
+func shortHex(b []byte) string {
+	s := hex.EncodeToString(b)
+	if len(s) > 32 {
+		return s[:32] + fmt.Sprintf("…(%dB)", len(b))
+	}
+	return s
 }
