@@ -41,14 +41,11 @@ var (
 	ErrTransactionReverted = errors.New("transaction reverted")
 	ErrUnknownTransaction  = errors.New("unknown transaction")
 	ErrAlreadyImported     = errors.New("already imported")
-	ErrEIP1559NotSupported = errors.New("network does not appear to support EIP-1559 (no baseFee)")
 )
 
 const (
-	DefaultGasLimit               = 1_000_000
-	DefaultTipBoostPercent        = 25
-	MinimumGasTipCap              = 1_500_000_000 // 1.5 Gwei
-	RedistributionTipBoostPercent = 50
+	DefaultGasLimit        = 1_000_000
+	DefaultTipBoostPercent = 25
 )
 
 // TxRequest describes a request for a transaction that can be executed.
@@ -309,7 +306,7 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 		notice that gas price does not exceed 20 as defined by max fee.
 	*/
 
-	gasFeeCap, gasTipCap, err := t.suggestedFeeAndTip(ctx, request.GasPrice, boostPercent)
+	gasFeeCap, gasTipCap, err := t.backend.SuggestedFeeAndTip(ctx, request.GasPrice, boostPercent)
 	if err != nil {
 		return nil, err
 	}
@@ -324,51 +321,6 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 		GasTipCap: gasTipCap,
 		Data:      request.Data,
 	}), nil
-}
-
-func (t *transactionService) suggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
-	gasTipCap, err := t.backend.SuggestGasTipCap(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	multiplier := big.NewInt(int64(boostPercent) + 100)
-	gasTipCap = new(big.Int).Div(new(big.Int).Mul(gasTipCap, multiplier), big.NewInt(100))
-
-	minimumTip := big.NewInt(MinimumGasTipCap)
-	if gasTipCap.Cmp(minimumTip) < 0 {
-		gasTipCap = new(big.Int).Set(minimumTip)
-	}
-
-	var gasFeeCap *big.Int
-
-	if gasPrice == nil {
-		latestBlockHeader, err := t.backend.HeaderByNumber(ctx, nil)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to get latest block: %w", err)
-		}
-
-		if latestBlockHeader.BaseFee == nil {
-			return nil, nil, ErrEIP1559NotSupported
-		}
-
-		// gasFeeCap = (2 * baseFee) + gasTipCap
-		gasFeeCap = new(big.Int).Add(
-			new(big.Int).Mul(latestBlockHeader.BaseFee, big.NewInt(2)),
-			gasTipCap,
-		)
-	} else {
-		gasFeeCap = new(big.Int).Set(gasPrice)
-	}
-
-	if gasTipCap.Cmp(gasFeeCap) > 0 {
-		t.logger.Warning("gas tip cap is higher than gas fee cap, using gas fee cap as gas tip cap", "gas_tip_cap", gasTipCap, "gas_fee_cap", gasFeeCap)
-		gasTipCap = new(big.Int).Set(gasFeeCap)
-	}
-
-	t.logger.Debug("prepare transaction", "gas_max_fee", gasFeeCap, "gas_max_tip", gasTipCap)
-
-	return gasFeeCap, gasTipCap, nil
 }
 
 func storedTransactionKey(txHash common.Hash) string {
@@ -394,7 +346,7 @@ func (t *transactionService) nextNonce(ctx context.Context) (uint64, error) {
 
 	// PendingNonceAt returns the nonce we should use, but we will
 	// compare this to our pending tx list, therefore the -1.
-	var maxNonce = onchainNonce - 1
+	maxNonce := onchainNonce - 1
 	for _, txHash := range pendingTxs {
 		trx, _, err := t.backend.TransactionByHash(ctx, txHash)
 		if err != nil {
@@ -441,7 +393,7 @@ func (t *transactionService) WatchSentTransaction(txHash common.Hash) (<-chan ty
 }
 
 func (t *transactionService) PendingTransactions() ([]common.Hash, error) {
-	var txHashes = make([]common.Hash, 0)
+	txHashes := make([]common.Hash, 0)
 	err := t.store.Iterate(pendingTransactionPrefix, func(key, value []byte) (stop bool, err error) {
 		txHash := common.HexToHash(strings.TrimPrefix(string(key), pendingTransactionPrefix))
 		txHashes = append(txHashes, txHash)
@@ -491,7 +443,7 @@ func (t *transactionService) ResendTransaction(ctx context.Context, txHash commo
 		return err
 	}
 
-	gasFeeCap, gasTipCap, err := t.suggestedFeeAndTip(ctx, sctx.GetGasPrice(ctx), storedTransaction.GasTipBoost)
+	gasFeeCap, gasTipCap, err := t.backend.SuggestedFeeAndTip(ctx, sctx.GetGasPrice(ctx), storedTransaction.GasTipBoost)
 	if err != nil {
 		return err
 	}
@@ -531,7 +483,7 @@ func (t *transactionService) CancelTransaction(ctx context.Context, originalTxHa
 		return common.Hash{}, err
 	}
 
-	gasFeeCap, gasTipCap, err := t.suggestedFeeAndTip(ctx, sctx.GetGasPrice(ctx), 0)
+	gasFeeCap, gasTipCap, err := t.backend.SuggestedFeeAndTip(ctx, sctx.GetGasPrice(ctx), 0)
 	if err != nil {
 		return common.Hash{}, err
 	}

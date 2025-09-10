@@ -12,21 +12,25 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
+	"github.com/ethersphere/bee/v2/pkg/transaction/backend"
 )
 
-var _ transaction.Backend = (*wrappedBackend)(nil)
+var (
+	_ transaction.Backend = (*wrappedBackend)(nil)
+)
 
 type wrappedBackend struct {
-	backend *ethclient.Client
-	metrics metrics
+	backend          backend.Geth
+	metrics          metrics
+	minimumGasTipCap int64
 }
 
-func NewBackend(backend *ethclient.Client) transaction.Backend {
+func NewBackend(backend backend.Geth, minimumGasTipCap uint64) transaction.Backend {
 	return &wrappedBackend{
-		backend: backend,
-		metrics: newMetrics(),
+		backend:          backend,
+		minimumGasTipCap: int64(minimumGasTipCap),
+		metrics:          newMetrics(),
 	}
 }
 
@@ -102,17 +106,6 @@ func (b *wrappedBackend) NonceAt(ctx context.Context, account common.Address, bl
 	return nonce, nil
 }
 
-func (b *wrappedBackend) CodeAt(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error) {
-	b.metrics.TotalRPCCalls.Inc()
-	b.metrics.CodeAtCalls.Inc()
-	code, err := b.backend.CodeAt(ctx, contract, blockNumber)
-	if err != nil {
-		b.metrics.TotalRPCErrors.Inc()
-		return nil, err
-	}
-	return code, nil
-}
-
 func (b *wrappedBackend) CallContract(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
 	b.metrics.TotalRPCCalls.Inc()
 	b.metrics.CallContractCalls.Inc()
@@ -135,20 +128,9 @@ func (b *wrappedBackend) PendingNonceAt(ctx context.Context, account common.Addr
 	return nonce, nil
 }
 
-func (b *wrappedBackend) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
-	b.metrics.TotalRPCCalls.Inc()
-	b.metrics.SuggestGasPriceCalls.Inc()
-	gasPrice, err := b.backend.SuggestGasPrice(ctx)
-	if err != nil {
-		b.metrics.TotalRPCErrors.Inc()
-		return nil, err
-	}
-	return gasPrice, nil
-}
-
 func (b *wrappedBackend) SuggestGasTipCap(ctx context.Context) (*big.Int, error) {
 	b.metrics.TotalRPCCalls.Inc()
-	b.metrics.SuggestGasPriceCalls.Inc()
+	b.metrics.SuggestGasTipCapCalls.Inc()
 	gasTipCap, err := b.backend.SuggestGasTipCap(ctx)
 	if err != nil {
 		b.metrics.TotalRPCErrors.Inc()
@@ -201,21 +183,6 @@ func (b *wrappedBackend) ChainID(ctx context.Context) (*big.Int, error) {
 	return chainID, nil
 }
 
-// BlockByNumber implements transaction.Backend.
-func (b *wrappedBackend) BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error) {
-	b.metrics.TotalRPCCalls.Inc()
-	b.metrics.BlockByNumberCalls.Inc()
-	block, err := b.backend.BlockByNumber(ctx, number)
-	if err != nil {
-		if !errors.Is(err, ethereum.NotFound) {
-			b.metrics.TotalRPCErrors.Inc()
-		}
-		return nil, err
-	}
-	return block, nil
-}
-
-func (b *wrappedBackend) Close() error {
+func (b *wrappedBackend) Close() {
 	b.backend.Close()
-	return nil
 }

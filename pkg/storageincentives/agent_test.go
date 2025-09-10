@@ -242,8 +242,8 @@ func (m *mockchainBackend) BalanceAt(ctx context.Context, address common.Address
 	return m.balance, nil
 }
 
-func (m *mockchainBackend) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
-	return big.NewInt(4), nil
+func (m *mockchainBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+	return big.NewInt(4), big.NewInt(5), nil
 }
 
 type contractCall int

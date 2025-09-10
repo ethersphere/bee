@@ -427,7 +427,8 @@ func TestForwardToClosest(t *testing.T) {
 	}
 }
 
-// PushChunkToClosest tests the sending of chunk to closest peer from the origination source perspective.
+
+// TestPushChunkToClosest tests the sending of chunk to closest peer from the origination source perspective.
 // it also checks whether the tags are incremented properly if they are present
 func TestPushChunkToClosest(t *testing.T) {
 	t.Parallel()
