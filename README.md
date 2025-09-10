@@ -34,7 +34,7 @@ Please read the [coding guidelines](CODING.md) and [style guide](CODINGSTYLE.md)
 
 ## Installing
 
-[Install instructions](https://docs.ethswarm.org/docs/installation/quick-start)
+[Install instructions](https://docs.ethswarm.org/docs/bee/installation/quick-start)
 
 ## Get in touch
 
