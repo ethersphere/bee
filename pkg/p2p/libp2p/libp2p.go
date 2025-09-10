@@ -71,7 +71,6 @@ var (
 
 	// reachabilityOverridePublic overrides autonat to simply report
 	// public reachability status, it is set in the makefile.
-	reachabilityOverridePublic = "false"
 )
 
 const (
