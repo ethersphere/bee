@@ -119,7 +119,6 @@ type Service struct {
 	reacher           p2p.Reacher
 	networkStatus     atomic.Int32
 	HeadersRWTimeout  time.Duration
-	autoNAT           autonat.AutoNAT
 	enableWS          bool
 	certManager       P2PForgeCertMgr
 }
@@ -306,9 +305,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		libp2p.Peerstore(libp2pPeerstore),
 		libp2p.UserAgent(userAgent()),
 		libp2p.ResourceManager(rm),
-		libp2p.NATPortMap(),
-		libp2p.DisableRelay(),
-		libp2p.EnableAutoNATv2(),
 	}
 
 	if o.PrivateKey != nil {
@@ -375,21 +371,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 	if val {
 		options = append(options, autonat.WithReachability(network.ReachabilityPublic))
-	}
-
-	// If you want to help other peers to figure out if they are behind
-	// NATs, you can launch the server-side of AutoNAT too (AutoRelay
-	// already runs the client)
-	var autoNAT autonat.AutoNAT
-	if autoNAT, err = autonat.New(h, options...); err != nil {
-		return nil, fmt.Errorf("autonat: %w", err)
-	}
-
-	if o.AutoTLSEnabled && o.EnableWS {
-		// Check reachability for AutoTLS
-		if autoNAT.Status() != network.ReachabilityPublic {
-			logger.Warning("Node not publicly reachable; AutoTLS may fail")
-		}
 	}
 
 	if o.HeadersRWTimeout == 0 {
@@ -465,7 +446,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		lightNodes:        lightNodes,
 		enableWS:          o.EnableWS,
 		HeadersRWTimeout:  o.HeadersRWTimeout,
-		autoNAT:           autoNAT,
 		certManager:       certManager,
 	}
 
@@ -1142,11 +1122,6 @@ func (s *Service) Close() error {
 	}
 	if s.reacher != nil {
 		if err := s.reacher.Close(); err != nil {
-			return err
-		}
-	}
-	if s.autoNAT != nil {
-		if err := s.autoNAT.Close(); err != nil {
 			return err
 		}
 	}
