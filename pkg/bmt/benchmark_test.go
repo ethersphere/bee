@@ -47,8 +47,8 @@ func benchmarkSHA3(b *testing.B, n int) {
 	testData := testutil.RandBytesWithSeed(b, 4096, seed)
 
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		if _, err := bmt.Sha3hash(testData[:n]); err != nil {
 			b.Fatalf("seed %d: %v", seed, err)
 		}
@@ -66,8 +66,8 @@ func benchmarkBMTBaseline(b *testing.B, _ int) {
 	testData := testutil.RandBytesWithSeed(b, 4096, seed)
 
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		eg := new(errgroup.Group)
 		for j := 0; j < testSegmentCount; j++ {
 			eg.Go(func() error {
@@ -92,8 +92,8 @@ func benchmarkBMT(b *testing.B, n int) {
 	defer pool.Put(h)
 
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		if _, err := syncHash(h, testData[:n]); err != nil {
 			b.Fatalf("seed %d: %v", seed, err)
 		}
@@ -110,8 +110,8 @@ func benchmarkPool(b *testing.B, poolsize int) {
 	cycles := 100
 
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		eg := new(errgroup.Group)
 		for j := 0; j < cycles; j++ {
 			eg.Go(func() error {
@@ -136,8 +136,8 @@ func benchmarkRefHasher(b *testing.B, n int) {
 	rbmt := reference.NewRefHasher(swarm.NewHasher(), 128)
 
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		_, err := rbmt.Hash(testData[:n])
 		if err != nil {
 			b.Fatal(err)

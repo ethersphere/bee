@@ -227,7 +227,7 @@ func maxInt(a int, b int) int {
 func doRead(b *testing.B, db storage.Store, g keyGenerator, allowNotFound bool) {
 	b.Helper()
 
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		key := g.Key(i)
 		item := &obj1{
 			Id: string(key),
@@ -269,7 +269,7 @@ func doWrite(b *testing.B, db storage.Store, g entryGenerator) {
 	b.Helper()
 
 	w := newDBWriter(db)
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		if err := w.Put(g.Key(i), g.Value(i)); err != nil {
 			b.Fatalf("write key '%s': %v", string(g.Key(i)), err)
 		}
@@ -280,7 +280,7 @@ func doDelete(b *testing.B, db storage.Store, g keyGenerator) {
 	b.Helper()
 
 	w := newDBWriter(db)
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		if err := w.Delete(g.Key(i)); err != nil {
 			b.Fatalf("delete key '%s': %v", string(g.Key(i)), err)
 		}
@@ -304,7 +304,7 @@ func populate(b *testing.B, db storage.Store) {
 func doDeleteChunk(b *testing.B, db storage.ChunkStore, g keyGenerator) {
 	b.Helper()
 
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		addr := swarm.MustParseHexAddress(string(g.Key(i)))
 		if err := db.Delete(context.Background(), addr); err != nil {
 			b.Fatalf("delete key '%s': %v", string(g.Key(i)), err)
@@ -315,7 +315,7 @@ func doDeleteChunk(b *testing.B, db storage.ChunkStore, g keyGenerator) {
 func doWriteChunk(b *testing.B, db storage.Putter, g entryGenerator) {
 	b.Helper()
 
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		buf := make([]byte, swarm.HashSize)
 		if _, err := hex.Decode(buf, g.Key(i)); err != nil {
 			b.Fatalf("decode value: %v", err)
@@ -331,7 +331,7 @@ func doWriteChunk(b *testing.B, db storage.Putter, g entryGenerator) {
 func doReadChunk(b *testing.B, db storage.ChunkStore, g keyGenerator, allowNotFound bool) {
 	b.Helper()
 
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		key := string(g.Key(i))
 		addr := swarm.MustParseHexAddress(key)
 		_, err := db.Get(context.Background(), addr)

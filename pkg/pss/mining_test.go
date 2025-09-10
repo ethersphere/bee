@@ -51,7 +51,7 @@ func BenchmarkWrap(b *testing.B) {
 		name := fmt.Sprintf("length:%d,depth:%d", c.length, c.depth)
 		b.Run(name, func(b *testing.B) {
 			targets := newTargets(c.length, c.depth)
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				if _, err := pss.Wrap(ctx, topic, msg, pubkey, targets); err != nil {
 					b.Fatal(err)
 				}
