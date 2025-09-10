@@ -55,21 +55,25 @@ func TestHandshake(t *testing.T) {
 	}
 
 	node1maBinary := bzz.SerializeUnderlays([]ma.Multiaddr{node1ma, node1ma2})
-
 	node2maBinary := bzz.SerializeUnderlays([]ma.Multiaddr{node2ma, node2ma2})
 
-	node1AddrInfo, err := libp2ppeer.AddrInfoFromP2pAddr(node1ma)
+	node1AddrInfos, err := libp2ppeer.AddrInfosFromP2pAddrs(node1ma, node1ma2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	node1AddrInfo.Addrs = []ma.Multiaddr{node1ma, node1ma2} // TODO how to deal with multiple underlay addresses correctly ?
+	if len(node1AddrInfos) != 1 {
+		t.Fatal("must be same peer")
+	}
+	node1AddrInfo := node1AddrInfos[0]
 
-	node2AddrInfo, err := libp2ppeer.AddrInfoFromP2pAddr(node2ma)
+	node2AddrInfos, err := libp2ppeer.AddrInfosFromP2pAddrs(node2ma, node2ma2)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	node2AddrInfo.Addrs = []ma.Multiaddr{node2ma, node2ma2} // TODO same question here
+	if len(node2AddrInfos) != 1 {
+		t.Fatal("must be same peer")
+	}
+	node2AddrInfo := node2AddrInfos[0]
 	privateKey1, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)

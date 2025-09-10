@@ -310,8 +310,6 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 			ctx, cancel := context.WithTimeout(ctx, pingTimeout)
 			defer cancel()
 
-			// check if the underlay is usable by doing a raw ping using libp2p
-			// check if node is running in browser, and if it is, ping wss only
 			var (
 				pingSuccessful bool
 				start          time.Time
@@ -373,7 +371,7 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 		// if peer exists already in the addressBook
 		// and if the underlays match, skip
 		addr, err := s.addressBook.Get(swarm.NewAddress(p.Overlay))
-		if err == nil && bzz.IsUnderlayEqual(addr.Underlay, multiUnderlays) {
+		if err == nil && bzz.AreUnderlaysEqual(addr.Underlay, multiUnderlays) {
 			continue
 		}
 

@@ -110,7 +110,7 @@ func (a *Address) Equal(b *Address) bool {
 		return a == b
 	}
 
-	return a.Overlay.Equal(b.Overlay) && IsUnderlayEqual(a.Underlay, b.Underlay) && bytes.Equal(a.Signature, b.Signature) && bytes.Equal(a.Nonce, b.Nonce)
+	return a.Overlay.Equal(b.Overlay) && AreUnderlaysEqual(a.Underlay, b.Underlay) && bytes.Equal(a.Signature, b.Signature) && bytes.Equal(a.Nonce, b.Nonce)
 }
 
 func IsAtLeastOneUnderlayEqual(a, b []ma.Multiaddr) bool {
@@ -127,7 +127,7 @@ func IsAtLeastOneUnderlayEqual(a, b []ma.Multiaddr) bool {
 	return false
 }
 
-func IsUnderlayEqual(a, b []ma.Multiaddr) bool {
+func AreUnderlaysEqual(a, b []ma.Multiaddr) bool {
 	if len(a) != len(b) {
 		return false
 	}

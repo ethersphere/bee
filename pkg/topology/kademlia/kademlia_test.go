@@ -11,6 +11,7 @@ import (
 	"math"
 	"math/rand"
 	"reflect"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -2044,7 +2045,7 @@ func p2pMock(t *testing.T, ab addressbook.Interface, signer beeCrypto.Signer, co
 			}
 
 			for _, a := range addresses {
-				if bzz.IsUnderlayEqual(a.Underlay, addrs) {
+				if bzz.AreUnderlaysEqual(a.Underlay, addrs) {
 					return &a, nil
 				}
 			}
@@ -2080,12 +2081,8 @@ const underlayBase = "/ip4/127.0.0.1/tcp/1634/dns/"
 
 func connectOne(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addressbook.Putter, peer swarm.Address, expErr error) {
 	t.Helper()
-	multiaddr, err := ma.NewMultiaddr(underlayBase + peer.String())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{multiaddr}, peer, 0, nil)
+	underlays := generateMultipleUnderlays(t, 3, underlayBase+peer.String())
+	bzzAddr, err := bzz.NewAddress(signer, underlays, peer, 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2233,4 +2230,18 @@ func ptrInt(v int) *int {
 
 func ptrDuration(v time.Duration) *time.Duration {
 	return &v
+}
+
+func generateMultipleUnderlays(t *testing.T, n int, baseUnderlay string) []ma.Multiaddr {
+	t.Helper()
+	underlays := make([]ma.Multiaddr, n)
+
+	for i := 0; i < n; i++ {
+		multiaddr, err := ma.NewMultiaddr(baseUnderlay + strconv.Itoa(i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		underlays[i] = multiaddr
+	}
+	return underlays
 }
