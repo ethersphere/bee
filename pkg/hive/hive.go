@@ -186,13 +186,24 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 			return err
 		}
 
-		if !s.allowPrivateCIDRs && manet.IsPrivateAddr(addr.Underlay) {
-			continue // Don't advertise private CIDRs to the public network.
+		var advertisableUnderlays []ma.Multiaddr
+		if s.allowPrivateCIDRs {
+			advertisableUnderlays = addr.Underlay
+		} else {
+			for _, u := range addr.Underlay {
+				// filter private underlays
+				if !manet.IsPrivateAddr(u) {
+					advertisableUnderlays = append(advertisableUnderlays, u)
+				}
+			}
+			if len(advertisableUnderlays) == 0 {
+				continue
+			}
 		}
 
 		peersRequest.Peers = append(peersRequest.Peers, &pb.BzzAddress{
 			Overlay:   addr.Overlay.Bytes(),
-			Underlay:  bzz.SerializeUnderlays([]ma.Multiaddr{addr.Underlay}), // todo: add more underlays when bzz.Address supports multiple Underlays
+			Underlay:  bzz.SerializeUnderlays(advertisableUnderlays),
 			Signature: addr.Signature,
 			Nonce:     addr.Nonce,
 		})
@@ -281,7 +292,7 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 	mtx := sync.Mutex{}
 	wg := sync.WaitGroup{}
 
-	addPeer := func(newPeer *pb.BzzAddress, multiUnderlay ma.Multiaddr) {
+	addPeer := func(newPeer *pb.BzzAddress, multiUnderlay []ma.Multiaddr) {
 		err := s.sem.Acquire(ctx, 1)
 		if err != nil {
 			return
@@ -299,17 +310,29 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 			ctx, cancel := context.WithTimeout(ctx, pingTimeout)
 			defer cancel()
 
-			start := time.Now()
+			var (
+				pingSuccessful bool
+				start          time.Time
+			)
+			for _, underlay := range multiUnderlay {
+				// ping each underlay address, pick first available
+				start = time.Now()
+				if _, err := s.streamer.Ping(ctx, underlay); err != nil {
+					s.logger.Debug("unreachable peer underlay", "peer_address", hex.EncodeToString(newPeer.Overlay), "underlay", underlay)
+					continue
+				}
+				pingSuccessful = true
+				break
+			}
 
-			// check if the underlay is usable by doing a raw ping using libp2p
-			if _, err := s.streamer.Ping(ctx, multiUnderlay); err != nil {
+			if !pingSuccessful {
+				// none of underlay addresses is available
 				s.metrics.PingFailureTime.Observe(time.Since(start).Seconds())
 				s.metrics.UnreachablePeers.Inc()
-				s.logger.Debug("unreachable peer underlay", "peer_address", hex.EncodeToString(newPeer.Overlay), "underlay", multiUnderlay)
 				return
 			}
-			s.metrics.PingTime.Observe(time.Since(start).Seconds())
 
+			s.metrics.PingTime.Observe(time.Since(start).Seconds())
 			s.metrics.ReachablePeers.Inc()
 
 			bzzAddress := bzz.Address{
@@ -345,18 +368,15 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 			continue // no underlays sent
 		}
 
-		// handle only the first underlay, for now
-		multiUnderlay := multiUnderlays[0]
-
 		// if peer exists already in the addressBook
 		// and if the underlays match, skip
 		addr, err := s.addressBook.Get(swarm.NewAddress(p.Overlay))
-		if err == nil && addr.Underlay.Equal(multiUnderlay) {
+		if err == nil && bzz.AreUnderlaysEqual(addr.Underlay, multiUnderlays) {
 			continue
 		}
 
 		// add peer does not exist in the addressbook
-		addPeer(p, multiUnderlay)
+		addPeer(p, multiUnderlays)
 	}
 	wg.Wait()
 
