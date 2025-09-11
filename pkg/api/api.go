@@ -377,6 +377,12 @@ func (s *Service) Configure(signer crypto.Signer, tracer *tracing.Tracer, o Opti
 			return addr.String(), nil
 		case errors.Is(err, ens.ErrNotImplemented):
 			return v, nil
+		case errors.Is(err, multiresolver.ErrResolverService) || errors.Is(err, resolver.ErrServiceNotAvailable):
+			// Wrap service unavailable errors for HTTP 503 response
+			return "", &serviceUnavailableError{
+				Entry: v,
+				Cause: err,
+			}
 		default:
 			return "", err
 		}
@@ -450,11 +456,8 @@ func (s *Service) resolveNameOrAddress(str string) (swarm.Address, error) {
 		return addr, nil
 	}
 
-	if errors.Is(err, multiresolver.ErrEnsResolverService) {
-		return swarm.ZeroAddress, fmt.Errorf("%w: %w", errNoResolver, err)
-	}
-	if errors.Is(err, resolver.ErrServiceNotAvailable) {
-		return swarm.ZeroAddress, fmt.Errorf("name resolver service not available: %w", err)
+	if errors.Is(err, multiresolver.ErrResolverService) || errors.Is(err, resolver.ErrServiceNotAvailable) {
+		return swarm.ZeroAddress, err
 	}
 
 	return swarm.ZeroAddress, fmt.Errorf("%w: %w", errInvalidNameOrAddress, err)
@@ -637,6 +640,17 @@ func (e *validationError) Error() string {
 	return fmt.Sprintf("`%s=%v`: %v", e.Entry, e.Value, e.Cause)
 }
 
+// serviceUnavailableError is a custom error type for service unavailable errors.
+type serviceUnavailableError struct {
+	Entry string
+	Cause error
+}
+
+// Error implements the error interface.
+func (e *serviceUnavailableError) Error() string {
+	return fmt.Sprintf("`%s`: %v", e.Entry, e.Cause)
+}
+
 // mapStructure maps the input into output struct and validates the output.
 // It's a helper method for the handlers, which reduces the chattiness
 // of the code.
@@ -659,13 +673,24 @@ func (s *Service) mapStructure(input, output interface{}) func(string, log.Logge
 				Message: msg,
 				Code:    http.StatusBadRequest,
 			}
+			hasServiceUnavailable := false
 			for _, err := range merr.Errors {
+				var suerr *serviceUnavailableError
+				if errors.As(err, &suerr) {
+					hasServiceUnavailable = true
+					resp.Reasons = append(resp.Reasons, jsonhttp.Reason{
+						Field: suerr.Entry,
+						Error: suerr.Cause.Error(),
+					})
+					continue
+				}
 				var perr *parseError
 				if errors.As(err, &perr) {
 					resp.Reasons = append(resp.Reasons, jsonhttp.Reason{
 						Field: perr.Entry,
 						Error: perr.Cause.Error(),
 					})
+					continue
 				}
 				var verr *validationError
 				if errors.As(err, &verr) {
@@ -675,7 +700,14 @@ func (s *Service) mapStructure(input, output interface{}) func(string, log.Logge
 					})
 				}
 			}
-			jsonhttp.BadRequest(w, resp)
+
+			if hasServiceUnavailable {
+				resp.Message = "service unavailable"
+				resp.Code = http.StatusServiceUnavailable
+				jsonhttp.ServiceUnavailable(w, resp)
+			} else {
+				jsonhttp.BadRequest(w, resp)
+			}
 		}
 	}
 
