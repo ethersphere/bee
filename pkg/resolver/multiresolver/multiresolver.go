@@ -35,6 +35,8 @@ var (
 	ErrResolverChainFailed = errors.New("resolver chain failed")
 	// ErrCloseFailed denotes that closing the multiresolver failed.
 	ErrCloseFailed = errors.New("close failed")
+	// ErrEnsResolverService denotes that no ENS resolver service is configured for the requested name.
+	ErrEnsResolverService = errors.New("cannot communicate with the ENS resolver or no ENS resolver service configured")
 )
 
 type resolverMap map[string][]resolver.Interface
@@ -157,10 +159,19 @@ func (mr *MultiResolver) Resolve(name string) (addr resolver.Address, err error)
 	}
 	chain := mr.resolvers[tld]
 
-	// If no resolver chain is found, switch to the default chain.
 	if len(chain) == 0 {
-		chain = mr.resolvers[""]
+		// handle the resolver chain for the most common case
+		if tld == ".eth" {
+			return addr, ErrEnsResolverService
+		}
+		// default resolver is the CID resolver, so if TLD is non-empty it will fail there with wrong error message
+		if tld != "" {
+			return addr, fmt.Errorf("cannot communicate with the resolver or no resolver service configured for TLD %s", tld)
+		}
 	}
+
+	// If no resolver chain is found, switch to the default chain.
+	chain = mr.resolvers[""]
 
 	var errs *multierror.Error
 	for _, res := range chain {

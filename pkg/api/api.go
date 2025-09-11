@@ -43,6 +43,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/pss"
 	"github.com/ethersphere/bee/v2/pkg/resolver"
 	"github.com/ethersphere/bee/v2/pkg/resolver/client/ens"
+	"github.com/ethersphere/bee/v2/pkg/resolver/multiresolver"
 	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/settlement"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap"
@@ -447,6 +448,13 @@ func (s *Service) resolveNameOrAddress(str string) (swarm.Address, error) {
 	if err == nil {
 		s.loggerV1.Debug("resolve name: address resolved successfully", "string", str, "address", addr)
 		return addr, nil
+	}
+
+	if errors.Is(err, multiresolver.ErrEnsResolverService) {
+		return swarm.ZeroAddress, fmt.Errorf("%w: %w", errNoResolver, err)
+	}
+	if errors.Is(err, resolver.ErrServiceNotAvailable) {
+		return swarm.ZeroAddress, fmt.Errorf("name resolver service not available: %w", err)
 	}
 
 	return swarm.ZeroAddress, fmt.Errorf("%w: %w", errInvalidNameOrAddress, err)
