@@ -248,7 +248,7 @@ func TestChunkInvalidParams(t *testing.T) {
 	})
 }
 
-// TestDirectChunkUpload tests that the direct upload endpoint give correct error message in dev mode
+// TestChunkDirectUpload tests that the direct upload endpoint give correct error message in dev mode
 func TestChunkDirectUpload(t *testing.T) {
 	t.Parallel()
 	var (
