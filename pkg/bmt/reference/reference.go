@@ -38,10 +38,7 @@ func NewRefHasher(h hash.Hash, count int) *RefHasher {
 func (rh *RefHasher) Hash(data []byte) ([]byte, error) {
 	// if data is shorter than the base length (maxDataLength), we provide padding with zeros
 	d := make([]byte, rh.maxDataLength)
-	length := len(data)
-	if length > rh.maxDataLength {
-		length = rh.maxDataLength
-	}
+	length := min(len(data), rh.maxDataLength)
 	copy(d, data[:length])
 	return rh.hash(d, rh.maxDataLength)
 }

@@ -162,10 +162,7 @@ func (n *Node) MarshalBinary() (bytes []byte, err error) {
 	copy(xorEncryptedBytes, bytes[0:nodeObfuscationKeySize])
 
 	for i := nodeObfuscationKeySize; i < len(bytes); i += nodeObfuscationKeySize {
-		end := i + nodeObfuscationKeySize
-		if end > len(bytes) {
-			end = len(bytes)
-		}
+		end := min(i+nodeObfuscationKeySize, len(bytes))
 
 		encrypted := encryptDecrypt(bytes[i:end], n.obfuscationKey)
 		copy(xorEncryptedBytes[i:end], encrypted)
@@ -228,10 +225,7 @@ func (n *Node) UnmarshalBinary(data []byte) error {
 	copy(xorDecryptedBytes, data[0:nodeObfuscationKeySize])
 
 	for i := nodeObfuscationKeySize; i < len(data); i += nodeObfuscationKeySize {
-		end := i + nodeObfuscationKeySize
-		if end > len(data) {
-			end = len(data)
-		}
+		end := min(i+nodeObfuscationKeySize, len(data))
 
 		decrypted := encryptDecrypt(data[i:end], n.obfuscationKey)
 		copy(xorDecryptedBytes[i:end], decrypted)
