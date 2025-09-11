@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/resolver"
 	"github.com/ethersphere/bee/v2/pkg/resolver/cidv1"
 	"github.com/ethersphere/bee/v2/pkg/resolver/client/ens"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/hashicorp/go-multierror"
 )
 
@@ -162,12 +163,11 @@ func (mr *MultiResolver) Resolve(name string) (addr resolver.Address, err error)
 	if len(chain) == 0 {
 		// default resolver is the CID resolver, so if TLD is non-empty it will fail there with wrong error message
 		if tld != "" {
-			return addr, ErrResolverService
+			return swarm.ZeroAddress, ErrResolverService
 		}
+		// If no resolver chain is found, switch to the default chain.
+		chain = mr.resolvers[""]
 	}
-
-	// If no resolver chain is found, switch to the default chain.
-	chain = mr.resolvers[""]
 
 	var errs *multierror.Error
 	for _, res := range chain {
