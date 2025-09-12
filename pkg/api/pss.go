@@ -24,8 +24,7 @@ import (
 )
 
 const (
-	writeDeadline   = 4 * time.Second // write deadline. should be smaller than the shutdown timeout on api close
-	targetMaxLength = 3               // max target length in bytes, in order to prevent grieving by excess computation
+	writeDeadline = 4 * time.Second // write deadline. should be smaller than the shutdown timeout on api close
 )
 
 func (s *Service) pssPostHandler(w http.ResponseWriter, r *http.Request) {
@@ -42,7 +41,7 @@ func (s *Service) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 	topic := pss.NewTopic(paths.Topic)
 
 	var targets pss.Targets
-	for _, v := range strings.Split(paths.Targets, ",") {
+	for v := range strings.SplitSeq(paths.Targets, ",") {
 		target := struct {
 			Val []byte `map:"target" validate:"required,max=3"`
 		}{}
