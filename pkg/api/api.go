@@ -633,17 +633,6 @@ func (e *validationError) Error() string {
 	return fmt.Sprintf("`%s=%v`: %v", e.Entry, e.Value, e.Cause)
 }
 
-// serviceUnavailableError is a custom error type for service unavailable errors.
-type serviceUnavailableError struct {
-	Entry string
-	Cause error
-}
-
-// Error implements the error interface.
-func (e *serviceUnavailableError) Error() string {
-	return fmt.Sprintf("`%s`: %v", e.Entry, e.Cause)
-}
-
 // mapStructure maps the input into output struct and validates the output.
 // It's a helper method for the handlers, which reduces the chattiness
 // of the code.
