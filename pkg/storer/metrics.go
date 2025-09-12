@@ -17,29 +17,24 @@ import (
 
 // metrics groups storer related prometheus counters.
 type metrics struct {
-	MethodCalls                     *prometheus.CounterVec
-	MethodCallsDuration             *prometheus.HistogramVec
-	ReserveSize                     prometheus.Gauge
-	ReserveSizeWithinRadius         prometheus.Gauge
-	ReserveCleanup                  prometheus.Counter
-	StorageRadius                   prometheus.Gauge
-	CacheSize                       prometheus.Gauge
-	EvictedChunkCount               prometheus.Counter
-	ExpiredChunkCount               prometheus.Counter
-	OverCapTriggerCount             prometheus.Counter
-	ExpiredBatchCount               prometheus.Counter
-	LevelDBStats                    *prometheus.HistogramVec
-	ExpiryTriggersCount             prometheus.Counter
-	ExpiryRunsCount                 prometheus.Counter
-	ReserveMissingBatch             prometheus.Gauge
-	ReserveSampleDuration           *prometheus.HistogramVec
-	ReserveSampleChunksIterated     prometheus.Gauge
-	ReserveSampleChunksPerRun       prometheus.Histogram
-	ReserveSampleChunksLoadFailed   prometheus.Gauge
-	ReserveSampleTaddrDuration      *prometheus.HistogramVec
-	ReserveSampleStampValidations   prometheus.Gauge
-	ReserveSampleStampValidDuration *prometheus.HistogramVec
-	ReserveSampleWorkers            prometheus.Gauge
+	MethodCalls                   *prometheus.CounterVec
+	MethodCallsDuration           *prometheus.HistogramVec
+	ReserveSize                   prometheus.Gauge
+	ReserveSizeWithinRadius       prometheus.Gauge
+	ReserveCleanup                prometheus.Counter
+	StorageRadius                 prometheus.Gauge
+	CacheSize                     prometheus.Gauge
+	EvictedChunkCount             prometheus.Counter
+	ExpiredChunkCount             prometheus.Counter
+	OverCapTriggerCount           prometheus.Counter
+	ExpiredBatchCount             prometheus.Counter
+	LevelDBStats                  *prometheus.HistogramVec
+	ExpiryTriggersCount           prometheus.Counter
+	ExpiryRunsCount               prometheus.Counter
+	ReserveMissingBatch           prometheus.Gauge
+	ReserveSampleDuration         *prometheus.HistogramVec
+	ReserveSampleRunSummary       *prometheus.GaugeVec
+	ReserveSampleLastRunTimestamp prometheus.Gauge
 }
 
 // newMetrics is a convenient constructor for creating new metrics.
@@ -170,76 +165,31 @@ func newMetrics() metrics {
 				Help:      "Number of times the expiry worker was fired.",
 			},
 		),
-		// ReserveSample metrics
 		ReserveSampleDuration: prometheus.NewHistogramVec(
 			prometheus.HistogramOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "reserve_sample_duration_seconds",
 				Help:      "Duration of ReserveSample operations in seconds.",
-				Buckets:   []float64{30, 60, 120, 300, 600, 900, 1200, 1500, 1800, 2400, 3000, 3600, 4800}, // Flexible for 5-22min and future improvements
+				Buckets:   []float64{30, 60, 120, 300, 600, 900, 1200, 1500, 1800, 2400, 3000, 3600, 4800},
 			},
-			[]string{"status", "workers", "chunks_processed"},
+			[]string{"status", "workers"},
 		),
-		ReserveSampleChunksIterated: prometheus.NewGauge(
+		ReserveSampleRunSummary: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
-				Name:      "reserve_sample_chunks_iterated",
-				Help:      "Number of chunks iterated during the last ReserveSample run.",
+				Name:      "reserve_sample_run_summary",
+				Help:      "Summary metrics for the last ReserveSample run.",
 			},
+			[]string{"metric"},
 		),
-		ReserveSampleChunksPerRun: prometheus.NewHistogram(
-			prometheus.HistogramOpts{
-				Namespace: m.Namespace,
-				Subsystem: subsystem,
-				Name:      "reserve_sample_chunks_per_run",
-				Help:      "Distribution of chunks iterated per ReserveSample run.",
-				Buckets:   []float64{1000, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000},
-			},
-		),
-		ReserveSampleChunksLoadFailed: prometheus.NewGauge(
+		ReserveSampleLastRunTimestamp: prometheus.NewGauge(
 			prometheus.GaugeOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
-				Name:      "reserve_sample_chunks_load_failed",
-				Help:      "Number of chunks that failed to load during the last ReserveSample run.",
-			},
-		),
-		ReserveSampleTaddrDuration: prometheus.NewHistogramVec(
-			prometheus.HistogramOpts{
-				Namespace: m.Namespace,
-				Subsystem: subsystem,
-				Name:      "reserve_sample_taddr_duration_milliseconds",
-				Help:      "Duration of transformed address calculations during ReserveSample in milliseconds.",
-				Buckets:   []float64{1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000},
-			},
-			[]string{"chunk_type"},
-		),
-		ReserveSampleStampValidations: prometheus.NewGauge(
-			prometheus.GaugeOpts{
-				Namespace: m.Namespace,
-				Subsystem: subsystem,
-				Name:      "reserve_sample_stamp_validations",
-				Help:      "Number of stamp validations during the last ReserveSample run.",
-			},
-		),
-		ReserveSampleStampValidDuration: prometheus.NewHistogramVec(
-			prometheus.HistogramOpts{
-				Namespace: m.Namespace,
-				Subsystem: subsystem,
-				Name:      "reserve_sample_stamp_valid_duration_milliseconds",
-				Help:      "Duration of stamp validations during ReserveSample in milliseconds.",
-				Buckets:   []float64{1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000},
-			},
-			[]string{"status"},
-		),
-		ReserveSampleWorkers: prometheus.NewGauge(
-			prometheus.GaugeOpts{
-				Namespace: m.Namespace,
-				Subsystem: subsystem,
-				Name:      "reserve_sample_workers",
-				Help:      "Number of parallel workers used in ReserveSample.",
+				Name:      "reserve_sample_last_run_timestamp",
+				Help:      "Unix timestamp of the last ReserveSample run completion.",
 			},
 		),
 	}
