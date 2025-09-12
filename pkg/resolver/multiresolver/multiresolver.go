@@ -160,13 +160,12 @@ func (mr *MultiResolver) Resolve(name string) (addr resolver.Address, err error)
 	}
 	chain := mr.resolvers[tld]
 
+	// If no resolver chain is found, switch to the default chain.
 	if len(chain) == 0 {
-		// default resolver is the CID resolver, so if TLD is non-empty it will fail there with wrong error message
-		if tld != "" {
+		chain = mr.resolvers[""]
+		if len(chain) == 1 && tld != "" { // only the CID resolver is defined
 			return swarm.ZeroAddress, ErrResolverService
 		}
-		// If no resolver chain is found, switch to the default chain.
-		chain = mr.resolvers[""]
 	}
 
 	var errs *multierror.Error
