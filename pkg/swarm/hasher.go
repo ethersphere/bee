@@ -15,7 +15,7 @@ func NewHasher() hash.Hash {
 	return sha3.NewLegacyKeccak256()
 }
 
-// NewHasher returns new Keccak-256 hasher.
+// NewStatefulHasher returns new Keccak-256 hasher with state modifiers.
 func NewStatefulHasher(state []byte) (sha3.StatefulHash, error) {
 	return sha3.NewLegacyKeccak256WithState(state)
 }
@@ -27,7 +27,7 @@ type PrefixHasher struct {
 }
 
 // NewPrefixHasher returns new hasher which is Keccak-256 hasher
-// with prefix value added as initial data.
+// with prefix value added as state.
 func NewPrefixHasher(prefix []byte) hash.Hash {
 	h, err := NewStatefulHasher(nil)
 	if err != nil {
