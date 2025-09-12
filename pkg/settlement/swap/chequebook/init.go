@@ -60,12 +60,12 @@ func checkBalance(
 		minimumEth := big.NewInt(0)
 
 		if gasPrice == nil {
-			gasPrice, err = swapBackend.SuggestGasPrice(timeoutCtx)
+			gasPrice, _, err = swapBackend.SuggestedFeeAndTip(timeoutCtx, gasPrice, 0)
 			if err != nil {
 				return err
 			}
 
-			minimumEth = gasPrice.Mul(gasPrice, big.NewInt(250000))
+			minimumEth = new(big.Int).Mul(gasPrice, big.NewInt(250000))
 		}
 
 		insufficientERC20 := erc20Balance.Cmp(swapInitialDeposit) < 0

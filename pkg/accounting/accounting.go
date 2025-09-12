@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math/big"
 	"strings"
 	"sync"
@@ -721,9 +722,7 @@ func (a *Accounting) PeerAccounting() (map[string]PeerInfo, error) {
 
 	a.accountingPeersMu.Lock()
 	accountingPeersList := make(map[string]*accountingPeer)
-	for peer, accountingPeer := range a.accountingPeers {
-		accountingPeersList[peer] = accountingPeer
-	}
+	maps.Copy(accountingPeersList, a.accountingPeers)
 	a.accountingPeersMu.Unlock()
 
 	for peer, accountingPeer := range accountingPeersList {

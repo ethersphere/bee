@@ -109,7 +109,7 @@ func (m *mockStorer) ReservePutter() storage.Putter {
 	)
 }
 
-// TestSendChunkToPushSync sends a chunk to pushsync to be sent to its closest peer and get a receipt.
+// TestChunkSyncing sends a chunk to pushsync to be sent to its closest peer and get a receipt.
 // once the receipt is got this check to see if the localstore is updated to see if the chunk is set
 // as ModeSetSync status.
 func TestChunkSyncing(t *testing.T) {

@@ -66,7 +66,6 @@ func (db *DB) ReserveSample(
 	consensusTime uint64,
 	minBatchBalance *big.Int,
 ) (Sample, error) {
-
 	g, ctx := errgroup.WithContext(ctx)
 
 	allStats := &SampleStats{}
@@ -86,7 +85,8 @@ func (db *DB) ReserveSample(
 
 	allStats.BatchesBelowValueDuration = time.Since(t)
 
-	chunkC := make(chan *reserve.ChunkBinItem)
+	workers := max(4, runtime.NumCPU())
+	chunkC := make(chan *reserve.ChunkBinItem, 3*workers)
 
 	// Phase 1: Iterate chunk addresses
 	g.Go(func() error {
@@ -114,16 +114,15 @@ func (db *DB) ReserveSample(
 	})
 
 	// Phase 2: Get the chunk data and calculate transformed hash
-	sampleItemChan := make(chan SampleItem)
+	sampleItemChan := make(chan SampleItem, 3*workers)
 
 	prefixHasherFactory := func() hash.Hash {
 		return swarm.NewPrefixHasher(anchor)
 	}
 
-	workers := max(4, runtime.NumCPU())
 	db.logger.Debug("reserve sampler workers", "count", workers)
 
-	for i := 0; i < workers; i++ {
+	for range workers {
 		g.Go(func() error {
 			wstat := SampleStats{}
 			// Initialize BMT hasher for transformed address calculation
