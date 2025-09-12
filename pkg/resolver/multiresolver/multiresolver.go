@@ -164,7 +164,7 @@ func (mr *MultiResolver) Resolve(name string) (addr resolver.Address, err error)
 	if len(chain) == 0 {
 		chain = mr.resolvers[""]
 		if len(chain) == 1 && tld != "" { // only the CID resolver is defined
-			return swarm.ZeroAddress, ErrResolverService
+			return swarm.ZeroAddress, resolver.ErrServiceNotAvailable
 		}
 	}
 

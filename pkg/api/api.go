@@ -110,9 +110,8 @@ const (
 )
 
 const (
-	multiPartFormData  = "multipart/form-data"
-	contentTypeTar     = "application/x-tar"
-	boolHeaderSetValue = "true"
+	multiPartFormData = "multipart/form-data"
+	contentTypeTar    = "application/x-tar"
 )
 
 var (
@@ -377,12 +376,6 @@ func (s *Service) Configure(signer crypto.Signer, tracer *tracing.Tracer, o Opti
 			return addr.String(), nil
 		case errors.Is(err, ens.ErrNotImplemented):
 			return v, nil
-		case errors.Is(err, multiresolver.ErrResolverService) || errors.Is(err, resolver.ErrServiceNotAvailable):
-			// Wrap service unavailable errors for HTTP 503 response
-			return "", &serviceUnavailableError{
-				Entry: v,
-				Cause: err,
-			}
 		default:
 			return "", err
 		}
@@ -675,12 +668,11 @@ func (s *Service) mapStructure(input, output interface{}) func(string, log.Logge
 			}
 			hasServiceUnavailable := false
 			for _, err := range merr.Errors {
-				var suerr *serviceUnavailableError
-				if errors.As(err, &suerr) {
+				if errors.Is(err, resolver.ErrServiceNotAvailable) {
 					hasServiceUnavailable = true
 					resp.Reasons = append(resp.Reasons, jsonhttp.Reason{
-						Field: suerr.Entry,
-						Error: suerr.Cause.Error(),
+						Field: "address",
+						Error: err.Error(),
 					})
 					continue
 				}
