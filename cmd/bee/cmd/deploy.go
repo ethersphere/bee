@@ -59,6 +59,7 @@ func (c *command) initDeployCmd() error {
 				signer,
 				blocktime,
 				true,
+				c.config.GetUint64(optionNameMinimumGasTipCap),
 			)
 			if err != nil {
 				return err

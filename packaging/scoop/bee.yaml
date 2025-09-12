@@ -38,6 +38,8 @@ data-dir: "./data"
 # help: false
 ## triggers connect to main net bootnodes.
 # mainnet: true
+## minimum gas tip cap in wei for transactions, 0 means use suggested gas tip cap
+# minimum-gas-tip-cap: 0
 ## minimum radius storage threshold
 # minimum-storage-radius: "0"
 ## NAT exposed address
@@ -78,6 +80,8 @@ password-file: "./password"
 # resolver-options: []
 ## forces the node to resync postage contract data
 # resync: false
+## skip postage snapshot
+# skip-postage-snapshot: false
 ## staking contract address
 # staking-address: ""
 ## lru memory caching capacity in number of statestore entries
@@ -110,7 +114,7 @@ password-file: "./password"
 # use-postage-snapshot: false
 ## log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace
 # verbosity: info
-## time to warmup the node before some major protocols can be kicked off
+## maximum node warmup duration; proceeds when stable or after this time
 # warmup-time: 5m0s
 ## send a welcome message string during handshakes
 # welcome-message: ""

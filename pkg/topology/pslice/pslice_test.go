@@ -354,7 +354,7 @@ func TestIteratorsJumpStop(t *testing.T) {
 	testIterator(t, ps, true, false, 4, []swarm.Address{peers[9], peers[6], peers[3], peers[0]})
 	testIteratorRev(t, ps, true, false, 4, []swarm.Address{peers[0], peers[3], peers[6], peers[9]})
 
-	// // check that the stop functionality works correctly
+	// check that the stop functionality works correctly
 	testIterator(t, ps, true, true, 1, []swarm.Address{peers[9]})
 	testIteratorRev(t, ps, true, true, 1, []swarm.Address{peers[0]})
 }
@@ -435,9 +435,7 @@ func BenchmarkAdd(b *testing.B) {
 
 	addrs := swarm.RandAddresses(b, bins*perBin)
 
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		for _, addr := range addrs {
 			ps.Add(addr)
 		}
@@ -450,9 +448,7 @@ func BenchmarkAddBatch(b *testing.B) {
 
 	addrs := swarm.RandAddresses(b, bins*perBin)
 
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		ps.Add(addrs...)
 	}
 }
@@ -464,9 +460,7 @@ func BenchmarkRemove(b *testing.B) {
 	addrs := swarm.RandAddresses(b, bins*perBin)
 	ps.Add(addrs...)
 
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		for _, addr := range addrs {
 			ps.Remove(addr)
 		}
@@ -480,9 +474,7 @@ func BenchmarkEachBin(b *testing.B) {
 	addrs := swarm.RandAddresses(b, bins*perBin)
 	ps.Add(addrs...)
 
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		_ = ps.EachBin(func(a swarm.Address, u uint8) (stop bool, jumpToNext bool, err error) {
 			return false, false, nil
 		})
@@ -496,9 +488,7 @@ func BenchmarkEachBinRev(b *testing.B) {
 	addrs := swarm.RandAddresses(b, bins*perBin)
 	ps.Add(addrs...)
 
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		_ = ps.EachBinRev(func(a swarm.Address, u uint8) (stop bool, jumpToNext bool, err error) {
 			return false, false, nil
 		})

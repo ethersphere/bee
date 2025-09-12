@@ -118,7 +118,7 @@ func (db *DB) RenameIndex(name, newName string) (renamed bool, err error) {
 	return false, nil
 }
 
-// schemaIndexID retrieves the complete LevelDB prefix for
+// schemaIndexPrefix retrieves the complete LevelDB prefix for
 // a particular index.
 func (db *DB) schemaIndexPrefix(name string) (id byte, err error) {
 	if name == "" {

@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
+	"github.com/ethersphere/bee/v2/pkg/transaction/backend"
 )
 
 var (
@@ -20,14 +21,16 @@ var (
 )
 
 type wrappedBackend struct {
-	backend transaction.Backend
-	metrics metrics
+	backend          backend.Geth
+	metrics          metrics
+	minimumGasTipCap int64
 }
 
-func NewBackend(backend transaction.Backend) transaction.Backend {
+func NewBackend(backend backend.Geth, minimumGasTipCap uint64) transaction.Backend {
 	return &wrappedBackend{
-		backend: backend,
-		metrics: newMetrics(),
+		backend:          backend,
+		minimumGasTipCap: int64(minimumGasTipCap),
+		metrics:          newMetrics(),
 	}
 }
 
@@ -103,17 +106,6 @@ func (b *wrappedBackend) NonceAt(ctx context.Context, account common.Address, bl
 	return nonce, nil
 }
 
-func (b *wrappedBackend) CodeAt(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error) {
-	b.metrics.TotalRPCCalls.Inc()
-	b.metrics.CodeAtCalls.Inc()
-	code, err := b.backend.CodeAt(ctx, contract, blockNumber)
-	if err != nil {
-		b.metrics.TotalRPCErrors.Inc()
-		return nil, err
-	}
-	return code, nil
-}
-
 func (b *wrappedBackend) CallContract(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
 	b.metrics.TotalRPCCalls.Inc()
 	b.metrics.CallContractCalls.Inc()
@@ -136,20 +128,9 @@ func (b *wrappedBackend) PendingNonceAt(ctx context.Context, account common.Addr
 	return nonce, nil
 }
 
-func (b *wrappedBackend) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
-	b.metrics.TotalRPCCalls.Inc()
-	b.metrics.SuggestGasPriceCalls.Inc()
-	gasPrice, err := b.backend.SuggestGasPrice(ctx)
-	if err != nil {
-		b.metrics.TotalRPCErrors.Inc()
-		return nil, err
-	}
-	return gasPrice, nil
-}
-
 func (b *wrappedBackend) SuggestGasTipCap(ctx context.Context) (*big.Int, error) {
 	b.metrics.TotalRPCCalls.Inc()
-	b.metrics.SuggestGasPriceCalls.Inc()
+	b.metrics.SuggestGasTipCapCalls.Inc()
 	gasTipCap, err := b.backend.SuggestGasTipCap(ctx)
 	if err != nil {
 		b.metrics.TotalRPCErrors.Inc()

@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/pushsync"
+	"github.com/ethersphere/bee/v2/pkg/stabilization"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
@@ -73,7 +74,7 @@ func New(
 	pushSyncer pushsync.PushSyncer,
 	batchExist postage.BatchExist,
 	logger log.Logger,
-	warmupTime time.Duration,
+	startupStabilizer stabilization.Subscriber,
 	retryCount int,
 ) *Service {
 	p := &Service{
@@ -89,16 +90,21 @@ func New(
 		attempts:          &attempts{retryCount: retryCount, attempts: make(map[string]int)},
 		smuggler:          make(chan OpChan),
 	}
-	go p.chunksWorker(warmupTime)
+	go p.chunksWorker(startupStabilizer)
 	return p
 }
 
 // chunksWorker is a loop that keeps looking for chunks that are locally uploaded ( by monitoring pushIndex )
 // and pushes them to the closest peer and get a receipt.
-func (s *Service) chunksWorker(warmupTime time.Duration) {
+func (s *Service) chunksWorker(startupStabilizer stabilization.Subscriber) {
 	defer close(s.chunksWorkerQuitC)
+
+	sub, unsubscribe := startupStabilizer.Subscribe()
+	defer unsubscribe()
+
 	select {
-	case <-time.After(warmupTime):
+	case <-sub:
+		s.logger.Debug("node warmup check completed")
 	case <-s.quit:
 		return
 	}
@@ -239,7 +245,6 @@ func (s *Service) chunksWorker(warmupTime time.Duration) {
 			return
 		}
 	}
-
 }
 
 func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (bool, error) {

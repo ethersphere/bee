@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/stabilization"
 	"github.com/ethersphere/bee/v2/pkg/status"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -24,9 +25,10 @@ import (
 const loggerName = "salud"
 
 const (
-	wakeup                 = time.Minute * 5
 	requestTimeout         = time.Second * 10
-	DefaultMinPeersPerBin  = 4
+	initialBackoffDelay    = 10 * time.Second
+	maxBackoffDelay        = 5 * time.Minute
+	backoffFactor          = 2
 	DefaultDurPercentile   = 0.4 // consider 40% as healthy, lower percentile = stricter duration check
 	DefaultConnsPercentile = 0.8 // consider 80% as healthy, lower percentile = stricter conns check
 )
@@ -59,13 +61,11 @@ func New(
 	topology topologyDriver,
 	reserve storer.RadiusChecker,
 	logger log.Logger,
-	warmup time.Duration,
+	startupStabilizer stabilization.Subscriber,
 	mode string,
-	minPeersPerbin int,
 	durPercentile float64,
 	connsPercentile float64,
 ) *service {
-
 	metrics := newMetrics()
 
 	s := &service{
@@ -79,29 +79,38 @@ func New(
 	}
 
 	s.wg.Add(1)
-	go s.worker(warmup, mode, minPeersPerbin, durPercentile, connsPercentile)
+	go s.worker(startupStabilizer, mode, durPercentile, connsPercentile)
 
 	return s
-
 }
 
-func (s *service) worker(warmup time.Duration, mode string, minPeersPerbin int, durPercentile float64, connsPercentile float64) {
+func (s *service) worker(startupStabilizer stabilization.Subscriber, mode string, durPercentile float64, connsPercentile float64) {
 	defer s.wg.Done()
+
+	sub, unsubscribe := startupStabilizer.Subscribe()
+	defer unsubscribe()
 
 	select {
 	case <-s.quit:
 		return
-	case <-time.After(warmup):
+	case <-sub:
+		s.logger.Debug("node warmup check completed")
 	}
 
-	for {
+	currentDelay := initialBackoffDelay
 
-		s.salud(mode, minPeersPerbin, durPercentile, connsPercentile)
+	for {
+		s.salud(mode, durPercentile, connsPercentile)
 
 		select {
 		case <-s.quit:
 			return
-		case <-time.After(wakeup):
+		case <-time.After(currentDelay):
+		}
+
+		currentDelay *= time.Duration(backoffFactor)
+		if currentDelay > maxBackoffDelay {
+			currentDelay = maxBackoffDelay
 		}
 	}
 }
@@ -123,17 +132,17 @@ type peer struct {
 // salud acquires the status snapshot of every peer and computes an nth percentile of response duration and connected
 // per count, the most common storage radius, and the batch commitment, and based on these values, marks peers as unhealhy that fall beyond
 // the allowed thresholds.
-func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, connsPercentile float64) {
-
+func (s *service) salud(mode string, durPercentile float64, connsPercentile float64) {
 	var (
-		mtx      sync.Mutex
-		wg       sync.WaitGroup
-		totaldur float64
-		peers    []peer
-		bins     [swarm.MaxBins]int
+		mtx                  sync.Mutex
+		wg                   sync.WaitGroup
+		totaldur             float64
+		peers                []peer
+		neighborhoodPeers    uint
+		neighborhoodTotalDur float64
 	)
 
-	_ = s.topology.EachConnectedPeer(func(addr swarm.Address, bin uint8) (stop bool, jumpToNext bool, err error) {
+	err := s.topology.EachConnectedPeer(func(addr swarm.Address, bin uint8) (stop bool, jumpToNext bool, err error) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -155,13 +164,20 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 			}
 
 			mtx.Lock()
-			bins[bin]++
 			totaldur += dur.Seconds()
-			peers = append(peers, peer{snapshot, dur, addr, bin, s.reserve.IsWithinStorageRadius(addr)})
+			peer := peer{snapshot, dur, addr, bin, s.reserve.IsWithinStorageRadius(addr)}
+			peers = append(peers, peer)
+			if peer.neighbor {
+				neighborhoodPeers++
+				neighborhoodTotalDur += dur.Seconds()
+			}
 			mtx.Unlock()
 		}()
 		return false, false, nil
 	}, topology.Select{})
+	if err != nil {
+		s.logger.Error(err, "error iterating over connected peers", "mode", mode)
+	}
 
 	wg.Wait()
 
@@ -175,6 +191,20 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 	pConns := percentileConns(peers, connsPercentile)
 	commitment := commitment(peers)
 
+	if neighborhoodPeers > 0 {
+		neighborhoodAvgDur := neighborhoodTotalDur / float64(neighborhoodPeers)
+
+		s.metrics.NeighborhoodAvgDur.Set(neighborhoodAvgDur)
+		s.metrics.NeighborCount.Set(float64(neighborhoodPeers))
+
+		s.logger.Debug("neighborhood metrics", "avg_dur", neighborhoodAvgDur, "count", neighborhoodPeers)
+	} else {
+		s.metrics.NeighborhoodAvgDur.Set(0)
+		s.metrics.NeighborCount.Set(0)
+
+		s.logger.Debug("no neighborhood peers found for metrics")
+	}
+
 	s.metrics.AvgDur.Set(avgDur)
 	s.metrics.PDur.Set(pDur)
 	s.metrics.PConns.Set(float64(pConns))
@@ -182,7 +212,7 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 	s.metrics.NeighborhoodRadius.Set(float64(nHoodRadius))
 	s.metrics.Commitment.Set(float64(commitment))
 
-	s.logger.Debug("computed", "avg_dur", avgDur, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius, "batch_commitment", commitment)
+	s.logger.Debug("computed", "avg_dur", avgDur, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius, "batch_commitment", commitment, "neighborhood_peers", neighborhoodPeers)
 
 	// sort peers by duration, highest first to give priority to the fastest peers
 	sort.Slice(peers, func(i, j int) bool {
@@ -193,17 +223,10 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 
 		var healthy bool
 
-		// every bin should have at least some peers, healthy or not
-		if bins[peer.bin] <= minPeersPerbin {
-			s.metrics.Healthy.Inc()
-			s.topology.UpdatePeerHealth(peer.addr, true, peer.dur)
-			continue
-		}
-
 		if networkRadius > 0 && peer.status.CommittedDepth < uint32(networkRadius-2) {
 			s.logger.Debug("radius health failure", "radius", peer.status.CommittedDepth, "peer_address", peer.addr, "bin", peer.bin)
 		} else if peer.dur.Seconds() > pDur {
-			s.logger.Debug("response duration below threshold", "duration", peer.dur, "peer_address", peer.addr, "bin", peer.bin)
+			s.logger.Debug("response duration above threshold", "duration", peer.dur, "peer_address", peer.addr, "bin", peer.bin)
 		} else if peer.status.ConnectedPeers < pConns {
 			s.logger.Debug("connections count below threshold", "connections", peer.status.ConnectedPeers, "peer_address", peer.addr, "bin", peer.bin)
 		} else if peer.status.BatchCommitment != commitment {
@@ -217,7 +240,6 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 			s.metrics.Healthy.Inc()
 		} else {
 			s.metrics.Unhealthy.Inc()
-			bins[peer.bin]--
 		}
 	}
 
@@ -269,7 +291,6 @@ func (s *service) SubscribeNetworkStorageRadius() (<-chan uint8, func()) {
 // percentileDur finds the p percentile of response duration.
 // Less is better.
 func percentileDur(peers []peer, p float64) float64 {
-
 	index := int(float64(len(peers)) * p)
 
 	sort.Slice(peers, func(i, j int) bool {
@@ -282,7 +303,6 @@ func percentileDur(peers []peer, p float64) float64 {
 // percentileConns finds the p percentile of connection count.
 // More is better.
 func percentileConns(peers []peer, p float64) uint64 {
-
 	index := int(float64(len(peers)) * p)
 
 	sort.Slice(peers, func(i, j int) bool {
@@ -294,7 +314,6 @@ func percentileConns(peers []peer, p float64) uint64 {
 
 // radius finds the most common radius.
 func (s *service) committedDepth(peers []peer) (uint8, uint8) {
-
 	var networkDepth [swarm.MaxBins]int
 	var nHoodDepth [swarm.MaxBins]int
 
@@ -315,7 +334,6 @@ func (s *service) committedDepth(peers []peer) (uint8, uint8) {
 
 // commitment finds the most common batch commitment.
 func commitment(peers []peer) uint64 {
-
 	commitments := make(map[uint64]int)
 
 	for _, peer := range peers {
@@ -338,7 +356,6 @@ func commitment(peers []peer) uint64 {
 }
 
 func maxIndex(n []int) int {
-
 	maxValue := 0
 	index := 0
 	for i, c := range n {

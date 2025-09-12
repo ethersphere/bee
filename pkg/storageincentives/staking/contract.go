@@ -22,7 +22,7 @@ import (
 var (
 	MinimumStakeAmount = big.NewInt(100000000000000000)
 
-	erc20ABI = abiutil.MustParseABI(sw3abi.ERC20ABIv0_6_5)
+	erc20ABI = abiutil.MustParseABI(sw3abi.ERC20ABIv0_6_9)
 
 	ErrInsufficientStakeAmount = errors.New("insufficient stake amount")
 	ErrInsufficientFunds       = errors.New("insufficient token balance")
@@ -73,7 +73,6 @@ func New(
 	setGasLimit bool,
 	height uint8,
 ) Contract {
-
 	var gasLimit uint64
 	if setGasLimit {
 		gasLimit = transaction.DefaultGasLimit
@@ -142,7 +141,6 @@ func (c *contract) ChangeStakeOverlay(ctx context.Context, nonce common.Hash) (c
 
 // UpdateHeight submits the reserve doubling height to the contract only if the height is a new value.
 func (c *contract) UpdateHeight(ctx context.Context) (common.Hash, bool, error) {
-
 	h, err := c.getHeight(ctx)
 	if err != nil {
 		return common.Hash{}, false, fmt.Errorf("staking contract: failed to read previous height: %w", err)
@@ -267,7 +265,7 @@ func (c *contract) sendApproveTransaction(ctx context.Context, amount *big.Int) 
 		)
 	}()
 
-	txHash, err := c.transactionService.Send(ctx, request, 0)
+	txHash, err := c.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
 	if err != nil {
 		return nil, err
 	}

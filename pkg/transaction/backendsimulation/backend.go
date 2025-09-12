@@ -7,6 +7,7 @@ package backendsimulation
 import (
 	"context"
 	"errors"
+	"maps"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum"
@@ -74,31 +75,15 @@ func (m *simulatedBackend) advanceBlock() {
 	m.blockNumber = block.Number
 
 	if block.Receipts != nil {
-		for hash, receipt := range block.Receipts {
-			m.receipts[hash] = receipt
-		}
+		maps.Copy(m.receipts, block.Receipts)
 	}
 
 	if block.NoncesAt != nil {
-		for addr, nonce := range block.NoncesAt {
-			m.noncesAt[addr] = nonce
-		}
+		maps.Copy(m.noncesAt, block.NoncesAt)
 	}
 }
 
-func (m *simulatedBackend) BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (m *simulatedBackend) CodeAt(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error) {
-	return nil, errors.New("not implemented")
-}
-
 func (*simulatedBackend) CallContract(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (*simulatedBackend) PendingCodeAt(ctx context.Context, account common.Address) ([]byte, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -106,8 +91,8 @@ func (m *simulatedBackend) PendingNonceAt(ctx context.Context, account common.Ad
 	return 0, errors.New("not implemented")
 }
 
-func (m *simulatedBackend) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
-	return nil, errors.New("not implemented")
+func (m *simulatedBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+	return nil, nil, errors.New("not implemented")
 }
 
 func (m *simulatedBackend) EstimateGas(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error) {
@@ -119,10 +104,6 @@ func (m *simulatedBackend) SendTransaction(ctx context.Context, tx *types.Transa
 }
 
 func (*simulatedBackend) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (*simulatedBackend) SubscribeFilterLogs(ctx context.Context, query ethereum.FilterQuery, ch chan<- types.Log) (ethereum.Subscription, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -151,6 +132,7 @@ func (m *simulatedBackend) HeaderByNumber(ctx context.Context, number *big.Int) 
 func (m *simulatedBackend) BalanceAt(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error) {
 	return nil, errors.New("not implemented")
 }
+
 func (m *simulatedBackend) NonceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error) {
 	nonce, ok := m.noncesAt[AccountAtKey{Account: account, BlockNumber: blockNumber.Uint64()}]
 	if ok {
@@ -168,5 +150,4 @@ func (m *simulatedBackend) ChainID(ctx context.Context) (*big.Int, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (m *simulatedBackend) Close() {
-}
+func (m *simulatedBackend) Close() {}

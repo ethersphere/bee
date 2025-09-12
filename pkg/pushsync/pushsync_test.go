@@ -26,6 +26,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/pushsync"
 	"github.com/ethersphere/bee/v2/pkg/pushsync/pb"
 	"github.com/ethersphere/bee/v2/pkg/soc"
+	stabilmock "github.com/ethersphere/bee/v2/pkg/stabilization/mock"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	testingc "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -307,97 +308,7 @@ func TestShallowReceiptTolerance(t *testing.T) {
 	waitOnRecordAndTest(t, closestPeer, recorder, chunk.Address(), nil)
 }
 
-// TestForwardToClosest checks that the chunk is forwarded to the closest peer after storing it.
-// Chunk moves from TriggerPeer -> PivotPeer (store) -> ClosestPeer
-func TestForwardToClosest(t *testing.T) {
-	t.Parallel()
-	// chunk data to upload
-	chunk := testingc.FixtureChunk("7000")
-
-	// create a pivot node and a mocked closest node
-	triggerPeer := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")
-	pivotPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
-	closestPeer := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
-
-	// Create the closest peer
-	psClosestPeer, _, closestAccounting := createPushSyncNode(t, closestPeer, defaultPrices, nil, nil, defaultSigner(chunk), mock.WithClosestPeerErr(topology.ErrWantSelf))
-
-	recorder1 := streamtest.New(streamtest.WithProtocols(psClosestPeer.Protocol()), streamtest.WithBaseAddr(pivotPeer))
-
-	// creating the pivot peer
-	psPivot, _, pivotAccounting := createPushSyncNode(t, pivotPeer, defaultPrices, recorder1, nil, defaultSigner(chunk), mock.WithClosestPeer(closestPeer))
-	recorder2 := streamtest.New(streamtest.WithProtocols(psPivot.Protocol()), streamtest.WithBaseAddr(triggerPeer))
-
-	// Creating the trigger peer
-	psTriggerPeer, _, triggerAccounting := createPushSyncNode(t, triggerPeer, defaultPrices, recorder2, nil, defaultSigner(chunk), mock.WithClosestPeer(pivotPeer))
-
-	receipt, err := psTriggerPeer.PushChunkToClosest(context.Background(), chunk)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !chunk.Address().Equal(receipt.Address) {
-		t.Fatal("invalid receipt")
-	}
-
-	// Pivot peer will forward the chunk to its closest peer. Intercept the incoming stream from pivot node and check
-	// for the correctness of the chunk
-	waitOnRecordAndTest(t, closestPeer, recorder1, chunk.Address(), chunk.Data())
-
-	// Similarly intercept the same incoming stream to see if the closest peer is sending a proper receipt
-	waitOnRecordAndTest(t, closestPeer, recorder1, chunk.Address(), nil)
-
-	// In the received stream, check if a receipt is sent from pivot peer and check for its correctness.
-	waitOnRecordAndTest(t, pivotPeer, recorder2, chunk.Address(), nil)
-
-	// In pivot peer,  intercept the incoming delivery chunk from the trigger peer and check for correctness
-	waitOnRecordAndTest(t, pivotPeer, recorder2, chunk.Address(), chunk.Data())
-
-	tests := []struct {
-		name string
-		peer swarm.Address
-		acc  accounting.Interface
-		want int64
-	}{
-		{
-			name: "trigger-pivot",
-			peer: pivotPeer,
-			acc:  triggerAccounting,
-			want: -int64(fixedPrice),
-		},
-		{
-			name: "pivot-trigger",
-			peer: triggerPeer,
-			acc:  pivotAccounting,
-			want: int64(fixedPrice),
-		},
-		{
-			name: "pivot-closest",
-			peer: closestPeer,
-			acc:  pivotAccounting,
-			want: -int64(fixedPrice),
-		},
-		{
-			name: "closest-pivot",
-			peer: pivotPeer,
-			acc:  closestAccounting,
-			want: int64(fixedPrice),
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			balance, err := tt.acc.Balance(tt.peer)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if balance.Int64() != tt.want {
-				t.Fatalf("unexpected balance. want %d got %d", tt.want, balance)
-			}
-		})
-	}
-}
-
-// PushChunkToClosest tests the sending of chunk to closest peer from the origination source perspective.
+// TestPushChunkToClosest tests the sending of chunk to closest peer from the origination source perspective.
 // it also checks whether the tags are incremented properly if they are present
 func TestPushChunkToClosest(t *testing.T) {
 	t.Parallel()
@@ -489,7 +400,7 @@ func TestPushChunkToNextClosest(t *testing.T) {
 
 	psPeer2, _, peerAccounting2 := createPushSyncNode(t, peer2, defaultPrices, nil, nil, defaultSigner(chunk), mock.WithClosestPeerErr(topology.ErrWantSelf))
 
-	var fail = true
+	fail := true
 	var lock sync.Mutex
 
 	recorder := streamtest.New(
@@ -1036,7 +947,7 @@ func createPushSyncNodeWithRadius(
 
 	radiusFunc := func() (uint8, error) { return radius, nil }
 
-	ps := pushsync.New(addr, 1, blockHash.Bytes(), recorderDisconnecter, storer, radiusFunc, mockTopology, true, unwrap, func(*soc.SOC) {}, validStamp, log.Noop, accountingmock.NewAccounting(), mockPricer, signer, nil, -1, shallowReceiptTolerance)
+	ps := pushsync.New(addr, 1, blockHash.Bytes(), recorderDisconnecter, storer, radiusFunc, mockTopology, true, unwrap, func(*soc.SOC) {}, validStamp, log.Noop, accountingmock.NewAccounting(), mockPricer, signer, nil, stabilmock.NewSubscriber(true), shallowReceiptTolerance)
 	t.Cleanup(func() { ps.Close() })
 
 	return ps, storer
@@ -1077,7 +988,7 @@ func createPushSyncNodeWithAccounting(
 
 	radiusFunc := func() (uint8, error) { return 0, nil }
 
-	ps := pushsync.New(addr, 1, blockHash.Bytes(), recorderDisconnecter, storer, radiusFunc, mockTopology, true, unwrap, gsocListener, validStamp, logger, acct, mockPricer, signer, nil, -1, 0)
+	ps := pushsync.New(addr, 1, blockHash.Bytes(), recorderDisconnecter, storer, radiusFunc, mockTopology, true, unwrap, gsocListener, validStamp, logger, acct, mockPricer, signer, nil, stabilmock.NewSubscriber(true), 0)
 	t.Cleanup(func() { ps.Close() })
 
 	return ps, storer

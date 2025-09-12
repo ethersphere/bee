@@ -16,37 +16,24 @@ import (
 )
 
 type backendMock struct {
-	codeAt             func(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error)
 	callContract       func(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error)
 	sendTransaction    func(ctx context.Context, tx *types.Transaction) error
-	suggestGasPrice    func(ctx context.Context) (*big.Int, error)
+	suggestedFeeAndTip func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error)
 	suggestGasTipCap   func(ctx context.Context) (*big.Int, error)
 	estimateGas        func(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error)
 	transactionReceipt func(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
 	pendingNonceAt     func(ctx context.Context, account common.Address) (uint64, error)
 	transactionByHash  func(ctx context.Context, hash common.Hash) (tx *types.Transaction, isPending bool, err error)
 	blockNumber        func(ctx context.Context) (uint64, error)
-	blockByNumber      func(ctx context.Context, number *big.Int) (*types.Block, error)
 	headerByNumber     func(ctx context.Context, number *big.Int) (*types.Header, error)
 	balanceAt          func(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error)
 	nonceAt            func(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error)
-}
-
-func (m *backendMock) CodeAt(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error) {
-	if m.codeAt != nil {
-		return m.codeAt(ctx, contract, blockNumber)
-	}
-	return nil, errors.New("not implemented")
 }
 
 func (m *backendMock) CallContract(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
 	if m.callContract != nil {
 		return m.callContract(ctx, call, blockNumber)
 	}
-	return nil, errors.New("not implemented")
-}
-
-func (*backendMock) PendingCodeAt(ctx context.Context, account common.Address) ([]byte, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -57,11 +44,11 @@ func (m *backendMock) PendingNonceAt(ctx context.Context, account common.Address
 	return 0, errors.New("not implemented")
 }
 
-func (m *backendMock) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
-	if m.suggestGasPrice != nil {
-		return m.suggestGasPrice(ctx)
+func (m *backendMock) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+	if m.suggestedFeeAndTip != nil {
+		return m.suggestedFeeAndTip(ctx, gasPrice, boostPercent)
 	}
-	return nil, errors.New("not implemented")
+	return nil, nil, errors.New("not implemented")
 }
 
 func (m *backendMock) EstimateGas(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error) {
@@ -79,10 +66,6 @@ func (m *backendMock) SendTransaction(ctx context.Context, tx *types.Transaction
 }
 
 func (*backendMock) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (*backendMock) SubscribeFilterLogs(ctx context.Context, query ethereum.FilterQuery, ch chan<- types.Log) (ethereum.Subscription, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -107,13 +90,6 @@ func (m *backendMock) BlockNumber(ctx context.Context) (uint64, error) {
 	return 0, errors.New("not implemented")
 }
 
-func (m *backendMock) BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error) {
-	if m.blockNumber != nil {
-		return m.blockByNumber(ctx, number)
-	}
-	return nil, errors.New("not implemented")
-}
-
 func (m *backendMock) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error) {
 	if m.headerByNumber != nil {
 		return m.headerByNumber(ctx, number)
@@ -127,6 +103,7 @@ func (m *backendMock) BalanceAt(ctx context.Context, address common.Address, blo
 	}
 	return nil, errors.New("not implemented")
 }
+
 func (m *backendMock) NonceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error) {
 	if m.nonceAt != nil {
 		return m.nonceAt(ctx, account, blockNumber)
@@ -135,7 +112,7 @@ func (m *backendMock) NonceAt(ctx context.Context, account common.Address, block
 }
 
 func (m *backendMock) SuggestGasTipCap(ctx context.Context) (*big.Int, error) {
-	if m.suggestGasPrice != nil {
+	if m.suggestGasTipCap != nil {
 		return m.suggestGasTipCap(ctx)
 	}
 	return nil, errors.New("not implemented")
@@ -145,8 +122,7 @@ func (m *backendMock) ChainID(ctx context.Context) (*big.Int, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (m *backendMock) Close() {
-}
+func (m *backendMock) Close() {}
 
 func New(opts ...Option) transaction.Backend {
 	mock := new(backendMock)
@@ -171,12 +147,6 @@ func WithCallContractFunc(f func(ctx context.Context, call ethereum.CallMsg, blo
 	})
 }
 
-func WithCodeAtFunc(f func(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error)) Option {
-	return optionFunc(func(s *backendMock) {
-		s.codeAt = f
-	})
-}
-
 func WithBalanceAt(f func(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error)) Option {
 	return optionFunc(func(s *backendMock) {
 		s.balanceAt = f
@@ -189,9 +159,9 @@ func WithPendingNonceAtFunc(f func(ctx context.Context, account common.Address) 
 	})
 }
 
-func WithSuggestGasPriceFunc(f func(ctx context.Context) (*big.Int, error)) Option {
+func WithSuggestedFeeAndTipFunc(f func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error)) Option {
 	return optionFunc(func(s *backendMock) {
-		s.suggestGasPrice = f
+		s.suggestedFeeAndTip = f
 	})
 }
 
@@ -216,12 +186,6 @@ func WithTransactionReceiptFunc(f func(ctx context.Context, txHash common.Hash) 
 func WithTransactionByHashFunc(f func(ctx context.Context, txHash common.Hash) (*types.Transaction, bool, error)) Option {
 	return optionFunc(func(s *backendMock) {
 		s.transactionByHash = f
-	})
-}
-
-func WithBlockByNumberFunc(f func(ctx context.Context, number *big.Int) (*types.Block, error)) Option {
-	return optionFunc(func(s *backendMock) {
-		s.blockByNumber = f
 	})
 }
 

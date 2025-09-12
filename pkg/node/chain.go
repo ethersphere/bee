@@ -32,7 +32,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/ethersphere/bee/v2/pkg/transaction/wrapped"
-	"github.com/ethersphere/go-sw3-abi/sw3abi"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -53,6 +52,7 @@ func InitChain(
 	signer crypto.Signer,
 	pollingInterval time.Duration,
 	chainEnabled bool,
+	minimumGasTipCap uint64,
 ) (transaction.Backend, common.Address, int64, transaction.Monitor, transaction.Service, error) {
 	var backend transaction.Backend = &noOpChainBackend{
 		chainID: oChainID,
@@ -74,7 +74,7 @@ func InitChain(
 
 		logger.Info("connected to blockchain backend", "version", versionString)
 
-		backend = wrapped.NewBackend(ethclient.NewClient(rpcClient))
+		backend = wrapped.NewBackend(ethclient.NewClient(rpcClient), minimumGasTipCap)
 	}
 
 	chainID, err := backend.ChainID(ctx)
@@ -350,10 +350,6 @@ func (m noOpChainBackend) Metrics() []prometheus.Collector {
 	return nil
 }
 
-func (m noOpChainBackend) CodeAt(context.Context, common.Address, *big.Int) ([]byte, error) {
-	return common.FromHex(sw3abi.SimpleSwapFactoryDeployedBinv0_6_5), nil
-}
-
 func (m noOpChainBackend) CallContract(context.Context, ethereum.CallMsg, *big.Int) ([]byte, error) {
 	return nil, errors.New("disabled chain backend")
 }
@@ -368,12 +364,12 @@ func (m noOpChainBackend) PendingNonceAt(context.Context, common.Address) (uint6
 	panic("chain no op: PendingNonceAt")
 }
 
-func (m noOpChainBackend) SuggestGasPrice(context.Context) (*big.Int, error) {
-	panic("chain no op: SuggestGasPrice")
+func (m noOpChainBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+	panic("chain no op: SuggestedFeeAndTip")
 }
 
 func (m noOpChainBackend) SuggestGasTipCap(context.Context) (*big.Int, error) {
-	panic("chain no op: SuggestGasPrice")
+	panic("chain no op: SuggestGasTipCap")
 }
 
 func (m noOpChainBackend) EstimateGas(context.Context, ethereum.CallMsg) (uint64, error) {
@@ -413,4 +409,5 @@ func (m noOpChainBackend) FilterLogs(context.Context, ethereum.FilterQuery) ([]t
 func (m noOpChainBackend) ChainID(context.Context) (*big.Int, error) {
 	return big.NewInt(m.chainID), nil
 }
+
 func (m noOpChainBackend) Close() {}

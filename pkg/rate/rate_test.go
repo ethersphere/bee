@@ -15,7 +15,7 @@ func TestRateFirstBucket(t *testing.T) {
 	t.Parallel()
 
 	windowSize := 1000 * time.Millisecond
-	var r = 15
+	r := 15
 
 	rate := rate.New(windowSize)
 	rate.SetTimeFunc(func() time.Time { return setTime(windowSize) })
@@ -27,12 +27,12 @@ func TestRateFirstBucket(t *testing.T) {
 	}
 }
 
-// // TestIgnoreOldBuckets tests that the buckets older than the most recent two buckets are ignored in rate calculation.
+// TestIgnoreOldBuckets tests that the buckets older than the most recent two buckets are ignored in rate calculation.
 func TestIgnoreOldBuckets(t *testing.T) {
 	t.Parallel()
 
 	windowSize := 1000 * time.Millisecond
-	var r = 100
+	r := 100
 
 	rate := rate.New(windowSize)
 

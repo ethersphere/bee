@@ -78,7 +78,7 @@ func GenerateMockSOC(t *testing.T, data []byte) *MockSOC {
 	return generateMockSOC(t, ch)
 }
 
-// GenerateMockSOC generates a valid mocked SOC from given chunk data (span + payload).
+// GenerateMockSOCWithSpan generates a valid mocked SOC from given chunk data (span + payload).
 func GenerateMockSOCWithSpan(t *testing.T, data []byte) *MockSOC {
 	t.Helper()
 

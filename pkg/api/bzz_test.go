@@ -26,7 +26,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/manifest"
 	mockbatchstore "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
 	mockpost "github.com/ethersphere/bee/v2/pkg/postage/mock"
-	testingsoc "github.com/ethersphere/bee/v2/pkg/soc/testing"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -530,7 +529,7 @@ func TestBzzFiles(t *testing.T) {
 	})
 }
 
-// TestRangeRequests validates that all endpoints are serving content with
+// TestBzzFilesRangeRequests validates that all endpoints are serving content with
 // respect to HTTP Range headers.
 func TestBzzFilesRangeRequests(t *testing.T) {
 	t.Parallel()
@@ -795,22 +794,16 @@ func TestFeedIndirection(t *testing.T) {
 		t.Fatalf("expected file reference, did not got any")
 	}
 
-	// get root chunk of data
-	// and wrap it in a feed
-	rootCh, err := storer.ChunkStore().Get(context.Background(), resp.Reference)
-	if err != nil {
-		t.Fatal(err)
-	}
-	socRootCh := testingsoc.GenerateMockSOC(t, rootCh.Data()[swarm.SpanSize:]).Chunk()
-
-	// now use the "content" root chunk to mock the feed lookup
+	// now use the "content" to mock the feed lookup
 	// also, use the mocked mantaray chunks that unmarshal
 	// into a real manifest with the mocked feed values when
 	// called from the bzz endpoint. then call the bzz endpoint with
 	// the pregenerated feed root manifest hash
 
+	feedUpdate := toChunk(t, 121212, resp.Reference.Bytes())
+
 	var (
-		look                = newMockLookup(-1, 0, socRootCh, nil, &id{}, nil)
+		look                = newMockLookup(-1, 0, feedUpdate, nil, &id{}, nil)
 		factory             = newMockFactory(look)
 		bzzDownloadResource = func(addr, path string) string { return "/bzz/" + addr + "/" + path }
 		ctx                 = context.Background()
@@ -820,6 +813,7 @@ func TestFeedIndirection(t *testing.T) {
 		Logger: logger,
 		Feeds:  factory,
 	})
+	err := storer.Cache().Put(ctx, feedUpdate)
 	if err != nil {
 		t.Fatal(err)
 	}

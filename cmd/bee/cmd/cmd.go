@@ -80,6 +80,8 @@ const (
 	optionNameTransactionDebugMode         = "transaction-debug-mode"
 	optionMinimumStorageRadius             = "minimum-storage-radius"
 	optionReserveCapacityDoubling          = "reserve-capacity-doubling"
+	optionSkipPostageSnapshot              = "skip-postage-snapshot"
+	optionNameMinimumGasTipCap             = "minimum-gas-tip-cap"
 )
 
 // nolint:gochecknoinits
@@ -271,7 +273,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameRedistributionAddress, "", "redistribution contract address")
 	cmd.Flags().String(optionNameStakingAddress, "", "staking contract address")
 	cmd.Flags().Uint64(optionNameBlockTime, 5, "chain block time")
-	cmd.Flags().Duration(optionWarmUpTime, time.Minute*5, "time to warmup the node before some major protocols can be kicked off")
+	cmd.Flags().Duration(optionWarmUpTime, time.Minute*5, "maximum node warmup duration; proceeds when stable or after this time")
 	cmd.Flags().Bool(optionNameMainNet, true, "triggers connect to main net bootnodes.")
 	cmd.Flags().Bool(optionNameRetrievalCaching, true, "enable forwarded content caching")
 	cmd.Flags().Bool(optionNameResync, false, "forces the node to resync postage contract data")
@@ -288,6 +290,8 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNameTransactionDebugMode, false, "skips the gas estimate step for contract transactions")
 	cmd.Flags().Uint(optionMinimumStorageRadius, 0, "minimum radius storage threshold")
 	cmd.Flags().Int(optionReserveCapacityDoubling, 0, "reserve capacity doubling")
+	cmd.Flags().Bool(optionSkipPostageSnapshot, false, "skip postage snapshot")
+	cmd.Flags().Uint64(optionNameMinimumGasTipCap, 0, "minimum gas tip cap in wei for transactions, 0 means use suggested gas tip cap")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {

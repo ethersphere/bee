@@ -6,6 +6,7 @@ package api_test
 
 import (
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -280,17 +281,17 @@ func TestEndpointOptions(t *testing.T) {
 				{"/consumed", []string{"GET"}, http.StatusNoContent},
 				{"/consumed/{peer}", []string{"GET"}, http.StatusNoContent},
 				{"/timesettlements", []string{"GET"}, http.StatusNoContent},
-				{"/settlements", nil, http.StatusNotImplemented},
-				{"/settlements/{peer}", nil, http.StatusNotImplemented},
-				{"/chequebook/cheque/{peer}", nil, http.StatusNotImplemented},
-				{"/chequebook/cheque", nil, http.StatusNotImplemented},
-				{"/chequebook/cashout/{peer}", nil, http.StatusNotImplemented},
+				{"/settlements", nil, http.StatusForbidden},
+				{"/settlements/{peer}", nil, http.StatusForbidden},
+				{"/chequebook/cheque/{peer}", nil, http.StatusForbidden},
+				{"/chequebook/cheque", nil, http.StatusForbidden},
+				{"/chequebook/cashout/{peer}", nil, http.StatusForbidden},
 				{"/chequebook/balance", []string{"GET"}, http.StatusNoContent},
 				{"/chequebook/address", []string{"GET"}, http.StatusNoContent},
 				{"/chequebook/deposit", []string{"POST"}, http.StatusNoContent},
 				{"/chequebook/withdraw", []string{"POST"}, http.StatusNoContent},
-				{"/wallet", nil, http.StatusNotImplemented},
-				{"/wallet/withdraw/{coin}", nil, http.StatusNotImplemented},
+				{"/wallet", nil, http.StatusForbidden},
+				{"/wallet/withdraw/{coin}", nil, http.StatusForbidden},
 				{"/stamps", []string{"GET"}, http.StatusNoContent},
 				{"/stamps/{batch_id}", []string{"GET"}, http.StatusNoContent},
 				{"/stamps/{batch_id}/buckets", []string{"GET"}, http.StatusNoContent},
@@ -380,12 +381,12 @@ func TestEndpointOptions(t *testing.T) {
 				{"/chequebook/cheque/{peer}", []string{"GET"}, http.StatusNoContent},
 				{"/chequebook/cheque", []string{"GET"}, http.StatusNoContent},
 				{"/chequebook/cashout/{peer}", []string{"GET", "POST"}, http.StatusNoContent},
-				{"/chequebook/balance", nil, http.StatusNotImplemented},
-				{"/chequebook/address", nil, http.StatusNotImplemented},
-				{"/chequebook/deposit", nil, http.StatusNotImplemented},
-				{"/chequebook/withdraw", nil, http.StatusNotImplemented},
-				{"/wallet", nil, http.StatusNotImplemented},
-				{"/wallet/withdraw/{coin}", nil, http.StatusNotImplemented},
+				{"/chequebook/balance", nil, http.StatusForbidden},
+				{"/chequebook/address", nil, http.StatusForbidden},
+				{"/chequebook/deposit", nil, http.StatusForbidden},
+				{"/chequebook/withdraw", nil, http.StatusForbidden},
+				{"/wallet", nil, http.StatusForbidden},
+				{"/wallet/withdraw/{coin}", nil, http.StatusForbidden},
 				{"/stamps", []string{"GET"}, http.StatusNoContent},
 				{"/stamps/{batch_id}", []string{"GET"}, http.StatusNoContent},
 				{"/stamps/{batch_id}/buckets", []string{"GET"}, http.StatusNoContent},
@@ -427,7 +428,7 @@ func TestEndpointOptions(t *testing.T) {
 					actualMethods := strings.Split(allowHeader, ", ")
 
 					for _, expectedMethod := range tt.expectedMethods {
-						if !contains(actualMethods, expectedMethod) {
+						if !slices.Contains(actualMethods, expectedMethod) {
 							t.Errorf("expected method %s not found for route %s", expectedMethod, tt.route)
 						}
 					}
@@ -435,13 +436,4 @@ func TestEndpointOptions(t *testing.T) {
 			}
 		})
 	}
-}
-
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
 }

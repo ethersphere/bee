@@ -30,7 +30,7 @@ const loggerName = "listener"
 const (
 	blockPage          = 5000      // how many blocks to sync every time we page
 	tailSize           = 4         // how many blocks to tail from the tip of the chain
-	defaultBatchFactor = uint64(5) // // minimal number of blocks to sync at once
+	defaultBatchFactor = uint64(5) // minimal number of blocks to sync at once
 )
 
 var (
@@ -41,6 +41,7 @@ var (
 var (
 	ErrPostageSyncingStalled = errors.New("postage syncing stalled")
 	ErrPostagePaused         = errors.New("postage contract is paused")
+	ErrParseSnapshot         = errors.New("failed to parse snapshot data")
 )
 
 type BlockHeightContractFilterer interface {
@@ -293,7 +294,9 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 				if errors.Is(err, context.Canceled) {
 					return nil
 				}
-
+				if errors.Is(err, ErrParseSnapshot) {
+					return err
+				}
 				l.metrics.BackendErrors.Inc()
 				l.logger.Warning("could not get block number", "error", err)
 				lastConfirmedBlock = 0
@@ -328,6 +331,9 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 
 			events, err := l.ev.FilterLogs(ctx, l.filterQuery(big.NewInt(int64(from)), big.NewInt(int64(to))))
 			if err != nil {
+				if errors.Is(err, ErrParseSnapshot) {
+					return err
+				}
 				l.metrics.BackendErrors.Inc()
 				l.logger.Warning("could not get blockchain log", "error", err)
 				lastConfirmedBlock = 0

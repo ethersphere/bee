@@ -29,8 +29,7 @@ func TestSplitterJobPartialSingleChunk(t *testing.T) {
 
 	store := inmemchunkstore.New()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	data := []byte("foo")
 	j := internal.NewSimpleSplitterJob(ctx, store, int64(len(data)), false)

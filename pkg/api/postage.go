@@ -366,9 +366,10 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 }
 
 type reserveStateResponse struct {
-	Radius        uint8  `json:"radius"`
-	StorageRadius uint8  `json:"storageRadius"`
-	Commitment    uint64 `json:"commitment"`
+	Radius                  uint8  `json:"radius"`
+	StorageRadius           uint8  `json:"storageRadius"`
+	Commitment              uint64 `json:"commitment"`
+	ReserveCapacityDoubling uint8  `json:"reserveCapacityDoubling"`
 }
 
 type chainStateResponse struct {
@@ -390,9 +391,10 @@ func (s *Service) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	jsonhttp.OK(w, reserveStateResponse{
-		Radius:        s.batchStore.Radius(),
-		StorageRadius: s.storer.StorageRadius(),
-		Commitment:    commitment,
+		Radius:                  s.batchStore.Radius(),
+		StorageRadius:           s.storer.StorageRadius(),
+		Commitment:              commitment,
+		ReserveCapacityDoubling: s.storer.CapacityDoubling(),
 	})
 }
 

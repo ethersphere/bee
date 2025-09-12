@@ -1,4 +1,4 @@
-FROM golang:1.23 AS build
+FROM golang:1.24 AS build
 
 WORKDIR /src
 # enable modules caching in separate layer
@@ -8,12 +8,12 @@ COPY . ./
 
 RUN make binary
 
-FROM debian:12.7-slim
+FROM debian:12.10-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates; \
+    ca-certificates; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*; \
     groupadd -r bee --gid 999; \
