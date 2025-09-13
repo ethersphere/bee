@@ -159,7 +159,7 @@ func TestBroadcastPeers(t *testing.T) {
 
 		wantMsgs[i/hive.MaxBatchSize].Peers = append(wantMsgs[i/hive.MaxBatchSize].Peers, &pb.BzzAddress{
 			Overlay:   bzzAddresses[i].Overlay.Bytes(),
-			Underlay:  bzzAddresses[i].Underlay.Bytes(),
+			Underlay:  bzz.SerializeUnderlays([]ma.Multiaddr{bzzAddresses[i].Underlay}), // todo: add more underlays when bzz.Address supports multiple Underlays
 			Signature: bzzAddresses[i].Signature,
 			Nonce:     nonce,
 		})
