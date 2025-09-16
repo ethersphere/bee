@@ -167,8 +167,7 @@ func (db *DB) ReserveSample(
 				if err != nil {
 					return err
 				}
-				taddrDuration := time.Since(taddrStart)
-				wstat.TaddrDuration += taddrDuration
+				wstat.TaddrDuration += time.Since(taddrStart)
 
 				select {
 				case sampleItemChan <- SampleItem{
@@ -451,7 +450,7 @@ func (db *DB) recordReserveSampleMetrics(duration time.Duration, stats *SampleSt
 	if err != nil {
 		status = "failure"
 	}
-	db.metrics.ReserveSampleDuration.WithLabelValues(status, fmt.Sprintf("%d", workers)).Observe(duration.Seconds())
+	db.metrics.ReserveSampleDuration.WithLabelValues(status).Observe(duration.Seconds())
 
 	summaryMetrics := map[string]float64{
 		"duration_seconds":                     duration.Seconds(),

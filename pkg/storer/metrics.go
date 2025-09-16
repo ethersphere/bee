@@ -171,9 +171,9 @@ func newMetrics() metrics {
 				Subsystem: subsystem,
 				Name:      "reserve_sample_duration_seconds",
 				Help:      "Duration of ReserveSample operations in seconds.",
-				Buckets:   []float64{30, 60, 120, 300, 600, 900, 1200, 1500, 1800, 2400, 3000, 3600, 4800},
+				Buckets:   []float64{180, 300, 600, 900, 1200, 1500, 1800},
 			},
-			[]string{"status", "workers"},
+			[]string{"status"},
 		),
 		ReserveSampleRunSummary: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
