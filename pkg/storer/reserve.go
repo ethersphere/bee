@@ -369,10 +369,9 @@ func (db *DB) unreserve(ctx context.Context) (err error) {
 			default:
 			}
 
-			evict := target - totalEvicted
-			if evict < int(db.reserveOptions.minEvictCount) { // evict at least a min count
-				evict = int(db.reserveOptions.minEvictCount)
-			}
+			evict := max(target-totalEvicted,
+				// evict at least a min count
+				int(db.reserveOptions.minEvictCount))
 
 			binEvicted, err := db.evictBatch(ctx, b, evict, radius)
 			// eviction happens in batches, so we need to keep track of the total
