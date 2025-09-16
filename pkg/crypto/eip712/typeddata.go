@@ -29,7 +29,7 @@ func EncodeForSigning(typedData *TypedData) ([]byte, error) {
 		return nil, err
 	}
 
-	rawData := []byte(fmt.Sprintf("\x19\x01%s%s", string(domainSeparator), string(typedDataHash)))
+	rawData := fmt.Appendf(nil, "\x19\x01%s%s", string(domainSeparator), string(typedDataHash))
 	return rawData, nil
 }
 

@@ -14,6 +14,8 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"net/url"
+	"strconv"
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/replicas"
@@ -45,11 +47,20 @@ func TestFeed_Get(t *testing.T) {
 	t.Parallel()
 
 	var (
-		feedResource = func(owner, topic, at string) string {
+		feedResource = func(owner, topic, at string, legacyFeed bool) string {
+			values := url.Values{}
 			if at != "" {
-				return fmt.Sprintf("/feeds/%s/%s?at=%s", owner, topic, at)
+				values.Set("at", at)
 			}
-			return fmt.Sprintf("/feeds/%s/%s", owner, topic)
+			if legacyFeed {
+				values.Set("swarm-feed-legacy-resolve", strconv.FormatBool(legacyFeed))
+			}
+
+			baseURL := fmt.Sprintf("/feeds/%s/%s", owner, topic)
+			if len(values) > 0 {
+				return baseURL + "?" + values.Encode()
+			}
+			return baseURL
 		}
 		mockStorer = mockstorer.New()
 	)
@@ -78,7 +89,7 @@ func TestFeed_Get(t *testing.T) {
 			})
 		)
 
-		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", "12"), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", "12", true), http.StatusOK,
 			jsonhttptest.WithExpectedResponse(mockWrappedCh.Data()[swarm.SpanSize:]),
 			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedIndexHeader, hex.EncodeToString(idBytes)),
 			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.SwarmFeedIndexHeader),
@@ -89,7 +100,7 @@ func TestFeed_Get(t *testing.T) {
 		)
 	})
 
-	t.Run("latest", func(t *testing.T) {
+	t.Run("latest with legacy payload", func(t *testing.T) {
 		t.Parallel()
 
 		var (
@@ -105,7 +116,7 @@ func TestFeed_Get(t *testing.T) {
 			})
 		)
 
-		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", "", true), http.StatusOK,
 			jsonhttptest.WithExpectedResponse(mockWrappedCh.Data()[swarm.SpanSize:]),
 			jsonhttptest.WithExpectedContentLength(len(mockWrappedCh.Data()[swarm.SpanSize:])),
 			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedIndexHeader, hex.EncodeToString(idBytes)),
@@ -134,7 +145,7 @@ func TestFeed_Get(t *testing.T) {
 			})
 		)
 
-		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", "", false), http.StatusOK,
 			jsonhttptest.WithExpectedResponse(testData),
 			jsonhttptest.WithExpectedContentLength(len(testData)),
 			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedIndexHeader, hex.EncodeToString(idBytes)),
@@ -164,7 +175,23 @@ func TestFeed_Get(t *testing.T) {
 			})
 		)
 
-		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusNotFound)
+		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", "", true), http.StatusNotFound)
+	})
+
+	t.Run("query parameter legacy feed resolve", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			look            = newMockLookup(1, 0, nil, errors.New("dummy"), &id{}, &id{})
+			factory         = newMockFactory(look)
+			client, _, _, _ = newTestServer(t, testServerOptions{
+				Storer: mockStorer,
+				Feeds:  factory,
+			})
+		)
+
+		// Test with the legacyFeed parameter set to true which should add the query parameter
+		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", "", false), http.StatusNotFound)
 	})
 
 	t.Run("bigger payload than one chunk", func(t *testing.T) {
@@ -196,7 +223,7 @@ func TestFeed_Get(t *testing.T) {
 		)
 
 		t.Run("retrieve chunk tree", func(t *testing.T) {
-			jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusOK,
+			jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", "", false), http.StatusOK,
 				jsonhttptest.WithExpectedResponse(testData),
 				jsonhttptest.WithExpectedContentLength(testDataLen),
 				jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedIndexHeader, hex.EncodeToString(idBytes)),
@@ -209,7 +236,7 @@ func TestFeed_Get(t *testing.T) {
 		})
 
 		t.Run("retrieve only wrapped chunk", func(t *testing.T) {
-			jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusOK,
+			jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", "", false), http.StatusOK,
 				jsonhttptest.WithRequestHeader(api.SwarmOnlyRootChunk, "true"),
 				jsonhttptest.WithExpectedResponse(testRootCh.Data()),
 				jsonhttptest.WithExpectedContentLength(len(testRootCh.Data())),

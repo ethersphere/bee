@@ -14,6 +14,7 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -535,7 +536,7 @@ func TestBzzFiles(t *testing.T) {
 	})
 }
 
-// TestRangeRequests validates that all endpoints are serving content with
+// TestBzzFilesRangeRequests validates that all endpoints are serving content with
 // respect to HTTP Range headers.
 func TestBzzFilesRangeRequests(t *testing.T) {
 	t.Parallel()
@@ -765,11 +766,24 @@ func TestFeedIndirection(t *testing.T) {
 		updateData      = []byte("<h1>Swarm Feeds Hello World!</h1>")
 		logger          = log.Noop
 		storer          = mockstorer.New()
+		ctx             = context.Background()
 		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer: storer,
 			Logger: logger,
 			Post:   mockpost.New(mockpost.WithAcceptAll()),
 		})
+		bzzDownloadResource = func(addr, path string, legacyFeed bool) string {
+			values := url.Values{}
+			if legacyFeed {
+				values.Set("swarm-feed-legacy-resolve", strconv.FormatBool(legacyFeed))
+			}
+
+			baseURL := "/bzz/" + addr + "/" + path
+			if len(values) > 0 {
+				return baseURL + "?" + values.Encode()
+			}
+			return baseURL
+		}
 	)
 	// tar all the test case files
 	tarReader := tarFiles(t, []f{
@@ -953,6 +967,88 @@ func TestFeedIndirection(t *testing.T) {
 				)
 			})
 		}
+	})
+
+	m, err := manifest.NewDefaultManifest(
+		loadsave.New(storer.ChunkStore(), storer.Cache(), pipelineFactory(storer.Cache(), false, 0), redundancy.DefaultLevel),
+		false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	emptyAddr := make([]byte, 32)
+	err = m.Add(ctx, manifest.RootPath, manifest.NewEntry(swarm.NewAddress(emptyAddr), map[string]string{
+		api.FeedMetadataEntryOwner: "8d3766440f0d7b949a5e32995d09619a7f86e632",
+		api.FeedMetadataEntryTopic: "abcc",
+		api.FeedMetadataEntryType:  "epoch",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifRef, err := m.Store(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// now use the "content" root chunk to mock the feed lookup
+	// also, use the mocked mantaray chunks that unmarshal
+	// into a real manifest with the mocked feed values when
+	// called from the bzz endpoint. then call the bzz endpoint with
+	// the pregenerated feed root manifest hash
+
+	t.Run("legacy feed", func(t *testing.T) {
+		feedUpdate := toChunk(t, 121212, resp.Reference.Bytes())
+
+		var (
+			look    = newMockLookup(-1, 0, feedUpdate, nil, &id{}, nil)
+			factory = newMockFactory(look)
+		)
+		client, _, _, _ = newTestServer(t, testServerOptions{
+			Storer: storer,
+			Logger: logger,
+			Feeds:  factory,
+		})
+
+		jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(manifRef.String(), "", true), http.StatusOK,
+			jsonhttptest.WithExpectedResponse(updateData),
+			jsonhttptest.WithExpectedContentLength(len(updateData)),
+			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.SwarmFeedIndexHeader),
+			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.ContentDispositionHeader),
+			jsonhttptest.WithExpectedResponseHeader(api.ContentDispositionHeader, `inline; filename="index.html"`),
+			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "text/html; charset=utf-8"),
+		)
+
+		jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(manifRef.String(), "", false), http.StatusNotFound)
+	})
+
+	t.Run("wrapped feed", func(t *testing.T) {
+		// get root chunk of data and wrap it in a feed
+		rootCh, err := storer.ChunkStore().Get(ctx, resp.Reference)
+		if err != nil {
+			t.Fatal(err)
+		}
+		socRootCh := testingsoc.GenerateMockSOC(t, rootCh.Data()[swarm.SpanSize:]).Chunk()
+
+		var (
+			look    = newMockLookup(-1, 0, socRootCh, nil, &id{}, nil)
+			factory = newMockFactory(look)
+		)
+		client, _, _, _ = newTestServer(t, testServerOptions{
+			Storer: storer,
+			Logger: logger,
+			Feeds:  factory,
+		})
+
+		jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(manifRef.String(), "", false), http.StatusOK,
+			jsonhttptest.WithExpectedResponse(updateData),
+			jsonhttptest.WithExpectedContentLength(len(updateData)),
+			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.SwarmFeedIndexHeader),
+			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.ContentDispositionHeader),
+			jsonhttptest.WithExpectedResponseHeader(api.ContentDispositionHeader, `inline; filename="index.html"`),
+			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "text/html; charset=utf-8"),
+		)
+
+		jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(manifRef.String(), "", true), http.StatusBadRequest)
 	})
 }
 
