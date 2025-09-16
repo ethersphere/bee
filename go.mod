@@ -15,6 +15,7 @@ require (
 	github.com/ethersphere/go-storage-incentives-abi v0.9.4
 	github.com/ethersphere/go-sw3-abi v0.6.9
 	github.com/ethersphere/langos v1.0.0
+	github.com/felixge/fgprof v0.9.5
 	github.com/go-playground/validator/v10 v10.11.1
 	github.com/gogo/protobuf v1.3.2
 	github.com/google/go-cmp v0.6.0
@@ -34,6 +35,7 @@ require (
 	github.com/multiformats/go-multistream v0.5.0
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/prometheus/client_golang v1.21.1
+	github.com/prometheus/common v0.62.0
 	github.com/spf13/afero v1.6.0
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.7.0
@@ -82,7 +84,6 @@ require (
 	github.com/elastic/gosigar v0.14.2 // indirect
 	github.com/ethereum/c-kzg-4844/v2 v2.1.0 // indirect
 	github.com/ethereum/go-verkle v0.2.2 // indirect
-	github.com/felixge/fgprof v0.9.5
 	github.com/flynn/noise v1.1.0 // indirect
 	github.com/francoispqt/gojay v1.2.13 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
@@ -142,7 +143,6 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/prometheus/client_model v0.6.1
-	github.com/prometheus/common v0.62.0
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/prometheus/statsd_exporter v0.22.7 // indirect
 	github.com/quic-go/qpack v0.4.0 // indirect
