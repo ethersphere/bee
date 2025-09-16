@@ -28,5 +28,13 @@ func (s *Service) subdomainHandler(w http.ResponseWriter, r *http.Request) {
 		paths.Path = strings.TrimRight(paths.Path, "/") + "/" // NOTE: leave one slash if there was some.
 	}
 
-	s.serveReference(logger, paths.Subdomain, paths.Path, w, r, false)
+	queries := struct {
+		FeedLegacyResolve bool `map:"swarm-feed-legacy-resolve"`
+	}{}
+	if response := s.mapStructure(r.URL.Query(), &queries); response != nil {
+		response("invalid query params", logger, w)
+		return
+	}
+
+	s.serveReference(logger, paths.Subdomain, paths.Path, w, r, false, queries.FeedLegacyResolve)
 }
