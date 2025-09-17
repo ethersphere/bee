@@ -171,7 +171,6 @@ func TestGetter(t *testing.T) {
 				}()
 			}
 			_, err := g.Get(ctx, ch.Address())
-			replicas.Wait(g)
 			cancel()
 
 			// test the returned error
