@@ -27,7 +27,6 @@ import (
 //     (by default, it is assumed to be 4, ie. total of 16)
 //   - (not implemented) pivot: replicas with address in the proximity of pivot will be tried first
 type socGetter struct {
-	wg sync.WaitGroup
 	storage.Getter
 	level redundancy.Level
 }
@@ -44,6 +43,9 @@ func (g *socGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
 	// channel that the results (retrieved chunks) are gathered to from concurrent
 	// workers each fetching a replica
 	resultC := make(chan swarm.Chunk)
@@ -53,9 +55,9 @@ func (g *socGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk
 	errcnt := 0
 
 	// concurrently call to retrieve chunk using original SOC address
-	g.wg.Add(1)
+	wg.Add(1)
 	go func() {
-		defer g.wg.Done()
+		defer wg.Done()
 		ch, err := g.Getter.Get(ctx, addr)
 		if err != nil {
 			errc <- err
@@ -110,9 +112,9 @@ func (g *socGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk
 				continue
 			}
 
-			g.wg.Add(1)
+			wg.Add(1)
 			go func() {
-				defer g.wg.Done()
+				defer wg.Done()
 				ch, err := g.Getter.Get(ctx, swarm.NewAddress(so.addr))
 				if err != nil {
 					errc <- err
