@@ -6,7 +6,7 @@ package mantaray
 
 import (
 	"context"
-	"sort"
+	"slices"
 )
 
 // WalkNodeFunc is the type of the function called for each node visited
@@ -34,7 +34,7 @@ func walkNode(ctx context.Context, path []byte, l Loader, n *Node, walkFn WalkNo
 	for k := range n.forks {
 		keys = append(keys, k)
 	}
-	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+	slices.Sort(keys)
 
 	for _, k := range keys {
 		v := n.forks[k]
