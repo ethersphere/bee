@@ -80,8 +80,6 @@ func (g *socGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk
 	var wait <-chan time.Time // nil channel to disable case
 	// addresses used are doubling each period of search expansion
 	// (at intervals of RetryInterval)
-	ticker := time.NewTicker(SOCRetryInterval)
-	defer ticker.Stop()
 	for level := uint8(0); level <= uint8(g.level); {
 		select {
 		// at least one chunk is retrieved, cancel the rest and return early
@@ -98,7 +96,6 @@ func (g *socGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk
 
 			// ticker switches on the address channel
 		case <-wait:
-			wait = nil
 			next = rr.c
 			level++
 			target = 1 << level
@@ -131,7 +128,7 @@ func (g *socGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk
 				continue
 			}
 			next = nil
-			wait = ticker.C
+			wait = time.After(SOCRetryInterval)
 		}
 	}
 
