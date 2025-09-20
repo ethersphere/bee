@@ -31,6 +31,7 @@ type metrics struct {
 	LevelDBStats            *prometheus.HistogramVec
 	ExpiryTriggersCount     prometheus.Counter
 	ExpiryRunsCount         prometheus.Counter
+	WaitChunkRetrievalTime  prometheus.Gauge
 
 	ReserveMissingBatch prometheus.Gauge
 }
@@ -161,6 +162,14 @@ func newMetrics() metrics {
 				Subsystem: subsystem,
 				Name:      "expiry_run_count",
 				Help:      "Number of times the expiry worker was fired.",
+			},
+		),
+		WaitChunkRetrievalTime: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "wait_chunk_retrieval_time",
+				Help:      "Total time spent waiting for chunk retrieval across all workers.",
 			},
 		),
 	}
