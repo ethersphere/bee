@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/resolver"
 	"github.com/ethersphere/bee/v2/pkg/resolver/cidv1"
 	"github.com/ethersphere/bee/v2/pkg/resolver/client/ens"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/hashicorp/go-multierror"
 )
 
@@ -35,6 +36,8 @@ var (
 	ErrResolverChainFailed = errors.New("resolver chain failed")
 	// ErrCloseFailed denotes that closing the multiresolver failed.
 	ErrCloseFailed = errors.New("close failed")
+	// ErrResolverService denotes that no resolver service is configured for the requested name or the resolver service is not available.
+	ErrResolverService = errors.New("cannot communicate with the resolver or no resolver service configured")
 )
 
 type resolverMap map[string][]resolver.Interface
@@ -160,6 +163,9 @@ func (mr *MultiResolver) Resolve(name string) (addr resolver.Address, err error)
 	// If no resolver chain is found, switch to the default chain.
 	if len(chain) == 0 {
 		chain = mr.resolvers[""]
+		if len(chain) == 1 && tld != "" { // only the CID resolver is defined
+			return swarm.ZeroAddress, resolver.ErrServiceNotAvailable
+		}
 	}
 
 	var errs *multierror.Error

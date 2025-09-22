@@ -167,10 +167,10 @@ func wrapDial(endpoint, contractAddr string) (*ethclient.Client, *goens.Registry
 }
 
 func wrapResolve(registry *goens.Registry, _ common.Address, name string) (string, error) {
-	// Ensure the name is registered.
 	ownerAddress, err := registry.Owner(name)
+	// it returns error only if the service is not available
 	if err != nil {
-		return "", fmt.Errorf("owner: %w: %w", err, resolver.ErrNotFound)
+		return "", fmt.Errorf("%w: %w", resolver.ErrServiceNotAvailable, err)
 	}
 
 	// If the name is not registered, return an error.
@@ -181,12 +181,16 @@ func wrapResolve(registry *goens.Registry, _ common.Address, name string) (strin
 	// Obtain the resolver for this domain name.
 	ensR, err := registry.Resolver(name)
 	if err != nil {
-		return "", fmt.Errorf("resolver: %w: %w", err, resolver.ErrServiceNotAvailable)
+		return "", fmt.Errorf("%w: %w", resolver.ErrServiceNotAvailable, err)
 	}
 
 	// Try and read out the content hash record.
 	ch, err := ensR.Contenthash()
 	if err != nil {
+		// Check if it's a service error (rate limiting, network issues)
+		if strings.Contains(err.Error(), "429") || strings.Contains(err.Error(), "rate limit") {
+			return "", fmt.Errorf("%w: %w", resolver.ErrServiceNotAvailable, err)
+		}
 		return "", fmt.Errorf("contenthash: %w: %w", err, resolver.ErrInvalidContentHash)
 	}
 
