@@ -421,6 +421,8 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 			return
 		}
 
+		k.logger.Info("debug: kademlia: got addr grom addr book", "addr", bzzAddr.String())
+
 		remove := func(peer *peerConnInfo) {
 			k.waitNext.Remove(peer.addr)
 			k.knownPeers.Remove(peer.addr)
@@ -428,6 +430,8 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 				k.logger.Debug("could not remove peer from addressbook", "peer_address", peer.addr)
 			}
 		}
+
+		k.logger.Info("debug: kademlia: try to connect", "addr", bzzAddr.String())
 
 		switch err = k.connect(ctx, peer.addr, bzzAddr.Underlay); {
 		case errors.Is(err, p2p.ErrNetworkUnavailable):
@@ -476,6 +480,8 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 				return
 			case peer := <-peerConnChan:
 				addr := peer.addr.String()
+
+				k.logger.Debug("debug kademlia: connectionAttemptsHandler, got peer from chan", "peer_address", addr)
 
 				if k.waitNext.Waiting(peer.addr) {
 					k.metrics.TotalBeforeExpireWaits.Inc()
@@ -751,6 +757,8 @@ func (k *Kad) Start(ctx context.Context) error {
 	k.wg.Add(1)
 	go k.manage()
 
+	k.logger.Debug("kademlia: started", "previously_connected", k.previouslyConnected())
+
 	k.AddPeers(k.previouslyConnected()...)
 
 	go func() {
@@ -989,7 +997,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma []ma.Multiaddr
 	case errors.Is(err, p2p.ErrPeerBlocklisted):
 		return err
 	case err != nil:
-		k.logger.Debug("could not connect to peer", "peer_address", peer, "error", err)
+		k.logger.Info("could not connect to peer", "peer_address", peer, "error", err)
 
 		retryTime := time.Now().Add(k.opt.TimeToRetry)
 		var e *p2p.ConnectionBackoffError
@@ -1082,6 +1090,7 @@ outer:
 				cCtx, cCancel := context.WithTimeout(k.bgBroadcastCtx, time.Minute)
 				defer cCancel()
 
+				k.logger.Debug("Announce", "connectedPeer", connectedPeer.String(), "peer", peer.String())
 				if err := k.discovery.BroadcastPeers(cCtx, connectedPeer, peer); err != nil {
 					k.logger.Debug("peer gossip failed", "new_peer_address", peer, "connected_peer_address", connectedPeer, "error", err)
 				}
@@ -1099,6 +1108,8 @@ outer:
 	default:
 	}
 
+	k.logger.Debug("Announce", "peer", peer.String(), "addrs", addrs)
+
 	err := k.discovery.BroadcastPeers(ctx, peer, addrs...)
 	if err != nil {
 		k.logger.Error(err, "could not broadcast to peer", "peer_address", peer)
@@ -1114,6 +1125,7 @@ func (k *Kad) AnnounceTo(ctx context.Context, addressee, peer swarm.Address, ful
 		return errAnnounceLightNode
 	}
 
+	k.logger.Debug("AnnounceTo", "addressee", addressee.String(), "peer", peer.String())
 	return k.discovery.BroadcastPeers(ctx, addressee, peer)
 }
 

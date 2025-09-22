@@ -727,6 +727,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	}
 
 	// libp2p will chose first ready address (possible multi dial).
+	s.logger.Info("Connect: debug full connectivity test", "id", id.String(), "remotes", remotes)
 	info := libp2ppeer.AddrInfo{ID: id, Addrs: remotes}
 	if err := s.connectionBreaker.Execute(func() error { return s.host.Connect(ctx, info) }); err != nil {
 		if errors.Is(err, breaker.ErrClosed) {
@@ -743,6 +744,8 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	}
 
 	handshakeStream := newStream(stream, s.metrics)
+	s.logger.Info("Connect: handshake peer", "stream.Conn().RemotePeer()", stream.Conn().RemotePeer())
+
 	i, err := s.handshakeService.Handshake(ctx, handshakeStream, addrs, stream.Conn().RemotePeer())
 	if err != nil {
 		_ = handshakeStream.Reset()
@@ -774,7 +777,10 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		return nil, p2p.ErrPeerBlocklisted
 	}
 
+	s.logger.Info("addIfNotExists peer", "stream.Conn()", stream.Conn(), "overlay", overlay, "full_node", i.FullNode)
+
 	if exists := s.peers.addIfNotExists(stream.Conn(), overlay, i.FullNode); exists {
+		s.logger.Info("addIfNotExists peer EXIST", "stream.Conn()", stream.Conn(), "overlay", overlay, "full_node", i.FullNode)
 		if err := handshakeStream.FullClose(); err != nil {
 			_ = s.Disconnect(overlay, "failed closing handshake stream after connect")
 			return nil, fmt.Errorf("peer exists, full close: %w", err)
@@ -789,6 +795,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	}
 
 	if i.FullNode {
+		s.logger.Info("Connect: full node: put address to addr book", "overlay", overlay, "bzz_add", i.BzzAddress.String())
 		err = s.addressbook.Put(overlay, *i.BzzAddress)
 		if err != nil {
 			_ = s.Disconnect(overlay, "failed storing peer in addressbook")
