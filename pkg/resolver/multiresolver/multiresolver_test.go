@@ -217,7 +217,7 @@ func TestResolve(t *testing.T) {
 		},
 		{
 			// Switch to the default chain:
-			name:    "this.empty",
+			name:    "defaultChainIsCidTriggerItWithoutTld",
 			wantAdr: addr,
 		},
 		{
