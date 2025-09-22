@@ -1035,8 +1035,8 @@ func TestEvictRemovesPinnedContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if evicted != numChunks-len(pinnedChunks) {
-		t.Fatalf("expected %d evicted chunks, got %d", numChunks-len(pinnedChunks), evicted)
+	if evicted != numChunks {
+		t.Fatalf("expected %d evicted chunks, got %d", numChunks, evicted)
 	}
 
 	uuids, err := pinstore.GetCollectionUUIDs(ts.IndexStore())
@@ -1056,6 +1056,9 @@ func TestEvictRemovesPinnedContent(t *testing.T) {
 		// Try to get the chunk from reserve, error is checked later
 		_, err = r.Get(ctx, ch.Address(), ch.Stamp().BatchID(), stampHash)
 
+		// Also try to get chunk directly from chunkstore (like bzz/bytes endpoints do)
+		_, chunkStoreErr := ts.ChunkStore().Get(ctx, ch.Address())
+
 		pinned := false
 		for _, uuid := range uuids {
 			has, err := pinstore.IsChunkPinnedInCollection(ts.IndexStore(), ch.Address(), uuid)
@@ -1069,19 +1072,26 @@ func TestEvictRemovesPinnedContent(t *testing.T) {
 
 		if i < len(pinnedChunks) {
 			if pinned {
-				// This chunk is pinned, so it should NOT have been evicted
-				if errors.Is(err, storage.ErrNotFound) {
-					t.Errorf("Pinned chunk %s was evicted despite being pinned!", ch.Address())
-				} else if err != nil {
-					t.Fatal(err)
+				// This chunk is pinned, so it should NOT be accessible from reserve but SHOULD be accessible from chunkstore
+				if !errors.Is(err, storage.ErrNotFound) {
+					t.Errorf("Pinned chunk %s should have been evicted from reserve", ch.Address())
+				}
+				if errors.Is(chunkStoreErr, storage.ErrNotFound) {
+					t.Errorf("Pinned chunk %s was deleted from chunkstore - should remain retrievable!", ch.Address())
+				} else if chunkStoreErr != nil {
+					t.Fatal(chunkStoreErr)
 				}
 			} else {
 				t.Errorf("Chunk %s should be pinned", ch.Address())
 			}
 		} else { // unpinned chunks
 			if !pinned {
+				// Unpinned chunks should be completely evicted (both reserve and chunkstore)
 				if !errors.Is(err, storage.ErrNotFound) {
-					t.Errorf("Unpinned chunk %s should have been evicted", ch.Address())
+					t.Errorf("Unpinned chunk %s should have been evicted from reserve", ch.Address())
+				}
+				if !errors.Is(chunkStoreErr, storage.ErrNotFound) {
+					t.Errorf("Unpinned chunk %s should have been evicted from chunkstore", ch.Address())
 				}
 			} else {
 				t.Errorf("Chunk %s should not be pinned", ch.Address())
