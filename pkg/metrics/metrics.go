@@ -8,11 +8,9 @@
 package metrics
 
 import (
-	"fmt"
 	"io"
 	"net/http"
 
-	exporter "contrib.go.opencensus.io/exporter/prometheus"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -72,22 +70,6 @@ func InstrumentMetricHandler(reg MetricsRegistererGatherer, handler http.Handler
 
 func HandlerFor(reg MetricsRegistererGatherer, opts HandlerOpts) http.Handler {
 	return promhttp.HandlerFor(reg, opts)
-}
-
-func NewExporter(o ExporterOptions) error {
-	if o.Registry == nil {
-		return ErrNilRegistry
-	}
-	r, ok := o.Registry.(*prometheus.Registry)
-	if !ok {
-		return fmt.Errorf("invalid exporter type: %T", o.Registry)
-	}
-	opts := exporter.Options{
-		Namespace: o.Namespace,
-		Registry:  r,
-	}
-	_, err := exporter.NewExporter(opts)
-	return err
 }
 
 func MustRegister(cs ...Collector) {

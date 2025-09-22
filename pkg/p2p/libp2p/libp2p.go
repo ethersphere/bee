@@ -22,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 	beecrypto "github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
+	exporter "github.com/ethersphere/bee/v2/pkg/metrics/exporter"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/blocklist"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/breaker"
@@ -173,7 +174,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	if o.Registry != nil {
 		rcmgr.MustRegisterWith(o.Registry)
 	}
-	err = m.NewExporter(m.ExporterOptions{
+	err = exporter.NewExporter(exporter.ExporterOptions{
 		Namespace: m.Namespace,
 		Registry:  o.Registry,
 	})
