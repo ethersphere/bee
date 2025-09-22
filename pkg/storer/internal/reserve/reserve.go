@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
+	pinstore "github.com/ethersphere/bee/v2/pkg/storer/internal/pinning"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/stampindex"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -327,6 +328,7 @@ func (r *Reserve) Get(ctx context.Context, addr swarm.Address, batchID []byte, s
 }
 
 // EvictBatchBin evicts all chunks from bins upto the bin provided.
+// Pinned chunks are protected from eviction to maintain data integrity.
 func (r *Reserve) EvictBatchBin(
 	ctx context.Context,
 	batchID []byte,
@@ -342,7 +344,12 @@ func (r *Reserve) EvictBatchBin(
 		return 0, nil
 	}
 
-	err := r.st.IndexStore().Iterate(storage.Query{
+	pinUuids, err := pinstore.GetCollectionUUIDs(r.st.IndexStore())
+	if err != nil {
+		return 0, err
+	}
+
+	err = r.st.IndexStore().Iterate(storage.Query{
 		Factory: func() storage.Item { return &BatchRadiusItem{} },
 		Prefix:  string(batchID),
 	}, func(res storage.Result) (bool, error) {
@@ -350,6 +357,18 @@ func (r *Reserve) EvictBatchBin(
 		if batchRadius.Bin >= bin {
 			return true, nil
 		}
+
+		// Check if the chunk is pinned in any collection
+		for _, uuid := range pinUuids {
+			has, err := pinstore.IsChunkPinnedInCollection(r.st.IndexStore(), batchRadius.Address, uuid)
+			if err != nil {
+				return true, err
+			}
+			if has {
+				return false, nil
+			}
+		}
+
 		evicteditems = append(evicteditems, batchRadius)
 		count--
 		if count == 0 {
