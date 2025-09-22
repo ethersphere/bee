@@ -6,17 +6,16 @@ package handshake
 
 import (
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
-// metrics groups handshake related prometheus counters.
+// metrics groups handshake related m counters.
 type metrics struct {
-	SynRx          prometheus.Counter
-	SynRxFailed    prometheus.Counter
-	SynAckTx       prometheus.Counter
-	SynAckTxFailed prometheus.Counter
-	AckRx          prometheus.Counter
-	AckRxFailed    prometheus.Counter
+	SynRx          m.Counter
+	SynRxFailed    m.Counter
+	SynAckTx       m.Counter
+	SynAckTxFailed m.Counter
+	AckRx          m.Counter
+	AckRxFailed    m.Counter
 }
 
 // newMetrics is a convenient constructor for creating new metrics.
@@ -24,37 +23,37 @@ func newMetrics() metrics {
 	const subsystem = "handshake"
 
 	return metrics{
-		SynRx: prometheus.NewCounter(prometheus.CounterOpts{
+		SynRx: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "syn_rx",
 			Help:      "The number of syn messages that were successfully read.",
 		}),
-		SynRxFailed: prometheus.NewCounter(prometheus.CounterOpts{
+		SynRxFailed: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "syn_rx_failed",
 			Help:      "The number of syn messages that were unsuccessfully read.",
 		}),
-		SynAckTx: prometheus.NewCounter(prometheus.CounterOpts{
+		SynAckTx: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "syn_ack_tx",
 			Help:      "The number of syn-ack messages that were successfully written.",
 		}),
-		SynAckTxFailed: prometheus.NewCounter(prometheus.CounterOpts{
+		SynAckTxFailed: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "syn_ack_tx_failed",
 			Help:      "The number of syn-ack messages that were unsuccessfully written.",
 		}),
-		AckRx: prometheus.NewCounter(prometheus.CounterOpts{
+		AckRx: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "ack_rx",
 			Help:      "The number of ack messages that were successfully read.",
 		}),
-		AckRxFailed: prometheus.NewCounter(prometheus.CounterOpts{
+		AckRxFailed: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "ack_rx_failed",
@@ -63,7 +62,7 @@ func newMetrics() metrics {
 	}
 }
 
-// Metrics returns set of prometheus collectors.
-func (s *Service) Metrics() []prometheus.Collector {
+// Metrics returns set of m collectors.
+func (s *Service) Metrics() []m.Collector {
 	return m.PrometheusCollectorsFromFields(s.metrics)
 }

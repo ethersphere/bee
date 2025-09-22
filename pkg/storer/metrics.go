@@ -12,27 +12,26 @@ import (
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
-// metrics groups storer related prometheus counters.
+// metrics groups storer related m counters.
 type metrics struct {
-	MethodCalls             *prometheus.CounterVec
-	MethodCallsDuration     *prometheus.HistogramVec
-	ReserveSize             prometheus.Gauge
-	ReserveSizeWithinRadius prometheus.Gauge
-	ReserveCleanup          prometheus.Counter
-	StorageRadius           prometheus.Gauge
-	CacheSize               prometheus.Gauge
-	EvictedChunkCount       prometheus.Counter
-	ExpiredChunkCount       prometheus.Counter
-	OverCapTriggerCount     prometheus.Counter
-	ExpiredBatchCount       prometheus.Counter
-	LevelDBStats            *prometheus.HistogramVec
-	ExpiryTriggersCount     prometheus.Counter
-	ExpiryRunsCount         prometheus.Counter
+	MethodCalls             m.CounterMetricVector
+	MethodCallsDuration     m.HistogramMetricVector
+	ReserveSize             m.Gauge
+	ReserveSizeWithinRadius m.Gauge
+	ReserveCleanup          m.Counter
+	StorageRadius           m.Gauge
+	CacheSize               m.Gauge
+	EvictedChunkCount       m.Counter
+	ExpiredChunkCount       m.Counter
+	OverCapTriggerCount     m.Counter
+	ExpiredBatchCount       m.Counter
+	LevelDBStats            m.HistogramMetricVector
+	ExpiryTriggersCount     m.Counter
+	ExpiryRunsCount         m.Counter
 
-	ReserveMissingBatch prometheus.Gauge
+	ReserveMissingBatch m.Gauge
 }
 
 // newMetrics is a convenient constructor for creating new metrics.
@@ -40,8 +39,8 @@ func newMetrics() metrics {
 	const subsystem = "localstore"
 
 	return metrics{
-		MethodCalls: prometheus.NewCounterVec(
-			prometheus.CounterOpts{
+		MethodCalls: m.NewCounterVec(
+			m.CounterOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "method_calls",
@@ -49,8 +48,8 @@ func newMetrics() metrics {
 			},
 			[]string{"component", "method", "status"},
 		),
-		MethodCallsDuration: prometheus.NewHistogramVec(
-			prometheus.HistogramOpts{
+		MethodCallsDuration: m.NewHistogramVec(
+			m.HistogramOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "method_calls_duration",
@@ -58,88 +57,88 @@ func newMetrics() metrics {
 			},
 			[]string{"component", "method"},
 		),
-		ReserveSize: prometheus.NewGauge(
-			prometheus.GaugeOpts{
+		ReserveSize: m.NewGauge(
+			m.GaugeOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "reserve_size",
 				Help:      "Number of chunks in reserve.",
 			},
 		),
-		ReserveMissingBatch: prometheus.NewGauge(
-			prometheus.GaugeOpts{
+		ReserveMissingBatch: m.NewGauge(
+			m.GaugeOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "reserve_missing_batch",
 				Help:      "Number of chunks in reserve with missing batches.",
 			},
 		),
-		ReserveSizeWithinRadius: prometheus.NewGauge(
-			prometheus.GaugeOpts{
+		ReserveSizeWithinRadius: m.NewGauge(
+			m.GaugeOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "reserve_size_within_radius",
 				Help:      "Number of chunks in reserve with proximity >= storage radius.",
 			},
 		),
-		ReserveCleanup: prometheus.NewCounter(
-			prometheus.CounterOpts{
+		ReserveCleanup: m.NewCounter(
+			m.CounterOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "reserve_cleanup",
 				Help:      "Number of cleaned-up expired chunks.",
 			},
 		),
-		StorageRadius: prometheus.NewGauge(
-			prometheus.GaugeOpts{
+		StorageRadius: m.NewGauge(
+			m.GaugeOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "storage_radius",
 				Help:      "Radius of responsibility reserve storage.",
 			},
 		),
-		CacheSize: prometheus.NewGauge(
-			prometheus.GaugeOpts{
+		CacheSize: m.NewGauge(
+			m.GaugeOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "cache_size",
 				Help:      "Number of chunks in cache.",
 			},
 		),
-		EvictedChunkCount: prometheus.NewCounter(
-			prometheus.CounterOpts{
+		EvictedChunkCount: m.NewCounter(
+			m.CounterOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "evicted_count",
 				Help:      "Number of chunks evicted from reserve.",
 			},
 		),
-		ExpiredChunkCount: prometheus.NewCounter(
-			prometheus.CounterOpts{
+		ExpiredChunkCount: m.NewCounter(
+			m.CounterOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "expired_count",
 				Help:      "Number of chunks expired from reserve due to stamp expirations.",
 			},
 		),
-		OverCapTriggerCount: prometheus.NewCounter(
-			prometheus.CounterOpts{
+		OverCapTriggerCount: m.NewCounter(
+			m.CounterOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "over_cap_trigger_count",
 				Help:      "Number of times the reserve was over capacity and triggered an eviction.",
 			},
 		),
-		ExpiredBatchCount: prometheus.NewCounter(
-			prometheus.CounterOpts{
+		ExpiredBatchCount: m.NewCounter(
+			m.CounterOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "expired_batch_count",
 				Help:      "Number of batches expired, that were processed.",
 			},
 		),
-		LevelDBStats: prometheus.NewHistogramVec(
-			prometheus.HistogramOpts{
+		LevelDBStats: m.NewHistogramVec(
+			m.HistogramOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "leveldb_stats",
@@ -147,16 +146,16 @@ func newMetrics() metrics {
 			},
 			[]string{"counter"},
 		),
-		ExpiryTriggersCount: prometheus.NewCounter(
-			prometheus.CounterOpts{
+		ExpiryTriggersCount: m.NewCounter(
+			m.CounterOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "expiry_trigger_count",
 				Help:      "Number of batches expiry triggers.",
 			},
 		),
-		ExpiryRunsCount: prometheus.NewCounter(
-			prometheus.CounterOpts{
+		ExpiryRunsCount: m.NewCounter(
+			m.CounterOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "expiry_run_count",

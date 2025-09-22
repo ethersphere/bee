@@ -2,31 +2,94 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+//go:build !nometrics
+// +build !nometrics
+
 package metrics
 
 import (
-	"reflect"
+	"fmt"
+	"io"
+	"net/http"
 
+	exporter "contrib.go.opencensus.io/exporter/prometheus"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/prometheus/common/expfmt"
 )
 
-// Namespace is prefixed before every metric. If it is changed, it must be done
-// before any metrics collector is registered.
-var Namespace = "bee"
-
-type Collector interface {
-	Metrics() []prometheus.Collector
+func NewCounter(opts CounterOpts) Counter {
+	return prometheus.NewCounter(opts)
 }
 
-func PrometheusCollectorsFromFields(i interface{}) (cs []prometheus.Collector) {
-	v := reflect.Indirect(reflect.ValueOf(i))
-	for i := 0; i < v.NumField(); i++ {
-		if !v.Field(i).CanInterface() {
-			continue
-		}
-		if u, ok := v.Field(i).Interface().(prometheus.Collector); ok {
-			cs = append(cs, u)
-		}
+func NewEncoder(w io.Writer, format expfmt.Format, options ...expfmt.EncoderOption) expfmt.Encoder {
+	return expfmt.NewEncoder(w, format, options...)
+}
+
+func NewFormat(t expfmt.FormatType) expfmt.Format {
+	return expfmt.NewFormat(t)
+}
+
+func NewGoCollector() Collector {
+	return collectors.NewGoCollector()
+}
+
+func NewGaugeVec(opts GaugeOpts, names []string) GaugeMetricVector {
+	return prometheus.NewGaugeVec(opts, names)
+}
+func NewGauge(opts GaugeOpts) Gauge {
+	return prometheus.NewGauge(opts)
+}
+
+func NewHistogram(opts HistogramOpts) Histogram {
+	return prometheus.NewHistogram(opts)
+}
+
+func NewHistogramVec(opts HistogramOpts, names []string) HistogramMetricVector {
+	return prometheus.NewHistogramVec(opts, names)
+}
+
+func NewCounterVec(opts CounterOpts, names []string) CounterMetricVector {
+	return prometheus.NewCounterVec(opts, names)
+}
+
+func NewRegistry() MetricsRegistererGatherer {
+	return prometheus.NewRegistry()
+}
+
+func NewProcessCollector(opts ProcessCollectorOpts) Collector {
+	return collectors.NewProcessCollector(opts)
+}
+
+func NewSummary(opts SummaryOpts) Summary {
+	return prometheus.NewSummary(opts)
+}
+
+func InstrumentMetricHandler(reg MetricsRegistererGatherer, handler http.Handler) http.Handler {
+	return promhttp.InstrumentMetricHandler(reg, handler)
+}
+
+func HandlerFor(reg MetricsRegistererGatherer, opts HandlerOpts) http.Handler {
+	return promhttp.HandlerFor(reg, opts)
+}
+
+func NewExporter(o ExporterOptions) error {
+	if o.Registry == nil {
+		return ErrNilRegistry
 	}
-	return cs
+	r, ok := o.Registry.(*prometheus.Registry)
+	if !ok {
+		return fmt.Errorf("invalid exporter type: %T", o.Registry)
+	}
+	opts := exporter.Options{
+		Namespace: o.Namespace,
+		Registry:  r,
+	}
+	_, err := exporter.NewExporter(opts)
+	return err
+}
+
+func MustRegister(cs ...Collector) {
+	prometheus.MustRegister(cs...)
 }
