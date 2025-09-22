@@ -338,7 +338,10 @@ func (r *Reserve) EvictBatchBin(
 	r.multx.Lock(string(batchID))
 	defer r.multx.Unlock(string(batchID))
 
-	var evicteditems []*BatchRadiusItem
+	var (
+		evictedItems       []*BatchRadiusItem
+		pinnedEvictedItems []*BatchRadiusItem
+	)
 
 	if count <= 0 {
 		return 0, nil
@@ -359,17 +362,22 @@ func (r *Reserve) EvictBatchBin(
 		}
 
 		// Check if the chunk is pinned in any collection
+		pinned := false
 		for _, uuid := range pinUuids {
 			has, err := pinstore.IsChunkPinnedInCollection(r.st.IndexStore(), batchRadius.Address, uuid)
 			if err != nil {
 				return true, err
 			}
 			if has {
-				return false, nil
+				pinned = true
+				pinnedEvictedItems = append(pinnedEvictedItems, batchRadius)
+				break
 			}
 		}
 
-		evicteditems = append(evicteditems, batchRadius)
+		if !pinned {
+			evictedItems = append(evictedItems, batchRadius)
+		}
 		count--
 		if count == 0 {
 			return true, nil
@@ -385,11 +393,26 @@ func (r *Reserve) EvictBatchBin(
 
 	var evicted atomic.Int64
 
-	for _, item := range evicteditems {
+	for _, item := range evictedItems {
 		func(item *BatchRadiusItem) {
 			eg.Go(func() error {
 				err := r.st.Run(ctx, func(s transaction.Store) error {
 					return RemoveChunkWithItem(ctx, s, item)
+				})
+				if err != nil {
+					return err
+				}
+				evicted.Add(1)
+				return nil
+			})
+		}(item)
+	}
+
+	for _, item := range pinnedEvictedItems {
+		func(item *BatchRadiusItem) {
+			eg.Go(func() error {
+				err := r.st.Run(ctx, func(s transaction.Store) error {
+					return RemoveChunkMetaData(ctx, s, item)
 				})
 				if err != nil {
 					return err
@@ -446,6 +469,29 @@ func RemoveChunkWithItem(
 		trx.IndexStore().Delete(item),
 		trx.IndexStore().Delete(&ChunkBinItem{Bin: item.Bin, BinID: item.BinID}),
 		trx.ChunkStore().Delete(ctx, item.Address),
+	)
+}
+
+// RemoveChunkMetaData removes chunk reserve metadata from reserve indexes but keeps the cunks in the chunkstore.
+// used at pinned data eviction
+func RemoveChunkMetaData(
+	ctx context.Context,
+	trx transaction.Store,
+	item *BatchRadiusItem,
+) error {
+	var errs error
+
+	stamp, _ := chunkstamp.LoadWithStampHash(trx.IndexStore(), reserveScope, item.Address, item.StampHash)
+	if stamp != nil {
+		errs = errors.Join(
+			stampindex.Delete(trx.IndexStore(), reserveScope, stamp),
+			chunkstamp.DeleteWithStamp(trx.IndexStore(), reserveScope, item.Address, stamp),
+		)
+	}
+
+	return errors.Join(errs,
+		trx.IndexStore().Delete(item),
+		trx.IndexStore().Delete(&ChunkBinItem{Bin: item.Bin, BinID: item.BinID}),
 	)
 }
 
