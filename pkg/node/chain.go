@@ -6,10 +6,13 @@ package node
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
+	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -59,15 +62,32 @@ func InitChain(
 	}
 
 	if chainEnabled {
-		// connect to the real one
-		rpcClient, err := rpc.DialContext(ctx, endpoint)
+		parsedURL, err := url.Parse(endpoint)
+		if err != nil {
+			return nil, common.Address{}, 0, nil, nil, fmt.Errorf("parse blockchain endpoint: %w", err)
+		}
+
+		opts := []rpc.ClientOption{}
+
+		if parsedURL.User != nil {
+			authOpt := rpc.WithHTTPAuth(func(h http.Header) error {
+				username := parsedURL.User.Username()
+				password, _ := parsedURL.User.Password()
+				h.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(username+":"+password)))
+				return nil
+			})
+			parsedURL.User = nil
+			endpoint = parsedURL.String()
+			opts = append(opts, authOpt)
+		}
+
+		rpcClient, err := rpc.DialOptions(ctx, endpoint, opts...)
 		if err != nil {
 			return nil, common.Address{}, 0, nil, nil, fmt.Errorf("dial blockchain client: %w", err)
 		}
 
 		var versionString string
-		err = rpcClient.CallContext(ctx, &versionString, "web3_clientVersion")
-		if err != nil {
+		if err = rpcClient.CallContext(ctx, &versionString, "web3_clientVersion"); err != nil {
 			logger.Info("could not connect to backend; in a swap-enabled network a working blockchain node (for xdai network in production, sepolia in testnet) is required; check your node or specify another node using --blockchain-rpc-endpoint.", "backend_endpoint", endpoint)
 			return nil, common.Address{}, 0, nil, nil, fmt.Errorf("blockchain client get version: %w", err)
 		}
