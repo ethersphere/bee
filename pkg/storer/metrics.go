@@ -17,22 +17,24 @@ import (
 
 // metrics groups storer related prometheus counters.
 type metrics struct {
-	MethodCalls             *prometheus.CounterVec
-	MethodCallsDuration     *prometheus.HistogramVec
-	ReserveSize             prometheus.Gauge
-	ReserveSizeWithinRadius prometheus.Gauge
-	ReserveCleanup          prometheus.Counter
-	StorageRadius           prometheus.Gauge
-	CacheSize               prometheus.Gauge
-	EvictedChunkCount       prometheus.Counter
-	ExpiredChunkCount       prometheus.Counter
-	OverCapTriggerCount     prometheus.Counter
-	ExpiredBatchCount       prometheus.Counter
-	LevelDBStats            *prometheus.HistogramVec
-	ExpiryTriggersCount     prometheus.Counter
-	ExpiryRunsCount         prometheus.Counter
-
-	ReserveMissingBatch prometheus.Gauge
+	MethodCalls                   *prometheus.CounterVec
+	MethodCallsDuration           *prometheus.HistogramVec
+	ReserveSize                   prometheus.Gauge
+	ReserveSizeWithinRadius       prometheus.Gauge
+	ReserveCleanup                prometheus.Counter
+	StorageRadius                 prometheus.Gauge
+	CacheSize                     prometheus.Gauge
+	EvictedChunkCount             prometheus.Counter
+	ExpiredChunkCount             prometheus.Counter
+	OverCapTriggerCount           prometheus.Counter
+	ExpiredBatchCount             prometheus.Counter
+	LevelDBStats                  *prometheus.HistogramVec
+	ExpiryTriggersCount           prometheus.Counter
+	ExpiryRunsCount               prometheus.Counter
+	ReserveMissingBatch           prometheus.Gauge
+	ReserveSampleDuration         *prometheus.HistogramVec
+	ReserveSampleRunSummary       *prometheus.GaugeVec
+	ReserveSampleLastRunTimestamp prometheus.Gauge
 }
 
 // newMetrics is a convenient constructor for creating new metrics.
@@ -161,6 +163,33 @@ func newMetrics() metrics {
 				Subsystem: subsystem,
 				Name:      "expiry_run_count",
 				Help:      "Number of times the expiry worker was fired.",
+			},
+		),
+		ReserveSampleDuration: prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "reserve_sample_duration_seconds",
+				Help:      "Duration of ReserveSample operations in seconds.",
+				Buckets:   []float64{180, 300, 600, 900, 1200, 1500, 1800},
+			},
+			[]string{"status"},
+		),
+		ReserveSampleRunSummary: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "reserve_sample_run_summary",
+				Help:      "Summary metrics for the last ReserveSample run.",
+			},
+			[]string{"metric"},
+		),
+		ReserveSampleLastRunTimestamp: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "reserve_sample_last_run_timestamp",
+				Help:      "Unix timestamp of the last ReserveSample run completion.",
 			},
 		),
 	}
