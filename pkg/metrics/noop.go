@@ -144,10 +144,6 @@ func NewRegistry() MetricsRegistererGatherer {
 	return &registryNoop{}
 }
 
-func NewExporter(o ExporterOptions) error {
-	return nil
-}
-
 func MustRegister(_ ...Collector) {
 	// pass
 }
