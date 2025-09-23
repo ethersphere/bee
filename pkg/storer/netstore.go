@@ -39,6 +39,7 @@ func (db *DB) DirectUpload() PutterSession {
 						span.Finish()
 					}()
 
+					shallowRetryCount := pusher.DefaultRetryCount
 					for {
 						op := &pusher.Op{Chunk: ch, Err: make(chan error, 1), Direct: true, Span: span}
 						select {
@@ -59,6 +60,10 @@ func (db *DB) DirectUpload() PutterSession {
 							case err := <-op.Err:
 								if errors.Is(err, pushsync.ErrShallowReceipt) {
 									logger.Debug("direct upload: shallow receipt received, retrying", "chunk", ch.Address())
+									shallowRetryCount--
+									if shallowRetryCount == 0 {
+										return err
+									}
 								} else if errors.Is(err, topology.ErrNotFound) {
 									logger.Debug("direct upload: no peers available, retrying", "chunk", ch.Address())
 								} else {
