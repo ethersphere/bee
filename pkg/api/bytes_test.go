@@ -374,7 +374,7 @@ func TestBytesGetHandlerInvalidInputs(t *testing.T) {
 	}
 }
 
-// TestDirectUploadBytes tests that the direct upload endpoint give correct error message in dev mode
+// TestBytesDirectUpload tests that the direct upload endpoint give correct error message in dev mode
 func TestBytesDirectUpload(t *testing.T) {
 	t.Parallel()
 	const (
