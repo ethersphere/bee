@@ -124,10 +124,7 @@ func RefCountSizeInc(s storage.BatchStore, logger log.Logger) func() error {
 		}
 
 		for i := 0; i < len(itemsToDelete); i += 10000 {
-			end := i + 10000
-			if end > len(itemsToDelete) {
-				end = len(itemsToDelete)
-			}
+			end := min(i+10000, len(itemsToDelete))
 
 			b := s.Batch(context.Background())
 			for _, item := range itemsToDelete[i:end] {

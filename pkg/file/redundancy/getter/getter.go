@@ -340,7 +340,7 @@ func (g *decoder) setData(i int, chdata []byte) {
 func (g *decoder) getData(i int) []byte {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if i == g.shardCnt-1 && g.lastLen > 0 {
+	if i == g.shardCnt-1 && g.lastLen > 0 && g.rsbuf[i] != nil {
 		return g.rsbuf[i][:g.lastLen] // cut padding
 	}
 	return g.rsbuf[i]
