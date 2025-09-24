@@ -84,14 +84,14 @@ func TestBackendPanics(t *testing.T) {
 
 	// Test that panic methods actually panic
 	panics := []func(){
-		func() { backend.PendingNonceAt(ctx, common.Address{}) },
-		func() { backend.SuggestedFeeAndTip(ctx, nil, 0) },
-		func() { backend.SuggestGasTipCap(ctx) },
-		func() { backend.EstimateGas(ctx, ethereum.CallMsg{}) },
-		func() { backend.SendTransaction(ctx, nil) },
-		func() { backend.TransactionByHash(ctx, common.Hash{}) },
-		func() { backend.NonceAt(ctx, common.Address{}, nil) },
-		func() { backend.FilterLogs(ctx, ethereum.FilterQuery{}) },
+		func() { _, _ = backend.PendingNonceAt(ctx, common.Address{}) },
+		func() { _, _, _ = backend.SuggestedFeeAndTip(ctx, nil, 0) },
+		func() { _, _ = backend.SuggestGasTipCap(ctx) },
+		func() { _, _ = backend.EstimateGas(ctx, ethereum.CallMsg{}) },
+		func() { _ = backend.SendTransaction(ctx, nil) },
+		func() { _, _, _ = backend.TransactionByHash(ctx, common.Hash{}) },
+		func() { _, _ = backend.NonceAt(ctx, common.Address{}, nil) },
+		func() { _, _ = backend.FilterLogs(ctx, ethereum.FilterQuery{}) },
 	}
 
 	for i, panicFunc := range panics {
