@@ -13,9 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethersphere/bee/v2/pkg/config"
@@ -31,8 +29,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/swapprotocol"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
+	"github.com/ethersphere/bee/v2/pkg/transaction/backendnoop"
 	"github.com/ethersphere/bee/v2/pkg/transaction/wrapped"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -54,9 +52,7 @@ func InitChain(
 	chainEnabled bool,
 	minimumGasTipCap uint64,
 ) (transaction.Backend, common.Address, int64, transaction.Monitor, transaction.Service, error) {
-	var backend transaction.Backend = &noOpChainBackend{
-		chainID: oChainID,
-	}
+	var backend transaction.Backend = backendnoop.New(oChainID)
 
 	if chainEnabled {
 		// connect to the real one
@@ -340,74 +336,3 @@ func (m *noOpChequebookService) LastCheque(common.Address) (*chequebook.SignedCh
 func (m *noOpChequebookService) LastCheques() (map[common.Address]*chequebook.SignedCheque, error) {
 	return nil, postagecontract.ErrChainDisabled
 }
-
-// noOpChainBackend is a noOp implementation for transaction.Backend interface.
-type noOpChainBackend struct {
-	chainID int64
-}
-
-func (m noOpChainBackend) Metrics() []prometheus.Collector {
-	return nil
-}
-
-func (m noOpChainBackend) CallContract(context.Context, ethereum.CallMsg, *big.Int) ([]byte, error) {
-	return nil, errors.New("disabled chain backend")
-}
-
-func (m noOpChainBackend) HeaderByNumber(context.Context, *big.Int) (*types.Header, error) {
-	h := new(types.Header)
-	h.Time = uint64(time.Now().Unix())
-	return h, nil
-}
-
-func (m noOpChainBackend) PendingNonceAt(context.Context, common.Address) (uint64, error) {
-	panic("chain no op: PendingNonceAt")
-}
-
-func (m noOpChainBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
-	panic("chain no op: SuggestedFeeAndTip")
-}
-
-func (m noOpChainBackend) SuggestGasTipCap(context.Context) (*big.Int, error) {
-	panic("chain no op: SuggestGasTipCap")
-}
-
-func (m noOpChainBackend) EstimateGas(context.Context, ethereum.CallMsg) (uint64, error) {
-	panic("chain no op: EstimateGas")
-}
-
-func (m noOpChainBackend) SendTransaction(context.Context, *types.Transaction) error {
-	panic("chain no op: SendTransaction")
-}
-
-func (m noOpChainBackend) TransactionReceipt(context.Context, common.Hash) (*types.Receipt, error) {
-	r := new(types.Receipt)
-	r.BlockNumber = big.NewInt(1)
-	return r, nil
-}
-
-func (m noOpChainBackend) TransactionByHash(context.Context, common.Hash) (tx *types.Transaction, isPending bool, err error) {
-	panic("chain no op: TransactionByHash")
-}
-
-func (m noOpChainBackend) BlockNumber(context.Context) (uint64, error) {
-	return 4, nil
-}
-
-func (m noOpChainBackend) BalanceAt(context.Context, common.Address, *big.Int) (*big.Int, error) {
-	return nil, postagecontract.ErrChainDisabled
-}
-
-func (m noOpChainBackend) NonceAt(context.Context, common.Address, *big.Int) (uint64, error) {
-	panic("chain no op: NonceAt")
-}
-
-func (m noOpChainBackend) FilterLogs(context.Context, ethereum.FilterQuery) ([]types.Log, error) {
-	panic("chain no op: FilterLogs")
-}
-
-func (m noOpChainBackend) ChainID(context.Context) (*big.Int, error) {
-	return big.NewInt(m.chainID), nil
-}
-
-func (m noOpChainBackend) Close() {}
