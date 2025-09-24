@@ -6,6 +6,7 @@ package backendnoop_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/ethereum/go-ethereum"
@@ -31,7 +32,7 @@ func TestBackend(t *testing.T) {
 
 	// Test BalanceAt returns ErrChainDisabled
 	balance, err := backend.BalanceAt(ctx, common.Address{}, nil)
-	if err != postagecontract.ErrChainDisabled {
+	if !errors.Is(err, postagecontract.ErrChainDisabled) {
 		t.Fatalf("expected ErrChainDisabled, got %v", err)
 	}
 	if balance != nil {
