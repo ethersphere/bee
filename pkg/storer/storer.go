@@ -370,7 +370,7 @@ func initDiskRepository(
 const lockKeyNewSession string = "new_session"
 
 type HistogramVecBox struct {
-	Vec m.HistogramMetricVector // или HistogramVec
+	Vec m.HistogramMetricVector
 }
 
 // Options provides a container to configure different things in the storer.
@@ -603,7 +603,7 @@ func (db *DB) ResetReserve(ctx context.Context) error {
 	return db.reserve.Reset(ctx)
 }
 
-// Metrics returns set of m collectors.
+// Metrics returns set of prometheus collectors.
 func (db *DB) Metrics() []m.Collector {
 	collectors := m.PrometheusCollectorsFromFields(db.metrics)
 	if v, ok := db.storage.(m.MetricsCollector); ok {

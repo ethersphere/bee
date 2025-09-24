@@ -14,7 +14,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-// metrics groups storer related m counters.
+// metrics groups storer related prometheus counters.
 type metrics struct {
 	MethodCalls             m.CounterMetricVector
 	MethodCallsDuration     m.HistogramMetricVector

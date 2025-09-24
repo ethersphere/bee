@@ -8,7 +8,7 @@ import (
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
 )
 
-// metrics groups handshake related m counters.
+// metrics groups handshake related prometheus counters.
 type metrics struct {
 	SynRx          m.Counter
 	SynRxFailed    m.Counter
@@ -62,7 +62,7 @@ func newMetrics() metrics {
 	}
 }
 
-// Metrics returns set of m collectors.
+// Metrics returns set of prometheus collectors.
 func (s *Service) Metrics() []m.Collector {
 	return m.PrometheusCollectorsFromFields(s.metrics)
 }

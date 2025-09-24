@@ -8,7 +8,7 @@ import (
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
 )
 
-// metrics groups sharky related m counters.
+// metrics groups sharky related prometheus counters.
 type metrics struct {
 	TotalWriteCalls        m.Counter
 	TotalWriteCallsErr     m.Counter
@@ -111,7 +111,7 @@ between actual lengths of chunks and the length of slot.
 	}
 }
 
-// Metrics returns set of m collectors.
+// Metrics returns set of prometheus collectors.
 func (s *Store) Metrics() []m.Collector {
 	return m.PrometheusCollectorsFromFields(s.metrics)
 }

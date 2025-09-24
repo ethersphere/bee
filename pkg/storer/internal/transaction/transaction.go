@@ -140,7 +140,7 @@ func (s *store) Run(ctx context.Context, f func(Store) error) error {
 	return trx.Commit()
 }
 
-// Metrics returns set of m collectors.
+// Metrics returns set of prometheus collectors.
 func (s *store) Metrics() []m.Collector {
 	return m.PrometheusCollectorsFromFields(s.metrics)
 }
