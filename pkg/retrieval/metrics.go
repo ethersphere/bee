@@ -5,8 +5,6 @@
 package retrieval
 
 import (
-	"github.com/prometheus/client_golang/prometheus"
-
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
 )
 
@@ -15,84 +13,84 @@ type metrics struct {
 	// to be able to return them by Metrics()
 	// using reflection
 
-	RequestCounter        prometheus.Counter
-	RequestSuccessCounter prometheus.Counter
-	RequestFailureCounter prometheus.Counter
-	RequestDurationTime   prometheus.Histogram
-	RequestAttempts       prometheus.Histogram
-	PeerRequestCounter    prometheus.Counter
-	TotalRetrieved        prometheus.Counter
-	InvalidChunkRetrieved prometheus.Counter
-	ChunkPrice            prometheus.Summary
-	TotalErrors           prometheus.Counter
-	ChunkRetrieveTime     prometheus.Histogram
+	RequestCounter        m.Counter
+	RequestSuccessCounter m.Counter
+	RequestFailureCounter m.Counter
+	RequestDurationTime   m.Histogram
+	RequestAttempts       m.Histogram
+	PeerRequestCounter    m.Counter
+	TotalRetrieved        m.Counter
+	InvalidChunkRetrieved m.Counter
+	ChunkPrice            m.Summary
+	TotalErrors           m.Counter
+	ChunkRetrieveTime     m.Histogram
 }
 
 func newMetrics() metrics {
 	subsystem := "retrieval"
 
 	return metrics{
-		RequestCounter: prometheus.NewCounter(prometheus.CounterOpts{
+		RequestCounter: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "request_count",
 			Help:      "Number of requests to retrieve chunks.",
 		}),
-		RequestSuccessCounter: prometheus.NewCounter(prometheus.CounterOpts{
+		RequestSuccessCounter: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "request_success_count",
 			Help:      "Number of requests which succeeded to retrieve chunk.",
 		}),
-		RequestFailureCounter: prometheus.NewCounter(prometheus.CounterOpts{
+		RequestFailureCounter: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "request_failure_count",
 			Help:      "Number of requests which failed to retrieve chunk.",
 		}),
-		RequestDurationTime: prometheus.NewHistogram(prometheus.HistogramOpts{
+		RequestDurationTime: m.NewHistogram(m.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "request_duration_time",
 			Help:      "Histogram for time taken to complete retrieval request",
 		}),
-		RequestAttempts: prometheus.NewHistogram(prometheus.HistogramOpts{
+		RequestAttempts: m.NewHistogram(m.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "request_attempts",
 			Help:      "Histogram for total retrieval attempts pre each request.",
 		}),
-		PeerRequestCounter: prometheus.NewCounter(prometheus.CounterOpts{
+		PeerRequestCounter: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "peer_request_count",
 			Help:      "Number of request to single peer.",
 		}),
-		TotalRetrieved: prometheus.NewCounter(prometheus.CounterOpts{
+		TotalRetrieved: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "total_retrieved",
 			Help:      "Total chunks retrieved.",
 		}),
-		InvalidChunkRetrieved: prometheus.NewCounter(prometheus.CounterOpts{
+		InvalidChunkRetrieved: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "invalid_chunk_retrieved",
 			Help:      "Invalid chunk retrieved from peer.",
 		}),
-		ChunkPrice: prometheus.NewSummary(prometheus.SummaryOpts{
+		ChunkPrice: m.NewSummary(m.SummaryOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "chunk_price",
 			Help:      "The price of the chunk that was paid.",
 		}),
-		TotalErrors: prometheus.NewCounter(prometheus.CounterOpts{
+		TotalErrors: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "total_errors",
 			Help:      "Total number of errors while retrieving chunk.",
 		}),
-		ChunkRetrieveTime: prometheus.NewHistogram(prometheus.HistogramOpts{
+		ChunkRetrieveTime: m.NewHistogram(m.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "retrieve_chunk_time",
@@ -102,13 +100,13 @@ func newMetrics() metrics {
 	}
 }
 
-func (s *Service) Metrics() []prometheus.Collector {
+func (s *Service) Metrics() []m.Collector {
 	return m.PrometheusCollectorsFromFields(s.metrics)
 }
 
 // StatusMetrics exposes metrics that are exposed on the status protocol.
-func (s *Service) StatusMetrics() []prometheus.Collector {
-	return []prometheus.Collector{
+func (s *Service) StatusMetrics() []m.Collector {
+	return []m.Collector{
 		s.metrics.RequestAttempts,
 		s.metrics.ChunkRetrieveTime,
 		s.metrics.RequestDurationTime,

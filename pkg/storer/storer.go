@@ -40,7 +40,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
 	"github.com/ethersphere/bee/v2/pkg/util/syncutil"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/afero"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/filter"
@@ -295,7 +294,7 @@ func initDiskRepository(
 
 	if opts.LdbStats.Load() != nil {
 		go func() {
-			ldbStats := opts.LdbStats.Load()
+			ldbStats := opts.LdbStats.Load().Vec
 			logger := log.NewLogger(loggerName).Register()
 			ticker := time.NewTicker(15 * time.Second)
 			defer ticker.Stop()
@@ -370,10 +369,14 @@ func initDiskRepository(
 
 const lockKeyNewSession string = "new_session"
 
+type HistogramVecBox struct {
+	Vec m.HistogramMetricVector
+}
+
 // Options provides a container to configure different things in the storer.
 type Options struct {
 	// These are options related to levelDB. Currently, the underlying storage used is levelDB.
-	LdbStats                  atomic.Pointer[prometheus.HistogramVec]
+	LdbStats                  atomic.Pointer[HistogramVecBox]
 	LdbOpenFilesLimit         uint64
 	LdbBlockCacheCapacity     uint64
 	LdbWriteBufferSize        uint64
@@ -480,7 +483,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 
 	lock := multex.New()
 	metrics := newMetrics()
-	opts.LdbStats.CompareAndSwap(nil, metrics.LevelDBStats)
+	opts.LdbStats.CompareAndSwap(nil, &HistogramVecBox{metrics.LevelDBStats})
 
 	if dirPath == "" {
 		st, dbCloser, err = initInmemRepository()
@@ -601,22 +604,22 @@ func (db *DB) ResetReserve(ctx context.Context) error {
 }
 
 // Metrics returns set of prometheus collectors.
-func (db *DB) Metrics() []prometheus.Collector {
+func (db *DB) Metrics() []m.Collector {
 	collectors := m.PrometheusCollectorsFromFields(db.metrics)
-	if v, ok := db.storage.(m.Collector); ok {
+	if v, ok := db.storage.(m.MetricsCollector); ok {
 		collectors = append(collectors, v.Metrics()...)
 	}
 	return collectors
 }
 
 // StatusMetrics exposes metrics that are exposed on the status protocol.
-func (db *DB) StatusMetrics() []prometheus.Collector {
-	collectors := []prometheus.Collector{
+func (db *DB) StatusMetrics() []m.Collector {
+	collectors := []m.Collector{
 		db.metrics.MethodCallsDuration,
 	}
 
 	type Collector interface {
-		StatusMetrics() []prometheus.Collector
+		StatusMetrics() []m.Collector
 	}
 
 	if v, ok := db.storage.(Collector); ok {
