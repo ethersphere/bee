@@ -132,6 +132,7 @@ func (p *Puller) manage(ctx context.Context) {
 
 	var prevRadius uint8
 
+	// change in radius or in neighborhood peerset
 	changeCheck := func() {
 		p.syncPeersMtx.Lock()
 		defer p.syncPeersMtx.Unlock()
