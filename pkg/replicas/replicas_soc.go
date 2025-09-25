@@ -18,7 +18,6 @@ import (
 // socReplicator running the find for replicas
 type socReplicator struct {
 	addr   []byte // chunk address
-	sizes  [5]int // number of distinct neighbourhoods redcorded for each depth
 	c      chan *socReplica
 	rLevel redundancy.Level
 }
@@ -27,8 +26,7 @@ type socReplicator struct {
 func newSocReplicator(addr swarm.Address, rLevel redundancy.Level) *socReplicator {
 	rr := &socReplicator{
 		addr:   addr.Bytes(),
-		sizes:  redundancy.GetReplicaCounts(),
-		c:      make(chan *socReplica, 16),
+		c:      make(chan *socReplica, rLevel.GetReplicaCount()),
 		rLevel: rLevel,
 	}
 	go rr.replicas()

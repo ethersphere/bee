@@ -254,17 +254,14 @@ func (s *Service) socGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	headers := struct {
-		OnlyRootChunk bool              `map:"Swarm-Only-Root-Chunk"`
-		RLevel        *redundancy.Level `map:"Swarm-Redundancy-Level"`
+		OnlyRootChunk bool             `map:"Swarm-Only-Root-Chunk"`
+		RLevel        redundancy.Level `map:"Swarm-Redundancy-Level"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
 		return
 	}
-	rLevel := redundancy.DefaultLevel
-	if headers.RLevel != nil {
-		rLevel = *headers.RLevel
-	}
+	rLevel := headers.RLevel
 
 	address, err := soc.CreateAddress(paths.ID, paths.Owner)
 	if err != nil {

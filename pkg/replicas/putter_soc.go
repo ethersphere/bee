@@ -53,7 +53,9 @@ func (p *socPutter) Put(ctx context.Context, ch swarm.Chunk) error {
 			// create a new chunk with the replica address
 			sch := swarm.NewChunk(swarm.NewAddress(r.addr), ch.Data())
 			err := p.putter.Put(ctx, sch)
-			errc <- err
+			if err != nil {
+				errc <- err
+			}
 		}(r)
 	}
 
@@ -71,7 +73,7 @@ type socPutterSession struct {
 	ps storer.PutterSession
 }
 
-// NewSocPutter is the putterSession constructor
+// NewSocPutterSession is the putterSession constructor
 func NewSocPutterSession(p storer.PutterSession, rLevel redundancy.Level) storer.PutterSession {
 	return &socPutterSession{
 		socPutter{
