@@ -10,8 +10,10 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/ethersphere/bee/v2/pkg/encryption/store"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/replicas"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -52,7 +54,7 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	getter := s.storer.Download(true)
+	getter := store.New(replicas.NewGetter(s.storer.Download(true), redundancy.DefaultLevel))
 	traverser := traversal.New(getter, s.storer.Cache(), redundancy.DefaultLevel)
 
 	sem := semaphore.NewWeighted(100)
