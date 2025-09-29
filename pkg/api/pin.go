@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/ethersphere/bee/v2/pkg/encryption/store"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/replicas"
@@ -54,7 +53,7 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	getter := store.New(replicas.NewGetter(s.storer.Download(true), redundancy.DefaultLevel))
+	getter := replicas.NewGetter(s.storer.Download(true), redundancy.DefaultLevel)
 	traverser := traversal.New(getter, s.storer.Cache(), redundancy.DefaultLevel)
 
 	sem := semaphore.NewWeighted(100)
@@ -109,8 +108,7 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = putter.Done(paths.Reference)
-	if err != nil {
+	if err = putter.Done(paths.Reference); err != nil {
 		logger.Debug("pin collection failed on done", "error", err)
 		logger.Error(nil, "pin collection failed")
 		jsonhttp.InternalServerError(w, "pin collection failed")
