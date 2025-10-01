@@ -105,11 +105,11 @@ type rawItem struct {
 
 // Marshal implements Item interface.
 func (ri *rawItem) Marshal() ([]byte, error) {
-	if ri == nil || ri.proxyItem == nil || ri.proxyItem.obj == nil {
+	if ri == nil || ri.proxyItem == nil || ri.obj == nil {
 		return nil, nil
 	}
 
-	if buf, ok := ri.proxyItem.obj.([]byte); ok {
+	if buf, ok := ri.obj.([]byte); ok {
 		return buf, nil
 	}
 
@@ -118,12 +118,12 @@ func (ri *rawItem) Marshal() ([]byte, error) {
 
 // Unmarshal implements Item interface.
 func (ri *rawItem) Unmarshal(data []byte) error {
-	if ri == nil || ri.proxyItem == nil || ri.proxyItem.obj == nil || len(data) == 0 {
+	if ri == nil || ri.proxyItem == nil || ri.obj == nil || len(data) == 0 {
 		return nil
 	}
 
-	if buf, ok := ri.proxyItem.obj.([]byte); ok {
-		ri.proxyItem.obj = append(buf[:0], data...)
+	if buf, ok := ri.obj.([]byte); ok {
+		ri.obj = append(buf[:0], data...)
 		return nil
 	}
 

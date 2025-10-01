@@ -76,9 +76,10 @@ func TestCreateBatch(t *testing.T) {
 			bzzTokenAddress,
 			transactionMock.New(
 				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
-					if *request.To == bzzTokenAddress {
+					switch *request.To {
+					case bzzTokenAddress:
 						return txHashApprove, nil
-					} else if *request.To == postageStampAddress {
+					case postageStampAddress:
 						if bytes.Equal(expectedCallDataForExpireLimitedBatches[:32], request.Data[:32]) {
 							return txHashApprove, nil
 						}
@@ -90,11 +91,12 @@ func TestCreateBatch(t *testing.T) {
 					return common.Hash{}, errors.New("sent to wrong contract")
 				}),
 				transactionMock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
-					if txHash == txHashApprove {
+					switch txHash {
+					case txHashApprove:
 						return &types.Receipt{
 							Status: 1,
 						}, nil
-					} else if txHash == txHashCreate {
+					case txHashCreate:
 						return &types.Receipt{
 							Logs: []*types.Log{
 								newCreateEvent(postageStampAddress, batchID),
@@ -321,9 +323,10 @@ func TestTopUpBatch(t *testing.T) {
 			bzzTokenAddress,
 			transactionMock.New(
 				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
-					if *request.To == bzzTokenAddress {
+					switch *request.To {
+					case bzzTokenAddress:
 						return txHashApprove, nil
-					} else if *request.To == postageStampAddress {
+					case postageStampAddress:
 						if !bytes.Equal(expectedCallData[:64], request.Data[:64]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
 						}
@@ -332,11 +335,12 @@ func TestTopUpBatch(t *testing.T) {
 					return common.Hash{}, errors.New("sent to wrong contract")
 				}),
 				transactionMock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
-					if txHash == txHashApprove {
+					switch txHash {
+					case txHashApprove:
 						return &types.Receipt{
 							Status: 1,
 						}, nil
-					} else if txHash == txHashTopup {
+					case txHashTopup:
 						return &types.Receipt{
 							Logs: []*types.Log{
 								newTopUpEvent(postageStampAddress, batch),

@@ -1,0 +1,75 @@
+run:
+  timeout: 10m
+linters:
+  enable:
+    - asciicheck
+    - bidichk
+    - copyloopvar
+    - dogsled
+    - durationcheck
+    - errcheck
+    - errname
+    - errorlint
+    - forbidigo
+    - gochecknoinits
+    - goconst
+    - gofmt
+    - goheader
+    - goprintffuncname
+    - gosimple
+    - govet
+    - importas
+    - ineffassign
+    - misspell
+    - nilerr
+    - noctx
+    - paralleltest
+    - prealloc
+    - predeclared
+    - promlinter
+    - staticcheck
+    - thelper
+    - typecheck
+    - unconvert
+    - unused
+    # - depguard disable temporary until this issue is resolved: https://github.com/golangci/golangci-lint/issues/3906
+
+linters-settings:
+  govet:
+    enable-all: true
+    disable:
+      - fieldalignment ## temporally disabled
+      - shadow ## temporally disabled
+  goheader:
+    values:
+      regexp:
+        date: "20[1-2][0-9]"
+    template: |-
+      Copyright {{date}} The Swarm Authors. All rights reserved.
+      Use of this source code is governed by a BSD-style
+      license that can be found in the LICENSE file.
+  paralleltest:
+    # Ignore missing calls to `t.Parallel()` and only report incorrect uses of `t.Parallel()`.
+    ignore-missing: true
+issues:
+  exclude-rules:
+    - linters:
+        - goheader
+      text: "go-ethereum Authors" ## disable check for other authors
+    - path: _test\.go
+      linters:
+        - goconst ## temporally disable goconst in test
+    - linters:
+        - forbidigo
+      path: cmd/bee/cmd
+      text: "use of `fmt.Print" ## allow fmt.Print in cmd directory
+    - linters:
+        - dogsled
+      path: pkg/api/(.+)_test\.go # temporally disable dogsled in api test files
+    - linters:
+        - dogsled
+      path: pkg/pushsync/(.+)_test\.go # temporally disable dogsled in pushsync test files
+      # temporally disable paralleltest in following packages
+    - linters:
+        - paralleltest
+      path: pkg/log
