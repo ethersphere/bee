@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 )
 
 const (
@@ -398,6 +399,9 @@ func (f *fork) bytes() (b []byte, err error) {
 			return b, err1
 		}
 
+		if len(metadataJSONBytes) > math.MaxInt-nodeForkMetadataBytesSize {
+			return nil, fmt.Errorf("metadata size overflow: %d", len(metadataJSONBytes))
+		}
 		metadataJSONBytesSizeWithSize := len(metadataJSONBytes) + nodeForkMetadataBytesSize
 
 		// pad JSON bytes if necessary
