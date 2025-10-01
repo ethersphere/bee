@@ -75,7 +75,14 @@ func (db *DB) ReserveSample(
 		statsLock.Unlock()
 	}
 
+	workers := max(4, runtime.NumCPU())
 	t := time.Now()
+
+	defer func() {
+		duration := time.Since(t)
+		err := g.Wait()
+		db.recordReserveSampleMetrics(duration, allStats, workers, err)
+	}()
 
 	excludedBatchIDs, err := db.batchesBelowValue(minBatchBalance)
 	if err != nil {
@@ -84,7 +91,6 @@ func (db *DB) ReserveSample(
 
 	allStats.BatchesBelowValueDuration = time.Since(t)
 
-	workers := max(4, runtime.NumCPU())
 	chunkC := make(chan *reserve.ChunkBinItem, 3*workers)
 
 	// Phase 1: Iterate chunk addresses
@@ -133,7 +139,6 @@ func (db *DB) ReserveSample(
 				// exclude chunks who's batches balance are below minimum
 				if _, found := excludedBatchIDs[string(chItem.BatchID)]; found {
 					wstat.BelowBalanceIgnored++
-
 					continue
 				}
 
@@ -147,13 +152,15 @@ func (db *DB) ReserveSample(
 				chunkLoadStart := time.Now()
 
 				chunk, err := db.ChunkStore().Get(ctx, chItem.Address)
+				chunkLoadDuration := time.Since(chunkLoadStart)
+
 				if err != nil {
 					wstat.ChunkLoadFailed++
 					db.logger.Debug("failed loading chunk", "chunk_address", chItem.Address, "error", err)
 					continue
 				}
 
-				wstat.ChunkLoadDuration += time.Since(chunkLoadStart)
+				wstat.ChunkLoadDuration += chunkLoadDuration
 
 				taddrStart := time.Now()
 				taddr, err := transformedAddress(hasher, chunk, chItem.ChunkType)
@@ -224,8 +231,6 @@ func (db *DB) ReserveSample(
 		}
 
 		if le(item.TransformedAddress, currentMaxAddr) || len(sampleItems) < SampleSize {
-			start := time.Now()
-
 			stamp, err := chunkstamp.LoadWithBatchID(db.storage.IndexStore(), "reserve", item.ChunkAddress, item.Stamp.BatchID())
 			if err != nil {
 				stats.StampLoadFailed++
@@ -241,13 +246,15 @@ func (db *DB) ReserveSample(
 				continue
 			}
 
+			stampValidStart := time.Now()
 			if _, err := db.validStamp(ch); err != nil {
 				stats.InvalidStamp++
 				db.logger.Debug("invalid stamp for chunk", "chunk_address", ch.Address(), "error", err)
 				continue
 			}
 
-			stats.ValidStampDuration += time.Since(start)
+			stampValidDuration := time.Since(stampValidStart)
+			stats.ValidStampDuration += stampValidDuration
 
 			item.Stamp = postage.NewStamp(stamp.BatchID(), stamp.Index(), stamp.Timestamp(), stamp.Sig())
 
@@ -362,7 +369,6 @@ type SampleStats struct {
 
 func (s *SampleStats) add(other SampleStats) {
 	s.TotalDuration += other.TotalDuration
-	s.TotalIterated += other.TotalIterated
 	s.IterationDuration += other.IterationDuration
 	s.SampleInserts += other.SampleInserts
 	s.NewIgnored += other.NewIgnored
@@ -375,6 +381,7 @@ func (s *SampleStats) add(other SampleStats) {
 	s.ChunkLoadDuration += other.ChunkLoadDuration
 	s.ChunkLoadFailed += other.ChunkLoadFailed
 	s.StampLoadFailed += other.StampLoadFailed
+	s.TotalIterated += other.TotalIterated
 }
 
 // RandSample returns Sample with random values.
@@ -382,7 +389,7 @@ func RandSample(t *testing.T, anchor []byte) Sample {
 	t.Helper()
 
 	chunks := make([]swarm.Chunk, SampleSize)
-	for i := 0; i < SampleSize; i++ {
+	for i := range SampleSize {
 		ch := chunk.GenerateTestRandomChunk()
 		if i%3 == 0 {
 			ch = chunk.GenerateTestRandomSoChunk(t, ch)
@@ -436,4 +443,31 @@ func getChunkType(chunk swarm.Chunk) swarm.ChunkType {
 		return swarm.ChunkTypeSingleOwner
 	}
 	return swarm.ChunkTypeUnspecified
+}
+
+func (db *DB) recordReserveSampleMetrics(duration time.Duration, stats *SampleStats, workers int, err error) {
+	status := "success"
+	if err != nil {
+		status = "failure"
+	}
+	db.metrics.ReserveSampleDuration.WithLabelValues(status).Observe(duration.Seconds())
+
+	summaryMetrics := map[string]float64{
+		"duration_seconds":                     duration.Seconds(),
+		"chunks_iterated":                      float64(stats.TotalIterated),
+		"chunks_load_failed":                   float64(stats.ChunkLoadFailed),
+		"stamp_validations":                    float64(stats.SampleInserts),
+		"invalid_stamps":                       float64(stats.InvalidStamp),
+		"below_balance_ignored":                float64(stats.BelowBalanceIgnored),
+		"workers":                              float64(workers),
+		"chunks_per_second":                    float64(stats.TotalIterated) / duration.Seconds(),
+		"stamp_validation_duration_seconds":    stats.ValidStampDuration.Seconds(),
+		"batches_below_value_duration_seconds": stats.BatchesBelowValueDuration.Seconds(),
+	}
+
+	for metric, value := range summaryMetrics {
+		db.metrics.ReserveSampleRunSummary.WithLabelValues(metric).Set(value)
+	}
+
+	db.metrics.ReserveSampleLastRunTimestamp.Set(float64(time.Now().Unix()))
 }
