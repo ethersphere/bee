@@ -57,8 +57,6 @@ require (
 	resenje.org/web v0.4.3
 )
 
-require golang.org/x/net v0.38.0 // indirect
-
 require (
 	github.com/BurntSushi/toml v1.1.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
@@ -171,6 +169,7 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/exp v0.0.0-20240213143201-ec583247a57a // indirect
 	golang.org/x/mod v0.22.0 // indirect
+	golang.org/x/net v0.38.0 // indirect
 	golang.org/x/text v0.23.0 // indirect
 	golang.org/x/tools v0.29.0 // indirect
 	google.golang.org/protobuf v1.36.1 // indirect
