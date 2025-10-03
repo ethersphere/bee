@@ -22,6 +22,7 @@ import (
 	chunk "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
+	pinstore "github.com/ethersphere/bee/v2/pkg/storer/internal/pinning"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/stampindex"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
@@ -962,6 +963,139 @@ func TestReset(t *testing.T) {
 		_, err = r.Get(context.Background(), c.Address(), c.Stamp().BatchID(), h)
 		if !errors.Is(err, storage.ErrNotFound) {
 			t.Fatalf("expected error %v, got %v", storage.ErrNotFound, err)
+		}
+	}
+}
+
+// TestEvictRemovesPinnedContent checks that pinned chunks are protected from eviction.
+func TestEvictRemovesPinnedContent(t *testing.T) {
+	t.Parallel()
+
+	const (
+		numChunks       = 5
+		numPinnedChunks = 3
+	)
+
+	ctx := context.Background()
+	baseAddr := swarm.RandAddress(t)
+	ts := internal.NewInmemStorage()
+
+	r, err := reserve.New(
+		baseAddr,
+		ts,
+		0,
+		kademlia.NewTopologyDriver(),
+		log.Noop,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	batch := postagetesting.MustNewBatch()
+
+	chunks := make([]swarm.Chunk, numChunks)
+	for i := 0; i < numChunks; i++ {
+		ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewBatchStamp(batch.ID))
+		chunks[i] = ch
+
+		err := r.Put(ctx, ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var pinningPutter internal.PutterCloserWithReference
+	err = ts.Run(ctx, func(store transaction.Store) error {
+		pinningPutter, err = pinstore.NewCollection(store.IndexStore())
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add chunks to pin collection
+	pinnedChunks := chunks[:numPinnedChunks]
+	for _, ch := range pinnedChunks {
+		err = ts.Run(ctx, func(s transaction.Store) error {
+			return pinningPutter.Put(ctx, s, ch)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	err = ts.Run(ctx, func(s transaction.Store) error {
+		return pinningPutter.Close(s.IndexStore(), pinnedChunks[0].Address())
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// evict all chunks from this batch - this should NOT remove pinned chunks
+	evicted, err := r.EvictBatchBin(ctx, batch.ID, numChunks, swarm.MaxBins)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if evicted != numChunks {
+		t.Fatalf("expected %d evicted chunks, got %d", numChunks, evicted)
+	}
+
+	uuids, err := pinstore.GetCollectionUUIDs(ts.IndexStore())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(uuids) != 1 {
+		t.Fatalf("expected exactly one pin collection, but found %d", len(uuids))
+	}
+
+	for i, ch := range chunks {
+		stampHash, err := ch.Stamp().Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Try to get the chunk from reserve, error is checked later
+		_, err = r.Get(ctx, ch.Address(), ch.Stamp().BatchID(), stampHash)
+
+		// Also try to get chunk directly from chunkstore (like bzz/bytes endpoints do)
+		_, chunkStoreErr := ts.ChunkStore().Get(ctx, ch.Address())
+
+		pinned := false
+		for _, uuid := range uuids {
+			has, err := pinstore.IsChunkPinnedInCollection(ts.IndexStore(), ch.Address(), uuid)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if has {
+				pinned = true
+			}
+		}
+
+		if i < len(pinnedChunks) {
+			if pinned {
+				// This chunk is pinned, so it should NOT be accessible from reserve but SHOULD be accessible from chunkstore
+				if !errors.Is(err, storage.ErrNotFound) {
+					t.Errorf("Pinned chunk %s should have been evicted from reserve", ch.Address())
+				}
+				if errors.Is(chunkStoreErr, storage.ErrNotFound) {
+					t.Errorf("Pinned chunk %s was deleted from chunkstore - should remain retrievable!", ch.Address())
+				} else if chunkStoreErr != nil {
+					t.Fatal(chunkStoreErr)
+				}
+			} else {
+				t.Errorf("Chunk %s should be pinned", ch.Address())
+			}
+		} else { // unpinned chunks
+			if !pinned {
+				// Unpinned chunks should be completely evicted (both reserve and chunkstore)
+				if !errors.Is(err, storage.ErrNotFound) {
+					t.Errorf("Unpinned chunk %s should have been evicted from reserve", ch.Address())
+				}
+				if !errors.Is(chunkStoreErr, storage.ErrNotFound) {
+					t.Errorf("Unpinned chunk %s should have been evicted from chunkstore", ch.Address())
+				}
+			} else {
+				t.Errorf("Chunk %s should not be pinned", ch.Address())
+			}
 		}
 	}
 }

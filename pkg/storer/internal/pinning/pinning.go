@@ -207,6 +207,32 @@ func HasPin(st storage.Reader, root swarm.Address) (bool, error) {
 	return has, nil
 }
 
+// GetCollectionUUIDs returns all collection UUIDs from pin collections.
+func GetCollectionUUIDs(st storage.Reader) ([][]byte, error) {
+	var collectionUUIDs [][]byte
+	err := st.Iterate(storage.Query{
+		Factory: func() storage.Item { return &pinCollectionItem{} },
+	}, func(r storage.Result) (bool, error) {
+		collection := r.Entry.(*pinCollectionItem)
+		collectionUUIDs = append(collectionUUIDs, collection.UUID)
+		return false, nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("pin store: failed getting collections: %w", err)
+	}
+	return collectionUUIDs, nil
+}
+
+// IsChunkPinnedInCollection checks if a chunk address is pinned under the given collection uuid.
+func IsChunkPinnedInCollection(st storage.Reader, chunkAddr swarm.Address, uuid []byte) (bool, error) {
+	chunkItem := &pinChunkItem{UUID: uuid, Addr: chunkAddr}
+	has, err := st.Has(chunkItem)
+	if err != nil {
+		return false, fmt.Errorf("pin store: failed checking chunk pin status: %w", err)
+	}
+	return has, nil
+}
+
 // Pins lists all the added pinning collections.
 func Pins(st storage.Reader) ([]swarm.Address, error) {
 	pins := make([]swarm.Address, 0)
