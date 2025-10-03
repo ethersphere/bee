@@ -448,7 +448,7 @@ func NewBee(
 			runtime.SetBlockProfileRate(1)
 		}
 
-		apiListener, err := net.Listen("tcp", o.APIAddr)
+		apiListener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", o.APIAddr)
 		if err != nil {
 			return nil, fmt.Errorf("api listener: %w", err)
 		}

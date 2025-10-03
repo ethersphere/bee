@@ -189,7 +189,7 @@ type memFS struct {
 }
 
 func (m *memFS) Open(path string) (fs.File, error) {
-	return m.Fs.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644)
+	return m.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644)
 }
 
 type dirFS struct {

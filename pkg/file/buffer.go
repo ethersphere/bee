@@ -42,10 +42,7 @@ func (c *ChunkPipe) Read(b []byte) (int, error) {
 func (c *ChunkPipe) Write(b []byte) (int, error) {
 	nw := 0
 
-	for {
-		if nw >= len(b) {
-			break
-		}
+	for nw < len(b) {
 
 		copied := copy(c.data[c.cursor:], b[nw:])
 		c.cursor += copied

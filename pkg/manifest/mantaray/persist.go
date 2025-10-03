@@ -71,7 +71,7 @@ func (n *Node) save(ctx context.Context, s Saver) error {
 	eg, ectx := errgroup.WithContext(ctx)
 	for _, f := range n.forks {
 		eg.Go(func() error {
-			return f.Node.save(ectx, s)
+			return f.save(ectx, s)
 		})
 	}
 	if err := eg.Wait(); err != nil {

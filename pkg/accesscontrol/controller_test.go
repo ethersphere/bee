@@ -178,7 +178,7 @@ func TestController_UpdateHandler(t *testing.T) {
 	publisher := getPrivKey(1)
 	diffieHellman := accesscontrol.NewDefaultSession(publisher)
 	al := accesscontrol.NewLogic(diffieHellman)
-	keys, err := al.Session.Key(&publisher.PublicKey, [][]byte{{1}})
+	keys, err := al.Key(&publisher.PublicKey, [][]byte{{1}})
 	assertNoError(t, "Session key", err)
 	refCipher := encryption.New(keys[0], 0, 0, sha3.NewLegacyKeccak256)
 	ls := createLs()
