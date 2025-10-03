@@ -17,11 +17,11 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/v2/pkg/log"
+	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/postage/batchservice"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/ethersphere/bee/v2/pkg/util/syncutil"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -413,7 +413,7 @@ type priceUpdateEvent struct {
 	Price *big.Int
 }
 
-func totalTimeMetric(metric prometheus.Counter, start time.Time) {
+func totalTimeMetric(metric m.Counter, start time.Time) {
 	totalTime := time.Since(start)
 	metric.Add(float64(totalTime))
 }

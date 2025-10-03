@@ -6,42 +6,41 @@ package pingpong
 
 import (
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 type metrics struct {
 	// all metrics fields must be exported
 	// to be able to return them by Metrics()
 	// using reflection
-	PingSentCount     prometheus.Counter
-	PongSentCount     prometheus.Counter
-	PingReceivedCount prometheus.Counter
-	PongReceivedCount prometheus.Counter
+	PingSentCount     m.Counter
+	PongSentCount     m.Counter
+	PingReceivedCount m.Counter
+	PongReceivedCount m.Counter
 }
 
 func newMetrics() metrics {
 	subsystem := "pingpong"
 
 	return metrics{
-		PingSentCount: prometheus.NewCounter(prometheus.CounterOpts{
+		PingSentCount: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "ping_sent_count",
 			Help:      "Number ping requests sent.",
 		}),
-		PongSentCount: prometheus.NewCounter(prometheus.CounterOpts{
+		PongSentCount: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "pong_sent_count",
 			Help:      "Number of pong responses sent.",
 		}),
-		PingReceivedCount: prometheus.NewCounter(prometheus.CounterOpts{
+		PingReceivedCount: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "ping_received_count",
 			Help:      "Number ping requests received.",
 		}),
-		PongReceivedCount: prometheus.NewCounter(prometheus.CounterOpts{
+		PongReceivedCount: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "pong_received_count",
@@ -50,6 +49,6 @@ func newMetrics() metrics {
 	}
 }
 
-func (s *Service) Metrics() []prometheus.Collector {
+func (s *Service) Metrics() []m.Collector {
 	return m.PrometheusCollectorsFromFields(s.metrics)
 }

@@ -22,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 	beecrypto "github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
+	exporter "github.com/ethersphere/bee/v2/pkg/metrics/exporter"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/blocklist"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/breaker"
@@ -48,14 +49,11 @@ import (
 	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
-
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multistream"
 	"go.uber.org/atomic"
 
-	ocprom "contrib.go.opencensus.io/exporter/prometheus"
-	m2 "github.com/ethersphere/bee/v2/pkg/metrics"
-	"github.com/prometheus/client_golang/prometheus"
+	m "github.com/ethersphere/bee/v2/pkg/metrics"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -129,7 +127,7 @@ type Options struct {
 	ValidateOverlay  bool
 	hostFactory      func(...libp2p.Option) (host.Host, error)
 	HeadersRWTimeout time.Duration
-	Registry         *prometheus.Registry
+	Registry         m.MetricsRegistererGatherer
 }
 
 func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
@@ -176,9 +174,8 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	if o.Registry != nil {
 		rcmgr.MustRegisterWith(o.Registry)
 	}
-
-	_, err = ocprom.NewExporter(ocprom.Options{
-		Namespace: m2.Namespace,
+	err = exporter.NewExporter(exporter.ExporterOptions{
+		Namespace: m.Namespace,
 		Registry:  o.Registry,
 	})
 	if err != nil {

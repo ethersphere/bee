@@ -36,6 +36,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/gsoc"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/log"
+	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/pingpong"
 	"github.com/ethersphere/bee/v2/pkg/postage"
@@ -63,7 +64,6 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/gorilla/mux"
 	"github.com/hashicorp/go-multierror"
-	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -164,7 +164,7 @@ type Service struct {
 	accesscontrol   accesscontrol.Controller
 	postageContract postagecontract.Interface
 	probe           *Probe
-	metricsRegistry *prometheus.Registry
+	metricsRegistry m.MetricsRegistererGatherer
 	stakingContract staking.Contract
 	Options
 
