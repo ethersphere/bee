@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
+	pinstore "github.com/ethersphere/bee/v2/pkg/storer/internal/pinning"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/stampindex"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -327,6 +328,7 @@ func (r *Reserve) Get(ctx context.Context, addr swarm.Address, batchID []byte, s
 }
 
 // EvictBatchBin evicts all chunks from bins upto the bin provided.
+// Pinned chunks are protected from eviction to maintain data integrity.
 func (r *Reserve) EvictBatchBin(
 	ctx context.Context,
 	batchID []byte,
@@ -336,13 +338,21 @@ func (r *Reserve) EvictBatchBin(
 	r.multx.Lock(string(batchID))
 	defer r.multx.Unlock(string(batchID))
 
-	var evicteditems []*BatchRadiusItem
+	var (
+		evictedItems       []*BatchRadiusItem
+		pinnedEvictedItems []*BatchRadiusItem
+	)
 
 	if count <= 0 {
 		return 0, nil
 	}
 
-	err := r.st.IndexStore().Iterate(storage.Query{
+	pinUuids, err := pinstore.GetCollectionUUIDs(r.st.IndexStore())
+	if err != nil {
+		return 0, err
+	}
+
+	err = r.st.IndexStore().Iterate(storage.Query{
 		Factory: func() storage.Item { return &BatchRadiusItem{} },
 		Prefix:  string(batchID),
 	}, func(res storage.Result) (bool, error) {
@@ -350,7 +360,24 @@ func (r *Reserve) EvictBatchBin(
 		if batchRadius.Bin >= bin {
 			return true, nil
 		}
-		evicteditems = append(evicteditems, batchRadius)
+
+		// Check if the chunk is pinned in any collection
+		pinned := false
+		for _, uuid := range pinUuids {
+			has, err := pinstore.IsChunkPinnedInCollection(r.st.IndexStore(), batchRadius.Address, uuid)
+			if err != nil {
+				return true, err
+			}
+			if has {
+				pinned = true
+				pinnedEvictedItems = append(pinnedEvictedItems, batchRadius)
+				break
+			}
+		}
+
+		if !pinned {
+			evictedItems = append(evictedItems, batchRadius)
+		}
 		count--
 		if count == 0 {
 			return true, nil
@@ -366,11 +393,26 @@ func (r *Reserve) EvictBatchBin(
 
 	var evicted atomic.Int64
 
-	for _, item := range evicteditems {
+	for _, item := range evictedItems {
 		func(item *BatchRadiusItem) {
 			eg.Go(func() error {
 				err := r.st.Run(ctx, func(s transaction.Store) error {
 					return RemoveChunkWithItem(ctx, s, item)
+				})
+				if err != nil {
+					return err
+				}
+				evicted.Add(1)
+				return nil
+			})
+		}(item)
+	}
+
+	for _, item := range pinnedEvictedItems {
+		func(item *BatchRadiusItem) {
+			eg.Go(func() error {
+				err := r.st.Run(ctx, func(s transaction.Store) error {
+					return RemoveChunkMetaData(ctx, s, item)
 				})
 				if err != nil {
 					return err
@@ -427,6 +469,29 @@ func RemoveChunkWithItem(
 		trx.IndexStore().Delete(item),
 		trx.IndexStore().Delete(&ChunkBinItem{Bin: item.Bin, BinID: item.BinID}),
 		trx.ChunkStore().Delete(ctx, item.Address),
+	)
+}
+
+// RemoveChunkMetaData removes chunk reserve metadata from reserve indexes but keeps the cunks in the chunkstore.
+// used at pinned data eviction
+func RemoveChunkMetaData(
+	ctx context.Context,
+	trx transaction.Store,
+	item *BatchRadiusItem,
+) error {
+	var errs error
+
+	stamp, _ := chunkstamp.LoadWithStampHash(trx.IndexStore(), reserveScope, item.Address, item.StampHash)
+	if stamp != nil {
+		errs = errors.Join(
+			stampindex.Delete(trx.IndexStore(), reserveScope, stamp),
+			chunkstamp.DeleteWithStamp(trx.IndexStore(), reserveScope, item.Address, stamp),
+		)
+	}
+
+	return errors.Join(errs,
+		trx.IndexStore().Delete(item),
+		trx.IndexStore().Delete(&ChunkBinItem{Bin: item.Bin, BinID: item.BinID}),
 	)
 }
 
