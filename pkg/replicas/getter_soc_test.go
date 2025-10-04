@@ -1,6 +1,9 @@
-// Copyright 2023 The Swarm Authors. All rights reserved.
+// Copyright 2025 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
+
+// This file is a copy of the original getter_test.go file
+// and tailored to socGetter implementation.
 
 package replicas_test
 
@@ -10,82 +13,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/replicas"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storage"
-	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-type testGetter struct {
-	ch         swarm.Chunk
-	now        time.Time
-	origCalled chan struct{}
-	origIndex  int
-	errf       func(int) chan struct{}
-	firstFound int32
-	attempts   atomic.Int32
-	cancelled  chan struct{}
-	addresses  [17]swarm.Address
-	latencies  [17]time.Duration
-}
-
-func (tg *testGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
-	i := tg.attempts.Add(1) - 1
-	tg.addresses[i] = addr
-	tg.latencies[i] = time.Since(tg.now)
-
-	if addr.Equal(tg.ch.Address()) {
-		tg.origIndex = int(i)
-		close(tg.origCalled)
-		ch = tg.ch
-	}
-
-	if i != tg.firstFound {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-tg.errf(int(i)):
-			return nil, storage.ErrNotFound
-		}
-	}
-	defer func() {
-		go func() {
-			select {
-			case <-time.After(100 * time.Millisecond):
-			case <-ctx.Done():
-				close(tg.cancelled)
-			}
-		}()
-	}()
-
-	if ch != nil {
-		return ch, nil
-	}
-	return soc.New(addr.Bytes(), tg.ch).Sign(replicas.Signer)
-}
-
-func newTestGetter(ch swarm.Chunk, firstFound int, errf func(int) chan struct{}) *testGetter {
-	return &testGetter{
-		ch:         ch,
-		errf:       errf,
-		firstFound: int32(firstFound),
-		cancelled:  make(chan struct{}),
-		origCalled: make(chan struct{}),
-	}
-}
-
-// Close implements the storage.Getter interface
-func (tg *testGetter) Close() error {
-	return nil
-}
-
-func TestGetter(t *testing.T) {
+func TestSOCGetter(t *testing.T) {
 	t.Parallel()
 	// failure is a struct that defines a failure scenario to test
 	type failure struct {
@@ -149,10 +88,27 @@ func TestGetter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// create soc from cac
+	// test key to sign soc chunks
+	privKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := crypto.NewDefaultSigner(privKey)
+	id := make([]byte, 32)
+	if _, err := rand.Read(id); err != nil {
+		t.Fatal(err)
+	}
+	s := soc.New(id, ch)
+	ch, err = s.Sign(signer)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// reset retry interval to speed up tests
-	retryInterval := replicas.RetryInterval
-	defer func() { replicas.RetryInterval = retryInterval }()
-	replicas.RetryInterval = 100 * time.Millisecond
+	retryInterval := replicas.SOCRetryInterval
+	defer func() { replicas.SOCRetryInterval = retryInterval }()
+	replicas.SOCRetryInterval = 100 * time.Millisecond
 
 	// run the tests
 	for _, tc := range tests {
@@ -160,11 +116,11 @@ func TestGetter(t *testing.T) {
 			// initiate a chunk retrieval session using replicas.Getter
 			// embedding a testGetter that simulates the behaviour of a chunk store
 			store := newTestGetter(ch, tc.found, tc.failure.errf(tc.found, tc.count))
-			g := replicas.NewGetter(store, redundancy.Level(tc.level))
+			g := replicas.NewSocGetter(store, redundancy.Level(tc.level))
 			store.now = time.Now()
 			ctx, cancel := context.WithCancel(context.Background())
 			if tc.found > tc.count {
-				wait := replicas.RetryInterval / 2 * time.Duration(1+2*tc.level)
+				wait := replicas.SOCRetryInterval / 2 * time.Duration(1+2*tc.level)
 				go func() {
 					time.Sleep(wait)
 					cancel()
@@ -249,7 +205,7 @@ func TestGetter(t *testing.T) {
 			t.Run("latency", func(t *testing.T) {
 				counts := redundancy.GetReplicaCounts()
 				for i, latency := range latencies {
-					multiplier := latency / replicas.RetryInterval
+					multiplier := latency / replicas.SOCRetryInterval
 					if multiplier > 0 && i < counts[multiplier-1] {
 						t.Fatalf("incorrect latency for retrieving replica %d: %v", i, err)
 					}
