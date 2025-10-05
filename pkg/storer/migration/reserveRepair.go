@@ -84,7 +84,7 @@ func ReserveRepairer(
 
 		// STEP 1
 		err = st.Run(context.Background(), func(s transaction.Store) error {
-			for i := uint8(0); i < swarm.MaxBins; i++ {
+			for i := range swarm.MaxBins {
 				err := s.IndexStore().Delete(&reserve.BinItem{Bin: i})
 				if err != nil {
 					return err

@@ -32,7 +32,7 @@ func TestBatchStore(t *testing.T) {
 	}
 
 	// Update should return error after a number of tries:
-	for i := 0; i < testCnt; i++ {
+	for range testCnt {
 		if err := batchStore.Update(testBatch, big.NewInt(0), 0); err != nil {
 			t.Fatal(err)
 		}
@@ -45,7 +45,7 @@ func TestBatchStore(t *testing.T) {
 	if _, err := batchStore.Get(postagetesting.MustNewID()); err == nil {
 		t.Fatal("expected error")
 	}
-	for i := 0; i < testCnt-1; i++ {
+	for range testCnt - 1 {
 		if _, err := batchStore.Get(testBatch.ID); err != nil {
 			t.Fatal(err)
 		}
@@ -67,7 +67,7 @@ func TestBatchStorePutChainState(t *testing.T) {
 	)
 
 	// PutChainState should return an error after a number of tries:
-	for i := 0; i < testCnt; i++ {
+	for range testCnt {
 		if err := batchStore.PutChainState(testChainState); err != nil {
 			t.Fatal(err)
 		}

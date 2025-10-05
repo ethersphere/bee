@@ -144,7 +144,7 @@ func TestStartSpanFromContext_logger(t *testing.T) {
 	wantTraceID := span.Context().(jaeger.SpanContext).TraceID()
 
 	logger.Info("msg")
-	data := make(map[string]interface{})
+	data := make(map[string]any)
 	if err := json.Unmarshal(buf.Bytes(), &data); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -192,7 +192,7 @@ func TestNewLoggerWithTraceID(t *testing.T) {
 	wantTraceID := span.Context().(jaeger.SpanContext).TraceID()
 
 	logger.Info("msg")
-	data := make(map[string]interface{})
+	data := make(map[string]any)
 	if err := json.Unmarshal(buf.Bytes(), &data); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
