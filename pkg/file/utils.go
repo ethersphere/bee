@@ -66,10 +66,8 @@ func ReferenceCount(span uint64, level redundancy.Level, encrytedChunk bool) (in
 	)
 	// search for branch level big enough to include span
 	branchLevel := 1
-	for {
-		if branchSize >= span {
-			break
-		}
+	for branchSize < span {
+
 		branchSize *= branching
 		branchLevel++
 	}
