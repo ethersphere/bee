@@ -266,7 +266,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 				transport = transport.Clone()
 				// always dial to the server address, regardless of the url host and port
 				transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-					return net.Dial(network, ts.Listener.Addr().String())
+					return (&net.Dialer{}).DialContext(ctx, network, ts.Listener.Addr().String())
 				}
 				return transport.RoundTrip(r)
 			}),
