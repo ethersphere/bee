@@ -466,9 +466,7 @@ func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan
 	done := make(chan struct{})
 	errC := make(chan error, 1)
 
-	db.inFlight.Add(1)
-	go func() {
-		defer db.inFlight.Done()
+	db.inFlight.Go(func() {
 
 		trigger, unsub := db.reserveBinEvents.Subscribe(string(bin))
 		defer unsub()
@@ -507,7 +505,7 @@ func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan
 				return
 			}
 		}
-	}()
+	})
 
 	var doneOnce sync.Once
 	return out, func() {
@@ -555,7 +553,7 @@ func neighborhoodPrefixes(base swarm.Address, radius int, suffixLength int) []sw
 	bitCombinationsCount := int(math.Pow(2, float64(suffixLength)))
 	bitSuffixes := make([]uint8, bitCombinationsCount)
 
-	for i := 0; i < bitCombinationsCount; i++ {
+	for i := range bitCombinationsCount {
 		bitSuffixes[i] = uint8(i)
 	}
 

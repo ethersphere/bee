@@ -198,8 +198,8 @@ func TestEvictBatch(t *testing.T) {
 
 	putter := st.ReservePutter()
 
-	for b := 0; b < 3; b++ {
-		for i := uint64(0); i < chunksPerPO; i++ {
+	for b := range 3 {
+		for range chunksPerPO {
 			ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, b)
 			ch = ch.WithStamp(postagetesting.MustNewBatchStamp(batches[b].ID))
 			chunks = append(chunks, ch)
@@ -290,8 +290,8 @@ func TestUnreserveCap(t *testing.T) {
 		c, unsub := storer.Events().Subscribe("reserveUnreserved")
 		defer unsub()
 
-		for b := 0; b < 5; b++ {
-			for i := uint64(0); i < chunksPerPO; i++ {
+		for b := range 5 {
+			for range chunksPerPO {
 				ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, b)
 				ch = ch.WithStamp(postagetesting.MustNewBatchStamp(batch.ID))
 				chunksPO[b] = append(chunksPO[b], ch)
@@ -438,8 +438,8 @@ func TestRadiusManager(t *testing.T) {
 
 		putter := storer.ReservePutter()
 
-		for i := 0; i < 4; i++ {
-			for j := 0; j < 10; j++ {
+		for i := range 4 {
+			for range 10 {
 				ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, i).WithStamp(postagetesting.MustNewBatchStamp(batch.ID))
 				err := putter.Put(context.Background(), ch)
 				if err != nil {
@@ -480,8 +480,8 @@ func TestSubscribeBin(t *testing.T) {
 			putter             = storer.ReservePutter()
 		)
 
-		for j := 0; j < 2; j++ {
-			for i := uint64(0); i < chunksPerPO; i++ {
+		for j := range 2 {
+			for range chunksPerPO {
 				ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, j)
 				chunks = append(chunks, ch)
 				err := putter.Put(context.Background(), ch)
@@ -597,8 +597,8 @@ func TestSubscribeBinTrigger(t *testing.T) {
 		)
 
 		putter := storer.ReservePutter()
-		for j := 0; j < 2; j++ {
-			for i := uint64(0); i < chunksPerPO; i++ {
+		for j := range 2 {
+			for range chunksPerPO {
 				ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, j)
 				chunks = append(chunks, ch)
 				err := putter.Put(context.Background(), ch)
@@ -694,7 +694,7 @@ func TestNeighborhoodStats(t *testing.T) {
 
 	putChunks := func(addr swarm.Address, startingRadius int, st *storer.DB) {
 		putter := st.ReservePutter()
-		for i := 0; i < chunkCountPerPO; i++ {
+		for range chunkCountPerPO {
 			ch := chunk.GenerateValidRandomChunkAt(t, addr, startingRadius)
 			err := putter.Put(context.Background(), ch)
 			if err != nil {

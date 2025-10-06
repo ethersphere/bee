@@ -130,7 +130,7 @@ func (p *pss) Register(topic Topic, handler Handler) (cleanup func()) {
 		defer p.handlersMu.Unlock()
 
 		h := p.handlers[topic]
-		for i := 0; i < len(h); i++ {
+		for i := range h {
 			if h[i] == &handler {
 				p.handlers[topic] = append(h[:i], h[i+1:]...)
 				return

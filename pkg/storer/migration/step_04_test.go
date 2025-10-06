@@ -84,7 +84,7 @@ func Test_Step_04(t *testing.T) {
 	_, err = f.Read(buf)
 	assert.NoError(t, err)
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		if i < 2 {
 			// if the chunk is deleted, the bit is set to 1
 			assert.Greater(t, buf[i/8]&(1<<(i%8)), byte(0))
