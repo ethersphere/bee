@@ -6,6 +6,7 @@ package mock
 
 import (
 	"context"
+	"sort"
 	"sync"
 	"time"
 
@@ -17,6 +18,17 @@ import (
 type AddrTuple struct {
 	Addr swarm.Address // the peer address
 	PO   uint8         // the po
+}
+
+func MakeAddrTupleForRevCalls(base swarm.Address, addrs ...swarm.Address) []AddrTuple {
+	at := make([]AddrTuple, 0, len(addrs))
+	for _, addr := range addrs {
+		at = append(at, AddrTuple{Addr: addr, PO: swarm.Proximity(base.Bytes(), addr.Bytes())})
+	}
+	sort.Slice(at, func(i, j int) bool {
+		return at[i].PO > at[j].PO
+	})
+	return at
 }
 
 func WithEachPeerRevCalls(addrs ...AddrTuple) Option {
