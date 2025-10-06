@@ -157,7 +157,7 @@ func WithRequestBody(body io.Reader) Option {
 
 // WithJSONRequestBody writes a request JSON-encoded body to the request made by
 // the Request function.
-func WithJSONRequestBody(r interface{}) Option {
+func WithJSONRequestBody(r any) Option {
 	return optionFunc(func(o *options) error {
 		b, err := json.Marshal(r)
 		if err != nil {
@@ -256,7 +256,7 @@ func WithNonEmptyResponseHeader(key string) Option {
 
 // WithExpectedJSONResponse validates that the response from the request in the
 // Request function matches JSON-encoded body provided here.
-func WithExpectedJSONResponse(response interface{}) Option {
+func WithExpectedJSONResponse(response any) Option {
 	return optionFunc(func(o *options) error {
 		o.expectedJSONResponse = response
 		return nil
@@ -265,7 +265,7 @@ func WithExpectedJSONResponse(response interface{}) Option {
 
 // WithUnmarshalJSONResponse unmarshals response body from the request in the
 // Request function to the provided response. Response must be a pointer.
-func WithUnmarshalJSONResponse(response interface{}) Option {
+func WithUnmarshalJSONResponse(response any) Option {
 	return optionFunc(func(o *options) error {
 		o.unmarshalResponse = response
 		return nil
@@ -304,8 +304,8 @@ type options struct {
 	expectedResponseHeaders http.Header
 	nonEmptyResponseHeaders []string
 	expectedResponse        []byte
-	expectedJSONResponse    interface{}
-	unmarshalResponse       interface{}
+	expectedJSONResponse    any
+	unmarshalResponse       any
 	responseBody            *[]byte
 	noResponseBody          bool
 }

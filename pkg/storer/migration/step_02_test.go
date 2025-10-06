@@ -54,8 +54,8 @@ func Test_Step_02(t *testing.T) {
 	store := internal.NewInmemStorage()
 
 	// simulate old cacheEntryItem with some random bytes.
-	var addrs []*testEntry
-	for i := 0; i < 10; i++ {
+	addrs := make([]*testEntry, 0, 10)
+	for range 10 {
 		entry := &testEntry{address: swarm.RandAddress(t)}
 		addrs = append(addrs, entry)
 		err := store.Run(context.Background(), func(s transaction.Store) error {

@@ -22,7 +22,7 @@ func GenerateSpanSizes(levels, branches int) []int64 {
 	spans := make([]int64, levels)
 	branchesSixtyfour := int64(branches)
 	var span int64 = 1
-	for i := 0; i < 9; i++ {
+	for i := range 9 {
 		spans[i] = span
 		span *= branchesSixtyfour
 	}

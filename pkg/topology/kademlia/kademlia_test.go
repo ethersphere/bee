@@ -69,7 +69,7 @@ func TestNeighborhoodDepth(t *testing.T) {
 	testutil.CleanupCloser(t, kad)
 
 	// add 2 peers in bin 8
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		addr := swarm.RandAddressAt(t, base, 8)
 		addOne(t, signer, kad, ab, addr)
 
@@ -79,9 +79,9 @@ func TestNeighborhoodDepth(t *testing.T) {
 	// depth is 0
 	kDepth(t, kad, 0)
 
-	var shallowPeers []swarm.Address
+	shallowPeers := make([]swarm.Address, 0, 2)
 	// add two first peers (po0,po1)
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		addr := swarm.RandAddressAt(t, base, i)
 		addOne(t, signer, kad, ab, addr)
 		shallowPeers = append(shallowPeers, addr)
@@ -114,8 +114,8 @@ func TestNeighborhoodDepth(t *testing.T) {
 	// now add peers from bin 0 and expect the depth
 	// to shift. the depth will be that of the shallowest
 	// unsaturated bin.
-	for i := 0; i < 7; i++ {
-		for j := 0; j < 3; j++ {
+	for i := range 7 {
+		for range 3 {
 			addr := swarm.RandAddressAt(t, base, i)
 			addOne(t, signer, kad, ab, addr)
 			waitConn(t, &conns)
@@ -148,7 +148,7 @@ func TestNeighborhoodDepth(t *testing.T) {
 	kDepth(t, kad, 7)
 
 	// now fill bin 7 so that it is saturated, expect depth 8
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		addr := swarm.RandAddressAt(t, base, 7)
 		addOne(t, signer, kad, ab, addr)
 		waitConn(t, &conns)
@@ -164,7 +164,7 @@ func TestNeighborhoodDepth(t *testing.T) {
 	var addrs []swarm.Address
 	// fill the rest up to the bin before last and check that everything works at the edges
 	for i := 9; i < int(swarm.MaxBins); i++ {
-		for j := 0; j < 4; j++ {
+		for range 4 {
 			addr := swarm.RandAddressAt(t, base, i)
 			addOne(t, signer, kad, ab, addr)
 			waitConn(t, &conns)
@@ -174,7 +174,7 @@ func TestNeighborhoodDepth(t *testing.T) {
 	}
 
 	// add a whole bunch of peers in the last bin, expect depth to stay at 31
-	for i := 0; i < 15; i++ {
+	for range 15 {
 		addr = swarm.RandAddressAt(t, base, int(swarm.MaxPO))
 		addOne(t, signer, kad, ab, addr)
 	}
@@ -187,7 +187,7 @@ func TestNeighborhoodDepth(t *testing.T) {
 	kDepth(t, kad, 30)
 
 	// empty bin 9 and expect depth 9
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		removeOne(kad, addrs[i])
 	}
 	kDepth(t, kad, 9)
@@ -216,7 +216,7 @@ func TestNeighborhoodDepthWithReachability(t *testing.T) {
 	kad.SetStorageRadius(0)
 
 	// add 2 peers in bin 8
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		addr := swarm.RandAddressAt(t, base, 8)
 		addOne(t, signer, kad, ab, addr)
 		kad.Reachable(addr, p2p.ReachabilityStatusPublic)
@@ -227,9 +227,9 @@ func TestNeighborhoodDepthWithReachability(t *testing.T) {
 	// depth is 0
 	kDepth(t, kad, 0)
 
-	var shallowPeers []swarm.Address
+	shallowPeers := make([]swarm.Address, 0, 2)
 	// add two first peers (po0,po1)
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		addr := swarm.RandAddressAt(t, base, i)
 		addOne(t, signer, kad, ab, addr)
 		kad.Reachable(addr, p2p.ReachabilityStatusPublic)
@@ -262,8 +262,8 @@ func TestNeighborhoodDepthWithReachability(t *testing.T) {
 	// now add peers from bin 0 and expect the depth
 	// to shift. the depth will be that of the shallowest
 	// unsaturated bin.
-	for i := 0; i < 7; i++ {
-		for j := 0; j < 3; j++ {
+	for i := range 7 {
+		for range 3 {
 			addr := swarm.RandAddressAt(t, base, i)
 			addOne(t, signer, kad, ab, addr)
 			kad.Reachable(addr, p2p.ReachabilityStatusPublic)
@@ -292,7 +292,7 @@ func TestNeighborhoodDepthWithReachability(t *testing.T) {
 	kDepth(t, kad, 7)
 
 	// now fill bin 7 so that it is saturated, expect depth 8
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		addr := swarm.RandAddressAt(t, base, 7)
 		addOne(t, signer, kad, ab, addr)
 		kad.Reachable(addr, p2p.ReachabilityStatusPublic)
@@ -310,7 +310,7 @@ func TestNeighborhoodDepthWithReachability(t *testing.T) {
 	var addrs []swarm.Address
 	// fill the rest up to the bin before last and check that everything works at the edges
 	for i := 9; i < int(swarm.MaxBins); i++ {
-		for j := 0; j < 4; j++ {
+		for range 4 {
 			addr := swarm.RandAddressAt(t, base, i)
 			addOne(t, signer, kad, ab, addr)
 			kad.Reachable(addr, p2p.ReachabilityStatusPublic)
@@ -321,7 +321,7 @@ func TestNeighborhoodDepthWithReachability(t *testing.T) {
 	}
 
 	// add a whole bunch of peers in the last bin, expect depth to stay at 31
-	for i := 0; i < 15; i++ {
+	for range 15 {
 		addr = swarm.RandAddressAt(t, base, int(swarm.MaxPO))
 		addOne(t, signer, kad, ab, addr)
 		kad.Reachable(addr, p2p.ReachabilityStatusPublic)
@@ -335,7 +335,7 @@ func TestNeighborhoodDepthWithReachability(t *testing.T) {
 	kDepth(t, kad, 30)
 
 	// empty bin 9 and expect depth 9
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		removeOne(kad, addrs[i])
 	}
 	kDepth(t, kad, 9)
@@ -365,7 +365,7 @@ func TestManage(t *testing.T) {
 	kad.SetStorageRadius(0)
 
 	// first, we add peers to bin 0
-	for i := 0; i < saturation; i++ {
+	for range saturation {
 		addr := swarm.RandAddressAt(t, base, 0)
 		addOne(t, signer, kad, ab, addr)
 	}
@@ -373,7 +373,7 @@ func TestManage(t *testing.T) {
 	waitCounter(t, &conns, int32(saturation))
 
 	// next, we add peers to the next bin
-	for i := 0; i < saturation; i++ {
+	for range saturation {
 		addr := swarm.RandAddressAt(t, base, 1)
 		addOne(t, signer, kad, ab, addr)
 	}
@@ -383,7 +383,7 @@ func TestManage(t *testing.T) {
 	kad.SetStorageRadius(1)
 
 	// here, we attempt to add to bin 0, but bin is saturated, so no new peers should connect to it
-	for i := 0; i < saturation; i++ {
+	for range saturation {
 		addr := swarm.RandAddressAt(t, base, 0)
 		addOne(t, signer, kad, ab, addr)
 	}
@@ -466,8 +466,8 @@ func TestBinSaturation(t *testing.T) {
 	// add two peers in a few bins to generate some depth >= 0, this will
 	// make the next iteration result in binSaturated==true, causing no new
 	// connections to be made
-	for i := 0; i < 5; i++ {
-		for j := 0; j < 2; j++ {
+	for i := range 5 {
+		for range 2 {
 			addr := swarm.RandAddressAt(t, base, i)
 			addOne(t, signer, kad, ab, addr)
 		}
@@ -479,7 +479,7 @@ func TestBinSaturation(t *testing.T) {
 	// add one more peer in each bin shallower than depth and
 	// expect no connections due to saturation. if we add a peer within
 	// depth, the short circuit will be hit and we will connect to the peer
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		addr := swarm.RandAddressAt(t, base, i)
 		addOne(t, signer, kad, ab, addr)
 	}
@@ -514,8 +514,8 @@ func TestOversaturation(t *testing.T) {
 	testutil.CleanupCloser(t, kad)
 
 	// Add maximum accepted number of peers up until bin 5 without problems
-	for i := 0; i < 6; i++ {
-		for j := 0; j < kademlia.DefaultOverSaturationPeers; j++ {
+	for i := range 6 {
+		for range kademlia.DefaultOverSaturationPeers {
 			addr := swarm.RandAddressAt(t, base, i)
 			// if error is not nil as specified, connectOne goes fatal
 			connectOne(t, signer, kad, ab, addr, nil)
@@ -527,9 +527,9 @@ func TestOversaturation(t *testing.T) {
 	// see depth is 5
 	kDepth(t, kad, 5)
 
-	for k := 0; k < 5; k++ {
+	for k := range 5 {
 		// no further connections can be made
-		for l := 0; l < 3; l++ {
+		for range 3 {
 			addr := swarm.RandAddressAt(t, base, k)
 			// if error is not as specified, connectOne goes fatal
 			connectOne(t, signer, kad, ab, addr, topology.ErrOversaturated)
@@ -566,8 +566,8 @@ func TestOversaturationBootnode(t *testing.T) {
 	testutil.CleanupCloser(t, kad)
 
 	// Add maximum accepted number of peers up until bin 5 without problems
-	for i := 0; i < 6; i++ {
-		for j := 0; j < overSaturationPeers; j++ {
+	for i := range 6 {
+		for range overSaturationPeers {
 			addr := swarm.RandAddressAt(t, base, i)
 			// if error is not nil as specified, connectOne goes fatal
 			connectOne(t, signer, kad, ab, addr, nil)
@@ -579,9 +579,9 @@ func TestOversaturationBootnode(t *testing.T) {
 	// see depth is 5
 	kDepth(t, kad, 5)
 
-	for k := 0; k < 5; k++ {
+	for k := range 5 {
 		// further connections should succeed outside of depth
-		for l := 0; l < 3; l++ {
+		for range 3 {
 			addr := swarm.RandAddressAt(t, base, k)
 			// if error is not as specified, connectOne goes fatal
 			connectOne(t, signer, kad, ab, addr, nil)
@@ -595,7 +595,7 @@ func TestOversaturationBootnode(t *testing.T) {
 	}
 
 	// see we can still add / not limiting more peers in neighborhood depth
-	for m := 0; m < 12; m++ {
+	for range 12 {
 		addr := swarm.RandAddressAt(t, base, 5)
 		// if error is not nil as specified, connectOne goes fatal
 		connectOne(t, signer, kad, ab, addr, nil)
@@ -624,8 +624,8 @@ func TestBootnodeMaxConnections(t *testing.T) {
 	testutil.CleanupCloser(t, kad)
 
 	// Add maximum accepted number of peers up until bin 5 without problems
-	for i := 0; i < 6; i++ {
-		for j := 0; j < bootnodeOverSaturationPeers; j++ {
+	for i := range 6 {
+		for range bootnodeOverSaturationPeers {
 			addr := swarm.RandAddressAt(t, base, i)
 			// if error is not nil as specified, connectOne goes fatal
 			connectOne(t, signer, kad, ab, addr, nil)
@@ -640,9 +640,9 @@ func TestBootnodeMaxConnections(t *testing.T) {
 	depth := 5
 	outSideDepthPeers := 5
 
-	for k := 0; k < depth; k++ {
+	for k := range depth {
 		// further connections should succeed outside of depth
-		for l := 0; l < outSideDepthPeers; l++ {
+		for range outSideDepthPeers {
 			addr := swarm.RandAddressAt(t, base, k)
 			// if error is not as specified, connectOne goes fatal
 			connectOne(t, signer, kad, ab, addr, nil)
@@ -1109,7 +1109,7 @@ func TestKademlia_SubscribeTopologyChange(t *testing.T) {
 		c2, u2 := kad.SubscribeTopologyChange()
 		defer u2()
 
-		for i := 0; i < 4; i++ {
+		for i := range 4 {
 			addr := swarm.RandAddressAt(t, base, i)
 			addOne(t, sg, kad, ab, addr)
 		}
@@ -1129,14 +1129,14 @@ func TestKademlia_SubscribeTopologyChange(t *testing.T) {
 		c, u := kad.SubscribeTopologyChange()
 		defer u()
 
-		for i := 0; i < 4; i++ {
+		for i := range 4 {
 			addr := swarm.RandAddressAt(t, base, i)
 			addOne(t, sg, kad, ab, addr)
 		}
 
 		testSignal(t, c)
 
-		for i := 0; i < 4; i++ {
+		for i := range 4 {
 			addr := swarm.RandAddressAt(t, base, i)
 			addOne(t, sg, kad, ab, addr)
 		}
@@ -1210,9 +1210,9 @@ func getBinPopulation(bins *topology.KadBins, po uint8) uint64 {
 func TestStart(t *testing.T) {
 	t.Parallel()
 
-	var bootnodes []ma.Multiaddr
-	var bootnodesOverlays []swarm.Address
-	for i := 0; i < 10; i++ {
+	bootnodes := make([]ma.Multiaddr, 0, 10)
+	bootnodesOverlays := make([]swarm.Address, 0, 10)
+	for range 10 {
 		overlay := swarm.RandAddress(t)
 
 		multiaddr, err := ma.NewMultiaddr(underlayBase + overlay.String())
@@ -1231,7 +1231,7 @@ func TestStart(t *testing.T) {
 		var conns, failedConns int32 // how many connect calls were made to the p2p mock
 		_, kad, ab, _, signer := newTestKademlia(t, &conns, &failedConns, kademlia.Options{Bootnodes: bootnodes})
 
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			peer := swarm.RandAddress(t)
 			multiaddr, err := ma.NewMultiaddr(underlayBase + peer.String())
 			if err != nil {
@@ -1324,7 +1324,7 @@ func TestOutofDepthPrune(t *testing.T) {
 	testutil.CleanupCloser(t, kad)
 
 	// bin 0,1 balanced, rest not
-	for i := 0; i < 6; i++ {
+	for i := range 6 {
 		var peers []swarm.Address
 		if i < 2 {
 			peers = mineBin(t, base, i, 20, true)
@@ -1350,7 +1350,7 @@ func TestOutofDepthPrune(t *testing.T) {
 
 	// check that no pruning has happened
 	bins := binSizes(kad)
-	for i := 0; i < 6; i++ {
+	for i := range 6 {
 		if bins[i] <= overSaturationPeers {
 			t.Fatalf("bin %d, got %d, want more than %d", i, bins[i], overSaturationPeers)
 		}
@@ -1375,7 +1375,7 @@ func TestOutofDepthPrune(t *testing.T) {
 
 	// check bins have been pruned
 	bins = binSizes(kad)
-	for i := uint8(0); i < 5; i++ {
+	for i := range uint8(5) {
 		if bins[i] != overSaturationPeers {
 			t.Fatalf("bin %d, got %d, want %d", i, bins[i], overSaturationPeers)
 		}
@@ -1426,7 +1426,7 @@ func TestPruneExcludeOps(t *testing.T) {
 	testutil.CleanupCloser(t, kad)
 
 	// bin 0,1 balanced, rest not
-	for i := 0; i < 6; i++ {
+	for i := range 6 {
 		var peers []swarm.Address
 		if i < 2 {
 			peers = mineBin(t, base, i, perBin, true)
@@ -1441,7 +1441,7 @@ func TestPruneExcludeOps(t *testing.T) {
 				kad.Reachable(peers[i], p2p.ReachabilityStatusPublic)
 			}
 		}
-		for i := 0; i < 4; i++ {
+		for range 4 {
 		}
 		time.Sleep(time.Millisecond * 10)
 		kDepth(t, kad, i)
@@ -1459,7 +1459,7 @@ func TestPruneExcludeOps(t *testing.T) {
 
 	// check that no pruning has happened
 	bins := binSizes(kad)
-	for i := 0; i < 6; i++ {
+	for i := range 6 {
 		if bins[i] <= overSaturationPeers {
 			t.Fatalf("bin %d, got %d, want more than %d", i, bins[i], overSaturationPeers)
 		}
@@ -1484,7 +1484,7 @@ func TestPruneExcludeOps(t *testing.T) {
 
 	// check bins have NOT been pruned because the peer count func excluded unreachable peers
 	bins = binSizes(kad)
-	for i := uint8(0); i < 5; i++ {
+	for i := range uint8(5) {
 		if bins[i] != perBin {
 			t.Fatalf("bin %d, got %d, want %d", i, bins[i], perBin)
 		}
@@ -1501,7 +1501,7 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 	// create base and protected nodes addresses
 	base := swarm.RandAddress(t)
 	protected := make([]swarm.Address, 6)
-	for i := 0; i < 6; i++ {
+	for i := range 6 {
 		addr := swarm.RandAddressAt(t, base, i)
 		protected[i] = addr
 	}
@@ -1526,8 +1526,8 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 	testutil.CleanupCloser(t, kad)
 
 	// Add maximum accepted number of peers up until bin 5 without problems
-	for i := 0; i < 6; i++ {
-		for j := 0; j < overSaturationPeers; j++ {
+	for i := range 6 {
+		for range overSaturationPeers {
 			// if error is not nil as specified, connectOne goes fatal
 			connectOne(t, signer, kad, ab, protected[i], nil)
 		}
@@ -1538,7 +1538,7 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 	// see depth is 5
 	kDepth(t, kad, 5)
 
-	for k := 0; k < 5; k++ {
+	for k := range 5 {
 		// further connections should succeed outside of depth
 		addr := swarm.RandAddressAt(t, base, k)
 		// if error is not as specified, connectOne goes fatal
@@ -1549,14 +1549,14 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 	// ensure protected node was not kicked out and we have more than oversaturation
 	// amount
 	sizes := binSizes(kad)
-	for k := 0; k < 5; k++ {
+	for k := range 5 {
 		if sizes[k] != 2 {
 			t.Fatalf("invalid bin size expected 2 found %d", sizes[k])
 		}
 	}
-	for k := 0; k < 5; k++ {
+	for k := range 5 {
 		// further connections should succeed outside of depth
-		for l := 0; l < 3; l++ {
+		for range 3 {
 			addr := swarm.RandAddressAt(t, base, k)
 			// if error is not as specified, connectOne goes fatal
 			connectOne(t, signer, kad, ab, addr, nil)
@@ -1567,7 +1567,7 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 	// ensure unprotected nodes are kicked out to make room for new peers and protected
 	// nodes are still present
 	sizes = binSizes(kad)
-	for k := 0; k < 5; k++ {
+	for k := range 5 {
 		if sizes[k] != 2 {
 			t.Fatalf("invalid bin size expected 2 found %d", sizes[k])
 		}
@@ -1691,8 +1691,8 @@ func TestAnnounceNeighborhoodToNeighbor(t *testing.T) {
 	testutil.CleanupCloser(t, kad)
 
 	// add some peers
-	for bin := 0; bin < 2; bin++ {
-		for i := 0; i < 4; i++ {
+	for bin := range 2 {
+		for range 4 {
 			addr := swarm.RandAddressAt(t, base, bin)
 			addOne(t, signer, kad, ab, addr)
 			waitCounter(t, &conns, 1)
@@ -1703,7 +1703,7 @@ func TestAnnounceNeighborhoodToNeighbor(t *testing.T) {
 	kDepth(t, kad, 1)
 
 	// add many more neighbors
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		addr := swarm.RandAddressAt(t, base, 2)
 		addOne(t, signer, kad, ab, addr)
 		waitCounter(t, &conns, 1)
@@ -1740,8 +1740,8 @@ func TestIteratorOpts(t *testing.T) {
 	}
 	testutil.CleanupCloser(t, kad)
 
-	for i := 0; i < 6; i++ {
-		for j := 0; j < 4; j++ {
+	for i := range 6 {
+		for range 4 {
 			addr := swarm.RandAddressAt(t, base, i)
 			// if error is not nil as specified, connectOne goes fatal
 			connectOne(t, signer, kad, ab, addr, nil)
@@ -1903,7 +1903,7 @@ func mineBin(t *testing.T, base swarm.Address, bin, count int, isBalanced bool) 
 		t.Fatal("peersCount must be greater than 8 for balanced bins")
 	}
 
-	for i := 0; i < count; i++ {
+	for i := range count {
 		rndAddrs[i] = swarm.RandAddressAt(t, base, bin)
 	}
 

@@ -124,7 +124,7 @@ func xor(input, key []byte) ([]byte, error) {
 	}
 	inputLen := len(input)
 	output := make([]byte, inputLen)
-	for i := 0; i < inputLen; i++ {
+	for i := range inputLen {
 		output[i] = input[i] ^ key[i%keyLen]
 	}
 	return output, nil

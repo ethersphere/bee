@@ -602,7 +602,7 @@ func addBatch(t *testing.T, s postage.Storer, depth uint8, value int) *postage.B
 	return batch
 }
 
-func stateStoreGet(t *testing.T, st storage.StateStorer, k string, v interface{}) {
+func stateStoreGet(t *testing.T, st storage.StateStorer, k string, v any) {
 	t.Helper()
 
 	if err := st.Get(k, v); err != nil {
@@ -610,7 +610,7 @@ func stateStoreGet(t *testing.T, st storage.StateStorer, k string, v interface{}
 	}
 }
 
-func stateStorePut(t *testing.T, st storage.StateStorer, k string, v interface{}) {
+func stateStorePut(t *testing.T, st storage.StateStorer, k string, v any) {
 	t.Helper()
 
 	if err := st.Put(k, v); err != nil {

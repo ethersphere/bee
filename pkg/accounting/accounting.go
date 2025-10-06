@@ -312,10 +312,7 @@ func (a *Accounting) PrepareCredit(ctx context.Context, peer swarm.Address, pric
 		}
 	}
 
-	timeElapsedInSeconds := (a.timeNow().UnixMilli() - accountingPeer.refreshTimestampMilliseconds) / 1000
-	if timeElapsedInSeconds > 1 {
-		timeElapsedInSeconds = 1
-	}
+	timeElapsedInSeconds := min((a.timeNow().UnixMilli()-accountingPeer.refreshTimestampMilliseconds)/1000, 1)
 
 	refreshDue := new(big.Int).Mul(big.NewInt(timeElapsedInSeconds), a.refreshRate)
 	overdraftLimit := new(big.Int).Add(accountingPeer.paymentThreshold, refreshDue)
@@ -745,10 +742,7 @@ func (a *Accounting) PeerAccounting() (map[string]PeerInfo, error) {
 
 		t := a.timeNow()
 
-		timeElapsedInSeconds := t.Unix() - accountingPeer.refreshReceivedTimestamp
-		if timeElapsedInSeconds > 1 {
-			timeElapsedInSeconds = 1
-		}
+		timeElapsedInSeconds := min(t.Unix()-accountingPeer.refreshReceivedTimestamp, 1)
 
 		// get appropriate refresh rate
 		refreshRate := new(big.Int).Set(a.refreshRate)
@@ -759,10 +753,7 @@ func (a *Accounting) PeerAccounting() (map[string]PeerInfo, error) {
 		refreshDue := new(big.Int).Mul(big.NewInt(timeElapsedInSeconds), refreshRate)
 		currentThresholdGiven := new(big.Int).Add(accountingPeer.disconnectLimit, refreshDue)
 
-		timeElapsedInSeconds = (t.UnixMilli() - accountingPeer.refreshTimestampMilliseconds) / 1000
-		if timeElapsedInSeconds > 1 {
-			timeElapsedInSeconds = 1
-		}
+		timeElapsedInSeconds = min((t.UnixMilli()-accountingPeer.refreshTimestampMilliseconds)/1000, 1)
 
 		// get appropriate refresh rate
 		refreshDue = new(big.Int).Mul(big.NewInt(timeElapsedInSeconds), a.refreshRate)
@@ -1352,10 +1343,7 @@ func (d *debitAction) Apply() error {
 	a.metrics.TotalDebitedAmount.Add(tot)
 	a.metrics.DebitEventsCount.Inc()
 
-	timeElapsedInSeconds := a.timeNow().Unix() - d.accountingPeer.refreshReceivedTimestamp
-	if timeElapsedInSeconds > 1 {
-		timeElapsedInSeconds = 1
-	}
+	timeElapsedInSeconds := min(a.timeNow().Unix()-d.accountingPeer.refreshReceivedTimestamp, 1)
 
 	// get appropriate refresh rate
 	refreshRate := new(big.Int).Set(a.refreshRate)

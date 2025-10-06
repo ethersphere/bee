@@ -199,7 +199,7 @@ func TestPurgeRoundData(t *testing.T) {
 	hasRoundData := make([]bool, roundsCount)
 
 	// Populate data at random rounds
-	for i := uint64(0); i < roundsCount; i++ {
+	for i := range uint64(roundsCount) {
 		v := rand.Int()%2 == 0
 		hasRoundData[i] = v
 		if v {
@@ -210,7 +210,7 @@ func TestPurgeRoundData(t *testing.T) {
 
 	// Run purge successively and assert that all data is purged up to
 	// currentRound - purgeDataOlderThenXRounds
-	for i := uint64(0); i < roundsCount; i++ {
+	for i := range uint64(roundsCount) {
 		state.SetCurrentEvent(0, i)
 		state.purgeStaleRoundData()
 
@@ -229,7 +229,7 @@ func TestPurgeRoundData(t *testing.T) {
 	state.purgeStaleRoundData()
 
 	// One more time assert that everything was purged
-	for i := uint64(0); i < roundsCount; i++ {
+	for i := range uint64(roundsCount) {
 		assertHasDataAtRound(i, false)
 	}
 }

@@ -238,7 +238,7 @@ func (s *Store) CollectGarbage() (err error) {
 	maxRounds := 10 // arbitrary number, needs to be calculated
 
 	// Run a few gc rounds.
-	for roundCount := 0; roundCount < maxRounds; roundCount++ {
+	for range maxRounds {
 		var garbageCount int
 		// New batch for a new cg round.
 		trash := new(leveldb.Batch)

@@ -28,7 +28,7 @@ func Proximity(one, other []byte) (ret uint8) {
 	var m uint8 = 8
 	for i := uint8(0); i < b; i++ {
 		oxo := one[i] ^ other[i]
-		for j := uint8(0); j < m; j++ {
+		for j := range m {
 			if (oxo>>(7-j))&0x01 != 0 {
 				return i*8 + j
 			}
@@ -48,7 +48,7 @@ func ExtendedProximity(one, other []byte) (ret uint8) {
 	var m uint8 = 8
 	for i := uint8(0); i < b; i++ {
 		oxo := one[i] ^ other[i]
-		for j := uint8(0); j < m; j++ {
+		for j := range m {
 			if (oxo>>(7-j))&0x01 != 0 {
 				return i*8 + j
 			}

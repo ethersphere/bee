@@ -134,7 +134,7 @@ func TestRespond_special(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
 		code        int
-		response    interface{}
+		response    any
 		wantMessage string
 	}{
 		{
@@ -245,7 +245,7 @@ func TestStandardHTTPResponds(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
-		f    func(w http.ResponseWriter, response interface{})
+		f    func(w http.ResponseWriter, response any)
 		code int
 	}{
 		{f: jsonhttp.Continue, code: http.StatusContinue},

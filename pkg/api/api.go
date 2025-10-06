@@ -624,7 +624,7 @@ func (s *Service) checkOrigin(r *http.Request) bool {
 // validationError is a custom error type for validation errors.
 type validationError struct {
 	Entry string
-	Value interface{}
+	Value any
 	Cause error
 }
 
@@ -636,7 +636,7 @@ func (e *validationError) Error() string {
 // mapStructure maps the input into output struct and validates the output.
 // It's a helper method for the handlers, which reduces the chattiness
 // of the code.
-func (s *Service) mapStructure(input, output interface{}) func(string, log.Logger, http.ResponseWriter) {
+func (s *Service) mapStructure(input, output any) func(string, log.Logger, http.ResponseWriter) {
 	// response unifies the response format for parsing and validation errors.
 	response := func(err error) func(string, log.Logger, http.ResponseWriter) {
 		return func(msg string, logger log.Logger, w http.ResponseWriter) {

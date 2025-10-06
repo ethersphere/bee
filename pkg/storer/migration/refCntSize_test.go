@@ -24,8 +24,8 @@ func Test_RefCntSize(t *testing.T) {
 	store := inmemstore.New()
 
 	// simulate old cacheEntryItem with some random bytes.
-	var oldItems []*localmigration.OldRetrievalIndexItem
-	for i := 0; i < 10; i++ {
+	oldItems := make([]*localmigration.OldRetrievalIndexItem, 0, 10)
+	for range 10 {
 		entry := &localmigration.OldRetrievalIndexItem{
 			Address:   swarm.RandAddress(t),
 			Timestamp: uint64(rand.Int()),

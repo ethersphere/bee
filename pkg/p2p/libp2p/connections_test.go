@@ -126,7 +126,7 @@ func TestLightPeerLimit(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, sf)
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		sl, _ := newService(t, 1, libp2pServiceOpts{
 			notifier: notifier,
 			libp2pOpts: libp2p.Options{
@@ -240,7 +240,7 @@ func TestStreamsMaxIncomingLimit(t *testing.T) {
 	// close random streams to validate new streams creation
 
 	random := rand.New(rand.NewSource(time.Now().UnixNano()))
-	for i := 0; i < closeStreamCount; i++ {
+	for range closeStreamCount {
 		n := random.Intn(len(streams))
 		if err := streams[n].Reset(); err != nil {
 			t.Error(err)
@@ -840,7 +840,7 @@ func TestTopologyAnnounce(t *testing.T) {
 	expectPeersEventually(t, s1, overlay3)
 	called := false
 
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		mtx.Lock()
 		called = announceCalled
 		mtx.Unlock()
@@ -852,7 +852,7 @@ func TestTopologyAnnounce(t *testing.T) {
 	if !called {
 		t.Error("expected announce to be called")
 	}
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		mtx.Lock()
 		called = announceToCalled
 		mtx.Unlock()
@@ -878,7 +878,7 @@ func TestTopologyAnnounce(t *testing.T) {
 	expectPeers(t, s2, overlay1)
 	expectPeersEventually(t, s1, overlay2, overlay3)
 
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		mtx.Lock()
 		called = announceToCalled
 		mtx.Unlock()

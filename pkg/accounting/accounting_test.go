@@ -1503,7 +1503,7 @@ func TestAccountingCallPaymentErrorRetries(t *testing.T) {
 	acc.NotifyPaymentSent(peer1Addr, sentAmount, errors.New("error"))
 
 	// try another n requests 1 per second
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		ts++
 		acc.SetTime(ts)
 
@@ -1857,8 +1857,8 @@ func testAccountingSettlementGrowingThresholds(t *testing.T, settleFunc func(t *
 	checkPaymentThreshold := new(big.Int).Set(testPayThreshold)
 
 	// Simulate first 18 threshold upgrades
-	for j := 0; j < 18; j++ {
-		for i := 0; i < 100; i++ {
+	for range 18 {
+		for range 100 {
 
 			// expect no change in threshold while less than 100 seconds worth of refreshment rate was settled
 			settleFunc(t, acc, peer1Addr, testGrowth-1)
@@ -1891,7 +1891,7 @@ func testAccountingSettlementGrowingThresholds(t *testing.T, settleFunc func(t *
 
 	// Expect no increase for the next 179 seconds of refreshment
 
-	for k := 0; k < 1799; k++ {
+	for range 1799 {
 
 		settleFunc(t, acc, peer1Addr, testGrowth)
 
@@ -1917,7 +1917,7 @@ func testAccountingSettlementGrowingThresholds(t *testing.T, settleFunc func(t *
 
 	// Expect no increase for another 3599 seconds of refreshments
 
-	for k := 0; k < 3599; k++ {
+	for range 3599 {
 
 		settleFunc(t, acc, peer1Addr, testGrowth)
 

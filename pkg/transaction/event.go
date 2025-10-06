@@ -18,7 +18,7 @@ var (
 )
 
 // ParseEvent will parse the specified abi event from the given log
-func ParseEvent(a *abi.ABI, eventName string, c interface{}, e types.Log) error {
+func ParseEvent(a *abi.ABI, eventName string, c any, e types.Log) error {
 	if len(e.Topics) == 0 {
 		return ErrNoTopic
 	}
@@ -37,7 +37,7 @@ func ParseEvent(a *abi.ABI, eventName string, c interface{}, e types.Log) error 
 }
 
 // FindSingleEvent will find the first event of the given kind.
-func FindSingleEvent(abi *abi.ABI, receipt *types.Receipt, contractAddress common.Address, event abi.Event, out interface{}) error {
+func FindSingleEvent(abi *abi.ABI, receipt *types.Receipt, contractAddress common.Address, event abi.Event, out any) error {
 	if receipt.Status != 1 {
 		return ErrTransactionReverted
 	}

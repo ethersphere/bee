@@ -38,7 +38,7 @@ func TestChunkUploadStream(t *testing.T) {
 
 	t.Run("upload and verify", func(t *testing.T) {
 		chsToGet := []swarm.Chunk{}
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			ch := testingc.GenerateTestRandomChunk()
 
 			err := wsConn.SetWriteDeadline(time.Now().Add(time.Second))

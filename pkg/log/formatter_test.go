@@ -36,7 +36,7 @@ func (p pointErr) MarshalText() ([]byte, error) {
 // marshalerTest expect to result in the MarshalLog() value when logged.
 type marshalerTest struct{ val string }
 
-func (marshalerTest) MarshalLog() interface{} {
+func (marshalerTest) MarshalLog() any {
 	return struct{ Inner string }{"I am a log.Marshaler"}
 }
 func (marshalerTest) String() string {
@@ -50,7 +50,7 @@ func (marshalerTest) Error() string {
 // marshalerPanicTest expect this to result in a panic when logged.
 type marshalerPanicTest struct{ val string }
 
-func (marshalerPanicTest) MarshalLog() interface{} {
+func (marshalerPanicTest) MarshalLog() any {
 	panic("marshalerPanicTest")
 }
 
@@ -207,9 +207,9 @@ type (
 		Inner1Test `json:"inner1"`
 		Inner2Test `json:"-"`
 		Inner3Test `json:"-,"`
-		Inner4Test `json:"inner4,omitempty"`
+		Inner4Test `json:"inner4"`
 		Inner5Test `json:","`
-		Inner6Test `json:"inner6,omitempty"`
+		Inner6Test `json:"inner6"`
 	}
 )
 
@@ -218,7 +218,7 @@ func TestPretty(t *testing.T) {
 	strPtr := func(s string) *string { return &s }
 
 	testCases := []struct {
-		val interface{}
+		val any
 		exp string // used in testCases where JSON can't handle it
 	}{{
 		val: "strval",
@@ -369,11 +369,11 @@ func TestPretty(t *testing.T) {
 		val: struct {
 			A *int
 			B *int
-			C interface{}
-			D interface{}
+			C any
+			D any
 		}{
 			B: intPtr(1),
-			D: interface{}(2),
+			D: any(2),
 		},
 	}, {
 		val: marshalerTest{"foobar"},
@@ -650,13 +650,13 @@ func TestPretty(t *testing.T) {
 	}
 }
 
-func makeKV(args ...interface{}) []interface{} { return args }
+func makeKV(args ...any) []any { return args }
 
 func TestRender(t *testing.T) {
 	testCases := []struct {
 		name     string
-		builtins []interface{}
-		args     []interface{}
+		builtins []any
+		args     []any
 		wantKV   string
 		wantJSON string
 	}{{
@@ -665,8 +665,8 @@ func TestRender(t *testing.T) {
 		wantJSON: "{}",
 	}, {
 		name:     "empty",
-		builtins: []interface{}{},
-		args:     []interface{}{},
+		builtins: []any{},
+		args:     []any{},
 		wantKV:   "",
 		wantJSON: "{}",
 	}, {
@@ -739,12 +739,12 @@ func TestRender(t *testing.T) {
 func TestSanitize(t *testing.T) {
 	testCases := []struct {
 		name string
-		kv   []interface{}
-		want []interface{}
+		kv   []any
+		want []any
 	}{{
 		name: "empty",
-		kv:   []interface{}{},
-		want: []interface{}{},
+		kv:   []any{},
+		want: []any{},
 	}, {
 		name: "already sane",
 		kv:   makeKV("int", 1, "str", "ABC", "bool", true),

@@ -43,15 +43,13 @@ func (p *putter) Put(ctx context.Context, ch swarm.Chunk) (err error) {
 	errc := make(chan error, p.rLevel.GetReplicaCount())
 	wg := sync.WaitGroup{}
 	for r := range rr.c {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			sch, err := soc.New(r.id, ch).Sign(signer)
 			if err == nil {
 				err = p.putter.Put(ctx, sch)
 			}
 			errc <- err
-		}()
+		})
 	}
 
 	wg.Wait()

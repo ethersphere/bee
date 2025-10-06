@@ -326,7 +326,7 @@ func TestOptions(t *testing.T) {
 func populateStore(t *testing.T, s storage.Store, count int) {
 	t.Helper()
 
-	for i := 0; i < count; i++ {
+	for i := range count {
 		item := &obj{id: i, val: i}
 		if err := s.Put(item); err != nil {
 			t.Fatalf("populate store should succeed: %v", err)

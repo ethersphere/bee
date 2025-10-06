@@ -16,10 +16,10 @@ type StateStorer interface {
 	io.Closer
 
 	// Get unmarshalls object with the given key into the given obj.
-	Get(key string, obj interface{}) error
+	Get(key string, obj any) error
 
 	// Put inserts or updates the given obj stored under the given key.
-	Put(key string, obj interface{}) error
+	Put(key string, obj any) error
 
 	// Delete removes object form the store stored under the given key.
 	Delete(key string) error

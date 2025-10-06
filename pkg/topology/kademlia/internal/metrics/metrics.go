@@ -297,7 +297,7 @@ func (c *Collector) Snapshot(t time.Time, addresses ...swarm.Address) map[string
 	}
 
 	if len(addresses) == 0 {
-		c.counters.Range(func(key, val interface{}) bool {
+		c.counters.Range(func(key, val any) bool {
 			cs := val.(*Counters)
 			snapshot[cs.peerAddress.ByteString()] = cs.snapshot(t)
 			return true
@@ -381,8 +381,8 @@ func (c *Collector) Inspect(addr swarm.Address) *Snapshot {
 // Flush sync the dirty in memory counters for all peers by flushing their
 // values to the underlying storage.
 func (c *Collector) Flush() error {
-	counters := make(map[string]interface{})
-	c.counters.Range(func(key, val interface{}) bool {
+	counters := make(map[string]any)
+	c.counters.Range(func(key, val any) bool {
 		cs := val.(*Counters)
 		counters[cs.peerAddress.ByteString()] = val
 		return true
@@ -396,7 +396,7 @@ func (c *Collector) Flush() error {
 
 // Finalize tries to log out all ongoing peer sessions.
 func (c *Collector) Finalize(t time.Time, remove bool) error {
-	c.counters.Range(func(_, val interface{}) bool {
+	c.counters.Range(func(_, val any) bool {
 		cs := val.(*Counters)
 		PeerLogOut(t)(cs)
 		return true
@@ -407,7 +407,7 @@ func (c *Collector) Finalize(t time.Time, remove bool) error {
 	}
 
 	if remove {
-		c.counters.Range(func(_, val interface{}) bool {
+		c.counters.Range(func(_, val any) bool {
 			cs := val.(*Counters)
 			c.counters.Delete(cs.peerAddress.ByteString())
 			return true
