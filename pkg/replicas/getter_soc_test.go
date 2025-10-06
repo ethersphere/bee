@@ -197,7 +197,7 @@ func TestSOCGetter(t *testing.T) {
 			})
 
 			t.Run("dispersion", func(t *testing.T) {
-				if err := dispersed(redundancy.Level(tc.level), ch, addresses); err != nil {
+				if err := dispersed(redundancy.Level(tc.level), addresses); err != nil {
 					t.Fatalf("addresses are not dispersed: %v", err)
 				}
 			})

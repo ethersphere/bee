@@ -17,7 +17,7 @@ import (
 )
 
 // dispersed verifies that a set of addresses are maximally dispersed without repetition
-func dispersed(level redundancy.Level, ch swarm.Chunk, addrs []swarm.Address) error {
+func dispersed(level redundancy.Level, addrs []swarm.Address) error {
 	nhoods := make(map[byte]bool)
 
 	for _, addr := range addrs {
