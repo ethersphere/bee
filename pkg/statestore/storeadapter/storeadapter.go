@@ -25,7 +25,7 @@ var _ storage.Item = (*proxyItem)(nil)
 type proxyItem struct {
 	ns  string
 	key string
-	obj interface{}
+	obj any
 }
 
 // ID implements Item interface.
@@ -91,7 +91,7 @@ func (pi proxyItem) String() string {
 }
 
 // newProxyItem creates a new proxyItem.
-func newProxyItem(key string, obj interface{}) *proxyItem {
+func newProxyItem(key string, obj any) *proxyItem {
 	return &proxyItem{ns: stateStoreNamespace, key: key, obj: obj}
 }
 
@@ -105,11 +105,11 @@ type rawItem struct {
 
 // Marshal implements Item interface.
 func (ri *rawItem) Marshal() ([]byte, error) {
-	if ri == nil || ri.proxyItem == nil || ri.proxyItem.obj == nil {
+	if ri == nil || ri.proxyItem == nil || ri.obj == nil {
 		return nil, nil
 	}
 
-	if buf, ok := ri.proxyItem.obj.([]byte); ok {
+	if buf, ok := ri.obj.([]byte); ok {
 		return buf, nil
 	}
 
@@ -118,12 +118,12 @@ func (ri *rawItem) Marshal() ([]byte, error) {
 
 // Unmarshal implements Item interface.
 func (ri *rawItem) Unmarshal(data []byte) error {
-	if ri == nil || ri.proxyItem == nil || ri.proxyItem.obj == nil || len(data) == 0 {
+	if ri == nil || ri.proxyItem == nil || ri.obj == nil || len(data) == 0 {
 		return nil
 	}
 
-	if buf, ok := ri.proxyItem.obj.([]byte); ok {
-		ri.proxyItem.obj = append(buf[:0], data...)
+	if buf, ok := ri.obj.([]byte); ok {
+		ri.obj = append(buf[:0], data...)
 		return nil
 	}
 
@@ -146,12 +146,12 @@ func (s *StateStorerAdapter) Close() error {
 }
 
 // Get implements StateStorer interface.
-func (s *StateStorerAdapter) Get(key string, obj interface{}) (err error) {
+func (s *StateStorerAdapter) Get(key string, obj any) (err error) {
 	return s.storage.Get(newProxyItem(key, obj))
 }
 
 // Put implements StateStorer interface.
-func (s *StateStorerAdapter) Put(key string, obj interface{}) (err error) {
+func (s *StateStorerAdapter) Put(key string, obj any) (err error) {
 	return s.storage.Put(newProxyItem(key, obj))
 }
 

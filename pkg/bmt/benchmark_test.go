@@ -69,7 +69,7 @@ func benchmarkBMTBaseline(b *testing.B, _ int) {
 
 	for b.Loop() {
 		eg := new(errgroup.Group)
-		for j := 0; j < testSegmentCount; j++ {
+		for range testSegmentCount {
 			eg.Go(func() error {
 				_, err := bmt.Sha3hash(testData[:hashSize])
 				return err
@@ -113,7 +113,7 @@ func benchmarkPool(b *testing.B, poolsize int) {
 
 	for b.Loop() {
 		eg := new(errgroup.Group)
-		for j := 0; j < cycles; j++ {
+		for range cycles {
 			eg.Go(func() error {
 				h := pool.Get()
 				defer pool.Put(h)

@@ -62,9 +62,7 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, e
 	errcnt := 0
 
 	// concurrently call to retrieve chunk using original CAC address
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		ch, err := g.Getter.Get(ctx, addr)
 		if err != nil {
 			errc <- err
@@ -75,7 +73,7 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, e
 		case resultC <- ch:
 		case <-ctx.Done():
 		}
-	}()
+	})
 	// counters
 	n := 0      // counts the replica addresses tried
 	target := 2 // the number of replicas attempted to download in this batch
@@ -116,9 +114,7 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, e
 				continue
 			}
 
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				ch, err := g.Getter.Get(ctx, swarm.NewAddress(so.addr))
 				if err != nil {
 					errc <- err
@@ -135,7 +131,7 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, e
 				case resultC <- soc.WrappedChunk():
 				case <-ctx.Done():
 				}
-			}()
+			})
 			n++
 			if n < target {
 				continue

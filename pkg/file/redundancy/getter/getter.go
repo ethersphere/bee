@@ -69,12 +69,12 @@ func New(addrs []swarm.Address, shardCnt int, g storage.Getter, p storage.Putter
 	}
 
 	// after init, cache and wait channels are immutable, need no locking
-	for i := 0; i < shardCnt; i++ {
+	for i := range shardCnt {
 		d.cache[addrs[i].ByteString()] = i
 	}
 
 	// after init, cache and wait channels are immutable, need no locking
-	for i := 0; i < size; i++ {
+	for i := range size {
 		d.waits[i] = make(chan error)
 	}
 
@@ -340,7 +340,7 @@ func (g *decoder) setData(i int, chdata []byte) {
 func (g *decoder) getData(i int) []byte {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if i == g.shardCnt-1 && g.lastLen > 0 {
+	if i == g.shardCnt-1 && g.lastLen > 0 && g.rsbuf[i] != nil {
 		return g.rsbuf[i][:g.lastLen] // cut padding
 	}
 	return g.rsbuf[i]

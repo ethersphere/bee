@@ -39,7 +39,7 @@ func TestDBExportImport(t *testing.T) {
 
 	chunks := make(map[string]int)
 	nChunks := 10
-	for i := 0; i < nChunks; i++ {
+	for range nChunks {
 		ch := storagetest.GenerateTestRandomChunk()
 		err := db1.ReservePutter().Put(ctx, ch)
 		if err != nil {
@@ -101,13 +101,13 @@ func TestDBExportImportPinning(t *testing.T) {
 	pins := make(map[string]any)
 	nChunks := 10
 
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		rootAddr := swarm.RandAddress(t)
 		collection, err := db1.NewCollection(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
-		for j := 0; j < nChunks; j++ {
+		for range nChunks {
 			ch := storagetest.GenerateTestRandomChunk()
 			err = collection.Put(ctx, ch)
 			if err != nil {
@@ -186,7 +186,7 @@ func TestDBNuke_FLAKY(t *testing.T) {
 	}, dataDir)
 
 	nChunks := 10
-	for i := 0; i < nChunks; i++ {
+	for range nChunks {
 		ch := storagetest.GenerateTestRandomChunk()
 		err := db.ReservePutter().Put(ctx, ch)
 		if err != nil {
@@ -241,7 +241,7 @@ func TestDBInfo(t *testing.T) {
 	}, dir1)
 
 	nChunks := 10
-	for i := 0; i < nChunks; i++ {
+	for range nChunks {
 		ch := storagetest.GenerateTestRandomChunk()
 		err := db1.ReservePutter().Put(ctx, ch)
 		if err != nil {

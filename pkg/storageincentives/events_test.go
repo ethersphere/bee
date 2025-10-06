@@ -41,7 +41,7 @@ func TestClose(t *testing.T) {
 
 	ev.Close()
 
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		select {
 		case <-done1:
 		case <-done2:
@@ -82,7 +82,7 @@ func TestPhaseCancel(t *testing.T) {
 	ev.Publish(2)
 	ev.Publish(3)
 
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		select {
 		case <-done1:
 		case <-done2:

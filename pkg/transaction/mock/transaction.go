@@ -171,10 +171,10 @@ type Call struct {
 	to     common.Address
 	result []byte
 	method string
-	params []interface{}
+	params []any
 }
 
-func ABICall(abi *abi.ABI, to common.Address, result []byte, method string, params ...interface{}) Call {
+func ABICall(abi *abi.ABI, to common.Address, result []byte, method string, params ...any) Call {
 	return Call{
 		to:     to,
 		abi:    abi,
@@ -216,11 +216,11 @@ func WithABICallSequence(calls ...Call) Option {
 	})
 }
 
-func WithABICall(abi *abi.ABI, to common.Address, result []byte, method string, params ...interface{}) Option {
+func WithABICall(abi *abi.ABI, to common.Address, result []byte, method string, params ...any) Option {
 	return WithABICallSequence(ABICall(abi, to, result, method, params...))
 }
 
-func WithABISend(abi *abi.ABI, txHash common.Hash, expectedAddress common.Address, expectedValue *big.Int, method string, params ...interface{}) Option {
+func WithABISend(abi *abi.ABI, txHash common.Hash, expectedAddress common.Address, expectedValue *big.Int, method string, params ...any) Option {
 	return optionFunc(func(s *transactionServiceMock) {
 		s.send = func(ctx context.Context, request *transaction.TxRequest, boost int) (common.Hash, error) {
 			data, err := abi.Pack(method, params...)
