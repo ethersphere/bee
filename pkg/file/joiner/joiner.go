@@ -273,12 +273,10 @@ func (j *joiner) readAtOffset(
 		subtrieSpan := sec
 		subtrieSpanLimit := sec
 
-		currentReadSize := min(
-			// the size of the subtrie, minus the offset from the start of the trie
-			// upper bound alignments
-			min(
-
-				subtrieSpan-(off-cur), bytesToRead), subtrieSpan)
+		currentReadSize := subtrieSpan - (off - cur) // the size of the subtrie, minus the offset from the start of the trie
+		// upper bound alignments
+		currentReadSize = min(currentReadSize, bytesToRead)
+		currentReadSize = min(currentReadSize, subtrieSpan)
 
 		func(address swarm.Address, b []byte, cur, subTrieSize, off, bufferOffset, bytesToRead, subtrieSpanLimit int64) {
 			eg.Go(func() error {
