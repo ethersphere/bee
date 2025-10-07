@@ -19,7 +19,13 @@ func New(getter storage.Getter) feeds.Factory {
 	return &factory{getter}
 }
 
-func (f *factory) NewLookup(t feeds.Type, feed *feeds.Feed) (feeds.Lookup, error) {
+func WithGetter(getter storage.Getter) func(feeds.Factory) {
+	return func(f feeds.Factory) {
+		f.(*factory).Getter = getter
+	}
+}
+
+func (f *factory) NewLookup(t feeds.Type, feed *feeds.Feed, options ...feeds.FactoryOption) (feeds.Lookup, error) {
 	switch t {
 	case feeds.Sequence:
 		return sequence.NewAsyncFinder(f.Getter, feed), nil

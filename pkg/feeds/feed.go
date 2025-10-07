@@ -25,8 +25,10 @@ var ErrFeedTypeNotFound = errors.New("no such feed type")
 
 // Factory creates feed lookups for different types of feeds.
 type Factory interface {
-	NewLookup(Type, *Feed) (Lookup, error)
+	NewLookup(Type, *Feed, ...FactoryOption) (Lookup, error)
 }
+
+type FactoryOption func(f Factory)
 
 // Type enumerates the time-based feed types
 type Type int

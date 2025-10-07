@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
+	"github.com/ethersphere/bee/v2/pkg/feeds/factory"
 	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
@@ -23,6 +24,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/manifest/mantaray"
 	"github.com/ethersphere/bee/v2/pkg/manifest/simple"
 	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/replicas"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer"
@@ -73,8 +75,11 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// todo: this should be replicas.NewSocGetter
+	getter := replicas.NewGetter(s.storer.Download(false), redundancy.DefaultLevel)
+
 	f := feeds.New(paths.Topic, paths.Owner)
-	lookup, err := s.feedFactory.NewLookup(feeds.Sequence, f)
+	lookup, err := s.feedFactory.NewLookup(feeds.Sequence, f, factory.WithGetter(getter))
 	if err != nil {
 		logger.Debug("new lookup failed", "owner", paths.Owner, "error", err)
 		logger.Error(nil, "new lookup failed")
