@@ -19,14 +19,6 @@ func New(getter storage.Getter) feeds.Factory {
 	return &factory{getter}
 }
 
-// WithGetter is a factory option to use a custom storage.Getter, overriding
-// the default one provided to the factory constructor.
-func WithGetter(getter storage.Getter) feeds.FactoryOption {
-	return func(c *feeds.FactoryConfig) {
-		c.Getter = getter
-	}
-}
-
 func (f *factory) NewLookup(t feeds.Type, feed *feeds.Feed, opts ...feeds.FactoryOption) (feeds.Lookup, error) {
 	cfg := &feeds.FactoryConfig{Getter: f.Getter}
 

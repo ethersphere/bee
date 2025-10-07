@@ -36,6 +36,14 @@ type FactoryConfig struct {
 // LookupOption defines the type for functional options
 type FactoryOption func(*FactoryConfig)
 
+// WithGetter is a factory option to use a custom storage.Getter, overriding
+// the default one provided to the factory constructor.
+func WithGetter(getter storage.Getter) FactoryOption {
+	return func(c *FactoryConfig) {
+		c.Getter = getter
+	}
+}
+
 // Type enumerates the time-based feed types
 type Type int
 
