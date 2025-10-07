@@ -13,40 +13,33 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
-	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-// ErrSwarmageddon is returned in case of a vis mayor called Swarmageddon.
-// Swarmageddon is the situation when none of the replicas can be retrieved.
-// If 2^{depth} replicas were uploaded and they all have valid postage stamps
-// then the probability of Swarmageddon is less than 0.000001
-// assuming the error rate of chunk retrievals stays below the level expressed
-// as depth by the publisher.
-var ErrSwarmageddon = errors.New("swarmageddon has begun")
-
 // getter is the private implementation of storage.Getter, an interface for
 // retrieving chunks. This getter embeds the original simple chunk getter and extends it
-// to a multiplexed variant that fetches chunks with replicas.
+// to a multiplexed variant that fetches chunks with replicas for SOC.
 //
 // the strategy to retrieve a chunk that has replicas can be configured with a few parameters:
-//   - RetryInterval: the delay before a new batch of replicas is fetched.
+//   - SOCRetryInterval: the delay before a new batch of replicas is fetched.
 //   - depth: 2^{depth} is the total number of additional replicas that have been uploaded
 //     (by default, it is assumed to be 4, ie. total of 16)
 //   - (not implemented) pivot: replicas with address in the proximity of pivot will be tried first
-type getter struct {
+type socGetter struct {
 	storage.Getter
 	level redundancy.Level
 }
 
-// NewGetter is the getter constructor
-func NewGetter(g storage.Getter, level redundancy.Level) storage.Getter {
-	return &getter{Getter: g, level: level}
+var SOCRetryInterval = 300 * time.Millisecond
+
+// NewSocGetter is the getter constructor
+func NewSocGetter(g storage.Getter, level redundancy.Level) storage.Getter {
+	return &socGetter{Getter: g, level: level}
 }
 
-// Get makes the getter satisfy the storage.Getter interface
-func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
+// Get makes the socGetter satisfy the storage.Getter interface
+func (g *socGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -57,11 +50,11 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, e
 	// workers each fetching a replica
 	resultC := make(chan swarm.Chunk)
 	// errc collects the errors
-	errc := make(chan error, 17)
+	errc := make(chan error, g.level.GetReplicaCount()+1)
 	var errs error
 	errcnt := 0
 
-	// concurrently call to retrieve chunk using original CAC address
+	// concurrently call to retrieve chunk using original SOC address
 	wg.Go(func() {
 		ch, err := g.Getter.Get(ctx, addr)
 		if err != nil {
@@ -80,7 +73,7 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, e
 	total := g.level.GetReplicaCount()
 
 	//
-	rr := newReplicator(addr, g.level)
+	rr := newSocReplicator(addr, g.level)
 	next := rr.c
 	var wait <-chan time.Time // nil channel to disable case
 	// addresses used are doubling each period of search expansion
@@ -121,14 +114,8 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, e
 					return
 				}
 
-				soc, err := soc.FromChunk(ch)
-				if err != nil {
-					errc <- err
-					return
-				}
-
 				select {
-				case resultC <- soc.WrappedChunk():
+				case resultC <- ch:
 				case <-ctx.Done():
 				}
 			})
@@ -137,7 +124,7 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, e
 				continue
 			}
 			next = nil
-			wait = time.After(RetryInterval)
+			wait = time.After(SOCRetryInterval)
 		}
 	}
 
