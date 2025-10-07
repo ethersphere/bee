@@ -35,7 +35,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/gsoc"
 	"github.com/ethersphere/bee/v2/pkg/hive"
 	"github.com/ethersphere/bee/v2/pkg/log"
-	"github.com/ethersphere/bee/v2/pkg/metrics"
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p"
@@ -1282,20 +1281,20 @@ func NewBee(
 		apiService.MustRegisterMetrics(lightNodes.Metrics()...)
 		apiService.MustRegisterMetrics(hive.Metrics()...)
 
-		if bs, ok := batchStore.(metrics.MetricsCollector); ok {
+		if bs, ok := batchStore.(m.MetricsCollector); ok {
 			apiService.MustRegisterMetrics(bs.Metrics()...)
 		}
-		if ls, ok := eventListener.(metrics.MetricsCollector); ok {
+		if ls, ok := eventListener.(m.MetricsCollector); ok {
 			apiService.MustRegisterMetrics(ls.Metrics()...)
 		}
-		if pssServiceMetrics, ok := pssService.(metrics.MetricsCollector); ok {
+		if pssServiceMetrics, ok := pssService.(m.MetricsCollector); ok {
 			apiService.MustRegisterMetrics(pssServiceMetrics.Metrics()...)
 		}
-		if swapBackendMetrics, ok := chainBackend.(metrics.MetricsCollector); ok {
+		if swapBackendMetrics, ok := chainBackend.(m.MetricsCollector); ok {
 			apiService.MustRegisterMetrics(swapBackendMetrics.Metrics()...)
 		}
 
-		if l, ok := logger.(metrics.MetricsCollector); ok {
+		if l, ok := logger.(m.MetricsCollector); ok {
 			apiService.MustRegisterMetrics(l.Metrics()...)
 		}
 		apiService.MustRegisterMetrics(pseudosettleService.Metrics()...)
