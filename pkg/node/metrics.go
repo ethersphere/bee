@@ -5,24 +5,23 @@
 package node
 
 import (
-	"github.com/ethersphere/bee/v2/pkg/metrics"
-	"github.com/prometheus/client_golang/prometheus"
+	m "github.com/ethersphere/bee/v2/pkg/metrics"
 )
 
 type nodeMetrics struct {
 	// WarmupDuration measures time in seconds for the node warmup to complete
-	WarmupDuration prometheus.Histogram
+	WarmupDuration m.Histogram
 	// FullSyncDuration measures time in seconds for the full sync to complete
-	FullSyncDuration prometheus.Histogram
+	FullSyncDuration m.Histogram
 }
 
 func newMetrics() nodeMetrics {
 	subsystem := "init"
 
 	return nodeMetrics{
-		WarmupDuration: prometheus.NewHistogram(
-			prometheus.HistogramOpts{
-				Namespace: metrics.Namespace,
+		WarmupDuration: m.NewHistogram(
+			m.HistogramOpts{
+				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "warmup_duration_seconds",
 				Help:      "Duration in seconds for node warmup to complete",
@@ -30,9 +29,9 @@ func newMetrics() nodeMetrics {
 				Buckets: []float64{10, 20, 25, 30, 35, 40, 45, 50, 60, 70, 90, 120, 180, 240, 300, 350, 380, 400, 420, 440, 460, 480, 550, 600},
 			},
 		),
-		FullSyncDuration: prometheus.NewHistogram(
-			prometheus.HistogramOpts{
-				Namespace: metrics.Namespace,
+		FullSyncDuration: m.NewHistogram(
+			m.HistogramOpts{
+				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "full_sync_duration_minutes",
 				Help:      "Duration in minutes for node full sync to complete",
@@ -45,6 +44,6 @@ func newMetrics() nodeMetrics {
 	}
 }
 
-func getMetrics(nodeMetrics nodeMetrics) []prometheus.Collector {
-	return metrics.PrometheusCollectorsFromFields(nodeMetrics)
+func getMetrics(nodeMetrics nodeMetrics) []m.Collector {
+	return m.PrometheusCollectorsFromFields(nodeMetrics)
 }

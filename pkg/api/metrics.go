@@ -11,8 +11,6 @@ import (
 
 	"github.com/ethersphere/bee/v2"
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/collectors"
 )
 
 const bytesInKB = 1000
@@ -23,35 +21,35 @@ type metrics struct {
 	// all metrics fields must be exported
 	// to be able to return them by Metrics()
 	// using reflection
-	RequestCount       prometheus.Counter
-	ResponseDuration   prometheus.Histogram
-	PingRequestCount   prometheus.Counter
-	ResponseCodeCounts *prometheus.CounterVec
+	RequestCount       m.Counter
+	ResponseDuration   m.Histogram
+	PingRequestCount   m.Counter
+	ResponseCodeCounts m.CounterMetricVector
 
-	ContentApiDuration *prometheus.HistogramVec
-	UploadSpeed        *prometheus.HistogramVec
-	DownloadSpeed      *prometheus.HistogramVec
+	ContentApiDuration m.HistogramMetricVector
+	UploadSpeed        m.HistogramMetricVector
+	DownloadSpeed      m.HistogramMetricVector
 }
 
 func newMetrics() metrics {
 	subsystem := "api"
 
 	return metrics{
-		RequestCount: prometheus.NewCounter(prometheus.CounterOpts{
+		RequestCount: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "request_count",
 			Help:      "Number of API requests.",
 		}),
-		ResponseDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+		ResponseDuration: m.NewHistogram(m.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "response_duration_seconds",
 			Help:      "Histogram of API response durations.",
 			Buckets:   []float64{0.01, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
 		}),
-		ResponseCodeCounts: prometheus.NewCounterVec(
-			prometheus.CounterOpts{
+		ResponseCodeCounts: m.NewCounterVec(
+			m.CounterOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "response_code_count",
@@ -59,21 +57,21 @@ func newMetrics() metrics {
 			},
 			[]string{"code", "method"},
 		),
-		ContentApiDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		ContentApiDuration: m.NewHistogramVec(m.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "content_api_duration",
 			Help:      "Histogram of file upload API response durations.",
 			Buckets:   []float64{0.5, 1, 2.5, 5, 10, 30, 60},
 		}, []string{"filesize", "method"}),
-		UploadSpeed: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		UploadSpeed: m.NewHistogramVec(m.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "upload_speed",
 			Help:      "Histogram of upload speed in B/s.",
 			Buckets:   []float64{0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5},
 		}, []string{"endpoint", "mode"}),
-		DownloadSpeed: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		DownloadSpeed: m.NewHistogramVec(m.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "download_speed",
@@ -94,13 +92,13 @@ func toFileSizeBucket(bytes int64) int64 {
 	return fileSizeBucketsKBytes[len(fileSizeBucketsKBytes)-1] * bytesInKB
 }
 
-func (s *Service) Metrics() []prometheus.Collector {
+func (s *Service) Metrics() []m.Collector {
 	return m.PrometheusCollectorsFromFields(s.metrics)
 }
 
 // StatusMetrics exposes metrics that are exposed on the status protocol.
-func (s *Service) StatusMetrics() []prometheus.Collector {
-	return []prometheus.Collector{
+func (s *Service) StatusMetrics() []m.Collector {
+	return []m.Collector{
 		s.metrics.UploadSpeed,
 		s.metrics.DownloadSpeed,
 	}
@@ -166,20 +164,20 @@ func (rw *responseWriter) WriteHeader(code int) {
 	rw.wroteHeader = true
 }
 
-func newDebugMetrics() (r *prometheus.Registry) {
-	r = prometheus.NewRegistry()
+func newDebugMetrics() (r m.MetricsRegistererGatherer) {
+	r = m.NewRegistry()
 
 	// register standard metrics
 	r.MustRegister(
-		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{
+		m.NewProcessCollector(m.ProcessCollectorOpts{
 			Namespace: m.Namespace,
 		}),
-		collectors.NewGoCollector(),
-		prometheus.NewGauge(prometheus.GaugeOpts{
+		m.NewGoCollector(),
+		m.NewGauge(m.GaugeOpts{
 			Namespace: m.Namespace,
 			Name:      "info",
 			Help:      "Bee information.",
-			ConstLabels: prometheus.Labels{
+			ConstLabels: m.Labels{
 				"version": bee.Version,
 			},
 		}),
@@ -188,10 +186,10 @@ func newDebugMetrics() (r *prometheus.Registry) {
 	return r
 }
 
-func (s *Service) MetricsRegistry() *prometheus.Registry {
+func (s *Service) MetricsRegistry() m.MetricsRegistererGatherer {
 	return s.metricsRegistry
 }
 
-func (s *Service) MustRegisterMetrics(cs ...prometheus.Collector) {
+func (s *Service) MustRegisterMetrics(cs ...m.Collector) {
 	s.metricsRegistry.MustRegister(cs...)
 }
