@@ -364,7 +364,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 }
 
 func (s *Service) reachabilityWorker() error {
-	sub, err := s.host.EventBus().Subscribe([]interface{}{new(event.EvtLocalReachabilityChanged)})
+	sub, err := s.host.EventBus().Subscribe([]any{new(event.EvtLocalReachabilityChanged)})
 	if err != nil {
 		return fmt.Errorf("failed subscribing to reachability event %w", err)
 	}
@@ -1057,7 +1057,7 @@ func (s *Service) peerUserAgent(ctx context.Context, peerID libp2ppeer.ID) strin
 	ctx, cancel := context.WithTimeout(ctx, peerUserAgentTimeout)
 	defer cancel()
 	var (
-		v   interface{}
+		v   any
 		err error
 	)
 	// Peerstore may not contain all keys and values right after the connections is created.

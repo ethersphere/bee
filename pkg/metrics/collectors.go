@@ -8,7 +8,7 @@ import (
 	"reflect"
 )
 
-func PrometheusCollectorsFromFields(i interface{}) (cs []Collector) {
+func PrometheusCollectorsFromFields(i any) (cs []Collector) {
 	v := reflect.Indirect(reflect.ValueOf(i))
 	for i := 0; i < v.NumField(); i++ {
 		if !v.Field(i).CanInterface() {

@@ -58,7 +58,7 @@ func NewHTTPAccessLogHandler(logger log.Logger, tracer *tracing.Tracer, message 
 				ip = r.RemoteAddr
 			}
 
-			fields := []interface{}{
+			fields := []any{
 				"ip", ip,
 				"method", r.Method,
 				"host", r.Host,

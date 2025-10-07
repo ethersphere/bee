@@ -143,9 +143,7 @@ func (s *service) salud(mode string, durPercentile float64, connsPercentile floa
 	)
 
 	err := s.topology.EachConnectedPeer(func(addr swarm.Address, bin uint8) (stop bool, jumpToNext bool, err error) {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 
 			ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 			defer cancel()
@@ -172,7 +170,7 @@ func (s *service) salud(mode string, durPercentile float64, connsPercentile floa
 				neighborhoodTotalDur += dur.Seconds()
 			}
 			mtx.Unlock()
-		}()
+		})
 		return false, false, nil
 	}, topology.Select{})
 	if err != nil {
