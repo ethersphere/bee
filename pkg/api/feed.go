@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
+	"github.com/ethersphere/bee/v2/pkg/feeds/factory"
 	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
@@ -81,7 +82,7 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	f := feeds.New(paths.Topic, paths.Owner)
-	lookup, err := s.feedFactory.NewLookup(feeds.Sequence, f, getter)
+	lookup, err := s.feedFactory.NewLookup(feeds.Sequence, f, factory.WithGetter(getter))
 	if err != nil {
 		logger.Debug("new lookup failed", "owner", paths.Owner, "error", err)
 		logger.Error(nil, "new lookup failed")
