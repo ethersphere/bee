@@ -67,7 +67,7 @@ func (tg *testGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chu
 	if ch != nil {
 		return ch, nil
 	}
-	return soc.New(addr.Bytes(), tg.ch).Sign(replicas.Signer)
+	return soc.New(addr.Bytes(), tg.ch).Sign(replicas.TestSigner)
 }
 
 func newTestGetter(ch swarm.Chunk, firstFound int, errf func(int) chan struct{}) *testGetter {
