@@ -7,6 +7,7 @@ package storageincentives_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/big"
 	"sync"
 	"testing"
@@ -140,20 +141,27 @@ func TestAgent(t *testing.T) {
 			contract.mtx.Lock()
 			defer contract.mtx.Unlock()
 
+			if len(contract.callsList) == 0 {
+				t.Fatal("no calls were made to the contract")
+			}
+
 			prevCall := contract.callsList[0]
 
 			for i := 1; i < len(contract.callsList); i++ {
+				currentCall := contract.callsList[i]
 
-				switch contract.callsList[i] {
+				switch currentCall {
 				case isWinnerCall:
 					assertOrder(t, revealCall, prevCall)
 				case revealCall:
 					assertOrder(t, commitCall, prevCall)
 				case commitCall:
 					assertOrder(t, isWinnerCall, prevCall)
+				case claimCall:
+					assertOrder(t, isWinnerCall, prevCall)
 				}
 
-				prevCall = contract.callsList[i]
+				prevCall = currentCall
 			}
 		})
 	}
@@ -323,3 +331,255 @@ func (m *mockContract) Reveal(_ context.Context, r uint8, _ []byte, _ []byte) (c
 type mockHealth struct{}
 
 func (m *mockHealth) IsHealthy() bool { return true }
+
+// TestAgentAdvanced uses Go 1.25 advanced testing features for better timing control
+func TestAgentAdvanced(t *testing.T) {
+	t.Parallel()
+
+	// Use testing.T.Deadline() to ensure test doesn't run too long
+	if deadline, ok := t.Deadline(); ok {
+		timeout := time.Until(deadline) - time.Second // Leave 1 second buffer
+		if timeout < 10*time.Second {
+			t.Skip("Not enough time for advanced test")
+		}
+	}
+
+	bigBalance := big.NewInt(4_000_000_000)
+
+	// Test the problematic case with advanced timing control
+	t.Run("4_blocks_per_phase_with_race_detection", func(t *testing.T) {
+		t.Parallel()
+
+		// Use a race detector-friendly approach
+		var callSequence []contractCall
+		var callMutex sync.Mutex
+		var callCond sync.Cond
+		callCond.L = &callMutex
+
+		wait := make(chan struct{})
+		addr := swarm.RandAddress(t)
+
+		backend := &mockchainBackend{
+			limit: 144,
+			limitCallback: func() {
+				select {
+				case wait <- struct{}{}:
+				default:
+				}
+			},
+			incrementBy: 2,
+			block:       12,
+			balance:     bigBalance,
+		}
+
+		var radius uint8 = 8
+		contract := &mockContractAdvanced{
+			t:              t,
+			expectedRadius: radius + 1,
+			callSequence:   &callSequence,
+			callMutex:      &callMutex,
+			callCond:       &callCond,
+		}
+
+		service, _ := createService(t, addr, backend, contract, 12, 4, radius, 1)
+		testutil.CleanupCloser(t, service)
+
+		// Wait for completion with timeout
+		select {
+		case <-wait:
+			// Test completed
+		case <-time.After(15 * time.Second):
+			t.Fatal("Test timed out")
+		}
+
+		// Verify call sequence with race detection
+		callMutex.Lock()
+		defer callMutex.Unlock()
+
+		if len(callSequence) == 0 {
+			t.Fatal("no calls were made to the contract")
+		}
+
+		// Verify the sequence with better error reporting
+		prevCall := callSequence[0]
+		for i := 1; i < len(callSequence); i++ {
+			currentCall := callSequence[i]
+
+			switch currentCall {
+			case isWinnerCall:
+				if prevCall != revealCall {
+					t.Errorf("Call %d: expected isWinnerCall to follow revealCall, but previous was %s", i, prevCall)
+				}
+			case revealCall:
+				if prevCall != commitCall {
+					t.Errorf("Call %d: expected revealCall to follow commitCall, but previous was %s", i, prevCall)
+				}
+			case commitCall:
+				if prevCall != isWinnerCall {
+					t.Errorf("Call %d: expected commitCall to follow isWinnerCall, but previous was %s", i, prevCall)
+				}
+			case claimCall:
+				if prevCall != isWinnerCall {
+					t.Errorf("Call %d: expected claimCall to follow isWinnerCall, but previous was %s", i, prevCall)
+				}
+			}
+
+			prevCall = currentCall
+		}
+	})
+}
+
+// mockContractAdvanced provides better race detection and timing control
+type mockContractAdvanced struct {
+	t              *testing.T
+	expectedRadius uint8
+	callSequence   *[]contractCall
+	callMutex      *sync.Mutex
+	callCond       *sync.Cond
+}
+
+func (m *mockContractAdvanced) ReserveSalt(context.Context) ([]byte, error) {
+	return nil, nil
+}
+
+func (m *mockContractAdvanced) IsPlaying(_ context.Context, r uint8) (bool, error) {
+	if r != m.expectedRadius {
+		m.t.Fatalf("isPlaying: expected radius %d, got %d", m.expectedRadius, r)
+	}
+	return true, nil
+}
+
+func (m *mockContractAdvanced) IsWinner(context.Context) (bool, error) {
+	m.callMutex.Lock()
+	defer m.callMutex.Unlock()
+
+	*m.callSequence = append(*m.callSequence, isWinnerCall)
+	m.callCond.Broadcast() // Notify waiting goroutines
+
+	return false, nil
+}
+
+func (m *mockContractAdvanced) Claim(context.Context, redistribution.ChunkInclusionProofs) (common.Hash, error) {
+	m.callMutex.Lock()
+	defer m.callMutex.Unlock()
+
+	*m.callSequence = append(*m.callSequence, claimCall)
+	m.callCond.Broadcast()
+
+	return common.Hash{}, nil
+}
+
+func (m *mockContractAdvanced) Commit(context.Context, []byte, uint64) (common.Hash, error) {
+	m.callMutex.Lock()
+	defer m.callMutex.Unlock()
+
+	*m.callSequence = append(*m.callSequence, commitCall)
+	m.callCond.Broadcast()
+
+	return common.Hash{}, nil
+}
+
+func (m *mockContractAdvanced) Reveal(_ context.Context, r uint8, _ []byte, _ []byte) (common.Hash, error) {
+	if r != m.expectedRadius {
+		m.t.Fatalf("reveal: expected radius %d, got %d", m.expectedRadius, r)
+	}
+
+	m.callMutex.Lock()
+	defer m.callMutex.Unlock()
+
+	*m.callSequence = append(*m.callSequence, revealCall)
+	m.callCond.Broadcast()
+
+	return common.Hash{}, nil
+}
+
+// TestAgentRaceDetection runs multiple iterations to detect race conditions
+func TestAgentRaceDetection(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping race detection test in short mode")
+	}
+
+	// Use Go 1.25's race detection capabilities
+	iterations := 10
+	if testing.Verbose() {
+		iterations = 20 // More iterations in verbose mode
+	}
+
+	for i := 0; i < iterations; i++ {
+		t.Run(fmt.Sprintf("iteration_%d", i), func(t *testing.T) {
+			t.Parallel()
+
+			// Run the problematic test case multiple times
+			runSingleAgentTest(t, "race_detection_test")
+		})
+	}
+}
+
+// runSingleAgentTest runs a single instance of the agent test
+func runSingleAgentTest(t *testing.T, testName string) {
+	bigBalance := big.NewInt(4_000_000_000)
+	wait := make(chan struct{})
+	addr := swarm.RandAddress(t)
+
+	backend := &mockchainBackend{
+		limit: 144,
+		limitCallback: func() {
+			select {
+			case wait <- struct{}{}:
+			default:
+			}
+		},
+		incrementBy: 2,
+		block:       12,
+		balance:     bigBalance,
+	}
+
+	var radius uint8 = 8
+	contract := &mockContract{t: t, expectedRadius: radius + 1}
+
+	service, _ := createService(t, addr, backend, contract, 12, 4, radius, 1)
+	testutil.CleanupCloser(t, service)
+
+	// Wait for completion with timeout
+	select {
+	case <-wait:
+		// Test completed
+	case <-time.After(10 * time.Second):
+		t.Fatal("Test timed out")
+	}
+
+	// Verify call sequence
+	contract.mtx.Lock()
+	defer contract.mtx.Unlock()
+
+	if len(contract.callsList) == 0 {
+		t.Fatal("no calls were made to the contract")
+	}
+
+	// Check sequence
+	prevCall := contract.callsList[0]
+	for i := 1; i < len(contract.callsList); i++ {
+		currentCall := contract.callsList[i]
+
+		switch currentCall {
+		case isWinnerCall:
+			if prevCall != revealCall {
+				t.Errorf("Race detected! Call %d: expected isWinnerCall to follow revealCall, but previous was %s", i, prevCall)
+			}
+		case revealCall:
+			if prevCall != commitCall {
+				t.Errorf("Race detected! Call %d: expected revealCall to follow commitCall, but previous was %s", i, prevCall)
+			}
+		case commitCall:
+			if prevCall != isWinnerCall {
+				t.Errorf("Race detected! Call %d: expected commitCall to follow isWinnerCall, but previous was %s", i, prevCall)
+			}
+		case claimCall:
+			if prevCall != isWinnerCall {
+				t.Errorf("Race detected! Call %d: expected claimCall to follow isWinnerCall, but previous was %s", i, prevCall)
+			}
+		}
+
+		prevCall = currentCall
+	}
+}
