@@ -262,7 +262,7 @@ func (s *Service) socGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rLevel := redundancy.DefaultLevel
+	rLevel := redundancy.PARANOID
 	if headers.RLevel != nil {
 		rLevel = *headers.RLevel
 	}
@@ -275,7 +275,7 @@ func (s *Service) socGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	getter := s.storer.Download(true)
-	if rLevel != 0 {
+	if rLevel > redundancy.NONE {
 		getter = replicas.NewSocGetter(getter, rLevel)
 	}
 	sch, err := getter.Get(r.Context(), address)

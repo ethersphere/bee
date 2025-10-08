@@ -401,7 +401,7 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 		cache = *headers.Cache
 	}
 
-	rLevel := redundancy.DefaultLevel
+	rLevel := redundancy.PARANOID
 	if headers.RLevel != nil {
 		rLevel = *headers.RLevel
 	}
