@@ -149,7 +149,7 @@ func (r *reacher) ping(c chan *peer, ctx context.Context) {
 		} else {
 			r.metrics.Pings.WithLabelValues("failure").Inc()
 			r.metrics.PingTime.WithLabelValues("failure").Observe(time.Since(now).Seconds())
-			r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPrivate)
+			// r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPrivate)
 		}
 	}
 }
