@@ -538,7 +538,13 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	}
 
 	if s.reacher != nil {
-		s.reacher.Connected(overlay, stream.Conn().RemoteMultiaddr())
+		underlay, err := buildFullMA(stream.Conn().RemoteMultiaddr(), peerID)
+		if err != nil {
+			s.logger.Error(err, "stream handler: unable to build complete peer multiaddr", "peer", overlay, "remote_mutliaadr", stream.Conn().RemoteMultiaddr(), "peer_id", peerID)
+			_ = s.Disconnect(overlay, "unable to build complete peer multiaddr")
+			return
+		}
+		s.reacher.Connected(overlay, underlay)
 	}
 
 	peerUserAgent := appendSpace(s.peerUserAgent(s.ctx, peerID))
@@ -824,7 +830,10 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	s.metrics.CreatedConnectionCount.Inc()
 
 	if s.reacher != nil {
-		winning := stream.Conn().RemoteMultiaddr() // get underlay, which we used for connection
+		winning, err := buildFullMA(stream.Conn().RemoteMultiaddr(), id) // get underlay, which we used for connection
+		if err != nil {
+			return nil, fmt.Errorf("build full multaddr %s %v %v: %w", overlay, stream.Conn().RemoteMultiaddr(), id, err)
+		}
 		s.reacher.Connected(overlay, winning)
 	}
 
@@ -1209,4 +1218,11 @@ func isNetworkOrHostUnreachableError(err error) bool {
 		}
 	}
 	return false
+}
+
+func buildFullMA(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) {
+	if _, err := addr.ValueForProtocol(ma.P_P2P); err == nil {
+		return addr, nil
+	}
+	return ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", addr.String(), peerID.String()))
 }
