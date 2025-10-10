@@ -152,12 +152,12 @@ func expectPeersEventually(t *testing.T, s *libp2p.Service, addrs ...swarm.Addre
 	}
 }
 
-func serviceUnderlayAddress(t *testing.T, s *libp2p.Service) multiaddr.Multiaddr {
+func serviceUnderlayAddress(t *testing.T, s *libp2p.Service) []multiaddr.Multiaddr {
 	t.Helper()
 
 	addrs, err := s.Addresses()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return addrs[0]
+	return addrs
 }
