@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	ma "github.com/multiformats/go-multiaddr"
@@ -42,6 +43,7 @@ type reacher struct {
 	metrics metrics
 
 	options *Options
+	logger  log.Logger
 }
 
 type Options struct {
@@ -50,8 +52,7 @@ type Options struct {
 	RetryAfterDuration time.Duration
 }
 
-func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier, o *Options) *reacher {
-
+func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier, o *Options, log log.Logger) *reacher {
 	r := &reacher{
 		newPeer:  make(chan struct{}, 1),
 		quit:     make(chan struct{}),
@@ -59,6 +60,7 @@ func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier, o *Options) *reach
 		peers:    make(map[string]*peer),
 		notifier: notifier,
 		metrics:  newMetrics(),
+		logger:   log,
 	}
 
 	if o == nil {
@@ -130,27 +132,22 @@ func (r *reacher) manage() {
 }
 
 func (r *reacher) ping(c chan *peer, ctx context.Context) {
-
 	defer r.wg.Done()
-
 	for p := range c {
-
-		now := time.Now()
-
 		ctxt, cancel := context.WithTimeout(ctx, r.options.PingTimeout)
-		_, err := r.pinger.Ping(ctxt, p.addr)
-		cancel()
-
-		// ping was successful
-		if err == nil {
-			r.metrics.Pings.WithLabelValues("success").Inc()
-			r.metrics.PingTime.WithLabelValues("success").Observe(time.Since(now).Seconds())
+		rtt, err := r.pinger.Ping(ctxt, p.addr)
+		if err != nil {
+			r.logger.Debug("reacher: ping failed", "addr", p.addr.String(), "err", err)
+			r.metrics.Pings.WithLabelValues("failure").Inc()
+			r.metrics.PingTime.WithLabelValues("failure").Observe(rtt.Seconds())
 			r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPublic)
 		} else {
-			r.metrics.Pings.WithLabelValues("failure").Inc()
-			r.metrics.PingTime.WithLabelValues("failure").Observe(time.Since(now).Seconds())
-			r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPrivate)
+			r.logger.Debug("reacher: ping succeeded", "addr", p.addr.String(), "rtt", rtt.Seconds())
+			r.metrics.Pings.WithLabelValues("success").Inc()
+			r.metrics.PingTime.WithLabelValues("success").Observe(rtt.Seconds())
+			r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPublic)
 		}
+		cancel()
 	}
 }
 

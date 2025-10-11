@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/reacher"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -67,7 +68,7 @@ func TestPingSuccess(t *testing.T) {
 			done := make(chan struct{})
 			mock := newMock(tc.pingFunc, tc.reachableFunc(done))
 
-			r := reacher.New(mock, mock, &defaultOptions)
+			r := reacher.New(mock, mock, &defaultOptions, log.Noop)
 			testutil.CleanupCloser(t, r)
 
 			overlay := swarm.RandAddress(t)
@@ -113,7 +114,7 @@ func TestDisconnected(t *testing.T) {
 
 	mock := newMock(pingFunc, reachableFunc)
 
-	r := reacher.New(mock, mock, &defaultOptions)
+	r := reacher.New(mock, mock, &defaultOptions, log.Noop)
 	testutil.CleanupCloser(t, r)
 
 	r.Connected(swarm.RandAddress(t), nil)
