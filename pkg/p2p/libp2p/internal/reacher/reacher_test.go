@@ -72,8 +72,9 @@ func TestPingSuccess(t *testing.T) {
 			testutil.CleanupCloser(t, r)
 
 			overlay := swarm.RandAddress(t)
+			addr, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAmTBuJT9LvNmBiQiNoTsxE5mtNy6YG3paw79m94CRa9sRb")
 
-			r.Connected(overlay, nil)
+			r.Connected(overlay, addr)
 
 			select {
 			case <-time.After(time.Second * 5):
@@ -117,7 +118,8 @@ func TestDisconnected(t *testing.T) {
 	r := reacher.New(mock, mock, &defaultOptions, log.Noop)
 	testutil.CleanupCloser(t, r)
 
-	r.Connected(swarm.RandAddress(t), nil)
+	addr, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/7072/p2p/16Uiu2HAmTBuJT9LvNmBiQiNoTsxE5mtNy6YG3paw79m94CRa9sRb")
+	r.Connected(swarm.RandAddress(t), addr)
 	r.Connected(disconnectedOverlay, disconnectedMa)
 	r.Disconnected(disconnectedOverlay)
 }
