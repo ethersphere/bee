@@ -152,24 +152,29 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return nil, errors.New("no observed underlay sent")
 	}
 
-	advertisableUnderlays := make([]ma.Multiaddr, len(observedUnderlays))
-	for i, observedUnderlay := range observedUnderlays {
-		observedUnderlayAddrInfo, err := libp2ppeer.AddrInfoFromP2pAddr(observedUnderlay)
-		if err != nil {
-			return nil, fmt.Errorf("extract addr from P2P: %w", err)
-		}
+	var advertisableUnderlays []ma.Multiaddr
+	if s.advertisableAddresser != nil {
+		advertisableUnderlays = make([]ma.Multiaddr, len(observedUnderlays))
+		for i, observedUnderlay := range observedUnderlays {
+			observedUnderlayAddrInfo, err := libp2ppeer.AddrInfoFromP2pAddr(observedUnderlay)
+			if err != nil {
+				return nil, fmt.Errorf("extract addr from P2P: %w", err)
+			}
 
-		if s.libp2pID != observedUnderlayAddrInfo.ID {
-			// NOTE eventually we will return error here, but for now we want to gather some statistics
-			s.logger.Warning("received peer ID does not match ours", "their", observedUnderlayAddrInfo.ID, "ours", s.libp2pID)
-		}
+			if s.libp2pID != observedUnderlayAddrInfo.ID {
+				// NOTE eventually we will return error here, but for now we want to gather some statistics
+				s.logger.Warning("received peer ID does not match ours", "their", observedUnderlayAddrInfo.ID, "ours", s.libp2pID)
+			}
 
-		advertisableUnderlay, err := s.advertisableAddresser.Resolve(observedUnderlay)
-		if err != nil {
-			return nil, err
-		}
+			advertisableUnderlay, err := s.advertisableAddresser.Resolve(observedUnderlay)
+			if err != nil {
+				return nil, err
+			}
 
-		advertisableUnderlays[i] = advertisableUnderlay
+			advertisableUnderlays[i] = advertisableUnderlay
+		}
+	} else {
+		advertisableUnderlays = observedUnderlays
 	}
 
 	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce)
@@ -244,13 +249,18 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 		return nil, errors.New("no observed underlay sent")
 	}
 
-	advertisableUnderlays := make([]ma.Multiaddr, len(observedUnderlays))
-	for i, observedUnderlay := range observedUnderlays {
-		advertisableUnderlay, err := s.advertisableAddresser.Resolve(observedUnderlay)
-		if err != nil {
-			return nil, err
+	var advertisableUnderlays []ma.Multiaddr
+	if s.advertisableAddresser != nil {
+		advertisableUnderlays = make([]ma.Multiaddr, len(observedUnderlays))
+		for i, observedUnderlay := range observedUnderlays {
+			advertisableUnderlay, err := s.advertisableAddresser.Resolve(observedUnderlay)
+			if err != nil {
+				return nil, err
+			}
+			advertisableUnderlays[i] = advertisableUnderlay
 		}
-		advertisableUnderlays[i] = advertisableUnderlay
+	} else {
+		advertisableUnderlays = observedUnderlays
 	}
 
 	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce)

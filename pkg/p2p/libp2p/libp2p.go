@@ -293,9 +293,13 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	var advertisableAddresser handshake.AdvertisableAddressResolver
 	var natAddrResolver *staticAddressResolver
 	if o.NATAddr == "" {
-		advertisableAddresser = &UpnpAddressResolver{
-			host: h,
-		}
+		// Disable UpnpAddressResolver usage completely
+		// make advertisableAddresser unassigned
+		//
+		// advertisableAddresser = &UpnpAddressResolver{
+		// 	host: h,
+		// }
+		advertisableAddresser = nil
 	} else {
 		natAddrResolver, err = newStaticAddressResolver(o.NATAddr, net.LookupIP)
 		if err != nil {
