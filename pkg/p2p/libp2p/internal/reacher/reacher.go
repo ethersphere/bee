@@ -39,8 +39,7 @@ type reacher struct {
 	pinger   p2p.Pinger
 	notifier p2p.ReachableNotifier
 
-	wg      sync.WaitGroup
-	metrics metrics
+	wg sync.WaitGroup
 
 	options *Options
 	logger  log.Logger
@@ -59,8 +58,7 @@ func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier, o *Options, log lo
 		pinger:   streamer,
 		peers:    make(map[string]*peer),
 		notifier: notifier,
-		metrics:  newMetrics(),
-		logger:   log,
+		logger:   log.WithName("reacher").Register(),
 	}
 
 	if o == nil {
@@ -134,20 +132,18 @@ func (r *reacher) manage() {
 func (r *reacher) ping(c chan *peer, ctx context.Context) {
 	defer r.wg.Done()
 	for p := range c {
-		ctxt, cancel := context.WithTimeout(ctx, r.options.PingTimeout)
-		rtt, err := r.pinger.Ping(ctxt, p.addr)
-		if err != nil {
-			r.logger.Debug("reacher: ping failed", "addr", p.addr.String(), "err", err)
-			r.metrics.Pings.WithLabelValues("failure").Inc()
-			r.metrics.PingTime.WithLabelValues("failure").Observe(rtt.Seconds())
-			r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPublic)
-		} else {
-			r.logger.Debug("reacher: ping succeeded", "addr", p.addr.String(), "rtt", rtt.Seconds())
-			r.metrics.Pings.WithLabelValues("success").Inc()
-			r.metrics.PingTime.WithLabelValues("success").Observe(rtt.Seconds())
-			r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPublic)
-		}
-		cancel()
+		func() {
+			ctxt, cancel := context.WithTimeout(ctx, r.options.PingTimeout)
+			defer cancel()
+			rtt, err := r.pinger.Ping(ctxt, p.addr)
+			if err != nil {
+				r.logger.Debug("ping failed", "peer", p.overlay.String(), "addr", p.addr.String(), "error", err)
+				r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPrivate)
+			} else {
+				r.logger.Debug("ping succeeded", "peer", p.overlay.String(), "addr", p.addr.String(), "rtt", rtt)
+				r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPublic)
+			}
+		}()
 	}
 }
 

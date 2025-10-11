@@ -17,11 +17,13 @@ import (
 	"sync"
 	"time"
 
+	ocprom "contrib.go.opencensus.io/exporter/prometheus"
 	"github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 	beecrypto "github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
+	m2 "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/blocklist"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/breaker"
@@ -43,20 +45,15 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/host/autonat"
 	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
-	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
+	rcmgrObs "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	lp2pswarm "github.com/libp2p/go-libp2p/p2p/net/swarm"
 	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
-
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multistream"
-	"go.uber.org/atomic"
-
-	ocprom "contrib.go.opencensus.io/exporter/prometheus"
-	m2 "github.com/ethersphere/bee/v2/pkg/metrics"
-	rcmgrObs "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/atomic"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -187,8 +184,8 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	// Tweak certain settings
-	cfg := rcmgr.PartialLimitConfig{
-		System: rcmgr.ResourceLimits{
+	cfg := rcmgrObs.PartialLimitConfig{
+		System: rcmgrObs.ResourceLimits{
 			Streams:         IncomingStreamCountLimit + OutgoingStreamCountLimit,
 			StreamsOutbound: OutgoingStreamCountLimit,
 			StreamsInbound:  IncomingStreamCountLimit,
@@ -196,17 +193,17 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	// Create our limits by using our cfg and replacing the default values with values from `scaledDefaultLimits`
-	limits := cfg.Build(rcmgr.InfiniteLimits)
+	limits := cfg.Build(rcmgrObs.InfiniteLimits)
 
 	// The resource manager expects a limiter, se we create one from our limits.
-	limiter := rcmgr.NewFixedLimiter(limits)
+	limiter := rcmgrObs.NewFixedLimiter(limits)
 
 	str, err := rcmgrObs.NewStatsTraceReporter()
 	if err != nil {
 		return nil, err
 	}
 
-	rm, err := rcmgr.NewResourceManager(limiter, rcmgr.WithTraceReporter(str))
+	rm, err := rcmgrObs.NewResourceManager(limiter, rcmgrObs.WithTraceReporter(str))
 	if err != nil {
 		return nil, err
 	}
@@ -410,6 +407,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 
 	peerID := stream.Conn().RemotePeer()
 	handshakeStream := newStream(stream, s.metrics)
+	// TODO: RemoteMultiaddr will return internal port of the peer, this is not what we want.
 	i, err := s.handshakeService.Handle(s.ctx, handshakeStream, stream.Conn().RemoteMultiaddr(), peerID)
 	if err != nil {
 		s.logger.Debug("stream handler: handshake: handle failed", "peer_id", peerID, "error", err)
@@ -538,13 +536,19 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	}
 
 	if s.reacher != nil {
-		underlay, err := buildFullMA(stream.Conn().RemoteMultiaddr(), peerID)
-		if err != nil {
-			s.logger.Error(err, "stream handler: unable to build complete peer multiaddr", "peer", overlay, "remote_mutliaadr", stream.Conn().RemoteMultiaddr(), "peer_id", peerID)
-			_ = s.Disconnect(overlay, "unable to build complete peer multiaddr")
-			return
+		advertisedAddrs := s.host.Peerstore().Addrs(peerID)
+		if len(advertisedAddrs) >= 1 {
+			// TODO: what if there are multiple addresses?
+			// TODO: what if no addresses?
+			firstMA := advertisedAddrs[0]
+			underlay, err := buildFullMA(firstMA, peerID)
+			if err != nil {
+				s.logger.Error(err, "stream handler: unable to build complete peer multiaddr", "peer", overlay, "multiaddr", firstMA, "peer_id", peerID)
+				_ = s.Disconnect(overlay, "unable to build complete peer multiaddr")
+				return
+			}
+			s.reacher.Connected(overlay, underlay)
 		}
-		s.reacher.Connected(overlay, underlay)
 	}
 
 	peerUserAgent := appendSpace(s.peerUserAgent(s.ctx, peerID))
