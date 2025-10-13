@@ -8,15 +8,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"runtime"
 	"testing"
-	"time"
 	"testing/synctest"
 
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
-	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/v2/pkg/pingpong"
@@ -35,15 +32,6 @@ func TestPing(t *testing.T) {
 		// setup the stream recorder to record stream data
 		recorder := streamtest.New(
 			streamtest.WithProtocols(server.Protocol()),
-			streamtest.WithMiddlewares(func(f p2p.HandlerFunc) p2p.HandlerFunc {
-				if runtime.GOOS == "windows" {
-					// windows has a bit lower time resolution
-					// so, slow down the handler with a middleware
-					// not to get 0s for rtt value
-					time.Sleep(100 * time.Millisecond)
-				}
-				return f
-			}),
 		)
 
 		// create a pingpong client that will do pinging
@@ -57,8 +45,8 @@ func TestPing(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// check that RTT is a sane value
-		if rtt <= 0 {
+		// check that RTT is a same value (rtt can be 0 in synctest virtual time)
+		if rtt < 0 {
 			t.Errorf("invalid RTT value %v", rtt)
 		}
 
