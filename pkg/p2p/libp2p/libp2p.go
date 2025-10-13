@@ -544,6 +544,16 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		return
 	}
 
+	s.notifyReacherConnected(stream, overlay, peerID)
+
+	peerUserAgent := appendSpace(s.peerUserAgent(s.ctx, peerID))
+	s.networkStatus.Store(int32(p2p.NetworkStatusAvailable))
+
+	loggerV1.Debug("stream handler: successfully connected to peer (inbound)", "addresses", i.BzzAddress.ShortString(), "light", i.LightString(), "user_agent", peerUserAgent)
+	s.logger.Debug("stream handler: successfully connected to peer (inbound)", "address", i.BzzAddress.Overlay, "light", i.LightString(), "user_agent", peerUserAgent)
+}
+
+func (s *Service) notifyReacherConnected(stream network.Stream, overlay swarm.Address, peerID libp2ppeer.ID) {
 	if s.reacher != nil {
 		peerAddrs := s.host.Peerstore().Addrs(peerID)
 		connectionAddr := stream.Conn().RemoteMultiaddr()
@@ -559,12 +569,6 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		}
 		s.reacher.Connected(overlay, underlay)
 	}
-
-	peerUserAgent := appendSpace(s.peerUserAgent(s.ctx, peerID))
-	s.networkStatus.Store(int32(p2p.NetworkStatusAvailable))
-
-	loggerV1.Debug("stream handler: successfully connected to peer (inbound)", "addresses", i.BzzAddress.ShortString(), "light", i.LightString(), "user_agent", peerUserAgent)
-	s.logger.Debug("stream handler: successfully connected to peer (inbound)", "address", i.BzzAddress.Overlay, "light", i.LightString(), "user_agent", peerUserAgent)
 }
 
 func (s *Service) SetPickyNotifier(n p2p.PickyNotifier) {
@@ -734,13 +738,13 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		err = s.determineCurrentNetworkStatus(err)
 	}()
 
-	id, remotes, err := normalizeAddrsSamePeer(addrs)
+	peerID, remotes, err := normalizeAddrsSamePeer(addrs)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, r := range remotes {
-		if overlay, found := s.peers.isConnected(id, r); found {
+		if overlay, found := s.peers.isConnected(peerID, r); found {
 			bzzAddr, err := s.addressbook.Get(overlay)
 			if err != nil {
 				s.logger.Error(err, "connected peer not found in address book")
@@ -752,8 +756,8 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		}
 	}
 	// libp2p will chose first ready address (possible multi dial).
-	s.logger.Info("Connect: debug full connectivity test", "id", id.String(), "remotes", remotes)
-	info := libp2ppeer.AddrInfo{ID: id, Addrs: remotes}
+	s.logger.Info("Connect: debug full connectivity test", "id", peerID.String(), "remotes", remotes)
+	info := libp2ppeer.AddrInfo{ID: peerID, Addrs: remotes}
 	if err := s.connectionBreaker.Execute(func() error { return s.host.Connect(ctx, info) }); err != nil {
 		if errors.Is(err, breaker.ErrClosed) {
 			s.metrics.ConnectBreakerCount.Inc()
@@ -848,15 +852,9 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 
 	s.metrics.CreatedConnectionCount.Inc()
 
-	if s.reacher != nil {
-		winning, err := buildFullMA(stream.Conn().RemoteMultiaddr(), id) // get underlay, which we used for connection
-		if err != nil {
-			return nil, fmt.Errorf("build full multaddr %s %v %v: %w", overlay, stream.Conn().RemoteMultiaddr(), id, err)
-		}
-		s.reacher.Connected(overlay, winning)
-	}
+	s.notifyReacherConnected(stream, overlay, peerID)
 
-	peerUA := appendSpace(s.peerUserAgent(ctx, id))
+	peerUA := appendSpace(s.peerUserAgent(ctx, peerID))
 	loggerV1.Debug("successfully connected to peer (outbound)", "addresses", i.BzzAddress.ShortString(), "light", i.LightString(), "user_agent", peerUA)
 	s.logger.Debug("successfully connected to peer (outbound)", "address", overlay, "light", i.LightString(), "user_agent", peerUA)
 	return i.BzzAddress, nil

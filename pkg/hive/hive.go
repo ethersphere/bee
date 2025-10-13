@@ -392,7 +392,7 @@ func (s *Service) filterAdvertisableUnderlays(underlays []ma.Multiaddr) []ma.Mul
 
 	var publicUnderlays []ma.Multiaddr
 	for _, u := range underlays {
-		if !manet.IsPrivateAddr(u) {
+		if manet.IsPublicAddr(u) {
 			publicUnderlays = append(publicUnderlays, u)
 		}
 	}

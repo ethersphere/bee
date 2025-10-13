@@ -130,11 +130,6 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return nil, err
 	}
 
-	for _, ma := range fullRemoteMAs {
-		loggerV1.Debug("handshake remote multiaddr", "addr", ma.String())
-		s.logger.Debug("handshake remote multiaddr", "addr", ma.String())
-	}
-
 	if err := w.WriteMsgWithContext(ctx, &pb.Syn{
 		ObservedUnderlay: bzz.SerializeUnderlays(fullRemoteMAs),
 	}); err != nil {
