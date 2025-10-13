@@ -92,7 +92,7 @@ type Service struct {
 	metrics           metrics
 	networkID         uint64
 	handshakeService  *handshake.Service
-	addressbook       addressbook.GetPutter
+	addressbook       addressbook.Putter
 	peers             *peerRegistry
 	connectionBreaker breaker.Interface
 	blocklist         *blocklist.Blocklist
@@ -133,7 +133,7 @@ type Options struct {
 	Registry         *prometheus.Registry
 }
 
-func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.GetPutter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
+func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, fmt.Errorf("address: %w", err)
@@ -728,16 +728,10 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 
 	for _, r := range remotes {
 		if overlay, found := s.peers.isConnected(id, r); found {
-			bzzAddr, err := s.addressbook.Get(overlay)
-			if err != nil {
-				s.logger.Error(err, "connected peer not found in address book")
-				return &bzz.Address{Overlay: overlay, Underlay: addrs}, p2p.ErrAlreadyConnected
-			}
-
-			s.logger.Debug("Picked addr in libp2p Connect", "overlay", overlay, "underlay", r)
-			return bzzAddr, p2p.ErrAlreadyConnected
+			return &bzz.Address{Overlay: overlay, Underlay: addrs}, p2p.ErrAlreadyConnected
 		}
 	}
+
 	// libp2p will chose first ready address (possible multi dial).
 	s.logger.Info("Connect: debug full connectivity test", "id", id.String(), "remotes", remotes)
 	info := libp2ppeer.AddrInfo{ID: id, Addrs: remotes}
