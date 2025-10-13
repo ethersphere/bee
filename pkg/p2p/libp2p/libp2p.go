@@ -1262,7 +1262,7 @@ func SelectBestAdvertisedAddress(addrs []ma.Multiaddr, fallback ma.Multiaddr) ma
 	}
 
 	for _, addr := range addrs {
-		if !manet.IsIPLoopback(addr) {
+		if !manet.IsPrivateAddr(addr) {
 			return addr
 		}
 	}

@@ -212,14 +212,14 @@ func TestSelectBestAdvertisedAddress(t *testing.T) {
 			expected: mustMultiaddr("/ip4/8.8.8.8/tcp/8080"),
 		},
 		{
-			name: "prefers non-loopback when no public addresses",
+			name: "prefers non-private when no public addresses",
 			addrs: []multiaddr.Multiaddr{
 				mustMultiaddr("/ip4/127.0.0.1/tcp/8080"),   // loopback
 				mustMultiaddr("/ip4/192.168.1.1/tcp/8080"), // private but not loopback
 				mustMultiaddr("/ip4/10.0.0.1/tcp/8080"),    // private but not loopback
 			},
 			fallback: mustMultiaddr("/ip4/127.0.0.1/tcp/9999"),
-			expected: mustMultiaddr("/ip4/192.168.1.1/tcp/8080"),
+			expected: mustMultiaddr("/ip4/127.0.0.1/tcp/8080"),
 		},
 		{
 			name: "returns first address when all are loopback",
