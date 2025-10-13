@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -411,7 +412,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 
 	// peerAddrs := s.host.Peerstore().Addrs(peerID)
 	// connectionAddr := stream.Conn().RemoteMultiaddr()
-	// handshakeAddr := selectBestAdvertisedAddress(peerAddrs, connectionAddr)
+	// handshakeAddr := SelectBestAdvertisedAddress(peerAddrs, connectionAddr)
 
 	// s.logger.Debug("selected handshake address", "peer_id", peerID, "selected_addr", handshakeAddr.String(), "connection_addr", connectionAddr.String(), "advertised_count", len(peerAddrs))
 
@@ -546,7 +547,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	if s.reacher != nil {
 		peerAddrs := s.host.Peerstore().Addrs(peerID)
 		connectionAddr := stream.Conn().RemoteMultiaddr()
-		bestAddr := selectBestAdvertisedAddress(peerAddrs, connectionAddr)
+		bestAddr := SelectBestAdvertisedAddress(peerAddrs, connectionAddr)
 
 		s.logger.Debug("selected reacher address", "peer_id", peerID, "selected_addr", bestAddr.String(), "connection_addr", connectionAddr.String(), "advertised_count", len(peerAddrs))
 
@@ -1239,16 +1240,28 @@ func isNetworkOrHostUnreachableError(err error) bool {
 }
 
 func buildFullMA(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) {
-	if _, err := addr.ValueForProtocol(ma.P_P2P); err == nil {
+	if _, err := addr.ValueForProtocol(ma.P_TCP); err == nil {
 		return addr, nil
 	}
 	return ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", addr.String(), peerID.String()))
 }
 
-func selectBestAdvertisedAddress(addrs []ma.Multiaddr, fallback ma.Multiaddr) ma.Multiaddr {
+func SelectBestAdvertisedAddress(addrs []ma.Multiaddr, fallback ma.Multiaddr) ma.Multiaddr {
 	if len(addrs) == 0 {
 		return fallback
 	}
+
+	hasTCPProtocol := func(addr ma.Multiaddr) bool {
+		_, err := addr.ValueForProtocol(ma.P_TCP)
+		return err == nil
+	}
+
+	// Sort addresses to prioritize TCP over other protocols
+	sort.SliceStable(addrs, func(i, j int) bool {
+		iTCP := hasTCPProtocol(addrs[i])
+		jTCP := hasTCPProtocol(addrs[j])
+		return iTCP && !jTCP
+	})
 
 	for _, addr := range addrs {
 		if manet.IsPublicAddr(addr) {
@@ -1257,7 +1270,7 @@ func selectBestAdvertisedAddress(addrs []ma.Multiaddr, fallback ma.Multiaddr) ma
 	}
 
 	for _, addr := range addrs {
-		if manet.IsPrivateAddr(addr) && !manet.IsIPLoopback(addr) {
+		if !manet.IsIPLoopback(addr) {
 			return addr
 		}
 	}

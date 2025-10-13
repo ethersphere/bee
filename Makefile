@@ -150,8 +150,7 @@ docker-build:
 		--platform $(PLATFORM) \
 		-t $(BEE_IMAGE) . \
 		--build-arg REACHABILITY_OVERRIDE_PUBLIC=$(REACHABILITY_OVERRIDE_PUBLIC) \
-		--build-arg BATCHFACTOR_OVERRIDE_PUBLIC=$(BATCHFACTOR_OVERRIDE_PUBLIC) \
-		--no-cache
+		--build-arg BATCHFACTOR_OVERRIDE_PUBLIC=$(BATCHFACTOR_OVERRIDE_PUBLIC)
 	@echo "Docker image: $(BEE_IMAGE)"
 
 .PHONY: githooks
