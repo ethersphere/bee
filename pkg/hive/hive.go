@@ -219,8 +219,6 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 		return fmt.Errorf("read requestPeers message: %w", err)
 	}
 
-	s.logger.Debug("peers handler, got peers", "peers", peersReq.Peers)
-
 	s.metrics.PeersHandlerPeers.Add(float64(len(peersReq.Peers)))
 
 	if !s.inLimiter.Allow(peer.Address.ByteString(), len(peersReq.Peers)) {
