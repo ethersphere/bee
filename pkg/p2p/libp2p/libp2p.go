@@ -1238,7 +1238,7 @@ func isNetworkOrHostUnreachableError(err error) bool {
 }
 
 func buildFullMA(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) {
-	if _, err := addr.ValueForProtocol(ma.P_TCP); err == nil {
+	if _, err := addr.ValueForProtocol(ma.P_P2P); err == nil {
 		return addr, nil
 	}
 	return ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", addr.String(), peerID.String()))
