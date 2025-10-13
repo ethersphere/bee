@@ -51,6 +51,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
 	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/multiformats/go-multistream"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
@@ -407,7 +408,14 @@ func (s *Service) handleIncoming(stream network.Stream) {
 
 	peerID := stream.Conn().RemotePeer()
 	handshakeStream := newStream(stream, s.metrics)
-	// TODO: RemoteMultiaddr will return internal port of the peer, this is not what we want.
+
+	// peerAddrs := s.host.Peerstore().Addrs(peerID)
+	// connectionAddr := stream.Conn().RemoteMultiaddr()
+	// handshakeAddr := selectBestAdvertisedAddress(peerAddrs, connectionAddr)
+
+	// s.logger.Debug("selected handshake address", "peer_id", peerID, "selected_addr", handshakeAddr.String(), "connection_addr", connectionAddr.String(), "advertised_count", len(peerAddrs))
+
+	// TODO: use handshakeAddr from the code above instead of the connection RemoteMultiaddr
 	i, err := s.handshakeService.Handle(s.ctx, handshakeStream, stream.Conn().RemoteMultiaddr(), peerID)
 	if err != nil {
 		s.logger.Debug("stream handler: handshake: handle failed", "peer_id", peerID, "error", err)
@@ -536,19 +544,19 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	}
 
 	if s.reacher != nil {
-		advertisedAddrs := s.host.Peerstore().Addrs(peerID)
-		if len(advertisedAddrs) >= 1 {
-			// TODO: what if there are multiple addresses?
-			// TODO: what if no addresses?
-			firstMA := advertisedAddrs[0]
-			underlay, err := buildFullMA(firstMA, peerID)
-			if err != nil {
-				s.logger.Error(err, "stream handler: unable to build complete peer multiaddr", "peer", overlay, "multiaddr", firstMA, "peer_id", peerID)
-				_ = s.Disconnect(overlay, "unable to build complete peer multiaddr")
-				return
-			}
-			s.reacher.Connected(overlay, underlay)
+		peerAddrs := s.host.Peerstore().Addrs(peerID)
+		connectionAddr := stream.Conn().RemoteMultiaddr()
+		bestAddr := selectBestAdvertisedAddress(peerAddrs, connectionAddr)
+
+		s.logger.Debug("selected reacher address", "peer_id", peerID, "selected_addr", bestAddr.String(), "connection_addr", connectionAddr.String(), "advertised_count", len(peerAddrs))
+
+		underlay, err := buildFullMA(bestAddr, peerID)
+		if err != nil {
+			s.logger.Error(err, "stream handler: unable to build complete peer multiaddr", "peer", overlay, "multiaddr", bestAddr, "peer_id", peerID)
+			_ = s.Disconnect(overlay, "unable to build complete peer multiaddr")
+			return
 		}
+		s.reacher.Connected(overlay, underlay)
 	}
 
 	peerUserAgent := appendSpace(s.peerUserAgent(s.ctx, peerID))
@@ -1235,4 +1243,24 @@ func buildFullMA(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) 
 		return addr, nil
 	}
 	return ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", addr.String(), peerID.String()))
+}
+
+func selectBestAdvertisedAddress(addrs []ma.Multiaddr, fallback ma.Multiaddr) ma.Multiaddr {
+	if len(addrs) == 0 {
+		return fallback
+	}
+
+	for _, addr := range addrs {
+		if manet.IsPublicAddr(addr) {
+			return addr
+		}
+	}
+
+	for _, addr := range addrs {
+		if manet.IsPrivateAddr(addr) && !manet.IsIPLoopback(addr) {
+			return addr
+		}
+	}
+
+	return addrs[0]
 }

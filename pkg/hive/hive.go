@@ -187,22 +187,10 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 			return err
 		}
 
-		var advertisableUnderlays []ma.Multiaddr
-		if s.allowPrivateCIDRs {
-			s.logger.Debug("send peers: allow private CIDRs, advertise all underlays", "addr", addr.String())
-			advertisableUnderlays = addr.Underlay
-		} else {
-			for _, u := range addr.Underlay {
-				// filter private underlays
-				if !manet.IsPrivateAddr(u) {
-					s.logger.Debug("send peers: underlay", "overlay", addr.Overlay.String(), "underlay", u.String())
-					advertisableUnderlays = append(advertisableUnderlays, u)
-				}
-			}
-			if len(advertisableUnderlays) == 0 {
-				s.logger.Debug("send peers: NO advertisable underlays ", "overlay", addr.Overlay.String())
-				continue
-			}
+		advertisableUnderlays := s.filterAdvertisableUnderlays(addr.Underlay)
+		if len(advertisableUnderlays) == 0 {
+			s.logger.Debug("skipping peers: no advertisable underlays", "peer_address", p)
+			continue
 		}
 
 		peersRequest.Peers = append(peersRequest.Peers, &pb.BzzAddress{
@@ -392,4 +380,22 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 	if s.addPeersHandler != nil && len(peersToAdd) > 0 {
 		s.addPeersHandler(peersToAdd...)
 	}
+}
+
+// filterAdvertisableUnderlays returns underlay addresses that can be advertised
+// based on the allowPrivateCIDRs setting. If allowPrivateCIDRs is false,
+// only public addresses are returned.
+func (s *Service) filterAdvertisableUnderlays(underlays []ma.Multiaddr) []ma.Multiaddr {
+	if s.allowPrivateCIDRs {
+		return underlays
+	}
+
+	var publicUnderlays []ma.Multiaddr
+	for _, u := range underlays {
+		if !manet.IsPrivateAddr(u) {
+			publicUnderlays = append(publicUnderlays, u)
+		}
+	}
+
+	return publicUnderlays
 }
