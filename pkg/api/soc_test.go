@@ -22,6 +22,7 @@ import (
 	testingpostage "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	testingsoc "github.com/ethersphere/bee/v2/pkg/soc/testing"
 	"github.com/ethersphere/bee/v2/pkg/spinlock"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -208,4 +209,80 @@ func TestSOC(t *testing.T) {
 			)
 		})
 	})
+}
+
+// Verify that replicas provide fault tolerance
+func TestSOCWithRedundancy(t *testing.T) {
+
+	testWithRedundancy := func(t *testing.T, redundancyLevel int) {
+		t.Helper()
+
+		t.Run(fmt.Sprintf("redundancy=%d", redundancyLevel), func(t *testing.T) {
+			testData := fmt.Appendf(nil, "redundant-soc-data-%d", redundancyLevel)
+
+			mockStorer := mockstorer.New()
+			client, _, _, chanStore := newTestServer(t, testServerOptions{
+				Storer:       mockStorer,
+				Post:         newTestPostService(),
+				DirectUpload: true,
+			})
+
+			soc := testingsoc.GenerateMockSOC(t, testData)
+
+			chanStore.Subscribe(func(ch swarm.Chunk) {
+				err := mockStorer.Put(context.Background(), ch)
+				if err != nil {
+					t.Fatal(err)
+				}
+			})
+
+			jsonhttptest.Request(t, client, http.MethodPost,
+				fmt.Sprintf("/soc/%s/%s?sig=%s",
+					hex.EncodeToString(soc.Owner),
+					hex.EncodeToString(soc.ID),
+					hex.EncodeToString(soc.Signature)),
+				http.StatusCreated,
+				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+				jsonhttptest.WithRequestHeader(api.SwarmRedundancyLevelHeader, fmt.Sprintf("%d", redundancyLevel)),
+				jsonhttptest.WithRequestBody(bytes.NewReader(soc.WrappedChunk.Data())),
+				jsonhttptest.WithExpectedJSONResponse(api.SocPostResponse{
+					Reference: soc.Address(),
+				}),
+			)
+
+			// Wait for replicas to be created in background
+			time.Sleep(100 * time.Millisecond)
+
+			originalAddress := soc.Address()
+
+			// Delete the original chunk to trigger dispersed retrieval
+			cs, ok := mockStorer.ChunkStore().(storage.ChunkStore)
+			if !ok {
+				t.Fatal("Could not access underlying ChunkStore with Delete method")
+			}
+
+			err := cs.Delete(context.Background(), originalAddress)
+			if err != nil {
+				t.Fatalf("Failed to delete the original chunk: %v", err)
+			}
+
+			// Try to retrieve the SOC after deletion
+			if redundancyLevel > 0 {
+				jsonhttptest.Request(t, client, http.MethodGet,
+					fmt.Sprintf("/soc/%s/%s", hex.EncodeToString(soc.Owner), hex.EncodeToString(soc.ID)),
+					http.StatusOK,
+					jsonhttptest.WithExpectedResponse(soc.WrappedChunk.Data()[swarm.SpanSize:]),
+					jsonhttptest.WithExpectedContentLength(len(soc.WrappedChunk.Data()[swarm.SpanSize:])),
+				)
+			} else {
+				jsonhttptest.Request(t, client, http.MethodGet,
+					fmt.Sprintf("/soc/%s/%s", hex.EncodeToString(soc.Owner), hex.EncodeToString(soc.ID)),
+					http.StatusNotFound,
+				)
+			}
+		})
+	}
+
+	testWithRedundancy(t, 0)
+	testWithRedundancy(t, 2)
 }
