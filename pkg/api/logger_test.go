@@ -65,8 +65,8 @@ func TestGetLoggers(t *testing.T) {
 	}
 	api.ReplaceLogRegistryIterateFn(fn)
 
-	have := make(map[string]interface{})
-	want := make(map[string]interface{})
+	have := make(map[string]any)
+	want := make(map[string]any)
 	data := `{"loggers":[{"id":"b25lWzBdW10-PjgyNDYzNDg2MDM2MA==","logger":"one","subsystem":"one[0][]\u003e\u003e824634860360","verbosity":"all"},{"id":"b25lL25hbWVbMF1bXT4-ODI0NjM0ODYwMzYw","logger":"one/name","subsystem":"one/name[0][]\u003e\u003e824634860360","verbosity":"warning"},{"id":"b25lL25hbWVbMF1bXCJ2YWxcIj0xXT4-ODI0NjM0ODYwMzYw","logger":"one/name","subsystem":"one/name[0][\\\"val\\\"=1]\u003e\u003e824634860360","verbosity":"warning"},{"id":"b25lL25hbWVbMV1bXT4-ODI0NjM0ODYwMzYw","logger":"one/name","subsystem":"one/name[1][]\u003e\u003e824634860360","verbosity":"info"},{"id":"b25lL25hbWVbMl1bXT4-ODI0NjM0ODYwMzYw","logger":"one/name","subsystem":"one/name[2][]\u003e\u003e824634860360","verbosity":"info"}],"tree":{"one":{"+":["all|one[0][]\u003e\u003e824634860360"],"/":{"name":{"+":["warning|one/name[0][]\u003e\u003e824634860360","warning|one/name[0][\\\"val\\\"=1]\u003e\u003e824634860360","info|one/name[1][]\u003e\u003e824634860360","info|one/name[2][]\u003e\u003e824634860360"]}}}}}`
 	if err := json.Unmarshal([]byte(data), &want); err != nil {
 		t.Fatalf("unexpected error: %v", err)

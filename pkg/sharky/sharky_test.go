@@ -185,11 +185,11 @@ func TestConcurrency(t *testing.T) {
 		ctx := context.Background()
 		eg, ectx := errgroup.WithContext(ctx)
 		// a number of workers write sequential numbers to sharky
-		for k := 0; k < workers; k++ {
+		for k := range workers {
 			eg.Go(func() error {
 				<-start
 				buf := make([]byte, 4)
-				for i := 0; i < limit; i++ {
+				for i := range limit {
 					j := i*workers + k
 					binary.BigEndian.PutUint32(buf, uint32(j))
 					loc, err := s.Write(ctx, buf)
@@ -212,7 +212,7 @@ func TestConcurrency(t *testing.T) {
 			eg.Go(func() error {
 				<-start
 				buf := make([]byte, datasize)
-				for i := 0; i < limit; i++ {
+				for range limit {
 					select {
 					case <-ectx.Done():
 						return ectx.Err()

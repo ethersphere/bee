@@ -41,14 +41,14 @@ func TestAddAndLookup(t *testing.T) {
 		[]byte("aa"),
 		[]byte("b"),
 	}
-	for i := 0; i < len(testCases); i++ {
+	for i := range testCases {
 		c := testCases[i]
 		e := append(make([]byte, 32-len(c)), c...)
 		err := n.Add(ctx, c, e, nil, nil)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		for j := 0; j < i; j++ {
+		for j := range i {
 			d := testCases[j]
 			m, err := n.Lookup(ctx, d, nil)
 			if err != nil {

@@ -123,11 +123,11 @@ func TestBroadcastPeers(t *testing.T) {
 
 	// populate all expected and needed random resources for 2 full batches
 	// tests cases that uses fewer resources can use sub-slices of this data
-	var bzzAddresses []bzz.Address
-	var overlays []swarm.Address
-	var wantMsgs []pb.Peers
+	bzzAddresses := make([]bzz.Address, 0, 2*hive.MaxBatchSize)
+	overlays := make([]swarm.Address, 0, 2*hive.MaxBatchSize)
+	wantMsgs := make([]pb.Peers, 0, 2*hive.MaxBatchSize)
 
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		wantMsgs = append(wantMsgs, pb.Peers{Peers: []*pb.BzzAddress{}})
 	}
 

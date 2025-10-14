@@ -204,7 +204,7 @@ func bootstrapNode(
 		eventsJSON     []byte
 	)
 
-	for i := 0; i < getSnapshotRetries; i++ {
+	for range getSnapshotRetries {
 		if err != nil {
 			time.Sleep(retryWait)
 		}
@@ -223,7 +223,7 @@ func bootstrapNode(
 		return nil, err
 	}
 
-	for i := 0; i < getSnapshotRetries; i++ {
+	for range getSnapshotRetries {
 		if err != nil {
 			time.Sleep(retryWait)
 		}
@@ -336,7 +336,7 @@ func getLatestSnapshot(
 		return nil, err
 	}
 
-	return feeds.GetWrappedChunk(ctx, st, u)
+	return feeds.GetWrappedChunk(ctx, st, u, false)
 }
 
 func batchStoreExists(s storage.StateStorer) (bool, error) {

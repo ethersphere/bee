@@ -140,7 +140,7 @@ func BenchmarkPipeline(b *testing.B) {
 		100000000, // 100 mb
 	} {
 		b.Run(strconv.Itoa(count)+"-bytes", func(b *testing.B) {
-			for n := 0; n < b.N; n++ {
+			for b.Loop() {
 				benchmarkPipeline(b, count)
 			}
 		})

@@ -30,7 +30,7 @@ func NewRecovery(dir string, shardCnt int, datasize int) (*Recovery, error) {
 	shards := make([]*slots, shardCnt)
 	shardFiles := make([]*os.File, shardCnt)
 
-	for i := 0; i < shardCnt; i++ {
+	for i := range shardCnt {
 		file, err := os.OpenFile(path.Join(dir, fmt.Sprintf("shard_%03d", i)), os.O_RDWR, 0666)
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, fmt.Errorf("index %d: %w", i, ErrShardNotFound)

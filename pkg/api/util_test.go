@@ -106,8 +106,8 @@ func TestMapStructure(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		src     interface{}
-		want    interface{}
+		src     any
+		want    any
 		wantErr error
 	}{{
 		name: "bool zero value",
@@ -540,7 +540,7 @@ func TestMapStructure_InputOutputSanityCheck(t *testing.T) {
 	t.Run("input is nil", func(t *testing.T) {
 		t.Parallel()
 
-		var input interface{}
+		var input any
 		err := api.MapStructure(input, struct{}{}, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -561,7 +561,7 @@ func TestMapStructure_InputOutputSanityCheck(t *testing.T) {
 		t.Parallel()
 
 		var (
-			input  = map[string]interface{}{"someVal": "123"}
+			input  = map[string]any{"someVal": "123"}
 			output struct {
 				SomeVal string `map:"someVal"`
 			}
@@ -576,8 +576,8 @@ func TestMapStructure_InputOutputSanityCheck(t *testing.T) {
 		t.Parallel()
 
 		var (
-			input  = map[string]interface{}{"someVal": "123"}
-			output interface{}
+			input  = map[string]any{"someVal": "123"}
+			output any
 		)
 		err := api.MapStructure(&input, output, nil)
 		if err != nil {
@@ -589,7 +589,7 @@ func TestMapStructure_InputOutputSanityCheck(t *testing.T) {
 		t.Parallel()
 
 		var (
-			input  = map[string]interface{}{"someVal": "123"}
+			input  = map[string]any{"someVal": "123"}
 			output = struct {
 				SomeVal string `map:"someVal"`
 			}{}
@@ -604,7 +604,7 @@ func TestMapStructure_InputOutputSanityCheck(t *testing.T) {
 		t.Parallel()
 
 		var (
-			input  = map[string]interface{}{"someVal": "123"}
+			input  = map[string]any{"someVal": "123"}
 			output = "foo"
 		)
 		err := api.MapStructure(&input, &output, nil)

@@ -28,7 +28,7 @@ func NewStateStore() storage.StateStorer {
 	return s
 }
 
-func (s *store) Get(key string, i interface{}) (err error) {
+func (s *store) Get(key string, i any) (err error) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 
@@ -44,7 +44,7 @@ func (s *store) Get(key string, i interface{}) (err error) {
 	return json.Unmarshal(data, i)
 }
 
-func (s *store) Put(key string, i interface{}) (err error) {
+func (s *store) Put(key string, i any) (err error) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 

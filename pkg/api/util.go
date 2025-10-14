@@ -132,7 +132,7 @@ var flattenErrorsFormat = func(es []error) string {
 //
 // In case of parsing error, a new parseError is returned to the caller.
 // The caller can use the Unwrap method to get the original error.
-func mapStructure(input, output interface{}, hooks map[string]func(v string) (string, error)) (err error) {
+func mapStructure(input, output any, hooks map[string]func(v string) (string, error)) (err error) {
 	if input == nil || output == nil {
 		return nil
 	}
@@ -294,7 +294,7 @@ func mapStructure(input, output interface{}, hooks map[string]func(v string) (st
 			}
 		case reflect.Interface:
 			switch field.Type() {
-			case reflect.TypeOf((*multiaddr.Multiaddr)(nil)).Elem():
+			case reflect.TypeFor[multiaddr.Multiaddr]():
 				val, err := multiaddr.NewMultiaddr(value)
 				if err != nil {
 					return err

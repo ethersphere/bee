@@ -539,9 +539,7 @@ func (k *Kad) manage() {
 	balanceChan := make(chan *peerConnInfo)
 	go k.connectionAttemptsHandler(ctx, &wg, neighbourhoodChan, balanceChan)
 
-	k.wg.Add(1)
-	go func() {
-		defer k.wg.Done()
+	k.wg.Go(func() {
 		for {
 			select {
 			case <-k.halt:
@@ -552,11 +550,9 @@ func (k *Kad) manage() {
 				k.opt.PruneFunc(k.neighborhoodDepth())
 			}
 		}
-	}()
+	})
 
-	k.wg.Add(1)
-	go func() {
-		defer k.wg.Done()
+	k.wg.Go(func() {
 		for {
 			select {
 			case <-k.halt:
@@ -575,12 +571,10 @@ func (k *Kad) manage() {
 				}
 			}
 		}
-	}()
+	})
 
 	// tell each neighbor about other neighbors periodically
-	k.wg.Add(1)
-	go func() {
-		defer k.wg.Done()
+	k.wg.Go(func() {
 		for {
 			select {
 			case <-k.halt:
@@ -603,7 +597,7 @@ func (k *Kad) manage() {
 				}
 			}
 		}
-	}()
+	})
 
 	for {
 		select {
@@ -1049,7 +1043,7 @@ func (k *Kad) Announce(ctx context.Context, peer swarm.Address, fullnode bool) e
 	isNeighbor := swarm.Proximity(peer.Bytes(), k.base.Bytes()) >= depth
 
 outer:
-	for bin := uint8(0); bin < swarm.MaxBins; bin++ {
+	for bin := range swarm.MaxBins {
 
 		var (
 			connectedPeers []swarm.Address
@@ -1601,7 +1595,7 @@ func randomSubset(addrs []swarm.Address, count int) ([]swarm.Address, error) {
 		return addrs, nil
 	}
 
-	for i := 0; i < len(addrs); i++ {
+	for i := range addrs {
 		b, err := random.Int(random.Reader, big.NewInt(int64(len(addrs))))
 		if err != nil {
 			return nil, err

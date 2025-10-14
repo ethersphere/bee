@@ -266,7 +266,7 @@ func initData(t *testing.T, buf [][]byte, shardCnt int, s storage.ChunkStore) []
 	spanBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(spanBytes, swarm.ChunkSize)
 
-	for i := 0; i < len(buf); i++ {
+	for i := range buf {
 		buf[i] = make([]byte, swarm.ChunkWithSpanSize)
 		if i >= shardCnt {
 			continue
@@ -291,7 +291,7 @@ func initData(t *testing.T, buf [][]byte, shardCnt int, s storage.ChunkStore) []
 	// calculate chunk addresses and upload to the store
 	addrs := make([]swarm.Address, len(buf))
 	ctx := context.TODO()
-	for i := 0; i < len(buf); i++ {
+	for i := range buf {
 		chunk, err := cac.NewWithDataSpan(buf[i])
 		if err != nil {
 			t.Fatal(err)
@@ -313,7 +313,7 @@ func checkShardsAvailable(t *testing.T, s storage.ChunkStore, addrs []swarm.Addr
 		eg.Go(func() (err error) {
 			var delay time.Duration
 			var ch swarm.Chunk
-			for i := 0; i < 30; i++ {
+			for i := range 30 {
 				select {
 				case <-ctx.Done():
 					return ctx.Err()

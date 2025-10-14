@@ -369,10 +369,9 @@ func (db *DB) unreserve(ctx context.Context) (err error) {
 			default:
 			}
 
-			evict := target - totalEvicted
-			if evict < int(db.reserveOptions.minEvictCount) { // evict at least a min count
-				evict = int(db.reserveOptions.minEvictCount)
-			}
+			evict := max(target-totalEvicted,
+				// evict at least a min count
+				int(db.reserveOptions.minEvictCount))
 
 			binEvicted, err := db.evictBatch(ctx, b, evict, radius)
 			// eviction happens in batches, so we need to keep track of the total
@@ -467,9 +466,7 @@ func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan
 	done := make(chan struct{})
 	errC := make(chan error, 1)
 
-	db.inFlight.Add(1)
-	go func() {
-		defer db.inFlight.Done()
+	db.inFlight.Go(func() {
 
 		trigger, unsub := db.reserveBinEvents.Subscribe(string(bin))
 		defer unsub()
@@ -508,7 +505,7 @@ func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan
 				return
 			}
 		}
-	}()
+	})
 
 	var doneOnce sync.Once
 	return out, func() {
@@ -556,7 +553,7 @@ func neighborhoodPrefixes(base swarm.Address, radius int, suffixLength int) []sw
 	bitCombinationsCount := int(math.Pow(2, float64(suffixLength)))
 	bitSuffixes := make([]uint8, bitCombinationsCount)
 
-	for i := 0; i < bitCombinationsCount; i++ {
+	for i := range bitCombinationsCount {
 		bitSuffixes[i] = uint8(i)
 	}
 

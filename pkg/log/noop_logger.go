@@ -9,14 +9,14 @@ var Noop Logger = new(noopLogger)
 
 type noopLogger struct{}
 
-func (nl *noopLogger) V(_ uint) Builder                    { return nl }
-func (nl *noopLogger) WithName(_ string) Builder           { return nl }
-func (nl *noopLogger) WithValues(_ ...interface{}) Builder { return nl }
-func (nl *noopLogger) Build() Logger                       { return nl }
-func (nl *noopLogger) Register() Logger                    { return nl }
+func (nl *noopLogger) V(_ uint) Builder            { return nl }
+func (nl *noopLogger) WithName(_ string) Builder   { return nl }
+func (nl *noopLogger) WithValues(_ ...any) Builder { return nl }
+func (nl *noopLogger) Build() Logger               { return nl }
+func (nl *noopLogger) Register() Logger            { return nl }
 
-func (nl *noopLogger) Verbosity() Level                          { return VerbosityNone }
-func (nl *noopLogger) Debug(_ string, _ ...interface{})          {}
-func (nl *noopLogger) Info(_ string, _ ...interface{})           {}
-func (nl *noopLogger) Warning(_ string, _ ...interface{})        {}
-func (nl *noopLogger) Error(_ error, _ string, _ ...interface{}) {}
+func (nl *noopLogger) Verbosity() Level                  { return VerbosityNone }
+func (nl *noopLogger) Debug(_ string, _ ...any)          {}
+func (nl *noopLogger) Info(_ string, _ ...any)           {}
+func (nl *noopLogger) Warning(_ string, _ ...any)        {}
+func (nl *noopLogger) Error(_ error, _ string, _ ...any) {}
