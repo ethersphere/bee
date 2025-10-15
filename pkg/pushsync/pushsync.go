@@ -293,8 +293,15 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	switch receipt, err := ps.pushToClosest(ctx, chunk, false); {
 	case errors.Is(err, topology.ErrWantSelf):
-		stored, reason = true, "want self"
-		return store(ctx)
+		// check whether the chunk generate shallow receipt or not
+		// chunk could be sent to the closest peer within the neighborhood as well
+		// in case if the node is not reachable we still sync the chunk(?).
+		if swarm.Proximity(ps.address.Bytes(), chunkAddress.Bytes()) >= rad {
+			stored, reason = true, "want self"
+			return store(ctx)
+		}
+		stored, reason = false, "chunk did not reach target neighborhood"
+		return ErrShallowReceipt
 	case err == nil:
 		ps.metrics.Forwarder.Inc()
 
