@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -97,64 +98,71 @@ func TestAgent(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			wait := make(chan struct{})
-			addr := swarm.RandAddress(t)
+			synctest.Test(t, func(t *testing.T) {
+				wait := make(chan struct{})
+				addr := swarm.RandAddress(t)
 
-			backend := &mockchainBackend{
-				limit: tc.limit,
-				limitCallback: func() {
-					select {
-					case wait <- struct{}{}:
-					default:
+				backend := &mockchainBackend{
+					limit: tc.limit,
+					limitCallback: func() {
+						select {
+						case wait <- struct{}{}:
+						default:
+						}
+					},
+					incrementBy: tc.incrementBy,
+					block:       tc.blocksPerRound,
+					balance:     tc.balance,
+				}
+
+				var radius uint8 = 8
+
+				contract := &mockContract{t: t, expectedRadius: radius + tc.doubling}
+
+				service, _ := createService(t, addr, backend, contract, tc.blocksPerRound, tc.blocksPerPhase, radius, tc.doubling)
+				testutil.CleanupCloser(t, service)
+
+				<-wait
+
+				synctest.Wait() // wait for all goroutines
+
+				if !tc.expectedCalls {
+					if len(contract.callsList) > 0 {
+						t.Fatal("got unexpected calls")
+					} else {
+						return
 					}
-				},
-				incrementBy: tc.incrementBy,
-				block:       tc.blocksPerRound,
-				balance:     tc.balance,
-			}
-
-			var radius uint8 = 8
-
-			contract := &mockContract{t: t, expectedRadius: radius + tc.doubling}
-
-			service, _ := createService(t, addr, backend, contract, tc.blocksPerRound, tc.blocksPerPhase, radius, tc.doubling)
-			testutil.CleanupCloser(t, service)
-
-			<-wait
-
-			if !tc.expectedCalls {
-				if len(contract.callsList) > 0 {
-					t.Fatal("got unexpected calls")
-				} else {
-					return
-				}
-			}
-
-			assertOrder := func(t *testing.T, want, got contractCall) {
-				t.Helper()
-				if want != got {
-					t.Fatalf("expected call %s, got %s", want, got)
-				}
-			}
-
-			contract.mtx.Lock()
-			defer contract.mtx.Unlock()
-
-			prevCall := contract.callsList[0]
-
-			for i := 1; i < len(contract.callsList); i++ {
-
-				switch contract.callsList[i] {
-				case isWinnerCall:
-					assertOrder(t, revealCall, prevCall)
-				case revealCall:
-					assertOrder(t, commitCall, prevCall)
-				case commitCall:
-					assertOrder(t, isWinnerCall, prevCall)
 				}
 
-				prevCall = contract.callsList[i]
-			}
+				if len(contract.callsList) == 0 {
+					t.Fatal("expected calls but got none")
+				}
+
+				assertOrder := func(t *testing.T, want, got contractCall) {
+					t.Helper()
+					if want != got {
+						t.Fatalf("expected call %s, got %s", want, got)
+					}
+				}
+
+				contract.mtx.Lock()
+				defer contract.mtx.Unlock()
+
+				prevCall := contract.callsList[0]
+
+				for i := 1; i < len(contract.callsList); i++ {
+					switch contract.callsList[i] {
+					case isWinnerCall:
+						assertOrder(t, revealCall, prevCall)
+					case revealCall:
+						assertOrder(t, commitCall, prevCall)
+					case commitCall:
+						assertOrder(t, isWinnerCall, prevCall)
+					}
+
+					prevCall = contract.callsList[i]
+				}
+			})
 		})
 	}
 }
