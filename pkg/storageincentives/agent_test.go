@@ -129,9 +129,8 @@ func TestAgent(t *testing.T) {
 				if !tc.expectedCalls {
 					if len(contract.callsList) > 0 {
 						t.Fatal("got unexpected calls")
-					} else {
-						return
 					}
+					return
 				}
 
 				if len(contract.callsList) == 0 {
