@@ -29,7 +29,7 @@ func Test_RandAddressAt(t *testing.T) {
 	hw0 := []byte{b0[0], b0[1], 0, 0} // highest words of base address
 	hw0int := binary.BigEndian.Uint32(hw0)
 
-	for bitsInCommon := range 30 {
+	for bitsInCommon := 0; bitsInCommon < 30; bitsInCommon++ {
 		addr := swarm.RandAddressAt(t, base, bitsInCommon)
 		assertNotZeroAddress(t, addr)
 
@@ -39,7 +39,7 @@ func Test_RandAddressAt(t *testing.T) {
 
 		//bb0 is the bit mask to AND with hw0 and hw1
 		bb0 := uint32(0)
-		for i := range bitsInCommon {
+		for i := 0; i < bitsInCommon; i++ {
 			bb0 |= (1 << (31 - i))
 		}
 
@@ -62,7 +62,7 @@ func Test_RandAddresses(t *testing.T) {
 	if got := len(addrs); got != count {
 		t.Fatalf("expected %d, got %d", count, got)
 	}
-	for i := range count {
+	for i := 0; i < count; i++ {
 		assertNotZeroAddress(t, addrs[i])
 	}
 }

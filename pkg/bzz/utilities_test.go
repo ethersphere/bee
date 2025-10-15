@@ -49,7 +49,7 @@ func makeAddreses(t *testing.T, count int) []bzz.Address {
 	t.Helper()
 
 	result := make([]bzz.Address, count)
-	for i := range count {
+	for i := 0; i < count; i++ {
 		result[i] = makeAddress(t)
 	}
 	return result

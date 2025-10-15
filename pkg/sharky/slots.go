@@ -58,7 +58,7 @@ func (sl *slots) save() error {
 // extensions are bytewise: can only be multiples of 8 bits
 func (sl *slots) extend(n int) {
 	sl.size += uint32(n) * 8
-	for range n {
+	for i := 0; i < n; i++ {
 		sl.data = append(sl.data, 0xff)
 	}
 }
@@ -123,10 +123,12 @@ func (sl *slots) process(quit chan struct{}) {
 				out = nil
 			}
 			quit = nil
-			sl.wg.Go(func() {
+			sl.wg.Add(1)
+			go func() {
+				defer sl.wg.Done()
 				sl.limboWG.Wait()
 				close(sl.in)
-			})
+			}()
 		}
 	}
 }

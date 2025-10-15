@@ -348,7 +348,10 @@ func (r *record) Read(p []byte) (n int, err error) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
-	end := min(r.c+len(p), len(r.b))
+	end := r.c + len(p)
+	if end > len(r.b) {
+		end = len(r.b)
+	}
 	n = copy(p, r.b[r.c:end])
 	r.c += n
 

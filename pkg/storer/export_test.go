@@ -22,11 +22,11 @@ func ReplaceSharkyShardLimit(val int) {
 }
 
 func (db *DB) WaitForBgCacheWorkers() (unblock func()) {
-	for range defaultBgCacheWorkers {
+	for i := 0; i < defaultBgCacheWorkers; i++ {
 		db.cacheLimiter.sem <- struct{}{}
 	}
 	return func() {
-		for range defaultBgCacheWorkers {
+		for i := 0; i < defaultBgCacheWorkers; i++ {
 			<-db.cacheLimiter.sem
 		}
 	}

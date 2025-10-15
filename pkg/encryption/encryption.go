@@ -158,7 +158,7 @@ func (e *Encryption) Transcrypt(i int, in, out []byte) error {
 
 	// XOR bytes uptil length of in (out must be at least as long)
 	inLength := len(in)
-	for j := range inLength {
+	for j := 0; j < inLength; j++ {
 		out[j] = in[j] ^ segmentKey[j]
 	}
 	// insert padding if out is longer

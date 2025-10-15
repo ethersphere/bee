@@ -36,7 +36,7 @@ func BenchmarkFinder(b *testing.B) {
 
 		ctx := context.Background()
 
-		for at := range prefill {
+		for at := int64(0); at < prefill; at++ {
 			err = updater.Update(ctx, at, payload)
 			if err != nil {
 				b.Fatal(err)

@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"context"
-
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -224,7 +223,9 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, boost
 }
 
 func (t *transactionService) waitForPendingTx(txHash common.Hash) {
-	t.wg.Go(func() {
+	t.wg.Add(1)
+	go func() {
+		defer t.wg.Done()
 		switch _, err := t.WaitForReceipt(t.ctx, txHash); err {
 		case nil:
 			t.logger.Info("pending transaction confirmed", "tx", txHash)
@@ -239,7 +240,7 @@ func (t *transactionService) waitForPendingTx(txHash common.Hash) {
 				t.logger.Error(err, "waiting for pending transaction failed", "tx", txHash)
 			}
 		}
-	})
+	}()
 }
 
 func (t *transactionService) Call(ctx context.Context, request *TxRequest) ([]byte, error) {
@@ -596,9 +597,9 @@ func (t *transactionService) UnwrapABIError(ctx context.Context, req *TxRequest,
 			continue
 		}
 
-		values, ok := data.([]any)
+		values, ok := data.([]interface{})
 		if !ok {
-			values = make([]any, len(abiError.Inputs))
+			values = make([]interface{}, len(abiError.Inputs))
 			for i := range values {
 				values[i] = "?"
 			}

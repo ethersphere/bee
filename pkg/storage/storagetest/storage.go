@@ -984,7 +984,7 @@ func BenchmarkWriteRandom(b *testing.B, db storage.Store) {
 			start, step := 0, (b.N+parallelism)/parallelism
 			n := step * parallelism
 			g := newFullRandomEntryGenerator(0, n)
-			for range parallelism {
+			for i := 0; i < parallelism; i++ {
 				gens = append(gens, newStartAtEntryGenerator(start, g))
 				start += step
 			}

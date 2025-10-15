@@ -209,7 +209,10 @@ func (j *joiner) ReadAt(buffer []byte, off int64) (read int, err error) {
 		return 0, io.EOF
 	}
 
-	readLen := min(int64(cap(buffer)), j.span-off)
+	readLen := int64(cap(buffer))
+	if readLen > j.span-off {
+		readLen = j.span - off
+	}
 	var bytesRead int64
 	var eg errgroup.Group
 	j.readAtOffset(buffer, j.rootData, 0, j.span, off, 0, readLen, &bytesRead, j.rootParity, &eg)
@@ -274,9 +277,14 @@ func (j *joiner) readAtOffset(
 		subtrieSpanLimit := sec
 
 		currentReadSize := subtrieSpan - (off - cur) // the size of the subtrie, minus the offset from the start of the trie
+
 		// upper bound alignments
-		currentReadSize = min(currentReadSize, bytesToRead)
-		currentReadSize = min(currentReadSize, subtrieSpan)
+		if currentReadSize > bytesToRead {
+			currentReadSize = bytesToRead
+		}
+		if currentReadSize > subtrieSpan {
+			currentReadSize = subtrieSpan
+		}
 
 		func(address swarm.Address, b []byte, cur, subTrieSize, off, bufferOffset, bytesToRead, subtrieSpanLimit int64) {
 			eg.Go(func() error {

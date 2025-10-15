@@ -46,7 +46,7 @@ func TestSocMine(t *testing.T) {
 	// this constant is for a minimum reserve size of 2 million chunks with sample size of 16
 	// = 1.284401 * 10^71 = 1284401 + 66 0-s
 	mstring := "1284401"
-	for range 66 {
+	for i := 0; i < 66; i++ {
 		mstring = mstring + "0"
 	}
 	n, ok := new(big.Int).SetString(mstring, 10)
@@ -111,7 +111,7 @@ func makeChunks(t *testing.T, signer crypto.Signer, sampleSize int, filterSOCAdd
 	// the main loop terminating after sampleSize SOCs have been generated
 	eg.Go(func() error {
 		defer cancel()
-		for i := range sampleSize {
+		for i := 0; i < sampleSize; i++ {
 			select {
 			case sample[i] = <-sampleC:
 			case <-ectx.Done():
@@ -125,7 +125,7 @@ func makeChunks(t *testing.T, signer crypto.Signer, sampleSize int, filterSOCAdd
 	// loop to start mining workers
 	count := 8 // number of parallel workers
 	wg := sync.WaitGroup{}
-	for i := range count {
+	for i := 0; i < count; i++ {
 		wg.Add(1)
 		eg.Go(func() (err error) {
 			offset := i * 4

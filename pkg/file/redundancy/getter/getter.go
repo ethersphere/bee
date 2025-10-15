@@ -69,12 +69,12 @@ func New(addrs []swarm.Address, shardCnt int, g storage.Getter, p storage.Putter
 	}
 
 	// after init, cache and wait channels are immutable, need no locking
-	for i := range shardCnt {
+	for i := 0; i < shardCnt; i++ {
 		d.cache[addrs[i].ByteString()] = i
 	}
 
 	// after init, cache and wait channels are immutable, need no locking
-	for i := range size {
+	for i := 0; i < size; i++ {
 		d.waits[i] = make(chan error)
 	}
 

@@ -72,7 +72,7 @@ func TestStamperStamping(t *testing.T) {
 		chunkAddr, _ := createStamp(t, stamper)
 		// issue another 15
 		// collision depth is 8, committed batch depth is 12, bucket volume 2^4
-		for i := range 14 {
+		for i := 0; i < 14; i++ {
 			randAddr := swarm.RandAddressAt(t, chunkAddr, 8)
 			_, err = stamper.Stamp(randAddr, randAddr)
 			if err != nil {
@@ -98,7 +98,7 @@ func TestStamperStamping(t *testing.T) {
 		chunkAddr, _ := createStamp(t, stamper)
 		// issue another 15
 		// collision depth is 8, committed batch depth is 12, bucket volume 2^4
-		for i := range 15 {
+		for i := 0; i < 15; i++ {
 			randAddr := swarm.RandAddressAt(t, chunkAddr, 8)
 			_, err = stamper.Stamp(randAddr, randAddr)
 			if err != nil {

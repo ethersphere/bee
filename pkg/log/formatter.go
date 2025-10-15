@@ -45,12 +45,12 @@ type Marshaler interface {
 	//     with exported fields
 	//
 	// It may return any value of any type.
-	MarshalLog() any
+	MarshalLog() interface{}
 }
 
 // PseudoStruct is a list of key-value pairs that gets logged as a struct.
 // E.g.: PseudoStruct{"f1", 1, "f2", true, "f3", []int{}}.
-type PseudoStruct []any
+type PseudoStruct []interface{}
 
 // fmtOptions carries parameters which influence the way logs are generated/formatted.
 type fmtOptions struct {
@@ -97,7 +97,7 @@ type formatter struct {
 
 // render produces a log line where the base is
 // never escaped; the opposite is true for args.
-func (f *formatter) render(base, args []any) []byte {
+func (f *formatter) render(base, args []interface{}) []byte {
 	buf := bytes.NewBuffer(make([]byte, 0, 1024))
 	if f.opts.jsonOutput {
 		buf.WriteByte('{')
@@ -116,7 +116,7 @@ func (f *formatter) render(base, args []any) []byte {
 // separator (which depends on the output format) before the first pair is
 // written. If escapeKeys is true, the keys are assumed to have
 // non-JSON-compatible characters in them and must be evaluated for escapes.
-func (f *formatter) flatten(buf *bytes.Buffer, kvList []any, continuing bool, escapeKeys bool) {
+func (f *formatter) flatten(buf *bytes.Buffer, kvList []interface{}, continuing bool, escapeKeys bool) {
 	// This logic overlaps with sanitize() but saves one type-cast per key,
 	// which can be measurable.
 	if len(kvList)%2 != 0 {
@@ -159,7 +159,7 @@ func (f *formatter) flatten(buf *bytes.Buffer, kvList []any, continuing bool, es
 
 // prettyWithFlags prettifies the given value.
 // TODO: This is not fast. Most of the overhead goes here.
-func (f *formatter) prettyWithFlags(value any, flags uint32, depth int) string {
+func (f *formatter) prettyWithFlags(value interface{}, flags uint32, depth int) string {
 	const flagRawStruct = 0x1 // Do not print braces on structs.
 
 	if depth > f.opts.maxLogDepth {
@@ -387,12 +387,12 @@ func (f *formatter) caller() caller {
 }
 
 // nonStringKey converts non-string value v to string.
-func (f *formatter) nonStringKey(v any) string {
+func (f *formatter) nonStringKey(v interface{}) string {
 	return fmt.Sprintf("<non-string-key: %s>", f.snippet(v))
 }
 
 // snippet produces a short snippet string of an arbitrary value.
-func (f *formatter) snippet(v any) string {
+func (f *formatter) snippet(v interface{}) string {
 	const snipLen = 16
 
 	snip := f.prettyWithFlags(v, 0, 0)
@@ -405,7 +405,7 @@ func (f *formatter) snippet(v any) string {
 // sanitize ensures that a list of key-value pairs has a value for every key
 // (adding a value if needed) and that each key is a string (substituting a key
 // if needed).
-func (f *formatter) sanitize(kvList []any) []any {
+func (f *formatter) sanitize(kvList []interface{}) []interface{} {
 	if len(kvList)%2 != 0 {
 		kvList = append(kvList, noValue)
 	}
@@ -466,7 +466,7 @@ func needsEscape(s string) bool {
 }
 
 // invokeMarshaler returns panic-safe output from the Marshaler.MarshalLog() method.
-func invokeMarshaler(m Marshaler) (ret any) {
+func invokeMarshaler(m Marshaler) (ret interface{}) {
 	defer func() {
 		if r := recover(); r != nil {
 			ret = fmt.Sprintf("<panic: %s>", r)

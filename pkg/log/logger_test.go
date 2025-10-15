@@ -30,8 +30,8 @@ func (h *hook) Fire(Level) error {
 }
 
 // applyError is a higher order function that returns the given fn with an applied err.
-func applyError(fn func(error, string, ...any), err error) func(string, ...any) {
-	return func(msg string, kvs ...any) {
+func applyError(fn func(error, string, ...interface{}), err error) func(string, ...interface{}) {
+	return func(msg string, kvs ...interface{}) {
 		fn(err, msg, kvs...)
 	}
 }
@@ -73,7 +73,7 @@ func TestLoggerOptionsLevelHooks(t *testing.T) {
 		logger, _ := newLogger(WithLevelHooks(VerbosityNone, &have))
 
 		tests := []struct {
-			fn   func(string, ...any)
+			fn   func(string, ...interface{})
 			want bool
 		}{{
 			fn:   logger.Build().Debug,
@@ -102,7 +102,7 @@ func TestLoggerOptionsLevelHooks(t *testing.T) {
 		logger, _ := newLogger(WithLevelHooks(VerbosityDebug, &have))
 
 		tests := []struct {
-			fn   func(string, ...any)
+			fn   func(string, ...interface{})
 			want bool
 		}{{
 			fn:   logger.Build().Debug,
@@ -131,7 +131,7 @@ func TestLoggerOptionsLevelHooks(t *testing.T) {
 		logger, _ := newLogger(WithLevelHooks(VerbosityInfo, &have))
 
 		tests := []struct {
-			fn   func(string, ...any)
+			fn   func(string, ...interface{})
 			want bool
 		}{{
 			fn:   logger.Build().Debug,
@@ -160,7 +160,7 @@ func TestLoggerOptionsLevelHooks(t *testing.T) {
 		logger, _ := newLogger(WithLevelHooks(VerbosityWarning, &have))
 
 		tests := []struct {
-			fn   func(string, ...any)
+			fn   func(string, ...interface{})
 			want bool
 		}{{
 			fn:   logger.Build().Debug,
@@ -189,7 +189,7 @@ func TestLoggerOptionsLevelHooks(t *testing.T) {
 		logger, _ := newLogger(WithLevelHooks(VerbosityError, &have))
 
 		tests := []struct {
-			fn   func(string, ...any)
+			fn   func(string, ...interface{})
 			want bool
 		}{{
 			fn:   logger.Build().Debug,
@@ -218,7 +218,7 @@ func TestLoggerOptionsLevelHooks(t *testing.T) {
 		logger, _ := newLogger(WithLevelHooks(VerbosityAll, &have))
 
 		tests := []struct {
-			fn   func(string, ...any)
+			fn   func(string, ...interface{})
 			want bool
 		}{{
 			fn:   logger.Build().Debug,
@@ -275,8 +275,8 @@ func TestLogger(t *testing.T) {
 
 	testCases := []struct {
 		name  string
-		logFn func(string, ...any)
-		args  []any
+		logFn func(string, ...interface{})
+		args  []interface{}
 		want  string
 	}{{
 		name:  "just msg",
@@ -626,8 +626,8 @@ func TestLoggerWithName(t *testing.T) {
 
 	testCases := []struct {
 		name  string
-		logFn func(string, ...any)
-		args  []any
+		logFn func(string, ...interface{})
+		args  []interface{}
 		want  string
 	}{{
 		name:  "one",
@@ -694,8 +694,8 @@ func TestLoggerWithValues(t *testing.T) {
 
 	testCases := []struct {
 		name  string
-		logFn func(string, ...any)
-		args  []any
+		logFn func(string, ...interface{})
+		args  []interface{}
 		want  string
 	}{{
 		name:  "zero",

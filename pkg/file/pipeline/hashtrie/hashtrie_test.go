@@ -198,7 +198,7 @@ func TestLevels_TrieFull(t *testing.T) {
 	)
 
 	// to create a level wrap we need to do branching^(level-1) writes
-	for range writes {
+	for i := 0; i < writes; i++ {
 		a := &pipeline.PipeWriteArgs{Ref: addr.Bytes(), Span: span}
 		err := ht.ChainWrite(a)
 		if err != nil {
@@ -239,7 +239,7 @@ func TestRegression(t *testing.T) {
 	)
 	binary.LittleEndian.PutUint64(span, 4096)
 
-	for range writes {
+	for i := 0; i < writes; i++ {
 		a := &pipeline.PipeWriteArgs{Ref: addr.Bytes(), Span: span}
 		err := ht.ChainWrite(a)
 		if err != nil {

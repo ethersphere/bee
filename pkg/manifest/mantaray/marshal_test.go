@@ -177,7 +177,7 @@ func TestMarshal(t *testing.T) {
 		i++
 		return b
 	}
-	for i := range testEntries {
+	for i := 0; i < len(testEntries); i++ {
 		c := testEntries[i].Path
 		e := testEntries[i].Entry
 		if len(e) == 0 {

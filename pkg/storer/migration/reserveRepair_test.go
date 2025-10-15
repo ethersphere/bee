@@ -33,15 +33,15 @@ func TestReserveRepair(t *testing.T) {
 	var chunksPO = make([][]swarm.Chunk, 5)
 	var chunksPerPO uint64 = 2
 
-	for i := range swarm.MaxBins {
+	for i := uint8(0); i < swarm.MaxBins; i++ {
 		err := store.Run(context.Background(), func(s transaction.Store) error {
 			return s.IndexStore().Put(&reserve.BinItem{Bin: i, BinID: 10})
 		})
 		assert.NoError(t, err)
 	}
 
-	for b := range 5 {
-		for range chunksPerPO {
+	for b := 0; b < 5; b++ {
+		for i := uint64(0); i < chunksPerPO; i++ {
 			ch := chunktest.GenerateTestRandomChunkAt(t, baseAddr, b)
 			stampHash, err := ch.Stamp().Hash()
 			if err != nil {
@@ -115,7 +115,7 @@ func TestReserveRepair(t *testing.T) {
 	)
 	assert.NoError(t, err)
 
-	for b := range 5 {
+	for b := 0; b < 5; b++ {
 		if b < 2 {
 			if _, found := binIDs[uint8(b)]; found {
 				t.Fatalf("bin %d should not have any binIDs", b)

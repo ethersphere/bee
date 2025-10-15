@@ -22,7 +22,7 @@ func TestNewStepsChain(t *testing.T) {
 	stepsFn := make([]migration.StepFn, 0)
 
 	// Create 10 step functions where each would remove single element, having value [0-10)
-	for i := range 10 {
+	for i := 0; i < 10; i++ {
 		valForRemoval := i
 		var stepFn migration.StepFn
 

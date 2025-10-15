@@ -36,7 +36,7 @@ func TestSaveLoad(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for range 16 {
+		for i := 0; i < 16; i++ {
 			err := ps.Add(newTestStampIssuer(t, 1000))
 			if err != nil {
 				t.Fatal(err)

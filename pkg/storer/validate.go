@@ -153,13 +153,15 @@ func validateWork(logger log.Logger, store storage.Store, readFn func(context.Co
 
 	var wg sync.WaitGroup
 
-	for range 8 {
-		wg.Go(func() {
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
 			buf := make([]byte, swarm.SocMaxChunkSize)
 			for item := range iteratateItemsC {
 				validChunk(item, buf[:item.Location.Length])
 			}
-		})
+		}()
 	}
 
 	count := 0
@@ -329,8 +331,10 @@ func (p *PinIntegrity) Check(ctx context.Context, logger log.Logger, pin string,
 
 		iteratateItemsC := make(chan *chunkstore.RetrievalIndexItem)
 
-		for range 8 {
-			wg.Go(func() {
+		for i := 0; i < 8; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
 				buf := make([]byte, swarm.SocMaxChunkSize)
 				for item := range iteratateItemsC {
 					if ctx.Err() != nil {
@@ -340,7 +344,7 @@ func (p *PinIntegrity) Check(ctx context.Context, logger log.Logger, pin string,
 						invalid.Add(1)
 					}
 				}
-			})
+			}()
 		}
 
 		var count, micrs int64

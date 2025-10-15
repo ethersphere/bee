@@ -37,15 +37,14 @@ func TestCompact(t *testing.T) {
 	}
 	st.StartReserveWorker(ctx, pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
 
+	var chunks []swarm.Chunk
 	batches := []*postage.Batch{postagetesting.MustNewBatch(), postagetesting.MustNewBatch(), postagetesting.MustNewBatch()}
 	evictBatch := batches[1]
 
 	putter := st.ReservePutter()
 
-	chunks := make([]swarm.Chunk, 0, len(batches)*100)
-
-	for b := range batches {
-		for range uint64(100) {
+	for b := 0; b < len(batches); b++ {
+		for i := uint64(0); i < 100; i++ {
 			ch := chunk.GenerateTestRandomChunk()
 			ch = ch.WithStamp(postagetesting.MustNewBatchStamp(batches[b].ID))
 			chunks = append(chunks, ch)
@@ -82,7 +81,7 @@ func TestCompact(t *testing.T) {
 	}
 
 	putter = st.ReservePutter()
-	for range uint64(100) {
+	for i := uint64(0); i < 100; i++ {
 		ch := chunk.GenerateTestRandomChunk()
 		ch = ch.WithStamp(postagetesting.MustNewBatchStamp(batches[0].ID))
 		chunks = append(chunks, ch)
@@ -136,14 +135,13 @@ func TestCompactNoEvictions(t *testing.T) {
 	}
 	st.StartReserveWorker(ctx, pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
 
+	var chunks []swarm.Chunk
 	batches := []*postage.Batch{postagetesting.MustNewBatch(), postagetesting.MustNewBatch(), postagetesting.MustNewBatch()}
 
 	putter := st.ReservePutter()
 
-	chunks := make([]swarm.Chunk, 0, len(batches)*100)
-
-	for b := range batches {
-		for range uint64(100) {
+	for b := 0; b < len(batches); b++ {
+		for i := uint64(0); i < 100; i++ {
 			ch := chunk.GenerateTestRandomChunk()
 			ch = ch.WithStamp(postagetesting.MustNewBatchStamp(batches[b].ID))
 			chunks = append(chunks, ch)
@@ -169,7 +167,7 @@ func TestCompactNoEvictions(t *testing.T) {
 	}
 
 	putter = st.ReservePutter()
-	for range uint64(100) {
+	for i := uint64(0); i < 100; i++ {
 		ch := chunk.GenerateTestRandomChunk()
 		ch = ch.WithStamp(postagetesting.MustNewBatchStamp(batches[0].ID))
 		chunks = append(chunks, ch)

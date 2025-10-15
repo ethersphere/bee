@@ -119,8 +119,8 @@ func TestCopyBuffer(t *testing.T) {
 		dataSize       int
 	}{}
 
-	for i := range readBufferSizes {
-		for j := range dataSizes {
+	for i := 0; i < len(readBufferSizes); i++ {
+		for j := 0; j < len(dataSizes); j++ {
 			testCases = append(testCases, struct {
 				readBufferSize int
 				dataSize       int

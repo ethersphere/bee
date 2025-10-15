@@ -204,7 +204,7 @@ func Test_FindStampWithBatchID(t *testing.T) {
 
 func cloneAddresses(addrs []swarm.Address) []swarm.Address {
 	result := make([]swarm.Address, len(addrs))
-	for i := range addrs {
+	for i := 0; i < len(addrs); i++ {
 		result[i] = addrs[i].Clone()
 	}
 	return result

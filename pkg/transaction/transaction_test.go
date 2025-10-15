@@ -852,9 +852,9 @@ type rpcAPIError struct {
 	err  string
 }
 
-func (e *rpcAPIError) ErrorCode() int { return e.code }
-func (e *rpcAPIError) Error() string  { return e.msg }
-func (e *rpcAPIError) ErrorData() any { return e.err }
+func (e *rpcAPIError) ErrorCode() int         { return e.code }
+func (e *rpcAPIError) Error() string          { return e.msg }
+func (e *rpcAPIError) ErrorData() interface{} { return e.err }
 
 var _ rpc.DataError = (*rpcAPIError)(nil)
 

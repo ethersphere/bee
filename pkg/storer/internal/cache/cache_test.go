@@ -211,7 +211,7 @@ func TestCache(t *testing.T) {
 		})
 
 		t.Run("not in chunkstore returns error", func(t *testing.T) {
-			for range 5 {
+			for i := 0; i < 5; i++ {
 				unknownChunk := chunktest.GenerateTestRandomChunk()
 				_, err := c.Getter(st).Get(context.TODO(), unknownChunk.Address())
 				if !errors.Is(err, storage.ErrNotFound) {
@@ -223,7 +223,7 @@ func TestCache(t *testing.T) {
 		t.Run("not in cache doesn't affect state", func(t *testing.T) {
 			state := c.State(st.IndexStore())
 
-			for range 5 {
+			for i := 0; i < 5; i++ {
 				extraChunk := chunktest.GenerateTestRandomChunk()
 				err := st.Run(context.Background(), func(s transaction.Store) error {
 					return s.ChunkStore().Put(context.TODO(), extraChunk)

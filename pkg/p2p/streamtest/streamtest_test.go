@@ -813,7 +813,7 @@ func testRecords(t *testing.T, records []*streamtest.Record, want [][2]string, w
 		t.Fatalf("got %v records, want %v", lr, lw)
 	}
 
-	for i := range lr {
+	for i := 0; i < lr; i++ {
 		record := records[i]
 
 		if err := record.Err(); !errors.Is(err, wantErr) {

@@ -215,7 +215,7 @@ func mine(ctx context.Context, odd bool, f func(nonce []byte) (swarm.Chunk, erro
 	defer cancel()
 	eg, ctx := errgroup.WithContext(ctx)
 	result := make(chan swarm.Chunk, 8)
-	for range 8 {
+	for i := 0; i < 8; i++ {
 		eg.Go(func() error {
 			nonce := make([]byte, 32)
 			copy(nonce, initnonce)

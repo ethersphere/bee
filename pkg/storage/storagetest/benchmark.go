@@ -37,7 +37,7 @@ const (
 
 func randomBytes(r *rand.Rand, n int) []byte {
 	b := make([]byte, n)
-	for i := range n {
+	for i := 0; i < n; i++ {
 		b[i] = ' ' + byte(r.Intn('~'-' '+1))
 	}
 	return b
@@ -104,7 +104,7 @@ func newStartAtEntryGenerator(start int, g entryGenerator) entryGenerator {
 func newSequentialKeys(size int, start int, keyFormat string) [][]byte {
 	keys := make([][]byte, size)
 	buffer := make([]byte, size*keyLen)
-	for i := range size {
+	for i := 0; i < size; i++ {
 		begin, end := i*keyLen, (i+1)*keyLen
 		key := buffer[begin:begin:end]
 		_, _ = fmt.Fprintf(bytes.NewBuffer(key), keyFormat, start+i)
@@ -117,7 +117,7 @@ func newRandomKeys(n int, format string) [][]byte {
 	r := rand.New(rand.NewSource(time.Now().Unix()))
 	keys := make([][]byte, n)
 	buffer := make([]byte, n*keyLen)
-	for i := range n {
+	for i := 0; i < n; i++ {
 		begin, end := i*keyLen, (i+1)*keyLen
 		key := buffer[begin:begin:end]
 		_, _ = fmt.Fprintf(bytes.NewBuffer(key), format, r.Intn(n))
@@ -129,7 +129,7 @@ func newRandomKeys(n int, format string) [][]byte {
 func newFullRandomKeys(size int, start int, format string) [][]byte {
 	keys := newSequentialKeys(size, start, format)
 	r := rand.New(rand.NewSource(time.Now().Unix()))
-	for i := range size {
+	for i := 0; i < size; i++ {
 		j := r.Intn(size)
 		keys[i], keys[j] = keys[j], keys[i]
 	}

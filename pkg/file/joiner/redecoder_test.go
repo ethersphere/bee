@@ -33,7 +33,7 @@ func TestReDecoderFlow(t *testing.T) {
 
 	// Create real data chunks with proper content
 	dataShards := make([][]byte, dataShardCount)
-	for i := range dataShardCount {
+	for i := 0; i < dataShardCount; i++ {
 		// Create chunks with simpler test data
 		dataShards[i] = make([]byte, swarm.ChunkWithSpanSize)
 		// Create a unique string for this shard
@@ -44,7 +44,7 @@ func TestReDecoderFlow(t *testing.T) {
 
 	// Create parity chunks using Reed-Solomon encoding
 	parityShards := make([][]byte, parityShardCount)
-	for i := range parityShardCount {
+	for i := 0; i < parityShardCount; i++ {
 		parityShards[i] = make([]byte, swarm.ChunkWithSpanSize)
 	}
 
@@ -68,7 +68,7 @@ func TestReDecoderFlow(t *testing.T) {
 	addresses := make([]swarm.Address, totalShardCount)
 	chunks := make([]swarm.Chunk, totalShardCount)
 
-	for i := range totalShardCount {
+	for i := 0; i < totalShardCount; i++ {
 		// Create proper content-addressed chunks
 		chunk, err := cac.NewWithDataSpan(allShards[i])
 		if err != nil {
@@ -125,7 +125,7 @@ func TestReDecoderFlow(t *testing.T) {
 	// we can still access the chunks
 
 	// Sanity check - verify we can still fetch chunks through the cache
-	for i := range dataShardCount {
+	for i := 0; i < dataShardCount; i++ {
 		_, err := decoder.Get(ctx, addresses[i])
 		if err != nil {
 			t.Fatalf("Failed to get chunk %d after recovery: %v", i, err)
@@ -139,7 +139,7 @@ func TestReDecoderFlow(t *testing.T) {
 	}
 
 	// Verify all chunks can be fetched through the ReDecoder
-	for i := range dataShardCount {
+	for i := 0; i < dataShardCount; i++ {
 		_, err := newDecoder.Get(ctx, addresses[i])
 		if err != nil {
 			t.Fatalf("Failed to get chunk %d through ReDecoder: %v", i, err)

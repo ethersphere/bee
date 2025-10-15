@@ -32,7 +32,7 @@ func TestPersistIdempotence(t *testing.T) {
 	}
 	ctx := context.Background()
 	var ls mantaray.LoadSaver = newMockLoadSaver()
-	for i := range paths {
+	for i := 0; i < len(paths); i++ {
 		c := paths[i]
 		err := n.Save(ctx, ls)
 		if err != nil {
@@ -49,7 +49,7 @@ func TestPersistIdempotence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	for i := range paths {
+	for i := 0; i < len(paths); i++ {
 		c := paths[i]
 		m, err := n.Lookup(ctx, c, ls)
 		if err != nil {

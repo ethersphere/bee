@@ -17,7 +17,7 @@ func generateCommonBinPrefixes(base swarm.Address, suffixLength int) [][]swarm.A
 	bitCombinationsCount := int(math.Pow(2, float64(suffixLength)))
 	bitSuffixes := make([]uint8, bitCombinationsCount)
 
-	for i := range bitCombinationsCount {
+	for i := 0; i < bitCombinationsCount; i++ {
 		bitSuffixes[i] = uint8(i)
 	}
 

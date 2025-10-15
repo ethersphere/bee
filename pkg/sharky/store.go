@@ -100,13 +100,17 @@ func (s *Store) create(index uint8, maxDataSize int, basedir fs.FS) (*shard, err
 		quit:        s.quit,
 	}
 	terminated := make(chan struct{})
-	s.wg.Go(func() {
+	sh.slots.wg.Add(1)
+	go func() {
+		defer sh.slots.wg.Done()
 		sh.process()
 		close(terminated)
-	})
-	s.wg.Go(func() {
+	}()
+	sh.slots.wg.Add(1)
+	go func() {
+		defer sh.slots.wg.Done()
 		sl.process(terminated)
-	})
+	}()
 	return sh, nil
 }
 

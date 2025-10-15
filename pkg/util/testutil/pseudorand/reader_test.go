@@ -97,7 +97,7 @@ func TestReader(t *testing.T) {
 		}
 	})
 	t.Run("seek and match", func(t *testing.T) {
-		for range 20 {
+		for i := 0; i < 20; i++ {
 			off := rand.Intn(size)
 			n := rand.Intn(size - off)
 			t.Run(fmt.Sprintf("off=%d n=%d", off, n), func(t *testing.T) {

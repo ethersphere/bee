@@ -159,7 +159,7 @@ func insertValues(t *testing.T, store storage.StateStorer, key1, key2 string, va
 func insert(t *testing.T, store storage.StateStorer, prefix string, count int) {
 	t.Helper()
 
-	for i := range count {
+	for i := 0; i < count; i++ {
 		k := prefix + fmt.Sprint(i)
 
 		err := store.Put(k, i)

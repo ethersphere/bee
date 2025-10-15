@@ -75,10 +75,10 @@ func TestNewLogger(t *testing.T) {
 
 	var (
 		cnt int
-		val any
+		val interface{}
 	)
 	NewLogger("root").Register()
-	loggers.Range(func(k, v any) bool {
+	loggers.Range(func(k, v interface{}) bool {
 		cnt++
 		val = v
 		return true
@@ -119,7 +119,7 @@ func TestSetVerbosity(t *testing.T) {
 	NewLogger("root").WithName("child1").WithValues("abc", 123).Register()
 
 	registered := make(map[string]*logger)
-	loggers.Range(func(k, v any) bool {
+	loggers.Range(func(k, v interface{}) bool {
 		registered[k.(string)] = v.(*logger)
 		return true
 	})
@@ -185,7 +185,7 @@ func TestRegistryRange(t *testing.T) {
 	NewLogger("root").WithName("child1").WithValues("abc", 123).Register()
 
 	registered := make(map[string]*logger)
-	loggers.Range(func(k, v any) bool {
+	loggers.Range(func(k, v interface{}) bool {
 		registered[k.(string)] = v.(*logger)
 		return true
 	})

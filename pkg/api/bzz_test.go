@@ -104,7 +104,10 @@ func TestBzzUploadDownloadWithRedundancy_FLAKY(t *testing.T) {
 			store.Record()
 			defer store.Unrecord()
 			// we intend to forget as many chunks as possible for the given redundancy level
-			forget := min(parityCnt, shardCnt)
+			forget := parityCnt
+			if parityCnt > shardCnt {
+				forget = shardCnt
+			}
 			if levels == 1 {
 				forget = 2
 			}
@@ -138,7 +141,7 @@ func TestBzzUploadDownloadWithRedundancy_FLAKY(t *testing.T) {
 			if len(got) != len(want) {
 				t.Fatalf("got %v parts, want %v parts", len(got), len(want))
 			}
-			for i := range want {
+			for i := 0; i < len(want); i++ {
 				if !bytes.Equal(got[i], want[i]) {
 					t.Errorf("part %v: got %q, want %q", i, string(got[i]), string(want[i]))
 				}
@@ -667,7 +670,7 @@ func TestBzzFilesRangeRequests(t *testing.T) {
 					if len(got) != len(want) {
 						t.Fatalf("got %v parts, want %v parts", len(got), len(want))
 					}
-					for i := range want {
+					for i := 0; i < len(want); i++ {
 						if !bytes.Equal(got[i], want[i]) {
 							t.Errorf("part %v: got %q, want %q", i, string(got[i]), string(want[i]))
 						}
@@ -678,7 +681,7 @@ func TestBzzFilesRangeRequests(t *testing.T) {
 	}
 }
 
-func createRangeHeader(data any, ranges [][2]int) (header string, parts [][]byte) {
+func createRangeHeader(data interface{}, ranges [][2]int) (header string, parts [][]byte) {
 	getLen := func() int {
 		switch data := data.(type) {
 		case []byte:

@@ -49,7 +49,7 @@ func TestReader_ReadMsg(t *testing.T) {
 
 			r := tc.readerFunc()
 			var msg pb.Message
-			for i := range messages {
+			for i := 0; i < len(messages); i++ {
 				err := r.ReadMsg(&msg)
 				if i == len(messages) {
 					if !errors.Is(err, io.EOF) {
@@ -105,7 +105,7 @@ func TestReader_timeout(t *testing.T) {
 
 				r := tc.readerFunc()
 				var msg pb.Message
-				for i := range messages {
+				for i := 0; i < len(messages); i++ {
 					var timeout time.Duration
 					if i == 0 {
 						timeout = 1000 * time.Millisecond

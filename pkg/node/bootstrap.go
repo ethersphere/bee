@@ -204,7 +204,7 @@ func bootstrapNode(
 		eventsJSON     []byte
 	)
 
-	for range getSnapshotRetries {
+	for i := 0; i < getSnapshotRetries; i++ {
 		if err != nil {
 			time.Sleep(retryWait)
 		}
@@ -223,7 +223,7 @@ func bootstrapNode(
 		return nil, err
 	}
 
-	for range getSnapshotRetries {
+	for i := 0; i < getSnapshotRetries; i++ {
 		if err != nil {
 			time.Sleep(retryWait)
 		}

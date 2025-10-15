@@ -102,9 +102,11 @@ func (sh *shard) process() {
 	defer func() {
 		// this condition checks if an slot is in limbo (popped but not used for write op)
 		if writes != nil {
-			sh.slots.limboWG.Go(func() {
+			sh.slots.limboWG.Add(1)
+			go func() {
+				defer sh.slots.limboWG.Done()
 				sh.slots.in <- slot
-			})
+			}()
 		}
 	}()
 	free := sh.slots.out

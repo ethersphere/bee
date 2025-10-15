@@ -790,7 +790,7 @@ func TestJoinerTwoLevelsAcrossChunk(t *testing.T) {
 
 	// create 128+1 chunks for all references in the intermediate chunks
 	cursor := 8
-	for range swarm.Branches {
+	for i := 0; i < swarm.Branches; i++ {
 		chunkAddressBytes := firstChunk.Data()[cursor : cursor+swarm.SectionSize]
 		chunkAddress := swarm.NewAddress(chunkAddressBytes)
 		ch := filetest.GenerateTestRandomFileChunk(chunkAddress, swarm.ChunkSize, swarm.ChunkSize)
@@ -815,7 +815,7 @@ func TestJoinerTwoLevelsAcrossChunk(t *testing.T) {
 
 	// read back all the chunks and verify
 	b := make([]byte, swarm.ChunkSize)
-	for i := range swarm.Branches {
+	for i := 0; i < swarm.Branches; i++ {
 		c, err := j.Read(b)
 		if err != nil {
 			t.Fatal(err)

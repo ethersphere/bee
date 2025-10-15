@@ -268,7 +268,7 @@ func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uin
 	if peer.po >= storageRadius {
 
 		// cancel all bins lower than the storage radius
-		for bin := range storageRadius {
+		for bin := uint8(0); bin < storageRadius; bin++ {
 			peer.cancelBin(bin)
 		}
 

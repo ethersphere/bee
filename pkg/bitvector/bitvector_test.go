@@ -64,7 +64,7 @@ func TestBitvectorGetSet(t *testing.T) {
 			t.Errorf("error for length %v: %v", length, err)
 		}
 
-		for i := range length {
+		for i := 0; i < length; i++ {
 			if bv.Get(i) {
 				t.Errorf("expected false for element on index %v", i)
 			}
@@ -79,9 +79,9 @@ func TestBitvectorGetSet(t *testing.T) {
 			bv.Get(length + 8)
 		}()
 
-		for i := range length {
+		for i := 0; i < length; i++ {
 			bv.Set(i)
-			for j := range length {
+			for j := 0; j < length; j++ {
 				if j == i {
 					if !bv.Get(j) {
 						t.Errorf("element on index %v is not set to true", i)

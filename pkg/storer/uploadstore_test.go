@@ -196,7 +196,7 @@ func testUploadStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 			chunks := chunktesting.GenerateTestRandomChunks(10)
 
 			for _, ch := range chunks {
-				for range 2 {
+				for i := 0; i < 2; i++ {
 					err := session.Put(context.TODO(), ch)
 					if err != nil {
 						t.Fatalf("session.Put(...): unexpected error: %v", err)
@@ -273,7 +273,7 @@ func testListDeleteSessions(t *testing.T, newStorer func() (*storer.DB, error)) 
 			t.Fatal(err)
 		}
 
-		for range 10 {
+		for i := 0; i < 10; i++ {
 			_, err := lstore.NewSession()
 			if err != nil {
 				t.Fatalf("NewSession(): unexpected error: %v", err)

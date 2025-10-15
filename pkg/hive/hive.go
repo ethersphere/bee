@@ -252,25 +252,31 @@ func (s *Service) disconnect(peer p2p.Peer) error {
 
 func (s *Service) startCheckPeersHandler() {
 	ctx, cancel := context.WithCancel(context.Background())
-	s.wg.Go(func() {
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
 		<-s.quit
 		cancel()
-	})
+	}()
 
-	s.wg.Go(func() {
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case newPeers := <-s.peersChan:
-				s.wg.Go(func() {
+				s.wg.Add(1)
+				go func() {
+					defer s.wg.Done()
 					cctx, cancel := context.WithTimeout(ctx, batchValidationTimeout)
 					defer cancel()
 					s.checkAndAddPeers(cctx, newPeers)
-				})
+				}()
 			}
 		}
-	})
+	}()
 }
 
 func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {

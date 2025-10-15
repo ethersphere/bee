@@ -114,7 +114,7 @@ func TestRecovery(t *testing.T) {
 			defer cancel()
 
 			runs := 96
-			for range runs {
+			for i := 0; i < runs; i++ {
 				loc, err := s.Write(cctx, payload)
 				if err != nil {
 					if errors.Is(err, context.DeadlineExceeded) {

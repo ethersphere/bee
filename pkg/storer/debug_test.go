@@ -157,7 +157,7 @@ func testDebugInfo(t *testing.T, newStorer func() (*storer.DB, swarm.Address, er
 
 		putter := lstore.ReservePutter()
 
-		for range 10 {
+		for i := 0; i < 10; i++ {
 			chunk := chunktest.GenerateTestRandomChunkAt(t, addr, 0)
 			err := putter.Put(context.Background(), chunk)
 			if err != nil {

@@ -104,7 +104,7 @@ func (s *Store) Count(k storage.Key) (int, error) {
 	defer s.mu.RUnlock()
 
 	count := 0
-	s.st.WalkPrefix(k.Namespace(), func(_ string, _ any) bool {
+	s.st.WalkPrefix(k.Namespace(), func(_ string, _ interface{}) bool {
 		count++
 		return false
 	})
@@ -116,7 +116,7 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 		return fmt.Errorf("failed iteration: %w", err)
 	}
 
-	getNext := func(k string, v any) (*storage.Result, error) {
+	getNext := func(k string, v interface{}) (*storage.Result, error) {
 		for _, filter := range q.Filters {
 			if filter(idFromKey(k, q.Factory().Namespace()), v.([]byte)) {
 				return nil, nil
@@ -155,7 +155,7 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 
 	switch q.Order {
 	case storage.KeyAscendingOrder:
-		s.st.WalkPrefix(prefix, func(k string, v any) bool {
+		s.st.WalkPrefix(prefix, func(k string, v interface{}) bool {
 
 			if q.PrefixAtStart && !skipUntil {
 				if k >= prefix+separator+q.Prefix {
@@ -195,7 +195,7 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 		// For now, inmem implementation is not meant to work for large datasets, so first option
 		// is chosen.
 		results := make([]storage.Result, 0)
-		s.st.WalkPrefix(prefix, func(k string, v any) bool {
+		s.st.WalkPrefix(prefix, func(k string, v interface{}) bool {
 			res, err := getNext(k, v)
 			if err != nil {
 				retErr = errors.Join(retErr, err)

@@ -209,7 +209,7 @@ func TestProof(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for i := range 128 {
+	for i := 0; i < 128; i++ {
 		t.Run(fmt.Sprintf("segmentIndex %d", i), func(t *testing.T) {
 			t.Parallel()
 

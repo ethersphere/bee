@@ -25,7 +25,7 @@ var _ storage.Item = (*proxyItem)(nil)
 type proxyItem struct {
 	ns  string
 	key string
-	obj any
+	obj interface{}
 }
 
 // ID implements Item interface.
@@ -91,7 +91,7 @@ func (pi proxyItem) String() string {
 }
 
 // newProxyItem creates a new proxyItem.
-func newProxyItem(key string, obj any) *proxyItem {
+func newProxyItem(key string, obj interface{}) *proxyItem {
 	return &proxyItem{ns: stateStoreNamespace, key: key, obj: obj}
 }
 
@@ -146,12 +146,12 @@ func (s *StateStorerAdapter) Close() error {
 }
 
 // Get implements StateStorer interface.
-func (s *StateStorerAdapter) Get(key string, obj any) (err error) {
+func (s *StateStorerAdapter) Get(key string, obj interface{}) (err error) {
 	return s.storage.Get(newProxyItem(key, obj))
 }
 
 // Put implements StateStorer interface.
-func (s *StateStorerAdapter) Put(key string, obj any) (err error) {
+func (s *StateStorerAdapter) Put(key string, obj interface{}) (err error) {
 	return s.storage.Put(newProxyItem(key, obj))
 }
 

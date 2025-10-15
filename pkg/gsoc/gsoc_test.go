@@ -114,7 +114,7 @@ func ensureCalls(t *testing.T, calls *int, exp int) {
 func waitHandlerCallback(t *testing.T, msgChan *chan struct{}, count int) {
 	t.Helper()
 
-	for range count {
+	for received := 0; received < count; received++ {
 		select {
 		case <-*msgChan:
 		case <-time.After(1 * time.Second):

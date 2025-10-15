@@ -55,7 +55,7 @@ func RandAddresses(tb testing.TB, count int) []Address {
 	tb.Helper()
 
 	result := make([]Address, count)
-	for i := range count {
+	for i := 0; i < count; i++ {
 		result[i] = RandAddress(tb)
 	}
 	return result

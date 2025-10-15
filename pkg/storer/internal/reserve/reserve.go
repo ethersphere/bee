@@ -634,7 +634,7 @@ func (r *Reserve) Reset(ctx context.Context) error {
 
 	// step 4: delete binItems
 	err = r.st.Run(context.Background(), func(s transaction.Store) error {
-		for i := range swarm.MaxBins {
+		for i := uint8(0); i < swarm.MaxBins; i++ {
 			err := s.IndexStore().Delete(&BinItem{Bin: i})
 			if err != nil {
 				return err
@@ -691,7 +691,7 @@ func (r *Reserve) LastBinIDs() ([]uint64, uint64, error) {
 
 	ids := make([]uint64, swarm.MaxBins)
 
-	for bin := range swarm.MaxBins {
+	for bin := uint8(0); bin < swarm.MaxBins; bin++ {
 		binItem := &BinItem{Bin: bin}
 		err := r.st.IndexStore().Get(binItem)
 		if err != nil {

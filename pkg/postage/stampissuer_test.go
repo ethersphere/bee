@@ -176,7 +176,7 @@ func Test_StampIssuer_inc(t *testing.T) {
 		count := sti.BucketUpperBound()
 
 		// Increment to upper bound (fill bucket to max cap)
-		for range count {
+		for i := uint32(0); i < count; i++ {
 			_, _, err := sti.Increment(addr)
 			if err != nil {
 				t.Fatal(err)
@@ -184,7 +184,7 @@ func Test_StampIssuer_inc(t *testing.T) {
 		}
 
 		// Incrementing stamp issuer above upper bound should return index starting from 0
-		for i := range count {
+		for i := uint32(0); i < count; i++ {
 			idxb, _, err := sti.Increment(addr)
 			if err != nil {
 				t.Fatal(err)
@@ -203,7 +203,7 @@ func Test_StampIssuer_inc(t *testing.T) {
 		count := sti.BucketUpperBound()
 
 		// Increment to upper bound (fill bucket to max cap)
-		for range count {
+		for i := uint32(0); i < count; i++ {
 			_, _, err := sti.Increment(addr)
 			if err != nil {
 				t.Fatal(err)
@@ -211,7 +211,7 @@ func Test_StampIssuer_inc(t *testing.T) {
 		}
 
 		// Incrementing stamp issuer above upper bound should return error
-		for range count {
+		for i := uint32(0); i < count; i++ {
 			_, _, err := sti.Increment(addr)
 			if !errors.Is(err, postage.ErrBucketFull) {
 				t.Fatal("bucket should be full")
@@ -230,7 +230,7 @@ func TestUtilization(t *testing.T) {
 
 		var eg errgroup.Group
 
-		for range 8 {
+		for i := 0; i < 8; i++ {
 			eg.Go(func() error {
 				for {
 					_, _, err := sti.Increment(swarm.RandAddress(t))

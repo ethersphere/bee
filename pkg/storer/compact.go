@@ -51,7 +51,7 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 
 	n := time.Now()
 
-	for shard := range sharkyNoOfShards {
+	for shard := 0; shard < sharkyNoOfShards; shard++ {
 
 		select {
 		case <-ctx.Done():

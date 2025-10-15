@@ -129,7 +129,7 @@ func testHasherReuse(t *testing.T, poolsize int) {
 	h := pool.Get()
 	defer pool.Put(h)
 
-	for i := range 100 {
+	for i := 0; i < 100; i++ {
 		seed := int64(i)
 		testData := testutil.RandBytesWithSeed(t, 4096, seed)
 		n := rand.Intn(h.Capacity())
@@ -151,7 +151,7 @@ func TestBMTConcurrentUse(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	eg, ectx := errgroup.WithContext(ctx)
-	for range cycles {
+	for i := 0; i < cycles; i++ {
 		eg.Go(func() error {
 			select {
 			case <-ectx.Done():
@@ -204,7 +204,7 @@ func TestBMTWriterBuffers(t *testing.T) {
 
 				reads := rand.Intn(count*2-1) + 1
 				offsets := make([]int, reads+1)
-				for i := range reads {
+				for i := 0; i < reads; i++ {
 					offsets[i] = rand.Intn(size) + 1
 				}
 				offsets[reads] = size
@@ -235,7 +235,7 @@ func TestBMTWriterBuffers(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cancel()
 			eg, ectx := errgroup.WithContext(ctx)
-			for range attempts {
+			for i := 0; i < attempts; i++ {
 				eg.Go(func() error {
 					select {
 					case <-ectx.Done():

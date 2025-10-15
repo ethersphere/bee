@@ -447,7 +447,7 @@ func nodeRefBytes(f *fork) []byte {
 func encryptDecrypt(input, key []byte) []byte {
 	output := make([]byte, len(input))
 
-	for i := range input {
+	for i := 0; i < len(input); i++ {
 		output[i] = input[i] ^ key[i%len(key)]
 	}
 

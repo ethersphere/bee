@@ -48,7 +48,7 @@ func TestReserve(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for b := range 2 {
+	for b := 0; b < 2; b++ {
 		for i := 1; i < 51; i++ {
 			ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, b)
 			err := r.Put(context.Background(), ch)
@@ -101,7 +101,7 @@ func TestReserveChunkType(t *testing.T) {
 
 	storedChunksCA := 0
 	storedChunksSO := 0
-	for range 100 {
+	for i := 0; i < 100; i++ {
 		ch := chunk.GenerateTestRandomChunk()
 		if rand.Intn(2) == 0 {
 			storedChunksCA++
@@ -552,8 +552,8 @@ func TestEvict(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for range chunksPerBatch {
-		for b := range 3 {
+	for i := 0; i < chunksPerBatch; i++ {
+		for b := 0; b < 3; b++ {
 			ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, b).WithStamp(postagetesting.MustNewBatchStamp(batches[b].ID))
 			chunks = append(chunks, ch)
 			err := r.Put(context.Background(), ch)
@@ -564,7 +564,7 @@ func TestEvict(t *testing.T) {
 	}
 
 	totalEvicted := 0
-	for i := range 3 {
+	for i := 0; i < 3; i++ {
 		evicted, err := r.EvictBatchBin(context.Background(), evictBatch.ID, math.MaxInt, uint8(i))
 		if err != nil {
 			t.Fatal(err)
@@ -623,9 +623,9 @@ func TestEvictSOC(t *testing.T) {
 	batch := postagetesting.MustNewBatch()
 	signer := getSigner(t)
 
-	chunks := make([]swarm.Chunk, 0, 10)
+	var chunks []swarm.Chunk
 
-	for i := range 10 {
+	for i := 0; i < 10; i++ {
 		ch := soctesting.GenerateMockSocWithSigner(t, []byte{byte(i)}, signer).Chunk().WithStamp(postagetesting.MustNewFields(batch.ID, uint64(i), uint64(i)))
 		chunks = append(chunks, ch)
 		err := r.Put(context.Background(), ch)
@@ -694,8 +694,8 @@ func TestEvictMaxCount(t *testing.T) {
 
 	batch := postagetesting.MustNewBatch()
 
-	for b := range 2 {
-		for range 10 {
+	for b := 0; b < 2; b++ {
+		for i := 0; i < 10; i++ {
 			ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, b).WithStamp(postagetesting.MustNewBatchStamp(batch.ID))
 			chunks = append(chunks, ch)
 			err := r.Put(context.Background(), ch)
@@ -750,8 +750,8 @@ func TestIterate(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		for b := range 3 {
-			for range 10 {
+		for b := 0; b < 3; b++ {
+			for i := 0; i < 10; i++ {
 				ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, b)
 				err := r.Put(context.Background(), ch)
 				if err != nil {
@@ -868,7 +868,7 @@ func TestReset(t *testing.T) {
 		total        = bins * chunksPerBin
 	)
 
-	for b := range bins {
+	for b := 0; b < bins; b++ {
 		for i := 1; i <= chunksPerBin; i++ {
 			ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, b)
 			err := r.Put(context.Background(), ch)
@@ -995,7 +995,7 @@ func TestEvictRemovesPinnedContent(t *testing.T) {
 	batch := postagetesting.MustNewBatch()
 
 	chunks := make([]swarm.Chunk, numChunks)
-	for i := range numChunks {
+	for i := 0; i < numChunks; i++ {
 		ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewBatchStamp(batch.ID))
 		chunks[i] = ch
 

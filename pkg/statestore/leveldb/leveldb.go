@@ -76,7 +76,7 @@ func NewStateStore(path string, l log.Logger) (*Store, error) {
 
 // Get retrieves a value of the requested key. If no results are found,
 // storage.ErrNotFound will be returned.
-func (s *Store) Get(key string, i any) error {
+func (s *Store) Get(key string, i interface{}) error {
 	data, err := s.db.Get([]byte(key), nil)
 	if err != nil {
 		if errors.Is(err, leveldb.ErrNotFound) {
@@ -95,7 +95,7 @@ func (s *Store) Get(key string, i any) error {
 // Put stores a value for an arbitrary key. BinaryMarshaler
 // interface method will be called on the provided value
 // with fallback to JSON serialization.
-func (s *Store) Put(key string, i any) (err error) {
+func (s *Store) Put(key string, i interface{}) (err error) {
 	var bytes []byte
 	if marshaler, ok := i.(encoding.BinaryMarshaler); ok {
 		if bytes, err = marshaler.MarshalBinary(); err != nil {

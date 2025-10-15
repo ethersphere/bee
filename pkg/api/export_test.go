@@ -133,7 +133,7 @@ var ErrHexLength = errHexLength
 
 type HexInvalidByteError = hexInvalidByteError
 
-func MapStructure(input, output any, hooks map[string]func(v string) (string, error)) error {
+func MapStructure(input, output interface{}, hooks map[string]func(v string) (string, error)) error {
 	return mapStructure(input, output, hooks)
 }
 
