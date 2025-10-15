@@ -109,7 +109,7 @@ type memFS struct {
 }
 
 func (m *memFS) Open(path string) (fs.File, error) {
-	return m.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644)
+	return m.Fs.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644)
 }
 
 func TestChunkStore(t *testing.T) {

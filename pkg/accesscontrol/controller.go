@@ -261,7 +261,7 @@ func (c *ControllerStruct) getGranteeList(ctx context.Context, ls file.LoadSaver
 }
 
 func (c *ControllerStruct) encryptRefForPublisher(publisherPubKey *ecdsa.PublicKey, ref swarm.Address) (swarm.Address, error) {
-	keys, err := c.access.Key(publisherPubKey, [][]byte{oneByteArray})
+	keys, err := c.access.Session.Key(publisherPubKey, [][]byte{oneByteArray})
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
@@ -275,7 +275,7 @@ func (c *ControllerStruct) encryptRefForPublisher(publisherPubKey *ecdsa.PublicK
 }
 
 func (c *ControllerStruct) decryptRefForPublisher(publisherPubKey *ecdsa.PublicKey, encryptedRef swarm.Address) (swarm.Address, error) {
-	keys, err := c.access.Key(publisherPubKey, [][]byte{oneByteArray})
+	keys, err := c.access.Session.Key(publisherPubKey, [][]byte{oneByteArray})
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}

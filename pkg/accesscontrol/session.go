@@ -37,7 +37,7 @@ func (s *SessionStruct) Key(publicKey *ecdsa.PublicKey, nonces [][]byte) ([][]by
 	if publicKey == nil {
 		return nil, ErrInvalidPublicKey
 	}
-	x, y := publicKey.ScalarMult(publicKey.X, publicKey.Y, s.key.D.Bytes())
+	x, y := publicKey.Curve.ScalarMult(publicKey.X, publicKey.Y, s.key.D.Bytes())
 	if x == nil || y == nil {
 		return nil, ErrSecretKeyInfinity
 	}

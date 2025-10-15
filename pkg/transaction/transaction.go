@@ -14,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"context"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -24,6 +23,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/storage"
+	"golang.org/x/net/context"
 )
 
 // loggerName is the tree path name of the logger for this package.

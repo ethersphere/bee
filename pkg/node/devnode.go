@@ -373,7 +373,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 	apiService.SetP2P(p2ps)
 	apiService.SetSwarmAddress(&swarmAddress)
 
-	apiListener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", o.APIAddr)
+	apiListener, err := net.Listen("tcp", o.APIAddr)
 	if err != nil {
 		return nil, fmt.Errorf("api listener: %w", err)
 	}

@@ -129,7 +129,7 @@ func (al *ActLogic) getAccessKey(ctx context.Context, storage kvs.KeyValueStore,
 // Generate lookup key and access key decryption key for a given public key.
 func (al *ActLogic) getKeys(publicKey *ecdsa.PublicKey) ([]byte, []byte, error) {
 	nonces := [][]byte{zeroByteArray, oneByteArray}
-	keys, err := al.Key(publicKey, nonces)
+	keys, err := al.Session.Key(publicKey, nonces)
 	if len(keys) != len(nonces) {
 		return nil, nil, err
 	}

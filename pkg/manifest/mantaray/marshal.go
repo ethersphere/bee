@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 )
 
 const (
@@ -342,7 +341,7 @@ func (f *fork) fromBytes(b []byte) error {
 
 	f.prefix = b[nodeForkHeaderSize : nodeForkHeaderSize+prefixLen]
 	f.Node = NewNodeRef(b[nodeForkPreReferenceSize:])
-	f.nodeType = nodeType
+	f.Node.nodeType = nodeType
 
 	return nil
 }
@@ -357,7 +356,7 @@ func (f *fork) fromBytes02(b []byte, refBytesSize, metadataBytesSize int) error 
 
 	f.prefix = b[nodeForkHeaderSize : nodeForkHeaderSize+prefixLen]
 	f.Node = NewNodeRef(b[nodeForkPreReferenceSize : nodeForkPreReferenceSize+refBytesSize])
-	f.nodeType = nodeType
+	f.Node.nodeType = nodeType
 
 	if metadataBytesSize > 0 {
 		metadataBytes := b[nodeForkPreReferenceSize+refBytesSize+nodeForkMetadataBytesSize:]
@@ -369,7 +368,7 @@ func (f *fork) fromBytes02(b []byte, refBytesSize, metadataBytesSize int) error 
 			return err
 		}
 
-		f.metadata = metadata
+		f.Node.metadata = metadata
 	}
 
 	return nil
@@ -382,7 +381,7 @@ func (f *fork) bytes() (b []byte, err error) {
 		err = fmt.Errorf("node reference size > 256: %d", len(r))
 		return
 	}
-	b = append(b, f.nodeType, uint8(len(f.prefix)))
+	b = append(b, f.Node.nodeType, uint8(len(f.prefix)))
 
 	prefixBytes := make([]byte, nodePrefixMaxSize)
 	copy(prefixBytes, f.prefix)
@@ -392,16 +391,13 @@ func (f *fork) bytes() (b []byte, err error) {
 	copy(refBytes, r)
 	b = append(b, refBytes...)
 
-	if f.IsWithMetadataType() {
+	if f.Node.IsWithMetadataType() {
 		// using JSON encoding for metadata
-		metadataJSONBytes, err1 := json.Marshal(f.metadata)
+		metadataJSONBytes, err1 := json.Marshal(f.Node.metadata)
 		if err1 != nil {
 			return b, err1
 		}
 
-		if len(metadataJSONBytes) > math.MaxInt-nodeForkMetadataBytesSize {
-			return nil, fmt.Errorf("metadata size overflow: %d", len(metadataJSONBytes))
-		}
 		metadataJSONBytesSizeWithSize := len(metadataJSONBytes) + nodeForkMetadataBytesSize
 
 		// pad JSON bytes if necessary
@@ -439,7 +435,7 @@ func (f *fork) bytes() (b []byte, err error) {
 var refBytes = nodeRefBytes
 
 func nodeRefBytes(f *fork) []byte {
-	return f.ref
+	return f.Node.ref
 }
 
 // encryptDecrypt runs a XOR encryption on the input bytes, encrypting it if it

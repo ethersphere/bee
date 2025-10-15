@@ -116,13 +116,13 @@ func splitRefs(cmd *cobra.Command) {
 			}
 
 			logger.Debug("write root", "hash", rootRef)
-			_, err = fmt.Fprintf(writer, "%s\n", rootRef)
+			_, err = writer.WriteString(fmt.Sprintf("%s\n", rootRef))
 			if err != nil {
 				return fmt.Errorf("write root hash: %w", err)
 			}
 			for _, ref := range refs {
 				logger.Debug("write chunk", "hash", ref)
-				_, err = fmt.Fprintf(writer, "%s\n", ref)
+				_, err = writer.WriteString(fmt.Sprintf("%s\n", ref))
 				if err != nil {
 					return fmt.Errorf("write chunk address: %w", err)
 				}

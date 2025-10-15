@@ -111,7 +111,7 @@ func TestPeers(t *testing.T) {
 
 func isIn(p swarm.Address, peers []p2p.BlockListedPeer, reason string, f bool) bool {
 	for _, v := range peers {
-		if v.Address.Equal(p) && v.Reason == reason && v.FullNode == f {
+		if v.Address.Equal(p) && v.Reason == reason && v.Peer.FullNode == f {
 			return true
 		}
 	}

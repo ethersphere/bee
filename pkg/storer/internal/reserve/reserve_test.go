@@ -118,12 +118,11 @@ func TestReserveChunkType(t *testing.T) {
 		Factory: func() storage.Item { return &reserve.ChunkBinItem{} },
 	}, func(res storage.Result) (bool, error) {
 		item := res.Entry.(*reserve.ChunkBinItem)
-		switch item.ChunkType {
-		case swarm.ChunkTypeContentAddressed:
+		if item.ChunkType == swarm.ChunkTypeContentAddressed {
 			storedChunksCA--
-		case swarm.ChunkTypeSingleOwner:
+		} else if item.ChunkType == swarm.ChunkTypeSingleOwner {
 			storedChunksSO--
-		default:
+		} else {
 			t.Fatalf("unexpected chunk type: %d", item.ChunkType)
 		}
 		return false, nil

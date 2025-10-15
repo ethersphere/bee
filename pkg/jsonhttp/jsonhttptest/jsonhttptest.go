@@ -36,15 +36,14 @@ func Request(tb testing.TB, client *http.Client, method, url string, responseCod
 		}
 	}
 
-	ctx := o.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	req, err := http.NewRequestWithContext(ctx, method, url, o.requestBody)
+	req, err := http.NewRequest(method, url, o.requestBody)
 	if err != nil {
 		tb.Fatal(err)
 	}
 	req.Header = o.requestHeaders
+	if o.ctx != nil {
+		req = req.WithContext(o.ctx)
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		tb.Fatal(err)

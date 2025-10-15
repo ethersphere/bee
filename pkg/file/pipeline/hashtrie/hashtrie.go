@@ -198,11 +198,11 @@ func (h *hashTrieWriter) wrapFullLevel(level int) error {
 func (h *hashTrieWriter) Sum() ([]byte, error) {
 	for i := 1; i < maxLevel; i++ {
 		l := h.chunkCounters[i]
-		switch l {
-		case 0:
+		switch {
+		case l == 0:
 			// level empty, continue to the next.
 			continue
-		case h.maxChildrenChunks:
+		case l == h.maxChildrenChunks:
 			// this case is possible and necessary due to the carry over
 			// in the next switch case statement. normal writes done
 			// through writeToLevel will automatically wrap a full level.
@@ -211,7 +211,7 @@ func (h *hashTrieWriter) Sum() ([]byte, error) {
 			if err != nil {
 				return nil, err
 			}
-		case 1:
+		case l == 1:
 			// this cursor assignment basically means:
 			// take the hash|span|key from this level, and append it to
 			// the data of the next level. you may wonder how this works:

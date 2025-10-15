@@ -75,7 +75,7 @@ func encryptKey(k *ecdsa.PrivateKey, password string, edg keystore.EDG) ([]byte,
 		return nil, err
 	}
 	var addr []byte
-	switch k.Curve {
+	switch k.PublicKey.Curve {
 	case btcec.S256():
 		a, err := crypto.NewEthereumAddress(k.PublicKey)
 		if err != nil {
@@ -89,7 +89,7 @@ func encryptKey(k *ecdsa.PrivateKey, password string, edg keystore.EDG) ([]byte,
 		}
 		addr = privKey.PublicKey().Bytes()
 	default:
-		return nil, fmt.Errorf("unsupported curve: %v", k.Curve)
+		return nil, fmt.Errorf("unsupported curve: %v", k.PublicKey.Curve)
 	}
 	return json.Marshal(encryptedKey{
 		Address: hex.EncodeToString(addr),

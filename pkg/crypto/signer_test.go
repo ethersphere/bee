@@ -41,7 +41,7 @@ func TestDefaultSigner(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if pubKey.X.Cmp(privKey.X) != 0 || pubKey.Y.Cmp(privKey.Y) != 0 {
+		if pubKey.X.Cmp(privKey.PublicKey.X) != 0 || pubKey.Y.Cmp(privKey.PublicKey.Y) != 0 {
 			t.Fatalf("wanted %v but got %v", pubKey, &privKey.PublicKey)
 		}
 	})
@@ -54,7 +54,7 @@ func TestDefaultSigner(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if pubKey.X.Cmp(privKey.X) == 0 && pubKey.Y.Cmp(privKey.Y) == 0 {
+		if pubKey.X.Cmp(privKey.PublicKey.X) == 0 && pubKey.Y.Cmp(privKey.PublicKey.Y) == 0 {
 			t.Fatal("expected different public key")
 		}
 	})
@@ -228,11 +228,11 @@ func TestRecoverEIP712(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if privKey.X.Cmp(pubKey.X) != 0 {
+	if privKey.PublicKey.X.Cmp(pubKey.X) != 0 {
 		t.Fatalf("recovered wrong public key. wanted %x, got %x", privKey.PublicKey, pubKey)
 	}
 
-	if privKey.Y.Cmp(pubKey.Y) != 0 {
+	if privKey.PublicKey.Y.Cmp(pubKey.Y) != 0 {
 		t.Fatalf("recovered wrong public key. wanted %x, got %x", privKey.PublicKey, pubKey)
 	}
 }

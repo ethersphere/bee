@@ -20,7 +20,7 @@ type Proof struct {
 // Hash overrides base hash function of Hasher to fill buffer with zeros until chunk length
 func (p Prover) Hash(b []byte) ([]byte, error) {
 	for i := p.size; i < p.maxSize; i += len(zerosection) {
-		_, err := p.Write(zerosection)
+		_, err := p.Hasher.Write(zerosection)
 		if err != nil {
 			return nil, err
 		}

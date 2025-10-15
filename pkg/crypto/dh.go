@@ -29,7 +29,7 @@ func NewDH(key *ecdsa.PrivateKey) DH {
 // safety warning: this method is not meant to be exposed as it does not validate private and public keys
 // are  on the same curve
 func (dh *defaultDH) SharedKey(pub *ecdsa.PublicKey, salt []byte) ([]byte, error) {
-	x, _ := pub.ScalarMult(pub.X, pub.Y, dh.key.D.Bytes())
+	x, _ := pub.Curve.ScalarMult(pub.X, pub.Y, dh.key.D.Bytes())
 	if x == nil {
 		return nil, errors.New("shared secret is point at infinity")
 	}

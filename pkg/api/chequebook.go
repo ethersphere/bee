@@ -117,9 +117,9 @@ func (s *Service) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reque
 	}
 	if err == nil {
 		lastSentResponse = &chequebookLastChequePeerResponse{
-			Beneficiary: lastSent.Beneficiary.String(),
-			Chequebook:  lastSent.Chequebook.String(),
-			Payout:      bigint.Wrap(lastSent.CumulativePayout),
+			Beneficiary: lastSent.Cheque.Beneficiary.String(),
+			Chequebook:  lastSent.Cheque.Chequebook.String(),
+			Payout:      bigint.Wrap(lastSent.Cheque.CumulativePayout),
 		}
 	}
 
@@ -133,9 +133,9 @@ func (s *Service) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reque
 	}
 	if err == nil {
 		lastReceivedResponse = &chequebookLastChequePeerResponse{
-			Beneficiary: lastReceived.Beneficiary.String(),
-			Chequebook:  lastReceived.Chequebook.String(),
-			Payout:      bigint.Wrap(lastReceived.CumulativePayout),
+			Beneficiary: lastReceived.Cheque.Beneficiary.String(),
+			Chequebook:  lastReceived.Cheque.Chequebook.String(),
+			Payout:      bigint.Wrap(lastReceived.Cheque.CumulativePayout),
 		}
 	}
 
@@ -178,9 +178,9 @@ func (s *Service) chequebookAllLastHandler(w http.ResponseWriter, _ *http.Reques
 		lcr[i] = chequebookLastChequesPeerResponse{
 			Peer: i,
 			LastSent: &chequebookLastChequePeerResponse{
-				Beneficiary: j.Beneficiary.String(),
-				Chequebook:  j.Chequebook.String(),
-				Payout:      bigint.Wrap(j.CumulativePayout),
+				Beneficiary: j.Cheque.Beneficiary.String(),
+				Chequebook:  j.Cheque.Chequebook.String(),
+				Payout:      bigint.Wrap(j.Cheque.CumulativePayout),
 			},
 			LastReceived: nil,
 		}
@@ -189,9 +189,9 @@ func (s *Service) chequebookAllLastHandler(w http.ResponseWriter, _ *http.Reques
 		if _, ok := lcr[i]; ok {
 			t := lcr[i]
 			t.LastReceived = &chequebookLastChequePeerResponse{
-				Beneficiary: j.Beneficiary.String(),
-				Chequebook:  j.Chequebook.String(),
-				Payout:      bigint.Wrap(j.CumulativePayout),
+				Beneficiary: j.Cheque.Beneficiary.String(),
+				Chequebook:  j.Cheque.Chequebook.String(),
+				Payout:      bigint.Wrap(j.Cheque.CumulativePayout),
 			}
 			lcr[i] = t
 		} else {
@@ -199,9 +199,9 @@ func (s *Service) chequebookAllLastHandler(w http.ResponseWriter, _ *http.Reques
 				Peer:     i,
 				LastSent: nil,
 				LastReceived: &chequebookLastChequePeerResponse{
-					Beneficiary: j.Beneficiary.String(),
-					Chequebook:  j.Chequebook.String(),
-					Payout:      bigint.Wrap(j.CumulativePayout),
+					Beneficiary: j.Cheque.Beneficiary.String(),
+					Chequebook:  j.Cheque.Chequebook.String(),
+					Payout:      bigint.Wrap(j.Cheque.CumulativePayout),
 				},
 			}
 		}
