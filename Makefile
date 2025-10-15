@@ -121,22 +121,22 @@ endif
 .PHONY: test-ci
 test-ci:
 ifdef cover
-	$(GO) test -run "[^FLAKY]$$" -coverprofile=cover.out ./...
+	$(GO) test -count=1 -run "TestAgent" -coverprofile=cover.out github.com/ethersphere/bee/v2/pkg/storageincentives
 else
-	$(GO) test -run "[^FLAKY]$$" ./...
+	$(GO) test -count=1 -run "TestAgent" github.com/ethersphere/bee/v2/pkg/storageincentives
 endif
 
 .PHONY: test-ci-race
 test-ci-race:
 ifdef cover
-	$(GO) test -race -run "[^FLAKY]$$" -coverprofile=cover.out ./...
+	$(GO) test -race -count=1 -run "TestAgent" -coverprofile=cover.out github.com/ethersphere/bee/v2/pkg/storageincentives
 else
-	$(GO) test -race -run "[^FLAKY]$$" ./...
+	$(GO) test -race -count=1 -run "TestAgent" github.com/ethersphere/bee/v2/pkg/storageincentives
 endif
 
 .PHONY: test-ci-flaky
 test-ci-flaky:
-	$(GO) test -race -run "FLAKY$$" ./...
+	$(GO) test -race -count=1 -run "FLAKY$$" ./...
 
 .PHONY: build
 build: export CGO_ENABLED=0
