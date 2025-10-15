@@ -2,7 +2,7 @@ module github.com/ethersphere/bee/v2
 
 go 1.25
 
-toolchain go1.25.2
+toolchain go1.25.1
 
 require (
 	contrib.go.opencensus.io/exporter/prometheus v0.4.2
