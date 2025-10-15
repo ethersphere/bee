@@ -2,32 +2,34 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+//go:build !nometrics
+// +build !nometrics
+
 package metrics_test
 
 import (
 	"strings"
 	"testing"
 
-	"github.com/ethersphere/bee/v2/pkg/metrics"
-	"github.com/prometheus/client_golang/prometheus"
+	m "github.com/ethersphere/bee/v2/pkg/metrics"
 )
 
 func TestPrometheusCollectorsFromFields(t *testing.T) {
 	t.Parallel()
 
 	s := newService()
-	collectors := metrics.PrometheusCollectorsFromFields(s)
+	collectors := m.PrometheusCollectorsFromFields(s)
 
 	if l := len(collectors); l != 2 {
 		t.Fatalf("got %v collectors %+v, want 2", l, collectors)
 	}
 
-	m1 := collectors[0].(prometheus.Metric).Desc().String()
+	m1 := collectors[0].(m.Metric).Desc().String()
 	if !strings.Contains(m1, "api_request_count") {
 		t.Errorf("unexpected metric %s", m1)
 	}
 
-	m2 := collectors[1].(prometheus.Metric).Desc().String()
+	m2 := collectors[1].(m.Metric).Desc().String()
 	if !strings.Contains(m2, "api_response_duration_seconds") {
 		t.Errorf("unexpected metric %s", m2)
 	}
@@ -35,31 +37,31 @@ func TestPrometheusCollectorsFromFields(t *testing.T) {
 
 type service struct {
 	// valid metrics
-	RequestCount     prometheus.Counter
-	ResponseDuration prometheus.Histogram
+	RequestCount     m.Counter
+	ResponseDuration m.Histogram
 	// invalid metrics
-	unexportedCount    prometheus.Counter
-	UninitializedCount prometheus.Counter
+	unexportedCount    m.Counter
+	UninitializedCount m.Counter
 }
 
 func newService() *service {
 	subsystem := "api"
 	return &service{
-		RequestCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: metrics.Namespace,
+		RequestCount: m.NewCounter(m.CounterOpts{
+			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "request_count",
 			Help:      "Number of API requests.",
 		}),
-		ResponseDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Namespace: metrics.Namespace,
+		ResponseDuration: m.NewHistogram(m.HistogramOpts{
+			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "response_duration_seconds",
 			Help:      "Histogram of API response durations.",
 			Buckets:   []float64{0.01, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
 		}),
-		unexportedCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: metrics.Namespace,
+		unexportedCount: m.NewCounter(m.CounterOpts{
+			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "unexported_count",
 			Help:      "This metrics should not be discoverable by metrics.PrometheusCollectorsFromFields.",

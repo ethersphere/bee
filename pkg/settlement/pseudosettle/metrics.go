@@ -6,56 +6,55 @@ package pseudosettle
 
 import (
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 type metrics struct {
 	// all metrics fields must be exported
 	// to be able to return them by Metrics()
 	// using reflection
-	TotalReceivedPseudoSettlements  prometheus.Counter
-	TotalSentPseudoSettlements      prometheus.Counter
-	ReceivedPseudoSettlements       prometheus.Counter
-	SentPseudoSettlements           prometheus.Counter
-	ReceivedPseudoSettlementsErrors prometheus.Counter
-	SentPseudoSettlementsErrors     prometheus.Counter
+	TotalReceivedPseudoSettlements  m.Counter
+	TotalSentPseudoSettlements      m.Counter
+	ReceivedPseudoSettlements       m.Counter
+	SentPseudoSettlements           m.Counter
+	ReceivedPseudoSettlementsErrors m.Counter
+	SentPseudoSettlementsErrors     m.Counter
 }
 
 func newMetrics() metrics {
 	subsystem := "pseudosettle"
 
 	return metrics{
-		TotalReceivedPseudoSettlements: prometheus.NewCounter(prometheus.CounterOpts{
+		TotalReceivedPseudoSettlements: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "total_received_pseudosettlements",
 			Help:      "Amount of time settlements received from peers (income of the node)",
 		}),
-		TotalSentPseudoSettlements: prometheus.NewCounter(prometheus.CounterOpts{
+		TotalSentPseudoSettlements: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "total_sent_pseudosettlements",
 			Help:      "Amount of  of time settlements sent to peers (costs paid by the node)",
 		}),
-		ReceivedPseudoSettlements: prometheus.NewCounter(prometheus.CounterOpts{
+		ReceivedPseudoSettlements: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "received_pseudosettlements",
 			Help:      "Number of time settlements received from peers",
 		}),
-		SentPseudoSettlements: prometheus.NewCounter(prometheus.CounterOpts{
+		SentPseudoSettlements: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "sent_pseudosettlements",
 			Help:      "Number of time settlements sent to peers",
 		}),
-		ReceivedPseudoSettlementsErrors: prometheus.NewCounter(prometheus.CounterOpts{
+		ReceivedPseudoSettlementsErrors: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "received_pseudosettlements_errors",
 			Help:      "Errors of time settlements received from peers",
 		}),
-		SentPseudoSettlementsErrors: prometheus.NewCounter(prometheus.CounterOpts{
+		SentPseudoSettlementsErrors: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "sent_pseudosettlements_errorss",
@@ -64,6 +63,6 @@ func newMetrics() metrics {
 	}
 }
 
-func (s *Service) Metrics() []prometheus.Collector {
+func (s *Service) Metrics() []m.Collector {
 	return m.PrometheusCollectorsFromFields(s.metrics)
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/resolver/client/ens"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 )
 
 func TestENSIntegration(t *testing.T) {

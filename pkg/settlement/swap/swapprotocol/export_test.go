@@ -6,6 +6,7 @@ package swapprotocol
 
 import (
 	"context"
+
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 )
 

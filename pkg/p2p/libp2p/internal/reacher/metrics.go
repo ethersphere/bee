@@ -6,25 +6,24 @@ package reacher
 
 import (
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 type metrics struct {
-	Pings    *prometheus.CounterVec
-	PingTime *prometheus.HistogramVec
+	Pings    m.CounterMetricVector
+	PingTime m.HistogramMetricVector
 }
 
 func newMetrics() metrics {
 	subsystem := "reacher"
 
 	return metrics{
-		Pings: prometheus.NewCounterVec(prometheus.CounterOpts{
+		Pings: m.NewCounterVec(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "pings",
 			Help:      "Ping counter.",
 		}, []string{"status"}),
-		PingTime: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		PingTime: m.NewHistogramVec(m.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "ping_timer",
@@ -33,6 +32,6 @@ func newMetrics() metrics {
 	}
 }
 
-func (s *reacher) Metrics() []prometheus.Collector {
+func (s *reacher) Metrics() []m.Collector {
 	return m.PrometheusCollectorsFromFields(s.metrics)
 }

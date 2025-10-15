@@ -6,112 +6,111 @@ package libp2p
 
 import (
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 type metrics struct {
 	// all metrics fields must be exported
 	// to be able to return them by Metrics()
 	// using reflection
-	CreatedConnectionCount     prometheus.Counter
-	HandledConnectionCount     prometheus.Counter
-	CreatedStreamCount         prometheus.Counter
-	ClosedStreamCount          prometheus.Counter
-	StreamResetCount           prometheus.Counter
-	HandledStreamCount         prometheus.Counter
-	BlocklistedPeerCount       prometheus.Counter
-	BlocklistedPeerErrCount    prometheus.Counter
-	DisconnectCount            prometheus.Counter
-	ConnectBreakerCount        prometheus.Counter
-	UnexpectedProtocolReqCount prometheus.Counter
-	KickedOutPeersCount        prometheus.Counter
-	StreamHandlerErrResetCount prometheus.Counter
-	HeadersExchangeDuration    prometheus.Histogram
+	CreatedConnectionCount     m.Counter
+	HandledConnectionCount     m.Counter
+	CreatedStreamCount         m.Counter
+	ClosedStreamCount          m.Counter
+	StreamResetCount           m.Counter
+	HandledStreamCount         m.Counter
+	BlocklistedPeerCount       m.Counter
+	BlocklistedPeerErrCount    m.Counter
+	DisconnectCount            m.Counter
+	ConnectBreakerCount        m.Counter
+	UnexpectedProtocolReqCount m.Counter
+	KickedOutPeersCount        m.Counter
+	StreamHandlerErrResetCount m.Counter
+	HeadersExchangeDuration    m.Histogram
 }
 
 func newMetrics() metrics {
 	subsystem := "libp2p"
 
 	return metrics{
-		CreatedConnectionCount: prometheus.NewCounter(prometheus.CounterOpts{
+		CreatedConnectionCount: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "created_connection_count",
 			Help:      "Number of initiated outgoing libp2p connections.",
 		}),
-		HandledConnectionCount: prometheus.NewCounter(prometheus.CounterOpts{
+		HandledConnectionCount: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "handled_connection_count",
 			Help:      "Number of handled incoming libp2p connections.",
 		}),
-		CreatedStreamCount: prometheus.NewCounter(prometheus.CounterOpts{
+		CreatedStreamCount: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "created_stream_count",
 			Help:      "Number of initiated outgoing libp2p streams.",
 		}),
-		ClosedStreamCount: prometheus.NewCounter(prometheus.CounterOpts{
+		ClosedStreamCount: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "closed_stream_count",
 			Help:      "Number of closed outgoing libp2p streams.",
 		}),
-		StreamResetCount: prometheus.NewCounter(prometheus.CounterOpts{
+		StreamResetCount: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "stream_reset_count",
 			Help:      "Number of outgoing libp2p streams resets.",
 		}),
-		HandledStreamCount: prometheus.NewCounter(prometheus.CounterOpts{
+		HandledStreamCount: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "handled_stream_count",
 			Help:      "Number of handled incoming libp2p streams.",
 		}),
-		BlocklistedPeerCount: prometheus.NewCounter(prometheus.CounterOpts{
+		BlocklistedPeerCount: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "blocklisted_peer_count",
 			Help:      "Number of peers we've blocklisted.",
 		}),
-		BlocklistedPeerErrCount: prometheus.NewCounter(prometheus.CounterOpts{
+		BlocklistedPeerErrCount: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "blocklisted_peer_err_count",
 			Help:      "Number of peers we've been unable to blocklist.",
 		}),
-		DisconnectCount: prometheus.NewCounter(prometheus.CounterOpts{
+		DisconnectCount: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "disconnect_count",
 			Help:      "Number of peers we've disconnected from (initiated locally).",
 		}),
-		ConnectBreakerCount: prometheus.NewCounter(prometheus.CounterOpts{
+		ConnectBreakerCount: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "connect_breaker_count",
 			Help:      "Number of times we got a closed breaker while connecting to another peer.",
 		}),
-		UnexpectedProtocolReqCount: prometheus.NewCounter(prometheus.CounterOpts{
+		UnexpectedProtocolReqCount: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "unexpected_protocol_request_count",
 			Help:      "Number of requests the peer is not expecting.",
 		}),
-		KickedOutPeersCount: prometheus.NewCounter(prometheus.CounterOpts{
+		KickedOutPeersCount: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "kickedout_peers_count",
 			Help:      "Number of total kicked-out peers.",
 		}),
-		StreamHandlerErrResetCount: prometheus.NewCounter(prometheus.CounterOpts{
+		StreamHandlerErrResetCount: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "stream_handler_error_reset_count",
 			Help:      "Number of total stream handler error resets.",
 		}),
-		HeadersExchangeDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+		HeadersExchangeDuration: m.NewHistogram(m.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "headers_exchange_duration",
@@ -120,13 +119,13 @@ func newMetrics() metrics {
 	}
 }
 
-func (s *Service) Metrics() []prometheus.Collector {
+func (s *Service) Metrics() []m.Collector {
 	return append(m.PrometheusCollectorsFromFields(s.metrics), s.handshakeService.Metrics()...)
 }
 
 // StatusMetrics exposes metrics that are exposed on the status protocol.
-func (s *Service) StatusMetrics() []prometheus.Collector {
-	return []prometheus.Collector{
+func (s *Service) StatusMetrics() []m.Collector {
+	return []m.Collector{
 		s.metrics.HeadersExchangeDuration,
 	}
 }

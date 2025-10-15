@@ -20,6 +20,7 @@ VERSION ?= "$(shell git describe --tags --abbrev=0 | cut -c2-)"
 COMMIT_HASH ?= "$(shell git describe --long --dirty --always --match "" || true)"
 CLEAN_COMMIT ?= "$(shell git describe --long --always --match "" || true)"
 COMMIT_TIME ?= "$(shell git show -s --format=%ct $(CLEAN_COMMIT) || true)"
+BUILD_TAGS ?=
 LDFLAGS ?= -s -w \
 -X github.com/ethersphere/bee/v2.version="$(VERSION)" \
 -X github.com/ethersphere/bee/v2.commitHash="$(COMMIT_HASH)" \
@@ -31,11 +32,14 @@ LDFLAGS ?= -s -w \
 .PHONY: all
 all: build lint test-race binary
 
-.PHONY: binary
+.PHONY: binary binary-nometrics
 binary: export CGO_ENABLED=0
 binary: dist FORCE
 	$(GO) version
-	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o dist/bee ./cmd/bee
+	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -tags "$(BUILD_TAGS)" -o dist/bee ./cmd/bee
+
+binary-nometrics:
+	$(MAKE) binary BUILD_TAGS=nometrics
 
 dist:
 	mkdir $@
