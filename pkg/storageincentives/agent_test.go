@@ -99,8 +99,7 @@ func TestAgent(t *testing.T) {
 			t.Parallel()
 
 			synctest.Test(t, func(t *testing.T) {
-				// Buffered to avoid dropping notification if callback fires before <-wait
-				wait := make(chan struct{}, 1)
+				wait := make(chan struct{})
 				addr := swarm.RandAddress(t)
 
 				backend := &mockchainBackend{
@@ -125,12 +124,17 @@ func TestAgent(t *testing.T) {
 
 				<-wait
 
+				synctest.Wait() // wait for all goroutines
+
 				if !tc.expectedCalls {
 					if len(contract.callsList) > 0 {
 						t.Fatal("got unexpected calls")
-					} else {
-						return
 					}
+					return
+				}
+
+				if len(contract.callsList) == 0 {
+					t.Fatal("expected calls but got none")
 				}
 
 				assertOrder := func(t *testing.T, want, got contractCall) {
@@ -146,7 +150,6 @@ func TestAgent(t *testing.T) {
 				prevCall := contract.callsList[0]
 
 				for i := 1; i < len(contract.callsList); i++ {
-
 					switch contract.callsList[i] {
 					case isWinnerCall:
 						assertOrder(t, revealCall, prevCall)
