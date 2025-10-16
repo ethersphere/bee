@@ -211,54 +211,13 @@ func mapStructure(input, output any, hooks map[string]func(v string) (string, er
 			field.SetString(value)
 		case reflect.Slice:
 			if value == "" {
-				return nil
+				return nil // Nil slice.
 			}
-
-			elemT := field.Type().Elem()
-
-			// 1) []byte — (hex → []byte)
-			if elemT.Kind() == reflect.Uint8 {
-				val, err := hex.DecodeString(value)
-				if err != nil {
-					return err
-				}
-				field.SetBytes(val)
-				return nil
+			val, err := hex.DecodeString(value)
+			if err != nil {
+				return err
 			}
-
-			// 2) []byte -> []multiaddr.Multiaddr
-			if elemT.Kind() == reflect.Interface &&
-				elemT == reflect.TypeOf((*multiaddr.Multiaddr)(nil)).Elem() {
-
-				parts := strings.Split(value, ",")
-				out := reflect.MakeSlice(field.Type(), 0, len(parts))
-				seen := make(map[string]struct{}, len(parts))
-
-				for _, p := range parts {
-					p = strings.TrimSpace(p)
-					if p == "" {
-						continue
-					}
-					// guaranty  leading '/'
-					p = "/" + strings.TrimLeft(p, "/")
-
-					ma, err := multiaddr.NewMultiaddr(p)
-					if err != nil {
-						return err
-					}
-					s := ma.String()
-					if _, ok := seen[s]; ok {
-						continue // deduplication
-					}
-					seen[s] = struct{}{}
-					out = reflect.Append(out, reflect.ValueOf(ma))
-				}
-
-				field.Set(out)
-				return nil
-			}
-			return fmt.Errorf("unsupported slice type %v", field.Type())
-
+			field.SetBytes(val)
 		case reflect.Array:
 			switch field.Interface().(type) {
 			case common.Hash:

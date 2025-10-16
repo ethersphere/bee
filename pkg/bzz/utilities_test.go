@@ -64,7 +64,7 @@ func makeAddress(t *testing.T) bzz.Address {
 	}
 
 	return bzz.Address{
-		Underlay:        []ma.Multiaddr{multiaddr},
+		Underlays:       []ma.Multiaddr{multiaddr},
 		Overlay:         swarm.RandAddress(t),
 		Signature:       testutil.RandBytes(t, 12),
 		Nonce:           testutil.RandBytes(t, 12),
@@ -91,7 +91,7 @@ func makeMultiUnderlayAddress(t *testing.T) bzz.Address {
 	}
 
 	return bzz.Address{
-		Underlay:        underlays,
+		Underlays:       underlays,
 		Overlay:         swarm.RandAddress(t),
 		Signature:       testutil.RandBytes(t, 12),
 		Nonce:           testutil.RandBytes(t, 12),

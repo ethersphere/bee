@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/ethersphere/bee/v2/pkg/bzz"
 	"io"
 	"math/rand"
 	"reflect"
@@ -16,6 +15,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/ethersphere/bee/v2/pkg/bzz"
 
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -1266,8 +1267,8 @@ func checkAddressbook(t *testing.T, ab addressbook.Getter, overlay swarm.Address
 		t.Fatalf("overlay mismatch. got %s want %s", addr.Overlay, overlay)
 	}
 
-	if !bzz.AreUnderlaysEqual(addr.Underlay, underlays) {
-		t.Fatalf("underlay mismatch. got %s, want %s", addr.Underlay, underlays)
+	if !bzz.AreUnderlaysEqual(addr.Underlays, underlays) {
+		t.Fatalf("underlay mismatch. got %s, want %s", addr.Underlays, underlays)
 	}
 }
 

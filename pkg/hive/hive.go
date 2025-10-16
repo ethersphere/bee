@@ -183,11 +183,10 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 				s.logger.Debug("broadcast peers; peer not found in the addressbook, skipping...", "peer_address", p)
 				continue
 			}
-			s.logger.Debug("send peers", "peer", p.String(), "err", err)
 			return err
 		}
 
-		advertisableUnderlays := s.filterAdvertisableUnderlays(addr.Underlay)
+		advertisableUnderlays := s.filterAdvertisableUnderlays(addr.Underlays)
 		if len(advertisableUnderlays) == 0 {
 			s.logger.Debug("skipping peers: no advertisable underlays", "peer_address", p)
 			continue
@@ -301,12 +300,10 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 				start          time.Time
 			)
 			for _, underlay := range multiUnderlay {
-				s.logger.Debug("check and add peers, try ping underlay", "overlay", newPeer.Overlay, "underlay", underlay.String())
-
 				// ping each underlay address, pick first available
 				start = time.Now()
 				if _, err := s.streamer.Ping(ctx, underlay); err != nil {
-					s.logger.Debug("unreachable peer underlay", "peer_address", hex.EncodeToString(newPeer.Overlay), "underlay", underlay)
+					s.logger.Debug("unreachable peer underlay", "peer_address", hex.EncodeToString(newPeer.Overlay), "underlay", underlay, "error", err)
 					continue
 				}
 				pingSuccessful = true
@@ -325,7 +322,7 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 
 			bzzAddress := bzz.Address{
 				Overlay:   swarm.NewAddress(newPeer.Overlay),
-				Underlay:  multiUnderlay,
+				Underlays: multiUnderlay,
 				Signature: newPeer.Signature,
 				Nonce:     newPeer.Nonce,
 			}
@@ -359,7 +356,7 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 		// if peer exists already in the addressBook
 		// and if the underlays match, skip
 		addr, err := s.addressBook.Get(swarm.NewAddress(p.Overlay))
-		if err == nil && bzz.AreUnderlaysEqual(addr.Underlay, multiUnderlays) {
+		if err == nil && bzz.AreUnderlaysEqual(addr.Underlays, multiUnderlays) {
 			s.logger.Debug("check and add peers, peer exists", "overlay", swarm.NewAddress(p.Overlay).String())
 			continue
 		}

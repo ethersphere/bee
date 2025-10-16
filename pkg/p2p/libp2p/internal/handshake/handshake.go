@@ -158,8 +158,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		}
 
 		if s.libp2pID != observedUnderlayAddrInfo.ID {
-			// NOTE eventually we will return error here, but for now we want to gather some statistics
-			s.logger.Warning("received peer ID does not match ours", "their", observedUnderlayAddrInfo.ID, "ours", s.libp2pID)
+			return nil, fmt.Errorf("received peer ID %s does not match ours %s", observedUnderlayAddrInfo.ID.String(), s.libp2pID.String())
 		}
 
 		advertisableUnderlay, err := s.advertisableAddresser.Resolve(observedUnderlay)
@@ -188,7 +187,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 	welcomeMessage := s.GetWelcomeMessage()
 	msg := &pb.Ack{
 		Address: &pb.BzzAddress{
-			Underlay:  bzz.SerializeUnderlays(bzzAddress.Underlay),
+			Underlay:  bzz.SerializeUnderlays(bzzAddress.Underlays),
 			Overlay:   bzzAddress.Overlay.Bytes(),
 			Signature: bzzAddress.Signature,
 		},
@@ -264,7 +263,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 		},
 		Ack: &pb.Ack{
 			Address: &pb.BzzAddress{
-				Underlay:  bzz.SerializeUnderlays(bzzAddress.Underlay),
+				Underlay:  bzz.SerializeUnderlays(bzzAddress.Underlays),
 				Overlay:   bzzAddress.Overlay.Bytes(),
 				Signature: bzzAddress.Signature,
 			},

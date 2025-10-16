@@ -179,7 +179,7 @@ func TestBroadcastPeers(t *testing.T) {
 
 		wantMsgs[i/hive.MaxBatchSize].Peers = append(wantMsgs[i/hive.MaxBatchSize].Peers, &pb.BzzAddress{
 			Overlay:   bzzAddresses[i].Overlay.Bytes(),
-			Underlay:  bzz.SerializeUnderlays(bzzAddresses[i].Underlay),
+			Underlay:  bzz.SerializeUnderlays(bzzAddresses[i].Underlays),
 			Signature: bzzAddresses[i].Signature,
 			Nonce:     nonce,
 		})
@@ -243,7 +243,7 @@ func TestBroadcastPeers(t *testing.T) {
 			allowPrivateCIDRs: true,
 			pingErr: func(addr ma.Multiaddr) (rtt time.Duration, err error) {
 				for _, v := range bzzAddresses[10:15] {
-					for _, underlay := range v.Underlay {
+					for _, underlay := range v.Underlays {
 						if underlay.Equal(addr) {
 							return rtt, errors.New("ping failure")
 						}
@@ -266,7 +266,7 @@ func TestBroadcastPeers(t *testing.T) {
 			wantMsgs: []pb.Peers{{Peers: []*pb.BzzAddress{
 				{
 					Overlay:   bzzAddresses[len(bzzAddresses)-1].Overlay.Bytes(),
-					Underlay:  bzz.SerializeUnderlays([]ma.Multiaddr{bzzAddresses[len(bzzAddresses)-1].Underlay[0]}),
+					Underlay:  bzz.SerializeUnderlays([]ma.Multiaddr{bzzAddresses[len(bzzAddresses)-1].Underlays[0]}),
 					Signature: bzzAddresses[len(bzzAddresses)-1].Signature,
 					Nonce:     nonce,
 				},
@@ -274,7 +274,7 @@ func TestBroadcastPeers(t *testing.T) {
 			wantOverlays: []swarm.Address{overlays[len(overlays)-1]},
 			wantBzzAddresses: []bzz.Address{
 				{
-					Underlay:        []ma.Multiaddr{bzzAddresses[len(bzzAddresses)-1].Underlay[0]},
+					Underlays:       []ma.Multiaddr{bzzAddresses[len(bzzAddresses)-1].Underlays[0]},
 					Overlay:         bzzAddresses[len(bzzAddresses)-1].Overlay,
 					Signature:       bzzAddresses[len(bzzAddresses)-1].Signature,
 					Nonce:           bzzAddresses[len(bzzAddresses)-1].Nonce,
@@ -330,10 +330,7 @@ func TestBroadcastPeers(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				err = ComparePeerMsgs(messages[0].Peers, tc.wantMsgs[i].Peers)
-				if err != nil {
-					t.Errorf("error %v", err.Error())
-				}
+				comparePeerMsgs(t, messages[0].Peers, tc.wantMsgs[i].Peers)
 			}
 
 			expectOverlaysEventually(t, addressbookclean, tc.wantOverlays)
@@ -366,6 +363,10 @@ func expectOverlaysEventually(t *testing.T, exporter ab.Interface, wantOverlays 
 		if !swarm.ContainsAddress(overlays, v) {
 			t.Errorf("overlay %s expected but not found", v.String())
 		}
+	}
+
+	if t.Failed() {
+		t.Errorf("overlays got %v, want %v", overlays, wantOverlays)
 	}
 }
 
@@ -423,34 +424,41 @@ func readAndAssertPeersMsgs(in []byte, expectedLen int) ([]pb.Peers, error) {
 	return peers, nil
 }
 
-func ComparePeerMsgs(got, want []*pb.BzzAddress) error {
-	gotMap := flattenByOverlay(got)
-	wantMap := flattenByOverlay(want)
+func comparePeerMsgs(t *testing.T, got, want []*pb.BzzAddress) {
+	t.Helper()
+
+	gotMap := flattenByOverlay(t, got)
+	wantMap := flattenByOverlay(t, want)
 
 	for ovlHex, w := range wantMap {
 		g, ok := gotMap[ovlHex]
 		if !ok {
-			return fmt.Errorf("expected peer %s, but not found", ovlHex)
+			t.Fatalf("expected peer %s, but not found", ovlHex)
 		}
 		if !bytes.Equal(g.Underlay, w.Underlay) {
-			return fmt.Errorf("peer %s: underlays (got=%s want=%s)", ovlHex, g.Underlay, w.Underlay)
+			t.Fatalf("peer %s: underlays (got=%s want=%s)", ovlHex, g.Underlay, w.Underlay)
 		}
 		if !bytes.Equal(g.Signature, w.Signature) {
-			return fmt.Errorf("peer %s: expected signatures (got=%s want=%s)",
+			t.Fatalf("peer %s: expected signatures (got=%s want=%s)",
 				ovlHex, shortHex(g.Signature), shortHex(w.Signature))
 		}
 		if !bytes.Equal(g.Nonce, w.Nonce) {
-			return fmt.Errorf("peer %s: expected nonce (got=%s want=%s)",
+			t.Fatalf("peer %s: expected nonce (got=%s want=%s)",
 				ovlHex, shortHex(g.Nonce), shortHex(w.Nonce))
 		}
 	}
-	return nil
 }
 
-func flattenByOverlay(batches []*pb.BzzAddress) map[string]*pb.BzzAddress {
+func flattenByOverlay(t *testing.T, batches []*pb.BzzAddress) map[string]*pb.BzzAddress {
+	t.Helper()
+
 	m := make(map[string]*pb.BzzAddress)
 	for _, batch := range batches {
-		m[hex.EncodeToString(batch.Overlay)] = batch
+		overlay := hex.EncodeToString(batch.Overlay)
+		if _, ok := m[overlay]; ok {
+			t.Fatalf("multiple bzz addresses with the same overlay address: %s", overlay)
+		}
+		m[overlay] = batch
 	}
 	return m
 }

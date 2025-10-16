@@ -7,7 +7,6 @@ package api_test
 import (
 	"errors"
 	"fmt"
-	ma "github.com/multiformats/go-multiaddr"
 	"math"
 	"math/big"
 	"reflect"
@@ -95,9 +94,6 @@ type (
 
 	mapSwarmAddressTest struct {
 		SwarmAddressVal swarm.Address `map:"swarmAddressVal"`
-	}
-	mapMultiaddressesTest struct {
-		MultiAddressesVal []ma.Multiaddr `map:"multiAddressesVal"`
 	}
 )
 
@@ -501,23 +497,7 @@ func TestMapStructure(t *testing.T) {
 		name: "swarm.Address value",
 		src:  map[string]string{"swarmAddressVal": "1234567890abcdef"},
 		want: &mapSwarmAddressTest{SwarmAddressVal: swarm.MustParseHexAddress("1234567890abcdef")},
-	}, {
-		name: "ma.MultiAddress single not nil value",
-		src:  map[string]string{"multiAddressesVal": "/ip4/127.0.0.1/tcp/1634/p2p/16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkA"},
-		want: &mapMultiaddressesTest{MultiAddressesVal: []ma.Multiaddr{mustParseMultiaddr("/ip4/127.0.0.1/tcp/1634/p2p/16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkA")}},
-	}, {
-		name: "ma.MultiAddress single empty value",
-		src:  map[string]string{"multiAddressesVal": ""},
-		want: &mapMultiaddressesTest{MultiAddressesVal: nil},
-	},
-		{
-			name: "ma.MultiAddress multiple values",
-			src:  map[string]string{"multiAddressesVal": "/ip4/127.0.0.1/tcp/1634/p2p/16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkA,/ip6/127.0.0.1/tcp/1634/p2p/16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkA"},
-			want: &mapMultiaddressesTest{MultiAddressesVal: []ma.Multiaddr{
-				mustParseMultiaddr("/ip4/127.0.0.1/tcp/1634/p2p/16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkA"),
-				mustParseMultiaddr("/ip6/127.0.0.1/tcp/1634/p2p/16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkA")}},
-		},
-	}
+	}}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -612,12 +592,4 @@ func TestMapStructure_InputOutputSanityCheck(t *testing.T) {
 			t.Fatalf("expected error; have none")
 		}
 	})
-}
-
-func mustParseMultiaddr(a string) ma.Multiaddr {
-	addr, err := ma.NewMultiaddr(a)
-	if err != nil {
-		panic(err)
-	}
-	return addr
 }

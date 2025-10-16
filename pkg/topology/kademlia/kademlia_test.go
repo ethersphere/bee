@@ -2045,7 +2045,7 @@ func p2pMock(t *testing.T, ab addressbook.Interface, signer beeCrypto.Signer, co
 			}
 
 			for _, a := range addresses {
-				if bzz.AreUnderlaysEqual(a.Underlay, addrs) {
+				if bzz.AreUnderlaysEqual(a.Underlays, addrs) {
 					return &a, nil
 				}
 			}

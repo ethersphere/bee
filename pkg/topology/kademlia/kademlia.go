@@ -105,7 +105,7 @@ type Options struct {
 // kadOptions are made from Options with default values set
 type kadOptions struct {
 	SaturationFunc binSaturationFunc
-	Bootnodes      []ma.Multiaddr // TODO each of bootnodes will have multiple addresses
+	Bootnodes      []ma.Multiaddr
 	BootnodeMode   bool
 	PruneCountFunc pruneCountFunc
 	PruneFunc      pruneFunc
@@ -421,8 +421,6 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 			return
 		}
 
-		k.logger.Info("debug: kademlia: got addr grom addr book", "addr", bzzAddr.String())
-
 		remove := func(peer *peerConnInfo) {
 			k.waitNext.Remove(peer.addr)
 			k.knownPeers.Remove(peer.addr)
@@ -431,18 +429,16 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 			}
 		}
 
-		k.logger.Info("debug: kademlia: try to connect", "addr", bzzAddr.String())
-
-		switch err = k.connect(ctx, peer.addr, bzzAddr.Underlay); {
+		switch err = k.connect(ctx, peer.addr, bzzAddr.Underlays); {
 		case errors.Is(err, p2p.ErrNetworkUnavailable):
-			k.logger.Debug("network unavailable when reaching peer", "peer_overlay_address", peer.addr, "peer_underlay_address", bzzAddr.Underlay)
+			k.logger.Debug("network unavailable when reaching peer", "peer_overlay_address", peer.addr, "peer_underlay_addresses", bzzAddr.Underlays)
 			return
 		case errors.Is(err, errPruneEntry):
-			k.logger.Debug("dial to light node", "peer_overlay_address", peer.addr, "peer_underlay_address", bzzAddr.Underlay)
+			k.logger.Debug("dial to light node", "peer_overlay_address", peer.addr, "peer_underlay_addresses", bzzAddr.Underlays)
 			remove(peer)
 			return
 		case errors.Is(err, errOverlayMismatch):
-			k.logger.Debug("overlay mismatch has occurred", "peer_overlay_address", peer.addr, "peer_underlay_address", bzzAddr.Underlay)
+			k.logger.Debug("overlay mismatch has occurred", "peer_overlay_address", peer.addr, "peer_underlay_addresses", bzzAddr.Underlays)
 			remove(peer)
 			return
 		case errors.Is(err, p2p.ErrPeerBlocklisted):
@@ -480,8 +476,6 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 				return
 			case peer := <-peerConnChan:
 				addr := peer.addr.String()
-
-				k.logger.Debug("debug kademlia: connectionAttemptsHandler, got peer from chan", "peer_address", addr)
 
 				if k.waitNext.Waiting(peer.addr) {
 					k.metrics.TotalBeforeExpireWaits.Inc()
@@ -751,8 +745,6 @@ func (k *Kad) Start(ctx context.Context) error {
 	k.wg.Add(1)
 	go k.manage()
 
-	k.logger.Debug("kademlia: started", "previously_connected", k.previouslyConnected())
-
 	k.AddPeers(k.previouslyConnected()...)
 
 	go func() {
@@ -828,7 +820,7 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 			if attempts >= maxBootNodeAttempts {
 				return true, nil
 			}
-			bzzAddress, err := k.p2p.Connect(ctx, []ma.Multiaddr{addr}) // TODO use multiple underlay addresses, after bootnodes would support it
+			bzzAddress, err := k.p2p.Connect(ctx, []ma.Multiaddr{addr})
 
 			attempts++
 			k.metrics.TotalBootNodesConnectionAttempts.Inc()
@@ -1084,7 +1076,6 @@ outer:
 				cCtx, cCancel := context.WithTimeout(k.bgBroadcastCtx, time.Minute)
 				defer cCancel()
 
-				k.logger.Debug("Announce", "connectedPeer", connectedPeer.String(), "peer", peer.String())
 				if err := k.discovery.BroadcastPeers(cCtx, connectedPeer, peer); err != nil {
 					k.logger.Debug("peer gossip failed", "new_peer_address", peer, "connected_peer_address", connectedPeer, "error", err)
 				}
@@ -1102,8 +1093,6 @@ outer:
 	default:
 	}
 
-	k.logger.Debug("Announce", "peer", peer.String(), "addrs", addrs)
-
 	err := k.discovery.BroadcastPeers(ctx, peer, addrs...)
 	if err != nil {
 		k.logger.Error(err, "could not broadcast to peer", "peer_address", peer)
@@ -1119,7 +1108,6 @@ func (k *Kad) AnnounceTo(ctx context.Context, addressee, peer swarm.Address, ful
 		return errAnnounceLightNode
 	}
 
-	k.logger.Debug("AnnounceTo", "addressee", addressee.String(), "peer", peer.String())
 	return k.discovery.BroadcastPeers(ctx, addressee, peer)
 }
 
