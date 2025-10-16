@@ -349,7 +349,7 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 		}
 
 		if len(multiUnderlays) == 0 {
-			s.logger.Debug("check and add peers, NO UNDERLAYS", "overlay", swarm.NewAddress(p.Overlay).String())
+			s.logger.Debug("check and add peers, no underlays", "overlay", swarm.NewAddress(p.Overlay).String())
 			continue // no underlays sent
 		}
 
