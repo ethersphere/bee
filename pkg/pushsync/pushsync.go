@@ -315,7 +315,6 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	default:
 		ps.metrics.Forwarder.Inc()
 		return fmt.Errorf("handler: push to closest chunk %s: %w", chunkAddress, err)
-
 	}
 }
 

@@ -118,25 +118,20 @@ func (s *Service) SetPicker(n p2p.Picker) {
 }
 
 // Handshake initiates a handshake with a peer.
-func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiaddr ma.Multiaddr, peerID libp2ppeer.ID) (i *Info, err error) {
+func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiaddrs []ma.Multiaddr, peerID libp2ppeer.ID) (i *Info, err error) {
 	loggerV1 := s.logger.V(1).Register()
 
 	ctx, cancel := context.WithTimeout(ctx, handshakeTimeout)
 	defer cancel()
 
 	w, r := protobuf.NewWriterAndReader(stream)
-	fullRemoteMA, err := buildFullMA(peerMultiaddr, peerID)
-	if err != nil {
-		return nil, err
-	}
-
-	fullRemoteMABytes, err := fullRemoteMA.MarshalBinary()
+	fullRemoteMAs, err := buildFullMAs(peerMultiaddrs, peerID)
 	if err != nil {
 		return nil, err
 	}
 
 	if err := w.WriteMsgWithContext(ctx, &pb.Syn{
-		ObservedUnderlay: fullRemoteMABytes,
+		ObservedUnderlay: bzz.SerializeUnderlays(fullRemoteMAs),
 	}); err != nil {
 		return nil, fmt.Errorf("write syn message: %w", err)
 	}
@@ -146,32 +141,35 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return nil, fmt.Errorf("read synack message: %w", err)
 	}
 
-	observedUnderlay, err := ma.NewMultiaddrBytes(resp.Syn.ObservedUnderlay)
+	observedUnderlays, err := bzz.DeserializeUnderlays(resp.Syn.ObservedUnderlay)
 	if err != nil {
 		return nil, ErrInvalidSyn
 	}
 
-	observedUnderlayAddrInfo, err := libp2ppeer.AddrInfoFromP2pAddr(observedUnderlay)
-	if err != nil {
-		return nil, fmt.Errorf("extract addr from P2P: %w", err)
+	if len(observedUnderlays) == 0 {
+		return nil, errors.New("no observed underlay sent")
 	}
 
-	if s.libp2pID != observedUnderlayAddrInfo.ID {
-		// NOTE eventually we will return error here, but for now we want to gather some statistics
-		s.logger.Warning("received peer ID does not match ours", "their", observedUnderlayAddrInfo.ID, "ours", s.libp2pID)
+	advertisableUnderlays := make([]ma.Multiaddr, len(observedUnderlays))
+	for i, observedUnderlay := range observedUnderlays {
+		observedUnderlayAddrInfo, err := libp2ppeer.AddrInfoFromP2pAddr(observedUnderlay)
+		if err != nil {
+			return nil, fmt.Errorf("extract addr from P2P: %w", err)
+		}
+
+		if s.libp2pID != observedUnderlayAddrInfo.ID {
+			return nil, fmt.Errorf("received peer ID %s does not match ours %s", observedUnderlayAddrInfo.ID.String(), s.libp2pID.String())
+		}
+
+		advertisableUnderlay, err := s.advertisableAddresser.Resolve(observedUnderlay)
+		if err != nil {
+			return nil, err
+		}
+
+		advertisableUnderlays[i] = advertisableUnderlay
 	}
 
-	advertisableUnderlay, err := s.advertisableAddresser.Resolve(observedUnderlay)
-	if err != nil {
-		return nil, err
-	}
-
-	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlay, s.overlay, s.networkID, s.nonce)
-	if err != nil {
-		return nil, err
-	}
-
-	advertisableUnderlayBytes, err := bzzAddress.Underlay.MarshalBinary()
+	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce)
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +187,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 	welcomeMessage := s.GetWelcomeMessage()
 	msg := &pb.Ack{
 		Address: &pb.BzzAddress{
-			Underlay:  advertisableUnderlayBytes,
+			Underlay:  bzz.SerializeUnderlays(bzzAddress.Underlays),
 			Overlay:   bzzAddress.Overlay.Bytes(),
 			Signature: bzzAddress.Signature,
 		},
@@ -227,11 +225,6 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 		return nil, err
 	}
 
-	fullRemoteMABytes, err := fullRemoteMA.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
-
 	var syn pb.Syn
 	if err := r.ReadMsgWithContext(ctx, &syn); err != nil {
 		s.metrics.SynRxFailed.Inc()
@@ -239,22 +232,25 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 	}
 	s.metrics.SynRx.Inc()
 
-	observedUnderlay, err := ma.NewMultiaddrBytes(syn.ObservedUnderlay)
+	observedUnderlays, err := bzz.DeserializeUnderlays(syn.ObservedUnderlay)
 	if err != nil {
 		return nil, ErrInvalidSyn
 	}
 
-	advertisableUnderlay, err := s.advertisableAddresser.Resolve(observedUnderlay)
-	if err != nil {
-		return nil, err
+	if len(observedUnderlays) == 0 {
+		return nil, errors.New("no observed underlay sent")
 	}
 
-	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlay, s.overlay, s.networkID, s.nonce)
-	if err != nil {
-		return nil, err
+	advertisableUnderlays := make([]ma.Multiaddr, len(observedUnderlays))
+	for i, observedUnderlay := range observedUnderlays {
+		advertisableUnderlay, err := s.advertisableAddresser.Resolve(observedUnderlay)
+		if err != nil {
+			return nil, err
+		}
+		advertisableUnderlays[i] = advertisableUnderlay
 	}
 
-	advertisableUnderlayBytes, err := bzzAddress.Underlay.MarshalBinary()
+	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce)
 	if err != nil {
 		return nil, err
 	}
@@ -263,11 +259,11 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 
 	if err := w.WriteMsgWithContext(ctx, &pb.SynAck{
 		Syn: &pb.Syn{
-			ObservedUnderlay: fullRemoteMABytes,
+			ObservedUnderlay: bzz.SerializeUnderlays([]ma.Multiaddr{fullRemoteMA}),
 		},
 		Ack: &pb.Ack{
 			Address: &pb.BzzAddress{
-				Underlay:  advertisableUnderlayBytes,
+				Underlay:  bzz.SerializeUnderlays(bzzAddress.Underlays),
 				Overlay:   bzzAddress.Overlay.Bytes(),
 				Signature: bzzAddress.Signature,
 			},
@@ -331,7 +327,22 @@ func (s *Service) GetWelcomeMessage() string {
 	return s.welcomeMessage.Load().(string)
 }
 
+func buildFullMAs(addrs []ma.Multiaddr, peerID libp2ppeer.ID) ([]ma.Multiaddr, error) {
+	fullMAs := make([]ma.Multiaddr, len(addrs))
+	for i, addr := range addrs {
+		res, err := buildFullMA(addr, peerID)
+		if err != nil {
+			return nil, err
+		}
+		fullMAs[i] = res
+	}
+	return fullMAs, nil
+}
+
 func buildFullMA(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) {
+	if _, err := addr.ValueForProtocol(ma.P_P2P); err == nil {
+		return addr, nil
+	}
 	return ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", addr.String(), peerID.String()))
 }
 

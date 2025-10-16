@@ -429,16 +429,16 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 			}
 		}
 
-		switch err = k.connect(ctx, peer.addr, bzzAddr.Underlay); {
+		switch err = k.connect(ctx, peer.addr, bzzAddr.Underlays); {
 		case errors.Is(err, p2p.ErrNetworkUnavailable):
-			k.logger.Debug("network unavailable when reaching peer", "peer_overlay_address", peer.addr, "peer_underlay_address", bzzAddr.Underlay)
+			k.logger.Debug("network unavailable when reaching peer", "peer_overlay_address", peer.addr, "peer_underlay_addresses", bzzAddr.Underlays)
 			return
 		case errors.Is(err, errPruneEntry):
-			k.logger.Debug("dial to light node", "peer_overlay_address", peer.addr, "peer_underlay_address", bzzAddr.Underlay)
+			k.logger.Debug("dial to light node", "peer_overlay_address", peer.addr, "peer_underlay_addresses", bzzAddr.Underlays)
 			remove(peer)
 			return
 		case errors.Is(err, errOverlayMismatch):
-			k.logger.Debug("overlay mismatch has occurred", "peer_overlay_address", peer.addr, "peer_underlay_address", bzzAddr.Underlay)
+			k.logger.Debug("overlay mismatch has occurred", "peer_overlay_address", peer.addr, "peer_underlay_addresses", bzzAddr.Underlays)
 			remove(peer)
 			return
 		case errors.Is(err, p2p.ErrPeerBlocklisted):
@@ -820,7 +820,7 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 			if attempts >= maxBootNodeAttempts {
 				return true, nil
 			}
-			bzzAddress, err := k.p2p.Connect(ctx, addr)
+			bzzAddress, err := k.p2p.Connect(ctx, []ma.Multiaddr{addr})
 
 			attempts++
 			k.metrics.TotalBootNodesConnectionAttempts.Inc()
@@ -958,7 +958,7 @@ func (k *Kad) recalcDepth() {
 
 // connect connects to a peer and gossips its address to our connected peers,
 // as well as sends the peers we are connected to the newly connected peer
-func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) error {
+func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma []ma.Multiaddr) error {
 	k.logger.Debug("attempting connect to peer", "peer_address", peer)
 
 	ctx, cancel := context.WithTimeout(ctx, peerConnectionAttemptTimeout)
@@ -983,7 +983,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 	case errors.Is(err, p2p.ErrPeerBlocklisted):
 		return err
 	case err != nil:
-		k.logger.Debug("could not connect to peer", "peer_address", peer, "error", err)
+		k.logger.Info("could not connect to peer", "peer_address", peer, "error", err)
 
 		retryTime := time.Now().Add(k.opt.TimeToRetry)
 		var e *p2p.ConnectionBackoffError

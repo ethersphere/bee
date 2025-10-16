@@ -17,11 +17,13 @@ import (
 	"sync"
 	"time"
 
+	ocprom "contrib.go.opencensus.io/exporter/prometheus"
 	"github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 	beecrypto "github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
+	m2 "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/blocklist"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/breaker"
@@ -43,19 +45,15 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/host/autonat"
 	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
-	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
+	rcmgrObs "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	lp2pswarm "github.com/libp2p/go-libp2p/p2p/net/swarm"
 	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
-
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multistream"
-	"go.uber.org/atomic"
-
-	ocprom "contrib.go.opencensus.io/exporter/prometheus"
-	m2 "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/atomic"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -174,7 +172,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	if o.Registry != nil {
-		rcmgr.MustRegisterWith(o.Registry)
+		rcmgrObs.MustRegisterWith(o.Registry)
 	}
 
 	_, err = ocprom.NewExporter(ocprom.Options{
@@ -186,8 +184,8 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	// Tweak certain settings
-	cfg := rcmgr.PartialLimitConfig{
-		System: rcmgr.ResourceLimits{
+	cfg := rcmgrObs.PartialLimitConfig{
+		System: rcmgrObs.ResourceLimits{
 			Streams:         IncomingStreamCountLimit + OutgoingStreamCountLimit,
 			StreamsOutbound: OutgoingStreamCountLimit,
 			StreamsInbound:  IncomingStreamCountLimit,
@@ -195,17 +193,17 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	// Create our limits by using our cfg and replacing the default values with values from `scaledDefaultLimits`
-	limits := cfg.Build(rcmgr.InfiniteLimits)
+	limits := cfg.Build(rcmgrObs.InfiniteLimits)
 
 	// The resource manager expects a limiter, se we create one from our limits.
-	limiter := rcmgr.NewFixedLimiter(limits)
+	limiter := rcmgrObs.NewFixedLimiter(limits)
 
-	str, err := rcmgr.NewStatsTraceReporter()
+	str, err := rcmgrObs.NewStatsTraceReporter()
 	if err != nil {
 		return nil, err
 	}
 
-	rm, err := rcmgr.NewResourceManager(limiter, rcmgr.WithTraceReporter(str))
+	rm, err := rcmgrObs.NewResourceManager(limiter, rcmgrObs.WithTraceReporter(str))
 	if err != nil {
 		return nil, err
 	}
@@ -409,6 +407,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 
 	peerID := stream.Conn().RemotePeer()
 	handshakeStream := newStream(stream, s.metrics)
+
 	i, err := s.handshakeService.Handle(s.ctx, handshakeStream, stream.Conn().RemoteMultiaddr(), peerID)
 	if err != nil {
 		s.logger.Debug("stream handler: handshake: handle failed", "peer_id", peerID, "error", err)
@@ -536,9 +535,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		return
 	}
 
-	if s.reacher != nil {
-		s.reacher.Connected(overlay, i.BzzAddress.Underlay)
-	}
+	s.notifyReacherConnected(stream, overlay, peerID)
 
 	peerUserAgent := appendSpace(s.peerUserAgent(s.ctx, peerID))
 	s.networkStatus.Store(int32(p2p.NetworkStatusAvailable))
@@ -547,10 +544,30 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	s.logger.Debug("stream handler: successfully connected to peer (inbound)", "address", i.BzzAddress.Overlay, "light", i.LightString(), "user_agent", peerUserAgent)
 }
 
+func (s *Service) notifyReacherConnected(stream network.Stream, overlay swarm.Address, peerID libp2ppeer.ID) {
+	if s.reacher == nil {
+		return
+	}
+
+	peerAddrs := s.host.Peerstore().Addrs(peerID)
+	connectionAddr := stream.Conn().RemoteMultiaddr()
+	bestAddr := bzz.SelectBestAdvertisedAddress(peerAddrs, connectionAddr)
+
+	s.logger.Debug("selected reacher address", "peer_id", peerID, "selected_addr", bestAddr.String(), "connection_addr", connectionAddr.String(), "advertised_count", len(peerAddrs))
+
+	underlay, err := buildFullMA(bestAddr, peerID)
+	if err != nil {
+		s.logger.Error(err, "stream handler: unable to build complete peer multiaddr", "peer", overlay, "multiaddr", bestAddr, "peer_id", peerID)
+		_ = s.Disconnect(overlay, "unable to build complete peer multiaddr")
+		return
+	}
+	s.reacher.Connected(overlay, underlay)
+}
+
 func (s *Service) SetPickyNotifier(n p2p.PickyNotifier) {
 	s.handshakeService.SetPicker(n)
 	s.notifier = n
-	s.reacher = reacher.New(s, n, nil)
+	s.reacher = reacher.New(s, n, nil, s.logger)
 }
 
 func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
@@ -707,35 +724,27 @@ func buildUnderlayAddress(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr
 	return addr.Encapsulate(hostAddr), nil
 }
 
-func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error) {
+func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *bzz.Address, err error) {
 	loggerV1 := s.logger.V(1).Register()
 
 	defer func() {
 		err = s.determineCurrentNetworkStatus(err)
 	}()
 
-	// Extract the peer ID from the multiaddr.
-	info, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
+	peerID, remotes, err := normalizeAddrsSamePeer(s.logger, addrs)
 	if err != nil {
-		return nil, fmt.Errorf("addr from p2p: %w", err)
+		return nil, err
 	}
 
-	hostAddr, err := buildHostAddress(info.ID)
-	if err != nil {
-		return nil, fmt.Errorf("build host address: %w", err)
-	}
-
-	remoteAddr := addr.Decapsulate(hostAddr)
-
-	if overlay, found := s.peers.isConnected(info.ID, remoteAddr); found {
-		address = &bzz.Address{
-			Overlay:  overlay,
-			Underlay: addr,
+	for _, r := range remotes {
+		if overlay, found := s.peers.isConnected(peerID, r); found {
+			return &bzz.Address{Overlay: overlay, Underlays: addrs}, p2p.ErrAlreadyConnected
 		}
-		return address, p2p.ErrAlreadyConnected
 	}
 
-	if err := s.connectionBreaker.Execute(func() error { return s.host.Connect(ctx, *info) }); err != nil {
+	// libp2p will chose first ready address (possible multi dial).
+	info := libp2ppeer.AddrInfo{ID: peerID, Addrs: remotes}
+	if err := s.connectionBreaker.Execute(func() error { return s.host.Connect(ctx, info) }); err != nil {
 		if errors.Is(err, breaker.ErrClosed) {
 			s.metrics.ConnectBreakerCount.Inc()
 			return nil, p2p.NewConnectionBackoffError(err, s.connectionBreaker.ClosedUntil())
@@ -750,7 +759,8 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	}
 
 	handshakeStream := newStream(stream, s.metrics)
-	i, err := s.handshakeService.Handshake(ctx, handshakeStream, stream.Conn().RemoteMultiaddr(), stream.Conn().RemotePeer())
+
+	i, err := s.handshakeService.Handshake(ctx, handshakeStream, addrs, stream.Conn().RemotePeer())
 	if err != nil {
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(info.ID)
@@ -823,15 +833,48 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 
 	s.metrics.CreatedConnectionCount.Inc()
 
-	if s.reacher != nil {
-		s.reacher.Connected(overlay, i.BzzAddress.Underlay)
-	}
+	s.notifyReacherConnected(stream, overlay, peerID)
 
-	peerUserAgent := appendSpace(s.peerUserAgent(ctx, info.ID))
-
-	loggerV1.Debug("successfully connected to peer (outbound)", "addresses", i.BzzAddress.ShortString(), "light", i.LightString(), "user_agent", peerUserAgent)
-	s.logger.Debug("successfully connected to peer (outbound)", "address", i.BzzAddress.Overlay, "light", i.LightString(), "user_agent", peerUserAgent)
+	peerUA := appendSpace(s.peerUserAgent(ctx, peerID))
+	loggerV1.Debug("successfully connected to peer (outbound)", "addresses", i.BzzAddress.ShortString(), "light", i.LightString(), "user_agent", peerUA)
+	s.logger.Debug("successfully connected to peer (outbound)", "address", overlay, "light", i.LightString(), "user_agent", peerUA)
 	return i.BzzAddress, nil
+}
+
+func normalizeAddrsSamePeer(logger log.Logger, addrs []ma.Multiaddr) (libp2ppeer.ID, []ma.Multiaddr, error) {
+	var id libp2ppeer.ID
+	seen := make(map[string]struct{})
+	remotes := make([]ma.Multiaddr, 0)
+
+	for _, a := range addrs {
+		info, err := libp2ppeer.AddrInfoFromP2pAddr(a)
+		if err != nil {
+			logger.Debug("addr info from p2p addr", "multiaddress", a.String(), "error", err)
+			continue
+		}
+		if id == "" {
+			id = info.ID
+		} else if id != info.ID {
+			logger.Debug("mixed peer IDs in underlay list", "multiaddress", a.String(), "id1", id, "id2", info.ID)
+			continue
+		}
+		hostAddr, err := buildHostAddress(info.ID) // /p2p/<id>
+		if err != nil {
+			logger.Debug("build host address", "multiaddress", a.String(), "id", info.ID)
+			continue
+		}
+		remote := a.Decapsulate(hostAddr) // clear transport: /ip4/.../tcp/... | /dns4/.../wss | ...
+		key := remote.String()
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		remotes = append(remotes, remote)
+	}
+	if id == "" || len(remotes) == 0 {
+		return "", nil, errors.New("no valid underlay addresses")
+	}
+	return id, remotes, nil
 }
 
 func (s *Service) Disconnect(overlay swarm.Address, reason string) (err error) {
@@ -1176,4 +1219,12 @@ func isNetworkOrHostUnreachableError(err error) bool {
 		}
 	}
 	return false
+}
+
+// TODO: deduplicate this function from handshake package
+func buildFullMA(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) {
+	if _, err := addr.ValueForProtocol(ma.P_P2P); err == nil {
+		return addr, nil
+	}
+	return ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", addr.String(), peerID.String()))
 }
