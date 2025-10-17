@@ -409,7 +409,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	peerID := stream.Conn().RemotePeer()
 	handshakeStream := newStream(stream, s.metrics)
 
-	s.logger.Info("INVESTIGATION: handle incomming connection", "peerID", peerID.String())
+	s.logger.Info("INVESTIGATION: handle incomming connection", "host addresses", as.SliceOf(s.host.Peerstore().Addrs(peerID), func(a ma.Multiaddr) string { return a.String() }), "best", bzz.SelectBestAdvertisedAddress(s.host.Peerstore().Addrs(peerID), stream.Conn().RemoteMultiaddr()), "conn remote addr", stream.Conn().RemoteMultiaddr(), "peerID", peerID.String())
 
 	i, err := s.handshakeService.Handle(s.ctx, handshakeStream, stream.Conn().RemoteMultiaddr(), peerID)
 	if err != nil {
