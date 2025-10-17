@@ -494,6 +494,14 @@ func NewBee(
 		b.apiCloser = apiServer
 	}
 
+	// TODO: remove, this is just for temporary cleanul
+	if err := addressbook.IterateOverlays(func(overlay swarm.Address) (bool, error) {
+		logger.Info("removing address from addressbook", "overlay", overlay)
+		return false, addressbook.Remove(overlay)
+	}); err != nil {
+		return nil, fmt.Errorf("iterate addressbook overlays: %w", err)
+	}
+
 	// Sync the with the given Ethereum backend:
 	isSynced, _, err := transaction.IsSynced(ctx, chainBackend, maxDelay)
 	if err != nil {
