@@ -52,6 +52,7 @@ require (
 	golang.org/x/term v0.30.0
 	golang.org/x/time v0.9.0
 	gopkg.in/yaml.v2 v2.4.0
+	resenje.org/as v0.1.0
 	resenje.org/feed v0.1.2
 	resenje.org/multex v0.1.0
 	resenje.org/singleflight v0.4.0

@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/handshake/pb"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"resenje.org/as"
 
 	libp2ppeer "github.com/libp2p/go-libp2p/core/peer"
 	ma "github.com/multiformats/go-multiaddr"
@@ -130,6 +131,8 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return nil, err
 	}
 
+	s.logger.Info("INVESTIGATION: handshake call: sync", "fullRemoteMAs", as.SliceOf(fullRemoteMAs, func(a ma.Multiaddr) string { return a.String() }), "peerID", peerID.String())
+
 	if err := w.WriteMsgWithContext(ctx, &pb.Syn{
 		ObservedUnderlay: bzz.SerializeUnderlays(fullRemoteMAs),
 	}); err != nil {
@@ -145,6 +148,8 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 	if err != nil {
 		return nil, ErrInvalidSyn
 	}
+
+	s.logger.Info("INVESTIGATION: handshake call: sync ack", "observedUnderlays", as.SliceOf(observedUnderlays, func(a ma.Multiaddr) string { return a.String() }), "peerID", peerID.String())
 
 	if len(observedUnderlays) == 0 {
 		return nil, errors.New("no observed underlay sent")
@@ -169,10 +174,14 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		advertisableUnderlays[i] = advertisableUnderlay
 	}
 
+	s.logger.Info("INVESTIGATION: handshake call: advertizable underlays", "advertisableUnderlays", as.SliceOf(advertisableUnderlays, func(a ma.Multiaddr) string { return a.String() }), "peerID", peerID.String())
+
 	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce)
 	if err != nil {
 		return nil, err
 	}
+
+	s.logger.Info("INVESTIGATION: handshake call: bzz address", "bzz address", bzzAddress.String(), "peerID", peerID.String())
 
 	if resp.Ack.NetworkID != s.networkID {
 		return nil, ErrNetworkIDIncompatible
@@ -182,6 +191,8 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 	if err != nil {
 		return nil, err
 	}
+
+	s.logger.Info("INVESTIGATION: handshake call: remote bzz address", "remote bzz address", remoteBzzAddress.String(), "peerID", peerID.String())
 
 	// Synced read:
 	welcomeMessage := s.GetWelcomeMessage()
@@ -214,6 +225,8 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 
 // Handle handles an incoming handshake from a peer.
 func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr ma.Multiaddr, remotePeerID libp2ppeer.ID) (i *Info, err error) {
+	s.logger.Info("INVESTIGATION: handshake handle", "remoteMultiaddr", remoteMultiaddr.String(), "remotePeerID", remotePeerID.String())
+
 	loggerV1 := s.logger.V(1).Register()
 
 	ctx, cancel := context.WithTimeout(ctx, handshakeTimeout)
@@ -224,6 +237,8 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 	if err != nil {
 		return nil, err
 	}
+
+	s.logger.Info("INVESTIGATION: handshake handle: full remote ma", "fullRemoteMA", fullRemoteMA.String(), "remotePeerID", remotePeerID.String())
 
 	var syn pb.Syn
 	if err := r.ReadMsgWithContext(ctx, &syn); err != nil {
@@ -236,6 +251,8 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 	if err != nil {
 		return nil, ErrInvalidSyn
 	}
+
+	s.logger.Info("INVESTIGATION: handshake handle: observed underlays", "observedUnderlays", as.SliceOf(observedUnderlays, func(a ma.Multiaddr) string { return a.String() }), "remotePeerID", remotePeerID.String())
 
 	if len(observedUnderlays) == 0 {
 		return nil, errors.New("no observed underlay sent")
@@ -250,10 +267,14 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 		advertisableUnderlays[i] = advertisableUnderlay
 	}
 
+	s.logger.Info("INVESTIGATION: handshake handle: advertisable underlays", "advertisableUnderlays", as.SliceOf(advertisableUnderlays, func(a ma.Multiaddr) string { return a.String() }), "remotePeerID", remotePeerID.String())
+
 	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce)
 	if err != nil {
 		return nil, err
 	}
+
+	s.logger.Info("INVESTIGATION: handshake handle: bzz address", "bzzAddress", bzzAddress.String(), "remotePeerID", remotePeerID.String())
 
 	welcomeMessage := s.GetWelcomeMessage()
 
@@ -301,6 +322,8 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 	if err != nil {
 		return nil, err
 	}
+
+	s.logger.Info("INVESTIGATION: handshake handle: remote bzz address", "remoteBzzAddress", remoteBzzAddress.String(), "remotePeerID", remotePeerID.String())
 
 	loggerV1.Debug("handshake finished for peer (inbound)", "peer_address", remoteBzzAddress.Overlay)
 	if len(ack.WelcomeMessage) > 0 {

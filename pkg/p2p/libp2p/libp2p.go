@@ -54,6 +54,7 @@ import (
 	"github.com/multiformats/go-multistream"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
+	"resenje.org/as"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -408,6 +409,8 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	peerID := stream.Conn().RemotePeer()
 	handshakeStream := newStream(stream, s.metrics)
 
+	s.logger.Info("INVESTIGATION: handle incomming connection", "peerID", peerID.String())
+
 	i, err := s.handshakeService.Handle(s.ctx, handshakeStream, stream.Conn().RemoteMultiaddr(), peerID)
 	if err != nil {
 		s.logger.Debug("stream handler: handshake: handle failed", "peer_id", peerID, "error", err)
@@ -416,6 +419,8 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		_ = s.host.Network().ClosePeer(peerID)
 		return
 	}
+
+	s.logger.Info("INVESTIGATION: handle incomming connection", "info", i.BzzAddress.String(), "peerID", peerID.String())
 
 	overlay := i.BzzAddress.Overlay
 
@@ -725,6 +730,8 @@ func buildUnderlayAddress(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr
 }
 
 func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *bzz.Address, err error) {
+	s.logger.Info("INVESTIGATION: connect call", "addrs", as.SliceOf(addrs, func(a ma.Multiaddr) string { return a.String() }))
+
 	loggerV1 := s.logger.V(1).Register()
 
 	defer func() {
@@ -735,6 +742,8 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	if err != nil {
 		return nil, err
 	}
+
+	s.logger.Info("INVESTIGATION: connect call: normalized addrs", "remotes", as.SliceOf(remotes, func(a ma.Multiaddr) string { return a.String() }), "peerID", peerID.String())
 
 	for _, r := range remotes {
 		if overlay, found := s.peers.isConnected(peerID, r); found {
