@@ -131,8 +131,8 @@ type Options struct {
 	Registry         *prometheus.Registry
 }
 
-func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
-	host, port, err := net.SplitHostPort(addr)
+func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, p2pListenAddress string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
+	host, port, err := net.SplitHostPort(p2pListenAddress)
 	if err != nil {
 		return nil, fmt.Errorf("address: %w", err)
 	}
@@ -291,9 +291,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	var advertisableAddresser handshake.AdvertisableAddressResolver
 	var natAddrResolver *staticAddressResolver
 	if o.NATAddr == "" {
-		advertisableAddresser = &UpnpAddressResolver{
-			host: h,
-		}
+		advertisableAddresser = NewUpnpAddressResolver(h)
 	} else {
 		natAddrResolver, err = newStaticAddressResolver(o.NATAddr, net.LookupIP)
 		if err != nil {

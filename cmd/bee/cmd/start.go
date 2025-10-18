@@ -277,8 +277,8 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		neighborhoodSuggester = c.config.GetString(optionNameNeighborhoodSuggester)
 	}
 
-	b, err := node.NewBee(ctx, c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, signerConfig.session, &node.Options{
-		Addr:                          c.config.GetString(optionNameP2PAddr),
+	b, err := node.NewBee(ctx, signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, signerConfig.session, &node.Options{
+		P2PAddr:                       c.config.GetString(optionNameP2PAddr),
 		AllowPrivateCIDRs:             c.config.GetBool(optionNameAllowPrivateCIDRs),
 		APIAddr:                       c.config.GetString(optionNameAPIAddr),
 		BlockchainRpcEndpoint:         c.config.GetString(optionNameBlockchainRpcEndpoint),

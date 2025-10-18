@@ -124,7 +124,7 @@ type Bee struct {
 }
 
 type Options struct {
-	Addr                          string
+	P2PAddr                       string
 	AllowPrivateCIDRs             bool
 	APIAddr                       string
 	BlockchainRpcEndpoint         string
@@ -197,7 +197,6 @@ const (
 
 func NewBee(
 	ctx context.Context,
-	addr string,
 	publicKey *ecdsa.PublicKey,
 	signer crypto.Signer,
 	networkID uint64,
@@ -636,7 +635,7 @@ func NewBee(
 		logger.Info("cold postage start detected. fetching postage stamp snapshot from swarm")
 		initBatchState, err = bootstrapNode(
 			ctx,
-			addr,
+			o.P2PAddr,
 			swarmAddress,
 			nonce,
 			addressbook,
@@ -662,7 +661,7 @@ func NewBee(
 		registry = apiService.MetricsRegistry()
 	}
 
-	p2ps, err := libp2p.New(ctx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
+	p2ps, err := libp2p.New(ctx, signer, networkID, swarmAddress, o.P2PAddr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
 		PrivateKey:      libp2pPrivateKey,
 		NATAddr:         o.NATAddr,
 		EnableWS:        o.EnableWS,

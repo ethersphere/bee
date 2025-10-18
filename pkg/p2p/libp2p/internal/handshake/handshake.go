@@ -172,6 +172,13 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		}
 
 		advertisableUnderlays[i] = advertisableUnderlay
+
+		// Log every advertised address resolution
+		s.logger.Info("ADVERTISED_ADDRESS: outbound handshake",
+			"peerID", peerID.String(),
+			"observed_address", observedUnderlay.String(),
+			"advertised_address", advertisableUnderlay.String(),
+			"resolution_type", "outbound")
 	}
 
 	s.logger.Info("INVESTIGATION: handshake call: advertizable underlays", "advertisableUnderlays", as.SliceOf(advertisableUnderlays, func(a ma.Multiaddr) string { return a.String() }), "peerID", peerID.String())
@@ -180,6 +187,13 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 	if err != nil {
 		return nil, err
 	}
+
+	// Log the final advertised BZZ address that will be sent to peers
+	s.logger.Info("ADVERTISED_BZZ_ADDRESS: outbound handshake",
+		"peerID", peerID.String(),
+		"bzz_address", bzzAddress.String(),
+		"underlay_addresses", as.SliceOf(advertisableUnderlays, func(a ma.Multiaddr) string { return a.String() }),
+		"overlay_address", s.overlay.String())
 
 	s.logger.Info("INVESTIGATION: handshake call: bzz address", "bzz address", bzzAddress.String(), "peerID", peerID.String())
 
@@ -265,6 +279,13 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 			return nil, err
 		}
 		advertisableUnderlays[i] = advertisableUnderlay
+
+		// Log every advertised address resolution
+		s.logger.Info("ADVERTISED_ADDRESS: inbound handshake",
+			"peerID", remotePeerID.String(),
+			"observed_address", observedUnderlay.String(),
+			"advertised_address", advertisableUnderlay.String(),
+			"resolution_type", "inbound")
 	}
 
 	s.logger.Info("INVESTIGATION: handshake handle: advertisable underlays", "advertisableUnderlays", as.SliceOf(advertisableUnderlays, func(a ma.Multiaddr) string { return a.String() }), "remotePeerID", remotePeerID.String())
@@ -273,6 +294,13 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 	if err != nil {
 		return nil, err
 	}
+
+	// Log the final advertised BZZ address that will be sent to peers
+	s.logger.Info("ADVERTISED_BZZ_ADDRESS: inbound handshake",
+		"peerID", remotePeerID.String(),
+		"bzz_address", bzzAddress.String(),
+		"underlay_addresses", as.SliceOf(advertisableUnderlays, func(a ma.Multiaddr) string { return a.String() }),
+		"overlay_address", s.overlay.String())
 
 	s.logger.Info("INVESTIGATION: handshake handle: bzz address", "bzzAddress", bzzAddress.String(), "remotePeerID", remotePeerID.String())
 

@@ -13,14 +13,22 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
+// UpnpAddressResolver intelligently handles NAT scenarios by:
+// 1. First trying to use a matching listen address (preferred)
+// 2. If no match, using the observed address (NAT-aware)
+// 3. Providing logging for debugging NAT issues
 type UpnpAddressResolver struct {
 	host host.Host
 }
 
-// Resolve checks if there is a possible better advertisable underlay then the provided observed address.
-// In some NAT situations, for example in the case when nodes are behind upnp, observer might send the observed address with a wrong port.
-// In this case, observed address is compared to addresses provided by host, and if there is a same address but with different port, that one is used as advertisable address instead of provided observed one.
-// TODO: this is a quickfix and it will be improved in the future
+// NewUpnpAddressResolver creates a new resolver that handles NAT scenarios intelligently.
+func NewUpnpAddressResolver(host host.Host) *UpnpAddressResolver {
+	return &UpnpAddressResolver{
+		host: host,
+	}
+}
+
+// Resolve intelligently resolves the advertised address considering NAT scenarios.
 func (r *UpnpAddressResolver) Resolve(observedAddress ma.Multiaddr) (ma.Multiaddr, error) {
 	observableAddrInfo, err := libp2ppeer.AddrInfoFromP2pAddr(observedAddress)
 	if err != nil {
@@ -39,10 +47,10 @@ func (r *UpnpAddressResolver) Resolve(observedAddress ma.Multiaddr) (ma.Multiadd
 	}
 
 	observedAddressPort := observedAddrSplit[4]
-
-	// observervedAddressShort is an obaserved address without port
 	observervedAddressShort := strings.Join(append(observedAddrSplit[:4], observedAddrSplit[5:]...), "/")
 
+	// Strategy 1: Try to find a matching listen address with the same port
+	// This is the ideal case - external port matches internal port
 	for _, a := range r.host.Addrs() {
 		asplit := strings.Split(a.String(), "/")
 		if len(asplit) != len(observedAddrSplit) {
@@ -54,15 +62,38 @@ func (r *UpnpAddressResolver) Resolve(observedAddress ma.Multiaddr) (ma.Multiadd
 			continue
 		}
 
-		if aport != observedAddressPort {
+		// Found a matching address with the same port - this is ideal
+		if aport == observedAddressPort {
 			aaddress, err := buildUnderlayAddress(a, observableAddrInfo.ID)
 			if err != nil {
 				continue
 			}
-
 			return aaddress, nil
 		}
 	}
 
+	// Strategy 2: Try to find any matching listen address (different port)
+	// This handles cases where NAT remaps ports but we want to use our listen port
+	for _, a := range r.host.Addrs() {
+		asplit := strings.Split(a.String(), "/")
+		if len(asplit) != len(observedAddrSplit) {
+			continue
+		}
+
+		if strings.Join(append(asplit[:4], asplit[5:]...), "/") != observervedAddressShort {
+			continue
+		}
+
+		// Found a matching address but with different port
+		// This might work if the NAT is configured to forward the observed port to our listen port
+		aaddress, err := buildUnderlayAddress(a, observableAddrInfo.ID)
+		if err != nil {
+			continue
+		}
+		return aaddress, nil
+	}
+
+	// Strategy 3: Fall back to observed address
+	// This handles complex NAT scenarios where the observed address is the most reliable
 	return observedAddress, nil
 }
