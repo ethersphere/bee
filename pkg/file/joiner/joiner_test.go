@@ -15,6 +15,7 @@ import (
 	mrand "math/rand"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/cac"
@@ -641,46 +642,48 @@ func TestPrefetch(t *testing.T) {
 func TestJoinerReadAt(t *testing.T) {
 	t.Parallel()
 
-	store := inmemchunkstore.New()
+	synctest.Test(t, func(t *testing.T) {
+		store := inmemchunkstore.New()
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
+		ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+		defer cancel()
 
-	// create root chunk with 2 references and the referenced data chunks
-	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
-	err := store.Put(ctx, rootChunk)
-	if err != nil {
-		t.Fatal(err)
-	}
+		// create root chunk with 2 references and the referenced data chunks
+		rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
+		err := store.Put(ctx, rootChunk)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
-	firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize, swarm.ChunkSize)
-	err = store.Put(ctx, firstChunk)
-	if err != nil {
-		t.Fatal(err)
-	}
+		firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
+		firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize, swarm.ChunkSize)
+		err = store.Put(ctx, firstChunk)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	secondAddress := swarm.NewAddress(rootChunk.Data()[swarm.SectionSize+8:])
-	secondChunk := filetest.GenerateTestRandomFileChunk(secondAddress, swarm.ChunkSize, swarm.ChunkSize)
-	err = store.Put(ctx, secondChunk)
-	if err != nil {
-		t.Fatal(err)
-	}
+		secondAddress := swarm.NewAddress(rootChunk.Data()[swarm.SectionSize+8:])
+		secondChunk := filetest.GenerateTestRandomFileChunk(secondAddress, swarm.ChunkSize, swarm.ChunkSize)
+		err = store.Put(ctx, secondChunk)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	j, _, err := joiner.New(ctx, store, store, rootChunk.Address(), redundancy.DefaultLevel)
-	if err != nil {
-		t.Fatal(err)
-	}
+		j, _, err := joiner.New(ctx, store, store, rootChunk.Address(), redundancy.DefaultLevel)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	b := make([]byte, swarm.ChunkSize)
-	_, err = j.ReadAt(b, swarm.ChunkSize)
-	if err != nil {
-		t.Fatal(err)
-	}
+		b := make([]byte, swarm.ChunkSize)
+		_, err = j.ReadAt(b, swarm.ChunkSize)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	if !bytes.Equal(b, secondChunk.Data()[8:]) {
-		t.Fatal("data read at offset not equal to expected chunk")
-	}
+		if !bytes.Equal(b, secondChunk.Data()[8:]) {
+			t.Fatal("data read at offset not equal to expected chunk")
+		}
+	})
 }
 
 // TestJoinerOneLevel tests the retrieval of two data chunks immediately
@@ -688,72 +691,74 @@ func TestJoinerReadAt(t *testing.T) {
 func TestJoinerOneLevel(t *testing.T) {
 	t.Parallel()
 
-	store := inmemchunkstore.New()
+	synctest.Test(t, func(t *testing.T) {
+		store := inmemchunkstore.New()
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
+		ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+		defer cancel()
 
-	// create root chunk with 2 references and the referenced data chunks
-	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
-	err := store.Put(ctx, rootChunk)
-	if err != nil {
-		t.Fatal(err)
-	}
+		// create root chunk with 2 references and the referenced data chunks
+		rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
+		err := store.Put(ctx, rootChunk)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
-	firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize, swarm.ChunkSize)
-	err = store.Put(ctx, firstChunk)
-	if err != nil {
-		t.Fatal(err)
-	}
+		firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
+		firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize, swarm.ChunkSize)
+		err = store.Put(ctx, firstChunk)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	secondAddress := swarm.NewAddress(rootChunk.Data()[swarm.SectionSize+8:])
-	secondChunk := filetest.GenerateTestRandomFileChunk(secondAddress, swarm.ChunkSize, swarm.ChunkSize)
-	err = store.Put(ctx, secondChunk)
-	if err != nil {
-		t.Fatal(err)
-	}
+		secondAddress := swarm.NewAddress(rootChunk.Data()[swarm.SectionSize+8:])
+		secondChunk := filetest.GenerateTestRandomFileChunk(secondAddress, swarm.ChunkSize, swarm.ChunkSize)
+		err = store.Put(ctx, secondChunk)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	j, _, err := joiner.New(ctx, store, store, rootChunk.Address(), redundancy.DefaultLevel)
-	if err != nil {
-		t.Fatal(err)
-	}
+		j, _, err := joiner.New(ctx, store, store, rootChunk.Address(), redundancy.DefaultLevel)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	// verify first chunk content
-	outBuffer := make([]byte, swarm.ChunkSize)
-	c, err := j.Read(outBuffer)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if c != swarm.ChunkSize {
-		t.Fatalf("expected firstchunk read count %d, got %d", swarm.ChunkSize, c)
-	}
-	if !bytes.Equal(outBuffer, firstChunk.Data()[8:]) {
-		t.Fatalf("firstchunk data mismatch, expected %x, got %x", outBuffer, firstChunk.Data()[8:])
-	}
+		// verify first chunk content
+		outBuffer := make([]byte, swarm.ChunkSize)
+		c, err := j.Read(outBuffer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c != swarm.ChunkSize {
+			t.Fatalf("expected firstchunk read count %d, got %d", swarm.ChunkSize, c)
+		}
+		if !bytes.Equal(outBuffer, firstChunk.Data()[8:]) {
+			t.Fatalf("firstchunk data mismatch, expected %x, got %x", outBuffer, firstChunk.Data()[8:])
+		}
 
-	// verify second chunk content
-	c, err = j.Read(outBuffer)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if c != swarm.ChunkSize {
-		t.Fatalf("expected secondchunk read count %d, got %d", swarm.ChunkSize, c)
-	}
-	if !bytes.Equal(outBuffer, secondChunk.Data()[8:]) {
-		t.Fatalf("secondchunk data mismatch, expected %x, got %x", outBuffer, secondChunk.Data()[8:])
-	}
+		// verify second chunk content
+		c, err = j.Read(outBuffer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c != swarm.ChunkSize {
+			t.Fatalf("expected secondchunk read count %d, got %d", swarm.ChunkSize, c)
+		}
+		if !bytes.Equal(outBuffer, secondChunk.Data()[8:]) {
+			t.Fatalf("secondchunk data mismatch, expected %x, got %x", outBuffer, secondChunk.Data()[8:])
+		}
 
-	// verify EOF is returned also after first time it is returned
-	_, err = j.Read(outBuffer)
-	if !errors.Is(err, io.EOF) {
-		t.Fatal("expected io.EOF")
-	}
+		// verify EOF is returned also after first time it is returned
+		_, err = j.Read(outBuffer)
+		if !errors.Is(err, io.EOF) {
+			t.Fatal("expected io.EOF")
+		}
 
-	_, err = j.Read(outBuffer)
-	if !errors.Is(err, io.EOF) {
-		t.Fatal("expected io.EOF")
-	}
+		_, err = j.Read(outBuffer)
+		if !errors.Is(err, io.EOF) {
+			t.Fatal("expected io.EOF")
+		}
+	})
 }
 
 // TestJoinerTwoLevelsAcrossChunk tests the retrieval of data chunks below
@@ -762,142 +767,146 @@ func TestJoinerOneLevel(t *testing.T) {
 func TestJoinerTwoLevelsAcrossChunk(t *testing.T) {
 	t.Parallel()
 
-	store := inmemchunkstore.New()
+	synctest.Test(t, func(t *testing.T) {
+		store := inmemchunkstore.New()
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
+		ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+		defer cancel()
 
-	// create root chunk with 2 references and two intermediate chunks with references
-	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*swarm.Branches+42, swarm.SectionSize*2)
-	err := store.Put(ctx, rootChunk)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
-	firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize*swarm.Branches, swarm.ChunkSize)
-	err = store.Put(ctx, firstChunk)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	secondAddress := swarm.NewAddress(rootChunk.Data()[swarm.SectionSize+8:])
-	secondChunk := filetest.GenerateTestRandomFileChunk(secondAddress, 42, swarm.SectionSize)
-	err = store.Put(ctx, secondChunk)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// create 128+1 chunks for all references in the intermediate chunks
-	cursor := 8
-	for range swarm.Branches {
-		chunkAddressBytes := firstChunk.Data()[cursor : cursor+swarm.SectionSize]
-		chunkAddress := swarm.NewAddress(chunkAddressBytes)
-		ch := filetest.GenerateTestRandomFileChunk(chunkAddress, swarm.ChunkSize, swarm.ChunkSize)
-		err := store.Put(ctx, ch)
+		// create root chunk with 2 references and two intermediate chunks with references
+		rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*swarm.Branches+42, swarm.SectionSize*2)
+		err := store.Put(ctx, rootChunk)
 		if err != nil {
 			t.Fatal(err)
 		}
-		cursor += swarm.SectionSize
-	}
-	chunkAddressBytes := secondChunk.Data()[8:]
-	chunkAddress := swarm.NewAddress(chunkAddressBytes)
-	ch := filetest.GenerateTestRandomFileChunk(chunkAddress, 42, 42)
-	err = store.Put(ctx, ch)
-	if err != nil {
-		t.Fatal(err)
-	}
 
-	j, _, err := joiner.New(ctx, store, store, rootChunk.Address(), redundancy.DefaultLevel)
-	if err != nil {
-		t.Fatal(err)
-	}
+		firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
+		firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize*swarm.Branches, swarm.ChunkSize)
+		err = store.Put(ctx, firstChunk)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	// read back all the chunks and verify
-	b := make([]byte, swarm.ChunkSize)
-	for i := range swarm.Branches {
+		secondAddress := swarm.NewAddress(rootChunk.Data()[swarm.SectionSize+8:])
+		secondChunk := filetest.GenerateTestRandomFileChunk(secondAddress, 42, swarm.SectionSize)
+		err = store.Put(ctx, secondChunk)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// create 128+1 chunks for all references in the intermediate chunks
+		cursor := 8
+		for range swarm.Branches {
+			chunkAddressBytes := firstChunk.Data()[cursor : cursor+swarm.SectionSize]
+			chunkAddress := swarm.NewAddress(chunkAddressBytes)
+			ch := filetest.GenerateTestRandomFileChunk(chunkAddress, swarm.ChunkSize, swarm.ChunkSize)
+			err := store.Put(ctx, ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cursor += swarm.SectionSize
+		}
+		chunkAddressBytes := secondChunk.Data()[8:]
+		chunkAddress := swarm.NewAddress(chunkAddressBytes)
+		ch := filetest.GenerateTestRandomFileChunk(chunkAddress, 42, 42)
+		err = store.Put(ctx, ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		j, _, err := joiner.New(ctx, store, store, rootChunk.Address(), redundancy.DefaultLevel)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// read back all the chunks and verify
+		b := make([]byte, swarm.ChunkSize)
+		for i := range swarm.Branches {
+			c, err := j.Read(b)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if c != swarm.ChunkSize {
+				t.Fatalf("chunk %d expected read %d bytes; got %d", i, swarm.ChunkSize, c)
+			}
+		}
 		c, err := j.Read(b)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if c != swarm.ChunkSize {
-			t.Fatalf("chunk %d expected read %d bytes; got %d", i, swarm.ChunkSize, c)
+		if c != 42 {
+			t.Fatalf("last chunk expected read %d bytes; got %d", 42, c)
 		}
-	}
-	c, err := j.Read(b)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if c != 42 {
-		t.Fatalf("last chunk expected read %d bytes; got %d", 42, c)
-	}
+	})
 }
 
 func TestJoinerIterateChunkAddresses(t *testing.T) {
 	t.Parallel()
 
-	store := inmemchunkstore.New()
+	synctest.Test(t, func(t *testing.T) {
+		store := inmemchunkstore.New()
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
+		ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+		defer cancel()
 
-	// create root chunk with 2 references and the referenced data chunks
-	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
-	err := store.Put(ctx, rootChunk)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
-	firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize, swarm.ChunkSize)
-	err = store.Put(ctx, firstChunk)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	secondAddress := swarm.NewAddress(rootChunk.Data()[swarm.SectionSize+8:])
-	secondChunk := filetest.GenerateTestRandomFileChunk(secondAddress, swarm.ChunkSize, swarm.ChunkSize)
-	err = store.Put(ctx, secondChunk)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	createdAddresses := []swarm.Address{rootChunk.Address(), firstAddress, secondAddress}
-
-	j, _, err := joiner.New(ctx, store, store, rootChunk.Address(), redundancy.DefaultLevel)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	foundAddresses := make(map[string]struct{})
-	var foundAddressesMu sync.Mutex
-
-	err = j.IterateChunkAddresses(func(addr swarm.Address) error {
-		foundAddressesMu.Lock()
-		defer foundAddressesMu.Unlock()
-
-		foundAddresses[addr.String()] = struct{}{}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(createdAddresses) != len(foundAddresses) {
-		t.Fatalf("expected to find %d addresses, got %d", len(createdAddresses), len(foundAddresses))
-	}
-
-	checkAddressFound := func(t *testing.T, foundAddresses map[string]struct{}, address swarm.Address) {
-		t.Helper()
-
-		if _, ok := foundAddresses[address.String()]; !ok {
-			t.Fatalf("expected address %s not found", address.String())
+		// create root chunk with 2 references and the referenced data chunks
+		rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
+		err := store.Put(ctx, rootChunk)
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
 
-	for _, createdAddress := range createdAddresses {
-		checkAddressFound(t, foundAddresses, createdAddress)
-	}
+		firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
+		firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize, swarm.ChunkSize)
+		err = store.Put(ctx, firstChunk)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		secondAddress := swarm.NewAddress(rootChunk.Data()[swarm.SectionSize+8:])
+		secondChunk := filetest.GenerateTestRandomFileChunk(secondAddress, swarm.ChunkSize, swarm.ChunkSize)
+		err = store.Put(ctx, secondChunk)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		createdAddresses := []swarm.Address{rootChunk.Address(), firstAddress, secondAddress}
+
+		j, _, err := joiner.New(ctx, store, store, rootChunk.Address(), redundancy.DefaultLevel)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		foundAddresses := make(map[string]struct{})
+		var foundAddressesMu sync.Mutex
+
+		err = j.IterateChunkAddresses(func(addr swarm.Address) error {
+			foundAddressesMu.Lock()
+			defer foundAddressesMu.Unlock()
+
+			foundAddresses[addr.String()] = struct{}{}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(createdAddresses) != len(foundAddresses) {
+			t.Fatalf("expected to find %d addresses, got %d", len(createdAddresses), len(foundAddresses))
+		}
+
+		checkAddressFound := func(t *testing.T, foundAddresses map[string]struct{}, address swarm.Address) {
+			t.Helper()
+
+			if _, ok := foundAddresses[address.String()]; !ok {
+				t.Fatalf("expected address %s not found", address.String())
+			}
+		}
+
+		for _, createdAddress := range createdAddresses {
+			checkAddressFound(t, foundAddresses, createdAddress)
+		}
+	})
 }
 
 func TestJoinerIterateChunkAddresses_Encrypted(t *testing.T) {
@@ -1109,7 +1118,7 @@ func TestJoinerRedundancy(t *testing.T) {
 			}
 			// all data can be read back
 			readCheck := func(t *testing.T, expErr error) {
-				ctx, cancel := context.WithCancel(context.Background())
+				ctx, cancel := context.WithCancel(t.Context())
 				defer cancel()
 
 				decodeTimeoutStr := time.Second.String()
@@ -1227,142 +1236,145 @@ func TestJoinerRedundancy(t *testing.T) {
 // nolint:thelper
 func TestJoinerRedundancyMultilevel(t *testing.T) {
 	t.Parallel()
-	test := func(t *testing.T, rLevel redundancy.Level, encrypt bool, size int) {
-		t.Helper()
-		store := mockstorer.NewForgettingStore(newChunkStore())
-		seed, err := pseudorand.NewSeed()
-		if err != nil {
-			t.Fatal(err)
-		}
-		dataReader := pseudorand.NewReader(seed, size*swarm.ChunkSize)
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		pipe := builder.NewPipelineBuilder(ctx, store, encrypt, rLevel)
-		addr, err := builder.FeedPipeline(ctx, pipe, dataReader)
-		if err != nil {
-			t.Fatal(err)
-		}
-		expRead := swarm.ChunkSize
-		buf := make([]byte, expRead)
-		offset := mrand.Intn(size) * expRead
-		canReadRange := func(t *testing.T, s getter.Strategy, fallback bool, canRead bool) {
-			ctx, cancel := context.WithCancel(context.Background())
+
+	synctest.Test(t, func(t *testing.T) {
+		test := func(t *testing.T, rLevel redundancy.Level, encrypt bool, size int) {
+			t.Helper()
+			store := mockstorer.NewForgettingStore(newChunkStore())
+			seed, err := pseudorand.NewSeed()
+			if err != nil {
+				t.Fatal(err)
+			}
+			dataReader := pseudorand.NewReader(seed, size*swarm.ChunkSize)
+			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
-
-			decodingTimeoutStr := time.Second.String()
-
-			ctx, err := getter.SetConfigInContext(ctx, &s, &fallback, &decodingTimeoutStr, log.Noop)
+			pipe := builder.NewPipelineBuilder(ctx, store, encrypt, rLevel)
+			addr, err := builder.FeedPipeline(ctx, pipe, dataReader)
 			if err != nil {
 				t.Fatal(err)
 			}
+			expRead := swarm.ChunkSize
+			buf := make([]byte, expRead)
+			offset := mrand.Intn(size) * expRead
+			canReadRange := func(t *testing.T, s getter.Strategy, fallback bool, canRead bool) {
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
 
-			j, _, err := joiner.New(ctx, store, store, addr, redundancy.DefaultLevel)
-			if err != nil {
-				t.Fatal(err)
-			}
-			n, err := j.ReadAt(buf, int64(offset))
-			if !canRead {
-				if !errors.Is(err, storage.ErrNotFound) && !errors.Is(err, context.DeadlineExceeded) {
-					t.Fatalf("expected error %v or %v. got %v", storage.ErrNotFound, context.DeadlineExceeded, err)
+				decodingTimeoutStr := time.Second.String()
+
+				ctx, err := getter.SetConfigInContext(ctx, &s, &fallback, &decodingTimeoutStr, log.Noop)
+				if err != nil {
+					t.Fatal(err)
 				}
+
+				j, _, err := joiner.New(ctx, store, store, addr, redundancy.DefaultLevel)
+				if err != nil {
+					t.Fatal(err)
+				}
+				n, err := j.ReadAt(buf, int64(offset))
+				if !canRead {
+					if !errors.Is(err, storage.ErrNotFound) && !errors.Is(err, context.DeadlineExceeded) {
+						t.Fatalf("expected error %v or %v. got %v", storage.ErrNotFound, context.DeadlineExceeded, err)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if n != expRead {
+					t.Errorf("read %d bytes out of %d", n, expRead)
+				}
+				_, err = dataReader.Seek(int64(offset), io.SeekStart)
+				if err != nil {
+					t.Fatal(err)
+				}
+				ok, err := dataReader.Match(bytes.NewBuffer(buf), expRead)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !ok {
+					t.Error("content mismatch")
+				}
+			}
+
+			// first sanity check and recover a range
+			t.Run("NONE w/o fallback CAN retrieve", func(t *testing.T) {
+				store.Record()
+				defer store.Unrecord()
+				canReadRange(t, getter.NONE, false, true)
+			})
+
+			// do not forget the root chunk
+			store.Unmiss(swarm.NewAddress(addr.Bytes()[:swarm.HashSize]))
+			// after we forget the chunks on the way to the range, we should not be able to retrieve
+			t.Run("NONE w/o fallback CANNOT retrieve", func(t *testing.T) {
+				canReadRange(t, getter.NONE, false, false)
+			})
+
+			// we lost a data chunk, we cannot recover using DATA only strategy with no fallback
+			t.Run("DATA w/o fallback CANNOT retrieve", func(t *testing.T) {
+				canReadRange(t, getter.DATA, false, false)
+			})
+
+			if rLevel == 0 {
+				// allowing fallback mode will not help if no redundancy used for upload
+				t.Run("DATA w fallback CANNOT retrieve", func(t *testing.T) {
+					canReadRange(t, getter.DATA, true, false)
+				})
 				return
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			if n != expRead {
-				t.Errorf("read %d bytes out of %d", n, expRead)
-			}
-			_, err = dataReader.Seek(int64(offset), io.SeekStart)
-			if err != nil {
-				t.Fatal(err)
-			}
-			ok, err := dataReader.Match(bytes.NewBuffer(buf), expRead)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !ok {
-				t.Error("content mismatch")
-			}
-		}
-
-		// first sanity check and recover a range
-		t.Run("NONE w/o fallback CAN retrieve", func(t *testing.T) {
-			store.Record()
-			defer store.Unrecord()
-			canReadRange(t, getter.NONE, false, true)
-		})
-
-		// do not forget the root chunk
-		store.Unmiss(swarm.NewAddress(addr.Bytes()[:swarm.HashSize]))
-		// after we forget the chunks on the way to the range, we should not be able to retrieve
-		t.Run("NONE w/o fallback CANNOT retrieve", func(t *testing.T) {
-			canReadRange(t, getter.NONE, false, false)
-		})
-
-		// we lost a data chunk, we cannot recover using DATA only strategy with no fallback
-		t.Run("DATA w/o fallback CANNOT retrieve", func(t *testing.T) {
-			canReadRange(t, getter.DATA, false, false)
-		})
-
-		if rLevel == 0 {
-			// allowing fallback mode will not help if no redundancy used for upload
-			t.Run("DATA w fallback CANNOT retrieve", func(t *testing.T) {
-				canReadRange(t, getter.DATA, true, false)
+			// allowing fallback mode will make the range retrievable using erasure decoding
+			t.Run("DATA w fallback CAN retrieve", func(t *testing.T) {
+				canReadRange(t, getter.DATA, true, true)
 			})
-			return
+			// after the reconstructed data is stored, we can retrieve the range using DATA only mode
+			t.Run("after recovery, NONE w/o fallback CAN retrieve", func(t *testing.T) {
+				canReadRange(t, getter.NONE, false, true)
+			})
 		}
-		// allowing fallback mode will make the range retrievable using erasure decoding
-		t.Run("DATA w fallback CAN retrieve", func(t *testing.T) {
-			canReadRange(t, getter.DATA, true, true)
-		})
-		// after the reconstructed data is stored, we can retrieve the range using DATA only mode
-		t.Run("after recovery, NONE w/o fallback CAN retrieve", func(t *testing.T) {
-			canReadRange(t, getter.NONE, false, true)
-		})
-	}
-	r2level := []int{2, 1, 2, 3, 2}
-	encryptChunk := []bool{false, false, true, true, true}
-	for _, rLevel := range []redundancy.Level{0, 1, 2, 3, 4} {
-		// speeding up tests by skipping some of them
-		t.Run(fmt.Sprintf("rLevel=%v", rLevel), func(t *testing.T) {
-			t.Parallel()
-			for _, encrypt := range []bool{false, true} {
-				shardCnt := rLevel.GetMaxShards()
-				if encrypt {
-					shardCnt = rLevel.GetMaxEncShards()
-				}
-				for _, levels := range []int{1, 2, 3} {
-					chunkCnt := 1
-					switch levels {
-					case 1:
-						chunkCnt = 2
-					case 2:
-						chunkCnt = shardCnt + 1
-					case 3:
-						chunkCnt = shardCnt*shardCnt + 1
+		r2level := []int{2, 1, 2, 3, 2}
+		encryptChunk := []bool{false, false, true, true, true}
+		for _, rLevel := range []redundancy.Level{0, 1, 2, 3, 4} {
+			// speeding up tests by skipping some of them
+			t.Run(fmt.Sprintf("rLevel=%v", rLevel), func(t *testing.T) {
+				t.Parallel()
+				for _, encrypt := range []bool{false, true} {
+					shardCnt := rLevel.GetMaxShards()
+					if encrypt {
+						shardCnt = rLevel.GetMaxEncShards()
 					}
-					t.Run(fmt.Sprintf("encrypt=%v levels=%d chunks=%d incomplete", encrypt, levels, chunkCnt), func(t *testing.T) {
-						if r2level[rLevel] != levels || encrypt != encryptChunk[rLevel] {
-							t.Skip("skipping to save time")
+					for _, levels := range []int{1, 2, 3} {
+						chunkCnt := 1
+						switch levels {
+						case 1:
+							chunkCnt = 2
+						case 2:
+							chunkCnt = shardCnt + 1
+						case 3:
+							chunkCnt = shardCnt*shardCnt + 1
 						}
-						test(t, rLevel, encrypt, chunkCnt)
-					})
-					switch levels {
-					case 1:
-						chunkCnt = shardCnt
-					case 2:
-						chunkCnt = shardCnt * shardCnt
-					case 3:
-						continue
+						t.Run(fmt.Sprintf("encrypt=%v levels=%d chunks=%d incomplete", encrypt, levels, chunkCnt), func(t *testing.T) {
+							if r2level[rLevel] != levels || encrypt != encryptChunk[rLevel] {
+								t.Skip("skipping to save time")
+							}
+							test(t, rLevel, encrypt, chunkCnt)
+						})
+						switch levels {
+						case 1:
+							chunkCnt = shardCnt
+						case 2:
+							chunkCnt = shardCnt * shardCnt
+						case 3:
+							continue
+						}
+						t.Run(fmt.Sprintf("encrypt=%v levels=%d chunks=%d full", encrypt, levels, chunkCnt), func(t *testing.T) {
+							test(t, rLevel, encrypt, chunkCnt)
+						})
 					}
-					t.Run(fmt.Sprintf("encrypt=%v levels=%d chunks=%d full", encrypt, levels, chunkCnt), func(t *testing.T) {
-						test(t, rLevel, encrypt, chunkCnt)
-					})
 				}
-			}
-		})
-	}
+			})
+		}
+	})
 }
 
 type chunkStore struct {
