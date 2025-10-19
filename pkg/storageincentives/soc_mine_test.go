@@ -14,6 +14,7 @@ import (
 	"os"
 	"sync"
 	"testing"
+	"testing/synctest"
 
 	"github.com/ethersphere/bee/v2/pkg/bmt"
 	"github.com/ethersphere/bee/v2/pkg/cac"
@@ -33,11 +34,13 @@ import (
 // cat socs.txt | tail 19 | head 16 | perl -pne 's/([a-f0-9]+)\t([a-f0-9]+)\t([a-f0-9]+)\t([a-f0-9]+)/echo -n $4 | xxd -r -p | curl -X POST \"http:\/\/localhost:1633\/soc\/$1\/$2?sig=$3\" -H \"accept: application\/json, text\/plain, \/\" -H \"content-type: application\/octet-stream\" -H \"swarm-postage-batch-id: 14b26beca257e763609143c6b04c2c487f01a051798c535c2f542ce75a97c05f\" --data-binary \@-/'
 func TestSocMine(t *testing.T) {
 	t.Parallel()
-	// the anchor used in neighbourhood selection and reserve salt for sampling
-	prefix, err := hex.DecodeString("3617319a054d772f909f7c479a2cebe5066e836a939412e32403c99029b92eff")
-	if err != nil {
-		t.Fatal(err)
-	}
+	
+	synctest.Test(t, func(t *testing.T) {
+		// the anchor used in neighbourhood selection and reserve salt for sampling
+		prefix, err := hex.DecodeString("3617319a054d772f909f7c479a2cebe5066e836a939412e32403c99029b92eff")
+		if err != nil {
+			t.Fatal(err)
+		}
 	// the transformed address hasher factory function
 	prefixhasher := func() hash.Hash { return swarm.NewPrefixHasher(prefix) }
 	// Create a pool for efficient hasher reuse
@@ -84,6 +87,7 @@ func TestSocMine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	})
 }
 
 func makeChunks(t *testing.T, signer crypto.Signer, sampleSize int, filterSOCAddr func(swarm.Address) bool, filterTrAddr func(swarm.Address) (bool, error), trHasherPool *bmt.Pool) error {
