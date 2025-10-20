@@ -61,9 +61,7 @@ func New(blocklister p2p.Blocklister, flagTimeout, blockDuration, wakeUpTime tim
 		blocklistCallback: callback,
 	}
 
-	b.closeWg.Add(1)
-	go func() {
-		defer b.closeWg.Done()
+	b.closeWg.Go(func() {
 		for {
 			select {
 			case <-b.quit:
@@ -74,11 +72,9 @@ func New(blocklister p2p.Blocklister, flagTimeout, blockDuration, wakeUpTime tim
 				}
 			}
 		}
-	}()
+	})
 
-	b.closeWg.Add(1)
-	go func() {
-		defer b.closeWg.Done()
+	b.closeWg.Go(func() {
 		for {
 			select {
 			case <-time.After(wakeUpTime):
@@ -87,7 +83,7 @@ func New(blocklister p2p.Blocklister, flagTimeout, blockDuration, wakeUpTime tim
 				return
 			}
 		}
-	}()
+	})
 
 	return b
 }

@@ -82,10 +82,7 @@ func testSplitterJobVector(t *testing.T) {
 	j := internal.NewSimpleSplitterJob(ctx, store, int64(len(data)), false)
 
 	for i := 0; i < len(data); i += swarm.ChunkSize {
-		l := swarm.ChunkSize
-		if len(data)-i < swarm.ChunkSize {
-			l = len(data) - i
-		}
+		l := min(len(data)-i, swarm.ChunkSize)
 		c, err := j.Write(data[i : i+l])
 		if err != nil {
 			t.Fatal(err)

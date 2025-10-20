@@ -18,7 +18,7 @@ type Collector interface {
 	Metrics() []prometheus.Collector
 }
 
-func PrometheusCollectorsFromFields(i interface{}) (cs []prometheus.Collector) {
+func PrometheusCollectorsFromFields(i any) (cs []prometheus.Collector) {
 	v := reflect.Indirect(reflect.ValueOf(i))
 	for i := 0; i < v.NumField(); i++ {
 		if !v.Field(i).CanInterface() {

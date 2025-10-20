@@ -50,7 +50,7 @@ func (l *listener) Subscribe(address swarm.Address, handler Handler) (cleanup fu
 		defer l.handlersMu.Unlock()
 
 		h := l.handlers[address.ByteString()]
-		for i := 0; i < len(h); i++ {
+		for i := range h {
 			if h[i] == &handler {
 				l.handlers[address.ByteString()] = append(h[:i], h[i+1:]...)
 				return

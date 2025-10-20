@@ -16,7 +16,7 @@ import (
 
 func newTargets(length, depth int) pss.Targets {
 	targets := make([]pss.Target, length)
-	for i := 0; i < length; i++ {
+	for i := range length {
 		buf := make([]byte, 8)
 		binary.LittleEndian.PutUint64(buf, uint64(i))
 		targets[i] = pss.Target(buf[:depth])

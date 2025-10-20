@@ -19,7 +19,7 @@ import (
 )
 
 type tagRequest struct {
-	Address swarm.Address `json:"address,omitempty"`
+	Address swarm.Address `json:"address"`
 }
 
 type tagResponse struct {
