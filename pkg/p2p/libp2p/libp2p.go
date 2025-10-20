@@ -12,6 +12,8 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -301,7 +303,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		advertisableAddresser = natAddrResolver
 	}
 
-	handshakeService, err := handshake.New(signer, advertisableAddresser, overlay, networkID, o.FullNode, o.Nonce, o.WelcomeMessage, o.ValidateOverlay, h.ID(), logger)
+	handshakeService, err := handshake.New(signer, advertisableAddresser, overlay, networkID, o.FullNode, o.Nonce, h.Addrs(), o.WelcomeMessage, o.ValidateOverlay, h.ID(), logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}
@@ -770,6 +772,12 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		}
 		observeredAddrs = append(observeredAddrs, fullMA)
 	}
+
+	observeredAddrs = append(observeredAddrs, addrs...)
+	sort.Slice(observeredAddrs, func(i int, j int) bool {
+		return observeredAddrs[i].String() < observeredAddrs[j].String()
+	})
+	observeredAddrs = slices.Compact(observeredAddrs)
 
 	s.logger.Info("INVESTIGATION libp2p connect", "peer", connectionPeer, "connect addrs", addrs, "observed addrs", observeredAddrs)
 

@@ -8,6 +8,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"sort"
 	"sync/atomic"
 	"time"
 
@@ -74,6 +76,7 @@ type Service struct {
 	libp2pID              libp2ppeer.ID
 	metrics               metrics
 	picker                p2p.Picker
+	hostAddrs             []ma.Multiaddr
 }
 
 // Info contains the information received from the handshake.
@@ -91,7 +94,7 @@ func (i *Info) LightString() string {
 }
 
 // New creates a new handshake Service.
-func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, overlay swarm.Address, networkID uint64, fullNode bool, nonce []byte, welcomeMessage string, validateOverlay bool, ownPeerID libp2ppeer.ID, logger log.Logger) (*Service, error) {
+func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, overlay swarm.Address, networkID uint64, fullNode bool, nonce []byte, hostAddrs []ma.Multiaddr, welcomeMessage string, validateOverlay bool, ownPeerID libp2ppeer.ID, logger log.Logger) (*Service, error) {
 	if len(welcomeMessage) > MaxWelcomeMessageLength {
 		return nil, ErrWelcomeMessageLength
 	}
@@ -107,6 +110,7 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 		libp2pID:              ownPeerID,
 		logger:                logger.WithName(loggerName).Register(),
 		metrics:               newMetrics(),
+		hostAddrs:             hostAddrs,
 	}
 	svc.welcomeMessage.Store(welcomeMessage)
 
@@ -249,6 +253,14 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 		}
 		advertisableUnderlays[i] = advertisableUnderlay
 	}
+
+	advertisableUnderlays = append(advertisableUnderlays, s.hostAddrs...)
+	sort.Slice(advertisableUnderlays, func(i int, j int) bool {
+		return advertisableUnderlays[i].String() < advertisableUnderlays[j].String()
+	})
+	advertisableUnderlays = slices.Compact(advertisableUnderlays)
+
+	s.logger.Info("INVESTIGATION handshake handle", "peer", remotePeerID, "observed addrs", observedUnderlays, "advertisable addrs", advertisableUnderlays)
 
 	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce)
 	if err != nil {
