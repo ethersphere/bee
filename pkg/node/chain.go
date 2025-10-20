@@ -52,7 +52,7 @@ func InitChain(
 	chainEnabled bool,
 	minimumGasTipCap uint64,
 ) (transaction.Backend, common.Address, int64, transaction.Monitor, transaction.Service, error) {
-	var backend transaction.Backend = backendnoop.New(oChainID)
+	backend := backendnoop.New(oChainID)
 
 	if chainEnabled {
 		// connect to the real one
