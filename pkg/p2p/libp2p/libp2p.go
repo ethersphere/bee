@@ -53,6 +53,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
 	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/multiformats/go-multistream"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
@@ -303,7 +304,15 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		advertisableAddresser = natAddrResolver
 	}
 
-	handshakeService, err := handshake.New(signer, advertisableAddresser, overlay, networkID, o.FullNode, o.Nonce, h.Addrs(), o.WelcomeMessage, o.ValidateOverlay, h.ID(), logger)
+	advertizableAddresses := make([]ma.Multiaddr, 0)
+	for _, a := range h.Addrs() {
+		if manet.IsIPLoopback(a) {
+			continue
+		}
+		advertizableAddresses = append(advertizableAddresses, a)
+	}
+
+	handshakeService, err := handshake.New(signer, advertisableAddresser, overlay, networkID, o.FullNode, o.Nonce, advertizableAddresses, o.WelcomeMessage, o.ValidateOverlay, h.ID(), logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}
