@@ -219,7 +219,7 @@ func (s *Service) checkStorageIncentivesAvailability(handler http.Handler) http.
 	})
 }
 
-func (s *Service) isChainAvailable(handler http.Handler) http.Handler {
+func (s *Service) checkChainAvailability(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := s.chainBackend.(*backendnoop.Backend); ok {
 			jsonhttp.Forbidden(w, "Chain is disabled. This endpoint is unavailable.")
@@ -576,7 +576,7 @@ func (s *Service) mountBusinessDebug() {
 	))
 
 	handle("/stamps", web.ChainHandlers(
-		s.isChainAvailable,
+		s.checkChainAvailability,
 		s.postageSyncStatusCheckHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.postageGetStampsHandler),
@@ -584,7 +584,7 @@ func (s *Service) mountBusinessDebug() {
 	)
 
 	handle("/stamps/{batch_id}", web.ChainHandlers(
-		s.isChainAvailable,
+		s.checkChainAvailability,
 		s.postageSyncStatusCheckHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.postageGetStampHandler),
@@ -592,7 +592,7 @@ func (s *Service) mountBusinessDebug() {
 	)
 
 	handle("/stamps/{batch_id}/buckets", web.ChainHandlers(
-		s.isChainAvailable,
+		s.checkChainAvailability,
 		s.postageSyncStatusCheckHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.postageGetStampBucketsHandler),
@@ -600,7 +600,7 @@ func (s *Service) mountBusinessDebug() {
 	)
 
 	handle("/stamps/{amount}/{depth}", web.ChainHandlers(
-		s.isChainAvailable,
+		s.checkChainAvailability,
 		s.postageAccessHandler,
 		s.postageSyncStatusCheckHandler,
 		s.gasConfigMiddleware("create batch"),
@@ -610,7 +610,7 @@ func (s *Service) mountBusinessDebug() {
 	)
 
 	handle("/stamps/topup/{batch_id}/{amount}", web.ChainHandlers(
-		s.isChainAvailable,
+		s.checkChainAvailability,
 		s.postageAccessHandler,
 		s.postageSyncStatusCheckHandler,
 		s.gasConfigMiddleware("topup batch"),
@@ -620,7 +620,7 @@ func (s *Service) mountBusinessDebug() {
 	)
 
 	handle("/stamps/dilute/{batch_id}/{depth}", web.ChainHandlers(
-		s.isChainAvailable,
+		s.checkChainAvailability,
 		s.postageAccessHandler,
 		s.postageSyncStatusCheckHandler,
 		s.gasConfigMiddleware("dilute batch"),
