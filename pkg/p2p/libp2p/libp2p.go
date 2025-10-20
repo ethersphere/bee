@@ -760,7 +760,20 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 
 	handshakeStream := newStream(stream, s.metrics)
 
-	i, err := s.handshakeService.Handshake(ctx, handshakeStream, addrs, stream.Conn().RemotePeer())
+	connectionPeer := stream.Conn().RemotePeer()
+
+	observeredAddrs := make([]ma.Multiaddr, 0)
+	for _, a := range s.host.Peerstore().Addrs(connectionPeer) {
+		fullMA, err := buildFullMA(a, connectionPeer)
+		if err != nil {
+			return nil, fmt.Errorf("build full undrlay address %s %s: %w", a, connectionPeer, err)
+		}
+		observeredAddrs = append(observeredAddrs, fullMA)
+	}
+
+	s.logger.Info("INVESTIGATION libp2p connect", "peer", connectionPeer, "connect addrs", addrs, "observed addrs", observeredAddrs)
+
+	i, err := s.handshakeService.Handshake(ctx, handshakeStream, observeredAddrs, connectionPeer)
 	if err != nil {
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(info.ID)
