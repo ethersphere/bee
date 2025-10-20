@@ -538,7 +538,7 @@ func TestConnectRepeatHandshake(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := s2.HandshakeService().Handshake(ctx, s2.WrapStream(stream), info.Addrs, info.ID); err != nil {
+	if _, err := s2.HandshakeService().Handshake(ctx, s2.WrapStream(stream), addrs); err != nil {
 		t.Fatal(err)
 	}
 

@@ -13,7 +13,6 @@ import (
 	"os"
 	"runtime"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -309,6 +308,10 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		if manet.IsIPLoopback(a) {
 			continue
 		}
+		a, err := buildFullMA(a, h.ID())
+		if err != nil {
+			return nil, fmt.Errorf("build full node multiaddr: %w", err)
+		}
 		advertizableAddresses = append(advertizableAddresses, a)
 	}
 
@@ -419,7 +422,18 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	peerID := stream.Conn().RemotePeer()
 	handshakeStream := newStream(stream, s.metrics)
 
-	i, err := s.handshakeService.Handle(s.ctx, handshakeStream, stream.Conn().RemoteMultiaddr(), peerID)
+	peerMultiaddrs, err := buildFullMAs(append(s.host.Peerstore().Addrs(peerID), stream.Conn().RemoteMultiaddr()), peerID)
+	if err != nil {
+		s.logger.Debug("stream handler: handshake: build remote multiaddrs", "peer_id", peerID, "error", err)
+		s.logger.Error(nil, "stream handler: handshake: build remote multiaddrs", "peer_id", peerID)
+		_ = handshakeStream.Reset()
+		_ = s.host.Network().ClosePeer(peerID)
+		return
+	}
+
+	s.logger.Info("INVESTIGATION libp2p handle incoming connection", "peer", peerID, "peer multiaddrs", peerMultiaddrs)
+
+	i, err := s.handshakeService.Handle(s.ctx, handshakeStream, peerMultiaddrs)
 	if err != nil {
 		s.logger.Debug("stream handler: handshake: handle failed", "peer_id", peerID, "error", err)
 		s.logger.Error(nil, "stream handler: handshake: handle failed", "peer_id", peerID)
@@ -773,24 +787,16 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 
 	connectionPeer := stream.Conn().RemotePeer()
 
-	observeredAddrs := make([]ma.Multiaddr, 0)
-	for _, a := range s.host.Peerstore().Addrs(connectionPeer) {
-		fullMA, err := buildFullMA(a, connectionPeer)
-		if err != nil {
-			return nil, fmt.Errorf("build full undrlay address %s %s: %w", a, connectionPeer, err)
-		}
-		observeredAddrs = append(observeredAddrs, fullMA)
+	peerMultiaddrs, err := buildFullMAs(append(s.host.Peerstore().Addrs(peerID), stream.Conn().RemoteMultiaddr()), peerID)
+	if err != nil {
+		_ = handshakeStream.Reset()
+		_ = s.host.Network().ClosePeer(peerID)
+		return nil, fmt.Errorf("build peer multiaddrs: %w", err)
 	}
 
-	observeredAddrs = append(observeredAddrs, addrs...)
-	sort.Slice(observeredAddrs, func(i int, j int) bool {
-		return observeredAddrs[i].String() < observeredAddrs[j].String()
-	})
-	observeredAddrs = slices.Compact(observeredAddrs)
+	s.logger.Info("INVESTIGATION libp2p connect", "peer", connectionPeer, "connect addrs", addrs, "peer multiaddrs", peerMultiaddrs)
 
-	s.logger.Info("INVESTIGATION libp2p connect", "peer", connectionPeer, "connect addrs", addrs, "observed addrs", observeredAddrs)
-
-	i, err := s.handshakeService.Handshake(ctx, handshakeStream, observeredAddrs, connectionPeer)
+	i, err := s.handshakeService.Handshake(ctx, handshakeStream, peerMultiaddrs)
 	if err != nil {
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(info.ID)
@@ -1251,7 +1257,23 @@ func isNetworkOrHostUnreachableError(err error) bool {
 	return false
 }
 
-// TODO: deduplicate this function from handshake package
+func buildFullMAs(addrs []ma.Multiaddr, peerID libp2ppeer.ID) ([]ma.Multiaddr, error) {
+	fullMAs := make([]ma.Multiaddr, 0)
+	for _, addr := range addrs {
+		res, err := buildFullMA(addr, peerID)
+		if err != nil {
+			return nil, err
+		}
+		if slices.ContainsFunc(fullMAs, func(a ma.Multiaddr) bool {
+			return a.Equal(res)
+		}) {
+			continue
+		}
+		fullMAs = append(fullMAs, res)
+	}
+	return fullMAs, nil
+}
+
 func buildFullMA(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) {
 	if _, err := addr.ValueForProtocol(ma.P_P2P); err == nil {
 		return addr, nil
