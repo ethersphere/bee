@@ -295,12 +295,6 @@ components:
     MultiAddress:
       type: string
 
-    NewTagRequest:
-      type: object
-      properties:
-        address:
-          $ref: "#/components/schemas/SwarmAddress"
-
     NewTagResponse:
       type: object
       properties:
