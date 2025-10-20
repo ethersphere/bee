@@ -131,7 +131,17 @@ test-ci-race:
 ifdef cover
 	$(GO) test -race -run "[^FLAKY]$$" -coverprofile=cover.out ./...
 else
-	$(GO) test -race -run "[^FLAKY]$$" ./...
+	$(GO) test -run "[^FLAKY]$$" ./pkg/pingpong/... && \
+	$(GO) test -run "[^FLAKY]$$" ./pkg/accounting/... && \
+	$(GO) test -run "[^FLAKY]$$" ./pkg/file/joiner/... && \
+	$(GO) test -run "[^FLAKY]$$" ./pkg/spinlock/... && \
+	$(GO) test -run "[^FLAKY]$$" ./pkg/api/gsoc_test.go && \
+	$(GO) test -run "[^FLAKY]$$" ./pkg/pullsync/... && \
+	$(GO) test -run "[^FLAKY]$$" ./pkg/storageincentives/agent_test.go && \
+	$(GO) test -run "[^FLAKY]$$" ./pkg/util/syncutil/... && \
+	$(GO) test -run "[^FLAKY]$$" ./pkg/storer/internal/reserve/... && \
+	$(GO) test -run "[^FLAKY]$$" ./pkg/storer/internal/events/subscribe_test.go && \
+	$(GO) test -run "[^FLAKY]$$" ./pkg/blocker/...
 endif
 
 .PHONY: test-ci-flaky
