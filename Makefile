@@ -131,10 +131,12 @@ test-ci-race:
 ifdef cover
 	$(GO) test -race -run "[^FLAKY]$$" -coverprofile=cover.out ./...
 else
+#TODO: Should be removed once all tests are fixed, just temporary measure to exclude flaky
 	$(GO) test -run "[^FLAKY]$$" ./pkg/pingpong/... && \
 	$(GO) test -run "[^FLAKY]$$" ./pkg/accounting/... && \
 	$(GO) test -run "[^FLAKY]$$" ./pkg/file/joiner/... && \
 	$(GO) test -run "[^FLAKY]$$" ./pkg/spinlock/... && \
+	$(GO) test -run "[^FLAKY]$$" ./pkg/api/... && \
 	$(GO) test -run "[^FLAKY]$$" ./pkg/api/gsoc_test.go && \
 	$(GO) test -run "[^FLAKY]$$" ./pkg/pullsync/... && \
 	$(GO) test -run "[^FLAKY]$$" ./pkg/storageincentives/agent_test.go && \
