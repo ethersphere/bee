@@ -168,6 +168,23 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		advertisableUnderlays[i] = advertisableUnderlay
 	}
 
+	advertisableUnderlays = append(advertisableUnderlays, s.hostAddrs...)
+
+	// sort to remove potential duplicates
+	slices.SortFunc(advertisableUnderlays, func(a, b ma.Multiaddr) int {
+		if a.Equal(b) {
+			return 0
+		}
+		if a.String() < b.String() {
+			return -1
+		}
+		return 1
+	})
+	// remove duplicates
+	advertisableUnderlays = slices.CompactFunc(advertisableUnderlays, func(a, b ma.Multiaddr) bool {
+		return a.Equal(b)
+	})
+
 	s.logger.Info("INVESTIGATION handshake call", "observed addrs", observedUnderlays, "advertisable addrs", advertisableUnderlays)
 
 	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce)
