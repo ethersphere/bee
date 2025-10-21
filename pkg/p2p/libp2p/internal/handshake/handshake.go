@@ -61,6 +61,16 @@ type AdvertisableAddressResolver interface {
 	Resolve(observedAddress ma.Multiaddr) (ma.Multiaddr, error)
 }
 
+type Option struct {
+	bee260compatibility bool
+}
+
+func WithBee260Compatibility(yes bool) func(*Option) {
+	return func(o *Option) {
+		o.bee260compatibility = yes
+	}
+}
+
 // Service can perform initiate or handle a handshake between peers.
 type Service struct {
 	signer                crypto.Signer
@@ -121,13 +131,20 @@ func (s *Service) SetPicker(n p2p.Picker) {
 }
 
 // Handshake initiates a handshake with a peer.
-func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiaddrs []ma.Multiaddr) (i *Info, err error) {
+func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiaddrs []ma.Multiaddr, opts ...func(*Option)) (i *Info, err error) {
 	loggerV1 := s.logger.V(1).Register()
+
+	o := new(Option)
+	for _, set := range opts {
+		set(o)
+	}
 
 	ctx, cancel := context.WithTimeout(ctx, handshakeTimeout)
 	defer cancel()
 
 	w, r := protobuf.NewWriterAndReader(stream)
+
+	peerMultiaddrs = selectSingleBee260CompatibleUnderlay(o.bee260compatibility, peerMultiaddrs)
 
 	if err := w.WriteMsgWithContext(ctx, &pb.Syn{
 		ObservedUnderlay: bzz.SerializeUnderlays(peerMultiaddrs),
@@ -185,6 +202,8 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return a.Equal(b)
 	})
 
+	advertisableUnderlays = selectSingleBee260CompatibleUnderlay(o.bee260compatibility, advertisableUnderlays)
+
 	s.logger.Info("INVESTIGATION handshake call", "observed addrs", observedUnderlays, "advertisable addrs", advertisableUnderlays)
 
 	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce)
@@ -231,8 +250,13 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 }
 
 // Handle handles an incoming handshake from a peer.
-func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs []ma.Multiaddr) (i *Info, err error) {
+func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs []ma.Multiaddr, opts ...func(*Option)) (i *Info, err error) {
 	loggerV1 := s.logger.V(1).Register()
+
+	o := new(Option)
+	for _, set := range opts {
+		set(o)
+	}
 
 	ctx, cancel := context.WithTimeout(ctx, handshakeTimeout)
 	defer cancel()
@@ -281,6 +305,8 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 		return a.Equal(b)
 	})
 
+	advertisableUnderlays = selectSingleBee260CompatibleUnderlay(o.bee260compatibility, advertisableUnderlays)
+
 	s.logger.Info("INVESTIGATION handshake handle", "observed addrs", observedUnderlays, "advertisable addrs", advertisableUnderlays)
 
 	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce)
@@ -289,6 +315,8 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 	}
 
 	welcomeMessage := s.GetWelcomeMessage()
+
+	peerMultiaddrs = selectSingleBee260CompatibleUnderlay(o.bee260compatibility, peerMultiaddrs)
 
 	if err := w.WriteMsgWithContext(ctx, &pb.SynAck{
 		Syn: &pb.Syn{
@@ -367,4 +395,15 @@ func (s *Service) parseCheckAck(ack *pb.Ack) (*bzz.Address, error) {
 	}
 
 	return bzzAddress, nil
+}
+
+func selectSingleBee260CompatibleUnderlay(bee260compatibility bool, underlays []ma.Multiaddr) []ma.Multiaddr {
+	if !bee260compatibility {
+		return underlays
+	}
+	underlay := bzz.SelectBestAdvertisedAddress(underlays, nil)
+	if underlay == nil {
+		return underlays
+	}
+	return []ma.Multiaddr{underlay}
 }

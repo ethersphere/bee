@@ -19,6 +19,7 @@ import (
 	"time"
 
 	ocprom "contrib.go.opencensus.io/exporter/prometheus"
+	"github.com/coreos/go-semver/semver"
 	"github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/bzz"
@@ -433,7 +434,12 @@ func (s *Service) handleIncoming(stream network.Stream) {
 
 	s.logger.Info("INVESTIGATION libp2p handle incoming connection", "peer", peerID, "peer multiaddrs", peerMultiaddrs)
 
-	i, err := s.handshakeService.Handle(s.ctx, handshakeStream, peerMultiaddrs)
+	i, err := s.handshakeService.Handle(
+		s.ctx,
+		handshakeStream,
+		peerMultiaddrs,
+		handshake.WithBee260Compatibility(s.bee260BackwardCompatibility(peerID)),
+	)
 	if err != nil {
 		s.logger.Debug("stream handler: handshake: handle failed", "peer_id", peerID, "error", err)
 		s.logger.Error(nil, "stream handler: handshake: handle failed", "peer_id", peerID)
@@ -796,7 +802,12 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 
 	s.logger.Info("INVESTIGATION libp2p connect", "peer", connectionPeer, "connect addrs", addrs, "peer multiaddrs", peerMultiaddrs)
 
-	i, err := s.handshakeService.Handshake(ctx, handshakeStream, peerMultiaddrs)
+	i, err := s.handshakeService.Handshake(
+		s.ctx,
+		handshakeStream,
+		peerMultiaddrs,
+		handshake.WithBee260Compatibility(s.bee260BackwardCompatibility(peerID)),
+	)
 	if err != nil {
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(info.ID)
@@ -1195,6 +1206,22 @@ func (s *Service) determineCurrentNetworkStatus(err error) error {
 		err = fmt.Errorf("network status unknown: %w", err)
 	}
 	return err
+}
+
+var version270 = *semver.Must(semver.NewVersion("2.7.0"))
+
+func (s *Service) bee260BackwardCompatibility(peerID libp2ppeer.ID) bool {
+	userAgent := s.peerUserAgent(s.ctx, peerID)
+	p := strings.SplitN(userAgent, " ", 2)
+	if len(p) != 2 {
+		return false
+	}
+	version := strings.TrimPrefix(p[0], "bee/")
+	v, err := semver.NewVersion(version)
+	if err != nil {
+		return false
+	}
+	return v.LessThan(version270)
 }
 
 // appendSpace adds a leading space character if the string is not empty.
