@@ -132,18 +132,19 @@ ifdef cover
 	$(GO) test -race -run "[^FLAKY]$$" -coverprofile=cover.out ./...
 else
 #TODO: Should be removed once all tests are fixed, just temporary measure to exclude flaky
-	$(GO) test -run "[^FLAKY]$$" ./pkg/pingpong/... && \
-	$(GO) test -run "[^FLAKY]$$" ./pkg/accounting/... && \
-	$(GO) test -run "[^FLAKY]$$" ./pkg/file/joiner/... && \
-	$(GO) test -run "[^FLAKY]$$" ./pkg/spinlock/... && \
-	$(GO) test -run "[^FLAKY]$$" ./pkg/api/... && \
-	$(GO) test -run "[^FLAKY]$$" ./pkg/api/gsoc_test.go && \
-	$(GO) test -run "[^FLAKY]$$" ./pkg/pullsync/... && \
-	$(GO) test -run "[^FLAKY]$$" ./pkg/storageincentives/agent_test.go && \
-	$(GO) test -run "[^FLAKY]$$" ./pkg/util/syncutil/... && \
-	$(GO) test -run "[^FLAKY]$$" ./pkg/storer/internal/reserve/... && \
-	$(GO) test -run "[^FLAKY]$$" ./pkg/storer/internal/events/subscribe_test.go && \
-	$(GO) test -run "[^FLAKY]$$" ./pkg/blocker/...
+#todo: prevent cache from tests
+	$(GO) test -race -run "[^FLAKY]$$" -count=1 ./pkg/api/... && \
+	$(GO) test -race -run "[^FLAKY]$$" -count=1 ./pkg/pingpong/... && \
+	$(GO) test -race -run "[^FLAKY]$$" -count=1 ./pkg/accounting/... && \
+	$(GO) test -race -run "[^FLAKY]$$" -count=1 ./pkg/file/joiner/... && \
+	$(GO) test -race -run "[^FLAKY]$$" -count=1 ./pkg/spinlock/... && \
+	$(GO) test -race -run "[^FLAKY]$$" -count=1 ./pkg/api/gsoc_test.go && \
+	$(GO) test -race -run "[^FLAKY]$$" -count=1 ./pkg/pullsync/... && \
+	$(GO) test -race -run "[^FLAKY]$$" -count=1 ./pkg/storageincentives/agent_test.go && \
+	$(GO) test -race -run "[^FLAKY]$$" -count=1 ./pkg/util/syncutil/... && \
+	$(GO) test -race -run "[^FLAKY]$$" -count=1 ./pkg/storer/internal/reserve/... && \
+	$(GO) test -race -run "[^FLAKY]$$" -count=1 ./pkg/storer/internal/events/subscribe_test.go && \
+	$(GO) test -race -run "[^FLAKY]$$" -count=1 ./pkg/blocker/...
 endif
 
 .PHONY: test-ci-flaky
