@@ -65,7 +65,6 @@ type Service struct {
 	wg                sync.WaitGroup
 	peersChan         chan pb.Peers
 	sem               *semaphore.Weighted
-	bootnode          bool
 	allowPrivateCIDRs bool
 }
 
@@ -81,13 +80,10 @@ func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, network
 		quit:              make(chan struct{}),
 		peersChan:         make(chan pb.Peers),
 		sem:               semaphore.NewWeighted(int64(swarm.MaxBins)),
-		bootnode:          bootnode,
 		allowPrivateCIDRs: allowPrivateCIDRs,
 	}
 
-	if !bootnode {
-		svc.startCheckPeersHandler()
-	}
+	svc.startCheckPeersHandler()
 
 	return svc
 }
@@ -229,10 +225,6 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 	// fullclose is called async because there is no need to wait for confirmation,
 	// but we still want to handle not closed stream from the other side to avoid zombie stream
 	go stream.FullClose()
-
-	if s.bootnode {
-		return nil
-	}
 
 	select {
 	case s.peersChan <- peersReq:
