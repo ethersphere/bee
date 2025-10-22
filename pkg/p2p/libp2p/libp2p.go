@@ -1319,6 +1319,9 @@ func buildFullMA(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) 
 // waitPeerAddrs is used to reliably get remote addresses from libp2p peerstore
 // as sometimes addresses are not available soon enough from its Addrs() method.
 func waitPeerAddrs(ctx context.Context, s peerstore.Peerstore, peerID libp2ppeer.ID) []ma.Multiaddr {
+	ctx, cancel := context.WithCancel(ctx) // cancel the addrStream when this function exits
+	defer cancel()
+
 	// ensure that the AddrStream will receive addresses by creating it before Addrs() is called
 	// this may happen just after the connection is established and peerstore is not updated
 	addrStream := s.AddrStream(ctx, peerID)
