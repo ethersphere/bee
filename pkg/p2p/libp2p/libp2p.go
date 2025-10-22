@@ -75,6 +75,8 @@ const (
 	defaultLightNodeLimit = 100
 	peerUserAgentTimeout  = time.Second
 
+	peerstoreWaitAddrsTimeout = 10 * time.Second
+
 	defaultHeadersRWTimeout = 10 * time.Second
 
 	IncomingStreamCountLimit = 5_000
@@ -423,7 +425,10 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	peerID := stream.Conn().RemotePeer()
 	handshakeStream := newStream(stream, s.metrics)
 
-	peerMultiaddrs, err := buildFullMAs(append(s.host.Peerstore().Addrs(peerID), stream.Conn().RemoteMultiaddr()), peerID)
+	waitPeersCtx, cancel := context.WithTimeout(s.ctx, peerstoreWaitAddrsTimeout)
+	defer cancel()
+
+	peerMultiaddrs, err := buildFullMAs(waitPeerAddrs(waitPeersCtx, s.host.Peerstore(), peerID), peerID)
 	if err != nil {
 		s.logger.Debug("stream handler: handshake: build remote multiaddrs", "peer_id", peerID, "error", err)
 		s.logger.Error(nil, "stream handler: handshake: build remote multiaddrs", "peer_id", peerID)
@@ -793,7 +798,10 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 
 	connectionPeer := stream.Conn().RemotePeer()
 
-	peerMultiaddrs, err := buildFullMAs(append(s.host.Peerstore().Addrs(peerID), stream.Conn().RemoteMultiaddr()), peerID)
+	waitPeersCtx, cancel := context.WithTimeout(ctx, peerstoreWaitAddrsTimeout)
+	defer cancel()
+
+	peerMultiaddrs, err := buildFullMAs(waitPeerAddrs(waitPeersCtx, s.host.Peerstore(), peerID), peerID)
 	if err != nil {
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(peerID)
@@ -1306,4 +1314,25 @@ func buildFullMA(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) 
 		return addr, nil
 	}
 	return ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", addr.String(), peerID.String()))
+}
+
+// waitPeerAddrs is used to reliably get remote addresses from libp2p peerstore
+// as sometimes addresses are not available soon enough from its Addrs() method.
+func waitPeerAddrs(ctx context.Context, s peerstore.Peerstore, peerID libp2ppeer.ID) []ma.Multiaddr {
+	// ensure that the AddrStream will receive addresses by creating it before Addrs() is called
+	// this may happen just after the connection is established and peerstore is not updated
+	addrStream := s.AddrStream(ctx, peerID)
+
+	addrs := s.Addrs(peerID)
+	if len(addrs) > 0 {
+		return addrs
+	}
+
+	select {
+	case addr := <-addrStream:
+		// return the first address as it arrives
+		return []ma.Multiaddr{addr}
+	case <-ctx.Done():
+		return nil
+	}
 }
