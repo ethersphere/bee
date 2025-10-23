@@ -10,10 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"testing/synctest"
+
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-	"testing/synctest"
 )
 
 func TestHeaders(t *testing.T) {
