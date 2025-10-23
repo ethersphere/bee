@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"testing/synctest"
+
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/v2/pkg/spinlock"
@@ -21,7 +23,6 @@ import (
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	"github.com/multiformats/go-multistream"
-	"testing/synctest"
 )
 
 func TestNewStream(t *testing.T) {
