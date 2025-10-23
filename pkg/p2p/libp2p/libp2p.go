@@ -1336,6 +1336,6 @@ func waitPeerAddrs(ctx context.Context, s peerstore.Peerstore, peerID libp2ppeer
 		// return the first address as it arrives
 		return []ma.Multiaddr{addr}
 	case <-ctx.Done():
-		return nil
+		return s.Addrs(peerID)
 	}
 }

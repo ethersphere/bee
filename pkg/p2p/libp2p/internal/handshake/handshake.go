@@ -162,10 +162,6 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return nil, ErrInvalidSyn
 	}
 
-	if len(observedUnderlays) == 0 {
-		return nil, errors.New("no observed underlay sent")
-	}
-
 	advertisableUnderlays := make([]ma.Multiaddr, len(observedUnderlays))
 	for i, observedUnderlay := range observedUnderlays {
 		observedUnderlayAddrInfo, err := libp2ppeer.AddrInfoFromP2pAddr(observedUnderlay)
@@ -273,10 +269,6 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 	observedUnderlays, err := bzz.DeserializeUnderlays(syn.ObservedUnderlay)
 	if err != nil {
 		return nil, ErrInvalidSyn
-	}
-
-	if len(observedUnderlays) == 0 {
-		return nil, errors.New("no observed underlay sent")
 	}
 
 	advertisableUnderlays := make([]ma.Multiaddr, len(observedUnderlays))
