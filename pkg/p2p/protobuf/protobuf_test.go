@@ -100,39 +100,35 @@ func TestReader_timeout(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			t.Run("WithContext", func(t *testing.T) {
-				t.Parallel()
-
-				r := tc.readerFunc()
-				var msg pb.Message
-				for i := range messages {
-					var timeout time.Duration
-					if i == 0 {
-						timeout = 1000 * time.Millisecond
-					} else {
-						timeout = 10 * time.Millisecond
-					}
-					ctx, cancel := context.WithTimeout(context.Background(), timeout)
-					defer cancel()
-					err := r.ReadMsgWithContext(ctx, &msg)
-					if i == 0 {
-						if err != nil {
-							t.Parallel()
-							t.Fatal(err)
-						}
-					} else {
-						if !errors.Is(err, context.DeadlineExceeded) {
-							t.Fatalf("got error %v, want %v", err, context.DeadlineExceeded)
-						}
-						break
-					}
-					want := messages[i]
-					got := msg.Text
-					if got != want {
-						t.Errorf("got message %q, want %q", got, want)
-					}
+			r := tc.readerFunc()
+			var msg pb.Message
+			for i := range messages {
+				var timeout time.Duration
+				if i == 0 {
+					timeout = 1000 * time.Millisecond
+				} else {
+					timeout = 10 * time.Millisecond
 				}
-			})
+				ctx, cancel := context.WithTimeout(context.Background(), timeout)
+				defer cancel()
+				err := r.ReadMsgWithContext(ctx, &msg)
+				if i == 0 {
+					if err != nil {
+						t.Parallel()
+						t.Fatal(err)
+					}
+				} else {
+					if !errors.Is(err, context.DeadlineExceeded) {
+						t.Fatalf("got error %v, want %v", err, context.DeadlineExceeded)
+					}
+					break
+				}
+				want := messages[i]
+				got := msg.Text
+				if got != want {
+					t.Errorf("got message %q, want %q", got, want)
+				}
+			}
 		})
 	}
 }
