@@ -29,44 +29,44 @@ var defaultOptions = reacher.Options{
 func TestPingSuccess(t *testing.T) {
 	t.Parallel()
 
-	synctest.Test(t, func(t *testing.T) {
-		for _, tc := range []struct {
-			name          string
-			pingFunc      func(context.Context, ma.Multiaddr) (time.Duration, error)
-			reachableFunc func(chan struct{}) func(addr swarm.Address, got p2p.ReachabilityStatus)
-		}{
-			{
-				name: "ping success",
-				pingFunc: func(context.Context, ma.Multiaddr) (time.Duration, error) {
-					return 0, nil
-				},
-				reachableFunc: func(done chan struct{}) func(addr swarm.Address, got p2p.ReachabilityStatus) {
-					return func(addr swarm.Address, got p2p.ReachabilityStatus) {
-						if got != p2p.ReachabilityStatusPublic {
-							t.Fatalf("got %v, want %v", got, p2p.ReachabilityStatusPublic)
-						}
-						done <- struct{}{}
-					}
-				},
+	for _, tc := range []struct {
+		name          string
+		pingFunc      func(context.Context, ma.Multiaddr) (time.Duration, error)
+		reachableFunc func(chan struct{}) func(addr swarm.Address, got p2p.ReachabilityStatus)
+	}{
+		{
+			name: "ping success",
+			pingFunc: func(context.Context, ma.Multiaddr) (time.Duration, error) {
+				return 0, nil
 			},
-			{
-				name: "ping failure",
-				pingFunc: func(context.Context, ma.Multiaddr) (time.Duration, error) {
-					return 0, errors.New("test error")
-				},
-				reachableFunc: func(done chan struct{}) func(addr swarm.Address, got p2p.ReachabilityStatus) {
-					return func(addr swarm.Address, got p2p.ReachabilityStatus) {
-						if got != p2p.ReachabilityStatusPrivate {
-							t.Fatalf("got %v, want %v", got, p2p.ReachabilityStatusPrivate)
-						}
-						done <- struct{}{}
+			reachableFunc: func(done chan struct{}) func(addr swarm.Address, got p2p.ReachabilityStatus) {
+				return func(addr swarm.Address, got p2p.ReachabilityStatus) {
+					if got != p2p.ReachabilityStatusPublic {
+						t.Fatalf("got %v, want %v", got, p2p.ReachabilityStatusPublic)
 					}
-				},
+					done <- struct{}{}
+				}
 			},
-		} {
-			t.Run(tc.name, func(t *testing.T) {
-				t.Parallel()
+		},
+		{
+			name: "ping failure",
+			pingFunc: func(context.Context, ma.Multiaddr) (time.Duration, error) {
+				return 0, errors.New("test error")
+			},
+			reachableFunc: func(done chan struct{}) func(addr swarm.Address, got p2p.ReachabilityStatus) {
+				return func(addr swarm.Address, got p2p.ReachabilityStatus) {
+					if got != p2p.ReachabilityStatusPrivate {
+						t.Fatalf("got %v, want %v", got, p2p.ReachabilityStatusPrivate)
+					}
+					done <- struct{}{}
+				}
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
+			synctest.Test(t, func(t *testing.T) {
 				done := make(chan struct{})
 				mock := newMock(tc.pingFunc, tc.reachableFunc(done))
 
@@ -83,8 +83,8 @@ func TestPingSuccess(t *testing.T) {
 				case <-done:
 				}
 			})
-		}
-	})
+		})
+	}
 }
 
 func TestDisconnected(t *testing.T) {
