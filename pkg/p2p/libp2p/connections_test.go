@@ -27,6 +27,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/topology/lightnode"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 
+	"testing/synctest"
+
 	libp2pm "github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -45,64 +47,70 @@ const (
 func TestAddresses(t *testing.T) {
 	t.Parallel()
 
-	s, _ := newService(t, 1, libp2pServiceOpts{})
+	synctest.Test(t, func(t *testing.T) {
+		s, _ := newService(t, 1, libp2pServiceOpts{})
 
-	addrs, err := s.Addresses()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if l := len(addrs); l == 0 {
-		t.Fatal("no addresses")
-	}
+		addrs, err := s.Addresses()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if l := len(addrs); l == 0 {
+			t.Fatal("no addresses")
+		}
+	})
 }
 
 func TestConnectDisconnect(t *testing.T) {
 	t.Parallel()
 
-	ctx := t.Context()
+	synctest.Test(t, func(t *testing.T) {
+		ctx := t.Context()
 
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
-		FullNode: true,
-	}})
-	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
+		s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+			FullNode: true,
+		}})
+		s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
-	addr := serviceUnderlayAddress(t, s1)
+		addr := serviceUnderlayAddress(t, s1)
 
-	bzzAddr, err := s2.Connect(ctx, addr)
-	if err != nil {
-		t.Fatal(err)
-	}
+		bzzAddr, err := s2.Connect(ctx, addr)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	expectPeers(t, s2, overlay1)
-	expectPeersEventually(t, s1, overlay2)
+		expectPeers(t, s2, overlay1)
+		expectPeersEventually(t, s1, overlay2)
 
-	if err := s2.Disconnect(bzzAddr.Overlay, testDisconnectMsg); err != nil {
-		t.Fatal(err)
-	}
+		if err := s2.Disconnect(bzzAddr.Overlay, testDisconnectMsg); err != nil {
+			t.Fatal(err)
+		}
 
-	expectPeers(t, s2)
-	expectPeersEventually(t, s1)
+		expectPeers(t, s2)
+		expectPeersEventually(t, s1)
+	})
 }
 
 func TestConnectToLightPeer(t *testing.T) {
 	t.Parallel()
 
-	ctx := t.Context()
+	synctest.Test(t, func(t *testing.T) {
+		ctx := t.Context()
 
-	s1, _ := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
-		FullNode: false,
-	}})
-	s2, _ := newService(t, 1, libp2pServiceOpts{})
+		s1, _ := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+			FullNode: false,
+		}})
+		s2, _ := newService(t, 1, libp2pServiceOpts{})
 
-	addr := serviceUnderlayAddress(t, s1)
+		addr := serviceUnderlayAddress(t, s1)
 
-	_, err := s2.Connect(ctx, addr)
-	if !errors.Is(err, p2p.ErrDialLightNode) {
-		t.Fatalf("expected err %v, got %v", p2p.ErrDialLightNode, err)
-	}
+		_, err := s2.Connect(ctx, addr)
+		if !errors.Is(err, p2p.ErrDialLightNode) {
+			t.Fatalf("expected err %v, got %v", p2p.ErrDialLightNode, err)
+		}
 
-	expectPeers(t, s2)
-	expectPeersEventually(t, s1)
+		expectPeers(t, s2)
+		expectPeersEventually(t, s1)
+	})
 }
 
 func TestLightPeerLimit(t *testing.T) {
