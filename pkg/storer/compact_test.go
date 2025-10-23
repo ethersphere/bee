@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"testing/synctest"
+
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	pullerMock "github.com/ethersphere/bee/v2/pkg/puller/mock"
@@ -24,179 +26,183 @@ import (
 func TestCompact(t *testing.T) {
 	t.Parallel()
 
-	baseAddr := swarm.RandAddress(t)
-	ctx := context.Background()
-	basePath := t.TempDir()
+	synctest.Test(t, func(t *testing.T) {
+		baseAddr := swarm.RandAddress(t)
+		ctx := context.Background()
+		basePath := t.TempDir()
 
-	opts := dbTestOps(baseAddr, 10_000, nil, nil, time.Minute)
-	opts.CacheCapacity = 0
+		opts := dbTestOps(baseAddr, 10_000, nil, nil, time.Minute)
+		opts.CacheCapacity = 0
 
-	st, err := storer.New(ctx, basePath, opts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	st.StartReserveWorker(ctx, pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
+		st, err := storer.New(ctx, basePath, opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		st.StartReserveWorker(ctx, pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
 
-	batches := []*postage.Batch{postagetesting.MustNewBatch(), postagetesting.MustNewBatch(), postagetesting.MustNewBatch()}
-	evictBatch := batches[1]
+		batches := []*postage.Batch{postagetesting.MustNewBatch(), postagetesting.MustNewBatch(), postagetesting.MustNewBatch()}
+		evictBatch := batches[1]
 
-	putter := st.ReservePutter()
+		putter := st.ReservePutter()
 
-	chunks := make([]swarm.Chunk, 0, len(batches)*100)
+		chunks := make([]swarm.Chunk, 0, len(batches)*100)
 
-	for b := range batches {
+		for b := range batches {
+			for range uint64(100) {
+				ch := chunk.GenerateTestRandomChunk()
+				ch = ch.WithStamp(postagetesting.MustNewBatchStamp(batches[b].ID))
+				chunks = append(chunks, ch)
+				err := putter.Put(ctx, ch)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+
+		c, unsub := st.Events().Subscribe("batchExpiryDone")
+		t.Cleanup(unsub)
+
+		err = st.EvictBatch(ctx, evictBatch.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		<-c
+
+		time.Sleep(time.Second)
+
+		if err := st.Close(); err != nil {
+			t.Fatal(err)
+		}
+
+		err = storer.Compact(ctx, basePath, opts, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		st, err = storer.New(ctx, basePath, opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		putter = st.ReservePutter()
 		for range uint64(100) {
 			ch := chunk.GenerateTestRandomChunk()
-			ch = ch.WithStamp(postagetesting.MustNewBatchStamp(batches[b].ID))
+			ch = ch.WithStamp(postagetesting.MustNewBatchStamp(batches[0].ID))
 			chunks = append(chunks, ch)
 			err := putter.Put(ctx, ch)
 			if err != nil {
 				t.Fatal(err)
 			}
 		}
-	}
 
-	c, unsub := st.Events().Subscribe("batchExpiryDone")
-	t.Cleanup(unsub)
-
-	err = st.EvictBatch(ctx, evictBatch.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	<-c
-
-	time.Sleep(time.Second)
-
-	if err := st.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	err = storer.Compact(ctx, basePath, opts, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	st, err = storer.New(ctx, basePath, opts)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	putter = st.ReservePutter()
-	for range uint64(100) {
-		ch := chunk.GenerateTestRandomChunk()
-		ch = ch.WithStamp(postagetesting.MustNewBatchStamp(batches[0].ID))
-		chunks = append(chunks, ch)
-		err := putter.Put(ctx, ch)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	for _, ch := range chunks {
-		stampHash, err := ch.Stamp().Hash()
-		if err != nil {
-			t.Fatal(err)
-		}
-		has, err := st.ReserveHas(ch.Address(), ch.Stamp().BatchID(), stampHash)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if bytes.Equal(ch.Stamp().BatchID(), evictBatch.ID) {
-			if has {
-				t.Fatal("store should NOT have chunk")
+		for _, ch := range chunks {
+			stampHash, err := ch.Stamp().Hash()
+			if err != nil {
+				t.Fatal(err)
 			}
-			checkSaved(t, st, ch, false, false)
-		} else if !has {
-			t.Fatal("store should have chunk")
-		} else {
-			checkSaved(t, st, ch, true, true)
-		}
-	}
+			has, err := st.ReserveHas(ch.Address(), ch.Stamp().BatchID(), stampHash)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-	if err := st.Close(); err != nil {
-		t.Fatal(err)
-	}
+			if bytes.Equal(ch.Stamp().BatchID(), evictBatch.ID) {
+				if has {
+					t.Fatal("store should NOT have chunk")
+				}
+				checkSaved(t, st, ch, false, false)
+			} else if !has {
+				t.Fatal("store should have chunk")
+			} else {
+				checkSaved(t, st, ch, true, true)
+			}
+		}
+
+		if err := st.Close(); err != nil {
+			t.Fatal(err)
+		}
+	})
 }
 
 // TestCompactNoEvictions compacts a store that has no free slots to ensure that no chunks get lost.
 func TestCompactNoEvictions(t *testing.T) {
 	t.Parallel()
 
-	baseAddr := swarm.RandAddress(t)
-	ctx := context.Background()
-	basePath := t.TempDir()
+	synctest.Test(t, func(t *testing.T) {
+		baseAddr := swarm.RandAddress(t)
+		ctx := context.Background()
+		basePath := t.TempDir()
 
-	opts := dbTestOps(baseAddr, 10_000, nil, nil, time.Minute)
-	opts.CacheCapacity = 0
+		opts := dbTestOps(baseAddr, 10_000, nil, nil, time.Minute)
+		opts.CacheCapacity = 0
 
-	st, err := storer.New(ctx, basePath, opts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	st.StartReserveWorker(ctx, pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
+		st, err := storer.New(ctx, basePath, opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		st.StartReserveWorker(ctx, pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
 
-	batches := []*postage.Batch{postagetesting.MustNewBatch(), postagetesting.MustNewBatch(), postagetesting.MustNewBatch()}
+		batches := []*postage.Batch{postagetesting.MustNewBatch(), postagetesting.MustNewBatch(), postagetesting.MustNewBatch()}
 
-	putter := st.ReservePutter()
+		putter := st.ReservePutter()
 
-	chunks := make([]swarm.Chunk, 0, len(batches)*100)
+		chunks := make([]swarm.Chunk, 0, len(batches)*100)
 
-	for b := range batches {
+		for b := range batches {
+			for range uint64(100) {
+				ch := chunk.GenerateTestRandomChunk()
+				ch = ch.WithStamp(postagetesting.MustNewBatchStamp(batches[b].ID))
+				chunks = append(chunks, ch)
+				err := putter.Put(ctx, ch)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+
+		if err := st.Close(); err != nil {
+			t.Fatal(err)
+		}
+
+		err = storer.Compact(ctx, basePath, opts, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		st, err = storer.New(ctx, basePath, opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		putter = st.ReservePutter()
 		for range uint64(100) {
 			ch := chunk.GenerateTestRandomChunk()
-			ch = ch.WithStamp(postagetesting.MustNewBatchStamp(batches[b].ID))
+			ch = ch.WithStamp(postagetesting.MustNewBatchStamp(batches[0].ID))
 			chunks = append(chunks, ch)
 			err := putter.Put(ctx, ch)
 			if err != nil {
 				t.Fatal(err)
 			}
 		}
-	}
 
-	if err := st.Close(); err != nil {
-		t.Fatal(err)
-	}
+		for _, ch := range chunks {
+			stampHash, err := ch.Stamp().Hash()
+			if err != nil {
+				t.Fatal(err)
+			}
+			has, err := st.ReserveHas(ch.Address(), ch.Stamp().BatchID(), stampHash)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-	err = storer.Compact(ctx, basePath, opts, false)
-	if err != nil {
-		t.Fatal(err)
-	}
+			if !has {
+				t.Fatal("store should have chunk")
+			}
 
-	st, err = storer.New(ctx, basePath, opts)
-	if err != nil {
-		t.Fatal(err)
-	}
+			checkSaved(t, st, ch, true, true)
+		}
 
-	putter = st.ReservePutter()
-	for range uint64(100) {
-		ch := chunk.GenerateTestRandomChunk()
-		ch = ch.WithStamp(postagetesting.MustNewBatchStamp(batches[0].ID))
-		chunks = append(chunks, ch)
-		err := putter.Put(ctx, ch)
-		if err != nil {
+		if err := st.Close(); err != nil {
 			t.Fatal(err)
 		}
-	}
-
-	for _, ch := range chunks {
-		stampHash, err := ch.Stamp().Hash()
-		if err != nil {
-			t.Fatal(err)
-		}
-		has, err := st.ReserveHas(ch.Address(), ch.Stamp().BatchID(), stampHash)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if !has {
-			t.Fatal("store should have chunk")
-		}
-
-		checkSaved(t, st, ch, true, true)
-	}
-
-	if err := st.Close(); err != nil {
-		t.Fatal(err)
-	}
+	})
 }
