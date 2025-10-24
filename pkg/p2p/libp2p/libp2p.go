@@ -425,6 +425,10 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		return
 	}
 
+	if len(peerMultiaddrs) == 0 {
+		peerMultiaddrs = append(peerMultiaddrs, stream.Conn().RemoteMultiaddr())
+	}
+
 	s.logger.Info("INVESTIGATION libp2p handle incoming connection", "peer", peerID, "peer multiaddrs", peerMultiaddrs)
 
 	i, err := s.handshakeService.Handle(
@@ -794,6 +798,10 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(peerID)
 		return nil, fmt.Errorf("build peer multiaddrs: %w", err)
+	}
+
+	if len(peerMultiaddrs) == 0 {
+		peerMultiaddrs = append(peerMultiaddrs, stream.Conn().RemoteMultiaddr())
 	}
 
 	s.logger.Info("INVESTIGATION libp2p connect", "peer", connectionPeer, "connect addrs", addrs, "peer multiaddrs", peerMultiaddrs)
