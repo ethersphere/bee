@@ -426,7 +426,15 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	}
 
 	if len(peerMultiaddrs) == 0 {
-		peerMultiaddrs = append(peerMultiaddrs, stream.Conn().RemoteMultiaddr())
+		fullRemoteAddress, err := buildFullMA(stream.Conn().RemoteMultiaddr(), peerID)
+		if err != nil {
+			s.logger.Debug("stream handler: handshake: build full remote peer multi address", "peer_id", peerID, "error", err)
+			s.logger.Error(nil, "stream handler: handshake: build full remote peer multi address", "peer_id", peerID)
+			_ = handshakeStream.Reset()
+			_ = s.host.Network().ClosePeer(peerID)
+			return
+		}
+		peerMultiaddrs = append(peerMultiaddrs, fullRemoteAddress)
 	}
 
 	s.logger.Info("INVESTIGATION libp2p handle incoming connection", "peer", peerID, "peer multiaddrs", peerMultiaddrs)
@@ -801,7 +809,11 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	}
 
 	if len(peerMultiaddrs) == 0 {
-		peerMultiaddrs = append(peerMultiaddrs, stream.Conn().RemoteMultiaddr())
+		fullRemoteAddress, err := buildFullMA(stream.Conn().RemoteMultiaddr(), peerID)
+		if err != nil {
+			return nil, fmt.Errorf("build full remote peer multi address: %w", err)
+		}
+		peerMultiaddrs = append(peerMultiaddrs, fullRemoteAddress)
 	}
 
 	s.logger.Info("INVESTIGATION libp2p connect", "peer", connectionPeer, "connect addrs", addrs, "peer multiaddrs", peerMultiaddrs)
