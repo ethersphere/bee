@@ -306,19 +306,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		advertisableAddresser = natAddrResolver
 	}
 
-	advertizableAddresses := make([]ma.Multiaddr, 0)
-	for _, a := range h.Addrs() {
-		if manet.IsIPLoopback(a) {
-			continue
-		}
-		a, err := buildFullMA(a, h.ID())
-		if err != nil {
-			return nil, fmt.Errorf("build full node multiaddr: %w", err)
-		}
-		advertizableAddresses = append(advertizableAddresses, a)
-	}
-
-	handshakeService, err := handshake.New(signer, advertisableAddresser, overlay, networkID, o.FullNode, o.Nonce, advertizableAddresses, o.WelcomeMessage, o.ValidateOverlay, h.ID(), logger)
+	handshakeService, err := handshake.New(signer, advertisableAddresser, overlay, networkID, o.FullNode, o.Nonce, newHostAddresser(h), o.WelcomeMessage, o.ValidateOverlay, h.ID(), logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}
@@ -1290,6 +1278,27 @@ func isNetworkOrHostUnreachableError(err error) bool {
 		}
 	}
 	return false
+}
+
+type hostAddresser struct {
+	host host.Host
+}
+
+func newHostAddresser(host host.Host) *hostAddresser {
+	return &hostAddresser{
+		host: host,
+	}
+}
+
+func (h *hostAddresser) AdvertizableAddrs() ([]ma.Multiaddr, error) {
+	addrs := make([]ma.Multiaddr, 0)
+	for _, a := range h.host.Addrs() {
+		if manet.IsIPLoopback(a) {
+			continue
+		}
+		addrs = append(addrs, a)
+	}
+	return buildFullMAs(addrs, h.host.ID())
 }
 
 func buildFullMAs(addrs []ma.Multiaddr, peerID libp2ppeer.ID) ([]ma.Multiaddr, error) {

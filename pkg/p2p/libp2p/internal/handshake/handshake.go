@@ -61,6 +61,10 @@ type AdvertisableAddressResolver interface {
 	Resolve(observedAddress ma.Multiaddr) (ma.Multiaddr, error)
 }
 
+type Addresser interface {
+	AdvertizableAddrs() ([]ma.Multiaddr, error)
+}
+
 type Option struct {
 	bee260compatibility bool
 }
@@ -85,7 +89,7 @@ type Service struct {
 	libp2pID              libp2ppeer.ID
 	metrics               metrics
 	picker                p2p.Picker
-	hostAddrs             []ma.Multiaddr
+	hostAddresser         Addresser
 }
 
 // Info contains the information received from the handshake.
@@ -103,7 +107,7 @@ func (i *Info) LightString() string {
 }
 
 // New creates a new handshake Service.
-func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, overlay swarm.Address, networkID uint64, fullNode bool, nonce []byte, hostAddrs []ma.Multiaddr, welcomeMessage string, validateOverlay bool, ownPeerID libp2ppeer.ID, logger log.Logger) (*Service, error) {
+func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, overlay swarm.Address, networkID uint64, fullNode bool, nonce []byte, hostAddresser Addresser, welcomeMessage string, validateOverlay bool, ownPeerID libp2ppeer.ID, logger log.Logger) (*Service, error) {
 	if len(welcomeMessage) > MaxWelcomeMessageLength {
 		return nil, ErrWelcomeMessageLength
 	}
@@ -119,7 +123,7 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 		libp2pID:              ownPeerID,
 		logger:                logger.WithName(loggerName).Register(),
 		metrics:               newMetrics(),
-		hostAddrs:             hostAddrs,
+		hostAddresser:         hostAddresser,
 	}
 	svc.welcomeMessage.Store(welcomeMessage)
 
@@ -181,7 +185,14 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		advertisableUnderlays[i] = advertisableUnderlay
 	}
 
-	advertisableUnderlays = append(advertisableUnderlays, s.hostAddrs...)
+	if s.hostAddresser != nil {
+		hostAddrs, err := s.hostAddresser.AdvertizableAddrs()
+		if err != nil {
+			return nil, fmt.Errorf("get host advertizable addresses: %w", err)
+		}
+
+		advertisableUnderlays = append(advertisableUnderlays, hostAddrs...)
+	}
 
 	// sort to remove potential duplicates
 	slices.SortFunc(advertisableUnderlays, func(a, b ma.Multiaddr) int {
@@ -280,7 +291,14 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 		advertisableUnderlays[i] = advertisableUnderlay
 	}
 
-	advertisableUnderlays = append(advertisableUnderlays, s.hostAddrs...)
+	if s.hostAddresser != nil {
+		hostAddrs, err := s.hostAddresser.AdvertizableAddrs()
+		if err != nil {
+			return nil, fmt.Errorf("get host advertizable addresses: %w", err)
+		}
+
+		advertisableUnderlays = append(advertisableUnderlays, hostAddrs...)
+	}
 
 	// sort to remove potential duplicates
 	slices.SortFunc(advertisableUnderlays, func(a, b ma.Multiaddr) int {
