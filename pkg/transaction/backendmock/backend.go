@@ -20,7 +20,7 @@ type backendMock struct {
 	sendTransaction    func(ctx context.Context, tx *types.Transaction) error
 	suggestedFeeAndTip func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error)
 	suggestGasTipCap   func(ctx context.Context) (*big.Int, error)
-	estimateGas        func(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error)
+	estimateGasAtBlock func(ctx context.Context, msg ethereum.CallMsg, blockNumber *big.Int) (gas uint64, err error)
 	transactionReceipt func(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
 	pendingNonceAt     func(ctx context.Context, account common.Address) (uint64, error)
 	transactionByHash  func(ctx context.Context, hash common.Hash) (tx *types.Transaction, isPending bool, err error)
@@ -51,9 +51,9 @@ func (m *backendMock) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int,
 	return nil, nil, errors.New("not implemented")
 }
 
-func (m *backendMock) EstimateGas(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error) {
-	if m.estimateGas != nil {
-		return m.estimateGas(ctx, call)
+func (m *backendMock) EstimateGasAtBlock(ctx context.Context, msg ethereum.CallMsg, blockNumber *big.Int) (uint64, error) {
+	if m.estimateGasAtBlock != nil {
+		return m.estimateGasAtBlock(ctx, msg, blockNumber)
 	}
 	return 0, errors.New("not implemented")
 }
@@ -171,9 +171,9 @@ func WithSuggestGasTipCapFunc(f func(ctx context.Context) (*big.Int, error)) Opt
 	})
 }
 
-func WithEstimateGasFunc(f func(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error)) Option {
+func WithEstimateGasAtBlockFunc(f func(ctx context.Context, msg ethereum.CallMsg, blockNumber *big.Int) (gas uint64, err error)) Option {
 	return optionFunc(func(s *backendMock) {
-		s.estimateGas = f
+		s.estimateGasAtBlock = f
 	})
 }
 

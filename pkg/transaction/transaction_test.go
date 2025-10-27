@@ -151,11 +151,11 @@ func TestTransactionSend(t *testing.T) {
 					}
 					return nil
 				}),
-				backendmock.WithEstimateGasFunc(func(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error) {
-					if !bytes.Equal(call.To.Bytes(), recipient.Bytes()) {
-						t.Fatalf("estimating with wrong recipient. wanted %x, got %x", recipient, call.To)
+				backendmock.WithEstimateGasAtBlockFunc(func(ctx context.Context, msg ethereum.CallMsg, blockNumber *big.Int) (gas uint64, err error) {
+					if !bytes.Equal(msg.To.Bytes(), recipient.Bytes()) {
+						t.Fatalf("estimating with wrong recipient. wanted %x, got %x", recipient, msg.To)
 					}
-					if !bytes.Equal(call.Data, txData) {
+					if !bytes.Equal(msg.Data, txData) {
 						t.Fatal("estimating with wrong data")
 					}
 					return estimatedGasLimit, nil
@@ -234,7 +234,7 @@ func TestTransactionSend(t *testing.T) {
 					}
 					return nil
 				}),
-				backendmock.WithEstimateGasFunc(func(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error) {
+				backendmock.WithEstimateGasAtBlockFunc(func(ctx context.Context, msg ethereum.CallMsg, blockNumber *big.Int) (gas uint64, err error) {
 					return 0, errors.New("estimate failure")
 				}),
 				backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
@@ -314,11 +314,11 @@ func TestTransactionSend(t *testing.T) {
 					}
 					return nil
 				}),
-				backendmock.WithEstimateGasFunc(func(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error) {
-					if !bytes.Equal(call.To.Bytes(), recipient.Bytes()) {
-						t.Fatalf("estimating with wrong recipient. wanted %x, got %x", recipient, call.To)
+				backendmock.WithEstimateGasAtBlockFunc(func(ctx context.Context, msg ethereum.CallMsg, blockNumber *big.Int) (gas uint64, err error) {
+					if !bytes.Equal(msg.To.Bytes(), recipient.Bytes()) {
+						t.Fatalf("estimating with wrong recipient. wanted %x, got %x", recipient, msg.To)
 					}
-					if !bytes.Equal(call.Data, txData) {
+					if !bytes.Equal(msg.Data, txData) {
 						t.Fatal("estimating with wrong data")
 					}
 					return estimatedGasLimit, nil
@@ -396,11 +396,11 @@ func TestTransactionSend(t *testing.T) {
 					}
 					return nil
 				}),
-				backendmock.WithEstimateGasFunc(func(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error) {
-					if !bytes.Equal(call.To.Bytes(), recipient.Bytes()) {
-						t.Fatalf("estimating with wrong recipient. wanted %x, got %x", recipient, call.To)
+				backendmock.WithEstimateGasAtBlockFunc(func(ctx context.Context, msg ethereum.CallMsg, blockNumber *big.Int) (gas uint64, err error) {
+					if !bytes.Equal(msg.To.Bytes(), recipient.Bytes()) {
+						t.Fatalf("estimating with wrong recipient. wanted %x, got %x", recipient, msg.To)
 					}
-					if !bytes.Equal(call.Data, txData) {
+					if !bytes.Equal(msg.Data, txData) {
 						t.Fatal("estimating with wrong data")
 					}
 					return estimatedGasLimit, nil
@@ -461,7 +461,7 @@ func TestTransactionSend(t *testing.T) {
 					}
 					return nil
 				}),
-				backendmock.WithEstimateGasFunc(func(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error) {
+				backendmock.WithEstimateGasAtBlockFunc(func(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) (gas uint64, err error) {
 					if !bytes.Equal(call.To.Bytes(), recipient.Bytes()) {
 						t.Fatalf("estimating with wrong recipient. wanted %x, got %x", recipient, call.To)
 					}
@@ -527,7 +527,7 @@ func TestTransactionSend(t *testing.T) {
 					}
 					return nil
 				}),
-				backendmock.WithEstimateGasFunc(func(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error) {
+				backendmock.WithEstimateGasAtBlockFunc(func(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) (gas uint64, err error) {
 					if !bytes.Equal(call.To.Bytes(), recipient.Bytes()) {
 						t.Fatalf("estimating with wrong recipient. wanted %x, got %x", recipient, call.To)
 					}
