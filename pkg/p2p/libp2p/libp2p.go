@@ -767,19 +767,29 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		err = s.determineCurrentNetworkStatus(err)
 	}()
 
-	peerID, remotes, err := normalizeAddrsSamePeer(s.logger, addrs)
+	addrInfos, err := libp2ppeer.AddrInfosFromP2pAddrs(addrs...)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, r := range remotes {
-		if overlay, found := s.peers.isConnected(peerID, r); found {
+	if len(addrInfos) == 0 {
+		return nil, errors.New("no addressed peers provided")
+	}
+
+	if l := len(addrInfos); l == 0 {
+		return nil, fmt.Errorf("multiple peers addressed: %v", l)
+	}
+
+	info := addrInfos[0]
+	peerID := info.ID
+
+	for _, r := range info.Addrs {
+		if overlay, found := s.peers.isConnected(info.ID, r); found {
 			return &bzz.Address{Overlay: overlay, Underlays: addrs}, p2p.ErrAlreadyConnected
 		}
 	}
 
 	// libp2p will chose first ready address (possible multi dial).
-	info := libp2ppeer.AddrInfo{ID: peerID, Addrs: remotes}
 	if err := s.connectionBreaker.Execute(func() error { return s.host.Connect(ctx, info) }); err != nil {
 		if errors.Is(err, breaker.ErrClosed) {
 			s.metrics.ConnectBreakerCount.Inc()
@@ -902,42 +912,6 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	loggerV1.Debug("successfully connected to peer (outbound)", "addresses", i.BzzAddress.ShortString(), "light", i.LightString(), "user_agent", peerUA)
 	s.logger.Debug("successfully connected to peer (outbound)", "address", overlay, "light", i.LightString(), "user_agent", peerUA)
 	return i.BzzAddress, nil
-}
-
-func normalizeAddrsSamePeer(logger log.Logger, addrs []ma.Multiaddr) (libp2ppeer.ID, []ma.Multiaddr, error) {
-	var id libp2ppeer.ID
-	seen := make(map[string]struct{})
-	remotes := make([]ma.Multiaddr, 0)
-
-	for _, a := range addrs {
-		info, err := libp2ppeer.AddrInfoFromP2pAddr(a)
-		if err != nil {
-			logger.Debug("addr info from p2p addr", "multiaddress", a.String(), "error", err)
-			continue
-		}
-		if id == "" {
-			id = info.ID
-		} else if id != info.ID {
-			logger.Debug("mixed peer IDs in underlay list", "multiaddress", a.String(), "id1", id, "id2", info.ID)
-			continue
-		}
-		hostAddr, err := buildHostAddress(info.ID) // /p2p/<id>
-		if err != nil {
-			logger.Debug("build host address", "multiaddress", a.String(), "id", info.ID)
-			continue
-		}
-		remote := a.Decapsulate(hostAddr) // clear transport: /ip4/.../tcp/... | /dns4/.../wss | ...
-		key := remote.String()
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		remotes = append(remotes, remote)
-	}
-	if id == "" || len(remotes) == 0 {
-		return "", nil, errors.New("no valid underlay addresses")
-	}
-	return id, remotes, nil
 }
 
 func (s *Service) Disconnect(overlay swarm.Address, reason string) (err error) {
