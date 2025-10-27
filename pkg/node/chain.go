@@ -372,8 +372,8 @@ func (m noOpChainBackend) SuggestGasTipCap(context.Context) (*big.Int, error) {
 	panic("chain no op: SuggestGasTipCap")
 }
 
-func (m noOpChainBackend) EstimateGas(context.Context, ethereum.CallMsg) (uint64, error) {
-	panic("chain no op: EstimateGas")
+func (m noOpChainBackend) EstimateGasAtBlock(context.Context, ethereum.CallMsg, *big.Int) (uint64, error) {
+	panic("chain no op: EstimateGasAtBlock")
 }
 
 func (m noOpChainBackend) SendTransaction(context.Context, *types.Transaction) error {

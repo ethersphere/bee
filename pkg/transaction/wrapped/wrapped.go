@@ -138,11 +138,10 @@ func (b *wrappedBackend) SuggestGasTipCap(ctx context.Context) (*big.Int, error)
 	}
 	return gasTipCap, nil
 }
-
-func (b *wrappedBackend) EstimateGas(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error) {
+func (b *wrappedBackend) EstimateGasAtBlock(ctx context.Context, msg ethereum.CallMsg, blockNumber *big.Int) (uint64, error) {
 	b.metrics.TotalRPCCalls.Inc()
 	b.metrics.EstimateGasCalls.Inc()
-	gas, err = b.backend.EstimateGas(ctx, call)
+	gas, err := b.backend.EstimateGasAtBlock(ctx, msg, blockNumber)
 	if err != nil {
 		b.metrics.TotalRPCErrors.Inc()
 		return 0, err
