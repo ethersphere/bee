@@ -763,24 +763,36 @@ func buildUnderlayAddress(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr
 func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *bzz.Address, err error) {
 	loggerV1 := s.logger.V(1).Register()
 
+	addr := bzz.SelectBestAdvertisedAddress(addrs, nil)
+
+	s.logger.Info("INVESTIGATION connect1", "node addrs", s.host.Addrs(), "addrs", addrs, "addr", addr)
+
 	defer func() {
 		err = s.determineCurrentNetworkStatus(err)
 	}()
 
-	peerID, remotes, err := normalizeAddrsSamePeer(s.logger, addrs)
+	// Extract the peer ID from the multiaddr.
+	info, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("addr from p2p: %w", err)
 	}
 
-	for _, r := range remotes {
-		if overlay, found := s.peers.isConnected(peerID, r); found {
-			return &bzz.Address{Overlay: overlay, Underlays: addrs}, p2p.ErrAlreadyConnected
+	hostAddr, err := buildHostAddress(info.ID)
+	if err != nil {
+		return nil, fmt.Errorf("build host address: %w", err)
+	}
+
+	remoteAddr := addr.Decapsulate(hostAddr)
+
+	if overlay, found := s.peers.isConnected(info.ID, remoteAddr); found {
+		address = &bzz.Address{
+			Overlay:   overlay,
+			Underlays: []ma.Multiaddr{addr},
 		}
+		return address, p2p.ErrAlreadyConnected
 	}
 
-	// libp2p will chose first ready address (possible multi dial).
-	info := libp2ppeer.AddrInfo{ID: peerID, Addrs: remotes}
-	if err := s.connectionBreaker.Execute(func() error { return s.host.Connect(ctx, info) }); err != nil {
+	if err := s.connectionBreaker.Execute(func() error { return s.host.Connect(ctx, *info) }); err != nil {
 		if errors.Is(err, breaker.ErrClosed) {
 			s.metrics.ConnectBreakerCount.Inc()
 			return nil, p2p.NewConnectionBackoffError(err, s.connectionBreaker.ClosedUntil())
@@ -795,35 +807,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	}
 
 	handshakeStream := newStream(stream, s.metrics)
-
-	connectionPeer := stream.Conn().RemotePeer()
-
-	waitPeersCtx, cancel := context.WithTimeout(ctx, peerstoreWaitAddrsTimeout)
-	defer cancel()
-
-	peerMultiaddrs, err := buildFullMAs(waitPeerAddrs(waitPeersCtx, s.host.Peerstore(), peerID), peerID)
-	if err != nil {
-		_ = handshakeStream.Reset()
-		_ = s.host.Network().ClosePeer(peerID)
-		return nil, fmt.Errorf("build peer multiaddrs: %w", err)
-	}
-
-	if len(peerMultiaddrs) == 0 {
-		fullRemoteAddress, err := buildFullMA(stream.Conn().RemoteMultiaddr(), peerID)
-		if err != nil {
-			return nil, fmt.Errorf("build full remote peer multi address: %w", err)
-		}
-		peerMultiaddrs = append(peerMultiaddrs, fullRemoteAddress)
-	}
-
-	s.logger.Info("INVESTIGATION libp2p connect", "peer", connectionPeer, "connect addrs", addrs, "peer multiaddrs", peerMultiaddrs)
-
-	i, err := s.handshakeService.Handshake(
-		s.ctx,
-		handshakeStream,
-		peerMultiaddrs,
-		handshake.WithBee260Compatibility(s.bee260BackwardCompatibility(peerID)),
-	)
+	i, err := s.handshakeService.Handshake(ctx, handshakeStream, []ma.Multiaddr{must(buildFullMA(stream.Conn().RemoteMultiaddr(), stream.Conn().RemotePeer()))})
 	if err != nil {
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(info.ID)
@@ -896,11 +880,16 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 
 	s.metrics.CreatedConnectionCount.Inc()
 
-	s.notifyReacherConnected(stream, overlay, peerID)
+	s.logger.Info("INVESTIGATION connect2", "node addrs", s.host.Addrs(), "bzz", i.BzzAddress)
 
-	peerUA := appendSpace(s.peerUserAgent(ctx, peerID))
-	loggerV1.Debug("successfully connected to peer (outbound)", "addresses", i.BzzAddress.ShortString(), "light", i.LightString(), "user_agent", peerUA)
-	s.logger.Debug("successfully connected to peer (outbound)", "address", overlay, "light", i.LightString(), "user_agent", peerUA)
+	if s.reacher != nil {
+		s.reacher.Connected(overlay, i.BzzAddress.Underlays[0])
+	}
+
+	peerUserAgent := appendSpace(s.peerUserAgent(ctx, info.ID))
+
+	loggerV1.Debug("successfully connected to peer (outbound)", "addresses", i.BzzAddress.ShortString(), "light", i.LightString(), "user_agent", peerUserAgent)
+	s.logger.Debug("successfully connected to peer (outbound)", "address", i.BzzAddress.Overlay, "light", i.LightString(), "user_agent", peerUserAgent)
 	return i.BzzAddress, nil
 }
 
@@ -1367,4 +1356,11 @@ func waitPeerAddrs(ctx context.Context, s peerstore.Peerstore, peerID libp2ppeer
 	case <-ctx.Done():
 		return s.Addrs(peerID)
 	}
+}
+
+func must[T any](v T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return v
 }
