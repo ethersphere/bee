@@ -222,6 +222,23 @@ func NewBee(
 		return nil, fmt.Errorf("tracer: %w", err)
 	}
 
+	if o.NATAddr != "" {
+		host, _, err := net.SplitHostPort(o.NATAddr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid NAT address: %w", err)
+		}
+		if host == "" {
+			return nil, errors.New("invalid NAT address: host is empty")
+		}
+		if host == "localhost" {
+			return nil, errors.New("invalid NAT address: localhost is not a valid NAT address")
+		}
+		ip := net.ParseIP(host)
+		if ip != nil && ip.IsLoopback() {
+			return nil, errors.New("invalid NAT address: loopback address is not a valid NAT address")
+		}
+	}
+
 	ctx, ctxCancel := context.WithCancel(ctx)
 	defer func() {
 		// if there's been an error on this function
