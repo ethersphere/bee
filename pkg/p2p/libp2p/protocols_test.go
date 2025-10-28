@@ -12,8 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"testing/synctest"
-
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/v2/pkg/spinlock"
@@ -28,35 +26,33 @@ import (
 func TestNewStream(t *testing.T) {
 	t.Parallel()
 
-	synctest.Test(t, func(t *testing.T) {
-		ctx := t.Context()
+	ctx := t.Context()
 
-		s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
-			FullNode: true,
-		}})
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
 
-		s2, _ := newService(t, 1, libp2pServiceOpts{})
+	s2, _ := newService(t, 1, libp2pServiceOpts{})
 
-		if err := s1.AddProtocol(newTestProtocol(func(_ context.Context, p p2p.Peer, _ p2p.Stream) error {
-			return nil
-		})); err != nil {
-			t.Fatal(err)
-		}
+	if err := s1.AddProtocol(newTestProtocol(func(_ context.Context, p p2p.Peer, _ p2p.Stream) error {
+		return nil
+	})); err != nil {
+		t.Fatal(err)
+	}
 
-		addr := serviceUnderlayAddress(t, s1)
+	addr := serviceUnderlayAddress(t, s1)
 
-		if _, err := s2.Connect(ctx, addr); err != nil {
-			t.Fatal(err)
-		}
+	if _, err := s2.Connect(ctx, addr); err != nil {
+		t.Fatal(err)
+	}
 
-		stream, err := s2.NewStream(ctx, overlay1, nil, testProtocolName, testProtocolVersion, testStreamName)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := stream.Close(); err != nil {
-			t.Fatal(err)
-		}
-	})
+	stream, err := s2.NewStream(ctx, overlay1, nil, testProtocolName, testProtocolVersion, testStreamName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := stream.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestNewStream_OnlyFull tests that the handler gets the full
@@ -64,40 +60,38 @@ func TestNewStream(t *testing.T) {
 func TestNewStream_OnlyFull(t *testing.T) {
 	t.Parallel()
 
-	synctest.Test(t, func(t *testing.T) {
-		ctx := t.Context()
+	ctx := t.Context()
 
-		s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
-			FullNode: true,
-		}})
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
 
-		s2, _ := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
-			FullNode: true,
-		}})
+	s2, _ := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
 
-		if err := s1.AddProtocol(newTestProtocol(func(_ context.Context, p p2p.Peer, _ p2p.Stream) error {
-			if !p.FullNode {
-				t.Error("expected full node")
-			}
-			return nil
-		})); err != nil {
-			t.Fatal(err)
+	if err := s1.AddProtocol(newTestProtocol(func(_ context.Context, p p2p.Peer, _ p2p.Stream) error {
+		if !p.FullNode {
+			t.Error("expected full node")
 		}
+		return nil
+	})); err != nil {
+		t.Fatal(err)
+	}
 
-		addr := serviceUnderlayAddress(t, s1)
+	addr := serviceUnderlayAddress(t, s1)
 
-		if _, err := s2.Connect(ctx, addr); err != nil {
-			t.Fatal(err)
-		}
+	if _, err := s2.Connect(ctx, addr); err != nil {
+		t.Fatal(err)
+	}
 
-		stream, err := s2.NewStream(ctx, overlay1, nil, testProtocolName, testProtocolVersion, testStreamName)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := stream.Close(); err != nil {
-			t.Fatal(err)
-		}
-	})
+	stream, err := s2.NewStream(ctx, overlay1, nil, testProtocolName, testProtocolVersion, testStreamName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := stream.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestNewStream_Mixed tests that the handler gets the full
@@ -105,38 +99,36 @@ func TestNewStream_OnlyFull(t *testing.T) {
 func TestNewStream_Mixed(t *testing.T) {
 	t.Parallel()
 
-	synctest.Test(t, func(t *testing.T) {
-		ctx := t.Context()
+	ctx := t.Context()
 
-		s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
-			FullNode: true,
-		}})
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
 
-		s2, _ := newService(t, 1, libp2pServiceOpts{})
+	s2, _ := newService(t, 1, libp2pServiceOpts{})
 
-		if err := s1.AddProtocol(newTestProtocol(func(_ context.Context, p p2p.Peer, _ p2p.Stream) error {
-			if p.FullNode {
-				t.Error("expected light node")
-			}
-			return nil
-		})); err != nil {
-			t.Fatal(err)
+	if err := s1.AddProtocol(newTestProtocol(func(_ context.Context, p p2p.Peer, _ p2p.Stream) error {
+		if p.FullNode {
+			t.Error("expected light node")
 		}
+		return nil
+	})); err != nil {
+		t.Fatal(err)
+	}
 
-		addr := serviceUnderlayAddress(t, s1)
+	addr := serviceUnderlayAddress(t, s1)
 
-		if _, err := s2.Connect(ctx, addr); err != nil {
-			t.Fatal(err)
-		}
+	if _, err := s2.Connect(ctx, addr); err != nil {
+		t.Fatal(err)
+	}
 
-		stream, err := s2.NewStream(ctx, overlay1, nil, testProtocolName, testProtocolVersion, testStreamName)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := stream.Close(); err != nil {
-			t.Fatal(err)
-		}
-	})
+	stream, err := s2.NewStream(ctx, overlay1, nil, testProtocolName, testProtocolVersion, testStreamName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := stream.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestNewStreamMulti is a regression test to see that we trigger
