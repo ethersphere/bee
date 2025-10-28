@@ -223,7 +223,7 @@ func NewBee(
 		return nil, fmt.Errorf("tracer: %w", err)
 	}
 
-	if err := ValidatePublicAddress(o.NATAddr); err != nil {
+	if err := validatePublicAddress(o.NATAddr); err != nil {
 		return nil, err
 	}
 
@@ -1469,7 +1469,7 @@ func isChainEnabled(o *Options, swapEndpoint string, logger log.Logger) bool {
 	return true // all other modes operate require chain enabled
 }
 
-func ValidatePublicAddress(addr string) error {
+func validatePublicAddress(addr string) error {
 	if addr == "" {
 		return nil
 	}
@@ -1491,8 +1491,14 @@ func ValidatePublicAddress(addr string) error {
 		return errors.New("invalid address: localhost is not a valid address")
 	}
 	ip := net.ParseIP(host)
-	if ip != nil && ip.IsLoopback() {
+	if ip == nil {
+		return errors.New("invalid address: not a valid IP address")
+	}
+	if ip.IsLoopback() {
 		return errors.New("invalid address: loopback address is not a valid address")
+	}
+	if ip.IsPrivate() {
+		return errors.New("invalid address: private address is not a valid address")
 	}
 
 	return nil

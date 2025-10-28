@@ -1,4 +1,4 @@
-// Copyright 2023 The Swarm Authors. All rights reserved.
+// Copyright 2025 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -67,6 +67,21 @@ func TestValidatePublicAddress(t *testing.T) {
 			name:   "empty",
 			addr:   "",
 			expErr: false,
+		},
+		{
+			name:   "invalid IP",
+			addr:   "not-an-ip:8080",
+			expErr: true,
+		},
+		{
+			name:   "private IP",
+			addr:   "192.168.1.1:8080",
+			expErr: true,
+		},
+		{
+			name:   "hostname",
+			addr:   "example.com:8080",
+			expErr: true,
 		},
 	}
 
