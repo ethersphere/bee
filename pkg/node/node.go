@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -222,21 +223,8 @@ func NewBee(
 		return nil, fmt.Errorf("tracer: %w", err)
 	}
 
-	if o.NATAddr != "" {
-		host, _, err := net.SplitHostPort(o.NATAddr)
-		if err != nil {
-			return nil, fmt.Errorf("invalid NAT address: %w", err)
-		}
-		if host == "" {
-			return nil, errors.New("invalid NAT address: host is empty")
-		}
-		if host == "localhost" {
-			return nil, errors.New("invalid NAT address: localhost is not a valid NAT address")
-		}
-		ip := net.ParseIP(host)
-		if ip != nil && ip.IsLoopback() {
-			return nil, errors.New("invalid NAT address: loopback address is not a valid NAT address")
-		}
+	if err := ValidatePublicAddress(o.NATAddr); err != nil {
+		return nil, err
 	}
 
 	ctx, ctxCancel := context.WithCancel(ctx)
@@ -1479,4 +1467,33 @@ func isChainEnabled(o *Options, swapEndpoint string, logger log.Logger) bool {
 
 	logger.Info("starting with an enabled chain backend")
 	return true // all other modes operate require chain enabled
+}
+
+func ValidatePublicAddress(addr string) error {
+	if addr == "" {
+		return nil
+	}
+
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("invalid address: %w", err)
+	}
+	if host == "" {
+		return errors.New("invalid address: host is empty")
+	}
+	if port == "" {
+		return errors.New("invalid address: port is empty")
+	}
+	if _, err := strconv.ParseUint(port, 10, 16); err != nil {
+		return fmt.Errorf("invalid address: port is not a valid number: %w", err)
+	}
+	if host == "localhost" {
+		return errors.New("invalid address: localhost is not a valid address")
+	}
+	ip := net.ParseIP(host)
+	if ip != nil && ip.IsLoopback() {
+		return errors.New("invalid address: loopback address is not a valid address")
+	}
+
+	return nil
 }

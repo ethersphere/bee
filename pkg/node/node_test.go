@@ -5,32 +5,68 @@
 package node_test
 
 import (
-	"context"
 	"testing"
 
-	"github.com/ethersphere/bee/v2/pkg/crypto"
-	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/node"
 )
 
-func TestNewBee_InvalidNATAddress(t *testing.T) {
+func TestValidatePublicAddress(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		name    string
-		natAddr string
+		name   string
+		addr   string
+		expErr bool
 	}{
 		{
-			name:    "empty host",
-			natAddr: ":1635",
+			name:   "empty host",
+			addr:   ":1635",
+			expErr: true,
 		},
 		{
-			name:    "localhost",
-			natAddr: "localhost:1635",
+			name:   "localhost",
+			addr:   "localhost:1635",
+			expErr: true,
 		},
 		{
-			name:    "loopback",
-			natAddr: "127.0.0.1:1635",
+			name:   "loopback",
+			addr:   "127.0.0.1:1635",
+			expErr: true,
+		},
+		{
+			name:   "loopback ipv6",
+			addr:   "[::1]:1635",
+			expErr: true,
+		},
+		{
+			name:   "missing port",
+			addr:   "1.2.3.4",
+			expErr: true,
+		},
+		{
+			name:   "empty port",
+			addr:   "1.2.3.4:",
+			expErr: true,
+		},
+		{
+			name:   "invalid port number",
+			addr:   "1.2.3.4:abc",
+			expErr: true,
+		},
+		{
+			name:   "valid",
+			addr:   "1.2.3.4:1635",
+			expErr: false,
+		},
+		{
+			name:   "valid ipv6",
+			addr:   "[2001:db8::1]:1635",
+			expErr: false,
+		},
+		{
+			name:   "empty",
+			addr:   "",
+			expErr: false,
 		},
 	}
 
@@ -38,18 +74,12 @@ func TestNewBee_InvalidNATAddress(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			privateKey, err := crypto.GenerateSecp256k1Key()
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			opts := &node.Options{
-				NATAddr: tc.natAddr,
-			}
-
-			_, err = node.NewBee(context.Background(), "", &privateKey.PublicKey, nil, 0, log.Noop, privateKey, privateKey, nil, opts)
-			if err == nil {
+			err := node.ValidatePublicAddress(tc.addr)
+			if tc.expErr && err == nil {
 				t.Fatal("expected error, but got none")
+			}
+			if !tc.expErr && err != nil {
+				t.Fatalf("expected no error, but got: %v", err)
 			}
 		})
 	}
