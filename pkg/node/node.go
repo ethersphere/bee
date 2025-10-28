@@ -1168,7 +1168,7 @@ func NewBee(
 						logger.Debug("sync status check", "synced", synced, "reserveSize", localStore.ReserveSize(), "syncRate", pullerService.SyncRate())
 						if synced {
 							fullSyncTime := pullSyncStartTime.Sub(t)
-							logger.Info("full sync duration", "duration", fullSyncTime)
+							logger.Info("full sync done", "duration", fullSyncTime)
 							nodeMetrics.FullSyncDuration.Observe(fullSyncTime.Minutes())
 							syncCheckTicker.Stop()
 							return

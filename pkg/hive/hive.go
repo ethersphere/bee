@@ -307,6 +307,7 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 					continue
 				}
 				pingSuccessful = true
+				s.logger.Debug("reachable peer underlay", "peer_address", hex.EncodeToString(newPeer.Overlay), "underlay", underlay)
 				break
 			}
 
@@ -357,9 +358,10 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 		// and if the underlays match, skip
 		addr, err := s.addressBook.Get(swarm.NewAddress(p.Overlay))
 		if err == nil && bzz.AreUnderlaysEqual(addr.Underlays, multiUnderlays) {
-			s.logger.Debug("check and add peers, peer exists", "overlay", swarm.NewAddress(p.Overlay).String())
 			continue
 		}
+
+		s.logger.Debug("check and add peers, adding peer", "overlay", swarm.NewAddress(p.Overlay).String())
 
 		// add peer does not exist in the addressbook
 		addPeer(p, multiUnderlays)
