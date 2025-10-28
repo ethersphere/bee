@@ -153,10 +153,10 @@ type Pinger interface {
 	Ping(ctx context.Context, addr ma.Multiaddr) (rtt time.Duration, err error)
 }
 
-type StreamerPinger interface {
-	Streamer
-	Pinger
-}
+// type StreamerPinger interface {
+// 	Streamer
+// 	Pinger
+// }
 
 // Stream represent a bidirectional data Stream.
 type Stream interface {

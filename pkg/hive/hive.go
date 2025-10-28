@@ -55,7 +55,7 @@ var (
 )
 
 type Service struct {
-	streamer          p2p.StreamerPinger
+	streamer          p2p.Streamer
 	addressBook       addressbook.GetPutter
 	addPeersHandler   func(...swarm.Address)
 	networkID         uint64
@@ -71,7 +71,7 @@ type Service struct {
 	allowPrivateCIDRs bool
 }
 
-func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, networkID uint64, bootnode bool, allowPrivateCIDRs bool, logger log.Logger) *Service {
+func New(streamer p2p.Streamer, addressbook addressbook.GetPutter, networkID uint64, bootnode bool, allowPrivateCIDRs bool, logger log.Logger) *Service {
 	svc := &Service{
 		streamer:          streamer,
 		logger:            logger.WithName(loggerName).Register(),
@@ -297,20 +297,20 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 				wg.Done()
 			}()
 
-			ctx, cancel := context.WithTimeout(ctx, pingTimeout)
-			defer cancel()
+			// ctx, cancel := context.WithTimeout(ctx, pingTimeout)
+			// defer cancel()
 
 			var (
 				pingSuccessful bool
-				start          time.Time
+				//start          time.Time
 			)
 			for _, underlay := range multiUnderlay {
 				// ping each underlay address, pick first available
-				start = time.Now()
-				if _, err := s.streamer.Ping(ctx, underlay); err != nil {
-					s.logger.Debug("unreachable peer underlay", "peer_address", hex.EncodeToString(newPeer.Overlay), "underlay", underlay, "error", err)
-					continue
-				}
+				// start = time.Now()
+				// if _, err := s.streamer.Ping(ctx, underlay); err != nil {
+				// 	s.logger.Debug("unreachable peer underlay", "peer_address", hex.EncodeToString(newPeer.Overlay), "underlay", underlay, "error", err)
+				// 	continue
+				// }
 				pingSuccessful = true
 				s.logger.Debug("reachable peer underlay", "peer_address", hex.EncodeToString(newPeer.Overlay), "underlay", underlay)
 				break
@@ -318,12 +318,12 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 
 			if !pingSuccessful {
 				// none of underlay addresses is available
-				s.metrics.PingFailureTime.Observe(time.Since(start).Seconds())
+				//s.metrics.PingFailureTime.Observe(time.Since(start).Seconds())
 				s.metrics.UnreachablePeers.Inc()
 				return
 			}
 
-			s.metrics.PingTime.Observe(time.Since(start).Seconds())
+			//s.metrics.PingTime.Observe(time.Since(start).Seconds())
 			s.metrics.ReachablePeers.Inc()
 
 			bzzAddress := bzz.Address{
