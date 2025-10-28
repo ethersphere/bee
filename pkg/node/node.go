@@ -224,7 +224,7 @@ func NewBee(
 	}
 
 	if err := validatePublicAddress(o.NATAddr); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid NAT address %s: %w", o.NATAddr, err)
 	}
 
 	ctx, ctxCancel := context.WithCancel(ctx)
