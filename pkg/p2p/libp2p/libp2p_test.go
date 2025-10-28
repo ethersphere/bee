@@ -81,11 +81,6 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 	opts := o.libp2pOpts
 	opts.Nonce = nonce
 
-	// Disable UPnP/NAT to avoid deadlock in CI. Any NATAddr (e.g. 127.0.0.1:0) turns it off.
-	if opts.NATAddr == "" {
-		opts.NATAddr = "127.0.0.1:0"
-	}
-
 	s, err = libp2p.New(ctx, crypto.NewDefaultSigner(swarmKey), networkID, overlay, addr, o.Addressbook, statestore, o.lightNodes, o.Logger, nil, opts)
 	if err != nil {
 		t.Fatal(err)

@@ -47,17 +47,15 @@ const (
 func TestAddresses(t *testing.T) {
 	t.Parallel()
 
-	synctest.Test(t, func(t *testing.T) {
-		s, _ := newService(t, 1, libp2pServiceOpts{})
+	s, _ := newService(t, 1, libp2pServiceOpts{})
 
-		addrs, err := s.Addresses()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if l := len(addrs); l == 0 {
-			t.Fatal("no addresses")
-		}
-	})
+	addrs, err := s.Addresses()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l := len(addrs); l == 0 {
+		t.Fatal("no addresses")
+	}
 }
 
 func TestConnectDisconnect(t *testing.T) {
