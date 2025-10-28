@@ -271,7 +271,7 @@ func TestStreamsMaxIncomingLimit(t *testing.T) {
 	if len(streams) != maxIncomingStreams {
 		t.Errorf("got %v streams, want %v", len(streams), maxIncomingStreams)
 	}
- 
+
 	expectPeers(t, s2, overlay1)
 	expectPeersEventually(t, s1, overlay2)
 }
