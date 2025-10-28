@@ -15,6 +15,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -110,6 +112,9 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 var ErrShutdownInProgress = errors.New("shutdown in progress")
 
 func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, peers ...swarm.Address) error {
+	file, line, function, _ := getCallerInfo(2)
+	s.logger.Info("INVESTIGATION Hive BroadcastPeers", "addressee", addressee, "peers", peers, "file", file, "line", line, "function", function)
+
 	maxSize := maxBatchSize
 	s.metrics.BroadcastPeers.Inc()
 	s.metrics.BroadcastPeersPeers.Add(float64(len(peers)))
@@ -389,4 +394,26 @@ func (s *Service) filterAdvertisableUnderlays(underlays []ma.Multiaddr) []ma.Mul
 	}
 
 	return publicUnderlays
+}
+
+func getCallerInfo(skip int) (file string, line int, function string, ok bool) {
+	pc, file, line, ok := runtime.Caller(skip)
+	if !ok {
+		return "", 0, "", false
+	}
+	fn := runtime.FuncForPC(pc)
+	if fn == nil {
+		return file, line, "unknown", true
+	}
+	funcName := fn.Name()
+	// Optionally, strip the package path from the function name for brevity
+	lastSlash := strings.LastIndex(funcName, "/")
+	if lastSlash != -1 {
+		funcName = funcName[lastSlash+1:]
+	}
+	lastDot := strings.LastIndex(funcName, ".")
+	if lastDot != -1 {
+		funcName = funcName[lastDot+1:]
+	}
+	return file, line, funcName, true
 }
