@@ -95,13 +95,14 @@ func (s *Service) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	s.wsWg.Add(1)
-	go s.handleUploadStream(logger, wsConn, putter)
+	go s.handleUploadStream(logger, wsConn, putter, tag)
 }
 
 func (s *Service) handleUploadStream(
 	logger log.Logger,
 	conn *websocket.Conn,
 	putter storer.PutterSession,
+	tag uint64,
 ) {
 	defer s.wsWg.Done()
 
@@ -190,14 +191,56 @@ func (s *Service) handleUploadStream(
 			return
 		}
 
-		chunk, err := cac.NewWithDataSpan(msg)
+		// Check if this message contains a per-chunk stamp prepended to the chunk data
+		// Format: stamp[113 bytes] + chunk[data]
+		var (
+			chunk       swarm.Chunk
+			chunkPutter = putter // default to connection-level putter
+			chunkData   = msg
+		)
+
+		// If message is large enough to contain a stamp + chunk data, try to extract the stamp
+		if len(msg) >= postage.StampSize+swarm.SpanSize {
+			potentialStamp := msg[:postage.StampSize]
+			potentialChunkData := msg[postage.StampSize:]
+
+			// Try to unmarshal as a stamp
+			stamp := postage.Stamp{}
+			if err := stamp.UnmarshalBinary(potentialStamp); err == nil {
+				// Valid stamp found - create a per-chunk putter
+				chunkPutter, err = s.newStampedPutter(ctx, putterOptions{
+					BatchID:  stamp.BatchID(),
+					TagID:    tag,
+					Deferred: tag != 0,
+				}, &stamp)
+				if err != nil {
+					logger.Debug("chunk upload stream: failed to create stamped putter", "error", err)
+					logger.Error(nil, "chunk upload stream: failed to create stamped putter")
+					switch {
+					case errors.Is(err, errBatchUnusable) || errors.Is(err, postage.ErrNotUsable):
+						sendErrorClose(websocket.CloseInternalServerErr, "batch not usable")
+					case errors.Is(err, postage.ErrNotFound):
+						sendErrorClose(websocket.CloseInternalServerErr, "batch not found")
+					default:
+						sendErrorClose(websocket.CloseInternalServerErr, "stamped putter creation failed")
+					}
+					return
+				}
+				// Use the chunk data without the stamp
+				chunkData = potentialChunkData
+				// Note: we need to call Done on the per-chunk putter after Put
+			}
+			// If unmarshal failed, fall through to use the whole message as chunk data
+		}
+
+		chunk, err = cac.NewWithDataSpan(chunkData)
 		if err != nil {
 			logger.Debug("chunk upload stream: create chunk failed", "error", err)
 			logger.Error(nil, "chunk upload stream: create chunk failed")
 			return
 		}
 
-		err = putter.Put(ctx, chunk)
+		err = chunkPutter.Put(ctx, chunk)
 		if err != nil {
 			logger.Debug("chunk upload stream: write chunk failed", "address", chunk.Address(), "error", err)
 			logger.Error(nil, "chunk upload stream: write chunk failed")
@@ -208,6 +251,13 @@ func (s *Service) handleUploadStream(
 				sendErrorClose(websocket.CloseInternalServerErr, "chunk write error")
 			}
 			return
+		}
+
+		// If we created a per-chunk putter, clean it up
+		if chunkPutter != putter {
+			if err := chunkPutter.Done(swarm.ZeroAddress); err != nil {
+				logger.Error(err, "chunk upload stream: failed to finalize per-chunk putter")
+			}
 		}
 
 		err = sendMsg(websocket.BinaryMessage, successWsMsg)
