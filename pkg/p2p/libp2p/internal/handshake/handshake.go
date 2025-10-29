@@ -211,8 +211,6 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 
 	advertisableUnderlays = selectSingleBee260CompatibleUnderlay(o.bee260compatibility, advertisableUnderlays)
 
-	s.logger.Info("INVESTIGATION handshake call", "observed addrs", observedUnderlays, "advertisable addrs", advertisableUnderlays)
-
 	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce)
 	if err != nil {
 		return nil, err
@@ -316,8 +314,6 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 	})
 
 	advertisableUnderlays = selectSingleBee260CompatibleUnderlay(o.bee260compatibility, advertisableUnderlays)
-
-	s.logger.Info("INVESTIGATION handshake handle", "observed addrs", observedUnderlays, "advertisable addrs", advertisableUnderlays)
 
 	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce)
 	if err != nil {

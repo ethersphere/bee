@@ -437,8 +437,6 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		peerMultiaddrs = append(peerMultiaddrs, fullRemoteAddress)
 	}
 
-	s.logger.Info("INVESTIGATION libp2p handle incoming connection", "peer", peerID, "peer multiaddrs", peerMultiaddrs)
-
 	i, err := s.handshakeService.Handle(
 		s.ctx,
 		handshakeStream,
@@ -825,8 +823,6 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 
 	handshakeStream := newStream(stream, s.metrics)
 
-	connectionPeer := stream.Conn().RemotePeer()
-
 	waitPeersCtx, cancel := context.WithTimeout(ctx, peerstoreWaitAddrsTimeout)
 	defer cancel()
 
@@ -844,8 +840,6 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		}
 		peerMultiaddrs = append(peerMultiaddrs, fullRemoteAddress)
 	}
-
-	s.logger.Info("INVESTIGATION libp2p connect", "peer", connectionPeer, "connect addrs", addrs, "peer multiaddrs", peerMultiaddrs)
 
 	i, err := s.handshakeService.Handshake(
 		s.ctx,
