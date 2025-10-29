@@ -121,7 +121,7 @@ endif
 .PHONY: test-ci
 test-ci:
 ifdef cover
-	$(GO) test -run "[^FLAKY]$$" -coverprofile=cover.out ./pkg/file/joiner 
+	$(GO) test -run "[^FLAKY]$$" -coverprofile=cover.out ./pkg/file/joiner
 else
 	$(GO) test -run "[^FLAKY]$$" ./pkg/file/joiner
 endif
