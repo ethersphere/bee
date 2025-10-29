@@ -95,7 +95,7 @@ func TestUnflagBeforeBlock(t *testing.T) {
 		b := blocker.New(mock, flagTime, blockTime, time.Millisecond, nil, log.Noop)
 		testutil.CleanupCloser(t, b)
 
-		// Flagging address shouldn't block it imidietly
+		// Flagging address shouldn't block it immediately
 		b.Flag(addr)
 
 		time.Sleep(flagTime / 2)
@@ -123,7 +123,7 @@ func TestPruneBeforeBlock(t *testing.T) {
 		b := blocker.New(mock, flagTime, blockTime, time.Millisecond, nil, log.Noop)
 		testutil.CleanupCloser(t, b)
 
-		// Flagging address shouldn't block it imidietly
+		// Flagging address shouldn't block it immediately
 		b.Flag(addr)
 
 		time.Sleep(flagTime / 2)
