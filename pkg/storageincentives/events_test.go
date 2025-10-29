@@ -7,87 +7,88 @@ package storageincentives_test
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/storageincentives"
 )
 
 func TestClose(t *testing.T) {
-	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		ev := storageincentives.NewEvents()
 
-	ev := storageincentives.NewEvents()
+		done1 := make(chan struct{})
+		done2 := make(chan struct{})
+		done3 := make(chan struct{})
 
-	done1 := make(chan struct{})
-	done2 := make(chan struct{})
-	done3 := make(chan struct{})
+		ev.On(1, func(ctx context.Context) {
+			<-ctx.Done()
+			close(done1)
+		})
 
-	ev.On(1, func(ctx context.Context) {
-		<-ctx.Done()
-		close(done1)
-	})
+		ev.On(1, func(ctx context.Context) {
+			<-ctx.Done()
+			close(done2)
+		})
 
-	ev.On(1, func(ctx context.Context) {
-		<-ctx.Done()
-		close(done2)
-	})
+		ev.On(2, func(ctx context.Context) {
+			<-ctx.Done()
+			close(done3)
+		})
 
-	ev.On(2, func(ctx context.Context) {
-		<-ctx.Done()
-		close(done3)
-	})
+		ev.Publish(1)
+		ev.Publish(2)
 
-	ev.Publish(1)
-	ev.Publish(2)
+		ev.Close()
 
-	ev.Close()
-
-	for range 3 {
-		select {
-		case <-done1:
-		case <-done2:
-		case <-done3:
-		case <-time.After(time.Second):
-			t.Fatal("timeout")
+		for range 3 {
+			select {
+			case <-done1:
+			case <-done2:
+			case <-done3:
+			case <-time.After(time.Second):
+				t.Fatal("timeout")
+			}
 		}
-	}
+	})
 }
 
 func TestPhaseCancel(t *testing.T) {
-	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		ev := storageincentives.NewEvents()
 
-	ev := storageincentives.NewEvents()
+		done1 := make(chan struct{})
+		done2 := make(chan struct{})
+		defer ev.Close()
 
-	done1 := make(chan struct{})
-	done2 := make(chan struct{})
-	defer ev.Close()
+		// ensure no panics occur on an empty publish
+		ev.Publish(0)
 
-	// ensure no panics occur on an empty publish
-	ev.Publish(0)
+		ev.On(1, func(ctx context.Context) {
+			<-ctx.Done()
+			close(done1)
+		})
 
-	ev.On(1, func(ctx context.Context) {
-		<-ctx.Done()
-		close(done1)
-	})
+		ev.On(2, func(ctx context.Context) {
+			<-ctx.Done()
+			close(done2)
+		})
 
-	ev.On(2, func(ctx context.Context) {
-		<-ctx.Done()
-		close(done2)
-	})
+		ev.On(3, func(ctx context.Context) {
+			ev.Cancel(1, 2)
+		})
 
-	ev.On(3, func(ctx context.Context) {
-		ev.Cancel(1, 2)
-	})
+		ev.Publish(1)
+		ev.Publish(2)
+		ev.Publish(3)
 
-	ev.Publish(1)
-	ev.Publish(2)
-	ev.Publish(3)
-
-	for range 2 {
-		select {
-		case <-done1:
-		case <-done2:
-		case <-time.After(time.Second):
-			t.Fatal("timeout")
+		for range 2 {
+			select {
+			case <-done1:
+			case <-done2:
+			case <-time.After(time.Second):
+				t.Fatal("timeout")
+			}
 		}
-	}
+	})
 }
