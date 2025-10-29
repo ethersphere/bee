@@ -1476,29 +1476,29 @@ func validatePublicAddress(addr string) error {
 
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
-		return fmt.Errorf("invalid address: %w", err)
+		return fmt.Errorf("%w", err)
 	}
 	if host == "" {
-		return errors.New("invalid address: host is empty")
+		return errors.New("host is empty")
 	}
 	if port == "" {
-		return errors.New("invalid address: port is empty")
+		return errors.New("port is empty")
 	}
 	if _, err := strconv.ParseUint(port, 10, 16); err != nil {
-		return fmt.Errorf("invalid address: port is not a valid number: %w", err)
+		return fmt.Errorf("port is not a valid number: %w", err)
 	}
 	if host == "localhost" {
-		return errors.New("invalid address: localhost is not a valid address")
+		return errors.New("localhost is not a valid address")
 	}
 	ip := net.ParseIP(host)
 	if ip == nil {
-		return errors.New("invalid address: not a valid IP address")
+		return errors.New("not a valid IP address")
 	}
 	if ip.IsLoopback() {
-		return errors.New("invalid address: loopback address is not a valid address")
+		return errors.New("loopback address is not a valid address")
 	}
 	if ip.IsPrivate() {
-		return errors.New("invalid address: private address is not a valid address")
+		return errors.New("private address is not a valid address")
 	}
 
 	return nil

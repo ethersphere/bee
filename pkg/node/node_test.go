@@ -87,8 +87,6 @@ func TestValidatePublicAddress(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			err := node.ValidatePublicAddress(tc.addr)
 			if tc.expErr && err == nil {
 				t.Fatal("expected error, but got none")
