@@ -37,8 +37,6 @@ func TestMain(m *testing.M) {
 }
 
 func TestBlocksAfterFlagTimeout(t *testing.T) {
-	t.Parallel()
-
 	synctest.Test(t, func(t *testing.T) {
 		addr := swarm.RandAddress(t)
 		blockedC := make(chan swarm.Address, 10)
@@ -82,8 +80,6 @@ func TestBlocksAfterFlagTimeout(t *testing.T) {
 }
 
 func TestUnflagBeforeBlock(t *testing.T) {
-	t.Parallel()
-
 	synctest.Test(t, func(t *testing.T) {
 		addr := swarm.RandAddress(t)
 		mock := mockBlockLister(func(a swarm.Address, d time.Duration, r string) error {
@@ -110,8 +106,6 @@ func TestUnflagBeforeBlock(t *testing.T) {
 }
 
 func TestPruneBeforeBlock(t *testing.T) {
-	t.Parallel()
-
 	synctest.Test(t, func(t *testing.T) {
 		addr := swarm.RandAddress(t)
 		mock := mockBlockLister(func(a swarm.Address, d time.Duration, r string) error {
