@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strconv"
 	"testing"
@@ -233,24 +234,24 @@ func TestBroadcastPeers(t *testing.T) {
 			wantBzzAddresses:  bzzAddresses[:2*hive.MaxBatchSize],
 			allowPrivateCIDRs: true,
 		},
-		// "OK - single batch - skip ping failures": {
-		// 	addresee:          swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
-		// 	peers:             overlays[:15],
-		// 	wantMsgs:          []pb.Peers{{Peers: wantMsgs[0].Peers[:15]}},
-		// 	wantOverlays:      overlays[:10],
-		// 	wantBzzAddresses:  bzzAddresses[:10],
-		// 	allowPrivateCIDRs: true,
-		// 	pingErr: func(addr ma.Multiaddr) (rtt time.Duration, err error) {
-		// 		for _, v := range bzzAddresses[10:15] {
-		// 			for _, underlay := range v.Underlays {
-		// 				if underlay.Equal(addr) {
-		// 					return rtt, errors.New("ping failure")
-		// 				}
-		// 			}
-		// 		}
-		// 		return rtt, nil
-		// 	},
-		// },
+		"OK - single batch - skip ping failures": {
+			addresee:          swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
+			peers:             overlays[:15],
+			wantMsgs:          []pb.Peers{{Peers: wantMsgs[0].Peers[:15]}},
+			wantOverlays:      overlays[:10],
+			wantBzzAddresses:  bzzAddresses[:10],
+			allowPrivateCIDRs: true,
+			pingErr: func(addr ma.Multiaddr) (rtt time.Duration, err error) {
+				for _, v := range bzzAddresses[10:15] {
+					for _, underlay := range v.Underlays {
+						if underlay.Equal(addr) {
+							return rtt, errors.New("ping failure")
+						}
+					}
+				}
+				return rtt, nil
+			},
+		},
 		"Ok - don't advertise private CIDRs only": {
 			addresee:          overlays[len(overlays)-1],
 			peers:             overlays[:15],
