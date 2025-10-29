@@ -769,6 +769,12 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	var peerID libp2ppeer.ID
 	var connectErr error
 
+	// Try to connect to each underlay address one by one.
+	//
+	// TODO: investigate the issue when AddrInfo with multiple underlay
+	// addresses for the same peer is passed to the host.Host.Connect function
+	// and reachabiltiy Private is emitted on libp2p EventBus(), which results
+	// in weaker connectivity and failures in some integration tests.
 	for _, addr := range addrs {
 		// Extract the peer ID from the multiaddr.
 		ai, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
