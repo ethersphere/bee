@@ -767,35 +767,54 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		err = s.determineCurrentNetworkStatus(err)
 	}()
 
-	addrInfos, err := libp2ppeer.AddrInfosFromP2pAddrs(addrs...)
-	if err != nil {
-		return nil, err
-	}
+	var info *libp2ppeer.AddrInfo
+	var peerID libp2ppeer.ID
+	var connectErr error
 
-	if len(addrInfos) == 0 {
-		return nil, errors.New("no addressed peers provided")
-	}
-
-	if l := len(addrInfos); l == 0 {
-		return nil, fmt.Errorf("multiple peers addressed: %v", l)
-	}
-
-	info := addrInfos[0]
-	peerID := info.ID
-
-	for _, r := range info.Addrs {
-		if overlay, found := s.peers.isConnected(info.ID, r); found {
-			return &bzz.Address{Overlay: overlay, Underlays: addrs}, p2p.ErrAlreadyConnected
+	for _, addr := range addrs {
+		// Extract the peer ID from the multiaddr.
+		ai, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
+		if err != nil {
+			return nil, fmt.Errorf("addr from p2p: %w", err)
 		}
+
+		info = ai
+		peerID = ai.ID
+
+		hostAddr, err := buildHostAddress(info.ID)
+		if err != nil {
+			return nil, fmt.Errorf("build host address: %w", err)
+		}
+
+		remoteAddr := addr.Decapsulate(hostAddr)
+
+		if overlay, found := s.peers.isConnected(info.ID, remoteAddr); found {
+			address = &bzz.Address{
+				Overlay:   overlay,
+				Underlays: []ma.Multiaddr{addr},
+			}
+			return address, p2p.ErrAlreadyConnected
+		}
+
+		if err := s.connectionBreaker.Execute(func() error { return s.host.Connect(ctx, *info) }); err != nil {
+			if errors.Is(err, breaker.ErrClosed) {
+				s.metrics.ConnectBreakerCount.Inc()
+				return nil, p2p.NewConnectionBackoffError(err, s.connectionBreaker.ClosedUntil())
+			}
+			s.logger.Warning("libp2p connect", "peer_id", peerID, "underlay", info.Addrs, "error", err)
+			connectErr = err
+			continue
+		}
+
+		connectErr = nil
 	}
 
-	// libp2p will chose first ready address (possible multi dial).
-	if err := s.connectionBreaker.Execute(func() error { return s.host.Connect(ctx, info) }); err != nil {
-		if errors.Is(err, breaker.ErrClosed) {
-			s.metrics.ConnectBreakerCount.Inc()
-			return nil, p2p.NewConnectionBackoffError(err, s.connectionBreaker.ClosedUntil())
-		}
-		return nil, err
+	if connectErr != nil {
+		return nil, fmt.Errorf("libp2p connect: %w", err)
+	}
+
+	if info == nil {
+		return nil, fmt.Errorf("unable to identify peer from addresses: %v", addrs)
 	}
 
 	stream, err := s.newStreamForPeerID(ctx, info.ID, handshake.ProtocolName, handshake.ProtocolVersion, handshake.StreamName)
