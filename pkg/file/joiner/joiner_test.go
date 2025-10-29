@@ -1227,8 +1227,6 @@ func TestJoinerRedundancy(t *testing.T) {
 //
 // nolint:thelper
 func TestJoinerRedundancyMultilevel(t *testing.T) {
-	t.Parallel()
-
 	r2level := []int{2, 1, 2, 3, 2}
 	encryptChunk := []bool{false, false, true, true, true}
 
@@ -1258,8 +1256,6 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 
 				testName := fmt.Sprintf("rLevel=%v_encrypt=%v_levels=%d_chunks=%d_incomplete", rLevel, encrypt, levels, chunkCnt)
 				t.Run(testName, func(t *testing.T) {
-					t.Parallel()
-
 					synctest.Test(t, func(t *testing.T) {
 						runRedundancyTest(t, rLevel, encrypt, chunkCnt)
 					})
@@ -1277,8 +1273,6 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 
 				testName = fmt.Sprintf("rLevel=%v_encrypt=%v_levels=%d_chunks=%d_full", rLevel, encrypt, levels, chunkCnt)
 				t.Run(testName, func(t *testing.T) {
-					t.Parallel()
-
 					synctest.Test(t, func(t *testing.T) {
 						runRedundancyTest(t, rLevel, encrypt, chunkCnt)
 					})
