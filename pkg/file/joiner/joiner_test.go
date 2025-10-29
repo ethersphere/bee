@@ -648,22 +648,22 @@ func TestJoinerReadAt(t *testing.T) {
 
 		// create root chunk with 2 references and the referenced data chunks
 		rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
-		err := store.Put(ctx, rootChunk)
-		if err != nil {
+
+		if err := store.Put(ctx, rootChunk); err != nil {
 			t.Fatal(err)
 		}
 
 		firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
 		firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize, swarm.ChunkSize)
-		err = store.Put(ctx, firstChunk)
-		if err != nil {
+
+		if err := store.Put(ctx, firstChunk); err != nil {
 			t.Fatal(err)
 		}
 
 		secondAddress := swarm.NewAddress(rootChunk.Data()[swarm.SectionSize+8:])
 		secondChunk := filetest.GenerateTestRandomFileChunk(secondAddress, swarm.ChunkSize, swarm.ChunkSize)
-		err = store.Put(ctx, secondChunk)
-		if err != nil {
+
+		if err := store.Put(ctx, secondChunk); err != nil {
 			t.Fatal(err)
 		}
 
@@ -673,8 +673,8 @@ func TestJoinerReadAt(t *testing.T) {
 		}
 
 		b := make([]byte, swarm.ChunkSize)
-		_, err = j.ReadAt(b, swarm.ChunkSize)
-		if err != nil {
+
+		if _, err = j.ReadAt(b, swarm.ChunkSize); err != nil {
 			t.Fatal(err)
 		}
 
@@ -685,7 +685,8 @@ func TestJoinerReadAt(t *testing.T) {
 }
 
 // TestJoinerOneLevel tests the retrieval of two data chunks immediately
-// below the root chunk level.
+// below the root chunk level. It verifies that the joiner correctly reads
+// and returns data from both chunks in sequence and handles EOF properly.
 func TestJoinerOneLevel(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		store := inmemchunkstore.New()
@@ -695,22 +696,19 @@ func TestJoinerOneLevel(t *testing.T) {
 
 		// create root chunk with 2 references and the referenced data chunks
 		rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
-		err := store.Put(ctx, rootChunk)
-		if err != nil {
+		if err := store.Put(ctx, rootChunk); err != nil {
 			t.Fatal(err)
 		}
 
 		firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
 		firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize, swarm.ChunkSize)
-		err = store.Put(ctx, firstChunk)
-		if err != nil {
+		if err := store.Put(ctx, firstChunk); err != nil {
 			t.Fatal(err)
 		}
 
 		secondAddress := swarm.NewAddress(rootChunk.Data()[swarm.SectionSize+8:])
 		secondChunk := filetest.GenerateTestRandomFileChunk(secondAddress, swarm.ChunkSize, swarm.ChunkSize)
-		err = store.Put(ctx, secondChunk)
-		if err != nil {
+		if err := store.Put(ctx, secondChunk); err != nil {
 			t.Fatal(err)
 		}
 
@@ -745,13 +743,11 @@ func TestJoinerOneLevel(t *testing.T) {
 		}
 
 		// verify EOF is returned also after first time it is returned
-		_, err = j.Read(outBuffer)
-		if !errors.Is(err, io.EOF) {
+		if _, err = j.Read(outBuffer); !errors.Is(err, io.EOF) {
 			t.Fatal("expected io.EOF")
 		}
 
-		_, err = j.Read(outBuffer)
-		if !errors.Is(err, io.EOF) {
+		if _, err = j.Read(outBuffer); !errors.Is(err, io.EOF) {
 			t.Fatal("expected io.EOF")
 		}
 	})
@@ -769,22 +765,19 @@ func TestJoinerTwoLevelsAcrossChunk(t *testing.T) {
 
 		// create root chunk with 2 references and two intermediate chunks with references
 		rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*swarm.Branches+42, swarm.SectionSize*2)
-		err := store.Put(ctx, rootChunk)
-		if err != nil {
+		if err := store.Put(ctx, rootChunk); err != nil {
 			t.Fatal(err)
 		}
 
 		firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
 		firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize*swarm.Branches, swarm.ChunkSize)
-		err = store.Put(ctx, firstChunk)
-		if err != nil {
+		if err := store.Put(ctx, firstChunk); err != nil {
 			t.Fatal(err)
 		}
 
 		secondAddress := swarm.NewAddress(rootChunk.Data()[swarm.SectionSize+8:])
 		secondChunk := filetest.GenerateTestRandomFileChunk(secondAddress, 42, swarm.SectionSize)
-		err = store.Put(ctx, secondChunk)
-		if err != nil {
+		if err := store.Put(ctx, secondChunk); err != nil {
 			t.Fatal(err)
 		}
 
@@ -794,8 +787,7 @@ func TestJoinerTwoLevelsAcrossChunk(t *testing.T) {
 			chunkAddressBytes := firstChunk.Data()[cursor : cursor+swarm.SectionSize]
 			chunkAddress := swarm.NewAddress(chunkAddressBytes)
 			ch := filetest.GenerateTestRandomFileChunk(chunkAddress, swarm.ChunkSize, swarm.ChunkSize)
-			err := store.Put(ctx, ch)
-			if err != nil {
+			if err := store.Put(ctx, ch); err != nil {
 				t.Fatal(err)
 			}
 			cursor += swarm.SectionSize
@@ -803,8 +795,7 @@ func TestJoinerTwoLevelsAcrossChunk(t *testing.T) {
 		chunkAddressBytes := secondChunk.Data()[8:]
 		chunkAddress := swarm.NewAddress(chunkAddressBytes)
 		ch := filetest.GenerateTestRandomFileChunk(chunkAddress, 42, 42)
-		err = store.Put(ctx, ch)
-		if err != nil {
+		if err := store.Put(ctx, ch); err != nil {
 			t.Fatal(err)
 		}
 
@@ -843,22 +834,19 @@ func TestJoinerIterateChunkAddresses(t *testing.T) {
 
 		// create root chunk with 2 references and the referenced data chunks
 		rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
-		err := store.Put(ctx, rootChunk)
-		if err != nil {
+		if err := store.Put(ctx, rootChunk); err != nil {
 			t.Fatal(err)
 		}
 
 		firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
 		firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize, swarm.ChunkSize)
-		err = store.Put(ctx, firstChunk)
-		if err != nil {
+		if err := store.Put(ctx, firstChunk); err != nil {
 			t.Fatal(err)
 		}
 
 		secondAddress := swarm.NewAddress(rootChunk.Data()[swarm.SectionSize+8:])
 		secondChunk := filetest.GenerateTestRandomFileChunk(secondAddress, swarm.ChunkSize, swarm.ChunkSize)
-		err = store.Put(ctx, secondChunk)
-		if err != nil {
+		if err := store.Put(ctx, secondChunk); err != nil {
 			t.Fatal(err)
 		}
 
@@ -1333,8 +1321,7 @@ func runRedundancyTest(t *testing.T, rLevel redundancy.Level, encrypt bool, size
 		if n != expRead {
 			t.Errorf("read %d bytes out of %d", n, expRead)
 		}
-		_, err = dataReader.Seek(int64(offset), io.SeekStart)
-		if err != nil {
+		if _, err = dataReader.Seek(int64(offset), io.SeekStart); err != nil {
 			t.Fatal(err)
 		}
 		ok, err := dataReader.Match(bytes.NewBuffer(buf), expRead)
