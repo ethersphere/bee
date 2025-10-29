@@ -13,8 +13,6 @@ import (
 )
 
 func TestSubscriber(t *testing.T) {
-	t.Parallel()
-
 	synctest.Test(t, func(t *testing.T) {
 		s := events.NewSubscriber()
 
