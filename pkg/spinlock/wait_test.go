@@ -14,10 +14,8 @@ import (
 )
 
 func TestWait(t *testing.T) {
-	t.Parallel()
 
 	t.Run("timed out", func(t *testing.T) {
-		t.Parallel()
 		synctest.Test(t, func(t *testing.T) {
 			err := spinlock.Wait(time.Millisecond*20, func() bool { return false })
 			if !errors.Is(err, spinlock.ErrTimedOut) {
@@ -27,7 +25,6 @@ func TestWait(t *testing.T) {
 	})
 
 	t.Run("condition satisfied", func(t *testing.T) {
-		t.Parallel()
 		synctest.Test(t, func(t *testing.T) {
 			spinStartTime := time.Now()
 			condCallCount := 0
