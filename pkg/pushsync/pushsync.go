@@ -709,8 +709,7 @@ func calculateOverdraftBackoff(currentDelay time.Duration) time.Duration {
 
 	jitterRange := float64(nextDelay) * overDraftJitterPercent
 	jitter := (rand.Float64() - 0.5) * 2 * jitterRange
-	// final delay [overDraftRefresh, maxOverDraftRefresh]
-	finalDelay := min(max(time.Duration(float64(nextDelay)+jitter), overDraftRefresh), maxOverDraftRefresh)
+	finalDelay := max(time.Duration(float64(nextDelay)+jitter), overDraftRefresh)
 
 	return finalDelay
 }
