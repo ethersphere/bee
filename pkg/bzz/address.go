@@ -29,6 +29,7 @@ var ErrInvalidAddress = errors.New("invalid address")
 // Signature is used to verify the `Overlay/Underlay` pair, as it is based on `underlay|networkID`, signed with the public key of Overlay address
 type Address struct {
 	Underlay        ma.Multiaddr
+	WebRTCUnderlays []ma.Multiaddr
 	Overlay         swarm.Address
 	Signature       []byte
 	Nonce           []byte
@@ -36,10 +37,11 @@ type Address struct {
 }
 
 type addressJSON struct {
-	Overlay   string `json:"overlay"`
-	Underlay  string `json:"underlay"`
-	Signature string `json:"signature"`
-	Nonce     string `json:"transaction"`
+	Overlay      string   `json:"overlay"`
+	Underlay     string   `json:"underlay"`
+	Signature    string   `json:"signature"`
+	Nonce        string   `json:"transaction"`
+	RTCUnderlays []string `json:"rtc_addresses"`
 }
 
 func NewAddress(signer crypto.Signer, underlay ma.Multiaddr, overlay swarm.Address, networkID uint64, nonce []byte) (*Address, error) {
@@ -53,15 +55,18 @@ func NewAddress(signer crypto.Signer, underlay ma.Multiaddr, overlay swarm.Addre
 		return nil, err
 	}
 
+	var rtcUnderlays []ma.Multiaddr
+
 	return &Address{
-		Underlay:  underlay,
-		Overlay:   overlay,
-		Signature: signature,
-		Nonce:     nonce,
+		Underlay:        underlay,
+		WebRTCUnderlays: rtcUnderlays,
+		Overlay:         overlay,
+		Signature:       signature,
+		Nonce:           nonce,
 	}, nil
 }
 
-func ParseAddress(underlay, overlay, signature, nonce []byte, validateOverlay bool, networkID uint64) (*Address, error) {
+func ParseAddress(underlay, overlay, signature, nonce []byte, webRTCUnderlayBytes [][]byte, validateOverlay bool, networkID uint64) (*Address, error) {
 	recoveredPK, err := crypto.Recover(signature, generateSignData(underlay, overlay, networkID))
 	if err != nil {
 		return nil, ErrInvalidAddress
@@ -82,6 +87,15 @@ func ParseAddress(underlay, overlay, signature, nonce []byte, validateOverlay bo
 		return nil, ErrInvalidAddress
 	}
 
+	var rtcAddrs []ma.Multiaddr
+
+	for _, addrbytes := range webRTCUnderlayBytes {
+		rtcUnderlay, err := ma.NewMultiaddrBytes(addrbytes)
+		if err == nil {
+			rtcAddrs = append(rtcAddrs, rtcUnderlay)
+		}
+	}
+
 	ethAddress, err := crypto.NewEthereumAddress(*recoveredPK)
 	if err != nil {
 		return nil, fmt.Errorf("extract blockchain address: %w: %w", err, ErrInvalidAddress)
@@ -89,6 +103,7 @@ func ParseAddress(underlay, overlay, signature, nonce []byte, validateOverlay bo
 
 	return &Address{
 		Underlay:        multiUnderlay,
+		WebRTCUnderlays: rtcAddrs,
 		Overlay:         swarm.NewAddress(overlay),
 		Signature:       signature,
 		Nonce:           nonce,
@@ -114,18 +129,26 @@ func (a *Address) Equal(b *Address) bool {
 
 func multiaddrEqual(a, b ma.Multiaddr) bool {
 	if a == nil || b == nil {
-		return a == b
+		return (a == nil && b == nil)
 	}
 
 	return a.Equal(b)
 }
 
 func (a *Address) MarshalJSON() ([]byte, error) {
+
+	var rtcUnderlays []string
+
+	for _, a := range a.WebRTCUnderlays {
+		rtcUnderlays = append(rtcUnderlays, a.String())
+	}
+
 	return json.Marshal(&addressJSON{
-		Overlay:   a.Overlay.String(),
-		Underlay:  a.Underlay.String(),
-		Signature: base64.StdEncoding.EncodeToString(a.Signature),
-		Nonce:     common.Bytes2Hex(a.Nonce),
+		Overlay:      a.Overlay.String(),
+		Underlay:     a.Underlay.String(),
+		Signature:    base64.StdEncoding.EncodeToString(a.Signature),
+		Nonce:        common.Bytes2Hex(a.Nonce),
+		RTCUnderlays: rtcUnderlays,
 	})
 }
 
@@ -147,6 +170,17 @@ func (a *Address) UnmarshalJSON(b []byte) error {
 	if err != nil {
 		return err
 	}
+
+	var rtcUnderlays []ma.Multiaddr
+
+	for _, addrString := range v.RTCUnderlays {
+		maddr, err := ma.NewMultiaddr(addrString)
+		if err == nil {
+			rtcUnderlays = append(rtcUnderlays, maddr)
+		}
+	}
+
+	a.WebRTCUnderlays = rtcUnderlays
 
 	a.Underlay = m
 	a.Signature, err = base64.StdEncoding.DecodeString(v.Signature)

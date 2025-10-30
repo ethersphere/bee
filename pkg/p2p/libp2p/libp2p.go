@@ -47,7 +47,7 @@ import (
 	lp2pswarm "github.com/libp2p/go-libp2p/p2p/net/swarm"
 	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
-	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
+	webrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
 
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multistream"
@@ -103,6 +103,7 @@ type Service struct {
 	halt              chan struct{}
 	lightNodes        lightnodes
 	lightNodeLimit    int
+	webRTCListenAddrs []string
 	protocolsmu       sync.RWMutex
 	reacher           p2p.Reacher
 	networkStatus     atomic.Int32
@@ -121,21 +122,27 @@ type lightnodes interface {
 type Options struct {
 	PrivateKey       *ecdsa.PrivateKey
 	NATAddr          string
-	EnableWS         bool
+	EnableWebRTC     bool
 	FullNode         bool
 	LightNodeLimit   int
 	WelcomeMessage   string
 	Nonce            []byte
+	WebRTCAddr       string
 	ValidateOverlay  bool
 	hostFactory      func(...libp2p.Option) (host.Host, error)
 	HeadersRWTimeout time.Duration
 	Registry         *prometheus.Registry
 }
 
-func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
+func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr, webRTCAddr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, fmt.Errorf("address: %w", err)
+	}
+
+	_, webRTCport, err := net.SplitHostPort(webRTCAddr)
+	if err != nil {
+		return nil, fmt.Errorf("WebRTC address: %w", err)
 	}
 
 	ip4Addr := "0.0.0.0"
@@ -152,18 +159,23 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		}
 	}
 
+	var rtcListenAddrs []string
 	var listenAddrs []string
 	if ip4Addr != "" {
 		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s", ip4Addr, port))
-		if o.EnableWS {
-			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/ws", ip4Addr, port))
+
+		if o.EnableWebRTC {
+			rtcAddr := fmt.Sprintf("/ip4/%s/udp/%s/webrtc-direct", ip4Addr, webRTCport)
+			rtcListenAddrs = append(rtcListenAddrs, rtcAddr)
+			listenAddrs = append(listenAddrs, rtcAddr)
 		}
+
 	}
 
 	if ip6Addr != "" {
 		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s", ip6Addr, port))
-		if o.EnableWS {
-			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/ws", ip6Addr, port))
+		if o.EnableWebRTC {
+			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/udp/%s/webrtc-direct", ip6Addr, webRTCport))
 		}
 	}
 
@@ -241,11 +253,11 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	transports := []libp2p.Option{
-		libp2p.Transport(tcp.NewTCPTransport, tcp.DisableReuseport()),
+		libp2p.Transport(tcp.NewTCPTransport),
 	}
 
-	if o.EnableWS {
-		transports = append(transports, libp2p.Transport(ws.New))
+	if o.EnableWebRTC {
+		transports = append(transports, libp2p.Transport(webrtc.New))
 	}
 
 	opts = append(opts, transports...)
@@ -363,6 +375,26 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	h.Network().Notify(peerRegistry) // update peer registry on network events
 	h.Network().Notify(connMetricNotify)
 
+	currentAddrs, err := s.Addresses()
+
+	var rtcAddrList [][]byte
+
+	for _, addr := range currentAddrs {
+		protos := addr.Protocols()
+
+		for _, p := range protos {
+			if p.Name == "webrtc-direct" {
+				addr0, err := addr.MarshalBinary()
+				if err == nil {
+					rtcAddrList = append(rtcAddrList, addr0)
+				}
+			}
+		}
+
+	}
+
+	s.handshakeService.SetRTCListenAddrs(rtcAddrList)
+
 	return s, nil
 }
 
@@ -409,6 +441,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 
 	peerID := stream.Conn().RemotePeer()
 	handshakeStream := newStream(stream, s.metrics)
+
 	i, err := s.handshakeService.Handle(s.ctx, handshakeStream, stream.Conn().RemoteMultiaddr(), peerID)
 	if err != nil {
 		s.logger.Debug("stream handler: handshake: handle failed", "peer_id", peerID, "error", err)
