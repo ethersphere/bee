@@ -20,7 +20,7 @@ func (c *command) initStartDevCmd() (err error) {
 
 	cmd := &cobra.Command{
 		Use:               "dev",
-		Short:             "Start a Swarm node in development mode",
+		Short:             "Start a Swarm node in development mode (will be deprecated soon)",
 		PersistentPreRunE: c.CheckUnknownParams,
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			if len(args) > 0 {
@@ -53,6 +53,8 @@ func (c *command) initStartDevCmd() (err error) {
 `
 
 			fmt.Println(beeASCII)
+			fmt.Println()
+			fmt.Println("\u001b[33mWARNING: This command will be deprecated soon.\u001b[0m")
 			fmt.Println()
 			fmt.Println("Starting in development mode")
 			fmt.Println()
