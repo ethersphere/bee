@@ -31,7 +31,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstore"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-	"github.com/prometheus/client_golang/prometheus"
 	"resenje.org/multex"
 )
 
@@ -142,13 +141,13 @@ func (s *store) Run(ctx context.Context, f func(Store) error) error {
 }
 
 // Metrics returns set of prometheus collectors.
-func (s *store) Metrics() []prometheus.Collector {
+func (s *store) Metrics() []m.Collector {
 	return m.PrometheusCollectorsFromFields(s.metrics)
 }
 
 // StatusMetrics exposes metrics that are exposed on the status protocol.
-func (s *store) StatusMetrics() []prometheus.Collector {
-	return []prometheus.Collector{
+func (s *store) StatusMetrics() []m.Collector {
+	return []m.Collector{
 		s.metrics.MethodDuration,
 	}
 }

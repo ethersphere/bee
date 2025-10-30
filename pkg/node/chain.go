@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/config"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
+	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/v2/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/v2/pkg/settlement"
@@ -32,7 +33,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/ethersphere/bee/v2/pkg/transaction/wrapped"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -346,7 +346,7 @@ type noOpChainBackend struct {
 	chainID int64
 }
 
-func (m noOpChainBackend) Metrics() []prometheus.Collector {
+func (m noOpChainBackend) Metrics() []m.Collector {
 	return nil
 }
 

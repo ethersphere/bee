@@ -6,12 +6,11 @@ package transaction
 
 import (
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 type metrics struct {
-	MethodCalls    *prometheus.CounterVec
-	MethodDuration *prometheus.HistogramVec
+	MethodCalls    m.CounterMetricVector
+	MethodDuration m.HistogramMetricVector
 }
 
 // newMetrics is a convenient constructor for creating new metrics.
@@ -19,8 +18,8 @@ func newMetrics() metrics {
 	const subsystem = "transaction"
 
 	return metrics{
-		MethodCalls: prometheus.NewCounterVec(
-			prometheus.CounterOpts{
+		MethodCalls: m.NewCounterVec(
+			m.CounterOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "method_calls",
@@ -28,8 +27,8 @@ func newMetrics() metrics {
 			},
 			[]string{"method", "status"},
 		),
-		MethodDuration: prometheus.NewHistogramVec(
-			prometheus.HistogramOpts{
+		MethodDuration: m.NewHistogramVec(
+			m.HistogramOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "method_duration",

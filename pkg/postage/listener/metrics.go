@@ -6,28 +6,27 @@ package listener
 
 import (
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 type metrics struct {
 	// aggregate events handled
-	EventsProcessed prometheus.Counter
-	EventErrors     prometheus.Counter
-	PagesProcessed  prometheus.Counter
+	EventsProcessed m.Counter
+	EventErrors     m.Counter
+	PagesProcessed  m.Counter
 
 	// individual event counters
-	CreatedCounter prometheus.Counter
-	TopupCounter   prometheus.Counter
-	DepthCounter   prometheus.Counter
-	PriceCounter   prometheus.Counter
+	CreatedCounter m.Counter
+	TopupCounter   m.Counter
+	DepthCounter   m.Counter
+	PriceCounter   m.Counter
 
 	// total calls to chain backend
-	BackendCalls  prometheus.Counter
-	BackendErrors prometheus.Counter
+	BackendCalls  m.Counter
+	BackendErrors m.Counter
 
 	// processing durations
-	PageProcessDuration  prometheus.Counter
-	EventProcessDuration prometheus.Counter
+	PageProcessDuration  m.Counter
+	EventProcessDuration m.Counter
 }
 
 func newMetrics() metrics {
@@ -35,19 +34,19 @@ func newMetrics() metrics {
 
 	return metrics{
 		// aggregate events handled
-		EventsProcessed: prometheus.NewCounter(prometheus.CounterOpts{
+		EventsProcessed: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "events_processed",
 			Help:      "total events processed",
 		}),
-		EventErrors: prometheus.NewCounter(prometheus.CounterOpts{
+		EventErrors: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "event_errors",
 			Help:      "total event errors while processing",
 		}),
-		PagesProcessed: prometheus.NewCounter(prometheus.CounterOpts{
+		PagesProcessed: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "pages_processed",
@@ -55,28 +54,28 @@ func newMetrics() metrics {
 		}),
 
 		// individual event counters
-		CreatedCounter: prometheus.NewCounter(prometheus.CounterOpts{
+		CreatedCounter: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "created_events",
 			Help:      "total batch created events processed",
 		}),
 
-		TopupCounter: prometheus.NewCounter(prometheus.CounterOpts{
+		TopupCounter: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "topup_events",
 			Help:      "total batch topup events handled",
 		}),
 
-		DepthCounter: prometheus.NewCounter(prometheus.CounterOpts{
+		DepthCounter: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "depth_events",
 			Help:      "total batch depth change events handled",
 		}),
 
-		PriceCounter: prometheus.NewCounter(prometheus.CounterOpts{
+		PriceCounter: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "price_events",
@@ -84,13 +83,13 @@ func newMetrics() metrics {
 		}),
 
 		// total call
-		BackendCalls: prometheus.NewCounter(prometheus.CounterOpts{
+		BackendCalls: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "backend_calls",
 			Help:      "total chain backend calls",
 		}),
-		BackendErrors: prometheus.NewCounter(prometheus.CounterOpts{
+		BackendErrors: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "backend_errors",
@@ -98,14 +97,14 @@ func newMetrics() metrics {
 		}),
 
 		// processing durations
-		PageProcessDuration: prometheus.NewCounter(prometheus.CounterOpts{
+		PageProcessDuration: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "page_duration",
 			Help:      "how long it took to process a page",
 		}),
 
-		EventProcessDuration: prometheus.NewCounter(prometheus.CounterOpts{
+		EventProcessDuration: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "event_duration",
@@ -114,6 +113,6 @@ func newMetrics() metrics {
 	}
 }
 
-func (l *listener) Metrics() []prometheus.Collector {
+func (l *listener) Metrics() []m.Collector {
 	return m.PrometheusCollectorsFromFields(l.metrics)
 }

@@ -6,124 +6,123 @@ package pushsync
 
 import (
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 type metrics struct {
-	TotalSent               prometheus.Counter
-	TotalReceived           prometheus.Counter
-	TotalHandlerErrors      prometheus.Counter
-	TotalRequests           prometheus.Counter
-	TotalSendAttempts       prometheus.Counter
-	TotalFailedSendAttempts prometheus.Counter
-	TotalOutgoing           prometheus.Counter
-	TotalOutgoingErrors     prometheus.Counter
-	InvalidStampErrors      prometheus.Counter
-	StampValidationTime     *prometheus.HistogramVec
-	Forwarder               prometheus.Counter
-	Storer                  prometheus.Counter
-	TotalHandlerTime        *prometheus.HistogramVec
-	PushToPeerTime          *prometheus.HistogramVec
+	TotalSent               m.Counter
+	TotalReceived           m.Counter
+	TotalHandlerErrors      m.Counter
+	TotalRequests           m.Counter
+	TotalSendAttempts       m.Counter
+	TotalFailedSendAttempts m.Counter
+	TotalOutgoing           m.Counter
+	TotalOutgoingErrors     m.Counter
+	InvalidStampErrors      m.Counter
+	StampValidationTime     m.HistogramMetricVector
+	Forwarder               m.Counter
+	Storer                  m.Counter
+	TotalHandlerTime        m.HistogramMetricVector
+	PushToPeerTime          m.HistogramMetricVector
 
-	ReceiptDepth        *prometheus.CounterVec
-	ShallowReceiptDepth *prometheus.CounterVec
-	ShallowReceipt      prometheus.Counter
+	ReceiptDepth        m.CounterMetricVector
+	ShallowReceiptDepth m.CounterMetricVector
+	ShallowReceipt      m.Counter
 }
 
 func newMetrics() metrics {
 	subsystem := "pushsync"
 
 	return metrics{
-		TotalSent: prometheus.NewCounter(prometheus.CounterOpts{
+		TotalSent: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "total_sent",
 			Help:      "Total chunks sent.",
 		}),
-		TotalReceived: prometheus.NewCounter(prometheus.CounterOpts{
+		TotalReceived: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "total_received",
 			Help:      "Total chunks received.",
 		}),
-		TotalHandlerErrors: prometheus.NewCounter(prometheus.CounterOpts{
+		TotalHandlerErrors: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "total_handler_errors",
 			Help:      "Total no of error occurred while handling an incoming delivery (either while storing or forwarding).",
 		}),
-		TotalRequests: prometheus.NewCounter(prometheus.CounterOpts{
+		TotalRequests: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "total_requests",
 			Help:      "Total no of requests to push a chunk into the network (from origin nodes or not).",
 		}),
-		TotalSendAttempts: prometheus.NewCounter(prometheus.CounterOpts{
+		TotalSendAttempts: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "total_send_attempts",
 			Help:      "Total no of attempts to push chunk.",
 		}),
-		TotalFailedSendAttempts: prometheus.NewCounter(prometheus.CounterOpts{
+		TotalFailedSendAttempts: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "total_failed_send_attempts",
 			Help:      "Total no of failed attempts to push chunk.",
 		}),
-		TotalOutgoing: prometheus.NewCounter(prometheus.CounterOpts{
+		TotalOutgoing: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "total_outgoing",
 			Help:      "Total no of chunks requested to be synced (calls on exported PushChunkToClosest)",
 		}),
-		TotalOutgoingErrors: prometheus.NewCounter(prometheus.CounterOpts{
+		TotalOutgoingErrors: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "total_outgoing_errors",
 			Help:      "Total no of errors of entire operation to sync a chunk (multiple attempts included)",
 		}),
-		InvalidStampErrors: prometheus.NewCounter(prometheus.CounterOpts{
+		InvalidStampErrors: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "invalid_stamps",
 			Help:      "No of invalid stamp errors.",
 		}),
-		StampValidationTime: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		StampValidationTime: m.NewHistogramVec(m.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "stamp_validation_time",
 			Help:      "Time taken to validate stamps.",
 		}, []string{"status"}),
-		Forwarder: prometheus.NewCounter(prometheus.CounterOpts{
+		Forwarder: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "forwarder",
 			Help:      "No of times the peer is a forwarder node.",
 		}),
-		Storer: prometheus.NewCounter(prometheus.CounterOpts{
+		Storer: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "storer",
 			Help:      "No of times the peer is a storer node.",
 		}),
-		TotalHandlerTime: prometheus.NewHistogramVec(
-			prometheus.HistogramOpts{
+		TotalHandlerTime: m.NewHistogramVec(
+			m.HistogramOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "total_handler_time",
 				Help:      "Histogram for time taken for the handler.",
 			}, []string{"status"},
 		),
-		PushToPeerTime: prometheus.NewHistogramVec(
-			prometheus.HistogramOpts{
+		PushToPeerTime: m.NewHistogramVec(
+			m.HistogramOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "push_peer_time",
 				Help:      "Histogram for time taken to push a chunk to a peer.",
 			}, []string{"status"},
 		),
-		ShallowReceiptDepth: prometheus.NewCounterVec(
-			prometheus.CounterOpts{
+		ShallowReceiptDepth: m.NewCounterVec(
+			m.CounterOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "shallow_receipt_depth",
@@ -131,14 +130,14 @@ func newMetrics() metrics {
 			},
 			[]string{"depth"},
 		),
-		ShallowReceipt: prometheus.NewCounter(prometheus.CounterOpts{
+		ShallowReceipt: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "shallow_receipt",
 			Help:      "Total shallow receipts.",
 		}),
-		ReceiptDepth: prometheus.NewCounterVec(
-			prometheus.CounterOpts{
+		ReceiptDepth: m.NewCounterVec(
+			m.CounterOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "receipt_depth",
@@ -149,6 +148,6 @@ func newMetrics() metrics {
 	}
 }
 
-func (s *PushSync) Metrics() []prometheus.Collector {
+func (s *PushSync) Metrics() []m.Collector {
 	return m.PrometheusCollectorsFromFields(s.metrics)
 }

@@ -10,14 +10,13 @@ import (
 	"strings"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
+	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/status/internal/pb"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/expfmt"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -60,12 +59,12 @@ type Service struct {
 	reserve         Reserve
 	sync            SyncReporter
 	chainState      postage.ChainStateGetter
-	metricsRegistry *prometheus.Registry
+	metricsRegistry m.MetricsRegistererGatherer
 }
 
 type Metrics struct {
-	UploadSpeed   prometheus.Histogram
-	DownloadSpeed prometheus.Histogram
+	UploadSpeed   m.Histogram
+	DownloadSpeed m.Histogram
 }
 
 // NewService creates a new status service.
@@ -76,7 +75,7 @@ func NewService(
 	beeMode string,
 	chainState postage.ChainStateGetter,
 	reserve Reserve,
-	metricsRegistry *prometheus.Registry,
+	metricsRegistry m.MetricsRegistererGatherer,
 ) *Service {
 	return &Service{
 		logger:          logger.WithName(loggerName).Register(),
@@ -233,13 +232,13 @@ func (s *Service) encodeMetrics() (map[string]string, error) {
 	}
 
 	metrics := make(map[string]string, len(metricFamilies))
-	for _, m := range metricFamilies {
+	for _, mf := range metricFamilies {
 		var metricsBuilder strings.Builder
-		encoder := expfmt.NewEncoder(&metricsBuilder, expfmt.NewFormat(expfmt.TypeTextPlain))
-		if err := encoder.Encode(m); err != nil {
-			return nil, fmt.Errorf("encode metric %s: %w", m.GetName(), err)
+		encoder := m.NewEncoder(&metricsBuilder, m.NewFormat(m.TypeTextPlain))
+		if err := encoder.Encode(mf); err != nil {
+			return nil, fmt.Errorf("encode metric %s: %w", mf.GetName(), err)
 		}
-		metrics[m.GetName()] = metricsBuilder.String()
+		metrics[mf.GetName()] = metricsBuilder.String()
 	}
 
 	return metrics, nil

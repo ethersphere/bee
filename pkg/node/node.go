@@ -36,7 +36,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/gsoc"
 	"github.com/ethersphere/bee/v2/pkg/hive"
 	"github.com/ethersphere/bee/v2/pkg/log"
-	"github.com/ethersphere/bee/v2/pkg/metrics"
+	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/v2/pkg/pingpong"
@@ -79,7 +79,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/util/syncutil"
 	"github.com/hashicorp/go-multierror"
 	ma "github.com/multiformats/go-multiaddr"
-	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/sha3"
 	"golang.org/x/sync/errgroup"
 )
@@ -653,7 +652,7 @@ func NewBee(
 		}
 	}
 
-	var registry *prometheus.Registry
+	var registry m.MetricsRegistererGatherer
 
 	if apiService != nil {
 		registry = apiService.MetricsRegistry()
@@ -984,7 +983,7 @@ func NewBee(
 	validStamp := postage.ValidStamp(batchStore)
 
 	// metrics exposed on the status protocol
-	statusMetricsRegistry := prometheus.NewRegistry()
+	statusMetricsRegistry := m.NewRegistry()
 	if localStore != nil {
 		statusMetricsRegistry.MustRegister(localStore.StatusMetrics()...)
 	}
@@ -1287,20 +1286,20 @@ func NewBee(
 		apiService.MustRegisterMetrics(lightNodes.Metrics()...)
 		apiService.MustRegisterMetrics(hive.Metrics()...)
 
-		if bs, ok := batchStore.(metrics.Collector); ok {
+		if bs, ok := batchStore.(m.MetricsCollector); ok {
 			apiService.MustRegisterMetrics(bs.Metrics()...)
 		}
-		if ls, ok := eventListener.(metrics.Collector); ok {
+		if ls, ok := eventListener.(m.MetricsCollector); ok {
 			apiService.MustRegisterMetrics(ls.Metrics()...)
 		}
-		if pssServiceMetrics, ok := pssService.(metrics.Collector); ok {
+		if pssServiceMetrics, ok := pssService.(m.MetricsCollector); ok {
 			apiService.MustRegisterMetrics(pssServiceMetrics.Metrics()...)
 		}
-		if swapBackendMetrics, ok := chainBackend.(metrics.Collector); ok {
+		if swapBackendMetrics, ok := chainBackend.(m.MetricsCollector); ok {
 			apiService.MustRegisterMetrics(swapBackendMetrics.Metrics()...)
 		}
 
-		if l, ok := logger.(metrics.Collector); ok {
+		if l, ok := logger.(m.MetricsCollector); ok {
 			apiService.MustRegisterMetrics(l.Metrics()...)
 		}
 		apiService.MustRegisterMetrics(pseudosettleService.Metrics()...)
