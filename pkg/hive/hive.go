@@ -361,8 +361,6 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 			continue
 		}
 
-		s.logger.Debug("check and add peers, adding peer", "overlay", swarm.NewAddress(p.Overlay).String())
-
 		// add peer does not exist in the addressbook
 		addPeer(p, multiUnderlays)
 	}
