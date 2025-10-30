@@ -26,5 +26,11 @@ func Valid(ch swarm.Chunk) bool {
 	if err != nil {
 		return false
 	}
-	return ch.Address().Equal(address)
+
+	// if the address does not match the chunk address, check if it is a disperse replica
+	if !ch.Address().Equal(address) {
+		return bytes.Equal(ch.Address().Bytes()[1:32], address.Bytes()[1:32])
+	}
+
+	return true
 }

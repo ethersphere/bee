@@ -9,7 +9,6 @@ package replicas
 import (
 	"context"
 	"errors"
-	"sync"
 
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/soc"
@@ -40,22 +39,17 @@ func (p *putter) Put(ctx context.Context, ch swarm.Chunk) (err error) {
 	}
 
 	rr := newReplicator(ch.Address(), p.rLevel)
-	errc := make(chan error, p.rLevel.GetReplicaCount())
-	wg := sync.WaitGroup{}
 	for r := range rr.c {
-		wg.Go(func() {
-			sch, err := soc.New(r.id, ch).Sign(signer)
-			if err == nil {
-				err = p.putter.Put(ctx, sch)
-			}
-			errc <- err
-		})
+		sch, err := soc.New(r.id, ch).Sign(signer)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+
+		if err = p.putter.Put(ctx, sch); err != nil {
+			errs = append(errs, err)
+		}
 	}
 
-	wg.Wait()
-	close(errc)
-	for err := range errc {
-		errs = append(errs, err)
-	}
 	return errors.Join(errs...)
 }

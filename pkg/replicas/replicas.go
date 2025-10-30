@@ -23,6 +23,7 @@ var (
 	RetryInterval = 300 * time.Millisecond
 	privKey, _    = crypto.DecodeSecp256k1PrivateKey(append([]byte{1}, make([]byte, 31)...))
 	signer        = crypto.NewDefaultSigner(privKey)
+	TestSigner    = signer
 )
 
 // replicator running the find for replicas
@@ -30,7 +31,7 @@ type replicator struct {
 	addr   []byte       // chunk address
 	queue  [16]*replica // to sort addresses according to di
 	exist  [30]bool     //  maps the 16 distinct nibbles on all levels
-	sizes  [5]int       // number of distinct neighnourhoods redcorded for each depth
+	sizes  [5]int       // number of distinct neighbourhoods recorded for each depth
 	c      chan *replica
 	rLevel redundancy.Level
 }

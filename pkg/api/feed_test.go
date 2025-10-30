@@ -18,6 +18,9 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/ethersphere/bee/v2/pkg/replicas"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+
 	"github.com/ethersphere/bee/v2/pkg/api"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
 	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
@@ -345,6 +348,108 @@ func TestFeedDirectUpload(t *testing.T) {
 	)
 }
 
+// redundancyMockLookup is a specialized mockLookup that uses redundancy SOC getter
+type redundancyMockLookup struct {
+	redundancyLevel redundancy.Level
+	getter          storage.Getter
+	lastChunkFn     func() (swarm.Chunk, feeds.Index, feeds.Index) // Hook to get the latest chunk, index, nextIndex
+}
+
+func newRedundancyMockLookup(rLevel redundancy.Level, getter storage.Getter, lastChunkFn func() (swarm.Chunk, feeds.Index, feeds.Index)) *redundancyMockLookup {
+	return &redundancyMockLookup{
+		redundancyLevel: rLevel,
+		getter:          getter,
+		lastChunkFn:     lastChunkFn,
+	}
+}
+
+// At overrides mockLookup.At to use redundancy SOC getter
+func (l *redundancyMockLookup) At(ctx context.Context, at int64, after uint64) (swarm.Chunk, feeds.Index, feeds.Index, error) {
+	chunk, cur, next := l.lastChunkFn()
+
+	// Create redundancy SOC getter if redundancy level is set
+	redGetter := replicas.NewSocGetter(l.getter, l.redundancyLevel)
+
+	// Try to get the chunk with redundancy
+	redChunk, err := redGetter.Get(ctx, chunk.Address())
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	// Use the chunk retrieved with redundancy
+	return redChunk, cur, next, nil
+}
+
+// TestFeedAPIWithRedundancy tests the feed API with SOC redundancy
+func TestFeedAPIWithRedundancy(t *testing.T) {
+	t.Parallel()
+
+	var (
+		redundancyLevel = redundancy.PARANOID // Use highest redundancy level
+		topic           = swarm.RandAddress(t)
+		mockStorer      = mockstorer.New()
+		feedData        = []byte("feed redundancy test data")
+	)
+	socChunk := testingsoc.GenerateMockSOC(t, feedData)
+
+	// Variables to track the last chunk, index, and next index
+	var (
+		lastChunk swarm.Chunk
+		lastIndex feeds.Index
+		lastNext  feeds.Index
+	)
+
+	// Provide a hook function to return the latest chunk, index, and next index
+	lastChunkFn := func() (swarm.Chunk, feeds.Index, feeds.Index) {
+		return lastChunk, lastIndex, lastNext
+	}
+	lastChunk = socChunk.Chunk()
+	lastIndex = &id{}
+	lastNext = &id{}
+
+	// Create redundancy-aware lookup that wraps our lookup
+	redLookup := newRedundancyMockLookup(redundancyLevel, mockStorer.ChunkStore(), lastChunkFn)
+	factory := newMockFactory(redLookup)
+
+	// Create test server with our custom setup
+	mp := mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
+	client, _, _, _ := newTestServer(t, testServerOptions{
+		Storer: mockStorer,
+		Post:   mp,
+		Feeds:  factory,
+	})
+
+	socPutter := replicas.NewSocPutter(mockStorer, redundancyLevel)
+
+	ctx := context.Background()
+	err := socPutter.Put(ctx, socChunk.Chunk())
+	if err != nil {
+		t.Fatalf("failed to put SOC chunk with redundancy: %v", err)
+	}
+
+	// Get access to the underlying chunk store
+	cs, ok := mockStorer.ChunkStore().(storage.ChunkStore)
+	if !ok {
+		t.Fatal("Could not access underlying ChunkStore with Delete method")
+	}
+
+	// Delete the original SOC chunk by using the address tracked in lastSOCAddress
+	// or use socChunk.Address() directly
+	err = cs.Delete(context.Background(), socChunk.Address())
+	if err != nil {
+		t.Fatalf("Failed to delete original SOC chunk: %v", err)
+	}
+
+	feedResource := fmt.Sprintf("/feeds/%s/%s", ownerString, topic)
+
+	// Try to retrieve the feed content with redundancy
+	jsonhttptest.Request(t, client, http.MethodGet,
+		feedResource,
+		http.StatusOK,
+		jsonhttptest.WithRequestHeader(api.SwarmRedundancyLevelHeader, fmt.Sprintf("%d", redundancyLevel)),
+		jsonhttptest.WithExpectedResponse(feedData),
+	)
+}
+
 type factoryMock struct {
 	sequenceCalled bool
 	epochCalled    bool
@@ -356,7 +461,7 @@ func newMockFactory(mockLookup feeds.Lookup) *factoryMock {
 	return &factoryMock{lookup: mockLookup}
 }
 
-func (f *factoryMock) NewLookup(t feeds.Type, feed *feeds.Feed) (feeds.Lookup, error) {
+func (f *factoryMock) NewLookup(t feeds.Type, feed *feeds.Feed, _ ...feeds.FactoryOption) (feeds.Lookup, error) {
 	switch t {
 	case feeds.Sequence:
 		f.sequenceCalled = true
