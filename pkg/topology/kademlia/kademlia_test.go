@@ -837,11 +837,12 @@ func TestAddressBookPrune(t *testing.T) {
 	// add non connectable peer, check connection and failed connection counters
 	kad.AddPeers(nonConnPeer.Overlay)
 
-	kad.Trigger()
-	kad.Trigger()
+	for range 5 {
+		kad.Trigger()
+	}
 
 	waitCounter(t, &conns, 0)
-	waitCounter(t, &failedConns, 3)
+	waitCounter(t, &failedConns, 6)
 
 	_, err = ab.Get(nonConnPeer.Overlay)
 	if !errors.Is(err, addressbook.ErrNotFound) {
@@ -922,6 +923,13 @@ func TestAddressBookQuickPrune_FLAKY(t *testing.T) {
 	kad.AddPeers(nonConnPeer.Overlay)
 	waitCounter(t, &conns, 0)
 	waitCounter(t, &failedConns, 1)
+
+	// we need to trigger connection attempts maxConnAttempts times
+	for range 3 {
+		time.Sleep(10 * time.Millisecond)
+		kad.Trigger()
+		waitCounter(t, &failedConns, 1)
+	}
 
 	_, err = ab.Get(nonConnPeer.Overlay)
 	if !errors.Is(err, addressbook.ErrNotFound) {
