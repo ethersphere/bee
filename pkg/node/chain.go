@@ -46,26 +46,28 @@ func InitChain(
 	logger log.Logger,
 	stateStore storage.StateStorer,
 	endpoint string,
-	oChainID int64,
+	chainID int64,
 	signer crypto.Signer,
 	pollingInterval time.Duration,
 	chainEnabled bool,
 	minimumGasTipCap uint64,
 ) (transaction.Backend, common.Address, int64, transaction.Monitor, transaction.Service, error) {
-	backend := backendnoop.New(oChainID)
+	backend := backendnoop.New(chainID)
 
 	if chainEnabled {
-		// connect to the real one
 		rpcClient, err := rpc.DialContext(ctx, endpoint)
 		if err != nil {
-			return nil, common.Address{}, 0, nil, nil, fmt.Errorf("dial blockchain client: %w", err)
+			return backend, common.Address{}, 0, nil, nil, fmt.Errorf("dial blockchain client: %w", err)
 		}
 
 		var versionString string
-		err = rpcClient.CallContext(ctx, &versionString, "web3_clientVersion")
-		if err != nil {
-			logger.Info("could not connect to backend; in a swap-enabled network a working blockchain node (for xdai network in production, sepolia in testnet) is required; check your node or specify another node using --blockchain-rpc-endpoint.", "backend_endpoint", endpoint)
-			return nil, common.Address{}, 0, nil, nil, fmt.Errorf("blockchain client get version: %w", err)
+		if err = rpcClient.CallContext(ctx, &versionString, "web3_clientVersion"); err != nil {
+			logger.Info("could not connect to backend; "+
+				"in a swap-enabled network a working blockchain node "+
+				"(for xDAI network in production, SepoliaETH in testnet) is required; "+
+				"check your node or specify another node using --blockchain-rpc-endpoint.",
+				"blockchain-rpc-endpoint", endpoint)
+			return nil, common.Address{}, 0, nil, nil, fmt.Errorf("get client version: %w", err)
 		}
 
 		logger.Info("connected to blockchain backend", "version", versionString)
@@ -73,9 +75,13 @@ func InitChain(
 		backend = wrapped.NewBackend(ethclient.NewClient(rpcClient), minimumGasTipCap)
 	}
 
-	chainID, err := backend.ChainID(ctx)
+	backendChainID, err := backend.ChainID(ctx)
 	if err != nil {
-		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("get chain id: %w", err)
+		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("getting chain id: %w", err)
+	}
+
+	if chainID != -1 && chainID != backendChainID.Int64() {
+		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("connected to wrong network: expected chain id %d, got %d", chainID, backendChainID.Int64())
 	}
 
 	overlayEthAddress, err := signer.EthereumAddress()
@@ -85,18 +91,19 @@ func InitChain(
 
 	transactionMonitor := transaction.NewMonitor(logger, backend, overlayEthAddress, pollingInterval, cancellationDepth)
 
-	transactionService, err := transaction.NewService(logger, overlayEthAddress, backend, signer, stateStore, chainID, transactionMonitor)
+	transactionService, err := transaction.NewService(logger, overlayEthAddress, backend, signer, stateStore, backendChainID, transactionMonitor)
 	if err != nil {
-		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("new transaction service: %w", err)
+		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("transaction service: %w", err)
 	}
 
-	return backend, overlayEthAddress, chainID.Int64(), transactionMonitor, transactionService, nil
+	return backend, overlayEthAddress, backendChainID.Int64(), transactionMonitor, transactionService, nil
 }
 
 // InitChequebookFactory will initialize the chequebook factory with the given
 // chain backend.
 func InitChequebookFactory(logger log.Logger, backend transaction.Backend, chainID int64, transactionService transaction.Service, factoryAddress string) (chequebook.Factory, error) {
 	var currentFactory common.Address
+
 	chainCfg, found := config.GetByChainID(chainID)
 
 	foundFactory := chainCfg.CurrentFactoryAddress
