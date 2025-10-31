@@ -14,6 +14,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -885,47 +886,47 @@ func TestAddressBookPrune(t *testing.T) {
 }
 
 // test pruning addressbook after successive failed connect attempts
-func TestAddressBookQuickPrune_FLAKY(t *testing.T) {
-	t.Parallel()
+func TestAddressBookQuickPrune(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var (
+			conns, failedConns       int32 // how many connect calls were made to the p2p mock
+			base, kad, ab, _, signer = newTestKademlia(t, &conns, &failedConns, kademlia.Options{
+				TimeToRetry: ptrDuration(time.Millisecond),
+			})
+		)
+		kad.SetStorageRadius(2)
 
-	var (
-		conns, failedConns       int32 // how many connect calls were made to the p2p mock
-		base, kad, ab, _, signer = newTestKademlia(t, &conns, &failedConns, kademlia.Options{
-			TimeToRetry: ptrDuration(time.Millisecond),
-		})
-	)
-	kad.SetStorageRadius(2)
+		if err := kad.Start(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		testutil.CleanupCloser(t, kad)
 
-	if err := kad.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	testutil.CleanupCloser(t, kad)
+		time.Sleep(100 * time.Millisecond)
 
-	time.Sleep(100 * time.Millisecond)
+		nonConnPeer, err := bzz.NewAddress(signer, nonConnectableAddress, swarm.RandAddressAt(t, base, 1), 0, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := ab.Put(nonConnPeer.Overlay, *nonConnPeer); err != nil {
+			t.Fatal(err)
+		}
 
-	nonConnPeer, err := bzz.NewAddress(signer, nonConnectableAddress, swarm.RandAddressAt(t, base, 1), 0, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := ab.Put(nonConnPeer.Overlay, *nonConnPeer); err != nil {
-		t.Fatal(err)
-	}
+		addr := swarm.RandAddressAt(t, base, 1)
+		// add one valid peer
+		addOne(t, signer, kad, ab, addr)
+		waitCounter(t, &conns, 1)
+		waitCounter(t, &failedConns, 0)
 
-	addr := swarm.RandAddressAt(t, base, 1)
-	// add one valid peer
-	addOne(t, signer, kad, ab, addr)
-	waitCounter(t, &conns, 1)
-	waitCounter(t, &failedConns, 0)
+		// add non connectable peer, check connection and failed connection counters
+		kad.AddPeers(nonConnPeer.Overlay)
+		waitCounter(t, &conns, 0)
+		waitCounter(t, &failedConns, 1)
 
-	// add non connectable peer, check connection and failed connection counters
-	kad.AddPeers(nonConnPeer.Overlay)
-	waitCounter(t, &conns, 0)
-	waitCounter(t, &failedConns, 1)
-
-	_, err = ab.Get(nonConnPeer.Overlay)
-	if !errors.Is(err, addressbook.ErrNotFound) {
-		t.Fatal(err)
-	}
+		_, err = ab.Get(nonConnPeer.Overlay)
+		if !errors.Is(err, addressbook.ErrNotFound) {
+			t.Fatal(err)
+		}
+	})
 }
 
 func TestClosestPeer(t *testing.T) {
