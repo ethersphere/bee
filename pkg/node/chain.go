@@ -57,7 +57,7 @@ func InitChain(
 	if chainEnabled {
 		rpcClient, err := rpc.DialContext(ctx, endpoint)
 		if err != nil {
-			return backend, common.Address{}, 0, nil, nil, fmt.Errorf("dial blockchain client: %w", err)
+			return nil, common.Address{}, 0, nil, nil, fmt.Errorf("dial blockchain client: %w", err)
 		}
 
 		var versionString string
