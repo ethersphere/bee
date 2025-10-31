@@ -13,9 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethersphere/bee/v2/pkg/config"
@@ -31,8 +29,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/swapprotocol"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
+	"github.com/ethersphere/bee/v2/pkg/transaction/backendnoop"
 	"github.com/ethersphere/bee/v2/pkg/transaction/wrapped"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -48,28 +46,28 @@ func InitChain(
 	logger log.Logger,
 	stateStore storage.StateStorer,
 	endpoint string,
-	oChainID int64,
+	chainID int64,
 	signer crypto.Signer,
 	pollingInterval time.Duration,
 	chainEnabled bool,
 	minimumGasTipCap uint64,
 ) (transaction.Backend, common.Address, int64, transaction.Monitor, transaction.Service, error) {
-	var backend transaction.Backend = &noOpChainBackend{
-		chainID: oChainID,
-	}
+	backend := backendnoop.New(chainID)
 
 	if chainEnabled {
-		// connect to the real one
 		rpcClient, err := rpc.DialContext(ctx, endpoint)
 		if err != nil {
 			return nil, common.Address{}, 0, nil, nil, fmt.Errorf("dial blockchain client: %w", err)
 		}
 
 		var versionString string
-		err = rpcClient.CallContext(ctx, &versionString, "web3_clientVersion")
-		if err != nil {
-			logger.Info("could not connect to backend; in a swap-enabled network a working blockchain node (for xdai network in production, sepolia in testnet) is required; check your node or specify another node using --blockchain-rpc-endpoint.", "backend_endpoint", endpoint)
-			return nil, common.Address{}, 0, nil, nil, fmt.Errorf("blockchain client get version: %w", err)
+		if err = rpcClient.CallContext(ctx, &versionString, "web3_clientVersion"); err != nil {
+			logger.Info("could not connect to backend; "+
+				"in a swap-enabled network a working blockchain node "+
+				"(for xDAI network in production, SepoliaETH in testnet) is required; "+
+				"check your node or specify another node using --blockchain-rpc-endpoint.",
+				"blockchain-rpc-endpoint", endpoint)
+			return nil, common.Address{}, 0, nil, nil, fmt.Errorf("get client version: %w", err)
 		}
 
 		logger.Info("connected to blockchain backend", "version", versionString)
@@ -77,9 +75,13 @@ func InitChain(
 		backend = wrapped.NewBackend(ethclient.NewClient(rpcClient), minimumGasTipCap)
 	}
 
-	chainID, err := backend.ChainID(ctx)
+	backendChainID, err := backend.ChainID(ctx)
 	if err != nil {
-		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("get chain id: %w", err)
+		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("getting chain id: %w", err)
+	}
+
+	if chainID != -1 && chainID != backendChainID.Int64() {
+		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("connected to wrong network: expected chain id %d, got %d", chainID, backendChainID.Int64())
 	}
 
 	overlayEthAddress, err := signer.EthereumAddress()
@@ -89,18 +91,19 @@ func InitChain(
 
 	transactionMonitor := transaction.NewMonitor(logger, backend, overlayEthAddress, pollingInterval, cancellationDepth)
 
-	transactionService, err := transaction.NewService(logger, overlayEthAddress, backend, signer, stateStore, chainID, transactionMonitor)
+	transactionService, err := transaction.NewService(logger, overlayEthAddress, backend, signer, stateStore, backendChainID, transactionMonitor)
 	if err != nil {
-		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("new transaction service: %w", err)
+		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("transaction service: %w", err)
 	}
 
-	return backend, overlayEthAddress, chainID.Int64(), transactionMonitor, transactionService, nil
+	return backend, overlayEthAddress, backendChainID.Int64(), transactionMonitor, transactionService, nil
 }
 
 // InitChequebookFactory will initialize the chequebook factory with the given
 // chain backend.
 func InitChequebookFactory(logger log.Logger, backend transaction.Backend, chainID int64, transactionService transaction.Service, factoryAddress string) (chequebook.Factory, error) {
 	var currentFactory common.Address
+
 	chainCfg, found := config.GetByChainID(chainID)
 
 	foundFactory := chainCfg.CurrentFactoryAddress
@@ -340,74 +343,3 @@ func (m *noOpChequebookService) LastCheque(common.Address) (*chequebook.SignedCh
 func (m *noOpChequebookService) LastCheques() (map[common.Address]*chequebook.SignedCheque, error) {
 	return nil, postagecontract.ErrChainDisabled
 }
-
-// noOpChainBackend is a noOp implementation for transaction.Backend interface.
-type noOpChainBackend struct {
-	chainID int64
-}
-
-func (m noOpChainBackend) Metrics() []prometheus.Collector {
-	return nil
-}
-
-func (m noOpChainBackend) CallContract(context.Context, ethereum.CallMsg, *big.Int) ([]byte, error) {
-	return nil, errors.New("disabled chain backend")
-}
-
-func (m noOpChainBackend) HeaderByNumber(context.Context, *big.Int) (*types.Header, error) {
-	h := new(types.Header)
-	h.Time = uint64(time.Now().Unix())
-	return h, nil
-}
-
-func (m noOpChainBackend) PendingNonceAt(context.Context, common.Address) (uint64, error) {
-	panic("chain no op: PendingNonceAt")
-}
-
-func (m noOpChainBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
-	panic("chain no op: SuggestedFeeAndTip")
-}
-
-func (m noOpChainBackend) SuggestGasTipCap(context.Context) (*big.Int, error) {
-	panic("chain no op: SuggestGasTipCap")
-}
-
-func (m noOpChainBackend) EstimateGasAtBlock(context.Context, ethereum.CallMsg, *big.Int) (uint64, error) {
-	panic("chain no op: EstimateGasAtBlock")
-}
-
-func (m noOpChainBackend) SendTransaction(context.Context, *types.Transaction) error {
-	panic("chain no op: SendTransaction")
-}
-
-func (m noOpChainBackend) TransactionReceipt(context.Context, common.Hash) (*types.Receipt, error) {
-	r := new(types.Receipt)
-	r.BlockNumber = big.NewInt(1)
-	return r, nil
-}
-
-func (m noOpChainBackend) TransactionByHash(context.Context, common.Hash) (tx *types.Transaction, isPending bool, err error) {
-	panic("chain no op: TransactionByHash")
-}
-
-func (m noOpChainBackend) BlockNumber(context.Context) (uint64, error) {
-	return 4, nil
-}
-
-func (m noOpChainBackend) BalanceAt(context.Context, common.Address, *big.Int) (*big.Int, error) {
-	return nil, postagecontract.ErrChainDisabled
-}
-
-func (m noOpChainBackend) NonceAt(context.Context, common.Address, *big.Int) (uint64, error) {
-	panic("chain no op: NonceAt")
-}
-
-func (m noOpChainBackend) FilterLogs(context.Context, ethereum.FilterQuery) ([]types.Log, error) {
-	panic("chain no op: FilterLogs")
-}
-
-func (m noOpChainBackend) ChainID(context.Context) (*big.Int, error) {
-	return big.NewInt(m.chainID), nil
-}
-
-func (m noOpChainBackend) Close() {}
