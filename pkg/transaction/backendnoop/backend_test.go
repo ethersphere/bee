@@ -88,7 +88,7 @@ func TestBackendPanics(t *testing.T) {
 		func() { _, _ = backend.PendingNonceAt(ctx, common.Address{}) },
 		func() { _, _, _ = backend.SuggestedFeeAndTip(ctx, nil, 0) },
 		func() { _, _ = backend.SuggestGasTipCap(ctx) },
-		func() { _, _ = backend.EstimateGas(ctx, ethereum.CallMsg{}) },
+		func() { _, _ = backend.EstimateGasAtBlock(ctx, ethereum.CallMsg{}, nil) },
 		func() { _ = backend.SendTransaction(ctx, nil) },
 		func() { _, _, _ = backend.TransactionByHash(ctx, common.Hash{}) },
 		func() { _, _ = backend.NonceAt(ctx, common.Address{}, nil) },

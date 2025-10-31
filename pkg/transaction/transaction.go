@@ -31,7 +31,6 @@ import (
 const loggerName = "transaction"
 
 const (
-	noncePrefix              = "transaction_nonce_"
 	storedTransactionPrefix  = "transaction_stored_"
 	pendingTransactionPrefix = "transaction_pending_"
 )
@@ -275,11 +274,11 @@ func (t *transactionService) StoredTransaction(txHash common.Hash) (*StoredTrans
 func (t *transactionService) prepareTransaction(ctx context.Context, request *TxRequest, nonce uint64, boostPercent int) (tx *types.Transaction, err error) {
 	var gasLimit uint64
 	if request.GasLimit == 0 {
-		gasLimit, err = t.backend.EstimateGas(ctx, ethereum.CallMsg{
+		gasLimit, err = t.backend.EstimateGasAtBlock(ctx, ethereum.CallMsg{
 			From: t.sender,
 			To:   request.To,
 			Data: request.Data,
-		})
+		}, nil) // nil for latest block
 		if err != nil {
 			t.logger.Debug("estimate gas failed", "error", err)
 			gasLimit = request.MinEstimatedGasLimit

@@ -59,7 +59,7 @@ func (b *Backend) SuggestGasTipCap(context.Context) (*big.Int, error) {
 	panic("chain no op: SuggestGasTipCap")
 }
 
-func (b *Backend) EstimateGas(context.Context, ethereum.CallMsg) (uint64, error) {
+func (b *Backend) EstimateGasAtBlock(ctx context.Context, msg ethereum.CallMsg, blockNumber *big.Int) (uint64, error) {
 	panic("chain no op: EstimateGas")
 }
 
