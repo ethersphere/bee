@@ -5,6 +5,7 @@
 package handshake
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -200,13 +201,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 
 	// sort to remove potential duplicates
 	slices.SortFunc(advertisableUnderlays, func(a, b ma.Multiaddr) int {
-		if a.Equal(b) {
-			return 0
-		}
-		if a.String() < b.String() {
-			return -1
-		}
-		return 1
+		return cmp.Compare(a.String(), b.String())
 	})
 	// remove duplicates
 	advertisableUnderlays = slices.CompactFunc(advertisableUnderlays, func(a, b ma.Multiaddr) bool {
@@ -304,13 +299,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 
 	// sort to remove potential duplicates
 	slices.SortFunc(advertisableUnderlays, func(a, b ma.Multiaddr) int {
-		if a.Equal(b) {
-			return 0
-		}
-		if a.String() < b.String() {
-			return -1
-		}
-		return 1
+		return cmp.Compare(a.String(), b.String())
 	})
 	// remove duplicates
 	advertisableUnderlays = slices.CompactFunc(advertisableUnderlays, func(a, b ma.Multiaddr) bool {

@@ -413,28 +413,13 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	peerID := stream.Conn().RemotePeer()
 	handshakeStream := newStream(stream, s.metrics)
 
-	waitPeersCtx, cancel := context.WithTimeout(s.ctx, peerstoreWaitAddrsTimeout)
-	defer cancel()
-
-	peerMultiaddrs, err := buildFullMAs(waitPeerAddrs(waitPeersCtx, s.host.Peerstore(), peerID), peerID)
+	peerMultiaddrs, err := s.peerMultiaddrs(s.ctx, stream.Conn(), peerID)
 	if err != nil {
 		s.logger.Debug("stream handler: handshake: build remote multiaddrs", "peer_id", peerID, "error", err)
 		s.logger.Error(nil, "stream handler: handshake: build remote multiaddrs", "peer_id", peerID)
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(peerID)
 		return
-	}
-
-	if len(peerMultiaddrs) == 0 {
-		fullRemoteAddress, err := buildFullMA(stream.Conn().RemoteMultiaddr(), peerID)
-		if err != nil {
-			s.logger.Debug("stream handler: handshake: build full remote peer multi address", "peer_id", peerID, "error", err)
-			s.logger.Error(nil, "stream handler: handshake: build full remote peer multi address", "peer_id", peerID)
-			_ = handshakeStream.Reset()
-			_ = s.host.Network().ClosePeer(peerID)
-			return
-		}
-		peerMultiaddrs = append(peerMultiaddrs, fullRemoteAddress)
 	}
 
 	i, err := s.handshakeService.Handle(
@@ -829,22 +814,11 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 
 	handshakeStream := newStream(stream, s.metrics)
 
-	waitPeersCtx, cancel := context.WithTimeout(ctx, peerstoreWaitAddrsTimeout)
-	defer cancel()
-
-	peerMultiaddrs, err := buildFullMAs(waitPeerAddrs(waitPeersCtx, s.host.Peerstore(), peerID), peerID)
+	peerMultiaddrs, err := s.peerMultiaddrs(ctx, stream.Conn(), peerID)
 	if err != nil {
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(peerID)
 		return nil, fmt.Errorf("build peer multiaddrs: %w", err)
-	}
-
-	if len(peerMultiaddrs) == 0 {
-		fullRemoteAddress, err := buildFullMA(stream.Conn().RemoteMultiaddr(), peerID)
-		if err != nil {
-			return nil, fmt.Errorf("build full remote peer multi address: %w", err)
-		}
-		peerMultiaddrs = append(peerMultiaddrs, fullRemoteAddress)
 	}
 
 	i, err := s.handshakeService.Handshake(
@@ -1215,6 +1189,29 @@ func (s *Service) determineCurrentNetworkStatus(err error) error {
 		err = fmt.Errorf("network status unknown: %w", err)
 	}
 	return err
+}
+
+// peerMultiaddrs builds full multiaddresses for a peer given information from
+// libp2p host peerstore and falling back to the remote address from the
+// connection.
+func (s *Service) peerMultiaddrs(ctx context.Context, conn network.Conn, peerID libp2ppeer.ID) ([]ma.Multiaddr, error) {
+	waitPeersCtx, cancel := context.WithTimeout(ctx, peerstoreWaitAddrsTimeout)
+	defer cancel()
+
+	peerMultiaddrs, err := buildFullMAs(waitPeerAddrs(waitPeersCtx, s.host.Peerstore(), peerID), peerID)
+	if err != nil {
+		return nil, fmt.Errorf("build peer multiaddrs: %w", err)
+	}
+
+	if len(peerMultiaddrs) == 0 {
+		fullRemoteAddress, err := buildFullMA(conn.RemoteMultiaddr(), peerID)
+		if err != nil {
+			return nil, fmt.Errorf("build full remote peer multi address: %w", err)
+		}
+		peerMultiaddrs = append(peerMultiaddrs, fullRemoteAddress)
+	}
+
+	return peerMultiaddrs, nil
 }
 
 var version270 = *semver.Must(semver.NewVersion("2.7.0"))
