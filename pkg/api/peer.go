@@ -24,7 +24,7 @@ func (s *Service) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 
 	mux.Vars(r)["multi-address"] = "/" + mux.Vars(r)["multi-address"]
 	paths := struct {
-		MultiAddress string `map:"multi-address" validate:"required"`
+		MultiAddress multiaddr.Multiaddr `map:"multi-address" validate:"required"`
 	}{}
 	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
 		response("invalid path params", logger, w)

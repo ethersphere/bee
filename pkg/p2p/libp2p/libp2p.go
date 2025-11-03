@@ -19,8 +19,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/caddyserver/certmagic"
 	ocprom "contrib.go.opencensus.io/exporter/prometheus"
+	"github.com/caddyserver/certmagic"
 	"github.com/coreos/go-semver/semver"
 	"github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
@@ -58,13 +58,9 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/multiformats/go-multistream"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
-
-	ocprom "contrib.go.opencensus.io/exporter/prometheus"
-	m2 "github.com/ethersphere/bee/v2/pkg/metrics"
-	rcmgrObs "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
-	"github.com/prometheus/client_golang/prometheus"
 
 	p2pforge "github.com/ipshipyard/p2p-forge/client"
 )
@@ -1020,12 +1016,12 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		return nil, fmt.Errorf("connect full close %w", err)
 	}
 
-	pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second) // Short timeout for the ping
-	defer cancel()
-	if _, err := s.Ping(pingCtx, addr); err != nil {
-		_ = s.Disconnect(overlay, "peer disconnected immediately after handshake")
-		return nil, p2p.ErrPeerNotFound
-	}
+	// pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second) // Short timeout for the ping
+	// defer cancel()
+	// if _, err := s.Ping(pingCtx, addr); err != nil {
+	// 	_ = s.Disconnect(overlay, "peer disconnected immediately after handshake")
+	// 	return nil, p2p.ErrPeerNotFound
+	// }
 
 	if !s.peers.Exists(overlay) {
 		return nil, p2p.ErrPeerNotFound
