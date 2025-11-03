@@ -97,16 +97,13 @@ func TestAgent(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				wait := make(chan struct{})
+				wait := make(chan struct{}, 1)
 				addr := swarm.RandAddress(t)
 
 				backend := &mockchainBackend{
 					limit: tc.limit,
 					limitCallback: func() {
-						select {
-						case wait <- struct{}{}:
-						default:
-						}
+						wait <- struct{}{}
 					},
 					incrementBy: tc.incrementBy,
 					block:       tc.blocksPerRound,
@@ -122,16 +119,18 @@ func TestAgent(t *testing.T) {
 
 				<-wait
 
-				synctest.Wait() // wait for all goroutines
+				synctest.Wait()
+
+				calls := contract.getCalls()
 
 				if !tc.expectedCalls {
-					if len(contract.callsList) > 0 {
+					if len(calls) > 0 {
 						t.Fatal("got unexpected calls")
 					}
 					return
 				}
 
-				if len(contract.callsList) == 0 {
+				if len(calls) == 0 {
 					t.Fatal("expected calls but got none")
 				}
 
@@ -142,13 +141,10 @@ func TestAgent(t *testing.T) {
 					}
 				}
 
-				contract.mtx.Lock()
-				defer contract.mtx.Unlock()
+				prevCall := calls[0]
 
-				prevCall := contract.callsList[0]
-
-				for i := 1; i < len(contract.callsList); i++ {
-					switch contract.callsList[i] {
+				for i := 1; i < len(calls); i++ {
+					switch calls[i] {
 					case isWinnerCall:
 						assertOrder(t, revealCall, prevCall)
 					case revealCall:
@@ -157,7 +153,7 @@ func TestAgent(t *testing.T) {
 						assertOrder(t, isWinnerCall, prevCall)
 					}
 
-					prevCall = contract.callsList[i]
+					prevCall = calls[i]
 				}
 			})
 		})
@@ -279,6 +275,18 @@ type mockContract struct {
 	mtx            sync.Mutex
 	expectedRadius uint8
 	t              *testing.T
+}
+
+// getCalls returns a snapshot of the calls list
+// even after synctest.Wait() all goroutines are blocked, we still should use locking
+// for defensive programming.
+func (m *mockContract) getCalls() []contractCall {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	// return a copy to avoid external modifications
+	calls := make([]contractCall, len(m.callsList))
+	copy(calls, m.callsList)
+	return calls
 }
 
 func (m *mockContract) ReserveSalt(context.Context) ([]byte, error) {
