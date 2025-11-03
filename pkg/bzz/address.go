@@ -14,12 +14,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
+	"sort"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 
 	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
 )
 
 var ErrInvalidAddress = errors.New("invalid address")
@@ -28,7 +31,7 @@ var ErrInvalidAddress = errors.New("invalid address")
 // It consists of a peers underlay (physical) address, overlay (topology) address and signature.
 // Signature is used to verify the `Overlay/Underlay` pair, as it is based on `underlay|networkID`, signed with the public key of Overlay address
 type Address struct {
-	Underlay        ma.Multiaddr
+	Underlays       []ma.Multiaddr
 	Overlay         swarm.Address
 	Signature       []byte
 	Nonce           []byte
@@ -36,25 +39,23 @@ type Address struct {
 }
 
 type addressJSON struct {
-	Overlay   string `json:"overlay"`
-	Underlay  string `json:"underlay"`
-	Signature string `json:"signature"`
-	Nonce     string `json:"transaction"`
+	Overlay   string   `json:"overlay"`
+	Underlay  string   `json:"underlay"` // For backward compatibility
+	Underlays []string `json:"underlays"`
+	Signature string   `json:"signature"`
+	Nonce     string   `json:"transaction"`
 }
 
-func NewAddress(signer crypto.Signer, underlay ma.Multiaddr, overlay swarm.Address, networkID uint64, nonce []byte) (*Address, error) {
-	underlayBinary, err := underlay.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
+func NewAddress(signer crypto.Signer, underlays []ma.Multiaddr, overlay swarm.Address, networkID uint64, nonce []byte) (*Address, error) {
+	underlaysBinary := SerializeUnderlays(underlays)
 
-	signature, err := signer.Sign(generateSignData(underlayBinary, overlay.Bytes(), networkID))
+	signature, err := signer.Sign(generateSignData(underlaysBinary, overlay.Bytes(), networkID))
 	if err != nil {
 		return nil, err
 	}
 
 	return &Address{
-		Underlay:  underlay,
+		Underlays: underlays,
 		Overlay:   overlay,
 		Signature: signature,
 		Nonce:     nonce,
@@ -77,8 +78,13 @@ func ParseAddress(underlay, overlay, signature, nonce []byte, validateOverlay bo
 		}
 	}
 
-	multiUnderlay, err := ma.NewMultiaddrBytes(underlay)
+	multiUnderlays, err := DeserializeUnderlays(underlay)
 	if err != nil {
+		return nil, fmt.Errorf("deserialize underlays: %w: %w", ErrInvalidAddress, err)
+	}
+
+	if len(multiUnderlays) == 0 {
+		// no underlays sent
 		return nil, ErrInvalidAddress
 	}
 
@@ -88,7 +94,7 @@ func ParseAddress(underlay, overlay, signature, nonce []byte, validateOverlay bo
 	}
 
 	return &Address{
-		Underlay:        multiUnderlay,
+		Underlays:       multiUnderlays,
 		Overlay:         swarm.NewAddress(overlay),
 		Signature:       signature,
 		Nonce:           nonce,
@@ -109,21 +115,49 @@ func (a *Address) Equal(b *Address) bool {
 		return a == b
 	}
 
-	return a.Overlay.Equal(b.Overlay) && multiaddrEqual(a.Underlay, b.Underlay) && bytes.Equal(a.Signature, b.Signature) && bytes.Equal(a.Nonce, b.Nonce)
+	return a.Overlay.Equal(b.Overlay) && AreUnderlaysEqual(a.Underlays, b.Underlays) && bytes.Equal(a.Signature, b.Signature) && bytes.Equal(a.Nonce, b.Nonce)
 }
 
-func multiaddrEqual(a, b ma.Multiaddr) bool {
-	if a == nil || b == nil {
-		return a == b
+func AreUnderlaysEqual(a, b []ma.Multiaddr) bool {
+	if len(a) != len(b) {
+		return false
 	}
 
-	return a.Equal(b)
+	used := make([]bool, len(b))
+	for i := range len(a) {
+		found := false
+		for j := range len(b) {
+			if used[j] {
+				continue
+			}
+			if a[i].Equal(b[j]) {
+				used[j] = true
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }
 
 func (a *Address) MarshalJSON() ([]byte, error) {
+	if len(a.Underlays) == 0 {
+		return nil, fmt.Errorf("no underlays for %s", a.Overlay)
+	}
+
+	// select the underlay address for backward compatibility
+	var underlay string
+	if v := SelectBestAdvertisedAddress(a.Underlays, nil); v != nil {
+		underlay = v.String()
+	}
+
 	return json.Marshal(&addressJSON{
 		Overlay:   a.Overlay.String(),
-		Underlay:  a.Underlay.String(),
+		Underlay:  underlay,
+		Underlays: a.underlaysAsStrings(),
 		Signature: base64.StdEncoding.EncodeToString(a.Signature),
 		Nonce:     common.Bytes2Hex(a.Nonce),
 	})
@@ -143,23 +177,80 @@ func (a *Address) UnmarshalJSON(b []byte) error {
 
 	a.Overlay = addr
 
-	m, err := ma.NewMultiaddr(v.Underlay)
+	// append the underlay for backward compatibility
+	if !slices.Contains(v.Underlays, v.Underlay) {
+		v.Underlays = append(v.Underlays, v.Underlay)
+	}
+
+	multiaddrs, err := parseMultiaddrs(v.Underlays)
 	if err != nil {
 		return err
 	}
 
-	a.Underlay = m
+	a.Underlays = multiaddrs
 	a.Signature, err = base64.StdEncoding.DecodeString(v.Signature)
 	a.Nonce = common.Hex2Bytes(v.Nonce)
 	return err
 }
 
 func (a *Address) String() string {
-	return fmt.Sprintf("[Underlay: %v, Overlay %v, Signature %x, Transaction %x]", a.Underlay, a.Overlay, a.Signature, a.Nonce)
+	return fmt.Sprintf("[Underlay: %v, Overlay %v, Signature %x, Transaction %x]", a.underlaysAsStrings(), a.Overlay, a.Signature, a.Nonce)
 }
 
 // ShortString returns shortened versions of bzz address in a format: [Overlay, Underlay]
 // It can be used for logging
 func (a *Address) ShortString() string {
-	return fmt.Sprintf("[Overlay: %s, Underlay: %s]", a.Overlay.String(), a.Underlay.String())
+	return fmt.Sprintf("[Overlay: %s, Underlays: %v]", a.Overlay.String(), a.underlaysAsStrings())
+}
+
+func (a *Address) underlaysAsStrings() []string {
+	underlays := make([]string, len(a.Underlays))
+	for i, underlay := range a.Underlays {
+		underlays[i] = underlay.String()
+	}
+	return underlays
+}
+
+func parseMultiaddrs(addrs []string) ([]ma.Multiaddr, error) {
+	multiAddrs := make([]ma.Multiaddr, len(addrs))
+	for i, addr := range addrs {
+		multiAddr, err := ma.NewMultiaddr(addr)
+		if err != nil {
+			return nil, err
+		}
+		multiAddrs[i] = multiAddr
+	}
+	return multiAddrs, nil
+}
+
+func SelectBestAdvertisedAddress(addrs []ma.Multiaddr, fallback ma.Multiaddr) ma.Multiaddr {
+	if len(addrs) == 0 {
+		return fallback
+	}
+
+	hasTCPProtocol := func(addr ma.Multiaddr) bool {
+		_, err := addr.ValueForProtocol(ma.P_TCP)
+		return err == nil
+	}
+
+	// Sort addresses to prioritize TCP over other protocols
+	sort.SliceStable(addrs, func(i, j int) bool {
+		iTCP := hasTCPProtocol(addrs[i])
+		jTCP := hasTCPProtocol(addrs[j])
+		return iTCP && !jTCP
+	})
+
+	for _, addr := range addrs {
+		if manet.IsPublicAddr(addr) {
+			return addr
+		}
+	}
+
+	for _, addr := range addrs {
+		if !manet.IsPrivateAddr(addr) {
+			return addr
+		}
+	}
+
+	return addrs[0]
 }
