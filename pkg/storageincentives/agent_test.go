@@ -96,8 +96,6 @@ func TestAgent(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			synctest.Test(t, func(t *testing.T) {
 				wait := make(chan struct{})
 				addr := swarm.RandAddress(t)
