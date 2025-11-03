@@ -141,8 +141,7 @@ func NewService(logger log.Logger, overlayEthAddress common.Address, backend Bac
 		monitor: monitor,
 	}
 
-	err = t.waitForAllPendingTx()
-	if err != nil {
+	if err = t.waitForAllPendingTx(); err != nil {
 		return nil, err
 	}
 
