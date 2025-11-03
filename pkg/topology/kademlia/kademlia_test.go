@@ -11,6 +11,7 @@ import (
 	"math"
 	"math/rand"
 	"reflect"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -825,7 +826,7 @@ func TestAddressBookPrune(t *testing.T) {
 	}
 	testutil.CleanupCloser(t, kad)
 
-	nonConnPeer, err := bzz.NewAddress(signer, nonConnectableAddress, swarm.RandAddressAt(t, base, 1), 0, nil)
+	nonConnPeer, err := bzz.NewAddress(signer, []ma.Multiaddr{nonConnectableAddress}, swarm.RandAddressAt(t, base, 1), 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -836,11 +837,12 @@ func TestAddressBookPrune(t *testing.T) {
 	// add non connectable peer, check connection and failed connection counters
 	kad.AddPeers(nonConnPeer.Overlay)
 
-	kad.Trigger()
-	kad.Trigger()
+	for range 5 {
+		kad.Trigger()
+	}
 
 	waitCounter(t, &conns, 0)
-	waitCounter(t, &failedConns, 3)
+	waitCounter(t, &failedConns, 6)
 
 	_, err = ab.Get(nonConnPeer.Overlay)
 	if !errors.Is(err, addressbook.ErrNotFound) {
@@ -903,7 +905,7 @@ func TestAddressBookQuickPrune_FLAKY(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 
-	nonConnPeer, err := bzz.NewAddress(signer, nonConnectableAddress, swarm.RandAddressAt(t, base, 1), 0, nil)
+	nonConnPeer, err := bzz.NewAddress(signer, []ma.Multiaddr{nonConnectableAddress}, swarm.RandAddressAt(t, base, 1), 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -921,6 +923,13 @@ func TestAddressBookQuickPrune_FLAKY(t *testing.T) {
 	kad.AddPeers(nonConnPeer.Overlay)
 	waitCounter(t, &conns, 0)
 	waitCounter(t, &failedConns, 1)
+
+	// we need to trigger connection attempts maxConnAttempts times
+	for range 3 {
+		time.Sleep(10 * time.Millisecond)
+		kad.Trigger()
+		waitCounter(t, &failedConns, 1)
+	}
 
 	_, err = ab.Get(nonConnPeer.Overlay)
 	if !errors.Is(err, addressbook.ErrNotFound) {
@@ -1237,7 +1246,7 @@ func TestStart(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			bzzAddr, err := bzz.NewAddress(signer, multiaddr, peer, 0, nil)
+			bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{multiaddr}, peer, 0, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -2026,11 +2035,14 @@ func p2pMock(t *testing.T, ab addressbook.Interface, signer beeCrypto.Signer, co
 	t.Helper()
 
 	p2ps := p2pmock.New(
-		p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
-			if addr.Equal(nonConnectableAddress) {
-				_ = atomic.AddInt32(failedCounter, 1)
-				return nil, errors.New("non reachable node")
+		p2pmock.WithConnectFunc(func(ctx context.Context, addrs []ma.Multiaddr) (*bzz.Address, error) {
+			for _, addr := range addrs {
+				if addr.Equal(nonConnectableAddress) {
+					_ = atomic.AddInt32(failedCounter, 1)
+					return nil, errors.New("non reachable node")
+				}
 			}
+
 			if counter != nil {
 				_ = atomic.AddInt32(counter, 1)
 			}
@@ -2041,13 +2053,13 @@ func p2pMock(t *testing.T, ab addressbook.Interface, signer beeCrypto.Signer, co
 			}
 
 			for _, a := range addresses {
-				if a.Underlay.Equal(addr) {
+				if bzz.AreUnderlaysEqual(a.Underlays, addrs) {
 					return &a, nil
 				}
 			}
 
 			address := swarm.RandAddress(t)
-			bzzAddr, err := bzz.NewAddress(signer, addr, address, 0, nil)
+			bzzAddr, err := bzz.NewAddress(signer, addrs, address, 0, nil)
 			if err != nil {
 				return nil, err
 			}
@@ -2077,12 +2089,8 @@ const underlayBase = "/ip4/127.0.0.1/tcp/1634/dns/"
 
 func connectOne(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addressbook.Putter, peer swarm.Address, expErr error) {
 	t.Helper()
-	multiaddr, err := ma.NewMultiaddr(underlayBase + peer.String())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	bzzAddr, err := bzz.NewAddress(signer, multiaddr, peer, 0, nil)
+	underlays := generateMultipleUnderlays(t, 3, underlayBase+peer.String())
+	bzzAddr, err := bzz.NewAddress(signer, underlays, peer, 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2102,7 +2110,7 @@ func addOne(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addressbo
 	if err != nil {
 		t.Fatal(err)
 	}
-	bzzAddr, err := bzz.NewAddress(signer, multiaddr, peer, 0, nil)
+	bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{multiaddr}, peer, 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2230,4 +2238,18 @@ func ptrInt(v int) *int {
 
 func ptrDuration(v time.Duration) *time.Duration {
 	return &v
+}
+
+func generateMultipleUnderlays(t *testing.T, n int, baseUnderlay string) []ma.Multiaddr {
+	t.Helper()
+	underlays := make([]ma.Multiaddr, n)
+
+	for i := 0; i < n; i++ {
+		multiaddr, err := ma.NewMultiaddr(baseUnderlay + strconv.Itoa(i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		underlays[i] = multiaddr
+	}
+	return underlays
 }
