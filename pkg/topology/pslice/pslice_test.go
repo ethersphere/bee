@@ -24,8 +24,8 @@ func TestShallowestEmpty(t *testing.T) {
 		peers = make([][]swarm.Address, 16)
 	)
 
-	for i := 0; i < 16; i++ {
-		for j := 0; j < 3; j++ {
+	for i := range 16 {
+		for range 3 {
 			a := swarm.RandAddressAt(t, base, i)
 			peers[i] = append(peers[i], a)
 		}
@@ -221,7 +221,7 @@ func TestIterators(t *testing.T) {
 	ps := pslice.New(4, base)
 
 	peers := make([]swarm.Address, 4)
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		peers[i] = swarm.RandAddressAt(t, base, i)
 	}
 
@@ -286,7 +286,7 @@ func TestBinPeers(t *testing.T) {
 			// prepare slice
 			ps := pslice.New(len(tc.peersCount), base)
 			for bin, peersCount := range tc.peersCount {
-				for i := 0; i < peersCount; i++ {
+				for range peersCount {
 					peer := swarm.RandAddressAt(t, base, bin)
 					binPeers[bin] = append(binPeers[bin], peer)
 					ps.Add(peer)
@@ -342,8 +342,8 @@ func TestIteratorsJumpStop(t *testing.T) {
 	ps := pslice.New(4, base)
 
 	peers := make([]swarm.Address, 0, 12)
-	for i := 0; i < 4; i++ {
-		for ii := 0; ii < 3; ii++ {
+	for i := range 4 {
+		for range 3 {
 			a := swarm.RandAddressAt(t, base, i)
 			peers = append(peers, a)
 			ps.Add(a)
@@ -435,9 +435,7 @@ func BenchmarkAdd(b *testing.B) {
 
 	addrs := swarm.RandAddresses(b, bins*perBin)
 
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		for _, addr := range addrs {
 			ps.Add(addr)
 		}
@@ -450,9 +448,7 @@ func BenchmarkAddBatch(b *testing.B) {
 
 	addrs := swarm.RandAddresses(b, bins*perBin)
 
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		ps.Add(addrs...)
 	}
 }
@@ -464,9 +460,7 @@ func BenchmarkRemove(b *testing.B) {
 	addrs := swarm.RandAddresses(b, bins*perBin)
 	ps.Add(addrs...)
 
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		for _, addr := range addrs {
 			ps.Remove(addr)
 		}
@@ -480,9 +474,7 @@ func BenchmarkEachBin(b *testing.B) {
 	addrs := swarm.RandAddresses(b, bins*perBin)
 	ps.Add(addrs...)
 
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		_ = ps.EachBin(func(a swarm.Address, u uint8) (stop bool, jumpToNext bool, err error) {
 			return false, false, nil
 		})
@@ -496,9 +488,7 @@ func BenchmarkEachBinRev(b *testing.B) {
 	addrs := swarm.RandAddresses(b, bins*perBin)
 	ps.Add(addrs...)
 
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		_ = ps.EachBinRev(func(a swarm.Address, u uint8) (stop bool, jumpToNext bool, err error) {
 			return false, false, nil
 		})

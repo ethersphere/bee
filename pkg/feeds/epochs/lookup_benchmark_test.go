@@ -38,7 +38,7 @@ func BenchmarkFinder(b *testing.B) {
 
 			ctx := context.Background()
 
-			for at := int64(0); at < prefill; at++ {
+			for at := range prefill {
 				err = updater.Update(ctx, at, payload)
 				if err != nil {
 					b.Fatal(err)
@@ -58,7 +58,7 @@ func BenchmarkFinder(b *testing.B) {
 				} {
 					names := []string{"sync", "async"}
 					b.Run(fmt.Sprintf("%s:prefill=%d, latest=%d, now=%d", names[k], prefill, latest, now), func(b *testing.B) {
-						for n := 0; n < b.N; n++ {
+						for b.Loop() {
 							_, _, _, err := finder.At(ctx, int64(now), after)
 							if err != nil {
 								b.Fatal(err)

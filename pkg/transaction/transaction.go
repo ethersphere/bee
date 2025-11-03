@@ -14,6 +14,8 @@ import (
 	"sync"
 	"time"
 
+	"context"
+
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -23,14 +25,12 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/storage"
-	"golang.org/x/net/context"
 )
 
 // loggerName is the tree path name of the logger for this package.
 const loggerName = "transaction"
 
 const (
-	noncePrefix              = "transaction_nonce_"
 	storedTransactionPrefix  = "transaction_stored_"
 	pendingTransactionPrefix = "transaction_pending_"
 )
@@ -141,8 +141,7 @@ func NewService(logger log.Logger, overlayEthAddress common.Address, backend Bac
 		monitor: monitor,
 	}
 
-	err = t.waitForAllPendingTx()
-	if err != nil {
+	if err = t.waitForAllPendingTx(); err != nil {
 		return nil, err
 	}
 
@@ -223,9 +222,7 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, boost
 }
 
 func (t *transactionService) waitForPendingTx(txHash common.Hash) {
-	t.wg.Add(1)
-	go func() {
-		defer t.wg.Done()
+	t.wg.Go(func() {
 		switch _, err := t.WaitForReceipt(t.ctx, txHash); err {
 		case nil:
 			t.logger.Info("pending transaction confirmed", "tx", txHash)
@@ -240,7 +237,7 @@ func (t *transactionService) waitForPendingTx(txHash common.Hash) {
 				t.logger.Error(err, "waiting for pending transaction failed", "tx", txHash)
 			}
 		}
-	}()
+	})
 }
 
 func (t *transactionService) Call(ctx context.Context, request *TxRequest) ([]byte, error) {
@@ -276,11 +273,11 @@ func (t *transactionService) StoredTransaction(txHash common.Hash) (*StoredTrans
 func (t *transactionService) prepareTransaction(ctx context.Context, request *TxRequest, nonce uint64, boostPercent int) (tx *types.Transaction, err error) {
 	var gasLimit uint64
 	if request.GasLimit == 0 {
-		gasLimit, err = t.backend.EstimateGas(ctx, ethereum.CallMsg{
+		gasLimit, err = t.backend.EstimateGasAtBlock(ctx, ethereum.CallMsg{
 			From: t.sender,
 			To:   request.To,
 			Data: request.Data,
-		})
+		}, nil) // nil for latest block
 		if err != nil {
 			t.logger.Debug("estimate gas failed", "error", err)
 			gasLimit = request.MinEstimatedGasLimit
@@ -597,9 +594,9 @@ func (t *transactionService) UnwrapABIError(ctx context.Context, req *TxRequest,
 			continue
 		}
 
-		values, ok := data.([]interface{})
+		values, ok := data.([]any)
 		if !ok {
-			values = make([]interface{}, len(abiError.Inputs))
+			values = make([]any, len(abiError.Inputs))
 			for i := range values {
 				values[i] = "?"
 			}

@@ -435,6 +435,7 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
           description: Swarm address of content
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmFeedLegacyResolve"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyFallbackModeParameter"
@@ -503,6 +504,7 @@ paths:
             type: string
           required: true
           description: Path to the file in the collection.
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmFeedLegacyResolve"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyFallbackModeParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmChunkRetrievalTimeoutParameter"
@@ -563,12 +565,6 @@ paths:
       tags:
         - Tag
       description: Tags can be thought of as upload sessions which can be tracked using the tags endpoint. It will keep track of the chunks that are uploaded as part of the tag and will push them out to the network once a done split is called on the Tag. This happens internally if you use the `Swarm-Deferred-Upload` header.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "SwarmCommon.yaml#/components/schemas/NewTagRequest"
       responses:
         "201":
           description: New Tag Info
@@ -1036,6 +1032,7 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/FeedType"
           required: false
           description: "Feed indexing scheme (default: sequence)"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmFeedLegacyResolve"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmOnlyRootChunkParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"

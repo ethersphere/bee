@@ -295,12 +295,6 @@ components:
     MultiAddress:
       type: string
 
-    NewTagRequest:
-      type: object
-      properties:
-        address:
-          $ref: "#/components/schemas/SwarmAddress"
-
     NewTagResponse:
       type: object
       properties:
@@ -1281,6 +1275,14 @@ components:
         format: int64
       required: false
       description: "ACT history Unix timestamp"
+
+    SwarmFeedLegacyResolve:
+      in: query
+      name: swarm-feed-legacy-resolve
+      schema:
+        type: boolean
+      required: false
+      description: "Resolves feed payloads in legacy structure (timestamp, content address)."
 
   responses:
     "200":

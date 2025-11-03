@@ -156,18 +156,14 @@ func newShard(t *testing.T) *shard {
 
 	terminated := make(chan struct{})
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		shard.process()
 		close(terminated)
-	}()
+	})
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		slots.process(terminated)
-	}()
+	})
 
 	return shard
 }

@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -213,6 +214,12 @@ func NewBee(
 	session accesscontrol.Session,
 	o *Options,
 ) (b *Bee, err error) {
+	// start time for node warmup duration measurement
+	warmupStartTime := time.Now()
+	var pullSyncStartTime time.Time
+
+	nodeMetrics := newMetrics()
+
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -220,6 +227,10 @@ func NewBee(
 	})
 	if err != nil {
 		return nil, fmt.Errorf("tracer: %w", err)
+	}
+
+	if err := validatePublicAddress(o.NATAddr); err != nil {
+		return nil, fmt.Errorf("invalid NAT address %s: %w", o.NATAddr, err)
 	}
 
 	ctx, ctxCancel := context.WithCancel(ctx)
@@ -358,16 +369,10 @@ func NewBee(
 	}
 
 	var (
-		chainBackend       transaction.Backend
-		overlayEthAddress  common.Address
-		chainID            int64
-		transactionService transaction.Service
-		transactionMonitor transaction.Monitor
-		chequebookFactory  chequebook.Factory
-		chequebookService  chequebook.Service = new(noOpChequebookService)
-		chequeStore        chequebook.ChequeStore
-		cashoutService     chequebook.CashoutService
-		erc20Service       erc20.Service
+		chequebookService chequebook.Service = new(noOpChequebookService)
+		chequeStore       chequebook.ChequeStore
+		cashoutService    chequebook.CashoutService
+		erc20Service      erc20.Service
 	)
 
 	chainEnabled := isChainEnabled(o, o.BlockchainRpcEndpoint, logger)
@@ -389,7 +394,7 @@ func NewBee(
 		}
 	}
 
-	chainBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err = InitChain(
+	chainBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err := InitChain(
 		ctx,
 		logger,
 		stateStore,
@@ -403,14 +408,10 @@ func NewBee(
 	if err != nil {
 		return nil, fmt.Errorf("init chain: %w", err)
 	}
+
+	logger.Info("using chain with network", "chain_id", chainID, "network_id", networkID)
+
 	b.ethClientCloser = chainBackend.Close
-
-	logger.Info("using chain with network network", "chain_id", chainID, "network_id", networkID)
-
-	if o.ChainID != -1 && o.ChainID != chainID {
-		return nil, fmt.Errorf("connected to wrong blockchain network; network chainID %d; configured chainID %d", chainID, o.ChainID)
-	}
-
 	b.transactionCloser = tracerCloser
 	b.transactionMonitorCloser = transactionMonitor
 
@@ -448,7 +449,7 @@ func NewBee(
 			runtime.SetBlockProfileRate(1)
 		}
 
-		apiListener, err := net.Listen("tcp", o.APIAddr)
+		apiListener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", o.APIAddr)
 		if err != nil {
 			return nil, fmt.Errorf("api listener: %w", err)
 		}
@@ -509,7 +510,7 @@ func NewBee(
 	}
 
 	if o.SwapEnable {
-		chequebookFactory, err = InitChequebookFactory(logger, chainBackend, chainID, transactionService, o.SwapFactoryAddress)
+		chequebookFactory, err := InitChequebookFactory(logger, chainBackend, chainID, transactionService, o.SwapFactoryAddress)
 		if err != nil {
 			return nil, fmt.Errorf("init chequebook factory: %w", err)
 		}
@@ -604,9 +605,17 @@ func NewBee(
 		logger.Info("node warmup check initiated. monitoring activity rate to determine readiness.", "startTime", t)
 	}
 
-	detector.OnStabilized = func(t time.Time, totalCount int) {
-		logger.Info("node warmup complete. system is considered stable and ready.", "stabilizationTime", t, "totalMonitoredEvents", totalCount)
+	warmupMeasurement := func(t time.Time, totalCount int) {
+		warmupDuration := t.Sub(warmupStartTime).Seconds()
+		logger.Info("node warmup complete. system is considered stable and ready.",
+			"stabilizationTime", t,
+			"totalMonitoredEvents", totalCount,
+			"warmupDurationSeconds", warmupDuration)
+
+		nodeMetrics.WarmupDuration.Observe(warmupDuration)
+		pullSyncStartTime = t
 	}
+	detector.OnStabilized = warmupMeasurement
 
 	detector.OnPeriodComplete = func(t time.Time, periodCount int, stDev float64) {
 		logger.Debug("node warmup check: period complete.", "periodEndTime", t, "eventsInPeriod", periodCount, "rateStdDev", stDev)
@@ -1145,6 +1154,37 @@ func NewBee(
 		localStore.StartReserveWorker(ctx, pullerService, waitNetworkRFunc)
 		nodeStatus.SetSync(pullerService)
 
+		// measure full sync duration
+		detector.OnStabilized = func(t time.Time, totalCount int) {
+			warmupMeasurement(t, totalCount)
+
+			reserveTreshold := reserveCapacity >> 1
+			isFullySynced := func() bool {
+				return pullerService.SyncRate() == 0 && saludService.IsHealthy() && localStore.ReserveSize() >= reserveTreshold
+			}
+
+			syncCheckTicker := time.NewTicker(2 * time.Second)
+			go func() {
+				defer syncCheckTicker.Stop()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case <-syncCheckTicker.C:
+						synced := isFullySynced()
+						logger.Debug("sync status check", "synced", synced, "reserveSize", localStore.ReserveSize(), "syncRate", pullerService.SyncRate())
+						if synced {
+							fullSyncTime := pullSyncStartTime.Sub(t)
+							logger.Info("full sync done", "duration", fullSyncTime)
+							nodeMetrics.FullSyncDuration.Observe(fullSyncTime.Minutes())
+							syncCheckTicker.Stop()
+							return
+						}
+					}
+				}
+			}()
+		}
+
 		if o.EnableStorageIncentives {
 
 			redistributionContractAddress := chainCfg.RedistributionAddress
@@ -1232,6 +1272,7 @@ func NewBee(
 		apiService.MustRegisterMetrics(kad.Metrics()...)
 		apiService.MustRegisterMetrics(saludService.Metrics()...)
 		apiService.MustRegisterMetrics(stateStoreMetrics.Metrics()...)
+		apiService.MustRegisterMetrics(getMetrics(nodeMetrics)...)
 
 		if pullerService != nil {
 			apiService.MustRegisterMetrics(pullerService.Metrics()...)
@@ -1421,11 +1462,50 @@ func isChainEnabled(o *Options, swapEndpoint string, logger log.Logger) bool {
 	chainDisabled := swapEndpoint == ""
 	lightMode := !o.FullNodeMode
 
-	if lightMode && chainDisabled { // ultra light mode is LightNode mode with chain disabled
-		logger.Info("starting with a disabled chain backend")
+	if lightMode && chainDisabled {
+		logger.Info("chain backend disabled - starting in ultra-light mode",
+			"full_node_mode", o.FullNodeMode,
+			"blockchain-rpc-endpoint", swapEndpoint)
 		return false
 	}
 
-	logger.Info("starting with an enabled chain backend")
+	logger.Info("chain backend enabled - blockchain functionality available",
+		"full_node_mode", o.FullNodeMode,
+		"blockchain-rpc-endpoint", swapEndpoint)
 	return true // all other modes operate require chain enabled
+}
+
+func validatePublicAddress(addr string) error {
+	if addr == "" {
+		return nil
+	}
+
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("%w", err)
+	}
+	if host == "" {
+		return errors.New("host is empty")
+	}
+	if port == "" {
+		return errors.New("port is empty")
+	}
+	if _, err := strconv.ParseUint(port, 10, 16); err != nil {
+		return fmt.Errorf("port is not a valid number: %w", err)
+	}
+	if host == "localhost" {
+		return errors.New("localhost is not a valid address")
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return errors.New("not a valid IP address")
+	}
+	if ip.IsLoopback() {
+		return errors.New("loopback address is not a valid address")
+	}
+	if ip.IsPrivate() {
+		return errors.New("private address is not a valid address")
+	}
+
+	return nil
 }

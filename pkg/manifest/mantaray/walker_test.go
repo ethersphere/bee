@@ -55,7 +55,7 @@ func TestWalkNode(t *testing.T) {
 
 			n := mantaray.New()
 
-			for i := 0; i < len(toAdd); i++ {
+			for i := range toAdd {
 				c := toAdd[i]
 				e := append(make([]byte, 32-len(c)), c...)
 				err := n.Add(ctx, c, e, nil, nil)

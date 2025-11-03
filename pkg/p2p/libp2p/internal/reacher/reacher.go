@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	ma "github.com/multiformats/go-multiaddr"
@@ -38,10 +39,10 @@ type reacher struct {
 	pinger   p2p.Pinger
 	notifier p2p.ReachableNotifier
 
-	wg      sync.WaitGroup
-	metrics metrics
+	wg sync.WaitGroup
 
 	options *Options
+	logger  log.Logger
 }
 
 type Options struct {
@@ -50,15 +51,14 @@ type Options struct {
 	RetryAfterDuration time.Duration
 }
 
-func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier, o *Options) *reacher {
-
+func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier, o *Options, log log.Logger) *reacher {
 	r := &reacher{
 		newPeer:  make(chan struct{}, 1),
 		quit:     make(chan struct{}),
 		pinger:   streamer,
 		peers:    make(map[string]*peer),
 		notifier: notifier,
-		metrics:  newMetrics(),
+		logger:   log.WithName("reacher").Register(),
 	}
 
 	if o == nil {
@@ -130,27 +130,20 @@ func (r *reacher) manage() {
 }
 
 func (r *reacher) ping(c chan *peer, ctx context.Context) {
-
 	defer r.wg.Done()
-
 	for p := range c {
-
-		now := time.Now()
-
-		ctxt, cancel := context.WithTimeout(ctx, r.options.PingTimeout)
-		_, err := r.pinger.Ping(ctxt, p.addr)
-		cancel()
-
-		// ping was successful
-		if err == nil {
-			r.metrics.Pings.WithLabelValues("success").Inc()
-			r.metrics.PingTime.WithLabelValues("success").Observe(time.Since(now).Seconds())
-			r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPublic)
-		} else {
-			r.metrics.Pings.WithLabelValues("failure").Inc()
-			r.metrics.PingTime.WithLabelValues("failure").Observe(time.Since(now).Seconds())
-			r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPrivate)
-		}
+		func() {
+			ctxt, cancel := context.WithTimeout(ctx, r.options.PingTimeout)
+			defer cancel()
+			rtt, err := r.pinger.Ping(ctxt, p.addr)
+			if err != nil {
+				r.logger.Debug("ping failed", "peer", p.overlay.String(), "addr", p.addr.String(), "error", err)
+				r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPrivate)
+			} else {
+				r.logger.Debug("ping succeeded", "peer", p.overlay.String(), "addr", p.addr.String(), "rtt", rtt)
+				r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPublic)
+			}
+		}()
 	}
 }
 

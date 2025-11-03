@@ -124,7 +124,7 @@ func SetVerbosityByExp(e string, v Level) error {
 	}
 
 	var merr *multierror.Error
-	loggers.Range(func(key, val interface{}) bool {
+	loggers.Range(func(key, val any) bool {
 		if rex.MatchString(key.(string)) {
 			merr = multierror.Append(merr, SetVerbosity(val.(*logger), v))
 		}
@@ -135,7 +135,7 @@ func SetVerbosityByExp(e string, v Level) error {
 
 // RegistryIterate iterates through all registered loggers.
 func RegistryIterate(fn func(id, path string, verbosity Level, v uint) (next bool)) {
-	loggers.Range(func(_, val interface{}) bool {
+	loggers.Range(func(_, val any) bool {
 		l := val.(*logger)
 		return fn(l.id, l.namesStr, l.verbosity.get(), l.v)
 	})

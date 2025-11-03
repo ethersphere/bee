@@ -26,8 +26,7 @@ import (
 func TestNewStream(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
 		FullNode: true,
@@ -61,8 +60,7 @@ func TestNewStream(t *testing.T) {
 func TestNewStream_OnlyFull(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
 		FullNode: true,
@@ -101,8 +99,7 @@ func TestNewStream_OnlyFull(t *testing.T) {
 func TestNewStream_Mixed(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
 		FullNode: true,
@@ -140,8 +137,7 @@ func TestNewStream_Mixed(t *testing.T) {
 func TestNewStreamMulti(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
 		FullNode: true,
@@ -190,8 +186,7 @@ func TestNewStreamMulti(t *testing.T) {
 func TestNewStream_errNotSupported(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
 		FullNode: true,
@@ -229,8 +224,7 @@ func TestNewStream_errNotSupported(t *testing.T) {
 func TestNewStream_semanticVersioning(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
 		FullNode: true,
@@ -292,8 +286,7 @@ func TestNewStream_semanticVersioning(t *testing.T) {
 func TestDisconnectError(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
 		FullNode: true,
@@ -324,8 +317,7 @@ func TestDisconnectError(t *testing.T) {
 func TestConnectDisconnectEvents(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
 		FullNode: true,
@@ -434,7 +426,7 @@ func TestPing(t *testing.T) {
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	if _, err := s2.Ping(ctx, addr); err != nil {
+	if _, err := s2.Ping(ctx, addr[0]); err != nil {
 		t.Fatal(err)
 	}
 }

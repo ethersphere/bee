@@ -19,6 +19,8 @@ type metrics struct {
 	ReserveSizePercentErr prometheus.Gauge
 	Healthy               prometheus.Counter
 	Unhealthy             prometheus.Counter
+	NeighborhoodAvgDur    prometheus.Gauge
+	NeighborCount         prometheus.Gauge
 }
 
 func newMetrics() metrics {
@@ -78,6 +80,19 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "reserve_size_percentage_err",
 			Help:      "Percentage error of the reservesize relative to the network average.",
+		}),
+		// Neighborhood-specific metrics
+		NeighborhoodAvgDur: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "neighborhood_dur",
+			Help:      "Average duration for snapshot response from neighborhood peers.",
+		}),
+		NeighborCount: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "neighbors",
+			Help:      "Number of neighborhood peers.",
 		}),
 	}
 }
