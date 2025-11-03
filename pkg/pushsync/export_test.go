@@ -5,7 +5,12 @@
 package pushsync
 
 var (
-	ProtocolName    = protocolName
-	ProtocolVersion = protocolVersion
-	StreamName      = streamName
+	ProtocolName               = protocolName
+	ProtocolVersion            = protocolVersion
+	StreamName                 = streamName
+	OverDraftRefresh           = overDraftRefresh
+	MaxOverDraftRefresh        = maxOverDraftRefresh
+	OverDraftBackoffMultiplier = overDraftBackoffMultiplier
+	OverDraftJitterPercent     = overDraftJitterPercent
+	CalculateOverdraftBackoff  = calculateOverdraftBackoff
 )
