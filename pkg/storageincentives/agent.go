@@ -417,7 +417,7 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	}
 
 	if !a.state.IsHealthy() {
-		a.logger.Info("skipping round because node is unhealhy", "round", round)
+		a.logger.Info("skipping round because node is unhealthy", "round", round)
 		return false, nil
 	}
 
