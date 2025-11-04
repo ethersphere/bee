@@ -7,6 +7,7 @@ package bmt
 import (
 	"encoding/binary"
 	"hash"
+	"sync"
 
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -37,6 +38,7 @@ type Hasher struct {
 	result chan []byte // result channel
 	errc   chan error  // error channel
 	span   []byte      // The span of the data subsumed under the chunk
+	resultOnce *sync.Once // ensures only one result is sent (pointer allows reset)
 }
 
 // NewHasher gives back an instance of a Hasher struct
@@ -44,11 +46,12 @@ func NewHasher(hasherFact func() hash.Hash) *Hasher {
 	conf := NewConf(hasherFact, swarm.BmtBranches, 32)
 
 	return &Hasher{
-		Conf:   conf,
-		result: make(chan []byte),
-		errc:   make(chan error, 1),
-		span:   make([]byte, SpanSize),
-		bmt:    newTree(conf.maxSize, conf.depth, conf.hasher),
+		Conf:       conf,
+		result:     make(chan []byte, 1), // buffered to prevent blocking
+		errc:       make(chan error, 1),
+		span:       make([]byte, SpanSize),
+		bmt:        newTree(conf.maxSize, conf.depth, conf.hasher),
+		resultOnce: &sync.Once{},
 	}
 }
 
@@ -142,6 +145,17 @@ func (h *Hasher) Reset() {
 	h.pos = 0
 	h.size = 0
 	copy(h.span, zerospan)
+	// Drain any remaining values from channels to prepare for reuse
+	select {
+	case <-h.result:
+	default:
+	}
+	select {
+	case <-h.errc:
+	default:
+	}
+	// Reset the sync.Once by creating a new one
+	h.resultOnce = &sync.Once{}
 }
 
 // processSection writes the hash of i-th section into level 1 node of the BMT tree.
@@ -182,7 +196,13 @@ func (h *Hasher) writeNode(n *node, isLeft bool, s []byte) {
 	for {
 		// at the root of the bmt just write the result to the result channel
 		if n == nil {
-			h.result <- s
+			h.resultOnce.Do(func() {
+				select {
+				case h.result <- s:
+				default:
+					// Channel is full or already has a result, skip
+				}
+			})
 			return
 		}
 		// otherwise assign child hash to left or right segment
@@ -221,7 +241,13 @@ func (h *Hasher) writeFinalNode(level int, n *node, isLeft bool, s []byte) {
 		// at the root of the bmt just write the result to the result channel
 		if n == nil {
 			if s != nil {
-				h.result <- s
+				h.resultOnce.Do(func() {
+					select {
+					case h.result <- s:
+					default:
+						// Channel is full or already has a result, skip
+					}
+				})
 			}
 			return
 		}
