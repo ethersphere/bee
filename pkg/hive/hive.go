@@ -186,13 +186,15 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 			return err
 		}
 
-		if !s.allowPrivateCIDRs && manet.IsPrivateAddr(addr.Underlay) {
-			continue // Don't advertise private CIDRs to the public network.
+		advertisableUnderlays := s.filterAdvertisableUnderlays(addr.Underlays)
+		if len(advertisableUnderlays) == 0 {
+			s.logger.Debug("skipping peers: no advertisable underlays", "peer_address", p)
+			continue
 		}
 
 		peersRequest.Peers = append(peersRequest.Peers, &pb.BzzAddress{
 			Overlay:   addr.Overlay.Bytes(),
-			Underlay:  addr.Underlay.Bytes(),
+			Underlay:  bzz.SerializeUnderlays(advertisableUnderlays),
 			Signature: addr.Signature,
 			Nonce:     addr.Nonce,
 		})
@@ -275,7 +277,7 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 	mtx := sync.Mutex{}
 	wg := sync.WaitGroup{}
 
-	addPeer := func(newPeer *pb.BzzAddress, multiUnderlay ma.Multiaddr) {
+	addPeer := func(newPeer *pb.BzzAddress, multiUnderlay []ma.Multiaddr) {
 		err := s.sem.Acquire(ctx, 1)
 		if err != nil {
 			return
@@ -293,22 +295,35 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 			ctx, cancel := context.WithTimeout(ctx, pingTimeout)
 			defer cancel()
 
-			start := time.Now()
+			var (
+				pingSuccessful bool
+				start          time.Time
+			)
+			for _, underlay := range multiUnderlay {
+				// ping each underlay address, pick first available
+				start = time.Now()
+				if _, err := s.streamer.Ping(ctx, underlay); err != nil {
+					s.logger.Debug("unreachable peer underlay", "peer_address", hex.EncodeToString(newPeer.Overlay), "underlay", underlay, "error", err)
+					continue
+				}
+				pingSuccessful = true
+				s.logger.Debug("reachable peer underlay", "peer_address", hex.EncodeToString(newPeer.Overlay), "underlay", underlay)
+				break
+			}
 
-			// check if the underlay is usable by doing a raw ping using libp2p
-			if _, err := s.streamer.Ping(ctx, multiUnderlay); err != nil {
+			if !pingSuccessful {
+				// none of underlay addresses is available
 				s.metrics.PingFailureTime.Observe(time.Since(start).Seconds())
 				s.metrics.UnreachablePeers.Inc()
-				s.logger.Debug("unreachable peer underlay", "peer_address", hex.EncodeToString(newPeer.Overlay), "underlay", multiUnderlay)
 				return
 			}
-			s.metrics.PingTime.Observe(time.Since(start).Seconds())
 
+			s.metrics.PingTime.Observe(time.Since(start).Seconds())
 			s.metrics.ReachablePeers.Inc()
 
 			bzzAddress := bzz.Address{
 				Overlay:   swarm.NewAddress(newPeer.Overlay),
-				Underlay:  multiUnderlay,
+				Underlays: multiUnderlay,
 				Signature: newPeer.Signature,
 				Nonce:     newPeer.Nonce,
 			}
@@ -327,27 +342,49 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 	}
 
 	for _, p := range peers.Peers {
-
-		multiUnderlay, err := ma.NewMultiaddrBytes(p.Underlay)
+		multiUnderlays, err := bzz.DeserializeUnderlays(p.Underlay)
 		if err != nil {
 			s.metrics.PeerUnderlayErr.Inc()
 			s.logger.Debug("multi address underlay", "error", err)
 			continue
 		}
 
+		if len(multiUnderlays) == 0 {
+			s.logger.Debug("check and add peers, no underlays", "overlay", swarm.NewAddress(p.Overlay).String())
+			continue // no underlays sent
+		}
+
 		// if peer exists already in the addressBook
 		// and if the underlays match, skip
 		addr, err := s.addressBook.Get(swarm.NewAddress(p.Overlay))
-		if err == nil && addr.Underlay.Equal(multiUnderlay) {
+		if err == nil && bzz.AreUnderlaysEqual(addr.Underlays, multiUnderlays) {
 			continue
 		}
 
 		// add peer does not exist in the addressbook
-		addPeer(p, multiUnderlay)
+		addPeer(p, multiUnderlays)
 	}
 	wg.Wait()
 
 	if s.addPeersHandler != nil && len(peersToAdd) > 0 {
 		s.addPeersHandler(peersToAdd...)
 	}
+}
+
+// filterAdvertisableUnderlays returns underlay addresses that can be advertised
+// based on the allowPrivateCIDRs setting. If allowPrivateCIDRs is false,
+// only public addresses are returned.
+func (s *Service) filterAdvertisableUnderlays(underlays []ma.Multiaddr) []ma.Multiaddr {
+	if s.allowPrivateCIDRs {
+		return underlays
+	}
+
+	var publicUnderlays []ma.Multiaddr
+	for _, u := range underlays {
+		if !manet.IsPrivateAddr(u) {
+			publicUnderlays = append(publicUnderlays, u)
+		}
+	}
+
+	return publicUnderlays
 }

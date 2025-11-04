@@ -12,16 +12,20 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	ocprom "contrib.go.opencensus.io/exporter/prometheus"
+	"github.com/coreos/go-semver/semver"
 	"github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 	beecrypto "github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
+	m2 "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/blocklist"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/breaker"
@@ -48,14 +52,11 @@ import (
 	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
-
 	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/multiformats/go-multistream"
-	"go.uber.org/atomic"
-
-	ocprom "contrib.go.opencensus.io/exporter/prometheus"
-	m2 "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/atomic"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -73,6 +74,8 @@ var (
 const (
 	defaultLightNodeLimit = 100
 	peerUserAgentTimeout  = time.Second
+
+	peerstoreWaitAddrsTimeout = 10 * time.Second
 
 	defaultHeadersRWTimeout = 10 * time.Second
 
@@ -303,7 +306,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		advertisableAddresser = natAddrResolver
 	}
 
-	handshakeService, err := handshake.New(signer, advertisableAddresser, overlay, networkID, o.FullNode, o.Nonce, o.WelcomeMessage, o.ValidateOverlay, h.ID(), logger)
+	handshakeService, err := handshake.New(signer, advertisableAddresser, overlay, networkID, o.FullNode, o.Nonce, newHostAddresser(h), o.WelcomeMessage, o.ValidateOverlay, h.ID(), logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}
@@ -409,7 +412,22 @@ func (s *Service) handleIncoming(stream network.Stream) {
 
 	peerID := stream.Conn().RemotePeer()
 	handshakeStream := newStream(stream, s.metrics)
-	i, err := s.handshakeService.Handle(s.ctx, handshakeStream, stream.Conn().RemoteMultiaddr(), peerID)
+
+	peerMultiaddrs, err := s.peerMultiaddrs(s.ctx, stream.Conn(), peerID)
+	if err != nil {
+		s.logger.Debug("stream handler: handshake: build remote multiaddrs", "peer_id", peerID, "error", err)
+		s.logger.Error(nil, "stream handler: handshake: build remote multiaddrs", "peer_id", peerID)
+		_ = handshakeStream.Reset()
+		_ = s.host.Network().ClosePeer(peerID)
+		return
+	}
+
+	i, err := s.handshakeService.Handle(
+		s.ctx,
+		handshakeStream,
+		peerMultiaddrs,
+		handshake.WithBee260Compatibility(s.bee260BackwardCompatibility(peerID)),
+	)
 	if err != nil {
 		s.logger.Debug("stream handler: handshake: handle failed", "peer_id", peerID, "error", err)
 		s.logger.Error(nil, "stream handler: handshake: handle failed", "peer_id", peerID)
@@ -536,9 +554,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		return
 	}
 
-	if s.reacher != nil {
-		s.reacher.Connected(overlay, i.BzzAddress.Underlay)
-	}
+	s.notifyReacherConnected(stream, overlay, peerID)
 
 	peerUserAgent := appendSpace(s.peerUserAgent(s.ctx, peerID))
 	s.networkStatus.Store(int32(p2p.NetworkStatusAvailable))
@@ -547,10 +563,30 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	s.logger.Debug("stream handler: successfully connected to peer (inbound)", "address", i.BzzAddress.Overlay, "light", i.LightString(), "user_agent", peerUserAgent)
 }
 
+func (s *Service) notifyReacherConnected(stream network.Stream, overlay swarm.Address, peerID libp2ppeer.ID) {
+	if s.reacher == nil {
+		return
+	}
+
+	peerAddrs := s.host.Peerstore().Addrs(peerID)
+	connectionAddr := stream.Conn().RemoteMultiaddr()
+	bestAddr := bzz.SelectBestAdvertisedAddress(peerAddrs, connectionAddr)
+
+	s.logger.Debug("selected reacher address", "peer_id", peerID, "selected_addr", bestAddr.String(), "connection_addr", connectionAddr.String(), "advertised_count", len(peerAddrs))
+
+	underlay, err := buildFullMA(bestAddr, peerID)
+	if err != nil {
+		s.logger.Error(err, "stream handler: unable to build complete peer multiaddr", "peer", overlay, "multiaddr", bestAddr, "peer_id", peerID)
+		_ = s.Disconnect(overlay, "unable to build complete peer multiaddr")
+		return
+	}
+	s.reacher.Connected(overlay, underlay)
+}
+
 func (s *Service) SetPickyNotifier(n p2p.PickyNotifier) {
 	s.handshakeService.SetPicker(n)
 	s.notifier = n
-	s.reacher = reacher.New(s, n, nil)
+	s.reacher = reacher.New(s, n, nil, s.logger)
 }
 
 func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
@@ -707,40 +743,67 @@ func buildUnderlayAddress(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr
 	return addr.Encapsulate(hostAddr), nil
 }
 
-func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error) {
+func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *bzz.Address, err error) {
 	loggerV1 := s.logger.V(1).Register()
 
 	defer func() {
 		err = s.determineCurrentNetworkStatus(err)
 	}()
 
-	// Extract the peer ID from the multiaddr.
-	info, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
-	if err != nil {
-		return nil, fmt.Errorf("addr from p2p: %w", err)
-	}
+	var info *libp2ppeer.AddrInfo
+	var peerID libp2ppeer.ID
+	var connectErr error
 
-	hostAddr, err := buildHostAddress(info.ID)
-	if err != nil {
-		return nil, fmt.Errorf("build host address: %w", err)
-	}
-
-	remoteAddr := addr.Decapsulate(hostAddr)
-
-	if overlay, found := s.peers.isConnected(info.ID, remoteAddr); found {
-		address = &bzz.Address{
-			Overlay:  overlay,
-			Underlay: addr,
+	// Try to connect to each underlay address one by one.
+	//
+	// TODO: investigate the issue when AddrInfo with multiple underlay
+	// addresses for the same peer is passed to the host.Host.Connect function
+	// and reachabiltiy Private is emitted on libp2p EventBus(), which results
+	// in weaker connectivity and failures in some integration tests.
+	for _, addr := range addrs {
+		// Extract the peer ID from the multiaddr.
+		ai, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
+		if err != nil {
+			return nil, fmt.Errorf("addr from p2p: %w", err)
 		}
-		return address, p2p.ErrAlreadyConnected
+
+		info = ai
+		peerID = ai.ID
+
+		hostAddr, err := buildHostAddress(info.ID)
+		if err != nil {
+			return nil, fmt.Errorf("build host address: %w", err)
+		}
+
+		remoteAddr := addr.Decapsulate(hostAddr)
+
+		if overlay, found := s.peers.isConnected(info.ID, remoteAddr); found {
+			address = &bzz.Address{
+				Overlay:   overlay,
+				Underlays: []ma.Multiaddr{addr},
+			}
+			return address, p2p.ErrAlreadyConnected
+		}
+
+		if err := s.connectionBreaker.Execute(func() error { return s.host.Connect(ctx, *info) }); err != nil {
+			if errors.Is(err, breaker.ErrClosed) {
+				s.metrics.ConnectBreakerCount.Inc()
+				return nil, p2p.NewConnectionBackoffError(err, s.connectionBreaker.ClosedUntil())
+			}
+			s.logger.Warning("libp2p connect", "peer_id", peerID, "underlay", info.Addrs, "error", err)
+			connectErr = err
+			continue
+		}
+
+		connectErr = nil
 	}
 
-	if err := s.connectionBreaker.Execute(func() error { return s.host.Connect(ctx, *info) }); err != nil {
-		if errors.Is(err, breaker.ErrClosed) {
-			s.metrics.ConnectBreakerCount.Inc()
-			return nil, p2p.NewConnectionBackoffError(err, s.connectionBreaker.ClosedUntil())
-		}
-		return nil, err
+	if connectErr != nil {
+		return nil, fmt.Errorf("libp2p connect: %w", err)
+	}
+
+	if info == nil {
+		return nil, fmt.Errorf("unable to identify peer from addresses: %v", addrs)
 	}
 
 	stream, err := s.newStreamForPeerID(ctx, info.ID, handshake.ProtocolName, handshake.ProtocolVersion, handshake.StreamName)
@@ -750,7 +813,20 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	}
 
 	handshakeStream := newStream(stream, s.metrics)
-	i, err := s.handshakeService.Handshake(ctx, handshakeStream, stream.Conn().RemoteMultiaddr(), stream.Conn().RemotePeer())
+
+	peerMultiaddrs, err := s.peerMultiaddrs(ctx, stream.Conn(), peerID)
+	if err != nil {
+		_ = handshakeStream.Reset()
+		_ = s.host.Network().ClosePeer(peerID)
+		return nil, fmt.Errorf("build peer multiaddrs: %w", err)
+	}
+
+	i, err := s.handshakeService.Handshake(
+		s.ctx,
+		handshakeStream,
+		peerMultiaddrs,
+		handshake.WithBee260Compatibility(s.bee260BackwardCompatibility(peerID)),
+	)
 	if err != nil {
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(info.ID)
@@ -823,14 +899,11 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 
 	s.metrics.CreatedConnectionCount.Inc()
 
-	if s.reacher != nil {
-		s.reacher.Connected(overlay, i.BzzAddress.Underlay)
-	}
+	s.notifyReacherConnected(stream, overlay, peerID)
 
-	peerUserAgent := appendSpace(s.peerUserAgent(ctx, info.ID))
-
-	loggerV1.Debug("successfully connected to peer (outbound)", "addresses", i.BzzAddress.ShortString(), "light", i.LightString(), "user_agent", peerUserAgent)
-	s.logger.Debug("successfully connected to peer (outbound)", "address", i.BzzAddress.Overlay, "light", i.LightString(), "user_agent", peerUserAgent)
+	peerUA := appendSpace(s.peerUserAgent(ctx, peerID))
+	loggerV1.Debug("successfully connected to peer (outbound)", "addresses", i.BzzAddress.ShortString(), "light", i.LightString(), "user_agent", peerUA)
+	s.logger.Debug("successfully connected to peer (outbound)", "address", overlay, "light", i.LightString(), "user_agent", peerUA)
 	return i.BzzAddress, nil
 }
 
@@ -1118,6 +1191,45 @@ func (s *Service) determineCurrentNetworkStatus(err error) error {
 	return err
 }
 
+// peerMultiaddrs builds full multiaddresses for a peer given information from
+// libp2p host peerstore and falling back to the remote address from the
+// connection.
+func (s *Service) peerMultiaddrs(ctx context.Context, conn network.Conn, peerID libp2ppeer.ID) ([]ma.Multiaddr, error) {
+	waitPeersCtx, cancel := context.WithTimeout(ctx, peerstoreWaitAddrsTimeout)
+	defer cancel()
+
+	peerMultiaddrs, err := buildFullMAs(waitPeerAddrs(waitPeersCtx, s.host.Peerstore(), peerID), peerID)
+	if err != nil {
+		return nil, fmt.Errorf("build peer multiaddrs: %w", err)
+	}
+
+	if len(peerMultiaddrs) == 0 {
+		fullRemoteAddress, err := buildFullMA(conn.RemoteMultiaddr(), peerID)
+		if err != nil {
+			return nil, fmt.Errorf("build full remote peer multi address: %w", err)
+		}
+		peerMultiaddrs = append(peerMultiaddrs, fullRemoteAddress)
+	}
+
+	return peerMultiaddrs, nil
+}
+
+var version270 = *semver.Must(semver.NewVersion("2.7.0"))
+
+func (s *Service) bee260BackwardCompatibility(peerID libp2ppeer.ID) bool {
+	userAgent := s.peerUserAgent(s.ctx, peerID)
+	p := strings.SplitN(userAgent, " ", 2)
+	if len(p) != 2 {
+		return false
+	}
+	version := strings.TrimPrefix(p[0], "bee/")
+	v, err := semver.NewVersion(version)
+	if err != nil {
+		return false
+	}
+	return v.LessThan(version270)
+}
+
 // appendSpace adds a leading space character if the string is not empty.
 // It is useful for constructing log messages with conditional substrings.
 func appendSpace(s string) string {
@@ -1176,4 +1288,73 @@ func isNetworkOrHostUnreachableError(err error) bool {
 		}
 	}
 	return false
+}
+
+type hostAddresser struct {
+	host host.Host
+}
+
+func newHostAddresser(host host.Host) *hostAddresser {
+	return &hostAddresser{
+		host: host,
+	}
+}
+
+func (h *hostAddresser) AdvertizableAddrs() ([]ma.Multiaddr, error) {
+	addrs := make([]ma.Multiaddr, 0)
+	for _, a := range h.host.Addrs() {
+		if manet.IsIPLoopback(a) {
+			continue
+		}
+		addrs = append(addrs, a)
+	}
+	return buildFullMAs(addrs, h.host.ID())
+}
+
+func buildFullMAs(addrs []ma.Multiaddr, peerID libp2ppeer.ID) ([]ma.Multiaddr, error) {
+	fullMAs := make([]ma.Multiaddr, 0)
+	for _, addr := range addrs {
+		res, err := buildFullMA(addr, peerID)
+		if err != nil {
+			return nil, err
+		}
+		if slices.ContainsFunc(fullMAs, func(a ma.Multiaddr) bool {
+			return a.Equal(res)
+		}) {
+			continue
+		}
+		fullMAs = append(fullMAs, res)
+	}
+	return fullMAs, nil
+}
+
+func buildFullMA(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) {
+	if _, err := addr.ValueForProtocol(ma.P_P2P); err == nil {
+		return addr, nil
+	}
+	return ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", addr.String(), peerID.String()))
+}
+
+// waitPeerAddrs is used to reliably get remote addresses from libp2p peerstore
+// as sometimes addresses are not available soon enough from its Addrs() method.
+func waitPeerAddrs(ctx context.Context, s peerstore.Peerstore, peerID libp2ppeer.ID) []ma.Multiaddr {
+	ctx, cancel := context.WithCancel(ctx) // cancel the addrStream when this function exits
+	defer cancel()
+
+	// ensure that the AddrStream will receive addresses by creating it before Addrs() is called
+	// this may happen just after the connection is established and peerstore is not updated
+	addrStream := s.AddrStream(ctx, peerID)
+
+	addrs := s.Addrs(peerID)
+	if len(addrs) > 0 {
+		return addrs
+	}
+
+	select {
+	case addr := <-addrStream:
+		// return the first address as it arrives
+		return []ma.Multiaddr{addr}
+	case <-ctx.Done():
+		return s.Addrs(peerID)
+	}
 }
