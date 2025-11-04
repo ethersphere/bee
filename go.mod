@@ -29,7 +29,7 @@ require (
 	github.com/ipshipyard/p2p-forge v0.6.1
 	github.com/kardianos/service v1.2.2
 	github.com/klauspost/reedsolomon v1.11.8
-	github.com/libp2p/go-libp2p v0.42.0
+	github.com/libp2p/go-libp2p v0.42.1
 	github.com/multiformats/go-multiaddr v0.16.0
 	github.com/multiformats/go-multiaddr-dns v0.4.1
 	github.com/multiformats/go-multihash v0.2.3
