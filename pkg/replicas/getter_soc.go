@@ -101,8 +101,8 @@ func (g *socGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk
 			continue
 
 			// getting the addresses in order
-		case so := <-next:
-			if so == nil {
+		case so, ok := <-next:
+			if !ok {
 				next = nil
 				continue
 			}

@@ -41,10 +41,12 @@ func newReplicator(addr swarm.Address, rLevel redundancy.Level) *replicator {
 	rr := &replicator{
 		addr:   addr.Bytes(),
 		sizes:  redundancy.GetReplicaCounts(),
-		c:      make(chan *replica, 16),
+		c:      make(chan *replica, rLevel.GetReplicaCount()),
 		rLevel: rLevel,
 	}
+
 	go rr.replicas()
+
 	return rr
 }
 

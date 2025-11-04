@@ -9,6 +9,7 @@ package replicas
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/storage"
@@ -36,7 +37,7 @@ func (p *socPutter) Put(ctx context.Context, ch swarm.Chunk) error {
 	errs := []error{}
 	// Put base chunk first
 	if err := p.putter.Put(ctx, ch); err != nil {
-		return err
+		return fmt.Errorf("soc putter: put base chunk: %w", err)
 	}
 	if p.rLevel == 0 {
 		return nil
