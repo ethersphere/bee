@@ -6,6 +6,7 @@ package bmt
 
 import (
 	"hash"
+	"sync"
 	"sync/atomic"
 )
 
@@ -74,11 +75,12 @@ func NewPool(c *Conf) *Pool {
 func (p *Pool) Get() *Hasher {
 	t := <-p.c
 	return &Hasher{
-		Conf:   p.Conf,
-		result: make(chan []byte),
-		errc:   make(chan error, 1),
-		span:   make([]byte, SpanSize),
-		bmt:    t,
+		Conf:       p.Conf,
+		result:     make(chan []byte, 1), // buffered to prevent blocking
+		errc:       make(chan error, 1),
+		span:       make([]byte, SpanSize),
+		bmt:        t,
+		resultOnce: &sync.Once{},
 	}
 }
 
