@@ -132,7 +132,7 @@ func (m *MockP2PForgeCertMgr) Stop() {
 
 func (m *MockP2PForgeCertMgr) TLSConfig() *tls.Config {
 	// Use tls.X509KeyPair to create a certificate from the hardcoded strings
-	cert, err := tls.X509KeyPair([]byte(certPEM), []byte(keyPEM))
+	cert, err := tls.X509KeyPair(certPEM, keyPEM)
 	if err != nil {
 		// This should not fail if the strings are pasted correctly
 		return nil
