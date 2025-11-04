@@ -31,14 +31,14 @@ var (
 // Sum gives back the tree to the pool and guaranteed to leave
 // the tree and itself in a state reusable for hashing a new chunk.
 type Hasher struct {
-	*Conf              // configuration
-	bmt    *tree       // prebuilt BMT resource for flowcontrol and proofs
-	size   int         // bytes written to Hasher since last Reset()
-	pos    int         // index of rightmost currently open segment
-	result chan []byte // result channel
-	errc   chan error  // error channel
-	span   []byte      // The span of the data subsumed under the chunk
-	resultOnce *sync.Once // ensures only one result is sent (pointer allows reset)
+	*Conf                  // configuration
+	bmt        *tree       // prebuilt BMT resource for flowcontrol and proofs
+	size       int         // bytes written to Hasher since last Reset()
+	pos        int         // index of rightmost currently open segment
+	result     chan []byte // result channel
+	errc       chan error  // error channel
+	span       []byte      // The span of the data subsumed under the chunk
+	resultOnce *sync.Once  // ensures only one result is sent (pointer allows reset)
 }
 
 // NewHasher gives back an instance of a Hasher struct
