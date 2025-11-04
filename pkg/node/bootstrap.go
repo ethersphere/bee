@@ -97,18 +97,18 @@ func bootstrapNode(
 	}()
 
 	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
-		PrivateKey:                libp2pPrivateKey,
-		NATAddr:                   o.NATAddr,
-		EnableWS:                  o.EnableWS,
-		AutoTLSEnabled:            o.AutoTLSEnabled,
-		AutoTLSPort:               o.AutoTLSPort,
-		AutoTLSStorageDir:         o.AutoTLSStorageDir,
-		ForgeDomain:               o.ForgeDomain,
-		ForgeRegistrationEndpoint: o.ForgeRegistrationEndpoint,
-		CAEndpoint:                o.CAEndpoint,
-		WelcomeMessage:            o.WelcomeMessage,
-		FullNode:                  false,
-		Nonce:                     nonce,
+		PrivateKey:                  libp2pPrivateKey,
+		NATAddr:                     o.NATAddr,
+		EnableWS:                    o.EnableWS,
+		AutoTLSEnabled:              o.AutoTLSEnabled,
+		AutoTLSPort:                 o.AutoTLSPort,
+		AutoTLSStorageDir:           o.AutoTLSStorageDir,
+		AutoTLSDomain:               o.AutoTLSDomain,
+		AutoTLSRegistrationEndpoint: o.AutoTLSRegistrationEndpoint,
+		AutoTLSCAEndpoint:           o.AutoTLSCAEndpoint,
+		WelcomeMessage:              o.WelcomeMessage,
+		FullNode:                    false,
+		Nonce:                       nonce,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)

@@ -83,12 +83,12 @@ const (
 	optionReserveCapacityDoubling          = "reserve-capacity-doubling"
 	optionSkipPostageSnapshot              = "skip-postage-snapshot"
 	optionNameMinimumGasTipCap             = "minimum-gas-tip-cap"
-	optionAutoTLSEnabled                   = "autotls"
+	optionAutoTLSEnabled                   = "autotls-enabled"
 	optionAutoTLSPort                      = "autotls-port"
 	optionAutoTLSStorageDir                = "autotls-storage-dir"
-	optionForgeDomain                      = "forge-domain"
-	optionForgeRegistrationEndpoint        = "forge-registration-endpoint"
-	optionCAEndpoint                       = "ca-endpoint"
+	optionAutoTLSDomain                    = "autotls-domain"
+	optionAutoTLSRegistrationEndpoint      = "autotls-registration-endpoint"
+	optionAutoTLSCAEndpoint                = "autotls-ca-endpoint"
 )
 
 // nolint:gochecknoinits
@@ -301,10 +301,10 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Uint64(optionNameMinimumGasTipCap, 0, "minimum gas tip cap in wei for transactions, 0 means use suggested gas tip cap")
 	cmd.Flags().Bool(optionAutoTLSEnabled, false, "Enable AutoTLS for secure WebSocket connections")
 	cmd.Flags().String(optionAutoTLSPort, "5500", "AutoTLS port")
-	cmd.Flags().String(optionAutoTLSStorageDir, "./p2p-forge-certs", "Data directory for certificate storage (default ./p2p-forge-certs)")
-	cmd.Flags().String(optionForgeDomain, p2pforge.DefaultForgeDomain, "forge domain")
-	cmd.Flags().String(optionForgeRegistrationEndpoint, p2pforge.DefaultForgeEndpoint, "forge registration endpoint")
-	cmd.Flags().String(optionCAEndpoint, p2pforge.DefaultCAEndpoint, "certificate authority endpoint")
+	cmd.Flags().String(optionAutoTLSStorageDir, "./p2p-tls-certs", "Data directory for certificate storage (default ./p2p-tls-certs)")
+	cmd.Flags().String(optionAutoTLSDomain, p2pforge.DefaultForgeDomain, "autotls domain")
+	cmd.Flags().String(optionAutoTLSRegistrationEndpoint, p2pforge.DefaultForgeEndpoint, "autotls registration endpoint")
+	cmd.Flags().String(optionAutoTLSCAEndpoint, p2pforge.DefaultCAEndpoint, "autotls certificate authority endpoint")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {

@@ -121,14 +121,14 @@ password-file: "/usr/local/var/lib/swarm-bee/password"
 ## withdrawal target addresses
 # withdrawal-addresses-whitelist: []
 ## enable autotls (default: false)
-# autotls: false
-## autotls port
+# autotls-enabled: false
+## autotls port (default: 5500)
 # autotls-port: "5500"
-## autotls certificate storage directory (default: ./p2p-forge-certs)
+## autotls certificate storage directory (default: ./p2p-tls-certs)
 # autotls-storage-dir: ""
-## forge domain
-# forge-domain: ""
-## forge registration endpoint
-# forge-registration-endpoint: ""
-## ca endpoint
-# ca-endpoint: ""
+## autotls domain (default: libp2p.direct)
+# autotls-domain: ""
+## autotls registration endpoint (default: https://registration.libp2p.direct)
+# autotls-registration-endpoint: ""
+## autotls ca endpoint (default: https://acme-v02.api.letsencrypt.org/directory)
+# autotls-ca-endpoint: ""
