@@ -252,16 +252,25 @@ func (g *decoder) runStrategy(s Strategy) error {
 		}(i)
 	}
 
+	var result error
+	readCount := 0
 	for range c {
-		if g.fetchedCnt.Load() >= int32(g.shardCnt) {
-			return nil
+		readCount++
+		// check for success
+		if result == nil && g.fetchedCnt.Load() >= int32(g.shardCnt) {
+			result = nil
 		}
-		if g.failedCnt.Load() > int32(allowedErrs) {
-			return errStrategyFailed
+		// check for failure
+		if result == nil && g.failedCnt.Load() > int32(allowedErrs) {
+			result = errStrategyFailed
+		}
+		// continue reading to ensure all goroutines complete
+		if readCount >= len(m) {
+			break
 		}
 	}
 
-	return nil
+	return result
 }
 
 // recover wraps the stages of data shard recovery:
