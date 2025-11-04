@@ -197,7 +197,7 @@ func TestSyncIntervals(t *testing.T) {
 			kad.Trigger()
 			waitSyncCalledBins(t, pullsync, addr, 1)
 			waitSyncStart(t, pullsync, addr, tc.replies[len(tc.replies)-1].Start)
-			time.Sleep(100 * time.Millisecond)
+
 			checkIntervals(t, st, addr, tc.intervals, 1)
 		})
 	}
@@ -560,8 +560,13 @@ func TestPeerGone(t *testing.T) {
 func checkIntervals(t *testing.T, s storage.StateStorer, addr swarm.Address, expInterval string, bin uint8) {
 	t.Helper()
 	key := puller.PeerIntervalKey(addr, bin)
-	i := &intervalstore.Intervals{}
-	err := s.Get(key, i)
+	var i *intervalstore.Intervals
+
+	err := spinlock.Wait(time.Second, func() bool {
+		i = &intervalstore.Intervals{}
+		err := s.Get(key, i)
+		return err == nil
+	})
 	if err != nil {
 		t.Fatalf("error getting interval for bin %d: %v", bin, err)
 	}
