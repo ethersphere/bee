@@ -1073,6 +1073,14 @@ func TestWithBlocklistStreams(t *testing.T) {
 	expectPeersEventually(t, s2)
 	expectPeersEventually(t, s1)
 
+	err = spinlock.Wait(time.Second*5, func() bool {
+		b, _ := s1.Blocklisted(overlay2) // Check if s1 has blocklisted s2
+		return b
+	})
+	if err != nil {
+		t.Fatal("timed out waiting for s1 to blocklist s2")
+	}
+
 	if _, err := s2.Connect(ctx, s1_underlay); err == nil {
 		t.Fatal("expected error when connecting to blocklisted peer")
 	}

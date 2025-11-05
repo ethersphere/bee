@@ -1016,15 +1016,6 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		return nil, fmt.Errorf("connect full close %w", err)
 	}
 
-	for _, addr := range addrs {
-		pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		defer cancel()
-		if _, err := s.Ping(pingCtx, addr); err != nil {
-			_ = s.Disconnect(overlay, "peer disconnected immediately after handshake")
-			return nil, p2p.ErrPeerNotFound
-		}
-	}
-
 	if !s.peers.Exists(overlay) {
 		return nil, p2p.ErrPeerNotFound
 	}
