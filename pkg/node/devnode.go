@@ -244,7 +244,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		lightNodes = lightnode.NewContainer(swarm.NewAddress(nil))
 		pingPong   = mockPingPong.New(pong)
 		p2ps       = mockP2P.New(
-			mockP2P.WithConnectFunc(func(ctx context.Context, addr multiaddr.Multiaddr) (address *bzz.Address, err error) {
+			mockP2P.WithConnectFunc(func(ctx context.Context, addr []multiaddr.Multiaddr) (address *bzz.Address, err error) {
 				return &bzz.Address{}, nil
 			}), mockP2P.WithDisconnectFunc(
 				func(swarm.Address, string) error {
@@ -373,7 +373,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 	apiService.SetP2P(p2ps)
 	apiService.SetSwarmAddress(&swarmAddress)
 
-	apiListener, err := net.Listen("tcp", o.APIAddr)
+	apiListener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", o.APIAddr)
 	if err != nil {
 		return nil, fmt.Errorf("api listener: %w", err)
 	}

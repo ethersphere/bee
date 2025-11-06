@@ -24,8 +24,8 @@ func TestShallowestEmpty(t *testing.T) {
 		peers = make([][]swarm.Address, 16)
 	)
 
-	for i := 0; i < 16; i++ {
-		for j := 0; j < 3; j++ {
+	for i := range 16 {
+		for range 3 {
 			a := swarm.RandAddressAt(t, base, i)
 			peers[i] = append(peers[i], a)
 		}
@@ -221,7 +221,7 @@ func TestIterators(t *testing.T) {
 	ps := pslice.New(4, base)
 
 	peers := make([]swarm.Address, 4)
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		peers[i] = swarm.RandAddressAt(t, base, i)
 	}
 
@@ -286,7 +286,7 @@ func TestBinPeers(t *testing.T) {
 			// prepare slice
 			ps := pslice.New(len(tc.peersCount), base)
 			for bin, peersCount := range tc.peersCount {
-				for i := 0; i < peersCount; i++ {
+				for range peersCount {
 					peer := swarm.RandAddressAt(t, base, bin)
 					binPeers[bin] = append(binPeers[bin], peer)
 					ps.Add(peer)
@@ -342,8 +342,8 @@ func TestIteratorsJumpStop(t *testing.T) {
 	ps := pslice.New(4, base)
 
 	peers := make([]swarm.Address, 0, 12)
-	for i := 0; i < 4; i++ {
-		for ii := 0; ii < 3; ii++ {
+	for i := range 4 {
+		for range 3 {
 			a := swarm.RandAddressAt(t, base, i)
 			peers = append(peers, a)
 			ps.Add(a)

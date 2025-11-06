@@ -43,6 +43,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/pss"
 	"github.com/ethersphere/bee/v2/pkg/resolver"
 	"github.com/ethersphere/bee/v2/pkg/resolver/client/ens"
+	"github.com/ethersphere/bee/v2/pkg/resolver/multiresolver"
 	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/settlement"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap"
@@ -109,9 +110,8 @@ const (
 )
 
 const (
-	multiPartFormData  = "multipart/form-data"
-	contentTypeTar     = "application/x-tar"
-	boolHeaderSetValue = "true"
+	multiPartFormData = "multipart/form-data"
+	contentTypeTar    = "application/x-tar"
 )
 
 var (
@@ -449,6 +449,10 @@ func (s *Service) resolveNameOrAddress(str string) (swarm.Address, error) {
 		return addr, nil
 	}
 
+	if errors.Is(err, multiresolver.ErrResolverService) || errors.Is(err, resolver.ErrServiceNotAvailable) {
+		return swarm.ZeroAddress, err
+	}
+
 	return swarm.ZeroAddress, fmt.Errorf("%w: %w", errInvalidNameOrAddress, err)
 }
 
@@ -620,7 +624,7 @@ func (s *Service) checkOrigin(r *http.Request) bool {
 // validationError is a custom error type for validation errors.
 type validationError struct {
 	Entry string
-	Value interface{}
+	Value any
 	Cause error
 }
 
@@ -632,7 +636,7 @@ func (e *validationError) Error() string {
 // mapStructure maps the input into output struct and validates the output.
 // It's a helper method for the handlers, which reduces the chattiness
 // of the code.
-func (s *Service) mapStructure(input, output interface{}) func(string, log.Logger, http.ResponseWriter) {
+func (s *Service) mapStructure(input, output any) func(string, log.Logger, http.ResponseWriter) {
 	// response unifies the response format for parsing and validation errors.
 	response := func(err error) func(string, log.Logger, http.ResponseWriter) {
 		return func(msg string, logger log.Logger, w http.ResponseWriter) {
@@ -651,13 +655,23 @@ func (s *Service) mapStructure(input, output interface{}) func(string, log.Logge
 				Message: msg,
 				Code:    http.StatusBadRequest,
 			}
+			hasServiceUnavailable := false
 			for _, err := range merr.Errors {
+				if errors.Is(err, resolver.ErrServiceNotAvailable) {
+					hasServiceUnavailable = true
+					resp.Reasons = append(resp.Reasons, jsonhttp.Reason{
+						Field: "address",
+						Error: err.Error(),
+					})
+					continue
+				}
 				var perr *parseError
 				if errors.As(err, &perr) {
 					resp.Reasons = append(resp.Reasons, jsonhttp.Reason{
 						Field: perr.Entry,
 						Error: perr.Cause.Error(),
 					})
+					continue
 				}
 				var verr *validationError
 				if errors.As(err, &verr) {
@@ -667,7 +681,14 @@ func (s *Service) mapStructure(input, output interface{}) func(string, log.Logge
 					})
 				}
 			}
-			jsonhttp.BadRequest(w, resp)
+
+			if hasServiceUnavailable {
+				resp.Message = "service unavailable"
+				resp.Code = http.StatusServiceUnavailable
+				jsonhttp.ServiceUnavailable(w, resp)
+			} else {
+				jsonhttp.BadRequest(w, resp)
+			}
 		}
 	}
 

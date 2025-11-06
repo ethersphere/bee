@@ -44,7 +44,7 @@ func init() {
 	chunks = make([]swarm.Chunk, n)
 	addrs = make([]swarm.Address, n)
 	results = make([]*storer.BinC, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		chunks[i] = testingc.GenerateTestRandomChunk()
 		addrs[i] = chunks[i].Address()
 		stampHash, _ := chunks[i].Stamp().Hash()

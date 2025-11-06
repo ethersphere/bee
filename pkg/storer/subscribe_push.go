@@ -23,9 +23,7 @@ func (db *DB) SubscribePush(ctx context.Context) (<-chan swarm.Chunk, func()) {
 		stopChanOnce sync.Once
 	)
 
-	db.subscriptionsWG.Add(1)
-	go func() {
-		defer db.subscriptionsWG.Done()
+	db.subscriptionsWG.Go(func() {
 
 		trigger, unsub := db.events.Subscribe(subscribePushEventKey)
 		defer unsub()
@@ -80,7 +78,7 @@ func (db *DB) SubscribePush(ctx context.Context) (<-chan swarm.Chunk, func()) {
 				// wait for the next event
 			}
 		}
-	}()
+	})
 
 	stop := func() {
 		stopChanOnce.Do(func() {

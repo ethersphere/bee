@@ -65,9 +65,24 @@ func fingerprint(addrs []swarm.Address) string {
 	return string(h.Sum(nil))
 }
 
+// createRemoveCallback returns a function that handles the cleanup after a recovery attempt
+func (g *decoderCache) createRemoveCallback(key string) func(error) {
+	return func(err error) {
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		if err != nil {
+			// signals that a new getter is needed to reattempt to recover the data
+			delete(g.cache, key)
+		} else {
+			// signals that the chunks were fetched/recovered/cached so a future getter is not needed
+			// The nil value indicates a successful recovery
+			g.cache[key] = nil
+		}
+	}
+}
+
 // GetOrCreate returns a decoder for the given chunk address
 func (g *decoderCache) GetOrCreate(addrs []swarm.Address, shardCnt int) storage.Getter {
-
 	// since a recovery decoder is not allowed, simply return the underlying netstore
 	if g.config.Strict && g.config.Strategy == getter.NONE {
 		return g.fetcher
@@ -83,22 +98,31 @@ func (g *decoderCache) GetOrCreate(addrs []swarm.Address, shardCnt int) storage.
 	d, ok := g.cache[key]
 	if ok {
 		if d == nil {
-			return g.fetcher
+			// The nil value indicates a previous successful recovery
+			// Create a new decoder but only use it as fallback if network fetch fails
+			decoderCallback := g.createRemoveCallback(key)
+
+			// Create a factory function that will instantiate the decoder only when needed
+			recovery := func() storage.Getter {
+				g.config.Logger.Debug("lazy-creating recovery decoder after fetch failed", "key", key)
+				g.mu.Lock()
+				defer g.mu.Unlock()
+				d, ok := g.cache[key]
+				if ok && d != nil {
+					return d
+				}
+				d = getter.New(addrs, shardCnt, g.fetcher, g.putter, decoderCallback, g.config)
+				g.cache[key] = d
+				return d
+			}
+
+			return getter.NewReDecoder(g.fetcher, recovery, g.config.Logger)
 		}
 		return d
 	}
-	remove := func(err error) {
-		g.mu.Lock()
-		defer g.mu.Unlock()
-		if err != nil {
-			// signals that a new getter is needed to reattempt to recover the data
-			delete(g.cache, key)
-		} else {
-			// signals that the chunks were fetched/recovered/cached so a future getter is not needed
-			g.cache[key] = nil
-		}
-	}
-	d = getter.New(addrs, shardCnt, g.fetcher, g.putter, remove, g.config)
+
+	removeCallback := g.createRemoveCallback(key)
+	d = getter.New(addrs, shardCnt, g.fetcher, g.putter, removeCallback, g.config)
 	g.cache[key] = d
 	return d
 }
@@ -185,10 +209,7 @@ func (j *joiner) ReadAt(buffer []byte, off int64) (read int, err error) {
 		return 0, io.EOF
 	}
 
-	readLen := int64(cap(buffer))
-	if readLen > j.span-off {
-		readLen = j.span - off
-	}
+	readLen := min(int64(cap(buffer)), j.span-off)
 	var bytesRead int64
 	var eg errgroup.Group
 	j.readAtOffset(buffer, j.rootData, 0, j.span, off, 0, readLen, &bytesRead, j.rootParity, &eg)
@@ -253,14 +274,9 @@ func (j *joiner) readAtOffset(
 		subtrieSpanLimit := sec
 
 		currentReadSize := subtrieSpan - (off - cur) // the size of the subtrie, minus the offset from the start of the trie
-
 		// upper bound alignments
-		if currentReadSize > bytesToRead {
-			currentReadSize = bytesToRead
-		}
-		if currentReadSize > subtrieSpan {
-			currentReadSize = subtrieSpan
-		}
+		currentReadSize = min(currentReadSize, bytesToRead)
+		currentReadSize = min(currentReadSize, subtrieSpan)
 
 		func(address swarm.Address, b []byte, cur, subTrieSize, off, bufferOffset, bytesToRead, subtrieSpanLimit int64) {
 			eg.Go(func() error {

@@ -68,7 +68,7 @@ func TestMakeInclusionProofsRegression(t *testing.T) {
 
 	// generate chunks that will be used as sample
 	sampleChunks := make([]swarm.Chunk, 0, sampleSize)
-	for i := 0; i < sampleSize; i++ {
+	for i := range sampleSize {
 		ch, err := cac.New(fmt.Appendf(nil, "Unstoppable data! Chunk #%d", i+1))
 		if err != nil {
 			t.Fatal(err)

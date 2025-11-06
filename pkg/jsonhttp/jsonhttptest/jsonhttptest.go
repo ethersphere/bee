@@ -36,14 +36,15 @@ func Request(tb testing.TB, client *http.Client, method, url string, responseCod
 		}
 	}
 
-	req, err := http.NewRequest(method, url, o.requestBody)
+	ctx := o.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	req, err := http.NewRequestWithContext(ctx, method, url, o.requestBody)
 	if err != nil {
 		tb.Fatal(err)
 	}
 	req.Header = o.requestHeaders
-	if o.ctx != nil {
-		req = req.WithContext(o.ctx)
-	}
 	resp, err := client.Do(req)
 	if err != nil {
 		tb.Fatal(err)
@@ -156,7 +157,7 @@ func WithRequestBody(body io.Reader) Option {
 
 // WithJSONRequestBody writes a request JSON-encoded body to the request made by
 // the Request function.
-func WithJSONRequestBody(r interface{}) Option {
+func WithJSONRequestBody(r any) Option {
 	return optionFunc(func(o *options) error {
 		b, err := json.Marshal(r)
 		if err != nil {
@@ -255,7 +256,7 @@ func WithNonEmptyResponseHeader(key string) Option {
 
 // WithExpectedJSONResponse validates that the response from the request in the
 // Request function matches JSON-encoded body provided here.
-func WithExpectedJSONResponse(response interface{}) Option {
+func WithExpectedJSONResponse(response any) Option {
 	return optionFunc(func(o *options) error {
 		o.expectedJSONResponse = response
 		return nil
@@ -264,7 +265,7 @@ func WithExpectedJSONResponse(response interface{}) Option {
 
 // WithUnmarshalJSONResponse unmarshals response body from the request in the
 // Request function to the provided response. Response must be a pointer.
-func WithUnmarshalJSONResponse(response interface{}) Option {
+func WithUnmarshalJSONResponse(response any) Option {
 	return optionFunc(func(o *options) error {
 		o.unmarshalResponse = response
 		return nil
@@ -303,8 +304,8 @@ type options struct {
 	expectedResponseHeaders http.Header
 	nonEmptyResponseHeaders []string
 	expectedResponse        []byte
-	expectedJSONResponse    interface{}
-	unmarshalResponse       interface{}
+	expectedJSONResponse    any
+	unmarshalResponse       any
 	responseBody            *[]byte
 	noResponseBody          bool
 }
