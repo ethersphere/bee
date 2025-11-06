@@ -29,7 +29,9 @@ func newSocReplicator(addr swarm.Address, rLevel redundancy.Level) *socReplicato
 		c:      make(chan *socReplica, rLevel.GetReplicaCount()),
 		rLevel: rLevel,
 	}
+
 	go rr.replicas()
+
 	return rr
 }
 
@@ -74,7 +76,7 @@ func (rr *socReplicator) replicas() {
 // For example, mirrorBitsToMSB(0b00001101, 4) == 0b10110000
 func mirrorBitsToMSB(v byte, n uint8) byte {
 	var res byte
-	for i := uint8(0); i < n; i++ {
+	for i := range n {
 		if (v & (1 << i)) != 0 {
 			res |= (1 << (7 - i))
 		}

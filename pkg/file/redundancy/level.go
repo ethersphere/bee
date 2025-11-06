@@ -164,5 +164,4 @@ func GetReplicaCounts() [5]int {
 // we use an approximation as the successive powers of 2
 var replicaCounts = [5]int{0, 2, 4, 8, 16}
 
-// DefaultLevel is the default redundancy level
 const DefaultLevel = PARANOID

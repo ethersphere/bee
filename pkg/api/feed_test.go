@@ -461,7 +461,7 @@ func newMockFactory(mockLookup feeds.Lookup) *factoryMock {
 	return &factoryMock{lookup: mockLookup}
 }
 
-func (f *factoryMock) NewLookup(t feeds.Type, feed *feeds.Feed, getter storage.Getter) (feeds.Lookup, error) {
+func (f *factoryMock) NewLookup(t feeds.Type, feed *feeds.Feed, _ ...feeds.FactoryOption) (feeds.Lookup, error) {
 	switch t {
 	case feeds.Sequence:
 		f.sequenceCalled = true

@@ -9,6 +9,7 @@ package replicas
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
@@ -37,7 +38,7 @@ func (p *socPutter) Put(ctx context.Context, ch swarm.Chunk) error {
 	errs := []error{}
 	// Put base chunk first
 	if err := p.putter.Put(ctx, ch); err != nil {
-		return err
+		return fmt.Errorf("soc putter: put base chunk: %w", err)
 	}
 	if p.rLevel == 0 {
 		return nil
@@ -47,16 +48,13 @@ func (p *socPutter) Put(ctx context.Context, ch swarm.Chunk) error {
 	errc := make(chan error, p.rLevel.GetReplicaCount())
 	wg := sync.WaitGroup{}
 	for r := range rr.c {
-		wg.Add(1)
-		go func(r *socReplica) {
-			defer wg.Done()
+		wg.Go(func() {
 			// create a new chunk with the replica address
 			sch := swarm.NewChunk(swarm.NewAddress(r.addr), ch.Data())
-			err := p.putter.Put(ctx, sch)
-			if err != nil {
+			if err := p.putter.Put(ctx, sch); err != nil {
 				errc <- err
 			}
-		}(r)
+		})
 	}
 
 	wg.Wait()

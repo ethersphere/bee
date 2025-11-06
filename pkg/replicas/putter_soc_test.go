@@ -127,7 +127,7 @@ func TestSocPutter(t *testing.T) {
 				t.Fatal("original chunk missing")
 			}
 			t.Run("dispersion", func(t *testing.T) {
-				if err := dispersed(tc.level, ch, addrs); err != nil {
+				if err := dispersed(tc.level, addrs); err != nil {
 					t.Fatalf("addresses are not dispersed: %v", err)
 				}
 			})

@@ -17,12 +17,12 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-// getter is the private implementation of storage.Getter, an interface for
+// socGetter is the private implementation of storage.Getter, an interface for
 // retrieving chunks. This getter embeds the original simple chunk getter and extends it
 // to a multiplexed variant that fetches chunks with replicas for SOC.
 //
 // the strategy to retrieve a chunk that has replicas can be configured with a few parameters:
-//   - SOCRetryInterval: the delay before a new batch of replicas is fetched.
+//   - RetryInterval: the delay before a new batch of replicas is fetched.
 //   - depth: 2^{depth} is the total number of additional replicas that have been uploaded
 //     (by default, it is assumed to be 4, ie. total of 16)
 //   - (not implemented) pivot: replicas with address in the proximity of pivot will be tried first
@@ -30,8 +30,6 @@ type socGetter struct {
 	storage.Getter
 	level redundancy.Level
 }
-
-var SOCRetryInterval = 300 * time.Millisecond
 
 // NewSocGetter is the getter constructor
 func NewSocGetter(g storage.Getter, level redundancy.Level) storage.Getter {
@@ -55,9 +53,7 @@ func (g *socGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk
 	errcnt := 0
 
 	// concurrently call to retrieve chunk using original SOC address
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		ch, err := g.Getter.Get(ctx, addr)
 		if err != nil {
 			errc <- err
@@ -68,7 +64,7 @@ func (g *socGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk
 		case resultC <- ch:
 		case <-ctx.Done():
 		}
-	}()
+	})
 	// counters
 	n := 0      // counts the replica addresses tried
 	target := 2 // the number of replicas attempted to download in this batch
@@ -109,9 +105,7 @@ func (g *socGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk
 				continue
 			}
 
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				ch, err := g.Getter.Get(ctx, swarm.NewAddress(so.addr))
 				if err != nil {
 					errc <- err
@@ -122,13 +116,13 @@ func (g *socGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk
 				case resultC <- ch:
 				case <-ctx.Done():
 				}
-			}()
+			})
 			n++
 			if n < target {
 				continue
 			}
 			next = nil
-			wait = time.After(SOCRetryInterval)
+			wait = time.After(RetryInterval)
 		}
 	}
 

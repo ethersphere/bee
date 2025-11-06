@@ -4,6 +4,4 @@
 
 package replicas
 
-var (
-	Signer = signer
-)
+var Signer = signer

@@ -218,7 +218,7 @@ func TestSOCWithRedundancy(t *testing.T) {
 		t.Helper()
 
 		t.Run(fmt.Sprintf("redundancy=%d", redundancyLevel), func(t *testing.T) {
-			testData := []byte(fmt.Sprintf("redundant-soc-data-%d", redundancyLevel))
+			testData := fmt.Appendf(nil, "redundant-soc-data-%d", redundancyLevel)
 
 			mockStorer := mockstorer.New()
 			client, _, _, chanStore := newTestServer(t, testServerOptions{

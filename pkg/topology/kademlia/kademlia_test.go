@@ -2244,7 +2244,7 @@ func generateMultipleUnderlays(t *testing.T, n int, baseUnderlay string) []ma.Mu
 	t.Helper()
 	underlays := make([]ma.Multiaddr, n)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		multiaddr, err := ma.NewMultiaddr(baseUnderlay + strconv.Itoa(i))
 		if err != nil {
 			t.Fatal(err)

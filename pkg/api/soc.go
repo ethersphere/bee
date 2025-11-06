@@ -73,7 +73,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		err        error
 	)
 
-	var rLevel redundancy.Level
+	rLevel := redundancy.PARANOID
 	if headers.RLevel != nil {
 		rLevel = *headers.RLevel
 	}
@@ -254,14 +254,18 @@ func (s *Service) socGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	headers := struct {
-		OnlyRootChunk bool             `map:"Swarm-Only-Root-Chunk"`
-		RLevel        redundancy.Level `map:"Swarm-Redundancy-Level"`
+		OnlyRootChunk bool              `map:"Swarm-Only-Root-Chunk"`
+		RLevel        *redundancy.Level `map:"Swarm-Redundancy-Level"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
 		return
 	}
-	rLevel := headers.RLevel
+
+	rLevel := redundancy.PARANOID
+	if headers.RLevel != nil {
+		rLevel = *headers.RLevel
+	}
 
 	address, err := soc.CreateAddress(paths.ID, paths.Owner)
 	if err != nil {
@@ -271,7 +275,7 @@ func (s *Service) socGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	getter := s.storer.Download(true)
-	if rLevel != 0 {
+	if rLevel > redundancy.NONE {
 		getter = replicas.NewSocGetter(getter, rLevel)
 	}
 	sch, err := getter.Get(r.Context(), address)

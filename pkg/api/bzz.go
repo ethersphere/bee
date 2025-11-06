@@ -401,7 +401,7 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 		cache = *headers.Cache
 	}
 
-	rLevel := redundancy.DefaultLevel
+	rLevel := redundancy.PARANOID
 	if headers.RLevel != nil {
 		rLevel = *headers.RLevel
 	}
@@ -624,7 +624,7 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		jsonhttp.BadRequest(w, "could not parse headers")
 		return
 	}
-	rLevel := redundancy.DefaultLevel
+	rLevel := redundancy.PARANOID
 	if headers.RLevel != nil {
 		rLevel = *headers.RLevel
 	}
@@ -736,5 +736,5 @@ func (s *Service) manifestFeed(
 		return nil, fmt.Errorf("node lookup: %s", "feed metadata absent")
 	}
 	f := feeds.New(topic, common.BytesToAddress(owner))
-	return s.feedFactory.NewLookup(*t, f, st)
+	return s.feedFactory.NewLookup(*t, f, feeds.WithGetter(st))
 }

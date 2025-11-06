@@ -106,9 +106,9 @@ func TestSOCGetter(t *testing.T) {
 	}
 
 	// reset retry interval to speed up tests
-	retryInterval := replicas.SOCRetryInterval
-	defer func() { replicas.SOCRetryInterval = retryInterval }()
-	replicas.SOCRetryInterval = 100 * time.Millisecond
+	retryInterval := replicas.RetryInterval
+	defer func() { replicas.RetryInterval = retryInterval }()
+	replicas.RetryInterval = 100 * time.Millisecond
 
 	// run the tests
 	for _, tc := range tests {
@@ -120,7 +120,7 @@ func TestSOCGetter(t *testing.T) {
 			store.now = time.Now()
 			ctx, cancel := context.WithCancel(context.Background())
 			if tc.found > tc.count {
-				wait := replicas.SOCRetryInterval / 2 * time.Duration(1+2*tc.level)
+				wait := replicas.RetryInterval / 2 * time.Duration(1+2*tc.level)
 				go func() {
 					time.Sleep(wait)
 					cancel()
@@ -197,7 +197,7 @@ func TestSOCGetter(t *testing.T) {
 			})
 
 			t.Run("dispersion", func(t *testing.T) {
-				if err := dispersed(redundancy.Level(tc.level), ch, addresses); err != nil {
+				if err := dispersed(redundancy.Level(tc.level), addresses); err != nil {
 					t.Fatalf("addresses are not dispersed: %v", err)
 				}
 			})
@@ -205,7 +205,7 @@ func TestSOCGetter(t *testing.T) {
 			t.Run("latency", func(t *testing.T) {
 				counts := redundancy.GetReplicaCounts()
 				for i, latency := range latencies {
-					multiplier := latency / replicas.SOCRetryInterval
+					multiplier := latency / replicas.RetryInterval
 					if multiplier > 0 && i < counts[multiplier-1] {
 						t.Fatalf("incorrect latency for retrieving replica %d: %v", i, err)
 					}
