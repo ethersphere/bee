@@ -117,9 +117,22 @@ func (s *Service) handleUploadStream(
 		gone = make(chan struct{})
 		err  error
 	)
+
+	// Cache for per-chunk putters to avoid creating new sessions for every chunk
+	// Key: batch ID hex string, Value: putter session
+	putterCache := make(map[string]storer.PutterSession)
+
 	defer func() {
 		cancel()
 		_ = conn.Close()
+
+		// Clean up all cached per-chunk putters
+		for batchID, cachedPutter := range putterCache {
+			if err := cachedPutter.Done(swarm.ZeroAddress); err != nil {
+				logger.Error(err, "chunk upload stream: failed to finalize cached putter", "batch_id", batchID)
+			}
+		}
+
 		// Only call Done on connection-level putter if it exists
 		if putter != nil {
 			if err = putter.Done(swarm.ZeroAddress); err != nil {
@@ -227,29 +240,44 @@ func (s *Service) handleUploadStream(
 			// Try to unmarshal as a stamp
 			stamp := postage.Stamp{}
 			if err := stamp.UnmarshalBinary(potentialStamp); err == nil {
-				// Valid stamp found - create a per-chunk putter
-				logger.Debug("chunk upload stream: per-chunk stamp detected", "batch_id", stamp.BatchID(), "chunk_size", len(potentialChunkData))
-				chunkPutter, err = s.newStampedPutter(ctx, putterOptions{
-					BatchID:  stamp.BatchID(),
-					TagID:    tag,
-					Deferred: tag != 0,
-				}, &stamp)
-				if err != nil {
-					logger.Debug("chunk upload stream: failed to create stamped putter", "error", err)
-					logger.Error(nil, "chunk upload stream: failed to create stamped putter")
-					switch {
-					case errors.Is(err, errBatchUnusable) || errors.Is(err, postage.ErrNotUsable):
-						sendErrorClose(websocket.CloseInternalServerErr, "batch not usable")
-					case errors.Is(err, postage.ErrNotFound):
-						sendErrorClose(websocket.CloseInternalServerErr, "batch not found")
-					default:
-						sendErrorClose(websocket.CloseInternalServerErr, "stamped putter creation failed")
+				// Valid stamp found - check cache first, create if needed
+				batchID := stamp.BatchID()
+				batchIDHex := string(batchID) // Use batch ID bytes as map key
+				logger.Debug("chunk upload stream: per-chunk stamp detected", "batch_id", batchID, "chunk_size", len(potentialChunkData))
+
+				// Check if we already have a cached putter for this batch
+				cachedPutter, exists := putterCache[batchIDHex]
+				if exists {
+					// Reuse cached putter
+					chunkPutter = cachedPutter
+					logger.Debug("chunk upload stream: reusing cached putter", "batch_id", batchIDHex)
+				} else {
+					// Create new putter and cache it
+					chunkPutter, err = s.newStampedPutter(ctx, putterOptions{
+						BatchID:  stamp.BatchID(),
+						TagID:    tag,
+						Deferred: tag != 0,
+					}, &stamp)
+					if err != nil {
+						logger.Debug("chunk upload stream: failed to create stamped putter", "error", err)
+						logger.Error(nil, "chunk upload stream: failed to create stamped putter")
+						switch {
+						case errors.Is(err, errBatchUnusable) || errors.Is(err, postage.ErrNotUsable):
+							sendErrorClose(websocket.CloseInternalServerErr, "batch not usable")
+						case errors.Is(err, postage.ErrNotFound):
+							sendErrorClose(websocket.CloseInternalServerErr, "batch not found")
+						default:
+							sendErrorClose(websocket.CloseInternalServerErr, "stamped putter creation failed")
+						}
+						return
 					}
-					return
+					// Cache the putter for reuse
+					putterCache[batchIDHex] = chunkPutter
+					logger.Debug("chunk upload stream: cached new putter", "batch_id", batchIDHex)
 				}
+
 				// Use the chunk data without the stamp
 				chunkData = potentialChunkData
-				// Note: we need to call Done on the per-chunk putter after Put
 			} else {
 				// Stamp unmarshal failed - log for debugging
 				logger.Debug("chunk upload stream: stamp unmarshal failed, treating message as unstamped chunk",
@@ -290,12 +318,8 @@ func (s *Service) handleUploadStream(
 			return
 		}
 
-		// If we created a per-chunk putter, clean it up
-		if chunkPutter != putter {
-			if err := chunkPutter.Done(swarm.ZeroAddress); err != nil {
-				logger.Error(err, "chunk upload stream: failed to finalize per-chunk putter")
-			}
-		}
+		// Note: Per-chunk putters are now cached and will be cleaned up in the defer function
+		// We don't call Done() here anymore to allow putter reuse across multiple chunks
 
 		err = sendMsg(websocket.BinaryMessage, successWsMsg)
 		if err != nil {
