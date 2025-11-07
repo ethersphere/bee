@@ -33,6 +33,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/breaker"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/handshake"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/reacher"
+	libp2pmock "github.com/ethersphere/bee/v2/pkg/p2p/libp2p/mock"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
@@ -251,7 +252,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 		if o.CertManager != nil {
 			certManager = o.CertManager
-			if mocker, ok := certManager.(*MockP2PForgeCertMgr); ok {
+			if mocker, ok := certManager.(*libp2pmock.MockP2PForgeCertMgr); ok {
 				mocker.SetOnCertLoaded(func() {
 					certLoaded <- true
 				})
@@ -270,6 +271,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 			// Use AutoTLS storage dir
 			storagePath := o.AutoTLSStorageDir
+			logger.Debug("Storage Path: ", storagePath)
 			if err := os.MkdirAll(storagePath, 0700); err != nil {
 				return nil, fmt.Errorf("failed to create certificate storage directory %s: %w", storagePath, err)
 			}
@@ -290,6 +292,8 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			if err != nil {
 				return nil, fmt.Errorf("failed to initialize AutoTLS: %w", err)
 			}
+
+			logger.Info("Certificate initialized with success")
 
 			defer func() {
 				if err != nil {
@@ -359,7 +363,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		switch cm := certManager.(type) {
 		case *p2pforge.P2PForgeCertMgr:
 			cm.ProvideHost(h)
-		case *MockP2PForgeCertMgr:
+		case *libp2pmock.MockP2PForgeCertMgr:
 			if err := cm.ProvideHost(h); err != nil {
 				return nil, fmt.Errorf("failed to provide host to MockP2PForgeCertMgr: %w", err)
 			}
@@ -394,6 +398,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	if o.AutoTLSEnabled && o.EnableWS {
 		// Check reachability for AutoTLS
+		logger.Debug("Reachability for AutoTLS: ", autoNAT.Status())
 		if autoNAT.Status() != network.ReachabilityPublic {
 			logger.Warning("Node not publicly reachable; AutoTLS may fail")
 		}
@@ -431,6 +436,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			if certManager != nil {
 				certManager.Stop()
 			}
+			logger.Debug("Error loading certificate: ", waitCtx.Err())
 			return nil, fmt.Errorf("timed out waiting for AutoTLS certificate: %w", waitCtx.Err())
 		}
 	}
@@ -841,6 +847,7 @@ func (s *Service) Addresses() (addresses []ma.Multiaddr, err error) {
 			addresses = append(addresses, wsNatAddr)
 		}
 	}
+	s.logger.Debug("Addreses should contain wss addresses: ", addresses)
 	return addresses, nil
 }
 
@@ -1016,13 +1023,21 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		return nil, fmt.Errorf("connect full close %w", err)
 	}
 
+	var pingErr error
 	for _, addr := range addrs {
-		pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		defer cancel()
-		if _, err := s.Ping(pingCtx, addr); err != nil {
-			_ = s.Disconnect(overlay, "peer disconnected immediately after handshake")
-			return nil, p2p.ErrPeerNotFound
+		pingCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+		_, err := s.Ping(pingCtx, addr)
+		cancel() // Cancel immediately after use
+		if err == nil {
+			pingErr = nil
+			break
 		}
+		pingErr = err
+	}
+
+	if pingErr != nil {
+		_ = s.Disconnect(overlay, "peer disconnected immediately after handshake")
+		return nil, p2p.ErrPeerNotFound
 	}
 
 	if !s.peers.Exists(overlay) {
