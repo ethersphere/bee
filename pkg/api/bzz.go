@@ -61,6 +61,13 @@ func lookaheadBufferSize(size int64) int {
 	return largeFileBufferSize
 }
 
+func getRedundancyLevel(rLevel *redundancy.Level) redundancy.Level {
+	if rLevel != nil {
+		return *rLevel
+	}
+	return redundancy.PARANOID
+}
+
 func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	span, logger, ctx := s.tracer.StartSpanFromContext(r.Context(), "post_bzz", s.logger.WithName("post_bzz").Build())
 	defer span.Finish()
@@ -401,10 +408,7 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 		cache = *headers.Cache
 	}
 
-	rLevel := redundancy.PARANOID
-	if headers.RLevel != nil {
-		rLevel = *headers.RLevel
-	}
+	rLevel := getRedundancyLevel(headers.RLevel)
 
 	ctx := r.Context()
 	g := s.storer.Download(cache)
@@ -624,10 +628,7 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		jsonhttp.BadRequest(w, "could not parse headers")
 		return
 	}
-	rLevel := redundancy.PARANOID
-	if headers.RLevel != nil {
-		rLevel = *headers.RLevel
-	}
+	rLevel := getRedundancyLevel(headers.RLevel)
 
 	var (
 		reader file.Joiner

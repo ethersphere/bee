@@ -73,10 +73,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		err        error
 	)
 
-	rLevel := redundancy.PARANOID
-	if headers.RLevel != nil {
-		rLevel = *headers.RLevel
-	}
+	rLevel := getRedundancyLevel(headers.RLevel)
 
 	if len(headers.StampSig) != 0 {
 		if headers.RLevel != nil {
@@ -262,10 +259,7 @@ func (s *Service) socGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rLevel := redundancy.PARANOID
-	if headers.RLevel != nil {
-		rLevel = *headers.RLevel
-	}
+	rLevel := getRedundancyLevel(headers.RLevel)
 
 	address, err := soc.CreateAddress(paths.ID, paths.Owner)
 	if err != nil {

@@ -239,10 +239,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		logger:         logger,
 	}
 
-	rLevel := redundancy.PARANOID
-	if headers.RedundancyLevel != nil {
-		rLevel = *headers.RedundancyLevel
-	}
+	rLevel := getRedundancyLevel(headers.RedundancyLevel)
 
 	l := loadsave.New(s.storer.ChunkStore(), s.storer.Cache(), requestPipelineFactory(r.Context(), putter, false, 0), rLevel)
 	feedManifest, err := manifest.NewDefaultManifest(l, false)
