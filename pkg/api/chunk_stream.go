@@ -260,13 +260,13 @@ func (s *Service) handleUploadStream(
 					logger.Debug("chunk upload stream: cached batch info", "batch_id", batchIDHex)
 				}
 
-				// Create a stamped putter for this chunk
-				// This still creates a new putter wrapper, but skips the expensive batch lookup
-				chunkPutter, err = s.newStampedPutter(ctx, putterOptions{
+				// Create a stamped putter using cached batch info
+				// This skips the expensive database lookup
+				chunkPutter, err = s.newStampedPutterWithBatch(ctx, putterOptions{
 					BatchID:  stamp.BatchID(),
 					TagID:    tag,
 					Deferred: tag != 0,
-				}, &stamp)
+				}, &stamp, storedBatch)
 				if err != nil {
 					logger.Debug("chunk upload stream: failed to create stamped putter", "error", err)
 					logger.Error(nil, "chunk upload stream: failed to create stamped putter")
