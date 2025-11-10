@@ -118,22 +118,16 @@ func (s *Service) handleUploadStream(
 		err  error
 	)
 
-	// Cache for storage sessions to avoid creating new sessions for every chunk
-	// Key: batch ID hex string, Value: storage session (not wrapped with stamper)
-	// Note: We cache the underlying session, not the stamped putter, because
-	// each chunk has a unique stamp signature and needs its own stamper wrapper
-	sessionCache := make(map[string]storer.PutterSession)
+	// Cache for batch validation to avoid database lookups for every chunk
+	// Key: batch ID hex string, Value: stored batch info
+	// This avoids the expensive batchStore.Get() call for each chunk
+	batchCache := make(map[string]*postage.Batch)
 
 	defer func() {
 		cancel()
 		_ = conn.Close()
 
-		// Clean up all cached sessions
-		for batchID, cachedSession := range sessionCache {
-			if err := cachedSession.Done(swarm.ZeroAddress); err != nil {
-				logger.Error(err, "chunk upload stream: failed to finalize cached session", "batch_id", batchID)
-			}
-		}
+		// No cleanup needed for batch cache - it's just metadata
 
 		// Only call Done on connection-level putter if it exists
 		if putter != nil {
@@ -242,16 +236,16 @@ func (s *Service) handleUploadStream(
 			// Try to unmarshal as a stamp
 			stamp := postage.Stamp{}
 			if err := stamp.UnmarshalBinary(potentialStamp); err == nil {
-				// Valid stamp found - get or create cached session, then wrap with this chunk's stamp
+				// Valid stamp found - validate using cached batch info
 				batchID := stamp.BatchID()
 				batchIDHex := string(batchID) // Use batch ID bytes as map key
 				logger.Debug("chunk upload stream: per-chunk stamp detected", "batch_id", batchID, "chunk_size", len(potentialChunkData))
 
-				// Check if we already have a cached session for this batch
-				cachedSession, exists := sessionCache[batchIDHex]
+				// Check if we already have cached batch info
+				storedBatch, exists := batchCache[batchIDHex]
 				if !exists {
-					// Validate batch exists
-					_, err := s.batchStore.Get(stamp.BatchID())
+					// Fetch and cache batch info
+					storedBatch, err = s.batchStore.Get(stamp.BatchID())
 					if err != nil {
 						logger.Debug("chunk upload stream: batch validation failed", "error", err)
 						logger.Error(nil, "chunk upload stream: batch validation failed")
@@ -262,29 +256,30 @@ func (s *Service) handleUploadStream(
 						}
 						return
 					}
-
-					// Create a new storage session and cache it
-					// For pre-stamped chunks, we use the session directly without a stamper wrapper
-					if tag != 0 {
-						cachedSession, err = s.storer.Upload(ctx, false, tag)
-					} else {
-						cachedSession = s.storer.DirectUpload()
-					}
-					if err != nil {
-						logger.Debug("chunk upload stream: failed to create session", "error", err)
-						logger.Error(nil, "chunk upload stream: failed to create session")
-						sendErrorClose(websocket.CloseInternalServerErr, "session creation failed")
-						return
-					}
-					sessionCache[batchIDHex] = cachedSession
-					logger.Debug("chunk upload stream: cached new session", "batch_id", batchIDHex)
-				} else {
-					logger.Debug("chunk upload stream: reusing cached session", "batch_id", batchIDHex)
+					batchCache[batchIDHex] = storedBatch
+					logger.Debug("chunk upload stream: cached batch info", "batch_id", batchIDHex)
 				}
 
-				// Use the cached session directly - chunks arrive pre-stamped
-				// No need for a stamper wrapper since client already signed the chunks
-				chunkPutter = cachedSession
+				// Create a stamped putter for this chunk
+				// This still creates a new putter wrapper, but skips the expensive batch lookup
+				chunkPutter, err = s.newStampedPutter(ctx, putterOptions{
+					BatchID:  stamp.BatchID(),
+					TagID:    tag,
+					Deferred: tag != 0,
+				}, &stamp)
+				if err != nil {
+					logger.Debug("chunk upload stream: failed to create stamped putter", "error", err)
+					logger.Error(nil, "chunk upload stream: failed to create stamped putter")
+					switch {
+					case errors.Is(err, errBatchUnusable) || errors.Is(err, postage.ErrNotUsable):
+						sendErrorClose(websocket.CloseInternalServerErr, "batch not usable")
+					case errors.Is(err, postage.ErrNotFound):
+						sendErrorClose(websocket.CloseInternalServerErr, "batch not found")
+					default:
+						sendErrorClose(websocket.CloseInternalServerErr, "stamped putter creation failed")
+					}
+					return
+				}
 
 				// Use the chunk data without the stamp
 				chunkData = potentialChunkData
@@ -328,9 +323,12 @@ func (s *Service) handleUploadStream(
 			return
 		}
 
-		// Note: We don't call Done() here for per-chunk stamped uploads
-		// because we're reusing the cached session across multiple chunks
-		// The cached sessions are cleaned up in the defer function when the connection closes
+		// Clean up per-chunk putter
+		if chunkPutter != putter {
+			if err := chunkPutter.Done(swarm.ZeroAddress); err != nil {
+				logger.Error(err, "chunk upload stream: failed to finalize per-chunk putter")
+			}
+		}
 
 		err = sendMsg(websocket.BinaryMessage, successWsMsg)
 		if err != nil {
