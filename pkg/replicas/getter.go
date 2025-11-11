@@ -57,7 +57,7 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, e
 	// workers each fetching a replica
 	resultC := make(chan swarm.Chunk)
 	// errc collects the errors
-	errc := make(chan error, 17)
+	errc := make(chan error, g.level.GetReplicaCount()+1)
 	var errs error
 	errcnt := 0
 

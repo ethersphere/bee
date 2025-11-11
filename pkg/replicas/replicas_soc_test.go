@@ -124,20 +124,15 @@ func TestReplicate(t *testing.T) {
 			t.Parallel()
 			replica := replicator.replicate(tt.i, tt.bitsRequired)
 
-			// Verify nonce matches first byte
-			if replica.nonce != replica.addr[0] {
-				t.Errorf("nonce = %d, want %d", replica.nonce, replica.addr[0])
-			}
-
 			// Verify remaining bytes unchanged
-			for i := 1; i < len(replica.addr); i++ {
-				if replica.addr[i] != baseAddr.Bytes()[i] {
-					t.Errorf("byte[%d] changed: got %d, want %d", i, replica.addr[i], baseAddr.Bytes()[i])
+			for i := 1; i < len(replica.Bytes()); i++ {
+				if replica.Bytes()[i] != baseAddr.Bytes()[i] {
+					t.Errorf("byte[%d] changed: got %d, want %d", i, replica.Bytes()[i], baseAddr.Bytes()[i])
 				}
 			}
 
 			// Verify first byte differs from original (or was modified)
-			if replica.addr[0] == baseAddr.Bytes()[0] {
+			if replica.Bytes()[0] == baseAddr.Bytes()[0] {
 				// This is okay if the code explicitly handles this case (line 50-52)
 				// But we should verify the logic worked
 				mask := byte(0xFF >> tt.bitsRequired)
@@ -145,7 +140,7 @@ func TestReplicate(t *testing.T) {
 				expected := (baseAddr.Bytes()[0] & mask) | mirroredBits
 				if expected == baseAddr.Bytes()[0] {
 					// Original would have been flipped, so replica should differ
-					if replica.addr[0] == baseAddr.Bytes()[0] {
+					if replica.Bytes()[0] == baseAddr.Bytes()[0] {
 						t.Errorf("replica first byte should differ from original")
 					}
 				}
@@ -159,15 +154,12 @@ func TestReplicas(t *testing.T) {
 
 	baseAddr := swarm.MustParseHexAddress("1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef")
 
-	for _, rLevel := range []redundancy.Level{redundancy.MEDIUM, redundancy.STRONG, redundancy.INSANE, redundancy.DefaultLevel} {
+	for _, rLevel := range []redundancy.Level{redundancy.MEDIUM, redundancy.STRONG, redundancy.INSANE, redundancy.PARANOID} {
 		t.Run(fmt.Sprintf("level_%d", rLevel), func(t *testing.T) {
 			t.Parallel()
 
-			replicator := newSocReplicator(baseAddr, rLevel)
-			var replicas []*socReplica
-			for r := range replicator.c {
-				replicas = append(replicas, r)
-			}
+			replicator := NewSocReplicator(baseAddr, rLevel)
+			replicas := replicator.Replicas()
 
 			// Verify count
 			if len(replicas) != rLevel.GetReplicaCount() {
@@ -177,20 +169,17 @@ func TestReplicas(t *testing.T) {
 			// Verify structure and uniqueness
 			seen := make(map[string]bool)
 			for i, r := range replicas {
-				if len(r.addr) != 32 {
+				if len(r.Bytes()) != 32 {
 					t.Errorf("replica %d: invalid address length", i)
-				}
-				if r.nonce != r.addr[0] {
-					t.Errorf("replica %d: nonce mismatch", i)
 				}
 				// Verify remaining bytes unchanged
 				for j := 1; j < 32; j++ {
-					if r.addr[j] != baseAddr.Bytes()[j] {
+					if r.Bytes()[j] != baseAddr.Bytes()[j] {
 						t.Errorf("replica %d: byte[%d] changed", i, j)
 					}
 				}
 				// Check uniqueness
-				addrStr := string(r.addr)
+				addrStr := string(r.Bytes())
 				if seen[addrStr] {
 					t.Errorf("replica %d: duplicate address", i)
 				}
@@ -200,7 +189,7 @@ func TestReplicas(t *testing.T) {
 			// Verify dispersion (at least some first bytes differ)
 			firstBytes := make(map[byte]bool)
 			for _, r := range replicas {
-				firstBytes[r.addr[0]] = true
+				firstBytes[r.Bytes()[0]] = true
 			}
 			if len(firstBytes) < len(replicas)/2 {
 				t.Errorf("poor dispersion: only %d unique first bytes", len(firstBytes))

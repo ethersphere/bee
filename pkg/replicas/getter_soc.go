@@ -37,24 +37,24 @@ func NewSocGetter(g storage.Getter, level redundancy.Level) storage.Getter {
 }
 
 // Get makes the socGetter satisfy the storage.Getter interface
+// It attempts to fetch the chunk by its original address first.
+// If the original address does not return a result within RetryInterval,
+// it starts dispatching exponentially growing batches of replica requests
+// at each RetryInterval until a chunk is found or all replicas are tried.
 func (g *socGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	var wg sync.WaitGroup
-	defer wg.Wait()
+	replicas := NewSocReplicator(addr, g.level).Replicas()
 
-	// channel that the results (retrieved chunks) are gathered to from concurrent
-	// workers each fetching a replica
 	resultC := make(chan swarm.Chunk)
-	// errc collects the errors
-	errc := make(chan error, g.level.GetReplicaCount()+1)
-	var errs error
-	errcnt := 0
+	errc := make(chan error, 1+len(replicas))
 
-	// concurrently call to retrieve chunk using original SOC address
-	wg.Go(func() {
-		ch, err := g.Getter.Get(ctx, addr)
+	worker := func(chunkAddr swarm.Address) {
+		defer wg.Done()
+
+		ch, err := g.Getter.Get(ctx, chunkAddr)
 		if err != nil {
 			errc <- err
 			return
@@ -64,67 +64,70 @@ func (g *socGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk
 		case resultC <- ch:
 		case <-ctx.Done():
 		}
-	})
-	// counters
-	n := 0      // counts the replica addresses tried
-	target := 2 // the number of replicas attempted to download in this batch
-	total := g.level.GetReplicaCount()
+	}
 
-	//
-	rr := newSocReplicator(addr, g.level)
-	next := rr.c
-	var wait <-chan time.Time // nil channel to disable case
-	// addresses used are doubling each period of search expansion
-	// (at intervals of RetryInterval)
-	for level := uint8(0); level <= uint8(g.level); {
-		select {
-		// at least one chunk is retrieved, cancel the rest and return early
-		case chunk := <-resultC:
-			cancel()
-			return chunk, nil
+	// try the original address
+	wg.Add(1)
+	go worker(addr)
 
-		case err = <-errc:
-			errs = errors.Join(errs, err)
-			errcnt++
-			if errcnt > total {
-				return nil, errors.Join(ErrSwarmageddon, errs)
-			}
+	// This goroutine waits for RetryInterval, then dispatches the first
+	// batch, waits again, dispatches the second, and so on.
+	go func() {
+		replicaIndex := 0
+		batchLevel := uint8(1) // start with 1 (batch size 1 << 1 = 2)
 
-			// ticker switches on the address channel
-		case <-wait:
-			next = rr.c
-			level++
-			target = 1 << level
-			n = 0
-			continue
+		timer := time.NewTimer(RetryInterval)
+		defer timer.Stop()
 
-			// getting the addresses in order
-		case so := <-next:
-			if so == nil {
-				next = nil
-				continue
-			}
+		for {
+			select {
+			case <-timer.C:
+				batchSize := 1 << batchLevel // 2, 4, 8...
+				sentInBatch := 0
 
-			wg.Go(func() {
-				ch, err := g.Getter.Get(ctx, swarm.NewAddress(so.addr))
-				if err != nil {
-					errc <- err
+				for sentInBatch < batchSize && replicaIndex < len(replicas) {
+					addr := replicas[replicaIndex]
+					replicaIndex++
+					sentInBatch++
+
+					wg.Add(1)
+					go worker(addr)
+				}
+
+				if replicaIndex >= len(replicas) {
+					// all replicas have been dispatched
 					return
 				}
 
-				select {
-				case resultC <- ch:
-				case <-ctx.Done():
-				}
-			})
-			n++
-			if n < target {
-				continue
+				// reset timer for the next batch
+				batchLevel++
+				timer.Reset(RetryInterval)
+
+			case <-ctx.Done():
+				return
 			}
-			next = nil
-			wait = time.After(RetryInterval)
+		}
+	}()
+
+	// collect results
+	waitC := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(waitC)
+	}()
+
+	var errs error
+	for {
+		select {
+		case chunk := <-resultC:
+			cancel() // cancel the context to stop all other workers.
+			return chunk, nil
+
+		case err := <-errc:
+			errs = errors.Join(errs, err)
+
+		case <-waitC:
+			return nil, errors.Join(ErrSwarmageddon, errs)
 		}
 	}
-
-	return nil, nil
 }

@@ -18,31 +18,38 @@ import (
 // socReplicator running the find for replicas
 type socReplicator struct {
 	addr   []byte // chunk address
-	c      chan *socReplica
 	rLevel redundancy.Level
 }
 
-// newSocReplicator socReplicator constructor
-func newSocReplicator(addr swarm.Address, rLevel redundancy.Level) *socReplicator {
+// NewSocReplicator socReplicator constructor
+func NewSocReplicator(addr swarm.Address, rLevel redundancy.Level) *socReplicator {
 	rr := &socReplicator{
 		addr:   addr.Bytes(),
-		c:      make(chan *socReplica, rLevel.GetReplicaCount()),
 		rLevel: rLevel,
 	}
-
-	go rr.replicas()
 
 	return rr
 }
 
-// socReplica of the mined SOC chunk (address) that serve as replicas
-type socReplica struct {
-	addr  []byte // byte slice of SOC address
-	nonce uint8  // byte of the mined nonce
+// Replicas returns all replica addresses as a slice
+// the order of replicas is so that addresses are always maximally dispersed
+// in successive sets of addresses.
+// I.e., the binary tree representing the new addresses prefix bits up to depth is balanced
+func (rr *socReplicator) Replicas() []swarm.Address {
+	replicaCount := rr.rLevel.GetReplicaCount()
+	replicas := make([]swarm.Address, replicaCount)
+	// number of bits required to represent all replicas
+	bitsRequired := countBitsRequired(uint8(replicaCount - 1))
+	// replicate iteration saturates all leading bits in generated addresses until bitsRequired
+	for i := uint8(0); i < uint8(replicaCount); i++ {
+		// create soc replica (with address and nonce)
+		replicas[i] = rr.replicate(i, bitsRequired)
+	}
+	return replicas
 }
 
 // replicate returns a replica params structure seeded with a byte of entropy as argument
-func (rr *socReplicator) replicate(i uint8, bitsRequired uint8) (sp *socReplica) {
+func (rr *socReplicator) replicate(i uint8, bitsRequired uint8) swarm.Address {
 	addr := make([]byte, 32)
 	copy(addr, rr.addr)
 	mirroredBits := mirrorBitsToMSB(i, bitsRequired)
@@ -53,23 +60,7 @@ func (rr *socReplicator) replicate(i uint8, bitsRequired uint8) (sp *socReplica)
 		// xor MSB after the mirrored bits because the iteration found the original address
 		addr[0] ^= 1 << (bitsRequired - 1)
 	}
-	return &socReplica{addr: addr, nonce: addr[0]}
-}
-
-// replicas enumerates replica parameters (nonce) pushing it in a channel given as argument
-// the order of replicas is so that addresses are always maximally dispersed
-// in successive sets of addresses.
-// I.e., the binary tree representing the new addresses prefix bits up to depth is balanced
-func (rr *socReplicator) replicas() {
-	defer close(rr.c)
-	// number of bits required to represent all replicas
-	bitsRequired := countBitsRequired(uint8(rr.rLevel.GetReplicaCount() - 1))
-	// replicate iteration saturates all leading bits in generated addresses until bitsRequired
-	for i := uint8(0); i < uint8(rr.rLevel.GetReplicaCount()); i++ {
-		// create soc replica (with address and nonce)
-		r := rr.replicate(i, bitsRequired)
-		rr.c <- r
-	}
+	return swarm.NewAddress(addr)
 }
 
 // mirrorBitsToMSB mirrors the lowest n bits of v to the most significant bits of a byte.

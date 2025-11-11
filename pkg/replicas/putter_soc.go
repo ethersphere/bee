@@ -44,13 +44,13 @@ func (p *socPutter) Put(ctx context.Context, ch swarm.Chunk) error {
 		return nil
 	}
 
-	rr := newSocReplicator(ch.Address(), p.rLevel)
+	rr := NewSocReplicator(ch.Address(), p.rLevel)
 	errc := make(chan error, p.rLevel.GetReplicaCount())
 	wg := sync.WaitGroup{}
-	for r := range rr.c {
+	for _, replicaAddr := range rr.Replicas() {
 		wg.Go(func() {
 			// create a new chunk with the replica address
-			sch := swarm.NewChunk(swarm.NewAddress(r.addr), ch.Data())
+			sch := swarm.NewChunk(replicaAddr, ch.Data())
 			if err := p.putter.Put(ctx, sch); err != nil {
 				errc <- err
 			}
