@@ -42,6 +42,15 @@ func NewSocGetter(g storage.Getter, level redundancy.Level) storage.Getter {
 // it starts dispatching exponentially growing batches of replica requests
 // at each RetryInterval until a chunk is found or all replicas are tried.
 func (g *socGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
+	// try original address first
+	ch, err = g.Getter.Get(ctx, addr)
+	if err == nil {
+		return ch, nil
+	}
+
+	var errs error
+	errs = errors.Join(errs, err)
+
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -49,7 +58,7 @@ func (g *socGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk
 	replicas := NewSocReplicator(addr, g.level).Replicas()
 
 	resultC := make(chan swarm.Chunk)
-	errc := make(chan error, 1+len(replicas))
+	errc := make(chan error, len(replicas))
 
 	worker := func(chunkAddr swarm.Address) {
 		defer wg.Done()
@@ -66,15 +75,32 @@ func (g *socGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk
 		}
 	}
 
-	// try the original address
-	wg.Add(1)
-	go worker(addr)
-
-	// This goroutine waits for RetryInterval, then dispatches the first
-	// batch, waits again, dispatches the second, and so on.
 	go func() {
 		replicaIndex := 0
 		batchLevel := uint8(1) // start with 1 (batch size 1 << 1 = 2)
+
+		dispatchBatch := func() (done bool) {
+			batchSize := 1 << batchLevel // 2, 4, 8...
+			sentInBatch := 0
+
+			for sentInBatch < batchSize && replicaIndex < len(replicas) {
+				addr := replicas[replicaIndex]
+				replicaIndex++
+				sentInBatch++
+
+				wg.Add(1)
+				go worker(addr)
+			}
+
+			batchLevel++
+
+			// we are done if all replicas are sent
+			return replicaIndex >= len(replicas)
+		}
+
+		if done := dispatchBatch(); done {
+			return
+		}
 
 		timer := time.NewTimer(RetryInterval)
 		defer timer.Stop()
@@ -82,25 +108,9 @@ func (g *socGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk
 		for {
 			select {
 			case <-timer.C:
-				batchSize := 1 << batchLevel // 2, 4, 8...
-				sentInBatch := 0
-
-				for sentInBatch < batchSize && replicaIndex < len(replicas) {
-					addr := replicas[replicaIndex]
-					replicaIndex++
-					sentInBatch++
-
-					wg.Add(1)
-					go worker(addr)
-				}
-
-				if replicaIndex >= len(replicas) {
-					// all replicas have been dispatched
+				if done := dispatchBatch(); done {
 					return
 				}
-
-				// reset timer for the next batch
-				batchLevel++
 				timer.Reset(RetryInterval)
 
 			case <-ctx.Done():
@@ -116,7 +126,6 @@ func (g *socGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk
 		close(waitC)
 	}()
 
-	var errs error
 	for {
 		select {
 		case chunk := <-resultC:
