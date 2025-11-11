@@ -11,15 +11,15 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-// maxDepth defines the maximum depth of the combination generation, serving as a
-// safeguard against excessive memory allocation and computation time. A depth of
-// 24 results in approximately 16.7 million combinations.
-const maxDepth = 24
-
 // IterateAddressCombinations returns an iterator (iter.Seq) that yields bit
 // combinations of an address. The combinations are produced in order of
 // increasing 'depth', starting from depth 0. This approach allows for
 // memory-efficient iteration over a large set of combinations.
+//
+// The maxDepth parameter defines the maximum depth of the combination
+// generation, serving as a safeguard against excessive memory allocation and
+// computation time. A depth of 24 results in approximately 16.7 million
+// combinations.
 //
 // # Performance and Memory Considerations
 //
@@ -34,7 +34,7 @@ const maxDepth = 24
 //
 //	// Safe: A copy of the slice is created and stored.
 //	var allCombinations [][]byte
-//	for combo := range IterateAddressCombinations(data) {
+//	for combo := range IterateAddressCombinations(data, 8) {
 //	    allCombinations = append(allCombinations, slices.Clone(combo))
 //	}
 //
@@ -44,27 +44,27 @@ const maxDepth = 24
 //	// same underlying byte slice, which will hold the value of the last
 //	// combination generated.
 //	var allCombinationsBad [][]byte
-//	for combo := range IterateAddressCombinations(data) {
+//	for combo := range IterateAddressCombinations(data, 8) {
 //	    allCombinationsBad = append(allCombinationsBad, combo)
 //	}
 //
 // The iterator terminates if the depth exceeds maxDepth or if the input data
 // slice is not long enough for the bit manipulations required at the next
 // depth level.
-func IterateAddressCombinations(addr swarm.Address) iter.Seq[swarm.Address] {
+func IterateAddressCombinations(addr swarm.Address, maxDepth int) iter.Seq[swarm.Address] {
 	// State variables for the iterator closure.
 	// A single buffer is used, mutated, and yielded in each iteration.
 	// It is initialized with a copy of the original address data.
 	currentSlice := append([]byte{}, addr.Bytes()...)
 
-	var currentDepth int = 0
-	var bytesNeeded int = 0
+	var currentDepth int
+	var bytesNeeded int
 	// nextDepthIndex marks the combination index at which the depth increases
 	// (e.g., 1, 2, 4, 8, ...).
-	var nextDepthIndex int = 1
+	nextDepthIndex := 1
 	// prevCombinationIndex is used to calculate the bitwise difference for
 	// efficient state transitions.
-	var prevCombinationIndex int = 0
+	var prevCombinationIndex int
 
 	return func(yield func(swarm.Address) bool) {
 		// combinationIndex iterates through all possible combinations.
