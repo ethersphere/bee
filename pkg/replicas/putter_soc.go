@@ -9,6 +9,7 @@ package replicas
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/replicas/combinator"
@@ -37,19 +38,17 @@ func NewSocPutter(p storage.Putter, level redundancy.Level) storage.Putter {
 
 // Put makes the putter satisfy the storage.Putter interface
 func (p *socPutter) Put(ctx context.Context, ch swarm.Chunk) error {
-	// Put original chunk.
 	if err := p.putter.Put(ctx, ch); err != nil {
-		return err
+		return fmt.Errorf("put original chunk: %w", err)
 	}
 
 	var errs error
 
-	// Put replicas.
 	for replicaAddr := range combinator.IterateReplicaAddresses(ch.Address(), int(p.level)) {
 		ch := swarm.NewChunk(replicaAddr, ch.Data())
 
 		if err := p.putter.Put(ctx, ch); err != nil {
-			errs = errors.Join(errs, err)
+			errs = errors.Join(errs, fmt.Errorf("put replica chunk %v: %w", ch.Address(), err))
 		}
 	}
 

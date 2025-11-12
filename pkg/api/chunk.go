@@ -260,8 +260,8 @@ func (s *Service) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 			loggerV1.Debug("chunk not found", "address", address)
 			jsonhttp.NotFound(w, "chunk not found")
 			return
-
 		}
+
 		logger.Debug("read chunk failed", "chunk_address", address, "error", err)
 		logger.Error(nil, "read chunk failed")
 		jsonhttp.InternalServerError(w, "read chunk failed")
