@@ -19,37 +19,16 @@ import (
 //
 // # Performance and Memory Considerations
 //
-// For optimal performance, this function yields the same byte slice on each
-// iteration, modifying its content in place. This avoids memory allocations
-// within the loop.
-//
-// Consequently, it is unsafe to retain a reference to the yielded slice after
-// the loop advances. If the slice needs to be stored, a copy must be created.
-//
-// Example of correct usage:
-//
-//	// Safe: A copy of the slice is created and stored.
-//	var allCombinations [][]byte
-//	for combo := range IterateReplicaAddresses(data, 8) {
-//	    allCombinations = append(allCombinations, slices.Clone(combo))
-//	}
-//
-// Example of incorrect usage:
-//
-//	// Unsafe: This will result in a slice where all elements point to the
-//	// same underlying byte slice, which will hold the value of the last
-//	// combination generated.
-//	var allCombinationsBad [][]byte
-//	for combo := range IterateReplicaAddresses(data, 8) {
-//	    allCombinationsBad = append(allCombinationsBad, combo)
-//	}
+// To ensure safe use of the yielded addresses, this function returns a new copy
+// of the address on each iteration. This prevents accidental modification of
+// previously yielded addresses.
 //
 // The iterator terminates if the depth exceeds maxDepth or if the input data
 // slice is not long enough for the bit manipulations required at the next
 // depth level.
 func IterateReplicaAddresses(addr swarm.Address, maxDepth int) iter.Seq[swarm.Address] {
 	// State variables for the iterator closure.
-	// A single buffer is used, mutated, and yielded in each iteration.
+	// A single buffer is used and mutated in each iteration, and a copy is yielded.
 	// It is initialized with a copy of the original address data.
 	currentSlice := append([]byte{}, addr.Bytes()...)
 
@@ -138,9 +117,9 @@ func IterateReplicaAddresses(addr swarm.Address, maxDepth int) iter.Seq[swarm.Ad
 			}
 			prevCombinationIndex = combinationIndex // Update for the next iteration.
 
-			// Yield the mutated slice. If yield returns false, the consumer
-			// has requested to stop the iteration.
-			if !yield(swarm.NewAddress(currentSlice)) {
+			// Yield a copy of the mutated slice. If yield returns false, the
+			// consumer has requested to stop the iteration.
+			if !yield(swarm.NewAddress(append([]byte(nil), currentSlice...))) {
 				return // Consumer-requested stop.
 			}
 
