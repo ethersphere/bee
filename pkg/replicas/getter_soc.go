@@ -10,12 +10,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/replicas/combinator"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"golang.org/x/sync/semaphore"
 )
 
 // socGetter is the private implementation of storage.Getter, an interface for
@@ -37,38 +39,82 @@ func NewSocGetter(g storage.Getter, level redundancy.Level) storage.Getter {
 	return &socGetter{Getter: g, level: level}
 }
 
+const socGetterConcurrency = 4
+
 // Get makes the socGetter satisfy the storage.Getter interface
 // It attempts to fetch the chunk by its original address first.
-// If the original address does not return a result within RetryInterval,
-// it starts dispatching exponentially growing batches of replica requests
-// at each RetryInterval until a chunk is found or all replicas are tried.
+// If the original address does not return a result,
+// it starts dispatching parallel requests for replicas
+// until a chunk is found or all replicas are tried.
 func (g *socGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
-	var errs error
+	var (
+		errs error
+		mu   sync.Mutex
+		wg   sync.WaitGroup
+	)
 
-	for replicaAddr := range combinator.IterateAddressCombinations(addr, int(g.level)) {
-		ctx, cancel := context.WithTimeout(ctx, RetryInterval)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-		// Download the replica.
-		ch, err := g.Getter.Get(ctx, replicaAddr)
-		if err != nil {
-			cancel()
-			errs = errors.Join(errs, fmt.Errorf("get chunk replica address %v: %w", replicaAddr, err))
-			continue
+	sem := semaphore.NewWeighted(socGetterConcurrency)
+	replicaIter := combinator.IterateAddressCombinations(addr, int(g.level))
+
+	resultChan := make(chan swarm.Chunk, 1)
+	doneChan := make(chan struct{})
+
+	go func() {
+		defer close(doneChan)
+		for replicaAddr := range replicaIter {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
+			if err := sem.Acquire(ctx, 1); err != nil {
+				return
+			}
+
+			wg.Add(1)
+			go func(replicaAddr swarm.Address) {
+				defer sem.Release(1)
+				defer wg.Done()
+
+				ch, err := g.Getter.Get(ctx, replicaAddr)
+				if err != nil {
+					mu.Lock()
+					errs = errors.Join(errs, fmt.Errorf("get chunk replica address %v: %w", replicaAddr, err))
+					mu.Unlock()
+					return
+				}
+
+				originalChunk := swarm.NewChunk(addr, ch.Data())
+				if !cac.Valid(originalChunk) {
+					mu.Lock()
+					errs = errors.Join(errs, fmt.Errorf("validate data at replica address %v: %w", replicaAddr, swarm.ErrInvalidChunk))
+					mu.Unlock()
+					return
+				}
+
+				select {
+				case resultChan <- originalChunk:
+					cancel()
+				case <-ctx.Done():
+				}
+			}(replicaAddr)
 		}
-		cancel()
+		wg.Wait()
+	}()
 
-		// Construct the original chunk with the original address.
-		originalChunk := swarm.NewChunk(addr, ch.Data())
-
-		// Validate that the data of the chunk is correct against the original address.
-		isValid := cac.Valid(originalChunk)
-		if !isValid {
-			errs = errors.Join(errs, fmt.Errorf("validate data at replica address %v: %w", replicaAddr, swarm.ErrInvalidChunk))
-			continue
+	select {
+	case ch := <-resultChan:
+		return ch, nil
+	case <-doneChan:
+		if errs == nil {
+			return nil, ErrSwarmageddon
 		}
-
-		return originalChunk, nil
+		return nil, errors.Join(errs, ErrSwarmageddon)
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
-
-	return nil, errors.Join(errs, ErrSwarmageddon)
 }
