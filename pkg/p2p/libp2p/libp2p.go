@@ -99,35 +99,36 @@ type CertificateManager interface {
 }
 
 type Service struct {
-	ctx               context.Context
-	host              host.Host
-	natManager        basichost.NATManager
-	natAddrResolver   *staticAddressResolver
-	autonatDialer     host.Host
-	pingDialer        host.Host
-	libp2pPeerstore   peerstore.Peerstore
-	metrics           metrics
-	networkID         uint64
-	handshakeService  *handshake.Service
-	addressbook       addressbook.Putter
-	peers             *peerRegistry
-	connectionBreaker breaker.Interface
-	blocklist         *blocklist.Blocklist
-	protocols         []p2p.ProtocolSpec
-	notifier          p2p.PickyNotifier
-	logger            log.Logger
-	tracer            *tracing.Tracer
-	ready             chan struct{}
-	halt              chan struct{}
-	lightNodes        lightnodes
-	lightNodeLimit    int
-	protocolsmu       sync.RWMutex
-	reacher           p2p.Reacher
-	networkStatus     atomic.Int32
-	HeadersRWTimeout  time.Duration
-	autoNAT           autonat.AutoNAT
-	enableWS          bool
-	certManager       CertificateManager
+	ctx                context.Context
+	host               host.Host
+	natManager         basichost.NATManager
+	natAddrResolver    *staticAddressResolver
+	wssNatAddrResolver *staticAddressResolver
+	autonatDialer      host.Host
+	pingDialer         host.Host
+	libp2pPeerstore    peerstore.Peerstore
+	metrics            metrics
+	networkID          uint64
+	handshakeService   *handshake.Service
+	addressbook        addressbook.Putter
+	peers              *peerRegistry
+	connectionBreaker  breaker.Interface
+	blocklist          *blocklist.Blocklist
+	protocols          []p2p.ProtocolSpec
+	notifier           p2p.PickyNotifier
+	logger             log.Logger
+	tracer             *tracing.Tracer
+	ready              chan struct{}
+	halt               chan struct{}
+	lightNodes         lightnodes
+	lightNodeLimit     int
+	protocolsmu        sync.RWMutex
+	reacher            p2p.Reacher
+	networkStatus      atomic.Int32
+	HeadersRWTimeout   time.Duration
+	autoNAT            autonat.AutoNAT
+	enableWS           bool
+	certManager        CertificateManager
 }
 
 type lightnodes interface {
@@ -141,9 +142,10 @@ type lightnodes interface {
 type Options struct {
 	PrivateKey                  *ecdsa.PrivateKey
 	NATAddr                     string
+	WSSNATAddr                  string
 	EnableWS                    bool
 	AutoTLSEnabled              bool
-	AutoTLSPort                 string
+	WSSPort                     string
 	AutoTLSStorageDir           string
 	AutoTLSCAEndpoint           string
 	AutoTLSDomain               string
@@ -185,7 +187,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		if o.EnableWS {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/ws", ip4Addr, port))
 			if o.AutoTLSEnabled {
-				listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/0.0.0.0/tcp/%s/tls/sni/*.%s/ws", o.AutoTLSPort, o.AutoTLSDomain))
+				listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/tls/sni/*.%s/ws", ip4Addr, o.WSSPort, o.AutoTLSDomain))
 			}
 		}
 	}
@@ -195,7 +197,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		if o.EnableWS {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/ws", ip6Addr, port))
 			if o.AutoTLSEnabled {
-				listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/::/tcp/%s/tls/sni/*.%s/ws", o.AutoTLSPort, o.AutoTLSDomain))
+				listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/tls/sni/*.%s/ws", ip6Addr, o.WSSPort, o.AutoTLSDomain))
 			}
 		}
 	}
@@ -293,8 +295,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 				return nil, fmt.Errorf("failed to initialize AutoTLS: %w", err)
 			}
 
-			logger.Info("Certificate initialized with success")
-
 			defer func() {
 				if err != nil {
 					certManager.Stop()
@@ -305,6 +305,8 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		if err := certManager.Start(); err != nil {
 			return nil, fmt.Errorf("failed to start AutoTLS certificate manager: %w", err)
 		}
+
+		logger.Info("AutoTLS certificate manager initialized...")
 	}
 
 	opts := []libp2p.Option{
@@ -396,14 +398,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
-	if o.AutoTLSEnabled && o.EnableWS {
-		// Check reachability for AutoTLS
-		logger.Debug("Reachability for AutoTLS: ", autoNAT.Status())
-		if autoNAT.Status() != network.ReachabilityPublic {
-			logger.Warning("Node not publicly reachable; AutoTLS may fail")
-		}
-	}
-
 	if o.HeadersRWTimeout == 0 {
 		o.HeadersRWTimeout = defaultHeadersRWTimeout
 	}
@@ -420,25 +414,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			return nil, fmt.Errorf("static nat: %w", err)
 		}
 		advertisableAddresser = natAddrResolver
-	}
-
-	logger.Info("Waiting for AutoTLS certificate to be loaded...")
-	waitCtx, cancel := context.WithTimeout(ctx, 1*time.Minute)
-	defer cancel()
-
-	if o.AutoTLSEnabled && o.EnableWS {
-		// Wait for the certificate to be loaded by the background process
-		select {
-		case <-certLoaded:
-			logger.Info("AutoTLS certificate loaded successfully.")
-		case <-waitCtx.Done():
-			// If the context is cancelled, Stop the certificate manager and return an error
-			if certManager != nil {
-				certManager.Stop()
-			}
-			logger.Debug("Error loading certificate: ", waitCtx.Err())
-			return nil, fmt.Errorf("timed out waiting for AutoTLS certificate: %w", waitCtx.Err())
-		}
 	}
 
 	handshakeService, err := handshake.New(signer, advertisableAddresser, overlay, networkID, o.FullNode, o.Nonce, newHostAddresser(h), o.WelcomeMessage, o.ValidateOverlay, h.ID(), logger)
@@ -481,6 +456,39 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		autoNAT:           autoNAT,
 		enableWS:          o.EnableWS,
 		certManager:       certManager,
+	}
+
+	logger.Info("Waiting for AutoTLS certificate to be loaded...")
+	waitCtx, cancel := context.WithTimeout(ctx, 1*time.Minute)
+	defer cancel()
+
+	if o.AutoTLSEnabled && o.EnableWS {
+		var wssNatAddrResolver *staticAddressResolver
+
+		if o.WSSNATAddr != "" {
+			wssNatAddrResolver, err = newStaticAddressResolver(o.WSSNATAddr, net.LookupIP)
+		}
+
+		s.wssNatAddrResolver = wssNatAddrResolver
+
+		// Check reachability for AutoTLS
+		logger.Debug("Reachability for AutoTLS: ", autoNAT.Status())
+		if autoNAT.Status() != network.ReachabilityPublic {
+			logger.Warning("Node not publicly reachable; AutoTLS may fail")
+		}
+
+		// Wait for the certificate to be loaded by the background process
+		select {
+		case <-certLoaded:
+			logger.Info("AutoTLS certificate loaded successfully.")
+		case <-waitCtx.Done():
+			// If the context is cancelled, Stop the certificate manager and return an error
+			if certManager != nil {
+				certManager.Stop()
+			}
+			logger.Debug("Error loading certificate: ", waitCtx.Err())
+			// return nil, fmt.Errorf("timed out waiting for AutoTLS certificate: %w", waitCtx.Err())
+		}
 	}
 
 	peerRegistry.setDisconnecter(s)
@@ -824,6 +832,10 @@ func (s *Service) Addresses() (addresses []ma.Multiaddr, err error) {
 		}
 		addresses = append(addresses, a)
 	}
+
+	s.logger.Debug("Host Addresses: ", s.host.Addrs())
+	s.logger.Debug("Addresses: ", addresses)
+
 	if s.natAddrResolver != nil && len(addresses) > 0 {
 		a, err := s.natAddrResolver.Resolve(addresses[0])
 		if err != nil {

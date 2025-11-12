@@ -122,8 +122,10 @@ password-file: "./password"
 # withdrawal-addresses-whitelist: []
 ## enable autotls (default: false)
 # autotls-enabled: false
-## autotls port (default: 5500)
-# autotls-port: "5500"
+## wss port (default: 1635)
+# p2p-wss-port: "1635"
+## WSS NAT exposed address
+# nat-wss-addr: ""
 ## autotls certificate storage directory (default: ./p2p-tls-certs)
 # autotls-storage-dir: ""
 ## autotls domain (default: libp2p.direct)
