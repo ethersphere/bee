@@ -15,6 +15,7 @@ import (
 // combinations of an address. The combinations are produced in order of
 // increasing 'depth', starting from depth 0. This approach allows for
 // memory-efficient iteration over a large set of combinations.
+// The combination with the one flipped bit of the original address will be returned at the end.
 //
 // The maxDepth parameter defines the maximum depth of the combination
 // generation, serving as a safeguard against excessive memory allocation and
