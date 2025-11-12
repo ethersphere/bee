@@ -86,6 +86,29 @@ func IterateAddressCombinations(addr swarm.Address, maxDepth int) iter.Seq[swarm
 
 				// Boundary checks are performed only when the depth changes.
 				if currentDepth > maxDepth {
+					// Create a new slice based on the original address.
+					originalAddrBytes := addr.Bytes()
+					flippedAddrBytes := make([]byte, len(originalAddrBytes))
+					copy(flippedAddrBytes, originalAddrBytes)
+
+					// Calculate the byte index for the bit to flip.
+					bitIndexToFlip := maxDepth
+					byteIndex := bitIndexToFlip / 8
+
+					// Ensure the flippedAddrBytes is long enough to flip this bit.
+					if len(flippedAddrBytes) <= byteIndex {
+						return // Cannot flip bit, slice is too short.
+					}
+
+					// Flip the maxDepth bit in the new slice.
+					bitPositionInByte := 7 - (bitIndexToFlip % 8)
+					bitMask := byte(1 << bitPositionInByte)
+					flippedAddrBytes[byteIndex] ^= bitMask
+
+					// Yield this modified address
+					if !yield(swarm.NewAddress(flippedAddrBytes)) {
+						return // Consumer-requested stop.
+					}
 					return // Iteration completed up to the defined maximum depth.
 				}
 

@@ -18,7 +18,7 @@ func TestIterateAddressCombinationsSeq(t *testing.T) {
 		input := swarm.NewAddress(make([]byte, swarm.HashSize))
 		allCombinations := make(map[string]bool)
 		count := 0
-		maxItems := 8 // 2^3 (which covers depth=0, 1, 2, 3)
+		maxItems := 9 // 2^3 (which covers depth=0, 1, 2, 3) + 1 for the maxDepth+1 bit flipped address
 
 		// These are the 8 combinations we expect for depth=3
 		expected := addressesToHexMap([]swarm.Address{
@@ -30,6 +30,7 @@ func TestIterateAddressCombinationsSeq(t *testing.T) {
 			swarm.NewAddress(append([]byte{0b10100000}, make([]byte, swarm.HashSize-1)...)), // i=5 (depth=3)
 			swarm.NewAddress(append([]byte{0b01100000}, make([]byte, swarm.HashSize-1)...)), // i=6 (depth=3)
 			swarm.NewAddress(append([]byte{0b11100000}, make([]byte, swarm.HashSize-1)...)), // i=7 (depth=3)
+			swarm.NewAddress(append([]byte{0b00010000}, make([]byte, swarm.HashSize-1)...)), // i=8 (depth=3)
 		})
 
 		for combo := range combinator.IterateAddressCombinations(input, 3) {
@@ -59,8 +60,8 @@ func TestIterateAddressCombinationsSeq(t *testing.T) {
 	t.Run("maxDepth limits iteration", func(t *testing.T) {
 		input := swarm.NewAddress(make([]byte, swarm.HashSize))
 		count := 0
-		// maxDepth=2 should give 4 items (2^2 for depths 0, 1, 2)
-		expectedCount := 4
+		// maxDepth=2 should give 4 items (2^2 for depths 0, 1, 2) + 1 for the maxDepth bit flipped address
+		expectedCount := 5
 
 		for range combinator.IterateAddressCombinations(input, 2) {
 			count++
