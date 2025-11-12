@@ -2,215 +2,384 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// This file is a copy of the original getter_test.go file
-// and tailored to socGetter implementation.
-
 package replicas_test
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
-	"fmt"
-	"io"
+	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
-	"github.com/ethersphere/bee/v2/pkg/cac"
-	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/replicas"
-	"github.com/ethersphere/bee/v2/pkg/soc"
+	"github.com/ethersphere/bee/v2/pkg/replicas/combinator"
 	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-func TestSOCGetter(t *testing.T) {
+func TestSocGetter(t *testing.T) {
 	t.Parallel()
-	// failure is a struct that defines a failure scenario to test
-	type failure struct {
-		name string
-		err  error
-		errf func(int, int) func(int) chan struct{}
-	}
-	// failures is a list of failure scenarios to test
-	failures := []failure{
-		{
-			"timeout",
-			context.Canceled,
-			func(_, _ int) func(i int) chan struct{} {
-				return func(i int) chan struct{} {
-					return nil
-				}
-			},
-		},
-		{
-			"not found",
-			storage.ErrNotFound,
-			func(_, _ int) func(i int) chan struct{} {
-				c := make(chan struct{})
-				close(c)
-				return func(i int) chan struct{} {
-					return c
-				}
-			},
-		},
-	}
-	type test struct {
-		name    string
-		failure failure
-		level   int
-		count   int
-		found   int
-	}
 
-	var tests []test
-	for _, f := range failures {
-		for level, c := range redundancy.GetReplicaCounts() {
-			for j := 0; j <= c*2+1; j++ {
-				tests = append(tests, test{
-					name:    fmt.Sprintf("%s level %d count %d found %d", f.name, level, c, j),
-					failure: f,
-					level:   level,
-					count:   c,
-					found:   j,
-				})
-			}
+	var (
+		chunk     = swarm.NewChunk(swarm.NewAddress(make([]byte, 32)), make([]byte, 32))
+		chunkAddr = chunk.Address()
+		mock      = &mockGetter{
+			getter: inmemchunkstore.New(),
 		}
+		socPutter = replicas.NewSocPutter(mock.getter, redundancy.MEDIUM)
+		getter    = replicas.NewSocGetter(mock, redundancy.MEDIUM)
+	)
+
+	t.Run("happy path", func(t *testing.T) {
+		if err := socPutter.Put(context.Background(), chunk); err != nil {
+			t.Fatal(err)
+		}
+		got, err := getter.Get(context.Background(), chunkAddr)
+		if err != nil {
+			t.Fatalf("got error %v", err)
+		}
+		if !got.Equal(chunk) {
+			t.Fatalf("got chunk %v, want %v", got, chunk)
+		}
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		_, err := getter.Get(context.Background(), swarm.RandAddress(t))
+		if !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("got error %v, want %v", err, storage.ErrNotFound)
+		}
+	})
+}
+
+func TestSocGetter_ReplicaFound(t *testing.T) {
+	t.Parallel()
+
+	var (
+		chunk     = swarm.NewChunk(swarm.NewAddress(make([]byte, 32)), make([]byte, 32))
+		chunkAddr = chunk.Address()
+		mock      = &mockGetter{
+			getter: inmemchunkstore.New(),
+		}
+		socPutter = replicas.NewSocPutter(mock.getter, redundancy.MEDIUM)
+		getter    = replicas.NewSocGetter(mock, redundancy.MEDIUM)
+	)
+
+	var replicaChunk swarm.Chunk
+	replicaIter := combinator.IterateReplicaAddresses(chunkAddr, int(redundancy.MEDIUM))
+	for replicaAddr := range replicaIter {
+		replicaChunk = swarm.NewChunk(replicaAddr, chunk.Data())
+		if err := socPutter.Put(context.Background(), replicaChunk); err != nil {
+			t.Fatal(err)
+		}
+		break
 	}
 
-	// initialise the base chunk
-	chunkLen := 420
-	buf := make([]byte, chunkLen)
-	if _, err := io.ReadFull(rand.Reader, buf); err != nil {
-		t.Fatal(err)
-	}
-	ch, err := cac.New(buf)
+	got, err := getter.Get(context.Background(), chunkAddr)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("got error %v", err)
 	}
-	// create soc from cac
-	// test key to sign soc chunks
-	privKey, err := crypto.GenerateSecp256k1Key()
-	if err != nil {
-		t.Fatal(err)
+	if !got.Equal(chunk) {
+		t.Fatalf("got chunk %v, want %v", got, chunk)
 	}
-	signer := crypto.NewDefaultSigner(privKey)
-	id := make([]byte, 32)
-	if _, err := rand.Read(id); err != nil {
-		t.Fatal(err)
-	}
-	s := soc.New(id, ch)
-	ch, err = s.Sign(signer)
-	if err != nil {
-		t.Fatal(err)
+}
+
+func TestSocGetter_MultipleReplicasFound(t *testing.T) {
+	t.Parallel()
+
+	var (
+		chunk     = swarm.NewChunk(swarm.NewAddress(make([]byte, 32)), make([]byte, 32))
+		chunkAddr = chunk.Address()
+		mock      = &mockGetter{
+			getter: inmemchunkstore.New(),
+		}
+		socPutter = replicas.NewSocPutter(mock.getter, redundancy.MEDIUM)
+		getter    = replicas.NewSocGetter(mock, redundancy.MEDIUM)
+	)
+
+	replicaIter := combinator.IterateReplicaAddresses(chunkAddr, int(redundancy.MEDIUM))
+	var replicaChunk1, replicaChunk2 swarm.Chunk
+	i := 0
+	for replicaAddr := range replicaIter {
+		if i == 0 {
+			replicaChunk1 = swarm.NewChunk(replicaAddr, chunk.Data())
+			if err := socPutter.Put(context.Background(), replicaChunk1); err != nil {
+				t.Fatal(err)
+			}
+		} else {
+			replicaChunk2 = swarm.NewChunk(replicaAddr, chunk.Data())
+			if err := socPutter.Put(context.Background(), replicaChunk2); err != nil {
+				t.Fatal(err)
+			}
+			break
+		}
+		i++
 	}
 
-	// reset retry interval to speed up tests
-	retryInterval := replicas.RetryInterval
-	defer func() { replicas.RetryInterval = retryInterval }()
-	replicas.RetryInterval = 100 * time.Millisecond
+	got, err := getter.Get(context.Background(), chunkAddr)
+	if err != nil {
+		t.Fatalf("got error %v", err)
+	}
 
-	// run the tests
-	for _, tc := range tests {
+	if !got.Equal(chunk) {
+		t.Fatalf("got unexpected chunk %v, want %v", got, chunk)
+	}
+}
+
+func TestSocGetter_ContextCanceled(t *testing.T) {
+	t.Parallel()
+
+	var (
+		chunkAddr = swarm.RandAddress(t)
+		mock      = &mockGetterWithDelay{
+			getter: inmemchunkstore.New(),
+		}
+		getter = replicas.NewSocGetter(mock, redundancy.MEDIUM)
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := getter.Get(ctx, chunkAddr)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("got error %v, want %v", err, context.Canceled)
+	}
+}
+
+func TestSocGetter_DeadlineExceeded(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		t.Helper()
+
+		var (
+			chunkAddr = swarm.RandAddress(t)
+			mock      = &mockGetterWithDelay{
+				getter:   inmemchunkstore.New(),
+				getDelay: 100 * time.Millisecond,
+			}
+			getter = replicas.NewSocGetter(mock, redundancy.MEDIUM)
+		)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
+
+		_, err := getter.Get(ctx, chunkAddr)
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("got error %v, want %v", err, context.DeadlineExceeded)
+		}
+	})
+}
+
+func TestSocGetter_AllReplicasFail(t *testing.T) {
+	t.Parallel()
+
+	var (
+		chunkAddr = swarm.RandAddress(t)
+		mock      = &mockGetter{
+			getter: inmemchunkstore.New(),
+			err:    errors.New("some error"),
+		}
+		getter = replicas.NewSocGetter(mock, redundancy.MEDIUM)
+	)
+
+	_, err := getter.Get(context.Background(), chunkAddr)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestSocGetter_PartialReplicaFailure(t *testing.T) {
+	t.Parallel()
+
+	var (
+		chunk     = swarm.NewChunk(swarm.NewAddress(make([]byte, 32)), make([]byte, 32))
+		chunkAddr = chunk.Address()
+		mock      = &failingMockGetter{
+			getter:    inmemchunkstore.New(),
+			failAddrs: make(map[string]struct{}),
+		}
+		socPutter = replicas.NewSocPutter(mock.getter, redundancy.MEDIUM)
+		getter    = replicas.NewSocGetter(mock, redundancy.MEDIUM)
+	)
+
+	replicaIter := combinator.IterateReplicaAddresses(chunkAddr, int(redundancy.MEDIUM))
+
+	i := 0
+	var successChunk swarm.Chunk
+	for addr := range replicaIter {
+		switch i {
+		case 0:
+			// First replica will fail
+			mock.failAddrs[addr.String()] = struct{}{}
+		case 1:
+			// Second replica will succeed
+			successChunk = swarm.NewChunk(addr, chunk.Data())
+			if err := socPutter.Put(context.Background(), successChunk); err != nil {
+				t.Fatal(err)
+			}
+		default:
+			// Make other replicas fail
+			mock.failAddrs[addr.String()] = struct{}{}
+		}
+		i++
+	}
+
+	got, err := getter.Get(context.Background(), chunkAddr)
+	if err != nil {
+		t.Fatalf("got error %v", err)
+	}
+	if !got.Equal(chunk) {
+		t.Fatalf("got chunk %v, want %v", got, chunk)
+	}
+}
+
+func TestSocGetter_DifferentRedundancyLevel(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name                    string
+		uploadRedundancyLevel   redundancy.Level
+		retrieveRedundancyLevel redundancy.Level
+	}{
+		{
+			name:                    "upload PARANOID, retrieve MEDIUM",
+			uploadRedundancyLevel:   redundancy.PARANOID,
+			retrieveRedundancyLevel: redundancy.MEDIUM,
+		},
+		{
+			name:                    "upload PARANOID, retrieve STRONG",
+			uploadRedundancyLevel:   redundancy.PARANOID,
+			retrieveRedundancyLevel: redundancy.STRONG,
+		},
+		{
+			name:                    "upload STRONG, retrieve MEDIUM",
+			uploadRedundancyLevel:   redundancy.STRONG,
+			retrieveRedundancyLevel: redundancy.MEDIUM,
+		},
+		{
+			name:                    "upload MEDIUM, retrieve MEDIUM",
+			uploadRedundancyLevel:   redundancy.MEDIUM,
+			retrieveRedundancyLevel: redundancy.MEDIUM,
+		},
+		{
+			name:                    "upload INSANE, retrieve MEDIUM",
+			uploadRedundancyLevel:   redundancy.INSANE,
+			retrieveRedundancyLevel: redundancy.MEDIUM,
+		},
+		{
+			name:                    "upload INSANE, retrieve PARANOID",
+			uploadRedundancyLevel:   redundancy.INSANE,
+			retrieveRedundancyLevel: redundancy.PARANOID,
+		},
+		{
+			name:                    "upload NONE, retrieve MEDIUM",
+			uploadRedundancyLevel:   redundancy.NONE,
+			retrieveRedundancyLevel: redundancy.MEDIUM,
+		},
+		{
+			name:                    "upload MEDIUM, retrieve NONE",
+			uploadRedundancyLevel:   redundancy.MEDIUM,
+			retrieveRedundancyLevel: redundancy.NONE,
+		},
+		{
+			name:                    "upload MEDIUM, retrieve STRONG (should still find if replica exists)",
+			uploadRedundancyLevel:   redundancy.MEDIUM,
+			retrieveRedundancyLevel: redundancy.STRONG,
+		},
+	}
+
+	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// initiate a chunk retrieval session using replicas.Getter
-			// embedding a testGetter that simulates the behaviour of a chunk store
-			store := newTestGetter(ch, tc.found, tc.failure.errf(tc.found, tc.count))
-			g := replicas.NewSocGetter(store, redundancy.Level(tc.level))
-			store.now = time.Now()
-			ctx, cancel := context.WithCancel(context.Background())
-			if tc.found > tc.count {
-				wait := replicas.RetryInterval / 2 * time.Duration(1+2*tc.level)
-				go func() {
-					time.Sleep(wait)
-					cancel()
-				}()
-			}
-			_, err := g.Get(ctx, ch.Address())
-			cancel()
+			t.Parallel()
 
-			// test the returned error
-			if tc.found <= tc.count {
-				if err != nil {
-					t.Fatalf("expected no error. got %v", err)
+			var (
+				chunk     = swarm.NewChunk(swarm.NewAddress(make([]byte, 32)), make([]byte, 32))
+				chunkAddr = chunk.Address()
+				mock      = &mockGetter{
+					getter: inmemchunkstore.New(),
 				}
-				// if j <= c, the original chunk should be retrieved and the context should be cancelled
-				t.Run("retrievals cancelled", func(t *testing.T) {
-					select {
-					case <-time.After(100 * time.Millisecond):
-						t.Fatal("timed out waiting for context to be cancelled")
-					case <-store.cancelled:
-					}
-				})
+			)
 
+			// Use socPutter to put the original chunk and its replicas
+			putter := replicas.NewSocPutter(mock.getter, tc.uploadRedundancyLevel)
+			err := putter.Put(context.Background(), chunk)
+			if err != nil {
+				t.Fatalf("socPutter.Put failed: %v", err)
+			}
+
+			getter := replicas.NewSocGetter(mock, tc.retrieveRedundancyLevel)
+
+			got, err := getter.Get(context.Background(), chunkAddr)
+			if err != nil {
+				t.Fatalf("got error %v", err)
+			}
+			if got == nil {
+				t.Fatal("expected a chunk, got nil")
+			}
+
+			// Verify that the retrieved chunk is either the original or one of its replicas
+			found := false
+			if got.Equal(chunk) {
+				found = true
 			} else {
-				if err == nil {
-					t.Fatalf("expected error. got <nil>")
+				replicaIter := combinator.IterateReplicaAddresses(chunkAddr, int(tc.uploadRedundancyLevel))
+				for replicaAddr := range replicaIter {
+					replicaChunk := swarm.NewChunk(replicaAddr, chunk.Data())
+					if got.Equal(replicaChunk) {
+						found = true
+						break
+					}
 				}
-
-				t.Run("returns correct error", func(t *testing.T) {
-					if !errors.Is(err, replicas.ErrSwarmageddon) {
-						t.Fatalf("incorrect error. want Swarmageddon. got %v", err)
-					}
-					if !errors.Is(err, tc.failure.err) {
-						t.Fatalf("incorrect error. want it to wrap %v. got %v", tc.failure.err, err)
-					}
-				})
 			}
 
-			attempts := int(store.attempts.Load())
-			// the original chunk should be among those attempted for retrieval
-			addresses := store.addresses[:attempts]
-			latencies := store.latencies[:attempts]
-			t.Run("original address called", func(t *testing.T) {
-				select {
-				case <-time.After(100 * time.Millisecond):
-					t.Fatal("timed out waiting form original address to be attempted for retrieval")
-				case <-store.origCalled:
-					i := store.origIndex
-					if i > 2 {
-						t.Fatalf("original address called too late. want at most 2 (preceding attempts). got %v (latency: %v)", i, latencies[i])
-					}
-					addresses = append(addresses[:i], addresses[i+1:]...)
-					latencies = append(latencies[:i], latencies[i+1:]...)
-					attempts--
-				}
-			})
-
-			t.Run("retrieved count", func(t *testing.T) {
-				if attempts > tc.count {
-					t.Fatalf("too many attempts to retrieve a replica: want at most %v. got %v.", tc.count, attempts)
-				}
-				if tc.found > tc.count {
-					if attempts < tc.count {
-						t.Fatalf("too few attempts to retrieve a replica: want at least %v. got %v.", tc.count, attempts)
-					}
-					return
-				}
-				maxValue := 2
-				for i := 1; i < tc.level && maxValue < tc.found; i++ {
-					maxValue = maxValue * 2
-				}
-				if attempts > maxValue {
-					t.Fatalf("too many attempts to retrieve a replica: want at most %v. got %v. latencies %v", maxValue, attempts, latencies)
-				}
-			})
-
-			t.Run("dispersion", func(t *testing.T) {
-				if err := dispersed(redundancy.Level(tc.level), addresses); err != nil {
-					t.Fatalf("addresses are not dispersed: %v", err)
-				}
-			})
-
-			t.Run("latency", func(t *testing.T) {
-				counts := redundancy.GetReplicaCounts()
-				for i, latency := range latencies {
-					multiplier := latency / replicas.RetryInterval
-					if multiplier > 0 && i < counts[multiplier-1] {
-						t.Fatalf("incorrect latency for retrieving replica %d: %v", i, err)
-					}
-				}
-			})
+			if !found {
+				t.Fatalf("retrieved chunk %v is neither the original nor any of its replicas", got)
+			}
 		})
 	}
+}
+
+type mockGetter struct {
+	getter storage.ChunkStore
+	err    error
+}
+
+func (m *mockGetter) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.getter.Get(ctx, addr)
+}
+
+type failingMockGetter struct {
+	getter    storage.ChunkStore
+	failAddrs map[string]struct{}
+	mu        sync.Mutex
+}
+
+func (m *failingMockGetter) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, found := m.failAddrs[addr.String()]; found {
+		return nil, errors.New("failed to get chunk")
+	}
+	return m.getter.Get(ctx, addr)
+}
+
+type mockGetterWithDelay struct {
+	getter   storage.ChunkStore
+	err      error
+	getDelay time.Duration
+}
+
+func (m *mockGetterWithDelay) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
+	time.Sleep(m.getDelay)
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.getter.Get(ctx, addr)
 }
