@@ -224,7 +224,7 @@ func TestValidDisperseReplicaAddress(t *testing.T) {
 	t.Run("5th bit flipped", func(t *testing.T) {
 		addr := make([]byte, len(originalAddr))
 		copy(addr, originalAddr)
-		addr[0] ^= 0x10
+		addr[0] ^= 1 << 3 // flip 5th bit from the left
 
 		replica := swarm.NewChunk(swarm.NewAddress(addr), socCh.Data())
 		if !soc.Valid(replica) {
@@ -254,4 +254,3 @@ func TestValidDisperseReplicaAddress(t *testing.T) {
 		}
 	})
 }
-

@@ -31,10 +31,10 @@ func Valid(ch swarm.Chunk) bool {
 	if !ch.Address().Equal(address) {
 		c := ch.Address().Bytes()
 		a := address.Bytes()
-		// for disperse replicas it is allowed to have the first 4 bits of the first
+		// For disperse replicas it is allowed to have the first 4 bits of the first
 		// byte to be different, and the last 4 bits must be equal.
-		// another case is when only the fifth bit is flipped
-		return ((c[0]&0x0f == a[0]&0x0f) || (c[0]^a[0] == 0x10)) && bytes.Equal(c[1:], a[1:])
+		// Another case is when only the fifth bit from the left is flipped.
+		return ((c[0]&0x0f == a[0]&0x0f) || (c[0]^a[0] == 1<<3)) && bytes.Equal(c[1:], a[1:])
 	}
 
 	return true
