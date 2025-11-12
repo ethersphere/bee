@@ -102,9 +102,9 @@ func (g *socGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk
 		return ch, nil
 	case <-doneChan:
 		if errs == nil {
-			return nil, ErrSwarmageddon
+			return nil, storage.ErrNotFound
 		}
-		return nil, errors.Join(errs, ErrSwarmageddon)
+		return nil, errs
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
