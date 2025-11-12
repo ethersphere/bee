@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// the code below implements the integration of dispersed replicas in chunk fetching.
-// using storage.Getter interface.
 package replicas
 
 import (
@@ -19,21 +17,15 @@ import (
 	"golang.org/x/sync/semaphore"
 )
 
-// socGetter is the private implementation of storage.Getter, an interface for
-// retrieving chunks. This getter embeds the original simple chunk getter and extends it
-// to a multiplexed variant that fetches chunks with replicas for SOC.
-//
-// the strategy to retrieve a chunk that has replicas can be configured with a few parameters:
-//   - RetryInterval: the delay before a new batch of replicas is fetched.
-//   - depth: 2^{depth} is the total number of additional replicas that have been uploaded
-//     (by default, it is assumed to be 4, ie. total of 16)
-//   - (not implemented) pivot: replicas with address in the proximity of pivot will be tried first
+// socGetter is the implementation of storage.Getter. This getter embeds the
+// original simple chunk getter and extends it to a multiplexed variant that
+// fetches chunks with replicas for SOC.
 type socGetter struct {
 	storage.Getter
 	level redundancy.Level
 }
 
-// NewSocGetter is the getter constructor
+// NewSocGetter is the getter constructor.
 func NewSocGetter(g storage.Getter, level redundancy.Level) storage.Getter {
 	return &socGetter{
 		Getter: g,
@@ -41,6 +33,7 @@ func NewSocGetter(g storage.Getter, level redundancy.Level) storage.Getter {
 	}
 }
 
+// Number of parallel replica get requests.
 const socGetterConcurrency = 4
 
 // Get makes the socGetter satisfy the storage.Getter interface

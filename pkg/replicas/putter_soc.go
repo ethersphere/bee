@@ -21,14 +21,14 @@ import (
 // maxRedundancyLevel ensures that no more than 2^4 = 16 replicas are generated
 const maxRedundancyLevel = 4
 
-// socPutter is the private implementation of the public storage.Putter interface
-// socPutter extends the original putter to a concurrent multiputter
+// socPutter is the implementation of the public storage.Putter interface.
+// socPutter extends the original putter to a concurrent multiputter.
 type socPutter struct {
 	putter storage.Putter
 	level  redundancy.Level
 }
 
-// NewSocPutter is the putter constructor
+// NewSocPutter is the putter constructor.
 func NewSocPutter(p storage.Putter, level redundancy.Level) storage.Putter {
 	return &socPutter{
 		putter: p,
@@ -36,7 +36,7 @@ func NewSocPutter(p storage.Putter, level redundancy.Level) storage.Putter {
 	}
 }
 
-// Put makes the putter satisfy the storage.Putter interface
+// Put makes the putter satisfy the storage.Putter interface.
 func (p *socPutter) Put(ctx context.Context, ch swarm.Chunk) error {
 	if err := p.putter.Put(ctx, ch); err != nil {
 		return fmt.Errorf("put original chunk: %w", err)
@@ -55,13 +55,13 @@ func (p *socPutter) Put(ctx context.Context, ch swarm.Chunk) error {
 	return errs
 }
 
-// socPutterSession extends the original socPutter
+// socPutterSession extends the original socPutter.
 type socPutterSession struct {
 	socPutter
 	ps storer.PutterSession
 }
 
-// NewSocPutterSession is the putterSession constructor
+// NewSocPutterSession is the putterSession constructor.
 func NewSocPutterSession(p storer.PutterSession, rLevel redundancy.Level) storer.PutterSession {
 	return &socPutterSession{
 		socPutter{
