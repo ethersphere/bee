@@ -52,7 +52,7 @@ func TestIterateReplicaAddressesSeq(t *testing.T) {
 		expectedCount := 1 << maxD // 2^1 = 2 items
 		expected := map[string]bool{
 			swarm.NewAddress(append([]byte{0b10000000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=1 (depth=1)
-			swarm.NewAddress(append([]byte{0b01000000}, make([]byte, swarm.HashSize-1)...)).String(): true, // 1st bit flipped
+			swarm.NewAddress(append([]byte{0b01000000}, make([]byte, swarm.HashSize-1)...)).String(): true, // 2nd bit flipped
 		}
 
 		for combo := range combinator.IterateReplicaAddresses(input, maxD) {
@@ -87,7 +87,7 @@ func TestIterateReplicaAddressesSeq(t *testing.T) {
 			swarm.NewAddress(append([]byte{0b10000000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=1 (depth=1)
 			swarm.NewAddress(append([]byte{0b01000000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=2 (depth=2)
 			swarm.NewAddress(append([]byte{0b11000000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=3 (depth=2)
-			swarm.NewAddress(append([]byte{0b00100000}, make([]byte, swarm.HashSize-1)...)).String(): true, // 2nd bit flipped
+			swarm.NewAddress(append([]byte{0b00100000}, make([]byte, swarm.HashSize-1)...)).String(): true, // 3rd bit flipped
 		}
 
 		for combo := range combinator.IterateReplicaAddresses(input, maxD) {
@@ -126,7 +126,7 @@ func TestIterateReplicaAddressesSeq(t *testing.T) {
 			swarm.NewAddress(append([]byte{0b10100000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=5 (depth=3)
 			swarm.NewAddress(append([]byte{0b01100000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=6 (depth=3)
 			swarm.NewAddress(append([]byte{0b11100000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=7 (depth=3)
-			swarm.NewAddress(append([]byte{0b00010000}, make([]byte, swarm.HashSize-1)...)).String(): true, // 3rd bit flipped
+			swarm.NewAddress(append([]byte{0b00010000}, make([]byte, swarm.HashSize-1)...)).String(): true, // 4th bit flipped
 		}
 
 		for combo := range combinator.IterateReplicaAddresses(input, maxD) {
@@ -175,7 +175,7 @@ func TestIterateReplicaAddressesSeq(t *testing.T) {
 			swarm.NewAddress(append([]byte{0b10110000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=13 (depth=4)
 			swarm.NewAddress(append([]byte{0b01110000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=14 (depth=4)
 			swarm.NewAddress(append([]byte{0b11110000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=15 (depth=4)
-			swarm.NewAddress(append([]byte{0b00001000}, make([]byte, swarm.HashSize-1)...)).String(): true, // 4th bit flipped
+			swarm.NewAddress(append([]byte{0b00001000}, make([]byte, swarm.HashSize-1)...)).String(): true, // 5th bit flipped
 		}
 
 		for combo := range combinator.IterateReplicaAddresses(input, maxD) {
