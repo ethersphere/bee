@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/replicas/combinator"
 	"github.com/ethersphere/bee/v2/pkg/storage"
@@ -88,16 +87,8 @@ func (g *socGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk
 					return
 				}
 
-				originalChunk := swarm.NewChunk(addr, ch.Data())
-				if !cac.Valid(originalChunk) {
-					mu.Lock()
-					errs = errors.Join(errs, fmt.Errorf("validate data at replica address %v: %w", replicaAddr, swarm.ErrInvalidChunk))
-					mu.Unlock()
-					return
-				}
-
 				select {
-				case resultChan <- originalChunk:
+				case resultChan <- ch:
 					cancel()
 				case <-ctx.Done():
 				}
