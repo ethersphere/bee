@@ -9,10 +9,9 @@ package replicas
 import (
 	"context"
 	"errors"
-	"fmt"
-	"sync"
 
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
+	"github.com/ethersphere/bee/v2/pkg/replicas/combinator"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -35,34 +34,17 @@ func NewSocPutter(p storage.Putter, rLevel redundancy.Level) storage.Putter {
 
 // Put makes the putter satisfy the storage.Putter interface
 func (p *socPutter) Put(ctx context.Context, ch swarm.Chunk) error {
-	errs := []error{}
-	// Put base chunk first
-	if err := p.putter.Put(ctx, ch); err != nil {
-		return fmt.Errorf("soc putter: put base chunk: %w", err)
-	}
-	if p.rLevel == 0 {
-		return nil
+	var errs error
+
+	for replicaAddr := range combinator.IterateAddressCombinations(ch.Address(), int(p.rLevel)) {
+		sch := swarm.NewChunk(replicaAddr, ch.Data())
+
+		if err := p.putter.Put(ctx, sch); err != nil {
+			errs = errors.Join(errs, err)
+		}
 	}
 
-	rr := NewSocReplicator(ch.Address(), p.rLevel)
-	errc := make(chan error, p.rLevel.GetReplicaCount())
-	wg := sync.WaitGroup{}
-	for _, replicaAddr := range rr.Replicas() {
-		wg.Go(func() {
-			// create a new chunk with the replica address
-			sch := swarm.NewChunk(replicaAddr, ch.Data())
-			if err := p.putter.Put(ctx, sch); err != nil {
-				errc <- err
-			}
-		})
-	}
-
-	wg.Wait()
-	close(errc)
-	for err := range errc {
-		errs = append(errs, err)
-	}
-	return errors.Join(errs...)
+	return errs
 }
 
 // socPutterSession extends the original socPutter

@@ -9,10 +9,11 @@ package replicas
 import (
 	"context"
 	"errors"
-	"sync"
-	"time"
+	"fmt"
 
+	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
+	"github.com/ethersphere/bee/v2/pkg/replicas/combinator"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -42,101 +43,32 @@ func NewSocGetter(g storage.Getter, level redundancy.Level) storage.Getter {
 // it starts dispatching exponentially growing batches of replica requests
 // at each RetryInterval until a chunk is found or all replicas are tried.
 func (g *socGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
-	// try original address first
-	ch, err = g.Getter.Get(ctx, addr)
-	if err == nil {
-		return ch, nil
-	}
-
 	var errs error
-	errs = errors.Join(errs, err)
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	for replicaAddr := range combinator.IterateAddressCombinations(addr, int(g.level)) {
+		ctx, cancel := context.WithTimeout(ctx, RetryInterval)
 
-	var wg sync.WaitGroup
-	replicas := NewSocReplicator(addr, g.level).Replicas()
-
-	resultC := make(chan swarm.Chunk)
-	errc := make(chan error, len(replicas))
-
-	worker := func(chunkAddr swarm.Address) {
-		defer wg.Done()
-
-		ch, err := g.Getter.Get(ctx, chunkAddr)
+		// Download the replica.
+		ch, err := g.Getter.Get(ctx, replicaAddr)
 		if err != nil {
-			errc <- err
-			return
+			cancel()
+			errs = errors.Join(errs, fmt.Errorf("get chunk replica address %v: %w", replicaAddr, err))
+			continue
+		}
+		cancel()
+
+		// Construct the original chunk with the original address.
+		originalChunk := swarm.NewChunk(addr, ch.Data())
+
+		// Validate that the data of the chunk is correct against the original address.
+		isValid := cac.Valid(originalChunk)
+		if !isValid {
+			errs = errors.Join(errs, fmt.Errorf("validate data at replica address %v: %w", replicaAddr, swarm.ErrInvalidChunk))
+			continue
 		}
 
-		select {
-		case resultC <- ch:
-		case <-ctx.Done():
-		}
+		return originalChunk, nil
 	}
 
-	go func() {
-		replicaIndex := 0
-		batchLevel := uint8(1) // start with 1 (batch size 1 << 1 = 2)
-
-		dispatchBatch := func() (done bool) {
-			batchSize := 1 << batchLevel // 2, 4, 8...
-			sentInBatch := 0
-
-			for sentInBatch < batchSize && replicaIndex < len(replicas) {
-				addr := replicas[replicaIndex]
-				replicaIndex++
-				sentInBatch++
-
-				wg.Add(1)
-				go worker(addr)
-			}
-
-			batchLevel++
-
-			// we are done if all replicas are sent
-			return replicaIndex >= len(replicas)
-		}
-
-		if done := dispatchBatch(); done {
-			return
-		}
-
-		timer := time.NewTimer(RetryInterval)
-		defer timer.Stop()
-
-		for {
-			select {
-			case <-timer.C:
-				if done := dispatchBatch(); done {
-					return
-				}
-				timer.Reset(RetryInterval)
-
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-
-	// collect results
-	waitC := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(waitC)
-	}()
-
-	for {
-		select {
-		case chunk := <-resultC:
-			cancel() // cancel the context to stop all other workers.
-			return chunk, nil
-
-		case err := <-errc:
-			errs = errors.Join(errs, err)
-
-		case <-waitC:
-			return nil, errors.Join(ErrSwarmageddon, errs)
-		}
-	}
+	return nil, errors.Join(errs, ErrSwarmageddon)
 }
