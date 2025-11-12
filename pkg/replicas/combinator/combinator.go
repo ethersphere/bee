@@ -11,16 +11,11 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-// IterateAddressCombinations returns an iterator (iter.Seq) that yields bit
-// combinations of an address. The combinations are produced in order of
-// increasing 'depth', starting from depth 0. This approach allows for
-// memory-efficient iteration over a large set of combinations.
+// IterateReplicaAddresses returns an iterator (iter.Seq) that yields bit
+// combinations of an address, starting from depth 1. The original address is
+// not returned. This approach allows for memory-efficient iteration over a large
+// set of combinations.
 // The combination with the one flipped bit of the original address will be returned at the end.
-//
-// The maxDepth parameter defines the maximum depth of the combination
-// generation, serving as a safeguard against excessive memory allocation and
-// computation time. A depth of 24 results in approximately 16.7 million
-// combinations.
 //
 // # Performance and Memory Considerations
 //
@@ -35,7 +30,7 @@ import (
 //
 //	// Safe: A copy of the slice is created and stored.
 //	var allCombinations [][]byte
-//	for combo := range IterateAddressCombinations(data, 8) {
+//	for combo := range IterateReplicaAddresses(data, 8) {
 //	    allCombinations = append(allCombinations, slices.Clone(combo))
 //	}
 //
@@ -45,14 +40,14 @@ import (
 //	// same underlying byte slice, which will hold the value of the last
 //	// combination generated.
 //	var allCombinationsBad [][]byte
-//	for combo := range IterateAddressCombinations(data, 8) {
+//	for combo := range IterateReplicaAddresses(data, 8) {
 //	    allCombinationsBad = append(allCombinationsBad, combo)
 //	}
 //
 // The iterator terminates if the depth exceeds maxDepth or if the input data
 // slice is not long enough for the bit manipulations required at the next
 // depth level.
-func IterateAddressCombinations(addr swarm.Address, maxDepth int) iter.Seq[swarm.Address] {
+func IterateReplicaAddresses(addr swarm.Address, maxDepth int) iter.Seq[swarm.Address] {
 	// State variables for the iterator closure.
 	// A single buffer is used, mutated, and yielded in each iteration.
 	// It is initialized with a copy of the original address data.
@@ -68,8 +63,8 @@ func IterateAddressCombinations(addr swarm.Address, maxDepth int) iter.Seq[swarm
 	var prevCombinationIndex int
 
 	return func(yield func(swarm.Address) bool) {
-		// combinationIndex iterates through all possible combinations.
-		for combinationIndex := 0; ; combinationIndex++ {
+		// combinationIndex iterates through all possible combinations, but skip the original address.
+		for combinationIndex := 1; ; combinationIndex++ {
 			// When the combinationIndex reaches the next power of two, the depth
 			// of bit combinations is increased for subsequent iterations.
 			if combinationIndex >= nextDepthIndex {
@@ -87,6 +82,11 @@ func IterateAddressCombinations(addr swarm.Address, maxDepth int) iter.Seq[swarm
 
 				// Boundary checks are performed only when the depth changes.
 				if currentDepth > maxDepth {
+					if maxDepth == 0 {
+						// Do not return the bit flip address of depth 0,
+						// because depth 0 should have no replicas.
+						return
+					}
 					// Create a new slice based on the original address.
 					originalAddrBytes := addr.Bytes()
 					flippedAddrBytes := make([]byte, len(originalAddrBytes))
@@ -122,8 +122,7 @@ func IterateAddressCombinations(addr swarm.Address, maxDepth int) iter.Seq[swarm
 			}
 
 			// The generation logic is optimized to flip only the bits that
-			// differ from the previous combination. For combinationIndex=0,
-			// (0^0) is 0, so no bits are flipped. For subsequent indices,
+			// differ from the previous combination. For subsequent indices,
 			// the buffer is XORed with the difference between the current and
 			// previous combination indices.
 			bitsToFlip := combinationIndex ^ prevCombinationIndex

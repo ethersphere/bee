@@ -35,7 +35,10 @@ type socGetter struct {
 
 // NewSocGetter is the getter constructor
 func NewSocGetter(g storage.Getter, level redundancy.Level) storage.Getter {
-	return &socGetter{Getter: g, level: level}
+	return &socGetter{
+		Getter: g,
+		level:  min(level, maxRedundancyLevel),
+	}
 }
 
 const socGetterConcurrency = 4
@@ -52,11 +55,20 @@ func (g *socGetter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk
 		wg   sync.WaitGroup
 	)
 
+	// First try to get the original chunk.
+	ch, err = g.Getter.Get(ctx, addr)
+	if err != nil {
+		errs = errors.Join(errs, fmt.Errorf("get chunk original address %v: %w", addr, err))
+	} else {
+		return ch, nil
+	}
+
+	// Try to retrieve replicas.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	sem := semaphore.NewWeighted(socGetterConcurrency)
-	replicaIter := combinator.IterateAddressCombinations(addr, int(g.level))
+	replicaIter := combinator.IterateReplicaAddresses(addr, int(g.level))
 
 	resultChan := make(chan swarm.Chunk, 1)
 	doneChan := make(chan struct{})

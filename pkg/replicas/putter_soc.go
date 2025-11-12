@@ -17,29 +17,38 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
+// maxRedundancyLevel ensures that no more than 2^4 = 16 replicas are generated
+const maxRedundancyLevel = 4
+
 // socPutter is the private implementation of the public storage.Putter interface
 // socPutter extends the original putter to a concurrent multiputter
 type socPutter struct {
 	putter storage.Putter
-	rLevel redundancy.Level
+	level  redundancy.Level
 }
 
 // NewSocPutter is the putter constructor
-func NewSocPutter(p storage.Putter, rLevel redundancy.Level) storage.Putter {
+func NewSocPutter(p storage.Putter, level redundancy.Level) storage.Putter {
 	return &socPutter{
 		putter: p,
-		rLevel: rLevel,
+		level:  min(level, maxRedundancyLevel),
 	}
 }
 
 // Put makes the putter satisfy the storage.Putter interface
 func (p *socPutter) Put(ctx context.Context, ch swarm.Chunk) error {
+	// Put original chunk.
+	if err := p.putter.Put(ctx, ch); err != nil {
+		return err
+	}
+
 	var errs error
 
-	for replicaAddr := range combinator.IterateAddressCombinations(ch.Address(), int(p.rLevel)) {
-		sch := swarm.NewChunk(replicaAddr, ch.Data())
+	// Put replicas.
+	for replicaAddr := range combinator.IterateReplicaAddresses(ch.Address(), int(p.level)) {
+		ch := swarm.NewChunk(replicaAddr, ch.Data())
 
-		if err := p.putter.Put(ctx, sch); err != nil {
+		if err := p.putter.Put(ctx, ch); err != nil {
 			errs = errors.Join(errs, err)
 		}
 	}
@@ -58,7 +67,7 @@ func NewSocPutterSession(p storer.PutterSession, rLevel redundancy.Level) storer
 	return &socPutterSession{
 		socPutter{
 			putter: p,
-			rLevel: rLevel,
+			level:  rLevel,
 		}, p,
 	}
 }

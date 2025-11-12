@@ -13,27 +13,16 @@ import (
 
 const maxDepth = 8
 
-func TestIterateAddressCombinationsSeq(t *testing.T) {
-	t.Run("Iterate up to depth=3", func(t *testing.T) {
+func TestIterateReplicaAddressesSeq(t *testing.T) {
+	t.Run("iterate up to depth 0", func(t *testing.T) {
 		input := swarm.NewAddress(make([]byte, swarm.HashSize))
 		allCombinations := make(map[string]bool)
 		count := 0
-		maxItems := 9 // 2^3 (which covers depth=0, 1, 2, 3) + 1 for the maxDepth+1 bit flipped address
+		maxD := 0
+		expectedCount := 0            // No addresses should be returned as depth 0 represents no replication.
+		expected := map[string]bool{} // Not even the maxDepth-bit-flipped address.
 
-		// These are the 8 combinations we expect for depth=3
-		expected := addressesToHexMap([]swarm.Address{
-			swarm.NewAddress(append([]byte{0b00000000}, make([]byte, swarm.HashSize-1)...)), // i=0 (depth=0)
-			swarm.NewAddress(append([]byte{0b10000000}, make([]byte, swarm.HashSize-1)...)), // i=1 (depth=1)
-			swarm.NewAddress(append([]byte{0b01000000}, make([]byte, swarm.HashSize-1)...)), // i=2 (depth=2)
-			swarm.NewAddress(append([]byte{0b11000000}, make([]byte, swarm.HashSize-1)...)), // i=3 (depth=2)
-			swarm.NewAddress(append([]byte{0b00100000}, make([]byte, swarm.HashSize-1)...)), // i=4 (depth=3)
-			swarm.NewAddress(append([]byte{0b10100000}, make([]byte, swarm.HashSize-1)...)), // i=5 (depth=3)
-			swarm.NewAddress(append([]byte{0b01100000}, make([]byte, swarm.HashSize-1)...)), // i=6 (depth=3)
-			swarm.NewAddress(append([]byte{0b11100000}, make([]byte, swarm.HashSize-1)...)), // i=7 (depth=3)
-			swarm.NewAddress(append([]byte{0b00010000}, make([]byte, swarm.HashSize-1)...)), // i=8 (depth=3)
-		})
-
-		for combo := range combinator.IterateAddressCombinations(input, 3) {
+		for combo := range combinator.IterateReplicaAddresses(input, maxD) {
 			comboHex := combo.String()
 			if allCombinations[comboHex] {
 				t.Errorf("Duplicate combination found at count %d: %s", count, comboHex)
@@ -42,11 +31,165 @@ func TestIterateAddressCombinationsSeq(t *testing.T) {
 			count++
 		}
 
-		if count != maxItems {
-			t.Fatalf("Expected to iterate %d times, got %d", maxItems, count)
+		if count != expectedCount {
+			t.Fatalf("Expected to iterate %d times, got %d", expectedCount, count)
+		}
+		if len(allCombinations) != len(expected) {
+			t.Errorf("Mismatched map sizes. Expected %d, got %d", len(expected), len(allCombinations))
+		}
+		for hexStr := range expected {
+			if !allCombinations[hexStr] {
+				t.Errorf("Expected combination %s not found in results", hexStr)
+			}
+		}
+	})
+
+	t.Run("iterate up to depth 1", func(t *testing.T) {
+		input := swarm.NewAddress(make([]byte, swarm.HashSize))
+		allCombinations := make(map[string]bool)
+		count := 0
+		maxD := 1
+		expectedCount := 1 << maxD // 2^1 = 2 items
+		expected := map[string]bool{
+			swarm.NewAddress(append([]byte{0b10000000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=1 (depth=1)
+			swarm.NewAddress(append([]byte{0b01000000}, make([]byte, swarm.HashSize-1)...)).String(): true, // 1st bit flipped
 		}
 
-		// Check that the 8 items we got are the 8 we expected
+		for combo := range combinator.IterateReplicaAddresses(input, maxD) {
+			comboHex := combo.String()
+			if allCombinations[comboHex] {
+				t.Errorf("Duplicate combination found at count %d: %s", count, comboHex)
+			}
+			allCombinations[comboHex] = true
+			count++
+		}
+
+		if count != expectedCount {
+			t.Fatalf("Expected to iterate %d times, got %d", expectedCount, count)
+		}
+		if len(allCombinations) != len(expected) {
+			t.Errorf("Mismatched map sizes. Expected %d, got %d", len(expected), len(allCombinations))
+		}
+		for hexStr := range expected {
+			if !allCombinations[hexStr] {
+				t.Errorf("Expected combination %s not found in results", hexStr)
+			}
+		}
+	})
+
+	t.Run("iterate up to depth 2", func(t *testing.T) {
+		input := swarm.NewAddress(make([]byte, swarm.HashSize))
+		allCombinations := make(map[string]bool)
+		count := 0
+		maxD := 2
+		expectedCount := 1 << maxD // 2^2 = 4 items
+		expected := map[string]bool{
+			swarm.NewAddress(append([]byte{0b10000000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=1 (depth=1)
+			swarm.NewAddress(append([]byte{0b01000000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=2 (depth=2)
+			swarm.NewAddress(append([]byte{0b11000000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=3 (depth=2)
+			swarm.NewAddress(append([]byte{0b00100000}, make([]byte, swarm.HashSize-1)...)).String(): true, // 2nd bit flipped
+		}
+
+		for combo := range combinator.IterateReplicaAddresses(input, maxD) {
+			comboHex := combo.String()
+			if allCombinations[comboHex] {
+				t.Errorf("Duplicate combination found at count %d: %s", count, comboHex)
+			}
+			allCombinations[comboHex] = true
+			count++
+		}
+
+		if count != expectedCount {
+			t.Fatalf("Expected to iterate %d times, got %d", expectedCount, count)
+		}
+		if len(allCombinations) != len(expected) {
+			t.Errorf("Mismatched map sizes. Expected %d, got %d", len(expected), len(allCombinations))
+		}
+		for hexStr := range expected {
+			if !allCombinations[hexStr] {
+				t.Errorf("Expected combination %s not found in results", hexStr)
+			}
+		}
+	})
+
+	t.Run("Iterate up to depth=3", func(t *testing.T) {
+		input := swarm.NewAddress(make([]byte, swarm.HashSize))
+		allCombinations := make(map[string]bool)
+		count := 0
+		maxD := 3
+		expectedCount := 1 << maxD // 2^3 = 8 items
+		expected := map[string]bool{
+			swarm.NewAddress(append([]byte{0b10000000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=1 (depth=1)
+			swarm.NewAddress(append([]byte{0b01000000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=2 (depth=2)
+			swarm.NewAddress(append([]byte{0b11000000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=3 (depth=2)
+			swarm.NewAddress(append([]byte{0b00100000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=4 (depth=3)
+			swarm.NewAddress(append([]byte{0b10100000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=5 (depth=3)
+			swarm.NewAddress(append([]byte{0b01100000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=6 (depth=3)
+			swarm.NewAddress(append([]byte{0b11100000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=7 (depth=3)
+			swarm.NewAddress(append([]byte{0b00010000}, make([]byte, swarm.HashSize-1)...)).String(): true, // 3rd bit flipped
+		}
+
+		for combo := range combinator.IterateReplicaAddresses(input, maxD) {
+			comboHex := combo.String()
+			if allCombinations[comboHex] {
+				t.Errorf("Duplicate combination found at count %d: %s", count, comboHex)
+			}
+			allCombinations[comboHex] = true
+			count++
+		}
+
+		if count != expectedCount {
+			t.Fatalf("Expected to iterate %d times, got %d", expectedCount, count)
+		}
+
+		// Check that the items we got are the ones we expected
+		if len(allCombinations) != len(expected) {
+			t.Errorf("Mismatched map sizes. Expected %d, got %d", len(expected), len(allCombinations))
+		}
+		for hexStr := range expected {
+			if !allCombinations[hexStr] {
+				t.Errorf("Expected combination %s not found in results", hexStr)
+			}
+		}
+	})
+
+	t.Run("iterate up to depth 4", func(t *testing.T) {
+		input := swarm.NewAddress(make([]byte, swarm.HashSize))
+		allCombinations := make(map[string]bool)
+		count := 0
+		maxD := 4
+		expectedCount := 1 << maxD // 2^4 = 16 items
+		expected := map[string]bool{
+			swarm.NewAddress(append([]byte{0b10000000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=1 (depth=1)
+			swarm.NewAddress(append([]byte{0b01000000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=2 (depth=2)
+			swarm.NewAddress(append([]byte{0b11000000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=3 (depth=2)
+			swarm.NewAddress(append([]byte{0b00100000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=4 (depth=3)
+			swarm.NewAddress(append([]byte{0b10100000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=5 (depth=3)
+			swarm.NewAddress(append([]byte{0b01100000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=6 (depth=3)
+			swarm.NewAddress(append([]byte{0b11100000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=7 (depth=3)
+			swarm.NewAddress(append([]byte{0b00010000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=8 (depth=4)
+			swarm.NewAddress(append([]byte{0b10010000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=9 (depth=4)
+			swarm.NewAddress(append([]byte{0b01010000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=10 (depth=4)
+			swarm.NewAddress(append([]byte{0b11010000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=11 (depth=4)
+			swarm.NewAddress(append([]byte{0b00110000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=12 (depth=4)
+			swarm.NewAddress(append([]byte{0b10110000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=13 (depth=4)
+			swarm.NewAddress(append([]byte{0b01110000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=14 (depth=4)
+			swarm.NewAddress(append([]byte{0b11110000}, make([]byte, swarm.HashSize-1)...)).String(): true, // i=15 (depth=4)
+			swarm.NewAddress(append([]byte{0b00001000}, make([]byte, swarm.HashSize-1)...)).String(): true, // 4th bit flipped
+		}
+
+		for combo := range combinator.IterateReplicaAddresses(input, maxD) {
+			comboHex := combo.String()
+			if allCombinations[comboHex] {
+				t.Errorf("Duplicate combination found at count %d: %s", count, comboHex)
+			}
+			allCombinations[comboHex] = true
+			count++
+		}
+
+		if count != expectedCount {
+			t.Fatalf("Expected to iterate %d times, got %d", expectedCount, count)
+		}
 		if len(allCombinations) != len(expected) {
 			t.Errorf("Mismatched map sizes. Expected %d, got %d", len(expected), len(allCombinations))
 		}
@@ -60,10 +203,10 @@ func TestIterateAddressCombinationsSeq(t *testing.T) {
 	t.Run("maxDepth limits iteration", func(t *testing.T) {
 		input := swarm.NewAddress(make([]byte, swarm.HashSize))
 		count := 0
-		// maxDepth=2 should give 4 items (2^2 for depths 0, 1, 2) + 1 for the maxDepth bit flipped address
-		expectedCount := 5
+		// maxDepth=2 should give 3 items (2^2-1 for depths 1, 2) + 1 for the maxDepth bit flipped address
+		expectedCount := 4
 
-		for range combinator.IterateAddressCombinations(input, 2) {
+		for range combinator.IterateReplicaAddresses(input, 2) {
 			count++
 		}
 
@@ -74,16 +217,16 @@ func TestIterateAddressCombinationsSeq(t *testing.T) {
 
 	t.Run("Iterator stops correctly at end of byte slice", func(t *testing.T) {
 		// 1 byte = 8 bits.
-		// Iterator should produce 2^8 = 256 items (for depth=0 through depth=8).
+		// Iterator should produce 2^8-1 = 255 items (for depth=1 through depth=8).
 		// The 257th item (i=256) would require depth=9,
 		// which needs 2 bytes. The iterator should stop there.
 		input := swarm.NewAddress([]byte{0xDE}) // 1 byte
-		expectedCount := 1 << 8                 // 256
+		expectedCount := (1 << 8) - 1           // 255
 		count := 0
 
 		allCombinations := make(map[string]bool)
 
-		for combo := range combinator.IterateAddressCombinations(input, maxDepth) {
+		for combo := range combinator.IterateReplicaAddresses(input, maxDepth) {
 			// Just in case, prevent infinite loop in test
 			if count > expectedCount {
 				t.Fatalf("Iterator produced more than %d items, count=%d", expectedCount, count)
@@ -103,27 +246,18 @@ func TestIterateAddressCombinationsSeq(t *testing.T) {
 	})
 
 	t.Run("depth=0 edge case (nil slice)", func(t *testing.T) {
-		// depth=0 is i=0. This needs 0 bytes, which a nil slice has.
-		// The *next* item, i=1, needs depth=1, which needs 1 byte.
+		// The iterator starts at i=1, which needs depth=1, which needs 1 byte.
 		// A nil slice fails this.
-		// So, this should iterate *exactly once*.
+		// So, this should iterate *exactly zero times*.
 		var input swarm.Address
 		count := 0
-		var firstCombo swarm.Address
 
-		for combo := range combinator.IterateAddressCombinations(input, maxDepth) {
-			if count == 0 {
-				firstCombo = combo
-			}
+		for range combinator.IterateReplicaAddresses(input, maxDepth) {
 			count++
 		}
 
-		if count != 1 {
-			t.Fatalf("Expected exactly 1 item (depth=0) for nil slice, got %d", count)
-		}
-		// A copy of a nil slice is a non-nil, zero-length slice
-		if len(firstCombo.Bytes()) != 0 {
-			t.Errorf("Expected first item to be empty slice, got %x", firstCombo.Bytes())
+		if count != 0 {
+			t.Fatalf("Expected exactly 0 items for nil slice, got %d", count)
 		}
 	})
 
@@ -132,7 +266,7 @@ func TestIterateAddressCombinationsSeq(t *testing.T) {
 		count := 0
 		stopAt := 5
 
-		seq := combinator.IterateAddressCombinations(input, maxDepth)
+		seq := combinator.IterateReplicaAddresses(input, maxDepth)
 		for range seq {
 			count++
 			if count == stopAt {
@@ -150,24 +284,19 @@ func TestIterateAddressCombinationsSeq(t *testing.T) {
 
 var benchAddress = swarm.NewAddress(append([]byte{0xDE, 0xAD, 0xBE, 0xEF}, make([]byte, swarm.HashSize-4)...))
 
-// runBenchmark is a helper to run the iterator for a fixed number of items.
-func runBenchmark(b *testing.B, items int) {
+// runBenchmark is a helper to run the iterator for a fixed depth.
+func runBenchmark(b *testing.B, depth int) {
 	b.Helper()
 
 	// We run the loop b.N times, as required by the benchmark harness.
 	for b.Loop() {
-		count := 0
 		// We use a volatile variable to ensure the loop body
 		// (the slice generation) isn't optimized away.
 		var volatileAddr swarm.Address
 
-		seq := combinator.IterateAddressCombinations(benchAddress, maxDepth)
+		seq := combinator.IterateReplicaAddresses(benchAddress, depth)
 		for combo := range seq {
 			volatileAddr = combo
-			count++
-			if count == items {
-				break
-			}
 		}
 
 		// To prevent compiler optimizing out the loop if volatileAddr isn't used.
@@ -181,49 +310,40 @@ func runBenchmark(b *testing.B, items int) {
 
 // BenchmarkDepth1 iterates over 2^1 = 2 items
 func BenchmarkDepth1(b *testing.B) {
-	runBenchmark(b, 1<<1)
+	runBenchmark(b, 1)
 }
 
 // BenchmarkDepth2 iterates over 2^2 = 4 items
 func BenchmarkDepth2(b *testing.B) {
-	runBenchmark(b, 1<<2)
+	runBenchmark(b, 2)
 }
 
 // BenchmarkDepth3 iterates over 2^3 = 8 items
 func BenchmarkDepth3(b *testing.B) {
-	runBenchmark(b, 1<<3)
+	runBenchmark(b, 3)
 }
 
 // BenchmarkDepth4 iterates over 2^4 = 16 items
 func BenchmarkDepth4(b *testing.B) {
-	runBenchmark(b, 1<<4)
+	runBenchmark(b, 4)
 }
 
 // BenchmarkDepth8 iterates over 2^8 = 256 items
 func BenchmarkDepth8(b *testing.B) {
-	runBenchmark(b, 1<<8)
+	runBenchmark(b, 8)
 }
 
 // BenchmarkDepth12 iterates over 2^12 = 4096 items
 func BenchmarkDepth12(b *testing.B) {
-	runBenchmark(b, 1<<12)
+	runBenchmark(b, 12)
 }
 
 // BenchmarkDepth16 iterates over 2^16 = 65536 items
 func BenchmarkDepth16(b *testing.B) {
-	runBenchmark(b, 1<<16)
+	runBenchmark(b, 16)
 }
 
 // BenchmarkDepth20 iterates over 2^20 = 1,048,576 items
 func BenchmarkDepth20(b *testing.B) {
-	runBenchmark(b, 1<<20)
-}
-
-// addressesToHexMap is a helper to convert a slice of addresses to a map of hex strings.
-func addressesToHexMap(addresses []swarm.Address) map[string]bool {
-	set := make(map[string]bool, len(addresses))
-	for _, s := range addresses {
-		set[s.String()] = true
-	}
-	return set
+	runBenchmark(b, 20)
 }
