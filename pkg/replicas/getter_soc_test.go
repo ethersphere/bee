@@ -128,6 +128,31 @@ func TestSocGetter_MultipleReplicasFound(t *testing.T) {
 	}
 }
 
+func TestSocGetter_MaxRedundancyLevelLimit(t *testing.T) {
+	t.Parallel()
+
+	var (
+		chunkAddr = swarm.RandAddress(t)
+		mock      = &countingGetter{
+			getter: inmemchunkstore.New(),
+		}
+		// Initialize SocGetter with a redundancy level higher than maxRedundancyLevel (which is 4)
+		getter = replicas.NewSocGetter(mock, redundancy.Level(10))
+	)
+
+	// maxRedundancyLevel is 4, so 2^4 = 16 replicas. Total expected calls: 1 (original) + 16 (replicas) = 17.
+	expectedCalls := 1 + (1 << 4) // 1 + 2^4 = 17
+
+	_, err := getter.Get(context.Background(), chunkAddr)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	if mock.calls != expectedCalls {
+		t.Fatalf("expected %d Get calls, got %d", expectedCalls, mock.calls)
+	}
+}
+
 func TestSocGetter_ContextCanceled(t *testing.T) {
 	t.Parallel()
 
@@ -377,9 +402,33 @@ type mockGetterWithDelay struct {
 }
 
 func (m *mockGetterWithDelay) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
-	time.Sleep(m.getDelay)
+	if m.getDelay > 0 {
+		time.Sleep(m.getDelay)
+	}
 	if m.err != nil {
 		return nil, m.err
 	}
 	return m.getter.Get(ctx, addr)
+}
+
+// countingGetter is a mock storage.Getter that counts Get calls.
+
+type countingGetter struct {
+	getter storage.ChunkStore
+
+	mu sync.Mutex
+
+	calls int
+}
+
+func (c *countingGetter) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
+
+	c.mu.Lock()
+
+	c.calls++
+
+	c.mu.Unlock()
+
+	return c.getter.Get(ctx, addr)
+
 }

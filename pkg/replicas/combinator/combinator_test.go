@@ -280,6 +280,20 @@ func TestIterateReplicaAddressesSeq(t *testing.T) {
 		// This test just proves the 'break' is correctly handled
 		// by the iterator's `if !yield(newSlice)` check.
 	})
+
+	t.Run("iterate with negative depth", func(t *testing.T) {
+		input := swarm.NewAddress(make([]byte, swarm.HashSize))
+		count := 0
+		maxD := -1 // Negative depth
+
+		for range combinator.IterateReplicaAddresses(input, maxD) {
+			count++
+		}
+
+		if count != 0 {
+			t.Fatalf("Expected to iterate 0 times for negative depth, got %d", count)
+		}
+	})
 }
 
 var benchAddress = swarm.NewAddress(append([]byte{0xDE, 0xAD, 0xBE, 0xEF}, make([]byte, swarm.HashSize-4)...))

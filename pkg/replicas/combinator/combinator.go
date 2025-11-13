@@ -61,9 +61,11 @@ func IterateReplicaAddresses(addr swarm.Address, maxDepth int) iter.Seq[swarm.Ad
 
 				// Boundary checks are performed only when the depth changes.
 				if currentDepth > maxDepth {
-					if maxDepth == 0 {
+					if maxDepth <= 0 {
 						// Do not return the bit flip address of depth 0,
-						// because depth 0 should have no replicas.
+						// because depth 0 should have no replicas. Negative
+						// depths are invalid and should not return any
+						// replicas, as well.
 						return
 					}
 					// Create a new slice based on the original address.
