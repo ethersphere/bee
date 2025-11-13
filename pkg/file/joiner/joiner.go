@@ -230,8 +230,8 @@ func (j *joiner) ReadAt(buffer []byte, off int64) (read int, err error) {
 
 	readLen := min(int64(cap(buffer)), j.span-off)
 	var bytesRead int64
-	var eg errgroup.Group
-	j.readAtOffset(buffer, j.rootData, 0, j.span, off, 0, readLen, &bytesRead, j.rootParity, &eg)
+	eg, ectx := errgroup.WithContext(j.ctx)
+	j.readAtOffset(buffer, j.rootData, 0, j.span, off, 0, readLen, &bytesRead, j.rootParity, eg, ectx)
 
 	err = eg.Wait()
 	if err != nil {
@@ -249,6 +249,7 @@ func (j *joiner) readAtOffset(
 	bytesRead *int64,
 	parity int,
 	eg *errgroup.Group,
+	ectx context.Context,
 ) {
 	// we are at a leaf data chunk
 	if subTrieSize <= int64(len(data)) {
@@ -299,7 +300,12 @@ func (j *joiner) readAtOffset(
 
 		func(address swarm.Address, b []byte, cur, subTrieSize, off, bufferOffset, bytesToRead, subtrieSpanLimit int64) {
 			eg.Go(func() error {
-				ch, err := g.Get(j.ctx, addr)
+				select {
+				case <-ectx.Done():
+					return ectx.Err()
+				default:
+				}
+				ch, err := g.Get(ectx, addr)
 				if err != nil {
 					return err
 				}
@@ -312,7 +318,7 @@ func (j *joiner) readAtOffset(
 					return ErrMalformedTrie
 				}
 
-				j.readAtOffset(b, chunkData, cur, subtrieSpan, off, bufferOffset, currentReadSize, bytesRead, subtrieParity, eg)
+				j.readAtOffset(b, chunkData, cur, subtrieSpan, off, bufferOffset, currentReadSize, bytesRead, subtrieParity, eg, ectx)
 				return nil
 			})
 		}(addr, b, cur, subtrieSpan, off, bufferOffset, currentReadSize, subtrieSpanLimit)
