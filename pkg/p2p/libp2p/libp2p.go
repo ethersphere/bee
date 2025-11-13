@@ -99,36 +99,35 @@ type CertificateManager interface {
 }
 
 type Service struct {
-	ctx                context.Context
-	host               host.Host
-	natManager         basichost.NATManager
-	natAddrResolver    *staticAddressResolver
-	wssNatAddrResolver *staticAddressResolver
-	autonatDialer      host.Host
-	pingDialer         host.Host
-	libp2pPeerstore    peerstore.Peerstore
-	metrics            metrics
-	networkID          uint64
-	handshakeService   *handshake.Service
-	addressbook        addressbook.Putter
-	peers              *peerRegistry
-	connectionBreaker  breaker.Interface
-	blocklist          *blocklist.Blocklist
-	protocols          []p2p.ProtocolSpec
-	notifier           p2p.PickyNotifier
-	logger             log.Logger
-	tracer             *tracing.Tracer
-	ready              chan struct{}
-	halt               chan struct{}
-	lightNodes         lightnodes
-	lightNodeLimit     int
-	protocolsmu        sync.RWMutex
-	reacher            p2p.Reacher
-	networkStatus      atomic.Int32
-	HeadersRWTimeout   time.Duration
-	autoNAT            autonat.AutoNAT
-	enableWS           bool
-	certManager        CertificateManager
+	ctx                   context.Context
+	host                  host.Host
+	natManager            basichost.NATManager
+	autonatDialer         host.Host
+	pingDialer            host.Host
+	libp2pPeerstore       peerstore.Peerstore
+	metrics               metrics
+	networkID             uint64
+	handshakeService      *handshake.Service
+	advertisableAddresser handshake.AdvertisableAddressResolver
+	addressbook           addressbook.Putter
+	peers                 *peerRegistry
+	connectionBreaker     breaker.Interface
+	blocklist             *blocklist.Blocklist
+	protocols             []p2p.ProtocolSpec
+	notifier              p2p.PickyNotifier
+	logger                log.Logger
+	tracer                *tracing.Tracer
+	ready                 chan struct{}
+	halt                  chan struct{}
+	lightNodes            lightnodes
+	lightNodeLimit        int
+	protocolsmu           sync.RWMutex
+	reacher               p2p.Reacher
+	networkStatus         atomic.Int32
+	HeadersRWTimeout      time.Duration
+	autoNAT               autonat.AutoNAT
+	enableWS              bool
+	certManager           CertificateManager
 }
 
 type lightnodes interface {
@@ -416,7 +415,20 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		advertisableAddresser = natAddrResolver
 	}
 
-	handshakeService, err := handshake.New(signer, advertisableAddresser, overlay, networkID, o.FullNode, o.Nonce, newHostAddresser(h), o.WelcomeMessage, o.ValidateOverlay, h.ID(), logger)
+	var wssAdvertisableAddresser handshake.AdvertisableAddressResolver
+	var wssNatAddrResolver *staticAddressResolver
+	if o.AutoTLSEnabled && o.EnableWS {
+		if o.WSSNATAddr != "" {
+			wssNatAddrResolver, err = newStaticAddressResolver(o.WSSNATAddr, net.LookupIP)
+			if err != nil {
+				return nil, fmt.Errorf("static wss nat: %w", err)
+			}
+			wssAdvertisableAddresser = wssNatAddrResolver
+		}
+	}
+
+	compositeResolver := &compositeAddressResolver{tcpResolver: advertisableAddresser, wssResolver: wssAdvertisableAddresser}
+	handshakeService, err := handshake.New(signer, compositeResolver, overlay, networkID, o.FullNode, o.Nonce, newHostAddresser(h), o.WelcomeMessage, o.ValidateOverlay, h.ID(), logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}
@@ -433,29 +445,29 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	peerRegistry := newPeerRegistry()
 	s := &Service{
-		ctx:               ctx,
-		host:              h,
-		natManager:        natManager,
-		natAddrResolver:   natAddrResolver,
-		autonatDialer:     dialer,
-		pingDialer:        pingDialer,
-		handshakeService:  handshakeService,
-		libp2pPeerstore:   libp2pPeerstore,
-		metrics:           newMetrics(),
-		networkID:         networkID,
-		peers:             peerRegistry,
-		addressbook:       ab,
-		blocklist:         blocklist.NewBlocklist(storer),
-		logger:            logger.WithName(loggerName).Register(),
-		tracer:            tracer,
-		connectionBreaker: breaker.NewBreaker(breaker.Options{}), // use default options
-		ready:             make(chan struct{}),
-		halt:              make(chan struct{}),
-		lightNodes:        lightNodes,
-		HeadersRWTimeout:  o.HeadersRWTimeout,
-		autoNAT:           autoNAT,
-		enableWS:          o.EnableWS,
-		certManager:       certManager,
+		ctx:                   ctx,
+		host:                  h,
+		natManager:            natManager,
+		advertisableAddresser: compositeResolver,
+		autonatDialer:         dialer,
+		pingDialer:            pingDialer,
+		handshakeService:      handshakeService,
+		libp2pPeerstore:       libp2pPeerstore,
+		metrics:               newMetrics(),
+		networkID:             networkID,
+		peers:                 peerRegistry,
+		addressbook:           ab,
+		blocklist:             blocklist.NewBlocklist(storer),
+		logger:                logger.WithName(loggerName).Register(),
+		tracer:                tracer,
+		connectionBreaker:     breaker.NewBreaker(breaker.Options{}), // use default options
+		ready:                 make(chan struct{}),
+		halt:                  make(chan struct{}),
+		lightNodes:            lightNodes,
+		HeadersRWTimeout:      o.HeadersRWTimeout,
+		autoNAT:               autoNAT,
+		enableWS:              o.EnableWS,
+		certManager:           certManager,
 	}
 
 	logger.Info("Waiting for AutoTLS certificate to be loaded...")
@@ -463,17 +475,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	defer cancel()
 
 	if o.AutoTLSEnabled && o.EnableWS {
-		var wssNatAddrResolver *staticAddressResolver
-
-		if o.WSSNATAddr != "" {
-			wssNatAddrResolver, err = newStaticAddressResolver(o.WSSNATAddr, net.LookupIP)
-			if err != nil {
-				return nil, fmt.Errorf("static wss nat: %w", err)
-			}
-		}
-
-		s.wssNatAddrResolver = wssNatAddrResolver
-
 		// Check reachability for AutoTLS
 		logger.Debug("Reachability for AutoTLS: ", autoNAT.Status())
 		if autoNAT.Status() != network.ReachabilityPublic {
@@ -828,42 +829,56 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 }
 
 func (s *Service) Addresses() (addresses []ma.Multiaddr, err error) {
+	addrMap := make(map[string]struct{})
+	var uniqueAddrs []ma.Multiaddr
+
 	for _, addr := range s.host.Addrs() {
-		a, err := buildUnderlayAddress(addr, s.host.ID())
+
+		fullAddr, err := buildUnderlayAddress(addr, s.host.ID())
 		if err != nil {
 			return nil, err
 		}
-		addresses = append(addresses, a)
+		if _, ok := addrMap[fullAddr.String()]; !ok {
+			uniqueAddrs = append(uniqueAddrs, fullAddr)
+			addrMap[fullAddr.String()] = struct{}{}
+		}
+
 	}
 
-	s.logger.Debug("Host Addresses: ", s.host.Addrs())
-	s.logger.Debug("Addresses: ", addresses)
+	s.logger.Debug("host listen addresses", "addresses", uniqueAddrs)
 
-	if s.natAddrResolver != nil && len(addresses) > 0 {
-		a, err := s.natAddrResolver.Resolve(addresses[0])
-		if err != nil {
-			return nil, err
-		}
-		// Remove /p2p/<ID> to append /ws before it
-		hostAddr, err := buildHostAddress(s.host.ID())
-		if err != nil {
-			return nil, err
-		}
-		baseAddr := a.Decapsulate(hostAddr)
-		addresses = append(addresses, a) // Add plain NAT address
-
-		// Append NAT address with /ws if WebSocket is enabled
-		if s.enableWS {
-			wsNatAddr, err := ma.NewMultiaddr(baseAddr.String() + "/ws")
-			if err != nil {
-				return nil, fmt.Errorf("failed to append /ws to NAT address: %w", err)
+	// if a resolver is configured, add resolved addresses.
+	if s.advertisableAddresser != nil {
+		// Iterate over non-loopback listen addresses to resolve them.
+		for _, addr := range s.host.Addrs() {
+			if manet.IsIPLoopback(addr) {
+				continue
 			}
-			wsNatAddr = wsNatAddr.Encapsulate(hostAddr) // Add /p2p/<ID> after /ws
-			addresses = append(addresses, wsNatAddr)
+
+			resolved, err := s.advertisableAddresser.Resolve(addr)
+			if err != nil {
+				s.logger.Warning("could not resolve address", "addr", addr, "error", err)
+				continue
+			}
+
+			if resolved.Equal(addr) {
+				continue
+			}
+
+			fullAddr, err := buildUnderlayAddress(resolved, s.host.ID())
+			if err != nil {
+				return nil, err
+			}
+
+			if _, ok := addrMap[fullAddr.String()]; !ok {
+				uniqueAddrs = append(uniqueAddrs, fullAddr)
+				addrMap[fullAddr.String()] = struct{}{}
+			}
 		}
 	}
-	s.logger.Debug("Addreses should contain wss addresses: ", addresses)
-	return addresses, nil
+
+	s.logger.Debug("service addresses", "addresses", uniqueAddrs)
+	return uniqueAddrs, nil
 }
 
 func (s *Service) NATManager() basichost.NATManager {
@@ -1476,6 +1491,29 @@ func isNetworkOrHostUnreachableError(err error) bool {
 		}
 	}
 	return false
+}
+
+type compositeAddressResolver struct {
+	tcpResolver handshake.AdvertisableAddressResolver
+	wssResolver handshake.AdvertisableAddressResolver
+}
+
+func (c *compositeAddressResolver) Resolve(observedAddress ma.Multiaddr) (ma.Multiaddr, error) {
+	isWSS := false
+	if _, err := observedAddress.ValueForProtocol(ma.P_WSS); err == nil {
+		isWSS = true
+	}
+
+	if isWSS {
+		if c.wssResolver != nil {
+			return c.wssResolver.Resolve(observedAddress)
+		}
+	} else {
+		if c.tcpResolver != nil {
+			return c.tcpResolver.Resolve(observedAddress)
+		}
+	}
+	return observedAddress, nil
 }
 
 type hostAddresser struct {

@@ -29,7 +29,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/topology/lightnode"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 
-	libp2pmock "github.com/ethersphere/bee/v2/pkg/p2p/libp2p/mock"
 	libp2pm "github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -485,35 +484,20 @@ func TestConnectWithEnabledWSTransports(t *testing.T) {
 
 	ctx := t.Context()
 
-	libp2pOpts := libp2p.WithHostFactory(
-		func(...libp2pm.Option) (host.Host, error) {
-			host, err := bhost.NewHost(swarmt.GenSwarm(t), &bhost.HostOpts{EnablePing: true})
-			if err != nil {
-				t.Fatalf("start host: %v", err)
-			}
-			host.Start()
-			return host, nil
-		},
-	)
-	libp2pOpts.AutoTLSEnabled = true
-	libp2pOpts.EnableWS = true
-	libp2pOpts.FullNode = true
-
-	// Create mock cert manager for s1
-	certManager := libp2pmock.NewMockP2PForgeCertMgr(nil)
-
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{
-		libp2pOpts:  libp2pOpts,
-		CertManager: certManager,
+		libp2pOpts: libp2p.Options{
+			EnableWS: true,
+			FullNode: true,
+		},
 	})
 
-	// Create mock cert manager for s2
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{
-		libp2pOpts:  libp2pOpts,
-		CertManager: libp2pmock.NewMockP2PForgeCertMgr(nil),
+		libp2pOpts: libp2p.Options{
+			EnableWS: true,
+			FullNode: true,
+		},
 	})
 
-	// Explicitly close services to ensure cleanup
 	defer func() {
 		if err := s1.Close(); err != nil {
 			t.Errorf("s1.Close: %v", err)
