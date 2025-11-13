@@ -14,7 +14,6 @@ import (
 	"os"
 	"runtime"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -382,7 +381,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	options := []autonat.Option{autonat.EnableService(dialer.Network())}
 
-	val, err := strconv.ParseBool(reachabilityOverridePublic)
+	val := true //, err := strconv.ParseBool(reachabilityOverridePublic)
 	if err != nil {
 		return nil, err
 	}
@@ -467,6 +466,9 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 		if o.WSSNATAddr != "" {
 			wssNatAddrResolver, err = newStaticAddressResolver(o.WSSNATAddr, net.LookupIP)
+			if err != nil {
+				return nil, fmt.Errorf("static wss nat: %w", err)
+			}
 		}
 
 		s.wssNatAddrResolver = wssNatAddrResolver
