@@ -14,6 +14,7 @@ import (
 	"os"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -381,7 +382,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	options := []autonat.Option{autonat.EnableService(dialer.Network())}
 
-	val := true //, err := strconv.ParseBool(reachabilityOverridePublic)
+	val, err := strconv.ParseBool(reachabilityOverridePublic)
 	if err != nil {
 		return nil, err
 	}
