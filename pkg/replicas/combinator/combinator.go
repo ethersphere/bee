@@ -12,10 +12,10 @@ import (
 )
 
 // IterateReplicaAddresses returns an iterator (iter.Seq) that yields bit
-// combinations of an address, starting from depth 1. The original address is
-// not returned. This approach allows for memory-efficient iteration over a large
-// set of combinations.
-// The combination with the one flipped bit of the original address will be returned at the end.
+// combinations of an address, starting from replication level 1. The original
+// address is not returned. This approach allows for memory-efficient iteration
+// over a large set of combinations. The combination with the one flipped bit of
+// the original address will be returned at the end.
 //
 // # Performance and Memory Considerations
 //
@@ -23,20 +23,20 @@ import (
 // of the address on each iteration. This prevents accidental modification of
 // previously yielded addresses.
 //
-// The iterator terminates if the depth exceeds maxDepth or if the input data
-// slice is not long enough for the bit manipulations required at the next
-// depth level.
-func IterateReplicaAddresses(addr swarm.Address, maxDepth int) iter.Seq[swarm.Address] {
+// The iterator terminates if the replication level exceeds passed maxLevel or if
+// the input data slice is not long enough for the bit manipulations required at
+// the next replication level.
+func IterateReplicaAddresses(addr swarm.Address, maxLevel int) iter.Seq[swarm.Address] {
 	// State variables for the iterator closure.
 	// A single buffer is used and mutated in each iteration, and a copy is yielded.
 	// It is initialized with a copy of the original address data.
 	currentSlice := append([]byte{}, addr.Bytes()...)
 
-	var currentDepth int
+	var currentLevel int
 	var bytesNeeded int
-	// nextDepthIndex marks the combination index at which the depth increases
+	// nextLevelIndex marks the combination index at which the replication level increases
 	// (e.g., 1, 2, 4, 8, ...).
-	nextDepthIndex := 1
+	nextLevelIndex := 1
 	// prevCombinationIndex is used to calculate the bitwise difference for
 	// efficient state transitions.
 	var prevCombinationIndex int
@@ -44,27 +44,27 @@ func IterateReplicaAddresses(addr swarm.Address, maxDepth int) iter.Seq[swarm.Ad
 	return func(yield func(swarm.Address) bool) {
 		// combinationIndex iterates through all possible combinations, but skip the original address.
 		for combinationIndex := 1; ; combinationIndex++ {
-			// When the combinationIndex reaches the next power of two, the depth
+			// When the combinationIndex reaches the next power of two, the replication level
 			// of bit combinations is increased for subsequent iterations.
-			if combinationIndex >= nextDepthIndex {
-				// The depth is determined by the number of bits in the combinationIndex.
-				// combinationIndex=1 -> depth=1
-				// combinationIndex=2 -> depth=2
-				// combinationIndex=4 -> depth=3
-				// combinationIndex=8 -> depth=4
-				currentDepth = bits.Len(uint(combinationIndex))
-				// Set the threshold for the next depth increase.
-				// For depth=1 (idx=1), next threshold is 2.
-				// For depth=2 (idx=2,3), next threshold is 4.
-				// For depth=3 (idx=4..7), next threshold is 8.
-				nextDepthIndex = 1 << currentDepth
+			if combinationIndex >= nextLevelIndex {
+				// The replication level is determined by the number of bits in the combinationIndex.
+				// combinationIndex=1 -> replication level=1
+				// combinationIndex=2 -> replication level=2
+				// combinationIndex=4 -> replication level=3
+				// combinationIndex=8 -> replication level=4
+				currentLevel = bits.Len(uint(combinationIndex))
+				// Set the threshold for the next replication level increase.
+				// For replication level=1 (idx=1), next threshold is 2.
+				// For replication level=2 (idx=2,3), next threshold is 4.
+				// For replication level=3 (idx=4..7), next threshold is 8.
+				nextLevelIndex = 1 << currentLevel
 
-				// Boundary checks are performed only when the depth changes.
-				if currentDepth > maxDepth {
-					if maxDepth <= 0 {
-						// Do not return the bit flip address of depth 0,
-						// because depth 0 should have no replicas. Negative
-						// depths are invalid and should not return any
+				// Boundary checks are performed only when the replication level changes.
+				if currentLevel > maxLevel {
+					if maxLevel <= 0 {
+						// Do not return the bit flip address of replication level 0,
+						// because replication level 0 should have no replicas. Negative
+						// replication levels are invalid and should not return any
 						// replicas, as well.
 						return
 					}
@@ -74,7 +74,7 @@ func IterateReplicaAddresses(addr swarm.Address, maxDepth int) iter.Seq[swarm.Ad
 					copy(flippedAddrBytes, originalAddrBytes)
 
 					// Calculate the byte index for the bit to flip.
-					bitIndexToFlip := maxDepth
+					bitIndexToFlip := maxLevel
 					byteIndex := bitIndexToFlip / 8
 
 					// Ensure the flippedAddrBytes is long enough to flip this bit.
@@ -82,7 +82,7 @@ func IterateReplicaAddresses(addr swarm.Address, maxDepth int) iter.Seq[swarm.Ad
 						return // Cannot flip bit, slice is too short.
 					}
 
-					// Flip the maxDepth bit in the new slice.
+					// Flip the level bit in the new slice.
 					bitPositionInByte := 7 - (bitIndexToFlip % 8)
 					bitMask := byte(1 << bitPositionInByte)
 					flippedAddrBytes[byteIndex] ^= bitMask
@@ -91,13 +91,13 @@ func IterateReplicaAddresses(addr swarm.Address, maxDepth int) iter.Seq[swarm.Ad
 					if !yield(swarm.NewAddress(flippedAddrBytes)) {
 						return // Consumer-requested stop.
 					}
-					return // Iteration completed up to the defined maximum depth.
+					return // Iteration completed up to the defined maximum replication level.
 				}
 
-				bytesNeeded = (currentDepth + 7) / 8 // Ceiling of integer division.
+				bytesNeeded = (currentLevel + 7) / 8 // Ceiling of integer division.
 
 				if len(addr.Bytes()) < bytesNeeded {
-					// The data slice is too short for the current depth.
+					// The data slice is too short for the current replication level.
 					return
 				}
 			}
@@ -107,7 +107,7 @@ func IterateReplicaAddresses(addr swarm.Address, maxDepth int) iter.Seq[swarm.Ad
 			// the buffer is XORed with the difference between the current and
 			// previous combination indices.
 			bitsToFlip := combinationIndex ^ prevCombinationIndex
-			for bitIndex := 0; bitIndex < currentDepth; bitIndex++ {
+			for bitIndex := 0; bitIndex < currentLevel; bitIndex++ {
 				// Check if the bit at bitIndex is set in the difference.
 				if (bitsToFlip>>bitIndex)&1 == 1 {
 					// If set, flip the corresponding bit in the buffer.
