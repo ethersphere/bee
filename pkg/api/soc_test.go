@@ -273,13 +273,14 @@ func TestSOCWithRedundancy(t *testing.T) {
 					http.StatusOK,
 					jsonhttptest.WithExpectedResponse(soc.WrappedChunk.Data()[swarm.SpanSize:]),
 					jsonhttptest.WithExpectedContentLength(len(soc.WrappedChunk.Data()[swarm.SpanSize:])),
-				)
-			} else {
-				jsonhttptest.Request(t, client, http.MethodGet,
-					fmt.Sprintf("/soc/%s/%s", hex.EncodeToString(soc.Owner), hex.EncodeToString(soc.ID)),
-					http.StatusNotFound,
+					jsonhttptest.WithRequestHeader(api.SwarmRedundancyLevelHeader, fmt.Sprintf("%d", redundancyLevel)),
 				)
 			}
+			// original address is deleted, request without redundancy should fail
+			jsonhttptest.Request(t, client, http.MethodGet,
+				fmt.Sprintf("/soc/%s/%s", hex.EncodeToString(soc.Owner), hex.EncodeToString(soc.ID)),
+				http.StatusNotFound,
+			)
 		})
 	}
 

@@ -61,28 +61,21 @@ func lookaheadBufferSize(size int64) int {
 	return largeFileBufferSize
 }
 
-func getRedundancyLevel(rLevel *redundancy.Level) redundancy.Level {
-	if rLevel != nil {
-		return *rLevel
-	}
-	return redundancy.PARANOID
-}
-
 func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	span, logger, ctx := s.tracer.StartSpanFromContext(r.Context(), "post_bzz", s.logger.WithName("post_bzz").Build())
 	defer span.Finish()
 
 	headers := struct {
-		ContentType    string           `map:"Content-Type,mimeMediaType" validate:"required"`
-		BatchID        []byte           `map:"Swarm-Postage-Batch-Id" validate:"required"`
-		SwarmTag       uint64           `map:"Swarm-Tag"`
-		Pin            bool             `map:"Swarm-Pin"`
-		Deferred       *bool            `map:"Swarm-Deferred-Upload"`
-		Encrypt        bool             `map:"Swarm-Encrypt"`
-		IsDir          bool             `map:"Swarm-Collection"`
-		RLevel         redundancy.Level `map:"Swarm-Redundancy-Level"`
-		Act            bool             `map:"Swarm-Act"`
-		HistoryAddress swarm.Address    `map:"Swarm-Act-History-Address"`
+		ContentType     string           `map:"Content-Type,mimeMediaType" validate:"required"`
+		BatchID         []byte           `map:"Swarm-Postage-Batch-Id" validate:"required"`
+		SwarmTag        uint64           `map:"Swarm-Tag"`
+		Pin             bool             `map:"Swarm-Pin"`
+		Deferred        *bool            `map:"Swarm-Deferred-Upload"`
+		Encrypt         bool             `map:"Swarm-Encrypt"`
+		IsDir           bool             `map:"Swarm-Collection"`
+		RedundancyLevel redundancy.Level `map:"Swarm-Redundancy-Level"`
+		Act             bool             `map:"Swarm-Act"`
+		HistoryAddress  swarm.Address    `map:"Swarm-Act-History-Address"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -146,10 +139,10 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if headers.IsDir || headers.ContentType == multiPartFormData {
-		s.dirUploadHandler(ctx, logger, span, ow, r, putter, r.Header.Get(ContentTypeHeader), headers.Encrypt, tag, headers.RLevel, headers.Act, headers.HistoryAddress)
+		s.dirUploadHandler(ctx, logger, span, ow, r, putter, r.Header.Get(ContentTypeHeader), headers.Encrypt, tag, headers.RedundancyLevel, headers.Act, headers.HistoryAddress)
 		return
 	}
-	s.fileUploadHandler(ctx, logger, span, ow, r, putter, headers.Encrypt, tag, headers.RLevel, headers.Act, headers.HistoryAddress)
+	s.fileUploadHandler(ctx, logger, span, ow, r, putter, headers.Encrypt, tag, headers.RedundancyLevel, headers.Act, headers.HistoryAddress)
 }
 
 // bzzUploadResponse is returned when an HTTP request to upload a file is successful
@@ -392,11 +385,11 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 	loggerV1 := logger.V(1).Build()
 
 	headers := struct {
-		Cache                 *bool             `map:"Swarm-Cache"`
-		Strategy              *getter.Strategy  `map:"Swarm-Redundancy-Strategy"`
-		FallbackMode          *bool             `map:"Swarm-Redundancy-Fallback-Mode"`
-		RLevel                *redundancy.Level `map:"Swarm-Redundancy-Level"`
-		ChunkRetrievalTimeout *string           `map:"Swarm-Chunk-Retrieval-Timeout"`
+		Cache                 *bool            `map:"Swarm-Cache"`
+		Strategy              *getter.Strategy `map:"Swarm-Redundancy-Strategy"`
+		FallbackMode          *bool            `map:"Swarm-Redundancy-Fallback-Mode"`
+		RedundancyLevel       redundancy.Level `map:"Swarm-Redundancy-Level"`
+		ChunkRetrievalTimeout *string          `map:"Swarm-Chunk-Retrieval-Timeout"`
 	}{}
 
 	if response := s.mapStructure(r.Header, &headers); response != nil {
@@ -408,11 +401,9 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 		cache = *headers.Cache
 	}
 
-	rLevel := getRedundancyLevel(headers.RLevel)
-
 	ctx := r.Context()
 	g := s.storer.Download(cache)
-	ls := loadsave.NewReadonly(g, s.storer.Cache(), rLevel)
+	ls := loadsave.NewReadonly(g, s.storer.Cache(), headers.RedundancyLevel)
 	feedDereferenced := false
 
 	ctx, err := getter.SetConfigInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout, logger)
@@ -440,7 +431,7 @@ FETCH:
 	// unmarshal as mantaray first and possibly resolve the feed, otherwise
 	// go on normally.
 	if !feedDereferenced {
-		if l, err := s.manifestFeed(ctx, m, replicas.NewSocGetter(g, rLevel)); err == nil {
+		if l, err := s.manifestFeed(ctx, m, replicas.NewSocGetter(g, headers.RedundancyLevel)); err == nil {
 			// we have a feed manifest here
 			ch, cur, _, err := l.At(ctx, time.Now().Unix(), 0)
 			if err != nil {
@@ -476,7 +467,7 @@ FETCH:
 			}
 			address = wc.Address()
 			// modify ls and init with non-existing wrapped chunk
-			ls = loadsave.NewReadonlyWithRootCh(s.storer.Download(cache), s.storer.Cache(), wc, rLevel)
+			ls = loadsave.NewReadonlyWithRootCh(s.storer.Download(cache), s.storer.Cache(), wc, headers.RedundancyLevel)
 
 			feedDereferenced = true
 			curBytes, err := cur.MarshalBinary()
@@ -604,12 +595,12 @@ func (s *Service) serveManifestEntry(
 // downloadHandler contains common logic for downloading Swarm file from API
 func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *http.Request, reference swarm.Address, additionalHeaders http.Header, etag, headersOnly bool, rootCh swarm.Chunk) {
 	headers := struct {
-		Strategy              *getter.Strategy  `map:"Swarm-Redundancy-Strategy"`
-		RLevel                *redundancy.Level `map:"Swarm-Redundancy-Level"`
-		FallbackMode          *bool             `map:"Swarm-Redundancy-Fallback-Mode"`
-		ChunkRetrievalTimeout *string           `map:"Swarm-Chunk-Retrieval-Timeout"`
-		LookaheadBufferSize   *int              `map:"Swarm-Lookahead-Buffer-Size"`
-		Cache                 *bool             `map:"Swarm-Cache"`
+		Strategy              *getter.Strategy `map:"Swarm-Redundancy-Strategy"`
+		RedundancyLevel       redundancy.Level `map:"Swarm-Redundancy-Level"`
+		FallbackMode          *bool            `map:"Swarm-Redundancy-Fallback-Mode"`
+		ChunkRetrievalTimeout *string          `map:"Swarm-Chunk-Retrieval-Timeout"`
+		LookaheadBufferSize   *int             `map:"Swarm-Lookahead-Buffer-Size"`
+		Cache                 *bool            `map:"Swarm-Cache"`
 	}{}
 
 	if response := s.mapStructure(r.Header, &headers); response != nil {
@@ -628,7 +619,6 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		jsonhttp.BadRequest(w, "could not parse headers")
 		return
 	}
-	rLevel := getRedundancyLevel(headers.RLevel)
 
 	var (
 		reader file.Joiner
@@ -637,7 +627,7 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 	if rootCh != nil {
 		reader, l, err = joiner.NewJoiner(ctx, s.storer.Download(cache), s.storer.Cache(), reference, rootCh)
 	} else {
-		reader, l, err = joiner.New(ctx, s.storer.Download(cache), s.storer.Cache(), reference, rLevel)
+		reader, l, err = joiner.New(ctx, s.storer.Download(cache), s.storer.Cache(), reference, headers.RedundancyLevel)
 	}
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) || errors.Is(err, topology.ErrNotFound) {

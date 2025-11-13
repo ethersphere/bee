@@ -50,11 +50,11 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	headers := struct {
-		BatchID        []byte            `map:"Swarm-Postage-Batch-Id"`
-		StampSig       []byte            `map:"Swarm-Postage-Stamp"`
-		Act            bool              `map:"Swarm-Act"`
-		HistoryAddress swarm.Address     `map:"Swarm-Act-History-Address"`
-		RLevel         *redundancy.Level `map:"Swarm-Redundancy-Level"`
+		BatchID         []byte           `map:"Swarm-Postage-Batch-Id"`
+		StampSig        []byte           `map:"Swarm-Postage-Stamp"`
+		Act             bool             `map:"Swarm-Act"`
+		HistoryAddress  swarm.Address    `map:"Swarm-Act-History-Address"`
+		RedundancyLevel redundancy.Level `map:"Swarm-Redundancy-Level"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -73,10 +73,8 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		err        error
 	)
 
-	rLevel := getRedundancyLevel(headers.RLevel)
-
 	if len(headers.StampSig) != 0 {
-		if headers.RLevel != nil {
+		if headers.RedundancyLevel > 0 {
 			logger.Error(nil, "redundancy level is not supported with stamp signature")
 			jsonhttp.BadRequest(w, "redundancy level is not supported with stamp signature")
 			return
@@ -105,9 +103,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 			Deferred: false,
 		})
 		basePutter = putter
-		if rLevel != redundancy.NONE {
-			putter = replicas.NewSocPutterSession(putter, rLevel)
-		}
+		putter = replicas.NewSocPutterSession(putter, headers.RedundancyLevel)
 	}
 	if err != nil {
 		logger.Debug("get putter failed", "error", err)
@@ -251,15 +247,13 @@ func (s *Service) socGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	headers := struct {
-		OnlyRootChunk bool              `map:"Swarm-Only-Root-Chunk"`
-		RLevel        *redundancy.Level `map:"Swarm-Redundancy-Level"`
+		OnlyRootChunk   bool             `map:"Swarm-Only-Root-Chunk"`
+		RedundancyLevel redundancy.Level `map:"Swarm-Redundancy-Level"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
 		return
 	}
-
-	rLevel := getRedundancyLevel(headers.RLevel)
 
 	address, err := soc.CreateAddress(paths.ID, paths.Owner)
 	if err != nil {
@@ -268,10 +262,7 @@ func (s *Service) socGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	getter := s.storer.Download(true)
-	if rLevel > redundancy.NONE {
-		getter = replicas.NewSocGetter(getter, rLevel)
-	}
+	getter := replicas.NewSocGetter(s.storer.Download(true), headers.RedundancyLevel)
 	sch, err := getter.Get(r.Context(), address)
 	if err != nil {
 		logger.Error(err, "soc retrieval has been failed")
