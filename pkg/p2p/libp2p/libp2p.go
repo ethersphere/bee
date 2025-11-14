@@ -144,7 +144,7 @@ type Options struct {
 	WSSNATAddr                  string
 	EnableWS                    bool
 	AutoTLSEnabled              bool
-	WSSPort                     string
+	WSSAddr                     string
 	AutoTLSStorageDir           string
 	AutoTLSCAEndpoint           string
 	AutoTLSDomain               string
@@ -161,43 +161,38 @@ type Options struct {
 }
 
 func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
-	host, port, err := net.SplitHostPort(addr)
+	parsedAddr, err := parseAddress(addr)
 	if err != nil {
-		return nil, fmt.Errorf("address: %w", err)
-	}
-
-	ip4Addr := "0.0.0.0"
-	ip6Addr := "::"
-
-	if host != "" {
-		ip := net.ParseIP(host)
-		if ip4 := ip.To4(); ip4 != nil {
-			ip4Addr = ip4.String()
-			ip6Addr = ""
-		} else if ip6 := ip.To16(); ip6 != nil {
-			ip6Addr = ip6.String()
-			ip4Addr = ""
-		}
+		return nil, err
 	}
 
 	var listenAddrs []string
-	if ip4Addr != "" {
-		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s", ip4Addr, port))
+	if parsedAddr.IP4 != "" {
+		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s", parsedAddr.IP4, parsedAddr.Port))
 		if o.EnableWS {
-			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/ws", ip4Addr, port))
-			if o.AutoTLSEnabled {
-				listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/tls/sni/*.%s/ws", ip4Addr, o.WSSPort, o.AutoTLSDomain))
-			}
+			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/ws", parsedAddr.IP4, parsedAddr.Port))
 		}
 	}
 
-	if ip6Addr != "" {
-		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s", ip6Addr, port))
+	if parsedAddr.IP6 != "" {
+		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s", parsedAddr.IP6, parsedAddr.Port))
 		if o.EnableWS {
-			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/ws", ip6Addr, port))
-			if o.AutoTLSEnabled {
-				listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/tls/sni/*.%s/ws", ip6Addr, o.WSSPort, o.AutoTLSDomain))
-			}
+			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/ws", parsedAddr.IP6, parsedAddr.Port))
+		}
+	}
+
+	if o.AutoTLSEnabled {
+		parsedWssAddr, err := parseAddress(o.WSSAddr)
+		if err != nil {
+			return nil, err
+		}
+
+		if parsedWssAddr.IP4 != "" {
+			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/tls/sni/*.%s/ws", parsedWssAddr.IP4, parsedWssAddr.Port, o.AutoTLSDomain))
+		}
+
+		if parsedWssAddr.IP6 != "" {
+			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/tls/sni/*.%s/ws", parsedWssAddr.IP6, parsedWssAddr.Port, o.AutoTLSDomain))
 		}
 	}
 
@@ -476,7 +471,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	if o.AutoTLSEnabled && o.EnableWS {
 		// Check reachability for AutoTLS
-		logger.Debug("Reachability for AutoTLS: ", autoNAT.Status())
+		logger.Debug("Reachability for AutoTLS: ", "status", autoNAT.Status().String())
 		if autoNAT.Status() != network.ReachabilityPublic {
 			logger.Warning("Node not publicly reachable; AutoTLS may fail")
 		}
@@ -516,6 +511,37 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	h.Network().Notify(connMetricNotify)
 
 	return s, nil
+}
+
+type parsedAddress struct {
+	IP4  string
+	IP6  string
+	Port string
+}
+
+func parseAddress(addr string) (*parsedAddress, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, fmt.Errorf("address: %w", err)
+	}
+
+	res := &parsedAddress{
+		IP4:  "0.0.0.0",
+		IP6:  "::",
+		Port: port,
+	}
+
+	if host != "" {
+		ip := net.ParseIP(host)
+		if ip4parsed := ip.To4(); ip4parsed != nil {
+			res.IP4 = ip4parsed.String()
+			res.IP6 = ""
+		} else if ip6parsed := ip.To16(); ip6parsed != nil {
+			res.IP6 = ip6parsed.String()
+			res.IP4 = ""
+		}
+	}
+	return res, nil
 }
 
 func (s *Service) reachabilityWorker() error {
@@ -847,14 +873,8 @@ func (s *Service) Addresses() (addresses []ma.Multiaddr, err error) {
 
 	s.logger.Debug("host listen addresses", "addresses", uniqueAddrs)
 
-	// if a resolver is configured, add resolved addresses.
 	if s.advertisableAddresser != nil {
-		// Iterate over non-loopback listen addresses to resolve them.
 		for _, addr := range s.host.Addrs() {
-			if manet.IsIPLoopback(addr) {
-				continue
-			}
-
 			resolved, err := s.advertisableAddresser.Resolve(addr)
 			if err != nil {
 				s.logger.Warning("could not resolve address", "addr", addr, "error", err)

@@ -122,8 +122,8 @@ password-file: "./password"
 # withdrawal-addresses-whitelist: []
 ## enable autotls (default: false)
 # autotls-enabled: false
-## wss port (default: 1635)
-# p2p-wss-port: "1635"
+## wss address (default: :1635)
+# p2p-wss-addr: :1635
 ## WSS NAT exposed address
 # nat-wss-addr: ""
 ## autotls certificate storage directory (default: ./p2p-tls-certs)

@@ -101,7 +101,7 @@ func bootstrapNode(
 		NATAddr:                     o.NATAddr,
 		EnableWS:                    o.EnableWS,
 		AutoTLSEnabled:              o.AutoTLSEnabled,
-		WSSPort:                     o.WSSPort,
+		WSSAddr:                     o.WSSAddr,
 		AutoTLSStorageDir:           o.AutoTLSStorageDir,
 		AutoTLSDomain:               o.AutoTLSDomain,
 		AutoTLSRegistrationEndpoint: o.AutoTLSRegistrationEndpoint,
