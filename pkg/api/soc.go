@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -227,7 +226,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debug("done split failed", "error", err)
 		logger.Error(nil, "done split failed")
-		jsonhttp.InternalServerError(ow, fmt.Sprintf("done split failed: %v", err)) // TODO: put it back after fixing parallel upload issue
+		jsonhttp.InternalServerError(ow, "done split failed")
 		return
 	}
 	if headers.Act {
