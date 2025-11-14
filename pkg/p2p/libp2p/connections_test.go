@@ -498,6 +498,15 @@ func TestConnectWithEnabledWSTransports(t *testing.T) {
 		},
 	})
 
+	defer func() {
+		if err := s1.Close(); err != nil {
+			t.Errorf("s1.Close: %v", err)
+		}
+		if err := s2.Close(); err != nil {
+			t.Errorf("s2.Close: %v", err)
+		}
+	}()
+
 	addr := serviceUnderlayAddress(t, s1)
 
 	if _, err := s2.Connect(ctx, addr); err != nil {
