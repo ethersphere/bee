@@ -121,7 +121,6 @@ endif
 .PHONY: test-ci
 test-ci:
 ifdef cover
-# TODO: should be ./... before merging, temporary change to pkg/blocker to speed up CI while testing blocker changes
 	$(GO) test -run "[^FLAKY]$$" -coverprofile=cover.out ./...
 else
 	$(GO) test -run "[^FLAKY]$$" ./...
