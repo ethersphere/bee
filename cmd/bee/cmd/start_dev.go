@@ -59,7 +59,7 @@ func (c *command) initStartDevCmd() (err error) {
 			warningBox := `
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║                                                                              ║
-║  WARNING: This command will be deprecated soon.                         	   ║
+║  WARNING: This command will be deprecated soon.                              ║
 ║                                                                              ║
 ║  For more information, please refer to the official documentation:           ║
 ║  https://docs.ethswarm.org/docs/develop/tools-and-features/bee-dev-mode      ║
