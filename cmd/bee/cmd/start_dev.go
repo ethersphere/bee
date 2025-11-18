@@ -20,7 +20,8 @@ func (c *command) initStartDevCmd() (err error) {
 
 	cmd := &cobra.Command{
 		Use:               "dev",
-		Short:             "WARNING: This command will be deprecated soon. For more information, please refer to the official documentation: https://docs.ethswarm.org/docs/develop/tools-and-features/bee-dev-mode and check back regularly for updates.",
+		Short:             "Start in dev mode. WARNING: This command will be deprecated soon.",
+		Long:              "WARNING: This command will be deprecated soon. For more information, please refer to the official documentation: https://docs.ethswarm.org/docs/develop/tools-and-features/bee-dev-mode and check back regularly for updates.",
 		PersistentPreRunE: c.CheckUnknownParams,
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			if len(args) > 0 {
