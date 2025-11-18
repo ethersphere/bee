@@ -877,6 +877,11 @@ func (s *Service) Addresses() (addresses []ma.Multiaddr, err error) {
 
 	if s.advertisableAddresser != nil {
 		for _, addr := range s.host.Addrs() {
+			addr, err := buildUnderlayAddress(addr, s.host.ID())
+			if err != nil {
+				return nil, err
+			}
+
 			resolved, err := s.advertisableAddresser.Resolve(addr)
 			if err != nil {
 				s.logger.Warning("could not resolve address", "addr", addr, "error", err)
