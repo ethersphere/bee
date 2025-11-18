@@ -42,3 +42,5 @@ func WithHostFactory(factory func(...libp2pm.Option) (host.Host, error)) Options
 		hostFactory: factory,
 	}
 }
+
+var NewCompositeAddressResolver = newCompositeAddressResolver

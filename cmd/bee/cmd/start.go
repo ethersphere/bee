@@ -309,6 +309,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		MinimumStorageRadius:          c.config.GetUint(optionMinimumStorageRadius),
 		MutexProfile:                  c.config.GetBool(optionNamePProfMutex),
 		NATAddr:                       c.config.GetString(optionNameNATAddr),
+		NATWSSAddr:                    c.config.GetString(optionNATWSSAddr),
 		NeighborhoodSuggester:         neighborhoodSuggester,
 		PaymentEarly:                  c.config.GetInt64(optionNamePaymentEarly),
 		PaymentThreshold:              c.config.GetString(optionNamePaymentThreshold),

@@ -156,6 +156,7 @@ type Options struct {
 	MinimumStorageRadius          uint
 	MutexProfile                  bool
 	NATAddr                       string
+	NATWSSAddr                    string
 	NeighborhoodSuggester         string
 	PaymentEarly                  int64
 	PaymentThreshold              string
@@ -231,6 +232,10 @@ func NewBee(
 
 	if err := validatePublicAddress(o.NATAddr); err != nil {
 		return nil, fmt.Errorf("invalid NAT address %s: %w", o.NATAddr, err)
+	}
+
+	if err := validatePublicAddress(o.NATWSSAddr); err != nil {
+		return nil, fmt.Errorf("invalid NAT WSS address %s: %w", o.NATWSSAddr, err)
 	}
 
 	ctx, ctxCancel := context.WithCancel(ctx)
@@ -658,6 +663,7 @@ func NewBee(
 	p2ps, err := libp2p.New(ctx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
 		PrivateKey:                  libp2pPrivateKey,
 		NATAddr:                     o.NATAddr,
+		NATWSSAddr:                  o.NATWSSAddr,
 		EnableWS:                    o.EnableWS,
 		AutoTLSEnabled:              o.AutoTLSEnabled,
 		WSSAddr:                     o.WSSAddr,

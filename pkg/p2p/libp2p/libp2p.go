@@ -141,7 +141,7 @@ type lightnodes interface {
 type Options struct {
 	PrivateKey                  *ecdsa.PrivateKey
 	NATAddr                     string
-	WSSNATAddr                  string
+	NATWSSAddr                  string
 	EnableWS                    bool
 	AutoTLSEnabled              bool
 	WSSAddr                     string
@@ -312,7 +312,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		libp2p.ResourceManager(rm),
 	}
 
-	if o.NATAddr == "" {
+	if o.NATAddr == "" && o.NATWSSAddr == "" {
 		opts = append(opts,
 			libp2p.NATManager(func(n network.Network) basichost.NATManager {
 				natManager = basichost.NewNATManager(n)
@@ -396,33 +396,35 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		o.HeadersRWTimeout = defaultHeadersRWTimeout
 	}
 
-	var advertisableAddresser handshake.AdvertisableAddressResolver
-	var natAddrResolver *staticAddressResolver
+	var tcpResolver handshake.AdvertisableAddressResolver
 	if o.NATAddr == "" {
-		advertisableAddresser = &UpnpAddressResolver{
+		tcpResolver = &UpnpAddressResolver{
 			host: h,
 		}
 	} else {
-		natAddrResolver, err = newStaticAddressResolver(o.NATAddr, net.LookupIP)
+		r, err := newStaticAddressResolver(o.NATAddr, net.LookupIP)
 		if err != nil {
 			return nil, fmt.Errorf("static nat: %w", err)
 		}
-		advertisableAddresser = natAddrResolver
+		tcpResolver = r
 	}
 
-	var wssAdvertisableAddresser handshake.AdvertisableAddressResolver
-	var wssNatAddrResolver *staticAddressResolver
+	var wssResolver handshake.AdvertisableAddressResolver
 	if o.AutoTLSEnabled && o.EnableWS {
-		if o.WSSNATAddr != "" {
-			wssNatAddrResolver, err = newStaticAddressResolver(o.WSSNATAddr, net.LookupIP)
+		if o.NATWSSAddr == "" {
+			wssResolver = &UpnpAddressResolver{
+				host: h,
+			}
+		} else {
+			r, err := newStaticAddressResolver(o.NATWSSAddr, net.LookupIP)
 			if err != nil {
 				return nil, fmt.Errorf("static wss nat: %w", err)
 			}
-			wssAdvertisableAddresser = wssNatAddrResolver
+			wssResolver = r
 		}
 	}
 
-	compositeResolver := &compositeAddressResolver{tcpResolver: advertisableAddresser, wssResolver: wssAdvertisableAddresser}
+	compositeResolver := newCompositeAddressResolver(tcpResolver, wssResolver)
 	handshakeService, err := handshake.New(signer, compositeResolver, overlay, networkID, o.FullNode, o.Nonce, newHostAddresser(h), o.WelcomeMessage, o.ValidateOverlay, h.ID(), logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
@@ -1518,11 +1520,22 @@ type compositeAddressResolver struct {
 	wssResolver handshake.AdvertisableAddressResolver
 }
 
-func (c *compositeAddressResolver) Resolve(observedAddress ma.Multiaddr) (ma.Multiaddr, error) {
-	isWSS := false
-	if _, err := observedAddress.ValueForProtocol(ma.P_WSS); err == nil {
-		isWSS = true
+func newCompositeAddressResolver(tcpResolver, wssResolver handshake.AdvertisableAddressResolver) handshake.AdvertisableAddressResolver {
+	return &compositeAddressResolver{
+		tcpResolver: tcpResolver,
+		wssResolver: wssResolver,
 	}
+}
+
+func (c *compositeAddressResolver) Resolve(observedAddress ma.Multiaddr) (ma.Multiaddr, error) {
+	protocols := observedAddress.Protocols()
+
+	containsProtocol := func(protocols []ma.Protocol, code int) bool {
+		return slices.ContainsFunc(protocols, func(p ma.Protocol) bool { return p.Code == code })
+	}
+
+	// ma.P_WSS protocol is deprecated, multiaddrs should comtain WS and TLS protocols for WSS
+	isWSS := containsProtocol(protocols, ma.P_WS) && containsProtocol(protocols, ma.P_TLS)
 
 	if isWSS {
 		if c.wssResolver != nil {
