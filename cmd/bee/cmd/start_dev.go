@@ -55,7 +55,6 @@ func (c *command) initStartDevCmd() (err error) {
 			fmt.Println(beeASCII)
 			fmt.Println()
 
-			// Enhanced warning message with better formatting
 			warningBox := `
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║                                                                              ║
