@@ -1003,7 +1003,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	}
 
 	if connectErr != nil {
-		return nil, fmt.Errorf("libp2p connect: %w", err)
+		return nil, fmt.Errorf("libp2p connect: %w", connectErr)
 	}
 
 	if info == nil {
