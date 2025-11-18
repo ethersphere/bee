@@ -105,7 +105,7 @@ func checkBalance(
 
 			if chainId == chaincfg.Mainnet.ChainID {
 				fundingURL := fmt.Sprintf("https://fund.ethswarm.org/?destination=%s&intent=initial-funding", overlayEthAddress.Hex())
-				logger.Warning("fund your node using the funding url", "funding_url", fundingURL)
+				logger.Info(fmt.Sprintf("fund your node using the funding url: %s", fundingURL))
 			}
 
 			select {
