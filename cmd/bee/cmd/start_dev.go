@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/node"
 	"github.com/kardianos/service"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 func (c *command) initStartDevCmd() (err error) {
@@ -68,8 +69,11 @@ func (c *command) initStartDevCmd() (err error) {
 ║                                                                              ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 `
-			// Apply yellow color to the warning box (works on modern terminals)
-			fmt.Print("\u001b[33m" + warningBox + "\u001b[0m")
+			if term.IsTerminal(int(os.Stdout.Fd())) {
+				fmt.Print("\u001b[33m" + warningBox + "\u001b[0m")
+			} else {
+				fmt.Print(warningBox)
+			}
 			fmt.Println()
 
 			fmt.Println("Starting in development mode")
