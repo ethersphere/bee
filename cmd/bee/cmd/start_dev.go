@@ -20,7 +20,7 @@ func (c *command) initStartDevCmd() (err error) {
 
 	cmd := &cobra.Command{
 		Use:               "dev",
-		Short:             "Start a Swarm node in development mode",
+		Short:             "WARNING: This command will be deprecated soon. For more information, please refer to the official documentation: https://docs.ethswarm.org/docs/develop/tools-and-features/bee-dev-mode and check back regularly for updates.",
 		PersistentPreRunE: c.CheckUnknownParams,
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			if len(args) > 0 {
@@ -54,6 +54,24 @@ func (c *command) initStartDevCmd() (err error) {
 
 			fmt.Println(beeASCII)
 			fmt.Println()
+
+			// Enhanced warning message with better formatting
+			warningBox := `
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                                                                              ║
+║  WARNING: This command will be deprecated soon.                         	   ║
+║                                                                              ║
+║  For more information, please refer to the official documentation:           ║
+║  https://docs.ethswarm.org/docs/develop/tools-and-features/bee-dev-mode      ║
+║                                                                              ║
+║  Please check back regularly for updates.                                    ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+`
+			// Apply yellow color to the warning box (works on modern terminals)
+			fmt.Print("\u001b[33m" + warningBox + "\u001b[0m")
+			fmt.Println()
+
 			fmt.Println("Starting in development mode")
 			fmt.Println()
 
