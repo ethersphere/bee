@@ -892,9 +892,14 @@ func (s *Service) Addresses() (addresses []ma.Multiaddr, err error) {
 				continue
 			}
 
-			if _, ok := addrMap[resolved.String()]; !ok {
-				uniqueAddrs = append(uniqueAddrs, resolved)
-				addrMap[resolved.String()] = struct{}{}
+			fullAddr, err := buildUnderlayAddress(resolved, s.host.ID())
+			if err != nil {
+				return nil, err
+			}
+
+			if _, ok := addrMap[fullAddr.String()]; !ok {
+				uniqueAddrs = append(uniqueAddrs, fullAddr)
+				addrMap[fullAddr.String()] = struct{}{}
 			}
 		}
 	}
