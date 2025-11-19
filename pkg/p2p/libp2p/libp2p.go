@@ -167,6 +167,16 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	var listenAddrs []string
+
+	var myKey crypto.PrivKey
+	if o.PrivateKey != nil {
+		k, _, err := crypto.ECDSAKeyPairFromKey(o.PrivateKey)
+		if err != nil {
+			return nil, err
+		}
+		myKey = k
+	}
+
 	if parsedAddr.IP4 != "" {
 		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s", parsedAddr.IP4, parsedAddr.Port))
 		if o.EnableWS {
@@ -181,18 +191,23 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		}
 	}
 
-	if o.AutoTLSEnabled && o.EnableWS {
+	if o.AutoTLSEnabled && o.EnableWS && myKey != nil {
 		parsedWssAddr, err := parseAddress(o.WSSAddr)
 		if err != nil {
 			return nil, err
 		}
 
+		peerID, err := libp2ppeer.IDFromPublicKey(myKey.GetPublic())
+		if err != nil {
+			return nil, err
+		}
+
 		if parsedWssAddr.IP4 != "" {
-			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/tls/sni/*.%s/ws", parsedWssAddr.IP4, parsedWssAddr.Port, o.AutoTLSDomain))
+			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/tls/sni/*.%s.%s/ws", parsedWssAddr.IP4, parsedWssAddr.Port, peerID.String(), o.AutoTLSDomain))
 		}
 
 		if parsedWssAddr.IP6 != "" {
-			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/tls/sni/*.%s/ws", parsedWssAddr.IP6, parsedWssAddr.Port, o.AutoTLSDomain))
+			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/tls/sni/*.%s.%s/ws", parsedWssAddr.IP6, parsedWssAddr.Port, peerID.String(), o.AutoTLSDomain))
 		}
 	}
 
@@ -321,11 +336,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		)
 	}
 
-	if o.PrivateKey != nil {
-		myKey, _, err := crypto.ECDSAKeyPairFromKey(o.PrivateKey)
-		if err != nil {
-			return nil, err
-		}
+	if myKey != nil {
 		opts = append(opts,
 			libp2p.Identity(myKey),
 		)
