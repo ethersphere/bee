@@ -81,6 +81,12 @@ func TestStaticAddressResolver(t *testing.T) {
 			observableAddress: "/ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAkyyGKpjBiCkVqCKoJa6RzzZw9Nr7hGogsMPcdad1KyMmd",
 			want:              "/dns/ipv4and6.com/tcp/30777/p2p/16Uiu2HAkyyGKpjBiCkVqCKoJa6RzzZw9Nr7hGogsMPcdad1KyMmd",
 		},
+		{
+			name:              "replace ip and port with complex multiaddr",
+			natAddr:           "192.168.1.34:30777",
+			observableAddress: "/ip4/10.233.99.40/tcp/1635/tls/sni/*.libp2p.direct/ws/p2p/QmWbXocGMpfa8zApx9kCNwfmc35bbRJv136bdtuQjbR4wL",
+			want:              "/ip4/192.168.1.34/tcp/30777/tls/sni/*.libp2p.direct/ws/p2p/QmWbXocGMpfa8zApx9kCNwfmc35bbRJv136bdtuQjbR4wL",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

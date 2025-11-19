@@ -69,7 +69,7 @@ func (r *staticAddressResolver) Resolve(observedAddress ma.Multiaddr) (ma.Multia
 	} else {
 		port = observedAddrSplit[4]
 	}
-	a, err := ma.NewMultiaddr(multiProto + "/" + observedAddrSplit[3] + "/" + port)
+	a, err := ma.NewMultiaddr(multiProto + "/" + observedAddrSplit[3] + "/" + port + "/" + strings.Join(observedAddrSplit[5:], "/"))
 	if err != nil {
 		return nil, err
 	}
