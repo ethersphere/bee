@@ -380,6 +380,73 @@ func (s *Service) bzzHeadHandler(w http.ResponseWriter, r *http.Request) {
 	s.serveReference(logger, address, paths.Path, w, r, true, queries.FeedLegacyResolve)
 }
 
+type getWrappedResult struct {
+	ch  swarm.Chunk
+	err error
+}
+
+// resolveFeed races the resolution of both types of feeds. it returns the first correct feed found or an error.
+func (s *Service) resolveFeed(ctx context.Context, getter storage.Getter, ch swarm.Chunk) (swarm.Chunk, error) {
+	innerCtx, cancel := context.WithCancel(ctx)
+	getWrapped := func(v1 bool) chan getWrappedResult {
+		ret := make(chan getWrappedResult)
+		go func() {
+			wc, err := feeds.GetWrappedChunk(innerCtx, getter, ch, v1)
+			if err != nil {
+				select {
+				case ret <- getWrappedResult{nil, err}:
+					return
+				case <-innerCtx.Done():
+					return
+				}
+			}
+
+			// here we just check whether the address is retrievable.
+			// if it returns an error we send that over the channel, otherwise
+			// we send the wc chunk back to the caller so that the feed can be
+			// dereferenced.
+			_, err = getter.Get(innerCtx, wc.Address())
+			if err != nil {
+				select {
+				case ret <- getWrappedResult{nil, err}:
+					return
+				case <-innerCtx.Done():
+					return
+				}
+			}
+			select {
+			case ret <- getWrappedResult{wc, nil}:
+				return
+			case <-innerCtx.Done():
+				return
+			}
+		}()
+		return ret
+	}
+
+	v1 := getWrapped(true)
+	v2 := getWrapped(false)
+
+	select {
+	case v1r := <-v1:
+		if v1r.ch != nil {
+			cancel()
+			return v1r.ch, nil
+		}
+		// wait for the other one
+		v2r := <-v2
+		return v2r.ch, v2r.err
+	case v2r := <-v2:
+		if v2r.ch != nil {
+			cancel()
+			return v2r.ch, nil
+		}
+		// wait for the other one
+		v1r := <-v1
+		return v1r.ch, v1r.err
+	}
+}
+
 func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathVar string, w http.ResponseWriter, r *http.Request, headerOnly bool, feedLegacyResolve bool) {
 	loggerV1 := logger.V(1).Build()
 
@@ -415,7 +482,6 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 		jsonhttp.BadRequest(w, "could not parse headers")
 		return
 	}
-
 FETCH:
 	// read manifest entry
 	m, err := manifest.NewDefaultManifestReference(
@@ -449,7 +515,8 @@ FETCH:
 				jsonhttp.NotFound(w, "no update found")
 				return
 			}
-			wc, err := feeds.GetWrappedChunk(ctx, s.storer.Download(cache), ch, feedLegacyResolve)
+
+			wc, err := s.resolveFeed(ctx, s.storer.Download(cache), ch)
 			if err != nil {
 				if errors.Is(err, feeds.ErrNotLegacyPayload) {
 					logger.Debug("bzz: download: feed is not a legacy payload")
@@ -468,10 +535,10 @@ FETCH:
 				jsonhttp.InternalServerError(w, "mapStructure feed update")
 				return
 			}
+
 			address = wc.Address()
 			// modify ls and init with non-existing wrapped chunk
 			ls = loadsave.NewReadonlyWithRootCh(s.storer.Download(cache), s.storer.Cache(), wc, rLevel)
-
 			feedDereferenced = true
 			curBytes, err := cur.MarshalBinary()
 			if err != nil {
@@ -490,7 +557,6 @@ FETCH:
 			goto FETCH
 		}
 	}
-
 	if pathVar == "" {
 		loggerV1.Debug("bzz download: handle empty path", "address", address)
 
@@ -505,6 +571,7 @@ FETCH:
 				return
 			}
 		}
+
 		logger.Debug("bzz download: address not found or incorrect", "address", address, "path", pathVar)
 		logger.Error(nil, "address not found or incorrect")
 		jsonhttp.NotFound(w, "address not found or incorrect")
