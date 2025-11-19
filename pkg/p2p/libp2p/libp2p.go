@@ -181,7 +181,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		}
 	}
 
-	if o.AutoTLSEnabled {
+	if o.AutoTLSEnabled && o.EnableWS {
 		parsedWssAddr, err := parseAddress(o.WSSAddr)
 		if err != nil {
 			return nil, err
