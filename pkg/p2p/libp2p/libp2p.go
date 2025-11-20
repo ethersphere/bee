@@ -1648,6 +1648,7 @@ func waitPeerAddrs(ctx context.Context, s peerstore.Peerstore, peerID libp2ppeer
 
 func newResolverAddressFactory(f config.AddrsFactory, logger log.Logger, resolver handshake.AdvertisableAddressResolver) config.AddrsFactory {
 	return func(addrs []ma.Multiaddr) []ma.Multiaddr {
+		logger.Info("INVESTIGATION: address factory original addresses", "addrs", addrs)
 		allAddrs := slices.Clone(addrs)
 		for _, addr := range addrs {
 			a, err := resolver.Resolve(addr)
@@ -1664,6 +1665,7 @@ func newResolverAddressFactory(f config.AddrsFactory, logger log.Logger, resolve
 
 			allAddrs = append(allAddrs, a)
 		}
-		return f(addrs)
+		logger.Info("INVESTIGATION: address factory all addresses", "addrs", allAddrs)
+		return f(allAddrs)
 	}
 }
