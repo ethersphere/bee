@@ -348,24 +348,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			// AddrsFactory takes the multiaddrs we're listening on and sets the multiaddrs to advertise to the network.
 			// We use the AutoTLS address factory so that the `*` in the AutoTLS address string is replaced with the
 			// actual IP address of the host once detected
-			var tcpResolver handshake.AdvertisableAddressResolver
-			if o.NATAddr != "" {
-				r, err := newStaticAddressResolver(o.NATAddr, net.LookupIP)
-				if err != nil {
-					return nil, fmt.Errorf("static nat: %w", err)
-				}
-				tcpResolver = r
-			}
-			var wssResolver handshake.AdvertisableAddressResolver
-			if o.NATWSSAddr != "" {
-				r, err := newStaticAddressResolver(o.NATWSSAddr, net.LookupIP)
-				if err != nil {
-					return nil, fmt.Errorf("static wss nat: %w", err)
-				}
-				wssResolver = r
-			}
-			resolver := newCompositeAddressResolver(tcpResolver, wssResolver)
-			f := newResolverAddressFactory(certManager.AddressFactory(), logger, resolver)
+			f := newDefaultsAddressFactory(certManager.AddressFactory(), logger)
 			opts = append(opts, libp2p.AddrsFactory(f))
 		} else {
 			transports = append(transports, libp2p.Transport(ws.New))
@@ -1646,32 +1629,16 @@ func waitPeerAddrs(ctx context.Context, s peerstore.Peerstore, peerID libp2ppeer
 	}
 }
 
-func newResolverAddressFactory(f config.AddrsFactory, logger log.Logger, resolver handshake.AdvertisableAddressResolver) config.AddrsFactory {
+func newDefaultsAddressFactory(f config.AddrsFactory, logger log.Logger) config.AddrsFactory {
 	return func(addrs []ma.Multiaddr) []ma.Multiaddr {
 		logger.Info("INVESTIGATION: address factory original addresses", "addrs", addrs)
-		allAddrs := slices.Clone(addrs)
-		for _, addr := range addrs {
-			a, err := resolver.Resolve(addr)
-			if err != nil {
-				logger.Error(err, "resolve address in address factory", "address", addr)
-				continue
-			}
-			aString := a.String()
-			if slices.ContainsFunc(allAddrs, func(addr ma.Multiaddr) bool {
-				return addr.String() == aString
-			}) {
-				continue
-			}
-
-			allAddrs = append(allAddrs, a)
+		newAddrs := f(addrs)
+		logger.Info("INVESTIGATION: address factory new addresses", "addrs", newAddrs)
+		returnedAddr := newAddrs
+		if len(newAddrs) == 0 {
+			returnedAddr = addrs
 		}
-		logger.Info("INVESTIGATION: address factory all addresses", "addrs", allAddrs)
-		finalAdddrs := f(addrs)
-		logger.Info("INVESTIGATION: address factory final addresses", "addrs", finalAdddrs)
-		if len(finalAdddrs) == 0 {
-			// let's go with the original addresses
-			return addrs
-		}
-		return finalAdddrs
+		logger.Info("INVESTIGATION: address factory reurned addresses", "addrs", returnedAddr)
+		return returnedAddr
 	}
 }
