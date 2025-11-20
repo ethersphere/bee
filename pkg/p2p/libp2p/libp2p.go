@@ -1666,7 +1666,7 @@ func newResolverAddressFactory(f config.AddrsFactory, logger log.Logger, resolve
 			allAddrs = append(allAddrs, a)
 		}
 		logger.Info("INVESTIGATION: address factory all addresses", "addrs", allAddrs)
-		finalAdddrs := f(allAddrs)
+		finalAdddrs := f(addrs)
 		logger.Info("INVESTIGATION: address factory final addresses", "addrs", finalAdddrs)
 		if len(finalAdddrs) == 0 {
 			// let's go with the original addresses
