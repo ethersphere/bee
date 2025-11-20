@@ -44,3 +44,5 @@ func WithHostFactory(factory func(...libp2pm.Option) (host.Host, error)) Options
 }
 
 var NewCompositeAddressResolver = newCompositeAddressResolver
+
+var RewriteForgeWebSocketDomain = rewriteForgeWebSocketDomain

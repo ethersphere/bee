@@ -58,6 +58,7 @@ import (
 	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
+	"github.com/multiformats/go-multibase"
 	"github.com/multiformats/go-multistream"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
@@ -129,7 +130,7 @@ type Service struct {
 	HeadersRWTimeout      time.Duration
 	autoNAT               autonat.AutoNAT
 	enableWS              bool
-	certManager           CertificateManager
+	autoTLSDomain         string
 }
 
 type lightnodes interface {
@@ -471,7 +472,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		HeadersRWTimeout:      o.HeadersRWTimeout,
 		autoNAT:               autoNAT,
 		enableWS:              o.EnableWS,
-		certManager:           certManager,
+		autoTLSDomain:         o.AutoTLSDomain,
 	}
 
 	logger.Info("Waiting for AutoTLS certificate to be loaded...")
@@ -907,7 +908,89 @@ func (s *Service) Addresses() (addresses []ma.Multiaddr, err error) {
 	}
 
 	s.logger.Debug("service addresses", "addresses", uniqueAddrs)
-	return buildFullMAs(s.certManager.AddressFactory()(uniqueAddrs), s.host.ID())
+	return rewriteForgeWebSocketDomain(uniqueAddrs, s.host.ID(), s.autoTLSDomain, false)
+}
+
+// AddressFactory returns a function that rewrites a set of forge managed
+// multiaddresses, by replacing asterisks with full domians in sni protocol
+// component. This function is addapted from
+// https://github.com/ipshipyard/p2p-forge/blob/v0.6.1/client/acme.go#L731
+// addrFactoryFn function to avoid issues with no multiaddresses returned in
+// case of node not publically exposed.
+func rewriteForgeWebSocketDomain(multiaddrs []ma.Multiaddr, peerID libp2ppeer.ID, forgeDomain string, produceShortAddrs bool) ([]ma.Multiaddr, error) {
+	retAddrs := make([]ma.Multiaddr, 0, len(multiaddrs))
+
+	b36PidStr := libp2ppeer.ToCid(peerID).Encode(multibase.MustNewEncoder(multibase.Base36))
+
+	p2pForgeWssComponent := ma.StringCast(fmt.Sprintf("/tls/sni/*.%s/ws", forgeDomain))
+
+	for _, a := range multiaddrs {
+		// We expect the address to be of the form: /ipX/<IP address>/tcp/<Port>/tls/sni/*.<forge-domain>/ws
+		// We'll then replace the * with the IP address
+		withoutForgeWSS := a.Decapsulate(p2pForgeWssComponent)
+		if withoutForgeWSS.Equal(a) {
+			retAddrs = append(retAddrs, a)
+			continue
+		}
+
+		index := 0
+		var escapedIPStr string
+		var ipVersion string
+		var ipMaStr string
+		var tcpPortStr string
+		ma.ForEach(a, func(c ma.Component) bool {
+			switch index {
+			case 0:
+				switch c.Protocol().Code {
+				case ma.P_IP4:
+					ipVersion = "4"
+					ipMaStr = c.String()
+					ipAddr := c.Value()
+					escapedIPStr = strings.ReplaceAll(ipAddr, ".", "-")
+				case ma.P_IP6:
+					ipVersion = "6"
+					ipMaStr = c.String()
+					ipAddr := c.Value()
+					escapedIPStr = strings.ReplaceAll(ipAddr, ":", "-")
+					if escapedIPStr[0] == '-' {
+						escapedIPStr = "0" + escapedIPStr
+					}
+					if escapedIPStr[len(escapedIPStr)-1] == '-' {
+						escapedIPStr = escapedIPStr + "0"
+					}
+				default:
+					return false
+				}
+			case 1:
+				if c.Protocol().Code != ma.P_TCP {
+					return false
+				}
+				tcpPortStr = c.Value()
+			default:
+				index++
+				return false
+			}
+			index++
+			return true
+		})
+		if index != 3 || escapedIPStr == "" || tcpPortStr == "" {
+			retAddrs = append(retAddrs, a)
+			continue
+		}
+
+		var newMaStr string
+		if produceShortAddrs {
+			newMaStr = fmt.Sprintf("/dns%s/%s.%s.%s/tcp/%s/tls/ws/p2p/%s", ipVersion, escapedIPStr, b36PidStr, forgeDomain, tcpPortStr, peerID.String())
+		} else {
+			newMaStr = fmt.Sprintf("%s/tcp/%s/tls/sni/%s.%s.%s/ws/p2p/%s", ipMaStr, tcpPortStr, escapedIPStr, b36PidStr, forgeDomain, peerID.String())
+		}
+		newMA, err := ma.NewMultiaddr(newMaStr)
+		if err != nil {
+			return nil, fmt.Errorf("create new ws tls multiaddr: %s: %w", newMaStr, err)
+		}
+		retAddrs = append(retAddrs, newMA)
+	}
+	return retAddrs, nil
 }
 
 func (s *Service) NATManager() basichost.NATManager {
