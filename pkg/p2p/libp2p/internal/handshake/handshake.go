@@ -5,9 +5,11 @@
 package handshake
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -60,6 +62,24 @@ type AdvertisableAddressResolver interface {
 	Resolve(observedAddress ma.Multiaddr) (ma.Multiaddr, error)
 }
 
+type Addresser interface {
+	AdvertizableAddrs() ([]ma.Multiaddr, error)
+}
+
+type Option struct {
+	bee260compatibility bool
+}
+
+// WithBee260Compatibility option ensures that only one underlay address is
+// passed to the peer in p2p protocol messages, so that nodes with version 2.6.0
+// and older can deserialize it. This option can be safely removed when bee
+// version 2.6.0 is deprecated.
+func WithBee260Compatibility(yes bool) func(*Option) {
+	return func(o *Option) {
+		o.bee260compatibility = yes
+	}
+}
+
 // Service can perform initiate or handle a handshake between peers.
 type Service struct {
 	signer                crypto.Signer
@@ -74,6 +94,7 @@ type Service struct {
 	libp2pID              libp2ppeer.ID
 	metrics               metrics
 	picker                p2p.Picker
+	hostAddresser         Addresser
 }
 
 // Info contains the information received from the handshake.
@@ -91,7 +112,7 @@ func (i *Info) LightString() string {
 }
 
 // New creates a new handshake Service.
-func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, overlay swarm.Address, networkID uint64, fullNode bool, nonce []byte, welcomeMessage string, validateOverlay bool, ownPeerID libp2ppeer.ID, logger log.Logger) (*Service, error) {
+func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, overlay swarm.Address, networkID uint64, fullNode bool, nonce []byte, hostAddresser Addresser, welcomeMessage string, validateOverlay bool, ownPeerID libp2ppeer.ID, logger log.Logger) (*Service, error) {
 	if len(welcomeMessage) > MaxWelcomeMessageLength {
 		return nil, ErrWelcomeMessageLength
 	}
@@ -107,6 +128,7 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 		libp2pID:              ownPeerID,
 		logger:                logger.WithName(loggerName).Register(),
 		metrics:               newMetrics(),
+		hostAddresser:         hostAddresser,
 	}
 	svc.welcomeMessage.Store(welcomeMessage)
 
@@ -118,25 +140,23 @@ func (s *Service) SetPicker(n p2p.Picker) {
 }
 
 // Handshake initiates a handshake with a peer.
-func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiaddr ma.Multiaddr, peerID libp2ppeer.ID) (i *Info, err error) {
+func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiaddrs []ma.Multiaddr, opts ...func(*Option)) (i *Info, err error) {
 	loggerV1 := s.logger.V(1).Register()
+
+	o := new(Option)
+	for _, set := range opts {
+		set(o)
+	}
 
 	ctx, cancel := context.WithTimeout(ctx, handshakeTimeout)
 	defer cancel()
 
 	w, r := protobuf.NewWriterAndReader(stream)
-	fullRemoteMA, err := buildFullMA(peerMultiaddr, peerID)
-	if err != nil {
-		return nil, err
-	}
 
-	fullRemoteMABytes, err := fullRemoteMA.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
+	peerMultiaddrs = filterBee260CompatibleUnderlays(o.bee260compatibility, peerMultiaddrs)
 
 	if err := w.WriteMsgWithContext(ctx, &pb.Syn{
-		ObservedUnderlay: fullRemoteMABytes,
+		ObservedUnderlay: bzz.SerializeUnderlays(peerMultiaddrs),
 	}); err != nil {
 		return nil, fmt.Errorf("write syn message: %w", err)
 	}
@@ -146,32 +166,51 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return nil, fmt.Errorf("read synack message: %w", err)
 	}
 
-	observedUnderlay, err := ma.NewMultiaddrBytes(resp.Syn.ObservedUnderlay)
+	observedUnderlays, err := bzz.DeserializeUnderlays(resp.Syn.ObservedUnderlay)
 	if err != nil {
 		return nil, ErrInvalidSyn
 	}
 
-	observedUnderlayAddrInfo, err := libp2ppeer.AddrInfoFromP2pAddr(observedUnderlay)
-	if err != nil {
-		return nil, fmt.Errorf("extract addr from P2P: %w", err)
+	advertisableUnderlays := make([]ma.Multiaddr, len(observedUnderlays))
+	for i, observedUnderlay := range observedUnderlays {
+		observedUnderlayAddrInfo, err := libp2ppeer.AddrInfoFromP2pAddr(observedUnderlay)
+		if err != nil {
+			return nil, fmt.Errorf("extract addr from P2P: %w", err)
+		}
+
+		if s.libp2pID != observedUnderlayAddrInfo.ID {
+			return nil, fmt.Errorf("received peer ID %s does not match ours %s", observedUnderlayAddrInfo.ID.String(), s.libp2pID.String())
+		}
+
+		advertisableUnderlay, err := s.advertisableAddresser.Resolve(observedUnderlay)
+		if err != nil {
+			return nil, err
+		}
+
+		advertisableUnderlays[i] = advertisableUnderlay
 	}
 
-	if s.libp2pID != observedUnderlayAddrInfo.ID {
-		// NOTE eventually we will return error here, but for now we want to gather some statistics
-		s.logger.Warning("received peer ID does not match ours", "their", observedUnderlayAddrInfo.ID, "ours", s.libp2pID)
+	if s.hostAddresser != nil {
+		hostAddrs, err := s.hostAddresser.AdvertizableAddrs()
+		if err != nil {
+			return nil, fmt.Errorf("get host advertizable addresses: %w", err)
+		}
+
+		advertisableUnderlays = append(advertisableUnderlays, hostAddrs...)
 	}
 
-	advertisableUnderlay, err := s.advertisableAddresser.Resolve(observedUnderlay)
-	if err != nil {
-		return nil, err
-	}
+	// sort to remove potential duplicates
+	slices.SortFunc(advertisableUnderlays, func(a, b ma.Multiaddr) int {
+		return cmp.Compare(a.String(), b.String())
+	})
+	// remove duplicates
+	advertisableUnderlays = slices.CompactFunc(advertisableUnderlays, func(a, b ma.Multiaddr) bool {
+		return a.Equal(b)
+	})
 
-	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlay, s.overlay, s.networkID, s.nonce)
-	if err != nil {
-		return nil, err
-	}
+	advertisableUnderlays = filterBee260CompatibleUnderlays(o.bee260compatibility, advertisableUnderlays)
 
-	advertisableUnderlayBytes, err := bzzAddress.Underlay.MarshalBinary()
+	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce)
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +228,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 	welcomeMessage := s.GetWelcomeMessage()
 	msg := &pb.Ack{
 		Address: &pb.BzzAddress{
-			Underlay:  advertisableUnderlayBytes,
+			Underlay:  bzz.SerializeUnderlays(bzzAddress.Underlays),
 			Overlay:   bzzAddress.Overlay.Bytes(),
 			Signature: bzzAddress.Signature,
 		},
@@ -215,22 +254,18 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 }
 
 // Handle handles an incoming handshake from a peer.
-func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr ma.Multiaddr, remotePeerID libp2ppeer.ID) (i *Info, err error) {
+func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs []ma.Multiaddr, opts ...func(*Option)) (i *Info, err error) {
 	loggerV1 := s.logger.V(1).Register()
+
+	o := new(Option)
+	for _, set := range opts {
+		set(o)
+	}
 
 	ctx, cancel := context.WithTimeout(ctx, handshakeTimeout)
 	defer cancel()
 
 	w, r := protobuf.NewWriterAndReader(stream)
-	fullRemoteMA, err := buildFullMA(remoteMultiaddr, remotePeerID)
-	if err != nil {
-		return nil, err
-	}
-
-	fullRemoteMABytes, err := fullRemoteMA.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
 
 	var syn pb.Syn
 	if err := r.ReadMsgWithContext(ctx, &syn); err != nil {
@@ -239,35 +274,56 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 	}
 	s.metrics.SynRx.Inc()
 
-	observedUnderlay, err := ma.NewMultiaddrBytes(syn.ObservedUnderlay)
+	observedUnderlays, err := bzz.DeserializeUnderlays(syn.ObservedUnderlay)
 	if err != nil {
 		return nil, ErrInvalidSyn
 	}
 
-	advertisableUnderlay, err := s.advertisableAddresser.Resolve(observedUnderlay)
-	if err != nil {
-		return nil, err
+	advertisableUnderlays := make([]ma.Multiaddr, len(observedUnderlays))
+	for i, observedUnderlay := range observedUnderlays {
+		advertisableUnderlay, err := s.advertisableAddresser.Resolve(observedUnderlay)
+		if err != nil {
+			return nil, err
+		}
+		advertisableUnderlays[i] = advertisableUnderlay
 	}
 
-	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlay, s.overlay, s.networkID, s.nonce)
-	if err != nil {
-		return nil, err
+	if s.hostAddresser != nil {
+		hostAddrs, err := s.hostAddresser.AdvertizableAddrs()
+		if err != nil {
+			return nil, fmt.Errorf("get host advertizable addresses: %w", err)
+		}
+
+		advertisableUnderlays = append(advertisableUnderlays, hostAddrs...)
 	}
 
-	advertisableUnderlayBytes, err := bzzAddress.Underlay.MarshalBinary()
+	// sort to remove potential duplicates
+	slices.SortFunc(advertisableUnderlays, func(a, b ma.Multiaddr) int {
+		return cmp.Compare(a.String(), b.String())
+	})
+	// remove duplicates
+	advertisableUnderlays = slices.CompactFunc(advertisableUnderlays, func(a, b ma.Multiaddr) bool {
+		return a.Equal(b)
+	})
+
+	advertisableUnderlays = filterBee260CompatibleUnderlays(o.bee260compatibility, advertisableUnderlays)
+
+	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce)
 	if err != nil {
 		return nil, err
 	}
 
 	welcomeMessage := s.GetWelcomeMessage()
 
+	peerMultiaddrs = filterBee260CompatibleUnderlays(o.bee260compatibility, peerMultiaddrs)
+
 	if err := w.WriteMsgWithContext(ctx, &pb.SynAck{
 		Syn: &pb.Syn{
-			ObservedUnderlay: fullRemoteMABytes,
+			ObservedUnderlay: bzz.SerializeUnderlays(peerMultiaddrs),
 		},
 		Ack: &pb.Ack{
 			Address: &pb.BzzAddress{
-				Underlay:  advertisableUnderlayBytes,
+				Underlay:  bzz.SerializeUnderlays(bzzAddress.Underlays),
 				Overlay:   bzzAddress.Overlay.Bytes(),
 				Signature: bzzAddress.Signature,
 			},
@@ -331,10 +387,6 @@ func (s *Service) GetWelcomeMessage() string {
 	return s.welcomeMessage.Load().(string)
 }
 
-func buildFullMA(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) {
-	return ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", addr.String(), peerID.String()))
-}
-
 func (s *Service) parseCheckAck(ack *pb.Ack) (*bzz.Address, error) {
 	bzzAddress, err := bzz.ParseAddress(ack.Address.Underlay, ack.Address.Overlay, ack.Address.Signature, ack.Nonce, s.validateOverlay, s.networkID)
 	if err != nil {
@@ -342,4 +394,19 @@ func (s *Service) parseCheckAck(ack *pb.Ack) (*bzz.Address, error) {
 	}
 
 	return bzzAddress, nil
+}
+
+// filterBee260CompatibleUnderlays select a single underlay to pass if
+// bee260compatibility is true. Otherwise it passes the unmodified underlays
+// slice. This function can be safely removed when bee version 2.6.0 is
+// deprecated.
+func filterBee260CompatibleUnderlays(bee260compatibility bool, underlays []ma.Multiaddr) []ma.Multiaddr {
+	if !bee260compatibility {
+		return underlays
+	}
+	underlay := bzz.SelectBestAdvertisedAddress(underlays, nil)
+	if underlay == nil {
+		return underlays
+	}
+	return []ma.Multiaddr{underlay}
 }

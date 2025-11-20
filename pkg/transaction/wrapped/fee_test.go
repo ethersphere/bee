@@ -44,6 +44,13 @@ func TestSuggestedFeeAndTip(t *testing.T) {
 			wantGasTipCap: big.NewInt(1000),
 		},
 		{
+			name:          "with gas price and base fee",
+			gasPrice:      big.NewInt(1000),
+			mockHeader:    &types.Header{BaseFee: baseFee},
+			wantGasFeeCap: big.NewInt(1000),
+			wantGasTipCap: big.NewInt(900),
+		},
+		{
 			name:              "suggest tip error",
 			mockSuggestGasErr: errors.New("suggest tip error"),
 			wantErr:           errors.New("failed to suggest gas tip cap: suggest tip error"),

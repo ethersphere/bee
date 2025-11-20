@@ -12,6 +12,7 @@ import (
 
 	"testing/synctest"
 
+	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/reacher"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -68,12 +69,13 @@ func TestPingSuccess(t *testing.T) {
 				done := make(chan struct{})
 				mock := newMock(tc.pingFunc, tc.reachableFunc(done))
 
-				r := reacher.New(mock, mock, &defaultOptions)
+				r := reacher.New(mock, mock, &defaultOptions, log.Noop)
 				testutil.CleanupCloser(t, r)
 
 				overlay := swarm.RandAddress(t)
+				addr, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAmTBuJT9LvNmQiNoTsxE5mtNy6YG3paw79m94CRa9sRb")
 
-				r.Connected(overlay, nil)
+				r.Connected(overlay, addr)
 
 				select {
 				case <-time.After(time.Second * 5):
@@ -98,6 +100,7 @@ func TestDisconnected(t *testing.T) {
 			if the ping function pings the peer we are trying to disconnect, we return an error
 			which triggers another attempt in the future, which by the, the peer should already be removed.
 		*/
+
 		var errs atomic.Int64
 		pingFunc := func(_ context.Context, a ma.Multiaddr) (time.Duration, error) {
 			if a != nil && a.Equal(disconnectedMa) {
@@ -114,10 +117,11 @@ func TestDisconnected(t *testing.T) {
 
 		mock := newMock(pingFunc, reachableFunc)
 
-		r := reacher.New(mock, mock, &defaultOptions)
+		r := reacher.New(mock, mock, &defaultOptions, log.Noop)
 		testutil.CleanupCloser(t, r)
 
-		r.Connected(swarm.RandAddress(t), nil)
+		addr, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/7072/p2p/16Uiu2HAmTBuJT9LvNmBiQiNoTsxE5mtNy6YG3paw79m94CRa9sRb")
+		r.Connected(swarm.RandAddress(t), addr)
 		r.Connected(disconnectedOverlay, disconnectedMa)
 		r.Disconnected(disconnectedOverlay)
 	})
