@@ -161,6 +161,8 @@ type Options struct {
 }
 
 func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
+	logger = logger.WithName(loggerName).Register()
+
 	parsedAddr, err := parseAddress(addr)
 	if err != nil {
 		return nil, err
@@ -342,7 +344,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			// AddrsFactory takes the multiaddrs we're listening on and sets the multiaddrs to advertise to the network.
 			// We use the AutoTLS address factory so that the `*` in the AutoTLS address string is replaced with the
 			// actual IP address of the host once detected
-			opts = append(opts, libp2p.AddrsFactory(certManager.AddressFactory()))
+			opts = append(opts, libp2p.AddrsFactory(newLogAddressFactory(certManager.AddressFactory(), logger)))
 		} else {
 			transports = append(transports, libp2p.Transport(ws.New))
 		}
@@ -459,7 +461,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		peers:                 peerRegistry,
 		addressbook:           ab,
 		blocklist:             blocklist.NewBlocklist(storer),
-		logger:                logger.WithName(loggerName).Register(),
+		logger:                logger,
 		tracer:                tracer,
 		connectionBreaker:     breaker.NewBreaker(breaker.Options{}), // use default options
 		ready:                 make(chan struct{}),
@@ -1619,5 +1621,14 @@ func waitPeerAddrs(ctx context.Context, s peerstore.Peerstore, peerID libp2ppeer
 		return []ma.Multiaddr{addr}
 	case <-ctx.Done():
 		return s.Addrs(peerID)
+	}
+}
+
+func newLogAddressFactory(f config.AddrsFactory, logger log.Logger) config.AddrsFactory {
+	return func(addrs []ma.Multiaddr) []ma.Multiaddr {
+		logger.Info("INVESTIGATION: address factory original addresses", "addrs", addrs)
+		newAddrs := f(addrs)
+		logger.Info("INVESTIGATION: address factory new addresses", "addrs", newAddrs)
+		return newAddrs
 	}
 }
