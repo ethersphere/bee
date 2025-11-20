@@ -66,6 +66,8 @@ import (
 	p2pforge "github.com/ipshipyard/p2p-forge/client"
 )
 
+const enablePlainTCP = false
+
 // loggerName is the tree path name of the logger for this package.
 const loggerName = "libp2p"
 
@@ -169,17 +171,20 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	var listenAddrs []string
-	if parsedAddr.IP4 != "" {
-		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s", parsedAddr.IP4, parsedAddr.Port))
-		if o.EnableWS {
-			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/ws", parsedAddr.IP4, parsedAddr.Port))
-		}
-	}
 
-	if parsedAddr.IP6 != "" {
-		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s", parsedAddr.IP6, parsedAddr.Port))
-		if o.EnableWS {
-			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/ws", parsedAddr.IP6, parsedAddr.Port))
+	if enablePlainTCP {
+		if parsedAddr.IP4 != "" {
+			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s", parsedAddr.IP4, parsedAddr.Port))
+			if o.EnableWS {
+				listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/ws", parsedAddr.IP4, parsedAddr.Port))
+			}
+		}
+
+		if parsedAddr.IP6 != "" {
+			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s", parsedAddr.IP6, parsedAddr.Port))
+			if o.EnableWS {
+				listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/ws", parsedAddr.IP6, parsedAddr.Port))
+			}
 		}
 	}
 
