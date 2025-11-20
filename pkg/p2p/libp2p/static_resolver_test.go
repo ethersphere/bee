@@ -28,6 +28,12 @@ func TestStaticAddressResolver(t *testing.T) {
 			want:              "/ip4/127.0.0.1/tcp/30123/p2p/16Uiu2HAkyyGKpjBiCkVqCKoJa6RzzZw9Nr7hGogsMPcdad1KyMmd",
 		},
 		{
+			name:              "no peer id",
+			natAddr:           ":30123",
+			observableAddress: "/ip4/127.0.0.1/tcp/7071",
+			want:              "/ip4/127.0.0.1/tcp/30123",
+		},
+		{
 			name:              "replace ip v4",
 			natAddr:           "192.168.1.34:",
 			observableAddress: "/ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAkyyGKpjBiCkVqCKoJa6RzzZw9Nr7hGogsMPcdad1KyMmd",
