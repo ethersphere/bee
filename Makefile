@@ -121,17 +121,17 @@ endif
 .PHONY: test-ci
 test-ci:
 ifdef cover
-	$(GO) test -run "[^FLAKY]$$" -coverprofile=cover.out ./pkg/p2p/libp2p/internal/reacher
+	$(GO) test -run "[^FLAKY]$$" -coverprofile=cover.out ./...
 else
-	$(GO) test -run "[^FLAKY]$$" ./pkg/p2p/libp2p/internal/reacher
+	$(GO) test -run "[^FLAKY]$$" ./...
 endif
 
 .PHONY: test-ci-race
 test-ci-race:
 ifdef cover
-	$(GO) test -race -run "[^FLAKY]$$" -coverprofile=cover.out ./pkg/p2p/libp2p/internal/reacher
+	$(GO) test -race -run "[^FLAKY]$$" -coverprofile=cover.out ./...
 else
-	$(GO) test -race -run "[^FLAKY]$$" ./pkg/p2p/libp2p/internal/reacher
+	$(GO) test -race -run "[^FLAKY]$$" ./...
 endif
 
 .PHONY: test-ci-flaky
