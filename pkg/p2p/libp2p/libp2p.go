@@ -341,10 +341,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		if o.AutoTLSEnabled {
 			wsOpt := ws.WithTLSConfig(certManager.TLSConfig())
 			transports = append(transports, libp2p.Transport(ws.New, wsOpt))
-			// AddrsFactory takes the multiaddrs we're listening on and sets the multiaddrs to advertise to the network.
-			// We use the AutoTLS address factory so that the `*` in the AutoTLS address string is replaced with the
-			// actual IP address of the host once detected
-			opts = append(opts, libp2p.AddrsFactory(newLogAddressFactory(certManager.AddressFactory(), logger)))
 		} else {
 			transports = append(transports, libp2p.Transport(ws.New))
 		}
@@ -1621,14 +1617,5 @@ func waitPeerAddrs(ctx context.Context, s peerstore.Peerstore, peerID libp2ppeer
 		return []ma.Multiaddr{addr}
 	case <-ctx.Done():
 		return s.Addrs(peerID)
-	}
-}
-
-func newLogAddressFactory(f config.AddrsFactory, logger log.Logger) config.AddrsFactory {
-	return func(addrs []ma.Multiaddr) []ma.Multiaddr {
-		logger.Info("INVESTIGATION: address factory original addresses", "addrs", addrs)
-		newAddrs := f(addrs)
-		logger.Info("INVESTIGATION: address factory new addresses", "addrs", newAddrs)
-		return newAddrs
 	}
 }
