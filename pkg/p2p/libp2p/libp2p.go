@@ -907,7 +907,7 @@ func (s *Service) Addresses() (addresses []ma.Multiaddr, err error) {
 	}
 
 	s.logger.Debug("service addresses", "addresses", uniqueAddrs)
-	return uniqueAddrs, nil
+	return s.certManager.AddressFactory()(uniqueAddrs), nil
 }
 
 func (s *Service) NATManager() basichost.NATManager {
