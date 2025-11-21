@@ -127,7 +127,7 @@ func TestPruneBeforeBlock(t *testing.T) {
 
 		// Suspending current goroutine expect that in this interval
 		// block listener was not called to block flagged address
-		time.Sleep(flagTime * 3)
+		synctest.Wait()
 	})
 }
 
