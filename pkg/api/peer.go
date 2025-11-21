@@ -24,30 +24,14 @@ func (s *Service) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 
 	mux.Vars(r)["multi-address"] = "/" + mux.Vars(r)["multi-address"]
 	paths := struct {
-		MultiAddress string `map:"multi-address" validate:"required"`
+		MultiAddress multiaddr.Multiaddr `map:"multi-address" validate:"required"`
 	}{}
 	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
 		response("invalid path params", logger, w)
 		return
 	}
 
-	mAddr, err := multiaddr.NewMultiaddr(paths.MultiAddress)
-	if err != nil {
-		logger.Debug("invalid multiaddress", "address", paths.MultiAddress, "error", err)
-		jsonhttp.BadRequest(w, jsonhttp.StatusResponse{
-			Code:    http.StatusBadRequest,
-			Message: "invalid path params",
-			Reasons: []jsonhttp.Reason{
-				{
-					Field: "multi-address",
-					Error: err.Error(),
-				},
-			},
-		})
-		return
-	}
-
-	bzzAddr, err := s.p2p.Connect(r.Context(), []multiaddr.Multiaddr{mAddr})
+	bzzAddr, err := s.p2p.Connect(r.Context(), []multiaddr.Multiaddr{paths.MultiAddress})
 
 	if err != nil {
 		logger.Debug("p2p connect failed", "addresses", paths.MultiAddress, "error", err)
