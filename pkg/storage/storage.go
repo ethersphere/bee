@@ -307,10 +307,7 @@ func IdentityAddress(chunk swarm.Chunk) (swarm.Address, error) {
 
 	// check the chunk is single owner chunk or cac
 	if sch, err := soc.FromChunk(chunk); err == nil {
-		socAddress, err := sch.Address()
-		if err != nil {
-			return swarm.ZeroAddress, err
-		}
+		socAddress := chunk.Address() // cannot use sch.Address() because of SOC replicas
 		h := swarm.NewHasher()
 		_, err = h.Write(socAddress.Bytes())
 		if err != nil {

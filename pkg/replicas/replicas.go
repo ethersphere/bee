@@ -30,7 +30,7 @@ type replicator struct {
 	addr   []byte       // chunk address
 	queue  [16]*replica // to sort addresses according to di
 	exist  [30]bool     //  maps the 16 distinct nibbles on all levels
-	sizes  [5]int       // number of distinct neighnourhoods redcorded for each depth
+	sizes  [5]int       // number of distinct neighbourhoods recorded for each depth
 	c      chan *replica
 	rLevel redundancy.Level
 }
@@ -40,10 +40,12 @@ func newReplicator(addr swarm.Address, rLevel redundancy.Level) *replicator {
 	rr := &replicator{
 		addr:   addr.Bytes(),
 		sizes:  redundancy.GetReplicaCounts(),
-		c:      make(chan *replica, 16),
+		c:      make(chan *replica, rLevel.GetReplicaCount()),
 		rLevel: rLevel,
 	}
+
 	go rr.replicas()
+
 	return rr
 }
 

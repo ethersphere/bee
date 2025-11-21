@@ -36,7 +36,6 @@ var ErrSwarmageddon = errors.New("swarmageddon has begun")
 //     (by default, it is assumed to be 4, ie. total of 16)
 //   - (not implemented) pivot: replicas with address in the proximity of pivot will be tried first
 type getter struct {
-	wg sync.WaitGroup
 	storage.Getter
 	level redundancy.Level
 }
@@ -51,16 +50,19 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, e
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
 	// channel that the results (retrieved chunks) are gathered to from concurrent
 	// workers each fetching a replica
 	resultC := make(chan swarm.Chunk)
 	// errc collects the errors
-	errc := make(chan error, 17)
+	errc := make(chan error, g.level.GetReplicaCount()+1)
 	var errs error
 	errcnt := 0
 
 	// concurrently call to retrieve chunk using original CAC address
-	g.wg.Go(func() {
+	wg.Go(func() {
 		ch, err := g.Getter.Get(ctx, addr)
 		if err != nil {
 			errc <- err
@@ -83,8 +85,6 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, e
 	var wait <-chan time.Time // nil channel to disable case
 	// addresses used are doubling each period of search expansion
 	// (at intervals of RetryInterval)
-	ticker := time.NewTicker(RetryInterval)
-	defer ticker.Stop()
 	for level := uint8(0); level <= uint8(g.level); {
 		select {
 		// at least one chunk is retrieved, cancel the rest and return early
@@ -101,7 +101,6 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, e
 
 			// ticker switches on the address channel
 		case <-wait:
-			wait = nil
 			next = rr.c
 			level++
 			target = 1 << level
@@ -115,7 +114,7 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, e
 				continue
 			}
 
-			g.wg.Go(func() {
+			wg.Go(func() {
 				ch, err := g.Getter.Get(ctx, swarm.NewAddress(so.addr))
 				if err != nil {
 					errc <- err
@@ -138,7 +137,7 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, e
 				continue
 			}
 			next = nil
-			wait = ticker.C
+			wait = time.After(RetryInterval)
 		}
 	}
 
