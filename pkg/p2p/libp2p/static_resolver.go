@@ -5,12 +5,10 @@
 package libp2p
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"strings"
 
-	libp2ppeer "github.com/libp2p/go-libp2p/core/peer"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -40,16 +38,7 @@ func newStaticAddressResolver(addr string, lookupIP func(host string) ([]net.IP,
 }
 
 func (r *staticAddressResolver) Resolve(observedAddress ma.Multiaddr) (ma.Multiaddr, error) {
-	observableAddrInfo, err := libp2ppeer.AddrInfoFromP2pAddr(observedAddress)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(observableAddrInfo.Addrs) < 1 {
-		return nil, errors.New("invalid observed address")
-	}
-
-	observedAddrSplit := strings.Split(observableAddrInfo.Addrs[0].String(), "/")
+	observedAddrSplit := strings.Split(observedAddress.String(), "/")
 
 	// if address is not in a form of '/ipversion/ip/protocol/port/...` don't compare to addresses and return it
 	if len(observedAddrSplit) < 5 {
@@ -69,12 +58,55 @@ func (r *staticAddressResolver) Resolve(observedAddress ma.Multiaddr) (ma.Multia
 	} else {
 		port = observedAddrSplit[4]
 	}
-	a, err := ma.NewMultiaddr(multiProto + "/" + observedAddrSplit[3] + "/" + port + "/" + strings.Join(observedAddrSplit[5:], "/"))
+
+	const ipv4 = "ip4"
+	const ipv6 = "ip6"
+
+	// replace sni protocol ip subdomain in domain name
+	otherComponents := observedAddrSplit[5:]
+	ipSplit := strings.Split(multiProto, "/")
+	expectedIPSniHost := newIPSniHost(observedAddrSplit[2], observedAddrSplit[1] == ipv4)
+	if len(ipSplit) == 3 && (ipSplit[1] == ipv4 || ipSplit[1] == ipv6) {
+		for i, part := range otherComponents {
+			if part == "sni" && i+1 < len(otherComponents) {
+				ip := ipSplit[2]
+				isIPv4 := ipSplit[1] == ipv4
+
+				sniParts := strings.Split(otherComponents[i+1], ".")
+				if len(sniParts) > 0 {
+					if sniParts[0] != expectedIPSniHost {
+						continue
+					}
+					sniParts[0] = newIPSniHost(ip, isIPv4)
+					otherComponents[i+1] = strings.Join(sniParts, ".")
+				}
+				break // assume only one sni component
+			}
+		}
+	}
+
+	a, err := ma.NewMultiaddr(multiProto + "/" + observedAddrSplit[3] + "/" + port + "/" + strings.Join(otherComponents, "/"))
 	if err != nil {
 		return nil, err
 	}
 
-	return buildUnderlayAddress(a, observableAddrInfo.ID)
+	return a, nil
+}
+
+func newIPSniHost(ip string, isIPv4 bool) string {
+	if isIPv4 {
+		return strings.ReplaceAll(ip, ".", "-")
+	}
+
+	// IPv6
+	newSniHost := strings.ReplaceAll(ip, ":", "-")
+	if newSniHost[0] == '-' {
+		newSniHost = "0" + newSniHost
+	}
+	if newSniHost[len(newSniHost)-1] == '-' {
+		newSniHost = newSniHost + "0"
+	}
+	return newSniHost
 }
 
 func getMultiProto(host string, lookupIP func(host string) ([]net.IP, error)) (string, error) {

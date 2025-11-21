@@ -43,6 +43,12 @@ func WithHostFactory(factory func(...libp2pm.Option) (host.Host, error)) Options
 	}
 }
 
-var NewCompositeAddressResolver = newCompositeAddressResolver
+func WithAutoTLSCertManager(m autoTLSCertManager) Options {
+	return Options{
+		autoTLSCertManager: m,
+	}
+}
 
-var RewriteForgeWebSocketDomain = rewriteForgeWebSocketDomain
+type AutoTLSCertManager = autoTLSCertManager
+
+var NewCompositeAddressResolver = newCompositeAddressResolver
