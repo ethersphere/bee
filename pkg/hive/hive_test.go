@@ -147,7 +147,7 @@ func TestBroadcastPeers(t *testing.T) {
 			underlays = []ma.Multiaddr{u, u2}
 		} else {
 			n := (i % 3) + 1
-			for j := range n {
+			for j := 0; j < n; j++ {
 				port := i + j*10000
 				u, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/" + strconv.Itoa(port))
 				if err != nil {
