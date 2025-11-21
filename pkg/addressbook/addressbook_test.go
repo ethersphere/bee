@@ -47,7 +47,7 @@ func run(t *testing.T, f bookFunc) {
 		t.Fatal(err)
 	}
 
-	bzzAddr, err := bzz.NewAddress(crypto.NewDefaultSigner(pk), multiaddr, addr1, 1, trxHash)
+	bzzAddr, err := bzz.NewAddress(crypto.NewDefaultSigner(pk), []ma.Multiaddr{multiaddr}, addr1, 1, trxHash)
 	if err != nil {
 		t.Fatal(err)
 	}
