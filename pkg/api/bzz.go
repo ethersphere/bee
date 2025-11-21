@@ -388,6 +388,7 @@ type getWrappedResult struct {
 // resolveFeed races the resolution of both types of feeds. it returns the first correct feed found or an error.
 func (s *Service) resolveFeed(ctx context.Context, getter storage.Getter, ch swarm.Chunk) (swarm.Chunk, error) {
 	innerCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	getWrapped := func(v1 bool) chan getWrappedResult {
 		ret := make(chan getWrappedResult)
 		go func() {
