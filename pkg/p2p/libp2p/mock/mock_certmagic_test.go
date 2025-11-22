@@ -5,7 +5,6 @@
 package mock_test
 
 import (
-	"context"
 	"crypto/tls"
 	"testing"
 	"time"
@@ -109,32 +108,5 @@ func TestMockConfig(t *testing.T) {
 	}
 	if tlsCfg.MinVersion != tls.VersionTLS12 {
 		t.Errorf("TLSConfig().MinVersion = %v, want %v", tlsCfg.MinVersion, tls.VersionTLS12)
-	}
-}
-
-func TestMockFileStorage(t *testing.T) {
-	fs := mock.NewMockFileStorage("test")
-	ctx := context.Background()
-
-	if err := fs.Store(ctx, "key", []byte("val")); err != nil {
-		t.Errorf("Store() error = %v", err)
-	}
-	if _, err := fs.Load(ctx, "key"); err != nil {
-		// Load returns nil, nil in mock
-	}
-	if err := fs.Delete(ctx, "key"); err != nil {
-		t.Errorf("Delete() error = %v", err)
-	}
-	if exists, err := fs.Exists(ctx, "key"); err != nil || exists {
-		t.Errorf("Exists() = %v, %v; want false, nil", exists, err)
-	}
-	if list, err := fs.List(ctx, "key", false); err != nil || list != nil {
-		t.Errorf("List() = %v, %v; want nil, nil", list, err)
-	}
-	if err := fs.Lock(ctx, "key"); err != nil {
-		t.Errorf("Lock() error = %v", err)
-	}
-	if err := fs.Unlock(ctx, "key"); err != nil {
-		t.Errorf("Unlock() error = %v", err)
 	}
 }

@@ -799,6 +799,8 @@ func TestConnectWithAutoTLS(t *testing.T) {
 			AutoTLSEnabled: true,
 			FullNode:       true,
 			WSSAddr:        ":0",
+			NATAddr:        "127.0.0.1:1635",
+			NATWSSAddr:     "127.0.0.1:1635",
 		},
 		autoTLSCertManager: mockCertMgr,
 	})
@@ -825,6 +827,8 @@ func TestConnectWithAutoTLSAndWSTransports(t *testing.T) {
 			AutoTLSEnabled: true,
 			FullNode:       true,
 			WSSAddr:        ":0",
+			NATAddr:        "127.0.0.1:1635",
+			NATWSSAddr:     "127.0.0.1:1635",
 		},
 		autoTLSCertManager: libp2pmock.NewMockP2PForgeCertMgr(nil),
 	})
@@ -835,6 +839,8 @@ func TestConnectWithAutoTLSAndWSTransports(t *testing.T) {
 			AutoTLSEnabled: true,
 			FullNode:       true,
 			WSSAddr:        ":0",
+			NATAddr:        "127.0.0.1:1636",
+			NATWSSAddr:     "127.0.0.1:1636",
 		},
 		autoTLSCertManager: libp2pmock.NewMockP2PForgeCertMgr(nil),
 	})

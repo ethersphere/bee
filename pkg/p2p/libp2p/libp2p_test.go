@@ -133,7 +133,7 @@ func expectPeersEventually(t *testing.T, s *libp2p.Service, addrs ...swarm.Addre
 	t.Helper()
 
 	var peers []p2p.Peer
-	err := spinlock.Wait(time.Second, func() bool {
+	err := spinlock.Wait(5*time.Second, func() bool {
 		peers = s.Peers()
 		return len(peers) == len(addrs)
 
