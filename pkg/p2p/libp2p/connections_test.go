@@ -37,6 +37,8 @@ import (
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	ma "github.com/multiformats/go-multiaddr"
+
+	libp2pmock "github.com/ethersphere/bee/v2/pkg/p2p/libp2p/mock"
 )
 
 const (
@@ -781,6 +783,79 @@ func TestTopologyNotifier(t *testing.T) {
 	expectPeers(t, s1)
 	expectPeersEventually(t, s2)
 	waitAddrSet(t, &n2disconnectedPeer.Address, &mtx, overlay1)
+}
+
+func TestConnectWithAutoTLS(t *testing.T) {
+	t.Parallel()
+
+	certLoaded := make(chan struct{})
+	mockCertMgr := libp2pmock.NewMockP2PForgeCertMgr(func() {
+		close(certLoaded)
+	})
+
+	s1, _ := newService(t, 1, libp2pServiceOpts{
+		libp2pOpts: libp2p.Options{
+			EnableWS:       true,
+			AutoTLSEnabled: true,
+			FullNode:       true,
+			WSSAddr:        ":0",
+		},
+		autoTLSCertManager: mockCertMgr,
+	})
+
+	select {
+	case <-certLoaded:
+	case <-time.After(time.Second):
+		t.Fatal("onCertLoaded callback was not triggered")
+	}
+
+	if s1 == nil {
+		t.Fatal("service should not be nil")
+	}
+}
+
+func TestConnectWithAutoTLSAndWSTransports(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{
+		libp2pOpts: libp2p.Options{
+			EnableWS:       true,
+			AutoTLSEnabled: true,
+			FullNode:       true,
+			WSSAddr:        ":0",
+		},
+		autoTLSCertManager: libp2pmock.NewMockP2PForgeCertMgr(nil),
+	})
+
+	s2, overlay2 := newService(t, 1, libp2pServiceOpts{
+		libp2pOpts: libp2p.Options{
+			EnableWS:       true,
+			AutoTLSEnabled: true,
+			FullNode:       true,
+			WSSAddr:        ":0",
+		},
+		autoTLSCertManager: libp2pmock.NewMockP2PForgeCertMgr(nil),
+	})
+
+	defer func() {
+		if err := s1.Close(); err != nil {
+			t.Errorf("s1.Close: %v", err)
+		}
+		if err := s2.Close(); err != nil {
+			t.Errorf("s2.Close: %v", err)
+		}
+	}()
+
+	addr := serviceUnderlayAddress(t, s1)
+
+	if _, err := s2.Connect(ctx, addr); err != nil {
+		t.Fatal(err)
+	}
+
+	expectPeers(t, s2, overlay1)
+	expectPeersEventually(t, s1, overlay2)
 }
 
 // TestTopologyAnnounce checks that announcement

@@ -49,6 +49,10 @@ func WithAutoTLSCertManager(m autoTLSCertManager) Options {
 	}
 }
 
+func SetAutoTLSCertManager(o *Options, m autoTLSCertManager) {
+	o.autoTLSCertManager = m
+}
+
 type AutoTLSCertManager = autoTLSCertManager
 
 var NewCompositeAddressResolver = newCompositeAddressResolver

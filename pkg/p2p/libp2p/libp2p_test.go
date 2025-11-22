@@ -83,7 +83,7 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 	opts.Nonce = nonce
 
 	if o.autoTLSCertManager != nil {
-		opts = libp2p.WithAutoTLSCertManager(o.autoTLSCertManager)
+		libp2p.SetAutoTLSCertManager(&opts, o.autoTLSCertManager)
 	}
 
 	s, err = libp2p.New(ctx, crypto.NewDefaultSigner(swarmKey), networkID, overlay, addr, o.Addressbook, statestore, o.lightNodes, o.Logger, nil, opts)
