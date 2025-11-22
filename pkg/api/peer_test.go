@@ -62,7 +62,6 @@ func TestConnect(t *testing.T) {
 	})
 
 	t.Run("ok", func(t *testing.T) {
-		t.Parallel()
 		jsonhttptest.Request(t, testServer, http.MethodPost, "/connect"+underlay, http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(api.PeerConnectResponse{
 				Address: overlay.String(),
@@ -71,7 +70,6 @@ func TestConnect(t *testing.T) {
 	})
 
 	t.Run("error", func(t *testing.T) {
-		t.Parallel()
 		jsonhttptest.Request(t, testServer, http.MethodPost, "/connect"+errorUnderlay, http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusInternalServerError,
@@ -81,7 +79,6 @@ func TestConnect(t *testing.T) {
 	})
 
 	t.Run("error - add peer", func(t *testing.T) {
-		t.Parallel()
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
 			P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addrs []ma.Multiaddr) (*bzz.Address, error) {
 				for _, addr := range addrs {

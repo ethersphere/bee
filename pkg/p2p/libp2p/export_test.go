@@ -42,3 +42,17 @@ func WithHostFactory(factory func(...libp2pm.Option) (host.Host, error)) Options
 		hostFactory: factory,
 	}
 }
+
+func WithAutoTLSCertManager(m autoTLSCertManager) Options {
+	return Options{
+		autoTLSCertManager: m,
+	}
+}
+
+func SetAutoTLSCertManager(o *Options, m autoTLSCertManager) {
+	o.autoTLSCertManager = m
+}
+
+type AutoTLSCertManager = autoTLSCertManager
+
+var NewCompositeAddressResolver = newCompositeAddressResolver
