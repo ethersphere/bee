@@ -12,7 +12,6 @@ import (
 	"math/rand"
 	"testing"
 	"testing/synctest"
-	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -576,7 +575,7 @@ func TestEvict(t *testing.T) {
 			t.Fatalf("got %d, want %d", totalEvicted, chunksPerBatch)
 		}
 
-		time.Sleep(time.Second)
+		synctest.Wait()
 
 		for i, ch := range chunks {
 			binID := i%chunksPerBatch + 1
