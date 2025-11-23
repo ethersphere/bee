@@ -143,6 +143,8 @@ type Options struct {
 	DBOpenFilesLimit              uint64
 	DBWriteBufferSize             uint64
 	EnableStorageIncentives       bool
+	WebRTCAddr                    string
+	EnableWebRTC                  bool
 	EnableWS                      bool
 	FullNodeMode                  bool
 	Logger                        log.Logger
@@ -198,7 +200,7 @@ const (
 
 func NewBee(
 	ctx context.Context,
-	addr string,
+	addr, webRTCAddr string,
 	publicKey *ecdsa.PublicKey,
 	signer crypto.Signer,
 	networkID uint64,
@@ -624,6 +626,7 @@ func NewBee(
 		initBatchState, err = bootstrapNode(
 			ctx,
 			addr,
+			webRTCAddr,
 			swarmAddress,
 			nonce,
 			addressbook,
@@ -649,9 +652,11 @@ func NewBee(
 		registry = apiService.MetricsRegistry()
 	}
 
-	p2ps, err := libp2p.New(ctx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
+	p2ps, err := libp2p.New(ctx, signer, networkID, swarmAddress, addr, webRTCAddr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
 		PrivateKey:      libp2pPrivateKey,
 		NATAddr:         o.NATAddr,
+		WebRTCAddr:      o.WebRTCAddr,
+		EnableWebRTC:    o.EnableWebRTC,
 		EnableWS:        o.EnableWS,
 		WelcomeMessage:  o.WelcomeMessage,
 		FullNode:        o.FullNodeMode,

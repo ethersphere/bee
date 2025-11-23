@@ -62,7 +62,7 @@ const (
 
 func bootstrapNode(
 	ctx context.Context,
-	addr string,
+	addr, webRTCAddr string,
 	swarmAddress swarm.Address,
 	nonce []byte,
 	addressbook addressbook.Interface,
@@ -96,10 +96,12 @@ func bootstrapNode(
 		retErr = multierror.Append(new(multierror.Error), retErr, b.Shutdown()).ErrorOrNil()
 	}()
 
-	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
+	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, webRTCAddr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
 		PrivateKey:     libp2pPrivateKey,
 		NATAddr:        o.NATAddr,
 		EnableWS:       o.EnableWS,
+		WebRTCAddr:     o.WebRTCAddr,
+		EnableWebRTC:   o.EnableWebRTC,
 		WelcomeMessage: o.WelcomeMessage,
 		FullNode:       false,
 		Nonce:          nonce,

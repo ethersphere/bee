@@ -277,7 +277,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		neighborhoodSuggester = c.config.GetString(optionNameNeighborhoodSuggester)
 	}
 
-	b, err := node.NewBee(ctx, c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, signerConfig.session, &node.Options{
+	b, err := node.NewBee(ctx, c.config.GetString(optionNameP2PAddr), c.config.GetString(optionNameWebRTCAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, signerConfig.session, &node.Options{
 		Addr:                          c.config.GetString(optionNameP2PAddr),
 		AllowPrivateCIDRs:             c.config.GetBool(optionNameAllowPrivateCIDRs),
 		APIAddr:                       c.config.GetString(optionNameAPIAddr),
@@ -285,6 +285,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		BlockProfile:                  c.config.GetBool(optionNamePProfBlock),
 		BlockTime:                     networkConfig.blockTime,
 		BootnodeMode:                  bootNode,
+		WebRTCAddr:                    c.config.GetString(optionNameWebRTCAddr),
 		Bootnodes:                     networkConfig.bootNodes,
 		CacheCapacity:                 c.config.GetUint64(optionNameCacheCapacity),
 		ChainID:                       networkConfig.chainID,
@@ -296,6 +297,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		DBOpenFilesLimit:              c.config.GetUint64(optionNameDBOpenFilesLimit),
 		DBWriteBufferSize:             c.config.GetUint64(optionNameDBWriteBufferSize),
 		EnableStorageIncentives:       c.config.GetBool(optionNameStorageIncentivesEnable),
+		EnableWebRTC:                  c.config.GetBool(optionNameP2PWebRTCEnable),
 		EnableWS:                      c.config.GetBool(optionNameP2PWSEnable),
 		FullNodeMode:                  fullNode,
 		Logger:                        logger,

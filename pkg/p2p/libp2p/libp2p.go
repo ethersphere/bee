@@ -51,6 +51,7 @@ import (
 	lp2pswarm "github.com/libp2p/go-libp2p/p2p/net/swarm"
 	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
+	webrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
 	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
@@ -106,6 +107,7 @@ type Service struct {
 	halt              chan struct{}
 	lightNodes        lightnodes
 	lightNodeLimit    int
+	webRTCListenAddrs []string
 	protocolsmu       sync.RWMutex
 	reacher           p2p.Reacher
 	networkStatus     atomic.Int32
@@ -124,21 +126,28 @@ type lightnodes interface {
 type Options struct {
 	PrivateKey       *ecdsa.PrivateKey
 	NATAddr          string
+	EnableWebRTC     bool
 	EnableWS         bool
 	FullNode         bool
 	LightNodeLimit   int
 	WelcomeMessage   string
 	Nonce            []byte
+	WebRTCAddr       string
 	ValidateOverlay  bool
 	hostFactory      func(...libp2p.Option) (host.Host, error)
 	HeadersRWTimeout time.Duration
 	Registry         *prometheus.Registry
 }
 
-func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
+func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr, webRTCAddr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, fmt.Errorf("address: %w", err)
+	}
+
+	_, webRTCport, err := net.SplitHostPort(webRTCAddr)
+	if err != nil {
+		return nil, fmt.Errorf("WebRTC address: %w", err)
 	}
 
 	ip4Addr := "0.0.0.0"
@@ -156,10 +165,17 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	var listenAddrs []string
+	var rtcListenAddrs []string
+
 	if ip4Addr != "" {
 		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s", ip4Addr, port))
 		if o.EnableWS {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/ws", ip4Addr, port))
+		}
+		if o.EnableWebRTC {
+			rtcAddr := fmt.Sprintf("/ip4/%s/udp/%s/webrtc-direct", ip4Addr, webRTCport)
+			rtcListenAddrs = append(rtcListenAddrs, rtcAddr)
+			listenAddrs = append(listenAddrs, rtcAddr)
 		}
 	}
 
@@ -167,6 +183,9 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s", ip6Addr, port))
 		if o.EnableWS {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/ws", ip6Addr, port))
+		}
+		if o.EnableWebRTC {
+			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/udp/%s/webrtc-direct", ip6Addr, webRTCport))
 		}
 	}
 
@@ -249,6 +268,10 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	if o.EnableWS {
 		transports = append(transports, libp2p.Transport(ws.New))
+	}
+
+	if o.EnableWebRTC {
+		transports = append(transports, libp2p.Transport(webrtc.New))
 	}
 
 	opts = append(opts, transports...)
