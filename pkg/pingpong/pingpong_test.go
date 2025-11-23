@@ -43,8 +43,8 @@ func TestPing(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// check that RTT is a sane value (rtt can be 0 in synctest virtual time)
-		if rtt < 0 {
+		// check that RTT is a sane value
+		if rtt <= 0 {
 			t.Errorf("invalid RTT value %v", rtt)
 		}
 
