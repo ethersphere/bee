@@ -121,17 +121,17 @@ endif
 .PHONY: test-ci
 test-ci:
 ifdef cover
-	$(GO) test -run "[^FLAKY]$$" -coverprofile=cover.out ./pkg/storageincentives
+	$(GO) test -run "[^FLAKY]$$" -coverprofile=cover.out ./...
 else
-	$(GO) test -run "[^FLAKY]$$" ./pkg/storageincentives
+	$(GO) test -run "[^FLAKY]$$" ./...
 endif
 
 .PHONY: test-ci-race
 test-ci-race:
 ifdef cover
-	$(GO) test -race -run "[^FLAKY]$$" -coverprofile=cover.out ./pkg/storageincentives
+	$(GO) test -race -run "[^FLAKY]$$" -coverprofile=cover.out ./...
 else
-	$(GO) test -race -run "[^FLAKY]$$" ./pkg/storageincentives
+	$(GO) test -race -run "[^FLAKY]$$" ./...
 endif
 
 .PHONY: test-ci-flaky
