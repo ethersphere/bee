@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"testing"
 	"testing/synctest"
+	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 
@@ -27,9 +28,12 @@ func TestPing(t *testing.T) {
 		// create a pingpong server that handles the incoming stream
 		server := pingpong.New(nil, logger, nil)
 
+		messageLatency := 200 * time.Millisecond
+
 		// setup the stream recorder to record stream data
 		recorder := streamtest.New(
 			streamtest.WithProtocols(server.Protocol()),
+			streamtest.WithMessageLatency(messageLatency),
 		)
 
 		// create a pingpong client that will do pinging
@@ -43,8 +47,8 @@ func TestPing(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// check that RTT is a sane value
-		if rtt <= 0 {
+		// check that RTT is the sum of all message latencies
+		if rtt != 6*messageLatency {
 			t.Errorf("invalid RTT value %v", rtt)
 		}
 
