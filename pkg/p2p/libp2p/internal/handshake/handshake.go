@@ -153,7 +153,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 
 	w, r := protobuf.NewWriterAndReader(stream)
 
-	peerMultiaddrs = filterBee260CompatibleUnderlays(false, peerMultiaddrs)
+	peerMultiaddrs = filterBee260CompatibleUnderlays(o.bee260compatibility, peerMultiaddrs)
 
 	if err := w.WriteMsgWithContext(ctx, &pb.Syn{
 		ObservedUnderlay: bzz.SerializeUnderlays(peerMultiaddrs),
@@ -208,7 +208,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return a.Equal(b)
 	})
 
-	advertisableUnderlays = filterBee260CompatibleUnderlays(false, advertisableUnderlays)
+	advertisableUnderlays = filterBee260CompatibleUnderlays(o.bee260compatibility, advertisableUnderlays)
 
 	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce)
 	if err != nil {
@@ -306,7 +306,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 		return a.Equal(b)
 	})
 
-	advertisableUnderlays = filterBee260CompatibleUnderlays(false, advertisableUnderlays)
+	advertisableUnderlays = filterBee260CompatibleUnderlays(o.bee260compatibility, advertisableUnderlays)
 
 	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce)
 	if err != nil {
@@ -315,7 +315,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 
 	welcomeMessage := s.GetWelcomeMessage()
 
-	peerMultiaddrs = filterBee260CompatibleUnderlays(false, peerMultiaddrs)
+	peerMultiaddrs = filterBee260CompatibleUnderlays(o.bee260compatibility, peerMultiaddrs)
 
 	if err := w.WriteMsgWithContext(ctx, &pb.SynAck{
 		Syn: &pb.Syn{
