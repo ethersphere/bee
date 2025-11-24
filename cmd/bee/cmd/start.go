@@ -277,12 +277,18 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		neighborhoodSuggester = c.config.GetString(optionNameNeighborhoodSuggester)
 	}
 
+	autoTLSStorageDir := c.config.GetString(optionAutoTLSStorageDir)
+	if autoTLSStorageDir == "" {
+		autoTLSStorageDir = filepath.Join(c.config.GetString(optionNameDataDir), "p2p-tls-certs")
+	}
+
 	b, err := node.NewBee(ctx, c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, signerConfig.session, &node.Options{
 		Addr:                          c.config.GetString(optionNameP2PAddr),
 		AllowPrivateCIDRs:             c.config.GetBool(optionNameAllowPrivateCIDRs),
 		APIAddr:                       c.config.GetString(optionNameAPIAddr),
+		AutoTLSEnabled:                c.config.GetBool(optionAutoTLSEnabled),
 		WSSAddr:                       c.config.GetString(optionP2PWSSAddr),
-		AutoTLSStorageDir:             filepath.Join(c.config.GetString(optionNameDataDir), "autotls"),
+		AutoTLSStorageDir:             autoTLSStorageDir,
 		BlockchainRpcEndpoint:         c.config.GetString(optionNameBlockchainRpcEndpoint),
 		BlockProfile:                  c.config.GetBool(optionNamePProfBlock),
 		BlockTime:                     networkConfig.blockTime,

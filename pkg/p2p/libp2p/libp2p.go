@@ -145,6 +145,7 @@ type Options struct {
 	NATAddr                     string
 	NATWSSAddr                  string
 	EnableWS                    bool
+	AutoTLSEnabled              bool
 	WSSAddr                     string
 	AutoTLSStorageDir           string
 	AutoTLSCAEndpoint           string
@@ -171,26 +172,21 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	var listenAddrs []string
 
-	wssEnabled := o.WSSAddr != ""
-	// autoTLS functionality is a dependency for WSS transport
-	// enable it internally
-	autoTLSEnabled := wssEnabled
-
 	if parsedAddr.IP4 != "" {
 		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s", parsedAddr.IP4, parsedAddr.Port))
-		if o.EnableWS && !wssEnabled { // wss and ws transports cannot be enabled at the same time, wss has advantage
+		if o.EnableWS {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/ws", parsedAddr.IP4, parsedAddr.Port))
 		}
 	}
 
 	if parsedAddr.IP6 != "" {
 		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s", parsedAddr.IP6, parsedAddr.Port))
-		if o.EnableWS && !wssEnabled { // wss and ws transports cannot be enabled at the same time, wss has advantage
+		if o.EnableWS {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/ws", parsedAddr.IP6, parsedAddr.Port))
 		}
 	}
 
-	if wssEnabled {
+	if o.AutoTLSEnabled && o.EnableWS {
 		parsedWssAddr, err := parseAddress(o.WSSAddr)
 		if err != nil {
 			return nil, err
@@ -253,7 +249,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	var certManager autoTLSCertManager
 	var zapLogger *zap.Logger
 
-	if autoTLSEnabled {
+	if o.AutoTLSEnabled && o.EnableWS {
 		if o.autoTLSCertManager != nil {
 			certManager = o.autoTLSCertManager
 		} else {
@@ -381,7 +377,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	var wssResolver handshake.AdvertisableAddressResolver
-	if wssEnabled {
+	if o.AutoTLSEnabled && o.EnableWS && o.NATWSSAddr != "" {
 		r, err := newStaticAddressResolver(o.NATWSSAddr, net.LookupIP)
 		if err != nil {
 			return nil, fmt.Errorf("static wss nat: %w", err)
@@ -389,35 +385,37 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		wssResolver = r
 	}
 
-	if wssEnabled {
-		wsOpt := ws.WithTLSConfig(certManager.TLSConfig())
-		transports = append(transports, libp2p.Transport(ws.New, wsOpt))
-		// AddrsFactory takes the multiaddrs we're listening on and sets the multiaddrs to advertise to the network.
-		// We use the AutoTLS address factory so that the `*` in the AutoTLS address string is replaced with the
-		// actual IP address of the host once detected
-		certManagerAddressFactory := certManager.AddressFactory()
-		opts = append(opts, libp2p.AddrsFactory(func(addrs []ma.Multiaddr) []ma.Multiaddr {
-			addrs = includeNatResolvedAddresses(addrs, newCompositeAddressResolver(tcpResolver, wssResolver), logger)
+	if o.EnableWS {
+		if o.AutoTLSEnabled {
+			wsOpt := ws.WithTLSConfig(certManager.TLSConfig())
+			transports = append(transports, libp2p.Transport(ws.New, wsOpt))
+			// AddrsFactory takes the multiaddrs we're listening on and sets the multiaddrs to advertise to the network.
+			// We use the AutoTLS address factory so that the `*` in the AutoTLS address string is replaced with the
+			// actual IP address of the host once detected
+			certManagerAddressFactory := certManager.AddressFactory()
+			opts = append(opts, libp2p.AddrsFactory(func(addrs []ma.Multiaddr) []ma.Multiaddr {
+				addrs = includeNatResolvedAddresses(addrs, newCompositeAddressResolver(tcpResolver, wssResolver), logger)
 
-			addrs = certManagerAddressFactory(addrs)
+				addrs = certManagerAddressFactory(addrs)
 
-			slices.SortStableFunc(addrs, func(a, b ma.Multiaddr) int {
-				aPub := manet.IsPublicAddr(a)
-				bPub := manet.IsPublicAddr(b)
-				switch {
-				case aPub == bPub:
+				slices.SortStableFunc(addrs, func(a, b ma.Multiaddr) int {
+					aPub := manet.IsPublicAddr(a)
+					bPub := manet.IsPublicAddr(b)
+					switch {
+					case aPub == bPub:
+						return 0
+					case aPub:
+						return -1
+					case bPub:
+						return 1
+					}
 					return 0
-				case aPub:
-					return -1
-				case bPub:
-					return 1
-				}
-				return 0
-			})
-			return addrs
-		}))
-	} else if o.EnableWS {
-		transports = append(transports, libp2p.Transport(ws.New))
+				})
+				return addrs
+			}))
+		} else {
+			transports = append(transports, libp2p.Transport(ws.New))
+		}
 	}
 
 	opts = append(opts, transports...)
@@ -432,7 +430,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 
-	if autoTLSEnabled {
+	if o.AutoTLSEnabled && o.EnableWS {
 		switch cm := certManager.(type) {
 		case *p2pforge.P2PForgeCertMgr:
 			cm.ProvideHost(h)

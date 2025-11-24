@@ -795,10 +795,12 @@ func TestConnectWithAutoTLS(t *testing.T) {
 
 	s1, _ := newService(t, 1, libp2pServiceOpts{
 		libp2pOpts: libp2p.Options{
-			FullNode:   true,
-			WSSAddr:    ":0",
-			NATAddr:    "127.0.0.1:1635",
-			NATWSSAddr: "127.0.0.1:1635",
+			EnableWS:       true,
+			AutoTLSEnabled: true,
+			FullNode:       true,
+			WSSAddr:        ":0",
+			NATAddr:        "127.0.0.1:1635",
+			NATWSSAddr:     "127.0.0.1:1635",
 		},
 		autoTLSCertManager: mockCertMgr,
 	})
@@ -814,27 +816,31 @@ func TestConnectWithAutoTLS(t *testing.T) {
 	}
 }
 
-func TestConnectWithAutoTLSAndWSSTransports(t *testing.T) {
+func TestConnectWithAutoTLSAndWSTransports(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{
 		libp2pOpts: libp2p.Options{
-			FullNode:   true,
-			WSSAddr:    ":0",
-			NATAddr:    "127.0.0.1:1635",
-			NATWSSAddr: "127.0.0.1:1635",
+			EnableWS:       true,
+			AutoTLSEnabled: true,
+			FullNode:       true,
+			WSSAddr:        ":0",
+			NATAddr:        "127.0.0.1:1635",
+			NATWSSAddr:     "127.0.0.1:1635",
 		},
 		autoTLSCertManager: libp2pmock.NewMockP2PForgeCertMgr(nil),
 	})
 
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{
 		libp2pOpts: libp2p.Options{
-			FullNode:   true,
-			WSSAddr:    ":0",
-			NATAddr:    "127.0.0.1:1636",
-			NATWSSAddr: "127.0.0.1:1636",
+			EnableWS:       true,
+			AutoTLSEnabled: true,
+			FullNode:       true,
+			WSSAddr:        ":0",
+			NATAddr:        "127.0.0.1:1636",
+			NATWSSAddr:     "127.0.0.1:1636",
 		},
 		autoTLSCertManager: libp2pmock.NewMockP2PForgeCertMgr(nil),
 	})
