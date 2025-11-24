@@ -120,8 +120,8 @@ password-file: "./password"
 # welcome-message: ""
 ## withdrawal target addresses
 # withdrawal-addresses-whitelist: []
-## enable autotls (default: false)
-# autotls-enabled: false
+## enable wss p2p connections (default: false)
+# p2p-wss-enable: false
 ## wss address (default: :1635)
 # p2p-wss-addr: :1635
 ## WSS NAT exposed address
