@@ -128,7 +128,7 @@ type Options struct {
 	Addr                          string
 	AllowPrivateCIDRs             bool
 	APIAddr                       string
-	AutoTLSEnabled                bool
+	EnableWSS                     bool
 	WSSAddr                       string
 	AutoTLSStorageDir             string
 	BlockchainRpcEndpoint         string
@@ -665,7 +665,7 @@ func NewBee(
 		NATAddr:                     o.NATAddr,
 		NATWSSAddr:                  o.NATWSSAddr,
 		EnableWS:                    o.EnableWS,
-		AutoTLSEnabled:              o.AutoTLSEnabled,
+		EnableWSS:                   o.EnableWSS,
 		WSSAddr:                     o.WSSAddr,
 		AutoTLSStorageDir:           o.AutoTLSStorageDir,
 		AutoTLSDomain:               o.AutoTLSDomain,
