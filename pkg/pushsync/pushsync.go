@@ -10,7 +10,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand/v2"
 	"strconv"
 	"time"
 
@@ -45,13 +44,10 @@ const (
 )
 
 const (
-	defaultTTL                 = 30 * time.Second // request time to live
-	preemptiveInterval         = 5 * time.Second  // P90 request time to live
-	skiplistDur                = 5 * time.Minute
-	overDraftRefresh           = time.Millisecond * 600 // overdraft refresh duration and initial backoff delay
-	maxOverDraftRefresh        = time.Second * 5        // maximum backoff delay
-	overDraftBackoffMultiplier = 1.2                    // backoff multiplier
-	overDraftJitterPercent     = 0.1                    // 10% jitter
+	defaultTTL         = 30 * time.Second // request time to live
+	preemptiveInterval = 5 * time.Second  // P90 request time to live
+	skiplistDur        = 5 * time.Minute
+	overDraftRefresh   = time.Millisecond * 600
 )
 
 const (
@@ -319,6 +315,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	default:
 		ps.metrics.Forwarder.Inc()
 		return fmt.Errorf("handler: push to closest chunk %s: %w", chunkAddress, err)
+
 	}
 }
 
@@ -358,12 +355,10 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	ps.metrics.TotalRequests.Inc()
 
 	var (
-		sentErrorsLeft        = 1
-		preemptiveTicker      <-chan time.Time
-		inflight              int
-		parallelForwards      = maxMultiplexForwards
-		overdraftBackoffDelay time.Duration
-		overdraftRetryCount   int
+		sentErrorsLeft   = 1
+		preemptiveTicker <-chan time.Time
+		inflight         int
+		parallelForwards = maxMultiplexForwards
 	)
 
 	if origin {
@@ -429,19 +424,10 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 					continue // there is still an inflight request, wait for it's result
 				}
 
-				overdraftBackoffDelay = calculateOverdraftBackoff(overdraftBackoffDelay)
-				overdraftRetryCount++
-
-				// log first 3 attempts and then every 5th
-				if overdraftRetryCount%5 == 1 || overdraftRetryCount <= 3 {
-					ps.logger.Debug("sleeping to refresh overdraft balance",
-						"chunk_address", ch.Address(),
-						"backoff_delay", overdraftBackoffDelay,
-						"retry_count", overdraftRetryCount)
-				}
+				ps.logger.Debug("sleeping to refresh overdraft balance", "chunk_address", ch.Address())
 
 				select {
-				case <-time.After(overdraftBackoffDelay):
+				case <-time.After(overDraftRefresh):
 					retry()
 					continue
 				case <-ctx.Done():
@@ -456,12 +442,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				// inflight request in progress, wait for it's result
 				ps.logger.Debug("next peer", "chunk_address", ch.Address(), "error", err)
 				continue
-			}
-
-			if overdraftRetryCount > 0 {
-				ps.logger.Debug("overdraft resolved, resetting backoff", "chunk_address", ch.Address(), "total_retries", overdraftRetryCount)
-				overdraftBackoffDelay = 0
-				overdraftRetryCount = 0
 			}
 
 			// since we can reach into the neighborhood of the chunk
@@ -696,22 +676,6 @@ func (ps *PushSync) validStampWrapper(f postage.ValidStampFn) postage.ValidStamp
 		}
 		return chunk, err
 	}
-}
-
-// calculateOverdraftBackoff calculates the next backoff delay using exponential backoff with jitter.
-// It takes the current backoff delay and returns the next delay, capped at maxOverDraftRefresh.
-func calculateOverdraftBackoff(currentDelay time.Duration) time.Duration {
-	if currentDelay == 0 {
-		currentDelay = overDraftRefresh
-	}
-
-	nextDelay := min(time.Duration(float64(currentDelay)*overDraftBackoffMultiplier), maxOverDraftRefresh)
-
-	jitterRange := float64(nextDelay) * overDraftJitterPercent
-	jitter := (rand.Float64() - 0.5) * 2 * jitterRange
-	finalDelay := max(time.Duration(float64(nextDelay)+jitter), overDraftRefresh)
-
-	return finalDelay
 }
 
 func (s *PushSync) Close() error {
