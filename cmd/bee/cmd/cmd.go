@@ -83,10 +83,8 @@ const (
 	optionReserveCapacityDoubling          = "reserve-capacity-doubling"
 	optionSkipPostageSnapshot              = "skip-postage-snapshot"
 	optionNameMinimumGasTipCap             = "minimum-gas-tip-cap"
-	optionAutoTLSEnabled                   = "autotls-enabled"
 	optionP2PWSSAddr                       = "p2p-wss-addr"
 	optionNATWSSAddr                       = "nat-wss-addr"
-	optionAutoTLSStorageDir                = "autotls-storage-dir"
 	optionAutoTLSDomain                    = "autotls-domain"
 	optionAutoTLSRegistrationEndpoint      = "autotls-registration-endpoint"
 	optionAutoTLSCAEndpoint                = "autotls-ca-endpoint"
@@ -300,10 +298,8 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Int(optionReserveCapacityDoubling, 0, "reserve capacity doubling")
 	cmd.Flags().Bool(optionSkipPostageSnapshot, false, "skip postage snapshot")
 	cmd.Flags().Uint64(optionNameMinimumGasTipCap, 0, "minimum gas tip cap in wei for transactions, 0 means use suggested gas tip cap")
-	cmd.Flags().Bool(optionAutoTLSEnabled, false, "Enable AutoTLS for secure WebSocket connections")
 	cmd.Flags().String(optionP2PWSSAddr, ":1635", "p2p wss address")
 	cmd.Flags().String(optionNATWSSAddr, "", "WSS NAT exposed address")
-	cmd.Flags().String(optionAutoTLSStorageDir, "", "Data directory for certificate storage (default in p2p-tls-certs directory in storage dir)")
 	cmd.Flags().String(optionAutoTLSDomain, p2pforge.DefaultForgeDomain, "autotls domain")
 	cmd.Flags().String(optionAutoTLSRegistrationEndpoint, p2pforge.DefaultForgeEndpoint, "autotls registration endpoint")
 	cmd.Flags().String(optionAutoTLSCAEndpoint, p2pforge.DefaultCAEndpoint, "autotls certificate authority endpoint")
