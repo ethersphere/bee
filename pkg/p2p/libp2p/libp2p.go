@@ -474,6 +474,15 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
+	// Use UPNP resovler as default for the handshake protocol address resolving.
+	upnpResolver := &UpnpAddressResolver{host: h}
+	if tcpResolver == nil {
+		tcpResolver = upnpResolver
+	}
+	if wssResolver == nil {
+		wssResolver = upnpResolver
+	}
+
 	handshakeService, err := handshake.New(signer, newCompositeAddressResolver(tcpResolver, wssResolver), overlay, networkID, o.FullNode, o.Nonce, newHostAddresser(h), o.WelcomeMessage, o.ValidateOverlay, h.ID(), logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
