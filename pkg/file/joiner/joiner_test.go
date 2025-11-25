@@ -1357,9 +1357,6 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 						continue
 					}
 					t.Run(fmt.Sprintf("encrypt=%v levels=%d chunks=%d full", encrypt, levels, chunkCnt), func(t *testing.T) {
-						if r2level[rLevel] != levels || encrypt != encryptChunk[rLevel] {
-							t.Skip("skipping to save time")
-						}
 						test(t, rLevel, encrypt, chunkCnt)
 					})
 				}
