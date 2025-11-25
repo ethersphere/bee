@@ -474,15 +474,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
-	// Use UPNP resovler as default for the handshake protocol address resolving.
-	upnpResolver := &UpnpAddressResolver{host: h}
-	if tcpResolver == nil {
-		tcpResolver = upnpResolver
-	}
-	if wssResolver == nil {
-		wssResolver = upnpResolver
-	}
-
 	handshakeService, err := handshake.New(signer, newCompositeAddressResolver(tcpResolver, wssResolver), overlay, networkID, o.FullNode, o.Nonce, newHostAddresser(h), o.WelcomeMessage, o.ValidateOverlay, h.ID(), logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
@@ -955,16 +946,6 @@ func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration, reaso
 
 func buildHostAddress(peerID libp2ppeer.ID) (ma.Multiaddr, error) {
 	return ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", peerID.String()))
-}
-
-func buildUnderlayAddress(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) {
-	// Build host multiaddress
-	hostAddr, err := buildHostAddress(peerID)
-	if err != nil {
-		return nil, err
-	}
-
-	return addr.Encapsulate(hostAddr), nil
 }
 
 func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *bzz.Address, err error) {
