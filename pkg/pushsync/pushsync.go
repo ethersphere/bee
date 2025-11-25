@@ -288,7 +288,20 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	if ps.topologyDriver.IsReachable() && swarm.Proximity(ps.address.Bytes(), chunkAddress.Bytes()) >= rad {
 		stored, reason = true, "is within AOR"
-		return store(ctx)
+		err = store(ctx)
+		if err != nil {
+			return err
+		}
+
+		_, err = ps.pushToClosest(ctx, chunk, false)
+		if err != nil {
+			if !errors.Is(err, topology.ErrNotFound) && !errors.Is(err, topology.ErrWantSelf) {
+				// Do not error out pushsync if we cannot forward to the closest peer after storing.
+				// The peer will get it via pullsync.
+				ps.logger.Error(nil, "failed to forward to closest peer", "chunk_address", chunk.Address(), "error", err)
+			}
+		}
+		return nil
 	}
 
 	switch receipt, err := ps.pushToClosest(ctx, chunk, false); {
@@ -446,7 +459,8 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			// since we can reach into the neighborhood of the chunk
 			// act as the multiplexer and push the chunk in parallel to multiple peers
-			if swarm.Proximity(peer.Bytes(), ch.Address().Bytes()) >= rad {
+			if swarm.Proximity(peer.Bytes(), ch.Address().Bytes()) >= rad &&
+				swarm.Proximity(ps.address.Bytes(), ch.Address().Bytes()) < rad {
 				for ; parallelForwards > 0; parallelForwards-- {
 					retry()
 					sentErrorsLeft++
@@ -550,6 +564,7 @@ func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptRes
 		return
 	}
 
+	ps.logger.Debug("chunk sent", "chunk_address", ch.Address().String(), "peer_address", peer)
 	ps.metrics.TotalSent.Inc()
 
 	err = action.Apply()
