@@ -337,15 +337,7 @@ func (s *Service) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		paths.Path = strings.TrimRight(paths.Path, "/") + "/" // NOTE: leave one slash if there was some.
 	}
 
-	queries := struct {
-		FeedLegacyResolve bool `map:"swarm-feed-legacy-resolve"`
-	}{}
-	if response := s.mapStructure(r.URL.Query(), &queries); response != nil {
-		response("invalid query params", logger, w)
-		return
-	}
-
-	s.serveReference(logger, address, paths.Path, w, r, false, queries.FeedLegacyResolve)
+	s.serveReference(logger, address, paths.Path, w, r, false)
 }
 
 func (s *Service) bzzHeadHandler(w http.ResponseWriter, r *http.Request) {
@@ -360,14 +352,6 @@ func (s *Service) bzzHeadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	queries := struct {
-		FeedLegacyResolve bool `map:"swarm-feed-legacy-resolve"`
-	}{}
-	if response := s.mapStructure(r.URL.Query(), &queries); response != nil {
-		response("invalid query params", logger, w)
-		return
-	}
-
 	address := paths.Address
 	if v := getAddressFromContext(r.Context()); !v.IsZero() {
 		address = v
@@ -377,7 +361,7 @@ func (s *Service) bzzHeadHandler(w http.ResponseWriter, r *http.Request) {
 		paths.Path = strings.TrimRight(paths.Path, "/") + "/" // NOTE: leave one slash if there was some.
 	}
 
-	s.serveReference(logger, address, paths.Path, w, r, true, queries.FeedLegacyResolve)
+	s.serveReference(logger, address, paths.Path, w, r, true)
 }
 
 type getWrappedResult struct {
@@ -471,7 +455,7 @@ func (s *Service) resolveFeed(ctx context.Context, getter storage.Getter, ch swa
 	}
 }
 
-func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathVar string, w http.ResponseWriter, r *http.Request, headerOnly bool, feedLegacyResolve bool) {
+func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathVar string, w http.ResponseWriter, r *http.Request, headerOnly bool) {
 	loggerV1 := logger.V(1).Build()
 
 	headers := struct {
