@@ -835,7 +835,6 @@ func TestFeedIndirection(t *testing.T) {
 
 	t.Run("legacy feed", func(t *testing.T) {
 		feedUpdate := toChunk(t, 121212, resp.Reference.Bytes())
-
 		var (
 			look    = newMockLookup(-1, 0, feedUpdate, nil, &id{}, nil)
 			factory = newMockFactory(look)

@@ -424,27 +424,50 @@ func (s *Service) resolveFeed(ctx context.Context, getter storage.Getter, ch swa
 		}()
 		return ret
 	}
+	isV1, err := feeds.IsV1Payload(ch)
+	if err != nil {
+		return nil, err
+	}
+	// if we have v1 length, it means there's ambiguity so we
+	// should fetch both feed versions. if the length isn't v1
+	// then we should only try to fetch v2.
+	var (
+		v1, v2 chan getWrappedResult
+		both   = false
+	)
+	if isV1 {
+		both = true
+		v1 = getWrapped(true)
+		v2 = getWrapped(false)
+	} else {
+		v2 = getWrapped(false)
+	}
 
-	v1 := getWrapped(true)
-	v2 := getWrapped(false)
-
+	processChanOutput := func(result getWrappedResult, other chan getWrappedResult) (swarm.Chunk, error) {
+		defer cancel()
+		if !both {
+			return result.ch, result.err
+		}
+		// both are being checked. if there's no err return the chunk
+		// otherwise wait for the other channel
+		if result.err == nil {
+			return result.ch, nil
+		}
+		// wait for the other one
+		select {
+		case result := <-other:
+			return result.ch, result.err
+		case <-innerCtx.Done():
+			return nil, ctx.Err()
+		}
+	}
 	select {
 	case v1r := <-v1:
-		if v1r.ch != nil {
-			cancel()
-			return v1r.ch, nil
-		}
-		// wait for the other one
-		v2r := <-v2
-		return v2r.ch, v2r.err
+		return processChanOutput(v1r, v2)
 	case v2r := <-v2:
-		if v2r.ch != nil {
-			cancel()
-			return v2r.ch, nil
-		}
-		// wait for the other one
-		v1r := <-v1
-		return v1r.ch, v1r.err
+		return processChanOutput(v2r, v1)
+	case <-innerCtx.Done():
+		return nil, ctx.Err()
 	}
 }
 
