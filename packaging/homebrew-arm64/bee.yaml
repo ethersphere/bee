@@ -126,8 +126,6 @@ password-file: "/opt/homebrew/var/lib/swarm-bee/password"
 # p2p-wss-addr: :1635
 ## WSS NAT exposed address
 # nat-wss-addr: ""
-## autotls certificate storage directory (default: ./p2p-tls-certs)
-# autotls-storage-dir: ""
 ## autotls domain (default: libp2p.direct)
 # autotls-domain: ""
 ## autotls registration endpoint (default: https://registration.libp2p.direct)
