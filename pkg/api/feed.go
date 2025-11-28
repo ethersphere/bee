@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -53,9 +54,8 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	queries := struct {
-		At                int64  `map:"at"`
-		After             uint64 `map:"after"`
-		FeedLegacyResolve bool   `map:"swarm-feed-legacy-resolve"`
+		At    int64  `map:"at"`
+		After uint64 `map:"after"`
 	}{}
 	if response := s.mapStructure(r.URL.Query(), &queries); response != nil {
 		response("invalid query params", logger, w)
@@ -72,7 +72,6 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		response("invalid header params", logger, w)
 		return
 	}
-
 	f := feeds.New(paths.Topic, paths.Owner)
 	lookup, err := s.feedFactory.NewLookup(feeds.Sequence, f)
 	if err != nil {
@@ -103,7 +102,8 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wc, err := feeds.GetWrappedChunk(r.Context(), s.storer.Download(false), ch, queries.FeedLegacyResolve)
+	wc, feedVer, err := s.resolveFeed(r.Context(), s.storer.Download(false), ch, true)
+	fmt.Println(feedVer)
 	if err != nil {
 		logger.Error(nil, "wrapped chunk cannot be retrieved")
 		jsonhttp.NotFound(w, "wrapped chunk cannot be retrieved")
@@ -135,11 +135,12 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	sig := socCh.Signature()
 
 	additionalHeaders := http.Header{
-		ContentTypeHeader:          {"application/octet-stream"},
-		SwarmFeedIndexHeader:       {hex.EncodeToString(curBytes)},
-		SwarmFeedIndexNextHeader:   {hex.EncodeToString(nextBytes)},
-		SwarmSocSignatureHeader:    {hex.EncodeToString(sig)},
-		AccessControlExposeHeaders: {SwarmFeedIndexHeader, SwarmFeedIndexNextHeader, SwarmSocSignatureHeader},
+		ContentTypeHeader:              {"application/octet-stream"},
+		SwarmFeedIndexHeader:           {hex.EncodeToString(curBytes)},
+		SwarmFeedIndexNextHeader:       {hex.EncodeToString(nextBytes)},
+		SwarmSocSignatureHeader:        {hex.EncodeToString(sig)},
+		SwarmFeedResolvedVersionHeader: {feedVer},
+		AccessControlExposeHeaders:     {SwarmFeedIndexHeader, SwarmFeedIndexNextHeader, SwarmSocSignatureHeader},
 	}
 
 	if headers.OnlyRootChunk {

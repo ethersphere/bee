@@ -369,8 +369,11 @@ type getWrappedResult struct {
 	err error
 }
 
-// resolveFeed races the resolution of both types of feeds. it returns the first correct feed found or an error.
-func (s *Service) resolveFeed(ctx context.Context, getter storage.Getter, ch swarm.Chunk) (swarm.Chunk, error) {
+// resolveFeed races the resolution of both types of feeds.
+// the resolveInner controls whether we really try to dereference the inner resource or just
+// figure out if its a v1 or v2 chunk.
+// it returns the first correct feed found, the type found ("v1" or "v2") or an error.
+func (s *Service) resolveFeed(ctx context.Context, getter storage.Getter, ch swarm.Chunk, resolveInner bool) (swarm.Chunk, string, error) {
 	innerCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	getWrapped := func(v1 bool) chan getWrappedResult {
@@ -385,7 +388,15 @@ func (s *Service) resolveFeed(ctx context.Context, getter storage.Getter, ch swa
 					return
 				}
 			}
-
+			fmt.Printf("b4 resolve inner %v %v %v\n", v1, wc, err)
+			if !resolveInner {
+				select {
+				case ret <- getWrappedResult{wc, nil}:
+					return
+				case <-innerCtx.Done():
+					return
+				}
+			}
 			// here we just check whether the address is retrievable.
 			// if it returns an error we send that over the channel, otherwise
 			// we send the wc chunk back to the caller so that the feed can be
@@ -410,7 +421,7 @@ func (s *Service) resolveFeed(ctx context.Context, getter storage.Getter, ch swa
 	}
 	isV1, err := feeds.IsV1Payload(ch)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	// if we have v1 length, it means there's ambiguity so we
 	// should fetch both feed versions. if the length isn't v1
@@ -420,38 +431,52 @@ func (s *Service) resolveFeed(ctx context.Context, getter storage.Getter, ch swa
 		both   = false
 	)
 	if isV1 {
+		fmt.Println("both")
 		both = true
 		v1 = getWrapped(true)
 		v2 = getWrapped(false)
 	} else {
+
+		fmt.Println("nboth")
 		v2 = getWrapped(false)
 	}
 
-	processChanOutput := func(result getWrappedResult, other chan getWrappedResult) (swarm.Chunk, error) {
+	// closure to handle processing one channel then the other.
+	// the "resolving" parameter is meant to tell the closure which feed type is in the result struct
+	// which in turns allows it to return which feed type was resolved.
+	processChanOutput := func(resolving string, result getWrappedResult, other chan getWrappedResult) (swarm.Chunk, string, error) {
 		defer cancel()
 		if !both {
-			return result.ch, result.err
+			return result.ch, resolving, result.err
 		}
+		fmt.Println("resolving both")
 		// both are being checked. if there's no err return the chunk
 		// otherwise wait for the other channel
 		if result.err == nil {
-			return result.ch, nil
+			fmt.Println("resolving both2")
+			return result.ch, resolving, nil
+		}
+		if resolving == "v1" {
+			resolving = "v2"
+		} else {
+			resolving = "v1"
 		}
 		// wait for the other one
 		select {
 		case result := <-other:
-			return result.ch, result.err
+			fmt.Println("resolving both3")
+			return result.ch, resolving, result.err
 		case <-innerCtx.Done():
-			return nil, ctx.Err()
+			return nil, "", ctx.Err()
 		}
 	}
 	select {
 	case v1r := <-v1:
-		return processChanOutput(v1r, v2)
+		return processChanOutput("v1", v1r, v2)
 	case v2r := <-v2:
-		return processChanOutput(v2r, v1)
+		return processChanOutput("v2", v2r, v1)
 	case <-innerCtx.Done():
-		return nil, ctx.Err()
+		return nil, "", ctx.Err()
 	}
 }
 
@@ -524,7 +549,7 @@ FETCH:
 				return
 			}
 
-			wc, err := s.resolveFeed(ctx, s.storer.Download(cache), ch)
+			wc, _, err := s.resolveFeed(ctx, s.storer.Download(cache), ch, true)
 			if err != nil {
 				if errors.Is(err, feeds.ErrNotLegacyPayload) {
 					logger.Debug("bzz: download: feed is not a legacy payload")
