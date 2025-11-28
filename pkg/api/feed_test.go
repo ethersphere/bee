@@ -40,7 +40,7 @@ const ownerString = "8d3766440f0d7b949a5e32995d09619a7f86e632"
 var expReference = swarm.MustParseHexAddress("891a1d1c8436c792d02fc2e8883fef7ab387eaeaacd25aa9f518be7be7856d54")
 
 func TestFeed_Get(t *testing.T) {
-	// t.Parallel()
+	t.Parallel()
 
 	var (
 		feedResource = func(owner, topic, at string) string {
@@ -68,8 +68,7 @@ func TestFeed_Get(t *testing.T) {
 	}
 
 	t.Run("with at", func(t *testing.T) {
-		// t.Skip()
-		// t.Parallel()
+		t.Parallel()
 
 		var (
 			timestamp       = int64(12121212)
@@ -95,8 +94,7 @@ func TestFeed_Get(t *testing.T) {
 	})
 
 	t.Run("latest with legacy payload", func(t *testing.T) {
-		// t.Skip()
-		// t.Parallel()
+		t.Parallel()
 
 		var (
 			timestamp  = int64(12121212)
@@ -124,8 +122,7 @@ func TestFeed_Get(t *testing.T) {
 	})
 
 	t.Run("chunk wrapping", func(t *testing.T) {
-		// t.Skip()
-		// t.Parallel()
+		t.Parallel()
 
 		testData := []byte{0, 1, 2, 3, 4, 5, 6, 7, 8}
 
@@ -154,8 +151,7 @@ func TestFeed_Get(t *testing.T) {
 	})
 
 	t.Run("legacy payload with non existing wrapped chunk", func(t *testing.T) {
-		// t.Skip()
-		// t.Parallel()
+		t.Skip()
 
 		wrappedRef := make([]byte, swarm.HashSize)
 		_ = copy(wrappedRef, mockWrappedCh.Address().Bytes())
@@ -176,8 +172,7 @@ func TestFeed_Get(t *testing.T) {
 	})
 
 	t.Run("query parameter legacy feed resolve", func(t *testing.T) {
-		// t.Skip()
-		// t.Parallel()
+		t.Parallel()
 
 		var (
 			look            = newMockLookup(1, 0, nil, errors.New("dummy"), &id{}, &id{})
@@ -193,8 +188,7 @@ func TestFeed_Get(t *testing.T) {
 	})
 
 	t.Run("bigger payload than one chunk", func(t *testing.T) {
-		// t.Skip()
-		// t.Parallel()
+		t.Parallel()
 
 		testDataLen := 5000
 		testData := testutil.RandBytesWithSeed(t, testDataLen, 1)
@@ -386,9 +380,11 @@ func (l *mockLookup) At(_ context.Context, at int64, after uint64) (swarm.Chunk,
 		// shortcut to ignore the value in the call since time.Now() is a moving target
 		return l.chunk, l.cur, l.next, nil
 	}
+
 	if at == l.at && after == l.after {
 		return l.chunk, l.cur, l.next, nil
 	}
+
 	return nil, nil, nil, errors.New("no feed update found")
 }
 

@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -85,7 +84,6 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-
 	ch, cur, next, err := lookup.At(r.Context(), queries.At, queries.After)
 	if err != nil {
 		logger.Debug("lookup at failed", "at", queries.At, "error", err)
@@ -103,7 +101,6 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	wc, feedVer, err := s.resolveFeed(r.Context(), s.storer.Download(false), ch, true)
-	fmt.Println(feedVer)
 	if err != nil {
 		logger.Error(nil, "wrapped chunk cannot be retrieved")
 		jsonhttp.NotFound(w, "wrapped chunk cannot be retrieved")

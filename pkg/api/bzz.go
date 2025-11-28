@@ -366,6 +366,7 @@ func (s *Service) bzzHeadHandler(w http.ResponseWriter, r *http.Request) {
 
 type getWrappedResult struct {
 	ch  swarm.Chunk
+	ver string
 	err error
 }
 
@@ -377,26 +378,24 @@ func (s *Service) resolveFeed(ctx context.Context, getter storage.Getter, ch swa
 	innerCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	getWrapped := func(v1 bool) chan getWrappedResult {
+		ver := "v1"
+		if !v1 {
+			ver = "v2"
+		}
 		ret := make(chan getWrappedResult)
 		go func() {
 			wc, err := feeds.GetWrappedChunk(innerCtx, getter, ch, v1)
 			if err != nil {
 				select {
-				case ret <- getWrappedResult{nil, err}:
+				case ret <- getWrappedResult{nil, ver, err}:
 					return
 				case <-innerCtx.Done():
 					return
 				}
 			}
-			fmt.Printf("b4 resolve inner %v %v %v\n", v1, wc, err)
-			if !resolveInner {
-				select {
-				case ret <- getWrappedResult{wc, nil}:
-					return
-				case <-innerCtx.Done():
-					return
-				}
-			}
+
+			// v2 might be data verbatim, which makes trying to resolve it useless
+
 			// here we just check whether the address is retrievable.
 			// if it returns an error we send that over the channel, otherwise
 			// we send the wc chunk back to the caller so that the feed can be
@@ -404,14 +403,14 @@ func (s *Service) resolveFeed(ctx context.Context, getter storage.Getter, ch swa
 			_, err = getter.Get(innerCtx, wc.Address())
 			if err != nil {
 				select {
-				case ret <- getWrappedResult{nil, err}:
+				case ret <- getWrappedResult{wc, ver, err}:
 					return
 				case <-innerCtx.Done():
 					return
 				}
 			}
 			select {
-			case ret <- getWrappedResult{wc, nil}:
+			case ret <- getWrappedResult{wc, ver, nil}:
 				return
 			case <-innerCtx.Done():
 				return
@@ -430,14 +429,12 @@ func (s *Service) resolveFeed(ctx context.Context, getter storage.Getter, ch swa
 		v1, v2 chan getWrappedResult
 		both   = false
 	)
+	// isV1 = true
 	if isV1 {
-		fmt.Println("both")
 		both = true
 		v1 = getWrapped(true)
 		v2 = getWrapped(false)
 	} else {
-
-		fmt.Println("nboth")
 		v2 = getWrapped(false)
 	}
 
@@ -447,13 +444,14 @@ func (s *Service) resolveFeed(ctx context.Context, getter storage.Getter, ch swa
 	processChanOutput := func(resolving string, result getWrappedResult, other chan getWrappedResult) (swarm.Chunk, string, error) {
 		defer cancel()
 		if !both {
+			if resolving == "v2" {
+				return result.ch, resolving, nil
+			}
 			return result.ch, resolving, result.err
 		}
-		fmt.Println("resolving both")
 		// both are being checked. if there's no err return the chunk
 		// otherwise wait for the other channel
 		if result.err == nil {
-			fmt.Println("resolving both2")
 			return result.ch, resolving, nil
 		}
 		if resolving == "v1" {
@@ -464,7 +462,9 @@ func (s *Service) resolveFeed(ctx context.Context, getter storage.Getter, ch swa
 		// wait for the other one
 		select {
 		case result := <-other:
-			fmt.Println("resolving both3")
+			if result.ver == "v2" {
+				return result.ch, resolving, nil
+			}
 			return result.ch, resolving, result.err
 		case <-innerCtx.Done():
 			return nil, "", ctx.Err()
