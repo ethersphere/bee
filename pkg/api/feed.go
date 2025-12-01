@@ -100,7 +100,7 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wc, feedVer, err := s.resolveFeed(r.Context(), s.storer.Download(false), ch, true)
+	wc, feedVer, err := s.resolveFeed(r.Context(), s.storer.Download(false), ch)
 	if err != nil {
 		logger.Error(nil, "wrapped chunk cannot be retrieved")
 		jsonhttp.NotFound(w, "wrapped chunk cannot be retrieved")

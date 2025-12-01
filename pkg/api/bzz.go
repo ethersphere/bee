@@ -371,10 +371,9 @@ type getWrappedResult struct {
 }
 
 // resolveFeed races the resolution of both types of feeds.
-// the resolveInner controls whether we really try to dereference the inner resource or just
 // figure out if its a v1 or v2 chunk.
 // it returns the first correct feed found, the type found ("v1" or "v2") or an error.
-func (s *Service) resolveFeed(ctx context.Context, getter storage.Getter, ch swarm.Chunk, resolveInner bool) (swarm.Chunk, string, error) {
+func (s *Service) resolveFeed(ctx context.Context, getter storage.Getter, ch swarm.Chunk) (swarm.Chunk, string, error) {
 	innerCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	getWrapped := func(v1 bool) chan getWrappedResult {
@@ -389,8 +388,6 @@ func (s *Service) resolveFeed(ctx context.Context, getter storage.Getter, ch swa
 					return
 				}
 			}
-
-			// v2 might be data verbatim, which makes trying to resolve it useless
 
 			// here we just check whether the address is retrievable.
 			// if it returns an error we send that over the channel, otherwise
@@ -425,7 +422,6 @@ func (s *Service) resolveFeed(ctx context.Context, getter storage.Getter, ch swa
 		v1, v2 chan getWrappedResult
 		both   = false
 	)
-	// isV1 = true
 	if isV1 {
 		both = true
 		v1 = getWrapped(true)
@@ -546,7 +542,7 @@ FETCH:
 				return
 			}
 
-			wc, feedVer, err := s.resolveFeed(ctx, s.storer.Download(cache), ch, true)
+			wc, feedVer, err := s.resolveFeed(ctx, s.storer.Download(cache), ch)
 			if err != nil {
 				if errors.Is(err, feeds.ErrNotLegacyPayload) {
 					logger.Debug("bzz: download: feed is not a legacy payload")
