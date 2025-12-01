@@ -1347,7 +1347,6 @@ func runRedundancyTest(t *testing.T, rLevel redundancy.Level, encrypt bool, size
 	}
 
 	// First sanity check and recover a range
-	t.Log("Starting test sequence")
 	store.Record()
 	canReadRange(getter.NONE, false, true, "NONE w/o fallback CAN retrieve")
 	store.Unrecord()
