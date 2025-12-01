@@ -854,8 +854,6 @@ func TestFeedIndirection(t *testing.T) {
 			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "text/html; charset=utf-8"),
 			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedResolvedVersionHeader, "v1"),
 		)
-
-		// jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(manifRef.String(), "", false), http.StatusNotFound)
 	})
 
 	t.Run("wrapped feed", func(t *testing.T) {
@@ -885,8 +883,6 @@ func TestFeedIndirection(t *testing.T) {
 			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "text/html; charset=utf-8"),
 			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedResolvedVersionHeader, "v2"),
 		)
-
-		// jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(manifRef.String(), "", true), http.StatusBadRequest)
 	})
 }
 
