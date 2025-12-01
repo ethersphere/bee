@@ -73,7 +73,7 @@ func TestPingSuccess(t *testing.T) {
 				testutil.CleanupCloser(t, r)
 
 				overlay := swarm.RandAddress(t)
-				addr, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAmTBuJT9LvNmQiNoTsxE5mtNy6YG3paw79m94CRa9sRb")
+				addr, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAmTBuJT9LvNmBiQiNoTsxE5mtNy6YG3paw79m94CRa9sRb")
 
 				r.Connected(overlay, addr)
 
