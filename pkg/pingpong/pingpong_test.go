@@ -48,7 +48,7 @@ func TestPing(t *testing.T) {
 		}
 
 		// check that RTT is the sum of all message latencies
-		if rtt != 6*messageLatency {
+		if rtt != time.Duration(2*len(greetings))*messageLatency {
 			t.Errorf("invalid RTT value %v", rtt)
 		}
 
