@@ -366,7 +366,7 @@ func (s *Service) bzzHeadHandler(w http.ResponseWriter, r *http.Request) {
 
 type getWrappedResult struct {
 	ch  swarm.Chunk
-	ver string
+	v1  bool // indicates whether the feed that was resolved is v1. false if v2
 	err error
 }
 
@@ -378,16 +378,12 @@ func (s *Service) resolveFeed(ctx context.Context, getter storage.Getter, ch swa
 	innerCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	getWrapped := func(v1 bool) chan getWrappedResult {
-		ver := "v1"
-		if !v1 {
-			ver = "v2"
-		}
 		ret := make(chan getWrappedResult)
 		go func() {
 			wc, err := feeds.GetWrappedChunk(innerCtx, getter, ch, v1)
 			if err != nil {
 				select {
-				case ret <- getWrappedResult{nil, ver, err}:
+				case ret <- getWrappedResult{nil, v1, err}:
 					return
 				case <-innerCtx.Done():
 					return
@@ -403,14 +399,14 @@ func (s *Service) resolveFeed(ctx context.Context, getter storage.Getter, ch swa
 			_, err = getter.Get(innerCtx, wc.Address())
 			if err != nil {
 				select {
-				case ret <- getWrappedResult{wc, ver, err}:
+				case ret <- getWrappedResult{wc, v1, err}:
 					return
 				case <-innerCtx.Done():
 					return
 				}
 			}
 			select {
-			case ret <- getWrappedResult{wc, ver, nil}:
+			case ret <- getWrappedResult{wc, v1, nil}:
 				return
 			case <-innerCtx.Done():
 				return
@@ -462,7 +458,8 @@ func (s *Service) resolveFeed(ctx context.Context, getter storage.Getter, ch swa
 		// wait for the other one
 		select {
 		case result := <-other:
-			if result.ver == "v2" {
+			if !result.v1 {
+				// resolving v2
 				return result.ch, resolving, nil
 			}
 			return result.ch, resolving, result.err
@@ -549,7 +546,7 @@ FETCH:
 				return
 			}
 
-			wc, _, err := s.resolveFeed(ctx, s.storer.Download(cache), ch, true)
+			wc, feedVer, err := s.resolveFeed(ctx, s.storer.Download(cache), ch, true)
 			if err != nil {
 				if errors.Is(err, feeds.ErrNotLegacyPayload) {
 					logger.Debug("bzz: download: feed is not a legacy payload")
@@ -582,6 +579,7 @@ FETCH:
 			}
 
 			w.Header().Set(SwarmFeedIndexHeader, hex.EncodeToString(curBytes))
+			w.Header().Set(SwarmFeedResolvedVersionHeader, feedVer)
 			// this header might be overriding others. handle with care. in the future
 			// we should implement an append functionality for this specific header,
 			// since different parts of handlers might be overriding others' values

@@ -90,6 +90,7 @@ func TestFeed_Get(t *testing.T) {
 			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.SwarmSocSignatureHeader),
 			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.ContentDispositionHeader),
 			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "application/octet-stream"),
+			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedResolvedVersionHeader, "v1"),
 		)
 	})
 
@@ -118,6 +119,7 @@ func TestFeed_Get(t *testing.T) {
 			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.SwarmSocSignatureHeader),
 			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.ContentDispositionHeader),
 			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "application/octet-stream"),
+			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedResolvedVersionHeader, "v1"),
 		)
 	})
 
@@ -147,11 +149,18 @@ func TestFeed_Get(t *testing.T) {
 			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.SwarmSocSignatureHeader),
 			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.ContentDispositionHeader),
 			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "application/octet-stream"),
+			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedResolvedVersionHeader, "v2"),
 		)
 	})
 
 	t.Run("legacy payload with non existing wrapped chunk", func(t *testing.T) {
 		t.Skip()
+		/*
+			This test has been disabled since it cannot be supported with the automatic
+			Feed resolution logic that is now in place. In case automatic feed resolution
+			would be removed at some point, this test can be reactived. The issue is
+			thoroughly described in the PR: https://github.com/ethersphere/bee/pull/5287
+		*/
 
 		wrappedRef := make([]byte, swarm.HashSize)
 		_ = copy(wrappedRef, mockWrappedCh.Address().Bytes())
@@ -225,6 +234,7 @@ func TestFeed_Get(t *testing.T) {
 				jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.SwarmSocSignatureHeader),
 				jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.ContentDispositionHeader),
 				jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "application/octet-stream"),
+				jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedResolvedVersionHeader, "v2"),
 			)
 		})
 
@@ -238,6 +248,7 @@ func TestFeed_Get(t *testing.T) {
 				jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.SwarmFeedIndexNextHeader),
 				jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.SwarmSocSignatureHeader),
 				jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "application/octet-stream"),
+				jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedResolvedVersionHeader, "v2"),
 			)
 		})
 	})
