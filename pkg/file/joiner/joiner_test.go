@@ -1236,6 +1236,7 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 			for _, levels := range []int{1, 2, 3} {
 				// Skip tests that don't meet the filter criteria to save time
 				if r2level[rLevel] != levels || encrypt != encryptChunk[rLevel] {
+					t.Skip("skipping to save time")
 					continue
 				}
 

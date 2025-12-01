@@ -363,16 +363,10 @@ func NewBee(
 	}
 
 	var (
-		chainBackend       transaction.Backend
-		overlayEthAddress  common.Address
-		chainID            int64
-		transactionService transaction.Service
-		transactionMonitor transaction.Monitor
-		chequebookFactory  chequebook.Factory
-		chequebookService  chequebook.Service = new(noOpChequebookService)
-		chequeStore        chequebook.ChequeStore
-		cashoutService     chequebook.CashoutService
-		erc20Service       erc20.Service
+		chequebookService chequebook.Service = new(noOpChequebookService)
+		chequeStore       chequebook.ChequeStore
+		cashoutService    chequebook.CashoutService
+		erc20Service      erc20.Service
 	)
 
 	chainEnabled := isChainEnabled(o, o.BlockchainRpcEndpoint, logger)
@@ -394,7 +388,7 @@ func NewBee(
 		}
 	}
 
-	chainBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err = InitChain(
+	chainBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err := InitChain(
 		ctx,
 		logger,
 		stateStore,
@@ -408,14 +402,10 @@ func NewBee(
 	if err != nil {
 		return nil, fmt.Errorf("init chain: %w", err)
 	}
+
+	logger.Info("using chain with network", "chain_id", chainID, "network_id", networkID)
+
 	b.ethClientCloser = chainBackend.Close
-
-	logger.Info("using chain with network network", "chain_id", chainID, "network_id", networkID)
-
-	if o.ChainID != -1 && o.ChainID != chainID {
-		return nil, fmt.Errorf("connected to wrong blockchain network; network chainID %d; configured chainID %d", chainID, o.ChainID)
-	}
-
 	b.transactionCloser = tracerCloser
 	b.transactionMonitorCloser = transactionMonitor
 
@@ -514,7 +504,7 @@ func NewBee(
 	}
 
 	if o.SwapEnable {
-		chequebookFactory, err = InitChequebookFactory(logger, chainBackend, chainID, transactionService, o.SwapFactoryAddress)
+		chequebookFactory, err := InitChequebookFactory(logger, chainBackend, chainID, transactionService, o.SwapFactoryAddress)
 		if err != nil {
 			return nil, fmt.Errorf("init chequebook factory: %w", err)
 		}
@@ -1173,7 +1163,7 @@ func NewBee(
 						logger.Debug("sync status check", "synced", synced, "reserveSize", localStore.ReserveSize(), "syncRate", pullerService.SyncRate())
 						if synced {
 							fullSyncTime := pullSyncStartTime.Sub(t)
-							logger.Info("full sync duration", "duration", fullSyncTime)
+							logger.Info("full sync done", "duration", fullSyncTime)
 							nodeMetrics.FullSyncDuration.Observe(fullSyncTime.Minutes())
 							syncCheckTicker.Stop()
 							return
@@ -1460,12 +1450,16 @@ func isChainEnabled(o *Options, swapEndpoint string, logger log.Logger) bool {
 	chainDisabled := swapEndpoint == ""
 	lightMode := !o.FullNodeMode
 
-	if lightMode && chainDisabled { // ultra light mode is LightNode mode with chain disabled
-		logger.Info("starting with a disabled chain backend")
+	if lightMode && chainDisabled {
+		logger.Info("chain backend disabled - starting in ultra-light mode",
+			"full_node_mode", o.FullNodeMode,
+			"blockchain-rpc-endpoint", swapEndpoint)
 		return false
 	}
 
-	logger.Info("starting with an enabled chain backend")
+	logger.Info("chain backend enabled - blockchain functionality available",
+		"full_node_mode", o.FullNodeMode,
+		"blockchain-rpc-endpoint", swapEndpoint)
 	return true // all other modes operate require chain enabled
 }
 

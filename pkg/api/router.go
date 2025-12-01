@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/log/httpaccess"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/transaction/backendnoop"
 	"github.com/felixge/fgprof"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
@@ -214,6 +215,17 @@ func (s *Service) checkStorageIncentivesAvailability(handler http.Handler) http.
 			jsonhttp.Forbidden(w, "Storage incentives are disabled. This endpoint is unavailable.")
 			return
 		}
+		handler.ServeHTTP(w, r)
+	})
+}
+
+func (s *Service) checkChainAvailability(handler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := s.chainBackend.(*backendnoop.Backend); ok {
+			jsonhttp.Forbidden(w, "Chain is disabled. This endpoint is unavailable.")
+			return
+		}
+
 		handler.ServeHTTP(w, r)
 	})
 }
@@ -564,6 +576,7 @@ func (s *Service) mountBusinessDebug() {
 	))
 
 	handle("/stamps", web.ChainHandlers(
+		s.checkChainAvailability,
 		s.postageSyncStatusCheckHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.postageGetStampsHandler),
@@ -571,6 +584,7 @@ func (s *Service) mountBusinessDebug() {
 	)
 
 	handle("/stamps/{batch_id}", web.ChainHandlers(
+		s.checkChainAvailability,
 		s.postageSyncStatusCheckHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.postageGetStampHandler),
@@ -578,6 +592,7 @@ func (s *Service) mountBusinessDebug() {
 	)
 
 	handle("/stamps/{batch_id}/buckets", web.ChainHandlers(
+		s.checkChainAvailability,
 		s.postageSyncStatusCheckHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.postageGetStampBucketsHandler),
@@ -585,6 +600,7 @@ func (s *Service) mountBusinessDebug() {
 	)
 
 	handle("/stamps/{amount}/{depth}", web.ChainHandlers(
+		s.checkChainAvailability,
 		s.postageAccessHandler,
 		s.postageSyncStatusCheckHandler,
 		s.gasConfigMiddleware("create batch"),
@@ -594,6 +610,7 @@ func (s *Service) mountBusinessDebug() {
 	)
 
 	handle("/stamps/topup/{batch_id}/{amount}", web.ChainHandlers(
+		s.checkChainAvailability,
 		s.postageAccessHandler,
 		s.postageSyncStatusCheckHandler,
 		s.gasConfigMiddleware("topup batch"),
@@ -603,6 +620,7 @@ func (s *Service) mountBusinessDebug() {
 	)
 
 	handle("/stamps/dilute/{batch_id}/{depth}", web.ChainHandlers(
+		s.checkChainAvailability,
 		s.postageAccessHandler,
 		s.postageSyncStatusCheckHandler,
 		s.gasConfigMiddleware("dilute batch"),
