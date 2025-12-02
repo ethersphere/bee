@@ -28,6 +28,7 @@ type metrics struct {
 	ReceiptDepth        *prometheus.CounterVec
 	ShallowReceiptDepth *prometheus.CounterVec
 	ShallowReceipt      prometheus.Counter
+	OverdraftRefresh    prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -146,6 +147,12 @@ func newMetrics() metrics {
 			},
 			[]string{"depth"},
 		),
+		OverdraftRefresh: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "overdraft_refresh",
+			Help:      "Total number of times peers were skipped due to overdraft, requiring a wait to refresh balance.",
+		}),
 	}
 }
 
