@@ -237,7 +237,6 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
-			s.logger.Debug("error syncing peer", "peer_address", peer, "bin", bin, "start", start, "error", err)
 		} else {
 			stream.FullClose()
 		}
@@ -524,7 +523,6 @@ func (s *Syncer) GetCursors(ctx context.Context, peer swarm.Address) (retr []uin
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
-			s.logger.Debug("error getting cursors from peer", "peer_address", peer, "error", err)
 		} else {
 			stream.FullClose()
 		}
@@ -550,7 +548,6 @@ func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
-			s.logger.Debug("error getting cursors for peer", "peer_address", p.Address, "error", err)
 		} else {
 			_ = stream.FullClose()
 		}
