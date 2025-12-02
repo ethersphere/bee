@@ -228,7 +228,7 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 // Sync syncs a batch of chunks starting at a start BinID.
 // It returns the BinID of highest chunk that was synced from the given
 // batch and the total number of chunks the downstream peer has sent.
-func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (uint64, int, error) {
+func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (topmost uint64, count int, err error) {
 
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
@@ -261,7 +261,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		return offer.Topmost, 0, nil
 	}
 
-	topmost := offer.Topmost
+	topmost = offer.Topmost
 
 	var (
 		bvLen      = len(offer.Chunks)
