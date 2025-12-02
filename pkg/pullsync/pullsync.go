@@ -430,8 +430,6 @@ type collectAddrsResult struct {
 // After the arrival of the first chunk, the subsequent chunks have a limited amount of time to arrive,
 // after which the function returns the collected slice of chunks.
 func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*storer.BinC, uint64, error) {
-	loggerV2 := s.logger.V(2).Register()
-
 	v, _, err := s.intervalsSF.Do(ctx, sfKey(bin, start), func(ctx context.Context) (*collectAddrsResult, error) {
 		var (
 			chs     []*storer.BinC
@@ -476,7 +474,7 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			case <-timerC:
-				loggerV2.Debug("batch timeout timer triggered")
+				s.logger.Debug("batch timeout timer triggered")
 				// return batch if new chunks are not received after some time
 				break LOOP
 			}
@@ -518,17 +516,15 @@ func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]sw
 }
 
 func (s *Syncer) GetCursors(ctx context.Context, peer swarm.Address) (retr []uint64, epoch uint64, err error) {
-	loggerV2 := s.logger.V(2).Register()
-
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, cursorStreamName)
 	if err != nil {
 		return nil, 0, fmt.Errorf("new stream: %w", err)
 	}
-	loggerV2.Debug("getting cursors from peer", "peer_address", peer)
+	s.logger.Debug("getting cursors from peer", "peer_address", peer)
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
-			loggerV2.Debug("error getting cursors from peer", "peer_address", peer, "error", err)
+			s.logger.Debug("error getting cursors from peer", "peer_address", peer, "error", err)
 		} else {
 			stream.FullClose()
 		}
@@ -549,14 +545,12 @@ func (s *Syncer) GetCursors(ctx context.Context, peer swarm.Address) (retr []uin
 }
 
 func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
-	loggerV2 := s.logger.V(2).Register()
-
 	w, r := protobuf.NewWriterAndReader(stream)
-	loggerV2.Debug("peer wants cursors", "peer_address", p.Address)
+	s.logger.Debug("peer wants cursors", "peer_address", p.Address)
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
-			loggerV2.Debug("error getting cursors for peer", "peer_address", p.Address, "error", err)
+			s.logger.Debug("error getting cursors for peer", "peer_address", p.Address, "error", err)
 		} else {
 			_ = stream.FullClose()
 		}
