@@ -32,6 +32,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	olog "github.com/opentracing/opentracing-go/log"
+	"golang.org/x/time/rate"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -99,6 +100,7 @@ type PushSync struct {
 	stabilizer     stabilization.Subscriber
 
 	shallowReceiptTolerance uint8
+	overDraftRefreshLimiter *rate.Limiter
 }
 
 type receiptResult struct {
@@ -148,6 +150,7 @@ func New(
 		errSkip:                 skippeers.NewList(time.Minute),
 		stabilizer:              stabilizer,
 		shallowReceiptTolerance: shallowReceiptTolerance,
+		overDraftRefreshLimiter: rate.NewLimiter(rate.Every(time.Second), 1),
 	}
 
 	ps.validStamp = ps.validStampWrapper(validStamp)
@@ -424,7 +427,10 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 					continue // there is still an inflight request, wait for it's result
 				}
 
-				ps.logger.Debug("sleeping to refresh overdraft balance", "chunk_address", ch.Address())
+				ps.metrics.OverdraftRefresh.Inc()
+				if ps.overDraftRefreshLimiter.Allow() {
+					ps.logger.Debug("sleeping to refresh overdraft balance")
+				}
 
 				select {
 				case <-time.After(overDraftRefresh):
