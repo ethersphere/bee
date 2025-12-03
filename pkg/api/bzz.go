@@ -419,15 +419,15 @@ func (s *Service) resolveFeed(ctx context.Context, getter storage.Getter, ch swa
 	// should fetch both feed versions. if the length isn't v1
 	// then we should only try to fetch v2.
 	var (
-		v1, v2 chan getWrappedResult
-		both   = false
+		v1C, v2C chan getWrappedResult
+		both     = false
 	)
 	if isV1 {
 		both = true
-		v1 = getWrapped(true)
-		v2 = getWrapped(false)
+		v1C = getWrapped(true)
+		v2C = getWrapped(false)
 	} else {
-		v2 = getWrapped(false)
+		v2C = getWrapped(false)
 	}
 
 	// closure to handle processing one channel then the other.
@@ -464,10 +464,10 @@ func (s *Service) resolveFeed(ctx context.Context, getter storage.Getter, ch swa
 		}
 	}
 	select {
-	case v1r := <-v1:
-		return processChanOutput("v1", v1r, v2)
-	case v2r := <-v2:
-		return processChanOutput("v2", v2r, v1)
+	case v1r := <-v1C:
+		return processChanOutput("v1", v1r, v2C)
+	case v2r := <-v2C:
+		return processChanOutput("v2", v2r, v1C)
 	case <-innerCtx.Done():
 		return nil, "", ctx.Err()
 	}
