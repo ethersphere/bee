@@ -90,6 +90,8 @@ func TestSocMine(t *testing.T) {
 
 func makeChunks(t *testing.T, signer crypto.Signer, sampleSize int, filterSOCAddr func(swarm.Address) bool, filterTrAddr func(swarm.Address) (bool, error), trHasherPool *bmt.Pool) error {
 	t.Helper()
+	// Create a pool for efficient hasher reuse
+	hasherPool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, swarm.BmtBranches, 8))
 
 	// set owner address from signer
 	ethAddress, err := signer.EthereumAddress()
@@ -134,6 +136,7 @@ func makeChunks(t *testing.T, signer crypto.Signer, sampleSize int, filterSOCAdd
 			found := 0
 			// Get one hasher per goroutine from the pool to avoid race conditions
 			hasher := trHasherPool.Get()
+			standardHasher := hasherPool.Get()
 			for seed := uint32(1); ; seed++ {
 				select {
 				case <-ectx.Done():
@@ -153,8 +156,8 @@ func makeChunks(t *testing.T, signer crypto.Signer, sampleSize int, filterSOCAdd
 				if !filterSOCAddr(addr) {
 					continue
 				}
-				data := s.WrappedChunk().Data()
 				hasher.Reset()
+				data := s.WrappedChunk().Data()
 				hasher.SetHeader(data[:8])
 				_, err = hasher.Write(data[8:])
 				if err != nil {
@@ -163,10 +166,15 @@ func makeChunks(t *testing.T, signer crypto.Signer, sampleSize int, filterSOCAdd
 				trAddr := hasher.Sum(nil)
 				// hashing the transformed wrapped chunk address with the SOC address
 				// to arrive at a unique transformed SOC address despite identical payloads
-				trSocAddr, err := soc.CreateAddress(addr.Bytes(), trAddr)
-				if err != nil {
+				standardHasher.Reset()
+				if _, err := standardHasher.Write(addr.Bytes()); err != nil {
 					return err
 				}
+				if _, err := standardHasher.Write(trAddr); err != nil {
+					return err
+				}
+
+				trSocAddr := swarm.NewAddress(standardHasher.Sum(nil))
 				ok, err := filterTrAddr(trSocAddr)
 				if err != nil {
 					return err
