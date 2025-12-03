@@ -32,7 +32,9 @@ const (
 	optionNamePasswordFile                 = "password-file"
 	optionNameAPIAddr                      = "api-addr"
 	optionNameP2PAddr                      = "p2p-addr"
+	optionNameWebRTCAddr                   = "webrtc-addr"
 	optionNameNATAddr                      = "nat-addr"
+	optionNameP2PWebRTCEnable              = "p2p-webrtc-enable"
 	optionNameP2PWSEnable                  = "p2p-ws-enable"
 	optionNameBootnodes                    = "bootnode"
 	optionNameNetworkID                    = "network-id"
@@ -244,7 +246,9 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNamePasswordFile, "", "path to a file that contains password for decrypting keys")
 	cmd.Flags().String(optionNameAPIAddr, "127.0.0.1:1633", "HTTP API listen address")
 	cmd.Flags().String(optionNameP2PAddr, ":1634", "P2P listen address")
+	cmd.Flags().String(optionNameWebRTCAddr, ":4336", "P2P WebRTC listen port")
 	cmd.Flags().String(optionNameNATAddr, "", "NAT exposed address")
+	cmd.Flags().Bool(optionNameP2PWebRTCEnable, true, "enable P2P WebRTC transport")
 	cmd.Flags().Bool(optionNameP2PWSEnable, false, "enable P2P WebSocket transport")
 	cmd.Flags().StringSlice(optionNameBootnodes, []string{"/dnsaddr/mainnet.ethswarm.org"}, "initial nodes to connect to")
 	cmd.Flags().Uint64(optionNameNetworkID, chaincfg.Mainnet.NetworkID, "ID of the Swarm network")
