@@ -44,14 +44,14 @@ type creditAction struct {
 	applied    bool
 }
 
-// WithDebitFunc sets the mock Debit function
+// WithPrepareDebitFunc sets the mock PrepareDebit function
 func WithPrepareDebitFunc(f func(peer swarm.Address, price uint64) (accounting.Action, error)) Option {
 	return optionFunc(func(s *Service) {
 		s.prepareDebitFunc = f
 	})
 }
 
-// WithDebitFunc sets the mock Debit function
+// WithPrepareCreditFunc sets the mock PrepareCredit function
 func WithPrepareCreditFunc(f func(peer swarm.Address, price uint64, originated bool) (accounting.Action, error)) Option {
 	return optionFunc(func(s *Service) {
 		s.prepareCreditFunc = f
