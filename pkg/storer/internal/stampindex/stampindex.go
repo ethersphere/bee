@@ -138,7 +138,7 @@ func (i *Item) Clone() storage.Item {
 
 // String implements the fmt.Stringer interface.
 func (i Item) String() string {
-	return storageutil.JoinFields(i.Namespace(), i.ID())
+	return storageutil.JoinFields(i.Namespace(), fmt.Sprintf("%s/%x/%x", string(i.scope), i.BatchID, i.StampIndex))
 }
 
 // LoadOrStore tries to first load a stamp index related record from the store.

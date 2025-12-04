@@ -11,7 +11,7 @@ import (
 	"math"
 	"math/rand"
 	"testing"
-	"time"
+	"testing/synctest"
 
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -531,77 +531,77 @@ func TestReplaceOldIndex(t *testing.T) {
 }
 
 func TestEvict(t *testing.T) {
-	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		baseAddr := swarm.RandAddress(t)
 
-	baseAddr := swarm.RandAddress(t)
+		ts := internal.NewInmemStorage()
 
-	ts := internal.NewInmemStorage()
+		chunksPerBatch := 50
+		var chunks []swarm.Chunk
+		batches := []*postage.Batch{postagetesting.MustNewBatch(), postagetesting.MustNewBatch(), postagetesting.MustNewBatch()}
+		evictBatch := batches[1]
 
-	chunksPerBatch := 50
-	var chunks []swarm.Chunk
-	batches := []*postage.Batch{postagetesting.MustNewBatch(), postagetesting.MustNewBatch(), postagetesting.MustNewBatch()}
-	evictBatch := batches[1]
-
-	r, err := reserve.New(
-		baseAddr,
-		ts,
-		0, kademlia.NewTopologyDriver(),
-		log.Noop,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for range chunksPerBatch {
-		for b := range 3 {
-			ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, b).WithStamp(postagetesting.MustNewBatchStamp(batches[b].ID))
-			chunks = append(chunks, ch)
-			err := r.Put(context.Background(), ch)
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
-
-	totalEvicted := 0
-	for i := range 3 {
-		evicted, err := r.EvictBatchBin(context.Background(), evictBatch.ID, math.MaxInt, uint8(i))
+		r, err := reserve.New(
+			baseAddr,
+			ts,
+			0, kademlia.NewTopologyDriver(),
+			log.Noop,
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
-		totalEvicted += evicted
-	}
 
-	if totalEvicted != chunksPerBatch {
-		t.Fatalf("got %d, want %d", totalEvicted, chunksPerBatch)
-	}
-
-	time.Sleep(time.Second)
-
-	for i, ch := range chunks {
-		binID := i%chunksPerBatch + 1
-		b := swarm.Proximity(baseAddr.Bytes(), ch.Address().Bytes())
-		stampHash, err := ch.Stamp().Hash()
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = r.Get(context.Background(), ch.Address(), ch.Stamp().BatchID(), stampHash)
-		if bytes.Equal(ch.Stamp().BatchID(), evictBatch.ID) {
-			if !errors.Is(err, storage.ErrNotFound) {
-				t.Fatalf("got err %v, want %v", err, storage.ErrNotFound)
+		for range chunksPerBatch {
+			for b := range 3 {
+				ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, b).WithStamp(postagetesting.MustNewBatchStamp(batches[b].ID))
+				chunks = append(chunks, ch)
+				err := r.Put(context.Background(), ch)
+				if err != nil {
+					t.Fatal(err)
+				}
 			}
-			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: b, BatchID: ch.Stamp().BatchID(), Address: ch.Address(), StampHash: stampHash}, true)
-			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: b, BinID: uint64(binID), StampHash: stampHash}, true)
-			checkChunk(t, ts, ch, true)
-		} else {
+		}
+
+		totalEvicted := 0
+		for i := range 3 {
+			evicted, err := r.EvictBatchBin(context.Background(), evictBatch.ID, math.MaxInt, uint8(i))
 			if err != nil {
 				t.Fatal(err)
 			}
-			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: b, BatchID: ch.Stamp().BatchID(), Address: ch.Address(), StampHash: stampHash}, false)
-			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: b, BinID: uint64(binID), StampHash: stampHash}, false)
-			checkChunk(t, ts, ch, false)
+			totalEvicted += evicted
 		}
-	}
+
+		if totalEvicted != chunksPerBatch {
+			t.Fatalf("got %d, want %d", totalEvicted, chunksPerBatch)
+		}
+
+		synctest.Wait()
+
+		for i, ch := range chunks {
+			binID := i%chunksPerBatch + 1
+			b := swarm.Proximity(baseAddr.Bytes(), ch.Address().Bytes())
+			stampHash, err := ch.Stamp().Hash()
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = r.Get(context.Background(), ch.Address(), ch.Stamp().BatchID(), stampHash)
+			if bytes.Equal(ch.Stamp().BatchID(), evictBatch.ID) {
+				if !errors.Is(err, storage.ErrNotFound) {
+					t.Fatalf("got err %v, want %v", err, storage.ErrNotFound)
+				}
+				checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: b, BatchID: ch.Stamp().BatchID(), Address: ch.Address(), StampHash: stampHash}, true)
+				checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: b, BinID: uint64(binID), StampHash: stampHash}, true)
+				checkChunk(t, ts, ch, true)
+			} else {
+				if err != nil {
+					t.Fatal(err)
+				}
+				checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: b, BatchID: ch.Stamp().BatchID(), Address: ch.Address(), StampHash: stampHash}, false)
+				checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: b, BinID: uint64(binID), StampHash: stampHash}, false)
+				checkChunk(t, ts, ch, false)
+			}
+		}
+	})
 }
 
 func TestEvictSOC(t *testing.T) {

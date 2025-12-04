@@ -12,7 +12,6 @@ package hive
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"sync"
@@ -41,8 +40,7 @@ const (
 	peersStreamName        = "peers"
 	messageTimeout         = 1 * time.Minute // maximum allowed time for a message to be read or written.
 	maxBatchSize           = 30
-	pingTimeout            = time.Second * 15 // time to wait for ping to succeed
-	batchValidationTimeout = 5 * time.Minute  // prevent lock contention on peer validation
+	batchValidationTimeout = 5 * time.Minute // prevent lock contention on peer validation
 )
 
 var (
@@ -53,7 +51,7 @@ var (
 )
 
 type Service struct {
-	streamer          p2p.StreamerPinger
+	streamer          p2p.Streamer
 	addressBook       addressbook.GetPutter
 	addPeersHandler   func(...swarm.Address)
 	networkID         uint64
@@ -69,7 +67,7 @@ type Service struct {
 	allowPrivateCIDRs bool
 }
 
-func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, networkID uint64, bootnode bool, allowPrivateCIDRs bool, logger log.Logger) *Service {
+func New(streamer p2p.Streamer, addressbook addressbook.GetPutter, networkID uint64, bootnode bool, allowPrivateCIDRs bool, logger log.Logger) *Service {
 	svc := &Service{
 		streamer:          streamer,
 		logger:            logger.WithName(loggerName).Register(),
@@ -274,72 +272,6 @@ func (s *Service) startCheckPeersHandler() {
 
 func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 	var peersToAdd []swarm.Address
-	mtx := sync.Mutex{}
-	wg := sync.WaitGroup{}
-
-	addPeer := func(newPeer *pb.BzzAddress, multiUnderlay []ma.Multiaddr) {
-		err := s.sem.Acquire(ctx, 1)
-		if err != nil {
-			return
-		}
-
-		wg.Add(1)
-		go func() {
-			s.metrics.PeerConnectAttempts.Inc()
-
-			defer func() {
-				s.sem.Release(1)
-				wg.Done()
-			}()
-
-			ctx, cancel := context.WithTimeout(ctx, pingTimeout)
-			defer cancel()
-
-			var (
-				pingSuccessful bool
-				start          time.Time
-			)
-			for _, underlay := range multiUnderlay {
-				// ping each underlay address, pick first available
-				start = time.Now()
-				if _, err := s.streamer.Ping(ctx, underlay); err != nil {
-					s.logger.Debug("unreachable peer underlay", "peer_address", hex.EncodeToString(newPeer.Overlay), "underlay", underlay, "error", err)
-					continue
-				}
-				pingSuccessful = true
-				s.logger.Debug("reachable peer underlay", "peer_address", hex.EncodeToString(newPeer.Overlay), "underlay", underlay)
-				break
-			}
-
-			if !pingSuccessful {
-				// none of underlay addresses is available
-				s.metrics.PingFailureTime.Observe(time.Since(start).Seconds())
-				s.metrics.UnreachablePeers.Inc()
-				return
-			}
-
-			s.metrics.PingTime.Observe(time.Since(start).Seconds())
-			s.metrics.ReachablePeers.Inc()
-
-			bzzAddress := bzz.Address{
-				Overlay:   swarm.NewAddress(newPeer.Overlay),
-				Underlays: multiUnderlay,
-				Signature: newPeer.Signature,
-				Nonce:     newPeer.Nonce,
-			}
-
-			err := s.addressBook.Put(bzzAddress.Overlay, bzzAddress)
-			if err != nil {
-				s.metrics.StorePeerErr.Inc()
-				s.logger.Warning("skipping peer in response", "peer_address", newPeer.String(), "error", err)
-				return
-			}
-
-			mtx.Lock()
-			peersToAdd = append(peersToAdd, bzzAddress.Overlay)
-			mtx.Unlock()
-		}()
-	}
 
 	for _, p := range peers.Peers {
 		multiUnderlays, err := bzz.DeserializeUnderlays(p.Underlay)
@@ -361,10 +293,21 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 			continue
 		}
 
-		// add peer does not exist in the addressbook
-		addPeer(p, multiUnderlays)
+		bzzAddress := bzz.Address{
+			Overlay:   swarm.NewAddress(p.Overlay),
+			Underlays: multiUnderlays,
+			Signature: p.Signature,
+			Nonce:     p.Nonce,
+		}
+
+		if err := s.addressBook.Put(bzzAddress.Overlay, bzzAddress); err != nil {
+			s.metrics.StorePeerErr.Inc()
+			s.logger.Warning("skipping peer in response", "peer_address", p.String(), "error", err)
+			return
+		}
+
+		peersToAdd = append(peersToAdd, bzzAddress.Overlay)
 	}
-	wg.Wait()
 
 	if s.addPeersHandler != nil && len(peersToAdd) > 0 {
 		s.addPeersHandler(peersToAdd...)

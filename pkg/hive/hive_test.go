@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"strconv"
 	"testing"
@@ -48,7 +47,7 @@ func TestHandlerRateLimit(t *testing.T) {
 
 	addressbookclean := ab.New(mock.NewStateStore())
 
-	// new recorder for handling Ping
+	// new recorder
 	streamer := streamtest.New()
 	// create a hive server that handles the incoming stream
 	server := hive.New(streamer, addressbookclean, networkID, false, true, logger)
@@ -192,7 +191,6 @@ func TestBroadcastPeers(t *testing.T) {
 		wantOverlays      []swarm.Address
 		wantBzzAddresses  []bzz.Address
 		allowPrivateCIDRs bool
-		pingErr           func(addr ma.Multiaddr) (time.Duration, error)
 	}{
 		"OK - single record": {
 			addresee:          swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
@@ -234,24 +232,6 @@ func TestBroadcastPeers(t *testing.T) {
 			wantBzzAddresses:  bzzAddresses[:2*hive.MaxBatchSize],
 			allowPrivateCIDRs: true,
 		},
-		"OK - single batch - skip ping failures": {
-			addresee:          swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
-			peers:             overlays[:15],
-			wantMsgs:          []pb.Peers{{Peers: wantMsgs[0].Peers[:15]}},
-			wantOverlays:      overlays[:10],
-			wantBzzAddresses:  bzzAddresses[:10],
-			allowPrivateCIDRs: true,
-			pingErr: func(addr ma.Multiaddr) (rtt time.Duration, err error) {
-				for _, v := range bzzAddresses[10:15] {
-					for _, underlay := range v.Underlays {
-						if underlay.Equal(addr) {
-							return rtt, errors.New("ping failure")
-						}
-					}
-				}
-				return rtt, nil
-			},
-		},
 		"Ok - don't advertise private CIDRs only": {
 			addresee:          overlays[len(overlays)-1],
 			peers:             overlays[:15],
@@ -291,13 +271,7 @@ func TestBroadcastPeers(t *testing.T) {
 
 			addressbookclean := ab.New(mock.NewStateStore())
 
-			// new recorder for handling Ping
-			var streamer *streamtest.Recorder
-			if tc.pingErr != nil {
-				streamer = streamtest.New(streamtest.WithPingErr(tc.pingErr))
-			} else {
-				streamer = streamtest.New()
-			}
+			streamer := streamtest.New()
 			// create a hive server that handles the incoming stream
 			server := hive.New(streamer, addressbookclean, networkID, false, true, logger)
 			testutil.CleanupCloser(t, server)
