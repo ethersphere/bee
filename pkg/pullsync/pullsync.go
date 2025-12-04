@@ -49,7 +49,6 @@ const (
 	MaxCursor                       = math.MaxUint64
 	DefaultMaxPage           uint64 = 250
 	pageTimeout                     = time.Second
-	makeOfferTimeout                = 15 * time.Minute
 	handleMaxChunksPerSecond        = 250
 	handleRequestsLimitRate         = time.Second / handleMaxChunksPerSecond // handle max `handleMaxChunksPerSecond` chunks per second per peer
 )
@@ -401,9 +400,6 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 
 // makeOffer tries to assemble an offer for a given requested interval.
 func (s *Syncer) makeOffer(ctx context.Context, rn pb.Get) (*pb.Offer, error) {
-
-	ctx, cancel := context.WithTimeout(ctx, makeOfferTimeout)
-	defer cancel()
 
 	addrs, top, err := s.collectAddrs(ctx, uint8(rn.Bin), rn.Start)
 	if err != nil {
