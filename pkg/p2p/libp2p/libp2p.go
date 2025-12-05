@@ -396,27 +396,18 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		// actual IP address of the host once detected
 		certManagerAddressFactory := certManager.AddressFactory()
 		opts = append(opts, libp2p.AddrsFactory(func(addrs []ma.Multiaddr) []ma.Multiaddr {
-			addrs = includeNatResolvedAddresses(addrs, newCompositeAddressResolver(tcpResolver, wssResolver), logger)
-
+			addrs = includeNatResolvedAddresses(addrs, newCompositeAddressResolver(tcpResolver, wssResolver), s.logger)
 			addrs = certManagerAddressFactory(addrs)
-
-			slices.SortStableFunc(addrs, func(a, b ma.Multiaddr) int {
-				aPub := manet.IsPublicAddr(a)
-				bPub := manet.IsPublicAddr(b)
-				switch {
-				case aPub == bPub:
-					return 0
-				case aPub:
-					return -1
-				case bPub:
-					return 1
-				}
-				return 0
-			})
 			return addrs
 		}))
-	} else if o.EnableWS {
-		transports = append(transports, libp2p.Transport(ws.New))
+	} else {
+		if o.EnableWS {
+			transports = append(transports, libp2p.Transport(ws.New))
+		}
+		opts = append(opts, libp2p.AddrsFactory(func(addrs []ma.Multiaddr) []ma.Multiaddr {
+			addrs = includeNatResolvedAddresses(addrs, newCompositeAddressResolver(tcpResolver, wssResolver), s.logger)
+			return addrs
+		}))
 	}
 
 	opts = append(opts, transports...)
