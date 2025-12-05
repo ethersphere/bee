@@ -4,12 +4,4 @@
 
 package replicas
 
-import "github.com/ethersphere/bee/v2/pkg/storage"
-
-var (
-	Signer = signer
-)
-
-func Wait(g storage.Getter) {
-	g.(*getter).wg.Wait()
-}
+var Signer = signer

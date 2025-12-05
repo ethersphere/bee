@@ -112,7 +112,7 @@ func TestInvalid(t *testing.T) {
 			name: "wrong soc address",
 			chunk: func() swarm.Chunk {
 				wrongAddressBytes := socAddress.Clone().Bytes()
-				wrongAddressBytes[0] = 255 - wrongAddressBytes[0]
+				wrongAddressBytes[1] = 255 - wrongAddressBytes[1]
 				wrongAddress := swarm.NewAddress(wrongAddressBytes)
 				data := makeSocData()
 				return swarm.NewChunk(wrongAddress, data)
@@ -181,4 +181,76 @@ func TestInvalid(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestValidDisperseReplicaAddress(t *testing.T) {
+	t.Parallel()
+
+	privKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := crypto.NewDefaultSigner(privKey)
+
+	payload := []byte("foo")
+	ch, err := cac.New(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	id := make([]byte, swarm.HashSize)
+	s := soc.New(id, ch)
+
+	socCh, err := s.Sign(signer)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// original address
+	originalAddr := socCh.Address().Bytes()
+
+	t.Run("last 4 bits equal", func(t *testing.T) {
+		// change first 4 bits of first byte
+		addr := make([]byte, len(originalAddr))
+		copy(addr, originalAddr)
+		addr[0] = (addr[0] & 0x0f) | 0xf0
+
+		replica := swarm.NewChunk(swarm.NewAddress(addr), socCh.Data())
+		if !soc.Valid(replica) {
+			t.Fatal("replica with last 4 bits equal should be valid")
+		}
+	})
+
+	t.Run("5th bit flipped", func(t *testing.T) {
+		addr := make([]byte, len(originalAddr))
+		copy(addr, originalAddr)
+		addr[0] ^= 1 << 3 // flip 5th bit from the left
+
+		replica := swarm.NewChunk(swarm.NewAddress(addr), socCh.Data())
+		if !soc.Valid(replica) {
+			t.Fatal("replica with 5th bit flipped should be valid")
+		}
+	})
+
+	t.Run("invalid change", func(t *testing.T) {
+		addr := make([]byte, len(originalAddr))
+		copy(addr, originalAddr)
+		addr[0]++ // change the first byte in a way that is not allowed
+
+		replica := swarm.NewChunk(swarm.NewAddress(addr), socCh.Data())
+		if soc.Valid(replica) {
+			t.Fatal("replica with invalid change should be invalid")
+		}
+	})
+
+	t.Run("invalid change - different last 4 bits", func(t *testing.T) {
+		addr := make([]byte, len(originalAddr))
+		copy(addr, originalAddr)
+		addr[0] = (addr[0] & 0xf0) | ((addr[0] + 1) & 0x0f)
+
+		replica := swarm.NewChunk(swarm.NewAddress(addr), socCh.Data())
+		if soc.Valid(replica) {
+			t.Fatal("replica with different last 4 bits should be invalid")
+		}
+	})
 }

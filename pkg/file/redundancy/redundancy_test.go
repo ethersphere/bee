@@ -84,7 +84,7 @@ func TestEncode(t *testing.T) {
 	redundancy.SetErasureEncoder(newMockEncoder)
 
 	// test on the data level
-	for _, level := range []redundancy.Level{redundancy.MEDIUM, redundancy.STRONG, redundancy.INSANE, redundancy.PARANOID} {
+	for _, level := range []redundancy.Level{redundancy.MEDIUM, redundancy.STRONG, redundancy.INSANE, redundancy.DefaultLevel} {
 		for _, encrypted := range []bool{false, true} {
 			maxShards := level.GetMaxShards()
 			if encrypted {

@@ -1,6 +1,9 @@
-// Copyright 2023 The Swarm Authors. All rights reserved.
+// Copyright 2025 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
+
+// This file was created as a copy of the original putter_test.go file
+// and tailored to the socPutter implementation.
 
 package replicas_test
 
@@ -15,44 +18,53 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/replicas"
+	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-var (
-	errTestA = errors.New("A")
-	errTestB = errors.New("B")
-)
-
-type testBasePutter struct {
-	getErrors func(context.Context, swarm.Address) error
-	putErrors func(context.Context, swarm.Address) error
-	store     storage.ChunkStore
+type putterSession struct {
+	chunkStore storage.ChunkStore
+	getErrors  func(context.Context, swarm.Address) error
+	putErrors  func(context.Context, swarm.Address) error
 }
 
-func (tbp *testBasePutter) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
+func (tbp *putterSession) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
 
 	g := tbp.getErrors
 	if g != nil {
 		return nil, g(ctx, addr)
 	}
-	return tbp.store.Get(ctx, addr)
+	return tbp.chunkStore.Get(ctx, addr)
 }
 
-func (tbp *testBasePutter) Put(ctx context.Context, ch swarm.Chunk) error {
-
-	g := tbp.putErrors
+func (p *putterSession) Put(ctx context.Context, ch swarm.Chunk) error {
+	g := p.putErrors
 	if g != nil {
 		return g(ctx, ch.Address())
 	}
-	return tbp.store.Put(ctx, ch)
+
+	return p.chunkStore.Put(ctx, ch)
 }
 
-func TestPutter(t *testing.T) {
+func (p *putterSession) Done(address swarm.Address) error { return nil }
+
+func (p *putterSession) Cleanup() error { return nil }
+
+func TestSocPutter(t *testing.T) {
 	t.Parallel()
+
+	// test key to sign soc chunks
+	privKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := crypto.NewDefaultSigner(privKey)
+
 	tcs := []struct {
 		level  redundancy.Level
 		length int
@@ -79,23 +91,34 @@ func TestPutter(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// create soc from cac
+			id := make([]byte, swarm.HashSize)
+			if _, err := rand.Read(id); err != nil {
+				t.Fatal(err)
+			}
+			s := soc.New(id, ch)
+			sch, err := s.Sign(signer)
+			if err != nil {
+				t.Fatal(err)
+			}
+
 			store := inmemchunkstore.New()
 			defer store.Close()
-			p := replicas.NewPutter(store, tc.level)
+			session := &putterSession{chunkStore: store}
+			p := replicas.NewSocPutter(session, tc.level)
 
-			// original chunk
-			if err := store.Put(ctx, ch); err != nil {
-				t.Fatalf("expected no error. got %v", err)
-			}
-			if err := p.Put(ctx, ch); err != nil {
+			if err := p.Put(ctx, sch); err != nil {
 				t.Fatalf("expected no error. got %v", err)
 			}
 			var addrs []swarm.Address
 			orig := false
 			_ = store.Iterate(ctx, func(chunk swarm.Chunk) (stop bool, err error) {
-				if ch.Address().Equal(chunk.Address()) {
+				if sch.Address().Equal(chunk.Address()) {
 					orig = true
 					return false, nil
+				}
+				if !soc.Valid(chunk) {
+					t.Fatalf("chunk %v is not a valid SOC chunk", chunk.Address())
 				}
 				addrs = append(addrs, chunk.Address())
 				return false, nil
@@ -127,15 +150,16 @@ func TestPutter(t *testing.T) {
 			name   string
 			level  redundancy.Level
 			length int
-			f      func(*testBasePutter) *testBasePutter
+			f      func(*putterSession) *putterSession
 			err    []error
 		}{
-			{"put errors", 4, 4096, func(tbp *testBasePutter) *testBasePutter {
+			{"put errors", 4, 4096, func(tbp *putterSession) *putterSession {
 				var j int32
 				i := &j
 				atomic.StoreInt32(i, 0)
 				tbp.putErrors = func(ctx context.Context, _ swarm.Address) error {
 					j := atomic.AddInt32(i, 1)
+					<-time.After(10 * time.Millisecond)
 					if j == 6 {
 						return errTestA
 					}
@@ -146,7 +170,7 @@ func TestPutter(t *testing.T) {
 				}
 				return tbp
 			}, []error{errTestA, errTestB}},
-			{"put latencies", 4, 4096, func(tbp *testBasePutter) *testBasePutter {
+			{"put latencies", 4, 4096, func(tbp *putterSession) *putterSession {
 				var j int32
 				i := &j
 				atomic.StoreInt32(i, 0)
@@ -180,10 +204,21 @@ func TestPutter(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
+
+				id := make([]byte, swarm.HashSize)
+				if _, err := rand.Read(id); err != nil {
+					t.Fatal(err)
+				}
+				s := soc.New(id, ch)
+				sch, err := s.Sign(signer)
+				if err != nil {
+					t.Fatal(err)
+				}
+
 				store := inmemchunkstore.New()
 				defer store.Close()
-				p := replicas.NewPutter(tc.f(&testBasePutter{store: store}), tc.level)
-				errs := p.Put(ctx, ch)
+				p := replicas.NewSocPutter(tc.f(&putterSession{chunkStore: store}), tc.level)
+				errs := p.Put(ctx, sch)
 				for _, err := range tc.err {
 					if !errors.Is(errs, err) {
 						t.Fatalf("incorrect error. want it to contain %v. got %v.", tc.err, errs)
