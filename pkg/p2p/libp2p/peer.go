@@ -10,6 +10,7 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -28,19 +29,23 @@ type peerRegistry struct {
 	//nolint:misspell
 	disconnecter     disconnecter // peerRegistry notifies libp2p on peer disconnection
 	network.Notifiee              // peerRegistry can be the receiver for network.Notify
+
+	logger log.Logger
 }
 
 type disconnecter interface {
 	disconnected(swarm.Address)
 }
 
-func newPeerRegistry() *peerRegistry {
+func newPeerRegistry(logger log.Logger) *peerRegistry {
 	return &peerRegistry{
 		underlays:   make(map[string]libp2ppeer.ID),
 		overlays:    make(map[libp2ppeer.ID]swarm.Address),
 		full:        make(map[libp2ppeer.ID]bool),
 		connections: make(map[libp2ppeer.ID]map[network.Conn]struct{}),
 		streams:     make(map[libp2ppeer.ID]map[network.Stream]context.CancelFunc),
+
+		logger: logger,
 
 		Notifiee: new(network.NoopNotifiee),
 	}
@@ -176,7 +181,11 @@ func (r *peerRegistry) fullnode(peerID libp2ppeer.ID) (bool, bool) {
 	return full, found
 }
 
-func (r *peerRegistry) isConnected(peerID libp2ppeer.ID, remoteAddr ma.Multiaddr) (swarm.Address, bool) {
+func (r *peerRegistry) isConnected(peerID libp2ppeer.ID, remoteAddr ma.Multiaddr) (a swarm.Address, ok bool) {
+	defer func() {
+		r.logger.Debug("INVESTIGATION isConnected", "peerID", peerID, "remoteAddr", remoteAddr, "overlay", a, "ok", ok)
+	}()
+
 	if remoteAddr == nil {
 		return swarm.ZeroAddress, false
 	}
@@ -196,6 +205,7 @@ func (r *peerRegistry) isConnected(peerID libp2ppeer.ID, remoteAddr ma.Multiaddr
 	}
 
 	for c := range conns {
+		r.logger.Debug("INVESTIGATION checking connection", "peerID", peerID, "remoteAddr", remoteAddr, "connection remote addr", c.RemoteMultiaddr())
 		if c.RemoteMultiaddr().Equal(remoteAddr) {
 			// we ARE connected to the peer on expected address
 			return overlay, true

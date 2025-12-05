@@ -489,7 +489,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 
-	peerRegistry := newPeerRegistry()
+	peerRegistry := newPeerRegistry(logger)
 	s = &Service{
 		ctx:                ctx,
 		host:               h,
