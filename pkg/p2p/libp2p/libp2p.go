@@ -84,7 +84,7 @@ const (
 	defaultLightNodeLimit = 100
 	peerUserAgentTimeout  = time.Second
 
-	peerstoreWaitAddrsTimeout = 10 * time.Second
+	peerstoreWaitAddrsTimeout = 15 * time.Second
 
 	defaultHeadersRWTimeout = 10 * time.Second
 
@@ -770,10 +770,9 @@ func (s *Service) notifyReacherConnected(stream network.Stream, overlay swarm.Ad
 	}
 
 	peerAddrs := s.host.Peerstore().Addrs(peerID)
-	connectionAddr := stream.Conn().RemoteMultiaddr()
-	bestAddr := bzz.SelectBestAdvertisedAddress(peerAddrs, connectionAddr)
+	bestAddr := bzz.SelectBestAdvertisedAddress(peerAddrs, nil)
 
-	s.logger.Debug("selected reacher address", "peer_id", peerID, "selected_addr", bestAddr.String(), "connection_addr", connectionAddr.String(), "advertised_count", len(peerAddrs))
+	s.logger.Debug("selected reacher address", "peer_id", peerID, "selected_addr", bestAddr.String(), "advertised_count", len(peerAddrs))
 
 	underlay, err := buildFullMA(bestAddr, peerID)
 	if err != nil {
@@ -1430,20 +1429,7 @@ func (s *Service) peerMultiaddrs(ctx context.Context, conn network.Conn, peerID 
 	waitPeersCtx, cancel := context.WithTimeout(ctx, peerstoreWaitAddrsTimeout)
 	defer cancel()
 
-	peerMultiaddrs, err := buildFullMAs(waitPeerAddrs(waitPeersCtx, s.host.Peerstore(), peerID), peerID)
-	if err != nil {
-		return nil, fmt.Errorf("build peer multiaddrs: %w", err)
-	}
-
-	if len(peerMultiaddrs) == 0 {
-		fullRemoteAddress, err := buildFullMA(conn.RemoteMultiaddr(), peerID)
-		if err != nil {
-			return nil, fmt.Errorf("build full remote peer multi address: %w", err)
-		}
-		peerMultiaddrs = append(peerMultiaddrs, fullRemoteAddress)
-	}
-
-	return peerMultiaddrs, nil
+	return buildFullMAs(waitPeerAddrs(waitPeersCtx, s.host.Peerstore(), peerID), peerID)
 }
 
 var version270 = *semver.Must(semver.NewVersion("2.7.0"))
