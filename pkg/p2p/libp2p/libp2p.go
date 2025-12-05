@@ -965,14 +965,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		info = ai
 		peerID = ai.ID
 
-		hostAddr, err := buildHostAddress(info.ID)
-		if err != nil {
-			return nil, fmt.Errorf("build host address: %w", err)
-		}
-
-		remoteAddr := addr.Decapsulate(hostAddr)
-
-		if overlay, found := s.peers.isConnected(info.ID, remoteAddr); found {
+		if overlay, found := s.peers.isConnected(info.ID); found {
 			address = &bzz.Address{
 				Overlay:   overlay,
 				Underlays: []ma.Multiaddr{addr},

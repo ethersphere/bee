@@ -15,7 +15,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/libp2p/go-libp2p/core/network"
 	libp2ppeer "github.com/libp2p/go-libp2p/core/peer"
-	ma "github.com/multiformats/go-multiaddr"
 )
 
 type peerRegistry struct {
@@ -181,14 +180,10 @@ func (r *peerRegistry) fullnode(peerID libp2ppeer.ID) (bool, bool) {
 	return full, found
 }
 
-func (r *peerRegistry) isConnected(peerID libp2ppeer.ID, remoteAddr ma.Multiaddr) (a swarm.Address, ok bool) {
+func (r *peerRegistry) isConnected(peerID libp2ppeer.ID) (a swarm.Address, ok bool) {
 	defer func() {
-		r.logger.Debug("INVESTIGATION isConnected", "peerID", peerID, "remoteAddr", remoteAddr, "overlay", a, "ok", ok)
+		r.logger.Debug("INVESTIGATION isConnected", "peerID", peerID, "overlay", a, "ok", ok)
 	}()
-
-	if remoteAddr == nil {
-		return swarm.ZeroAddress, false
-	}
 
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -199,20 +194,11 @@ func (r *peerRegistry) isConnected(peerID libp2ppeer.ID, remoteAddr ma.Multiaddr
 	}
 
 	// check connection remote address
-	conns, ok := r.connections[peerID]
-	if !ok {
+	if _, ok := r.connections[peerID]; !ok {
 		return swarm.ZeroAddress, false
 	}
 
-	for c := range conns {
-		r.logger.Debug("INVESTIGATION checking connection", "peerID", peerID, "remoteAddr", remoteAddr, "connection remote addr", c.RemoteMultiaddr())
-		if c.RemoteMultiaddr().Equal(remoteAddr) {
-			// we ARE connected to the peer on expected address
-			return overlay, true
-		}
-	}
-
-	return swarm.ZeroAddress, false
+	return overlay, true
 }
 
 func (r *peerRegistry) remove(overlay swarm.Address) (found, full bool, peerID libp2ppeer.ID) {
