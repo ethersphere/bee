@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"strconv"
 
 	ocprom "contrib.go.opencensus.io/exporter/prometheus"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
@@ -26,7 +25,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/protocol"
-	"github.com/libp2p/go-libp2p/p2p/host/autonat"
 	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
@@ -162,25 +160,9 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		o.HeadersRWTimeout = defaultHeadersRWTimeout
 	}
 
-	options := []autonat.Option{
-		autonat.EnableService(dialer.Network()),
-	}
-
-	val, err := strconv.ParseBool(reachabilityOverridePublic)
-	if err != nil {
-		return nil, err
-	}
-	if val {
-		options = append(options, autonat.WithReachability(network.ReachabilityPublic))
-	}
-
 	// If you want to help other peers to figure out if they are behind
 	// NATs, you can launch the server-side of AutoNAT too (AutoRelay
 	// already runs the client)
-	var autoNAT autonat.AutoNAT
-	if autoNAT, err = autonat.New(h, options...); err != nil {
-		return nil, fmt.Errorf("autonat: %w", err)
-	}
 
 	handshakeService, err := handshake.New(signer, newCompositeAddressResolver(tcpResolver, wssResolver), overlay, networkID, o.FullNode, o.Nonce, newHostAddresser(h), o.WelcomeMessage, o.ValidateOverlay, h.ID(), logger)
 	if err != nil {
@@ -218,7 +200,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		halt:               make(chan struct{}),
 		lightNodes:         lightNodes,
 		HeadersRWTimeout:   o.HeadersRWTimeout,
-		autoNAT:            autoNAT,
+		autoNAT:            nil,
 		enableWS:           o.EnableWS,
 		autoTLSCertManager: nil,
 		zapLogger:          zapLogger,
