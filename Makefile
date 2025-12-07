@@ -37,6 +37,12 @@ binary: dist FORCE
 	$(GO) version
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o dist/bee ./cmd/bee
 
+.PHONY: wasm
+wasm: export CGO_ENABLED=0
+wasm: dist FORCE
+	$(GO) version
+	GOARCH=wasm GOOS=js $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o dist/bee ./cmd/bee
+
 dist:
 	mkdir $@
 

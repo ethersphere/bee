@@ -129,7 +129,6 @@ require (
 	github.com/multiformats/go-multicodec v0.9.1 // indirect
 	github.com/multiformats/go-varint v0.0.7
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
-	github.com/onsi/gomega v1.36.3 // indirect
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
 	github.com/pelletier/go-toml v1.8.0 // indirect
 	github.com/pion/datachannel v1.5.10 // indirect
@@ -194,3 +193,5 @@ require (
 )
 
 replace github.com/codahale/hdrhistogram => github.com/HdrHistogram/hdrhistogram-go v0.0.0-20200919145931-8dac23c8dac1
+
+replace github.com/syndtr/goleveldb => ../goleveldb
