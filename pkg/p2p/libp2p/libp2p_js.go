@@ -30,16 +30,15 @@ import (
 	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
-	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
 	"go.uber.org/zap"
 
 	lp2pswarm "github.com/libp2p/go-libp2p/p2p/net/swarm"
+
+	wasmws "github.com/v1rtl/go-libp2p-wasmws"
 )
 
 func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (s *Service, returnErr error) {
 	logger = logger.WithName(loggerName).Register()
-
-	var listenAddrs []string
 
 	security := libp2p.DefaultSecurity
 	libp2pPeerstore, err := pstoremem.NewPeerstore()
@@ -89,7 +88,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	var zapLogger *zap.Logger
 
 	opts := []libp2p.Option{
-		libp2p.ListenAddrStrings(listenAddrs...),
+		libp2p.NoListenAddrs,
 		security,
 		// Use dedicated peerstore instead the global DefaultPeerstore
 		libp2p.Peerstore(libp2pPeerstore),
@@ -137,7 +136,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	if o.EnableWS {
-		transports = append(transports, libp2p.Transport(ws.New))
+		transports = append(transports, libp2p.Transport(wasmws.New))
 	}
 
 	opts = append(opts, transports...)
