@@ -23,7 +23,6 @@ const uploadsLock = "pin-upload-store"
 // Report implements the storage.PushReporter by wrapping the internal reporter
 // with a transaction.
 func (db *DB) Report(ctx context.Context, chunk swarm.Chunk, state storage.ChunkState) error {
-
 	unlock := db.Lock(uploadsLock)
 	defer unlock()
 
@@ -63,7 +62,6 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 		}
 		return nil
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -74,13 +72,13 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 				unlock := db.Lock(uploadsLock)
 				defer unlock()
 				return errors.Join(
-					db.storage.Run(ctx, func(s transaction.Store) error {
-						return uploadPutter.Put(ctx, s, chunk)
+					db.storage.Run(context.Background(), func(s transaction.Store) error {
+						return uploadPutter.Put(context.Background(), s, chunk)
 					}),
 					func() error {
 						if pinningPutter != nil {
-							return db.storage.Run(ctx, func(s transaction.Store) error {
-								return pinningPutter.Put(ctx, s, chunk)
+							return db.storage.Run(context.Background(), func(s transaction.Store) error {
+								return pinningPutter.Put(context.Background(), s, chunk)
 							})
 						}
 						return nil
@@ -101,7 +99,7 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 				}),
 				func() error {
 					if pinningPutter != nil {
-						return db.storage.Run(ctx, func(s transaction.Store) error {
+						return db.storage.Run(context.Background(), func(s transaction.Store) error {
 							pinErr := pinningPutter.Close(s.IndexStore(), address)
 							if errors.Is(pinErr, pinstore.ErrDuplicatePinCollection) {
 								pinErr = pinningPutter.Cleanup(db.storage)

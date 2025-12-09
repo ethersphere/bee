@@ -99,7 +99,6 @@ func New(
 //  3. A new chunk that has the same address belonging to the same stamp index with an already stored chunk will overwrite the existing chunk
 //     if the new chunk has a higher stamp timestamp (regardless of batch type and chunk type, eg CAC & SOC).
 func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
-
 	// batchID lock, Put vs Eviction
 	r.multx.Lock(string(chunk.Stamp().BatchID()))
 	defer r.multx.Unlock(string(chunk.Stamp().BatchID()))
@@ -128,8 +127,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 
 	var shouldIncReserveSize bool
 
-	err = r.st.Run(ctx, func(s transaction.Store) error {
-
+	err = r.st.Run(context.Background(), func(s transaction.Store) error {
 		oldStampIndex, loadedStampIndex, err := stampindex.LoadOrStore(s.IndexStore(), reserveScope, chunk)
 		if err != nil {
 			return fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
@@ -225,7 +223,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			// 3. Delete ALL old chunk related items from the reserve.
 			// 4. Update the stamp index.
 
-			err = r.removeChunk(ctx, s, oldStampIndex.ChunkAddress, oldStampIndex.BatchID, oldStampIndex.StampHash)
+			err = r.removeChunk(context.Background(), s, oldStampIndex.ChunkAddress, oldStampIndex.BatchID, oldStampIndex.StampHash)
 			if err != nil {
 				return fmt.Errorf("failed removing older chunk %s: %w", oldStampIndex.ChunkAddress, err)
 			}
@@ -272,12 +270,12 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			}
 			if has {
 				r.logger.Debug("replacing soc in chunkstore", "address", chunk.Address())
-				err = s.ChunkStore().Replace(ctx, chunk, true)
+				err = s.ChunkStore().Replace(context.Background(), chunk, true)
 			} else {
-				err = s.ChunkStore().Put(ctx, chunk)
+				err = s.ChunkStore().Put(context.Background(), chunk)
 			}
 		} else {
-			err = s.ChunkStore().Put(ctx, chunk)
+			err = s.ChunkStore().Put(context.Background(), chunk)
 		}
 
 		if err != nil {
@@ -396,7 +394,7 @@ func (r *Reserve) EvictBatchBin(
 	for _, item := range evictedItems {
 		func(item *BatchRadiusItem) {
 			eg.Go(func() error {
-				err := r.st.Run(ctx, func(s transaction.Store) error {
+				err := r.st.Run(context.Background(), func(s transaction.Store) error {
 					return RemoveChunkWithItem(ctx, s, item)
 				})
 				if err != nil {
@@ -411,7 +409,7 @@ func (r *Reserve) EvictBatchBin(
 	for _, item := range pinnedEvictedItems {
 		func(item *BatchRadiusItem) {
 			eg.Go(func() error {
-				err := r.st.Run(ctx, func(s transaction.Store) error {
+				err := r.st.Run(context.Background(), func(s transaction.Store) error {
 					return RemoveChunkMetaData(ctx, s, item)
 				})
 				if err != nil {
@@ -567,7 +565,7 @@ func (r *Reserve) Reset(ctx context.Context) error {
 	size := r.Size()
 
 	// step 1: delete epoch timestamp
-	err := r.st.Run(ctx, func(s transaction.Store) error { return s.IndexStore().Delete(&EpochItem{}) })
+	err := r.st.Run(context.Background(), func(s transaction.Store) error { return s.IndexStore().Delete(&EpochItem{}) })
 	if err != nil {
 		return err
 	}
@@ -588,7 +586,7 @@ func (r *Reserve) Reset(ctx context.Context) error {
 	}
 	for _, item := range bRitems {
 		eg.Go(func() error {
-			return r.st.Run(ctx, func(s transaction.Store) error {
+			return r.st.Run(context.Background(), func(s transaction.Store) error {
 				return errors.Join(
 					s.ChunkStore().Delete(ctx, item.Address),
 					s.IndexStore().Delete(item),
@@ -617,7 +615,7 @@ func (r *Reserve) Reset(ctx context.Context) error {
 	}
 	for _, item := range sitems {
 		eg.Go(func() error {
-			return r.st.Run(ctx, func(s transaction.Store) error {
+			return r.st.Run(context.Background(), func(s transaction.Store) error {
 				return errors.Join(
 					s.IndexStore().Delete(item),
 					chunkstamp.DeleteWithStamp(s.IndexStore(), reserveScope, item.ChunkAddress, postage.NewStamp(item.BatchID, item.StampIndex, item.StampTimestamp, nil)),

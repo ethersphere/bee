@@ -74,7 +74,6 @@ func (c *Cache) Capacity() int64 {
 // chunkstore and also adds a Cache entry for the chunk.
 func (c *Cache) Putter(store transaction.Storage) storage.Putter {
 	return storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
-
 		c.glock.Lock(chunk.Address().ByteString())
 		defer c.glock.Unlock(chunk.Address().ByteString())
 
@@ -127,7 +126,6 @@ func (c *Cache) Putter(store transaction.Storage) storage.Putter {
 // of this getter to rollback the operation.
 func (c *Cache) Getter(store transaction.Storage) storage.Getter {
 	return storage.GetterFunc(func(ctx context.Context, address swarm.Address) (swarm.Chunk, error) {
-
 		c.glock.Lock(address.ByteString())
 		defer c.glock.Unlock(address.ByteString())
 
@@ -184,7 +182,6 @@ func (c *Cache) Getter(store transaction.Storage) storage.Getter {
 // RemoveOldest removes the oldest cache entries from the store. The count
 // specifies the number of entries to remove.
 func (c *Cache) RemoveOldest(ctx context.Context, st transaction.Storage, count uint64) error {
-
 	if count <= 0 {
 		return nil
 	}
@@ -221,14 +218,14 @@ func (c *Cache) RemoveOldest(ctx context.Context, st transaction.Storage, count 
 			eg.Go(func() error {
 				c.glock.Lock(item.Address.ByteString())
 				defer c.glock.Unlock(item.Address.ByteString())
-				err := st.Run(ctx, func(s transaction.Store) error {
+				err := st.Run(context.Background(), func(s transaction.Store) error {
 					return errors.Join(
 						s.IndexStore().Delete(item),
 						s.IndexStore().Delete(&cacheOrderIndex{
 							Address:         item.Address,
 							AccessTimestamp: item.AccessTimestamp,
 						}),
-						s.ChunkStore().Delete(ctx, item.Address),
+						s.ChunkStore().Delete(context.Background(), item.Address),
 					)
 				})
 				if err != nil {
@@ -249,7 +246,6 @@ func (c *Cache) ShallowCopy(
 	store transaction.Storage,
 	addrs ...swarm.Address,
 ) (err error) {
-
 	// TODO: add proper mutex locking before usage
 
 	entries := make([]*cacheEntry, 0, len(addrs))
@@ -276,7 +272,7 @@ func (c *Cache) ShallowCopy(
 			// Since the caller has previously referenced the chunk (+1 refCnt), and if the chunk is already referenced
 			// by the cache store (+1 refCnt), then we must decrement the refCnt by one ( -1 refCnt to bring the total to +1).
 			// See https://github.com/ethersphere/bee/issues/4530.
-			_ = store.Run(ctx, func(s transaction.Store) error { return s.ChunkStore().Delete(ctx, addr) })
+			_ = store.Run(context.Background(), func(s transaction.Store) error { return s.ChunkStore().Delete(context.Background(), addr) })
 			continue
 		}
 		entries = append(entries, entry)
@@ -286,15 +282,15 @@ func (c *Cache) ShallowCopy(
 		return nil
 	}
 
-	//consider only the amount that can fit, the rest should be deleted from the chunkstore.
+	// consider only the amount that can fit, the rest should be deleted from the chunkstore.
 	if len(entries) > c.capacity {
 		for _, addr := range entries[:len(entries)-c.capacity] {
-			_ = store.Run(ctx, func(s transaction.Store) error { return s.ChunkStore().Delete(ctx, addr.Address) })
+			_ = store.Run(context.Background(), func(s transaction.Store) error { return s.ChunkStore().Delete(context.Background(), addr.Address) })
 		}
 		entries = entries[len(entries)-c.capacity:]
 	}
 
-	err = store.Run(ctx, func(s transaction.Store) error {
+	err = store.Run(context.Background(), func(s transaction.Store) error {
 		for _, entry := range entries {
 			err = s.IndexStore().Put(entry)
 			if err != nil {

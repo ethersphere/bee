@@ -274,10 +274,10 @@ func deleteCollectionChunks(ctx context.Context, st transaction.Storage, collect
 	for _, item := range chunksToDelete {
 		func(item *pinChunkItem) {
 			eg.Go(func() error {
-				return st.Run(ctx, func(s transaction.Store) error {
+				return st.Run(context.Background(), func(s transaction.Store) error {
 					return errors.Join(
 						s.IndexStore().Delete(item),
-						s.ChunkStore().Delete(ctx, item.Addr),
+						s.ChunkStore().Delete(context.Background(), item.Addr),
 					)
 				})
 			})
@@ -305,7 +305,7 @@ func DeletePin(ctx context.Context, st transaction.Storage, root swarm.Address) 
 		return err
 	}
 
-	return st.Run(ctx, func(s transaction.Store) error {
+	return st.Run(context.Background(), func(s transaction.Store) error {
 		err := s.IndexStore().Delete(collection)
 		if err != nil {
 			return fmt.Errorf("pin store: failed deleting root collection: %w", err)
