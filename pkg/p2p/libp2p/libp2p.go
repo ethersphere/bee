@@ -388,37 +388,34 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		wssResolver = r
 	}
 
+	// Add WebSocket transport(s) based on configuration
 	if o.EnableWSS {
 		wsOpt := ws.WithTLSConfig(certManager.TLSConfig())
 		transports = append(transports, libp2p.Transport(ws.New, wsOpt))
-	}
-
-	if o.EnableWS {
+	} else if o.EnableWS {
 		transports = append(transports, libp2p.Transport(ws.New))
 	}
 
 	opts = append(opts, libp2p.AddrsFactory(func(addrs []ma.Multiaddr) []ma.Multiaddr {
+		// Always include NAT-resolved addresses (both cases use the same resolver logic
 		addrs = includeNatResolvedAddresses(addrs, newCompositeAddressResolver(tcpResolver, wssResolver), logger)
 
+		// Only apply cert manager address rewriting when WSS is enabled
 		if o.EnableWSS {
-			// AddrsFactory takes the multiaddrs we're listening on and sets the multiaddrs to advertise to the network.
-			// We use the AutoTLS address factory so that the `*` in the AutoTLS address string is replaced with the
-			// actual IP address of the host once detected
 			certManagerAddressFactory := certManager.AddressFactory()
 			addrs = certManagerAddressFactory(addrs)
 
+			// Sort to prioritize public addresses (only meaningful with WSS, but harmless otherwise)
 			slices.SortStableFunc(addrs, func(a, b ma.Multiaddr) int {
 				aPub := manet.IsPublicAddr(a)
 				bPub := manet.IsPublicAddr(b)
-				switch {
-				case aPub == bPub:
+				if aPub == bPub {
 					return 0
-				case aPub:
-					return -1
-				case bPub:
-					return 1
 				}
-				return 0
+				if aPub {
+					return -1
+				}
+				return 1
 			})
 		}
 
@@ -485,6 +482,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}
 
+	// TODO: check if it needs to have own isolated peerstore with dedicated resource manager?
 	// Create a new dialer for libp2p ping protocol. This ensures that the protocol
 	// uses a different set of keys to do ping. It prevents inconsistencies in peerstore as
 	// the addresses used are not dialable and hence should be cleaned up. We should create
@@ -1082,9 +1080,10 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		return nil, fmt.Errorf("connect full close %w", err)
 	}
 
+	// TODO: do we need to ping here? the handshake already verifies liveness?
 	var pingErr error
 	for _, addr := range addrs {
-		pingCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+		pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		_, err := s.Ping(pingCtx, addr)
 		cancel() // Cancel immediately after use
 		if err == nil {
