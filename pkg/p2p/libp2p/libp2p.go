@@ -391,13 +391,20 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	if o.EnableWSS {
 		wsOpt := ws.WithTLSConfig(certManager.TLSConfig())
 		transports = append(transports, libp2p.Transport(ws.New, wsOpt))
-		// AddrsFactory takes the multiaddrs we're listening on and sets the multiaddrs to advertise to the network.
-		// We use the AutoTLS address factory so that the `*` in the AutoTLS address string is replaced with the
-		// actual IP address of the host once detected
-		certManagerAddressFactory := certManager.AddressFactory()
-		opts = append(opts, libp2p.AddrsFactory(func(addrs []ma.Multiaddr) []ma.Multiaddr {
-			addrs = includeNatResolvedAddresses(addrs, newCompositeAddressResolver(tcpResolver, wssResolver), logger)
+	}
 
+	if o.EnableWS {
+		transports = append(transports, libp2p.Transport(ws.New))
+	}
+
+	opts = append(opts, libp2p.AddrsFactory(func(addrs []ma.Multiaddr) []ma.Multiaddr {
+		addrs = includeNatResolvedAddresses(addrs, newCompositeAddressResolver(tcpResolver, wssResolver), logger)
+
+		if o.EnableWSS {
+			// AddrsFactory takes the multiaddrs we're listening on and sets the multiaddrs to advertise to the network.
+			// We use the AutoTLS address factory so that the `*` in the AutoTLS address string is replaced with the
+			// actual IP address of the host once detected
+			certManagerAddressFactory := certManager.AddressFactory()
 			addrs = certManagerAddressFactory(addrs)
 
 			slices.SortStableFunc(addrs, func(a, b ma.Multiaddr) int {
@@ -413,11 +420,10 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 				}
 				return 0
 			})
-			return addrs
-		}))
-	} else if o.EnableWS {
-		transports = append(transports, libp2p.Transport(ws.New))
-	}
+		}
+
+		return addrs
+	}))
 
 	opts = append(opts, transports...)
 
