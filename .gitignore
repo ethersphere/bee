@@ -29,3 +29,6 @@ _testmain.go
 *.prof
 
 .DS_Store
+
+wasm-demo/bee.wasm
+wasm-demo/sw_bundle.js
