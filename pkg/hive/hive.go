@@ -35,12 +35,11 @@ import (
 const loggerName = "hive"
 
 const (
-	protocolName           = "hive"
-	protocolVersion        = "1.1.0"
-	peersStreamName        = "peers"
-	messageTimeout         = 1 * time.Minute // maximum allowed time for a message to be read or written.
-	maxBatchSize           = 30
-	batchValidationTimeout = 5 * time.Minute // prevent lock contention on peer validation
+	protocolName    = "hive"
+	protocolVersion = "1.1.0"
+	peersStreamName = "peers"
+	messageTimeout  = 1 * time.Minute // maximum allowed time for a message to be read or written.
+	maxBatchSize    = 30
 )
 
 var (
@@ -261,16 +260,14 @@ func (s *Service) startCheckPeersHandler() {
 				return
 			case newPeers := <-s.peersChan:
 				s.wg.Go(func() {
-					cctx, cancel := context.WithTimeout(ctx, batchValidationTimeout)
-					defer cancel()
-					s.checkAndAddPeers(cctx, newPeers)
+					s.checkAndAddPeers(newPeers)
 				})
 			}
 		}
 	})
 }
 
-func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
+func (s *Service) checkAndAddPeers(peers pb.Peers) {
 	var peersToAdd []swarm.Address
 
 	for _, p := range peers.Peers {
