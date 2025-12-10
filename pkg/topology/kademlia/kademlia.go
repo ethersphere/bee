@@ -449,6 +449,11 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 			return
 		}
 
+		if peer.addr.Equal(k.base) {
+			k.logger.Debug("skipping self-address in connected peers", "overlay", peer.addr, "method", "connect")
+			return
+		}
+
 		k.waitNext.Set(peer.addr, time.Now().Add(k.opt.ShortRetry), 0)
 
 		k.connectedPeers.Add(peer.addr)
@@ -1190,6 +1195,12 @@ func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool
 }
 
 func (k *Kad) onConnected(ctx context.Context, addr swarm.Address) error {
+	// Prevent adding self to connected peers
+	if addr.Equal(k.base) {
+		k.logger.Debug("skipping self-address in connected peers", "overlay", addr, "method", "onConnected")
+		return nil
+	}
+
 	if err := k.Announce(ctx, addr, true); err != nil {
 		return err
 	}

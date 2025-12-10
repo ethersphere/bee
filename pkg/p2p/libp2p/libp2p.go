@@ -948,6 +948,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	var info *libp2ppeer.AddrInfo
 	var peerID libp2ppeer.ID
 	var connectErr error
+	skippedSelf := false
 
 	// Try to connect to each underlay address one by one.
 	//
@@ -964,6 +965,13 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 
 		info = ai
 		peerID = ai.ID
+
+		// Check if attempting to connect to self
+		if peerID == s.host.ID() {
+			s.logger.Debug("skipping connection to self", "peer_id", peerID, "underlay", info.Addrs)
+			skippedSelf = true
+			continue
+		}
 
 		hostAddr, err := buildHostAddress(info.ID)
 		if err != nil {
@@ -995,6 +1003,11 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 
 	if connectErr != nil {
 		return nil, fmt.Errorf("libp2p connect: %w", connectErr)
+	}
+
+	// If we skipped all addresses due to self-connection, return an error
+	if skippedSelf && info != nil && info.ID == s.host.ID() {
+		return nil, fmt.Errorf("cannot connect to self")
 	}
 
 	if info == nil {

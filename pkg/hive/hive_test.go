@@ -50,10 +50,9 @@ func TestHandlerRateLimit(t *testing.T) {
 	// new recorder
 	streamer := streamtest.New()
 	// create a hive server that handles the incoming stream
-	server := hive.New(streamer, addressbookclean, networkID, false, true, logger)
-	testutil.CleanupCloser(t, server)
-
 	serverAddress := swarm.RandAddress(t)
+	server := hive.New(streamer, addressbookclean, networkID, false, true, serverAddress, logger)
+	testutil.CleanupCloser(t, server)
 
 	// setup the stream recorder to record stream data
 	serverRecorder := streamtest.New(
@@ -94,7 +93,8 @@ func TestHandlerRateLimit(t *testing.T) {
 	}
 
 	// create a hive client that will do broadcast
-	client := hive.New(serverRecorder, addressbook, networkID, false, true, logger)
+	clientAddress := swarm.RandAddress(t)
+	client := hive.New(serverRecorder, addressbook, networkID, false, true, clientAddress, logger)
 	err := client.BroadcastPeers(context.Background(), serverAddress, peers...)
 	if err != nil {
 		t.Fatal(err)
@@ -273,7 +273,8 @@ func TestBroadcastPeers(t *testing.T) {
 
 			streamer := streamtest.New()
 			// create a hive server that handles the incoming stream
-			server := hive.New(streamer, addressbookclean, networkID, false, true, logger)
+			serverAddress := swarm.RandAddress(t)
+			server := hive.New(streamer, addressbookclean, networkID, false, true, serverAddress, logger)
 			testutil.CleanupCloser(t, server)
 
 			// setup the stream recorder to record stream data
@@ -282,7 +283,8 @@ func TestBroadcastPeers(t *testing.T) {
 			)
 
 			// create a hive client that will do broadcast
-			client := hive.New(recorder, addressbook, networkID, false, tc.allowPrivateCIDRs, logger)
+			clientAddress := swarm.RandAddress(t)
+			client := hive.New(recorder, addressbook, networkID, false, tc.allowPrivateCIDRs, clientAddress, logger)
 
 			if err := client.BroadcastPeers(context.Background(), tc.addresee, tc.peers...); err != nil {
 				t.Fatal(err)
