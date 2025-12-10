@@ -388,7 +388,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		wssResolver = r
 	}
 
-	// Add WebSocket transport(s) based on configuration
 	if o.EnableWSS {
 		wsOpt := ws.WithTLSConfig(certManager.TLSConfig())
 		transports = append(transports, libp2p.Transport(ws.New, wsOpt))
@@ -404,19 +403,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		if o.EnableWSS {
 			certManagerAddressFactory := certManager.AddressFactory()
 			addrs = certManagerAddressFactory(addrs)
-
-			// Sort to prioritize public addresses (only meaningful with WSS, but harmless otherwise)
-			slices.SortStableFunc(addrs, func(a, b ma.Multiaddr) int {
-				aPub := manet.IsPublicAddr(a)
-				bPub := manet.IsPublicAddr(b)
-				if aPub == bPub {
-					return 0
-				}
-				if aPub {
-					return -1
-				}
-				return 1
-			})
 		}
 
 		return addrs
@@ -1078,24 +1064,6 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	if err := handshakeStream.FullClose(); err != nil {
 		_ = s.Disconnect(overlay, "could not fully close handshake stream after connect")
 		return nil, fmt.Errorf("connect full close %w", err)
-	}
-
-	// TODO: do we need to ping here? the handshake already verifies liveness?
-	var pingErr error
-	for _, addr := range addrs {
-		pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		_, err := s.Ping(pingCtx, addr)
-		cancel() // Cancel immediately after use
-		if err == nil {
-			pingErr = nil
-			break
-		}
-		pingErr = err
-	}
-
-	if pingErr != nil {
-		_ = s.Disconnect(overlay, "peer disconnected immediately after handshake")
-		return nil, p2p.ErrPeerNotFound
 	}
 
 	if !s.peers.Exists(overlay) {
