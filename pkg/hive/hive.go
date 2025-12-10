@@ -275,7 +275,7 @@ func (s *Service) startCheckPeersHandler() {
 }
 
 func (s *Service) checkAndAddPeers(peers pb.Peers) {
-	var peersToAdd []swarm.Address
+	peersToAdd := make([]swarm.Address, 0, len(peers.Peers))
 
 	for _, p := range peers.Peers {
 		multiUnderlays, err := bzz.DeserializeUnderlays(p.Underlay)
