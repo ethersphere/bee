@@ -473,7 +473,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}
 
-	// TODO: check if it needs to have own isolated peerstore with dedicated resource manager?
 	// Create a new dialer for libp2p ping protocol. This ensures that the protocol
 	// uses a different set of keys to do ping. It prevents inconsistencies in peerstore as
 	// the addresses used are not dialable and hence should be cleaned up. We should create
