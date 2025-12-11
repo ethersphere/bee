@@ -395,18 +395,23 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		transports = append(transports, libp2p.Transport(ws.New))
 	}
 
-	opts = append(opts, libp2p.AddrsFactory(func(addrs []ma.Multiaddr) []ma.Multiaddr {
-		// Always include NAT-resolved addresses (both cases use the same resolver logic
-		addrs = includeNatResolvedAddresses(addrs, newCompositeAddressResolver(tcpResolver, wssResolver), logger)
+	compositeResolver := newCompositeAddressResolver(tcpResolver, wssResolver)
 
-		// Only apply cert manager address rewriting when WSS is enabled
-		if o.EnableWSS {
-			certManagerAddressFactory := certManager.AddressFactory()
-			addrs = certManagerAddressFactory(addrs)
+	var addrFactory config.AddrsFactory
+	if o.EnableWSS {
+		certManagerFactory := certManager.AddressFactory()
+		addrFactory = func(addrs []ma.Multiaddr) []ma.Multiaddr {
+			addrs = includeNatResolvedAddresses(addrs, compositeResolver, logger)
+			addrs = certManagerFactory(addrs)
+			return addrs
 		}
+	} else {
+		addrFactory = func(addrs []ma.Multiaddr) []ma.Multiaddr {
+			return includeNatResolvedAddresses(addrs, compositeResolver, logger)
+		}
+	}
 
-		return addrs
-	}))
+	opts = append(opts, libp2p.AddrsFactory(addrFactory))
 
 	opts = append(opts, transports...)
 
