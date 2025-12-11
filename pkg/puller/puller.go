@@ -334,7 +334,6 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 
 			p.metrics.SyncWorkerIterCounter.Inc()
 
-			syncStart := time.Now()
 			top, count, err := p.syncer.Sync(ctx, address, bin, start)
 
 			if top == math.MaxUint64 {
