@@ -27,6 +27,15 @@ jobs:
       with:
         cache: true
         go-version-file: go.mod
+    - name: Increase UDP buffer sizes (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo sysctl -w net.core.rmem_max=7500000
+        sudo sysctl -w net.core.wmem_max=7500000
+    - name: Increase UDP buffer sizes (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        sudo sysctl -w kern.ipc.maxsockbuf=8441037
     - name: Build
       run: make build
     - name: Test with race detector (Ubuntu and MacOS)
