@@ -188,6 +188,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			if !attemptedWrite {
 				if writeErr := w.WriteMsgWithContext(ctx, &pb.Receipt{Err: err.Error()}); writeErr == nil {
 					_ = stream.FullClose()
+					return
 				}
 			}
 			_ = stream.Reset()
