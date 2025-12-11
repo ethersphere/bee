@@ -84,7 +84,7 @@ const (
 	defaultLightNodeLimit = 100
 	peerUserAgentTimeout  = time.Second
 
-	peerstoreWaitAddrsTimeout = 15 * time.Second
+	peerstoreWaitAddrsTimeout = 10 * time.Second
 
 	defaultHeadersRWTimeout = 10 * time.Second
 
@@ -608,7 +608,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	peerID := stream.Conn().RemotePeer()
 	handshakeStream := newStream(stream, s.metrics)
 
-	peerMultiaddrs, err := s.peerMultiaddrs(s.ctx, stream.Conn(), peerID)
+	peerMultiaddrs, err := s.peerMultiaddrs(s.ctx, peerID)
 	if err != nil {
 		s.logger.Debug("stream handler: handshake: build remote multiaddrs", "peer_id", peerID, "error", err)
 		s.logger.Error(nil, "stream handler: handshake: build remote multiaddrs", "peer_id", peerID)
@@ -749,7 +749,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		return
 	}
 
-	s.notifyReacherConnected(stream, overlay, peerID)
+	s.notifyReacherConnected(overlay, peerID)
 
 	peerUserAgent := appendSpace(s.peerUserAgent(s.ctx, peerID))
 	s.networkStatus.Store(int32(p2p.NetworkStatusAvailable))
@@ -758,7 +758,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	s.logger.Debug("stream handler: successfully connected to peer (inbound)", "address", i.BzzAddress.Overlay, "light", i.LightString(), "user_agent", peerUserAgent)
 }
 
-func (s *Service) notifyReacherConnected(stream network.Stream, overlay swarm.Address, peerID libp2ppeer.ID) {
+func (s *Service) notifyReacherConnected(overlay swarm.Address, peerID libp2ppeer.ID) {
 	if s.reacher == nil {
 		return
 	}
@@ -1012,7 +1012,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 
 	handshakeStream := newStream(stream, s.metrics)
 
-	peerMultiaddrs, err := s.peerMultiaddrs(ctx, stream.Conn(), peerID)
+	peerMultiaddrs, err := s.peerMultiaddrs(ctx, peerID)
 	if err != nil {
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(peerID)
@@ -1101,7 +1101,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 
 	s.metrics.CreatedConnectionCount.Inc()
 
-	s.notifyReacherConnected(stream, overlay, peerID)
+	s.notifyReacherConnected(overlay, peerID)
 
 	peerUA := appendSpace(s.peerUserAgent(ctx, peerID))
 	loggerV1.Debug("successfully connected to peer (outbound)", "addresses", i.BzzAddress.ShortString(), "light", i.LightString(), "user_agent", peerUA)
@@ -1402,7 +1402,7 @@ func (s *Service) determineCurrentNetworkStatus(err error) error {
 // peerMultiaddrs builds full multiaddresses for a peer given information from
 // libp2p host peerstore and falling back to the remote address from the
 // connection.
-func (s *Service) peerMultiaddrs(ctx context.Context, conn network.Conn, peerID libp2ppeer.ID) ([]ma.Multiaddr, error) {
+func (s *Service) peerMultiaddrs(ctx context.Context, peerID libp2ppeer.ID) ([]ma.Multiaddr, error) {
 	waitPeersCtx, cancel := context.WithTimeout(ctx, peerstoreWaitAddrsTimeout)
 	defer cancel()
 
