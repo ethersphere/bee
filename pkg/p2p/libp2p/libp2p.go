@@ -391,33 +391,27 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	if o.EnableWSS {
 		wsOpt := ws.WithTLSConfig(certManager.TLSConfig())
 		transports = append(transports, libp2p.Transport(ws.New, wsOpt))
-		// AddrsFactory takes the multiaddrs we're listening on and sets the multiaddrs to advertise to the network.
-		// We use the AutoTLS address factory so that the `*` in the AutoTLS address string is replaced with the
-		// actual IP address of the host once detected
-		certManagerAddressFactory := certManager.AddressFactory()
-		opts = append(opts, libp2p.AddrsFactory(func(addrs []ma.Multiaddr) []ma.Multiaddr {
-			addrs = includeNatResolvedAddresses(addrs, newCompositeAddressResolver(tcpResolver, wssResolver), logger)
-
-			addrs = certManagerAddressFactory(addrs)
-
-			slices.SortStableFunc(addrs, func(a, b ma.Multiaddr) int {
-				aPub := manet.IsPublicAddr(a)
-				bPub := manet.IsPublicAddr(b)
-				switch {
-				case aPub == bPub:
-					return 0
-				case aPub:
-					return -1
-				case bPub:
-					return 1
-				}
-				return 0
-			})
-			return addrs
-		}))
 	} else if o.EnableWS {
 		transports = append(transports, libp2p.Transport(ws.New))
 	}
+
+	compositeResolver := newCompositeAddressResolver(tcpResolver, wssResolver)
+
+	var addrFactory config.AddrsFactory
+	if o.EnableWSS {
+		certManagerFactory := certManager.AddressFactory()
+		addrFactory = func(addrs []ma.Multiaddr) []ma.Multiaddr {
+			addrs = includeNatResolvedAddresses(addrs, compositeResolver, logger)
+			addrs = certManagerFactory(addrs)
+			return addrs
+		}
+	} else {
+		addrFactory = func(addrs []ma.Multiaddr) []ma.Multiaddr {
+			return includeNatResolvedAddresses(addrs, compositeResolver, logger)
+		}
+	}
+
+	opts = append(opts, libp2p.AddrsFactory(addrFactory))
 
 	opts = append(opts, transports...)
 
@@ -1074,23 +1068,6 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	if err := handshakeStream.FullClose(); err != nil {
 		_ = s.Disconnect(overlay, "could not fully close handshake stream after connect")
 		return nil, fmt.Errorf("connect full close %w", err)
-	}
-
-	var pingErr error
-	for _, addr := range addrs {
-		pingCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
-		_, err := s.Ping(pingCtx, addr)
-		cancel() // Cancel immediately after use
-		if err == nil {
-			pingErr = nil
-			break
-		}
-		pingErr = err
-	}
-
-	if pingErr != nil {
-		_ = s.Disconnect(overlay, "peer disconnected immediately after handshake")
-		return nil, p2p.ErrPeerNotFound
 	}
 
 	if !s.peers.Exists(overlay) {
