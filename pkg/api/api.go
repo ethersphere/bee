@@ -79,6 +79,7 @@ const (
 	SwarmSocSignatureHeader           = "Swarm-Soc-Signature"
 	SwarmFeedIndexHeader              = "Swarm-Feed-Index"
 	SwarmFeedIndexNextHeader          = "Swarm-Feed-Index-Next"
+	SwarmFeedResolvedVersionHeader    = "Swarm-Feed-Resolved-Version"
 	SwarmOnlyRootChunk                = "Swarm-Only-Root-Chunk"
 	SwarmCollectionHeader             = "Swarm-Collection"
 	SwarmPostageBatchIdHeader         = "Swarm-Postage-Batch-Id"
