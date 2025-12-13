@@ -7,6 +7,7 @@ on:
     branches:
       - 'master'
   pull_request:
+    types: [opened, synchronize, reopened, edited]
     paths-ignore:
       - packaging/**
     branches:
@@ -63,9 +64,24 @@ jobs:
       with:
         cache: false
         go-version-file: go.mod
+    - name: Setup Node.js
+      if: github.event_name == 'pull_request'
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+    - name: Install commitlint
+      if: github.event_name == 'pull_request'
+      run: |
+        npm install --save-dev @commitlint/cli @commitlint/config-conventional
+    - name: PR title linting
+      if: github.event_name == 'pull_request'
+      run: |
+        echo "${{ github.event.pull_request.title }}" | npx commitlint --config ./commitlint.config.js
     - name: Commit linting
       if: github.ref != 'refs/heads/master'
       uses: wagoid/commitlint-github-action@v5
+      with:
+        configFile: commitlint.config.js
     - name: GolangCI-Lint
       uses: golangci/golangci-lint-action@v8
       with:
