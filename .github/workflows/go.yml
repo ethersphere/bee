@@ -75,8 +75,10 @@ jobs:
         npm install --save-dev @commitlint/cli @commitlint/config-conventional
     - name: PR title linting
       if: github.event_name == 'pull_request'
+      env:
+        PR_TITLE: ${{ github.event.pull_request.title }}
       run: |
-        echo "${{ github.event.pull_request.title }}" | npx commitlint --config ./commitlint.config.js
+        echo "$PR_TITLE" | npx commitlint --config ./commitlint.config.js
     - name: Commit linting
       if: github.ref != 'refs/heads/master'
       uses: wagoid/commitlint-github-action@v5
