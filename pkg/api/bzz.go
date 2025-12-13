@@ -32,6 +32,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/manifest"
 	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/replicas"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -58,6 +59,13 @@ func lookaheadBufferSize(size int64) int {
 		return smallFileBufferSize
 	}
 	return largeFileBufferSize
+}
+
+func getRedundancyLevel(rLevel *redundancy.Level) redundancy.Level {
+	if rLevel != nil {
+		return *rLevel
+	}
+	return redundancy.PARANOID
 }
 
 func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
@@ -400,13 +408,11 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 		cache = *headers.Cache
 	}
 
-	rLevel := redundancy.DefaultLevel
-	if headers.RLevel != nil {
-		rLevel = *headers.RLevel
-	}
+	rLevel := getRedundancyLevel(headers.RLevel)
 
 	ctx := r.Context()
-	ls := loadsave.NewReadonly(s.storer.Download(cache), s.storer.Cache(), redundancy.DefaultLevel)
+	g := s.storer.Download(cache)
+	ls := loadsave.NewReadonly(g, s.storer.Cache(), rLevel)
 	feedDereferenced := false
 
 	ctx, err := getter.SetConfigInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout, logger)
@@ -434,7 +440,7 @@ FETCH:
 	// unmarshal as mantaray first and possibly resolve the feed, otherwise
 	// go on normally.
 	if !feedDereferenced {
-		if l, err := s.manifestFeed(ctx, m); err == nil {
+		if l, err := s.manifestFeed(ctx, m, replicas.NewSocGetter(g, rLevel)); err == nil {
 			// we have a feed manifest here
 			ch, cur, _, err := l.At(ctx, time.Now().Unix(), 0)
 			if err != nil {
@@ -622,10 +628,7 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		jsonhttp.BadRequest(w, "could not parse headers")
 		return
 	}
-	rLevel := redundancy.DefaultLevel
-	if headers.RLevel != nil {
-		rLevel = *headers.RLevel
-	}
+	rLevel := getRedundancyLevel(headers.RLevel)
 
 	var (
 		reader file.Joiner
@@ -701,6 +704,7 @@ func manifestMetadataLoad(
 func (s *Service) manifestFeed(
 	ctx context.Context,
 	m manifest.Interface,
+	st storage.Getter,
 ) (feeds.Lookup, error) {
 	e, err := m.Lookup(ctx, "/")
 	if err != nil {
@@ -733,5 +737,5 @@ func (s *Service) manifestFeed(
 		return nil, fmt.Errorf("node lookup: %s", "feed metadata absent")
 	}
 	f := feeds.New(topic, common.BytesToAddress(owner))
-	return s.feedFactory.NewLookup(*t, f)
+	return s.feedFactory.NewLookup(*t, f, feeds.WithGetter(st))
 }

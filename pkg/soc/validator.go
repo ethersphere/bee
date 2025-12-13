@@ -26,5 +26,16 @@ func Valid(ch swarm.Chunk) bool {
 	if err != nil {
 		return false
 	}
-	return ch.Address().Equal(address)
+
+	// if the address does not match the chunk address, check if it is a disperse replica
+	if !ch.Address().Equal(address) {
+		c := ch.Address().Bytes()
+		a := address.Bytes()
+		// For disperse replicas it is allowed to have the first 4 bits of the first
+		// byte to be different, and the last 4 bits must be equal.
+		// Another case is when only the fifth bit from the left is flipped.
+		return ((c[0]&0x0f == a[0]&0x0f) || (c[0]^a[0] == 1<<3)) && bytes.Equal(c[1:], a[1:])
+	}
+
+	return true
 }

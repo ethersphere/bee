@@ -7,6 +7,7 @@ package api_test
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/feeds"
 	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
@@ -27,7 +29,10 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/manifest"
 	mockbatchstore "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
 	mockpost "github.com/ethersphere/bee/v2/pkg/postage/mock"
+	"github.com/ethersphere/bee/v2/pkg/replicas"
+	"github.com/ethersphere/bee/v2/pkg/soc"
 	testingsoc "github.com/ethersphere/bee/v2/pkg/soc/testing"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -805,6 +810,161 @@ func TestFeedIndirection(t *testing.T) {
 	if resp.Reference.String() == "" {
 		t.Fatalf("expected file reference, did not got any")
 	}
+
+	// get root chunk of data
+	// and wrap it in a feed
+	rootCh, err := storer.ChunkStore().Get(context.Background(), resp.Reference)
+	if err != nil {
+		t.Fatal(err)
+	}
+	socRootCh := testingsoc.GenerateMockSOC(t, rootCh.Data()[swarm.SpanSize:]).Chunk()
+
+	// now use the "content" to mock the feed lookup
+	// also, use the mocked mantaray chunks that unmarshal
+	// into a real manifest with the mocked feed values when
+	// called from the bzz endpoint. then call the bzz endpoint with
+	// the pregenerated feed root manifest hash
+
+	t.Run("feed wrapping", func(t *testing.T) {
+		var (
+			look                = newMockLookup(-1, 0, socRootCh, nil, &id{}, nil)
+			factory             = newMockFactory(look)
+			bzzDownloadResource = func(addr, path string) string { return "/bzz/" + addr + "/" + path }
+			ctx                 = context.Background()
+		)
+		client, _, _, _ = newTestServer(t, testServerOptions{
+			Storer: storer,
+			Logger: logger,
+			Feeds:  factory,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		m, err := manifest.NewDefaultManifest(
+			loadsave.New(storer.ChunkStore(), storer.Cache(), pipelineFactory(storer.Cache(), false, 0), redundancy.DefaultLevel),
+			false,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		emptyAddr := make([]byte, 32)
+		err = m.Add(ctx, manifest.RootPath, manifest.NewEntry(swarm.NewAddress(emptyAddr), map[string]string{
+			api.FeedMetadataEntryOwner: "8d3766440f0d7b949a5e32995d09619a7f86e632",
+			api.FeedMetadataEntryTopic: "abcc",
+			api.FeedMetadataEntryType:  "epoch",
+		}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		manifRef, err := m.Store(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(manifRef.String(), ""), http.StatusOK,
+			jsonhttptest.WithExpectedResponse(updateData),
+			jsonhttptest.WithExpectedContentLength(len(updateData)),
+			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.SwarmFeedIndexHeader),
+			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.ContentDispositionHeader),
+			jsonhttptest.WithExpectedResponseHeader(api.ContentDispositionHeader, `inline; filename="index.html"`),
+			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "text/html; charset=utf-8"),
+		)
+	})
+
+	t.Run("redundancy", func(t *testing.T) {
+		// enough to test two redundancy levels since
+		tests := []struct {
+			name   string
+			rLevel redundancy.Level
+		}{
+			{
+				name:   "none",
+				rLevel: redundancy.NONE,
+			},
+			{
+				name:   "medium",
+				rLevel: redundancy.MEDIUM,
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				rLevel := tt.rLevel
+				socRoot, _ := soc.FromChunk(socRootCh)
+				socPutter := replicas.NewSocPutter(storer, rLevel)
+				err = socPutter.Put(context.Background(), socRootCh)
+				if err != nil {
+					t.Fatalf("failed to put SOC chunk with redundancy: %v", err)
+				}
+
+				m, err := manifest.NewDefaultManifest(
+					loadsave.New(storer.ChunkStore(), storer.Cache(), pipelineFactory(storer.Cache(), false, rLevel), rLevel),
+					false,
+				)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				// Add the feed entry to the manifest
+				hexId := hex.EncodeToString(socRoot.ID())
+				hexOwner := hex.EncodeToString(socRoot.OwnerAddress())
+				err = m.Add(context.Background(), manifest.RootPath, manifest.NewEntry(socRootCh.Address(), map[string]string{
+					api.FeedMetadataEntryOwner: hexOwner,
+					api.FeedMetadataEntryTopic: hexId,
+					api.FeedMetadataEntryType:  "sequence",
+				}))
+				if err != nil {
+					t.Fatal(err)
+				}
+				manifestRef, err := m.Store(context.Background())
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				// Create mockLookup and mockFactory for feed
+				look := newRedundancyMockLookup(
+					rLevel,
+					storer.ChunkStore(),
+					func() (swarm.Chunk, feeds.Index, feeds.Index) {
+						return socRootCh, &id{}, &id{}
+					},
+				)
+				feedFactory := newMockFactory(look)
+
+				// Update the test server with the feed factory
+				client, _, _, _ := newTestServer(t, testServerOptions{
+					Storer: storer,
+					Logger: log.Noop,
+					Post:   mockpost.New(mockpost.WithAcceptAll()),
+					Feeds:  feedFactory,
+				})
+
+				// remove original chunk from store
+				cs, ok := storer.ChunkStore().(storage.ChunkStore)
+				if !ok {
+					t.Fatalf("chunk store not available for deletion")
+				}
+				err = cs.Delete(context.Background(), socRootCh.Address())
+				if err != nil {
+					t.Fatalf("Failed to delete soc chunk: %v", err)
+				}
+
+				manifestHex := manifestRef.String()
+
+				if rLevel == redundancy.NONE {
+					jsonhttptest.Request(t, client, http.MethodGet, "/bzz/"+manifestHex+"/", http.StatusNotFound)
+					return
+				}
+				jsonhttptest.Request(t, client, http.MethodGet, "/bzz/"+manifestHex+"/", http.StatusOK,
+					jsonhttptest.WithExpectedResponse(updateData),
+					jsonhttptest.WithExpectedContentLength(len(updateData)),
+					jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.SwarmFeedIndexHeader),
+					jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.ContentDispositionHeader),
+					jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "text/html; charset=utf-8"),
+					jsonhttptest.WithExpectedResponseHeader(api.ContentDispositionHeader, `inline; filename="index.html"`),
+				)
+			})
+		}
+	})
 
 	m, err := manifest.NewDefaultManifest(
 		loadsave.New(storer.ChunkStore(), storer.Cache(), pipelineFactory(storer.Cache(), false, 0), redundancy.DefaultLevel),
