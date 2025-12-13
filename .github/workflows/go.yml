@@ -16,6 +16,7 @@ on:
 jobs:
   test:
     name: Test
+    if: github.event.action != 'edited'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -38,6 +39,7 @@ jobs:
       run: make test-ci
   test-flaky:
     name: Test (flaky)
+    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     continue-on-error: ${{ github.ref == 'refs/heads/master' }}
     steps:
