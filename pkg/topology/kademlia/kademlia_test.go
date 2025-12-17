@@ -2253,3 +2253,72 @@ func generateMultipleUnderlays(t *testing.T, n int, baseUnderlay string) []ma.Mu
 	}
 	return underlays
 }
+
+// TestAddPeersSkipsSelf verifies that AddPeers does not add self address
+// to the known peers list, preventing self-connection attempts.
+func TestAddPeersSkipsSelf(t *testing.T) {
+	t.Parallel()
+
+	var (
+		conns                    int32
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
+			ExcludeFunc: defaultExcludeFunc,
+		})
+	)
+
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	testutil.CleanupCloser(t, kad)
+
+	// Add some regular peers first
+	peer1 := swarm.RandAddressAt(t, base, 1)
+	peer2 := swarm.RandAddressAt(t, base, 2)
+
+	addOne(t, signer, kad, ab, peer1)
+	addOne(t, signer, kad, ab, peer2)
+
+	waitCounter(t, &conns, 2)
+
+	// Now try to add self address along with another peer
+	peer3 := swarm.RandAddressAt(t, base, 3)
+
+	// Prepare address for peer3
+	multiaddr, err := ma.NewMultiaddr(underlayBase + peer3.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{multiaddr}, peer3, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ab.Put(peer3, *bzzAddr); err != nil {
+		t.Fatal(err)
+	}
+
+	// Try to add self (base) and peer3 together
+	kad.AddPeers(base, peer3)
+
+	// Only peer3 should result in a connection attempt, not base
+	waitCounter(t, &conns, 1)
+
+	// Verify we have exactly 3 connected peers (peer1, peer2, peer3), not 4
+	waitPeers(t, kad, 3)
+
+	// Verify base is not in the connected peers list
+	foundSelf := false
+	err = kad.EachConnectedPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+		if addr.Equal(base) {
+			foundSelf = true
+			return true, false, nil
+		}
+		return false, false, nil
+	}, topology.Select{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if foundSelf {
+		t.Fatal("self address should not be in connected peers")
+	}
+}
