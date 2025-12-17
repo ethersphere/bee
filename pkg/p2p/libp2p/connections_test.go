@@ -985,8 +985,6 @@ func TestTopologyAnnounce(t *testing.T) {
 }
 
 func TestTopologyOverSaturated(t *testing.T) {
-	t.Parallel()
-
 	var (
 		mtx sync.Mutex
 		ctx = context.Background()
@@ -1097,8 +1095,6 @@ func TestWithDisconnectStreams(t *testing.T) {
 }
 
 func TestWithBlocklistStreams(t *testing.T) {
-	t.Parallel()
-
 	ctx := t.Context()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
