@@ -13,7 +13,7 @@ require (
 	github.com/ethereum/go-ethereum v1.15.11
 	github.com/ethersphere/batch-archive v0.0.4
 	github.com/ethersphere/go-price-oracle-abi v0.6.9
-	github.com/ethersphere/go-storage-incentives-abi v0.9.4
+	github.com/ethersphere/go-storage-incentives-abi v0.9.3-rc4
 	github.com/ethersphere/go-sw3-abi v0.6.9
 	github.com/ethersphere/langos v1.0.0
 	github.com/go-playground/validator/v10 v10.19.0

@@ -239,6 +239,8 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 
+	// TODO: Example of using a custom rate limiter:
+	// rcmgr.WithConnRateLimiters(&libp2prate.Limiter{})
 	rm, err := rcmgr.NewResourceManager(limiter, rcmgr.WithTraceReporter(str))
 	if err != nil {
 		return nil, err
@@ -1219,6 +1221,12 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 		return nil, p2p.ErrPeerNotFound
 	}
 
+	// Verify if we really have an active connection
+	if s.host.Network().Connectedness(peerID) != network.Connected {
+		_ = s.Disconnect(overlay, "registry-host mismatch in NewStream")
+		return nil, p2p.ErrPeerNotFound
+	}
+
 	streamlibp2p, err := s.newStreamForPeerID(ctx, peerID, protocolName, protocolVersion, streamName)
 	if err != nil {
 		return nil, fmt.Errorf("new stream for peerid: %w", err)
@@ -1248,6 +1256,11 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 
 func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, protocolName, protocolVersion, streamName string) (network.Stream, error) {
 	swarmStreamName := p2p.NewSwarmStreamName(protocolName, protocolVersion, streamName)
+
+	if s.host.Network().Connectedness(peerID) != network.Connected {
+		s.logger.Debug("newStreamForPeerID: host not connected to peer, this will trigger a dial", "peer_id", peerID, "protocol", swarmStreamName)
+	}
+
 	st, err := s.host.NewStream(ctx, peerID, protocol.ID(swarmStreamName))
 	if err != nil {
 		if st != nil {
