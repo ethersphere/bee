@@ -239,9 +239,14 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 
+	limitPerIp := rcmgr.WithLimitPerSubnet(
+		[]rcmgr.ConnLimitPerSubnet{{PrefixLength: 32, ConnCount: 200}}, // IPv4 /32 (Single IP) -> 200 conns
+		[]rcmgr.ConnLimitPerSubnet{{PrefixLength: 56, ConnCount: 200}}, // IPv6 /56 subnet -> 200 conns
+	)
+
 	// TODO: Example of using a custom rate limiter:
 	// rcmgr.WithConnRateLimiters(&libp2prate.Limiter{})
-	rm, err := rcmgr.NewResourceManager(limiter, rcmgr.WithTraceReporter(str))
+	rm, err := rcmgr.NewResourceManager(limiter, rcmgr.WithTraceReporter(str), limitPerIp)
 	if err != nil {
 		return nil, err
 	}
