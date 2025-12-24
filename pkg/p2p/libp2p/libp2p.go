@@ -426,7 +426,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	if o.EnableWSS {
 		wsOpt := ws.WithTLSConfig(certManager.TLSConfig())
 		transports = append(transports, libp2p.Transport(ws.New, wsOpt))
-	} else if o.EnableWS {
+	} else {
 		transports = append(transports, libp2p.Transport(ws.New))
 	}
 
