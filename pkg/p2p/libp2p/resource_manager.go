@@ -10,7 +10,7 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-func newResourceManager(bootnodes []string) (network.ResourceManager, error) {
+func newResourceManager(bootnodes []string) (network.ResourceManager, int, error) {
 	// scaledDefaultLimits is a copy of the default limits, but with the system base limits increased
 	// to handle the higher connection count of a bee node.
 	scaledDefaultLimits := rcmgr.DefaultLimits
@@ -57,6 +57,10 @@ func newResourceManager(bootnodes []string) (network.ResourceManager, error) {
 	scaledDefaultLimits.SystemLimitIncrease.StreamsInbound = 20480
 	scaledDefaultLimits.SystemLimitIncrease.StreamsOutbound = 20480
 
+	// Boost transient limits for faster DHT lookups (Kademlia requires frequent short-lived connections)
+	scaledDefaultLimits.TransientBaseLimit.ConnsInbound = 256
+	scaledDefaultLimits.TransientBaseLimit.ConnsOutbound = 512
+
 	// Create our limits by using our cfg and replacing the default values with values from `scaledDefaultLimits`
 	limits := scaledDefaultLimits.AutoScale()
 
@@ -77,7 +81,7 @@ func newResourceManager(bootnodes []string) (network.ResourceManager, error) {
 
 	str, err := rcmgr.NewStatsTraceReporter()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	// Custom rate limiter for connection attempts
@@ -130,8 +134,8 @@ func newResourceManager(bootnodes []string) (network.ResourceManager, error) {
 
 	rm, err := rcmgr.NewResourceManager(limiter, opts...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	return rm, nil
+	return rm, totalConns, nil
 }

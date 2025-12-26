@@ -53,6 +53,7 @@ import (
 	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
+	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
 	lp2pswarm "github.com/libp2p/go-libp2p/p2p/net/swarm"
 	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
@@ -217,7 +218,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 
-	rm, err := newResourceManager(o.Bootnodes)
+	rm, totalConns, err := newResourceManager(o.Bootnodes)
 	if err != nil {
 		return nil, err
 	}
@@ -324,6 +325,24 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		libp2p.UserAgent(userAgent()),
 		libp2p.ResourceManager(rm),
 	}
+
+	// Connection Manager (Soft Limits / Trimmer)
+	// We set the "High Water" mark to 50% of the absolute hard limit to allow significant headroom.
+	highWater := totalConns / 2
+	lowWater := highWater - (highWater / 4) // 25% hysteresis
+	if highWater < 100 {
+		highWater = 100
+		lowWater = 75
+	}
+	cm, err := connmgr.NewConnManager(
+		lowWater,
+		highWater,
+		connmgr.WithGracePeriod(time.Minute),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("init connection manager: %w", err)
+	}
+	opts = append(opts, libp2p.ConnectionManager(cm))
 
 	if o.NATAddr == "" && o.NATWSSAddr == "" {
 		opts = append(opts,
