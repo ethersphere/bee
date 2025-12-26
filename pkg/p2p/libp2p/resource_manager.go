@@ -14,6 +14,27 @@ func newResourceManager() (network.ResourceManager, error) {
 	// to handle the higher connection count of a bee node.
 	scaledDefaultLimits := rcmgr.DefaultLimits
 
+	// Example: Protocol Prioritization
+	// This ensures that "Background" protocols don't consume all resources, leaving room for "Critical" ones.
+	// Note: protocol.ID strings must match your actual protocol IDs (e.g., "/hive/1.0.0", "/swap/1.0.0").
+	/*
+		cfg := rcmgr.PartialLimitConfig{
+			Protocols: map[protocol.ID]rcmgr.ResourceLimits{
+				"/hive/1.0.0": { // Critical Topology Protocol
+					Streams:         rcmgr.Unlimited, // Give it priority
+					StreamsInbound:  rcmgr.Unlimited,
+					StreamsOutbound: rcmgr.Unlimited,
+				},
+				"/light/1.0.0": { // Less Critical Background Protocol
+					Streams:         100, // Cap it to reserve space for others
+					StreamsInbound:  50,
+					StreamsOutbound: 50,
+				},
+			},
+		}
+		// Then apply it: limits := cfg.Build(scaledDefaultLimits.AutoScale())
+	*/
+
 	// Base limits (for low-memory devices like Raspberry Pi 1GB)
 	scaledDefaultLimits.SystemBaseLimit.ConnsInbound = 512
 	scaledDefaultLimits.SystemBaseLimit.ConnsOutbound = 512
