@@ -159,6 +159,7 @@ type Options struct {
 	Registry                    *prometheus.Registry
 	autoTLSCertManager          autoTLSCertManager
 	Bootnodes                   []string
+	AllowPrivateCIDRs           bool
 }
 
 func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (s *Service, returnErr error) {
@@ -218,7 +219,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 
-	rm, totalConns, err := newResourceManager(o.Bootnodes)
+	rm, totalConns, err := newResourceManager(o.Bootnodes, o.AllowPrivateCIDRs)
 	if err != nil {
 		return nil, err
 	}

@@ -676,6 +676,8 @@ func NewBee(
 		Nonce:                       nonce,
 		ValidateOverlay:             chainEnabled,
 		Registry:                    registry,
+		Bootnodes:                   o.Bootnodes,
+		AllowPrivateCIDRs:           o.AllowPrivateCIDRs,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)

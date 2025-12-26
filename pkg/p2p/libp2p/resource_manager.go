@@ -10,7 +10,7 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-func newResourceManager(bootnodes []string) (network.ResourceManager, int, error) {
+func newResourceManager(bootnodes []string, allowPrivateCIDRs bool) (network.ResourceManager, int, error) {
 	// scaledDefaultLimits is a copy of the default limits, but with the system base limits increased
 	// to handle the higher connection count of a bee node.
 	scaledDefaultLimits := rcmgr.DefaultLimits
@@ -117,8 +117,9 @@ func newResourceManager(bootnodes []string) (network.ResourceManager, int, error
 	opts = append(opts, limitPerIp)
 	opts = append(opts, rcmgr.WithConnRateLimiters(connLimiter))
 
+	var allowlistedMultiaddrs []ma.Multiaddr
+
 	if len(bootnodes) > 0 {
-		var allowlistedMultiaddrs []ma.Multiaddr
 		for _, a := range bootnodes {
 			m, err := ma.NewMultiaddr(a)
 			if err != nil {
@@ -127,9 +128,28 @@ func newResourceManager(bootnodes []string) (network.ResourceManager, int, error
 			}
 			allowlistedMultiaddrs = append(allowlistedMultiaddrs, m)
 		}
-		if len(allowlistedMultiaddrs) > 0 {
-			opts = append(opts, rcmgr.WithAllowlistedMultiaddrs(allowlistedMultiaddrs))
+	}
+
+	if allowPrivateCIDRs {
+		// Add standard private IP ranges to allowlist
+		// This ensures that nodes on private networks (10.x, 192.168.x etc)
+		// are not rate-limited or blocked, allowing local cluster setups.
+		privateRanges := []string{
+			"/ip4/10.0.0.0/ipcidr/8",
+			"/ip4/172.16.0.0/ipcidr/12",
+			"/ip4/192.168.0.0/ipcidr/16",
+			"/ip6/fc00::/ipcidr/7",
 		}
+		for _, r := range privateRanges {
+			m, err := ma.NewMultiaddr(r)
+			if err == nil {
+				allowlistedMultiaddrs = append(allowlistedMultiaddrs, m)
+			}
+		}
+	}
+
+	if len(allowlistedMultiaddrs) > 0 {
+		opts = append(opts, rcmgr.WithAllowlistedMultiaddrs(allowlistedMultiaddrs))
 	}
 
 	rm, err := rcmgr.NewResourceManager(limiter, opts...)
