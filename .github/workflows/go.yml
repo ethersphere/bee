@@ -7,7 +7,6 @@ on:
     branches:
       - 'master'
   pull_request:
-    types: [opened, synchronize, reopened, edited]
     paths-ignore:
       - packaging/**
     branches:
@@ -16,7 +15,6 @@ on:
 jobs:
   test:
     name: Test
-    if: github.event.action != 'edited'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -39,7 +37,6 @@ jobs:
       run: make test-ci
   test-flaky:
     name: Test (flaky)
-    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     continue-on-error: ${{ github.ref == 'refs/heads/master' }}
     steps:
@@ -66,21 +63,6 @@ jobs:
       with:
         cache: false
         go-version-file: go.mod
-    - name: Setup Node.js
-      if: github.event_name == 'pull_request'
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-    - name: Install commitlint
-      if: github.event_name == 'pull_request'
-      run: |
-        npm install --save-dev @commitlint/cli @commitlint/config-conventional
-    - name: PR title linting
-      if: github.event_name == 'pull_request'
-      env:
-        PR_TITLE: ${{ github.event.pull_request.title }}
-      run: |
-        echo "$PR_TITLE" | npx commitlint --config ./commitlint.config.js
     - name: Commit linting
       if: github.ref != 'refs/heads/master'
       uses: wagoid/commitlint-github-action@v5
