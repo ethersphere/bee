@@ -7,9 +7,10 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	libp2prate "github.com/libp2p/go-libp2p/x/rate"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
-func newResourceManager() (network.ResourceManager, error) {
+func newResourceManager(bootnodes []string) (network.ResourceManager, error) {
 	// scaledDefaultLimits is a copy of the default limits, but with the system base limits increased
 	// to handle the higher connection count of a bee node.
 	scaledDefaultLimits := rcmgr.DefaultLimits
@@ -107,7 +108,27 @@ func newResourceManager() (network.ResourceManager, error) {
 		},
 	}
 
-	rm, err := rcmgr.NewResourceManager(limiter, rcmgr.WithTraceReporter(str), limitPerIp, rcmgr.WithConnRateLimiters(connLimiter))
+	var opts []rcmgr.Option
+	opts = append(opts, rcmgr.WithTraceReporter(str))
+	opts = append(opts, limitPerIp)
+	opts = append(opts, rcmgr.WithConnRateLimiters(connLimiter))
+
+	if len(bootnodes) > 0 {
+		var allowlistedMultiaddrs []ma.Multiaddr
+		for _, a := range bootnodes {
+			m, err := ma.NewMultiaddr(a)
+			if err != nil {
+				// skip invalid bootnode addresses
+				continue
+			}
+			allowlistedMultiaddrs = append(allowlistedMultiaddrs, m)
+		}
+		if len(allowlistedMultiaddrs) > 0 {
+			opts = append(opts, rcmgr.WithAllowlistedMultiaddrs(allowlistedMultiaddrs))
+		}
+	}
+
+	rm, err := rcmgr.NewResourceManager(limiter, opts...)
 	if err != nil {
 		return nil, err
 	}

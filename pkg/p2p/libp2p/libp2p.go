@@ -157,6 +157,7 @@ type Options struct {
 	HeadersRWTimeout            time.Duration
 	Registry                    *prometheus.Registry
 	autoTLSCertManager          autoTLSCertManager
+	Bootnodes                   []string
 }
 
 func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (s *Service, returnErr error) {
@@ -216,7 +217,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 
-	rm, err := newResourceManager()
+	rm, err := newResourceManager(o.Bootnodes)
 	if err != nil {
 		return nil, err
 	}
