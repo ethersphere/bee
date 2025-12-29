@@ -489,21 +489,21 @@ func NewBee(
 		b.apiCloser = apiServer
 	}
 
-	// Sync the with the given Ethereum backend:
-	isSynced, _, err := transaction.IsSynced(ctx, chainBackend, maxDelay)
-	if err != nil {
-		return nil, fmt.Errorf("is synced: %w", err)
-	}
-	if !isSynced {
-		logger.Info("waiting to sync with the blockchain backend")
-
-		err := transaction.WaitSynced(ctx, logger, chainBackend, maxDelay)
-		if err != nil {
-			return nil, fmt.Errorf("waiting backend sync: %w", err)
-		}
-	}
-
 	if o.SwapEnable {
+		// Sync the with the given Ethereum backend:
+		isSynced, _, err := transaction.IsSynced(ctx, chainBackend, maxDelay)
+		if err != nil {
+			return nil, fmt.Errorf("is synced: %w", err)
+		}
+		if !isSynced {
+			logger.Info("waiting to sync with the blockchain backend")
+
+			err := transaction.WaitSynced(ctx, logger, chainBackend, maxDelay)
+			if err != nil {
+				return nil, fmt.Errorf("waiting backend sync: %w", err)
+			}
+		}
+
 		chequebookFactory, err := InitChequebookFactory(logger, chainBackend, chainID, transactionService, o.SwapFactoryAddress)
 		if err != nil {
 			return nil, fmt.Errorf("init chequebook factory: %w", err)
