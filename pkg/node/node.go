@@ -489,7 +489,7 @@ func NewBee(
 		b.apiCloser = apiServer
 	}
 
-	if o.SwapEnable {
+	if chainEnabled {
 		// Sync the with the given Ethereum backend:
 		isSynced, _, err := transaction.IsSynced(ctx, chainBackend, maxDelay)
 		if err != nil {
@@ -503,7 +503,9 @@ func NewBee(
 				return nil, fmt.Errorf("waiting backend sync: %w", err)
 			}
 		}
+	}
 
+	if o.SwapEnable {
 		chequebookFactory, err := InitChequebookFactory(logger, chainBackend, chainID, transactionService, o.SwapFactoryAddress)
 		if err != nil {
 			return nil, fmt.Errorf("init chequebook factory: %w", err)
