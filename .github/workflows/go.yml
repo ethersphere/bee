@@ -66,6 +66,8 @@ jobs:
     - name: Commit linting
       if: github.ref != 'refs/heads/master'
       uses: wagoid/commitlint-github-action@v5
+      with:
+        configFile: commitlint.config.js
     - name: GolangCI-Lint
       uses: golangci/golangci-lint-action@v8
       with:
