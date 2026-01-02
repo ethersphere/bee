@@ -661,7 +661,7 @@ func NewBee(
 	}
 
 	p2ps, err := libp2p.New(ctx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
-		PrivateKey:                  libp2pPrivateKey,
+		// PrivateKey:                  libp2pPrivateKey,
 		NATAddr:                     o.NATAddr,
 		NATWSSAddr:                  o.NATWSSAddr,
 		EnableWS:                    o.EnableWS,

@@ -745,7 +745,7 @@ func (k *Kad) Start(ctx context.Context) error {
 	k.wg.Add(1)
 	go k.manage()
 
-	k.AddPeers(k.previouslyConnected()...)
+	// k.AddPeers(k.previouslyConnected()...)
 
 	go func() {
 		select {

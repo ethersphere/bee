@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	pingTimeout        = time.Second * 15
+	pingTimeout        = time.Second * 1
 	workers            = 16
 	retryAfterDuration = time.Minute * 5
 )
@@ -77,7 +77,6 @@ func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier, o *Options, log lo
 }
 
 func (r *reacher) manage() {
-
 	defer r.wg.Done()
 
 	c := make(chan *peer)
