@@ -216,22 +216,29 @@ func (tm *transactionMonitor) checkPending(block uint64) error {
 			}
 			if receipt != nil {
 				confirmedNonces[nonce] = receipt
+				break // found receipt for this nonce, no need to check other tx hashes
 			}
+		}
+	}
+
+	var unconfirmedNonces []uint64
+	for nonce := range snapshot {
+		if _, ok := confirmedNonces[nonce]; !ok {
+			unconfirmedNonces = append(unconfirmedNonces, nonce)
 		}
 	}
 
 	// Check for cancellations.
 	var cancelledNonces []uint64
-	for nonce := range snapshot {
-		if _, ok := confirmedNonces[nonce]; ok {
-			continue
-		}
+	if len(unconfirmedNonces) > 0 {
 		oldNonce, err := tm.backend.NonceAt(tm.ctx, tm.sender, new(big.Int).SetUint64(block-tm.cancellationDepth))
 		if err != nil {
 			return err
 		}
-		if nonce < oldNonce {
-			cancelledNonces = append(cancelledNonces, nonce)
+		for _, nonce := range unconfirmedNonces {
+			if nonce < oldNonce {
+				cancelledNonces = append(cancelledNonces, nonce)
+			}
 		}
 	}
 
