@@ -1164,9 +1164,9 @@ func NewBee(
 		detector.OnStabilized = func(t time.Time, totalCount int) {
 			warmupMeasurement(t, totalCount)
 
-			reserveTreshold := reserveCapacity >> 1
+			reserveThreshold := reserveCapacity >> 1
 			isFullySynced := func() bool {
-				return pullerService.SyncRate() == 0 && saludService.IsHealthy() && localStore.ReserveSize() >= reserveTreshold
+				return pullerService.SyncRate() == 0 && saludService.IsHealthy() && localStore.ReserveSize() >= reserveThreshold
 			}
 
 			syncCheckTicker := time.NewTicker(2 * time.Second)
@@ -1204,9 +1204,9 @@ func NewBee(
 			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), o.TrxDebugMode)
 
 			isFullySynced := func() bool {
-				reserveTreshold := reserveCapacity * 5 / 10
+				reserveThreshold := reserveCapacity * 5 / 10
 				logger.Debug("Sync status check evaluated", "stabilized", detector.IsStabilized())
-				return localStore.ReserveSize() >= reserveTreshold && pullerService.SyncRate() == 0 && detector.IsStabilized()
+				return localStore.ReserveSize() >= reserveThreshold && pullerService.SyncRate() == 0 && detector.IsStabilized()
 			}
 
 			agent, err = storageincentives.New(
