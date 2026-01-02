@@ -408,3 +408,36 @@ func TestBytesDirectUpload(t *testing.T) {
 		}),
 	)
 }
+
+func TestBytesRedundancyLevel(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{
+		Storer: mockstorer.New(),
+		Post:   mockpost.New(mockpost.WithAcceptAll()),
+	})
+
+	tests := []struct {
+		name       string
+		level      string
+		wantStatus int
+	}{
+		{"level 0 (NONE) is valid", "0", http.StatusCreated},
+		{"level 1 (MEDIUM) is valid", "1", http.StatusCreated},
+		{"level 2 (STRONG) is valid", "2", http.StatusCreated},
+		{"level 3 (INSANE) is valid", "3", http.StatusCreated},
+		{"level 4 (PARANOID) is valid", "4", http.StatusCreated},
+		{"level 5 is invalid", "5", http.StatusBadRequest},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			jsonhttptest.Request(t, client, http.MethodPost, "/bytes", tt.wantStatus,
+				jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+				jsonhttptest.WithRequestHeader(api.SwarmRedundancyLevelHeader, tt.level),
+				jsonhttptest.WithRequestBody(bytes.NewReader([]byte("test"))),
+			)
+		})
+	}
+}
