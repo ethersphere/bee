@@ -88,6 +88,42 @@ func TestConnectDisconnect(t *testing.T) {
 	expectPeersEventually(t, s1)
 }
 
+// TestConnectSelf verifies that a service cannot connect to itself,
+// preventing self-connection attempts.
+func TestConnectSelf(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+
+	s1, _ := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
+
+	// Get own underlay addresses
+	addr := serviceUnderlayAddress(t, s1)
+
+	// Attempt to connect to self
+	bzzAddr, err := s1.Connect(ctx, addr)
+
+	// Should return an error
+	if err == nil {
+		t.Fatal("expected error when connecting to self, got nil")
+	}
+
+	// Should contain "cannot connect to self" in error message
+	if !strings.Contains(err.Error(), "cannot connect to self") {
+		t.Fatalf("expected 'cannot connect to self' error, got: %v", err)
+	}
+
+	// bzzAddr should be nil
+	if bzzAddr != nil {
+		t.Fatal("expected nil bzz address when connecting to self")
+	}
+
+	// Verify no peers are connected
+	expectPeers(t, s1)
+}
+
 func TestConnectToLightPeer(t *testing.T) {
 	t.Parallel()
 
@@ -985,8 +1021,6 @@ func TestTopologyAnnounce(t *testing.T) {
 }
 
 func TestTopologyOverSaturated(t *testing.T) {
-	t.Parallel()
-
 	var (
 		mtx sync.Mutex
 		ctx = context.Background()
@@ -1097,8 +1131,6 @@ func TestWithDisconnectStreams(t *testing.T) {
 }
 
 func TestWithBlocklistStreams(t *testing.T) {
-	t.Parallel()
-
 	ctx := t.Context()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{

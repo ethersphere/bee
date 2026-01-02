@@ -64,9 +64,10 @@ type Service struct {
 	sem               *semaphore.Weighted
 	bootnode          bool
 	allowPrivateCIDRs bool
+	overlay           swarm.Address
 }
 
-func New(streamer p2p.Streamer, addressbook addressbook.GetPutter, networkID uint64, bootnode bool, allowPrivateCIDRs bool, logger log.Logger) *Service {
+func New(streamer p2p.Streamer, addressbook addressbook.GetPutter, networkID uint64, bootnode bool, allowPrivateCIDRs bool, overlay swarm.Address, logger log.Logger) *Service {
 	svc := &Service{
 		streamer:          streamer,
 		logger:            logger.WithName(loggerName).Register(),
@@ -80,6 +81,7 @@ func New(streamer p2p.Streamer, addressbook addressbook.GetPutter, networkID uin
 		sem:               semaphore.NewWeighted(int64(swarm.MaxBins)),
 		bootnode:          bootnode,
 		allowPrivateCIDRs: allowPrivateCIDRs,
+		overlay:           overlay,
 	}
 
 	if !bootnode {
@@ -174,6 +176,11 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 	w, _ := protobuf.NewWriterAndReader(stream)
 	var peersRequest pb.Peers
 	for _, p := range peers {
+		if p.Equal(s.overlay) {
+			s.logger.Debug("skipping self-address in broadcast", "overlay", p.String())
+			continue
+		}
+
 		addr, err := s.addressBook.Get(p)
 		if err != nil {
 			if errors.Is(err, addressbook.ErrNotFound) {
@@ -290,8 +297,15 @@ func (s *Service) checkAndAddPeers(peers pb.Peers) {
 			continue
 		}
 
+		overlayAddr := swarm.NewAddress(p.Overlay)
+
+		if overlayAddr.Equal(s.overlay) {
+			s.logger.Debug("skipping self-address in peer list", "overlay", overlayAddr.String())
+			continue
+		}
+
 		bzzAddress := bzz.Address{
-			Overlay:   swarm.NewAddress(p.Overlay),
+			Overlay:   overlayAddr,
 			Underlays: multiUnderlays,
 			Signature: p.Signature,
 			Nonce:     p.Nonce,

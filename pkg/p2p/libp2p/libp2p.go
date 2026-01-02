@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -57,6 +58,7 @@ import (
 	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
+	libp2prate "github.com/libp2p/go-libp2p/x/rate"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/multiformats/go-multistream"
@@ -239,7 +241,40 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 
-	rm, err := rcmgr.NewResourceManager(limiter, rcmgr.WithTraceReporter(str))
+	limitPerIp := rcmgr.WithLimitPerSubnet(
+		[]rcmgr.ConnLimitPerSubnet{{PrefixLength: 32, ConnCount: 200}}, // IPv4 /32 (Single IP) -> 200 conns
+		[]rcmgr.ConnLimitPerSubnet{{PrefixLength: 56, ConnCount: 200}}, // IPv6 /56 subnet -> 200 conns
+	)
+
+	// Custom rate limiter for connection attempts
+	// 20 peers cluster adaptation:
+	// Allow bursts of connection attempts (e.g. restart) but prevent DDOS.
+	connLimiter := &libp2prate.Limiter{
+		// Allow unlimited local connections (same as default)
+		NetworkPrefixLimits: []libp2prate.PrefixLimit{
+			{Prefix: netip.MustParsePrefix("127.0.0.0/8"), Limit: libp2prate.Limit{}},
+			{Prefix: netip.MustParsePrefix("::1/128"), Limit: libp2prate.Limit{}},
+		},
+		GlobalLimit: libp2prate.Limit{}, // Unlimited global
+		SubnetRateLimiter: libp2prate.SubnetLimiter{
+			IPv4SubnetLimits: []libp2prate.SubnetLimit{
+				{
+					PrefixLength: 32, // Per IP
+					// Allow 10 connection attempts per second per IP, burst up to 40
+					Limit: libp2prate.Limit{RPS: 10.0, Burst: 40},
+				},
+			},
+			IPv6SubnetLimits: []libp2prate.SubnetLimit{
+				{
+					PrefixLength: 56, // Per Subnet
+					Limit:        libp2prate.Limit{RPS: 10.0, Burst: 40},
+				},
+			},
+			GracePeriod: 10 * time.Second,
+		},
+	}
+
+	rm, err := rcmgr.NewResourceManager(limiter, rcmgr.WithTraceReporter(str), limitPerIp, rcmgr.WithConnRateLimiters(connLimiter))
 	if err != nil {
 		return nil, err
 	}
@@ -638,7 +673,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		s.logger.Debug("stream handler: blocklisting: exists failed", "peer_address", overlay, "error", err)
 		s.logger.Error(nil, "stream handler: internal error while connecting with peer", "peer_address", overlay)
 		_ = handshakeStream.Reset()
-		_ = s.host.Network().ClosePeer(peerID)
+		_ = stream.Conn().Close()
 		return
 	}
 
@@ -654,7 +689,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		if err = handshakeStream.FullClose(); err != nil {
 			s.logger.Debug("stream handler: could not close stream", "peer_address", overlay, "error", err)
 			s.logger.Error(nil, "stream handler: unable to handshake with peer", "peer_address", overlay)
-			_ = s.Disconnect(overlay, "unable to close handshake stream")
+			_ = stream.Conn().Close()
 		}
 		return
 	}
@@ -951,6 +986,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	var info *libp2ppeer.AddrInfo
 	var peerID libp2ppeer.ID
 	var connectErr error
+	skippedSelf := false
 
 	// Try to connect to each underlay address one by one.
 	//
@@ -967,6 +1003,13 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 
 		info = ai
 		peerID = ai.ID
+
+		// Check if attempting to connect to self
+		if peerID == s.host.ID() {
+			s.logger.Debug("skipping connection to self", "peer_id", peerID, "underlay", info.Addrs)
+			skippedSelf = true
+			continue
+		}
 
 		hostAddr, err := buildHostAddress(info.ID)
 		if err != nil {
@@ -998,6 +1041,11 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 
 	if connectErr != nil {
 		return nil, fmt.Errorf("libp2p connect: %w", connectErr)
+	}
+
+	// If we skipped all addresses due to self-connection, return an error
+	if skippedSelf && info != nil && info.ID == s.host.ID() {
+		return nil, fmt.Errorf("cannot connect to self")
 	}
 
 	if info == nil {
@@ -1206,6 +1254,12 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 		return nil, p2p.ErrPeerNotFound
 	}
 
+	// Verify if we really have an active connection
+	if s.host.Network().Connectedness(peerID) != network.Connected {
+		_ = s.Disconnect(overlay, "registry-host mismatch in NewStream")
+		return nil, p2p.ErrPeerNotFound
+	}
+
 	streamlibp2p, err := s.newStreamForPeerID(ctx, peerID, protocolName, protocolVersion, streamName)
 	if err != nil {
 		return nil, fmt.Errorf("new stream for peerid: %w", err)
@@ -1235,6 +1289,11 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 
 func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, protocolName, protocolVersion, streamName string) (network.Stream, error) {
 	swarmStreamName := p2p.NewSwarmStreamName(protocolName, protocolVersion, streamName)
+
+	if s.host.Network().Connectedness(peerID) != network.Connected {
+		s.logger.Debug("newStreamForPeerID: host not connected to peer, this will trigger a dial", "peer_id", peerID, "protocol", swarmStreamName)
+	}
+
 	st, err := s.host.NewStream(ctx, peerID, protocol.ID(swarmStreamName))
 	if err != nil {
 		if st != nil {
