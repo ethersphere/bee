@@ -273,7 +273,6 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 		return nil, fmt.Errorf("read syn message: %w", err)
 	}
 	s.metrics.SynRx.Inc()
-	fmt.Printf("%s %s\n", "got syn", time.Now().String())
 
 	observedUnderlays, err := bzz.DeserializeUnderlays(syn.ObservedUnderlay)
 	if err != nil {
@@ -315,8 +314,8 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 	}
 
 	welcomeMessage := s.GetWelcomeMessage()
+
 	peerMultiaddrs = filterBee260CompatibleUnderlays(o.bee260compatibility, peerMultiaddrs)
-	fmt.Printf("%s %s\n", "sending synack\n", time.Now().String())
 
 	if err := w.WriteMsgWithContext(ctx, &pb.SynAck{
 		Syn: &pb.Syn{
@@ -337,8 +336,6 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 		s.metrics.SynAckTxFailed.Inc()
 		return nil, fmt.Errorf("write synack message: %w", err)
 	}
-	fmt.Printf("%s %s\n", "sent synack\n", time.Now().String())
-
 	s.metrics.SynAckTx.Inc()
 
 	var ack pb.Ack
