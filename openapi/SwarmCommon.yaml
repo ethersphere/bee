@@ -1071,6 +1071,13 @@ components:
       schema:
         type: string
 
+    SwarmFeedResolvedVersion:
+      schema:
+        type: string
+      required: false
+      description: "Indicates which feed version was resolved (v1 or v2)"
+
+
   parameters:
     GasPriceParameter:
       in: header
@@ -1275,14 +1282,6 @@ components:
         format: int64
       required: false
       description: "ACT history Unix timestamp"
-
-    SwarmFeedLegacyResolve:
-      in: query
-      name: swarm-feed-legacy-resolve
-      schema:
-        type: boolean
-      required: false
-      description: "Resolves feed payloads in legacy structure (timestamp, content address)."
 
   responses:
     "200":

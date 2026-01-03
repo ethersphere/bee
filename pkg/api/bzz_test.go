@@ -764,12 +764,8 @@ func TestFeedIndirection(t *testing.T) {
 			Logger: logger,
 			Post:   mockpost.New(mockpost.WithAcceptAll()),
 		})
-		bzzDownloadResource = func(addr, path string, legacyFeed bool) string {
+		bzzDownloadResource = func(addr, path string) string {
 			values := url.Values{}
-			if legacyFeed {
-				values.Set("swarm-feed-legacy-resolve", strconv.FormatBool(legacyFeed))
-			}
-
 			baseURL := "/bzz/" + addr + "/" + path
 			if len(values) > 0 {
 				return baseURL + "?" + values.Encode()
@@ -835,7 +831,6 @@ func TestFeedIndirection(t *testing.T) {
 
 	t.Run("legacy feed", func(t *testing.T) {
 		feedUpdate := toChunk(t, 121212, resp.Reference.Bytes())
-
 		var (
 			look    = newMockLookup(-1, 0, feedUpdate, nil, &id{}, nil)
 			factory = newMockFactory(look)
@@ -846,16 +841,15 @@ func TestFeedIndirection(t *testing.T) {
 			Feeds:  factory,
 		})
 
-		jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(manifRef.String(), "", true), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(manifRef.String(), ""), http.StatusOK,
 			jsonhttptest.WithExpectedResponse(updateData),
 			jsonhttptest.WithExpectedContentLength(len(updateData)),
 			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.SwarmFeedIndexHeader),
 			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.ContentDispositionHeader),
 			jsonhttptest.WithExpectedResponseHeader(api.ContentDispositionHeader, `inline; filename="index.html"`),
 			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "text/html; charset=utf-8"),
+			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedResolvedVersionHeader, "v1"),
 		)
-
-		jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(manifRef.String(), "", false), http.StatusNotFound)
 	})
 
 	t.Run("wrapped feed", func(t *testing.T) {
@@ -876,16 +870,15 @@ func TestFeedIndirection(t *testing.T) {
 			Feeds:  factory,
 		})
 
-		jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(manifRef.String(), "", false), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(manifRef.String(), ""), http.StatusOK,
 			jsonhttptest.WithExpectedResponse(updateData),
 			jsonhttptest.WithExpectedContentLength(len(updateData)),
 			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.SwarmFeedIndexHeader),
 			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.ContentDispositionHeader),
 			jsonhttptest.WithExpectedResponseHeader(api.ContentDispositionHeader, `inline; filename="index.html"`),
 			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "text/html; charset=utf-8"),
+			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedResolvedVersionHeader, "v2"),
 		)
-
-		jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(manifRef.String(), "", true), http.StatusBadRequest)
 	})
 }
 
