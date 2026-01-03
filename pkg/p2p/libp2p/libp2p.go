@@ -298,7 +298,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			// of different registers.
 			storagePath := filepath.Join(o.AutoTLSStorageDir, o.AutoTLSDomain)
 
-			if err := os.MkdirAll(storagePath, 0700); err != nil {
+			if err := os.MkdirAll(storagePath, 0o700); err != nil {
 				return nil, fmt.Errorf("create certificate storage directory %s: %w", storagePath, err)
 			}
 
@@ -339,6 +339,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	opts := []libp2p.Option{
+		libp2p.ShareTCPListener(),
 		libp2p.ListenAddrStrings(listenAddrs...),
 		security,
 		// Use dedicated peerstore instead the global DefaultPeerstore
