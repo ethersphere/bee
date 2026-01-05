@@ -1486,15 +1486,16 @@ func validatePublicAddress(addr string) error {
 	if host == "localhost" {
 		return errors.New("localhost is not a valid address")
 	}
+
 	ip := net.ParseIP(host)
-	if ip == nil {
-		return errors.New("not a valid IP address")
-	}
-	if ip.IsLoopback() {
-		return errors.New("loopback address is not a valid address")
-	}
-	if ip.IsPrivate() {
-		return errors.New("private address is not a valid address")
+	if ip != nil {
+		if ip.IsLoopback() {
+			return errors.New("loopback address is not a valid address")
+		}
+		if ip.IsPrivate() {
+			return errors.New("private address is not a valid address")
+		}
+		return nil
 	}
 
 	return nil
