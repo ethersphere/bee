@@ -17,14 +17,18 @@ const (
 
 // setupValidation configures custom validation rules and their custom error messages.
 func (s *Service) setupValidation() {
-	s.validate.RegisterValidation(RedundancyLevelTag, func(fl validator.FieldLevel) bool {
+	err := s.validate.RegisterValidation(RedundancyLevelTag, func(fl validator.FieldLevel) bool {
 		level := redundancy.Level(fl.Field().Uint())
 		return level.Validate()
 	})
+	if err != nil {
+		s.logger.Error(err, "failed to register validation")
+		panic(err)
+	}
 
-	s.validationCustomErrorMessages = map[string]func(err validator.FieldError) error{
+	s.customValidationMessages = map[string]func(err validator.FieldError) error{
 		RedundancyLevelTag: func(err validator.FieldError) error {
-			return fmt.Errorf("want redundancy level to be in the range of %d and %d", int(redundancy.NONE), int(redundancy.PARANOID))
+			return fmt.Errorf("want redundancy level to be between %d and %d", int(redundancy.NONE), int(redundancy.PARANOID))
 		},
 	}
 }

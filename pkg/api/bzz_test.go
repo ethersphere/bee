@@ -1224,7 +1224,7 @@ func TestBzzUploadRedundancyLevel(t *testing.T) {
 				Reasons: []jsonhttp.Reason{
 					{
 						Field: "swarm-redundancy-level",
-						Error: fmt.Sprintf("want lte:%d", maxValidLevel),
+						Error: fmt.Sprintf("want redundancy level to be between %d and %d", int(redundancy.NONE), int(redundancy.PARANOID)),
 					},
 				},
 			},
@@ -1300,7 +1300,7 @@ func TestBzzDownloadRedundancyLevel(t *testing.T) {
 				Reasons: []jsonhttp.Reason{
 					{
 						Field: "swarm-redundancy-level",
-						Error: fmt.Sprintf("want redundancy level to be in the range of %d and %d", int(redundancy.NONE), int(redundancy.PARANOID)),
+						Error: fmt.Sprintf("want redundancy level to be between %d and %d", int(redundancy.NONE), int(redundancy.PARANOID)),
 					},
 				},
 			},

@@ -214,9 +214,9 @@ type Service struct {
 
 	whitelistedWithdrawalAddress []common.Address
 
-	preMapHooks             map[string]func(v string) (string, error)
-	validationCustomErrorMessages map[string]func(err validator.FieldError) error
-	validate                *validator.Validate
+	preMapHooks              map[string]func(v string) (string, error)
+	customValidationMessages map[string]func(err validator.FieldError) error
+	validate                 *validator.Validate
 
 	redistributionAgent *storageincentives.Agent
 
@@ -712,7 +712,7 @@ func (s *Service) mapStructure(input, output any) func(string, log.Logger, http.
 				val = string(v)
 			}
 			var cause error
-			if msgFn, ok := s.validationCustomErrorMessages[err.Tag()]; ok {
+			if msgFn, ok := s.customValidationMessages[err.Tag()]; ok {
 				cause = msgFn(err)
 			} else {
 				cause = fmt.Errorf("want %s:%s", err.Tag(), err.Param())
