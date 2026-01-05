@@ -81,6 +81,7 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/sha3"
+	"golang.org/x/net/idna"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -1496,6 +1497,16 @@ func validatePublicAddress(addr string) error {
 			return errors.New("private address is not a valid address")
 		}
 		return nil
+	}
+
+	idnaValidator := idna.New(
+		idna.ValidateLabels(true),
+		idna.VerifyDNSLength(true),
+		idna.StrictDomainName(true),
+		idna.CheckHyphens(true),
+	)
+	if _, err := idnaValidator.ToASCII(host); err != nil {
+		return fmt.Errorf("invalid hostname: %w", err)
 	}
 
 	return nil
