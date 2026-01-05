@@ -29,6 +29,11 @@ const (
 	PARANOID
 )
 
+// Validate validates the redundancy level
+func (l Level) Validate() bool {
+	return l >= NONE && l <= PARANOID
+}
+
 // GetParities returns number of parities based on appendix F table 5
 func (l Level) GetParities(shards int) int {
 	et, err := l.getErasureTable()
