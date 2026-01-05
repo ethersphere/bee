@@ -69,9 +69,9 @@ func TestValidatePublicAddress(t *testing.T) {
 			expErr: false,
 		},
 		{
-			name:   "invalid IP",
+			name:   "hostname format valid",
 			addr:   "not-an-ip:8080",
-			expErr: true,
+			expErr: false,
 		},
 		{
 			name:   "private IP",
@@ -81,6 +81,11 @@ func TestValidatePublicAddress(t *testing.T) {
 		{
 			name:   "hostname",
 			addr:   "example.com:8080",
+			expErr: false,
+		},
+		{
+			name:   "hostname without port",
+			addr:   "example.com",
 			expErr: true,
 		},
 	}
