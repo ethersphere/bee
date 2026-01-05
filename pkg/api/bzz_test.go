@@ -1186,7 +1186,7 @@ func TestBzzDownloadHeaders(t *testing.T) {
 	)
 }
 
-func TestBzzRedundancyLevel(t *testing.T) {
+func TestBzzUploadRedundancyLevel(t *testing.T) {
 	t.Parallel()
 
 	client, _, _, _ := newTestServer(t, testServerOptions{
@@ -1194,28 +1194,135 @@ func TestBzzRedundancyLevel(t *testing.T) {
 		Post:   mockpost.New(mockpost.WithAcceptAll()),
 	})
 
+	const maxValidLevel = redundancy.PARANOID
+
 	tests := []struct {
-		name       string
-		level      string
-		wantStatus int
+		name  string
+		level int
+		want  *jsonhttp.StatusResponse
 	}{
-		{"level 0 (NONE) is valid", "0", http.StatusCreated},
-		{"level 1 (MEDIUM) is valid", "1", http.StatusCreated},
-		{"level 2 (STRONG) is valid", "2", http.StatusCreated},
-		{"level 3 (INSANE) is valid", "3", http.StatusCreated},
-		{"level 4 (PARANOID) is valid", "4", http.StatusCreated},
-		{"level 5 is invalid", "5", http.StatusBadRequest},
+		{"minimum level (NONE) is valid", int(redundancy.NONE), nil},
+		{"maximum valid level (PARANOID) is valid", int(maxValidLevel), nil},
+		{
+			"level below minimum is invalid", int(-1),
+			&jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid header params",
+				Reasons: []jsonhttp.Reason{
+					{
+						Field: "Swarm-Redundancy-Level",
+						Error: "invalid syntax",
+					},
+				},
+			},
+		},
+		{
+			"level above maximum is invalid", int(maxValidLevel + 1),
+			&jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid header params",
+				Reasons: []jsonhttp.Reason{
+					{
+						Field: "swarm-redundancy-level",
+						Error: fmt.Sprintf("want lte:%d", maxValidLevel),
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			jsonhttptest.Request(t, client, http.MethodPost, "/bzz", tt.wantStatus,
+			opts := []jsonhttptest.Option{
 				jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "text/plain"),
 				jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
-				jsonhttptest.WithRequestHeader(api.SwarmRedundancyLevelHeader, tt.level),
+				jsonhttptest.WithRequestHeader(api.SwarmRedundancyLevelHeader, strconv.Itoa(tt.level)),
 				jsonhttptest.WithRequestBody(bytes.NewReader([]byte("test"))),
-			)
+			}
+			var statusCode int
+			if tt.want == nil {
+				statusCode = http.StatusCreated
+			} else {
+				statusCode = tt.want.Code
+				opts = append(opts, jsonhttptest.WithExpectedJSONResponse(*tt.want))
+			}
+			jsonhttptest.Request(t, client, http.MethodPost, "/bzz", statusCode, opts...)
+		})
+	}
+}
+
+func TestBzzDownloadRedundancyLevel(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{
+		Storer: mockstorer.New(),
+		Post:   mockpost.New(mockpost.WithAcceptAll()),
+	})
+
+	testData := []byte("test download redundancy level")
+	var resp api.BzzUploadResponse
+	jsonhttptest.Request(t, client, http.MethodPost, "/bzz", http.StatusCreated,
+		jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "text/plain"),
+		jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+		jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+		jsonhttptest.WithRequestBody(bytes.NewReader(testData)),
+		jsonhttptest.WithUnmarshalJSONResponse(&resp),
+	)
+
+	const maxValidLevel = redundancy.PARANOID
+
+	tests := []struct {
+		name  string
+		level int
+		want  *jsonhttp.StatusResponse
+	}{
+		{"minimum level (NONE) is valid", int(redundancy.NONE), nil},
+		{"maximum valid level (PARANOID) is valid", int(maxValidLevel), nil},
+		{
+			"level below minimum is invalid", int(-1),
+			&jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid header params",
+				Reasons: []jsonhttp.Reason{
+					{
+						Field: "Swarm-Redundancy-Level",
+						Error: "invalid syntax",
+					},
+				},
+			},
+		},
+		{
+			"level above maximum is invalid", int(maxValidLevel + 1),
+			&jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid header params",
+				Reasons: []jsonhttp.Reason{
+					{
+						Field: "swarm-redundancy-level",
+						Error: fmt.Sprintf("want lte:%d", maxValidLevel),
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := []jsonhttptest.Option{
+				jsonhttptest.WithRequestHeader(api.SwarmRedundancyLevelHeader, strconv.Itoa(tt.level)),
+			}
+			var statusCode int
+			if tt.want == nil {
+				statusCode = http.StatusOK
+				opts = append(opts,
+					jsonhttptest.WithExpectedResponse(testData),
+				)
+			} else {
+				statusCode = tt.want.Code
+				opts = append(opts, jsonhttptest.WithExpectedJSONResponse(*tt.want))
+			}
+			jsonhttptest.Request(t, client, http.MethodGet, "/bzz/"+resp.Reference.String(), statusCode, opts...)
 		})
 	}
 }
