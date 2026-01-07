@@ -333,7 +333,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			// of different registers.
 			storagePath := filepath.Join(o.AutoTLSStorageDir, o.AutoTLSDomain)
 
-			if err := os.MkdirAll(storagePath, 0700); err != nil {
+			if err := os.MkdirAll(storagePath, 0o700); err != nil {
 				return nil, fmt.Errorf("create certificate storage directory %s: %w", storagePath, err)
 			}
 
@@ -428,6 +428,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		transports = append(transports, libp2p.Transport(ws.New, wsOpt))
 	} else if o.EnableWS {
 		transports = append(transports, libp2p.Transport(ws.New))
+		opts = append(opts, libp2p.ShareTCPListener())
 	}
 
 	compositeResolver := newCompositeAddressResolver(tcpResolver, wssResolver)
