@@ -259,17 +259,20 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		SubnetRateLimiter: libp2prate.SubnetLimiter{
 			IPv4SubnetLimits: []libp2prate.SubnetLimit{
 				{
-					PrefixLength: 32, // Per IP
+					PrefixLength: 32, // Apply limits per individual IPv4 address (/32)
 					// Allow 10 connection attempts per second per IP, burst up to 40
 					Limit: libp2prate.Limit{RPS: 10.0, Burst: 40},
 				},
 			},
 			IPv6SubnetLimits: []libp2prate.SubnetLimit{
 				{
-					PrefixLength: 56, // Per Subnet
-					Limit:        libp2prate.Limit{RPS: 10.0, Burst: 40},
+					PrefixLength: 56, // Apply limits per /56 IPv6 subnet
+					// Allow 10 connection attempts per second per IP, burst up to 40
+					// Subnet-level limiting prevents flooding from multiple addresses in the same block.
+					Limit: libp2prate.Limit{RPS: 10.0, Burst: 40},
 				},
 			},
+			// Duration to retain state for an IP or subnet after it becomes inactive.
 			GracePeriod: 10 * time.Second,
 		},
 	}
@@ -577,7 +580,7 @@ type parsedAddress struct {
 func parseAddress(addr string) (*parsedAddress, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
-		return nil, fmt.Errorf("address: %w", err)
+		return nil, fmt.Errorf("parse address %s: %w", addr, err)
 	}
 
 	res := &parsedAddress{
@@ -1044,7 +1047,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	}
 
 	// If we skipped all addresses due to self-connection, return an error
-	if skippedSelf && info != nil && info.ID == s.host.ID() {
+	if skippedSelf {
 		return nil, fmt.Errorf("cannot connect to self")
 	}
 
