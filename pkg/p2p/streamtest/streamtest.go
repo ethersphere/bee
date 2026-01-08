@@ -38,6 +38,7 @@ type Recorder struct {
 	streamErr          func(swarm.Address, string, string, string) error
 	pingErr            func(ma.Multiaddr) (time.Duration, error)
 	protocolsWithPeers map[string]p2p.ProtocolSpec
+	messageLatency     time.Duration
 }
 
 func WithProtocols(protocols ...p2p.ProtocolSpec) Option {
@@ -82,6 +83,12 @@ func WithPingErr(pingErr func(ma.Multiaddr) (time.Duration, error)) Option {
 	})
 }
 
+func WithMessageLatency(latency time.Duration) Option {
+	return optionFunc(func(r *Recorder) {
+		r.messageLatency = latency
+	})
+}
+
 func New(opts ...Option) *Recorder {
 	r := &Recorder{
 		records:  make(map[string][]*Record),
@@ -115,8 +122,8 @@ func (r *Recorder) NewStream(ctx context.Context, addr swarm.Address, h p2p.Head
 		}
 	}
 
-	recordIn := newRecord()
-	recordOut := newRecord()
+	recordIn := newRecord(r.messageLatency)
+	recordOut := newRecord(r.messageLatency)
 	streamOut := newStream(recordIn, recordOut)
 	streamIn := newStream(recordOut, recordIn)
 
@@ -328,16 +335,20 @@ type record struct {
 	c        int
 	lock     sync.Mutex
 	dataSigC chan struct{}
+	latency  time.Duration
 	closed   bool
 }
 
-func newRecord() *record {
+func newRecord(latency time.Duration) *record {
 	return &record{
 		dataSigC: make(chan struct{}, 16),
+		latency:  latency,
 	}
 }
 
 func (r *record) Read(p []byte) (n int, err error) {
+	defer time.Sleep(r.latency)
+
 	for r.c == r.bytesSize() {
 		_, ok := <-r.dataSigC
 		if !ok {
@@ -356,6 +367,8 @@ func (r *record) Read(p []byte) (n int, err error) {
 }
 
 func (r *record) Write(p []byte) (int, error) {
+	defer time.Sleep(r.latency)
+
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
