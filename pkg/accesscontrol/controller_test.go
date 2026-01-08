@@ -9,6 +9,7 @@ import (
 	"crypto/ecdsa"
 	"reflect"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
@@ -235,44 +236,46 @@ func TestController_UpdateHandler(t *testing.T) {
 		assert.Len(t, gl.Get(), 2)
 	})
 	t.Run("add and revoke then get from history", func(t *testing.T) {
-		addRevokeList := []*ecdsa.PublicKey{&grantee.PublicKey}
-		ref := swarm.RandAddress(t)
-		_, hRef, encRef, err := c.UploadHandler(ctx, ls, ref, &publisher.PublicKey, swarm.ZeroAddress)
-		require.NoError(t, err)
+		synctest.Test(t, func(t *testing.T) {
+			addRevokeList := []*ecdsa.PublicKey{&grantee.PublicKey}
+			ref := swarm.RandAddress(t)
+			_, hRef, encRef, err := c.UploadHandler(ctx, ls, ref, &publisher.PublicKey, swarm.ZeroAddress)
+			require.NoError(t, err)
 
-		// Need to wait a second before each update call so that a new history mantaray fork is created for the new key(timestamp) entry
-		time.Sleep(1 * time.Second)
-		beforeRevokeTS := time.Now().Unix()
-		_, egranteeRef, hrefUpdate1, _, err := c.UpdateHandler(ctx, ls, gls, swarm.ZeroAddress, hRef, &publisher.PublicKey, addRevokeList, nil)
-		require.NoError(t, err)
+			// Need to wait a second before each update call so that a new history mantaray fork is created for the new key(timestamp) entry
+			time.Sleep(1 * time.Second)
+			beforeRevokeTS := time.Now().Unix()
+			_, egranteeRef, hrefUpdate1, _, err := c.UpdateHandler(ctx, ls, gls, swarm.ZeroAddress, hRef, &publisher.PublicKey, addRevokeList, nil)
+			require.NoError(t, err)
 
-		time.Sleep(1 * time.Second)
-		granteeRef, _, hrefUpdate2, _, err := c.UpdateHandler(ctx, ls, gls, egranteeRef, hrefUpdate1, &publisher.PublicKey, nil, addRevokeList)
-		require.NoError(t, err)
+			time.Sleep(1 * time.Second)
+			granteeRef, _, hrefUpdate2, _, err := c.UpdateHandler(ctx, ls, gls, egranteeRef, hrefUpdate1, &publisher.PublicKey, nil, addRevokeList)
+			require.NoError(t, err)
 
-		gl, err := accesscontrol.NewGranteeListReference(ctx, ls, granteeRef)
-		require.NoError(t, err)
-		assert.Empty(t, gl.Get())
-		// expect history reference to be different after grantee list update
-		assert.NotEqual(t, hrefUpdate1, hrefUpdate2)
+			gl, err := accesscontrol.NewGranteeListReference(ctx, ls, granteeRef)
+			require.NoError(t, err)
+			assert.Empty(t, gl.Get())
+			// expect history reference to be different after grantee list update
+			assert.NotEqual(t, hrefUpdate1, hrefUpdate2)
 
-		granteeDH := accesscontrol.NewDefaultSession(grantee)
-		granteeAl := accesscontrol.NewLogic(granteeDH)
-		granteeCtrl := accesscontrol.NewController(granteeAl)
-		// download with grantee shall still work with the timestamp before the revoke
-		decRef, err := granteeCtrl.DownloadHandler(ctx, ls, encRef, &publisher.PublicKey, hrefUpdate2, beforeRevokeTS)
-		require.NoError(t, err)
-		assert.Equal(t, ref, decRef)
+			granteeDH := accesscontrol.NewDefaultSession(grantee)
+			granteeAl := accesscontrol.NewLogic(granteeDH)
+			granteeCtrl := accesscontrol.NewController(granteeAl)
+			// download with grantee shall still work with the timestamp before the revoke
+			decRef, err := granteeCtrl.DownloadHandler(ctx, ls, encRef, &publisher.PublicKey, hrefUpdate2, beforeRevokeTS)
+			require.NoError(t, err)
+			assert.Equal(t, ref, decRef)
 
-		// download with grantee shall NOT work with the latest timestamp
-		decRef, err = granteeCtrl.DownloadHandler(ctx, ls, encRef, &publisher.PublicKey, hrefUpdate2, time.Now().Unix())
-		require.Error(t, err)
-		assert.Equal(t, swarm.ZeroAddress, decRef)
+			// download with grantee shall NOT work with the latest timestamp
+			decRef, err = granteeCtrl.DownloadHandler(ctx, ls, encRef, &publisher.PublicKey, hrefUpdate2, time.Now().Unix())
+			require.Error(t, err)
+			assert.Equal(t, swarm.ZeroAddress, decRef)
 
-		// publisher shall still be able to download with the timestamp before the revoke
-		decRef, err = c.DownloadHandler(ctx, ls, encRef, &publisher.PublicKey, hrefUpdate2, beforeRevokeTS)
-		require.NoError(t, err)
-		assert.Equal(t, ref, decRef)
+			// publisher shall still be able to download with the timestamp before the revoke
+			decRef, err = c.DownloadHandler(ctx, ls, encRef, &publisher.PublicKey, hrefUpdate2, beforeRevokeTS)
+			require.NoError(t, err)
+			assert.Equal(t, ref, decRef)
+		})
 	})
 	t.Run("add twice", func(t *testing.T) {
 		addList := []*ecdsa.PublicKey{&grantee.PublicKey, &grantee.PublicKey}
