@@ -163,37 +163,12 @@ paths:
       tags:
         - Bytes
       parameters:
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
-          name: swarm-postage-batch-id
-          required: true
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
-          name: swarm-tag
-          required: false
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
-          name: swarm-pin
-          required: false
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
-          name: swarm-deferred-upload
-          required: false
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmEncryptParameter"
-          name: swarm-encrypt
-          required: false
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
-          name: swarm-redundancy-level
-          required: false
-
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmEncryptParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
       requestBody:
         content:
           application/octet-stream:

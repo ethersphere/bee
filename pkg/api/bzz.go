@@ -72,7 +72,7 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		Deferred       *bool            `map:"Swarm-Deferred-Upload"`
 		Encrypt        bool             `map:"Swarm-Encrypt"`
 		IsDir          bool             `map:"Swarm-Collection"`
-		RLevel         redundancy.Level `map:"Swarm-Redundancy-Level"`
+		RLevel         redundancy.Level `map:"Swarm-Redundancy-Level" validate:"rLevel"`
 		Act            bool             `map:"Swarm-Act"`
 		HistoryAddress swarm.Address    `map:"Swarm-Act-History-Address"`
 	}{}
@@ -480,7 +480,7 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 		Cache                 *bool             `map:"Swarm-Cache"`
 		Strategy              *getter.Strategy  `map:"Swarm-Redundancy-Strategy"`
 		FallbackMode          *bool             `map:"Swarm-Redundancy-Fallback-Mode"`
-		RLevel                *redundancy.Level `map:"Swarm-Redundancy-Level"`
+		RLevel                *redundancy.Level `map:"Swarm-Redundancy-Level" validate:"omitempty,rLevel"`
 		ChunkRetrievalTimeout *string           `map:"Swarm-Chunk-Retrieval-Timeout"`
 	}{}
 
@@ -693,7 +693,7 @@ func (s *Service) serveManifestEntry(
 func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *http.Request, reference swarm.Address, additionalHeaders http.Header, etag, headersOnly bool, rootCh swarm.Chunk) {
 	headers := struct {
 		Strategy              *getter.Strategy  `map:"Swarm-Redundancy-Strategy"`
-		RLevel                *redundancy.Level `map:"Swarm-Redundancy-Level"`
+		RLevel                *redundancy.Level `map:"Swarm-Redundancy-Level" validate:"omitempty,rLevel"`
 		FallbackMode          *bool             `map:"Swarm-Redundancy-Fallback-Mode"`
 		ChunkRetrievalTimeout *string           `map:"Swarm-Chunk-Retrieval-Timeout"`
 		LookaheadBufferSize   *int              `map:"Swarm-Lookahead-Buffer-Size"`
