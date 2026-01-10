@@ -117,12 +117,12 @@ type Bee struct {
 	saludCloser              io.Closer
 	storageIncetivesCloser   io.Closer
 	pushSyncCloser           io.Closer
-	retrievalCloser          io.Closer
-	shutdownInProgress       bool
-	shutdownMutex            sync.Mutex
-	syncingStopped           *syncutil.Signaler
-	accesscontrolCloser      io.Closer
-	ethClientCloser          func()
+
+	shutdownInProgress  bool
+	shutdownMutex       sync.Mutex
+	syncingStopped      *syncutil.Signaler
+	accesscontrolCloser io.Closer
+	ethClientCloser     func()
 }
 
 type Options struct {
