@@ -175,10 +175,10 @@ type Options struct {
 	TracingEndpoint               string
 	TracingServiceName            string
 	TrxDebugMode                  bool
-	UsePostageSnapshot            bool
-	WarmupTime                    time.Duration
-	WelcomeMessage                string
-	WhitelistedWithdrawalAddress  []string
+
+	WarmupTime                   time.Duration
+	WelcomeMessage               string
+	WhitelistedWithdrawalAddress []string
 }
 
 const (
@@ -618,34 +618,6 @@ func NewBee(
 		logger.Debug("node warmup check: period complete.", "periodEndTime", t, "eventsInPeriod", periodCount, "rateStdDev", stDev)
 	}
 
-	var initBatchState *postage.ChainSnapshot
-	// Bootstrap node with postage snapshot only if it is running on mainnet, is a fresh
-	// install or explicitly asked by user to resync
-	if networkID == mainnetNetworkID && o.UsePostageSnapshot && (!batchStoreExists || o.Resync) {
-		start := time.Now()
-		logger.Info("cold postage start detected. fetching postage stamp snapshot from swarm")
-		initBatchState, err = bootstrapNode(
-			ctx,
-			addr,
-			swarmAddress,
-			nonce,
-			addressbook,
-			bootnodes,
-			lightNodes,
-			stateStore,
-			signer,
-			networkID,
-			log.Noop,
-			libp2pPrivateKey,
-			detector,
-			o,
-		)
-		logger.Info("bootstrapper created", "elapsed", time.Since(start))
-		if err != nil {
-			logger.Error(err, "bootstrapper failed to fetch batch state")
-		}
-	}
-
 	var registry *prometheus.Registry
 
 	if apiService != nil {
@@ -827,7 +799,7 @@ func NewBee(
 		if err != nil {
 			logger.Error(err, "failed to initialize batch service from snapshot, continuing outside snapshot block...")
 		} else {
-			err = snapshotBatchSvc.Start(ctx, postageSyncStart, initBatchState)
+			err = snapshotBatchSvc.Start(ctx, postageSyncStart)
 			syncStatus.Store(true)
 			if err != nil {
 				syncErr.Store(err)
@@ -855,7 +827,7 @@ func NewBee(
 		}
 
 		if o.FullNodeMode {
-			err = batchSvc.Start(ctx, postageSyncStart, initBatchState)
+			err = batchSvc.Start(ctx, postageSyncStart)
 			syncStatus.Store(true)
 			if err != nil {
 				syncErr.Store(err)
@@ -864,7 +836,7 @@ func NewBee(
 		} else {
 			go func() {
 				logger.Info("started postage contract data sync in the background...")
-				err := batchSvc.Start(ctx, postageSyncStart, initBatchState)
+				err := batchSvc.Start(ctx, postageSyncStart)
 				syncStatus.Store(true)
 				if err != nil {
 					syncErr.Store(err)

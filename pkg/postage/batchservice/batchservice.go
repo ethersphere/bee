@@ -239,14 +239,14 @@ func (svc *batchService) TransactionEnd() error {
 
 var ErrInterruped = errors.New("postage sync interrupted")
 
-func (svc *batchService) Start(ctx context.Context, startBlock uint64, initState *postage.ChainSnapshot) (err error) {
+func (svc *batchService) Start(ctx context.Context, startBlock uint64) (err error) {
 	dirty := false
 	err = svc.stateStore.Get(dirtyDBKey, &dirty)
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {
 		return err
 	}
 
-	if dirty || svc.resync || initState != nil {
+	if dirty || svc.resync {
 
 		if dirty {
 			svc.logger.Warning("batch service: dirty shutdown detected, resetting batch store")
@@ -268,11 +268,7 @@ func (svc *batchService) Start(ctx context.Context, startBlock uint64, initState
 		startBlock = cs.Block
 	}
 
-	if initState != nil && initState.LastBlockNumber > startBlock {
-		startBlock = initState.LastBlockNumber
-	}
-
-	syncedChan := svc.listener.Listen(ctx, startBlock+1, svc, initState)
+	syncedChan := svc.listener.Listen(ctx, startBlock+1, svc)
 
 	return <-syncedChan
 }

@@ -327,10 +327,10 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		TracingEndpoint:               tracingEndpoint,
 		TracingServiceName:            c.config.GetString(optionNameTracingServiceName),
 		TrxDebugMode:                  c.config.GetBool(optionNameTransactionDebugMode),
-		UsePostageSnapshot:            c.config.GetBool(optionNameUsePostageSnapshot),
-		WarmupTime:                    c.config.GetDuration(optionWarmUpTime),
-		WelcomeMessage:                c.config.GetString(optionWelcomeMessage),
-		WhitelistedWithdrawalAddress:  c.config.GetStringSlice(optionNameWhitelistedWithdrawalAddress),
+
+		WarmupTime:                   c.config.GetDuration(optionWarmUpTime),
+		WelcomeMessage:               c.config.GetString(optionWelcomeMessage),
+		WhitelistedWithdrawalAddress: c.config.GetStringSlice(optionNameWhitelistedWithdrawalAddress),
 	})
 
 	return b, err
