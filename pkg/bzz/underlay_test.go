@@ -106,6 +106,35 @@ func TestDeserializeUnderlays(t *testing.T) {
 		}
 	})
 
+	t.Run("serialize deserialize empty list", func(t *testing.T) {
+		addrs := []multiaddr.Multiaddr{}
+		serialized := bzz.SerializeUnderlays(addrs)
+		if !bytes.Equal(serialized, []byte{bzz.UnderlayListPrefix}) {
+			t.Errorf("expected %v, got %v", []byte{bzz.UnderlayListPrefix}, serialized)
+		}
+		deserialized, err := bzz.DeserializeUnderlays(serialized)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(deserialized) != 0 {
+			t.Errorf("expected empty slice, got %v", deserialized)
+		}
+	})
+
+	t.Run("serialize deserialize nil list", func(t *testing.T) {
+		serialized := bzz.SerializeUnderlays(nil)
+		if !bytes.Equal(serialized, []byte{bzz.UnderlayListPrefix}) {
+			t.Errorf("expected %v, got %v", []byte{bzz.UnderlayListPrefix}, serialized)
+		}
+		deserialized, err := bzz.DeserializeUnderlays(serialized)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(deserialized) != 0 {
+			t.Errorf("expected empty slice, got %v", deserialized)
+		}
+	})
+
 	t.Run("corrupted list - length too long", func(t *testing.T) {
 		maBytes := ip4TCPAddr.Bytes()
 		var buf bytes.Buffer

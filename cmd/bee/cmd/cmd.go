@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/node"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	p2pforge "github.com/ipshipyard/p2p-forge/client"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -82,6 +83,12 @@ const (
 	optionReserveCapacityDoubling          = "reserve-capacity-doubling"
 	optionSkipPostageSnapshot              = "skip-postage-snapshot"
 	optionNameMinimumGasTipCap             = "minimum-gas-tip-cap"
+	optionNameP2PWSSEnable                 = "p2p-wss-enable"
+	optionP2PWSSAddr                       = "p2p-wss-addr"
+	optionNATWSSAddr                       = "nat-wss-addr"
+	optionAutoTLSDomain                    = "autotls-domain"
+	optionAutoTLSRegistrationEndpoint      = "autotls-registration-endpoint"
+	optionAutoTLSCAEndpoint                = "autotls-ca-endpoint"
 )
 
 // nolint:gochecknoinits
@@ -292,6 +299,12 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Int(optionReserveCapacityDoubling, 0, "reserve capacity doubling")
 	cmd.Flags().Bool(optionSkipPostageSnapshot, false, "skip postage snapshot")
 	cmd.Flags().Uint64(optionNameMinimumGasTipCap, 0, "minimum gas tip cap in wei for transactions, 0 means use suggested gas tip cap")
+	cmd.Flags().Bool(optionNameP2PWSSEnable, false, "Enable Secure WebSocket P2P connections")
+	cmd.Flags().String(optionP2PWSSAddr, ":1635", "p2p wss address")
+	cmd.Flags().String(optionNATWSSAddr, "", "WSS NAT exposed address")
+	cmd.Flags().String(optionAutoTLSDomain, p2pforge.DefaultForgeDomain, "autotls domain")
+	cmd.Flags().String(optionAutoTLSRegistrationEndpoint, p2pforge.DefaultForgeEndpoint, "autotls registration endpoint")
+	cmd.Flags().String(optionAutoTLSCAEndpoint, p2pforge.DefaultCAEndpoint, "autotls certificate authority endpoint")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {
