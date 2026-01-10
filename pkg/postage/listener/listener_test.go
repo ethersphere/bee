@@ -18,7 +18,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	chaincfg "github.com/ethersphere/bee/v2/pkg/config"
 	"github.com/ethersphere/bee/v2/pkg/log"
-	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/postage/listener"
 	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
 	"github.com/ethersphere/bee/v2/pkg/util/syncutil"
@@ -81,7 +80,7 @@ func TestListener(t *testing.T) {
 			backoffTime,
 		)
 		testutil.CleanupCloser(t, l)
-		<-l.Listen(context.Background(), 0, ev, nil)
+		<-l.Listen(context.Background(), 0, ev)
 
 		select {
 		case e := <-ev.eventC:
@@ -122,7 +121,7 @@ func TestListener(t *testing.T) {
 			backoffTime,
 		)
 		testutil.CleanupCloser(t, l)
-		<-l.Listen(context.Background(), 0, ev, nil)
+		<-l.Listen(context.Background(), 0, ev)
 
 		select {
 		case e := <-ev.eventC:
@@ -164,7 +163,7 @@ func TestListener(t *testing.T) {
 		)
 		testutil.CleanupCloser(t, l)
 
-		<-l.Listen(context.Background(), 0, ev, nil)
+		<-l.Listen(context.Background(), 0, ev)
 
 		select {
 		case e := <-ev.eventC:
@@ -203,7 +202,7 @@ func TestListener(t *testing.T) {
 			backoffTime,
 		)
 		testutil.CleanupCloser(t, l)
-		<-l.Listen(context.Background(), 0, ev, nil)
+		<-l.Listen(context.Background(), 0, ev)
 
 		select {
 		case e := <-ev.eventC:
@@ -266,7 +265,7 @@ func TestListener(t *testing.T) {
 			backoffTime,
 		)
 		testutil.CleanupCloser(t, l)
-		<-l.Listen(context.Background(), 0, ev, nil)
+		<-l.Listen(context.Background(), 0, ev)
 
 		select {
 		case e := <-ev.eventC:
@@ -346,7 +345,7 @@ func TestListener(t *testing.T) {
 			0,
 		)
 		testutil.CleanupCloser(t, l)
-		<-l.Listen(context.Background(), 0, ev, nil)
+		<-l.Listen(context.Background(), 0, ev)
 
 		select {
 		case e := <-ev.eventC:
@@ -374,7 +373,7 @@ func TestListener(t *testing.T) {
 			0,
 		)
 		testutil.CleanupCloser(t, l)
-		<-l.Listen(context.Background(), 0, ev, nil)
+		<-l.Listen(context.Background(), 0, ev)
 
 		select {
 		case <-c.C:
@@ -401,7 +400,7 @@ func TestListener(t *testing.T) {
 			backoffTime,
 		)
 		testutil.CleanupCloser(t, l)
-		<-l.Listen(context.Background(), 0, ev, nil)
+		<-l.Listen(context.Background(), 0, ev)
 
 		select {
 		case e := <-ev.eventC:
@@ -416,122 +415,6 @@ func TestListener(t *testing.T) {
 			t.Fatal("expected shutdown call by now")
 		}
 	})
-}
-
-func TestListenerBatchState(t *testing.T) {
-	t.Parallel()
-
-	ev := newEventUpdaterMock()
-	mf := newMockFilterer()
-
-	create := createArgs{
-		id:               hash[:],
-		owner:            addr[:],
-		amount:           big.NewInt(42),
-		normalisedAmount: big.NewInt(43),
-		depth:            100,
-	}
-
-	topup := topupArgs{
-		id:                hash[:],
-		amount:            big.NewInt(0),
-		normalisedBalance: big.NewInt(1),
-	}
-
-	depthIncrease := depthArgs{
-		id:                hash[:],
-		depth:             200,
-		normalisedBalance: big.NewInt(2),
-	}
-
-	priceUpdate := priceArgs{
-		price: big.NewInt(500),
-	}
-
-	snapshot := &postage.ChainSnapshot{
-		Events: []types.Log{
-			create.toLog(496),
-			topup.toLog(497),
-			depthIncrease.toLog(498),
-			priceUpdate.toLog(499),
-		},
-		FirstBlockNumber: 496,
-		LastBlockNumber:  499,
-		Timestamp:        time.Now().Unix(),
-	}
-
-	stop := make(chan struct{})
-	done := make(chan struct{})
-	errs := make(chan error)
-	noOfEvents := 0
-
-	go func() {
-		for {
-			select {
-			case <-stop:
-				return
-			case e := <-ev.eventC:
-				noOfEvents++
-				switch ev := e.(type) {
-				case blockNumberCall:
-					if ev.blockNumber < 497 && ev.blockNumber > 500 {
-						errs <- fmt.Errorf("invalid blocknumber call %d", ev.blockNumber)
-						return
-					}
-					if ev.blockNumber == 500 {
-						close(done)
-						return
-					}
-				case createArgs:
-					if err := ev.compare(create); err != nil {
-						errs <- err
-						return
-					}
-				case topupArgs:
-					if err := ev.compare(topup); err != nil {
-						errs <- err
-						return
-					}
-				case depthArgs:
-					if err := ev.compare(depthIncrease); err != nil {
-						errs <- err
-						return
-					}
-				case priceArgs:
-					if err := ev.compare(priceUpdate); err != nil {
-						errs <- err
-						return
-					}
-				}
-			}
-		}
-	}()
-
-	l := listener.New(
-		nil,
-		log.Noop,
-		mf,
-		postageStampContractAddress,
-		postageStampContractABI,
-		1,
-		stallingTimeout,
-		backoffTime,
-	)
-	testutil.CleanupCloser(t, l)
-	l.Listen(context.Background(), snapshot.LastBlockNumber+1, ev, snapshot)
-
-	defer close(stop)
-
-	select {
-	case <-time.After(5 * time.Second):
-		t.Fatal("timedout waiting for events to be processed", noOfEvents)
-	case err := <-errs:
-		t.Fatal(err)
-	case <-done:
-		if noOfEvents != 9 {
-			t.Fatal("invalid count of events on completion", noOfEvents)
-		}
-	}
 }
 
 func newEventUpdaterMock() *updater {
@@ -595,7 +478,7 @@ func (u *updater) UpdateBlockNumber(blockNumber uint64) error {
 	return u.blockNumberUpdateError
 }
 
-func (u *updater) Start(ctx context.Context, bno uint64, cs *postage.ChainSnapshot) error {
+func (u *updater) Start(ctx context.Context, bno uint64) error {
 	return nil
 }
 
