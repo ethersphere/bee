@@ -15,7 +15,6 @@ import (
 	"math/big"
 	"net/http"
 	"net/url"
-	"strconv"
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/api"
@@ -44,13 +43,10 @@ func TestFeed_Get(t *testing.T) {
 	t.Parallel()
 
 	var (
-		feedResource = func(owner, topic, at string, legacyFeed bool) string {
+		feedResource = func(owner, topic, at string) string {
 			values := url.Values{}
 			if at != "" {
 				values.Set("at", at)
-			}
-			if legacyFeed {
-				values.Set("swarm-feed-legacy-resolve", strconv.FormatBool(legacyFeed))
 			}
 
 			baseURL := fmt.Sprintf("/feeds/%s/%s", owner, topic)
@@ -86,7 +82,7 @@ func TestFeed_Get(t *testing.T) {
 			})
 		)
 
-		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", "12", true), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", "12"), http.StatusOK,
 			jsonhttptest.WithExpectedResponse(mockWrappedCh.Data()[swarm.SpanSize:]),
 			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedIndexHeader, hex.EncodeToString(idBytes)),
 			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.SwarmFeedIndexHeader),
@@ -94,6 +90,7 @@ func TestFeed_Get(t *testing.T) {
 			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.SwarmSocSignatureHeader),
 			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.ContentDispositionHeader),
 			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "application/octet-stream"),
+			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedResolvedVersionHeader, "v1"),
 		)
 	})
 
@@ -113,7 +110,7 @@ func TestFeed_Get(t *testing.T) {
 			})
 		)
 
-		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", "", true), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusOK,
 			jsonhttptest.WithExpectedResponse(mockWrappedCh.Data()[swarm.SpanSize:]),
 			jsonhttptest.WithExpectedContentLength(len(mockWrappedCh.Data()[swarm.SpanSize:])),
 			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedIndexHeader, hex.EncodeToString(idBytes)),
@@ -122,6 +119,7 @@ func TestFeed_Get(t *testing.T) {
 			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.SwarmSocSignatureHeader),
 			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.ContentDispositionHeader),
 			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "application/octet-stream"),
+			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedResolvedVersionHeader, "v1"),
 		)
 	})
 
@@ -142,7 +140,7 @@ func TestFeed_Get(t *testing.T) {
 			})
 		)
 
-		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", "", false), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusOK,
 			jsonhttptest.WithExpectedResponse(testData),
 			jsonhttptest.WithExpectedContentLength(len(testData)),
 			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedIndexHeader, hex.EncodeToString(idBytes)),
@@ -151,11 +149,18 @@ func TestFeed_Get(t *testing.T) {
 			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.SwarmSocSignatureHeader),
 			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.ContentDispositionHeader),
 			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "application/octet-stream"),
+			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedResolvedVersionHeader, "v2"),
 		)
 	})
 
 	t.Run("legacy payload with non existing wrapped chunk", func(t *testing.T) {
-		t.Parallel()
+		t.Skip()
+		/*
+			This test has been disabled since it cannot be supported with the automatic
+			Feed resolution logic that is now in place. In case automatic feed resolution
+			would be removed at some point, this test can be reactived. The issue is
+			thoroughly described in the PR: https://github.com/ethersphere/bee/pull/5287
+		*/
 
 		wrappedRef := make([]byte, swarm.HashSize)
 		_ = copy(wrappedRef, mockWrappedCh.Address().Bytes())
@@ -172,7 +177,7 @@ func TestFeed_Get(t *testing.T) {
 			})
 		)
 
-		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", "", true), http.StatusNotFound)
+		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusNotFound)
 	})
 
 	t.Run("query parameter legacy feed resolve", func(t *testing.T) {
@@ -188,7 +193,7 @@ func TestFeed_Get(t *testing.T) {
 		)
 
 		// Test with the legacyFeed parameter set to true which should add the query parameter
-		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", "", false), http.StatusNotFound)
+		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusNotFound)
 	})
 
 	t.Run("bigger payload than one chunk", func(t *testing.T) {
@@ -220,7 +225,7 @@ func TestFeed_Get(t *testing.T) {
 		)
 
 		t.Run("retrieve chunk tree", func(t *testing.T) {
-			jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", "", false), http.StatusOK,
+			jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusOK,
 				jsonhttptest.WithExpectedResponse(testData),
 				jsonhttptest.WithExpectedContentLength(testDataLen),
 				jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedIndexHeader, hex.EncodeToString(idBytes)),
@@ -229,11 +234,12 @@ func TestFeed_Get(t *testing.T) {
 				jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.SwarmSocSignatureHeader),
 				jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.ContentDispositionHeader),
 				jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "application/octet-stream"),
+				jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedResolvedVersionHeader, "v2"),
 			)
 		})
 
 		t.Run("retrieve only wrapped chunk", func(t *testing.T) {
-			jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", "", false), http.StatusOK,
+			jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusOK,
 				jsonhttptest.WithRequestHeader(api.SwarmOnlyRootChunk, "true"),
 				jsonhttptest.WithExpectedResponse(testRootCh.Data()),
 				jsonhttptest.WithExpectedContentLength(len(testRootCh.Data())),
@@ -242,6 +248,7 @@ func TestFeed_Get(t *testing.T) {
 				jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.SwarmFeedIndexNextHeader),
 				jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.SwarmSocSignatureHeader),
 				jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "application/octet-stream"),
+				jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedResolvedVersionHeader, "v2"),
 			)
 		})
 	})
@@ -384,9 +391,11 @@ func (l *mockLookup) At(_ context.Context, at int64, after uint64) (swarm.Chunk,
 		// shortcut to ignore the value in the call since time.Now() is a moving target
 		return l.chunk, l.cur, l.next, nil
 	}
+
 	if at == l.at && after == l.after {
 		return l.chunk, l.cur, l.next, nil
 	}
+
 	return nil, nil, nil, errors.New("no feed update found")
 }
 

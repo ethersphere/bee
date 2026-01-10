@@ -163,37 +163,12 @@ paths:
       tags:
         - Bytes
       parameters:
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
-          name: swarm-postage-batch-id
-          required: true
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
-          name: swarm-tag
-          required: false
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
-          name: swarm-pin
-          required: false
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
-          name: swarm-deferred-upload
-          required: false
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmEncryptParameter"
-          name: swarm-encrypt
-          required: false
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
-          name: swarm-redundancy-level
-          required: false
-
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmEncryptParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
       requestBody:
         content:
           application/octet-stream:
@@ -435,7 +410,6 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
           description: Swarm address of content
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmFeedLegacyResolve"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyFallbackModeParameter"
@@ -454,6 +428,11 @@ paths:
               schema:
                 type: string
                 format: binary
+          headers:
+            "swarm-feed-resolved-version":
+              $ref: "SwarmCommon.yaml#/components/headers/SwarmFeedResolvedVersion"
+
+
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
@@ -504,7 +483,6 @@ paths:
             type: string
           required: true
           description: Path to the file in the collection.
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmFeedLegacyResolve"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyFallbackModeParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmChunkRetrievalTimeoutParameter"
@@ -516,6 +494,9 @@ paths:
               schema:
                 type: string
                 format: binary
+          headers:
+            "swarm-feed-resolved-version":
+              $ref: "SwarmCommon.yaml#/components/headers/SwarmFeedResolvedVersion"
 
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
@@ -1032,7 +1013,6 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/FeedType"
           required: false
           description: "Feed indexing scheme (default: sequence)"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmFeedLegacyResolve"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmOnlyRootChunkParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
@@ -1048,6 +1028,9 @@ paths:
               $ref: "SwarmCommon.yaml#/components/headers/SwarmFeedIndex"
             "swarm-feed-index-next":
               $ref: "SwarmCommon.yaml#/components/headers/SwarmFeedIndexNext"
+            "swarm-feed-resolved-version":
+              $ref: "SwarmCommon.yaml#/components/headers/SwarmFeedResolvedVersion"
+
           content:
             application/octet-stream:
               schema:

@@ -79,6 +79,7 @@ const (
 	SwarmSocSignatureHeader           = "Swarm-Soc-Signature"
 	SwarmFeedIndexHeader              = "Swarm-Feed-Index"
 	SwarmFeedIndexNextHeader          = "Swarm-Feed-Index-Next"
+	SwarmFeedResolvedVersionHeader    = "Swarm-Feed-Resolved-Version"
 	SwarmOnlyRootChunk                = "Swarm-Only-Root-Chunk"
 	SwarmCollectionHeader             = "Swarm-Collection"
 	SwarmPostageBatchIdHeader         = "Swarm-Postage-Batch-Id"
@@ -214,8 +215,9 @@ type Service struct {
 
 	whitelistedWithdrawalAddress []common.Address
 
-	preMapHooks map[string]func(v string) (string, error)
-	validate    *validator.Validate
+	preMapHooks              map[string]func(v string) (string, error)
+	customValidationMessages map[string]func(err validator.FieldError) error
+	validate                 *validator.Validate
 
 	redistributionAgent *storageincentives.Agent
 
@@ -321,6 +323,7 @@ func New(
 		}
 		return name
 	})
+	s.setupValidation()
 	s.stamperStore = stamperStore
 
 	for _, v := range whitelistedWithdrawalAddress {
@@ -709,11 +712,17 @@ func (s *Service) mapStructure(input, output any) func(string, log.Logger, http.
 			case []byte:
 				val = string(v)
 			}
+			var cause error
+			if msgFn, ok := s.customValidationMessages[err.Tag()]; ok {
+				cause = msgFn(err)
+			} else {
+				cause = fmt.Errorf("want %s:%s", err.Tag(), err.Param())
+			}
 			vErrs = multierror.Append(vErrs,
 				&validationError{
 					Entry: strings.ToLower(err.Field()),
 					Value: val,
-					Cause: fmt.Errorf("want %s:%s", err.Tag(), err.Param()),
+					Cause: cause,
 				})
 		}
 		return response(vErrs.ErrorOrNil())

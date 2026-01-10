@@ -69,9 +69,14 @@ func TestValidatePublicAddress(t *testing.T) {
 			expErr: false,
 		},
 		{
-			name:   "invalid IP",
-			addr:   "not-an-ip:8080",
-			expErr: true,
+			name:   "valid hostname",
+			addr:   "example.com:8080",
+			expErr: false,
+		},
+		{
+			name:   "valid hostname with hyphen",
+			addr:   "test-example.com:8080",
+			expErr: false,
 		},
 		{
 			name:   "private IP",
@@ -79,8 +84,13 @@ func TestValidatePublicAddress(t *testing.T) {
 			expErr: true,
 		},
 		{
-			name:   "hostname",
-			addr:   "example.com:8080",
+			name:   "invalid hostname format",
+			addr:   "invalid..hostname:8080",
+			expErr: true,
+		},
+		{
+			name:   "hostname starts with hyphen",
+			addr:   "-test.com:8080",
 			expErr: true,
 		},
 	}

@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"testing/synctest"
+
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/reacher"
@@ -63,65 +65,66 @@ func TestPingSuccess(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
+			synctest.Test(t, func(t *testing.T) {
+				done := make(chan struct{})
+				mock := newMock(tc.pingFunc, tc.reachableFunc(done))
 
-			done := make(chan struct{})
-			mock := newMock(tc.pingFunc, tc.reachableFunc(done))
+				r := reacher.New(mock, mock, &defaultOptions, log.Noop)
+				testutil.CleanupCloser(t, r)
 
-			r := reacher.New(mock, mock, &defaultOptions, log.Noop)
-			testutil.CleanupCloser(t, r)
+				overlay := swarm.RandAddress(t)
+				addr, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAmTBuJT9LvNmBiQiNoTsxE5mtNy6YG3paw79m94CRa9sRb")
 
-			overlay := swarm.RandAddress(t)
-			addr, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAmTBuJT9LvNmBiQiNoTsxE5mtNy6YG3paw79m94CRa9sRb")
+				r.Connected(overlay, addr)
 
-			r.Connected(overlay, addr)
-
-			select {
-			case <-time.After(time.Second * 5):
-				t.Fatalf("test timed out")
-			case <-done:
-			}
+				select {
+				case <-time.After(time.Second * 5):
+					t.Fatalf("test timed out")
+				case <-done:
+				}
+			})
 		})
 	}
 }
 
 func TestDisconnected(t *testing.T) {
-	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		var (
+			disconnectedOverlay = swarm.RandAddress(t)
+			disconnectedMa, _   = ma.NewMultiaddr("/ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAmTBuJT9LvNmBiQiNoTsxE5mtNy6YG3paw79m94CRa9sRb")
+		)
 
-	var (
-		disconnectedOverlay = swarm.RandAddress(t)
-		disconnectedMa, _   = ma.NewMultiaddr("/ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAmTBuJT9LvNmBiQiNoTsxE5mtNy6YG3paw79m94CRa9sRb")
-	)
+		/*
+			Because the Disconnected is called after Connected, it may be that one of the workers
+			have picked up the peer already. So to test that the Disconnected really works,
+			if the ping function pings the peer we are trying to disconnect, we return an error
+			which triggers another attempt in the future, which by the, the peer should already be removed.
+		*/
 
-	/*
-		Because the Disconnected is called after Connected, it may be that one of the workers
-		have picked up the peer already. So to test that the Disconnected really works,
-		if the ping function pings the peer we are trying to disconnect, we return an error
-		which triggers another attempt in the future, which by the, the peer should already be removed.
-	*/
-	var errs atomic.Int64
-	pingFunc := func(_ context.Context, a ma.Multiaddr) (time.Duration, error) {
-		if a != nil && a.Equal(disconnectedMa) {
-			errs.Inc()
-			if errs.Load() > 1 {
-				t.Fatalf("overlay should be disconnected already")
+		var errs atomic.Int64
+		pingFunc := func(_ context.Context, a ma.Multiaddr) (time.Duration, error) {
+			if a != nil && a.Equal(disconnectedMa) {
+				errs.Inc()
+				if errs.Load() > 1 {
+					t.Fatalf("overlay should be disconnected already")
+				}
+				return 0, errors.New("test error")
 			}
-			return 0, errors.New("test error")
+			return 0, nil
 		}
-		return 0, nil
-	}
 
-	reachableFunc := func(addr swarm.Address, b p2p.ReachabilityStatus) {}
+		reachableFunc := func(addr swarm.Address, b p2p.ReachabilityStatus) {}
 
-	mock := newMock(pingFunc, reachableFunc)
+		mock := newMock(pingFunc, reachableFunc)
 
-	r := reacher.New(mock, mock, &defaultOptions, log.Noop)
-	testutil.CleanupCloser(t, r)
+		r := reacher.New(mock, mock, &defaultOptions, log.Noop)
+		testutil.CleanupCloser(t, r)
 
-	addr, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/7072/p2p/16Uiu2HAmTBuJT9LvNmBiQiNoTsxE5mtNy6YG3paw79m94CRa9sRb")
-	r.Connected(swarm.RandAddress(t), addr)
-	r.Connected(disconnectedOverlay, disconnectedMa)
-	r.Disconnected(disconnectedOverlay)
+		addr, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/7072/p2p/16Uiu2HAmTBuJT9LvNmBiQiNoTsxE5mtNy6YG3paw79m94CRa9sRb")
+		r.Connected(swarm.RandAddress(t), addr)
+		r.Connected(disconnectedOverlay, disconnectedMa)
+		r.Disconnected(disconnectedOverlay)
+	})
 }
 
 type mock struct {
