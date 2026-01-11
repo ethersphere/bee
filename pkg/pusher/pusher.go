@@ -281,10 +281,11 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 		if s.shallowReceipt(op.identityAddress) {
 			return true, err
 		}
-		if err := s.storer.Report(ctx, op.Chunk, storage.ChunkSynced); err != nil {
-			loggerV1.Error(err, "pusher: failed to report sync status")
-			return true, err
-		}
+		loggerV1.Warning(
+			"pusher: shallow receipt got too many times for the chunk, skipping syncing",
+			"chunk_address", op.Chunk.Address(),
+		)
+		return false, s.storer.Report(ctx, op.Chunk, storage.ChunkCouldNotSync)
 	case err == nil:
 		if err := s.storer.Report(ctx, op.Chunk, storage.ChunkSynced); err != nil {
 			loggerV1.Error(err, "pusher: failed to report sync status")
@@ -331,12 +332,6 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 		if err != nil {
 			loggerV1.Error(err, "pusher: failed to store chunk")
 		}
-	case errors.Is(err, pushsync.ErrShallowReceipt):
-		if s.shallowReceipt(op.identityAddress) {
-			return err
-		}
-		// out of attempts for retry, swallow error
-		err = nil
 	case err != nil:
 		loggerV1.Error(err, "pusher: failed PushChunkToClosest")
 	}
