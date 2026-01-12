@@ -11,6 +11,7 @@ import (
 	"net/http/pprof"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/log/httpaccess"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -40,6 +41,7 @@ func (s *Service) Mount() {
 
 	s.mountTechnicalDebug()
 	s.mountBusinessDebug()
+	s.mountJSONRPC()
 	s.mountAPI()
 
 	s.Handler = web.ChainHandlers(
@@ -696,4 +698,13 @@ func (s *Service) mountBusinessDebug() {
 	handle("/rchash/{depth}/{anchor1}/{anchor2}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.rchash),
 	})
+}
+
+func (s *Service) mountJSONRPC() {
+	s.rpcServer = rpc.NewServer()
+	if err := s.rpcServer.RegisterName("bee", NewBeeAPI(s)); err != nil {
+		s.logger.Error(err, "failed to register bee rpc service")
+	}
+
+	s.router.Handle("/rpc", s.rpcServer)
 }

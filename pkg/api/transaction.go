@@ -5,6 +5,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"math/big"
 	"net/http"
@@ -48,7 +49,7 @@ type transactionPendingList struct {
 func (s *Service) transactionListHandler(w http.ResponseWriter, _ *http.Request) {
 	logger := s.logger.WithName("get_transactions").Build()
 
-	txHashes, err := s.transaction.PendingTransactions()
+	transactionInfos, err := s.pendingTransactions()
 	if err != nil {
 		logger.Debug("get pending transactions failed", "error", err)
 		logger.Error(nil, "get pending transactions failed")
@@ -56,14 +57,22 @@ func (s *Service) transactionListHandler(w http.ResponseWriter, _ *http.Request)
 		return
 	}
 
+	jsonhttp.OK(w, transactionPendingList{
+		PendingTransactions: transactionInfos,
+	})
+}
+
+func (s *Service) pendingTransactions() ([]transactionInfo, error) {
+	txHashes, err := s.transaction.PendingTransactions()
+	if err != nil {
+		return nil, err
+	}
+
 	transactionInfos := make([]transactionInfo, 0, len(txHashes))
 	for _, txHash := range txHashes {
 		storedTransaction, err := s.transaction.StoredTransaction(txHash)
 		if err != nil {
-			logger.Debug("get stored transaction failed", "tx_hash", txHash, "error", err)
-			logger.Error(nil, "get stored transaction failed", "tx_hash", txHash)
-			jsonhttp.InternalServerError(w, errCantGetTransaction)
-			return
+			return nil, err
 		}
 
 		transactionInfos = append(transactionInfos, transactionInfo{
@@ -80,12 +89,9 @@ func (s *Service) transactionListHandler(w http.ResponseWriter, _ *http.Request)
 			Description:     storedTransaction.Description,
 			Value:           bigint.Wrap(storedTransaction.Value),
 		})
-
 	}
 
-	jsonhttp.OK(w, transactionPendingList{
-		PendingTransactions: transactionInfos,
-	})
+	return transactionInfos, nil
 }
 
 func (s *Service) transactionDetailHandler(w http.ResponseWriter, r *http.Request) {
@@ -99,7 +105,7 @@ func (s *Service) transactionDetailHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	storedTransaction, err := s.transaction.StoredTransaction(paths.Hash)
+	txInfo, err := s.transactionDetail(paths.Hash)
 	if err != nil {
 		logger.Debug("get stored transaction failed", "tx_hash", paths.Hash, "error", err)
 		logger.Error(nil, "get stored transaction failed", "tx_hash", paths.Hash)
@@ -111,8 +117,17 @@ func (s *Service) transactionDetailHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	jsonhttp.OK(w, transactionInfo{
-		TransactionHash: paths.Hash,
+	jsonhttp.OK(w, txInfo)
+}
+
+func (s *Service) transactionDetail(hash common.Hash) (*transactionInfo, error) {
+	storedTransaction, err := s.transaction.StoredTransaction(hash)
+	if err != nil {
+		return nil, err
+	}
+
+	return &transactionInfo{
+		TransactionHash: hash,
 		To:              storedTransaction.To,
 		Nonce:           storedTransaction.Nonce,
 		GasPrice:        bigint.Wrap(storedTransaction.GasPrice),
@@ -124,7 +139,7 @@ func (s *Service) transactionDetailHandler(w http.ResponseWriter, r *http.Reques
 		Created:         time.Unix(storedTransaction.Created, 0),
 		Description:     storedTransaction.Description,
 		Value:           bigint.Wrap(storedTransaction.Value),
-	})
+	}, nil
 }
 
 type transactionHashResponse struct {
@@ -142,7 +157,7 @@ func (s *Service) transactionResendHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	err := s.transaction.ResendTransaction(r.Context(), paths.Hash)
+	err := s.resendTransaction(r.Context(), paths.Hash)
 	if err != nil {
 		logger.Error(nil, "resend transaction failed", "tx_hash", paths.Hash, "error", err)
 		if errors.Is(err, transaction.ErrUnknownTransaction) {
@@ -158,6 +173,10 @@ func (s *Service) transactionResendHandler(w http.ResponseWriter, r *http.Reques
 	jsonhttp.OK(w, transactionHashResponse{
 		TransactionHash: paths.Hash,
 	})
+}
+
+func (s *Service) resendTransaction(ctx context.Context, hash common.Hash) error {
+	return s.transaction.ResendTransaction(ctx, hash)
 }
 
 func (s *Service) transactionCancelHandler(w http.ResponseWriter, r *http.Request) {
@@ -180,7 +199,7 @@ func (s *Service) transactionCancelHandler(w http.ResponseWriter, r *http.Reques
 	}
 	ctx := sctx.SetGasPrice(r.Context(), headers.GasPrice)
 
-	txHash, err := s.transaction.CancelTransaction(ctx, paths.Hash)
+	txHash, err := s.cancelTransaction(ctx, paths.Hash)
 	if err != nil {
 		logger.Debug("cancel transaction failed", "tx_hash", paths.Hash, "error", err, "canceled_tx_hash", txHash)
 		logger.Error(nil, "cancel transaction failed", "tx_hash", paths.Hash)
@@ -197,4 +216,8 @@ func (s *Service) transactionCancelHandler(w http.ResponseWriter, r *http.Reques
 	jsonhttp.OK(w, transactionHashResponse{
 		TransactionHash: txHash,
 	})
+}
+
+func (s *Service) cancelTransaction(ctx context.Context, hash common.Hash) (common.Hash, error) {
+	return s.transaction.CancelTransaction(ctx, hash)
 }

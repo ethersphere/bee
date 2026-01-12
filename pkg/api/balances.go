@@ -34,14 +34,21 @@ type balancesResponse struct {
 }
 
 func (s *Service) balancesHandler(w http.ResponseWriter, _ *http.Request) {
-	logger := s.logger.WithName("get_consumed").Build()
-
-	balances, err := s.accounting.Balances()
+	resp, err := s.balances()
 	if err != nil {
 		jsonhttp.InternalServerError(w, errCantBalances)
-		logger.Debug("get balances failed", "error", err)
-		logger.Error(nil, "get balances failed")
+		s.logger.Debug("get balances failed", "error", err)
+		s.logger.Error(nil, "get balances failed")
 		return
+	}
+
+	jsonhttp.OK(w, resp)
+}
+
+func (s *Service) balances() (*balancesResponse, error) {
+	balances, err := s.accounting.Balances()
+	if err != nil {
+		return nil, err
 	}
 
 	balResponses := make([]balanceResponse, len(balances))
@@ -54,7 +61,7 @@ func (s *Service) balancesHandler(w http.ResponseWriter, _ *http.Request) {
 		i++
 	}
 
-	jsonhttp.OK(w, balancesResponse{Balances: balResponses})
+	return &balancesResponse{Balances: balResponses}, nil
 }
 
 func (s *Service) peerBalanceHandler(w http.ResponseWriter, r *http.Request) {
@@ -68,7 +75,7 @@ func (s *Service) peerBalanceHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	balance, err := s.accounting.Balance(paths.Peer)
+	resp, err := s.peerBalance(paths.Peer)
 	if err != nil {
 		if errors.Is(err, accounting.ErrPeerNoBalance) {
 			jsonhttp.NotFound(w, errNoBalance)
@@ -80,10 +87,19 @@ func (s *Service) peerBalanceHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonhttp.OK(w, balanceResponse{
-		Peer:    paths.Peer.String(),
+	jsonhttp.OK(w, resp)
+}
+
+func (s *Service) peerBalance(peer swarm.Address) (*balanceResponse, error) {
+	balance, err := s.accounting.Balance(peer)
+	if err != nil {
+		return nil, err
+	}
+
+	return &balanceResponse{
+		Peer:    peer.String(),
 		Balance: bigint.Wrap(balance),
-	})
+	}, nil
 }
 
 func (s *Service) compensatedBalancesHandler(w http.ResponseWriter, _ *http.Request) {

@@ -5,6 +5,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -91,7 +92,7 @@ func (s *Service) stewardshipGetHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	res, err := s.steward.IsRetrievable(r.Context(), paths.Address)
+	res, err := s.isRetrievable(r.Context(), paths.Address)
 	if err != nil {
 		logger.Debug("is retrievable check failed", "chunk_address", paths.Address, "error", err)
 		logger.Error(nil, "is retrievable")
@@ -101,4 +102,8 @@ func (s *Service) stewardshipGetHandler(w http.ResponseWriter, r *http.Request) 
 	jsonhttp.OK(w, isRetrievableResponse{
 		IsRetrievable: res,
 	})
+}
+
+func (s *Service) isRetrievable(ctx context.Context, addr swarm.Address) (bool, error) {
+	return s.steward.IsRetrievable(ctx, addr)
 }

@@ -5,6 +5,7 @@
 package api
 
 import (
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -13,12 +14,12 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/bigint"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/v2/pkg/storage"
-	"github.com/ethersphere/bee/v2/pkg/tracing"
 	"github.com/gorilla/mux"
 )
 
@@ -66,6 +67,19 @@ func (b hexByte) MarshalJSON() ([]byte, error) {
 	return json.Marshal(hex.EncodeToString(b))
 }
 
+func (b *hexByte) UnmarshalJSON(v []byte) error {
+	var s string
+	if err := json.Unmarshal(v, &s); err != nil {
+		return err
+	}
+	h, err := hex.DecodeString(s)
+	if err != nil {
+		return err
+	}
+	*b = h
+	return nil
+}
+
 type postageCreateResponse struct {
 	BatchID hexByte `json:"batchID"`
 	TxHash  string  `json:"txHash"`
@@ -94,13 +108,7 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 		headers.Immutable = &defaultImmutable // Set the default.
 	}
 
-	txHash, batchID, err := s.postageContract.CreateBatch(
-		r.Context(),
-		paths.Amount,
-		paths.Depth,
-		*headers.Immutable,
-		r.URL.Query().Get("label"),
-	)
+	txHash, batchID, err := s.createBatch(r.Context(), paths.Amount, paths.Depth, *headers.Immutable, r.URL.Query().Get("label"))
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrChainDisabled) {
 			logger.Debug("create batch: no chain backend", "error", err)
@@ -136,6 +144,10 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 		BatchID: batchID,
 		TxHash:  txHash.String(),
 	})
+}
+
+func (s *Service) createBatch(ctx context.Context, amount *big.Int, depth uint8, immutable bool, label string) (common.Hash, []byte, error) {
+	return s.postageContract.CreateBatch(ctx, amount, depth, immutable, label)
 }
 
 type postageStampResponse struct {
@@ -400,22 +412,27 @@ func (s *Service) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
 
 // chainStateHandler returns the current chain state.
 func (s *Service) chainStateHandler(w http.ResponseWriter, r *http.Request) {
-	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger.WithName("get_chainstate").Build())
-
-	state := s.batchStore.GetChainState()
-	chainTip, err := s.chainBackend.BlockNumber(r.Context())
+	resp, err := s.chainState(r.Context())
 	if err != nil {
-		logger.Debug("get block number failed", "error", err)
-		logger.Error(nil, "get block number failed")
+		s.logger.Debug("get block number failed", "error", err)
 		jsonhttp.InternalServerError(w, "block number unavailable")
 		return
 	}
-	jsonhttp.OK(w, chainStateResponse{
+	jsonhttp.OK(w, resp)
+}
+
+func (s *Service) chainState(ctx context.Context) (*chainStateResponse, error) {
+	state := s.batchStore.GetChainState()
+	chainTip, err := s.chainBackend.BlockNumber(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &chainStateResponse{
 		ChainTip:     chainTip,
 		Block:        state.Block,
 		TotalAmount:  bigint.Wrap(state.TotalAmount),
 		CurrentPrice: bigint.Wrap(state.CurrentPrice),
-	})
+	}, nil
 }
 
 // estimateBatchTTL estimates the time remaining until the batch expires.
@@ -465,7 +482,7 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	hexBatchID := hex.EncodeToString(paths.BatchID)
 
-	txHash, err := s.postageContract.TopUpBatch(r.Context(), paths.BatchID, paths.Amount)
+	txHash, err := s.topupBatch(r.Context(), paths.BatchID, paths.Amount)
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrInsufficientFunds) {
 			logger.Debug("topup batch: out of funds", "batch_id", hexBatchID, "amount", paths.Amount, "error", err)
@@ -491,6 +508,10 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Service) topupBatch(ctx context.Context, batchID []byte, amount *big.Int) (common.Hash, error) {
+	return s.postageContract.TopUpBatch(ctx, batchID, amount)
+}
+
 func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("patch_stamp_dilute").Build()
 
@@ -504,7 +525,7 @@ func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	hexBatchID := hex.EncodeToString(paths.BatchID)
 
-	txHash, err := s.postageContract.DiluteBatch(r.Context(), paths.BatchID, paths.Depth)
+	txHash, err := s.diluteBatch(r.Context(), paths.BatchID, paths.Depth)
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrInvalidDepth) {
 			logger.Debug("dilute batch: invalid depth", "error", err)
@@ -528,4 +549,8 @@ func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
 		BatchID: paths.BatchID,
 		TxHash:  txHash.String(),
 	})
+}
+
+func (s *Service) diluteBatch(ctx context.Context, batchID []byte, depth uint8) (common.Hash, error) {
+	return s.postageContract.DiluteBatch(ctx, batchID, depth)
 }

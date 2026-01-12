@@ -42,9 +42,13 @@ func (b BeeNodeMode) String() string {
 
 // nodeGetHandler gives back information about the Bee node configuration.
 func (s *Service) nodeGetHandler(w http.ResponseWriter, _ *http.Request) {
-	jsonhttp.OK(w, nodeResponse{
+	jsonhttp.OK(w, s.nodeInfo())
+}
+
+func (s *Service) nodeInfo() nodeResponse {
+	return nodeResponse{
 		BeeMode:           s.beeMode.String(),
 		ChequebookEnabled: s.chequebookEnabled,
 		SwapEnabled:       s.swapEnabled,
-	})
+	}
 }

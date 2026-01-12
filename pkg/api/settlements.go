@@ -35,27 +35,31 @@ type settlementsResponse struct {
 }
 
 func (s *Service) settlementsHandler(w http.ResponseWriter, _ *http.Request) {
-	logger := s.logger.WithName("get_settlements").Build()
-
-	settlementsSent, err := s.swap.SettlementsSent()
+	resp, err := s.settlements()
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
-		logger.Debug("sent settlements failed", "error", err)
-		logger.Error(nil, "sent settlements failed")
+		s.logger.Debug("sent settlements failed", "error", err)
+		s.logger.Error(nil, "sent settlements failed")
 		jsonhttp.MethodNotAllowed(w, err)
 		return
 	}
 	if err != nil {
-		logger.Debug("sent settlements failed", "error", err)
-		logger.Error(nil, "sent settlements failed")
+		s.logger.Debug("sent settlements failed", "error", err)
+		s.logger.Error(nil, "sent settlements failed")
 		jsonhttp.InternalServerError(w, errCantSettlements)
 		return
 	}
+
+	jsonhttp.OK(w, resp)
+}
+
+func (s *Service) settlements() (*settlementsResponse, error) {
+	settlementsSent, err := s.swap.SettlementsSent()
+	if err != nil {
+		return nil, err
+	}
 	settlementsReceived, err := s.swap.SettlementsReceived()
 	if err != nil {
-		logger.Debug("get received settlements failed", "error", err)
-		logger.Error(nil, "get received settlements failed")
-		jsonhttp.InternalServerError(w, errCantSettlements)
-		return
+		return nil, err
 	}
 
 	totalReceived := big.NewInt(0)
@@ -94,7 +98,7 @@ func (s *Service) settlementsHandler(w http.ResponseWriter, _ *http.Request) {
 		i++
 	}
 
-	jsonhttp.OK(w, settlementsResponse{TotalSettlementReceived: bigint.Wrap(totalReceived), TotalSettlementSent: bigint.Wrap(totalSent), Settlements: settlementResponsesArray})
+	return &settlementsResponse{TotalSettlementReceived: bigint.Wrap(totalReceived), TotalSettlementSent: bigint.Wrap(totalSent), Settlements: settlementResponsesArray}, nil
 }
 
 func (s *Service) peerSettlementsHandler(w http.ResponseWriter, r *http.Request) {
@@ -108,21 +112,34 @@ func (s *Service) peerSettlementsHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	peerexists := false
-
-	received, err := s.swap.TotalReceived(paths.Peer)
+	resp, err := s.peerSettlements(paths.Peer)
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
 		logger.Debug("get total received failed", "peer_address", paths.Peer, "error", err)
 		logger.Error(nil, "get total received failed", "peer_address", paths.Peer)
 		jsonhttp.MethodNotAllowed(w, err)
 		return
 	}
+	if errors.Is(err, settlement.ErrPeerNoSettlements) {
+		jsonhttp.NotFound(w, settlement.ErrPeerNoSettlements)
+		return
+	}
+	if err != nil {
+		logger.Debug("get peer settlements failed", "peer_address", paths.Peer, "error", err)
+		logger.Error(nil, "get peer settlements failed", "peer_address", paths.Peer)
+		jsonhttp.InternalServerError(w, errCantSettlementsPeer)
+		return
+	}
+
+	jsonhttp.OK(w, resp)
+}
+
+func (s *Service) peerSettlements(peer swarm.Address) (*settlementResponse, error) {
+	peerexists := false
+
+	received, err := s.swap.TotalReceived(peer)
 	if err != nil {
 		if !errors.Is(err, settlement.ErrPeerNoSettlements) {
-			logger.Debug("get total received failed", "peer_address", paths.Peer, "error", err)
-			logger.Error(nil, "get total received failed", "peer_address", paths.Peer)
-			jsonhttp.InternalServerError(w, errCantSettlementsPeer)
-			return
+			return nil, err
 		} else {
 			received = big.NewInt(0)
 		}
@@ -132,13 +149,10 @@ func (s *Service) peerSettlementsHandler(w http.ResponseWriter, r *http.Request)
 		peerexists = true
 	}
 
-	sent, err := s.swap.TotalSent(paths.Peer)
+	sent, err := s.swap.TotalSent(peer)
 	if err != nil {
 		if !errors.Is(err, settlement.ErrPeerNoSettlements) {
-			logger.Debug("get total sent failed", "peer_address", paths.Peer, "error", err)
-			logger.Error(nil, "get total sent failed", "peer_address", paths.Peer)
-			jsonhttp.InternalServerError(w, errCantSettlementsPeer)
-			return
+			return nil, err
 		} else {
 			sent = big.NewInt(0)
 		}
@@ -149,15 +163,14 @@ func (s *Service) peerSettlementsHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	if !peerexists {
-		jsonhttp.NotFound(w, settlement.ErrPeerNoSettlements)
-		return
+		return nil, settlement.ErrPeerNoSettlements
 	}
 
-	jsonhttp.OK(w, settlementResponse{
-		Peer:               paths.Peer.String(),
+	return &settlementResponse{
+		Peer:               peer.String(),
 		SettlementReceived: bigint.Wrap(received),
 		SettlementSent:     bigint.Wrap(sent),
-	})
+	}, nil
 }
 
 func (s *Service) settlementsHandlerPseudosettle(w http.ResponseWriter, _ *http.Request) {

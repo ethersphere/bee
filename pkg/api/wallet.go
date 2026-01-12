@@ -5,6 +5,8 @@
 package api
 
 import (
+	"context"
+	"errors"
 	"math/big"
 	"net/http"
 	"strings"
@@ -81,70 +83,78 @@ func (s *Service) walletWithdrawHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	var bzz bool
-
-	if strings.EqualFold("BZZ", *path.Coin) {
-		bzz = true
-	} else if !strings.EqualFold("NativeToken", *path.Coin) {
-		jsonhttp.BadRequest(w, "only BZZ or NativeToken options are accepted")
-		return
-	}
-
-	if !slices.Contains(s.whitelistedWithdrawalAddress, *queries.Address) {
-		jsonhttp.BadRequest(w, "provided address not whitelisted")
-		return
-	}
-
-	if bzz {
-		currentBalance, err := s.erc20Service.BalanceOf(r.Context(), s.ethereumAddress)
-		if err != nil {
-			logger.Error(err, "unable to get balance")
-			jsonhttp.InternalServerError(w, "unable to get balance")
-			return
-		}
-
-		if queries.Amount.Cmp(currentBalance) > 0 {
-			logger.Error(err, "not enough balance")
-			jsonhttp.BadRequest(w, "not enough balance")
-			return
-		}
-
-		txHash, err := s.erc20Service.Transfer(r.Context(), *queries.Address, queries.Amount)
-		if err != nil {
-			logger.Error(err, "unable to transfer")
-			jsonhttp.InternalServerError(w, "unable to transfer amount")
-			return
-		}
-		jsonhttp.OK(w, walletTxResponse{TransactionHash: txHash})
-		return
-	}
-
-	nativeToken, err := s.chainBackend.BalanceAt(r.Context(), s.ethereumAddress, nil)
+	txHash, err := s.walletWithdraw(r.Context(), *path.Coin, *queries.Address, queries.Amount)
 	if err != nil {
-		logger.Error(err, "unable to acquire balance from the chain backend")
-		jsonhttp.InternalServerError(w, "unable to acquire balance from the chain backend")
-		return
-	}
-
-	if queries.Amount.Cmp(nativeToken) > 0 {
-		jsonhttp.BadRequest(w, "not enough balance")
-		return
-	}
-
-	req := &transaction.TxRequest{
-		To:          queries.Address,
-		GasPrice:    sctx.GetGasPrice(r.Context()),
-		GasLimit:    sctx.GetGasLimitWithDefault(r.Context(), 300_000),
-		Value:       queries.Amount,
-		Description: "native token withdraw",
-	}
-
-	txHash, err := s.transaction.Send(r.Context(), req, transaction.DefaultTipBoostPercent)
-	if err != nil {
-		logger.Error(err, "unable to transfer")
-		jsonhttp.InternalServerError(w, "unable to transfer")
+		if strings.Contains(err.Error(), "not enough balance") {
+			jsonhttp.BadRequest(w, err.Error())
+			return
+		}
+		if strings.Contains(err.Error(), "only BZZ or NativeToken") {
+			jsonhttp.BadRequest(w, err.Error())
+			return
+		}
+		if strings.Contains(err.Error(), "provided address not whitelisted") {
+			jsonhttp.BadRequest(w, err.Error())
+			return
+		}
+		logger.Error(err, "withdraw failed")
+		jsonhttp.InternalServerError(w, err.Error())
 		return
 	}
 
 	jsonhttp.OK(w, walletTxResponse{TransactionHash: txHash})
+}
+
+func (s *Service) walletWithdraw(ctx context.Context, coin string, address common.Address, amount *big.Int) (common.Hash, error) {
+	var bzz bool
+	if strings.EqualFold("BZZ", coin) {
+		bzz = true
+	} else if !strings.EqualFold("NativeToken", coin) {
+		return common.Hash{}, errors.New("only BZZ or NativeToken options are accepted")
+	}
+
+	if !slices.Contains(s.whitelistedWithdrawalAddress, address) {
+		return common.Hash{}, errors.New("provided address not whitelisted")
+	}
+
+	if bzz {
+		currentBalance, err := s.erc20Service.BalanceOf(ctx, s.ethereumAddress)
+		if err != nil {
+			return common.Hash{}, errors.New("unable to get balance")
+		}
+
+		if amount.Cmp(currentBalance) > 0 {
+			return common.Hash{}, errors.New("not enough balance")
+		}
+
+		txHash, err := s.erc20Service.Transfer(ctx, address, amount)
+		if err != nil {
+			return common.Hash{}, errors.New("unable to transfer amount")
+		}
+		return txHash, nil
+	}
+
+	nativeToken, err := s.chainBackend.BalanceAt(ctx, s.ethereumAddress, nil)
+	if err != nil {
+		return common.Hash{}, errors.New("unable to acquire balance from the chain backend")
+	}
+
+	if amount.Cmp(nativeToken) > 0 {
+		return common.Hash{}, errors.New("not enough balance")
+	}
+
+	req := &transaction.TxRequest{
+		To:          &address,
+		GasPrice:    sctx.GetGasPrice(ctx),
+		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 300_000),
+		Value:       amount,
+		Description: "native token withdraw",
+	}
+
+	txHash, err := s.transaction.Send(ctx, req, transaction.DefaultTipBoostPercent)
+	if err != nil {
+		return common.Hash{}, errors.New("unable to transfer")
+	}
+
+	return txHash, nil
 }

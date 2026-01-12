@@ -5,6 +5,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -31,8 +32,7 @@ func (s *Service) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bzzAddr, err := s.p2p.Connect(r.Context(), []multiaddr.Multiaddr{paths.MultiAddress})
-
+	address, err := s.connect(r.Context(), paths.MultiAddress)
 	if err != nil {
 		logger.Debug("p2p connect failed", "addresses", paths.MultiAddress, "error", err)
 		logger.Error(nil, "p2p connect failed", "addresses", paths.MultiAddress)
@@ -40,17 +40,22 @@ func (s *Service) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.topologyDriver.Connected(r.Context(), p2p.Peer{Address: bzzAddr.Overlay}, true); err != nil {
-		_ = s.p2p.Disconnect(bzzAddr.Overlay, "failed to notify topology")
-		logger.Debug("connect to peer failed", "addresses", paths.MultiAddress, "error", err)
-		logger.Error(nil, "connect to peer failed", "addresses", paths.MultiAddress)
-		jsonhttp.InternalServerError(w, err)
-		return
+	jsonhttp.OK(w, peerConnectResponse{
+		Address: address.String(),
+	})
+}
+
+func (s *Service) connect(ctx context.Context, addr multiaddr.Multiaddr) (swarm.Address, error) {
+	bzzAddr, err := s.p2p.Connect(ctx, []multiaddr.Multiaddr{addr})
+	if err != nil {
+		return swarm.ZeroAddress, err
 	}
 
-	jsonhttp.OK(w, peerConnectResponse{
-		Address: bzzAddr.Overlay.String(),
-	})
+	if err := s.topologyDriver.Connected(ctx, p2p.Peer{Address: bzzAddr.Overlay}, true); err != nil {
+		_ = s.p2p.Disconnect(bzzAddr.Overlay, "failed to notify topology")
+		return swarm.ZeroAddress, err
+	}
+	return bzzAddr.Overlay, nil
 }
 
 func (s *Service) peerDisconnectHandler(w http.ResponseWriter, r *http.Request) {
@@ -64,7 +69,7 @@ func (s *Service) peerDisconnectHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err := s.p2p.Disconnect(paths.Address, "user requested disconnect"); err != nil {
+	if err := s.disconnect(paths.Address); err != nil {
 		logger.Debug("p2p disconnect failed", "peer_address", paths.Address, "error", err)
 		if errors.Is(err, p2p.ErrPeerNotFound) {
 			jsonhttp.NotFound(w, "peer not found")
@@ -76,6 +81,10 @@ func (s *Service) peerDisconnectHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	jsonhttp.OK(w, nil)
+}
+
+func (s *Service) disconnect(address swarm.Address) error {
+	return s.p2p.Disconnect(address, "user requested disconnect")
 }
 
 // Peer holds information about a Peer.
@@ -99,24 +108,33 @@ type blockListedPeersResponse struct {
 }
 
 func (s *Service) peersHandler(w http.ResponseWriter, _ *http.Request) {
-	jsonhttp.OK(w, peersResponse{
+	jsonhttp.OK(w, s.getPeers())
+}
+
+func (s *Service) getPeers() peersResponse {
+	return peersResponse{
 		Peers: mapPeers(s.p2p.Peers()),
-	})
+	}
 }
 
 func (s *Service) blocklistedPeersHandler(w http.ResponseWriter, _ *http.Request) {
-	logger := s.logger.WithValues("get_blocklist").Build()
-
-	peers, err := s.p2p.BlocklistedPeers()
+	resp, err := s.blocklistedPeers()
 	if err != nil {
-		logger.Debug("get blocklisted peers failed", "error", err)
+		s.logger.Debug("get blocklisted peers failed", "error", err)
 		jsonhttp.InternalServerError(w, "get blocklisted peers failed")
 		return
 	}
+	jsonhttp.OK(w, resp)
+}
 
-	jsonhttp.OK(w, blockListedPeersResponse{
+func (s *Service) blocklistedPeers() (*blockListedPeersResponse, error) {
+	peers, err := s.p2p.BlocklistedPeers()
+	if err != nil {
+		return nil, err
+	}
+	return &blockListedPeersResponse{
 		Peers: mapBlockListedPeers(peers),
-	})
+	}, nil
 }
 
 func mapPeers(peers []p2p.Peer) (out []Peer) {

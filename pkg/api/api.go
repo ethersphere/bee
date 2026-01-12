@@ -26,6 +26,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/accounting"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
@@ -170,7 +171,8 @@ type Service struct {
 	Options
 
 	http.Handler
-	router *mux.Router
+	router    *mux.Router
+	rpcServer *rpc.Server
 
 	metrics metrics
 

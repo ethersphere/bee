@@ -5,6 +5,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -53,7 +54,7 @@ type listTagsResponse struct {
 func (s *Service) createTagHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("post_tag").Build()
 
-	tag, err := s.storer.NewSession()
+	tag, err := s.createTag()
 	if err != nil {
 		logger.Debug("create tag failed", "error", err)
 		logger.Error(nil, "create tag failed")
@@ -61,7 +62,16 @@ func (s *Service) createTagHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "no-cache, private, max-age=0")
-	jsonhttp.Created(w, newTagResponse(tag))
+	jsonhttp.Created(w, tag)
+}
+
+func (s *Service) createTag() (*tagResponse, error) {
+	tag, err := s.storer.NewSession()
+	if err != nil {
+		return nil, err
+	}
+	resp := newTagResponse(tag)
+	return &resp, nil
 }
 
 func (s *Service) getTagHandler(w http.ResponseWriter, r *http.Request) {
@@ -75,7 +85,7 @@ func (s *Service) getTagHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag, err := s.storer.Session(paths.TagID)
+	resp, err := s.getTag(paths.TagID)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			logger.Debug("tag not found", "tag_id", paths.TagID)
@@ -90,7 +100,16 @@ func (s *Service) getTagHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Cache-Control", "no-cache, private, max-age=0")
-	jsonhttp.OK(w, newTagResponse(tag))
+	jsonhttp.OK(w, resp)
+}
+
+func (s *Service) getTag(tagID uint64) (*tagResponse, error) {
+	tag, err := s.storer.Session(tagID)
+	if err != nil {
+		return nil, err
+	}
+	resp := newTagResponse(tag)
+	return &resp, nil
 }
 
 func (s *Service) deleteTagHandler(w http.ResponseWriter, r *http.Request) {
@@ -104,7 +123,7 @@ func (s *Service) deleteTagHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.storer.DeleteSession(paths.TagID); err != nil {
+	if err := s.deleteTag(paths.TagID); err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			logger.Debug("tag not found", "tag_id", paths.TagID)
 			logger.Error(nil, "tag not found")
@@ -118,6 +137,10 @@ func (s *Service) deleteTagHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonhttp.NoContent(w)
+}
+
+func (s *Service) deleteTag(tagID uint64) error {
+	return s.storer.DeleteSession(tagID)
 }
 
 func (s *Service) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
@@ -153,36 +176,33 @@ func (s *Service) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	tag, err := s.storer.Session(paths.TagID)
-	if err != nil {
+	if err := s.doneSplit(r.Context(), paths.TagID, tagr.Address); err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			logger.Debug("tag not found", "tag_id", paths.TagID)
 			logger.Error(nil, "tag not found")
 			jsonhttp.NotFound(w, "tag not present")
 			return
 		}
-		logger.Debug("get tag failed", "tag_id", paths.TagID, "error", err)
-		logger.Error(nil, "get tag failed", "tag_id", paths.TagID)
-		jsonhttp.InternalServerError(w, "cannot get tag")
-		return
-	}
-
-	putter, err := s.storer.Upload(r.Context(), false, tag.TagID)
-	if err != nil {
-		logger.Debug("get tag failed", "tag_id", paths.TagID, "error", err)
-		logger.Error(nil, "get tag failed", "tag_id", paths.TagID)
-		jsonhttp.InternalServerError(w, "cannot get tag")
-		return
-	}
-
-	err = putter.Done(tagr.Address)
-	if err != nil {
 		logger.Debug("done split failed", "address", tagr.Address, "error", err)
 		logger.Error(nil, "done split failed", "address", tagr.Address)
 		jsonhttp.InternalServerError(w, "done split: failed")
 		return
 	}
 	jsonhttp.OK(w, "ok")
+}
+
+func (s *Service) doneSplit(ctx context.Context, tagID uint64, address swarm.Address) error {
+	tag, err := s.storer.Session(tagID)
+	if err != nil {
+		return err
+	}
+
+	putter, err := s.storer.Upload(ctx, false, tag.TagID)
+	if err != nil {
+		return err
+	}
+
+	return putter.Done(address)
 }
 
 func (s *Service) listTagsHandler(w http.ResponseWriter, r *http.Request) {
@@ -199,7 +219,7 @@ func (s *Service) listTagsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tagList, err := s.storer.ListSessions(queries.Offset, queries.Limit)
+	resp, err := s.listTags(queries.Offset, queries.Limit)
 	if err != nil {
 		logger.Debug("listing failed", "offset", queries.Offset, "limit", queries.Limit, "error", err)
 		logger.Error(nil, "listing failed")
@@ -207,12 +227,21 @@ func (s *Service) listTagsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	jsonhttp.OK(w, resp)
+}
+
+func (s *Service) listTags(offset, limit int) (*listTagsResponse, error) {
+	tagList, err := s.storer.ListSessions(offset, limit)
+	if err != nil {
+		return nil, err
+	}
+
 	tags := make([]tagResponse, len(tagList))
 	for i, t := range tagList {
 		tags[i] = newTagResponse(t)
 	}
 
-	jsonhttp.OK(w, listTagsResponse{
+	return &listTagsResponse{
 		Tags: tags,
-	})
+	}, nil
 }

@@ -25,8 +25,16 @@ type addressesResponse struct {
 }
 
 func (s *Service) addressesHandler(w http.ResponseWriter, _ *http.Request) {
-	logger := s.logger.WithValues("get_addresses").Build()
+	resp, err := s.addresses()
+	if err != nil {
+		s.logger.Debug("get address failed", "error", err)
+		jsonhttp.InternalServerError(w, err)
+		return
+	}
+	jsonhttp.OK(w, resp)
+}
 
+func (s *Service) addresses() (*addressesResponse, error) {
 	// initialize variable to json encode as [] instead null if p2p is nil
 	underlay := make([]multiaddr.Multiaddr, 0)
 	// addresses endpoint is exposed before p2p service is configured
@@ -34,18 +42,16 @@ func (s *Service) addressesHandler(w http.ResponseWriter, _ *http.Request) {
 	if s.p2p != nil {
 		u, err := s.p2p.Addresses()
 		if err != nil {
-			logger.Debug("get address failed", "error", err)
-			jsonhttp.InternalServerError(w, err)
-			return
+			return nil, err
 		}
 		underlay = u
 	}
-	jsonhttp.OK(w, addressesResponse{
+	return &addressesResponse{
 		Overlay:      s.overlay,
 		Underlay:     underlay,
 		Ethereum:     s.ethereumAddress,
 		ChainAddress: s.ethereumAddress,
 		PublicKey:    hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&s.publicKey)),
 		PSSPublicKey: hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&s.pssPublicKey)),
-	})
+	}, nil
 }
