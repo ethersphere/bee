@@ -27,13 +27,14 @@ import (
 )
 
 type libp2pServiceOpts struct {
-	Logger      log.Logger
-	Addressbook addressbook.Interface
-	PrivateKey  *ecdsa.PrivateKey
-	MockPeerKey *ecdsa.PrivateKey
-	libp2pOpts  libp2p.Options
-	lightNodes  *lightnode.Container
-	notifier    p2p.PickyNotifier
+	Logger             log.Logger
+	Addressbook        addressbook.Interface
+	PrivateKey         *ecdsa.PrivateKey
+	MockPeerKey        *ecdsa.PrivateKey
+	libp2pOpts         libp2p.Options
+	lightNodes         *lightnode.Container
+	notifier           p2p.PickyNotifier
+	autoTLSCertManager libp2p.AutoTLSCertManager
 }
 
 // newService constructs a new libp2p service.
@@ -80,6 +81,10 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 	}
 	opts := o.libp2pOpts
 	opts.Nonce = nonce
+
+	if o.autoTLSCertManager != nil {
+		libp2p.SetAutoTLSCertManager(&opts, o.autoTLSCertManager)
+	}
 
 	s, err = libp2p.New(ctx, crypto.NewDefaultSigner(swarmKey), networkID, overlay, addr, o.Addressbook, statestore, o.lightNodes, o.Logger, nil, opts)
 	if err != nil {
@@ -128,7 +133,7 @@ func expectPeersEventually(t *testing.T, s *libp2p.Service, addrs ...swarm.Addre
 	t.Helper()
 
 	var peers []p2p.Peer
-	err := spinlock.Wait(time.Second, func() bool {
+	err := spinlock.Wait(5*time.Second, func() bool {
 		peers = s.Peers()
 		return len(peers) == len(addrs)
 

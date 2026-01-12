@@ -186,7 +186,10 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			ps.metrics.TotalHandlerTime.WithLabelValues("failure").Observe(time.Since(now).Seconds())
 			ps.metrics.TotalHandlerErrors.Inc()
 			if !attemptedWrite {
-				_ = w.WriteMsgWithContext(ctx, &pb.Receipt{Err: err.Error()})
+				if writeErr := w.WriteMsgWithContext(ctx, &pb.Receipt{Err: err.Error()}); writeErr == nil {
+					_ = stream.FullClose()
+					return
+				}
 			}
 			_ = stream.Reset()
 		} else {
