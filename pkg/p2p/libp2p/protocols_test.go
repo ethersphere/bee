@@ -18,8 +18,7 @@ import (
 	libp2pm "github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/host"
 	protocol "github.com/libp2p/go-libp2p/core/protocol"
-	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
-	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
+	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multistream"
 )
 
@@ -398,25 +397,29 @@ func TestPing(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 
+	listenAddr, err := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hostFactory := libp2p.WithHostFactory(
+		func(opts ...libp2pm.Option) (host.Host, error) {
+			opts = append(opts, libp2pm.ListenAddrs(listenAddr))
+
+			h, err := libp2pm.New(opts...)
+			if err != nil {
+				return nil, err
+			}
+			return h, nil
+		},
+	)
+
 	s1, _ := newService(t, 1, libp2pServiceOpts{
-		libp2pOpts: libp2p.WithHostFactory(
-			func(...libp2pm.Option) (host.Host, error) {
-				return bhost.NewHost(swarmt.GenSwarm(t), &bhost.HostOpts{EnablePing: true})
-			},
-		),
+		libp2pOpts: hostFactory,
 	})
 
 	s2, _ := newService(t, 1, libp2pServiceOpts{
-		libp2pOpts: libp2p.WithHostFactory(
-			func(...libp2pm.Option) (host.Host, error) {
-				host, err := bhost.NewHost(swarmt.GenSwarm(t), &bhost.HostOpts{EnablePing: true})
-				if err != nil {
-					t.Fatalf("start host: %v", err)
-				}
-				host.Start()
-				return host, nil
-			},
-		),
+		libp2pOpts: hostFactory,
 	})
 
 	addr := serviceUnderlayAddress(t, s1)

@@ -7,10 +7,13 @@ package libp2p
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strconv"
@@ -19,6 +22,7 @@ import (
 	"time"
 
 	ocprom "contrib.go.opencensus.io/exporter/prometheus"
+	"github.com/caddyserver/certmagic"
 	"github.com/coreos/go-semver/semver"
 	"github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
@@ -31,12 +35,14 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/breaker"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/handshake"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/reacher"
+	libp2pmock "github.com/ethersphere/bee/v2/pkg/p2p/libp2p/mock"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/ethersphere/bee/v2/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
 	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p/config"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -52,11 +58,16 @@ import (
 	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
+	libp2prate "github.com/libp2p/go-libp2p/x/rate"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/multiformats/go-multistream"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+
+	p2pforge "github.com/ipshipyard/p2p-forge/client"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -84,33 +95,35 @@ const (
 )
 
 type Service struct {
-	ctx               context.Context
-	host              host.Host
-	natManager        basichost.NATManager
-	natAddrResolver   *staticAddressResolver
-	autonatDialer     host.Host
-	pingDialer        host.Host
-	libp2pPeerstore   peerstore.Peerstore
-	metrics           metrics
-	networkID         uint64
-	handshakeService  *handshake.Service
-	addressbook       addressbook.Putter
-	peers             *peerRegistry
-	connectionBreaker breaker.Interface
-	blocklist         *blocklist.Blocklist
-	protocols         []p2p.ProtocolSpec
-	notifier          p2p.PickyNotifier
-	logger            log.Logger
-	tracer            *tracing.Tracer
-	ready             chan struct{}
-	halt              chan struct{}
-	lightNodes        lightnodes
-	lightNodeLimit    int
-	protocolsmu       sync.RWMutex
-	reacher           p2p.Reacher
-	networkStatus     atomic.Int32
-	HeadersRWTimeout  time.Duration
-	autoNAT           autonat.AutoNAT
+	ctx                context.Context
+	host               host.Host
+	natManager         basichost.NATManager
+	autonatDialer      host.Host
+	pingDialer         host.Host
+	libp2pPeerstore    peerstore.Peerstore
+	metrics            metrics
+	networkID          uint64
+	handshakeService   *handshake.Service
+	addressbook        addressbook.Putter
+	peers              *peerRegistry
+	connectionBreaker  breaker.Interface
+	blocklist          *blocklist.Blocklist
+	protocols          []p2p.ProtocolSpec
+	notifier           p2p.PickyNotifier
+	logger             log.Logger
+	tracer             *tracing.Tracer
+	ready              chan struct{}
+	halt               chan struct{}
+	lightNodes         lightnodes
+	lightNodeLimit     int
+	protocolsmu        sync.RWMutex
+	reacher            p2p.Reacher
+	networkStatus      atomic.Int32
+	HeadersRWTimeout   time.Duration
+	autoNAT            autonat.AutoNAT
+	enableWS           bool
+	autoTLSCertManager autoTLSCertManager
+	zapLogger          *zap.Logger
 }
 
 type lightnodes interface {
@@ -121,52 +134,72 @@ type lightnodes interface {
 	EachPeer(pf topology.EachPeerFunc) error
 }
 
-type Options struct {
-	PrivateKey       *ecdsa.PrivateKey
-	NATAddr          string
-	EnableWS         bool
-	FullNode         bool
-	LightNodeLimit   int
-	WelcomeMessage   string
-	Nonce            []byte
-	ValidateOverlay  bool
-	hostFactory      func(...libp2p.Option) (host.Host, error)
-	HeadersRWTimeout time.Duration
-	Registry         *prometheus.Registry
+// autoTLSCertManager defines the interface for managing TLS certificates.
+type autoTLSCertManager interface {
+	Start() error
+	Stop()
+	TLSConfig() *tls.Config
+	AddressFactory() config.AddrsFactory
 }
 
-func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
-	host, port, err := net.SplitHostPort(addr)
+type Options struct {
+	PrivateKey                  *ecdsa.PrivateKey
+	NATAddr                     string
+	NATWSSAddr                  string
+	EnableWS                    bool
+	EnableWSS                   bool
+	WSSAddr                     string
+	AutoTLSStorageDir           string
+	AutoTLSCAEndpoint           string
+	AutoTLSDomain               string
+	AutoTLSRegistrationEndpoint string
+	FullNode                    bool
+	LightNodeLimit              int
+	WelcomeMessage              string
+	Nonce                       []byte
+	ValidateOverlay             bool
+	hostFactory                 func(...libp2p.Option) (host.Host, error)
+	HeadersRWTimeout            time.Duration
+	Registry                    *prometheus.Registry
+	autoTLSCertManager          autoTLSCertManager
+}
+
+func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (s *Service, returnErr error) {
+	logger = logger.WithName(loggerName).Register()
+
+	parsedAddr, err := parseAddress(addr)
 	if err != nil {
-		return nil, fmt.Errorf("address: %w", err)
-	}
-
-	ip4Addr := "0.0.0.0"
-	ip6Addr := "::"
-
-	if host != "" {
-		ip := net.ParseIP(host)
-		if ip4 := ip.To4(); ip4 != nil {
-			ip4Addr = ip4.String()
-			ip6Addr = ""
-		} else if ip6 := ip.To16(); ip6 != nil {
-			ip6Addr = ip6.String()
-			ip4Addr = ""
-		}
+		return nil, err
 	}
 
 	var listenAddrs []string
-	if ip4Addr != "" {
-		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s", ip4Addr, port))
+
+	if parsedAddr.IP4 != "" {
+		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s", parsedAddr.IP4, parsedAddr.Port))
 		if o.EnableWS {
-			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/ws", ip4Addr, port))
+			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/ws", parsedAddr.IP4, parsedAddr.Port))
 		}
 	}
 
-	if ip6Addr != "" {
-		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s", ip6Addr, port))
+	if parsedAddr.IP6 != "" {
+		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s", parsedAddr.IP6, parsedAddr.Port))
 		if o.EnableWS {
-			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/ws", ip6Addr, port))
+			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/ws", parsedAddr.IP6, parsedAddr.Port))
+		}
+	}
+
+	if o.EnableWSS {
+		parsedWssAddr, err := parseAddress(o.WSSAddr)
+		if err != nil {
+			return nil, err
+		}
+
+		if parsedWssAddr.IP4 != "" {
+			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/tls/sni/*.%s/ws", parsedWssAddr.IP4, parsedWssAddr.Port, o.AutoTLSDomain))
+		}
+
+		if parsedWssAddr.IP6 != "" {
+			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/tls/sni/*.%s/ws", parsedWssAddr.IP6, parsedWssAddr.Port, o.AutoTLSDomain))
 		}
 	}
 
@@ -208,12 +241,140 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 
-	rm, err := rcmgr.NewResourceManager(limiter, rcmgr.WithTraceReporter(str))
+	limitPerIp := rcmgr.WithLimitPerSubnet(
+		[]rcmgr.ConnLimitPerSubnet{{PrefixLength: 32, ConnCount: 200}}, // IPv4 /32 (Single IP) -> 200 conns
+		[]rcmgr.ConnLimitPerSubnet{{PrefixLength: 56, ConnCount: 200}}, // IPv6 /56 subnet -> 200 conns
+	)
+
+	// Custom rate limiter for connection attempts
+	// 20 peers cluster adaptation:
+	// Allow bursts of connection attempts (e.g. restart) but prevent DDOS.
+	connLimiter := &libp2prate.Limiter{
+		// Allow unlimited local connections (same as default)
+		NetworkPrefixLimits: []libp2prate.PrefixLimit{
+			{Prefix: netip.MustParsePrefix("127.0.0.0/8"), Limit: libp2prate.Limit{}},
+			{Prefix: netip.MustParsePrefix("::1/128"), Limit: libp2prate.Limit{}},
+		},
+		GlobalLimit: libp2prate.Limit{}, // Unlimited global
+		SubnetRateLimiter: libp2prate.SubnetLimiter{
+			IPv4SubnetLimits: []libp2prate.SubnetLimit{
+				{
+					PrefixLength: 32, // Apply limits per individual IPv4 address (/32)
+					// Allow 10 connection attempts per second per IP, burst up to 40
+					Limit: libp2prate.Limit{RPS: 10.0, Burst: 40},
+				},
+			},
+			IPv6SubnetLimits: []libp2prate.SubnetLimit{
+				{
+					PrefixLength: 56, // Apply limits per /56 IPv6 subnet
+					// Allow 10 connection attempts per second per IP, burst up to 40
+					// Subnet-level limiting prevents flooding from multiple addresses in the same block.
+					Limit: libp2prate.Limit{RPS: 10.0, Burst: 40},
+				},
+			},
+			// Duration to retain state for an IP or subnet after it becomes inactive.
+			GracePeriod: 10 * time.Second,
+		},
+	}
+
+	rm, err := rcmgr.NewResourceManager(limiter, rcmgr.WithTraceReporter(str), limitPerIp, rcmgr.WithConnRateLimiters(connLimiter))
 	if err != nil {
 		return nil, err
 	}
 
 	var natManager basichost.NATManager
+
+	var certManager autoTLSCertManager
+	var zapLogger *zap.Logger
+
+	// AutoTLS is only needed for WSS
+	enableAutoTLS := o.EnableWSS
+
+	if enableAutoTLS {
+		if o.autoTLSCertManager != nil {
+			certManager = o.autoTLSCertManager
+		} else {
+			// create a zap logger needed for cert manager to be as close to
+			// swarm logger as possible
+			l, err := zap.Config{
+				Level:       zap.NewAtomicLevelAt(zap.DebugLevel),
+				Development: false,
+				Sampling: &zap.SamplingConfig{
+					Initial:    100,
+					Thereafter: 100,
+				},
+				Encoding: "json",
+				EncoderConfig: zapcore.EncoderConfig{
+					TimeKey:        "time",
+					LevelKey:       "level",
+					NameKey:        "logger",
+					CallerKey:      "caller",
+					FunctionKey:    zapcore.OmitKey,
+					MessageKey:     "msg",
+					StacktraceKey:  "stacktrace",
+					LineEnding:     zapcore.DefaultLineEnding,
+					EncodeLevel:    zapcore.LowercaseLevelEncoder,
+					EncodeTime:     zapcore.EpochTimeEncoder,
+					EncodeDuration: zapcore.SecondsDurationEncoder,
+					EncodeCaller:   zapcore.ShortCallerEncoder,
+				},
+				OutputPaths:      []string{"stderr"},
+				ErrorOutputPaths: []string{"stderr"},
+			}.Build()
+			if err != nil {
+				return nil, err
+			}
+
+			// assing zap logger as it needs to be synced when the service stops
+			zapLogger = l
+
+			defer func() {
+				_ = zapLogger.Sync()
+			}()
+
+			// Use AutoTLS storage dir with domain subdir for easier management
+			// of different registers.
+			storagePath := filepath.Join(o.AutoTLSStorageDir, o.AutoTLSDomain)
+
+			if err := os.MkdirAll(storagePath, 0700); err != nil {
+				return nil, fmt.Errorf("create certificate storage directory %s: %w", storagePath, err)
+			}
+
+			certManager, err = p2pforge.NewP2PForgeCertMgr(
+				p2pforge.WithForgeDomain(o.AutoTLSDomain),
+				p2pforge.WithForgeRegistrationEndpoint(o.AutoTLSRegistrationEndpoint),
+				p2pforge.WithCAEndpoint(o.AutoTLSCAEndpoint),
+				p2pforge.WithCertificateStorage(&certmagic.FileStorage{Path: storagePath}),
+				p2pforge.WithLogger(zapLogger.Sugar()),
+				p2pforge.WithUserAgent(userAgent()),
+				p2pforge.WithAllowPrivateForgeAddrs(),
+				p2pforge.WithRegistrationDelay(0),
+				p2pforge.WithOnCertLoaded(func() {
+					logger.Info("auto tls certificate is loaded")
+				}),
+				p2pforge.WithOnCertRenewed(func() {
+					logger.Info("auto tls certificate is renewed")
+				}),
+			)
+			if err != nil {
+				return nil, fmt.Errorf("initialize AutoTLS: %w", err)
+			}
+		}
+
+		defer func() {
+			if returnErr != nil {
+				// certificate manager has to be stopped if service is not
+				// constructed
+				certManager.Stop()
+			}
+		}()
+
+		if err := certManager.Start(); err != nil {
+			return nil, fmt.Errorf("start AutoTLS certificate manager: %w", err)
+		}
+
+		logger.Info("AutoTLS certificate manager initialized")
+	}
 
 	opts := []libp2p.Option{
 		libp2p.ListenAddrStrings(listenAddrs...),
@@ -224,7 +385,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		libp2p.ResourceManager(rm),
 	}
 
-	if o.NATAddr == "" {
+	if o.NATAddr == "" && o.NATWSSAddr == "" {
 		opts = append(opts,
 			libp2p.NATManager(func(n network.Network) basichost.NATManager {
 				natManager = basichost.NewNATManager(n)
@@ -247,9 +408,48 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		libp2p.Transport(tcp.NewTCPTransport, tcp.DisableReuseport()),
 	}
 
-	if o.EnableWS {
+	var tcpResolver handshake.AdvertisableAddressResolver
+	if o.NATAddr != "" {
+		r, err := newStaticAddressResolver(o.NATAddr, net.LookupIP)
+		if err != nil {
+			return nil, fmt.Errorf("static nat: %w", err)
+		}
+		tcpResolver = r
+	}
+
+	var wssResolver handshake.AdvertisableAddressResolver
+	if o.EnableWSS && o.NATWSSAddr != "" {
+		r, err := newStaticAddressResolver(o.NATWSSAddr, net.LookupIP)
+		if err != nil {
+			return nil, fmt.Errorf("static wss nat: %w", err)
+		}
+		wssResolver = r
+	}
+
+	if o.EnableWSS {
+		wsOpt := ws.WithTLSConfig(certManager.TLSConfig())
+		transports = append(transports, libp2p.Transport(ws.New, wsOpt))
+	} else if o.EnableWS {
 		transports = append(transports, libp2p.Transport(ws.New))
 	}
+
+	compositeResolver := newCompositeAddressResolver(tcpResolver, wssResolver)
+
+	var addrFactory config.AddrsFactory
+	if o.EnableWSS {
+		certManagerFactory := certManager.AddressFactory()
+		addrFactory = func(addrs []ma.Multiaddr) []ma.Multiaddr {
+			addrs = includeNatResolvedAddresses(addrs, compositeResolver, logger)
+			addrs = certManagerFactory(addrs)
+			return addrs
+		}
+	} else {
+		addrFactory = func(addrs []ma.Multiaddr) []ma.Multiaddr {
+			return includeNatResolvedAddresses(addrs, compositeResolver, logger)
+		}
+	}
+
+	opts = append(opts, libp2p.AddrsFactory(addrFactory))
 
 	opts = append(opts, transports...)
 
@@ -263,6 +463,18 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 
+	if enableAutoTLS {
+		switch cm := certManager.(type) {
+		case *p2pforge.P2PForgeCertMgr:
+			cm.ProvideHost(h)
+		case *libp2pmock.MockP2PForgeCertMgr:
+			if err := cm.ProvideHost(h); err != nil {
+				return nil, fmt.Errorf("failed to provide host to MockP2PForgeCertMgr: %w", err)
+			}
+		default:
+			return nil, fmt.Errorf("unknown cert manager type")
+		}
+	}
 	// Support same non default security and transport options as
 	// original host.
 	dialer, err := o.hostFactory(append(transports, security)...)
@@ -270,7 +482,13 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 
-	options := []autonat.Option{autonat.EnableService(dialer.Network())}
+	if o.HeadersRWTimeout == 0 {
+		o.HeadersRWTimeout = defaultHeadersRWTimeout
+	}
+
+	options := []autonat.Option{
+		autonat.EnableService(dialer.Network()),
+	}
 
 	val, err := strconv.ParseBool(reachabilityOverridePublic)
 	if err != nil {
@@ -288,25 +506,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
-	if o.HeadersRWTimeout == 0 {
-		o.HeadersRWTimeout = defaultHeadersRWTimeout
-	}
-
-	var advertisableAddresser handshake.AdvertisableAddressResolver
-	var natAddrResolver *staticAddressResolver
-	if o.NATAddr == "" {
-		advertisableAddresser = &UpnpAddressResolver{
-			host: h,
-		}
-	} else {
-		natAddrResolver, err = newStaticAddressResolver(o.NATAddr, net.LookupIP)
-		if err != nil {
-			return nil, fmt.Errorf("static nat: %w", err)
-		}
-		advertisableAddresser = natAddrResolver
-	}
-
-	handshakeService, err := handshake.New(signer, advertisableAddresser, overlay, networkID, o.FullNode, o.Nonce, newHostAddresser(h), o.WelcomeMessage, o.ValidateOverlay, h.ID(), logger)
+	handshakeService, err := handshake.New(signer, newCompositeAddressResolver(tcpResolver, wssResolver), overlay, networkID, o.FullNode, o.Nonce, newHostAddresser(h), o.WelcomeMessage, o.ValidateOverlay, h.ID(), logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}
@@ -322,28 +522,30 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	peerRegistry := newPeerRegistry()
-	s := &Service{
-		ctx:               ctx,
-		host:              h,
-		natManager:        natManager,
-		natAddrResolver:   natAddrResolver,
-		autonatDialer:     dialer,
-		pingDialer:        pingDialer,
-		handshakeService:  handshakeService,
-		libp2pPeerstore:   libp2pPeerstore,
-		metrics:           newMetrics(),
-		networkID:         networkID,
-		peers:             peerRegistry,
-		addressbook:       ab,
-		blocklist:         blocklist.NewBlocklist(storer),
-		logger:            logger.WithName(loggerName).Register(),
-		tracer:            tracer,
-		connectionBreaker: breaker.NewBreaker(breaker.Options{}), // use default options
-		ready:             make(chan struct{}),
-		halt:              make(chan struct{}),
-		lightNodes:        lightNodes,
-		HeadersRWTimeout:  o.HeadersRWTimeout,
-		autoNAT:           autoNAT,
+	s = &Service{
+		ctx:                ctx,
+		host:               h,
+		natManager:         natManager,
+		autonatDialer:      dialer,
+		pingDialer:         pingDialer,
+		handshakeService:   handshakeService,
+		libp2pPeerstore:    libp2pPeerstore,
+		metrics:            newMetrics(),
+		networkID:          networkID,
+		peers:              peerRegistry,
+		addressbook:        ab,
+		blocklist:          blocklist.NewBlocklist(storer),
+		logger:             logger,
+		tracer:             tracer,
+		connectionBreaker:  breaker.NewBreaker(breaker.Options{}), // use default options
+		ready:              make(chan struct{}),
+		halt:               make(chan struct{}),
+		lightNodes:         lightNodes,
+		HeadersRWTimeout:   o.HeadersRWTimeout,
+		autoNAT:            autoNAT,
+		enableWS:           o.EnableWS,
+		autoTLSCertManager: certManager,
+		zapLogger:          zapLogger,
 	}
 
 	peerRegistry.setDisconnecter(s)
@@ -367,6 +569,37 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	h.Network().Notify(connMetricNotify)
 
 	return s, nil
+}
+
+type parsedAddress struct {
+	IP4  string
+	IP6  string
+	Port string
+}
+
+func parseAddress(addr string) (*parsedAddress, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, fmt.Errorf("parse address %s: %w", addr, err)
+	}
+
+	res := &parsedAddress{
+		IP4:  "0.0.0.0",
+		IP6:  "::",
+		Port: port,
+	}
+
+	if host != "" {
+		ip := net.ParseIP(host)
+		if ip4parsed := ip.To4(); ip4parsed != nil {
+			res.IP4 = ip4parsed.String()
+			res.IP6 = ""
+		} else if ip6parsed := ip.To16(); ip6parsed != nil {
+			res.IP6 = ip6parsed.String()
+			res.IP4 = ""
+		}
+	}
+	return res, nil
 }
 
 func (s *Service) reachabilityWorker() error {
@@ -413,7 +646,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	peerID := stream.Conn().RemotePeer()
 	handshakeStream := newStream(stream, s.metrics)
 
-	peerMultiaddrs, err := s.peerMultiaddrs(s.ctx, stream.Conn(), peerID)
+	peerMultiaddrs, err := s.peerMultiaddrs(s.ctx, peerID)
 	if err != nil {
 		s.logger.Debug("stream handler: handshake: build remote multiaddrs", "peer_id", peerID, "error", err)
 		s.logger.Error(nil, "stream handler: handshake: build remote multiaddrs", "peer_id", peerID)
@@ -443,7 +676,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		s.logger.Debug("stream handler: blocklisting: exists failed", "peer_address", overlay, "error", err)
 		s.logger.Error(nil, "stream handler: internal error while connecting with peer", "peer_address", overlay)
 		_ = handshakeStream.Reset()
-		_ = s.host.Network().ClosePeer(peerID)
+		_ = stream.Conn().Close()
 		return
 	}
 
@@ -459,7 +692,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		if err = handshakeStream.FullClose(); err != nil {
 			s.logger.Debug("stream handler: could not close stream", "peer_address", overlay, "error", err)
 			s.logger.Error(nil, "stream handler: unable to handshake with peer", "peer_address", overlay)
-			_ = s.Disconnect(overlay, "unable to close handshake stream")
+			_ = stream.Conn().Close()
 		}
 		return
 	}
@@ -554,7 +787,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		return
 	}
 
-	s.notifyReacherConnected(stream, overlay, peerID)
+	s.notifyReacherConnected(overlay, peerID)
 
 	peerUserAgent := appendSpace(s.peerUserAgent(s.ctx, peerID))
 	s.networkStatus.Store(int32(p2p.NetworkStatusAvailable))
@@ -563,16 +796,15 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	s.logger.Debug("stream handler: successfully connected to peer (inbound)", "address", i.BzzAddress.Overlay, "light", i.LightString(), "user_agent", peerUserAgent)
 }
 
-func (s *Service) notifyReacherConnected(stream network.Stream, overlay swarm.Address, peerID libp2ppeer.ID) {
+func (s *Service) notifyReacherConnected(overlay swarm.Address, peerID libp2ppeer.ID) {
 	if s.reacher == nil {
 		return
 	}
 
 	peerAddrs := s.host.Peerstore().Addrs(peerID)
-	connectionAddr := stream.Conn().RemoteMultiaddr()
-	bestAddr := bzz.SelectBestAdvertisedAddress(peerAddrs, connectionAddr)
+	bestAddr := bzz.SelectBestAdvertisedAddress(peerAddrs, nil)
 
-	s.logger.Debug("selected reacher address", "peer_id", peerID, "selected_addr", bestAddr.String(), "connection_addr", connectionAddr.String(), "advertised_count", len(peerAddrs))
+	s.logger.Debug("selected reacher address", "peer_id", peerID, "selected_addr", bestAddr.String(), "advertised_count", len(peerAddrs))
 
 	underlay, err := buildFullMA(bestAddr, peerID)
 	if err != nil {
@@ -680,23 +912,37 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 }
 
 func (s *Service) Addresses() (addresses []ma.Multiaddr, err error) {
-	for _, addr := range s.host.Addrs() {
-		a, err := buildUnderlayAddress(addr, s.host.ID())
-		if err != nil {
-			return nil, err
-		}
+	return buildFullMAs(s.host.Addrs(), s.host.ID())
+}
 
-		addresses = append(addresses, a)
-	}
-	if s.natAddrResolver != nil && len(addresses) > 0 {
-		a, err := s.natAddrResolver.Resolve(addresses[0])
-		if err != nil {
-			return nil, err
-		}
-		addresses = append(addresses, a)
+func includeNatResolvedAddresses(addrs []ma.Multiaddr, advertisableAddresser handshake.AdvertisableAddressResolver, logger log.Logger) (addresses []ma.Multiaddr) {
+	if advertisableAddresser == nil {
+		return addrs
 	}
 
-	return addresses, nil
+	allAddrs := make([]ma.Multiaddr, 0, len(addrs))
+
+	for _, addr := range addrs {
+		allAddrs = append(allAddrs, addr)
+
+		resolved, err := advertisableAddresser.Resolve(addr)
+		if err != nil {
+			logger.Warning("could not resolve address", "addr", addr, "error", err)
+			continue
+		}
+
+		if resolved.Equal(addr) {
+			continue
+		}
+
+		if !slices.ContainsFunc(allAddrs, func(a ma.Multiaddr) bool {
+			return resolved.Equal(a)
+		}) {
+			allAddrs = append(allAddrs, resolved)
+		}
+	}
+
+	return allAddrs
 }
 
 func (s *Service) NATManager() basichost.NATManager {
@@ -733,16 +979,6 @@ func buildHostAddress(peerID libp2ppeer.ID) (ma.Multiaddr, error) {
 	return ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", peerID.String()))
 }
 
-func buildUnderlayAddress(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) {
-	// Build host multiaddress
-	hostAddr, err := buildHostAddress(peerID)
-	if err != nil {
-		return nil, err
-	}
-
-	return addr.Encapsulate(hostAddr), nil
-}
-
 func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *bzz.Address, err error) {
 	loggerV1 := s.logger.V(1).Register()
 
@@ -753,6 +989,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	var info *libp2ppeer.AddrInfo
 	var peerID libp2ppeer.ID
 	var connectErr error
+	skippedSelf := false
 
 	// Try to connect to each underlay address one by one.
 	//
@@ -769,6 +1006,13 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 
 		info = ai
 		peerID = ai.ID
+
+		// Check if attempting to connect to self
+		if peerID == s.host.ID() {
+			s.logger.Debug("skipping connection to self", "peer_id", peerID, "underlay", info.Addrs)
+			skippedSelf = true
+			continue
+		}
 
 		hostAddr, err := buildHostAddress(info.ID)
 		if err != nil {
@@ -799,7 +1043,12 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	}
 
 	if connectErr != nil {
-		return nil, fmt.Errorf("libp2p connect: %w", err)
+		return nil, fmt.Errorf("libp2p connect: %w", connectErr)
+	}
+
+	// If we skipped all addresses due to self-connection, return an error
+	if skippedSelf {
+		return nil, fmt.Errorf("cannot connect to self")
 	}
 
 	if info == nil {
@@ -814,7 +1063,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 
 	handshakeStream := newStream(stream, s.metrics)
 
-	peerMultiaddrs, err := s.peerMultiaddrs(ctx, stream.Conn(), peerID)
+	peerMultiaddrs, err := s.peerMultiaddrs(ctx, peerID)
 	if err != nil {
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(peerID)
@@ -871,6 +1120,10 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		return nil, fmt.Errorf("connect full close %w", err)
 	}
 
+	if !s.peers.Exists(overlay) {
+		return nil, p2p.ErrPeerNotFound
+	}
+
 	if i.FullNode {
 		err = s.addressbook.Put(overlay, *i.BzzAddress)
 		if err != nil {
@@ -899,7 +1152,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 
 	s.metrics.CreatedConnectionCount.Inc()
 
-	s.notifyReacherConnected(stream, overlay, peerID)
+	s.notifyReacherConnected(overlay, peerID)
 
 	peerUA := appendSpace(s.peerUserAgent(ctx, peerID))
 	loggerV1.Debug("successfully connected to peer (outbound)", "addresses", i.BzzAddress.ShortString(), "light", i.LightString(), "user_agent", peerUA)
@@ -1004,6 +1257,12 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 		return nil, p2p.ErrPeerNotFound
 	}
 
+	// Verify if we really have an active connection
+	if s.host.Network().Connectedness(peerID) != network.Connected {
+		_ = s.Disconnect(overlay, "registry-host mismatch in NewStream")
+		return nil, p2p.ErrPeerNotFound
+	}
+
 	streamlibp2p, err := s.newStreamForPeerID(ctx, peerID, protocolName, protocolVersion, streamName)
 	if err != nil {
 		return nil, fmt.Errorf("new stream for peerid: %w", err)
@@ -1033,6 +1292,11 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 
 func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, protocolName, protocolVersion, streamName string) (network.Stream, error) {
 	swarmStreamName := p2p.NewSwarmStreamName(protocolName, protocolVersion, streamName)
+
+	if s.host.Network().Connectedness(peerID) != network.Connected {
+		s.logger.Debug("newStreamForPeerID: host not connected to peer, this will trigger a dial", "peer_id", peerID, "protocol", swarmStreamName)
+	}
+
 	st, err := s.host.NewStream(ctx, peerID, protocol.ID(swarmStreamName))
 	if err != nil {
 		if st != nil {
@@ -1053,6 +1317,9 @@ func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, 
 }
 
 func (s *Service) Close() error {
+	if s.autoTLSCertManager != nil {
+		s.autoTLSCertManager.Stop()
+	}
 	if err := s.libp2pPeerstore.Close(); err != nil {
 		return err
 	}
@@ -1076,6 +1343,9 @@ func (s *Service) Close() error {
 		if err := s.autoNAT.Close(); err != nil {
 			return err
 		}
+	}
+	if s.zapLogger != nil {
+		_ = s.zapLogger.Sync()
 	}
 
 	return s.host.Close()
@@ -1194,24 +1464,11 @@ func (s *Service) determineCurrentNetworkStatus(err error) error {
 // peerMultiaddrs builds full multiaddresses for a peer given information from
 // libp2p host peerstore and falling back to the remote address from the
 // connection.
-func (s *Service) peerMultiaddrs(ctx context.Context, conn network.Conn, peerID libp2ppeer.ID) ([]ma.Multiaddr, error) {
+func (s *Service) peerMultiaddrs(ctx context.Context, peerID libp2ppeer.ID) ([]ma.Multiaddr, error) {
 	waitPeersCtx, cancel := context.WithTimeout(ctx, peerstoreWaitAddrsTimeout)
 	defer cancel()
 
-	peerMultiaddrs, err := buildFullMAs(waitPeerAddrs(waitPeersCtx, s.host.Peerstore(), peerID), peerID)
-	if err != nil {
-		return nil, fmt.Errorf("build peer multiaddrs: %w", err)
-	}
-
-	if len(peerMultiaddrs) == 0 {
-		fullRemoteAddress, err := buildFullMA(conn.RemoteMultiaddr(), peerID)
-		if err != nil {
-			return nil, fmt.Errorf("build full remote peer multi address: %w", err)
-		}
-		peerMultiaddrs = append(peerMultiaddrs, fullRemoteAddress)
-	}
-
-	return peerMultiaddrs, nil
+	return buildFullMAs(waitPeerAddrs(waitPeersCtx, s.host.Peerstore(), peerID), peerID)
 }
 
 var version270 = *semver.Must(semver.NewVersion("2.7.0"))
@@ -1288,6 +1545,40 @@ func isNetworkOrHostUnreachableError(err error) bool {
 		}
 	}
 	return false
+}
+
+type compositeAddressResolver struct {
+	tcpResolver handshake.AdvertisableAddressResolver
+	wssResolver handshake.AdvertisableAddressResolver
+}
+
+func newCompositeAddressResolver(tcpResolver, wssResolver handshake.AdvertisableAddressResolver) handshake.AdvertisableAddressResolver {
+	return &compositeAddressResolver{
+		tcpResolver: tcpResolver,
+		wssResolver: wssResolver,
+	}
+}
+
+func (c *compositeAddressResolver) Resolve(observedAddress ma.Multiaddr) (ma.Multiaddr, error) {
+	protocols := observedAddress.Protocols()
+
+	containsProtocol := func(protocols []ma.Protocol, code int) bool {
+		return slices.ContainsFunc(protocols, func(p ma.Protocol) bool { return p.Code == code })
+	}
+
+	// ma.P_WSS protocol is deprecated, multiaddrs should comtain WS and TLS protocols for WSS
+	isWSS := containsProtocol(protocols, ma.P_WS) && containsProtocol(protocols, ma.P_TLS)
+
+	if isWSS {
+		if c.wssResolver != nil {
+			return c.wssResolver.Resolve(observedAddress)
+		}
+	} else {
+		if c.tcpResolver != nil {
+			return c.tcpResolver.Resolve(observedAddress)
+		}
+	}
+	return observedAddress, nil
 }
 
 type hostAddresser struct {
