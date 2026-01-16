@@ -54,7 +54,6 @@ import (
 	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
-	lp2pswarm "github.com/libp2p/go-libp2p/p2p/net/swarm"
 	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
@@ -1439,28 +1438,6 @@ func (s *Service) NetworkStatus() p2p.NetworkStatus {
 	return p2p.NetworkStatus(s.networkStatus.Load())
 }
 
-// determineCurrentNetworkStatus determines if the network
-// is available/unavailable based on the given error, and
-// returns ErrNetworkUnavailable if unavailable.
-// The result of this operation is stored and can be reflected
-// in the results of future NetworkStatus method calls.
-func (s *Service) determineCurrentNetworkStatus(err error) error {
-	switch {
-	case err == nil:
-		s.networkStatus.Store(int32(p2p.NetworkStatusAvailable))
-	case errors.Is(err, lp2pswarm.ErrDialBackoff):
-		if s.NetworkStatus() == p2p.NetworkStatusUnavailable {
-			err = errors.Join(err, p2p.ErrNetworkUnavailable)
-		}
-	case isNetworkOrHostUnreachableError(err):
-		s.networkStatus.Store(int32(p2p.NetworkStatusUnavailable))
-		err = errors.Join(err, p2p.ErrNetworkUnavailable)
-	default:
-		err = fmt.Errorf("network status unknown: %w", err)
-	}
-	return err
-}
-
 // peerMultiaddrs builds full multiaddresses for a peer given information from
 // libp2p host peerstore and falling back to the remote address from the
 // connection.
@@ -1515,36 +1492,6 @@ type connectionNotifier struct {
 
 func (c *connectionNotifier) Connected(_ network.Network, _ network.Conn) {
 	c.metrics.HandledConnectionCount.Inc()
-}
-
-// isNetworkOrHostUnreachableError determines based on the
-// given error whether the host or network is reachable.
-func isNetworkOrHostUnreachableError(err error) bool {
-	var de *lp2pswarm.DialError
-	if !errors.As(err, &de) {
-		return false
-	}
-
-	// Since TransportError doesn't implement the Unwrap
-	// method we need to inspect the errors manually.
-	for i := range de.DialErrors {
-		var te *lp2pswarm.TransportError
-		if !errors.As(&de.DialErrors[i], &te) {
-			continue
-		}
-
-		var ne *net.OpError
-		if !errors.As(te.Cause, &ne) || ne.Op != "dial" {
-			continue
-		}
-
-		var se *os.SyscallError
-		if errors.As(ne, &se) && strings.HasPrefix(se.Syscall, "connect") &&
-			(errors.Is(se.Err, errHostUnreachable) || errors.Is(se.Err, errNetworkUnreachable)) {
-			return true
-		}
-	}
-	return false
 }
 
 type compositeAddressResolver struct {
