@@ -831,7 +831,7 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 					k.logger.Warning("connect to bootnode failed", "bootnode_address", addr)
 					return false, err
 				}
-				k.logger.Debug("connect to bootnode failed", "bootnode_address", addr, "error", err)
+				k.logger.Debug("bootnode already connected", "bootnode_address", addr, "error", err)
 				return false, nil
 			}
 
