@@ -109,7 +109,7 @@ async function main() {
     "--password",
     "testing",
     "--bootnode",
-    "/dnsaddr/testnet.ethswarm.org",
+    "/ip4/49.12.172.37/tcp/32530/tls/sni/49-12-172-37.k2k4r8kibjadgpqco81quegou963p7lbcd9ti0bw8lrcc95ystm6by9d.libp2p.direct/ws/p2p/QmRHeoLCHjHoMur8PQpuV8acNJMmKPT61c3ZMLpTqY7og4",
     "--data-dir",
     "/home/user/.bee/sepolia",
     "--verbosity",
@@ -117,7 +117,7 @@ async function main() {
     // '--blockchain-rpc-endpoint',
     // 'https://ethereum-sepolia-rpc.publicnode.com/ac5b7f52aabd778861c2588f872f15c5fc34f0b343ec3d18ac2e91f5526e9c2b',
     "--mainnet=false",
-    "--network-id=5",
+    "--network-id=10",
     "--p2p-ws-enable",
   ];
 
