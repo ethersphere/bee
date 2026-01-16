@@ -118,6 +118,7 @@ async function main() {
     // 'https://ethereum-sepolia-rpc.publicnode.com/ac5b7f52aabd778861c2588f872f15c5fc34f0b343ec3d18ac2e91f5526e9c2b',
     "--mainnet=false",
     "--network-id=5",
+    "--p2p-ws-enable",
   ];
 
   // Override Go's `fs.readFile` with ZenFS readFile functionality
