@@ -313,8 +313,8 @@ func (s *Service) checkAndAddPeers(peers pb.Peers) {
 
 		if err := s.addressBook.Put(bzzAddress.Overlay, bzzAddress); err != nil {
 			s.metrics.StorePeerErr.Inc()
-			s.logger.Warning("skipping peer in response", "peer_address", p.String(), "error", err)
-			return
+			s.logger.Warning("put peer in addressbook", "peer_address", p.String(), "error", err)
+			continue
 		}
 
 		peersToAdd = append(peersToAdd, bzzAddress.Overlay)

@@ -221,7 +221,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	rm, totalConns, err := newResourceManager(o.Bootnodes, o.AllowPrivateCIDRs)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("resource manager: %w", err)
 	}
 
 	var natManager basichost.NATManager
@@ -389,7 +389,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	if o.EnableWSS {
 		wsOpt := ws.WithTLSConfig(certManager.TLSConfig())
 		transports = append(transports, libp2p.Transport(ws.New, wsOpt))
-	} else {
+	} else if o.EnableWS {
 		transports = append(transports, libp2p.Transport(ws.New))
 	}
 
@@ -540,7 +540,7 @@ type parsedAddress struct {
 func parseAddress(addr string) (*parsedAddress, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
-		return nil, fmt.Errorf("address: %w", err)
+		return nil, fmt.Errorf("parse address %s: %w", addr, err)
 	}
 
 	res := &parsedAddress{
@@ -1007,7 +1007,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	}
 
 	// If we skipped all addresses due to self-connection, return an error
-	if skippedSelf && info != nil && info.ID == s.host.ID() {
+	if skippedSelf {
 		return nil, fmt.Errorf("cannot connect to self")
 	}
 

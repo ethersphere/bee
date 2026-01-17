@@ -81,6 +81,7 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/sha3"
+	"golang.org/x/net/idna"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -500,17 +501,19 @@ func NewBee(
 		b.apiCloser = apiServer
 	}
 
-	// Sync the with the given Ethereum backend:
-	isSynced, _, err := transaction.IsSynced(ctx, chainBackend, maxDelay)
-	if err != nil {
-		return nil, fmt.Errorf("is synced: %w", err)
-	}
-	if !isSynced {
-		logger.Info("waiting to sync with the blockchain backend")
-
-		err := transaction.WaitSynced(ctx, logger, chainBackend, maxDelay)
+	if chainEnabled {
+		// Sync the with the given Ethereum backend:
+		isSynced, _, err := transaction.IsSynced(ctx, chainBackend, maxDelay)
 		if err != nil {
-			return nil, fmt.Errorf("waiting backend sync: %w", err)
+			return nil, fmt.Errorf("is synced: %w", err)
+		}
+		if !isSynced {
+			logger.Info("waiting to sync with the blockchain backend")
+
+			err := transaction.WaitSynced(ctx, logger, chainBackend, maxDelay)
+			if err != nil {
+				return nil, fmt.Errorf("waiting backend sync: %w", err)
+			}
 		}
 	}
 
@@ -1166,9 +1169,9 @@ func NewBee(
 		detector.OnStabilized = func(t time.Time, totalCount int) {
 			warmupMeasurement(t, totalCount)
 
-			reserveTreshold := reserveCapacity >> 1
+			reserveThreshold := reserveCapacity >> 1
 			isFullySynced := func() bool {
-				return pullerService.SyncRate() == 0 && saludService.IsHealthy() && localStore.ReserveSize() >= reserveTreshold
+				return pullerService.SyncRate() == 0 && saludService.IsHealthy() && localStore.ReserveSize() >= reserveThreshold
 			}
 
 			syncCheckTicker := time.NewTicker(2 * time.Second)
@@ -1206,9 +1209,9 @@ func NewBee(
 			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), o.TrxDebugMode)
 
 			isFullySynced := func() bool {
-				reserveTreshold := reserveCapacity * 5 / 10
+				reserveThreshold := reserveCapacity * 5 / 10
 				logger.Debug("Sync status check evaluated", "stabilized", detector.IsStabilized())
-				return localStore.ReserveSize() >= reserveTreshold && pullerService.SyncRate() == 0 && detector.IsStabilized()
+				return localStore.ReserveSize() >= reserveThreshold && pullerService.SyncRate() == 0 && detector.IsStabilized()
 			}
 
 			agent, err = storageincentives.New(
@@ -1504,15 +1507,26 @@ func validatePublicAddress(addr string) error {
 	if host == "localhost" {
 		return errors.New("localhost is not a valid address")
 	}
+
 	ip := net.ParseIP(host)
-	if ip == nil {
-		return errors.New("not a valid IP address")
+	if ip != nil {
+		if ip.IsLoopback() {
+			return errors.New("loopback address is not a valid address")
+		}
+		if ip.IsPrivate() {
+			return errors.New("private address is not a valid address")
+		}
+		return nil
 	}
-	if ip.IsLoopback() {
-		return errors.New("loopback address is not a valid address")
-	}
-	if ip.IsPrivate() {
-		return errors.New("private address is not a valid address")
+
+	idnaValidator := idna.New(
+		idna.ValidateLabels(true),
+		idna.VerifyDNSLength(true),
+		idna.StrictDomainName(true),
+		idna.CheckHyphens(true),
+	)
+	if _, err := idnaValidator.ToASCII(host); err != nil {
+		return fmt.Errorf("invalid hostname: %w", err)
 	}
 
 	return nil

@@ -764,12 +764,8 @@ func TestFeedIndirection(t *testing.T) {
 			Logger: logger,
 			Post:   mockpost.New(mockpost.WithAcceptAll()),
 		})
-		bzzDownloadResource = func(addr, path string, legacyFeed bool) string {
+		bzzDownloadResource = func(addr, path string) string {
 			values := url.Values{}
-			if legacyFeed {
-				values.Set("swarm-feed-legacy-resolve", strconv.FormatBool(legacyFeed))
-			}
-
 			baseURL := "/bzz/" + addr + "/" + path
 			if len(values) > 0 {
 				return baseURL + "?" + values.Encode()
@@ -835,7 +831,6 @@ func TestFeedIndirection(t *testing.T) {
 
 	t.Run("legacy feed", func(t *testing.T) {
 		feedUpdate := toChunk(t, 121212, resp.Reference.Bytes())
-
 		var (
 			look    = newMockLookup(-1, 0, feedUpdate, nil, &id{}, nil)
 			factory = newMockFactory(look)
@@ -846,16 +841,15 @@ func TestFeedIndirection(t *testing.T) {
 			Feeds:  factory,
 		})
 
-		jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(manifRef.String(), "", true), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(manifRef.String(), ""), http.StatusOK,
 			jsonhttptest.WithExpectedResponse(updateData),
 			jsonhttptest.WithExpectedContentLength(len(updateData)),
 			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.SwarmFeedIndexHeader),
 			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.ContentDispositionHeader),
 			jsonhttptest.WithExpectedResponseHeader(api.ContentDispositionHeader, `inline; filename="index.html"`),
 			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "text/html; charset=utf-8"),
+			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedResolvedVersionHeader, "v1"),
 		)
-
-		jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(manifRef.String(), "", false), http.StatusNotFound)
 	})
 
 	t.Run("wrapped feed", func(t *testing.T) {
@@ -876,16 +870,15 @@ func TestFeedIndirection(t *testing.T) {
 			Feeds:  factory,
 		})
 
-		jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(manifRef.String(), "", false), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(manifRef.String(), ""), http.StatusOK,
 			jsonhttptest.WithExpectedResponse(updateData),
 			jsonhttptest.WithExpectedContentLength(len(updateData)),
 			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.SwarmFeedIndexHeader),
 			jsonhttptest.WithExpectedResponseHeader(api.AccessControlExposeHeaders, api.ContentDispositionHeader),
 			jsonhttptest.WithExpectedResponseHeader(api.ContentDispositionHeader, `inline; filename="index.html"`),
 			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "text/html; charset=utf-8"),
+			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedResolvedVersionHeader, "v2"),
 		)
-
-		jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(manifRef.String(), "", true), http.StatusBadRequest)
 	})
 }
 
@@ -1184,4 +1177,145 @@ func TestBzzDownloadHeaders(t *testing.T) {
 		jsonhttptest.WithExpectedResponseHeader(api.ContentDispositionHeader, `inline; filename="index.html"`),
 		jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "text/html; charset=utf-8"),
 	)
+}
+
+func TestBzzUploadRedundancyLevel(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{
+		Storer: mockstorer.New(),
+		Post:   mockpost.New(mockpost.WithAcceptAll()),
+	})
+
+	const maxValidLevel = redundancy.PARANOID
+
+	tests := []struct {
+		name  string
+		level int
+		want  *jsonhttp.StatusResponse
+	}{
+		{"minimum level (NONE) is valid", int(redundancy.NONE), nil},
+		{"maximum valid level (PARANOID) is valid", int(maxValidLevel), nil},
+		{
+			"level below minimum is invalid", int(-1),
+			&jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid header params",
+				Reasons: []jsonhttp.Reason{
+					{
+						Field: "Swarm-Redundancy-Level",
+						Error: "invalid syntax",
+					},
+				},
+			},
+		},
+		{
+			"level above maximum is invalid", int(maxValidLevel + 1),
+			&jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid header params",
+				Reasons: []jsonhttp.Reason{
+					{
+						Field: "swarm-redundancy-level",
+						Error: fmt.Sprintf("want redundancy level to be between %d and %d", int(redundancy.NONE), int(redundancy.PARANOID)),
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := []jsonhttptest.Option{
+				jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "text/plain"),
+				jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+				jsonhttptest.WithRequestHeader(api.SwarmRedundancyLevelHeader, strconv.Itoa(tt.level)),
+				jsonhttptest.WithRequestBody(bytes.NewReader([]byte("test"))),
+			}
+			var statusCode int
+			if tt.want == nil {
+				statusCode = http.StatusCreated
+			} else {
+				statusCode = tt.want.Code
+				opts = append(opts, jsonhttptest.WithExpectedJSONResponse(*tt.want))
+			}
+			jsonhttptest.Request(t, client, http.MethodPost, "/bzz", statusCode, opts...)
+		})
+	}
+}
+
+func TestBzzDownloadRedundancyLevel(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{
+		Storer: mockstorer.New(),
+		Post:   mockpost.New(mockpost.WithAcceptAll()),
+	})
+
+	testData := []byte("test download redundancy level")
+	var resp api.BzzUploadResponse
+	jsonhttptest.Request(t, client, http.MethodPost, "/bzz", http.StatusCreated,
+		jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "text/plain"),
+		jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+		jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+		jsonhttptest.WithRequestBody(bytes.NewReader(testData)),
+		jsonhttptest.WithUnmarshalJSONResponse(&resp),
+	)
+
+	const maxValidLevel = redundancy.PARANOID
+
+	tests := []struct {
+		name  string
+		level int
+		want  *jsonhttp.StatusResponse
+	}{
+		{"minimum level (NONE) is valid", int(redundancy.NONE), nil},
+		{"maximum valid level (PARANOID) is valid", int(maxValidLevel), nil},
+		{
+			"level below minimum is invalid", int(-1),
+			&jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid header params",
+				Reasons: []jsonhttp.Reason{
+					{
+						Field: "Swarm-Redundancy-Level",
+						Error: "invalid syntax",
+					},
+				},
+			},
+		},
+		{
+			"level above maximum is invalid", int(maxValidLevel + 1),
+			&jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid header params",
+				Reasons: []jsonhttp.Reason{
+					{
+						Field: "swarm-redundancy-level",
+						Error: fmt.Sprintf("want redundancy level to be between %d and %d", int(redundancy.NONE), int(redundancy.PARANOID)),
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := []jsonhttptest.Option{
+				jsonhttptest.WithRequestHeader(api.SwarmRedundancyLevelHeader, strconv.Itoa(tt.level)),
+			}
+			var statusCode int
+			if tt.want == nil {
+				statusCode = http.StatusOK
+				opts = append(opts,
+					jsonhttptest.WithExpectedResponse(testData),
+				)
+			} else {
+				statusCode = tt.want.Code
+				opts = append(opts, jsonhttptest.WithExpectedJSONResponse(*tt.want))
+			}
+			jsonhttptest.Request(t, client, http.MethodGet, "/bzz/"+resp.Reference.String(), statusCode, opts...)
+		})
+	}
 }

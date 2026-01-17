@@ -97,17 +97,20 @@ func newResourceManager(bootnodes []string, allowPrivateCIDRs bool) (network.Res
 		SubnetRateLimiter: libp2prate.SubnetLimiter{
 			IPv4SubnetLimits: []libp2prate.SubnetLimit{
 				{
-					PrefixLength: 32, // Per IP
+					PrefixLength: 32, // Apply limits per individual IPv4 address (/32)
 					// Allow 10 connection attempts per second per IP, burst up to 40
 					Limit: libp2prate.Limit{RPS: 10.0, Burst: 40},
 				},
 			},
 			IPv6SubnetLimits: []libp2prate.SubnetLimit{
 				{
-					PrefixLength: 56, // Per Subnet
-					Limit:        libp2prate.Limit{RPS: 10.0, Burst: 40},
+					PrefixLength: 56, // Apply limits per /56 IPv6 subnet
+					// Allow 10 connection attempts per second per IP, burst up to 40
+					// Subnet-level limiting prevents flooding from multiple addresses in the same block.
+					Limit: libp2prate.Limit{RPS: 10.0, Burst: 40},
 				},
 			},
+			// Duration to retain state for an IP or subnet after it becomes inactive.
 			GracePeriod: 10 * time.Second,
 		},
 	}

@@ -93,9 +93,20 @@ func FromChunk(ch swarm.Chunk) (swarm.Chunk, error) {
 // legacyPayload returns back the referenced chunk and datetime from the legacy feed payload
 func legacyPayload(wrappedChunk swarm.Chunk) (swarm.Address, error) {
 	cacData := wrappedChunk.Data()
-	if len(cacData) != 16+swarm.HashSize && len(cacData) != 16+swarm.HashSize*2 {
+	if !isV1Length(len(cacData)) {
 		return swarm.ZeroAddress, ErrNotLegacyPayload
 	}
-
 	return swarm.NewAddress(cacData[16:]), nil
+}
+
+func IsV1Payload(ch swarm.Chunk) (bool, error) {
+	cc, err := FromChunk(ch)
+	if err != nil {
+		return false, err
+	}
+	return isV1Length(len(cc.Data())), nil
+}
+
+func isV1Length(length int) bool {
+	return length == 16+swarm.HashSize || length == 16+swarm.HashSize*2
 }

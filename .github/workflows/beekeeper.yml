@@ -158,6 +158,9 @@ jobs:
       - name: Test manifest
         id: manifest
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-manifest
+      - name: Test manifest v1
+        id: manifest-v1
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-manifest-v1
       - name: Test postage stamps
         id: postage-stamps
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks ci-postage
@@ -173,6 +176,9 @@ jobs:
       - name: Test act
         id: act
         run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks ci-act; do echo "waiting for act..."; sleep .3; done'
+      - name: Test feeds v1
+        id: feeds-v1
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-feed-v1
       - name: Test feeds
         id: feeds
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-feed
@@ -190,6 +196,9 @@ jobs:
           if ${{ steps.pushsync-chunks-2.outcome=='failure' }}; then FAILED=pushsync-chunks-2; fi
           if ${{ steps.retrieval.outcome=='failure' }}; then FAILED=retrieval; fi
           if ${{ steps.manifest.outcome=='failure' }}; then FAILED=manifest; fi
+          if ${{ steps.manifest-v1.outcome=='failure' }}; then FAILED=manifest-v1; fi
+          if ${{ steps.feeds.outcome=='failure' }}; then FAILED=feeds; fi
+          if ${{ steps.feeds-v1.outcome=='failure' }}; then FAILED=feeds-v1; fi
           if ${{ steps.act.outcome=='failure' }}; then FAILED=act; fi
           curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Error\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebugging artifacts: [click](https://$BUCKET_NAME.$AWS_ENDPOINT/artifacts_$VERTAG.tar.gz)\nStep failed: \`${FAILED}\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
           echo "Failed test: ${FAILED}"
