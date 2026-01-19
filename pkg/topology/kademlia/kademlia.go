@@ -827,11 +827,10 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 
 			if err != nil {
 				if !errors.Is(err, p2p.ErrAlreadyConnected) {
-					k.logger.Debug("connect to bootnode failed", "bootnode_address", addr, "error", err)
-					k.logger.Warning("connect to bootnode failed", "bootnode_address", addr)
+					k.logger.Error(err, "connect to bootnode failed", "bootnode_address", addr)
 					return false, err
 				}
-				k.logger.Debug("connect to bootnode failed", "bootnode_address", addr, "error", err)
+				k.logger.Debug("bootnode already connected", "bootnode_address", addr)
 				return false, nil
 			}
 
