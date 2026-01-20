@@ -183,6 +183,9 @@ jobs:
       - name: Test feeds
         id: feeds
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-feed
+      - name: Test autotls
+        id: autotls
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-autotls
       - name: Collect debug artifacts
         if: failure()
         run: |
