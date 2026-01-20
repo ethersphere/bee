@@ -13,11 +13,12 @@ env:
   RUN_TYPE: "PR RUN"
   SETUP_CONTRACT_IMAGE: "ethersphere/bee-localchain"
   SETUP_CONTRACT_IMAGE_TAG: "0.9.4"
-  BEELOCAL_BRANCH: "main"
-  BEEKEEPER_BRANCH: "master"
+  BEELOCAL_BRANCH: "feat/p2p-wss-support-v2"
+  BEEKEEPER_BRANCH: "feat/autotls-check"
   BEEKEEPER_METRICS_ENABLED: false
   REACHABILITY_OVERRIDE_PUBLIC: true
   BATCHFACTOR_OVERRIDE_PUBLIC: 2
+  P2P_WSS_ENABLE: true
   TIMEOUT: 30m
   BUCKET_NAME: swarm-beekeeper-artifacts
   AWS_ACCESS_KEY_ID: ${{ secrets.DO_AWS_ACCESS_KEY_ID }}
