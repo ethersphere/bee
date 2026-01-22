@@ -251,3 +251,25 @@ func isNetworkOrHostUnreachableError(err error) bool {
 	}
 	return false
 }
+
+// determineCurrentNetworkStatus determines if the network
+// is available/unavailable based on the given error, and
+// returns ErrNetworkUnavailable if unavailable.
+// The result of this operation is stored and can be reflected
+// in the results of future NetworkStatus method calls.
+func (s *Service) determineCurrentNetworkStatus(err error) error {
+	switch {
+	case err == nil:
+		s.networkStatus.Store(int32(p2p.NetworkStatusAvailable))
+	case errors.Is(err, lp2pswarm.ErrDialBackoff):
+		if s.NetworkStatus() == p2p.NetworkStatusUnavailable {
+			err = errors.Join(err, p2p.ErrNetworkUnavailable)
+		}
+	case isNetworkOrHostUnreachableError(err):
+		s.networkStatus.Store(int32(p2p.NetworkStatusUnavailable))
+		err = errors.Join(err, p2p.ErrNetworkUnavailable)
+	default:
+		err = fmt.Errorf("network status unknown: %w", err)
+	}
+	return err
+}

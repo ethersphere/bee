@@ -367,16 +367,18 @@ func NewBee(
 	}
 
 	// Sync the with the given Ethereum backend:
-	isSynced, _, err := transaction.IsSynced(ctx, chainBackend, maxDelay)
-	if err != nil {
-		return nil, fmt.Errorf("is synced: %w", err)
-	}
-	if !isSynced {
-		logger.Info("waiting to sync with the blockchain backend")
-
-		err := transaction.WaitSynced(ctx, logger, chainBackend, maxDelay)
+	if chainEnabled {
+		isSynced, _, err := transaction.IsSynced(ctx, chainBackend, maxDelay)
 		if err != nil {
-			return nil, fmt.Errorf("waiting backend sync: %w", err)
+			return nil, fmt.Errorf("is synced: %w", err)
+		}
+		if !isSynced {
+			logger.Info("waiting to sync with the blockchain backend")
+
+			err := transaction.WaitSynced(ctx, logger, chainBackend, maxDelay)
+			if err != nil {
+				return nil, fmt.Errorf("waiting backend sync: %w", err)
+			}
 		}
 	}
 
@@ -614,7 +616,7 @@ func NewBee(
 		return nil, fmt.Errorf("pingpong service: %w", err)
 	}
 
-	hive := hive.New(p2ps, addressbook, networkID, o.BootnodeMode, o.AllowPrivateCIDRs, logger)
+	hive := hive.New(p2ps, addressbook, networkID, o.BootnodeMode, o.AllowPrivateCIDRs, swarmAddress, logger)
 
 	if err = p2ps.AddProtocol(hive.Protocol()); err != nil {
 		return nil, fmt.Errorf("hive service: %w", err)
