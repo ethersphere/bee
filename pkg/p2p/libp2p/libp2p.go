@@ -655,11 +655,13 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		return
 	}
 
+	bee260Compat := s.bee260BackwardCompatibility(peerID)
+
 	i, err := s.handshakeService.Handle(
 		s.ctx,
 		handshakeStream,
 		peerMultiaddrs,
-		handshake.WithBee260Compatibility(s.bee260BackwardCompatibility(peerID)),
+		handshake.WithBee260Compatibility(bee260Compat),
 	)
 	if err != nil {
 		s.logger.Debug("stream handler: handshake: handle failed", "peer_id", peerID, "error", err)
@@ -1070,11 +1072,13 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		return nil, fmt.Errorf("build peer multiaddrs: %w", err)
 	}
 
+	bee260Compat := s.bee260BackwardCompatibility(peerID)
+
 	i, err := s.handshakeService.Handshake(
 		s.ctx,
 		handshakeStream,
 		peerMultiaddrs,
-		handshake.WithBee260Compatibility(s.bee260BackwardCompatibility(peerID)),
+		handshake.WithBee260Compatibility(bee260Compat),
 	)
 	if err != nil {
 		_ = handshakeStream.Reset()
@@ -1484,7 +1488,16 @@ func (s *Service) bee260BackwardCompatibility(peerID libp2ppeer.ID) bool {
 	if err != nil {
 		return false
 	}
-	return v.LessThan(version270)
+
+	// Compare major.minor.patch only (ignore pre-release)
+	// This way 2.7.0-rc12 is treated as >= 2.7.0
+	vCore, err := semver.NewVersion(fmt.Sprintf("%d.%d.%d", v.Major, v.Minor, v.Patch))
+	if err != nil {
+		return false
+	}
+	result := vCore.LessThan(version270)
+	s.logger.Debug("bee version compatibility check", "peer_id", peerID, "version", version, "backward_compat", result)
+	return result
 }
 
 // appendSpace adds a leading space character if the string is not empty.
