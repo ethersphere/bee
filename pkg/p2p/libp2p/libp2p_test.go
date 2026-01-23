@@ -88,14 +88,11 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 	// If emptyUnderlays is set, use a custom host factory that creates a host with no listen addresses
 	// This simulates an inbound-only peer (browser, WebRTC connection, strict NAT)
 	if o.emptyUnderlays {
-		opts = libp2p.WithHostFactory(
-			func(hostOpts ...libp2pm.Option) (host.Host, error) {
-				// Add NoListenAddrs option to prevent the host from listening on any addresses
-				hostOpts = append(hostOpts, libp2pm.NoListenAddrs)
-				return libp2pm.New(hostOpts...)
-			},
-		)
-		opts.Nonce = nonce
+		libp2p.SetHostFactory(&opts, func(hostOpts ...libp2pm.Option) (host.Host, error) {
+			// Add NoListenAddrs option to prevent the host from listening on any addresses
+			hostOpts = append(hostOpts, libp2pm.NoListenAddrs)
+			return libp2pm.New(hostOpts...)
+		})
 	}
 
 	if o.autoTLSCertManager != nil {

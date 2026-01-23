@@ -1579,16 +1579,18 @@ func TestAddressbookPersistence(t *testing.T) {
 
 		ctx := t.Context()
 
-		ab := addressbook.New(mock.NewStateStore())
+		ab1 := addressbook.New(mock.NewStateStore())
+		ab2 := addressbook.New(mock.NewStateStore())
 
 		s1, overlay1 := newService(t, 1, libp2pServiceOpts{
+			Addressbook: ab1,
 			libp2pOpts: libp2p.Options{
 				FullNode: true,
 			},
 		})
 
 		s2, overlay2 := newService(t, 1, libp2pServiceOpts{
-			Addressbook:    ab,
+			Addressbook:    ab2,
 			emptyUnderlays: true,
 			libp2pOpts: libp2p.Options{
 				FullNode: true,
@@ -1611,12 +1613,18 @@ func TestAddressbookPersistence(t *testing.T) {
 		expectPeersEventually(t, s1, overlay2)
 
 		// Verify s1 (has underlays) is persisted in s2's addressbook
-		addr, err := ab.Get(overlay1)
+		addr, err := ab2.Get(overlay1)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if !containsAtLeastOne(addr.Underlays, s1Addrs) {
 			t.Fatalf("expected at least one of s1's addresses %v in addressbook, got %v", s1Addrs, addr.Underlays)
+		}
+
+		// Verify s2 (empty underlays) is NOT persisted in s1's addressbook
+		_, err = ab1.Get(overlay2)
+		if err == nil {
+			t.Fatal("expected s2 (inbound-only peer with empty underlays) not to be persisted in s1's addressbook")
 		}
 	})
 }
