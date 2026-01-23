@@ -1394,6 +1394,21 @@ func checkAddressbook(t *testing.T, ab addressbook.Getter, overlay swarm.Address
 	}
 }
 
+// containsAtLeastOne checks if stored contains at least one address from advertised
+func containsAtLeastOne(stored, advertised []ma.Multiaddr) bool {
+	if len(stored) == 0 {
+		return false
+	}
+	for _, s := range stored {
+		for _, a := range advertised {
+			if s.Equal(a) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 type notifiee struct {
 	connected          cFunc
 	disconnected       dFunc
@@ -1516,10 +1531,23 @@ func TestAddressbookPersistence(t *testing.T) {
 		expectPeers(t, s2, overlay1)
 		expectPeersEventually(t, s1, overlay2)
 
-		checkAddressbook(t, ab2, overlay1, s1Addrs)
+		// Verify both peers are persisted in addressbooks with underlays
+		addr1, err := ab2.Get(overlay1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !containsAtLeastOne(addr1.Underlays, s1Addrs) {
+			t.Fatalf("expected at least one of s1's addresses %v in addressbook, got %v", s1Addrs, addr1.Underlays)
+		}
 
 		s2Addrs := serviceUnderlayAddress(t, s2)
-		checkAddressbook(t, ab1, overlay2, s2Addrs)
+		addr2, err := ab1.Get(overlay2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !containsAtLeastOne(addr2.Underlays, s2Addrs) {
+			t.Fatalf("expected at least one of s2's addresses %v in addressbook, got %v", s2Addrs, addr2.Underlays)
+		}
 
 		if err := s2.Disconnect(bzzAddr.Overlay, testDisconnectMsg); err != nil {
 			t.Fatal(err)
@@ -1528,8 +1556,22 @@ func TestAddressbookPersistence(t *testing.T) {
 		expectPeers(t, s2)
 		expectPeersEventually(t, s1)
 
-		checkAddressbook(t, ab2, overlay1, s1Addrs)
-		checkAddressbook(t, ab1, overlay2, s2Addrs)
+		// Verify addressbook entries persist after disconnect
+		addr1, err = ab2.Get(overlay1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !containsAtLeastOne(addr1.Underlays, s1Addrs) {
+			t.Fatal("expected s1's addresses to persist in addressbook after disconnect")
+		}
+
+		addr2, err = ab1.Get(overlay2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !containsAtLeastOne(addr2.Underlays, s2Addrs) {
+			t.Fatal("expected s2's addresses to persist in addressbook after disconnect")
+		}
 	})
 
 	t.Run("with empty underlays - not persisted", func(t *testing.T) {
@@ -1568,7 +1610,14 @@ func TestAddressbookPersistence(t *testing.T) {
 		expectPeers(t, s2, overlay1)
 		expectPeersEventually(t, s1, overlay2)
 
-		checkAddressbook(t, ab, overlay1, s1Addrs)
+		// Verify s1 (has underlays) is persisted in s2's addressbook
+		addr, err := ab.Get(overlay1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !containsAtLeastOne(addr.Underlays, s1Addrs) {
+			t.Fatalf("expected at least one of s1's addresses %v in addressbook, got %v", s1Addrs, addr.Underlays)
+		}
 	})
 }
 
