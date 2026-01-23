@@ -100,7 +100,38 @@ func (s *Service) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	s.wsWg.Add(1)
-	go s.handleUploadStream(logger, wsConn, putter, tag)
+	var decode chunkDecoder
+	if len(headers.BatchID) > 0 {
+		decode = decodeChunkWithoutStamp
+	} else {
+		decode = decodeChunkWithStamp
+	}
+	go s.handleUploadStream(logger, wsConn, putter, tag, decode)
+}
+
+// chunkDecoder extracts chunk data and optionally a stamp from a websocket message.
+// When BatchID is provided in headers, decodeChunkWithoutStamp is used (no stamp in message).
+// When BatchID is not provided, decodeChunkWithStamp is used (stamp prepended to chunk data).
+type chunkDecoder func(msg []byte) (chunkData []byte, stamp *postage.Stamp, err error)
+
+// decodeChunkWithoutStamp returns the message as-is (used when BatchID provided in headers).
+func decodeChunkWithoutStamp(msg []byte) ([]byte, *postage.Stamp, error) {
+	return msg, nil, nil
+}
+
+// decodeChunkWithStamp extracts a stamp from the first 113 bytes of the message.
+// Returns an error if the message is too small or the stamp is invalid.
+func decodeChunkWithStamp(msg []byte) ([]byte, *postage.Stamp, error) {
+	if len(msg) < postage.StampSize+swarm.SpanSize {
+		return nil, nil, errors.New("message too small for stamp + chunk")
+	}
+
+	stamp := &postage.Stamp{}
+	if err := stamp.UnmarshalBinary(msg[:postage.StampSize]); err != nil {
+		return nil, nil, errors.New("invalid stamp")
+	}
+
+	return msg[postage.StampSize:], stamp, nil
 }
 
 func (s *Service) handleUploadStream(
@@ -108,6 +139,7 @@ func (s *Service) handleUploadStream(
 	conn *websocket.Conn,
 	putter storer.PutterSession,
 	tag uint64,
+	decode chunkDecoder,
 ) {
 	defer s.wsWg.Done()
 
@@ -208,98 +240,60 @@ func (s *Service) handleUploadStream(
 			return
 		}
 
-		logger.Debug("chunk upload stream",
-			"message_size", len(msg),
-			"stamp_size", postage.StampSize,
-			"first_8_bytes", msg[:8])
+		// Decode the message using the appropriate decoder
+		chunkData, stamp, err := decode(msg)
+		if err != nil {
+			logger.Debug("chunk upload stream: decode failed", "error", err)
+			logger.Error(nil, "chunk upload stream: "+err.Error())
+			sendErrorClose(websocket.CloseInternalServerErr, err.Error())
+			return
+		}
 
-		// Check if this message contains a per-chunk stamp prepended to the chunk data
-		// Format: stamp[113 bytes] + chunk[data]
+		// Determine the putter to use
 		var (
 			chunk       swarm.Chunk
-			chunkPutter = putter // default to connection-level putter
-			chunkData   = msg
+			chunkPutter = putter
 		)
 
-		// If message is large enough to contain a stamp + chunk data, try to extract the stamp
-		if len(msg) >= postage.StampSize+swarm.SpanSize {
-			potentialStamp := msg[:postage.StampSize]
-			potentialChunkData := msg[postage.StampSize:]
+		// If stamp was extracted, create a per-chunk putter
+		if stamp != nil {
+			batchID := stamp.BatchID()
+			batchIDHex := string(batchID)
 
-			logger.Debug("chunk upload stream: attempting to extract stamp",
-				"message_size", len(msg),
-				"stamp_size", postage.StampSize,
-				"potential_stamp_len", len(potentialStamp),
-				"potential_chunk_len", len(potentialChunkData),
-				"first_8_bytes", msg[:8])
-
-			// Try to unmarshal as a stamp
-			stamp := postage.Stamp{}
-			if err := stamp.UnmarshalBinary(potentialStamp); err == nil {
-				// Valid stamp found - validate using cached batch info
-				batchID := stamp.BatchID()
-				batchIDHex := string(batchID) // Use batch ID bytes as map key
-				logger.Debug("chunk upload stream: per-chunk stamp detected", "batch_id", batchID, "chunk_size", len(potentialChunkData))
-
-				// Check if we already have cached batch info
-				storedBatch, exists := batchCache[batchIDHex]
-				if !exists {
-					// Fetch and cache batch info
-					storedBatch, err = s.batchStore.Get(stamp.BatchID())
-					if err != nil {
-						logger.Debug("chunk upload stream: batch validation failed", "error", err)
-						logger.Error(nil, "chunk upload stream: batch validation failed")
-						if errors.Is(err, storage.ErrNotFound) {
-							sendErrorClose(websocket.CloseInternalServerErr, "batch not found")
-						} else {
-							sendErrorClose(websocket.CloseInternalServerErr, "batch validation failed")
-						}
-						return
-					}
-					batchCache[batchIDHex] = storedBatch
-					logger.Debug("chunk upload stream: cached batch info", "batch_id", batchIDHex)
-				}
-
-				// Create a stamped putter using cached batch info
-				// This skips the expensive database lookup
-				chunkPutter, err = s.newStampedPutterWithBatch(ctx, putterOptions{
-					BatchID:  stamp.BatchID(),
-					TagID:    tag,
-					Deferred: tag != 0,
-				}, &stamp, storedBatch)
+			storedBatch, exists := batchCache[batchIDHex]
+			if !exists {
+				storedBatch, err = s.batchStore.Get(batchID)
 				if err != nil {
-					logger.Debug("chunk upload stream: failed to create stamped putter", "error", err)
-					logger.Error(nil, "chunk upload stream: failed to create stamped putter")
-					switch {
-					case errors.Is(err, errBatchUnusable) || errors.Is(err, postage.ErrNotUsable):
-						sendErrorClose(websocket.CloseInternalServerErr, "batch not usable")
-					case errors.Is(err, postage.ErrNotFound):
+					logger.Debug("chunk upload stream: batch validation failed", "error", err)
+					logger.Error(nil, "chunk upload stream: batch validation failed")
+					if errors.Is(err, storage.ErrNotFound) {
 						sendErrorClose(websocket.CloseInternalServerErr, "batch not found")
-					default:
-						sendErrorClose(websocket.CloseInternalServerErr, "stamped putter creation failed")
+					} else {
+						sendErrorClose(websocket.CloseInternalServerErr, "batch validation failed")
 					}
 					return
 				}
-
-				// Use the chunk data without the stamp
-				chunkData = potentialChunkData
-			} else {
-				// Stamp unmarshal failed - log for debugging
-				logger.Debug("chunk upload stream: stamp unmarshal failed, treating message as unstamped chunk",
-					"error", err,
-					"message_size", len(msg),
-					"stamp_size_expected", postage.StampSize,
-					"potential_stamp_len", len(potentialStamp))
+				batchCache[batchIDHex] = storedBatch
 			}
-			// If unmarshal failed, fall through to use the whole message as chunk data
-		}
 
-		// If we don't have a putter at this point, the client must provide per-chunk stamps
-		if chunkPutter == nil {
-			logger.Debug("chunk upload stream: no stamp provided")
-			logger.Error(nil, "chunk upload stream: no batch ID in headers and no per-chunk stamp in message")
-			sendErrorClose(websocket.CloseInternalServerErr, "batch ID or per-chunk stamp required")
-			return
+			chunkPutter, err = s.newStampedPutterWithBatch(ctx, putterOptions{
+				BatchID:  batchID,
+				TagID:    tag,
+				Deferred: tag != 0,
+			}, stamp, storedBatch)
+			if err != nil {
+				logger.Debug("chunk upload stream: failed to create stamped putter", "error", err)
+				logger.Error(nil, "chunk upload stream: failed to create stamped putter")
+				switch {
+				case errors.Is(err, errBatchUnusable) || errors.Is(err, postage.ErrNotUsable):
+					sendErrorClose(websocket.CloseInternalServerErr, "batch not usable")
+				case errors.Is(err, postage.ErrNotFound):
+					sendErrorClose(websocket.CloseInternalServerErr, "batch not found")
+				default:
+					sendErrorClose(websocket.CloseInternalServerErr, "stamped putter creation failed")
+				}
+				return
+			}
 		}
 
 		chunk, err = cac.NewWithDataSpan(chunkData)
