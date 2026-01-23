@@ -23,6 +23,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/v2/pkg/util/testutil"
+	libp2pm "github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/multiformats/go-multiaddr"
 )
 
@@ -35,6 +37,7 @@ type libp2pServiceOpts struct {
 	lightNodes         *lightnode.Container
 	notifier           p2p.PickyNotifier
 	autoTLSCertManager libp2p.AutoTLSCertManager
+	emptyUnderlays     bool // If true, create a service that advertises no underlay addresses
 }
 
 // newService constructs a new libp2p service.
@@ -81,6 +84,19 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 	}
 	opts := o.libp2pOpts
 	opts.Nonce = nonce
+
+	// If emptyUnderlays is set, use a custom host factory that creates a host with no listen addresses
+	// This simulates an inbound-only peer (browser, WebRTC connection, strict NAT)
+	if o.emptyUnderlays {
+		opts = libp2p.WithHostFactory(
+			func(hostOpts ...libp2pm.Option) (host.Host, error) {
+				// Add NoListenAddrs option to prevent the host from listening on any addresses
+				hostOpts = append(hostOpts, libp2pm.NoListenAddrs)
+				return libp2pm.New(hostOpts...)
+			},
+		)
+		opts.Nonce = nonce
+	}
 
 	if o.autoTLSCertManager != nil {
 		libp2p.SetAutoTLSCertManager(&opts, o.autoTLSCertManager)

@@ -806,7 +806,6 @@ func (s *Service) notifyReacherConnected(overlay swarm.Address, peerID libp2ppee
 	peerAddrs := s.host.Peerstore().Addrs(peerID)
 	bestAddr := bzz.SelectBestAdvertisedAddress(peerAddrs, nil)
 
-	// Skip reacher notification for peers with no advertisable addresses (inbound-only peers)
 	if bestAddr == nil {
 		s.logger.Debug("skipping reacher notification for inbound-only peer", "peer_id", peerID, "overlay", overlay)
 		return
