@@ -1480,6 +1480,7 @@ func (s *Service) peerMultiaddrs(ctx context.Context, peerID libp2ppeer.ID) ([]m
 func (s *Service) IsBee260(overlay swarm.Address) bool {
 	peerID, found := s.peers.peerID(overlay)
 	if !found {
+		s.logger.Debug("INVESTIGATION: IsBee260: peer not found", "overlay", overlay)
 		return false
 	}
 	return s.bee260BackwardCompatibility(peerID)
@@ -1491,11 +1492,13 @@ func (s *Service) bee260BackwardCompatibility(peerID libp2ppeer.ID) bool {
 	userAgent := s.peerUserAgent(s.ctx, peerID)
 	p := strings.SplitN(userAgent, " ", 2)
 	if len(p) != 2 {
+		s.logger.Debug("INVESTIGATION: IsBee260: len(p) != 2", "peerID", peerID, "userAgent", userAgent, "p", p)
 		return false
 	}
 	version := strings.TrimPrefix(p[0], "bee/")
 	v, err := semver.NewVersion(version)
 	if err != nil {
+		s.logger.Debug("INVESTIGATION: IsBee260: semver.NewVersion error", "peerID", peerID, "userAgent", userAgent, "version", version, "error", err)
 		return false
 	}
 
@@ -1503,9 +1506,11 @@ func (s *Service) bee260BackwardCompatibility(peerID libp2ppeer.ID) bool {
 	// This way 2.7.0-rc12 is treated as >= 2.7.0
 	vCore, err := semver.NewVersion(fmt.Sprintf("%d.%d.%d", v.Major, v.Minor, v.Patch))
 	if err != nil {
+		s.logger.Debug("INVESTIGATION: IsBee260: vCore error", "peerID", peerID, "userAgent", userAgent, "version", version, "error", err)
 		return false
 	}
 	result := vCore.LessThan(version270)
+	s.logger.Debug("INVESTIGATION: IsBee260: result", "peerID", peerID, "userAgent", userAgent, "version", version, "vCore", vCore, "version270", version270, "result", result)
 	return result
 }
 
