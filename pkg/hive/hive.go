@@ -196,7 +196,9 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 			continue
 		}
 
+		s.logger.Debug("INVESTIGATION: filtering advertisable underlays", "peer_address", p, "is_bee260", s.streamer.IsBee260(p), "underlays", advertisableUnderlays)
 		advertisableUnderlays = p2p.FilterBee260CompatibleUnderlays(s.streamer.IsBee260(p), advertisableUnderlays)
+		s.logger.Debug("INVESTIGATION: after filtering advertisable underlays", "peer_address", p, "is_bee260", s.streamer.IsBee260(p), "underlays", advertisableUnderlays)
 
 		peersRequest.Peers = append(peersRequest.Peers, &pb.BzzAddress{
 			Overlay:   addr.Overlay.Bytes(),
