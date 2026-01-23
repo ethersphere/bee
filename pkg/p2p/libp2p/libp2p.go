@@ -1496,7 +1496,6 @@ func (s *Service) bee260BackwardCompatibility(peerID libp2ppeer.ID) bool {
 		return false
 	}
 	result := vCore.LessThan(version270)
-	s.logger.Debug("bee version compatibility check", "peer_id", peerID, "version", version, "backward_compat", result)
 	return result
 }
 
