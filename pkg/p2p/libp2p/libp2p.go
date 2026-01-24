@@ -706,7 +706,9 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		return
 	}
 
-	if i.FullNode {
+	// Only persist peers with underlays to addressbook. Inbound-only peers (empty underlays)
+	// cannot be dialed back, so there's no point in storing them for reconnection.
+	if i.FullNode && len(i.BzzAddress.Underlays) > 0 {
 		err = s.addressbook.Put(i.BzzAddress.Overlay, *i.BzzAddress)
 		if err != nil {
 			s.logger.Debug("stream handler: addressbook put error", "peer_id", peerID, "error", err)
@@ -805,6 +807,11 @@ func (s *Service) notifyReacherConnected(overlay swarm.Address, peerID libp2ppee
 
 	peerAddrs := s.host.Peerstore().Addrs(peerID)
 	bestAddr := bzz.SelectBestAdvertisedAddress(peerAddrs, nil)
+
+	if bestAddr == nil {
+		s.logger.Debug("skipping reacher notification for inbound-only peer", "peer_id", peerID, "overlay", overlay)
+		return
+	}
 
 	s.logger.Debug("selected reacher address", "peer_id", peerID, "selected_addr", bestAddr.String(), "advertised_count", len(peerAddrs))
 
@@ -1144,7 +1151,9 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		return nil, p2p.ErrPeerNotFound
 	}
 
-	if i.FullNode {
+	// Only persist peers with underlays to addressbook. Inbound-only peers (empty underlays)
+	// cannot be dialed back, so there's no point in storing them for reconnection.
+	if i.FullNode && len(i.BzzAddress.Underlays) > 0 {
 		err = s.addressbook.Put(overlay, *i.BzzAddress)
 		if err != nil {
 			_ = s.Disconnect(overlay, "failed storing peer in addressbook")
