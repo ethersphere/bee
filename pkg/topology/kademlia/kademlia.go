@@ -807,9 +807,6 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 	var attempts, connected int
 	totalAttempts := maxBootNodeAttempts * len(k.opt.Bootnodes)
 
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-
 	for _, addr := range k.opt.Bootnodes {
 		if attempts >= totalAttempts || connected >= 3 {
 			return
@@ -959,9 +956,6 @@ func (k *Kad) recalcDepth() {
 // as well as sends the peers we are connected to the newly connected peer
 func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma []ma.Multiaddr) error {
 	k.logger.Debug("attempting connect to peer", "peer_address", peer)
-
-	ctx, cancel := context.WithTimeout(ctx, peerConnectionAttemptTimeout)
-	defer cancel()
 
 	k.metrics.TotalOutboundConnectionAttempts.Inc()
 
