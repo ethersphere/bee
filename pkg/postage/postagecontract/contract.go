@@ -449,7 +449,7 @@ func (c *postageContract) TopUpBatch(ctx context.Context, batchID []byte, topupB
 	if err != nil {
 		return
 	}
-	
+
 	txHash = receipt.TxHash
 
 	for _, ev := range receipt.Logs {
