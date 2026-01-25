@@ -83,10 +83,9 @@ func ParseAddress(underlay, overlay, signature, nonce []byte, validateOverlay bo
 		return nil, fmt.Errorf("deserialize underlays: %w: %w", ErrInvalidAddress, err)
 	}
 
-	if len(multiUnderlays) == 0 {
-		// no underlays sent
-		return nil, ErrInvalidAddress
-	}
+	// Empty underlays are allowed for inbound-only peers (e.g., browsers, WebRTC, strict NAT)
+	// that cannot be dialed back. These peers can still use protocols over existing connections
+	// but won't participate in Kademlia topology or hive gossip.
 
 	ethAddress, err := crypto.NewEthereumAddress(*recoveredPK)
 	if err != nil {
@@ -144,10 +143,7 @@ func AreUnderlaysEqual(a, b []ma.Multiaddr) bool {
 }
 
 func (a *Address) MarshalJSON() ([]byte, error) {
-	if len(a.Underlays) == 0 {
-		return nil, fmt.Errorf("no underlays for %s", a.Overlay)
-	}
-
+	// Empty underlays are allowed for inbound-only peers that cannot be dialed back
 	// select the underlay address for backward compatibility
 	var underlay string
 	if v := SelectBestAdvertisedAddress(a.Underlays, nil); v != nil {
