@@ -447,9 +447,10 @@ func (c *postageContract) TopUpBatch(ctx context.Context, batchID []byte, topupB
 
 	receipt, err := c.sendTopUpBatchTransaction(ctx, batch.ID, topupBalance)
 	if err != nil {
-		txHash = receipt.TxHash
 		return
 	}
+	
+	txHash = receipt.TxHash
 
 	for _, ev := range receipt.Logs {
 		if ev.Address == c.postageStampContractAddress && len(ev.Topics) > 0 && ev.Topics[0] == c.batchTopUpTopic {
