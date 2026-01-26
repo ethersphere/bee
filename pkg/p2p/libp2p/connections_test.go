@@ -1394,6 +1394,21 @@ func checkAddressbook(t *testing.T, ab addressbook.Getter, overlay swarm.Address
 	}
 }
 
+// containsAtLeastOne checks if stored contains at least one address from advertised
+func containsAtLeastOne(stored, advertised []ma.Multiaddr) bool {
+	if len(stored) == 0 {
+		return false
+	}
+	for _, s := range stored {
+		for _, a := range advertised {
+			if s.Equal(a) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 type notifiee struct {
 	connected          cFunc
 	disconnected       dFunc
@@ -1476,6 +1491,143 @@ type (
 	reachabilityFunc func(p2p.ReachabilityStatus)
 	reachableFunc    func(swarm.Address, p2p.ReachabilityStatus)
 )
+
+// TestAddressbookPersistence verifies addressbook persistence behavior based on underlay presence
+func TestAddressbookPersistence(t *testing.T) {
+	t.Parallel()
+
+	t.Run("with underlays - persisted", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+
+		// Create addressbooks for both services
+		ab1, ab2 := addressbook.New(mock.NewStateStore()), addressbook.New(mock.NewStateStore())
+
+		// s1: Full node with underlays (dialable)
+		s1, overlay1 := newService(t, 1, libp2pServiceOpts{
+			Addressbook: ab1,
+			libp2pOpts: libp2p.Options{
+				FullNode: true,
+			},
+		})
+
+		// s2: Full node with underlays (dialable)
+		s2, overlay2 := newService(t, 1, libp2pServiceOpts{
+			Addressbook: ab2,
+			libp2pOpts: libp2p.Options{
+				FullNode: true,
+			},
+		})
+
+		s1Addrs := serviceUnderlayAddress(t, s1)
+
+		bzzAddr, err := s2.Connect(ctx, s1Addrs)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Verify connection established in both directions
+		expectPeers(t, s2, overlay1)
+		expectPeersEventually(t, s1, overlay2)
+
+		// Verify both peers are persisted in addressbooks with underlays
+		addr1, err := ab2.Get(overlay1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !containsAtLeastOne(addr1.Underlays, s1Addrs) {
+			t.Fatalf("expected at least one of s1's addresses %v in addressbook, got %v", s1Addrs, addr1.Underlays)
+		}
+
+		s2Addrs := serviceUnderlayAddress(t, s2)
+		addr2, err := ab1.Get(overlay2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !containsAtLeastOne(addr2.Underlays, s2Addrs) {
+			t.Fatalf("expected at least one of s2's addresses %v in addressbook, got %v", s2Addrs, addr2.Underlays)
+		}
+
+		if err := s2.Disconnect(bzzAddr.Overlay, testDisconnectMsg); err != nil {
+			t.Fatal(err)
+		}
+
+		expectPeers(t, s2)
+		expectPeersEventually(t, s1)
+
+		// Verify addressbook entries persist after disconnect
+		addr1, err = ab2.Get(overlay1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !containsAtLeastOne(addr1.Underlays, s1Addrs) {
+			t.Fatal("expected s1's addresses to persist in addressbook after disconnect")
+		}
+
+		addr2, err = ab1.Get(overlay2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !containsAtLeastOne(addr2.Underlays, s2Addrs) {
+			t.Fatal("expected s2's addresses to persist in addressbook after disconnect")
+		}
+	})
+
+	t.Run("with empty underlays - not persisted", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+
+		ab1 := addressbook.New(mock.NewStateStore())
+		ab2 := addressbook.New(mock.NewStateStore())
+
+		s1, overlay1 := newService(t, 1, libp2pServiceOpts{
+			Addressbook: ab1,
+			libp2pOpts: libp2p.Options{
+				FullNode: true,
+			},
+		})
+
+		s2, overlay2 := newService(t, 1, libp2pServiceOpts{
+			Addressbook:    ab2,
+			emptyUnderlays: true,
+			libp2pOpts: libp2p.Options{
+				FullNode: true,
+			},
+		})
+
+		s1Addrs := serviceUnderlayAddress(t, s1)
+
+		s2Addrs := serviceUnderlayAddress(t, s2)
+		if len(s2Addrs) != 0 {
+			t.Fatalf("expected s2 to have 0 underlay addresses, got %d", len(s2Addrs))
+		}
+
+		_, err := s2.Connect(ctx, s1Addrs)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		expectPeers(t, s2, overlay1)
+		expectPeersEventually(t, s1, overlay2)
+
+		// Verify s1 (has underlays) is persisted in s2's addressbook
+		addr, err := ab2.Get(overlay1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !containsAtLeastOne(addr.Underlays, s1Addrs) {
+			t.Fatalf("expected at least one of s1's addresses %v in addressbook, got %v", s1Addrs, addr.Underlays)
+		}
+
+		// Verify s2 (empty underlays) is NOT persisted in s1's addressbook
+		_, err = ab1.Get(overlay2)
+		if err == nil {
+			t.Fatal("expected s2 (inbound-only peer with empty underlays) not to be persisted in s1's addressbook")
+		}
+	})
+}
 
 var (
 	noopCf           = func(context.Context, p2p.Peer, bool) error { return nil }

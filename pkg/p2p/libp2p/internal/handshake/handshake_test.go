@@ -725,3 +725,147 @@ func (a *AdvertisableAddresserMock) Resolve(observedAddress ma.Multiaddr) (ma.Mu
 
 	return observedAddress, nil
 }
+
+// TestHandshakeWithEmptyUnderlays verifies that the handshake can successfully
+// parse a peer address with empty underlays (e.g., inbound-only peers like
+// browsers or peers behind strict NAT that cannot be dialed back).
+func TestHandshakeWithEmptyUnderlays(t *testing.T) {
+	t.Parallel()
+
+	logger := log.Noop
+	networkID := uint64(3)
+
+	// Node 1 has normal underlay addresses
+	node1ma, err := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/1634/p2p/16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkA")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	node1AddrInfo, err := libp2ppeer.AddrInfoFromP2pAddr(node1ma)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create private keys and signers
+	privateKey1, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	privateKey2, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nonce := common.HexToHash("0x1").Bytes()
+
+	signer1 := crypto.NewDefaultSigner(privateKey1)
+	signer2 := crypto.NewDefaultSigner(privateKey2)
+
+	// Create overlays
+	overlay1, err := crypto.NewOverlayAddress(privateKey1.PublicKey, networkID, nonce)
+	if err != nil {
+		t.Fatal(err)
+	}
+	overlay2, err := crypto.NewOverlayAddress(privateKey2.PublicKey, networkID, nonce)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Node 2: Inbound-only peer with EMPTY underlays (simulates browser/WebRTC peer)
+	node2BzzAddress, err := bzz.NewAddress(signer2, []ma.Multiaddr{}, overlay2, networkID, nonce)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify node2 has empty underlays
+	if len(node2BzzAddress.Underlays) != 0 {
+		t.Fatalf("expected node2 to have 0 underlays, got %d", len(node2BzzAddress.Underlays))
+	}
+
+	// Create handshake service for node1
+	handshakeService1, err := handshake.New(
+		signer1,
+		&AdvertisableAddresserMock{},
+		overlay1,
+		networkID,
+		true,
+		nonce,
+		nil,
+		"node1",
+		true,
+		node1AddrInfo.ID,
+		logger,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create mock stream following the existing test pattern
+	var buffer1, buffer2 bytes.Buffer
+	stream1 := mock.NewStream(&buffer1, &buffer2)
+	stream2 := mock.NewStream(&buffer2, &buffer1)
+	defer stream1.Close()
+	defer stream2.Close()
+
+	// Serialize empty underlays
+	emptyUnderlaysBinary := bzz.SerializeUnderlays([]ma.Multiaddr{})
+
+	// Pre-write the SynAck message with empty underlays (like the existing "Handshake - OK" test)
+	w, r := protobuf.NewWriterAndReader(stream2)
+	if err := w.WriteMsg(&pb.SynAck{
+		Syn: &pb.Syn{
+			ObservedUnderlay: bzz.SerializeUnderlays([]ma.Multiaddr{node1ma}),
+		},
+		Ack: &pb.Ack{
+			Address: &pb.BzzAddress{
+				Underlay:  emptyUnderlaysBinary, // Node 2 advertises EMPTY underlays
+				Overlay:   node2BzzAddress.Overlay.Bytes(),
+				Signature: node2BzzAddress.Signature,
+			},
+			NetworkID:      networkID,
+			FullNode:       true,
+			Nonce:          nonce,
+			WelcomeMessage: "inbound-only-peer",
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Node 1 initiates handshake and receives node2's empty underlays
+	info1, err := handshakeService1.Handshake(
+		context.Background(),
+		stream1,
+		[]ma.Multiaddr{}, // Pass empty underlays as we don't know node2's address
+	)
+
+	if err != nil {
+		t.Fatalf("handshake failed: %v", err)
+	}
+
+	// Read the Syn that node1 sent
+	var syn pb.Syn
+	if err := r.ReadMsg(&syn); err != nil {
+		t.Fatal(err)
+	}
+
+	// Read the Ack that node1 sent back
+	var ack pb.Ack
+	if err := r.ReadMsg(&ack); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify node1 successfully received node2's address with EMPTY underlays
+	if len(info1.BzzAddress.Underlays) != 0 {
+		t.Errorf("expected to receive 0 underlays, got %d", len(info1.BzzAddress.Underlays))
+	}
+
+	// Verify overlay address matches
+	if !info1.BzzAddress.Overlay.Equal(overlay2) {
+		t.Errorf("received wrong overlay: got %v, want %v", info1.BzzAddress.Overlay, overlay2)
+	}
+
+	// Node 2 is a full node
+	if !info1.FullNode {
+		t.Error("expected peer to be a full node")
+	}
+}

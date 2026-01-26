@@ -5,6 +5,7 @@
 package bzz_test
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -300,4 +301,253 @@ func TestAreUnderlaysEqual(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParseAddress(t *testing.T) {
+	t.Parallel()
+
+	const networkID uint64 = 10
+	nonce := common.HexToHash("0x5").Bytes()
+
+	// Generate test key pair and overlay address
+	privateKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	overlay, err := crypto.NewOverlayAddress(privateKey.PublicKey, networkID, nonce)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	signer := crypto.NewDefaultSigner(privateKey)
+
+	t.Run("single underlay - valid address", func(t *testing.T) {
+		t.Parallel()
+
+		underlay := mustNewMultiaddr(t, "/ip4/127.0.0.1/tcp/1634")
+
+		addr, err := bzz.NewAddress(signer, []multiaddr.Multiaddr{underlay}, overlay, networkID, nonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Parse the address with overlay validation
+		parsed, err := bzz.ParseAddress(addr.Underlays[0].Bytes(), overlay.Bytes(), addr.Signature, nonce, true, networkID)
+		if err != nil {
+			t.Fatalf("ParseAddress failed: %v", err)
+		}
+
+		if !parsed.Equal(addr) {
+			t.Errorf("parsed address not equal to original: got %v, want %v", parsed, addr)
+		}
+
+		if !parsed.Overlay.Equal(overlay) {
+			t.Errorf("overlay mismatch: got %v, want %v", parsed.Overlay, overlay)
+		}
+
+		if len(parsed.Underlays) != 1 {
+			t.Errorf("expected 1 underlay, got %d", len(parsed.Underlays))
+		}
+	})
+
+	t.Run("multiple underlays - valid address", func(t *testing.T) {
+		t.Parallel()
+
+		underlays := []multiaddr.Multiaddr{
+			mustNewMultiaddr(t, "/ip4/127.0.0.1/tcp/1634"),
+			mustNewMultiaddr(t, "/ip4/192.168.1.100/tcp/1634"),
+			mustNewMultiaddr(t, "/ip6/::1/tcp/1634"),
+		}
+
+		addr, err := bzz.NewAddress(signer, underlays, overlay, networkID, nonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		serialized := bzz.SerializeUnderlays(underlays)
+		parsed, err := bzz.ParseAddress(serialized, overlay.Bytes(), addr.Signature, nonce, true, networkID)
+		if err != nil {
+			t.Fatalf("ParseAddress failed: %v", err)
+		}
+
+		if !parsed.Overlay.Equal(overlay) {
+			t.Errorf("overlay mismatch: got %v, want %v", parsed.Overlay, overlay)
+		}
+
+		if len(parsed.Underlays) != 3 {
+			t.Errorf("expected 3 underlays, got %d", len(parsed.Underlays))
+		}
+
+		if !bzz.AreUnderlaysEqual(parsed.Underlays, underlays) {
+			t.Errorf("underlays not equal: got %v, want %v", parsed.Underlays, underlays)
+		}
+	})
+
+	t.Run("empty underlays - inbound-only peer", func(t *testing.T) {
+		t.Parallel()
+
+		// Create address with empty underlays (for inbound-only peers like browsers)
+		emptyUnderlays := []multiaddr.Multiaddr{}
+		addr, err := bzz.NewAddress(signer, emptyUnderlays, overlay, networkID, nonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		serialized := bzz.SerializeUnderlays(emptyUnderlays)
+		parsed, err := bzz.ParseAddress(serialized, overlay.Bytes(), addr.Signature, nonce, true, networkID)
+		if err != nil {
+			t.Fatalf("ParseAddress failed for empty underlays: %v", err)
+		}
+
+		if !parsed.Overlay.Equal(overlay) {
+			t.Errorf("overlay mismatch: got %v, want %v", parsed.Overlay, overlay)
+		}
+
+		if len(parsed.Underlays) != 0 {
+			t.Errorf("expected 0 underlays for inbound-only peer, got %d", len(parsed.Underlays))
+		}
+	})
+
+	t.Run("without overlay validation", func(t *testing.T) {
+		t.Parallel()
+
+		underlay := mustNewMultiaddr(t, "/ip4/127.0.0.1/tcp/1634")
+
+		addr, err := bzz.NewAddress(signer, []multiaddr.Multiaddr{underlay}, overlay, networkID, nonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Parse without overlay validation
+		parsed, err := bzz.ParseAddress(addr.Underlays[0].Bytes(), overlay.Bytes(), addr.Signature, nonce, false, networkID)
+		if err != nil {
+			t.Fatalf("ParseAddress failed: %v", err)
+		}
+
+		if !parsed.Overlay.Equal(overlay) {
+			t.Errorf("overlay mismatch: got %v, want %v", parsed.Overlay, overlay)
+		}
+	})
+
+	t.Run("invalid signature", func(t *testing.T) {
+		t.Parallel()
+
+		underlay := mustNewMultiaddr(t, "/ip4/127.0.0.1/tcp/1634")
+		invalidSignature := make([]byte, 65) // All zeros - invalid signature
+
+		_, err := bzz.ParseAddress(underlay.Bytes(), overlay.Bytes(), invalidSignature, nonce, true, networkID)
+		if err == nil {
+			t.Error("expected error for invalid signature, got nil")
+		}
+	})
+
+	t.Run("tampered signature", func(t *testing.T) {
+		t.Parallel()
+
+		underlay := mustNewMultiaddr(t, "/ip4/127.0.0.1/tcp/1634")
+
+		addr, err := bzz.NewAddress(signer, []multiaddr.Multiaddr{underlay}, overlay, networkID, nonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Tamper with signature
+		tamperedSig := make([]byte, len(addr.Signature))
+		copy(tamperedSig, addr.Signature)
+		tamperedSig[0] ^= 0xFF // Flip bits
+
+		_, err = bzz.ParseAddress(addr.Underlays[0].Bytes(), overlay.Bytes(), tamperedSig, nonce, true, networkID)
+		if err == nil {
+			t.Error("expected error for tampered signature, got nil")
+		}
+	})
+
+	t.Run("mismatched overlay with validation", func(t *testing.T) {
+		t.Parallel()
+
+		underlay := mustNewMultiaddr(t, "/ip4/127.0.0.1/tcp/1634")
+
+		addr, err := bzz.NewAddress(signer, []multiaddr.Multiaddr{underlay}, overlay, networkID, nonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Use a different overlay
+		wrongOverlay := make([]byte, len(overlay.Bytes()))
+		copy(wrongOverlay, overlay.Bytes())
+		wrongOverlay[0] ^= 0xFF // Flip bits
+
+		_, err = bzz.ParseAddress(addr.Underlays[0].Bytes(), wrongOverlay, addr.Signature, nonce, true, networkID)
+		if err == nil {
+			t.Error("expected error for mismatched overlay, got nil")
+		}
+	})
+
+	t.Run("wrong network ID", func(t *testing.T) {
+		t.Parallel()
+
+		underlay := mustNewMultiaddr(t, "/ip4/127.0.0.1/tcp/1634")
+
+		addr, err := bzz.NewAddress(signer, []multiaddr.Multiaddr{underlay}, overlay, networkID, nonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Try to parse with different network ID
+		wrongNetworkID := networkID + 1
+		_, err = bzz.ParseAddress(addr.Underlays[0].Bytes(), overlay.Bytes(), addr.Signature, nonce, true, wrongNetworkID)
+		if err == nil {
+			t.Error("expected error for wrong network ID, got nil")
+		}
+	})
+
+	t.Run("invalid underlay bytes", func(t *testing.T) {
+		t.Parallel()
+
+		invalidUnderlay := []byte{0xFF, 0xFF, 0xFF} // Invalid multiaddr bytes
+
+		// We need a valid signature for this test, so create one with valid data first
+		underlay := mustNewMultiaddr(t, "/ip4/127.0.0.1/tcp/1634")
+		addr, err := bzz.NewAddress(signer, []multiaddr.Multiaddr{underlay}, overlay, networkID, nonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Now try to parse with invalid underlay bytes
+		_, err = bzz.ParseAddress(invalidUnderlay, overlay.Bytes(), addr.Signature, nonce, false, networkID)
+		if err == nil {
+			t.Error("expected error for invalid underlay bytes, got nil")
+		}
+	})
+
+	t.Run("ethereum address extraction", func(t *testing.T) {
+		t.Parallel()
+
+		underlay := mustNewMultiaddr(t, "/ip4/127.0.0.1/tcp/1634")
+
+		addr, err := bzz.NewAddress(signer, []multiaddr.Multiaddr{underlay}, overlay, networkID, nonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		parsed, err := bzz.ParseAddress(addr.Underlays[0].Bytes(), overlay.Bytes(), addr.Signature, nonce, true, networkID)
+		if err != nil {
+			t.Fatalf("ParseAddress failed: %v", err)
+		}
+
+		if len(parsed.EthereumAddress) == 0 {
+			t.Error("ethereum address not extracted")
+		}
+
+		// Verify ethereum address matches the one from the private key
+		expectedEthAddr, err := crypto.NewEthereumAddress(privateKey.PublicKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(parsed.EthereumAddress, expectedEthAddr) {
+			t.Errorf("ethereum address mismatch: got %x, want %x", parsed.EthereumAddress, expectedEthAddr)
+		}
+	})
 }
