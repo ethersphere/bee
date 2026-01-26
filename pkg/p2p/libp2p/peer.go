@@ -19,9 +19,10 @@ import (
 
 type peerRegistry struct {
 	underlays   map[string]libp2ppeer.ID                    // map overlay address to underlay peer id
-	overlays    map[libp2ppeer.ID]swarm.Address             // map underlay peer id to overlay address
-	full        map[libp2ppeer.ID]bool                      // map to track whether a node is full or light node (true=full)
-	connections map[libp2ppeer.ID]map[network.Conn]struct{} // list of connections for safe removal on Disconnect notification
+	overlays            map[libp2ppeer.ID]swarm.Address             // map underlay peer id to overlay address
+	full                map[libp2ppeer.ID]bool                      // map to track whether a node is full or light node (true=full)
+	bee260Compatibility map[libp2ppeer.ID]bool                      // map to track bee260 backward compatibility
+	connections         map[libp2ppeer.ID]map[network.Conn]struct{} // list of connections for safe removal on Disconnect notification
 	streams     map[libp2ppeer.ID]map[network.Stream]context.CancelFunc
 	mu          sync.RWMutex
 
@@ -36,10 +37,11 @@ type disconnecter interface {
 
 func newPeerRegistry() *peerRegistry {
 	return &peerRegistry{
-		underlays:   make(map[string]libp2ppeer.ID),
-		overlays:    make(map[libp2ppeer.ID]swarm.Address),
-		full:        make(map[libp2ppeer.ID]bool),
-		connections: make(map[libp2ppeer.ID]map[network.Conn]struct{}),
+		underlays:           make(map[string]libp2ppeer.ID),
+		overlays:            make(map[libp2ppeer.ID]swarm.Address),
+		full:                make(map[libp2ppeer.ID]bool),
+		bee260Compatibility: make(map[libp2ppeer.ID]bool),
+		connections:         make(map[libp2ppeer.ID]map[network.Conn]struct{}),
 		streams:     make(map[libp2ppeer.ID]map[network.Stream]context.CancelFunc),
 
 		Notifiee: new(network.NoopNotifiee),
@@ -81,6 +83,7 @@ func (r *peerRegistry) Disconnected(_ network.Network, c network.Conn) {
 	}
 	delete(r.streams, peerID)
 	delete(r.full, peerID)
+	delete(r.bee260Compatibility, peerID)
 	r.mu.Unlock()
 	r.disconnecter.disconnected(overlay)
 
@@ -176,6 +179,19 @@ func (r *peerRegistry) fullnode(peerID libp2ppeer.ID) (bool, bool) {
 	return full, found
 }
 
+func (r *peerRegistry) bee260(peerID libp2ppeer.ID) (compat, found bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	compat, found = r.bee260Compatibility[peerID]
+	return compat, found
+}
+
+func (r *peerRegistry) setBee260(peerID libp2ppeer.ID, compat bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.bee260Compatibility[peerID] = compat
+}
+
 func (r *peerRegistry) isConnected(peerID libp2ppeer.ID, remoteAddr ma.Multiaddr) (swarm.Address, bool) {
 	if remoteAddr == nil {
 		return swarm.ZeroAddress, false
@@ -217,6 +233,7 @@ func (r *peerRegistry) remove(overlay swarm.Address) (found, full bool, peerID l
 	delete(r.streams, peerID)
 	full = r.full[peerID]
 	delete(r.full, peerID)
+	delete(r.bee260Compatibility, peerID)
 	r.mu.Unlock()
 
 	return found, full, peerID
