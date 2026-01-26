@@ -450,8 +450,6 @@ func (c *postageContract) TopUpBatch(ctx context.Context, batchID []byte, topupB
 		return
 	}
 
-	txHash = receipt.TxHash
-
 	for _, ev := range receipt.Logs {
 		if ev.Address == c.postageStampContractAddress && len(ev.Topics) > 0 && ev.Topics[0] == c.batchTopUpTopic {
 			txHash = receipt.TxHash
