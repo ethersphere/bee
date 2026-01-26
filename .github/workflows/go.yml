@@ -35,7 +35,7 @@ jobs:
     - name: Increase UDP buffer sizes (macOS)
       if: matrix.os == 'macos-latest'
       run: |
-        sudo sysctl -w kern.ipc.maxsockbuf=6291456
+        sudo sysctl -w kern.ipc.maxsockbuf=7500000
     - name: Build
       run: make build
     - name: Test with race detector (Ubuntu and MacOS)
