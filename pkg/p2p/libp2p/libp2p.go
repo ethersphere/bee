@@ -1513,6 +1513,10 @@ func (s *Service) IsBee260(overlay swarm.Address) bool {
 var version270 = *semver.Must(semver.NewVersion("2.7.0"))
 
 func (s *Service) bee260BackwardCompatibility(peerID libp2ppeer.ID) bool {
+	if compat, found := s.peers.bee260(peerID); found {
+		return compat
+	}
+
 	userAgent := s.peerUserAgent(s.ctx, peerID)
 	p := strings.SplitN(userAgent, " ", 2)
 	if len(p) != 2 {
@@ -1531,6 +1535,7 @@ func (s *Service) bee260BackwardCompatibility(peerID libp2ppeer.ID) bool {
 		return false
 	}
 	result := vCore.LessThan(version270)
+	s.peers.setBee260(peerID, result)
 	return result
 }
 
