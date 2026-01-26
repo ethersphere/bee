@@ -18,13 +18,13 @@ import (
 )
 
 type peerRegistry struct {
-	underlays   map[string]libp2ppeer.ID                    // map overlay address to underlay peer id
+	underlays           map[string]libp2ppeer.ID                    // map overlay address to underlay peer id
 	overlays            map[libp2ppeer.ID]swarm.Address             // map underlay peer id to overlay address
 	full                map[libp2ppeer.ID]bool                      // map to track whether a node is full or light node (true=full)
 	bee260Compatibility map[libp2ppeer.ID]bool                      // map to track bee260 backward compatibility
 	connections         map[libp2ppeer.ID]map[network.Conn]struct{} // list of connections for safe removal on Disconnect notification
-	streams     map[libp2ppeer.ID]map[network.Stream]context.CancelFunc
-	mu          sync.RWMutex
+	streams             map[libp2ppeer.ID]map[network.Stream]context.CancelFunc
+	mu                  sync.RWMutex
 
 	//nolint:misspell
 	disconnecter     disconnecter // peerRegistry notifies libp2p on peer disconnection
@@ -42,7 +42,7 @@ func newPeerRegistry() *peerRegistry {
 		full:                make(map[libp2ppeer.ID]bool),
 		bee260Compatibility: make(map[libp2ppeer.ID]bool),
 		connections:         make(map[libp2ppeer.ID]map[network.Conn]struct{}),
-		streams:     make(map[libp2ppeer.ID]map[network.Stream]context.CancelFunc),
+		streams:             make(map[libp2ppeer.ID]map[network.Stream]context.CancelFunc),
 
 		Notifiee: new(network.NoopNotifiee),
 	}
