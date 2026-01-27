@@ -163,3 +163,72 @@ func TestBee260BackwardCompatibility(t *testing.T) {
 		})
 	}
 }
+
+func TestBee260Cache(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	swarmKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	overlay := swarm.RandAddress(t)
+	addr := ":0"
+	networkID := uint64(1)
+
+	statestore := mock.NewStateStore()
+	defer statestore.Close()
+
+	s, err := New(ctx, crypto.NewDefaultSigner(swarmKey), networkID, overlay, addr, nil, statestore, nil, log.Noop, nil, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	libp2pPeerID, err := libp2ppeer.Decode("16Uiu2HAm3g4hXfCWTDhPBq3KkqpV3wGkPVgMJY3Jt8gGTYWiTWNZ")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Set user agent to 2.6.0 (compat = true)
+	if err := s.host.Peerstore().Put(libp2pPeerID, "AgentVersion", "bee/2.6.0 go1.22.0 linux/amd64"); err != nil {
+		t.Fatal(err)
+	}
+
+	// 2. First call should calculate and cache it
+	if !s.bee260BackwardCompatibility(libp2pPeerID) {
+		t.Fatal("expected true for 2.6.0")
+	}
+
+	// 3. Verify it's in the cache
+	compat, found := s.peers.bee260(libp2pPeerID)
+	if !found {
+		t.Fatal("expected value to be in cache")
+	}
+	if !compat {
+		t.Fatal("expected cached value to be true")
+	}
+
+	// 4. Change user agent in peerstore to 2.7.0 (compat = false)
+	// If caching works, bee260BackwardCompatibility should still return true
+	if err := s.host.Peerstore().Put(libp2pPeerID, "AgentVersion", "bee/2.7.0 go1.23.0 linux/amd64"); err != nil {
+		t.Fatal(err)
+	}
+
+	if !s.bee260BackwardCompatibility(libp2pPeerID) {
+		t.Fatal("expected true (cached value) even if peerstore changed")
+	}
+
+	// 5. Clear cache (manually for testing)
+	s.peers.mu.Lock()
+	delete(s.peers.bee260Compatibility, libp2pPeerID)
+	s.peers.mu.Unlock()
+
+	// 6. Now it should re-calculate and return false for 2.7.0
+	if s.bee260BackwardCompatibility(libp2pPeerID) {
+		t.Fatal("expected false for 2.7.0 after cache clear")
+	}
+}
