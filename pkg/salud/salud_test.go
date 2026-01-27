@@ -233,6 +233,105 @@ func TestUnsub(t *testing.T) {
 	}
 }
 
+// TestTransientHealthy validates that a node remains healthy when its CommittedDepth
+// exceeds the NetworkRadius due to CapacityDoubling, provided its StorageRadius
+// is still sufficient (<= NetworkRadius).
+//
+// Scenario:
+// - Network Radius: 9
+// - Local Storage Radius: 9
+// - Capacity Doubling: 1
+// - Local Committed Depth: 10 (9 + 1)
+//
+// Expectation: Healthy
+func TestTransientHealthy(t *testing.T) {
+	t.Parallel()
+	peers := []peer{
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 9, BeeMode: "full", CommittedDepth: 9}, 0, true},
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 9, BeeMode: "full", CommittedDepth: 9}, 0, true},
+	}
+
+	statusM := &statusMock{make(map[string]peer)}
+	addrs := make([]swarm.Address, 0, len(peers))
+	for _, p := range peers {
+		addrs = append(addrs, p.addr)
+		statusM.peers[p.addr.ByteString()] = p
+	}
+
+	topM := topMock.NewTopologyDriver(topMock.WithPeers(addrs...))
+
+	reserve := mockstorer.NewReserve(
+		mockstorer.WithRadius(9), // Same as network
+		mockstorer.WithReserveSize(100),
+		mockstorer.WithCapacityDoubling(1), // Adds 1 to committed depth -> 10
+	)
+
+	service := salud.New(statusM, topM, reserve, log.Noop, stabilmock.NewSubscriber(true), "full", 0.8, 0.8)
+	testutil.CleanupCloser(t, service)
+
+	// Wait for peer health sync
+	err := spinlock.Wait(time.Minute, func() bool {
+		return len(topM.PeersHealth()) == len(peers)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify self health
+	// With old logic: CommittedDepth (10) != NetworkRadius (9) -> Unhealthy
+	// With new logic: StorageRadius (9) > NetworkRadius (9) (False) -> Healthy
+	if !service.IsHealthy() {
+		t.Fatalf("self should be healthy in transient state")
+	}
+}
+
+// TestActuallyUnhealthy validates that we still catch cases where StorageRadius
+// is too high (node storing subset of required data), even with CapacityDoubling.
+//
+// Scenario:
+// - Network Radius: 9
+// - Local Storage Radius: 10 (Too specific!)
+// - Capacity Doubling: 1
+// - Local Committed Depth: 11
+//
+// Expectation: Unhealthy
+func TestActuallyUnhealthy(t *testing.T) {
+	t.Parallel()
+	peers := []peer{
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 9, BeeMode: "full", CommittedDepth: 9}, 0, true},
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 9, BeeMode: "full", CommittedDepth: 9}, 0, true},
+	}
+
+	statusM := &statusMock{make(map[string]peer)}
+	addrs := make([]swarm.Address, 0, len(peers))
+	for _, p := range peers {
+		addrs = append(addrs, p.addr)
+		statusM.peers[p.addr.ByteString()] = p
+	}
+
+	topM := topMock.NewTopologyDriver(topMock.WithPeers(addrs...))
+
+	reserve := mockstorer.NewReserve(
+		mockstorer.WithRadius(10), // Higher than network! Missing data.
+		mockstorer.WithReserveSize(100),
+		mockstorer.WithCapacityDoubling(1),
+	)
+
+	service := salud.New(statusM, topM, reserve, log.Noop, stabilmock.NewSubscriber(true), "full", 0.8, 0.8)
+	testutil.CleanupCloser(t, service)
+
+	err := spinlock.Wait(time.Minute, func() bool {
+		return len(topM.PeersHealth()) == len(peers)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if service.IsHealthy() {
+		t.Fatalf("self should NOT be healthy when storage radius is too high")
+	}
+}
+
 type statusMock struct {
 	peers map[string]peer
 }
