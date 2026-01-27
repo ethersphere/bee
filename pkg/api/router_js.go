@@ -3,10 +3,12 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/log/httpaccess"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"resenje.org/web"
 )
 
@@ -185,4 +187,127 @@ func (s *Service) mountBusinessDebug() {
 		),
 	})
 
+}
+
+func (s *Service) mountAPI() {
+	subdomainRouter := s.router.Host("{subdomain:.*}.swarm.localhost").Subrouter()
+
+	subdomainRouter.Handle("/{path:.*}", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			web.FinalHandlerFunc(s.subdomainHandler),
+		),
+	})
+
+	s.router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintln(w, "Ethereum Swarm Bee")
+	})
+
+	// handle is a helper closure which simplifies the router setup.
+	handle := func(path string, handler http.Handler) {
+		routeHandler := s.checkRouteAvailability(handler)
+		s.router.Handle(path, routeHandler)
+		s.router.Handle(rootPath+path, routeHandler)
+	}
+
+	handle("/bytes", jsonhttp.MethodHandler{
+		"POST": web.ChainHandlers(
+			s.contentLengthMetricMiddleware(),
+			s.newTracingHandler("bytes-upload"),
+			web.FinalHandlerFunc(s.bytesUploadHandler),
+		),
+	})
+
+	handle("/bytes/{address}", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			s.contentLengthMetricMiddleware(),
+			s.downloadSpeedMetricMiddleware("bytes"),
+			s.newTracingHandler("bytes-download"),
+			s.actDecryptionHandler(),
+			web.FinalHandlerFunc(s.bytesGetHandler),
+		),
+		"HEAD": web.ChainHandlers(
+			s.newTracingHandler("bytes-head"),
+			s.actDecryptionHandler(),
+			web.FinalHandlerFunc(s.bytesHeadHandler),
+		),
+	})
+
+	handle("/chunks", jsonhttp.MethodHandler{
+		"POST": web.ChainHandlers(
+			jsonhttp.NewMaxBodyBytesHandler(swarm.SocMaxChunkSize),
+			web.FinalHandlerFunc(s.chunkUploadHandler),
+		),
+	})
+
+	handle("/chunks/{address}", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			s.actDecryptionHandler(),
+			web.FinalHandlerFunc(s.chunkGetHandler),
+		),
+		"HEAD": web.ChainHandlers(
+			s.actDecryptionHandler(),
+			web.FinalHandlerFunc(s.hasChunkHandler),
+		),
+	})
+
+	handle("/envelope/{address}", jsonhttp.MethodHandler{
+		"POST": http.HandlerFunc(s.envelopePostHandler),
+	})
+
+	handle("/bzz", jsonhttp.MethodHandler{
+		"POST": web.ChainHandlers(
+			s.contentLengthMetricMiddleware(),
+			s.newTracingHandler("bzz-upload"),
+			web.FinalHandlerFunc(s.bzzUploadHandler),
+		),
+	})
+
+	handle("/grantee", jsonhttp.MethodHandler{
+		"POST": http.HandlerFunc(s.actCreateGranteesHandler),
+	})
+
+	handle("/grantee/{address}", jsonhttp.MethodHandler{
+		"GET":   http.HandlerFunc(s.actListGranteesHandler),
+		"PATCH": http.HandlerFunc(s.actGrantRevokeHandler),
+	})
+
+	handle("/bzz/{address}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u := r.URL
+		u.Path += "/"
+		http.Redirect(w, r, u.String(), http.StatusPermanentRedirect)
+	}))
+
+	handle("/bzz/{address}/{path:.*}", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			s.contentLengthMetricMiddleware(),
+			s.newTracingHandler("bzz-download"),
+			s.actDecryptionHandler(),
+			s.downloadSpeedMetricMiddleware("bzz"),
+			web.FinalHandlerFunc(s.bzzDownloadHandler),
+		),
+		"HEAD": web.ChainHandlers(
+			s.actDecryptionHandler(),
+			web.FinalHandlerFunc(s.bzzHeadHandler),
+		),
+	})
+
+	handle("/pins", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.listPinnedRootHashes),
+	})
+
+	handle("/pins/check", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.pinIntegrityHandler),
+	})
+
+	handle("/pins/{reference}", jsonhttp.MethodHandler{
+		"GET":    http.HandlerFunc(s.getPinnedRootHash),
+		"POST":   http.HandlerFunc(s.pinRootHash),
+		"DELETE": http.HandlerFunc(s.unpinRootHash),
+	},
+	)
+
+	handle("/stewardship/{address}", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.stewardshipGetHandler),
+		"PUT": http.HandlerFunc(s.stewardshipPutHandler),
+	})
 }

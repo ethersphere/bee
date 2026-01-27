@@ -109,7 +109,7 @@ async function main() {
     "--password",
     "testing",
     "--bootnode",
-    "/ip4/49.12.172.37/tcp/32530/tls/sni/49-12-172-37.k2k4r8kibjadgpqco81quegou963p7lbcd9ti0bw8lrcc95ystm6by9d.libp2p.direct/ws/p2p/QmRHeoLCHjHoMur8PQpuV8acNJMmKPT61c3ZMLpTqY7og4",
+    "/ip4/49.12.172.37/tcp/32510/tls/sni/49-12-172-37.k2k4r8mh36hk5mcrg2syh2amdbl4dmd08fjhtqrtvyn0gef71auumrvf.libp2p.direct/ws/p2p/QmWbXocGMpfa8zApx9kCNwfmc35bbRJv136bdtuQjbR4wL",
     "--data-dir",
     "/home/user/.bee/sepolia",
     "--verbosity",
@@ -117,7 +117,7 @@ async function main() {
     // '--blockchain-rpc-endpoint',
     // 'https://ethereum-sepolia-rpc.publicnode.com/ac5b7f52aabd778861c2588f872f15c5fc34f0b343ec3d18ac2e91f5526e9c2b',
     "--mainnet=false",
-    "--network-id=10",
+    "--network-id=5",
     "--p2p-ws-enable",
   ];
 
