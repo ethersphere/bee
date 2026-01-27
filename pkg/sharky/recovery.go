@@ -8,11 +8,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
+	nativeFs "io/fs"
 	"os"
 	"path"
 	"sync"
 
+	"github.com/ethersphere/bee/v2/pkg/fs"
 	"github.com/hashicorp/go-multierror"
 )
 
@@ -20,7 +21,7 @@ import (
 type Recovery struct {
 	mtx        sync.Mutex
 	shards     []*slots
-	shardFiles []*os.File
+	shardFiles []fs.OsFile
 	datasize   int
 }
 
@@ -28,11 +29,11 @@ var ErrShardNotFound = errors.New("shard not found")
 
 func NewRecovery(dir string, shardCnt int, datasize int) (*Recovery, error) {
 	shards := make([]*slots, shardCnt)
-	shardFiles := make([]*os.File, shardCnt)
+	shardFiles := make([]fs.OsFile, shardCnt)
 
 	for i := range shardCnt {
-		file, err := os.OpenFile(path.Join(dir, fmt.Sprintf("shard_%03d", i)), os.O_RDWR, 0666)
-		if errors.Is(err, fs.ErrNotExist) {
+		file, err := fs.OpenFile(path.Join(dir, fmt.Sprintf("shard_%03d", i)), os.O_RDWR, 0666)
+		if errors.Is(err, nativeFs.ErrNotExist) {
 			return nil, fmt.Errorf("index %d: %w", i, ErrShardNotFound)
 		}
 		if err != nil {
@@ -43,7 +44,7 @@ func NewRecovery(dir string, shardCnt int, datasize int) (*Recovery, error) {
 			return nil, err
 		}
 		size := uint32(fi.Size() / int64(datasize))
-		ffile, err := os.OpenFile(path.Join(dir, fmt.Sprintf("free_%03d", i)), os.O_RDWR|os.O_CREATE, 0666)
+		ffile, err := fs.OpenFile(path.Join(dir, fmt.Sprintf("free_%03d", i)), os.O_RDWR|os.O_CREATE, 0666)
 		if err != nil {
 			return nil, err
 		}

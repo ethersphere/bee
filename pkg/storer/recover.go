@@ -7,11 +7,13 @@ package storer
 import (
 	"context"
 	"errors"
-	"io/fs"
-	"os"
+
 	"path/filepath"
 	"time"
 
+	nativeFs "io/fs"
+
+	"github.com/ethersphere/bee/v2/pkg/fs"
 	"github.com/ethersphere/bee/v2/pkg/sharky"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstore"
@@ -29,10 +31,10 @@ func sharkyRecovery(ctx context.Context, sharkyBasePath string, store storage.St
 	logger := opts.Logger.WithName(loggerName).Register()
 	dirtyFilePath := filepath.Join(sharkyBasePath, sharkyDirtyFileName)
 
-	closer := func() error { return os.Remove(dirtyFilePath) }
+	closer := func() error { return fs.Remove(dirtyFilePath) }
 
-	if _, err := os.Stat(dirtyFilePath); errors.Is(err, fs.ErrNotExist) {
-		return closer, os.WriteFile(dirtyFilePath, []byte{}, 0644)
+	if _, err := fs.Stat(dirtyFilePath); errors.Is(err, nativeFs.ErrNotExist) {
+		return closer, fs.WriteFile(dirtyFilePath, []byte{}, 0644)
 	}
 
 	logger.Info("localstore sharky .DIRTY file exists: starting recovery due to previous dirty exit")
