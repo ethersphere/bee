@@ -13,7 +13,7 @@ env:
   RUN_TYPE: "PR RUN"
   SETUP_CONTRACT_IMAGE: "ethersphere/bee-localchain"
   SETUP_CONTRACT_IMAGE_TAG: "0.9.4"
-  BEELOCAL_BRANCH: "feat/p2p-wss-support-v2"
+  BEELOCAL_BRANCH: "akrem/p2p-wss-support-v2"
   BEEKEEPER_BRANCH: "feat/autotls-check"
   BEEKEEPER_METRICS_ENABLED: false
   REACHABILITY_OVERRIDE_PUBLIC: true
