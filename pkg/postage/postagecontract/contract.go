@@ -447,7 +447,6 @@ func (c *postageContract) TopUpBatch(ctx context.Context, batchID []byte, topupB
 
 	receipt, err := c.sendTopUpBatchTransaction(ctx, batch.ID, topupBalance)
 	if err != nil {
-		txHash = receipt.TxHash
 		return
 	}
 
