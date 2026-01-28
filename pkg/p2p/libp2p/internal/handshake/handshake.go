@@ -306,6 +306,8 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 		return a.Equal(b)
 	})
 
+	s.logger.Debug("INVESTIGATION", "advertisableUnderlays", advertisableUnderlays)
+
 	advertisableUnderlays = p2p.FilterBee260CompatibleUnderlays(o.bee260compatibility, advertisableUnderlays)
 
 	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce)
@@ -314,6 +316,8 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 	}
 
 	welcomeMessage := s.GetWelcomeMessage()
+
+	s.logger.Debug("INVESTIGATION", "peerMultiaddrs", peerMultiaddrs)
 
 	peerMultiaddrs = p2p.FilterBee260CompatibleUnderlays(o.bee260compatibility, peerMultiaddrs)
 
