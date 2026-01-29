@@ -232,11 +232,11 @@ paths:
         - Bytes
       parameters:
         - in: path
-          name: address
+          name: reference
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
-          description: Swarm address of chunk
+          description: Swarm address reference to content
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActTimestamp"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActPublisher"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
@@ -447,11 +447,11 @@ paths:
         - BZZ
       parameters:
         - in: path
-          name: address
+          name: reference
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
-          description: Swarm address of chunk
+          description: Swarm address reference to content
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActTimestamp"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActPublisher"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
@@ -729,7 +729,7 @@ paths:
 
   "/pins/check":
     get:
-      summary: Validate pinned chunks integerity
+      summary: Validate pinned chunks integrity
       tags:
         - Pinning
       parameters:
@@ -738,7 +738,7 @@ paths:
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmOnlyReference"
           required: false
-          description: The number of items to skip before starting to collect the result set.
+          description: Swarm reference of the pinned root hash to check. If omitted, all pinned content is checked.
       responses:
         "200":
           description: List of checked root hash references
@@ -1289,7 +1289,7 @@ paths:
         - Chunk
       parameters:
         - in: path
-          name: reference
+          name: address
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
@@ -1968,6 +1968,7 @@ paths:
           schema:
             type: boolean
           required: false
+          description: Whether the postage batch is immutable. Immutable batches permanently store data and do not allow overwriting older chunks with new ones. Mutable batches allow overwriting older data as new chunks are added. Default batch type is immutable.
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       responses:
@@ -2180,16 +2181,19 @@ paths:
           required: true
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/BigInt"
+          description: Amount of tokens to withdraw in the lowest denomination (PLUR for xBZZ, wei for xDAI)
         - in: query
           name: address
           required: true
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
+          description: Destination Ethereum address for the withdrawal. Must be whitelisted using the withdrawal-addresses-whitelist configuration option.
         - in: path
           name: coin
           required: true
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/WithdrawCoin"
+          description: "Token type to withdraw. Use BZZ for xBZZ or NativeToken for xDAI."
       responses:
         "200":
           content:

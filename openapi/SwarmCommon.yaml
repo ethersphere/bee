@@ -22,18 +22,25 @@ components:
       type: object
       properties:
         overlay:
+          description: The node's overlay address in Swarm's Kademlia network, used for content routing and peer selection.
           $ref: "#/components/schemas/SwarmAddress"
         underlay:
+          description: List of the node's underlay (transport-layer) multiaddresses used for peer-to-peer communication.
           type: array
           items:
             $ref: "#/components/schemas/P2PUnderlay"
         ethereum:
+          description: "Deprecated: use `chain_address` instead. The node's Ethereum address on Gnosis Chain."
+          deprecated: true
           $ref: "#/components/schemas/EthereumAddress"
         chain_address:
+          description: The node's Ethereum-compatible address on Gnosis Chain, used for on-chain transactions such as postage stamp purchases and chequebook operations.
           $ref: "#/components/schemas/EthereumAddress"
         publicKey:
+          description: The node's hex-encoded secp256k1 public key, used for peer identity verification and encrypted communication.
           $ref: "#/components/schemas/PublicKey"
         pssPublicKey:
+          description: The node's hex-encoded secp256k1 public key used for Postal Service over Swarm (PSS) encrypted messaging.
           $ref: "#/components/schemas/PublicKey"
 
     BigInt:
@@ -45,10 +52,13 @@ components:
       type: object
       properties:
         radius:
+          description: Maximum storage radius assuming all postage stamp batches are fully utilized.
           type: integer
         storageRadius:
+          description: The radius of responsibility — the proximity order of chunks for which the node is responsible for storing.
           type: integer
         commitment:
+          description: Total number of chunks that would be stored on the Swarm network if 100% of all postage batches were fully utilized.
           type: integer
         reserveCapacityDoubling:
           type: integer
@@ -57,12 +67,16 @@ components:
       type: object
       properties:
         chainTip:
+          description: Latest Gnosis Chain block number known to the node.
           type: integer
         block:
+          description: Latest block the node has fully synced from Gnosis Chain. If significantly behind chainTip, the node may still be catching up.
           type: integer
         totalAmount:
+          description: Cumulative value of all storage prices per chunk in PLUR across all blocks.
           $ref: "#/components/schemas/BigInt"
         currentPrice:
+          description: Current price in PLUR to store a single chunk for one Gnosis Chain block.
           $ref: "#/components/schemas/BigInt"
 
     PeerAccountingData:
@@ -77,18 +91,25 @@ components:
       type: object
       properties:
         balance:
+          description: Current SWAP balance with the peer. Negative values indicate debt owed to the peer, positive values indicate credit owed by the peer.
           $ref: "#/components/schemas/BigInt"
         thresholdReceived:
+          description: Payment threshold communicated to this peer — the debt limit at which the peer is expected to settle.
           $ref: "#/components/schemas/BigInt"
         thresholdGiven:
+          description: Payment threshold received from this peer — the debt limit at which this node is expected to settle. Adjusts over time based on the peer's repayment history.
           $ref: "#/components/schemas/BigInt"
         surplusBalance:
+          description: Surplus from incoming payments that exceeded the outstanding debt. Not considered debt for settlement purposes.
           $ref: "#/components/schemas/BigInt"
         reservedBalance:
+          description: Amount currently reserved for an active peer interaction to prevent overdrafts during concurrent operations.
           $ref: "#/components/schemas/BigInt"
         shadowReservedBalance:
+          description: Amount potentially to be debited for an active peer interaction. Reserves anticipated debits before they are applied.
           $ref: "#/components/schemas/BigInt"
         ghostBalance:
+          description: Amount that could have been debited but was not, used to detect misbehaving peers.
           $ref: "#/components/schemas/BigInt"
 
     ActGranteesCreateRequest:
@@ -117,8 +138,10 @@ components:
       type: object
       properties:
         ref:
+          description: Swarm encrypted reference to the updated or newly created grantee list.
           $ref: "#/components/schemas/SwarmEncryptedReference"
         historyref:
+          description: Swarm encrypted reference to the access control history entry, a time-versioned log of access control changes.
           $ref: "#/components/schemas/SwarmEncryptedReference"
 
     Balance:
@@ -141,24 +164,40 @@ components:
       type: object
       properties:
         baseAddr:
+          description: The node's overlay address in Swarm's Kademlia network.
           $ref: "#/components/schemas/SwarmAddress"
         population:
+          description: Total number of peers known to this node across all Kademlia bins, including both connected and previously seen peers.
           type: integer
         connected:
+          description: Number of peers currently connected to this node across all Kademlia bins.
           type: integer
         timestamp:
+          description: ISO 8601 timestamp of when this topology snapshot was taken.
           type: string
         nnLowWatermark:
+          description: Minimum number of peers required in the nearest neighbour bins. Used in neighborhood depth calculation (default 3).
           type: integer
         depth:
+          description: The Kademlia neighborhood depth of this node. Bins at or deeper than this value form the node's neighborhood.
           type: integer
         reachability:
+          description: |
+            The node's reachability status as determined by connectivity checks.
+            - `Unknown` — Reachability has not yet been determined.
+            - `Public` — The node is publicly reachable by other nodes on the network.
+            - `Private` — The node is behind a NAT or firewall and is not directly reachable.
           type: string
           enum:
             - "Unknown"
             - "Public"
             - "Private"
         networkAvailability:
+          description: |
+            The node's network availability status.
+            - `Unknown` — Network availability has not yet been determined.
+            - `Available` — The node can connect to the Swarm network and participate in protocols.
+            - `Unavailable` — The node cannot connect to the Swarm network.
           type: string
           enum:
             - "Unknown"
@@ -225,8 +264,10 @@ components:
       type: object
       properties:
         totalBalance:
+          description: Total xBZZ balance (in PLUR) in the chequebook contract on the blockchain.
           $ref: "#/components/schemas/BigInt"
         availableBalance:
+          description: Available xBZZ balance (in PLUR) — the total balance minus outstanding (non-cashed) cheques issued to peers.
           $ref: "#/components/schemas/BigInt"
 
     ChequebookAddress:
@@ -335,26 +376,34 @@ components:
       type: object
       properties:
         lastSeenTimestamp:
+          description: Unix timestamp (in nanoseconds) of when the peer was last seen by this node.
           type: integer
           nullable: false
         sessionConnectionRetry:
+          description: Number of connection retry attempts in the current session with this peer.
           type: integer
           nullable: false
         connectionTotalDuration:
+          description: Total cumulative duration (in nanoseconds) of all connections with this peer across all sessions.
           type: number
           nullable: false
         sessionConnectionDuration:
+          description: Duration (in nanoseconds) of the current or most recent connection session with this peer.
           type: number
           nullable: false
         sessionConnectionDirection:
+          description: Direction of the connection — either "inbound" (the peer initiated) or "outbound" (this node initiated).
           type: string
           nullable: false
         latencyEWMA:
+          description: Exponentially weighted moving average of round-trip latency to this peer, in nanoseconds.
           type: integer
           nullable: false
         reachability:
+          description: Reachability status of this peer as observed by the node (Unknown, Public, or Private).
           type: string
         healthy:
+          description: Whether the peer is considered healthy based on its connectivity and performance metrics.
           type: boolean
 
     Peers:
@@ -374,10 +423,13 @@ components:
           address:
             $ref: "#/components/schemas/Address"
           fullNode:
+            description: Whether the blocklisted peer is a full node (as opposed to a light node).
             type: boolean
           reason:
+            description: Human-readable reason why this peer was added to the blocklist.
             type: string
           duration:
+            description: Duration in nanoseconds for which this peer remains blocklisted.
             type: integer
 
     PssRecipient:
@@ -415,12 +467,16 @@ components:
       type: object
       properties:
         issuer:
+          description: Ethereum address of the node that created the stamp.
           $ref: "#/components/schemas/EthereumAddress"
         index:
+          description: Within-batch index assigned to this stamp. Encodes a bucket (upper 16 bits) and an in-bucket counter.
           $ref: "#/components/schemas/Hex8Bytes"
         timestamp:
+          description: Timestamp of stamp creation, used for ordering when multiple chunks compete for the same batch index slot.
           $ref: "#/components/schemas/Hex8Bytes"
         signature:
+          description: ECDSA signature by the batch owner over the hash of (chunk address | batch ID | index | timestamp), proving authorization to stamp the chunk.
           $ref: "#/components/schemas/Signature"
 
     DebugPostageBatchesResponse:
@@ -503,27 +559,37 @@ components:
       type: object
       properties:
         batchID:
+          description: Unique identifier of the postage batch.
           $ref: "#/components/schemas/BatchID"
         utilization:
+          description: The highest number of filled slots out of all 2^bucketDepth buckets. When utilization reaches 2^(depth - bucketDepth), the batch is fully utilized for immutable batches.
           type: integer
         usable:
           description: Indicate that the batch was discovered by the Bee node, but it awaits enough on-chain confirmations before declaring the batch as usable.
           type: boolean
         label:
+          description: Optional label assigned to the batch for identification purposes. Labels are stored locally on the Bee node where the batch was created and are not available on other nodes.
           type: string
         depth:
+          description: Batch depth which determines the maximum number of chunks the batch can stamp. The theoretical maximum is 2^depth chunks, but effective capacity is lower due to how chunks are distributed across buckets.
           type: integer
         amount:
+          description: Amount of xBZZ (in PLUR) assigned per chunk. Determines how long the batch remains valid based on the current storage price (in PLUR per chunk per block). The total cost of the batch is 2^depth × amount.
           $ref: "#/components/schemas/BigInt"
         bucketDepth:
+          description: Depth of the postage batch buckets. Fixed at 16, partitioning the address space into 2^16 (65536) equally sized buckets.
           type: integer
         blockNumber:
+          description: Block number on Gnosis Chain at which the batch was created.
           type: integer
         immutableFlag:
+          description: Whether the batch is immutable. Immutable batches permanently store data and do not allow overwriting older chunks. Mutable batches allow overwriting older data as new chunks are added.
           type: boolean
         exists:
+          description: Whether the batch exists on-chain.
           type: boolean
         batchTTL:
+          description: Estimated remaining time-to-live of the batch in seconds. The TTL decreases as blocks are mined on Gnosis Chain and the batch balance is consumed.
           type: integer
 
     PostageBatchNoIssuer:
@@ -540,22 +606,31 @@ components:
       type: object
       properties:
         batchID:
+          description: Unique identifier of the postage batch.
           $ref: "#/components/schemas/BatchID"
         value:
+          description: Normalised balance of the batch per chunk (in PLUR). Decreases over time as storage rent is consumed.
           $ref: "#/components/schemas/BigInt"
         start:
+          description: Block number on Gnosis Chain at which the batch was created.
           type: integer
         depth:
+          description: Batch depth which determines the maximum number of chunks the batch can stamp. The theoretical maximum is 2^depth chunks, but effective capacity is lower due to how chunks are distributed across buckets.
           type: integer
         bucketDepth:
+          description: Depth of the postage batch buckets. Fixed at 16, partitioning the address space into 2^16 (65536) equally sized buckets.
           type: integer
         immutableFlag:
+          description: Whether the batch is immutable. Immutable batches permanently store data and do not allow overwriting older chunks. Mutable batches allow overwriting older data as new chunks are added.
           type: boolean
         batchTTL:
+          description: Estimated remaining time-to-live of the batch in seconds.
           type: integer
         owner:
+          description: Ethereum address of the batch owner.
           $ref: "#/components/schemas/EthereumAddress"
         storageRadius:
+          description: The storage radius of the node. Defines the proximity order of chunks for which the node is responsible for storing.
           type: integer
 
     DebugPostageBatch:
@@ -567,20 +642,26 @@ components:
       type: object
       properties:
         bucketID:
+          description: Index of the bucket in the address space partition (0 to 2^bucketDepth - 1).
           type: integer
         collisions:
+          description: Number of chunks assigned to this bucket. When this reaches 2^(depth - bucketDepth), the bucket is full.
           type: integer
 
     PostageStampBuckets:
       type: object
       properties:
         depth:
+          description: Batch depth of the postage batch.
           type: integer
         bucketDepth:
+          description: Depth of the postage batch buckets. Fixed at 16.
           type: integer
         bucketUpperBound:
+          description: Maximum number of chunks allowed per bucket, equal to 2^(depth - bucketDepth).
           type: integer
         buckets:
+          description: Array of bucket data showing the utilization of each bucket.
           type: array
           nullable: false
           items:
@@ -590,20 +671,26 @@ components:
       type: object
       properties:
         peer:
+          description: Swarm overlay address of the peer.
           $ref: "#/components/schemas/SwarmAddress"
         received:
+          description: Total amount of xBZZ (in PLUR) received from this peer through SWAP cheque settlements.
           type: integer
         sent:
+          description: Total amount of xBZZ (in PLUR) sent to this peer through SWAP cheque settlements.
           type: integer
 
     Settlements:
       type: object
       properties:
         totalReceived:
+          description: Total amount of xBZZ (in PLUR) received from all peers through SWAP cheque settlements.
           type: integer
         totalSent:
+          description: Total amount of xBZZ (in PLUR) sent to all peers through SWAP cheque settlements.
           type: integer
         settlements:
+          description: Per-peer settlement details.
           type: array
           nullable: false
           items:
@@ -661,12 +748,16 @@ components:
       type: object
       properties:
         reference:
+          description: Swarm reference of the pinned root hash that was checked.
           $ref: "#/components/schemas/SwarmOnlyReference"
         total:
+          description: Total number of chunks expected for this pinned content.
           type: integer
         missing:
+          description: Number of chunks that are missing from the local store.
           type: integer
         invalid:
+          description: Number of chunks that are present but have invalid data.
           type: integer
 
     SwarmOnlyReferencesList:
@@ -726,42 +817,59 @@ components:
       type: object
       properties:
         transactionHash:
+          description: Hash of the transaction on Gnosis Chain.
           $ref: "#/components/schemas/TransactionHash"
         to:
+          description: Destination Ethereum address of the transaction.
           $ref: "#/components/schemas/EthereumAddress"
         nonce:
+          description: Transaction nonce for the sender account.
           type: integer
         gasPrice:
+          description: Gas price (in wei) used for the transaction.
           $ref: "#/components/schemas/BigInt"
         gasLimit:
+          description: Maximum gas units allowed for the transaction.
           type: integer
         gasTipCap:
+          description: Maximum priority fee per gas (in wei) the sender is willing to pay (EIP-1559).
           $ref: "#/components/schemas/BigInt"
         gasTipBoost:
+          description: Percentage boost applied to the gas tip to speed up transaction inclusion.
           type: integer
         gasFeeCap:
+          description: Maximum total fee per gas (in wei) the sender is willing to pay (EIP-1559).
           $ref: "#/components/schemas/BigInt"
         data:
+          description: Hex-encoded transaction input data.
           type: string
         created:
+          description: Timestamp when the transaction was created by the node.
           $ref: "#/components/schemas/DateTime"
         description:
+          description: Human-readable description of the transaction purpose.
           type: string
         value:
+          description: Amount of native token (xDAI, in wei) sent with the transaction.
           $ref: "#/components/schemas/BigInt"
 
     WalletResponse:
       type: object
       properties:
         bzzBalance:
+          description: xBZZ token balance (in PLUR) of the node's wallet on Gnosis Chain.
           $ref: "#/components/schemas/BigInt"
         nativeTokenBalance:
+          description: Native token (xDAI) balance (in wei) of the node's wallet on Gnosis Chain.
           $ref: "#/components/schemas/BigInt"
         chainID:
+          description: Chain ID of the blockchain the node is connected to (e.g. 100 for Gnosis Chain).
           type: integer
         chequebookContractAddress:
+          description: Ethereum address of the node's deployed chequebook contract.
           $ref: "#/components/schemas/EthereumAddress"
         walletAddress:
+          description: Ethereum address of the node's wallet.
           $ref: "#/components/schemas/EthereumAddress"
 
     WithdrawCoin:
@@ -774,34 +882,54 @@ components:
       type: object
       properties:
         minimumGasFunds:
+          description: Minimum native token (xDAI) balance in PLUR required in the node's wallet to participate in the next redistribution round.
           $ref: "#/components/schemas/BigInt"
         hasSufficientFunds:
+          description: Whether the node's wallet has enough native token balance to cover gas costs for redistribution.
           type: boolean
         isFrozen:
+          description: Whether the node is frozen and excluded from the redistribution game. A node is frozen as a penalty for submitting incorrect data during a round.
           type: boolean
         isFullySynced:
+          description: Whether the node has fully synced all data within its storage radius. Must be true to participate in redistribution.
           type: boolean
         isHealthy:
+          description: Whether the node is considered healthy for participation in the redistribution game.
           type: boolean
         phase:
+          description: |
+            Current phase of the redistribution round.
+            - `commit` — Selected nodes submit a hashed commitment of their reserve sample.
+            - `reveal` — Nodes that committed reveal the obfuscation key used in the commit phase.
+            - `claim` — The winning node is determined and can claim its reward.
+            - `sample` — The node creates a reserve sample for the upcoming round.
           type: string
         round:
+          description: Current redistribution round number.
           type: integer
         lastWonRound:
+          description: Round number of the last round won by this node.
           type: integer
         lastPlayedRound:
+          description: Round number of the last round in which this node submitted a commit transaction.
           type: integer
         lastFrozenRound:
+          description: Round number of the last round in which this node was frozen.
           type: integer
         lastSelectedRound:
+          description: Round number of the last round in which this node was eligible to participate — requires the node's neighborhood to be selected and the node to be staked, healthy, fully synced, unfrozen, and sufficiently funded.
           type: integer
         lastSampleDurationSeconds:
+          description: Time in seconds it took to generate the reserve sample in the most recent round.
           type: number
         block:
+          description: Current Gnosis Chain block number as seen by the node.
           type: integer
         reward:
+          description: Cumulative xBZZ rewards (in PLUR) earned by this node from winning redistribution rounds.
           $ref: "#/components/schemas/BigInt"
         fees:
+          description: Cumulative gas fees (in wei) spent by this node on redistribution transactions.
           $ref: "#/components/schemas/BigInt"
 
     PendingTransactionsResponse:
@@ -823,6 +951,10 @@ components:
           type: string
 
     FeedType:
+      description: |
+        Feed indexing scheme.
+        - `sequence` — Sequential indexing where updates are numbered incrementally (0, 1, 2, ...). Best for frequent or regular-interval updates.
+        - `epoch` — Time-based indexing using a hierarchical epoch grid. Better suited for sparse or time-irregular updates.
       type: string
       pattern: "^(sequence|epoch)$"
 
@@ -860,12 +992,16 @@ components:
       type: object
       properties:
         logger:
+          description: Hierarchical logger name path using `/` as a separator (e.g. `node/api/router`).
           type: string
         verbosity:
+          description: "Current verbosity level of the logger: `none`, `error`, `warning`, `info`, `debug`, or `all`."
           type: string
         subsystem:
+          description: Unique subsystem identifier string used to match loggers via expressions or regex patterns.
           type: string
         id:
+          description: Base64 URL-encoded representation of the subsystem identifier, used as a path parameter when setting logger verbosity.
           type: string
 
     LoggerResponse:
@@ -882,10 +1018,19 @@ components:
       type: object
       properties:
         overlay:
+          description: The overlay address of the node this snapshot describes.
           $ref: "#/components/schemas/SwarmAddress"
         proximity:
+          description: Proximity order of the peer relative to the requesting node. For the local node's own status, this is 256 (self).
           type: integer
         beeMode:
+          description: |
+            The operating mode of the Bee node.
+            - `light` — Light node that does not participate in storage or forwarding.
+            - `full` — Full node that stores chunks and participates in all protocols.
+            - `dev` — Development mode for local testing.
+            - `ultra-light` — Ultra-light node with minimal resource usage and protocol participation.
+            - `unknown` — Node mode could not be determined.
           type: string
           enum:
             - "light"
@@ -894,27 +1039,38 @@ components:
             - "ultra-light"
             - "unknown"
         reserveSize:
+          description: Total number of chunks in the node's reserve store.
           type: integer
         reserveSizeWithinRadius:
+          description: Number of chunks in the reserve that fall within the node's storage radius.
           type: integer
         pullsyncRate:
+          description: Rate of chunk syncing via the pull-sync protocol (chunks per second).
           type: number
         storageRadius:
+          description: The node's storage radius — the proximity order within which the node stores chunks.
           type: integer
         connectedPeers:
+          description: Number of peers currently connected to this node.
           type: integer
         neighborhoodSize:
+          description: Number of peers in the node's neighborhood (including the node itself).
           type: integer
         requestFailed:
+          description: Whether the status request to this peer failed. Only relevant in peer status responses; null for the local node.
           nullable: true
           type: boolean
         batchCommitment:
+          description: Total number of chunks that the node is committed to store based on postage batch utilisation.
           type: integer
         isReachable:
+          description: Whether the node is publicly reachable by other nodes on the network.
           type: boolean
         lastSyncedBlock:
+          description: The most recent Gnosis Chain block number the node has synced.
           type: integer
         committedDepth:
+          description: The batch depth commitment of the node's reserve.
           type: integer
         isWarmingUp:
           type: boolean
@@ -956,30 +1112,38 @@ components:
       type: object
       properties:
         chunkSpan:
+          description: Span of the chunk data in bytes, from the BMT span header.
           minimum: 0
           type: integer
         postageProof:
+          description: Postage stamp proof for the chunk, proving it has a valid stamp attached.
           $ref: "#/components/schemas/ApiPostageProof"
         proofSegments:
+          description: Sister segments for the first Merkle proof (reserve sample level), proving the chunk's inclusion in the sample.
           items:
             type: string
           nullable: true
           type: array
         proofSegments2:
+          description: Sister segments for the second Merkle proof (original chunk level), proving knowledge of a specific data segment within the chunk.
           items:
             type: string
           nullable: true
           type: array
         proofSegments3:
+          description: Sister segments for the third Merkle proof (transformed chunk level), proving correct transformation of chunk data with the round anchor.
           items:
             type: string
           nullable: true
           type: array
         proveSegment:
+          description: The data segment being proved at the reserve sample level.
           type: string
         proveSegment2:
+          description: The data segment being proved at the original chunk level.
           type: string
         socProof:
+          description: Single Owner Chunk proof, present only if the chunk is a SOC. Empty for content-addressed chunks.
           items:
             $ref: "#/components/schemas/ApiSOCProof"
           nullable: true
@@ -999,12 +1163,16 @@ components:
       type: object
       properties:
         index:
+          description: Within-batch index of the stamp, hex-encoded. Identifies which slot in the postage batch was used.
           type: string
         postageId:
+          description: The postage batch ID, a 32-byte hex-encoded hash identifying the batch on the blockchain.
           type: string
         signature:
+          description: ECDSA signature (65 bytes, hex-encoded) by the batch owner proving authorization to stamp this chunk.
           type: string
         timeStamp:
+          description: Timestamp of stamp creation, hex-encoded. Used for ordering when multiple chunks compete for the same batch index slot.
           type: string
 
     ApiRCHashResponse:
@@ -1021,12 +1189,16 @@ components:
       type: object
       properties:
         chunkAddr:
+          description: Swarm address of the wrapped content-addressed chunk inside the SOC (the inner chunk address, not the SOC address).
           type: string
         identifier:
+          description: Arbitrary 32-byte identifier chosen by the SOC owner. Together with the signer address, it determines the SOC's address.
           type: string
         signature:
+          description: ECDSA signature by the SOC owner over the identifier and wrapped chunk address, proving ownership.
           type: string
         signer:
+          description: Ethereum address of the SOC owner. Together with the identifier, it determines the SOC's address.
           type: string
 
     WalletTxResponse:
@@ -1128,9 +1300,13 @@ components:
         type: integer
         enum: [0, 1, 2, 3, 4]
       required: false
-      description: >
-        Add redundancy to the data being uploaded so that downloaders can download it with better UX.
-        0 value is default and does not add any redundancy to the file.
+      description: |
+        Add erasure coding redundancy to uploaded data for improved download reliability.
+        - `0` — None (default). No redundancy is added.
+        - `1` — Medium. Tolerates up to 1% chunk retrieval error rate.
+        - `2` — Strong. Tolerates up to 5% chunk retrieval error rate.
+        - `3` — Insane. Tolerates up to 10% chunk retrieval error rate.
+        - `4` — Paranoid. Tolerates up to 50% chunk retrieval error rate.
 
     SwarmRedundancyStrategyParameter:
       in: header
