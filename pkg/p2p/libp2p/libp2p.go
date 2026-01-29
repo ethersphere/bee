@@ -646,7 +646,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	peerID := stream.Conn().RemotePeer()
 	handshakeStream := newStream(stream, s.metrics)
 
-	peerMultiaddrs, err := s.peerMultiaddrs(s.ctx, peerID)
+	peerMultiaddrs, err := s.peerMultiaddrs(s.ctx, stream.Conn().RemoteMultiaddr(), peerID)
 	if err != nil {
 		s.logger.Debug("stream handler: handshake: build remote multiaddrs", "peer_id", peerID, "error", err)
 		s.logger.Error(nil, "stream handler: handshake: build remote multiaddrs", "peer_id", peerID)
@@ -1065,7 +1065,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 
 	handshakeStream := newStream(stream, s.metrics)
 
-	peerMultiaddrs, err := s.peerMultiaddrs(ctx, peerID)
+	peerMultiaddrs, err := s.peerMultiaddrs(ctx, stream.Conn().RemoteMultiaddr(), peerID)
 	if err != nil {
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(peerID)
@@ -1466,13 +1466,18 @@ func (s *Service) determineCurrentNetworkStatus(err error) error {
 }
 
 // peerMultiaddrs builds full multiaddresses for a peer given information from
-// libp2p host peerstore and falling back to the remote address from the
-// connection.
-func (s *Service) peerMultiaddrs(ctx context.Context, peerID libp2ppeer.ID) ([]ma.Multiaddr, error) {
+// the libp2p host peerstore. If the peerstore doesn't have addresses yet,
+// it falls back to using the remote address from the active connection.
+func (s *Service) peerMultiaddrs(ctx context.Context, remoteAddr ma.Multiaddr, peerID libp2ppeer.ID) ([]ma.Multiaddr, error) {
 	waitPeersCtx, cancel := context.WithTimeout(ctx, peerstoreWaitAddrsTimeout)
 	defer cancel()
 
-	return buildFullMAs(waitPeerAddrs(waitPeersCtx, s.host.Peerstore(), peerID), peerID)
+	mas := waitPeerAddrs(waitPeersCtx, s.host.Peerstore(), peerID)
+	if len(mas) == 0 && remoteAddr != nil {
+		mas = []ma.Multiaddr{remoteAddr}
+	}
+
+	return buildFullMAs(mas, peerID)
 }
 
 // IsBee260 implements p2p.Bee260CompatibilityStreamer interface.
