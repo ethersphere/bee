@@ -1466,17 +1466,17 @@ func (s *Service) determineCurrentNetworkStatus(err error) error {
 }
 
 // peerMultiaddrs builds full multiaddresses for a peer given information from
-// libp2p host peerstore and falling back to the remote address from the
-// connection.
+// the libp2p host peerstore. If the peerstore doesn't have addresses yet,
+// it falls back to using the remote address from the active connection.
 func (s *Service) peerMultiaddrs(ctx context.Context, remoteAddr ma.Multiaddr, peerID libp2ppeer.ID) ([]ma.Multiaddr, error) {
 	waitPeersCtx, cancel := context.WithTimeout(ctx, peerstoreWaitAddrsTimeout)
 	defer cancel()
 
 	mas := waitPeerAddrs(waitPeersCtx, s.host.Peerstore(), peerID)
-	if len(mas) == 0 {
-		// fallback to remote address from the connection
+	if len(mas) == 0 && remoteAddr != nil {
 		mas = []ma.Multiaddr{remoteAddr}
 	}
+
 	return buildFullMAs(mas, peerID)
 }
 
