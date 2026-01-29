@@ -390,7 +390,7 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 	if err != nil {
 		return
 	}
-	txHash = receipt.TxHash
+
 	for _, ev := range receipt.Logs {
 		if ev.Address == c.postageStampContractAddress && len(ev.Topics) > 0 && ev.Topics[0] == c.batchCreatedTopic {
 			var createdEvent batchCreatedEvent
@@ -415,6 +415,7 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 			if err != nil {
 				return
 			}
+			txHash = receipt.TxHash
 			return
 		}
 	}
@@ -482,9 +483,10 @@ func (c *postageContract) DiluteBatch(ctx context.Context, batchID []byte, newDe
 	if err != nil {
 		return
 	}
-	txHash = receipt.TxHash
+
 	for _, ev := range receipt.Logs {
 		if ev.Address == c.postageStampContractAddress && len(ev.Topics) > 0 && ev.Topics[0] == c.batchDepthIncreaseTopic {
+			txHash = receipt.TxHash
 			return
 		}
 	}
