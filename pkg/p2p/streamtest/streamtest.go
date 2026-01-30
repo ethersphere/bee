@@ -223,6 +223,12 @@ func (r *Recorder) WaitRecords(t *testing.T, addr swarm.Address, proto, version,
 	return recs
 }
 
+// IsBee260 implements p2p.Bee260CompatibilityStreamer interface.
+// It always returns false.
+func (r *Recorder) IsBee260(overlay swarm.Address) bool {
+	return false
+}
+
 type Record struct {
 	in    *record
 	out   *record

@@ -153,7 +153,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 
 	w, r := protobuf.NewWriterAndReader(stream)
 
-	peerMultiaddrs = filterBee260CompatibleUnderlays(o.bee260compatibility, peerMultiaddrs)
+	peerMultiaddrs = p2p.FilterBee260CompatibleUnderlays(o.bee260compatibility, peerMultiaddrs)
 
 	if err := w.WriteMsgWithContext(ctx, &pb.Syn{
 		ObservedUnderlay: bzz.SerializeUnderlays(peerMultiaddrs),
@@ -208,7 +208,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return a.Equal(b)
 	})
 
-	advertisableUnderlays = filterBee260CompatibleUnderlays(o.bee260compatibility, advertisableUnderlays)
+	advertisableUnderlays = p2p.FilterBee260CompatibleUnderlays(o.bee260compatibility, advertisableUnderlays)
 
 	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce)
 	if err != nil {
@@ -306,7 +306,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 		return a.Equal(b)
 	})
 
-	advertisableUnderlays = filterBee260CompatibleUnderlays(o.bee260compatibility, advertisableUnderlays)
+	advertisableUnderlays = p2p.FilterBee260CompatibleUnderlays(o.bee260compatibility, advertisableUnderlays)
 
 	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce)
 	if err != nil {
@@ -315,7 +315,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 
 	welcomeMessage := s.GetWelcomeMessage()
 
-	peerMultiaddrs = filterBee260CompatibleUnderlays(o.bee260compatibility, peerMultiaddrs)
+	peerMultiaddrs = p2p.FilterBee260CompatibleUnderlays(o.bee260compatibility, peerMultiaddrs)
 
 	if err := w.WriteMsgWithContext(ctx, &pb.SynAck{
 		Syn: &pb.Syn{
@@ -394,19 +394,4 @@ func (s *Service) parseCheckAck(ack *pb.Ack) (*bzz.Address, error) {
 	}
 
 	return bzzAddress, nil
-}
-
-// filterBee260CompatibleUnderlays select a single underlay to pass if
-// bee260compatibility is true. Otherwise it passes the unmodified underlays
-// slice. This function can be safely removed when bee version 2.6.0 is
-// deprecated.
-func filterBee260CompatibleUnderlays(bee260compatibility bool, underlays []ma.Multiaddr) []ma.Multiaddr {
-	if !bee260compatibility {
-		return underlays
-	}
-	underlay := bzz.SelectBestAdvertisedAddress(underlays, nil)
-	if underlay == nil {
-		return underlays
-	}
-	return []ma.Multiaddr{underlay}
 }

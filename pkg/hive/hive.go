@@ -50,7 +50,7 @@ var (
 )
 
 type Service struct {
-	streamer          p2p.Streamer
+	streamer          p2p.Bee260CompatibilityStreamer
 	addressBook       addressbook.GetPutter
 	addPeersHandler   func(...swarm.Address)
 	networkID         uint64
@@ -67,7 +67,7 @@ type Service struct {
 	overlay           swarm.Address
 }
 
-func New(streamer p2p.Streamer, addressbook addressbook.GetPutter, networkID uint64, bootnode bool, allowPrivateCIDRs bool, overlay swarm.Address, logger log.Logger) *Service {
+func New(streamer p2p.Bee260CompatibilityStreamer, addressbook addressbook.GetPutter, networkID uint64, bootnode bool, allowPrivateCIDRs bool, overlay swarm.Address, logger log.Logger) *Service {
 	svc := &Service{
 		streamer:          streamer,
 		logger:            logger.WithName(loggerName).Register(),
@@ -195,6 +195,8 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 			s.logger.Debug("skipping peers: no advertisable underlays", "peer_address", p)
 			continue
 		}
+
+		advertisableUnderlays = p2p.FilterBee260CompatibleUnderlays(s.streamer.IsBee260(peer), advertisableUnderlays)
 
 		peersRequest.Peers = append(peersRequest.Peers, &pb.BzzAddress{
 			Overlay:   addr.Overlay.Bytes(),
