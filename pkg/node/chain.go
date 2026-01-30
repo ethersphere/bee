@@ -9,8 +9,11 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
+	"net/http"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -37,7 +40,78 @@ const (
 	maxDelay                = 1 * time.Minute
 	cancellationDepth       = 12
 	additionalConfirmations = 2
+	maxRetries              = 3
+	retryBackoff            = 100 * time.Millisecond
 )
+
+// retryRoundTripper implements http.RoundTripper with retry logic for transient network errors.
+type retryRoundTripper struct {
+	transport  http.RoundTripper
+	maxRetries int
+	backoff    time.Duration
+}
+
+// RoundTrip executes a single HTTP transaction, returning a Response for the Request.
+// It retries on transient errors like EOF, connection reset, and connection refused.
+func (r *retryRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	var lastErr error
+
+	for attempt := 0; attempt <= r.maxRetries; attempt++ {
+		if attempt > 0 {
+			backoffDuration := min(r.backoff*time.Duration(1<<uint(attempt-1)), 5*time.Second)
+			time.Sleep(backoffDuration)
+		}
+
+		resp, err := r.transport.RoundTrip(req)
+		if err == nil {
+			return resp, nil
+		}
+
+		lastErr = err
+
+		if !isRetryableError(err) {
+			return nil, err
+		}
+	}
+
+	return nil, fmt.Errorf("request failed after %d retries: %w", r.maxRetries, lastErr)
+}
+
+// isRetryableError determines if an error should trigger a retry.
+func isRetryableError(err error) bool {
+	// Check for EOF
+	if errors.Is(err, io.EOF) {
+		return true
+	}
+
+	// Check for connection reset
+	if errors.Is(err, syscall.ECONNRESET) {
+		return true
+	}
+
+	// Check for connection refused
+	if errors.Is(err, syscall.ECONNREFUSED) {
+		return true
+	}
+
+	// Check for broken pipe
+	if errors.Is(err, syscall.EPIPE) {
+		return true
+	}
+
+	return false
+}
+
+// newHTTPClient creates an HTTP client configured for blockchain RPC communication.
+func newHTTPClient() *http.Client {
+	return &http.Client{
+		Transport: &retryRoundTripper{
+			transport:  http.DefaultTransport,
+			maxRetries: maxRetries,
+			backoff:    retryBackoff,
+		},
+	}
+}
 
 // InitChain will initialize the Ethereum backend at the given endpoint and
 // set up the Transaction Service to interact with it using the provided signer.
@@ -55,7 +129,7 @@ func InitChain(
 	backend := backendnoop.New(chainID)
 
 	if chainEnabled {
-		rpcClient, err := rpc.DialContext(ctx, endpoint)
+		rpcClient, err := rpc.DialOptions(ctx, endpoint, rpc.WithHTTPClient(newHTTPClient()))
 		if err != nil {
 			return nil, common.Address{}, 0, nil, nil, fmt.Errorf("dial blockchain client: %w", err)
 		}
