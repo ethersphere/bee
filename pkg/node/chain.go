@@ -60,6 +60,15 @@ func (r *retryRoundTripper) RoundTrip(req *http.Request) (*http.Response, error)
 		if attempt > 0 {
 			backoffDuration := min(r.backoff*time.Duration(1<<uint(attempt-1)), 5*time.Second)
 			time.Sleep(backoffDuration)
+
+			// Reset request body for retry if possible
+			if req.Body != nil && req.GetBody != nil {
+				var err error
+				req.Body, err = req.GetBody()
+				if err != nil {
+					return nil, fmt.Errorf("failed to reset request body for retry: %w", err)
+				}
+			}
 		}
 
 		resp, err := r.transport.RoundTrip(req)
@@ -71,6 +80,10 @@ func (r *retryRoundTripper) RoundTrip(req *http.Request) (*http.Response, error)
 
 		if !isRetryableError(err) {
 			return nil, err
+		}
+
+		if req.Body != nil && req.GetBody == nil {
+			return nil, fmt.Errorf("cannot retry request with non-rewindable body: %w", err)
 		}
 	}
 
