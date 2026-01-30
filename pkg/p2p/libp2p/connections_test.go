@@ -1613,18 +1613,30 @@ func TestAddressbookPersistence(t *testing.T) {
 		expectPeersEventually(t, s1, overlay2)
 
 		// Verify s1 (has underlays) is persisted in s2's addressbook
-		addr, err := ab2.Get(overlay1)
+		var addr *bzz.Address
+		err = spinlock.Wait(time.Second, func() bool {
+			var getErr error
+			addr, getErr = ab2.Get(overlay1)
+			return getErr == nil && containsAtLeastOne(addr.Underlays, s1Addrs)
+		})
 		if err != nil {
-			t.Fatal(err)
-		}
-		if !containsAtLeastOne(addr.Underlays, s1Addrs) {
+			addr, _ = ab2.Get(overlay1)
+			if addr == nil {
+				t.Fatal("s1 not found in s2's addressbook")
+			}
 			t.Fatalf("expected at least one of s1's addresses %v in addressbook, got %v", s1Addrs, addr.Underlays)
 		}
 
+		// Wait to ensure any incorrect persistence would have occurred
+		_ = spinlock.Wait(500*time.Millisecond, func() bool {
+			_, _ = ab1.Get(overlay2)
+			return false
+		})
+
 		// Verify s2 (empty underlays) is NOT persisted in s1's addressbook
-		_, err = ab1.Get(overlay2)
+		addr2, err := ab1.Get(overlay2)
 		if err == nil {
-			t.Fatal("expected s2 (inbound-only peer with empty underlays) not to be persisted in s1's addressbook")
+			t.Fatalf("expected s2 (inbound-only peer with empty underlays) not to be persisted in s1's addressbook, but got: %+v with %d underlays", addr2, len(addr2.Underlays))
 		}
 	})
 }
