@@ -355,14 +355,13 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 
 	overlay := swarm.NewAddress(ack.Address.Overlay)
 
-	if s.picker != nil {
-		s.mu.RLock()
-		picker := s.picker
-		s.mu.RUnlock()
-		if picker != nil {
-			if !picker.Pick(p2p.Peer{Address: overlay, FullNode: ack.FullNode}) {
-				return nil, ErrPicker
-			}
+	s.mu.RLock()
+	picker := s.picker
+	s.mu.RUnlock()
+
+	if picker != nil {
+		if !picker.Pick(p2p.Peer{Address: overlay, FullNode: ack.FullNode}) {
+			return nil, ErrPicker
 		}
 	}
 
