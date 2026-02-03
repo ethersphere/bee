@@ -506,10 +506,14 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
+	blocklist := blocklist.NewBlocklist(storer)
+
 	handshakeService, err := handshake.New(signer, newCompositeAddressResolver(tcpResolver, wssResolver), overlay, networkID, o.FullNode, o.Nonce, newHostAddresser(h), o.WelcomeMessage, o.ValidateOverlay, h.ID(), logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}
+
+	handshakeService.SetPicker(&blocklistPicker{blocklist: blocklist})
 
 	// Create a new dialer for libp2p ping protocol. This ensures that the protocol
 	// uses a different set of keys to do ping. It prevents inconsistencies in peerstore as
@@ -534,7 +538,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		networkID:          networkID,
 		peers:              peerRegistry,
 		addressbook:        ab,
-		blocklist:          blocklist.NewBlocklist(storer),
+		blocklist:          blocklist,
 		logger:             logger,
 		tracer:             tracer,
 		connectionBreaker:  breaker.NewBreaker(breaker.Options{}), // use default options
@@ -646,7 +650,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	peerID := stream.Conn().RemotePeer()
 	handshakeStream := newStream(stream, s.metrics)
 
-	peerMultiaddrs, err := s.peerMultiaddrs(s.ctx, stream.Conn().RemoteMultiaddr(), peerID)
+	peerMultiaddrs, err := s.peerMultiaddrs(s.ctx, peerID)
 	if err != nil {
 		s.logger.Debug("stream handler: handshake: build remote multiaddrs", "peer_id", peerID, "error", err)
 		s.logger.Error(nil, "stream handler: handshake: build remote multiaddrs", "peer_id", peerID)
@@ -1065,7 +1069,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 
 	handshakeStream := newStream(stream, s.metrics)
 
-	peerMultiaddrs, err := s.peerMultiaddrs(ctx, stream.Conn().RemoteMultiaddr(), peerID)
+	peerMultiaddrs, err := s.peerMultiaddrs(ctx, peerID)
 	if err != nil {
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(peerID)
@@ -1466,18 +1470,13 @@ func (s *Service) determineCurrentNetworkStatus(err error) error {
 }
 
 // peerMultiaddrs builds full multiaddresses for a peer given information from
-// the libp2p host peerstore. If the peerstore doesn't have addresses yet,
-// it falls back to using the remote address from the active connection.
-func (s *Service) peerMultiaddrs(ctx context.Context, remoteAddr ma.Multiaddr, peerID libp2ppeer.ID) ([]ma.Multiaddr, error) {
+// libp2p host peerstore and falling back to the remote address from the
+// connection.
+func (s *Service) peerMultiaddrs(ctx context.Context, peerID libp2ppeer.ID) ([]ma.Multiaddr, error) {
 	waitPeersCtx, cancel := context.WithTimeout(ctx, peerstoreWaitAddrsTimeout)
 	defer cancel()
 
-	mas := waitPeerAddrs(waitPeersCtx, s.host.Peerstore(), peerID)
-	if len(mas) == 0 && remoteAddr != nil {
-		mas = []ma.Multiaddr{remoteAddr}
-	}
-
-	return buildFullMAs(mas, peerID)
+	return buildFullMAs(waitPeerAddrs(waitPeersCtx, s.host.Peerstore(), peerID), peerID)
 }
 
 // IsBee260 implements p2p.Bee260CompatibilityStreamer interface.
@@ -1680,4 +1679,16 @@ func waitPeerAddrs(ctx context.Context, s peerstore.Peerstore, peerID libp2ppeer
 	case <-ctx.Done():
 		return s.Addrs(peerID)
 	}
+}
+
+type blocklistPicker struct {
+	blocklist *blocklist.Blocklist
+}
+
+func (b *blocklistPicker) Pick(peer p2p.Peer) bool {
+	blocked, err := b.blocklist.Exists(peer.Address)
+	if err != nil {
+		return false
+	}
+	return !blocked
 }
