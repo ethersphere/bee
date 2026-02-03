@@ -301,6 +301,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		DBWriteBufferSize:             c.config.GetUint64(optionNameDBWriteBufferSize),
 		EnableStorageIncentives:       c.config.GetBool(optionNameStorageIncentivesEnable),
 		EnableWS:                      c.config.GetBool(optionNameP2PWSEnable),
+		DisableTCP:                    c.config.GetBool(optionNameP2PDisableTCP),
 		AutoTLSDomain:                 c.config.GetString(optionAutoTLSDomain),
 		AutoTLSRegistrationEndpoint:   c.config.GetString(optionAutoTLSRegistrationEndpoint),
 		FullNodeMode:                  fullNode,

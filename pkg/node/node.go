@@ -149,6 +149,7 @@ type Options struct {
 	DBWriteBufferSize             uint64
 	EnableStorageIncentives       bool
 	EnableWS                      bool
+	DisableTCP                    bool
 	AutoTLSDomain                 string
 	AutoTLSRegistrationEndpoint   string
 	FullNodeMode                  bool
@@ -669,6 +670,7 @@ func NewBee(
 		NATWSSAddr:                  o.NATWSSAddr,
 		EnableWS:                    o.EnableWS,
 		EnableWSS:                   o.EnableWSS,
+		DisableTCP:                  o.DisableTCP,
 		WSSAddr:                     o.WSSAddr,
 		AutoTLSStorageDir:           o.AutoTLSStorageDir,
 		AutoTLSDomain:               o.AutoTLSDomain,

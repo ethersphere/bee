@@ -148,6 +148,7 @@ type Options struct {
 	NATWSSAddr                  string
 	EnableWS                    bool
 	EnableWSS                   bool
+	DisableTCP                  bool
 	WSSAddr                     string
 	AutoTLSStorageDir           string
 	AutoTLSCAEndpoint           string
@@ -167,24 +168,27 @@ type Options struct {
 func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (s *Service, returnErr error) {
 	logger = logger.WithName(loggerName).Register()
 
-	parsedAddr, err := parseAddress(addr)
-	if err != nil {
-		return nil, err
-	}
-
 	var listenAddrs []string
 
-	if parsedAddr.IP4 != "" {
-		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s", parsedAddr.IP4, parsedAddr.Port))
-		if o.EnableWS {
-			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/ws", parsedAddr.IP4, parsedAddr.Port))
+	// Only create listen addresses if addr is not empty
+	if addr != "" {
+		parsedAddr, err := parseAddress(addr)
+		if err != nil {
+			return nil, err
 		}
-	}
 
-	if parsedAddr.IP6 != "" {
-		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s", parsedAddr.IP6, parsedAddr.Port))
-		if o.EnableWS {
-			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/ws", parsedAddr.IP6, parsedAddr.Port))
+		if parsedAddr.IP4 != "" {
+			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s", parsedAddr.IP4, parsedAddr.Port))
+			if o.EnableWS {
+				listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/ws", parsedAddr.IP4, parsedAddr.Port))
+			}
+		}
+
+		if parsedAddr.IP6 != "" {
+			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s", parsedAddr.IP6, parsedAddr.Port))
+			if o.EnableWS {
+				listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/ws", parsedAddr.IP6, parsedAddr.Port))
+			}
 		}
 	}
 
@@ -404,8 +408,10 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		)
 	}
 
-	transports := []libp2p.Option{
-		libp2p.Transport(tcp.NewTCPTransport, tcp.DisableReuseport()),
+	var transports []libp2p.Option
+	// Only add TCP transport if not disabled
+	if !o.DisableTCP {
+		transports = append(transports, libp2p.Transport(tcp.NewTCPTransport, tcp.DisableReuseport()))
 	}
 
 	var tcpResolver handshake.AdvertisableAddressResolver

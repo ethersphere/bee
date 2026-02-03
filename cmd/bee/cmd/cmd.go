@@ -35,6 +35,7 @@ const (
 	optionNameP2PAddr                      = "p2p-addr"
 	optionNameNATAddr                      = "nat-addr"
 	optionNameP2PWSEnable                  = "p2p-ws-enable"
+	optionNameP2PDisableTCP                = "p2p-disable-tcp"
 	optionNameBootnodes                    = "bootnode"
 	optionNameNetworkID                    = "network-id"
 	optionWelcomeMessage                   = "welcome-message"
@@ -250,9 +251,10 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNamePassword, "", "password for decrypting keys")
 	cmd.Flags().String(optionNamePasswordFile, "", "path to a file that contains password for decrypting keys")
 	cmd.Flags().String(optionNameAPIAddr, "127.0.0.1:1633", "HTTP API listen address")
-	cmd.Flags().String(optionNameP2PAddr, ":1634", "P2P listen address")
+	cmd.Flags().String(optionNameP2PAddr, "", "P2P listen address (empty to disable listening)")
 	cmd.Flags().String(optionNameNATAddr, "", "NAT exposed address")
 	cmd.Flags().Bool(optionNameP2PWSEnable, false, "enable P2P WebSocket transport")
+	cmd.Flags().Bool(optionNameP2PDisableTCP, false, "disable P2P TCP transport (use only WebSocket)")
 	cmd.Flags().StringSlice(optionNameBootnodes, []string{"/dnsaddr/mainnet.ethswarm.org"}, "initial nodes to connect to")
 	cmd.Flags().Uint64(optionNameNetworkID, chaincfg.Mainnet.NetworkID, "ID of the Swarm network")
 	cmd.Flags().StringSlice(optionCORSAllowedOrigins, []string{}, "origins with CORS headers enabled")
