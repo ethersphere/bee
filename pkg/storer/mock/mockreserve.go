@@ -6,6 +6,7 @@ package mockstorer
 
 import (
 	"context"
+	"errors"
 	"math/big"
 	"sync"
 
@@ -231,6 +232,22 @@ func (s *ReserveStore) ReservePutter() storage.Putter {
 			return s.put(ctx, c)
 		},
 	)
+}
+
+// Put chunks.
+func (s *ReserveStore) ReservePut(ctx context.Context, chunks []swarm.Chunk) error {
+	s.mtx.Lock()
+	s.putCalls += len(chunks)
+	s.mtx.Unlock()
+	for _, c := range chunks {
+		if err := s.put(ctx, c); err != nil {
+			if errors.Is(err, storage.ErrOverwriteNewerChunk) {
+				continue
+			}
+			return err
+		}
+	}
+	return nil
 }
 
 // Put chunks.

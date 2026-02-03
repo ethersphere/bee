@@ -25,7 +25,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/pullsync/pb"
 	"github.com/ethersphere/bee/v2/pkg/ratelimit"
 	"github.com/ethersphere/bee/v2/pkg/soc"
-	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"resenje.org/singleflight"
@@ -380,19 +379,10 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		s.metrics.Delivered.Add(float64(len(chunksToPut)))
 		s.metrics.LastReceived.WithLabelValues(fmt.Sprintf("%d", bin)).Add(float64(len(chunksToPut)))
 
-		for _, c := range chunksToPut {
-			if err := s.store.ReservePutter().Put(ctx, c); err != nil {
-				// in case of these errors, no new items are added to the storage, so it
-				// is safe to continue with the next chunk
-				if errors.Is(err, storage.ErrOverwriteNewerChunk) {
-					s.logger.Debug("overwrite newer chunk", "error", err, "peer_address", peer, "chunk", c)
-					chunkErr = errors.Join(chunkErr, err)
-					continue
-				}
-				return 0, 0, errors.Join(chunkErr, err)
-			}
-			chunksPut++
+		if err := s.store.ReservePut(ctx, chunksToPut); err != nil {
+			return 0, 0, errors.Join(chunkErr, err)
 		}
+		chunksPut = len(chunksToPut)
 	}
 
 	return topmost, chunksPut, chunkErr

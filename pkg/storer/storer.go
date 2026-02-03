@@ -155,6 +155,7 @@ type ReserveStore interface {
 	ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte, stampHash []byte) (swarm.Chunk, error)
 	ReserveHas(addr swarm.Address, batchID []byte, stampHash []byte) (bool, error)
 	ReservePutter() storage.Putter
+	ReservePut(ctx context.Context, chunks []swarm.Chunk) error
 	SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan *BinC, func(), <-chan error)
 	ReserveLastBinIDs() ([]uint64, uint64, error)
 	RadiusChecker

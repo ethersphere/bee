@@ -323,6 +323,36 @@ func (db *DB) ReservePutter() storage.Putter {
 	}
 }
 
+// ReservePut implements the ReserveStore interface.
+func (db *DB) ReservePut(ctx context.Context, chunks []swarm.Chunk) error {
+	dur := captureDuration(time.Now())
+	var err error
+	defer func() {
+		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "ReservePut").Observe(dur())
+		if err == nil {
+			db.metrics.MethodCalls.WithLabelValues("reserve", "ReservePut", "success").Inc()
+		} else {
+			db.metrics.MethodCalls.WithLabelValues("reserve", "ReservePut", "failure").Inc()
+		}
+	}()
+
+	err = db.reserve.PutBatched(ctx, chunks)
+	if err != nil {
+		db.logger.Debug("reserve put batched error", "error", err)
+		return fmt.Errorf("reserve put batched: %w", err)
+	}
+
+	for _, chunk := range chunks {
+		db.reserveBinEvents.Trigger(string(db.po(chunk.Address())))
+	}
+
+	if !db.reserve.IsWithinCapacity() {
+		db.events.Trigger(reserveOverCapacity)
+	}
+	db.metrics.ReserveSize.Set(float64(db.reserve.Size()))
+	return nil
+}
+
 func (db *DB) unreserve(ctx context.Context) (err error) {
 	dur := captureDuration(time.Now())
 	defer func() {

@@ -196,14 +196,14 @@ func TestIncoming_WantErrors(t *testing.T) {
 		)
 
 		topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
-		for _, e := range []error{storage.ErrOverwriteNewerChunk, validStampErr, swarm.ErrInvalidChunk} {
+		for _, e := range []error{validStampErr, swarm.ErrInvalidChunk} {
 			if !errors.Is(err, e) {
 				t.Fatalf("expected error %v", err)
 			}
 		}
 
-		if count != 3 {
-			t.Fatalf("got %d chunks but want %d", count, 3)
+		if count != 4 {
+			t.Fatalf("got %d chunks but want %d", count, 4)
 		}
 
 		if topmost != topMost {
