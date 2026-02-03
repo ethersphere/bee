@@ -117,8 +117,8 @@ func TestTransactionSend(t *testing.T) {
 	txData := common.Hex2Bytes("0xabcdee")
 	value := big.NewInt(1)
 	suggestedGasTip := minimumTip
-	estimatedGasLimit := uint64(3)
-	gasLimit := estimatedGasLimit + estimatedGasLimit/2 // added 50% buffer
+	estimatedGasLimit := uint64(30000)
+	gasLimit := estimatedGasLimit + estimatedGasLimit*transaction.GasBufferPercent/100 // added 33% buffer
 	nonce := uint64(2)
 	chainID := big.NewInt(5)
 	gasFeeCap := new(big.Int).Add(new(big.Int).Mul(baseFee, big.NewInt(2)), suggestedGasTip)
@@ -208,12 +208,15 @@ func TestTransactionSend(t *testing.T) {
 	t.Run("send with estimate error", func(t *testing.T) {
 		t.Parallel()
 
+		// When estimation fails, use MinEstimatedGasLimit without buffer
+		gasLimitFallback := estimatedGasLimit
+
 		signedTx := types.NewTx(&types.DynamicFeeTx{
 			ChainID:   chainID,
 			Nonce:     nonce,
 			To:        &recipient,
 			Value:     value,
-			Gas:       gasLimit,
+			Gas:       gasLimitFallback,
 			GasFeeCap: gasFeeCap,
 			GasTipCap: suggestedGasTip,
 			Data:      txData,
@@ -267,7 +270,7 @@ func TestTransactionSend(t *testing.T) {
 			t.Fatal("returning wrong transaction hash")
 		}
 
-		checkStoredTransaction(t, transactionService, txHash, request, recipient, gasLimit, gasFeeCap, nonce)
+		checkStoredTransaction(t, transactionService, txHash, request, recipient, gasLimitFallback, gasFeeCap, nonce)
 
 		pending, err := transactionService.PendingTransactions()
 		if err != nil {
@@ -568,6 +571,496 @@ func TestTransactionSend(t *testing.T) {
 
 		if storedTransaction.GasTipCap.Cmp(customGasFeeCap) != 0 {
 			t.Fatalf("got wrong gas tip in stored transaction. wanted %d, got %d", customGasFeeCap, storedTransaction.GasTipCap)
+		}
+	})
+
+	t.Run("send with contract fallback", func(t *testing.T) {
+		t.Parallel()
+
+		// When estimation fails for contract call (has data), use FallbackGasLimit (500k)
+		contractData := []byte{0xab, 0xcd, 0xef} // Explicit non-empty data for contract call
+		signedTx := types.NewTx(&types.DynamicFeeTx{
+			ChainID:   chainID,
+			Nonce:     nonce,
+			To:        &recipient,
+			Value:     value,
+			Gas:       transaction.FallbackGasLimit,
+			GasFeeCap: gasFeeCap,
+			GasTipCap: suggestedGasTip,
+			Data:      contractData,
+		})
+		request := &transaction.TxRequest{
+			To:    &recipient,
+			Data:  contractData,
+			Value: value,
+		}
+		store := storemock.NewStateStore()
+
+		transactionService, err := transaction.NewService(logger, sender,
+			backendmock.New(
+				backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+					if tx != signedTx {
+						t.Fatal("not sending signed transaction")
+					}
+					return nil
+				}),
+				backendmock.WithEstimateGasFunc(func(ctx context.Context, msg ethereum.CallMsg) (gas uint64, err error) {
+					return 0, errors.New("estimation failed")
+				}),
+				backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
+					return nonce, nil
+				}),
+				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+					return gasFeeCap, suggestedGasTip, nil
+				}),
+			),
+			signerMockForTransaction(t, signedTx, sender, chainID),
+			store,
+			chainID,
+			monitormock.New(),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		testutil.CleanupCloser(t, transactionService)
+
+		txHash, err := transactionService.Send(context.Background(), request, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(txHash.Bytes(), signedTx.Hash().Bytes()) {
+			t.Fatal("returning wrong transaction hash")
+		}
+
+		storedTransaction, err := transactionService.StoredTransaction(txHash)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if storedTransaction.GasLimit != transaction.FallbackGasLimit {
+			t.Fatalf("expected fallback gas limit %d, got %d", transaction.FallbackGasLimit, storedTransaction.GasLimit)
+		}
+	})
+
+	t.Run("send with simple transfer fallback", func(t *testing.T) {
+		t.Parallel()
+
+		// When estimation fails for simple transfer (no data), use MinGasLimit (21k)
+		signedTx := types.NewTx(&types.DynamicFeeTx{
+			ChainID:   chainID,
+			Nonce:     nonce,
+			To:        &recipient,
+			Value:     value,
+			Gas:       transaction.MinGasLimit,
+			GasFeeCap: gasFeeCap,
+			GasTipCap: suggestedGasTip,
+			Data:      nil,
+		})
+		request := &transaction.TxRequest{
+			To:    &recipient,
+			Data:  nil,
+			Value: value,
+		}
+		store := storemock.NewStateStore()
+
+		transactionService, err := transaction.NewService(logger, sender,
+			backendmock.New(
+				backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+					if tx != signedTx {
+						t.Fatal("not sending signed transaction")
+					}
+					return nil
+				}),
+				backendmock.WithEstimateGasFunc(func(ctx context.Context, msg ethereum.CallMsg) (gas uint64, err error) {
+					return 0, errors.New("estimation failed")
+				}),
+				backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
+					return nonce, nil
+				}),
+				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+					return gasFeeCap, suggestedGasTip, nil
+				}),
+			),
+			signerMockForTransaction(t, signedTx, sender, chainID),
+			store,
+			chainID,
+			monitormock.New(),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		testutil.CleanupCloser(t, transactionService)
+
+		txHash, err := transactionService.Send(context.Background(), request, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(txHash.Bytes(), signedTx.Hash().Bytes()) {
+			t.Fatal("returning wrong transaction hash")
+		}
+
+		storedTransaction, err := transactionService.StoredTransaction(txHash)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if storedTransaction.GasLimit != transaction.MinGasLimit {
+			t.Fatalf("expected min gas limit %d, got %d", transaction.MinGasLimit, storedTransaction.GasLimit)
+		}
+	})
+
+	t.Run("send with max gas limit cap", func(t *testing.T) {
+		t.Parallel()
+
+		// When estimation returns value that exceeds MaxGasLimit, cap it
+		highEstimate := uint64(15_000_000) // Above MaxGasLimit of 10M
+		expectedGasLimit := uint64(transaction.MaxGasLimit)
+
+		signedTx := types.NewTx(&types.DynamicFeeTx{
+			ChainID:   chainID,
+			Nonce:     nonce,
+			To:        &recipient,
+			Value:     value,
+			Gas:       expectedGasLimit,
+			GasFeeCap: gasFeeCap,
+			GasTipCap: suggestedGasTip,
+			Data:      txData,
+		})
+		request := &transaction.TxRequest{
+			To:    &recipient,
+			Data:  txData,
+			Value: value,
+		}
+		store := storemock.NewStateStore()
+
+		transactionService, err := transaction.NewService(logger, sender,
+			backendmock.New(
+				backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+					if tx != signedTx {
+						t.Fatal("not sending signed transaction")
+					}
+					return nil
+				}),
+				backendmock.WithEstimateGasFunc(func(ctx context.Context, msg ethereum.CallMsg) (gas uint64, err error) {
+					return highEstimate, nil
+				}),
+				backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
+					return nonce, nil
+				}),
+				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+					return gasFeeCap, suggestedGasTip, nil
+				}),
+			),
+			signerMockForTransaction(t, signedTx, sender, chainID),
+			store,
+			chainID,
+			monitormock.New(),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		testutil.CleanupCloser(t, transactionService)
+
+		txHash, err := transactionService.Send(context.Background(), request, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(txHash.Bytes(), signedTx.Hash().Bytes()) {
+			t.Fatal("returning wrong transaction hash")
+		}
+
+		storedTransaction, err := transactionService.StoredTransaction(txHash)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if storedTransaction.GasLimit != transaction.MaxGasLimit {
+			t.Fatalf("expected max gas limit %d, got %d", transaction.MaxGasLimit, storedTransaction.GasLimit)
+		}
+	})
+
+	t.Run("send with provided gas limit", func(t *testing.T) {
+		t.Parallel()
+
+		// When GasLimit is explicitly provided, use it with bounds validation
+		providedGasLimit := uint64(100_000)
+
+		signedTx := types.NewTx(&types.DynamicFeeTx{
+			ChainID:   chainID,
+			Nonce:     nonce,
+			To:        &recipient,
+			Value:     value,
+			Gas:       providedGasLimit,
+			GasFeeCap: gasFeeCap,
+			GasTipCap: suggestedGasTip,
+			Data:      txData,
+		})
+		request := &transaction.TxRequest{
+			To:       &recipient,
+			Data:     txData,
+			Value:    value,
+			GasLimit: providedGasLimit,
+		}
+		store := storemock.NewStateStore()
+
+		transactionService, err := transaction.NewService(logger, sender,
+			backendmock.New(
+				backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+					if tx != signedTx {
+						t.Fatal("not sending signed transaction")
+					}
+					return nil
+				}),
+				// EstimateGas should not be called when GasLimit is provided
+				backendmock.WithEstimateGasFunc(func(ctx context.Context, msg ethereum.CallMsg) (gas uint64, err error) {
+					t.Fatal("EstimateGas should not be called when GasLimit is provided")
+					return 0, nil
+				}),
+				backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
+					return nonce, nil
+				}),
+				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+					return gasFeeCap, suggestedGasTip, nil
+				}),
+			),
+			signerMockForTransaction(t, signedTx, sender, chainID),
+			store,
+			chainID,
+			monitormock.New(),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		testutil.CleanupCloser(t, transactionService)
+
+		txHash, err := transactionService.Send(context.Background(), request, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(txHash.Bytes(), signedTx.Hash().Bytes()) {
+			t.Fatal("returning wrong transaction hash")
+		}
+
+		storedTransaction, err := transactionService.StoredTransaction(txHash)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if storedTransaction.GasLimit != providedGasLimit {
+			t.Fatalf("expected provided gas limit %d, got %d", providedGasLimit, storedTransaction.GasLimit)
+		}
+	})
+
+	t.Run("send with MinEstimatedGasLimit enforced after buffer", func(t *testing.T) {
+		t.Parallel()
+
+		// When estimated gas + buffer is below MinEstimatedGasLimit, enforce the minimum
+		lowEstimate := uint64(50_000)
+		minGas := uint64(100_000)
+		// lowEstimate + 33% = 66,500, which is < minGas, so minGas should be used
+
+		signedTx := types.NewTx(&types.DynamicFeeTx{
+			ChainID:   chainID,
+			Nonce:     nonce,
+			To:        &recipient,
+			Value:     value,
+			Gas:       minGas,
+			GasFeeCap: gasFeeCap,
+			GasTipCap: suggestedGasTip,
+			Data:      txData,
+		})
+		request := &transaction.TxRequest{
+			To:                   &recipient,
+			Data:                 txData,
+			Value:                value,
+			MinEstimatedGasLimit: minGas,
+		}
+		store := storemock.NewStateStore()
+
+		transactionService, err := transaction.NewService(logger, sender,
+			backendmock.New(
+				backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+					if tx != signedTx {
+						t.Fatal("not sending signed transaction")
+					}
+					return nil
+				}),
+				backendmock.WithEstimateGasFunc(func(ctx context.Context, msg ethereum.CallMsg) (gas uint64, err error) {
+					return lowEstimate, nil
+				}),
+				backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
+					return nonce, nil
+				}),
+				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+					return gasFeeCap, suggestedGasTip, nil
+				}),
+			),
+			signerMockForTransaction(t, signedTx, sender, chainID),
+			store,
+			chainID,
+			monitormock.New(),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		testutil.CleanupCloser(t, transactionService)
+
+		txHash, err := transactionService.Send(context.Background(), request, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(txHash.Bytes(), signedTx.Hash().Bytes()) {
+			t.Fatal("returning wrong transaction hash")
+		}
+
+		storedTransaction, err := transactionService.StoredTransaction(txHash)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if storedTransaction.GasLimit != minGas {
+			t.Fatalf("expected MinEstimatedGasLimit %d, got %d", minGas, storedTransaction.GasLimit)
+		}
+	})
+
+	t.Run("send with provided gas limit below minimum", func(t *testing.T) {
+		t.Parallel()
+
+		// When provided GasLimit is below MinGasLimit, enforce MinGasLimit
+		lowGasLimit := uint64(10_000) // Below MinGasLimit of 21k
+
+		signedTx := types.NewTx(&types.DynamicFeeTx{
+			ChainID:   chainID,
+			Nonce:     nonce,
+			To:        &recipient,
+			Value:     value,
+			Gas:       transaction.MinGasLimit,
+			GasFeeCap: gasFeeCap,
+			GasTipCap: suggestedGasTip,
+			Data:      txData,
+		})
+		request := &transaction.TxRequest{
+			To:       &recipient,
+			Data:     txData,
+			Value:    value,
+			GasLimit: lowGasLimit,
+		}
+		store := storemock.NewStateStore()
+
+		transactionService, err := transaction.NewService(logger, sender,
+			backendmock.New(
+				backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+					if tx != signedTx {
+						t.Fatal("not sending signed transaction")
+					}
+					return nil
+				}),
+				backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
+					return nonce, nil
+				}),
+				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+					return gasFeeCap, suggestedGasTip, nil
+				}),
+			),
+			signerMockForTransaction(t, signedTx, sender, chainID),
+			store,
+			chainID,
+			monitormock.New(),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		testutil.CleanupCloser(t, transactionService)
+
+		txHash, err := transactionService.Send(context.Background(), request, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(txHash.Bytes(), signedTx.Hash().Bytes()) {
+			t.Fatal("returning wrong transaction hash")
+		}
+
+		storedTransaction, err := transactionService.StoredTransaction(txHash)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if storedTransaction.GasLimit != transaction.MinGasLimit {
+			t.Fatalf("expected min gas limit enforced %d, got %d", transaction.MinGasLimit, storedTransaction.GasLimit)
+		}
+	})
+
+	t.Run("send with provided gas limit above maximum", func(t *testing.T) {
+		t.Parallel()
+
+		// When provided GasLimit is above MaxGasLimit, cap at MaxGasLimit
+		highGasLimit := uint64(15_000_000) // Above MaxGasLimit of 10M
+
+		signedTx := types.NewTx(&types.DynamicFeeTx{
+			ChainID:   chainID,
+			Nonce:     nonce,
+			To:        &recipient,
+			Value:     value,
+			Gas:       transaction.MaxGasLimit,
+			GasFeeCap: gasFeeCap,
+			GasTipCap: suggestedGasTip,
+			Data:      txData,
+		})
+		request := &transaction.TxRequest{
+			To:       &recipient,
+			Data:     txData,
+			Value:    value,
+			GasLimit: highGasLimit,
+		}
+		store := storemock.NewStateStore()
+
+		transactionService, err := transaction.NewService(logger, sender,
+			backendmock.New(
+				backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+					if tx != signedTx {
+						t.Fatal("not sending signed transaction")
+					}
+					return nil
+				}),
+				backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
+					return nonce, nil
+				}),
+				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+					return gasFeeCap, suggestedGasTip, nil
+				}),
+			),
+			signerMockForTransaction(t, signedTx, sender, chainID),
+			store,
+			chainID,
+			monitormock.New(),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		testutil.CleanupCloser(t, transactionService)
+
+		txHash, err := transactionService.Send(context.Background(), request, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(txHash.Bytes(), signedTx.Hash().Bytes()) {
+			t.Fatal("returning wrong transaction hash")
+		}
+
+		storedTransaction, err := transactionService.StoredTransaction(txHash)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if storedTransaction.GasLimit != transaction.MaxGasLimit {
+			t.Fatalf("expected max gas limit enforced %d, got %d", transaction.MaxGasLimit, storedTransaction.GasLimit)
 		}
 	})
 }
