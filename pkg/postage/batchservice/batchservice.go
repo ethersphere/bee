@@ -40,6 +40,8 @@ type batchService struct {
 
 	checksum hash.Hash // checksum hasher
 	resync   bool
+
+	pendingChainState *postage.ChainState
 }
 
 type Interface interface {
@@ -95,15 +97,22 @@ func New(
 		}
 	}
 
-	return &batchService{stateStore, storer, logger.WithName(loggerName).Register(), listener, owner, batchListener, sum, resync}, nil
+	return &batchService{stateStore: stateStore, storer: storer, logger: logger.WithName(loggerName).Register(), listener: listener, owner: owner, batchListener: batchListener, checksum: sum, resync: resync}, nil
+}
+
+func (svc *batchService) getChainState() *postage.ChainState {
+	if svc.pendingChainState != nil {
+		return svc.pendingChainState
+	}
+	return svc.storer.GetChainState()
 }
 
 // Create will create a new batch with the given ID, owner value and depth and
 // stores it in the BatchedStore.
 func (svc *batchService) Create(id, owner []byte, totalAmout, normalisedBalance *big.Int, depth, bucketDepth uint8, immutable bool, txHash common.Hash) error {
-	// don't add batches which have value which equals total cumulative
+	// dont add batches which have value which equals total cumulative
 	// payout or that are going to expire already within the next couple of blocks
-	val := big.NewInt(0).Add(svc.storer.GetChainState().TotalAmount, svc.storer.GetChainState().CurrentPrice)
+	val := big.NewInt(0).Add(svc.getChainState().TotalAmount, svc.getChainState().CurrentPrice)
 	if normalisedBalance.Cmp(val) <= 0 {
 		// don't do anything
 		return fmt.Errorf("batch service: batch %x: %w", id, ErrZeroValueBatch)
@@ -112,7 +121,7 @@ func (svc *batchService) Create(id, owner []byte, totalAmout, normalisedBalance 
 		ID:          id,
 		Owner:       owner,
 		Value:       normalisedBalance,
-		Start:       svc.storer.GetChainState().Block,
+		Start:       svc.getChainState().Block,
 		Depth:       depth,
 		BucketDepth: bucketDepth,
 		Immutable:   immutable,
@@ -196,10 +205,13 @@ func (svc *batchService) UpdateDepth(id []byte, depth uint8, normalisedBalance *
 // UpdatePrice implements the EventUpdater interface. It sets the current
 // price from the chain in the service chain state.
 func (svc *batchService) UpdatePrice(price *big.Int, txHash common.Hash) error {
-	cs := svc.storer.GetChainState()
+	cs := svc.getChainState()
 	cs.CurrentPrice = price
-	if err := svc.storer.PutChainState(cs); err != nil {
-		return fmt.Errorf("put chain state: %w", err)
+
+	if svc.pendingChainState == nil {
+		if err := svc.storer.PutChainState(cs); err != nil {
+			return fmt.Errorf("put chain state: %w", err)
+		}
 	}
 
 	sum, err := svc.updateChecksum(txHash)
@@ -212,7 +224,7 @@ func (svc *batchService) UpdatePrice(price *big.Int, txHash common.Hash) error {
 }
 
 func (svc *batchService) UpdateBlockNumber(blockNumber uint64) error {
-	cs := svc.storer.GetChainState()
+	cs := svc.getChainState()
 	if blockNumber == cs.Block {
 		return nil
 	}
@@ -223,17 +235,27 @@ func (svc *batchService) UpdateBlockNumber(blockNumber uint64) error {
 
 	cs.TotalAmount.Add(cs.TotalAmount, diff.Mul(diff, cs.CurrentPrice))
 	cs.Block = blockNumber
-	if err := svc.storer.PutChainState(cs); err != nil {
-		return fmt.Errorf("put chain state: %w", err)
+
+	if svc.pendingChainState == nil {
+		if err := svc.storer.PutChainState(cs); err != nil {
+			return fmt.Errorf("put chain state: %w", err)
+		}
 	}
 
 	svc.logger.Debug("block height updated", "new_block", blockNumber)
 	return nil
 }
 func (svc *batchService) TransactionStart() error {
+	svc.pendingChainState = svc.storer.GetChainState()
 	return svc.stateStore.Put(dirtyDBKey, true)
 }
 func (svc *batchService) TransactionEnd() error {
+	if svc.pendingChainState != nil {
+		if err := svc.storer.PutChainState(svc.pendingChainState); err != nil {
+			return fmt.Errorf("put chain state: %w", err)
+		}
+		svc.pendingChainState = nil
+	}
 	return svc.stateStore.Delete(dirtyDBKey)
 }
 
