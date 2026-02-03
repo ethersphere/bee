@@ -44,8 +44,12 @@ var (
 )
 
 const (
-	DefaultGasLimit        = 1_000_000
+	DefaultGasLimit        = 1_000_000 // Used for contract operations when setGasLimit flag is enabled
 	DefaultTipBoostPercent = 25
+	MaxGasLimit            = 10_000_000 // Maximum allowed gas limit to prevent excessive values
+	MinGasLimit            = 21_000     // Minimum gas for any transaction
+	GasBufferPercent       = 33         // Add 33% buffer to estimated gas
+	FallbackGasLimit       = 500_000    // Fallback when estimation fails and no minimum is set
 )
 
 // TxRequest describes a request for a transaction that can be executed.
@@ -271,26 +275,6 @@ func (t *transactionService) StoredTransaction(txHash common.Hash) (*StoredTrans
 
 // prepareTransaction creates a signable transaction based on a request.
 func (t *transactionService) prepareTransaction(ctx context.Context, request *TxRequest, nonce uint64, boostPercent int) (tx *types.Transaction, err error) {
-	var gasLimit uint64
-	if request.GasLimit == 0 {
-		gasLimit, err = t.backend.EstimateGasAtBlock(ctx, ethereum.CallMsg{
-			From: t.sender,
-			To:   request.To,
-			Data: request.Data,
-		}, nil) // nil for latest block
-		if err != nil {
-			t.logger.Debug("estimate gas failed", "error", err)
-			gasLimit = request.MinEstimatedGasLimit
-		}
-
-		gasLimit += gasLimit / 2 // add 50% buffer to the estimated gas limit
-		if gasLimit < request.MinEstimatedGasLimit {
-			gasLimit = request.MinEstimatedGasLimit
-		}
-	} else {
-		gasLimit = request.GasLimit
-	}
-
 	/*
 		Transactions are EIP 1559 dynamic transactions where there are three fee related fields:
 			1. base fee is the price that will be burned as part of the transaction.
@@ -303,9 +287,146 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 		notice that gas price does not exceed 20 as defined by max fee.
 	*/
 
+	// Calculate gas fees first so we can use them in gas estimation for more accurate simulation
 	gasFeeCap, gasTipCap, err := t.backend.SuggestedFeeAndTip(ctx, request.GasPrice, boostPercent)
 	if err != nil {
 		return nil, err
+	}
+
+	var gasLimit uint64
+	if request.GasLimit == 0 {
+		// Estimate gas using pending state to account for pending transactions
+		// This is consistent with using PendingNonceAt for nonce selection
+		gasLimit, err = t.backend.EstimateGas(ctx, ethereum.CallMsg{
+			From:      t.sender,
+			To:        request.To,
+			Data:      request.Data,
+			Value:     request.Value,
+			GasFeeCap: gasFeeCap,
+			GasTipCap: gasTipCap,
+		})
+
+		if err != nil {
+			// Gas estimation failed - analyze error to provide better diagnostics
+			errStr := err.Error()
+
+			// Try to get revert reason for better error reporting
+			var revertReason string
+			if strings.Contains(errStr, "execution reverted") ||
+				strings.Contains(errStr, "Transaction execution fails") ||
+				strings.Contains(errStr, "always failing transaction") {
+				// Attempt to call contract to get revert reason
+				if output, callErr := t.backend.CallContract(ctx, ethereum.CallMsg{
+					From:      t.sender,
+					To:        request.To,
+					Data:      request.Data,
+					Value:     request.Value,
+					GasFeeCap: gasFeeCap,
+					GasTipCap: gasTipCap,
+				}, nil); callErr == nil && len(output) > 0 {
+					revertReason = fmt.Sprintf("revert_data=0x%x", output)
+				} else if callErr != nil {
+					revertReason = fmt.Sprintf("call_error=%v", callErr)
+				}
+			}
+
+			switch {
+			case strings.Contains(errStr, "execution reverted") ||
+				strings.Contains(errStr, "Transaction execution fails"):
+				t.logger.Error(err, "transaction would revert if sent - contract requirements not met",
+					"description", request.Description,
+					"to", request.To,
+					"revert_info", revertReason,
+				)
+
+			case strings.Contains(errStr, "always failing transaction"):
+				t.logger.Error(err, "transaction always fails - invalid parameters or contract state",
+					"description", request.Description,
+					"to", request.To,
+					"revert_info", revertReason,
+				)
+
+			case strings.Contains(errStr, "insufficient funds") ||
+				strings.Contains(errStr, "exceeds balance"):
+				t.logger.Error(err, "insufficient balance to execute transaction",
+					"description", request.Description,
+					"value", request.Value,
+				)
+
+			case strings.Contains(errStr, "gas required exceeds allowance") ||
+				strings.Contains(errStr, "out of gas"):
+				t.logger.Error(err, "transaction requires too much gas",
+					"description", request.Description,
+				)
+
+			case strings.Contains(errStr, "nonce too low"):
+				t.logger.Error(err, "nonce conflict detected",
+					"description", request.Description,
+				)
+
+			default:
+				t.logger.Warning("gas estimation failed, using fallback",
+					"error", err,
+					"description", request.Description,
+				)
+			}
+
+			// Use fallback gas limit with priority order
+			if request.MinEstimatedGasLimit > 0 {
+				gasLimit = request.MinEstimatedGasLimit
+			} else if len(request.Data) > 0 {
+				// Contract interaction - use reasonable fallback
+				gasLimit = FallbackGasLimit
+			} else {
+				// Simple transfer - use minimum
+				gasLimit = MinGasLimit
+			}
+		} else {
+			// Gas estimation succeeded - add buffer to handle state changes
+			buffer := gasLimit * GasBufferPercent / 100
+			gasLimit += buffer
+
+			// Ensure minimum requirement is met
+			if gasLimit < request.MinEstimatedGasLimit {
+				gasLimit = request.MinEstimatedGasLimit
+			}
+
+			// Cap at maximum to prevent excessive gas limits
+			if gasLimit > MaxGasLimit {
+				t.logger.Warning("estimated gas exceeds maximum, capping",
+					"estimated", gasLimit,
+					"max", MaxGasLimit,
+					"description", request.Description,
+				)
+				gasLimit = MaxGasLimit
+			}
+		}
+
+		// Final safety check - ensure absolute minimum
+		if gasLimit < MinGasLimit {
+			gasLimit = MinGasLimit
+		}
+	} else {
+		// User provided explicit gas limit - use it but validate
+		gasLimit = request.GasLimit
+		if gasLimit < MinGasLimit {
+			t.logger.Warning("provided gas limit too low, using minimum",
+				"provided", gasLimit,
+				"minimum", MinGasLimit,
+			)
+			gasLimit = MinGasLimit
+		}
+		if gasLimit > MaxGasLimit {
+			t.logger.Warning("provided gas limit too high, capping",
+				"provided", gasLimit,
+				"maximum", MaxGasLimit,
+			)
+			gasLimit = MaxGasLimit
+		}
+	}
+
+	if gasLimit == 0 {
+		return nil, errors.New("gas limit cannot be zero")
 	}
 
 	return types.NewTx(&types.DynamicFeeTx{
