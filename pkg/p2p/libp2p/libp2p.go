@@ -124,6 +124,10 @@ type Service struct {
 	enableWS           bool
 	autoTLSCertManager autoTLSCertManager
 	zapLogger          *zap.Logger
+	// Transport availability flags
+	hasTCPTransport bool
+	hasWSTransport  bool
+	hasWSSTransport bool
 }
 
 type lightnodes interface {
@@ -552,6 +556,10 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		enableWS:           o.EnableWS,
 		autoTLSCertManager: certManager,
 		zapLogger:          zapLogger,
+		// Set transport availability flags
+		hasTCPTransport: !o.DisableTCP,
+		hasWSTransport:  o.EnableWS,
+		hasWSSTransport: o.EnableWSS,
 	}
 
 	peerRegistry.setDisconnecter(s)
@@ -804,15 +812,51 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	s.logger.Debug("stream handler: successfully connected to peer (inbound)", "address", i.BzzAddress.Overlay, "light", i.LightString(), "user_agent", peerUserAgent)
 }
 
+// filterSupportedAddresses filters multiaddresses to only include those
+// that are supported by the available transports (TCP, WS/WSS).
+func (s *Service) filterSupportedAddresses(addrs []ma.Multiaddr) []ma.Multiaddr {
+	if len(addrs) == 0 {
+		return addrs
+	}
+
+	hasWSTransport := s.hasWSTransport || s.hasWSSTransport
+
+	filtered := make([]ma.Multiaddr, 0, len(addrs))
+	for _, addr := range addrs {
+		_, wsErr := addr.ValueForProtocol(ma.P_WS)
+		isWS := wsErr == nil
+
+		_, tcpErr := addr.ValueForProtocol(ma.P_TCP)
+		isTCP := tcpErr == nil
+
+		if isWS && hasWSTransport {
+			filtered = append(filtered, addr)
+		}
+
+		if isTCP && !isWS && s.hasTCPTransport {
+			filtered = append(filtered, addr)
+		}
+	}
+
+	return filtered
+}
+
 func (s *Service) notifyReacherConnected(overlay swarm.Address, peerID libp2ppeer.ID) {
 	if s.reacher == nil {
 		return
 	}
 
 	peerAddrs := s.host.Peerstore().Addrs(peerID)
-	bestAddr := bzz.SelectBestAdvertisedAddress(peerAddrs, nil)
+	// Filter addresses to only include those supported by available transports
+	filteredAddrs := s.filterSupportedAddresses(peerAddrs)
+	if len(filteredAddrs) == 0 {
+		s.logger.Debug("no supported addresses for reacher", "peer_id", peerID, "total_addrs", len(peerAddrs))
+		return
+	}
 
-	s.logger.Debug("selected reacher address", "peer_id", peerID, "selected_addr", bestAddr.String(), "advertised_count", len(peerAddrs))
+	bestAddr := bzz.SelectBestAdvertisedAddress(filteredAddrs, nil)
+
+	s.logger.Debug("selected reacher address", "peer_id", peerID, "selected_addr", bestAddr.String(), "advertised_count", len(peerAddrs), "filtered_count", len(filteredAddrs))
 
 	underlay, err := buildFullMA(bestAddr, peerID)
 	if err != nil {
@@ -994,6 +1038,12 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		err = s.determineCurrentNetworkStatus(err)
 	}()
 
+	filteredAddrs := s.filterSupportedAddresses(addrs)
+	if len(filteredAddrs) == 0 {
+		s.logger.Debug("no supported addresses to connect", "total_addrs", len(addrs))
+		return nil, p2p.ErrUnsupportedAddresses
+	}
+
 	var info *libp2ppeer.AddrInfo
 	var peerID libp2ppeer.ID
 	var connectErr error
@@ -1005,7 +1055,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	// addresses for the same peer is passed to the host.Host.Connect function
 	// and reachabiltiy Private is emitted on libp2p EventBus(), which results
 	// in weaker connectivity and failures in some integration tests.
-	for _, addr := range addrs {
+	for _, addr := range filteredAddrs {
 		// Extract the peer ID from the multiaddr.
 		ai, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
 		if err != nil {
