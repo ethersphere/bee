@@ -789,7 +789,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		return
 	}
 
-	s.notifyReacherConnected(overlay, peerID)
+	s.notifyReacherConnected(overlay, peerMultiaddrs)
 
 	peerUserAgent := appendSpace(s.peerUserAgent(s.ctx, peerID))
 	s.networkStatus.Store(int32(p2p.NetworkStatusAvailable))
@@ -798,23 +798,14 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	s.logger.Debug("stream handler: successfully connected to peer (inbound)", "address", i.BzzAddress.Overlay, "light", i.LightString(), "user_agent", peerUserAgent)
 }
 
-func (s *Service) notifyReacherConnected(overlay swarm.Address, peerID libp2ppeer.ID) {
+func (s *Service) notifyReacherConnected(overlay swarm.Address, underlay []ma.Multiaddr) {
 	if s.reacher == nil {
 		return
 	}
 
-	peerAddrs := s.host.Peerstore().Addrs(peerID)
-	bestAddr := bzz.SelectBestAdvertisedAddress(peerAddrs, nil)
+	bestAddr := bzz.SelectBestAdvertisedAddress(underlay, nil)
 
-	s.logger.Debug("selected reacher address", "peer_id", peerID, "selected_addr", bestAddr.String(), "advertised_count", len(peerAddrs))
-
-	underlay, err := buildFullMA(bestAddr, peerID)
-	if err != nil {
-		s.logger.Error(err, "stream handler: unable to build complete peer multiaddr", "peer", overlay, "multiaddr", bestAddr, "peer_id", peerID)
-		_ = s.Disconnect(overlay, "unable to build complete peer multiaddr")
-		return
-	}
-	s.reacher.Connected(overlay, underlay)
+	s.reacher.Connected(overlay, bestAddr)
 }
 
 func (s *Service) SetPickyNotifier(n p2p.PickyNotifier) {
@@ -1156,7 +1147,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 
 	s.metrics.CreatedConnectionCount.Inc()
 
-	s.notifyReacherConnected(overlay, peerID)
+	s.notifyReacherConnected(overlay, peerMultiaddrs)
 
 	peerUA := appendSpace(s.peerUserAgent(ctx, peerID))
 	loggerV1.Debug("successfully connected to peer (outbound)", "addresses", i.BzzAddress.ShortString(), "light", i.LightString(), "user_agent", peerUA)

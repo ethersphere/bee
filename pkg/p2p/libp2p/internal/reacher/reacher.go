@@ -180,6 +180,10 @@ func (r *reacher) tryAcquirePeer() (*peer, time.Duration) {
 
 // Connected adds a new peer to the queue for testing reachability.
 func (r *reacher) Connected(overlay swarm.Address, addr ma.Multiaddr) {
+	if addr == nil {
+		return
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
