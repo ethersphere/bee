@@ -59,6 +59,8 @@ const (
 	defaultTimeToRetry                 = 2 * defaultShortRetry
 	defaultPruneWakeup                 = 5 * time.Minute
 	defaultBroadcastBinSize            = 2
+
+	hardPeerLimit = 9
 )
 
 var (
@@ -66,6 +68,7 @@ var (
 	errPruneEntry        = errors.New("prune entry")
 	errEmptyBin          = errors.New("empty bin")
 	errAnnounceLightNode = errors.New("announcing light node")
+	errHardPeerLimit     = errors.New("hard peer limit reached")
 )
 
 type (
@@ -203,6 +206,7 @@ type Kad struct {
 	bgBroadcastCancel context.CancelFunc
 	reachability      p2p.ReachabilityStatus
 	detector          *stabilization.Detector
+	peerLimitMu       sync.Mutex // serializes hard peer limit check and add
 }
 
 // New returns a new Kademlia.
@@ -449,9 +453,16 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 			return
 		}
 
+		k.peerLimitMu.Lock()
+		if k.connectedPeers.Length() >= hardPeerLimit {
+			k.peerLimitMu.Unlock()
+			_ = k.p2p.Disconnect(peer.addr, "hard peer limit reached")
+			k.logger.Debug("hard peer limit reached, disconnecting outbound", "current_peers", k.connectedPeers.Length(), "limit", hardPeerLimit)
+			return
+		}
 		k.waitNext.Set(peer.addr, time.Now().Add(k.opt.ShortRetry), 0)
-
 		k.connectedPeers.Add(peer.addr)
+		k.peerLimitMu.Unlock()
 
 		k.metrics.TotalOutboundConnections.Inc()
 		k.collector.Record(peer.addr, im.PeerLogIn(time.Now(), im.PeerConnectionDirectionOutbound))
@@ -834,7 +845,16 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 				return false, nil
 			}
 
-			if err := k.onConnected(ctx, bzzAddress.Overlay); err != nil {
+			k.peerLimitMu.Lock()
+			if k.connectedPeers.Length() >= hardPeerLimit {
+				k.peerLimitMu.Unlock()
+				_ = k.p2p.Disconnect(bzzAddress.Overlay, "hard peer limit reached")
+				k.logger.Debug("hard peer limit reached, skipping bootnode", "current_peers", k.connectedPeers.Length(), "limit", hardPeerLimit)
+				return false, nil
+			}
+			err = k.onConnected(ctx, bzzAddress.Overlay)
+			k.peerLimitMu.Unlock()
+			if err != nil {
 				return false, err
 			}
 
@@ -958,6 +978,14 @@ func (k *Kad) recalcDepth() {
 // connect connects to a peer and gossips its address to our connected peers,
 // as well as sends the peers we are connected to the newly connected peer
 func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma []ma.Multiaddr) error {
+	k.peerLimitMu.Lock()
+	atLimit := k.connectedPeers.Length() >= hardPeerLimit
+	k.peerLimitMu.Unlock()
+	if atLimit {
+		k.logger.Debug("hard peer limit reached, skipping connection", "current_peers", k.connectedPeers.Length(), "limit", hardPeerLimit)
+		return errHardPeerLimit
+	}
+
 	k.logger.Debug("attempting connect to peer", "peer_address", peer)
 
 	ctx, cancel := context.WithTimeout(ctx, peerConnectionAttemptTimeout)
@@ -1176,6 +1204,16 @@ func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool
 			k.collector.Record(peer.Address, im.PeerLogIn(time.Now(), im.PeerConnectionDirectionInbound))
 		}
 	}()
+
+	// hard limit check (mutex makes check-and-add atomic so we never exceed limit)
+	k.peerLimitMu.Lock()
+	if k.connectedPeers.Length() >= hardPeerLimit {
+		k.peerLimitMu.Unlock()
+		k.logger.Debug("hard peer limit reached, rejecting connection", "current_peers", k.connectedPeers.Length(), "limit", hardPeerLimit)
+		return errHardPeerLimit
+	}
+	// hold lock until onConnected returns so no other goroutine can pass the check
+	defer k.peerLimitMu.Unlock()
 
 	address := peer.Address
 	po := swarm.Proximity(k.base.Bytes(), address.Bytes())
