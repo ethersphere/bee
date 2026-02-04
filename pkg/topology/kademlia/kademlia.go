@@ -60,7 +60,7 @@ const (
 	defaultPruneWakeup                 = 5 * time.Minute
 	defaultBroadcastBinSize            = 2
 
-	hardPeerLimit = 9
+	hardPeerLimit = 4
 )
 
 var (
