@@ -283,7 +283,7 @@ jobs:
     name: Retag and Trigger ArgoCD
     env:
       TIMEOUT: 10m
-    needs: [beekeeper]
+    needs: [beekeeper, beekeeper-autotls]
     runs-on: ubuntu-latest
     steps:
       - name: "Download Artifact"
