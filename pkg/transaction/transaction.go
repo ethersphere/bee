@@ -44,8 +44,12 @@ var (
 )
 
 const (
-	DefaultGasLimit        = 1_000_000
+	DefaultGasLimit        = 1_000_000 // Used for contract operations when setGasLimit flag is enabled
 	DefaultTipBoostPercent = 25
+	MaxGasLimit            = 10_000_000 // Maximum allowed gas limit to prevent excessive values
+	MinGasLimit            = 21_000     // Minimum gas for any transaction
+	GasBufferPercent       = 33         // Add 33% buffer to estimated gas
+	FallbackGasLimit       = 500_000    // Fallback when estimation fails and no minimum is set
 )
 
 // TxRequest describes a request for a transaction that can be executed.
@@ -273,22 +277,55 @@ func (t *transactionService) StoredTransaction(txHash common.Hash) (*StoredTrans
 func (t *transactionService) prepareTransaction(ctx context.Context, request *TxRequest, nonce uint64, boostPercent int) (tx *types.Transaction, err error) {
 	var gasLimit uint64
 	if request.GasLimit == 0 {
-		gasLimit, err = t.backend.EstimateGasAtBlock(ctx, ethereum.CallMsg{
-			From: t.sender,
-			To:   request.To,
-			Data: request.Data,
-		}, nil) // nil for latest block
+		// Estimate gas using pending state for consistency with PendingNonceAt
+		gasLimit, err = t.backend.EstimateGas(ctx, ethereum.CallMsg{
+			From:  t.sender,
+			To:    request.To,
+			Data:  request.Data,
+			Value: request.Value,
+		})
+
 		if err != nil {
-			t.logger.Debug("estimate gas failed", "error", err)
-			gasLimit = request.MinEstimatedGasLimit
+			t.logger.Warning("gas estimation failed, using fallback",
+				"error", err,
+				"description", request.Description,
+			)
+
+			if request.MinEstimatedGasLimit > 0 {
+				gasLimit = request.MinEstimatedGasLimit
+			} else if len(request.Data) > 0 {
+				// Contract call - use reasonable fallback
+				gasLimit = FallbackGasLimit
+			} else {
+				// Simple transfer - use minimum
+				gasLimit = MinGasLimit
+			}
+		} else {
+			// Estimation succeeded - add buffer for state changes
+			gasLimit += gasLimit * GasBufferPercent / 100
+
+			// Apply minimum if specified
+			if gasLimit < request.MinEstimatedGasLimit {
+				gasLimit = request.MinEstimatedGasLimit
+			}
+
+			// Cap at maximum
+			if gasLimit > MaxGasLimit {
+				gasLimit = MaxGasLimit
+			}
 		}
 
-		gasLimit += gasLimit / 2 // add 50% buffer to the estimated gas limit
-		if gasLimit < request.MinEstimatedGasLimit {
-			gasLimit = request.MinEstimatedGasLimit
+		// Ensure absolute minimum
+		if gasLimit < MinGasLimit {
+			gasLimit = MinGasLimit
 		}
 	} else {
-		gasLimit = request.GasLimit
+		// Use provided gas limit with bounds validation
+		gasLimit = min(max(request.GasLimit, MinGasLimit), MaxGasLimit)
+	}
+
+	if gasLimit == 0 {
+		return nil, errors.New("gas limit cannot be zero")
 	}
 
 	/*
@@ -307,6 +344,16 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 	if err != nil {
 		return nil, err
 	}
+
+	t.logger.Debug("prepared transaction",
+		"to", request.To,
+		"value", request.Value,
+		"gas_limit", gasLimit,
+		"gas_fee_cap", gasFeeCap,
+		"gas_tip_cap", gasTipCap,
+		"nonce", nonce,
+		"description", request.Description,
+	)
 
 	return types.NewTx(&types.DynamicFeeTx{
 		Nonce:     nonce,
