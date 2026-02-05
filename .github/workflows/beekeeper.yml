@@ -35,15 +35,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-        if: github.event.action != 'beekeeper'
         with:
           fetch-depth: 0
-      - name: Checkout
-        uses: actions/checkout@v5
-        if: github.event.action == 'beekeeper'
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event.client_payload.ref }}
+          ref: ${{ github.event.action == 'beekeeper' && github.event.client_payload.ref || github.sha }}
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
@@ -115,10 +109,21 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: temp-artifacts
-      - name: Setup beekeeper cluster
-        uses: ./.github/actions/setup-beekeeper-cluster
-        with:
-          cluster_name: local-dns
+      - name: Unpack artifacts
+        run: |
+          chmod +x bee-1 beekeeper .github/bin/beekeeper_artifacts.sh
+          mv .beekeeper.yaml ~/.beekeeper.yaml
+          mkdir -p ~/.beekeeper && mv local.yaml ~/.beekeeper/local.yaml
+          mv bee-1 bee
+          sudo mv beekeeper /usr/local/bin/beekeeper
+      - name: Prepare local cluster
+        run: timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet' ACTION=prepare
+      - name: Set kube config
+        run: |
+          mkdir -p ~/.kube
+          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+      - name: Set local cluster
+        run: timeout ${TIMEOUT} make deploylocal BEEKEEPER_CLUSTER=local-dns
       - name: Test pingpong
         id: pingpong
         run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done'
@@ -231,10 +236,21 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: temp-artifacts
-      - name: Setup beekeeper cluster
-        uses: ./.github/actions/setup-beekeeper-cluster
-        with:
-          cluster_name: local-dns-autotls
+      - name: Unpack artifacts
+        run: |
+          chmod +x bee-1 beekeeper .github/bin/beekeeper_artifacts.sh
+          mv .beekeeper.yaml ~/.beekeeper.yaml
+          mkdir -p ~/.beekeeper && mv local.yaml ~/.beekeeper/local.yaml
+          mv bee-1 bee
+          sudo mv beekeeper /usr/local/bin/beekeeper
+      - name: Prepare local cluster
+        run: timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet' ACTION=prepare
+      - name: Set kube config
+        run: |
+          mkdir -p ~/.kube
+          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+      - name: Set local cluster
+        run: timeout ${TIMEOUT} make deploylocal BEEKEEPER_CLUSTER=local-dns-autotls
       - name: Test pingpong
         id: pingpong
         run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns-autotls --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done'
