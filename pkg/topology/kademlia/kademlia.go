@@ -431,21 +431,24 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 
 		switch err = k.connect(ctx, peer.addr, bzzAddr.Underlays); {
 		case errors.Is(err, p2p.ErrNetworkUnavailable):
-			k.logger.Debug("network unavailable when reaching peer", "peer_overlay_address", peer.addr, "peer_underlay_addresses", bzzAddr.Underlays)
+			k.logger.Debug("network unavailable when reaching peer", "peer_address", peer.addr, "peer_underlays", bzzAddr.Underlays)
 			return
 		case errors.Is(err, errPruneEntry):
-			k.logger.Debug("dial to light node", "peer_overlay_address", peer.addr, "peer_underlay_addresses", bzzAddr.Underlays)
+			k.logger.Debug("dial to light node", "peer_address", peer.addr, "peer_underlays", bzzAddr.Underlays)
 			remove(peer)
 			return
 		case errors.Is(err, errOverlayMismatch):
-			k.logger.Debug("overlay mismatch has occurred", "peer_overlay_address", peer.addr, "peer_underlay_addresses", bzzAddr.Underlays)
+			k.logger.Debug("overlay mismatch has occurred", "peer_address", peer.addr, "peer_underlays", bzzAddr.Underlays)
 			remove(peer)
 			return
 		case errors.Is(err, p2p.ErrPeerBlocklisted):
-			k.logger.Debug("peer still in blocklist", "peer_address", bzzAddr)
+			k.logger.Debug("peer still in blocklist", "peer_address", peer.addr, "peer_underlays", bzzAddr.Underlays)
+			return
+		case errors.Is(err, p2p.ErrUnsupportedAddresses):
+			k.logger.Debug("peer has no supported addresses", "peer_address", peer.addr, "peer_underlays", bzzAddr.Underlays)
 			return
 		case err != nil:
-			k.logger.Debug("peer not reachable from kademlia", "peer_address", bzzAddr, "error", err)
+			k.logger.Debug("peer not reachable from kademlia", "peer_address", peer.addr, "peer_underlays", bzzAddr.Underlays, "error", err)
 			return
 		}
 
@@ -980,6 +983,8 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma []ma.Multiaddr
 	case errors.Is(err, context.Canceled):
 		return err
 	case errors.Is(err, p2p.ErrPeerBlocklisted):
+		return err
+	case errors.Is(err, p2p.ErrUnsupportedAddresses):
 		return err
 	case err != nil:
 		k.logger.Info("could not connect to peer", "peer_address", peer, "error", err)

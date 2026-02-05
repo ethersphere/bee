@@ -77,7 +77,6 @@ func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier, o *Options, log lo
 }
 
 func (r *reacher) manage() {
-
 	defer r.wg.Done()
 
 	c := make(chan *peer)

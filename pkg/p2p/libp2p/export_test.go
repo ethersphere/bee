@@ -12,6 +12,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	libp2ppeer "github.com/libp2p/go-libp2p/core/peer"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 func (s *Service) HandshakeService() *handshake.Service {
@@ -56,3 +57,13 @@ func SetAutoTLSCertManager(o *Options, m autoTLSCertManager) {
 type AutoTLSCertManager = autoTLSCertManager
 
 var NewCompositeAddressResolver = newCompositeAddressResolver
+
+func (s *Service) FilterSupportedAddresses(addrs []ma.Multiaddr) []ma.Multiaddr {
+	return s.filterSupportedAddresses(addrs)
+}
+
+func (s *Service) SetTransportFlags(hasTCP, hasWS, hasWSS bool) {
+	s.hasTCPTransport = hasTCP
+	s.hasWSTransport = hasWS
+	s.hasWSSTransport = hasWSS
+}
