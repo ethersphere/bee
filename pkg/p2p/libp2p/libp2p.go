@@ -7,13 +7,11 @@ package libp2p
 import (
 	"context"
 	"crypto/ecdsa"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
 	"net/netip"
 	"os"
-	"path/filepath"
 	"runtime"
 	"slices"
 	"strconv"
@@ -22,7 +20,6 @@ import (
 	"time"
 
 	ocprom "contrib.go.opencensus.io/exporter/prometheus"
-	"github.com/caddyserver/certmagic"
 	"github.com/coreos/go-semver/semver"
 	"github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
@@ -41,6 +38,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/ethersphere/bee/v2/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
+	p2pforge "github.com/ipshipyard/p2p-forge/client"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/config"
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -65,9 +63,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-
-	p2pforge "github.com/ipshipyard/p2p-forge/client"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -132,14 +127,6 @@ type lightnodes interface {
 	Count() int
 	RandomPeer(swarm.Address) (swarm.Address, error)
 	EachPeer(pf topology.EachPeerFunc) error
-}
-
-// autoTLSCertManager defines the interface for managing TLS certificates.
-type autoTLSCertManager interface {
-	Start() error
-	Stop()
-	TLSConfig() *tls.Config
-	AddressFactory() config.AddrsFactory
 }
 
 type Options struct {
@@ -294,71 +281,18 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		if o.autoTLSCertManager != nil {
 			certManager = o.autoTLSCertManager
 		} else {
-			// create a zap logger needed for cert manager to be as close to
-			// swarm logger as possible
-			l, err := zap.Config{
-				Level:       zap.NewAtomicLevelAt(zap.DebugLevel),
-				Development: false,
-				Sampling: &zap.SamplingConfig{
-					Initial:    100,
-					Thereafter: 100,
-				},
-				Encoding: "json",
-				EncoderConfig: zapcore.EncoderConfig{
-					TimeKey:        "time",
-					LevelKey:       "level",
-					NameKey:        "logger",
-					CallerKey:      "caller",
-					FunctionKey:    zapcore.OmitKey,
-					MessageKey:     "msg",
-					StacktraceKey:  "stacktrace",
-					LineEnding:     zapcore.DefaultLineEnding,
-					EncodeLevel:    zapcore.LowercaseLevelEncoder,
-					EncodeTime:     zapcore.EpochTimeEncoder,
-					EncodeDuration: zapcore.SecondsDurationEncoder,
-					EncodeCaller:   zapcore.ShortCallerEncoder,
-				},
-				OutputPaths:      []string{"stderr"},
-				ErrorOutputPaths: []string{"stderr"},
-			}.Build()
+			forgeMgr, err := newP2PForgeCertManager(logger, P2PForgeOptions{
+				Domain:               o.AutoTLSDomain,
+				RegistrationEndpoint: o.AutoTLSRegistrationEndpoint,
+				CAEndpoint:           o.AutoTLSCAEndpoint,
+				StorageDir:           o.AutoTLSStorageDir,
+			})
 			if err != nil {
 				return nil, err
 			}
 
-			// assing zap logger as it needs to be synced when the service stops
-			zapLogger = l
-
-			defer func() {
-				_ = zapLogger.Sync()
-			}()
-
-			// Use AutoTLS storage dir with domain subdir for easier management
-			// of different registers.
-			storagePath := filepath.Join(o.AutoTLSStorageDir, o.AutoTLSDomain)
-
-			if err := os.MkdirAll(storagePath, 0700); err != nil {
-				return nil, fmt.Errorf("create certificate storage directory %s: %w", storagePath, err)
-			}
-
-			certManager, err = p2pforge.NewP2PForgeCertMgr(
-				p2pforge.WithForgeDomain(o.AutoTLSDomain),
-				p2pforge.WithForgeRegistrationEndpoint(o.AutoTLSRegistrationEndpoint),
-				p2pforge.WithCAEndpoint(o.AutoTLSCAEndpoint),
-				p2pforge.WithCertificateStorage(&certmagic.FileStorage{Path: storagePath}),
-				p2pforge.WithLogger(zapLogger.Sugar()),
-				p2pforge.WithUserAgent(userAgent()),
-				p2pforge.WithAllowPrivateForgeAddrs(),
-				p2pforge.WithRegistrationDelay(0),
-				p2pforge.WithOnCertLoaded(func() {
-					logger.Info("auto tls certificate is loaded")
-				}),
-				p2pforge.WithOnCertRenewed(func() {
-					logger.Info("auto tls certificate is renewed")
-				}),
-			)
-			if err != nil {
-				return nil, fmt.Errorf("initialize AutoTLS: %w", err)
-			}
+			certManager = forgeMgr.CertMgr()
+			zapLogger = forgeMgr.ZapLogger()
 		}
 
 		defer func() {
