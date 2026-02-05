@@ -798,12 +798,12 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	s.logger.Debug("stream handler: successfully connected to peer (inbound)", "address", i.BzzAddress.Overlay, "light", i.LightString(), "user_agent", peerUserAgent)
 }
 
-func (s *Service) notifyReacherConnected(overlay swarm.Address, underlay []ma.Multiaddr) {
+func (s *Service) notifyReacherConnected(overlay swarm.Address, underlays []ma.Multiaddr) {
 	if s.reacher == nil {
 		return
 	}
 
-	bestAddr := bzz.SelectBestAdvertisedAddress(underlay, nil)
+	bestAddr := bzz.SelectBestAdvertisedAddress(underlays, nil)
 
 	s.reacher.Connected(overlay, bestAddr)
 }
