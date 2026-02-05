@@ -1024,7 +1024,9 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	var info *libp2ppeer.AddrInfo
 	var peerID libp2ppeer.ID
 	var connectErr error
+	var connectedAddr ma.Multiaddr
 	skippedSelf := false
+	attemptNumber := 0
 
 	baseCtx := context.WithoutCancel(ctx)
 
@@ -1037,6 +1039,8 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 			}
 			break
 		}
+
+		attemptNumber++
 
 		// Extract the peer ID from the multiaddr.
 		ai, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
@@ -1069,9 +1073,11 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 			return address, p2p.ErrAlreadyConnected
 		}
 
+		dialStart := time.Now()
 		connectCtx, cancel := context.WithTimeout(baseCtx, 15*time.Second)
 		err = s.connectionBreaker.Execute(func() error { return s.host.Connect(connectCtx, *info) })
 		cancel()
+		dialDuration := time.Since(dialStart)
 
 		if err != nil {
 			if errors.Is(err, breaker.ErrClosed) {
@@ -1083,7 +1089,11 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 			continue
 		}
 
+		// Connection succeeded - record dial duration
+		s.metrics.ConnectionDialDuration.Observe(dialDuration.Seconds())
+		connectedAddr = addr
 		connectErr = nil
+		break
 	}
 
 	if connectErr != nil {
@@ -1093,6 +1103,21 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	// If we skipped all addresses due to self-connection, return an error
 	if skippedSelf {
 		return nil, fmt.Errorf("cannot connect to self")
+	}
+
+	// Record connection metrics
+	if connectedAddr != nil {
+		s.metrics.ConnectionAddressAttempts.Observe(float64(attemptNumber))
+		if attemptNumber == 1 {
+			s.metrics.FirstAddressConnectionCount.Inc()
+		} else {
+			s.metrics.LaterAddressConnectionCount.Inc()
+		}
+		if manet.IsPrivateAddr(connectedAddr) {
+			s.metrics.PrivateAddressConnections.Inc()
+		} else {
+			s.metrics.PublicAddressConnections.Inc()
+		}
 	}
 
 	if info == nil {

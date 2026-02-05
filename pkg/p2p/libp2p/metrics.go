@@ -27,6 +27,13 @@ type metrics struct {
 	KickedOutPeersCount        prometheus.Counter
 	StreamHandlerErrResetCount prometheus.Counter
 	HeadersExchangeDuration    prometheus.Histogram
+	// Connection baseline metrics
+	ConnectionDialDuration      prometheus.Histogram
+	PrivateAddressConnections   prometheus.Counter
+	PublicAddressConnections    prometheus.Counter
+	ConnectionAddressAttempts   prometheus.Histogram
+	FirstAddressConnectionCount prometheus.Counter
+	LaterAddressConnectionCount prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -116,6 +123,44 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "headers_exchange_duration",
 			Help:      "The duration spent exchanging the headers.",
+		}),
+		ConnectionDialDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "connection_dial_duration_seconds",
+			Help:      "Time taken to establish a connection to a peer address.",
+			Buckets:   []float64{0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
+		}),
+		PrivateAddressConnections: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "private_address_connections_total",
+			Help:      "Total connections established via private/internal addresses.",
+		}),
+		PublicAddressConnections: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "public_address_connections_total",
+			Help:      "Total connections established via public addresses.",
+		}),
+		ConnectionAddressAttempts: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "connection_address_attempts",
+			Help:      "Number of address attempts before successful connection.",
+			Buckets:   []float64{1, 2, 3, 4, 5, 10},
+		}),
+		FirstAddressConnectionCount: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "first_address_connection_count",
+			Help:      "Connections that succeeded on the first address attempt.",
+		}),
+		LaterAddressConnectionCount: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "later_address_connection_count",
+			Help:      "Connections that required multiple address attempts.",
 		}),
 	}
 }
