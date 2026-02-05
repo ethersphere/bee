@@ -7,6 +7,7 @@
 package reacher
 
 import (
+	"container/heap"
 	"context"
 	"sync"
 	"time"
@@ -27,11 +28,41 @@ type peer struct {
 	overlay    swarm.Address
 	addr       ma.Multiaddr
 	retryAfter time.Time
+	index      int // index in the heap
+}
+
+// peerHeap is a min-heap of peers ordered by retryAfter time.
+type peerHeap []*peer
+
+func (h peerHeap) Len() int           { return len(h) }
+func (h peerHeap) Less(i, j int) bool { return h[i].retryAfter.Before(h[j].retryAfter) }
+func (h peerHeap) Swap(i, j int) {
+	h[i], h[j] = h[j], h[i]
+	h[i].index = i
+	h[j].index = j
+}
+
+func (h *peerHeap) Push(x any) {
+	n := len(*h)
+	p := x.(*peer)
+	p.index = n
+	*h = append(*h, p)
+}
+
+func (h *peerHeap) Pop() any {
+	old := *h
+	n := len(old)
+	p := old[n-1]
+	old[n-1] = nil // avoid memory leak
+	p.index = -1   // for safety
+	*h = old[0 : n-1]
+	return p
 }
 
 type reacher struct {
-	mu    sync.Mutex
-	peers map[string]*peer
+	mu        sync.Mutex
+	peerHeap  peerHeap         // min-heap ordered by retryAfter
+	peerIndex map[string]*peer // lookup by overlay for O(1) access
 
 	newPeer chan struct{}
 	quit    chan struct{}
@@ -53,12 +84,13 @@ type Options struct {
 
 func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier, o *Options, log log.Logger) *reacher {
 	r := &reacher{
-		newPeer:  make(chan struct{}, 1),
-		quit:     make(chan struct{}),
-		pinger:   streamer,
-		peers:    make(map[string]*peer),
-		notifier: notifier,
-		logger:   log.WithName("reacher").Register(),
+		newPeer:   make(chan struct{}, 1),
+		quit:      make(chan struct{}),
+		pinger:    streamer,
+		peerHeap:  make(peerHeap, 0),
+		peerIndex: make(map[string]*peer),
+		notifier:  notifier,
+		logger:    log.WithName("reacher").Register(),
 	}
 
 	if o == nil {
@@ -151,40 +183,40 @@ func (r *reacher) tryAcquirePeer() (*peer, time.Duration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	var (
-		now         = time.Now()
-		nextClosest time.Time
-	)
-
-	for _, p := range r.peers {
-
-		// retry after has expired, retry
-		if now.After(p.retryAfter) {
-			p.retryAfter = time.Now().Add(r.options.RetryAfterDuration)
-			return p, 0
-		}
-
-		// here, we find the peer with the earliest retry after
-		if nextClosest.IsZero() || p.retryAfter.Before(nextClosest) {
-			nextClosest = p.retryAfter
-		}
-	}
-
-	if nextClosest.IsZero() {
+	if len(r.peerHeap) == 0 {
 		return nil, 0
 	}
 
-	// return the time to wait until the closest retry after
-	return nil, time.Until(nextClosest)
+	now := time.Now()
+
+	// Peek at the peer with the earliest retryAfter
+	p := r.peerHeap[0]
+
+	// If retryAfter has not expired, return time to wait
+	if now.Before(p.retryAfter) {
+		return nil, time.Until(p.retryAfter)
+	}
+
+	// Update retryAfter and fix heap position
+	p.retryAfter = time.Now().Add(r.options.RetryAfterDuration)
+	heap.Fix(&r.peerHeap, p.index)
+
+	return p, 0
 }
 
 // Connected adds a new peer to the queue for testing reachability.
+// If the peer already exists, its address is updated.
 func (r *reacher) Connected(overlay swarm.Address, addr ma.Multiaddr) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if _, ok := r.peers[overlay.ByteString()]; !ok {
-		r.peers[overlay.ByteString()] = &peer{overlay: overlay, addr: addr}
+	key := overlay.ByteString()
+	if existing, ok := r.peerIndex[key]; ok {
+		existing.addr = addr // Update address for reconnecting peer
+	} else {
+		p := &peer{overlay: overlay, addr: addr}
+		r.peerIndex[key] = p
+		heap.Push(&r.peerHeap, p)
 	}
 
 	select {
@@ -198,7 +230,11 @@ func (r *reacher) Disconnected(overlay swarm.Address) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	delete(r.peers, overlay.ByteString())
+	key := overlay.ByteString()
+	if p, ok := r.peerIndex[key]; ok {
+		heap.Remove(&r.peerHeap, p.index)
+		delete(r.peerIndex, key)
+	}
 }
 
 // Close stops the worker. Must be called once.
