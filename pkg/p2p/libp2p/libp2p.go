@@ -299,7 +299,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			if returnErr != nil {
 				// call if service is not constructed
 				certManager.Stop()
-				zapLogger.Sync()
+				_ = zapLogger.Sync()
 			}
 		}()
 
