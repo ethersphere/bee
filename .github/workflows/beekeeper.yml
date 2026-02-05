@@ -25,6 +25,7 @@ env:
   AWS_EC2_METADATA_DISABLED: true
   AWS_ENDPOINT: fra1.digitaloceanspaces.com
   VERTAG: ${GITHUB_RUN_ID}
+  P2P_WSS_ENABLE: true
 jobs:
   init:
     name: Init
