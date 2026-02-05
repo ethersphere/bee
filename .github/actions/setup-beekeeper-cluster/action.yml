@@ -1,0 +1,28 @@
+name: Setup beekeeper cluster
+description: Unpack artifacts, prepare k3s, set kubeconfig and deploy local beekeeper cluster.
+inputs:
+  cluster_name:
+    description: Beekeeper cluster name (e.g. local-dns, local-dns-autotls)
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Unpack artifacts
+      shell: bash
+      run: |
+        chmod +x bee-1 beekeeper .github/bin/beekeeper_artifacts.sh
+        mv .beekeeper.yaml ~/.beekeeper.yaml
+        mkdir -p ~/.beekeeper && mv local.yaml ~/.beekeeper/local.yaml
+        mv bee-1 bee
+        sudo mv beekeeper /usr/local/bin/beekeeper
+    - name: Prepare local cluster
+      shell: bash
+      run: timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet' ACTION=prepare
+    - name: Set kube config
+      shell: bash
+      run: |
+        mkdir -p ~/.kube
+        cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+    - name: Set local cluster
+      shell: bash
+      run: timeout ${TIMEOUT} make deploylocal BEEKEEPER_CLUSTER=${{ inputs.cluster_name }}
