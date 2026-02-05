@@ -124,9 +124,7 @@ type Service struct {
 	enableWS           bool
 	autoTLSCertManager autoTLSCertManager
 	zapLogger          *zap.Logger
-	hasTCPTransport    bool
-	hasWSTransport     bool
-	hasWSSTransport    bool
+	enabledTransports  map[bzz.TransportType]bool
 }
 
 type lightnodes interface {
@@ -549,9 +547,11 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		enableWS:           o.EnableWS,
 		autoTLSCertManager: certManager,
 		zapLogger:          zapLogger,
-		hasTCPTransport:    true, // TCP transport is always included
-		hasWSTransport:     o.EnableWS,
-		hasWSSTransport:    o.EnableWSS,
+		enabledTransports: map[bzz.TransportType]bool{
+			bzz.TransportTCP: true, // TCP transport is always included
+			bzz.TransportWS:  o.EnableWS,
+			bzz.TransportWSS: o.EnableWSS,
+		},
 	}
 
 	peerRegistry.setDisconnecter(s)
@@ -806,16 +806,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 
 // isTransportSupported checks if the given transport type is supported by this service.
 func (s *Service) isTransportSupported(t bzz.TransportType) bool {
-	switch t {
-	case bzz.TransportTCP:
-		return s.hasTCPTransport
-	case bzz.TransportWS:
-		return s.hasWSTransport
-	case bzz.TransportWSS:
-		return s.hasWSSTransport
-	default:
-		return false
-	}
+	return s.enabledTransports[t]
 }
 
 // filterSupportedAddresses filters multiaddresses to only include those

@@ -7,6 +7,7 @@ package libp2p
 import (
 	"context"
 
+	"github.com/ethersphere/bee/v2/pkg/bzz"
 	handshake "github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/handshake"
 	libp2pm "github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -63,7 +64,9 @@ func (s *Service) FilterSupportedAddresses(addrs []ma.Multiaddr) []ma.Multiaddr 
 }
 
 func (s *Service) SetTransportFlags(hasTCP, hasWS, hasWSS bool) {
-	s.hasTCPTransport = hasTCP
-	s.hasWSTransport = hasWS
-	s.hasWSSTransport = hasWSS
+	s.enabledTransports = map[bzz.TransportType]bool{
+		bzz.TransportTCP: hasTCP,
+		bzz.TransportWS:  hasWS,
+		bzz.TransportWSS: hasWSS,
+	}
 }
