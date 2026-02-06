@@ -1028,18 +1028,11 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	skippedSelf := false
 	attemptNumber := 0
 
-	baseCtx := context.WithoutCancel(ctx)
-
 	// Try to connect to each underlay address one by one.
+	// Each address gets its own 15s timeout, but also respects the parent
+	// context (e.g., shutdown, peer no longer needed). If the parent context
+	// is cancelled mid-dial, host.Connect returns immediately.
 	for _, addr := range filteredAddrs {
-		// Check if parent context is cancelled (shutdown, etc.)
-		if ctx.Err() != nil {
-			if connectErr == nil {
-				connectErr = ctx.Err()
-			}
-			break
-		}
-
 		attemptNumber++
 
 		// Extract the peer ID from the multiaddr.
@@ -1074,7 +1067,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		}
 
 		dialStart := time.Now()
-		connectCtx, cancel := context.WithTimeout(baseCtx, 15*time.Second)
+		connectCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		err = s.connectionBreaker.Execute(func() error { return s.host.Connect(connectCtx, *info) })
 		cancel()
 		dialDuration := time.Since(dialStart)
