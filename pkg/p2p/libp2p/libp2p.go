@@ -998,17 +998,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	// and reachabiltiy Private is emitted on libp2p EventBus(), which results
 	// in weaker connectivity and failures in some integration tests.
 
-	baseCtx := context.WithoutCancel(ctx)
-
 	for _, addr := range addrs {
-		// Check if parent context is cancelled (shutdown, etc.)
-		if ctx.Err() != nil {
-			if connectErr == nil {
-				connectErr = ctx.Err()
-			}
-			break
-		}
-
 		// Extract the peer ID from the multiaddr.
 		ai, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
 		if err != nil {
@@ -1040,7 +1030,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 			return address, p2p.ErrAlreadyConnected
 		}
 
-		connectCtx, cancel := context.WithTimeout(baseCtx, 15*time.Second)
+		connectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		err = s.connectionBreaker.Execute(func() error { return s.host.Connect(connectCtx, *info) })
 		cancel()
 
