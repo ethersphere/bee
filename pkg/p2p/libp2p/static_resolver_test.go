@@ -28,6 +28,12 @@ func TestStaticAddressResolver(t *testing.T) {
 			want:              "/ip4/127.0.0.1/tcp/30123/p2p/16Uiu2HAkyyGKpjBiCkVqCKoJa6RzzZw9Nr7hGogsMPcdad1KyMmd",
 		},
 		{
+			name:              "without p2p protocols",
+			natAddr:           ":30123",
+			observableAddress: "/ip4/127.0.0.1/tcp/7071",
+			want:              "/ip4/127.0.0.1/tcp/30123",
+		},
+		{
 			name:              "replace ip v4",
 			natAddr:           "192.168.1.34:",
 			observableAddress: "/ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAkyyGKpjBiCkVqCKoJa6RzzZw9Nr7hGogsMPcdad1KyMmd",
@@ -81,10 +87,38 @@ func TestStaticAddressResolver(t *testing.T) {
 			observableAddress: "/ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAkyyGKpjBiCkVqCKoJa6RzzZw9Nr7hGogsMPcdad1KyMmd",
 			want:              "/dns/ipv4and6.com/tcp/30777/p2p/16Uiu2HAkyyGKpjBiCkVqCKoJa6RzzZw9Nr7hGogsMPcdad1KyMmd",
 		},
+		{
+			name:              "replace ip and port with complex multiaddr",
+			natAddr:           "192.168.1.34:30777",
+			observableAddress: "/ip4/10.233.99.40/tcp/1635/tls/sni/*.libp2p.direct/ws/p2p/QmWbXocGMpfa8zApx9kCNwfmc35bbRJv136bdtuQjbR4wL",
+			want:              "/ip4/192.168.1.34/tcp/30777/tls/sni/*.libp2p.direct/ws/p2p/QmWbXocGMpfa8zApx9kCNwfmc35bbRJv136bdtuQjbR4wL",
+		},
+		{
+			name:              "replace ip and port with complex multiaddr without p2p protocol",
+			natAddr:           "192.168.1.34:30777",
+			observableAddress: "/ip4/10.233.99.40/tcp/1635/tls/sni/*.libp2p.direct/ws",
+			want:              "/ip4/192.168.1.34/tcp/30777/tls/sni/*.libp2p.direct/ws",
+		},
+		{
+			name:              "replace ip and port with complex multiaddr without p2p protocol and with full domain",
+			natAddr:           "192.168.1.34:30777",
+			observableAddress: "/ip4/10.233.99.40/tcp/1635/tls/sni/10-233-99-40.k2k4r8nnyi7fa2p2t2fjfam2vdyk5esk1iwlfkdz1yezu56o0o0b966w.libp2p.direct/ws",
+			want:              "/ip4/192.168.1.34/tcp/30777/tls/sni/192-168-1-34.k2k4r8nnyi7fa2p2t2fjfam2vdyk5esk1iwlfkdz1yezu56o0o0b966w.libp2p.direct/ws",
+		},
+		{
+			name:              "replace ip v6 and port with complex multiaddr without p2p protocol and with full domain",
+			natAddr:           "[::1]:30777",
+			observableAddress: "/ip4/10.233.99.40/tcp/1635/tls/sni/10-233-99-40.k2k4r8nnyi7fa2p2t2fjfam2vdyk5esk1iwlfkdz1yezu56o0o0b966w.libp2p.direct/ws",
+			want:              "/ip6/::1/tcp/30777/tls/sni/0--1.k2k4r8nnyi7fa2p2t2fjfam2vdyk5esk1iwlfkdz1yezu56o0o0b966w.libp2p.direct/ws",
+		},
+		{
+			name:              "do not change arbitrary sni domain",
+			natAddr:           "[::1]:30777",
+			observableAddress: "/ip4/10.233.99.40/tcp/1635/tls/sni/some-node.ethswarm.org/ws",
+			want:              "/ip6/::1/tcp/30777/tls/sni/some-node.ethswarm.org/ws",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
 			r, err := libp2p.NewStaticAddressResolver(tc.natAddr, func(host string) ([]net.IP, error) {
 				hosts := map[string][]net.IP{
 					"ipv4.com": {

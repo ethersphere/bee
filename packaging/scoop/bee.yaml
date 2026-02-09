@@ -120,3 +120,15 @@ password-file: "./password"
 # welcome-message: ""
 ## withdrawal target addresses
 # withdrawal-addresses-whitelist: []
+## enable wss p2p connections (default: false)
+# p2p-wss-enable: false
+## wss address (default: :1635)
+# p2p-wss-addr: :1635
+## WSS NAT exposed address
+# nat-wss-addr: ""
+## autotls domain (default: libp2p.direct)
+# autotls-domain: ""
+## autotls registration endpoint (default: https://registration.libp2p.direct)
+# autotls-registration-endpoint: ""
+## autotls ca endpoint (default: https://acme-v02.api.letsencrypt.org/directory)
+# autotls-ca-endpoint: ""

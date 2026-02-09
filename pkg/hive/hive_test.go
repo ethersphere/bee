@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"strconv"
 	"testing"
@@ -48,13 +47,12 @@ func TestHandlerRateLimit(t *testing.T) {
 
 	addressbookclean := ab.New(mock.NewStateStore())
 
-	// new recorder for handling Ping
+	// new recorder
 	streamer := streamtest.New()
 	// create a hive server that handles the incoming stream
-	server := hive.New(streamer, addressbookclean, networkID, false, true, logger)
-	testutil.CleanupCloser(t, server)
-
 	serverAddress := swarm.RandAddress(t)
+	server := hive.New(streamer, addressbookclean, networkID, false, true, serverAddress, logger)
+	testutil.CleanupCloser(t, server)
 
 	// setup the stream recorder to record stream data
 	serverRecorder := streamtest.New(
@@ -95,7 +93,8 @@ func TestHandlerRateLimit(t *testing.T) {
 	}
 
 	// create a hive client that will do broadcast
-	client := hive.New(serverRecorder, addressbook, networkID, false, true, logger)
+	clientAddress := swarm.RandAddress(t)
+	client := hive.New(serverRecorder, addressbook, networkID, false, true, clientAddress, logger)
 	err := client.BroadcastPeers(context.Background(), serverAddress, peers...)
 	if err != nil {
 		t.Fatal(err)
@@ -192,7 +191,6 @@ func TestBroadcastPeers(t *testing.T) {
 		wantOverlays      []swarm.Address
 		wantBzzAddresses  []bzz.Address
 		allowPrivateCIDRs bool
-		pingErr           func(addr ma.Multiaddr) (time.Duration, error)
 	}{
 		"OK - single record": {
 			addresee:          swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
@@ -234,24 +232,6 @@ func TestBroadcastPeers(t *testing.T) {
 			wantBzzAddresses:  bzzAddresses[:2*hive.MaxBatchSize],
 			allowPrivateCIDRs: true,
 		},
-		"OK - single batch - skip ping failures": {
-			addresee:          swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
-			peers:             overlays[:15],
-			wantMsgs:          []pb.Peers{{Peers: wantMsgs[0].Peers[:15]}},
-			wantOverlays:      overlays[:10],
-			wantBzzAddresses:  bzzAddresses[:10],
-			allowPrivateCIDRs: true,
-			pingErr: func(addr ma.Multiaddr) (rtt time.Duration, err error) {
-				for _, v := range bzzAddresses[10:15] {
-					for _, underlay := range v.Underlays {
-						if underlay.Equal(addr) {
-							return rtt, errors.New("ping failure")
-						}
-					}
-				}
-				return rtt, nil
-			},
-		},
 		"Ok - don't advertise private CIDRs only": {
 			addresee:          overlays[len(overlays)-1],
 			peers:             overlays[:15],
@@ -291,15 +271,10 @@ func TestBroadcastPeers(t *testing.T) {
 
 			addressbookclean := ab.New(mock.NewStateStore())
 
-			// new recorder for handling Ping
-			var streamer *streamtest.Recorder
-			if tc.pingErr != nil {
-				streamer = streamtest.New(streamtest.WithPingErr(tc.pingErr))
-			} else {
-				streamer = streamtest.New()
-			}
+			streamer := streamtest.New()
 			// create a hive server that handles the incoming stream
-			server := hive.New(streamer, addressbookclean, networkID, false, true, logger)
+			serverAddress := swarm.RandAddress(t)
+			server := hive.New(streamer, addressbookclean, networkID, false, true, serverAddress, logger)
 			testutil.CleanupCloser(t, server)
 
 			// setup the stream recorder to record stream data
@@ -308,7 +283,8 @@ func TestBroadcastPeers(t *testing.T) {
 			)
 
 			// create a hive client that will do broadcast
-			client := hive.New(recorder, addressbook, networkID, false, tc.allowPrivateCIDRs, logger)
+			clientAddress := swarm.RandAddress(t)
+			client := hive.New(recorder, addressbook, networkID, false, tc.allowPrivateCIDRs, clientAddress, logger)
 
 			if err := client.BroadcastPeers(context.Background(), tc.addresee, tc.peers...); err != nil {
 				t.Fatal(err)
@@ -469,4 +445,223 @@ func shortHex(b []byte) string {
 		return s[:32] + fmt.Sprintf("…(%dB)", len(b))
 	}
 	return s
+}
+
+// TestBroadcastPeersSkipsSelf verifies that hive does not broadcast self address
+// to other peers, preventing self-connection attempts.
+func TestBroadcastPeersSkipsSelf(t *testing.T) {
+	t.Parallel()
+
+	logger := log.Noop
+	statestore := mock.NewStateStore()
+	addressbook := ab.New(statestore)
+	networkID := uint64(1)
+	addressbookclean := ab.New(mock.NewStateStore())
+
+	// Create addresses
+	serverAddress := swarm.RandAddress(t)
+	clientAddress := swarm.RandAddress(t)
+
+	// Create a peer address
+	peer1 := swarm.RandAddress(t)
+	underlay1, err := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/1234")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pk, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := crypto.NewDefaultSigner(pk)
+	overlay1, err := crypto.NewOverlayAddress(pk.PublicKey, networkID, block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bzzAddr1, err := bzz.NewAddress(signer, []ma.Multiaddr{underlay1}, overlay1, networkID, nonce)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := addressbook.Put(bzzAddr1.Overlay, *bzzAddr1); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create self address entry in addressbook
+	underlayClient, err := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/9999")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkClient, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signerClient := crypto.NewDefaultSigner(pkClient)
+	bzzAddrClient, err := bzz.NewAddress(signerClient, []ma.Multiaddr{underlayClient}, clientAddress, networkID, nonce)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := addressbook.Put(clientAddress, *bzzAddrClient); err != nil {
+		t.Fatal(err)
+	}
+
+	// Setup server
+	streamer := streamtest.New()
+	server := hive.New(streamer, addressbookclean, networkID, false, true, serverAddress, logger)
+	testutil.CleanupCloser(t, server)
+
+	serverRecorder := streamtest.New(
+		streamtest.WithProtocols(server.Protocol()),
+	)
+
+	// Setup client
+	client := hive.New(serverRecorder, addressbook, networkID, false, true, clientAddress, logger)
+	testutil.CleanupCloser(t, client)
+
+	// Try to broadcast: peer1, clientAddress (self), and another peer
+	peersIncludingSelf := []swarm.Address{bzzAddr1.Overlay, clientAddress, peer1}
+
+	err = client.BroadcastPeers(context.Background(), serverAddress, peersIncludingSelf...)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get records
+	records, err := serverRecorder.Records(serverAddress, "hive", "1.1.0", "peers")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(records) == 0 {
+		t.Fatal("expected at least one record")
+	}
+
+	// Read the messages
+	messages, err := readAndAssertPeersMsgs(records[0].In(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that clientAddress (self) was NOT included in broadcast
+	for _, peerMsg := range messages[0].Peers {
+		receivedOverlay := swarm.NewAddress(peerMsg.Overlay)
+		if receivedOverlay.Equal(clientAddress) {
+			t.Fatal("self address should not be broadcast to peers")
+		}
+	}
+
+	// Verify server addressbook eventually contains only the valid peers, not self
+	err = spinlock.Wait(spinTimeout, func() bool {
+		overlays, err := addressbookclean.Overlays()
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Should only have bzzAddr1, not clientAddress
+		for _, o := range overlays {
+			if o.Equal(clientAddress) {
+				return false // self should not be in addressbook
+			}
+		}
+		return true
+	})
+	if err != nil {
+		t.Fatal("self address found in server addressbook")
+	}
+}
+
+// TestReceivePeersSkipsSelf verifies that hive does not add self address
+// when receiving peer lists from other peers.
+func TestReceivePeersSkipsSelf(t *testing.T) {
+	t.Parallel()
+
+	logger := log.Noop
+	statestore := mock.NewStateStore()
+	addressbook := ab.New(statestore)
+	networkID := uint64(1)
+	addressbookclean := ab.New(mock.NewStateStore())
+
+	// Create addresses
+	serverAddress := swarm.RandAddress(t)
+	clientAddress := swarm.RandAddress(t)
+
+	// Create a valid peer
+	underlay1, err := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/1234")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pk1, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer1 := crypto.NewDefaultSigner(pk1)
+	overlay1, err := crypto.NewOverlayAddress(pk1.PublicKey, networkID, block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bzzAddr1, err := bzz.NewAddress(signer1, []ma.Multiaddr{underlay1}, overlay1, networkID, nonce)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := addressbook.Put(bzzAddr1.Overlay, *bzzAddr1); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create self address entry (serverAddress) that will be sent by client
+	underlayServer, err := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/8888")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkServer, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signerServer := crypto.NewDefaultSigner(pkServer)
+	bzzAddrServer, err := bzz.NewAddress(signerServer, []ma.Multiaddr{underlayServer}, serverAddress, networkID, nonce)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Add server's own address to client's addressbook (so client can send it)
+	if err := addressbook.Put(serverAddress, *bzzAddrServer); err != nil {
+		t.Fatal(err)
+	}
+
+	// Setup server that will receive peers including its own address
+	streamer := streamtest.New()
+	server := hive.New(streamer, addressbookclean, networkID, false, true, serverAddress, logger)
+	testutil.CleanupCloser(t, server)
+
+	serverRecorder := streamtest.New(
+		streamtest.WithProtocols(server.Protocol()),
+	)
+
+	// Setup client
+	client := hive.New(serverRecorder, addressbook, networkID, false, true, clientAddress, logger)
+	testutil.CleanupCloser(t, client)
+
+	// Client broadcasts: valid peer and server's own address
+	peersIncludingSelf := []swarm.Address{bzzAddr1.Overlay, serverAddress}
+
+	err = client.BroadcastPeers(context.Background(), serverAddress, peersIncludingSelf...)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait a bit for server to process
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify server's addressbook does NOT contain its own address
+	overlays, err := addressbookclean.Overlays()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, o := range overlays {
+		if o.Equal(serverAddress) {
+			t.Fatal("server should not add its own address to addressbook when received from peer")
+		}
+	}
+
+	// Verify server does have the valid peer
+	_, err = addressbookclean.Get(bzzAddr1.Overlay)
+	if err != nil {
+		t.Fatalf("expected server to have valid peer in addressbook, got error: %v", err)
+	}
 }

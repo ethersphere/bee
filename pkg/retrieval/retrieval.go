@@ -431,7 +431,10 @@ func (s *Service) handler(p2pctx context.Context, p p2p.Peer, stream p2p.Stream)
 	defer func() {
 		if err != nil {
 			if !attemptedWrite {
-				_ = w.WriteMsgWithContext(ctx, &pb.Delivery{Err: err.Error()})
+				if writeErr := w.WriteMsgWithContext(ctx, &pb.Delivery{Err: err.Error()}); writeErr == nil {
+					_ = stream.FullClose()
+					return
+				}
 			}
 			_ = stream.Reset()
 		} else {

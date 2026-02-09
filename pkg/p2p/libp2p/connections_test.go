@@ -37,6 +37,8 @@ import (
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	ma "github.com/multiformats/go-multiaddr"
+
+	libp2pmock "github.com/ethersphere/bee/v2/pkg/p2p/libp2p/mock"
 )
 
 const (
@@ -84,6 +86,42 @@ func TestConnectDisconnect(t *testing.T) {
 
 	expectPeers(t, s2)
 	expectPeersEventually(t, s1)
+}
+
+// TestConnectSelf verifies that a service cannot connect to itself,
+// preventing self-connection attempts.
+func TestConnectSelf(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+
+	s1, _ := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
+
+	// Get own underlay addresses
+	addr := serviceUnderlayAddress(t, s1)
+
+	// Attempt to connect to self
+	bzzAddr, err := s1.Connect(ctx, addr)
+
+	// Should return an error
+	if err == nil {
+		t.Fatal("expected error when connecting to self, got nil")
+	}
+
+	// Should contain "cannot connect to self" in error message
+	if !strings.Contains(err.Error(), "cannot connect to self") {
+		t.Fatalf("expected 'cannot connect to self' error, got: %v", err)
+	}
+
+	// bzzAddr should be nil
+	if bzzAddr != nil {
+		t.Fatal("expected nil bzz address when connecting to self")
+	}
+
+	// Verify no peers are connected
+	expectPeers(t, s1)
 }
 
 func TestConnectToLightPeer(t *testing.T) {
@@ -498,6 +536,15 @@ func TestConnectWithEnabledWSTransports(t *testing.T) {
 		},
 	})
 
+	defer func() {
+		if err := s1.Close(); err != nil {
+			t.Errorf("s1.Close: %v", err)
+		}
+		if err := s2.Close(); err != nil {
+			t.Errorf("s2.Close: %v", err)
+		}
+	}()
+
 	addr := serviceUnderlayAddress(t, s1)
 
 	if _, err := s2.Connect(ctx, addr); err != nil {
@@ -774,6 +821,85 @@ func TestTopologyNotifier(t *testing.T) {
 	waitAddrSet(t, &n2disconnectedPeer.Address, &mtx, overlay1)
 }
 
+func TestConnectWithAutoTLS(t *testing.T) {
+	t.Parallel()
+
+	certLoaded := make(chan struct{})
+	mockCertMgr := libp2pmock.NewMockP2PForgeCertMgr(func() {
+		close(certLoaded)
+	})
+
+	s1, _ := newService(t, 1, libp2pServiceOpts{
+		libp2pOpts: libp2p.Options{
+			EnableWS:   true,
+			EnableWSS:  true,
+			FullNode:   true,
+			WSSAddr:    ":0",
+			NATAddr:    "127.0.0.1:1635",
+			NATWSSAddr: "127.0.0.1:1635",
+		},
+		autoTLSCertManager: mockCertMgr,
+	})
+
+	select {
+	case <-certLoaded:
+	case <-time.After(time.Second):
+		t.Fatal("onCertLoaded callback was not triggered")
+	}
+
+	if s1 == nil {
+		t.Fatal("service should not be nil")
+	}
+}
+
+func TestConnectWithAutoTLSAndWSTransports(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{
+		libp2pOpts: libp2p.Options{
+			EnableWS:   true,
+			EnableWSS:  true,
+			FullNode:   true,
+			WSSAddr:    ":0",
+			NATAddr:    "127.0.0.1:1635",
+			NATWSSAddr: "127.0.0.1:1635",
+		},
+		autoTLSCertManager: libp2pmock.NewMockP2PForgeCertMgr(nil),
+	})
+
+	s2, overlay2 := newService(t, 1, libp2pServiceOpts{
+		libp2pOpts: libp2p.Options{
+			EnableWS:   true,
+			EnableWSS:  true,
+			FullNode:   true,
+			WSSAddr:    ":0",
+			NATAddr:    "127.0.0.1:1636",
+			NATWSSAddr: "127.0.0.1:1636",
+		},
+		autoTLSCertManager: libp2pmock.NewMockP2PForgeCertMgr(nil),
+	})
+
+	defer func() {
+		if err := s1.Close(); err != nil {
+			t.Errorf("s1.Close: %v", err)
+		}
+		if err := s2.Close(); err != nil {
+			t.Errorf("s2.Close: %v", err)
+		}
+	}()
+
+	addr := serviceUnderlayAddress(t, s1)
+
+	if _, err := s2.Connect(ctx, addr); err != nil {
+		t.Fatal(err)
+	}
+
+	expectPeers(t, s2, overlay1)
+	expectPeersEventually(t, s1, overlay2)
+}
+
 // TestTopologyAnnounce checks that announcement
 // works correctly for full nodes and light nodes.
 func TestTopologyAnnounce(t *testing.T) {
@@ -895,8 +1021,6 @@ func TestTopologyAnnounce(t *testing.T) {
 }
 
 func TestTopologyOverSaturated(t *testing.T) {
-	t.Parallel()
-
 	var (
 		mtx sync.Mutex
 		ctx = context.Background()
@@ -1007,8 +1131,6 @@ func TestWithDisconnectStreams(t *testing.T) {
 }
 
 func TestWithBlocklistStreams(t *testing.T) {
-	t.Parallel()
-
 	ctx := t.Context()
 
 	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{

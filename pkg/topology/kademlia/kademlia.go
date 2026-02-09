@@ -827,11 +827,10 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 
 			if err != nil {
 				if !errors.Is(err, p2p.ErrAlreadyConnected) {
-					k.logger.Debug("connect to bootnode failed", "bootnode_address", addr, "error", err)
-					k.logger.Warning("connect to bootnode failed", "bootnode_address", addr)
+					k.logger.Error(err, "connect to bootnode failed", "bootnode_address", addr)
 					return false, err
 				}
-				k.logger.Debug("connect to bootnode failed", "bootnode_address", addr, "error", err)
+				k.logger.Debug("bootnode already connected", "bootnode_address", addr)
 				return false, nil
 			}
 
@@ -1115,8 +1114,17 @@ func (k *Kad) AnnounceTo(ctx context.Context, addressee, peer swarm.Address, ful
 // This does not guarantee that a connection will immediately
 // be made to the peer.
 func (k *Kad) AddPeers(addrs ...swarm.Address) {
-	k.knownPeers.Add(addrs...)
-	k.notifyManageLoop()
+	toAdd := make([]swarm.Address, 0, len(addrs))
+	for _, addr := range addrs {
+		if !addr.Equal(k.base) {
+			toAdd = append(toAdd, addr)
+		}
+	}
+
+	if len(toAdd) > 0 {
+		k.knownPeers.Add(toAdd...)
+		k.notifyManageLoop()
+	}
 }
 
 func (k *Kad) Pick(peer p2p.Peer) bool {

@@ -129,12 +129,16 @@ type Options struct {
 	Addr                          string
 	AllowPrivateCIDRs             bool
 	APIAddr                       string
+	EnableWSS                     bool
+	WSSAddr                       string
+	AutoTLSStorageDir             string
 	BlockchainRpcEndpoint         string
 	BlockProfile                  bool
 	BlockTime                     time.Duration
 	BootnodeMode                  bool
 	Bootnodes                     []string
 	CacheCapacity                 uint64
+	AutoTLSCAEndpoint             string
 	ChainID                       int64
 	ChequebookEnable              bool
 	CORSAllowedOrigins            []string
@@ -145,12 +149,15 @@ type Options struct {
 	DBWriteBufferSize             uint64
 	EnableStorageIncentives       bool
 	EnableWS                      bool
+	AutoTLSDomain                 string
+	AutoTLSRegistrationEndpoint   string
 	FullNodeMode                  bool
 	Logger                        log.Logger
 	MinimumGasTipCap              uint64
 	MinimumStorageRadius          uint
 	MutexProfile                  bool
 	NATAddr                       string
+	NATWSSAddr                    string
 	NeighborhoodSuggester         string
 	PaymentEarly                  int64
 	PaymentThreshold              string
@@ -226,6 +233,10 @@ func NewBee(
 
 	if err := validatePublicAddress(o.NATAddr); err != nil {
 		return nil, fmt.Errorf("invalid NAT address %s: %w", o.NATAddr, err)
+	}
+
+	if err := validatePublicAddress(o.NATWSSAddr); err != nil {
+		return nil, fmt.Errorf("invalid NAT WSS address %s: %w", o.NATWSSAddr, err)
 	}
 
 	ctx, ctxCancel := context.WithCancel(ctx)
@@ -625,14 +636,21 @@ func NewBee(
 	}
 
 	p2ps, err := libp2p.New(ctx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
-		PrivateKey:      libp2pPrivateKey,
-		NATAddr:         o.NATAddr,
-		EnableWS:        o.EnableWS,
-		WelcomeMessage:  o.WelcomeMessage,
-		FullNode:        o.FullNodeMode,
-		Nonce:           nonce,
-		ValidateOverlay: chainEnabled,
-		Registry:        registry,
+		PrivateKey:                  libp2pPrivateKey,
+		NATAddr:                     o.NATAddr,
+		NATWSSAddr:                  o.NATWSSAddr,
+		EnableWS:                    o.EnableWS,
+		EnableWSS:                   o.EnableWSS,
+		WSSAddr:                     o.WSSAddr,
+		AutoTLSStorageDir:           o.AutoTLSStorageDir,
+		AutoTLSDomain:               o.AutoTLSDomain,
+		AutoTLSRegistrationEndpoint: o.AutoTLSRegistrationEndpoint,
+		AutoTLSCAEndpoint:           o.AutoTLSCAEndpoint,
+		WelcomeMessage:              o.WelcomeMessage,
+		FullNode:                    o.FullNodeMode,
+		Nonce:                       nonce,
+		ValidateOverlay:             chainEnabled,
+		Registry:                    registry,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
@@ -705,7 +723,7 @@ func NewBee(
 		return nil, fmt.Errorf("pingpong service: %w", err)
 	}
 
-	hive := hive.New(p2ps, addressbook, networkID, o.BootnodeMode, o.AllowPrivateCIDRs, logger)
+	hive := hive.New(p2ps, addressbook, networkID, o.BootnodeMode, o.AllowPrivateCIDRs, swarmAddress, logger)
 
 	if err = p2ps.AddProtocol(hive.Protocol()); err != nil {
 		return nil, fmt.Errorf("hive service: %w", err)

@@ -210,14 +210,23 @@ func mapStructure(input, output any, hooks map[string]func(v string) (string, er
 		case reflect.String:
 			field.SetString(value)
 		case reflect.Slice:
-			if value == "" {
-				return nil // Nil slice.
+			switch field.Type() {
+			case reflect.TypeFor[multiaddr.Multiaddr]():
+				val, err := multiaddr.NewMultiaddr(value)
+				if err != nil {
+					return err
+				}
+				field.Set(reflect.ValueOf(val))
+			default:
+				if value == "" {
+					return nil // Nil slice.
+				}
+				val, err := hex.DecodeString(value)
+				if err != nil {
+					return err
+				}
+				field.SetBytes(val)
 			}
-			val, err := hex.DecodeString(value)
-			if err != nil {
-				return err
-			}
-			field.SetBytes(val)
 		case reflect.Array:
 			switch field.Interface().(type) {
 			case common.Hash:
@@ -250,15 +259,6 @@ func mapStructure(input, output any, hooks map[string]func(v string) (string, er
 					return err
 				}
 				field.Set(reflect.ValueOf(*val))
-			}
-		case reflect.Interface:
-			switch field.Type() {
-			case reflect.TypeFor[multiaddr.Multiaddr]():
-				val, err := multiaddr.NewMultiaddr(value)
-				if err != nil {
-					return err
-				}
-				field.Set(reflect.ValueOf(val))
 			}
 		default:
 			return fmt.Errorf("unsupported type %T", field.Interface())
