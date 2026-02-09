@@ -180,8 +180,8 @@ jobs:
       - name: Test feeds
         id: feeds
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-feed
-      - name: Collect debug artifacts
-        if: failure()
+      - name: Collect debug artifacts (local-dns)
+        if: failure() && (steps.pingpong.outcome == 'failure' || steps.fullconnectivity.outcome == 'failure' || steps.settlements.outcome == 'failure' || steps.pss.outcome == 'failure' || steps.soc.outcome == 'failure' || steps.gsoc.outcome == 'failure' || steps.pushsync-chunks-1.outcome == 'failure' || steps.pushsync-chunks-2.outcome == 'failure' || steps.retrieval.outcome == 'failure' || steps.manifest.outcome == 'failure' || steps.manifest-v1.outcome == 'failure' || steps.postage-stamps.outcome == 'failure' || steps.stake.outcome == 'failure' || steps.withdraw.outcome == 'failure' || steps.redundancy.outcome == 'failure' || steps.act.outcome == 'failure' || steps.feeds.outcome == 'failure' || steps.feeds-v1.outcome == 'failure')
         run: |
           bash .github/bin/beekeeper_artifacts.sh local-dns
           export FAILED='no-test'
@@ -209,73 +209,37 @@ jobs:
           echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com"
           curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T $(echo $KEYS | jq -r .peer1_key) ${{ secrets.TUNSHELL_SECRET }} eu.relay.tunshell.com
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: failure() && (steps.pingpong.outcome == 'failure' || steps.fullconnectivity.outcome == 'failure' || steps.settlements.outcome == 'failure' || steps.pss.outcome == 'failure' || steps.soc.outcome == 'failure' || steps.gsoc.outcome == 'failure' || steps.pushsync-chunks-1.outcome == 'failure' || steps.pushsync-chunks-2.outcome == 'failure' || steps.retrieval.outcome == 'failure' || steps.manifest.outcome == 'failure' || steps.manifest-v1.outcome == 'failure' || steps.postage-stamps.outcome == 'failure' || steps.stake.outcome == 'failure' || steps.withdraw.outcome == 'failure' || steps.redundancy.outcome == 'failure' || steps.act.outcome == 'failure' || steps.feeds.outcome == 'failure' || steps.feeds-v1.outcome == 'failure')
         with:
           name: debug-dump
           path: dump/
-  beekeeper-autotls:
-    name: Integration tests (autotls)
-    runs-on: ubuntu-latest
-    needs: [init, beekeeper]
-    env:
-      BEEKEEPER_CLUSTER: local-dns-autotls
-      P2P_WSS_ENABLE: true
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event.action == 'beekeeper' && github.event.client_payload.ref || github.sha }}
-      - name: Cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            /tmp/k3s-${{ env.K3S_VERSION }}
-          key: k3s-${{ env.K3S_VERSION }}
-      - name: "Download Artifact"
-        uses: actions/download-artifact@v4
-        with:
-          name: temp-artifacts
-      - name: Unpack artifacts
-        run: |
-          chmod +x bee-1 beekeeper .github/bin/beekeeper_artifacts.sh
-          mv .beekeeper.yaml ~/.beekeeper.yaml
-          mkdir -p ~/.beekeeper && mv local.yaml ~/.beekeeper/local.yaml
-          mv bee-1 bee
-          sudo mv beekeeper /usr/local/bin/beekeeper
-      - name: Prepare local cluster
-        run: timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet' ACTION=prepare
-      - name: Set kube config
-        run: |
-          mkdir -p ~/.kube
-          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
-      - name: Set local cluster
+      - name: Set local cluster (local-dns-autotls)
         run: timeout ${TIMEOUT} make deploylocal BEEKEEPER_CLUSTER=local-dns-autotls
-      - name: Test pingpong
-        id: pingpong
+      - name: Test pingpong (autotls)
+        id: pingpong-autotls
         run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns-autotls --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done'
-      - name: Test fullconnectivity
-        id: fullconnectivity
+      - name: Test fullconnectivity (autotls)
+        id: fullconnectivity-autotls
         run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns-autotls --checks=ci-full-connectivity; do echo "waiting for full connectivity..."; sleep .3; done'
-      - name: Test retrieval
-        id: retrieval
+      - name: Test retrieval (autotls)
+        id: retrieval-autotls
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns-autotls --checks=ci-retrieval
       - name: Test autotls
         id: autotls
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns-autotls --checks=ci-autotls
-      - name: Collect debug artifacts
-        if: failure()
+      - name: Collect debug artifacts (autotls)
+        if: failure() && (steps.pingpong-autotls.outcome == 'failure' || steps.fullconnectivity-autotls.outcome == 'failure' || steps.retrieval-autotls.outcome == 'failure' || steps.autotls.outcome == 'failure')
         run: |
           bash .github/bin/beekeeper_artifacts.sh local-dns-autotls
           export FAILED='no-test'
-          if ${{ steps.pingpong.outcome=='failure' }}; then FAILED=pingpong; fi
-          if ${{ steps.fullconnectivity.outcome=='failure' }}; then FAILED=fullconnectivity; fi
-          if ${{ steps.retrieval.outcome=='failure' }}; then FAILED=retrieval; fi
+          if ${{ steps.pingpong-autotls.outcome=='failure' }}; then FAILED=pingpong; fi
+          if ${{ steps.fullconnectivity-autotls.outcome=='failure' }}; then FAILED=fullconnectivity; fi
+          if ${{ steps.retrieval-autotls.outcome=='failure' }}; then FAILED=retrieval; fi
           if ${{ steps.autotls.outcome=='failure' }}; then FAILED=autotls; fi
           curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Autotls Error\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebugging artifacts: [click](https://$BUCKET_NAME.$AWS_ENDPOINT/artifacts_$VERTAG.tar.gz)\nStep failed: \`${FAILED}\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
           echo "Failed test: ${FAILED}"
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: failure() && (steps.pingpong-autotls.outcome == 'failure' || steps.fullconnectivity-autotls.outcome == 'failure' || steps.retrieval-autotls.outcome == 'failure' || steps.autotls.outcome == 'failure')
         with:
           name: debug-dump-autotls
           path: dump/
@@ -283,7 +247,7 @@ jobs:
     name: Retag and Trigger ArgoCD
     env:
       TIMEOUT: 10m
-    needs: [beekeeper, beekeeper-autotls]
+    needs: [beekeeper]
     runs-on: ubuntu-latest
     steps:
       - name: "Download Artifact"
