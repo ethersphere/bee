@@ -121,7 +121,6 @@ type Service struct {
 	networkStatus      atomic.Int32
 	HeadersRWTimeout   time.Duration
 	autoNAT            autonat.AutoNAT
-	enableWS           bool
 	autoTLSCertManager autoTLSCertManager
 	zapLogger          *zap.Logger
 	enabledTransports  map[bzz.TransportType]bool
@@ -544,7 +543,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		lightNodes:         lightNodes,
 		HeadersRWTimeout:   o.HeadersRWTimeout,
 		autoNAT:            autoNAT,
-		enableWS:           o.EnableWS,
 		autoTLSCertManager: certManager,
 		zapLogger:          zapLogger,
 		enabledTransports: map[bzz.TransportType]bool{
