@@ -112,7 +112,7 @@ func (r *reacher) manage() {
 
 	defer r.wg.Done()
 
-	c := make(chan *peer)
+	c := make(chan peer)
 	defer close(c)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -125,7 +125,7 @@ func (r *reacher) manage() {
 
 	for {
 
-		p, tryAfter := r.tryAcquirePeer()
+		p, ok, tryAfter := r.tryAcquirePeer()
 
 		// if no peer is returned,
 		// wait until either more work or the closest retry-after time.
@@ -143,7 +143,7 @@ func (r *reacher) manage() {
 		}
 
 		// wait for work
-		if p == nil {
+		if !ok {
 			select {
 			case <-r.quit:
 				return
@@ -161,7 +161,7 @@ func (r *reacher) manage() {
 	}
 }
 
-func (r *reacher) ping(c chan *peer, ctx context.Context) {
+func (r *reacher) ping(c chan peer, ctx context.Context) {
 	defer r.wg.Done()
 	for p := range c {
 		func() {
@@ -179,12 +179,12 @@ func (r *reacher) ping(c chan *peer, ctx context.Context) {
 	}
 }
 
-func (r *reacher) tryAcquirePeer() (*peer, time.Duration) {
+func (r *reacher) tryAcquirePeer() (peer, bool, time.Duration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	if len(r.peerHeap) == 0 {
-		return nil, 0
+		return peer{}, false, 0
 	}
 
 	now := time.Now()
@@ -194,14 +194,15 @@ func (r *reacher) tryAcquirePeer() (*peer, time.Duration) {
 
 	// If retryAfter has not expired, return time to wait
 	if now.Before(p.retryAfter) {
-		return nil, time.Until(p.retryAfter)
+		return peer{}, false, time.Until(p.retryAfter)
 	}
 
 	// Update retryAfter and fix heap position
 	p.retryAfter = time.Now().Add(r.options.RetryAfterDuration)
 	heap.Fix(&r.peerHeap, p.index)
 
-	return p, 0
+	// Return a copy so callers can read fields without holding the lock.
+	return *p, true, 0
 }
 
 // Connected adds a new peer to the queue for testing reachability.
