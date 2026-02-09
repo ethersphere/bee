@@ -212,7 +212,9 @@ func (r *reacher) Connected(overlay swarm.Address, addr ma.Multiaddr) {
 
 	key := overlay.ByteString()
 	if existing, ok := r.peerIndex[key]; ok {
-		existing.addr = addr // Update address for reconnecting peer
+		existing.addr = addr              // Update address for reconnecting peer
+		existing.retryAfter = time.Time{} // Reset to trigger immediate re-ping
+		heap.Fix(&r.peerHeap, existing.index)
 	} else {
 		p := &peer{overlay: overlay, addr: addr}
 		r.peerIndex[key] = p

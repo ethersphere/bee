@@ -132,20 +132,26 @@ func TestAddressUpdateOnReconnect(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
-		done := make(chan struct{})
+		// Use 1 worker and a known retry duration to make timing deterministic.
+		options := reacher.Options{
+			PingTimeout:        time.Second * 5,
+			Workers:            1,
+			RetryAfterDuration: time.Minute,
+		}
 
 		overlay := swarm.RandAddress(t)
 		oldAddr, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAmTBuJT9LvNmBiQiNoTsxE5mtNy6YG3paw79m94CRa9sRb")
 		newAddr, _ := ma.NewMultiaddr("/ip4/192.168.1.1/tcp/7072/p2p/16Uiu2HAmTBuJT9LvNmBiQiNoTsxE5mtNy6YG3paw79m94CRa9sRb")
 
+		var pingsMu sync.Mutex
+		var pings []ma.Multiaddr
+		pinged := make(chan struct{}, 8)
+
 		pingFunc := func(_ context.Context, a ma.Multiaddr) (time.Duration, error) {
-			// Verify that the new address is being pinged, not the old one
-			if a.Equal(oldAddr) {
-				t.Fatalf("ping should use updated address, got old address")
-			}
-			if a.Equal(newAddr) {
-				done <- struct{}{}
-			}
+			pingsMu.Lock()
+			pings = append(pings, a)
+			pingsMu.Unlock()
+			pinged <- struct{}{}
 			return 0, nil
 		}
 
@@ -153,19 +159,65 @@ func TestAddressUpdateOnReconnect(t *testing.T) {
 
 		mock := newMock(pingFunc, reachableFunc)
 
-		r := reacher.New(mock, mock, &defaultOptions, log.Noop)
+		r := reacher.New(mock, mock, &options, log.Noop)
 		testutil.CleanupCloser(t, r)
 
-		// First connection with old address
+		// First connection with old address – triggers initial ping.
 		r.Connected(overlay, oldAddr)
-		// Immediate reconnection with new address (simulates peer reconnecting with different IP)
+
+		select {
+		case <-time.After(time.Second * 10):
+			t.Fatal("timed out waiting for initial ping")
+		case <-pinged:
+		}
+
+		// Verify old address was pinged first.
+		pingsMu.Lock()
+		if len(pings) != 1 {
+			t.Fatalf("expected 1 ping after initial connect, got %d", len(pings))
+		}
+		if !pings[0].Equal(oldAddr) {
+			t.Fatalf("first ping should use old address, got %s", pings[0])
+		}
+		pingsMu.Unlock()
+
+		// Reconnect with a new address — should trigger immediate re-ping.
 		r.Connected(overlay, newAddr)
 
 		select {
-		case <-time.After(time.Second * 5):
-			t.Fatalf("test timed out")
-		case <-done:
+		case <-time.After(time.Second * 10):
+			t.Fatal("timed out waiting for reconnect ping")
+		case <-pinged:
 		}
+
+		// Verify the reconnect pinged the new address.
+		pingsMu.Lock()
+		if len(pings) != 2 {
+			t.Fatalf("expected 2 pings after reconnect, got %d", len(pings))
+		}
+		if !pings[1].Equal(newAddr) {
+			t.Fatalf("reconnect ping should use new address, got %s", pings[1])
+		}
+		pingsMu.Unlock()
+
+		// Advance time past the retry duration — should trigger a scheduled re-ping.
+		time.Sleep(options.RetryAfterDuration + time.Second)
+
+		select {
+		case <-time.After(time.Second * 10):
+			t.Fatal("timed out waiting for scheduled re-ping")
+		case <-pinged:
+		}
+
+		// Verify the scheduled re-ping used the new address.
+		pingsMu.Lock()
+		if len(pings) != 3 {
+			t.Fatalf("expected 3 pings after retry duration, got %d", len(pings))
+		}
+		if !pings[2].Equal(newAddr) {
+			t.Fatalf("scheduled re-ping should use new address, got %s", pings[2])
+		}
+		pingsMu.Unlock()
 	})
 }
 
