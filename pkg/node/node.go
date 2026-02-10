@@ -118,12 +118,11 @@ type Bee struct {
 	saludCloser              io.Closer
 	storageIncetivesCloser   io.Closer
 	pushSyncCloser           io.Closer
-
-	shutdownInProgress  bool
-	shutdownMutex       sync.Mutex
-	syncingStopped      *syncutil.Signaler
-	accesscontrolCloser io.Closer
-	ethClientCloser     func()
+	shutdownInProgress       bool
+	shutdownMutex            sync.Mutex
+	syncingStopped           *syncutil.Signaler
+	accesscontrolCloser      io.Closer
+	ethClientCloser          func()
 }
 
 type Options struct {
@@ -183,9 +182,9 @@ type Options struct {
 	TracingEndpoint               string
 	TracingServiceName            string
 	TrxDebugMode                  bool
-	WarmupTime                   time.Duration
-	WelcomeMessage               string
-	WhitelistedWithdrawalAddress []string
+	WarmupTime                    time.Duration
+	WelcomeMessage                string
+	WhitelistedWithdrawalAddress  []string
 }
 
 const (
