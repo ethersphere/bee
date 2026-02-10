@@ -63,6 +63,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/stabilization"
 	"github.com/ethersphere/bee/v2/pkg/status"
 	"github.com/ethersphere/bee/v2/pkg/steward"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storageincentives"
 	"github.com/ethersphere/bee/v2/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/v2/pkg/storageincentives/staking"
@@ -182,7 +183,6 @@ type Options struct {
 	TracingEndpoint               string
 	TracingServiceName            string
 	TrxDebugMode                  bool
-
 	WarmupTime                   time.Duration
 	WelcomeMessage               string
 	WhitelistedWithdrawalAddress []string
@@ -1500,4 +1500,14 @@ func validatePublicAddress(addr string) error {
 	}
 
 	return nil
+}
+
+func batchStoreExists(s storage.StateStorer) (bool, error) {
+	hasOne := false
+	err := s.Iterate("batchstore_", func(key, value []byte) (stop bool, err error) {
+		hasOne = true
+		return true, err
+	})
+
+	return hasOne, err
 }

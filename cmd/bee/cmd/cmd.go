@@ -72,7 +72,6 @@ const (
 	optionNameStaticNodes               = "static-nodes"
 	optionNameAllowPrivateCIDRs         = "allow-private-cidrs"
 	optionNameSleepAfter                = "sleep-after"
-
 	optionNameStorageIncentivesEnable      = "storage-incentives-enable"
 	optionNameStateStoreCacheCapacity      = "statestore-cache-capacity"
 	optionNameTargetNeighborhood           = "target-neighborhood"
