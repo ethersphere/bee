@@ -1030,7 +1030,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 			return address, p2p.ErrAlreadyConnected
 		}
 
-		connectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		connectCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		err = s.connectionBreaker.Execute(func() error { return s.host.Connect(connectCtx, *info) })
 		cancel()
 

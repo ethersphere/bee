@@ -42,7 +42,7 @@ const (
 
 	addPeerBatchSize = 500
 
-	// Each underlay address gets up to 10s for connection (in libp2p.Connect).
+	// Each underlay address gets up to 15s for connection (in libp2p.Connect).
 	// This budget allows multiple addresses to be tried sequentially per peer.
 	peerConnectionAttemptTimeout = 45 * time.Second // timeout for establishing a new connection with peer.
 )
