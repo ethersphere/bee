@@ -1122,40 +1122,6 @@ func NewBee(
 			if o.ReserveCapacityDoubling > 0 && stake.Cmp(minStake) < 0 {
 				logger.Warning("staked amount does not sufficiently cover the additional reserve capacity. On-chain height update will be skipped. Node will start, but storage incentives may not function for this capacity.", "missing_stake", new(big.Int).Sub(minStake, stake))
 
-				// Start a background worker to monitor the stake and update the height when the stake is sufficient.
-				go func() {
-					// Check every 10 minutes
-					ticker := time.NewTicker(10 * time.Minute)
-					defer ticker.Stop()
-
-					for {
-						select {
-						case <-ctx.Done():
-							return
-						case <-ticker.C:
-							currentStake, err := stakingContract.GetPotentialStake(ctx)
-							if err != nil {
-								logger.Error(err, "runtime staking monitor: get potential stake")
-								continue
-							}
-
-							if currentStake.Cmp(minStake) >= 0 {
-								tx, updated, err := stakingContract.UpdateHeight(ctx)
-								if err != nil {
-									logger.Error(err, "runtime staking monitor: update height")
-									continue
-								}
-								if updated {
-									logger.Warning("Runtime stake top-up detected. Reserve capacity doubling updated. Node will be FROZEN for ~2 rounds.", "transaction", tx)
-								} else {
-									logger.Info("Runtime stake top-up detected. Reserve capacity doubling already updated.")
-								}
-								return
-							}
-						}
-					}
-				}()
-
 			} else {
 				// make sure that the staking contract has the up to date height
 				tx, updated, err := stakingContract.UpdateHeight(ctx)
