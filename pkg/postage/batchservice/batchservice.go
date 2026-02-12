@@ -17,7 +17,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/storage"
-	"golang.org/x/crypto/sha3"
+	"github.com/ethersphere/goxcrypto/sha3"
 )
 
 // loggerName is the tree path name of the logger for this package.

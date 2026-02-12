@@ -77,10 +77,10 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/util/ioutil"
 	"github.com/ethersphere/bee/v2/pkg/util/nbhdutil"
 	"github.com/ethersphere/bee/v2/pkg/util/syncutil"
+	"github.com/ethersphere/goxcrypto/sha3"
 	"github.com/hashicorp/go-multierror"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/crypto/sha3"
 	"golang.org/x/net/idna"
 	"golang.org/x/sync/errgroup"
 )

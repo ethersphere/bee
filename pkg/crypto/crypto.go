@@ -16,7 +16,7 @@ import (
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-	"golang.org/x/crypto/sha3"
+	"github.com/ethersphere/goxcrypto/sha3"
 )
 
 // RecoverFunc is a function to recover the public key from a signature

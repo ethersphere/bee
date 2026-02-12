@@ -26,7 +26,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-	"golang.org/x/crypto/sha3"
+	"github.com/ethersphere/goxcrypto/sha3"
 )
 
 type mockController struct {

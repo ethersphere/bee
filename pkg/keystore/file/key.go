@@ -19,9 +19,9 @@ import (
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/keystore"
+	"github.com/ethersphere/goxcrypto/sha3"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/scrypt"
-	"golang.org/x/crypto/sha3"
 )
 
 var _ keystore.Service = (*Service)(nil)

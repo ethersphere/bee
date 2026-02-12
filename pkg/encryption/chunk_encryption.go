@@ -6,7 +6,7 @@ package encryption
 
 import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-	"golang.org/x/crypto/sha3"
+	"github.com/ethersphere/goxcrypto/sha3"
 )
 
 // ChunkEncrypter encrypts chunk data.

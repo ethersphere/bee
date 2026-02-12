@@ -7,7 +7,7 @@ package swarm
 import (
 	"hash"
 
-	"golang.org/x/crypto/sha3"
+	"github.com/ethersphere/goxcrypto/sha3"
 )
 
 // NewHasher returns new Keccak-256 hasher.

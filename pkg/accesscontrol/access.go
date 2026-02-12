@@ -13,7 +13,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol/kvs"
 	"github.com/ethersphere/bee/v2/pkg/encryption"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-	"golang.org/x/crypto/sha3"
+	"github.com/ethersphere/goxcrypto/sha3"
 )
 
 //nolint:gochecknoglobals
