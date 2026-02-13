@@ -77,7 +77,6 @@ func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier, o *Options, log lo
 }
 
 func (r *reacher) manage() {
-
 	defer r.wg.Done()
 
 	c := make(chan *peer)
@@ -180,6 +179,10 @@ func (r *reacher) tryAcquirePeer() (*peer, time.Duration) {
 
 // Connected adds a new peer to the queue for testing reachability.
 func (r *reacher) Connected(overlay swarm.Address, addr ma.Multiaddr) {
+	if addr == nil {
+		return
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 

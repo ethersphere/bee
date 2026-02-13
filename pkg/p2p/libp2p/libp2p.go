@@ -121,9 +121,9 @@ type Service struct {
 	networkStatus      atomic.Int32
 	HeadersRWTimeout   time.Duration
 	autoNAT            autonat.AutoNAT
-	enableWS           bool
 	autoTLSCertManager autoTLSCertManager
 	zapLogger          *zap.Logger
+	enabledTransports  map[bzz.TransportType]bool
 }
 
 type lightnodes interface {
@@ -543,9 +543,13 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		lightNodes:         lightNodes,
 		HeadersRWTimeout:   o.HeadersRWTimeout,
 		autoNAT:            autoNAT,
-		enableWS:           o.EnableWS,
 		autoTLSCertManager: certManager,
 		zapLogger:          zapLogger,
+		enabledTransports: map[bzz.TransportType]bool{
+			bzz.TransportTCP: true, // TCP transport is always included
+			bzz.TransportWS:  o.EnableWS,
+			bzz.TransportWSS: o.EnableWSS,
+		},
 	}
 
 	peerRegistry.setDisconnecter(s)
@@ -789,7 +793,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		return
 	}
 
-	s.notifyReacherConnected(overlay, peerID)
+	s.notifyReacherConnected(overlay, peerMultiaddrs)
 
 	peerUserAgent := appendSpace(s.peerUserAgent(s.ctx, peerID))
 	s.networkStatus.Store(int32(p2p.NetworkStatusAvailable))
@@ -798,23 +802,44 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	s.logger.Debug("stream handler: successfully connected to peer (inbound)", "address", i.BzzAddress.Overlay, "light", i.LightString(), "user_agent", peerUserAgent)
 }
 
-func (s *Service) notifyReacherConnected(overlay swarm.Address, peerID libp2ppeer.ID) {
+// isTransportSupported checks if the given transport type is supported by this service.
+func (s *Service) isTransportSupported(t bzz.TransportType) bool {
+	return s.enabledTransports[t]
+}
+
+// filterSupportedAddresses filters multiaddresses to only include those
+// that are supported by the available transports (TCP, WS, WSS).
+func (s *Service) filterSupportedAddresses(addrs []ma.Multiaddr) []ma.Multiaddr {
+	if len(addrs) == 0 {
+		return addrs
+	}
+
+	filtered := make([]ma.Multiaddr, 0, len(addrs))
+	for _, addr := range addrs {
+		if s.isTransportSupported(bzz.ClassifyTransport(addr)) {
+			filtered = append(filtered, addr)
+		}
+	}
+
+	return filtered
+}
+
+func (s *Service) notifyReacherConnected(overlay swarm.Address, underlays []ma.Multiaddr) {
 	if s.reacher == nil {
 		return
 	}
 
-	peerAddrs := s.host.Peerstore().Addrs(peerID)
-	bestAddr := bzz.SelectBestAdvertisedAddress(peerAddrs, nil)
-
-	s.logger.Debug("selected reacher address", "peer_id", peerID, "selected_addr", bestAddr.String(), "advertised_count", len(peerAddrs))
-
-	underlay, err := buildFullMA(bestAddr, peerID)
-	if err != nil {
-		s.logger.Error(err, "stream handler: unable to build complete peer multiaddr", "peer", overlay, "multiaddr", bestAddr, "peer_id", peerID)
-		_ = s.Disconnect(overlay, "unable to build complete peer multiaddr")
+	filteredAddrs := s.filterSupportedAddresses(underlays)
+	if len(filteredAddrs) == 0 {
+		s.logger.Debug("no supported addresses for reacher", "overlay", overlay, "total", len(underlays))
 		return
 	}
-	s.reacher.Connected(overlay, underlay)
+
+	bestAddr := bzz.SelectBestAdvertisedAddress(filteredAddrs, nil)
+
+	s.logger.Debug("selected reacher address", "overlay", overlay, "address", bestAddr, "filtered", len(filteredAddrs), "total", len(underlays))
+
+	s.reacher.Connected(overlay, bestAddr)
 }
 
 func (s *Service) SetPickyNotifier(n p2p.PickyNotifier) {
@@ -988,19 +1013,19 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		err = s.determineCurrentNetworkStatus(err)
 	}()
 
+	filteredAddrs := s.filterSupportedAddresses(addrs)
+	if len(filteredAddrs) == 0 {
+		s.logger.Debug("no supported addresses to connect", "total_addrs", len(addrs))
+		return nil, p2p.ErrUnsupportedAddresses
+	}
+
 	var info *libp2ppeer.AddrInfo
 	var peerID libp2ppeer.ID
 	var connectErr error
 	skippedSelf := false
 
 	// Try to connect to each underlay address one by one.
-	//
-	// TODO: investigate the issue when AddrInfo with multiple underlay
-	// addresses for the same peer is passed to the host.Host.Connect function
-	// and reachabiltiy Private is emitted on libp2p EventBus(), which results
-	// in weaker connectivity and failures in some integration tests.
-
-	for _, addr := range addrs {
+	for _, addr := range filteredAddrs {
 		// Extract the peer ID from the multiaddr.
 		ai, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
 		if err != nil {
@@ -1059,7 +1084,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	}
 
 	if info == nil {
-		return nil, fmt.Errorf("unable to identify peer from addresses: %v", addrs)
+		return nil, fmt.Errorf("unable to identify peer from addresses: %v", filteredAddrs)
 	}
 
 	stream, err := s.newStreamForPeerID(ctx, info.ID, handshake.ProtocolName, handshake.ProtocolVersion, handshake.StreamName)
@@ -1161,7 +1186,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 
 	s.metrics.CreatedConnectionCount.Inc()
 
-	s.notifyReacherConnected(overlay, peerID)
+	s.notifyReacherConnected(overlay, peerMultiaddrs)
 
 	peerUA := appendSpace(s.peerUserAgent(ctx, peerID))
 	loggerV1.Debug("successfully connected to peer (outbound)", "addresses", i.BzzAddress.ShortString(), "light", i.LightString(), "user_agent", peerUA)
