@@ -116,6 +116,14 @@ jobs:
           mkdir ~/.beekeeper && mv local.yaml ~/.beekeeper/local.yaml
           mv bee-1 bee
           sudo mv beekeeper /usr/local/bin/beekeeper
+      - name: Configure Docker for k3d local registry
+        run: |
+            sudo mkdir -p /etc/docker
+            echo '{
+              "features": {"containerd-snapshotter": false},
+              "insecure-registries": ["k3d-registry.localhost:5000", "127.0.0.1:5000"]
+            }' | sudo tee /etc/docker/daemon.json
+            sudo systemctl restart docker
       - name: Prepare local cluster
         run: |
           timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet' ACTION=prepare
