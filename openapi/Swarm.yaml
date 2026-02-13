@@ -3,10 +3,10 @@ openapi: 3.0.3
 info:
   version: 7.4.0
   title: Bee API
-  description: "A list of the currently provided Interfaces to interact with the swarm, implementing file operations and sending messages"
+  description: "API endpoints for interacting with the Swarm network, supporting file operations, messaging, and node management"
 
 externalDocs:
-  description: Browse the documentation @ the Swarm Docs
+  description: Browse the documentation at the Swarm Docs
   url: "https://docs.ethswarm.org"
 
 servers:
@@ -30,7 +30,7 @@ servers:
 paths:
   "/grantee":
     post:
-      summary: "Create grantee list"
+      summary: "Create a grantee list"
       tags:
         - ACT
       parameters:
@@ -79,7 +79,7 @@ paths:
 
   "/grantee/{reference}":
     get:
-      summary: "Get grantee list"
+      summary: "Get the grantee list"
       tags:
         - ACT
       parameters:
@@ -103,7 +103,7 @@ paths:
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
     patch:
-      summary: "Update grantee list"
+      summary: "Update the grantee list"
       description: "Add or remove grantees from an existing grantee list"
       tags:
         - ACT
@@ -196,7 +196,7 @@ paths:
 
   "/bytes/{reference}":
     get:
-      summary: "Get referenced data"
+      summary: "Retrieve data by reference"
       tags:
         - Bytes
       parameters:
@@ -227,7 +227,7 @@ paths:
         default:
           description: Default response
     head:
-      summary: Requests the headers containing the content type and length for the reference
+      summary: Retrieve headers containing the content type and length for the reference
       tags:
         - Bytes
       parameters:
@@ -268,7 +268,7 @@ paths:
 
   "/chunks":
     post:
-      summary: "Upload chunk"
+      summary: "Upload a chunk"
       tags:
         - Chunk
       parameters:
@@ -282,7 +282,7 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmAct"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       requestBody:
-        description: Chunk binary data that has to have at least 8 bytes.
+        description: Chunk binary data containing at least 8 bytes.
         content:
           application/octet-stream:
             schema:
@@ -293,7 +293,7 @@ paths:
           description: OK
           headers:
             "swarm-tag":
-              description: Tag UID if it was passed to the request `swarm-tag` header.
+              description: Tag UID from the request `swarm-tag` header if provided.
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/Uid"
             "swarm-act-history-address":
@@ -313,8 +313,8 @@ paths:
 
   "/chunks/stream":
     get:
-      summary: "Upload stream of chunks"
-      description: "Returns a WebSocket connection on which stream of chunks can be uploaded. Each chunk sent is acknowledged using a binary response `0` which serves as confirmation of upload of single chunk. Chunks should be packaged as binary messages for uploading. If a tag is specified, the chunks will be streamed into local storage and then be uploaded to the network once the stream is closed. If a tag is not specified, the chunks will bypass local storage and be directly uploaded to the network through the stream as they arrive."
+      summary: "Stream chunks for upload"
+      description: "Establishes a WebSocket connection for streaming chunks. Each uploaded chunk receives a binary acknowledgment (`0`). Chunks are sent as binary messages. When a tag is specified, chunks are stored locally and uploaded to the network after the stream closes. Without a tag, chunks are directly uploaded to the network as they arrive."
       tags:
         - Chunk
       parameters:
@@ -329,13 +329,9 @@ paths:
           description: Default response
   "/bzz":
     post:
-      summary: "Upload file or a collection of files"
+      summary: "Upload a file or collection of files"
       description:
-        "In order to upload a collection, user can send a multipart request with all the files populated in the form data with appropriate headers.\n\n
-        User can also upload a tar file along with the swarm-collection header. This will upload the tar file after extracting the entire directory structure.\n\n
-        If the swarm-collection header is absent, all requests (including tar files) are considered as single file uploads.\n\n
-        A multipart request is treated as a collection regardless of whether the swarm-collection header is present. This means in order to serve single files
-        uploaded as a multipart request, the swarm-index-document header should be used with the name of the file."
+        "Upload single files or collections of files. To upload a collection, send a multipart request with files in the form data with appropriate headers. Tar files can be uploaded with the `swarm-collection` header to extract and upload the directory structure. Without the `swarm-collection` header, requests are treated as single file uploads. Multipart requests are always treated as collections; use the `swarm-index-document` header to specify a single file to serve."
       tags:
         - BZZ
       parameters:
@@ -400,7 +396,7 @@ paths:
 
   "/bzz/{reference}":
     get:
-      summary: "Get file or index document from a collection of files"
+      summary: "Retrieve a file or index document from a collection"
       tags:
         - BZZ
       parameters:
@@ -442,7 +438,7 @@ paths:
         default:
           description: Default response
     head:
-      summary: Get the headers containing the content type and length for the reference
+      summary: Retrieve headers with content type and length for the reference
       tags:
         - BZZ
       parameters:
@@ -467,7 +463,7 @@ paths:
 
   "/bzz/{reference}/{path}":
     get:
-      summary: "Get referenced file from a collection of files"
+      summary: "Retrieve a file from a collection by path"
       tags:
         - BZZ
       parameters:
@@ -649,12 +645,12 @@ paths:
         required: true
         description: Swarm reference of the root hash
     post:
-      summary: Pin the root hash with the given reference
+      summary: Pin a root hash by reference
       tags:
         - Pinning
       responses:
         "200":
-          description: Pin already exists, so no operation
+          description: Pin already exists
           content:
             application/json:
               schema:
@@ -674,12 +670,12 @@ paths:
         default:
           description: Default response
     delete:
-      summary: Unpin the root hash with the given reference
+      summary: Unpin a root hash by reference
       tags:
         - Pinning
       responses:
         "200":
-          description: Unpinning root hash with reference
+          description: Root hash has been unpinned
           content:
             application/json:
               schema:
@@ -691,12 +687,12 @@ paths:
         default:
           description: Default response
     get:
-      summary: Get pinning status of the root hash with the given reference
+      summary: Get the pinning status of a root hash
       tags:
         - Pinning
       responses:
         "200":
-          description: Reference of the pinned root hash
+          description: The pinned root hash reference
           content:
             application/json:
               schema:
@@ -729,7 +725,7 @@ paths:
 
   "/pins/check":
     get:
-      summary: Validate pinned chunks integerity
+      summary: Validate pinned chunks integrity
       tags:
         - Pinning
       parameters:
@@ -738,7 +734,7 @@ paths:
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmOnlyReference"
           required: false
-          description: The number of items to skip before starting to collect the result set.
+          description: Optional reference to check; if not provided, all pinned references are checked
       responses:
         "200":
           description: List of checked root hash references
@@ -753,7 +749,7 @@ paths:
 
   "/pss/send/{topic}/{targets}":
     post:
-      summary: Send to recipient or target with Postal Service for Swarm
+      summary: Send a message using the Postal Service for Swarm
       tags:
         - Postal Service for Swarm
       parameters:
@@ -790,7 +786,7 @@ paths:
 
   "/pss/subscribe/{topic}":
     get:
-      summary: Subscribe for messages on the given topic.
+      summary: Subscribe to messages on a topic
       tags:
         - Postal Service for Swarm
       parameters:
@@ -802,7 +798,7 @@ paths:
           description: Topic name
       responses:
         "200":
-          description: Returns a WebSocket with a subscription for incoming message data on the requested topic.
+          description: Establishes a WebSocket subscription for incoming messages on the topic
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -822,7 +818,7 @@ paths:
           description: "Single Owner Chunk address (which may have multiple payloads)"
       responses:
         "200":
-          description: Returns a WebSocket with a subscription for incoming message data on the requested SOC address.
+          description: Establishes a WebSocket subscription for incoming messages on the Single Owner Chunk address
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -830,7 +826,7 @@ paths:
 
   "/soc/{owner}/{id}":
     post:
-      summary: Upload single owner chunk
+      summary: Upload a Single Owner Chunk
       tags:
         - Single owner chunk
       parameters:
@@ -839,13 +835,13 @@ paths:
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
           required: true
-          description: Owner
+          description: Ethereum address of the chunk owner
         - in: path
           name: id
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/HexString"
           required: true
-          description: Id
+          description: Unique identifier for the chunk
         - in: query
           name: sig
           schema:
@@ -862,7 +858,7 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       requestBody:
         required: true
-        description: The SOC binary data is composed of the span (8 bytes) and the at most 4KB payload.
+        description: The SOC binary data, composed of the span (8 bytes) and up to 4KB of payload.
         content:
           application/octet-stream:
             schema:
@@ -889,7 +885,7 @@ paths:
         default:
           description: Default response
     get:
-      summary: Resolve Single Owner Chunk data
+      summary: Retrieve Single Owner Chunk data
       tags:
         - Single owner chunk
       parameters:
@@ -904,7 +900,7 @@ paths:
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/HexString"
           required: true
-          description: Arbitrary identifier of the related data
+          description: Unique identifier for the chunk data
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmOnlyRootChunkParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
@@ -932,7 +928,7 @@ paths:
 
   "/feeds/{owner}/{topic}":
     post:
-      summary: Create an initial feed root manifest
+      summary: Create a feed root manifest
       tags:
         - Feed
       parameters:
@@ -941,13 +937,13 @@ paths:
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
           required: true
-          description: Owner
+          description: Ethereum address of the feed owner
         - in: path
           name: topic
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/HexString"
           required: true
-          description: Topic
+          description: Topic identifier for the feed
         - in: query
           name: type
           schema:
@@ -979,7 +975,7 @@ paths:
         default:
           description: Default response
     get:
-      summary: Find feed update
+      summary: Retrieve the latest feed update
       tags:
         - Feed
       parameters:
@@ -988,13 +984,13 @@ paths:
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
           required: true
-          description: Owner
+          description: Ethereum address of the feed owner
         - in: path
           name: topic
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/HexString"
           required: true
-          description: Topic
+          description: Topic identifier for the feed
         - in: query
           name: at
           schema:
@@ -1047,7 +1043,7 @@ paths:
 
   "/stewardship/{reference}":
     get:
-      summary: "Check if content is available"
+      summary: "Check content availability"
       tags:
         - Stewardship
       parameters:
@@ -1071,7 +1067,7 @@ paths:
         default:
           description: Default response
     put:
-      summary: "Re-upload content for specified root hash"
+      summary: "Re-upload content by reference"
       tags:
         - Stewardship
       parameters:
@@ -1117,7 +1113,7 @@ paths:
 
   "/health":
     get:
-      summary: Get node overall health Status
+      summary: Get the overall health status of the node
       description: |
         Health Status will indicate node healthiness.
 
@@ -1136,7 +1132,7 @@ paths:
 
   "/readiness":
     get:
-      summary: Readiness endpoint indicates if node is ready to start accepting traffic
+      summary: Check if the node is ready to accept traffic
       tags:
         - Status
       responses:
@@ -1151,7 +1147,7 @@ paths:
 
   "/balances":
     get:
-      summary: Get the balances with all known peers including prepaid services
+      summary: Get balances with all known peers
       tags:
         - Balance
       responses:
@@ -1168,7 +1164,7 @@ paths:
 
   "/balances/{address}":
     get:
-      summary: Get the balances with a specific peer including prepaid services
+      summary: Get the balance with a specific peer
       tags:
         - Balance
       parameters:
@@ -1211,7 +1207,7 @@ paths:
 
   "/consumed":
     get:
-      summary: Get the past due consumption balances with all known peers
+      summary: Get past due consumption balances with all known peers
       tags:
         - Balance
       responses:
@@ -1228,7 +1224,7 @@ paths:
 
   "/consumed/{address}":
     get:
-      summary: Get the past due consumption balance with a specific peer
+      summary: Get past due consumption balance with a specific peer
       tags:
         - Balance
       parameters:
@@ -1254,7 +1250,7 @@ paths:
 
   "/chequebook/address":
     get:
-      summary: Get the address of the chequebook contract used
+      summary: Get the chequebook contract address
       tags:
         - Chequebook
       responses:
@@ -1284,7 +1280,7 @@ paths:
 
   "/chunks/{address}":
     get:
-      summary: "Get chunk"
+      summary: "Retrieve a chunk"
       tags:
         - Chunk
       parameters:
@@ -1319,7 +1315,7 @@ paths:
         default:
           description: Default response
     head:
-      summary: Check if chunk at address exists locally
+      summary: Check if a chunk exists locally
       tags:
         - Chunk
       parameters:
@@ -1344,7 +1340,7 @@ paths:
 
   "/envelope/{address}":
     post:
-      summary: "Create postage stamp signature against given chunk address"
+      summary: "Create a postage stamp for a chunk"
       tags:
         - Envelope
       parameters:
@@ -1371,7 +1367,7 @@ paths:
 
   "/connect/{multiAddress}":
     post:
-      summary: Connect to address
+      summary: Connect to a peer address
       tags:
         - Connectivity
       parameters:
@@ -1398,7 +1394,7 @@ paths:
 
   "/reservestate":
     get:
-      summary: Get reserve state
+      summary: Get the reserve state
       tags:
         - Status
       responses:
@@ -1413,7 +1409,7 @@ paths:
 
   "/chainstate":
     get:
-      summary: Get chain state
+      summary: Get the chain state
       tags:
         - Status
       responses:
@@ -1428,7 +1424,7 @@ paths:
 
   "/node":
     get:
-      summary: Get information about the node
+      summary: Get node information
       tags:
         - Status
       responses:
@@ -1443,7 +1439,7 @@ paths:
 
   "/peers":
     get:
-      summary: Get a list of peers
+      summary: Get the list of connected peers
       tags:
         - Connectivity
       responses:
@@ -1458,7 +1454,7 @@ paths:
 
   "/peers/{address}":
     delete:
-      summary: Remove peer
+      summary: Disconnect from a peer
       tags:
         - Connectivity
       parameters:
@@ -1470,7 +1466,7 @@ paths:
           description: Swarm address of peer
       responses:
         "200":
-          description: Disconnected peer
+          description: Peer has been disconnected
           content:
             application/json:
               schema:
@@ -1484,7 +1480,7 @@ paths:
 
   "/pingpong/{address}":
     post:
-      summary: Try connection to node
+      summary: Ping a peer to measure latency
       tags:
         - Connectivity
       parameters:
@@ -1512,7 +1508,7 @@ paths:
 
   "/settlements/{address}":
     get:
-      summary: Get amount of sent and received from settlements with a peer
+      summary: Get settlement amounts sent and received with a peer
       tags:
         - Settlements
       parameters:
@@ -1524,7 +1520,7 @@ paths:
           description: Swarm address of peer
       responses:
         "200":
-          description: Amount of sent or received from settlements with a peer
+          description: Settlement amounts sent and received with the peer
           content:
             application/json:
               schema:
@@ -1538,7 +1534,7 @@ paths:
 
   "/settlements":
     get:
-      summary: Get settlements with all known peers and total amount sent or received
+      summary: Get settlements with all known peers and totals
       tags:
         - Settlements
       responses:
@@ -1555,7 +1551,7 @@ paths:
 
   "/timesettlements":
     get:
-      summary: Get time based settlements with all known peers and total amount sent or received
+      summary: Get time-based settlements with all known peers and totals
       tags:
         - Settlements
       responses:
@@ -1572,7 +1568,7 @@ paths:
 
   "/topology":
     get:
-      summary: Get topology of known network
+      summary: Get the network topology
       tags:
         - Connectivity
       responses:
@@ -1585,7 +1581,7 @@ paths:
 
   "/welcome-message":
     get:
-      summary: Get configured P2P welcome message
+      summary: Get the P2P welcome message
       tags:
         - Connectivity
       responses:
@@ -1600,7 +1596,7 @@ paths:
         default:
           description: Default response
     post:
-      summary: Set P2P welcome message
+      summary: Set the P2P welcome message
       tags:
         - Connectivity
       requestBody:
@@ -1624,7 +1620,7 @@ paths:
 
   "/chequebook/cashout/{peer-id}":
     get:
-      summary: Get last cashout action for the peer
+      summary: Get the last cashout status for a peer
       parameters:
         - in: path
           name: peer-id
@@ -1648,7 +1644,7 @@ paths:
         default:
           description: Default response
     post:
-      summary: Cashout the last cheque for the peer
+      summary: Cash out the last cheque for a peer
       parameters:
         - in: path
           name: peer-id
@@ -1662,7 +1658,7 @@ paths:
         - Chequebook
       responses:
         "201":
-          description: OK
+          description: Cheque has been cashed out
           content:
             application/json:
               schema:
@@ -1678,7 +1674,7 @@ paths:
 
   "/chequebook/cheque/{peer-id}":
     get:
-      summary: Get last cheques for the peer
+      summary: Get the last cheques for a peer
       parameters:
         - in: path
           name: peer-id
@@ -1690,7 +1686,7 @@ paths:
         - Chequebook
       responses:
         "200":
-          description: Last cheques
+          description: The last cheques for the peer
           content:
             application/json:
               schema:
@@ -1704,12 +1700,12 @@ paths:
 
   "/chequebook/cheque":
     get:
-      summary: Get last cheques for all peers
+      summary: Get the last cheques for all peers
       tags:
         - Chequebook
       responses:
         "200":
-          description: Last cheques
+          description: The last cheques for all peers
           content:
             application/json:
               schema:
@@ -1723,14 +1719,14 @@ paths:
 
   "/chequebook/deposit":
     post:
-      summary: Deposit tokens from overlay address into chequebook
+      summary: Deposit tokens into the chequebook
       parameters:
         - in: query
           name: amount
           schema:
             type: integer
           required: true
-          description: amount of tokens to deposit
+          description: Amount of tokens to deposit
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
       tags:
         - Chequebook
@@ -1750,14 +1746,14 @@ paths:
 
   "/chequebook/withdraw":
     post:
-      summary: Withdraw tokens from the chequebook to the overlay address
+      summary: Withdraw tokens from the chequebook
       parameters:
         - in: query
           name: amount
           schema:
             type: integer
           required: true
-          description: amount of tokens to withdraw
+          description: Amount of tokens to withdraw
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
       tags:
         - Chequebook
@@ -1794,7 +1790,7 @@ paths:
 
   "/transactions/{txHash}":
     get:
-      summary: Get information about a sent transaction
+      summary: Retrieve transaction information
       parameters:
         - in: path
           name: txHash
@@ -1806,7 +1802,7 @@ paths:
         - Transaction
       responses:
         "200":
-          description: Get info about transaction
+          description: Transaction information
           content:
             application/json:
               schema:
@@ -1818,7 +1814,7 @@ paths:
         default:
           description: Default response
     post:
-      summary: Rebroadcast existing transaction
+      summary: Rebroadcast a transaction
       parameters:
         - in: path
           name: txHash
@@ -1869,12 +1865,12 @@ paths:
 
   "/stamps":
     get:
-      summary: Get stamps for this node
+      summary: Get postage stamps for this node
       tags:
         - Postage Stamps
       responses:
         "200":
-          description: Returns an array of postage batches.
+          description: An array of postage stamps
           content:
             application/json:
               schema:
@@ -1941,7 +1937,7 @@ paths:
     post:
       summary: Buy a new postage batch.
       description: |
-        Be aware, this endpoint creates an on-chain transactions and transfers BZZ from the node's Ethereum account and hence directly manipulates the wallet balance!
+        Be aware, this endpoint creates an on-chain transaction and transfers BZZ from the node's Ethereum account, directly affecting the wallet balance!
       tags:
         - Postage Stamps
       parameters:
@@ -1956,7 +1952,7 @@ paths:
           schema:
             type: integer
           required: true
-          description: Batch depth which specifies how many chunks can be signed with the batch. It is a logarithm. Must be higher than default bucket depth (16)
+          description: Batch depth (logarithm) specifying the maximum number of chunks this stamp can cover. Must be greater than the default bucket depth (16)
         - in: query
           name: label
           schema:
@@ -1990,7 +1986,7 @@ paths:
     patch:
       summary: Top up an existing postage batch.
       description: |
-        Be aware, this endpoint creates on-chain transactions and transfers BZZ from the node's Ethereum account and hence directly manipulates the wallet balance!
+        Be aware, this endpoint creates an on-chain transaction and transfers BZZ from the node's Ethereum account, directly affecting the wallet balance!
       tags:
         - Postage Stamps
       parameters:
@@ -2030,7 +2026,7 @@ paths:
     patch:
       summary: Dilute an existing postage batch.
       description: |
-        Be aware, this endpoint creates on-chain transactions and transfers BZZ from the node's Ethereum account and hence directly manipulates the wallet balance!
+        Be aware, this endpoint creates an on-chain transaction and transfers BZZ from the node's Ethereum account, directly affecting the wallet balance!
       tags:
         - Postage Stamps
       parameters:
@@ -2045,7 +2041,7 @@ paths:
           schema:
             type: integer
           required: true
-          description: New batch depth. Must be higher than the previous depth.
+          description: The new batch depth, which must be greater than the current depth
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       responses:
@@ -2066,12 +2062,12 @@ paths:
 
   "/batches":
     get:
-      summary: Get all globally available batches that were purchased by all nodes.
+      summary: Get all globally available postage batches
       tags:
         - Postage Stamps
       responses:
         "200":
-          description: Returns an array of all available and currently valid postage batches.
+          description: An array of all available and valid postage batches
           content:
             application/json:
               schema:
@@ -2120,7 +2116,7 @@ paths:
 
   "/accounting":
     get:
-      summary: Get all accounting associated values with all known peers
+      summary: Get accounting values for all known peers
       tags:
         - Balance
       responses:
@@ -2137,7 +2133,7 @@ paths:
 
   "/redistributionstate":
     get:
-      summary: Get current status of node in redistribution game
+      summary: Get the node's redistribution game status
       tags:
         - RedistributionState
       responses:
@@ -2155,7 +2151,7 @@ paths:
           description: Default response
   "/wallet":
     get:
-      summary: Get wallet balance for BZZ and xDai
+      summary: Get wallet balance for BZZ and xDAI
       tags:
         - Wallet
       responses:
@@ -2171,7 +2167,7 @@ paths:
           description: Default response
   "/wallet/withdraw/{coin}":
     post:
-      summary: Allows withdrawals of BZZ or xDAI to provided (whitelisted) address
+      summary: Withdraw BZZ or xDAI to a whitelisted address
       tags:
         - Wallet
       parameters:
@@ -2246,8 +2242,8 @@ paths:
 
   "/stake/{amount}":
     post:
-      summary: Deposit some amount for staking.
-      description: Be aware, this endpoint creates an on-chain transactions and transfers BZZ from the node's Ethereum account and hence directly manipulates the wallet balance.
+      summary: Deposit an amount for staking.
+      description: Be aware, this endpoint creates an on-chain transaction and transfers BZZ from the node's Ethereum account, directly affecting the wallet balance.
       tags:
         - Staking
       parameters:
@@ -2291,8 +2287,8 @@ paths:
         default:
           description: Default response
     delete:
-      summary: Withdraws all past staked amount back to the wallet.
-      description: Be aware, this endpoint can only be called when the contract is paused and is in the process of being migrated to a new contract.
+      summary: Withdraw all previously staked amounts.
+      description: Be aware, this endpoint can only be called when the contract is paused and undergoing migration to a new contract.
       tags:
         - Staking
       parameters:

@@ -2,8 +2,7 @@ openapi: 3.0.3
 info:
   version: 4.3.0
   title: Common Data Types
-  description: |
-    \*****bzzz*****
+  description: Common data structures and types used throughout the Bee API
 
 externalDocs:
   description: Browse the documentation @ the Swarm Docs
@@ -37,7 +36,7 @@ components:
           $ref: "#/components/schemas/PublicKey"
 
     BigInt:
-      description: Numeric string that represents integer which might exceed `Number.MAX_SAFE_INTEGER` limit (2^53-1)
+      description: Numeric string representing an integer that may exceed `Number.MAX_SAFE_INTEGER` (2^53-1)
       type: string
       example: "1000000000000000000"
 
@@ -242,12 +241,12 @@ components:
       example: "2020-06-11T11:26:42.6969797+02:00"
 
     Duration:
-      description: Go time.Duration format
+      description: Time duration in Go time.Duration format (e.g., 5.0018ms)
       type: string
       example: "5.0018ms"
 
     Seconds:
-      description: Go time.Duration format in seconds
+      description: Time duration in seconds (Go time.Duration format)
       type: number
       example: 30.5
 
@@ -507,7 +506,7 @@ components:
         utilization:
           type: integer
         usable:
-          description: Indicate that the batch was discovered by the Bee node, but it awaits enough on-chain confirmations before declaring the batch as usable.
+          description: Indicates whether the batch was discovered by the Bee node and has received sufficient on-chain confirmations
           type: boolean
         label:
           type: string
@@ -834,7 +833,7 @@ components:
 
     LoggerExp:
       type: string
-      description: Base 64 encoded regular expression or subsystem string.
+      description: Base64-encoded regular expression or subsystem string
       pattern: "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
       example: "b25lL25hbWU="
 
@@ -1110,7 +1109,7 @@ components:
         type: boolean
       required: false
       description: >
-        Represents if the uploaded data should be also locally pinned on the node.
+        Indicates whether the uploaded data should also be locally pinned on this node
 
     SwarmEncryptParameter:
       in: header
@@ -1119,7 +1118,7 @@ components:
         type: boolean
       required: false
       description: >
-        Represents the encrypting state of the file
+        Indicates whether the file should be encrypted
 
     SwarmRedundancyLevelParameter:
       in: header
@@ -1140,14 +1139,11 @@ components:
         enum: [0, 1, 2, 3]
       required: false
       description: >
-        Specify the retrieve strategy on redundant data.
-        The numbers stand for NONE, DATA, PROX and RACE, respectively.
-        Strategy NONE means no prefetching takes place.
-        Strategy DATA means only data chunks are prefetched.
-        Strategy PROX means only chunks that are close to the node are prefetched.
-        Strategy RACE means all chunks are prefetched: n data chunks and k parity chunks. The first n chunks to arrive are used to reconstruct the file.
-        Multiple strategies can be used in a fallback cascade if the swarm redundancy fallback mode is set to true.
-        The default strategy is NONE, DATA, falling back to PROX, falling back to RACE
+        Specify the retrieval strategy for redundant data.
+        Values represent: NONE (0), DATA (1), PROX (2), RACE (3).
+        NONE: no prefetching. DATA: prefetch only data chunks. PROX: prefetch chunks near this node. RACE: prefetch all chunks and use the first n to arrive.
+        Multiple strategies can be cascaded if fallback mode is enabled.
+        Default: NONE > DATA > PROX > RACE
 
     SwarmRedundancyFallbackModeParameter:
       in: header
@@ -1189,7 +1185,7 @@ components:
         type: string
         example: index.html
       required: false
-      description: Default file to be referenced on path, if exists under that path
+      description: Default file to serve when a directory path is accessed
 
     SwarmErrorDocumentParameter:
       in: header
@@ -1198,7 +1194,7 @@ components:
         type: string
         example: error.html
       required: false
-      description: Configure custom error document to be returned when a specified path can not be found in collection
+      description: Custom error document to return when a path is not found in the collection
 
     SwarmCollection:
       in: header
@@ -1238,7 +1234,7 @@ components:
         default: "true"
       required: false
       description: >
-        Determines if the uploaded data should be sent to the network immediately or in a deferred fashion. By default the upload will be deferred.
+        Indicates whether the uploaded data should be sent to the network immediately or deferred. Default: deferred (true)
 
     SwarmCache:
       in: header
@@ -1247,7 +1243,7 @@ components:
         type: boolean
         default: "true"
       required: false
-      description: "Determines if the download data should be cached on the node. By default the download will be cached"
+      description: "Indicates whether downloaded data should be cached on the node. Default: cached (true)"
 
     SwarmAct:
       in: header
@@ -1285,7 +1281,7 @@ components:
 
   responses:
     "200":
-      description: OK.
+      description: Success
     "204":
       description: The resource was deleted successfully.
     "400":
