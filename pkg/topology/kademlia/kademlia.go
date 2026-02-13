@@ -42,10 +42,9 @@ const (
 
 	addPeerBatchSize = 500
 
-	// To avoid context.Timeout errors during network failure, the value of
-	// the peerConnectionAttemptTimeout constant must be equal to or greater
-	// than 5 seconds (empirically verified).
-	peerConnectionAttemptTimeout = 15 * time.Second // timeout for establishing a new connection with peer.
+	// Each underlay address gets up to 15s for connection (in libp2p.Connect).
+	// This budget allows multiple addresses to be tried sequentially per peer.
+	peerConnectionAttemptTimeout = 45 * time.Second // timeout for establishing a new connection with peer.
 )
 
 // Default option values
@@ -810,9 +809,6 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 	var attempts, connected int
 	totalAttempts := maxBootNodeAttempts * len(k.opt.Bootnodes)
 
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-
 	for _, addr := range k.opt.Bootnodes {
 		if attempts >= totalAttempts || connected >= 3 {
 			return
@@ -823,6 +819,10 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 			if attempts >= maxBootNodeAttempts {
 				return true, nil
 			}
+
+			ctx, cancel := context.WithTimeout(ctx, peerConnectionAttemptTimeout)
+			defer cancel()
+
 			bzzAddress, err := k.p2p.Connect(ctx, []ma.Multiaddr{addr})
 
 			attempts++

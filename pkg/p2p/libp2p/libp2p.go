@@ -1057,7 +1057,11 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 			return address, p2p.ErrAlreadyConnected
 		}
 
-		if err := s.connectionBreaker.Execute(func() error { return s.host.Connect(ctx, *info) }); err != nil {
+		connectCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		err = s.connectionBreaker.Execute(func() error { return s.host.Connect(connectCtx, *info) })
+		cancel()
+
+		if err != nil {
 			if errors.Is(err, breaker.ErrClosed) {
 				s.metrics.ConnectBreakerCount.Inc()
 				return nil, p2p.NewConnectionBackoffError(err, s.connectionBreaker.ClosedUntil())
