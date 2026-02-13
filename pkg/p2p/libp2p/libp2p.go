@@ -999,6 +999,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	// addresses for the same peer is passed to the host.Host.Connect function
 	// and reachabiltiy Private is emitted on libp2p EventBus(), which results
 	// in weaker connectivity and failures in some integration tests.
+
 	for _, addr := range addrs {
 		// Extract the peer ID from the multiaddr.
 		ai, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
@@ -1031,7 +1032,11 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 			return address, p2p.ErrAlreadyConnected
 		}
 
-		if err := s.connectionBreaker.Execute(func() error { return s.host.Connect(ctx, *info) }); err != nil {
+		connectCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		err = s.connectionBreaker.Execute(func() error { return s.host.Connect(connectCtx, *info) })
+		cancel()
+
+		if err != nil {
 			if errors.Is(err, breaker.ErrClosed) {
 				s.metrics.ConnectBreakerCount.Inc()
 				return nil, p2p.NewConnectionBackoffError(err, s.connectionBreaker.ClosedUntil())
