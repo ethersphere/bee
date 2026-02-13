@@ -15,6 +15,7 @@ require (
 	github.com/ethersphere/go-price-oracle-abi v0.6.9
 	github.com/ethersphere/go-storage-incentives-abi v0.9.4
 	github.com/ethersphere/go-sw3-abi v0.6.9
+	github.com/ethersphere/goxcrypto v0.0.0-00010101000000-000000000000
 	github.com/ethersphere/langos v1.0.0
 	github.com/go-playground/validator/v10 v10.19.0
 	github.com/gogo/protobuf v1.3.2
@@ -193,3 +194,8 @@ require (
 )
 
 replace github.com/codahale/hdrhistogram => github.com/HdrHistogram/hdrhistogram-go v0.0.0-20200919145931-8dac23c8dac1
+
+// Use goxcrypto instead of golang.org/x/crypto v0.43.0 for Keccak-256
+// implementation as it is the last one that has asm implementation for amd64
+// architecture.
+replace github.com/ethersphere/goxcrypto v0.0.0-00010101000000-000000000000 => golang.org/x/crypto v0.43.0

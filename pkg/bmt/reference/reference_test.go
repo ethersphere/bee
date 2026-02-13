@@ -14,7 +14,7 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/bmt/reference"
 
-	"golang.org/x/crypto/sha3"
+	"github.com/ethersphere/goxcrypto/sha3"
 )
 
 // calculates the hash of the data using hash.Hash
