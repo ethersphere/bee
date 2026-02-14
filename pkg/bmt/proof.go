@@ -19,10 +19,14 @@ type Proof struct {
 
 // Hash overrides base hash function of Hasher to fill buffer with zeros until chunk length
 func (p Prover) Hash(b []byte) ([]byte, error) {
-	for i := p.size; i < p.maxSize; i += len(zerosection) {
-		_, err := p.Write(zerosection)
-		if err != nil {
-			return nil, err
+	if !p.useSIMD || len(p.bmt.levels) <= 1 {
+		// In non-SIMD mode, manually pad with zero sections so goroutines
+		// process every section. In SIMD mode, Hash() zero-pads internally.
+		for i := p.size; i < p.maxSize; i += len(zerosection) {
+			_, err := p.Write(zerosection)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 	return p.Hasher.Hash(b)

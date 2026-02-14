@@ -97,6 +97,17 @@ func (h *Hasher) Hash(b []byte) ([]byte, error) {
 	if h.size == 0 {
 		return doHash(h.hasher(), h.span, h.zerohashes[h.depth])
 	}
+	if h.useSIMD && len(h.bmt.levels) > 1 {
+		// zero-fill remainder so all sections have deterministic input
+		for i := h.size; i < h.maxSize; i++ {
+			h.bmt.buffer[i] = 0
+		}
+		rootHash, err := h.hashSIMD()
+		if err != nil {
+			return nil, err
+		}
+		return doHash(h.hasher(), h.span, rootHash)
+	}
 	copy(h.bmt.buffer[h.size:], zerosection)
 	// write the last section with final flag set to true
 	go h.processSection(h.pos, true)
@@ -123,6 +134,11 @@ func (h *Hasher) Write(b []byte) (int, error) {
 		l = maxVal
 	}
 	copy(h.bmt.buffer[h.size:], b)
+	if h.useSIMD && len(h.bmt.levels) > 1 {
+		// in SIMD mode, just buffer the data; all hashing is deferred to Hash()
+		h.size += l
+		return l, nil
+	}
 	secsize := 2 * h.segmentSize
 	from := h.size / secsize
 	h.size += l
