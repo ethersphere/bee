@@ -18,6 +18,8 @@ import (
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/encryption"
+	encstore "github.com/ethersphere/bee/v2/pkg/encryption/store"
 	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
@@ -126,7 +128,11 @@ func (s *Service) actDecryptionHandler() func(h http.Handler) http.Handler {
 				cache = *headers.Cache
 			}
 			ctx := r.Context()
-			ls := loadsave.NewReadonly(s.storer.Download(cache), s.storer.Cache(), redundancy.DefaultLevel)
+			getter := s.storer.Download(cache)
+			if headers.HistoryAddress != nil && len(headers.HistoryAddress.Bytes()) == encryption.ReferenceSize {
+				getter = encstore.New(getter)
+			}
+			ls := loadsave.NewReadonly(getter, s.storer.Cache(), redundancy.DefaultLevel)
 			reference, err := s.accesscontrol.DownloadHandler(ctx, ls, paths.Address, headers.Publisher, *headers.HistoryAddress, timestamp)
 			if err != nil {
 				logger.Debug("access control download failed", "error", err)
@@ -204,7 +210,11 @@ func (s *Service) actListGranteesHandler(w http.ResponseWriter, r *http.Request)
 		cache = *headers.Cache
 	}
 	publisher := &s.publicKey
-	ls := loadsave.NewReadonly(s.storer.Download(cache), s.storer.Cache(), redundancy.DefaultLevel)
+	getter := s.storer.Download(cache)
+	if len(paths.GranteesAddress.Bytes()) == encryption.ReferenceSize {
+		getter = encstore.New(getter)
+	}
+	ls := loadsave.NewReadonly(getter, s.storer.Cache(), redundancy.DefaultLevel)
 	grantees, err := s.accesscontrol.Get(r.Context(), ls, publisher, paths.GranteesAddress)
 	if err != nil {
 		logger.Debug("could not get grantees", "error", err)

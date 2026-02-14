@@ -18,13 +18,16 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	mockac "github.com/ethersphere/bee/v2/pkg/accesscontrol/mock"
+	"github.com/ethersphere/bee/v2/pkg/accesscontrol/kvs"
 	"github.com/ethersphere/bee/v2/pkg/api"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/encryption"
 	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/manifest"
 	mockpost "github.com/ethersphere/bee/v2/pkg/postage/mock"
 	testingsoc "github.com/ethersphere/bee/v2/pkg/soc/testing"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
@@ -559,6 +562,109 @@ func TestAccessLogicHistory(t *testing.T) {
 			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "application/json; charset=utf-8"),
 		)
 	})
+}
+
+// nolint:paralleltest,tparallel
+// TestAccessLogicHistoryEncrypted ensures /bzz ACT download works with encrypted
+// history + ACT manifests (64-byte references).
+func TestAccessLogicHistoryEncrypted(t *testing.T) {
+	t.Parallel()
+
+	var (
+		spk, _         = hex.DecodeString("a786dd84b61485de12146fd9c4c02d87e8fd95f0542765cb7fc3d2e428c0bcfa")
+		pk, _          = crypto.DecodeSecp256k1PrivateKey(spk)
+		publicKeyBytes = crypto.EncodeSecp256k1PublicKey(&pk.PublicKey)
+		publisher      = hex.EncodeToString(publicKeyBytes)
+		logger         = log.Noop
+		storerMock     = mockstorer.New()
+		ctx            = context.Background()
+	)
+
+	lsEncrypted := loadsave.New(
+		storerMock.ChunkStore(),
+		storerMock.Cache(),
+		pipelineFactory(storerMock.Cache(), true, redundancy.NONE),
+		redundancy.DefaultLevel,
+	)
+
+	// 1) Store encrypted content
+	payload := []byte("encrypted-act-history-test")
+	contentRefBytes, err := lsEncrypted.Save(ctx, payload)
+	if err != nil {
+		t.Fatalf("save encrypted content: %v", err)
+	}
+	contentRef := swarm.NewAddress(contentRefBytes)
+
+	// 2) Create encrypted mantaray manifest pointing to encrypted content
+	m, err := manifest.NewMantarayManifest(lsEncrypted, true)
+	if err != nil {
+		t.Fatalf("new mantaray manifest: %v", err)
+	}
+	zeroRef := swarm.NewAddress(make([]byte, encryption.ReferenceSize))
+	if err := m.Add(ctx, manifest.RootPath, manifest.NewEntry(zeroRef, map[string]string{
+		manifest.WebsiteIndexDocumentSuffixKey: "index.html",
+	})); err != nil {
+		t.Fatalf("add root metadata: %v", err)
+	}
+	if err := m.Add(ctx, "index.html", manifest.NewEntry(contentRef, map[string]string{
+		manifest.EntryMetadataContentTypeKey: "text/plain; charset=utf-8",
+		manifest.EntryMetadataFilenameKey:    "index.html",
+	})); err != nil {
+		t.Fatalf("add index entry: %v", err)
+	}
+	manifestRef, err := m.Store(ctx)
+	if err != nil {
+		t.Fatalf("store manifest: %v", err)
+	}
+
+	// 3) Build encrypted ACT + history
+	session := accesscontrol.NewDefaultSession(pk)
+	al := accesscontrol.NewLogic(session)
+	actStore, err := kvs.New(lsEncrypted)
+	if err != nil {
+		t.Fatalf("new act kvs: %v", err)
+	}
+	if err := al.AddGrantee(ctx, actStore, &pk.PublicKey, &pk.PublicKey); err != nil {
+		t.Fatalf("add publisher grantee: %v", err)
+	}
+	actRef, err := actStore.Save(ctx)
+	if err != nil {
+		t.Fatalf("save act kvs: %v", err)
+	}
+
+	history, err := accesscontrol.NewHistory(lsEncrypted)
+	if err != nil {
+		t.Fatalf("new history: %v", err)
+	}
+	ts := time.Now().Unix()
+	if err := history.Add(ctx, actRef, &ts, nil); err != nil {
+		t.Fatalf("history add: %v", err)
+	}
+	historyRef, err := history.Store(ctx)
+	if err != nil {
+		t.Fatalf("history store: %v", err)
+	}
+
+	encryptedRef, err := al.EncryptRef(ctx, actStore, &pk.PublicKey, manifestRef)
+	if err != nil {
+		t.Fatalf("encrypt ref: %v", err)
+	}
+
+	client, _, _, _ := newTestServer(t, testServerOptions{
+		Storer:        storerMock,
+		Logger:        logger,
+		Post:          mockpost.New(mockpost.WithAcceptAll()),
+		PublicKey:     pk.PublicKey,
+		AccessControl: accesscontrol.NewController(al),
+	})
+
+	jsonhttptest.Request(t, client, http.MethodGet, "/bzz/"+encryptedRef.String()+"/", http.StatusOK,
+		jsonhttptest.WithRequestHeader(api.SwarmActTimestampHeader, strconv.FormatInt(ts, 10)),
+		jsonhttptest.WithRequestHeader(api.SwarmActHistoryAddressHeader, historyRef.String()),
+		jsonhttptest.WithRequestHeader(api.SwarmActPublisherHeader, publisher),
+		jsonhttptest.WithExpectedResponse(payload),
+		jsonhttptest.WithExpectedContentLength(len(payload)),
+	)
 }
 
 // nolint:paralleltest,tparallel

@@ -14,6 +14,8 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/encryption"
+	encstore "github.com/ethersphere/bee/v2/pkg/encryption/store"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 
@@ -254,7 +256,11 @@ func (s *Service) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 		address = v
 	}
 
-	chunk, err := s.storer.Download(cache).Get(r.Context(), address)
+	getter := s.storer.Download(cache)
+	if len(address.Bytes()) == encryption.ReferenceSize {
+		getter = encstore.New(getter)
+	}
+	chunk, err := getter.Get(r.Context(), address)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			loggerV1.Debug("chunk not found", "address", address)

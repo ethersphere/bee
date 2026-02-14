@@ -22,6 +22,8 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
+	"github.com/ethersphere/bee/v2/pkg/encryption"
+	encstore "github.com/ethersphere/bee/v2/pkg/encryption/store"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
 	"github.com/ethersphere/bee/v2/pkg/file"
 	"github.com/ethersphere/bee/v2/pkg/file/joiner"
@@ -499,7 +501,11 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 	}
 
 	ctx := r.Context()
-	ls := loadsave.NewReadonly(s.storer.Download(cache), s.storer.Cache(), redundancy.DefaultLevel)
+	downloadGetter := s.storer.Download(cache)
+	if len(address.Bytes()) == encryption.ReferenceSize {
+		downloadGetter = encstore.New(downloadGetter)
+	}
+	ls := loadsave.NewReadonly(downloadGetter, s.storer.Cache(), redundancy.DefaultLevel)
 	feedDereferenced := false
 
 	ctx, err := getter.SetConfigInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout, logger)
@@ -564,7 +570,11 @@ FETCH:
 
 			address = wc.Address()
 			// modify ls and init with non-existing wrapped chunk
-			ls = loadsave.NewReadonlyWithRootCh(s.storer.Download(cache), s.storer.Cache(), wc, rLevel)
+			downloadGetter = s.storer.Download(cache)
+			if len(address.Bytes()) == encryption.ReferenceSize {
+				downloadGetter = encstore.New(downloadGetter)
+			}
+			ls = loadsave.NewReadonlyWithRootCh(downloadGetter, s.storer.Cache(), wc, rLevel)
 			feedDereferenced = true
 			curBytes, err := cur.MarshalBinary()
 			if err != nil {
@@ -725,10 +735,14 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		reader file.Joiner
 		l      int64
 	)
+	getter := s.storer.Download(cache)
+	if len(reference.Bytes()) == encryption.ReferenceSize {
+		getter = encstore.New(getter)
+	}
 	if rootCh != nil {
-		reader, l, err = joiner.NewJoiner(ctx, s.storer.Download(cache), s.storer.Cache(), reference, rootCh)
+		reader, l, err = joiner.NewJoiner(ctx, getter, s.storer.Cache(), reference, rootCh)
 	} else {
-		reader, l, err = joiner.New(ctx, s.storer.Download(cache), s.storer.Cache(), reference, rLevel)
+		reader, l, err = joiner.New(ctx, getter, s.storer.Cache(), reference, rLevel)
 	}
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) || errors.Is(err, topology.ErrNotFound) {
