@@ -29,6 +29,9 @@ func BenchmarkBMT(b *testing.B) {
 		b.Run(fmt.Sprintf("%v_size_%v", "BMT", size), func(b *testing.B) {
 			benchmarkBMT(b, size)
 		})
+		b.Run(fmt.Sprintf("%v_size_%v", "BMT_NoSIMD", size), func(b *testing.B) {
+			benchmarkBMTNoSIMD(b, size)
+		})
 	}
 }
 
@@ -122,6 +125,25 @@ func benchmarkPool(b *testing.B, poolsize int) {
 			})
 		}
 		if err := eg.Wait(); err != nil {
+			b.Fatalf("seed %d: %v", seed, err)
+		}
+	}
+}
+
+// benchmarks BMT Hasher with SIMD disabled
+func benchmarkBMTNoSIMD(b *testing.B, n int) {
+	b.Helper()
+
+	testData := testutil.RandBytesWithSeed(b, 4096, seed)
+
+	pool := bmt.NewPool(bmt.NewConfNoSIMD(swarm.NewHasher, testSegmentCount, testPoolSize))
+	h := pool.Get()
+	defer pool.Put(h)
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		if _, err := syncHash(h, testData[:n]); err != nil {
 			b.Fatalf("seed %d: %v", seed, err)
 		}
 	}

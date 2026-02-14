@@ -7,6 +7,8 @@ package bmt
 import (
 	"hash"
 	"sync/atomic"
+
+	"github.com/ethersphere/bee/v2/pkg/keccak"
 )
 
 // BaseHasherFunc is a hash.Hash constructor function used for the base hash of the BMT.
@@ -22,6 +24,8 @@ type Conf struct {
 	maxSize      int            // the total length of the data (count * size)
 	zerohashes   [][]byte       // lookup table for predictable padding subtrees for all levels
 	hasher       BaseHasherFunc // base hasher to use for the BMT levels
+	useSIMD      bool           // whether SIMD keccak is available
+	batchWidth   int            // 4 (AVX2), 8 (AVX-512), or 0
 }
 
 // Pool provides a pool of trees used as resources by the BMT Hasher.
@@ -54,6 +58,8 @@ func NewConf(hasher BaseHasherFunc, segmentCount, capacity int) *Conf {
 		maxSize:      count * segmentSize,
 		depth:        depth,
 		zerohashes:   zerohashes,
+		useSIMD:      keccak.HasSIMD(),
+		batchWidth:   keccak.BatchWidth(),
 	}
 }
 
@@ -93,7 +99,8 @@ func (p *Pool) Put(h *Hasher) {
 // Hasher uses a Pool to obtain a tree for each chunk hash
 // the tree is 'locked' while not in the pool.
 type tree struct {
-	leaves []*node // leaf nodes of the tree, other nodes accessible via parent links
+	leaves []*node   // leaf nodes of the tree, other nodes accessible via parent links
+	levels [][]*node // levels[0]=leaves, levels[1]=parents of leaves, ..., levels[depth-1]=root
 	buffer []byte
 }
 
@@ -119,6 +126,8 @@ func newNode(index int, parent *node, hasher hash.Hash) *node {
 func newTree(maxsize, depth int, hashfunc func() hash.Hash) *tree {
 	n := newNode(0, nil, hashfunc())
 	prevlevel := []*node{n}
+	// collect levels top-down during construction, then reverse
+	allLevels := [][]*node{prevlevel}
 	// iterate over levels and creates 2^(depth-level) nodes
 	// the 0 level is on double segment sections so we start at depth - 2
 	count := 2
@@ -128,12 +137,18 @@ func newTree(maxsize, depth int, hashfunc func() hash.Hash) *tree {
 			parent := prevlevel[i/2]
 			nodes[i] = newNode(i, parent, hashfunc())
 		}
+		allLevels = append(allLevels, nodes)
 		prevlevel = nodes
 		count *= 2
+	}
+	// reverse so levels[0]=leaves, levels[len-1]=root
+	for i, j := 0, len(allLevels)-1; i < j; i, j = i+1, j-1 {
+		allLevels[i], allLevels[j] = allLevels[j], allLevels[i]
 	}
 	// the datanode level is the nodes on the last level
 	return &tree{
 		leaves: prevlevel,
+		levels: allLevels,
 		buffer: make([]byte, maxsize),
 	}
 }
