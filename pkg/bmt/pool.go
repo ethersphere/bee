@@ -6,6 +6,7 @@ package bmt
 
 import (
 	"hash"
+	"sync"
 	"sync/atomic"
 
 	"github.com/ethersphere/bee/v2/pkg/keccak"
@@ -70,8 +71,13 @@ func NewPool(c *Conf) *Pool {
 		Conf: c,
 		c:    make(chan *tree, c.capacity),
 	}
+	numWorkers := 0
+	if c.useSIMD && c.batchWidth > 0 {
+		leafCount := c.maxSize / (2 * c.segmentSize)
+		numWorkers = (leafCount + c.batchWidth - 1) / c.batchWidth
+	}
 	for i := 0; i < c.capacity; i++ {
-		p.c <- newTree(p.maxSize, p.depth, p.hasher)
+		p.c <- newTree(p.maxSize, p.depth, p.hasher, numWorkers)
 	}
 	return p
 }
@@ -93,17 +99,44 @@ func (p *Pool) Put(h *Hasher) {
 	p.c <- h.bmt
 }
 
+// Close shuts down all persistent worker goroutines in the pool.
+// The pool must not be used after Close is called.
+func (p *Pool) Close() {
+	close(p.c)
+	for t := range p.c {
+		t.close()
+	}
+}
+
+// close shuts down the persistent worker goroutines on this tree.
+func (t *tree) close() {
+	if t.workCh != nil {
+		close(t.workCh)
+	}
+}
+
 // tree is a reusable control structure representing a BMT
 // organised in a binary tree
 //
 // Hasher uses a Pool to obtain a tree for each chunk hash
 // the tree is 'locked' while not in the pool.
+// leafWork describes a unit of work for a persistent SIMD worker goroutine.
+type leafWork struct {
+	h       *Hasher
+	start   int
+	end     int
+	secSize int
+	segSize int
+}
+
 type tree struct {
 	leaves []*node   // leaf nodes of the tree, other nodes accessible via parent links
 	levels [][]*node // levels[0]=leaves, levels[1]=parents of leaves, ..., levels[depth-1]=root
 	buffer []byte
-	hashes [][]byte // hashes[i] = flat byte slice for level i hash results (SIMD cascade)
-	done   []uint64 // atomic bitvector per level tracking completed hashes
+	hashes [][]byte    // hashes[i] = flat byte slice for level i hash results (SIMD cascade)
+	done   []uint64    // atomic bitvector per level tracking completed hashes
+	workCh chan leafWork // channel to dispatch leaf groups to persistent workers
+	wg     sync.WaitGroup // tracks in-flight leaf work for the current hash operation
 }
 
 // node is a reusable segment hasher representing a node in a BMT.
@@ -124,8 +157,9 @@ func newNode(index int, parent *node, hasher hash.Hash) *node {
 	}
 }
 
-// newTree initialises a tree by building up the nodes of a BMT
-func newTree(maxsize, depth int, hashfunc func() hash.Hash) *tree {
+// newTree initialises a tree by building up the nodes of a BMT.
+// numWorkers > 0 spawns persistent goroutines for SIMD leaf hashing.
+func newTree(maxsize, depth int, hashfunc func() hash.Hash, numWorkers int) *tree {
 	n := newNode(0, nil, hashfunc())
 	prevlevel := []*node{n}
 	// collect levels top-down during construction, then reverse
@@ -161,12 +195,32 @@ func newTree(maxsize, depth int, hashfunc func() hash.Hash) *tree {
 	}
 
 	// the datanode level is the nodes on the last level
-	return &tree{
+	t := &tree{
 		leaves: prevlevel,
 		levels: allLevels,
 		buffer: make([]byte, maxsize),
 		hashes: hashes,
 		done:   done,
+	}
+
+	// Spawn persistent worker goroutines for SIMD leaf hashing.
+	if numWorkers > 0 {
+		t.workCh = make(chan leafWork, numWorkers)
+		for range numWorkers {
+			go t.runWorker()
+		}
+	}
+
+	return t
+}
+
+// runWorker is the loop for a persistent SIMD worker goroutine.
+// It processes leaf hash groups dispatched via the work channel.
+func (t *tree) runWorker() {
+	for w := range t.workCh {
+		w.h.hashLeafGroup(w.start, w.end, w.secSize, w.segSize)
+		w.h.cascade(0, w.start, w.end-w.start)
+		t.wg.Done()
 	}
 }
 

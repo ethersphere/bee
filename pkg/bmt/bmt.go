@@ -43,12 +43,18 @@ type Hasher struct {
 func NewHasher(hasherFact func() hash.Hash) *Hasher {
 	conf := NewConf(hasherFact, swarm.BmtBranches, 32)
 
+	numWorkers := 0
+	if conf.useSIMD && conf.batchWidth > 0 {
+		leafCount := conf.maxSize / (2 * conf.segmentSize)
+		numWorkers = (leafCount + conf.batchWidth - 1) / conf.batchWidth
+	}
+
 	return &Hasher{
 		Conf:   conf,
 		result: make(chan []byte),
 		errc:   make(chan error, 1),
 		span:   make([]byte, SpanSize),
-		bmt:    newTree(conf.maxSize, conf.depth, conf.hasher),
+		bmt:    newTree(conf.maxSize, conf.depth, conf.hasher, numWorkers),
 	}
 }
 
@@ -151,6 +157,13 @@ func (h *Hasher) Write(b []byte) (int, error) {
 		go h.processSection(i, false)
 	}
 	return l, nil
+}
+
+// Close shuts down persistent worker goroutines on the underlying tree.
+// Only needed for standalone Hashers created via NewHasher; pool-managed
+// hashers are shut down via Pool.Close.
+func (h *Hasher) Close() {
+	h.bmt.close()
 }
 
 // Reset prepares the Hasher for reuse

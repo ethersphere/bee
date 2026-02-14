@@ -5,17 +5,16 @@
 package bmt
 
 import (
-	"sync"
 	"sync/atomic"
 
 	"github.com/ethersphere/bee/v2/pkg/keccak"
 )
 
 // hashSIMD computes the BMT root hash using a bitvector cascade with SIMD-
-// accelerated Keccak hashing. Leaf sections are hashed in parallel goroutines.
-// Completing a SIMD-width group at one level immediately triggers hashing at the
-// next level via atomic bitvector race resolution, overlapping work across tree
-// levels.
+// accelerated Keccak hashing. Leaf sections are dispatched to persistent worker
+// goroutines living on the tree. Completing a SIMD-width group at one level
+// immediately triggers hashing at the next level via atomic bitvector race
+// resolution, overlapping work across tree levels.
 func (h *Hasher) hashSIMD() ([]byte, error) {
 	t := h.bmt
 	bw := h.batchWidth
@@ -28,21 +27,17 @@ func (h *Hasher) hashSIMD() ([]byte, error) {
 		atomic.StoreUint64(&t.done[i], 0)
 	}
 
-	// Spawn one goroutine per bw-aligned group of leaf sections.
-	var wg sync.WaitGroup
+	// Dispatch leaf groups to persistent workers.
+	numJobs := (leafCount + bw - 1) / bw
+	t.wg.Add(numJobs)
 	for start := 0; start < leafCount; start += bw {
 		end := start + bw
 		if end > leafCount {
 			end = leafCount
 		}
-		wg.Add(1)
-		go func(start, end int) {
-			defer wg.Done()
-			h.hashLeafGroup(start, end, secSize, segSize)
-			h.cascade(0, start, end-start)
-		}(start, end)
+		t.workCh <- leafWork{h: h, start: start, end: end, secSize: secSize, segSize: segSize}
 	}
-	wg.Wait()
+	t.wg.Wait()
 
 	// Populate node left/right from flat hashes for proof compatibility.
 	h.populateNodesFromHashes()

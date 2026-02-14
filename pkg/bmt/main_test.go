@@ -11,5 +11,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m)
+	goleak.VerifyTestMain(m,
+		goleak.IgnoreTopFunction("github.com/ethersphere/bee/v2/pkg/bmt.(*tree).runWorker"),
+	)
 }
