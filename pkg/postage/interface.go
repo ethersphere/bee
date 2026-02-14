@@ -21,7 +21,7 @@ type EventUpdater interface {
 	UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int, txHash common.Hash) error
 	UpdatePrice(price *big.Int, txHash common.Hash) error
 	UpdateBlockNumber(blockNumber uint64) error
-	Start(ctx context.Context, startBlock uint64, initState *ChainSnapshot) error
+	Start(ctx context.Context, startBlock uint64) error
 
 	TransactionStart() error
 	TransactionEnd() error
@@ -90,7 +90,7 @@ type ChainStateGetter interface {
 // Listener provides a blockchain event iterator.
 type Listener interface {
 	io.Closer
-	Listen(ctx context.Context, from uint64, updater EventUpdater, initState *ChainSnapshot) <-chan error
+	Listen(ctx context.Context, from uint64, updater EventUpdater) <-chan error
 }
 
 type BatchEventListener interface {

@@ -186,7 +186,7 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 	}
 }
 
-func (l *listener) Listen(ctx context.Context, from uint64, updater postage.EventUpdater, initState *postage.ChainSnapshot) <-chan error {
+func (l *listener) Listen(ctx context.Context, from uint64, updater postage.EventUpdater) <-chan error {
 	ctx, cancel := context.WithCancel(ctx)
 	go func() {
 		<-l.quit
@@ -224,13 +224,6 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 		}
 
 		return nil
-	}
-
-	if initState != nil {
-		err := processEvents(initState.Events, initState.LastBlockNumber+1)
-		if err != nil {
-			l.logger.Error(err, "failed bootstrapping from initial state")
-		}
 	}
 
 	batchFactor, err := strconv.ParseUint(batchFactorOverridePublic, 10, 64)
