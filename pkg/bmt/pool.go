@@ -102,6 +102,8 @@ type tree struct {
 	leaves []*node   // leaf nodes of the tree, other nodes accessible via parent links
 	levels [][]*node // levels[0]=leaves, levels[1]=parents of leaves, ..., levels[depth-1]=root
 	buffer []byte
+	hashes [][]byte // hashes[i] = flat byte slice for level i hash results (SIMD cascade)
+	done   []uint64 // atomic bitvector per level tracking completed hashes
 }
 
 // node is a reusable segment hasher representing a node in a BMT.
@@ -145,11 +147,26 @@ func newTree(maxsize, depth int, hashfunc func() hash.Hash) *tree {
 	for i, j := 0, len(allLevels)-1; i < j; i, j = i+1, j-1 {
 		allLevels[i], allLevels[j] = allLevels[j], allLevels[i]
 	}
+	// pre-allocate flat hash storage for SIMD cascade
+	segSize := hashfunc().Size()
+	leafCount := maxsize / (2 * segSize)
+	var hashes [][]byte
+	var done []uint64
+	for c := leafCount; c >= 1; c /= 2 {
+		hashes = append(hashes, make([]byte, c*segSize))
+		done = append(done, 0)
+		if c == 1 {
+			break
+		}
+	}
+
 	// the datanode level is the nodes on the last level
 	return &tree{
 		leaves: prevlevel,
 		levels: allLevels,
 		buffer: make([]byte, maxsize),
+		hashes: hashes,
+		done:   done,
 	}
 }
 
