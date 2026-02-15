@@ -279,7 +279,7 @@ func New(
 
 	k.bgBroadcastCtx, k.bgBroadcastCancel = context.WithCancel(context.Background())
 
-	k.metrics.ReachabilityStatus.WithLabelValues(p2p.ReachabilityStatusUnknown.String()).Set(0)
+	k.metrics.ReachabilityStatus.WithLabelValues(p2p.ReachabilityStatusUnknown.String()).Set(1)
 
 	return k, nil
 }
@@ -1363,7 +1363,8 @@ func (k *Kad) UpdateReachability(status p2p.ReachabilityStatus) {
 	}
 	k.logger.Debug("reachability updated", "reachability", status)
 	k.reachability = status
-	k.metrics.ReachabilityStatus.WithLabelValues(status.String()).Set(0)
+	k.metrics.ReachabilityStatus.Reset()
+	k.metrics.ReachabilityStatus.WithLabelValues(status.String()).Set(1)
 }
 
 // UpdateReachability updates node reachability status.
