@@ -175,6 +175,7 @@ func TestTransactionSend(t *testing.T) {
 					return nil, nil, nil
 				}),
 			),
+			0,
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -255,6 +256,7 @@ func TestTransactionSend(t *testing.T) {
 					return nil, nil, nil
 				}),
 			),
+			0,
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -341,6 +343,7 @@ func TestTransactionSend(t *testing.T) {
 					return nil, nil, nil
 				}),
 			),
+			0,
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -419,6 +422,7 @@ func TestTransactionSend(t *testing.T) {
 			store,
 			chainID,
 			monitormock.New(),
+			0,
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -484,6 +488,7 @@ func TestTransactionSend(t *testing.T) {
 			store,
 			chainID,
 			monitormock.New(),
+			0,
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -550,6 +555,7 @@ func TestTransactionSend(t *testing.T) {
 			store,
 			chainID,
 			monitormock.New(),
+			0,
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -618,6 +624,7 @@ func TestTransactionSend(t *testing.T) {
 			store,
 			chainID,
 			monitormock.New(),
+			0,
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -686,6 +693,7 @@ func TestTransactionSend(t *testing.T) {
 			store,
 			chainID,
 			monitormock.New(),
+			0,
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -757,6 +765,7 @@ func TestTransactionSend(t *testing.T) {
 			store,
 			chainID,
 			monitormock.New(),
+			0,
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -830,6 +839,7 @@ func TestTransactionSend(t *testing.T) {
 			store,
 			chainID,
 			monitormock.New(),
+			0,
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -903,6 +913,7 @@ func TestTransactionSend(t *testing.T) {
 			store,
 			chainID,
 			monitormock.New(),
+			0,
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -971,6 +982,7 @@ func TestTransactionSend(t *testing.T) {
 			store,
 			chainID,
 			monitormock.New(),
+			0,
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -1039,6 +1051,7 @@ func TestTransactionSend(t *testing.T) {
 			store,
 			chainID,
 			monitormock.New(),
+			0,
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -1110,6 +1123,7 @@ func TestTransactionWaitForReceipt(t *testing.T) {
 				return receiptC, nil, nil
 			}),
 		),
+		0,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -1183,6 +1197,7 @@ func TestTransactionResend(t *testing.T) {
 		store,
 		chainID,
 		monitormock.New(),
+		0,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -1270,6 +1285,7 @@ func TestTransactionCancel(t *testing.T) {
 			store,
 			chainID,
 			monitormock.New(),
+			0,
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -1320,6 +1336,7 @@ func TestTransactionCancel(t *testing.T) {
 			store,
 			chainID,
 			monitormock.New(),
+			0,
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -1405,6 +1422,7 @@ func TestTransactionService_UnwrapABIError(t *testing.T) {
 		storemock.NewStateStore(),
 		chainID,
 		monitormock.New(),
+		0,
 	)
 	if err != nil {
 		t.Fatal(err)

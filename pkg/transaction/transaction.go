@@ -115,34 +115,40 @@ type transactionService struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	logger  log.Logger
-	backend Backend
-	signer  crypto.Signer
-	sender  common.Address
-	store   storage.StateStorer
-	chainID *big.Int
-	monitor Monitor
+	logger           log.Logger
+	backend          Backend
+	signer           crypto.Signer
+	sender           common.Address
+	store            storage.StateStorer
+	chainID          *big.Int
+	monitor          Monitor
+	fallbackGasLimit uint64
 }
 
 // NewService creates a new transaction service.
-func NewService(logger log.Logger, overlayEthAddress common.Address, backend Backend, signer crypto.Signer, store storage.StateStorer, chainID *big.Int, monitor Monitor) (Service, error) {
+func NewService(logger log.Logger, overlayEthAddress common.Address, backend Backend, signer crypto.Signer, store storage.StateStorer, chainID *big.Int, monitor Monitor, fallbackGasLimit uint64) (Service, error) {
 	senderAddress, err := signer.EthereumAddress()
 	if err != nil {
 		return nil, err
 	}
 
+	if fallbackGasLimit == 0 {
+		fallbackGasLimit = FallbackGasLimit
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	t := &transactionService{
-		ctx:     ctx,
-		cancel:  cancel,
-		logger:  logger.WithName(loggerName).WithValues("sender_address", overlayEthAddress).Register(),
-		backend: backend,
-		signer:  signer,
-		sender:  senderAddress,
-		store:   store,
-		chainID: chainID,
-		monitor: monitor,
+		ctx:              ctx,
+		cancel:           cancel,
+		logger:           logger.WithName(loggerName).WithValues("sender_address", overlayEthAddress).Register(),
+		backend:          backend,
+		signer:           signer,
+		sender:           senderAddress,
+		store:            store,
+		chainID:          chainID,
+		monitor:          monitor,
+		fallbackGasLimit: fallbackGasLimit,
 	}
 
 	if err = t.waitForAllPendingTx(); err != nil {
@@ -294,8 +300,8 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 			if request.MinEstimatedGasLimit > 0 {
 				gasLimit = request.MinEstimatedGasLimit
 			} else if len(request.Data) > 0 {
-				// Contract call - use reasonable fallback
-				gasLimit = FallbackGasLimit
+				// Contract call - use configured fallback
+				gasLimit = t.fallbackGasLimit
 			} else {
 				// Simple transfer - use minimum
 				gasLimit = MinGasLimit

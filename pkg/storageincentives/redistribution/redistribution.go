@@ -48,13 +48,8 @@ func New(
 	txService transaction.Service,
 	incentivesContractAddress common.Address,
 	incentivesContractABI abi.ABI,
-	setGasLimit bool,
+	gasLimit uint64,
 ) Contract {
-	var gasLimit uint64
-	if setGasLimit {
-		gasLimit = transaction.DefaultGasLimit
-	}
-
 	return &contract{
 		overlay:                   overlay,
 		owner:                     owner,
