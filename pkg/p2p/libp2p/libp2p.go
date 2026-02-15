@@ -486,7 +486,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		autoTLSCertManager: certManager,
 		zapLogger:          zapLogger,
 		enabledTransports: map[bzz.TransportType]bool{
-			bzz.TransportTCP: true, // TCP transport is always included
+			bzz.TransportTCP: !o.DisableTCP,
 			bzz.TransportWS:  o.EnableWS,
 			bzz.TransportWSS: o.EnableWSS,
 		},
