@@ -488,7 +488,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		enabledTransports: map[bzz.TransportType]bool{
 			bzz.TransportTCP: !o.DisableTCP,
 			bzz.TransportWS:  o.EnableWS,
-			bzz.TransportWSS: o.EnableWSS || o.EnableWS, // WS transport can dial WSS addresses
+			bzz.TransportWSS: o.EnableWSS,
 		},
 	}
 
