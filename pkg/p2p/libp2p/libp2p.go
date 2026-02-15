@@ -7,13 +7,11 @@ package libp2p
 import (
 	"context"
 	"crypto/ecdsa"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
 	"net/netip"
 	"os"
-	"path/filepath"
 	"runtime"
 	"slices"
 	"strconv"
@@ -22,7 +20,6 @@ import (
 	"time"
 
 	ocprom "contrib.go.opencensus.io/exporter/prometheus"
-	"github.com/caddyserver/certmagic"
 	"github.com/coreos/go-semver/semver"
 	"github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
@@ -41,6 +38,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/ethersphere/bee/v2/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
+	p2pforge "github.com/ipshipyard/p2p-forge/client"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/config"
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -65,9 +63,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-
-	p2pforge "github.com/ipshipyard/p2p-forge/client"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -121,13 +116,9 @@ type Service struct {
 	networkStatus      atomic.Int32
 	HeadersRWTimeout   time.Duration
 	autoNAT            autonat.AutoNAT
-	enableWS           bool
 	autoTLSCertManager autoTLSCertManager
 	zapLogger          *zap.Logger
-	// Transport availability flags
-	hasTCPTransport bool
-	hasWSTransport  bool
-	hasWSSTransport bool
+	enabledTransports  map[bzz.TransportType]bool
 }
 
 type lightnodes interface {
@@ -136,14 +127,6 @@ type lightnodes interface {
 	Count() int
 	RandomPeer(swarm.Address) (swarm.Address, error)
 	EachPeer(pf topology.EachPeerFunc) error
-}
-
-// autoTLSCertManager defines the interface for managing TLS certificates.
-type autoTLSCertManager interface {
-	Start() error
-	Stop()
-	TLSConfig() *tls.Config
-	AddressFactory() config.AddrsFactory
 }
 
 type Options struct {
@@ -302,78 +285,25 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		if o.autoTLSCertManager != nil {
 			certManager = o.autoTLSCertManager
 		} else {
-			// create a zap logger needed for cert manager to be as close to
-			// swarm logger as possible
-			l, err := zap.Config{
-				Level:       zap.NewAtomicLevelAt(zap.DebugLevel),
-				Development: false,
-				Sampling: &zap.SamplingConfig{
-					Initial:    100,
-					Thereafter: 100,
-				},
-				Encoding: "json",
-				EncoderConfig: zapcore.EncoderConfig{
-					TimeKey:        "time",
-					LevelKey:       "level",
-					NameKey:        "logger",
-					CallerKey:      "caller",
-					FunctionKey:    zapcore.OmitKey,
-					MessageKey:     "msg",
-					StacktraceKey:  "stacktrace",
-					LineEnding:     zapcore.DefaultLineEnding,
-					EncodeLevel:    zapcore.LowercaseLevelEncoder,
-					EncodeTime:     zapcore.EpochTimeEncoder,
-					EncodeDuration: zapcore.SecondsDurationEncoder,
-					EncodeCaller:   zapcore.ShortCallerEncoder,
-				},
-				OutputPaths:      []string{"stderr"},
-				ErrorOutputPaths: []string{"stderr"},
-			}.Build()
+			forgeMgr, err := newP2PForgeCertManager(logger, P2PForgeOptions{
+				Domain:               o.AutoTLSDomain,
+				RegistrationEndpoint: o.AutoTLSRegistrationEndpoint,
+				CAEndpoint:           o.AutoTLSCAEndpoint,
+				StorageDir:           o.AutoTLSStorageDir,
+			})
 			if err != nil {
 				return nil, err
 			}
 
-			// assing zap logger as it needs to be synced when the service stops
-			zapLogger = l
-
-			defer func() {
-				_ = zapLogger.Sync()
-			}()
-
-			// Use AutoTLS storage dir with domain subdir for easier management
-			// of different registers.
-			storagePath := filepath.Join(o.AutoTLSStorageDir, o.AutoTLSDomain)
-
-			if err := os.MkdirAll(storagePath, 0700); err != nil {
-				return nil, fmt.Errorf("create certificate storage directory %s: %w", storagePath, err)
-			}
-
-			certManager, err = p2pforge.NewP2PForgeCertMgr(
-				p2pforge.WithForgeDomain(o.AutoTLSDomain),
-				p2pforge.WithForgeRegistrationEndpoint(o.AutoTLSRegistrationEndpoint),
-				p2pforge.WithCAEndpoint(o.AutoTLSCAEndpoint),
-				p2pforge.WithCertificateStorage(&certmagic.FileStorage{Path: storagePath}),
-				p2pforge.WithLogger(zapLogger.Sugar()),
-				p2pforge.WithUserAgent(userAgent()),
-				p2pforge.WithAllowPrivateForgeAddrs(),
-				p2pforge.WithRegistrationDelay(0),
-				p2pforge.WithOnCertLoaded(func() {
-					logger.Info("auto tls certificate is loaded")
-				}),
-				p2pforge.WithOnCertRenewed(func() {
-					logger.Info("auto tls certificate is renewed")
-				}),
-			)
-			if err != nil {
-				return nil, fmt.Errorf("initialize AutoTLS: %w", err)
-			}
+			certManager = forgeMgr.CertMgr()
+			zapLogger = forgeMgr.ZapLogger()
 		}
 
 		defer func() {
 			if returnErr != nil {
-				// certificate manager has to be stopped if service is not
-				// constructed
+				// call if service is not constructed
 				certManager.Stop()
+				_ = zapLogger.Sync()
 			}
 		}()
 
@@ -553,13 +483,13 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		lightNodes:         lightNodes,
 		HeadersRWTimeout:   o.HeadersRWTimeout,
 		autoNAT:            autoNAT,
-		enableWS:           o.EnableWS,
 		autoTLSCertManager: certManager,
 		zapLogger:          zapLogger,
-		// Set transport availability flags
-		hasTCPTransport: !o.DisableTCP,
-		hasWSTransport:  o.EnableWS,
-		hasWSSTransport: o.EnableWSS,
+		enabledTransports: map[bzz.TransportType]bool{
+			bzz.TransportTCP: true, // TCP transport is always included
+			bzz.TransportWS:  o.EnableWS,
+			bzz.TransportWSS: o.EnableWSS,
+		},
 	}
 
 	peerRegistry.setDisconnecter(s)
@@ -803,7 +733,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		return
 	}
 
-	s.notifyReacherConnected(overlay, peerID)
+	s.notifyReacherConnected(overlay, peerMultiaddrs)
 
 	peerUserAgent := appendSpace(s.peerUserAgent(s.ctx, peerID))
 	s.networkStatus.Store(int32(p2p.NetworkStatusAvailable))
@@ -812,28 +742,21 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	s.logger.Debug("stream handler: successfully connected to peer (inbound)", "address", i.BzzAddress.Overlay, "light", i.LightString(), "user_agent", peerUserAgent)
 }
 
+// isTransportSupported checks if the given transport type is supported by this service.
+func (s *Service) isTransportSupported(t bzz.TransportType) bool {
+	return s.enabledTransports[t]
+}
+
 // filterSupportedAddresses filters multiaddresses to only include those
-// that are supported by the available transports (TCP, WS/WSS).
+// that are supported by the available transports (TCP, WS, WSS).
 func (s *Service) filterSupportedAddresses(addrs []ma.Multiaddr) []ma.Multiaddr {
 	if len(addrs) == 0 {
 		return addrs
 	}
 
-	hasWSTransport := s.hasWSTransport || s.hasWSSTransport
-
 	filtered := make([]ma.Multiaddr, 0, len(addrs))
 	for _, addr := range addrs {
-		_, wsErr := addr.ValueForProtocol(ma.P_WS)
-		isWS := wsErr == nil
-
-		_, tcpErr := addr.ValueForProtocol(ma.P_TCP)
-		isTCP := tcpErr == nil
-
-		if isWS && hasWSTransport {
-			filtered = append(filtered, addr)
-		}
-
-		if isTCP && !isWS && s.hasTCPTransport {
+		if s.isTransportSupported(bzz.ClassifyTransport(addr)) {
 			filtered = append(filtered, addr)
 		}
 	}
@@ -841,30 +764,22 @@ func (s *Service) filterSupportedAddresses(addrs []ma.Multiaddr) []ma.Multiaddr 
 	return filtered
 }
 
-func (s *Service) notifyReacherConnected(overlay swarm.Address, peerID libp2ppeer.ID) {
+func (s *Service) notifyReacherConnected(overlay swarm.Address, underlays []ma.Multiaddr) {
 	if s.reacher == nil {
 		return
 	}
 
-	peerAddrs := s.host.Peerstore().Addrs(peerID)
-	// Filter addresses to only include those supported by available transports
-	filteredAddrs := s.filterSupportedAddresses(peerAddrs)
+	filteredAddrs := s.filterSupportedAddresses(underlays)
 	if len(filteredAddrs) == 0 {
-		s.logger.Debug("no supported addresses for reacher", "peer_id", peerID, "total_addrs", len(peerAddrs))
+		s.logger.Debug("no supported addresses for reacher", "overlay", overlay, "total", len(underlays))
 		return
 	}
 
 	bestAddr := bzz.SelectBestAdvertisedAddress(filteredAddrs, nil)
 
-	s.logger.Debug("selected reacher address", "peer_id", peerID, "selected_addr", bestAddr.String(), "advertised_count", len(peerAddrs), "filtered_count", len(filteredAddrs))
+	s.logger.Debug("selected reacher address", "overlay", overlay, "address", bestAddr, "filtered", len(filteredAddrs), "total", len(underlays))
 
-	underlay, err := buildFullMA(bestAddr, peerID)
-	if err != nil {
-		s.logger.Error(err, "stream handler: unable to build complete peer multiaddr", "peer", overlay, "multiaddr", bestAddr, "peer_id", peerID)
-		_ = s.Disconnect(overlay, "unable to build complete peer multiaddr")
-		return
-	}
-	s.reacher.Connected(overlay, underlay)
+	s.reacher.Connected(overlay, bestAddr)
 }
 
 func (s *Service) SetPickyNotifier(n p2p.PickyNotifier) {
@@ -1050,11 +965,6 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	skippedSelf := false
 
 	// Try to connect to each underlay address one by one.
-	//
-	// TODO: investigate the issue when AddrInfo with multiple underlay
-	// addresses for the same peer is passed to the host.Host.Connect function
-	// and reachabiltiy Private is emitted on libp2p EventBus(), which results
-	// in weaker connectivity and failures in some integration tests.
 	for _, addr := range filteredAddrs {
 		// Extract the peer ID from the multiaddr.
 		ai, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
@@ -1087,7 +997,11 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 			return address, p2p.ErrAlreadyConnected
 		}
 
-		if err := s.connectionBreaker.Execute(func() error { return s.host.Connect(ctx, *info) }); err != nil {
+		connectCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		err = s.connectionBreaker.Execute(func() error { return s.host.Connect(connectCtx, *info) })
+		cancel()
+
+		if err != nil {
 			if errors.Is(err, breaker.ErrClosed) {
 				s.metrics.ConnectBreakerCount.Inc()
 				return nil, p2p.NewConnectionBackoffError(err, s.connectionBreaker.ClosedUntil())
@@ -1110,7 +1024,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	}
 
 	if info == nil {
-		return nil, fmt.Errorf("unable to identify peer from addresses: %v", addrs)
+		return nil, fmt.Errorf("unable to identify peer from addresses: %v", filteredAddrs)
 	}
 
 	stream, err := s.newStreamForPeerID(ctx, info.ID, handshake.ProtocolName, handshake.ProtocolVersion, handshake.StreamName)
@@ -1212,7 +1126,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 
 	s.metrics.CreatedConnectionCount.Inc()
 
-	s.notifyReacherConnected(overlay, peerID)
+	s.notifyReacherConnected(overlay, peerMultiaddrs)
 
 	peerUA := appendSpace(s.peerUserAgent(ctx, peerID))
 	loggerV1.Debug("successfully connected to peer (outbound)", "addresses", i.BzzAddress.ShortString(), "light", i.LightString(), "user_agent", peerUA)
