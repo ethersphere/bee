@@ -7,13 +7,11 @@ package libp2p
 import (
 	"context"
 	"crypto/ecdsa"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
 	"net/netip"
 	"os"
-	"path/filepath"
 	"runtime"
 	"slices"
 	"strconv"
@@ -22,7 +20,6 @@ import (
 	"time"
 
 	ocprom "contrib.go.opencensus.io/exporter/prometheus"
-	"github.com/caddyserver/certmagic"
 	"github.com/coreos/go-semver/semver"
 	"github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
@@ -41,6 +38,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/ethersphere/bee/v2/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
+	p2pforge "github.com/ipshipyard/p2p-forge/client"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/config"
 	"github.com/libp2p/go-libp2p/core/crypto"
@@ -65,9 +63,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-
-	p2pforge "github.com/ipshipyard/p2p-forge/client"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -121,9 +116,9 @@ type Service struct {
 	networkStatus      atomic.Int32
 	HeadersRWTimeout   time.Duration
 	autoNAT            autonat.AutoNAT
-	enableWS           bool
 	autoTLSCertManager autoTLSCertManager
 	zapLogger          *zap.Logger
+	enabledTransports  map[bzz.TransportType]bool
 }
 
 type lightnodes interface {
@@ -132,14 +127,6 @@ type lightnodes interface {
 	Count() int
 	RandomPeer(swarm.Address) (swarm.Address, error)
 	EachPeer(pf topology.EachPeerFunc) error
-}
-
-// autoTLSCertManager defines the interface for managing TLS certificates.
-type autoTLSCertManager interface {
-	Start() error
-	Stop()
-	TLSConfig() *tls.Config
-	AddressFactory() config.AddrsFactory
 }
 
 type Options struct {
@@ -294,78 +281,25 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		if o.autoTLSCertManager != nil {
 			certManager = o.autoTLSCertManager
 		} else {
-			// create a zap logger needed for cert manager to be as close to
-			// swarm logger as possible
-			l, err := zap.Config{
-				Level:       zap.NewAtomicLevelAt(zap.DebugLevel),
-				Development: false,
-				Sampling: &zap.SamplingConfig{
-					Initial:    100,
-					Thereafter: 100,
-				},
-				Encoding: "json",
-				EncoderConfig: zapcore.EncoderConfig{
-					TimeKey:        "time",
-					LevelKey:       "level",
-					NameKey:        "logger",
-					CallerKey:      "caller",
-					FunctionKey:    zapcore.OmitKey,
-					MessageKey:     "msg",
-					StacktraceKey:  "stacktrace",
-					LineEnding:     zapcore.DefaultLineEnding,
-					EncodeLevel:    zapcore.LowercaseLevelEncoder,
-					EncodeTime:     zapcore.EpochTimeEncoder,
-					EncodeDuration: zapcore.SecondsDurationEncoder,
-					EncodeCaller:   zapcore.ShortCallerEncoder,
-				},
-				OutputPaths:      []string{"stderr"},
-				ErrorOutputPaths: []string{"stderr"},
-			}.Build()
+			forgeMgr, err := newP2PForgeCertManager(logger, P2PForgeOptions{
+				Domain:               o.AutoTLSDomain,
+				RegistrationEndpoint: o.AutoTLSRegistrationEndpoint,
+				CAEndpoint:           o.AutoTLSCAEndpoint,
+				StorageDir:           o.AutoTLSStorageDir,
+			})
 			if err != nil {
 				return nil, err
 			}
 
-			// assing zap logger as it needs to be synced when the service stops
-			zapLogger = l
-
-			defer func() {
-				_ = zapLogger.Sync()
-			}()
-
-			// Use AutoTLS storage dir with domain subdir for easier management
-			// of different registers.
-			storagePath := filepath.Join(o.AutoTLSStorageDir, o.AutoTLSDomain)
-
-			if err := os.MkdirAll(storagePath, 0700); err != nil {
-				return nil, fmt.Errorf("create certificate storage directory %s: %w", storagePath, err)
-			}
-
-			certManager, err = p2pforge.NewP2PForgeCertMgr(
-				p2pforge.WithForgeDomain(o.AutoTLSDomain),
-				p2pforge.WithForgeRegistrationEndpoint(o.AutoTLSRegistrationEndpoint),
-				p2pforge.WithCAEndpoint(o.AutoTLSCAEndpoint),
-				p2pforge.WithCertificateStorage(&certmagic.FileStorage{Path: storagePath}),
-				p2pforge.WithLogger(zapLogger.Sugar()),
-				p2pforge.WithUserAgent(userAgent()),
-				p2pforge.WithAllowPrivateForgeAddrs(),
-				p2pforge.WithRegistrationDelay(0),
-				p2pforge.WithOnCertLoaded(func() {
-					logger.Info("auto tls certificate is loaded")
-				}),
-				p2pforge.WithOnCertRenewed(func() {
-					logger.Info("auto tls certificate is renewed")
-				}),
-			)
-			if err != nil {
-				return nil, fmt.Errorf("initialize AutoTLS: %w", err)
-			}
+			certManager = forgeMgr.CertMgr()
+			zapLogger = forgeMgr.ZapLogger()
 		}
 
 		defer func() {
 			if returnErr != nil {
-				// certificate manager has to be stopped if service is not
-				// constructed
+				// call if service is not constructed
 				certManager.Stop()
+				_ = zapLogger.Sync()
 			}
 		}()
 
@@ -543,9 +477,13 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		lightNodes:         lightNodes,
 		HeadersRWTimeout:   o.HeadersRWTimeout,
 		autoNAT:            autoNAT,
-		enableWS:           o.EnableWS,
 		autoTLSCertManager: certManager,
 		zapLogger:          zapLogger,
+		enabledTransports: map[bzz.TransportType]bool{
+			bzz.TransportTCP: true, // TCP transport is always included
+			bzz.TransportWS:  o.EnableWS,
+			bzz.TransportWSS: o.EnableWSS,
+		},
 	}
 
 	peerRegistry.setDisconnecter(s)
@@ -646,7 +584,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	peerID := stream.Conn().RemotePeer()
 	handshakeStream := newStream(stream, s.metrics)
 
-	peerMultiaddrs, err := s.peerMultiaddrs(s.ctx, peerID)
+	peerMultiaddrs, err := s.peerMultiaddrs(s.ctx, stream.Conn().RemoteMultiaddr(), peerID)
 	if err != nil {
 		s.logger.Debug("stream handler: handshake: build remote multiaddrs", "peer_id", peerID, "error", err)
 		s.logger.Error(nil, "stream handler: handshake: build remote multiaddrs", "peer_id", peerID)
@@ -655,11 +593,13 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		return
 	}
 
+	bee260Compat := s.bee260BackwardCompatibility(peerID)
+
 	i, err := s.handshakeService.Handle(
 		s.ctx,
 		handshakeStream,
 		peerMultiaddrs,
-		handshake.WithBee260Compatibility(s.bee260BackwardCompatibility(peerID)),
+		handshake.WithBee260Compatibility(bee260Compat),
 	)
 	if err != nil {
 		s.logger.Debug("stream handler: handshake: handle failed", "peer_id", peerID, "error", err)
@@ -787,7 +727,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		return
 	}
 
-	s.notifyReacherConnected(overlay, peerID)
+	s.notifyReacherConnected(overlay, peerMultiaddrs)
 
 	peerUserAgent := appendSpace(s.peerUserAgent(s.ctx, peerID))
 	s.networkStatus.Store(int32(p2p.NetworkStatusAvailable))
@@ -796,23 +736,44 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	s.logger.Debug("stream handler: successfully connected to peer (inbound)", "address", i.BzzAddress.Overlay, "light", i.LightString(), "user_agent", peerUserAgent)
 }
 
-func (s *Service) notifyReacherConnected(overlay swarm.Address, peerID libp2ppeer.ID) {
+// isTransportSupported checks if the given transport type is supported by this service.
+func (s *Service) isTransportSupported(t bzz.TransportType) bool {
+	return s.enabledTransports[t]
+}
+
+// filterSupportedAddresses filters multiaddresses to only include those
+// that are supported by the available transports (TCP, WS, WSS).
+func (s *Service) filterSupportedAddresses(addrs []ma.Multiaddr) []ma.Multiaddr {
+	if len(addrs) == 0 {
+		return addrs
+	}
+
+	filtered := make([]ma.Multiaddr, 0, len(addrs))
+	for _, addr := range addrs {
+		if s.isTransportSupported(bzz.ClassifyTransport(addr)) {
+			filtered = append(filtered, addr)
+		}
+	}
+
+	return filtered
+}
+
+func (s *Service) notifyReacherConnected(overlay swarm.Address, underlays []ma.Multiaddr) {
 	if s.reacher == nil {
 		return
 	}
 
-	peerAddrs := s.host.Peerstore().Addrs(peerID)
-	bestAddr := bzz.SelectBestAdvertisedAddress(peerAddrs, nil)
-
-	s.logger.Debug("selected reacher address", "peer_id", peerID, "selected_addr", bestAddr.String(), "advertised_count", len(peerAddrs))
-
-	underlay, err := buildFullMA(bestAddr, peerID)
-	if err != nil {
-		s.logger.Error(err, "stream handler: unable to build complete peer multiaddr", "peer", overlay, "multiaddr", bestAddr, "peer_id", peerID)
-		_ = s.Disconnect(overlay, "unable to build complete peer multiaddr")
+	filteredAddrs := s.filterSupportedAddresses(underlays)
+	if len(filteredAddrs) == 0 {
+		s.logger.Debug("no supported addresses for reacher", "overlay", overlay, "total", len(underlays))
 		return
 	}
-	s.reacher.Connected(overlay, underlay)
+
+	bestAddr := bzz.SelectBestAdvertisedAddress(filteredAddrs, nil)
+
+	s.logger.Debug("selected reacher address", "overlay", overlay, "address", bestAddr, "filtered", len(filteredAddrs), "total", len(underlays))
+
+	s.reacher.Connected(overlay, bestAddr)
 }
 
 func (s *Service) SetPickyNotifier(n p2p.PickyNotifier) {
@@ -986,18 +947,19 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		err = s.determineCurrentNetworkStatus(err)
 	}()
 
+	filteredAddrs := s.filterSupportedAddresses(addrs)
+	if len(filteredAddrs) == 0 {
+		s.logger.Debug("no supported addresses to connect", "total_addrs", len(addrs))
+		return nil, p2p.ErrUnsupportedAddresses
+	}
+
 	var info *libp2ppeer.AddrInfo
 	var peerID libp2ppeer.ID
 	var connectErr error
 	skippedSelf := false
 
 	// Try to connect to each underlay address one by one.
-	//
-	// TODO: investigate the issue when AddrInfo with multiple underlay
-	// addresses for the same peer is passed to the host.Host.Connect function
-	// and reachabiltiy Private is emitted on libp2p EventBus(), which results
-	// in weaker connectivity and failures in some integration tests.
-	for _, addr := range addrs {
+	for _, addr := range filteredAddrs {
 		// Extract the peer ID from the multiaddr.
 		ai, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
 		if err != nil {
@@ -1029,7 +991,11 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 			return address, p2p.ErrAlreadyConnected
 		}
 
-		if err := s.connectionBreaker.Execute(func() error { return s.host.Connect(ctx, *info) }); err != nil {
+		connectCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		err = s.connectionBreaker.Execute(func() error { return s.host.Connect(connectCtx, *info) })
+		cancel()
+
+		if err != nil {
 			if errors.Is(err, breaker.ErrClosed) {
 				s.metrics.ConnectBreakerCount.Inc()
 				return nil, p2p.NewConnectionBackoffError(err, s.connectionBreaker.ClosedUntil())
@@ -1052,7 +1018,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	}
 
 	if info == nil {
-		return nil, fmt.Errorf("unable to identify peer from addresses: %v", addrs)
+		return nil, fmt.Errorf("unable to identify peer from addresses: %v", filteredAddrs)
 	}
 
 	stream, err := s.newStreamForPeerID(ctx, info.ID, handshake.ProtocolName, handshake.ProtocolVersion, handshake.StreamName)
@@ -1063,18 +1029,20 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 
 	handshakeStream := newStream(stream, s.metrics)
 
-	peerMultiaddrs, err := s.peerMultiaddrs(ctx, peerID)
+	peerMultiaddrs, err := s.peerMultiaddrs(ctx, stream.Conn().RemoteMultiaddr(), peerID)
 	if err != nil {
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(peerID)
 		return nil, fmt.Errorf("build peer multiaddrs: %w", err)
 	}
 
+	bee260Compat := s.bee260BackwardCompatibility(peerID)
+
 	i, err := s.handshakeService.Handshake(
 		s.ctx,
 		handshakeStream,
 		peerMultiaddrs,
-		handshake.WithBee260Compatibility(s.bee260BackwardCompatibility(peerID)),
+		handshake.WithBee260Compatibility(bee260Compat),
 	)
 	if err != nil {
 		_ = handshakeStream.Reset()
@@ -1152,7 +1120,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 
 	s.metrics.CreatedConnectionCount.Inc()
 
-	s.notifyReacherConnected(overlay, peerID)
+	s.notifyReacherConnected(overlay, peerMultiaddrs)
 
 	peerUA := appendSpace(s.peerUserAgent(ctx, peerID))
 	loggerV1.Debug("successfully connected to peer (outbound)", "addresses", i.BzzAddress.ShortString(), "light", i.LightString(), "user_agent", peerUA)
@@ -1462,18 +1430,37 @@ func (s *Service) determineCurrentNetworkStatus(err error) error {
 }
 
 // peerMultiaddrs builds full multiaddresses for a peer given information from
-// libp2p host peerstore and falling back to the remote address from the
-// connection.
-func (s *Service) peerMultiaddrs(ctx context.Context, peerID libp2ppeer.ID) ([]ma.Multiaddr, error) {
+// the libp2p host peerstore. If the peerstore doesn't have addresses yet,
+// it falls back to using the remote address from the active connection.
+func (s *Service) peerMultiaddrs(ctx context.Context, remoteAddr ma.Multiaddr, peerID libp2ppeer.ID) ([]ma.Multiaddr, error) {
 	waitPeersCtx, cancel := context.WithTimeout(ctx, peerstoreWaitAddrsTimeout)
 	defer cancel()
 
-	return buildFullMAs(waitPeerAddrs(waitPeersCtx, s.host.Peerstore(), peerID), peerID)
+	mas := waitPeerAddrs(waitPeersCtx, s.host.Peerstore(), peerID)
+	if len(mas) == 0 && remoteAddr != nil {
+		mas = []ma.Multiaddr{remoteAddr}
+	}
+
+	return buildFullMAs(mas, peerID)
+}
+
+// IsBee260 implements p2p.Bee260CompatibilityStreamer interface.
+// It checks if a peer is running Bee version older than 2.7.0.
+func (s *Service) IsBee260(overlay swarm.Address) bool {
+	peerID, found := s.peers.peerID(overlay)
+	if !found {
+		return false
+	}
+	return s.bee260BackwardCompatibility(peerID)
 }
 
 var version270 = *semver.Must(semver.NewVersion("2.7.0"))
 
 func (s *Service) bee260BackwardCompatibility(peerID libp2ppeer.ID) bool {
+	if compat, found := s.peers.bee260(peerID); found {
+		return compat
+	}
+
 	userAgent := s.peerUserAgent(s.ctx, peerID)
 	p := strings.SplitN(userAgent, " ", 2)
 	if len(p) != 2 {
@@ -1484,7 +1471,16 @@ func (s *Service) bee260BackwardCompatibility(peerID libp2ppeer.ID) bool {
 	if err != nil {
 		return false
 	}
-	return v.LessThan(version270)
+
+	// Compare major.minor.patch only (ignore pre-release)
+	// This way 2.7.0-rc12 is treated as >= 2.7.0
+	vCore, err := semver.NewVersion(fmt.Sprintf("%d.%d.%d", v.Major, v.Minor, v.Patch))
+	if err != nil {
+		return false
+	}
+	result := vCore.LessThan(version270)
+	s.peers.setBee260(peerID, result)
+	return result
 }
 
 // appendSpace adds a leading space character if the string is not empty.

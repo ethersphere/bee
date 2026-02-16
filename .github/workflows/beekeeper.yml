@@ -193,11 +193,16 @@ jobs:
           if ${{ steps.settlements.outcome=='failure' }}; then FAILED=settlements; fi
           if ${{ steps.pss.outcome=='failure' }}; then FAILED=pss; fi
           if ${{ steps.soc.outcome=='failure' }}; then FAILED=soc; fi
+          if ${{ steps.gsoc.outcome=='failure' }}; then FAILED=gsoc; fi
           if ${{ steps.pushsync-chunks-1.outcome=='failure' }}; then FAILED=pushsync-chunks-1; fi
           if ${{ steps.pushsync-chunks-2.outcome=='failure' }}; then FAILED=pushsync-chunks-2; fi
           if ${{ steps.retrieval.outcome=='failure' }}; then FAILED=retrieval; fi
           if ${{ steps.manifest.outcome=='failure' }}; then FAILED=manifest; fi
           if ${{ steps.manifest-v1.outcome=='failure' }}; then FAILED=manifest-v1; fi
+          if ${{ steps.postage-stamps.outcome=='failure' }}; then FAILED=postage-stamps; fi
+          if ${{ steps.stake.outcome=='failure' }}; then FAILED=stake; fi
+          if ${{ steps.withdraw.outcome=='failure' }}; then FAILED=withdraw; fi
+          if ${{ steps.redundancy.outcome=='failure' }}; then FAILED=redundancy; fi
           if ${{ steps.feeds.outcome=='failure' }}; then FAILED=feeds; fi
           if ${{ steps.feeds-v1.outcome=='failure' }}; then FAILED=feeds-v1; fi
           if ${{ steps.act.outcome=='failure' }}; then FAILED=act; fi

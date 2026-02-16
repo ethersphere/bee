@@ -20,6 +20,8 @@ var (
 	ErrDialLightNode = errors.New("target peer is a light node")
 	// ErrPeerBlocklisted is returned if peer is on blocklist
 	ErrPeerBlocklisted = errors.New("peer blocklisted")
+	// ErrUnsupportedAddresses is returned when all peer addresses use unsupported transports
+	ErrUnsupportedAddresses = errors.New("no supported addresses")
 )
 
 const (
