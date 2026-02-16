@@ -13,12 +13,12 @@ env:
   RUN_TYPE: "PR RUN"
   SETUP_CONTRACT_IMAGE: "ethersphere/bee-localchain"
   SETUP_CONTRACT_IMAGE_TAG: "0.9.4"
-  BEELOCAL_BRANCH: "akrem/p2p-wss-support-v2"
+  BEELOCAL_BRANCH: "feat/p2p-wss-support-v2"
   BEEKEEPER_BRANCH: "feat/autotls-check"
   BEEKEEPER_METRICS_ENABLED: false
   REACHABILITY_OVERRIDE_PUBLIC: true
   BATCHFACTOR_OVERRIDE_PUBLIC: 2
-  P2P_WSS_ENABLE: true
+  P2P_WSS_ENABLE: false
   TIMEOUT: 30m
   BUCKET_NAME: swarm-beekeeper-artifacts
   AWS_ACCESS_KEY_ID: ${{ secrets.DO_AWS_ACCESS_KEY_ID }}
@@ -49,6 +49,15 @@ jobs:
         with:
           cache: false
           go-version-file: go.mod
+      - name: Cache Go Modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
       - name: Get Commit Message
         id: commit
         run: |
@@ -91,6 +100,12 @@ jobs:
     runs-on: ubuntu-latest
     needs: [init]
     steps:
+      - name: Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /tmp/k3s-${{ env.K3S_VERSION }}
+          key: k3s-${{ env.K3S_VERSION }}
       - name: "Download Artifact"
         uses: actions/download-artifact@v4
         with:
@@ -118,9 +133,56 @@ jobs:
       - name: Test fullconnectivity
         id: fullconnectivity
         run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks=ci-full-connectivity; do echo "waiting for full connectivity..."; sleep .3; done'
-      - name: Test autotls
-        id: autotls
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-autotls
+      - name: Test settlements
+        id: settlements
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-settlements
+      - name: Sleep for time allowance to replenish
+        run: sleep 2
+      - name: Test pss
+        id: pss
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-pss
+      - name: Test soc
+        id: soc
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-soc
+      - name: Test gsoc
+        id: gsoc
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-gsoc
+      - name: Test pushsync (chunks)
+        id: pushsync-chunks-1
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-pushsync-chunks
+      - name: Test pushsync (light mode chunks)
+        id: pushsync-chunks-2
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test retrieval
+        id: retrieval
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test manifest
+        id: manifest
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-manifest
+      - name: Test manifest v1
+        id: manifest-v1
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-manifest-v1
+      - name: Test postage stamps
+        id: postage-stamps
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks ci-postage
+      - name: Test staking
+        id: stake
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks ci-stake
+      - name: Test withdraw
+        id: withdraw
+        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks ci-withdraw; do echo "waiting for withdraw..."; sleep .3; done'
+      - name: Test redundancy
+        id: redundancy
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks ci-redundancy
+      - name: Test act
+        id: act
+        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks ci-act; do echo "waiting for act..."; sleep .3; done'
+      - name: Test feeds v1
+        id: feeds-v1
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-feed-v1
+      - name: Test feeds
+        id: feeds
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-feed
       - name: Collect debug artifacts
         if: failure()
         run: |
@@ -128,7 +190,17 @@ jobs:
           export FAILED='no-test'
           if ${{ steps.pingpong.outcome=='failure' }}; then FAILED=pingpong; fi
           if ${{ steps.fullconnectivity.outcome=='failure' }}; then FAILED=fullconnectivity; fi
-          if ${{ steps.autotls.outcome=='failure' }}; then FAILED=autotls; fi
+          if ${{ steps.settlements.outcome=='failure' }}; then FAILED=settlements; fi
+          if ${{ steps.pss.outcome=='failure' }}; then FAILED=pss; fi
+          if ${{ steps.soc.outcome=='failure' }}; then FAILED=soc; fi
+          if ${{ steps.pushsync-chunks-1.outcome=='failure' }}; then FAILED=pushsync-chunks-1; fi
+          if ${{ steps.pushsync-chunks-2.outcome=='failure' }}; then FAILED=pushsync-chunks-2; fi
+          if ${{ steps.retrieval.outcome=='failure' }}; then FAILED=retrieval; fi
+          if ${{ steps.manifest.outcome=='failure' }}; then FAILED=manifest; fi
+          if ${{ steps.manifest-v1.outcome=='failure' }}; then FAILED=manifest-v1; fi
+          if ${{ steps.feeds.outcome=='failure' }}; then FAILED=feeds; fi
+          if ${{ steps.feeds-v1.outcome=='failure' }}; then FAILED=feeds-v1; fi
+          if ${{ steps.act.outcome=='failure' }}; then FAILED=act; fi
           curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Error\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebugging artifacts: [click](https://$BUCKET_NAME.$AWS_ENDPOINT/artifacts_$VERTAG.tar.gz)\nStep failed: \`${FAILED}\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
           echo "Failed test: ${FAILED}"
       - name: Create tunshell session for debug
