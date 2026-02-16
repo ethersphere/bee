@@ -40,7 +40,6 @@ linters:
       enable-all: true
     paralleltest:
       ignore-missing: true
-
   exclusions:
     generated: lax
     presets:
