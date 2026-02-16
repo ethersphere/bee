@@ -13,7 +13,7 @@ env:
   RUN_TYPE: "PR RUN"
   SETUP_CONTRACT_IMAGE: "ethersphere/bee-localchain"
   SETUP_CONTRACT_IMAGE_TAG: "0.9.4"
-  BEELOCAL_BRANCH: "akrem/p2p-wss-support-v2" # TODO: change to main (temporary testing branch)
+  BEELOCAL_BRANCH: "feat/pebble-forge-configurable-image-tags" # TODO: change to main (temporary testing branch)
   BEEKEEPER_BRANCH: "feat/autotls-cluster" # TODO: change to master (temporary testing branch)
   BEEKEEPER_METRICS_ENABLED: false
   REACHABILITY_OVERRIDE_PUBLIC: true
@@ -26,6 +26,8 @@ env:
   AWS_ENDPOINT: fra1.digitaloceanspaces.com
   VERTAG: ${GITHUB_RUN_ID}
   P2P_WSS_ENABLE: true
+  PEBBLE_IMAGE_TAG: "v2.3.0" # TODO: change to v2.4.0
+  P2P_FORGE_IMAGE_TAG: "v0.6.0" # TODO: change to v0.7.0
 jobs:
   init:
     name: Init
