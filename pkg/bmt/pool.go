@@ -6,7 +6,6 @@ package bmt
 
 import (
 	"hash"
-	"sync/atomic"
 
 	"github.com/ethersphere/bee/v2/pkg/keccak"
 )
@@ -50,6 +49,10 @@ func NewConf(hasher BaseHasherFunc, segmentCount, capacity int) *Conf {
 		}
 		zerohashes[i] = zeros
 	}
+	bw := keccak.BatchWidth()
+	if bw == 0 {
+		bw = 4 // use 4-wide batching with scalar fallback
+	}
 	return &Conf{
 		hasher:       hasher,
 		segmentSize:  segmentSize,
@@ -59,7 +62,7 @@ func NewConf(hasher BaseHasherFunc, segmentCount, capacity int) *Conf {
 		depth:        depth,
 		zerohashes:   zerohashes,
 		useSIMD:      keccak.HasSIMD(),
-		batchWidth:   keccak.BatchWidth(),
+		batchWidth:   bw,
 	}
 }
 
@@ -80,11 +83,9 @@ func NewPool(c *Conf) *Pool {
 func (p *Pool) Get() *Hasher {
 	t := <-p.c
 	return &Hasher{
-		Conf:   p.Conf,
-		result: make(chan []byte),
-		errc:   make(chan error, 1),
-		span:   make([]byte, SpanSize),
-		bmt:    t,
+		Conf: p.Conf,
+		span: make([]byte, SpanSize),
+		bmt:  t,
 	}
 }
 
@@ -102,13 +103,13 @@ type tree struct {
 	leaves []*node   // leaf nodes of the tree, other nodes accessible via parent links
 	levels [][]*node // levels[0]=leaves, levels[1]=parents of leaves, ..., levels[depth-1]=root
 	buffer []byte
+	concat [8][]byte // reusable concat buffers for SIMD node hashing
 }
 
 // node is a reusable segment hasher representing a node in a BMT.
 type node struct {
 	isLeft      bool      // whether it is left side of the parent double segment
 	parent      *node     // pointer to parent node in the BMT
-	state       int32     // atomic increment impl concurrent boolean toggle
 	left, right []byte    // this is where the two children sections are written
 	hasher      hash.Hash // preconstructed hasher on nodes
 }
@@ -119,6 +120,8 @@ func newNode(index int, parent *node, hasher hash.Hash) *node {
 		parent: parent,
 		isLeft: index%2 == 0,
 		hasher: hasher,
+		left:   make([]byte, hasher.Size()),
+		right:  make([]byte, hasher.Size()),
 	}
 }
 
@@ -145,19 +148,19 @@ func newTree(maxsize, depth int, hashfunc func() hash.Hash) *tree {
 	for i, j := 0, len(allLevels)-1; i < j; i, j = i+1, j-1 {
 		allLevels[i], allLevels[j] = allLevels[j], allLevels[i]
 	}
+	// pre-allocate concat buffers for SIMD node hashing
+	segSize := hashfunc().Size()
+	var concat [8][]byte
+	for i := range concat {
+		concat[i] = make([]byte, 2*segSize)
+	}
 	// the datanode level is the nodes on the last level
 	return &tree{
 		leaves: prevlevel,
 		levels: allLevels,
 		buffer: make([]byte, maxsize),
+		concat: concat,
 	}
-}
-
-// atomic bool toggle implementing a concurrent reusable 2-state object.
-// Atomic addint with %2 implements atomic bool toggle.
-// It returns true if the toggler just put it in the active/waiting state.
-func (n *node) toggle() bool {
-	return atomic.AddInt32(&n.state, 1)%2 == 1
 }
 
 // sizeToParams calculates the depth (number of levels) and segment count in the BMT tree.

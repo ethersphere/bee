@@ -52,9 +52,9 @@ func (h *Hasher) hashLeavesBatch(start, end, bw, secsize int) {
 			for j := 0; j < batch; j++ {
 				leaf := h.bmt.levels[0][i+j]
 				if leaf.isLeft {
-					leaf.parent.left = outputs[j][:]
+					copy(leaf.parent.left, outputs[j][:])
 				} else {
-					leaf.parent.right = outputs[j][:]
+					copy(leaf.parent.right, outputs[j][:])
 				}
 			}
 		}
@@ -76,9 +76,9 @@ func (h *Hasher) hashLeavesBatch(start, end, bw, secsize int) {
 			for j := 0; j < batch; j++ {
 				leaf := h.bmt.levels[0][i+j]
 				if leaf.isLeft {
-					leaf.parent.left = outputs[j][:]
+					copy(leaf.parent.left, outputs[j][:])
 				} else {
-					leaf.parent.right = outputs[j][:]
+					copy(leaf.parent.right, outputs[j][:])
 				}
 			}
 		}
@@ -90,13 +90,10 @@ func (h *Hasher) hashLeavesBatch(start, end, bw, secsize int) {
 func (h *Hasher) hashNodesBatch(nodes []*node, bw int) {
 	count := len(nodes)
 	segSize := h.segmentSize
+	concat := &h.bmt.concat
 
 	if bw == 8 {
 		var inputs [8][]byte
-		var concat [8][]byte
-		for k := range concat {
-			concat[k] = make([]byte, 2*segSize)
-		}
 		for i := 0; i < count; i += 8 {
 			batch := 8
 			if i+batch > count {
@@ -115,18 +112,14 @@ func (h *Hasher) hashNodesBatch(nodes []*node, bw int) {
 			for j := 0; j < batch; j++ {
 				n := nodes[i+j]
 				if n.isLeft {
-					n.parent.left = outputs[j][:]
+					copy(n.parent.left, outputs[j][:])
 				} else {
-					n.parent.right = outputs[j][:]
+					copy(n.parent.right, outputs[j][:])
 				}
 			}
 		}
 	} else {
 		var inputs [4][]byte
-		var concat [4][]byte
-		for k := range concat {
-			concat[k] = make([]byte, 2*segSize)
-		}
 		for i := 0; i < count; i += 4 {
 			batch := 4
 			if i+batch > count {
@@ -145,9 +138,9 @@ func (h *Hasher) hashNodesBatch(nodes []*node, bw int) {
 			for j := 0; j < batch; j++ {
 				n := nodes[i+j]
 				if n.isLeft {
-					n.parent.left = outputs[j][:]
+					copy(n.parent.left, outputs[j][:])
 				} else {
-					n.parent.right = outputs[j][:]
+					copy(n.parent.right, outputs[j][:])
 				}
 			}
 		}

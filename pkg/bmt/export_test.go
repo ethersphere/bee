@@ -10,6 +10,6 @@ var Sha3hash = sha3hash
 func NewConfNoSIMD(hasher BaseHasherFunc, segmentCount, capacity int) *Conf {
 	c := NewConf(hasher, segmentCount, capacity)
 	c.useSIMD = false
-	c.batchWidth = 0
+	c.batchWidth = 4 // use 4-wide batching with scalar fallback
 	return c
 }
