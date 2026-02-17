@@ -200,8 +200,9 @@ func TestAddressUpdateOnReconnect(t *testing.T) {
 		}
 		pingsMu.Unlock()
 
-		// Advance time past the retry duration — should trigger a scheduled re-ping.
-		time.Sleep(options.RetryAfterDuration + time.Second)
+		// After reconnect success, successCount=1 so backoff = 2min ±20%.
+		// Sleep past the max jittered value (2m24s + margin).
+		time.Sleep(3 * time.Minute)
 
 		select {
 		case <-time.After(time.Second * 10):
@@ -286,6 +287,271 @@ func TestHeapOrdering(t *testing.T) {
 		if !seen[overlay1.String()] || !seen[overlay2.String()] || !seen[overlay3.String()] {
 			t.Fatalf("not all peers were pinged")
 		}
+	})
+}
+
+func TestBackoffOnFailure(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		options := reacher.Options{
+			PingTimeout:        time.Second * 5,
+			Workers:            1,
+			RetryAfterDuration: time.Minute, // base interval
+		}
+
+		overlay := swarm.RandAddress(t)
+		addr, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAmTBuJT9LvNmBiQiNoTsxE5mtNy6YG3paw79m94CRa9sRb")
+
+		var pingsMu sync.Mutex
+		var pingTimes []time.Time
+		pinged := make(chan struct{}, 16)
+
+		pingFunc := func(_ context.Context, _ ma.Multiaddr) (time.Duration, error) {
+			pingsMu.Lock()
+			pingTimes = append(pingTimes, time.Now())
+			pingsMu.Unlock()
+			pinged <- struct{}{}
+			return 0, errors.New("always fail")
+		}
+
+		reachableFunc := func(addr swarm.Address, status p2p.ReachabilityStatus) {}
+
+		mock := newMock(pingFunc, reachableFunc)
+
+		r := reacher.New(mock, mock, &options, log.Noop)
+		testutil.CleanupCloser(t, r)
+
+		r.Connected(overlay, addr)
+
+		// Wait for the first ping (immediate).
+		select {
+		case <-time.After(time.Second * 10):
+			t.Fatal("timed out waiting for first ping")
+		case <-pinged:
+		}
+
+		// After first failure: backoff = 2min ±20% → [1m36s, 2m24s].
+		// Sleep 1m30s (less than minimum jittered backoff).
+		time.Sleep(90 * time.Second)
+
+		pingsMu.Lock()
+		count := len(pingTimes)
+		pingsMu.Unlock()
+		if count != 1 {
+			t.Fatalf("expected 1 ping after 1m30s (min backoff=1m36s), got %d", count)
+		}
+
+		// Sleep past the max jittered backoff (2m24s total, we're at 1m30s, need ~55s more).
+		time.Sleep(55 * time.Second)
+
+		select {
+		case <-time.After(time.Second * 10):
+			t.Fatal("timed out waiting for second ping")
+		case <-pinged:
+		}
+
+		pingsMu.Lock()
+		count = len(pingTimes)
+		pingsMu.Unlock()
+		if count != 2 {
+			t.Fatalf("expected 2 pings after 2min backoff, got %d", count)
+		}
+
+		// After second failure: backoff = 4min ±20% → [3m12s, 4m48s].
+		// Sleep past the max (4m48s + margin).
+		time.Sleep(5 * time.Minute)
+
+		select {
+		case <-time.After(time.Second * 10):
+			t.Fatal("timed out waiting for third ping")
+		case <-pinged:
+		}
+
+		pingsMu.Lock()
+		count = len(pingTimes)
+		pingsMu.Unlock()
+		if count != 3 {
+			t.Fatalf("expected 3 pings after 4min backoff, got %d", count)
+		}
+	})
+}
+
+func TestBackoffOnSuccess(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		options := reacher.Options{
+			PingTimeout:        time.Second * 5,
+			Workers:            1,
+			RetryAfterDuration: time.Minute,
+		}
+
+		overlay := swarm.RandAddress(t)
+		addr, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAmTBuJT9LvNmBiQiNoTsxE5mtNy6YG3paw79m94CRa9sRb")
+
+		var pingsMu sync.Mutex
+		var pingCount int
+		pinged := make(chan struct{}, 16)
+
+		pingFunc := func(_ context.Context, _ ma.Multiaddr) (time.Duration, error) {
+			pingsMu.Lock()
+			pingCount++
+			pingsMu.Unlock()
+			pinged <- struct{}{}
+			return 0, nil // always succeed
+		}
+
+		reachableFunc := func(addr swarm.Address, status p2p.ReachabilityStatus) {}
+
+		mock := newMock(pingFunc, reachableFunc)
+
+		r := reacher.New(mock, mock, &options, log.Noop)
+		testutil.CleanupCloser(t, r)
+
+		r.Connected(overlay, addr)
+
+		// First ping (immediate).
+		select {
+		case <-time.After(time.Second * 10):
+			t.Fatal("timed out waiting for first ping")
+		case <-pinged:
+		}
+
+		// After first success: backoff = 2min ±20% → [1m36s, 2m24s].
+		// Sleep 1m30s (less than minimum jittered backoff).
+		time.Sleep(90 * time.Second)
+
+		pingsMu.Lock()
+		if pingCount != 1 {
+			t.Fatalf("expected 1 ping after 1m30s (min backoff=1m36s), got %d", pingCount)
+		}
+		pingsMu.Unlock()
+
+		// Sleep past the max jittered backoff.
+		time.Sleep(55 * time.Second)
+
+		select {
+		case <-time.After(time.Second * 10):
+			t.Fatal("timed out waiting for second ping")
+		case <-pinged:
+		}
+
+		pingsMu.Lock()
+		if pingCount != 2 {
+			t.Fatalf("expected 2 pings after 2min backoff, got %d", pingCount)
+		}
+		pingsMu.Unlock()
+
+		// After second success: successCount=2 (capped), backoff = 4min ±20% → [3m12s, 4m48s].
+		// Sleep past the max (4m48s + margin).
+		time.Sleep(5 * time.Minute)
+
+		select {
+		case <-time.After(time.Second * 10):
+			t.Fatal("timed out waiting for third ping")
+		case <-pinged:
+		}
+
+		pingsMu.Lock()
+		if pingCount != 3 {
+			t.Fatalf("expected 3 pings after capped 4min backoff, got %d", pingCount)
+		}
+		pingsMu.Unlock()
+
+		// Third success: still capped at 4min ±20% → [3m12s, 4m48s].
+		// Sleep 1min — well below minimum jittered value.
+		time.Sleep(time.Minute)
+
+		pingsMu.Lock()
+		if pingCount != 3 {
+			t.Fatalf("expected still 3 pings after 1min (min cap=3m12s), got %d", pingCount)
+		}
+		pingsMu.Unlock()
+
+		// Sleep past the max jittered value to confirm cap holds.
+		time.Sleep(4 * time.Minute)
+
+		select {
+		case <-time.After(time.Second * 10):
+			t.Fatal("timed out waiting for fourth ping")
+		case <-pinged:
+		}
+
+		pingsMu.Lock()
+		if pingCount != 4 {
+			t.Fatalf("expected 4 pings after capped backoff, got %d", pingCount)
+		}
+		pingsMu.Unlock()
+	})
+}
+
+func TestBackoffResetOnReconnect(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		options := reacher.Options{
+			PingTimeout:        time.Second * 5,
+			Workers:            1,
+			RetryAfterDuration: time.Minute,
+		}
+
+		overlay := swarm.RandAddress(t)
+		addr, _ := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAmTBuJT9LvNmBiQiNoTsxE5mtNy6YG3paw79m94CRa9sRb")
+
+		var pingsMu sync.Mutex
+		var pingCount int
+		pinged := make(chan struct{}, 16)
+
+		pingFunc := func(_ context.Context, _ ma.Multiaddr) (time.Duration, error) {
+			pingsMu.Lock()
+			pingCount++
+			pingsMu.Unlock()
+			pinged <- struct{}{}
+			return 0, errors.New("always fail")
+		}
+
+		reachableFunc := func(addr swarm.Address, status p2p.ReachabilityStatus) {}
+
+		mock := newMock(pingFunc, reachableFunc)
+
+		r := reacher.New(mock, mock, &options, log.Noop)
+		testutil.CleanupCloser(t, r)
+
+		// First connection — immediate ping, then fail.
+		r.Connected(overlay, addr)
+
+		select {
+		case <-time.After(time.Second * 10):
+			t.Fatal("timed out waiting for first ping")
+		case <-pinged:
+		}
+
+		// After first failure, backoff = 2min.
+		// Reconnect resets failCount and triggers immediate re-ping.
+		r.Connected(overlay, addr)
+
+		select {
+		case <-time.After(time.Second * 10):
+			t.Fatal("timed out waiting for reconnect ping")
+		case <-pinged:
+		}
+
+		// After reconnect failure, backoff should be 2min ±20% again (not 4min),
+		// because failCount was reset. Sleep past the max (2m24s + margin).
+		time.Sleep(3 * time.Minute)
+
+		select {
+		case <-time.After(time.Second * 10):
+			t.Fatal("timed out waiting for post-reconnect retry")
+		case <-pinged:
+		}
+
+		pingsMu.Lock()
+		if pingCount != 3 {
+			t.Fatalf("expected 3 pings (initial + reconnect + retry), got %d", pingCount)
+		}
+		pingsMu.Unlock()
 	})
 }
 
