@@ -21,7 +21,7 @@ import (
 
 const (
 	pingTimeout               = time.Second * 15
-	workers                   = 4
+	workers                   = 8
 	retryAfterDuration        = time.Minute * 5
 	maxFailBackoffExponent    = 4   // caps failure backoff at retryAfterDuration * 2^4 = 80 min
 	maxSuccessBackoffExponent = 2   // caps success backoff at retryAfterDuration * 2^2 = 20 min
@@ -51,6 +51,7 @@ type reacher struct {
 
 	wg sync.WaitGroup
 
+	metrics metrics
 	options *Options
 	logger  log.Logger
 }
@@ -70,6 +71,7 @@ func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier, o *Options, log lo
 		peerHeap:  make(peerHeap, 0),
 		peerIndex: make(map[string]*peer),
 		notifier:  notifier,
+		metrics:   newMetrics(),
 		logger:    log.WithName("reacher").Register(),
 	}
 
@@ -144,14 +146,19 @@ func (r *reacher) ping(c chan peer, ctx context.Context) {
 	defer r.wg.Done()
 	for p := range c {
 		func() {
+			r.metrics.PingAttemptCount.Inc()
 			ctxt, cancel := context.WithTimeout(ctx, r.options.PingTimeout)
 			defer cancel()
+			start := time.Now()
 			rtt, err := r.pinger.Ping(ctxt, p.addr)
 			if err != nil {
+				r.metrics.PingDuration.Observe(time.Since(start).Seconds())
+				r.metrics.PingErrorCount.Inc()
 				r.logger.Debug("ping failed", "peer", p.overlay.String(), "addr", p.addr.String(), "error", err)
 				r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPrivate)
 				r.notifyResult(p.overlay, false, p.generation)
 			} else {
+				r.metrics.PingDuration.Observe(rtt.Seconds())
 				r.logger.Debug("ping succeeded", "peer", p.overlay.String(), "addr", p.addr.String(), "rtt", rtt)
 				r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPublic)
 				r.notifyResult(p.overlay, true, p.generation)
@@ -210,6 +217,7 @@ func (r *reacher) Connected(overlay swarm.Address, addr ma.Multiaddr) {
 		p := &peer{overlay: overlay, addr: addr}
 		r.peerIndex[key] = p
 		heap.Push(&r.peerHeap, p)
+		r.metrics.Peers.Inc()
 	}
 
 	select {
@@ -267,6 +275,7 @@ func (r *reacher) Disconnected(overlay swarm.Address) {
 	if p, ok := r.peerIndex[key]; ok {
 		heap.Remove(&r.peerHeap, p.index)
 		delete(r.peerIndex, key)
+		r.metrics.Peers.Dec()
 	}
 }
 
