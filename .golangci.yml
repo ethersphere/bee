@@ -23,6 +23,7 @@ linters:
     - promlinter
     - thelper
     - unconvert
+    - unused
   settings:
     goheader:
       values:
