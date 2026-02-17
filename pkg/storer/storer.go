@@ -283,6 +283,7 @@ func initDiskRepository(
 	ctx context.Context,
 	basePath string,
 	opts *Options,
+	metrics metrics,
 ) (transaction.Storage, *PinIntegrity, io.Closer, error) {
 	store, err := initStore(basePath, opts)
 	if err != nil {
@@ -293,6 +294,11 @@ func initDiskRepository(
 	if err != nil {
 		return nil, nil, nil, errors.Join(store.Close(), fmt.Errorf("failed core migration: %w", err))
 	}
+
+	metrics.LevelDBConfigWriteBufferSize.Set(float64(opts.LdbWriteBufferSize))
+	metrics.LevelDBConfigBlockCacheCapacity.Set(float64(opts.LdbBlockCacheCapacity))
+	metrics.LevelDBConfigCompactionL0Trigger.Set(16)
+	metrics.LevelDBConfigCompactionTableSize.Set(8 * 1024 * 1024)
 
 	if opts.LdbStats.Load() != nil {
 		go func() {
@@ -332,6 +338,16 @@ func initDiskRepository(
 							ldbStats.WithLabelValues(fmt.Sprintf("level_%d_write", i)).Observe(float64(stats.LevelWrite[i]))
 							ldbStats.WithLabelValues(fmt.Sprintf("level_%d_duration", i)).Observe(stats.LevelDurations[i].Seconds())
 						}
+
+						metrics.LevelDBWriteDelayCount.Add(float64(stats.WriteDelayCount))
+						metrics.LevelDBWriteDelayDuration.Add(stats.WriteDelayDuration.Seconds())
+						metrics.LevelDBAliveSnapshots.Set(float64(stats.AliveSnapshots))
+						metrics.LevelDBAliveIterators.Set(float64(stats.AliveIterators))
+						metrics.LevelDBIOWrite.Set(float64(stats.IOWrite))
+						metrics.LevelDBIORead.Set(float64(stats.IORead))
+						metrics.LevelDBBlockCacheSize.Set(float64(stats.BlockCacheSize))
+						metrics.LevelDBMemComp.Add(float64(stats.MemComp))
+						metrics.LevelDBLevel0Comp.Add(float64(stats.Level0Comp))
 					}
 				}
 			}
@@ -489,7 +505,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			return nil, err
 		}
 	} else {
-		st, pinIntegrity, dbCloser, err = initDiskRepository(ctx, dirPath, opts)
+		st, pinIntegrity, dbCloser, err = initDiskRepository(ctx, dirPath, opts, metrics)
 		if err != nil {
 			return nil, err
 		}
