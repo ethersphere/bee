@@ -34,6 +34,7 @@ type peer struct {
 	retryAfter   time.Time
 	failCount    int // consecutive ping failures for exponential backoff
 	successCount int // consecutive ping successes for exponential backoff
+	generation   int // incremented on reconnect; guards against stale notifyResult
 	index        int // index in the heap
 }
 
@@ -58,6 +59,7 @@ type Options struct {
 	PingTimeout        time.Duration
 	Workers            int
 	RetryAfterDuration time.Duration
+	JitterFactor       float64 // ±N% randomization on retry intervals; 0 disables jitter
 }
 
 func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier, o *Options, log log.Logger) *reacher {
@@ -76,6 +78,7 @@ func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier, o *Options, log lo
 			PingTimeout:        pingTimeout,
 			Workers:            workers,
 			RetryAfterDuration: retryAfterDuration,
+			JitterFactor:       jitterFactor,
 		}
 	}
 	r.options = o
@@ -147,11 +150,11 @@ func (r *reacher) ping(c chan peer, ctx context.Context) {
 			if err != nil {
 				r.logger.Debug("ping failed", "peer", p.overlay.String(), "addr", p.addr.String(), "error", err)
 				r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPrivate)
-				r.notifyResult(p.overlay, false)
+				r.notifyResult(p.overlay, false, p.generation)
 			} else {
 				r.logger.Debug("ping succeeded", "peer", p.overlay.String(), "addr", p.addr.String(), "rtt", rtt)
 				r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPublic)
-				r.notifyResult(p.overlay, true)
+				r.notifyResult(p.overlay, true, p.generation)
 			}
 		}()
 	}
@@ -200,7 +203,8 @@ func (r *reacher) Connected(overlay swarm.Address, addr ma.Multiaddr) {
 		existing.addr = addr              // Update address for reconnecting peer
 		existing.retryAfter = time.Time{} // Reset to trigger immediate re-ping
 		existing.failCount = 0            // Fresh start on reconnect
-		existing.successCount = 0
+		existing.successCount = 0         // Fresh start on reconnect
+		existing.generation++             // invalidate any in-flight notifyResult
 		heap.Fix(&r.peerHeap, existing.index)
 	} else {
 		p := &peer{overlay: overlay, addr: addr}
@@ -218,7 +222,11 @@ func (r *reacher) Connected(overlay swarm.Address, addr ma.Multiaddr) {
 // Both success and failure use exponential backoff with different caps:
 //   - Success: 5m → 10m → 20m (capped at 2^2), resets failCount
 //   - Failure: 5m → 10m → 20m → 40m → 80m (capped at 2^4), resets successCount
-func (r *reacher) notifyResult(overlay swarm.Address, success bool) {
+//
+// The gen parameter is the generation captured when the ping was dispatched.
+// If the peer was reconnected (generation incremented) while the ping was
+// in flight, the stale result is discarded.
+func (r *reacher) notifyResult(overlay swarm.Address, success bool, gen int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -226,17 +234,20 @@ func (r *reacher) notifyResult(overlay swarm.Address, success bool) {
 	if !ok {
 		return // peer was disconnected while ping was in flight
 	}
+	if p.generation != gen {
+		return // peer was reconnected; discard stale result
+	}
 
 	if success {
 		p.failCount = 0
 		p.successCount++
 		backoff := min(p.successCount, maxSuccessBackoffExponent)
-		p.retryAfter = time.Now().Add(jitter(r.options.RetryAfterDuration * time.Duration(1<<backoff)))
+		p.retryAfter = time.Now().Add(r.jitter(r.options.RetryAfterDuration * time.Duration(1<<backoff)))
 	} else {
 		p.successCount = 0
 		p.failCount++
 		backoff := min(p.failCount, maxFailBackoffExponent)
-		p.retryAfter = time.Now().Add(jitter(r.options.RetryAfterDuration * time.Duration(1<<backoff)))
+		p.retryAfter = time.Now().Add(r.jitter(r.options.RetryAfterDuration * time.Duration(1<<backoff)))
 	}
 	heap.Fix(&r.peerHeap, p.index)
 
@@ -259,11 +270,14 @@ func (r *reacher) Disconnected(overlay swarm.Address) {
 	}
 }
 
-// jitter adds ±20% randomization to a duration to prevent peers from
+// jitter adds ±JitterFactor randomization to a duration to prevent peers from
 // synchronizing their retry times and causing burst traffic.
-func jitter(d time.Duration) time.Duration {
-	// rand.Float64() returns [0.0, 1.0), scale to [-jitterFactor, +jitterFactor)
-	j := 1.0 + jitterFactor*(2*rand.Float64()-1)
+func (r *reacher) jitter(d time.Duration) time.Duration {
+	if r.options.JitterFactor == 0 {
+		return d
+	}
+	// rand.Float64() returns [0.0, 1.0), scale to [-JitterFactor, +JitterFactor)
+	j := 1.0 + r.options.JitterFactor*(2*rand.Float64()-1)
 	return time.Duration(float64(d) * j)
 }
 

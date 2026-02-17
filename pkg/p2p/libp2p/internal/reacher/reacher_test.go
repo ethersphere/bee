@@ -24,7 +24,7 @@ import (
 
 var defaultOptions = reacher.Options{
 	PingTimeout:        time.Second * 5,
-	Workers:            8,
+	Workers:            4,
 	RetryAfterDuration: time.Second,
 }
 
@@ -132,11 +132,12 @@ func TestAddressUpdateOnReconnect(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
-		// Use 1 worker and a known retry duration to make timing deterministic.
+		// Use 1 worker and no jitter to make timing deterministic.
 		options := reacher.Options{
 			PingTimeout:        time.Second * 5,
 			Workers:            1,
 			RetryAfterDuration: time.Minute,
+			JitterFactor:       0,
 		}
 
 		overlay := swarm.RandAddress(t)
@@ -200,8 +201,8 @@ func TestAddressUpdateOnReconnect(t *testing.T) {
 		}
 		pingsMu.Unlock()
 
-		// After reconnect success, successCount=1 so backoff = 2min ±20%.
-		// Sleep past the max jittered value (2m24s + margin).
+		// After reconnect success, successCount=1 so backoff = 2min (no jitter).
+		// Sleep past 2min to trigger the scheduled re-ping.
 		time.Sleep(3 * time.Minute)
 
 		select {
@@ -298,6 +299,7 @@ func TestBackoffOnFailure(t *testing.T) {
 			PingTimeout:        time.Second * 5,
 			Workers:            1,
 			RetryAfterDuration: time.Minute, // base interval
+			JitterFactor:       0,
 		}
 
 		overlay := swarm.RandAddress(t)
@@ -331,18 +333,18 @@ func TestBackoffOnFailure(t *testing.T) {
 		case <-pinged:
 		}
 
-		// After first failure: backoff = 2min ±20% → [1m36s, 2m24s].
-		// Sleep 1m30s (less than minimum jittered backoff).
+		// After first failure: backoff = 2min (no jitter).
+		// Sleep 90s which is less than the 2min backoff.
 		time.Sleep(90 * time.Second)
 
 		pingsMu.Lock()
 		count := len(pingTimes)
 		pingsMu.Unlock()
 		if count != 1 {
-			t.Fatalf("expected 1 ping after 1m30s (min backoff=1m36s), got %d", count)
+			t.Fatalf("expected 1 ping after 90s (backoff=2min), got %d", count)
 		}
 
-		// Sleep past the max jittered backoff (2m24s total, we're at 1m30s, need ~55s more).
+		// Sleep past the 2min backoff to trigger the second ping.
 		time.Sleep(55 * time.Second)
 
 		select {
@@ -358,8 +360,8 @@ func TestBackoffOnFailure(t *testing.T) {
 			t.Fatalf("expected 2 pings after 2min backoff, got %d", count)
 		}
 
-		// After second failure: backoff = 4min ±20% → [3m12s, 4m48s].
-		// Sleep past the max (4m48s + margin).
+		// After second failure: backoff = 4min (no jitter).
+		// Sleep past 4min to trigger the third ping.
 		time.Sleep(5 * time.Minute)
 
 		select {
@@ -385,6 +387,7 @@ func TestBackoffOnSuccess(t *testing.T) {
 			PingTimeout:        time.Second * 5,
 			Workers:            1,
 			RetryAfterDuration: time.Minute,
+			JitterFactor:       0,
 		}
 
 		overlay := swarm.RandAddress(t)
@@ -418,17 +421,17 @@ func TestBackoffOnSuccess(t *testing.T) {
 		case <-pinged:
 		}
 
-		// After first success: backoff = 2min ±20% → [1m36s, 2m24s].
-		// Sleep 1m30s (less than minimum jittered backoff).
+		// After first success: backoff = 2min (no jitter).
+		// Sleep 90s which is less than 2min backoff.
 		time.Sleep(90 * time.Second)
 
 		pingsMu.Lock()
 		if pingCount != 1 {
-			t.Fatalf("expected 1 ping after 1m30s (min backoff=1m36s), got %d", pingCount)
+			t.Fatalf("expected 1 ping after 90s (backoff=2min), got %d", pingCount)
 		}
 		pingsMu.Unlock()
 
-		// Sleep past the max jittered backoff.
+		// Sleep past the 2min backoff to trigger the second ping.
 		time.Sleep(55 * time.Second)
 
 		select {
@@ -443,8 +446,8 @@ func TestBackoffOnSuccess(t *testing.T) {
 		}
 		pingsMu.Unlock()
 
-		// After second success: successCount=2 (capped), backoff = 4min ±20% → [3m12s, 4m48s].
-		// Sleep past the max (4m48s + margin).
+		// After second success: successCount=2 (capped at 2), backoff = 4min (no jitter).
+		// Sleep past 4min to trigger the third ping.
 		time.Sleep(5 * time.Minute)
 
 		select {
@@ -459,17 +462,17 @@ func TestBackoffOnSuccess(t *testing.T) {
 		}
 		pingsMu.Unlock()
 
-		// Third success: still capped at 4min ±20% → [3m12s, 4m48s].
-		// Sleep 1min — well below minimum jittered value.
+		// Third success: still capped at 4min (no jitter).
+		// Sleep 1min which is well below 4min.
 		time.Sleep(time.Minute)
 
 		pingsMu.Lock()
 		if pingCount != 3 {
-			t.Fatalf("expected still 3 pings after 1min (min cap=3m12s), got %d", pingCount)
+			t.Fatalf("expected still 3 pings after 1min (capped backoff=4min), got %d", pingCount)
 		}
 		pingsMu.Unlock()
 
-		// Sleep past the max jittered value to confirm cap holds.
+		// Sleep past the 4min backoff to confirm cap holds.
 		time.Sleep(4 * time.Minute)
 
 		select {
@@ -494,6 +497,7 @@ func TestBackoffResetOnReconnect(t *testing.T) {
 			PingTimeout:        time.Second * 5,
 			Workers:            1,
 			RetryAfterDuration: time.Minute,
+			JitterFactor:       0,
 		}
 
 		overlay := swarm.RandAddress(t)
@@ -537,8 +541,8 @@ func TestBackoffResetOnReconnect(t *testing.T) {
 		case <-pinged:
 		}
 
-		// After reconnect failure, backoff should be 2min ±20% again (not 4min),
-		// because failCount was reset. Sleep past the max (2m24s + margin).
+		// After reconnect failure, backoff should be 2min again (not 4min),
+		// because failCount was reset. Sleep past 2min.
 		time.Sleep(3 * time.Minute)
 
 		select {
