@@ -50,6 +50,10 @@ func NewSnapshotLogFilterer(logger log.Logger, getter SnapshotGetter) *SnapshotL
 	}
 }
 
+func (f *SnapshotLogFilterer) GetBatchSnapshot() []byte {
+	return f.getter.GetBatchSnapshot()
+}
+
 // loadSnapshot is responsible for loading and processing the snapshot data.
 // It is intended to be called exactly once by initOnce.Do.
 func (f *SnapshotLogFilterer) loadSnapshot() error {
