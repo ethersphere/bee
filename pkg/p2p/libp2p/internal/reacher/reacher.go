@@ -20,11 +20,11 @@ import (
 )
 
 const (
-	pingTimeout        = time.Second * 15
-	workers            = 4
-	retryAfterDuration = time.Minute * 5
-	maxFailBackoffExponent    = 4 // caps failure backoff at retryAfterDuration * 2^4 = 80 min
-	maxSuccessBackoffExponent = 2 // caps success backoff at retryAfterDuration * 2^2 = 20 min
+	pingTimeout               = time.Second * 15
+	workers                   = 4
+	retryAfterDuration        = time.Minute * 5
+	maxFailBackoffExponent    = 4   // caps failure backoff at retryAfterDuration * 2^4 = 80 min
+	maxSuccessBackoffExponent = 2   // caps success backoff at retryAfterDuration * 2^2 = 20 min
 	jitterFactor              = 0.2 // ±20% randomization on retry intervals
 )
 
