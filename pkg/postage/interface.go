@@ -10,7 +10,6 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 )
 
 // EventUpdater interface definitions reflect the updates triggered by events
@@ -25,17 +24,6 @@ type EventUpdater interface {
 
 	TransactionStart() error
 	TransactionEnd() error
-}
-
-// ChainSnapshot represents the snapshot of all the postage events between the
-// FirstBlockNumber and LastBlockNumber. The timestamp stores the time at which the
-// snapshot was generated. This snapshot can be used to sync the postage package
-// to prevent large no. of chain backend calls.
-type ChainSnapshot struct {
-	Events           []types.Log `json:"events"`
-	LastBlockNumber  uint64      `json:"lastBlockNumber"`
-	FirstBlockNumber uint64      `json:"firstBlockNumber"`
-	Timestamp        int64       `json:"timestamp"`
 }
 
 // Storer represents the persistence layer for batches
