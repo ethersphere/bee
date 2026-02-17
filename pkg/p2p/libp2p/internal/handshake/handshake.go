@@ -242,6 +242,14 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return nil, fmt.Errorf("write ack message: %w", err)
 	}
 
+	// FullClose the stream to synchronize with the inbound side.
+	// This blocks until the remote either accepts the handshake
+	// (closes the stream gracefully) or rejects it (resets the
+	// stream, e.g. due to a picker rejection).
+	if err := stream.FullClose(); err != nil {
+		return nil, fmt.Errorf("full close: %w", err)
+	}
+
 	loggerV1.Debug("handshake finished for peer (outbound)", "peer_address", remoteBzzAddress.Overlay)
 	if len(resp.Ack.WelcomeMessage) > 0 {
 		s.logger.Debug("greeting message from peer", "peer_address", remoteBzzAddress.Overlay, "message", resp.Ack.WelcomeMessage)

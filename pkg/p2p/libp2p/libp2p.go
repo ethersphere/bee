@@ -605,7 +605,6 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		s.logger.Debug("stream handler: handshake: handle failed", "peer_id", peerID, "error", err)
 		s.logger.Error(nil, "stream handler: handshake: handle failed", "peer_id", peerID)
 		_ = handshakeStream.Reset()
-		_ = s.host.Network().ClosePeer(peerID)
 		return
 	}
 
@@ -616,14 +615,12 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		s.logger.Debug("stream handler: blocklisting: exists failed", "peer_address", overlay, "error", err)
 		s.logger.Error(nil, "stream handler: internal error while connecting with peer", "peer_address", overlay)
 		_ = handshakeStream.Reset()
-		_ = stream.Conn().Close()
 		return
 	}
 
 	if blocked {
 		s.logger.Error(nil, "stream handler: blocked connection from blocklisted peer", "peer_address", overlay)
 		_ = handshakeStream.Reset()
-		_ = s.host.Network().ClosePeer(peerID)
 		return
 	}
 
@@ -1051,7 +1048,6 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	}
 
 	if !i.FullNode {
-		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(info.ID)
 		return nil, p2p.ErrDialLightNode
 	}
@@ -1062,30 +1058,18 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	if err != nil {
 		s.logger.Debug("blocklisting: exists failed", "peer_id", info.ID, "error", err)
 		s.logger.Error(nil, "internal error while connecting with peer", "peer_id", info.ID)
-		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(info.ID)
 		return nil, err
 	}
 
 	if blocked {
 		s.logger.Error(nil, "blocked connection to blocklisted peer", "peer_id", info.ID)
-		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(info.ID)
 		return nil, p2p.ErrPeerBlocklisted
 	}
 
 	if exists := s.peers.addIfNotExists(stream.Conn(), overlay, i.FullNode); exists {
-		if err := handshakeStream.FullClose(); err != nil {
-			_ = s.Disconnect(overlay, "failed closing handshake stream after connect")
-			return nil, fmt.Errorf("peer exists, full close: %w", err)
-		}
-
 		return i.BzzAddress, nil
-	}
-
-	if err := handshakeStream.FullClose(); err != nil {
-		_ = s.Disconnect(overlay, "could not fully close handshake stream after connect")
-		return nil, fmt.Errorf("connect full close %w", err)
 	}
 
 	if !s.peers.Exists(overlay) {

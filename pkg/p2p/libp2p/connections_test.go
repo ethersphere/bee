@@ -1022,60 +1022,32 @@ func TestTopologyAnnounce(t *testing.T) {
 
 func TestTopologyOverSaturated(t *testing.T) {
 	var (
-		mtx sync.Mutex
 		ctx = context.Background()
 
 		ab1, ab2 = addressbook.New(mock.NewStateStore()), addressbook.New(mock.NewStateStore())
-
-		n1connectedPeer    p2p.Peer
-		n2connectedPeer    p2p.Peer
-		n2disconnectedPeer p2p.Peer
-
-		n1c = func(_ context.Context, p p2p.Peer, _ bool) error {
-			mtx.Lock()
-			defer mtx.Unlock()
-			expectZeroAddress(t, n1connectedPeer.Address) // fail if set more than once
-			n1connectedPeer = p
-			return nil
-		}
-		n1d = func(p p2p.Peer) {}
-
-		n2c = func(_ context.Context, p p2p.Peer, _ bool) error {
-			mtx.Lock()
-			defer mtx.Unlock()
-			expectZeroAddress(t, n2connectedPeer.Address) // fail if set more than once
-			n2connectedPeer = p
-			return nil
-		}
-		n2d = func(p p2p.Peer) {
-			mtx.Lock()
-			defer mtx.Unlock()
-			n2disconnectedPeer = p
-		}
 	)
 	// this notifier will not pick the peer
-	notifier1 := mockNotifier(n1c, n1d, false)
-	s1, overlay1 := newService(t, 1, libp2pServiceOpts{Addressbook: ab1, libp2pOpts: libp2p.Options{
+	notifier1 := mockNotifier(noopCf, noopDf, false)
+	s1, _ := newService(t, 1, libp2pServiceOpts{Addressbook: ab1, libp2pOpts: libp2p.Options{
 		FullNode: true,
 	}})
 	s1.SetPickyNotifier(notifier1)
 
-	notifier2 := mockNotifier(n2c, n2d, false)
+	notifier2 := mockNotifier(noopCf, noopDf, false)
 	s2, _ := newService(t, 1, libp2pServiceOpts{Addressbook: ab2})
 	s2.SetPickyNotifier(notifier2)
 
 	addr := serviceUnderlayAddress(t, s1)
 
-	// s2 connects to s1, thus the notifier on s1 should be called on Connect
+	// s2 connects to s1, s1's picker rejects so the handshake should fail
 	_, err := s2.Connect(ctx, addr)
 	if err == nil {
 		t.Fatal("expected connect to fail but it didn't")
 	}
 
+	// neither side should have registered the peer
 	expectPeers(t, s1)
 	expectPeersEventually(t, s2)
-
-	waitAddrSet(t, &n2disconnectedPeer.Address, &mtx, overlay1)
 }
 
 func TestWithDisconnectStreams(t *testing.T) {
