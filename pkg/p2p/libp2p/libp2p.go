@@ -678,22 +678,6 @@ func (s *Service) handleIncoming(stream network.Stream) {
 
 	overlay := i.BzzAddress.Overlay
 
-	blocked, err := s.blocklist.Exists(overlay)
-	if err != nil {
-		s.logger.Debug("stream handler: blocklisting: exists failed", "peer_address", overlay, "error", err)
-		s.logger.Error(nil, "stream handler: internal error while connecting with peer", "peer_address", overlay)
-		_ = handshakeStream.Reset()
-		_ = stream.Conn().Close()
-		return
-	}
-
-	if blocked {
-		s.logger.Error(nil, "stream handler: blocked connection from blocklisted peer", "peer_address", overlay)
-		_ = handshakeStream.Reset()
-		_ = s.host.Network().ClosePeer(peerID)
-		return
-	}
-
 	if exists := s.peers.addIfNotExists(stream.Conn(), overlay, i.FullNode); exists {
 		s.logger.Debug("stream handler: peer already exists", "peer_address", overlay)
 		if err = handshakeStream.FullClose(); err != nil {
