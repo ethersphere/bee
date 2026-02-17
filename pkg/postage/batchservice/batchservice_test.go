@@ -32,7 +32,7 @@ var (
 type mockListener struct {
 }
 
-func (*mockListener) Listen(ctx context.Context, from uint64, updater postage.EventUpdater, _ *postage.ChainSnapshot) <-chan error {
+func (*mockListener) Listen(ctx context.Context, from uint64, updater postage.EventUpdater) <-chan error {
 	c := make(chan error, 1)
 	c <- nil
 	return c
@@ -514,7 +514,7 @@ func TestTransactionOk(t *testing.T) {
 	t.Parallel()
 
 	svc, store, s := newTestStoreAndService(t)
-	if err := svc.Start(context.Background(), 10, nil); err != nil {
+	if err := svc.Start(context.Background(), 10); err != nil {
 		t.Fatal(err)
 	}
 
@@ -530,7 +530,7 @@ func TestTransactionOk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := svc2.Start(context.Background(), 10, nil); err != nil {
+	if err := svc2.Start(context.Background(), 10); err != nil {
 		t.Fatal(err)
 	}
 
@@ -543,7 +543,7 @@ func TestTransactionError(t *testing.T) {
 	t.Parallel()
 
 	svc, store, s := newTestStoreAndService(t)
-	if err := svc.Start(context.Background(), 10, nil); err != nil {
+	if err := svc.Start(context.Background(), 10); err != nil {
 		t.Fatal(err)
 	}
 
@@ -555,7 +555,7 @@ func TestTransactionError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := svc2.Start(context.Background(), 10, nil); err != nil {
+	if err := svc2.Start(context.Background(), 10); err != nil {
 		t.Fatal(err)
 	}
 
