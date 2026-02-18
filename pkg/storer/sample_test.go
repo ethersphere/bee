@@ -6,6 +6,7 @@ package storer_test
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"testing"
 	"time"
@@ -113,7 +114,6 @@ func TestReserveSampler(t *testing.T) {
 
 			assertSampleNoErrors(t, sample)
 		})
-
 	}
 
 	t.Run("disk", func(t *testing.T) {
@@ -234,7 +234,6 @@ func TestReserveSamplerSisterNeighborhood(t *testing.T) {
 				t.Fatalf("sample should not have ignored chunks")
 			}
 		})
-
 	}
 
 	t.Run("disk", func(t *testing.T) {
@@ -381,5 +380,51 @@ func assertSampleNoErrors(t *testing.T, sample storer.Sample) {
 	}
 	if sample.Stats.InvalidStamp != 0 {
 		t.Fatalf("got unexpected invalid stamps")
+	}
+}
+
+// BenchmarkSampleHashing measures the time taken by MakeSampleUsingChunks to
+// hash a fixed set of CAC chunks. Results:
+// goos: linux
+// goarch: amd64
+// pkg: github.com/ethersphere/bee/v2/pkg/storer
+// cpu: Intel(R) Core(TM) Ultra 7 165U
+// BenchmarkSampleHashing/chunks=1000-14         	      10	 129751940 ns/op	  31.57 MB/s	69386112 B/op	  814005 allocs/op
+// BenchmarkSampleHashing/chunks=10000-14        	      10	1396326665 ns/op	  29.33 MB/s	693843300 B/op	 8140007 allocs/op
+func BenchmarkSampleHashing(b *testing.B) {
+	anchor := []byte("swarm-test-anchor-deterministic!")
+
+	// Shared zero-value stamp: its contents don't affect hash computation.
+	stamp := postage.NewStamp(make([]byte, 32), make([]byte, 8), make([]byte, 8), make([]byte, 65))
+
+	for _, count := range []int{1_000, 10_000} {
+		count := count
+		b.Run(fmt.Sprintf("chunks=%d", count), func(b *testing.B) {
+			// Build chunks once outside the measured loop.
+			// Content is derived deterministically from the chunk index so
+			// that every run produces the same set of chunk addresses.
+			chunks := make([]swarm.Chunk, count)
+			content := make([]byte, swarm.ChunkSize)
+			for i := range chunks {
+				for j := range content {
+					content[j] = byte(i + j)
+				}
+				ch, err := cac.New(content)
+				if err != nil {
+					b.Fatal(err)
+				}
+				chunks[i] = ch.WithStamp(stamp)
+			}
+
+			// Report throughput so the output shows MB/s as well as ns/op.
+			b.SetBytes(int64(count) * swarm.ChunkSize)
+			b.ResetTimer()
+
+			for range b.N {
+				if _, err := storer.MakeSampleUsingChunks(chunks, anchor); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
