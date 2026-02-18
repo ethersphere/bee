@@ -20,6 +20,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/postage/listener"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	archive "github.com/ethersphere/batch-archive"
 )
 
 type mockSnapshotGetter struct {
@@ -31,6 +33,12 @@ func newMockSnapshotGetter(data []byte) mockSnapshotGetter {
 }
 func (m mockSnapshotGetter) GetBatchSnapshot() []byte {
 	return m.data
+}
+
+type realSnapshotGetter struct{}
+
+func (r realSnapshotGetter) GetBatchSnapshot() []byte {
+	return archive.GetBatchSnapshot()
 }
 
 func makeSnapshotData(logs []types.Log) []byte {
@@ -147,5 +155,79 @@ func TestNewSnapshotLogFilterer(t *testing.T) {
 		assert.Equal(t, 0, res[1].Topics[0].Cmp(common.HexToHash("0xa1")))
 		assert.Equal(t, 0, res[2].Topics[0].Cmp(common.HexToHash("0xa4")))
 		assert.Equal(t, 0, res[3].Topics[0].Cmp(common.HexToHash("0xa4")))
+	})
+}
+
+func TestSnapshotLogFilterer_RealSnapshot(t *testing.T) {
+	t.Parallel()
+
+	getter := realSnapshotGetter{}
+	filterer := node.NewSnapshotLogFilterer(log.Noop, getter)
+
+	t.Run("block number", func(t *testing.T) {
+		blockNumber, err := filterer.BlockNumber(context.Background())
+		assert.NoError(t, err)
+		assert.Greater(t, blockNumber, uint64(0))
+	})
+
+	t.Run("filter range", func(t *testing.T) {
+		// arbitrary range that should exist in the snapshot
+		from := big.NewInt(20000000)
+		to := big.NewInt(20001000)
+		res, err := filterer.FilterLogs(context.Background(), ethereum.FilterQuery{
+			FromBlock: from,
+			ToBlock:   to,
+		})
+		require.NoError(t, err)
+		for _, l := range res {
+			assert.GreaterOrEqual(t, l.BlockNumber, from.Uint64())
+			assert.LessOrEqual(t, l.BlockNumber, to.Uint64())
+		}
+	})
+
+	t.Run("filter address mismatch", func(t *testing.T) {
+		// random address that should not match the postage stamp contract
+		addr := common.HexToAddress("0x1234567890123456789012345678901234567890")
+		res, err := filterer.FilterLogs(context.Background(), ethereum.FilterQuery{
+			Addresses: []common.Address{addr},
+		})
+		require.NoError(t, err)
+		assert.Empty(t, res)
+	})
+}
+
+func BenchmarkNewSnapshotLogFilterer_Load(b *testing.B) {
+	getter := realSnapshotGetter{}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		filterer := node.NewSnapshotLogFilterer(log.Noop, getter)
+		_, err := filterer.BlockNumber(context.Background())
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkSnapshotLogFilterer(b *testing.B) {
+	getter := realSnapshotGetter{}
+	filterer := node.NewSnapshotLogFilterer(log.Noop, getter)
+	// ensure loaded
+	if _, err := filterer.BlockNumber(context.Background()); err != nil {
+		b.Fatal(err)
+	}
+
+	b.Run("FilterLogs", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			from := big.NewInt(20000000)
+			to := big.NewInt(20001000)
+			_, err := filterer.FilterLogs(context.Background(), ethereum.FilterQuery{
+				FromBlock: from,
+				ToBlock:   to,
+			})
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
 	})
 }

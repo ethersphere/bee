@@ -63,8 +63,7 @@ type Service struct {
 }
 
 const (
-	traceDuration     = 30 * time.Second // duration for every root tracing span
-	ConcurrentPushes  = swarm.Branches   // how many chunks to push simultaneously
+	ConcurrentPushes  = swarm.Branches // how many chunks to push simultaneously
 	DefaultRetryCount = 6
 )
 

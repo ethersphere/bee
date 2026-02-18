@@ -15,14 +15,12 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"sort"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 
 	ma "github.com/multiformats/go-multiaddr"
-	manet "github.com/multiformats/go-multiaddr/net"
 )
 
 var ErrInvalidAddress = errors.New("invalid address")
@@ -217,36 +215,4 @@ func parseMultiaddrs(addrs []string) ([]ma.Multiaddr, error) {
 		multiAddrs[i] = multiAddr
 	}
 	return multiAddrs, nil
-}
-
-func SelectBestAdvertisedAddress(addrs []ma.Multiaddr, fallback ma.Multiaddr) ma.Multiaddr {
-	if len(addrs) == 0 {
-		return fallback
-	}
-
-	hasTCPProtocol := func(addr ma.Multiaddr) bool {
-		_, err := addr.ValueForProtocol(ma.P_TCP)
-		return err == nil
-	}
-
-	// Sort addresses to prioritize TCP over other protocols
-	sort.SliceStable(addrs, func(i, j int) bool {
-		iTCP := hasTCPProtocol(addrs[i])
-		jTCP := hasTCPProtocol(addrs[j])
-		return iTCP && !jTCP
-	})
-
-	for _, addr := range addrs {
-		if manet.IsPublicAddr(addr) {
-			return addr
-		}
-	}
-
-	for _, addr := range addrs {
-		if !manet.IsPrivateAddr(addr) {
-			return addr
-		}
-	}
-
-	return addrs[0]
 }
