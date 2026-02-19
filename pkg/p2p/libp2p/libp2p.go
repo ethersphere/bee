@@ -647,7 +647,6 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	handshakeStream := newStream(stream, s.metrics)
 
 	peerMultiaddrs, err := s.peerMultiaddrs(s.ctx, stream.Conn().RemoteMultiaddr(), peerID)
-
 	if err != nil {
 		s.logger.Debug("stream handler: handshake: build remote multiaddrs", "peer_id", peerID, "error", err)
 		s.logger.Error(nil, "stream handler: handshake: build remote multiaddrs", "peer_id", peerID)
