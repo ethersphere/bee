@@ -398,7 +398,6 @@ func BenchmarkSampleHashing(b *testing.B) {
 	stamp := postage.NewStamp(make([]byte, 32), make([]byte, 8), make([]byte, 8), make([]byte, 65))
 
 	for _, count := range []int{1_000, 10_000} {
-		count := count
 		b.Run(fmt.Sprintf("chunks=%d", count), func(b *testing.B) {
 			// Build chunks once outside the measured loop.
 			// Content is derived deterministically from the chunk index so
