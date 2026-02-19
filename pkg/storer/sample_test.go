@@ -6,10 +6,12 @@ package storer_test
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
@@ -112,7 +114,6 @@ func TestReserveSampler(t *testing.T) {
 
 			assertSampleNoErrors(t, sample)
 		})
-
 	}
 
 	t.Run("disk", func(t *testing.T) {
@@ -233,7 +234,6 @@ func TestReserveSamplerSisterNeighborhood(t *testing.T) {
 				t.Fatalf("sample should not have ignored chunks")
 			}
 		})
-
 	}
 
 	t.Run("disk", func(t *testing.T) {
@@ -309,6 +309,63 @@ func assertValidSample(t *testing.T, sample storer.Sample, minRadius uint8, anch
 	}
 }
 
+// TestSampleVectorCAC is a deterministic test vector that verifies the chunk
+// address and transformed address produced by MakeSampleUsingChunks for a
+// single hardcoded CAC chunk and anchor. It guards against regressions in the
+// BMT hashing or sampling pipeline.
+func TestSampleVectorCAC(t *testing.T) {
+	t.Parallel()
+
+	// Chunk content: 4096 bytes with repeating pattern i%256.
+	chunkContent := make([]byte, swarm.ChunkSize)
+	for i := range chunkContent {
+		chunkContent[i] = byte(i % 256)
+	}
+
+	ch, err := cac.New(chunkContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Attach a hardcoded (but otherwise irrelevant) stamp so that
+	// MakeSampleUsingChunks can read ch.Stamp() without panicking.
+	batchID := make([]byte, 32)
+	for i := range batchID {
+		batchID[i] = byte(i + 1)
+	}
+	sig := make([]byte, 65)
+	for i := range sig {
+		sig[i] = byte(i + 1)
+	}
+	ch = ch.WithStamp(postage.NewStamp(batchID, make([]byte, 8), make([]byte, 8), sig))
+
+	// Anchor: exactly 32 bytes, constant across runs.
+	anchor := []byte("swarm-test-anchor-deterministic!")
+
+	sample, err := storer.MakeSampleUsingChunks([]swarm.Chunk{ch}, anchor)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(sample.Items) != 1 {
+		t.Fatalf("expected 1 sample item, got %d", len(sample.Items))
+	}
+
+	item := sample.Items[0]
+
+	const (
+		wantChunkAddr       = "902406053a7a2f3a17f16097e1d0b4b6a4abeae6b84968f5503ae621f9522e16"
+		wantTransformedAddr = "9dee91d1ed794460474ffc942996bd713176731db4581a3c6470fe9862905a60"
+	)
+
+	if got := item.ChunkAddress.String(); got != wantChunkAddr {
+		t.Errorf("chunk address mismatch:\n got:  %s\n want: %s", got, wantChunkAddr)
+	}
+	if got := item.TransformedAddress.String(); got != wantTransformedAddr {
+		t.Errorf("transformed address mismatch:\n got:  %s\n want: %s", got, wantTransformedAddr)
+	}
+}
+
 func assertSampleNoErrors(t *testing.T, sample storer.Sample) {
 	t.Helper()
 
@@ -323,5 +380,101 @@ func assertSampleNoErrors(t *testing.T, sample storer.Sample) {
 	}
 	if sample.Stats.InvalidStamp != 0 {
 		t.Fatalf("got unexpected invalid stamps")
+	}
+}
+
+// Benchmark results:
+// goos: linux
+// goarch: amd64
+// pkg: github.com/ethersphere/bee/v2/pkg/storer
+// cpu: Intel(R) Core(TM) Ultra 7 165U
+// BenchmarkCachePutter-14        	  473118	      2149 ns/op	    1184 B/op	      24 allocs/op
+// BenchmarkReservePutter-14      	   48109	     29760 ns/op	   12379 B/op	     141 allocs/op
+// BenchmarkReserveSample1k-14    	     100	  12392598 ns/op	 9364970 B/op	  161383 allocs/op
+// BenchmarkSampleHashing/chunks=1000-14         	       9	 127425952 ns/op	  32.14 MB/s	69386109 B/op	  814005 allocs/op
+// BenchmarkSampleHashing/chunks=10000-14        	       1	1241432669 ns/op	  32.99 MB/s	693843032 B/op	 8140005 allocs/op
+// PASS
+// ok  	github.com/ethersphere/bee/v2/pkg/storer	34.319s
+
+// BenchmarkReserveSample measures the end-to-end time of the ReserveSample
+// method, including DB iteration, chunk loading, stamp validation, and sample
+// assembly.
+func BenchmarkReserveSample1k(b *testing.B) {
+	const chunkCountPerPO = 100
+	const maxPO = 10
+
+	baseAddr := swarm.RandAddress(b)
+	opts := dbTestOps(baseAddr, 5000, nil, nil, time.Second)
+	opts.ValidStamp = func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil }
+
+	st, err := diskStorer(b, opts)()
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	timeVar := uint64(time.Now().UnixNano())
+
+	putter := st.ReservePutter()
+	for po := range maxPO {
+		for range chunkCountPerPO {
+			ch := chunk.GenerateValidRandomChunkAt(b, baseAddr, po).WithBatch(3, 2, false)
+			ch = ch.WithStamp(postagetesting.MustNewStampWithTimestamp(timeVar - 1))
+			if err := putter.Put(context.Background(), ch); err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+
+	var (
+		radius uint8 = 5
+		anchor       = swarm.RandAddressAt(b, baseAddr, int(radius)).Bytes()
+	)
+
+	b.ResetTimer()
+
+	for range b.N {
+		_, err := st.ReserveSample(context.TODO(), anchor, radius, timeVar, nil)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// BenchmarkSampleHashing measures the time taken by MakeSampleUsingChunks to
+// hash a fixed set of CAC chunks.
+func BenchmarkSampleHashing(b *testing.B) {
+	anchor := []byte("swarm-test-anchor-deterministic!")
+
+	// Shared zero-value stamp: its contents don't affect hash computation.
+	stamp := postage.NewStamp(make([]byte, 32), make([]byte, 8), make([]byte, 8), make([]byte, 65))
+
+	for _, count := range []int{1_000, 10_000} {
+		b.Run(fmt.Sprintf("chunks=%d", count), func(b *testing.B) {
+			// Build chunks once outside the measured loop.
+			// Content is derived deterministically from the chunk index so
+			// that every run produces the same set of chunk addresses.
+			chunks := make([]swarm.Chunk, count)
+			content := make([]byte, swarm.ChunkSize)
+			for i := range chunks {
+				for j := range content {
+					content[j] = byte(i + j)
+				}
+				ch, err := cac.New(content)
+				if err != nil {
+					b.Fatal(err)
+				}
+				chunks[i] = ch.WithStamp(stamp)
+			}
+
+			// Report throughput so the output shows MB/s as well as ns/op.
+			b.SetBytes(int64(count) * swarm.ChunkSize)
+			b.ResetTimer()
+
+			for range b.N {
+				if _, err := storer.MakeSampleUsingChunks(chunks, anchor); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
