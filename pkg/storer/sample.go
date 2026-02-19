@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"hash"
 	"math/big"
 	"runtime"
 	"sort"
@@ -121,16 +120,12 @@ func (db *DB) ReserveSample(
 	// Phase 2: Get the chunk data and calculate transformed hash
 	sampleItemChan := make(chan SampleItem, 3*workers)
 
-	prefixHasherFactory := func() hash.Hash {
-		return swarm.NewPrefixHasher(anchor)
-	}
-
 	db.logger.Debug("reserve sampler workers", "count", workers)
 
 	for range workers {
 		g.Go(func() error {
 			wstat := SampleStats{}
-			hasher := bmt.NewHasher(prefixHasherFactory)
+			hasher := bmt.NewPrefixHasher(anchor)
 			defer func() {
 				addStats(wstat)
 			}()
@@ -407,12 +402,9 @@ func RandSample(t *testing.T, anchor []byte) Sample {
 
 // MakeSampleUsingChunks returns Sample constructed using supplied chunks.
 func MakeSampleUsingChunks(chunks []swarm.Chunk, anchor []byte) (Sample, error) {
-	prefixHasherFactory := func() hash.Hash {
-		return swarm.NewPrefixHasher(anchor)
-	}
 	items := make([]SampleItem, len(chunks))
 	for i, ch := range chunks {
-		tr, err := transformedAddress(bmt.NewHasher(prefixHasherFactory), ch, getChunkType(ch))
+		tr, err := transformedAddress(bmt.NewPrefixHasher(anchor), ch, getChunkType(ch))
 		if err != nil {
 			return Sample{}, err
 		}

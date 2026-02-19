@@ -8,23 +8,28 @@ import (
 	"hash"
 
 	"github.com/ethersphere/bee/v2/pkg/keccak"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
-
-// BaseHasherFunc is a hash.Hash constructor function used for the base hash of the BMT.
-// implemented by Keccak256 SHA3 sha3.NewLegacyKeccak256
-type BaseHasherFunc func() hash.Hash
 
 // configuration
 type Conf struct {
-	segmentSize  int            // size of leaf segments, stipulated to be = hash size
-	segmentCount int            // the number of segments on the base level of the BMT
-	capacity     int            // pool capacity, controls concurrency
-	depth        int            // depth of the bmt trees = int(log2(segmentCount))+1
-	maxSize      int            // the total length of the data (count * size)
-	zerohashes   [][]byte       // lookup table for predictable padding subtrees for all levels
-	hasher       BaseHasherFunc // base hasher to use for the BMT levels
-	useSIMD      bool           // whether SIMD keccak is available
-	batchWidth   int            // 4 (AVX2), 8 (AVX-512), or 0
+	segmentSize  int      // size of leaf segments, stipulated to be = hash size
+	segmentCount int      // the number of segments on the base level of the BMT
+	capacity     int      // pool capacity, controls concurrency
+	depth        int      // depth of the bmt trees = int(log2(segmentCount))+1
+	maxSize      int      // the total length of the data (count * size)
+	zerohashes   [][]byte // lookup table for predictable padding subtrees for all levels
+	prefix       []byte   // optional prefix prepended to every hash operation
+	useSIMD      bool     // whether SIMD keccak is available
+	batchWidth   int      // 4 (AVX2), 8 (AVX-512), or 0
+}
+
+// baseHasher returns a new base hasher instance, optionally with prefix.
+func (c *Conf) baseHasher() hash.Hash {
+	if len(c.prefix) > 0 {
+		return swarm.NewPrefixHasher(c.prefix)
+	}
+	return swarm.NewHasher()
 }
 
 // Pool provides a pool of trees used as resources by the BMT Hasher.
@@ -35,35 +40,48 @@ type Pool struct {
 	*Conf            // configuration
 }
 
-func NewConf(hasher BaseHasherFunc, segmentCount, capacity int) *Conf {
+func NewConf(segmentCount, capacity int) *Conf {
+	return newConf(nil, segmentCount, capacity)
+}
+
+func NewConfWithPrefix(prefix []byte, segmentCount, capacity int) *Conf {
+	return newConf(prefix, segmentCount, capacity)
+}
+
+func newConf(prefix []byte, segmentCount, capacity int) *Conf {
 	count, depth := sizeToParams(segmentCount)
-	segmentSize := hasher().Size()
+	segmentSize := swarm.NewHasher().Size()
+
+	c := &Conf{
+		segmentSize:  segmentSize,
+		segmentCount: segmentCount,
+		capacity:     capacity,
+		maxSize:      count * segmentSize,
+		depth:        depth,
+		prefix:       prefix,
+		useSIMD:      keccak.HasSIMD(),
+	}
+
+	bw := keccak.BatchWidth()
+	if bw == 0 {
+		bw = 4 // use 4-wide batching with scalar fallback
+	}
+	c.batchWidth = bw
+
 	zerohashes := make([][]byte, depth+1)
 	zeros := make([]byte, segmentSize)
 	zerohashes[0] = zeros
 	var err error
 	// initialises the zerohashes lookup table
 	for i := 1; i < depth+1; i++ {
-		if zeros, err = doHash(hasher(), zeros, zeros); err != nil {
+		if zeros, err = doHash(c.baseHasher(), zeros, zeros); err != nil {
 			panic(err.Error())
 		}
 		zerohashes[i] = zeros
 	}
-	bw := keccak.BatchWidth()
-	if bw == 0 {
-		bw = 4 // use 4-wide batching with scalar fallback
-	}
-	return &Conf{
-		hasher:       hasher,
-		segmentSize:  segmentSize,
-		segmentCount: segmentCount,
-		capacity:     capacity,
-		maxSize:      count * segmentSize,
-		depth:        depth,
-		zerohashes:   zerohashes,
-		useSIMD:      keccak.HasSIMD(),
-		batchWidth:   bw,
-	}
+	c.zerohashes = zerohashes
+
+	return c
 }
 
 // NewPool creates a tree pool with hasher, segment size, segment count and capacity
@@ -74,7 +92,7 @@ func NewPool(c *Conf) *Pool {
 		c:    make(chan *tree, c.capacity),
 	}
 	for i := 0; i < c.capacity; i++ {
-		p.c <- newTree(p.maxSize, p.depth, p.hasher)
+		p.c <- newTree(p.maxSize, p.depth, c.baseHasher, len(c.prefix))
 	}
 	return p
 }
@@ -100,10 +118,11 @@ func (p *Pool) Put(h *Hasher) {
 // Hasher uses a Pool to obtain a tree for each chunk hash
 // the tree is 'locked' while not in the pool.
 type tree struct {
-	leaves []*node   // leaf nodes of the tree, other nodes accessible via parent links
-	levels [][]*node // levels[0]=leaves, levels[1]=parents of leaves, ..., levels[depth-1]=root
-	buffer []byte
-	concat [8][]byte // reusable concat buffers for SIMD node hashing
+	leaves     []*node   // leaf nodes of the tree, other nodes accessible via parent links
+	levels     [][]*node // levels[0]=leaves, levels[1]=parents of leaves, ..., levels[depth-1]=root
+	buffer     []byte
+	concat     [8][]byte // reusable concat buffers for SIMD node hashing
+	leafConcat [8][]byte // reusable concat buffers for SIMD leaf hashing
 }
 
 // node is a reusable segment hasher representing a node in a BMT.
@@ -126,7 +145,7 @@ func newNode(index int, parent *node, hasher hash.Hash) *node {
 }
 
 // newTree initialises a tree by building up the nodes of a BMT
-func newTree(maxsize, depth int, hashfunc func() hash.Hash) *tree {
+func newTree(maxsize, depth int, hashfunc func() hash.Hash, prefixLen int) *tree {
 	n := newNode(0, nil, hashfunc())
 	prevlevel := []*node{n}
 	// collect levels top-down during construction, then reverse
@@ -148,18 +167,24 @@ func newTree(maxsize, depth int, hashfunc func() hash.Hash) *tree {
 	for i, j := 0, len(allLevels)-1; i < j; i, j = i+1, j-1 {
 		allLevels[i], allLevels[j] = allLevels[j], allLevels[i]
 	}
-	// pre-allocate concat buffers for SIMD node hashing
+	// pre-allocate concat buffers for SIMD hashing (with space for optional prefix)
 	segSize := hashfunc().Size()
+	bufSize := prefixLen + 2*segSize
 	var concat [8][]byte
 	for i := range concat {
-		concat[i] = make([]byte, 2*segSize)
+		concat[i] = make([]byte, bufSize)
+	}
+	var leafConcat [8][]byte
+	for i := range leafConcat {
+		leafConcat[i] = make([]byte, prefixLen+2*segSize)
 	}
 	// the datanode level is the nodes on the last level
 	return &tree{
-		leaves: prevlevel,
-		levels: allLevels,
-		buffer: make([]byte, maxsize),
-		concat: concat,
+		leaves:     prevlevel,
+		levels:     allLevels,
+		buffer:     make([]byte, maxsize),
+		concat:     concat,
+		leafConcat: leafConcat,
 	}
 }
 

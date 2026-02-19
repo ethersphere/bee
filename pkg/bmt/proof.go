@@ -71,7 +71,7 @@ func (p Prover) Verify(i int, proof Proof) (root []byte, err error) {
 	}
 	i = i / 2
 	n := p.bmt.leaves[i]
-	hasher := p.hasher()
+	hasher := p.baseHasher()
 	isLeft := n.isLeft
 	root, err = doHash(hasher, section)
 	if err != nil {

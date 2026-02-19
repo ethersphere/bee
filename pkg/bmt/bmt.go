@@ -37,13 +37,21 @@ type Hasher struct {
 }
 
 // NewHasher gives back an instance of a Hasher struct
-func NewHasher(hasherFact func() hash.Hash) *Hasher {
-	conf := NewConf(hasherFact, swarm.BmtBranches, 32)
+func NewHasher() *Hasher {
+	return newHasherWithConf(NewConf(swarm.BmtBranches, 32))
+}
 
+// NewPrefixHasher gives back an instance of a Hasher struct with the given prefix
+// prepended to every hash operation.
+func NewPrefixHasher(prefix []byte) *Hasher {
+	return newHasherWithConf(NewConfWithPrefix(prefix, swarm.BmtBranches, 32))
+}
+
+func newHasherWithConf(conf *Conf) *Hasher {
 	return &Hasher{
 		Conf: conf,
 		span: make([]byte, SpanSize),
-		bmt:  newTree(conf.maxSize, conf.depth, conf.hasher),
+		bmt:  newTree(conf.maxSize, conf.depth, conf.baseHasher, len(conf.prefix)),
 	}
 }
 
@@ -90,7 +98,7 @@ func (h *Hasher) BlockSize() int {
 // using Hash presupposes sequential synchronous writes (io.Writer interface).
 func (h *Hasher) Hash(b []byte) ([]byte, error) {
 	if h.size == 0 {
-		return doHash(h.hasher(), h.span, h.zerohashes[h.depth])
+		return doHash(h.baseHasher(), h.span, h.zerohashes[h.depth])
 	}
 	// zero-fill remainder so all sections have deterministic input
 	for i := h.size; i < h.maxSize; i++ {
@@ -104,13 +112,13 @@ func (h *Hasher) Hash(b []byte) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		return doHash(h.hasher(), h.span, rootHash)
+		return doHash(h.baseHasher(), h.span, rootHash)
 	}
 	rootHash, err := h.hashSIMD()
 	if err != nil {
 		return nil, err
 	}
-	return doHash(h.hasher(), h.span, rootHash)
+	return doHash(h.baseHasher(), h.span, rootHash)
 }
 
 // Sum returns the BMT root hash of the buffer, unsafe version of Hash

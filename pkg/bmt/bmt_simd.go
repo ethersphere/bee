@@ -15,14 +15,15 @@ import (
 func (h *Hasher) hashSIMD() ([]byte, error) {
 	secsize := 2 * h.segmentSize
 	bw := h.batchWidth
+	prefixLen := len(h.prefix)
 
 	// Leaf level: hash each section and write results to parent nodes.
 	// Single-threaded: SIMD batching (4 or 8 hashes per call) replaces goroutine parallelism.
-	h.hashLeavesBatch(0, len(h.bmt.levels[0]), bw, secsize)
+	h.hashLeavesBatch(0, len(h.bmt.levels[0]), bw, secsize, prefixLen)
 
 	// Internal levels: process each level single-threaded (diminishing work).
 	for lvl := 1; lvl < len(h.bmt.levels)-1; lvl++ {
-		h.hashNodesBatch(h.bmt.levels[lvl], bw)
+		h.hashNodesBatch(h.bmt.levels[lvl], bw, prefixLen)
 	}
 
 	// Root level: hash using scalar hasher.
@@ -31,7 +32,7 @@ func (h *Hasher) hashSIMD() ([]byte, error) {
 }
 
 // hashLeavesBatch hashes leaf sections in the range [start, end) using SIMD batches.
-func (h *Hasher) hashLeavesBatch(start, end, bw, secsize int) {
+func (h *Hasher) hashLeavesBatch(start, end, bw, secsize, prefixLen int) {
 	buf := h.bmt.buffer
 
 	if bw == 8 {
@@ -43,7 +44,13 @@ func (h *Hasher) hashLeavesBatch(start, end, bw, secsize int) {
 			}
 			for j := 0; j < batch; j++ {
 				offset := (i + j) * secsize
-				inputs[j] = buf[offset : offset+secsize]
+				if prefixLen > 0 {
+					copy(h.bmt.leafConcat[j][:prefixLen], h.prefix)
+					copy(h.bmt.leafConcat[j][prefixLen:], buf[offset:offset+secsize])
+					inputs[j] = h.bmt.leafConcat[j][:prefixLen+secsize]
+				} else {
+					inputs[j] = buf[offset : offset+secsize]
+				}
 			}
 			for j := batch; j < 8; j++ {
 				inputs[j] = nil
@@ -67,7 +74,13 @@ func (h *Hasher) hashLeavesBatch(start, end, bw, secsize int) {
 			}
 			for j := 0; j < batch; j++ {
 				offset := (i + j) * secsize
-				inputs[j] = buf[offset : offset+secsize]
+				if prefixLen > 0 {
+					copy(h.bmt.leafConcat[j][:prefixLen], h.prefix)
+					copy(h.bmt.leafConcat[j][prefixLen:], buf[offset:offset+secsize])
+					inputs[j] = h.bmt.leafConcat[j][:prefixLen+secsize]
+				} else {
+					inputs[j] = buf[offset : offset+secsize]
+				}
 			}
 			for j := batch; j < 4; j++ {
 				inputs[j] = nil
@@ -87,7 +100,7 @@ func (h *Hasher) hashLeavesBatch(start, end, bw, secsize int) {
 
 // hashNodesBatch hashes a level of internal nodes using SIMD batches.
 // Each node's left||right (64 bytes) is hashed to produce the input for its parent.
-func (h *Hasher) hashNodesBatch(nodes []*node, bw int) {
+func (h *Hasher) hashNodesBatch(nodes []*node, bw, prefixLen int) {
 	count := len(nodes)
 	segSize := h.segmentSize
 	concat := &h.bmt.concat
@@ -101,9 +114,12 @@ func (h *Hasher) hashNodesBatch(nodes []*node, bw int) {
 			}
 			for j := 0; j < batch; j++ {
 				n := nodes[i+j]
-				copy(concat[j][:segSize], n.left)
-				copy(concat[j][segSize:], n.right)
-				inputs[j] = concat[j]
+				copy(concat[j][prefixLen:prefixLen+segSize], n.left)
+				copy(concat[j][prefixLen+segSize:], n.right)
+				if prefixLen > 0 {
+					copy(concat[j][:prefixLen], h.prefix)
+				}
+				inputs[j] = concat[j][:prefixLen+2*segSize]
 			}
 			for j := batch; j < 8; j++ {
 				inputs[j] = nil
@@ -127,9 +143,12 @@ func (h *Hasher) hashNodesBatch(nodes []*node, bw int) {
 			}
 			for j := 0; j < batch; j++ {
 				n := nodes[i+j]
-				copy(concat[j][:segSize], n.left)
-				copy(concat[j][segSize:], n.right)
-				inputs[j] = concat[j]
+				copy(concat[j][prefixLen:prefixLen+segSize], n.left)
+				copy(concat[j][prefixLen+segSize:], n.right)
+				if prefixLen > 0 {
+					copy(concat[j][:prefixLen], h.prefix)
+				}
+				inputs[j] = concat[j][:prefixLen+2*segSize]
 			}
 			for j := batch; j < 4; j++ {
 				inputs[j] = nil

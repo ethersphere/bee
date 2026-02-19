@@ -46,7 +46,7 @@ func TestProofCorrectness(t *testing.T) {
 		}
 	}
 
-	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, 128, 128))
+	pool := bmt.NewPool(bmt.NewConf(128, 128))
 	hh := pool.Get()
 	t.Cleanup(func() {
 		pool.Put(hh)
@@ -191,7 +191,7 @@ func TestProof(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, 128, 128))
+	pool := bmt.NewPool(bmt.NewConf(128, 128))
 	hh := pool.Get()
 	t.Cleanup(func() {
 		pool.Put(hh)

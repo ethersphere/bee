@@ -9,7 +9,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"hash"
 	"math/big"
 	"os"
 	"sync"
@@ -39,10 +38,8 @@ func TestSocMine(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// the transformed address hasher factory function
-		prefixhasher := func() hash.Hash { return swarm.NewPrefixHasher(prefix) }
 		// Create a pool for efficient hasher reuse
-		trHasherPool := bmt.NewPool(bmt.NewConf(prefixhasher, swarm.BmtBranches, 8))
+		trHasherPool := bmt.NewPool(bmt.NewConfWithPrefix(prefix, swarm.BmtBranches, 8))
 		// the bignum cast of the maximum sample value (upper bound on transformed addresses as a 256-bit article)
 		// this constant is for a minimum reserve size of 2 million chunks with sample size of 16
 		// = 1.284401 * 10^71 = 1284401 + 66 0-s

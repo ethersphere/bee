@@ -67,7 +67,7 @@ func TestHasherEmptyData(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, count, 1))
+			pool := bmt.NewPool(bmt.NewConf(count, 1))
 			h := pool.Get()
 			resHash, err := syncHash(h, nil)
 			if err != nil {
@@ -92,7 +92,7 @@ func TestSyncHasherCorrectness(t *testing.T) {
 			maxValue := count * hashSize
 			var incr int
 			capacity := 1
-			pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, count, capacity))
+			pool := bmt.NewPool(bmt.NewConf(count, capacity))
 			for n := 0; n <= maxValue; n += incr {
 				h := pool.Get()
 				incr = 1 + rand.Intn(5)
@@ -125,7 +125,7 @@ func TestHasherReuse(t *testing.T) {
 func testHasherReuse(t *testing.T, poolsize int) {
 	t.Helper()
 
-	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, testSegmentCount, poolsize))
+	pool := bmt.NewPool(bmt.NewConf(testSegmentCount, poolsize))
 	h := pool.Get()
 	defer pool.Put(h)
 
@@ -145,7 +145,7 @@ func TestBMTConcurrentUse(t *testing.T) {
 	t.Parallel()
 
 	testData := testutil.RandBytesWithSeed(t, 4096, seed)
-	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, testSegmentCount, testPoolSize))
+	pool := bmt.NewPool(bmt.NewConf(testSegmentCount, testPoolSize))
 	cycles := 100
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -178,7 +178,7 @@ func TestBMTWriterBuffers(t *testing.T) {
 		t.Run(fmt.Sprintf("%d_segments", count), func(t *testing.T) {
 			t.Parallel()
 
-			pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, count, testPoolSize))
+			pool := bmt.NewPool(bmt.NewConf(count, testPoolSize))
 			h := pool.Get()
 			defer pool.Put(h)
 
@@ -275,7 +275,7 @@ func testHasherCorrectness(h *bmt.Hasher, data []byte, n, count int) (err error)
 func TestUseSyncAsOrdinaryHasher(t *testing.T) {
 	t.Parallel()
 
-	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, testSegmentCount, testPoolSize))
+	pool := bmt.NewPool(bmt.NewConf(testSegmentCount, testPoolSize))
 	h := pool.Get()
 	defer pool.Put(h)
 	data := []byte("moodbytesmoodbytesmoodbytesmoodbytes")
