@@ -5,6 +5,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"math/big"
 	"net/http"
@@ -77,6 +78,21 @@ func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) 
 		jsonhttp.InternalServerError(w, "cannot stake")
 		return
 	}
+
+	// if the deposit is successful, we should update the height of the node in the staking contract
+	// this is done to make sure that the node is participating in the redistribution game with the correct height
+	// if the node has started with insufficient stake
+	go func() {
+		tx, updated, err := s.stakingContract.UpdateHeight(context.Background())
+		if err != nil {
+			logger.Error(err, "update height failed")
+			return
+		}
+		if updated {
+			logger.Warning("reserve capacity doubling updated after stake deposit. Node will be FROZEN for ~2 rounds.", "transaction", tx)
+		}
+	}()
+
 	jsonhttp.OK(w, stakeTransactionReponse{
 		TxHash: txHash.String(),
 	})

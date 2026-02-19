@@ -1105,19 +1105,21 @@ func NewBee(
 				logger.Info("overlay address changed in staking contract", "transaction", tx)
 			}
 
-			// make sure that the staking contract has the up to date height
-			tx, updated, err := stakingContract.UpdateHeight(ctx)
-			if err != nil {
-				return nil, fmt.Errorf("update height in staking contract: %w", err)
-			}
-			if updated {
-				logger.Info("updated new reserve capacity doubling height in the staking contract", "transaction", tx, "new_height", o.ReserveCapacityDoubling)
-			}
-
 			// Check if the staked amount is sufficient to cover the additional neighborhoods.
 			// The staked amount must be at least 2^h * MinimumStake.
-			if o.ReserveCapacityDoubling > 0 && stake.Cmp(big.NewInt(0).Mul(big.NewInt(1<<o.ReserveCapacityDoubling), staking.MinimumStakeAmount)) < 0 {
-				logger.Warning("staked amount does not sufficiently cover the additional reserve capacity. Stake should be at least 2^h * 10 BZZ, where h is the number extra doublings.")
+			minStake := big.NewInt(0).Mul(big.NewInt(1<<o.ReserveCapacityDoubling), staking.MinimumStakeAmount)
+			if o.ReserveCapacityDoubling > 0 && stake.Cmp(minStake) < 0 {
+				logger.Warning("staked amount does not sufficiently cover the additional reserve capacity. On-chain height update will be skipped. Node will start, but storage incentives may not function for this capacity.", "missing_stake", new(big.Int).Sub(minStake, stake))
+
+			} else {
+				// make sure that the staking contract has the up to date height
+				tx, updated, err := stakingContract.UpdateHeight(ctx)
+				if err != nil {
+					return nil, fmt.Errorf("update height in staking contract: %w", err)
+				}
+				if updated {
+					logger.Info("updated new reserve capacity doubling height in the staking contract", "transaction", tx, "new_height", o.ReserveCapacityDoubling)
+				}
 			}
 		}
 	}
