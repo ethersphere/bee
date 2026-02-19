@@ -9,4 +9,5 @@ TEXT ·keccak256x8(SB), $16384-16
     MOVQ inputs+0(FP), DI
     MOVQ outputs+8(FP), SI
     CALL go_keccak256x8(SB)
+		VZEROUPPER
     RET
