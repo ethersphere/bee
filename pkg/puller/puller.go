@@ -33,6 +33,39 @@ const loggerName = "puller"
 
 var errCursorsLength = errors.New("cursors length mismatch")
 
+// countErrors counts the total number of errors in a joined error.
+// This prevents massive log lines when many errors are joined together.
+func countErrors(err error) int {
+	if err == nil {
+		return 0
+	}
+
+	count := 0
+	var walkErrors func(error)
+	walkErrors = func(e error) {
+		if e == nil {
+			return
+		}
+
+		// Check if this is a joined error (has multiple wrapped errors)
+		type unwrapper interface {
+			Unwrap() []error
+		}
+		if u, ok := e.(unwrapper); ok {
+			for _, wrapped := range u.Unwrap() {
+				walkErrors(wrapped)
+			}
+			return
+		}
+
+		// This is a leaf error
+		count++
+	}
+
+	walkErrors(err)
+	return count
+}
+
 const (
 	DefaultHistRateWindow = time.Minute * 15
 
@@ -348,7 +381,8 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 					p.logger.Debug("syncWorker interval failed, quitting", "error", err, "peer_address", address, "bin", bin, "cursor", cursor, "start", start, "topmost", top)
 					return
 				}
-				p.logger.Debug("syncWorker interval failed", "error", err, "peer_address", address, "bin", bin, "cursor", cursor, "start", start, "topmost", top)
+				errCount := countErrors(err)
+				p.logger.Debug("syncWorker interval failed", "error_count", errCount, "example_error", errors.Unwrap(err), "peer_address", address, "bin", bin, "cursor", cursor, "start", start, "topmost", top)
 			}
 
 			_ = p.limiter.WaitN(ctx, count)
