@@ -26,7 +26,7 @@ func TestProofCorrectness(t *testing.T) {
 	verifySegments := func(t *testing.T, exp []string, found [][]byte) {
 		t.Helper()
 
-		var expSegments [][]byte
+		expSegments := make([][]byte, 0, len(exp))
 		for _, v := range exp {
 			decoded, err := hex.DecodeString(v)
 			if err != nil {
@@ -154,7 +154,7 @@ func TestProofCorrectness(t *testing.T) {
 			"745bae095b6ff5416b4a351a167f731db6d6f5924f30cd88d48e74261795d27b",
 		}
 
-		var segments [][]byte
+		segments := make([][]byte, 0, len(segmentStrings))
 		for _, v := range segmentStrings {
 			decoded, err := hex.DecodeString(v)
 			if err != nil {

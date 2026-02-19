@@ -37,7 +37,7 @@ func TestChunkUploadStream(t *testing.T) {
 	)
 
 	t.Run("upload and verify", func(t *testing.T) {
-		chsToGet := []swarm.Chunk{}
+		chsToGet := make([]swarm.Chunk, 0, 5)
 		for range 5 {
 			ch := testingc.GenerateTestRandomChunk()
 

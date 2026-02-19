@@ -78,10 +78,10 @@ jobs:
       with:
         configFile: commitlint.config.js
     - name: GolangCI-Lint
-      uses: golangci/golangci-lint-action@v8
+      uses: golangci/golangci-lint-action@v9
       with:
         skip-cache: false
-        version: v2.5.0
+        version: v2.10.1
     - name: Whitespace check
       run: make check-whitespace
     - name: go mod tidy check

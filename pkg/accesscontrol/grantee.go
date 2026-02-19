@@ -149,6 +149,7 @@ func serialize(publicKeys []*ecdsa.PublicKey) ([]byte, error) {
 		// TODO: check if this is the correct way to serialize the public key
 		// Is this the only curve we support?
 		// Should we have switch case for different curves?
+		//nolint:staticcheck // SA1019: ecdsa fields are deprecated, but secp256k1 is not supported by crypto/ecdh
 		pubBytes := crypto.S256().Marshal(key.X, key.Y)
 		b = append(b, pubBytes...)
 	}
