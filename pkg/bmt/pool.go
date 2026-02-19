@@ -92,7 +92,7 @@ func NewPool(c *Conf) *Pool {
 		c:    make(chan *tree, c.capacity),
 	}
 	for i := 0; i < c.capacity; i++ {
-		p.c <- newTree(p.maxSize, p.depth, c.baseHasher, len(c.prefix))
+		p.c <- newTree(p.maxSize, p.depth, c.baseHasher, c.prefix)
 	}
 	return p
 }
@@ -145,7 +145,8 @@ func newNode(index int, parent *node, hasher hash.Hash) *node {
 }
 
 // newTree initialises a tree by building up the nodes of a BMT
-func newTree(maxsize, depth int, hashfunc func() hash.Hash, prefixLen int) *tree {
+func newTree(maxsize, depth int, hashfunc func() hash.Hash, prefix []byte) *tree {
+	prefixLen := len(prefix)
 	n := newNode(0, nil, hashfunc())
 	prevlevel := []*node{n}
 	// collect levels top-down during construction, then reverse
@@ -173,10 +174,16 @@ func newTree(maxsize, depth int, hashfunc func() hash.Hash, prefixLen int) *tree
 	var concat [8][]byte
 	for i := range concat {
 		concat[i] = make([]byte, bufSize)
+		if prefixLen > 0 {
+			copy(concat[i][:prefixLen], prefix)
+		}
 	}
 	var leafConcat [8][]byte
 	for i := range leafConcat {
 		leafConcat[i] = make([]byte, prefixLen+2*segSize)
+		if prefixLen > 0 {
+			copy(leafConcat[i][:prefixLen], prefix)
+		}
 	}
 	// the datanode level is the nodes on the last level
 	return &tree{

@@ -45,7 +45,6 @@ func (h *Hasher) hashLeavesBatch(start, end, bw, secsize, prefixLen int) {
 			for j := 0; j < batch; j++ {
 				offset := (i + j) * secsize
 				if prefixLen > 0 {
-					copy(h.bmt.leafConcat[j][:prefixLen], h.prefix)
 					copy(h.bmt.leafConcat[j][prefixLen:], buf[offset:offset+secsize])
 					inputs[j] = h.bmt.leafConcat[j][:prefixLen+secsize]
 				} else {
@@ -75,7 +74,6 @@ func (h *Hasher) hashLeavesBatch(start, end, bw, secsize, prefixLen int) {
 			for j := 0; j < batch; j++ {
 				offset := (i + j) * secsize
 				if prefixLen > 0 {
-					copy(h.bmt.leafConcat[j][:prefixLen], h.prefix)
 					copy(h.bmt.leafConcat[j][prefixLen:], buf[offset:offset+secsize])
 					inputs[j] = h.bmt.leafConcat[j][:prefixLen+secsize]
 				} else {
@@ -116,9 +114,6 @@ func (h *Hasher) hashNodesBatch(nodes []*node, bw, prefixLen int) {
 				n := nodes[i+j]
 				copy(concat[j][prefixLen:prefixLen+segSize], n.left)
 				copy(concat[j][prefixLen+segSize:], n.right)
-				if prefixLen > 0 {
-					copy(concat[j][:prefixLen], h.prefix)
-				}
 				inputs[j] = concat[j][:prefixLen+2*segSize]
 			}
 			for j := batch; j < 8; j++ {
@@ -145,9 +140,6 @@ func (h *Hasher) hashNodesBatch(nodes []*node, bw, prefixLen int) {
 				n := nodes[i+j]
 				copy(concat[j][prefixLen:prefixLen+segSize], n.left)
 				copy(concat[j][prefixLen+segSize:], n.right)
-				if prefixLen > 0 {
-					copy(concat[j][:prefixLen], h.prefix)
-				}
 				inputs[j] = concat[j][:prefixLen+2*segSize]
 			}
 			for j := batch; j < 4; j++ {

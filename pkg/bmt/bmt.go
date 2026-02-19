@@ -51,7 +51,7 @@ func newHasherWithConf(conf *Conf) *Hasher {
 	return &Hasher{
 		Conf: conf,
 		span: make([]byte, SpanSize),
-		bmt:  newTree(conf.maxSize, conf.depth, conf.baseHasher, len(conf.prefix)),
+		bmt:  newTree(conf.maxSize, conf.depth, conf.baseHasher, conf.prefix),
 	}
 }
 
