@@ -584,7 +584,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	peerID := stream.Conn().RemotePeer()
 	handshakeStream := newStream(stream, s.metrics)
 
-	peerMultiaddrs, err := s.peerMultiaddrs(s.ctx, stream.Conn().RemoteMultiaddr(), peerID)
+	peerAddrs, err := s.peerMultiaddrs(s.ctx, peerID)
 	if err != nil {
 		s.logger.Debug("stream handler: handshake: build remote multiaddrs", "peer_id", peerID, "error", err)
 		s.logger.Error(nil, "stream handler: handshake: build remote multiaddrs", "peer_id", peerID)
@@ -593,12 +593,28 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		return
 	}
 
+	// For the handshake we always need an observed address (ObservedUnderlay).
+	// If the peerstore had no addresses, fall back to RemoteMultiaddr for the
+	// handshake only. This typically means the peer is behind NAT and its
+	// address is not reachable from the outside.
+	observedAddrs := peerAddrs
+	if len(observedAddrs) == 0 {
+		observedAddrs, err = buildFullMAs([]ma.Multiaddr{stream.Conn().RemoteMultiaddr()}, peerID)
+		if err != nil {
+			s.logger.Debug("stream handler: handshake: build remote multiaddrs fallback", "peer_id", peerID, "error", err)
+			s.logger.Error(nil, "stream handler: handshake: build remote multiaddrs fallback", "peer_id", peerID)
+			_ = handshakeStream.Reset()
+			_ = s.host.Network().ClosePeer(peerID)
+			return
+		}
+	}
+
 	bee260Compat := s.bee260BackwardCompatibility(peerID)
 
 	i, err := s.handshakeService.Handle(
 		s.ctx,
 		handshakeStream,
-		peerMultiaddrs,
+		observedAddrs,
 		handshake.WithBee260Compatibility(bee260Compat),
 	)
 	if err != nil {
@@ -644,7 +660,8 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		return
 	}
 
-	if i.FullNode {
+	// Only persist in addressbook when we have real peerstore addresses.
+	if i.FullNode && len(peerAddrs) > 0 {
 		err = s.addressbook.Put(i.BzzAddress.Overlay, *i.BzzAddress)
 		if err != nil {
 			s.logger.Debug("stream handler: addressbook put error", "peer_id", peerID, "error", err)
@@ -727,7 +744,9 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		return
 	}
 
-	s.notifyReacherConnected(overlay, peerMultiaddrs)
+	if len(peerAddrs) > 0 {
+		s.notifyReacherConnected(overlay, peerAddrs)
+	}
 
 	peerUserAgent := appendSpace(s.peerUserAgent(s.ctx, peerID))
 	s.networkStatus.Store(int32(p2p.NetworkStatusAvailable))
@@ -1029,11 +1048,21 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 
 	handshakeStream := newStream(stream, s.metrics)
 
-	peerMultiaddrs, err := s.peerMultiaddrs(ctx, stream.Conn().RemoteMultiaddr(), peerID)
+	peerAddrs, err := s.peerMultiaddrs(ctx, peerID)
 	if err != nil {
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(peerID)
 		return nil, fmt.Errorf("build peer multiaddrs: %w", err)
+	}
+
+	observedAddrs := peerAddrs
+	if len(observedAddrs) == 0 {
+		observedAddrs, err = buildFullMAs([]ma.Multiaddr{stream.Conn().RemoteMultiaddr()}, peerID)
+		if err != nil {
+			_ = handshakeStream.Reset()
+			_ = s.host.Network().ClosePeer(peerID)
+			return nil, fmt.Errorf("build peer multiaddrs fallback: %w", err)
+		}
 	}
 
 	bee260Compat := s.bee260BackwardCompatibility(peerID)
@@ -1041,7 +1070,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	i, err := s.handshakeService.Handshake(
 		s.ctx,
 		handshakeStream,
-		peerMultiaddrs,
+		observedAddrs,
 		handshake.WithBee260Compatibility(bee260Compat),
 	)
 	if err != nil {
@@ -1120,7 +1149,9 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 
 	s.metrics.CreatedConnectionCount.Inc()
 
-	s.notifyReacherConnected(overlay, peerMultiaddrs)
+	if len(peerAddrs) > 0 {
+		s.notifyReacherConnected(overlay, peerAddrs)
+	}
 
 	peerUA := appendSpace(s.peerUserAgent(ctx, peerID))
 	loggerV1.Debug("successfully connected to peer (outbound)", "addresses", i.BzzAddress.ShortString(), "light", i.LightString(), "user_agent", peerUA)
@@ -1429,17 +1460,12 @@ func (s *Service) determineCurrentNetworkStatus(err error) error {
 	return err
 }
 
-// peerMultiaddrs builds full multiaddresses for a peer given information from
-// the libp2p host peerstore. If the peerstore doesn't have addresses yet,
-// it falls back to using the remote address from the active connection.
-func (s *Service) peerMultiaddrs(ctx context.Context, remoteAddr ma.Multiaddr, peerID libp2ppeer.ID) ([]ma.Multiaddr, error) {
+// peerMultiaddrs builds full multiaddresses for a peer using the peerstore.
+func (s *Service) peerMultiaddrs(ctx context.Context, peerID libp2ppeer.ID) ([]ma.Multiaddr, error) {
 	waitPeersCtx, cancel := context.WithTimeout(ctx, peerstoreWaitAddrsTimeout)
 	defer cancel()
 
 	mas := waitPeerAddrs(waitPeersCtx, s.host.Peerstore(), peerID)
-	if len(mas) == 0 && remoteAddr != nil {
-		mas = []ma.Multiaddr{remoteAddr}
-	}
 
 	return buildFullMAs(mas, peerID)
 }

@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -27,6 +28,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/statestore/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology/lightnode"
+	libp2pcrypto "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 
 	libp2pm "github.com/libp2p/go-libp2p"
@@ -34,6 +36,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	libp2ppeer "github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/peerstore"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	ma "github.com/multiformats/go-multiaddr"
@@ -1485,3 +1488,122 @@ var (
 	noopReachability = func(p2p.ReachabilityStatus) {}
 	noopReachable    = func(swarm.Address, p2p.ReachabilityStatus) {}
 )
+
+func TestPeerMultiaddrsNoFallback(t *testing.T) {
+	t.Parallel()
+
+	s1, _ := newService(t, 1, libp2pServiceOpts{})
+
+	privKey, _, err := libp2pcrypto.GenerateEd25519Key(rand.New(rand.NewSource(time.Now().UnixNano())))
+	if err != nil {
+		t.Fatal(err)
+	}
+	unknownPeerID, err := libp2ppeer.IDFromPrivateKey(privKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	addrs, err := s1.PeerMultiaddrs(ctx, unknownPeerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(addrs) != 0 {
+		t.Fatalf("expected no addresses for unknown peer, got %v", addrs)
+	}
+}
+
+type emptyAddrsPeerstore struct {
+	peerstore.Peerstore
+	targetPeerID libp2ppeer.ID
+	mu           sync.RWMutex
+}
+
+func (p *emptyAddrsPeerstore) setTarget(id libp2ppeer.ID) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.targetPeerID = id
+}
+
+func (p *emptyAddrsPeerstore) isTarget(id libp2ppeer.ID) bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.targetPeerID == id
+}
+
+func (p *emptyAddrsPeerstore) Addrs(id libp2ppeer.ID) []ma.Multiaddr {
+	if p.isTarget(id) {
+		return nil
+	}
+	return p.Peerstore.Addrs(id)
+}
+
+func (p *emptyAddrsPeerstore) AddrStream(ctx context.Context, id libp2ppeer.ID) <-chan ma.Multiaddr {
+	if p.isTarget(id) {
+		ch := make(chan ma.Multiaddr)
+		go func() {
+			<-ctx.Done()
+			close(ch)
+		}()
+		return ch
+	}
+	return p.Peerstore.AddrStream(ctx, id)
+}
+
+type emptyAddrsHost struct {
+	host.Host
+	ps *emptyAddrsPeerstore
+}
+
+func (h *emptyAddrsHost) Peerstore() peerstore.Peerstore {
+	return h.ps
+}
+
+func TestConnectEmptyPeerstoreSkipsAddressbookAndReacher(t *testing.T) {
+	t.Parallel()
+
+	ab1 := addressbook.New(mock.NewStateStore())
+
+	s1, _ := newService(t, 1, libp2pServiceOpts{
+		Addressbook: ab1,
+		libp2pOpts: libp2p.Options{
+			FullNode: true,
+		},
+	})
+
+	psWrapper := &emptyAddrsPeerstore{Peerstore: s1.Host().Peerstore()}
+
+	var reachableCalled atomic.Bool
+	notifier1 := mockNotifier(noopCf, noopDf, true)
+	notifier1.(*notifiee).reachable = func(_ swarm.Address, _ p2p.ReachabilityStatus) {
+		reachableCalled.Store(true)
+	}
+	s1.SetPickyNotifier(notifier1)
+
+	s2, overlay2 := newService(t, 1, libp2pServiceOpts{
+		libp2pOpts: libp2p.Options{
+			FullNode: true,
+		},
+	})
+
+	psWrapper.setTarget(s2.Host().ID())
+	s1.SetHost(&emptyAddrsHost{Host: s1.Host(), ps: psWrapper})
+
+	_, err := s2.Connect(context.Background(), serviceUnderlayAddress(t, s1))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expectPeersEventually(t, s1, overlay2)
+
+	_, err = ab1.Get(overlay2)
+	if err == nil {
+		t.Fatal("expected addressbook to have no entry for NAT peer, but found one")
+	}
+
+	if reachableCalled.Load() {
+		t.Fatal("expected reacher not to be notified for NAT peer")
+	}
+}
