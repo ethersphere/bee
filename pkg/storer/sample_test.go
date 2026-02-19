@@ -383,14 +383,65 @@ func assertSampleNoErrors(t *testing.T, sample storer.Sample) {
 	}
 }
 
-// BenchmarkSampleHashing measures the time taken by MakeSampleUsingChunks to
-// hash a fixed set of CAC chunks. Results:
+// Benchmark results:
 // goos: linux
 // goarch: amd64
 // pkg: github.com/ethersphere/bee/v2/pkg/storer
 // cpu: Intel(R) Core(TM) Ultra 7 165U
-// BenchmarkSampleHashing/chunks=1000-14         	      10	 129751940 ns/op	  31.57 MB/s	69386112 B/op	  814005 allocs/op
-// BenchmarkSampleHashing/chunks=10000-14        	      10	1396326665 ns/op	  29.33 MB/s	693843300 B/op	 8140007 allocs/op
+// BenchmarkCachePutter-14        	  473118	      2149 ns/op	    1184 B/op	      24 allocs/op
+// BenchmarkReservePutter-14      	   48109	     29760 ns/op	   12379 B/op	     141 allocs/op
+// BenchmarkReserveSample1k-14    	     100	  12392598 ns/op	 9364970 B/op	  161383 allocs/op
+// BenchmarkSampleHashing/chunks=1000-14         	       9	 127425952 ns/op	  32.14 MB/s	69386109 B/op	  814005 allocs/op
+// BenchmarkSampleHashing/chunks=10000-14        	       1	1241432669 ns/op	  32.99 MB/s	693843032 B/op	 8140005 allocs/op
+// PASS
+// ok  	github.com/ethersphere/bee/v2/pkg/storer	34.319s
+
+// BenchmarkReserveSample measures the end-to-end time of the ReserveSample
+// method, including DB iteration, chunk loading, stamp validation, and sample
+// assembly.
+func BenchmarkReserveSample1k(b *testing.B) {
+	const chunkCountPerPO = 100
+	const maxPO = 10
+
+	baseAddr := swarm.RandAddress(b)
+	opts := dbTestOps(baseAddr, 5000, nil, nil, time.Second)
+	opts.ValidStamp = func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil }
+
+	st, err := diskStorer(b, opts)()
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	timeVar := uint64(time.Now().UnixNano())
+
+	putter := st.ReservePutter()
+	for po := range maxPO {
+		for range chunkCountPerPO {
+			ch := chunk.GenerateValidRandomChunkAt(b, baseAddr, po).WithBatch(3, 2, false)
+			ch = ch.WithStamp(postagetesting.MustNewStampWithTimestamp(timeVar - 1))
+			if err := putter.Put(context.Background(), ch); err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+
+	var (
+		radius uint8 = 5
+		anchor       = swarm.RandAddressAt(b, baseAddr, int(radius)).Bytes()
+	)
+
+	b.ResetTimer()
+
+	for range b.N {
+		_, err := st.ReserveSample(context.TODO(), anchor, radius, timeVar, nil)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// BenchmarkSampleHashing measures the time taken by MakeSampleUsingChunks to
+// hash a fixed set of CAC chunks.
 func BenchmarkSampleHashing(b *testing.B) {
 	anchor := []byte("swarm-test-anchor-deterministic!")
 
