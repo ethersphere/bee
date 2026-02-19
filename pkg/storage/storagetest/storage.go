@@ -95,7 +95,7 @@ func (o *obj1) ID() string { return o.Id }
 func (obj1) Namespace() string { return "obj1" }
 
 func (o *obj1) Marshal() ([]byte, error) {
-	buf := make([]byte, 40)
+	buf := make([]byte, 40, 40+len(o.Buf))
 	copy(buf[:32], o.Id)
 	binary.LittleEndian.PutUint64(buf[32:], o.SomeInt)
 	buf = append(buf, o.Buf[:]...)

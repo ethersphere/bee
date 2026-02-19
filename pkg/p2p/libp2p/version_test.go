@@ -5,7 +5,6 @@
 package libp2p
 
 import (
-	"context"
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/crypto"
@@ -120,8 +119,7 @@ func TestBee260BackwardCompatibility(t *testing.T) {
 			t.Parallel()
 
 			// Create a service with minimal configuration
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			ctx := t.Context()
 
 			swarmKey, err := crypto.GenerateSecp256k1Key()
 			if err != nil {
@@ -167,8 +165,7 @@ func TestBee260BackwardCompatibility(t *testing.T) {
 func TestBee260Cache(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	swarmKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {

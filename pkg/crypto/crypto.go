@@ -65,6 +65,7 @@ func GenerateSecp256k1Key() (*ecdsa.PrivateKey, error) {
 
 // EncodeSecp256k1PrivateKey encodes raw ECDSA private key.
 func EncodeSecp256k1PrivateKey(k *ecdsa.PrivateKey) ([]byte, error) {
+	//nolint:staticcheck // SA1019: ecdsa fields are deprecated, but secp256k1 is not supported by crypto/ecdh
 	pvk, _ := btcec.PrivKeyFromBytes(k.D.Bytes())
 	return pvk.Serialize(), nil
 }
@@ -72,7 +73,9 @@ func EncodeSecp256k1PrivateKey(k *ecdsa.PrivateKey) ([]byte, error) {
 // EncodeSecp256k1PublicKey encodes raw ECDSA public key in a 33-byte compressed format.
 func EncodeSecp256k1PublicKey(k *ecdsa.PublicKey) []byte {
 	var x, y btcec.FieldVal
+	//nolint:staticcheck // SA1019: ecdsa fields are deprecated, but secp256k1 is not supported by crypto/ecdh
 	x.SetByteSlice(k.X.Bytes())
+	//nolint:staticcheck // SA1019: ecdsa fields are deprecated, but secp256k1 is not supported by crypto/ecdh
 	y.SetByteSlice(k.Y.Bytes())
 	return btcec.NewPublicKey(&x, &y).SerializeCompressed()
 }
@@ -112,9 +115,11 @@ func Secp256k1PrivateKeyFromBytes(data []byte) *ecdsa.PrivateKey {
 // NewEthereumAddress returns a binary representation of ethereum blockchain address.
 // This function is based on github.com/ethereum/go-ethereum/crypto.PubkeyToAddress.
 func NewEthereumAddress(p ecdsa.PublicKey) ([]byte, error) {
+	//nolint:staticcheck // SA1019: ecdsa fields are deprecated, but secp256k1 is not supported by crypto/ecdh
 	if p.X == nil || p.Y == nil {
 		return nil, errors.New("invalid public key")
 	}
+	//nolint:staticcheck // SA1019: ecdsa fields are deprecated, but secp256k1 is not supported by crypto/ecdh
 	pubBytes := crypto.S256().Marshal(p.X, p.Y)
 	pubHash, err := LegacyKeccak256(pubBytes[1:])
 	if err != nil {

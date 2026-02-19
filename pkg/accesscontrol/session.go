@@ -37,6 +37,7 @@ func (s *SessionStruct) Key(publicKey *ecdsa.PublicKey, nonces [][]byte) ([][]by
 	if publicKey == nil {
 		return nil, ErrInvalidPublicKey
 	}
+	//nolint:staticcheck // SA1019: ecdsa fields are deprecated, but secp256k1 is not supported by crypto/ecdh
 	x, y := publicKey.ScalarMult(publicKey.X, publicKey.Y, s.key.D.Bytes())
 	if x == nil || y == nil {
 		return nil, ErrSecretKeyInfinity

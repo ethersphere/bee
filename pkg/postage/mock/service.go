@@ -70,7 +70,7 @@ func (m *mockPostage) StampIssuers() []*postage.StampIssuer {
 	m.issuerLock.Lock()
 	defer m.issuerLock.Unlock()
 
-	issuers := make([]*postage.StampIssuer, 0)
+	issuers := make([]*postage.StampIssuer, 0, len(m.issuersMap))
 	for _, v := range m.issuersMap {
 		issuers = append(issuers, v)
 	}
