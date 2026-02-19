@@ -845,7 +845,18 @@ func (s *Service) newStampedPutter(ctx context.Context, opts putterOptions, stam
 		return nil, errInvalidPostageBatch
 	}
 
+	return s.newStampedPutterWithBatch(ctx, opts, stamp, storedBatch)
+}
+
+// newStampedPutterWithBatch creates a stamped putter using a pre-fetched batch
+// This avoids the database lookup when batch info is already cached
+func (s *Service) newStampedPutterWithBatch(ctx context.Context, opts putterOptions, stamp *postage.Stamp, storedBatch *postage.Batch) (storer.PutterSession, error) {
+	if !opts.Deferred && s.beeMode == DevMode {
+		return nil, errUnsupportedDevNodeOperation
+	}
+
 	var session storer.PutterSession
+	var err error
 	if opts.Deferred || opts.Pin {
 		session, err = s.storer.Upload(ctx, opts.Pin, opts.TagID)
 		if err != nil {
