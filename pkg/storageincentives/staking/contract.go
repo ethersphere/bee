@@ -70,14 +70,9 @@ func New(
 	bzzTokenAddress common.Address,
 	transactionService transaction.Service,
 	nonce common.Hash,
-	setGasLimit bool,
+	gasLimit uint64,
 	height uint8,
 ) Contract {
-	var gasLimit uint64
-	if setGasLimit {
-		gasLimit = transaction.DefaultGasLimit
-	}
-
 	return &contract{
 		owner:                  owner,
 		stakingContractAddress: stakingContractAddress,

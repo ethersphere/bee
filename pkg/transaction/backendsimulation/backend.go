@@ -16,6 +16,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
+var ErrNotImplemented = errors.New("not implemented")
+
 type AccountAtKey struct {
 	BlockNumber uint64
 	Account     common.Address
@@ -84,27 +86,27 @@ func (m *simulatedBackend) advanceBlock() {
 }
 
 func (*simulatedBackend) CallContract(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
-	return nil, errors.New("not implemented")
+	return nil, ErrNotImplemented
 }
 
 func (m *simulatedBackend) PendingNonceAt(ctx context.Context, account common.Address) (uint64, error) {
-	return 0, errors.New("not implemented")
+	return 0, ErrNotImplemented
 }
 
 func (m *simulatedBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
-	return nil, nil, errors.New("not implemented")
+	return nil, nil, ErrNotImplemented
 }
 
-func (m *simulatedBackend) EstimateGasAtBlock(ctx context.Context, msg ethereum.CallMsg, blockNumber *big.Int) (uint64, error) {
-	return 0, errors.New("not implemented")
+func (m *simulatedBackend) EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint64, error) {
+	return 0, ErrNotImplemented
 }
 
 func (m *simulatedBackend) SendTransaction(ctx context.Context, tx *types.Transaction) error {
-	return errors.New("not implemented")
+	return ErrNotImplemented
 }
 
 func (*simulatedBackend) FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
-	return nil, errors.New("not implemented")
+	return nil, ErrNotImplemented
 }
 
 func (m *simulatedBackend) TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
@@ -117,7 +119,7 @@ func (m *simulatedBackend) TransactionReceipt(ctx context.Context, txHash common
 }
 
 func (m *simulatedBackend) TransactionByHash(ctx context.Context, hash common.Hash) (tx *types.Transaction, isPending bool, err error) {
-	return nil, false, errors.New("not implemented")
+	return nil, false, ErrNotImplemented
 }
 
 func (m *simulatedBackend) BlockNumber(ctx context.Context) (uint64, error) {
@@ -126,11 +128,11 @@ func (m *simulatedBackend) BlockNumber(ctx context.Context) (uint64, error) {
 }
 
 func (m *simulatedBackend) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error) {
-	return nil, errors.New("not implemented")
+	return nil, ErrNotImplemented
 }
 
 func (m *simulatedBackend) BalanceAt(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error) {
-	return nil, errors.New("not implemented")
+	return nil, ErrNotImplemented
 }
 
 func (m *simulatedBackend) NonceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error) {
@@ -143,11 +145,11 @@ func (m *simulatedBackend) NonceAt(ctx context.Context, account common.Address, 
 }
 
 func (m *simulatedBackend) SuggestGasTipCap(ctx context.Context) (*big.Int, error) {
-	return nil, errors.New("not implemented")
+	return nil, ErrNotImplemented
 }
 
 func (m *simulatedBackend) ChainID(ctx context.Context) (*big.Int, error) {
-	return nil, errors.New("not implemented")
+	return nil, ErrNotImplemented
 }
 
 func (m *simulatedBackend) Close() {}

@@ -79,15 +79,10 @@ func New(
 	postageService postage.Service,
 	postageStorer postage.Storer,
 	chainEnabled bool,
-	setGasLimit bool,
+	gasLimit uint64,
 ) Interface {
 	if !chainEnabled {
 		return new(noOpPostageContract)
-	}
-
-	var gasLimit uint64
-	if setGasLimit {
-		gasLimit = transaction.DefaultGasLimit
 	}
 
 	return &postageContract{
