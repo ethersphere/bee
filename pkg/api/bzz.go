@@ -5,10 +5,12 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"path"
 	"path/filepath"
@@ -51,6 +53,9 @@ const (
 	largeFileBufferSize = 16 * 32 * 1024
 
 	largeBufferFilesizeThreshold = 10 * 1000000 // ten megs
+
+	// contentTypeSniffLen is the max bytes used by http.DetectContentType.
+	contentTypeSniffLen = 512
 )
 
 func lookaheadBufferSize(size int64) int {
@@ -65,7 +70,7 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	defer span.Finish()
 
 	headers := struct {
-		ContentType    string           `map:"Content-Type,mimeMediaType" validate:"required"`
+		ContentType    string           `map:"Content-Type,mimeMediaType"`
 		BatchID        []byte           `map:"Swarm-Postage-Batch-Id" validate:"required"`
 		SwarmTag       uint64           `map:"Swarm-Tag"`
 		Pin            bool             `map:"Swarm-Pin"`
@@ -138,6 +143,12 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if headers.IsDir || headers.ContentType == multiPartFormData {
+		if headers.ContentType == "" {
+			logger.Debug("content-type required for directory upload")
+			logger.Error(nil, "content-type required for directory upload")
+			jsonhttp.BadRequest(w, errInvalidContentType)
+			return
+		}
 		s.dirUploadHandler(ctx, logger, span, ow, r, putter, r.Header.Get(ContentTypeHeader), headers.Encrypt, tag, headers.RLevel, headers.Act, headers.HistoryAddress)
 		return
 	}
@@ -174,8 +185,20 @@ func (s *Service) fileUploadHandler(
 
 	p := requestPipelineFn(putter, encrypt, rLevel)
 
+	sniffBuf := make([]byte, contentTypeSniffLen)
+	n, err := io.ReadFull(r.Body, sniffBuf)
+	sniffBuf = sniffBuf[:n]
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+		logger.Debug("body read failed", "file_name", queries.FileName, "error", err)
+		logger.Error(nil, "body read failed", "file_name", queries.FileName)
+		jsonhttp.BadRequest(w, "failed to read request body")
+		return
+	}
+	contentType := http.DetectContentType(sniffBuf)
+	bodyForStore := io.MultiReader(bytes.NewReader(sniffBuf), r.Body)
+
 	// first store the file and get its reference
-	fr, err := p(ctx, r.Body)
+	fr, err := p(ctx, bodyForStore)
 	if err != nil {
 		logger.Debug("file store failed", "file_name", queries.FileName, "error", err)
 		logger.Error(nil, "file store failed", "file_name", queries.FileName)
@@ -240,7 +263,7 @@ func (s *Service) fileUploadHandler(
 	}
 
 	fileMtdt := map[string]string{
-		manifest.EntryMetadataContentTypeKey: r.Header.Get(ContentTypeHeader), // Content-Type has already been validated.
+		manifest.EntryMetadataContentTypeKey: contentType,
 		manifest.EntryMetadataFilenameKey:    queries.FileName,
 	}
 
