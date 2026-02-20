@@ -13,8 +13,8 @@ env:
   RUN_TYPE: "PR RUN"
   SETUP_CONTRACT_IMAGE: "ethersphere/bee-localchain"
   SETUP_CONTRACT_IMAGE_TAG: "0.9.4"
-  BEELOCAL_BRANCH: "main"
-  BEEKEEPER_BRANCH: "master"
+  BEELOCAL_BRANCH: "feat/p2p-wss-support-v2" # TODO: change to main (temporary testing branch)
+  BEEKEEPER_BRANCH: "feat/p2p-wss-support" # TODO: change to master (temporary testing branch)
   BEEKEEPER_METRICS_ENABLED: false
   REACHABILITY_OVERRIDE_PUBLIC: true
   BATCHFACTOR_OVERRIDE_PUBLIC: 2
@@ -25,6 +25,10 @@ env:
   AWS_EC2_METADATA_DISABLED: true
   AWS_ENDPOINT: fra1.digitaloceanspaces.com
   VERTAG: ${GITHUB_RUN_ID}
+  P2P_WSS_ENABLE: true
+  PEBBLE_IMAGE_TAG: "2.9.0"
+  P2P_FORGE_IMAGE_TAG: "v0.7.0"
+  PEBBLE_CERTIFICATE_VALIDITY_PERIOD: "60"
 jobs:
   init:
     name: Init
@@ -34,15 +38,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-        if: github.event.action != 'beekeeper'
         with:
           fetch-depth: 0
-      - name: Checkout
-        uses: actions/checkout@v5
-        if: github.event.action == 'beekeeper'
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event.client_payload.ref }}
+          ref: ${{ github.event.action == 'beekeeper' && github.event.client_payload.ref || github.sha }}
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
@@ -99,6 +97,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: [init]
     steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.action == 'beekeeper' && github.event.client_payload.ref || github.sha }}
       - name: Cache
         uses: actions/cache@v4
         with:
@@ -113,19 +116,17 @@ jobs:
         run: |
           chmod +x bee-1 beekeeper .github/bin/beekeeper_artifacts.sh
           mv .beekeeper.yaml ~/.beekeeper.yaml
-          mkdir ~/.beekeeper && mv local.yaml ~/.beekeeper/local.yaml
+          mkdir -p ~/.beekeeper && mv local.yaml ~/.beekeeper/local.yaml
           mv bee-1 bee
           sudo mv beekeeper /usr/local/bin/beekeeper
       - name: Prepare local cluster
-        run: |
-          timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet' ACTION=prepare
+        run: timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet' ACTION=prepare
       - name: Set kube config
         run: |
           mkdir -p ~/.kube
           cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
       - name: Set local cluster
-        run: |
-          timeout ${TIMEOUT} make deploylocal BEEKEEPER_CLUSTER=local-dns
+        run: timeout ${TIMEOUT} make deploylocal BEEKEEPER_CLUSTER=local-dns
       - name: Test pingpong
         id: pingpong
         run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done'
@@ -182,7 +183,7 @@ jobs:
       - name: Test feeds
         id: feeds
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-feed
-      - name: Collect debug artifacts
+      - name: Collect debug artifacts (local-dns)
         if: failure()
         run: |
           bash .github/bin/beekeeper_artifacts.sh local-dns
@@ -219,6 +220,36 @@ jobs:
         if: failure()
         with:
           name: debug-dump
+          path: dump/
+      - name: Set local cluster (local-dns-autotls)
+        run: timeout ${TIMEOUT} make deploylocal BEEKEEPER_CLUSTER=local-dns-autotls
+      - name: Test pingpong (autotls)
+        id: pingpong-autotls
+        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns-autotls --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done'
+      - name: Test fullconnectivity (autotls)
+        id: fullconnectivity-autotls
+        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns-autotls --checks=ci-full-connectivity; do echo "waiting for full connectivity..."; sleep .3; done'
+      - name: Test retrieval (autotls)
+        id: retrieval-autotls
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns-autotls --checks=ci-retrieval
+      - name: Test autotls
+        id: autotls
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns-autotls --checks=ci-autotls
+      - name: Collect debug artifacts (autotls)
+        if: failure()
+        run: |
+          bash .github/bin/beekeeper_artifacts.sh local-dns-autotls
+          export FAILED='no-test'
+          if ${{ steps.pingpong-autotls.outcome=='failure' }}; then FAILED=pingpong; fi
+          if ${{ steps.fullconnectivity-autotls.outcome=='failure' }}; then FAILED=fullconnectivity; fi
+          if ${{ steps.retrieval-autotls.outcome=='failure' }}; then FAILED=retrieval; fi
+          if ${{ steps.autotls.outcome=='failure' }}; then FAILED=autotls; fi
+          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Autotls Error\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebugging artifacts: [click](https://$BUCKET_NAME.$AWS_ENDPOINT/artifacts_$VERTAG.tar.gz)\nStep failed: \`${FAILED}\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
+          echo "Failed test: ${FAILED}"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: debug-dump-autotls
           path: dump/
   retag:
     name: Retag and Trigger ArgoCD
