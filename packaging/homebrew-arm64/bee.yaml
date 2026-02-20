@@ -110,8 +110,6 @@ password-file: "/opt/homebrew/var/lib/swarm-bee/password"
 # tracing-service-name: bee
 ## skips the gas estimate step for contract transactions
 # transaction-debug-mode: false
-## bootstrap node using postage snapshot from the network
-# use-postage-snapshot: false
 ## log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace
 # verbosity: info
 ## maximum node warmup duration; proceeds when stable or after this time
