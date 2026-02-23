@@ -7,13 +7,10 @@ package storer
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"fmt"
 	"hash"
 	"math/big"
-	"runtime"
 	"sort"
-	"sync"
 	"testing"
 	"time"
 
@@ -25,22 +22,14 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-	"golang.org/x/sync/errgroup"
 )
 
 const SampleSize = 16
 
-type SampleItem struct {
-	TransformedAddress swarm.Address
-	ChunkAddress       swarm.Address
-	ChunkData          []byte
-	Stamp              *postage.Stamp
-}
-
-type Sample struct {
-	Stats SampleStats
-	Items []SampleItem
-}
+type (
+	SampleItem = reserve.SampleItem
+	Sample     = reserve.Sample
+)
 
 // ReserveSample generates the sample of reserve storage of a node required for the
 // storage incentives agent to participate in the lottery round. In order to generate
@@ -65,216 +54,23 @@ func (db *DB) ReserveSample(
 	consensusTime uint64,
 	minBatchBalance *big.Int,
 ) (Sample, error) {
-	g, ctx := errgroup.WithContext(ctx)
-
-	allStats := &SampleStats{}
-	statsLock := sync.Mutex{}
-	addStats := func(stats SampleStats) {
-		statsLock.Lock()
-		allStats.add(stats)
-		statsLock.Unlock()
+	allStats := &reserve.SampleStats{}
+	stamperGetter := func(addr swarm.Address, batchID []byte) (swarm.Stamp, error) {
+		return chunkstamp.LoadWithBatchID(db.storage.IndexStore(), "reserve", addr, batchID)
 	}
 
-	workers := max(4, runtime.NumCPU())
-	t := time.Now()
-
-	defer func() {
-		duration := time.Since(t)
-		err := g.Wait()
-		db.recordReserveSampleMetrics(duration, allStats, workers, err)
-	}()
+	validStamp := func(ch swarm.Chunk) error {
+		_, err := db.validStamp(ch)
+		return err
+	}
 
 	excludedBatchIDs, err := db.batchesBelowValue(minBatchBalance)
 	if err != nil {
 		db.logger.Error(err, "get batches below value")
 	}
+	sampleItems, err := db.reserve.IterateSampleChunks(ctx, db.StorageRadius(), anchor, committedDepth, excludedBatchIDs, consensusTime, db.ChunkStore(), stamperGetter, validStamp)
 
-	allStats.BatchesBelowValueDuration = time.Since(t)
-
-	chunkC := make(chan *reserve.ChunkBinItem, 3*workers)
-
-	// Phase 1: Iterate chunk addresses
-	g.Go(func() error {
-		start := time.Now()
-		stats := SampleStats{}
-		defer func() {
-			stats.IterationDuration = time.Since(start)
-			close(chunkC)
-			addStats(stats)
-		}()
-
-		err := db.reserve.IterateChunksItems(db.StorageRadius(), func(ch *reserve.ChunkBinItem) (bool, error) {
-			if swarm.Proximity(ch.Address.Bytes(), anchor) < committedDepth {
-				return false, nil
-			}
-			select {
-			case chunkC <- ch:
-				stats.TotalIterated++
-				return false, nil
-			case <-ctx.Done():
-				return false, ctx.Err()
-			}
-		})
-		return err
-	})
-
-	// Phase 2: Get the chunk data and calculate transformed hash
-	sampleItemChan := make(chan SampleItem, 3*workers)
-
-	prefixHasherFactory := func() hash.Hash {
-		return swarm.NewPrefixHasher(anchor)
-	}
-
-	db.logger.Debug("reserve sampler workers", "count", workers)
-
-	for range workers {
-		g.Go(func() error {
-			wstat := SampleStats{}
-			hasher := bmt.NewHasher(prefixHasherFactory)
-			defer func() {
-				addStats(wstat)
-			}()
-
-			for chItem := range chunkC {
-				// exclude chunks who's batches balance are below minimum
-				if _, found := excludedBatchIDs[string(chItem.BatchID)]; found {
-					wstat.BelowBalanceIgnored++
-					continue
-				}
-
-				// Skip chunks if they are not SOC or CAC
-				if chItem.ChunkType != swarm.ChunkTypeSingleOwner &&
-					chItem.ChunkType != swarm.ChunkTypeContentAddressed {
-					wstat.RogueChunk++
-					continue
-				}
-
-				chunkLoadStart := time.Now()
-
-				chunk, err := db.ChunkStore().Get(ctx, chItem.Address)
-				chunkLoadDuration := time.Since(chunkLoadStart)
-
-				if err != nil {
-					wstat.ChunkLoadFailed++
-					db.logger.Debug("failed loading chunk", "chunk_address", chItem.Address, "error", err)
-					continue
-				}
-
-				wstat.ChunkLoadDuration += chunkLoadDuration
-
-				taddrStart := time.Now()
-				taddr, err := transformedAddress(hasher, chunk, chItem.ChunkType)
-				if err != nil {
-					return err
-				}
-				wstat.TaddrDuration += time.Since(taddrStart)
-
-				select {
-				case sampleItemChan <- SampleItem{
-					TransformedAddress: taddr,
-					ChunkAddress:       chunk.Address(),
-					ChunkData:          chunk.Data(),
-					Stamp:              postage.NewStamp(chItem.BatchID, nil, nil, nil),
-				}:
-				case <-ctx.Done():
-					return ctx.Err()
-				}
-			}
-
-			return nil
-		})
-	}
-
-	go func() {
-		_ = g.Wait()
-		close(sampleItemChan)
-	}()
-
-	sampleItems := make([]SampleItem, 0, SampleSize)
-
-	// insert function will insert the new item in its correct place. If the sample
-	// size goes beyond what we need we omit the last item.
-	insert := func(item SampleItem) {
-		added := false
-		for i, sItem := range sampleItems {
-			if le(item.TransformedAddress, sItem.TransformedAddress) {
-				sampleItems = append(sampleItems[:i+1], sampleItems[i:]...)
-				sampleItems[i] = item
-				added = true
-				break
-			} else if item.TransformedAddress.Compare(sItem.TransformedAddress) == 0 { // ensuring to pass the check order function of redistribution contract
-				// replace the chunk at index if the chunk is CAC
-				ch := swarm.NewChunk(item.ChunkAddress, item.ChunkData)
-				_, err := soc.FromChunk(ch)
-				if err != nil {
-					sampleItems[i] = item
-				}
-				return
-			}
-		}
-		if len(sampleItems) > SampleSize {
-			sampleItems = sampleItems[:SampleSize]
-		}
-		if len(sampleItems) < SampleSize && !added {
-			sampleItems = append(sampleItems, item)
-		}
-	}
-
-	// Phase 3: Assemble the sample. Here we need to assemble only the first SampleSize
-	// no of items from the results of the 2nd phase.
-	// In this step stamps are loaded and validated only if chunk will be added to sample.
-	stats := SampleStats{}
-	for item := range sampleItemChan {
-		currentMaxAddr := swarm.EmptyAddress
-		if len(sampleItems) > 0 {
-			currentMaxAddr = sampleItems[len(sampleItems)-1].TransformedAddress
-		}
-
-		if le(item.TransformedAddress, currentMaxAddr) || len(sampleItems) < SampleSize {
-			stamp, err := chunkstamp.LoadWithBatchID(db.storage.IndexStore(), "reserve", item.ChunkAddress, item.Stamp.BatchID())
-			if err != nil {
-				stats.StampLoadFailed++
-				db.logger.Debug("failed loading stamp", "chunk_address", item.ChunkAddress, "error", err)
-				continue
-			}
-
-			ch := swarm.NewChunk(item.ChunkAddress, item.ChunkData).WithStamp(stamp)
-
-			// check if the timestamp on the postage stamp is not later than the consensus time.
-			if binary.BigEndian.Uint64(ch.Stamp().Timestamp()) > consensusTime {
-				stats.NewIgnored++
-				continue
-			}
-
-			stampValidStart := time.Now()
-			if _, err := db.validStamp(ch); err != nil {
-				stats.InvalidStamp++
-				db.logger.Debug("invalid stamp for chunk", "chunk_address", ch.Address(), "error", err)
-				continue
-			}
-
-			stampValidDuration := time.Since(stampValidStart)
-			stats.ValidStampDuration += stampValidDuration
-
-			item.Stamp = postage.NewStamp(stamp.BatchID(), stamp.Index(), stamp.Timestamp(), stamp.Sig())
-
-			insert(item)
-			stats.SampleInserts++
-		}
-	}
-	addStats(stats)
-
-	allStats.TotalDuration = time.Since(t)
-
-	if err := g.Wait(); err != nil {
-		db.logger.Info("reserve sampler finished with error", "err", err, "duration", time.Since(t), "storage_radius", committedDepth, "consensus_time_ns", consensusTime, "stats", fmt.Sprintf("%+v", allStats))
-
-		return Sample{}, fmt.Errorf("sampler: failed creating sample: %w", err)
-	}
-
-	db.logger.Info("reserve sampler finished", "duration", time.Since(t), "storage_radius", committedDepth, "consensus_time_ns", consensusTime, "stats", fmt.Sprintf("%+v", allStats))
-
-	return Sample{Stats: *allStats, Items: sampleItems}, nil
+	return Sample{Stats: *allStats, Items: sampleItems.Items}, nil
 }
 
 // less function uses the byte compare to check for lexicographic ordering
@@ -350,39 +146,22 @@ func transformedAddressSOC(hasher *bmt.Hasher, socChunk swarm.Chunk) (swarm.Addr
 	return swarm.NewAddress(sHasher.Sum(nil)), nil
 }
 
-type SampleStats struct {
-	TotalDuration             time.Duration
-	TotalIterated             int64
-	IterationDuration         time.Duration
-	SampleInserts             int64
-	NewIgnored                int64
-	InvalidStamp              int64
-	BelowBalanceIgnored       int64
-	TaddrDuration             time.Duration
-	ValidStampDuration        time.Duration
-	BatchesBelowValueDuration time.Duration
-	RogueChunk                int64
-	ChunkLoadDuration         time.Duration
-	ChunkLoadFailed           int64
-	StampLoadFailed           int64
-}
-
-func (s *SampleStats) add(other SampleStats) {
-	s.TotalDuration += other.TotalDuration
-	s.IterationDuration += other.IterationDuration
-	s.SampleInserts += other.SampleInserts
-	s.NewIgnored += other.NewIgnored
-	s.InvalidStamp += other.InvalidStamp
-	s.BelowBalanceIgnored += other.BelowBalanceIgnored
-	s.TaddrDuration += other.TaddrDuration
-	s.ValidStampDuration += other.ValidStampDuration
-	s.BatchesBelowValueDuration += other.BatchesBelowValueDuration
-	s.RogueChunk += other.RogueChunk
-	s.ChunkLoadDuration += other.ChunkLoadDuration
-	s.ChunkLoadFailed += other.ChunkLoadFailed
-	s.StampLoadFailed += other.StampLoadFailed
-	s.TotalIterated += other.TotalIterated
-}
+//func (s *SampleStats) add(other SampleStats) {
+//s.TotalDuration += other.TotalDuration
+//s.IterationDuration += other.IterationDuration
+//s.SampleInserts += other.SampleInserts
+//s.NewIgnored += other.NewIgnored
+//s.InvalidStamp += other.InvalidStamp
+//s.BelowBalanceIgnored += other.BelowBalanceIgnored
+//s.TaddrDuration += other.TaddrDuration
+//s.ValidStampDuration += other.ValidStampDuration
+//s.BatchesBelowValueDuration += other.BatchesBelowValueDuration
+//s.RogueChunk += other.RogueChunk
+//s.ChunkLoadDuration += other.ChunkLoadDuration
+//s.ChunkLoadFailed += other.ChunkLoadFailed
+//s.StampLoadFailed += other.StampLoadFailed
+//s.TotalIterated += other.TotalIterated
+//}
 
 // RandSample returns Sample with random values.
 func RandSample(t *testing.T, anchor []byte) Sample {
@@ -445,7 +224,7 @@ func getChunkType(chunk swarm.Chunk) swarm.ChunkType {
 	return swarm.ChunkTypeUnspecified
 }
 
-func (db *DB) recordReserveSampleMetrics(duration time.Duration, stats *SampleStats, workers int, err error) {
+func (db *DB) recordReserveSampleMetrics(duration time.Duration, stats *reserve.SampleStats, workers int, err error) {
 	status := "success"
 	if err != nil {
 		status = "failure"
