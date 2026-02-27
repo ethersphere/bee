@@ -167,7 +167,7 @@ func TestTraversalBytes(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			err = traversal.New(storerMock, storerMock, redundancy.DefaultLevel).Traverse(ctx, address, iter.Next)
+			err = traversal.New(storerMock, storerMock).Traverse(ctx, address, iter.Next, redundancy.DefaultLevel)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -293,7 +293,7 @@ func TestTraversalFiles(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			err = traversal.New(storerMock, storerMock, redundancy.DefaultLevel).Traverse(ctx, address, iter.Next)
+			err = traversal.New(storerMock, storerMock).Traverse(ctx, address, iter.Next, redundancy.DefaultLevel)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -450,7 +450,7 @@ func TestTraversalManifest(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			err = traversal.New(storerMock, storerMock, redundancy.DefaultLevel).Traverse(ctx, address, iter.Next)
+			err = traversal.New(storerMock, storerMock).Traverse(ctx, address, iter.Next, redundancy.DefaultLevel)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -488,7 +488,7 @@ func TestTraversalSOC(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = traversal.New(store, store, 0).Traverse(ctx, sch.Address(), iter.Next)
+	err = traversal.New(store, store).Traverse(ctx, sch.Address(), iter.Next, redundancy.NONE)
 	if err != nil {
 		t.Fatal(err)
 	}
