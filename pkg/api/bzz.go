@@ -303,7 +303,7 @@ func (s *Service) fileUploadHandler(
 	reference := manifestReference
 	historyReference := swarm.ZeroAddress
 	if act {
-		reference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, historyAddress)
+		reference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, historyAddress, rLevel)
 		if err != nil {
 			logger.Debug("access control upload failed", "error", err)
 			logger.Error(nil, "access control upload failed")

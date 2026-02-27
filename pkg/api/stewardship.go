@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -29,11 +30,17 @@ func (s *Service) stewardshipPutHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	headers := struct {
-		BatchID []byte `map:"Swarm-Postage-Batch-Id" validate:"required"`
+		BatchID []byte            `map:"Swarm-Postage-Batch-Id" validate:"required"`
+		RLevel  *redundancy.Level `map:"Swarm-Redundancy-Level"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
 		return
+	}
+
+	rLevel := redundancy.PARANOID
+	if headers.RLevel != nil {
+		rLevel = *headers.RLevel
 	}
 
 	var (
@@ -57,7 +64,7 @@ func (s *Service) stewardshipPutHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	err = s.steward.Reupload(r.Context(), paths.Address, stamper)
+	err = s.steward.Reupload(r.Context(), paths.Address, stamper, rLevel)
 	if err != nil {
 		logger.Debug("re-upload failed", "chunk_address", paths.Address, "error", err)
 		logger.Error(nil, "re-upload failed")
@@ -91,7 +98,20 @@ func (s *Service) stewardshipGetHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	res, err := s.steward.IsRetrievable(r.Context(), paths.Address)
+	headers := struct {
+		RLevel *redundancy.Level `map:"Swarm-Redundancy-Level"`
+	}{}
+	if response := s.mapStructure(r.Header, &headers); response != nil {
+		response("invalid header params", logger, w)
+		return
+	}
+
+	rLevel := redundancy.PARANOID
+	if headers.RLevel != nil {
+		rLevel = *headers.RLevel
+	}
+
+	res, err := s.steward.IsRetrievable(r.Context(), paths.Address, rLevel)
 	if err != nil {
 		logger.Debug("is retrievable check failed", "chunk_address", paths.Address, "error", err)
 		logger.Error(nil, "is retrievable")
