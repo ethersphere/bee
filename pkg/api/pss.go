@@ -24,8 +24,7 @@ import (
 )
 
 const (
-	writeDeadline   = 4 * time.Second // write deadline. should be smaller than the shutdown timeout on api close
-	targetMaxLength = 3               // max target length in bytes, in order to prevent grieving by excess computation
+	writeDeadline = 4 * time.Second // write deadline. should be smaller than the shutdown timeout on api close
 )
 
 func (s *Service) pssPostHandler(w http.ResponseWriter, r *http.Request) {
