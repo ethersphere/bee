@@ -100,10 +100,11 @@ func (s *Service) actDecryptionHandler() func(h http.Handler) http.Handler {
 			}
 
 			headers := struct {
-				Timestamp      *int64           `map:"Swarm-Act-Timestamp"`
-				Publisher      *ecdsa.PublicKey `map:"Swarm-Act-Publisher"`
-				HistoryAddress *swarm.Address   `map:"Swarm-Act-History-Address"`
-				Cache          *bool            `map:"Swarm-Cache"`
+				Timestamp      *int64            `map:"Swarm-Act-Timestamp"`
+				Publisher      *ecdsa.PublicKey  `map:"Swarm-Act-Publisher"`
+				HistoryAddress *swarm.Address    `map:"Swarm-Act-History-Address"`
+				Cache          *bool             `map:"Swarm-Cache"`
+				RLevel         *redundancy.Level `map:"Swarm-Redundancy-Level"`
 			}{}
 			if response := s.mapStructure(r.Header, &headers); response != nil {
 				response("invalid header params", logger, w)
@@ -125,8 +126,14 @@ func (s *Service) actDecryptionHandler() func(h http.Handler) http.Handler {
 			if headers.Cache != nil {
 				cache = *headers.Cache
 			}
+
+			rLevel := redundancy.PARANOID
+			if headers.RLevel != nil {
+				rLevel = *headers.RLevel
+			}
+
 			ctx := r.Context()
-			ls := loadsave.NewReadonly(s.storer.Download(cache), s.storer.Cache(), redundancy.DefaultLevel)
+			ls := loadsave.NewReadonly(s.storer.Download(cache), s.storer.Cache(), rLevel)
 			reference, err := s.accesscontrol.DownloadHandler(ctx, ls, paths.Address, headers.Publisher, *headers.HistoryAddress, timestamp)
 			if err != nil {
 				logger.Debug("access control download failed", "error", err)
@@ -157,9 +164,10 @@ func (s *Service) actEncryptionHandler(
 	putter storer.PutterSession,
 	reference swarm.Address,
 	historyRootHash swarm.Address,
+	rLevel redundancy.Level,
 ) (swarm.Address, swarm.Address, error) {
 	publisherPublicKey := &s.publicKey
-	ls := loadsave.New(s.storer.Download(true), s.storer.Cache(), requestPipelineFactory(ctx, putter, false, redundancy.NONE), redundancy.DefaultLevel)
+	ls := loadsave.New(s.storer.Download(true), s.storer.Cache(), requestPipelineFactory(ctx, putter, false, redundancy.NONE), rLevel)
 	storageReference, historyReference, encryptedReference, err := s.accesscontrol.UploadHandler(ctx, ls, reference, publisherPublicKey, historyRootHash)
 	if err != nil {
 		return swarm.ZeroAddress, swarm.ZeroAddress, err
@@ -193,7 +201,8 @@ func (s *Service) actListGranteesHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	headers := struct {
-		Cache *bool `map:"Swarm-Cache"`
+		Cache  *bool             `map:"Swarm-Cache"`
+		RLevel *redundancy.Level `map:"Swarm-Redundancy-Level"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -203,8 +212,14 @@ func (s *Service) actListGranteesHandler(w http.ResponseWriter, r *http.Request)
 	if headers.Cache != nil {
 		cache = *headers.Cache
 	}
+
+	rLevel := redundancy.PARANOID
+	if headers.RLevel != nil {
+		rLevel = *headers.RLevel
+	}
+
 	publisher := &s.publicKey
-	ls := loadsave.NewReadonly(s.storer.Download(cache), s.storer.Cache(), redundancy.DefaultLevel)
+	ls := loadsave.NewReadonly(s.storer.Download(cache), s.storer.Cache(), rLevel)
 	grantees, err := s.accesscontrol.Get(r.Context(), ls, publisher, paths.GranteesAddress)
 	if err != nil {
 		logger.Debug("could not get grantees", "error", err)
@@ -239,11 +254,12 @@ func (s *Service) actGrantRevokeHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	headers := struct {
-		BatchID        []byte         `map:"Swarm-Postage-Batch-Id" validate:"required"`
-		SwarmTag       uint64         `map:"Swarm-Tag"`
-		Pin            bool           `map:"Swarm-Pin"`
-		Deferred       *bool          `map:"Swarm-Deferred-Upload"`
-		HistoryAddress *swarm.Address `map:"Swarm-Act-History-Address" validate:"required"`
+		BatchID        []byte            `map:"Swarm-Postage-Batch-Id" validate:"required"`
+		SwarmTag       uint64            `map:"Swarm-Tag"`
+		Pin            bool              `map:"Swarm-Pin"`
+		Deferred       *bool             `map:"Swarm-Deferred-Upload"`
+		HistoryAddress *swarm.Address    `map:"Swarm-Act-History-Address" validate:"required"`
+		RLevel         *redundancy.Level `map:"Swarm-Redundancy-Level"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -253,6 +269,11 @@ func (s *Service) actGrantRevokeHandler(w http.ResponseWriter, r *http.Request) 
 	historyAddress := swarm.ZeroAddress
 	if headers.HistoryAddress != nil {
 		historyAddress = *headers.HistoryAddress
+	}
+
+	rLevel := redundancy.PARANOID
+	if headers.RLevel != nil {
+		rLevel = *headers.RLevel
 	}
 
 	var (
@@ -344,8 +365,8 @@ func (s *Service) actGrantRevokeHandler(w http.ResponseWriter, r *http.Request) 
 
 	granteeref := paths.GranteesAddress
 	publisher := &s.publicKey
-	ls := loadsave.New(s.storer.Download(true), s.storer.Cache(), requestPipelineFactory(ctx, putter, false, redundancy.NONE), redundancy.DefaultLevel)
-	gls := loadsave.New(s.storer.Download(true), s.storer.Cache(), requestPipelineFactory(ctx, putter, granteeListEncrypt, redundancy.NONE), redundancy.DefaultLevel)
+	ls := loadsave.New(s.storer.Download(true), s.storer.Cache(), requestPipelineFactory(ctx, putter, false, redundancy.NONE), rLevel)
+	gls := loadsave.New(s.storer.Download(true), s.storer.Cache(), requestPipelineFactory(ctx, putter, granteeListEncrypt, redundancy.NONE), rLevel)
 	granteeref, encryptedglref, historyref, actref, err := s.accesscontrol.UpdateHandler(ctx, ls, gls, granteeref, historyAddress, publisher, grantees.Addlist, grantees.Revokelist)
 	if err != nil {
 		logger.Debug("failed to update grantee list", "error", err)
@@ -405,11 +426,12 @@ func (s *Service) actCreateGranteesHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	headers := struct {
-		BatchID        []byte         `map:"Swarm-Postage-Batch-Id" validate:"required"`
-		SwarmTag       uint64         `map:"Swarm-Tag"`
-		Pin            bool           `map:"Swarm-Pin"`
-		Deferred       *bool          `map:"Swarm-Deferred-Upload"`
-		HistoryAddress *swarm.Address `map:"Swarm-Act-History-Address"`
+		BatchID        []byte            `map:"Swarm-Postage-Batch-Id" validate:"required"`
+		SwarmTag       uint64            `map:"Swarm-Tag"`
+		Pin            bool              `map:"Swarm-Pin"`
+		Deferred       *bool             `map:"Swarm-Deferred-Upload"`
+		HistoryAddress *swarm.Address    `map:"Swarm-Act-History-Address"`
+		RLevel         *redundancy.Level `map:"Swarm-Redundancy-Level"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -419,6 +441,11 @@ func (s *Service) actCreateGranteesHandler(w http.ResponseWriter, r *http.Reques
 	historyAddress := swarm.ZeroAddress
 	if headers.HistoryAddress != nil {
 		historyAddress = *headers.HistoryAddress
+	}
+
+	rLevel := redundancy.PARANOID
+	if headers.RLevel != nil {
+		rLevel = *headers.RLevel
 	}
 
 	var (
@@ -498,8 +525,8 @@ func (s *Service) actCreateGranteesHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	publisher := &s.publicKey
-	ls := loadsave.New(s.storer.Download(true), s.storer.Cache(), requestPipelineFactory(ctx, putter, false, redundancy.NONE), redundancy.DefaultLevel)
-	gls := loadsave.New(s.storer.Download(true), s.storer.Cache(), requestPipelineFactory(ctx, putter, granteeListEncrypt, redundancy.NONE), redundancy.DefaultLevel)
+	ls := loadsave.New(s.storer.Download(true), s.storer.Cache(), requestPipelineFactory(ctx, putter, false, redundancy.NONE), rLevel)
+	gls := loadsave.New(s.storer.Download(true), s.storer.Cache(), requestPipelineFactory(ctx, putter, granteeListEncrypt, redundancy.NONE), rLevel)
 	granteeref, encryptedglref, historyref, actref, err := s.accesscontrol.UpdateHandler(ctx, ls, gls, swarm.ZeroAddress, historyAddress, publisher, list, nil)
 	if err != nil {
 		logger.Debug("failed to create grantee list", "error", err)

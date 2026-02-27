@@ -170,11 +170,12 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	headers := struct {
-		BatchID        []byte        `map:"Swarm-Postage-Batch-Id" validate:"required"`
-		Pin            bool          `map:"Swarm-Pin"`
-		Deferred       *bool         `map:"Swarm-Deferred-Upload"`
-		Act            bool          `map:"Swarm-Act"`
-		HistoryAddress swarm.Address `map:"Swarm-Act-History-Address"`
+		BatchID        []byte            `map:"Swarm-Postage-Batch-Id" validate:"required"`
+		Pin            bool              `map:"Swarm-Pin"`
+		Deferred       *bool             `map:"Swarm-Deferred-Upload"`
+		Act            bool              `map:"Swarm-Act"`
+		HistoryAddress swarm.Address     `map:"Swarm-Act-History-Address"`
+		RLevel         *redundancy.Level `map:"Swarm-Redundancy-Level"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -283,7 +284,11 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	encryptedReference := ref
 	historyReference := swarm.ZeroAddress
 	if headers.Act {
-		encryptedReference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, ref, headers.HistoryAddress)
+		rLevel := redundancy.PARANOID
+		if headers.RLevel != nil {
+			rLevel = *headers.RLevel
+		}
+		encryptedReference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, ref, headers.HistoryAddress, rLevel)
 		if err != nil {
 			logger.Debug("access control upload failed", "error", err)
 			logger.Error(nil, "access control upload failed")
