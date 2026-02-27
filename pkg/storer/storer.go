@@ -674,10 +674,10 @@ func (db *DB) SetRetrievalService(r retrieval.Interface) {
 	db.retrieval = r
 }
 
-func (db *DB) StartReserveWorker(ctx context.Context, s Syncer, radius func() (uint8, error)) {
+func (db *DB) StartReserveWorker(ctx context.Context, s Syncer, radius func() (uint8, error), ready chan<- struct{}) {
 	db.setSyncerOnce.Do(func() {
 		db.syncer = s
-		go db.startReserveWorkers(ctx, radius)
+		go db.startReserveWorkers(ctx, radius, ready)
 	})
 }
 

@@ -47,6 +47,7 @@ func threshold(capacity int) int { return capacity * 5 / 10 }
 func (db *DB) startReserveWorkers(
 	ctx context.Context,
 	radius func() (uint8, error),
+	ready chan<- struct{},
 ) {
 	ctx, cancel := context.WithCancel(ctx)
 	go func() {
@@ -55,7 +56,7 @@ func (db *DB) startReserveWorkers(
 	}()
 
 	db.inFlight.Add(1)
-	go db.reserveWorker(ctx)
+	go db.reserveWorker(ctx, ready)
 
 	sub, unsubscribe := db.reserveOptions.startupStabilizer.Subscribe()
 	defer unsubscribe()
@@ -117,7 +118,7 @@ func (db *DB) countWithinRadius(ctx context.Context) (int, error) {
 	return count, err
 }
 
-func (db *DB) reserveWorker(ctx context.Context) {
+func (db *DB) reserveWorker(ctx context.Context, ready chan<- struct{}) {
 	defer db.inFlight.Done()
 
 	batchExpiryTrigger, batchExpiryUnsub := db.events.Subscribe(batchExpiry)
@@ -134,6 +135,8 @@ func (db *DB) reserveWorker(ctx context.Context) {
 	if !db.reserve.IsWithinCapacity() {
 		db.events.Trigger(reserveOverCapacity)
 	}
+
+	close(ready)
 
 	for {
 		select {

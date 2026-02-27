@@ -75,7 +75,9 @@ func TestIndexCollision(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
+		readyC := make(chan struct{})
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0), readyC)
+		<-readyC
 		testF(t, baseAddr, storer)
 	})
 	t.Run("mem", func(t *testing.T) {
@@ -85,7 +87,9 @@ func TestIndexCollision(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
+		readyC := make(chan struct{})
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0), readyC)
+		<-readyC
 		testF(t, baseAddr, storer)
 	})
 }
@@ -163,7 +167,9 @@ func TestReplaceOldIndex(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
+		readyC := make(chan struct{})
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0), readyC)
+		<-readyC
 		testF(t, baseAddr, storer)
 	})
 	t.Run("mem", func(t *testing.T) {
@@ -173,7 +179,9 @@ func TestReplaceOldIndex(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
+		readyC := make(chan struct{})
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0), readyC)
+		<-readyC
 		testF(t, baseAddr, storer)
 	})
 }
@@ -187,8 +195,9 @@ func TestEvictBatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	st.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
-
+	readyC := make(chan struct{})
+	st.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0), readyC)
+	<-readyC
 	ctx := context.Background()
 
 	var chunks []swarm.Chunk
@@ -274,7 +283,7 @@ func TestUnreserveCap(t *testing.T) {
 	testF := func(t *testing.T, baseAddr swarm.Address, bs *batchstore.BatchStore, storer *storer.DB) {
 		t.Helper()
 
-		var chunksPO = make([][]swarm.Chunk, 5)
+		chunksPO := make([][]swarm.Chunk, 5)
 		var chunksPerPO uint64 = 10
 
 		batch := postagetesting.MustNewBatch()
@@ -348,7 +357,9 @@ func TestUnreserveCap(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
+		readyC := make(chan struct{})
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0), readyC)
+		<-readyC
 		testF(t, baseAddr, bs, storer)
 	})
 	t.Run("mem", func(t *testing.T) {
@@ -359,7 +370,9 @@ func TestUnreserveCap(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
+		readyC := make(chan struct{})
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0), readyC)
+		<-readyC
 		testF(t, baseAddr, bs, storer)
 	})
 }
@@ -374,7 +387,9 @@ func TestNetworkRadius(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(1))
+		readyC := make(chan struct{})
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(1), readyC)
+		<-readyC
 		time.Sleep(time.Second)
 		if want, got := uint8(1), storer.StorageRadius(); want != got {
 			t.Fatalf("want radius %d, got radius %d", want, got)
@@ -387,7 +402,9 @@ func TestNetworkRadius(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(1))
+		readyC := make(chan struct{})
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(1), readyC)
+		<-readyC
 		time.Sleep(time.Second)
 		if want, got := uint8(1), storer.StorageRadius(); want != got {
 			t.Fatalf("want radius %d, got radius %d", want, got)
@@ -428,7 +445,9 @@ func TestRadiusManager(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(3))
+		readyC := make(chan struct{})
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(3), readyC)
+		<-readyC
 
 		batch := postagetesting.MustNewBatch()
 		err = bs.Save(batch)
@@ -464,7 +483,9 @@ func TestRadiusManager(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(1), networkRadiusFunc(3))
+		readyC := make(chan struct{})
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(1), networkRadiusFunc(3), readyC)
+		<-readyC
 		waitForRadius(t, storer.Reserve(), 3)
 	})
 }
@@ -749,7 +770,9 @@ func TestNeighborhoodStats(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(responsibiliyDepth))
+		readyC := make(chan struct{})
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(responsibiliyDepth), readyC)
+		<-readyC
 		err = spinlock.Wait(time.Minute, func() bool { return storer.StorageRadius() == responsibiliyDepth })
 		if err != nil {
 			t.Fatal(err)
@@ -764,7 +787,9 @@ func TestNeighborhoodStats(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(responsibiliyDepth))
+		readyC := make(chan struct{})
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(responsibiliyDepth), readyC)
+		<-readyC
 		err = spinlock.Wait(time.Minute, func() bool { return storer.StorageRadius() == responsibiliyDepth })
 		if err != nil {
 			t.Fatal(err)

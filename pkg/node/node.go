@@ -1131,7 +1131,12 @@ func NewBee(
 		pullerService = puller.New(swarmAddress, stateStore, kad, localStore, pullSyncProtocol, p2ps, logger, puller.Options{})
 		b.pullerCloser = pullerService
 
-		localStore.StartReserveWorker(ctx, pullerService, waitNetworkRFunc)
+		reserveWorkerReady := make(chan struct{})
+		localStore.StartReserveWorker(ctx, pullerService, waitNetworkRFunc, reserveWorkerReady)
+		select {
+		case <-reserveWorkerReady:
+		case <-ctx.Done():
+		}
 		nodeStatus.SetSync(pullerService)
 
 		// measure full sync duration
