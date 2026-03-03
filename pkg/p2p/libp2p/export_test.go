@@ -32,6 +32,10 @@ func (s *Service) Host() host.Host {
 	return s.host
 }
 
+func (s *Service) SetHost(h host.Host) {
+	s.host = h
+}
+
 type StaticAddressResolver = staticAddressResolver
 
 var (
@@ -61,6 +65,10 @@ var NewCompositeAddressResolver = newCompositeAddressResolver
 
 func (s *Service) FilterSupportedAddresses(addrs []ma.Multiaddr) []ma.Multiaddr {
 	return s.filterSupportedAddresses(addrs)
+}
+
+func (s *Service) PeerMultiaddrs(ctx context.Context, peerID libp2ppeer.ID) ([]ma.Multiaddr, error) {
+	return s.peerMultiaddrs(ctx, peerID)
 }
 
 func (s *Service) SetTransportFlags(hasTCP, hasWS, hasWSS bool) {

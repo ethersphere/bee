@@ -29,6 +29,7 @@ const loggerName = "listener"
 
 const (
 	blockPage          = 5000      // how many blocks to sync every time we page
+	blockPageSnapshot  = 50000     // how many blocks to sync every time from snapshot
 	tailSize           = 4         // how many blocks to tail from the tip of the chain
 	defaultBatchFactor = uint64(5) // minimal number of blocks to sync at once
 )
@@ -186,7 +187,7 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 	}
 }
 
-func (l *listener) Listen(ctx context.Context, from uint64, updater postage.EventUpdater, initState *postage.ChainSnapshot) <-chan error {
+func (l *listener) Listen(ctx context.Context, from uint64, updater postage.EventUpdater) <-chan error {
 	ctx, cancel := context.WithCancel(ctx)
 	go func() {
 		<-l.quit
@@ -226,13 +227,6 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 		return nil
 	}
 
-	if initState != nil {
-		err := processEvents(initState.Events, initState.LastBlockNumber+1)
-		if err != nil {
-			l.logger.Error(err, "failed bootstrapping from initial state")
-		}
-	}
-
 	batchFactor, err := strconv.ParseUint(batchFactorOverridePublic, 10, 64)
 	if err != nil {
 		l.logger.Warning("batch factor conversation failed", "batch_factor", batchFactor, "error", err)
@@ -240,6 +234,15 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 	}
 
 	l.logger.Debug("batch factor", "value", batchFactor)
+
+	// Type assertion to detect if backend is SnapshotLogFilterer
+	pageSize := uint64(blockPage)
+	if _, isSnapshot := l.ev.(interface{ GetBatchSnapshot() []byte }); isSnapshot {
+		pageSize = blockPageSnapshot
+		l.logger.Debug("using snapshot page size", "page_size", pageSize)
+	} else {
+		l.logger.Debug("using standard page size", "page_size", pageSize)
+	}
 
 	synced := make(chan error)
 	closeOnce := new(sync.Once)
@@ -321,9 +324,9 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 			}
 
 			// do some paging (sub-optimal)
-			if to-from >= blockPage {
+			if to-from >= pageSize {
 				paged = true
-				to = from + blockPage - 1
+				to = from + pageSize - 1
 			} else {
 				closeOnce.Do(func() { synced <- nil })
 			}

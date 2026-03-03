@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -94,6 +95,7 @@ type Service struct {
 	libp2pID              libp2ppeer.ID
 	metrics               metrics
 	picker                p2p.Picker
+	mu                    sync.RWMutex
 	hostAddresser         Addresser
 }
 
@@ -136,6 +138,8 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 }
 
 func (s *Service) SetPicker(n p2p.Picker) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.picker = n
 }
 
@@ -351,8 +355,12 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 
 	overlay := swarm.NewAddress(ack.Address.Overlay)
 
-	if s.picker != nil {
-		if !s.picker.Pick(p2p.Peer{Address: overlay, FullNode: ack.FullNode}) {
+	s.mu.RLock()
+	picker := s.picker
+	s.mu.RUnlock()
+
+	if picker != nil {
+		if !picker.Pick(p2p.Peer{Address: overlay, FullNode: ack.FullNode}) {
 			return nil, ErrPicker
 		}
 	}
