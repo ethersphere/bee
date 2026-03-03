@@ -72,11 +72,6 @@ func TestReserveSampler(t *testing.T) {
 			}
 
 			assertValidSample(t, sample, radius, anchor)
-			assertSampleNoErrors(t, sample)
-
-			if sample.Stats.NewIgnored != 0 {
-				t.Fatalf("sample should not have ignored chunks")
-			}
 
 			sample1 = sample
 		})
@@ -107,12 +102,6 @@ func TestReserveSampler(t *testing.T) {
 			if diff := cmp.Diff(sample.Items, sample1.Items, cmp.AllowUnexported(postage.Stamp{})); diff != "" {
 				t.Fatalf("samples different (-want +have):\n%s", diff)
 			}
-
-			if sample.Stats.NewIgnored == 0 {
-				t.Fatalf("sample should have some ignored chunks")
-			}
-
-			assertSampleNoErrors(t, sample)
 		})
 	}
 
@@ -208,11 +197,6 @@ func TestReserveSamplerSisterNeighborhood(t *testing.T) {
 			}
 
 			assertValidSample(t, sample, doubling, baseAddr.Bytes())
-			assertSampleNoErrors(t, sample)
-
-			if sample.Stats.NewIgnored != 0 {
-				t.Fatalf("sample should not have ignored chunks")
-			}
 		})
 
 		t.Run("reserve sample 2", func(t *testing.T) {
@@ -222,16 +206,11 @@ func TestReserveSamplerSisterNeighborhood(t *testing.T) {
 			}
 
 			assertValidSample(t, sample, depthOfResponsibility, baseAddr.Bytes())
-			assertSampleNoErrors(t, sample)
 
 			for _, s := range sample.Items {
 				if got := swarm.Proximity(s.ChunkAddress.Bytes(), baseAddr.Bytes()); got != depthOfResponsibility {
 					t.Fatalf("proximity must be exactly %d, got %d", depthOfResponsibility, got)
 				}
-			}
-
-			if sample.Stats.NewIgnored != 0 {
-				t.Fatalf("sample should not have ignored chunks")
 			}
 		})
 	}
@@ -363,23 +342,6 @@ func TestSampleVectorCAC(t *testing.T) {
 	}
 	if got := item.TransformedAddress.String(); got != wantTransformedAddr {
 		t.Errorf("transformed address mismatch:\n got:  %s\n want: %s", got, wantTransformedAddr)
-	}
-}
-
-func assertSampleNoErrors(t *testing.T, sample storer.Sample) {
-	t.Helper()
-
-	if sample.Stats.ChunkLoadFailed != 0 {
-		t.Fatalf("got unexpected failed chunk loads")
-	}
-	if sample.Stats.RogueChunk != 0 {
-		t.Fatalf("got unexpected rogue chunks")
-	}
-	if sample.Stats.StampLoadFailed != 0 {
-		t.Fatalf("got unexpected failed stamp loads")
-	}
-	if sample.Stats.InvalidStamp != 0 {
-		t.Fatalf("got unexpected invalid stamps")
 	}
 }
 

@@ -69,6 +69,9 @@ func (db *DB) ReserveSample(
 		db.logger.Error(err, "get batches below value")
 	}
 	sampleItems, err := db.reserve.IterateSampleChunks(ctx, db.StorageRadius(), anchor, committedDepth, excludedBatchIDs, consensusTime, db.ChunkStoreGetInto(), stamperGetter, validStamp)
+	if err != nil {
+		return Sample{}, err
+	}
 
 	return Sample{Stats: *allStats, Items: sampleItems.Items}, nil
 }

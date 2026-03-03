@@ -602,6 +602,7 @@ type SampleItem struct {
 	TransformedAddress swarm.Address
 	ChunkAddress       swarm.Address
 	ChunkData          []byte
+	ChunkType          swarm.ChunkType
 	Stamp              *postage.Stamp
 }
 
@@ -634,16 +635,106 @@ func le(a, b swarm.Address) bool {
 	return bytes.Compare(a.Bytes(), b.Bytes()) == -1
 }
 
+// chunkJob is sent from the iterator to workers after passing initial checks.
+type chunkJob struct {
+	address   swarm.Address
+	batchID   []byte
+	chunkType swarm.ChunkType
+}
+
 func (r *Reserve) IterateSampleChunks(ctx context.Context, startBin uint8, anchor []byte, committedDepth uint8, excludedBatchIDs map[string]struct{}, consensusTime uint64, getter storage.GetterInto, stampGetter func(swarm.Address, []byte) (swarm.Stamp, error), validStamp func(swarm.Chunk) error) (Sample, error) {
+	const workers = 4
+
+	// Keep the original context for use after the errgroup finishes.
+	outerCtx := ctx
+	g, ctx := errgroup.WithContext(ctx)
+
+	// Phase 1: Iterator feeds chunk jobs to workers after initial filtering.
+	jobC := make(chan chunkJob, workers*3)
+
+	g.Go(func() error {
+		defer close(jobC)
+		return r.st.IndexStore().Iterate(storage.Query{
+			Factory:       func() storage.Item { return &ChunkBinItem{} },
+			Prefix:        binIDToString(startBin, 0),
+			PrefixAtStart: true,
+		}, func(res storage.Result) (bool, error) {
+			select {
+			case <-ctx.Done():
+				return true, ctx.Err()
+			default:
+			}
+			item := res.Entry.(*ChunkBinItem)
+			if swarm.Proximity(item.Address.Bytes(), anchor) < committedDepth {
+				return false, nil
+			}
+			if _, found := excludedBatchIDs[string(item.BatchID)]; found {
+				return false, nil
+			}
+			if item.ChunkType != swarm.ChunkTypeSingleOwner &&
+				item.ChunkType != swarm.ChunkTypeContentAddressed {
+				return false, nil
+			}
+			select {
+			case jobC <- chunkJob{
+				address:   item.Address,
+				batchID:   item.BatchID,
+				chunkType: item.ChunkType,
+			}:
+				return false, nil
+			case <-ctx.Done():
+				return true, ctx.Err()
+			}
+		})
+	})
+
+	// Phase 2: Workers do GetInto + transformedAddress.
+	resultC := make(chan SampleItem, workers*3)
+
 	prefixHasherFactory := func() hash.Hash {
 		return swarm.NewPrefixHasher(anchor)
 	}
-	hasher := bmt.NewHasher(prefixHasherFactory)
 
+	for range workers {
+		g.Go(func() error {
+			hasher := bmt.NewHasher(prefixHasherFactory)
+			buf := make([]byte, swarm.SocMaxChunkSize)
+
+			for job := range jobC {
+				n, err := getter.GetInto(ctx, job.address, buf)
+				if err != nil {
+					r.logger.Debug("failed loading chunk", "chunk_address", job.address, "error", err)
+					continue
+				}
+				chunk := swarm.NewChunk(job.address, buf[:n])
+				taddr, err := transformedAddress(hasher, chunk, job.chunkType)
+				if err != nil {
+					return err
+				}
+
+				select {
+				case resultC <- SampleItem{
+					TransformedAddress: taddr,
+					ChunkAddress:       job.address,
+					ChunkType:          job.chunkType,
+					Stamp:              postage.NewStamp(job.batchID, nil, nil, nil),
+				}:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			}
+			return nil
+		})
+	}
+
+	go func() {
+		_ = g.Wait()
+		close(resultC)
+	}()
+
+	// Phase 3: Assemble the sample from worker results.
 	sampleItems := make([]SampleItem, 0, SampleSize)
 
-	// insert function will insert the new item in its correct place. If the sample
-	// size goes beyond what we need we omit the last item.
 	insert := func(item SampleItem) {
 		added := false
 		for i, sItem := range sampleItems {
@@ -652,11 +743,9 @@ func (r *Reserve) IterateSampleChunks(ctx context.Context, startBin uint8, ancho
 				sampleItems[i] = item
 				added = true
 				break
-			} else if item.TransformedAddress.Compare(sItem.TransformedAddress) == 0 { // ensuring to pass the check order function of redistribution contract
-				// replace the chunk at index if the chunk is CAC
-				ch := swarm.NewChunk(item.ChunkAddress, item.ChunkData)
-				_, err := soc.FromChunk(ch)
-				if err != nil {
+			} else if item.TransformedAddress.Compare(sItem.TransformedAddress) == 0 {
+				// replace the chunk at index if the new chunk is CAC
+				if item.ChunkType == swarm.ChunkTypeContentAddressed {
 					sampleItems[i] = item
 				}
 				return
@@ -670,51 +759,7 @@ func (r *Reserve) IterateSampleChunks(ctx context.Context, startBin uint8, ancho
 		}
 	}
 
-	buf := make([]byte, swarm.SocMaxChunkSize)
-
-	err := r.st.IndexStore().Iterate(storage.Query{
-		Factory:       func() storage.Item { return &ChunkBinItem{} },
-		Prefix:        binIDToString(startBin, 0),
-		PrefixAtStart: true,
-	}, func(res storage.Result) (bool, error) {
-		select {
-		case <-ctx.Done():
-			return true, ctx.Err()
-		default:
-		}
-		item := res.Entry.(*ChunkBinItem)
-		if swarm.Proximity(item.Address.Bytes(), anchor) < committedDepth {
-			return false, nil
-		}
-		// exclude chunks who's batches balance are below minimum
-		if _, found := excludedBatchIDs[string(item.BatchID)]; found {
-			return false, nil
-		}
-		// Skip chunks if they are not SOC or CAC
-		if item.ChunkType != swarm.ChunkTypeSingleOwner &&
-			item.ChunkType != swarm.ChunkTypeContentAddressed {
-			return false, nil
-		}
-		n, err := getter.GetInto(ctx, item.Address, buf)
-		if err != nil {
-			// if there's an error - we log it and continue
-			r.logger.Debug("failed loading chunk", "chunk_address", item.Address, "error", err)
-			return false, nil
-		}
-		chunk := swarm.NewChunk(item.Address, buf[:n])
-		taddr, err := transformedAddress(hasher, chunk, item.ChunkType)
-		if err != nil {
-			// here should we stop?
-			return true, err
-		}
-
-		si := SampleItem{
-			TransformedAddress: taddr,
-			ChunkAddress:       chunk.Address(),
-			// ChunkData:          chunk.Data(),
-			Stamp: postage.NewStamp(item.BatchID, nil, nil, nil),
-		}
-
+	for si := range resultC {
 		currentMaxAddr := swarm.EmptyAddress
 		if len(sampleItems) > 0 {
 			currentMaxAddr = sampleItems[len(sampleItems)-1].TransformedAddress
@@ -724,83 +769,40 @@ func (r *Reserve) IterateSampleChunks(ctx context.Context, startBin uint8, ancho
 			stamp, err := stampGetter(si.ChunkAddress, si.Stamp.BatchID())
 			if err != nil {
 				r.logger.Debug("failed loading stamp", "chunk_address", si.ChunkAddress, "error", err)
-				return false, nil
+				continue
 			}
 
-			// ch := swarm.NewChunk(si.ChunkAddress, si.ChunkData).WithStamp(stamp)
 			ch := swarm.NewChunk(si.ChunkAddress, nil).WithStamp(stamp)
 
-			// check if the timestamp on the postage stamp is not later than the consensus time.
 			if binary.BigEndian.Uint64(ch.Stamp().Timestamp()) > consensusTime {
-				return false, nil
+				continue
 			}
 
 			if err := validStamp(ch); err != nil {
 				r.logger.Debug("invalid stamp for chunk", "chunk_address", ch.Address(), "error", err)
-				return false, nil
+				continue
 			}
 
 			si.Stamp = postage.NewStamp(stamp.BatchID(), stamp.Index(), stamp.Timestamp(), stamp.Sig())
 
 			insert(si)
 		}
+	}
 
-		return false, nil
-	})
-	if err != nil {
+	if err := g.Wait(); err != nil {
 		return Sample{}, err
 	}
 
-	//////
-	/*
-
-
-
-		// Phase 3: Assemble the sample. Here we need to assemble only the first SampleSize
-		// no of items from the results of the 2nd phase.
-		// In this step stamps are loaded and validated only if chunk will be added to sample.
-		stats := SampleStats{}
-		for item := range sampleItemChan {
-			currentMaxAddr := swarm.EmptyAddress
-			if len(sampleItems) > 0 {
-				currentMaxAddr = sampleItems[len(sampleItems)-1].TransformedAddress
-			}
-
-			if le(item.TransformedAddress, currentMaxAddr) || len(sampleItems) < SampleSize {
-				stamp, err := chunkstamp.LoadWithBatchID(db.storage.IndexStore(), "reserve", item.ChunkAddress, item.Stamp.BatchID())
-				if err != nil {
-					stats.StampLoadFailed++
-					db.logger.Debug("failed loading stamp", "chunk_address", item.ChunkAddress, "error", err)
-					continue
-				}
-
-				ch := swarm.NewChunk(item.ChunkAddress, item.ChunkData).WithStamp(stamp)
-
-				// check if the timestamp on the postage stamp is not later than the consensus time.
-				if binary.BigEndian.Uint64(ch.Stamp().Timestamp()) > consensusTime {
-					stats.NewIgnored++
-					continue
-				}
-
-				stampValidStart := time.Now()
-				if _, err := db.validStamp(ch); err != nil {
-					stats.InvalidStamp++
-					db.logger.Debug("invalid stamp for chunk", "chunk_address", ch.Address(), "error", err)
-					continue
-				}
-
-				stampValidDuration := time.Since(stampValidStart)
-				stats.ValidStampDuration += stampValidDuration
-
-				item.Stamp = postage.NewStamp(stamp.BatchID(), stamp.Index(), stamp.Timestamp(), stamp.Sig())
-
-				insert(item)
-				stats.SampleInserts++
-			}
+	// Phase 4: Backfill chunk data for the final sample items.
+	buf := make([]byte, swarm.SocMaxChunkSize)
+	for i, si := range sampleItems {
+		n, err := getter.GetInto(outerCtx, si.ChunkAddress, buf)
+		if err != nil {
+			return Sample{}, fmt.Errorf("failed reading chunk data for sample item %s: %w", si.ChunkAddress, err)
 		}
+		sampleItems[i].ChunkData = append([]byte{}, buf[:n]...)
+	}
 
-	*/
-	////
 	return Sample{Items: sampleItems}, nil
 }
 
