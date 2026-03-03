@@ -63,7 +63,7 @@ type Service struct {
 }
 
 const (
-	ConcurrentPushes  = swarm.Branches // how many chunks to push simultaneously
+	ConcurrentPushes  = 1024 // how many chunks to push simultaneously
 	DefaultRetryCount = 6
 )
 

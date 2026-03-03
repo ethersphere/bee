@@ -47,10 +47,10 @@ import (
 // Recommended value is 8 or 16 times the io.Copy default buffer value which is 32kB, depending
 // on the file size. Use lookaheadBufferSize() to get the correct buffer size for the request.
 const (
-	smallFileBufferSize = 8 * 32 * 1024
-	largeFileBufferSize = 16 * 32 * 1024
+	smallFileBufferSize = 64 * 32 * 1024  // 2 MB: for quick bursts on smaller files
+	largeFileBufferSize = 256 * 32 * 1024 // 8 MB: for sustained throughput on media
 
-	largeBufferFilesizeThreshold = 10 * 1000000 // ten megs
+	largeBufferFilesizeThreshold = 5 * 1000 * 1000 // 5 MB threshold
 )
 
 func lookaheadBufferSize(size int64) int {
