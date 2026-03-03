@@ -21,6 +21,13 @@ type Getter interface {
 	Get(context.Context, swarm.Address) (swarm.Chunk, error)
 }
 
+// GetterInto is like Getter but reads chunk data into a caller-provided buffer,
+// avoiding per-call allocations. The buffer must be at least swarm.SocMaxChunkSize bytes.
+// Returns the number of bytes read into buf.
+type GetterInto interface {
+	GetInto(ctx context.Context, addr swarm.Address, buf []byte) (int, error)
+}
+
 // Putter is the interface that wraps the basic Put method.
 type Putter interface {
 	// Put a chunk into the store alongside with its postage stamp.

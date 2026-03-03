@@ -634,7 +634,7 @@ func le(a, b swarm.Address) bool {
 	return bytes.Compare(a.Bytes(), b.Bytes()) == -1
 }
 
-func (r *Reserve) IterateSampleChunks(ctx context.Context, startBin uint8, anchor []byte, committedDepth uint8, excludedBatchIDs map[string]struct{}, consensusTime uint64, getter storage.Getter, stampGetter func(swarm.Address, []byte) (swarm.Stamp, error), validStamp func(swarm.Chunk) error) (Sample, error) {
+func (r *Reserve) IterateSampleChunks(ctx context.Context, startBin uint8, anchor []byte, committedDepth uint8, excludedBatchIDs map[string]struct{}, consensusTime uint64, getter storage.GetterInto, stampGetter func(swarm.Address, []byte) (swarm.Stamp, error), validStamp func(swarm.Chunk) error) (Sample, error) {
 	prefixHasherFactory := func() hash.Hash {
 		return swarm.NewPrefixHasher(anchor)
 	}
@@ -670,6 +670,8 @@ func (r *Reserve) IterateSampleChunks(ctx context.Context, startBin uint8, ancho
 		}
 	}
 
+	buf := make([]byte, swarm.SocMaxChunkSize)
+
 	err := r.st.IndexStore().Iterate(storage.Query{
 		Factory:       func() storage.Item { return &ChunkBinItem{} },
 		Prefix:        binIDToString(startBin, 0),
@@ -693,12 +695,13 @@ func (r *Reserve) IterateSampleChunks(ctx context.Context, startBin uint8, ancho
 			item.ChunkType != swarm.ChunkTypeContentAddressed {
 			return false, nil
 		}
-		chunk, err := getter.Get(ctx, item.Address)
+		n, err := getter.GetInto(ctx, item.Address, buf)
 		if err != nil {
 			// if there's an error - we log it and continue
 			r.logger.Debug("failed loading chunk", "chunk_address", item.Address, "error", err)
 			return false, nil
 		}
+		chunk := swarm.NewChunk(item.Address, buf[:n])
 		taddr, err := transformedAddress(hasher, chunk, item.ChunkType)
 		if err != nil {
 			// here should we stop?

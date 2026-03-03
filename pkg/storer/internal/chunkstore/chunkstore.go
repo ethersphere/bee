@@ -51,6 +51,25 @@ func Get(ctx context.Context, r storage.Reader, s storage.Sharky, addr swarm.Add
 	return readChunk(ctx, s, rIdx)
 }
 
+// GetInto reads chunk data into the provided buffer, avoiding allocation.
+// Returns the number of bytes read.
+func GetInto(ctx context.Context, r storage.Reader, s storage.Sharky, addr swarm.Address, buf []byte) (int, error) {
+	rIdx := &RetrievalIndexItem{Address: addr}
+	err := r.Get(rIdx)
+	if err != nil {
+		return 0, fmt.Errorf("chunk store: failed reading retrievalIndex for address %s: %w", addr, err)
+	}
+	n := int(rIdx.Location.Length)
+	err = s.Read(ctx, rIdx.Location, buf[:n])
+	if err != nil {
+		return 0, fmt.Errorf(
+			"chunk store: failed reading location: %v for chunk %s from sharky: %w",
+			rIdx.Location, rIdx.Address, err,
+		)
+	}
+	return n, nil
+}
+
 // helper to read chunk from retrievalIndex.
 func readChunk(ctx context.Context, s storage.Sharky, rIdx *RetrievalIndexItem) (swarm.Chunk, error) {
 	buf := make([]byte, rIdx.Location.Length)

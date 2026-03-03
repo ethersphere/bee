@@ -691,6 +691,10 @@ func (db *DB) ChunkStore() storage.ReadOnlyChunkStore {
 	return db.storage.ChunkStore()
 }
 
+func (db *DB) ChunkStoreGetInto() storage.GetterInto {
+	return db.storage.ChunkStore().(storage.GetterInto)
+}
+
 func (db *DB) PinIntegrity() *PinIntegrity {
 	return db.pinIntegrity
 }
