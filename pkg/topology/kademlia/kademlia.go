@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"math/rand"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -44,7 +45,8 @@ const (
 
 	// Each underlay address gets up to 15s for connection (in libp2p.Connect).
 	// This budget allows multiple addresses to be tried sequentially per peer.
-	peerConnectionAttemptTimeout = 45 * time.Second // timeout for establishing a new connection with peer.
+	peerConnectionAttemptTimeout  = 45 * time.Second // timeout for establishing a new connection with peer.
+	maxOnDemandConnectionAttempts = 3                // max connection attempts per ConnectClosest call.
 )
 
 // Default option values
@@ -1320,6 +1322,69 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.
 	}
 
 	return closest, nil
+}
+
+// ConnectClosest attempts to connect to the closest known-but-disconnected
+// peer to the given address. This is used as a last-resort fallback during
+// retrieval when all connected peers have been exhausted.
+func (k *Kad) ConnectClosest(ctx context.Context, addr swarm.Address, skipPeers ...swarm.Address) (swarm.Address, error) {
+
+	// Known peers that are not connected.
+	var candidates []swarm.Address
+
+	_ = k.knownPeers.EachBinRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
+		if k.connectedPeers.Exists(peer) {
+			return false, false, nil
+		}
+		if swarm.ContainsAddress(skipPeers, peer) {
+			return false, false, nil
+		}
+		if k.waitNext.Waiting(peer) {
+			return false, false, nil
+		}
+		if blocklisted, _ := k.p2p.Blocklisted(peer); blocklisted {
+			return false, false, nil
+		}
+		candidates = append(candidates, peer)
+		return false, false, nil
+	})
+
+	if len(candidates) == 0 {
+		return swarm.Address{}, topology.ErrNotFound
+	}
+
+	// Sort candidates by proximity to the target address (closest first).
+	sort.Slice(candidates, func(i, j int) bool {
+		return swarm.Proximity(candidates[i].Bytes(), addr.Bytes()) > swarm.Proximity(candidates[j].Bytes(), addr.Bytes())
+	})
+
+	// Try connecting to the closest candidates.
+	attempts := 0
+	for _, peer := range candidates {
+		if attempts >= maxOnDemandConnectionAttempts {
+			break
+		}
+
+		bzzAddr, err := k.addressBook.Get(peer)
+		if err != nil {
+			continue
+		}
+
+		attempts++
+
+		connectCtx, cancel := context.WithTimeout(ctx, peerConnectionAttemptTimeout)
+		err = k.connect(connectCtx, peer, bzzAddr.Underlays)
+		cancel()
+
+		if err == nil {
+			k.logger.Debug("on-demand connection successful", "peer_address", peer, "target_chunk", addr)
+			return peer, nil
+		}
+
+		k.logger.Debug("on-demand connection failed", "peer_address", peer, "target_chunk", addr, "error", err)
+	}
+
+	return swarm.Address{}, topology.ErrNotFound
 }
 
 // EachConnectedPeer implements topology.PeerIterator interface.

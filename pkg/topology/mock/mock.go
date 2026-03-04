@@ -16,19 +16,21 @@ import (
 )
 
 type mock struct {
-	peers           []swarm.Address
-	depth           uint8
-	closestPeer     swarm.Address
-	closestPeerErr  error
-	peersErr        error
-	addPeersErr     error
-	isWithinFunc    func(c swarm.Address) bool
-	marshalJSONFunc func() ([]byte, error)
-	mtx             sync.Mutex
-	health          map[string]bool
+	peers              []swarm.Address
+	depth              uint8
+	closestPeer        swarm.Address
+	closestPeerErr     error
+	peersErr           error
+	addPeersErr        error
+	isWithinFunc       func(c swarm.Address) bool
+	marshalJSONFunc    func() ([]byte, error)
+	connectClosestFunc func(ctx context.Context, addr swarm.Address, skipPeers ...swarm.Address) (swarm.Address, error)
+	mtx                sync.Mutex
+	health             map[string]bool
 }
 
 var _ topology.Driver = (*mock)(nil)
+var _ topology.OnDemandConnecter = (*mock)(nil)
 
 func WithPeers(peers ...swarm.Address) Option {
 	return optionFunc(func(d *mock) {
@@ -69,6 +71,12 @@ func WithMarshalJSONFunc(f func() ([]byte, error)) Option {
 func WithIsWithinFunc(f func(swarm.Address) bool) Option {
 	return optionFunc(func(d *mock) {
 		d.isWithinFunc = f
+	})
+}
+
+func WithConnectClosestFunc(f func(ctx context.Context, addr swarm.Address, skipPeers ...swarm.Address) (swarm.Address, error)) Option {
+	return optionFunc(func(d *mock) {
+		d.connectClosestFunc = f
 	})
 }
 
@@ -174,6 +182,13 @@ func (d *mock) ClosestPeer(addr swarm.Address, wantSelf bool, _ topology.Select,
 	}
 
 	return peerAddr, nil
+}
+
+func (d *mock) ConnectClosest(_ context.Context, addr swarm.Address, skipPeers ...swarm.Address) (swarm.Address, error) {
+	if d.connectClosestFunc != nil {
+		return d.connectClosestFunc(context.Background(), addr, skipPeers...)
+	}
+	return swarm.Address{}, topology.ErrNotFound
 }
 
 func (m *mock) IsReachable() bool {
