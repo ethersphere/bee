@@ -699,6 +699,151 @@ func TestClosestPeer(t *testing.T) {
 	})
 }
 
+func TestOnDemandConnect(t *testing.T) {
+	t.Parallel()
+
+	logger := log.Noop
+	pricerMock := pricermock.NewMockService(defaultPrice, defaultPrice)
+	radiusF := func() (uint8, error) { return swarm.MaxBins, nil }
+
+	chunk := testingc.FixtureChunk("0025")
+	clientAddr := swarm.MustParseHexAddress("0100000000000000000000000000000000000000000000000000000000000000")
+	serverAddr := swarm.MustParseHexAddress("0200000000000000000000000000000000000000000000000000000000000000")
+
+	// t.Run success: ConnectClosest bridges a no-peer situation and retrieval succeeds.
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
+		serverStorer := &testStorer{ChunkStore: inmemchunkstore.New()}
+		if err := serverStorer.Put(context.Background(), chunk); err != nil {
+			t.Fatal(err)
+		}
+
+		server := createRetrieval(t, serverAddr, serverStorer, nil, topologymock.NewTopologyDriver(), logger, accountingmock.NewAccounting(), pricerMock, nil, false)
+
+		// Start with no connected peers so ClosestPeer returns ErrNotFound.
+		mt := topologymock.NewTopologyDriver()
+
+		recorder := streamtest.New(
+			streamtest.WithProtocols(server.Protocol()),
+			streamtest.WithBaseAddr(clientAddr),
+		)
+
+		connectCalled := false
+		connectClosest := topologymock.WithConnectClosestFunc(func(_ context.Context, _ swarm.Address, _ ...swarm.Address) (swarm.Address, error) {
+			// Simulate a successful connection by making the peer available.
+			connectCalled = true
+			mt.AddPeers(serverAddr)
+			return serverAddr, nil
+		})
+		mt2 := topologymock.NewTopologyDriver(connectClosest)
+
+		client := retrieval.New(clientAddr, radiusF, &testStorer{ChunkStore: inmemchunkstore.New()}, recorder, mt, mt2, logger, accountingmock.NewAccounting(), pricerMock, nil, false)
+		t.Cleanup(func() { client.Close() })
+
+		ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+		defer cancel()
+
+		got, err := client.RetrieveChunk(ctx, chunk.Address(), swarm.ZeroAddress)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got.Data(), chunk.Data()) {
+			t.Fatalf("got data %x, want %x", got.Data(), chunk.Data())
+		}
+		if !connectCalled {
+			t.Fatal("expected ConnectClosest to be called")
+		}
+	})
+
+	// t.Run exhausted: ConnectClosest always fails; retrieval gives up with ErrNotFound.
+	t.Run("exhausted", func(t *testing.T) {
+		t.Parallel()
+
+		mt := topologymock.NewTopologyDriver() // no connected peers
+
+		connectAttempts := 0
+		connectClosest := topologymock.WithConnectClosestFunc(func(_ context.Context, _ swarm.Address, _ ...swarm.Address) (swarm.Address, error) {
+			connectAttempts++
+			return swarm.Address{}, topology.ErrNotFound
+		})
+		onDemand := topologymock.NewTopologyDriver(connectClosest)
+
+		client := retrieval.New(clientAddr, radiusF, &testStorer{ChunkStore: inmemchunkstore.New()}, nil, mt, onDemand, logger, accountingmock.NewAccounting(), pricerMock, nil, false)
+		t.Cleanup(func() { client.Close() })
+
+		ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+		defer cancel()
+
+		_, err := client.RetrieveChunk(ctx, chunk.Address(), swarm.ZeroAddress)
+		if !errors.Is(err, topology.ErrNotFound) {
+			t.Fatalf("expected ErrNotFound, got %v", err)
+		}
+		if connectAttempts != 3 {
+			t.Fatalf("expected ConnectClosest to be called 3 times, got %d", connectAttempts)
+		}
+	})
+
+	// t.Run not called: ConnectClosest is not invoked when peers are available.
+	t.Run("not called when peers available", func(t *testing.T) {
+		t.Parallel()
+
+		serverStorer := &testStorer{ChunkStore: inmemchunkstore.New()}
+		if err := serverStorer.Put(context.Background(), chunk); err != nil {
+			t.Fatal(err)
+		}
+
+		server := createRetrieval(t, serverAddr, serverStorer, nil, topologymock.NewTopologyDriver(), logger, accountingmock.NewAccounting(), pricerMock, nil, false)
+		recorder := streamtest.New(
+			streamtest.WithProtocols(server.Protocol()),
+			streamtest.WithBaseAddr(clientAddr),
+		)
+
+		mt := topologymock.NewTopologyDriver(topologymock.WithClosestPeer(serverAddr))
+
+		connectCalled := false
+		onDemand := topologymock.NewTopologyDriver(topologymock.WithConnectClosestFunc(func(_ context.Context, _ swarm.Address, _ ...swarm.Address) (swarm.Address, error) {
+			connectCalled = true
+			return swarm.Address{}, topology.ErrNotFound
+		}))
+
+		client := retrieval.New(clientAddr, radiusF, &testStorer{ChunkStore: inmemchunkstore.New()}, recorder, mt, onDemand, logger, accountingmock.NewAccounting(), pricerMock, nil, false)
+		t.Cleanup(func() { client.Close() })
+
+		ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+		defer cancel()
+
+		got, err := client.RetrieveChunk(ctx, chunk.Address(), swarm.ZeroAddress)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got.Data(), chunk.Data()) {
+			t.Fatalf("got data %x, want %x", got.Data(), chunk.Data())
+		}
+		if connectCalled {
+			t.Fatal("expected ConnectClosest NOT to be called when peers are available")
+		}
+	})
+
+	// t.Run nil connecter: no panic when onDemandConnecter is nil.
+	t.Run("nil connecter", func(t *testing.T) {
+		t.Parallel()
+
+		mt := topologymock.NewTopologyDriver() // no connected peers, no on-demand connecter
+
+		client := retrieval.New(clientAddr, radiusF, &testStorer{ChunkStore: inmemchunkstore.New()}, nil, mt, nil, logger, accountingmock.NewAccounting(), pricerMock, nil, false)
+		t.Cleanup(func() { client.Close() })
+
+		ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+		defer cancel()
+
+		_, err := client.RetrieveChunk(ctx, chunk.Address(), swarm.ZeroAddress)
+		if !errors.Is(err, topology.ErrNotFound) {
+			t.Fatalf("expected ErrNotFound, got %v", err)
+		}
+	})
+}
+
 func createRetrieval(
 	t *testing.T,
 	addr swarm.Address,

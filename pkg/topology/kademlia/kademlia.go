@@ -1353,19 +1353,29 @@ func (k *Kad) ConnectClosest(ctx context.Context, addr swarm.Address, skipPeers 
 		return swarm.Address{}, topology.ErrNotFound
 	}
 
+	// Pre-compute proximity to avoid double calls per sort comparison.
+	type candWithPO struct {
+		addr swarm.Address
+		po   uint8
+	}
+	ranked := make([]candWithPO, len(candidates))
+	for i, c := range candidates {
+		ranked[i] = candWithPO{addr: c, po: swarm.Proximity(c.Bytes(), addr.Bytes())}
+	}
+
 	// Sort candidates by proximity to the target address (closest first).
-	sort.Slice(candidates, func(i, j int) bool {
-		return swarm.Proximity(candidates[i].Bytes(), addr.Bytes()) > swarm.Proximity(candidates[j].Bytes(), addr.Bytes())
+	sort.Slice(ranked, func(i, j int) bool {
+		return ranked[i].po > ranked[j].po
 	})
 
 	// Try connecting to the closest candidates.
 	attempts := 0
-	for _, peer := range candidates {
+	for _, c := range ranked {
 		if attempts >= maxOnDemandConnectionAttempts {
 			break
 		}
 
-		bzzAddr, err := k.addressBook.Get(peer)
+		bzzAddr, err := k.addressBook.Get(c.addr)
 		if err != nil {
 			continue
 		}
@@ -1373,15 +1383,15 @@ func (k *Kad) ConnectClosest(ctx context.Context, addr swarm.Address, skipPeers 
 		attempts++
 
 		connectCtx, cancel := context.WithTimeout(ctx, peerConnectionAttemptTimeout)
-		err = k.connect(connectCtx, peer, bzzAddr.Underlays)
+		err = k.connect(connectCtx, c.addr, bzzAddr.Underlays)
 		cancel()
 
 		if err == nil {
-			k.logger.Debug("on-demand connection successful", "peer_address", peer, "target_chunk", addr)
-			return peer, nil
+			k.logger.Debug("on-demand connection successful", "peer_address", c.addr, "target_chunk", addr)
+			return c.addr, nil
 		}
 
-		k.logger.Debug("on-demand connection failed", "peer_address", peer, "target_chunk", addr, "error", err)
+		k.logger.Debug("on-demand connection failed", "peer_address", c.addr, "target_chunk", addr, "error", err)
 	}
 
 	return swarm.Address{}, topology.ErrNotFound

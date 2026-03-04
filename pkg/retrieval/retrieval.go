@@ -130,9 +130,9 @@ const (
 	overDraftRefresh     = time.Millisecond * 600
 	skiplistDur          = time.Minute
 	originSuffix         = "_origin"
-	maxOriginErrors        = 32
-	maxMultiplexForwards   = 2
-	maxOnDemandAttempts    = 3
+	maxOriginErrors      = 32
+	maxMultiplexForwards = 2
+	maxOnDemandAttempts  = 3
 )
 
 func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr swarm.Address) (swarm.Chunk, error) {
@@ -224,6 +224,11 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 								onDemandAttempts++
 								if peer, connErr := s.onDemandConnecter.ConnectClosest(ctx, chunkAddr, fullSkip...); connErr == nil {
 									loggerV1.Debug("on-demand peer connected", "chunk_address", chunkAddr, "peer_address", peer, "attempt", onDemandAttempts)
+									retry()
+									continue
+								}
+								// Connection failed; retry to exhaust remaining attempts.
+								if onDemandAttempts < maxOnDemandAttempts {
 									retry()
 									continue
 								}

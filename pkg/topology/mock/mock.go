@@ -184,9 +184,9 @@ func (d *mock) ClosestPeer(addr swarm.Address, wantSelf bool, _ topology.Select,
 	return peerAddr, nil
 }
 
-func (d *mock) ConnectClosest(_ context.Context, addr swarm.Address, skipPeers ...swarm.Address) (swarm.Address, error) {
+func (d *mock) ConnectClosest(ctx context.Context, addr swarm.Address, skipPeers ...swarm.Address) (swarm.Address, error) {
 	if d.connectClosestFunc != nil {
-		return d.connectClosestFunc(context.Background(), addr, skipPeers...)
+		return d.connectClosestFunc(ctx, addr, skipPeers...)
 	}
 	return swarm.Address{}, topology.ErrNotFound
 }
