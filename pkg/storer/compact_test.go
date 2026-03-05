@@ -35,7 +35,9 @@ func TestCompact(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	st.StartReserveWorker(ctx, pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
+	readyC := make(chan struct{})
+	st.StartReserveWorker(ctx, pullerMock.NewMockRateReporter(0), networkRadiusFunc(0), readyC)
+	<-readyC
 
 	batches := []*postage.Batch{postagetesting.MustNewBatch(), postagetesting.MustNewBatch(), postagetesting.MustNewBatch()}
 	evictBatch := batches[1]
@@ -134,7 +136,9 @@ func TestCompactNoEvictions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	st.StartReserveWorker(ctx, pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
+	readyC := make(chan struct{})
+	st.StartReserveWorker(ctx, pullerMock.NewMockRateReporter(0), networkRadiusFunc(0), readyC)
+	<-readyC
 
 	batches := []*postage.Batch{postagetesting.MustNewBatch(), postagetesting.MustNewBatch(), postagetesting.MustNewBatch()}
 
