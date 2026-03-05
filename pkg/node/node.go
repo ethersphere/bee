@@ -1131,8 +1131,8 @@ func NewBee(
 		pullerService = puller.New(swarmAddress, stateStore, kad, localStore, pullSyncProtocol, p2ps, logger, puller.Options{})
 		b.pullerCloser = pullerService
 
-		// we pass a channel that is never read since this can cause startup delay
-		localStore.StartReserveWorker(ctx, pullerService, waitNetworkRFunc, make(chan struct{}))
+		// we pass an empty channel since startup synchronization is not needed for production code, only tests.
+		localStore.StartReserveWorker(ctx, pullerService, waitNetworkRFunc, nil)
 		nodeStatus.SetSync(pullerService)
 
 		// measure full sync duration

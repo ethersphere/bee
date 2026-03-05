@@ -136,7 +136,9 @@ func (db *DB) reserveWorker(ctx context.Context, ready chan<- struct{}) {
 		db.events.Trigger(reserveOverCapacity)
 	}
 
-	close(ready)
+	if ready != nil {
+		close(ready)
+	}
 
 	for {
 		select {
@@ -470,7 +472,6 @@ func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan
 	errC := make(chan error, 1)
 
 	db.inFlight.Go(func() {
-
 		trigger, unsub := db.reserveBinEvents.Subscribe(string(bin))
 		defer unsub()
 		defer close(out)

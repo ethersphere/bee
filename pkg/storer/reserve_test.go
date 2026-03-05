@@ -77,7 +77,11 @@ func TestIndexCollision(t *testing.T) {
 		}
 		readyC := make(chan struct{})
 		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0), readyC)
-		<-readyC
+		select {
+		case <-readyC:
+		case <-t.Context().Done():
+			t.Fatal("start reserve worker timeout")
+		}
 		testF(t, baseAddr, storer)
 	})
 	t.Run("mem", func(t *testing.T) {
@@ -89,7 +93,11 @@ func TestIndexCollision(t *testing.T) {
 		}
 		readyC := make(chan struct{})
 		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0), readyC)
-		<-readyC
+		select {
+		case <-readyC:
+		case <-t.Context().Done():
+			t.Fatal("start reserve worker timeout")
+		}
 		testF(t, baseAddr, storer)
 	})
 }
@@ -169,7 +177,11 @@ func TestReplaceOldIndex(t *testing.T) {
 		}
 		readyC := make(chan struct{})
 		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0), readyC)
-		<-readyC
+		select {
+		case <-readyC:
+		case <-t.Context().Done():
+			t.Fatal("start reserve worker timeout")
+		}
 		testF(t, baseAddr, storer)
 	})
 	t.Run("mem", func(t *testing.T) {
@@ -181,7 +193,11 @@ func TestReplaceOldIndex(t *testing.T) {
 		}
 		readyC := make(chan struct{})
 		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0), readyC)
-		<-readyC
+		select {
+		case <-readyC:
+		case <-t.Context().Done():
+			t.Fatal("start reserve worker timeout")
+		}
 		testF(t, baseAddr, storer)
 	})
 }
@@ -197,7 +213,11 @@ func TestEvictBatch(t *testing.T) {
 	}
 	readyC := make(chan struct{})
 	st.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0), readyC)
-	<-readyC
+	select {
+	case <-readyC:
+	case <-t.Context().Done():
+		t.Fatal("start reserve worker timeout")
+	}
 	ctx := context.Background()
 
 	var chunks []swarm.Chunk
@@ -359,7 +379,11 @@ func TestUnreserveCap(t *testing.T) {
 		}
 		readyC := make(chan struct{})
 		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0), readyC)
-		<-readyC
+		select {
+		case <-readyC:
+		case <-t.Context().Done():
+			t.Fatal("start reserve worker timeout")
+		}
 		testF(t, baseAddr, bs, storer)
 	})
 	t.Run("mem", func(t *testing.T) {
@@ -372,7 +396,11 @@ func TestUnreserveCap(t *testing.T) {
 		}
 		readyC := make(chan struct{})
 		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0), readyC)
-		<-readyC
+		select {
+		case <-readyC:
+		case <-t.Context().Done():
+			t.Fatal("start reserve worker timeout")
+		}
 		testF(t, baseAddr, bs, storer)
 	})
 }
@@ -389,7 +417,11 @@ func TestNetworkRadius(t *testing.T) {
 		}
 		readyC := make(chan struct{})
 		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(1), readyC)
-		<-readyC
+		select {
+		case <-readyC:
+		case <-t.Context().Done():
+			t.Fatal("start reserve worker timeout")
+		}
 		time.Sleep(time.Second)
 		if want, got := uint8(1), storer.StorageRadius(); want != got {
 			t.Fatalf("want radius %d, got radius %d", want, got)
@@ -404,7 +436,11 @@ func TestNetworkRadius(t *testing.T) {
 		}
 		readyC := make(chan struct{})
 		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(1), readyC)
-		<-readyC
+		select {
+		case <-readyC:
+		case <-t.Context().Done():
+			t.Fatal("start reserve worker timeout")
+		}
 		time.Sleep(time.Second)
 		if want, got := uint8(1), storer.StorageRadius(); want != got {
 			t.Fatalf("want radius %d, got radius %d", want, got)
@@ -447,8 +483,11 @@ func TestRadiusManager(t *testing.T) {
 		}
 		readyC := make(chan struct{})
 		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(3), readyC)
-		<-readyC
-
+		select {
+		case <-readyC:
+		case <-t.Context().Done():
+			t.Fatal("start reserve worker timeout")
+		}
 		batch := postagetesting.MustNewBatch()
 		err = bs.Save(batch)
 		if err != nil {
@@ -485,7 +524,11 @@ func TestRadiusManager(t *testing.T) {
 		}
 		readyC := make(chan struct{})
 		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(1), networkRadiusFunc(3), readyC)
-		<-readyC
+		select {
+		case <-readyC:
+		case <-t.Context().Done():
+			t.Fatal("start reserve worker timeout")
+		}
 		waitForRadius(t, storer.Reserve(), 3)
 	})
 }
@@ -772,7 +815,11 @@ func TestNeighborhoodStats(t *testing.T) {
 		}
 		readyC := make(chan struct{})
 		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(responsibiliyDepth), readyC)
-		<-readyC
+		select {
+		case <-readyC:
+		case <-t.Context().Done():
+			t.Fatal("start reserve worker timeout")
+		}
 		err = spinlock.Wait(time.Minute, func() bool { return storer.StorageRadius() == responsibiliyDepth })
 		if err != nil {
 			t.Fatal(err)
@@ -789,7 +836,11 @@ func TestNeighborhoodStats(t *testing.T) {
 		}
 		readyC := make(chan struct{})
 		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(responsibiliyDepth), readyC)
-		<-readyC
+		select {
+		case <-readyC:
+		case <-t.Context().Done():
+			t.Fatal("start reserve worker timeout")
+		}
 		err = spinlock.Wait(time.Minute, func() bool { return storer.StorageRadius() == responsibiliyDepth })
 		if err != nil {
 			t.Fatal(err)
