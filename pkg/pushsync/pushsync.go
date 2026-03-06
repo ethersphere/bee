@@ -299,6 +299,13 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	switch receipt, err := ps.pushToClosest(ctx, chunk, false); {
 	case errors.Is(err, topology.ErrWantSelf):
+		// Only store if we are actually within our neighborhood. If the chunk
+		// is outside our AOR we would store it in a low bin and unreserve()
+		// would evict it almost immediately, leaving the chunk nowhere on the
+		// network while the origin believes it was delivered.
+		if swarm.Proximity(ps.address.Bytes(), chunkAddress.Bytes()) < rad {
+			return ErrOutOfDepthStoring
+		}
 		stored, reason = true, "want self"
 		return store(ctx)
 	case err == nil:
@@ -361,10 +368,11 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	ps.metrics.TotalRequests.Inc()
 
 	var (
-		sentErrorsLeft   = 1
-		preemptiveTicker <-chan time.Time
-		inflight         int
-		parallelForwards = maxMultiplexForwards
+		sentErrorsLeft      = 1
+		preemptiveTicker    <-chan time.Time
+		inflight            int
+		parallelForwards    = maxMultiplexForwards
+		shallowReceiptResult *pb.Receipt
 	)
 
 	if origin {
@@ -419,10 +427,18 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				if skip.PruneExpiresAfter(idAddress, overDraftRefresh) == 0 { // no overdraft peers, we have depleted ALL peers
 					if inflight == 0 {
 						if ps.fullNode {
+							// If a peer already has the chunk (even at wrong depth), don't
+							// store locally — the chunk is closer to its neighbourhood than us.
+							if shallowReceiptResult != nil {
+								return shallowReceiptResult, ErrShallowReceipt
+							}
 							if cac.Valid(ch) {
 								go ps.unwrap(ch)
 							}
 							return nil, topology.ErrWantSelf
+						}
+						if shallowReceiptResult != nil {
+							return shallowReceiptResult, ErrShallowReceipt
 						}
 						ps.logger.Debug("no peers left", "chunk_address", ch.Address(), "error", err)
 						return nil, err
@@ -486,12 +502,17 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 					return result.receipt, nil
 				}
 
-				switch err := ps.checkReceipt(result.receipt); {
-				case err == nil:
+				if err := ps.checkReceipt(result.receipt); err == nil {
 					return result.receipt, nil
-				case errors.Is(err, ErrShallowReceipt):
-					ps.errSkip.Add(idAddress, result.peer, skiplistDur)
-					return result.receipt, err
+				} else if errors.Is(err, ErrShallowReceipt) {
+					// Treat shallow receipt like any other failure: exhaust the full
+					// error budget and wait for any other inflight parallel pushes
+					// (e.g. multiplex forwards) before giving up. Only return
+					// ErrShallowReceipt once the entire budget is spent.
+					shallowReceiptResult = result.receipt
+					result.err = err
+				} else {
+					result.err = err
 				}
 			}
 
@@ -505,6 +526,9 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		}
 	}
 
+	if shallowReceiptResult != nil {
+		return shallowReceiptResult, ErrShallowReceipt
+	}
 	return nil, ErrNoPush
 }
 
