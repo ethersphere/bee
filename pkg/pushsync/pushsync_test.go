@@ -208,29 +208,48 @@ func TestSocListener(t *testing.T) {
 	waitOnRecordAndTest(t, closestPeer, recorder, sch2.Address(), nil)
 }
 
-// TestShallowReceipt forces the peer to send back a shallow receipt to a pushsync request. In return, the origin node returns the error along with the received receipt.
+// TestShallowReceipt verifies that when a storer node stores a chunk legitimately
+// within its own AOR but the origin node has a stricter radius, the origin
+// correctly identifies and returns ErrShallowReceipt together with the receipt.
 func TestShallowReceipt(t *testing.T) {
 	t.Parallel()
-	// chunk data to upload
-	chunk := testingc.FixtureChunk("7000")
 
-	var highPO uint8 = 31
+	key, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	// create a pivot node and a mocked closest node
-	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")   // base is 0000
-	closestPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000") // binary 0110 -> po 1
+	signer := crypto.NewDefaultSigner(key)
 
-	// peer is the node responding to the chunk receipt message
-	// mock should return ErrWantSelf since there's no one to forward to
-	psPeer, _ := createPushSyncNodeWithRadius(t, closestPeer, defaultPrices, nil, nil, defaultSigner(chunk), highPO, 0, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	pubKey, err := signer.PublicKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	closestPeer, err := crypto.NewOverlayAddress(*pubKey, 1, blockHash.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Storer stores within its own AOR (proximity == storerRadius → just qualifies).
+	// The origin has a higher radius, so it considers the receipt too shallow.
+	storerRadius := 3
+	chunkProximity := 3
+	pivotRadius := 7
+	pivotTolerance := uint8(0)
+
+	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")
+
+	chunk := testingc.GenerateValidRandomChunkAt(t, closestPeer, chunkProximity)
+
+	// storer: proximity == storerRadius → within AOR → stores and sends receipt
+	psPeer, _ := createPushSyncNodeWithRadius(t, closestPeer, defaultPrices, nil, nil, signer, uint8(storerRadius), 0, mock.WithClosestPeerErr(topology.ErrWantSelf))
 
 	recorder := streamtest.New(streamtest.WithProtocols(psPeer.Protocol()), streamtest.WithBaseAddr(pivotNode))
 
-	// pivot node needs the streamer since the chunk is intercepted by
-	// the chunk worker, then gets sent by opening a new stream
-	psPivot, _ := createPushSyncNodeWithRadius(t, pivotNode, defaultPrices, recorder, nil, defaultSigner(chunk), highPO, 0, mock.WithClosestPeer(closestPeer))
+	// pivot: stricter radius → origin considers the receipt shallow
+	psPivot, _ := createPushSyncNodeWithRadius(t, pivotNode, defaultPrices, recorder, nil, nil, uint8(pivotRadius), pivotTolerance, mock.WithClosestPeer(closestPeer))
 
-	// Trigger the sending of chunk to the closest node
 	receipt, err := psPivot.PushChunkToClosest(context.Background(), chunk)
 	if !errors.Is(err, pushsync.ErrShallowReceipt) {
 		t.Fatalf("got %v, want %v", err, pushsync.ErrShallowReceipt)
@@ -245,6 +264,37 @@ func TestShallowReceipt(t *testing.T) {
 
 	// this intercepts the incoming receipt message
 	waitOnRecordAndTest(t, closestPeer, recorder, chunk.Address(), nil)
+}
+
+// TestOutOfDepthStoring verifies that when a storer is forced (ErrWantSelf) but
+// the chunk is outside its AOR, it refuses to store and returns an error rather
+// than storing a chunk it will immediately evict.
+func TestOutOfDepthStoring(t *testing.T) {
+	t.Parallel()
+
+	chunk := testingc.FixtureChunk("7000")
+
+	var highPO uint8 = 31
+
+	// Storer address has very low proximity to the chunk; its radius is highPO.
+	// It has no closer peers (ErrWantSelf) but MUST refuse to store because
+	// the chunk is far outside its AOR.
+	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")
+	closestPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
+
+	psPeer, _ := createPushSyncNodeWithRadius(t, closestPeer, defaultPrices, nil, nil, defaultSigner(chunk), highPO, 0, mock.WithClosestPeerErr(topology.ErrWantSelf))
+
+	recorder := streamtest.New(streamtest.WithProtocols(psPeer.Protocol()), streamtest.WithBaseAddr(pivotNode))
+
+	psPivot, _ := createPushSyncNodeWithRadius(t, pivotNode, defaultPrices, recorder, nil, defaultSigner(chunk), highPO, 0, mock.WithClosestPeer(closestPeer))
+
+	_, err := psPivot.PushChunkToClosest(context.Background(), chunk)
+
+	// The storer correctly refused to store, so the origin exhausted its peers
+	// without any shallow receipt. No ErrShallowReceipt should be returned.
+	if errors.Is(err, pushsync.ErrShallowReceipt) {
+		t.Fatal("got ErrShallowReceipt, but storer should have refused to store out-of-depth chunk")
+	}
 }
 
 // TestShallowReceiptTolerance sends back a shallow receipt but because of the tolerance level, the origin node accepts the receipts.
