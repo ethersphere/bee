@@ -304,6 +304,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		// would evict it almost immediately, leaving the chunk nowhere on the
 		// network while the origin believes it was delivered.
 		if swarm.Proximity(ps.address.Bytes(), chunkAddress.Bytes()) < rad {
+			ps.metrics.OutOfDepthStoring.Inc()
 			return ErrOutOfDepthStoring
 		}
 		stored, reason = true, "want self"
