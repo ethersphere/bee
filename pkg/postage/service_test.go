@@ -57,6 +57,7 @@ func TestSaveLoad(t *testing.T) {
 	test := func(id int64) {
 		psS := saved(id)
 		psL := loaded(id)
+		defer psL.Close()
 
 		sMap := map[string]struct{}{}
 		stampIssuers := psS.StampIssuers()
@@ -91,6 +92,8 @@ func TestGetStampIssuer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer ps.Close()
+
 	ids := make([][]byte, 8)
 	for i := range ids {
 		id := make([]byte, 32)
