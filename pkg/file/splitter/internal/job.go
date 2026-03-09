@@ -198,7 +198,7 @@ func (s *SimpleSplitterJob) hashUnfinished() error {
 //	  F   F
 //	F   F   F
 //
-// F   F   F   F S
+// # F   F   F   F S
 //
 // The result will be:
 //
@@ -206,7 +206,7 @@ func (s *SimpleSplitterJob) hashUnfinished() error {
 //	  F    F
 //	F   F   F
 //
-// F   F   F   F
+// # F   F   F   F
 //
 // After which the SS will be hashed to obtain the final root hash
 func (s *SimpleSplitterJob) moveDanglingChunk() error {
