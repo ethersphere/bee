@@ -369,10 +369,10 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	ps.metrics.TotalRequests.Inc()
 
 	var (
-		sentErrorsLeft      = 1
-		preemptiveTicker    <-chan time.Time
-		inflight            int
-		parallelForwards    = maxMultiplexForwards
+		sentErrorsLeft       = 1
+		preemptiveTicker     <-chan time.Time
+		inflight             int
+		parallelForwards     = maxMultiplexForwards
 		shallowReceiptResult *pb.Receipt
 	)
 

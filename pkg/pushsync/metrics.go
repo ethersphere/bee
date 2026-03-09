@@ -28,8 +28,8 @@ type metrics struct {
 	ReceiptDepth        *prometheus.CounterVec
 	ShallowReceiptDepth *prometheus.CounterVec
 	ShallowReceipt      prometheus.Counter
-	OverdraftRefresh     prometheus.Counter
-	OutOfDepthStoring    prometheus.Counter
+	OverdraftRefresh    prometheus.Counter
+	OutOfDepthStoring   prometheus.Counter
 }
 
 func newMetrics() metrics {
