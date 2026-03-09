@@ -231,18 +231,18 @@ func TestShallowReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Storer stores within its own AOR (proximity == storerRadius → just qualifies).
-	// The origin has a higher radius, so it considers the receipt too shallow.
-	storerRadius := 3
-	chunkProximity := 3
-	pivotRadius := 7
+	// Storer stores within its own AOR (proximity > storerRadius → qualifies).
+	// The origin has a much higher radius, so it always considers the receipt shallow.
+	storerRadius := 1
+	chunkProximity := 0
+	pivotRadius := 31
 	pivotTolerance := uint8(0)
 
 	pivotNode := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")
 
 	chunk := testingc.GenerateValidRandomChunkAt(t, closestPeer, chunkProximity)
 
-	// storer: proximity == storerRadius → within AOR → stores and sends receipt
+	// storer: proximity > storerRadius → within AOR → stores and sends receipt
 	psPeer, _ := createPushSyncNodeWithRadius(t, closestPeer, defaultPrices, nil, nil, signer, uint8(storerRadius), 0, mock.WithClosestPeerErr(topology.ErrWantSelf))
 
 	recorder := streamtest.New(streamtest.WithProtocols(psPeer.Protocol()), streamtest.WithBaseAddr(pivotNode))
