@@ -762,9 +762,9 @@ func TestOnDemandConnect(t *testing.T) {
 
 		mt := topologymock.NewTopologyDriver() // no connected peers
 
-		connectAttempts := 0
+		connectCalled := false
 		connectClosest := topologymock.WithConnectClosestFunc(func(_ context.Context, _ swarm.Address, _ ...swarm.Address) (swarm.Address, error) {
-			connectAttempts++
+			connectCalled = true
 			return swarm.Address{}, topology.ErrNotFound
 		})
 		onDemand := topologymock.NewTopologyDriver(connectClosest)
@@ -779,8 +779,8 @@ func TestOnDemandConnect(t *testing.T) {
 		if !errors.Is(err, topology.ErrNotFound) {
 			t.Fatalf("expected ErrNotFound, got %v", err)
 		}
-		if connectAttempts != 3 {
-			t.Fatalf("expected ConnectClosest to be called 3 times, got %d", connectAttempts)
+		if !connectCalled {
+			t.Fatal("expected ConnectClosest to be called")
 		}
 	})
 

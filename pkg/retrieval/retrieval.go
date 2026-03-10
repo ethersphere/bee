@@ -132,7 +132,6 @@ const (
 	originSuffix         = "_origin"
 	maxOriginErrors      = 32
 	maxMultiplexForwards = 2
-	maxOnDemandAttempts  = 3
 )
 
 func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr swarm.Address) (swarm.Chunk, error) {
@@ -175,7 +174,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 		defer close(quit)
 
 		var forwards = maxMultiplexForwards
-		onDemandAttempts := 0
 
 		// if we are the origin node, allow many preemptive retries to speed up the retrieval of the chunk.
 		errorsLeft := 1
@@ -220,15 +218,10 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 					if skip.PruneExpiresAfter(chunkAddr, overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
 						if inflight == 0 {
 							// Last resort: try connecting to a known-but-disconnected peer.
-							if s.onDemandConnecter != nil && onDemandAttempts < maxOnDemandAttempts {
-								onDemandAttempts++
+							// ConnectClosest handles trying multiple candidates internally (sorted once by proximity).
+							if s.onDemandConnecter != nil {
 								if peer, connErr := s.onDemandConnecter.ConnectClosest(ctx, chunkAddr, fullSkip...); connErr == nil {
-									loggerV1.Debug("on-demand peer connected", "chunk_address", chunkAddr, "peer_address", peer, "attempt", onDemandAttempts)
-									retry()
-									continue
-								}
-								// Connection failed; retry to exhaust remaining attempts.
-								if onDemandAttempts < maxOnDemandAttempts {
+									loggerV1.Debug("on-demand peer connected", "chunk_address", chunkAddr, "peer_address", peer)
 									retry()
 									continue
 								}
