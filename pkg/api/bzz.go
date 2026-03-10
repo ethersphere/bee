@@ -188,7 +188,7 @@ func (s *Service) fileUploadHandler(
 	sniffBuf := make([]byte, contentTypeSniffLen)
 	n, err := io.ReadFull(r.Body, sniffBuf)
 	sniffBuf = sniffBuf[:n]
-	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 		logger.Debug("body read failed", "file_name", queries.FileName, "error", err)
 		logger.Error(nil, "body read failed", "file_name", queries.FileName)
 		jsonhttp.BadRequest(w, "failed to read request body")
