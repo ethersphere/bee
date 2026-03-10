@@ -10,7 +10,7 @@ require (
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2
 	github.com/caddyserver/certmagic v0.21.6
 	github.com/coreos/go-semver v0.3.0
-	github.com/ethereum/go-ethereum v1.16.8
+	github.com/ethereum/go-ethereum v1.16.9
 	github.com/ethersphere/batch-archive v0.0.5
 	github.com/ethersphere/go-price-oracle-abi v0.6.9
 	github.com/ethersphere/go-storage-incentives-abi v0.9.4
