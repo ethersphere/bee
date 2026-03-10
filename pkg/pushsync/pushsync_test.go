@@ -291,9 +291,9 @@ func TestOutOfDepthStoring(t *testing.T) {
 	_, err := psPivot.PushChunkToClosest(context.Background(), chunk)
 
 	// The storer correctly refused to store, so the origin exhausted its peers
-	// without any shallow receipt. No ErrShallowReceipt should be returned.
-	if errors.Is(err, pushsync.ErrShallowReceipt) {
-		t.Fatal("got ErrShallowReceipt, but storer should have refused to store out-of-depth chunk")
+	// and falls back to ErrWantSelf (full node with no remaining peers).
+	if !errors.Is(err, topology.ErrWantSelf) {
+		t.Fatalf("got %v, want %v", err, topology.ErrWantSelf)
 	}
 }
 
