@@ -190,46 +190,52 @@ func watchStart(watches []transactionWatch) time.Time {
 	return start
 }
 
-// check pending checks the given block (number) for confirmed or cancelled transactions
+// checkPending checks the given block for confirmed or cancelled transactions.
 func (tm *transactionMonitor) checkPending(block uint64) error {
-	confirmedNonces := make(map[uint64]*types.Receipt)
-	var cancelledNonces []uint64
-	for nonceGroup, watchMap := range tm.watchesByNonce {
+	// Snapshot nonces and tx hashes to check (releases lock during slow RPC calls).
+	tm.lock.Lock()
+	snapshot := make(map[uint64]map[common.Hash]time.Time, len(tm.watchesByNonce))
+	for nonce, watchMap := range tm.watchesByNonce {
+		snapshot[nonce] = make(map[common.Hash]time.Time, len(watchMap))
 		for txHash, watches := range watchMap {
+			snapshot[nonce][txHash] = watchStart(watches)
+		}
+	}
+	tm.lock.Unlock()
+
+	// Check receipts without holding lock (RPC calls can be slow).
+	confirmedNonces := make(map[uint64]*types.Receipt)
+	for nonce, txMap := range snapshot {
+		for txHash, start := range txMap {
 			receipt, err := tm.backend.TransactionReceipt(tm.ctx, txHash)
 			if err != nil {
-				// wait for a few blocks to be mined before considering a transaction not existing
-				transactionWatchNotFoundTimeout := 5 * tm.pollingInterval
-				if errors.Is(err, ethereum.NotFound) && watchStart(watches).Before(time.Now().Add(transactionWatchNotFoundTimeout)) {
-					// if both err and receipt are nil, there is no receipt
-					// the reason why we consider this only potentially cancelled is to catch cases where after a reorg the original transaction wins
+				if errors.Is(err, ethereum.NotFound) && start.Before(time.Now().Add(5*tm.pollingInterval)) {
 					continue
 				}
 				return err
 			}
 			if receipt != nil {
-				// if we have a receipt we have a confirmation
-				confirmedNonces[nonceGroup] = receipt
+				confirmedNonces[nonce] = receipt
 			}
 		}
 	}
 
-	for nonceGroup := range tm.watchesByNonce {
-		if _, ok := confirmedNonces[nonceGroup]; ok {
+	// Check for cancellations.
+	var cancelledNonces []uint64
+	for nonce := range snapshot {
+		if _, ok := confirmedNonces[nonce]; ok {
 			continue
 		}
-
 		oldNonce, err := tm.backend.NonceAt(tm.ctx, tm.sender, new(big.Int).SetUint64(block-tm.cancellationDepth))
 		if err != nil {
 			return err
 		}
-
-		if nonceGroup < oldNonce {
-			cancelledNonces = append(cancelledNonces, nonceGroup)
+		if nonce < oldNonce {
+			cancelledNonces = append(cancelledNonces, nonce)
 		}
 	}
 
-	// notify the subscribers and remove watches for confirmed or cancelled transactions
+	// Notify subscribers and cleanup.
 	tm.lock.Lock()
 	defer tm.lock.Unlock()
 
