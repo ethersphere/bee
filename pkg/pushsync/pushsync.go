@@ -428,13 +428,13 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				if skip.PruneExpiresAfter(idAddress, overDraftRefresh) == 0 { // no overdraft peers, we have depleted ALL peers
 					if inflight == 0 {
 						if ps.fullNode {
+							if cac.Valid(ch) {
+								go ps.unwrap(ch)
+							}
 							// If a peer already has the chunk (even at wrong depth), don't
 							// store locally — the chunk is closer to its neighbourhood than us.
 							if shallowReceiptResult != nil {
 								return shallowReceiptResult, ErrShallowReceipt
-							}
-							if cac.Valid(ch) {
-								go ps.unwrap(ch)
 							}
 							return nil, topology.ErrWantSelf
 						}
