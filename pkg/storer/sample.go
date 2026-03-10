@@ -463,6 +463,9 @@ func (db *DB) recordReserveSampleMetrics(duration time.Duration, stats *SampleSt
 		"chunks_per_second":                    float64(stats.TotalIterated) / duration.Seconds(),
 		"stamp_validation_duration_seconds":    stats.ValidStampDuration.Seconds(),
 		"batches_below_value_duration_seconds": stats.BatchesBelowValueDuration.Seconds(),
+		"taddr_duration_seconds":               stats.TaddrDuration.Seconds(),
+		"chunk_load_duration_seconds":          stats.ChunkLoadDuration.Seconds(),
+		"iteration_duration_seconds":           stats.IterationDuration.Seconds(),
 	}
 
 	for metric, value := range summaryMetrics {
