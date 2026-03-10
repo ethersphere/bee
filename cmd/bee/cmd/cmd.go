@@ -72,7 +72,6 @@ const (
 	optionNameStaticNodes                  = "static-nodes"
 	optionNameAllowPrivateCIDRs            = "allow-private-cidrs"
 	optionNameSleepAfter                   = "sleep-after"
-	optionNameUsePostageSnapshot           = "use-postage-snapshot"
 	optionNameStorageIncentivesEnable      = "storage-incentives-enable"
 	optionNameStateStoreCacheCapacity      = "statestore-cache-capacity"
 	optionNameTargetNeighborhood           = "target-neighborhood"
@@ -288,7 +287,6 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNamePProfMutex, false, "enable pprof mutex profile")
 	cmd.Flags().StringSlice(optionNameStaticNodes, []string{}, "protect nodes from getting kicked out on bootnode")
 	cmd.Flags().Bool(optionNameAllowPrivateCIDRs, false, "allow to advertise private CIDRs to the public network")
-	cmd.Flags().Bool(optionNameUsePostageSnapshot, false, "bootstrap node using postage snapshot from the network")
 	cmd.Flags().Bool(optionNameStorageIncentivesEnable, true, "enable storage incentives feature")
 	cmd.Flags().Uint64(optionNameStateStoreCacheCapacity, 100_000, "lru memory caching capacity in number of statestore entries")
 	cmd.Flags().String(optionNameTargetNeighborhood, "", "neighborhood to target in binary format (ex: 111111001) for mining the initial overlay")

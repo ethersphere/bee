@@ -141,6 +141,12 @@ type Streamer interface {
 	NewStream(ctx context.Context, address swarm.Address, h Headers, protocol, version, stream string) (Stream, error)
 }
 
+// Bee260CompatibilityStreamer is able to create a new Stream and check if a peer is running Bee 2.6.0.
+type Bee260CompatibilityStreamer interface {
+	NewStream(ctx context.Context, address swarm.Address, h Headers, protocol, version, stream string) (Stream, error)
+	IsBee260(address swarm.Address) bool
+}
+
 type StreamerDisconnecter interface {
 	Streamer
 	Disconnecter
@@ -236,4 +242,19 @@ func (e *ChunkDeliveryError) Error() string {
 // NewChunkDeliveryError is a convenience constructor for ChunkDeliveryError.
 func NewChunkDeliveryError(msg string) error {
 	return &ChunkDeliveryError{msg: msg}
+}
+
+// FilterBee260CompatibleUnderlays select a single underlay to pass if
+// bee260compatibility is true. Otherwise it passes the unmodified underlays
+// slice. This function can be safely removed when bee version 2.6.0 is
+// deprecated.
+func FilterBee260CompatibleUnderlays(bee260compatibility bool, underlays []ma.Multiaddr) []ma.Multiaddr {
+	if !bee260compatibility {
+		return underlays
+	}
+	underlay := bzz.SelectBestAdvertisedAddress(underlays, nil)
+	if underlay == nil {
+		return underlays
+	}
+	return []ma.Multiaddr{underlay}
 }

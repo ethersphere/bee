@@ -7,7 +7,9 @@
 package reacher
 
 import (
+	"container/heap"
 	"context"
+	"math/rand/v2"
 	"sync"
 	"time"
 
@@ -18,20 +20,28 @@ import (
 )
 
 const (
-	pingTimeout        = time.Second * 15
-	workers            = 16
-	retryAfterDuration = time.Minute * 5
+	pingTimeout               = time.Second * 15
+	workers                   = 8
+	retryAfterDuration        = time.Minute * 5
+	maxFailBackoffExponent    = 4   // caps failure backoff at retryAfterDuration * 2^4 = 80 min
+	maxSuccessBackoffExponent = 2   // caps success backoff at retryAfterDuration * 2^2 = 20 min
+	jitterFactor              = 0.2 // ±20% randomization on retry intervals
 )
 
 type peer struct {
-	overlay    swarm.Address
-	addr       ma.Multiaddr
-	retryAfter time.Time
+	overlay      swarm.Address
+	addr         ma.Multiaddr
+	retryAfter   time.Time
+	failCount    int // consecutive ping failures for exponential backoff
+	successCount int // consecutive ping successes for exponential backoff
+	generation   int // incremented on reconnect; guards against stale notifyResult
+	index        int // index in the heap
 }
 
 type reacher struct {
-	mu    sync.Mutex
-	peers map[string]*peer
+	mu        sync.Mutex
+	peerHeap  peerHeap         // min-heap ordered by retryAfter
+	peerIndex map[string]*peer // lookup by overlay for O(1) access
 
 	newPeer chan struct{}
 	quit    chan struct{}
@@ -41,6 +51,7 @@ type reacher struct {
 
 	wg sync.WaitGroup
 
+	metrics metrics
 	options *Options
 	logger  log.Logger
 }
@@ -49,16 +60,19 @@ type Options struct {
 	PingTimeout        time.Duration
 	Workers            int
 	RetryAfterDuration time.Duration
+	JitterFactor       float64 // ±N% randomization on retry intervals; 0 disables jitter
 }
 
 func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier, o *Options, log log.Logger) *reacher {
 	r := &reacher{
-		newPeer:  make(chan struct{}, 1),
-		quit:     make(chan struct{}),
-		pinger:   streamer,
-		peers:    make(map[string]*peer),
-		notifier: notifier,
-		logger:   log.WithName("reacher").Register(),
+		newPeer:   make(chan struct{}, 1),
+		quit:      make(chan struct{}),
+		pinger:    streamer,
+		peerHeap:  make(peerHeap, 0),
+		peerIndex: make(map[string]*peer),
+		notifier:  notifier,
+		metrics:   newMetrics(),
+		logger:    log.WithName("reacher").Register(),
 	}
 
 	if o == nil {
@@ -66,6 +80,7 @@ func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier, o *Options, log lo
 			PingTimeout:        pingTimeout,
 			Workers:            workers,
 			RetryAfterDuration: retryAfterDuration,
+			JitterFactor:       jitterFactor,
 		}
 	}
 	r.options = o
@@ -77,10 +92,9 @@ func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier, o *Options, log lo
 }
 
 func (r *reacher) manage() {
-
 	defer r.wg.Done()
 
-	c := make(chan *peer)
+	c := make(chan peer)
 	defer close(c)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -92,8 +106,7 @@ func (r *reacher) manage() {
 	}
 
 	for {
-
-		p, tryAfter := r.tryAcquirePeer()
+		p, ok, tryAfter := r.tryAcquirePeer()
 
 		// if no peer is returned,
 		// wait until either more work or the closest retry-after time.
@@ -111,7 +124,7 @@ func (r *reacher) manage() {
 		}
 
 		// wait for work
-		if p == nil {
+		if !ok {
 			select {
 			case <-r.quit:
 				return
@@ -129,64 +142,124 @@ func (r *reacher) manage() {
 	}
 }
 
-func (r *reacher) ping(c chan *peer, ctx context.Context) {
+func (r *reacher) ping(c chan peer, ctx context.Context) {
 	defer r.wg.Done()
 	for p := range c {
 		func() {
+			r.metrics.PingAttemptCount.Inc()
 			ctxt, cancel := context.WithTimeout(ctx, r.options.PingTimeout)
 			defer cancel()
+			start := time.Now()
 			rtt, err := r.pinger.Ping(ctxt, p.addr)
 			if err != nil {
+				r.metrics.PingDuration.Observe(time.Since(start).Seconds())
+				r.metrics.PingErrorCount.Inc()
 				r.logger.Debug("ping failed", "peer", p.overlay.String(), "addr", p.addr.String(), "error", err)
 				r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPrivate)
+				r.notifyResult(p.overlay, false, p.generation)
 			} else {
+				r.metrics.PingDuration.Observe(rtt.Seconds())
 				r.logger.Debug("ping succeeded", "peer", p.overlay.String(), "addr", p.addr.String(), "rtt", rtt)
 				r.notifier.Reachable(p.overlay, p2p.ReachabilityStatusPublic)
+				r.notifyResult(p.overlay, true, p.generation)
 			}
 		}()
 	}
 }
 
-func (r *reacher) tryAcquirePeer() (*peer, time.Duration) {
+func (r *reacher) tryAcquirePeer() (peer, bool, time.Duration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	var (
-		now         = time.Now()
-		nextClosest time.Time
-	)
-
-	for _, p := range r.peers {
-
-		// retry after has expired, retry
-		if now.After(p.retryAfter) {
-			p.retryAfter = time.Now().Add(r.options.RetryAfterDuration)
-			return p, 0
-		}
-
-		// here, we find the peer with the earliest retry after
-		if nextClosest.IsZero() || p.retryAfter.Before(nextClosest) {
-			nextClosest = p.retryAfter
-		}
+	if len(r.peerHeap) == 0 {
+		return peer{}, false, 0
 	}
 
-	if nextClosest.IsZero() {
-		return nil, 0
+	now := time.Now()
+
+	// Peek at the peer with the earliest retryAfter
+	p := r.peerHeap[0]
+
+	// If retryAfter has not expired, return time to wait
+	if now.Before(p.retryAfter) {
+		return peer{}, false, time.Until(p.retryAfter)
 	}
 
-	// return the time to wait until the closest retry after
-	return nil, time.Until(nextClosest)
+	// Set a temporary far-future retryAfter to prevent the manage loop from
+	// re-dispatching this peer while the ping is in flight. The actual
+	// retryAfter will be set by notifyResult after the ping completes.
+	p.retryAfter = now.Add(time.Hour)
+	heap.Fix(&r.peerHeap, p.index)
+
+	// Return a copy so callers can read fields without holding the lock.
+	return *p, true, 0
 }
 
 // Connected adds a new peer to the queue for testing reachability.
+// If the peer already exists, its address is updated.
 func (r *reacher) Connected(overlay swarm.Address, addr ma.Multiaddr) {
+	if addr == nil {
+		return
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if _, ok := r.peers[overlay.ByteString()]; !ok {
-		r.peers[overlay.ByteString()] = &peer{overlay: overlay, addr: addr}
+	key := overlay.ByteString()
+	if existing, ok := r.peerIndex[key]; ok {
+		existing.addr = addr              // Update address for reconnecting peer
+		existing.retryAfter = time.Time{} // Reset to trigger immediate re-ping
+		existing.failCount = 0            // Fresh start on reconnect
+		existing.successCount = 0         // Fresh start on reconnect
+		existing.generation++             // invalidate any in-flight notifyResult
+		heap.Fix(&r.peerHeap, existing.index)
+	} else {
+		p := &peer{overlay: overlay, addr: addr}
+		r.peerIndex[key] = p
+		heap.Push(&r.peerHeap, p)
+		r.metrics.Peers.Inc()
 	}
 
+	select {
+	case r.newPeer <- struct{}{}:
+	default:
+	}
+}
+
+// notifyResult updates the peer's retry schedule based on the ping outcome.
+// Both success and failure use exponential backoff with different caps:
+//   - Success: 5m → 10m → 20m (capped at 2^2), resets failCount
+//   - Failure: 5m → 10m → 20m → 40m → 80m (capped at 2^4), resets successCount
+//
+// The gen parameter is the generation captured when the ping was dispatched.
+// If the peer was reconnected (generation incremented) while the ping was
+// in flight, the stale result is discarded.
+func (r *reacher) notifyResult(overlay swarm.Address, success bool, gen int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	p, ok := r.peerIndex[overlay.ByteString()]
+	if !ok {
+		return // peer was disconnected while ping was in flight
+	}
+	if p.generation != gen {
+		return // peer was reconnected; discard stale result
+	}
+
+	if success {
+		p.failCount = 0
+		p.successCount++
+		backoff := min(p.successCount, maxSuccessBackoffExponent)
+		p.retryAfter = time.Now().Add(r.jitter(r.options.RetryAfterDuration * time.Duration(1<<backoff)))
+	} else {
+		p.successCount = 0
+		p.failCount++
+		backoff := min(p.failCount, maxFailBackoffExponent)
+		p.retryAfter = time.Now().Add(r.jitter(r.options.RetryAfterDuration * time.Duration(1<<backoff)))
+	}
+	heap.Fix(&r.peerHeap, p.index)
+
+	// Wake the manage loop so it recalculates the next retry time.
 	select {
 	case r.newPeer <- struct{}{}:
 	default:
@@ -198,7 +271,23 @@ func (r *reacher) Disconnected(overlay swarm.Address) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	delete(r.peers, overlay.ByteString())
+	key := overlay.ByteString()
+	if p, ok := r.peerIndex[key]; ok {
+		heap.Remove(&r.peerHeap, p.index)
+		delete(r.peerIndex, key)
+		r.metrics.Peers.Dec()
+	}
+}
+
+// jitter adds ±JitterFactor randomization to a duration to prevent peers from
+// synchronizing their retry times and causing burst traffic.
+func (r *reacher) jitter(d time.Duration) time.Duration {
+	if r.options.JitterFactor == 0 {
+		return d
+	}
+	// rand.Float64() returns [0.0, 1.0), scale to [-JitterFactor, +JitterFactor)
+	j := 1.0 + r.options.JitterFactor*(2*rand.Float64()-1)
+	return time.Duration(float64(d) * j)
 }
 
 // Close stops the worker. Must be called once.

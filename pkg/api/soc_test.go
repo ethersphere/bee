@@ -95,6 +95,12 @@ func TestSOC(t *testing.T) {
 			}),
 		)
 
+		// Wait for the chanStorer drain goroutine to process the chunk and invoke
+		// the subscriber (which stores it in mockStorer) before issuing GETs.
+		if err := spinlock.Wait(2*time.Second, func() bool { return chanStore.Has(s.Address()) }); err != nil {
+			t.Fatal("timed out waiting for chunk to be stored:", err)
+		}
+
 		// try to fetch the same chunk
 		t.Run("chunks fetch", func(t *testing.T) {
 			rsrc := fmt.Sprintf("/chunks/%s", s.Address().String())
