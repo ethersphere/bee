@@ -599,7 +599,7 @@ func (a *Accounting) SurplusBalance(peer swarm.Address) (balance *big.Int, err e
 		return nil, err
 	}
 
-	if wrapper.Int.Cmp(big.NewInt(0)) < 0 {
+	if wrapper.Cmp(big.NewInt(0)) < 0 {
 		return nil, ErrInvalidValue
 	}
 
