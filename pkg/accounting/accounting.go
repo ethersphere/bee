@@ -103,9 +103,9 @@ func (b *bigInt) MarshalBinary() ([]byte, error) {
 	if b.Int == nil {
 		return []byte{0}, nil
 	}
-	bytes := b.Int.Bytes()
+	bytes := b.Bytes()
 	res := make([]byte, len(bytes)+1)
-	if b.Int.Sign() < 0 {
+	if b.Sign() < 0 {
 		res[0] = 1
 	}
 	copy(res[1:], bytes)
@@ -125,7 +125,7 @@ func (b *bigInt) UnmarshalBinary(data []byte) error {
 	}
 	b.Int = new(big.Int).SetBytes(data[1:])
 	if data[0] == 1 {
-		b.Int.Neg(b.Int)
+		b.Neg(b.Int)
 	}
 	return nil
 }
@@ -909,7 +909,7 @@ func (a *Accounting) PeerDebt(peer swarm.Address) (*big.Int, error) {
 	accountingPeer.lock.Lock()
 	defer accountingPeer.lock.Unlock()
 
-	balance := new(big.Int)
+	var balance *big.Int
 	zero := big.NewInt(0)
 
 	var wrapper bigInt
@@ -937,7 +937,7 @@ func (a *Accounting) peerLatentDebt(peer swarm.Address) (*big.Int, error) {
 
 	accountingPeer := a.getAccountingPeer(peer)
 
-	balance := new(big.Int)
+	var balance *big.Int
 	zero := big.NewInt(0)
 	var wrapper bigInt
 	err := a.store.Get(peerBalanceKey(peer), &wrapper)

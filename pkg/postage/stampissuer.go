@@ -293,11 +293,11 @@ func (si *StampIssuer) recover(batchIndex []byte) error {
 		return fmt.Errorf("bucket index %d out of bounds", bIdx)
 	}
 
-	// bCnt is the collision count WHEN the stamp was issued, 
+	// bCnt is the collision count WHEN the stamp was issued,
 	// meaning the bucket count has already reached AT LEAST bCnt + 1
 	if si.data.Buckets[bIdx] <= bCnt {
 		si.data.Buckets[bIdx] = bCnt + 1
-		
+
 		if si.data.Buckets[bIdx] > si.data.MaxBucketCount {
 			si.data.MaxBucketCount = si.data.Buckets[bIdx]
 		}

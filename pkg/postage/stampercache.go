@@ -20,9 +20,9 @@ var _ storage.Store = (*StamperStoreCache)(nil)
 // of sequential disk writes into sporadic batched flushes.
 type StamperStoreCache struct {
 	storage.Store
-	
+
 	cache sync.Map // map[string][]byte
-	
+
 	quit chan struct{}
 	wg   sync.WaitGroup
 }
@@ -39,10 +39,10 @@ func NewStamperStoreCache(store storage.Store) *StamperStoreCache {
 		Store: store,
 		quit:  make(chan struct{}),
 	}
-	
+
 	c.wg.Add(1)
 	go c.flushLoop()
-	
+
 	return c
 }
 
@@ -95,10 +95,10 @@ func (c *StamperStoreCache) Close() error {
 // flushLoop runs passively, persisting memory to disk.
 func (c *StamperStoreCache) flushLoop() {
 	defer c.wg.Done()
-	
+
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-c.quit:
@@ -122,14 +122,14 @@ func (c *StamperStoreCache) flush() {
 	c.cache.Range(func(k, v interface{}) bool {
 		item := v.(storage.Item)
 		c.cache.Delete(k) // removed from dirty cache
-		
+
 		var err error
 		if batch != nil {
 			err = batch.Put(item)
 		} else {
 			err = c.Store.Put(item)
 		}
-		
+
 		if err != nil {
 			// If flush fails, re-insert to try again next tick
 			c.cache.Store(k, item)
