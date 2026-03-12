@@ -409,6 +409,7 @@ func NewBee(
 		o.BlockTime,
 		chainEnabled,
 		o.MinimumGasTipCap,
+		o.BlockTime*85/100,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("init chain: %w", err)

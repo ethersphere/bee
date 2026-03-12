@@ -214,14 +214,14 @@ func (tm *transactionMonitor) checkPending(block uint64) error {
 		}
 	}
 
+	oldNonce, err := tm.backend.NonceAt(tm.ctx, tm.sender, new(big.Int).SetUint64(block-tm.cancellationDepth))
+	if err != nil {
+		return err
+	}
+
 	for nonceGroup := range tm.watchesByNonce {
 		if _, ok := confirmedNonces[nonceGroup]; ok {
 			continue
-		}
-
-		oldNonce, err := tm.backend.NonceAt(tm.ctx, tm.sender, new(big.Int).SetUint64(block-tm.cancellationDepth))
-		if err != nil {
-			return err
 		}
 
 		if nonceGroup < oldNonce {
