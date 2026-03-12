@@ -8,7 +8,7 @@ package accounting
 
 import (
 	"context"
-	"encoding/json"
+
 	"errors"
 	"fmt"
 	"maps"
@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/pricing"
 	"github.com/ethersphere/bee/v2/pkg/settlement/pseudosettle"
+	"github.com/ethersphere/bee/v2/pkg/bigint"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -89,45 +90,6 @@ type creditAction struct {
 	accountingPeer *accountingPeer
 	originated     bool
 	applied        bool
-}
-
-// bigInt is an internal wrapper around big.Int that natively bypasses
-// proxyItem.Unmarshal json overhead by implementing encoding.BinaryMarshaler
-// and encoding.BinaryUnmarshaler directly.
-type bigInt struct {
-	*big.Int
-}
-
-// MarshalBinary serializes the bigInt quickly, prefixing a 1 for negatives, 0 for positives.
-func (b *bigInt) MarshalBinary() ([]byte, error) {
-	if b.Int == nil {
-		return []byte{0}, nil
-	}
-	bytes := b.Bytes()
-	res := make([]byte, len(bytes)+1)
-	if b.Sign() < 0 {
-		res[0] = 1
-	}
-	copy(res[1:], bytes)
-	return res, nil
-}
-
-// UnmarshalBinary evaluates backward compatibility. If data begins with 0 or 1,
-// it uses fast binary parsing. Otherwise, it delegates to json.Unmarshal.
-func (b *bigInt) UnmarshalBinary(data []byte) error {
-	if len(data) == 0 {
-		return nil
-	}
-	// Fallback to JSON if data doesn't start with binary signature
-	if data[0] != 0 && data[0] != 1 {
-		b.Int = new(big.Int)
-		return json.Unmarshal(data, b.Int)
-	}
-	b.Int = new(big.Int).SetBytes(data[1:])
-	if data[0] == 1 {
-		b.Neg(b.Int)
-	}
-	return nil
 }
 
 // PayFunc is the function used for async monetary settlement
@@ -393,7 +355,7 @@ func (c *creditAction) Apply() error {
 
 	loggerV2.Debug("credit action apply", "crediting_peer_address", c.peer, "price", c.price, "new_balance", nextBalance)
 
-	err = c.accounting.store.Put(peerBalanceKey(c.peer), &bigInt{Int: nextBalance})
+	err = c.accounting.store.Put(peerBalanceKey(c.peer), &bigint.BigInt{Int: nextBalance})
 	if err != nil {
 		return fmt.Errorf("failed to persist balance: %w", err)
 	}
@@ -446,7 +408,7 @@ func (c *creditAction) Apply() error {
 		loggerV2.Debug("credit action apply; decreasing originated balance", "crediting_peer_address", c.peer, "current_balance", nextOriginBalance)
 	}
 
-	err = c.accounting.store.Put(originatedBalanceKey(c.peer), &bigInt{Int: nextOriginBalance})
+	err = c.accounting.store.Put(originatedBalanceKey(c.peer), &bigint.BigInt{Int: nextOriginBalance})
 	if err != nil {
 		return fmt.Errorf("failed to persist originated balance: %w", err)
 	}
@@ -559,7 +521,7 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 
 // Balance returns the current balance for the given peer.
 func (a *Accounting) Balance(peer swarm.Address) (balance *big.Int, err error) {
-	var wrapper bigInt
+	var wrapper bigint.BigInt
 	err = a.store.Get(peerBalanceKey(peer), &wrapper)
 
 	if err != nil {
@@ -574,7 +536,7 @@ func (a *Accounting) Balance(peer swarm.Address) (balance *big.Int, err error) {
 
 // OriginatedBalance returns the current balance for the given peer.
 func (a *Accounting) OriginatedBalance(peer swarm.Address) (balance *big.Int, err error) {
-	var wrapper bigInt
+	var wrapper bigint.BigInt
 	err = a.store.Get(originatedBalanceKey(peer), &wrapper)
 
 	if err != nil {
@@ -589,7 +551,7 @@ func (a *Accounting) OriginatedBalance(peer swarm.Address) (balance *big.Int, er
 
 // SurplusBalance returns the current balance for the given peer.
 func (a *Accounting) SurplusBalance(peer swarm.Address) (balance *big.Int, err error) {
-	var wrapper bigInt
+	var wrapper bigint.BigInt
 	err = a.store.Get(peerSurplusBalanceKey(peer), &wrapper)
 
 	if err != nil {
@@ -725,7 +687,7 @@ func (a *Accounting) Balances() (map[string]*big.Int, error) {
 		}
 
 		if _, ok := s[addr.String()]; !ok {
-			var wrapper bigInt
+			var wrapper bigint.BigInt
 			err = a.store.Get(peerBalanceKey(addr), &wrapper)
 			if err != nil {
 				return false, fmt.Errorf("get peer %s balance: %w", addr.String(), err)
@@ -912,7 +874,7 @@ func (a *Accounting) PeerDebt(peer swarm.Address) (*big.Int, error) {
 	var balance *big.Int
 	zero := big.NewInt(0)
 
-	var wrapper bigInt
+	var wrapper bigint.BigInt
 	err := a.store.Get(peerBalanceKey(peer), &wrapper)
 	if err != nil {
 		if !errors.Is(err, storage.ErrNotFound) {
@@ -939,7 +901,7 @@ func (a *Accounting) peerLatentDebt(peer swarm.Address) (*big.Int, error) {
 
 	var balance *big.Int
 	zero := big.NewInt(0)
-	var wrapper bigInt
+	var wrapper bigint.BigInt
 	err := a.store.Get(peerBalanceKey(peer), &wrapper)
 	if err != nil {
 		if !errors.Is(err, storage.ErrNotFound) {
@@ -968,7 +930,7 @@ func (a *Accounting) peerLatentDebt(peer swarm.Address) (*big.Int, error) {
 // this represents how much less our debt could potentially be seen by the other party if it's ahead with processing credits corresponding to our shadow reserve
 func (a *Accounting) shadowBalance(peer swarm.Address, accountingPeer *accountingPeer) (shadowBalance *big.Int, err error) {
 	zero := big.NewInt(0)
-	var wrapper bigInt
+	var wrapper bigint.BigInt
 	err = a.store.Get(peerBalanceKey(peer), &wrapper)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
@@ -1034,7 +996,7 @@ func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, rece
 
 	loggerV2.Debug("registering payment sent", "peer_address", peer, "amount", amount, "new_balance", nextBalance)
 
-	err = a.store.Put(peerBalanceKey(peer), &bigInt{Int: nextBalance})
+	err = a.store.Put(peerBalanceKey(peer), &bigint.BigInt{Int: nextBalance})
 	if err != nil {
 		a.logger.Error(err, "notify payment sent; failed to persist balance")
 		return
@@ -1213,7 +1175,7 @@ func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, attemptedAmount, 
 
 	newBalance := new(big.Int).Add(currentBalance, amount)
 
-	err = a.store.Put(peerBalanceKey(peer), &bigInt{Int: newBalance})
+	err = a.store.Put(peerBalanceKey(peer), &bigint.BigInt{Int: newBalance})
 	if err != nil {
 		a.logger.Error(err, "notifyrefreshmentsent failed to persist balance")
 		return
@@ -1317,7 +1279,7 @@ func (a *Accounting) increaseBalance(peer swarm.Address, _ *accountingPeer, pric
 		if newSurplusBalance.Cmp(big.NewInt(0)) >= 0 {
 			loggerV2.Debug("surplus debiting peer", "peer_address", peer, "price", price, "new_balance", newSurplusBalance)
 
-			err = a.store.Put(peerSurplusBalanceKey(peer), &bigInt{Int: newSurplusBalance})
+			err = a.store.Put(peerSurplusBalanceKey(peer), &bigint.BigInt{Int: newSurplusBalance})
 			if err != nil {
 				return nil, fmt.Errorf("failed to persist surplus balance: %w", err)
 			}
@@ -1338,7 +1300,7 @@ func (a *Accounting) increaseBalance(peer swarm.Address, _ *accountingPeer, pric
 		// let's store 0 as surplus balance
 		loggerV2.Debug("surplus debiting peer", "peer_address", peer, "amount", debitIncrease, "new_balance", 0)
 
-		err = a.store.Put(peerSurplusBalanceKey(peer), &bigInt{Int: big.NewInt(0)})
+		err = a.store.Put(peerSurplusBalanceKey(peer), &bigint.BigInt{Int: big.NewInt(0)})
 		if err != nil {
 			return nil, fmt.Errorf("failed to persist surplus balance: %w", err)
 		}
@@ -1356,7 +1318,7 @@ func (a *Accounting) increaseBalance(peer swarm.Address, _ *accountingPeer, pric
 
 	loggerV2.Debug("debiting peer", "peer_address", peer, "price", price, "new_balance", nextBalance)
 
-	err = a.store.Put(peerBalanceKey(peer), &bigInt{Int: nextBalance})
+	err = a.store.Put(peerBalanceKey(peer), &bigint.BigInt{Int: nextBalance})
 	if err != nil {
 		return nil, fmt.Errorf("failed to persist balance: %w", err)
 	}
