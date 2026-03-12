@@ -9,6 +9,7 @@ import (
 	"errors"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/v2/pkg/transaction/backendmock"
@@ -105,6 +106,7 @@ func TestSuggestedFeeAndTip(t *testing.T) {
 					}),
 				),
 				minimumGasTipCap,
+				5*time.Second,
 			)
 
 			gasFeeCap, gasTipCap, err := backend.SuggestedFeeAndTip(ctx, tc.gasPrice, tc.boostPercent)
