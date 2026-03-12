@@ -98,8 +98,8 @@ func newZapLogger(beeLogger log.Logger) (*zap.Logger, error) {
 		Level:            zap.NewAtomicLevelAt(beeVerbosityToZapLevel(beeLogger.Verbosity())),
 		Development:      false,
 		Encoding:         "json",
-		OutputPaths:      []string{"stderr"},
-		ErrorOutputPaths: []string{"stderr"},
+		OutputPaths:      []string{"stdout"},
+		ErrorOutputPaths: []string{"stdout"},
 		Sampling: &zap.SamplingConfig{
 			Initial:    100,
 			Thereafter: 100,
