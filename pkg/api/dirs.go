@@ -104,7 +104,7 @@ func (s *Service) dirUploadHandler(
 	encryptedReference := reference
 	historyReference := swarm.ZeroAddress
 	if act {
-		encryptedReference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, historyAddress)
+		encryptedReference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, historyAddress, rLevel)
 		if err != nil {
 			logger.Debug("access control upload failed", "error", err)
 			logger.Error(nil, "access control upload failed")
