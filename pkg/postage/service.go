@@ -13,6 +13,7 @@ import (
 	"io"
 	"math/big"
 	"sync"
+	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/storage"
@@ -54,6 +55,9 @@ type service struct {
 	postageStore Storer
 	chainID      int64
 	issuers      []*StampIssuer
+
+	quit chan struct{}
+	done chan struct{}
 }
 
 // NewService constructs a new Service.
@@ -63,9 +67,11 @@ func NewService(logger log.Logger, store storage.Store, postageStore Storer, cha
 		store:        store,
 		postageStore: postageStore,
 		chainID:      chainID,
+		quit:         make(chan struct{}),
+		done:         make(chan struct{}),
 	}
 
-	return s, s.store.Iterate(
+	err := s.store.Iterate(
 		storage.Query{
 			Factory: func() storage.Item {
 				return new(StampIssuerItem)
@@ -75,6 +81,73 @@ func NewService(logger log.Logger, store storage.Store, postageStore Storer, cha
 			_ = s.add(issuer)
 			return false, nil
 		})
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.store.Get(&cleanShutdownItem{}); err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			s.logger.Info("recovering bucket counts from stamper store")
+			if err := s.recoverBuckets(); err != nil {
+				s.logger.Warning("postage stamper store recovery failed", "err", err)
+			}
+		}
+	} else {
+		_ = s.store.Delete(&cleanShutdownItem{})
+	}
+
+	go s.run()
+
+	return s, nil
+}
+
+func (s *service) recoverBuckets() error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	return s.store.Iterate(
+		storage.Query{
+			Factory: func() storage.Item { return new(StampItem) },
+		}, func(result storage.Result) (bool, error) {
+			item := result.Entry.(*StampItem)
+			for _, issuer := range s.issuers {
+				if bytes.Equal(issuer.data.BatchID, item.BatchID) {
+					if err := issuer.recover(item.BatchIndex); err != nil {
+						s.logger.Debug("postage recovery of bucket count failed", "err", err)
+					}
+					issuer.SetDirty(true)
+					break
+				}
+			}
+			return false, nil
+		})
+}
+
+func (s *service) run() {
+	defer close(s.done)
+	// using 1 minute to significantly reduce disk writes
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-s.quit:
+			return
+		case <-ticker.C:
+			s.mtx.Lock()
+			issuers := make([]*StampIssuer, len(s.issuers))
+			copy(issuers, s.issuers)
+			s.mtx.Unlock()
+
+			for _, issuer := range issuers {
+				if issuer.IsDirty() {
+					if err := s.save(issuer); err != nil {
+						s.logger.Warning("failed to save stamp issuer", "err", err)
+					}
+				}
+			}
+		}
+	}
 }
 
 // Add adds a stamp issuer to the active issuers.
@@ -163,9 +236,8 @@ func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func() error, e
 				return nil, nil, ErrNotUsable
 			}
 			return st, func() error {
-				ps.mtx.Lock()
-				defer ps.mtx.Unlock()
-				return ps.save(st)
+				st.SetDirty(true)
+				return nil
 			}, nil
 		}
 	}
@@ -182,15 +254,24 @@ func (ps *service) save(st *StampIssuer) error {
 	}); err != nil {
 		return err
 	}
+	st.dirty = false
 	return nil
 }
 
 func (ps *service) Close() error {
+	close(ps.quit)
+	<-ps.done
+
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()
 	var err error
 	for _, issuer := range ps.issuers {
-		err = errors.Join(err, ps.save(issuer))
+		if issuer.IsDirty() {
+			err = errors.Join(err, ps.save(issuer))
+		}
+	}
+	if err == nil {
+		err = ps.store.Put(&cleanShutdownItem{})
 	}
 	return err
 }
