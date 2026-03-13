@@ -127,9 +127,9 @@ endif
 .PHONY: test-ci-race
 test-ci-race:
 ifdef cover
-	$(GO) test -race -run "[^FLAKY]$$" -coverprofile=cover.out ./...
+	@bash -c '$(GO) test -count=1 -race -run "[^FLAKY]$$" -coverprofile=cover.out ./... 2>&1 | grep -v "malformed LC_DYSYMTAB" || true; exit $${PIPESTATUS[0]}'
 else
-	$(GO) test -race -run "[^FLAKY]$$" ./...
+	@bash -c '$(GO) test -count=1 -race -run "[^FLAKY]$$" ./... 2>&1 | grep -v "malformed LC_DYSYMTAB" || true; exit $${PIPESTATUS[0]}'
 endif
 
 .PHONY: test-ci-flaky
