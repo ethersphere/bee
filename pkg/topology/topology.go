@@ -7,6 +7,7 @@
 package topology
 
 import (
+	"context"
 	"errors"
 	"io"
 	"time"
@@ -46,6 +47,13 @@ type ClosestPeerer interface {
 	// This function will ignore peers with addresses provided in skipPeers.
 	// Returns topology.ErrWantSelf in case base is the closest to the address.
 	ClosestPeer(addr swarm.Address, includeSelf bool, f Select, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error)
+}
+
+// OnDemandConnecter finds and connects to the closest known-but-disconnected
+// peer for a given address. Intended as a last-resort fallback when all
+// connected peers are exhausted during retrieval.
+type OnDemandConnecter interface {
+	ConnectClosest(ctx context.Context, addr swarm.Address, skipPeers ...swarm.Address) (swarm.Address, error)
 }
 
 // PeerIterator is an interface that allows iteration over peers.

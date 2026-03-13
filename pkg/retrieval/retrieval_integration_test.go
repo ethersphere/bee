@@ -58,6 +58,7 @@ func TestRetrievalIntegration(t *testing.T) {
 		serverStorer,
 		server,                           // Use libp2p service as streamer
 		topologymock.NewTopologyDriver(), // No peers needed for server in this test
+		nil,
 		logger.WithValues("retrieval", "server").Build(),
 		accountingmock.NewAccounting(),
 		pricermock.NewMockService(10, 10),
@@ -83,6 +84,7 @@ func TestRetrievalIntegration(t *testing.T) {
 		clientStorer,
 		client, // Use libp2p service as streamer
 		clientTopology,
+		nil,
 		logger.WithValues("retrieval", "client").Build(),
 		accountingmock.NewAccounting(),
 		pricermock.NewMockService(10, 10),

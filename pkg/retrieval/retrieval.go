@@ -65,19 +65,20 @@ type Storer interface {
 }
 
 type Service struct {
-	addr          swarm.Address
-	radiusFunc    func() (uint8, error)
-	streamer      p2p.Streamer
-	peerSuggester topology.ClosestPeerer
-	storer        Storer
-	singleflight  singleflight.Group[string, swarm.Chunk]
-	logger        log.Logger
-	accounting    accounting.Interface
-	metrics       metrics
-	pricer        pricer.Interface
-	tracer        *tracing.Tracer
-	caching       bool
-	errSkip       *skippeers.List
+	addr              swarm.Address
+	radiusFunc        func() (uint8, error)
+	streamer          p2p.Streamer
+	peerSuggester     topology.ClosestPeerer
+	onDemandConnecter topology.OnDemandConnecter
+	storer            Storer
+	singleflight      singleflight.Group[string, swarm.Chunk]
+	logger            log.Logger
+	accounting        accounting.Interface
+	metrics           metrics
+	pricer            pricer.Interface
+	tracer            *tracing.Tracer
+	caching           bool
+	errSkip           *skippeers.List
 }
 
 func New(
@@ -86,6 +87,7 @@ func New(
 	storer Storer,
 	streamer p2p.Streamer,
 	chunkPeerer topology.ClosestPeerer,
+	onDemandConnecter topology.OnDemandConnecter,
 	logger log.Logger,
 	accounting accounting.Interface,
 	pricer pricer.Interface,
@@ -93,18 +95,19 @@ func New(
 	forwarderCaching bool,
 ) *Service {
 	return &Service{
-		addr:          addr,
-		radiusFunc:    radiusFunc,
-		streamer:      streamer,
-		peerSuggester: chunkPeerer,
-		storer:        storer,
-		logger:        logger.WithName(loggerName).Register(),
-		accounting:    accounting,
-		pricer:        pricer,
-		metrics:       newMetrics(),
-		tracer:        tracer,
-		caching:       forwarderCaching,
-		errSkip:       skippeers.NewList(time.Minute),
+		addr:              addr,
+		radiusFunc:        radiusFunc,
+		streamer:          streamer,
+		peerSuggester:     chunkPeerer,
+		onDemandConnecter: onDemandConnecter,
+		storer:            storer,
+		logger:            logger.WithName(loggerName).Register(),
+		accounting:        accounting,
+		pricer:            pricer,
+		metrics:           newMetrics(),
+		tracer:            tracer,
+		caching:           forwarderCaching,
+		errSkip:           skippeers.NewList(time.Minute),
 	}
 }
 
@@ -214,6 +217,15 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 				if errors.Is(err, topology.ErrNotFound) {
 					if skip.PruneExpiresAfter(chunkAddr, overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
 						if inflight == 0 {
+							// Last resort: try connecting to a known-but-disconnected peer.
+							// ConnectClosest handles trying multiple candidates internally (sorted once by proximity).
+							if s.onDemandConnecter != nil {
+								if peer, connErr := s.onDemandConnecter.ConnectClosest(ctx, chunkAddr, fullSkip...); connErr == nil {
+									loggerV1.Debug("on-demand peer connected", "chunk_address", chunkAddr, "peer_address", peer)
+									retry()
+									continue
+								}
+							}
 							loggerV1.Debug("no peers left", "chunk_address", chunkAddr, "errors_left", errorsLeft, "isOrigin", origin, "own_proximity", swarm.Proximity(s.addr.Bytes(), chunkAddr.Bytes()), "error", err)
 							return nil, err
 						}

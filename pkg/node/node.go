@@ -1029,7 +1029,7 @@ func NewBee(
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
 
-	retrieval := retrieval.New(swarmAddress, waitNetworkRFunc, localStore, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
+	retrieval := retrieval.New(swarmAddress, waitNetworkRFunc, localStore, p2ps, kad, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
 	localStore.SetRetrievalService(retrieval)
 
 	statusMetricsRegistry.MustRegister(retrieval.StatusMetrics()...)
