@@ -280,7 +280,10 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 		if s.shallowReceipt(op.identityAddress) {
 			return true, err
 		}
-		if err := s.storer.Report(ctx, op.Chunk, storage.ChunkSynced); err != nil {
+		// Retry budget exhausted: no peer in the correct neighborhood stored the
+		// chunk. Report CouldNotSync rather than Synced to avoid falsely marking
+		// the chunk as delivered.
+		if err := s.storer.Report(ctx, op.Chunk, storage.ChunkCouldNotSync); err != nil {
 			loggerV1.Error(err, "pusher: failed to report sync status")
 			return true, err
 		}
