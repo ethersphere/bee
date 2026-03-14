@@ -2,26 +2,37 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+//go:build !linux || !amd64 || purego
+
 package bmt
 
 import (
 	"hash"
 	"sync/atomic"
+
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-// BaseHasherFunc is a hash.Hash constructor function used for the base hash of the BMT.
-// implemented by Keccak256 SHA3 sha3.NewLegacyKeccak256
-type BaseHasherFunc func() hash.Hash
+const SEGMENT_SIZE = 32
 
 // configuration
 type Conf struct {
-	segmentSize  int            // size of leaf segments, stipulated to be = hash size
-	segmentCount int            // the number of segments on the base level of the BMT
-	capacity     int            // pool capacity, controls concurrency
-	depth        int            // depth of the bmt trees = int(log2(segmentCount))+1
-	maxSize      int            // the total length of the data (count * size)
-	zerohashes   [][]byte       // lookup table for predictable padding subtrees for all levels
-	hasher       BaseHasherFunc // base hasher to use for the BMT levels
+	segmentSize  int      // size of leaf segments, stipulated to be = hash size
+	segmentCount int      // the number of segments on the base level of the BMT
+	capacity     int      // pool capacity, controls concurrency
+	depth        int      // depth of the bmt trees = int(log2(segmentCount))+1
+	maxSize      int      // the total length of the data (count * size)
+	zerohashes   [][]byte // lookup table for predictable padding subtrees for all levels
+	prefix       []byte   // optional prefix prepended to every hash operation
+	hasherFunc   func() hash.Hash
+}
+
+// baseHasher returns a new base hasher instance, optionally with prefix.
+func (c *Conf) baseHasher() hash.Hash {
+	if len(c.prefix) > 0 {
+		return swarm.NewPrefixHasher(c.prefix)
+	}
+	return swarm.NewHasher()
 }
 
 // Pool provides a pool of trees used as resources by the BMT Hasher.
@@ -32,29 +43,49 @@ type Pool struct {
 	*Conf            // configuration
 }
 
-func NewConf(hasher BaseHasherFunc, segmentCount, capacity int) *Conf {
+func NewConf(segmentCount, capacity int) *Conf {
+	return newConf(nil, segmentCount, capacity)
+}
+
+func NewConfWithPrefix(prefix []byte, segmentCount, capacity int) *Conf {
+	return newConf(prefix, segmentCount, capacity)
+}
+
+func newConf(prefix []byte, segmentCount, capacity int) *Conf {
 	count, depth := sizeToParams(segmentCount)
-	segmentSize := hasher().Size()
+	segmentSize := SEGMENT_SIZE
+
+	hasherFunc := func() hash.Hash {
+		if len(prefix) > 0 {
+			return swarm.NewPrefixHasher(prefix)
+		}
+		return swarm.NewHasher()
+	}
+
+	c := &Conf{
+		segmentSize:  segmentSize,
+		segmentCount: segmentCount,
+		capacity:     capacity,
+		maxSize:      count * segmentSize,
+		depth:        depth,
+		prefix:       prefix,
+		hasherFunc:   hasherFunc,
+	}
+
 	zerohashes := make([][]byte, depth+1)
 	zeros := make([]byte, segmentSize)
 	zerohashes[0] = zeros
 	var err error
 	// initialises the zerohashes lookup table
 	for i := 1; i < depth+1; i++ {
-		if zeros, err = doHash(hasher(), zeros, zeros); err != nil {
+		if zeros, err = doHash(c.baseHasher(), zeros, zeros); err != nil {
 			panic(err.Error())
 		}
 		zerohashes[i] = zeros
 	}
-	return &Conf{
-		hasher:       hasher,
-		segmentSize:  segmentSize,
-		segmentCount: segmentCount,
-		capacity:     capacity,
-		maxSize:      count * segmentSize,
-		depth:        depth,
-		zerohashes:   zerohashes,
-	}
+	c.zerohashes = zerohashes
+
+	return c
 }
 
 // NewPool creates a tree pool with hasher, segment size, segment count and capacity
@@ -65,7 +96,7 @@ func NewPool(c *Conf) *Pool {
 		c:    make(chan *tree, c.capacity),
 	}
 	for i := 0; i < c.capacity; i++ {
-		p.c <- newTree(p.maxSize, p.depth, p.hasher)
+		p.c <- newTree(p.maxSize, p.depth, c.hasherFunc)
 	}
 	return p
 }

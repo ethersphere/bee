@@ -7,7 +7,6 @@ package storageincentives
 import (
 	"errors"
 	"fmt"
-	"hash"
 	"math/big"
 
 	"github.com/ethersphere/bee/v2/pkg/bmt"
@@ -55,10 +54,7 @@ func makeInclusionProofs(
 		require2++
 	}
 
-	prefixHasherFactory := func() hash.Hash {
-		return swarm.NewPrefixHasher(anchor1)
-	}
-	prefixHasherPool := bmt.NewPool(bmt.NewConf(prefixHasherFactory, swarm.BmtBranches, 8))
+	prefixHasherPool := bmt.NewPool(bmt.NewConfWithPrefix(anchor1, swarm.BmtBranches, 8))
 
 	// Sample chunk proofs
 	rccontent := bmt.Prover{Hasher: bmtpool.Get()}
