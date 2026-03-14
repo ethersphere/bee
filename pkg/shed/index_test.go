@@ -345,7 +345,7 @@ func TestIndex(t *testing.T) {
 		}
 
 		t.Run("not found", func(t *testing.T) {
-			items := make([]Item, len(want))
+			items := make([]Item, len(want), len(want)+1)
 			for i, w := range want {
 				items[i] = Item{
 					Address: w.Address,
@@ -373,28 +373,29 @@ func TestIndex_Iterate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	items := []Item{
-		{
+	items := make([]Item, 0, 6)
+	items = append(items,
+		Item{
 			Address: []byte("iterate-hash-01"),
 			Data:    []byte("data80"),
 		},
-		{
+		Item{
 			Address: []byte("iterate-hash-03"),
 			Data:    []byte("data22"),
 		},
-		{
+		Item{
 			Address: []byte("iterate-hash-05"),
 			Data:    []byte("data41"),
 		},
-		{
+		Item{
 			Address: []byte("iterate-hash-02"),
 			Data:    []byte("data84"),
 		},
-		{
+		Item{
 			Address: []byte("iterate-hash-06"),
 			Data:    []byte("data1"),
 		},
-	}
+	)
 	batch := new(leveldb.Batch)
 	for _, i := range items {
 		err = index.PutInBatch(batch, i)
@@ -555,28 +556,29 @@ func TestIndex_IterateReverse(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	items := []Item{
-		{
+	items := make([]Item, 0, 6)
+	items = append(items,
+		Item{
 			Address: []byte("iterate-hash-01"),
 			Data:    []byte("data80"),
 		},
-		{
+		Item{
 			Address: []byte("iterate-hash-03"),
 			Data:    []byte("data22"),
 		},
-		{
+		Item{
 			Address: []byte("iterate-hash-05"),
 			Data:    []byte("data41"),
 		},
-		{
+		Item{
 			Address: []byte("iterate-hash-02"),
 			Data:    []byte("data84"),
 		},
-		{
+		Item{
 			Address: []byte("iterate-hash-06"),
 			Data:    []byte("data1"),
 		},
-	}
+	)
 	batch := new(leveldb.Batch)
 	for _, i := range items {
 		err = index.PutInBatch(batch, i)

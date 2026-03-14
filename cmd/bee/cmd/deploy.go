@@ -60,6 +60,7 @@ func (c *command) initDeployCmd() error {
 				blocktime,
 				true,
 				c.config.GetUint64(optionNameMinimumGasTipCap),
+				blocktime-2,
 			)
 			if err != nil {
 				return err

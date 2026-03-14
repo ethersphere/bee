@@ -220,8 +220,8 @@ func TestEvictBatch(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	var chunks []swarm.Chunk
 	var chunksPerPO uint64 = 10
+	chunks := make([]swarm.Chunk, 0, chunksPerPO*3)
 	batches := []*postage.Batch{postagetesting.MustNewBatch(), postagetesting.MustNewBatch(), postagetesting.MustNewBatch()}
 	evictBatch := batches[1]
 
@@ -543,6 +543,7 @@ func TestSubscribeBin(t *testing.T) {
 			chunksPerPO uint64 = 50
 			putter             = storer.ReservePutter()
 		)
+		chunks = make([]swarm.Chunk, 0, chunksPerPO*2)
 
 		for j := range 2 {
 			for range chunksPerPO {

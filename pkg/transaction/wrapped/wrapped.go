@@ -8,12 +8,14 @@ import (
 	"context"
 	"errors"
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/ethersphere/bee/v2/pkg/transaction/backend"
+	"github.com/ethersphere/bee/v2/pkg/transaction/wrapped/cache"
 )
 
 var (
@@ -24,13 +26,19 @@ type wrappedBackend struct {
 	backend          backend.Geth
 	metrics          metrics
 	minimumGasTipCap int64
+	blockNumberCache *cache.ExpiringSingleFlightCache[uint64]
 }
 
-func NewBackend(backend backend.Geth, minimumGasTipCap uint64) transaction.Backend {
+func NewBackend(
+	backend backend.Geth,
+	minimumGasTipCap uint64,
+	blockNumberTTL time.Duration,
+) transaction.Backend {
 	return &wrappedBackend{
 		backend:          backend,
 		minimumGasTipCap: int64(minimumGasTipCap),
 		metrics:          newMetrics(),
+		blockNumberCache: cache.NewExpiringSingleFlightCache[uint64](blockNumberTTL, cache.BlockNumberKey),
 	}
 }
 
@@ -61,14 +69,17 @@ func (b *wrappedBackend) TransactionByHash(ctx context.Context, hash common.Hash
 }
 
 func (b *wrappedBackend) BlockNumber(ctx context.Context) (uint64, error) {
-	b.metrics.TotalRPCCalls.Inc()
-	b.metrics.BlockNumberCalls.Inc()
-	blockNumber, err := b.backend.BlockNumber(ctx)
-	if err != nil {
-		b.metrics.TotalRPCErrors.Inc()
-		return 0, err
-	}
-	return blockNumber, nil
+	return b.blockNumberCache.GetOrLoad(time.Now(), func() (uint64, error) {
+		b.metrics.TotalRPCCalls.Inc()
+		b.metrics.BlockNumberCalls.Inc()
+
+		blockNumber, err := b.backend.BlockNumber(ctx)
+		if err != nil {
+			b.metrics.TotalRPCErrors.Inc()
+			return 0, err
+		}
+		return blockNumber, nil
+	})
 }
 
 func (b *wrappedBackend) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error) {
