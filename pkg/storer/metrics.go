@@ -17,24 +17,37 @@ import (
 
 // metrics groups storer related prometheus counters.
 type metrics struct {
-	MethodCalls                   *prometheus.CounterVec
-	MethodCallsDuration           *prometheus.HistogramVec
-	ReserveSize                   prometheus.Gauge
-	ReserveSizeWithinRadius       prometheus.Gauge
-	ReserveCleanup                prometheus.Counter
-	StorageRadius                 prometheus.Gauge
-	CacheSize                     prometheus.Gauge
-	EvictedChunkCount             prometheus.Counter
-	ExpiredChunkCount             prometheus.Counter
-	OverCapTriggerCount           prometheus.Counter
-	ExpiredBatchCount             prometheus.Counter
-	LevelDBStats                  *prometheus.HistogramVec
-	ExpiryTriggersCount           prometheus.Counter
-	ExpiryRunsCount               prometheus.Counter
-	ReserveMissingBatch           prometheus.Gauge
-	ReserveSampleDuration         *prometheus.HistogramVec
-	ReserveSampleRunSummary       *prometheus.GaugeVec
-	ReserveSampleLastRunTimestamp prometheus.Gauge
+	MethodCalls                      *prometheus.CounterVec
+	MethodCallsDuration              *prometheus.HistogramVec
+	ReserveSize                      prometheus.Gauge
+	ReserveSizeWithinRadius          prometheus.Gauge
+	ReserveCleanup                   prometheus.Counter
+	StorageRadius                    prometheus.Gauge
+	CacheSize                        prometheus.Gauge
+	EvictedChunkCount                prometheus.Counter
+	ExpiredChunkCount                prometheus.Counter
+	OverCapTriggerCount              prometheus.Counter
+	ExpiredBatchCount                prometheus.Counter
+	LevelDBStats                     *prometheus.HistogramVec
+	ExpiryTriggersCount              prometheus.Counter
+	ExpiryRunsCount                  prometheus.Counter
+	ReserveMissingBatch              prometheus.Gauge
+	ReserveSampleDuration            *prometheus.HistogramVec
+	ReserveSampleRunSummary          *prometheus.GaugeVec
+	ReserveSampleLastRunTimestamp    prometheus.Gauge
+	LevelDBBlockCacheSize            prometheus.Gauge
+	LevelDBAliveSnapshots            prometheus.Gauge
+	LevelDBAliveIterators            prometheus.Gauge
+	LevelDBIOWrite                   prometheus.Gauge
+	LevelDBIORead                    prometheus.Gauge
+	LevelDBWriteDelayCount           prometheus.Counter
+	LevelDBWriteDelayDuration        prometheus.Counter
+	LevelDBMemComp                   prometheus.Counter
+	LevelDBLevel0Comp                prometheus.Counter
+	LevelDBConfigWriteBufferSize     prometheus.Gauge
+	LevelDBConfigBlockCacheCapacity  prometheus.Gauge
+	LevelDBConfigCompactionL0Trigger prometheus.Gauge
+	LevelDBConfigCompactionTableSize prometheus.Gauge
 }
 
 // newMetrics is a convenient constructor for creating new metrics.
@@ -190,6 +203,110 @@ func newMetrics() metrics {
 				Subsystem: subsystem,
 				Name:      "reserve_sample_last_run_timestamp",
 				Help:      "Unix timestamp of the last ReserveSample run completion.",
+			},
+		),
+		LevelDBBlockCacheSize: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "leveldb_block_cache_size",
+				Help:      "LevelDB block cache size.",
+			},
+		),
+		LevelDBAliveSnapshots: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "leveldb_alive_snapshots",
+				Help:      "LevelDB alive snapshots.",
+			},
+		),
+		LevelDBAliveIterators: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "leveldb_alive_iterators",
+				Help:      "LevelDB alive iterators.",
+			},
+		),
+		LevelDBIOWrite: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "leveldb_io_write",
+				Help:      "LevelDB IO write.",
+			},
+		),
+		LevelDBIORead: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "leveldb_io_read",
+				Help:      "LevelDB IO read.",
+			},
+		),
+		LevelDBWriteDelayCount: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "leveldb_write_delay_count",
+				Help:      "LevelDB write delay count.",
+			},
+		),
+		LevelDBWriteDelayDuration: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "leveldb_write_delay_duration_seconds",
+				Help:      "LevelDB write delay duration in seconds.",
+			},
+		),
+		LevelDBMemComp: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "leveldb_mem_comp",
+				Help:      "LevelDB mem compaction.",
+			},
+		),
+		LevelDBLevel0Comp: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "leveldb_level0_comp",
+				Help:      "LevelDB level0 compaction.",
+			},
+		),
+		LevelDBConfigWriteBufferSize: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "leveldb_config_write_buffer_size",
+				Help:      "LevelDB config write buffer size.",
+			},
+		),
+		LevelDBConfigBlockCacheCapacity: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "leveldb_config_block_cache_capacity",
+				Help:      "LevelDB config block cache capacity.",
+			},
+		),
+		LevelDBConfigCompactionL0Trigger: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "leveldb_config_compaction_l0_trigger",
+				Help:      "LevelDB config compaction l0 trigger.",
+			},
+		),
+		LevelDBConfigCompactionTableSize: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "leveldb_config_compaction_table_size",
+				Help:      "LevelDB config compaction table size.",
 			},
 		),
 	}
