@@ -57,6 +57,21 @@ type Storage interface {
 	Close() error
 }
 
+// SharkyReader is an optional interface that Storage implementations can provide
+// for direct sharky reads, bypassing the transaction layer and lock overhead.
+// Used by reserve sampling to read chunk data directly from sharky using a known Location.
+type SharkyReader interface {
+	SharkyRead(ctx context.Context, loc sharky.Location, buf []byte) error
+}
+
+// LocationPutter is an optional interface exposed by ChunkStore implementations
+// that can return the sharky.Location after a Put or Replace operation.
+// Used by the reserve to denormalize the location into ChunkBinItem.
+type LocationPutter interface {
+	PutGetLocation(ctx context.Context, ch swarm.Chunk) (sharky.Location, error)
+	ReplaceGetLocation(ctx context.Context, ch swarm.Chunk, emplace bool) (sharky.Location, error)
+}
+
 type store struct {
 	sharky      *sharky.Store
 	bstore      storage.BatchStore
@@ -151,6 +166,11 @@ func (s *store) StatusMetrics() []prometheus.Collector {
 	return []prometheus.Collector{
 		s.metrics.MethodDuration,
 	}
+}
+
+// SharkyRead implements SharkyReader for direct sharky access during sampling.
+func (s *store) SharkyRead(ctx context.Context, loc sharky.Location, buf []byte) error {
+	return s.sharky.Read(ctx, loc, buf)
 }
 
 func (s *store) Close() error {
@@ -254,6 +274,22 @@ func (c *chunkStoreTrx) Replace(ctx context.Context, ch swarm.Chunk, emplace boo
 	unlock := c.lock(ch.Address())
 	defer unlock()
 	return chunkstore.Replace(ctx, c.indexStore, c.sharkyTrx, ch, emplace)
+}
+
+// PutGetLocation implements LocationPutter. Like Put but also returns the sharky.Location.
+func (c *chunkStoreTrx) PutGetLocation(ctx context.Context, ch swarm.Chunk) (_ sharky.Location, err error) {
+	defer handleMetric("chunkstore_put", c.metrics)(&err)
+	unlock := c.lock(ch.Address())
+	defer unlock()
+	return chunkstore.PutGetLocation(ctx, c.indexStore, c.sharkyTrx, ch)
+}
+
+// ReplaceGetLocation implements LocationPutter. Like Replace but also returns the new sharky.Location.
+func (c *chunkStoreTrx) ReplaceGetLocation(ctx context.Context, ch swarm.Chunk, emplace bool) (_ sharky.Location, err error) {
+	defer handleMetric("chunkstore_replace", c.metrics)(&err)
+	unlock := c.lock(ch.Address())
+	defer unlock()
+	return chunkstore.ReplaceGetLocation(ctx, c.indexStore, c.sharkyTrx, ch, emplace)
 }
 
 func (c *chunkStoreTrx) lock(addr swarm.Address) func() {

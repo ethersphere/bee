@@ -94,6 +94,55 @@ func Put(ctx context.Context, s storage.IndexStore, sh storage.Sharky, ch swarm.
 	return s.Put(rIdx)
 }
 
+// PutGetLocation is like Put but also returns the sharky.Location where the chunk
+// data is stored. Used by the reserve to denormalize the location into ChunkBinItem
+// for faster sampling reads that bypass the RetrievalIndexItem lookup.
+func PutGetLocation(ctx context.Context, s storage.IndexStore, sh storage.Sharky, ch swarm.Chunk) (sharky.Location, error) {
+	rIdx := &RetrievalIndexItem{Address: ch.Address()}
+	err := s.Get(rIdx)
+	switch {
+	case errors.Is(err, storage.ErrNotFound):
+		loc, err := sh.Write(ctx, ch.Data())
+		if err != nil {
+			return sharky.Location{}, fmt.Errorf("chunk store: write to sharky failed: %w", err)
+		}
+		rIdx.Location = loc
+		rIdx.Timestamp = uint64(time.Now().Unix())
+		rIdx.RefCnt = 1
+		return loc, s.Put(rIdx)
+	case err != nil:
+		return sharky.Location{}, fmt.Errorf("chunk store: failed to read: %w", err)
+	default:
+		rIdx.RefCnt++
+		return rIdx.Location, s.Put(rIdx)
+	}
+}
+
+// ReplaceGetLocation is like Replace but also returns the new sharky.Location.
+func ReplaceGetLocation(ctx context.Context, s storage.IndexStore, sh storage.Sharky, ch swarm.Chunk, emplace bool) (sharky.Location, error) {
+	rIdx := &RetrievalIndexItem{Address: ch.Address()}
+	err := s.Get(rIdx)
+	if err != nil {
+		return sharky.Location{}, fmt.Errorf("chunk store: failed to read retrievalIndex for address %s: %w", ch.Address(), err)
+	}
+
+	err = sh.Release(ctx, rIdx.Location)
+	if err != nil {
+		return sharky.Location{}, fmt.Errorf("chunkstore: failed to release sharky location: %w", err)
+	}
+
+	loc, err := sh.Write(ctx, ch.Data())
+	if err != nil {
+		return sharky.Location{}, fmt.Errorf("chunk store: write to sharky failed: %w", err)
+	}
+	rIdx.Location = loc
+	rIdx.Timestamp = uint64(time.Now().Unix())
+	if emplace {
+		rIdx.RefCnt++
+	}
+	return loc, s.Put(rIdx)
+}
+
 func Replace(ctx context.Context, s storage.IndexStore, sh storage.Sharky, ch swarm.Chunk, emplace bool) error {
 	rIdx := &RetrievalIndexItem{Address: ch.Address()}
 	err := s.Get(rIdx)

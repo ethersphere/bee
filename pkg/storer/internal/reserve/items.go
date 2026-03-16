@@ -9,6 +9,7 @@ import (
 	"errors"
 	"path"
 
+	"github.com/ethersphere/bee/v2/pkg/sharky"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -114,6 +115,7 @@ type ChunkBinItem struct {
 	BatchID   []byte
 	StampHash []byte
 	ChunkType swarm.ChunkType
+	Location  sharky.Location
 }
 
 func (c *ChunkBinItem) Namespace() string {
@@ -146,10 +148,11 @@ func (c *ChunkBinItem) Clone() storage.Item {
 		BatchID:   copyBytes(c.BatchID),
 		StampHash: copyBytes(c.StampHash),
 		ChunkType: c.ChunkType,
+		Location:  c.Location,
 	}
 }
 
-const chunkBinItemSize = 1 + 8 + swarm.HashSize + swarm.HashSize + 1 + swarm.HashSize
+const chunkBinItemSize = 1 + 8 + swarm.HashSize + swarm.HashSize + 1 + swarm.HashSize + sharky.LocationSize
 
 func (c *ChunkBinItem) Marshal() ([]byte, error) {
 
@@ -176,6 +179,13 @@ func (c *ChunkBinItem) Marshal() ([]byte, error) {
 	i += 1
 
 	copy(buf[i:i+swarm.HashSize], c.StampHash)
+	i += swarm.HashSize
+
+	locBuf, err := c.Location.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	copy(buf[i:i+sharky.LocationSize], locBuf)
 	return buf, nil
 }
 
@@ -202,6 +212,13 @@ func (c *ChunkBinItem) Unmarshal(buf []byte) error {
 	i += 1
 
 	c.StampHash = copyBytes(buf[i : i+swarm.HashSize])
+	i += swarm.HashSize
+
+	loc := new(sharky.Location)
+	if err := loc.UnmarshalBinary(buf[i : i+sharky.LocationSize]); err != nil {
+		return err
+	}
+	c.Location = *loc
 	return nil
 }
 

@@ -17,8 +17,10 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/sharky"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstore"
 	pinstore "github.com/ethersphere/bee/v2/pkg/storer/internal/pinning"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/stampindex"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
@@ -182,12 +184,26 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 					return err
 				}
 
+				// Write chunk data first to get sharky location for ChunkBinItem.
+				var loc sharky.Location
+				if chunkType == swarm.ChunkTypeSingleOwner {
+					r.logger.Debug("replacing soc in chunkstore", "address", chunk.Address())
+					loc, err = chunkLocation(ctx, s.ChunkStore(), chunk, true, false)
+					if err != nil {
+						return err
+					}
+				} else {
+					// CAC: chunk data unchanged (same address = same content).
+					// Read the existing sharky location from the RetrievalIndexItem.
+					loc = existingChunkLocation(s.IndexStore(), chunk.Address())
+				}
+
 				binID, err := r.IncBinID(s.IndexStore(), bin)
 				if err != nil {
 					return err
 				}
 
-				err = errors.Join(
+				return errors.Join(
 					stampindex.Store(s.IndexStore(), reserveScope, chunk),
 					chunkstamp.Store(s.IndexStore(), reserveScope, chunk),
 					s.IndexStore().Put(&BatchRadiusItem{
@@ -204,18 +220,9 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 						BatchID:   chunk.Stamp().BatchID(),
 						ChunkType: chunkType,
 						StampHash: stampHash,
+						Location:  loc,
 					}),
 				)
-				if err != nil {
-					return err
-				}
-
-				if chunkType == swarm.ChunkTypeSingleOwner {
-					r.logger.Debug("replacing soc in chunkstore", "address", chunk.Address())
-					return s.ChunkStore().Replace(ctx, chunk, false)
-				}
-
-				return nil
 			}
 
 			// An older and different chunk with the same batchID and stamp index has been previously
@@ -235,6 +242,26 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			if err != nil {
 				return fmt.Errorf("failed updating stamp index: %w", err)
 			}
+		}
+
+		// Write chunk data first to get sharky location for ChunkBinItem.
+		var loc sharky.Location
+		if chunkType == swarm.ChunkTypeSingleOwner {
+			has, err := s.ChunkStore().Has(ctx, chunk.Address())
+			if err != nil {
+				return err
+			}
+			if has {
+				r.logger.Debug("replacing soc in chunkstore", "address", chunk.Address())
+				loc, err = chunkLocation(ctx, s.ChunkStore(), chunk, true, true)
+			} else {
+				loc, err = chunkLocation(ctx, s.ChunkStore(), chunk, false, false)
+			}
+		} else {
+			loc, err = chunkLocation(ctx, s.ChunkStore(), chunk, false, false)
+		}
+		if err != nil {
+			return err
 		}
 
 		binID, err := r.IncBinID(s.IndexStore(), bin)
@@ -258,28 +285,9 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 				BatchID:   chunk.Stamp().BatchID(),
 				ChunkType: chunkType,
 				StampHash: stampHash,
+				Location:  loc,
 			}),
 		)
-		if err != nil {
-			return err
-		}
-
-		var has bool
-		if chunkType == swarm.ChunkTypeSingleOwner {
-			has, err = s.ChunkStore().Has(ctx, chunk.Address())
-			if err != nil {
-				return err
-			}
-			if has {
-				r.logger.Debug("replacing soc in chunkstore", "address", chunk.Address())
-				err = s.ChunkStore().Replace(ctx, chunk, true)
-			} else {
-				err = s.ChunkStore().Put(ctx, chunk)
-			}
-		} else {
-			err = s.ChunkStore().Put(ctx, chunk)
-		}
-
 		if err != nil {
 			return err
 		}
@@ -297,6 +305,32 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 		r.size.Add(1)
 	}
 	return nil
+}
+
+// chunkLocation writes chunk data (put or replace) and returns the sharky location.
+// If the ChunkStore supports LocationPutter, it captures the location; otherwise
+// the location will be zero-valued.
+func chunkLocation(ctx context.Context, cs storage.ChunkStore, ch swarm.Chunk, replace bool, emplace bool) (sharky.Location, error) {
+	if lp, ok := cs.(transaction.LocationPutter); ok {
+		if replace {
+			return lp.ReplaceGetLocation(ctx, ch, emplace)
+		}
+		return lp.PutGetLocation(ctx, ch)
+	}
+	if replace {
+		return sharky.Location{}, cs.Replace(ctx, ch, emplace)
+	}
+	return sharky.Location{}, cs.Put(ctx, ch)
+}
+
+// existingChunkLocation reads the sharky.Location of a chunk that already exists
+// in the chunkstore by looking up the RetrievalIndexItem.
+func existingChunkLocation(s storage.Reader, addr swarm.Address) sharky.Location {
+	rIdx := &chunkstore.RetrievalIndexItem{Address: addr}
+	if err := s.Get(rIdx); err != nil {
+		return sharky.Location{}
+	}
+	return rIdx.Location
 }
 
 func (r *Reserve) Has(addr swarm.Address, batchID []byte, stampHash []byte) (bool, error) {

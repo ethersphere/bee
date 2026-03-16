@@ -26,6 +26,7 @@ func AfterInitSteps(
 		5: step_05(st, logger),
 		6: step_06(st, logger),
 		7: resetReserveEpochTimestamp(st),
+		8: step_08(st, logger),
 	}
 }
 

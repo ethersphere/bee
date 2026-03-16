@@ -178,3 +178,96 @@ func (c *ChunkBinItemV1) Unmarshal(buf []byte) error {
 
 	return nil
 }
+
+// ChunkBinItemV2 is the V2 format of ChunkBinItem (without sharky.Location).
+// Used for migration from V2 to V3 (current) format.
+type ChunkBinItemV2 struct {
+	Bin       uint8
+	BinID     uint64
+	Address   swarm.Address
+	BatchID   []byte
+	StampHash []byte
+	ChunkType swarm.ChunkType
+}
+
+func (c *ChunkBinItemV2) Namespace() string {
+	return "chunkBin"
+}
+
+func (c *ChunkBinItemV2) ID() string {
+	return binIDToString(c.Bin, c.BinID)
+}
+
+func (c *ChunkBinItemV2) String() string {
+	return path.Join(c.Namespace(), c.ID())
+}
+
+func (c *ChunkBinItemV2) Clone() storage.Item {
+	if c == nil {
+		return nil
+	}
+	return &ChunkBinItemV2{
+		Bin:       c.Bin,
+		BinID:     c.BinID,
+		Address:   c.Address.Clone(),
+		BatchID:   copyBytes(c.BatchID),
+		StampHash: copyBytes(c.StampHash),
+		ChunkType: c.ChunkType,
+	}
+}
+
+const chunkBinItemSizeV2 = 1 + 8 + swarm.HashSize + swarm.HashSize + 1 + swarm.HashSize
+
+func (c *ChunkBinItemV2) Marshal() ([]byte, error) {
+
+	if c.Address.IsZero() {
+		return nil, errMarshalInvalidAddress
+	}
+
+	buf := make([]byte, chunkBinItemSizeV2)
+	i := 0
+
+	buf[i] = c.Bin
+	i += 1
+
+	binary.BigEndian.PutUint64(buf[i:i+8], c.BinID)
+	i += 8
+
+	copy(buf[i:i+swarm.HashSize], c.Address.Bytes())
+	i += swarm.HashSize
+
+	copy(buf[i:i+swarm.HashSize], c.BatchID)
+	i += swarm.HashSize
+
+	buf[i] = uint8(c.ChunkType)
+	i += 1
+
+	copy(buf[i:i+swarm.HashSize], c.StampHash)
+	return buf, nil
+}
+
+func (c *ChunkBinItemV2) Unmarshal(buf []byte) error {
+
+	if len(buf) != chunkBinItemSizeV2 {
+		return errUnmarshalInvalidSize
+	}
+
+	i := 0
+	c.Bin = buf[i]
+	i += 1
+
+	c.BinID = binary.BigEndian.Uint64(buf[i : i+8])
+	i += 8
+
+	c.Address = swarm.NewAddress(buf[i : i+swarm.HashSize]).Clone()
+	i += swarm.HashSize
+
+	c.BatchID = copyBytes(buf[i : i+swarm.HashSize])
+	i += swarm.HashSize
+
+	c.ChunkType = swarm.ChunkType(buf[i])
+	i += 1
+
+	c.StampHash = copyBytes(buf[i : i+swarm.HashSize])
+	return nil
+}

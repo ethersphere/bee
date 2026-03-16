@@ -24,11 +24,30 @@ import (
 	chunk "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"golang.org/x/sync/errgroup"
 )
 
 const SampleSize = 16
+
+// readChunkData reads chunk data for sampling. If the ChunkBinItem has a valid
+// sharky Location (populated after migration), it reads directly from sharky,
+// bypassing the LevelDB lookup, transaction lock, and wrapper overhead.
+// Falls back to ChunkStore.Get() for unmigrated items with zero Location.
+func (db *DB) readChunkData(ctx context.Context, chItem *reserve.ChunkBinItem) (swarm.Chunk, error) {
+	if chItem.Location.Length > 0 {
+		if sr, ok := db.storage.(transaction.SharkyReader); ok {
+			buf := make([]byte, chItem.Location.Length)
+			if err := sr.SharkyRead(ctx, chItem.Location, buf); err != nil {
+				return nil, err
+			}
+			return swarm.NewChunk(chItem.Address, buf), nil
+		}
+	}
+	// Fallback: go through ChunkStore (LevelDB lookup + lock + sharky read).
+	return db.ChunkStore().Get(ctx, chItem.Address)
+}
 
 type SampleItem struct {
 	TransformedAddress swarm.Address
@@ -151,7 +170,7 @@ func (db *DB) ReserveSample(
 
 				chunkLoadStart := time.Now()
 
-				chunk, err := db.ChunkStore().Get(ctx, chItem.Address)
+				chunk, err := db.readChunkData(ctx, chItem)
 				chunkLoadDuration := time.Since(chunkLoadStart)
 
 				if err != nil {
