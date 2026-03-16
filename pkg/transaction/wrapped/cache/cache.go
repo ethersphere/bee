@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -31,6 +32,17 @@ func NewExpiringSingleFlightCache[T any](ttl time.Duration, key Key) *ExpiringSi
 		ttl:     ttl,
 		key:     key,
 		metrics: newMetricSet(string(key)),
+	}
+}
+
+func (c *ExpiringSingleFlightCache[T]) Collectors() []prometheus.Collector {
+	return []prometheus.Collector{
+		c.metrics.Hits,
+		c.metrics.Misses,
+		c.metrics.Loads,
+		c.metrics.SharedLoads,
+		c.metrics.LoadErrors,
+		c.metrics.Invalidates,
 	}
 }
 

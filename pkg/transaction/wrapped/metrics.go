@@ -126,5 +126,7 @@ func newMetrics() metrics {
 }
 
 func (b *wrappedBackend) Metrics() []prometheus.Collector {
-	return m.PrometheusCollectorsFromFields(b.metrics)
+	collectors := m.PrometheusCollectorsFromFields(b.metrics)
+	collectors = append(collectors, b.blockNumberCache.Collectors()...)
+	return collectors
 }
