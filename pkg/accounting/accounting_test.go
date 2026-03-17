@@ -56,7 +56,7 @@ func TestMutex(t *testing.T) {
 		t.Parallel()
 
 		var (
-			m  = accounting.NewMutex()
+			m  = accounting.NewMutex(1)
 			c  = make(chan struct{}, 1)
 			wg sync.WaitGroup
 		)
@@ -85,7 +85,7 @@ func TestMutex(t *testing.T) {
 	t.Run("can lock after release", func(t *testing.T) {
 		t.Parallel()
 
-		m := accounting.NewMutex()
+		m := accounting.NewMutex(1)
 		m.Lock()
 
 		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
@@ -100,7 +100,7 @@ func TestMutex(t *testing.T) {
 	t.Run("locked mutex takes context into account", func(t *testing.T) {
 		t.Parallel()
 
-		m := accounting.NewMutex()
+		m := accounting.NewMutex(1)
 		m.Lock()
 
 		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
