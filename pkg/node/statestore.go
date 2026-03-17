@@ -11,7 +11,6 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/metrics"
-	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/statestore/storeadapter"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/cache"
@@ -57,7 +56,7 @@ func InitStamperStore(logger log.Logger, dataDir string, stateStore storage.Stat
 		return nil, err
 	}
 
-	return postage.NewStamperStoreCache(stamperStore), nil
+	return stamperStore, nil
 }
 
 const (
