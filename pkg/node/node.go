@@ -399,6 +399,10 @@ func NewBee(
 		}
 	}
 
+	if o.BlockTime.Seconds() == 1 {
+
+	}
+
 	chainBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err := InitChain(
 		ctx,
 		logger,

@@ -65,13 +65,6 @@ func newMetricSet(prefix string) metricSet {
 	}
 }
 
-func NewMetrics() Metrics {
-	return Metrics{
-		BlockNumber: newMetricSet("block_number"),
-		Unknown:     newMetricSet("unknown"),
-	}
-}
-
 func (mtr *Metrics) Collectors() []prometheus.Collector {
 	return []prometheus.Collector{
 		mtr.BlockNumber.Hits,

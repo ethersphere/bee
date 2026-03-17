@@ -51,7 +51,7 @@ func InitChain(
 	pollingInterval time.Duration,
 	chainEnabled bool,
 	minimumGasTipCap uint64,
-	blockCacheTTl time.Duration,
+	blockCacheTTL time.Duration,
 ) (transaction.Backend, common.Address, int64, transaction.Monitor, transaction.Service, error) {
 	backend := backendnoop.New(chainID)
 
@@ -73,7 +73,7 @@ func InitChain(
 
 		logger.Info("connected to blockchain backend", "version", versionString)
 
-		backend = wrapped.NewBackend(ethclient.NewClient(rpcClient), minimumGasTipCap, blockCacheTTl)
+		backend = wrapped.NewBackend(ethclient.NewClient(rpcClient), minimumGasTipCap, blockCacheTTL)
 	}
 
 	backendChainID, err := backend.ChainID(ctx)
