@@ -440,6 +440,7 @@ type DB struct {
 	directUploadLimiter chan struct{}
 
 	reserve          *reserve.Reserve
+	samplingGuard    samplingGuard
 	inFlight         sync.WaitGroup
 	reserveBinEvents *events.Subscriber
 	baseAddr         swarm.Address
@@ -573,6 +574,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			return nil, err
 		}
 		db.reserve = rs
+		rs.SetOnEvict(db.samplingGuard.Add)
 
 		db.metrics.StorageRadius.Set(float64(rs.Radius()))
 		db.metrics.ReserveSize.Set(float64(rs.Size()))

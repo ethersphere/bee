@@ -35,7 +35,14 @@ const SampleSize = 16
 // sharky Location (populated after migration), it reads directly from sharky,
 // bypassing the LevelDB lookup, transaction lock, and wrapper overhead.
 // Falls back to ChunkStore.Get() for unmigrated items with zero Location.
+//
+// Before reading, the sampling guard is checked: if the chunk was evicted
+// during the current sampling run, its sharky slot may have been reused by
+// a different chunk, so we skip it to avoid computing a wrong transformed address.
 func (db *DB) readChunkData(ctx context.Context, chItem *reserve.ChunkBinItem) (swarm.Chunk, error) {
+	if db.samplingGuard.IsFreed(chItem.Address) {
+		return nil, fmt.Errorf("chunk %s freed during sampling", chItem.Address)
+	}
 	if chItem.Location.Length > 0 {
 		if sr, ok := db.storage.(transaction.SharkyReader); ok {
 			buf := make([]byte, chItem.Location.Length)
@@ -84,6 +91,9 @@ func (db *DB) ReserveSample(
 	consensusTime uint64,
 	minBatchBalance *big.Int,
 ) (Sample, error) {
+	db.samplingGuard.Activate()
+	defer db.samplingGuard.Deactivate()
+
 	g, ctx := errgroup.WithContext(ctx)
 
 	allStats := &SampleStats{}

@@ -43,6 +43,10 @@ type Reserve struct {
 
 	multx *multex.Multex
 	st    transaction.Storage
+
+	// onEvict is called when a chunk is removed from reserve.
+	// Used by the sampling guard to track freed addresses.
+	onEvict func(swarm.Address)
 }
 
 func New(
@@ -91,6 +95,12 @@ func New(
 	})
 
 	return rs, err
+}
+
+// SetOnEvict sets a callback that is invoked whenever a chunk is removed
+// from the reserve. Used by the sampling guard to track freed sharky locations.
+func (r *Reserve) SetOnEvict(fn func(swarm.Address)) {
+	r.onEvict = fn
 }
 
 // Reserve Put has to handle multiple possible scenarios.
@@ -436,6 +446,9 @@ func (r *Reserve) EvictBatchBin(
 				if err != nil {
 					return err
 				}
+				if r.onEvict != nil {
+					r.onEvict(item.Address)
+				}
 				evicted.Add(1)
 				return nil
 			})
@@ -481,7 +494,11 @@ func (r *Reserve) removeChunk(
 	if err != nil {
 		return err
 	}
-	return RemoveChunkWithItem(ctx, trx, item)
+	err = RemoveChunkWithItem(ctx, trx, item)
+	if err == nil && r.onEvict != nil {
+		r.onEvict(chunkAddress)
+	}
+	return err
 }
 
 func RemoveChunkWithItem(
