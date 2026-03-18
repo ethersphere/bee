@@ -38,7 +38,7 @@ var retrievalIndexFuncs = IndexFuncs{
 		return e, nil
 	},
 	EncodeValue: func(fields Item) (value []byte, err error) {
-		b := make([]byte, 8)
+		b := make([]byte, 8, 8+len(fields.Data))
 		binary.BigEndian.PutUint64(b, uint64(fields.StoreTimestamp))
 		value = append(b, fields.Data...)
 		return value, nil
