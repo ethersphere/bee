@@ -604,7 +604,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 			s.logger.Debug("stream handler: handshake: build remote multiaddrs fallback", "peer_id", peerID, "error", err)
 			s.logger.Error(nil, "stream handler: handshake: build remote multiaddrs fallback", "peer_id", peerID)
 			_ = handshakeStream.Reset()
-			_ = s.host.Network().ClosePeer(peerID)
+			_ = stream.Conn().Close()
 			return
 		}
 	}
