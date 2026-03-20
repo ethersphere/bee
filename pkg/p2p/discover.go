@@ -16,19 +16,6 @@ import (
 	madns "github.com/multiformats/go-multiaddr-dns"
 )
 
-func hasTCPProtocol(addr ma.Multiaddr) bool {
-	hasTCP := false
-	for _, p := range addr.Protocols() {
-		switch p.Code {
-		case ma.P_TCP:
-			hasTCP = true
-		case ma.P_TLS:
-			return false
-		}
-	}
-	return hasTCP
-}
-
 func sortAddrsByTCPPreference(addrs []ma.Multiaddr) {
 	sort.SliceStable(addrs, func(i, j int) bool {
 		return bzz.ClassifyTransport(addrs[i]).Priority() < bzz.ClassifyTransport(addrs[j]).Priority()
