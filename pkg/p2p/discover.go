@@ -11,6 +11,7 @@ import (
 	"math/rand"
 	"sort"
 
+	"github.com/ethersphere/bee/v2/pkg/bzz"
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
 )
@@ -30,7 +31,7 @@ func hasTCPProtocol(addr ma.Multiaddr) bool {
 
 func sortAddrsByTCPPreference(addrs []ma.Multiaddr) {
 	sort.SliceStable(addrs, func(i, j int) bool {
-		return hasTCPProtocol(addrs[i]) && !hasTCPProtocol(addrs[j])
+		return bzz.ClassifyTransport(addrs[i]).Priority() < bzz.ClassifyTransport(addrs[j]).Priority()
 	})
 }
 

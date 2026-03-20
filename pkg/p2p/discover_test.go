@@ -16,8 +16,6 @@ import (
 // TestTCPPreferenceOrdering verifies that sortAddrsByTCPPreference places TCP
 // addresses before non-TCP addresses regardless of input order.
 func TestTCPPreferenceOrdering(t *testing.T) {
-	t.Parallel()
-
 	mustAddr := func(s string) ma.Multiaddr {
 		a, err := ma.NewMultiaddr(s)
 		if err != nil {
@@ -78,7 +76,6 @@ func TestTCPPreferenceOrdering(t *testing.T) {
 			},
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -105,22 +102,19 @@ func TestTCPPreferenceOrdering(t *testing.T) {
 // TestDiscoverDNS performs a real DNS resolution of the testnet and mainnet
 // bootnodes using p2p.Discover with the default DNS resolver.
 func TestDiscoverDNS(t *testing.T) {
-	t.Parallel()
-
 	for _, tc := range []struct {
-		name    string
+		name     string
 		bootnode string
 	}{
 		{
-			name:    "testnet",
+			name:     "testnet",
 			bootnode: "/dnsaddr/testnet.ethswarm.org",
 		},
 		{
-			name:    "mainnet",
+			name:     "mainnet",
 			bootnode: "/dnsaddr/mainnet.ethswarm.org",
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
