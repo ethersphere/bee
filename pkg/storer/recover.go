@@ -12,7 +12,10 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/sharky"
+	"github.com/ethersphere/bee/v2/pkg/soc"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstore"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -51,28 +54,60 @@ func sharkyRecovery(ctx context.Context, sharkyBasePath string, store storage.St
 		}
 	}()
 
-	c := chunkstore.IterateLocations(ctx, store)
-
-	if err := addLocations(c, sharkyRecover); err != nil {
+	if err := validateAndAddLocations(ctx, store, sharkyRecover, logger); err != nil {
 		return closer, err
 	}
 
 	return closer, nil
 }
 
-func addLocations(locationResultC <-chan chunkstore.LocationResult, sharkyRecover *sharky.Recovery) error {
-	for res := range locationResultC {
-		if res.Err != nil {
-			return res.Err
+// validateAndAddLocations iterates every chunk index entry, reads its data from
+// Sharky, and validates the content hash. Valid chunks are registered with the
+// recovery so their slots are preserved. Corrupted entries (unreadable data or
+// hash mismatch) are logged, excluded from the recovery bitmap, and deleted from
+// the index store so the node starts clean without serving invalid data.
+func validateAndAddLocations(ctx context.Context, store storage.Store, sharkyRecover *sharky.Recovery, logger log.Logger) error {
+	var corrupted []*chunkstore.RetrievalIndexItem
+
+	err := chunkstore.IterateItems(store, func(item *chunkstore.RetrievalIndexItem) error {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
 		}
 
-		if err := sharkyRecover.Add(res.Location); err != nil {
-			return err
+		buf := make([]byte, item.Location.Length)
+		if err := sharkyRecover.Read(ctx, item.Location, buf); err != nil {
+			logger.Warning("recovery: unreadable chunk, marking corrupted", "address", item.Address, "err", err)
+			corrupted = append(corrupted, item)
+			return nil
 		}
+
+		ch := swarm.NewChunk(item.Address, buf)
+		if !cac.Valid(ch) && !soc.Valid(ch) {
+			logger.Warning("recovery: invalid chunk hash, marking corrupted", "address", item.Address)
+			corrupted = append(corrupted, item)
+			return nil
+		}
+
+		return sharkyRecover.Add(item.Location)
+	})
+	if err != nil {
+		return err
 	}
 
 	if err := sharkyRecover.Save(); err != nil {
 		return err
+	}
+
+	for _, item := range corrupted {
+		if err := store.Delete(item); err != nil {
+			logger.Error(err, "recovery: failed deleting corrupted chunk index entry", "address", item.Address)
+		}
+	}
+
+	if len(corrupted) > 0 {
+		logger.Info("recovery: removed corrupted chunk index entries", "count", len(corrupted))
 	}
 
 	return nil
