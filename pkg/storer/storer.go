@@ -436,6 +436,7 @@ type DB struct {
 	cacheLimiter        cacheLimiter
 	dbCloser            io.Closer
 	subscriptionsWG     sync.WaitGroup
+	closeOnce           sync.Once
 	events              *events.Subscriber
 	directUploadLimiter chan struct{}
 
@@ -627,7 +628,9 @@ func (db *DB) StatusMetrics() []prometheus.Collector {
 }
 
 func (db *DB) Close() error {
-	close(db.quit)
+	db.closeOnce.Do(func() {
+		close(db.quit)
+	})
 
 	bgReserveWorkersClosed := make(chan struct{})
 	go func() {

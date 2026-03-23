@@ -25,6 +25,7 @@ type Listener interface {
 type listener struct {
 	handlers   map[string][]*Handler
 	handlersMu sync.Mutex
+	closeOnce  sync.Once
 	quit       chan struct{}
 	logger     log.Logger
 }
@@ -86,7 +87,9 @@ func (p *listener) getHandlers(address swarm.Address) []*Handler {
 }
 
 func (l *listener) Close() error {
-	close(l.quit)
+	l.closeOnce.Do(func() {
+		close(l.quit)
+	})
 	l.handlersMu.Lock()
 	defer l.handlersMu.Unlock()
 

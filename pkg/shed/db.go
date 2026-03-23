@@ -24,6 +24,7 @@ package shed
 
 import (
 	"errors"
+	"sync"
 
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/iterator"
@@ -51,9 +52,10 @@ type Options struct {
 // It provides a schema functionality to store fields and indexes
 // information about naming and types.
 type DB struct {
-	ldb     *leveldb.DB
-	metrics metrics
-	quit    chan struct{} // Quit channel to stop the metrics collection before closing the database
+	ldb       *leveldb.DB
+	metrics   metrics
+	closeOnce sync.Once
+	quit      chan struct{} // Quit channel to stop the metrics collection before closing the database
 }
 
 // NewDB constructs a new DB and validates the schema
@@ -193,6 +195,8 @@ func (db *DB) Compact(start, end []byte) error {
 
 // Close closes LevelDB database.
 func (db *DB) Close() (err error) {
-	close(db.quit)
+	db.closeOnce.Do(func() {
+		close(db.quit)
+	})
 	return db.ldb.Close()
 }

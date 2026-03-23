@@ -37,6 +37,7 @@ type Blocker struct {
 	logger            log.Logger
 	wakeupCh          chan struct{}
 	quit              chan struct{}
+	closeOnce         sync.Once
 	closeWg           sync.WaitGroup
 	blocklistCallback func(swarm.Address)
 }
@@ -154,9 +155,10 @@ func (b *Blocker) PruneUnseen(seen []swarm.Address) {
 }
 
 // Close will exit the worker loop.
-// must be called only once.
 func (b *Blocker) Close() error {
-	close(b.quit)
+	b.closeOnce.Do(func() {
+		close(b.quit)
+	})
 	b.closeWg.Wait()
 	return nil
 }

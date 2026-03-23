@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"math/big"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -33,6 +34,7 @@ type service struct {
 	exchangeRate       *big.Int
 	deduction          *big.Int
 	timeDivisor        int64
+	closeOnce          sync.Once
 	quitC              chan struct{}
 }
 
@@ -148,6 +150,8 @@ func (s *service) CurrentRates() (exchangeRate, deduction *big.Int, err error) {
 }
 
 func (s *service) Close() error {
-	close(s.quitC)
+	s.closeOnce.Do(func() {
+		close(s.quitC)
+	})
 	return nil
 }

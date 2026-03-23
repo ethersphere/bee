@@ -90,6 +90,7 @@ import (
 const LoggerName = "node"
 
 type Bee struct {
+	logger                   log.Logger
 	p2pService               io.Closer
 	p2pHalter                p2p.Halter
 	ctxCancel                context.CancelFunc
@@ -260,6 +261,7 @@ func NewBee(
 	})
 
 	b = &Bee{
+		logger:         logger,
 		ctxCancel:      ctxCancel,
 		errorLogWriter: sink,
 		tracerCloser:   tracerCloser,
@@ -1350,12 +1352,15 @@ func (b *Bee) Shutdown() error {
 	}
 	// tryClose is a convenient closure which decrease
 	// repetitive io.Closer tryClose procedure.
-	tryClose := func(c io.Closer, errMsg string) {
+	tryClose := func(c io.Closer, component string) {
 		if c == nil {
 			return
 		}
+
+		b.logger.Debug("starting shutdown", "component", component)
+		defer b.logger.Debug("finished shutdown", "component", component)
 		if err := c.Close(); err != nil {
-			mErr = multierror.Append(mErr, fmt.Errorf("%s: %w", errMsg, err))
+			mErr = multierror.Append(mErr, fmt.Errorf("%s: %w", component, err))
 		}
 	}
 
@@ -1429,9 +1434,10 @@ func (b *Bee) Shutdown() error {
 	tryClose(b.tracerCloser, "tracer")
 	tryClose(b.topologyCloser, "topology driver")
 	tryClose(b.storageIncetivesCloser, "storage incentives agent")
+	// close localstore before StateStore to avoid ErrClosed / incomplete flush.
+	tryClose(b.localstoreCloser, "localstore")
 	tryClose(b.stateStoreCloser, "statestore")
 	tryClose(b.stamperStoreCloser, "stamperstore")
-	tryClose(b.localstoreCloser, "localstore")
 	tryClose(b.resolverCloser, "resolver service")
 
 	return mErr

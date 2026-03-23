@@ -55,6 +55,7 @@ type Service struct {
 	batchExist        postage.BatchExist
 	logger            log.Logger
 	metrics           metrics
+	closeOnce         sync.Once
 	quit              chan struct{}
 	chunksWorkerQuitC chan struct{}
 	inflight          *inflight
@@ -363,7 +364,9 @@ func (s *Service) AddFeed(c <-chan *Op) {
 
 func (s *Service) Close() error {
 	s.logger.Info("pusher shutting down")
-	close(s.quit)
+	s.closeOnce.Do(func() {
+		close(s.quit)
+	})
 
 	// Wait for chunks worker to finish
 	select {

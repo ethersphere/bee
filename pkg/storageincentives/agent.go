@@ -65,6 +65,7 @@ type Agent struct {
 	store                  storer.Reserve
 	fullSyncedFunc         func() bool
 	overlay                swarm.Address
+	closeOnce              sync.Once
 	quit                   chan struct{}
 	wg                     sync.WaitGroup
 	state                  *RedistributionState
@@ -547,7 +548,9 @@ func (a *Agent) commit(ctx context.Context, sample SampleData, round uint64) err
 }
 
 func (a *Agent) Close() error {
-	close(a.quit)
+	a.closeOnce.Do(func() {
+		close(a.quit)
+	})
 
 	stopped := make(chan struct{})
 	go func() {

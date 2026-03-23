@@ -55,6 +55,7 @@ type pss struct {
 	handlersMu sync.Mutex
 	metrics    metrics
 	logger     log.Logger
+	closeOnce  sync.Once
 	quit       chan struct{}
 }
 
@@ -70,7 +71,9 @@ func New(key *ecdsa.PrivateKey, logger log.Logger) Interface {
 }
 
 func (ps *pss) Close() error {
-	close(ps.quit)
+	ps.closeOnce.Do(func() {
+		close(ps.quit)
+	})
 	ps.handlersMu.Lock()
 	defer ps.handlersMu.Unlock()
 

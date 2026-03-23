@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -66,6 +67,7 @@ type Syncer struct {
 	metrics        metrics
 	logger         log.Logger
 	store          storer.Reserve
+	closeOnce      sync.Once
 	quit           chan struct{}
 	unwrap         func(swarm.Chunk)
 	gsocHandler    func(*soc.SOC)
@@ -193,7 +195,7 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 	}
 
 	// slow down future requests
-	waitDur, err := s.limiter.Wait(streamCtx, p.Address.ByteString(), max(1, len(chs)))
+	waitDur, err := s.limiter.Wait(ctx, p.Address.ByteString(), max(1, len(chs)))
 	if err != nil {
 		return fmt.Errorf("rate limiter: %w", err)
 	}
@@ -568,7 +570,9 @@ func (s *Syncer) disconnect(peer p2p.Peer) error {
 
 func (s *Syncer) Close() error {
 	s.logger.Info("pull syncer shutting down")
-	close(s.quit)
+	s.closeOnce.Do(func() {
+		close(s.quit)
+	})
 	cc := make(chan struct{})
 	go func() {
 		defer close(cc)

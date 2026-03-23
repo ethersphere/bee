@@ -43,8 +43,9 @@ type reacher struct {
 	peerHeap  peerHeap         // min-heap ordered by retryAfter
 	peerIndex map[string]*peer // lookup by overlay for O(1) access
 
-	newPeer chan struct{}
-	quit    chan struct{}
+	newPeer   chan struct{}
+	quit      chan struct{}
+	closeOnce sync.Once
 
 	pinger   p2p.Pinger
 	notifier p2p.ReachableNotifier
@@ -290,15 +291,11 @@ func (r *reacher) jitter(d time.Duration) time.Duration {
 	return time.Duration(float64(d) * j)
 }
 
-// Close stops the worker. Must be called once.
+// Close stops the worker.
 func (r *reacher) Close() error {
-	select {
-	case <-r.quit:
-		return nil
-	default:
-	}
-
-	close(r.quit)
+	r.closeOnce.Do(func() {
+		close(r.quit)
+	})
 	r.wg.Wait()
 	return nil
 }

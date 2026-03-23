@@ -58,6 +58,7 @@ type Service struct {
 	metrics           metrics
 	inLimiter         *ratelimit.Limiter
 	outLimiter        *ratelimit.Limiter
+	closeOnce         sync.Once
 	quit              chan struct{}
 	wg                sync.WaitGroup
 	peersChan         chan pb.Peers
@@ -144,7 +145,9 @@ func (s *Service) SetAddPeersHandler(h func(addr ...swarm.Address)) {
 }
 
 func (s *Service) Close() error {
-	close(s.quit)
+	s.closeOnce.Do(func() {
+		close(s.quit)
+	})
 
 	stopped := make(chan struct{})
 	go func() {

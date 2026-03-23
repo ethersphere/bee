@@ -193,6 +193,7 @@ type Kad struct {
 	collector         *im.Collector
 	quit              chan struct{} // quit channel
 	halt              chan struct{} // halt channel
+	closeOnce         sync.Once
 	done              chan struct{} // signal that `manage` has quit
 	wg                sync.WaitGroup
 	waitNext          *waitnext.WaitNext
@@ -1548,7 +1549,9 @@ func (k *Kad) Halt() {
 // Close shuts down kademlia.
 func (k *Kad) Close() error {
 	k.logger.Info("kademlia shutting down")
-	close(k.quit)
+	k.closeOnce.Do(func() {
+		close(k.quit)
+	})
 	cc := make(chan struct{})
 
 	k.bgBroadcastCancel()
