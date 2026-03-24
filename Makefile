@@ -153,7 +153,7 @@ docker-build:
 
 .PHONY: githooks
 githooks:
-	ln -f -s ../../.githooks/pre-push.bash .git/hooks/pre-push
+	ln -f -s ../../.githooks/pre-push .git/hooks/pre-push
 
 .PHONY: protobuftools
 protobuftools:

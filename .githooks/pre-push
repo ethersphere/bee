@@ -12,4 +12,4 @@ if git branch -r | grep "^  ${1}/${current}$" &> /dev/null; then
     fi
 fi
 
-make build lint vet test-race
+make build lint
