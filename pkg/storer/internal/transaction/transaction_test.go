@@ -231,10 +231,10 @@ func (m *mockCrashFile) Close() error {
 
 // Read is called by io.ReadAll in slots.load() during sharky.New().
 // Return EOF immediately to simulate an empty (newly created) slots file.
-func (m *mockCrashFile) Read(p []byte) (n int, err error) { return 0, io.EOF }
-func (m *mockCrashFile) Write(p []byte) (n int, err error) { panic("not impl") }
+func (m *mockCrashFile) Read(p []byte) (n int, err error)             { return 0, io.EOF }
+func (m *mockCrashFile) Write(p []byte) (n int, err error)            { panic("not impl") }
 func (m *mockCrashFile) Seek(offset int64, whence int) (int64, error) { panic("not impl") }
-func (m *mockCrashFile) Truncate(size int64) error { panic("not impl") }
+func (m *mockCrashFile) Truncate(size int64) error                    { panic("not impl") }
 
 // mockCrashFS simulates a filesystem that retains mocked files.
 type mockCrashFS struct {
@@ -272,11 +272,11 @@ func Test_TransactionCrashCorruption(t *testing.T) {
 
 	ch1 := test.GenerateTestRandomChunk()
 	assert.NoError(t, tx.ChunkStore().Put(context.Background(), ch1))
-	
+
 	// 3. Commit the transaction (this writes metadata to LevelDB)
 	assert.NoError(t, tx.Commit())
 
-	// 4. Simulate a crash! 
+	// 4. Simulate a crash!
 	// The OS page cache drops unsynced dirty bytes.
 	for _, f := range fsys.files {
 		f.dirty = append([]byte(nil), f.data...) // Revert dirty to persisted
@@ -292,4 +292,3 @@ func Test_TransactionCrashCorruption(t *testing.T) {
 	}
 	assert.Equal(t, ch1.Data(), got.Data(), "chunk data must survive a crash when Sharky is synced before LevelDB commit")
 }
-

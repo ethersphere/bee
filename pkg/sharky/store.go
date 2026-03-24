@@ -33,11 +33,11 @@ type pendingSync struct {
 // - read prioritisation over writing
 // - free slots allow write
 type Store struct {
-	maxDataSize int             // max length of blobs
-	writes      chan write      // shared write operations channel
-	shards      []*shard        // shards
-	wg          *sync.WaitGroup // count started operations
-	quit        chan struct{}   // quit channel
+	maxDataSize int              // max length of blobs
+	writes      chan write       // shared write operations channel
+	shards      []*shard         // shards
+	wg          *sync.WaitGroup  // count started operations
+	quit        chan struct{}    // quit channel
 	syncCh      chan pendingSync // group commit: serialises fsync requests across concurrent transactions
 	metrics     metrics
 }
