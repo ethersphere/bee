@@ -70,6 +70,7 @@ func TestBlockNumberNearExpiry(t *testing.T) {
 		backend := NewBackend(
 			backendmock.New(
 				backendmock.WithHeaderbyNumberFunc(func(ctx context.Context, number *big.Int) (*types.Header, error) {
+					headerCalls.Add(1)
 					if headerCalls.Load() == 1 {
 						return &types.Header{
 							Number: big.NewInt(int64(staleBlock)),
