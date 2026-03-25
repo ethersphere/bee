@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
@@ -38,7 +37,6 @@ type Address struct {
 
 type addressJSON struct {
 	Overlay   string   `json:"overlay"`
-	Underlay  string   `json:"underlay"` // For backward compatibility
 	Underlays []string `json:"underlays"`
 	Signature string   `json:"signature"`
 	Nonce     string   `json:"transaction"`
@@ -145,16 +143,8 @@ func (a *Address) MarshalJSON() ([]byte, error) {
 	if len(a.Underlays) == 0 {
 		return nil, fmt.Errorf("no underlays for %s", a.Overlay)
 	}
-
-	// select the underlay address for backward compatibility
-	var underlay string
-	if v := SelectBestAdvertisedAddress(a.Underlays, nil); v != nil {
-		underlay = v.String()
-	}
-
 	return json.Marshal(&addressJSON{
 		Overlay:   a.Overlay.String(),
-		Underlay:  underlay,
 		Underlays: a.underlaysAsStrings(),
 		Signature: base64.StdEncoding.EncodeToString(a.Signature),
 		Nonce:     common.Bytes2Hex(a.Nonce),
@@ -174,11 +164,6 @@ func (a *Address) UnmarshalJSON(b []byte) error {
 	}
 
 	a.Overlay = addr
-
-	// append the underlay for backward compatibility
-	if !slices.Contains(v.Underlays, v.Underlay) {
-		v.Underlays = append(v.Underlays, v.Underlay)
-	}
 
 	multiaddrs, err := parseMultiaddrs(v.Underlays)
 	if err != nil {
