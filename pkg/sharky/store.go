@@ -22,23 +22,17 @@ var (
 	ErrQuitting = errors.New("quitting")
 )
 
-// pendingSync represents a caller waiting for a shard fsync to complete.
-type pendingSync struct {
-	done chan error
-}
-
 // Store models the sharded fix-length blobstore
 // Design provides lockless sharding:
 // - shard choice responding to backpressure by running operation
 // - read prioritisation over writing
 // - free slots allow write
 type Store struct {
-	maxDataSize int              // max length of blobs
-	writes      chan write       // shared write operations channel
-	shards      []*shard         // shards
-	wg          *sync.WaitGroup  // count started operations
-	quit        chan struct{}    // quit channel
-	syncCh      chan pendingSync // group commit: serialises fsync requests across concurrent transactions
+	maxDataSize int             // max length of blobs
+	writes      chan write      // shared write operations channel
+	shards      []*shard       // shards
+	wg          *sync.WaitGroup // count started operations
+	quit        chan struct{}   // quit channel
 	metrics     metrics
 }
 
@@ -55,7 +49,6 @@ func New(basedir fs.FS, shardCnt int, maxDataSize int) (*Store, error) {
 		shards:      make([]*shard, shardCnt),
 		wg:          &sync.WaitGroup{},
 		quit:        make(chan struct{}),
-		syncCh:      make(chan pendingSync),
 		metrics:     newMetrics(),
 	}
 	for i := range store.shards {
@@ -67,68 +60,7 @@ func New(basedir fs.FS, shardCnt int, maxDataSize int) (*Store, error) {
 	}
 	store.metrics.ShardCount.Set(float64(len(store.shards)))
 
-	store.wg.Go(store.runSyncLoop)
-
 	return store, nil
-}
-
-// runSyncLoop is a background goroutine that handles group commit for shard files.
-// It waits for a sync request, drains all concurrently pending requests, issues
-// a single fdatasync per shard file, then signals all waiters. This amortises
-// the fsync cost across all transactions that are committing at the same time.
-func (s *Store) runSyncLoop() {
-	for {
-		select {
-		case req := <-s.syncCh:
-			// Drain all other requests that arrived while we were waiting.
-			pending := []pendingSync{req}
-		drain:
-			for {
-				select {
-				case r := <-s.syncCh:
-					pending = append(pending, r)
-				default:
-					break drain
-				}
-			}
-
-			var syncErr error
-			for _, sh := range s.shards {
-				if err := sh.file.Sync(); err != nil {
-					syncErr = errors.Join(syncErr, err)
-				}
-			}
-
-			for _, p := range pending {
-				p.done <- syncErr
-			}
-
-		case <-s.quit:
-			return
-		}
-	}
-}
-
-// SyncWait blocks until all shard files written in the current transaction have
-// been fsynced to disk. Multiple concurrent callers share a single fsync (group
-// commit), so the cost is amortised under concurrent upload load.
-func (s *Store) SyncWait(ctx context.Context) error {
-	req := pendingSync{done: make(chan error, 1)}
-	select {
-	case s.syncCh <- req:
-	case <-s.quit:
-		return ErrQuitting
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-	select {
-	case err := <-req.done:
-		return err
-	case <-s.quit:
-		return ErrQuitting
-	case <-ctx.Done():
-		return ctx.Err()
-	}
 }
 
 // Close closes each shard and return incidental errors from each shard

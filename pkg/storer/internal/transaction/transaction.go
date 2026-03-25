@@ -69,7 +69,6 @@ func NewStorage(sharky *sharky.Store, bstore storage.BatchStore) Storage {
 }
 
 type transaction struct {
-	ctx        context.Context
 	start      time.Time
 	batch      storage.Batch
 	indexstore storage.IndexStore
@@ -93,7 +92,6 @@ func (s *store) NewTransaction(ctx context.Context) (Transaction, func()) {
 	sharky := &sharkyTrx{s.sharky, s.metrics, nil, nil}
 
 	t := &transaction{
-		ctx:        ctx,
 		start:      time.Now(),
 		batch:      b,
 		indexstore: index,
@@ -173,25 +171,6 @@ func (t *transaction) Commit() (err error) {
 		t.chunkStore.lockedAddrs = nil
 		t.sharkyTrx.writtenLocs = nil
 	}()
-
-	// Ensure Sharky data is durable before committing the index to LevelDB.
-	// Without this, a power loss after batch.Commit() but before the OS flushes
-	// the page cache leaves LevelDB pointing to slots with stale or zero data.
-	// Under concurrent writes, all in-flight transactions share a single fdatasync
-	// (group commit), so the cost is amortised and approaches zero under load.
-	if len(t.sharkyTrx.writtenLocs) > 0 {
-		h := handleMetric("sharky_sync", t.metrics)
-		err = t.sharkyTrx.sharky.SyncWait(t.ctx)
-		h(&err)
-		if err != nil {
-			for _, l := range t.sharkyTrx.writtenLocs {
-				if rerr := t.sharkyTrx.sharky.Release(context.TODO(), l); rerr != nil {
-					err = errors.Join(err, fmt.Errorf("failed releasing location during sync rollback %s: %w", l, rerr))
-				}
-			}
-			return err
-		}
-	}
 
 	h := handleMetric("batch_commit", t.metrics)
 	err = t.batch.Commit()
