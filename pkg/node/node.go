@@ -135,6 +135,7 @@ type Options struct {
 	BlockchainRpcEndpoint         string
 	BlockProfile                  bool
 	BlockTime                     time.Duration
+	BlockCacheTTLPercent          uint64
 	BootnodeMode                  bool
 	Bootnodes                     []string
 	CacheCapacity                 uint64
@@ -409,7 +410,7 @@ func NewBee(
 		o.BlockTime,
 		chainEnabled,
 		o.MinimumGasTipCap,
-		o.BlockTime*85/100,
+		o.BlockCacheTTLPercent,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("init chain: %w", err)

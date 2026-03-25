@@ -1,37 +1,33 @@
-// Copyright 2025 The Swarm Authors. All rights reserved.
+// Copyright 2026 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
 package cache
 
 import (
+	"context"
 	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/sync/singleflight"
+	"resenje.org/singleflight"
 )
 
-type Loader[T any] func() (T, error)
-
+type Loader[T any] func() (T, time.Time, error)
 type ExpiringSingleFlightCache[T any] struct {
-	ttl time.Duration
-
 	mu        sync.RWMutex
 	value     T
-	valid     bool
 	expiresAt time.Time
 
-	group   singleflight.Group
-	key     Key
+	group   singleflight.Group[string, any]
+	key     string
 	metrics metricSet
 }
 
-func NewExpiringSingleFlightCache[T any](ttl time.Duration, key Key) *ExpiringSingleFlightCache[T] {
+func NewExpiringSingleFlightCache[T any](metricsPrefix string) *ExpiringSingleFlightCache[T] {
 	return &ExpiringSingleFlightCache[T]{
-		ttl:     ttl,
-		key:     key,
-		metrics: newMetricSet(string(key)),
+		key:     metricsPrefix,
+		metrics: newMetricSet(metricsPrefix),
 	}
 }
 
@@ -42,7 +38,6 @@ func (c *ExpiringSingleFlightCache[T]) Collectors() []prometheus.Collector {
 		c.metrics.Loads,
 		c.metrics.SharedLoads,
 		c.metrics.LoadErrors,
-		c.metrics.Invalidates,
 	}
 }
 
@@ -50,7 +45,7 @@ func (c *ExpiringSingleFlightCache[T]) Get(now time.Time) (T, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	if c.valid && now.Before(c.expiresAt) {
+	if now.Before(c.expiresAt) {
 		return c.value, true
 	}
 
@@ -58,24 +53,15 @@ func (c *ExpiringSingleFlightCache[T]) Get(now time.Time) (T, bool) {
 	return zero, false
 }
 
-func (c *ExpiringSingleFlightCache[T]) Set(value T, now time.Time) {
+func (c *ExpiringSingleFlightCache[T]) Set(value T, expiresAt time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	c.value = value
-	c.valid = true
-	c.expiresAt = now.Add(c.ttl)
+	c.expiresAt = expiresAt
 }
 
-func (c *ExpiringSingleFlightCache[T]) Invalidate() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.valid = false
-	c.metrics.Invalidates.Inc()
-}
-
-func (c *ExpiringSingleFlightCache[T]) GetOrLoad(now time.Time, loader Loader[T]) (T, error) {
+func (c *ExpiringSingleFlightCache[T]) GetOrLoad(ctx context.Context, now time.Time, loader Loader[T]) (T, error) {
 	if v, ok := c.Get(now); ok {
 		c.metrics.Hits.Inc()
 		return v, nil
@@ -83,14 +69,14 @@ func (c *ExpiringSingleFlightCache[T]) GetOrLoad(now time.Time, loader Loader[T]
 
 	c.metrics.Misses.Inc()
 
-	result, err, shared := c.group.Do(string(c.key), func() (any, error) {
+	result, shared, err := c.group.Do(ctx, c.key, func(ctx context.Context) (any, error) {
 		c.metrics.Loads.Inc()
-		val, err := loader()
+		val, expiresAt, err := loader()
 		if err != nil {
 			c.metrics.LoadErrors.Inc()
 			return val, err
 		}
-		c.Set(val, time.Now())
+		c.Set(val, expiresAt)
 		return val, nil
 	})
 

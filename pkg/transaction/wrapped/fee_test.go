@@ -107,6 +107,7 @@ func TestSuggestedFeeAndTip(t *testing.T) {
 				),
 				minimumGasTipCap,
 				5*time.Second,
+				90,
 			)
 
 			gasFeeCap, gasTipCap, err := backend.SuggestedFeeAndTip(ctx, tc.gasPrice, tc.boostPercent)

@@ -1,14 +1,16 @@
-// Copyright 2025 The Swarm Authors. All rights reserved.
+// Copyright 2026 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
 package cache
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -16,13 +18,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const testKey Key = "test"
+const testMetricsPrefix = "test"
 
-func newTestCache(ttl time.Duration) *ExpiringSingleFlightCache[uint64] {
+func newTestCache() *ExpiringSingleFlightCache[uint64] {
 	return &ExpiringSingleFlightCache[uint64]{
-		ttl:     ttl,
-		key:     testKey,
-		metrics: newMetricSet(string(testKey)),
+		key:     testMetricsPrefix,
+		metrics: newMetricSet(testMetricsPrefix),
 	}
 }
 
@@ -30,8 +31,9 @@ func TestSetGet(t *testing.T) {
 	t.Parallel()
 
 	now := time.Now()
-	c := newTestCache(time.Second)
-	c.Set(42, now)
+	expiresAt := now.Add(time.Second)
+	c := newTestCache()
+	c.Set(42, expiresAt)
 
 	val, ok := c.Get(now)
 	assert.True(t, ok)
@@ -42,34 +44,22 @@ func TestTTLExpiry(t *testing.T) {
 	t.Parallel()
 
 	now := time.Now()
-	c := newTestCache(time.Second)
+	c := newTestCache()
 	c.Set(42, now)
 
 	_, ok := c.Get(now.Add(time.Second + time.Millisecond))
 	assert.False(t, ok)
 }
 
-func TestInvalidate(t *testing.T) {
-	t.Parallel()
-
-	now := time.Now()
-	c := newTestCache(5 * time.Second)
-	c.Set(42, now)
-	c.Invalidate()
-
-	_, ok := c.Get(now)
-	assert.False(t, ok)
-}
-
 func TestGetOrLoadMiss(t *testing.T) {
 	t.Parallel()
 
-	c := newTestCache(time.Second)
+	c := newTestCache()
 	var loadCount atomic.Int32
 
-	val, err := c.GetOrLoad(time.Now(), func() (uint64, error) {
+	val, err := c.GetOrLoad(context.Background(), time.Now(), func() (uint64, time.Time, error) {
 		loadCount.Add(1)
-		return 99, nil
+		return 99, time.Now().Add(time.Second), nil
 	})
 
 	require.NoError(t, err)
@@ -83,30 +73,32 @@ func TestGetOrLoadMiss(t *testing.T) {
 
 func TestGetOrLoadHit(t *testing.T) {
 	t.Parallel()
+	const expectedVal = uint64(42)
 
 	now := time.Now()
-	c := newTestCache(time.Second)
-	c.Set(42, now)
+	expiresAt := now.Add(time.Second)
+	c := newTestCache()
+	c.Set(expectedVal, expiresAt)
 
 	var loadCount atomic.Int32
-	val, err := c.GetOrLoad(now, func() (uint64, error) {
+	val, err := c.GetOrLoad(context.Background(), now, func() (uint64, time.Time, error) {
 		loadCount.Add(1)
-		return 99, nil
+		return expectedVal, now.Add(time.Second), nil
 	})
 
 	require.NoError(t, err)
-	assert.Equal(t, uint64(42), val)
+	assert.Equal(t, expectedVal, val)
 	assert.Equal(t, int32(0), loadCount.Load())
 }
 
 func TestGetOrLoadError(t *testing.T) {
 	t.Parallel()
 
-	c := newTestCache(time.Second)
+	c := newTestCache()
 	errLoad := errors.New("load failed")
 
-	val, err := c.GetOrLoad(time.Now(), func() (uint64, error) {
-		return 0, errLoad
+	val, err := c.GetOrLoad(context.Background(), time.Now(), func() (uint64, time.Time, error) {
+		return 0, time.Time{}, errLoad
 	})
 
 	assert.ErrorIs(t, err, errLoad)
@@ -117,73 +109,120 @@ func TestGetOrLoadError(t *testing.T) {
 }
 
 func TestGetOrLoadSingleflight(t *testing.T) {
-	t.Parallel()
+	const value = uint64(77)
+	synctest.Test(t, func(t *testing.T) {
+		c := newTestCache()
+		var loadCount atomic.Int32
+		gate := make(chan struct{})
 
-	c := newTestCache(5 * time.Second)
-	var loadCount atomic.Int32
-	gate := make(chan struct{})
+		const n = 10
+		var wg sync.WaitGroup
+		results := make([]uint64, n)
+		errs := make([]error, n)
 
-	const n = 10
-	var wg sync.WaitGroup
-	results := make([]uint64, n)
-	errs := make([]error, n)
+		wg.Add(n)
+		for i := range n {
+			go func(idx int) {
+				defer wg.Done()
+				now := time.Now()
+				results[idx], errs[idx] = c.GetOrLoad(context.Background(), now, func() (uint64, time.Time, error) {
+					loadCount.Add(1)
+					<-gate
+					return value, now.Add(time.Second), nil
+				})
+			}(i)
+		}
 
-	wg.Add(n)
-	for i := range n {
-		go func(idx int) {
-			defer wg.Done()
-			results[idx], errs[idx] = c.GetOrLoad(time.Now(), func() (uint64, error) {
-				loadCount.Add(1)
-				<-gate
-				return 77, nil
-			})
-		}(i)
-	}
+		time.Sleep(50 * time.Millisecond)
+		close(gate)
+		wg.Wait()
 
-	time.Sleep(50 * time.Millisecond)
-	close(gate)
-	wg.Wait()
-
-	assert.Equal(t, int32(1), loadCount.Load())
-	for i := range n {
-		assert.NoError(t, errs[i])
-		assert.Equal(t, uint64(77), results[i])
-	}
+		assert.Equal(t, int32(1), loadCount.Load())
+		for i := range n {
+			assert.NoError(t, errs[i])
+			assert.Equal(t, value, results[i])
+		}
+	})
 }
 
 func TestGetOrLoadReloadAfterExpiry(t *testing.T) {
 	t.Parallel()
 
 	now := time.Now()
-	c := newTestCache(time.Second)
+	c := newTestCache()
 	c.Set(42, now)
 
-	val, err := c.GetOrLoad(now.Add(time.Second+time.Millisecond), func() (uint64, error) {
-		return 100, nil
+	val, err := c.GetOrLoad(context.Background(), now.Add(time.Second+time.Millisecond), func() (uint64, time.Time, error) {
+		return 100, now.Add(time.Second + time.Millisecond), nil
 	})
 
 	require.NoError(t, err)
 	assert.Equal(t, uint64(100), val)
 }
 
+func TestGetOrLoadContextCancellation(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		const expectedVal = 55
+		c := newTestCache()
+		gate := make(chan struct{})
+
+		ctx1, cancel1 := context.WithCancel(context.Background())
+		ctx2 := context.Background()
+
+		var wg sync.WaitGroup
+		var result1, result2 uint64
+		var err1, err2 error
+
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			result1, err1 = c.GetOrLoad(ctx1, time.Now(), func() (uint64, time.Time, error) {
+				<-gate
+				return expectedVal, time.Now().Add(time.Second), nil
+			})
+		}()
+
+		go func() {
+			defer wg.Done()
+			result2, err2 = c.GetOrLoad(ctx2, time.Now(), func() (uint64, time.Time, error) {
+				<-gate
+				return expectedVal, time.Now().Add(time.Second), nil
+			})
+		}()
+
+		time.Sleep(50 * time.Millisecond)
+		cancel1()
+		time.Sleep(50 * time.Millisecond)
+		close(gate)
+		wg.Wait()
+
+		assert.ErrorIs(t, err1, context.Canceled)
+		assert.Equal(t, uint64(0), result1)
+
+		require.NoError(t, err2)
+		assert.Equal(t, uint64(expectedVal), result2)
+	})
+}
+
 func TestMetrics(t *testing.T) {
 	t.Parallel()
 
 	now := time.Now()
-	c := newTestCache(time.Second)
+	expiresAt := now.Add(time.Second)
+	c := newTestCache()
+
+	ctx := context.Background()
+
+	// miss + load error
+	_, _ = c.GetOrLoad(ctx, now, func() (uint64, time.Time, error) { return 0, time.Time{}, errors.New("fail") })
 
 	// miss + load
-	_, _ = c.GetOrLoad(now, func() (uint64, error) { return 42, nil })
+	_, _ = c.GetOrLoad(ctx, now, func() (uint64, time.Time, error) { return 42, expiresAt, nil })
 	// hit
-	_, _ = c.GetOrLoad(now, func() (uint64, error) { return 0, nil })
-	// invalidate
-	c.Invalidate()
-	// miss + load error
-	_, _ = c.GetOrLoad(now, func() (uint64, error) { return 0, errors.New("fail") })
+	_, _ = c.GetOrLoad(ctx, now, func() (uint64, time.Time, error) { return 0, expiresAt, nil })
 
 	assert.Equal(t, float64(1), testutil.ToFloat64(c.metrics.Hits))
 	assert.Equal(t, float64(2), testutil.ToFloat64(c.metrics.Misses))
 	assert.Equal(t, float64(2), testutil.ToFloat64(c.metrics.Loads))
 	assert.Equal(t, float64(1), testutil.ToFloat64(c.metrics.LoadErrors))
-	assert.Equal(t, float64(1), testutil.ToFloat64(c.metrics.Invalidates))
 }

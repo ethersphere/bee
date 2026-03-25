@@ -18,27 +18,37 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/transaction/wrapped/cache"
 )
 
+const DefaultBlockNumberTTLPercent = 85
+
 var (
 	_ transaction.Backend = (*wrappedBackend)(nil)
 )
 
 type wrappedBackend struct {
-	backend          backend.Geth
-	metrics          metrics
-	minimumGasTipCap int64
-	blockNumberCache *cache.ExpiringSingleFlightCache[uint64]
+	backend               backend.Geth
+	metrics               metrics
+	minimumGasTipCap      int64
+	blockTime             time.Duration
+	blockNumberTTLPercent uint64
+	blockNumberCache      *cache.ExpiringSingleFlightCache[uint64]
 }
 
 func NewBackend(
 	backend backend.Geth,
 	minimumGasTipCap uint64,
-	blockNumberTTL time.Duration,
+	blockTime time.Duration,
+	blockNumberTTLPercent uint64,
 ) transaction.Backend {
+	if blockNumberTTLPercent == 0 || blockNumberTTLPercent >= 100 {
+		blockNumberTTLPercent = DefaultBlockNumberTTLPercent
+	}
 	return &wrappedBackend{
-		backend:          backend,
-		minimumGasTipCap: int64(minimumGasTipCap),
-		metrics:          newMetrics(),
-		blockNumberCache: cache.NewExpiringSingleFlightCache[uint64](blockNumberTTL, cache.BlockNumberKey),
+		backend:               backend,
+		minimumGasTipCap:      int64(minimumGasTipCap),
+		blockTime:             blockTime,
+		blockNumberTTLPercent: blockNumberTTLPercent,
+		metrics:               newMetrics(),
+		blockNumberCache:      cache.NewExpiringSingleFlightCache[uint64]("block_number"),
 	}
 }
 
@@ -69,16 +79,44 @@ func (b *wrappedBackend) TransactionByHash(ctx context.Context, hash common.Hash
 }
 
 func (b *wrappedBackend) BlockNumber(ctx context.Context) (uint64, error) {
-	return b.blockNumberCache.GetOrLoad(time.Now(), func() (uint64, error) {
+	now := time.Now().UTC()
+
+	return b.blockNumberCache.GetOrLoad(ctx, now, func() (uint64, time.Time, error) {
 		b.metrics.TotalRPCCalls.Inc()
 		b.metrics.BlockNumberCalls.Inc()
 
-		blockNumber, err := b.backend.BlockNumber(ctx)
+		header, err := b.backend.HeaderByNumber(ctx, nil)
 		if err != nil {
 			b.metrics.TotalRPCErrors.Inc()
-			return 0, err
+			return 0, time.Time{}, err
 		}
-		return blockNumber, nil
+		if header == nil || header.Number == nil {
+			b.metrics.TotalRPCErrors.Inc()
+			return 0, time.Time{}, errors.New("latest block header unavailable")
+		}
+
+		now = time.Now().UTC()
+		ttl := b.blockTime * time.Duration(b.blockNumberTTLPercent) / 100
+		if ttl < 500*time.Millisecond {
+			ttl = time.Second
+		}
+
+		expiresAt := time.Unix(int64(header.Time), 0).Add(ttl)
+		maxExpiresAt := now.Add(ttl)
+		if expiresAt.After(maxExpiresAt) {
+			// in case if local clocks are behind blockchain clocks
+			expiresAt = maxExpiresAt
+		}
+
+		if !expiresAt.After(now) {
+			// in case if local clocks are ahead blockchain clocks, or we got block header right before new block
+			retryTTL := b.blockTime / 10
+			if retryTTL < 100*time.Millisecond {
+				retryTTL = time.Second
+			}
+			expiresAt = now.Add(retryTTL)
+		}
+		return header.Number.Uint64(), expiresAt, nil
 	})
 }
 
