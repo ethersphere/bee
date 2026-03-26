@@ -30,7 +30,7 @@ var (
 type Store struct {
 	maxDataSize int             // max length of blobs
 	writes      chan write      // shared write operations channel
-	shards      []*shard       // shards
+	shards      []*shard        // shards
 	wg          *sync.WaitGroup // count started operations
 	quit        chan struct{}   // quit channel
 	metrics     metrics
