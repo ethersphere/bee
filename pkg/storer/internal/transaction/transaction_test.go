@@ -5,6 +5,7 @@
 package transaction_test
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"io/fs"
@@ -189,16 +190,26 @@ func Test_TransactionStorage(t *testing.T) {
 	})
 }
 
-// mockCrashFile simulates a file that buffers writes in memory and only persists them when Sync() is called.
+// mockCrashFile simulates a file that buffers writes in memory (page cache) and only
+// persists them to "disk" (data) when Sync() is called. Crash() discards all unsynced
+// dirty bytes, simulating an OS crash that drops the page cache.
 type mockCrashFile struct {
 	fs.File // default unimplemented
 	name    string
-	data    []byte // "persisted" to disk
-	dirty   []byte // "volatile" in OS page cache
+	data    []byte // "persisted" to disk — only updated by Sync()
+	dirty   []byte // "volatile" OS page cache — updated by writes
+	pos     int64  // sequential read/write cursor (used by Read/Write/Seek)
 }
 
 func newMockCrashFile(name string, d []byte) *mockCrashFile {
 	return &mockCrashFile{name: name, data: d, dirty: append([]byte(nil), d...)}
+}
+
+// Crash discards all unsynced dirty bytes and resets the read cursor, simulating
+// an OS crash that drops the page cache without flushing it to disk.
+func (m *mockCrashFile) Crash() {
+	m.dirty = append([]byte(nil), m.data...)
+	m.pos = 0
 }
 
 func (m *mockCrashFile) WriteAt(p []byte, off int64) (int, error) {
@@ -212,6 +223,12 @@ func (m *mockCrashFile) WriteAt(p []byte, off int64) (int, error) {
 	return len(p), nil
 }
 
+func (m *mockCrashFile) Write(p []byte) (int, error) {
+	n, err := m.WriteAt(p, m.pos)
+	m.pos += int64(n)
+	return n, err
+}
+
 func (m *mockCrashFile) ReadAt(p []byte, off int64) (int, error) {
 	if int(off) >= len(m.dirty) {
 		return 0, io.EOF
@@ -223,6 +240,38 @@ func (m *mockCrashFile) ReadAt(p []byte, off int64) (int, error) {
 	return n, nil
 }
 
+// Read is called by io.ReadAll in slots.load() during sharky.New(). It reads
+// sequentially from dirty (which reflects the on-disk state after a crash).
+func (m *mockCrashFile) Read(p []byte) (int, error) {
+	if m.pos >= int64(len(m.dirty)) {
+		return 0, io.EOF
+	}
+	n := copy(p, m.dirty[m.pos:])
+	m.pos += int64(n)
+	return n, nil
+}
+
+func (m *mockCrashFile) Seek(offset int64, whence int) (int64, error) {
+	switch whence {
+	case io.SeekStart:
+		m.pos = offset
+	case io.SeekCurrent:
+		m.pos += offset
+	case io.SeekEnd:
+		m.pos = int64(len(m.dirty)) + offset
+	}
+	return m.pos, nil
+}
+
+func (m *mockCrashFile) Truncate(size int64) error {
+	if int(size) > len(m.dirty) {
+		m.dirty = append(m.dirty, make([]byte, int(size)-len(m.dirty))...)
+	} else {
+		m.dirty = m.dirty[:size]
+	}
+	return nil
+}
+
 func (m *mockCrashFile) Sync() error {
 	m.data = append([]byte(nil), m.dirty...)
 	return nil
@@ -231,13 +280,6 @@ func (m *mockCrashFile) Sync() error {
 func (m *mockCrashFile) Close() error {
 	return nil
 }
-
-// Read is called by io.ReadAll in slots.load() during sharky.New().
-// Return EOF immediately to simulate an empty (newly created) slots file.
-func (m *mockCrashFile) Read(p []byte) (n int, err error)             { return 0, io.EOF }
-func (m *mockCrashFile) Write(p []byte) (n int, err error)            { panic("not impl") }
-func (m *mockCrashFile) Seek(offset int64, whence int) (int64, error) { panic("not impl") }
-func (m *mockCrashFile) Truncate(size int64) error                    { panic("not impl") }
 
 // mockCrashFS simulates a filesystem that retains mocked files.
 type mockCrashFS struct {
@@ -279,10 +321,9 @@ func Test_TransactionCrashCorruption(t *testing.T) {
 	// 3. Commit the transaction (this writes metadata to LevelDB)
 	assert.NoError(t, tx.Commit())
 
-	// 4. Simulate a crash!
-	// The OS page cache drops unsynced dirty bytes.
+	// 4. Simulate a crash: OS drops unsynced dirty bytes.
 	for _, f := range fsys.files {
-		f.dirty = append([]byte(nil), f.data...) // Revert dirty to persisted
+		f.Crash()
 	}
 
 	// 5. A committed chunk must survive a simulated crash.
@@ -294,4 +335,109 @@ func Test_TransactionCrashCorruption(t *testing.T) {
 		t.Fatalf("BUG: committed chunk unreadable after crash – Sharky was not synced before LevelDB commit: %v", err)
 	}
 	assert.Equal(t, ch1.Data(), got.Data(), "chunk data must survive a crash when Sharky is synced before LevelDB commit")
+}
+
+// Test_SharkyCrashAndRestart is a full node-lifecycle reproduction of issue #4737.
+//
+// It simulates:
+//  1. An active node writing chunks (Phase 1)
+//  2. A host crash that drops unsynced OS page cache (sharky shard files never fsynced)
+//  3. A node restart that reopens the same storage (Phase 2)
+//  4. Validation showing that committed chunks are unreadable — the exact corruption
+//     reported in the issue ("read 0: EOF")
+//
+// On the fix branch (sharky Sync() called before LevelDB batch.Commit()), all chunks
+// survive the crash and the test passes.
+func Test_SharkyCrashAndRestart(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	// Mock FS shared across both "node runs". Each file tracks its on-disk (data)
+	// and page-cache (dirty) state independently so Crash() only loses unsynced bytes.
+	fsys := &mockCrashFS{files: make(map[string]*mockCrashFile)}
+
+	// LevelDB is on real disk so it survives the crash (it uses its own WAL+fsync).
+	dbPath := t.TempDir()
+
+	// ── Phase 1: node is running and writing chunks ──────────────────────────
+
+	var written []swarm.Chunk
+	{
+		sharkyStore, err := sharky.New(fsys, 1, swarm.SocMaxChunkSize)
+		assert.NoError(t, err)
+
+		dbStore, err := leveldbstore.New(dbPath, nil)
+		assert.NoError(t, err)
+
+		st := transaction.NewStorage(sharkyStore, dbStore)
+
+		for range 5 {
+			ch := test.GenerateTestRandomChunk()
+			written = append(written, ch)
+			assert.NoError(t, st.Run(ctx, func(s transaction.Store) error {
+				return s.ChunkStore().Put(ctx, ch)
+			}))
+		}
+		t.Logf("wrote %d chunks to storage", len(written))
+
+		// Close normally: sharky calls slots.save() which syncs the free-slot bitmap
+		// (free_000) but does NOT sync the shard data file (shard_000).
+		assert.NoError(t, st.Close())
+	}
+
+	// Log file states so it's clear what survived vs. what was lost.
+	for name, f := range fsys.files {
+		t.Logf("pre-crash  %q: on-disk=%d B  page-cache=%d B", name, len(f.data), len(f.dirty))
+	}
+
+	// ── Crash: OS drops all unsynced page cache ───────────────────────────────
+	//
+	// After Crash():
+	//   free_000  → on-disk = page-cache = slot bitmap  (was synced by slots.save())
+	//   shard_000 → on-disk = page-cache = 0 B          (was NEVER synced → data lost)
+	for _, f := range fsys.files {
+		f.Crash()
+	}
+
+	for name, f := range fsys.files {
+		t.Logf("post-crash %q: on-disk=%d B", name, len(f.data))
+	}
+
+	// ── Phase 2: node restarts, reopens the same storage ─────────────────────
+
+	t.Log("restarting node after crash...")
+
+	sharkyStore, err := sharky.New(fsys, 1, swarm.SocMaxChunkSize)
+	assert.NoError(t, err)
+
+	dbStore, err := leveldbstore.New(dbPath, nil)
+	assert.NoError(t, err)
+
+	st := transaction.NewStorage(sharkyStore, dbStore)
+	defer func() { assert.NoError(t, st.Close()) }()
+
+	// ── Validate: try to read every chunk that was committed ──────────────────
+
+	var corrupted int
+	for _, ch := range written {
+		got, err := st.ChunkStore().Get(ctx, ch.Address())
+		if err != nil {
+			t.Logf("CORRUPTION: chunk %s unreadable after restart: %v", ch.Address(), err)
+			corrupted++
+			continue
+		}
+		if !bytes.Equal(ch.Data(), got.Data()) {
+			t.Logf("CORRUPTION: chunk %s data mismatch after restart", ch.Address())
+			corrupted++
+		}
+	}
+
+	if corrupted > 0 {
+		t.Errorf("BUG: %d/%d chunks corrupted after simulated crash — "+
+			"sharky shard data was not synced to disk before LevelDB committed the chunk metadata",
+			corrupted, len(written))
+	} else {
+		t.Logf("all %d chunks intact after simulated crash", len(written))
+	}
 }
