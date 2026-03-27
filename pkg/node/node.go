@@ -118,6 +118,7 @@ type Bee struct {
 	saludCloser              io.Closer
 	storageIncetivesCloser   io.Closer
 	pushSyncCloser           io.Closer
+	stabilizationDetector    *stabilization.Detector
 	shutdownInProgress       bool
 	shutdownMutex            sync.Mutex
 	syncingStopped           *syncutil.Signaler
@@ -606,7 +607,7 @@ func NewBee(
 	if err != nil {
 		return nil, fmt.Errorf("rate stabilizer configuration failed: %w", err)
 	}
-	defer detector.Close()
+	b.stabilizationDetector = detector
 
 	detector.OnMonitoringStart = func(t time.Time) {
 		logger.Info("node warmup check initiated. monitoring activity rate to determine readiness.", "startTime", t)
@@ -1429,6 +1430,9 @@ func (b *Bee) Shutdown() error {
 	tryClose(b.tracerCloser, "tracer")
 	tryClose(b.topologyCloser, "topology driver")
 	tryClose(b.storageIncetivesCloser, "storage incentives agent")
+	if b.stabilizationDetector != nil {
+		b.stabilizationDetector.Close()
+	}
 	tryClose(b.stateStoreCloser, "statestore")
 	tryClose(b.stamperStoreCloser, "stamperstore")
 	tryClose(b.localstoreCloser, "localstore")
