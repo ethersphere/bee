@@ -6,6 +6,9 @@ services:
     restart: unless-stopped
     environment:
       - BEE_API_ADDR
+      - BEE_AUTOTLS_CA_ENDPOINT
+      - BEE_AUTOTLS_DOMAIN
+      - BEE_AUTOTLS_REGISTRATION_ENDPOINT
       - BEE_BLOCK_TIME
       - BEE_BOOTNODE
       - BEE_BOOTNODE_MODE

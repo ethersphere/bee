@@ -127,3 +127,9 @@
 # BEE_WARMUP_TIME=
 ## withdrawal target addresses
 # BEE_WITHDRAWAL_ADDRESSES_WHITELIST=
+## autotls domain (default: libp2p.direct)
+# BEE_AUTOTLS_DOMAIN=
+## autotls registration endpoint (default: https://registration.libp2p.direct)
+# BEE_AUTOTLS_REGISTRATION_ENDPOINT=
+## autotls ca endpoint (default: https://acme-v02.api.letsencrypt.org/directory)
+# BEE_AUTOTLS_CA_ENDPOINT=
