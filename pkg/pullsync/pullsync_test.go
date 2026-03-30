@@ -67,7 +67,7 @@ func TestIncoming_WantNone(t *testing.T) {
 			psClient, clientDb = newPullSync(t, recorder, 0, mock.WithChunks(chunks...))
 		)
 
-		topmost, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
+		topmost, _, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -91,7 +91,7 @@ func TestIncoming_ContextTimeout(t *testing.T) {
 
 		ctx, cancel := context.WithTimeout(context.Background(), 0)
 		cancel()
-		_, _, err := psClient.Sync(ctx, swarm.ZeroAddress, 0, 0)
+		_, _, _, err := psClient.Sync(ctx, swarm.ZeroAddress, 0, 0)
 		if !errors.Is(err, context.DeadlineExceeded) {
 			t.Fatalf("wanted error %v, got %v", context.DeadlineExceeded, err)
 		}
@@ -107,7 +107,7 @@ func TestIncoming_WantOne(t *testing.T) {
 			psClient, clientDb = newPullSync(t, recorder, 0, mock.WithChunks(someChunks(1, 2, 3, 4)...))
 		)
 
-		topmost, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
+		topmost, _, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -133,7 +133,7 @@ func TestIncoming_WantAll(t *testing.T) {
 			psClient, clientDb = newPullSync(t, recorder, 0)
 		)
 
-		topmost, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
+		topmost, _, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -195,7 +195,7 @@ func TestIncoming_WantErrors(t *testing.T) {
 			psClient, clientDb = newPullSyncWithStamperValidator(t, recorder, 0, validStamp, mock.WithPutHook(putHook))
 		)
 
-		topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
+		topmost, _, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
 		for _, e := range []error{storage.ErrOverwriteNewerChunk, validStampErr, swarm.ErrInvalidChunk} {
 			if !errors.Is(err, e) {
 				t.Fatalf("expected error %v", err)
@@ -230,7 +230,7 @@ func TestIncoming_UnsolicitedChunk(t *testing.T) {
 			psClient, _ = newPullSync(t, recorder, 0)
 		)
 
-		_, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
+		_, _, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
 		if !errors.Is(err, pullsync.ErrUnsolicitedChunk) {
 			t.Fatalf("expected err %v but got %v", pullsync.ErrUnsolicitedChunk, err)
 		}
@@ -247,7 +247,7 @@ func TestMissingChunk(t *testing.T) {
 			psClient, _ = newPullSync(t, recorder, 0)
 		)
 
-		topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
+		topmost, _, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -307,6 +307,51 @@ func TestGetCursorsError(t *testing.T) {
 		}
 		if !errors.Is(err, io.EOF) {
 			t.Fatalf("expect error '%v' but got '%v'", e, err)
+		}
+	})
+}
+
+func TestSync_StampFailure_StoredIsZero(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		tChunks := testingc.GenerateTestRandomChunks(3)
+
+		tResults := make([]*storer.BinC, len(tChunks))
+		for i, c := range tChunks {
+			stampHash, err := c.Stamp().Hash()
+			if err != nil {
+				t.Fatal(err)
+			}
+			tResults[i] = &storer.BinC{
+				Address:   c.Address(),
+				BatchID:   c.Stamp().BatchID(),
+				BinID:     uint64(i + 1),
+				StampHash: stampHash,
+			}
+		}
+
+		stampErr := errors.New("stamp validation error")
+		validStamp := func(c swarm.Chunk) (swarm.Chunk, error) {
+			return nil, stampErr
+		}
+
+		var (
+			ps, _       = newPullSync(t, nil, 10, mock.WithSubscribeResp(tResults, nil), mock.WithChunks(tChunks...))
+			recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+			psClient, _ = newPullSyncWithStamperValidator(t, recorder, 0, validStamp)
+		)
+
+		topmost, stored, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
+		if !errors.Is(err, stampErr) {
+			t.Fatalf("expected stamp error but got %v", err)
+		}
+		if stored != 0 {
+			t.Fatalf("expected stored=0 on stamp failure but got %d", stored)
+		}
+		if count != 0 {
+			t.Fatalf("expected count=0 on stamp failure but got %d", count)
+		}
+		if topmost != uint64(len(tChunks)) {
+			t.Fatalf("expected topmost=%d but got %d", len(tChunks), topmost)
 		}
 	})
 }

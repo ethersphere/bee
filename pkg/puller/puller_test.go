@@ -500,11 +500,51 @@ func TestContinueSyncing(t *testing.T) {
 	kad.Trigger()
 
 	err := spinlock.Wait(time.Second, func() bool {
-		return len(pullsync.SyncCalls(addr)) == 1
+		return len(pullsync.SyncCalls(addr)) >= 1
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// TestIntervalDoesNotAdvanceOnSyncError verifies that a sync error does not cause
+// the interval to be advanced: the interval store must remain empty after a sync
+// that returns an error, even if offer.Topmost is non-zero.
+func TestIntervalDoesNotAdvanceOnSyncError(t *testing.T) {
+	t.Parallel()
+
+	addr := swarm.RandAddress(t)
+
+	_, s, kad, pullsync := newPuller(t, opts{
+		kad: []kadMock.Option{
+			kadMock.WithEachPeerRevCalls(kadMock.AddrTuple{Addr: addr, PO: 0}),
+		},
+		pullSync: []mockps.Option{
+			mockps.WithCursors([]uint64{100}, 0),
+			mockps.WithSyncError(errors.New("stamp error")),
+			mockps.WithReplies(
+				mockps.SyncReply{Start: 1, Topmost: 100, Peer: addr},
+				mockps.SyncReply{Start: 1, Topmost: 100, Peer: addr},
+			),
+		},
+		bins: 1,
+		rs:   resMock.NewReserve(resMock.WithRadius(0)),
+	})
+
+	time.Sleep(100 * time.Millisecond)
+	kad.Trigger()
+
+	// wait until at least one sync call was made
+	err := spinlock.Wait(time.Second, func() bool {
+		return len(pullsync.SyncCalls(addr)) >= 1
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// interval must not have been advanced: it is initialized to [] (no ranges committed)
+	// and must remain [] since every sync call returned an error
+	checkIntervals(t, s, addr, "[]", 0)
 }
 
 func TestPeerGone(t *testing.T) {

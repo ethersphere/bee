@@ -40,11 +40,16 @@ func toID(a swarm.Address, bin uint8, start uint64) string {
 	return fmt.Sprintf("%s-%d-%d", a, bin, start)
 }
 
+// SyncReply configures a single response from PullSyncMock.Sync.
+// Stored overrides the stored return value; if zero, stored defaults to
+// Topmost (matching successful-delivery behaviour). Set Stored explicitly
+// when testing scenarios where stored must differ from Topmost.
 type SyncReply struct {
 	Peer    swarm.Address
 	Bin     uint8
 	Start   uint64
 	Topmost uint64
+	Stored  uint64 // 0 means "default to Topmost"; set explicitly to test partial/failed delivery
 	Count   int
 }
 
@@ -71,7 +76,7 @@ func NewPullSync(opts ...Option) *PullSyncMock {
 	return s
 }
 
-func (p *PullSyncMock) Sync(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (topmost uint64, count int, err error) {
+func (p *PullSyncMock) Sync(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (topmost uint64, stored uint64, count int, err error) {
 
 	p.mtx.Lock()
 
@@ -83,11 +88,19 @@ func (p *PullSyncMock) Sync(ctx context.Context, peer swarm.Address, bin uint8, 
 		p.replies[id] = p.replies[id][1:]
 		p.syncCalls = append(p.syncCalls, reply)
 		p.mtx.Unlock()
-		return reply.Topmost, reply.Count, p.syncErr
+		// mirror real Sync behaviour: stored defaults to Topmost on success
+		s := reply.Topmost
+		if reply.Stored != 0 {
+			s = reply.Stored
+		}
+		if p.syncErr != nil {
+			s = 0
+		}
+		return reply.Topmost, s, reply.Count, p.syncErr
 	}
 	p.mtx.Unlock()
 	<-ctx.Done()
-	return 0, 0, ctx.Err()
+	return 0, 0, 0, ctx.Err()
 }
 
 func (p *PullSyncMock) GetCursors(_ context.Context, peer swarm.Address) ([]uint64, uint64, error) {

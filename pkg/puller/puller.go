@@ -334,7 +334,7 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 
 			p.metrics.SyncWorkerIterCounter.Inc()
 
-			top, count, err := p.syncer.Sync(ctx, address, bin, start)
+			top, stored, count, err := p.syncer.Sync(ctx, address, bin, start)
 
 			if top == math.MaxUint64 {
 				p.metrics.MaxUintErrCounter.Inc()
@@ -360,14 +360,14 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 				p.metrics.SyncedCounter.WithLabelValues("live").Add(float64(count))
 			}
 
-			// pulled at least one chunk
-			if top >= start {
-				if err := p.addPeerInterval(address, bin, start, top); err != nil {
+			// advance interval only when chunks were successfully stored
+			if stored >= start {
+				if err := p.addPeerInterval(address, bin, start, stored); err != nil {
 					p.metrics.SyncWorkerErrCounter.Inc()
 					p.logger.Error(err, "syncWorker could not persist interval for peer, quitting", "peer_address", address)
 					return
 				}
-				start = top + 1
+				start = stored + 1
 			}
 		}
 	}

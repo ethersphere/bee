@@ -56,9 +56,13 @@ const (
 // Interface is the PullSync interface.
 type Interface interface {
 	// Sync syncs a batch of chunks starting at a start BinID.
-	// It returns the BinID of highest chunk that was synced from the given
-	// batch and the total number of chunks the downstream peer has sent.
-	Sync(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (topmost uint64, count int, err error)
+	// It returns the BinID of the highest offered chunk (topmost), the BinID
+	// of the highest chunk that was actually stored (stored; 0 on any delivery
+	// error), and the total number of chunks successfully stored.
+	// Callers must use stored — not topmost — to advance their sync interval,
+	// so that BinIDs whose chunks failed validation are not silently skipped.
+	// topmost is retained for overflow detection and future HIST-completion use.
+	Sync(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (topmost uint64, stored uint64, count int, err error)
 	// GetCursors retrieves all cursors from a downstream peer.
 	GetCursors(ctx context.Context, peer swarm.Address) ([]uint64, uint64, error)
 }
@@ -225,13 +229,16 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 }
 
 // Sync syncs a batch of chunks starting at a start BinID.
-// It returns the BinID of highest chunk that was synced from the given
-// batch and the total number of chunks the downstream peer has sent.
-func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (topmost uint64, count int, err error) {
+// topmost is the highest BinID offered by the peer (used for overflow detection).
+// stored is the highest BinID that was successfully validated and stored
+// (0 if any chunk failed validation); callers must advance their sync interval
+// using stored, not topmost.
+// count is the number of chunks successfully stored.
+func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (topmost uint64, stored uint64, count int, err error) {
 
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
-		return 0, 0, fmt.Errorf("new stream: %w", err)
+		return 0, 0, 0, fmt.Errorf("new stream: %w", err)
 	}
 	defer func() {
 		if err != nil {
@@ -245,18 +252,20 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 
 	rangeMsg := &pb.Get{Bin: int32(bin), Start: start}
 	if err = w.WriteMsgWithContext(ctx, rangeMsg); err != nil {
-		return 0, 0, fmt.Errorf("write get range: %w", err)
+		return 0, 0, 0, fmt.Errorf("write get range: %w", err)
 	}
 
 	var offer pb.Offer
 	if err = r.ReadMsgWithContext(ctx, &offer); err != nil {
-		return 0, 0, fmt.Errorf("read offer: %w", err)
+		return 0, 0, 0, fmt.Errorf("read offer: %w", err)
 	}
 
 	// empty interval (no chunks present in interval).
 	// return the end of the requested range as topmost.
+	// stored equals topmost: an empty offer advances the interval to the peer's
+	// watermark without delivering any chunks, which is correct.
 	if len(offer.Chunks) == 0 {
-		return offer.Topmost, 0, nil
+		return offer.Topmost, offer.Topmost, 0, nil
 	}
 
 	topmost = offer.Topmost
@@ -270,7 +279,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 
 	bv, err := bitvector.New(bvLen)
 	if err != nil {
-		return 0, 0, fmt.Errorf("new bitvector: %w", err)
+		return 0, 0, 0, fmt.Errorf("new bitvector: %w", err)
 	}
 
 	for i := 0; i < len(offer.Chunks); i++ {
@@ -279,7 +288,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		batchID := offer.Chunks[i].BatchID
 		stampHash := offer.Chunks[i].StampHash
 		if len(addr) != swarm.HashSize {
-			return 0, 0, fmt.Errorf("inconsistent hash length")
+			return 0, 0, 0, fmt.Errorf("inconsistent hash length")
 		}
 
 		a := swarm.NewAddress(addr)
@@ -293,7 +302,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 			have, err = s.store.ReserveHas(a, batchID, stampHash)
 			if err != nil {
 				s.logger.Debug("storage has", "error", err)
-				return 0, 0, err
+				return 0, 0, 0, err
 			}
 
 			if !have {
@@ -307,7 +316,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 
 	wantMsg := &pb.Want{BitVector: bv.Bytes()}
 	if err = w.WriteMsgWithContext(ctx, wantMsg); err != nil {
-		return 0, 0, fmt.Errorf("write want: %w", err)
+		return 0, 0, 0, fmt.Errorf("write want: %w", err)
 	}
 
 	chunksToPut := make([]swarm.Chunk, 0, ctr)
@@ -316,7 +325,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 	for ; ctr > 0; ctr-- {
 		var delivery pb.Delivery
 		if err = r.ReadMsgWithContext(ctx, &delivery); err != nil {
-			return 0, 0, errors.Join(chunkErr, fmt.Errorf("read delivery: %w", err))
+			return 0, 0, 0, errors.Join(chunkErr, fmt.Errorf("read delivery: %w", err))
 		}
 
 		addr := swarm.NewAddress(delivery.Address)
@@ -389,13 +398,21 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 					chunkErr = errors.Join(chunkErr, err)
 					continue
 				}
-				return 0, 0, errors.Join(chunkErr, err)
+				return 0, 0, 0, errors.Join(chunkErr, err)
 			}
 			chunksPut++
 		}
 	}
 
-	return topmost, chunksPut, chunkErr
+	// stored is the BinID callers should use to advance their sync interval.
+	// When any chunk failed validation or storage, stored is 0 so the interval
+	// does not advance past unverified BinIDs.
+	stored = topmost
+	if chunkErr != nil {
+		stored = 0
+	}
+
+	return topmost, stored, chunksPut, chunkErr
 }
 
 // makeOffer tries to assemble an offer for a given requested interval.
