@@ -507,6 +507,59 @@ func TestContinueSyncing(t *testing.T) {
 	}
 }
 
+// TestSyncErrorBackoff verifies that a non-fatal sync error is followed by a
+// backoff before the next retry, bounding the retry rate to roughly 1/s.
+func TestSyncErrorBackoff(t *testing.T) {
+	t.Parallel()
+
+	addr := swarm.RandAddress(t)
+
+	// Use Topmost=0 so that top < start and the interval is never advanced,
+	// causing the loop to retry with the same start value each time.
+	// Provide two replies so we can observe two successive sync calls.
+	_, _, kad, ps := newPuller(t, opts{
+		kad: []kadMock.Option{
+			kadMock.WithEachPeerRevCalls(kadMock.AddrTuple{Addr: addr, PO: 0}),
+		},
+		pullSync: []mockps.Option{
+			mockps.WithCursors([]uint64{100}, 0),
+			mockps.WithSyncError(errors.New("stream error")),
+			mockps.WithReplies(
+				mockps.SyncReply{Bin: 0, Start: 1, Topmost: 0, Peer: addr},
+				mockps.SyncReply{Bin: 0, Start: 1, Topmost: 0, Peer: addr},
+			),
+		},
+		bins: 1,
+		rs:   resMock.NewReserve(resMock.WithRadius(0)),
+	})
+
+	time.Sleep(100 * time.Millisecond)
+	kad.Trigger()
+
+	// wait for the first call
+	err := spinlock.Wait(2*time.Second, func() bool {
+		return len(ps.SyncCalls(addr)) >= 1
+	})
+	if err != nil {
+		t.Fatal("timed out waiting for first sync call")
+	}
+	t1 := time.Now()
+
+	// wait for the second call — must be separated by at least syncRetryBackoff
+	err = spinlock.Wait(3*time.Second, func() bool {
+		return len(ps.SyncCalls(addr)) >= 2
+	})
+	if err != nil {
+		t.Fatal("timed out waiting for second sync call")
+	}
+	elapsed := time.Since(t1)
+
+	const minBackoff = 800 * time.Millisecond // allow 200ms tolerance below syncRetryBackoff
+	if elapsed < minBackoff {
+		t.Fatalf("retry happened too fast: elapsed %v, want >= %v", elapsed, minBackoff)
+	}
+}
+
 func TestPeerGone(t *testing.T) {
 	t.Parallel()
 

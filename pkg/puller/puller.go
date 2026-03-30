@@ -42,6 +42,8 @@ const (
 	maxChunksPerSecond = 1000 // roughly 4 MB/s
 
 	maxPODelta = 2 // the lowest level of proximity order (of peers) subtracted from the storage radius allowed for chunk syncing.
+
+	syncRetryBackoff = time.Second // minimum wait between retries after a non-fatal sync error
 )
 
 type Options struct {
@@ -189,12 +191,13 @@ func (p *Puller) manage(ctx context.Context) {
 }
 
 // disconnectPeer cancels all existing syncing and removes the peer entry from the syncing map.
+// Goroutines drain in the background; the caller is not blocked waiting for them.
 // Must be called under lock.
 func (p *Puller) disconnectPeer(addr swarm.Address) {
 	p.logger.Debug("disconnecting peer", "peer_address", addr)
 	if peer, ok := p.syncPeers[addr.ByteString()]; ok {
 		peer.mtx.Lock()
-		peer.stop()
+		peer.cancelBins()
 		peer.mtx.Unlock()
 	}
 	delete(p.syncPeers, addr.ByteString())
@@ -349,6 +352,11 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 					return
 				}
 				p.logger.Debug("syncWorker interval failed", "error", err, "peer_address", address, "bin", bin, "cursor", cursor, "start", start, "topmost", top)
+				select {
+				case <-time.After(syncRetryBackoff):
+				case <-ctx.Done():
+					return
+				}
 			}
 
 			_ = p.limiter.WaitN(ctx, count)
@@ -548,12 +556,19 @@ func newSyncPeer(addr swarm.Address, bins, po uint8) *syncPeer {
 	}
 }
 
-// called when peer disconnects or on shutdown, cleans up ongoing sync operations
-func (p *syncPeer) stop() {
+// cancelBins cancels all per-bin sync contexts and clears the cancel-func map.
+// Does not wait for goroutines to exit. Must be called under peer.mtx.
+func (p *syncPeer) cancelBins() {
 	for bin, c := range p.binCancelFuncs {
 		c()
 		delete(p.binCancelFuncs, bin)
 	}
+}
+
+// stop cancels all per-bin sync contexts and waits for goroutines to exit.
+// Used on shutdown. Must be called under peer.mtx.
+func (p *syncPeer) stop() {
+	p.cancelBins()
 	p.wg.Wait()
 }
 
