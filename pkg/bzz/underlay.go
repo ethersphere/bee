@@ -20,15 +20,7 @@ import (
 const underlayListPrefix byte = 0x99
 
 // SerializeUnderlays serializes a slice of multiaddrs into a single byte slice.
-// If the slice contains exactly one address, the standard, backward-compatible
-// multiaddr format is used. For zero or more than one address, a custom list format
-// prefixed with a magic byte is utilized.
 func SerializeUnderlays(addrs []multiaddr.Multiaddr) []byte {
-	// Backward compatibility if exactly one address is present.
-	if len(addrs) == 1 {
-		return addrs[0].Bytes()
-	}
-
 	// For 0 or 2+ addresses, the custom list format with the prefix is used.
 	// The format is: [prefix_byte][varint_len_1][addr_1_bytes]...
 	var buf bytes.Buffer
@@ -49,19 +41,7 @@ func DeserializeUnderlays(data []byte) ([]multiaddr.Multiaddr, error) {
 	if len(data) == 0 {
 		return nil, errors.New("cannot deserialize empty byte slice")
 	}
-
-	// If the data begins with the magic prefix, it is handled as a list.
-	if data[0] == underlayListPrefix {
-		return deserializeList(data[1:])
-	}
-
-	// Otherwise, the data is handled as a single, backward-compatible multiaddr.
-	addr, err := multiaddr.NewMultiaddrBytes(data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse as single multiaddr: %w", err)
-	}
-	// The result is returned as a single-element slice for a consistent return type.
-	return []multiaddr.Multiaddr{addr}, nil
+	return deserializeList(data[1:])
 }
 
 // deserializeList handles the parsing of the custom list format.
