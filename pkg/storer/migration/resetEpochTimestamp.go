@@ -4,19 +4,14 @@
 
 package migration
 
-import (
-	"context"
+import "github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 
-	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
-	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
-)
-
-// resetReserveEpochTimestamp is a migration that resets the epoch timestamp of the reserve
-// so that peers in the network can resync chunks.
-func resetReserveEpochTimestamp(st transaction.Storage) func() error {
+// resetReserveEpochTimestamp was a migration that reset the epoch timestamp
+// of the reserve so that peers in the network could resync chunks.
+// It is now a NOOP since all nodes have already run this migration,
+// and new nodes start with an empty database.
+func resetReserveEpochTimestamp(_ transaction.Storage) func() error {
 	return func() error {
-		return st.Run(context.Background(), func(s transaction.Store) error {
-			return s.IndexStore().Delete(&reserve.EpochItem{})
-		})
+		return nil
 	}
 }

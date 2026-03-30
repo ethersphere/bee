@@ -20,7 +20,6 @@ import (
 	"time"
 
 	ocprom "contrib.go.opencensus.io/exporter/prometheus"
-	"github.com/coreos/go-semver/semver"
 	"github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/bzz"
@@ -1463,8 +1462,6 @@ func (s *Service) peerMultiaddrs(ctx context.Context, peerID libp2ppeer.ID) ([]m
 
 	return buildFullMAs(mas, peerID)
 }
-
-var version270 = *semver.Must(semver.NewVersion("2.7.0"))
 
 // appendSpace adds a leading space character if the string is not empty.
 // It is useful for constructing log messages with conditional substrings.

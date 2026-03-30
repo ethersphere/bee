@@ -65,17 +65,6 @@ func TestDeserializeUnderlays(t *testing.T) {
 		}
 	})
 
-	t.Run("single legacy multiaddr", func(t *testing.T) {
-		singleBytes := wssAddr.Bytes()
-		deserialized, err := bzz.DeserializeUnderlays(singleBytes)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(deserialized) != 1 || !deserialized[0].Equal(wssAddr) {
-			t.Errorf("expected [%v], got %v", wssAddr, deserialized)
-		}
-	})
-
 	t.Run("empty byte slice", func(t *testing.T) {
 		_, err := bzz.DeserializeUnderlays([]byte{})
 		if err == nil {
