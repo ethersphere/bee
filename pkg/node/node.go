@@ -118,7 +118,7 @@ type Bee struct {
 	saludCloser              io.Closer
 	storageIncetivesCloser   io.Closer
 	pushSyncCloser           io.Closer
-	stabilizationDetector    *stabilization.Detector
+	stabilizationDetector    io.Closer
 	shutdownInProgress       bool
 	shutdownMutex            sync.Mutex
 	syncingStopped           *syncutil.Signaler
@@ -1430,9 +1430,7 @@ func (b *Bee) Shutdown() error {
 	tryClose(b.tracerCloser, "tracer")
 	tryClose(b.topologyCloser, "topology driver")
 	tryClose(b.storageIncetivesCloser, "storage incentives agent")
-	if b.stabilizationDetector != nil {
-		b.stabilizationDetector.Close()
-	}
+	tryClose(b.stabilizationDetector, "stabilization detector")
 	tryClose(b.stateStoreCloser, "statestore")
 	tryClose(b.stamperStoreCloser, "stamperstore")
 	tryClose(b.localstoreCloser, "localstore")
