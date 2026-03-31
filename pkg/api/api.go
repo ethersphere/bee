@@ -398,6 +398,8 @@ func (s *Service) SetIsWarmingUp(v bool) {
 // Close hangs up running websockets on shutdown.
 func (s *Service) Close() error {
 	s.logger.Info("api shutting down")
+	close(s.quit)
+
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
