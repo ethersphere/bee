@@ -13,19 +13,11 @@ import (
 	"github.com/multiformats/go-varint"
 )
 
-// underlayListPrefix is a magic byte designated for identifying a serialized list of multiaddrs.
-// A value of 0x99 (153) was chosen as it is not a defined multiaddr protocol code.
-// This ensures that a failure is triggered by the original multiaddr.NewMultiaddrBytes function,
-// which expects a valid protocol code at the start of the data.
-const underlayListPrefix byte = 0x99
-
 // SerializeUnderlays serializes a slice of multiaddrs into a single byte slice.
 func SerializeUnderlays(addrs []multiaddr.Multiaddr) []byte {
 	// For 0 or 2+ addresses, the custom list format with the prefix is used.
-	// The format is: [prefix_byte][varint_len_1][addr_1_bytes]...
+	// The format is: [varint_len_1][addr_1_bytes]...
 	var buf bytes.Buffer
-	buf.WriteByte(underlayListPrefix)
-
 	for _, addr := range addrs {
 		addrBytes := addr.Bytes()
 		buf.Write(varint.ToUvarint(uint64(len(addrBytes))))
@@ -35,13 +27,11 @@ func SerializeUnderlays(addrs []multiaddr.Multiaddr) []byte {
 }
 
 // DeserializeUnderlays deserializes a byte slice into a slice of multiaddrs.
-// The data format is automatically detected as either a single legacy multiaddr
-// or a list of multiaddrs (identified by underlayListPrefix), and is parsed accordingly.
 func DeserializeUnderlays(data []byte) ([]multiaddr.Multiaddr, error) {
 	if len(data) == 0 {
 		return nil, errors.New("cannot deserialize empty byte slice")
 	}
-	return deserializeList(data[1:])
+	return deserializeList(data)
 }
 
 // deserializeList handles the parsing of the custom list format.

@@ -40,7 +40,7 @@ func TestBzzAddress(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	bzzAddress2, err := bzz.ParseAddress(node1ma.Bytes(), overlay.Bytes(), bzzAddress.Signature, nonce, true, 3)
+	bzzAddress2, err := bzz.ParseAddress(bzz.SerializeUnderlays([]multiaddr.Multiaddr{node1ma}), overlay.Bytes(), bzzAddress.Signature, nonce, true, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
