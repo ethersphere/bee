@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -67,7 +66,6 @@ type Syncer struct {
 	metrics        metrics
 	logger         log.Logger
 	store          storer.Reserve
-	closeOnce      sync.Once
 	quit           chan struct{}
 	unwrap         func(swarm.Chunk)
 	gsocHandler    func(*soc.SOC)
@@ -570,9 +568,7 @@ func (s *Syncer) disconnect(peer p2p.Peer) error {
 
 func (s *Syncer) Close() error {
 	s.logger.Info("pull syncer shutting down")
-	s.closeOnce.Do(func() {
-		close(s.quit)
-	})
+	close(s.quit)
 	cc := make(chan struct{})
 	go func() {
 		defer close(cc)

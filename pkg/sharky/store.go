@@ -32,8 +32,7 @@ type Store struct {
 	writes      chan write      // shared write operations channel
 	shards      []*shard        // shards
 	wg          *sync.WaitGroup // count started operations
-	closeOnce   sync.Once
-	quit        chan struct{} // quit channel
+	quit        chan struct{}   // quit channel
 	metrics     metrics
 }
 
@@ -66,9 +65,7 @@ func New(basedir fs.FS, shardCnt int, maxDataSize int) (*Store, error) {
 
 // Close closes each shard and return incidental errors from each shard
 func (s *Store) Close() error {
-	s.closeOnce.Do(func() {
-		close(s.quit)
-	})
+	close(s.quit)
 	err := new(multierror.Error)
 	for _, sh := range s.shards {
 		err = multierror.Append(err, sh.close())

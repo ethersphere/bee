@@ -57,7 +57,6 @@ type listener struct {
 
 	postageStampContractAddress common.Address
 	postageStampContractABI     abi.ABI
-	closeOnce                   sync.Once
 	quit                        chan struct{}
 	wg                          sync.WaitGroup
 	metrics                     metrics
@@ -375,9 +374,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 }
 
 func (l *listener) Close() error {
-	l.closeOnce.Do(func() {
-		close(l.quit)
-	})
+	close(l.quit)
 
 	done := make(chan struct{})
 	go func() {

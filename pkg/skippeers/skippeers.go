@@ -17,9 +17,8 @@ const maxDuration time.Duration = math.MaxInt64
 type List struct {
 	mtx sync.Mutex
 
-	closeOnce sync.Once
-	durC      chan time.Duration
-	quit      chan struct{}
+	durC chan time.Duration
+	quit chan struct{}
 	// key is chunk address, value is map of peer address to expiration
 	skip map[string]map[string]int64
 
@@ -134,9 +133,7 @@ func (l *List) pruneChunk(ch string, now int64) int {
 }
 
 func (l *List) Close() error {
-	l.closeOnce.Do(func() {
-		close(l.quit)
-	})
+	close(l.quit)
 	l.wg.Wait()
 
 	l.mtx.Lock()

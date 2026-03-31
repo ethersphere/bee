@@ -44,7 +44,6 @@ type peerStatus interface {
 
 type service struct {
 	wg            sync.WaitGroup
-	closeOnce     sync.Once
 	quit          chan struct{}
 	logger        log.Logger
 	topology      topologyDriver
@@ -117,9 +116,7 @@ func (s *service) worker(startupStabilizer stabilization.Subscriber, mode string
 }
 
 func (s *service) Close() error {
-	s.closeOnce.Do(func() {
-		close(s.quit)
-	})
+	close(s.quit)
 	s.wg.Wait()
 	return nil
 }

@@ -174,9 +174,8 @@ type Service struct {
 
 	metrics metrics
 
-	wsWg      sync.WaitGroup // wait for all websockets to close on exit
-	closeOnce sync.Once
-	quit      chan struct{}
+	wsWg sync.WaitGroup // wait for all websockets to close on exit
+	quit chan struct{}
 
 	overlay           *swarm.Address
 	publicKey         ecdsa.PublicKey
@@ -399,10 +398,6 @@ func (s *Service) SetIsWarmingUp(v bool) {
 // Close hangs up running websockets on shutdown.
 func (s *Service) Close() error {
 	s.logger.Info("api shutting down")
-	s.closeOnce.Do(func() {
-		close(s.quit)
-	})
-
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
