@@ -56,13 +56,15 @@ const (
 // Interface is the PullSync interface.
 type Interface interface {
 	// Sync syncs a batch of chunks starting at a start BinID.
-	// It returns the BinID of the highest offered chunk (topmost), the BinID
-	// of the highest chunk that was actually stored (stored; 0 on any delivery
-	// error), and the total number of chunks successfully stored.
-	// Callers must use stored — not topmost — to advance their sync interval,
-	// so that BinIDs whose chunks failed validation are not silently skipped.
-	// topmost is retained for overflow detection and future HIST-completion use.
-	Sync(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (topmost uint64, stored uint64, count int, err error)
+	// It returns the topmost BinID safe for interval advancement and the total
+	// number of chunks successfully stored.
+	// topmost equals offer.Topmost (capped at the server's historical cursor)
+	// when all delivered chunks passed validation. topmost is 0 when any chunk
+	// failed validation (invalid stamp, unsolicited, or structural error), so
+	// callers that use topmost to advance their interval will not skip
+	// unverified BinIDs. ErrOverwriteNewerChunk does not zero topmost because
+	// the chunk is already present in the reserve.
+	Sync(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (topmost uint64, count int, err error)
 	// GetCursors retrieves all cursors from a downstream peer.
 	GetCursors(ctx context.Context, peer swarm.Address) ([]uint64, uint64, error)
 }
@@ -229,16 +231,17 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 }
 
 // Sync syncs a batch of chunks starting at a start BinID.
-// topmost is the highest BinID offered by the peer (used for overflow detection).
-// stored is the highest BinID that was successfully validated and stored
-// (0 if any chunk failed validation); callers must advance their sync interval
-// using stored, not topmost.
-// count is the number of chunks successfully stored.
-func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (topmost uint64, stored uint64, count int, err error) {
+// topmost equals offer.Topmost capped at the server's historical cursor
+// (see collectAddrs). topmost is 0 when any delivered chunk failed validation
+// (invalid stamp, unsolicited, or structural error), preventing the caller
+// from silently skipping unverified BinIDs.
+// ErrOverwriteNewerChunk does not zero topmost: the chunk is already present.
+// count is the number of chunks successfully written to the reserve.
+func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (topmost uint64, count int, err error) {
 
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
-		return 0, 0, 0, fmt.Errorf("new stream: %w", err)
+		return 0, 0, fmt.Errorf("new stream: %w", err)
 	}
 	defer func() {
 		if err != nil {
@@ -252,20 +255,18 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 
 	rangeMsg := &pb.Get{Bin: int32(bin), Start: start}
 	if err = w.WriteMsgWithContext(ctx, rangeMsg); err != nil {
-		return 0, 0, 0, fmt.Errorf("write get range: %w", err)
+		return 0, 0, fmt.Errorf("write get range: %w", err)
 	}
 
 	var offer pb.Offer
 	if err = r.ReadMsgWithContext(ctx, &offer); err != nil {
-		return 0, 0, 0, fmt.Errorf("read offer: %w", err)
+		return 0, 0, fmt.Errorf("read offer: %w", err)
 	}
 
-	// empty interval (no chunks present in interval).
-	// return the end of the requested range as topmost.
-	// stored equals topmost: an empty offer advances the interval to the peer's
-	// watermark without delivering any chunks, which is correct.
+	// empty interval: no chunks in range.
+	// return the peer's watermark so the caller can advance the interval.
 	if len(offer.Chunks) == 0 {
-		return offer.Topmost, offer.Topmost, 0, nil
+		return offer.Topmost, 0, nil
 	}
 
 	topmost = offer.Topmost
@@ -279,7 +280,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 
 	bv, err := bitvector.New(bvLen)
 	if err != nil {
-		return 0, 0, 0, fmt.Errorf("new bitvector: %w", err)
+		return 0, 0, fmt.Errorf("new bitvector: %w", err)
 	}
 
 	for i := 0; i < len(offer.Chunks); i++ {
@@ -288,7 +289,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		batchID := offer.Chunks[i].BatchID
 		stampHash := offer.Chunks[i].StampHash
 		if len(addr) != swarm.HashSize {
-			return 0, 0, 0, fmt.Errorf("inconsistent hash length")
+			return 0, 0, fmt.Errorf("inconsistent hash length")
 		}
 
 		a := swarm.NewAddress(addr)
@@ -302,7 +303,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 			have, err = s.store.ReserveHas(a, batchID, stampHash)
 			if err != nil {
 				s.logger.Debug("storage has", "error", err)
-				return 0, 0, 0, err
+				return 0, 0, err
 			}
 
 			if !have {
@@ -316,16 +317,19 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 
 	wantMsg := &pb.Want{BitVector: bv.Bytes()}
 	if err = w.WriteMsgWithContext(ctx, wantMsg); err != nil {
-		return 0, 0, 0, fmt.Errorf("write want: %w", err)
+		return 0, 0, fmt.Errorf("write want: %w", err)
 	}
 
 	chunksToPut := make([]swarm.Chunk, 0, ctr)
 
-	var chunkErr error
+	var (
+		chunkErr           error
+		hasValidationError bool // true when a chunk was not stored due to a validation failure
+	)
 	for ; ctr > 0; ctr-- {
 		var delivery pb.Delivery
 		if err = r.ReadMsgWithContext(ctx, &delivery); err != nil {
-			return 0, 0, 0, errors.Join(chunkErr, fmt.Errorf("read delivery: %w", err))
+			return 0, 0, errors.Join(chunkErr, fmt.Errorf("read delivery: %w", err))
 		}
 
 		addr := swarm.NewAddress(delivery.Address)
@@ -340,11 +344,13 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		stamp := new(postage.Stamp)
 		if err = stamp.UnmarshalBinary(delivery.Stamp); err != nil {
 			chunkErr = errors.Join(chunkErr, err)
+			hasValidationError = true
 			continue
 		}
 		stampHash, err := stamp.Hash()
 		if err != nil {
 			chunkErr = errors.Join(chunkErr, err)
+			hasValidationError = true
 			continue
 		}
 
@@ -352,6 +358,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		if _, ok := wantChunks[wantChunkID]; !ok {
 			s.logger.Debug("want chunks", "error", ErrUnsolicitedChunk, "peer_address", peer, "chunk_address", addr)
 			chunkErr = errors.Join(chunkErr, ErrUnsolicitedChunk)
+			hasValidationError = true
 			continue
 		}
 
@@ -361,6 +368,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		if err != nil {
 			s.logger.Debug("unverified stamp", "error", err, "peer_address", peer, "chunk_address", newChunk)
 			chunkErr = errors.Join(chunkErr, err)
+			hasValidationError = true
 			continue
 		}
 
@@ -370,6 +378,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 			addr, err := chunk.Address()
 			if err != nil {
 				chunkErr = errors.Join(chunkErr, err)
+				hasValidationError = true
 				continue
 			}
 			s.logger.Debug("sync gsoc", "peer_address", peer, "chunk_address", addr, "wrapped_chunk_address", chunk.WrappedChunk().Address())
@@ -377,6 +386,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		} else {
 			s.logger.Debug("invalid cac/soc chunk", "error", swarm.ErrInvalidChunk, "peer_address", peer, "chunk", chunk)
 			chunkErr = errors.Join(chunkErr, swarm.ErrInvalidChunk)
+			hasValidationError = true
 			s.metrics.ReceivedInvalidChunk.Inc()
 			continue
 		}
@@ -396,23 +406,27 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 				if errors.Is(err, storage.ErrOverwriteNewerChunk) {
 					s.logger.Debug("overwrite newer chunk", "error", err, "peer_address", peer, "chunk", c)
 					chunkErr = errors.Join(chunkErr, err)
+					// ErrOverwriteNewerChunk is not a validation failure: the chunk is
+					// already present in the reserve with a newer stamp. It is safe to
+					// advance the interval past it.
 					continue
 				}
-				return 0, 0, 0, errors.Join(chunkErr, err)
+				return 0, 0, errors.Join(chunkErr, err)
 			}
 			chunksPut++
 		}
 	}
 
-	// stored is the BinID callers should use to advance their sync interval.
-	// When any chunk failed validation or storage, stored is 0 so the interval
-	// does not advance past unverified BinIDs.
-	stored = topmost
-	if chunkErr != nil {
-		stored = 0
+	// Zero topmost when any chunk failed validation (stamp, solicitation,
+	// or structural check). This prevents the caller from advancing its
+	// interval past BinIDs whose chunks were never stored.
+	// ErrOverwriteNewerChunk does not zero topmost: the chunk is already
+	// present in the reserve with a newer stamp, so advancement is safe.
+	if hasValidationError {
+		topmost = 0
 	}
 
-	return topmost, stored, chunksPut, chunkErr
+	return topmost, chunksPut, chunkErr
 }
 
 // makeOffer tries to assemble an offer for a given requested interval.
@@ -443,6 +457,19 @@ type collectAddrsResult struct {
 // after which the function returns the collected slice of chunks.
 func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*storer.BinC, uint64, error) {
 	v, _, err := s.intervalsSF.Do(ctx, sfKey(bin, start), func(ctx context.Context) (*collectAddrsResult, error) {
+		// Snapshot the server's historical cursor for this bin before subscribing.
+		// Any chunk with BinID beyond this cursor arrived live after the snapshot;
+		// capping topmost at the cursor prevents live chunks from inflating the
+		// interval the client records for this peer.
+		cursors, _, err := s.store.ReserveLastBinIDs()
+		if err != nil {
+			return nil, fmt.Errorf("reserve last bin IDs: %w", err)
+		}
+		var historicalCursor uint64
+		if int(bin) < len(cursors) {
+			historicalCursor = cursors[bin]
+		}
+
 		var (
 			chs     []*storer.BinC
 			topmost uint64
@@ -490,6 +517,13 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 				// return batch if new chunks are not received after some time
 				break LOOP
 			}
+		}
+
+		// Cap topmost at the historical cursor. Live chunks (BinID > historicalCursor)
+		// are included in the offer so the client can store them, but Topmost must
+		// not advance the client's interval past the server's historical frontier.
+		if topmost > historicalCursor {
+			topmost = historicalCursor
 		}
 
 		return &collectAddrsResult{chs: chs, topmost: topmost}, nil

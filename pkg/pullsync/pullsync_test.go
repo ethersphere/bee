@@ -62,12 +62,12 @@ func TestIncoming_WantNone(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var (
 			topMost            = uint64(4)
-			ps, _              = newPullSync(t, nil, 5, mock.WithSubscribeResp(results, nil), mock.WithChunks(chunks...))
+			ps, _              = newPullSync(t, nil, 5, mock.WithSubscribeResp(results, nil), mock.WithChunks(chunks...), mock.WithCursors([]uint64{topMost}, 0))
 			recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
 			psClient, clientDb = newPullSync(t, recorder, 0, mock.WithChunks(chunks...))
 		)
 
-		topmost, _, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
+		topmost, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -84,14 +84,14 @@ func TestIncoming_WantNone(t *testing.T) {
 func TestIncoming_ContextTimeout(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var (
-			ps, _       = newPullSync(t, nil, 0, mock.WithSubscribeResp(results, nil), mock.WithChunks(chunks...))
+			ps, _       = newPullSync(t, nil, 0, mock.WithSubscribeResp(results, nil), mock.WithChunks(chunks...), mock.WithCursors([]uint64{4}, 0))
 			recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
 			psClient, _ = newPullSync(t, recorder, 0, mock.WithChunks(chunks...))
 		)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 0)
 		cancel()
-		_, _, _, err := psClient.Sync(ctx, swarm.ZeroAddress, 0, 0)
+		_, _, err := psClient.Sync(ctx, swarm.ZeroAddress, 0, 0)
 		if !errors.Is(err, context.DeadlineExceeded) {
 			t.Fatalf("wanted error %v, got %v", context.DeadlineExceeded, err)
 		}
@@ -102,12 +102,12 @@ func TestIncoming_WantOne(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var (
 			topMost            = uint64(4)
-			ps, _              = newPullSync(t, nil, 5, mock.WithSubscribeResp(results, nil), mock.WithChunks(chunks...))
+			ps, _              = newPullSync(t, nil, 5, mock.WithSubscribeResp(results, nil), mock.WithChunks(chunks...), mock.WithCursors([]uint64{topMost}, 0))
 			recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
 			psClient, clientDb = newPullSync(t, recorder, 0, mock.WithChunks(someChunks(1, 2, 3, 4)...))
 		)
 
-		topmost, _, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
+		topmost, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -128,12 +128,12 @@ func TestIncoming_WantAll(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var (
 			topMost            = uint64(4)
-			ps, _              = newPullSync(t, nil, 5, mock.WithSubscribeResp(results, nil), mock.WithChunks(chunks...))
+			ps, _              = newPullSync(t, nil, 5, mock.WithSubscribeResp(results, nil), mock.WithChunks(chunks...), mock.WithCursors([]uint64{topMost}, 0))
 			recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
 			psClient, clientDb = newPullSync(t, recorder, 0)
 		)
 
-		topmost, _, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
+		topmost, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -190,12 +190,12 @@ func TestIncoming_WantErrors(t *testing.T) {
 
 		var (
 			topMost            = uint64(10)
-			ps, _              = newPullSync(t, nil, 20, mock.WithSubscribeResp(tResults, nil), mock.WithChunks(tChunks...))
+			ps, _              = newPullSync(t, nil, 20, mock.WithSubscribeResp(tResults, nil), mock.WithChunks(tChunks...), mock.WithCursors([]uint64{topMost}, 0))
 			recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
 			psClient, clientDb = newPullSyncWithStamperValidator(t, recorder, 0, validStamp, mock.WithPutHook(putHook))
 		)
 
-		topmost, _, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
+		topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
 		for _, e := range []error{storage.ErrOverwriteNewerChunk, validStampErr, swarm.ErrInvalidChunk} {
 			if !errors.Is(err, e) {
 				t.Fatalf("expected error %v", err)
@@ -206,8 +206,10 @@ func TestIncoming_WantErrors(t *testing.T) {
 			t.Fatalf("got %d chunks but want %d", count, 3)
 		}
 
-		if topmost != topMost {
-			t.Fatalf("got offer topmost %d but want %d", topmost, topMost)
+		// topmost must be 0: validation errors (validStampErr, ErrInvalidChunk) zero
+		// topmost so the caller cannot advance its interval past unverified BinIDs.
+		if topmost != 0 {
+			t.Fatalf("got topmost %d but want 0 (validation errors must zero topmost)", topmost)
 		}
 
 		haveChunks(t, clientDb, append(tChunks[:1], tChunks[3:5]...)...)
@@ -225,12 +227,12 @@ func TestIncoming_UnsolicitedChunk(t *testing.T) {
 		evil := swarm.NewChunk(evilAddr, evilData).WithStamp(stamp)
 
 		var (
-			ps, _       = newPullSync(t, nil, 5, mock.WithSubscribeResp(results, nil), mock.WithChunks(chunks...), mock.WithEvilChunk(addrs[4], evil))
+			ps, _       = newPullSync(t, nil, 5, mock.WithSubscribeResp(results, nil), mock.WithChunks(chunks...), mock.WithEvilChunk(addrs[4], evil), mock.WithCursors([]uint64{4}, 0))
 			recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
 			psClient, _ = newPullSync(t, recorder, 0)
 		)
 
-		_, _, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
+		_, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
 		if !errors.Is(err, pullsync.ErrUnsolicitedChunk) {
 			t.Fatalf("expected err %v but got %v", pullsync.ErrUnsolicitedChunk, err)
 		}
@@ -242,12 +244,12 @@ func TestMissingChunk(t *testing.T) {
 		var (
 			zeroChunk   = swarm.NewChunk(swarm.ZeroAddress, nil)
 			topMost     = uint64(4)
-			ps, _       = newPullSync(t, nil, 5, mock.WithSubscribeResp(results, nil), mock.WithChunks([]swarm.Chunk{zeroChunk}...))
+			ps, _       = newPullSync(t, nil, 5, mock.WithSubscribeResp(results, nil), mock.WithChunks([]swarm.Chunk{zeroChunk}...), mock.WithCursors([]uint64{topMost}, 0))
 			recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
 			psClient, _ = newPullSync(t, recorder, 0)
 		)
 
-		topmost, _, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
+		topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -311,7 +313,7 @@ func TestGetCursorsError(t *testing.T) {
 	})
 }
 
-func TestSync_StampFailure_StoredIsZero(t *testing.T) {
+func TestSync_StampFailure_TopmostIsZero(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		tChunks := testingc.GenerateTestRandomChunks(3)
 
@@ -334,24 +336,104 @@ func TestSync_StampFailure_StoredIsZero(t *testing.T) {
 			return nil, stampErr
 		}
 
+		cursor := uint64(len(tChunks)) // max BinID equals number of chunks
+
 		var (
-			ps, _       = newPullSync(t, nil, 10, mock.WithSubscribeResp(tResults, nil), mock.WithChunks(tChunks...))
+			ps, _       = newPullSync(t, nil, 10, mock.WithSubscribeResp(tResults, nil), mock.WithChunks(tChunks...), mock.WithCursors([]uint64{cursor}, 0))
 			recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
 			psClient, _ = newPullSyncWithStamperValidator(t, recorder, 0, validStamp)
 		)
 
-		topmost, stored, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
+		topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
 		if !errors.Is(err, stampErr) {
 			t.Fatalf("expected stamp error but got %v", err)
 		}
-		if stored != 0 {
-			t.Fatalf("expected stored=0 on stamp failure but got %d", stored)
+		// topmost must be 0: stamp validation failure must prevent interval advancement
+		if topmost != 0 {
+			t.Fatalf("expected topmost=0 on stamp failure but got %d", topmost)
 		}
 		if count != 0 {
 			t.Fatalf("expected count=0 on stamp failure but got %d", count)
 		}
-		if topmost != uint64(len(tChunks)) {
-			t.Fatalf("expected topmost=%d but got %d", len(tChunks), topmost)
+	})
+}
+
+// TestSync_LiveChunkTopCappedAtCursor verifies that a live chunk with a BinID
+// far beyond the server's historical cursor does not inflate offer.Topmost.
+// Without the server-side cap, the client would advance its interval to the
+// live chunk's BinID, permanently skipping the historical range in between.
+func TestSync_LiveChunkTopCappedAtCursor(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		liveChunk := testingc.GenerateTestRandomChunk()
+		stampHash, err := liveChunk.Stamp().Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// The subscribe response contains only the live chunk at a high BinID.
+		// The server's historical cursor is set much lower.
+		const liveBinID = uint64(100)
+		const historicalCursor = uint64(10)
+		liveResult := []*storer.BinC{{
+			Address:   liveChunk.Address(),
+			BatchID:   liveChunk.Stamp().BatchID(),
+			BinID:     liveBinID,
+			StampHash: stampHash,
+		}}
+
+		var (
+			ps, _       = newPullSync(t, nil, 10, mock.WithSubscribeResp(liveResult, nil), mock.WithChunks(liveChunk), mock.WithCursors([]uint64{historicalCursor}, 0))
+			recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+			psClient, _ = newPullSync(t, recorder, 0)
+		)
+
+		topmost, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if topmost != historicalCursor {
+			t.Fatalf("topmost: got %d, want %d (live BinID %d must not inflate topmost)", topmost, historicalCursor, liveBinID)
+		}
+	})
+}
+
+// TestSync_OverwriteNewerChunkDoesNotBlockInterval verifies that
+// ErrOverwriteNewerChunk does not prevent interval advancement.
+// The chunk is already present in the reserve with a newer stamp, so it is
+// safe to advance past it even though the put returned an error.
+func TestSync_OverwriteNewerChunkDoesNotBlockInterval(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		tChunk := testingc.GenerateTestRandomChunk()
+		stampHash, err := tChunk.Stamp().Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+		tResult := []*storer.BinC{{
+			Address:   tChunk.Address(),
+			BatchID:   tChunk.Stamp().BatchID(),
+			BinID:     1,
+			StampHash: stampHash,
+		}}
+
+		putHook := func(swarm.Chunk) error { return storage.ErrOverwriteNewerChunk }
+
+		var (
+			ps, _       = newPullSync(t, nil, 5, mock.WithSubscribeResp(tResult, nil), mock.WithChunks(tChunk), mock.WithCursors([]uint64{1}, 0))
+			recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+			psClient, _ = newPullSyncWithStamperValidator(t, recorder, 0, func(c swarm.Chunk) (swarm.Chunk, error) { return c, nil }, mock.WithPutHook(putHook))
+		)
+
+		topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 1)
+		if !errors.Is(err, storage.ErrOverwriteNewerChunk) {
+			t.Fatalf("expected ErrOverwriteNewerChunk but got %v", err)
+		}
+		// ErrOverwriteNewerChunk must not zero topmost: the chunk is already in
+		// the reserve with a newer stamp, so interval advancement is safe.
+		if topmost != 1 {
+			t.Fatalf("topmost: got %d, want 1 (ErrOverwriteNewerChunk must not block interval)", topmost)
+		}
+		if count != 0 {
+			t.Fatalf("count: got %d, want 0 (chunk not stored due to overwrite)", count)
 		}
 	})
 }
