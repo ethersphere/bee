@@ -89,7 +89,7 @@ func NewService(logger log.Logger, store storage.Store, postageStore Storer, cha
 		if errors.Is(err, storage.ErrNotFound) {
 			s.logger.Info("recovering bucket counts from stamper store")
 			if err := s.recoverBuckets(); err != nil {
-				s.logger.Warning("postage stamper store recovery failed", "err", err)
+				s.logger.Error(err, "postage stamper store recovery failed")
 			}
 		}
 	} else {
@@ -113,7 +113,7 @@ func (s *service) recoverBuckets() error {
 			for _, issuer := range s.issuers {
 				if bytes.Equal(issuer.data.BatchID, item.BatchID) {
 					if err := issuer.recover(item.BatchIndex); err != nil {
-						s.logger.Debug("postage recovery of bucket count failed", "err", err)
+						s.logger.Error(err, "postage recovery of bucket count failed")
 					}
 					issuer.SetDirty(true)
 					break
@@ -142,7 +142,7 @@ func (s *service) run() {
 			for _, issuer := range issuers {
 				if issuer.IsDirty() {
 					if err := s.save(issuer); err != nil {
-						s.logger.Warning("failed to save stamp issuer", "err", err)
+						s.logger.Error(err, "failed to save stamp issuer")
 					}
 				}
 			}
