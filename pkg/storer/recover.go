@@ -7,6 +7,7 @@ package storer
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -66,6 +67,8 @@ func sharkyRecovery(ctx context.Context, sharkyBasePath string, store storage.St
 // recovery so their slots are preserved. Corrupted entries (unreadable data or
 // hash mismatch) are logged, excluded from the recovery bitmap, and deleted from
 // the index store so the node starts clean without serving invalid data.
+// If a corrupted index entry cannot be deleted, an error is returned and the
+// node startup is aborted to prevent serving or operating on corrupt state.
 func validateAndAddLocations(ctx context.Context, store storage.Store, sharkyRecover *sharky.Recovery, logger log.Logger) error {
 	var corrupted []*chunkstore.RetrievalIndexItem
 
@@ -103,11 +106,12 @@ func validateAndAddLocations(ctx context.Context, store storage.Store, sharkyRec
 	for _, item := range corrupted {
 		if err := store.Delete(item); err != nil {
 			logger.Error(err, "recovery: failed deleting corrupted chunk index entry", "address", item.Address)
+			return fmt.Errorf("recovery: failed deleting corrupted chunk index entry %s: %w", item.Address, err)
 		}
 	}
 
 	if len(corrupted) > 0 {
-		logger.Info("recovery: removed corrupted chunk index entries", "count", len(corrupted))
+		logger.Warning("recovery: removed corrupted chunk index entries", "count", len(corrupted))
 	}
 
 	return nil
