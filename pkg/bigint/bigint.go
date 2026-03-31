@@ -42,4 +42,3 @@ func (i *BigInt) UnmarshalJSON(b []byte) error {
 func Wrap(i *big.Int) *BigInt {
 	return &BigInt{Int: i}
 }
-
