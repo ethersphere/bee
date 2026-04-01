@@ -6,7 +6,7 @@ info:
   description: "API endpoints for interacting with the Swarm network, supporting file operations, messaging, and node management"
 
 externalDocs:
-  description: Browse the documentation at the Swarm Docs
+  description: Browse the documentation at the Bee Docs
   url: "https://docs.ethswarm.org"
 
 servers:
