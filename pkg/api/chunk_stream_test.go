@@ -206,7 +206,7 @@ func TestChunkUploadStreamInvalidStamp(t *testing.T) {
 	wsHeaders.Set(api.ContentTypeHeader, "application/octet-stream")
 
 	var (
-		storerMock    = mockstorer.New()
+		storerMock      = mockstorer.New()
 		_, wsConn, _, _ = newTestServer(t, testServerOptions{
 			Storer:       storerMock,
 			Post:         mockpost.New(mockpost.WithAcceptAll()),
