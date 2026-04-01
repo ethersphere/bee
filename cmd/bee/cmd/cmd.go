@@ -407,7 +407,9 @@ func (c *command) CheckUnknownParams(cmd *cobra.Command, args []string) error {
 	}
 	var unknownParams []string
 	for _, v := range c.config.AllKeys() {
-		if cmd.Flags().Lookup(v) == nil {
+		// Accept both the exact flag name and the dotted form used by nested
+		// YAML (e.g. "blockchain-rpc.endpoint" maps to "--blockchain-rpc-endpoint").
+		if cmd.Flags().Lookup(v) == nil && cmd.Flags().Lookup(strings.ReplaceAll(v, ".", "-")) == nil {
 			unknownParams = append(unknownParams, v)
 		}
 	}
