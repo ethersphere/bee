@@ -50,7 +50,6 @@ const (
 	optionNamePaymentEarly                 = "payment-early-percent"
 	optionNameResolverEndpoints            = "resolver-options"
 	optionNameBootnodeMode                 = "bootnode-mode"
-	optionNameBlockchainRpcEndpoint        = "blockchain-rpc-endpoint"
 	optionNameSwapFactoryAddress           = "swap-factory-address"
 	optionNameSwapInitialDeposit           = "swap-initial-deposit"
 	optionNameSwapEnable                   = "swap-enable"
@@ -88,6 +87,18 @@ const (
 	optionAutoTLSDomain                    = "autotls-domain"
 	optionAutoTLSRegistrationEndpoint      = "autotls-registration-endpoint"
 	optionAutoTLSCAEndpoint                = "autotls-ca-endpoint"
+
+	// blockchain-rpc
+	optionNameBlockchainRpcEndpoint    = "blockchain-rpc-endpoint"
+	optionNameBlockchainRpcDialTimeout = "blockchain-rpc-dial-timeout"
+	optionNameBlockchainRpcTLSTimeout  = "blockchain-rpc-tls-timeout"
+	optionNameBlockchainRpcIdleTimeout = "blockchain-rpc-idle-timeout"
+	optionNameBlockchainRpcKeepalive   = "blockchain-rpc-keepalive"
+	configKeyBlockchainRpcEndpoint     = "blockchain-rpc.endpoint"
+	configKeyBlockchainRpcDialTimeout  = "blockchain-rpc.dial-timeout"
+	configKeyBlockchainRpcTLSTimeout   = "blockchain-rpc.tls-timeout"
+	configKeyBlockchainRpcIdleTimeout  = "blockchain-rpc.idle-timeout"
+	configKeyBlockchainRpcKeepalive    = "blockchain-rpc.keepalive"
 )
 
 // nolint:gochecknoinits
@@ -98,6 +109,7 @@ func init() {
 type command struct {
 	root             *cobra.Command
 	config           *viper.Viper
+	logger           log.Logger
 	passwordReader   passwordReader
 	cfgFile          string
 	homeDir          string
@@ -268,6 +280,10 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().StringSlice(optionNameResolverEndpoints, []string{}, "ENS compatible API endpoint for a TLD and with contract address, can be repeated, format [tld:][contract-addr@]url")
 	cmd.Flags().Bool(optionNameBootnodeMode, false, "cause the node to always accept incoming connections")
 	cmd.Flags().String(optionNameBlockchainRpcEndpoint, "", "rpc blockchain endpoint")
+	cmd.Flags().Duration(optionNameBlockchainRpcDialTimeout, 30*time.Second, "blockchain rpc TCP dial timeout")
+	cmd.Flags().Duration(optionNameBlockchainRpcTLSTimeout, 10*time.Second, "blockchain rpc TLS handshake timeout")
+	cmd.Flags().Duration(optionNameBlockchainRpcIdleTimeout, 90*time.Second, "blockchain rpc idle connection timeout")
+	cmd.Flags().Duration(optionNameBlockchainRpcKeepalive, 30*time.Second, "blockchain rpc TCP keepalive interval")
 	cmd.Flags().String(optionNameSwapFactoryAddress, "", "swap factory addresses")
 	cmd.Flags().String(optionNameSwapInitialDeposit, "0", "initial deposit if deploying a new chequebook")
 	cmd.Flags().Bool(optionNameSwapEnable, false, "enable swap")
@@ -303,6 +319,51 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionAutoTLSDomain, p2pforge.DefaultForgeDomain, "autotls domain")
 	cmd.Flags().String(optionAutoTLSRegistrationEndpoint, p2pforge.DefaultForgeEndpoint, "autotls registration endpoint")
 	cmd.Flags().String(optionAutoTLSCAEndpoint, p2pforge.DefaultCAEndpoint, "autotls certificate authority endpoint")
+}
+
+// preRun must be called from every command's PreRunE, after which c.logger is
+// ready for use in RunE. It binds CLI flags to viper and initialises the logger.
+func (c *command) preRun(cmd *cobra.Command) error {
+	if err := c.config.BindPFlags(cmd.Flags()); err != nil {
+		return err
+	}
+	return c.initLogger(cmd)
+}
+
+func (c *command) initLogger(cmd *cobra.Command) error {
+	v := strings.ToLower(c.config.GetString(optionNameVerbosity))
+	logger, err := newLogger(cmd, v)
+	if err != nil {
+		return fmt.Errorf("new logger: %w", err)
+	}
+	if c.isWindowsService {
+		logger, err = createWindowsEventLogger(serviceName, logger)
+		if err != nil {
+			return fmt.Errorf("new windows logger: %w", err)
+		}
+	}
+	c.logger = logger
+	return nil
+}
+
+// bindBlockchainRpcConfig supports both flat (blockchain-rpc-endpoint) and
+// nested (blockchain-rpc.endpoint) YAML forms, with nested taking precedence.
+func (c *command) bindBlockchainRpcConfig(cmd *cobra.Command) {
+	pairs := []struct{ flat, dotted string }{
+		{optionNameBlockchainRpcEndpoint, configKeyBlockchainRpcEndpoint},
+		{optionNameBlockchainRpcDialTimeout, configKeyBlockchainRpcDialTimeout},
+		{optionNameBlockchainRpcTLSTimeout, configKeyBlockchainRpcTLSTimeout},
+		{optionNameBlockchainRpcIdleTimeout, configKeyBlockchainRpcIdleTimeout},
+		{optionNameBlockchainRpcKeepalive, configKeyBlockchainRpcKeepalive},
+	}
+	for _, p := range pairs {
+		// Check before registering the alias; afterwards the flat value is unreachable.
+		if c.config.InConfig(p.flat) && c.config.InConfig(p.dotted) {
+			c.logger.Warning("config key conflict: nested form takes precedence", "ignored", p.flat, "used", p.dotted)
+		}
+		_ = c.config.BindPFlag(p.dotted, cmd.Flags().Lookup(p.flat))
+		c.config.RegisterAlias(p.flat, p.dotted)
+	}
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {
