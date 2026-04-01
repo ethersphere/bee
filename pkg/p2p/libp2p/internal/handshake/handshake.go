@@ -137,9 +137,11 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 	defer cancel()
 
 	w, r := protobuf.NewWriterAndReader(stream)
+	synUnderlay := bzz.SerializeUnderlays(peerMultiaddrs)
+	s.logger.Debug("handshake outbound syn underlay", "payload_len", len(synUnderlay), "first_byte", firstByteString(synUnderlay), "payload_prefix", payloadPrefix(synUnderlay))
 
 	if err := w.WriteMsgWithContext(ctx, &pb.Syn{
-		ObservedUnderlay: bzz.SerializeUnderlays(peerMultiaddrs),
+		ObservedUnderlay: synUnderlay,
 	}); err != nil {
 		return nil, fmt.Errorf("write syn message: %w", err)
 	}
@@ -151,6 +153,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 
 	observedUnderlays, err := bzz.DeserializeUnderlays(resp.Syn.ObservedUnderlay)
 	if err != nil {
+		s.logger.Debug("handshake invalid synack observed underlay payload", "payload_len", len(resp.Syn.ObservedUnderlay), "first_byte", firstByteString(resp.Syn.ObservedUnderlay), "payload_prefix", payloadPrefix(resp.Syn.ObservedUnderlay), "error", err)
 		return nil, ErrInvalidSyn
 	}
 
@@ -252,6 +255,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 
 	observedUnderlays, err := bzz.DeserializeUnderlays(syn.ObservedUnderlay)
 	if err != nil {
+		s.logger.Debug("handshake invalid inbound syn observed underlay payload", "payload_len", len(syn.ObservedUnderlay), "first_byte", firstByteString(syn.ObservedUnderlay), "payload_prefix", payloadPrefix(syn.ObservedUnderlay), "error", err)
 		return nil, ErrInvalidSyn
 	}
 
@@ -289,9 +293,12 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 
 	welcomeMessage := s.GetWelcomeMessage()
 
+	synAckObservedUnderlay := bzz.SerializeUnderlays(peerMultiaddrs)
+	s.logger.Debug("handshake outbound synack observed underlay", "payload_len", len(synAckObservedUnderlay), "first_byte", firstByteString(synAckObservedUnderlay), "payload_prefix", payloadPrefix(synAckObservedUnderlay))
+
 	if err := w.WriteMsgWithContext(ctx, &pb.SynAck{
 		Syn: &pb.Syn{
-			ObservedUnderlay: bzz.SerializeUnderlays(peerMultiaddrs),
+			ObservedUnderlay: synAckObservedUnderlay,
 		},
 		Ack: &pb.Ack{
 			Address: &pb.BzzAddress{
@@ -366,8 +373,27 @@ func (s *Service) GetWelcomeMessage() string {
 func (s *Service) parseCheckAck(ack *pb.Ack) (*bzz.Address, error) {
 	bzzAddress, err := bzz.ParseAddress(ack.Address.Underlay, ack.Address.Overlay, ack.Address.Signature, ack.Nonce, s.validateOverlay, s.networkID)
 	if err != nil {
+		s.logger.Debug("handshake invalid ack address payload", "underlay_len", len(ack.Address.Underlay), "underlay_first_byte", firstByteString(ack.Address.Underlay), "underlay_prefix", payloadPrefix(ack.Address.Underlay), "overlay_len", len(ack.Address.Overlay), "error", err)
 		return nil, ErrInvalidAck
 	}
 
 	return bzzAddress, nil
+}
+
+func firstByteString(data []byte) string {
+	if len(data) == 0 {
+		return "none"
+	}
+	return fmt.Sprintf("0x%02x", data[0])
+}
+
+func payloadPrefix(data []byte) string {
+	if len(data) == 0 {
+		return ""
+	}
+	n := 16
+	if len(data) < n {
+		n = len(data)
+	}
+	return fmt.Sprintf("%x", data[:n])
 }
