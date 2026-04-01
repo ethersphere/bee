@@ -274,9 +274,9 @@ func (s *Service) handleUploadStream(
 		// If stamp was extracted, create a per-chunk putter
 		if stamp != nil {
 			batchID := stamp.BatchID()
-			batchIDHex := string(batchID)
+			batchIDKey := string(batchID)
 
-			storedBatch, exists := batchCache[batchIDHex]
+			storedBatch, exists := batchCache[batchIDKey]
 			if !exists {
 				storedBatch, err = s.batchStore.Get(batchID)
 				if err != nil {
@@ -289,7 +289,7 @@ func (s *Service) handleUploadStream(
 					}
 					return
 				}
-				batchCache[batchIDHex] = storedBatch
+				batchCache[batchIDKey] = storedBatch
 			}
 
 			chunkPutter, err = s.newStampedPutterWithBatch(ctx, putterOptions{
