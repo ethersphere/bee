@@ -72,7 +72,7 @@ func (i *BigInt) UnmarshalBinary(data []byte) error {
 		return json.Unmarshal(data, i)
 	}
 	// unquoted decimal number: e.g. 123 or -456 — from json.Marshal(*big.Int)
-	if _, ok := i.Int.SetString(string(data), 10); !ok {
+	if _, ok := i.SetString(string(data), 10); !ok {
 		return fmt.Errorf("bigint: cannot parse %q as decimal integer", data)
 	}
 	return nil
