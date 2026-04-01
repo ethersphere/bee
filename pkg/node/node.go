@@ -1357,8 +1357,9 @@ func (b *Bee) Shutdown() error {
 			return
 		}
 
+		start := time.Now()
 		b.logger.Debug("starting shutdown", "component", component)
-		defer b.logger.Debug("finished shutdown", "component", component)
+		defer b.logger.Debug("finished shutdown", "component", component, "elapsed", time.Since(start))
 		if err := c.Close(); err != nil {
 			mErr = multierror.Append(mErr, fmt.Errorf("%s: %w", component, err))
 		}
