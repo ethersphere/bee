@@ -40,9 +40,13 @@ func (s *Service) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Reques
 	// Fallback: read tag from query parameter (browser WebSocket can't set headers)
 	if headers.SwarmTag == 0 {
 		if qTag := r.URL.Query().Get("swarm-tag"); qTag != "" {
-			if parsed, err := strconv.ParseUint(qTag, 10, 64); err == nil {
-				headers.SwarmTag = parsed
+			parsed, err := strconv.ParseUint(qTag, 10, 64)
+			if err != nil {
+				logger.Debug("invalid swarm-tag query parameter", "value", qTag, "error", err)
+				jsonhttp.BadRequest(w, "invalid swarm-tag query parameter")
+				return
 			}
+			headers.SwarmTag = parsed
 		}
 	}
 
