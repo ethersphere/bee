@@ -28,6 +28,11 @@ const (
 	blockThreshold = 10
 )
 
+const (
+	// stampIssuerSaveInterval is how often dirty stamp issuers are flushed to disk.
+	stampIssuerSaveInterval = time.Minute
+)
+
 var (
 	// ErrNotFound is the error returned when issuer with given batch ID does not exist.
 	ErrNotFound = errors.New("not found")
@@ -60,8 +65,9 @@ type service struct {
 	done chan struct{}
 }
 
-// NewService constructs a new Service.
-func NewService(logger log.Logger, store storage.Store, postageStore Storer, chainID int64) (Service, error) {
+// NewService constructs a new Service. wasClean indicates whether the previous
+// shutdown was graceful; if false, bucket counts are recovered from the stamp store.
+func NewService(logger log.Logger, store storage.Store, postageStore Storer, chainID int64, wasClean bool) (Service, error) {
 	s := &service{
 		logger:       logger.WithName(loggerName).Register(),
 		store:        store,
@@ -85,15 +91,11 @@ func NewService(logger log.Logger, store storage.Store, postageStore Storer, cha
 		return nil, err
 	}
 
-	if err := s.store.Get(&cleanShutdownItem{}); err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			s.logger.Info("recovering bucket counts from stamper store")
-			if err := s.recoverBuckets(); err != nil {
-				s.logger.Error(err, "postage stamper store recovery failed")
-			}
+	if !wasClean {
+		s.logger.Info("recovering bucket counts from stamper store")
+		if err := s.recoverBuckets(); err != nil {
+			s.logger.Error(err, "postage stamper store recovery failed")
 		}
-	} else {
-		_ = s.store.Delete(&cleanShutdownItem{})
 	}
 
 	go s.run()
@@ -115,7 +117,7 @@ func (s *service) recoverBuckets() error {
 					if err := issuer.recover(item.BatchIndex); err != nil {
 						s.logger.Error(err, "postage recovery of bucket count failed")
 					}
-					issuer.SetDirty(true)
+					issuer.setDirty(true)
 					break
 				}
 			}
@@ -126,7 +128,7 @@ func (s *service) recoverBuckets() error {
 func (s *service) run() {
 	defer close(s.done)
 	// using 1 minute to significantly reduce disk writes
-	ticker := time.NewTicker(time.Minute)
+	ticker := time.NewTicker(stampIssuerSaveInterval)
 	defer ticker.Stop()
 
 	for {
@@ -140,7 +142,7 @@ func (s *service) run() {
 			s.mtx.Unlock()
 
 			for _, issuer := range issuers {
-				if issuer.IsDirty() {
+				if issuer.isDirty() {
 					if err := s.save(issuer); err != nil {
 						s.logger.Error(err, "failed to save stamp issuer")
 					}
@@ -236,7 +238,7 @@ func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func() error, e
 				return nil, nil, ErrNotUsable
 			}
 			return st, func() error {
-				st.SetDirty(true)
+				st.setDirty(true)
 				return nil
 			}, nil
 		}
@@ -266,12 +268,9 @@ func (ps *service) Close() error {
 	defer ps.mtx.Unlock()
 	var err error
 	for _, issuer := range ps.issuers {
-		if issuer.IsDirty() {
+		if issuer.isDirty() {
 			err = errors.Join(err, ps.save(issuer))
 		}
-	}
-	if err == nil {
-		err = ps.store.Put(&cleanShutdownItem{})
 	}
 	return err
 }

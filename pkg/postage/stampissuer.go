@@ -269,15 +269,15 @@ func (si *StampIssuer) Buckets() []uint32 {
 	return b
 }
 
-// SetDirty sets the dirty flag of the StampIssuer indicating it has unsaved bucket changes.
-func (si *StampIssuer) SetDirty(dirty bool) {
+// setDirty sets the dirty flag of the StampIssuer indicating it has unsaved bucket changes.
+func (si *StampIssuer) setDirty(dirty bool) {
 	si.mtx.Lock()
 	defer si.mtx.Unlock()
 	si.dirty = dirty
 }
 
-// IsDirty returns the dirty flag of the StampIssuer.
-func (si *StampIssuer) IsDirty() bool {
+// isDirty returns the dirty flag of the StampIssuer.
+func (si *StampIssuer) isDirty() bool {
 	si.mtx.Lock()
 	defer si.mtx.Unlock()
 	return si.dirty

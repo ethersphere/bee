@@ -83,6 +83,18 @@ func checkOverlay(storer storage.StateStorer, overlay swarm.Address) error {
 	return nil
 }
 
+// stamperDirtyItem is a storage.Item used to mark that the stamper store was
+// not cleanly shut down. It is written on startup and deleted on clean shutdown,
+// following the same pattern as the sharky .DIRTY file.
+type stamperDirtyItem struct{}
+
+func (s *stamperDirtyItem) ID() string               { return "dirty" }
+func (s *stamperDirtyItem) Namespace() string        { return "stamper" }
+func (s *stamperDirtyItem) Marshal() ([]byte, error) { return []byte{0}, nil }
+func (s *stamperDirtyItem) Unmarshal(_ []byte) error { return nil }
+func (s *stamperDirtyItem) Clone() storage.Item      { return &stamperDirtyItem{} }
+func (s stamperDirtyItem) String() string            { return "stamper/dirty" }
+
 func overlayNonceExists(s storage.StateStorer) ([]byte, bool, error) {
 	nonce := make([]byte, 32)
 	if err := s.Get(overlayNonce, &nonce); err != nil {
