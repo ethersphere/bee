@@ -381,6 +381,41 @@ func TestAccountingAdd_persistentBalances(t *testing.T) {
 	}
 }
 
+// TestAccountingBalance_legacyMigration verifies that balances stored by the old
+// code (json.Marshal(*big.Int) → unquoted decimal) are read correctly by the
+// new code that uses bigint.BigInt with binary encoding.
+func TestAccountingBalance_legacyMigration(t *testing.T) {
+	t.Parallel()
+
+	store := mock.NewStateStore()
+	defer store.Close()
+
+	peer, err := swarm.ParseHexAddress("00aabbcc")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// simulate old store.Put(key, *big.Int): json.Marshal produces an unquoted decimal
+	legacyBalance := big.NewInt(-750)
+	if err := store.Put(accounting.PeerBalanceKey(peer), legacyBalance); err != nil {
+		t.Fatal(err)
+	}
+
+	acc, err := accounting.NewAccounting(testPaymentThreshold, testPaymentTolerance, testPaymentEarly, log.Noop, store, &pricingMock{}, big.NewInt(testRefreshRate), testLightFactor, p2pmock.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	balance, err := acc.Balance(peer)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if balance.Cmp(legacyBalance) != 0 {
+		t.Fatalf("got balance %v, want %v", balance, legacyBalance)
+	}
+}
+
 // TestAccountingReserve tests that reserve returns an error if the payment threshold would be exceeded
 func TestAccountingReserve(t *testing.T) {
 	t.Parallel()

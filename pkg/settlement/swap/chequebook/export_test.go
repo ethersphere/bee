@@ -3,6 +3,8 @@
 // license that can be found in the LICENSE file.
 package chequebook
 
+const TotalIssuedKey = totalIssuedKey
+
 var (
 	LastIssuedChequeKey   = lastIssuedChequeKey
 	LastReceivedChequeKey = lastReceivedChequeKey
