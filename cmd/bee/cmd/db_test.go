@@ -214,9 +214,6 @@ func TestDBNuke_FLAKY(t *testing.T) {
 		Logger:          log.Noop,
 		ReserveCapacity: storer.DefaultReserveCapacity,
 	}, path.Join(dataDir, "localstore"))
-	if err != nil {
-		t.Fatal(err)
-	}
 	defer db.Close()
 
 	info, err = db.DebugInfo(ctx)

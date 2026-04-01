@@ -19,7 +19,7 @@ func TestNewStepsChain(t *testing.T) {
 	store := inmemstore.New()
 	populateStore(t, store, populateItemsCount)
 
-	stepsFn := make([]migration.StepFn, 0)
+	stepsFn := make([]migration.StepFn, 0, 10)
 
 	// Create 10 step functions where each would remove single element, having value [0-10)
 	for i := range 10 {
