@@ -167,7 +167,7 @@ func (s *Service) handleUploadStream(
 	)
 
 	// Cache for batch validation to avoid database lookups for every chunk
-	// Key: batch ID hex string, Value: stored batch info
+	// Key: batch ID, Value: stored batch info
 	// This avoids the expensive batchStore.Get() call for each chunk
 	batchCache := make(map[string]*postage.Batch)
 
