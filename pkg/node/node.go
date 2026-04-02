@@ -100,7 +100,6 @@ type Bee struct {
 	tracerCloser             io.Closer
 	stateStoreCloser         io.Closer
 	stamperStoreCloser       io.Closer
-	stamperCleanShutdown     func() error
 	localstoreCloser         io.Closer
 	topologyCloser           io.Closer
 	topologyHalter           topology.Halter
@@ -439,7 +438,7 @@ func NewBee(
 		}
 	}(probe)
 
-	stamperStore, err := InitStamperStore(logger, o.DataDir, stateStore)
+	stamperStore, wasClean, err := InitStamperStore(logger, o.DataDir, stateStore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize stamper store: %w", err)
 	}
@@ -660,20 +659,6 @@ func NewBee(
 
 	b.p2pService = p2ps
 	b.p2pHalter = p2ps
-
-	dirtyItem := &stamperDirtyItem{}
-	wasClean := false
-	if err := stamperStore.Get(dirtyItem); err != nil {
-		if !errors.Is(err, storage.ErrNotFound) {
-			return nil, fmt.Errorf("stamper store dirty check: %w", err)
-		}
-		// marker absent: first run or previous clean shutdown
-		wasClean = true
-	}
-	if err := stamperStore.Put(dirtyItem); err != nil {
-		return nil, fmt.Errorf("stamper store dirty marker: %w", err)
-	}
-	b.stamperCleanShutdown = func() error { return stamperStore.Delete(dirtyItem) }
 
 	post, err := postage.NewService(logger, stamperStore, batchStore, chainID, wasClean)
 	if err != nil {
@@ -1445,11 +1430,6 @@ func (b *Bee) Shutdown() error {
 	tryClose(b.topologyCloser, "topology driver")
 	tryClose(b.storageIncetivesCloser, "storage incentives agent")
 	tryClose(b.stateStoreCloser, "statestore")
-	if b.stamperCleanShutdown != nil {
-		if err := b.stamperCleanShutdown(); err != nil {
-			mErr = errors.Join(mErr, fmt.Errorf("stamper clean shutdown: %w", err))
-		}
-	}
 	tryClose(b.stamperStoreCloser, "stamperstore")
 	tryClose(b.localstoreCloser, "localstore")
 	tryClose(b.resolverCloser, "resolver service")
