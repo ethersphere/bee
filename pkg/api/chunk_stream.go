@@ -316,6 +316,9 @@ func (s *Service) handleUploadStream(
 		if err != nil {
 			logger.Debug("chunk upload stream: create chunk failed", "error", err, "chunk_size", len(chunkData))
 			logger.Error(nil, "chunk upload stream: create chunk failed")
+			if chunkPutter != putter {
+				_ = chunkPutter.Cleanup()
+			}
 			sendErrorClose(websocket.CloseInternalServerErr, "invalid chunk data")
 			return
 		}
@@ -324,6 +327,9 @@ func (s *Service) handleUploadStream(
 		if err != nil {
 			logger.Debug("chunk upload stream: write chunk failed", "address", chunk.Address(), "error", err)
 			logger.Error(nil, "chunk upload stream: write chunk failed")
+			if chunkPutter != putter {
+				_ = chunkPutter.Cleanup()
+			}
 			switch {
 			case errors.Is(err, postage.ErrBucketFull):
 				sendErrorClose(websocket.CloseInternalServerErr, "batch is overissued")
