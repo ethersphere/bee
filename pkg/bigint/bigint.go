@@ -61,9 +61,7 @@ func (i *BigInt) UnmarshalBinary(data []byte) error {
 	if len(data) == 0 {
 		return nil
 	}
-	if i.Int == nil {
-		i.Int = new(big.Int)
-	}
+	i.Int = new(big.Int)
 	if data[0] == 2 || data[0] == 3 {
 		return i.GobDecode(data)
 	}

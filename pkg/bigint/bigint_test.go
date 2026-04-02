@@ -50,7 +50,8 @@ func TestBinaryMarshalingRoundTrip(t *testing.T) {
 }
 
 // TestBinaryMarshalingLegacyGob verifies that data written by big.Int.GobEncode
-// (the actual on-disk format before this change) is decoded correctly.
+// (the actual on-disk format before this change) is decoded correctly, and that
+// the new MarshalBinary produces identical bytes to GobEncode.
 func TestBinaryMarshalingLegacyGob(t *testing.T) {
 	t.Parallel()
 
@@ -58,6 +59,15 @@ func TestBinaryMarshalingLegacyGob(t *testing.T) {
 	legacyData, err := val.GobEncode()
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// verify MarshalBinary produces identical bytes to GobEncode
+	newData, err := bigint.Wrap(val).MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(legacyData, newData) {
+		t.Fatalf("MarshalBinary output differs from GobEncode: got %v, want %v", newData, legacyData)
 	}
 
 	var got bigint.BigInt
