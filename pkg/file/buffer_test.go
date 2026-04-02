@@ -114,10 +114,10 @@ func TestCopyBuffer(t *testing.T) {
 		swarm.ChunkSize*17 + 3,
 	}
 
-	testCases := []struct {
+	testCases := make([]struct {
 		readBufferSize int
 		dataSize       int
-	}{}
+	}, 0, len(dataSizes)*len(readBufferSizes))
 
 	for i := range readBufferSizes {
 		for j := range dataSizes {

@@ -132,7 +132,7 @@ func (m *mockStorer) ListSessions(offset, limit int) ([]storer.SessionInfo, erro
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	sessions := []storer.SessionInfo{}
+	sessions := make([]storer.SessionInfo, 0, len(m.activeSessions))
 	for _, v := range m.activeSessions {
 		sessions = append(sessions, *v)
 	}
