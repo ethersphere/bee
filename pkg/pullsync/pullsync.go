@@ -193,7 +193,7 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 	}
 
 	// slow down future requests
-	waitDur, err := s.limiter.Wait(streamCtx, p.Address.ByteString(), max(1, len(chs)))
+	waitDur, err := s.limiter.Wait(ctx, p.Address.ByteString(), max(1, len(chs)))
 	if err != nil {
 		return fmt.Errorf("rate limiter: %w", err)
 	}
