@@ -38,7 +38,7 @@ var retrievalIndexFuncs = IndexFuncs{
 		return e, nil
 	},
 	EncodeValue: func(fields Item) (value []byte, err error) {
-		b := make([]byte, 8)
+		b := make([]byte, 8, 8+len(fields.Data))
 		binary.BigEndian.PutUint64(b, uint64(fields.StoreTimestamp))
 		value = append(b, fields.Data...)
 		return value, nil
@@ -345,11 +345,11 @@ func TestIndex(t *testing.T) {
 		}
 
 		t.Run("not found", func(t *testing.T) {
-			items := make([]Item, len(want), len(want)+1)
-			for i, w := range want {
-				items[i] = Item{
+			items := make([]Item, 0, len(want)+1)
+			for _, w := range want {
+				items = append(items, Item{
 					Address: w.Address,
-				}
+				})
 			}
 			items = append(items, Item{
 				Address: []byte("put-hash-missing"),
