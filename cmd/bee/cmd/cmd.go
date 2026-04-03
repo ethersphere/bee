@@ -101,6 +101,22 @@ const (
 	configKeyBlockchainRpcKeepalive    = "blockchain-rpc.keepalive"
 )
 
+var blockchainRpcConfigPairs = []struct{ flat, dotted string }{
+	{optionNameBlockchainRpcEndpoint, configKeyBlockchainRpcEndpoint},
+	{optionNameBlockchainRpcDialTimeout, configKeyBlockchainRpcDialTimeout},
+	{optionNameBlockchainRpcTLSTimeout, configKeyBlockchainRpcTLSTimeout},
+	{optionNameBlockchainRpcIdleTimeout, configKeyBlockchainRpcIdleTimeout},
+	{optionNameBlockchainRpcKeepalive, configKeyBlockchainRpcKeepalive},
+}
+
+var knownNestedKeys = func() map[string]bool {
+	m := make(map[string]bool, len(blockchainRpcConfigPairs))
+	for _, p := range blockchainRpcConfigPairs {
+		m[p.dotted] = true
+	}
+	return m
+}()
+
 // nolint:gochecknoinits
 func init() {
 	cobra.EnableCommandSorting = false
@@ -349,14 +365,7 @@ func (c *command) initLogger(cmd *cobra.Command) error {
 // bindBlockchainRpcConfig supports both flat (blockchain-rpc-endpoint) and
 // nested (blockchain-rpc.endpoint) YAML forms, with nested taking precedence.
 func (c *command) bindBlockchainRpcConfig(cmd *cobra.Command) {
-	pairs := []struct{ flat, dotted string }{
-		{optionNameBlockchainRpcEndpoint, configKeyBlockchainRpcEndpoint},
-		{optionNameBlockchainRpcDialTimeout, configKeyBlockchainRpcDialTimeout},
-		{optionNameBlockchainRpcTLSTimeout, configKeyBlockchainRpcTLSTimeout},
-		{optionNameBlockchainRpcIdleTimeout, configKeyBlockchainRpcIdleTimeout},
-		{optionNameBlockchainRpcKeepalive, configKeyBlockchainRpcKeepalive},
-	}
-	for _, p := range pairs {
+	for _, p := range blockchainRpcConfigPairs {
 		// Check before registering the alias; afterwards the flat value is unreachable.
 		if c.config.InConfig(p.flat) && c.config.InConfig(p.dotted) {
 			c.logger.Warning("config key conflict: nested form takes precedence", "ignored", p.flat, "used", p.dotted)
@@ -407,11 +416,15 @@ func (c *command) CheckUnknownParams(cmd *cobra.Command, args []string) error {
 	}
 	var unknownParams []string
 	for _, v := range c.config.AllKeys() {
-		// Accept both the exact flag name and the dotted form used by nested
-		// YAML (e.g. "blockchain-rpc.endpoint" maps to "--blockchain-rpc-endpoint").
-		if cmd.Flags().Lookup(v) == nil && cmd.Flags().Lookup(strings.ReplaceAll(v, ".", "-")) == nil {
-			unknownParams = append(unknownParams, v)
+		if cmd.Flags().Lookup(v) != nil {
+			continue
 		}
+		// Only accept the dotted→hyphenated form for explicitly registered
+		// nested config keys.
+		if knownNestedKeys[v] && cmd.Flags().Lookup(strings.ReplaceAll(v, ".", "-")) != nil {
+			continue
+		}
+		unknownParams = append(unknownParams, v)
 	}
 
 	if len(unknownParams) > 0 {
