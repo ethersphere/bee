@@ -72,6 +72,8 @@ func sharkyRecovery(ctx context.Context, sharkyBasePath string, store storage.St
 func validateAndAddLocations(ctx context.Context, store storage.Store, sharkyRecover *sharky.Recovery, logger log.Logger) error {
 	var corrupted []*chunkstore.RetrievalIndexItem
 
+	buf := make([]byte, swarm.SocMaxChunkSize)
+
 	err := chunkstore.IterateItems(store, func(item *chunkstore.RetrievalIndexItem) error {
 		select {
 		case <-ctx.Done():
@@ -79,14 +81,13 @@ func validateAndAddLocations(ctx context.Context, store storage.Store, sharkyRec
 		default:
 		}
 
-		buf := make([]byte, item.Location.Length)
-		if err := sharkyRecover.Read(ctx, item.Location, buf); err != nil {
+		if err := sharkyRecover.Read(ctx, item.Location, buf[:item.Location.Length]); err != nil {
 			logger.Warning("recovery: unreadable chunk, marking corrupted", "address", item.Address, "err", err)
 			corrupted = append(corrupted, item)
 			return nil
 		}
 
-		ch := swarm.NewChunk(item.Address, buf)
+		ch := swarm.NewChunk(item.Address, buf[:item.Location.Length])
 		if !cac.Valid(ch) && !soc.Valid(ch) {
 			logger.Warning("recovery: invalid chunk hash, marking corrupted", "address", item.Address)
 			corrupted = append(corrupted, item)
