@@ -63,6 +63,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/stabilization"
 	"github.com/ethersphere/bee/v2/pkg/status"
 	"github.com/ethersphere/bee/v2/pkg/steward"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storageincentives"
 	"github.com/ethersphere/bee/v2/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/v2/pkg/storageincentives/staking"
@@ -89,6 +90,7 @@ import (
 const LoggerName = "node"
 
 type Bee struct {
+	logger                   log.Logger
 	p2pService               io.Closer
 	p2pHalter                p2p.Halter
 	ctxCancel                context.CancelFunc
@@ -117,7 +119,7 @@ type Bee struct {
 	saludCloser              io.Closer
 	storageIncetivesCloser   io.Closer
 	pushSyncCloser           io.Closer
-	retrievalCloser          io.Closer
+	stabilizationDetector    io.Closer
 	shutdownInProgress       bool
 	shutdownMutex            sync.Mutex
 	syncingStopped           *syncutil.Signaler
@@ -183,7 +185,6 @@ type Options struct {
 	TracingEndpoint               string
 	TracingServiceName            string
 	TrxDebugMode                  bool
-	UsePostageSnapshot            bool
 	WarmupTime                    time.Duration
 	WelcomeMessage                string
 	WhitelistedWithdrawalAddress  []string
@@ -262,6 +263,7 @@ func NewBee(
 	})
 
 	b = &Bee{
+		logger:         logger,
 		ctxCancel:      ctxCancel,
 		errorLogWriter: sink,
 		tracerCloser:   tracerCloser,
@@ -609,7 +611,7 @@ func NewBee(
 	if err != nil {
 		return nil, fmt.Errorf("rate stabilizer configuration failed: %w", err)
 	}
-	defer detector.Close()
+	b.stabilizationDetector = detector
 
 	detector.OnMonitoringStart = func(t time.Time) {
 		logger.Info("node warmup check initiated. monitoring activity rate to determine readiness.", "startTime", t)
@@ -629,34 +631,6 @@ func NewBee(
 
 	detector.OnPeriodComplete = func(t time.Time, periodCount int, stDev float64) {
 		logger.Debug("node warmup check: period complete.", "periodEndTime", t, "eventsInPeriod", periodCount, "rateStdDev", stDev)
-	}
-
-	var initBatchState *postage.ChainSnapshot
-	// Bootstrap node with postage snapshot only if it is running on mainnet, is a fresh
-	// install or explicitly asked by user to resync
-	if networkID == mainnetNetworkID && o.UsePostageSnapshot && (!batchStoreExists || o.Resync) {
-		start := time.Now()
-		logger.Info("cold postage start detected. fetching postage stamp snapshot from swarm")
-		initBatchState, err = bootstrapNode(
-			ctx,
-			addr,
-			swarmAddress,
-			nonce,
-			addressbook,
-			bootnodes,
-			lightNodes,
-			stateStore,
-			signer,
-			networkID,
-			log.Noop,
-			libp2pPrivateKey,
-			detector,
-			o,
-		)
-		logger.Info("bootstrapper created", "elapsed", time.Since(start))
-		if err != nil {
-			logger.Error(err, "bootstrapper failed to fetch batch state")
-		}
 	}
 
 	var registry *prometheus.Registry
@@ -854,7 +828,7 @@ func NewBee(
 		if err != nil {
 			logger.Error(err, "failed to initialize batch service from snapshot, continuing outside snapshot block...")
 		} else {
-			err = snapshotBatchSvc.Start(ctx, postageSyncStart, initBatchState)
+			err = snapshotBatchSvc.Start(ctx, postageSyncStart)
 			syncStatus.Store(true)
 			if err != nil {
 				syncErr.Store(err)
@@ -882,7 +856,7 @@ func NewBee(
 		}
 
 		if o.FullNodeMode {
-			err = batchSvc.Start(ctx, postageSyncStart, initBatchState)
+			err = batchSvc.Start(ctx, postageSyncStart)
 			syncStatus.Store(true)
 			if err != nil {
 				syncErr.Store(err)
@@ -891,7 +865,7 @@ func NewBee(
 		} else {
 			go func() {
 				logger.Info("started postage contract data sync in the background...")
-				err := batchSvc.Start(ctx, postageSyncStart, initBatchState)
+				err := batchSvc.Start(ctx, postageSyncStart)
 				syncStatus.Store(true)
 				if err != nil {
 					syncErr.Store(err)
@@ -1169,7 +1143,8 @@ func NewBee(
 		pullerService = puller.New(swarmAddress, stateStore, kad, localStore, pullSyncProtocol, p2ps, logger, puller.Options{})
 		b.pullerCloser = pullerService
 
-		localStore.StartReserveWorker(ctx, pullerService, waitNetworkRFunc)
+		// we pass an empty channel since startup synchronization is not needed for production code, only tests.
+		localStore.StartReserveWorker(ctx, pullerService, waitNetworkRFunc, nil)
 		nodeStatus.SetSync(pullerService)
 
 		// measure full sync duration
@@ -1387,12 +1362,18 @@ func (b *Bee) Shutdown() error {
 	}
 	// tryClose is a convenient closure which decrease
 	// repetitive io.Closer tryClose procedure.
-	tryClose := func(c io.Closer, errMsg string) {
+	tryClose := func(c io.Closer, component string) {
 		if c == nil {
 			return
 		}
+
+		start := time.Now()
+		b.logger.Debug("starting shutdown", "component", component)
+		defer func() {
+			b.logger.Debug("finished shutdown", "component", component, "elapsed", time.Since(start))
+		}()
 		if err := c.Close(); err != nil {
-			mErr = multierror.Append(mErr, fmt.Errorf("%s: %w", errMsg, err))
+			mErr = multierror.Append(mErr, fmt.Errorf("%s: %w", component, err))
 		}
 	}
 
@@ -1466,9 +1447,11 @@ func (b *Bee) Shutdown() error {
 	tryClose(b.tracerCloser, "tracer")
 	tryClose(b.topologyCloser, "topology driver")
 	tryClose(b.storageIncetivesCloser, "storage incentives agent")
+	tryClose(b.stabilizationDetector, "stabilization detector")
+	// close localstore before StateStore to avoid ErrClosed / incomplete flush.
+	tryClose(b.localstoreCloser, "localstore")
 	tryClose(b.stateStoreCloser, "statestore")
 	tryClose(b.stamperStoreCloser, "stamperstore")
-	tryClose(b.localstoreCloser, "localstore")
 	tryClose(b.resolverCloser, "resolver service")
 
 	return mErr
@@ -1537,4 +1520,14 @@ func validatePublicAddress(addr string) error {
 	}
 
 	return nil
+}
+
+func batchStoreExists(s storage.StateStorer) (bool, error) {
+	hasOne := false
+	err := s.Iterate("batchstore_", func(key, value []byte) (stop bool, err error) {
+		hasOne = true
+		return true, err
+	})
+
+	return hasOne, err
 }

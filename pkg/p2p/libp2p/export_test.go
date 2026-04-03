@@ -7,11 +7,13 @@ package libp2p
 import (
 	"context"
 
+	"github.com/ethersphere/bee/v2/pkg/bzz"
 	handshake "github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/handshake"
 	libp2pm "github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	libp2ppeer "github.com/libp2p/go-libp2p/core/peer"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 func (s *Service) HandshakeService() *handshake.Service {
@@ -28,6 +30,10 @@ func (s *Service) WrapStream(ns network.Stream) *stream {
 
 func (s *Service) Host() host.Host {
 	return s.host
+}
+
+func (s *Service) SetHost(h host.Host) {
+	s.host = h
 }
 
 type StaticAddressResolver = staticAddressResolver
@@ -56,3 +62,19 @@ func SetAutoTLSCertManager(o *Options, m autoTLSCertManager) {
 type AutoTLSCertManager = autoTLSCertManager
 
 var NewCompositeAddressResolver = newCompositeAddressResolver
+
+func (s *Service) FilterSupportedAddresses(addrs []ma.Multiaddr) []ma.Multiaddr {
+	return s.filterSupportedAddresses(addrs)
+}
+
+func (s *Service) PeerMultiaddrs(ctx context.Context, peerID libp2ppeer.ID) ([]ma.Multiaddr, error) {
+	return s.peerMultiaddrs(ctx, peerID)
+}
+
+func (s *Service) SetTransportFlags(hasTCP, hasWS, hasWSS bool) {
+	s.enabledTransports = map[bzz.TransportType]bool{
+		bzz.TransportTCP: hasTCP,
+		bzz.TransportWS:  hasWS,
+		bzz.TransportWSS: hasWSS,
+	}
+}
