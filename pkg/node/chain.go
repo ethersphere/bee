@@ -67,12 +67,16 @@ func InitChain(
 
 	if chainEnabled {
 		transport := &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
 				Timeout:   rpcCfg.DialTimeout,
 				KeepAlive: rpcCfg.Keepalive,
 			}).DialContext,
-			TLSHandshakeTimeout: rpcCfg.TLSTimeout,
-			IdleConnTimeout:     rpcCfg.IdleTimeout,
+			TLSHandshakeTimeout:   rpcCfg.TLSTimeout,
+			IdleConnTimeout:       rpcCfg.IdleTimeout,
+			MaxIdleConns:          100,
+			ForceAttemptHTTP2:     true,
+			ExpectContinueTimeout: 1 * time.Second,
 		}
 
 		rpcClient, err := rpc.DialOptions(ctx, rpcCfg.Endpoint, rpc.WithHTTPClient(&http.Client{Transport: transport}))
