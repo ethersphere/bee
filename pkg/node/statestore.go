@@ -27,7 +27,7 @@ func InitStateStore(logger log.Logger, dataDir string, cacheCapacity uint64) (st
 	} else {
 		dataDir = filepath.Join(dataDir, "statestore")
 	}
-	ldb, err := leveldbstore.New(dataDir, nil)
+	ldb, _, err := leveldbstore.New(dataDir, nil)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -42,59 +42,21 @@ func InitStateStore(logger log.Logger, dataDir string, cacheCapacity uint64) (st
 	return stateStore, caching, err
 }
 
-// stamperDirtyItem is a storage.Item used to mark that the stamper store was
-// not cleanly shut down. It is written on startup and deleted on clean shutdown,
-// following the same pattern as the sharky .DIRTY file.
-type stamperDirtyItem struct{}
-
-func (s *stamperDirtyItem) ID() string               { return "dirty" }
-func (s *stamperDirtyItem) Namespace() string        { return "stamper" }
-func (s *stamperDirtyItem) Marshal() ([]byte, error) { return []byte{0}, nil }
-func (s *stamperDirtyItem) Unmarshal(_ []byte) error { return nil }
-func (s *stamperDirtyItem) Clone() storage.Item      { return &stamperDirtyItem{} }
-func (s stamperDirtyItem) String() string            { return "stamper/dirty" }
-
-// stamperStore wraps a storage.Store and manages the dirty marker lifecycle.
-type stamperStore struct {
-	storage.Store
-}
-
-// Close deletes the dirty marker then closes the underlying store, indicating
-// a clean shutdown.
-func (s *stamperStore) Close() error {
-	return errors.Join(s.Delete(&stamperDirtyItem{}), s.Store.Close())
-}
-
 // InitStamperStore will create new stamper store with the given path to the
 // data directory. When given an empty directory path, the function will instead
 // initialize an in-memory state store that will not be persisted.
-// It also checks and manages the dirty marker to detect unclean shutdowns.
-// The returned bool indicates whether the previous shutdown was clean.
+// The returned bool indicates whether the previous shutdown was unclean (dirty).
 func InitStamperStore(logger log.Logger, dataDir string, stateStore storage.StateStorer) (storage.Store, bool, error) {
 	if dataDir == "" {
 		logger.Warning("using in-mem stamper store, no node state will be persisted")
 	} else {
 		dataDir = filepath.Join(dataDir, "stamperstore")
 	}
-	store, err := leveldbstore.New(dataDir, nil)
+	store, dirty, err := leveldbstore.New(dataDir, nil)
 	if err != nil {
 		return nil, false, err
 	}
-
-	dirtyItem := &stamperDirtyItem{}
-	wasClean := false
-	if err := store.Get(dirtyItem); err != nil {
-		if !errors.Is(err, storage.ErrNotFound) {
-			return nil, false, fmt.Errorf("stamper store dirty check: %w", err)
-		}
-		// marker absent: first run or previous clean shutdown
-		wasClean = true
-	}
-	if err := store.Put(dirtyItem); err != nil {
-		return nil, false, fmt.Errorf("stamper store dirty marker: %w", err)
-	}
-
-	return &stamperStore{Store: store}, wasClean, nil
+	return store, dirty, nil
 }
 
 const (

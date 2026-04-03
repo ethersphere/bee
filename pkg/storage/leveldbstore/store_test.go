@@ -15,7 +15,7 @@ import (
 func TestStore(t *testing.T) {
 	t.Parallel()
 
-	store, err := leveldbstore.New(t.TempDir(), nil)
+	store, _, err := leveldbstore.New(t.TempDir(), nil)
 	if err != nil {
 		t.Fatalf("create store failed: %v", err)
 	}
@@ -24,7 +24,7 @@ func TestStore(t *testing.T) {
 }
 
 func BenchmarkStore(b *testing.B) {
-	st, err := leveldbstore.New("", &opt.Options{
+	st, _, err := leveldbstore.New("", &opt.Options{
 		Compression: opt.SnappyCompression,
 	})
 	if err != nil {
@@ -37,7 +37,7 @@ func BenchmarkStore(b *testing.B) {
 func TestBatchedStore(t *testing.T) {
 	t.Parallel()
 
-	st, err := leveldbstore.New("", nil)
+	st, _, err := leveldbstore.New("", nil)
 	if err != nil {
 		t.Fatalf("create store failed: %v", err)
 	}
@@ -46,7 +46,7 @@ func TestBatchedStore(t *testing.T) {
 }
 
 func BenchmarkBatchedStore(b *testing.B) {
-	st, err := leveldbstore.New("", &opt.Options{
+	st, _, err := leveldbstore.New("", &opt.Options{
 		Compression: opt.SnappyCompression,
 	})
 	if err != nil {

@@ -35,7 +35,7 @@ func Test_TransactionStorage(t *testing.T) {
 	sharkyStore, err := sharky.New(&dirFS{basedir: t.TempDir()}, 32, swarm.SocMaxChunkSize)
 	assert.NoError(t, err)
 
-	store, err := leveldbstore.New("", nil)
+	store, _, err := leveldbstore.New("", nil)
 	assert.NoError(t, err)
 
 	st := transaction.NewStorage(sharkyStore, store)
