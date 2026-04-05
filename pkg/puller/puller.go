@@ -33,6 +33,39 @@ const loggerName = "puller"
 
 var errCursorsLength = errors.New("cursors length mismatch")
 
+// countErrors counts the total number of errors in a joined error.
+// This prevents massive log lines when many errors are joined together.
+func countErrors(err error) int {
+	if err == nil {
+		return 0
+	}
+
+	count := 0
+	var walkErrors func(error)
+	walkErrors = func(e error) {
+		if e == nil {
+			return
+		}
+
+		// Check if this is a joined error (has multiple wrapped errors)
+		type unwrapper interface {
+			Unwrap() []error
+		}
+		if u, ok := e.(unwrapper); ok {
+			for _, wrapped := range u.Unwrap() {
+				walkErrors(wrapped)
+			}
+			return
+		}
+
+		// This is a leaf error
+		count++
+	}
+
+	walkErrors(err)
+	return count
+}
+
 const (
 	DefaultHistRateWindow = time.Minute * 15
 
@@ -191,9 +224,7 @@ func (p *Puller) manage(ctx context.Context) {
 // disconnectPeer cancels all existing syncing and removes the peer entry from the syncing map.
 // Must be called under lock.
 func (p *Puller) disconnectPeer(addr swarm.Address) {
-	loggerV2 := p.logger.V(2).Register()
-
-	loggerV2.Debug("disconnecting peer", "peer_address", addr)
+	p.logger.Debug("disconnecting peer", "peer_address", addr)
 	if peer, ok := p.syncPeers[addr.ByteString()]; ok {
 		peer.mtx.Lock()
 		peer.stop()
@@ -300,8 +331,6 @@ func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uin
 // syncPeerBin will start historical and live syncing for the peer for a particular bin.
 // Must be called under syncPeer lock.
 func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint8, cursor uint64) {
-	loggerV2 := p.logger.V(2).Register()
-
 	ctx, cancel := context.WithCancel(parentCtx)
 	peer.setBinCancel(cancel, bin)
 
@@ -331,14 +360,13 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 
 			select {
 			case <-ctx.Done():
-				loggerV2.Debug("syncWorker context cancelled", "peer_address", address, "bin", bin)
+				p.logger.Debug("syncWorker context cancelled", "peer_address", address, "bin", bin)
 				return
 			default:
 			}
 
 			p.metrics.SyncWorkerIterCounter.Inc()
 
-			syncStart := time.Now()
 			top, count, err := p.syncer.Sync(ctx, address, bin, start)
 
 			if top == math.MaxUint64 {
@@ -353,7 +381,8 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 					p.logger.Debug("syncWorker interval failed, quitting", "error", err, "peer_address", address, "bin", bin, "cursor", cursor, "start", start, "topmost", top)
 					return
 				}
-				loggerV2.Debug("syncWorker interval failed", "error", err, "peer_address", address, "bin", bin, "cursor", cursor, "start", start, "topmost", top)
+				errCount := countErrors(err)
+				p.logger.Debug("syncWorker interval failed", "error_count", errCount, "example_error", errors.Unwrap(err), "peer_address", address, "bin", bin, "cursor", cursor, "start", start, "topmost", top)
 			}
 
 			_ = p.limiter.WaitN(ctx, count)
@@ -372,7 +401,6 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 					p.logger.Error(err, "syncWorker could not persist interval for peer, quitting", "peer_address", address)
 					return
 				}
-				loggerV2.Debug("syncWorker pulled", "bin", bin, "start", start, "topmost", top, "isHistorical", isHistorical, "duration", time.Since(syncStart), "peer_address", address)
 				start = top + 1
 			}
 		}

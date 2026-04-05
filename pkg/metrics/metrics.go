@@ -75,3 +75,16 @@ func HandlerFor(reg MetricsRegistererGatherer, opts HandlerOpts) http.Handler {
 func MustRegister(cs ...Collector) {
 	prometheus.MustRegister(cs...)
 }
+
+func PrometheusCollectorsFromFields(i any) (cs []prometheus.Collector) {
+	v := reflect.Indirect(reflect.ValueOf(i))
+	for _, field := range v.Fields() {
+		if !field.CanInterface() {
+			continue
+		}
+		if u, ok := field.Interface().(prometheus.Collector); ok {
+			cs = append(cs, u)
+		}
+	}
+	return cs
+}

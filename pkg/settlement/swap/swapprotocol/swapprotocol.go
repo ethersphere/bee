@@ -126,7 +126,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	exchangeRate, deduction, err := swap.ParseSettlementResponseHeaders(responseHeaders)
 	if err != nil {
 		if !errors.Is(err, swap.ErrNoDeductionHeader) {
-			return err
+			return fmt.Errorf("parse settlement response headers: %w", err)
 		}
 		deduction = big.NewInt(0)
 	}
@@ -134,11 +134,15 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	var signedCheque *chequebook.SignedCheque
 	err = json.Unmarshal(req.Cheque, &signedCheque)
 	if err != nil {
-		return err
+		return fmt.Errorf("unmarshal cheque: %w", err)
 	}
 
 	// signature validation
-	return s.swap.ReceiveCheque(ctx, p.Address, signedCheque, exchangeRate, deduction)
+	if err := s.swap.ReceiveCheque(ctx, p.Address, signedCheque, exchangeRate, deduction); err != nil {
+		return fmt.Errorf("receive cheque: %w", err)
+	}
+
+	return nil
 }
 
 func (s *Service) headler(receivedHeaders p2p.Headers, peerAddress swarm.Address) (returnHeaders p2p.Headers) {
@@ -163,14 +167,12 @@ func (s *Service) headler(receivedHeaders p2p.Headers, peerAddress swarm.Address
 
 // InitiateCheque attempts to send a cheque to a peer.
 func (s *Service) EmitCheque(ctx context.Context, peer swarm.Address, beneficiary common.Address, amount *big.Int, issue IssueFunc) (balance *big.Int, err error) {
-	loggerV1 := s.logger.V(1).Register()
-
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("new stream: %w", err)
 	}
 	defer func() {
 		if err != nil {
@@ -185,7 +187,7 @@ func (s *Service) EmitCheque(ctx context.Context, peer swarm.Address, beneficiar
 	exchangeRate, deduction, err := swap.ParseSettlementResponseHeaders(returnedHeaders)
 	if err != nil {
 		if !errors.Is(err, swap.ErrNoDeductionHeader) {
-			return nil, err
+			return nil, fmt.Errorf("parse settlement response headers: %w", err)
 		}
 		deduction = big.NewInt(0)
 	}
@@ -195,7 +197,7 @@ func (s *Service) EmitCheque(ctx context.Context, peer swarm.Address, beneficiar
 	// get whether peer have deducted in the past
 	checkPeer, err := s.swap.GetDeductionByPeer(peer)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get deduction by peer: %w", err)
 	}
 
 	// if peer is not entitled for deduction but sent non zero deduction value, return with error
@@ -206,7 +208,7 @@ func (s *Service) EmitCheque(ctx context.Context, peer swarm.Address, beneficiar
 	// get current global exchangeRate rate and deduction
 	checkExchangeRate, checkDeduction, err := s.priceOracle.CurrentRates()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get current rates: %w", err)
 	}
 
 	// exchangeRate rates should match
@@ -232,7 +234,7 @@ func (s *Service) EmitCheque(ctx context.Context, peer swarm.Address, beneficiar
 		}
 
 		// sending cheque
-		loggerV1.Debug("sending cheque message to peer", "peer_address", peer, "cheque", cheque)
+		s.logger.Debug("sending cheque message to peer", "peer_address", peer, "cheque", cheque)
 
 		w := protobuf.NewWriter(stream)
 		return w.WriteMsgWithContext(ctx, &pb.EmitCheque{
@@ -241,13 +243,13 @@ func (s *Service) EmitCheque(ctx context.Context, peer swarm.Address, beneficiar
 
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("call issue function: %w", err)
 	}
 
 	if deduction.Cmp(big.NewInt(0)) != 0 {
 		err = s.swap.AddDeductionByPeer(peer)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("add deduction for peer: %w", err)
 		}
 	}
 

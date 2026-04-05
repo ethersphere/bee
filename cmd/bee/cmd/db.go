@@ -31,7 +31,6 @@ import (
 
 const (
 	optionNameValidation     = "validate"
-	optionNameValidationPin  = "validate-pin"
 	optionNameCollectionPin  = "pin"
 	optionNameOutputLocation = "output"
 )

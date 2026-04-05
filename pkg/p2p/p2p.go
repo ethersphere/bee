@@ -61,7 +61,7 @@ var ErrNetworkUnavailable = errors.New("network unavailable")
 type Service interface {
 	AddProtocol(ProtocolSpec) error
 	// Connect to a peer but do not notify topology about the established connection.
-	Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error)
+	Connect(ctx context.Context, addrs []ma.Multiaddr) (address *bzz.Address, err error)
 	Disconnecter
 	Peers() []Peer
 	Blocklisted(swarm.Address) (bool, error)
@@ -139,6 +139,12 @@ type DebugService interface {
 // Streamer is able to create a new Stream.
 type Streamer interface {
 	NewStream(ctx context.Context, address swarm.Address, h Headers, protocol, version, stream string) (Stream, error)
+}
+
+// Bee260CompatibilityStreamer is able to create a new Stream and check if a peer is running Bee 2.6.0.
+type Bee260CompatibilityStreamer interface {
+	NewStream(ctx context.Context, address swarm.Address, h Headers, protocol, version, stream string) (Stream, error)
+	IsBee260(address swarm.Address) bool
 }
 
 type StreamerDisconnecter interface {
@@ -236,4 +242,19 @@ func (e *ChunkDeliveryError) Error() string {
 // NewChunkDeliveryError is a convenience constructor for ChunkDeliveryError.
 func NewChunkDeliveryError(msg string) error {
 	return &ChunkDeliveryError{msg: msg}
+}
+
+// FilterBee260CompatibleUnderlays select a single underlay to pass if
+// bee260compatibility is true. Otherwise it passes the unmodified underlays
+// slice. This function can be safely removed when bee version 2.6.0 is
+// deprecated.
+func FilterBee260CompatibleUnderlays(bee260compatibility bool, underlays []ma.Multiaddr) []ma.Multiaddr {
+	if !bee260compatibility {
+		return underlays
+	}
+	underlay := bzz.SelectBestAdvertisedAddress(underlays, nil)
+	if underlay == nil {
+		return underlays
+	}
+	return []ma.Multiaddr{underlay}
 }

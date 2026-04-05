@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/api"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
+	"github.com/multiformats/go-multiaddr"
 )
 
 type (
@@ -95,10 +96,19 @@ type (
 	mapSwarmAddressTest struct {
 		SwarmAddressVal swarm.Address `map:"swarmAddressVal"`
 	}
+
+	mapMultiaddrTest struct {
+		MultiaddrVal multiaddr.Multiaddr `map:"multiaddrVal"`
+	}
 )
 
 func TestMapStructure(t *testing.T) {
 	t.Parallel()
+
+	validMultiaddr, err := multiaddr.NewMultiaddr("/ip4/127.0.0.1/tcp/8080")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	tests := []struct {
 		name    string
@@ -497,6 +507,10 @@ func TestMapStructure(t *testing.T) {
 		name: "swarm.Address value",
 		src:  map[string]string{"swarmAddressVal": "1234567890abcdef"},
 		want: &mapSwarmAddressTest{SwarmAddressVal: swarm.MustParseHexAddress("1234567890abcdef")},
+	}, {
+		name: "multiaddr.Multiaddr value",
+		src:  map[string]string{"multiaddrVal": "/ip4/127.0.0.1/tcp/8080"},
+		want: &mapMultiaddrTest{MultiaddrVal: validMultiaddr},
 	}}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

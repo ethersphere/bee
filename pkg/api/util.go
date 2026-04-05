@@ -150,7 +150,7 @@ func mapStructure(input, output any, hooks map[string]func(v string) (string, er
 
 	// Do input sanity checks.
 	inputVal = reflect.ValueOf(input)
-	if inputVal.Kind() == reflect.Ptr {
+	if inputVal.Kind() == reflect.Pointer {
 		inputVal = inputVal.Elem()
 	}
 	switch {
@@ -163,7 +163,7 @@ func mapStructure(input, output any, hooks map[string]func(v string) (string, er
 	// Do output sanity checks.
 	outputVal = reflect.ValueOf(output)
 	switch {
-	case outputVal.Kind() != reflect.Ptr:
+	case outputVal.Kind() != reflect.Pointer:
 		return errors.New("output is not a pointer")
 	case outputVal.Elem().Kind() != reflect.Struct:
 		return errors.New("output is not a struct")
@@ -174,7 +174,7 @@ func mapStructure(input, output any, hooks map[string]func(v string) (string, er
 	var set func(string, reflect.Value) error
 	set = func(value string, field reflect.Value) error {
 		switch fieldKind := field.Kind(); fieldKind {
-		case reflect.Ptr:
+		case reflect.Pointer:
 			if field.IsNil() {
 				field.Set(reflect.New(field.Type().Elem()))
 			}
@@ -210,14 +210,23 @@ func mapStructure(input, output any, hooks map[string]func(v string) (string, er
 		case reflect.String:
 			field.SetString(value)
 		case reflect.Slice:
-			if value == "" {
-				return nil // Nil slice.
+			switch field.Type() {
+			case reflect.TypeFor[multiaddr.Multiaddr]():
+				val, err := multiaddr.NewMultiaddr(value)
+				if err != nil {
+					return err
+				}
+				field.Set(reflect.ValueOf(val))
+			default:
+				if value == "" {
+					return nil // Nil slice.
+				}
+				val, err := hex.DecodeString(value)
+				if err != nil {
+					return err
+				}
+				field.SetBytes(val)
 			}
-			val, err := hex.DecodeString(value)
-			if err != nil {
-				return err
-			}
-			field.SetBytes(val)
 		case reflect.Array:
 			switch field.Interface().(type) {
 			case common.Hash:
@@ -250,15 +259,6 @@ func mapStructure(input, output any, hooks map[string]func(v string) (string, er
 					return err
 				}
 				field.Set(reflect.ValueOf(*val))
-			}
-		case reflect.Interface:
-			switch field.Type() {
-			case reflect.TypeFor[multiaddr.Multiaddr]():
-				val, err := multiaddr.NewMultiaddr(value)
-				if err != nil {
-					return err
-				}
-				field.Set(reflect.ValueOf(val))
 			}
 		default:
 			return fmt.Errorf("unsupported type %T", field.Interface())

@@ -36,16 +36,15 @@ import (
 const loggerName = "kademlia"
 
 const (
-	maxConnAttempts     = 1 // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
-	maxBootNodeAttempts = 3 // how many attempts to dial to boot-nodes before giving up
-	maxNeighborAttempts = 3 // how many attempts to dial to boot-nodes before giving up
+	maxConnAttempts     = 4 // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
+	maxBootNodeAttempts = 6 // how many attempts to dial to boot-nodes before giving up
+	maxNeighborAttempts = 6 // how many attempts to dial to boot-nodes before giving up
 
 	addPeerBatchSize = 500
 
-	// To avoid context.Timeout errors during network failure, the value of
-	// the peerConnectionAttemptTimeout constant must be equal to or greater
-	// than 5 seconds (empirically verified).
-	peerConnectionAttemptTimeout = 15 * time.Second // timeout for establishing a new connection with peer.
+	// Each underlay address gets up to 15s for connection (in libp2p.Connect).
+	// This budget allows multiple addresses to be tried sequentially per peer.
+	peerConnectionAttemptTimeout = 45 * time.Second // timeout for establishing a new connection with peer.
 )
 
 // Default option values
@@ -55,7 +54,7 @@ const (
 	defaultSaturationPeers             = 8
 	defaultOverSaturationPeers         = 18
 	defaultBootNodeOverSaturationPeers = 20
-	defaultShortRetry                  = 30 * time.Second
+	defaultShortRetry                  = 10 * time.Second
 	defaultTimeToRetry                 = 2 * defaultShortRetry
 	defaultPruneWakeup                 = 5 * time.Minute
 	defaultBroadcastBinSize            = 2
@@ -280,7 +279,7 @@ func New(
 
 	k.bgBroadcastCtx, k.bgBroadcastCancel = context.WithCancel(context.Background())
 
-	k.metrics.ReachabilityStatus.WithLabelValues(p2p.ReachabilityStatusUnknown.String()).Set(0)
+	k.metrics.ReachabilityStatus.WithLabelValues(p2p.ReachabilityStatusUnknown.String()).Set(1)
 
 	return k, nil
 }
@@ -429,23 +428,26 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 			}
 		}
 
-		switch err = k.connect(ctx, peer.addr, bzzAddr.Underlay); {
+		switch err = k.connect(ctx, peer.addr, bzzAddr.Underlays); {
 		case errors.Is(err, p2p.ErrNetworkUnavailable):
-			k.logger.Debug("network unavailable when reaching peer", "peer_overlay_address", peer.addr, "peer_underlay_address", bzzAddr.Underlay)
+			k.logger.Debug("network unavailable when reaching peer", "peer_address", peer.addr, "peer_underlays", bzzAddr.Underlays)
 			return
 		case errors.Is(err, errPruneEntry):
-			k.logger.Debug("dial to light node", "peer_overlay_address", peer.addr, "peer_underlay_address", bzzAddr.Underlay)
+			k.logger.Debug("dial to light node", "peer_address", peer.addr, "peer_underlays", bzzAddr.Underlays)
 			remove(peer)
 			return
 		case errors.Is(err, errOverlayMismatch):
-			k.logger.Debug("overlay mismatch has occurred", "peer_overlay_address", peer.addr, "peer_underlay_address", bzzAddr.Underlay)
+			k.logger.Debug("overlay mismatch has occurred", "peer_address", peer.addr, "peer_underlays", bzzAddr.Underlays)
 			remove(peer)
 			return
 		case errors.Is(err, p2p.ErrPeerBlocklisted):
-			k.logger.Debug("peer still in blocklist", "peer_address", bzzAddr)
+			k.logger.Debug("peer still in blocklist", "peer_address", peer.addr, "peer_underlays", bzzAddr.Underlays)
+			return
+		case errors.Is(err, p2p.ErrUnsupportedAddresses):
+			k.logger.Debug("peer has no supported addresses", "peer_address", peer.addr, "peer_underlays", bzzAddr.Underlays)
 			return
 		case err != nil:
-			k.logger.Debug("peer not reachable from kademlia", "peer_address", bzzAddr, "error", err)
+			k.logger.Debug("peer not reachable from kademlia", "peer_address", peer.addr, "peer_underlays", bzzAddr.Underlays, "error", err)
 			return
 		}
 
@@ -807,9 +809,6 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 	var attempts, connected int
 	totalAttempts := maxBootNodeAttempts * len(k.opt.Bootnodes)
 
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-
 	for _, addr := range k.opt.Bootnodes {
 		if attempts >= totalAttempts || connected >= 3 {
 			return
@@ -820,18 +819,25 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 			if attempts >= maxBootNodeAttempts {
 				return true, nil
 			}
-			bzzAddress, err := k.p2p.Connect(ctx, addr)
+
+			ctx, cancel := context.WithTimeout(ctx, peerConnectionAttemptTimeout)
+			defer cancel()
+
+			bzzAddress, err := k.p2p.Connect(ctx, []ma.Multiaddr{addr})
 
 			attempts++
 			k.metrics.TotalBootNodesConnectionAttempts.Inc()
 
 			if err != nil {
-				if !errors.Is(err, p2p.ErrAlreadyConnected) {
-					k.logger.Debug("connect to bootnode failed", "bootnode_address", addr, "error", err)
-					k.logger.Warning("connect to bootnode failed", "bootnode_address", addr)
-					return false, err
+				if errors.Is(err, p2p.ErrUnsupportedAddresses) {
+					k.logger.Debug("bootnode address transport not supported, skipping", "bootnode_address", addr)
+					return false, nil
 				}
-				k.logger.Debug("connect to bootnode failed", "bootnode_address", addr, "error", err)
+				if !errors.Is(err, p2p.ErrAlreadyConnected) {
+					k.logger.Error(err, "connect to bootnode failed", "bootnode_address", addr)
+					return false, nil
+				}
+				k.logger.Debug("bootnode already connected", "bootnode_address", addr)
 				return false, nil
 			}
 
@@ -958,7 +964,7 @@ func (k *Kad) recalcDepth() {
 
 // connect connects to a peer and gossips its address to our connected peers,
 // as well as sends the peers we are connected to the newly connected peer
-func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) error {
+func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma []ma.Multiaddr) error {
 	k.logger.Debug("attempting connect to peer", "peer_address", peer)
 
 	ctx, cancel := context.WithTimeout(ctx, peerConnectionAttemptTimeout)
@@ -982,8 +988,10 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 		return err
 	case errors.Is(err, p2p.ErrPeerBlocklisted):
 		return err
+	case errors.Is(err, p2p.ErrUnsupportedAddresses):
+		return err
 	case err != nil:
-		k.logger.Debug("could not connect to peer", "peer_address", peer, "error", err)
+		k.logger.Info("could not connect to peer", "peer_address", peer, "error", err)
 
 		retryTime := time.Now().Add(k.opt.TimeToRetry)
 		var e *p2p.ConnectionBackoffError
@@ -1115,8 +1123,17 @@ func (k *Kad) AnnounceTo(ctx context.Context, addressee, peer swarm.Address, ful
 // This does not guarantee that a connection will immediately
 // be made to the peer.
 func (k *Kad) AddPeers(addrs ...swarm.Address) {
-	k.knownPeers.Add(addrs...)
-	k.notifyManageLoop()
+	toAdd := make([]swarm.Address, 0, len(addrs))
+	for _, addr := range addrs {
+		if !addr.Equal(k.base) {
+			toAdd = append(toAdd, addr)
+		}
+	}
+
+	if len(toAdd) > 0 {
+		k.knownPeers.Add(toAdd...)
+		k.notifyManageLoop()
+	}
 }
 
 func (k *Kad) Pick(peer p2p.Peer) bool {
@@ -1350,7 +1367,8 @@ func (k *Kad) UpdateReachability(status p2p.ReachabilityStatus) {
 	}
 	k.logger.Debug("reachability updated", "reachability", status)
 	k.reachability = status
-	k.metrics.ReachabilityStatus.WithLabelValues(status.String()).Set(0)
+	k.metrics.ReachabilityStatus.Reset()
+	k.metrics.ReachabilityStatus.WithLabelValues(status.String()).Set(1)
 }
 
 // UpdateReachability updates node reachability status.

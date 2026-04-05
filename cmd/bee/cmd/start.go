@@ -68,10 +68,7 @@ func (c *command) initStartCmd() (err error) {
 			}
 
 			fmt.Print(beeWelcomeMessage)
-			fmt.Printf("\n\nversion: %v - planned to be supported until %v, please follow https://ethswarm.org/\n\n", bee.Version, endSupportDate())
 			logger.Info("bee version", "version", bee.Version)
-
-			go startTimeBomb(logger)
 
 			// ctx is global context of bee node; which is canceled after interrupt signal is received.
 			ctx, cancel := context.WithCancel(context.Background())
@@ -281,12 +278,16 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		Addr:                          c.config.GetString(optionNameP2PAddr),
 		AllowPrivateCIDRs:             c.config.GetBool(optionNameAllowPrivateCIDRs),
 		APIAddr:                       c.config.GetString(optionNameAPIAddr),
+		EnableWSS:                     c.config.GetBool(optionNameP2PWSSEnable),
+		WSSAddr:                       c.config.GetString(optionP2PWSSAddr),
+		AutoTLSStorageDir:             filepath.Join(c.config.GetString(optionNameDataDir), "autotls"),
 		BlockchainRpcEndpoint:         c.config.GetString(optionNameBlockchainRpcEndpoint),
 		BlockProfile:                  c.config.GetBool(optionNamePProfBlock),
 		BlockTime:                     networkConfig.blockTime,
 		BootnodeMode:                  bootNode,
 		Bootnodes:                     networkConfig.bootNodes,
 		CacheCapacity:                 c.config.GetUint64(optionNameCacheCapacity),
+		AutoTLSCAEndpoint:             c.config.GetString(optionAutoTLSCAEndpoint),
 		ChainID:                       networkConfig.chainID,
 		ChequebookEnable:              c.config.GetBool(optionNameChequebookEnable),
 		CORSAllowedOrigins:            c.config.GetStringSlice(optionCORSAllowedOrigins),
@@ -297,12 +298,15 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		DBWriteBufferSize:             c.config.GetUint64(optionNameDBWriteBufferSize),
 		EnableStorageIncentives:       c.config.GetBool(optionNameStorageIncentivesEnable),
 		EnableWS:                      c.config.GetBool(optionNameP2PWSEnable),
+		AutoTLSDomain:                 c.config.GetString(optionAutoTLSDomain),
+		AutoTLSRegistrationEndpoint:   c.config.GetString(optionAutoTLSRegistrationEndpoint),
 		FullNodeMode:                  fullNode,
 		Logger:                        logger,
 		MinimumGasTipCap:              c.config.GetUint64(optionNameMinimumGasTipCap),
 		MinimumStorageRadius:          c.config.GetUint(optionMinimumStorageRadius),
 		MutexProfile:                  c.config.GetBool(optionNamePProfMutex),
 		NATAddr:                       c.config.GetString(optionNameNATAddr),
+		NATWSSAddr:                    c.config.GetString(optionNATWSSAddr),
 		NeighborhoodSuggester:         neighborhoodSuggester,
 		PaymentEarly:                  c.config.GetInt64(optionNamePaymentEarly),
 		PaymentThreshold:              c.config.GetString(optionNamePaymentThreshold),
@@ -327,7 +331,6 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		TracingEndpoint:               tracingEndpoint,
 		TracingServiceName:            c.config.GetString(optionNameTracingServiceName),
 		TrxDebugMode:                  c.config.GetBool(optionNameTransactionDebugMode),
-		UsePostageSnapshot:            c.config.GetBool(optionNameUsePostageSnapshot),
 		WarmupTime:                    c.config.GetDuration(optionWarmUpTime),
 		WelcomeMessage:                c.config.GetString(optionWelcomeMessage),
 		WhitelistedWithdrawalAddress:  c.config.GetStringSlice(optionNameWhitelistedWithdrawalAddress),

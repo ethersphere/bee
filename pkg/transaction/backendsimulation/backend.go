@@ -95,7 +95,7 @@ func (m *simulatedBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big
 	return nil, nil, errors.New("not implemented")
 }
 
-func (m *simulatedBackend) EstimateGas(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error) {
+func (m *simulatedBackend) EstimateGasAtBlock(ctx context.Context, msg ethereum.CallMsg, blockNumber *big.Int) (uint64, error) {
 	return 0, errors.New("not implemented")
 }
 

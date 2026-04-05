@@ -12,7 +12,6 @@ package hive
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"sync"
@@ -36,13 +35,11 @@ import (
 const loggerName = "hive"
 
 const (
-	protocolName           = "hive"
-	protocolVersion        = "1.1.0"
-	peersStreamName        = "peers"
-	messageTimeout         = 1 * time.Minute // maximum allowed time for a message to be read or written.
-	maxBatchSize           = 30
-	pingTimeout            = time.Second * 15 // time to wait for ping to succeed
-	batchValidationTimeout = 5 * time.Minute  // prevent lock contention on peer validation
+	protocolName    = "hive"
+	protocolVersion = "1.1.0"
+	peersStreamName = "peers"
+	messageTimeout  = 1 * time.Minute // maximum allowed time for a message to be read or written.
+	maxBatchSize    = 30
 )
 
 var (
@@ -53,7 +50,7 @@ var (
 )
 
 type Service struct {
-	streamer          p2p.StreamerPinger
+	streamer          p2p.Bee260CompatibilityStreamer
 	addressBook       addressbook.GetPutter
 	addPeersHandler   func(...swarm.Address)
 	networkID         uint64
@@ -67,9 +64,10 @@ type Service struct {
 	sem               *semaphore.Weighted
 	bootnode          bool
 	allowPrivateCIDRs bool
+	overlay           swarm.Address
 }
 
-func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, networkID uint64, bootnode bool, allowPrivateCIDRs bool, logger log.Logger) *Service {
+func New(streamer p2p.Bee260CompatibilityStreamer, addressbook addressbook.GetPutter, networkID uint64, bootnode bool, allowPrivateCIDRs bool, overlay swarm.Address, logger log.Logger) *Service {
 	svc := &Service{
 		streamer:          streamer,
 		logger:            logger.WithName(loggerName).Register(),
@@ -83,6 +81,7 @@ func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, network
 		sem:               semaphore.NewWeighted(int64(swarm.MaxBins)),
 		bootnode:          bootnode,
 		allowPrivateCIDRs: allowPrivateCIDRs,
+		overlay:           overlay,
 	}
 
 	if !bootnode {
@@ -177,6 +176,11 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 	w, _ := protobuf.NewWriterAndReader(stream)
 	var peersRequest pb.Peers
 	for _, p := range peers {
+		if p.Equal(s.overlay) {
+			s.logger.Debug("skipping self-address in broadcast", "overlay", p.String())
+			continue
+		}
+
 		addr, err := s.addressBook.Get(p)
 		if err != nil {
 			if errors.Is(err, addressbook.ErrNotFound) {
@@ -186,13 +190,17 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 			return err
 		}
 
-		if !s.allowPrivateCIDRs && manet.IsPrivateAddr(addr.Underlay) {
-			continue // Don't advertise private CIDRs to the public network.
+		advertisableUnderlays := s.filterAdvertisableUnderlays(addr.Underlays)
+		if len(advertisableUnderlays) == 0 {
+			s.logger.Debug("skipping peers: no advertisable underlays", "peer_address", p)
+			continue
 		}
+
+		advertisableUnderlays = p2p.FilterBee260CompatibleUnderlays(s.streamer.IsBee260(peer), advertisableUnderlays)
 
 		peersRequest.Peers = append(peersRequest.Peers, &pb.BzzAddress{
 			Overlay:   addr.Overlay.Bytes(),
-			Underlay:  addr.Underlay.Bytes(),
+			Underlay:  bzz.SerializeUnderlays(advertisableUnderlays),
 			Signature: addr.Signature,
 			Nonce:     addr.Nonce,
 		})
@@ -261,93 +269,78 @@ func (s *Service) startCheckPeersHandler() {
 				return
 			case newPeers := <-s.peersChan:
 				s.wg.Go(func() {
-					cctx, cancel := context.WithTimeout(ctx, batchValidationTimeout)
-					defer cancel()
-					s.checkAndAddPeers(cctx, newPeers)
+					s.checkAndAddPeers(newPeers)
 				})
 			}
 		}
 	})
 }
 
-func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
-	var peersToAdd []swarm.Address
-	mtx := sync.Mutex{}
-	wg := sync.WaitGroup{}
-
-	addPeer := func(newPeer *pb.BzzAddress, multiUnderlay ma.Multiaddr) {
-		err := s.sem.Acquire(ctx, 1)
-		if err != nil {
-			return
-		}
-
-		wg.Add(1)
-		go func() {
-			s.metrics.PeerConnectAttempts.Inc()
-
-			defer func() {
-				s.sem.Release(1)
-				wg.Done()
-			}()
-
-			ctx, cancel := context.WithTimeout(ctx, pingTimeout)
-			defer cancel()
-
-			start := time.Now()
-
-			// check if the underlay is usable by doing a raw ping using libp2p
-			if _, err := s.streamer.Ping(ctx, multiUnderlay); err != nil {
-				s.metrics.PingFailureTime.Observe(time.Since(start).Seconds())
-				s.metrics.UnreachablePeers.Inc()
-				s.logger.Debug("unreachable peer underlay", "peer_address", hex.EncodeToString(newPeer.Overlay), "underlay", multiUnderlay)
-				return
-			}
-			s.metrics.PingTime.Observe(time.Since(start).Seconds())
-
-			s.metrics.ReachablePeers.Inc()
-
-			bzzAddress := bzz.Address{
-				Overlay:   swarm.NewAddress(newPeer.Overlay),
-				Underlay:  multiUnderlay,
-				Signature: newPeer.Signature,
-				Nonce:     newPeer.Nonce,
-			}
-
-			err := s.addressBook.Put(bzzAddress.Overlay, bzzAddress)
-			if err != nil {
-				s.metrics.StorePeerErr.Inc()
-				s.logger.Warning("skipping peer in response", "peer_address", newPeer.String(), "error", err)
-				return
-			}
-
-			mtx.Lock()
-			peersToAdd = append(peersToAdd, bzzAddress.Overlay)
-			mtx.Unlock()
-		}()
-	}
+func (s *Service) checkAndAddPeers(peers pb.Peers) {
+	peersToAdd := make([]swarm.Address, 0, len(peers.Peers))
 
 	for _, p := range peers.Peers {
-
-		multiUnderlay, err := ma.NewMultiaddrBytes(p.Underlay)
+		multiUnderlays, err := bzz.DeserializeUnderlays(p.Underlay)
 		if err != nil {
 			s.metrics.PeerUnderlayErr.Inc()
 			s.logger.Debug("multi address underlay", "error", err)
 			continue
 		}
 
+		if len(multiUnderlays) == 0 {
+			s.logger.Debug("check and add peers, no underlays", "overlay", swarm.NewAddress(p.Overlay).String())
+			continue // no underlays sent
+		}
+
 		// if peer exists already in the addressBook
 		// and if the underlays match, skip
 		addr, err := s.addressBook.Get(swarm.NewAddress(p.Overlay))
-		if err == nil && addr.Underlay.Equal(multiUnderlay) {
+		if err == nil && bzz.AreUnderlaysEqual(addr.Underlays, multiUnderlays) {
 			continue
 		}
 
-		// add peer does not exist in the addressbook
-		addPeer(p, multiUnderlay)
+		overlayAddr := swarm.NewAddress(p.Overlay)
+
+		if overlayAddr.Equal(s.overlay) {
+			s.logger.Debug("skipping self-address in peer list", "overlay", overlayAddr.String())
+			continue
+		}
+
+		bzzAddress := bzz.Address{
+			Overlay:   overlayAddr,
+			Underlays: multiUnderlays,
+			Signature: p.Signature,
+			Nonce:     p.Nonce,
+		}
+
+		if err := s.addressBook.Put(bzzAddress.Overlay, bzzAddress); err != nil {
+			s.metrics.StorePeerErr.Inc()
+			s.logger.Warning("put peer in addressbook", "peer_address", p.String(), "error", err)
+			continue
+		}
+
+		peersToAdd = append(peersToAdd, bzzAddress.Overlay)
 	}
-	wg.Wait()
 
 	if s.addPeersHandler != nil && len(peersToAdd) > 0 {
 		s.addPeersHandler(peersToAdd...)
 	}
+}
+
+// filterAdvertisableUnderlays returns underlay addresses that can be advertised
+// based on the allowPrivateCIDRs setting. If allowPrivateCIDRs is false,
+// only public addresses are returned.
+func (s *Service) filterAdvertisableUnderlays(underlays []ma.Multiaddr) []ma.Multiaddr {
+	if s.allowPrivateCIDRs {
+		return underlays
+	}
+
+	var publicUnderlays []ma.Multiaddr
+	for _, u := range underlays {
+		if !manet.IsPrivateAddr(u) {
+			publicUnderlays = append(publicUnderlays, u)
+		}
+	}
+
+	return publicUnderlays
 }

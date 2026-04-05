@@ -45,22 +45,23 @@ func TestConnect(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	bzzAddress, err := bzz.NewAddress(crypto.NewDefaultSigner(privateKey), underlama, overlay, 0, nil)
+	bzzAddress, err := bzz.NewAddress(crypto.NewDefaultSigner(privateKey), []ma.Multiaddr{underlama}, overlay, 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
-			if addr.String() == errorUnderlay {
-				return nil, testErr
+		P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addrs []ma.Multiaddr) (*bzz.Address, error) {
+			for _, addr := range addrs {
+				if addr.String() == errorUnderlay {
+					return nil, testErr
+				}
 			}
 			return bzzAddress, nil
 		})),
 	})
 
 	t.Run("ok", func(t *testing.T) {
-		t.Parallel()
 		jsonhttptest.Request(t, testServer, http.MethodPost, "/connect"+underlay, http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(api.PeerConnectResponse{
 				Address: overlay.String(),
@@ -69,7 +70,6 @@ func TestConnect(t *testing.T) {
 	})
 
 	t.Run("error", func(t *testing.T) {
-		t.Parallel()
 		jsonhttptest.Request(t, testServer, http.MethodPost, "/connect"+errorUnderlay, http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusInternalServerError,
@@ -79,11 +79,12 @@ func TestConnect(t *testing.T) {
 	})
 
 	t.Run("error - add peer", func(t *testing.T) {
-		t.Parallel()
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
-				if addr.String() == errorUnderlay {
-					return nil, testErr
+			P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addrs []ma.Multiaddr) (*bzz.Address, error) {
+				for _, addr := range addrs {
+					if addr.String() == errorUnderlay {
+						return nil, testErr
+					}
 				}
 				return bzzAddress, nil
 			})),

@@ -40,7 +40,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		Pin            bool             `map:"Swarm-Pin"`
 		Deferred       *bool            `map:"Swarm-Deferred-Upload"`
 		Encrypt        bool             `map:"Swarm-Encrypt"`
-		RLevel         redundancy.Level `map:"Swarm-Redundancy-Level"`
+		RLevel         redundancy.Level `map:"Swarm-Redundancy-Level" validate:"rLevel"`
 		Act            bool             `map:"Swarm-Act"`
 		HistoryAddress swarm.Address    `map:"Swarm-Act-History-Address"`
 	}{}

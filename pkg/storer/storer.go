@@ -677,10 +677,12 @@ func (db *DB) SetRetrievalService(r retrieval.Interface) {
 	db.retrieval = r
 }
 
-func (db *DB) StartReserveWorker(ctx context.Context, s Syncer, radius func() (uint8, error)) {
+// StartReserveWorker starts the reserve worker. It takes an optional ready channel that is closed whenever the reserve
+// worker has finished starting, as this synchronization is needed for some tests. The channel is not used for writing anywhere.
+func (db *DB) StartReserveWorker(ctx context.Context, s Syncer, radius func() (uint8, error), ready chan<- struct{}) {
 	db.setSyncerOnce.Do(func() {
 		db.syncer = s
-		go db.startReserveWorkers(ctx, radius)
+		go db.startReserveWorkers(ctx, radius, ready)
 	})
 }
 

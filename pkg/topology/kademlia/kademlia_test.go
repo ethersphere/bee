@@ -11,6 +11,7 @@ import (
 	"math"
 	"math/rand"
 	"reflect"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -57,7 +58,7 @@ func TestNeighborhoodDepth(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			SaturationPeers: ptrInt(4),
+			SaturationPeers: new(4),
 			ExcludeFunc:     defaultExcludeFunc,
 		})
 	)
@@ -204,7 +205,7 @@ func TestNeighborhoodDepthWithReachability(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			SaturationPeers: ptrInt(4),
+			SaturationPeers: new(4),
 		})
 	)
 
@@ -352,7 +353,7 @@ func TestManage(t *testing.T) {
 		conns                    int32 // how many connect calls were made to the p2p mock
 		saturation               = kademlia.DefaultSaturationPeers
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			BitSuffixLength: ptrInt(-1),
+			BitSuffixLength: new(-1),
 			ExcludeFunc:     defaultExcludeFunc,
 		})
 	)
@@ -404,8 +405,8 @@ func TestManageWithBalancing(t *testing.T) {
 		}
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
 			SaturationFunc:  saturationFunc,
-			SaturationPeers: ptrInt(4),
-			BitSuffixLength: ptrInt(2),
+			SaturationPeers: new(4),
+			BitSuffixLength: new(2),
 			ExcludeFunc:     defaultExcludeFunc,
 		})
 	)
@@ -450,8 +451,8 @@ func TestBinSaturation(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			SaturationPeers: ptrInt(2),
-			BitSuffixLength: ptrInt(-1),
+			SaturationPeers: new(2),
+			BitSuffixLength: new(-1),
 			ExcludeFunc:     defaultExcludeFunc,
 		})
 	)
@@ -553,8 +554,8 @@ func TestOversaturationBootnode(t *testing.T) {
 		overSaturationPeers      = 4
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			OverSaturationPeers: ptrInt(overSaturationPeers),
-			SaturationPeers:     ptrInt(4),
+			OverSaturationPeers: new(overSaturationPeers),
+			SaturationPeers:     new(4),
 			BootnodeMode:        true,
 			ExcludeFunc:         defaultExcludeFunc,
 		})
@@ -611,8 +612,8 @@ func TestBootnodeMaxConnections(t *testing.T) {
 		bootnodeOverSaturationPeers = 4
 		conns                       int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer    = newTestKademlia(t, &conns, nil, kademlia.Options{
-			BootnodeOverSaturationPeers: ptrInt(bootnodeOverSaturationPeers),
-			SaturationPeers:             ptrInt(4),
+			BootnodeOverSaturationPeers: new(bootnodeOverSaturationPeers),
+			SaturationPeers:             new(4),
 			BootnodeMode:                true,
 			ExcludeFunc:                 defaultExcludeFunc,
 		})
@@ -771,7 +772,7 @@ func TestBackoff(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			TimeToRetry: ptrDuration(500 * time.Millisecond),
+			TimeToRetry: new(500 * time.Millisecond),
 		})
 	)
 	kad.SetStorageRadius(0)
@@ -814,7 +815,7 @@ func TestAddressBookPrune(t *testing.T) {
 	var (
 		conns, failedConns       int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, &failedConns, kademlia.Options{
-			TimeToRetry: ptrDuration(0),
+			TimeToRetry: new(time.Duration),
 		})
 	)
 
@@ -825,7 +826,7 @@ func TestAddressBookPrune(t *testing.T) {
 	}
 	testutil.CleanupCloser(t, kad)
 
-	nonConnPeer, err := bzz.NewAddress(signer, nonConnectableAddress, swarm.RandAddressAt(t, base, 1), 0, nil)
+	nonConnPeer, err := bzz.NewAddress(signer, []ma.Multiaddr{nonConnectableAddress}, swarm.RandAddressAt(t, base, 1), 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -836,11 +837,12 @@ func TestAddressBookPrune(t *testing.T) {
 	// add non connectable peer, check connection and failed connection counters
 	kad.AddPeers(nonConnPeer.Overlay)
 
-	kad.Trigger()
-	kad.Trigger()
+	for range 5 {
+		kad.Trigger()
+	}
 
 	waitCounter(t, &conns, 0)
-	waitCounter(t, &failedConns, 3)
+	waitCounter(t, &failedConns, 6)
 
 	_, err = ab.Get(nonConnPeer.Overlay)
 	if !errors.Is(err, addressbook.ErrNotFound) {
@@ -891,7 +893,7 @@ func TestAddressBookQuickPrune_FLAKY(t *testing.T) {
 	var (
 		conns, failedConns       int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, &failedConns, kademlia.Options{
-			TimeToRetry: ptrDuration(time.Millisecond),
+			TimeToRetry: new(time.Millisecond),
 		})
 	)
 	kad.SetStorageRadius(2)
@@ -903,7 +905,7 @@ func TestAddressBookQuickPrune_FLAKY(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 
-	nonConnPeer, err := bzz.NewAddress(signer, nonConnectableAddress, swarm.RandAddressAt(t, base, 1), 0, nil)
+	nonConnPeer, err := bzz.NewAddress(signer, []ma.Multiaddr{nonConnectableAddress}, swarm.RandAddressAt(t, base, 1), 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -921,6 +923,13 @@ func TestAddressBookQuickPrune_FLAKY(t *testing.T) {
 	kad.AddPeers(nonConnPeer.Overlay)
 	waitCounter(t, &conns, 0)
 	waitCounter(t, &failedConns, 1)
+
+	// we need to trigger connection attempts maxConnAttempts times
+	for range 3 {
+		time.Sleep(10 * time.Millisecond)
+		kad.Trigger()
+		waitCounter(t, &failedConns, 1)
+	}
 
 	_, err = ab.Get(nonConnPeer.Overlay)
 	if !errors.Is(err, addressbook.ErrNotFound) {
@@ -1237,7 +1246,7 @@ func TestStart(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			bzzAddr, err := bzz.NewAddress(signer, multiaddr, peer, 0, nil)
+			bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{multiaddr}, peer, 0, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1302,8 +1311,8 @@ func TestOutofDepthPrune(t *testing.T) {
 		}
 
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, &failedConns, kademlia.Options{
-			SaturationPeers:     ptrInt(saturationPeers),
-			OverSaturationPeers: ptrInt(overSaturationPeers),
+			SaturationPeers:     new(saturationPeers),
+			OverSaturationPeers: new(overSaturationPeers),
 			PruneFunc:           pruneFunc,
 			ExcludeFunc:         defaultExcludeFunc,
 			PruneWakeup:         &pruneWakeup,
@@ -1406,8 +1415,8 @@ func TestPruneExcludeOps(t *testing.T) {
 		}
 
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, &failedConns, kademlia.Options{
-			SaturationPeers:     ptrInt(saturationPeers),
-			OverSaturationPeers: ptrInt(overSaturationPeers),
+			SaturationPeers:     new(saturationPeers),
+			OverSaturationPeers: new(overSaturationPeers),
 			PruneFunc:           pruneFunc,
 		})
 	)
@@ -1510,10 +1519,10 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 		conns                 int32 // how many connect calls were made to the p2p mock
 		overSaturationPeers   = 1
 		_, kad, ab, _, signer = newTestKademliaWithAddr(t, base, &conns, nil, kademlia.Options{
-			BootnodeOverSaturationPeers: ptrInt(1),
-			OverSaturationPeers:         ptrInt(overSaturationPeers),
-			SaturationPeers:             ptrInt(1),
-			LowWaterMark:                ptrInt(0),
+			BootnodeOverSaturationPeers: new(1),
+			OverSaturationPeers:         new(overSaturationPeers),
+			SaturationPeers:             new(1),
+			LowWaterMark:                new(0),
 			BootnodeMode:                true,
 			StaticNodes:                 protected,
 			ExcludeFunc:                 defaultExcludeFunc,
@@ -1676,8 +1685,8 @@ func TestAnnounceNeighborhoodToNeighbor(t *testing.T) {
 		)
 		base, kad, ab, _, signer = newTestKademliaWithDiscovery(t, disc, &conns, nil, kademlia.Options{
 			ExcludeFunc:         defaultExcludeFunc,
-			OverSaturationPeers: ptrInt(4),
-			SaturationPeers:     ptrInt(4),
+			OverSaturationPeers: new(4),
+			SaturationPeers:     new(4),
 		})
 	)
 
@@ -2026,11 +2035,14 @@ func p2pMock(t *testing.T, ab addressbook.Interface, signer beeCrypto.Signer, co
 	t.Helper()
 
 	p2ps := p2pmock.New(
-		p2pmock.WithConnectFunc(func(ctx context.Context, addr ma.Multiaddr) (*bzz.Address, error) {
-			if addr.Equal(nonConnectableAddress) {
-				_ = atomic.AddInt32(failedCounter, 1)
-				return nil, errors.New("non reachable node")
+		p2pmock.WithConnectFunc(func(ctx context.Context, addrs []ma.Multiaddr) (*bzz.Address, error) {
+			for _, addr := range addrs {
+				if addr.Equal(nonConnectableAddress) {
+					_ = atomic.AddInt32(failedCounter, 1)
+					return nil, errors.New("non reachable node")
+				}
 			}
+
 			if counter != nil {
 				_ = atomic.AddInt32(counter, 1)
 			}
@@ -2041,13 +2053,13 @@ func p2pMock(t *testing.T, ab addressbook.Interface, signer beeCrypto.Signer, co
 			}
 
 			for _, a := range addresses {
-				if a.Underlay.Equal(addr) {
+				if bzz.AreUnderlaysEqual(a.Underlays, addrs) {
 					return &a, nil
 				}
 			}
 
 			address := swarm.RandAddress(t)
-			bzzAddr, err := bzz.NewAddress(signer, addr, address, 0, nil)
+			bzzAddr, err := bzz.NewAddress(signer, addrs, address, 0, nil)
 			if err != nil {
 				return nil, err
 			}
@@ -2077,12 +2089,8 @@ const underlayBase = "/ip4/127.0.0.1/tcp/1634/dns/"
 
 func connectOne(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addressbook.Putter, peer swarm.Address, expErr error) {
 	t.Helper()
-	multiaddr, err := ma.NewMultiaddr(underlayBase + peer.String())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	bzzAddr, err := bzz.NewAddress(signer, multiaddr, peer, 0, nil)
+	underlays := generateMultipleUnderlays(t, 3, underlayBase+peer.String())
+	bzzAddr, err := bzz.NewAddress(signer, underlays, peer, 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2102,7 +2110,7 @@ func addOne(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addressbo
 	if err != nil {
 		t.Fatal(err)
 	}
-	bzzAddr, err := bzz.NewAddress(signer, multiaddr, peer, 0, nil)
+	bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{multiaddr}, peer, 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2224,10 +2232,85 @@ func waitBalanced(t *testing.T, k *kademlia.Kad, bin uint8) {
 	}
 }
 
-func ptrInt(v int) *int {
-	return &v
+func generateMultipleUnderlays(t *testing.T, n int, baseUnderlay string) []ma.Multiaddr {
+	t.Helper()
+	underlays := make([]ma.Multiaddr, n)
+
+	for i := range n {
+		multiaddr, err := ma.NewMultiaddr(baseUnderlay + strconv.Itoa(i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		underlays[i] = multiaddr
+	}
+	return underlays
 }
 
-func ptrDuration(v time.Duration) *time.Duration {
-	return &v
+// TestAddPeersSkipsSelf verifies that AddPeers does not add self address
+// to the known peers list, preventing self-connection attempts.
+func TestAddPeersSkipsSelf(t *testing.T) {
+	t.Parallel()
+
+	var (
+		conns                    int32
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
+			ExcludeFunc: defaultExcludeFunc,
+		})
+	)
+
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	testutil.CleanupCloser(t, kad)
+
+	// Add some regular peers first
+	peer1 := swarm.RandAddressAt(t, base, 1)
+	peer2 := swarm.RandAddressAt(t, base, 2)
+
+	addOne(t, signer, kad, ab, peer1)
+	addOne(t, signer, kad, ab, peer2)
+
+	waitCounter(t, &conns, 2)
+
+	// Now try to add self address along with another peer
+	peer3 := swarm.RandAddressAt(t, base, 3)
+
+	// Prepare address for peer3
+	multiaddr, err := ma.NewMultiaddr(underlayBase + peer3.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{multiaddr}, peer3, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ab.Put(peer3, *bzzAddr); err != nil {
+		t.Fatal(err)
+	}
+
+	// Try to add self (base) and peer3 together
+	kad.AddPeers(base, peer3)
+
+	// Only peer3 should result in a connection attempt, not base
+	waitCounter(t, &conns, 1)
+
+	// Verify we have exactly 3 connected peers (peer1, peer2, peer3), not 4
+	waitPeers(t, kad, 3)
+
+	// Verify base is not in the connected peers list
+	foundSelf := false
+	err = kad.EachConnectedPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+		if addr.Equal(base) {
+			foundSelf = true
+			return true, false, nil
+		}
+		return false, false, nil
+	}, topology.Select{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if foundSelf {
+		t.Fatal("self address should not be in connected peers")
+	}
 }

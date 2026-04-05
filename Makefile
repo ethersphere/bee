@@ -1,7 +1,7 @@
 GO ?= go
 GOBIN ?= $$($(GO) env GOPATH)/bin
 GOLANGCI_LINT ?= $(GOBIN)/golangci-lint
-GOLANGCI_LINT_VERSION ?= v2.5.0
+GOLANGCI_LINT_VERSION ?= v2.11.3
 GOGOPROTOBUF ?= protoc-gen-gogofaster
 GOGOPROTOBUF_VERSION ?= v1.3.1
 BEEKEEPER_INSTALL_DIR ?= $(GOBIN)
@@ -19,12 +19,10 @@ BEE_API_VERSION ?= "$(shell grep '^  version:' openapi/Swarm.yaml | awk '{print 
 VERSION ?= "$(shell git describe --tags --abbrev=0 | cut -c2-)"
 COMMIT_HASH ?= "$(shell git describe --long --dirty --always --match "" || true)"
 CLEAN_COMMIT ?= "$(shell git describe --long --always --match "" || true)"
-COMMIT_TIME ?= "$(shell git show -s --format=%ct $(CLEAN_COMMIT) || true)"
 BUILD_TAGS ?=
 LDFLAGS ?= -s -w \
 -X github.com/ethersphere/bee/v2.version="$(VERSION)" \
 -X github.com/ethersphere/bee/v2.commitHash="$(COMMIT_HASH)" \
--X github.com/ethersphere/bee/v2.commitTime="$(COMMIT_TIME)" \
 -X github.com/ethersphere/bee/v2/pkg/api.Version="$(BEE_API_VERSION)" \
 -X github.com/ethersphere/bee/v2/pkg/p2p/libp2p.reachabilityOverridePublic="$(REACHABILITY_OVERRIDE_PUBLIC)" \
 -X github.com/ethersphere/bee/v2/pkg/postage/listener.batchFactorOverridePublic="$(BATCHFACTOR_OVERRIDE_PUBLIC)"
@@ -159,7 +157,7 @@ docker-build:
 
 .PHONY: githooks
 githooks:
-	ln -f -s ../../.githooks/pre-push.bash .git/hooks/pre-push
+	ln -f -s ../../.githooks/pre-push .git/hooks/pre-push
 
 .PHONY: protobuftools
 protobuftools:
