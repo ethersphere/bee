@@ -322,14 +322,20 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 
 	chunksToPut := make([]swarm.Chunk, 0, ctr)
 
+	// chunkErr accumulates validation failures (stamp, solicitation, structural).
+	// A non-nil chunkErr zeros topmost, preventing interval advancement past
+	// BinIDs whose chunks were never stored.
+	// overwriteErr accumulates ErrOverwriteNewerChunk: the chunk is already
+	// present in the reserve, so advancing the interval past it is correct.
+	// Both are joined on return so callers can inspect individual errors via errors.Is.
 	var (
-		chunkErr           error
-		hasValidationError bool // true when a chunk was not stored due to a validation failure
+		chunkErr    error
+		overwriteErr error
 	)
 	for ; ctr > 0; ctr-- {
 		var delivery pb.Delivery
 		if err = r.ReadMsgWithContext(ctx, &delivery); err != nil {
-			return 0, 0, errors.Join(chunkErr, fmt.Errorf("read delivery: %w", err))
+			return 0, 0, errors.Join(chunkErr, overwriteErr, fmt.Errorf("read delivery: %w", err))
 		}
 
 		addr := swarm.NewAddress(delivery.Address)
@@ -344,13 +350,11 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		stamp := new(postage.Stamp)
 		if err = stamp.UnmarshalBinary(delivery.Stamp); err != nil {
 			chunkErr = errors.Join(chunkErr, err)
-			hasValidationError = true
 			continue
 		}
 		stampHash, err := stamp.Hash()
 		if err != nil {
 			chunkErr = errors.Join(chunkErr, err)
-			hasValidationError = true
 			continue
 		}
 
@@ -358,7 +362,6 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		if _, ok := wantChunks[wantChunkID]; !ok {
 			s.logger.Debug("want chunks", "error", ErrUnsolicitedChunk, "peer_address", peer, "chunk_address", addr)
 			chunkErr = errors.Join(chunkErr, ErrUnsolicitedChunk)
-			hasValidationError = true
 			continue
 		}
 
@@ -368,7 +371,6 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		if err != nil {
 			s.logger.Debug("unverified stamp", "error", err, "peer_address", peer, "chunk_address", newChunk)
 			chunkErr = errors.Join(chunkErr, err)
-			hasValidationError = true
 			continue
 		}
 
@@ -378,7 +380,6 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 			addr, err := chunk.Address()
 			if err != nil {
 				chunkErr = errors.Join(chunkErr, err)
-				hasValidationError = true
 				continue
 			}
 			s.logger.Debug("sync gsoc", "peer_address", peer, "chunk_address", addr, "wrapped_chunk_address", chunk.WrappedChunk().Address())
@@ -386,7 +387,6 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		} else {
 			s.logger.Debug("invalid cac/soc chunk", "error", swarm.ErrInvalidChunk, "peer_address", peer, "chunk", chunk)
 			chunkErr = errors.Join(chunkErr, swarm.ErrInvalidChunk)
-			hasValidationError = true
 			s.metrics.ReceivedInvalidChunk.Inc()
 			continue
 		}
@@ -401,32 +401,22 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 
 		for _, c := range chunksToPut {
 			if err := s.store.ReservePutter().Put(ctx, c); err != nil {
-				// in case of these errors, no new items are added to the storage, so it
-				// is safe to continue with the next chunk
 				if errors.Is(err, storage.ErrOverwriteNewerChunk) {
 					s.logger.Debug("overwrite newer chunk", "error", err, "peer_address", peer, "chunk", c)
-					chunkErr = errors.Join(chunkErr, err)
-					// ErrOverwriteNewerChunk is not a validation failure: the chunk is
-					// already present in the reserve with a newer stamp. It is safe to
-					// advance the interval past it.
+					overwriteErr = errors.Join(overwriteErr, err)
 					continue
 				}
-				return 0, 0, errors.Join(chunkErr, err)
+				return 0, 0, errors.Join(chunkErr, overwriteErr, err)
 			}
 			chunksPut++
 		}
 	}
 
-	// Zero topmost when any chunk failed validation (stamp, solicitation,
-	// or structural check). This prevents the caller from advancing its
-	// interval past BinIDs whose chunks were never stored.
-	// ErrOverwriteNewerChunk does not zero topmost: the chunk is already
-	// present in the reserve with a newer stamp, so advancement is safe.
-	if hasValidationError {
+	if chunkErr != nil {
 		topmost = 0
 	}
 
-	return topmost, chunksPut, chunkErr
+	return topmost, chunksPut, errors.Join(chunkErr, overwriteErr)
 }
 
 // makeOffer tries to assemble an offer for a given requested interval.
