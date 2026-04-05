@@ -56,12 +56,11 @@ type Interface interface {
 	// Sync syncs a batch of chunks starting at a start BinID.
 	// It returns the topmost BinID safe for interval advancement and the total
 	// number of chunks successfully stored.
-	// topmost equals offer.Topmost (capped at the downstream peer's historical
-	// cursor) when all delivered chunks passed validation. topmost is 0 when
-	// any chunk failed validation (invalid stamp, unsolicited, or structural
-	// error), so callers that use topmost to advance their interval will not
-	// skip unverified BinIDs. ErrOverwriteNewerChunk does not zero topmost
-	// because the chunk is already present in the reserve.
+	// topmost equals offer.Topmost capped at the downstream peer's historical
+	// cursor (see collectAddrs). Per-chunk errors (invalid stamp, unsolicited
+	// chunk, unknown batch, invalid structure) are logged and skipped; they do
+	// not affect topmost or the return error. err is non-nil only for
+	// stream-level failures that abort the entire sync.
 	Sync(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (topmost uint64, count int, err error)
 	// GetCursors retrieves all cursors from a downstream peer.
 	GetCursors(ctx context.Context, peer swarm.Address) ([]uint64, uint64, error)
@@ -228,10 +227,10 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 
 // Sync syncs a batch of chunks starting at a start BinID.
 // topmost equals offer.Topmost capped at the downstream peer's historical
-// cursor (see collectAddrs). topmost is 0 when any delivered chunk failed
-// validation (invalid stamp, unsolicited, or structural error), preventing
-// the caller from silently skipping unverified BinIDs.
-// ErrOverwriteNewerChunk does not zero topmost: the chunk is already present.
+// cursor (see collectAddrs). Per-chunk errors (invalid stamp, unsolicited
+// chunk, unknown batch, invalid structure) are logged and skipped; they do
+// not affect topmost or the return error. err is non-nil only for
+// stream-level failures that abort the entire sync.
 // count is the number of chunks successfully written to the reserve.
 func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (topmost uint64, count int, err error) {
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
@@ -317,20 +316,10 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 
 	chunksToPut := make([]swarm.Chunk, 0, ctr)
 
-	// chunkErr accumulates validation failures (stamp, solicitation, structural).
-	// A non-nil chunkErr zeros topmost, preventing interval advancement past
-	// BinIDs whose chunks were never stored.
-	// overwriteErr accumulates ErrOverwriteNewerChunk: the chunk is already
-	// present in the reserve, so advancing the interval past it is correct.
-	// Both are joined on return so callers can inspect individual errors via errors.Is.
-	var (
-		chunkErr     error
-		overwriteErr error
-	)
 	for ; ctr > 0; ctr-- {
 		var delivery pb.Delivery
 		if err = r.ReadMsgWithContext(ctx, &delivery); err != nil {
-			return 0, 0, errors.Join(chunkErr, overwriteErr, fmt.Errorf("read delivery: %w", err))
+			return 0, 0, fmt.Errorf("read delivery: %w", err)
 		}
 
 		addr := swarm.NewAddress(delivery.Address)
@@ -344,19 +333,18 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 
 		stamp := new(postage.Stamp)
 		if err = stamp.UnmarshalBinary(delivery.Stamp); err != nil {
-			chunkErr = errors.Join(chunkErr, err)
+			s.logger.Debug("invalid stamp", "error", err, "peer_address", peer, "chunk_address", addr)
 			continue
 		}
 		stampHash, err := stamp.Hash()
 		if err != nil {
-			chunkErr = errors.Join(chunkErr, err)
+			s.logger.Debug("invalid stamp hash", "error", err, "peer_address", peer, "chunk_address", addr)
 			continue
 		}
 
 		wantChunkID := addr.ByteString() + string(stamp.BatchID()) + string(stampHash)
 		if _, ok := wantChunks[wantChunkID]; !ok {
 			s.logger.Debug("want chunks", "error", ErrUnsolicitedChunk, "peer_address", peer, "chunk_address", addr)
-			chunkErr = errors.Join(chunkErr, ErrUnsolicitedChunk)
 			continue
 		}
 
@@ -365,7 +353,6 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		chunk, err := s.validStamp(newChunk.WithStamp(stamp))
 		if err != nil {
 			s.logger.Debug("unverified stamp", "error", err, "peer_address", peer, "chunk_address", newChunk)
-			chunkErr = errors.Join(chunkErr, err)
 			continue
 		}
 
@@ -374,14 +361,13 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		} else if chunk, err := soc.FromChunk(chunk); err == nil {
 			addr, err := chunk.Address()
 			if err != nil {
-				chunkErr = errors.Join(chunkErr, err)
+				s.logger.Debug("invalid soc address", "error", err, "peer_address", peer)
 				continue
 			}
 			s.logger.Debug("sync gsoc", "peer_address", peer, "chunk_address", addr, "wrapped_chunk_address", chunk.WrappedChunk().Address())
 			s.gsocHandler(chunk)
 		} else {
 			s.logger.Debug("invalid cac/soc chunk", "error", swarm.ErrInvalidChunk, "peer_address", peer, "chunk", chunk)
-			chunkErr = errors.Join(chunkErr, swarm.ErrInvalidChunk)
 			s.metrics.ReceivedInvalidChunk.Inc()
 			continue
 		}
@@ -398,20 +384,15 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 			if err := s.store.ReservePutter().Put(ctx, c); err != nil {
 				if errors.Is(err, storage.ErrOverwriteNewerChunk) {
 					s.logger.Debug("overwrite newer chunk", "error", err, "peer_address", peer, "chunk", c)
-					overwriteErr = errors.Join(overwriteErr, err)
 					continue
 				}
-				return 0, 0, errors.Join(chunkErr, overwriteErr, err)
+				return 0, 0, err
 			}
 			chunksPut++
 		}
 	}
 
-	if chunkErr != nil {
-		topmost = 0
-	}
-
-	return topmost, chunksPut, errors.Join(chunkErr, overwriteErr)
+	return topmost, chunksPut, nil
 }
 
 // makeOffer tries to assemble an offer for a given requested interval.

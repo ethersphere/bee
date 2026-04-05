@@ -196,20 +196,16 @@ func TestIncoming_WantErrors(t *testing.T) {
 		)
 
 		topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
-		for _, e := range []error{storage.ErrOverwriteNewerChunk, validStampErr, swarm.ErrInvalidChunk} {
-			if !errors.Is(err, e) {
-				t.Fatalf("expected error %v", err)
-			}
+		if err != nil {
+			t.Fatal(err)
 		}
 
 		if count != 3 {
 			t.Fatalf("got %d chunks but want %d", count, 3)
 		}
 
-		// topmost must be 0: validation errors (validStampErr, ErrInvalidChunk) zero
-		// topmost so the caller cannot advance its interval past unverified BinIDs.
-		if topmost != 0 {
-			t.Fatalf("got topmost %d but want 0 (validation errors must zero topmost)", topmost)
+		if topmost != topMost {
+			t.Fatalf("got offer topmost %d but want %d", topmost, topMost)
 		}
 
 		haveChunks(t, clientDb, append(tChunks[:1], tChunks[3:5]...)...)
@@ -233,8 +229,8 @@ func TestIncoming_UnsolicitedChunk(t *testing.T) {
 		)
 
 		_, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
-		if !errors.Is(err, pullsync.ErrUnsolicitedChunk) {
-			t.Fatalf("expected err %v but got %v", pullsync.ErrUnsolicitedChunk, err)
+		if err != nil {
+			t.Fatal(err)
 		}
 	})
 }
@@ -309,51 +305,6 @@ func TestGetCursorsError(t *testing.T) {
 		}
 		if !errors.Is(err, io.EOF) {
 			t.Fatalf("expect error '%v' but got '%v'", e, err)
-		}
-	})
-}
-
-func TestSync_StampFailure_TopmostIsZero(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		tChunks := testingc.GenerateTestRandomChunks(3)
-
-		tResults := make([]*storer.BinC, len(tChunks))
-		for i, c := range tChunks {
-			stampHash, err := c.Stamp().Hash()
-			if err != nil {
-				t.Fatal(err)
-			}
-			tResults[i] = &storer.BinC{
-				Address:   c.Address(),
-				BatchID:   c.Stamp().BatchID(),
-				BinID:     uint64(i + 1),
-				StampHash: stampHash,
-			}
-		}
-
-		stampErr := errors.New("stamp validation error")
-		validStamp := func(c swarm.Chunk) (swarm.Chunk, error) {
-			return nil, stampErr
-		}
-
-		cursor := uint64(len(tChunks)) // max BinID equals number of chunks
-
-		var (
-			ps, _       = newPullSync(t, nil, 10, mock.WithSubscribeResp(tResults, nil), mock.WithChunks(tChunks...), mock.WithCursors([]uint64{cursor}, 0))
-			recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
-			psClient, _ = newPullSyncWithStamperValidator(t, recorder, 0, validStamp)
-		)
-
-		topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
-		if !errors.Is(err, stampErr) {
-			t.Fatalf("expected stamp error but got %v", err)
-		}
-		// topmost must be 0: stamp validation failure must prevent interval advancement
-		if topmost != 0 {
-			t.Fatalf("expected topmost=0 on stamp failure but got %d", topmost)
-		}
-		if count != 0 {
-			t.Fatalf("expected count=0 on stamp failure but got %d", count)
 		}
 	})
 }
@@ -482,47 +433,6 @@ func TestSync_MidOfferGapCapsAtContiguousTopmost(t *testing.T) {
 			t.Fatalf("count: got %d, want 3 (all chunks delivered eagerly)", count)
 		}
 		haveChunks(t, db, ch1, ch2, ch3)
-	})
-}
-
-// TestSync_OverwriteNewerChunkDoesNotBlockInterval verifies that
-// ErrOverwriteNewerChunk does not prevent interval advancement.
-// The chunk is already present in the reserve with a newer stamp, so it is
-// safe to advance past it even though the put returned an error.
-func TestSync_OverwriteNewerChunkDoesNotBlockInterval(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		tChunk := testingc.GenerateTestRandomChunk()
-		stampHash, err := tChunk.Stamp().Hash()
-		if err != nil {
-			t.Fatal(err)
-		}
-		tResult := []*storer.BinC{{
-			Address:   tChunk.Address(),
-			BatchID:   tChunk.Stamp().BatchID(),
-			BinID:     1,
-			StampHash: stampHash,
-		}}
-
-		putHook := func(swarm.Chunk) error { return storage.ErrOverwriteNewerChunk }
-
-		var (
-			ps, _       = newPullSync(t, nil, 5, mock.WithSubscribeResp(tResult, nil), mock.WithChunks(tChunk), mock.WithCursors([]uint64{1}, 0))
-			recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
-			psClient, _ = newPullSyncWithStamperValidator(t, recorder, 0, func(c swarm.Chunk) (swarm.Chunk, error) { return c, nil }, mock.WithPutHook(putHook))
-		)
-
-		topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 1)
-		if !errors.Is(err, storage.ErrOverwriteNewerChunk) {
-			t.Fatalf("expected ErrOverwriteNewerChunk but got %v", err)
-		}
-		// ErrOverwriteNewerChunk must not zero topmost: the chunk is already in
-		// the reserve with a newer stamp, so interval advancement is safe.
-		if topmost != 1 {
-			t.Fatalf("topmost: got %d, want 1 (ErrOverwriteNewerChunk must not block interval)", topmost)
-		}
-		if count != 0 {
-			t.Fatalf("count: got %d, want 0 (chunk not stored due to overwrite)", count)
-		}
 	})
 }
 

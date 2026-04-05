@@ -360,8 +360,6 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 				p.metrics.SyncedCounter.WithLabelValues("live").Add(float64(count))
 			}
 
-			// top is 0 on validation error (see pullsync.Sync), so this check
-			// prevents interval advancement when chunks were not successfully stored.
 			if top >= start {
 				if err := p.addPeerInterval(address, bin, start, top); err != nil {
 					p.metrics.SyncWorkerErrCounter.Inc()
