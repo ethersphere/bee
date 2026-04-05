@@ -359,9 +359,9 @@ func TestSync_StampFailure_TopmostIsZero(t *testing.T) {
 }
 
 // TestSync_LiveChunkTopCappedAtCursor verifies that a live chunk with a BinID
-// far beyond the server's historical cursor does not inflate offer.Topmost.
-// Without the server-side cap, the client would advance its interval to the
-// live chunk's BinID, permanently skipping the historical range in between.
+// far beyond the downstream peer's historical cursor does not inflate offer.Topmost.
+// Without the cap, the upstream peer would advance its interval to the live
+// chunk's BinID, permanently skipping the historical range in between.
 func TestSync_LiveChunkTopCappedAtCursor(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		liveChunk := testingc.GenerateTestRandomChunk()
@@ -371,7 +371,7 @@ func TestSync_LiveChunkTopCappedAtCursor(t *testing.T) {
 		}
 
 		// The subscribe response contains only the live chunk at a high BinID.
-		// The server's historical cursor is set much lower.
+		// The downstream peer's historical cursor is set much lower.
 		const liveBinID = uint64(100)
 		const historicalCursor = uint64(10)
 		liveResult := []*storer.BinC{{
@@ -440,12 +440,12 @@ func TestSync_HistoricalGapReturnsEmptyOfferAtBoundary(t *testing.T) {
 	})
 }
 
-// TestSync_MidOfferGapCapsTopmostAtContiguousFrontier verifies that when the
+// TestSync_MidOfferGapCapsAtContiguousTopmost verifies that when the
 // server's offer contains an internal gap (chunks at BinIDs {3,7,11} with
-// start=3), Topmost is capped at the contiguous frontier (3) so the client's
+// start=3), Topmost is capped at the contiguous Topmost (3) so the client's
 // interval does not advance past the gap. All chunks are still included in
 // the offer for eager storage — no chunk data is retransmitted on later rounds.
-func TestSync_MidOfferGapCapsTopmostAtContiguousFrontier(t *testing.T) {
+func TestSync_MidOfferGapCapsAtContiguousTopmost(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ch1 := testingc.GenerateTestRandomChunk()
 		ch2 := testingc.GenerateTestRandomChunk()
@@ -464,18 +464,18 @@ func TestSync_MidOfferGapCapsTopmostAtContiguousFrontier(t *testing.T) {
 		const cursor = uint64(11)
 
 		var (
-			ps, _         = newPullSync(t, nil, 10, mock.WithSubscribeResp(results, nil), mock.WithChunks(ch1, ch2, ch3), mock.WithCursors([]uint64{cursor}, 0))
-			recorder      = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
-			psClient, db  = newPullSync(t, recorder, 0)
+			ps, _        = newPullSync(t, nil, 10, mock.WithSubscribeResp(results, nil), mock.WithChunks(ch1, ch2, ch3), mock.WithCursors([]uint64{cursor}, 0))
+			recorder     = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+			psClient, db = newPullSync(t, recorder, 0)
 		)
 
 		topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 3)
 		if err != nil {
 			t.Fatal(err)
 		}
-		// Topmost must be the contiguous frontier (3), not the max BinID (11).
+		// Topmost must be the contiguous Topmost (3), not the max BinID (11).
 		if topmost != 3 {
-			t.Fatalf("topmost: got %d, want 3 (contiguous frontier)", topmost)
+			t.Fatalf("topmost: got %d, want 3 (contiguous Topmost)", topmost)
 		}
 		// All three chunks must be delivered and stored in this single round trip.
 		if count != 3 {
@@ -527,7 +527,7 @@ func TestSync_OverwriteNewerChunkDoesNotBlockInterval(t *testing.T) {
 }
 
 // TestSync_Start0_SkipsGapDetection confirms that when start=0 the leading-gap
-// check and the contiguous-frontier cap are both skipped (both are guarded by
+// check and the contiguous-Topmost cap are both skipped (both are guarded by
 // start > 0). Even though the server's first chunk is at BinID=5, the offer is
 // non-empty and topmost equals the historical cursor.
 func TestSync_Start0_SkipsGapDetection(t *testing.T) {

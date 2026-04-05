@@ -56,12 +56,12 @@ type Interface interface {
 	// Sync syncs a batch of chunks starting at a start BinID.
 	// It returns the topmost BinID safe for interval advancement and the total
 	// number of chunks successfully stored.
-	// topmost equals offer.Topmost (capped at the server's historical cursor)
-	// when all delivered chunks passed validation. topmost is 0 when any chunk
-	// failed validation (invalid stamp, unsolicited, or structural error), so
-	// callers that use topmost to advance their interval will not skip
-	// unverified BinIDs. ErrOverwriteNewerChunk does not zero topmost because
-	// the chunk is already present in the reserve.
+	// topmost equals offer.Topmost (capped at the downstream peer's historical
+	// cursor) when all delivered chunks passed validation. topmost is 0 when
+	// any chunk failed validation (invalid stamp, unsolicited, or structural
+	// error), so callers that use topmost to advance their interval will not
+	// skip unverified BinIDs. ErrOverwriteNewerChunk does not zero topmost
+	// because the chunk is already present in the reserve.
 	Sync(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (topmost uint64, count int, err error)
 	// GetCursors retrieves all cursors from a downstream peer.
 	GetCursors(ctx context.Context, peer swarm.Address) ([]uint64, uint64, error)
@@ -227,10 +227,10 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 }
 
 // Sync syncs a batch of chunks starting at a start BinID.
-// topmost equals offer.Topmost capped at the server's historical cursor
-// (see collectAddrs). topmost is 0 when any delivered chunk failed validation
-// (invalid stamp, unsolicited, or structural error), preventing the caller
-// from silently skipping unverified BinIDs.
+// topmost equals offer.Topmost capped at the downstream peer's historical
+// cursor (see collectAddrs). topmost is 0 when any delivered chunk failed
+// validation (invalid stamp, unsolicited, or structural error), preventing
+// the caller from silently skipping unverified BinIDs.
 // ErrOverwriteNewerChunk does not zero topmost: the chunk is already present.
 // count is the number of chunks successfully written to the reserve.
 func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (topmost uint64, count int, err error) {
@@ -259,7 +259,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 	}
 
 	// empty interval: no chunks in range.
-	// return the peer's watermark so the caller can advance the interval.
+	// return offer.Topmost so the caller can advance the interval.
 	if len(offer.Chunks) == 0 {
 		return offer.Topmost, 0, nil
 	}
@@ -324,7 +324,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 	// present in the reserve, so advancing the interval past it is correct.
 	// Both are joined on return so callers can inspect individual errors via errors.Is.
 	var (
-		chunkErr    error
+		chunkErr     error
 		overwriteErr error
 	)
 	for ; ctr > 0; ctr-- {
@@ -441,10 +441,10 @@ type collectAddrsResult struct {
 // after which the function returns the collected slice of chunks.
 func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*storer.BinC, uint64, error) {
 	v, _, err := s.intervalsSF.Do(ctx, sfKey(bin, start), func(ctx context.Context) (*collectAddrsResult, error) {
-		// Snapshot the server's historical cursor for this bin before subscribing.
-		// Any chunk with BinID beyond this cursor arrived live after the snapshot;
-		// capping topmost at the cursor prevents live chunks from inflating the
-		// interval the client records for this peer.
+		// Snapshot the downstream peer's historical cursor for this bin before
+		// subscribing. Any chunk with BinID beyond this cursor arrived live after
+		// the snapshot; capping topmost at the cursor prevents live chunks from
+		// inflating the interval the upstream peer records for this peer.
 		cursors, _, err := s.store.ReserveLastBinIDs()
 		if err != nil {
 			return nil, fmt.Errorf("reserve last bin IDs: %w", err)
@@ -456,14 +456,14 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 		// If bin is beyond the cursors slice (should not happen with a
 		// well-behaved storer that always returns swarm.MaxBins entries),
 		// historicalCursor stays 0. The cursor cap below then sets
-		// topmost=0 for any non-empty offer, so the client never advances
-		// its interval — a safe stall until the storer is consistent again.
+		// topmost=0 for any non-empty offer, so the upstream peer never
+		// advances its interval — a safe stall until the storer is consistent again.
 
 		var (
-			chs          []*storer.BinC
-			topmost      uint64
-			timer        *time.Timer
-			timerC       <-chan time.Time
+			chs           []*storer.BinC
+			topmost       uint64
+			timer         *time.Timer
+			timerC        <-chan time.Time
 			contiguousEnd uint64 // highest BinID contiguous from start; only meaningful when start > 0
 		)
 		if start > 0 {
@@ -487,20 +487,20 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 					break LOOP // The stream has been closed.
 				}
 
-				// If the first chunk the server offers has a BinID beyond start
-				// and within the historical range, the server has no chunks at
+				// If the first chunk the downstream peer offers has a BinID beyond
+				// start and within the historical range, it has no chunks at
 				// [start, c.BinID-1]. Return an empty offer with Topmost set to
-				// the gap boundary so the client advances its interval past only
-				// the BinIDs that genuinely do not exist on this server, then
-				// retries from c.BinID on the next round.
+				// the gap boundary so the upstream peer advances its interval past
+				// only the BinIDs that genuinely do not exist here, then retries
+				// from c.BinID on the next round.
 				if len(chs) == 0 && start > 0 && c.BinID > start && c.BinID <= historicalCursor {
 					topmost = c.BinID - 1
 					break LOOP
 				}
 
-				// Track the contiguous frontier: the highest BinID reachable
+				// Track the contiguous Topmost: the highest BinID reachable
 				// from start without a gap. Used after the loop to cap Topmost
-				// so the client's interval does not advance past missing BinIDs.
+				// so the upstream peer's interval does not advance past missing BinIDs.
 				if c.BinID == contiguousEnd+1 {
 					contiguousEnd = c.BinID
 				}
@@ -531,18 +531,18 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 		}
 
 		// Cap topmost at the historical cursor. Live chunks (BinID > historicalCursor)
-		// are included in the offer so the client can store them, but Topmost must
-		// not advance the client's interval past the server's historical frontier.
+		// are included in the offer so the upstream peer can store them, but Topmost
+		// must not advance the upstream peer's interval past the historical cursor.
 		if topmost > historicalCursor {
 			topmost = historicalCursor
 		}
 
-		// Cap topmost at the contiguous frontier. All collected chunks are
-		// included in the offer for eager client-side storage, but Topmost is
-		// bounded to the highest BinID reachable from start without a gap.
-		// The client stores every chunk in one round trip; subsequent round
-		// trips advance the interval bookkeeping via leading-gap empty offers
-		// and empty Want bitvectors — no chunk data is retransmitted.
+		// Cap topmost at the contiguous Topmost. All collected chunks are
+		// included in the offer for eager storage by the upstream peer, but
+		// Topmost is bounded to the highest BinID reachable from start without
+		// a gap. The upstream peer stores every chunk in one round trip;
+		// subsequent round trips advance interval bookkeeping via leading-gap
+		// empty offers and empty Want bitvectors — no chunk data is retransmitted.
 		// The start > 0 guard matches the leading-gap check above: BinIDs
 		// start at 1 in production and the puller always passes start >= 1.
 		// For start=0 (used only in test helpers) contiguousEnd is ambiguous —
