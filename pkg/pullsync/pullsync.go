@@ -484,6 +484,17 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 					break LOOP // The stream has been closed.
 				}
 
+				// If the first chunk the server offers has a BinID beyond start
+				// and within the historical range, the server has no chunks at
+				// [start, c.BinID-1]. Return an empty offer with Topmost set to
+				// the gap boundary so the client advances its interval past only
+				// the BinIDs that genuinely do not exist on this server, then
+				// retries from c.BinID on the next round.
+				if len(chs) == 0 && start > 0 && c.BinID > start && c.BinID <= historicalCursor {
+					topmost = c.BinID - 1
+					break LOOP
+				}
+
 				chs = append(chs, &storer.BinC{Address: c.Address, BatchID: c.BatchID, StampHash: c.StampHash})
 				if c.BinID > topmost {
 					topmost = c.BinID

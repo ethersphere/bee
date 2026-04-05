@@ -397,6 +397,49 @@ func TestSync_LiveChunkTopCappedAtCursor(t *testing.T) {
 	})
 }
 
+// TestSync_HistoricalGapReturnsEmptyOfferAtBoundary verifies that when the
+// server's first available chunk has a BinID beyond the requested start, the
+// server returns an empty offer with Topmost set to firstBinID-1. This lets
+// the client advance its interval to the gap boundary without silently marking
+// BinIDs that may exist on other peers as synced.
+func TestSync_HistoricalGapReturnsEmptyOfferAtBoundary(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		chunk := testingc.GenerateTestRandomChunk()
+		stampHash, err := chunk.Stamp().Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Server holds one chunk at BinID 5; start=2 creates a gap at [2,4].
+		const firstBinID = uint64(5)
+		const cursor = uint64(5)
+		result := []*storer.BinC{{
+			Address:   chunk.Address(),
+			BatchID:   chunk.Stamp().BatchID(),
+			BinID:     firstBinID,
+			StampHash: stampHash,
+		}}
+
+		var (
+			ps, _       = newPullSync(t, nil, 10, mock.WithSubscribeResp(result, nil), mock.WithChunks(chunk), mock.WithCursors([]uint64{cursor}, 0))
+			recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+			psClient, _ = newPullSync(t, recorder, 0)
+		)
+
+		topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Empty offer: gap boundary is firstBinID-1.
+		if topmost != firstBinID-1 {
+			t.Fatalf("topmost: got %d, want %d (gap boundary)", topmost, firstBinID-1)
+		}
+		if count != 0 {
+			t.Fatalf("count: got %d, want 0 (no chunks in gap)", count)
+		}
+	})
+}
+
 // TestSync_OverwriteNewerChunkDoesNotBlockInterval verifies that
 // ErrOverwriteNewerChunk does not prevent interval advancement.
 // The chunk is already present in the reserve with a newer stamp, so it is
