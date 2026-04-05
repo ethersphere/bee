@@ -26,7 +26,6 @@ import (
 	beecrypto "github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
-	m2 "github.com/ethersphere/bee/v2/pkg/metrics"
 	ocprom "github.com/ethersphere/bee/v2/pkg/metrics/exporter"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/blocklist"
@@ -201,7 +200,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	if err = ocprom.NewExporter(ocprom.ExporterOptions{
-		Namespace: m2.Namespace,
+		Namespace: m.Namespace,
 		Registry:  o.Registry,
 	}); err != nil {
 		return nil, err
