@@ -453,6 +453,11 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 		if int(bin) < len(cursors) {
 			historicalCursor = cursors[bin]
 		}
+		// If bin is beyond the cursors slice (should not happen with a
+		// well-behaved storer that always returns swarm.MaxBins entries),
+		// historicalCursor stays 0. The cursor cap below then sets
+		// topmost=0 for any non-empty offer, so the client never advances
+		// its interval — a safe stall until the storer is consistent again.
 
 		var (
 			chs          []*storer.BinC
@@ -538,6 +543,11 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 		// The client stores every chunk in one round trip; subsequent round
 		// trips advance the interval bookkeeping via leading-gap empty offers
 		// and empty Want bitvectors — no chunk data is retransmitted.
+		// The start > 0 guard matches the leading-gap check above: BinIDs
+		// start at 1 in production and the puller always passes start >= 1.
+		// For start=0 (used only in test helpers) contiguousEnd is ambiguous —
+		// uint64 underflow prevents the start-1 initialisation — so the cap
+		// is skipped and topmost is left at the historical cursor.
 		if start > 0 && len(chs) > 0 && contiguousEnd >= start && contiguousEnd < topmost {
 			topmost = contiguousEnd
 		}

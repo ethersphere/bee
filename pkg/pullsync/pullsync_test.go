@@ -526,6 +526,87 @@ func TestSync_OverwriteNewerChunkDoesNotBlockInterval(t *testing.T) {
 	})
 }
 
+// TestSync_Start0_SkipsGapDetection confirms that when start=0 the leading-gap
+// check and the contiguous-frontier cap are both skipped (both are guarded by
+// start > 0). Even though the server's first chunk is at BinID=5, the offer is
+// non-empty and topmost equals the historical cursor.
+func TestSync_Start0_SkipsGapDetection(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ch := testingc.GenerateTestRandomChunk()
+		stampHash, err := ch.Stamp().Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+		const binID = uint64(5)
+		result := []*storer.BinC{{
+			Address:   ch.Address(),
+			BatchID:   ch.Stamp().BatchID(),
+			BinID:     binID,
+			StampHash: stampHash,
+		}}
+
+		var (
+			ps, _       = newPullSync(t, nil, 10, mock.WithSubscribeResp(result, nil), mock.WithChunks(ch), mock.WithCursors([]uint64{binID}, 0))
+			recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+			psClient, _ = newPullSync(t, recorder, 0)
+		)
+
+		topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Neither gap check fires for start=0; topmost must equal the cursor.
+		if topmost != binID {
+			t.Fatalf("topmost: got %d, want %d (gap detection must be skipped for start=0)", topmost, binID)
+		}
+		if count != 1 {
+			t.Fatalf("count: got %d, want 1", count)
+		}
+	})
+}
+
+// TestSync_BinBeyondCursors_StallsInterval verifies the safe-stall behaviour
+// when bin is beyond the cursors slice returned by ReserveLastBinIDs.
+// historicalCursor defaults to 0, so the cursor cap sets topmost=0 for any
+// non-empty offer. The client stores the chunk but does not advance the
+// interval (top=0 < start=1 in the puller guard).
+func TestSync_BinBeyondCursors_StallsInterval(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ch := testingc.GenerateTestRandomChunk()
+		stampHash, err := ch.Stamp().Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+		result := []*storer.BinC{{
+			Address:   ch.Address(),
+			BatchID:   ch.Stamp().BatchID(),
+			BinID:     1,
+			StampHash: stampHash,
+		}}
+
+		// Cursors slice has only one entry (bin=0). Syncing bin=1 leaves
+		// historicalCursor=0, triggering the safe-stall path.
+		var (
+			ps, _       = newPullSync(t, nil, 10, mock.WithSubscribeResp(result, nil), mock.WithChunks(ch), mock.WithCursors([]uint64{10}, 0))
+			recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+			psClient, _ = newPullSync(t, recorder, 0)
+		)
+
+		topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 1, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// historicalCursor=0 for bin=1 → cursor cap fires → topmost=0.
+		if topmost != 0 {
+			t.Fatalf("topmost: got %d, want 0 (bin beyond cursors must stall interval)", topmost)
+		}
+		// The chunk is still stored; only interval advancement is suppressed.
+		if count != 1 {
+			t.Fatalf("count: got %d, want 1 (chunk must be stored despite topmost=0)", count)
+		}
+	})
+}
+
 func haveChunks(t *testing.T, s *mock.ReserveStore, chunks ...swarm.Chunk) {
 	t.Helper()
 	for _, c := range chunks {
