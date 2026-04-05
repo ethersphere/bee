@@ -3,18 +3,16 @@
 // license that can be found in the LICENSE file.
 
 //go:build !nometrics
-// +build !nometrics
 
 package metrics
 
 import (
-	"io"
-	"net/http"
-
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/expfmt"
+	"io"
+	"net/http"
 )
 
 func NewCounter(opts CounterOpts) Counter {
@@ -74,17 +72,4 @@ func HandlerFor(reg MetricsRegistererGatherer, opts HandlerOpts) http.Handler {
 
 func MustRegister(cs ...Collector) {
 	prometheus.MustRegister(cs...)
-}
-
-func PrometheusCollectorsFromFields(i any) (cs []prometheus.Collector) {
-	v := reflect.Indirect(reflect.ValueOf(i))
-	for _, field := range v.Fields() {
-		if !field.CanInterface() {
-			continue
-		}
-		if u, ok := field.Interface().(prometheus.Collector); ok {
-			cs = append(cs, u)
-		}
-	}
-	return cs
 }

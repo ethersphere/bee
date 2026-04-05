@@ -3,7 +3,6 @@
 // license that can be found in the LICENSE file.
 
 //go:build !nometrics
-// +build !nometrics
 
 package metrics_test
 

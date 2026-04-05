@@ -10,17 +10,13 @@ import (
 
 func PrometheusCollectorsFromFields(i any) (cs []Collector) {
 	v := reflect.Indirect(reflect.ValueOf(i))
-	for i := 0; i < v.NumField(); i++ {
-		if !v.Field(i).CanInterface() {
+	for _, field := range v.Fields() {
+		if !field.CanInterface() {
 			continue
 		}
-
-		u, ok := v.Field(i).Interface().(Collector)
-		if !ok {
-			continue
+		if u, ok := field.Interface().(Collector); ok {
+			cs = append(cs, u)
 		}
-		cs = append(cs, u)
-
 	}
 	return cs
 }

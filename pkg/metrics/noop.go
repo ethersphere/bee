@@ -1,5 +1,4 @@
 //go:build nometrics
-// +build nometrics
 
 // Copyright 2020 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
@@ -57,6 +56,8 @@ func NewGauge(_ GaugeOpts) Gauge {
 var _ GaugeMetricVector = (*gaugeVecNoop)(nil)
 
 type gaugeVecNoop struct{}
+
+func (g gaugeVecNoop) Reset() {}
 
 func (g gaugeVecNoop) WithLabelValues(lvs ...string) Gauge {
 	return NewGauge(GaugeOpts{})

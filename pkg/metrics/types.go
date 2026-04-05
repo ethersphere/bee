@@ -29,6 +29,7 @@ type (
 
 	GaugeMetricVector interface {
 		WithLabelValues(lvs ...string) Gauge
+		Reset()
 	}
 
 	HistogramMetricVector interface {

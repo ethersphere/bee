@@ -6,6 +6,7 @@ package backendnoop
 
 import (
 	"context"
+	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum"
@@ -13,7 +14,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/v2/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 var _ transaction.Backend = (*Backend)(nil)
@@ -31,7 +31,7 @@ func New(chainID int64) transaction.Backend {
 	}
 }
 
-func (b *Backend) Metrics() []prometheus.Collector {
+func (b *Backend) Metrics() []m.Collector {
 	return nil
 }
 

@@ -2,9 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build !nometrics
-// +build !nometrics
-
 package status_test
 
 import (
@@ -14,6 +11,7 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/api"
 	"github.com/ethersphere/bee/v2/pkg/log"
+	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/v2/pkg/postage"
@@ -22,7 +20,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/google/go-cmp/cmp"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 func TestStatus(t *testing.T) {
@@ -60,19 +57,19 @@ test_upload_count_total 12
 		},
 	}
 
-	metricsRegistry := prometheus.NewRegistry()
+	metricsRegistry := m.NewRegistry()
 
-	h := prometheus.NewHistogram(prometheus.HistogramOpts{
+	h := m.NewHistogram(m.HistogramOpts{
 		Namespace: "test",
 		Name:      "response_duration_seconds",
 		Help:      "Histogram of API response durations.",
 		Buckets:   []float64{0.01, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
-		ConstLabels: prometheus.Labels{
+		ConstLabels: m.Labels{
 			"test": "label",
 		},
 	})
 
-	g := prometheus.NewCounter(prometheus.CounterOpts{
+	g := m.NewCounter(m.CounterOpts{
 		Namespace: "test",
 		Help:      "This metric is just for test.",
 		Name:      "upload_count_total",
