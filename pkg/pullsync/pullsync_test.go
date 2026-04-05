@@ -440,6 +440,51 @@ func TestSync_HistoricalGapReturnsEmptyOfferAtBoundary(t *testing.T) {
 	})
 }
 
+// TestSync_MidOfferGapCapsTopmostAtContiguousFrontier verifies that when the
+// server's offer contains an internal gap (chunks at BinIDs {3,7,11} with
+// start=3), Topmost is capped at the contiguous frontier (3) so the client's
+// interval does not advance past the gap. All chunks are still included in
+// the offer for eager storage — no chunk data is retransmitted on later rounds.
+func TestSync_MidOfferGapCapsTopmostAtContiguousFrontier(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ch1 := testingc.GenerateTestRandomChunk()
+		ch2 := testingc.GenerateTestRandomChunk()
+		ch3 := testingc.GenerateTestRandomChunk()
+
+		makeResult := func(c swarm.Chunk, binID uint64) *storer.BinC {
+			h, err := c.Stamp().Hash()
+			if err != nil {
+				t.Fatal(err)
+			}
+			return &storer.BinC{Address: c.Address(), BatchID: c.Stamp().BatchID(), BinID: binID, StampHash: h}
+		}
+
+		// BinIDs: 3, 7, 11 — gaps at [4,6] and [8,10].
+		results := []*storer.BinC{makeResult(ch1, 3), makeResult(ch2, 7), makeResult(ch3, 11)}
+		const cursor = uint64(11)
+
+		var (
+			ps, _         = newPullSync(t, nil, 10, mock.WithSubscribeResp(results, nil), mock.WithChunks(ch1, ch2, ch3), mock.WithCursors([]uint64{cursor}, 0))
+			recorder      = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+			psClient, db  = newPullSync(t, recorder, 0)
+		)
+
+		topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 3)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Topmost must be the contiguous frontier (3), not the max BinID (11).
+		if topmost != 3 {
+			t.Fatalf("topmost: got %d, want 3 (contiguous frontier)", topmost)
+		}
+		// All three chunks must be delivered and stored in this single round trip.
+		if count != 3 {
+			t.Fatalf("count: got %d, want 3 (all chunks delivered eagerly)", count)
+		}
+		haveChunks(t, db, ch1, ch2, ch3)
+	})
+}
+
 // TestSync_OverwriteNewerChunkDoesNotBlockInterval verifies that
 // ErrOverwriteNewerChunk does not prevent interval advancement.
 // The chunk is already present in the reserve with a newer stamp, so it is

@@ -461,11 +461,15 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 		}
 
 		var (
-			chs     []*storer.BinC
-			topmost uint64
-			timer   *time.Timer
-			timerC  <-chan time.Time
+			chs          []*storer.BinC
+			topmost      uint64
+			timer        *time.Timer
+			timerC       <-chan time.Time
+			contiguousEnd uint64 // highest BinID contiguous from start; only meaningful when start > 0
 		)
+		if start > 0 {
+			contiguousEnd = start - 1
+		}
 		chC, unsub, errC := s.store.SubscribeBin(ctx, bin, start)
 		defer func() {
 			unsub()
@@ -493,6 +497,13 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 				if len(chs) == 0 && start > 0 && c.BinID > start && c.BinID <= historicalCursor {
 					topmost = c.BinID - 1
 					break LOOP
+				}
+
+				// Track the contiguous frontier: the highest BinID reachable
+				// from start without a gap. Used after the loop to cap Topmost
+				// so the client's interval does not advance past missing BinIDs.
+				if c.BinID == contiguousEnd+1 {
+					contiguousEnd = c.BinID
 				}
 
 				chs = append(chs, &storer.BinC{Address: c.Address, BatchID: c.BatchID, StampHash: c.StampHash})
@@ -525,6 +536,16 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 		// not advance the client's interval past the server's historical frontier.
 		if topmost > historicalCursor {
 			topmost = historicalCursor
+		}
+
+		// Cap topmost at the contiguous frontier. All collected chunks are
+		// included in the offer for eager client-side storage, but Topmost is
+		// bounded to the highest BinID reachable from start without a gap.
+		// The client stores every chunk in one round trip; subsequent round
+		// trips advance the interval bookkeeping via leading-gap empty offers
+		// and empty Want bitvectors — no chunk data is retransmitted.
+		if start > 0 && len(chs) > 0 && contiguousEnd >= start && contiguousEnd < topmost {
+			topmost = contiguousEnd
 		}
 
 		return &collectAddrsResult{chs: chs, topmost: topmost}, nil
