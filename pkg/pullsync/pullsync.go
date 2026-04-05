@@ -41,9 +41,7 @@ const (
 	cursorStreamName = "cursors"
 )
 
-var (
-	ErrUnsolicitedChunk = errors.New("peer sent unsolicited chunk")
-)
+var ErrUnsolicitedChunk = errors.New("peer sent unsolicited chunk")
 
 const (
 	MaxCursor                       = math.MaxUint64
@@ -98,7 +96,6 @@ func New(
 	logger log.Logger,
 	maxPage uint64,
 ) *Syncer {
-
 	return &Syncer{
 		streamer:    streamer,
 		store:       store,
@@ -134,7 +131,6 @@ func (s *Syncer) Protocol() p2p.ProtocolSpec {
 
 // handler handles an incoming request to sync an interval
 func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
-
 	select {
 	case <-s.quit:
 		return nil
@@ -238,7 +234,6 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 // ErrOverwriteNewerChunk does not zero topmost: the chunk is already present.
 // count is the number of chunks successfully written to the reserve.
 func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (topmost uint64, count int, err error) {
-
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
 		return 0, 0, fmt.Errorf("new stream: %w", err)
@@ -421,7 +416,6 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 
 // makeOffer tries to assemble an offer for a given requested interval.
 func (s *Syncer) makeOffer(ctx context.Context, rn pb.Get) (*pb.Offer, error) {
-
 	addrs, top, err := s.collectAddrs(ctx, uint8(rn.Bin), rn.Start)
 	if err != nil {
 		return nil, err
