@@ -453,7 +453,7 @@ func NewBee(
 		}
 	}(probe)
 
-	stamperStore, err := InitStamperStore(logger, o.DataDir, stateStore)
+	stamperStore, wasClean, err := InitStamperStore(logger, o.DataDir, stateStore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize stamper store: %w", err)
 	}
@@ -675,7 +675,7 @@ func NewBee(
 	b.p2pService = p2ps
 	b.p2pHalter = p2ps
 
-	post, err := postage.NewService(logger, stamperStore, batchStore, chainID)
+	post, err := postage.NewService(logger, stamperStore, batchStore, chainID, wasClean)
 	if err != nil {
 		return nil, fmt.Errorf("postage service: %w", err)
 	}
