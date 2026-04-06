@@ -280,6 +280,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		BlockchainRpcKeepalive:        c.config.GetDuration(configKeyBlockchainRpcKeepalive),
 		BlockProfile:                  c.config.GetBool(optionNamePProfBlock),
 		BlockTime:                     networkConfig.blockTime,
+		BlockSyncInterval:             c.config.GetUint64(optionNameBlockSyncInterval),
 		BootnodeMode:                  bootNode,
 		Bootnodes:                     networkConfig.bootNodes,
 		CacheCapacity:                 c.config.GetUint64(optionNameCacheCapacity),
