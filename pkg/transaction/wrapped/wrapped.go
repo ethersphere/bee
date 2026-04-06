@@ -18,37 +18,42 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/transaction/wrapped/cache"
 )
 
-const DefaultBlockNumberTTLPercent = 85
+const defaultBlockSyncInterval = 10
 
 var (
 	_ transaction.Backend = (*wrappedBackend)(nil)
 )
 
+type blockNumberAnchor struct {
+	number    uint64
+	timestamp time.Time
+}
+
 type wrappedBackend struct {
-	backend               backend.Geth
-	metrics               metrics
-	minimumGasTipCap      int64
-	blockTime             time.Duration
-	blockNumberTTLPercent uint64
-	blockNumberCache      *cache.ExpiringSingleFlightCache[uint64]
+	backend           backend.Geth
+	metrics           metrics
+	minimumGasTipCap  int64
+	blockTime         time.Duration
+	blockSyncInterval uint64
+	blockNumberCache  *cache.ExpiringSingleFlightCache[blockNumberAnchor]
 }
 
 func NewBackend(
 	backend backend.Geth,
 	minimumGasTipCap uint64,
 	blockTime time.Duration,
-	blockNumberTTLPercent uint64,
+	blockSyncInterval uint64,
 ) transaction.Backend {
-	if blockNumberTTLPercent == 0 || blockNumberTTLPercent >= 100 {
-		blockNumberTTLPercent = DefaultBlockNumberTTLPercent
+	if blockSyncInterval == 0 {
+		blockSyncInterval = defaultBlockSyncInterval
 	}
 	return &wrappedBackend{
-		backend:               backend,
-		minimumGasTipCap:      int64(minimumGasTipCap),
-		blockTime:             blockTime,
-		blockNumberTTLPercent: blockNumberTTLPercent,
-		metrics:               newMetrics(),
-		blockNumberCache:      cache.NewExpiringSingleFlightCache[uint64]("block_number"),
+		backend:           backend,
+		minimumGasTipCap:  int64(minimumGasTipCap),
+		blockTime:         blockTime,
+		metrics:           newMetrics(),
+		blockSyncInterval: blockSyncInterval,
+		blockNumberCache:  cache.NewExpiringSingleFlightCache[blockNumberAnchor]("block_number"),
 	}
 }
 
@@ -80,44 +85,65 @@ func (b *wrappedBackend) TransactionByHash(ctx context.Context, hash common.Hash
 
 func (b *wrappedBackend) BlockNumber(ctx context.Context) (uint64, error) {
 	now := time.Now().UTC()
-
-	return b.blockNumberCache.GetOrLoad(ctx, now, func() (uint64, time.Time, error) {
-		b.metrics.TotalRPCCalls.Inc()
-		b.metrics.BlockNumberCalls.Inc()
-
-		header, err := b.backend.HeaderByNumber(ctx, nil)
-		if err != nil {
-			b.metrics.TotalRPCErrors.Inc()
-			return 0, time.Time{}, err
-		}
-		if header == nil || header.Number == nil {
-			b.metrics.TotalRPCErrors.Inc()
-			return 0, time.Time{}, errors.New("latest block header unavailable")
-		}
-
-		now = time.Now().UTC()
-		ttl := b.blockTime * time.Duration(b.blockNumberTTLPercent) / 100
-		if ttl < 500*time.Millisecond {
-			ttl = time.Second
-		}
-
-		expiresAt := time.Unix(int64(header.Time), 0).Add(ttl)
-		maxExpiresAt := now.Add(ttl)
-		if expiresAt.After(maxExpiresAt) {
-			// in case if local clocks are behind blockchain clocks
-			expiresAt = maxExpiresAt
-		}
-
-		if !expiresAt.After(now) {
-			// in case if local clocks are ahead blockchain clocks, or we got block header right before new block
-			retryTTL := b.blockTime / 10
-			if retryTTL < 100*time.Millisecond {
-				retryTTL = time.Second
+	anchor, err := b.blockNumberCache.PeekOrLoad(
+		ctx,
+		now,
+		func(anchor blockNumberAnchor, expiresAt, now time.Time) (bool, time.Time) {
+			if now.Before(expiresAt) {
+				return true, expiresAt
 			}
-			expiresAt = now.Add(retryTTL)
-		}
-		return header.Number.Uint64(), expiresAt, nil
-	})
+
+			_, elapsedBlocks := b.estimatedBlockNumberWithElapsed(anchor, now)
+			if elapsedBlocks <= b.blockSyncInterval {
+				return true, b.nextExpectedBlockTime(anchor, elapsedBlocks)
+			}
+
+			return false, time.Time{}
+		},
+		func() (blockNumberAnchor, time.Time, error) {
+			b.metrics.TotalRPCCalls.Inc()
+			b.metrics.BlockHeaderCalls.Inc()
+
+			header, err := b.backend.HeaderByNumber(ctx, nil)
+			if err != nil {
+				b.metrics.TotalRPCErrors.Inc()
+				return blockNumberAnchor{}, time.Time{}, err
+			}
+			if header == nil || header.Number == nil {
+				b.metrics.TotalRPCErrors.Inc()
+				return blockNumberAnchor{}, time.Time{}, errors.New("latest block header unavailable")
+			}
+
+			anchor := blockNumberAnchor{
+				number:    header.Number.Uint64(),
+				timestamp: time.Unix(int64(header.Time), 0).UTC(),
+			}
+			return anchor, b.nextExpectedBlockTime(anchor, 0), nil
+		},
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return b.estimatedBlockNumber(anchor, time.Now().UTC()), nil
+}
+
+func (b *wrappedBackend) estimatedBlockNumber(anchor blockNumberAnchor, now time.Time) uint64 {
+	currentBlock, _ := b.estimatedBlockNumberWithElapsed(anchor, now)
+	return currentBlock
+}
+
+func (b *wrappedBackend) estimatedBlockNumberWithElapsed(anchor blockNumberAnchor, now time.Time) (uint64, uint64) {
+	if now.Before(anchor.timestamp) {
+		return anchor.number, 0
+	}
+
+	elapsedBlocks := uint64(now.Sub(anchor.timestamp) / b.blockTime)
+	return anchor.number + elapsedBlocks, elapsedBlocks
+}
+
+func (b *wrappedBackend) nextExpectedBlockTime(anchor blockNumberAnchor, elapsedBlocks uint64) time.Time {
+	return anchor.timestamp.Add(time.Duration(elapsedBlocks+1) * b.blockTime)
 }
 
 func (b *wrappedBackend) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error) {

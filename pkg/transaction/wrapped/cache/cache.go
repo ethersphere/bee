@@ -14,9 +14,12 @@ import (
 )
 
 type Loader[T any] func() (T, time.Time, error)
+type ReuseEvaluator[T any] func(value T, expiresAt, now time.Time) (bool, time.Time)
+
 type ExpiringSingleFlightCache[T any] struct {
 	mu        sync.RWMutex
 	value     T
+	valid     bool
 	expiresAt time.Time
 
 	group   singleflight.Group[string, any]
@@ -41,16 +44,16 @@ func (c *ExpiringSingleFlightCache[T]) Collectors() []prometheus.Collector {
 	}
 }
 
-func (c *ExpiringSingleFlightCache[T]) Get(now time.Time) (T, bool) {
+func (c *ExpiringSingleFlightCache[T]) Peek() (T, time.Time, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	if now.Before(c.expiresAt) {
-		return c.value, true
+	if c.valid {
+		return c.value, c.expiresAt, true
 	}
 
 	var zero T
-	return zero, false
+	return zero, time.Time{}, false
 }
 
 func (c *ExpiringSingleFlightCache[T]) Set(value T, expiresAt time.Time) {
@@ -58,26 +61,33 @@ func (c *ExpiringSingleFlightCache[T]) Set(value T, expiresAt time.Time) {
 	defer c.mu.Unlock()
 
 	c.value = value
+	c.valid = true
 	c.expiresAt = expiresAt
 }
 
-func (c *ExpiringSingleFlightCache[T]) GetOrLoad(ctx context.Context, now time.Time, loader Loader[T]) (T, error) {
-	if v, ok := c.Get(now); ok {
-		c.metrics.Hits.Inc()
-		return v, nil
+func (c *ExpiringSingleFlightCache[T]) PeekOrLoad(ctx context.Context, now time.Time, canReuse ReuseEvaluator[T], loader Loader[T]) (T, error) {
+	if value, expiresAt, ok := c.Peek(); ok {
+		reuse, newExpiresAt := canReuse(value, expiresAt, now)
+		if reuse {
+			c.metrics.Hits.Inc()
+			if !newExpiresAt.IsZero() && !newExpiresAt.Equal(expiresAt) {
+				c.Set(value, newExpiresAt)
+			}
+			return value, nil
+		}
 	}
 
 	c.metrics.Misses.Inc()
 
 	result, shared, err := c.group.Do(ctx, c.key, func(ctx context.Context) (any, error) {
 		c.metrics.Loads.Inc()
-		val, expiresAt, err := loader()
+		value, expiresAt, err := loader()
 		if err != nil {
 			c.metrics.LoadErrors.Inc()
-			return val, err
+			return value, err
 		}
-		c.Set(val, expiresAt)
-		return val, nil
+		c.Set(value, expiresAt)
+		return value, nil
 	})
 
 	if shared {

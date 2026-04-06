@@ -27,7 +27,7 @@ func newTestCache() *ExpiringSingleFlightCache[uint64] {
 	}
 }
 
-func TestSetGet(t *testing.T) {
+func TestSetPeek(t *testing.T) {
 	t.Parallel()
 
 	now := time.Now()
@@ -35,43 +35,54 @@ func TestSetGet(t *testing.T) {
 	c := newTestCache()
 	c.Set(42, expiresAt)
 
-	val, ok := c.Get(now)
+	val, gotExpiresAt, ok := c.Peek()
 	assert.True(t, ok)
 	assert.Equal(t, uint64(42), val)
+	assert.Equal(t, expiresAt, gotExpiresAt)
 }
 
-func TestTTLExpiry(t *testing.T) {
+func TestPeekReturnsExpiredValue(t *testing.T) {
 	t.Parallel()
 
 	now := time.Now()
 	c := newTestCache()
 	c.Set(42, now)
 
-	_, ok := c.Get(now.Add(time.Second + time.Millisecond))
-	assert.False(t, ok)
+	val, expiresAt, ok := c.Peek()
+	assert.True(t, ok)
+	assert.Equal(t, uint64(42), val)
+	assert.Equal(t, now, expiresAt)
 }
 
-func TestGetOrLoadMiss(t *testing.T) {
+func TestPeekOrLoadMiss(t *testing.T) {
 	t.Parallel()
 
 	c := newTestCache()
 	var loadCount atomic.Int32
 
-	val, err := c.GetOrLoad(context.Background(), time.Now(), func() (uint64, time.Time, error) {
-		loadCount.Add(1)
-		return 99, time.Now().Add(time.Second), nil
-	})
+	val, err := c.PeekOrLoad(
+		context.Background(),
+		time.Now(),
+		func(value uint64, expiresAt, now time.Time) (bool, time.Time) {
+			return false, time.Time{}
+		},
+		func() (uint64, time.Time, error) {
+			loadCount.Add(1)
+			return 99, time.Now().Add(time.Second), nil
+		},
+	)
 
 	require.NoError(t, err)
 	assert.Equal(t, uint64(99), val)
 	assert.Equal(t, int32(1), loadCount.Load())
 
-	cached, ok := c.Get(time.Now())
+	cached, expiresAt, ok := c.Peek()
 	assert.True(t, ok)
 	assert.Equal(t, uint64(99), cached)
+	assert.True(t, expiresAt.After(time.Now()))
 }
 
-func TestGetOrLoadHit(t *testing.T) {
+func TestPeekOrLoadHit(t *testing.T) {
 	t.Parallel()
 	const expectedVal = uint64(42)
 
@@ -81,34 +92,48 @@ func TestGetOrLoadHit(t *testing.T) {
 	c.Set(expectedVal, expiresAt)
 
 	var loadCount atomic.Int32
-	val, err := c.GetOrLoad(context.Background(), now, func() (uint64, time.Time, error) {
-		loadCount.Add(1)
-		return expectedVal, now.Add(time.Second), nil
-	})
+	val, err := c.PeekOrLoad(
+		context.Background(),
+		now,
+		func(value uint64, expiresAt, now time.Time) (bool, time.Time) {
+			return now.Before(expiresAt), expiresAt
+		},
+		func() (uint64, time.Time, error) {
+			loadCount.Add(1)
+			return expectedVal, now.Add(time.Second), nil
+		},
+	)
 
 	require.NoError(t, err)
 	assert.Equal(t, expectedVal, val)
 	assert.Equal(t, int32(0), loadCount.Load())
 }
 
-func TestGetOrLoadError(t *testing.T) {
+func TestPeekOrLoadError(t *testing.T) {
 	t.Parallel()
 
 	c := newTestCache()
 	errLoad := errors.New("load failed")
 
-	val, err := c.GetOrLoad(context.Background(), time.Now(), func() (uint64, time.Time, error) {
-		return 0, time.Time{}, errLoad
-	})
+	val, err := c.PeekOrLoad(
+		context.Background(),
+		time.Now(),
+		func(value uint64, expiresAt, now time.Time) (bool, time.Time) {
+			return false, time.Time{}
+		},
+		func() (uint64, time.Time, error) {
+			return 0, time.Time{}, errLoad
+		},
+	)
 
 	assert.ErrorIs(t, err, errLoad)
 	assert.Equal(t, uint64(0), val)
 
-	_, ok := c.Get(time.Now())
+	_, _, ok := c.Peek()
 	assert.False(t, ok)
 }
 
-func TestGetOrLoadSingleflight(t *testing.T) {
+func TestPeekOrLoadSingleflight(t *testing.T) {
 	const value = uint64(77)
 	synctest.Test(t, func(t *testing.T) {
 		c := newTestCache()
@@ -125,11 +150,18 @@ func TestGetOrLoadSingleflight(t *testing.T) {
 			go func(idx int) {
 				defer wg.Done()
 				now := time.Now()
-				results[idx], errs[idx] = c.GetOrLoad(context.Background(), now, func() (uint64, time.Time, error) {
-					loadCount.Add(1)
-					<-gate
-					return value, now.Add(time.Second), nil
-				})
+				results[idx], errs[idx] = c.PeekOrLoad(
+					context.Background(),
+					now,
+					func(value uint64, expiresAt, now time.Time) (bool, time.Time) {
+						return now.Before(expiresAt), expiresAt
+					},
+					func() (uint64, time.Time, error) {
+						loadCount.Add(1)
+						<-gate
+						return value, now.Add(time.Second), nil
+					},
+				)
 			}(i)
 		}
 
@@ -145,22 +177,29 @@ func TestGetOrLoadSingleflight(t *testing.T) {
 	})
 }
 
-func TestGetOrLoadReloadAfterExpiry(t *testing.T) {
+func TestPeekOrLoadReloadAfterExpiry(t *testing.T) {
 	t.Parallel()
 
 	now := time.Now()
 	c := newTestCache()
 	c.Set(42, now)
 
-	val, err := c.GetOrLoad(context.Background(), now.Add(time.Second+time.Millisecond), func() (uint64, time.Time, error) {
-		return 100, now.Add(time.Second + time.Millisecond), nil
-	})
+	val, err := c.PeekOrLoad(
+		context.Background(),
+		now.Add(time.Second+time.Millisecond),
+		func(value uint64, expiresAt, now time.Time) (bool, time.Time) {
+			return now.Before(expiresAt), expiresAt
+		},
+		func() (uint64, time.Time, error) {
+			return 100, now.Add(time.Second + time.Millisecond), nil
+		},
+	)
 
 	require.NoError(t, err)
 	assert.Equal(t, uint64(100), val)
 }
 
-func TestGetOrLoadContextCancellation(t *testing.T) {
+func TestPeekOrLoadContextCancellation(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		const expectedVal = 55
 		c := newTestCache()
@@ -176,18 +215,32 @@ func TestGetOrLoadContextCancellation(t *testing.T) {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			result1, err1 = c.GetOrLoad(ctx1, time.Now(), func() (uint64, time.Time, error) {
-				<-gate
-				return expectedVal, time.Now().Add(time.Second), nil
-			})
+			result1, err1 = c.PeekOrLoad(
+				ctx1,
+				time.Now(),
+				func(value uint64, expiresAt, now time.Time) (bool, time.Time) {
+					return now.Before(expiresAt), expiresAt
+				},
+				func() (uint64, time.Time, error) {
+					<-gate
+					return expectedVal, time.Now().Add(time.Second), nil
+				},
+			)
 		}()
 
 		go func() {
 			defer wg.Done()
-			result2, err2 = c.GetOrLoad(ctx2, time.Now(), func() (uint64, time.Time, error) {
-				<-gate
-				return expectedVal, time.Now().Add(time.Second), nil
-			})
+			result2, err2 = c.PeekOrLoad(
+				ctx2,
+				time.Now(),
+				func(value uint64, expiresAt, now time.Time) (bool, time.Time) {
+					return now.Before(expiresAt), expiresAt
+				},
+				func() (uint64, time.Time, error) {
+					<-gate
+					return expectedVal, time.Now().Add(time.Second), nil
+				},
+			)
 		}()
 
 		time.Sleep(50 * time.Millisecond)
@@ -214,12 +267,33 @@ func TestMetrics(t *testing.T) {
 	ctx := context.Background()
 
 	// miss + load error
-	_, _ = c.GetOrLoad(ctx, now, func() (uint64, time.Time, error) { return 0, time.Time{}, errors.New("fail") })
+	_, _ = c.PeekOrLoad(
+		ctx,
+		now,
+		func(value uint64, expiresAt, now time.Time) (bool, time.Time) {
+			return now.Before(expiresAt), expiresAt
+		},
+		func() (uint64, time.Time, error) { return 0, time.Time{}, errors.New("fail") },
+	)
 
 	// miss + load
-	_, _ = c.GetOrLoad(ctx, now, func() (uint64, time.Time, error) { return 42, expiresAt, nil })
+	_, _ = c.PeekOrLoad(
+		ctx,
+		now,
+		func(value uint64, expiresAt, now time.Time) (bool, time.Time) {
+			return now.Before(expiresAt), expiresAt
+		},
+		func() (uint64, time.Time, error) { return 42, expiresAt, nil },
+	)
 	// hit
-	_, _ = c.GetOrLoad(ctx, now, func() (uint64, time.Time, error) { return 0, expiresAt, nil })
+	_, _ = c.PeekOrLoad(
+		ctx,
+		now,
+		func(value uint64, expiresAt, now time.Time) (bool, time.Time) {
+			return now.Before(expiresAt), expiresAt
+		},
+		func() (uint64, time.Time, error) { return 0, expiresAt, nil },
+	)
 
 	assert.Equal(t, float64(1), testutil.ToFloat64(c.metrics.Hits))
 	assert.Equal(t, float64(2), testutil.ToFloat64(c.metrics.Misses))
