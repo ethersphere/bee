@@ -70,7 +70,7 @@ func (c *ExpiringSingleFlightCache[T]) PeekOrLoad(ctx context.Context, now time.
 		reuse, newExpiresAt := canReuse(value, expiresAt, now)
 		if reuse {
 			c.metrics.Hits.Inc()
-			if !newExpiresAt.IsZero() && !newExpiresAt.Equal(expiresAt) {
+			if !newExpiresAt.IsZero() {
 				c.Set(value, newExpiresAt)
 			}
 			return value, nil
@@ -81,13 +81,13 @@ func (c *ExpiringSingleFlightCache[T]) PeekOrLoad(ctx context.Context, now time.
 
 	result, shared, err := c.group.Do(ctx, c.key, func(ctx context.Context) (any, error) {
 		c.metrics.Loads.Inc()
-		value, expiresAt, err := loader()
+		val, expiresAt, err := loader()
 		if err != nil {
 			c.metrics.LoadErrors.Inc()
-			return value, err
+			return val, err
 		}
-		c.Set(value, expiresAt)
-		return value, nil
+		c.Set(val, expiresAt)
+		return val, nil
 	})
 
 	if shared {
