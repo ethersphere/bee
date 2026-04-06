@@ -154,6 +154,7 @@ type Options struct {
 	AutoTLSDomain                 string
 	AutoTLSRegistrationEndpoint   string
 	FullNodeMode                  bool
+	GasLimitFallback              uint64
 	Logger                        log.Logger
 	MinimumGasTipCap              uint64
 	MinimumStorageRadius          uint
@@ -412,6 +413,7 @@ func NewBee(
 		o.BlockTime,
 		chainEnabled,
 		o.MinimumGasTipCap,
+		o.GasLimitFallback,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("init chain: %w", err)
@@ -698,6 +700,13 @@ func NewBee(
 		return nil, fmt.Errorf("lookup erc20 postage address: %w", err)
 	}
 
+	// Compute gas limit for contract transactions: when TrxDebugMode is enabled,
+	// gas estimation is skipped and DefaultGasLimit is used for all contract calls.
+	var contractGasLimit uint64
+	if o.TrxDebugMode {
+		contractGasLimit = transaction.DefaultGasLimit
+	}
+
 	postageStampContractService = postagecontract.New(
 		overlayEthAddress,
 		postageStampContractAddress,
@@ -707,7 +716,7 @@ func NewBee(
 		post,
 		batchStore,
 		chainEnabled,
-		o.TrxDebugMode,
+		contractGasLimit,
 	)
 
 	eventListener = listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
@@ -1088,7 +1097,7 @@ func NewBee(
 		stakingContractAddress = common.HexToAddress(o.StakingContractAddress)
 	}
 
-	stakingContract := staking.New(overlayEthAddress, stakingContractAddress, abiutil.MustParseABI(chainCfg.StakingABI), bzzTokenAddress, transactionService, common.BytesToHash(nonce), o.TrxDebugMode, uint8(o.ReserveCapacityDoubling))
+	stakingContract := staking.New(overlayEthAddress, stakingContractAddress, abiutil.MustParseABI(chainCfg.StakingABI), bzzTokenAddress, transactionService, common.BytesToHash(nonce), contractGasLimit, uint8(o.ReserveCapacityDoubling))
 
 	if chainEnabled {
 
@@ -1179,7 +1188,7 @@ func NewBee(
 				redistributionContractAddress = common.HexToAddress(o.RedistributionContractAddress)
 			}
 
-			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), o.TrxDebugMode)
+			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), contractGasLimit)
 
 			isFullySynced := func() bool {
 				reserveThreshold := reserveCapacity * 5 / 10
