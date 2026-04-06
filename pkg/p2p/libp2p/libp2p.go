@@ -408,7 +408,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		}
 	}
 	// Support same non default security and transport options as
-	// original host.
+	// the original host.
 	dialer, err := o.hostFactory(append(transports, security)...)
 	if err != nil {
 		return nil, err
