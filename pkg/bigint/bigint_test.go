@@ -49,79 +49,34 @@ func TestBinaryMarshalingRoundTrip(t *testing.T) {
 	}
 }
 
-// TestBinaryMarshalingLegacyGob verifies that data written by big.Int.GobEncode
-// (the actual on-disk format before this change) is decoded correctly, and that
-// the new MarshalBinary produces identical bytes to GobEncode.
-func TestBinaryMarshalingLegacyGob(t *testing.T) {
+// TestBinaryMarshalingGobCompatibility verifies that MarshalBinary produces
+// byte-identical output to big.Int.GobEncode, confirming that nodes upgrading
+// from the old code (which stored raw *big.Int via GobEncode) will write
+// identical bytes after migration.
+func TestBinaryMarshalingGobCompatibility(t *testing.T) {
 	t.Parallel()
 
 	val := big.NewInt(555000)
-	legacyData, err := val.GobEncode()
+	gobData, err := val.GobEncode()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// verify MarshalBinary produces identical bytes to GobEncode
 	newData, err := bigint.Wrap(val).MarshalBinary()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(legacyData, newData) {
-		t.Fatalf("MarshalBinary output differs from GobEncode: got %v, want %v", newData, legacyData)
+
+	if !reflect.DeepEqual(gobData, newData) {
+		t.Fatalf("MarshalBinary output differs from GobEncode: got %v, want %v", newData, gobData)
 	}
 
 	var got bigint.BigInt
-	if err := got.UnmarshalBinary(legacyData); err != nil {
-		t.Fatalf("UnmarshalBinary of legacy gob data: %v", err)
+	if err := got.UnmarshalBinary(gobData); err != nil {
+		t.Fatalf("UnmarshalBinary of gob data: %v", err)
 	}
-
 	if got.Cmp(val) != 0 {
 		t.Fatalf("got %v, want %v", got.Int, val)
-	}
-}
-
-// TestBinaryMarshalingLegacyUnquotedJSON verifies that data stored via
-// json.Marshal(*big.Int) — an unquoted decimal number like 123 or -456 —
-// is decoded correctly. This was the actual format produced by the old
-// store.Put(key, bigIntPtr) calls before this change.
-func TestBinaryMarshalingLegacyUnquotedJSON(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		data []byte
-		want *big.Int
-	}{
-		{[]byte(`123456`), big.NewInt(123456)},
-		{[]byte(`-987654`), big.NewInt(-987654)},
-		{[]byte(`0`), big.NewInt(0)},
-	}
-
-	for _, tc := range tests {
-		var got bigint.BigInt
-		if err := got.UnmarshalBinary(tc.data); err != nil {
-			t.Fatalf("UnmarshalBinary(%q): %v", tc.data, err)
-		}
-		if got.Cmp(tc.want) != 0 {
-			t.Fatalf("got %v, want %v", got.Int, tc.want)
-		}
-	}
-}
-
-// TestBinaryMarshalingLegacyQuotedJSON verifies that data stored as a
-// JSON-quoted decimal string (e.g. "123") is decoded correctly.
-func TestBinaryMarshalingLegacyQuotedJSON(t *testing.T) {
-	t.Parallel()
-
-	legacyData := []byte(`"999888777"`)
-
-	var got bigint.BigInt
-	if err := got.UnmarshalBinary(legacyData); err != nil {
-		t.Fatalf("UnmarshalBinary of quoted JSON data: %v", err)
-	}
-
-	want := big.NewInt(999888777)
-	if got.Cmp(want) != 0 {
-		t.Fatalf("got %v, want %v", got.Int, want)
 	}
 }
 

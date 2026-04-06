@@ -491,53 +491,6 @@ func TestChequebookWithdrawInsufficientFunds(t *testing.T) {
 	}
 }
 
-// TestChequebookAvailableBalance_legacyTotalIssued verifies that a totalIssued
-// value stored by old code (json.Marshal(*big.Int) → unquoted decimal) is read
-// correctly and reduces AvailableBalance as expected.
-func TestChequebookAvailableBalance_legacyTotalIssued(t *testing.T) {
-	t.Parallel()
-
-	address := common.HexToAddress("0xabcd")
-	ownerAddress := common.HexToAddress("0xfff")
-	store := storemock.NewStateStore()
-
-	contractBalance := big.NewInt(1000)
-	legacyTotalIssued := big.NewInt(300)
-
-	// simulate old store.Put(totalIssuedKey, *big.Int): json.Marshal produces an unquoted decimal
-	if err := store.Put(chequebook.TotalIssuedKey, legacyTotalIssued); err != nil {
-		t.Fatal(err)
-	}
-
-	chequebookService, err := chequebook.New(
-		transactionmock.New(
-			transactionmock.WithABICallSequence(
-				transactionmock.ABICall(&chequebookABI, address, contractBalance.FillBytes(make([]byte, 32)), "balance"),
-				transactionmock.ABICall(&chequebookABI, address, big.NewInt(0).FillBytes(make([]byte, 32)), "totalPaidOut"),
-			),
-		),
-		address,
-		ownerAddress,
-		store,
-		&chequeSignerMock{},
-		erc20mock.New(),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// AvailableBalance = contractBalance - totalPaidOut - totalIssued = 1000 - 0 - 300 = 700
-	available, err := chequebookService.AvailableBalance(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	want := big.NewInt(700)
-	if available.Cmp(want) != 0 {
-		t.Fatalf("got available balance %v, want %v", available, want)
-	}
-}
-
 func TestStateStoreKeys(t *testing.T) {
 	t.Parallel()
 

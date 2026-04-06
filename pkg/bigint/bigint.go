@@ -51,27 +51,11 @@ func (i *BigInt) MarshalBinary() ([]byte, error) {
 	return i.GobEncode()
 }
 
-// UnmarshalBinary implements encoding.BinaryUnmarshaler. It supports both
-// Gob-encoded data (written by MarshalBinary) and legacy JSON-encoded data
-// for backward compatibility with existing stored values.
-// Gob-encoded big.Int always begins with byte 2 (positive) or 3 (negative).
-// Legacy data stored via json.Marshal(*big.Int) is an unquoted decimal string.
-// Legacy data stored via json.Marshal(bigint.BigInt) is a quoted decimal string.
+// UnmarshalBinary implements encoding.BinaryUnmarshaler using Gob decoding.
 func (i *BigInt) UnmarshalBinary(data []byte) error {
 	if len(data) == 0 {
 		return nil
 	}
 	i.Int = new(big.Int)
-	if data[0] == 2 || data[0] == 3 {
-		return i.GobDecode(data)
-	}
-	if data[0] == '"' {
-		// quoted decimal string: e.g. "123" — from bigint.BigInt JSON marshaling
-		return json.Unmarshal(data, i)
-	}
-	// unquoted decimal number: e.g. 123 or -456 — from json.Marshal(*big.Int)
-	if _, ok := i.SetString(string(data), 10); !ok {
-		return fmt.Errorf("bigint: cannot parse %q as decimal integer", data)
-	}
-	return nil
+	return i.GobDecode(data)
 }
