@@ -16,7 +16,7 @@ import (
 func TestCache(t *testing.T) {
 	t.Parallel()
 
-	store, err := leveldbstore.New(t.TempDir(), nil)
+	store, _, err := leveldbstore.New(t.TempDir(), nil)
 	if err != nil {
 		t.Fatalf("create store failed: %v", err)
 	}

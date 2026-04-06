@@ -35,8 +35,7 @@ func TestGenerateSecp256k1Key(t *testing.T) {
 		t.Fatal("nil key")
 	}
 
-	//nolint:staticcheck // SA5011 false positive: t.Fatal terminates test
-	if bytes.Equal(k1.D.Bytes(), k2.D.Bytes()) {
+	if k1.Equal(k2) {
 		t.Fatal("two generated keys are equal")
 	}
 }
@@ -60,8 +59,8 @@ func TestGenerateSecp256k1EDG(t *testing.T) {
 	if k2 == nil {
 		t.Fatal("nil key")
 	}
-	//nolint:staticcheck // SA5011 false positive: t.Fatal terminates test
-	if bytes.Equal(k1.D.Bytes(), k2.D.Bytes()) {
+
+	if k1.Equal(k2) {
 		t.Fatal("two generated keys are equal")
 	}
 }
@@ -102,7 +101,7 @@ func TestEncodeSecp256k1PrivateKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(k1.D.Bytes(), k2.D.Bytes()) {
+	if !k1.Equal(k2) {
 		t.Fatal("encoded and decoded keys are not equal")
 	}
 }
@@ -122,7 +121,7 @@ func TestEncodeSecp256k1EDG(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(k1.D.Bytes(), k2.D.Bytes()) {
+	if !k1.Equal(k2) {
 		t.Fatal("encoded and decoded keys are not equal")
 	}
 }
@@ -142,7 +141,7 @@ func TestSecp256k1PrivateKeyFromBytes(t *testing.T) {
 		t.Fatal("nil key")
 	}
 
-	if !bytes.Equal(k1.D.Bytes(), k2.D.Bytes()) {
+	if !k1.Equal(k2) {
 		t.Fatal("two generated keys are not equal")
 	}
 }
@@ -165,7 +164,7 @@ func TestGenerateSecp256r1Key(t *testing.T) {
 		t.Fatal("nil key")
 	}
 
-	if bytes.Equal(k1.D.Bytes(), k2.D.Bytes()) {
+	if k1.Equal(k2) {
 		t.Fatal("two generated keys are equal")
 	}
 }
@@ -188,7 +187,7 @@ func TestGenerateSecp256r1EDG(t *testing.T) {
 		t.Fatal("nil key")
 	}
 
-	if bytes.Equal(r1.D.Bytes(), r2.D.Bytes()) {
+	if r1.Equal(r2) {
 		t.Fatal("two generated keys are equal")
 	}
 }
@@ -208,7 +207,7 @@ func TestEncodeSecp256r1PrivateKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(r1.D.Bytes(), r2.D.Bytes()) {
+	if !r1.Equal(r2) {
 		t.Fatal("encoded and decoded keys are not equal")
 	}
 }
@@ -228,7 +227,7 @@ func TestEncodeSecp256r1EDG(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(r1.D.Bytes(), r2.D.Bytes()) {
+	if !r1.Equal(r2) {
 		t.Fatal("encoded and decoded keys are not equal")
 	}
 }

@@ -35,7 +35,7 @@ func Test_Step_06(t *testing.T) {
 	sharkyStore, err := sharky.New(&dirFS{basedir: sharkyDir}, 1, swarm.SocMaxChunkSize)
 	require.NoError(t, err)
 
-	lstore, err := leveldbstore.New("", nil)
+	lstore, _, err := leveldbstore.New("", nil)
 	require.NoError(t, err)
 
 	store := transaction.NewStorage(sharkyStore, lstore)

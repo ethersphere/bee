@@ -58,7 +58,7 @@ func TestNeighborhoodDepth(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			SaturationPeers: ptrInt(4),
+			SaturationPeers: new(4),
 			ExcludeFunc:     defaultExcludeFunc,
 		})
 	)
@@ -205,7 +205,7 @@ func TestNeighborhoodDepthWithReachability(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			SaturationPeers: ptrInt(4),
+			SaturationPeers: new(4),
 		})
 	)
 
@@ -353,7 +353,7 @@ func TestManage(t *testing.T) {
 		conns                    int32 // how many connect calls were made to the p2p mock
 		saturation               = kademlia.DefaultSaturationPeers
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			BitSuffixLength: ptrInt(-1),
+			BitSuffixLength: new(-1),
 			ExcludeFunc:     defaultExcludeFunc,
 		})
 	)
@@ -405,8 +405,8 @@ func TestManageWithBalancing(t *testing.T) {
 		}
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
 			SaturationFunc:  saturationFunc,
-			SaturationPeers: ptrInt(4),
-			BitSuffixLength: ptrInt(2),
+			SaturationPeers: new(4),
+			BitSuffixLength: new(2),
 			ExcludeFunc:     defaultExcludeFunc,
 		})
 	)
@@ -451,8 +451,8 @@ func TestBinSaturation(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			SaturationPeers: ptrInt(2),
-			BitSuffixLength: ptrInt(-1),
+			SaturationPeers: new(2),
+			BitSuffixLength: new(-1),
 			ExcludeFunc:     defaultExcludeFunc,
 		})
 	)
@@ -554,8 +554,8 @@ func TestOversaturationBootnode(t *testing.T) {
 		overSaturationPeers      = 4
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			OverSaturationPeers: ptrInt(overSaturationPeers),
-			SaturationPeers:     ptrInt(4),
+			OverSaturationPeers: new(overSaturationPeers),
+			SaturationPeers:     new(4),
 			BootnodeMode:        true,
 			ExcludeFunc:         defaultExcludeFunc,
 		})
@@ -612,8 +612,8 @@ func TestBootnodeMaxConnections(t *testing.T) {
 		bootnodeOverSaturationPeers = 4
 		conns                       int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer    = newTestKademlia(t, &conns, nil, kademlia.Options{
-			BootnodeOverSaturationPeers: ptrInt(bootnodeOverSaturationPeers),
-			SaturationPeers:             ptrInt(4),
+			BootnodeOverSaturationPeers: new(bootnodeOverSaturationPeers),
+			SaturationPeers:             new(4),
 			BootnodeMode:                true,
 			ExcludeFunc:                 defaultExcludeFunc,
 		})
@@ -772,7 +772,7 @@ func TestBackoff(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			TimeToRetry: ptrDuration(500 * time.Millisecond),
+			TimeToRetry: new(500 * time.Millisecond),
 		})
 	)
 	kad.SetStorageRadius(0)
@@ -815,7 +815,7 @@ func TestAddressBookPrune(t *testing.T) {
 	var (
 		conns, failedConns       int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, &failedConns, kademlia.Options{
-			TimeToRetry: ptrDuration(0),
+			TimeToRetry: new(time.Duration),
 		})
 	)
 
@@ -893,7 +893,7 @@ func TestAddressBookQuickPrune_FLAKY(t *testing.T) {
 	var (
 		conns, failedConns       int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, &failedConns, kademlia.Options{
-			TimeToRetry: ptrDuration(time.Millisecond),
+			TimeToRetry: new(time.Millisecond),
 		})
 	)
 	kad.SetStorageRadius(2)
@@ -1311,8 +1311,8 @@ func TestOutofDepthPrune(t *testing.T) {
 		}
 
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, &failedConns, kademlia.Options{
-			SaturationPeers:     ptrInt(saturationPeers),
-			OverSaturationPeers: ptrInt(overSaturationPeers),
+			SaturationPeers:     new(saturationPeers),
+			OverSaturationPeers: new(overSaturationPeers),
 			PruneFunc:           pruneFunc,
 			ExcludeFunc:         defaultExcludeFunc,
 			PruneWakeup:         &pruneWakeup,
@@ -1415,8 +1415,8 @@ func TestPruneExcludeOps(t *testing.T) {
 		}
 
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, &failedConns, kademlia.Options{
-			SaturationPeers:     ptrInt(saturationPeers),
-			OverSaturationPeers: ptrInt(overSaturationPeers),
+			SaturationPeers:     new(saturationPeers),
+			OverSaturationPeers: new(overSaturationPeers),
 			PruneFunc:           pruneFunc,
 		})
 	)
@@ -1519,10 +1519,10 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 		conns                 int32 // how many connect calls were made to the p2p mock
 		overSaturationPeers   = 1
 		_, kad, ab, _, signer = newTestKademliaWithAddr(t, base, &conns, nil, kademlia.Options{
-			BootnodeOverSaturationPeers: ptrInt(1),
-			OverSaturationPeers:         ptrInt(overSaturationPeers),
-			SaturationPeers:             ptrInt(1),
-			LowWaterMark:                ptrInt(0),
+			BootnodeOverSaturationPeers: new(1),
+			OverSaturationPeers:         new(overSaturationPeers),
+			SaturationPeers:             new(1),
+			LowWaterMark:                new(0),
 			BootnodeMode:                true,
 			StaticNodes:                 protected,
 			ExcludeFunc:                 defaultExcludeFunc,
@@ -1685,8 +1685,8 @@ func TestAnnounceNeighborhoodToNeighbor(t *testing.T) {
 		)
 		base, kad, ab, _, signer = newTestKademliaWithDiscovery(t, disc, &conns, nil, kademlia.Options{
 			ExcludeFunc:         defaultExcludeFunc,
-			OverSaturationPeers: ptrInt(4),
-			SaturationPeers:     ptrInt(4),
+			OverSaturationPeers: new(4),
+			SaturationPeers:     new(4),
 		})
 	)
 
@@ -2232,19 +2232,11 @@ func waitBalanced(t *testing.T, k *kademlia.Kad, bin uint8) {
 	}
 }
 
-func ptrInt(v int) *int {
-	return &v
-}
-
-func ptrDuration(v time.Duration) *time.Duration {
-	return &v
-}
-
 func generateMultipleUnderlays(t *testing.T, n int, baseUnderlay string) []ma.Multiaddr {
 	t.Helper()
 	underlays := make([]ma.Multiaddr, n)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		multiaddr, err := ma.NewMultiaddr(baseUnderlay + strconv.Itoa(i))
 		if err != nil {
 			t.Fatal(err)
