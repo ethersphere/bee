@@ -246,16 +246,20 @@ func (svc *batchService) UpdateBlockNumber(blockNumber uint64) error {
 	return nil
 }
 func (svc *batchService) TransactionStart() error {
-	svc.pendingChainState = svc.storer.GetChainState()
+	cs := svc.storer.GetChainState()
+	svc.pendingChainState = cs
+	svc.logger.Debug("TransactionStart: setting dirty flag", "current_block", cs.Block)
 	return svc.stateStore.Put(dirtyDBKey, true)
 }
 func (svc *batchService) TransactionEnd() error {
 	if svc.pendingChainState != nil {
+		svc.logger.Debug("TransactionEnd: committing chain state", "block", svc.pendingChainState.Block)
 		if err := svc.storer.PutChainState(svc.pendingChainState); err != nil {
 			return fmt.Errorf("put chain state: %w", err)
 		}
 		svc.pendingChainState = nil
 	}
+	svc.logger.Debug("TransactionEnd: clearing dirty flag")
 	return svc.stateStore.Delete(dirtyDBKey)
 }
 
@@ -267,6 +271,8 @@ func (svc *batchService) Start(ctx context.Context, startBlock uint64) (err erro
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {
 		return err
 	}
+
+	svc.logger.Debug("batch service: Start called", "start_block", startBlock, "dirty", dirty, "resync", svc.resync)
 
 	if dirty || svc.resync {
 
@@ -289,6 +295,8 @@ func (svc *batchService) Start(ctx context.Context, startBlock uint64) (err erro
 	if cs.Block > startBlock {
 		startBlock = cs.Block
 	}
+
+	svc.logger.Debug("batch service: starting listener", "effective_start_block", startBlock+1, "chain_state_block", cs.Block)
 
 	syncedChan := svc.listener.Listen(ctx, startBlock+1, svc)
 

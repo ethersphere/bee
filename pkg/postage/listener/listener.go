@@ -195,12 +195,17 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 	}()
 
 	processEvents := func(events []types.Log, to uint64) error {
+		l.logger.Debug("processEvents: TransactionStart called", "from", from, "to", to, "events", len(events))
+
 		if err := updater.TransactionStart(); err != nil {
 			return err
 		}
 
-		for _, e := range events {
+		l.logger.Debug("processEvents: dirty flag set, processing events", "count", len(events))
+
+		for i, e := range events {
 			startEv := time.Now()
+			l.logger.Debug("processEvents: processing event", "index", i, "block", e.BlockNumber, "tx", e.TxHash, "topics", len(e.Topics))
 			err := updater.UpdateBlockNumber(e.BlockNumber)
 			if err != nil {
 				return err
@@ -220,9 +225,13 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 			return err
 		}
 
+		l.logger.Debug("processEvents: calling TransactionEnd", "to", to, "events_processed", len(events))
+
 		if err := updater.TransactionEnd(); err != nil {
 			return err
 		}
+
+		l.logger.Debug("processEvents: TransactionEnd complete, dirty flag cleared", "to", to)
 
 		return nil
 	}
@@ -332,6 +341,8 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 			}
 			l.metrics.BackendCalls.Inc()
 
+			l.logger.Debug("fetching logs", "from", from, "to", to, "paged", paged)
+
 			events, err := l.ev.FilterLogs(ctx, l.filterQuery(big.NewInt(int64(from)), big.NewInt(int64(to))))
 			if err != nil {
 				if errors.Is(err, ErrParseSnapshot) {
@@ -342,6 +353,8 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 				lastConfirmedBlock = 0
 				continue
 			}
+
+			l.logger.Debug("fetched logs", "from", from, "to", to, "events", len(events))
 
 			if err := processEvents(events, to); err != nil {
 				return err
