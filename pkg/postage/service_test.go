@@ -346,6 +346,27 @@ func TestCrashRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Verify that the issuer on disk still has zero bucket counts (i.e., recovery
+	// has not happened yet). Open with wasClean=true to skip recovery.
+	psCheck, err := postage.NewService(log.Noop, store, pstore, 1, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkIssuers := psCheck.StampIssuers()
+	if len(checkIssuers) != 1 {
+		t.Fatalf("pre-recovery check: expected 1 issuer, got %d", len(checkIssuers))
+	}
+	checkBuckets := checkIssuers[0].Buckets()
+	if checkBuckets[bIdx0] != 0 {
+		t.Errorf("pre-recovery check: bucket %d: want 0, got %d", bIdx0, checkBuckets[bIdx0])
+	}
+	if checkBuckets[bIdx1] != 0 {
+		t.Errorf("pre-recovery check: bucket %d: want 0, got %d", bIdx1, checkBuckets[bIdx1])
+	}
+	if err := psCheck.Close(); err != nil {
+		t.Fatal(err)
+	}
+
 	// Restart with wasClean=false — should trigger bucket recovery.
 	ps2, err := postage.NewService(log.Noop, store, pstore, 1, false)
 	if err != nil {
