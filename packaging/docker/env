@@ -55,8 +55,12 @@
 # BEE_RESOLVER_OPTIONS=[]
 ## enable swap (default false)
 # BEE_SWAP_ENABLE=false
-## swap blockchain endpoint (default ws://localhost:8546)
+## blockchain rpc endpoint (default ws://localhost:8546)
 # BEE_BLOCKCHAIN_RPC_ENDPOINT=ws://localhost:8546
+# BEE_BLOCKCHAIN_RPC_DIAL_TIMEOUT=30s
+# BEE_BLOCKCHAIN_RPC_TLS_TIMEOUT=10s
+# BEE_BLOCKCHAIN_RPC_IDLE_TIMEOUT=90s
+# BEE_BLOCKCHAIN_RPC_KEEPALIVE=30s
 ## swap factory address
 # BEE_SWAP_FACTORY_ADDRESS=
 ## legacy swap factory addresses

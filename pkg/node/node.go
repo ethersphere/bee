@@ -135,6 +135,10 @@ type Options struct {
 	WSSAddr                       string
 	AutoTLSStorageDir             string
 	BlockchainRpcEndpoint         string
+	BlockchainRpcDialTimeout      time.Duration
+	BlockchainRpcTLSTimeout       time.Duration
+	BlockchainRpcIdleTimeout      time.Duration
+	BlockchainRpcKeepalive        time.Duration
 	BlockProfile                  bool
 	BlockTime                     time.Duration
 	BootnodeMode                  bool
@@ -407,13 +411,19 @@ func NewBee(
 		ctx,
 		logger,
 		stateStore,
-		o.BlockchainRpcEndpoint,
 		o.ChainID,
 		signer,
 		o.BlockTime,
 		chainEnabled,
 		o.MinimumGasTipCap,
 		o.GasLimitFallback,
+		BlockchainRPCConfig{
+			Endpoint:    o.BlockchainRpcEndpoint,
+			DialTimeout: o.BlockchainRpcDialTimeout,
+			TLSTimeout:  o.BlockchainRpcTLSTimeout,
+			IdleTimeout: o.BlockchainRpcIdleTimeout,
+			Keepalive:   o.BlockchainRpcKeepalive,
+		},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("init chain: %w", err)

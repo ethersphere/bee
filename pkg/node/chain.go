@@ -10,6 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net"
+	"net/http"
 	"strings"
 	"time"
 
@@ -39,24 +41,46 @@ const (
 	additionalConfirmations = 2
 )
 
+// BlockchainRPCConfig holds the configuration parameters for the blockchain RPC client transport.
+type BlockchainRPCConfig struct {
+	Endpoint    string
+	DialTimeout time.Duration
+	TLSTimeout  time.Duration
+	IdleTimeout time.Duration
+	Keepalive   time.Duration
+}
+
 // InitChain will initialize the Ethereum backend at the given endpoint and
 // set up the Transaction Service to interact with it using the provided signer.
 func InitChain(
 	ctx context.Context,
 	logger log.Logger,
 	stateStore storage.StateStorer,
-	endpoint string,
 	chainID int64,
 	signer crypto.Signer,
 	pollingInterval time.Duration,
 	chainEnabled bool,
 	minimumGasTipCap uint64,
 	fallbackGasLimit uint64,
+	rpcCfg BlockchainRPCConfig,
 ) (transaction.Backend, common.Address, int64, transaction.Monitor, transaction.Service, error) {
 	backend := backendnoop.New(chainID)
 
 	if chainEnabled {
-		rpcClient, err := rpc.DialContext(ctx, endpoint)
+		transport := &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: (&net.Dialer{
+				Timeout:   rpcCfg.DialTimeout,
+				KeepAlive: rpcCfg.Keepalive,
+			}).DialContext,
+			TLSHandshakeTimeout:   rpcCfg.TLSTimeout,
+			IdleConnTimeout:       rpcCfg.IdleTimeout,
+			MaxIdleConns:          100,
+			ForceAttemptHTTP2:     true,
+			ExpectContinueTimeout: 1 * time.Second,
+		}
+
+		rpcClient, err := rpc.DialOptions(ctx, rpcCfg.Endpoint, rpc.WithHTTPClient(&http.Client{Transport: transport}))
 		if err != nil {
 			return nil, common.Address{}, 0, nil, nil, fmt.Errorf("dial blockchain client: %w", err)
 		}
@@ -67,7 +91,7 @@ func InitChain(
 				"in a swap-enabled network a working blockchain node "+
 				"(for xDAI network in production, SepoliaETH in testnet) is required; "+
 				"check your node or specify another node using --blockchain-rpc-endpoint.",
-				"blockchain-rpc-endpoint", endpoint)
+				"blockchain-rpc-endpoint", rpcCfg.Endpoint)
 			return nil, common.Address{}, 0, nil, nil, fmt.Errorf("get client version: %w", err)
 		}
 

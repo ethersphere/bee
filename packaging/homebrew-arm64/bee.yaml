@@ -6,8 +6,13 @@
 # api-addr: 127.0.0.1:1633
 ## chain block time
 # block-time: "5"
-## rpc blockchain endpoint
-# blockchain-rpc-endpoint: ""
+## blockchain rpc configuration
+# blockchain-rpc:
+#   endpoint: ""
+#   dial-timeout: 30s
+#   tls-timeout: 10s
+#   idle-timeout: 90s
+#   keepalive: 30s
 ## initial nodes to connect to
 # bootnode: ["/dnsaddr/mainnet.ethswarm.org"]
 ## cause the node to always accept incoming connections

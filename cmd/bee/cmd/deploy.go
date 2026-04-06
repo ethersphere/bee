@@ -5,9 +5,6 @@
 package cmd
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/ethersphere/bee/v2/pkg/node"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20"
 	"github.com/spf13/cobra"
@@ -25,16 +22,11 @@ func (c *command) initDeployCmd() error {
 				return cmd.Help()
 			}
 
-			v := strings.ToLower(c.config.GetString(optionNameVerbosity))
-			logger, err := newLogger(cmd, v)
-			if err != nil {
-				return fmt.Errorf("new logger: %w", err)
-			}
+			logger := c.logger
 
 			dataDir := c.config.GetString(optionNameDataDir)
 			factoryAddress := c.config.GetString(optionNameSwapFactoryAddress)
 			swapInitialDeposit := c.config.GetString(optionNameSwapInitialDeposit)
-			blockchainRpcEndpoint := c.config.GetString(optionNameBlockchainRpcEndpoint)
 			stateStore, _, err := node.InitStateStore(logger, dataDir, 1000)
 			if err != nil {
 				return err
@@ -54,13 +46,19 @@ func (c *command) initDeployCmd() error {
 				ctx,
 				logger,
 				stateStore,
-				blockchainRpcEndpoint,
 				0,
 				signer,
 				blocktime,
 				true,
 				c.config.GetUint64(optionNameMinimumGasTipCap),
 				c.config.GetUint64(optionNameGasLimitFallback),
+				node.BlockchainRPCConfig{
+					Endpoint:    c.config.GetString(configKeyBlockchainRpcEndpoint),
+					DialTimeout: c.config.GetDuration(configKeyBlockchainRpcDialTimeout),
+					TLSTimeout:  c.config.GetDuration(configKeyBlockchainRpcTLSTimeout),
+					IdleTimeout: c.config.GetDuration(configKeyBlockchainRpcIdleTimeout),
+					Keepalive:   c.config.GetDuration(configKeyBlockchainRpcKeepalive),
+				},
 			)
 			if err != nil {
 				return err
@@ -100,7 +98,11 @@ func (c *command) initDeployCmd() error {
 			return err
 		},
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			return c.config.BindPFlags(cmd.Flags())
+			if err := c.preRun(cmd); err != nil {
+				return err
+			}
+			c.bindBlockchainRpcConfig(cmd)
+			return nil
 		},
 	}
 
