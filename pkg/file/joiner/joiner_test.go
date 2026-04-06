@@ -63,7 +63,7 @@ func TestJoinerSingleChunk(t *testing.T) {
 	mockAddrHex := fmt.Sprintf("%064s", "2a")
 	mockAddr := swarm.MustParseHexAddress(mockAddrHex)
 	mockData := []byte("foo")
-	mockDataLengthBytes := make([]byte, 8)
+	mockDataLengthBytes := make([]byte, 8, 8+len(mockData))
 	mockDataLengthBytes[0] = 0x03
 	mockChunk := swarm.NewChunk(mockAddr, append(mockDataLengthBytes, mockData...))
 	err := store.Put(ctx, mockChunk)
@@ -101,7 +101,7 @@ func TestJoinerDecryptingStore_NormalChunk(t *testing.T) {
 	mockAddrHex := fmt.Sprintf("%064s", "2a")
 	mockAddr := swarm.MustParseHexAddress(mockAddrHex)
 	mockData := []byte("foo")
-	mockDataLengthBytes := make([]byte, 8)
+	mockDataLengthBytes := make([]byte, 8, 8+len(mockData))
 	mockDataLengthBytes[0] = 0x03
 	mockChunk := swarm.NewChunk(mockAddr, append(mockDataLengthBytes, mockData...))
 	err := st.Put(ctx, mockChunk)

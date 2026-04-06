@@ -6,8 +6,13 @@
 # api-addr: 127.0.0.1:1633
 ## chain block time
 # block-time: "5"
-## rpc blockchain endpoint
-# blockchain-rpc-endpoint: ""
+## blockchain rpc configuration
+# blockchain-rpc:
+#   endpoint: ""
+#   dial-timeout: 30s
+#   tls-timeout: 10s
+#   idle-timeout: 90s
+#   keepalive: 30s
 ## initial nodes to connect to
 # bootnode: ["/dnsaddr/mainnet.ethswarm.org"]
 ## cause the node to always accept incoming connections
@@ -108,6 +113,8 @@ password-file: "/var/lib/bee/password"
 # tracing-port: ""
 ## service name identifier for tracing
 # tracing-service-name: bee
+## gas limit fallback when estimation fails for contract transactions (default 500000)
+# gas-limit-fallback: 500000
 ## skips the gas estimate step for contract transactions
 # transaction-debug-mode: false
 ## log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace
