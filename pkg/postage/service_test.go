@@ -372,7 +372,6 @@ func TestCrashRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ps2.Close()
 
 	issuers := ps2.StampIssuers()
 	if len(issuers) != 1 {
@@ -385,5 +384,31 @@ func TestCrashRecovery(t *testing.T) {
 	}
 	if buckets[bIdx1] != 1 {
 		t.Errorf("bucket %d: want 1, got %d", bIdx1, buckets[bIdx1])
+	}
+
+	// Clean shutdown — recovered counts must be flushed to disk.
+	if err := ps2.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Restart with wasClean=true — recovery is skipped, but counts must still
+	// be correct because ps2.Close() persisted the recovered state.
+	ps3, err := postage.NewService(log.Noop, store, pstore, 1, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ps3.Close()
+
+	issuers3 := ps3.StampIssuers()
+	if len(issuers3) != 1 {
+		t.Fatalf("post-recovery clean restart: expected 1 issuer, got %d", len(issuers3))
+	}
+
+	buckets3 := issuers3[0].Buckets()
+	if buckets3[bIdx0] != 3 {
+		t.Errorf("post-recovery clean restart: bucket %d: want 3, got %d", bIdx0, buckets3[bIdx0])
+	}
+	if buckets3[bIdx1] != 1 {
+		t.Errorf("post-recovery clean restart: bucket %d: want 1, got %d", bIdx1, buckets3[bIdx1])
 	}
 }

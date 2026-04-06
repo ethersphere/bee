@@ -116,6 +116,8 @@ func (s *service) recoverBuckets() error {
 				if bytes.Equal(issuer.data.BatchID, item.BatchID) {
 					if err := issuer.recover(item.BatchIndex); err != nil {
 						s.logger.Error(err, "postage recovery of bucket count failed")
+					} else {
+						issuer.dirty = true
 					}
 					break
 				}
