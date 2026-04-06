@@ -61,6 +61,7 @@ func InitChain(
 	pollingInterval time.Duration,
 	chainEnabled bool,
 	minimumGasTipCap uint64,
+	fallbackGasLimit uint64,
 	rpcCfg BlockchainRPCConfig,
 ) (transaction.Backend, common.Address, int64, transaction.Monitor, transaction.Service, error) {
 	backend := backendnoop.New(chainID)
@@ -115,7 +116,7 @@ func InitChain(
 
 	transactionMonitor := transaction.NewMonitor(logger, backend, overlayEthAddress, pollingInterval, cancellationDepth)
 
-	transactionService, err := transaction.NewService(logger, overlayEthAddress, backend, signer, stateStore, backendChainID, transactionMonitor)
+	transactionService, err := transaction.NewService(logger, overlayEthAddress, backend, signer, stateStore, backendChainID, transactionMonitor, fallbackGasLimit)
 	if err != nil {
 		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("transaction service: %w", err)
 	}

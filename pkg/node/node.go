@@ -90,6 +90,7 @@ import (
 const LoggerName = "node"
 
 type Bee struct {
+	logger                   log.Logger
 	p2pService               io.Closer
 	p2pHalter                p2p.Halter
 	ctxCancel                context.CancelFunc
@@ -157,6 +158,7 @@ type Options struct {
 	AutoTLSDomain                 string
 	AutoTLSRegistrationEndpoint   string
 	FullNodeMode                  bool
+	GasLimitFallback              uint64
 	Logger                        log.Logger
 	MinimumGasTipCap              uint64
 	MinimumStorageRadius          uint
@@ -265,6 +267,7 @@ func NewBee(
 	})
 
 	b = &Bee{
+		logger:         logger,
 		ctxCancel:      ctxCancel,
 		errorLogWriter: sink,
 		tracerCloser:   tracerCloser,
@@ -413,6 +416,7 @@ func NewBee(
 		o.BlockTime,
 		chainEnabled,
 		o.MinimumGasTipCap,
+		o.GasLimitFallback,
 		BlockchainRPCConfig{
 			Endpoint:    o.BlockchainRpcEndpoint,
 			DialTimeout: o.BlockchainRpcDialTimeout,
@@ -706,6 +710,13 @@ func NewBee(
 		return nil, fmt.Errorf("lookup erc20 postage address: %w", err)
 	}
 
+	// Compute gas limit for contract transactions: when TrxDebugMode is enabled,
+	// gas estimation is skipped and DefaultGasLimit is used for all contract calls.
+	var contractGasLimit uint64
+	if o.TrxDebugMode {
+		contractGasLimit = transaction.DefaultGasLimit
+	}
+
 	postageStampContractService = postagecontract.New(
 		overlayEthAddress,
 		postageStampContractAddress,
@@ -715,7 +726,7 @@ func NewBee(
 		post,
 		batchStore,
 		chainEnabled,
-		o.TrxDebugMode,
+		contractGasLimit,
 	)
 
 	eventListener = listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
@@ -1096,7 +1107,7 @@ func NewBee(
 		stakingContractAddress = common.HexToAddress(o.StakingContractAddress)
 	}
 
-	stakingContract := staking.New(overlayEthAddress, stakingContractAddress, abiutil.MustParseABI(chainCfg.StakingABI), bzzTokenAddress, transactionService, common.BytesToHash(nonce), o.TrxDebugMode, uint8(o.ReserveCapacityDoubling))
+	stakingContract := staking.New(overlayEthAddress, stakingContractAddress, abiutil.MustParseABI(chainCfg.StakingABI), bzzTokenAddress, transactionService, common.BytesToHash(nonce), contractGasLimit, uint8(o.ReserveCapacityDoubling))
 
 	if chainEnabled {
 
@@ -1187,7 +1198,7 @@ func NewBee(
 				redistributionContractAddress = common.HexToAddress(o.RedistributionContractAddress)
 			}
 
-			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), o.TrxDebugMode)
+			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), contractGasLimit)
 
 			isFullySynced := func() bool {
 				reserveThreshold := reserveCapacity * 5 / 10
@@ -1361,12 +1372,18 @@ func (b *Bee) Shutdown() error {
 	}
 	// tryClose is a convenient closure which decrease
 	// repetitive io.Closer tryClose procedure.
-	tryClose := func(c io.Closer, errMsg string) {
+	tryClose := func(c io.Closer, component string) {
 		if c == nil {
 			return
 		}
+
+		start := time.Now()
+		b.logger.Debug("starting shutdown", "component", component)
+		defer func() {
+			b.logger.Debug("finished shutdown", "component", component, "elapsed", time.Since(start))
+		}()
 		if err := c.Close(); err != nil {
-			mErr = multierror.Append(mErr, fmt.Errorf("%s: %w", errMsg, err))
+			mErr = multierror.Append(mErr, fmt.Errorf("%s: %w", component, err))
 		}
 	}
 
@@ -1441,9 +1458,10 @@ func (b *Bee) Shutdown() error {
 	tryClose(b.topologyCloser, "topology driver")
 	tryClose(b.storageIncetivesCloser, "storage incentives agent")
 	tryClose(b.stabilizationDetector, "stabilization detector")
+	// close localstore before StateStore to avoid ErrClosed / incomplete flush.
+	tryClose(b.localstoreCloser, "localstore")
 	tryClose(b.stateStoreCloser, "statestore")
 	tryClose(b.stamperStoreCloser, "stamperstore")
-	tryClose(b.localstoreCloser, "localstore")
 	tryClose(b.resolverCloser, "resolver service")
 
 	return mErr

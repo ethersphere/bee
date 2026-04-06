@@ -113,6 +113,8 @@ password-file: "/opt/homebrew/var/lib/swarm-bee/password"
 # tracing-port: ""
 ## service name identifier for tracing
 # tracing-service-name: bee
+## gas limit fallback when estimation fails for contract transactions (default 500000)
+# gas-limit-fallback: 500000
 ## skips the gas estimate step for contract transactions
 # transaction-debug-mode: false
 ## log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace
