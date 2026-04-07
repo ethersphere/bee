@@ -83,7 +83,8 @@ func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) 
 	// if the node has started with insufficient stake
 	tx, updated, err := s.stakingContract.UpdateHeight(r.Context())
 	if err != nil {
-		logger.Error(err, "update height failed")
+		logger.Debug("update height failed", "error", err)
+		logger.Error(nil, "update height failed")
 	} else if updated {
 		logger.Warning("reserve capacity doubling updated after stake deposit. Node will be FROZEN for ~2 rounds.", "transaction", tx)
 	}
