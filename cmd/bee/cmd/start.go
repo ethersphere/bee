@@ -221,11 +221,11 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 
 	if userHasSetNetworkID {
 		networkID = c.config.GetUint64(optionNameNetworkID)
-		if mainnet && networkID != chaincfg.Mainnet.NetworkID {
+		if mainnet && networkID != chaincfg.Gnosis.NetworkID {
 			return nil, errors.New("provided network ID does not match mainnet")
 		}
 	} else if mainnet {
-		networkID = chaincfg.Mainnet.NetworkID
+		networkID = chaincfg.Gnosis.NetworkID
 	}
 
 	bootnodes := c.config.GetStringSlice(optionNameBootnodes)
@@ -262,7 +262,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 	}
 
 	var neighborhoodSuggester string
-	if networkID == chaincfg.Mainnet.NetworkID {
+	if networkID == chaincfg.Gnosis.NetworkID {
 		neighborhoodSuggester = c.config.GetString(optionNameNeighborhoodSuggester)
 	}
 
@@ -461,10 +461,14 @@ func getConfigByNetworkID(networkID uint64, defaultBlockTimeInSeconds uint64) *n
 		blockTime: time.Duration(defaultBlockTimeInSeconds) * time.Second,
 	}
 	switch networkID {
-	case chaincfg.Mainnet.NetworkID:
+	case chaincfg.Gnosis.NetworkID:
 		config.bootNodes = []string{"/dnsaddr/mainnet.ethswarm.org"}
 		config.blockTime = 5 * time.Second
-		config.chainID = chaincfg.Mainnet.ChainID
+		config.chainID = chaincfg.Gnosis.ChainID
+	case chaincfg.Base.NetworkID:
+		config.bootNodes = []string{"/dnsaddr/base.ethswarm.org"}
+		config.blockTime = 2 * time.Second
+		config.chainID = chaincfg.Base.ChainID
 	case 5: // Staging.
 		config.chainID = chaincfg.Testnet.ChainID
 	case chaincfg.Testnet.NetworkID:

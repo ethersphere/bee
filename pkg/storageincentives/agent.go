@@ -33,9 +33,6 @@ import (
 const loggerName = "storageincentives"
 
 const (
-	DefaultBlocksPerRound = 152
-	DefaultBlocksPerPhase = DefaultBlocksPerRound / 4
-
 	// min # of transactions our wallet should be able to cover
 	minTxCountToCover = 15
 
@@ -92,6 +89,10 @@ func New(overlay swarm.Address,
 	health Health,
 	logger log.Logger,
 ) (*Agent, error) {
+	if blocksPerPhase < 3 {
+		return nil, errors.New("blocks per phase cannot be less than 3")
+	}
+
 	a := &Agent{
 		overlay:                overlay,
 		metrics:                newMetrics(),

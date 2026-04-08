@@ -282,7 +282,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameNATAddr, "", "NAT exposed address")
 	cmd.Flags().Bool(optionNameP2PWSEnable, false, "enable P2P WebSocket transport")
 	cmd.Flags().StringSlice(optionNameBootnodes, []string{"/dnsaddr/mainnet.ethswarm.org"}, "initial nodes to connect to")
-	cmd.Flags().Uint64(optionNameNetworkID, chaincfg.Mainnet.NetworkID, "ID of the Swarm network")
+	cmd.Flags().Uint64(optionNameNetworkID, chaincfg.Gnosis.NetworkID, "ID of the Swarm network")
 	cmd.Flags().StringSlice(optionCORSAllowedOrigins, []string{}, "origins with CORS headers enabled")
 	cmd.Flags().Bool(optionNameTracingEnabled, false, "enable tracing")
 	cmd.Flags().String(optionNameTracingEndpoint, "127.0.0.1:6831", "endpoint to send tracing data")
