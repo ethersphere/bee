@@ -27,7 +27,7 @@ const (
 	sharkyDirtyFileName = ".DIRTY"
 )
 
-func sharkyRecovery(ctx context.Context, sharkyBasePath string, store storage.Store, opts *Options) (closerFn, error) {
+func sharkyRecovery(ctx context.Context, sharkyBasePath string, store storage.Store, opts *Options) (closerFn, int, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -37,7 +37,7 @@ func sharkyRecovery(ctx context.Context, sharkyBasePath string, store storage.St
 	closer := func() error { return os.Remove(dirtyFilePath) }
 
 	if _, err := os.Stat(dirtyFilePath); errors.Is(err, fs.ErrNotExist) {
-		return closer, os.WriteFile(dirtyFilePath, []byte{}, 0644)
+		return closer, 0, os.WriteFile(dirtyFilePath, []byte{}, 0644)
 	}
 
 	logger.Info("localstore sharky .DIRTY file exists: starting recovery due to previous dirty exit")
@@ -47,7 +47,7 @@ func sharkyRecovery(ctx context.Context, sharkyBasePath string, store storage.St
 
 	sharkyRecover, err := sharky.NewRecovery(sharkyBasePath, sharkyNoOfShards, swarm.SocMaxChunkSize)
 	if err != nil {
-		return closer, err
+		return closer, 0, err
 	}
 
 	defer func() {
@@ -56,11 +56,12 @@ func sharkyRecovery(ctx context.Context, sharkyBasePath string, store storage.St
 		}
 	}()
 
-	if err := validateAndAddLocations(ctx, store, sharkyRecover, opts.Address, logger); err != nil {
-		return closer, err
+	pruned, err := validateAndAddLocations(ctx, store, sharkyRecover, opts.Address, logger)
+	if err != nil {
+		return closer, 0, err
 	}
 
-	return closer, nil
+	return closer, pruned, nil
 }
 
 // validateAndAddLocations iterates every chunk index entry, reads its data from
@@ -72,7 +73,8 @@ func sharkyRecovery(ctx context.Context, sharkyBasePath string, store storage.St
 // serving invalid data and with correct reserve size accounting.
 // If a corrupted index entry cannot be deleted, an error is returned and the
 // node startup is aborted to prevent serving or operating on corrupt state.
-func validateAndAddLocations(ctx context.Context, store storage.Store, sharkyRecover *sharky.Recovery, baseAddr swarm.Address, logger log.Logger) error {
+// It returns the number of corrupted entries that were pruned.
+func validateAndAddLocations(ctx context.Context, store storage.Store, sharkyRecover *sharky.Recovery, baseAddr swarm.Address, logger log.Logger) (int, error) {
 	var corrupted []*chunkstore.RetrievalIndexItem
 
 	buf := make([]byte, swarm.SocMaxChunkSize)
@@ -100,11 +102,11 @@ func validateAndAddLocations(ctx context.Context, store storage.Store, sharkyRec
 		return sharkyRecover.Add(item.Location)
 	})
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	if err := sharkyRecover.Save(); err != nil {
-		return err
+		return 0, err
 	}
 
 	for _, item := range corrupted {
@@ -113,7 +115,7 @@ func validateAndAddLocations(ctx context.Context, store storage.Store, sharkyRec
 			reserve.DeleteCorruptedChunkMetadata(store, baseAddr, item.Address),
 		); err != nil {
 			logger.Error(err, "recovery: failed deleting corrupted chunk", "address", item.Address)
-			return fmt.Errorf("recovery: failed deleting corrupted chunk %s: %w", item.Address, err)
+			return 0, fmt.Errorf("recovery: failed deleting corrupted chunk %s: %w", item.Address, err)
 		}
 	}
 
@@ -121,5 +123,5 @@ func validateAndAddLocations(ctx context.Context, store storage.Store, sharkyRec
 		logger.Warning("recovery: removed corrupted chunk index entries", "count", len(corrupted))
 	}
 
-	return nil
+	return len(corrupted), nil
 }
