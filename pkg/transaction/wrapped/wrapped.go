@@ -18,8 +18,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/transaction/wrapped/cache"
 )
 
-const defaultBlockSyncInterval = 10
-
 var (
 	_ transaction.Backend = (*wrappedBackend)(nil)
 )
@@ -44,9 +42,6 @@ func NewBackend(
 	blockTime time.Duration,
 	blockSyncInterval uint64,
 ) transaction.Backend {
-	if blockSyncInterval == 0 {
-		blockSyncInterval = defaultBlockSyncInterval
-	}
 	return &wrappedBackend{
 		backend:           backend,
 		minimumGasTipCap:  int64(minimumGasTipCap),
@@ -94,7 +89,7 @@ func (b *wrappedBackend) BlockNumber(ctx context.Context) (uint64, error) {
 			}
 
 			_, elapsedBlocks := b.estimatedBlockNumberWithElapsed(anchor, now)
-			if elapsedBlocks <= b.blockSyncInterval {
+			if elapsedBlocks < b.blockSyncInterval {
 				return true, b.nextExpectedBlockTime(anchor, elapsedBlocks)
 			}
 

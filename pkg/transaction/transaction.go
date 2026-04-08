@@ -397,10 +397,12 @@ func (t *transactionService) nextNonce(ctx context.Context) (uint64, error) {
 	// PendingNonceAt returns the nonce we should use, but we will
 	// compare this to our pending tx list, therefore the -1.
 	maxNonce := onchainNonce - 1
-	for _, trx := range pending {
-		if trx != nil {
-			maxNonce = max(maxNonce, trx.Nonce())
+	for txHash, trx := range pending {
+		if trx == nil {
+			t.logger.Warning("pending transaction data unavailable, relying on onchain nonce", "tx", txHash)
+			continue
 		}
+		maxNonce = max(maxNonce, trx.Nonce())
 	}
 
 	return maxNonce + 1, nil

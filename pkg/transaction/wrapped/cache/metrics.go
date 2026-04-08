@@ -1,4 +1,4 @@
-// Copyright 2025 The Swarm Authors. All rights reserved.
+// Copyright 2026 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -15,11 +15,6 @@ type metricSet struct {
 	Loads       prometheus.Counter
 	SharedLoads prometheus.Counter
 	LoadErrors  prometheus.Counter
-}
-
-type Metrics struct {
-	BlockNumber metricSet
-	Unknown     metricSet
 }
 
 func newMetricSet(prefix string) metricSet {
@@ -55,21 +50,5 @@ func newMetricSet(prefix string) metricSet {
 			Name:      prefix + "_load_errors",
 			Help:      prefix + " cache load errors",
 		}),
-	}
-}
-
-func (mtr *Metrics) Collectors() []prometheus.Collector {
-	return []prometheus.Collector{
-		mtr.BlockNumber.Hits,
-		mtr.BlockNumber.Misses,
-		mtr.BlockNumber.Loads,
-		mtr.BlockNumber.SharedLoads,
-		mtr.BlockNumber.LoadErrors,
-
-		mtr.Unknown.Hits,
-		mtr.Unknown.Misses,
-		mtr.Unknown.Loads,
-		mtr.Unknown.SharedLoads,
-		mtr.Unknown.LoadErrors,
 	}
 }

@@ -19,7 +19,6 @@ type ReuseEvaluator[T any] func(value T, expiresAt, now time.Time) (bool, time.T
 type ExpiringSingleFlightCache[T any] struct {
 	mu        sync.RWMutex
 	value     T
-	valid     bool
 	expiresAt time.Time
 
 	group   singleflight.Group[string, any]
@@ -48,7 +47,7 @@ func (c *ExpiringSingleFlightCache[T]) Peek() (T, time.Time, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	if c.valid {
+	if !c.expiresAt.IsZero() {
 		return c.value, c.expiresAt, true
 	}
 
@@ -61,7 +60,6 @@ func (c *ExpiringSingleFlightCache[T]) Set(value T, expiresAt time.Time) {
 	defer c.mu.Unlock()
 
 	c.value = value
-	c.valid = true
 	c.expiresAt = expiresAt
 }
 
