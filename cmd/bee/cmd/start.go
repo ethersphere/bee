@@ -214,15 +214,19 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 	userHasSetNetworkID := c.config.IsSet(optionNameNetworkID)
 
 	// if the user has provided a value - we use it and overwrite the default
-	// if mainnet is true then we only accept networkID value 1, error otherwise
-	// if the user has not provided a network ID but mainnet is true - just overwrite with mainnet network ID (1)
+	// if mainnet is true then we only accept a known mainnet network ID, error otherwise
+	// if the user has not provided a network ID but mainnet is true - default to Gnosis network ID for backwards compatibility
 	// in all the other cases we default to test network ID (10)
 	networkID := chaincfg.Testnet.NetworkID
 
+	isMainnetNetworkID := func(id uint64) bool {
+		return id == chaincfg.Gnosis.NetworkID || id == chaincfg.Base.NetworkID
+	}
+
 	if userHasSetNetworkID {
 		networkID = c.config.GetUint64(optionNameNetworkID)
-		if mainnet && networkID != chaincfg.Gnosis.NetworkID {
-			return nil, errors.New("provided network ID does not match mainnet")
+		if mainnet && !isMainnetNetworkID(networkID) {
+			return nil, errors.New("provided network ID does not match any mainnet")
 		}
 	} else if mainnet {
 		networkID = chaincfg.Gnosis.NetworkID
