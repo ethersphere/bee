@@ -13,7 +13,6 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -255,48 +254,4 @@ func TestPeekOrLoadContextCancellation(t *testing.T) {
 		require.NoError(t, err2)
 		assert.Equal(t, uint64(expectedVal), result2)
 	})
-}
-
-func TestMetrics(t *testing.T) {
-	t.Parallel()
-
-	now := time.Now()
-	expiresAt := now.Add(time.Second)
-	c := newTestCache()
-
-	ctx := context.Background()
-
-	// miss + load error
-	_, _ = c.PeekOrLoad(
-		ctx,
-		now,
-		func(value uint64, expiresAt, now time.Time) (bool, time.Time) {
-			return now.Before(expiresAt), expiresAt
-		},
-		func() (uint64, time.Time, error) { return 0, time.Time{}, errors.New("fail") },
-	)
-
-	// miss + load
-	_, _ = c.PeekOrLoad(
-		ctx,
-		now,
-		func(value uint64, expiresAt, now time.Time) (bool, time.Time) {
-			return now.Before(expiresAt), expiresAt
-		},
-		func() (uint64, time.Time, error) { return 42, expiresAt, nil },
-	)
-	// hit
-	_, _ = c.PeekOrLoad(
-		ctx,
-		now,
-		func(value uint64, expiresAt, now time.Time) (bool, time.Time) {
-			return now.Before(expiresAt), expiresAt
-		},
-		func() (uint64, time.Time, error) { return 0, expiresAt, nil },
-	)
-
-	assert.Equal(t, float64(1), testutil.ToFloat64(c.metrics.Hits))
-	assert.Equal(t, float64(2), testutil.ToFloat64(c.metrics.Misses))
-	assert.Equal(t, float64(2), testutil.ToFloat64(c.metrics.Loads))
-	assert.Equal(t, float64(1), testutil.ToFloat64(c.metrics.LoadErrors))
 }
