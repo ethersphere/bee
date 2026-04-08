@@ -58,6 +58,8 @@ require (
 	resenje.org/web v0.4.3
 )
 
+require github.com/kylelemons/godebug v1.1.0 // indirect
+
 require (
 	github.com/BurntSushi/toml v1.3.2 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
