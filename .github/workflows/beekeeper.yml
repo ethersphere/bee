@@ -4,6 +4,11 @@ on:
   repository_dispatch:
     types: [trigger-beekeeper, beekeeper]
   pull_request:
+    paths-ignore:
+      - packaging/**
+      - openapi/**
+      - '**/*.md'
+      - '.github/ISSUE_TEMPLATE/**'
     branches:
       - "**"
 

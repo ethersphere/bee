@@ -4,11 +4,17 @@ on:
   push:
     paths-ignore:
       - packaging/**
+      - openapi/**
+      - '**/*.md'
+      - '.github/ISSUE_TEMPLATE/**'
     branches:
       - 'master'
   pull_request:
     paths-ignore:
       - packaging/**
+      - openapi/**
+      - '**/*.md'
+      - '.github/ISSUE_TEMPLATE/**'
     branches:
       - '**'
 
