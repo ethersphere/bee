@@ -11,6 +11,7 @@ import (
 	"path"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/v2/cmd/bee/cmd"
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -172,8 +173,7 @@ func TestDBExportImportPinning(t *testing.T) {
 	}
 }
 
-// TestDBNuke_FLAKY is flaky on windows.
-func TestDBNuke_FLAKY(t *testing.T) {
+func TestDBNuke(t *testing.T) {
 	t.Parallel()
 
 	dataDir := t.TempDir()
@@ -203,7 +203,17 @@ func TestDBNuke_FLAKY(t *testing.T) {
 
 	db.Close()
 
-	err = newCommand(t, cmd.WithArgs("db", "nuke", "--data-dir", dataDir)).Execute()
+	// Retrying avoids a short OS-level race after db.Close(), where file handles
+	// may still be getting released and early removal can fail on some platforms.
+	backoff := 50 * time.Millisecond
+	for range 3 {
+		err = newCommand(t, cmd.WithArgs("db", "nuke", "--data-dir", dataDir)).Execute()
+		if err == nil {
+			break
+		}
+		time.Sleep(backoff)
+		backoff *= 2
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

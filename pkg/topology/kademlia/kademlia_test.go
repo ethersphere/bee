@@ -887,7 +887,7 @@ func TestAddressBookPrune(t *testing.T) {
 }
 
 // test pruning addressbook after successive failed connect attempts
-func TestAddressBookQuickPrune_FLAKY(t *testing.T) {
+func TestAddressBookQuickPrune(t *testing.T) {
 	t.Parallel()
 
 	var (
@@ -917,24 +917,19 @@ func TestAddressBookQuickPrune_FLAKY(t *testing.T) {
 	// add one valid peer
 	addOne(t, signer, kad, ab, addr)
 	waitCounter(t, &conns, 1)
-	waitCounter(t, &failedConns, 0)
 
 	// add non connectable peer, check connection and failed connection counters
 	kad.AddPeers(nonConnPeer.Overlay)
-	waitCounter(t, &conns, 0)
-	waitCounter(t, &failedConns, 1)
+	waitCounterAtLeast(t, &failedConns, 1)
 
 	// we need to trigger connection attempts maxConnAttempts times
 	for range 3 {
 		time.Sleep(10 * time.Millisecond)
 		kad.Trigger()
-		waitCounter(t, &failedConns, 1)
+		waitCounterAtLeast(t, &failedConns, 1)
 	}
 
-	_, err = ab.Get(nonConnPeer.Overlay)
-	if !errors.Is(err, addressbook.ErrNotFound) {
-		t.Fatal(err)
-	}
+	waitAddressBookNotFound(t, ab, nonConnPeer.Overlay)
 }
 
 func TestClosestPeer(t *testing.T) {
@@ -1177,7 +1172,7 @@ func TestKademlia_SubscribeTopologyChange(t *testing.T) {
 	})
 }
 
-func TestSnapshot_FLAKY(t *testing.T) {
+func TestSnapshot(t *testing.T) {
 	t.Parallel()
 
 	conns := new(int32)
@@ -1192,7 +1187,8 @@ func TestSnapshot_FLAKY(t *testing.T) {
 
 	waitConn(t, conns)
 
-	snap := kad.Snapshot()
+	po := swarm.Proximity(sa.Bytes(), a.Bytes())
+	snap := waitSnapshot(t, kad, po, 1, 1, 1)
 
 	if snap.Connected != 1 {
 		t.Errorf("expected %d connected peers but got %d", 1, snap.Connected)
@@ -1200,9 +1196,6 @@ func TestSnapshot_FLAKY(t *testing.T) {
 	if snap.Population != 1 {
 		t.Errorf("expected population %d but got %d", 1, snap.Population)
 	}
-
-	po := swarm.Proximity(sa.Bytes(), a.Bytes())
-
 	if binP := getBinPopulation(&snap.Bins, po); binP != 1 {
 		t.Errorf("expected bin(%d) to have population %d but got %d", po, 1, snap.Population)
 	}
@@ -1596,20 +1589,24 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 	}
 }
 
-func TestAnnounceBgBroadcast_FLAKY(t *testing.T) {
+func TestAnnounceBgBroadcast(t *testing.T) {
 	t.Parallel()
 
 	var (
-		conns  int32
-		bgDone = make(chan struct{})
-		p1, p2 = swarm.RandAddress(t), swarm.RandAddress(t)
-		disc   = mock.NewDiscovery(
+		conns     int32
+		bgStarted = make(chan struct{})
+		bgDone    = make(chan struct{})
+		startOnce sync.Once
+		doneOnce  sync.Once
+		p1, p2    = swarm.RandAddress(t), swarm.RandAddress(t)
+		disc      = mock.NewDiscovery(
 			mock.WithBroadcastPeers(func(ctx context.Context, p swarm.Address, _ ...swarm.Address) error {
 				// For the broadcast back to connected peer return early
 				if p.Equal(p2) {
 					return nil
 				}
-				defer close(bgDone)
+				startOnce.Do(func() { close(bgStarted) })
+				defer doneOnce.Do(func() { close(bgDone) })
 				<-ctx.Done()
 				return ctx.Err()
 			}),
@@ -1634,6 +1631,7 @@ func TestAnnounceBgBroadcast_FLAKY(t *testing.T) {
 	if err := kad.Announce(ctx, p2, true); err != nil {
 		t.Fatal(err)
 	}
+	waitChanClosed(t, bgStarted)
 
 	// cancellation should not close background broadcast
 	cancel()
@@ -1650,11 +1648,7 @@ func TestAnnounceBgBroadcast_FLAKY(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	select {
-	case <-bgDone:
-	case <-time.After(time.Millisecond * 100):
-		t.Fatal("background broadcast did not exit on close")
-	}
+	waitChanClosed(t, bgDone)
 }
 
 func TestAnnounceNeighborhoodToNeighbor(t *testing.T) {
@@ -2176,6 +2170,23 @@ func waitCounter(t *testing.T, conns *int32, exp int32) {
 	}
 }
 
+func waitCounterAtLeast(t *testing.T, conns *int32, exp int32) {
+	t.Helper()
+	var got int32
+
+	err := spinlock.Wait(spinLockWaitTime, func() bool {
+		got = atomic.LoadInt32(conns)
+		if got < exp {
+			return false
+		}
+		atomic.StoreInt32(conns, 0)
+		return true
+	})
+	if err != nil {
+		t.Fatalf("timed out waiting for counter to reach at least expected value. got %d want >= %d", got, exp)
+	}
+}
+
 func waitPeers(t *testing.T, k *kademlia.Kad, peers int) {
 	t.Helper()
 
@@ -2218,6 +2229,60 @@ func waitBcast(t *testing.T, d *mock.Discovery, pivot swarm.Address, addrs ...sw
 	if err != nil {
 		t.Fatalf("timed out waiting for broadcast to happen")
 	}
+}
+
+func waitChanClosed(t *testing.T, ch <-chan struct{}) {
+	t.Helper()
+
+	err := spinlock.Wait(spinLockWaitTime, func() bool {
+		select {
+		case <-ch:
+			return true
+		default:
+			return false
+		}
+	})
+	if err != nil {
+		t.Fatal("timed out waiting for channel to close")
+	}
+}
+
+func waitAddressBookNotFound(t *testing.T, ab addressbook.Interface, addr swarm.Address) {
+	t.Helper()
+
+	var err error
+	waitErr := spinlock.Wait(spinLockWaitTime, func() bool {
+		_, err = ab.Get(addr)
+		return errors.Is(err, addressbook.ErrNotFound)
+	})
+	if waitErr != nil {
+		t.Fatalf("timed out waiting for addressbook prune. last error: %v", err)
+	}
+}
+
+func waitSnapshot(t *testing.T, kad *kademlia.Kad, po uint8, connected, population, binPopulation uint64) *topology.KadParams {
+	t.Helper()
+
+	var snap *topology.KadParams
+
+	if err := spinlock.Wait(spinLockWaitTime, func() bool {
+		snap = kad.Snapshot()
+		return uint64(snap.Connected) == connected &&
+			uint64(snap.Population) == population &&
+			getBinPopulation(&snap.Bins, po) == binPopulation
+	}); err != nil {
+		t.Fatalf(
+			"timed out waiting for snapshot. got connected=%d population=%d binPopulation=%d want connected=%d population=%d binPopulation=%d",
+			snap.Connected,
+			snap.Population,
+			getBinPopulation(&snap.Bins, po),
+			connected,
+			population,
+			binPopulation,
+		)
+	}
+
+	return snap
 }
 
 // waitBalanced waits for kademlia to be balanced for specified bin.
