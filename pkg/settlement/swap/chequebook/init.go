@@ -99,11 +99,11 @@ func checkBalance(
 				logger.Warning(msg, "min_amount", neededERC20, "address", overlayEthAddress)
 			}
 
-			if chainId == chaincfg.Testnet.ChainID {
+			if chainId != chaincfg.Gnosis.ChainID {
 				logger.Warning("learn how to fund your node by visiting our docs at https://docs.ethswarm.org/docs/installation/fund-your-node")
 			}
 
-			if chainId == chaincfg.Mainnet.ChainID {
+			if chainId == chaincfg.Gnosis.ChainID {
 				fundingURL := fmt.Sprintf("https://fund.ethswarm.org/?destination=%s&intent=initial-funding", overlayEthAddress.Hex())
 				logger.Info(fmt.Sprintf("fund your node using the funding URL: %s", fundingURL))
 			}

@@ -40,6 +40,9 @@ type ChainConfig struct {
 	// chequebooks deployed by that factory generation.
 	// Derive: cast keccak $(cast code <any chequebook addr> --rpc-url <rpc>)
 	AcceptedChequebookBytecodeHashes [][32]byte
+
+	BlocksPerRound uint64
+	BlocksPerPhase uint64
 }
 
 // mustHash decodes a 64-character hex string (no 0x prefix) into a [32]byte.
@@ -73,9 +76,12 @@ var (
 		AcceptedChequebookBytecodeHashes: [][32]byte{
 			mustHash("ba50aa67c6e6f135a8ca57947c015c24192531d47e47a9ec212c0090e0486d46"),
 		},
+
+		BlocksPerRound: 152,
+		BlocksPerPhase: 4,
 	}
 
-	Mainnet = ChainConfig{
+	Gnosis = ChainConfig{
 		ChainID:                abi.MainnetChainID,
 		NetworkID:              abi.MainnetNetworkID,
 		PostageStampStartBlock: abi.MainnetPostageStampBlockNumber,
@@ -95,6 +101,29 @@ var (
 		AcceptedChequebookBytecodeHashes: [][32]byte{
 			mustHash("81d3de06cadb0970fc653f24cef4689243f9a3d702236370ecf4613673048145"),
 		},
+		BlocksPerRound: 152,
+		BlocksPerPhase: 4,
+	}
+
+	Base = ChainConfig{
+		ChainID:                8453,
+		NetworkID:              2,
+		PostageStampStartBlock: 41062386,
+		NativeTokenSymbol:      "ETH",
+		SwarmTokenSymbol:       "bBZZ",
+
+		StakingAddress:         common.HexToAddress("0x491075e789DBdbb7d08D95946E665eFB2751eE1E"),
+		PostageStampAddress:    common.HexToAddress("0x8613A18717E30be14852846eC6D45F5010339451"),
+		RedistributionAddress:  common.HexToAddress("0x6a02826e2a56092F56e0ba4dB766c5f4540414C2"),
+		SwapPriceOracleAddress: common.HexToAddress("0x0fF044F6bB4F684a5A149B46D7eC03ea659F98A1"),
+		CurrentFactoryAddress:  common.HexToAddress("0xc2d5a532cf69aa9a1378737d8ccdef884b6e7420"),
+
+		StakingABI:        abi.MainnetStakingABI,
+		PostageStampABI:   abi.MainnetPostageStampABI,
+		RedistributionABI: abi.MainnetRedistributionABI,
+
+		BlocksPerRound: 380,
+		BlocksPerPhase: 4,
 	}
 )
 
@@ -102,8 +131,10 @@ func GetByChainID(chainID int64) (ChainConfig, bool) {
 	switch chainID {
 	case Testnet.ChainID:
 		return Testnet, true
-	case Mainnet.ChainID:
-		return Mainnet, true
+	case Gnosis.ChainID:
+		return Gnosis, true
+	case Base.ChainID:
+		return Base, true
 	default:
 		return ChainConfig{
 			NativeTokenSymbol: Testnet.NativeTokenSymbol,
@@ -111,6 +142,8 @@ func GetByChainID(chainID int64) (ChainConfig, bool) {
 			StakingABI:        abi.TestnetStakingABI,
 			PostageStampABI:   abi.TestnetPostageStampABI,
 			RedistributionABI: abi.TestnetRedistributionABI,
+			BlocksPerRound:    Testnet.BlocksPerRound,
+			BlocksPerPhase:    Testnet.BlocksPerPhase,
 		}, false
 	}
 }
