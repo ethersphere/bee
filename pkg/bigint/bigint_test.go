@@ -80,6 +80,28 @@ func TestBinaryMarshalingGobCompatibility(t *testing.T) {
 	}
 }
 
+func TestMarshalBinaryNilPanics(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic on MarshalBinary with nil Int, got none")
+		}
+	}()
+
+	var w bigint.BigInt // Int is nil
+	_, _ = w.MarshalBinary()
+}
+
+func TestUnmarshalBinaryEmptyErrors(t *testing.T) {
+	t.Parallel()
+
+	var w bigint.BigInt
+	if err := w.UnmarshalBinary([]byte{}); err == nil {
+		t.Fatal("expected error on UnmarshalBinary with empty data, got nil")
+	}
+}
+
 func TestMarshaling(t *testing.T) {
 	t.Parallel()
 

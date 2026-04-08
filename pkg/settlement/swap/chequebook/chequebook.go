@@ -260,9 +260,6 @@ func (s *service) totalIssued() (*big.Int, error) {
 		}
 		return big.NewInt(0), nil
 	}
-	if w.Int == nil {
-		return big.NewInt(0), nil
-	}
 	return w.Int, nil
 }
 

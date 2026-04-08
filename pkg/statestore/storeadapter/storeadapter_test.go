@@ -91,6 +91,29 @@ func TestMigrateBigIntKeys(t *testing.T) {
 	}
 }
 
+// TestMigrateBigIntKeys_GobRejected verifies that migration step 9 returns an
+// error if it encounters already Gob-encoded data, since this indicates an
+// unexpected database state.
+func TestMigrateBigIntKeys_GobRejected(t *testing.T) {
+	t.Parallel()
+
+	val := big.NewInt(999)
+	gobData, err := val.GobEncode()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rawStore := inmemstore.New()
+	if err := rawStore.Put(&rawKeyItem{key: "accounting_balance_peer1", data: gobData}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = storeadapter.NewStateStorerAdapter(rawStore)
+	if err == nil {
+		t.Fatal("expected migration to fail on Gob-encoded data, got nil error")
+	}
+}
+
 func TestStateStoreAdapter(t *testing.T) {
 	t.Parallel()
 

@@ -61,8 +61,8 @@ func migrateBigIntKeys(s storage.Store) migration.StepFn {
 				v := new(big.Int)
 				switch data[0] {
 				case 2, 3:
-					// already Gob-encoded — no migration needed
-					return false, nil
+					// Gob-encoded data found before migration — database is in an unexpected state
+					return true, fmt.Errorf("unexpected Gob-encoded bigint at key %q before migration", key)
 				case '"':
 					// quoted decimal string from json.Marshal(bigint.BigInt)
 					var w bigint.BigInt
