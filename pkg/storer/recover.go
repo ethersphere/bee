@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstore"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
@@ -55,7 +56,7 @@ func sharkyRecovery(ctx context.Context, sharkyBasePath string, store storage.St
 		}
 	}()
 
-	if err := validateAndAddLocations(ctx, store, sharkyRecover, logger); err != nil {
+	if err := validateAndAddLocations(ctx, store, sharkyRecover, opts.Address, logger); err != nil {
 		return closer, err
 	}
 
@@ -66,10 +67,12 @@ func sharkyRecovery(ctx context.Context, sharkyBasePath string, store storage.St
 // Sharky, and validates the content hash. Valid chunks are registered with the
 // recovery so their slots are preserved. Corrupted entries (unreadable data or
 // hash mismatch) are logged, excluded from the recovery bitmap, and deleted from
-// the index store so the node starts clean without serving invalid data.
+// the index store — including all associated reserve metadata (BatchRadiusItem,
+// ChunkBinItem, stampindex, chunkstamp) — so the node starts clean without
+// serving invalid data and with correct reserve size accounting.
 // If a corrupted index entry cannot be deleted, an error is returned and the
 // node startup is aborted to prevent serving or operating on corrupt state.
-func validateAndAddLocations(ctx context.Context, store storage.Store, sharkyRecover *sharky.Recovery, logger log.Logger) error {
+func validateAndAddLocations(ctx context.Context, store storage.Store, sharkyRecover *sharky.Recovery, baseAddr swarm.Address, logger log.Logger) error {
 	var corrupted []*chunkstore.RetrievalIndexItem
 
 	buf := make([]byte, swarm.SocMaxChunkSize)
@@ -105,9 +108,12 @@ func validateAndAddLocations(ctx context.Context, store storage.Store, sharkyRec
 	}
 
 	for _, item := range corrupted {
-		if err := store.Delete(item); err != nil {
-			logger.Error(err, "recovery: failed deleting corrupted chunk index entry", "address", item.Address)
-			return fmt.Errorf("recovery: failed deleting corrupted chunk index entry %s: %w", item.Address, err)
+		if err := errors.Join(
+			store.Delete(item),
+			reserve.DeleteCorruptedChunkMetadata(store, baseAddr, item.Address),
+		); err != nil {
+			logger.Error(err, "recovery: failed deleting corrupted chunk", "address", item.Address)
+			return fmt.Errorf("recovery: failed deleting corrupted chunk %s: %w", item.Address, err)
 		}
 	}
 
