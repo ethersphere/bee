@@ -55,7 +55,7 @@ func (b *Backend) SuggestGasTipCap(context.Context) (*big.Int, error) {
 	return nil, postagecontract.ErrChainDisabled
 }
 
-func (b *Backend) EstimateGasAtBlock(ctx context.Context, msg ethereum.CallMsg, blockNumber *big.Int) (uint64, error) {
+func (b *Backend) EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint64, error) {
 	return 0, postagecontract.ErrChainDisabled
 }
 

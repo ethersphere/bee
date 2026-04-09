@@ -53,25 +53,10 @@ func (c *command) initStartCmd() (err error) {
 				return cmd.Help()
 			}
 
-			v := strings.ToLower(c.config.GetString(optionNameVerbosity))
-
-			logger, err := newLogger(cmd, v)
-			if err != nil {
-				return fmt.Errorf("new logger: %w", err)
-			}
-
-			if c.isWindowsService {
-				logger, err = createWindowsEventLogger(serviceName, logger)
-				if err != nil {
-					return fmt.Errorf("failed to create windows logger %w", err)
-				}
-			}
+			logger := c.logger
 
 			fmt.Print(beeWelcomeMessage)
-			fmt.Printf("\n\nversion: %v - planned to be supported until %v, please follow https://ethswarm.org/\n\n", bee.Version, endSupportDate())
 			logger.Info("bee version", "version", bee.Version)
-
-			go startTimeBomb(logger)
 
 			// ctx is global context of bee node; which is canceled after interrupt signal is received.
 			ctx, cancel := context.WithCancel(context.Background())
@@ -170,7 +155,11 @@ func (c *command) initStartCmd() (err error) {
 			return nil
 		},
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			return c.config.BindPFlags(cmd.Flags())
+			if err := c.preRun(cmd); err != nil {
+				return err
+			}
+			c.bindBlockchainRpcConfig(cmd)
+			return nil
 		},
 	}
 
@@ -284,7 +273,11 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		EnableWSS:                     c.config.GetBool(optionNameP2PWSSEnable),
 		WSSAddr:                       c.config.GetString(optionP2PWSSAddr),
 		AutoTLSStorageDir:             filepath.Join(c.config.GetString(optionNameDataDir), "autotls"),
-		BlockchainRpcEndpoint:         c.config.GetString(optionNameBlockchainRpcEndpoint),
+		BlockchainRpcEndpoint:         c.config.GetString(configKeyBlockchainRpcEndpoint),
+		BlockchainRpcDialTimeout:      c.config.GetDuration(configKeyBlockchainRpcDialTimeout),
+		BlockchainRpcTLSTimeout:       c.config.GetDuration(configKeyBlockchainRpcTLSTimeout),
+		BlockchainRpcIdleTimeout:      c.config.GetDuration(configKeyBlockchainRpcIdleTimeout),
+		BlockchainRpcKeepalive:        c.config.GetDuration(configKeyBlockchainRpcKeepalive),
 		BlockProfile:                  c.config.GetBool(optionNamePProfBlock),
 		BlockTime:                     networkConfig.blockTime,
 		BootnodeMode:                  bootNode,
@@ -306,6 +299,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		FullNodeMode:                  fullNode,
 		Logger:                        logger,
 		MinimumGasTipCap:              c.config.GetUint64(optionNameMinimumGasTipCap),
+		GasLimitFallback:              c.config.GetUint64(optionNameGasLimitFallback),
 		MinimumStorageRadius:          c.config.GetUint(optionMinimumStorageRadius),
 		MutexProfile:                  c.config.GetBool(optionNamePProfMutex),
 		NATAddr:                       c.config.GetString(optionNameNATAddr),
@@ -334,7 +328,6 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		TracingEndpoint:               tracingEndpoint,
 		TracingServiceName:            c.config.GetString(optionNameTracingServiceName),
 		TrxDebugMode:                  c.config.GetBool(optionNameTransactionDebugMode),
-		UsePostageSnapshot:            c.config.GetBool(optionNameUsePostageSnapshot),
 		WarmupTime:                    c.config.GetDuration(optionWarmUpTime),
 		WelcomeMessage:                c.config.GetString(optionWelcomeMessage),
 		WhitelistedWithdrawalAddress:  c.config.GetStringSlice(optionNameWhitelistedWithdrawalAddress),

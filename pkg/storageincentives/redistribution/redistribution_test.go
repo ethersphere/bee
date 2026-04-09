@@ -88,7 +88,7 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			false,
+			0,
 		)
 
 		isPlaying, err := contract.IsPlaying(ctx, depth)
@@ -120,7 +120,7 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			false,
+			0,
 		)
 
 		isPlaying, err := contract.IsPlaying(ctx, depth)
@@ -150,7 +150,7 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			false,
+			0,
 		)
 
 		isWinner, err := contract.IsWinner(ctx)
@@ -177,7 +177,7 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			false,
+			0,
 		)
 
 		isWinner, err := contract.IsWinner(ctx)
@@ -223,7 +223,7 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			false,
+			0,
 		)
 
 		_, err = contract.Claim(ctx, proofs)
@@ -265,7 +265,7 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			false,
+			0,
 		)
 
 		_, err = contract.Claim(ctx, proofs)
@@ -308,7 +308,7 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			false,
+			0,
 		)
 
 		_, err = contract.Commit(ctx, testobfus, 0)
@@ -353,7 +353,7 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			false,
+			0,
 		)
 
 		_, err = contract.Reveal(ctx, depth, common.Hex2Bytes("hash"), common.Hex2Bytes("nonce"))
@@ -380,7 +380,7 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			false,
+			0,
 		)
 
 		salt, err := contract.ReserveSalt(ctx)
@@ -410,7 +410,7 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			false,
+			0,
 		)
 
 		_, err := contract.IsPlaying(ctx, depth)
@@ -443,7 +443,7 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			false,
+			0,
 		)
 
 		_, err = contract.Commit(ctx, common.Hex2Bytes("hash"), 0)

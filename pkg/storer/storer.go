@@ -220,7 +220,7 @@ func closer(closers ...io.Closer) io.Closer {
 }
 
 func initInmemRepository() (transaction.Storage, io.Closer, error) {
-	store, err := leveldbstore.New("", nil)
+	store, _, err := leveldbstore.New("", nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed creating inmem levelDB index store: %w", err)
 	}
@@ -263,7 +263,7 @@ func initStore(basePath string, opts *Options) (*leveldbstore.Store, error) {
 			return nil, err
 		}
 	}
-	store, err := leveldbstore.New(path.Join(basePath, "indexstore"), &opt.Options{
+	store, _, err := leveldbstore.New(path.Join(basePath, "indexstore"), &opt.Options{
 		OpenFilesCacheCapacity: int(opts.LdbOpenFilesLimit),
 		BlockCacheCapacity:     int(opts.LdbBlockCacheCapacity),
 		WriteBuffer:            int(opts.LdbWriteBufferSize),
@@ -674,10 +674,12 @@ func (db *DB) SetRetrievalService(r retrieval.Interface) {
 	db.retrieval = r
 }
 
-func (db *DB) StartReserveWorker(ctx context.Context, s Syncer, radius func() (uint8, error)) {
+// StartReserveWorker starts the reserve worker. It takes an optional ready channel that is closed whenever the reserve
+// worker has finished starting, as this synchronization is needed for some tests. The channel is not used for writing anywhere.
+func (db *DB) StartReserveWorker(ctx context.Context, s Syncer, radius func() (uint8, error), ready chan<- struct{}) {
 	db.setSyncerOnce.Do(func() {
 		db.syncer = s
-		go db.startReserveWorkers(ctx, radius)
+		go db.startReserveWorkers(ctx, radius, ready)
 	})
 }
 

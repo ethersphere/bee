@@ -50,7 +50,6 @@ const (
 	optionNamePaymentEarly                 = "payment-early-percent"
 	optionNameResolverEndpoints            = "resolver-options"
 	optionNameBootnodeMode                 = "bootnode-mode"
-	optionNameBlockchainRpcEndpoint        = "blockchain-rpc-endpoint"
 	optionNameSwapFactoryAddress           = "swap-factory-address"
 	optionNameSwapInitialDeposit           = "swap-initial-deposit"
 	optionNameSwapEnable                   = "swap-enable"
@@ -72,7 +71,6 @@ const (
 	optionNameStaticNodes                  = "static-nodes"
 	optionNameAllowPrivateCIDRs            = "allow-private-cidrs"
 	optionNameSleepAfter                   = "sleep-after"
-	optionNameUsePostageSnapshot           = "use-postage-snapshot"
 	optionNameStorageIncentivesEnable      = "storage-incentives-enable"
 	optionNameStateStoreCacheCapacity      = "statestore-cache-capacity"
 	optionNameTargetNeighborhood           = "target-neighborhood"
@@ -83,13 +81,42 @@ const (
 	optionReserveCapacityDoubling          = "reserve-capacity-doubling"
 	optionSkipPostageSnapshot              = "skip-postage-snapshot"
 	optionNameMinimumGasTipCap             = "minimum-gas-tip-cap"
+	optionNameGasLimitFallback             = "gas-limit-fallback"
 	optionNameP2PWSSEnable                 = "p2p-wss-enable"
 	optionP2PWSSAddr                       = "p2p-wss-addr"
 	optionNATWSSAddr                       = "nat-wss-addr"
 	optionAutoTLSDomain                    = "autotls-domain"
 	optionAutoTLSRegistrationEndpoint      = "autotls-registration-endpoint"
 	optionAutoTLSCAEndpoint                = "autotls-ca-endpoint"
+
+	// blockchain-rpc
+	optionNameBlockchainRpcEndpoint    = "blockchain-rpc-endpoint"
+	optionNameBlockchainRpcDialTimeout = "blockchain-rpc-dial-timeout"
+	optionNameBlockchainRpcTLSTimeout  = "blockchain-rpc-tls-timeout"
+	optionNameBlockchainRpcIdleTimeout = "blockchain-rpc-idle-timeout"
+	optionNameBlockchainRpcKeepalive   = "blockchain-rpc-keepalive"
+	configKeyBlockchainRpcEndpoint     = "blockchain-rpc.endpoint"
+	configKeyBlockchainRpcDialTimeout  = "blockchain-rpc.dial-timeout"
+	configKeyBlockchainRpcTLSTimeout   = "blockchain-rpc.tls-timeout"
+	configKeyBlockchainRpcIdleTimeout  = "blockchain-rpc.idle-timeout"
+	configKeyBlockchainRpcKeepalive    = "blockchain-rpc.keepalive"
 )
+
+var blockchainRpcConfigPairs = []struct{ flat, dotted string }{
+	{optionNameBlockchainRpcEndpoint, configKeyBlockchainRpcEndpoint},
+	{optionNameBlockchainRpcDialTimeout, configKeyBlockchainRpcDialTimeout},
+	{optionNameBlockchainRpcTLSTimeout, configKeyBlockchainRpcTLSTimeout},
+	{optionNameBlockchainRpcIdleTimeout, configKeyBlockchainRpcIdleTimeout},
+	{optionNameBlockchainRpcKeepalive, configKeyBlockchainRpcKeepalive},
+}
+
+var knownNestedKeys = func() map[string]bool {
+	m := make(map[string]bool, len(blockchainRpcConfigPairs))
+	for _, p := range blockchainRpcConfigPairs {
+		m[p.dotted] = true
+	}
+	return m
+}()
 
 // nolint:gochecknoinits
 func init() {
@@ -99,6 +126,7 @@ func init() {
 type command struct {
 	root             *cobra.Command
 	config           *viper.Viper
+	logger           log.Logger
 	passwordReader   passwordReader
 	cfgFile          string
 	homeDir          string
@@ -269,6 +297,10 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().StringSlice(optionNameResolverEndpoints, []string{}, "ENS compatible API endpoint for a TLD and with contract address, can be repeated, format [tld:][contract-addr@]url")
 	cmd.Flags().Bool(optionNameBootnodeMode, false, "cause the node to always accept incoming connections")
 	cmd.Flags().String(optionNameBlockchainRpcEndpoint, "", "rpc blockchain endpoint")
+	cmd.Flags().Duration(optionNameBlockchainRpcDialTimeout, 30*time.Second, "blockchain rpc TCP dial timeout")
+	cmd.Flags().Duration(optionNameBlockchainRpcTLSTimeout, 10*time.Second, "blockchain rpc TLS handshake timeout")
+	cmd.Flags().Duration(optionNameBlockchainRpcIdleTimeout, 90*time.Second, "blockchain rpc idle connection timeout")
+	cmd.Flags().Duration(optionNameBlockchainRpcKeepalive, 30*time.Second, "blockchain rpc TCP keepalive interval")
 	cmd.Flags().String(optionNameSwapFactoryAddress, "", "swap factory addresses")
 	cmd.Flags().String(optionNameSwapInitialDeposit, "0", "initial deposit if deploying a new chequebook")
 	cmd.Flags().Bool(optionNameSwapEnable, false, "enable swap")
@@ -288,7 +320,6 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNamePProfMutex, false, "enable pprof mutex profile")
 	cmd.Flags().StringSlice(optionNameStaticNodes, []string{}, "protect nodes from getting kicked out on bootnode")
 	cmd.Flags().Bool(optionNameAllowPrivateCIDRs, false, "allow to advertise private CIDRs to the public network")
-	cmd.Flags().Bool(optionNameUsePostageSnapshot, false, "bootstrap node using postage snapshot from the network")
 	cmd.Flags().Bool(optionNameStorageIncentivesEnable, true, "enable storage incentives feature")
 	cmd.Flags().Uint64(optionNameStateStoreCacheCapacity, 100_000, "lru memory caching capacity in number of statestore entries")
 	cmd.Flags().String(optionNameTargetNeighborhood, "", "neighborhood to target in binary format (ex: 111111001) for mining the initial overlay")
@@ -299,12 +330,51 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Int(optionReserveCapacityDoubling, 0, "reserve capacity doubling")
 	cmd.Flags().Bool(optionSkipPostageSnapshot, false, "skip postage snapshot")
 	cmd.Flags().Uint64(optionNameMinimumGasTipCap, 0, "minimum gas tip cap in wei for transactions, 0 means use suggested gas tip cap")
+	cmd.Flags().Uint64(optionNameGasLimitFallback, 500_000, "gas limit fallback when estimation fails for contract transactions")
 	cmd.Flags().Bool(optionNameP2PWSSEnable, false, "Enable Secure WebSocket P2P connections")
 	cmd.Flags().String(optionP2PWSSAddr, ":1635", "p2p wss address")
 	cmd.Flags().String(optionNATWSSAddr, "", "WSS NAT exposed address")
 	cmd.Flags().String(optionAutoTLSDomain, p2pforge.DefaultForgeDomain, "autotls domain")
 	cmd.Flags().String(optionAutoTLSRegistrationEndpoint, p2pforge.DefaultForgeEndpoint, "autotls registration endpoint")
 	cmd.Flags().String(optionAutoTLSCAEndpoint, p2pforge.DefaultCAEndpoint, "autotls certificate authority endpoint")
+}
+
+// preRun must be called from every command's PreRunE, after which c.logger is
+// ready for use in RunE. It binds CLI flags to viper and initialises the logger.
+func (c *command) preRun(cmd *cobra.Command) error {
+	if err := c.config.BindPFlags(cmd.Flags()); err != nil {
+		return err
+	}
+	return c.initLogger(cmd)
+}
+
+func (c *command) initLogger(cmd *cobra.Command) error {
+	v := strings.ToLower(c.config.GetString(optionNameVerbosity))
+	logger, err := newLogger(cmd, v)
+	if err != nil {
+		return fmt.Errorf("new logger: %w", err)
+	}
+	if c.isWindowsService {
+		logger, err = createWindowsEventLogger(serviceName, logger)
+		if err != nil {
+			return fmt.Errorf("new windows logger: %w", err)
+		}
+	}
+	c.logger = logger
+	return nil
+}
+
+// bindBlockchainRpcConfig supports both flat (blockchain-rpc-endpoint) and
+// nested (blockchain-rpc.endpoint) YAML forms, with nested taking precedence.
+func (c *command) bindBlockchainRpcConfig(cmd *cobra.Command) {
+	for _, p := range blockchainRpcConfigPairs {
+		// Check before registering the alias; afterwards the flat value is unreachable.
+		if c.config.InConfig(p.flat) && c.config.InConfig(p.dotted) {
+			c.logger.Warning("config key conflict: nested form takes precedence", "ignored", p.flat, "used", p.dotted)
+		}
+		_ = c.config.BindPFlag(p.dotted, cmd.Flags().Lookup(p.flat))
+		c.config.RegisterAlias(p.flat, p.dotted)
+	}
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {
@@ -348,9 +418,15 @@ func (c *command) CheckUnknownParams(cmd *cobra.Command, args []string) error {
 	}
 	var unknownParams []string
 	for _, v := range c.config.AllKeys() {
-		if cmd.Flags().Lookup(v) == nil {
-			unknownParams = append(unknownParams, v)
+		if cmd.Flags().Lookup(v) != nil {
+			continue
 		}
+		// Only accept the dotted→hyphenated form for explicitly registered
+		// nested config keys.
+		if knownNestedKeys[v] && cmd.Flags().Lookup(strings.ReplaceAll(v, ".", "-")) != nil {
+			continue
+		}
+		unknownParams = append(unknownParams, v)
 	}
 
 	if len(unknownParams) > 0 {

@@ -71,7 +71,6 @@ func getPrivKey(keyNumber int) *ecdsa.PrivateKey {
 }
 
 func TestDecryptRef_Publisher(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	id1 := getPrivKey(1)
 	s := kvsmock.New()
