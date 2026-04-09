@@ -189,23 +189,25 @@ func (s *Service) fileUploadHandler(
 
 	p := requestPipelineFn(putter, encrypt, rLevel)
 
-	sniffBuf := make([]byte, contentTypeSniffLen)
-	n, err := io.ReadFull(r.Body, sniffBuf)
-	sniffBuf = sniffBuf[:n]
-	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
-		logger.Debug("body read failed", "file_name", queries.FileName, "error", err)
-		logger.Error(nil, "body read failed", "file_name", queries.FileName)
-		jsonhttp.BadRequest(w, "failed to read request body")
-		return
+	var body io.Reader = r.Body
+	if r.Header.Get(ContentTypeHeader) == "" {
+		sniffBuf := make([]byte, contentTypeSniffLen)
+		n, err := io.ReadFull(r.Body, sniffBuf)
+		sniffBuf = sniffBuf[:n]
+		if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+			logger.Debug("body read failed", "file_name", queries.FileName, "error", err)
+			logger.Error(nil, "body read failed", "file_name", queries.FileName)
+			jsonhttp.BadRequest(w, "failed to read request body")
+			return
+		}
+
+		r.Header.Set(ContentTypeHeader, http.DetectContentType(sniffBuf))
+		body = io.MultiReader(bytes.NewReader(sniffBuf), r.Body)
 	}
 
-	if r.Header.Get(ContentTypeHeader) == "" {
-		r.Header.Set(ContentTypeHeader, http.DetectContentType(sniffBuf))
-	}
-	bodyForStore := io.MultiReader(bytes.NewReader(sniffBuf), r.Body)
 
 	// first store the file and get its reference
-	fr, err := p(ctx, bodyForStore)
+	fr, err := p(ctx, body)
 	if err != nil {
 		logger.Debug("file store failed", "file_name", queries.FileName, "error", err)
 		logger.Error(nil, "file store failed", "file_name", queries.FileName)
