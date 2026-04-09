@@ -143,6 +143,7 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	contentTypeHdr := strings.TrimSpace(headers.ContentType)
+	r.Header.Set(ContentTypeHeader, contentTypeHdr)
 	mt, _, errParseCT := mime.ParseMediaType(contentTypeHdr)
 	isMultipart := errParseCT == nil && mt == multiPartFormData
 	if headers.IsDir || isMultipart {
@@ -152,7 +153,7 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.BadRequest(w, errInvalidContentType)
 			return
 		}
-		s.dirUploadHandler(ctx, logger, span, ow, r, putter, contentTypeHdr, headers.Encrypt, tag, headers.RLevel, headers.Act, headers.HistoryAddress)
+		s.dirUploadHandler(ctx, logger, span, ow, r, putter, headers.Encrypt, tag, headers.RLevel, headers.Act, headers.HistoryAddress)
 		return
 	}
 	s.fileUploadHandler(ctx, logger, span, ow, r, putter, headers.Encrypt, tag, headers.RLevel, headers.Act, headers.HistoryAddress)
@@ -197,9 +198,9 @@ func (s *Service) fileUploadHandler(
 		jsonhttp.BadRequest(w, "failed to read request body")
 		return
 	}
-	contentType := strings.TrimSpace(r.Header.Get(ContentTypeHeader))
-	if contentType == "" {
-		contentType = http.DetectContentType(sniffBuf)
+
+	if r.Header.Get(ContentTypeHeader) == "" {
+		r.Header.Set(ContentTypeHeader, http.DetectContentType(sniffBuf))
 	}
 	bodyForStore := io.MultiReader(bytes.NewReader(sniffBuf), r.Body)
 
@@ -269,7 +270,7 @@ func (s *Service) fileUploadHandler(
 	}
 
 	fileMtdt := map[string]string{
-		manifest.EntryMetadataContentTypeKey: contentType,
+		manifest.EntryMetadataContentTypeKey: r.Header.Get(ContentTypeHeader),
 		manifest.EntryMetadataFilenameKey:    queries.FileName,
 	}
 

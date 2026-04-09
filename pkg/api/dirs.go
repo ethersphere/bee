@@ -44,7 +44,6 @@ func (s *Service) dirUploadHandler(
 	w http.ResponseWriter,
 	r *http.Request,
 	putter storer.PutterSession,
-	contentTypeString string,
 	encrypt bool,
 	tag uint64,
 	rLevel redundancy.Level,
@@ -58,7 +57,7 @@ func (s *Service) dirUploadHandler(
 	}
 
 	// The error is ignored because the header was already validated by the caller.
-	mediaType, params, _ := mime.ParseMediaType(contentTypeString)
+	mediaType, params, _ := mime.ParseMediaType(r.Header.Get(ContentTypeHeader))
 
 	var dReader dirReader
 	switch mediaType {
