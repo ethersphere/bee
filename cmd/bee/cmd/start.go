@@ -204,9 +204,13 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 	}
 
 	bootNode := c.config.GetBool(optionNameBootnodeMode)
-	fullNode := c.config.GetBool(optionNameFullNode)
 
-	if bootNode && !fullNode {
+	nodeMode, err := c.resolveNodeMode(logger)
+	if err != nil {
+		return nil, err
+	}
+
+	if bootNode && nodeMode != node.FullMode {
 		return nil, errors.New("boot node must be started as a full node")
 	}
 
@@ -297,7 +301,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		EnableWS:                      c.config.GetBool(optionNameP2PWSEnable),
 		AutoTLSDomain:                 c.config.GetString(optionAutoTLSDomain),
 		AutoTLSRegistrationEndpoint:   c.config.GetString(optionAutoTLSRegistrationEndpoint),
-		FullNodeMode:                  fullNode,
+		NodeMode:                      nodeMode,
 		Logger:                        logger,
 		MinimumGasTipCap:              c.config.GetUint64(optionNameMinimumGasTipCap),
 		GasLimitFallback:              c.config.GetUint64(optionNameGasLimitFallback),
@@ -335,6 +339,49 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 	})
 
 	return b, err
+}
+
+// resolveNodeMode determines the effective node mode from config.
+// --node-mode takes precedence; the deprecated --full-node flag is honoured as a fallback.
+// It also validates that the required options for each mode are present.
+func (c *command) resolveNodeMode(logger log.Logger) (node.NodeMode, error) {
+	rpcEndpoint := c.config.GetString(configKeyBlockchainRpcEndpoint)
+	swapEnable := c.config.GetBool(optionNameSwapEnable)
+
+	// Resolve the mode: explicit node-mode wins, then legacy full-node, then default ultra-light.
+	var mode node.NodeMode
+	if c.config.IsSet(optionNameNodeMode) {
+		mode = node.NodeMode(c.config.GetString(optionNameNodeMode))
+		if !mode.IsValid() {
+			return "", fmt.Errorf("invalid node-mode %q: must be one of full, light, ultra-light", mode)
+		}
+	} else if c.config.GetBool(optionNameFullNode) {
+		logger.Warning("--full-node is deprecated, use --node-mode=full instead")
+		mode = node.FullMode
+	} else {
+		mode = node.UltraLightMode
+	}
+
+	// Validate mode-specific requirements.
+	switch mode {
+	case node.FullMode:
+		if rpcEndpoint == "" {
+			return "", errors.New("full node requires blockchain-rpc-endpoint to be set")
+		}
+		if !swapEnable {
+			return "", errors.New("full node requires swap-enable to be true")
+		}
+	case node.LightMode:
+		if rpcEndpoint == "" {
+			return "", errors.New("light node requires blockchain-rpc-endpoint to be set")
+		}
+	case node.UltraLightMode:
+		if swapEnable {
+			return "", errors.New("ultra-light node cannot have swap-enable set to true")
+		}
+	}
+
+	return mode, nil
 }
 
 type program struct {

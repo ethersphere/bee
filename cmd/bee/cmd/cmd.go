@@ -52,9 +52,10 @@ const (
 	optionNameBootnodeMode                 = "bootnode-mode"
 	optionNameSwapFactoryAddress           = "swap-factory-address"
 	optionNameSwapInitialDeposit           = "swap-initial-deposit"
+	optionNameNodeMode                     = "node-mode"
 	optionNameSwapEnable                   = "swap-enable"
 	optionNameChequebookEnable             = "chequebook-enable"
-	optionNameFullNode                     = "full-node"
+	optionNameFullNode                     = "full-node" // Deprecated: use node-mode instead.
 	optionNamePostageContractAddress       = "postage-stamp-address"
 	optionNamePostageContractStartBlock    = "postage-stamp-start-block"
 	optionNamePriceOracleAddress           = "price-oracle-address"
@@ -304,9 +305,13 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Duration(optionNameBlockchainRpcKeepalive, 30*time.Second, "blockchain rpc TCP keepalive interval")
 	cmd.Flags().String(optionNameSwapFactoryAddress, "", "swap factory addresses")
 	cmd.Flags().String(optionNameSwapInitialDeposit, "0", "initial deposit if deploying a new chequebook")
+	cmd.Flags().String(optionNameNodeMode, string(node.UltraLightMode), "node operational mode: full, light, or ultra-light")
 	cmd.Flags().Bool(optionNameSwapEnable, false, "enable swap")
-	cmd.Flags().Bool(optionNameChequebookEnable, true, "enable chequebook")
-	cmd.Flags().Bool(optionNameFullNode, false, "cause the node to start in full mode")
+	cmd.Flags().Bool(optionNameChequebookEnable, false, "enable chequebook (requires swap-enable)")
+	cmd.Flags().Bool(optionNameFullNode, false, "cause the node to start in full mode (deprecated: use --node-mode=full)")
+	if err := cmd.Flags().MarkDeprecated(optionNameFullNode, "use --node-mode=full instead"); err != nil {
+		panic(err)
+	}
 	cmd.Flags().String(optionNamePostageContractAddress, "", "postage stamp contract address")
 	cmd.Flags().Uint64(optionNamePostageContractStartBlock, 0, "postage stamp contract start block number")
 	cmd.Flags().String(optionNamePriceOracleAddress, "", "price oracle contract address")
@@ -322,7 +327,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNamePProfMutex, false, "enable pprof mutex profile")
 	cmd.Flags().StringSlice(optionNameStaticNodes, []string{}, "protect nodes from getting kicked out on bootnode")
 	cmd.Flags().Bool(optionNameAllowPrivateCIDRs, false, "allow to advertise private CIDRs to the public network")
-	cmd.Flags().Bool(optionNameStorageIncentivesEnable, true, "enable storage incentives feature")
+	cmd.Flags().Bool(optionNameStorageIncentivesEnable, false, "enable storage incentives feature (full node only)")
 	cmd.Flags().Uint64(optionNameStateStoreCacheCapacity, 100_000, "lru memory caching capacity in number of statestore entries")
 	cmd.Flags().String(optionNameTargetNeighborhood, "", "neighborhood to target in binary format (ex: 111111001) for mining the initial overlay")
 	cmd.Flags().String(optionNameNeighborhoodSuggester, "https://api.swarmscan.io/v1/network/neighborhoods/suggestion", "suggester for target neighborhood")
