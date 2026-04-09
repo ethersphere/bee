@@ -484,7 +484,6 @@ func TestBzzFiles(t *testing.T) {
 	})
 
 	t.Run("image-content-type-preserved", func(t *testing.T) {
-		// Valid image/* media type is stored as sent (body still text; sniff would differ without this header).
 		ct := "image/png"
 		fileName := "test.txt"
 		var resp api.BzzUploadResponse

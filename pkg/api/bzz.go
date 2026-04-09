@@ -55,7 +55,6 @@ const (
 
 	largeBufferFilesizeThreshold = 10 * 1000000 // ten megs
 
-	// contentTypeSniffLen is the max bytes used by http.DetectContentType.
 	contentTypeSniffLen = 512
 )
 
