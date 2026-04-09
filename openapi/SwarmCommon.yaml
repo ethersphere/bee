@@ -1176,7 +1176,14 @@ components:
       name: Content-Type
       schema:
         type: string
-      description: The specified content-type is preserved for download of the asset
+      description: >
+        For a single file body: if set (after trimming leading and trailing whitespace), this
+        value is stored in metadata and returned on download unchanged. If omitted or empty,
+        the server infers a MIME type from the first bytes of the body. The server does not
+        check that the header matches the file contents. For tar uploads with
+        `swarm-collection` or for multipart collections, the request `Content-Type` must
+        still describe the full body (for example `application/x-tar` or
+        `multipart/form-data` with a boundary) so the upload can be parsed.
 
     SwarmIndexDocumentParameter:
       in: header
