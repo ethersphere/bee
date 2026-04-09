@@ -65,7 +65,6 @@ import (
 //
 // nolint:thelper
 func TestBzzUploadDownloadWithRedundancy_FLAKY(t *testing.T) {
-	t.Skip("flaky")
 	t.Parallel()
 	fileUploadResource := "/bzz"
 	fileDownloadResource := func(addr string) string { return "/bzz/" + addr + "/" }
