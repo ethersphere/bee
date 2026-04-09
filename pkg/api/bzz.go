@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"path"
 	"path/filepath"
@@ -70,7 +71,7 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	defer span.Finish()
 
 	headers := struct {
-		ContentType    string           `map:"Content-Type,mimeMediaType"`
+		ContentType    string           `map:"Content-Type"`
 		BatchID        []byte           `map:"Swarm-Postage-Batch-Id" validate:"required"`
 		SwarmTag       uint64           `map:"Swarm-Tag"`
 		Pin            bool             `map:"Swarm-Pin"`
@@ -142,14 +143,17 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		logger:         logger,
 	}
 
-	if headers.IsDir || headers.ContentType == multiPartFormData {
-		if headers.ContentType == "" {
+	contentTypeHdr := strings.TrimSpace(headers.ContentType)
+	mt, _, errParseCT := mime.ParseMediaType(contentTypeHdr)
+	isMultipart := errParseCT == nil && mt == multiPartFormData
+	if headers.IsDir || isMultipart {
+		if contentTypeHdr == "" {
 			logger.Debug("content-type required for directory upload")
 			logger.Error(nil, "content-type required for directory upload")
 			jsonhttp.BadRequest(w, errInvalidContentType)
 			return
 		}
-		s.dirUploadHandler(ctx, logger, span, ow, r, putter, r.Header.Get(ContentTypeHeader), headers.Encrypt, tag, headers.RLevel, headers.Act, headers.HistoryAddress)
+		s.dirUploadHandler(ctx, logger, span, ow, r, putter, contentTypeHdr, headers.Encrypt, tag, headers.RLevel, headers.Act, headers.HistoryAddress)
 		return
 	}
 	s.fileUploadHandler(ctx, logger, span, ow, r, putter, headers.Encrypt, tag, headers.RLevel, headers.Act, headers.HistoryAddress)
@@ -194,7 +198,10 @@ func (s *Service) fileUploadHandler(
 		jsonhttp.BadRequest(w, "failed to read request body")
 		return
 	}
-	contentType := http.DetectContentType(sniffBuf)
+	contentType := strings.TrimSpace(r.Header.Get(ContentTypeHeader))
+	if contentType == "" {
+		contentType = http.DetectContentType(sniffBuf)
+	}
 	bodyForStore := io.MultiReader(bytes.NewReader(sniffBuf), r.Body)
 
 	// first store the file and get its reference
