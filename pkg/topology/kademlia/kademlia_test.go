@@ -917,10 +917,12 @@ func TestAddressBookQuickPrune(t *testing.T) {
 	// add one valid peer
 	addOne(t, signer, kad, ab, addr)
 	waitCounter(t, &conns, 1)
+	waitCounter(t, &failedConns, 0)
 
 	// add non connectable peer, check connection and failed connection counters
 	kad.AddPeers(nonConnPeer.Overlay)
-	waitCounterAtLeast(t, &failedConns, 1)
+	waitCounter(t, &conns, 0)
+	waitCounter(t, &failedConns, 1)
 
 	// we need to trigger connection attempts maxConnAttempts times
 	for range 3 {
