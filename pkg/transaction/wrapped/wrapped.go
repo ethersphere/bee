@@ -96,7 +96,7 @@ func (b *wrappedBackend) BlockNumber(ctx context.Context) (uint64, error) {
 		},
 		func() (blockNumberAnchor, time.Time, error) {
 			b.metrics.TotalRPCCalls.Inc()
-			b.metrics.BlockHeaderCalls.Inc()
+			b.metrics.BlockHeaderAsBlockNumberCalls.Inc()
 
 			header, err := b.backend.HeaderByNumber(ctx, nil)
 			if err != nil {
