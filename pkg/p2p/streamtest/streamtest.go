@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -146,8 +147,8 @@ func (r *Recorder) NewStream(ctx context.Context, addr swarm.Address, h p2p.Head
 	if handler == nil {
 		return nil, ErrStreamNotSupported
 	}
-	for i := len(r.middlewares) - 1; i >= 0; i-- {
-		handler = r.middlewares[i](handler)
+	for _, v := range slices.Backward(r.middlewares) {
+		handler = v(handler)
 	}
 	if headler != nil {
 		streamOut.headers = headler(h, addr)

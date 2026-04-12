@@ -7,6 +7,7 @@ package mock
 import (
 	"context"
 	"maps"
+	"slices"
 	"sync"
 	"time"
 
@@ -214,8 +215,8 @@ func (d *mock) EachConnectedPeerRev(f topology.EachPeerFunc, _ topology.Select) 
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 
-	for i := len(d.peers) - 1; i >= 0; i-- {
-		_, _, err = f(d.peers[i], uint8(i))
+	for i, v := range slices.Backward(d.peers) {
+		_, _, err = f(v, uint8(i))
 		if err != nil {
 			return
 		}

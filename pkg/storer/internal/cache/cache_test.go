@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -191,21 +192,21 @@ func TestCache(t *testing.T) {
 		// at the end
 		t.Run("get reverse order", func(t *testing.T) {
 			var newOrder []swarm.Chunk
-			for idx := len(chunks) - 1; idx >= 0; idx-- {
-				readChunk, err := c.Getter(st).Get(context.TODO(), chunks[idx].Address())
+			for idx, v := range slices.Backward(chunks) {
+				readChunk, err := c.Getter(st).Get(context.TODO(), v.Address())
 				if err != nil {
 					t.Fatal(err)
 				}
-				if !readChunk.Equal(chunks[idx]) {
-					t.Fatalf("incorrect chunk: %s", chunks[idx].Address())
+				if !readChunk.Equal(v) {
+					t.Fatalf("incorrect chunk: %s", v.Address())
 				}
 				if idx == 0 {
 					// once we access the first entry, the top will change
-					verifyCacheState(t, st.IndexStore(), c, chunks[9].Address(), chunks[idx].Address(), 10)
+					verifyCacheState(t, st.IndexStore(), c, chunks[9].Address(), v.Address(), 10)
 				} else {
-					verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[idx].Address(), 10)
+					verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), v.Address(), 10)
 				}
-				newOrder = append(newOrder, chunks[idx])
+				newOrder = append(newOrder, v)
 			}
 			verifyCacheOrder(t, c, st.IndexStore(), newOrder...)
 		})
