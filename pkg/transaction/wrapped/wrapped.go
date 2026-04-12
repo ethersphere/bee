@@ -79,11 +79,10 @@ func (b *wrappedBackend) TransactionByHash(ctx context.Context, hash common.Hash
 }
 
 func (b *wrappedBackend) BlockNumber(ctx context.Context) (uint64, error) {
-	now := time.Now().UTC()
 	anchor, err := b.blockNumberCache.PeekOrLoad(
 		ctx,
-		now,
-		func(anchor blockNumberAnchor, expiresAt, now time.Time) (bool, time.Time) {
+		func(anchor blockNumberAnchor, expiresAt time.Time) (bool, time.Time) {
+			now := time.Now().UTC()
 			if now.Before(expiresAt) {
 				return true, expiresAt
 			}

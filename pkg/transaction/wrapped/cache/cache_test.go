@@ -26,31 +26,28 @@ func newTestCache() *ExpiringSingleFlightCache[uint64] {
 	}
 }
 
-func TestSetPeek(t *testing.T) {
-	t.Parallel()
-
-	now := time.Now()
-	expiresAt := now.Add(time.Second)
-	c := newTestCache()
-	c.Set(42, expiresAt)
-
-	val, gotExpiresAt, ok := c.Peek()
-	assert.True(t, ok)
-	assert.Equal(t, uint64(42), val)
-	assert.Equal(t, expiresAt, gotExpiresAt)
-}
-
-func TestPeekReturnsExpiredValue(t *testing.T) {
+func TestPeekOrLoadHit(t *testing.T) {
 	t.Parallel()
 
 	now := time.Now()
 	c := newTestCache()
 	c.Set(42, now)
 
-	val, expiresAt, ok := c.Peek()
-	assert.True(t, ok)
+	var loadCount atomic.Int32
+	val, err := c.PeekOrLoad(
+		context.Background(),
+		func(value uint64, expiresAt time.Time) (bool, time.Time) {
+			return true, expiresAt
+		},
+		func() (uint64, time.Time, error) {
+			loadCount.Add(1)
+			return 0, time.Time{}, errors.New("loader must not run")
+		},
+	)
+
+	require.NoError(t, err)
 	assert.Equal(t, uint64(42), val)
-	assert.Equal(t, now, expiresAt)
+	assert.Zero(t, loadCount.Load())
 }
 
 func TestPeekOrLoadMiss(t *testing.T) {
@@ -61,13 +58,12 @@ func TestPeekOrLoadMiss(t *testing.T) {
 
 	val, err := c.PeekOrLoad(
 		context.Background(),
-		time.Now(),
-		func(value uint64, expiresAt, now time.Time) (bool, time.Time) {
+		func(value uint64, expiresAt time.Time) (bool, time.Time) {
 			return false, time.Time{}
 		},
 		func() (uint64, time.Time, error) {
 			loadCount.Add(1)
-			return 99, time.Now().Add(time.Second), nil
+			return 99, time.Now().Add(time.Second * 30), nil
 		},
 	)
 
@@ -75,37 +71,21 @@ func TestPeekOrLoadMiss(t *testing.T) {
 	assert.Equal(t, uint64(99), val)
 	assert.Equal(t, int32(1), loadCount.Load())
 
-	cached, expiresAt, ok := c.Peek()
-	assert.True(t, ok)
-	assert.Equal(t, uint64(99), cached)
-	assert.True(t, expiresAt.After(time.Now()))
-}
-
-func TestPeekOrLoadHit(t *testing.T) {
-	t.Parallel()
-	const expectedVal = uint64(42)
-
-	now := time.Now()
-	expiresAt := now.Add(time.Second)
-	c := newTestCache()
-	c.Set(expectedVal, expiresAt)
-
-	var loadCount atomic.Int32
-	val, err := c.PeekOrLoad(
+	var verifyLoads atomic.Int32
+	got, err := c.PeekOrLoad(
 		context.Background(),
-		now,
-		func(value uint64, expiresAt, now time.Time) (bool, time.Time) {
+		func(value uint64, expiresAt time.Time) (bool, time.Time) {
+			now := time.Now()
 			return now.Before(expiresAt), expiresAt
 		},
 		func() (uint64, time.Time, error) {
-			loadCount.Add(1)
-			return expectedVal, now.Add(time.Second), nil
+			verifyLoads.Add(1)
+			return 0, time.Time{}, errors.New("unexpected load on verify")
 		},
 	)
-
 	require.NoError(t, err)
-	assert.Equal(t, expectedVal, val)
-	assert.Equal(t, int32(0), loadCount.Load())
+	assert.Equal(t, uint64(99), got)
+	assert.Zero(t, verifyLoads.Load())
 }
 
 func TestPeekOrLoadError(t *testing.T) {
@@ -114,22 +94,35 @@ func TestPeekOrLoadError(t *testing.T) {
 	c := newTestCache()
 	errLoad := errors.New("load failed")
 
+	var loadCount atomic.Int32
 	val, err := c.PeekOrLoad(
 		context.Background(),
-		time.Now(),
-		func(value uint64, expiresAt, now time.Time) (bool, time.Time) {
+		func(value uint64, expiresAt time.Time) (bool, time.Time) {
 			return false, time.Time{}
 		},
 		func() (uint64, time.Time, error) {
-			return 0, time.Time{}, errLoad
+			loadCount.Add(1)
+			return 99, time.Now().Add(time.Second * 30), errLoad
 		},
 	)
 
 	assert.ErrorIs(t, err, errLoad)
 	assert.Equal(t, uint64(0), val)
+	assert.Equal(t, int32(1), loadCount.Load())
 
-	_, _, ok := c.Peek()
-	assert.False(t, ok)
+	// check value returned with error wasn't cached
+	_, err = c.PeekOrLoad(
+		context.Background(),
+		func(value uint64, expiresAt time.Time) (bool, time.Time) {
+			return false, time.Time{}
+		},
+		func() (uint64, time.Time, error) {
+			loadCount.Add(1)
+			return 0, time.Time{}, errLoad
+		},
+	)
+	assert.ErrorIs(t, err, errLoad)
+	assert.Equal(t, int32(2), loadCount.Load())
 }
 
 func TestPeekOrLoadSingleflight(t *testing.T) {
@@ -149,10 +142,10 @@ func TestPeekOrLoadSingleflight(t *testing.T) {
 			go func(idx int) {
 				defer wg.Done()
 				now := time.Now()
+
 				results[idx], errs[idx] = c.PeekOrLoad(
 					context.Background(),
-					now,
-					func(value uint64, expiresAt, now time.Time) (bool, time.Time) {
+					func(value uint64, expiresAt time.Time) (bool, time.Time) {
 						return now.Before(expiresAt), expiresAt
 					},
 					func() (uint64, time.Time, error) {
@@ -176,28 +169,6 @@ func TestPeekOrLoadSingleflight(t *testing.T) {
 	})
 }
 
-func TestPeekOrLoadReloadAfterExpiry(t *testing.T) {
-	t.Parallel()
-
-	now := time.Now()
-	c := newTestCache()
-	c.Set(42, now)
-
-	val, err := c.PeekOrLoad(
-		context.Background(),
-		now.Add(time.Second+time.Millisecond),
-		func(value uint64, expiresAt, now time.Time) (bool, time.Time) {
-			return now.Before(expiresAt), expiresAt
-		},
-		func() (uint64, time.Time, error) {
-			return 100, now.Add(time.Second + time.Millisecond), nil
-		},
-	)
-
-	require.NoError(t, err)
-	assert.Equal(t, uint64(100), val)
-}
-
 func TestPeekOrLoadContextCancellation(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		const expectedVal = 55
@@ -214,10 +185,11 @@ func TestPeekOrLoadContextCancellation(t *testing.T) {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
+
 			result1, err1 = c.PeekOrLoad(
 				ctx1,
-				time.Now(),
-				func(value uint64, expiresAt, now time.Time) (bool, time.Time) {
+				func(value uint64, expiresAt time.Time) (bool, time.Time) {
+					now := time.Now()
 					return now.Before(expiresAt), expiresAt
 				},
 				func() (uint64, time.Time, error) {
@@ -231,8 +203,8 @@ func TestPeekOrLoadContextCancellation(t *testing.T) {
 			defer wg.Done()
 			result2, err2 = c.PeekOrLoad(
 				ctx2,
-				time.Now(),
-				func(value uint64, expiresAt, now time.Time) (bool, time.Time) {
+				func(value uint64, expiresAt time.Time) (bool, time.Time) {
+					now := time.Now()
 					return now.Before(expiresAt), expiresAt
 				},
 				func() (uint64, time.Time, error) {

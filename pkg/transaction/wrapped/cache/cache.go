@@ -14,7 +14,7 @@ import (
 )
 
 type Loader[T any] func() (T, time.Time, error)
-type ReuseEvaluator[T any] func(value T, expiresAt, now time.Time) (bool, time.Time)
+type ReuseEvaluator[T any] func(value T, expiresAt time.Time) (bool, time.Time)
 
 type ExpiringSingleFlightCache[T any] struct {
 	mu        sync.RWMutex
@@ -43,32 +43,35 @@ func (c *ExpiringSingleFlightCache[T]) Collectors() []prometheus.Collector {
 	}
 }
 
-func (c *ExpiringSingleFlightCache[T]) Peek() (T, time.Time, bool) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	if !c.expiresAt.IsZero() {
-		return c.value, c.expiresAt, true
-	}
-
-	var zero T
-	return zero, time.Time{}, false
-}
-
 func (c *ExpiringSingleFlightCache[T]) Set(value T, expiresAt time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.value = value
-	c.expiresAt = expiresAt
+	if expiresAt.After(c.expiresAt) {
+		c.value = value
+		c.expiresAt = expiresAt
+	}
 }
 
-func (c *ExpiringSingleFlightCache[T]) PeekOrLoad(ctx context.Context, now time.Time, canReuse ReuseEvaluator[T], loader Loader[T]) (T, error) {
-	if value, expiresAt, ok := c.Peek(); ok {
-		reuse, newExpiresAt := canReuse(value, expiresAt, now)
+func (c *ExpiringSingleFlightCache[T]) PeekOrLoad(ctx context.Context, canReuse ReuseEvaluator[T], loader Loader[T]) (T, error) {
+	c.mu.RLock()
+	var (
+		value     T
+		expiresAt time.Time
+	)
+
+	hasEntry := !c.expiresAt.IsZero()
+	if hasEntry {
+		value = c.value
+		expiresAt = c.expiresAt
+	}
+	c.mu.RUnlock()
+
+	if hasEntry {
+		reuse, newExpiresAt := canReuse(value, expiresAt)
 		if reuse {
 			c.metrics.Hits.Inc()
-			if !newExpiresAt.IsZero() && !newExpiresAt.Equal(expiresAt) {
+			if !newExpiresAt.IsZero() {
 				c.Set(value, newExpiresAt)
 			}
 			return value, nil
