@@ -22,7 +22,6 @@ func TestGenerateSecp256k1Key(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	//nolint:staticcheck // SA5011 false positive: t.Fatal terminates test
 	if k1 == nil {
 		t.Fatal("nil key")
 	}
@@ -30,7 +29,6 @@ func TestGenerateSecp256k1Key(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	//nolint:staticcheck // SA5011 false positive: t.Fatal terminates test
 	if k2 == nil {
 		t.Fatal("nil key")
 	}
@@ -47,7 +45,6 @@ func TestGenerateSecp256k1EDG(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	//nolint:staticcheck // SA5011 false positive: t.Fatal terminates test
 	if k1 == nil {
 		t.Fatal("nil key")
 	}
@@ -55,7 +52,6 @@ func TestGenerateSecp256k1EDG(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	//nolint:staticcheck // SA5011 false positive: t.Fatal terminates test
 	if k2 == nil {
 		t.Fatal("nil key")
 	}
