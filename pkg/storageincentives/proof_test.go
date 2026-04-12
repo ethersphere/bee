@@ -29,65 +29,13 @@ import (
 func TestMakeInclusionProofs(t *testing.T) {
 	t.Parallel()
 
-	anchor := []byte{0x1}
-	sample := deterministicSample(t, anchor)
+	anchor := testutil.RandBytes(t, 1)
+	sample := storer.RandSample(t, anchor)
 
 	_, err := storageincentives.MakeInclusionProofs(sample.Items, anchor, anchor)
 	if err != nil {
 		t.Fatal(err)
 	}
-}
-
-func deterministicSample(t *testing.T, anchor []byte) storer.Sample {
-	t.Helper()
-
-	const sampleSize = storer.SampleSize
-
-	keyRaw := `00000000000000000000000000000000`
-	privKey, err := crypto.DecodeSecp256k1PrivateKey([]byte(keyRaw))
-	if err != nil {
-		t.Fatal(err)
-	}
-	signer := crypto.NewDefaultSigner(privKey)
-
-	stampID, _ := crypto.LegacyKeccak256([]byte("The Inverted Jenny"))
-	index := []byte{0, 0, 0, 0, 0, 8, 3, 3}
-	timestamp := []byte{0, 0, 0, 0, 0, 3, 3, 8}
-	stamper := func(addr swarm.Address) *postage.Stamp {
-		sig := postagetesting.MustNewValidSignature(signer, addr, stampID, index, timestamp)
-		return postage.NewStamp(stampID, index, timestamp, sig)
-	}
-
-	sampleChunks := make([]swarm.Chunk, 0, sampleSize)
-	for i := range sampleSize {
-		ch, err := cac.New(fmt.Appendf(nil, "Deterministic sample chunk #%d", i+1))
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if i%2 == 0 {
-			id, err := crypto.LegacyKeccak256(fmt.Appendf(nil, "Deterministic ID #%d", i+1))
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			socCh, err := soc.New(id, ch).Sign(signer)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			ch = socCh
-		}
-
-		sampleChunks = append(sampleChunks, ch.WithStamp(stamper(ch.Address())))
-	}
-
-	sample, err := storer.MakeSampleUsingChunks(sampleChunks, anchor)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	return sample
 }
 
 //go:embed testdata/inclusion-proofs.json
