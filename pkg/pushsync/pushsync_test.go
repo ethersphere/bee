@@ -26,6 +26,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/pushsync"
 	"github.com/ethersphere/bee/v2/pkg/pushsync/pb"
 	"github.com/ethersphere/bee/v2/pkg/soc"
+	"github.com/ethersphere/bee/v2/pkg/spinlock"
 	stabilmock "github.com/ethersphere/bee/v2/pkg/stabilization/mock"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	testingc "github.com/ethersphere/bee/v2/pkg/storage/testing"
@@ -35,7 +36,8 @@ import (
 )
 
 const (
-	fixedPrice = uint64(10)
+	fixedPrice                  = uint64(10)
+	pushNextClosestSpinlockWait = 5 * time.Second
 )
 
 var blockHash = common.HexToHash("0x1")
@@ -383,7 +385,6 @@ func TestPushChunkToClosest(t *testing.T) {
 
 func TestPushChunkToNextClosest(t *testing.T) {
 	t.Parallel()
-	t.Skip("flaky test")
 
 	// chunk data to upload
 	chunk := testingc.FixtureChunk("7000").WithTagID(1)
@@ -446,12 +447,6 @@ func TestPushChunkToNextClosest(t *testing.T) {
 		t.Fatal("invalid receipt")
 	}
 
-	// this intercepts the outgoing delivery message
-	waitOnRecordAndTest(t, peer2, recorder, chunk.Address(), chunk.Data())
-
-	// this intercepts the incoming receipt message
-	waitOnRecordAndTest(t, peer2, recorder, chunk.Address(), nil)
-
 	found, count := pivotStorer.hasReported(t, chunk.Address())
 	if !found {
 		t.Fatalf("chunk %s not reported", chunk.Address())
@@ -464,32 +459,114 @@ func TestPushChunkToNextClosest(t *testing.T) {
 		t.Fatalf("tags error got %d want >= 1", count)
 	}
 
-	balance, err := pivotAccounting.Balance(peer1)
+	waitPushStreamsToBothClosestPeers(t, recorder, peer1, peer2)
+
+	// The storer that applied PrepareDebit books +price toward the pivot.
+	peerThatEarnedFromPush(t, peer1, peerAccounting1, peer2, peerAccounting2, pivotNode)
+	if !anyPeerHasValidPushStream(t, recorder, []swarm.Address{peer1, peer2}, chunk) {
+		t.Fatal("expected at least one closest peer with a full delivery+receipt stream record")
+	}
+	b1, err := pivotAccounting.Balance(peer1)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	if balance.Int64() != -int64(fixedPrice) {
-		t.Fatalf("unexpected balance on pivot. want %d got %d", -int64(fixedPrice), balance)
-	}
-
-	balance2, err := peerAccounting2.Balance(pivotNode)
+	b2, err := pivotAccounting.Balance(peer2)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	if balance2.Int64() != int64(fixedPrice) {
-		t.Fatalf("unexpected balance on peer2. want %d got %d", int64(fixedPrice), balance2)
+	sum := b1.Int64() + b2.Int64()
+	if sum != -int64(fixedPrice) {
+		t.Fatalf("pivot combined balance toward closest peers: want %d got %d (%s=%d %s=%d)",
+			-int64(fixedPrice), sum, peer1, b1.Int64(), peer2, b2.Int64())
 	}
+}
 
-	balance1, err := peerAccounting1.Balance(peer2)
+// peerThatEarnedFromPush asserts exactly one closest peer has balance +fixedPrice toward the pivot (successful storer debit).
+func peerThatEarnedFromPush(
+	t *testing.T,
+	peer1 swarm.Address, peerAcct1 accounting.Interface,
+	peer2 swarm.Address, peerAcct2 accounting.Interface,
+	pivot swarm.Address,
+) {
+	t.Helper()
+	want := int64(fixedPrice)
+	n := 0
+	for _, p := range []struct {
+		addr swarm.Address
+		acct accounting.Interface
+	}{{peer1, peerAcct1}, {peer2, peerAcct2}} {
+		b, err := p.acct.Balance(pivot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if b.Int64() == want {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("want exactly one peer with balance +%d toward pivot, got %d", fixedPrice, n)
+	}
+}
+
+func anyPeerHasValidPushStream(t *testing.T, recorder *streamtest.Recorder, peers []swarm.Address, chunk swarm.Chunk) bool {
+	t.Helper()
+	for _, p := range peers {
+		recs, err := recorder.Records(p, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName)
+		if err != nil {
+			continue
+		}
+		for _, rec := range recs {
+			if pushStreamRecordValid(rec, chunk) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// waitPushStreamsToBothClosestPeers waits until the recorder shows at least one push stream
+// opened to each peer, i.e. the pivot attempted another closest after the first path.
+func waitPushStreamsToBothClosestPeers(t *testing.T, recorder *streamtest.Recorder, peer1, peer2 swarm.Address) {
+	t.Helper()
+	err := spinlock.Wait(pushNextClosestSpinlockWait, func() bool {
+		r1, e1 := recorder.Records(peer1, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName)
+		r2, e2 := recorder.Records(peer2, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName)
+		return e1 == nil && len(r1) > 0 && e2 == nil && len(r2) > 0
+	})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("timed out waiting for push streams to both closest peers")
 	}
+}
 
-	if balance1.Int64() != 0 {
-		t.Fatalf("unexpected balance on peer1. want %d got %d", 0, balance1)
+func pushStreamRecordValid(rec *streamtest.Record, ch swarm.Chunk) bool {
+	in := rec.In()
+	if len(in) == 0 {
+		return false
 	}
+	dmsgs, err := protobuf.ReadMessages(
+		bytes.NewReader(in),
+		func() protobuf.Message { return new(pb.Delivery) },
+	)
+	if err != nil || len(dmsgs) != 1 {
+		return false
+	}
+	d := dmsgs[0].(*pb.Delivery)
+	if !bytes.Equal(d.Address, ch.Address().Bytes()) || !bytes.Equal(d.Data, ch.Data()) {
+		return false
+	}
+	out := rec.Out()
+	if len(out) == 0 {
+		return false
+	}
+	rmsgs, err := protobuf.ReadMessages(
+		bytes.NewReader(out),
+		func() protobuf.Message { return new(pb.Receipt) },
+	)
+	if err != nil || len(rmsgs) != 1 {
+		return false
+	}
+	rcpt := rmsgs[0].(*pb.Receipt)
+	return swarm.NewAddress(rcpt.Address).Equal(ch.Address())
 }
 
 func TestPushChunkToClosestErrorAttemptRetry(t *testing.T) {

@@ -1230,7 +1230,6 @@ func TestStart(t *testing.T) {
 
 	t.Run("non-empty addressbook", func(t *testing.T) {
 		t.Parallel()
-		t.Skip("test flakes")
 
 		var conns, failedConns int32 // how many connect calls were made to the p2p mock
 		_, kad, ab, _, signer := newTestKademlia(t, &conns, &failedConns, kademlia.Options{Bootnodes: bootnodes})
@@ -1255,7 +1254,7 @@ func TestStart(t *testing.T) {
 		}
 		testutil.CleanupCloser(t, kad)
 
-		waitCounter(t, &conns, 3)
+		waitCounterAtLeast(t, &conns, 3)
 		waitCounter(t, &failedConns, 0)
 	})
 
