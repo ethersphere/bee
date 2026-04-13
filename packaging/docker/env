@@ -1,135 +1,141 @@
 # Copy this file to .env, then update it with your own settings
+# Variables match packaging/docker/docker-compose.yml (same order).
 
 ### BEE
 
+## allow to advertise private CIDRs to the public network (default false)
+# BEE_ALLOW_PRIVATE_CIDRS=false
 ## HTTP API listen address (default 127.0.0.1:1633)
 # BEE_API_ADDR=127.0.0.1:1633
+## autotls certificate authority endpoint (default from bee --help)
+# BEE_AUTOTLS_CA_ENDPOINT=
+## autotls domain (default from bee --help)
+# BEE_AUTOTLS_DOMAIN=
+## autotls registration endpoint (default from bee --help)
+# BEE_AUTOTLS_REGISTRATION_ENDPOINT=
 ## chain block time (default 5)
 # BEE_BLOCK_TIME=5
+## blockchain rpc TCP dial timeout (default 30s)
+# BEE_BLOCKCHAIN_RPC_DIAL_TIMEOUT=30s
+## rpc blockchain endpoint (default empty)
+# BEE_BLOCKCHAIN_RPC_ENDPOINT=
+## blockchain rpc idle connection timeout (default 90s)
+# BEE_BLOCKCHAIN_RPC_IDLE_TIMEOUT=90s
+## blockchain rpc TCP keepalive interval (default 30s)
+# BEE_BLOCKCHAIN_RPC_KEEPALIVE=30s
+## blockchain rpc TLS handshake timeout (default 10s)
+# BEE_BLOCKCHAIN_RPC_TLS_TIMEOUT=10s
 ## initial nodes to connect to (default [/dnsaddr/mainnet.ethswarm.org])
 # BEE_BOOTNODE=[/dnsaddr/mainnet.ethswarm.org]
-## cause the node to always accept incoming connections
+## cause the node to always accept incoming connections (default false)
 # BEE_BOOTNODE_MODE=false
-## config file (default is /home/<user>/.bee.yaml)
-# BEE_CONFIG=/home/bee/.bee.yaml
-## origins with CORS headers enabled
-# BEE_CORS_ALLOWED_ORIGINS=[]
-## data directory (default /home/<user>/.bee)
-# BEE_DATA_DIR=/home/bee/.bee
-## cache capacity in chunks, multiply by 4096 to get approximate capacity in bytes
+## cache capacity in chunks, multiply by 4096 to get approximate capacity in bytes (default 1000000)
 # BEE_CACHE_CAPACITY=1000000
-## number of open files allowed by database
-# BEE_DB_OPEN_FILES_LIMIT=200
-## size of block cache of the database in bytes
+## enable forwarded content caching (default true)
+# BEE_CACHE_RETRIEVAL=true
+## enable chequebook (default true)
+# BEE_CHEQUEBOOK_ENABLE=true
+## origins with CORS headers enabled (default [])
+# BEE_CORS_ALLOWED_ORIGINS=[]
+## data directory (default /home/bee/.bee in container)
+# BEE_DATA_DIR=/home/bee/.bee
+## size of block cache of the database in bytes (default 33554432)
 # BEE_DB_BLOCK_CACHE_CAPACITY=33554432
-## size of the database write buffer in bytes
+## disables db compactions triggered by seeks (default true)
+# BEE_DB_DISABLE_SEEKS_COMPACTION=true
+## number of open files allowed by database (default 200)
+# BEE_DB_OPEN_FILES_LIMIT=200
+## size of the database write buffer in bytes (default 33554432)
 # BEE_DB_WRITE_BUFFER_SIZE=33554432
-## disables db compactions triggered by seeks
-# BEE_DB_DISABLE_SEEKS_COMPACTION=false
-## enable global pinning
-## cause the node to start in full mode
+## cause the node to start in full mode (default false)
 # BEE_FULL_NODE=false
-## NAT exposed address
+## gas limit fallback when estimation fails for contract transactions (default 500000)
+# BEE_GAS_LIMIT_FALLBACK=500000
+## triggers connect to main net bootnodes (default true)
+# BEE_MAINNET=true
+## minimum gas tip cap in wei for transactions, 0 means use suggested gas tip cap (default 0)
+# BEE_MINIMUM_GAS_TIP_CAP=0
+## minimum radius storage threshold (default 0)
+# BEE_MINIMUM_STORAGE_RADIUS=0
+## NAT exposed address (default empty)
 # BEE_NAT_ADDR=
-## ID of the Swarm network (default 1)
+## WSS NAT exposed address (default empty)
+# BEE_NAT_WSS_ADDR=
+## suggester for target neighborhood (default https://api.swarmscan.io/v1/network/neighborhoods/suggestion)
+# BEE_NEIGHBORHOOD_SUGGESTER=https://api.swarmscan.io/v1/network/neighborhoods/suggestion
+## ID of the Swarm network (default mainnet id from bee)
 # BEE_NETWORK_ID=1
 ## P2P listen address (default :1634)
 # BEE_P2P_ADDR=:1634
-## enable P2P QUIC protocol
-# BEE_P2P_QUIC_ENABLE=false
-## enable P2P WebSocket transport
+## enable P2P WebSocket transport (default false)
 # BEE_P2P_WS_ENABLE=false
-## password for decrypting keys
+## p2p wss address (default :1635)
+# BEE_P2P_WSS_ADDR=:1635
+## enable secure WebSocket P2P connections (default false)
+# BEE_P2P_WSS_ENABLE=false
+## password for decrypting keys (default empty)
 # BEE_PASSWORD=
-## path to a file that contains password for decrypting keys
+## path to a file that contains password for decrypting keys (default empty)
 # BEE_PASSWORD_FILE=
-## percentage below the peers payment threshold when we initiate settlement (default 25)
+## percentage below the peers payment threshold when we initiate settlement (default 50)
 # BEE_PAYMENT_EARLY_PERCENT=50
-## threshold in BZZ where you expect to get paid from your peers (default 100000000)
-# BEE_PAYMENT_THRESHOLD=100000000
+## threshold in BZZ where you expect to get paid from your peers (default 13500000)
+# BEE_PAYMENT_THRESHOLD=13500000
 ## excess debt above payment threshold in percentages where you disconnect from your peer (default 25)
 # BEE_PAYMENT_TOLERANCE_PERCENT=25
-## postage stamp contract address
+## postage stamp contract address (default empty)
 # BEE_POSTAGE_STAMP_ADDRESS=
-## ENS compatible API endpoint for a TLD and with contract address, can be repeated, format [tld:][contract-addr@]url
+## postage stamp contract start block number (default 0)
+# BEE_POSTAGE_STAMP_START_BLOCK=0
+## enable pprof mutex profile (default false)
+# BEE_PPROF_MUTEX=false
+## enable pprof block profile (default false)
+# BEE_PPROF_PROFILE=false
+## price oracle contract address (default empty)
+# BEE_PRICE_ORACLE_ADDRESS=
+## redistribution contract address (default empty)
+# BEE_REDISTRIBUTION_ADDRESS=
+## reserve capacity doubling (default 0)
+# BEE_RESERVE_CAPACITY_DOUBLING=0
+## ENS compatible API endpoint for a TLD and with contract address, can be repeated, format [tld:][contract-addr@]url (default [])
 # BEE_RESOLVER_OPTIONS=[]
+## forces the node to resync postage contract data (default false)
+# BEE_RESYNC=false
+## skip postage snapshot (default false)
+# BEE_SKIP_POSTAGE_SNAPSHOT=false
+## staking contract address (default empty)
+# BEE_STAKING_ADDRESS=
+## protect nodes from getting kicked out on bootnode (default [])
+# BEE_STATIC_NODES=[]
+## lru memory caching capacity in number of statestore entries (default 100000)
+# BEE_STATESTORE_CACHE_CAPACITY=100000
+## enable storage incentives feature (default true)
+# BEE_STORAGE_INCENTIVES_ENABLE=true
 ## enable swap (default false)
 # BEE_SWAP_ENABLE=false
-## blockchain rpc endpoint (default ws://localhost:8546)
-# BEE_BLOCKCHAIN_RPC_ENDPOINT=ws://localhost:8546
-# BEE_BLOCKCHAIN_RPC_DIAL_TIMEOUT=30s
-# BEE_BLOCKCHAIN_RPC_TLS_TIMEOUT=10s
-# BEE_BLOCKCHAIN_RPC_IDLE_TIMEOUT=90s
-# BEE_BLOCKCHAIN_RPC_KEEPALIVE=30s
-## swap factory address
+## swap factory addresses (default empty)
 # BEE_SWAP_FACTORY_ADDRESS=
-## legacy swap factory addresses
-# BEE_SWAP_LEGACY_FACTORY_ADDRESSES=
-## initial deposit if deploying a new chequebook (default 10000000000000000)
-# BEE_SWAP_INITIAL_DEPOSIT=10000000000000000
-## gas price in wei to use for deployment and funding (default "")
-# BEE_SWAP_DEPLOYMENT_GAS_PRICE=
-## enable tracing
+## initial deposit if deploying a new chequebook (default 0)
+# BEE_SWAP_INITIAL_DEPOSIT=0
+## neighborhood to target in binary format (ex: 111111001) for mining the initial overlay (default empty)
+# BEE_TARGET_NEIGHBORHOOD=
+## skips the gas estimate step for contract transactions (default false)
+# BEE_TRANSACTION_DEBUG_MODE=false
+## enable tracing (default false)
 # BEE_TRACING_ENABLE=false
 ## endpoint to send tracing data (default 127.0.0.1:6831)
 # BEE_TRACING_ENDPOINT=127.0.0.1:6831
+## host to send tracing data (default empty)
+# BEE_TRACING_HOST=
+## port to send tracing data (default empty)
+# BEE_TRACING_PORT=
 ## service name identifier for tracing (default bee)
 # BEE_TRACING_SERVICE_NAME=bee
 ## log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace (default info)
 # BEE_VERBOSITY=info
-## send a welcome message string during handshakes
+## maximum node warmup duration; proceeds when stable or after this time (default 5m)
+# BEE_WARMUP_TIME=5m
+## send a welcome message string during handshakes (default empty)
 # BEE_WELCOME_MESSAGE=
-## triggers connection to main network
-# BEE_MAINNET=
-## minimum radius storage threshold
-# BEE_MINIMUM_STORAGE_RADIUS=
-## reserve capacity doubling (default 0, maximum 1)
-# BEE_RESERVE_CAPACITY_DOUBLING=0
-## allow to advertise private CIDRs to the public network
-# BEE_ALLOW_PRIVATE_CIDRS=false
-## enable forwarded content caching
-# BEE_CACHE_RETRIEVAL=false
-## enable chequebook
-# BEE_CHEQUEBOOK_ENABLE=true
-## help for printconfig
-# BEE_HELP=false
-## suggester for target neighborhood
-# BEE_NEIGHBORHOOD_SUGGESTER=https://api.swarmscan.io/v1/network/neighborhoods/suggestion
-## postage stamp contract start block number
-# BEE_POSTAGE_STAMP_START_BLOCK="0"
-## enable pprof mutex profile
-# BEE_PPROF_MUTEX=false
-## enable pprof block profile
-# BEE_PPROF_PROFILE=false
-## price oracle contract address
-# BEE_PRICE_ORACLE_ADDRESS=
-## redistribution contract address
-# BEE_REDISTRIBUTION_ADDRESS=
-## forces the node to resync postage contract data
-# BEE_RESYNC=false
-## staking contract address
-# BEE_STAKING_ADDRESS=
-## lru memory caching capacity in number of statestore entries
-# BEE_STATESTORE_CACHE_CAPACITY="100000"
-## protect nodes from getting kicked out on bootnode
-# BEE_STATIC_NODES=
-## enable storage incentives feature
-# BEE_STORAGE_INCENTIVES_ENABLE=true
-## neighborhood to target in binary format (ex: 111111001) for mining the initial overlay
-# BEE_TARGET_NEIGHBORHOOD=
-## host to send tracing data
-# BEE_TRACING_HOST=
-## port to send tracing data
-# BEE_TRACING_PORT=
-## service name identifier for tracing
-# BEE_TRACING_SERVICE_NAME=
-## gas limit fallback when estimation fails for contract transactions (default 500000)
-# BEE_GAS_LIMIT_FALLBACK=500000
-## skips the gas estimate step for contract transactions
-# BEE_TRANSACTION_DEBUG_MODE=false
-## bootstrap node using postage snapshot from the network
-# BEE_USE_POSTAGE_SNAPSHOT=false
-## maximum node warmup duration; proceeds when stable or after this time
-# BEE_WARMUP_TIME=
-## withdrawal target addresses
-# BEE_WITHDRAWAL_ADDRESSES_WHITELIST=
+## withdrawal target addresses (default [])
+# BEE_WITHDRAWAL_ADDRESSES_WHITELIST=[]
