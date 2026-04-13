@@ -924,11 +924,10 @@ func TestAddressBookQuickPrune(t *testing.T) {
 	waitCounter(t, &conns, 0)
 	waitCounter(t, &failedConns, 1)
 
-	// we need to trigger connection attempts maxConnAttempts times
-	for range 3 {
+	for range kademlia.MaxConnAttempts {
 		time.Sleep(10 * time.Millisecond)
 		kad.Trigger()
-		waitCounterAtLeast(t, &failedConns, 1)
+		waitCounter(t, &failedConns, 1)
 	}
 
 	waitAddressBookNotFound(t, ab, nonConnPeer.Overlay)

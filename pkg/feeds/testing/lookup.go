@@ -37,7 +37,7 @@ func (t *Timeout) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, err
 		}
 		return ch, err
 	}
-	time.Sleep(time.Duration(addr.Bytes()[0]%10) * time.Millisecond)
+	time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
 	return ch, nil
 }
 
