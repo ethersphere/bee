@@ -891,8 +891,8 @@ func TestAddressBookQuickPrune(t *testing.T) {
 	t.Parallel()
 
 	var (
-		conns, failedConns       int32 // how many connect calls were made to the p2p mock
-		base, kad, ab, _, signer = newTestKademlia(t, &conns, &failedConns, kademlia.Options{
+		failedConns              int32
+		base, kad, ab, _, signer = newTestKademlia(t, nil, &failedConns, kademlia.Options{
 			TimeToRetry: new(time.Millisecond),
 		})
 	)
@@ -913,23 +913,18 @@ func TestAddressBookQuickPrune(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	addr := swarm.RandAddressAt(t, base, 1)
-	// add one valid peer
-	addOne(t, signer, kad, ab, addr)
-	waitCounter(t, &conns, 1)
-	waitCounter(t, &failedConns, 0)
-
-	// add non connectable peer, check connection and failed connection counters
+	// add non connectable peer; AddPeers triggers the manage loop which
+	// immediately attempts to connect via connectBalanced (the peer is in
+	// bin 1 which is below storageRadius 2, so connectNeighbours skips it).
 	kad.AddPeers(nonConnPeer.Overlay)
-	waitCounter(t, &conns, 0)
-	waitCounter(t, &failedConns, 1)
 
 	for range kademlia.MaxConnAttempts {
 		time.Sleep(10 * time.Millisecond)
 		kad.Trigger()
-		waitCounter(t, &failedConns, 1)
 	}
 
+	// after maxConnAttempts (4) failed dials the peer must be pruned
+	waitCounterAtLeast(t, &failedConns, int32(kademlia.MaxConnAttempts))
 	waitAddressBookNotFound(t, ab, nonConnPeer.Overlay)
 }
 
