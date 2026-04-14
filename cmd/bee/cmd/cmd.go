@@ -64,7 +64,6 @@ const (
 	optionWarmUpTime                       = "warmup-time"
 	optionNameMainNet                      = "mainnet"
 	optionNameRetrievalCaching             = "cache-retrieval"
-	optionNameDevReserveCapacity           = "dev-reserve-capacity"
 	optionNameResync                       = "resync"
 	optionNamePProfBlock                   = "pprof-profile"
 	optionNamePProfMutex                   = "pprof-mutex"
@@ -167,10 +166,6 @@ func newCommand(opts ...option) (c *command, err error) {
 	}
 
 	if err := c.initStartCmd(); err != nil {
-		return nil, err
-	}
-
-	if err := c.initStartDevCmd(); err != nil {
 		return nil, err
 	}
 

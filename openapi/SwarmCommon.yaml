@@ -467,12 +467,11 @@ components:
       properties:
         beeMode:
           type: string
-          enum: [light, full, dev, ultra-light, unknown]
+          enum: [light, full, ultra-light, unknown]
           description: >
             Gives back in what mode the Bee client has been started. The modes are mutually exclusive
             * `light` - light node; does not participate in forwarding or storing chunks
             * `full` - full node
-            * `dev` - development mode; Bee client for development purposes, blockchain operations are mocked
             * `ultra-light` - ultra-light node; a light node with chain disabled
             * `unknown` - unknown mode
         chequebookEnabled:
@@ -889,7 +888,6 @@ components:
           enum:
             - "light"
             - "full"
-            - "dev"
             - "ultra-light"
             - "unknown"
         reserveSize:

@@ -69,12 +69,6 @@ func (s *Service) statusAccessHandler(h http.Handler) http.Handler {
 func (s *Service) statusGetHandler(w http.ResponseWriter, _ *http.Request) {
 	logger := s.logger.WithName("get_status").Build()
 
-	if s.beeMode == DevMode {
-		logger.Warning("status endpoint is disabled in dev mode")
-		jsonhttp.BadRequest(w, errUnsupportedDevNodeOperation)
-		return
-	}
-
 	ss, err := s.statusService.LocalSnapshot()
 	if err != nil {
 		logger.Debug("status snapshot", "error", err)
@@ -104,12 +98,6 @@ func (s *Service) statusGetHandler(w http.ResponseWriter, _ *http.Request) {
 // statusGetPeersHandler returns the status of currently connected peers.
 func (s *Service) statusGetPeersHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_status_peers").Build()
-
-	if s.beeMode == DevMode {
-		logger.Warning("status endpoint is disabled in dev mode")
-		jsonhttp.BadRequest(w, errUnsupportedDevNodeOperation)
-		return
-	}
 
 	var (
 		wg        sync.WaitGroup
@@ -178,12 +166,6 @@ func (s *Service) statusGetPeersHandler(w http.ResponseWriter, r *http.Request) 
 // statusGetHandler returns the current node status.
 func (s *Service) statusGetNeighborhoods(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_status_neighborhoods").Build()
-
-	if s.beeMode == DevMode {
-		logger.Warning("status neighborhoods endpoint is disabled in dev mode")
-		jsonhttp.BadRequest(w, errUnsupportedDevNodeOperation)
-		return
-	}
 
 	neighborhoods := make([]statusNeighborhoodResponse, 0)
 
