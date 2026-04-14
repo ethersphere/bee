@@ -2231,16 +2231,10 @@ func waitBcast(t *testing.T, d *mock.Discovery, pivot swarm.Address, addrs ...sw
 
 func waitChanClosed(t *testing.T, ch <-chan struct{}) {
 	t.Helper()
-
-	err := spinlock.Wait(spinLockWaitTime, func() bool {
-		select {
-		case <-ch:
-			return true
-		default:
-			return false
-		}
-	})
-	if err != nil {
+	select {
+	case <-ch:
+		return
+	case <-time.After(spinLockWaitTime):
 		t.Fatal("timed out waiting for channel to close")
 	}
 }
@@ -2248,26 +2242,27 @@ func waitChanClosed(t *testing.T, ch <-chan struct{}) {
 func waitSnapshot(t *testing.T, kad *kademlia.Kad, po uint8, connected, population, binPopulation uint64) *topology.KadParams {
 	t.Helper()
 
-	var snap *topology.KadParams
+	timeout := time.After(spinLockWaitTime)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
 
-	if err := spinlock.Wait(spinLockWaitTime, func() bool {
-		snap = kad.Snapshot()
-		return uint64(snap.Connected) == connected &&
+	for {
+		snap := kad.Snapshot()
+		if uint64(snap.Connected) == connected &&
 			uint64(snap.Population) == population &&
-			getBinPopulation(&snap.Bins, po) == binPopulation
-	}); err != nil {
-		t.Fatalf(
-			"timed out waiting for snapshot. got connected=%d population=%d binPopulation=%d want connected=%d population=%d binPopulation=%d",
-			snap.Connected,
-			snap.Population,
-			getBinPopulation(&snap.Bins, po),
-			connected,
-			population,
-			binPopulation,
-		)
+			getBinPopulation(&snap.Bins, po) == binPopulation {
+			return snap
+		}
+		select {
+		case <-ticker.C:
+		case <-timeout:
+			t.Fatalf(
+				"timed out waiting for snapshot. got connected=%d population=%d binPopulation=%d want connected=%d population=%d binPopulation=%d",
+				snap.Connected, snap.Population, getBinPopulation(&snap.Bins, po),
+				connected, population, binPopulation,
+			)
+		}
 	}
-
-	return snap
 }
 
 // waitBalanced waits for kademlia to be balanced for specified bin.

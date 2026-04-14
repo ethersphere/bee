@@ -203,17 +203,10 @@ func TestDBNuke(t *testing.T) {
 
 	db.Close()
 
-	// Retrying avoids a short OS-level race after db.Close(), where file handles
+	// Waiting avoids a short OS-level race after db.Close(), where file handles
 	// may still be getting released and early removal can fail on some platforms.
-	backoff := 50 * time.Millisecond
-	for range 3 {
-		err = newCommand(t, cmd.WithArgs("db", "nuke", "--data-dir", dataDir)).Execute()
-		if err == nil {
-			break
-		}
-		time.Sleep(backoff)
-		backoff *= 2
-	}
+	time.Sleep(2 * time.Second)
+	err = newCommand(t, cmd.WithArgs("db", "nuke", "--data-dir", dataDir)).Execute()
 	if err != nil {
 		t.Fatal(err)
 	}
