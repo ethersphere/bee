@@ -18,6 +18,10 @@ var (
 	zerosection = make([]byte, 64)
 )
 
+// SIMDOptIn is default false, meaning it is disabled by default unless the user turns it on with the
+// necessary CLI flag on the supported systems.
+var SIMDOptIn = false
+
 // Capacity returns the maximum amount of bytes that will be processed by this hasher implementation.
 // since BMT assumes a balanced binary tree, capacity it is always a power of 2
 func (h *Hasher) Capacity() int {

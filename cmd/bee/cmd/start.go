@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -22,6 +23,7 @@ import (
 
 	"github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
+	"github.com/ethersphere/bee/v2/pkg/bmt"
 	chaincfg "github.com/ethersphere/bee/v2/pkg/config"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/keystore"
@@ -272,6 +274,15 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 	var neighborhoodSuggester string
 	if networkID == chaincfg.Mainnet.NetworkID {
 		neighborhoodSuggester = c.config.GetString(optionNameNeighborhoodSuggester)
+	}
+
+	useSIMD := c.config.GetBool(optionUseSIMD)
+	if useSIMD {
+		if runtime.GOOS != "linux" {
+			return nil, errors.New("SIMD hashing can only be enabled on linux hosts")
+		}
+		logger.Info("SIMD hashing enabled")
+		bmt.SIMDOptIn = true
 	}
 
 	b, err := node.NewBee(ctx, c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, signerConfig.session, &node.Options{

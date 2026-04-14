@@ -63,7 +63,7 @@ func newConf(prefix []byte, segmentCount, capacity int) *Conf {
 		maxSize:      count * segmentSize,
 		depth:        depth,
 		prefix:       prefix,
-		useSIMD:      keccak.HasSIMD(),
+		useSIMD:      keccak.HasSIMD() && SIMDOptIn,
 	}
 
 	bw := keccak.BatchWidth()
