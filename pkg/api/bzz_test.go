@@ -64,8 +64,6 @@ import (
 //     using redundancy to reconstruct the file and find the file recoverable.
 //
 // nolint:thelper
-// This test constantly fails, because of inconsistency usage of api.SwarmRedundancyLevelHeader (look issue github.com/ethersphere/bee/issues/5282)
-// after issue will be fixed, test will be not skipped anymore
 func TestBzzUploadDownloadWithRedundancy(t *testing.T) {
 	t.Parallel()
 	fileUploadResource := "/bzz"
