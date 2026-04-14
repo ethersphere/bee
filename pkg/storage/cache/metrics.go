@@ -6,25 +6,24 @@ package cache
 
 import (
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 type metrics struct {
-	CacheHit  prometheus.Counter
-	CacheMiss prometheus.Counter
+	CacheHit  m.Counter
+	CacheMiss m.Counter
 }
 
 func newMetrics() metrics {
 	subsystem := "storage_cache"
 
 	return metrics{
-		CacheHit: prometheus.NewCounter(prometheus.CounterOpts{
+		CacheHit: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "cache_hit",
 			Help:      "Total cache hits.",
 		}),
-		CacheMiss: prometheus.NewCounter(prometheus.CounterOpts{
+		CacheMiss: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "cache_miss",
@@ -33,6 +32,6 @@ func newMetrics() metrics {
 	}
 }
 
-func (c *Cache) Metrics() []prometheus.Collector {
+func (c *Cache) Metrics() []m.Collector {
 	return m.PrometheusCollectorsFromFields(c.metrics)
 }

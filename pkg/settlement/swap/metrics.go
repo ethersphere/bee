@@ -6,53 +6,52 @@ package swap
 
 import (
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 type metrics struct {
-	TotalReceived    prometheus.Counter
-	TotalSent        prometheus.Counter
-	ChequesReceived  prometheus.Counter
-	ChequesSent      prometheus.Counter
-	ChequesRejected  prometheus.Counter
-	AvailableBalance prometheus.Gauge
+	TotalReceived    m.Counter
+	TotalSent        m.Counter
+	ChequesReceived  m.Counter
+	ChequesSent      m.Counter
+	ChequesRejected  m.Counter
+	AvailableBalance m.Gauge
 }
 
 func newMetrics() metrics {
 	subsystem := "swap"
 
 	return metrics{
-		TotalReceived: prometheus.NewCounter(prometheus.CounterOpts{
+		TotalReceived: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "total_received",
 			Help:      "Amount of tokens received from peers (income of the node)",
 		}),
-		TotalSent: prometheus.NewCounter(prometheus.CounterOpts{
+		TotalSent: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "total_sent",
 			Help:      "Amount of tokens sent to peers (costs paid by the node)",
 		}),
-		ChequesReceived: prometheus.NewCounter(prometheus.CounterOpts{
+		ChequesReceived: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "cheques_received",
 			Help:      "Number of cheques received from peers",
 		}),
-		ChequesSent: prometheus.NewCounter(prometheus.CounterOpts{
+		ChequesSent: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "cheques_sent",
 			Help:      "Number of cheques sent to peers",
 		}),
-		ChequesRejected: prometheus.NewCounter(prometheus.CounterOpts{
+		ChequesRejected: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "cheques_rejected",
 			Help:      "Number of cheques rejected",
 		}),
-		AvailableBalance: prometheus.NewGauge(prometheus.GaugeOpts{
+		AvailableBalance: m.NewGauge(m.GaugeOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "available_balance",
@@ -61,6 +60,6 @@ func newMetrics() metrics {
 	}
 }
 
-func (s *Service) Metrics() []prometheus.Collector {
+func (s *Service) Metrics() []m.Collector {
 	return m.PrometheusCollectorsFromFields(s.metrics)
 }

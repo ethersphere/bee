@@ -6,32 +6,31 @@ package batchstore
 
 import (
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 type metrics struct {
-	Commitment        prometheus.Gauge
-	Radius            prometheus.Gauge
-	UnreserveDuration *prometheus.HistogramVec
+	Commitment        m.Gauge
+	Radius            m.Gauge
+	UnreserveDuration m.HistogramMetricVector
 }
 
 func newMetrics() metrics {
 	subsystem := "batchstore"
 
 	return metrics{
-		Commitment: prometheus.NewGauge(prometheus.GaugeOpts{
+		Commitment: m.NewGauge(m.GaugeOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "commitment",
 			Help:      "Sum of all batches' commitment.",
 		}),
-		Radius: prometheus.NewGauge(prometheus.GaugeOpts{
+		Radius: m.NewGauge(m.GaugeOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "radius",
 			Help:      "Radius of responsibility observed by the batchstore.",
 		}),
-		UnreserveDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		UnreserveDuration: m.NewHistogramVec(m.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "unreserve_duration",
@@ -40,6 +39,6 @@ func newMetrics() metrics {
 	}
 }
 
-func (s *store) Metrics() []prometheus.Collector {
+func (s *store) Metrics() []m.Collector {
 	return m.PrometheusCollectorsFromFields(s.metrics)
 }

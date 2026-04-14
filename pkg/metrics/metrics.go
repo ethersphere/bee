@@ -1,32 +1,75 @@
-// Copyright 2020 The Swarm Authors. All rights reserved.
+// Copyright 2026 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
+
+//go:build !nometrics
 
 package metrics
 
 import (
-	"reflect"
-
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/prometheus/common/expfmt"
+	"io"
+	"net/http"
 )
 
-// Namespace is prefixed before every metric. If it is changed, it must be done
-// before any metrics collector is registered.
-var Namespace = "bee"
-
-type Collector interface {
-	Metrics() []prometheus.Collector
+func NewCounter(opts CounterOpts) Counter {
+	return prometheus.NewCounter(opts)
 }
 
-func PrometheusCollectorsFromFields(i any) (cs []prometheus.Collector) {
-	v := reflect.Indirect(reflect.ValueOf(i))
-	for _, field := range v.Fields() {
-		if !field.CanInterface() {
-			continue
-		}
-		if u, ok := field.Interface().(prometheus.Collector); ok {
-			cs = append(cs, u)
-		}
-	}
-	return cs
+func NewEncoder(w io.Writer, format expfmt.Format, options ...expfmt.EncoderOption) expfmt.Encoder {
+	return expfmt.NewEncoder(w, format, options...)
+}
+
+func NewFormat(t expfmt.FormatType) expfmt.Format {
+	return expfmt.NewFormat(t)
+}
+
+func NewGoCollector() Collector {
+	return collectors.NewGoCollector()
+}
+
+func NewGaugeVec(opts GaugeOpts, names []string) GaugeMetricVector {
+	return prometheus.NewGaugeVec(opts, names)
+}
+func NewGauge(opts GaugeOpts) Gauge {
+	return prometheus.NewGauge(opts)
+}
+
+func NewHistogram(opts HistogramOpts) Histogram {
+	return prometheus.NewHistogram(opts)
+}
+
+func NewHistogramVec(opts HistogramOpts, names []string) HistogramMetricVector {
+	return prometheus.NewHistogramVec(opts, names)
+}
+
+func NewCounterVec(opts CounterOpts, names []string) CounterMetricVector {
+	return prometheus.NewCounterVec(opts, names)
+}
+
+func NewRegistry() MetricsRegistererGatherer {
+	return prometheus.NewRegistry()
+}
+
+func NewProcessCollector(opts ProcessCollectorOpts) Collector {
+	return collectors.NewProcessCollector(opts)
+}
+
+func NewSummary(opts SummaryOpts) Summary {
+	return prometheus.NewSummary(opts)
+}
+
+func InstrumentMetricHandler(reg MetricsRegistererGatherer, handler http.Handler) http.Handler {
+	return promhttp.InstrumentMetricHandler(reg, handler)
+}
+
+func HandlerFor(reg MetricsRegistererGatherer, opts HandlerOpts) http.Handler {
+	return promhttp.HandlerFor(reg, opts)
+}
+
+func MustRegister(cs ...Collector) {
+	prometheus.MustRegister(cs...)
 }

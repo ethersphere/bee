@@ -6,16 +6,15 @@ package log
 
 import (
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 // metrics groups various metrics counters for statistical reasons.
 type metrics struct {
-	ErrorCount prometheus.Counter
-	WarnCount  prometheus.Counter
-	InfoCount  prometheus.Counter
-	DebugCount prometheus.Counter
-	TraceCount prometheus.Counter
+	ErrorCount m.Counter
+	WarnCount  m.Counter
+	InfoCount  m.Counter
+	DebugCount m.Counter
+	TraceCount m.Counter
 }
 
 // Fire implements Hook interface.
@@ -40,31 +39,31 @@ func newLogMetrics() *metrics {
 	const subsystem = "log"
 
 	return &metrics{
-		ErrorCount: prometheus.NewCounter(prometheus.CounterOpts{
+		ErrorCount: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "error_count",
 			Help:      "Number ERROR log messages.",
 		}),
-		WarnCount: prometheus.NewCounter(prometheus.CounterOpts{
+		WarnCount: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "warn_count",
 			Help:      "Number WARN log messages.",
 		}),
-		InfoCount: prometheus.NewCounter(prometheus.CounterOpts{
+		InfoCount: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "info_count",
 			Help:      "Number INFO log messages.",
 		}),
-		DebugCount: prometheus.NewCounter(prometheus.CounterOpts{
+		DebugCount: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "debug_count",
 			Help:      "Number DEBUG log messages.",
 		}),
-		TraceCount: prometheus.NewCounter(prometheus.CounterOpts{
+		TraceCount: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "trace_count",

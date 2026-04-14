@@ -19,14 +19,14 @@ import (
 	"sync"
 	"time"
 
-	ocprom "contrib.go.opencensus.io/exporter/prometheus"
 	"github.com/coreos/go-semver/semver"
 	"github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 	beecrypto "github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
-	m2 "github.com/ethersphere/bee/v2/pkg/metrics"
+	m "github.com/ethersphere/bee/v2/pkg/metrics"
+	ocprom "github.com/ethersphere/bee/v2/pkg/metrics/exporter"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/blocklist"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/breaker"
@@ -60,7 +60,6 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/multiformats/go-multistream"
-	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
 )
@@ -147,7 +146,7 @@ type Options struct {
 	ValidateOverlay             bool
 	hostFactory                 func(...libp2p.Option) (host.Host, error)
 	HeadersRWTimeout            time.Duration
-	Registry                    *prometheus.Registry
+	Registry                    m.MetricsRegistererGatherer
 	autoTLSCertManager          autoTLSCertManager
 }
 
@@ -200,11 +199,10 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		rcmgr.MustRegisterWith(o.Registry)
 	}
 
-	_, err = ocprom.NewExporter(ocprom.Options{
-		Namespace: m2.Namespace,
+	if err = ocprom.NewExporter(ocprom.ExporterOptions{
+		Namespace: m.Namespace,
 		Registry:  o.Registry,
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, err
 	}
 
@@ -410,7 +408,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		}
 	}
 	// Support same non default security and transport options as
-	// original host.
+	// the original host.
 	dialer, err := o.hostFactory(append(transports, security)...)
 	if err != nil {
 		return nil, err

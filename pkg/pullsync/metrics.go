@@ -6,89 +6,88 @@ package pullsync
 
 import (
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 type metrics struct {
-	Offered              prometheus.Counter     // number of chunks offered
-	Wanted               prometheus.Counter     // number of chunks wanted
-	MissingChunks        prometheus.Counter     // number of reserve get errs
-	ReceivedZeroAddress  prometheus.Counter     // number of delivered chunks with invalid address
-	ReceivedInvalidChunk prometheus.Counter     // number of delivered chunks with invalid address
-	Delivered            prometheus.Counter     // number of chunk deliveries
-	SentOffered          prometheus.Counter     // number of chunks offered
-	SentWanted           prometheus.Counter     // number of chunks wanted
-	Sent                 prometheus.Counter     // number of chunks sent
-	DuplicateRuid        prometheus.Counter     // number of duplicate RUID requests we got
-	LastReceived         *prometheus.CounterVec // last timestamp of the received chunks per bin
+	Offered              m.Counter             // number of chunks offered
+	Wanted               m.Counter             // number of chunks wanted
+	MissingChunks        m.Counter             // number of reserve get errs
+	ReceivedZeroAddress  m.Counter             // number of delivered chunks with invalid address
+	ReceivedInvalidChunk m.Counter             // number of delivered chunks with invalid address
+	Delivered            m.Counter             // number of chunk deliveries
+	SentOffered          m.Counter             // number of chunks offered
+	SentWanted           m.Counter             // number of chunks wanted
+	Sent                 m.Counter             // number of chunks sent
+	DuplicateRuid        m.Counter             // number of duplicate RUID requests we got
+	LastReceived         m.CounterMetricVector // last timestamp of the received chunks per bin
 }
 
 func newMetrics() metrics {
 	subsystem := "pullsync"
 
 	return metrics{
-		Offered: prometheus.NewCounter(prometheus.CounterOpts{
+		Offered: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "chunks_offered",
 			Help:      "Total chunks offered.",
 		}),
-		Wanted: prometheus.NewCounter(prometheus.CounterOpts{
+		Wanted: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "chunks_wanted",
 			Help:      "Total chunks wanted.",
 		}),
-		MissingChunks: prometheus.NewCounter(prometheus.CounterOpts{
+		MissingChunks: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "missing_chunks",
 			Help:      "Total reserve get errors.",
 		}),
-		ReceivedZeroAddress: prometheus.NewCounter(prometheus.CounterOpts{
+		ReceivedZeroAddress: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "received_zero_address",
 			Help:      "Total chunks delivered with zero address and no chunk data.",
 		}),
-		ReceivedInvalidChunk: prometheus.NewCounter(prometheus.CounterOpts{
+		ReceivedInvalidChunk: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "received_invalid_chunks",
 			Help:      "Total invalid chunks delivered.",
 		}),
-		Delivered: prometheus.NewCounter(prometheus.CounterOpts{
+		Delivered: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "chunks_delivered",
 			Help:      "Total chunks delivered.",
 		}),
-		SentOffered: prometheus.NewCounter(prometheus.CounterOpts{
+		SentOffered: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "chunks_sent_offered",
 			Help:      "Total chunks offered to peers.",
 		}),
-		SentWanted: prometheus.NewCounter(prometheus.CounterOpts{
+		SentWanted: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "chunks_sent_wanted",
 			Help:      "Total chunks wanted by peers.",
 		}),
-		Sent: prometheus.NewCounter(prometheus.CounterOpts{
+		Sent: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "chunks_sent",
 			Help:      "Total chunks sent.",
 		}),
-		DuplicateRuid: prometheus.NewCounter(prometheus.CounterOpts{
+		DuplicateRuid: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "duplicate_ruids",
 			Help:      "Total duplicate RUIDs.",
 		}),
-		LastReceived: prometheus.NewCounterVec(
-			prometheus.CounterOpts{
+		LastReceived: m.NewCounterVec(
+			m.CounterOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "last_received",
@@ -97,6 +96,6 @@ func newMetrics() metrics {
 	}
 }
 
-func (s *Syncer) Metrics() []prometheus.Collector {
+func (s *Syncer) Metrics() []m.Collector {
 	return m.PrometheusCollectorsFromFields(s.metrics)
 }

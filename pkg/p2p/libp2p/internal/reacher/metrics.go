@@ -6,15 +6,14 @@ package reacher
 
 import (
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 // metrics groups reacher related prometheus counters.
 type metrics struct {
-	Peers            prometheus.Gauge
-	PingAttemptCount prometheus.Counter
-	PingErrorCount   prometheus.Counter
-	PingDuration     prometheus.Histogram
+	Peers            m.Gauge
+	PingAttemptCount m.Counter
+	PingErrorCount   m.Counter
+	PingDuration     m.Histogram
 }
 
 // newMetrics is a convenient constructor for creating new metrics.
@@ -22,25 +21,25 @@ func newMetrics() metrics {
 	const subsystem = "reacher"
 
 	return metrics{
-		Peers: prometheus.NewGauge(prometheus.GaugeOpts{
+		Peers: m.NewGauge(m.GaugeOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "peers",
 			Help:      "Number of peers currently in the reacher queue.",
 		}),
-		PingAttemptCount: prometheus.NewCounter(prometheus.CounterOpts{
+		PingAttemptCount: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "ping_attempt_count",
 			Help:      "Number of ping attempts.",
 		}),
-		PingErrorCount: prometheus.NewCounter(prometheus.CounterOpts{
+		PingErrorCount: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "ping_error_count",
 			Help:      "Number of failed ping attempts.",
 		}),
-		PingDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+		PingDuration: m.NewHistogram(m.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "ping_duration_seconds",
@@ -51,6 +50,6 @@ func newMetrics() metrics {
 }
 
 // Metrics returns set of prometheus collectors.
-func (r *reacher) Metrics() []prometheus.Collector {
+func (r *reacher) Metrics() []m.Collector {
 	return m.PrometheusCollectorsFromFields(r.metrics)
 }

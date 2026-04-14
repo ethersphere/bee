@@ -13,12 +13,12 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/log/httpaccess"
+	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/transaction/backendnoop"
 	"github.com/felixge/fgprof"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"resenje.org/web"
 )
 
@@ -127,9 +127,9 @@ func (s *Service) mountTechnicalDebug() {
 
 	s.router.Path("/metrics").Handler(web.ChainHandlers(
 		httpaccess.NewHTTPAccessSuppressLogHandler(),
-		web.FinalHandler(promhttp.InstrumentMetricHandler(
+		web.FinalHandler(m.InstrumentMetricHandler(
 			s.metricsRegistry,
-			promhttp.HandlerFor(s.metricsRegistry, promhttp.HandlerOpts{}),
+			m.HandlerFor(s.metricsRegistry, m.HandlerOpts{}),
 		)),
 	))
 

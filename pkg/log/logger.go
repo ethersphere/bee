@@ -15,7 +15,6 @@ import (
 
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/hashicorp/go-multierror"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 var _ Logger = (*logger)(nil)
@@ -166,7 +165,7 @@ type logger struct {
 }
 
 // Metrics implements metrics.Collector interface.
-func (l *logger) Metrics() []prometheus.Collector {
+func (l *logger) Metrics() []m.Collector {
 	return m.PrometheusCollectorsFromFields(l.metrics)
 }
 
