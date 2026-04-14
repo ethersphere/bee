@@ -26,7 +26,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/pushsync"
 	"github.com/ethersphere/bee/v2/pkg/pushsync/pb"
 	"github.com/ethersphere/bee/v2/pkg/soc"
-	"github.com/ethersphere/bee/v2/pkg/spinlock"
 	stabilmock "github.com/ethersphere/bee/v2/pkg/stabilization/mock"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	testingc "github.com/ethersphere/bee/v2/pkg/storage/testing"
@@ -528,13 +527,23 @@ func anyPeerHasValidPushStream(t *testing.T, recorder *streamtest.Recorder, peer
 // opened to each peer, i.e. the pivot attempted another closest after the first path.
 func waitPushStreamsToBothClosestPeers(t *testing.T, recorder *streamtest.Recorder, peer1, peer2 swarm.Address) {
 	t.Helper()
-	err := spinlock.Wait(pushNextClosestSpinlockWait, func() bool {
+
+	timeout := time.After(pushNextClosestSpinlockWait)
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
 		r1, e1 := recorder.Records(peer1, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName)
 		r2, e2 := recorder.Records(peer2, pushsync.ProtocolName, pushsync.ProtocolVersion, pushsync.StreamName)
-		return e1 == nil && len(r1) > 0 && e2 == nil && len(r2) > 0
-	})
-	if err != nil {
-		t.Fatal("timed out waiting for push streams to both closest peers")
+		if e1 == nil && len(r1) > 0 && e2 == nil && len(r2) > 0 {
+			return
+		}
+		select {
+		case <-ticker.C:
+		case <-timeout:
+			t.Fatal("timed out waiting for push streams to both closest peers")
+			return
+		}
 	}
 }
 

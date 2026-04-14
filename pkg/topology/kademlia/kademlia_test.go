@@ -2170,18 +2170,23 @@ func waitCounter(t *testing.T, conns *int32, exp int32) {
 
 func waitCounterAtLeast(t *testing.T, conns *int32, exp int32) {
 	t.Helper()
-	var got int32
 
-	err := spinlock.Wait(spinLockWaitTime, func() bool {
-		got = atomic.LoadInt32(conns)
-		if got < exp {
-			return false
+	timeout := time.After(spinLockWaitTime)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		got := atomic.LoadInt32(conns)
+		if got >= exp {
+			atomic.StoreInt32(conns, 0)
+			return
 		}
-		atomic.StoreInt32(conns, 0)
-		return true
-	})
-	if err != nil {
-		t.Fatalf("timed out waiting for counter to reach at least expected value. got %d want >= %d", got, exp)
+		select {
+		case <-ticker.C:
+		case <-timeout:
+			t.Fatalf("timed out waiting for counter to reach at least expected value. got %d want >= %d", got, exp)
+			return
+		}
 	}
 }
 
