@@ -925,7 +925,10 @@ func TestAddressBookQuickPrune(t *testing.T) {
 
 	// after maxConnAttempts (4) failed dials the peer must be pruned
 	waitCounterAtLeast(t, &failedConns, int32(kademlia.MaxConnAttempts))
-	waitAddressBookNotFound(t, ab, nonConnPeer.Overlay)
+	_, err = ab.Get(nonConnPeer.Overlay)
+	if !errors.Is(err, addressbook.ErrNotFound) {
+		t.Fatal(err)
+	}
 }
 
 func TestClosestPeer(t *testing.T) {
@@ -2239,19 +2242,6 @@ func waitChanClosed(t *testing.T, ch <-chan struct{}) {
 	})
 	if err != nil {
 		t.Fatal("timed out waiting for channel to close")
-	}
-}
-
-func waitAddressBookNotFound(t *testing.T, ab addressbook.Interface, addr swarm.Address) {
-	t.Helper()
-
-	var err error
-	waitErr := spinlock.Wait(spinLockWaitTime, func() bool {
-		_, err = ab.Get(addr)
-		return errors.Is(err, addressbook.ErrNotFound)
-	})
-	if waitErr != nil {
-		t.Fatalf("timed out waiting for addressbook prune. last error: %v", err)
 	}
 }
 
