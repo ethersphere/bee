@@ -7,9 +7,11 @@ package storageincentives_test
 import (
 	"testing"
 
+	"github.com/ethersphere/bee/v2/pkg/bmt"
 	"go.uber.org/goleak"
 )
 
 func TestMain(m *testing.M) {
+	bmt.SIMDOptIn = true
 	goleak.VerifyTestMain(m)
 }
