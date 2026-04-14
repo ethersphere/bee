@@ -83,36 +83,38 @@ func (b *wrappedBackend) TransactionByHash(ctx context.Context, hash common.Hash
 }
 
 func (b *wrappedBackend) BlockNumber(ctx context.Context) (uint64, error) {
+	canReuseBlockAnchorFn := func(anchor blockNumberAnchor) bool {
+		_, elapsedBlocks := b.estimatedBlockNumberWithElapsed(anchor, time.Now().UTC())
+		return elapsedBlocks < b.blockSyncInterval
+	}
+
+	loadFreshBlockFn := func() (blockNumberAnchor, error) {
+		b.metrics.TotalRPCCalls.Inc()
+		b.metrics.BlockHeaderAsBlockNumberCalls.Inc()
+
+		header, err := b.backend.HeaderByNumber(ctx, nil)
+		if err != nil {
+			b.metrics.TotalRPCErrors.Inc()
+			return blockNumberAnchor{}, err
+		}
+		if header == nil || header.Number == nil {
+			b.metrics.TotalRPCErrors.Inc()
+			return blockNumberAnchor{}, errors.New("latest block header unavailable")
+		}
+		return blockNumberAnchor{
+			number:    header.Number.Uint64(),
+			timestamp: time.Unix(int64(header.Time), 0).UTC(),
+		}, nil
+	}
+
 	anchor, err := b.blockNumberCache.PeekOrLoad(
 		ctx,
-		func(anchor blockNumberAnchor) bool {
-			_, elapsedBlocks := b.estimatedBlockNumberWithElapsed(anchor, time.Now().UTC())
-			return elapsedBlocks < b.blockSyncInterval
-		},
-		func() (blockNumberAnchor, error) {
-			b.metrics.TotalRPCCalls.Inc()
-			b.metrics.BlockHeaderAsBlockNumberCalls.Inc()
-
-			header, err := b.backend.HeaderByNumber(ctx, nil)
-			if err != nil {
-				b.metrics.TotalRPCErrors.Inc()
-				return blockNumberAnchor{}, err
-			}
-			if header == nil || header.Number == nil {
-				b.metrics.TotalRPCErrors.Inc()
-				return blockNumberAnchor{}, errors.New("latest block header unavailable")
-			}
-
-			return blockNumberAnchor{
-				number:    header.Number.Uint64(),
-				timestamp: time.Unix(int64(header.Time), 0).UTC(),
-			}, nil
-		},
+		canReuseBlockAnchorFn,
+		loadFreshBlockFn,
 	)
 	if err != nil {
 		return 0, err
 	}
-
 	return b.estimatedBlockNumber(anchor, time.Now().UTC()), nil
 }
 
