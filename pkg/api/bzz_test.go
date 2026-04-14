@@ -67,7 +67,6 @@ import (
 // This test constantly fails, because of inconsistency usage of api.SwarmRedundancyLevelHeader (look issue github.com/ethersphere/bee/issues/5282)
 // after issue will be fixed, test will be not skipped anymore
 func TestBzzUploadDownloadWithRedundancy_FLAKY(t *testing.T) {
-	t.Skip("flaky")
 	t.Parallel()
 	fileUploadResource := "/bzz"
 	fileDownloadResource := func(addr string) string { return "/bzz/" + addr + "/" }
