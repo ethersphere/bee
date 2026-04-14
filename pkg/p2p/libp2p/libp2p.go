@@ -166,6 +166,7 @@ type Options struct {
 	autoTLSCertManager          autoTLSCertManager
 	ChequebookVerifier          chequebook.Verifier
 	ChequebookStorer            ChequebookStorer
+	PubsubReservedStreamSlots   int
 }
 
 func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.GetPutter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (s *Service, returnErr error) {
@@ -226,11 +227,16 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	// Tweak certain settings
+	inboundLimit := rcmgr.LimitVal(IncomingStreamCountLimit - o.PubsubReservedStreamSlots)
+	if inboundLimit < 0 {
+		inboundLimit = 0
+	}
+
 	cfg := rcmgr.PartialLimitConfig{
 		System: rcmgr.ResourceLimits{
-			Streams:         IncomingStreamCountLimit + OutgoingStreamCountLimit,
+			Streams:         inboundLimit + OutgoingStreamCountLimit,
 			StreamsOutbound: OutgoingStreamCountLimit,
-			StreamsInbound:  IncomingStreamCountLimit,
+			StreamsInbound:  inboundLimit,
 		},
 	}
 

@@ -40,6 +40,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/v2/pkg/pss"
+	"github.com/ethersphere/bee/v2/pkg/pubsub"
 	"github.com/ethersphere/bee/v2/pkg/resolver"
 	"github.com/ethersphere/bee/v2/pkg/resolver/client/ens"
 	"github.com/ethersphere/bee/v2/pkg/resolver/multiresolver"
@@ -93,6 +94,9 @@ const (
 	SwarmActTimestampHeader           = "Swarm-Act-Timestamp"
 	SwarmActPublisherHeader           = "Swarm-Act-Publisher"
 	SwarmActHistoryAddressHeader      = "Swarm-Act-History-Address"
+	SwarmPubsubPeerHeader             = "Swarm-Pubsub-Peer"
+	SwarmPubsubGsocPublicKeyHeader    = "Swarm-Pubsub-Gsoc-Public-Key"
+	SwarmPubsubGsocTopicHeader        = "Swarm-Pubsub-Gsoc-Topic"
 
 	ImmutableHeader = "Immutable"
 	GasPriceHeader  = "Gas-Price"
@@ -185,6 +189,7 @@ type Service struct {
 
 	topologyDriver topology.Driver
 	p2p            p2p.DebugService
+	pubsubSvc      *pubsub.Service
 	accounting     accounting.Interface
 	chequebook     chequebook.Service
 	pseudosettle   settlement.Interface
@@ -268,6 +273,7 @@ type ExtraOptions struct {
 	SyncStatus      func() (bool, error)
 	NodeStatus      *status.Service
 	PinIntegrity    PinIntegrity
+	PubsubService   *pubsub.Service
 }
 
 func New(
@@ -355,6 +361,7 @@ func (s *Service) Configure(signer crypto.Signer, tracer *tracing.Tracer, o Opti
 	s.lightNodes = e.LightNodes
 	s.pseudosettle = e.Pseudosettle
 	s.blockTime = e.BlockTime
+	s.pubsubSvc = e.PubsubService
 
 	s.statusSem = semaphore.NewWeighted(1)
 	s.postageSem = semaphore.NewWeighted(1)
@@ -583,6 +590,7 @@ func (s *Service) corsHandler(h http.Handler) http.Handler {
 		SwarmRedundancyStrategyHeader, SwarmRedundancyFallbackModeHeader, SwarmChunkRetrievalTimeoutHeader, SwarmLookAheadBufferSizeHeader,
 		SwarmFeedIndexHeader, SwarmFeedIndexNextHeader, SwarmSocSignatureHeader, SwarmOnlyRootChunk, GasPriceHeader, GasLimitHeader, ImmutableHeader,
 		SwarmActHeader, SwarmActTimestampHeader, SwarmActPublisherHeader, SwarmActHistoryAddressHeader,
+		SwarmPubsubPeerHeader, SwarmPubsubGsocPublicKeyHeader, SwarmPubsubGsocTopicHeader,
 	}
 	allowedHeadersStr := strings.Join(allowedHeaders, ", ")
 
