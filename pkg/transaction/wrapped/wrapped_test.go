@@ -64,7 +64,7 @@ func Test_BlockNumberReturns_FreshCache(t *testing.T) {
 		backend.blockNumberCache.Set(blockNumberAnchor{
 			number:    cachedBlock,
 			timestamp: now,
-		}, now.Add(testBlockTime))
+		})
 
 		got, err := backend.BlockNumber(context.Background())
 
@@ -94,7 +94,7 @@ func Test_BlockNumber_ReturnsCalculatedBlock(t *testing.T) {
 		backend.blockNumberCache.Set(blockNumberAnchor{
 			number:    anchorBlock,
 			timestamp: now.Add(-time.Duration(elapsedBlocks) * testBlockTime),
-		}, now.Add(-time.Second))
+		})
 
 		got, err := backend.BlockNumber(context.Background())
 
@@ -127,7 +127,7 @@ func Test_BlockNumber_ExpiredAnchor(t *testing.T) {
 		backend.blockNumberCache.Set(blockNumberAnchor{
 			number:    staleBlock,
 			timestamp: now.Add(-time.Duration(elapsedBlocks) * testBlockTime),
-		}, now.Add(-time.Second))
+		})
 
 		got, err := backend.BlockNumber(context.Background())
 
@@ -164,7 +164,7 @@ func Test_BlockNumber_ExpiredAnchor_RetriesAfterRPCError(t *testing.T) {
 		backend.blockNumberCache.Set(blockNumberAnchor{
 			number:    staleBlock,
 			timestamp: now.Add(-time.Duration(elapsedBlocks) * testBlockTime),
-		}, now.Add(-time.Second))
+		})
 
 		first, err := backend.BlockNumber(context.Background())
 
