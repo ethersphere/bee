@@ -146,17 +146,20 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	r.Header.Set(ContentTypeHeader, contentTypeHdr)
 	mt, _, errParseCT := mime.ParseMediaType(contentTypeHdr)
 	isMultipart := errParseCT == nil && mt == multiPartFormData
-	if headers.IsDir || isMultipart {
-		if contentTypeHdr == "" {
-			logger.Debug("content-type required for directory upload")
-			logger.Error(nil, "content-type required for directory upload")
-			jsonhttp.BadRequest(w, errInvalidContentType)
-			return
-		}
-		s.dirUploadHandler(ctx, logger, span, ow, r, putter, headers.Encrypt, tag, headers.RLevel, headers.Act, headers.HistoryAddress)
+
+	isDirUpload := headers.IsDir || isMultipart
+	if !isDirUpload {
+		s.fileUploadHandler(ctx, logger, span, ow, r, putter, headers.Encrypt, tag, headers.RLevel, headers.Act, headers.HistoryAddress)
 		return
 	}
-	s.fileUploadHandler(ctx, logger, span, ow, r, putter, headers.Encrypt, tag, headers.RLevel, headers.Act, headers.HistoryAddress)
+
+	if contentTypeHdr == "" {
+		logger.Error(nil, "content-type required for directory upload")
+		jsonhttp.BadRequest(w, errInvalidContentType)
+		return
+	}
+
+	s.dirUploadHandler(ctx, logger, span, ow, r, putter, headers.Encrypt, tag, headers.RLevel, headers.Act, headers.HistoryAddress)
 }
 
 // bzzUploadResponse is returned when an HTTP request to upload a file is successful
@@ -204,7 +207,6 @@ func (s *Service) fileUploadHandler(
 		r.Header.Set(ContentTypeHeader, http.DetectContentType(sniffBuf))
 		body = io.MultiReader(bytes.NewReader(sniffBuf), r.Body)
 	}
-
 
 	// first store the file and get its reference
 	fr, err := p(ctx, body)
