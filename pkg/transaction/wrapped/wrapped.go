@@ -42,6 +42,10 @@ func NewBackend(
 	blockTime time.Duration,
 	blockSyncInterval uint64,
 ) transaction.Backend {
+	if blockSyncInterval == 0 {
+		blockSyncInterval = 1
+	}
+
 	return &wrappedBackend{
 		backend:           backend,
 		minimumGasTipCap:  int64(minimumGasTipCap),
