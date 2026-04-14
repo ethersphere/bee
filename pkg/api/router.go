@@ -364,6 +364,70 @@ func (s *Service) mountAPI() {
 		),
 	})
 
+	handle("/pubsub/{topic}", web.ChainHandlers(
+		web.FinalHandlerFunc(s.pubsubWsHandler),
+	))
+
+	handle("/pubsub/", web.ChainHandlers(
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.pubsubListHandler),
+		}),
+	))
+
+	handle("/pss/subscribe/{topic}", web.ChainHandlers(
+		web.FinalHandlerFunc(s.pssWsHandler),
+	))
+
+	handle("/tags", web.ChainHandlers(
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.listTagsHandler),
+			"POST": web.ChainHandlers(
+				jsonhttp.NewMaxBodyBytesHandler(1024),
+				web.FinalHandlerFunc(s.createTagHandler),
+			),
+		})),
+	)
+
+	handle("/tags/{id}", web.ChainHandlers(
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET":    http.HandlerFunc(s.getTagHandler),
+			"DELETE": http.HandlerFunc(s.deleteTagHandler),
+			"PATCH": web.ChainHandlers(
+				jsonhttp.NewMaxBodyBytesHandler(1024),
+				web.FinalHandlerFunc(s.doneSplitHandler),
+			),
+		})),
+	)
+
+	handle("/pins", web.ChainHandlers(
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.listPinnedRootHashes),
+		})),
+	)
+
+	handle("/pins/check", web.ChainHandlers(
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.pinIntegrityHandler),
+		}),
+	))
+
+	handle("/pins/{reference}", web.ChainHandlers(
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET":    http.HandlerFunc(s.getPinnedRootHash),
+			"POST":   http.HandlerFunc(s.pinRootHash),
+			"DELETE": http.HandlerFunc(s.unpinRootHash),
+		})),
+	)
+
+	handle("/stewardship/{address}", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			web.FinalHandlerFunc(s.stewardshipGetHandler),
+		),
+		"PUT": web.ChainHandlers(
+			web.FinalHandlerFunc(s.stewardshipPutHandler),
+		),
+	})
+
 	handle("/pss/subscribe/{topic}", http.HandlerFunc(s.pssWsHandler))
 
 	handle("/gsoc/subscribe/{address}", web.ChainHandlers(

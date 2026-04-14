@@ -48,6 +48,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/pricer"
 	"github.com/ethersphere/bee/v2/pkg/pricing"
 	"github.com/ethersphere/bee/v2/pkg/pss"
+	"github.com/ethersphere/bee/v2/pkg/pubsub"
 	"github.com/ethersphere/bee/v2/pkg/puller"
 	"github.com/ethersphere/bee/v2/pkg/pullsync"
 	"github.com/ethersphere/bee/v2/pkg/pusher"
@@ -192,6 +193,8 @@ type Options struct {
 	WarmupTime                    time.Duration
 	WelcomeMessage                string
 	WhitelistedWithdrawalAddress  []string
+	PubsubBrokerMode              bool
+	PubsubMaxConnections          int
 }
 
 const (
@@ -665,6 +668,7 @@ func NewBee(
 		Nonce:                       nonce,
 		ValidateOverlay:             chainEnabled,
 		Registry:                    registry,
+		PubsubReservedStreamSlots:   o.PubsubMaxConnections,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
@@ -735,6 +739,11 @@ func NewBee(
 	batchSvc, err = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
 	if err != nil {
 		return nil, fmt.Errorf("init batch service: %w", err)
+	}
+
+	pubsubSvc := pubsub.New(p2ps, logger, o.PubsubBrokerMode, o.PubsubMaxConnections)
+	if err = p2ps.AddProtocol(pubsubSvc.Protocol()); err != nil {
+		return nil, fmt.Errorf("pubsub protocol: %w", err)
 	}
 
 	// Construct protocols.
@@ -1266,6 +1275,7 @@ func NewBee(
 		SyncStatus:      syncStatusFn,
 		NodeStatus:      nodeStatus,
 		PinIntegrity:    localStore.PinIntegrity(),
+		PubsubService:   pubsubSvc,
 	}
 
 	if o.APIAddr != "" {
