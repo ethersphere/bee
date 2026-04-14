@@ -102,11 +102,11 @@ func validateAndAddLocations(ctx context.Context, store storage.Store, sharkyRec
 		return sharkyRecover.Add(item.Location)
 	})
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("recovery: failed iterating chunk index: %w", err)
 	}
 
 	if err := sharkyRecover.Save(); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("recovery: failed saving sharky recovery state: %w", err)
 	}
 
 	for _, item := range corrupted {
@@ -114,7 +114,6 @@ func validateAndAddLocations(ctx context.Context, store storage.Store, sharkyRec
 			store.Delete(item),
 			reserve.DeleteCorruptedChunkMetadata(store, baseAddr, item.Address),
 		); err != nil {
-			logger.Error(err, "recovery: failed deleting corrupted chunk", "address", item.Address)
 			return 0, fmt.Errorf("recovery: failed deleting corrupted chunk %s: %w", item.Address, err)
 		}
 	}
