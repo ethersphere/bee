@@ -220,7 +220,7 @@ func closer(closers ...io.Closer) io.Closer {
 }
 
 func initInmemRepository() (transaction.Storage, io.Closer, error) {
-	store, err := leveldbstore.New("", nil)
+	store, _, err := leveldbstore.New("", nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed creating inmem levelDB index store: %w", err)
 	}
@@ -263,7 +263,7 @@ func initStore(basePath string, opts *Options) (*leveldbstore.Store, error) {
 			return nil, err
 		}
 	}
-	store, err := leveldbstore.New(path.Join(basePath, "indexstore"), &opt.Options{
+	store, _, err := leveldbstore.New(path.Join(basePath, "indexstore"), &opt.Options{
 		OpenFilesCacheCapacity: int(opts.LdbOpenFilesLimit),
 		BlockCacheCapacity:     int(opts.LdbBlockCacheCapacity),
 		WriteBuffer:            int(opts.LdbWriteBufferSize),

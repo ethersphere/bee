@@ -18,7 +18,11 @@ import (
 	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
-const separator = "/"
+const (
+	separator = "/"
+	// dirtyKey is written on open and deleted on clean close to detect unclean shutdowns.
+	dirtyKey = ".store-dirty-shutdown"
+)
 
 // key returns the Item identifier for the leveldb storage.
 func key(item storage.Key) []byte {
@@ -56,7 +60,8 @@ type Store struct {
 
 // New returns a new store the backed by leveldb.
 // If path == "", the leveldb will run with in memory backend storage.
-func New(path string, opts *opt.Options) (*Store, error) {
+// The returned bool indicates whether the previous shutdown was unclean (dirty).
+func New(path string, opts *opt.Options) (*Store, bool, error) {
 	var (
 		err error
 		db  *leveldb.DB
@@ -72,13 +77,22 @@ func New(path string, opts *opt.Options) (*Store, error) {
 	}
 
 	if err != nil {
-		return nil, err
+		return nil, false, err
+	}
+
+	dirty, err := db.Has([]byte(dirtyKey), nil)
+	if err != nil {
+		return nil, false, fmt.Errorf("has dirty record: %w", err)
+	}
+
+	if err = db.Put([]byte(dirtyKey), []byte{}, nil); err != nil {
+		return nil, false, fmt.Errorf("put dirty record: %w", err)
 	}
 
 	return &Store{
 		db:   db,
 		path: path,
-	}, nil
+	}, dirty, nil
 }
 
 // DB implements the Storer interface.
@@ -88,7 +102,7 @@ func (s *Store) DB() *leveldb.DB {
 
 // Close implements the storage.Store interface.
 func (s *Store) Close() (err error) {
-	return s.db.Close()
+	return errors.Join(s.db.Delete([]byte(dirtyKey), nil), s.db.Close())
 }
 
 // Get implements the storage.Store interface.

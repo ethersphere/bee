@@ -67,7 +67,7 @@ func TestGetWrappedChunk(t *testing.T) {
 	}
 
 	t.Run("returns feed legacy payload", func(t *testing.T) {
-		timestamp := make([]byte, 8)
+		timestamp := make([]byte, 8, 8+len(wch.Address().Bytes()))
 		binary.BigEndian.PutUint64(timestamp, 1)
 		feedChData := append(timestamp, wch.Address().Bytes()...)
 		ch = soctesting.GenerateMockSOC(t, feedChData).Chunk()

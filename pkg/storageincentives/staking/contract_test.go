@@ -56,7 +56,7 @@ func TestIsOverlayFrozen(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -145,7 +145,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -207,7 +207,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -247,7 +247,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -280,7 +280,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -343,7 +343,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			1,
 		)
 
@@ -376,7 +376,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			1,
 		)
 
@@ -415,7 +415,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -465,7 +465,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -528,7 +528,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -589,7 +589,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -616,7 +616,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -685,7 +685,7 @@ func TestChangeHeight(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -749,7 +749,7 @@ func TestChangeHeight(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			newHeight,
 		)
 
@@ -813,7 +813,7 @@ func TestChangeHeight(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			newHeight,
 		)
 
@@ -848,7 +848,7 @@ func TestChangeHeight(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -875,7 +875,7 @@ func TestChangeHeight(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -931,7 +931,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -958,7 +958,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -993,7 +993,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1039,7 +1039,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1080,7 +1080,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1127,7 +1127,7 @@ func TestGetCommittedStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1165,7 +1165,7 @@ func TestGetCommittedStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1203,7 +1203,7 @@ func TestGetCommittedStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1227,7 +1227,7 @@ func TestGetCommittedStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1274,7 +1274,7 @@ func TestGetWithdrawableStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1312,7 +1312,7 @@ func TestGetWithdrawableStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1336,7 +1336,7 @@ func TestGetWithdrawableStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1403,7 +1403,7 @@ func TestWithdrawStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1439,7 +1439,7 @@ func TestWithdrawStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1497,7 +1497,7 @@ func TestWithdrawStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1553,7 +1553,7 @@ func TestWithdrawStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1587,7 +1587,7 @@ func TestWithdrawStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1663,7 +1663,7 @@ func TestMigrateStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1698,7 +1698,7 @@ func TestMigrateStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1779,7 +1779,7 @@ func TestMigrateStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1844,7 +1844,7 @@ func TestMigrateStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1879,7 +1879,7 @@ func TestMigrateStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1922,7 +1922,7 @@ func TestMigrateStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 

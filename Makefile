@@ -1,7 +1,7 @@
 GO ?= go
 GOBIN ?= $$($(GO) env GOPATH)/bin
 GOLANGCI_LINT ?= $(GOBIN)/golangci-lint
-GOLANGCI_LINT_VERSION ?= v2.5.0
+GOLANGCI_LINT_VERSION ?= v2.11.3
 GOGOPROTOBUF ?= protoc-gen-gogofaster
 GOGOPROTOBUF_VERSION ?= v1.3.1
 BEEKEEPER_INSTALL_DIR ?= $(GOBIN)
@@ -153,7 +153,7 @@ docker-build:
 
 .PHONY: githooks
 githooks:
-	ln -f -s ../../.githooks/pre-push.bash .git/hooks/pre-push
+	ln -f -s ../../.githooks/pre-push .git/hooks/pre-push
 
 .PHONY: protobuftools
 protobuftools:
