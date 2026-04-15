@@ -110,11 +110,11 @@ func validateAndAddLocations(ctx context.Context, store storage.Store, sharkyRec
 	}
 
 	for _, item := range corrupted {
-		if err := errors.Join(
-			store.Delete(item),
-			reserve.DeleteCorruptedChunkMetadata(store, baseAddr, item.Address),
-		); err != nil {
-			return 0, fmt.Errorf("recovery: failed deleting corrupted chunk %s: %w", item.Address, err)
+		if err := reserve.DeleteCorruptedChunkMetadata(store, baseAddr, item.Address); err != nil {
+			return 0, fmt.Errorf("recovery: failed deleting corrupted chunk metadata %s: %w", item.Address, err)
+		}
+		if err := store.Delete(item); err != nil {
+			return 0, fmt.Errorf("recovery: failed deleting corrupted chunk index %s: %w", item.Address, err)
 		}
 	}
 
