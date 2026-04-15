@@ -1,0 +1,8 @@
+251c251
+< 	DefaultReserveCapacity        = 1 << 22 // 4194304 chunks
+---
+> 	DefaultReserveCapacity        = 200
+411c411
+< 		ReserveWakeUpDuration:     time.Minute * 30,
+---
+> 		ReserveWakeUpDuration:     time.Second * 10,
