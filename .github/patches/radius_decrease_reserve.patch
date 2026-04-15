@@ -1,0 +1,4 @@
+45c45
+< func threshold(capacity int) int { return capacity * 5 / 10 }
+---
+> func threshold(capacity int) int { return capacity }
