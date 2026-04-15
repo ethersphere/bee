@@ -13,19 +13,19 @@ type metrics struct {
 	TotalRPCCalls  prometheus.Counter
 	TotalRPCErrors prometheus.Counter
 
-	TransactionReceiptCalls prometheus.Counter
-	TransactionCalls        prometheus.Counter
-	BlockNumberCalls        prometheus.Counter
-	BlockHeaderCalls        prometheus.Counter
-	BalanceCalls            prometheus.Counter
-	NonceAtCalls            prometheus.Counter
-	PendingNonceCalls       prometheus.Counter
-	CallContractCalls       prometheus.Counter
-	SuggestGasTipCapCalls   prometheus.Counter
-	EstimateGasCalls        prometheus.Counter
-	SendTransactionCalls    prometheus.Counter
-	FilterLogsCalls         prometheus.Counter
-	ChainIDCalls            prometheus.Counter
+	TransactionReceiptCalls       prometheus.Counter
+	TransactionCalls              prometheus.Counter
+	BlockHeaderAsBlockNumberCalls prometheus.Counter
+	BlockHeaderCalls              prometheus.Counter
+	BalanceCalls                  prometheus.Counter
+	NonceAtCalls                  prometheus.Counter
+	PendingNonceCalls             prometheus.Counter
+	CallContractCalls             prometheus.Counter
+	SuggestGasTipCapCalls         prometheus.Counter
+	EstimateGasCalls              prometheus.Counter
+	SendTransactionCalls          prometheus.Counter
+	FilterLogsCalls               prometheus.Counter
+	ChainIDCalls                  prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -56,11 +56,11 @@ func newMetrics() metrics {
 			Name:      "calls_transaction_receipt",
 			Help:      "Count of eth_getTransactionReceipt rpc errors",
 		}),
-		BlockNumberCalls: prometheus.NewCounter(prometheus.CounterOpts{
+		BlockHeaderAsBlockNumberCalls: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "calls_block_number",
-			Help:      "Count of eth_blockNumber rpc calls",
+			Name:      "calls_block_header_as_block_number",
+			Help:      "Count of eth_getBlockByNumber for getting block number rpc calls",
 		}),
 		BlockHeaderCalls: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
@@ -126,5 +126,7 @@ func newMetrics() metrics {
 }
 
 func (b *wrappedBackend) Metrics() []prometheus.Collector {
-	return m.PrometheusCollectorsFromFields(b.metrics)
+	collectors := m.PrometheusCollectorsFromFields(b.metrics)
+	collectors = append(collectors, b.blockNumberCache.Collectors()...)
+	return collectors
 }
