@@ -164,9 +164,9 @@ func (t *transactionService) waitForAllPendingTx() error {
 		return err
 	}
 
-	pendingTxs = t.filterPendingTransactions(t.ctx, pendingTxs)
+	pending := t.filterPendingTransactions(t.ctx, pendingTxs)
 
-	for _, txHash := range pendingTxs {
+	for txHash := range pending {
 		t.waitForPendingTx(txHash)
 	}
 
@@ -392,18 +392,16 @@ func (t *transactionService) nextNonce(ctx context.Context) (uint64, error) {
 		return 0, err
 	}
 
-	pendingTxs = t.filterPendingTransactions(t.ctx, pendingTxs)
+	pending := t.filterPendingTransactions(t.ctx, pendingTxs)
 
 	// PendingNonceAt returns the nonce we should use, but we will
 	// compare this to our pending tx list, therefore the -1.
 	maxNonce := onchainNonce - 1
-	for _, txHash := range pendingTxs {
-		trx, _, err := t.backend.TransactionByHash(ctx, txHash)
-		if err != nil {
-			t.logger.Error(err, "pending transaction not found", "tx", txHash)
-			return 0, err
+	for txHash, trx := range pending {
+		if trx == nil {
+			t.logger.Warning("pending transaction data unavailable, relying on onchain nonce", "tx", txHash)
+			continue
 		}
-
 		maxNonce = max(maxNonce, trx.Nonce())
 	}
 
@@ -457,11 +455,12 @@ func (t *transactionService) PendingTransactions() ([]common.Hash, error) {
 
 // filterPendingTransactions will filter supplied transaction hashes removing those that are not pending anymore.
 // Removed transactions will be also removed from store.
-func (t *transactionService) filterPendingTransactions(ctx context.Context, txHashes []common.Hash) []common.Hash {
-	result := make([]common.Hash, 0, len(txHashes))
+// Returns the pending transactions keyed by hash.
+func (t *transactionService) filterPendingTransactions(ctx context.Context, txHashes []common.Hash) map[common.Hash]*types.Transaction {
+	result := make(map[common.Hash]*types.Transaction, len(txHashes))
 
 	for _, txHash := range txHashes {
-		_, isPending, err := t.backend.TransactionByHash(ctx, txHash)
+		trx, isPending, err := t.backend.TransactionByHash(ctx, txHash)
 		// When error occurres consider transaction as pending (so this transaction won't be filtered out),
 		// unless it was not found
 		if err != nil {
@@ -475,7 +474,7 @@ func (t *transactionService) filterPendingTransactions(ctx context.Context, txHa
 		}
 
 		if isPending {
-			result = append(result, txHash)
+			result[txHash] = trx
 		} else {
 			err := t.store.Delete(pendingTransactionKey(txHash))
 			if err != nil {
