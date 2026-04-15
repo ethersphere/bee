@@ -271,7 +271,7 @@ func (s *Service) fileUploadHandler(
 	reference := manifestReference
 	historyReference := swarm.ZeroAddress
 	if act {
-		reference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, historyAddress)
+		reference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, historyAddress, rLevel)
 		if err != nil {
 			logger.Debug("access control upload failed", "error", err)
 			logger.Error(nil, "access control upload failed")
@@ -499,7 +499,7 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 	}
 
 	ctx := r.Context()
-	ls := loadsave.NewReadonly(s.storer.Download(cache), s.storer.Cache(), redundancy.DefaultLevel)
+	ls := loadsave.NewReadonly(s.storer.Download(cache), s.storer.Cache(), rLevel)
 	feedDereferenced := false
 
 	ctx, err := getter.SetConfigInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout, logger)

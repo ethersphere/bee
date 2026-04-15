@@ -123,7 +123,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	encryptedReference := reference
 	historyReference := swarm.ZeroAddress
 	if headers.Act {
-		encryptedReference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, headers.HistoryAddress)
+		encryptedReference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, headers.HistoryAddress, headers.RLevel)
 		if err != nil {
 			logger.Debug("access control upload failed", "error", err)
 			logger.Error(nil, "access control upload failed")

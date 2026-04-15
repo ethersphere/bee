@@ -32,6 +32,19 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	headers := struct {
+		RLevel *redundancy.Level `map:"Swarm-Redundancy-Level"`
+	}{}
+	if response := s.mapStructure(r.Header, &headers); response != nil {
+		response("invalid header params", logger, w)
+		return
+	}
+
+	rLevel := redundancy.PARANOID
+	if headers.RLevel != nil {
+		rLevel = *headers.RLevel
+	}
+
 	has, err := s.storer.HasPin(paths.Reference)
 	if err != nil {
 		logger.Debug("pin root hash: has pin failed", "chunk_address", paths.Reference, "error", err)
@@ -53,7 +66,7 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 	}
 
 	getter := s.storer.Download(true)
-	traverser := traversal.New(getter, s.storer.Cache(), redundancy.DefaultLevel)
+	traverser := traversal.New(getter, s.storer.Cache())
 
 	sem := semaphore.NewWeighted(100)
 	var errTraverse error
@@ -93,6 +106,7 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 			}()
 			return nil
 		},
+		rLevel,
 	)
 
 	wg.Wait()

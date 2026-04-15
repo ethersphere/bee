@@ -59,6 +59,11 @@ paths:
             $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
           name: swarm-act-history-address
           required: false
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
+          name: swarm-redundancy-level
+          required: false
       requestBody:
         required: true
         content:
@@ -89,6 +94,11 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmEncryptedReference"
           required: true
           description: Grantee list reference
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
+          name: swarm-redundancy-level
+          required: false
       responses:
         "200":
           description: OK
@@ -138,6 +148,11 @@ paths:
           schema:
             $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
           name: swarm-deferred-upload
+          required: false
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
+          name: swarm-redundancy-level
           required: false
       requestBody:
         required: true
@@ -281,6 +296,12 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageStamp"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmAct"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
+          name: swarm-redundancy-level
+          required: false
+          description: Redundancy level for ACT encryption only
       requestBody:
         description: Chunk binary data containing at least 8 bytes.
         content:
@@ -659,6 +680,12 @@ paths:
       summary: Pin a root hash by reference
       tags:
         - Pinning
+      parameters:
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
+          name: swarm-redundancy-level
+          required: false
       responses:
         "200":
           description: Pin already exists
@@ -867,6 +894,12 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageStamp"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmAct"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
+          name: swarm-redundancy-level
+          required: false
+          description: Redundancy level for ACT encryption only
       requestBody:
         required: true
         description: The SOC binary data, composed of the span (8 bytes) and up to 4KB of payload.
@@ -965,6 +998,12 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmAct"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
+          name: swarm-redundancy-level
+          required: false
+          description: Redundancy level for ACT encryption only
       responses:
         "201":
           description: Created
@@ -1064,6 +1103,11 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
           description: "Root hash of content (can be of any type: collection, file, chunk)"
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
+          name: swarm-redundancy-level
+          required: false
       responses:
         "200":
           description: Returns if the content is retrievable
@@ -1093,6 +1137,11 @@ paths:
             $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
           name: swarm-postage-batch-id
           description: Postage batch to use for re-upload. If none is provided and the file was uploaded on the same node before, it will reuse the same batch. If not found, it will return error. If a new batch is provided, the chunks are stamped again with the new batch.
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
+          name: swarm-redundancy-level
+          required: false
       responses:
         "200":
           description: OK

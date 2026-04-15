@@ -14,6 +14,7 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 
@@ -32,11 +33,12 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("post_chunk").Build()
 
 	headers := struct {
-		BatchID        []byte        `map:"Swarm-Postage-Batch-Id"`
-		StampSig       []byte        `map:"Swarm-Postage-Stamp"`
-		SwarmTag       uint64        `map:"Swarm-Tag"`
-		Act            bool          `map:"Swarm-Act"`
-		HistoryAddress swarm.Address `map:"Swarm-Act-History-Address"`
+		BatchID        []byte            `map:"Swarm-Postage-Batch-Id"`
+		StampSig       []byte            `map:"Swarm-Postage-Stamp"`
+		SwarmTag       uint64            `map:"Swarm-Tag"`
+		Act            bool              `map:"Swarm-Act"`
+		HistoryAddress swarm.Address     `map:"Swarm-Act-History-Address"`
+		RLevel         *redundancy.Level `map:"Swarm-Redundancy-Level"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -187,7 +189,11 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	reference := chunk.Address()
 	historyReference := swarm.ZeroAddress
 	if headers.Act {
-		reference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, headers.HistoryAddress)
+		rLevel := redundancy.PARANOID
+		if headers.RLevel != nil {
+			rLevel = *headers.RLevel
+		}
+		reference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, headers.HistoryAddress, rLevel)
 		if err != nil {
 			logger.Debug("access control upload failed", "error", err)
 			logger.Error(nil, "access control upload failed")
