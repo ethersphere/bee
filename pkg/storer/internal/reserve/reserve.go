@@ -495,6 +495,47 @@ func RemoveChunkMetaData(
 	)
 }
 
+// DeleteCorruptedChunkMetadata removes all reserve index entries for a chunk
+// whose Sharky data was found to be corrupted during recovery. It is intended
+// to be called from the recovery path, where only a storage.IndexStore (not a
+// full transaction.Store) is available. If the chunk has no reserve metadata
+// (e.g. it belongs to the upload store or cache), the function is a no-op.
+func DeleteCorruptedChunkMetadata(store storage.IndexStore, baseAddr swarm.Address, addr swarm.Address) error {
+	stamp, err := chunkstamp.Load(store, reserveScope, addr)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil
+		}
+		return fmt.Errorf("load chunkstamp: %w", err)
+	}
+
+	stampHash, err := stamp.Hash()
+	if err != nil {
+		return fmt.Errorf("compute stamp hash: %w", err)
+	}
+
+	bin := swarm.Proximity(baseAddr.Bytes(), addr.Bytes())
+	batchRadiusItem := &BatchRadiusItem{
+		Bin:       bin,
+		BatchID:   stamp.BatchID(),
+		Address:   addr,
+		StampHash: stampHash,
+	}
+	if err := store.Get(batchRadiusItem); err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil
+		}
+		return fmt.Errorf("get batch radius item: %w", err)
+	}
+
+	return errors.Join(
+		stampindex.Delete(store, reserveScope, stamp),
+		chunkstamp.DeleteWithStamp(store, reserveScope, addr, stamp),
+		store.Delete(batchRadiusItem),
+		store.Delete(&ChunkBinItem{Bin: bin, BinID: batchRadiusItem.BinID}),
+	)
+}
+
 func (r *Reserve) IterateBin(bin uint8, startBinID uint64, cb func(swarm.Address, uint64, []byte, []byte) (bool, error)) error {
 	err := r.st.IndexStore().Iterate(storage.Query{
 		Factory:       func() storage.Item { return &ChunkBinItem{} },
