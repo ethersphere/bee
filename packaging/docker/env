@@ -6,6 +6,8 @@
 # BEE_API_ADDR=127.0.0.1:1633
 ## chain block time (default 5)
 # BEE_BLOCK_TIME=5
+## sets how many estimated blocks Bee can trust local block-number extrapolation before forcing a fresh HeaderByNumber(nil) RPC sync (default 10)
+# BEE_BLOCK_SYNC_INTERVAL=10
 ## initial nodes to connect to (default [/dnsaddr/mainnet.ethswarm.org])
 # BEE_BOOTNODE=[/dnsaddr/mainnet.ethswarm.org]
 ## cause the node to always accept incoming connections
