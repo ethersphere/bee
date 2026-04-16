@@ -30,7 +30,7 @@ const (
 	HeaderReadWrite    = "pubsub-readwrite" // 1 = read+write (participant), 0 = read-only (subscriber)
 
 	// Mode constants
-	ModeGSOCEphemeral uint8 = 1
+	ModeGSOCEphemeral ModeID = 1
 
 	// Wire format sizes
 	SpanSize   = 4 // pubsub span: uint32 little-endian
@@ -48,7 +48,7 @@ var (
 	ErrTopicMismatch    = errors.New("pubsub: topic address mismatch")
 )
 
-func newMode(topicAddr [32]byte, modeID uint8) (Mode, error) {
+func newMode(topicAddr [32]byte, modeID ModeID) (Mode, error) {
 	switch modeID {
 	case ModeGSOCEphemeral:
 		return NewGSOCEphemeralMode(topicAddr[:]), nil
@@ -67,7 +67,7 @@ type ConnectOptions struct {
 // TopicInfo describes a topic for the list endpoint.
 type TopicInfo struct {
 	TopicAddress string   `json:"topicAddress"`
-	Mode         uint8    `json:"mode"`
+	Mode         ModeID   `json:"mode"`
 	Role         string   `json:"role"`
 	Connections  []string `json:"connections"`
 }
@@ -140,7 +140,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 }
 
 // Connect establishes a subscriber connection to a broker peer.
-func (s *Service) Connect(ctx context.Context, underlay ma.Multiaddr, topicAddr [32]byte, modeID uint8, opts ConnectOptions) (*SubscriberConn, error) {
+func (s *Service) Connect(ctx context.Context, underlay ma.Multiaddr, topicAddr [32]byte, modeID ModeID, opts ConnectOptions) (*SubscriberConn, error) {
 	m, err := newMode(topicAddr, modeID)
 	if err != nil {
 		return nil, err
@@ -236,7 +236,7 @@ func (s *Service) brokerHandler(ctx context.Context, peer p2p.Peer, stream p2p.S
 		_ = stream.Reset()
 		return ErrWrongHeaders
 	}
-	bc, err := s.getOrCreateBrokerConn(topicAddr, modeBytes[0])
+	bc, err := s.getOrCreateBrokerConn(topicAddr, ModeID(modeBytes[0]))
 	if err != nil {
 		_ = stream.Reset()
 		return err
@@ -364,7 +364,7 @@ func (s *Service) broadcastToSubscribers(bc *brokerConn, rawMsg []byte) {
 	}
 }
 
-func (s *Service) getOrCreateBrokerConn(topicAddr [32]byte, modeID uint8) (*brokerConn, error) {
+func (s *Service) getOrCreateBrokerConn(topicAddr [32]byte, modeID ModeID) (*brokerConn, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
