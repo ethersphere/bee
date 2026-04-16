@@ -33,10 +33,7 @@ make clean             # remove dist/ and go clean
 make docker-build      # build Docker image via Dockerfile.dev
 ```
 
-CI-related targets (tests whose names end in `FLAKY` are handled separately):
-
-- `make test-ci` / `make test-ci-race` — exclude flaky tests
-- `make test-ci-flaky` — run only flaky tests
+CI-oriented targets: `make test-ci` / `make test-ci-race` (see `Makefile` for flags).
 
 Beekeeper integration testing:
 
@@ -135,7 +132,7 @@ Every `.go` file starts with:
 
 - Prefer external test packages: `package foo_test` not `package foo`.
 - `export_test.go` in the real package to export symbols only for tests.
-- Use `t.Parallel()` where safe. Avoid the word `fail` in test names. Suffix `FLAKY` for known-flaky tests. Integration: `-tags=integration`. Prefer `t.Fatal` / `t.FailNow` over `panic` in tests.
+- Use `t.Parallel()` where safe. Avoid the word `fail` in test names. Integration: `-tags=integration`. Prefer `t.Fatal` / `t.FailNow` over `panic` in tests.
 
 ### Style and tooling
 
@@ -182,7 +179,7 @@ pkg/
 - Do not confuse `ChunkSize` (4096 data bytes) with `ChunkWithSpanSize` (4104 including span).
 - XOR distance: "closer" is more shared prefix bits, not smaller integers.
 - Do not both log and return the same error.
-- Tests: `foo_test` + `export_test.go` pattern; respect `FLAKY` naming for CI.
+- Tests: `foo_test` + `export_test.go` pattern.
 - Goroutines must be stoppable (context cancel, quit channel, etc.).
 - Full node vs light node: reserve and storage incentives are full-node concerns.
 - Postage batches can be unusable (expired, depleted, unsynced); check before relying on stamps.
