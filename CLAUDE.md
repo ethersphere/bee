@@ -38,7 +38,7 @@ make format            # gofumpt + gci
 make protobuf          # needs protoc + gogofaster
 ```
 
-CI: `make test-ci` / `make test-ci-race` skip `*FLAKY*` tests; `make test-ci-flaky` runs only those. Beekeeper: `make beekeeper`, `make beelocal`, `make deploylocal`, `make testlocal`.
+CI: `make test-ci` / `make test-ci-race` (see `Makefile`). Beekeeper: `make beekeeper`, `make beelocal`, `make deploylocal`, `make testlocal`.
 
 ## Where things live
 
@@ -59,7 +59,7 @@ Protocols to remember by name: `pushsync`, `pullsync`, `retrieval`, `pingpong`, 
 ## Rules Claude should not forget
 
 - **Errors:** propagate; do not log and return the same error. Wrap with `fmt.Errorf("…: %w", err)`. Skip noisy "failed to" chains.
-- **Tests:** prefer `package foo_test`; `export_test.go` for test-only exports; `t.Parallel()` where safe; flaky tests end with `FLAKY`; integration uses `-tags=integration`.
+- **Tests:** prefer `package foo_test`; `export_test.go` for test-only exports; `t.Parallel()` where safe; integration uses `-tags=integration`.
 - **Go files:** Swarm copyright header (see `goheader` in `.golangci.yml`). American English. No `init()` unless unavoidable. No `fmt.Print` outside `cmd/bee/cmd/` (forbidigo).
 - **Commits:** Conventional Commits; types in `commitlint.config.js`; header ≤100 chars, footer lines ≤72.
 - **Product facts:** Bee release version is not strict SemVer; HTTP API version in `openapi/Swarm.yaml` is. XOR proximity, not numeric order. `MaxPO` 31, `ExtendedPO` 36.
