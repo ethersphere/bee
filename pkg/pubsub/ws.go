@@ -21,9 +21,9 @@ type WsOptions struct {
 // ListeningWs bridges a subscriber's p2p stream to a WebSocket connection.
 // The Mode on sc.Mode handles all wire-format details: reading broker messages,
 // verifying them, and returning the payload to forward to the WebSocket.
-// If the subscriber is a Participant, it also reads from the WebSocket
+// If the subscriber is a Publisher, it also reads from the WebSocket
 // and writes raw messages to the p2p stream.
-func ListeningWs(ctx context.Context, conn *websocket.Conn, options WsOptions, logger log.Logger, sc *SubscriberConn, isParticipant bool) {
+func ListeningWs(ctx context.Context, conn *websocket.Conn, options WsOptions, logger log.Logger, sc *SubscriberConn, isPublisher bool) {
 	var (
 		ticker        = time.NewTicker(options.PingPeriod)
 		writeDeadline = options.PingPeriod + time.Second
@@ -35,8 +35,8 @@ func ListeningWs(ctx context.Context, conn *websocket.Conn, options WsOptions, l
 		return nil
 	})
 
-	// If Participant, read from WebSocket and write to p2p stream (send to Broker).
-	if isParticipant {
+	// If Publisher, read from WebSocket and write to p2p stream (send to Broker).
+	if isPublisher {
 		go func() {
 			for {
 				if err := conn.SetReadDeadline(time.Now().Add(readDeadline)); err != nil {

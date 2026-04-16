@@ -51,7 +51,7 @@ func (s *Service) pubsubWsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Optional headers: GSOC fields for Participant upgrade
+	// Optional headers: GSOC fields for Publisher upgrade
 	var connectOpts pubsub.ConnectOptions
 
 	gsocPubKeyHex := r.Header.Get(SwarmPubsubGsocPublicKeyHeader)
@@ -118,11 +118,11 @@ func (s *Service) pubsubWsHandler(w http.ResponseWriter, r *http.Request) {
 		pingPeriod = time.Minute
 	}
 
-	isParticipant := connectOpts.ReadWrite
+	isPublisher := connectOpts.ReadWrite
 
 	s.wsWg.Add(1)
 	go func() {
-		pubsub.ListeningWs(ctx, conn, pubsub.WsOptions{PingPeriod: pingPeriod, Cancel: cancel}, logger, subscriberConn, isParticipant)
+		pubsub.ListeningWs(ctx, conn, pubsub.WsOptions{PingPeriod: pingPeriod, Cancel: cancel}, logger, subscriberConn, isPublisher)
 		_ = conn.Close()
 		subscriberConn.Cancel()
 		s.wsWg.Done()
