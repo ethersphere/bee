@@ -2428,3 +2428,57 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         default:
           description: Default response.
+
+  "/pubsub/{topic}":
+    get:
+      summary: Connect to a pubsub topic via WebSocket
+      description: |
+        Opens a WebSocket connection to a pubsub topic. The connection acts as either a publisher (read+write)
+        or subscriber (read-only) depending on the presence of GSOC headers.
+        
+        **WebSocket protocol:**
+        - Inbound (client → node, publisher only): raw SOC payload `[sig:65B][span:4B][payload:N B]`
+        - Outbound (node → client): raw SOC payload `[sig:65B][span:4B][payload:N B]`
+      tags:
+        - Pubsub
+      parameters:
+        - in: path
+          name: topic
+          schema:
+            type: string
+          required: true
+          description: Topic identifier (hex-encoded address or arbitrary string to be hashed)
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPubsubPeer"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPubsubGsocPublicKey"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPubsubGsocTopic"
+        - in: header
+          name: swarm-keep-alive
+          schema:
+            type: integer
+          required: false
+          description: WebSocket ping period in seconds (default: 60)
+      responses:
+        "101":
+          description: WebSocket upgrade successful
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+
+  "/pubsub/":
+    get:
+      summary: List all pubsub topics
+      description: Returns a list of all active pubsub topics this node is participating in (as broker or subscriber)
+      tags:
+        - Pubsub
+      responses:
+        "200":
+          description: List of pubsub topics
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/PubsubTopicListResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"

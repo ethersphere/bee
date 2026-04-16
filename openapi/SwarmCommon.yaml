@@ -1076,6 +1076,31 @@ components:
       required: false
       description: "Indicates which feed version was resolved (v1 or v2)"
 
+    PubsubTopicInfo:
+      type: object
+      properties:
+        topicAddress:
+          type: string
+          description: "Hex-encoded topic address"
+        mode:
+          type: integer
+          description: "Pubsub mode identifier"
+        role:
+          type: string
+          description: "Role of this node: 'broker' or 'subscriber'"
+        connections:
+          type: array
+          items:
+            type: string
+          description: "List of connected peer overlays"
+
+    PubsubTopicListResponse:
+      type: object
+      properties:
+        topics:
+          type: array
+          items:
+            $ref: "#/components/schemas/PubsubTopicInfo"
 
   parameters:
     GasPriceParameter:
@@ -1278,6 +1303,30 @@ components:
         format: int64
       required: false
       description: "ACT history Unix timestamp"
+
+    SwarmPubsubPeer:
+      in: header
+      name: swarm-pubsub-peer
+      schema:
+        type: string
+      required: true
+      description: "Multiaddress of the broker peer to connect to for pubsub"
+
+    SwarmPubsubGsocPublicKey:
+      in: header
+      name: swarm-pubsub-gsoc-public-key
+      schema:
+        $ref: "#/components/schemas/HexString"
+      required: false
+      description: "GSOC public key (hex) for publisher role. Required together with swarm-pubsub-gsoc-topic to upgrade to publisher."
+
+    SwarmPubsubGsocTopic:
+      in: header
+      name: swarm-pubsub-gsoc-topic
+      schema:
+        $ref: "#/components/schemas/HexString"
+      required: false
+      description: "GSOC topic identifier (hex) for publisher role. Required together with swarm-pubsub-gsoc-public-key to upgrade to publisher."
 
   responses:
     "200":
