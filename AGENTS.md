@@ -17,30 +17,55 @@ Bee is the reference Go implementation of an Ethereum Swarm node. It implements 
 
 Human-oriented contributing docs: `CONTRIBUTING.md`, `CODING.md`, `CODINGSTYLE.md`, `README.md`.
 
-## Build and test commands
+## Guidelines
+
+Keep changes **minimal and focused**. Only touch code that belongs to the task. Do not refactor unrelated code, rename symbols for style only, or mix unrelated fixes in one commit or PR.
+
+Read **`CONTRIBUTING.md`**, **`CODING.md`**, and **`CODINGSTYLE.md`** for process, patterns, and style. Prefer matching existing naming, types, imports, and log style in the files you edit.
+
+Do **not** add, remove, or update `go.mod` dependencies unless the task **explicitly** requires it or the person asking for the work **explicitly** requests a dependency change.
+
+Handle errors and logging the way this repo does: propagate errors with context (`fmt.Errorf("…: %w", err)`), avoid logging and returning the same error, and use structured logging with clear operator vs developer levels (see `CODING.md`).
+
+Prefer **`package foo_test`** tests, **`export_test.go`** when you must export internals, and **`t.Parallel()`** only where it is safe. Add or update tests when behavior changes. Integration tests use **`-tags=integration`**.
+
+## Pre-commit checklist
+
+Before you finish a change set (especially before a commit or PR), run these and fix failures:
+
+1. **Formatting** — `make format` (gofumpt + gci; see `CODING.md`).
+2. **Compile** — `make build` (all packages) and, when you need the binary artifact, `make binary` (`dist/bee`, `CGO_ENABLED=0`).
+3. **Tests** — `make test` (unit tests, `-failfast`). Use `make test-race` when concurrency is central to the change. Use `make test-integration` only when you touch integration-tagged code.
+4. **Static checks** — `make lint` and `make vet` (see `.golangci.yml`).
+
+CI pipelines may use `make test-ci` / `make test-ci-race` (see `Makefile` for flags).
+
+## Dev commands (quick reference)
 
 ```bash
-make binary            # build dist/bee (CGO_ENABLED=0, version ldflags injected)
-make build             # compile all packages
-make test              # unit tests (-failfast)
-make test-race         # unit tests with race detector
-make test-integration  # integration tests (requires -tags=integration)
-make lint              # golangci-lint v2.11.3 (see .golangci.yml)
-make vet               # go vet
-make format            # gofumpt + gci
-make protobuf          # regenerate protobuf files (requires protoc + gogofaster)
-make clean             # remove dist/ and go clean
-make docker-build      # build Docker image via Dockerfile.dev
+make binary     # dist/bee
+make build      # compile all packages
+make test       # unit tests
+make test-race  # unit tests + race detector
+make lint       # golangci-lint (see .golangci.yml)
+make vet        # go vet
 ```
 
-CI-oriented targets: `make test-ci` / `make test-ci-race` (see `Makefile` for flags).
+## Commit message format and PR titles
 
-Beekeeper integration testing:
+This repo uses **[Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)** with **`commitlint.config.js`**: allowed types are `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`, `test`. Header **max 100** characters; footer lines **max 72**. Use **imperative** mood and **no trailing period** on the subject.
 
-- `make beekeeper` — install beekeeper tool
-- `make beelocal` — start local k3s cluster
-- `make deploylocal` — deploy bee cluster
-- `make testlocal` — run integration checks (pingpong, connectivity, pushsync, retrieval, etc.)
+Use an optional **scope** (often a top-level area such as `api`, `storer`, `node`) when it clarifies impact:
+
+```text
+<type>(<scope>): <short lowercase description>
+
+fix(api): reject directory upload without content-type
+test(storer): cover session cleanup on error
+docs: clarify agent pre-commit steps
+```
+
+**Pull request titles** follow the same idea: same type and scope style, concise lowercase description (match what you will squash or merge).
 
 ## Architecture
 
@@ -145,7 +170,7 @@ Every `.go` file starts with:
 
 ### Commits
 
-[Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/). Allowed types in this repo: `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`, `test` (`commitlint.config.js`). Header max 100 characters; footer lines max 72. Imperative subject.
+See **[Commit message format and PR titles](#commit-message-format-and-pr-titles)** above.
 
 ### Linting
 
