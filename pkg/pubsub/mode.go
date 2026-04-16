@@ -35,9 +35,9 @@ type Mode interface {
 	TopicAddress() swarm.Address
 	Connect(ctx context.Context, p p2p.Streamer, overlay swarm.Address, opts ConnectOptions) (p2p.Stream, error)
 
-	// Broker side - participant
-	ValidateParticipant(bc *brokerConn, headers p2p.Headers) error
-	ReadParticipantMessage(stream p2p.Stream) ([]byte, error)
+	// Broker side - publisher
+	ValidatePublisher(bc *brokerConn, headers p2p.Headers) error
+	ReadPublisherMessage(stream p2p.Stream) ([]byte, error)
 
 	// Broker side - broadcast
 	FormatBroadcast(bt *brokerConn, sub *brokerSubscriber, rawMsg []byte) []byte
@@ -93,8 +93,8 @@ func (m *GSOCEphemeralMode) Connect(ctx context.Context, p p2p.Streamer, overlay
 	return p.NewStream(ctx, overlay, headers, protocolName, protocolVersion, streamName)
 }
 
-// ValidateParticipant sets SOC parameters on the broker side so it can validate the messages.
-func (m *GSOCEphemeralMode) ValidateParticipant(bc *brokerConn, headers p2p.Headers) error {
+// ValidatePublisher sets SOC parameters on the broker side so it can validate the messages.
+func (m *GSOCEphemeralMode) ValidatePublisher(bc *brokerConn, headers p2p.Headers) error {
 	gsocOwner := headers[HeaderGsocOwner]
 	gsocID := headers[HeaderGsocID]
 
@@ -109,7 +109,7 @@ func (m *GSOCEphemeralMode) ValidateParticipant(bc *brokerConn, headers p2p.Head
 	return nil
 }
 
-// FormatBroadcast formats a raw participant message for delivery to a subscriber.
+// FormatBroadcast formats a raw publisher message for delivery to a subscriber.
 // First delivery to each subscriber includes a handshake with SOC identity; subsequent are data-only.
 func (m *GSOCEphemeralMode) FormatBroadcast(bt *brokerConn, sub *brokerSubscriber, rawMsg []byte) []byte {
 	if !m.handshakeHappened {
@@ -130,9 +130,9 @@ func (m *GSOCEphemeralMode) FormatBroadcast(bt *brokerConn, sub *brokerSubscribe
 	return msg
 }
 
-// ReadParticipantMessage reads [65B sig][4B span][NB payload (max 4KB)] from the stream,
+// ReadPublisherMessage reads [65B sig][4B span][NB payload (max 4KB)] from the stream,
 // constructs and validates the SOC chunk and returns that.
-func (m *GSOCEphemeralMode) ReadParticipantMessage(stream p2p.Stream) ([]byte, error) {
+func (m *GSOCEphemeralMode) ReadPublisherMessage(stream p2p.Stream) ([]byte, error) {
 	sig := make([]byte, SigSize)
 	if _, err := io.ReadFull(stream, sig); err != nil {
 		return nil, err
@@ -182,13 +182,13 @@ func (m *GSOCEphemeralMode) ReadBrokerMessage(stream p2p.Stream) ([]byte, error)
 		}
 		m.setGsocParams(ownerAddr, socID)
 
-		return m.ReadParticipantMessage(stream) // same as participant message at this point
+		return m.ReadPublisherMessage(stream) // same as publisher message at this point
 
 	case MsgTypeData:
 		if m.gsocID == nil {
 			return nil, fmt.Errorf("pubsub: data message before handshake")
 		}
-		return m.ReadParticipantMessage(stream)
+		return m.ReadPublisherMessage(stream)
 
 	default:
 		return nil, fmt.Errorf("pubsub: unknown message type: 0x%02x", typeBuf[0])

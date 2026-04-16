@@ -27,7 +27,7 @@ const (
 	// p2p stream header keys
 	HeaderTopicAddress = "pubsub-topic-address"
 	HeaderMode         = "pubsub-mode"
-	HeaderReadWrite    = "pubsub-readwrite" // 1 = read+write (participant), 0 = read-only (subscriber)
+	HeaderReadWrite    = "pubsub-readwrite" // 1 = read+write (publisher), 0 = read-only (subscriber)
 
 	// Mode constants
 	ModeGSOCEphemeral ModeID = 1
@@ -59,7 +59,7 @@ func newMode(topicAddr [32]byte, modeID ModeID) (Mode, error) {
 
 // ConnectOptions carries optional mode-specific parameters for Connect.
 type ConnectOptions struct {
-	ReadWrite bool // true = participant (read+write), false = subscriber (read-only)
+	ReadWrite bool // true = publisher (read+write), false = subscriber (read-only)
 	GsocOwner []byte
 	GsocID    []byte
 }
@@ -248,7 +248,7 @@ func (s *Service) brokerHandler(ctx context.Context, peer p2p.Peer, stream p2p.S
 		return ErrWrongHeaders
 	}
 	if rwBytes[0] == 1 {
-		return s.handleParticipant(ctx, peer, stream, bc, headers)
+		return s.handlePublisher(ctx, peer, stream, bc, headers)
 	}
 	return s.handleSubscriber(ctx, peer, stream, bc)
 }
@@ -314,8 +314,8 @@ func (s *Service) handleSubscriber(ctx context.Context, peer p2p.Peer, stream p2
 	return subCtx.Err()
 }
 
-func (s *Service) handleParticipant(ctx context.Context, peer p2p.Peer, stream p2p.Stream, bc *brokerConn, headers p2p.Headers) error {
-	if err := bc.mode.ValidateParticipant(bc, headers); err != nil {
+func (s *Service) handlePublisher(ctx context.Context, peer p2p.Peer, stream p2p.Stream, bc *brokerConn, headers p2p.Headers) error {
+	if err := bc.mode.ValidatePublisher(bc, headers); err != nil {
 		_ = stream.Reset()
 		return err
 	}
@@ -324,7 +324,7 @@ func (s *Service) handleParticipant(ctx context.Context, peer p2p.Peer, stream p
 	defer cancel()
 	defer unregister()
 
-	s.logger.Debug("participant connected", "peer", peer.Address, "topic", bc.mode.TopicAddress())
+	s.logger.Debug("publisher connected", "peer", peer.Address, "topic", bc.mode.TopicAddress())
 
 	for {
 		select {
@@ -336,12 +336,12 @@ func (s *Service) handleParticipant(ctx context.Context, peer p2p.Peer, stream p
 		default:
 		}
 
-		rawMsg, err := bc.mode.ReadParticipantMessage(stream)
+		rawMsg, err := bc.mode.ReadPublisherMessage(stream)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return nil
 			}
-			return fmt.Errorf("read participant message: %w", err)
+			return fmt.Errorf("read publisher message: %w", err)
 		}
 
 		s.broadcastToSubscribers(bc, rawMsg)
