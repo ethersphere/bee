@@ -25,10 +25,13 @@ const (
 	HeaderGsocID    = "pubsub-gsoc-id"
 )
 
+// ModeID identifies a pubsub mode.
+type ModeID uint8
+
 // Mode defines mode-specific behavior for the pubsub protocol.
 // Each mode determines its own roles, wire format, and message handling.
 type Mode interface {
-	ID() uint8
+	ID() ModeID
 	TopicAddress() swarm.Address
 	Connect(ctx context.Context, p p2p.Streamer, overlay swarm.Address, opts ConnectOptions) (p2p.Stream, error)
 
@@ -67,7 +70,7 @@ func NewGSOCEphemeralMode(topicAddress []byte) *GSOCEphemeralMode {
 	}
 }
 
-func (m *GSOCEphemeralMode) ID() uint8 { return ModeGSOCEphemeral }
+func (m *GSOCEphemeralMode) ID() ModeID { return ModeGSOCEphemeral }
 
 func (m *GSOCEphemeralMode) TopicAddress() swarm.Address { return m.topicAddress.Clone() }
 
@@ -78,7 +81,7 @@ func (m *GSOCEphemeralMode) Connect(ctx context.Context, p p2p.Streamer, overlay
 	}
 	headers := p2p.Headers{
 		HeaderTopicAddress: m.topicAddress.Bytes(),
-		HeaderMode:         {m.ID()},
+		HeaderMode:         {byte(m.ID())},
 		HeaderReadWrite:    {rw},
 	}
 	if len(opts.GsocOwner) > 0 {
