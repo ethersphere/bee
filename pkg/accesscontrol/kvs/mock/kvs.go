@@ -14,8 +14,10 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-var lock = &sync.Mutex{}
-var lockGetPut = &sync.Mutex{}
+var (
+	lock       = &sync.Mutex{}
+	lockGetPut = &sync.Mutex{}
+)
 
 type single struct {
 	memoryMock map[string]map[string][]byte

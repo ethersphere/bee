@@ -90,7 +90,7 @@ func (l *listener) Close() error {
 	l.handlersMu.Lock()
 	defer l.handlersMu.Unlock()
 
-	l.handlers = make(map[string][]*Handler) //unset handlers on shutdown
+	l.handlers = make(map[string][]*Handler) // unset handlers on shutdown
 
 	return nil
 }

@@ -79,13 +79,13 @@ func TestRecoveryPrunesCorruptedChunks(t *testing.T) {
 
 	// 4. Simulate unclean shutdown: recreate .DIRTY so recovery runs on next open.
 	dirtyPath := filepath.Join(basePath, "sharky", ".DIRTY")
-	if err := os.WriteFile(dirtyPath, []byte{}, 0644); err != nil {
+	if err := os.WriteFile(dirtyPath, []byte{}, 0o644); err != nil {
 		t.Fatalf("WriteFile .DIRTY: %v", err)
 	}
 
 	// 5. Overwrite the bad chunk's slot with zeros so its hash will not validate.
 	shardPath := filepath.Join(basePath, "sharky", fmt.Sprintf("shard_%03d", badLoc.Shard))
-	f, err := os.OpenFile(shardPath, os.O_RDWR, 0666)
+	f, err := os.OpenFile(shardPath, os.O_RDWR, 0o666)
 	if err != nil {
 		t.Fatalf("OpenFile shard: %v", err)
 	}
@@ -177,7 +177,7 @@ func TestRecoveryPrunesUnreadableChunks(t *testing.T) {
 
 	// 4. Simulate unclean shutdown: recreate .DIRTY so recovery runs on next open.
 	dirtyPath := filepath.Join(basePath, "sharky", ".DIRTY")
-	if err := os.WriteFile(dirtyPath, []byte{}, 0644); err != nil {
+	if err := os.WriteFile(dirtyPath, []byte{}, 0o644); err != nil {
 		t.Fatalf("WriteFile .DIRTY: %v", err)
 	}
 

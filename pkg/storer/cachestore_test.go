@@ -94,7 +94,6 @@ func TestCacheStore(t *testing.T) {
 		t.Parallel()
 
 		testCacheStore(t, func() (*storer.DB, error) {
-
 			opts := dbTestOps(swarm.RandAddress(t), 100, nil, nil, time.Second)
 			opts.CacheCapacity = 10
 

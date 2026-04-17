@@ -72,7 +72,6 @@ func NewPullSync(opts ...Option) *PullSyncMock {
 }
 
 func (p *PullSyncMock) Sync(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (topmost uint64, count int, err error) {
-
 	p.mtx.Lock()
 
 	id := toID(peer, bin, start)

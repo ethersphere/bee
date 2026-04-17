@@ -187,7 +187,6 @@ func IterateLocations(
 	ctx context.Context,
 	st storage.Reader,
 ) <-chan LocationResult {
-
 	locationResultC := make(chan LocationResult)
 
 	go func() {

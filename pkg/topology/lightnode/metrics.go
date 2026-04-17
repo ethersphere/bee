@@ -31,7 +31,8 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "currently_disconnected_peers",
 			Help:      "Number of currently disconnected peers.",
-		})}
+		}),
+	}
 }
 
 // Metrics returns set of prometheus collectors.

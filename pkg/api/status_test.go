@@ -110,6 +110,7 @@ func (m *topologyPeersIterNoopMock) EachConnectedPeer(_ topology.EachPeerFunc, _
 func (m *topologyPeersIterNoopMock) EachConnectedPeerRev(_ topology.EachPeerFunc, _ topology.Select) error {
 	return nil
 }
+
 func (m *topologyPeersIterNoopMock) IsReachable() bool {
 	return true
 }
@@ -137,6 +138,7 @@ func (m *statusSnapshotMock) GetChainState() *postage.ChainState { return m.chai
 func (m *statusSnapshotMock) ReserveSizeWithinRadius() uint64 {
 	return m.reserveSizeWithinRadius
 }
+
 func (m *statusSnapshotMock) NeighborhoodsStat(ctx context.Context) ([]*storer.NeighborhoodStat, error) {
 	return m.neighborhoods, nil
 }

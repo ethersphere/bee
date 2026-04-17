@@ -14,7 +14,6 @@ import (
 )
 
 func TestWait(t *testing.T) {
-
 	t.Run("timed out", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			err := spinlock.Wait(time.Millisecond*20, func() bool { return false })

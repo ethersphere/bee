@@ -868,7 +868,6 @@ func TestAccountingCallSettlementMonetary(t *testing.T) {
 	case <-time.After(1 * time.Second):
 		t.Fatal("timeout waiting for payment")
 	}
-
 }
 
 func TestAccountingCallSettlementTooSoon(t *testing.T) {
@@ -1105,7 +1104,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 	if err != nil {
 		t.Fatal("Unexpected overflow from doable NotifyPayment")
 	}
-	//sanity check surplus balance
+	// sanity check surplus balance
 	val, err := acc.SurplusBalance(peer1Addr)
 	if err != nil {
 		t.Fatal("Error checking Surplusbalance")
@@ -1113,7 +1112,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 	if val.Int64() != 2 {
 		t.Fatal("Not expected surplus balance")
 	}
-	//sanity check balance
+	// sanity check balance
 	val, err = acc.Balance(peer1Addr)
 	if err != nil {
 		t.Fatal("Error checking Balance")
@@ -1126,7 +1125,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 	if err != nil {
 		t.Fatal("Unexpected error from NotifyPayment")
 	}
-	//sanity check surplus balance
+	// sanity check surplus balance
 	val, err = acc.SurplusBalance(peer1Addr)
 	if err != nil {
 		t.Fatal("Error checking Surplusbalance")
@@ -1134,7 +1133,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 	if val.Int64() != testPaymentThreshold.Int64()+2 {
 		t.Fatal("Unexpected surplus balance")
 	}
-	//sanity check balance
+	// sanity check balance
 	val, err = acc.Balance(peer1Addr)
 	if err != nil {
 		t.Fatal("Error checking Balance")
@@ -1160,7 +1159,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 	if val.Int64() != 2 {
 		t.Fatal("Unexpected surplus balance")
 	}
-	//sanity check balance
+	// sanity check balance
 	val, err = acc.Balance(peer1Addr)
 	if err != nil {
 		t.Fatal("Error checking Balance")
@@ -1186,7 +1185,7 @@ func TestAccountingSurplusBalance(t *testing.T) {
 	if val.Int64() != 0 {
 		t.Fatal("Unexpected surplus balance")
 	}
-	//sanity check balance
+	// sanity check balance
 	val, err = acc.Balance(peer1Addr)
 	if err != nil {
 		t.Fatal("Error checking Balance")
@@ -1730,7 +1729,6 @@ func TestAccountingReconnectBeforeAllowed(t *testing.T) {
 	if blocklistTime != int64(4*paymentThresholdInRefreshmentSeconds) {
 		t.Fatalf("unexpected blocklisting time, got %v expected %v", blocklistTime, 4*paymentThresholdInRefreshmentSeconds)
 	}
-
 }
 
 func TestAccountingResetBalanceAfterReconnect(t *testing.T) {
@@ -1825,7 +1823,6 @@ func TestAccountingResetBalanceAfterReconnect(t *testing.T) {
 	if surplusBalance.Int64() != 0 {
 		t.Fatalf("surplus balance for peer %v not as expected got %d, wanted 0", peer.String(), balance)
 	}
-
 }
 
 func testAccountingSettlementGrowingThresholds(t *testing.T, settleFunc func(t *testing.T, acc *accounting.Accounting, peer1Addr swarm.Address, debitRefresh int64), fullNode bool, testPayThreshold *big.Int, testGrowth int64) {
@@ -1938,14 +1935,12 @@ func testAccountingSettlementGrowingThresholds(t *testing.T, settleFunc func(t *
 	if pricing.paymentThreshold.Cmp(checkPaymentThreshold) != 0 {
 		t.Fatalf("expected threshold %v got %v", checkPaymentThreshold, pricing.paymentThreshold)
 	}
-
 }
 
 func TestAccountingRefreshGrowingThresholds(t *testing.T) {
 	t.Parallel()
 
 	testAccountingSettlementGrowingThresholds(t, debitAndRefresh, true, testPaymentThreshold, testRefreshRate)
-
 }
 
 func TestAccountingRefreshGrowingThresholdsLight(t *testing.T) {
@@ -1955,14 +1950,12 @@ func TestAccountingRefreshGrowingThresholdsLight(t *testing.T) {
 	lightRefreshRate := testRefreshRate / testLightFactor
 
 	testAccountingSettlementGrowingThresholds(t, debitAndRefresh, false, lightPaymentThresholdDefault, lightRefreshRate)
-
 }
 
 func TestAccountingSwapGrowingThresholds(t *testing.T) {
 	t.Parallel()
 
 	testAccountingSettlementGrowingThresholds(t, debitAndReceivePayment, true, testPaymentThreshold, testRefreshRate)
-
 }
 
 func TestAccountingSwapGrowingThresholdsLight(t *testing.T) {
@@ -1972,7 +1965,6 @@ func TestAccountingSwapGrowingThresholdsLight(t *testing.T) {
 	lightRefreshRate := testRefreshRate / testLightFactor
 
 	testAccountingSettlementGrowingThresholds(t, debitAndReceivePayment, false, lightPaymentThresholdDefault, lightRefreshRate)
-
 }
 
 func debitAndRefresh(t *testing.T, acc *accounting.Accounting, peer1Addr swarm.Address, debitRefresh int64) {
@@ -1994,7 +1986,6 @@ func debitAndRefresh(t *testing.T, acc *accounting.Accounting, peer1Addr swarm.A
 	if err != nil {
 		t.Fatalf("unexpected error from NotifyRefreshmentReceived: %v", err)
 	}
-
 }
 
 func debitAndReceivePayment(t *testing.T, acc *accounting.Accounting, peer1Addr swarm.Address, debitRefresh int64) {
@@ -2016,5 +2007,4 @@ func debitAndReceivePayment(t *testing.T, acc *accounting.Accounting, peer1Addr 
 	if err != nil {
 		t.Fatalf("unexpected error from NotifyRefreshmentReceived: %v", err)
 	}
-
 }

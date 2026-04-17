@@ -30,7 +30,6 @@ func New() *WaitNext {
 }
 
 func (r *WaitNext) Set(addr swarm.Address, tryAfter time.Time, attempts int) {
-
 	r.Lock()
 	defer r.Unlock()
 
@@ -38,7 +37,6 @@ func (r *WaitNext) Set(addr swarm.Address, tryAfter time.Time, attempts int) {
 }
 
 func (r *WaitNext) SetTryAfter(addr swarm.Address, tryAfter time.Time) {
-
 	r.Lock()
 	defer r.Unlock()
 
@@ -50,7 +48,6 @@ func (r *WaitNext) SetTryAfter(addr swarm.Address, tryAfter time.Time) {
 }
 
 func (r *WaitNext) Waiting(addr swarm.Address) bool {
-
 	r.Lock()
 	defer r.Unlock()
 
@@ -59,7 +56,6 @@ func (r *WaitNext) Waiting(addr swarm.Address) bool {
 }
 
 func (r *WaitNext) Attempts(addr swarm.Address) int {
-
 	r.Lock()
 	defer r.Unlock()
 
@@ -71,7 +67,6 @@ func (r *WaitNext) Attempts(addr swarm.Address) int {
 }
 
 func (r *WaitNext) Remove(addr swarm.Address) {
-
 	r.Lock()
 	defer r.Unlock()
 
