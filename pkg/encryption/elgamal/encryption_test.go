@@ -57,5 +57,4 @@ func TestElgamalCorrect(t *testing.T) {
 	if !bytes.Equal(plaintext, expected) {
 		t.Fatalf("original and encrypted-decrypted plaintexts do no match: expected %x, got %x", expected, plaintext)
 	}
-
 }

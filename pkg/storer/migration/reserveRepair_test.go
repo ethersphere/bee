@@ -30,7 +30,7 @@ func TestReserveRepair(t *testing.T) {
 		return swarm.ChunkTypeContentAddressed
 	}, log.Noop)
 
-	var chunksPO = make([][]swarm.Chunk, 5)
+	chunksPO := make([][]swarm.Chunk, 5)
 	var chunksPerPO uint64 = 2
 
 	for i := range swarm.MaxBins {

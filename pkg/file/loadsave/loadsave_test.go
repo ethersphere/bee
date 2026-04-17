@@ -31,7 +31,6 @@ func TestLoadSave(t *testing.T) {
 	store := inmemchunkstore.New()
 	ls := loadsave.New(store, store, pipelineFn(store), redundancy.DefaultLevel)
 	ref, err := ls.Save(context.Background(), data)
-
 	if err != nil {
 		t.Fatal(err)
 	}

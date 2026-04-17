@@ -136,7 +136,6 @@ func expectPeersEventually(t *testing.T, s *libp2p.Service, addrs ...swarm.Addre
 	err := spinlock.Wait(5*time.Second, func() bool {
 		peers = s.Peers()
 		return len(peers) == len(addrs)
-
 	})
 	if err != nil {
 		t.Fatalf("timed out waiting for peers, got  %v, want %v", len(peers), len(addrs))

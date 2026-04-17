@@ -439,13 +439,11 @@ func TestHandshake(t *testing.T) {
 		res, err := handshakeService.Handshake(context.Background(), stream1, node2mas)
 		if !errors.Is(err, testError) {
 			t.Fatalf("expected error %v got %v", testError, err)
-
 		}
 
 		if res != nil {
 			t.Fatal("expected nil res")
 		}
-
 	})
 
 	t.Run("Handle - OK", func(t *testing.T) {

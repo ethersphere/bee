@@ -40,7 +40,6 @@ func TestCreateBatch(t *testing.T) {
 	initialBalance := big.NewInt(100)
 
 	t.Run("ok", func(t *testing.T) {
-
 		depth := uint8(10)
 		totalAmount := big.NewInt(102400)
 		txHashApprove := common.HexToHash("abb0")
@@ -257,7 +256,6 @@ func TestCreateBatch(t *testing.T) {
 			t.Fatalf("expected error %v. got %v", postagecontract.ErrInsufficientValidity, err)
 		}
 	})
-
 }
 
 func newCreateEvent(postageContractAddress common.Address, batchId common.Hash) *types.Log {
@@ -292,7 +290,6 @@ func TestTopUpBatch(t *testing.T) {
 	topupBalance := big.NewInt(100)
 
 	t.Run("ok", func(t *testing.T) {
-
 		totalAmount := big.NewInt(102400)
 		txHashApprove := common.HexToHash("abb0")
 		txHashTopup := common.HexToHash("c3a7")
@@ -457,7 +454,6 @@ func TestDiluteBatch(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("ok", func(t *testing.T) {
-
 		txHashDilute := common.HexToHash("c3a7")
 		batch := postagetesting.MustNewBatch(postagetesting.WithOwner(owner.Bytes()))
 		batch.Depth = uint8(10)
@@ -685,7 +681,6 @@ func TestBatchExpirer(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-
 	})
 
 	t.Run("wrong call data for expired batches exist", func(t *testing.T) {
@@ -719,7 +714,6 @@ func TestBatchExpirer(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error")
 		}
-
 	})
 
 	t.Run("wrong call data for expired limited batches", func(t *testing.T) {
