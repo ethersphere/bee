@@ -56,6 +56,13 @@ const (
 	maxPushErrors        = 32
 )
 
+const (
+	wantSelfCauseClosestIsSelf = "closest_is_self"
+	wantSelfCauseNoPeerLeft    = "no_peer_left"
+	storeReasonWithinAOR       = "within_aor"
+	storeReasonWantSelf        = "want_self"
+)
+
 var (
 	ErrNoPush            = errors.New("could not push chunk")
 	ErrOutOfDepthStoring = errors.New("storing outside of the neighborhood")
@@ -293,13 +300,15 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	}
 
 	if ps.topologyDriver.IsReachable() && swarm.Proximity(ps.address.Bytes(), chunkAddress.Bytes()) >= rad {
-		stored, reason = true, "is within AOR"
+		stored, reason = true, storeReasonWithinAOR
+		ps.metrics.StoreReason.WithLabelValues(reason).Inc()
 		return store(ctx)
 	}
 
 	switch receipt, err := ps.pushToClosest(ctx, chunk, false); {
 	case errors.Is(err, topology.ErrWantSelf):
-		stored, reason = true, "want self"
+		stored, reason = true, storeReasonWantSelf
+		ps.metrics.StoreReason.WithLabelValues(reason).Inc()
 		return store(ctx)
 	case err == nil:
 		ps.metrics.Forwarder.Inc()
@@ -422,6 +431,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 							if cac.Valid(ch) {
 								go ps.unwrap(ch)
 							}
+							ps.incWantSelf(wantSelfCauseNoPeerLeft, origin)
 							return nil, topology.ErrWantSelf
 						}
 						ps.logger.Debug("no peers left", "chunk_address", ch.Address(), "error", err)
@@ -513,14 +523,21 @@ func (ps *PushSync) closestPeer(chunkAddress swarm.Address, origin bool, skipLis
 
 	peer, err := ps.topologyDriver.ClosestPeer(chunkAddress, includeSelf, topology.Select{Reachable: true, Healthy: true}, skipList...)
 	if errors.Is(err, topology.ErrNotFound) {
-		peer, err := ps.topologyDriver.ClosestPeer(chunkAddress, includeSelf, topology.Select{Reachable: true}, skipList...)
+		peer, err = ps.topologyDriver.ClosestPeer(chunkAddress, includeSelf, topology.Select{Reachable: true}, skipList...)
 		if errors.Is(err, topology.ErrNotFound) {
-			return ps.topologyDriver.ClosestPeer(chunkAddress, includeSelf, topology.Select{}, skipList...)
+			peer, err = ps.topologyDriver.ClosestPeer(chunkAddress, includeSelf, topology.Select{}, skipList...)
 		}
-		return peer, err
+	}
+
+	if errors.Is(err, topology.ErrWantSelf) {
+		ps.incWantSelf(wantSelfCauseClosestIsSelf, origin)
 	}
 
 	return peer, err
+}
+
+func (ps *PushSync) incWantSelf(cause string, origin bool) {
+	ps.metrics.WantSelf.WithLabelValues(cause, strconv.FormatBool(origin)).Inc()
 }
 
 func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptResult, peer swarm.Address, ch swarm.Chunk, action accounting.Action) {

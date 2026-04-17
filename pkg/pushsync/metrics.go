@@ -29,6 +29,8 @@ type metrics struct {
 	ShallowReceiptDepth *prometheus.CounterVec
 	ShallowReceipt      prometheus.Counter
 	OverdraftRefresh    prometheus.Counter
+	WantSelf            *prometheus.CounterVec
+	StoreReason         *prometheus.CounterVec
 }
 
 func newMetrics() metrics {
@@ -153,6 +155,24 @@ func newMetrics() metrics {
 			Name:      "overdraft_refresh",
 			Help:      "Total number of times peers were skipped due to overdraft, requiring a wait to refresh balance.",
 		}),
+		WantSelf: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "want_self_total",
+				Help:      "Total number of times pushsync concluded that the local node should store the chunk.",
+			},
+			[]string{"cause", "origin"},
+		),
+		StoreReason: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "store_reason_total",
+				Help:      "Total number of times chunks were stored locally by pushsync, partitioned by reason.",
+			},
+			[]string{"reason"},
+		),
 	}
 }
 
