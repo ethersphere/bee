@@ -216,7 +216,6 @@ func NewAccounting(
 	lightFactor int64,
 	p2pService p2p.Service,
 ) (*Accounting, error) {
-
 	lightPaymentThreshold := new(big.Int).Div(PaymentThreshold, big.NewInt(lightFactor))
 	lightRefreshRate := new(big.Int).Div(refreshRate, big.NewInt(lightFactor))
 	return &Accounting{
@@ -269,7 +268,6 @@ func (a *Accounting) getIncreasedExpectedDebt(peer swarm.Address, accountingPeer
 }
 
 func (a *Accounting) PrepareCredit(ctx context.Context, peer swarm.Address, price uint64, originated bool) (Action, error) {
-
 	accountingPeer := a.getAccountingPeer(peer)
 
 	if err := accountingPeer.lock.TryLock(ctx); err != nil {
@@ -522,7 +520,6 @@ func (a *Accounting) settle(peer swarm.Address, balance *accountingPeer) error {
 func (a *Accounting) Balance(peer swarm.Address) (balance *big.Int, err error) {
 	var w bigint.BigInt
 	err = a.store.Get(peerBalanceKey(peer), &w)
-
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return big.NewInt(0), ErrPeerNoBalance
@@ -537,7 +534,6 @@ func (a *Accounting) Balance(peer swarm.Address) (balance *big.Int, err error) {
 func (a *Accounting) OriginatedBalance(peer swarm.Address) (balance *big.Int, err error) {
 	var w bigint.BigInt
 	err = a.store.Get(originatedBalanceKey(peer), &w)
-
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return big.NewInt(0), ErrPeerNoBalance
@@ -552,7 +548,6 @@ func (a *Accounting) OriginatedBalance(peer swarm.Address) (balance *big.Int, er
 func (a *Accounting) SurplusBalance(peer swarm.Address) (balance *big.Int, err error) {
 	var w bigint.BigInt
 	err = a.store.Get(peerSurplusBalanceKey(peer), &w)
-
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return big.NewInt(0), nil
@@ -638,7 +633,6 @@ func (a *Accounting) getAccountingPeer(peer swarm.Address) *accountingPeer {
 // to set the next checkpoint and increase the payment threshold given by 1 * refreshment rate
 // must be called under accountingPeer lock
 func (a *Accounting) notifyPaymentThresholdUpgrade(peer swarm.Address, accountingPeer *accountingPeer) {
-
 	// get appropriate linear growth limit based on whether the peer is a full node or a light node
 	thresholdGrowChange := new(big.Int).Set(a.thresholdGrowChange)
 	if !accountingPeer.fullNode {
@@ -697,7 +691,6 @@ func (a *Accounting) Balances() (map[string]*big.Int, error) {
 
 		return false, nil
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -801,7 +794,6 @@ func (a *Accounting) CompensatedBalances() (map[string]*big.Int, error) {
 
 		return false, nil
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -822,7 +814,6 @@ func (a *Accounting) CompensatedBalances() (map[string]*big.Int, error) {
 
 		return false, nil
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -893,7 +884,6 @@ func (a *Accounting) PeerDebt(peer swarm.Address) (*big.Int, error) {
 
 // peerLatentDebt returns the sum of the positive part of the outstanding balance, shadow reserve and the ghost balance
 func (a *Accounting) peerLatentDebt(peer swarm.Address) (*big.Int, error) {
-
 	accountingPeer := a.getAccountingPeer(peer)
 
 	var wl bigint.BigInt
@@ -1006,7 +996,6 @@ func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, rece
 	if err != nil {
 		a.logger.Warning("notify payment sent; failed to decrease originated balance", "error", err)
 	}
-
 }
 
 // NotifyPaymentThreshold should be called to notify accounting of changes in the payment threshold
@@ -1186,7 +1175,6 @@ func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, attemptedAmount, 
 	if err != nil {
 		a.logger.Warning("accounting: notifyrefreshmentsent failed to decrease originated balance", "error", err)
 	}
-
 }
 
 // NotifyRefreshmentReceived is called by pseudosettle when we receive a time based settlement.
@@ -1398,7 +1386,6 @@ func (d *debitAction) Cleanup() {
 }
 
 func (a *Accounting) blocklistUntil(peer swarm.Address, multiplier int64) (int64, error) {
-
 	debt, err := a.peerLatentDebt(peer)
 	if err != nil {
 		return 0, err

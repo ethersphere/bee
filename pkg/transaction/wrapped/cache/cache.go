@@ -12,8 +12,10 @@ import (
 	"resenje.org/singleflight"
 )
 
-type Loader[T any] func() (T, error)
-type ReuseEvaluator[T any] func(value T) bool
+type (
+	Loader[T any]         func() (T, error)
+	ReuseEvaluator[T any] func(value T) bool
+)
 
 type SingleFlightCache[T any] struct {
 	mu    sync.RWMutex

@@ -36,7 +36,7 @@ func TestDBSplitRefs(t *testing.T) {
 	}
 
 	inputFileName := path.Join(t.TempDir(), "input")
-	err = os.WriteFile(inputFileName, buf, 0644)
+	err = os.WriteFile(inputFileName, buf, 0o644)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestDBSplitChunks(t *testing.T) {
 	}
 
 	inputFileName := path.Join(t.TempDir(), "input")
-	err = os.WriteFile(inputFileName, buf, 0644)
+	err = os.WriteFile(inputFileName, buf, 0o644)
 	if err != nil {
 		t.Fatal(err)
 	}

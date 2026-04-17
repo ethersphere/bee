@@ -24,7 +24,7 @@ import (
 func TestRecorder(t *testing.T) {
 	t.Parallel()
 
-	var answers = map[string]string{
+	answers := map[string]string{
 		"What is your name?":                                    "Sir Lancelot of Camelot",
 		"What is your quest?":                                   "To seek the Holy Grail.",
 		"What is your favorite color?":                          "Blue.",

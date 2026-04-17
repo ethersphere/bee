@@ -245,10 +245,12 @@ func (svc *batchService) UpdateBlockNumber(blockNumber uint64) error {
 	svc.logger.Debug("block height updated", "new_block", blockNumber)
 	return nil
 }
+
 func (svc *batchService) TransactionStart() error {
 	svc.pendingChainState = svc.storer.GetChainState()
 	return svc.stateStore.Put(dirtyDBKey, true)
 }
+
 func (svc *batchService) TransactionEnd() error {
 	if svc.pendingChainState != nil {
 		if err := svc.storer.PutChainState(svc.pendingChainState); err != nil {

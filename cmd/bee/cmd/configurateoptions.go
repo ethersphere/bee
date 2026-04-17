@@ -14,7 +14,6 @@ import (
 )
 
 func (c *command) initConfigurateOptionsCmd() (err error) {
-
 	cmd := &cobra.Command{
 		Use:   "printconfig",
 		Short: "Print default or provided configuration in yaml format",

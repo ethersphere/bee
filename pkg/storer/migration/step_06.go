@@ -39,7 +39,6 @@ func step_06(st transaction.Storage, logger log.Logger) func() error {
 }
 
 func addStampHash(logger log.Logger, st transaction.Storage) (int64, int64, error) {
-
 	preBatchRadiusCnt, err := st.IndexStore().Count(&reserve.BatchRadiusItemV1{})
 	if err != nil {
 		return 0, 0, err
@@ -229,7 +228,6 @@ func addStampHash(logger log.Logger, st transaction.Storage) (int64, int64, erro
 
 		return false, nil
 	})
-
 	if err != nil {
 		return 0, 0, errors.New("post-migration check: items fields not match. It's recommended that the nuke cmd is run to reset the node")
 	}

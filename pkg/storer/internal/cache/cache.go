@@ -74,7 +74,6 @@ func (c *Cache) Capacity() int64 {
 // chunkstore and also adds a Cache entry for the chunk.
 func (c *Cache) Putter(store transaction.Storage) storage.Putter {
 	return storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
-
 		c.glock.Lock(chunk.Address().ByteString())
 		defer c.glock.Unlock(chunk.Address().ByteString())
 
@@ -127,7 +126,6 @@ func (c *Cache) Putter(store transaction.Storage) storage.Putter {
 // of this getter to rollback the operation.
 func (c *Cache) Getter(store transaction.Storage) storage.Getter {
 	return storage.GetterFunc(func(ctx context.Context, address swarm.Address) (swarm.Chunk, error) {
-
 		c.glock.Lock(address.ByteString())
 		defer c.glock.Unlock(address.ByteString())
 
@@ -184,7 +182,6 @@ func (c *Cache) Getter(store transaction.Storage) storage.Getter {
 // RemoveOldest removes the oldest cache entries from the store. The count
 // specifies the number of entries to remove.
 func (c *Cache) RemoveOldest(ctx context.Context, st transaction.Storage, count uint64) error {
-
 	if count <= 0 {
 		return nil
 	}
@@ -249,7 +246,6 @@ func (c *Cache) ShallowCopy(
 	store transaction.Storage,
 	addrs ...swarm.Address,
 ) (err error) {
-
 	// TODO: add proper mutex locking before usage
 
 	entries := make([]*cacheEntry, 0, len(addrs))
@@ -286,7 +282,7 @@ func (c *Cache) ShallowCopy(
 		return nil
 	}
 
-	//consider only the amount that can fit, the rest should be deleted from the chunkstore.
+	// consider only the amount that can fit, the rest should be deleted from the chunkstore.
 	if len(entries) > c.capacity {
 		for _, addr := range entries[:len(entries)-c.capacity] {
 			_ = store.Run(ctx, func(s transaction.Store) error { return s.ChunkStore().Delete(ctx, addr.Address) })
