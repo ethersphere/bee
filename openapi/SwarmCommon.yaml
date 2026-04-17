@@ -1312,13 +1312,13 @@ components:
       required: true
       description: "Multiaddress of the broker peer to connect to for pubsub"
 
-    SwarmPubsubGsocPublicKey:
+    SwarmPubsubGsocEthAddress:
       in: header
-      name: swarm-pubsub-gsoc-public-key
+      name: swarm-pubsub-gsoc-eth-address
       schema:
         $ref: "#/components/schemas/HexString"
       required: false
-      description: "GSOC public key (hex) for publisher role. Required together with swarm-pubsub-gsoc-topic to upgrade to publisher."
+      description: "GSOC owner Ethereum address (20 bytes, hex-encoded) for publisher role. Required together with swarm-pubsub-gsoc-topic to upgrade to publisher."
 
     SwarmPubsubGsocTopic:
       in: header
@@ -1326,7 +1326,7 @@ components:
       schema:
         $ref: "#/components/schemas/HexString"
       required: false
-      description: "GSOC topic identifier (hex) for publisher role. Required together with swarm-pubsub-gsoc-public-key to upgrade to publisher."
+      description: "GSOC topic identifier (hex) for publisher role. Required together with swarm-pubsub-gsoc-eth-address to upgrade to publisher."
 
   responses:
     "200":

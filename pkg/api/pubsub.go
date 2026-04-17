@@ -54,12 +54,12 @@ func (s *Service) pubsubWsHandler(w http.ResponseWriter, r *http.Request) {
 	// Optional headers: GSOC fields for Publisher upgrade
 	var connectOpts pubsub.ConnectOptions
 
-	gsocPubKeyHex := r.Header.Get(SwarmPubsubGsocPublicKeyHeader)
+	gsocEthAddrHex := r.Header.Get(SwarmPubsubGsocEthAddressHeader)
 	gsocTopicHex := r.Header.Get(SwarmPubsubGsocTopicHeader)
-	if gsocPubKeyHex != "" && gsocTopicHex != "" {
-		gsocOwner, err := hex.DecodeString(gsocPubKeyHex)
+	if gsocEthAddrHex != "" && gsocTopicHex != "" {
+		gsocOwner, err := hex.DecodeString(gsocEthAddrHex)
 		if err != nil {
-			jsonhttp.BadRequest(w, "invalid Swarm-Pubsub-Gsoc-Public-Key header")
+			jsonhttp.BadRequest(w, "invalid Swarm-Pubsub-Gsoc-Eth-Address header")
 			return
 		}
 		gsocID, err := hex.DecodeString(gsocTopicHex)

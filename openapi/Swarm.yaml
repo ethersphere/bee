@@ -2449,7 +2449,7 @@ paths:
           required: true
           description: Topic identifier (hex-encoded address or arbitrary string to be hashed)
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPubsubPeer"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPubsubGsocPublicKey"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPubsubGsocEthAddress"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPubsubGsocTopic"
         - in: header
           name: swarm-keep-alive
