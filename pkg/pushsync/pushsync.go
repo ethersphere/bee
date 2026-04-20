@@ -309,6 +309,9 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	case errors.Is(err, topology.ErrWantSelf):
 		stored, reason = true, storeReasonWantSelf
 		ps.metrics.StoreReason.WithLabelValues(reason).Inc()
+		if swarm.Proximity(ps.address.Bytes(), chunkAddress.Bytes()) < rad {
+			ps.metrics.WantSelfOutOfDepth.Inc()
+		}
 		return store(ctx)
 	case err == nil:
 		ps.metrics.Forwarder.Inc()

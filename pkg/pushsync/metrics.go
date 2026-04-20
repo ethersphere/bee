@@ -31,6 +31,7 @@ type metrics struct {
 	OverdraftRefresh    prometheus.Counter
 	WantSelf            *prometheus.CounterVec
 	StoreReason         *prometheus.CounterVec
+	WantSelfOutOfDepth  prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -173,6 +174,12 @@ func newMetrics() metrics {
 			},
 			[]string{"reason"},
 		),
+		WantSelfOutOfDepth: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "want_self_out_of_depth_total",
+			Help:      "Total number of times a chunk was stored via ErrWantSelf with proximity strictly below the storage radius.",
+		}),
 	}
 }
 
