@@ -38,8 +38,11 @@ func (s *Service) pubsubWsHandler(w http.ResponseWriter, r *http.Request) {
 		copy(topicAddr[:], h.Sum(nil))
 	}
 
-	// Required header: underlay multiaddr
+	// Required: underlay multiaddr — accept from header or query param (browsers cannot set WS headers)
 	peerHeader := r.Header.Get(SwarmPubsubPeerHeader)
+	if peerHeader == "" {
+		peerHeader = r.URL.Query().Get("swarm-pubsub-peer")
+	}
 	if peerHeader == "" {
 		jsonhttp.BadRequest(w, "missing Swarm-Pubsub-Peer header")
 		return
@@ -51,11 +54,17 @@ func (s *Service) pubsubWsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Optional headers: GSOC fields for Publisher upgrade
+	// Optional: GSOC fields for Publisher upgrade — accept from header or query param
 	var connectOpts pubsub.ConnectOptions
 
 	gsocEthAddrHex := r.Header.Get(SwarmPubsubGsocEthAddressHeader)
+	if gsocEthAddrHex == "" {
+		gsocEthAddrHex = r.URL.Query().Get("swarm-pubsub-gsoc-eth-address")
+	}
 	gsocTopicHex := r.Header.Get(SwarmPubsubGsocTopicHeader)
+	if gsocTopicHex == "" {
+		gsocTopicHex = r.URL.Query().Get("swarm-pubsub-gsoc-topic")
+	}
 	if gsocEthAddrHex != "" && gsocTopicHex != "" {
 		gsocOwner, err := hex.DecodeString(gsocEthAddrHex)
 		if err != nil {
