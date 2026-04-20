@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build !linux || !amd64 || purego
-
 package bmt
 
 import (
@@ -13,45 +11,32 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-const SEGMENT_SIZE = 32
-
-// configuration
-type Conf struct {
-	segmentSize  int      // size of leaf segments, stipulated to be = hash size
-	segmentCount int      // the number of segments on the base level of the BMT
-	capacity     int      // pool capacity, controls concurrency
-	depth        int      // depth of the bmt trees = int(log2(segmentCount))+1
-	maxSize      int      // the total length of the data (count * size)
-	zerohashes   [][]byte // lookup table for predictable padding subtrees for all levels
-	prefix       []byte   // optional prefix prepended to every hash operation
+// goroutineConf is the internal configuration for the goroutine BMT pool.
+type goroutineConf struct {
+	segmentSize  int
+	segmentCount int
+	capacity     int
+	depth        int
+	maxSize      int
+	zerohashes   [][]byte
+	prefix       []byte
 	hasherFunc   func() hash.Hash
 }
 
-// baseHasher returns a new base hasher instance, optionally with prefix.
-func (c *Conf) baseHasher() hash.Hash {
+func (c *goroutineConf) baseHasher() hash.Hash {
 	if len(c.prefix) > 0 {
 		return swarm.NewPrefixHasher(c.prefix)
 	}
 	return swarm.NewHasher()
 }
 
-// Pool provides a pool of trees used as resources by the BMT Hasher.
-// A tree popped from the pool is guaranteed to have a clean state ready
-// for hashing a new chunk.
-type Pool struct {
-	c     chan *tree // the channel to obtain a resource from the pool
-	*Conf            // configuration
+// goroutinePool is the goroutine-based BMT hasher pool.
+type goroutinePool struct {
+	c chan *goroutineTree
+	*goroutineConf
 }
 
-func NewConf(segmentCount, capacity int) *Conf {
-	return newConf(nil, segmentCount, capacity)
-}
-
-func NewConfWithPrefix(prefix []byte, segmentCount, capacity int) *Conf {
-	return newConf(prefix, segmentCount, capacity)
-}
-
-func newConf(prefix []byte, segmentCount, capacity int) *Conf {
+func newGoroutineConf(prefix []byte, segmentCount, capacity int) *goroutineConf {
 	count, depth := sizeToParams(segmentCount)
 	segmentSize := SEGMENT_SIZE
 
@@ -62,7 +47,7 @@ func newConf(prefix []byte, segmentCount, capacity int) *Conf {
 		return swarm.NewHasher()
 	}
 
-	c := &Conf{
+	c := &goroutineConf{
 		segmentSize:  segmentSize,
 		segmentCount: segmentCount,
 		capacity:     capacity,
@@ -76,7 +61,6 @@ func newConf(prefix []byte, segmentCount, capacity int) *Conf {
 	zeros := make([]byte, segmentSize)
 	zerohashes[0] = zeros
 	var err error
-	// initialises the zerohashes lookup table
 	for i := 1; i < depth+1; i++ {
 		if zeros, err = doHash(c.baseHasher(), zeros, zeros); err != nil {
 			panic(err.Error())
@@ -88,99 +72,96 @@ func newConf(prefix []byte, segmentCount, capacity int) *Conf {
 	return c
 }
 
-// NewPool creates a tree pool with hasher, segment size, segment count and capacity
-// it reuses free trees or creates a new one if capacity is not reached.
-func NewPool(c *Conf) *Pool {
-	p := &Pool{
-		Conf: c,
-		c:    make(chan *tree, c.capacity),
+// newGoroutinePool creates a goroutine BMT pool from a public Conf.
+func newGoroutinePool(c *Conf) *goroutinePool {
+	gc := newGoroutineConf(c.Prefix, c.SegmentCount, c.Capacity)
+	p := &goroutinePool{
+		goroutineConf: gc,
+		c:             make(chan *goroutineTree, gc.capacity),
 	}
-	for i := 0; i < c.capacity; i++ {
-		p.c <- newTree(p.maxSize, p.depth, c.hasherFunc)
+	for i := 0; i < gc.capacity; i++ {
+		p.c <- newGoroutineTree(gc.maxSize, gc.depth, gc.hasherFunc)
 	}
 	return p
 }
 
-// Get returns a BMT hasher possibly reusing a tree from the pool
-func (p *Pool) Get() *Hasher {
+// Get returns a BMT hasher, possibly reusing a tree from the pool.
+func (p *goroutinePool) Get() Hasher {
 	t := <-p.c
-	return &Hasher{
-		Conf:   p.Conf,
-		result: make(chan []byte),
-		errc:   make(chan error, 1),
-		span:   make([]byte, SpanSize),
-		bmt:    t,
+	return &goroutineHasher{
+		goroutineConf: p.goroutineConf,
+		result:        make(chan []byte),
+		errc:          make(chan error, 1),
+		span:          make([]byte, SpanSize),
+		bmt:           t,
 	}
 }
 
-// Put is called after using a bmt hasher to return the tree to a pool for reuse
-func (p *Pool) Put(h *Hasher) {
-	p.c <- h.bmt
+// Put returns a hasher's tree to the pool for reuse.
+func (p *goroutinePool) Put(h Hasher) {
+	gh, ok := h.(*goroutineHasher)
+	if !ok {
+		panic("bmt: goroutinePool.Put called with non-goroutineHasher")
+	}
+	p.c <- gh.bmt
 }
 
-// tree is a reusable control structure representing a BMT
-// organised in a binary tree
-//
-// Hasher uses a Pool to obtain a tree for each chunk hash
-// the tree is 'locked' while not in the pool.
-type tree struct {
-	leaves []*node // leaf nodes of the tree, other nodes accessible via parent links
+// goroutineTree is the tree structure used by the goroutine hasher.
+type goroutineTree struct {
+	leaves []*goroutineNode
 	buffer []byte
 }
 
-// node is a reusable segment hasher representing a node in a BMT.
-type node struct {
-	isLeft      bool      // whether it is left side of the parent double segment
-	parent      *node     // pointer to parent node in the BMT
-	state       int32     // atomic increment impl concurrent boolean toggle
-	left, right []byte    // this is where the two children sections are written
-	hasher      hash.Hash // preconstructed hasher on nodes
+// goroutineNode is a reusable segment hasher node in the goroutine BMT.
+type goroutineNode struct {
+	isLeft      bool
+	parent      *goroutineNode
+	state       int32
+	left, right []byte
+	hasher      hash.Hash
 }
 
-// newNode constructs a segment hasher node in the BMT (used by newTree).
-func newNode(index int, parent *node, hasher hash.Hash) *node {
-	return &node{
+func newGoroutineNode(index int, parent *goroutineNode, hasher hash.Hash) *goroutineNode {
+	return &goroutineNode{
 		parent: parent,
 		isLeft: index%2 == 0,
 		hasher: hasher,
 	}
 }
 
-// newTree initialises a tree by building up the nodes of a BMT
-func newTree(maxsize, depth int, hashfunc func() hash.Hash) *tree {
-	n := newNode(0, nil, hashfunc())
-	prevlevel := []*node{n}
-	// iterate over levels and creates 2^(depth-level) nodes
-	// the 0 level is on double segment sections so we start at depth - 2
+func newGoroutineTree(maxsize, depth int, hashfunc func() hash.Hash) *goroutineTree {
+	n := newGoroutineNode(0, nil, hashfunc())
+	prevlevel := []*goroutineNode{n}
 	count := 2
 	for level := depth - 2; level >= 0; level-- {
-		nodes := make([]*node, count)
+		nodes := make([]*goroutineNode, count)
 		for i := 0; i < count; i++ {
 			parent := prevlevel[i/2]
-			nodes[i] = newNode(i, parent, hashfunc())
+			nodes[i] = newGoroutineNode(i, parent, hashfunc())
 		}
 		prevlevel = nodes
 		count *= 2
 	}
-	// the datanode level is the nodes on the last level
-	return &tree{
+	return &goroutineTree{
 		leaves: prevlevel,
 		buffer: make([]byte, maxsize),
 	}
 }
 
-// atomic bool toggle implementing a concurrent reusable 2-state object.
-// Atomic addint with %2 implements atomic bool toggle.
-// It returns true if the toggler just put it in the active/waiting state.
-func (n *node) toggle() bool {
+// toggle implements atomic bool toggle for goroutineNode coordination.
+func (n *goroutineNode) toggle() bool {
 	return atomic.AddInt32(&n.state, 1)%2 == 1
 }
 
-// sizeToParams calculates the depth (number of levels) and segment count in the BMT tree.
-func sizeToParams(n int) (c, d int) {
-	c = 2
-	for ; c < n; c *= 2 {
-		d++
+// getSister returns a copy of the sibling section on the opposite side.
+func (n *goroutineNode) getSister(isLeft bool) []byte {
+	var src []byte
+	if isLeft {
+		src = n.right
+	} else {
+		src = n.left
 	}
-	return c, d + 1
+	buf := make([]byte, len(src))
+	copy(buf, src)
+	return buf
 }

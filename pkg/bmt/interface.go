@@ -12,11 +12,11 @@ const (
 	SpanSize = 8
 )
 
-// Hash provides the necessary extension of the hash interface to add the length-prefix of the BMT hash.
+// Hasher provides the necessary extension of the hash interface to add the length-prefix of the BMT hash.
 //
 // Any implementation should make it possible to generate a BMT hash using the hash.Hash interface only.
 // However, the limitation will be that the Span of the BMT hash always must be limited to the amount of bytes actually written.
-type Hash interface {
+type Hasher interface {
 	hash.Hash
 
 	// SetHeaderInt64 sets the header bytes of BMT hash to the little endian binary representation of the int64 argument.
@@ -30,4 +30,15 @@ type Hash interface {
 
 	// Capacity returns the maximum amount of bytes that will be processed by the implementation.
 	Capacity() int
+
+	// HashPadded calculates the BMT hash after zero-padding any unwritten sections so
+	// the tree is fully populated. Required for inclusion-proof generation.
+	HashPadded([]byte) ([]byte, error)
+
+	// Proof returns an inclusion proof for the i-th data segment of the last hashed chunk.
+	Proof(i int) Proof
+
+	// Verify reconstructs the BMT root from a proof for the i-th segment. Returns the
+	// computed root hash (caller compares to the expected chunk address).
+	Verify(i int, proof Proof) ([]byte, error)
 }

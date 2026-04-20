@@ -11,7 +11,6 @@ package keccak
 
 import (
 	"encoding/hex"
-	"sync"
 
 	"golang.org/x/crypto/sha3"
 )
@@ -51,14 +50,18 @@ func BatchWidth() int {
 // Sum256 computes a single Keccak-256 hash (legacy, Ethereum-compatible).
 // Uses the best available implementation.
 func Sum256(data []byte) Hash256 {
-	return sum256Scalar(data)
+	var out Hash256
+	h := sha3.NewLegacyKeccak256()
+	h.Write(data)
+	copy(out[:], h.Sum(nil))
+	return out
 }
 
 // Sum256x4 computes 4 Keccak-256 hashes in parallel using AVX2.
-// Falls back to scalar if AVX2 is not available.
+// Callers must check HasSIMD() first; invoking without AVX2 panics.
 func Sum256x4(inputs [4][]byte) [4]Hash256 {
 	if !hasAVX2 {
-		return sum256x4Scalar(inputs)
+		panic("keccak: Sum256x4 requires AVX2; call HasSIMD() first")
 	}
 	var outputs [4]Hash256
 	var inputsCopy [4][]byte
@@ -67,83 +70,15 @@ func Sum256x4(inputs [4][]byte) [4]Hash256 {
 	return outputs
 }
 
-// Sum256x4Scalar computes 4 Keccak-256 hashes using the scalar path,
-// bypassing SIMD detection. Used by callers that explicitly want non-SIMD.
-func Sum256x4Scalar(inputs [4][]byte) [4]Hash256 {
-	return sum256x4Scalar(inputs)
-}
-
 // Sum256x8 computes 8 Keccak-256 hashes in parallel using AVX-512.
-// Falls back to scalar if AVX-512 is not available.
+// Callers must check HasAVX512() first; invoking without AVX-512 panics.
 func Sum256x8(inputs [8][]byte) [8]Hash256 {
 	if !hasAVX512 {
-		return sum256x8Scalar(inputs)
+		panic("keccak: Sum256x8 requires AVX-512; call HasAVX512() first")
 	}
 	var outputs [8]Hash256
 	var inputsCopy [8][]byte
 	copy(inputsCopy[:], inputs[:])
 	keccak256x8(&inputsCopy, &outputs)
-	return outputs
-}
-
-// Sum256x8Scalar computes 8 Keccak-256 hashes using the scalar path,
-// bypassing SIMD detection. Used by callers that explicitly want non-SIMD.
-func Sum256x8Scalar(inputs [8][]byte) [8]Hash256 {
-	return sum256x8Scalar(inputs)
-}
-
-func sum256Scalar(data []byte) Hash256 {
-	var out Hash256
-	h := sha3.NewLegacyKeccak256()
-	h.Write(data)
-	copy(out[:], h.Sum(nil))
-	return out
-}
-
-func sum256x4Scalar(inputs [4][]byte) [4]Hash256 {
-	var outputs [4]Hash256
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-	for i := 0; i < 4; i++ {
-		if inputs[i] == nil {
-			continue
-		}
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-			h := sha3.NewLegacyKeccak256()
-			h.Write(inputs[i])
-			result := h.Sum(nil)
-			mu.Lock()
-			copy(outputs[i][:], result)
-			mu.Unlock()
-		}()
-	}
-	wg.Wait()
-	return outputs
-}
-
-func sum256x8Scalar(inputs [8][]byte) [8]Hash256 {
-	var outputs [8]Hash256
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-
-	for i := 0; i < 8; i++ {
-		if inputs[i] == nil {
-			continue
-		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			h := sha3.NewLegacyKeccak256()
-			h.Write(inputs[i])
-			result := h.Sum(nil)
-			mu.Lock()
-			copy(outputs[i][:], result)
-			mu.Unlock()
-		}()
-	}
-	wg.Wait()
 	return outputs
 }

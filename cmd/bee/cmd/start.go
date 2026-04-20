@@ -24,6 +24,7 @@ import (
 	"github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/bmt"
+	"github.com/ethersphere/bee/v2/pkg/bmtpool"
 	chaincfg "github.com/ethersphere/bee/v2/pkg/config"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/keystore"
@@ -275,6 +276,9 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		}
 		logger.Info("SIMD hashing enabled")
 		bmt.SIMDOptIn = true
+		// Rebuild the global bmtpool instance so the new SIMDOptIn value
+		// is reflected in the pool created for hot-path BMT hashing.
+		bmtpool.Rebuild()
 	}
 
 	b, err := node.NewBee(ctx, c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, signerConfig.session, &node.Options{

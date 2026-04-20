@@ -7,26 +7,46 @@
 package bmtpool
 
 import (
+	"sync/atomic"
+
 	"github.com/ethersphere/bee/v2/pkg/bmt"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 const Capacity = 32
 
-var instance *bmt.Pool
+// instance holds the active bmt.Pool. Using an atomic pointer so Rebuild can
+// swap it in after cmd/bee sets bmt.SIMDOptIn during startup, without
+// introducing lock contention on the hot Get/Put path.
+var instance atomic.Pointer[bmt.Pool]
 
 // nolint:gochecknoinits
 func init() {
-	instance = bmt.NewPool(bmt.NewConf(swarm.BmtBranches, Capacity))
+	// Eager init: construct the pool at package load time so its internal
+	// channel is created outside any testing/synctest bubble. Tests that use
+	// synctest would otherwise trip "receive on synctest channel from outside
+	// bubble" if the pool were first created inside a bubble.
+	//
+	// SIMDOptIn is still false here (flag hasn't been parsed). cmd/bee calls
+	// Rebuild after flag parsing if the user opted in.
+	p := bmt.NewPool(bmt.NewConf(swarm.BmtBranches, Capacity))
+	instance.Store(&p)
 }
 
-// Get a bmt Hasher instance.
-// Instances are reset before being returned to the caller.
-func Get() *bmt.Hasher {
-	return instance.Get()
+// Rebuild discards the current pool and constructs a new one reading the
+// latest bmt.SIMDOptIn value. Intended to be called once during startup after
+// CLI flag parsing so that --use-simd-hashing takes effect.
+func Rebuild() {
+	p := bmt.NewPool(bmt.NewConf(swarm.BmtBranches, Capacity))
+	instance.Store(&p)
 }
 
-// Put a bmt Hasher back into the pool
-func Put(h *bmt.Hasher) {
-	instance.Put(h)
+// Get a bmt Hasher instance. Instances are reset before being returned to the caller.
+func Get() bmt.Hasher {
+	return (*instance.Load()).Get()
+}
+
+// Put a bmt Hasher back into the pool.
+func Put(h bmt.Hasher) {
+	(*instance.Load()).Put(h)
 }

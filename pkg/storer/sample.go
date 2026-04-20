@@ -294,7 +294,7 @@ func (db *DB) batchesBelowValue(until *big.Int) (map[string]struct{}, error) {
 	return res, err
 }
 
-func transformedAddress(hasher *bmt.Hasher, chunk swarm.Chunk, chType swarm.ChunkType) (swarm.Address, error) {
+func transformedAddress(hasher bmt.Hasher, chunk swarm.Chunk, chType swarm.ChunkType) (swarm.Address, error) {
 	switch chType {
 	case swarm.ChunkTypeContentAddressed:
 		return transformedAddressCAC(hasher, chunk)
@@ -305,7 +305,7 @@ func transformedAddress(hasher *bmt.Hasher, chunk swarm.Chunk, chType swarm.Chun
 	}
 }
 
-func transformedAddressCAC(hasher *bmt.Hasher, chunk swarm.Chunk) (swarm.Address, error) {
+func transformedAddressCAC(hasher bmt.Hasher, chunk swarm.Chunk) (swarm.Address, error) {
 	hasher.Reset()
 	hasher.SetHeader(chunk.Data()[:bmt.SpanSize])
 
@@ -322,7 +322,7 @@ func transformedAddressCAC(hasher *bmt.Hasher, chunk swarm.Chunk) (swarm.Address
 	return swarm.NewAddress(taddr), nil
 }
 
-func transformedAddressSOC(hasher *bmt.Hasher, socChunk swarm.Chunk) (swarm.Address, error) {
+func transformedAddressSOC(hasher bmt.Hasher, socChunk swarm.Chunk) (swarm.Address, error) {
 	// Calculate transformed address from wrapped chunk
 	cacChunk, err := soc.UnwrapCAC(socChunk)
 	if err != nil {

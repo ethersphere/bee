@@ -45,7 +45,7 @@ func refHash(count int, data []byte) ([]byte, error) {
 }
 
 // syncHash hashes the data and the span using the bmt hasher
-func syncHash(h *bmt.Hasher, data []byte) ([]byte, error) {
+func syncHash(h bmt.Hasher, data []byte) ([]byte, error) {
 	h.Reset()
 	h.SetHeaderInt64(int64(len(data)))
 	_, err := h.Write(data)
@@ -253,7 +253,7 @@ func TestBMTWriterBuffers(t *testing.T) {
 }
 
 // helper function that compares reference and optimised implementations for correctness
-func testHasherCorrectness(h *bmt.Hasher, data []byte, n, count int) (err error) {
+func testHasherCorrectness(h bmt.Hasher, data []byte, n, count int) (err error) {
 	if len(data) < n {
 		n = len(data)
 	}
@@ -269,6 +269,45 @@ func testHasherCorrectness(h *bmt.Hasher, data []byte, n, count int) (err error)
 		return fmt.Errorf("wrong hash: expected %x, got %x", exp, got)
 	}
 	return nil
+}
+
+// TestGoroutineSIMDParity verifies that the goroutine and SIMD pools produce
+// identical root hashes for the same input, across a spread of write lengths.
+// The SIMD sub-test is a no-op on platforms where the dispatcher falls back to
+// the goroutine pool (non-linux/amd64 or CPU without AVX2).
+func TestGoroutineSIMDParity(t *testing.T) {
+	testData := testutil.RandBytesWithSeed(t, 4096, seed)
+	lengths := []int{1, 31, 32, 33, 64, 128, 500, 1024, 2048, 4095, 4096}
+
+	prev := bmt.SIMDOptIn
+	defer func() { bmt.SIMDOptIn = prev }()
+
+	bmt.SIMDOptIn = false
+	gPool := bmt.NewPool(bmt.NewConf(testSegmentCount, 1))
+	bmt.SIMDOptIn = true
+	sPool := bmt.NewPool(bmt.NewConf(testSegmentCount, 1))
+
+	for _, n := range lengths {
+		t.Run(fmt.Sprintf("len_%d", n), func(t *testing.T) {
+			gh := gPool.Get()
+			gHash, err := syncHash(gh, testData[:n])
+			gPool.Put(gh)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			sh := sPool.Get()
+			sHash, err := syncHash(sh, testData[:n])
+			sPool.Put(sh)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if !bytes.Equal(gHash, sHash) {
+				t.Fatalf("goroutine/simd mismatch at len=%d\n  goroutine: %x\n  simd:      %x", n, gHash, sHash)
+			}
+		})
+	}
 }
 
 // verifies that the bmt.Hasher can be used with the hash.Hash interface

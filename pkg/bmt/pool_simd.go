@@ -13,62 +13,47 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-const SEGMENT_SIZE = 32
-
-// configuration
-type Conf struct {
-	segmentSize  int      // size of leaf segments, stipulated to be = hash size
-	segmentCount int      // the number of segments on the base level of the BMT
-	capacity     int      // pool capacity, controls concurrency
-	depth        int      // depth of the bmt trees = int(log2(segmentCount))+1
-	maxSize      int      // the total length of the data (count * size)
-	zerohashes   [][]byte // lookup table for predictable padding subtrees for all levels
-	prefix       []byte   // optional prefix prepended to every hash operation
-	useSIMD      bool     // whether SIMD keccak is available
-	batchWidth   int      // 4 (AVX2), 8 (AVX-512), or 0
+// simdConf is the internal configuration for the SIMD BMT pool.
+type simdConf struct {
+	segmentSize  int
+	segmentCount int
+	capacity     int
+	depth        int
+	maxSize      int
+	zerohashes   [][]byte
+	prefix       []byte
+	batchWidth   int
 }
 
-// baseHasher returns a new base hasher instance, optionally with prefix.
-func (c *Conf) baseHasher() hash.Hash {
+func (c *simdConf) baseHasher() hash.Hash {
 	if len(c.prefix) > 0 {
 		return swarm.NewPrefixHasher(c.prefix)
 	}
 	return swarm.NewHasher()
 }
 
-// Pool provides a pool of trees used as resources by the BMT Hasher.
-// A tree popped from the pool is guaranteed to have a clean state ready
-// for hashing a new chunk.
-type Pool struct {
-	c     chan *tree // the channel to obtain a resource from the pool
-	*Conf            // configuration
+// simdPool is the SIMD-batched BMT hasher pool.
+type simdPool struct {
+	c chan *simdTree
+	*simdConf
 }
 
-func NewConf(segmentCount, capacity int) *Conf {
-	return newConf(nil, segmentCount, capacity)
-}
-
-func NewConfWithPrefix(prefix []byte, segmentCount, capacity int) *Conf {
-	return newConf(prefix, segmentCount, capacity)
-}
-
-func newConf(prefix []byte, segmentCount, capacity int) *Conf {
+func newSIMDConf(prefix []byte, segmentCount, capacity int) *simdConf {
 	count, depth := sizeToParams(segmentCount)
 	segmentSize := SEGMENT_SIZE
 
-	c := &Conf{
+	c := &simdConf{
 		segmentSize:  segmentSize,
 		segmentCount: segmentCount,
 		capacity:     capacity,
 		maxSize:      count * segmentSize,
 		depth:        depth,
 		prefix:       prefix,
-		useSIMD:      keccak.HasSIMD() && SIMDOptIn,
 	}
 
 	bw := keccak.BatchWidth()
 	if bw == 0 {
-		bw = 8 // use 4-wide batching with scalar fallback
+		bw = 8
 	}
 	c.batchWidth = bw
 
@@ -76,7 +61,6 @@ func newConf(prefix []byte, segmentCount, capacity int) *Conf {
 	zeros := make([]byte, segmentSize)
 	zerohashes[0] = zeros
 	var err error
-	// initialises the zerohashes lookup table
 	for i := 1; i < depth+1; i++ {
 		if zeros, err = doHash(c.baseHasher(), zeros, zeros); err != nil {
 			panic(err.Error())
@@ -88,58 +72,55 @@ func newConf(prefix []byte, segmentCount, capacity int) *Conf {
 	return c
 }
 
-// NewPool creates a tree pool with hasher, segment size, segment count and capacity
-// it reuses free trees or creates a new one if capacity is not reached.
-func NewPool(c *Conf) *Pool {
-	p := &Pool{
-		Conf: c,
-		c:    make(chan *tree, c.capacity),
+// newSIMDPool creates a SIMD BMT pool from a public Conf.
+func newSIMDPool(c *Conf) *simdPool {
+	sc := newSIMDConf(c.Prefix, c.SegmentCount, c.Capacity)
+	p := &simdPool{
+		simdConf: sc,
+		c:        make(chan *simdTree, sc.capacity),
 	}
-	for i := 0; i < c.capacity; i++ {
-		p.c <- newTree(p.maxSize, p.depth, c.baseHasher, c.prefix)
+	for i := 0; i < sc.capacity; i++ {
+		p.c <- newSIMDTree(sc.maxSize, sc.depth, sc.baseHasher, sc.prefix)
 	}
 	return p
 }
 
-// Get returns a BMT hasher possibly reusing a tree from the pool
-func (p *Pool) Get() *Hasher {
+func (p *simdPool) Get() Hasher {
 	t := <-p.c
-	return &Hasher{
-		Conf: p.Conf,
-		span: make([]byte, SpanSize),
-		bmt:  t,
+	return &simdHasher{
+		simdConf: p.simdConf,
+		span:     make([]byte, SpanSize),
+		bmt:      t,
 	}
 }
 
-// Put is called after using a bmt hasher to return the tree to a pool for reuse
-func (p *Pool) Put(h *Hasher) {
-	p.c <- h.bmt
+func (p *simdPool) Put(h Hasher) {
+	sh, ok := h.(*simdHasher)
+	if !ok {
+		panic("bmt: simdPool.Put called with non-simdHasher")
+	}
+	p.c <- sh.bmt
 }
 
-// tree is a reusable control structure representing a BMT
-// organised in a binary tree
-//
-// Hasher uses a Pool to obtain a tree for each chunk hash
-// the tree is 'locked' while not in the pool.
-type tree struct {
-	leaves     []*node   // leaf nodes of the tree, other nodes accessible via parent links
-	levels     [][]*node // levels[0]=leaves, levels[1]=parents of leaves, ..., levels[depth-1]=root
+// simdTree is the tree structure used by the SIMD hasher.
+type simdTree struct {
+	leaves     []*simdNode
+	levels     [][]*simdNode
 	buffer     []byte
-	concat     [8][]byte // reusable concat buffers for SIMD node hashing
-	leafConcat [8][]byte // reusable concat buffers for SIMD leaf hashing
+	concat     [8][]byte
+	leafConcat [8][]byte
 }
 
-// node is a reusable segment hasher representing a node in a BMT.
-type node struct {
-	isLeft      bool      // whether it is left side of the parent double segment
-	parent      *node     // pointer to parent node in the BMT
-	left, right []byte    // this is where the two children sections are written
-	hasher      hash.Hash // preconstructed hasher on nodes
+// simdNode is a reusable segment hasher node in the SIMD BMT.
+type simdNode struct {
+	isLeft      bool
+	parent      *simdNode
+	left, right []byte
+	hasher      hash.Hash
 }
 
-// newNode constructs a segment hasher node in the BMT (used by newTree).
-func newNode(index int, parent *node, hasher hash.Hash) *node {
-	return &node{
+func newSIMDNode(index int, parent *simdNode, hasher hash.Hash) *simdNode {
+	return &simdNode{
 		parent: parent,
 		isLeft: index%2 == 0,
 		hasher: hasher,
@@ -148,21 +129,17 @@ func newNode(index int, parent *node, hasher hash.Hash) *node {
 	}
 }
 
-// newTree initialises a tree by building up the nodes of a BMT
-func newTree(maxsize, depth int, hashfunc func() hash.Hash, prefix []byte) *tree {
+func newSIMDTree(maxsize, depth int, hashfunc func() hash.Hash, prefix []byte) *simdTree {
 	prefixLen := len(prefix)
-	n := newNode(0, nil, hashfunc())
-	prevlevel := []*node{n}
-	// collect levels top-down during construction, then reverse
-	allLevels := [][]*node{prevlevel}
-	// iterate over levels and creates 2^(depth-level) nodes
-	// the 0 level is on double segment sections so we start at depth - 2
+	n := newSIMDNode(0, nil, hashfunc())
+	prevlevel := []*simdNode{n}
+	allLevels := [][]*simdNode{prevlevel}
 	count := 2
 	for level := depth - 2; level >= 0; level-- {
-		nodes := make([]*node, count)
+		nodes := make([]*simdNode, count)
 		for i := 0; i < count; i++ {
 			parent := prevlevel[i/2]
-			nodes[i] = newNode(i, parent, hashfunc())
+			nodes[i] = newSIMDNode(i, parent, hashfunc())
 		}
 		allLevels = append(allLevels, nodes)
 		prevlevel = nodes
@@ -172,7 +149,6 @@ func newTree(maxsize, depth int, hashfunc func() hash.Hash, prefix []byte) *tree
 	for i, j := 0, len(allLevels)-1; i < j; i, j = i+1, j-1 {
 		allLevels[i], allLevels[j] = allLevels[j], allLevels[i]
 	}
-	// pre-allocate concat buffers for SIMD hashing (with space for optional prefix)
 	segSize := hashfunc().Size()
 	bufSize := prefixLen + 2*segSize
 	var concat [8][]byte
@@ -189,8 +165,7 @@ func newTree(maxsize, depth int, hashfunc func() hash.Hash, prefix []byte) *tree
 			copy(leafConcat[i][:prefixLen], prefix)
 		}
 	}
-	// the datanode level is the nodes on the last level
-	return &tree{
+	return &simdTree{
 		leaves:     prevlevel,
 		levels:     allLevels,
 		buffer:     make([]byte, maxsize),
@@ -199,11 +174,15 @@ func newTree(maxsize, depth int, hashfunc func() hash.Hash, prefix []byte) *tree
 	}
 }
 
-// sizeToParams calculates the depth (number of levels) and segment count in the BMT tree.
-func sizeToParams(n int) (c, d int) {
-	c = 2
-	for ; c < n; c *= 2 {
-		d++
+// getSister returns a copy of the sibling section on the opposite side.
+func (n *simdNode) getSister(isLeft bool) []byte {
+	var src []byte
+	if isLeft {
+		src = n.right
+	} else {
+		src = n.left
 	}
-	return c, d + 1
+	buf := make([]byte, len(src))
+	copy(buf, src)
+	return buf
 }

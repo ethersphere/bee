@@ -14,13 +14,12 @@ import (
 // It processes the tree level by level from leaves to root, using batched
 // SIMD calls instead of goroutine-per-section. A single thread handles all
 // levels since SIMD already provides intra-call parallelism (4-way or 8-way).
-func (h *Hasher) hashSIMD() ([]byte, error) {
+func (h *simdHasher) hashSIMD() ([]byte, error) {
 	secsize := 2 * h.segmentSize
 	bw := h.batchWidth
 	prefixLen := len(h.prefix)
 
 	// Leaf level: hash each section and write results to parent nodes.
-	// Single-threaded: SIMD batching (4 or 8 hashes per call) replaces goroutine parallelism.
 	h.hashLeavesBatch(0, len(h.bmt.levels[0]), bw, secsize, prefixLen)
 
 	// Internal levels: process each level single-threaded (diminishing work).
@@ -34,7 +33,7 @@ func (h *Hasher) hashSIMD() ([]byte, error) {
 }
 
 // hashLeavesBatch hashes leaf sections in the range [start, end) using SIMD batches.
-func (h *Hasher) hashLeavesBatch(start, end, bw, secsize, prefixLen int) {
+func (h *simdHasher) hashLeavesBatch(start, end, bw, secsize, prefixLen int) {
 	buf := h.bmt.buffer
 
 	if bw == 8 {
@@ -56,12 +55,7 @@ func (h *Hasher) hashLeavesBatch(start, end, bw, secsize, prefixLen int) {
 			for j := batch; j < 8; j++ {
 				inputs[j] = nil
 			}
-			var outputs [8]keccak.Hash256
-			if h.useSIMD {
-				outputs = keccak.Sum256x8(inputs)
-			} else {
-				outputs = keccak.Sum256x8Scalar(inputs)
-			}
+			outputs := keccak.Sum256x8(inputs)
 			for j := 0; j < batch; j++ {
 				leaf := h.bmt.levels[0][i+j]
 				if leaf.isLeft {
@@ -90,12 +84,7 @@ func (h *Hasher) hashLeavesBatch(start, end, bw, secsize, prefixLen int) {
 			for j := batch; j < 4; j++ {
 				inputs[j] = nil
 			}
-			var outputs [4]keccak.Hash256
-			if h.useSIMD {
-				outputs = keccak.Sum256x4(inputs)
-			} else {
-				outputs = keccak.Sum256x4Scalar(inputs)
-			}
+			outputs := keccak.Sum256x4(inputs)
 			for j := 0; j < batch; j++ {
 				leaf := h.bmt.levels[0][i+j]
 				if leaf.isLeft {
@@ -110,7 +99,7 @@ func (h *Hasher) hashLeavesBatch(start, end, bw, secsize, prefixLen int) {
 
 // hashNodesBatch hashes a level of internal nodes using SIMD batches.
 // Each node's left||right (64 bytes) is hashed to produce the input for its parent.
-func (h *Hasher) hashNodesBatch(nodes []*node, bw, prefixLen int) {
+func (h *simdHasher) hashNodesBatch(nodes []*simdNode, bw, prefixLen int) {
 	count := len(nodes)
 	segSize := h.segmentSize
 	concat := &h.bmt.concat
@@ -131,12 +120,7 @@ func (h *Hasher) hashNodesBatch(nodes []*node, bw, prefixLen int) {
 			for j := batch; j < 8; j++ {
 				inputs[j] = nil
 			}
-			var outputs [8]keccak.Hash256
-			if h.useSIMD {
-				outputs = keccak.Sum256x8(inputs)
-			} else {
-				outputs = keccak.Sum256x8Scalar(inputs)
-			}
+			outputs := keccak.Sum256x8(inputs)
 			for j := 0; j < batch; j++ {
 				n := nodes[i+j]
 				if n.isLeft {
@@ -162,12 +146,7 @@ func (h *Hasher) hashNodesBatch(nodes []*node, bw, prefixLen int) {
 			for j := batch; j < 4; j++ {
 				inputs[j] = nil
 			}
-			var outputs [4]keccak.Hash256
-			if h.useSIMD {
-				outputs = keccak.Sum256x4(inputs)
-			} else {
-				outputs = keccak.Sum256x4Scalar(inputs)
-			}
+			outputs := keccak.Sum256x4(inputs)
 			for j := 0; j < batch; j++ {
 				n := nodes[i+j]
 				if n.isLeft {

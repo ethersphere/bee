@@ -82,7 +82,7 @@ func TestSocMine(t *testing.T) {
 	}
 }
 
-func makeChunks(t *testing.T, signer crypto.Signer, sampleSize int, filterSOCAddr func(swarm.Address) bool, filterTrAddr func(swarm.Address) (bool, error), trHasherPool *bmt.Pool) error {
+func makeChunks(t *testing.T, signer crypto.Signer, sampleSize int, filterSOCAddr func(swarm.Address) bool, filterTrAddr func(swarm.Address) (bool, error), trHasherPool bmt.Pool) error {
 	t.Helper()
 
 	// set owner address from signer
