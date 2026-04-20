@@ -7,7 +7,7 @@
 package bmt
 
 // NewPool returns a BMT pool. On this platform only the goroutine implementation
-// is compiled in, so SIMDOptIn is ignored.
+// is compiled in, so SIMDOptIn() is ignored.
 func NewPool(c *Conf) Pool {
 	return newGoroutinePool(c)
 }

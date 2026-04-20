@@ -1,19 +1,42 @@
-// Copyright 2024 The Swarm Authors. All rights reserved.
+// Copyright 2026 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
 // Package keccak provides legacy Keccak-256 (Ethereum-compatible) hashing
 // with SIMD acceleration via XKCP.
 //
-// On amd64, the package automatically selects between AVX-512 (8-way parallel)
-// and AVX2 (4-way parallel) based on the CPU's capabilities.
+// Sum256x4 uses AVX2 (4-way parallel). Sum256x8 uses AVX-512 (8-way parallel).
+// The caller is responsible for dispatching to the correct function based on
+// CPU capabilities; Sum256x8 will crash on non-AVX-512 hardware.
+//
+// # Platform availability
+//
+// Sum256x4 and Sum256x8 are only compiled on linux/amd64 (with the !purego
+// build tag). On every other platform (darwin, windows, linux/arm64, or any
+// build configured with -tags=purego) the symbols do not exist; callers must
+// route around them using the HasSIMD / BatchWidth helpers below, which are
+// available on all platforms and return false / 0 where no SIMD hasher is
+// linked in.
+//
+// # Equal-length (or nil) input constraint
+//
+// All non-nil inputs passed to Sum256x4 / Sum256x8 in the same call MUST have
+// the same length. This is an intrinsic limit of the batched XKCP primitive:
+// KeccakP1600timesN_PermuteAll_24rounds advances the sponge state of every
+// lane in lockstep, so any lane that has already absorbed its final padding
+// block gets extra, unwanted permutations every time a longer lane absorbs
+// another block — silently corrupting its output.
+//
+// Nil (or zero-length) lanes are allowed for partial batches: they are
+// treated as no-op fillers so the caller can populate N_real < N lanes with
+// real data and ignore the remaining N - N_real output digests. The digests
+// produced for nil lanes are not meaningful and must not be consumed. Mixing
+// distinct non-zero lengths within one call is unsupported and will produce
+// wrong digests for the shorter lanes, even when every individual length
+// would work on its own in an all-same-length call.
 package keccak
 
-import (
-	"encoding/hex"
-
-	"golang.org/x/crypto/sha3"
-)
+import "encoding/hex"
 
 // Hash256 represents a 32-byte Keccak-256 hash
 type Hash256 [32]byte
@@ -32,7 +55,7 @@ func HasAVX512() bool {
 // HasSIMD reports whether any SIMD-accelerated Keccak path is available
 // (AVX2 or AVX-512).
 func HasSIMD() bool {
-	return hasAVX2
+	return hasAVX2 || hasAVX512
 }
 
 // BatchWidth returns the SIMD batch width: 8 for AVX-512, 4 for AVX2, or 0
@@ -45,40 +68,4 @@ func BatchWidth() int {
 		return 4
 	}
 	return 0
-}
-
-// Sum256 computes a single Keccak-256 hash (legacy, Ethereum-compatible).
-// Uses the best available implementation.
-func Sum256(data []byte) Hash256 {
-	var out Hash256
-	h := sha3.NewLegacyKeccak256()
-	h.Write(data)
-	copy(out[:], h.Sum(nil))
-	return out
-}
-
-// Sum256x4 computes 4 Keccak-256 hashes in parallel using AVX2.
-// Callers must check HasSIMD() first; invoking without AVX2 panics.
-func Sum256x4(inputs [4][]byte) [4]Hash256 {
-	if !hasAVX2 {
-		panic("keccak: Sum256x4 requires AVX2; call HasSIMD() first")
-	}
-	var outputs [4]Hash256
-	var inputsCopy [4][]byte
-	copy(inputsCopy[:], inputs[:])
-	keccak256x4(&inputsCopy, &outputs)
-	return outputs
-}
-
-// Sum256x8 computes 8 Keccak-256 hashes in parallel using AVX-512.
-// Callers must check HasAVX512() first; invoking without AVX-512 panics.
-func Sum256x8(inputs [8][]byte) [8]Hash256 {
-	if !hasAVX512 {
-		panic("keccak: Sum256x8 requires AVX-512; call HasAVX512() first")
-	}
-	var outputs [8]Hash256
-	var inputsCopy [8][]byte
-	copy(inputsCopy[:], inputs[:])
-	keccak256x8(&inputsCopy, &outputs)
-	return outputs
 }

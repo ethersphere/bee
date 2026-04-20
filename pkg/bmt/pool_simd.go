@@ -49,13 +49,8 @@ func newSIMDConf(prefix []byte, segmentCount, capacity int) *simdConf {
 		maxSize:      count * segmentSize,
 		depth:        depth,
 		prefix:       prefix,
+		batchWidth:   keccak.BatchWidth(),
 	}
-
-	bw := keccak.BatchWidth()
-	if bw == 0 {
-		bw = 8
-	}
-	c.batchWidth = bw
 
 	zerohashes := make([][]byte, depth+1)
 	zeros := make([]byte, segmentSize)

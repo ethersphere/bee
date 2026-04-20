@@ -12,6 +12,6 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	bmt.SIMDOptIn = true
+	bmt.SetSIMDOptIn(true)
 	goleak.VerifyTestMain(m)
 }

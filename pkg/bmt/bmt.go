@@ -7,6 +7,7 @@ package bmt
 import (
 	"encoding/binary"
 	"hash"
+	"sync/atomic"
 
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -16,9 +17,18 @@ var (
 	zerosection = make([]byte, 64)
 )
 
-// SIMDOptIn is default false, meaning it is disabled by default unless the user turns it on with the
-// necessary CLI flag on the supported systems.
-var SIMDOptIn = false
+// simdOptIn controls whether NewPool and friends return a SIMD-backed BMT pool.
+// Default is false; cmd/bee flips it on startup after parsing --use-simd-hashing.
+// Accessed via SIMDOptIn / SetSIMDOptIn so concurrent reads during startup are
+// race-free.
+var simdOptIn atomic.Bool
+
+// SIMDOptIn reports whether the SIMD hasher has been opted into.
+func SIMDOptIn() bool { return simdOptIn.Load() }
+
+// SetSIMDOptIn sets the SIMD opt-in flag. Intended to be called once during
+// startup before the first NewPool call (cmd/bee calls it after flag parsing).
+func SetSIMDOptIn(b bool) { simdOptIn.Store(b) }
 
 // LengthToSpan creates a binary data span size representation.
 // It is required for calculating the BMT hash.

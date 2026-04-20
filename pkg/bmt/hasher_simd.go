@@ -89,10 +89,8 @@ func (h *simdHasher) Hash(b []byte) ([]byte, error) {
 	}
 	// zero-fill the tail of the buffer: every leaf section must carry
 	// deterministic bytes, because SIMD batches hash whole sections at a time
-	// without a "is this section occupied?" check.
-	for i := h.size; i < h.maxSize; i++ {
-		h.bmt.buffer[i] = 0
-	}
+	// without a "is this section occupied?" check. clear() lowers to memclr.
+	clear(h.bmt.buffer[h.size:])
 	// degenerate single-level tree: the whole buffer is already one section,
 	// so there is nothing for SIMD to batch — just run the scalar hasher.
 	if len(h.bmt.levels) == 1 {
@@ -111,6 +109,10 @@ func (h *simdHasher) Hash(b []byte) ([]byte, error) {
 		return nil, err
 	}
 	// prepend the span and hash once more to produce the chunk address.
+	// When a prefix is configured, baseHasher() returns a PrefixHasher whose
+	// Reset re-absorbs the prefix, so the final digest is
+	// keccak(prefix || span || rootHash) — the same wrap-per-level rule used
+	// by hashSIMD at every internal level.
 	return doHash(h.baseHasher(), h.span, rootHash)
 }
 
@@ -120,7 +122,10 @@ func (h *simdHasher) HashPadded(b []byte) ([]byte, error) {
 	return h.Hash(b)
 }
 
-// Reset prepares the Hasher for reuse.
+// Reset prepares the Hasher for reuse. The internal data buffer is not zeroed;
+// any stale bytes past h.size are overwritten on the next Write and zero-filled
+// on demand by Hash, so post-Reset inspection of the buffer may still see
+// previous-chunk contents.
 func (h *simdHasher) Reset() {
 	h.size = 0
 	copy(h.span, zerospan)

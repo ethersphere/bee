@@ -27,15 +27,15 @@ func BenchmarkBMT(b *testing.B) {
 			benchmarkRefHasher(b, size)
 		})
 		b.Run(fmt.Sprintf("%v_size_%v", "BMT_Goroutine", size), func(b *testing.B) {
-			prev := bmt.SIMDOptIn
-			bmt.SIMDOptIn = false
-			defer func() { bmt.SIMDOptIn = prev }()
+			prev := bmt.SIMDOptIn()
+			bmt.SetSIMDOptIn(false)
+			defer bmt.SetSIMDOptIn(prev)
 			benchmarkBMT(b, size)
 		})
 		b.Run(fmt.Sprintf("%v_size_%v", "BMT_SIMD", size), func(b *testing.B) {
-			prev := bmt.SIMDOptIn
-			bmt.SIMDOptIn = true
-			defer func() { bmt.SIMDOptIn = prev }()
+			prev := bmt.SIMDOptIn()
+			bmt.SetSIMDOptIn(true)
+			defer bmt.SetSIMDOptIn(prev)
 			benchmarkBMT(b, size)
 		})
 	}

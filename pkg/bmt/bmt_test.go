@@ -272,39 +272,59 @@ func testHasherCorrectness(h bmt.Hasher, data []byte, n, count int) (err error) 
 }
 
 // TestGoroutineSIMDParity verifies that the goroutine and SIMD pools produce
-// identical root hashes for the same input, across a spread of write lengths.
-// The SIMD sub-test is a no-op on platforms where the dispatcher falls back to
-// the goroutine pool (non-linux/amd64 or CPU without AVX2).
+// identical root hashes for the same input across every segment count in
+// testSegmentCounts and a spread of write lengths. Iterating over the full
+// segment-count table exercises the degenerate 1-level and shallow-tree branches
+// of simdHasher.Hash that a fixed 128-segment test would miss.
+//
+// On platforms where the dispatcher falls back to the goroutine pool
+// (non-linux/amd64 or CPU without AVX2/AVX-512), both pools end up as goroutine
+// pools and the test degrades to a goroutine-vs-goroutine comparison.
+//
+// Sub-tests are intentionally not run in parallel: the SIMDOptIn flip is global
+// state and concurrent NewPool calls would see flapping values.
 func TestGoroutineSIMDParity(t *testing.T) {
 	testData := testutil.RandBytesWithSeed(t, 4096, seed)
-	lengths := []int{1, 31, 32, 33, 64, 128, 500, 1024, 2048, 4095, 4096}
 
-	prev := bmt.SIMDOptIn
-	defer func() { bmt.SIMDOptIn = prev }()
+	prev := bmt.SIMDOptIn()
+	defer bmt.SetSIMDOptIn(prev)
 
-	bmt.SIMDOptIn = false
-	gPool := bmt.NewPool(bmt.NewConf(testSegmentCount, 1))
-	bmt.SIMDOptIn = true
-	sPool := bmt.NewPool(bmt.NewConf(testSegmentCount, 1))
+	// Representative write lengths; clamped per segment count below. 0 covers the
+	// empty-input path, and the neighbourhood of section boundaries (31/32/33,
+	// 63/64/65) tickles the padding/fall-through in Hash.
+	lengths := []int{0, 1, 31, 32, 33, 63, 64, 65, 128, 500, 1024, 2048, 4095, 4096}
 
-	for _, n := range lengths {
-		t.Run(fmt.Sprintf("len_%d", n), func(t *testing.T) {
-			gh := gPool.Get()
-			gHash, err := syncHash(gh, testData[:n])
-			gPool.Put(gh)
-			if err != nil {
-				t.Fatal(err)
-			}
+	for _, count := range testSegmentCounts {
+		t.Run(fmt.Sprintf("segments_%d", count), func(t *testing.T) {
+			bmt.SetSIMDOptIn(false)
+			gPool := bmt.NewPool(bmt.NewConf(count, 1))
+			bmt.SetSIMDOptIn(true)
+			sPool := bmt.NewPool(bmt.NewConf(count, 1))
 
-			sh := sPool.Get()
-			sHash, err := syncHash(sh, testData[:n])
-			sPool.Put(sh)
-			if err != nil {
-				t.Fatal(err)
-			}
+			maxLen := count * hashSize
+			for _, n := range lengths {
+				if n > maxLen {
+					continue
+				}
+				t.Run(fmt.Sprintf("len_%d", n), func(t *testing.T) {
+					gh := gPool.Get()
+					gHash, err := syncHash(gh, testData[:n])
+					gPool.Put(gh)
+					if err != nil {
+						t.Fatal(err)
+					}
 
-			if !bytes.Equal(gHash, sHash) {
-				t.Fatalf("goroutine/simd mismatch at len=%d\n  goroutine: %x\n  simd:      %x", n, gHash, sHash)
+					sh := sPool.Get()
+					sHash, err := syncHash(sh, testData[:n])
+					sPool.Put(sh)
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					if !bytes.Equal(gHash, sHash) {
+						t.Fatalf("goroutine/simd mismatch at count=%d len=%d\n  goroutine: %x\n  simd:      %x", count, n, gHash, sHash)
+					}
+				})
 			}
 		})
 	}

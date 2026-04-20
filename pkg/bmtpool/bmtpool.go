@@ -16,7 +16,7 @@ import (
 const Capacity = 32
 
 // instance holds the active bmt.Pool. Using an atomic pointer so Rebuild can
-// swap it in after cmd/bee sets bmt.SIMDOptIn during startup, without
+// swap it in after cmd/bee calls bmt.SetSIMDOptIn during startup, without
 // introducing lock contention on the hot Get/Put path.
 var instance atomic.Pointer[bmt.Pool]
 
@@ -27,15 +27,17 @@ func init() {
 	// synctest would otherwise trip "receive on synctest channel from outside
 	// bubble" if the pool were first created inside a bubble.
 	//
-	// SIMDOptIn is still false here (flag hasn't been parsed). cmd/bee calls
-	// Rebuild after flag parsing if the user opted in.
+	// bmt.SIMDOptIn() is still false here (flag hasn't been parsed). cmd/bee
+	// calls Rebuild after flag parsing if the user opted in.
 	p := bmt.NewPool(bmt.NewConf(swarm.BmtBranches, Capacity))
 	instance.Store(&p)
 }
 
 // Rebuild discards the current pool and constructs a new one reading the
-// latest bmt.SIMDOptIn value. Intended to be called once during startup after
-// CLI flag parsing so that --use-simd-hashing takes effect.
+// latest bmt.SIMDOptIn() value. Must be called exactly once during startup
+// after CLI flag parsing and before the first external Get, so that
+// --use-simd-hashing takes effect and no in-flight hashers are referencing the
+// old pool's tree.
 func Rebuild() {
 	p := bmt.NewPool(bmt.NewConf(swarm.BmtBranches, Capacity))
 	instance.Store(&p)
