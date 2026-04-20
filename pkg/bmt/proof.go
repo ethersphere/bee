@@ -25,5 +25,5 @@ type Proof struct {
 // Hash computes the BMT root with zero-padding, so the proof tree is fully populated.
 // It shadows the embedded Hasher.Hash to preserve the existing Prover API.
 func (p Prover) Hash(b []byte) ([]byte, error) {
-	return p.Hasher.HashPadded(b)
+	return p.HashPadded(b)
 }
