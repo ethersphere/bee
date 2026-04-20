@@ -207,30 +207,38 @@ func (h *goroutineHasher) processSection(i int, final bool) {
 	}
 	// write hash into parent node
 	if final {
+		// for the last segment use writeFinalNode
 		h.writeFinalNode(level, n, isLeft, section)
 	} else {
 		h.writeNode(n, isLeft, section)
 	}
 }
 
-// writeNode pushes data up the tree. The second of two sibling writes hashes left|right
-// and recurses to the parent; the first terminates. A single hasher is reused from that point
-// up since the path is synchronous from there.
+// writeNode pushes the data to the node.
+// if it is the first of 2 sisters written, the routine terminates.
+// if it is the second, it calculates the hash and writes it
+// to the parent node recursively.
+// since hashing the parent is synchronous the same hasher can be used.
 func (h *goroutineHasher) writeNode(n *goroutineNode, isLeft bool, s []byte) {
 	var err error
 	for {
+		// at the root of the bmt just write the result to the result channel
 		if n == nil {
 			h.result <- s
 			return
 		}
+		// otherwise assign child hash to left or right segment
 		if isLeft {
 			n.left = s
 		} else {
 			n.right = s
 		}
+		// the child-thread first arriving will terminate
 		if n.toggle() {
 			return
 		}
+		// the thread coming second now can be sure both left and right children are written
+		// so it calculates the hash of left|right and pushes it to the parent
 		s, err = doHash(n.hasher, n.left, n.right)
 		if err != nil {
 			select {
@@ -244,12 +252,15 @@ func (h *goroutineHasher) writeNode(n *goroutineNode, isLeft bool, s []byte) {
 	}
 }
 
-// writeFinalNode follows the path from the final data segment to the BMT root.
-// For unbalanced trees it fills the missing right-sister nodes from the pool's
-// zerohashes lookup table. Otherwise behaves like writeNode.
+// writeFinalNode is following the path starting from the final datasegment to the
+// BMT root via parents.
+// For unbalanced trees it fills in the missing right sister nodes using
+// the pool's lookup table for BMT subtree root hashes for all-zero sections.
+// Otherwise behaves like `writeNode`.
 func (h *goroutineHasher) writeFinalNode(level int, n *goroutineNode, isLeft bool, s []byte) {
 	var err error
 	for {
+		// at the root of the bmt just write the result to the result channel
 		if n == nil {
 			if s != nil {
 				h.result <- s
@@ -258,21 +269,36 @@ func (h *goroutineHasher) writeFinalNode(level int, n *goroutineNode, isLeft boo
 		}
 		var noHash bool
 		if isLeft {
+			// coming from left sister branch
+			// when the final section's path is going via left child node
+			// we include an all-zero subtree hash for the right level and toggle the node.
 			n.right = h.zerohashes[level]
 			if s != nil {
 				n.left = s
+				// if a left final node carries a hash, it must be the first (and only thread)
+				// so the toggle is already in passive state no need no call
+				// yet thread needs to carry on pushing hash to parent
 				noHash = false
 			} else {
+				// if again first thread then propagate nil and calculate no hash
 				noHash = n.toggle()
 			}
 		} else {
+			// right sister branch
 			if s != nil {
+				// if hash was pushed from right child node, write right segment change state
 				n.right = s
+				// if toggle is true, we arrived first so no hashing just push nil to parent
 				noHash = n.toggle()
 			} else {
+				// if s is nil, then thread arrived first at previous node and here there will be two,
+				// so no need to do anything and keep s = nil for parent
 				noHash = true
 			}
 		}
+		// the child-thread first arriving will just continue resetting s to nil
+		// the second thread now can be sure both left and right children are written
+		// it calculates the hash of left|right and pushes it to the parent
 		if noHash {
 			s = nil
 		} else {
@@ -285,6 +311,7 @@ func (h *goroutineHasher) writeFinalNode(level int, n *goroutineNode, isLeft boo
 				return
 			}
 		}
+		// iterate to parent
 		isLeft = n.isLeft
 		n = n.parent
 		level++
