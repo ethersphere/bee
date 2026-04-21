@@ -364,9 +364,7 @@ func (s *Service) mountAPI() {
 		),
 	})
 
-	handle("/pubsub/{topic}", web.ChainHandlers(
-		web.FinalHandlerFunc(s.pubsubWsHandler),
-	))
+	handle("/pubsub/{topic}", http.HandlerFunc(s.pubsubWsHandler))
 
 	handle("/pubsub/", web.ChainHandlers(
 		web.FinalHandler(jsonhttp.MethodHandler{
