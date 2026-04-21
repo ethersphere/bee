@@ -30,41 +30,48 @@ func ListeningWs(ctx context.Context, conn *websocket.Conn, options WsOptions, l
 		readDeadline  = options.PingPeriod + time.Second
 	)
 
+	logger.Info("pubsub ws: starting", "topic", fmt.Sprintf("%x", sc.TopicAddr), "isPublisher", isPublisher, "pingPeriod", options.PingPeriod)
+
 	conn.SetCloseHandler(func(code int, text string) error {
 		logger.Info("pubsub ws: client gone", "topic", fmt.Sprintf("%x", sc.TopicAddr), "code", code, "message", text)
 		return nil
 	})
 
-	// If Publisher, read from WebSocket and write to p2p stream (send to Broker).
-	if isPublisher {
-		go func() {
-			for {
-				if err := conn.SetReadDeadline(time.Now().Add(readDeadline)); err != nil {
-					logger.Info("pubsub ws: set read deadline failed", "error", err)
-					break
+	// A read loop is always required so gorilla can process pong responses
+	// and close frames from the client.
+	go func() {
+		for {
+			if err := conn.SetReadDeadline(time.Now().Add(readDeadline)); err != nil {
+				logger.Info("pubsub ws: set read deadline failed", "error", err)
+				break
+			}
+			msgType, p, err := conn.ReadMessage()
+			if err != nil {
+				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
+					logger.Info("pubsub ws: read error", "error", err)
+				} else {
+					logger.Info("pubsub ws: read loop ended", "error", err)
 				}
-				_, p, err := conn.ReadMessage()
-				if err != nil {
-					if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
-						logger.Info("pubsub ws: read error", "error", err)
-					}
-					break
-				}
+				break
+			}
 
+			if isPublisher {
+				logger.Info("pubsub ws: publisher message from ws", "type", msgType, "size", len(p))
 				if err := writeRaw(sc.Stream, p); err != nil {
 					logger.Info("pubsub ws: write to p2p stream failed", "error", err)
 					break
 				}
 			}
-			options.Cancel()
-		}()
-	}
+		}
+		options.Cancel()
+	}()
 
 	// Read from p2p stream (Broker messages) and forward to WebSocket.
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
+				logger.Info("pubsub ws: p2p reader context done")
 				return
 			default:
 			}
@@ -78,6 +85,7 @@ func ListeningWs(ctx context.Context, conn *websocket.Conn, options WsOptions, l
 				return
 			}
 
+			logger.Info("pubsub ws: forwarding broker message to ws", "size", len(wsPayload))
 			if err := conn.WriteMessage(websocket.BinaryMessage, wsPayload); err != nil {
 				logger.Info("pubsub ws: write to ws failed", "error", err)
 				options.Cancel()
@@ -89,6 +97,7 @@ func ListeningWs(ctx context.Context, conn *websocket.Conn, options WsOptions, l
 	defer func() {
 		ticker.Stop()
 		_ = conn.Close()
+		logger.Info("pubsub ws: closed", "topic", fmt.Sprintf("%x", sc.TopicAddr))
 	}()
 
 	for {
@@ -98,10 +107,12 @@ func ListeningWs(ctx context.Context, conn *websocket.Conn, options WsOptions, l
 		}
 		select {
 		case <-ctx.Done():
+			logger.Info("pubsub ws: context cancelled, closing")
 			_ = conn.WriteMessage(websocket.CloseMessage, []byte{})
 			return
 		case <-ticker.C:
 			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				logger.Info("pubsub ws: ping failed, closing", "error", err)
 				return
 			}
 		}
