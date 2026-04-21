@@ -146,10 +146,12 @@ func (s *Service) Connect(ctx context.Context, underlay ma.Multiaddr, topicAddr 
 		return nil, err
 	}
 
+	fmt.Println("Elso1")
 	bzzAddr, err := s.p2p.Connect(ctx, []ma.Multiaddr{underlay})
 	if err != nil && !errors.Is(err, p2p.ErrAlreadyConnected) {
 		return nil, fmt.Errorf("connect to peer: %w", err)
 	}
+	fmt.Println("Elso2")
 
 	stream, err := m.Connect(ctx, s.p2p, bzzAddr.Overlay, opts)
 	if err != nil {
@@ -216,6 +218,7 @@ func (s *Service) Topics() []TopicInfo {
 
 // brokerHandler handles incoming streams on the broker side.
 func (s *Service) brokerHandler(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
+	fmt.Println("Broker handler ")
 	if !s.brokerMode {
 		_ = stream.Reset()
 		return ErrBrokerDisabled
@@ -243,6 +246,7 @@ func (s *Service) brokerHandler(ctx context.Context, peer p2p.Peer, stream p2p.S
 	}
 
 	rwBytes := headers[HeaderReadWrite]
+	fmt.Println("rwBytes header1")
 	if len(rwBytes) != 1 {
 		_ = stream.Reset()
 		return ErrWrongHeaders
@@ -250,6 +254,7 @@ func (s *Service) brokerHandler(ctx context.Context, peer p2p.Peer, stream p2p.S
 	if rwBytes[0] == 1 {
 		return s.handlePublisher(ctx, peer, stream, bc, headers)
 	}
+	fmt.Println("rwBytes header2")
 	return s.handleSubscriber(ctx, peer, stream, bc)
 }
 
