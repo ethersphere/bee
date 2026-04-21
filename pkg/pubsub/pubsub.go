@@ -344,11 +344,13 @@ func (s *Service) handlePublisher(ctx context.Context, peer p2p.Peer, stream p2p
 		rawMsg, err := bc.mode.ReadPublisherMessage(stream)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
+				s.logger.Info("publisher stream EOF", "peer", peer.Address)
 				return nil
 			}
 			return fmt.Errorf("read publisher message: %w", err)
 		}
 
+		s.logger.Info("publisher message received", "peer", peer.Address, "size", len(rawMsg))
 		s.broadcastToSubscribers(bc, rawMsg)
 	}
 }
@@ -358,11 +360,13 @@ func (s *Service) broadcastToSubscribers(bc *brokerConn, rawMsg []byte) {
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
 
+	s.logger.Info("broadcasting to subscribers", "count", len(bc.subscribers), "size", len(rawMsg))
 	for _, sub := range bc.subscribers {
 		msg := bc.mode.FormatBroadcast(bc, sub, rawMsg)
 
 		select {
 		case sub.outCh <- msg:
+			s.logger.Info("message enqueued for subscriber", "peer", sub.overlay, "size", len(msg))
 		default:
 			s.logger.Warning("subscriber message queue full, dropping message", "peer", sub.overlay)
 		}
