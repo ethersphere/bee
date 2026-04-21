@@ -118,9 +118,16 @@ func (rr *responseRecorder) CloseNotify() <-chan bool {
 	return rr.ResponseWriter.(http.CloseNotifier).CloseNotify()
 }
 
-// Hijack implements http.Hijacker.
+// Hijack implements http.Hijacker so that WebSocket upgrades pass through
+// correctly. Without this, the underlying connection is hijacked by the
+// upgrader but the recorder still holds a reference to the (now-hijacked)
+// ResponseWriter, causing "response.Write on hijacked connection" errors.
 func (rr *responseRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	return rr.ResponseWriter.(http.Hijacker).Hijack()
+	h, ok := rr.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, http.ErrNotSupported
+	}
+	return h.Hijack()
 }
 
 // Flush implements http.Flusher.
