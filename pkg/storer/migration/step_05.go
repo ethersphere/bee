@@ -17,7 +17,6 @@ import (
 // step_05 is a migration step that removes all upload items from the store.
 func step_05(st transaction.Storage, logger log.Logger) func() error {
 	return func() error {
-
 		logger := logger.WithName("migration-step-05").Register()
 
 		logger.Info("start removing upload items")
@@ -53,5 +52,4 @@ func step_05(st transaction.Storage, logger log.Logger) func() error {
 		logger.Info("finished removing upload items")
 		return <-errC
 	}
-
 }

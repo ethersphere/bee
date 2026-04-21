@@ -31,8 +31,10 @@ const (
 	subscriptionTopic int = 0
 )
 
-var _ Subscriber = (*Detector)(nil)
-var _ io.Closer = (*Detector)(nil)
+var (
+	_ Subscriber = (*Detector)(nil)
+	_ io.Closer  = (*Detector)(nil)
+)
 
 // Subscriber defines the interface for stabilization subscription.
 type Subscriber interface {

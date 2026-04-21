@@ -387,5 +387,4 @@ func TestMonitorWatchTransaction(t *testing.T) {
 			t.Fatal("timed out")
 		}
 	})
-
 }

@@ -31,6 +31,7 @@ type mockSnapshotGetter struct {
 func newMockSnapshotGetter(data []byte) mockSnapshotGetter {
 	return mockSnapshotGetter{data}
 }
+
 func (m mockSnapshotGetter) GetBatchSnapshot() []byte {
 	return m.data
 }

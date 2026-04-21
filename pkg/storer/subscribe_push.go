@@ -24,7 +24,6 @@ func (db *DB) SubscribePush(ctx context.Context) (<-chan swarm.Chunk, func()) {
 	)
 
 	db.subscriptionsWG.Go(func() {
-
 		trigger, unsub := db.events.Subscribe(subscribePushEventKey)
 		defer unsub()
 
@@ -47,7 +46,6 @@ func (db *DB) SubscribePush(ctx context.Context) (<-chan swarm.Chunk, func()) {
 					return true, ctx.Err()
 				}
 			})
-
 			if err != nil {
 				// if we get storage.ErrNotFound, it could happen that the previous
 				// iteration happened on a snapshot that was not fully updated yet.

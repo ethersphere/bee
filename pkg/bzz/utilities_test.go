@@ -45,6 +45,7 @@ func Test_ContainsAddress(t *testing.T) {
 		}
 	}
 }
+
 func makeAddreses(t *testing.T, count int) []bzz.Address {
 	t.Helper()
 

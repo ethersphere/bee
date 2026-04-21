@@ -430,9 +430,7 @@ func BenchmarkReserveSample1k(b *testing.B) {
 		anchor       = swarm.RandAddressAt(b, baseAddr, int(radius)).Bytes()
 	)
 
-	b.ResetTimer()
-
-	for range b.N {
+	for b.Loop() {
 		_, err := st.ReserveSample(context.TODO(), anchor, radius, timeVar, nil)
 		if err != nil {
 			b.Fatal(err)

@@ -48,7 +48,6 @@ func (b *BatchRadiusItemV1) Clone() storage.Item {
 const batchRadiusItemSizeV1 = 1 + swarm.HashSize + swarm.HashSize + 8
 
 func (b *BatchRadiusItemV1) Marshal() ([]byte, error) {
-
 	if b.Address.IsZero() {
 		return nil, errMarshalInvalidAddress
 	}
@@ -72,7 +71,6 @@ func (b *BatchRadiusItemV1) Marshal() ([]byte, error) {
 }
 
 func (b *BatchRadiusItemV1) Unmarshal(buf []byte) error {
-
 	if len(buf) != batchRadiusItemSizeV1 {
 		return errUnmarshalInvalidSize
 	}
@@ -130,7 +128,6 @@ func (c *ChunkBinItemV1) Clone() storage.Item {
 const chunkBinItemSizeV1 = 1 + 8 + swarm.HashSize + swarm.HashSize + 1
 
 func (c *ChunkBinItemV1) Marshal() ([]byte, error) {
-
 	if c.Address.IsZero() {
 		return nil, errMarshalInvalidAddress
 	}
@@ -156,7 +153,6 @@ func (c *ChunkBinItemV1) Marshal() ([]byte, error) {
 }
 
 func (c *ChunkBinItemV1) Unmarshal(buf []byte) error {
-
 	if len(buf) != chunkBinItemSizeV1 {
 		return errUnmarshalInvalidSize
 	}

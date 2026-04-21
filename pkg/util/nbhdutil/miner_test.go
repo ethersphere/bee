@@ -50,7 +50,6 @@ func TestMiner(t *testing.T) {
 }
 
 func bitStr(src []byte, bits int) string {
-
 	ret := ""
 
 	for _, b := range src {
