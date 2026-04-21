@@ -44,7 +44,15 @@ func (s *Service) Mount() {
 
 	s.Handler = web.ChainHandlers(
 		httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "api access"),
-		handlers.CompressHandler,
+		func(h http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+					h.ServeHTTP(w, r)
+					return
+				}
+				handlers.CompressHandler(h).ServeHTTP(w, r)
+			})
+		},
 		s.corsHandler,
 		web.NoCacheHeadersHandler,
 		web.FinalHandler(router),
@@ -74,6 +82,16 @@ func (s *Service) EnableFullAPI() {
 		}
 
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Skip compression for WebSocket upgrade requests.
+			// CompressHandler wraps the ResponseWriter with a gzip writer; when
+			// the WebSocket upgrader hijacks the connection and the handler returns,
+			// the gzip writer tries to flush/close and writes to the hijacked
+			// connection, causing "response.Write on hijacked connection" errors.
+			if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+				h.ServeHTTP(w, r)
+				return
+			}
+
 			// Skip compression for GET requests on download endpoints.
 			// This is done in order to preserve Content-Length header in response,
 			// because CompressHandler is always removing it.
