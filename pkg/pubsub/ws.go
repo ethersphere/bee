@@ -38,6 +38,14 @@ func ListeningWs(ctx context.Context, conn *websocket.Conn, options WsOptions, l
 		return nil
 	})
 
+	// Reset read deadline on every pong so idle subscribers don't time out.
+	conn.SetPongHandler(func(appData string) error {
+		if err := conn.SetReadDeadline(time.Now().Add(readDeadline)); err != nil {
+			return err
+		}
+		return conn.SetWriteDeadline(time.Now().Add(writeDeadline))
+	})
+
 	// A read loop is always required so gorilla can process pong responses
 	// and close frames from the client.
 	go func() {
