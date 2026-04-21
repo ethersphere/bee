@@ -155,6 +155,7 @@ func (s *Service) Connect(ctx context.Context, underlay ma.Multiaddr, topicAddr 
 
 	stream, err := m.Connect(ctx, s.p2p, bzzAddr.Overlay, opts)
 	if err != nil {
+		s.logger.Error(err,"bagoy open stream")
 		return nil, fmt.Errorf("open stream: %w", err)
 	}
 
