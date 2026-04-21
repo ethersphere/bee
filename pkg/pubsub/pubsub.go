@@ -155,7 +155,7 @@ func (s *Service) Connect(ctx context.Context, underlay ma.Multiaddr, topicAddr 
 
 	stream, err := m.Connect(ctx, s.p2p, bzzAddr.Overlay, opts)
 	if err != nil {
-		s.logger.Error(err,"bagoy open stream")
+		s.logger.Error(err, "bagoy open stream")
 		return nil, fmt.Errorf("open stream: %w", err)
 	}
 
@@ -346,9 +346,9 @@ func (s *Service) handlePublisher(ctx context.Context, peer p2p.Peer, stream p2p
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				s.logger.Info("publisher stream EOF", "peer", peer.Address)
-				return nil
+			} else {
+				return fmt.Errorf("read publisher message: %w", err)
 			}
-			return fmt.Errorf("read publisher message: %w", err)
 		}
 
 		s.logger.Info("publisher message received", "peer", peer.Address, "size", len(rawMsg))
