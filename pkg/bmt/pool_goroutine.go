@@ -106,6 +106,45 @@ func (p *goroutinePool) Put(h Hasher) {
 	p.c <- gh.bmt
 }
 
+// goroutineProverPool is a pool of goroutine-backed Provers. Trees are reused
+// via a channel; the hasher shell is reallocated per GetProver (cheap relative
+// to a tree).
+type goroutineProverPool struct {
+	c chan *goroutineTree
+	*goroutineConf
+}
+
+func newGoroutineProverPool(c *Conf) *goroutineProverPool {
+	gc := newGoroutineConf(c.Prefix, c.SegmentCount, c.Capacity)
+	p := &goroutineProverPool{
+		goroutineConf: gc,
+		c:             make(chan *goroutineTree, gc.capacity),
+	}
+	for i := 0; i < gc.capacity; i++ {
+		p.c <- newGoroutineTree(gc.maxSize, gc.depth, gc.hasherFunc)
+	}
+	return p
+}
+
+// GetProver returns a goroutine-backed Prover, reusing a tree from the pool.
+func (p *goroutineProverPool) GetProver() *Prover {
+	t := <-p.c
+	return &Prover{
+		goroutineHasher: &goroutineHasher{
+			goroutineConf: p.goroutineConf,
+			result:        make(chan []byte),
+			errc:          make(chan error, 1),
+			span:          make([]byte, SpanSize),
+			bmt:           t,
+		},
+	}
+}
+
+// PutProver returns a Prover's tree to the pool for reuse.
+func (p *goroutineProverPool) PutProver(pr *Prover) {
+	p.c <- pr.goroutineHasher.bmt
+}
+
 // goroutineTree is the tree structure used by the goroutine hasher.
 type goroutineTree struct {
 	leaves []*goroutineNode

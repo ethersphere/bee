@@ -108,17 +108,6 @@ func (h *goroutineHasher) Hash(b []byte) ([]byte, error) {
 	}
 }
 
-// HashPadded zero-pads any unwritten sections then computes the BMT root.
-// Required for inclusion-proof generation so the tree is fully populated.
-func (h *goroutineHasher) HashPadded(b []byte) ([]byte, error) {
-	for i := h.size; i < h.maxSize; i += len(zerosection) {
-		if _, err := h.Write(zerosection); err != nil {
-			return nil, err
-		}
-	}
-	return h.Hash(b)
-}
-
 // Reset prepares the Hasher for reuse.
 func (h *goroutineHasher) Reset() {
 	h.pos = 0

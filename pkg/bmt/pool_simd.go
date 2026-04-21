@@ -169,15 +169,3 @@ func newSIMDTree(maxsize, depth int, hashfunc func() hash.Hash, prefix []byte) *
 	}
 }
 
-// getSister returns a copy of the sibling section on the opposite side.
-func (n *simdNode) getSister(isLeft bool) []byte {
-	var src []byte
-	if isLeft {
-		src = n.right
-	} else {
-		src = n.left
-	}
-	buf := make([]byte, len(src))
-	copy(buf, src)
-	return buf
-}

@@ -20,6 +20,12 @@ const Capacity = 32
 // introducing lock contention on the hot Get/Put path.
 var instance atomic.Pointer[bmt.Pool]
 
+// proverInstance holds the Prover pool. Goroutine-backed by construction
+// (see bmt.NewProverPool) and intentionally not affected by Rebuild or the
+// SIMD opt-in flag: proofs run on a rare, redistribution-only code path where
+// the well-tested goroutine implementation is preferred.
+var proverInstance bmt.ProverPool
+
 // nolint:gochecknoinits
 func init() {
 	// Eager init: construct the pool at package load time so its internal
@@ -31,13 +37,14 @@ func init() {
 	// calls Rebuild after flag parsing if the user opted in.
 	p := bmt.NewPool(bmt.NewConf(swarm.BmtBranches, Capacity))
 	instance.Store(&p)
+	proverInstance = bmt.NewProverPool(bmt.NewConf(swarm.BmtBranches, Capacity))
 }
 
 // Rebuild discards the current pool and constructs a new one reading the
 // latest bmt.SIMDOptIn() value. Must be called exactly once during startup
 // after CLI flag parsing and before the first external Get, so that
 // --use-simd-hashing takes effect and no in-flight hashers are referencing the
-// old pool's tree.
+// old pool's tree. The Prover pool is intentionally not rebuilt.
 func Rebuild() {
 	p := bmt.NewPool(bmt.NewConf(swarm.BmtBranches, Capacity))
 	instance.Store(&p)
@@ -51,4 +58,14 @@ func Get() bmt.Hasher {
 // Put a bmt Hasher back into the pool.
 func Put(h bmt.Hasher) {
 	(*instance.Load()).Put(h)
+}
+
+// GetProver returns a goroutine-backed Prover from the global prover pool.
+func GetProver() *bmt.Prover {
+	return proverInstance.GetProver()
+}
+
+// PutProver returns a Prover to the global prover pool for reuse.
+func PutProver(p *bmt.Prover) {
+	proverInstance.PutProver(p)
 }

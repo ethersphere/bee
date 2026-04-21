@@ -46,18 +46,17 @@ func TestProofCorrectness(t *testing.T) {
 		}
 	}
 
-	pool := bmt.NewPool(bmt.NewConf(128, 128))
-	hh := pool.Get()
+	pool := bmt.NewProverPool(bmt.NewConf(128, 128))
+	pr := pool.GetProver()
 	t.Cleanup(func() {
-		pool.Put(hh)
+		pool.PutProver(pr)
 	})
-	hh.SetHeaderInt64(4096)
+	pr.SetHeaderInt64(4096)
 
-	_, err := hh.Write(testData)
+	_, err := pr.Write(testData)
 	if err != nil {
 		t.Fatal(err)
 	}
-	pr := bmt.Prover{hh}
 	rh, err := pr.Hash(nil)
 	if err != nil {
 		t.Fatal(err)
@@ -80,7 +79,7 @@ func TestProofCorrectness(t *testing.T) {
 
 		verifySegments(t, expSegmentStrings, proof.ProofSegments)
 
-		if !bytes.Equal(proof.ProveSegment, testDataPadded[:hh.Size()]) {
+		if !bytes.Equal(proof.ProveSegment, testDataPadded[:pr.Size()]) {
 			t.Fatal("section incorrect")
 		}
 
@@ -106,7 +105,7 @@ func TestProofCorrectness(t *testing.T) {
 
 		verifySegments(t, expSegmentStrings, proof.ProofSegments)
 
-		if !bytes.Equal(proof.ProveSegment, testDataPadded[127*hh.Size():]) {
+		if !bytes.Equal(proof.ProveSegment, testDataPadded[127*pr.Size():]) {
 			t.Fatal("section incorrect")
 		}
 
@@ -132,7 +131,7 @@ func TestProofCorrectness(t *testing.T) {
 
 		verifySegments(t, expSegmentStrings, proof.ProofSegments)
 
-		if !bytes.Equal(proof.ProveSegment, testDataPadded[64*hh.Size():65*hh.Size()]) {
+		if !bytes.Equal(proof.ProveSegment, testDataPadded[64*pr.Size():65*pr.Size()]) {
 			t.Fatal("section incorrect")
 		}
 
@@ -163,7 +162,7 @@ func TestProofCorrectness(t *testing.T) {
 			segments = append(segments, decoded)
 		}
 
-		segment := testDataPadded[64*hh.Size() : 65*hh.Size()]
+		segment := testDataPadded[64*pr.Size() : 65*pr.Size()]
 
 		rootHash, err := pr.Verify(64, bmt.Proof{
 			ProveSegment:  segment,
@@ -191,20 +190,19 @@ func TestProof(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	pool := bmt.NewPool(bmt.NewConf(128, 128))
-	hh := pool.Get()
+	pool := bmt.NewProverPool(bmt.NewConf(128, 128))
+	pr := pool.GetProver()
 	t.Cleanup(func() {
-		pool.Put(hh)
+		pool.PutProver(pr)
 	})
-	hh.SetHeaderInt64(4096)
+	pr.SetHeaderInt64(4096)
 
-	_, err = hh.Write(buf)
+	_, err = pr.Write(buf)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	rh, err := hh.Hash(nil)
-	pr := bmt.Prover{hh}
+	rh, err := pr.Hash(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,10 +213,10 @@ func TestProof(t *testing.T) {
 
 			proof := pr.Proof(i)
 
-			h := pool.Get()
-			defer pool.Put(h)
+			verifier := pool.GetProver()
+			defer pool.PutProver(verifier)
 
-			root, err := bmt.Prover{h}.Verify(i, proof)
+			root, err := verifier.Verify(i, proof)
 			if err != nil {
 				t.Fatal(err)
 			}

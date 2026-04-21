@@ -54,10 +54,10 @@ func makeInclusionProofs(
 		require2++
 	}
 
-	prefixHasherPool := bmt.NewPool(bmt.NewConfWithPrefix(anchor1, swarm.BmtBranches, 8))
+	prefixHasherPool := bmt.NewProverPool(bmt.NewConfWithPrefix(anchor1, swarm.BmtBranches, 8))
 
 	// Sample chunk proofs
-	rccontent := bmt.Prover{Hasher: bmtpool.Get()}
+	rccontent := bmtpool.GetProver()
 	rccontent.SetHeaderInt64(swarm.HashSize * storer.SampleSize * 2)
 	rsc, err := sampleChunk(reserveSampleItems)
 	if err != nil {
@@ -75,12 +75,12 @@ func makeInclusionProofs(
 	proof1p1 := rccontent.Proof(int(require1) * 2)
 	proof2p1 := rccontent.Proof(int(require2) * 2)
 	proofLastp1 := rccontent.Proof(require3 * 2)
-	bmtpool.Put(rccontent.Hasher)
+	bmtpool.PutProver(rccontent)
 
 	// Witness1 proofs
 	segmentIndex := int(new(big.Int).Mod(new(big.Int).SetBytes(anchor2), big.NewInt(int64(128))).Uint64())
 	// OG chunk proof
-	chunk1Content := bmt.Prover{Hasher: bmtpool.Get()}
+	chunk1Content := bmtpool.GetProver()
 	chunk1Offset := spanOffset(reserveSampleItems[require1])
 	chunk1Content.SetHeader(reserveSampleItems[require1].ChunkData[chunk1Offset : chunk1Offset+swarm.SpanSize])
 	chunk1ContentPayload := reserveSampleItems[require1].ChunkData[chunk1Offset+swarm.SpanSize:]
@@ -94,7 +94,7 @@ func makeInclusionProofs(
 	}
 	proof1p2 := chunk1Content.Proof(segmentIndex)
 	// TR chunk proof
-	chunk1TrContent := bmt.Prover{Hasher: prefixHasherPool.Get()}
+	chunk1TrContent := prefixHasherPool.GetProver()
 	chunk1TrContent.SetHeader(reserveSampleItems[require1].ChunkData[chunk1Offset : chunk1Offset+swarm.SpanSize])
 	_, err = chunk1TrContent.Write(chunk1ContentPayload)
 	if err != nil {
@@ -106,13 +106,13 @@ func makeInclusionProofs(
 	}
 	proof1p3 := chunk1TrContent.Proof(segmentIndex)
 	// cleanup
-	bmtpool.Put(chunk1Content.Hasher)
-	prefixHasherPool.Put(chunk1TrContent.Hasher)
+	bmtpool.PutProver(chunk1Content)
+	prefixHasherPool.PutProver(chunk1TrContent)
 
 	// Witness2 proofs
 	// OG Chunk proof
 	chunk2Offset := spanOffset(reserveSampleItems[require2])
-	chunk2Content := bmt.Prover{Hasher: bmtpool.Get()}
+	chunk2Content := bmtpool.GetProver()
 	chunk2ContentPayload := reserveSampleItems[require2].ChunkData[chunk2Offset+swarm.SpanSize:]
 	chunk2Content.SetHeader(reserveSampleItems[require2].ChunkData[chunk2Offset : chunk2Offset+swarm.SpanSize])
 	_, err = chunk2Content.Write(chunk2ContentPayload)
@@ -125,7 +125,7 @@ func makeInclusionProofs(
 	}
 	proof2p2 := chunk2Content.Proof(segmentIndex)
 	// TR Chunk proof
-	chunk2TrContent := bmt.Prover{Hasher: prefixHasherPool.Get()}
+	chunk2TrContent := prefixHasherPool.GetProver()
 	chunk2TrContent.SetHeader(reserveSampleItems[require2].ChunkData[chunk2Offset : chunk2Offset+swarm.SpanSize])
 	_, err = chunk2TrContent.Write(chunk2ContentPayload)
 	if err != nil {
@@ -137,13 +137,13 @@ func makeInclusionProofs(
 	}
 	proof2p3 := chunk2TrContent.Proof(segmentIndex)
 	// cleanup
-	bmtpool.Put(chunk2Content.Hasher)
-	prefixHasherPool.Put(chunk2TrContent.Hasher)
+	bmtpool.PutProver(chunk2Content)
+	prefixHasherPool.PutProver(chunk2TrContent)
 
 	// Witness3 proofs
 	// OG Chunk proof
 	chunkLastOffset := spanOffset(reserveSampleItems[require3])
-	chunkLastContent := bmt.Prover{Hasher: bmtpool.Get()}
+	chunkLastContent := bmtpool.GetProver()
 	chunkLastContent.SetHeader(reserveSampleItems[require3].ChunkData[chunkLastOffset : chunkLastOffset+swarm.SpanSize])
 	chunkLastContentPayload := reserveSampleItems[require3].ChunkData[chunkLastOffset+swarm.SpanSize:]
 	_, err = chunkLastContent.Write(chunkLastContentPayload)
@@ -156,7 +156,7 @@ func makeInclusionProofs(
 	}
 	proofLastp2 := chunkLastContent.Proof(segmentIndex)
 	// TR Chunk Proof
-	chunkLastTrContent := bmt.Prover{Hasher: prefixHasherPool.Get()}
+	chunkLastTrContent := prefixHasherPool.GetProver()
 	chunkLastTrContent.SetHeader(reserveSampleItems[require3].ChunkData[chunkLastOffset : chunkLastOffset+swarm.SpanSize])
 	_, err = chunkLastTrContent.Write(chunkLastContentPayload)
 	if err != nil {
@@ -168,8 +168,8 @@ func makeInclusionProofs(
 	}
 	proofLastp3 := chunkLastTrContent.Proof(segmentIndex)
 	// cleanup
-	bmtpool.Put(chunkLastContent.Hasher)
-	prefixHasherPool.Put(chunkLastTrContent.Hasher)
+	bmtpool.PutProver(chunkLastContent)
+	prefixHasherPool.PutProver(chunkLastTrContent)
 
 	// map to output and add SOC related data if it is necessary
 	A, err := redistribution.NewChunkInclusionProof(proof1p1, proof1p2, proof1p3, reserveSampleItems[require1])
