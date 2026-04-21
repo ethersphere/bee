@@ -5,6 +5,8 @@
 package cache
 
 import (
+	"io"
+
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/storageutil"
 	lru "github.com/hashicorp/golang-lru/v2"
@@ -98,5 +100,8 @@ func (c *Cache) Delete(i storage.Item) error {
 
 func (c *Cache) Close() error {
 	c.lru.Purge()
+	if closer, ok := c.IndexStore.(io.Closer); ok {
+		return closer.Close()
+	}
 	return nil
 }

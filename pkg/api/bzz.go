@@ -499,7 +499,7 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 	}
 
 	ctx := r.Context()
-	ls := loadsave.NewReadonly(s.storer.Download(cache), s.storer.Cache(), redundancy.DefaultLevel)
+	ls := loadsave.NewReadonly(s.storer.Download(cache), s.storer.Cache(), rLevel)
 	feedDereferenced := false
 
 	ctx, err := getter.SetConfigInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout, logger)

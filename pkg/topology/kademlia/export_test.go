@@ -21,6 +21,7 @@ const (
 	DefaultBitSuffixLength     = defaultBitSuffixLength
 	DefaultSaturationPeers     = defaultSaturationPeers
 	DefaultOverSaturationPeers = defaultOverSaturationPeers
+	MaxConnAttempts            = maxConnAttempts
 )
 
 type (
