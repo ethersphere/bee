@@ -219,7 +219,7 @@ func (s *Service) Topics() []TopicInfo {
 
 // brokerHandler handles incoming streams on the broker side.
 func (s *Service) brokerHandler(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
-	fmt.Println("Broker handler ")
+	s.logger.Debug("broker handler invoked", "peer", peer.Address)
 	if !s.brokerMode {
 		_ = stream.Reset()
 		return ErrBrokerDisabled
@@ -247,7 +247,7 @@ func (s *Service) brokerHandler(ctx context.Context, peer p2p.Peer, stream p2p.S
 	}
 
 	rwBytes := headers[HeaderReadWrite]
-	fmt.Println("rwBytes header1")
+	s.logger.Debug("reading rw header", "peer", peer.Address)
 	if len(rwBytes) != 1 {
 		_ = stream.Reset()
 		return ErrWrongHeaders
@@ -255,7 +255,7 @@ func (s *Service) brokerHandler(ctx context.Context, peer p2p.Peer, stream p2p.S
 	if rwBytes[0] == 1 {
 		return s.handlePublisher(ctx, peer, stream, bc, headers)
 	}
-	fmt.Println("rwBytes header2")
+	s.logger.Debug("handling as subscriber", "peer", peer.Address)
 	return s.handleSubscriber(ctx, peer, stream, bc)
 }
 
