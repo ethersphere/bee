@@ -92,12 +92,16 @@ type responseRecorder struct {
 	http.ResponseWriter
 
 	// Metrics.
-	status int
-	size   int
+	status   int
+	size     int
+	hijacked bool
 }
 
 // Write implements http.ResponseWriter.
 func (rr *responseRecorder) Write(b []byte) (int, error) {
+	if rr.hijacked {
+		return 0, http.ErrHijacked
+	}
 	size, err := rr.ResponseWriter.Write(b)
 	rr.size += size
 	return size, err
@@ -105,6 +109,9 @@ func (rr *responseRecorder) Write(b []byte) (int, error) {
 
 // WriteHeader implements http.ResponseWriter.
 func (rr *responseRecorder) WriteHeader(s int) {
+	if rr.hijacked {
+		return
+	}
 	rr.ResponseWriter.WriteHeader(s)
 	if rr.status == 0 {
 		rr.status = s
@@ -127,11 +134,18 @@ func (rr *responseRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	if !ok {
 		return nil, nil, http.ErrNotSupported
 	}
-	return h.Hijack()
+	conn, brw, err := h.Hijack()
+	if err == nil {
+		rr.hijacked = true
+	}
+	return conn, brw, err
 }
 
 // Flush implements http.Flusher.
 func (rr *responseRecorder) Flush() {
+	if rr.hijacked {
+		return
+	}
 	rr.ResponseWriter.(http.Flusher).Flush()
 }
 
