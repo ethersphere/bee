@@ -31,7 +31,7 @@ func ListeningWs(ctx context.Context, conn *websocket.Conn, options WsOptions, l
 	)
 
 	conn.SetCloseHandler(func(code int, text string) error {
-		logger.Debug("pubsub ws: client gone", "topic", fmt.Sprintf("%x", sc.TopicAddr), "code", code, "message", text)
+		logger.Info("pubsub ws: client gone", "topic", fmt.Sprintf("%x", sc.TopicAddr), "code", code, "message", text)
 		return nil
 	})
 
@@ -40,19 +40,19 @@ func ListeningWs(ctx context.Context, conn *websocket.Conn, options WsOptions, l
 		go func() {
 			for {
 				if err := conn.SetReadDeadline(time.Now().Add(readDeadline)); err != nil {
-					logger.Debug("pubsub ws: set read deadline failed", "error", err)
+					logger.Info("pubsub ws: set read deadline failed", "error", err)
 					break
 				}
 				_, p, err := conn.ReadMessage()
 				if err != nil {
 					if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
-						logger.Debug("pubsub ws: read error", "error", err)
+						logger.Info("pubsub ws: read error", "error", err)
 					}
 					break
 				}
 
 				if err := writeRaw(sc.Stream, p); err != nil {
-					logger.Debug("pubsub ws: write to p2p stream failed", "error", err)
+					logger.Info("pubsub ws: write to p2p stream failed", "error", err)
 					break
 				}
 			}
@@ -72,14 +72,14 @@ func ListeningWs(ctx context.Context, conn *websocket.Conn, options WsOptions, l
 			wsPayload, err := sc.Mode.ReadBrokerMessage(sc.Stream)
 			if err != nil {
 				if ctx.Err() == nil {
-					logger.Debug("pubsub ws: read broker message failed", "error", err)
+					logger.Info("pubsub ws: read broker message failed", "error", err)
 				}
 				options.Cancel()
 				return
 			}
 
 			if err := conn.WriteMessage(websocket.BinaryMessage, wsPayload); err != nil {
-				logger.Debug("pubsub ws: write to ws failed", "error", err)
+				logger.Info("pubsub ws: write to ws failed", "error", err)
 				options.Cancel()
 				return
 			}
@@ -93,7 +93,7 @@ func ListeningWs(ctx context.Context, conn *websocket.Conn, options WsOptions, l
 
 	for {
 		if err := conn.SetWriteDeadline(time.Now().Add(writeDeadline)); err != nil {
-			logger.Debug("pubsub ws: set write deadline failed", "error", err)
+			logger.Info("pubsub ws: set write deadline failed", "error", err)
 			return
 		}
 		select {

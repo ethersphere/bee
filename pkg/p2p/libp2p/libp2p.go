@@ -652,7 +652,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	if exists := s.peers.addIfNotExists(stream.Conn(), overlay, i.FullNode); exists {
 		s.logger.Debug("stream handler: peer already exists", "peer_address", overlay)
 		if err = handshakeStream.FullClose(); err != nil {
-			s.logger.Debug("stream handler: could not close stream", "peer_address", overlay, "error", err)
+			s.logger.Info("stream handler: could not close stream", "peer_address", overlay, "error", err)
 			s.logger.Error(nil, "stream handler: unable to handshake with peer", "peer_address", overlay)
 			_ = stream.Conn().Close()
 		}
@@ -660,7 +660,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	}
 
 	if err = handshakeStream.FullClose(); err != nil {
-		s.logger.Debug("stream handler: could not close stream", "peer_address", overlay, "error", err)
+		s.logger.Info("stream handler: could not close stream", "peer_address", overlay, "error", err)
 		s.logger.Error(nil, "stream handler: unable to handshake with peer", "peer_address", overlay)
 		_ = s.Disconnect(overlay, "could not fully close stream on handshake")
 		return
