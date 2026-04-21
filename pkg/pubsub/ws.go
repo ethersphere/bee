@@ -34,6 +34,7 @@ func ListeningWs(ctx context.Context, conn *websocket.Conn, options WsOptions, l
 
 	conn.SetCloseHandler(func(code int, text string) error {
 		logger.Info("pubsub ws: client gone", "topic", fmt.Sprintf("%x", sc.TopicAddr), "code", code, "message", text)
+		options.Cancel()
 		return nil
 	})
 
