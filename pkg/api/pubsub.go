@@ -112,15 +112,18 @@ func (s *Service) pubsubWsHandler(w http.ResponseWriter, r *http.Request) {
 		CheckOrigin:     s.checkOrigin,
 	}
 
+	logger.Info("upgrading to websocket")
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		cancel()
 		_ = subscriberConn.Stream.Close()
 		logger.Info("websocket upgrade failed", "error", err)
 		logger.Error(nil, "websocket upgrade failed")
-		jsonhttp.InternalServerError(w, "upgrade failed")
+		// NOTE: Upgrade() hijacks the connection before returning an error,
+		// so do NOT write an HTTP response here.
 		return
 	}
+	logger.Info("websocket upgrade successful")
 
 	pingPeriod := headers.KeepAlive * time.Second
 	if pingPeriod == 0 {
