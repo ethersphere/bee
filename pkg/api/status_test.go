@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/api"
-	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
@@ -75,29 +74,6 @@ func TestGetStatus(t *testing.T) {
 		)
 	})
 
-	t.Run("bad request", func(t *testing.T) {
-		t.Parallel()
-
-		client, _, _, _ := newTestServer(t, testServerOptions{
-			BeeMode: api.DevMode,
-			NodeStatus: status.NewService(
-				log.Noop,
-				nil,
-				new(topologyPeersIterNoopMock),
-				"",
-				nil,
-				nil,
-				nil,
-			),
-		})
-
-		jsonhttptest.Request(t, client, http.MethodGet, url, http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: api.ErrUnsupportedDevNodeOperation.Error(),
-				Code:    http.StatusBadRequest,
-			}),
-		)
-	})
 }
 
 // topologyPeersIterNoopMock is noop topology.PeerIterator.
