@@ -146,12 +146,12 @@ func (s *Service) Connect(ctx context.Context, underlay ma.Multiaddr, topicAddr 
 		return nil, err
 	}
 
-	fmt.Println("Elso1")
+	s.logger.Info("connecting to broker peer", "underlay", underlay)
 	bzzAddr, err := s.p2p.Connect(ctx, []ma.Multiaddr{underlay})
 	if err != nil && !errors.Is(err, p2p.ErrAlreadyConnected) {
 		return nil, fmt.Errorf("connect to peer: %w", err)
 	}
-	fmt.Println("Elso2")
+	s.logger.Info("connected to broker peer", "overlay", bzzAddr.Overlay)
 
 	stream, err := m.Connect(ctx, s.p2p, bzzAddr.Overlay, opts)
 	if err != nil {

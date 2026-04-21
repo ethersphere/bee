@@ -49,7 +49,7 @@ func (s *Service) pubsubWsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	underlay, err := ma.NewMultiaddr(peerHeader)
 	if err != nil {
-		logger.Debug("invalid peer multiaddr", "value", peerHeader, "error", err)
+		logger.Info("invalid peer multiaddr", "value", peerHeader, "error", err)
 		jsonhttp.BadRequest(w, "invalid Swarm-Pubsub-Peer header")
 		return
 	}
@@ -100,7 +100,7 @@ func (s *Service) pubsubWsHandler(w http.ResponseWriter, r *http.Request) {
 	subscriberConn, err := s.pubsubSvc.Connect(ctx, underlay, topicAddr, pubsub.ModeGSOCEphemeral, connectOpts)
 	if err != nil {
 		cancel()
-		logger.Debug("pubsub connect failed", "error", err)
+		logger.Info("pubsub connect failed", "error", err)
 		jsonhttp.InternalServerError(w, "pubsub connect failed")
 		return
 	}
@@ -116,7 +116,7 @@ func (s *Service) pubsubWsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		cancel()
 		_ = subscriberConn.Stream.Close()
-		logger.Debug("websocket upgrade failed", "error", err)
+		logger.Info("websocket upgrade failed", "error", err)
 		logger.Error(nil, "websocket upgrade failed")
 		jsonhttp.InternalServerError(w, "upgrade failed")
 		return
