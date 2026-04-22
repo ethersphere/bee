@@ -170,7 +170,7 @@ func (m *GSOCEphemeralMode) ReadPublisherMessage(stream p2p.Stream) ([]byte, err
 	if _, err := io.ReadFull(stream, spanBytes); err != nil {
 		return nil, err
 	}
-	span := min(binary.LittleEndian.Uint32(spanBytes), MaxPayload)
+	span := min(binary.LittleEndian.Uint64(spanBytes), MaxPayload)
 
 	payload := make([]byte, span)
 	if _, err := io.ReadFull(stream, payload); err != nil {
@@ -178,17 +178,11 @@ func (m *GSOCEphemeralMode) ReadPublisherMessage(stream p2p.Stream) ([]byte, err
 	}
 
 	// Construct SOC chunk: [ID (32B)][sig (65B)][span (8B)][payload]
-	// The wire format uses a 4-byte uint32 span, but cac.NewWithDataSpan expects the
-	// standard 8-byte little-endian span (swarm.SpanSize). Zero-pad to 8 bytes here;
-	// since MaxPayload <= 4096 the upper 4 bytes are always zero.
-	span8 := make([]byte, swarm.SpanSize)
-	copy(span8, spanBytes) // copy 4 bytes; upper 4 remain zero
-
-	socData := make([]byte, IDSize+SigSize+swarm.SpanSize+int(span))
+	socData := make([]byte, IDSize+SigSize+SpanSize+int(span))
 	copy(socData, m.gsocID)
 	copy(socData[IDSize:], sig)
-	copy(socData[IDSize+SigSize:], span8)
-	copy(socData[IDSize+SigSize+swarm.SpanSize:], payload)
+	copy(socData[IDSize+SigSize:], spanBytes)
+	copy(socData[IDSize+SigSize+SpanSize:], payload)
 
 	socAddr, err := soc.CreateAddress(m.gsocID, m.gsocOwner)
 	if err != nil {
