@@ -17,9 +17,7 @@ import (
 	"github.com/ethersphere/go-price-oracle-abi/priceoracleabi"
 )
 
-var (
-	priceOracleABI = abiutil.MustParseABI(priceoracleabi.PriceOracleABIv0_6_9)
-)
+var priceOracleABI = abiutil.MustParseABI(priceoracleabi.PriceOracleABIv0_6_9)
 
 func TestExchangeGetPrice(t *testing.T) {
 	t.Parallel()

@@ -29,8 +29,7 @@ var (
 	testTxHash = common.BytesToHash(make([]byte, 32))
 )
 
-type mockListener struct {
-}
+type mockListener struct{}
 
 func (*mockListener) Listen(ctx context.Context, from uint64, updater postage.EventUpdater) <-chan error {
 	c := make(chan error, 1)
@@ -238,7 +237,6 @@ func TestBatchServiceCreate(t *testing.T) {
 
 		validateNoBatch(t, testBatch, batchStore)
 	})
-
 }
 
 func TestBatchServiceTopUp(t *testing.T) {
@@ -484,6 +482,7 @@ func TestBatchServiceUpdatePrice(t *testing.T) {
 		}
 	})
 }
+
 func TestBatchServiceUpdateBlockNumber(t *testing.T) {
 	t.Parallel()
 

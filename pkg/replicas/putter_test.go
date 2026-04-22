@@ -34,7 +34,6 @@ type testBasePutter struct {
 }
 
 func (tbp *testBasePutter) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
-
 	g := tbp.getErrors
 	if g != nil {
 		return nil, g(ctx, addr)
@@ -43,7 +42,6 @@ func (tbp *testBasePutter) Get(ctx context.Context, addr swarm.Address) (swarm.C
 }
 
 func (tbp *testBasePutter) Put(ctx context.Context, ch swarm.Chunk) error {
-
 	g := tbp.putErrors
 	if g != nil {
 		return g(ctx, ch.Address())
@@ -192,5 +190,4 @@ func TestPutter(t *testing.T) {
 			})
 		}
 	})
-
 }

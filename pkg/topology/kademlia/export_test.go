@@ -23,8 +23,10 @@ const (
 	DefaultOverSaturationPeers = defaultOverSaturationPeers
 )
 
-type PeerExcludeFunc = peerExcludeFunc
-type ExcludeFunc = excludeFunc
+type (
+	PeerExcludeFunc = peerExcludeFunc
+	ExcludeFunc     = excludeFunc
+)
 
 func (k *Kad) IsWithinConnectionDepth(addr swarm.Address) bool {
 	return swarm.Proximity(k.base.Bytes(), addr.Bytes()) >= k.ConnectionDepth()

@@ -26,7 +26,7 @@ type dirFS struct {
 }
 
 func (d *dirFS) Open(path string) (fs.File, error) {
-	return os.OpenFile(filepath.Join(d.basedir, path), os.O_RDWR|os.O_CREATE, 0644)
+	return os.OpenFile(filepath.Join(d.basedir, path), os.O_RDWR|os.O_CREATE, 0o644)
 }
 
 func Test_TransactionStorage(t *testing.T) {
@@ -35,7 +35,7 @@ func Test_TransactionStorage(t *testing.T) {
 	sharkyStore, err := sharky.New(&dirFS{basedir: t.TempDir()}, 32, swarm.SocMaxChunkSize)
 	assert.NoError(t, err)
 
-	store, err := leveldbstore.New("", nil)
+	store, _, err := leveldbstore.New("", nil)
 	assert.NoError(t, err)
 
 	st := transaction.NewStorage(sharkyStore, store)

@@ -838,7 +838,6 @@ func TestAccessLogicPublisher(t *testing.T) {
 			}),
 			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "text/html; charset=utf-8"),
 		)
-
 	})
 
 	t.Run("download-w/o-publisher", func(t *testing.T) {

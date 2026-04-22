@@ -1015,7 +1015,14 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 				s.metrics.ConnectBreakerCount.Inc()
 				return nil, p2p.NewConnectionBackoffError(err, s.connectionBreaker.ClosedUntil())
 			}
-			s.logger.Warning("libp2p connect", "peer_id", peerID, "underlay", info.Addrs, "error", err)
+			if !errors.Is(err, context.Canceled) {
+				select {
+				case <-s.halt:
+					s.logger.Debug("libp2p connect", "peer_id", peerID, "underlay", info.Addrs, "error", err)
+				default:
+					s.logger.Warning("libp2p connect", "peer_id", peerID, "underlay", info.Addrs, "error", err)
+				}
+			}
 			connectErr = err
 			continue
 		}

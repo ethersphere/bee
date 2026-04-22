@@ -18,7 +18,6 @@ import (
 )
 
 func (c *command) initStartDevCmd() (err error) {
-
 	cmd := &cobra.Command{
 		Use:               "dev",
 		Short:             "Start in dev mode. WARNING: This command will be deprecated soon.",
