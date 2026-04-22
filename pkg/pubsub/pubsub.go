@@ -32,7 +32,7 @@ const (
 	ModeGSOCEphemeral ModeID = 1
 
 	// Wire format sizes
-	SpanSize   = 4 // pubsub span: uint32 little-endian
+	SpanSize   = swarm.SpanSize // pubsub span: 8-byte little-endian uint64 (matches bee-js Span.LENGTH)
 	MaxPayload = swarm.ChunkSize
 	SigSize    = swarm.SocSignatureSize
 	IDSize     = swarm.HashSize
