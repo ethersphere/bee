@@ -295,6 +295,7 @@ func (m *GSOCEphemeralMode) handleSubscriber(ctx context.Context, peer p2p.Peer,
 
 func (m *GSOCEphemeralMode) handlePublisher(ctx context.Context, peer p2p.Peer, stream p2p.Stream, headers p2p.Headers) error {
 	if err := m.validatePublisher(headers); err != nil {
+		m.logger.Debug("invalid publisher headers", "error", err)
 		_ = stream.Reset()
 		return err
 	}
