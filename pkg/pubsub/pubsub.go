@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"sync"
 
 	"github.com/ethersphere/bee/v2/pkg/crypto"
@@ -48,10 +47,10 @@ var (
 	ErrTopicMismatch    = errors.New("pubsub: topic address mismatch")
 )
 
-func newMode(topicAddr [32]byte, modeID ModeID) (Mode, error) {
+func newMode(topicAddr [32]byte, modeID ModeID, logger log.Logger) (Mode, error) {
 	switch modeID {
 	case ModeGSOCEphemeral:
-		return NewGSOCEphemeralMode(topicAddr[:]), nil
+		return NewGSOCEphemeralMode(topicAddr[:], logger), nil
 	default:
 		return nil, fmt.Errorf("pubsub: unknown mode: %d", modeID)
 	}
@@ -72,28 +71,10 @@ type TopicInfo struct {
 	Connections  []string `json:"connections"`
 }
 
-// brokerSubscriber holds a subscriber's stream and outgoing message channel.
-type brokerSubscriber struct {
-	overlay swarm.Address
-	stream  p2p.Stream
-	outCh   chan []byte
-	cancel  context.CancelFunc
-}
-
-// brokerConn manages all connections for a single topic on the broker side.
-type brokerConn struct {
-	mu          sync.RWMutex
-	mode        Mode
-	subscribers map[string]*brokerSubscriber
-}
-
-// SubscriberConn represents the subscriber-side connection to a broker.
-type SubscriberConn struct {
-	Stream    p2p.Stream
+// TopicModeKey is a composite key for identifying a mode instance per topic.
+type TopicModeKey struct {
 	TopicAddr [32]byte
-	Mode      Mode
-	Overlay   swarm.Address
-	Cancel    context.CancelFunc
+	ModeID    ModeID
 }
 
 // P2P groups the p2p capabilities needed by the pubsub service.
@@ -104,23 +85,21 @@ type P2P interface {
 
 // Service is the pubsub protocol service.
 type Service struct {
-	mu              sync.RWMutex
-	p2p             P2P
-	logger          log.Logger
-	brokerMode      bool
-	maxConns        int
-	brokerConns     map[[32]byte]*brokerConn     // topic address -> broker connection
-	subscriberConns map[[32]byte]*SubscriberConn // topic address -> subscriber connection
+	mu         sync.RWMutex
+	p2p        P2P
+	logger     log.Logger
+	brokerMode bool
+	maxConns   int
+	modes      map[TopicModeKey]Mode // (topic, mode) -> mode instance
 }
 
 func New(p2p P2P, logger log.Logger, brokerMode bool, maxConns int) *Service {
 	s := &Service{
-		p2p:             p2p,
-		logger:          logger.WithName(loggerName).Register(),
-		brokerMode:      brokerMode,
-		maxConns:        maxConns,
-		brokerConns:     make(map[[32]byte]*brokerConn),
-		subscriberConns: make(map[[32]byte]*SubscriberConn),
+		p2p:        p2p,
+		logger:     logger.WithName(loggerName).Register(),
+		brokerMode: brokerMode,
+		maxConns:   maxConns,
+		modes:      make(map[TopicModeKey]Mode),
 	}
 	return s
 }
@@ -140,8 +119,9 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 }
 
 // Connect establishes a subscriber connection to a broker peer.
-func (s *Service) Connect(ctx context.Context, underlay ma.Multiaddr, topicAddr [32]byte, modeID ModeID, opts ConnectOptions) (*SubscriberConn, error) {
-	m, err := newMode(topicAddr, modeID)
+func (s *Service) Connect(ctx context.Context, underlay ma.Multiaddr, topicAddr [32]byte, modeID ModeID, opts ConnectOptions) (Mode, error) {
+	key := TopicModeKey{TopicAddr: topicAddr, ModeID: modeID}
+	m, err := s.getOrCreateMode(key)
 	if err != nil {
 		return nil, err
 	}
@@ -155,32 +135,20 @@ func (s *Service) Connect(ctx context.Context, underlay ma.Multiaddr, topicAddr 
 
 	stream, err := m.Connect(ctx, s.p2p, bzzAddr.Overlay, opts)
 	if err != nil {
-		s.logger.Error(err, "bagoy open stream")
+		s.logger.Error(err, "open stream failed")
 		return nil, fmt.Errorf("open stream: %w", err)
 	}
 
 	connCtx, cancel := context.WithCancel(ctx)
-	sc := &SubscriberConn{
-		Stream:    stream,
-		TopicAddr: topicAddr,
-		Mode:      m,
-		Overlay:   bzzAddr.Overlay,
-		Cancel:    cancel,
-	}
-
-	s.mu.Lock()
-	s.subscriberConns[topicAddr] = sc
-	s.mu.Unlock()
+	m.CreateSubscriberConn(stream, bzzAddr.Overlay, cancel)
 
 	go func() {
 		<-connCtx.Done()
-		s.mu.Lock()
-		delete(s.subscriberConns, topicAddr)
-		s.mu.Unlock()
 		_ = stream.FullClose()
+		m.RemoveSubscriberConn()
 	}()
 
-	return sc, nil
+	return m, nil
 }
 
 // Topics returns info about all active topics.
@@ -190,28 +158,26 @@ func (s *Service) Topics() []TopicInfo {
 
 	var topics []TopicInfo
 
-	for addr, bt := range s.brokerConns {
-		bt.mu.RLock()
-		conns := make([]string, 0, len(bt.subscribers))
-		for _, sub := range bt.subscribers {
-			conns = append(conns, sub.overlay.String())
+	for key, m := range s.modes {
+		info := TopicInfo{
+			TopicAddress: fmt.Sprintf("%x", key.TopicAddr),
+			Mode:         m.ID(),
+			Connections:  m.SubscriberOverlays(),
 		}
-		bt.mu.RUnlock()
-		topics = append(topics, TopicInfo{
-			TopicAddress: fmt.Sprintf("%x", addr),
-			Mode:         bt.mode.ID(),
-			Role:         "broker",
-			Connections:  conns,
-		})
-	}
-
-	for addr, sc := range s.subscriberConns {
-		topics = append(topics, TopicInfo{
-			TopicAddress: fmt.Sprintf("%x", addr),
-			Mode:         sc.Mode.ID(),
-			Role:         "subscriber",
-			Connections:  []string{sc.Overlay.String()},
-		})
+		sc := m.GetSubscriberConn()
+		switch {
+		case m.SubscriberCount() > 0 && sc != nil:
+			info.Role = "broker+subscriber"
+			info.Connections = append(info.Connections, sc.Overlay.String())
+		case m.SubscriberCount() > 0:
+			info.Role = "broker"
+		case sc != nil:
+			info.Role = "subscriber"
+			info.Connections = []string{sc.Overlay.String()}
+		default:
+			continue
+		}
+		topics = append(topics, info)
 	}
 
 	return topics
@@ -240,159 +206,36 @@ func (s *Service) brokerHandler(ctx context.Context, peer p2p.Peer, stream p2p.S
 		_ = stream.Reset()
 		return ErrWrongHeaders
 	}
-	bc, err := s.getOrCreateBrokerConn(topicAddr, ModeID(modeBytes[0]))
+	key := TopicModeKey{TopicAddr: topicAddr, ModeID: ModeID(modeBytes[0])}
+	m, err := s.getOrCreateMode(key)
 	if err != nil {
 		_ = stream.Reset()
 		return err
 	}
 
-	rwBytes := headers[HeaderReadWrite]
-	s.logger.Debug("reading rw header", "peer", peer.Address)
-	if len(rwBytes) != 1 {
-		_ = stream.Reset()
-		return ErrWrongHeaders
-	}
-	if rwBytes[0] == 1 {
-		return s.handlePublisher(ctx, peer, stream, bc, headers)
-	}
-	s.logger.Debug("handling as subscriber", "peer", peer.Address)
-	return s.handleSubscriber(ctx, peer, stream, bc)
-}
-
-// registerBrokerConn registers the peer as a broadcast recipient on bc, starts a write goroutine,
-// and returns the connection context, its cancel func, and an unregister func to call on exit.
-func (s *Service) registerBrokerConn(ctx context.Context, peer p2p.Peer, stream p2p.Stream, bc *brokerConn) (connCtx context.Context, cancel context.CancelFunc, unregister func()) {
-	connCtx, cancel = context.WithCancel(ctx)
-
-	conn := &brokerSubscriber{
-		overlay: peer.Address,
-		stream:  stream,
-		outCh:   make(chan []byte, 256),
-		cancel:  cancel,
-	}
-
-	overlayKey := peer.Address.String()
-	bc.mu.Lock()
-	bc.subscribers[overlayKey] = conn
-	bc.mu.Unlock()
-
-	go func() {
-		for {
-			select {
-			case <-connCtx.Done():
-				return
-			case msg := <-conn.outCh:
-				if err := writeRaw(stream, msg); err != nil {
-					cancel()
-					return
-				}
-			}
-		}
-	}()
-
-	unregister = func() {
-		bc.mu.Lock()
-		delete(bc.subscribers, overlayKey)
-		bc.mu.Unlock()
-	}
-	return
-}
-
-func (s *Service) handleSubscriber(ctx context.Context, peer p2p.Peer, stream p2p.Stream, bc *brokerConn) error {
-	bc.mu.RLock()
-	connCount := len(bc.subscribers)
-	bc.mu.RUnlock()
-	if s.maxConns > 0 && connCount >= s.maxConns {
+	if s.maxConns > 0 && m.SubscriberCount() >= s.maxConns {
 		_ = stream.Reset()
 		return ErrMaxConnections
 	}
 
-	subCtx, cancel, unregister := s.registerBrokerConn(ctx, peer, stream, bc)
-	defer cancel()
-	defer unregister()
-
-	s.logger.Debug("subscriber connected", "peer", peer.Address, "topic", bc.mode.TopicAddress())
-
-	<-subCtx.Done()
-	if errors.Is(subCtx.Err(), context.Canceled) {
-		return nil
-	}
-	return subCtx.Err()
+	return m.HandleBroker(ctx, peer, stream, headers)
 }
 
-func (s *Service) handlePublisher(ctx context.Context, peer p2p.Peer, stream p2p.Stream, bc *brokerConn, headers p2p.Headers) error {
-	if err := bc.mode.ValidatePublisher(bc, headers); err != nil {
-		_ = stream.Reset()
-		return err
-	}
-
-	partCtx, cancel, unregister := s.registerBrokerConn(ctx, peer, stream, bc)
-	defer cancel()
-	defer unregister()
-
-	s.logger.Debug("publisher connected", "peer", peer.Address, "topic", bc.mode.TopicAddress())
-
-	for {
-		select {
-		case <-partCtx.Done():
-			if errors.Is(partCtx.Err(), context.Canceled) {
-				return nil
-			}
-			return partCtx.Err()
-		default:
-		}
-
-		rawMsg, err := bc.mode.ReadPublisherMessage(stream)
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				s.logger.Info("publisher stream EOF", "peer", peer.Address)
-			} else {
-				return fmt.Errorf("read publisher message: %w", err)
-			}
-		}
-
-		s.logger.Info("publisher message received", "peer", peer.Address, "size", len(rawMsg))
-		s.broadcastToSubscribers(bc, rawMsg)
-	}
-}
-
-// broadcastToSubscribers sends a message to all subscribers of a topic.
-func (s *Service) broadcastToSubscribers(bc *brokerConn, rawMsg []byte) {
-	bc.mu.Lock()
-	defer bc.mu.Unlock()
-
-	s.logger.Info("broadcasting to subscribers", "count", len(bc.subscribers), "size", len(rawMsg))
-	for _, sub := range bc.subscribers {
-		msg := bc.mode.FormatBroadcast(bc, sub, rawMsg)
-
-		select {
-		case sub.outCh <- msg:
-			s.logger.Info("message enqueued for subscriber", "peer", sub.overlay, "size", len(msg))
-		default:
-			s.logger.Warning("subscriber message queue full, dropping message", "peer", sub.overlay)
-		}
-	}
-}
-
-func (s *Service) getOrCreateBrokerConn(topicAddr [32]byte, modeID ModeID) (*brokerConn, error) {
+func (s *Service) getOrCreateMode(key TopicModeKey) (Mode, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if bt, ok := s.brokerConns[topicAddr]; ok {
-		return bt, nil
+	if m, ok := s.modes[key]; ok {
+		return m, nil
 	}
 
-	m, err := newMode(topicAddr, modeID)
+	m, err := newMode(key.TopicAddr, key.ModeID, s.logger)
 	if err != nil {
 		return nil, err
 	}
 
-	bc := &brokerConn{
-		mode:        m,
-		subscribers: make(map[string]*brokerSubscriber),
-	}
-	s.brokerConns[topicAddr] = bc
-	return bc, nil
+	s.modes[key] = m
+	return m, nil
 }
 
 // writeRaw writes raw bytes to the stream.
