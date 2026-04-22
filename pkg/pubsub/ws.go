@@ -6,7 +6,6 @@ package pubsub
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -19,21 +18,22 @@ type WsOptions struct {
 }
 
 // ListeningWs bridges a subscriber's p2p stream to a WebSocket connection.
-// The Mode on sc.Mode handles all wire-format details: reading broker messages,
+// The Mode handles all wire-format details: reading broker messages,
 // verifying them, and returning the payload to forward to the WebSocket.
 // If the subscriber is a Publisher, it also reads from the WebSocket
 // and writes raw messages to the p2p stream.
-func ListeningWs(ctx context.Context, conn *websocket.Conn, options WsOptions, logger log.Logger, sc *SubscriberConn, isPublisher bool) {
+func ListeningWs(ctx context.Context, conn *websocket.Conn, options WsOptions, logger log.Logger, mode Mode, isPublisher bool) {
+	sc := mode.GetSubscriberConn()
 	var (
 		ticker        = time.NewTicker(options.PingPeriod)
 		writeDeadline = options.PingPeriod + time.Second
 		readDeadline  = options.PingPeriod + time.Second
 	)
 
-	logger.Info("pubsub ws: starting", "topic", fmt.Sprintf("%x", sc.TopicAddr), "isPublisher", isPublisher, "pingPeriod", options.PingPeriod)
+	logger.Info("pubsub ws: starting", "topic", mode.TopicAddress(), "isPublisher", isPublisher, "pingPeriod", options.PingPeriod)
 
 	conn.SetCloseHandler(func(code int, text string) error {
-		logger.Info("pubsub ws: client gone", "topic", fmt.Sprintf("%x", sc.TopicAddr), "code", code, "message", text)
+		logger.Info("pubsub ws: client gone", "topic", mode.TopicAddress(), "code", code, "message", text)
 		options.Cancel()
 		return nil
 	})
@@ -85,7 +85,7 @@ func ListeningWs(ctx context.Context, conn *websocket.Conn, options WsOptions, l
 			default:
 			}
 
-			wsPayload, err := sc.Mode.ReadBrokerMessage(sc.Stream)
+			wsPayload, err := mode.ReadBrokerMessage(sc.Stream)
 			if err != nil {
 				if ctx.Err() == nil {
 					logger.Info("pubsub ws: read broker message failed", "error", err)
@@ -106,7 +106,7 @@ func ListeningWs(ctx context.Context, conn *websocket.Conn, options WsOptions, l
 	defer func() {
 		ticker.Stop()
 		_ = conn.Close()
-		logger.Info("pubsub ws: closed", "topic", fmt.Sprintf("%x", sc.TopicAddr))
+		logger.Info("pubsub ws: closed", "topic", mode.TopicAddress())
 	}()
 
 	for {
