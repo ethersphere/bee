@@ -23,9 +23,11 @@ import (
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 
 	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 	testingpostage "github.com/ethersphere/bee/v2/pkg/postage/testing"
+	testingsoc "github.com/ethersphere/bee/v2/pkg/soc/testing"
 	testingc "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -281,4 +283,219 @@ func TestPreSignedUpload(t *testing.T) {
 		jsonhttptest.WithRequestHeader(api.SwarmPostageStampHeader, hex.EncodeToString(stampBytes)),
 		jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 	)
+}
+
+// nolint:paralleltest,tparallel
+// TestChunkUploadSOC tests that SOC chunks uploaded via POST /chunks are correctly
+// identified and stored at their SOC address, not misclassified as CAC chunks.
+func TestChunkUploadSOC(t *testing.T) {
+	t.Parallel()
+
+	var (
+		chunksEndpoint = "/chunks"
+		chunksResource = func(a swarm.Address) string { return "/chunks/" + a.String() }
+	)
+
+	t.Run("soc upload returns soc address", func(t *testing.T) {
+		var (
+			mockSOC    = testingsoc.GenerateMockSOC(t, []byte("test payload"))
+			socChunk   = mockSOC.Chunk()
+			storerMock = mockstorer.New()
+			client, _, _, _ = newTestServer(t, testServerOptions{
+				Storer: storerMock,
+				Post:   mockpost.New(mockpost.WithAcceptAll()),
+			})
+		)
+
+		// drain pusher feed
+		go func() { <-storerMock.PusherFeed() }()
+
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(bytes.NewReader(socChunk.Data())),
+			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: mockSOC.Address()}),
+		)
+	})
+
+	t.Run("soc upload chunk is retrievable", func(t *testing.T) {
+		var (
+			mockSOC    = testingsoc.GenerateMockSOC(t, []byte("retrievable"))
+			socChunk   = mockSOC.Chunk()
+			storerMock = mockstorer.New()
+			client, _, _, _ = newTestServer(t, testServerOptions{
+				Storer: storerMock,
+				Post:   mockpost.New(mockpost.WithAcceptAll()),
+			})
+		)
+
+		// drain pusher feed
+		go func() { <-storerMock.PusherFeed() }()
+
+		// upload
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(bytes.NewReader(socChunk.Data())),
+			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: mockSOC.Address()}),
+		)
+
+		// retrieve by SOC address
+		jsonhttptest.Request(t, client, http.MethodGet, chunksResource(mockSOC.Address()), http.StatusOK,
+			jsonhttptest.WithExpectedResponse(socChunk.Data()),
+			jsonhttptest.WithExpectedContentLength(len(socChunk.Data())),
+		)
+	})
+
+	t.Run("soc direct upload", func(t *testing.T) {
+		var (
+			mockSOC    = testingsoc.GenerateMockSOC(t, []byte("direct"))
+			socChunk   = mockSOC.Chunk()
+			storerMock = mockstorer.New()
+			client, _, _, chanStorer = newTestServer(t, testServerOptions{
+				Storer:       storerMock,
+				Post:         mockpost.New(mockpost.WithAcceptAll()),
+				DirectUpload: true,
+			})
+		)
+
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(bytes.NewReader(socChunk.Data())),
+			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: mockSOC.Address()}),
+		)
+
+		time.Sleep(time.Millisecond * 100)
+		err := spinlock.Wait(time.Second, func() bool { return chanStorer.Has(mockSOC.Address()) })
+		if err != nil {
+			t.Fatal("soc chunk not found at soc address in direct upload channel")
+		}
+	})
+
+	t.Run("cac upload still works", func(t *testing.T) {
+		var (
+			chunk      = testingc.GenerateTestRandomChunk()
+			storerMock = mockstorer.New()
+			client, _, _, _ = newTestServer(t, testServerOptions{
+				Storer: storerMock,
+				Post:   mockpost.New(mockpost.WithAcceptAll()),
+			})
+		)
+
+		go func() { <-storerMock.PusherFeed() }()
+
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
+			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
+		)
+	})
+
+	t.Run("cac upload small payload", func(t *testing.T) {
+		// Minimal CAC: span (8 bytes) + 1 byte payload = 9 bytes total
+		var (
+			cacChunk, _ = cac.New([]byte{0x01})
+			storerMock  = mockstorer.New()
+			client, _, _, _ = newTestServer(t, testServerOptions{
+				Storer: storerMock,
+				Post:   mockpost.New(mockpost.WithAcceptAll()),
+			})
+		)
+
+		go func() { <-storerMock.PusherFeed() }()
+
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(bytes.NewReader(cacChunk.Data())),
+			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: cacChunk.Address()}),
+		)
+	})
+
+	t.Run("cac upload max payload", func(t *testing.T) {
+		// Maximum CAC: span (8 bytes) + 4096 byte payload = 4104 bytes total
+		var (
+			payload     = make([]byte, swarm.ChunkSize)
+			cacChunk, _ = cac.New(payload)
+			storerMock  = mockstorer.New()
+			client, _, _, _ = newTestServer(t, testServerOptions{
+				Storer: storerMock,
+				Post:   mockpost.New(mockpost.WithAcceptAll()),
+			})
+		)
+
+		go func() { <-storerMock.PusherFeed() }()
+
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(bytes.NewReader(cacChunk.Data())),
+			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: cacChunk.Address()}),
+		)
+	})
+
+	t.Run("data too short", func(t *testing.T) {
+		client, _, _, _ := newTestServer(t, testServerOptions{
+			Storer: mockstorer.New(),
+			Post:   mockpost.New(mockpost.WithAcceptAll()),
+		})
+
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(bytes.NewReader([]byte{0x01, 0x02, 0x03})),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "insufficient data length",
+				Code:    http.StatusBadRequest,
+			}),
+		)
+	})
+
+	t.Run("invalid soc falls back to cac", func(t *testing.T) {
+		// Data that is >= SocMinChunkSize (105 bytes) but not a valid SOC
+		// (random data won't have valid ECDSA signature). Should fall back to CAC.
+		var (
+			payload     = make([]byte, swarm.SocMinChunkSize-swarm.SpanSize) // 97 bytes payload
+			cacChunk, _ = cac.New(payload)                                    // 105 bytes total (span + 97)
+			storerMock  = mockstorer.New()
+			client, _, _, _ = newTestServer(t, testServerOptions{
+				Storer: storerMock,
+				Post:   mockpost.New(mockpost.WithAcceptAll()),
+			})
+		)
+
+		go func() { <-storerMock.PusherFeed() }()
+
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(bytes.NewReader(cacChunk.Data())),
+			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: cacChunk.Address()}),
+		)
+	})
+
+	t.Run("soc with pre-signed stamp", func(t *testing.T) {
+		var (
+			mockSOC    = testingsoc.GenerateMockSOC(t, []byte("stamped"))
+			socChunk   = mockSOC.Chunk()
+			storerMock = mockstorer.New()
+			batchStore = mockbatchstore.New()
+			client, _, _, _ = newTestServer(t, testServerOptions{
+				Storer:     storerMock,
+				BatchStore: batchStore,
+			})
+		)
+
+		key, _ := crypto.GenerateSecp256k1Key()
+		signer := crypto.NewDefaultSigner(key)
+		owner, _ := signer.EthereumAddress()
+		stamp := testingpostage.MustNewValidStamp(signer, mockSOC.Address())
+		_ = batchStore.Save(&postage.Batch{
+			ID:    stamp.BatchID(),
+			Owner: owner.Bytes(),
+		})
+		stampBytes, _ := stamp.MarshalBinary()
+
+		go func() { <-storerMock.PusherFeed() }()
+
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageStampHeader, hex.EncodeToString(stampBytes)),
+			jsonhttptest.WithRequestBody(bytes.NewReader(socChunk.Data())),
+			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: mockSOC.Address()}),
+		)
+	})
 }
