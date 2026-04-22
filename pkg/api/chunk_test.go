@@ -328,15 +328,27 @@ func TestChunkUploadSOC(t *testing.T) {
 			})
 		)
 
-		// drain pusher feed
-		go func() { <-storerMock.PusherFeed() }()
+		tag, err := storerMock.NewSession()
+		if err != nil {
+			t.Fatal(err)
+		}
 
-		// upload
+		// upload with tag so chunk is stored in ChunkStore (deferred upload path)
 		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmTagHeader, fmt.Sprintf("%d", tag.TagID)),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(socChunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: mockSOC.Address()}),
 		)
+
+		// verify chunk exists in store at SOC address
+		has, err := storerMock.ChunkStore().Has(context.Background(), mockSOC.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !has {
+			t.Fatal("soc chunk not found in store at soc address")
+		}
 
 		// retrieve by SOC address
 		jsonhttptest.Request(t, client, http.MethodGet, chunksResource(mockSOC.Address()), http.StatusOK,

@@ -138,19 +138,11 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chunk, err := cac.NewWithDataSpan(data)
-	if err != nil {
-		// not a valid cac chunk. Check if it's a replica soc chunk.
-		logger.Debug("chunk upload: create chunk failed", "error", err)
-
-		// FromChunk only uses the chunk data to recreate the soc chunk. So the address is irrelevant.
-		sch, err := soc.FromChunk(swarm.NewChunk(swarm.EmptyAddress, data))
-		if err != nil {
-			logger.Debug("chunk upload: create soc chunk from data failed", "error", err)
-			logger.Error(nil, "chunk upload: create chunk error")
-			jsonhttp.InternalServerError(ow, "create chunk error")
-			return
-		}
+	// Try SOC first — CAC parsing is too permissive (accepts any 8-4104 byte data),
+	// so valid SOCs would always be misclassified as CACs if we tried CAC first.
+	var chunk swarm.Chunk
+	sch, err := soc.FromChunk(swarm.NewChunk(swarm.EmptyAddress, data))
+	if err == nil {
 		chunk, err = sch.Chunk()
 		if err != nil {
 			logger.Debug("chunk upload: create chunk from soc failed", "error", err)
@@ -158,9 +150,21 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.InternalServerError(ow, "create chunk error")
 			return
 		}
-
 		if !soc.Valid(chunk) {
-			logger.Debug("chunk upload: invalid soc chunk")
+			// Parsed as SOC structure but invalid — fall through to CAC
+			chunk, err = cac.NewWithDataSpan(data)
+			if err != nil {
+				logger.Debug("chunk upload: create chunk failed", "error", err)
+				logger.Error(nil, "chunk upload: create chunk error")
+				jsonhttp.InternalServerError(ow, "create chunk error")
+				return
+			}
+		}
+	} else {
+		// Not a SOC — try CAC
+		chunk, err = cac.NewWithDataSpan(data)
+		if err != nil {
+			logger.Debug("chunk upload: create chunk failed", "error", err)
 			logger.Error(nil, "chunk upload: create chunk error")
 			jsonhttp.InternalServerError(ow, "create chunk error")
 			return
