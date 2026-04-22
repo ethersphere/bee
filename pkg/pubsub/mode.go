@@ -177,15 +177,20 @@ func (m *GSOCEphemeralMode) ReadPublisherMessage(stream p2p.Stream) ([]byte, err
 		return nil, err
 	}
 
-	// Construct SOC chunk with the known topic address: [ID (32B)][sig (65B)][span (4B)][payload]
-	// and validate whether message is valid
+	// Construct SOC chunk: [ID (32B)][sig (65B)][span (4B)][payload]
+	// The chunk address for SOC validation is hash(gsocID, gsocOwner), not the topic address.
 	socData := make([]byte, IDSize+SigSize+SpanSize+int(span))
 	copy(socData, m.gsocID)
 	copy(socData[IDSize:], sig)
 	copy(socData[IDSize+SigSize:], spanBytes)
 	copy(socData[IDSize+SigSize+SpanSize:], payload)
 
-	if !soc.Valid(swarm.NewChunk(m.topicAddress, socData)) {
+	socAddr, err := soc.CreateAddress(m.gsocID, m.gsocOwner)
+	if err != nil {
+		return nil, fmt.Errorf("pubsub: compute SOC address: %w", err)
+	}
+
+	if !soc.Valid(swarm.NewChunk(socAddr, socData)) {
 		return nil, ErrInvalidSignature
 	}
 
