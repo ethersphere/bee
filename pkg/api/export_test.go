@@ -32,7 +32,6 @@ var ContentTypeTar = contentTypeTar
 var (
 	ErrNoResolver                       = errNoResolver
 	ErrInvalidNameOrAddress             = errInvalidNameOrAddress
-	ErrUnsupportedDevNodeOperation      = errUnsupportedDevNodeOperation
 	ErrOperationSupportedOnlyInFullMode = errOperationSupportedOnlyInFullMode
 	ErrActDownload                      = errActDownload
 	ErrActUpload                        = errActUpload

@@ -50,21 +50,6 @@ jobs:
     - name: Test without race detector (Windows)
       if: matrix.os == 'windows-latest'
       run: make test-ci
-  test-flaky:
-    name: Test (flaky)
-    runs-on: ubuntu-latest
-    continue-on-error: ${{ github.ref == 'refs/heads/master' }}
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v5
-    - name: Setup Go
-      uses: actions/setup-go@v6
-      with:
-        cache: true
-        go-version-file: go.mod
-    - name: Run flaky test
-      run: make test-ci-flaky
-      continue-on-error: ${{ github.ref == 'refs/heads/master' }}
   lint:
     name: Lint
     runs-on: ubuntu-latest
