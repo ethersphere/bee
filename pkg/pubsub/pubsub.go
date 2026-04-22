@@ -185,7 +185,7 @@ func (s *Service) Topics() []TopicInfo {
 
 // brokerHandler handles incoming streams on the broker side.
 func (s *Service) brokerHandler(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
-	s.logger.Debug("broker handler invoked", "peer", peer.Address)
+	s.logger.Info("broker handler invoked", "peer", peer.Address)
 	if !s.brokerMode {
 		_ = stream.Reset()
 		return ErrBrokerDisabled
