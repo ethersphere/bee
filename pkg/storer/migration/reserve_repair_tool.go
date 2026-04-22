@@ -154,7 +154,7 @@ func ReserveRepair(
 		logger.Info("parallel workers", "count", p)
 
 		for _, item := range batchRadiusItems {
-			item := item
+			item := item //nolint:copyloopvar
 			eg.Go(func() error {
 				return st.Run(context.Background(), func(s transaction.Store) error {
 					chunk, err := s.ChunkStore().Get(context.Background(), item.Address)
