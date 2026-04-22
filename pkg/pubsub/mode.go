@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
@@ -55,6 +56,10 @@ const (
 	// Message types (Broker → Subscriber)
 	MsgTypeHandshake byte = 0x01
 	MsgTypeData      byte = 0x02
+	MsgTypePing      byte = 0x03
+
+	// Ping interval for keeping p2p streams alive.
+	streamPingInterval = 30 * time.Second
 )
 
 // GSOCEphemeralMode implements Mode for GSOC ephemeral messaging.
@@ -195,6 +200,10 @@ func (m *GSOCEphemeralMode) ReadBrokerMessage(stream p2p.Stream) ([]byte, error)
 	}
 
 	switch typeBuf[0] {
+	case MsgTypePing:
+		m.logger.Debug("received ping from broker")
+		return nil, nil
+
 	case MsgTypeHandshake:
 		socID := make([]byte, IDSize)
 		if _, err := io.ReadFull(stream, socID); err != nil {
@@ -337,12 +346,19 @@ func (m *GSOCEphemeralMode) registerSubscriber(ctx context.Context, overlay swar
 	m.mu.Unlock()
 
 	go func() {
+		ticker := time.NewTicker(streamPingInterval)
+		defer ticker.Stop()
 		for {
 			select {
 			case <-connCtx.Done():
 				return
 			case msg := <-sub.outCh:
 				if err := writeRaw(stream, msg); err != nil {
+					cancel()
+					return
+				}
+			case <-ticker.C:
+				if err := writeRaw(stream, []byte{MsgTypePing}); err != nil {
 					cancel()
 					return
 				}

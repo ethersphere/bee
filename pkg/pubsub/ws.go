@@ -86,6 +86,9 @@ func ListeningWs(ctx context.Context, conn *websocket.Conn, options WsOptions, l
 			}
 
 			wsPayload, err := mode.ReadBrokerMessage(sc.Stream)
+			if wsPayload == nil {
+				continue
+			}
 			if err != nil {
 				if ctx.Err() == nil {
 					logger.Info("pubsub ws: read broker message failed", "error", err)
