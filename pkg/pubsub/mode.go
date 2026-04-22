@@ -310,9 +310,9 @@ func (m *GSOCEphemeralMode) handlePublisher(ctx context.Context, peer p2p.Peer, 
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				m.logger.Info("publisher stream EOF", "peer", peer.Address)
-			} else {
-				return fmt.Errorf("read publisher message: %w", err)
+				return nil
 			}
+			return fmt.Errorf("read publisher message: %w", err)
 		}
 
 		m.logger.Info("publisher message received", "peer", peer.Address, "size", len(rawMsg))
