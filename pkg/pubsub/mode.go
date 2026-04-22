@@ -186,6 +186,7 @@ func (m *GSOCEphemeralMode) ReadPublisherMessage(stream p2p.Stream) ([]byte, err
 	copy(socData[IDSize+SigSize+SpanSize:], payload)
 
 	if !soc.Valid(swarm.NewChunk(m.topicAddress, socData)) {
+		m.logger.Debug("soc validation failed", "topicAddress", m.topicAddress, "socData", socData)
 		return nil, ErrInvalidSignature
 	}
 
@@ -416,6 +417,7 @@ func (m *GSOCEphemeralMode) setGsocParams(gsocOwner, gsocID []byte) {
 	// Verify got socId and address match with topicaddress
 	addr, err := soc.CreateAddress(gsocID, gsocOwner)
 	if err != nil || !bytes.Equal(addr.Bytes(), m.topicAddress.Bytes()) {
+		m.logger.Debug("gsoc params verification failed", "err", err, "addr", addr, "topicAddress", m.topicAddress)
 		return
 	}
 
