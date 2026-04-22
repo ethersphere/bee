@@ -354,9 +354,11 @@ func (m *GSOCEphemeralMode) registerSubscriber(ctx context.Context, overlay swar
 				return
 			case msg := <-sub.outCh:
 				if err := writeRaw(stream, msg); err != nil {
+					m.logger.Info("broker write to subscriber failed", "peer", sub.overlay, "error", err)
 					cancel()
 					return
 				}
+				m.logger.Info("broker wrote to subscriber", "peer", sub.overlay, "size", len(msg))
 			case <-ticker.C:
 				if err := writeRaw(stream, []byte{MsgTypePing}); err != nil {
 					cancel()
