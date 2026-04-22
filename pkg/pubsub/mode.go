@@ -267,7 +267,7 @@ func (m *GSOCEphemeralMode) broadcast(rawMsg []byte) {
 // HandleBroker handles an incoming broker-side stream, dispatching to publisher or subscriber handling.
 func (m *GSOCEphemeralMode) HandleBroker(ctx context.Context, peer p2p.Peer, stream p2p.Stream, headers p2p.Headers) error {
 	rwBytes := headers[HeaderReadWrite]
-	m.logger.Debug("reading rw header", "peer", peer.Address)
+	m.logger.Info("broker stream opened", "peer", peer.Address, "topic", m.TopicAddress(), "rw", rwBytes)
 	if len(rwBytes) != 1 {
 		_ = stream.Reset()
 		return ErrWrongHeaders
@@ -275,7 +275,7 @@ func (m *GSOCEphemeralMode) HandleBroker(ctx context.Context, peer p2p.Peer, str
 	if rwBytes[0] == 1 {
 		return m.handlePublisher(ctx, peer, stream, headers)
 	}
-	m.logger.Debug("handling as subscriber", "peer", peer.Address)
+	m.logger.Info("handling as subscriber", "peer", peer.Address)
 	return m.handleSubscriber(ctx, peer, stream)
 }
 
@@ -284,7 +284,7 @@ func (m *GSOCEphemeralMode) handleSubscriber(ctx context.Context, peer p2p.Peer,
 	defer cancel()
 	defer unregister()
 
-	m.logger.Debug("subscriber connected", "peer", peer.Address, "topic", m.TopicAddress())
+	m.logger.Info("subscriber connected", "peer", peer.Address, "topic", m.TopicAddress())
 
 	<-subCtx.Done()
 	if errors.Is(subCtx.Err(), context.Canceled) {
@@ -294,17 +294,20 @@ func (m *GSOCEphemeralMode) handleSubscriber(ctx context.Context, peer p2p.Peer,
 }
 
 func (m *GSOCEphemeralMode) handlePublisher(ctx context.Context, peer p2p.Peer, stream p2p.Stream, headers p2p.Headers) error {
+	m.logger.Info("publisher handler entered", "peer", peer.Address, "topic", m.TopicAddress())
+
 	if err := m.validatePublisher(headers); err != nil {
-		m.logger.Debug("invalid publisher headers", "error", err)
+		m.logger.Info("publisher validation failed", "peer", peer.Address, "error", err)
 		_ = stream.Reset()
 		return err
 	}
+	m.logger.Info("publisher validated", "peer", peer.Address, "gsoc_id", fmt.Sprintf("%x", m.gsocID), "gsoc_owner", fmt.Sprintf("%x", m.gsocOwner))
 
 	partCtx, cancel, unregister := m.registerSubscriber(ctx, peer.Address, stream)
 	defer cancel()
 	defer unregister()
 
-	m.logger.Debug("publisher connected", "peer", peer.Address, "topic", m.TopicAddress())
+	m.logger.Info("publisher connected, starting read loop", "peer", peer.Address, "topic", m.TopicAddress(), "subscribers", m.SubscriberCount())
 
 	for {
 		select {
@@ -316,12 +319,14 @@ func (m *GSOCEphemeralMode) handlePublisher(ctx context.Context, peer p2p.Peer, 
 		default:
 		}
 
+		m.logger.Info("waiting for publisher message", "peer", peer.Address)
 		rawMsg, err := m.ReadPublisherMessage(stream)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				m.logger.Info("publisher stream EOF", "peer", peer.Address)
 				return nil
 			}
+			m.logger.Info("publisher read error", "peer", peer.Address, "error", err)
 			return fmt.Errorf("read publisher message: %w", err)
 		}
 
