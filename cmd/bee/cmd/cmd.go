@@ -235,7 +235,7 @@ func (c *command) initConfig() (err error) {
 	// Environment
 	config.SetEnvPrefix("bee")
 	config.AutomaticEnv() // read in environment variables that match
-	config.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+	config.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 
 	if c.homeDir != "" && c.cfgFile == "" {
 		c.cfgFile = filepath.Join(c.homeDir, configName+".yaml")
