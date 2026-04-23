@@ -991,7 +991,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma []ma.Multiaddr
 	case errors.Is(err, p2p.ErrUnsupportedAddresses):
 		return err
 	case err != nil:
-		k.logger.Info("could not connect to peer", "peer_address", peer, "error", err)
+		k.logger.Debug("could not connect to peer", "peer_address", peer, "error", err)
 
 		retryTime := time.Now().Add(k.opt.TimeToRetry)
 		var e *p2p.ConnectionBackoffError
