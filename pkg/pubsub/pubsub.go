@@ -140,12 +140,12 @@ func (s *Service) Connect(ctx context.Context, underlay ma.Multiaddr, topicAddr 
 	}
 
 	connCtx, cancel := context.WithCancel(ctx)
-	m.CreateSubscriberConn(stream, bzzAddr.Overlay, cancel)
+	sc := m.CreateSubscriberConn(stream, bzzAddr.Overlay, cancel)
 
 	go func() {
 		<-connCtx.Done()
 		_ = stream.FullClose()
-		m.RemoveSubscriberConn()
+		m.RemoveSubscriberConn(sc)
 	}()
 
 	return m, nil

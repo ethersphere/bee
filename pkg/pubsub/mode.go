@@ -39,9 +39,9 @@ type Mode interface {
 
 	// Subscriber side - outbound connection to broker
 	Connect(ctx context.Context, p p2p.Streamer, overlay swarm.Address, opts ConnectOptions) (p2p.Stream, error)
-	CreateSubscriberConn(stream p2p.Stream, overlay swarm.Address, cancel context.CancelFunc)
+	CreateSubscriberConn(stream p2p.Stream, overlay swarm.Address, cancel context.CancelFunc) *SubscriberConn
 	GetSubscriberConn() *SubscriberConn
-	RemoveSubscriberConn()
+	RemoveSubscriberConn(conn *SubscriberConn)
 	ReadBrokerMessage(stream p2p.Stream) ([]byte, error)
 
 	// Broker side - handles incoming streams (publisher and subscriber)
@@ -386,19 +386,21 @@ func (m *GSOCEphemeralMode) registerSubscriber(ctx context.Context, overlay swar
 }
 
 // CreateSubscriberConn creates and stores the subscriber-side connection in this mode.
-func (m *GSOCEphemeralMode) CreateSubscriberConn(stream p2p.Stream, overlay swarm.Address, cancel context.CancelFunc) {
+func (m *GSOCEphemeralMode) CreateSubscriberConn(stream p2p.Stream, overlay swarm.Address, cancel context.CancelFunc) *SubscriberConn {
 	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	if m.subscriberConn != nil {
 		m.subscriberConn.Cancel()
 	}
 
-	m.subscriberConn = &SubscriberConn{
+	sc := &SubscriberConn{
 		Stream:  stream,
 		Overlay: overlay,
 		Cancel:  cancel,
 	}
-	m.mu.Unlock()
+	m.subscriberConn = sc
+	return sc
 }
 
 // GetSubscriberConn returns the subscriber-side connection, or nil.
@@ -409,9 +411,11 @@ func (m *GSOCEphemeralMode) GetSubscriberConn() *SubscriberConn {
 }
 
 // RemoveSubscriberConn clears the subscriber-side connection.
-func (m *GSOCEphemeralMode) RemoveSubscriberConn() {
+func (m *GSOCEphemeralMode) RemoveSubscriberConn(conn *SubscriberConn) {
 	m.mu.Lock()
-	m.subscriberConn = nil
+	if m.subscriberConn == conn {
+		m.subscriberConn = nil
+	}
 	m.mu.Unlock()
 }
 
