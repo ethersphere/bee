@@ -95,16 +95,7 @@ func (s *Service) pubsubWsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Connect to broker peer
-	ctx, cancel := context.WithCancel(context.Background())
-	mode, err := s.pubsubSvc.Connect(ctx, underlay, topicAddr, pubsub.ModeGSOCEphemeral, connectOpts)
-	if err != nil {
-		cancel()
-		logger.Info("pubsub connect failed", "error", err)
-		jsonhttp.InternalServerError(w, "pubsub connect failed")
-		return
-	}
-	// Upgrade to WebSocket
+	// upgrade to WebSocket
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  swarm.ChunkWithSpanSize,
 		WriteBufferSize: swarm.ChunkWithSpanSize,
@@ -114,17 +105,24 @@ func (s *Service) pubsubWsHandler(w http.ResponseWriter, r *http.Request) {
 	logger.Info("upgrading to websocket")
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		cancel()
-		if sc := mode.GetSubscriberConn(); sc != nil {
-			_ = sc.Stream.Close()
-		}
-		logger.Info("websocket upgrade failed", "error", err)
-		logger.Error(nil, "websocket upgrade failed")
-		// NOTE: Upgrade() hijacks the connection before returning an error,
+		// Upgrade() hijacks the connection before returning an error,
 		// so do NOT write an HTTP response here.
+		logger.Info("websocket upgrade failed", "error", err)
 		return
 	}
 	logger.Info("websocket upgrade successful")
+
+	// open the p2p stream to the broker.
+	ctx, cancel := context.WithCancel(context.Background())
+	mode, err := s.pubsubSvc.Connect(ctx, underlay, topicAddr, pubsub.ModeGSOCEphemeral, connectOpts)
+	if err != nil {
+		cancel()
+		logger.Info("pubsub connect failed", "error", err)
+		_ = conn.WriteMessage(websocket.CloseMessage,
+			websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "pubsub connect failed"))
+		_ = conn.Close()
+		return
+	}
 
 	pingPeriod := headers.KeepAlive * time.Second
 	if pingPeriod == 0 {
