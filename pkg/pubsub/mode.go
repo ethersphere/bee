@@ -39,7 +39,7 @@ type Mode interface {
 
 	// Subscriber side - outbound connection to broker
 	Connect(ctx context.Context, p p2p.Streamer, overlay swarm.Address, opts ConnectOptions) (p2p.Stream, error)
-	CreateSubscriberConn(stream p2p.Stream, overlay swarm.Address, cancel context.CancelFunc) *SubscriberConn
+	CreateSubscriberConn(stream p2p.Stream, overlay swarm.Address) *SubscriberConn
 	GetSubscriberConn() *SubscriberConn
 	RemoveSubscriberConn(conn *SubscriberConn)
 	ReadBrokerMessage(stream p2p.Stream) ([]byte, error)
@@ -82,11 +82,65 @@ type brokerSubscriber struct {
 	handshakeHappened bool
 }
 
-// SubscriberConn represents the subscriber-side connection to a broker.
+// SubscriberConn represents the shared subscriber-side p2p stream to a broker.
+// Multiple WebSocket sessions can attach to one SubscriberConn via the mux.
 type SubscriberConn struct {
 	Stream  p2p.Stream
 	Overlay swarm.Address
-	Cancel  context.CancelFunc
+
+	refs    int // number of active WS sessions; protected by the owning mode's mu
+	writeMu sync.Mutex
+	subsMu  sync.Mutex
+	subs    map[uint64]chan []byte
+	nextID  uint64
+}
+
+// Subscribe registers a new WS session and returns its per-session message channel.
+func (sc *SubscriberConn) Subscribe() (uint64, <-chan []byte) {
+	sc.subsMu.Lock()
+	defer sc.subsMu.Unlock()
+	id := sc.nextID
+	sc.nextID++
+	ch := make(chan []byte, 16)
+	sc.subs[id] = ch
+	return id, ch
+}
+
+// Unsubscribe removes the WS session channel and closes it.
+func (sc *SubscriberConn) Unsubscribe(id uint64) {
+	sc.subsMu.Lock()
+	defer sc.subsMu.Unlock()
+	if ch, ok := sc.subs[id]; ok {
+		close(ch)
+		delete(sc.subs, id)
+	}
+}
+
+func (sc *SubscriberConn) broadcast(msg []byte) {
+	sc.subsMu.Lock()
+	defer sc.subsMu.Unlock()
+	for _, ch := range sc.subs {
+		select {
+		case ch <- msg:
+		default:
+		}
+	}
+}
+
+func (sc *SubscriberConn) closeAll() {
+	sc.subsMu.Lock()
+	defer sc.subsMu.Unlock()
+	for id, ch := range sc.subs {
+		close(ch)
+		delete(sc.subs, id)
+	}
+}
+
+// WriteToStream serializes concurrent writes from multiple WS sessions.
+func (sc *SubscriberConn) WriteToStream(data []byte) error {
+	sc.writeMu.Lock()
+	defer sc.writeMu.Unlock()
+	return writeRaw(sc.Stream, data)
 }
 
 var _ Mode = (*GSOCEphemeralMode)(nil)
@@ -385,22 +439,44 @@ func (m *GSOCEphemeralMode) registerSubscriber(ctx context.Context, overlay swar
 	return connCtx, cancel, unregister
 }
 
-// CreateSubscriberConn creates and stores the subscriber-side connection in this mode.
-func (m *GSOCEphemeralMode) CreateSubscriberConn(stream p2p.Stream, overlay swarm.Address, cancel context.CancelFunc) *SubscriberConn {
+// CreateSubscriberConn returns the existing SubscriberConn for this topic if one is active,
+// incrementing its ref count so the shared stream stays open. When no conn exists yet,
+// a new one is created and a single mux goroutine is started to fan out broker messages.
+func (m *GSOCEphemeralMode) CreateSubscriberConn(stream p2p.Stream, overlay swarm.Address) *SubscriberConn {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if m.subscriberConn != nil {
-		m.subscriberConn.Cancel()
+		m.subscriberConn.refs++
+		return m.subscriberConn
 	}
 
 	sc := &SubscriberConn{
 		Stream:  stream,
 		Overlay: overlay,
-		Cancel:  cancel,
+		refs:    1,
+		subs:    make(map[uint64]chan []byte),
 	}
 	m.subscriberConn = sc
+	go m.runMux(sc, stream)
 	return sc
+}
+
+// runMux reads broker messages from the shared p2p stream and broadcasts each to all
+// registered WS sessions. It exits when the stream closes or returns an error.
+func (m *GSOCEphemeralMode) runMux(sc *SubscriberConn, stream p2p.Stream) {
+	defer sc.closeAll()
+	for {
+		msg, err := m.ReadBrokerMessage(stream)
+		if err != nil {
+			m.logger.Debug("pubsub mux: stream error, stopping", "error", err)
+			return
+		}
+		if msg == nil {
+			continue
+		}
+		sc.broadcast(msg)
+	}
 }
 
 // GetSubscriberConn returns the subscriber-side connection, or nil.
@@ -410,13 +486,19 @@ func (m *GSOCEphemeralMode) GetSubscriberConn() *SubscriberConn {
 	return m.subscriberConn
 }
 
-// RemoveSubscriberConn clears the subscriber-side connection.
+// RemoveSubscriberConn decrements the ref count for the connection.
+// When the last WS session exits, it closes the stream, stopping the mux goroutine.
 func (m *GSOCEphemeralMode) RemoveSubscriberConn(conn *SubscriberConn) {
 	m.mu.Lock()
-	if m.subscriberConn == conn {
-		m.subscriberConn = nil
+	defer m.mu.Unlock()
+	if m.subscriberConn != conn {
+		return
 	}
-	m.mu.Unlock()
+	conn.refs--
+	if conn.refs <= 0 {
+		m.subscriberConn = nil
+		_ = conn.Stream.FullClose()
+	}
 }
 
 // setGsocParams sets the GSOC recurring parameters so that messages don't need to include them.
