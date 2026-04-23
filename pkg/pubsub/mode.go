@@ -386,6 +386,11 @@ func (m *GSOCEphemeralMode) registerSubscriber(ctx context.Context, overlay swar
 // CreateSubscriberConn creates and stores the subscriber-side connection in this mode.
 func (m *GSOCEphemeralMode) CreateSubscriberConn(stream p2p.Stream, overlay swarm.Address, cancel context.CancelFunc) {
 	m.mu.Lock()
+
+	if m.subscriberConn != nil {
+		m.subscriberConn.Cancel()
+	}
+
 	m.subscriberConn = &SubscriberConn{
 		Stream:  stream,
 		Overlay: overlay,
