@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/ethersphere/bee/v2/pkg/bzz"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
@@ -81,6 +82,9 @@ type TopicModeKey struct {
 type P2P interface {
 	p2p.Service
 	p2p.Streamer
+	// ConnectAllowLight dials a peer, accepting it even if it identifies
+	// itself as a light node (broker peers may run in light-node mode).
+	ConnectAllowLight(ctx context.Context, addrs []ma.Multiaddr) (*bzz.Address, error)
 }
 
 // Service is the pubsub protocol service.
@@ -127,7 +131,7 @@ func (s *Service) Connect(ctx context.Context, underlay ma.Multiaddr, topicAddr 
 	}
 
 	s.logger.Info("connecting to broker peer", "underlay", underlay)
-	bzzAddr, err := s.p2p.Connect(ctx, []ma.Multiaddr{underlay})
+	bzzAddr, err := s.p2p.ConnectAllowLight(ctx, []ma.Multiaddr{underlay})
 	if err != nil && !errors.Is(err, p2p.ErrAlreadyConnected) {
 		return nil, fmt.Errorf("connect to peer: %w", err)
 	}
