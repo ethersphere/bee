@@ -376,7 +376,9 @@ func (m *GSOCEphemeralMode) registerSubscriber(ctx context.Context, overlay swar
 
 	unregister := func() {
 		m.mu.Lock()
-		delete(m.subscribers, overlayKey)
+		if m.subscribers[overlayKey] == sub {
+			delete(m.subscribers, overlayKey)
+		}
 		m.mu.Unlock()
 	}
 
