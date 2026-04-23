@@ -24,6 +24,7 @@ type WsOptions struct {
 // and writes raw messages to the p2p stream.
 func ListeningWs(ctx context.Context, conn *websocket.Conn, options WsOptions, logger log.Logger, mode Mode, isPublisher bool) {
 	sc := mode.GetSubscriberConn()
+	subID, msgCh := sc.Subscribe()
 	var (
 		ticker        = time.NewTicker(options.PingPeriod)
 		writeDeadline = options.PingPeriod + time.Second
@@ -66,7 +67,7 @@ func ListeningWs(ctx context.Context, conn *websocket.Conn, options WsOptions, l
 
 			if isPublisher {
 				logger.Info("pubsub ws: publisher message from ws", "type", msgType, "size", len(p))
-				if err := writeRaw(sc.Stream, p); err != nil {
+				if err := sc.WriteToStream(p); err != nil {
 					logger.Info("pubsub ws: write to p2p stream failed", "error", err)
 					break
 				}
@@ -75,33 +76,26 @@ func ListeningWs(ctx context.Context, conn *websocket.Conn, options WsOptions, l
 		options.Cancel()
 	}()
 
-	// Read from p2p stream (Broker messages) and forward to WebSocket.
+	// Forward mux-delivered broker messages to this WebSocket session.
 	go func() {
+		defer sc.Unsubscribe(subID)
 		for {
 			select {
 			case <-ctx.Done():
 				logger.Info("pubsub ws: p2p reader context done")
 				return
-			default:
-			}
-
-			wsPayload, err := mode.ReadBrokerMessage(sc.Stream)
-			if wsPayload == nil {
-				continue
-			}
-			if err != nil {
-				if ctx.Err() == nil {
-					logger.Info("pubsub ws: read broker message failed", "error", err)
+			case msg, ok := <-msgCh:
+				if !ok {
+					logger.Info("pubsub ws: mux channel closed")
+					options.Cancel()
+					return
 				}
-				options.Cancel()
-				return
-			}
-
-			logger.Info("pubsub ws: forwarding broker message to ws", "size", len(wsPayload))
-			if err := conn.WriteMessage(websocket.BinaryMessage, wsPayload); err != nil {
-				logger.Info("pubsub ws: write to ws failed", "error", err)
-				options.Cancel()
-				return
+				logger.Info("pubsub ws: forwarding broker message to ws", "size", len(msg))
+				if err := conn.WriteMessage(websocket.BinaryMessage, msg); err != nil {
+					logger.Info("pubsub ws: write to ws failed", "error", err)
+					options.Cancel()
+					return
+				}
 			}
 		}
 	}()

@@ -137,18 +137,25 @@ func (s *Service) Connect(ctx context.Context, underlay ma.Multiaddr, topicAddr 
 	}
 	s.logger.Info("connected to broker peer", "overlay", bzzAddr.Overlay)
 
-	stream, err := m.Connect(ctx, s.p2p, bzzAddr.Overlay, opts)
-	if err != nil {
-		s.logger.Error(err, "open stream failed")
-		return nil, fmt.Errorf("open stream: %w", err)
+	var sc *SubscriberConn
+	if existing := m.GetSubscriberConn(); existing != nil {
+		// Reuse the existing p2p stream — no new broker-side stream, just bump the ref count.
+		sc = m.CreateSubscriberConn(existing.Stream, bzzAddr.Overlay)
+	} else {
+		stream, err := m.Connect(ctx, s.p2p, bzzAddr.Overlay, opts)
+		if err != nil {
+			s.logger.Error(err, "open stream failed")
+			return nil, fmt.Errorf("open stream: %w", err)
+		}
+		sc = m.CreateSubscriberConn(stream, bzzAddr.Overlay)
+		if sc.Stream != stream {
+			// Race: another goroutine created the conn between our check and create.
+			_ = stream.FullClose()
+		}
 	}
 
-	connCtx, cancel := context.WithCancel(ctx)
-	sc := m.CreateSubscriberConn(stream, bzzAddr.Overlay, cancel)
-
 	go func() {
-		<-connCtx.Done()
-		_ = stream.FullClose()
+		<-ctx.Done()
 		m.RemoveSubscriberConn(sc)
 	}()
 
