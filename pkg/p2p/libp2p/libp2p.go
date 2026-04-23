@@ -965,7 +965,18 @@ func buildHostAddress(peerID libp2ppeer.ID) (ma.Multiaddr, error) {
 	return ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", peerID.String()))
 }
 
-func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *bzz.Address, err error) {
+func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (*bzz.Address, error) {
+	return s.connect(ctx, addrs, false)
+}
+
+// ConnectAllowLight behaves like Connect but does not reject the peer
+// if it identifies itself as a light node. Intended for protocols such
+// as pubsub where broker peers may operate in light-node mode.
+func (s *Service) ConnectAllowLight(ctx context.Context, addrs []ma.Multiaddr) (*bzz.Address, error) {
+	return s.connect(ctx, addrs, true)
+}
+
+func (s *Service) connect(ctx context.Context, addrs []ma.Multiaddr, allowLight bool) (address *bzz.Address, err error) {
 	loggerV1 := s.logger.V(1).Register()
 
 	defer func() {
@@ -1099,7 +1110,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		return nil, fmt.Errorf("handshake: %w", err)
 	}
 
-	if !i.FullNode {
+	if !i.FullNode && !allowLight {
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(info.ID)
 		return nil, p2p.ErrDialLightNode
