@@ -45,8 +45,8 @@ This design makes accounting an **outside-in middleware** around protocols. Prot
 | 5 | **ACK is carried in the existing response message** where one exists (retrieval Delivery, pushsync Receipt); synthesized trailer only for one-way protocols | Zero extra wire messages on the hot path for current protocols |
 | 6 | **Lost-ACK recovered via `lastConfirmed` piggyback** on the next request | Replaces pseudo-settle's reconciliation function without a dedicated wire protocol |
 | 7 | **Greenfield rewrite**; old `accounting` package and `pseudosettle` deleted | No coexistence burden; all protocols cut over at once |
-| 8 | **Peer-identity-scoped balances**; survive disconnect and restart | Ledger represents economic relationship, not transport state; removes Connect-zeroes footgun |
-| 9 | **Balance-only persistent state** per peer (drop `surplus`, drop `originated`) | Overpayment flows through balance as negative debt; in-flight payment tracked transiently. Forwarders pay for all committed debt; network-wide-insurance of `originated` is gone |
+| 8 | **Peer-identity-scoped balances**; survive disconnect and restart | Ledger represents economic relationship, not transport state; removes today's Connect-zeroes-persisted-balance footgun (`accounting.go:1458-1466`). Equivalence testing against today's `Connect` behavior deliberately diverges here — this is a bug fix, not a preserved invariant. |
+| 9 | **Balance-only persistent state** per peer (drop `surplus`, drop `originated`) | **Semantic change from today:** overpayment flows through balance as negative debt (consumable credit for future debits), not into a debt-paying-only surplus bucket. This is not an equivalent re-encoding of today's surplus — it changes what over-credit *does* on the next cycle. Forwarders pay for all committed debt; network-wide-insurance of `originated` is gone. |
 | 10 | **Post-`Apply` swap trigger**; off the reserve-to-commit critical path | Settlement is a consequence of committing, not a precondition for reserving |
 | 11 | **Per-peer monotonic cycle IDs**, assigned by stream opener | Minimal state; ordering for free; makes `lastConfirmed` a single watermark |
 | 12 | **Universal middleware coverage** | One code path for all p2p protocol registration; non-chargeable protocols declare zero cycles |
@@ -119,9 +119,9 @@ type CycleHandle struct {
 Sentinel errors (caller-inspectable):
 
 ```go
-ErrOverdraft          // RateLimiter: would exceed allowance
+ErrOverdraft          // Reservations: reservedCredit + current debt would exceed allowance
 ErrPeerBlocklisted    // Ledger: peer is under blocklist
-ErrCycleSuperseded    // CycleTracker: ACK arrived for a stale cycle ID
+ErrCycleSuperseded    // CycleTracker: ACK arrived for a stale cycle ID (internal — never returned to protocol)
 ErrContext            // wraps ctx errors during lock acquisition
 ErrClockDrift         // RateLimiter: ACK timestamp outside ±tolerance
 ErrInvalidACK         // CycleTracker: ACK doesn't reference a known cycle
@@ -157,9 +157,13 @@ type Txn interface {
 }
 ```
 
-- State (per peer, in-memory only): `reservedCredit`, `reservedDebit`, `ghostDebit`, `inflightPayment`, `lastACKTimestamp`.
-- Invariants: Begin → Commit or Rollback exactly once (type-enforced, not convention); reserved + Ledger-balance stays under reserve-side gate; debit Rollback accumulates to `ghostDebit`; `ghostDebit > disconnectLimit` triggers blocklist callback.
-- Dependencies: Ledger (for Commit's balance mutation), RateLimiter (for overdraft check on DirCredit), BlocklistPolicy (for ghost-overflow / disconnect-threshold).
+- State (per peer, in-memory only): `reservedCredit`, `reservedDebit`, `ghostDebit`, `lastACKTimestamp`. (In-flight monetary payment tracking lives in SettlementTrigger, not here — see §5.6.)
+- Invariants:
+  - Begin → Commit or Rollback exactly once (type-enforced, not convention).
+  - **Reserve-side gate (core overdraft-prevention invariant):** on `Begin(peer, amount, DirCredit)`, require `Ledger.Balance(peer) negated + reservedCredit + amount ≤ paymentThreshold + RateLimiter.TimeBudget(peer, now) + SettlementTrigger.inflightPayment[peer]`. Violated ⇒ `ErrOverdraft`, no state change.
+  - Debit Rollback accumulates to `ghostDebit`.
+  - `ghostDebit > disconnectLimit` triggers blocklist callback.
+- Dependencies: Ledger (for committed balance read and commit mutation), RateLimiter (for time-budget component of overdraft check on DirCredit), SettlementTrigger (for in-flight-payment component of same check), BlocklistPolicy (for ghost-overflow / disconnect-threshold).
 
 The `settle()`-inside-`PrepareCredit` leak from today's design goes away by construction: Begin has no side-effects on swap; settlement is a post-commit observer.
 
@@ -176,21 +180,28 @@ type CycleTracker interface {
 ```
 
 - State: per (peer, dir): counter, open-cycle set, last-confirmed watermark. Counter + watermark persisted; open-cycle set in-memory (lost on crash — see §3 decision 13).
-- Invariants: cycle-ID monotonicity per (peer, dir); watermark only advances; `ConfirmCycle(id)` fails with `ErrCycleSuperseded` if a higher watermark subsumes it; `RetroConfirm` is idempotent.
+- Invariants:
+  - Cycle-ID monotonicity per (peer, dir); watermark only advances.
+  - `ConfirmCycle(id)` fails with `ErrCycleSuperseded` if a higher watermark subsumes it; `RetroConfirm` is idempotent.
+  - **`ConfirmCycle` and `RetroConfirm` are called under the peer lock** (the same lock held by `Reservations.Commit`), ensuring atomicity with the balance mutation. Without this, a late-arriving cycle-N ACK could race with a later cycle's watermark bump.
+  - **`ErrCycleSuperseded` is never propagated out of `RunCycle`** — the Middleware swallows it (the superseded cycle was already retro-committed by the piggyback path).
 - Dependencies: persistent store.
 
 ### 5.5 RateLimiter
 
 ```go
 type RateLimiter interface {
-    CheckAllowance(peer, amount, now) error       // ErrOverdraft if over
+    TimeBudget(peer, now) *big.Int                // extra allowance from elapsed time since lastACK
     ValidateACKTimestamp(peer, ts, now) error     // ±drift + monotonic
     NotifyCommit(peer, amount, dir, ackTs)
 }
 ```
 
-- State (per peer): `lastACKTimestamp`, cumulative debt since last monetary settlement. Last timestamp persisted for restart continuity.
-- Invariants: allowance derived from `(now - lastACKts) × refreshRate + paymentThreshold`; timestamp monotonicity; clock drift ≤ tolerance (today's ±2s/±3s preserved).
+- State (per peer): `lastACKTimestamp`. Persisted for restart continuity.
+- Invariants:
+  - `TimeBudget(peer, now) = (now - lastACKTimestamp[peer]) × refreshRate`.
+  - The reservation gate (owned by Reservations, see §5.3) combines `TimeBudget` with `paymentThreshold` and `SettlementTrigger.inflightPayment`; RateLimiter itself does not gate.
+  - `ValidateACKTimestamp`: ACK timestamp must be monotonically non-decreasing per peer; clock drift ≤ tolerance (today's ±2s absolute, ±3s interval preserved).
 - Dependencies: none (pure function of time + its own state).
 
 ### 5.6 SettlementTrigger
@@ -204,9 +215,14 @@ type SettlementTrigger interface {
 type PayFn func(ctx, peer, amount) error
 ```
 
-- State: `inflightPayment[peer]`, `paymentOngoing[peer]`, `lastSettlementFailureTs[peer]`.
-- Invariants: never issues payment while one is in-flight to the same peer; respects `minimumPayment` floor; subtracts `inflightPayment` when computing next amount; 10s cooldown after failed payment.
-- Dependencies: Ledger (read Balance, write via `NotifyPaymentSent`), Swap (injected `PayFn`).
+- State: `inflightPayment[peer]`, `paymentOngoing[peer]`, `lastSettlementFailureTs[peer]`. **`inflightPayment` is owned here, not by Reservations** (Reservations reads it via dependency).
+- Invariants:
+  - **No double-pay:** `paymentOngoing[peer] ⇒ PayFn is not invoked for peer`.
+  - **In-flight deduction:** the amount passed to `PayFn(peer, amount)` equals `max(0, -Ledger.Balance(peer) - inflightPayment[peer])`, never more.
+  - **Minimum-payment floor:** `PayFn(peer, amount)` is invoked only when `amount ≥ minimumPayment` (`minimumPayment = refreshRate / 5`, preserving today's `accounting.go:235`).
+  - **Failure cooldown:** after a failed settlement, no new `PayFn` invocation for that peer until `now > lastSettlementFailureTs[peer] + 10s` (strict `>`, matching today's `failedSettlementInterval` at `accounting.go:473-474` — the effective wait is >10s, not exactly 10s).
+  - **Semantic-change note (see §3 decision 9):** if a payment causes `Ledger.Balance(peer)` to cross below zero (over-credit), the excess remains in balance as spendable negative debt; subsequent debit cycles consume it before recording new positive debt. This is *not* today's surplus semantic.
+- Dependencies: Ledger (read `Balance`, write via `NotifyPaymentSent`), Swap (injected `PayFn`).
 
 ### 5.7 Middleware
 
@@ -370,11 +386,12 @@ type BlocklistPolicy interface {
 Injected into Reservations and Ledger. Duration formula (same as today's `blocklistUntil`):
 
 ```
-disconnectFor(peer) = (latentDebt(peer) + paymentThreshold) × multiplier / refreshRate
-latentDebt = max(0, balance + reservedDebit + ghostDebit)
+disconnectFor(peer) = (effectiveDebt(peer) + paymentThreshold) × multiplier / refreshRate
+rawDebt            = max(0, balance + reservedDebit + ghostDebit)
+effectiveDebt      = max(rawDebt, refreshRate)    // floor ensures minimum penalty
 ```
 
-Separating the policy from state-teardown means each can be tested independently.
+The `refreshRate` floor is required to match today's behavior (`accounting.go:1407-1409`) — without it, a peer with near-zero effective debt would be blocklisted for a near-zero duration, defeating the accountability intent. Separating the policy from state-teardown means each can be tested independently.
 
 ### Edge cases preserved from today
 
@@ -382,7 +399,7 @@ Separating the policy from state-teardown means each can be tested independently
 - Storage failure during Commit: Ledger returns error; Commit fails; defer Rollback releases reservation.
 - Settlement fails mid-flight: SettlementTrigger handles via inflight counter, retry gate, 10s cooldown. Doesn't propagate to RunCycle.
 - Concurrent RunCycle to same peer: each takes peer lock in Begin and releases, reacquires in Commit. Ledger writes are lock-protected. Today's concurrent-Debit race is eliminated by a single Ledger mutation path that holds the lock for the full balance RMW.
-- `ErrOverRelease` swallow: eliminated by construction (use-once txn types make double-Release a compile error).
+- `ErrOverRelease` swallow: eliminated by construction (use-once txn types make double-Release a compile error). Note: this is a Go type-system obligation, not a runtime invariant — formal verification at the algorithm level cannot check it; the TLA+ model should instead assert that each txn transitions exactly once from Begun to Finalized.
 
 ### Errors the protocol needs to distinguish
 
