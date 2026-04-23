@@ -142,7 +142,7 @@ func (p *goroutineProverPool) GetProver() *Prover {
 
 // PutProver returns a Prover's tree to the pool for reuse.
 func (p *goroutineProverPool) PutProver(pr *Prover) {
-	p.c <- pr.goroutineHasher.bmt
+	p.c <- pr.bmt
 }
 
 // goroutineTree is the tree structure used by the goroutine hasher.

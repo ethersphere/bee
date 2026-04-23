@@ -168,4 +168,3 @@ func newSIMDTree(maxsize, depth int, hashfunc func() hash.Hash, prefix []byte) *
 		leafConcat: leafConcat,
 	}
 }
-
