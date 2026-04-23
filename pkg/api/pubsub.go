@@ -136,10 +136,8 @@ func (s *Service) pubsubWsHandler(w http.ResponseWriter, r *http.Request) {
 	s.wsWg.Add(1)
 	go func() {
 		pubsub.ListeningWs(ctx, conn, pubsub.WsOptions{PingPeriod: pingPeriod, Cancel: cancel}, logger, mode, isPublisher)
+		cancel()
 		_ = conn.Close()
-		if sc := mode.GetSubscriberConn(); sc != nil {
-			sc.Cancel()
-		}
 		s.wsWg.Done()
 	}()
 }
