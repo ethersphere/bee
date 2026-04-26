@@ -117,3 +117,32 @@ func TestMarshaling(t *testing.T) {
 		t.Error("Wrongly marshaled data")
 	}
 }
+
+func TestUnmarshalJSONAcceptsStringAndNumber(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "string", input: `"123456789"`, want: "123456789"},
+		{name: "number", input: `123456789`, want: "123456789"},
+		{name: "negative number", input: `-42`, want: "-42"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var got bigint.BigInt
+			if err := got.UnmarshalJSON([]byte(tc.input)); err != nil {
+				t.Fatalf("UnmarshalJSON: %v", err)
+			}
+
+			if got.String() != tc.want {
+				t.Fatalf("got %s, want %s", got.String(), tc.want)
+			}
+		})
+	}
+}
