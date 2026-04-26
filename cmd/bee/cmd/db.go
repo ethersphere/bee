@@ -290,7 +290,7 @@ func dbRepairReserve(cmd *cobra.Command) {
 			}
 			defer db.Close()
 
-			err = migration.ReserveRepair(db.Storage(), storage.ChunkType, logger)()
+			err = migration.ReserveRepairer(db.Storage(), storage.ChunkType, logger)()
 			if err != nil {
 				return fmt.Errorf("repair: %w", err)
 			}

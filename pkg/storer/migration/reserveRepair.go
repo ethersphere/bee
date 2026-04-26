@@ -22,8 +22,8 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// ReserveRepair runs the manual reserve repair procedure used by the db repair command.
-func ReserveRepair(
+// ReserveRepairer runs the manual reserve repair procedure used by the db repair command.
+func ReserveRepairer(
 	st transaction.Storage,
 	chunkTypeFunc func(swarm.Chunk) swarm.ChunkType,
 	logger log.Logger,

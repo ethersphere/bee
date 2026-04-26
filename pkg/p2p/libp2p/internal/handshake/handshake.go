@@ -382,7 +382,7 @@ func (s *Service) parseCheckAck(ack *pb.Ack) (*bzz.Address, error) {
 
 func firstByteString(data []byte) string {
 	if len(data) == 0 {
-		return "none"
+		return ""
 	}
 	return fmt.Sprintf("0x%02x", data[0])
 }
