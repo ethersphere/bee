@@ -32,6 +32,8 @@ func allSteps(st storage.Store) migration.Steps {
 	}
 }
 
+// bigIntPrefixes lists all statestore key prefixes whose values are stored as
+// big.Int and need to be migrated to bigint.BigInt binary (Gob) encoding.
 var bigIntPrefixes = []string{
 	"accounting_balance_",
 	"accounting_surplusbalance_",
@@ -61,19 +63,24 @@ func migrateBigIntKeys(s storage.Store) migration.StepFn {
 				v := new(big.Int)
 				switch data[0] {
 				case 2, 3:
+					// Gob-encoded data found before migration — database is in an unexpected state
 					return true, fmt.Errorf("unexpected Gob-encoded bigint at key %q before migration", key)
 				case '"':
+					// quoted decimal string from json.Marshal(bigint.BigInt)
 					var w bigint.BigInt
 					if err := json.Unmarshal(data, &w); err != nil {
 						return true, fmt.Errorf("unmarshal quoted bigint at key %q: %w", key, err)
 					}
 					v = w.Int
 				default:
+					// unquoted decimal from json.Marshal(*big.Int)
 					if _, ok := v.SetString(string(data), 10); !ok {
 						return true, fmt.Errorf("parse decimal bigint at key %q: invalid value %q", key, data)
 					}
 				}
-
+				// The StateStorerAdapter iterator gives key = prefix + res.ID,
+				// where res.ID already contains the full key (including prefix).
+				// Strip the leading prefix duplicate to get the actual statestore key.
 				rewrite = append(rewrite, struct {
 					key string
 					val *big.Int
