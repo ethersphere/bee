@@ -401,7 +401,11 @@ func (r *record) close() {
 }
 
 func (r *record) bytes() []byte {
-	return r.b
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	cp := make([]byte, len(r.b))
+	copy(cp, r.b)
+	return cp
 }
 
 func (r *record) bytesSize() int {
