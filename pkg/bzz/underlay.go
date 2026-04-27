@@ -35,10 +35,14 @@ func SerializeUnderlays(addrs []multiaddr.Multiaddr) []byte {
 }
 
 // DeserializeUnderlays deserializes a byte slice into a slice of multiaddrs.
+// The data format is automatically detected as either a single legacy multiaddr
+// or a list of multiaddrs (identified by underlayListPrefix), and is parsed accordingly.
 func DeserializeUnderlays(data []byte) ([]multiaddr.Multiaddr, error) {
 	if len(data) == 0 {
 		return nil, errors.New("cannot deserialize empty byte slice")
 	}
+
+	// If the data begins with the magic prefix, it is handled as a list.
 	if data[0] == underlayListPrefix {
 		return deserializeList(data[1:])
 	}
