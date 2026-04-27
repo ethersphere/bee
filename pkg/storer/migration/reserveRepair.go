@@ -29,7 +29,20 @@ func ReserveRepairer(
 	logger log.Logger,
 ) func() error {
 	return func() error {
+		/*
+			STEP 0:	remove epoch item
+			STEP 1:	remove all of the BinItem entries
+			STEP 2:	remove all of the ChunkBinItem entries
+			STEP 3:	iterate BatchRadiusItem, get new binID
+					create new ChunkBinItem and BatchRadiusItem if the chunk exists in the chunkstore
+					if the chunk is invalid, it is removed from the chunkstore
+			STEP 4: save the latest binID to disk
+		*/
+
+		logger.Info("starting reserve repair tool, do not interrupt or kill the process...")
+
 		checkBinIDs := func() error {
+			// extra test that ensure that a unique binID has been issed to each item.
 			binIds := make(map[uint8]map[uint64]int)
 			return st.IndexStore().Iterate(
 				storage.Query{
@@ -55,13 +68,12 @@ func ReserveRepairer(
 			)
 		}
 
-		logger.Info("starting reserve repair tool, do not interrupt or kill the process...")
-
 		err := checkBinIDs()
 		if err != nil {
 			logger.Info("pre-repair check failed", "error", err)
 		}
 
+		// STEP 0
 		err = st.Run(context.Background(), func(s transaction.Store) error {
 			return s.IndexStore().Delete(&reserve.EpochItem{})
 		})
@@ -69,6 +81,7 @@ func ReserveRepairer(
 			return err
 		}
 
+		// STEP 1
 		err = st.Run(context.Background(), func(s transaction.Store) error {
 			for i := range swarm.MaxBins {
 				err := s.IndexStore().Delete(&reserve.BinItem{Bin: i})
@@ -84,6 +97,7 @@ func ReserveRepairer(
 
 		logger.Info("removed all bin index entries")
 
+		// STEP 2
 		var chunkBinItems []*reserve.ChunkBinItem
 		err = st.IndexStore().Iterate(
 			storage.Query{
@@ -116,7 +130,9 @@ func ReserveRepairer(
 			}
 		}
 		logger.Info("removed all chunk bin items", "total_entries", len(chunkBinItems))
+		chunkBinItems = nil
 
+		// STEP 3
 		var batchRadiusItems []*reserve.BatchRadiusItem
 		err = st.IndexStore().Iterate(
 			storage.Query{
@@ -125,6 +141,7 @@ func ReserveRepairer(
 			func(res storage.Result) (bool, error) {
 				item := res.Entry.(*reserve.BatchRadiusItem)
 				batchRadiusItems = append(batchRadiusItems, item)
+
 				return false, nil
 			},
 		)
@@ -136,9 +153,9 @@ func ReserveRepairer(
 
 		var missingChunks atomic.Int64
 		var invalidSharkyChunks atomic.Int64
+
 		var bins [swarm.MaxBins]uint64
 		var mtx sync.Mutex
-
 		newID := func(bin int) uint64 {
 			mtx.Lock()
 			defer mtx.Unlock()
@@ -148,58 +165,60 @@ func ReserveRepairer(
 		}
 
 		var eg errgroup.Group
+
 		p := runtime.NumCPU()
 		eg.SetLimit(p)
 
 		logger.Info("parallel workers", "count", p)
 
 		for _, item := range batchRadiusItems {
-			item := item //nolint:copyloopvar
-			eg.Go(func() error {
-				return st.Run(context.Background(), func(s transaction.Store) error {
-					chunk, err := s.ChunkStore().Get(context.Background(), item.Address)
-					if err != nil {
-						if errors.Is(err, storage.ErrNotFound) {
-							missingChunks.Add(1)
+			func(item *reserve.BatchRadiusItem) {
+				eg.Go(func() error {
+					return st.Run(context.Background(), func(s transaction.Store) error {
+						chunk, err := s.ChunkStore().Get(context.Background(), item.Address)
+						if err != nil {
+							if errors.Is(err, storage.ErrNotFound) {
+								missingChunks.Add(1)
+								return reserve.RemoveChunkWithItem(context.Background(), s, item)
+							}
+							return err
+						}
+
+						chunkType := chunkTypeFunc(chunk)
+						if chunkType == swarm.ChunkTypeUnspecified {
+							invalidSharkyChunks.Add(1)
 							return reserve.RemoveChunkWithItem(context.Background(), s, item)
 						}
-						return err
-					}
 
-					chunkType := chunkTypeFunc(chunk)
-					if chunkType == swarm.ChunkTypeUnspecified {
-						invalidSharkyChunks.Add(1)
-						return reserve.RemoveChunkWithItem(context.Background(), s, item)
-					}
+						item.BinID = newID(int(item.Bin))
+						if bytes.Equal(item.StampHash, swarm.EmptyAddress.Bytes()) {
+							stamp, err := chunkstamp.LoadWithStampHash(s.IndexStore(), "reserve", item.Address, item.StampHash)
+							if err != nil {
+								return err
+							}
+							stampHash, err := stamp.Hash()
+							if err != nil {
+								return err
+							}
+							item.StampHash = stampHash
+						}
 
-					item.BinID = newID(int(item.Bin))
-					if bytes.Equal(item.StampHash, swarm.EmptyAddress.Bytes()) {
-						stamp, err := chunkstamp.LoadWithStampHash(s.IndexStore(), "reserve", item.Address, item.StampHash)
+						err = s.IndexStore().Put(item)
 						if err != nil {
 							return err
 						}
-						stampHash, err := stamp.Hash()
-						if err != nil {
-							return err
-						}
-						item.StampHash = stampHash
-					}
 
-					err = s.IndexStore().Put(item)
-					if err != nil {
-						return err
-					}
-
-					return s.IndexStore().Put(&reserve.ChunkBinItem{
-						BatchID:   item.BatchID,
-						Bin:       item.Bin,
-						Address:   item.Address,
-						BinID:     item.BinID,
-						StampHash: item.StampHash,
-						ChunkType: chunkType,
+						return s.IndexStore().Put(&reserve.ChunkBinItem{
+							BatchID:   item.BatchID,
+							Bin:       item.Bin,
+							Address:   item.Address,
+							BinID:     item.BinID,
+							StampHash: item.StampHash,
+							ChunkType: chunkType,
+						})
 					})
 				})
-			})
+			}(item)
 		}
 
 		err = eg.Wait()
@@ -207,6 +226,7 @@ func ReserveRepairer(
 			return err
 		}
 
+		// STEP 4
 		err = st.Run(context.Background(), func(s transaction.Store) error {
 			for bin, id := range bins {
 				err := s.IndexStore().Put(&reserve.BinItem{Bin: uint8(bin), BinID: id})
