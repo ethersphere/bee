@@ -298,9 +298,9 @@ func TestChunkUploadSOC(t *testing.T) {
 
 	t.Run("soc upload returns soc address", func(t *testing.T) {
 		var (
-			mockSOC    = testingsoc.GenerateMockSOC(t, []byte("test payload"))
-			socChunk   = mockSOC.Chunk()
-			storerMock = mockstorer.New()
+			mockSOC         = testingsoc.GenerateMockSOC(t, []byte("test payload"))
+			socChunk        = mockSOC.Chunk()
+			storerMock      = mockstorer.New()
 			client, _, _, _ = newTestServer(t, testServerOptions{
 				Storer: storerMock,
 				Post:   mockpost.New(mockpost.WithAcceptAll()),
@@ -319,9 +319,9 @@ func TestChunkUploadSOC(t *testing.T) {
 
 	t.Run("soc upload chunk is retrievable", func(t *testing.T) {
 		var (
-			mockSOC    = testingsoc.GenerateMockSOC(t, []byte("retrievable"))
-			socChunk   = mockSOC.Chunk()
-			storerMock = mockstorer.New()
+			mockSOC         = testingsoc.GenerateMockSOC(t, []byte("retrievable"))
+			socChunk        = mockSOC.Chunk()
+			storerMock      = mockstorer.New()
 			client, _, _, _ = newTestServer(t, testServerOptions{
 				Storer: storerMock,
 				Post:   mockpost.New(mockpost.WithAcceptAll()),
@@ -359,9 +359,9 @@ func TestChunkUploadSOC(t *testing.T) {
 
 	t.Run("soc direct upload", func(t *testing.T) {
 		var (
-			mockSOC    = testingsoc.GenerateMockSOC(t, []byte("direct"))
-			socChunk   = mockSOC.Chunk()
-			storerMock = mockstorer.New()
+			mockSOC                  = testingsoc.GenerateMockSOC(t, []byte("direct"))
+			socChunk                 = mockSOC.Chunk()
+			storerMock               = mockstorer.New()
 			client, _, _, chanStorer = newTestServer(t, testServerOptions{
 				Storer:       storerMock,
 				Post:         mockpost.New(mockpost.WithAcceptAll()),
@@ -384,8 +384,8 @@ func TestChunkUploadSOC(t *testing.T) {
 
 	t.Run("cac upload still works", func(t *testing.T) {
 		var (
-			chunk      = testingc.GenerateTestRandomChunk()
-			storerMock = mockstorer.New()
+			chunk           = testingc.GenerateTestRandomChunk()
+			storerMock      = mockstorer.New()
 			client, _, _, _ = newTestServer(t, testServerOptions{
 				Storer: storerMock,
 				Post:   mockpost.New(mockpost.WithAcceptAll()),
@@ -404,8 +404,8 @@ func TestChunkUploadSOC(t *testing.T) {
 	t.Run("cac upload small payload", func(t *testing.T) {
 		// Minimal CAC: span (8 bytes) + 1 byte payload = 9 bytes total
 		var (
-			cacChunk, _ = cac.New([]byte{0x01})
-			storerMock  = mockstorer.New()
+			cacChunk, _     = cac.New([]byte{0x01})
+			storerMock      = mockstorer.New()
 			client, _, _, _ = newTestServer(t, testServerOptions{
 				Storer: storerMock,
 				Post:   mockpost.New(mockpost.WithAcceptAll()),
@@ -424,9 +424,9 @@ func TestChunkUploadSOC(t *testing.T) {
 	t.Run("cac upload max payload", func(t *testing.T) {
 		// Maximum CAC: span (8 bytes) + 4096 byte payload = 4104 bytes total
 		var (
-			payload     = make([]byte, swarm.ChunkSize)
-			cacChunk, _ = cac.New(payload)
-			storerMock  = mockstorer.New()
+			payload         = make([]byte, swarm.ChunkSize)
+			cacChunk, _     = cac.New(payload)
+			storerMock      = mockstorer.New()
 			client, _, _, _ = newTestServer(t, testServerOptions{
 				Storer: storerMock,
 				Post:   mockpost.New(mockpost.WithAcceptAll()),
@@ -462,9 +462,9 @@ func TestChunkUploadSOC(t *testing.T) {
 		// Data that is >= SocMinChunkSize (105 bytes) but not a valid SOC
 		// (random data won't have valid ECDSA signature). Should fall back to CAC.
 		var (
-			payload     = make([]byte, swarm.SocMinChunkSize-swarm.SpanSize) // 97 bytes payload
-			cacChunk, _ = cac.New(payload)                                    // 105 bytes total (span + 97)
-			storerMock  = mockstorer.New()
+			payload         = make([]byte, swarm.SocMinChunkSize-swarm.SpanSize) // 97 bytes payload
+			cacChunk, _     = cac.New(payload)                                   // 105 bytes total (span + 97)
+			storerMock      = mockstorer.New()
 			client, _, _, _ = newTestServer(t, testServerOptions{
 				Storer: storerMock,
 				Post:   mockpost.New(mockpost.WithAcceptAll()),
@@ -482,10 +482,10 @@ func TestChunkUploadSOC(t *testing.T) {
 
 	t.Run("soc with pre-signed stamp", func(t *testing.T) {
 		var (
-			mockSOC    = testingsoc.GenerateMockSOC(t, []byte("stamped"))
-			socChunk   = mockSOC.Chunk()
-			storerMock = mockstorer.New()
-			batchStore = mockbatchstore.New()
+			mockSOC         = testingsoc.GenerateMockSOC(t, []byte("stamped"))
+			socChunk        = mockSOC.Chunk()
+			storerMock      = mockstorer.New()
+			batchStore      = mockbatchstore.New()
 			client, _, _, _ = newTestServer(t, testServerOptions{
 				Storer:     storerMock,
 				BatchStore: batchStore,
