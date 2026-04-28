@@ -67,3 +67,30 @@ func TestPostSteps(t *testing.T) {
 		assert.NoError(t, err)
 	})
 }
+
+func Test_GapInVersionsValidation(t *testing.T) {
+	t.Parallel()
+
+	store := internal.NewInmemStorage()
+	steps := localmigration.AfterInitSteps("", 0, store, log.Noop)
+
+	latest := migration.LatestVersion(steps)
+	if latest < 2 {
+		t.Fatalf("expected at least 2 migration steps, got %d", latest)
+	}
+
+	invalid := make(migration.Steps, len(steps))
+	for version, step := range steps {
+		invalid[version] = step
+	}
+
+	// Create a gap without depending on any concrete version numbers:
+	// remove the current latest step and add a new one at latest+2.
+	delete(invalid, latest)
+	invalid[latest+2] = func() error { return nil }
+
+	err := migration.ValidateVersions(invalid)
+	if err == nil {
+		t.Fatal("expected ValidateVersions to fail for non-contiguous steps")
+	}
+}

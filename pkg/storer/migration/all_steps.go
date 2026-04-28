@@ -19,19 +19,23 @@ func AfterInitSteps(
 	logger log.Logger,
 ) migration.Steps {
 	return map[uint64]migration.StepFn{
-		1: step_01,
-		2: step_02(st),
-		3: ReserveRepairer(st, storage.ChunkType, logger),
-		4: step_04(sharkyPath, sharkyNoOfShards, st, logger),
-		5: step_05(st, logger),
-		6: step_06(st, logger),
-		7: resetReserveEpochTimestamp(st),
+		1: legacyNoopStep,
+		2: legacyNoopStep,
+		3: legacyNoopStep,
+		4: legacyNoopStep,
+		5: legacyNoopStep,
+		6: legacyNoopStep,
+		7: legacyNoopStep,
 	}
 }
 
 // BeforeInitSteps lists all migration steps for localstore IndexStore before the localstore is initiated.
 func BeforeInitSteps(st storage.BatchStore, logger log.Logger) migration.Steps {
 	return map[uint64]migration.StepFn{
-		1: RefCountSizeInc(st, logger),
+		1: legacyNoopStep,
 	}
+}
+
+func legacyNoopStep() error {
+	return nil
 }

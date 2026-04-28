@@ -20,7 +20,6 @@ import (
 	"time"
 
 	ocprom "contrib.go.opencensus.io/exporter/prometheus"
-	"github.com/coreos/go-semver/semver"
 	"github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/bzz"
@@ -609,13 +608,10 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		}
 	}
 
-	bee260Compat := s.bee260BackwardCompatibility(peerID)
-
 	i, err := s.handshakeService.Handle(
 		s.ctx,
 		handshakeStream,
 		observedAddrs,
-		handshake.WithBee260Compatibility(bee260Compat),
 	)
 	if err != nil {
 		s.logger.Debug("stream handler: handshake: handle failed", "peer_id", peerID, "error", err)
@@ -1072,13 +1068,10 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		}
 	}
 
-	bee260Compat := s.bee260BackwardCompatibility(peerID)
-
 	i, err := s.handshakeService.Handshake(
 		s.ctx,
 		handshakeStream,
 		observedAddrs,
-		handshake.WithBee260Compatibility(bee260Compat),
 	)
 	if err != nil {
 		_ = handshakeStream.Reset()
@@ -1475,45 +1468,6 @@ func (s *Service) peerMultiaddrs(ctx context.Context, peerID libp2ppeer.ID) ([]m
 	mas := waitPeerAddrs(waitPeersCtx, s.host.Peerstore(), peerID)
 
 	return buildFullMAs(mas, peerID)
-}
-
-// IsBee260 implements p2p.Bee260CompatibilityStreamer interface.
-// It checks if a peer is running Bee version older than 2.7.0.
-func (s *Service) IsBee260(overlay swarm.Address) bool {
-	peerID, found := s.peers.peerID(overlay)
-	if !found {
-		return false
-	}
-	return s.bee260BackwardCompatibility(peerID)
-}
-
-var version270 = *semver.Must(semver.NewVersion("2.7.0"))
-
-func (s *Service) bee260BackwardCompatibility(peerID libp2ppeer.ID) bool {
-	if compat, found := s.peers.bee260(peerID); found {
-		return compat
-	}
-
-	userAgent := s.peerUserAgent(s.ctx, peerID)
-	p := strings.SplitN(userAgent, " ", 2)
-	if len(p) != 2 {
-		return false
-	}
-	version := strings.TrimPrefix(p[0], "bee/")
-	v, err := semver.NewVersion(version)
-	if err != nil {
-		return false
-	}
-
-	// Compare major.minor.patch only (ignore pre-release)
-	// This way 2.7.0-rc12 is treated as >= 2.7.0
-	vCore, err := semver.NewVersion(fmt.Sprintf("%d.%d.%d", v.Major, v.Minor, v.Patch))
-	if err != nil {
-		return false
-	}
-	result := vCore.LessThan(version270)
-	s.peers.setBee260(peerID, result)
-	return result
 }
 
 // appendSpace adds a leading space character if the string is not empty.
