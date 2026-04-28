@@ -4,11 +4,17 @@ on:
   push:
     paths-ignore:
       - packaging/**
+      - openapi/**
+      - '**/*.md'
+      - '.github/ISSUE_TEMPLATE/**'
     branches:
       - 'master'
   pull_request:
     paths-ignore:
       - packaging/**
+      - openapi/**
+      - '**/*.md'
+      - '.github/ISSUE_TEMPLATE/**'
     branches:
       - '**'
 
@@ -44,21 +50,6 @@ jobs:
     - name: Test without race detector (Windows)
       if: matrix.os == 'windows-latest'
       run: make test-ci
-  test-flaky:
-    name: Test (flaky)
-    runs-on: ubuntu-latest
-    continue-on-error: ${{ github.ref == 'refs/heads/master' }}
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v5
-    - name: Setup Go
-      uses: actions/setup-go@v6
-      with:
-        cache: true
-        go-version-file: go.mod
-    - name: Run flaky test
-      run: make test-ci-flaky
-      continue-on-error: ${{ github.ref == 'refs/heads/master' }}
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -78,10 +69,10 @@ jobs:
       with:
         configFile: commitlint.config.js
     - name: GolangCI-Lint
-      uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9 # v8
+      uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0
       with:
         skip-cache: false
-        version: v2.5.0
+        version: v2.11.3
     - name: Whitespace check
       run: make check-whitespace
     - name: go mod tidy check

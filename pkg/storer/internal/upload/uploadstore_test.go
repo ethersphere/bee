@@ -818,7 +818,6 @@ func TestChunkReporter(t *testing.T) {
 }
 
 func TestDeleteTagReporter(t *testing.T) {
-
 	t.Parallel()
 
 	ts := newTestStorage(t)
@@ -844,7 +843,6 @@ func TestDeleteTagReporter(t *testing.T) {
 	}
 
 	t.Run("delete tag while uploading", func(t *testing.T) {
-
 		chunk := chunktest.GenerateTestRandomChunks(1)[0]
 
 		if err := ts.Run(context.Background(), func(s transaction.Store) error {
@@ -924,7 +922,6 @@ func TestDeleteTagReporter(t *testing.T) {
 			t.Fatalf("expected uploadItem to be deleted, got error: %v", err)
 		}
 	})
-
 }
 
 func TestNextTagID(t *testing.T) {

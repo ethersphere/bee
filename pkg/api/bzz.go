@@ -122,8 +122,6 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.NotFound(w, "batch with id not found")
 		case errors.Is(err, errInvalidPostageBatch):
 			jsonhttp.BadRequest(w, "invalid batch id")
-		case errors.Is(err, errUnsupportedDevNodeOperation):
-			jsonhttp.BadRequest(w, errUnsupportedDevNodeOperation)
 		default:
 			jsonhttp.BadRequest(w, nil)
 		}
@@ -499,7 +497,7 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 	}
 
 	ctx := r.Context()
-	ls := loadsave.NewReadonly(s.storer.Download(cache), s.storer.Cache(), redundancy.DefaultLevel)
+	ls := loadsave.NewReadonly(s.storer.Download(cache), s.storer.Cache(), rLevel)
 	feedDereferenced := false
 
 	ctx, err := getter.SetConfigInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout, logger)

@@ -41,7 +41,6 @@ func NewList(workerWakeUpDur time.Duration) *List {
 }
 
 func (l *List) worker(d time.Duration) {
-
 	defer l.wg.Done()
 
 	ticker := time.NewTicker(d)
@@ -62,7 +61,6 @@ func (l *List) Forever(chunk, peer swarm.Address) {
 }
 
 func (l *List) Add(chunk, peer swarm.Address, expire time.Duration) {
-
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 
@@ -116,7 +114,6 @@ func (l *List) prune() {
 
 // Must be called under lock
 func (l *List) pruneChunk(ch string, now int64) int {
-
 	count := 0
 
 	for peer, exp := range l.skip[ch] {

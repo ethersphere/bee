@@ -124,7 +124,6 @@ var (
 	errFileStore                        = errors.New("could not store file")
 	errInvalidPostageBatch              = errors.New("invalid postage batch id")
 	errBatchUnusable                    = errors.New("batch not usable")
-	errUnsupportedDevNodeOperation      = errors.New("operation not supported in dev mode")
 	errOperationSupportedOnlyInFullMode = errors.New("operation is supported only in full mode")
 	errActDownload                      = errors.New("act download failed")
 	errActUpload                        = errors.New("act upload failed")
@@ -808,10 +807,6 @@ func (s *Service) getStamper(batchID []byte) (postage.Stamper, func() error, err
 }
 
 func (s *Service) newStamperPutter(ctx context.Context, opts putterOptions) (storer.PutterSession, error) {
-	if !opts.Deferred && s.beeMode == DevMode {
-		return nil, errUnsupportedDevNodeOperation
-	}
-
 	stamper, save, err := s.getStamper(opts.BatchID)
 	if err != nil {
 		return nil, fmt.Errorf("get stamper: %w", err)
@@ -836,16 +831,19 @@ func (s *Service) newStamperPutter(ctx context.Context, opts putterOptions) (sto
 }
 
 func (s *Service) newStampedPutter(ctx context.Context, opts putterOptions, stamp *postage.Stamp) (storer.PutterSession, error) {
-	if !opts.Deferred && s.beeMode == DevMode {
-		return nil, errUnsupportedDevNodeOperation
-	}
-
 	storedBatch, err := s.batchStore.Get(stamp.BatchID())
 	if err != nil {
 		return nil, errInvalidPostageBatch
 	}
 
+	return s.newStampedPutterWithBatch(ctx, opts, stamp, storedBatch)
+}
+
+// newStampedPutterWithBatch creates a stamped putter using a pre-fetched batch.
+// This avoids the database lookup when batch info is already cached.
+func (s *Service) newStampedPutterWithBatch(ctx context.Context, opts putterOptions, stamp *postage.Stamp, storedBatch *postage.Batch) (storer.PutterSession, error) {
 	var session storer.PutterSession
+	var err error
 	if opts.Deferred || opts.Pin {
 		session, err = s.storer.Upload(ctx, opts.Pin, opts.TagID)
 		if err != nil {

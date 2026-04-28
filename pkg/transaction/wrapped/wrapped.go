@@ -8,29 +8,49 @@ import (
 	"context"
 	"errors"
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/ethersphere/bee/v2/pkg/transaction/backend"
+	"github.com/ethersphere/bee/v2/pkg/transaction/wrapped/cache"
 )
 
-var (
-	_ transaction.Backend = (*wrappedBackend)(nil)
-)
+var _ transaction.Backend = (*wrappedBackend)(nil)
 
-type wrappedBackend struct {
-	backend          backend.Geth
-	metrics          metrics
-	minimumGasTipCap int64
+type blockNumberAnchor struct {
+	number    uint64
+	timestamp time.Time
 }
 
-func NewBackend(backend backend.Geth, minimumGasTipCap uint64) transaction.Backend {
+type wrappedBackend struct {
+	backend           backend.Geth
+	metrics           metrics
+	minimumGasTipCap  int64
+	blockTime         time.Duration
+	blockSyncInterval uint64
+	blockNumberCache  *cache.SingleFlightCache[blockNumberAnchor]
+}
+
+func NewBackend(
+	backend backend.Geth,
+	minimumGasTipCap uint64,
+	blockTime time.Duration,
+	blockSyncInterval uint64,
+) transaction.Backend {
+	if blockSyncInterval == 0 {
+		blockSyncInterval = 1
+	}
+
 	return &wrappedBackend{
-		backend:          backend,
-		minimumGasTipCap: int64(minimumGasTipCap),
-		metrics:          newMetrics(),
+		backend:           backend,
+		minimumGasTipCap:  int64(minimumGasTipCap),
+		blockTime:         blockTime,
+		metrics:           newMetrics(),
+		blockSyncInterval: blockSyncInterval,
+		blockNumberCache:  cache.NewSingleFlightCache[blockNumberAnchor]("block_number"),
 	}
 }
 
@@ -61,14 +81,53 @@ func (b *wrappedBackend) TransactionByHash(ctx context.Context, hash common.Hash
 }
 
 func (b *wrappedBackend) BlockNumber(ctx context.Context) (uint64, error) {
-	b.metrics.TotalRPCCalls.Inc()
-	b.metrics.BlockNumberCalls.Inc()
-	blockNumber, err := b.backend.BlockNumber(ctx)
+	canReuseBlockAnchorFn := func(anchor blockNumberAnchor) bool {
+		_, elapsedBlocks := b.estimatedBlockNumberWithElapsed(anchor, time.Now().UTC())
+		return elapsedBlocks < b.blockSyncInterval
+	}
+
+	loadFreshBlockFn := func() (blockNumberAnchor, error) {
+		b.metrics.TotalRPCCalls.Inc()
+		b.metrics.BlockHeaderAsBlockNumberCalls.Inc()
+
+		header, err := b.backend.HeaderByNumber(ctx, nil)
+		if err != nil {
+			b.metrics.TotalRPCErrors.Inc()
+			return blockNumberAnchor{}, err
+		}
+		if header == nil || header.Number == nil {
+			b.metrics.TotalRPCErrors.Inc()
+			return blockNumberAnchor{}, errors.New("latest block header unavailable")
+		}
+		return blockNumberAnchor{
+			number:    header.Number.Uint64(),
+			timestamp: time.Unix(int64(header.Time), 0).UTC(),
+		}, nil
+	}
+
+	anchor, err := b.blockNumberCache.PeekOrLoad(
+		ctx,
+		canReuseBlockAnchorFn,
+		loadFreshBlockFn,
+	)
 	if err != nil {
-		b.metrics.TotalRPCErrors.Inc()
 		return 0, err
 	}
-	return blockNumber, nil
+	return b.estimatedBlockNumber(anchor, time.Now().UTC()), nil
+}
+
+func (b *wrappedBackend) estimatedBlockNumber(anchor blockNumberAnchor, now time.Time) uint64 {
+	currentBlock, _ := b.estimatedBlockNumberWithElapsed(anchor, now)
+	return currentBlock
+}
+
+func (b *wrappedBackend) estimatedBlockNumberWithElapsed(anchor blockNumberAnchor, now time.Time) (uint64, uint64) {
+	if now.Before(anchor.timestamp) {
+		return anchor.number, 0
+	}
+
+	elapsedBlocks := uint64(now.Sub(anchor.timestamp) / b.blockTime)
+	return anchor.number + elapsedBlocks, elapsedBlocks
 }
 
 func (b *wrappedBackend) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error) {
@@ -138,10 +197,11 @@ func (b *wrappedBackend) SuggestGasTipCap(ctx context.Context) (*big.Int, error)
 	}
 	return gasTipCap, nil
 }
-func (b *wrappedBackend) EstimateGasAtBlock(ctx context.Context, msg ethereum.CallMsg, blockNumber *big.Int) (uint64, error) {
+
+func (b *wrappedBackend) EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint64, error) {
 	b.metrics.TotalRPCCalls.Inc()
 	b.metrics.EstimateGasCalls.Inc()
-	gas, err := b.backend.EstimateGasAtBlock(ctx, msg, blockNumber)
+	gas, err := b.backend.EstimateGas(ctx, msg)
 	if err != nil {
 		b.metrics.TotalRPCErrors.Inc()
 		return 0, err

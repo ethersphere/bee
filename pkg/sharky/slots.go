@@ -40,11 +40,13 @@ func (sl *slots) load() (err error) {
 	return err
 }
 
-// save persists the free slot bitvector on disk (without closing)
+// save persists the free slot bitvector on disk (without closing).
+// slots only ever grow (extend is the only mutation), so sl.data is always >=
+// the previous file size. Seeking to 0 and overwriting is therefore always
+// safe: no stale tail bytes can survive. Truncate(0) is intentionally absent
+// because truncating before the write creates a crash window where the file is
+// empty; removing it eliminates that vulnerability.
 func (sl *slots) save() error {
-	if err := sl.file.Truncate(0); err != nil {
-		return err
-	}
 	if _, err := sl.file.Seek(0, 0); err != nil {
 		return err
 	}

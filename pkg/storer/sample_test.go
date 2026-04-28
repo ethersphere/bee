@@ -26,7 +26,7 @@ func TestReserveSampler(t *testing.T) {
 	const maxPO = 10
 
 	randChunks := func(baseAddr swarm.Address, timeVar uint64) []swarm.Chunk {
-		var chs []swarm.Chunk
+		chs := make([]swarm.Chunk, 0, chunkCountPerPO*maxPO)
 		for po := range maxPO {
 			for range chunkCountPerPO {
 				ch := chunk.GenerateValidRandomChunkAt(t, baseAddr, po).WithBatch(3, 2, false)
@@ -430,9 +430,7 @@ func BenchmarkReserveSample1k(b *testing.B) {
 		anchor       = swarm.RandAddressAt(b, baseAddr, int(radius)).Bytes()
 	)
 
-	b.ResetTimer()
-
-	for range b.N {
+	for b.Loop() {
 		_, err := st.ReserveSample(context.TODO(), anchor, radius, timeVar, nil)
 		if err != nil {
 			b.Fatal(err)

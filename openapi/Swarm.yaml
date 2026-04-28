@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 7.4.1
+  version: 8.0.0
   title: Bee API
   description: "API endpoints for interacting with the Swarm network, supporting file operations, messaging, and node management"
 
@@ -319,7 +319,18 @@ paths:
         - Chunk
       parameters:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
+        - in: query
+          name: swarm-tag
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/Uid"
+          required: false
+          description: "Associate upload with an existing Tag UID (use when WebSocket client cannot set custom headers)"
+        - in: header
+          name: swarm-postage-batch-id
+          description: "ID of Postage Batch that is used to upload data with. Optional when chunks include pre-signed postage stamps."
+          required: false
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
       responses:
         "200":
           description: "Connection established"

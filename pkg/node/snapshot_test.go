@@ -31,6 +31,7 @@ type mockSnapshotGetter struct {
 func newMockSnapshotGetter(data []byte) mockSnapshotGetter {
 	return mockSnapshotGetter{data}
 }
+
 func (m mockSnapshotGetter) GetBatchSnapshot() []byte {
 	return m.data
 }
@@ -198,8 +199,8 @@ func TestSnapshotLogFilterer_RealSnapshot(t *testing.T) {
 
 func BenchmarkNewSnapshotLogFilterer_Load(b *testing.B) {
 	getter := realSnapshotGetter{}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		filterer := node.NewSnapshotLogFilterer(log.Noop, getter)
 		_, err := filterer.BlockNumber(context.Background())
 		if err != nil {

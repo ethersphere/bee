@@ -4,5 +4,7 @@
 
 package hive
 
-var MaxBatchSize = maxBatchSize
-var LimitBurst = limitBurst
+var (
+	MaxBatchSize = maxBatchSize
+	LimitBurst   = limitBurst
+)

@@ -1,7 +1,7 @@
 GO ?= go
 GOBIN ?= $$($(GO) env GOPATH)/bin
 GOLANGCI_LINT ?= $(GOBIN)/golangci-lint
-GOLANGCI_LINT_VERSION ?= v2.5.0
+GOLANGCI_LINT_VERSION ?= v2.11.3
 GOGOPROTOBUF ?= protoc-gen-gogofaster
 GOGOPROTOBUF_VERSION ?= v1.3.1
 BEEKEEPER_INSTALL_DIR ?= $(GOBIN)
@@ -119,22 +119,18 @@ endif
 .PHONY: test-ci
 test-ci:
 ifdef cover
-	$(GO) test -run "[^FLAKY]$$" -coverprofile=cover.out ./...
+	$(GO) test -coverprofile=cover.out ./...
 else
-	$(GO) test -run "[^FLAKY]$$" ./...
+	$(GO) test ./...
 endif
 
 .PHONY: test-ci-race
 test-ci-race:
 ifdef cover
-	$(GO) test -race -run "[^FLAKY]$$" -coverprofile=cover.out ./...
+	$(GO) test -race -coverprofile=cover.out ./...
 else
-	$(GO) test -race -run "[^FLAKY]$$" ./...
+	$(GO) test -race ./...
 endif
-
-.PHONY: test-ci-flaky
-test-ci-flaky:
-	$(GO) test -race -run "FLAKY$$" ./...
 
 .PHONY: build
 build: export CGO_ENABLED=0
@@ -153,7 +149,7 @@ docker-build:
 
 .PHONY: githooks
 githooks:
-	ln -f -s ../../.githooks/pre-push.bash .git/hooks/pre-push
+	ln -f -s ../../.githooks/pre-push .git/hooks/pre-push
 
 .PHONY: protobuftools
 protobuftools:

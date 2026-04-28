@@ -83,6 +83,22 @@ func TestDepositStake(t *testing.T) {
 		jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusInternalServerError, Message: "cannot stake"})
 	})
 
+	t.Run("update height fails after deposit", func(t *testing.T) {
+		t.Parallel()
+
+		contract := stakingContractMock.New(
+			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
+				return txHash, nil
+			}),
+			stakingContractMock.WithUpdateHeight(func(ctx context.Context) (common.Hash, bool, error) {
+				return common.Hash{}, false, fmt.Errorf("update height failed")
+			}),
+		)
+		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
+		jsonhttptest.Request(t, ts, http.MethodPost, depositStake(minStake), http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(&api.StakeTransactionReponse{TxHash: txHash.String()}))
+	})
+
 	t.Run("gas limit header", func(t *testing.T) {
 		t.Parallel()
 

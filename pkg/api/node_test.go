@@ -17,7 +17,6 @@ func TestBeeNodeMode_String(t *testing.T) {
 		api.UnknownMode.String(): "unknown",
 		api.LightMode.String():   "light",
 		api.FullMode.String():    "full",
-		api.DevMode.String():     "dev",
 	}
 
 	for have, want := range mapping {

@@ -64,8 +64,7 @@ import (
 //     using redundancy to reconstruct the file and find the file recoverable.
 //
 // nolint:thelper
-func TestBzzUploadDownloadWithRedundancy_FLAKY(t *testing.T) {
-	t.Skip("flaky")
+func TestBzzUploadDownloadWithRedundancy(t *testing.T) {
 	t.Parallel()
 	fileUploadResource := "/bzz"
 	fileDownloadResource := func(addr string) string { return "/bzz/" + addr + "/" }
@@ -1088,45 +1087,6 @@ func TestInvalidBzzParams(t *testing.T) {
 		address := "f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b"
 		jsonhttptest.Request(t, client, http.MethodGet, fmt.Sprintf("/bzz/%s/", address), http.StatusNotFound)
 	})
-}
-
-// TestDirectUploadBzz tests that the direct upload endpoint give correct error message in dev mode
-func TestDirectUploadBzz(t *testing.T) {
-	t.Parallel()
-
-	var (
-		fileUploadResource = "/bzz"
-		storerMock         = mockstorer.New()
-		logger             = log.Noop
-	)
-
-	tr := tarFiles(t, []f{
-		{
-			data: []byte("robots text"),
-			name: "robots.txt",
-			dir:  "",
-			header: http.Header{
-				api.ContentTypeHeader: {"text/plain; charset=utf-8"},
-			},
-		},
-	})
-	clientBatchUnusable, _, _, _ := newTestServer(t, testServerOptions{
-		Storer:     storerMock,
-		Logger:     logger,
-		Post:       mockpost.New(mockpost.WithAcceptAll()),
-		BatchStore: mockbatchstore.New(),
-		BeeMode:    api.DevMode,
-	})
-	jsonhttptest.Request(t, clientBatchUnusable, http.MethodPost, fileUploadResource, http.StatusBadRequest,
-		jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "false"),
-		jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
-		jsonhttptest.WithRequestBody(tr),
-		jsonhttptest.WithRequestHeader(api.ContentTypeHeader, api.ContentTypeTar),
-		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: api.ErrUnsupportedDevNodeOperation.Error(),
-			Code:    http.StatusBadRequest,
-		}),
-	)
 }
 
 func TestBzzDownloadHeaders(t *testing.T) {

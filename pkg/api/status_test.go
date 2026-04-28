@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/api"
-	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
@@ -75,29 +74,6 @@ func TestGetStatus(t *testing.T) {
 		)
 	})
 
-	t.Run("bad request", func(t *testing.T) {
-		t.Parallel()
-
-		client, _, _, _ := newTestServer(t, testServerOptions{
-			BeeMode: api.DevMode,
-			NodeStatus: status.NewService(
-				log.Noop,
-				nil,
-				new(topologyPeersIterNoopMock),
-				"",
-				nil,
-				nil,
-				nil,
-			),
-		})
-
-		jsonhttptest.Request(t, client, http.MethodGet, url, http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: api.ErrUnsupportedDevNodeOperation.Error(),
-				Code:    http.StatusBadRequest,
-			}),
-		)
-	})
 }
 
 // topologyPeersIterNoopMock is noop topology.PeerIterator.
@@ -110,6 +86,7 @@ func (m *topologyPeersIterNoopMock) EachConnectedPeer(_ topology.EachPeerFunc, _
 func (m *topologyPeersIterNoopMock) EachConnectedPeerRev(_ topology.EachPeerFunc, _ topology.Select) error {
 	return nil
 }
+
 func (m *topologyPeersIterNoopMock) IsReachable() bool {
 	return true
 }
@@ -137,6 +114,7 @@ func (m *statusSnapshotMock) GetChainState() *postage.ChainState { return m.chai
 func (m *statusSnapshotMock) ReserveSizeWithinRadius() uint64 {
 	return m.reserveSizeWithinRadius
 }
+
 func (m *statusSnapshotMock) NeighborhoodsStat(ctx context.Context) ([]*storer.NeighborhoodStat, error) {
 	return m.neighborhoods, nil
 }

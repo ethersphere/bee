@@ -26,7 +26,7 @@ import (
 )
 
 // Test asserts valid case for MakeInclusionProofs.
-func TestMakeInclusionProofs_FLAKY(t *testing.T) {
+func TestMakeInclusionProofs(t *testing.T) {
 	t.Parallel()
 
 	anchor := testutil.RandBytes(t, 1)
