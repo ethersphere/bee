@@ -113,7 +113,8 @@ func ReserveRepairer(
 			return err
 		}
 
-		const batchSize = 1000
+		batchSize := 1000
+
 		for i := 0; i < len(chunkBinItems); i += batchSize {
 			end := min(i+batchSize, len(chunkBinItems))
 			err := st.Run(context.Background(), func(s transaction.Store) error {

@@ -137,11 +137,9 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 	defer cancel()
 
 	w, r := protobuf.NewWriterAndReader(stream)
-	synUnderlay := bzz.SerializeUnderlays(peerMultiaddrs)
-	s.logger.Debug("handshake outbound syn underlay", "payload_len", len(synUnderlay), "first_byte", firstByteString(synUnderlay), "payload_prefix", payloadPrefix(synUnderlay))
 
 	if err := w.WriteMsgWithContext(ctx, &pb.Syn{
-		ObservedUnderlay: synUnderlay,
+		ObservedUnderlay: bzz.SerializeUnderlays(peerMultiaddrs),
 	}); err != nil {
 		return nil, fmt.Errorf("write syn message: %w", err)
 	}
@@ -293,12 +291,9 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 
 	welcomeMessage := s.GetWelcomeMessage()
 
-	synAckObservedUnderlay := bzz.SerializeUnderlays(peerMultiaddrs)
-	s.logger.Debug("handshake outbound synack observed underlay", "payload_len", len(synAckObservedUnderlay), "first_byte", firstByteString(synAckObservedUnderlay), "payload_prefix", payloadPrefix(synAckObservedUnderlay))
-
 	if err := w.WriteMsgWithContext(ctx, &pb.SynAck{
 		Syn: &pb.Syn{
-			ObservedUnderlay: synAckObservedUnderlay,
+			ObservedUnderlay: bzz.SerializeUnderlays(peerMultiaddrs),
 		},
 		Ack: &pb.Ack{
 			Address: &pb.BzzAddress{

@@ -78,6 +78,7 @@ func migrateBigIntKeys(s storage.Store) migration.StepFn {
 						return true, fmt.Errorf("parse decimal bigint at key %q: invalid value %q", key, data)
 					}
 				}
+
 				// The StateStorerAdapter iterator gives key = prefix + res.ID,
 				// where res.ID already contains the full key (including prefix).
 				// Strip the leading prefix duplicate to get the actual statestore key.
