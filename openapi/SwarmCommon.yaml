@@ -1174,7 +1174,7 @@ components:
       name: Content-Type
       schema:
         type: string
-      description: The specified content-type is preserved for download of the asset
+      description: "Single file: trimmed Content-Type is stored as-is or, if omitted or empty, inferred from the first bytes without validating against the body; tar (`swarm-collection`) and multipart collection uploads still need a full-body Content-Type (e.g. `application/x-tar` or `multipart/form-data` with boundary) so the request can be parsed."
 
     SwarmIndexDocumentParameter:
       in: header
