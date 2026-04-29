@@ -299,10 +299,10 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	switch receipt, err := ps.pushToClosest(ctx, chunk, false); {
 	case errors.Is(err, topology.ErrWantSelf):
-		// Only store if we are actually within our neighborhood. If the chunk
-		// is outside our AOR we would store it in a low bin and unreserve()
-		// would evict it almost immediately, leaving the chunk nowhere on the
-		// network while the origin believes it was delivered.
+		// Storing out-of-AOR puts the chunk in a low bin where unreserve()
+		// will evict it shortly after the origin sees a success receipt.
+		// rad is StorageRadius (= reserve.Radius), the doubling-aware lower
+		// bound; CommittedDepth would reject sister neighbourhoods.
 		if swarm.Proximity(ps.address.Bytes(), chunkAddress.Bytes()) < rad {
 			ps.metrics.OutOfDepthStoring.Inc()
 			return ErrOutOfDepthStoring
@@ -374,6 +374,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		inflight             int
 		parallelForwards     = maxMultiplexForwards
 		shallowReceiptResult *pb.Receipt
+		shallowReceiptPO     uint8
 	)
 
 	if origin {
@@ -424,41 +425,45 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			// For non-origin peers, if the chunk is not within depth, they may store the chunk if they are the closest peer to the chunk.
 			fullSkip := append(skip.ChunkPeers(idAddress), ps.errSkip.ChunkPeers(idAddress)...)
 			peer, err := ps.closestPeer(ch.Address(), origin, fullSkip)
+
+			// ErrWantSelf on a forwarder can mean closer peers exist but are
+			// overdraft-skipped; wait for refresh before falling back to self.
+			if errors.Is(err, topology.ErrNotFound) || errors.Is(err, topology.ErrWantSelf) {
+				if skip.PruneExpiresAfter(idAddress, overDraftRefresh) > 0 {
+					ps.metrics.OverdraftRefresh.Inc()
+					if ps.overDraftRefreshLimiter.Allow() {
+						ps.logger.Debug("sleeping to refresh overdraft balance")
+					}
+
+					select {
+					case <-time.After(overDraftRefresh):
+						retry()
+						continue
+					case <-ctx.Done():
+						return nil, ctx.Err()
+					}
+				}
+			}
+
 			if errors.Is(err, topology.ErrNotFound) {
-				if skip.PruneExpiresAfter(idAddress, overDraftRefresh) == 0 { // no overdraft peers, we have depleted ALL peers
-					if inflight == 0 {
-						if ps.fullNode {
-							if cac.Valid(ch) {
-								go ps.unwrap(ch)
-							}
-							// If a peer already has the chunk (even at wrong depth), don't
-							// store locally — the chunk is closer to its neighbourhood than us.
-							if shallowReceiptResult != nil {
-								return shallowReceiptResult, ErrShallowReceipt
-							}
-							return nil, topology.ErrWantSelf
+				if inflight == 0 {
+					if ps.fullNode {
+						if cac.Valid(ch) {
+							go ps.unwrap(ch)
 						}
+						// prefer a shallow peer over self-store when one exists
 						if shallowReceiptResult != nil {
 							return shallowReceiptResult, ErrShallowReceipt
 						}
-						ps.logger.Debug("no peers left", "chunk_address", ch.Address(), "error", err)
-						return nil, err
+						return nil, topology.ErrWantSelf
 					}
-					continue // there is still an inflight request, wait for it's result
+					if shallowReceiptResult != nil {
+						return shallowReceiptResult, ErrShallowReceipt
+					}
+					ps.logger.Debug("no peers left", "chunk_address", ch.Address(), "error", err)
+					return nil, err
 				}
-
-				ps.metrics.OverdraftRefresh.Inc()
-				if ps.overDraftRefreshLimiter.Allow() {
-					ps.logger.Debug("sleeping to refresh overdraft balance")
-				}
-
-				select {
-				case <-time.After(overDraftRefresh):
-					retry()
-					continue
-				case <-ctx.Done():
-					return nil, ctx.Err()
-				}
+				continue // there is still an inflight request, wait for it's result
 			}
 
 			if err != nil {
@@ -503,16 +508,18 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 					return result.receipt, nil
 				}
 
-				if err := ps.checkReceipt(result.receipt); err == nil {
+				// Cache the best (highest-PO) shallow receipt and exhaust the
+				// budget; surface ErrShallowReceipt only when nothing better lands.
+				switch po, err := ps.checkReceipt(result.receipt); {
+				case err == nil:
 					return result.receipt, nil
-				} else if errors.Is(err, ErrShallowReceipt) {
-					// Treat shallow receipt like any other failure: exhaust the full
-					// error budget and wait for any other inflight parallel pushes
-					// (e.g. multiplex forwards) before giving up. Only return
-					// ErrShallowReceipt once the entire budget is spent.
-					shallowReceiptResult = result.receipt
-					result.err = err
-				} else {
+				case errors.Is(err, ErrShallowReceipt):
+					if shallowReceiptResult == nil || po > shallowReceiptPO {
+						shallowReceiptResult = result.receipt
+						shallowReceiptPO = po
+					}
+					fallthrough
+				default:
 					result.err = err
 				}
 			}
@@ -589,24 +596,26 @@ func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptRes
 	err = action.Apply()
 }
 
-func (ps *PushSync) checkReceipt(receipt *pb.Receipt) error {
+// checkReceipt validates the receipt and returns the storer-to-chunk PO so
+// callers can rank shallow receipts; PO is zero on signature errors.
+func (ps *PushSync) checkReceipt(receipt *pb.Receipt) (uint8, error) {
 	addr := swarm.NewAddress(receipt.Address)
 
 	publicKey, err := crypto.Recover(receipt.Signature, addr.Bytes())
 	if err != nil {
-		return fmt.Errorf("pushsync: receipt recover: %w", err)
+		return 0, fmt.Errorf("pushsync: receipt recover: %w", err)
 	}
 
 	peer, err := crypto.NewOverlayAddress(*publicKey, ps.networkID, receipt.Nonce)
 	if err != nil {
-		return fmt.Errorf("pushsync: receipt storer address: %w", err)
+		return 0, fmt.Errorf("pushsync: receipt storer address: %w", err)
 	}
 
 	po := swarm.Proximity(addr.Bytes(), peer.Bytes())
 
 	r, err := ps.radius()
 	if err != nil {
-		return fmt.Errorf("pushsync: storage radius: %w", err)
+		return po, fmt.Errorf("pushsync: storage radius: %w", err)
 	}
 
 	var tolerance uint8
@@ -618,13 +627,13 @@ func (ps *PushSync) checkReceipt(receipt *pb.Receipt) error {
 		ps.metrics.ShallowReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
 		ps.metrics.ShallowReceipt.Inc()
 		ps.logger.Debug("shallow receipt", "chunk_address", addr, "peer_address", peer, "proximity_order", po, "peer_radius", receipt.StorageRadius, "self_radius", r)
-		return ErrShallowReceipt
+		return po, ErrShallowReceipt
 	}
 
 	ps.metrics.ReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
 	ps.logger.Debug("chunk pushed", "chunk_address", addr, "peer_address", peer, "proximity_order", po)
 
-	return nil
+	return po, nil
 }
 
 func (ps *PushSync) pushChunkToPeer(ctx context.Context, peer swarm.Address, ch swarm.Chunk) (receipt *pb.Receipt, err error) {
