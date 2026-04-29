@@ -117,9 +117,6 @@ func (s *Service) pubsubWsHandler(w http.ResponseWriter, r *http.Request) {
 		// Upgrade() hijacks the connection before returning an error,
 		// so do NOT write an HTTP response here.
 		cancel()
-		if sc := mode.GetSubscriberConn(); sc != nil {
-			_ = sc.Stream.Close()
-		}
 		logger.Info("websocket upgrade failed", "error", err)
 		logger.Error(nil, "websocket upgrade failed")
 		return
