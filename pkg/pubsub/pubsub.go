@@ -326,6 +326,7 @@ type SubscriberConn struct {
 	subsMu  sync.Mutex
 	subs    map[uint64]chan []byte
 	nextID  uint64
+	logger  log.Logger
 }
 
 // Subscribe registers a new WS session and returns its per-session message channel.
@@ -357,6 +358,7 @@ func (sc *SubscriberConn) fanOut(msg []byte) {
 		select {
 		case ch <- msg:
 		default:
+			sc.logger.Warning("pubsub: subscriber ws channel full, dropping message")
 		}
 	}
 }
