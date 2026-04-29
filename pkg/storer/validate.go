@@ -10,9 +10,8 @@ import (
 	"os"
 	"path"
 	"sync"
-	"time"
-
 	"sync/atomic"
+	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -26,7 +25,6 @@ import (
 
 // Validate ensures that all retrievalIndex chunks are correctly stored in sharky.
 func ValidateReserve(ctx context.Context, basePath string, opts *Options) error {
-
 	logger := opts.Logger
 
 	store, err := initStore(basePath, opts)
@@ -59,7 +57,6 @@ func ValidateReserve(ctx context.Context, basePath string, opts *Options) error 
 
 // ValidateRetrievalIndex ensures that all retrievalIndex chunks are correctly stored in sharky.
 func ValidateRetrievalIndex(ctx context.Context, basePath string, opts *Options) error {
-
 	logger := opts.Logger
 
 	store, err := initStore(basePath, opts)
@@ -90,7 +87,6 @@ func ValidateRetrievalIndex(ctx context.Context, basePath string, opts *Options)
 }
 
 func validateWork(logger log.Logger, store storage.Store, readFn func(context.Context, sharky.Location, []byte) error) {
-
 	total := 0
 	socCount := 0
 	invalidCount := 0
@@ -226,7 +222,7 @@ func ValidatePinCollectionChunks(ctx context.Context, basePath, pin, location st
 
 	location = path.Join(fileLoc, fileName)
 
-	f, err := os.OpenFile(location, os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(location, os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("open output file for writing: %w", err)
 	}
@@ -237,7 +233,7 @@ func ValidatePinCollectionChunks(ctx context.Context, basePath, pin, location st
 
 	defer f.Close()
 
-	var ch = make(chan PinStat)
+	ch := make(chan PinStat)
 	go pv.Check(ctx, logger, pin, ch)
 
 	for st := range ch {
@@ -323,9 +319,7 @@ func (p *PinIntegrity) Check(ctx context.Context, logger log.Logger, pin string,
 
 	for _, pin := range pins {
 		var wg sync.WaitGroup
-		var (
-			total, missing, invalid atomic.Int32
-		)
+		var total, missing, invalid atomic.Int32
 
 		iteratateItemsC := make(chan *chunkstore.RetrievalIndexItem)
 
@@ -392,7 +386,8 @@ func (p *PinIntegrity) Check(ctx context.Context, logger log.Logger, pin string,
 			Ref:     pin,
 			Total:   int(total.Load()),
 			Missing: int(missing.Load()),
-			Invalid: int(invalid.Load())}:
+			Invalid: int(invalid.Load()),
+		}:
 		}
 	}
 }

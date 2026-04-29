@@ -87,7 +87,6 @@ func TestState(t *testing.T) {
 	if diff := cmp.Diff(want, *got, opt...); diff != "" {
 		t.Errorf("result mismatch (-want +have):\n%s", diff)
 	}
-
 }
 
 func TestStateRoundData(t *testing.T) {
@@ -155,7 +154,6 @@ func TestStateRoundData(t *testing.T) {
 			t.Error("should be revealed")
 		}
 	})
-
 }
 
 func TestPurgeRoundData(t *testing.T) {

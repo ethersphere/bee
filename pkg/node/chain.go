@@ -63,6 +63,7 @@ func InitChain(
 	minimumGasTipCap uint64,
 	fallbackGasLimit uint64,
 	rpcCfg BlockchainRPCConfig,
+	blockSyncInterval uint64,
 ) (transaction.Backend, common.Address, int64, transaction.Monitor, transaction.Service, error) {
 	backend := backendnoop.New(chainID)
 
@@ -97,7 +98,7 @@ func InitChain(
 
 		logger.Info("connected to blockchain backend", "version", versionString)
 
-		backend = wrapped.NewBackend(ethclient.NewClient(rpcClient), minimumGasTipCap)
+		backend = wrapped.NewBackend(ethclient.NewClient(rpcClient), minimumGasTipCap, pollingInterval, blockSyncInterval)
 	}
 
 	backendChainID, err := backend.ChainID(ctx)

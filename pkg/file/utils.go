@@ -12,9 +12,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-var (
-	zeroAddress = [32]byte{}
-)
+var zeroAddress = [32]byte{}
 
 // ChunkPayloadSize returns the effective byte length of an intermediate chunk
 // assumes data is always chunk size (without span)

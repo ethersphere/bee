@@ -66,7 +66,7 @@ func TestRedistribution(t *testing.T) {
 	owner := common.HexToAddress("abcd")
 	overlay := swarm.NewAddress(common.HexToHash("cbd").Bytes())
 	redistributionContractAddress := common.HexToAddress("ffff")
-	//nonce := common.BytesToHash(make([]byte, 32))
+	// nonce := common.BytesToHash(make([]byte, 32))
 	txHashDeposited := common.HexToHash("c3a7")
 
 	t.Run("IsPlaying - true", func(t *testing.T) {
@@ -372,7 +372,6 @@ func TestRedistribution(t *testing.T) {
 			transactionMock.New(
 				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
 					if *request.To == redistributionContractAddress {
-
 						return someSalt, nil
 					}
 					return nil, errors.New("unexpected call")

@@ -41,7 +41,7 @@ func TestSteward(t *testing.T) {
 	var (
 		ctx            = context.Background()
 		chunks         = 1000
-		data           = make([]byte, chunks*4096) //1k chunks
+		data           = make([]byte, chunks*4096) // 1k chunks
 		chunkStore     = inmem
 		store          = mockstorer.NewWithChunkStore(chunkStore)
 		localRetrieval = &localRetriever{ChunkStore: chunkStore}

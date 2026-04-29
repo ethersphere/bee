@@ -53,11 +53,11 @@ func (s *Service) SetKey(name, password string, edg keystore.EDG) (*ecdsa.Privat
 
 	filename := s.keyFilename(name)
 
-	if err := os.MkdirAll(filepath.Dir(filename), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(filename), 0o700); err != nil {
 		return nil, err
 	}
 
-	if err := os.WriteFile(filename, d, 0600); err != nil {
+	if err := os.WriteFile(filename, d, 0o600); err != nil {
 		return nil, err
 	}
 

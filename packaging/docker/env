@@ -15,6 +15,8 @@
 # BEE_AUTOTLS_REGISTRATION_ENDPOINT=
 ## chain block time (default 5)
 # BEE_BLOCK_TIME=5
+## sets how many estimated blocks Bee can trust local block-number extrapolation before forcing a fresh HeaderByNumber(nil) RPC sync (default 10)
+# BEE_BLOCK_SYNC_INTERVAL=10
 ## blockchain rpc TCP dial timeout (default 30s)
 # BEE_BLOCKCHAIN_RPC_DIAL_TIMEOUT=30s
 ## rpc blockchain endpoint (default empty)

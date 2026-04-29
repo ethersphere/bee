@@ -256,6 +256,7 @@ func (m *statusSnapshotMock) Commitment() (uint64, error) { return m.BatchCommit
 func (m *statusSnapshotMock) GetChainState() *postage.ChainState {
 	return &postage.ChainState{Block: m.LastSyncedBlock}
 }
+
 func (m *statusSnapshotMock) ReserveSizeWithinRadius() uint64 {
 	return m.Snapshot.ReserveSizeWithinRadius
 }

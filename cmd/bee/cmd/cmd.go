@@ -61,10 +61,10 @@ const (
 	optionNameRedistributionAddress        = "redistribution-address"
 	optionNameStakingAddress               = "staking-address"
 	optionNameBlockTime                    = "block-time"
+	optionNameBlockSyncInterval            = "block-sync-interval"
 	optionWarmUpTime                       = "warmup-time"
 	optionNameMainNet                      = "mainnet"
 	optionNameRetrievalCaching             = "cache-retrieval"
-	optionNameDevReserveCapacity           = "dev-reserve-capacity"
 	optionNameResync                       = "resync"
 	optionNamePProfBlock                   = "pprof-profile"
 	optionNamePProfMutex                   = "pprof-mutex"
@@ -170,10 +170,6 @@ func newCommand(opts ...option) (c *command, err error) {
 		return nil, err
 	}
 
-	if err := c.initStartDevCmd(); err != nil {
-		return nil, err
-	}
-
 	if err := c.initInitCmd(); err != nil {
 		return nil, err
 	}
@@ -239,7 +235,7 @@ func (c *command) initConfig() (err error) {
 	// Environment
 	config.SetEnvPrefix("bee")
 	config.AutomaticEnv() // read in environment variables that match
-	config.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+	config.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 
 	if c.homeDir != "" && c.cfgFile == "" {
 		c.cfgFile = filepath.Join(c.homeDir, configName+".yaml")
@@ -312,6 +308,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameRedistributionAddress, "", "redistribution contract address")
 	cmd.Flags().String(optionNameStakingAddress, "", "staking contract address")
 	cmd.Flags().Uint64(optionNameBlockTime, 5, "chain block time")
+	cmd.Flags().Uint64(optionNameBlockSyncInterval, 10, "block number cache sync interval in blocks")
 	cmd.Flags().Duration(optionWarmUpTime, time.Minute*5, "maximum node warmup duration; proceeds when stable or after this time")
 	cmd.Flags().Bool(optionNameMainNet, true, "triggers connect to main net bootnodes.")
 	cmd.Flags().Bool(optionNameRetrievalCaching, true, "enable forwarded content caching")

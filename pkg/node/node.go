@@ -141,6 +141,7 @@ type Options struct {
 	BlockchainRpcKeepalive        time.Duration
 	BlockProfile                  bool
 	BlockTime                     time.Duration
+	BlockSyncInterval             uint64
 	BootnodeMode                  bool
 	Bootnodes                     []string
 	CacheCapacity                 uint64
@@ -424,6 +425,7 @@ func NewBee(
 			IdleTimeout: o.BlockchainRpcIdleTimeout,
 			Keepalive:   o.BlockchainRpcKeepalive,
 		},
+		o.BlockSyncInterval,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("init chain: %w", err)
@@ -1132,7 +1134,6 @@ func NewBee(
 			minStake := big.NewInt(0).Mul(big.NewInt(1<<o.ReserveCapacityDoubling), staking.MinimumStakeAmount)
 			if o.ReserveCapacityDoubling > 0 && stake.Cmp(minStake) < 0 {
 				logger.Warning("staked amount does not sufficiently cover the additional reserve capacity. On-chain height update will be skipped. Node will start, but storage incentives may not function for this capacity.", "missing_stake", new(big.Int).Sub(minStake, stake))
-
 			} else {
 				// make sure that the staking contract has the up to date height
 				tx, updated, err := stakingContract.UpdateHeight(ctx)

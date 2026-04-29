@@ -6,6 +6,8 @@
 # api-addr: 127.0.0.1:1633
 ## chain block time
 # block-time: "5"
+## block number cache sync interval in blocks
+# block-sync-interval: 10
 ## blockchain rpc configuration
 # blockchain-rpc:
 #   endpoint: ""

@@ -18,9 +18,7 @@ import (
 // the old cacheEntry item has the same key, but the value is different. So only
 // a Put is needed.
 func step_02(st transaction.Storage) func() error {
-
 	return func() error {
-
 		trx, done := st.NewTransaction(context.Background())
 		defer done()
 
@@ -52,5 +50,4 @@ func step_02(st transaction.Storage) func() error {
 
 		return trx.Commit()
 	}
-
 }

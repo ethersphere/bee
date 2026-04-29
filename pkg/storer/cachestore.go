@@ -20,7 +20,6 @@ const (
 )
 
 func (db *DB) cacheWorker(ctx context.Context) {
-
 	defer db.inFlight.Done()
 
 	overCapTrigger, overCapUnsub := db.events.Subscribe(cacheOverCapacity)
@@ -114,7 +113,6 @@ func (db *DB) CacheShallowCopy(ctx context.Context, store transaction.Storage, a
 }
 
 func (db *DB) triggerCacheEviction() {
-
 	var (
 		size = db.cacheObj.Size()
 		capc = db.cacheObj.Capacity()

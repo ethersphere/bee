@@ -540,7 +540,7 @@ func TestSubscribeBin(t *testing.T) {
 		t.Helper()
 		var (
 			chunksPerPO uint64 = 50
-			chunks             = make([]swarm.Chunk, 0, int(chunksPerPO)*2)
+			chunks             = make([]swarm.Chunk, 0, chunksPerPO*2)
 			putter             = storer.ReservePutter()
 		)
 

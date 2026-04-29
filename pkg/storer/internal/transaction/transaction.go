@@ -85,7 +85,6 @@ type transaction struct {
 // By design, it is best to not batch too many writes to a single transaction, including multiple chunks writes.
 // Calls made to the transaction are NOT thread-safe.
 func (s *store) NewTransaction(ctx context.Context) (Transaction, func()) {
-
 	b := s.bstore.Batch(ctx)
 
 	index := &indexTrx{s.bstore, b, s.metrics}
@@ -158,7 +157,6 @@ func (s *store) Close() error {
 }
 
 func (t *transaction) Commit() (err error) {
-
 	defer func() {
 		t.metrics.MethodDuration.WithLabelValues("transaction", "success").Observe(time.Since(t.start).Seconds())
 	}()
@@ -226,24 +224,28 @@ func (c *chunkStoreTrx) Get(ctx context.Context, addr swarm.Address) (ch swarm.C
 	ch, err = chunkstore.Get(ctx, c.indexStore, c.sharkyTrx, addr)
 	return ch, err
 }
+
 func (c *chunkStoreTrx) Has(ctx context.Context, addr swarm.Address) (_ bool, err error) {
 	defer handleMetric("chunkstore_has", c.metrics)(&err)
 	unlock := c.lock(addr)
 	defer unlock()
 	return chunkstore.Has(ctx, c.indexStore, addr)
 }
+
 func (c *chunkStoreTrx) Put(ctx context.Context, ch swarm.Chunk) (err error) {
 	defer handleMetric("chunkstore_put", c.metrics)(&err)
 	unlock := c.lock(ch.Address())
 	defer unlock()
 	return chunkstore.Put(ctx, c.indexStore, c.sharkyTrx, ch)
 }
+
 func (c *chunkStoreTrx) Delete(ctx context.Context, addr swarm.Address) (err error) {
 	defer handleMetric("chunkstore_delete", c.metrics)(&err)
 	unlock := c.lock(addr)
 	defer unlock()
 	return chunkstore.Delete(ctx, c.indexStore, c.sharkyTrx, addr)
 }
+
 func (c *chunkStoreTrx) Iterate(ctx context.Context, fn storage.IterateChunkFn) (err error) {
 	defer handleMetric("chunkstore_iterate", c.metrics)(&err)
 	return chunkstore.Iterate(ctx, c.indexStore, c.sharkyTrx, fn)
