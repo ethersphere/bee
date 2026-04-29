@@ -2437,8 +2437,8 @@ paths:
         or subscriber (read-only) depending on the presence of GSOC headers.
         
         **WebSocket protocol:**
-        - Inbound (client → node, publisher only): raw SOC payload `[sig:65B][span:4B][payload:N B]`
-        - Outbound (node → client): raw SOC payload `[sig:65B][span:4B][payload:N B]`
+        - Inbound (client → node, publisher only): raw SOC payload `[sig:65B][span:8B][payload:N B]`
+        - Outbound (node → client): raw SOC payload `[sig:65B][span:8B][payload:N B]`
       tags:
         - Pubsub
       parameters:
