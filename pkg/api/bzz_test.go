@@ -503,6 +503,43 @@ func TestBzzFiles(t *testing.T) {
 		)
 	})
 
+	t.Run("dir-upload-missing-content-type", func(t *testing.T) {
+		tr := tarFiles(t, []f{
+			{
+				data: []byte("robots text"),
+				name: "robots.txt",
+				dir:  "",
+				header: http.Header{
+					api.ContentTypeHeader: {"text/plain; charset=utf-8"},
+				},
+			},
+		})
+
+		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "true"),
+			jsonhttptest.WithRequestBody(tr),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: api.ErrInvalidContentType.Error(),
+				Code:    http.StatusBadRequest,
+			}),
+		)
+	})
+
+	t.Run("dir-upload-missing-content-type-and-body", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "true"),
+			jsonhttptest.WithRequestBody(bytes.NewReader(nil)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: api.ErrInvalidContentType.Error(),
+				Code:    http.StatusBadRequest,
+			}),
+		)
+	})
+
 	t.Run("upload-then-download-and-check-data", func(t *testing.T) {
 		fileName := "sample.html"
 		rootHash := "36e6c1bbdfee6ac21485d5f970479fd1df458d36df9ef4e8179708ed46da557f"
