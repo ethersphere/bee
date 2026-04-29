@@ -59,6 +59,8 @@ var (
 		BlocksPerPhase: 4,
 	}
 
+	//github.com/ethersphere/go-storage-incentives-abi v0.9.4
+
 	Gnosis = ChainConfig{
 		ChainID:                abi.MainnetChainID,
 		NetworkID:              abi.MainnetNetworkID,
@@ -66,9 +68,9 @@ var (
 		NativeTokenSymbol:      "xDAI",
 		SwarmTokenSymbol:       "xBZZ",
 
-		StakingAddress:         common.HexToAddress(abi.MainnetStakingAddress),
-		PostageStampAddress:    common.HexToAddress(abi.MainnetPostageStampAddress),
-		RedistributionAddress:  common.HexToAddress(abi.MainnetRedistributionAddress),
+		StakingAddress:         common.HexToAddress(abi.MainnetStakingAddress),        //0xda2a16EE889E7F04980A8d597b48c8D51B9518F4
+		PostageStampAddress:    common.HexToAddress(abi.MainnetPostageStampAddress),   //0x45a1502382541Cd610CC9068e88727426b696293
+		RedistributionAddress:  common.HexToAddress(abi.MainnetRedistributionAddress), //0x5069cdfB3D9E56d23B1cAeE83CE6109A7E4fd62d
 		SwapPriceOracleAddress: common.HexToAddress("0xA57A50a831B31c904A770edBCb706E03afCdbd94"),
 		CurrentFactoryAddress:  common.HexToAddress("0xc2d5a532cf69aa9a1378737d8ccdef884b6e7420"),
 
@@ -90,7 +92,7 @@ var (
 		StakingAddress:         common.HexToAddress("0x491075e789DBdbb7d08D95946E665eFB2751eE1E"),
 		PostageStampAddress:    common.HexToAddress("0x8613A18717E30be14852846eC6D45F5010339451"),
 		RedistributionAddress:  common.HexToAddress("0x6a02826e2a56092F56e0ba4dB766c5f4540414C2"),
-		SwapPriceOracleAddress: common.HexToAddress("0x0fF044F6bB4F684a5A149B46D7eC03ea659F98A1"),
+		SwapPriceOracleAddress: common.HexToAddress("0x4c90551763C1498aE96589202E386019655c1781"),
 		CurrentFactoryAddress:  common.HexToAddress("0xe4620F49ebDEF146366E63B08Eb66cAe32d51c8f"),
 
 		StakingABI:        abi.MainnetStakingABI,
