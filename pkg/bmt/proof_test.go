@@ -57,10 +57,7 @@ func TestProofCorrectness(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rh, err := pr.Hash(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	rh := pr.Sum(nil)
 
 	t.Run("proof for left most", func(t *testing.T) {
 		t.Parallel()
@@ -202,10 +199,7 @@ func TestProof(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rh, err := pr.Hash(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	rh := pr.Sum(nil)
 
 	for i := range 128 {
 		t.Run(fmt.Sprintf("segmentIndex %d", i), func(t *testing.T) {

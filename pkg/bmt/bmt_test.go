@@ -52,7 +52,7 @@ func syncHash(h bmt.Hasher, data []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return h.Hash(nil)
+	return h.Sum(nil), nil
 }
 
 // tests if hasher responds with correct hash comparing the reference implementation return value
@@ -223,10 +223,7 @@ func TestBMTWriterBuffers(t *testing.T) {
 					}
 				}
 				h.SetHeaderInt64(int64(size))
-				resHash, err := h.Hash(nil)
-				if err != nil {
-					return err
-				}
+				resHash := h.Sum(nil)
 				if !bytes.Equal(resHash, expHash) {
 					return fmt.Errorf("hash mismatch on %v. expected %x, got %x", offsets, expHash, resHash)
 				}

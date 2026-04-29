@@ -314,12 +314,7 @@ func transformedAddressCAC(hasher bmt.Hasher, chunk swarm.Chunk) (swarm.Address,
 		return swarm.ZeroAddress, err
 	}
 
-	taddr, err := hasher.Hash(nil)
-	if err != nil {
-		return swarm.ZeroAddress, err
-	}
-
-	return swarm.NewAddress(taddr), nil
+	return swarm.NewAddress(hasher.Sum(nil)), nil
 }
 
 func transformedAddressSOC(hasher bmt.Hasher, socChunk swarm.Chunk) (swarm.Address, error) {

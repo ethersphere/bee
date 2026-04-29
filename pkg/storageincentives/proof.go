@@ -68,10 +68,7 @@ func makeInclusionProofs(
 	if err != nil {
 		return redistribution.ChunkInclusionProofs{}, errProofCreation
 	}
-	_, err = rccontent.Hash(nil)
-	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errProofCreation
-	}
+	_ = rccontent.Sum(nil)
 	proof1p1 := rccontent.Proof(int(require1) * 2)
 	proof2p1 := rccontent.Proof(int(require2) * 2)
 	proofLastp1 := rccontent.Proof(require3 * 2)
@@ -88,10 +85,7 @@ func makeInclusionProofs(
 	if err != nil {
 		return redistribution.ChunkInclusionProofs{}, errProofCreation
 	}
-	_, err = chunk1Content.Hash(nil)
-	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errProofCreation
-	}
+	_ = chunk1Content.Sum(nil)
 	proof1p2 := chunk1Content.Proof(segmentIndex)
 	// TR chunk proof
 	chunk1TrContent := prefixHasherPool.GetProver()
@@ -100,10 +94,7 @@ func makeInclusionProofs(
 	if err != nil {
 		return redistribution.ChunkInclusionProofs{}, errProofCreation
 	}
-	_, err = chunk1TrContent.Hash(nil)
-	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errProofCreation
-	}
+	_ = chunk1TrContent.Sum(nil)
 	proof1p3 := chunk1TrContent.Proof(segmentIndex)
 	// cleanup
 	bmtpool.PutProver(chunk1Content)
@@ -119,10 +110,7 @@ func makeInclusionProofs(
 	if err != nil {
 		return redistribution.ChunkInclusionProofs{}, errProofCreation
 	}
-	_, err = chunk2Content.Hash(nil)
-	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errProofCreation
-	}
+	_ = chunk2Content.Sum(nil)
 	proof2p2 := chunk2Content.Proof(segmentIndex)
 	// TR Chunk proof
 	chunk2TrContent := prefixHasherPool.GetProver()
@@ -131,10 +119,7 @@ func makeInclusionProofs(
 	if err != nil {
 		return redistribution.ChunkInclusionProofs{}, errProofCreation
 	}
-	_, err = chunk2TrContent.Hash(nil)
-	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errProofCreation
-	}
+	_ = chunk2TrContent.Sum(nil)
 	proof2p3 := chunk2TrContent.Proof(segmentIndex)
 	// cleanup
 	bmtpool.PutProver(chunk2Content)
@@ -150,10 +135,7 @@ func makeInclusionProofs(
 	if err != nil {
 		return redistribution.ChunkInclusionProofs{}, errProofCreation
 	}
-	_, err = chunkLastContent.Hash(nil)
-	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errProofCreation
-	}
+	_ = chunkLastContent.Sum(nil)
 	proofLastp2 := chunkLastContent.Proof(segmentIndex)
 	// TR Chunk Proof
 	chunkLastTrContent := prefixHasherPool.GetProver()
@@ -162,10 +144,7 @@ func makeInclusionProofs(
 	if err != nil {
 		return redistribution.ChunkInclusionProofs{}, errProofCreation
 	}
-	_, err = chunkLastTrContent.Hash(nil)
-	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errProofCreation
-	}
+	_ = chunkLastTrContent.Sum(nil)
 	proofLastp3 := chunkLastTrContent.Proof(segmentIndex)
 	// cleanup
 	bmtpool.PutProver(chunkLastContent)

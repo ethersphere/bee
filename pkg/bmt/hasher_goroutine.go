@@ -59,9 +59,6 @@ func (h *goroutineHasher) Size() int { return h.segmentSize }
 // BlockSize returns the optimal write block size.
 func (h *goroutineHasher) BlockSize() int { return 2 * h.segmentSize }
 
-// Sum is the unsafe Hash wrapper.
-func (h *goroutineHasher) Sum(b []byte) []byte { s, _ := h.Hash(b); return s }
-
 // SetHeaderInt64 sets the span preamble from an int64.
 func (h *goroutineHasher) SetHeaderInt64(length int64) {
 	binary.LittleEndian.PutUint64(h.span, uint64(length))
@@ -72,40 +69,62 @@ func (h *goroutineHasher) SetHeader(span []byte) { copy(h.span, span) }
 
 // Write appends to the chunk buffer; each complete section triggers a goroutine-level hash.
 func (h *goroutineHasher) Write(b []byte) (int, error) {
+	// clamp the input to whatever capacity is left in the buffer; extra bytes are silently dropped.
 	l := len(b)
 	maxVal := h.maxSize - h.size
 	if l > maxVal {
 		l = maxVal
 	}
+	// copy the new bytes into the leaf-level buffer at the current write cursor.
 	copy(h.bmt.buffer[h.size:], b)
+	// translate byte offsets to section indices: `from` is the first section newly touched,
+	// `to` is the first section *not* yet fully populated by this write.
 	secsize := 2 * h.segmentSize
 	from := h.size / secsize
 	h.size += l
 	to := h.size / secsize
+	// when this Write fills the buffer exactly, hold back the last section so the
+	// final Sum call is the one that hashes it (with the writeFinalNode path).
 	if l == maxVal {
 		to--
 	}
+	// remember where the final section lives so Sum can kick it off.
 	h.pos = to
+	// fan out one goroutine per fully-populated section to start hashing it concurrently.
 	for i := from; i < to; i++ {
 		go h.processSection(i, false)
 	}
 	return l, nil
 }
 
-// Hash returns the BMT root hash of the buffer written so far.
-func (h *goroutineHasher) Hash(b []byte) ([]byte, error) {
+// Sum returns the BMT root hash of the buffer written so far appended to b,
+// satisfying the standard library hash.Hash interface.
+func (h *goroutineHasher) Sum(b []byte) []byte {
+	// nothing was written: the BMT root is the all-zero subtree hash at depth h.depth.
+	// Still wrap with the span so the output shape matches a normal chunk hash.
 	if h.size == 0 {
-		return doHash(h.baseHasher(), h.span, h.zerohashes[h.depth])
+		out, _ := doHash(h.baseHasher(), h.span, h.zerohashes[h.depth])
+		return append(b, out...)
 	}
+	// zero-pad the trailing partial section so the final-section hasher sees a
+	// deterministic 64-byte input regardless of how Write was sliced.
 	copy(h.bmt.buffer[h.size:], zerosection)
-	// write the last section with final flag set to true
+	// hash the last section on its own goroutine with the final flag set, which
+	// fills missing right-sister branches with all-zero subtree hashes on its way up.
 	go h.processSection(h.pos, true)
+	// wait for either the BMT root to bubble up via h.result or an error from one of
+	// the per-section goroutines via h.errc; the error is swallowed because the
+	// hash.Hash.Sum contract has no error return.
+	var inner []byte
 	select {
 	case result := <-h.result:
-		return doHash(h.baseHasher(), h.span, result)
-	case err := <-h.errc:
-		return nil, err
+		inner = result
+	case <-h.errc:
 	}
+	// wrap the BMT root with the span (and any configured prefix via baseHasher)
+	// to produce the final chunk address, then append it to b.
+	out, _ := doHash(h.baseHasher(), h.span, inner)
+	return append(b, out...)
 }
 
 // Reset prepares the Hasher for reuse.
@@ -117,11 +136,16 @@ func (h *goroutineHasher) Reset() {
 
 // Proof returns the inclusion proof of the i-th data segment.
 func (h *goroutineHasher) Proof(i int) Proof {
+	// preserve the original 32-byte segment index — needed to know whether the
+	// proven segment is the left or right half of its leaf section.
 	index := i
 	if i < 0 || i > 127 {
 		panic("segment index can only lie between 0-127")
 	}
+	// each leaf section holds two 32-byte segments; map the segment index to its leaf index.
 	i = i / 2
+	// walk from the leaf up to the root, collecting each level's sister hash in order.
+	// after the SIMD/goroutine pass these sisters are already cached on the parent nodes.
 	n := h.bmt.leaves[i]
 	isLeft := n.isLeft
 	var sisters [][]byte
@@ -130,14 +154,20 @@ func (h *goroutineHasher) Proof(i int) Proof {
 		isLeft = n.isLeft
 	}
 
+	// re-read the proven section so we can split it into (segment, firstSegmentSister);
+	// we copy because callers must be free to use the proof after Reset overwrites the buffer.
 	secsize := 2 * h.segmentSize
 	offset := i * secsize
 	section := make([]byte, secsize)
 	copy(section, h.bmt.buffer[offset:offset+secsize])
 	segment, firstSegmentSister := section[:h.segmentSize], section[h.segmentSize:]
+	// odd segment index means the proven segment is the right half — swap so `segment`
+	// is always the proven one regardless of left/right position.
 	if index%2 != 0 {
 		segment, firstSegmentSister = firstSegmentSister, segment
 	}
+	// the proof lists sisters bottom-up; prepend the leaf-level sister so position 0
+	// is always the immediate sibling of the proven segment.
 	sisters = append([][]byte{firstSegmentSister}, sisters...)
 	return Proof{segment, sisters, h.span, index}
 }
