@@ -94,6 +94,7 @@ const (
 	SwarmActTimestampHeader           = "Swarm-Act-Timestamp"
 	SwarmActPublisherHeader           = "Swarm-Act-Publisher"
 	SwarmActHistoryAddressHeader      = "Swarm-Act-History-Address"
+	SwarmChunkTypeHeader              = "Swarm-Chunk-Type"
 
 	ImmutableHeader = "Immutable"
 	GasPriceHeader  = "Gas-Price"

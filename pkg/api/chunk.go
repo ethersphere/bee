@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/cac"
@@ -37,6 +38,7 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		SwarmTag       uint64        `map:"Swarm-Tag"`
 		Act            bool          `map:"Swarm-Act"`
 		HistoryAddress swarm.Address `map:"Swarm-Act-History-Address"`
+		ChunkType      string        `map:"Swarm-Chunk-Type"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -138,20 +140,53 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Try SOC first — CAC parsing is too permissive (accepts any 8-4104 byte data),
-	// so valid SOCs would always be misclassified as CACs if we tried CAC first.
 	var chunk swarm.Chunk
-	sch, err := soc.FromChunk(swarm.NewChunk(swarm.EmptyAddress, data))
-	if err == nil {
-		chunk, err = sch.Chunk()
+	switch strings.ToLower(headers.ChunkType) {
+	case "soc", "1":
+		sch, err := soc.FromChunk(swarm.NewChunk(swarm.EmptyAddress, data))
 		if err != nil {
-			logger.Debug("chunk upload: create chunk from soc failed", "error", err)
-			logger.Error(nil, "chunk upload: create chunk error")
-			jsonhttp.InternalServerError(ow, "create chunk error")
+			logger.Debug("chunk upload: soc parse failed", "error", err)
+			logger.Error(nil, "chunk upload: invalid soc chunk")
+			jsonhttp.BadRequest(ow, "invalid soc chunk")
 			return
 		}
-		if !soc.Valid(chunk) {
-			// Parsed as SOC structure but invalid — fall through to CAC
+		chunk, err = sch.Chunk()
+		if err != nil || !soc.Valid(chunk) {
+			logger.Debug("chunk upload: soc validation failed", "error", err)
+			logger.Error(nil, "chunk upload: invalid soc chunk")
+			jsonhttp.BadRequest(ow, "invalid soc chunk")
+			return
+		}
+	case "cac", "0":
+		chunk, err = cac.NewWithDataSpan(data)
+		if err != nil {
+			logger.Debug("chunk upload: cac parse failed", "error", err)
+			logger.Error(nil, "chunk upload: invalid cac chunk")
+			jsonhttp.BadRequest(ow, "invalid cac chunk")
+			return
+		}
+	case "":
+		// No chunk type specified — auto-detect.
+		// Try SOC first because CAC is too permissive (accepts any 8-4104 byte data).
+		sch, err := soc.FromChunk(swarm.NewChunk(swarm.EmptyAddress, data))
+		if err == nil {
+			chunk, err = sch.Chunk()
+			if err != nil {
+				logger.Debug("chunk upload: create chunk from soc failed", "error", err)
+				logger.Error(nil, "chunk upload: create chunk error")
+				jsonhttp.InternalServerError(ow, "create chunk error")
+				return
+			}
+			if !soc.Valid(chunk) {
+				chunk, err = cac.NewWithDataSpan(data)
+				if err != nil {
+					logger.Debug("chunk upload: create chunk failed", "error", err)
+					logger.Error(nil, "chunk upload: create chunk error")
+					jsonhttp.InternalServerError(ow, "create chunk error")
+					return
+				}
+			}
+		} else {
 			chunk, err = cac.NewWithDataSpan(data)
 			if err != nil {
 				logger.Debug("chunk upload: create chunk failed", "error", err)
@@ -160,15 +195,11 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-	} else {
-		// Not a SOC — try CAC
-		chunk, err = cac.NewWithDataSpan(data)
-		if err != nil {
-			logger.Debug("chunk upload: create chunk failed", "error", err)
-			logger.Error(nil, "chunk upload: create chunk error")
-			jsonhttp.InternalServerError(ow, "create chunk error")
-			return
-		}
+	default:
+		logger.Debug("chunk upload: invalid chunk type", "type", headers.ChunkType)
+		logger.Error(nil, "chunk upload: invalid chunk type")
+		jsonhttp.BadRequest(ow, "invalid chunk type; expected 'soc' or 'cac'")
+		return
 	}
 
 	err = putter.Put(r.Context(), chunk)

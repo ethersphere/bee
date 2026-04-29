@@ -480,6 +480,130 @@ func TestChunkUploadSOC(t *testing.T) {
 		)
 	})
 
+	t.Run("soc upload with chunk type header", func(t *testing.T) {
+		var (
+			mockSOC         = testingsoc.GenerateMockSOC(t, []byte("header soc"))
+			socChunk        = mockSOC.Chunk()
+			storerMock      = mockstorer.New()
+			client, _, _, _ = newTestServer(t, testServerOptions{
+				Storer: storerMock,
+				Post:   mockpost.New(mockpost.WithAcceptAll()),
+			})
+		)
+
+		go func() { <-storerMock.PusherFeed() }()
+
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestHeader(api.SwarmChunkTypeHeader, "soc"),
+			jsonhttptest.WithRequestBody(bytes.NewReader(socChunk.Data())),
+			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: mockSOC.Address()}),
+		)
+	})
+
+	t.Run("soc upload with chunk type header numeric", func(t *testing.T) {
+		var (
+			mockSOC         = testingsoc.GenerateMockSOC(t, []byte("header soc 1"))
+			socChunk        = mockSOC.Chunk()
+			storerMock      = mockstorer.New()
+			client, _, _, _ = newTestServer(t, testServerOptions{
+				Storer: storerMock,
+				Post:   mockpost.New(mockpost.WithAcceptAll()),
+			})
+		)
+
+		go func() { <-storerMock.PusherFeed() }()
+
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestHeader(api.SwarmChunkTypeHeader, "1"),
+			jsonhttptest.WithRequestBody(bytes.NewReader(socChunk.Data())),
+			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: mockSOC.Address()}),
+		)
+	})
+
+	t.Run("cac upload with chunk type header", func(t *testing.T) {
+		var (
+			chunk           = testingc.GenerateTestRandomChunk()
+			storerMock      = mockstorer.New()
+			client, _, _, _ = newTestServer(t, testServerOptions{
+				Storer: storerMock,
+				Post:   mockpost.New(mockpost.WithAcceptAll()),
+			})
+		)
+
+		go func() { <-storerMock.PusherFeed() }()
+
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestHeader(api.SwarmChunkTypeHeader, "cac"),
+			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
+			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
+		)
+	})
+
+	t.Run("cac upload with chunk type header numeric", func(t *testing.T) {
+		var (
+			chunk           = testingc.GenerateTestRandomChunk()
+			storerMock      = mockstorer.New()
+			client, _, _, _ = newTestServer(t, testServerOptions{
+				Storer: storerMock,
+				Post:   mockpost.New(mockpost.WithAcceptAll()),
+			})
+		)
+
+		go func() { <-storerMock.PusherFeed() }()
+
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestHeader(api.SwarmChunkTypeHeader, "0"),
+			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
+			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
+		)
+	})
+
+	t.Run("soc data with cac header returns cac address", func(t *testing.T) {
+		// When SOC data is uploaded with Swarm-Chunk-Type: cac, it should be
+		// treated as CAC (no SOC detection), producing the content address.
+		var (
+			mockSOC         = testingsoc.GenerateMockSOC(t, []byte("wrong type"))
+			socChunk        = mockSOC.Chunk()
+			cacChunk, _     = cac.NewWithDataSpan(socChunk.Data())
+			storerMock      = mockstorer.New()
+			client, _, _, _ = newTestServer(t, testServerOptions{
+				Storer: storerMock,
+				Post:   mockpost.New(mockpost.WithAcceptAll()),
+			})
+		)
+
+		go func() { <-storerMock.PusherFeed() }()
+
+		// Should succeed but return the CAC address, not the SOC address
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestHeader(api.SwarmChunkTypeHeader, "cac"),
+			jsonhttptest.WithRequestBody(bytes.NewReader(socChunk.Data())),
+			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: cacChunk.Address()}),
+		)
+	})
+
+	t.Run("invalid chunk type header", func(t *testing.T) {
+		client, _, _, _ := newTestServer(t, testServerOptions{
+			Storer: mockstorer.New(),
+			Post:   mockpost.New(mockpost.WithAcceptAll()),
+		})
+
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestHeader(api.SwarmChunkTypeHeader, "invalid"),
+			jsonhttptest.WithRequestBody(bytes.NewReader([]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0xff})),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "invalid chunk type; expected 'soc' or 'cac'",
+				Code:    http.StatusBadRequest,
+			}),
+		)
+	})
+
 	t.Run("soc with pre-signed stamp", func(t *testing.T) {
 		var (
 			mockSOC         = testingsoc.GenerateMockSOC(t, []byte("stamped"))
