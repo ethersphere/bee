@@ -56,7 +56,7 @@ func (s *Service) dirUploadHandler(
 		return
 	}
 
-	// The error is ignored because the header was already validated by the caller.
+	// Parse error is ignored; unsupported media types are caught by the default case below.
 	mediaType, params, _ := mime.ParseMediaType(r.Header.Get(ContentTypeHeader))
 
 	var dReader dirReader
