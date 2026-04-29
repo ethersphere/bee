@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"io"
 	"sync"
-	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
@@ -56,10 +55,6 @@ const (
 	// Message types (Broker → Subscriber)
 	MsgTypeHandshake byte = 0x01
 	MsgTypeData      byte = 0x02
-	MsgTypePing      byte = 0x03
-
-	// Ping interval for keeping p2p streams alive.
-	streamPingInterval = 30 * time.Second
 )
 
 // GSOCEphemeralMode implements Mode for GSOC ephemeral messaging.
@@ -183,11 +178,13 @@ func (m *GSOCEphemeralMode) ReadBrokerMessage(stream p2p.Stream) ([]byte, error)
 		return nil, err
 	}
 
-	switch typeBuf[0] {
-	case MsgTypePing:
-		m.logger.Debug("received ping from broker")
+	if handled, err := readServiceMessage(typeBuf[0]); err != nil {
+		return nil, err
+	} else if handled {
 		return nil, nil
+	}
 
+	switch typeBuf[0] {
 	case MsgTypeHandshake:
 		socID := make([]byte, IDSize)
 		if _, err := io.ReadFull(stream, socID); err != nil {
@@ -335,28 +332,7 @@ func (m *GSOCEphemeralMode) registerSubscriber(ctx context.Context, overlay swar
 	m.subscribers[overlayKey] = sub
 	m.mu.Unlock()
 
-	go func() {
-		ticker := time.NewTicker(streamPingInterval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-connCtx.Done():
-				return
-			case msg := <-sub.outCh:
-				if err := writeRaw(stream, msg); err != nil {
-					m.logger.Info("broker write to subscriber failed", "peer", sub.overlay, "error", err)
-					cancel()
-					return
-				}
-				m.logger.Info("broker wrote to subscriber", "peer", sub.overlay, "size", len(msg))
-			case <-ticker.C:
-				if err := writeRaw(stream, []byte{MsgTypePing}); err != nil {
-					cancel()
-					return
-				}
-			}
-		}
-	}()
+	startBrokerWriter(connCtx, cancel, stream, sub.outCh, overlay, m.logger)
 
 	unregister := func() {
 		m.mu.Lock()
@@ -405,7 +381,7 @@ func (m *GSOCEphemeralMode) runMux(stream p2p.Stream) {
 		if msg == nil {
 			continue
 		}
-		m.subscriberConn.broadcast(msg)
+		m.subscriberConn.fanOut(msg)
 	}
 }
 
