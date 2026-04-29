@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
@@ -32,6 +33,12 @@ const (
 	// Mode constants
 	ModeGSOCEphemeral ModeID = 1
 
+	// Service-level broker message types.
+	MsgTypePing byte = 0x03
+
+	// streamPingInterval is how often the broker sends a keepalive ping to each subscriber.
+	streamPingInterval = 30 * time.Second
+
 	// Wire format sizes
 	SpanSize   = swarm.SpanSize // pubsub span: 8-byte little-endian uint64 (matches bee-js Span.LENGTH)
 	MaxPayload = swarm.ChunkSize
@@ -47,6 +54,43 @@ var (
 	ErrWrongHeaders     = errors.New("pubsub: wrong required headers")
 	ErrTopicMismatch    = errors.New("pubsub: topic address mismatch")
 )
+
+// startBrokerWriter starts a goroutine that drains outCh to stream and sends
+// keepalive pings on every streamPingInterval tick.
+func startBrokerWriter(ctx context.Context, cancel context.CancelFunc, stream p2p.Stream, outCh <-chan []byte, overlay swarm.Address, logger log.Logger) {
+	go func() {
+		ticker := time.NewTicker(streamPingInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case msg := <-outCh:
+				if err := writeRaw(stream, msg); err != nil {
+					logger.Info("broker write to subscriber failed", "peer", overlay, "error", err)
+					cancel()
+					return
+				}
+				logger.Info("broker wrote to subscriber", "peer", overlay, "size", len(msg))
+			case <-ticker.C:
+				if err := writeRaw(stream, []byte{MsgTypePing}); err != nil {
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+}
+
+// readServiceMessage handles broker wire messages that are common to all modes.
+// Returns (handled, err). The caller should return (nil, err) when handled is true.
+func readServiceMessage(typeBuf byte) (handled bool, err error) {
+	switch typeBuf {
+	case MsgTypePing:
+		return true, nil
+	}
+	return false, nil
+}
 
 func newMode(topicAddr [32]byte, modeID ModeID, logger log.Logger) (Mode, error) {
 	switch modeID {
@@ -305,7 +349,8 @@ func (sc *SubscriberConn) Unsubscribe(id uint64) {
 	}
 }
 
-func (sc *SubscriberConn) broadcast(msg []byte) {
+// fanOut broadcasts a message to all registered WS session channels.
+func (sc *SubscriberConn) fanOut(msg []byte) {
 	sc.subsMu.Lock()
 	defer sc.subsMu.Unlock()
 	for _, ch := range sc.subs {
