@@ -85,7 +85,7 @@ var (
 	Base = ChainConfig{
 		ChainID:                8453,
 		NetworkID:              2,
-		PostageStampStartBlock: 44437856, //41062386,
+		PostageStampStartBlock: 45333498, //41062386,
 		NativeTokenSymbol:      "bETH",
 		SwarmTokenSymbol:       "bBZZ",
 
