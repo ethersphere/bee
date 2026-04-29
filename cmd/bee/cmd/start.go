@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -22,8 +23,11 @@ import (
 
 	"github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
+	"github.com/ethersphere/bee/v2/pkg/bmt"
+	"github.com/ethersphere/bee/v2/pkg/bmtpool"
 	chaincfg "github.com/ethersphere/bee/v2/pkg/config"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/keccak"
 	"github.com/ethersphere/bee/v2/pkg/keystore"
 	filekeystore "github.com/ethersphere/bee/v2/pkg/keystore/file"
 	memkeystore "github.com/ethersphere/bee/v2/pkg/keystore/mem"
@@ -264,6 +268,21 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 	var neighborhoodSuggester string
 	if networkID == chaincfg.Mainnet.NetworkID {
 		neighborhoodSuggester = c.config.GetString(optionNameNeighborhoodSuggester)
+	}
+
+	useSIMD := c.config.GetBool(optionUseSIMD)
+	if useSIMD {
+		if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+			return nil, fmt.Errorf("SIMD hashing requires linux/amd64 (this build is %s/%s)", runtime.GOOS, runtime.GOARCH)
+		}
+		if !keccak.HasSIMD() {
+			return nil, errors.New("SIMD hashing requires a CPU with AVX2 or AVX-512; this CPU has neither")
+		}
+		bmt.SetSIMDOptIn(true)
+		// Rebuild the global bmtpool instance so the new SIMDOptIn value
+		// is reflected in the pool created for hot-path BMT hashing.
+		bmtpool.Rebuild()
+		logger.Info("SIMD hashing enabled", "batch_width", keccak.BatchWidth(), "avx512", keccak.HasAVX512())
 	}
 
 	b, err := node.NewBee(ctx, c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, signerConfig.session, &node.Options{

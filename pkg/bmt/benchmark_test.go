@@ -26,7 +26,16 @@ func BenchmarkBMT(b *testing.B) {
 		b.Run(fmt.Sprintf("%v_size_%v", "REF", size), func(b *testing.B) {
 			benchmarkRefHasher(b, size)
 		})
-		b.Run(fmt.Sprintf("%v_size_%v", "BMT", size), func(b *testing.B) {
+		b.Run(fmt.Sprintf("%v_size_%v", "BMT_Goroutine", size), func(b *testing.B) {
+			prev := bmt.SIMDOptIn()
+			bmt.SetSIMDOptIn(false)
+			defer bmt.SetSIMDOptIn(prev)
+			benchmarkBMT(b, size)
+		})
+		b.Run(fmt.Sprintf("%v_size_%v", "BMT_SIMD", size), func(b *testing.B) {
+			prev := bmt.SIMDOptIn()
+			bmt.SetSIMDOptIn(true)
+			defer bmt.SetSIMDOptIn(prev)
 			benchmarkBMT(b, size)
 		})
 	}
@@ -81,13 +90,15 @@ func benchmarkBMTBaseline(b *testing.B, _ int) {
 	}
 }
 
-// benchmarks BMT Hasher
+// benchmarks BMT Hasher with whichever pool the current SIMDOptIn selects.
+// Tree is constructed inside the benchmark so the SIMDOptIn value at call time
+// determines which implementation gets exercised.
 func benchmarkBMT(b *testing.B, n int) {
 	b.Helper()
 
 	testData := testutil.RandBytesWithSeed(b, 4096, seed)
 
-	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, testSegmentCount, testPoolSize))
+	pool := bmt.NewPool(bmt.NewConf(testSegmentCount, testPoolSize))
 	h := pool.Get()
 	defer pool.Put(h)
 
@@ -106,7 +117,7 @@ func benchmarkPool(b *testing.B, poolsize int) {
 
 	testData := testutil.RandBytesWithSeed(b, 4096, seed)
 
-	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, testSegmentCount, poolsize))
+	pool := bmt.NewPool(bmt.NewConf(testSegmentCount, poolsize))
 	cycles := 100
 
 	b.ReportAllocs()

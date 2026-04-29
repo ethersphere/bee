@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"hash"
 	"math/big"
 	"runtime"
 	"sort"
@@ -121,16 +120,12 @@ func (db *DB) ReserveSample(
 	// Phase 2: Get the chunk data and calculate transformed hash
 	sampleItemChan := make(chan SampleItem, 3*workers)
 
-	prefixHasherFactory := func() hash.Hash {
-		return swarm.NewPrefixHasher(anchor)
-	}
-
 	db.logger.Debug("reserve sampler workers", "count", workers)
 
 	for range workers {
 		g.Go(func() error {
 			wstat := SampleStats{}
-			hasher := bmt.NewHasher(prefixHasherFactory)
+			hasher := bmt.NewPrefixHasher(anchor)
 			defer func() {
 				addStats(wstat)
 			}()
@@ -299,7 +294,7 @@ func (db *DB) batchesBelowValue(until *big.Int) (map[string]struct{}, error) {
 	return res, err
 }
 
-func transformedAddress(hasher *bmt.Hasher, chunk swarm.Chunk, chType swarm.ChunkType) (swarm.Address, error) {
+func transformedAddress(hasher bmt.Hasher, chunk swarm.Chunk, chType swarm.ChunkType) (swarm.Address, error) {
 	switch chType {
 	case swarm.ChunkTypeContentAddressed:
 		return transformedAddressCAC(hasher, chunk)
@@ -310,7 +305,7 @@ func transformedAddress(hasher *bmt.Hasher, chunk swarm.Chunk, chType swarm.Chun
 	}
 }
 
-func transformedAddressCAC(hasher *bmt.Hasher, chunk swarm.Chunk) (swarm.Address, error) {
+func transformedAddressCAC(hasher bmt.Hasher, chunk swarm.Chunk) (swarm.Address, error) {
 	hasher.Reset()
 	hasher.SetHeader(chunk.Data()[:bmt.SpanSize])
 
@@ -319,15 +314,10 @@ func transformedAddressCAC(hasher *bmt.Hasher, chunk swarm.Chunk) (swarm.Address
 		return swarm.ZeroAddress, err
 	}
 
-	taddr, err := hasher.Hash(nil)
-	if err != nil {
-		return swarm.ZeroAddress, err
-	}
-
-	return swarm.NewAddress(taddr), nil
+	return swarm.NewAddress(hasher.Sum(nil)), nil
 }
 
-func transformedAddressSOC(hasher *bmt.Hasher, socChunk swarm.Chunk) (swarm.Address, error) {
+func transformedAddressSOC(hasher bmt.Hasher, socChunk swarm.Chunk) (swarm.Address, error) {
 	// Calculate transformed address from wrapped chunk
 	cacChunk, err := soc.UnwrapCAC(socChunk)
 	if err != nil {
@@ -407,12 +397,9 @@ func RandSample(t *testing.T, anchor []byte) Sample {
 
 // MakeSampleUsingChunks returns Sample constructed using supplied chunks.
 func MakeSampleUsingChunks(chunks []swarm.Chunk, anchor []byte) (Sample, error) {
-	prefixHasherFactory := func() hash.Hash {
-		return swarm.NewPrefixHasher(anchor)
-	}
 	items := make([]SampleItem, len(chunks))
 	for i, ch := range chunks {
-		tr, err := transformedAddress(bmt.NewHasher(prefixHasherFactory), ch, getChunkType(ch))
+		tr, err := transformedAddress(bmt.NewPrefixHasher(anchor), ch, getChunkType(ch))
 		if err != nil {
 			return Sample{}, err
 		}
