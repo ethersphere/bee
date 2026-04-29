@@ -458,14 +458,14 @@ func (m *GSOCEphemeralMode) CreateSubscriberConn(stream p2p.Stream, overlay swar
 		subs:    make(map[uint64]chan []byte),
 	}
 	m.subscriberConn = sc
-	go m.runMux(sc, stream)
+	go m.runMux(stream)
 	return sc
 }
 
 // runMux reads broker messages from the shared p2p stream and broadcasts each to all
 // registered WS sessions. It exits when the stream closes or returns an error.
-func (m *GSOCEphemeralMode) runMux(sc *SubscriberConn, stream p2p.Stream) {
-	defer sc.closeAll()
+func (m *GSOCEphemeralMode) runMux(stream p2p.Stream) {
+	defer m.subscriberConn.closeAll()
 	for {
 		msg, err := m.ReadBrokerMessage(stream)
 		if err != nil {
@@ -475,7 +475,7 @@ func (m *GSOCEphemeralMode) runMux(sc *SubscriberConn, stream p2p.Stream) {
 		if msg == nil {
 			continue
 		}
-		sc.broadcast(msg)
+		m.subscriberConn.broadcast(msg)
 	}
 }
 
