@@ -121,7 +121,7 @@ func (m *GSOCEphemeralMode) validatePublisher(headers p2p.Headers) error {
 // First delivery to each subscriber includes a handshake with SOC identity; subsequent are data-only.
 func (m *GSOCEphemeralMode) formatBroadcast(sub *brokerSubscriber, rawMsg []byte) []byte {
 	if !sub.handshakeHappened {
-		// Handshake: [1B type=0x01][32B SOC ID][20B owner][65B sig][4B span][NB payload]
+		// Handshake: [1B type=0x01][32B SOC ID][20B owner][65B sig][8B span][NB payload]
 		msg := make([]byte, 1+IDSize+OwnerSize+len(rawMsg))
 		msg[0] = MsgTypeHandshake
 		copy(msg[1:1+IDSize], m.gsocID)
@@ -131,14 +131,14 @@ func (m *GSOCEphemeralMode) formatBroadcast(sub *brokerSubscriber, rawMsg []byte
 		return msg
 	}
 
-	// Data: [1B type=0x02][65B sig][4B span][NB payload]
+	// Data: [1B type=0x02][65B sig][8B span][NB payload]
 	msg := make([]byte, 1+len(rawMsg))
 	msg[0] = MsgTypeData
 	copy(msg[1:], rawMsg)
 	return msg
 }
 
-// ReadPublisherMessage reads [65B sig][4B span][NB payload (max 4KB)] from the stream,
+// ReadPublisherMessage reads [65B sig][8B span][NB payload (max 4KB)] from the stream,
 // constructs and validates the SOC chunk and returns that.
 func (m *GSOCEphemeralMode) ReadPublisherMessage(stream p2p.Stream) ([]byte, error) {
 	sig := make([]byte, SigSize)
@@ -362,6 +362,7 @@ func (m *GSOCEphemeralMode) CreateSubscriberConn(stream p2p.Stream, overlay swar
 		Overlay: overlay,
 		refs:    1,
 		subs:    make(map[uint64]chan []byte),
+		logger:  m.logger,
 	}
 	m.subscriberConn = sc
 	go m.runMux(stream)
