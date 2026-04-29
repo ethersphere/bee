@@ -371,8 +371,14 @@ func (m *GSOCEphemeralMode) CreateSubscriberConn(stream p2p.Stream, overlay swar
 
 // runMux reads broker messages from the shared p2p stream and broadcasts each to all
 // registered WS sessions. It exits when the stream closes or returns an error.
+// On exit it immediately clears m.subscriberConn so new Connect calls open a fresh stream.
 func (m *GSOCEphemeralMode) runMux(stream p2p.Stream) {
-	defer m.subscriberConn.closeAll()
+	defer func() {
+		m.subscriberConn.closeAll()
+		m.mu.Lock()
+		m.subscriberConn = nil
+		m.mu.Unlock()
+	}()
 	for {
 		msg, err := m.ReadBrokerMessage(stream)
 		if err != nil {
@@ -393,14 +399,13 @@ func (m *GSOCEphemeralMode) GetSubscriberConn() *SubscriberConn {
 	return m.subscriberConn
 }
 
-// RemoveSubscriberConn decrements the ref count for the connection.
-// When the last WS session exits, it closes the stream, stopping the mux goroutine.
+// RemoveSubscriberConn decrements the ref count for conn.
+// When the last WS session exits it closes the stream, stopping the mux goroutine.
+// If the mux already died and cleared m.subscriberConn, refs are still tracked on conn
+// so the stream is closed exactly once when refs reach zero.
 func (m *GSOCEphemeralMode) RemoveSubscriberConn(conn *SubscriberConn) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.subscriberConn != conn {
-		return
-	}
 	conn.refs--
 	if conn.refs <= 0 {
 		m.subscriberConn = nil
