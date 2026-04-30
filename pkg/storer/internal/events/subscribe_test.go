@@ -45,9 +45,8 @@ func TestSubscriber(t *testing.T) {
 
 		bin1, unsub1 := s.Subscribe("1")
 		go s.Trigger("1")
-		<-bin1
-
 		go s.Trigger("1")
+		<-bin1
 		<-bin1
 
 		unsub1()
