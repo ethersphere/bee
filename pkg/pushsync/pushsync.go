@@ -79,27 +79,25 @@ type Storer interface {
 }
 
 type PushSync struct {
-	address        swarm.Address
-	networkID      uint64
-	radius         func() (uint8, error)
-	nonce          []byte
-	streamer       p2p.StreamerDisconnecter
-	store          Storer
-	topologyDriver topology.Driver
-	unwrap         func(swarm.Chunk)
-	gsocHandler    func(*soc.SOC)
-	logger         log.Logger
-	accounting     accounting.Interface
-	pricer         pricer.Interface
-	metrics        metrics
-	tracer         *tracing.Tracer
-	validStamp     postage.ValidStampFn
-	signer         crypto.Signer
-	fullNode       bool
-	errSkip        *skippeers.List
-	stabilizer     stabilization.Subscriber
-
-	shallowReceiptTolerance uint8
+	address                 swarm.Address
+	networkID               uint64
+	radius                  func() (uint8, error)
+	nonce                   []byte
+	streamer                p2p.StreamerDisconnecter
+	store                   Storer
+	topologyDriver          topology.Driver
+	unwrap                  func(swarm.Chunk)
+	gsocHandler             func(*soc.SOC)
+	logger                  log.Logger
+	accounting              accounting.Interface
+	pricer                  pricer.Interface
+	metrics                 metrics
+	tracer                  *tracing.Tracer
+	validStamp              postage.ValidStampFn
+	signer                  crypto.Signer
+	fullNode                bool
+	errSkip                 *skippeers.List
+	stabilizer              stabilization.Subscriber
 	overDraftRefreshLimiter *rate.Limiter
 }
 
@@ -128,7 +126,6 @@ func New(
 	signer crypto.Signer,
 	tracer *tracing.Tracer,
 	stabilizer stabilization.Subscriber,
-	shallowReceiptTolerance uint8,
 ) *PushSync {
 	ps := &PushSync{
 		address:                 address,
@@ -149,7 +146,6 @@ func New(
 		signer:                  signer,
 		errSkip:                 skippeers.NewList(time.Minute),
 		stabilizer:              stabilizer,
-		shallowReceiptTolerance: shallowReceiptTolerance,
 		overDraftRefreshLimiter: rate.NewLimiter(rate.Every(time.Second), 1),
 	}
 
@@ -299,10 +295,8 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	switch receipt, err := ps.pushToClosest(ctx, chunk, false); {
 	case errors.Is(err, topology.ErrWantSelf):
-		// Storing out-of-AOR puts the chunk in a low bin where unreserve()
-		// will evict it shortly after the origin sees a success receipt.
-		// rad is StorageRadius (= reserve.Radius), the doubling-aware lower
-		// bound; CommittedDepth would reject sister neighbourhoods.
+		// Out-of-AOR chunks are unreachable via retrieval even when not
+		// evicted; let the origin try the next peer instead.
 		if swarm.Proximity(ps.address.Bytes(), chunkAddress.Bytes()) < rad {
 			ps.metrics.OutOfDepthStoring.Inc()
 			return ErrOutOfDepthStoring
@@ -597,7 +591,8 @@ func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptRes
 }
 
 // checkReceipt validates the receipt and returns the storer-to-chunk PO so
-// callers can rank shallow receipts; PO is zero on signature errors.
+// callers can rank shallow receipts; PO is zero on signature errors. Strict
+// po >= rad: a chunk is not synced until it lands within the AOR.
 func (ps *PushSync) checkReceipt(receipt *pb.Receipt) (uint8, error) {
 	addr := swarm.NewAddress(receipt.Address)
 
@@ -618,12 +613,7 @@ func (ps *PushSync) checkReceipt(receipt *pb.Receipt) (uint8, error) {
 		return po, fmt.Errorf("pushsync: storage radius: %w", err)
 	}
 
-	var tolerance uint8
-	if r >= ps.shallowReceiptTolerance { // check for underflow of uint8
-		tolerance = r - ps.shallowReceiptTolerance
-	}
-
-	if po < tolerance || uint32(po) < receipt.StorageRadius {
+	if po < r || uint32(po) < receipt.StorageRadius {
 		ps.metrics.ShallowReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
 		ps.metrics.ShallowReceipt.Inc()
 		ps.logger.Debug("shallow receipt", "chunk_address", addr, "peer_address", peer, "proximity_order", po, "peer_radius", receipt.StorageRadius, "self_radius", r)
