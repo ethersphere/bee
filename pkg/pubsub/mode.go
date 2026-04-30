@@ -52,9 +52,9 @@ type Mode interface {
 // --- GSOC Ephemeral Mode (mode 1) ---
 
 const (
-	// Message types (Broker → Subscriber)
-	MsgTypeHandshake byte = 0x01
-	MsgTypeData      byte = 0x02
+	// Mode-specific message types (Broker → Subscriber); 0x01 is reserved for service-level ping.
+	MsgTypeHandshake byte = 0x02
+	MsgTypeData      byte = 0x03
 )
 
 // GSOCEphemeralMode implements Mode for GSOC ephemeral messaging.
@@ -121,7 +121,7 @@ func (m *GSOCEphemeralMode) validatePublisher(headers p2p.Headers) error {
 // First delivery to each subscriber includes a handshake with SOC identity; subsequent are data-only.
 func (m *GSOCEphemeralMode) formatBroadcast(sub *brokerSubscriber, rawMsg []byte) []byte {
 	if !sub.handshakeHappened {
-		// Handshake: [1B type=0x01][32B SOC ID][20B owner][65B sig][8B span][NB payload]
+		// Handshake: [1B type=0x02][32B SOC ID][20B owner][65B sig][8B span][NB payload]
 		msg := make([]byte, 1+IDSize+OwnerSize+len(rawMsg))
 		msg[0] = MsgTypeHandshake
 		copy(msg[1:1+IDSize], m.gsocID)
@@ -131,7 +131,7 @@ func (m *GSOCEphemeralMode) formatBroadcast(sub *brokerSubscriber, rawMsg []byte
 		return msg
 	}
 
-	// Data: [1B type=0x02][65B sig][8B span][NB payload]
+	// Data: [1B type=0x03][65B sig][8B span][NB payload]
 	msg := make([]byte, 1+len(rawMsg))
 	msg[0] = MsgTypeData
 	copy(msg[1:], rawMsg)
