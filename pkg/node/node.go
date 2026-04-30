@@ -553,7 +553,7 @@ func NewBee(
 		}
 	}
 
-	if o.SwapEnable {
+	if o.SwapEnable && chainEnabled {
 		chequebookFactory, err := InitChequebookFactory(logger, chainBackend, chainID, transactionService, o.SwapFactoryAddress)
 		if err != nil {
 			return nil, fmt.Errorf("init chequebook factory: %w", err)

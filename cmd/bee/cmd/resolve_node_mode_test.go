@@ -22,11 +22,13 @@ func TestResolveNodeMode(t *testing.T) {
 	}{
 		// ── Explicit node-mode: strict validation ────────────────────────────────
 		{
-			name: "full mode with rpc and swap succeeds",
+			name: "full mode with rpc, swap, chequebook and incentives succeeds",
 			config: map[string]any{
-				optionNameNodeMode:             "full",
-				configKeyBlockchainRpcEndpoint: "http://localhost:8545",
-				optionNameSwapEnable:           true,
+				optionNameNodeMode:                "full",
+				configKeyBlockchainRpcEndpoint:    "http://localhost:8545",
+				optionNameSwapEnable:              true,
+				optionNameChequebookEnable:        true,
+				optionNameStorageIncentivesEnable: true,
 			},
 			wantMode: node.FullMode,
 		},
@@ -45,6 +47,35 @@ func TestResolveNodeMode(t *testing.T) {
 				configKeyBlockchainRpcEndpoint: "http://localhost:8545",
 			},
 			wantErr: "full node requires swap-enable",
+		},
+		{
+			name: "full mode without chequebook fails",
+			config: map[string]any{
+				optionNameNodeMode:                "full",
+				configKeyBlockchainRpcEndpoint:    "http://localhost:8545",
+				optionNameSwapEnable:              true,
+				optionNameStorageIncentivesEnable: true,
+			},
+			wantErr: "full node requires chequebook-enable",
+		},
+		{
+			name: "full mode without storage-incentives fails",
+			config: map[string]any{
+				optionNameNodeMode:             "full",
+				configKeyBlockchainRpcEndpoint: "http://localhost:8545",
+				optionNameSwapEnable:           true,
+				optionNameChequebookEnable:     true,
+			},
+			wantErr: "storage-incentives-enable",
+		},
+		{
+			name: "chequebook-enable without swap-enable fails (light mode)",
+			config: map[string]any{
+				optionNameNodeMode:             "light",
+				configKeyBlockchainRpcEndpoint: "http://localhost:8545",
+				optionNameChequebookEnable:     true,
+			},
+			wantErr: "chequebook-enable requires swap-enable",
 		},
 		{
 			name: "light mode with rpc succeeds",
@@ -86,11 +117,27 @@ func TestResolveNodeMode(t *testing.T) {
 
 		// ── Legacy path: no node-mode set ────────────────────────────────────────
 		{
-			name: "legacy full-node true maps to full mode",
+			name: "legacy full-node true with all required flags maps to full mode",
 			config: map[string]any{
-				optionNameFullNode: true,
+				optionNameFullNode:                true,
+				configKeyBlockchainRpcEndpoint:    "http://localhost:8545",
+				optionNameSwapEnable:              true,
+				optionNameChequebookEnable:        true,
+				optionNameStorageIncentivesEnable: true,
 			},
 			wantMode: node.FullMode,
+		},
+		{
+			// Upgraders relying on the old chequebook-enable=true default must
+			// now fail loudly instead of silently degrading to pseudo-settle.
+			name: "legacy full-node true without chequebook fails",
+			config: map[string]any{
+				optionNameFullNode:                true,
+				configKeyBlockchainRpcEndpoint:    "http://localhost:8545",
+				optionNameSwapEnable:              true,
+				optionNameStorageIncentivesEnable: true,
+			},
+			wantErr: "full node requires chequebook-enable",
 		},
 		{
 			name: "legacy with rpc endpoint infers light mode",
