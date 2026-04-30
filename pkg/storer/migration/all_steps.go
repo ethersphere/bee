@@ -18,6 +18,11 @@ func AfterInitSteps(
 	st transaction.Storage,
 	logger log.Logger,
 ) migration.Steps {
+	// IMPORTANT: keep this noop and all historical version entries that point to it.
+	// migration.Migrate executes steps starting from (storedVersion + 1) and stops
+	// at the first missing version. If an old NOOP version is removed/renumbered,
+	// nodes that already stored a higher version can start beyond the new steps
+	// and never execute newly added migrations.
 	return map[uint64]migration.StepFn{
 		1: legacyNoopStep,
 		2: legacyNoopStep,
