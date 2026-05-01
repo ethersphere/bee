@@ -2,10 +2,6 @@
 
 Project instructions for **AI coding assistants and agents** (OpenAI Codex, Cursor, GitHub Copilot, Claude Code, and similar tools). This file is meant to be **self-contained** so any agent that discovers `AGENTS.md` gets enough context without another product-specific file.
 
-Codex users: see [Custom instructions with AGENTS.md](https://developers.openai.com/codex/guides/agents-md/) for how global and project instructions merge and for the default combined size limit (`project_doc_max_bytes`, often 32 KiB).
-
-This repo also has **`CLAUDE.md`**, tuned for **Claude Code** (shorter session prompt, `@` imports, `.claude/rules/`). Keep factual content aligned when you change workflows or versions.
-
 ## Project overview
 
 Bee is the reference Go implementation of an Ethereum Swarm node. It implements decentralized storage and communication: content-addressed chunk storage, Kademlia-based routing, postage stamp accounting, push/pull syncing, PSS messaging, feeds, and storage incentives (redistribution game).
@@ -35,7 +31,7 @@ Before you finish a change set (especially before a commit or PR), run these and
 
 1. **Formatting** — `make format` (gofumpt + gci; see `CODING.md`).
 2. **Compile** — `make build` (all packages) and, when you need the binary artifact, `make binary` (`dist/bee`, `CGO_ENABLED=0`).
-3. **Tests** — `make test` (unit tests, `-failfast`). Use `make test-race` when concurrency is central to the change. Use `make test-integration` only when you touch integration-tagged code.
+3. **Tests** — `make test` (unit tests, `-failfast`). For a single package use `go test ./pkg/<name>/...`. Use `make test-race` when concurrency is central to the change. Use `make test-integration` only when you touch integration-tagged code.
 4. **Static checks** — `make lint` and `make vet` (see `.golangci.yml`).
 
 CI pipelines may use `make test-ci` / `make test-ci-race` (see `Makefile` for flags).
@@ -174,30 +170,7 @@ See **[Commit message format and PR titles](#commit-message-format-and-pr-titles
 
 ### Linting
 
-`golangci-lint` v2 per `.golangci.yml`. Notable: `goheader`, `paralleltest`, `misspell`, `errorlint`, `gochecknoinits`, `prealloc`, `forbidigo` (no `fmt.Print` except under `cmd/bee/cmd/`), `govet` with `enable-all` (minus `fieldalignment`, `shadow`). Run `make lint` and `make format`.
-
-## Directory structure (high level)
-
-```
-cmd/bee/              CLI and Cobra commands
-openapi/              OpenAPI specs (Swarm.yaml, SwarmCommon.yaml)
-packaging/            deb, rpm, homebrew, scoop, docker, systemd
-pkg/
-  api/                HTTP API
-  node/               composition root
-  swarm/              Address, Chunk, core constants
-  p2p/                libp2p transport
-  topology/           Kademlia
-  storage/            storage interfaces
-  storer/             local storer implementation
-  sharky/             blob slots
-  postage/            stamps and batches
-  storageincentives/  redistribution
-  pushsync/ pullsync/ retrieval/ pingpong/ hive/ pricing/  # protocols
-  feeds/ pss/ soc/ cac/ bmt/ manifest/ accesscontrol/ redundancy/ replicas/
-  settlement/ accounting/ crypto/ keystore/ log/ metrics/ tracing/
-  ...                 ~60 packages total
-```
+`golangci-lint` v2 per `.golangci.yml`. Run `make lint`.
 
 ## Common pitfalls
 
@@ -208,5 +181,5 @@ pkg/
 - Goroutines must be stoppable (context cancel, quit channel, etc.).
 - Full node vs light node: reserve and storage incentives are full-node concerns.
 - Postage batches can be unusable (expired, depleted, unsynced); check before relying on stamps.
-- `*.pb.go` files are committed; regenerate with `make protobuf` after `.proto` changes.
+- `*.pb.go` is generated; do not edit by hand. Regenerate with `make protobuf` after `.proto` changes.
 - Default branch name is `master`, not `main`.
