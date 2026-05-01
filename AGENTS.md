@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Project instructions for **AI coding assistants and agents** (OpenAI Codex, Cursor, GitHub Copilot, Claude Code, and similar tools). This file is meant to be **self-contained** so any agent that discovers `AGENTS.md` gets enough context without another product-specific file.
+Project instructions for **AI coding assistants and agents** (OpenAI Codex, Cursor, GitHub Copilot, Claude Code, and similar tools). This file is the canonical source of shared project instructions; `CLAUDE.md` imports this file for Claude Code.
 
 ## Project overview
 
