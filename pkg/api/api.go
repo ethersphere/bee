@@ -16,7 +16,6 @@ import (
 	"io"
 	"math"
 	"math/big"
-	"mime"
 	"net/http"
 	"reflect"
 	"strconv"
@@ -301,10 +300,6 @@ func New(
 	s.chainBackend = chainBackend
 	s.metricsRegistry = newDebugMetrics()
 	s.preMapHooks = map[string]func(v string) (string, error){
-		"mimeMediaType": func(v string) (string, error) {
-			typ, _, err := mime.ParseMediaType(v)
-			return typ, err
-		},
 		"decBase64url": func(v string) (string, error) {
 			buf, err := base64.URLEncoding.DecodeString(v)
 			return string(buf), err

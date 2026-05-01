@@ -342,7 +342,7 @@ paths:
     post:
       summary: "Upload a file or collection of files"
       description:
-        "Upload single files or collections of files. To upload a collection, send a multipart request with files in the form data with appropriate headers. Tar files can be uploaded with the `swarm-collection` header to extract and upload the directory structure. Without the `swarm-collection` header, requests are treated as single file uploads. Multipart requests are always treated as collections; use the `swarm-index-document` header to specify a single file to serve."
+        "Upload single files or collections of files. For a single file, `Content-Type` is optional: when present it is stored as metadata as-is; when absent the server infers a type from the start of the body. To upload a collection, send a multipart request with files in the form data with appropriate headers. Tar files can be uploaded with the `swarm-collection` header to extract and upload the directory structure. Without the `swarm-collection` header, requests are treated as single file uploads. Multipart requests are always treated as collections; use the `swarm-index-document` header to specify a single file to serve."
       tags:
         - BZZ
       parameters:
