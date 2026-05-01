@@ -78,7 +78,7 @@ jobs:
           # - node wiring + topology/hive/addressbook integration
           # - swarm address identity types and p2p deps
           if git diff --name-only "origin/${{ github.base_ref }}...HEAD" | grep -qE \
-            '^(pkg/(p2p|topology|hive|addressbook|bzz|node|swarm)/|pkg/api/(api|router|p2p|peer)\.go|cmd/bee/cmd/(cmd|start)\.go|go\.mod|go\.sum)'; then
+            '^(pkg/(p2p|topology|hive|addressbook|bzz|node|swarm)/|pkg/api/(api|router|p2p|peer)\.go|cmd/bee/cmd/(cmd|start)\.go|\.github/workflows/beekeeper\.yml|go\.mod|go\.sum)'; then
             echo "changed=true" >> $GITHUB_OUTPUT
           else
             echo "changed=false" >> $GITHUB_OUTPUT
