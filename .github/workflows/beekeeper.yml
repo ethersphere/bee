@@ -6,6 +6,9 @@ on:
   pull_request:
     branches:
       - "**"
+  push:
+    branches:
+      - master
 
 env:
   K3S_VERSION: "v1.31.10+k3s1"
@@ -35,6 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       msg: ${{ steps.commit.outputs.msg }}
+      p2p_changed: ${{ steps.p2p.outputs.changed }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -58,8 +62,27 @@ jobs:
       - name: Get Commit Message
         id: commit
         run: |
-          MSG=$(git log --format=%s -n 1 ${{github.event.after}})
+          MSG=$(git log --format=%s -n 1 ${{ github.event.after || github.sha }})
           echo "msg=${MSG}" >> $GITHUB_OUTPUT
+      - name: Detect P2P connectivity-related changes (pull_request only)
+        id: p2p
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "changed=skip" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          git fetch origin "${{ github.base_ref }}" --depth=1
+          # Paths that can affect ci-autotls behavior:
+          # - /addresses, /connect, /peers API surface
+          # - p2p/libp2p WSS/AutoTLS transport and handshake
+          # - node wiring + topology/hive/addressbook integration
+          # - swarm address identity types and p2p deps
+          if git diff --name-only "origin/${{ github.base_ref }}...HEAD" | grep -qE \
+            '^(pkg/(p2p|topology|hive|addressbook|bzz|node|swarm)/|pkg/api/(api|router|p2p|peer)\.go|cmd/bee/cmd/(cmd|start)\.go|go\.mod|go\.sum)'; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
       - name: Build - 0
         run: |
           make binary
@@ -208,6 +231,10 @@ jobs:
           path: dump/
   beekeeper-autotls:
     name: Integration tests (autotls)
+    if: |
+      github.event_name == 'repository_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/master') ||
+      (github.event_name == 'pull_request' && needs.init.outputs.p2p_changed == 'true')
     runs-on: ubuntu-latest
     needs: [init]
     steps:
@@ -274,6 +301,10 @@ jobs:
     env:
       TIMEOUT: 10m
     needs: [beekeeper, beekeeper-autotls]
+    if: |
+      always() &&
+      needs.beekeeper.result == 'success' &&
+      (needs.beekeeper-autotls.result == 'success' || needs.beekeeper-autotls.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - name: "Download Artifact"
