@@ -180,6 +180,11 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	rLevel := redundancy.DefaultUploadLevel
+	if headers.RLevel != nil {
+		rLevel = *headers.RLevel
+	}
+
 	var (
 		tag      storer.SessionInfo
 		err      error
@@ -228,7 +233,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		logger:         logger,
 	}
 
-	l := loadsave.New(s.storer.ChunkStore(), s.storer.Cache(), requestPipelineFactory(r.Context(), putter, false, 0), redundancy.DefaultDownloadLevel)
+	l := loadsave.New(s.storer.ChunkStore(), s.storer.Cache(), requestPipelineFactory(r.Context(), putter, false, rLevel), rLevel)
 	feedManifest, err := manifest.NewDefaultManifest(l, false)
 	if err != nil {
 		logger.Debug("create manifest failed", "error", err)
@@ -280,10 +285,6 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	encryptedReference := ref
 	historyReference := swarm.ZeroAddress
 	if headers.Act {
-		rLevel := redundancy.PARANOID
-		if headers.RLevel != nil {
-			rLevel = *headers.RLevel
-		}
 		encryptedReference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, ref, headers.HistoryAddress, rLevel)
 		if err != nil {
 			logger.Debug("access control upload failed", "error", err)
