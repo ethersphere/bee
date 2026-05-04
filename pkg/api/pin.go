@@ -40,7 +40,7 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rLevel := redundancy.PARANOID
+	rLevel := redundancy.DefaultDownloadLevel
 	if headers.RLevel != nil {
 		rLevel = *headers.RLevel
 	}
