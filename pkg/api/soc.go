@@ -52,7 +52,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		StampSig       []byte            `map:"Swarm-Postage-Stamp"`
 		Act            bool              `map:"Swarm-Act"`
 		HistoryAddress swarm.Address     `map:"Swarm-Act-History-Address"`
-		RLevel         *redundancy.Level `map:"Swarm-Redundancy-Level"`
+		RLevel         *redundancy.Level `map:"Swarm-Redundancy-Level" validate:"omitempty,rLevel"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)

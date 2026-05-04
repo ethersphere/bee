@@ -104,7 +104,7 @@ func (s *Service) actDecryptionHandler() func(h http.Handler) http.Handler {
 				Publisher      *ecdsa.PublicKey  `map:"Swarm-Act-Publisher"`
 				HistoryAddress *swarm.Address    `map:"Swarm-Act-History-Address"`
 				Cache          *bool             `map:"Swarm-Cache"`
-				RLevel         *redundancy.Level `map:"Swarm-Redundancy-Level"`
+				RLevel         *redundancy.Level `map:"Swarm-Redundancy-Level" validate:"omitempty,rLevel"`
 			}{}
 			if response := s.mapStructure(r.Header, &headers); response != nil {
 				response("invalid header params", logger, w)
@@ -202,7 +202,7 @@ func (s *Service) actListGranteesHandler(w http.ResponseWriter, r *http.Request)
 
 	headers := struct {
 		Cache  *bool             `map:"Swarm-Cache"`
-		RLevel *redundancy.Level `map:"Swarm-Redundancy-Level"`
+		RLevel *redundancy.Level `map:"Swarm-Redundancy-Level" validate:"omitempty,rLevel"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -259,7 +259,7 @@ func (s *Service) actGrantRevokeHandler(w http.ResponseWriter, r *http.Request) 
 		Pin            bool              `map:"Swarm-Pin"`
 		Deferred       *bool             `map:"Swarm-Deferred-Upload"`
 		HistoryAddress *swarm.Address    `map:"Swarm-Act-History-Address" validate:"required"`
-		RLevel         *redundancy.Level `map:"Swarm-Redundancy-Level"`
+		RLevel         *redundancy.Level `map:"Swarm-Redundancy-Level" validate:"omitempty,rLevel"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -429,7 +429,7 @@ func (s *Service) actCreateGranteesHandler(w http.ResponseWriter, r *http.Reques
 		Pin            bool              `map:"Swarm-Pin"`
 		Deferred       *bool             `map:"Swarm-Deferred-Upload"`
 		HistoryAddress *swarm.Address    `map:"Swarm-Act-History-Address"`
-		RLevel         *redundancy.Level `map:"Swarm-Redundancy-Level"`
+		RLevel         *redundancy.Level `map:"Swarm-Redundancy-Level" validate:"omitempty,rLevel"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)

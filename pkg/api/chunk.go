@@ -38,7 +38,7 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		SwarmTag       uint64            `map:"Swarm-Tag"`
 		Act            bool              `map:"Swarm-Act"`
 		HistoryAddress swarm.Address     `map:"Swarm-Act-History-Address"`
-		RLevel         *redundancy.Level `map:"Swarm-Redundancy-Level"`
+		RLevel         *redundancy.Level `map:"Swarm-Redundancy-Level" validate:"omitempty,rLevel"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)

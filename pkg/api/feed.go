@@ -173,7 +173,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		Deferred       *bool             `map:"Swarm-Deferred-Upload"`
 		Act            bool              `map:"Swarm-Act"`
 		HistoryAddress swarm.Address     `map:"Swarm-Act-History-Address"`
-		RLevel         *redundancy.Level `map:"Swarm-Redundancy-Level"`
+		RLevel         *redundancy.Level `map:"Swarm-Redundancy-Level" validate:"omitempty,rLevel"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)

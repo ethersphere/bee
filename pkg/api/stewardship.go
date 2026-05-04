@@ -31,7 +31,7 @@ func (s *Service) stewardshipPutHandler(w http.ResponseWriter, r *http.Request) 
 
 	headers := struct {
 		BatchID []byte            `map:"Swarm-Postage-Batch-Id" validate:"required"`
-		RLevel  *redundancy.Level `map:"Swarm-Redundancy-Level"`
+		RLevel  *redundancy.Level `map:"Swarm-Redundancy-Level" validate:"omitempty,rLevel"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -99,7 +99,7 @@ func (s *Service) stewardshipGetHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	headers := struct {
-		RLevel *redundancy.Level `map:"Swarm-Redundancy-Level"`
+		RLevel *redundancy.Level `map:"Swarm-Redundancy-Level" validate:"omitempty,rLevel"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
