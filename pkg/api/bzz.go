@@ -525,7 +525,7 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 		cache = *headers.Cache
 	}
 
-	rLevel := redundancy.DefaultLevel
+	rLevel := redundancy.DefaultDownloadLevel
 	if headers.RLevel != nil {
 		rLevel = *headers.RLevel
 	}
@@ -748,7 +748,7 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		jsonhttp.BadRequest(w, "could not parse headers")
 		return
 	}
-	rLevel := redundancy.DefaultLevel
+	rLevel := redundancy.DefaultDownloadLevel
 	if headers.RLevel != nil {
 		rLevel = *headers.RLevel
 	}

@@ -127,7 +127,7 @@ func (s *Service) actDecryptionHandler() func(h http.Handler) http.Handler {
 				cache = *headers.Cache
 			}
 
-			rLevel := redundancy.PARANOID
+			rLevel := redundancy.DefaultDownloadLevel
 			if headers.RLevel != nil {
 				rLevel = *headers.RLevel
 			}
@@ -213,7 +213,7 @@ func (s *Service) actListGranteesHandler(w http.ResponseWriter, r *http.Request)
 		cache = *headers.Cache
 	}
 
-	rLevel := redundancy.PARANOID
+	rLevel := redundancy.DefaultDownloadLevel
 	if headers.RLevel != nil {
 		rLevel = *headers.RLevel
 	}
@@ -271,7 +271,7 @@ func (s *Service) actGrantRevokeHandler(w http.ResponseWriter, r *http.Request) 
 		historyAddress = *headers.HistoryAddress
 	}
 
-	rLevel := redundancy.PARANOID
+	rLevel := redundancy.DefaultUploadLevel
 	if headers.RLevel != nil {
 		rLevel = *headers.RLevel
 	}
@@ -441,7 +441,7 @@ func (s *Service) actCreateGranteesHandler(w http.ResponseWriter, r *http.Reques
 		historyAddress = *headers.HistoryAddress
 	}
 
-	rLevel := redundancy.PARANOID
+	rLevel := redundancy.DefaultUploadLevel
 	if headers.RLevel != nil {
 		rLevel = *headers.RLevel
 	}

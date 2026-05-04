@@ -167,7 +167,7 @@ func TestTraversalBytes(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			err = traversal.New(storerMock, storerMock).Traverse(ctx, address, iter.Next, redundancy.DefaultLevel)
+			err = traversal.New(storerMock, storerMock).Traverse(ctx, address, iter.Next, redundancy.DefaultDownloadLevel)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -261,7 +261,7 @@ func TestTraversalFiles(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			ls := loadsave.New(storerMock, storerMock, pipelineFactory(storerMock, false), redundancy.DefaultLevel)
+			ls := loadsave.New(storerMock, storerMock, pipelineFactory(storerMock, false), redundancy.DefaultDownloadLevel)
 			fManifest, err := manifest.NewDefaultManifest(ls, false)
 			if err != nil {
 				t.Fatal(err)
@@ -293,7 +293,7 @@ func TestTraversalFiles(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			err = traversal.New(storerMock, storerMock).Traverse(ctx, address, iter.Next, redundancy.DefaultLevel)
+			err = traversal.New(storerMock, storerMock).Traverse(ctx, address, iter.Next, redundancy.DefaultDownloadLevel)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -419,7 +419,7 @@ func TestTraversalManifest(t *testing.T) {
 			}
 			wantHashes = append(wantHashes, tc.manifestHashes...)
 
-			ls := loadsave.New(storerMock, storerMock, pipelineFactory(storerMock, false), redundancy.DefaultLevel)
+			ls := loadsave.New(storerMock, storerMock, pipelineFactory(storerMock, false), redundancy.DefaultDownloadLevel)
 			dirManifest, err := manifest.NewMantarayManifest(ls, false)
 			if err != nil {
 				t.Fatal(err)
@@ -450,7 +450,7 @@ func TestTraversalManifest(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			err = traversal.New(storerMock, storerMock).Traverse(ctx, address, iter.Next, redundancy.DefaultLevel)
+			err = traversal.New(storerMock, storerMock).Traverse(ctx, address, iter.Next, redundancy.DefaultDownloadLevel)
 			if err != nil {
 				t.Fatal(err)
 			}
