@@ -240,14 +240,7 @@ func (g *decoder) runStrategy(s Strategy) error {
 	c := make(chan error, len(m))
 
 	ctx, cancel := context.WithCancel(context.Background())
-	completed := 0
-	defer func() {
-		cancel()
-		remaining := len(m) - completed
-		for i := 0; i < remaining; i++ {
-			<-c
-		}
-	}()
+	defer cancel()
 
 	for _, i := range m {
 		go func(i int) {
@@ -255,9 +248,7 @@ func (g *decoder) runStrategy(s Strategy) error {
 		}(i)
 	}
 
-	for completed < len(m) {
-		<-c
-		completed++
+	for range c {
 		if g.fetchedCnt.Load() >= int32(g.shardCnt) {
 			return nil
 		}
