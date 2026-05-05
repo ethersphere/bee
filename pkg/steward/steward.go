@@ -13,6 +13,7 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/replicas"
 	"github.com/ethersphere/bee/v2/pkg/retrieval"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer"
@@ -75,6 +76,20 @@ func (s *steward) Reupload(ctx context.Context, root swarm.Address, stamper post
 			fmt.Errorf("traversal of %s failed: %w", root.String(), err),
 			uploaderSession.Cleanup(),
 		)
+	}
+
+	if rLevel != redundancy.NONE {
+		rootChunk, err := getter.Get(ctx, root)
+		if err != nil {
+			return errors.Join(fmt.Errorf("get root chunk for dispersed replicas: %w", err), uploaderSession.Cleanup())
+		}
+		stamp, err := stamper.Stamp(rootChunk.Address(), rootChunk.Address())
+		if err != nil {
+			return errors.Join(fmt.Errorf("stamping root chunk for dispersed replicas: %w", err), uploaderSession.Cleanup())
+		}
+		if err := replicas.NewPutter(uploaderSession, rLevel).Put(ctx, rootChunk.WithStamp(stamp)); err != nil {
+			return errors.Join(fmt.Errorf("re-uploading dispersed replicas: %w", err), uploaderSession.Cleanup())
+		}
 	}
 
 	return uploaderSession.Done(root)
