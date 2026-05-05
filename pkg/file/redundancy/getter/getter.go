@@ -19,6 +19,7 @@ import (
 var (
 	errStrategyNotAllowed = errors.New("strategy not allowed")
 	errStrategyFailed     = errors.New("strategy failed")
+	errShouldNeverHappen  = errors.New("should never happen")
 )
 
 // decoder is a private implementation of storage.Getter
@@ -266,7 +267,7 @@ func (g *decoder) runStrategy(s Strategy) error {
 		}
 	}
 
-	return errStrategyFailed
+	return errShouldNeverHappen
 }
 
 // recover wraps the stages of data shard recovery:
