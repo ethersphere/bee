@@ -170,6 +170,7 @@ func TestAccessLogicEachEndpointWithAct(t *testing.T) {
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmTagHeader, fmt.Sprintf("%d", tag.TagID)),
+			jsonhttptest.WithRequestHeader(api.SwarmRedundancyLevelHeader, "0"),
 			jsonhttptest.WithRequestBody(v.data),
 			jsonhttptest.WithExpectedJSONResponse(v.resp),
 			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, v.contenttype),
