@@ -79,7 +79,7 @@ func (s *steward) Reupload(ctx context.Context, root swarm.Address, stamper post
 	}
 
 	if rLevel != redundancy.NONE {
-		rootChunk, err := getter.Get(ctx, root)
+		rootChunk, err := replicas.NewGetter(getter, rLevel).Get(ctx, root)
 		if err != nil {
 			return errors.Join(fmt.Errorf("get root chunk for dispersed replicas: %w", err), uploaderSession.Cleanup())
 		}
