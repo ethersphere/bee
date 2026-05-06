@@ -183,7 +183,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	reference := sch.Address()
 	historyReference := swarm.ZeroAddress
 	if headers.Act {
-		rLevel := redundancy.PARANOID
+		rLevel := redundancy.DefaultUploadLevel
 		if headers.RLevel != nil {
 			rLevel = *headers.RLevel
 		}

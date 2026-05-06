@@ -38,7 +38,7 @@ func (s *Service) stewardshipPutHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	rLevel := redundancy.PARANOID
+	rLevel := redundancy.DefaultUploadLevel
 	if headers.RLevel != nil {
 		rLevel = *headers.RLevel
 	}
@@ -106,7 +106,7 @@ func (s *Service) stewardshipGetHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	rLevel := redundancy.PARANOID
+	rLevel := redundancy.DefaultDownloadLevel
 	if headers.RLevel != nil {
 		rLevel = *headers.RLevel
 	}
