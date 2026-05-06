@@ -31,9 +31,8 @@ git submodule update --init
 
 ### 2. Install the build dependencies
 
-The build script needs a system C toolchain, `xsltproc` (XKCP's own build
-system uses XSLT for Makefile generation) and `c2goasm` (the Go assembly
-generator):
+The build script needs a system C toolchain and `xsltproc` (XKCP's own build
+system uses XSLT for Makefile generation):
 
 ```bash
 # Debian/Ubuntu
@@ -44,10 +43,6 @@ sudo pacman -S base-devel libxslt
 
 # macOS
 brew install xsltproc
-
-# c2goasm (Go-side dependency, all platforms)
-go install github.com/minio/c2goasm@latest
-which c2goasm   # confirm it is in PATH
 ```
 
 ### 3. Run the build
