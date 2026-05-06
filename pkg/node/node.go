@@ -193,6 +193,8 @@ type Options struct {
 	WarmupTime                    time.Duration
 	WelcomeMessage                string
 	WhitelistedWithdrawalAddress  []string
+	MaxTxCost                     uint64
+	MaxTxCostTolerancePercent     uint64
 }
 
 const (
@@ -1201,7 +1203,11 @@ func NewBee(
 				redistributionContractAddress = common.HexToAddress(o.RedistributionContractAddress)
 			}
 
-			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), contractGasLimit)
+			var redistributionOpts []redistribution.Option
+			if o.MaxTxCost > 0 {
+				redistributionOpts = append(redistributionOpts, redistribution.WithMaxTxCost(o.MaxTxCost, o.MaxTxCostTolerancePercent))
+			}
+			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), postageStampContractAddress, postageStampContractABI, contractGasLimit, redistributionOpts...)
 
 			isFullySynced := func() bool {
 				reserveThreshold := reserveCapacity * 5 / 10

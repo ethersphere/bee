@@ -82,6 +82,8 @@ const (
 	optionSkipPostageSnapshot              = "skip-postage-snapshot"
 	optionNameMinimumGasTipCap             = "minimum-gas-tip-cap"
 	optionNameGasLimitFallback             = "gas-limit-fallback"
+	optionNameMaxTxCost                    = "max-tx-cost"
+	optionNameMaxTxCostTolerancePercent    = "max-tx-cost-tolerance-percent"
 	optionNameP2PWSSEnable                 = "p2p-wss-enable"
 	optionP2PWSSAddr                       = "p2p-wss-addr"
 	optionNATWSSAddr                       = "nat-wss-addr"
@@ -328,6 +330,8 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionSkipPostageSnapshot, false, "skip postage snapshot")
 	cmd.Flags().Uint64(optionNameMinimumGasTipCap, 0, "minimum gas tip cap in wei for transactions, 0 means use suggested gas tip cap")
 	cmd.Flags().Uint64(optionNameGasLimitFallback, 500_000, "gas limit fallback when estimation fails for contract transactions")
+	cmd.Flags().Uint64(optionNameMaxTxCost, 0, "maximum total cost in wei per redistribution transaction, 0 means no limit")
+	cmd.Flags().Uint64(optionNameMaxTxCostTolerancePercent, 5, "percentage above max-tx-cost within which the transaction is still allowed")
 	cmd.Flags().Bool(optionNameP2PWSSEnable, false, "Enable Secure WebSocket P2P connections")
 	cmd.Flags().String(optionP2PWSSAddr, ":1635", "p2p wss address")
 	cmd.Flags().String(optionNATWSSAddr, "", "WSS NAT exposed address")

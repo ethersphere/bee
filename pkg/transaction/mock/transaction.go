@@ -18,6 +18,7 @@ import (
 )
 
 type transactionServiceMock struct {
+	estimateTxCost       func(ctx context.Context, gasUnits int64, tip int) (cost *big.Int, gasFeeCap *big.Int, err error)
 	send                 func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error)
 	waitForReceipt       func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error)
 	watchSentTransaction func(txHash common.Hash) (chan types.Receipt, chan error, error)
@@ -27,6 +28,16 @@ type transactionServiceMock struct {
 	storedTransaction    func(txHash common.Hash) (*transaction.StoredTransaction, error)
 	cancelTransaction    func(ctx context.Context, originalTxHash common.Hash) (common.Hash, error)
 	transactionFee       func(ctx context.Context, txHash common.Hash) (*big.Int, error)
+}
+
+func (m *transactionServiceMock) EstimateTxCost(ctx context.Context, gasUnits int64, tip int) (cost *big.Int, gasFeeCap *big.Int, err error) {
+	if m.estimateTxCost != nil {
+		return m.estimateTxCost(ctx, gasUnits, tip)
+	}
+	// Default: small fee so callers that enable max-tx-cost checks can override via WithEstimateTxCostFunc.
+	gasFeeCap = big.NewInt(1)
+	cost = new(big.Int).Mul(big.NewInt(gasUnits), gasFeeCap)
+	return cost, gasFeeCap, nil
 }
 
 func (m *transactionServiceMock) Send(ctx context.Context, request *transaction.TxRequest, boostPercent int) (txHash common.Hash, err error) {
@@ -109,6 +120,12 @@ type Option interface {
 type optionFunc func(*transactionServiceMock)
 
 func (f optionFunc) apply(r *transactionServiceMock) { f(r) }
+
+func WithEstimateTxCostFunc(f func(ctx context.Context, gasUnits int64, tip int) (cost *big.Int, gasFeeCap *big.Int, err error)) Option {
+	return optionFunc(func(s *transactionServiceMock) {
+		s.estimateTxCost = f
+	})
+}
 
 func WithSendFunc(f func(context.Context, *transaction.TxRequest, int) (txHash common.Hash, err error)) Option {
 	return optionFunc(func(s *transactionServiceMock) {

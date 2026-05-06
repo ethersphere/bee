@@ -301,6 +301,8 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		Logger:                        logger,
 		MinimumGasTipCap:              c.config.GetUint64(optionNameMinimumGasTipCap),
 		GasLimitFallback:              c.config.GetUint64(optionNameGasLimitFallback),
+		MaxTxCost:                     c.config.GetUint64(optionNameMaxTxCost),
+		MaxTxCostTolerancePercent:     c.config.GetUint64(optionNameMaxTxCostTolerancePercent),
 		MinimumStorageRadius:          c.config.GetUint(optionMinimumStorageRadius),
 		MutexProfile:                  c.config.GetBool(optionNamePProfMutex),
 		NATAddr:                       c.config.GetString(optionNameNATAddr),

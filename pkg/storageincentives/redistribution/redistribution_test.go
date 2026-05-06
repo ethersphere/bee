@@ -11,7 +11,9 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -26,7 +28,11 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 )
 
-var redistributionContractABI = abiutil.MustParseABI(chaincfg.Testnet.RedistributionABI)
+var (
+	redistributionContractABI = abiutil.MustParseABI(chaincfg.Testnet.RedistributionABI)
+	postageContractABI        = abiutil.MustParseABI(chaincfg.Testnet.PostageStampABI)
+	postageContractAddress    = common.HexToAddress("eeee")
+)
 
 func randChunkInclusionProof(t *testing.T) redistribution.ChunkInclusionProof {
 	t.Helper()
@@ -88,6 +94,8 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
+			postageContractAddress,
+			postageContractABI,
 			0,
 		)
 
@@ -120,6 +128,8 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
+			postageContractAddress,
+			postageContractABI,
 			0,
 		)
 
@@ -150,6 +160,8 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
+			postageContractAddress,
+			postageContractABI,
 			0,
 		)
 
@@ -177,6 +189,8 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
+			postageContractAddress,
+			postageContractABI,
 			0,
 		)
 
@@ -223,10 +237,12 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
+			postageContractAddress,
+			postageContractABI,
 			0,
 		)
 
-		_, err = contract.Claim(ctx, proofs)
+		_, err = contract.Claim(ctx, proofs, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -265,10 +281,12 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
+			postageContractAddress,
+			postageContractABI,
 			0,
 		)
 
-		_, err = contract.Claim(ctx, proofs)
+		_, err = contract.Claim(ctx, proofs, nil)
 		if !errors.Is(err, transaction.ErrTransactionReverted) {
 			t.Fatal(err)
 		}
@@ -308,6 +326,8 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
+			postageContractAddress,
+			postageContractABI,
 			0,
 		)
 
@@ -353,6 +373,8 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
+			postageContractAddress,
+			postageContractABI,
 			0,
 		)
 
@@ -379,6 +401,8 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
+			postageContractAddress,
+			postageContractABI,
 			0,
 		)
 
@@ -409,6 +433,8 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
+			postageContractAddress,
+			postageContractABI,
 			0,
 		)
 
@@ -442,6 +468,8 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
+			postageContractAddress,
+			postageContractABI,
 			0,
 		)
 
@@ -450,4 +478,50 @@ func TestRedistribution(t *testing.T) {
 			t.Fatal("expected error")
 		}
 	})
+}
+
+func TestRedistribution_MaxTxCostWaitsUntilContextDone(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
+	defer cancel()
+	owner := common.HexToAddress("abcd")
+	overlay := swarm.NewAddress(common.HexToHash("cbd").Bytes())
+	redistributionContractAddress := common.HexToAddress("ffff")
+	var sendCalled atomic.Bool
+
+	proofs := randChunkInclusionProofs(t)
+
+	contract := redistribution.New(
+		overlay,
+		owner,
+		log.Noop,
+		transactionMock.New(
+			transactionMock.WithEstimateTxCostFunc(func(_ context.Context, gasUnits int64, _ int) (*big.Int, *big.Int, error) {
+				gasFeeCap := big.NewInt(10)
+				return new(big.Int).Mul(big.NewInt(gasUnits), gasFeeCap), gasFeeCap, nil
+			}),
+			transactionMock.WithSendFunc(func(context.Context, *transaction.TxRequest, int) (common.Hash, error) {
+				sendCalled.Store(true)
+				return common.Hash{}, errors.New("send should not be called")
+			}),
+			transactionMock.WithWaitForReceiptFunc(func(context.Context, common.Hash) (*types.Receipt, error) {
+				return nil, errors.New("unexpected wait")
+			}),
+		),
+		redistributionContractAddress,
+		redistributionContractABI,
+		postageContractAddress,
+		postageContractABI,
+		100_000,
+		redistribution.WithMaxTxCost(500_000, 0),
+	)
+
+	_, err := contract.Claim(ctx, proofs, nil)
+	if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
+		t.Fatalf("want context deadline or cancel, got %v", err)
+	}
+	if sendCalled.Load() {
+		t.Fatal("Send must not be called when cost exceeds limit")
+	}
 }

@@ -41,6 +41,10 @@ const (
 
 	// average tx gas used by transactions issued from agent
 	avgTxGas = 250_000
+
+	// forceClaimBlocksBeforeEnd is how many blocks before round end claim may
+	// bypass max-tx-cost when economics justify it (see redistribution.ClaimOpts).
+	forceClaimBlocksBeforeEnd = 10
 )
 
 type ChainBackend interface {
@@ -59,6 +63,7 @@ type Agent struct {
 	metrics                metrics
 	backend                ChainBackend
 	blocksPerRound         uint64
+	blockTime              time.Duration
 	contract               redistribution.Contract
 	batchExpirer           postagecontract.PostageBatchExpirer
 	redistributionStatuser staking.RedistributionStatuser
@@ -102,6 +107,7 @@ func New(overlay swarm.Address,
 		store:                  store,
 		fullSyncedFunc:         fullSyncedFunc,
 		blocksPerRound:         blocksPerRound,
+		blockTime:              blockTime,
 		quit:                   make(chan struct{}),
 		redistributionStatuser: redistributionStatuser,
 		health:                 health,
@@ -116,7 +122,7 @@ func New(overlay swarm.Address,
 	a.state = state
 
 	a.wg.Add(1)
-	go a.start(blockTime, a.blocksPerRound, blocksPerPhase)
+	go a.start(a.blockTime, a.blocksPerRound, blocksPerPhase)
 
 	return a, nil
 }
@@ -280,6 +286,11 @@ func (a *Agent) handleCommit(ctx context.Context, round uint64) error {
 
 	err := a.commit(ctx, sample, round)
 	if err != nil {
+		if errors.Is(err, redistribution.ErrMaxTxCostExceeded) {
+			a.logger.Info("skipping commit: tx cost exceeds configured max", "round", round)
+			a.metrics.SkippedExpensivePhase.Inc()
+			return nil
+		}
 		return err
 	}
 
@@ -311,7 +322,7 @@ func (a *Agent) handleReveal(ctx context.Context, round uint64) error {
 		a.metrics.ErrReveal.Inc()
 		return err
 	}
-	a.state.AddFee(ctx, txHash)
+	a.state.AddRoundFee(ctx, round, txHash)
 
 	a.state.SetHasRevealed(round)
 
@@ -353,7 +364,7 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 
 	errBalance := a.state.SetBalance(ctx)
 	if errBalance != nil {
-		a.logger.Info("could not set balance", "err", err)
+		a.logger.Info("could not set balance", "err", errBalance)
 	}
 
 	sampleData, exists := a.state.SampleData(round - 1)
@@ -371,8 +382,33 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 		return fmt.Errorf("making inclusion proofs: %w", err)
 	}
 
-	txHash, err := a.contract.Claim(ctx, proofs)
+	claimCtx := ctx
+	phaseEndBlock := (round+1)*a.blocksPerRound - 1
+	if rem := int64(phaseEndBlock) - int64(a.state.currentBlock()); rem > 0 {
+		var cancel context.CancelFunc
+		claimCtx, cancel = context.WithDeadline(ctx, time.Now().Add(time.Duration(rem)*a.blockTime))
+		defer cancel()
+	}
+
+	reward, err := a.contract.ExpectedReward(ctx)
 	if err != nil {
+		a.logger.Warning("could not estimate claim reward, override will be disabled", "error", err)
+	}
+
+	opts := &redistribution.ClaimOpts{
+		OverrideAfterBlock: (round+1)*a.blocksPerRound - forceClaimBlocksBeforeEnd,
+		CurrentBlockFn:     func() uint64 { return a.state.currentBlock() },
+		ExpectedReward:     reward,
+		RoundFees:          a.state.RoundFees(round),
+	}
+
+	txHash, err := a.contract.Claim(claimCtx, proofs, opts)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			a.logger.Info("claim aborted by context", "round", round, "err", err)
+			a.metrics.SkippedExpensivePhase.Inc()
+			return nil
+		}
 		a.metrics.ErrClaim.Inc()
 		return fmt.Errorf("claiming win: %w", err)
 	}
@@ -382,11 +418,11 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 	if errBalance == nil {
 		errReward := a.state.CalculateWinnerReward(ctx)
 		if errReward != nil {
-			a.logger.Info("calculate winner reward", "err", err)
+			a.logger.Info("calculate winner reward", "err", errReward)
 		}
 	}
 
-	a.state.AddFee(ctx, txHash)
+	a.state.AddRoundFee(ctx, round, txHash)
 
 	return nil
 }
@@ -539,7 +575,7 @@ func (a *Agent) commit(ctx context.Context, sample SampleData, round uint64) err
 		a.metrics.ErrCommit.Inc()
 		return err
 	}
-	a.state.AddFee(ctx, txHash)
+	a.state.AddRoundFee(ctx, round, txHash)
 
 	a.state.SetCommitKey(round, key)
 
