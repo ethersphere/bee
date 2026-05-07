@@ -160,12 +160,23 @@ func (c *contract) IsWinner(ctx context.Context) (isWinner bool, err error) {
 // configured max-tx-cost is exceeded, Claim waits claimRetryInterval and
 // retries instead of returning ErrMaxTxCostExceeded. After OverrideAfterBlock
 // (see ClaimOpts), if economics justify it, the limit is bypassed for one send.
-func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs, opts *ClaimOpts) (common.Hash, error) {
+func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs, opts *ClaimOpts) (txHash common.Hash, err error) {
+	defer func() {
+		if err == nil {
+			return
+		}
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, ErrMaxTxCostExceeded) {
+			incPhaseSkippedExpensive(TxKindClaim)
+		}
+	}()
+
 	callData, err := c.incentivesContractABI.Pack("claim", proofs.A, proofs.B, proofs.C)
 	if err != nil {
+		incTxError(TxKindClaim, err)
 		return common.Hash{}, err
 	}
 
+	var claimCostWait uint64
 	for {
 		ctx, err = c.prepareSendCtx(ctx, BoostTipPercent)
 		if err == nil {
@@ -173,35 +184,46 @@ func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs, opts 
 		}
 
 		if errors.Is(err, ErrZeroGasPrice) {
+			incTxError(TxKindClaim, err)
 			return common.Hash{}, err
 		}
 
 		gasFeeCap, ok := c.canOverrideClaim(ctx, opts)
 		if !ok {
-			c.logger.Info("claim: tx cost exceeds limit, waiting", "retry_in", claimRetryInterval)
+			claimCostWait++
+			incClaimCostWait()
+			c.logger.Info("claim: tx cost exceeds limit, waiting",
+				"retry_in", claimRetryInterval,
+				"wait_iteration", claimCostWait,
+				"err", err,
+			)
 			select {
 			case <-ctx.Done():
-				return common.Hash{}, ctx.Err()
+				e := ctx.Err()
+				incTxError(TxKindClaim, e)
+				return common.Hash{}, e
 			case <-time.After(claimRetryInterval):
 				continue
 			}
 		}
 
 		ctx = sctx.SetGasPrice(ctx, gasFeeCap)
+		incClaimMaxTxCostOverride()
 		c.logger.Warning("claim: max-tx-cost overridden",
 			"expected_reward", opts.ExpectedReward,
 			"round_fees", opts.RoundFees,
 			"override_after_block", opts.OverrideAfterBlock,
+			"current_block", opts.CurrentBlockFn(),
+			"pinned_max_fee_wei", gasFeeCap,
 		)
 		break
 	}
 	request := c.newTxRequest(ctx, callData, "claim win transaction")
-	txHash, sendErr := c.sendAndWaitWithRetry(ctx, request, BoostTipPercent)
+	txHash, sendErr := c.sendAndWaitWithRetry(ctx, request, BoostTipPercent, TxKindClaim)
 	if sendErr != nil {
 		return txHash, fmt.Errorf("claim: %w", sendErr)
 	}
 	return txHash, nil
-
 }
 
 func (c *contract) canOverrideClaim(ctx context.Context, opts *ClaimOpts) (*big.Int, bool) {
@@ -249,12 +271,20 @@ func (c *contract) canOverrideClaim(ctx context.Context, opts *ClaimOpts) (*big.
 }
 
 // Commit submits the obfusHash hash by sending a transaction to the blockchain.
-func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint64) (common.Hash, error) {
+func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint64) (txHash common.Hash, err error) {
+	defer func() {
+		if err != nil && errors.Is(err, ErrMaxTxCostExceeded) {
+			incPhaseSkippedExpensive(TxKindCommit)
+		}
+	}()
+
 	callData, err := c.incentivesContractABI.Pack("commit", common.BytesToHash(obfusHash), round)
 	if err != nil {
+		incTxError(TxKindCommit, err)
 		return common.Hash{}, err
 	}
 
+	var prepareAttempt uint64
 	for {
 		ctx, err = c.prepareSendCtx(ctx, BoostTipPercent)
 		if err == nil {
@@ -262,11 +292,21 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint64) (
 		}
 
 		if errors.Is(err, ErrZeroGasPrice) {
+			incTxError(TxKindCommit, err)
 			return common.Hash{}, err
 		}
 
+		prepareAttempt++
+		incPrepareSendRetry(TxKindCommit)
+		c.logger.Debug("commit: prepare_send_ctx retry",
+			"attempt", prepareAttempt,
+			"wait", c.blockTime,
+			"err", err,
+		)
+
 		select {
 		case <-ctx.Done():
+			incTxError(TxKindCommit, err)
 			return common.Hash{}, err
 		case <-time.After(c.blockTime):
 			continue
@@ -275,20 +315,27 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint64) (
 
 	request := c.newTxRequest(ctx, callData, "commit transaction")
 
-	txHash, err := c.sendAndWaitWithRetry(ctx, request, BoostTipPercent)
+	txHash, err = c.sendAndWaitWithRetry(ctx, request, BoostTipPercent, TxKindCommit)
 	if err != nil {
 		return txHash, fmt.Errorf("commit: obfusHash %v: %w", common.BytesToHash(obfusHash), err)
 	}
-
 	return txHash, nil
 }
 
 // Reveal submits the storageDepth, reserveCommitmentHash and RandomNonce in a transaction to blockchain.
-func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommitmentHash []byte, RandomNonce []byte) (common.Hash, error) {
+func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommitmentHash []byte, RandomNonce []byte) (txHash common.Hash, err error) {
+	defer func() {
+		if err != nil && errors.Is(err, ErrMaxTxCostExceeded) {
+			incPhaseSkippedExpensive(TxKindReveal)
+		}
+	}()
+
 	callData, err := c.incentivesContractABI.Pack("reveal", storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce))
 	if err != nil {
+		incTxError(TxKindReveal, err)
 		return common.Hash{}, err
 	}
+	var prepareAttempt uint64
 	for {
 		ctx, err = c.prepareSendCtx(ctx, BoostTipPercent)
 		if err == nil {
@@ -296,18 +343,28 @@ func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommit
 		}
 
 		if errors.Is(err, ErrZeroGasPrice) {
+			incTxError(TxKindReveal, err)
 			return common.Hash{}, err
 		}
 
+		prepareAttempt++
+		incPrepareSendRetry(TxKindReveal)
+		c.logger.Debug("reveal: prepare_send_ctx retry",
+			"attempt", prepareAttempt,
+			"wait", c.blockTime,
+			"err", err,
+		)
+
 		select {
 		case <-ctx.Done():
+			incTxError(TxKindReveal, err)
 			return common.Hash{}, err
 		case <-time.After(c.blockTime):
 			continue
 		}
 	}
 	request := c.newTxRequest(ctx, callData, "reveal transaction")
-	txHash, err := c.sendAndWaitWithRetry(ctx, request, BoostTipPercent)
+	txHash, err = c.sendAndWaitWithRetry(ctx, request, BoostTipPercent, TxKindReveal)
 	if err != nil {
 		return txHash, fmt.Errorf("reveal: storageDepth %d reserveCommitmentHash %v RandomNonce %v: %w", storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce), err)
 	}
@@ -335,7 +392,7 @@ func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 	return salt[:], nil
 }
 
-func (c *contract) sendAndWaitWithRetry(ctx context.Context, request *transaction.TxRequest, boostPercent int) (txHash common.Hash, err error) {
+func (c *contract) sendAndWaitWithRetry(ctx context.Context, request *transaction.TxRequest, boostPercent int, txKind string) (txHash common.Hash, err error) {
 	defer func() {
 		err = c.txService.UnwrapABIError(
 			ctx,
@@ -345,56 +402,85 @@ func (c *contract) sendAndWaitWithRetry(ctx context.Context, request *transactio
 		)
 	}()
 
+	var sendAttempt uint64
 	for {
 		txHash, err = c.txService.Send(ctx, request, boostPercent)
+		sendAttempt++
 		if err == nil {
 			break
 		}
+
+		incTxError(txKind, err)
 
 		if isCritical(err) {
 			return txHash, err
 		}
 
-		c.logger.Warning("send failed, will retry", "error", err, "description", request.Description)
+		c.logger.Warning("send failed, will retry",
+			"tx_kind", txKind,
+			"attempt", sendAttempt,
+			"error", err,
+			"error_class", classifyErr(err),
+			"description", request.Description,
+		)
 
-		if len(txHash.Bytes()) == 0 {
+		if txHash == (common.Hash{}) {
+			incSendRetryStage(txKind, "empty_tx_hash_wait")
 			select {
 			case <-ctx.Done():
-				return txHash, ctx.Err()
+				e := ctx.Err()
+				incTxError(txKind, e)
+				return txHash, e
 			case <-time.After(c.blockTime):
 				continue
 			}
 		}
 
-		txHash, err = c.resendWithRetry(ctx, txHash)
+		txHash, err = c.resendWithRetry(ctx, txHash, txKind)
 		if err != nil {
 			return common.Hash{}, err
 		}
+		incSendRetryStage(txKind, "resend_ok")
 		break
 	}
 
 	receipt, err := c.txService.WaitForReceipt(ctx, txHash)
 	if err != nil {
+		incTxError(txKind, err)
 		return common.Hash{}, err
 	}
 
 	if receipt.Status == 0 {
+		incTxError(txKind, transaction.ErrTransactionReverted)
 		return txHash, transaction.ErrTransactionReverted
 	}
 
 	return txHash, nil
 }
 
-func (c *contract) resendWithRetry(ctx context.Context, txHash common.Hash) (common.Hash, error) {
+func (c *contract) resendWithRetry(ctx context.Context, txHash common.Hash, txKind string) (common.Hash, error) {
+	var resendRound uint64
 	for {
 		err := c.txService.ResendTransaction(ctx, txHash)
 		if err != nil {
+			resendRound++
+			incTxError(txKind, err)
+			incSendRetryStage(txKind, "resend_retry")
+			c.logger.Warning("resend transaction failed, will retry",
+				"tx_kind", txKind,
+				"round", resendRound,
+				"tx_hash", txHash,
+				"error", err,
+				"error_class", classifyErr(err),
+			)
 			if isCritical(err) {
 				return txHash, err
 			}
 			select {
 			case <-ctx.Done():
-				return txHash, ctx.Err()
+				e := ctx.Err()
+				incTxError(txKind, e)
+				return txHash, e
 			case <-time.After(c.blockTime):
 				continue
 			}
@@ -417,7 +503,6 @@ func isCritical(err error) bool {
 	s := err.Error()
 	nonRetryable := []string{
 		"specified gas price",
-		"below current base fee",
 		"AlreadyCommitted",
 		"AlreadyRevealed",
 		"AlreadyClaimed",

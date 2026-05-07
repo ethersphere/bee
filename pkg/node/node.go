@@ -1207,7 +1207,7 @@ func NewBee(
 			if o.MaxTxCost > 0 {
 				redistributionOpts = append(redistributionOpts, redistribution.WithMaxTxCost(o.MaxTxCost, o.MaxTxCostTolerancePercent))
 			}
-			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), postageStampContractAddress, postageStampContractABI, contractGasLimit, redistributionOpts...)
+			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), postageStampContractAddress, postageStampContractABI, contractGasLimit, o.BlockTime, redistributionOpts...)
 
 			isFullySynced := func() bool {
 				reserveThreshold := reserveCapacity * 5 / 10
@@ -1292,6 +1292,7 @@ func NewBee(
 
 		if agent != nil {
 			apiService.MustRegisterMetrics(agent.Metrics()...)
+			apiService.MustRegisterMetrics(redistribution.Metrics()...)
 		}
 
 		apiService.MustRegisterMetrics(pushSyncProtocol.Metrics()...)
