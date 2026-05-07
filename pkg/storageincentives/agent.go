@@ -286,11 +286,6 @@ func (a *Agent) handleCommit(ctx context.Context, round uint64) error {
 
 	err := a.commit(ctx, sample, round)
 	if err != nil {
-		if errors.Is(err, redistribution.ErrMaxTxCostExceeded) {
-			a.logger.Info("skipping commit: tx cost exceeds configured max", "round", round)
-			a.metrics.SkippedExpensivePhase.Inc()
-			return nil
-		}
 		return err
 	}
 

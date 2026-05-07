@@ -185,20 +185,6 @@ func (r *RedistributionState) SetLastSelectedRound(round uint64) {
 	r.save()
 }
 
-// AddFee sets the internal node status
-func (r *RedistributionState) AddFee(ctx context.Context, txHash common.Hash) {
-	fee, err := r.txService.TransactionFee(ctx, txHash)
-	if err != nil {
-		return
-	}
-
-	r.mtx.Lock()
-	defer r.mtx.Unlock()
-
-	r.status.Fees.Add(r.status.Fees, fee)
-	r.save()
-}
-
 // AddRoundFee tracks fees spent in a specific round.
 func (r *RedistributionState) AddRoundFee(ctx context.Context, round uint64, txHash common.Hash) {
 	fee, err := r.txService.TransactionFee(ctx, txHash)

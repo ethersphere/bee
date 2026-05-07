@@ -24,13 +24,16 @@ const (
 	loggerName      = "redistributionContract"
 	BoostTipPercent = 50
 
-	retryBaseDelay     = 5 * time.Second
-	claimRetryInterval = 15 * time.Second
+	claimRetryInterval   = 15 * time.Second
+	minEstimatedGasLimit = 500_000
 )
 
-// ErrMaxTxCostExceeded is returned when the upper-bound cost of a redistribution
-// transaction (gas limit × max fee per gas) would exceed the configured limit.
-var ErrMaxTxCostExceeded = errors.New("redistribution tx cost exceeds max tx cost limit")
+var (
+	// ErrMaxTxCostExceeded is returned when the upper-bound cost of a redistribution
+	// transaction (gas limit × max fee per gas) would exceed the configured limit.
+	ErrMaxTxCostExceeded = errors.New("redistribution tx cost exceeds max tx cost limit")
+	ErrZeroGasPrice      = errors.New("gas price must be greater than zero")
+)
 
 // ClaimOpts configures optional claim behaviour: after OverrideAfterBlock (absolute
 // chain block number), if ExpectedReward covers upper-bound claim cost plus
@@ -64,6 +67,7 @@ type contract struct {
 	maxTxCost                 *big.Int
 	maxTxCostTolerancePercent uint64
 	gasLimit                  uint64
+	blockTime                 time.Duration
 }
 
 // Option configures the redistribution contract wrapper.
@@ -92,6 +96,7 @@ func New(
 	postageContractAddress common.Address,
 	postageContractABI abi.ABI,
 	gasLimit uint64,
+	blockTime time.Duration,
 	opts ...Option,
 ) Contract {
 	c := &contract{
@@ -103,6 +108,7 @@ func New(
 		incentivesContractABI:     incentivesContractABI,
 		postageContractAddress:    postageContractAddress,
 		postageContractABI:        postageContractABI,
+		blockTime:                 blockTime,
 		gasLimit:                  gasLimit,
 	}
 	for _, o := range opts {
@@ -161,55 +167,52 @@ func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs, opts 
 	}
 
 	for {
-		sendCtx, prepErr := c.prepareSendCtx(ctx, BoostTipPercent)
-		if prepErr == nil {
-			request := c.newTxRequest(sendCtx, callData, "claim win transaction")
-			txHash, sendErr := c.sendAndWaitWithRetry(sendCtx, request, BoostTipPercent)
-			if sendErr != nil {
-				return txHash, fmt.Errorf("claim: %w", sendErr)
-			}
-			return txHash, nil
+		ctx, err = c.prepareSendCtx(ctx, BoostTipPercent)
+		if err == nil {
+			break
 		}
 
-		if !errors.Is(prepErr, ErrMaxTxCostExceeded) {
-			return common.Hash{}, fmt.Errorf("claim: %w", prepErr)
+		if errors.Is(err, ErrZeroGasPrice) {
+			return common.Hash{}, err
 		}
 
-		if c.tryClaimOverride(opts) {
-			gasFeeCap, ok := c.canOverrideClaim(ctx, opts)
-			if ok {
-				c.logger.Warning("claim: max-tx-cost overridden",
-					"expected_reward", opts.ExpectedReward,
-					"round_fees", opts.RoundFees,
-					"override_after_block", opts.OverrideAfterBlock,
-				)
-				overrideCtx := sctx.SetGasPrice(ctx, gasFeeCap)
-				request := c.newTxRequest(overrideCtx, callData, "claim win transaction (override)")
-				txHash, sendErr := c.sendAndWaitWithRetry(overrideCtx, request, BoostTipPercent)
-				if sendErr != nil {
-					return txHash, fmt.Errorf("claim: %w", sendErr)
-				}
-				return txHash, nil
+		gasFeeCap, ok := c.canOverrideClaim(ctx, opts)
+		if !ok {
+			c.logger.Info("claim: tx cost exceeds limit, waiting", "retry_in", claimRetryInterval)
+			select {
+			case <-ctx.Done():
+				return common.Hash{}, ctx.Err()
+			case <-time.After(claimRetryInterval):
+				continue
 			}
 		}
 
-		c.logger.Info("claim: tx cost exceeds limit, waiting", "retry_in", claimRetryInterval)
-		select {
-		case <-ctx.Done():
-			return common.Hash{}, ctx.Err()
-		case <-time.After(claimRetryInterval):
-		}
+		ctx = sctx.SetGasPrice(ctx, gasFeeCap)
+		c.logger.Warning("claim: max-tx-cost overridden",
+			"expected_reward", opts.ExpectedReward,
+			"round_fees", opts.RoundFees,
+			"override_after_block", opts.OverrideAfterBlock,
+		)
+		break
 	}
-}
+	request := c.newTxRequest(ctx, callData, "claim win transaction")
+	txHash, sendErr := c.sendAndWaitWithRetry(ctx, request, BoostTipPercent)
+	if sendErr != nil {
+		return txHash, fmt.Errorf("claim: %w", sendErr)
+	}
+	return txHash, nil
 
-func (c *contract) tryClaimOverride(opts *ClaimOpts) bool {
-	if opts == nil || opts.OverrideAfterBlock == 0 || opts.CurrentBlockFn == nil {
-		return false
-	}
-	return opts.CurrentBlockFn() >= opts.OverrideAfterBlock
 }
 
 func (c *contract) canOverrideClaim(ctx context.Context, opts *ClaimOpts) (*big.Int, bool) {
+	if opts == nil || opts.OverrideAfterBlock == 0 || opts.CurrentBlockFn == nil || opts.RoundFees == nil {
+		return nil, false
+	}
+
+	if opts.CurrentBlockFn() < opts.OverrideAfterBlock {
+		return nil, false
+	}
+
 	if opts.ExpectedReward == nil {
 		reward, err := c.ExpectedReward(ctx)
 		if err != nil {
@@ -218,16 +221,13 @@ func (c *contract) canOverrideClaim(ctx context.Context, opts *ClaimOpts) (*big.
 		opts.ExpectedReward = reward
 	}
 
-	if opts.ExpectedReward == nil || opts.RoundFees == nil {
-		return nil, false
-	}
-	if opts.ExpectedReward.Sign() <= 0 {
+	if opts.ExpectedReward == nil || opts.ExpectedReward.Sign() <= 0 {
 		return nil, false
 	}
 
 	gasUnits := int64(max(sctx.GetGasLimit(ctx), c.gasLimit))
 	if gasUnits <= 0 {
-		gasUnits = 500_000
+		gasUnits = minEstimatedGasLimit
 	}
 
 	estimated, gasFeeCap, err := c.txService.EstimateTxCost(ctx, gasUnits, BoostTipPercent)
@@ -254,16 +254,21 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint64) (
 	if err != nil {
 		return common.Hash{}, err
 	}
+
 	for {
 		ctx, err = c.prepareSendCtx(ctx, BoostTipPercent)
 		if err == nil {
 			break
 		}
 
+		if errors.Is(err, ErrZeroGasPrice) {
+			return common.Hash{}, err
+		}
+
 		select {
 		case <-ctx.Done():
 			return common.Hash{}, err
-		case <-time.After(retryBaseDelay):
+		case <-time.After(c.blockTime):
 			continue
 		}
 	}
@@ -290,10 +295,14 @@ func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommit
 			break
 		}
 
+		if errors.Is(err, ErrZeroGasPrice) {
+			return common.Hash{}, err
+		}
+
 		select {
 		case <-ctx.Done():
 			return common.Hash{}, err
-		case <-time.After(retryBaseDelay):
+		case <-time.After(c.blockTime):
 			continue
 		}
 	}
@@ -352,7 +361,7 @@ func (c *contract) sendAndWaitWithRetry(ctx context.Context, request *transactio
 			select {
 			case <-ctx.Done():
 				return txHash, ctx.Err()
-			case <-time.After(retryBaseDelay):
+			case <-time.After(c.blockTime):
 				continue
 			}
 		}
@@ -386,7 +395,7 @@ func (c *contract) resendWithRetry(ctx context.Context, txHash common.Hash) (com
 			select {
 			case <-ctx.Done():
 				return txHash, ctx.Err()
-			case <-time.After(retryBaseDelay):
+			case <-time.After(c.blockTime):
 				continue
 			}
 		}
@@ -507,7 +516,7 @@ func (c *contract) newTxRequest(ctx context.Context, callData []byte, descriptio
 		GasPrice:             pinnedGasFeeCap,
 		GasFeeCap:            pinnedGasFeeCap,
 		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
-		MinEstimatedGasLimit: 500_000,
+		MinEstimatedGasLimit: minEstimatedGasLimit,
 		Value:                big.NewInt(0),
 		Description:          description,
 	}
@@ -516,14 +525,14 @@ func (c *contract) newTxRequest(ctx context.Context, callData []byte, descriptio
 func (c *contract) isTxCostAcceptable(ctx context.Context, tip int) (ok bool, estimated *big.Int, gasFeeCap *big.Int, err error) {
 	gasUnits := int64(max(sctx.GetGasLimit(ctx), c.gasLimit))
 	if gasUnits <= 0 {
-		gasUnits = 500_000
+		gasUnits = minEstimatedGasLimit
 	}
 
 	// If the caller pinned maxFeePerGas in context, use it for total-cost estimate
 	// since that is the actual cap used when creating the transaction request.
 	if pinnedGasFeeCap := sctx.GetGasPrice(ctx); pinnedGasFeeCap != nil {
 		if pinnedGasFeeCap.Sign() <= 0 {
-			return false, nil, nil, errors.New("gas price must be greater than zero")
+			return false, nil, nil, ErrZeroGasPrice
 		}
 		gasFeeCap = new(big.Int).Set(pinnedGasFeeCap)
 		estimated = new(big.Int).Mul(big.NewInt(gasUnits), gasFeeCap)
