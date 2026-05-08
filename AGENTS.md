@@ -9,7 +9,6 @@ Bee is the reference Go implementation of an Ethereum Swarm node. It implements 
 **Module**: `github.com/ethersphere/bee/v2`  
 **Go version**: 1.26 (see `go.mod`)  
 **License**: BSD 3-clause (see `LICENSE`)  
-**Default branch**: `master`
 
 Human-oriented contributing docs: `CONTRIBUTING.md`, `CODING.md`, `CODINGSTYLE.md`, `README.md`.
 
@@ -102,7 +101,7 @@ Configuration: option constants in `cmd/bee/cmd/cmd.go`. Viper reads CLI flags, 
 
 ## Key domain concepts
 
-- **Address** — 32-byte hash (`pkg/swarm/`). Chunk and overlay addresses; proximity is XOR-based (more shared prefix bits = closer), not numeric ordering.
+- **Address** — 32-byte hash (`pkg/swarm/`). Chunk and overlay addresses; proximity is XOR-based (more shared prefix bits = closer), not lexicographic ordering.
 - **Chunk** — 4096 bytes of data (`ChunkSize = SectionSize * Branches = 32 * 128`), plus 8-byte span (`SpanSize`); `ChunkWithSpanSize = 4104`.
 - **CAC** — content-addressed chunk; address from BMT root of data.
 - **SOC** — single owner chunk; address from owner + id, with signature.
@@ -150,7 +149,7 @@ Every `.go` file starts with:
 
 ### Commits
 
-This repo uses [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/). Never commit or push to git.
+Never commit or push to git.
 
 ## Common pitfalls
 
@@ -159,3 +158,4 @@ This repo uses [Conventional Commits](https://www.conventionalcommits.org/en/v1.
 - Goroutines must be stoppable (context cancel, quit channel, etc.).
 - Full node vs light node: reserve and storage incentives are full-node concerns.
 - Postage batches can be unusable (expired, depleted, unsynced); check before relying on stamps.
+g
