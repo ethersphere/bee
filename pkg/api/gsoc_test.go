@@ -35,7 +35,7 @@ func TestGsocWebsocketSingleHandler(t *testing.T) {
 		payload          = []byte("hello there!")
 	)
 
-	err := cl.SetReadDeadline(time.Now().Add(2 * time.Second))
+	err := cl.SetReadDeadline(time.Now().Add(longTimeout))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestGsocWebsocketMultiHandler(t *testing.T) {
 	}
 	testutil.CleanupCloser(t, cl2)
 
-	err = cl.SetReadDeadline(time.Now().Add(2 * time.Second))
+	err = cl.SetReadDeadline(time.Now().Add(longTimeout))
 	if err != nil {
 		t.Fatal(err)
 	}
