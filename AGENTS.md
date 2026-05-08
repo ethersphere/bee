@@ -48,10 +48,6 @@ make vet        # go vet
 make protobuf   # regenerate *.pb.go after changing .proto files
 ```
 
-## Commit message format and PR titles
-
-This repo uses [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)
-
 ## Architecture
 
 ### Entry point and CLI
@@ -154,17 +150,12 @@ Every `.go` file starts with:
 
 ### Commits
 
-See **[Commit message format and PR titles](#commit-message-format-and-pr-titles)** above.
-
-### Linting
-
-`golangci-lint` v2 per `.golangci.yml`. Run `make lint`.
+This repo uses [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/). Never commit or push to git.
 
 ## Common pitfalls
 
 - Do not confuse `ChunkSize` (4096 data bytes) with `ChunkWithSpanSize` (4104 including span).
-- XOR distance: XOR between two addresses produces smaller integers as more prefix bits are shared, do not confuse this with raw numeric ordering of addresses.
+- XOR distance: XOR between two addresses produces smaller integers as more prefix bits are shared, do not confuse this with lexicographic ordering of addresses.
 - Goroutines must be stoppable (context cancel, quit channel, etc.).
 - Full node vs light node: reserve and storage incentives are full-node concerns.
 - Postage batches can be unusable (expired, depleted, unsynced); check before relying on stamps.
-- Default branch name is `master`, not `main`.
