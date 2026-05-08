@@ -45,23 +45,12 @@ make test       # unit tests
 make test-race  # unit tests + race detector
 make lint       # golangci-lint (see .golangci.yml)
 make vet        # go vet
+make protobuf   # regenerate *.pb.go after changing .proto files
 ```
 
 ## Commit message format and PR titles
 
-This repo uses **[Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)** with **`commitlint.config.js`**: allowed types are `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`, `test`. Header **max 100** characters; footer lines **max 72**. Use **imperative** mood and **no trailing period** on the subject.
-
-Use an optional **scope** (often a top-level area such as `api`, `storer`, `node`) when it clarifies impact:
-
-```text
-<type>(<scope>): <short lowercase description>
-
-fix(api): reject directory upload without content-type
-test(storer): cover session cleanup on error
-docs: clarify agent pre-commit steps
-```
-
-**Pull request titles** follow the same idea: same type and scope style, concise lowercase description (match what you will squash or merge).
+This repo uses [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)
 
 ## Architecture
 
@@ -130,8 +119,6 @@ Configuration: option constants in `cmd/bee/cmd/cmd.go`. Viper reads CLI flags, 
 
 ## Coding conventions (summary)
 
-Authoritative detail: `CODING.md` and `CODINGSTYLE.md`.
-
 ### Copyright (goheader)
 
 Every `.go` file starts with:
@@ -145,7 +132,8 @@ Every `.go` file starts with:
 ### Errors, logging, concurrency
 
 - Propagate errors; do not log and return the same error. Use `fmt.Errorf("context: %w", err)`. Avoid stacking "failed to" prefixes.
-- Sentinel errors: `var ErrFoo = errors.New("package: description")` when appropriate.
+- Sentinel errors: `var ErrFoo = errors.New("package: description")` — identity only, compared with `errors.Is`.
+- Typed errors: a struct implementing `error` with exported fields, inspected with `errors.As` when callers need data about the failure.
 - Logging: separate operator-facing (`Error`/`Warning`) from developer detail (`Debug`, V-levels). Keys: `lower_snake_case`, specific names. Runtime log tuning: `/loggers` API.
 - Every goroutine needs a clear shutdown path. Channels: prefer unbuffered or size 1 unless strongly justified; an owning goroutine sends or closes.
 
@@ -175,11 +163,8 @@ See **[Commit message format and PR titles](#commit-message-format-and-pr-titles
 ## Common pitfalls
 
 - Do not confuse `ChunkSize` (4096 data bytes) with `ChunkWithSpanSize` (4104 including span).
-- XOR distance: "closer" is more shared prefix bits, not smaller integers.
-- Do not both log and return the same error.
-- Tests: `foo_test` + `export_test.go` pattern.
+- XOR distance: XOR between two addresses produces smaller integers as more prefix bits are shared, do not confuse this with raw numeric ordering of addresses.
 - Goroutines must be stoppable (context cancel, quit channel, etc.).
 - Full node vs light node: reserve and storage incentives are full-node concerns.
 - Postage batches can be unusable (expired, depleted, unsynced); check before relying on stamps.
-- `*.pb.go` is generated; do not edit by hand. Regenerate with `make protobuf` after `.proto` changes.
 - Default branch name is `master`, not `main`.
