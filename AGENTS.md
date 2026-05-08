@@ -6,9 +6,11 @@ Project instructions for **AI coding assistants and agents** (OpenAI Codex, Curs
 
 Bee is the reference Go implementation of an Ethereum Swarm node. It implements decentralized storage and communication: content-addressed chunk storage, Kademlia-based routing, postage stamp accounting, push/pull syncing, PSS messaging, feeds, and storage incentives (redistribution game).
 
-**Module**: `github.com/ethersphere/bee/v2`  
-**Go version**: 1.26 (see `go.mod`)  
-**License**: BSD 3-clause (see `LICENSE`)  
+**Module**: `github.com/ethersphere/bee/v2`
+
+**Go version**: 1.26 (see `go.mod`)
+
+**License**: BSD 3-clause (see `LICENSE`)
 
 Human-oriented contributing docs: `CONTRIBUTING.md`, `CODING.md`, `CODINGSTYLE.md`, `README.md`.
 
