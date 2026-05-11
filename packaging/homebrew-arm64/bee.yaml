@@ -107,12 +107,12 @@ password-file: "/opt/homebrew/var/lib/swarm-bee/password"
 # target-neighborhood: ""
 ## enable tracing
 # tracing-enable: false
-## endpoint to send tracing data
-# tracing-endpoint: 127.0.0.1:6831
-## host to send tracing data
-# tracing-host: ""
-## port to send tracing data
-# tracing-port: ""
+## OTLP/HTTP endpoint to send tracing data (host:port)
+# tracing-otlp-endpoint: 127.0.0.1:4318
+## disable TLS for the OTLP exporter (useful for a local collector)
+# tracing-otlp-insecure: true
+## head-based sampling ratio in [0,1]; 1 samples everything
+# tracing-sampling-ratio: 1.0
 ## service name identifier for tracing
 # tracing-service-name: bee
 ## gas limit fallback when estimation fails for contract transactions (default 500000)

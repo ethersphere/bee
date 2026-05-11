@@ -2,278 +2,340 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Package tracing wraps the OpenTelemetry SDK and exposes a small set of
+// helpers for starting spans, propagating span context across libp2p streams
+// and HTTP requests, and annotating loggers with trace ids.
 package tracing
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
-	"github.com/opentracing/opentracing-go"
-	"github.com/uber/jaeger-client-go"
-	"github.com/uber/jaeger-client-go/config"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.25.0"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
-var (
-	// ErrContextNotFound is returned when tracing context is not present
-	// in p2p Headers or context.
-	ErrContextNotFound = errors.New("tracing context not found")
+// ErrContextNotFound is returned when tracing context is not present in
+// p2p Headers, HTTP headers, or the go context.
+var ErrContextNotFound = errors.New("tracing context not found")
 
-	// noopTracer is the tracer that does nothing to handle a nil Tracer usage.
-	noopTracer = &Tracer{tracer: new(opentracing.NoopTracer)}
-)
-
-// contextKey is used to reference a tracing context span as context value.
-type contextKey struct{}
-
-// LogField is the key in log message field that holds tracing id value.
+// LogField is the key in log message field that holds the tracing id value.
 const LogField = "traceID"
 
-const (
-	// TraceContextHeaderName is the http header name used to propagate tracing context.
-	TraceContextHeaderName = "swarm-trace-id"
+// instrumentationName identifies spans produced by this package to the OTel SDK.
+const instrumentationName = "github.com/ethersphere/bee/v2/pkg/tracing"
 
-	// TraceBaggageHeaderPrefix is the prefix for http headers used to propagate baggage.
-	TraceBaggageHeaderPrefix = "swarmctx-"
-)
+// p2pCarrierVersion is the leading byte of the libp2p binary span context
+// payload. It exists so the wire format can evolve without silently breaking
+// peers running an older binary.
+const p2pCarrierVersion byte = 1
 
-// Tracer connect to a tracing server and handles tracing spans and contexts
-// by using opentracing Tracer.
+// p2pCarrierLen is the encoded payload size:
+// 1 version + 16 TraceID + 8 SpanID + 1 TraceFlags.
+const p2pCarrierLen = 26
+
+// shutdownTimeout bounds how long Close waits for the OTel batch processor to
+// flush pending spans on shutdown.
+const shutdownTimeout = 5 * time.Second
+
+// noopTracer is returned when tracing is disabled or *Tracer is nil so callers
+// always operate against a working trace.Tracer.
+var noopTracer = &Tracer{tracer: noop.NewTracerProvider().Tracer(instrumentationName)}
+
+// Tracer wraps an OTel Tracer and provides p2p/HTTP carriers plus helpers
+// aligned with bee's tracing API.
 type Tracer struct {
-	tracer opentracing.Tracer
+	tracer trace.Tracer
 }
 
-// Options are optional parameters for Tracer constructor.
+// Options are the constructor parameters for Tracer.
 type Options struct {
-	Enabled     bool
-	Endpoint    string
+	// Enabled toggles span recording. When false the tracer is a no-op.
+	Enabled bool
+	// Endpoint is the OTLP/HTTP collector endpoint, e.g. "127.0.0.1:4318".
+	Endpoint string
+	// ServiceName is reported as the OTel service.name resource attribute.
 	ServiceName string
+	// Insecure disables TLS for the OTLP exporter (useful for a local collector).
+	Insecure bool
+	// SamplingRatio is the head-based sampling ratio for the parent-based
+	// sampler. Values <= 0 fall back to 1.0 (sample everything).
+	SamplingRatio float64
 }
 
-// NewTracer creates a new Tracer and returns a closer which needs to be closed
-// when the Tracer is no longer used to flush remaining traces.
+// NewTracer creates a new Tracer and returns a closer that flushes pending
+// spans and shuts down the OTel pipeline.
 func NewTracer(o *Options) (*Tracer, io.Closer, error) {
 	if o == nil {
 		o = new(Options)
 	}
 
-	cfg := config.Configuration{
-		Disabled:    !o.Enabled,
-		ServiceName: o.ServiceName,
-		Sampler: &config.SamplerConfig{
-			Type:  jaeger.SamplerTypeConst,
-			Param: 1,
-		},
-		Reporter: &config.ReporterConfig{
-			LogSpans:            true,
-			BufferFlushInterval: 1 * time.Second,
-			LocalAgentHostPort:  o.Endpoint,
-		},
-		Headers: &jaeger.HeadersConfig{
-			TraceContextHeaderName:   TraceContextHeaderName,
-			TraceBaggageHeaderPrefix: TraceBaggageHeaderPrefix,
-		},
+	if !o.Enabled {
+		return noopTracer, noopCloser{}, nil
 	}
 
-	t, closer, err := cfg.NewTracer()
+	res, err := resource.New(context.Background(),
+		resource.WithAttributes(semconv.ServiceName(o.ServiceName)),
+	)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("otel resource: %w", err)
 	}
-	return &Tracer{tracer: t}, closer, nil
+
+	ratio := o.SamplingRatio
+	if ratio <= 0 {
+		ratio = 1
+	}
+
+	tpOpts := []sdktrace.TracerProviderOption{
+		sdktrace.WithResource(res),
+		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(ratio))),
+	}
+
+	// If no OTLP endpoint is configured, omit the exporter entirely. Spans are
+	// still created with valid contexts (useful for local development and unit
+	// tests) but nothing is shipped over the network.
+	if o.Endpoint != "" {
+		exporterOpts := []otlptracehttp.Option{
+			otlptracehttp.WithEndpoint(o.Endpoint),
+		}
+		if o.Insecure {
+			exporterOpts = append(exporterOpts, otlptracehttp.WithInsecure())
+		}
+		exporter, err := otlptrace.New(context.Background(), otlptracehttp.NewClient(exporterOpts...))
+		if err != nil {
+			return nil, nil, fmt.Errorf("otlp exporter: %w", err)
+		}
+		tpOpts = append(tpOpts, sdktrace.WithBatcher(exporter))
+	}
+
+	tp := sdktrace.NewTracerProvider(tpOpts...)
+	return &Tracer{tracer: tp.Tracer(instrumentationName)}, providerCloser{tp: tp}, nil
 }
 
-// StartSpanFromContext starts a new tracing span that is either a root one or a
-// child of existing one from the provided Context. If logger is provided, a new
-// log Entry will be returned with "traceID" log field.
-func (t *Tracer) StartSpanFromContext(ctx context.Context, operationName string, l log.Logger, opts ...opentracing.StartSpanOption) (opentracing.Span, log.Logger, context.Context) {
+// StartSpanFromContext starts a new span as a child of any span context already
+// present in ctx. If logger is non-nil, a derived logger annotated with the
+// trace id is returned alongside the new context.
+func (t *Tracer) StartSpanFromContext(ctx context.Context, operationName string, l log.Logger, opts ...trace.SpanStartOption) (trace.Span, log.Logger, context.Context) {
 	if t == nil {
 		t = noopTracer
 	}
 
-	var span opentracing.Span
-	if parentContext := FromContext(ctx); parentContext != nil {
-		opts = append(opts, opentracing.ChildOf(parentContext))
-		span = t.tracer.StartSpan(operationName, opts...)
-	} else {
-		span = t.tracer.StartSpan(operationName, opts...)
+	if parent := FromContext(ctx); parent.IsValid() {
+		ctx = trace.ContextWithSpanContext(ctx, parent)
 	}
-	sc := span.Context()
-	return span, loggerWithTraceID(sc, l), WithContext(ctx, sc)
+
+	ctx, span := t.tracer.Start(ctx, operationName, opts...)
+	return span, loggerWithTraceID(span.SpanContext(), l), ctx
 }
 
-// FollowSpanFromContext starts a new tracing span that is either a root one or
-// follows an existing one from the provided Context. If logger is provided, a new
-// log Entry will be returned with "traceID" log field.
-func (t *Tracer) FollowSpanFromContext(ctx context.Context, operationName string, l log.Logger, opts ...opentracing.StartSpanOption) (opentracing.Span, log.Logger, context.Context) {
+// FollowSpanFromContext starts a new span with a Link to the span context in
+// ctx. Links are the OTel equivalent of OpenTracing's FollowsFrom relation:
+// the new span is causally related but not a direct child.
+func (t *Tracer) FollowSpanFromContext(ctx context.Context, operationName string, l log.Logger, opts ...trace.SpanStartOption) (trace.Span, log.Logger, context.Context) {
 	if t == nil {
 		t = noopTracer
 	}
 
-	var span opentracing.Span
-	if parentContext := FromContext(ctx); parentContext != nil {
-		opts = append(opts, opentracing.FollowsFrom(parentContext))
-		span = t.tracer.StartSpan(operationName, opts...)
-	} else {
-		span = t.tracer.StartSpan(operationName, opts...)
+	if parent := FromContext(ctx); parent.IsValid() {
+		opts = append(opts, trace.WithLinks(trace.Link{SpanContext: parent}))
 	}
-	sc := span.Context()
-	return span, loggerWithTraceID(sc, l), WithContext(ctx, sc)
+
+	ctx, span := t.tracer.Start(ctx, operationName, opts...)
+	return span, loggerWithTraceID(span.SpanContext(), l), ctx
 }
 
-// AddContextHeader adds a tracing span context to provided p2p Headers from
-// the go context. If the tracing span context is not present in go context,
-// ErrContextNotFound is returned.
+// AddContextHeader serialises the active span context into the bee p2p header.
 func (t *Tracer) AddContextHeader(ctx context.Context, headers p2p.Headers) error {
 	if t == nil {
 		t = noopTracer
 	}
 
-	c := FromContext(ctx)
-	if c == nil {
+	sc := FromContext(ctx)
+	if !sc.IsValid() {
 		return ErrContextNotFound
 	}
 
-	var b bytes.Buffer
-	w := bufio.NewWriter(&b)
-	if err := t.tracer.Inject(c, opentracing.Binary, w); err != nil {
-		return err
-	}
-	if err := w.Flush(); err != nil {
-		return err
-	}
-
-	headers[p2p.HeaderNameTracingSpanContext] = b.Bytes()
-
+	headers[p2p.HeaderNameTracingSpanContext] = encodeP2PSpanContext(sc)
 	return nil
 }
 
-// FromHeaders returns tracing span context from p2p Headers. If the tracing
-// span context is not present in go context, ErrContextNotFound is returned.
-func (t *Tracer) FromHeaders(headers p2p.Headers) (opentracing.SpanContext, error) {
+// FromHeaders extracts the span context from the bee p2p header. ErrContextNotFound
+// is returned when the header is absent or when its payload is undecodable —
+// the latter lets mixed-version peers degrade to per-hop trace continuity loss
+// rather than failing the stream.
+func (t *Tracer) FromHeaders(headers p2p.Headers) (trace.SpanContext, error) {
 	if t == nil {
 		t = noopTracer
 	}
 
 	v := headers[p2p.HeaderNameTracingSpanContext]
 	if v == nil {
-		return nil, ErrContextNotFound
+		return trace.SpanContext{}, ErrContextNotFound
 	}
-	c, err := t.tracer.Extract(opentracing.Binary, bytes.NewReader(v))
-	if err != nil {
-		if errors.Is(err, opentracing.ErrSpanContextNotFound) {
-			return nil, ErrContextNotFound
-		}
-		return nil, err
+	sc, ok := decodeP2PSpanContext(v)
+	if !ok {
+		return trace.SpanContext{}, ErrContextNotFound
 	}
-
-	return c, nil
+	return sc, nil
 }
 
-// WithContextFromHeaders returns a new context with injected tracing span
-// context if they are found in p2p Headers. If the tracing span context is not
-// present in go context, ErrContextNotFound is returned.
+// WithContextFromHeaders extracts a span context from the p2p header and
+// returns a new context carrying it.
 func (t *Tracer) WithContextFromHeaders(ctx context.Context, headers p2p.Headers) (context.Context, error) {
 	if t == nil {
 		t = noopTracer
 	}
 
-	c, err := t.FromHeaders(headers)
+	sc, err := t.FromHeaders(headers)
 	if err != nil {
 		return ctx, err
 	}
-	return WithContext(ctx, c), nil
+	return WithContext(ctx, sc), nil
 }
 
-// AddContextHTTPHeader adds a tracing span context to provided HTTP headers
-// from the go context. If the tracing span context is not present in
-// go context, ErrContextNotFound is returned.
+// httpPropagator carries trace context across HTTP via the W3C TraceContext
+// standard headers (traceparent, tracestate).
+var httpPropagator propagation.TextMapPropagator = propagation.TraceContext{}
+
+// AddContextHTTPHeader injects the active span context into HTTP headers.
 func (t *Tracer) AddContextHTTPHeader(ctx context.Context, headers http.Header) error {
 	if t == nil {
 		t = noopTracer
 	}
 
-	c := FromContext(ctx)
-	if c == nil {
+	sc := FromContext(ctx)
+	if !sc.IsValid() {
 		return ErrContextNotFound
 	}
 
-	carrier := opentracing.HTTPHeadersCarrier(headers)
-	return t.tracer.Inject(c, opentracing.HTTPHeaders, carrier)
+	httpPropagator.Inject(trace.ContextWithSpanContext(ctx, sc), propagation.HeaderCarrier(headers))
+	return nil
 }
 
-// FromHTTPHeaders returns tracing span context from HTTP headers. If the tracing
-// span context is not present in go context, ErrContextNotFound is returned.
-func (t *Tracer) FromHTTPHeaders(headers http.Header) (opentracing.SpanContext, error) {
+// FromHTTPHeaders extracts a span context from a W3C traceparent header.
+func (t *Tracer) FromHTTPHeaders(headers http.Header) (trace.SpanContext, error) {
 	if t == nil {
 		t = noopTracer
 	}
 
-	carrier := opentracing.HTTPHeadersCarrier(headers)
-	c, err := t.tracer.Extract(opentracing.HTTPHeaders, carrier)
-	if err != nil {
-		if errors.Is(err, opentracing.ErrSpanContextNotFound) {
-			return nil, ErrContextNotFound
-		}
-		return nil, err
+	ctx := httpPropagator.Extract(context.Background(), propagation.HeaderCarrier(headers))
+	sc := trace.SpanContextFromContext(ctx)
+	if !sc.IsValid() {
+		return trace.SpanContext{}, ErrContextNotFound
 	}
-
-	return c, nil
+	return sc, nil
 }
 
-// WithContextFromHTTPHeaders returns a new context with injected tracing span
-// context if they are found in HTTP headers. If the tracing span context is not
-// present in go context, ErrContextNotFound is returned.
+// WithContextFromHTTPHeaders extracts a span context from HTTP headers and
+// returns a new context carrying it.
 func (t *Tracer) WithContextFromHTTPHeaders(ctx context.Context, headers http.Header) (context.Context, error) {
 	if t == nil {
 		t = noopTracer
 	}
 
-	c, err := t.FromHTTPHeaders(headers)
+	sc, err := t.FromHTTPHeaders(headers)
 	if err != nil {
 		return ctx, err
 	}
-
-	return WithContext(ctx, c), nil
+	return WithContext(ctx, sc), nil
 }
 
-// WithContext adds tracing span context to go context.
-func WithContext(ctx context.Context, c opentracing.SpanContext) context.Context {
-	return context.WithValue(ctx, contextKey{}, c)
+// WithContext stores a span context in ctx using the standard OTel context
+// key, so any OTel-aware code (propagators, exporters) can find it.
+func WithContext(ctx context.Context, sc trace.SpanContext) context.Context {
+	return trace.ContextWithSpanContext(ctx, sc)
 }
 
-// FromContext return tracing span context from go context. If the tracing span
-// context is not present in go context, nil is returned.
-func FromContext(ctx context.Context) opentracing.SpanContext {
-	c, ok := ctx.Value(contextKey{}).(opentracing.SpanContext)
-	if !ok {
-		return nil
-	}
-	return c
+// FromContext returns the span context currently associated with ctx. The
+// returned SpanContext's IsValid() reports false when none is present.
+func FromContext(ctx context.Context) trace.SpanContext {
+	return trace.SpanContextFromContext(ctx)
 }
 
-// NewLoggerWithTraceID creates a new log Entry with "traceID" field added if it
-// exists in tracing span context stored from go context.
+// RecordError attaches an error event to the span, marks the span status as
+// Error, and records the supplied attributes alongside the error event. It is
+// the OTel equivalent of the OpenTracing ext.LogError pattern bee used previously.
+func RecordError(span trace.Span, err error, attrs ...attribute.KeyValue) {
+	span.RecordError(err, trace.WithAttributes(attrs...))
+	span.SetStatus(codes.Error, err.Error())
+}
+
+// NewLoggerWithTraceID returns a logger annotated with the trace id from ctx,
+// or the original logger if no valid span context is present.
 func NewLoggerWithTraceID(ctx context.Context, l log.Logger) log.Logger {
 	return loggerWithTraceID(FromContext(ctx), l)
 }
 
-func loggerWithTraceID(sc opentracing.SpanContext, l log.Logger) log.Logger {
+func loggerWithTraceID(sc trace.SpanContext, l log.Logger) log.Logger {
 	if l == nil {
 		return nil
 	}
-	jsc, ok := sc.(jaeger.SpanContext)
-	if !ok {
+	if !sc.HasTraceID() {
 		return l
 	}
-	traceID := jsc.TraceID()
-	if !traceID.IsValid() {
-		return l
+	return l.WithValues(LogField, sc.TraceID().String()).Build()
+}
+
+// encodeP2PSpanContext writes the trace+span ids and flags into a fixed-width
+// payload. TraceState is omitted intentionally — bee does not use vendor
+// tracestate routing.
+func encodeP2PSpanContext(sc trace.SpanContext) []byte {
+	buf := make([]byte, p2pCarrierLen)
+	buf[0] = p2pCarrierVersion
+	tid := sc.TraceID()
+	sid := sc.SpanID()
+	copy(buf[1:17], tid[:])
+	copy(buf[17:25], sid[:])
+	buf[25] = byte(sc.TraceFlags())
+	return buf
+}
+
+func decodeP2PSpanContext(b []byte) (trace.SpanContext, bool) {
+	if len(b) != p2pCarrierLen || b[0] != p2pCarrierVersion {
+		return trace.SpanContext{}, false
 	}
-	return l.WithValues(LogField, traceID).Build()
+	var tid trace.TraceID
+	var sid trace.SpanID
+	copy(tid[:], b[1:17])
+	copy(sid[:], b[17:25])
+	sc := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    tid,
+		SpanID:     sid,
+		TraceFlags: trace.TraceFlags(b[25]),
+		Remote:     true,
+	})
+	if !sc.IsValid() {
+		return trace.SpanContext{}, false
+	}
+	return sc, true
+}
+
+// noopCloser is returned when tracing is disabled.
+type noopCloser struct{}
+
+func (noopCloser) Close() error { return nil }
+
+// providerCloser flushes pending spans and stops the batch processor on Close.
+type providerCloser struct {
+	tp *sdktrace.TracerProvider
+}
+
+func (c providerCloser) Close() error {
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+	return c.tp.Shutdown(ctx)
 }

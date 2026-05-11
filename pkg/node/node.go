@@ -188,6 +188,8 @@ type Options struct {
 	TargetNeighborhood            string
 	TracingEnabled                bool
 	TracingEndpoint               string
+	TracingInsecure               bool
+	TracingSamplingRatio          float64
 	TracingServiceName            string
 	TrxDebugMode                  bool
 	WarmupTime                    time.Duration
@@ -230,9 +232,11 @@ func NewBee(
 	nodeMetrics := newMetrics()
 
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
-		Enabled:     o.TracingEnabled,
-		Endpoint:    o.TracingEndpoint,
-		ServiceName: o.TracingServiceName,
+		Enabled:       o.TracingEnabled,
+		Endpoint:      o.TracingEndpoint,
+		Insecure:      o.TracingInsecure,
+		SamplingRatio: o.TracingSamplingRatio,
+		ServiceName:   o.TracingServiceName,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("tracer: %w", err)

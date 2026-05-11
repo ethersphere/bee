@@ -46,9 +46,9 @@ func TestTracing(t *testing.T) {
 	handled := make(chan struct{})
 	if err := s1.AddProtocol(newTestProtocol(func(ctx context.Context, _ p2p.Peer, _ p2p.Stream) error {
 		span, _, _ := tracer1.StartSpanFromContext(ctx, "test-p2p-handler", nil)
-		defer span.Finish()
+		defer span.End()
 
-		handledTracingSpan = fmt.Sprint(span.Context())
+		handledTracingSpan = fmt.Sprint(span.SpanContext().TraceID())
 		close(handled)
 		return nil
 	})); err != nil {
@@ -66,9 +66,9 @@ func TestTracing(t *testing.T) {
 	ctx := t.Context()
 
 	span, _, ctx := tracer2.StartSpanFromContext(ctx, "test-p2p-client", nil)
-	defer span.Finish()
+	defer span.End()
 
-	if fmt.Sprint(span.Context()) == "" {
+	if !span.SpanContext().IsValid() {
 		t.Error("not tracing span context to send")
 	}
 

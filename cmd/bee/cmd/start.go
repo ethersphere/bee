@@ -15,7 +15,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -241,12 +240,6 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		networkConfig.blockTime = time.Duration(blockTime) * time.Second
 	}
 
-	tracingEndpoint := c.config.GetString(optionNameTracingEndpoint)
-
-	if c.config.IsSet(optionNameTracingHost) && c.config.IsSet(optionNameTracingPort) {
-		tracingEndpoint = strings.Join([]string{c.config.GetString(optionNameTracingHost), c.config.GetString(optionNameTracingPort)}, ":")
-	}
-
 	staticNodesOpt := c.config.GetStringSlice(optionNameStaticNodes)
 	staticNodes := make([]swarm.Address, 0, len(staticNodesOpt))
 	for _, p := range staticNodesOpt {
@@ -326,7 +319,9 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		SwapInitialDeposit:            c.config.GetString(optionNameSwapInitialDeposit),
 		TargetNeighborhood:            c.config.GetString(optionNameTargetNeighborhood),
 		TracingEnabled:                c.config.GetBool(optionNameTracingEnabled),
-		TracingEndpoint:               tracingEndpoint,
+		TracingEndpoint:               c.config.GetString(optionNameTracingOTLPEndpoint),
+		TracingInsecure:               c.config.GetBool(optionNameTracingOTLPInsecure),
+		TracingSamplingRatio:          c.config.GetFloat64(optionNameTracingSamplingRatio),
 		TracingServiceName:            c.config.GetString(optionNameTracingServiceName),
 		TrxDebugMode:                  c.config.GetBool(optionNameTransactionDebugMode),
 		WarmupTime:                    c.config.GetDuration(optionWarmUpTime),

@@ -21,8 +21,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
 	"github.com/gorilla/mux"
-	"github.com/opentracing/opentracing-go/ext"
-	olog "github.com/opentracing/opentracing-go/log"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type bytesPostResponse struct {
@@ -32,7 +31,7 @@ type bytesPostResponse struct {
 // bytesUploadHandler handles upload of raw binary data of arbitrary length.
 func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	span, logger, ctx := s.tracer.StartSpanFromContext(r.Context(), "post_bytes", s.logger.WithName("post_bytes").Build())
-	defer span.Finish()
+	defer span.End()
 
 	headers := struct {
 		BatchID        []byte           `map:"Swarm-Postage-Batch-Id" validate:"required"`
@@ -66,10 +65,10 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 			default:
 				jsonhttp.InternalServerError(w, "cannot get or create tag")
 			}
-			ext.LogError(span, err, olog.String("action", "tag.create"))
+			tracing.RecordError(span, err, attribute.String("action", "tag.create"))
 			return
 		}
-		span.SetTag("tagID", tag)
+		span.SetAttributes(attribute.Int64("tagID", int64(tag)))
 	}
 
 	defer s.observeUploadSpeed(w, r, time.Now(), "bytes", deferred)
@@ -93,7 +92,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		default:
 			jsonhttp.BadRequest(w, nil)
 		}
-		ext.LogError(span, err, olog.String("action", "new.StamperPutter"))
+		tracing.RecordError(span, err, attribute.String("action", "new.StamperPutter"))
 		return
 	}
 
@@ -114,7 +113,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		default:
 			jsonhttp.InternalServerError(ow, "split write all failed")
 		}
-		ext.LogError(span, err, olog.String("action", "split.WriteAll"))
+		tracing.RecordError(span, err, attribute.String("action", "split.WriteAll"))
 		return
 	}
 
@@ -138,14 +137,14 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	span.SetTag("root_address", encryptedReference)
+	span.SetAttributes(attribute.String("root_address", encryptedReference.String()))
 
 	err = putter.Done(reference)
 	if err != nil {
 		logger.Debug("done split failed", "error", err)
 		logger.Error(nil, "done split failed")
 		jsonhttp.InternalServerError(ow, "done split failed")
-		ext.LogError(span, err, olog.String("action", "putter.Done"))
+		tracing.RecordError(span, err, attribute.String("action", "putter.Done"))
 		return
 	}
 
@@ -153,7 +152,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(SwarmTagHeader, fmt.Sprint(tag))
 	}
 
-	span.LogFields(olog.Bool("success", true))
+	span.SetAttributes(attribute.Bool("success", true))
 
 	w.Header().Set(AccessControlExposeHeaders, SwarmTagHeader)
 	if headers.Act {

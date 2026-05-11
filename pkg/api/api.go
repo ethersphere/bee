@@ -463,7 +463,7 @@ func (s *Service) newTracingHandler(spanName string) func(h http.Handler) http.H
 			}
 
 			span, _, ctx := s.tracer.StartSpanFromContext(ctx, spanName, s.logger)
-			defer span.Finish()
+			defer span.End()
 
 			err = s.tracer.AddContextHTTPHeader(ctx, r.Header)
 			if err != nil {

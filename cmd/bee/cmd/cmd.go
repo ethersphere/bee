@@ -40,9 +40,9 @@ const (
 	optionWelcomeMessage                   = "welcome-message"
 	optionCORSAllowedOrigins               = "cors-allowed-origins"
 	optionNameTracingEnabled               = "tracing-enable"
-	optionNameTracingEndpoint              = "tracing-endpoint"
-	optionNameTracingHost                  = "tracing-host"
-	optionNameTracingPort                  = "tracing-port"
+	optionNameTracingOTLPEndpoint          = "tracing-otlp-endpoint"
+	optionNameTracingOTLPInsecure          = "tracing-otlp-insecure"
+	optionNameTracingSamplingRatio         = "tracing-sampling-ratio"
 	optionNameTracingServiceName           = "tracing-service-name"
 	optionNameVerbosity                    = "verbosity"
 	optionNamePaymentThreshold             = "payment-threshold"
@@ -281,9 +281,9 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Uint64(optionNameNetworkID, chaincfg.Mainnet.NetworkID, "ID of the Swarm network")
 	cmd.Flags().StringSlice(optionCORSAllowedOrigins, []string{}, "origins with CORS headers enabled")
 	cmd.Flags().Bool(optionNameTracingEnabled, false, "enable tracing")
-	cmd.Flags().String(optionNameTracingEndpoint, "127.0.0.1:6831", "endpoint to send tracing data")
-	cmd.Flags().String(optionNameTracingHost, "", "host to send tracing data")
-	cmd.Flags().String(optionNameTracingPort, "", "port to send tracing data")
+	cmd.Flags().String(optionNameTracingOTLPEndpoint, "127.0.0.1:4318", "OTLP/HTTP endpoint to send tracing data (host:port)")
+	cmd.Flags().Bool(optionNameTracingOTLPInsecure, true, "disable TLS for the OTLP exporter (useful for a local collector)")
+	cmd.Flags().Float64(optionNameTracingSamplingRatio, 1.0, "head-based sampling ratio in [0,1]; 1 samples everything")
 	cmd.Flags().String(optionNameTracingServiceName, "bee", "service name identifier for tracing")
 	cmd.Flags().String(optionNameVerbosity, "info", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
 	cmd.Flags().String(optionWelcomeMessage, "", "send a welcome message string during handshakes")

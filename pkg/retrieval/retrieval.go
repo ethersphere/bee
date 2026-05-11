@@ -27,9 +27,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
-	"github.com/opentracing/opentracing-go"
-	"github.com/opentracing/opentracing-go/ext"
-	olog "github.com/opentracing/opentracing-go/log"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"resenje.org/singleflight"
 )
 
@@ -259,8 +258,10 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 				inflight++
 
 				go func() {
-					span, _, ctx := s.tracer.FollowSpanFromContext(spanCtx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: chunkAddr.String()})
-					defer span.Finish()
+					span, _, ctx := s.tracer.FollowSpanFromContext(spanCtx, "retrieve-chunk", s.logger, trace.WithAttributes(
+						attribute.String("address", chunkAddr.String()),
+					))
+					defer span.End()
 					s.retrieveChunk(ctx, quit, chunkAddr, peer, resultC, action, span)
 				}()
 
@@ -295,7 +296,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 	return v, nil
 }
 
-func (s *Service) retrieveChunk(ctx context.Context, quit chan struct{}, chunkAddr, peer swarm.Address, result chan retrievalResult, action accounting.Action, span opentracing.Span) {
+func (s *Service) retrieveChunk(ctx context.Context, quit chan struct{}, chunkAddr, peer swarm.Address, result chan retrievalResult, action accounting.Action, span trace.Span) {
 	var (
 		startTime = time.Now()
 		err       error
@@ -305,10 +306,10 @@ func (s *Service) retrieveChunk(ctx context.Context, quit chan struct{}, chunkAd
 	defer func() {
 		action.Cleanup()
 		if err != nil {
-			ext.LogError(span, err)
+			tracing.RecordError(span, err)
 			s.metrics.TotalErrors.Inc()
 		} else {
-			span.LogFields(olog.Bool("success", true))
+			span.SetAttributes(attribute.Bool("success", true))
 		}
 		select {
 		case result <- retrievalResult{err: err, chunk: chunk, peer: peer}:
@@ -449,15 +450,17 @@ func (s *Service) handler(p2pctx context.Context, p p2p.Peer, stream p2p.Stream)
 
 	var forwarded bool
 
-	span, _, ctx := s.tracer.StartSpanFromContext(ctx, "handle-retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: addr.String()})
+	span, _, ctx := s.tracer.StartSpanFromContext(ctx, "handle-retrieve-chunk", s.logger, trace.WithAttributes(
+		attribute.String("address", addr.String()),
+	))
 	defer func() {
 		if err != nil {
-			ext.LogError(span, err)
+			tracing.RecordError(span, err)
 		} else {
-			span.LogFields(olog.Bool("success", true))
+			span.SetAttributes(attribute.Bool("success", true))
 		}
-		span.LogFields(olog.Bool("forwarded", forwarded))
-		span.Finish()
+		span.SetAttributes(attribute.Bool("forwarded", forwarded))
+		span.End()
 	}()
 
 	chunk, err := s.storer.Lookup().Get(ctx, addr)

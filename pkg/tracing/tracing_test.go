@@ -8,14 +8,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
 	"github.com/ethersphere/bee/v2/pkg/util/testutil"
-	"github.com/uber/jaeger-client-go"
 )
 
 func TestSpanFromHeaders(t *testing.T) {
@@ -24,7 +22,7 @@ func TestSpanFromHeaders(t *testing.T) {
 	tracer := newTracer(t)
 
 	span, _, ctx := tracer.StartSpanFromContext(context.Background(), "some-operation", nil)
-	defer span.Finish()
+	defer span.End()
 
 	headers := make(p2p.Headers)
 	if err := tracer.AddContextHeader(ctx, headers); err != nil {
@@ -36,17 +34,20 @@ func TestSpanFromHeaders(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if fmt.Sprint(gotSpanContext) == "" {
-		t.Fatal("got empty span context")
+	if !gotSpanContext.IsValid() {
+		t.Fatal("got invalid span context")
 	}
 
-	wantSpanContext := span.Context()
-	if fmt.Sprint(wantSpanContext) == "" {
-		t.Fatal("got empty start span context")
+	wantSpanContext := span.SpanContext()
+	if !wantSpanContext.IsValid() {
+		t.Fatal("got invalid start span context")
 	}
 
-	if fmt.Sprint(gotSpanContext) != fmt.Sprint(wantSpanContext) {
-		t.Errorf("got span context %+v, want %+v", gotSpanContext, wantSpanContext)
+	if gotSpanContext.TraceID() != wantSpanContext.TraceID() {
+		t.Errorf("got trace id %s, want %s", gotSpanContext.TraceID(), wantSpanContext.TraceID())
+	}
+	if gotSpanContext.SpanID() != wantSpanContext.SpanID() {
+		t.Errorf("got span id %s, want %s", gotSpanContext.SpanID(), wantSpanContext.SpanID())
 	}
 }
 
@@ -56,7 +57,7 @@ func TestSpanWithContextFromHeaders(t *testing.T) {
 	tracer := newTracer(t)
 
 	span, _, ctx := tracer.StartSpanFromContext(context.Background(), "some-operation", nil)
-	defer span.Finish()
+	defer span.End()
 
 	headers := make(p2p.Headers)
 	if err := tracer.AddContextHeader(ctx, headers); err != nil {
@@ -69,17 +70,32 @@ func TestSpanWithContextFromHeaders(t *testing.T) {
 	}
 
 	gotSpanContext := tracing.FromContext(ctx)
-	if fmt.Sprint(gotSpanContext) == "" {
-		t.Fatal("got empty span context")
+	if !gotSpanContext.IsValid() {
+		t.Fatal("got invalid span context")
 	}
 
-	wantSpanContext := span.Context()
-	if fmt.Sprint(wantSpanContext) == "" {
-		t.Fatal("got empty start span context")
+	wantSpanContext := span.SpanContext()
+	if gotSpanContext.TraceID() != wantSpanContext.TraceID() {
+		t.Errorf("got trace id %s, want %s", gotSpanContext.TraceID(), wantSpanContext.TraceID())
+	}
+}
+
+// TestFromHeaders_undecodablePayload exercises the rolling-upgrade tolerance:
+// peers running an older binary may send a payload in a different format and we
+// must not fail the stream, just return ErrContextNotFound so trace continuity
+// silently breaks at that hop.
+func TestFromHeaders_undecodablePayload(t *testing.T) {
+	t.Parallel()
+
+	tracer := newTracer(t)
+
+	headers := p2p.Headers{
+		p2p.HeaderNameTracingSpanContext: []byte("not-a-valid-binary-carrier"),
 	}
 
-	if fmt.Sprint(gotSpanContext) != fmt.Sprint(wantSpanContext) {
-		t.Errorf("got span context %+v, want %+v", gotSpanContext, wantSpanContext)
+	_, err := tracer.FromHeaders(headers)
+	if err != tracing.ErrContextNotFound {
+		t.Errorf("got error %v, want %v", err, tracing.ErrContextNotFound)
 	}
 }
 
@@ -89,20 +105,20 @@ func TestFromContext(t *testing.T) {
 	tracer := newTracer(t)
 
 	span, _, ctx := tracer.StartSpanFromContext(context.Background(), "some-operation", nil)
-	defer span.Finish()
+	defer span.End()
 
-	wantSpanContext := span.Context()
-	if fmt.Sprint(wantSpanContext) == "" {
-		t.Fatal("got empty start span context")
+	wantSpanContext := span.SpanContext()
+	if !wantSpanContext.IsValid() {
+		t.Fatal("got invalid start span context")
 	}
 
 	gotSpanContext := tracing.FromContext(ctx)
-	if fmt.Sprint(gotSpanContext) == "" {
-		t.Fatal("got empty span context")
+	if !gotSpanContext.IsValid() {
+		t.Fatal("got invalid span context")
 	}
 
-	if fmt.Sprint(gotSpanContext) != fmt.Sprint(wantSpanContext) {
-		t.Errorf("got span context %+v, want %+v", gotSpanContext, wantSpanContext)
+	if gotSpanContext.TraceID() != wantSpanContext.TraceID() {
+		t.Errorf("got trace id %s, want %s", gotSpanContext.TraceID(), wantSpanContext.TraceID())
 	}
 }
 
@@ -112,22 +128,17 @@ func TestWithContext(t *testing.T) {
 	tracer := newTracer(t)
 
 	span, _, _ := tracer.StartSpanFromContext(context.Background(), "some-operation", nil)
-	defer span.Finish()
+	defer span.End()
 
-	wantSpanContext := span.Context()
-	if fmt.Sprint(wantSpanContext) == "" {
-		t.Fatal("got empty start span context")
+	wantSpanContext := span.SpanContext()
+	if !wantSpanContext.IsValid() {
+		t.Fatal("got invalid start span context")
 	}
 
-	ctx := tracing.WithContext(context.Background(), span.Context())
-
+	ctx := tracing.WithContext(context.Background(), wantSpanContext)
 	gotSpanContext := tracing.FromContext(ctx)
-	if fmt.Sprint(gotSpanContext) == "" {
-		t.Fatal("got empty span context")
-	}
-
-	if fmt.Sprint(gotSpanContext) != fmt.Sprint(wantSpanContext) {
-		t.Errorf("got span context %+v, want %+v", gotSpanContext, wantSpanContext)
+	if gotSpanContext.TraceID() != wantSpanContext.TraceID() {
+		t.Errorf("got trace id %s, want %s", gotSpanContext.TraceID(), wantSpanContext.TraceID())
 	}
 }
 
@@ -139,9 +150,9 @@ func TestStartSpanFromContext_logger(t *testing.T) {
 	buf := new(bytes.Buffer)
 
 	span, logger, _ := tracer.StartSpanFromContext(context.Background(), "some-operation", log.NewLogger("test", log.WithSink(buf), log.WithJSONOutput()))
-	defer span.Finish()
+	defer span.End()
 
-	wantTraceID := span.Context().(jaeger.SpanContext).TraceID()
+	wantTraceID := span.SpanContext().TraceID().String()
 
 	logger.Info("msg")
 	data := make(map[string]any)
@@ -159,8 +170,8 @@ func TestStartSpanFromContext_logger(t *testing.T) {
 		t.Fatalf("log field %q is not string", tracing.LogField)
 	}
 
-	if gotTraceID != wantTraceID.String() {
-		t.Errorf("got trace id %q, want %q", gotTraceID, wantTraceID.String())
+	if gotTraceID != wantTraceID {
+		t.Errorf("got trace id %q, want %q", gotTraceID, wantTraceID)
 	}
 }
 
@@ -170,7 +181,7 @@ func TestStartSpanFromContext_nilLogger(t *testing.T) {
 	tracer := newTracer(t)
 
 	span, logger, _ := tracer.StartSpanFromContext(context.Background(), "some-operation", nil)
-	defer span.Finish()
+	defer span.End()
 
 	if logger != nil {
 		t.Error("logger is not nil")
@@ -183,13 +194,13 @@ func TestNewLoggerWithTraceID(t *testing.T) {
 	tracer := newTracer(t)
 
 	span, _, ctx := tracer.StartSpanFromContext(context.Background(), "some-operation", nil)
-	defer span.Finish()
+	defer span.End()
 
 	buf := new(bytes.Buffer)
 
 	logger := tracing.NewLoggerWithTraceID(ctx, log.NewLogger("test", log.WithSink(buf), log.WithJSONOutput()))
 
-	wantTraceID := span.Context().(jaeger.SpanContext).TraceID()
+	wantTraceID := span.SpanContext().TraceID().String()
 
 	logger.Info("msg")
 	data := make(map[string]any)
@@ -207,8 +218,8 @@ func TestNewLoggerWithTraceID(t *testing.T) {
 		t.Fatalf("log field %q is not string", tracing.LogField)
 	}
 
-	if gotTraceID != wantTraceID.String() {
-		t.Errorf("got trace id %q, want %q", gotTraceID, wantTraceID.String())
+	if gotTraceID != wantTraceID {
+		t.Errorf("got trace id %q, want %q", gotTraceID, wantTraceID)
 	}
 }
 
@@ -218,7 +229,7 @@ func TestNewLoggerWithTraceID_nilLogger(t *testing.T) {
 	tracer := newTracer(t)
 
 	span, _, ctx := tracer.StartSpanFromContext(context.Background(), "some-operation", nil)
-	defer span.Finish()
+	defer span.End()
 
 	logger := tracing.NewLoggerWithTraceID(ctx, nil)
 
@@ -227,6 +238,8 @@ func TestNewLoggerWithTraceID_nilLogger(t *testing.T) {
 	}
 }
 
+// newTracer returns a Tracer wired to a real OTel SDK with no exporter, so
+// spans receive valid contexts but nothing is shipped over the network.
 func newTracer(t *testing.T) *tracing.Tracer {
 	t.Helper()
 
