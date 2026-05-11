@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -94,7 +95,7 @@ func TestFromHeaders_undecodablePayload(t *testing.T) {
 	}
 
 	_, err := tracer.FromHeaders(headers)
-	if err != tracing.ErrContextNotFound {
+	if !errors.Is(err, tracing.ErrContextNotFound) {
 		t.Errorf("got error %v, want %v", err, tracing.ErrContextNotFound)
 	}
 }

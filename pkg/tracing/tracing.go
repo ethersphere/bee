@@ -159,11 +159,8 @@ func (t *Tracer) FollowSpanFromContext(ctx context.Context, operationName string
 }
 
 // AddContextHeader serialises the active span context into the bee p2p header.
+// It is safe to call on a nil receiver.
 func (t *Tracer) AddContextHeader(ctx context.Context, headers p2p.Headers) error {
-	if t == nil {
-		t = noopTracer
-	}
-
 	sc := FromContext(ctx)
 	if !sc.IsValid() {
 		return ErrContextNotFound
@@ -176,12 +173,8 @@ func (t *Tracer) AddContextHeader(ctx context.Context, headers p2p.Headers) erro
 // FromHeaders extracts the span context from the bee p2p header. ErrContextNotFound
 // is returned when the header is absent or when its payload is undecodable —
 // the latter lets mixed-version peers degrade to per-hop trace continuity loss
-// rather than failing the stream.
+// rather than failing the stream. Safe to call on a nil receiver.
 func (t *Tracer) FromHeaders(headers p2p.Headers) (trace.SpanContext, error) {
-	if t == nil {
-		t = noopTracer
-	}
-
 	v := headers[p2p.HeaderNameTracingSpanContext]
 	if v == nil {
 		return trace.SpanContext{}, ErrContextNotFound
@@ -194,12 +187,8 @@ func (t *Tracer) FromHeaders(headers p2p.Headers) (trace.SpanContext, error) {
 }
 
 // WithContextFromHeaders extracts a span context from the p2p header and
-// returns a new context carrying it.
+// returns a new context carrying it. Safe to call on a nil receiver.
 func (t *Tracer) WithContextFromHeaders(ctx context.Context, headers p2p.Headers) (context.Context, error) {
-	if t == nil {
-		t = noopTracer
-	}
-
 	sc, err := t.FromHeaders(headers)
 	if err != nil {
 		return ctx, err
@@ -212,11 +201,8 @@ func (t *Tracer) WithContextFromHeaders(ctx context.Context, headers p2p.Headers
 var httpPropagator propagation.TextMapPropagator = propagation.TraceContext{}
 
 // AddContextHTTPHeader injects the active span context into HTTP headers.
+// Safe to call on a nil receiver.
 func (t *Tracer) AddContextHTTPHeader(ctx context.Context, headers http.Header) error {
-	if t == nil {
-		t = noopTracer
-	}
-
 	sc := FromContext(ctx)
 	if !sc.IsValid() {
 		return ErrContextNotFound
@@ -227,11 +213,8 @@ func (t *Tracer) AddContextHTTPHeader(ctx context.Context, headers http.Header) 
 }
 
 // FromHTTPHeaders extracts a span context from a W3C traceparent header.
+// Safe to call on a nil receiver.
 func (t *Tracer) FromHTTPHeaders(headers http.Header) (trace.SpanContext, error) {
-	if t == nil {
-		t = noopTracer
-	}
-
 	ctx := httpPropagator.Extract(context.Background(), propagation.HeaderCarrier(headers))
 	sc := trace.SpanContextFromContext(ctx)
 	if !sc.IsValid() {
@@ -241,12 +224,8 @@ func (t *Tracer) FromHTTPHeaders(headers http.Header) (trace.SpanContext, error)
 }
 
 // WithContextFromHTTPHeaders extracts a span context from HTTP headers and
-// returns a new context carrying it.
+// returns a new context carrying it. Safe to call on a nil receiver.
 func (t *Tracer) WithContextFromHTTPHeaders(ctx context.Context, headers http.Header) (context.Context, error) {
-	if t == nil {
-		t = noopTracer
-	}
-
 	sc, err := t.FromHTTPHeaders(headers)
 	if err != nil {
 		return ctx, err
