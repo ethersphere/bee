@@ -26,6 +26,8 @@ type mock struct {
 	marshalJSONFunc func() ([]byte, error)
 	mtx             sync.Mutex
 	health          map[string]bool
+	lastSelect      topology.Select
+	selectRecorder  *topology.Select
 }
 
 var _ topology.Driver = (*mock)(nil)
@@ -69,6 +71,15 @@ func WithMarshalJSONFunc(f func() ([]byte, error)) Option {
 func WithIsWithinFunc(f func(swarm.Address) bool) Option {
 	return optionFunc(func(d *mock) {
 		d.isWithinFunc = f
+	})
+}
+
+// WithSelectRecorder records the topology.Select most recently passed to
+// EachConnectedPeer or EachConnectedPeerRev into out. Tests use this to assert
+// callers opt in to filtering flags (e.g. IncludeBootnodes).
+func WithSelectRecorder(out *topology.Select) Option {
+	return optionFunc(func(d *mock) {
+		d.selectRecorder = out
 	})
 }
 
@@ -191,9 +202,14 @@ func (m *mock) NeighborhoodDepth() uint8 {
 func (m *mock) SetStorageRadius(uint8) {}
 
 // EachConnectedPeer implements topology.PeerIterator interface.
-func (d *mock) EachConnectedPeer(f topology.EachPeerFunc, _ topology.Select) (err error) {
+func (d *mock) EachConnectedPeer(f topology.EachPeerFunc, s topology.Select) (err error) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
+
+	d.lastSelect = s
+	if d.selectRecorder != nil {
+		*d.selectRecorder = s
+	}
 
 	if d.peersErr != nil {
 		return d.peersErr
@@ -210,9 +226,14 @@ func (d *mock) EachConnectedPeer(f topology.EachPeerFunc, _ topology.Select) (er
 }
 
 // EachConnectedPeerRev implements topology.PeerIterator interface.
-func (d *mock) EachConnectedPeerRev(f topology.EachPeerFunc, _ topology.Select) (err error) {
+func (d *mock) EachConnectedPeerRev(f topology.EachPeerFunc, s topology.Select) (err error) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
+
+	d.lastSelect = s
+	if d.selectRecorder != nil {
+		*d.selectRecorder = s
+	}
 
 	for i := len(d.peers) - 1; i >= 0; i-- {
 		_, _, err = f(d.peers[i], uint8(i))
@@ -222,6 +243,15 @@ func (d *mock) EachConnectedPeerRev(f topology.EachPeerFunc, _ topology.Select) 
 	}
 
 	return nil
+}
+
+// LastSelect returns the topology.Select most recently passed to
+// EachConnectedPeer or EachConnectedPeerRev. Intended for tests that assert
+// callers opt in to filtering flags (e.g. IncludeBootnodes).
+func (d *mock) LastSelect() topology.Select {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	return d.lastSelect
 }
 
 func (d *mock) Snapshot() *topology.KadParams {

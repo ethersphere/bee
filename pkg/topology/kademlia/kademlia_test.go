@@ -1878,6 +1878,106 @@ func TestIteratorOpts(t *testing.T) {
 	})
 }
 
+// TestIteratorBootnodes is a regression test for
+// https://github.com/ethersphere/bee/issues/5111: EachConnectedPeer must
+// exclude bootnodes by default (so protocol callers don't gossip to or query
+// them), but include them when the IncludeBootnodes Select flag is set (so
+// operator-facing /status and /status/peers agree with /peers).
+func TestIteratorBootnodes(t *testing.T) {
+	t.Parallel()
+
+	var (
+		conns                    int32
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{})
+	)
+
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	testutil.CleanupCloser(t, kad)
+
+	// Connect a handful of peers and mark every other one as a bootnode.
+	const peerCount = 6
+	all := make([]swarm.Address, 0, peerCount)
+	bootnodes := make(map[string]struct{})
+	for i := range peerCount {
+		addr := swarm.RandAddressAt(t, base, i%4)
+		connectOne(t, signer, kad, ab, addr, nil)
+		all = append(all, addr)
+		if i%2 == 0 {
+			kad.MarkAsBootnode(addr)
+			bootnodes[addr.ByteString()] = struct{}{}
+		}
+	}
+
+	collect := func(filter topology.Select) []swarm.Address {
+		var got []swarm.Address
+		if err := kad.EachConnectedPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+			got = append(got, addr)
+			return false, false, nil
+		}, filter); err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+
+	t.Run("default Select excludes bootnodes", func(t *testing.T) {
+		got := collect(topology.Select{})
+		for _, addr := range got {
+			if _, ok := bootnodes[addr.ByteString()]; ok {
+				t.Fatalf("default iterator returned bootnode %s", addr)
+			}
+		}
+		if want, have := peerCount-len(bootnodes), len(got); want != have {
+			t.Fatalf("default iterator: want %d non-bootnode peers, got %d", want, have)
+		}
+	})
+
+	t.Run("IncludeBootnodes returns the full set", func(t *testing.T) {
+		got := collect(topology.Select{IncludeBootnodes: true})
+		if want, have := len(all), len(got); want != have {
+			t.Fatalf("IncludeBootnodes iterator: want %d peers, got %d", want, have)
+		}
+		seen := make(map[string]struct{}, len(got))
+		for _, addr := range got {
+			seen[addr.ByteString()] = struct{}{}
+		}
+		for _, addr := range all {
+			if _, ok := seen[addr.ByteString()]; !ok {
+				t.Fatalf("IncludeBootnodes iterator missing peer %s", addr)
+			}
+		}
+	})
+
+	t.Run("EachConnectedPeerRev honors IncludeBootnodes", func(t *testing.T) {
+		var got []swarm.Address
+		if err := kad.EachConnectedPeerRev(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+			got = append(got, addr)
+			return false, false, nil
+		}, topology.Select{IncludeBootnodes: true}); err != nil {
+			t.Fatal(err)
+		}
+		if want, have := len(all), len(got); want != have {
+			t.Fatalf("Rev IncludeBootnodes iterator: want %d peers, got %d", want, have)
+		}
+	})
+
+	t.Run("EachConnectedPeerRev default excludes bootnodes", func(t *testing.T) {
+		var got []swarm.Address
+		if err := kad.EachConnectedPeerRev(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+			got = append(got, addr)
+			return false, false, nil
+		}, topology.Select{}); err != nil {
+			t.Fatal(err)
+		}
+		for _, addr := range got {
+			if _, ok := bootnodes[addr.ByteString()]; ok {
+				t.Fatalf("Rev default iterator returned bootnode %s", addr)
+			}
+		}
+	})
+}
+
 type boolgen struct {
 	cache     int64
 	remaining int

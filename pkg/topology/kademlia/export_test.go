@@ -7,6 +7,7 @@ package kademlia
 import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
+	im "github.com/ethersphere/bee/v2/pkg/topology/kademlia/internal/metrics"
 	"github.com/ethersphere/bee/v2/pkg/topology/pslice"
 )
 
@@ -99,4 +100,11 @@ func closestPeer(peers *pslice.PSlice, addr swarm.Address) (swarm.Address, error
 
 func (k *Kad) Trigger() {
 	k.manageC <- struct{}{}
+}
+
+// MarkAsBootnode marks the given address as a bootnode in the metrics
+// collector, mirroring what the production connectBootNodes path does. Used by
+// tests to assert iterator filtering behavior.
+func (k *Kad) MarkAsBootnode(addr swarm.Address) {
+	k.collector.Record(addr, im.IsBootnode(true))
 }
