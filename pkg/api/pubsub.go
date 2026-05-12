@@ -38,42 +38,31 @@ func (s *Service) pubsubWsHandler(w http.ResponseWriter, r *http.Request) {
 		copy(topicAddr[:], h.Sum(nil))
 	}
 
-	// Required: underlay multiaddr — accept from header or query param (browsers cannot set WS headers)
-	peerHeader := r.Header.Get(SwarmPubsubPeerHeader)
-	if peerHeader == "" {
-		peerHeader = r.URL.Query().Get("swarm-pubsub-peer")
-	}
-	if peerHeader == "" {
-		jsonhttp.BadRequest(w, "missing Swarm-Pubsub-Peer header")
+	peerMultiaddr := r.URL.Query().Get("peer")
+	if peerMultiaddr == "" {
+		jsonhttp.BadRequest(w, "missing peer query param")
 		return
 	}
-	underlay, err := ma.NewMultiaddr(peerHeader)
+	underlay, err := ma.NewMultiaddr(peerMultiaddr)
 	if err != nil {
-		logger.Info("invalid peer multiaddr", "value", peerHeader, "error", err)
-		jsonhttp.BadRequest(w, "invalid Swarm-Pubsub-Peer header")
+		logger.Info("invalid peer multiaddr", "value", peerMultiaddr, "error", err)
+		jsonhttp.BadRequest(w, "invalid peer query param")
 		return
 	}
 
-	// Optional: GSOC fields for Publisher upgrade — accept from header or query param
 	var connectOpts pubsub.ConnectOptions
 
-	gsocEthAddrHex := r.Header.Get(SwarmPubsubGsocEthAddressHeader)
-	if gsocEthAddrHex == "" {
-		gsocEthAddrHex = r.URL.Query().Get("swarm-pubsub-gsoc-eth-address")
-	}
-	gsocTopicHex := r.Header.Get(SwarmPubsubGsocTopicHeader)
-	if gsocTopicHex == "" {
-		gsocTopicHex = r.URL.Query().Get("swarm-pubsub-gsoc-topic")
-	}
+	gsocEthAddrHex := r.URL.Query().Get("gsoc-eth-address")
+	gsocTopicHex := r.URL.Query().Get("gsoc-topic")
 	if gsocEthAddrHex != "" && gsocTopicHex != "" {
 		gsocOwner, err := hex.DecodeString(gsocEthAddrHex)
 		if err != nil {
-			jsonhttp.BadRequest(w, "invalid Swarm-Pubsub-Gsoc-Eth-Address header")
+			jsonhttp.BadRequest(w, "invalid gsoc-eth-address query param")
 			return
 		}
 		gsocID, err := hex.DecodeString(gsocTopicHex)
 		if err != nil {
-			jsonhttp.BadRequest(w, "invalid Swarm-Pubsub-Gsoc-Topic header")
+			jsonhttp.BadRequest(w, "invalid gsoc-topic query param")
 			return
 		}
 		connectOpts.GsocOwner = gsocOwner
