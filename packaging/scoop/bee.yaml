@@ -105,16 +105,20 @@ password-file: "./password"
 # swap-initial-deposit: "0"
 ## neighborhood to target in binary format (ex: 111111001) for mining the initial overlay
 # target-neighborhood: ""
-## enable tracing
-# tracing-enable: false
-## OTLP/HTTP endpoint to send tracing data (host:port)
-# tracing-otlp-endpoint: 127.0.0.1:4318
-## disable TLS for the OTLP exporter (useful for a local collector)
-# tracing-otlp-insecure: true
-## head-based sampling ratio in [0,1]; 1 samples everything
-# tracing-sampling-ratio: 1.0
-## service name identifier for tracing
-# tracing-service-name: bee
+## tracing settings
+# tracing:
+#   ## enable tracing
+#   enable: false
+#   ## OTLP endpoint to send tracing data (host:port); default port is 4318 for http, 4317 for grpc
+#   otlp-endpoint: 127.0.0.1:4318
+#   ## disable TLS for the OTLP exporter (useful for a local collector)
+#   otlp-insecure: true
+#   ## OTLP exporter transport: http or grpc
+#   otlp-protocol: http
+#   ## head-based sampling ratio in [0,1]; 0 samples nothing, 1 samples everything
+#   sampling-ratio: 1.0
+#   ## service name identifier for tracing
+#   service-name: bee
 ## gas limit fallback when estimation fails for contract transactions (default 500000)
 # gas-limit-fallback: 500000
 ## skips the gas estimate step for contract transactions

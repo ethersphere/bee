@@ -158,6 +158,7 @@ func (c *command) initStartCmd() (err error) {
 				return err
 			}
 			c.bindBlockchainRpcConfig(cmd)
+			c.bindTracingConfig(cmd)
 			return nil
 		},
 	}
@@ -318,11 +319,12 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		SwapFactoryAddress:            c.config.GetString(optionNameSwapFactoryAddress),
 		SwapInitialDeposit:            c.config.GetString(optionNameSwapInitialDeposit),
 		TargetNeighborhood:            c.config.GetString(optionNameTargetNeighborhood),
-		TracingEnabled:                c.config.GetBool(optionNameTracingEnabled),
-		TracingEndpoint:               c.config.GetString(optionNameTracingOTLPEndpoint),
-		TracingInsecure:               c.config.GetBool(optionNameTracingOTLPInsecure),
-		TracingSamplingRatio:          c.config.GetFloat64(optionNameTracingSamplingRatio),
-		TracingServiceName:            c.config.GetString(optionNameTracingServiceName),
+		TracingEnabled:                c.config.GetBool(configKeyTracingEnabled),
+		TracingEndpoint:               c.config.GetString(configKeyTracingOTLPEndpoint),
+		TracingInsecure:               c.config.GetBool(configKeyTracingOTLPInsecure),
+		TracingProtocol:               c.config.GetString(configKeyTracingOTLPProtocol),
+		TracingSamplingRatio:          c.config.GetFloat64(configKeyTracingSamplingRatio),
+		TracingServiceName:            c.config.GetString(configKeyTracingServiceName),
 		TrxDebugMode:                  c.config.GetBool(optionNameTransactionDebugMode),
 		WarmupTime:                    c.config.GetDuration(optionWarmUpTime),
 		WelcomeMessage:                c.config.GetString(optionWelcomeMessage),

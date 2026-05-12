@@ -189,6 +189,7 @@ type Options struct {
 	TracingEnabled                bool
 	TracingEndpoint               string
 	TracingInsecure               bool
+	TracingProtocol               string
 	TracingSamplingRatio          float64
 	TracingServiceName            string
 	TrxDebugMode                  bool
@@ -235,6 +236,7 @@ func NewBee(
 		Enabled:       o.TracingEnabled,
 		Endpoint:      o.TracingEndpoint,
 		Insecure:      o.TracingInsecure,
+		Protocol:      o.TracingProtocol,
 		SamplingRatio: o.TracingSamplingRatio,
 		ServiceName:   o.TracingServiceName,
 	})

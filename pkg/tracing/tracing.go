@@ -20,6 +20,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -73,8 +74,12 @@ type Options struct {
 	// Insecure disables TLS for the OTLP exporter (useful for a local collector).
 	Insecure bool
 	// SamplingRatio is the head-based sampling ratio for the parent-based
-	// sampler. Values <= 0 fall back to 1.0 (sample everything).
+	// sampler in the range [0, 1]. 0 disables sampling for non-parented spans;
+	// 1 samples everything. Negative values are clamped to 0.
 	SamplingRatio float64
+	// Protocol selects the OTLP exporter transport: "http" or "grpc". Empty
+	// defaults to "http".
+	Protocol string
 }
 
 // NewTracer creates a new Tracer and returns a closer that flushes pending
@@ -96,8 +101,8 @@ func NewTracer(o *Options) (*Tracer, io.Closer, error) {
 	}
 
 	ratio := o.SamplingRatio
-	if ratio <= 0 {
-		ratio = 1
+	if ratio < 0 {
+		ratio = 0
 	}
 
 	tpOpts := []sdktrace.TracerProviderOption{
@@ -109,13 +114,11 @@ func NewTracer(o *Options) (*Tracer, io.Closer, error) {
 	// still created with valid contexts (useful for local development and unit
 	// tests) but nothing is shipped over the network.
 	if o.Endpoint != "" {
-		exporterOpts := []otlptracehttp.Option{
-			otlptracehttp.WithEndpoint(o.Endpoint),
+		client, err := newOTLPClient(o)
+		if err != nil {
+			return nil, nil, err
 		}
-		if o.Insecure {
-			exporterOpts = append(exporterOpts, otlptracehttp.WithInsecure())
-		}
-		exporter, err := otlptrace.New(context.Background(), otlptracehttp.NewClient(exporterOpts...))
+		exporter, err := otlptrace.New(context.Background(), client)
 		if err != nil {
 			return nil, nil, fmt.Errorf("otlp exporter: %w", err)
 		}
@@ -124,6 +127,34 @@ func NewTracer(o *Options) (*Tracer, io.Closer, error) {
 
 	tp := sdktrace.NewTracerProvider(tpOpts...)
 	return &Tracer{tracer: tp.Tracer(instrumentationName)}, providerCloser{tp: tp}, nil
+}
+
+// Supported OTLP transport values for Options.Protocol.
+const (
+	ProtocolHTTP = "http"
+	ProtocolGRPC = "grpc"
+)
+
+// newOTLPClient builds the OTLP client for the configured transport. An empty
+// Protocol defaults to HTTP for backward compatibility with the initial OTLP
+// rollout.
+func newOTLPClient(o *Options) (otlptrace.Client, error) {
+	switch o.Protocol {
+	case "", ProtocolHTTP:
+		opts := []otlptracehttp.Option{otlptracehttp.WithEndpoint(o.Endpoint)}
+		if o.Insecure {
+			opts = append(opts, otlptracehttp.WithInsecure())
+		}
+		return otlptracehttp.NewClient(opts...), nil
+	case ProtocolGRPC:
+		opts := []otlptracegrpc.Option{otlptracegrpc.WithEndpoint(o.Endpoint)}
+		if o.Insecure {
+			opts = append(opts, otlptracegrpc.WithInsecure())
+		}
+		return otlptracegrpc.NewClient(opts...), nil
+	default:
+		return nil, fmt.Errorf("unsupported otlp protocol %q (want %q or %q)", o.Protocol, ProtocolHTTP, ProtocolGRPC)
+	}
 }
 
 // StartSpanFromContext starts a new span as a child of any span context already

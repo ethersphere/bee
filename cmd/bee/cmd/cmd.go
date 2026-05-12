@@ -42,6 +42,7 @@ const (
 	optionNameTracingEnabled               = "tracing-enable"
 	optionNameTracingOTLPEndpoint          = "tracing-otlp-endpoint"
 	optionNameTracingOTLPInsecure          = "tracing-otlp-insecure"
+	optionNameTracingOTLPProtocol          = "tracing-otlp-protocol"
 	optionNameTracingSamplingRatio         = "tracing-sampling-ratio"
 	optionNameTracingServiceName           = "tracing-service-name"
 	optionNameVerbosity                    = "verbosity"
@@ -100,6 +101,14 @@ const (
 	configKeyBlockchainRpcTLSTimeout   = "blockchain-rpc.tls-timeout"
 	configKeyBlockchainRpcIdleTimeout  = "blockchain-rpc.idle-timeout"
 	configKeyBlockchainRpcKeepalive    = "blockchain-rpc.keepalive"
+
+	// tracing
+	configKeyTracingEnabled       = "tracing.enable"
+	configKeyTracingOTLPEndpoint  = "tracing.otlp-endpoint"
+	configKeyTracingOTLPInsecure  = "tracing.otlp-insecure"
+	configKeyTracingOTLPProtocol  = "tracing.otlp-protocol"
+	configKeyTracingSamplingRatio = "tracing.sampling-ratio"
+	configKeyTracingServiceName   = "tracing.service-name"
 )
 
 var blockchainRpcConfigPairs = []struct{ flat, dotted string }{
@@ -110,9 +119,21 @@ var blockchainRpcConfigPairs = []struct{ flat, dotted string }{
 	{optionNameBlockchainRpcKeepalive, configKeyBlockchainRpcKeepalive},
 }
 
+var tracingConfigPairs = []struct{ flat, dotted string }{
+	{optionNameTracingEnabled, configKeyTracingEnabled},
+	{optionNameTracingOTLPEndpoint, configKeyTracingOTLPEndpoint},
+	{optionNameTracingOTLPInsecure, configKeyTracingOTLPInsecure},
+	{optionNameTracingOTLPProtocol, configKeyTracingOTLPProtocol},
+	{optionNameTracingSamplingRatio, configKeyTracingSamplingRatio},
+	{optionNameTracingServiceName, configKeyTracingServiceName},
+}
+
 var knownNestedKeys = func() map[string]bool {
-	m := make(map[string]bool, len(blockchainRpcConfigPairs))
+	m := make(map[string]bool, len(blockchainRpcConfigPairs)+len(tracingConfigPairs))
 	for _, p := range blockchainRpcConfigPairs {
+		m[p.dotted] = true
+	}
+	for _, p := range tracingConfigPairs {
 		m[p.dotted] = true
 	}
 	return m
@@ -281,9 +302,10 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Uint64(optionNameNetworkID, chaincfg.Mainnet.NetworkID, "ID of the Swarm network")
 	cmd.Flags().StringSlice(optionCORSAllowedOrigins, []string{}, "origins with CORS headers enabled")
 	cmd.Flags().Bool(optionNameTracingEnabled, false, "enable tracing")
-	cmd.Flags().String(optionNameTracingOTLPEndpoint, "127.0.0.1:4318", "OTLP/HTTP endpoint to send tracing data (host:port)")
+	cmd.Flags().String(optionNameTracingOTLPEndpoint, "127.0.0.1:4318", "OTLP endpoint to send tracing data (host:port); default port is 4318 for http, 4317 for grpc")
 	cmd.Flags().Bool(optionNameTracingOTLPInsecure, true, "disable TLS for the OTLP exporter (useful for a local collector)")
-	cmd.Flags().Float64(optionNameTracingSamplingRatio, 1.0, "head-based sampling ratio in [0,1]; 1 samples everything")
+	cmd.Flags().String(optionNameTracingOTLPProtocol, "http", "OTLP exporter transport: http or grpc")
+	cmd.Flags().Float64(optionNameTracingSamplingRatio, 1.0, "head-based sampling ratio in [0,1]; 0 samples nothing, 1 samples everything")
 	cmd.Flags().String(optionNameTracingServiceName, "bee", "service name identifier for tracing")
 	cmd.Flags().String(optionNameVerbosity, "info", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
 	cmd.Flags().String(optionWelcomeMessage, "", "send a welcome message string during handshakes")
@@ -364,7 +386,17 @@ func (c *command) initLogger(cmd *cobra.Command) error {
 // bindBlockchainRpcConfig supports both flat (blockchain-rpc-endpoint) and
 // nested (blockchain-rpc.endpoint) YAML forms, with nested taking precedence.
 func (c *command) bindBlockchainRpcConfig(cmd *cobra.Command) {
-	for _, p := range blockchainRpcConfigPairs {
+	c.bindNestedConfig(cmd, blockchainRpcConfigPairs)
+}
+
+// bindTracingConfig supports both flat (tracing-otlp-endpoint) and nested
+// (tracing.otlp-endpoint) YAML forms, with nested taking precedence.
+func (c *command) bindTracingConfig(cmd *cobra.Command) {
+	c.bindNestedConfig(cmd, tracingConfigPairs)
+}
+
+func (c *command) bindNestedConfig(cmd *cobra.Command, pairs []struct{ flat, dotted string }) {
+	for _, p := range pairs {
 		// Check before registering the alias; afterwards the flat value is unreachable.
 		if c.config.InConfig(p.flat) && c.config.InConfig(p.dotted) {
 			c.logger.Warning("config key conflict: nested form takes precedence", "ignored", p.flat, "used", p.dotted)
