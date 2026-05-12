@@ -2547,7 +2547,7 @@ paths:
       summary: Connect to a pubsub topic via WebSocket
       description: |
         Opens a WebSocket connection to a pubsub topic. The connection acts as either a publisher (read+write)
-        or subscriber (read-only) depending on the presence of GSOC headers.
+        or subscriber (read-only) depending on the presence of GSOC query params.
         
         **WebSocket protocol:**
         - Inbound (client → node, publisher only): raw SOC payload `[sig:65B][span:8B][payload:N B]`

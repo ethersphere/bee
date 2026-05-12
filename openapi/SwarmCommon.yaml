@@ -1357,28 +1357,28 @@ components:
       description: "ACT history Unix timestamp"
 
     SwarmPubsubPeer:
-      in: header
-      name: swarm-pubsub-peer
+      in: query
+      name: peer
       schema:
         type: string
       required: true
       description: "Multiaddress of the broker peer to connect to for pubsub"
 
     SwarmPubsubGsocEthAddress:
-      in: header
-      name: swarm-pubsub-gsoc-eth-address
+      in: query
+      name: gsoc-eth-address
       schema:
         $ref: "#/components/schemas/HexString"
       required: false
-      description: "GSOC owner Ethereum address (20 bytes, hex-encoded) for publisher role. Required together with swarm-pubsub-gsoc-topic to upgrade to publisher."
+      description: "GSOC owner Ethereum address (20 bytes, hex-encoded) for publisher role. Required together with gsoc-topic to upgrade to publisher."
 
     SwarmPubsubGsocTopic:
-      in: header
-      name: swarm-pubsub-gsoc-topic
+      in: query
+      name: gsoc-topic
       schema:
         $ref: "#/components/schemas/HexString"
       required: false
-      description: "GSOC topic identifier (hex) for publisher role. Required together with swarm-pubsub-gsoc-eth-address to upgrade to publisher."
+      description: "GSOC topic identifier (hex) for publisher role. Required together with gsoc-eth-address to upgrade to publisher."
 
   responses:
     "200":
