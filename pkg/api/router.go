@@ -284,10 +284,12 @@ func (s *Service) mountAPI() {
 		),
 	})
 
-	handle("/chunks/stream", web.ChainHandlers(
-		s.newTracingHandler("chunks-stream-upload"),
-		web.FinalHandlerFunc(s.chunkUploadStreamHandler),
-	))
+	handle("/chunks/stream", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			s.newTracingHandler("chunks-stream-upload"),
+			web.FinalHandlerFunc(s.chunkUploadStreamHandler),
+		),
+	})
 
 	handle("/chunks/{address}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
@@ -364,11 +366,15 @@ func (s *Service) mountAPI() {
 		),
 	})
 
-	handle("/pss/subscribe/{topic}", http.HandlerFunc(s.pssWsHandler))
+	handle("/pss/subscribe/{topic}", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.pssWsHandler),
+	})
 
-	handle("/gsoc/subscribe/{address}", web.ChainHandlers(
-		web.FinalHandlerFunc(s.gsocWsHandler),
-	))
+	handle("/gsoc/subscribe/{address}", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			web.FinalHandlerFunc(s.gsocWsHandler),
+		),
+	})
 
 	handle("/tags", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.listTagsHandler),
