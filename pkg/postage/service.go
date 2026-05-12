@@ -311,8 +311,14 @@ func (ps *service) removeStampItems(ctx context.Context, batchID []byte) error {
 		return err
 	}
 
+	var firstErr error
 	for _, item := range toDelete {
-		_ = ps.store.Delete(item)
+		if err := ps.store.Delete(item); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("remove expired stamp items batch %s: %w", hex.EncodeToString(batchID), err)
+		}
+	}
+	if firstErr != nil {
+		return firstErr
 	}
 
 	ps.logger.Debug("removed expired stamps", "batchID", hex.EncodeToString(batchID), "count", len(toDelete))
