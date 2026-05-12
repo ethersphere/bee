@@ -142,6 +142,8 @@ type Options struct {
 	BlockProfile                  bool
 	BlockTime                     time.Duration
 	BlockSyncInterval             uint64
+	FeeHistoryBlockCount          uint64
+	FeeHistoryRewardPercentiles   []float64
 	BootnodeMode                  bool
 	Bootnodes                     []string
 	CacheCapacity                 uint64
@@ -426,6 +428,8 @@ func NewBee(
 			Keepalive:   o.BlockchainRpcKeepalive,
 		},
 		o.BlockSyncInterval,
+		o.FeeHistoryBlockCount,
+		o.FeeHistoryRewardPercentiles,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("init chain: %w", err)

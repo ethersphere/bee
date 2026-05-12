@@ -198,6 +198,11 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		}
 	}
 
+	feeHistoryRewardPerc, err := node.ParseFeeHistoryRewardPercentiles(c.config.GetString(optionNameFeeHistoryRewardPercentiles))
+	if err != nil {
+		return nil, err
+	}
+
 	signerConfig, err := c.configureSigner(cmd, logger)
 	if err != nil {
 		return nil, fmt.Errorf("configure signer: %w", err)
@@ -281,6 +286,8 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		BlockProfile:                  c.config.GetBool(optionNamePProfBlock),
 		BlockTime:                     networkConfig.blockTime,
 		BlockSyncInterval:             c.config.GetUint64(optionNameBlockSyncInterval),
+		FeeHistoryBlockCount:          c.config.GetUint64(optionNameFeeHistoryBlockCount),
+		FeeHistoryRewardPercentiles:   feeHistoryRewardPerc,
 		BootnodeMode:                  bootNode,
 		Bootnodes:                     networkConfig.bootNodes,
 		CacheCapacity:                 c.config.GetUint64(optionNameCacheCapacity),

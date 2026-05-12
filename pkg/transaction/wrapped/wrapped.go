@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"math/big"
+	"slices"
 	"time"
 
 	"github.com/ethereum/go-ethereum"
@@ -32,6 +33,7 @@ type wrappedBackend struct {
 	blockTime         time.Duration
 	blockSyncInterval uint64
 	blockNumberCache  *cache.SingleFlightCache[blockNumberAnchor]
+	feeHistoryParams  feeHistoryParams
 }
 
 func NewBackend(
@@ -39,9 +41,22 @@ func NewBackend(
 	minimumGasTipCap uint64,
 	blockTime time.Duration,
 	blockSyncInterval uint64,
+	feeHistoryBlockCount uint64,
+	rewardPercentiles []float64,
 ) transaction.Backend {
 	if blockSyncInterval == 0 {
 		blockSyncInterval = 1
+	}
+
+	if feeHistoryBlockCount == 0 {
+		feeHistoryBlockCount = feeHistoryDefaultBlockCount
+	}
+
+	var rewardPerc []float64
+	if len(rewardPercentiles) >= 3 {
+		rewardPerc = slices.Clone(rewardPercentiles)
+	} else {
+		rewardPerc = slices.Clone(feeHistoryDefaultRewardPercentiles)
 	}
 
 	return &wrappedBackend{
@@ -51,6 +66,10 @@ func NewBackend(
 		metrics:           newMetrics(),
 		blockSyncInterval: blockSyncInterval,
 		blockNumberCache:  cache.NewSingleFlightCache[blockNumberAnchor]("block_number"),
+		feeHistoryParams: feeHistoryParams{
+			blockCount:        feeHistoryBlockCount,
+			rewardPercentiles: rewardPerc,
+		},
 	}
 }
 
@@ -240,6 +259,36 @@ func (b *wrappedBackend) ChainID(ctx context.Context) (*big.Int, error) {
 		return nil, err
 	}
 	return chainID, nil
+}
+
+func (b *wrappedBackend) FeeHistory(ctx context.Context, blockCount uint64, lastBlock *big.Int, rewardPercentiles []float64) (*ethereum.FeeHistory, error) {
+	b.metrics.TotalRPCCalls.Inc()
+	b.metrics.FeeHistoryCalls.Inc()
+	fh, err := b.backend.FeeHistory(ctx, blockCount, lastBlock, rewardPercentiles)
+	if err != nil {
+		b.metrics.TotalRPCErrors.Inc()
+		return nil, err
+	}
+	return fh, nil
+}
+
+// SuggestedFeesFromFeeHistory derives Low/Market/Aggressive max fees from eth_feeHistory for the
+// configured block span and reward percentiles.
+func (b *wrappedBackend) SuggestedFeesFromFeeHistory(ctx context.Context) (*transaction.FeeHistorySuggestedFees, error) {
+	fh, err := b.FeeHistory(ctx, b.feeHistoryParams.blockCount, nil, b.feeHistoryParams.rewardPercentiles)
+	if err != nil {
+		return nil, err
+	}
+	low, market, aggressive, err := suggestedFeesFromFeeHistoryResult(fh, b.minimumGasTipCap)
+	if err != nil {
+		b.metrics.FeeHistoryParseErrors.Inc()
+		return nil, err
+	}
+	return &transaction.FeeHistorySuggestedFees{
+		Low:        new(big.Int).Set(low),
+		Market:     new(big.Int).Set(market),
+		Aggressive: new(big.Int).Set(aggressive),
+	}, nil
 }
 
 func (b *wrappedBackend) Close() {

@@ -97,6 +97,10 @@ func (m *simulatedBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big
 	return nil, nil, ErrNotImplemented
 }
 
+func (m *simulatedBackend) SuggestedFeesFromFeeHistory(ctx context.Context) (*transaction.FeeHistorySuggestedFees, error) {
+	return nil, ErrNotImplemented
+}
+
 func (m *simulatedBackend) EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint64, error) {
 	return 0, ErrNotImplemented
 }
@@ -145,6 +149,10 @@ func (m *simulatedBackend) NonceAt(ctx context.Context, account common.Address, 
 }
 
 func (m *simulatedBackend) SuggestGasTipCap(ctx context.Context) (*big.Int, error) {
+	return nil, ErrNotImplemented
+}
+
+func (m *simulatedBackend) FeeHistory(ctx context.Context, blockCount uint64, lastBlock *big.Int, rewardPercentiles []float64) (*ethereum.FeeHistory, error) {
 	return nil, ErrNotImplemented
 }
 
