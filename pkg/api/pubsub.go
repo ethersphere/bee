@@ -89,12 +89,6 @@ func (s *Service) pubsubWsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.beeMode == DevMode {
-		logger.Warning("pubsub endpoint is disabled in dev mode")
-		jsonhttp.BadRequest(w, errUnsupportedDevNodeOperation)
-		return
-	}
-
 	// Connect to broker peer
 	ctx, cancel := context.WithCancel(context.Background())
 	mode, err := s.pubsubSvc.Connect(ctx, underlay, topicAddr, pubsub.ModeGSOCEphemeral, connectOpts)
