@@ -146,7 +146,7 @@ func (s *Service) statusGetPeersHandler(w http.ResponseWriter, r *http.Request) 
 
 	err := s.topologyDriver.EachConnectedPeer(
 		peerFunc,
-		topology.Select{},
+		topology.Select{IncludeBootnodes: true},
 	)
 	if err != nil {
 		logger.Debug("status snapshot", "error", err)
