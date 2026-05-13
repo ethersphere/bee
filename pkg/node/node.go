@@ -867,6 +867,31 @@ func NewBee(
 			return nil, errors.New("postage contract is paused")
 		}
 
+		// Refuse to start if the last-synced postage block sits ahead of the
+		// chain tip reported by the backend. The persisted state was advanced
+		// from earlier RPC responses, so the gap means the configured
+		// blockchain-rpc-endpoint is now returning data for a different chain
+		// than it was previously (a misrouted public RPC, a changed endpoint,
+		// or a load-balancer serving the wrong backend). Without this guard
+		// the postage listener loop spins until the 10-minute stalling
+		// timeout fires, surfacing as /stamps returning 503 "syncing in
+		// progress" the whole time (issue #4941).
+		if cs := batchStore.GetChainState(); cs.Block > 0 {
+			blockNumber, blockErr := chainBackend.BlockNumber(ctx)
+			switch {
+			case blockErr != nil:
+				logger.Warning("could not verify chain tip against stored chainstate", "error", blockErr)
+			case cs.Block > blockNumber:
+				return nil, fmt.Errorf(
+					"blockchain-rpc-endpoint reports block %d, but the local batch store has already synced past it to block %d. "+
+						"This means the RPC endpoint is now serving a different chain than it was on a previous run. "+
+						"Confirm that blockchain-rpc-endpoint points to the correct network (compare its eth_chainId and current block height against a second, trusted endpoint). "+
+						"Once the RPC is correct, restart with --resync to rebuild the batch store from the right chain",
+					blockNumber, cs.Block,
+				)
+			}
+		}
+
 		if o.FullNodeMode {
 			err = batchSvc.Start(ctx, postageSyncStart)
 			syncStatus.Store(true)
