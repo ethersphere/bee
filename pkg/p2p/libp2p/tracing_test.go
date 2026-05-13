@@ -20,6 +20,8 @@ func TestTracing(t *testing.T) {
 
 	tracer1, closer1, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     true,
+		Endpoint:    "127.0.0.1:1",
+		Insecure:    true,
 		ServiceName: "bee-test",
 	})
 	if err != nil {
@@ -29,6 +31,8 @@ func TestTracing(t *testing.T) {
 
 	tracer2, closer2, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     true,
+		Endpoint:    "127.0.0.1:1",
+		Insecure:    true,
 		ServiceName: "bee-test",
 	})
 	if err != nil {
