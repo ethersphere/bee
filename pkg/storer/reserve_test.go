@@ -516,20 +516,25 @@ func TestRadiusManager(t *testing.T) {
 		waitForRadius(t, storer.Reserve(), 0)
 	})
 
-	t.Run("radius doesn't change due to non-zero pull rate", func(t *testing.T) {
+	t.Run("radius decreases even with non-zero pull rate", func(t *testing.T) {
 		t.Parallel()
 		storer, err := diskStorer(t, dbTestOps(baseAddr, 10, nil, nil, time.Millisecond*500))()
 		if err != nil {
 			t.Fatal(err)
 		}
 		readyC := make(chan struct{})
+		// Reserve is empty, so countWithinRadius == 0 < threshold; the worker
+		// should decrement radius regardless of the syncer's reported rate.
+		// The old behavior (gated on SyncRate() == 0) made this scenario
+		// permanently stuck on live networks where peer churn keeps the rate
+		// above zero — see issues #5396 and #5428.
 		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(1), networkRadiusFunc(3), readyC)
 		select {
 		case <-readyC:
 		case <-t.Context().Done():
 			t.Fatal("start reserve worker timeout")
 		}
-		waitForRadius(t, storer.Reserve(), 3)
+		waitForRadius(t, storer.Reserve(), 0)
 	})
 }
 
