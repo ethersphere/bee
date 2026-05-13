@@ -877,6 +877,9 @@ paths:
           required: false
           description: ID of the postage batch to use. Either this or `swarm-postage-stamp` must be supplied.
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageStamp"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmAct"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       requestBody:
@@ -895,6 +898,10 @@ paths:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/ReferenceResponse"
           headers:
+            "swarm-tag":
+              description: Tag UID, returned when an upload session is in use (either because `swarm-tag` was supplied, `swarm-deferred-upload` requested deferred mode, or `swarm-pin` was set).
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/Uid"
             "swarm-act-history-address":
               $ref: "SwarmCommon.yaml#/components/headers/SwarmActHistoryAddress"
         "400":
@@ -903,6 +910,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/401"
         "402":
           $ref: "SwarmCommon.yaml#/components/responses/402"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
