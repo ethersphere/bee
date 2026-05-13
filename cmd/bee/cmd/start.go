@@ -322,6 +322,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		TracingEnabled:                c.config.GetBool(configKeyTracingEnabled),
 		TracingEndpoint:               c.config.GetString(configKeyTracingOTLPEndpoint),
 		TracingInsecure:               c.config.GetBool(configKeyTracingOTLPInsecure),
+		TracingCAFile:                 c.config.GetString(configKeyTracingOTLPCAFile),
 		TracingProtocol:               c.config.GetString(configKeyTracingOTLPProtocol),
 		TracingSamplingRatio:          c.config.GetFloat64(configKeyTracingSamplingRatio),
 		TracingServiceName:            c.config.GetString(configKeyTracingServiceName),

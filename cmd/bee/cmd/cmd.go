@@ -42,6 +42,7 @@ const (
 	optionNameTracingEnabled               = "tracing-enable"
 	optionNameTracingOTLPEndpoint          = "tracing-otlp-endpoint"
 	optionNameTracingOTLPInsecure          = "tracing-otlp-insecure"
+	optionNameTracingOTLPCAFile            = "tracing-otlp-ca-file"
 	optionNameTracingOTLPProtocol          = "tracing-otlp-protocol"
 	optionNameTracingSamplingRatio         = "tracing-sampling-ratio"
 	optionNameTracingServiceName           = "tracing-service-name"
@@ -106,6 +107,7 @@ const (
 	configKeyTracingEnabled       = "tracing.enable"
 	configKeyTracingOTLPEndpoint  = "tracing.otlp-endpoint"
 	configKeyTracingOTLPInsecure  = "tracing.otlp-insecure"
+	configKeyTracingOTLPCAFile    = "tracing.otlp-ca-file"
 	configKeyTracingOTLPProtocol  = "tracing.otlp-protocol"
 	configKeyTracingSamplingRatio = "tracing.sampling-ratio"
 	configKeyTracingServiceName   = "tracing.service-name"
@@ -123,6 +125,7 @@ var tracingConfigPairs = []struct{ flat, dotted string }{
 	{optionNameTracingEnabled, configKeyTracingEnabled},
 	{optionNameTracingOTLPEndpoint, configKeyTracingOTLPEndpoint},
 	{optionNameTracingOTLPInsecure, configKeyTracingOTLPInsecure},
+	{optionNameTracingOTLPCAFile, configKeyTracingOTLPCAFile},
 	{optionNameTracingOTLPProtocol, configKeyTracingOTLPProtocol},
 	{optionNameTracingSamplingRatio, configKeyTracingSamplingRatio},
 	{optionNameTracingServiceName, configKeyTracingServiceName},
@@ -303,7 +306,8 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().StringSlice(optionCORSAllowedOrigins, []string{}, "origins with CORS headers enabled")
 	cmd.Flags().Bool(optionNameTracingEnabled, false, "enable tracing")
 	cmd.Flags().String(optionNameTracingOTLPEndpoint, "127.0.0.1:4318", "OTLP endpoint to send tracing data (host:port); default port is 4318 for http, 4317 for grpc")
-	cmd.Flags().Bool(optionNameTracingOTLPInsecure, true, "disable TLS for the OTLP exporter (useful for a local collector)")
+	cmd.Flags().Bool(optionNameTracingOTLPInsecure, false, "disable TLS for the OTLP exporter (useful for a local collector); when false, set --tracing-otlp-ca-file to verify the collector certificate against a private CA")
+	cmd.Flags().String(optionNameTracingOTLPCAFile, "", "path to a PEM-encoded CA bundle used to verify the OTLP collector certificate; ignored when --tracing-otlp-insecure=true")
 	cmd.Flags().String(optionNameTracingOTLPProtocol, "http", "OTLP exporter transport: http or grpc")
 	cmd.Flags().Float64(optionNameTracingSamplingRatio, 1.0, "head-based sampling ratio in [0,1]; 0 samples nothing, 1 samples everything")
 	cmd.Flags().String(optionNameTracingServiceName, "bee", "service name identifier for tracing")

@@ -239,13 +239,17 @@ func TestNewLoggerWithTraceID_nilLogger(t *testing.T) {
 	}
 }
 
-// newTracer returns a Tracer wired to a real OTel SDK with no exporter, so
-// spans receive valid contexts but nothing is shipped over the network.
+// newTracer returns a Tracer wired to a real OTel SDK with an OTLP exporter
+// pointed at a dead local endpoint. Spans receive valid contexts; the batch
+// processor's failed exports are silently dropped in the background, which is
+// fine for unit tests that only verify context propagation.
 func newTracer(t *testing.T) *tracing.Tracer {
 	t.Helper()
 
 	tracer, closer, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     true,
+		Endpoint:    "127.0.0.1:1",
+		Insecure:    true,
 		ServiceName: "test",
 	})
 	if err != nil {

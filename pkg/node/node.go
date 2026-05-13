@@ -189,6 +189,7 @@ type Options struct {
 	TracingEnabled                bool
 	TracingEndpoint               string
 	TracingInsecure               bool
+	TracingCAFile                 string
 	TracingProtocol               string
 	TracingSamplingRatio          float64
 	TracingServiceName            string
@@ -236,9 +237,11 @@ func NewBee(
 		Enabled:       o.TracingEnabled,
 		Endpoint:      o.TracingEndpoint,
 		Insecure:      o.TracingInsecure,
+		CAFile:        o.TracingCAFile,
 		Protocol:      o.TracingProtocol,
 		SamplingRatio: o.TracingSamplingRatio,
 		ServiceName:   o.TracingServiceName,
+		Logger:        logger,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("tracer: %w", err)

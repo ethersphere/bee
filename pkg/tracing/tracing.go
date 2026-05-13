@@ -9,10 +9,13 @@ package tracing
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -28,6 +31,7 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.25.0"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
+	"google.golang.org/grpc/credentials"
 )
 
 // ErrContextNotFound is returned when tracing context is not present in
@@ -67,12 +71,17 @@ type Tracer struct {
 type Options struct {
 	// Enabled toggles span recording. When false the tracer is a no-op.
 	Enabled bool
-	// Endpoint is the OTLP/HTTP collector endpoint, e.g. "127.0.0.1:4318".
+	// Endpoint is the OTLP collector endpoint, e.g. "127.0.0.1:4318" for http
+	// or "127.0.0.1:4317" for grpc. Required when Enabled is true.
 	Endpoint string
 	// ServiceName is reported as the OTel service.name resource attribute.
 	ServiceName string
 	// Insecure disables TLS for the OTLP exporter (useful for a local collector).
 	Insecure bool
+	// CAFile is an optional path to a PEM-encoded CA bundle used to verify
+	// the OTLP collector certificate. Ignored when Insecure is true. When
+	// empty and Insecure is false, the system root CAs are used.
+	CAFile string
 	// SamplingRatio is the head-based sampling ratio for the parent-based
 	// sampler in the range [0, 1]. 0 disables sampling for non-parented spans;
 	// 1 samples everything. Negative values are clamped to 0.
@@ -80,6 +89,9 @@ type Options struct {
 	// Protocol selects the OTLP exporter transport: "http" or "grpc". Empty
 	// defaults to "http".
 	Protocol string
+	// Logger, when non-nil, receives startup warnings (e.g. missing CA bundle
+	// when TLS is enabled). NewTracer does not log otherwise.
+	Logger log.Logger
 }
 
 // NewTracer creates a new Tracer and returns a closer that flushes pending
@@ -91,6 +103,14 @@ func NewTracer(o *Options) (*Tracer, io.Closer, error) {
 
 	if !o.Enabled {
 		return noopTracer, noopCloser{}, nil
+	}
+
+	if o.Endpoint == "" {
+		return nil, nil, errors.New("tracing-otlp-endpoint is required when tracing is enabled")
+	}
+
+	if !o.Insecure && o.CAFile == "" && o.Logger != nil {
+		o.Logger.Warning("tracing: TLS is enabled but no CA bundle is configured; the OTLP exporter will rely on the system root CAs. Provide --tracing-otlp-ca-file, set --tracing-otlp-insecure=true for a plaintext local collector, or disable tracing.")
 	}
 
 	res, err := resource.New(context.Background(),
@@ -105,27 +125,20 @@ func NewTracer(o *Options) (*Tracer, io.Closer, error) {
 		ratio = 0
 	}
 
-	tpOpts := []sdktrace.TracerProviderOption{
+	client, err := newOTLPClient(o)
+	if err != nil {
+		return nil, nil, err
+	}
+	exporter, err := otlptrace.New(context.Background(), client)
+	if err != nil {
+		return nil, nil, fmt.Errorf("otlp exporter: %w", err)
+	}
+
+	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithResource(res),
 		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(ratio))),
-	}
-
-	// If no OTLP endpoint is configured, omit the exporter entirely. Spans are
-	// still created with valid contexts (useful for local development and unit
-	// tests) but nothing is shipped over the network.
-	if o.Endpoint != "" {
-		client, err := newOTLPClient(o)
-		if err != nil {
-			return nil, nil, err
-		}
-		exporter, err := otlptrace.New(context.Background(), client)
-		if err != nil {
-			return nil, nil, fmt.Errorf("otlp exporter: %w", err)
-		}
-		tpOpts = append(tpOpts, sdktrace.WithBatcher(exporter))
-	}
-
-	tp := sdktrace.NewTracerProvider(tpOpts...)
+		sdktrace.WithBatcher(exporter),
+	)
 	return &Tracer{tracer: tp.Tracer(instrumentationName)}, providerCloser{tp: tp}, nil
 }
 
@@ -144,17 +157,43 @@ func newOTLPClient(o *Options) (otlptrace.Client, error) {
 		opts := []otlptracehttp.Option{otlptracehttp.WithEndpoint(o.Endpoint)}
 		if o.Insecure {
 			opts = append(opts, otlptracehttp.WithInsecure())
+		} else if o.CAFile != "" {
+			tlsConfig, err := loadCAFile(o.CAFile)
+			if err != nil {
+				return nil, err
+			}
+			opts = append(opts, otlptracehttp.WithTLSClientConfig(tlsConfig))
 		}
 		return otlptracehttp.NewClient(opts...), nil
 	case ProtocolGRPC:
 		opts := []otlptracegrpc.Option{otlptracegrpc.WithEndpoint(o.Endpoint)}
 		if o.Insecure {
 			opts = append(opts, otlptracegrpc.WithInsecure())
+		} else if o.CAFile != "" {
+			tlsConfig, err := loadCAFile(o.CAFile)
+			if err != nil {
+				return nil, err
+			}
+			opts = append(opts, otlptracegrpc.WithTLSCredentials(credentials.NewTLS(tlsConfig)))
 		}
 		return otlptracegrpc.NewClient(opts...), nil
 	default:
 		return nil, fmt.Errorf("unsupported otlp protocol %q (want %q or %q)", o.Protocol, ProtocolHTTP, ProtocolGRPC)
 	}
+}
+
+// loadCAFile reads a PEM-encoded CA bundle from path and returns a *tls.Config
+// that uses it as the only root for OTLP collector certificate verification.
+func loadCAFile(path string) (*tls.Config, error) {
+	pem, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read tracing CA file %q: %w", path, err)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(pem) {
+		return nil, fmt.Errorf("tracing CA file %q contains no valid PEM certificates", path)
+	}
+	return &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}, nil
 }
 
 // StartSpanFromContext starts a new span as a child of any span context already
