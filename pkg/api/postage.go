@@ -260,6 +260,50 @@ func (s *Service) postageGetAllBatchesHandler(w http.ResponseWriter, _ *http.Req
 	jsonhttp.OK(w, batchesRes)
 }
 
+func (s *Service) postageGetBatchHandler(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("get_batch").Build()
+
+	paths := struct {
+		BatchID []byte `map:"batch_id" validate:"required,len=32"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
+		return
+	}
+	hexBatchID := hex.EncodeToString(paths.BatchID)
+
+	batch, err := s.batchStore.Get(paths.BatchID)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			jsonhttp.NotFound(w, "batch not found")
+			return
+		}
+		logger.Debug("get batch failed", "batch_id", hexBatchID, "error", err)
+		logger.Error(nil, "get batch failed")
+		jsonhttp.InternalServerError(w, "unable to get batch")
+		return
+	}
+
+	batchTTL, err := s.estimateBatchTTL(batch)
+	if err != nil {
+		logger.Debug("estimate batch expiration failed", "batch_id", hexBatchID, "error", err)
+		logger.Error(nil, "estimate batch expiration failed")
+		jsonhttp.InternalServerError(w, "unable to estimate batch expiration")
+		return
+	}
+
+	jsonhttp.OK(w, postageBatchResponse{
+		BatchID:     batch.ID,
+		Value:       bigint.Wrap(batch.Value),
+		Start:       batch.Start,
+		Owner:       batch.Owner,
+		Depth:       batch.Depth,
+		BucketDepth: batch.BucketDepth,
+		Immutable:   batch.Immutable,
+		BatchTTL:    batchTTL,
+	})
+}
+
 func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_stamp_bucket").Build()
 
