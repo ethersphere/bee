@@ -11,12 +11,14 @@ import (
 
 // metrics groups handshake related prometheus counters.
 type metrics struct {
-	SynRx          prometheus.Counter
-	SynRxFailed    prometheus.Counter
-	SynAckTx       prometheus.Counter
-	SynAckTxFailed prometheus.Counter
-	AckRx          prometheus.Counter
-	AckRxFailed    prometheus.Counter
+	SynRx                          prometheus.Counter
+	SynRxFailed                    prometheus.Counter
+	SynAckTx                       prometheus.Counter
+	SynAckTxFailed                 prometheus.Counter
+	AckRx                          prometheus.Counter
+	AckRxFailed                    prometheus.Counter
+	AdvertisableUnderlaysTruncated prometheus.Counter
+	ObservedUnderlaysTruncated     prometheus.Counter
 }
 
 // newMetrics is a convenient constructor for creating new metrics.
@@ -59,6 +61,18 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "ack_rx_failed",
 			Help:      "The number of ack messages that were unsuccessfully read.",
+		}),
+		AdvertisableUnderlaysTruncated: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "advertisable_underlays_truncated",
+			Help:      "Number of times own advertisable underlays were truncated before signing.",
+		}),
+		ObservedUnderlaysTruncated: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "observed_underlays_truncated",
+			Help:      "Number of times observed peer underlays were truncated before sending.",
 		}),
 	}
 }

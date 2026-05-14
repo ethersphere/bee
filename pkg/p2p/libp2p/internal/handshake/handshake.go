@@ -157,10 +157,20 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 
 	w, r := protobuf.NewWriterAndReader(stream)
 
+	var observedTruncated bool
+	peerMultiaddrs, observedTruncated = bzz.TruncateUnderlays(peerMultiaddrs)
+	if observedTruncated {
+		s.metrics.ObservedUnderlaysTruncated.Inc()
+	}
 	peerMultiaddrs = p2p.FilterBee260CompatibleUnderlays(o.bee260compatibility, peerMultiaddrs)
 
+	observedUnderlayBytes, err := bzz.SerializeUnderlays(peerMultiaddrs)
+	if err != nil {
+		return nil, fmt.Errorf("serialize observed underlays: %w", err)
+	}
+
 	if err := w.WriteMsgWithContext(ctx, &pb.Syn{
-		ObservedUnderlay: bzz.SerializeUnderlays(peerMultiaddrs),
+		ObservedUnderlay: observedUnderlayBytes,
 	}); err != nil {
 		return nil, fmt.Errorf("write syn message: %w", err)
 	}
@@ -214,6 +224,13 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 
 	advertisableUnderlays = p2p.FilterBee260CompatibleUnderlays(o.bee260compatibility, advertisableUnderlays)
 
+	// Truncate to count and byte-size caps before signing.
+	var advTruncated bool
+	advertisableUnderlays, advTruncated = bzz.TruncateUnderlays(advertisableUnderlays)
+	if advTruncated {
+		s.metrics.AdvertisableUnderlaysTruncated.Inc()
+	}
+
 	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce)
 	if err != nil {
 		return nil, err
@@ -230,9 +247,15 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 
 	// Synced read:
 	welcomeMessage := s.GetWelcomeMessage()
+
+	ackUnderlayBytes, err := bzz.SerializeUnderlays(bzzAddress.Underlays)
+	if err != nil {
+		return nil, fmt.Errorf("serialize ack underlays: %w", err)
+	}
+
 	msg := &pb.Ack{
 		Address: &pb.BzzAddress{
-			Underlay:  bzz.SerializeUnderlays(bzzAddress.Underlays),
+			Underlay:  ackUnderlayBytes,
 			Overlay:   bzzAddress.Overlay.Bytes(),
 			Signature: bzzAddress.Signature,
 		},
@@ -312,6 +335,13 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 
 	advertisableUnderlays = p2p.FilterBee260CompatibleUnderlays(o.bee260compatibility, advertisableUnderlays)
 
+	// Truncate to count and byte-size caps before signing.
+	var handleAdvTruncated bool
+	advertisableUnderlays, handleAdvTruncated = bzz.TruncateUnderlays(advertisableUnderlays)
+	if handleAdvTruncated {
+		s.metrics.AdvertisableUnderlaysTruncated.Inc()
+	}
+
 	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce)
 	if err != nil {
 		return nil, err
@@ -319,15 +349,31 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 
 	welcomeMessage := s.GetWelcomeMessage()
 
+	var handleObsTruncated bool
+	peerMultiaddrs, handleObsTruncated = bzz.TruncateUnderlays(peerMultiaddrs)
+	if handleObsTruncated {
+		s.metrics.ObservedUnderlaysTruncated.Inc()
+	}
+
 	peerMultiaddrs = p2p.FilterBee260CompatibleUnderlays(o.bee260compatibility, peerMultiaddrs)
+
+	synObservedBytes, err := bzz.SerializeUnderlays(peerMultiaddrs)
+	if err != nil {
+		return nil, fmt.Errorf("serialize syn observed underlays: %w", err)
+	}
+
+	synAckUnderlayBytes, err := bzz.SerializeUnderlays(bzzAddress.Underlays)
+	if err != nil {
+		return nil, fmt.Errorf("serialize synack underlays: %w", err)
+	}
 
 	if err := w.WriteMsgWithContext(ctx, &pb.SynAck{
 		Syn: &pb.Syn{
-			ObservedUnderlay: bzz.SerializeUnderlays(peerMultiaddrs),
+			ObservedUnderlay: synObservedBytes,
 		},
 		Ack: &pb.Ack{
 			Address: &pb.BzzAddress{
-				Underlay:  bzz.SerializeUnderlays(bzzAddress.Underlays),
+				Underlay:  synAckUnderlayBytes,
 				Overlay:   bzzAddress.Overlay.Bytes(),
 				Signature: bzzAddress.Signature,
 			},

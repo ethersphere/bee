@@ -198,9 +198,26 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 
 		advertisableUnderlays = p2p.FilterBee260CompatibleUnderlays(s.streamer.IsBee260(peer), advertisableUnderlays)
 
+		// Sort by priority and truncate to count and byte-size caps.
+		var truncated bool
+		advertisableUnderlays, truncated = bzz.TruncateUnderlays(advertisableUnderlays)
+		if truncated {
+			s.metrics.UnderlaysTruncated.Inc()
+			s.logger.Warning("sendPeers: truncated underlays for peer", "peer_address", p)
+		}
+		if len(advertisableUnderlays) == 0 {
+			continue
+		}
+
+		underlayBytes, err := bzz.SerializeUnderlays(advertisableUnderlays)
+		if err != nil {
+			s.logger.Warning("sendPeers: failed to serialize underlays", "peer_address", p, "error", err)
+			continue
+		}
+
 		peersRequest.Peers = append(peersRequest.Peers, &pb.BzzAddress{
 			Overlay:   addr.Overlay.Bytes(),
-			Underlay:  bzz.SerializeUnderlays(advertisableUnderlays),
+			Underlay:  underlayBytes,
 			Signature: addr.Signature,
 			Nonce:     addr.Nonce,
 		})
@@ -283,7 +300,16 @@ func (s *Service) checkAndAddPeers(peers pb.Peers) {
 		multiUnderlays, err := bzz.DeserializeUnderlays(p.Underlay)
 		if err != nil {
 			s.metrics.PeerUnderlayErr.Inc()
-			s.logger.Debug("multi address underlay", "error", err)
+			switch {
+			case errors.Is(err, bzz.ErrUnderlayByteSizeExceeded):
+				s.metrics.UnderlayByteSizeExceeded.Inc()
+				s.logger.Warning("checkAndAddPeers: dropping peer with oversized underlay", "size", len(p.Underlay))
+			case errors.Is(err, bzz.ErrUnderlayCountExceeded):
+				s.metrics.UnderlayCountExceeded.Inc()
+				s.logger.Warning("checkAndAddPeers: dropping peer with too many underlays", "size", len(p.Underlay))
+			default:
+				s.logger.Debug("multi address underlay", "error", err)
+			}
 			continue
 		}
 

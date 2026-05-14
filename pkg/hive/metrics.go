@@ -25,6 +25,10 @@ type metrics struct {
 	PeerUnderlayErr     prometheus.Counter
 	StorePeerErr        prometheus.Counter
 	ReachablePeers      prometheus.Counter
+
+	UnderlayByteSizeExceeded prometheus.Counter
+	UnderlayCountExceeded    prometheus.Counter
+	UnderlaysTruncated       prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -102,6 +106,24 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "reachable_peers_count",
 			Help:      "Number of peers that are reachable.",
+		}),
+		UnderlayByteSizeExceeded: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "underlay_byte_size_exceeded_count",
+			Help:      "Number of peers dropped due to oversized underlay field.",
+		}),
+		UnderlayCountExceeded: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "underlay_count_exceeded_count",
+			Help:      "Number of peers dropped due to exceeding underlay count limit.",
+		}),
+		UnderlaysTruncated: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "underlays_truncated_count",
+			Help:      "Number of times underlays were truncated on sender side.",
 		}),
 	}
 }

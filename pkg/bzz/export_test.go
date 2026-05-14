@@ -5,3 +5,7 @@
 package bzz
 
 const UnderlayListPrefix = underlayListPrefix
+
+const MaxUnderlaysPerPeer = maxUnderlaysPerPeer
+
+const MaxUnderlayBytes = maxUnderlayBytes
