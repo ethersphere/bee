@@ -180,6 +180,16 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return nil, fmt.Errorf("read synack message: %w", err)
 	}
 
+	// Reject malformed SynAck messages where nested pointer fields are
+	// absent. Proto3 generates these as optional pointers, so a peer can
+	// send a decodable message that would otherwise panic on deref.
+	if resp.Syn == nil {
+		return nil, ErrInvalidSyn
+	}
+	if resp.Ack == nil || resp.Ack.Address == nil {
+		return nil, ErrInvalidAck
+	}
+
 	observedUnderlays, err := bzz.DeserializeUnderlays(resp.Syn.ObservedUnderlay)
 	if err != nil {
 		return nil, ErrInvalidSyn
@@ -395,6 +405,13 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 	}
 	s.metrics.AckRx.Inc()
 
+	// Reject malformed Ack messages with a nil nested BzzAddress — proto3
+	// makes this a pointer field, so a peer can send one that would panic
+	// on deref otherwise.
+	if ack.Address == nil {
+		return nil, ErrInvalidAck
+	}
+
 	if ack.NetworkID != s.networkID {
 		return nil, ErrNetworkIDIncompatible
 	}
@@ -442,6 +459,12 @@ func (s *Service) GetWelcomeMessage() string {
 }
 
 func (s *Service) parseCheckAck(ack *pb.Ack) (*bzz.Address, error) {
+	// Defence in depth: guard against nil nested fields so this helper is
+	// safe independently of its callers.
+	if ack == nil || ack.Address == nil {
+		return nil, ErrInvalidAck
+	}
+
 	bzzAddress, err := bzz.ParseAddress(ack.Address.Underlay, ack.Address.Overlay, ack.Address.Signature, ack.Nonce, s.validateOverlay, s.networkID)
 	if err != nil {
 		return nil, ErrInvalidAck

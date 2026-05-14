@@ -699,6 +699,153 @@ func TestHandshake(t *testing.T) {
 			t.Fatal("expected nil res")
 		}
 	})
+
+	// Regression tests for nil nested protobuf fields on the handshake
+	// wire: a malicious peer can send syntactically decodable messages that
+	// omit nested pointer fields (SynAck.Syn, SynAck.Ack, Ack.Address), and
+	// the parser must reject them as protocol errors rather than panic
+	// (unauthenticated DoS). Each subtest recovers from panics so the test
+	// binary itself does not crash if a guard is missing.
+	t.Run("Handshake - nil SynAck.Syn", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("handshake panicked on nil SynAck.Syn: %v", r)
+			}
+		}()
+
+		var buffer1 bytes.Buffer
+		var buffer2 bytes.Buffer
+		stream1 := mock.NewStream(&buffer1, &buffer2)
+		stream2 := mock.NewStream(&buffer2, &buffer1)
+
+		w := protobuf.NewWriter(stream2)
+		if err := w.WriteMsg(&pb.SynAck{
+			// Syn is intentionally nil.
+			Ack: &pb.Ack{
+				Address: &pb.BzzAddress{
+					Underlay:  node2maBinary,
+					Overlay:   node2BzzAddress.Overlay.Bytes(),
+					Signature: node2BzzAddress.Signature,
+				},
+				NetworkID: networkID,
+				Nonce:     nonce,
+				FullNode:  true,
+			},
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		res, err := handshakeService.Handshake(context.Background(), stream1, node2mas)
+		if res != nil {
+			t.Fatal("res should be nil")
+		}
+		if !errors.Is(err, handshake.ErrInvalidSyn) {
+			t.Fatalf("expected %s, got %v", handshake.ErrInvalidSyn, err)
+		}
+	})
+
+	t.Run("Handshake - nil SynAck.Ack", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("handshake panicked on nil SynAck.Ack: %v", r)
+			}
+		}()
+
+		var buffer1 bytes.Buffer
+		var buffer2 bytes.Buffer
+		stream1 := mock.NewStream(&buffer1, &buffer2)
+		stream2 := mock.NewStream(&buffer2, &buffer1)
+
+		w := protobuf.NewWriter(stream2)
+		if err := w.WriteMsg(&pb.SynAck{
+			Syn: &pb.Syn{
+				ObservedUnderlay: node1maBinary,
+			},
+			// Ack is intentionally nil.
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		res, err := handshakeService.Handshake(context.Background(), stream1, node2mas)
+		if res != nil {
+			t.Fatal("res should be nil")
+		}
+		if !errors.Is(err, handshake.ErrInvalidAck) {
+			t.Fatalf("expected %s, got %v", handshake.ErrInvalidAck, err)
+		}
+	})
+
+	t.Run("Handshake - nil SynAck.Ack.Address", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("handshake panicked on nil Ack.Address: %v", r)
+			}
+		}()
+
+		var buffer1 bytes.Buffer
+		var buffer2 bytes.Buffer
+		stream1 := mock.NewStream(&buffer1, &buffer2)
+		stream2 := mock.NewStream(&buffer2, &buffer1)
+
+		w := protobuf.NewWriter(stream2)
+		if err := w.WriteMsg(&pb.SynAck{
+			Syn: &pb.Syn{
+				ObservedUnderlay: node1maBinary,
+			},
+			Ack: &pb.Ack{
+				// Address is intentionally nil.
+				NetworkID: networkID,
+				Nonce:     nonce,
+				FullNode:  true,
+			},
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		res, err := handshakeService.Handshake(context.Background(), stream1, node2mas)
+		if res != nil {
+			t.Fatal("res should be nil")
+		}
+		if !errors.Is(err, handshake.ErrInvalidAck) {
+			t.Fatalf("expected %s, got %v", handshake.ErrInvalidAck, err)
+		}
+	})
+
+	t.Run("Handle - nil Ack.Address", func(t *testing.T) {
+		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nonce, nil, "", true, node1AddrInfo.ID, logger)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var buffer1 bytes.Buffer
+		var buffer2 bytes.Buffer
+		stream1 := mock.NewStream(&buffer1, &buffer2)
+		stream2 := mock.NewStream(&buffer2, &buffer1)
+
+		w := protobuf.NewWriter(stream2)
+		if err := w.WriteMsg(&pb.Syn{
+			ObservedUnderlay: node1maBinary,
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := w.WriteMsg(&pb.Ack{
+			// Address is intentionally nil.
+			NetworkID: networkID,
+			Nonce:     nonce,
+			FullNode:  true,
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		res, err := handshakeService.Handle(context.Background(), stream1, node2mas)
+		if res != nil {
+			t.Fatal("res should be nil")
+		}
+		if !errors.Is(err, handshake.ErrInvalidAck) {
+			t.Fatalf("expected %s, got %v", handshake.ErrInvalidAck, err)
+		}
+	})
 }
 
 func mockPicker(f func(p2p.Peer) bool) p2p.Picker {
