@@ -513,9 +513,9 @@ func TestTruncateUnderlays(t *testing.T) {
 	})
 
 	t.Run("byte budget truncation", func(t *testing.T) {
-		// Create enough large WSS addresses that the byte budget (4096) is exceeded
+		// Create enough large WSS addresses that the byte budget (2048) is exceeded
 		// before the count cap. Each WSS address is ~136 bytes serialized, so
-		// ~30 addresses will exceed 4096 bytes.
+		// ~16 addresses will exceed 2048 bytes.
 		largeAddrs := make([]multiaddr.Multiaddr, 0, 40)
 		for i := range 35 {
 			ip := fmt.Sprintf("/ip4/%d.%d.%d.%d/tcp/32532/tls/sni/%d-%d-%d-%d.k2k4r8pr3m3aug5nudg2y039qfj2gxw6wnlx0e0ghzxufcn38soyp9z4.libp2p.direct/ws/p2p/QmfSx1ujzboapD5h2CiqTJqUy46FeTDwXBszB3XUCfKEEj",

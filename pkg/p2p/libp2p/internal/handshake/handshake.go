@@ -14,14 +14,16 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/handshake/pb"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-
 	libp2ppeer "github.com/libp2p/go-libp2p/core/peer"
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -33,7 +35,7 @@ const (
 	// ProtocolName is the text of the name of the handshake protocol.
 	ProtocolName = "handshake"
 	// ProtocolVersion is the current handshake protocol version.
-	ProtocolVersion = "14.0.0"
+	ProtocolVersion = "15.0.0"
 	// StreamName is the name of the stream used for handshake purposes.
 	StreamName = "handshake"
 	// MaxWelcomeMessageLength is maximum number of characters allowed in the welcome message.
@@ -89,14 +91,17 @@ type Service struct {
 	fullNode              bool
 	nonce                 []byte
 	networkID             uint64
-	validateOverlay       bool
 	welcomeMessage        atomic.Value
+	chequebookAddr        atomic.Pointer[common.Address] // set once the local chequebook is known; nil means absent.
+	chequebookVerifier    chequebook.Verifier            // nil means verification disabled.
+	addressbook           addressbook.Getter
 	logger                log.Logger
 	libp2pID              libp2ppeer.ID
 	metrics               metrics
 	picker                p2p.Picker
 	mu                    sync.RWMutex
 	hostAddresser         Addresser
+	now                   func() time.Time
 }
 
 // Info contains the information received from the handshake.
@@ -113,8 +118,10 @@ func (i *Info) LightString() string {
 	return ""
 }
 
-// New creates a new handshake Service.
-func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, overlay swarm.Address, networkID uint64, fullNode bool, nonce []byte, hostAddresser Addresser, welcomeMessage string, validateOverlay bool, ownPeerID libp2ppeer.ID, logger log.Logger) (*Service, error) {
+// New creates a new handshake Service. A nil chequebookVerifier disables the
+// chequebook gate; otherwise handshake completion requires the peer's
+// chequebook to pass verification.
+func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, overlay swarm.Address, networkID uint64, fullNode bool, nonce []byte, hostAddresser Addresser, welcomeMessage string, addrbook addressbook.Getter, ownPeerID libp2ppeer.ID, chequebookVerifier chequebook.Verifier, logger log.Logger) (*Service, error) {
 	if len(welcomeMessage) > MaxWelcomeMessageLength {
 		return nil, ErrWelcomeMessageLength
 	}
@@ -125,16 +132,36 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 		overlay:               overlay,
 		networkID:             networkID,
 		fullNode:              fullNode,
-		validateOverlay:       validateOverlay,
 		nonce:                 nonce,
 		libp2pID:              ownPeerID,
 		logger:                logger.WithName(loggerName).Register(),
 		metrics:               newMetrics(),
 		hostAddresser:         hostAddresser,
+		addressbook:           addrbook,
+		chequebookVerifier:    chequebookVerifier,
+		now:                   time.Now,
 	}
 	svc.welcomeMessage.Store(welcomeMessage)
 
 	return svc, nil
+}
+
+// SetChequebookAddress sets the local chequebook address included in
+// subsequent signed BzzAddress payloads. The zero value clears it.
+func (s *Service) SetChequebookAddress(addr common.Address) {
+	if (addr == common.Address{}) {
+		s.chequebookAddr.Store(nil)
+		return
+	}
+	cp := addr
+	s.chequebookAddr.Store(&cp)
+}
+
+func (s *Service) chequebookAddress() common.Address {
+	if v := s.chequebookAddr.Load(); v != nil {
+		return *v
+	}
+	return common.Address{}
 }
 
 func (s *Service) SetPicker(n p2p.Picker) {
@@ -241,7 +268,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		s.metrics.AdvertisableUnderlaysTruncated.Inc()
 	}
 
-	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce)
+	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce, s.now().Unix(), s.chequebookAddress())
 	if err != nil {
 		return nil, err
 	}
@@ -250,9 +277,9 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return nil, ErrNetworkIDIncompatible
 	}
 
-	remoteBzzAddress, err := s.parseCheckAck(resp.Ack)
+	remoteBzzAddress, err := s.parseCheckAck(ctx, resp.Ack)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrInvalidAck, err)
 	}
 
 	// Synced read:
@@ -265,13 +292,15 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 
 	msg := &pb.Ack{
 		Address: &pb.BzzAddress{
-			Underlay:  ackUnderlayBytes,
-			Overlay:   bzzAddress.Overlay.Bytes(),
-			Signature: bzzAddress.Signature,
+			Underlay:          ackUnderlayBytes,
+			Overlay:           bzzAddress.Overlay.Bytes(),
+			Signature:         bzzAddress.Signature,
+			Nonce:             bzzAddress.Nonce,
+			Timestamp:         bzzAddress.Timestamp,
+			ChequebookAddress: bzzAddress.ChequebookAddress.Bytes(),
 		},
 		NetworkID:      s.networkID,
 		FullNode:       s.fullNode,
-		Nonce:          s.nonce,
 		WelcomeMessage: welcomeMessage,
 	}
 
@@ -352,7 +381,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 		s.metrics.AdvertisableUnderlaysTruncated.Inc()
 	}
 
-	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce)
+	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce, s.now().Unix(), s.chequebookAddress())
 	if err != nil {
 		return nil, err
 	}
@@ -383,13 +412,15 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 		},
 		Ack: &pb.Ack{
 			Address: &pb.BzzAddress{
-				Underlay:  synAckUnderlayBytes,
-				Overlay:   bzzAddress.Overlay.Bytes(),
-				Signature: bzzAddress.Signature,
+				Underlay:          synAckUnderlayBytes,
+				Overlay:           bzzAddress.Overlay.Bytes(),
+				Signature:         bzzAddress.Signature,
+				Nonce:             bzzAddress.Nonce,
+				Timestamp:         bzzAddress.Timestamp,
+				ChequebookAddress: bzzAddress.ChequebookAddress.Bytes(),
 			},
 			NetworkID:      s.networkID,
 			FullNode:       s.fullNode,
-			Nonce:          s.nonce,
 			WelcomeMessage: welcomeMessage,
 		},
 	}); err != nil {
@@ -428,9 +459,9 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 		}
 	}
 
-	remoteBzzAddress, err := s.parseCheckAck(&ack)
+	remoteBzzAddress, err := s.parseCheckAck(ctx, &ack)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrInvalidAck, err)
 	}
 
 	loggerV1.Debug("handshake finished for peer (inbound)", "peer_address", remoteBzzAddress.Overlay)
@@ -458,16 +489,42 @@ func (s *Service) GetWelcomeMessage() string {
 	return s.welcomeMessage.Load().(string)
 }
 
-func (s *Service) parseCheckAck(ack *pb.Ack) (*bzz.Address, error) {
+func (s *Service) parseCheckAck(ctx context.Context, ack *pb.Ack) (*bzz.Address, error) {
 	// Defence in depth: guard against nil nested fields so this helper is
 	// safe independently of its callers.
 	if ack == nil || ack.Address == nil {
 		return nil, ErrInvalidAck
 	}
 
-	bzzAddress, err := bzz.ParseAddress(ack.Address.Underlay, ack.Address.Overlay, ack.Address.Signature, ack.Nonce, s.validateOverlay, s.networkID)
+	bzzAddress, err := bzz.ParseAddress(ack.Address.Underlay, ack.Address.Overlay, ack.Address.Signature, ack.Address.Nonce, ack.Address.Timestamp, s.networkID, ack.Address.ChequebookAddress)
 	if err != nil {
-		return nil, ErrInvalidAck
+		return nil, fmt.Errorf("parse address: %w", err)
+	}
+
+	existing, pastVerified, err := s.addressbook.Get(bzzAddress.Overlay)
+	if err != nil && !errors.Is(err, addressbook.ErrNotFound) {
+		return nil, fmt.Errorf("addressbook get: %w", err)
+	}
+
+	if err := bzz.CheckTimestamp(bzzAddress.Timestamp, existing, bzz.TimestampSourceHandshake, s.now()); err != nil {
+		if reason, ok := bzz.TimestampErrorLabel(err); ok {
+			s.metrics.TimestampRejected.WithLabelValues(reason).Inc()
+		}
+		return nil, fmt.Errorf("check timestamp: %w", err)
+	}
+
+	if s.chequebookVerifier != nil && ack.FullNode {
+		if (bzzAddress.ChequebookAddress == common.Address{}) {
+			s.metrics.ChequebookVerification.WithLabelValues("missing").Inc()
+			return nil, chequebook.ErrChequebookAddressMissing
+		}
+		pairVerified := pastVerified && existing != nil && existing.ChequebookAddress == bzzAddress.ChequebookAddress
+		peerEth := common.BytesToAddress(bzzAddress.EthereumAddress)
+		if err := s.chequebookVerifier.Verify(ctx, bzzAddress.ChequebookAddress, peerEth, bzzAddress.Overlay, pairVerified); err != nil {
+			s.metrics.ChequebookVerification.WithLabelValues(chequebook.VerifyErrorLabel(err)).Inc()
+			return nil, fmt.Errorf("verify chequebook: %w", err)
+		}
+		s.metrics.ChequebookVerification.WithLabelValues("success").Inc()
 	}
 
 	return bzzAddress, nil

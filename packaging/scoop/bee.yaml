@@ -23,6 +23,8 @@
 # cache-retrieval: true
 ## enable chequebook
 # chequebook-enable: true
+## reject full-node hive/handshake records that carry no chequebook address
+# chequebook-verification: false
 ## config file (default is $HOME/.bee.yaml)
 config: "./bee.yaml"
 ## origins with CORS headers enabled

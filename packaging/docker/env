@@ -91,6 +91,8 @@
 # BEE_CACHE_RETRIEVAL=false
 ## enable chequebook
 # BEE_CHEQUEBOOK_ENABLE=true
+## reject full-node hive/handshake records that carry no chequebook address
+# BEE_CHEQUEBOOK_VERIFICATION=false
 ## help for printconfig
 # BEE_HELP=false
 ## suggester for target neighborhood

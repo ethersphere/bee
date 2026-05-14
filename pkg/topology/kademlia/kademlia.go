@@ -409,7 +409,7 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 // to peers sent by the producers to the peerConnChan.
 func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup, neighbourhoodChan, balanceChan <-chan *peerConnInfo) {
 	connect := func(peer *peerConnInfo) {
-		bzzAddr, err := k.addressBook.Get(peer.addr)
+		bzzAddr, _, err := k.addressBook.Get(peer.addr)
 		switch {
 		case errors.Is(err, addressbook.ErrNotFound):
 			k.logger.Debug("empty address book entry for peer", "peer_address", peer.addr)

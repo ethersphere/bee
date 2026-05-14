@@ -19,6 +19,8 @@ type metrics struct {
 	AckRxFailed                    prometheus.Counter
 	AdvertisableUnderlaysTruncated prometheus.Counter
 	ObservedUnderlaysTruncated     prometheus.Counter
+	TimestampRejected              *prometheus.CounterVec
+	ChequebookVerification         *prometheus.CounterVec
 }
 
 // newMetrics is a convenient constructor for creating new metrics.
@@ -74,6 +76,24 @@ func newMetrics() metrics {
 			Name:      "observed_underlays_truncated",
 			Help:      "Number of times observed peer underlays were truncated before sending.",
 		}),
+		TimestampRejected: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "timestamp_rejected_total",
+				Help:      "Number of handshake ack messages rejected by timestamp validation. The 'reason' label is one of: invalid, in_future, stale.",
+			},
+			[]string{"reason"},
+		),
+		ChequebookVerification: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "chequebook_verification_total",
+				Help:      "Outcomes of chequebook verification during handshake. The 'result' label is one of: success, missing, issuer_mismatch, bytecode_mismatch, insufficient_balance, already_associated, verify_error.",
+			},
+			[]string{"result"},
+		),
 	}
 }
 

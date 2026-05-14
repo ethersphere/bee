@@ -51,10 +51,11 @@ func NewLibp2pService(t *testing.T, networkID uint64, logger log.Logger) (*libp2
 	lightNodes := lightnode.NewContainer(overlay)
 
 	opts := libp2p.Options{
-		PrivateKey: libp2pKey,
-		Nonce:      nonce,
-		FullNode:   true,
-		NATAddr:    "127.0.0.1:0", // Disable default NAT manager
+		PrivateKey:        libp2pKey,
+		Nonce:             nonce,
+		FullNode:          true,
+		NATAddr:           "127.0.0.1:0", // Disable default NAT manager
+		AllowPrivateCIDRs: true,
 	}
 
 	s, err := libp2p.New(ctx, crypto.NewDefaultSigner(swarmKey), networkID, overlay, addr, ab, statestore, lightNodes, logger, nil, opts)
