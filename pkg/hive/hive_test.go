@@ -176,9 +176,13 @@ func TestBroadcastPeers(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		underlayBytes, err := bzz.SerializeUnderlays(bzzAddresses[i].Underlays)
+		if err != nil {
+			t.Fatal(err)
+		}
 		wantMsgs[i/hive.MaxBatchSize].Peers = append(wantMsgs[i/hive.MaxBatchSize].Peers, &pb.BzzAddress{
 			Overlay:   bzzAddresses[i].Overlay.Bytes(),
-			Underlay:  bzz.SerializeUnderlays(bzzAddresses[i].Underlays),
+			Underlay:  underlayBytes,
 			Signature: bzzAddresses[i].Signature,
 			Nonce:     nonce,
 		})
@@ -243,14 +247,18 @@ func TestBroadcastPeers(t *testing.T) {
 		"Ok - don't advertise private CIDRs only (but include one public peer)": {
 			addresee: overlays[0],
 			peers:    overlays[58:],
-			wantMsgs: []pb.Peers{{Peers: []*pb.BzzAddress{
-				{
+			wantMsgs: []pb.Peers{{Peers: func() []*pb.BzzAddress {
+				ub, err := bzz.SerializeUnderlays([]ma.Multiaddr{bzzAddresses[len(bzzAddresses)-1].Underlays[0]})
+				if err != nil {
+					t.Fatal(err)
+				}
+				return []*pb.BzzAddress{{
 					Overlay:   bzzAddresses[len(bzzAddresses)-1].Overlay.Bytes(),
-					Underlay:  bzz.SerializeUnderlays([]ma.Multiaddr{bzzAddresses[len(bzzAddresses)-1].Underlays[0]}),
+					Underlay:  ub,
 					Signature: bzzAddresses[len(bzzAddresses)-1].Signature,
 					Nonce:     nonce,
-				},
-			}}},
+				}}
+			}()}},
 			wantOverlays: []swarm.Address{overlays[len(overlays)-1]},
 			wantBzzAddresses: []bzz.Address{
 				{

@@ -57,8 +57,14 @@ func TestHandshake(t *testing.T) {
 	node1mas := []ma.Multiaddr{node1ma, node1ma2}
 	node2mas := []ma.Multiaddr{node2ma, node2ma2}
 
-	node1maBinary := bzz.SerializeUnderlays(node1mas)
-	node2maBinary := bzz.SerializeUnderlays(node2mas)
+	node1maBinary, err := bzz.SerializeUnderlays(node1mas)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node2maBinary, err := bzz.SerializeUnderlays(node2mas)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	node1AddrInfos, err := libp2ppeer.AddrInfosFromP2pAddrs(node1ma, node1ma2)
 	if err != nil {
@@ -163,7 +169,11 @@ func TestHandshake(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if !bytes.Equal(syn.ObservedUnderlay, node2maBinary) {
+		synAddrs, err := bzz.DeserializeUnderlays(syn.ObservedUnderlay)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bzz.AreUnderlaysEqual(synAddrs, node2mas) {
 			t.Fatal("bad syn")
 		}
 
@@ -491,7 +501,11 @@ func TestHandshake(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if !bytes.Equal(got.Syn.ObservedUnderlay, node2maBinary) {
+		gotSynAddrs, err := bzz.DeserializeUnderlays(got.Syn.ObservedUnderlay)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bzz.AreUnderlaysEqual(gotSynAddrs, node2mas) {
 			t.Fatalf("got bad syn")
 		}
 
