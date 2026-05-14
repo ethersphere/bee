@@ -21,6 +21,7 @@ type metrics struct {
 	NonceAtCalls                  prometheus.Counter
 	PendingNonceCalls             prometheus.Counter
 	CallContractCalls             prometheus.Counter
+	CodeAtCalls                   prometheus.Counter
 	SuggestGasTipCapCalls         prometheus.Counter
 	EstimateGasCalls              prometheus.Counter
 	SendTransactionCalls          prometheus.Counter
@@ -91,6 +92,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "calls_eth_call",
 			Help:      "Count of eth_call rpc calls",
+		}),
+		CodeAtCalls: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "calls_code_at",
+			Help:      "Count of eth_getCode rpc calls",
 		}),
 		SuggestGasTipCapCalls: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
