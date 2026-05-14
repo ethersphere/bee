@@ -97,7 +97,7 @@ func (m *simulatedBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big
 	return nil, nil, ErrNotImplemented
 }
 
-func (m *simulatedBackend) SuggestedFeesFromFeeHistory(ctx context.Context) (*transaction.FeeHistorySuggestedFees, error) {
+func (m *simulatedBackend) GetFeeAndTipsFromFeeHistory(ctx context.Context, lastBlock *big.Int) (*transaction.FeeHistorySuggestedFeeAndTips, error) {
 	return nil, ErrNotImplemented
 }
 

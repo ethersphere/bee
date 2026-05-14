@@ -11,7 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum"
 )
 
-func TestSuggestedFeesFromFeeHistoryResult(t *testing.T) {
+func TestSuggestedFeeAndTipsFromFeeHistoryResult(t *testing.T) {
 	t.Parallel()
 
 	base := big.NewInt(1000)
@@ -23,17 +23,20 @@ func TestSuggestedFeesFromFeeHistoryResult(t *testing.T) {
 		},
 	}
 
-	low, market, agg, err := suggestedFeesFromFeeHistoryResult(fh, 0)
+	low, market, agg, outBase, err := suggestedFeesFromFeeHistoryResult(fh)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := low.String(), "1015"; got != want {
+	if got, want := outBase.String(), base.String(); got != want {
+		t.Fatalf("base fee: got %s want %s", got, want)
+	}
+	if got, want := low.String(), "15"; got != want {
 		t.Fatalf("low: got %s want %s", got, want)
 	}
-	if got, want := market.String(), "1055"; got != want {
+	if got, want := market.String(), "55"; got != want {
 		t.Fatalf("market: got %s want %s", got, want)
 	}
-	if got, want := agg.String(), "1095"; got != want {
+	if got, want := agg.String(), "95"; got != want {
 		t.Fatalf("aggressive: got %s want %s", got, want)
 	}
 }

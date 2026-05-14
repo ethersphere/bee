@@ -21,7 +21,7 @@ type backendMock struct {
 	callContract                func(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error)
 	sendTransaction             func(ctx context.Context, tx *types.Transaction) error
 	suggestedFeeAndTip          func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error)
-	suggestedFeesFromFeeHistory func(ctx context.Context) (*transaction.FeeHistorySuggestedFees, error)
+	getFeeAndTipsFromFeeHistory func(ctx context.Context, lastBlock *big.Int) (*transaction.FeeHistorySuggestedFeeAndTips, error)
 	suggestGasTipCap            func(ctx context.Context) (*big.Int, error)
 	estimateGas                 func(ctx context.Context, msg ethereum.CallMsg) (gas uint64, err error)
 	transactionReceipt          func(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
@@ -55,9 +55,9 @@ func (m *backendMock) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int,
 	return nil, nil, ErrNotImplemented
 }
 
-func (m *backendMock) SuggestedFeesFromFeeHistory(ctx context.Context) (*transaction.FeeHistorySuggestedFees, error) {
-	if m.suggestedFeesFromFeeHistory != nil {
-		return m.suggestedFeesFromFeeHistory(ctx)
+func (m *backendMock) GetFeeAndTipsFromFeeHistory(ctx context.Context, lastBlock *big.Int) (*transaction.FeeHistorySuggestedFeeAndTips, error) {
+	if m.getFeeAndTipsFromFeeHistory != nil {
+		return m.getFeeAndTipsFromFeeHistory(ctx, lastBlock)
 	}
 	return nil, ErrNotImplemented
 }
@@ -237,8 +237,8 @@ func WithFeeHistoryFunc(f func(ctx context.Context, blockCount uint64, lastBlock
 	})
 }
 
-func WithSuggestedFeesFromFeeHistoryFunc(f func(ctx context.Context) (*transaction.FeeHistorySuggestedFees, error)) Option {
+func WithGetFeeAndTipsFromFeeHistoryFunc(f func(ctx context.Context, lastBlock *big.Int) (*transaction.FeeHistorySuggestedFeeAndTips, error)) Option {
 	return optionFunc(func(s *backendMock) {
-		s.suggestedFeesFromFeeHistory = f
+		s.getFeeAndTipsFromFeeHistory = f
 	})
 }

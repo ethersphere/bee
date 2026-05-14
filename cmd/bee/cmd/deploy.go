@@ -67,6 +67,7 @@ func (c *command) initDeployCmd() error {
 				c.config.GetUint64(optionNameBlockSyncInterval),
 				c.config.GetUint64(optionNameFeeHistoryBlockCount),
 				feeHistoryRewardPerc,
+				txRetryConfigFromCommand(c),
 			)
 			if err != nil {
 				return err

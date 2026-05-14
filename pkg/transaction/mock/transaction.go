@@ -19,6 +19,7 @@ import (
 
 type transactionServiceMock struct {
 	send                 func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error)
+	sendWithRetry        func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, receipt *types.Receipt, err error)
 	waitForReceipt       func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error)
 	watchSentTransaction func(txHash common.Hash) (chan types.Receipt, chan error, error)
 	call                 func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error)
@@ -27,6 +28,24 @@ type transactionServiceMock struct {
 	storedTransaction    func(txHash common.Hash) (*transaction.StoredTransaction, error)
 	cancelTransaction    func(ctx context.Context, originalTxHash common.Hash) (common.Hash, error)
 	transactionFee       func(ctx context.Context, txHash common.Hash) (*big.Int, error)
+}
+
+func (m *transactionServiceMock) SendWithRetry(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
+	if m.sendWithRetry != nil {
+		return m.sendWithRetry(ctx, request)
+	}
+	if m.send != nil {
+		txHash, err := m.send(ctx, request, 0)
+		if err != nil {
+			return common.Hash{}, nil, err
+		}
+		if m.waitForReceipt != nil {
+			rec, err := m.waitForReceipt(ctx, txHash)
+			return txHash, rec, err
+		}
+		return txHash, nil, errors.New("not implemented: SendWithRetry requires waitForReceipt when only send is set")
+	}
+	return common.Hash{}, nil, errors.New("not implemented")
 }
 
 func (m *transactionServiceMock) Send(ctx context.Context, request *transaction.TxRequest, boostPercent int) (txHash common.Hash, err error) {
@@ -109,6 +128,12 @@ type Option interface {
 type optionFunc func(*transactionServiceMock)
 
 func (f optionFunc) apply(r *transactionServiceMock) { f(r) }
+
+func WithSendWithRetryFunc(f func(context.Context, *transaction.TxRequest) (common.Hash, *types.Receipt, error)) Option {
+	return optionFunc(func(s *transactionServiceMock) {
+		s.sendWithRetry = f
+	})
+}
 
 func WithSendFunc(f func(context.Context, *transaction.TxRequest, int) (txHash common.Hash, err error)) Option {
 	return optionFunc(func(s *transactionServiceMock) {

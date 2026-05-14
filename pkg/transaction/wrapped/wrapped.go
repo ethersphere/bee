@@ -21,6 +21,15 @@ import (
 
 var _ transaction.Backend = (*wrappedBackend)(nil)
 
+const feeHistoryDefaultBlockCount = 100
+
+var feeHistoryDefaultRewardPercentiles = []float64{10, 50, 90}
+
+type feeHistoryParams struct {
+	blockCount        uint64
+	rewardPercentiles []float64
+}
+
 type blockNumberAnchor struct {
 	number    uint64
 	timestamp time.Time
@@ -270,25 +279,6 @@ func (b *wrappedBackend) FeeHistory(ctx context.Context, blockCount uint64, last
 		return nil, err
 	}
 	return fh, nil
-}
-
-// SuggestedFeesFromFeeHistory derives Low/Market/Aggressive max fees from eth_feeHistory for the
-// configured block span and reward percentiles.
-func (b *wrappedBackend) SuggestedFeesFromFeeHistory(ctx context.Context) (*transaction.FeeHistorySuggestedFees, error) {
-	fh, err := b.FeeHistory(ctx, b.feeHistoryParams.blockCount, nil, b.feeHistoryParams.rewardPercentiles)
-	if err != nil {
-		return nil, err
-	}
-	low, market, aggressive, err := suggestedFeesFromFeeHistoryResult(fh, b.minimumGasTipCap)
-	if err != nil {
-		b.metrics.FeeHistoryParseErrors.Inc()
-		return nil, err
-	}
-	return &transaction.FeeHistorySuggestedFees{
-		Low:        new(big.Int).Set(low),
-		Market:     new(big.Int).Set(market),
-		Aggressive: new(big.Int).Set(aggressive),
-	}, nil
 }
 
 func (b *wrappedBackend) Close() {

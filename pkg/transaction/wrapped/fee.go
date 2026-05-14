@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
 const (
@@ -80,4 +82,22 @@ func (b *wrappedBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.I
 	gasFeeCap.Add(gasFeeCap, gasTipCap)
 
 	return gasFeeCap, gasTipCap, nil
+}
+
+func (b *wrappedBackend) GetFeeAndTipsFromFeeHistory(ctx context.Context, lastBlock *big.Int) (*transaction.FeeHistorySuggestedFeeAndTips, error) {
+	fh, err := b.FeeHistory(ctx, b.feeHistoryParams.blockCount, lastBlock, b.feeHistoryParams.rewardPercentiles)
+	if err != nil {
+		return nil, err
+	}
+	low, market, aggressive, baseFee, err := suggestedFeesFromFeeHistoryResult(fh)
+	if err != nil {
+		b.metrics.FeeHistoryParseErrors.Inc()
+		return nil, err
+	}
+	return &transaction.FeeHistorySuggestedFeeAndTips{
+		LowTip:        low,
+		MarketTip:     market,
+		AggressiveTip: aggressive,
+		LatestBaseFee: baseFee,
+	}, nil
 }
