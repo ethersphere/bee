@@ -377,10 +377,14 @@ func (m *GSOCEphemeralMode) CreateSubscriberConn(stream p2p.Stream, overlay swar
 // registered WS sessions. It exits when the stream closes or returns an error.
 // On exit it immediately clears m.subscriberConn so new Connect calls open a fresh stream.
 func (m *GSOCEphemeralMode) runMux(stream p2p.Stream) {
+	// Capture once; RemoveSubscriberConn may set m.subscriberConn=nil concurrently.
+	sc := m.subscriberConn
 	defer func() {
-		m.subscriberConn.closeAll()
+		sc.closeAll()
 		m.mu.Lock()
-		m.subscriberConn = nil
+		if m.subscriberConn == sc {
+			m.subscriberConn = nil
+		}
 		m.mu.Unlock()
 	}()
 	for {
@@ -392,7 +396,7 @@ func (m *GSOCEphemeralMode) runMux(stream p2p.Stream) {
 		if msg == nil {
 			continue
 		}
-		m.subscriberConn.fanOut(msg)
+		sc.fanOut(msg)
 	}
 }
 
