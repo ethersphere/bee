@@ -195,7 +195,6 @@ type Options struct {
 	WelcomeMessage                string
 	WhitelistedWithdrawalAddress  []string
 	PubsubBrokerMode              bool
-	PubsubMaxConnections          int
 }
 
 const (
@@ -672,7 +671,6 @@ func NewBee(
 		Nonce:                       nonce,
 		ValidateOverlay:             chainEnabled,
 		Registry:                    registry,
-		PubsubReservedStreamSlots:   o.PubsubMaxConnections,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
@@ -745,7 +743,7 @@ func NewBee(
 		return nil, fmt.Errorf("init batch service: %w", err)
 	}
 
-	pubsubSvc := pubsub.New(p2ps, logger, o.PubsubBrokerMode, o.PubsubMaxConnections)
+	pubsubSvc := pubsub.New(p2ps, logger, o.PubsubBrokerMode)
 	if err = p2ps.AddProtocol(pubsubSvc.Protocol()); err != nil {
 		return nil, fmt.Errorf("pubsub protocol: %w", err)
 	}

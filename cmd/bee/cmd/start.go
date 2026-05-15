@@ -333,7 +333,6 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		WelcomeMessage:                c.config.GetString(optionWelcomeMessage),
 		WhitelistedWithdrawalAddress:  c.config.GetStringSlice(optionNameWhitelistedWithdrawalAddress),
 		PubsubBrokerMode:              c.config.GetBool(optionNamePubsubBrokerMode),
-		PubsubMaxConnections:          c.config.GetInt(optionNamePubsubMaxConnections),
 	})
 
 	return b, err

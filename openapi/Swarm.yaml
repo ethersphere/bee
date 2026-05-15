@@ -2569,7 +2569,7 @@ paths:
           schema:
             type: integer
           required: false
-          description: WebSocket ping period in seconds (default: 60)
+          description: "WebSocket ping period in seconds (default: 60)"
       responses:
         "101":
           description: WebSocket upgrade successful
