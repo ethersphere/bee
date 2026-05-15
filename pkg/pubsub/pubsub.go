@@ -50,7 +50,6 @@ const (
 
 var (
 	ErrBrokerDisabled   = errors.New("pubsub: broker mode is disabled")
-	ErrMaxConnections   = errors.New("pubsub: max connections reached")
 	ErrInvalidHandshake = errors.New("pubsub: handshake verification failed")
 	ErrWrongHeaders     = errors.New("pubsub: wrong required headers")
 	ErrTopicMismatch    = errors.New("pubsub: topic address mismatch")
@@ -138,16 +137,14 @@ type Service struct {
 	p2p        P2P
 	logger     log.Logger
 	brokerMode bool
-	maxConns   int
 	modes      map[TopicModeKey]Mode // (topic, mode) -> mode instance
 }
 
-func New(p2p P2P, logger log.Logger, brokerMode bool, maxConns int) *Service {
+func New(p2p P2P, logger log.Logger, brokerMode bool) *Service {
 	s := &Service{
 		p2p:        p2p,
 		logger:     logger.WithName(loggerName).Register(),
 		brokerMode: brokerMode,
-		maxConns:   maxConns,
 		modes:      make(map[TopicModeKey]Mode),
 	}
 	return s
@@ -267,11 +264,6 @@ func (s *Service) brokerHandler(ctx context.Context, peer p2p.Peer, stream p2p.S
 	if err != nil {
 		_ = stream.Reset()
 		return err
-	}
-
-	if s.maxConns > 0 && m.SubscriberCount() >= s.maxConns {
-		_ = stream.Reset()
-		return ErrMaxConnections
 	}
 
 	return m.HandleBroker(ctx, peer, stream, headers)
