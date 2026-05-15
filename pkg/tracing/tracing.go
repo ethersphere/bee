@@ -38,8 +38,8 @@ import (
 // p2p Headers, HTTP headers, or the go context.
 var ErrContextNotFound = errors.New("tracing context not found")
 
-// LogField is the key in log message field that holds the tracing id value.
-const LogField = "traceID"
+// logField is the key in log message field that holds the tracing id value.
+const logField = "traceID"
 
 // instrumentationName identifies spans produced by this package to the OTel SDK.
 const instrumentationName = "github.com/ethersphere/bee/v2/pkg/tracing"
@@ -144,8 +144,8 @@ func NewTracer(o *Options) (*Tracer, io.Closer, error) {
 
 // Supported OTLP transport values for Options.Protocol.
 const (
-	ProtocolHTTP = "http"
-	ProtocolGRPC = "grpc"
+	protocolHTTP = "http"
+	protocolGRPC = "grpc"
 )
 
 // newOTLPClient builds the OTLP client for the configured transport. An empty
@@ -153,7 +153,7 @@ const (
 // rollout.
 func newOTLPClient(o *Options) (otlptrace.Client, error) {
 	switch o.Protocol {
-	case "", ProtocolHTTP:
+	case "", protocolHTTP:
 		opts := []otlptracehttp.Option{otlptracehttp.WithEndpoint(o.Endpoint)}
 		if o.Insecure {
 			opts = append(opts, otlptracehttp.WithInsecure())
@@ -165,7 +165,7 @@ func newOTLPClient(o *Options) (otlptrace.Client, error) {
 			opts = append(opts, otlptracehttp.WithTLSClientConfig(tlsConfig))
 		}
 		return otlptracehttp.NewClient(opts...), nil
-	case ProtocolGRPC:
+	case protocolGRPC:
 		opts := []otlptracegrpc.Option{otlptracegrpc.WithEndpoint(o.Endpoint)}
 		if o.Insecure {
 			opts = append(opts, otlptracegrpc.WithInsecure())
@@ -178,7 +178,7 @@ func newOTLPClient(o *Options) (otlptrace.Client, error) {
 		}
 		return otlptracegrpc.NewClient(opts...), nil
 	default:
-		return nil, fmt.Errorf("unsupported otlp protocol %q (want %q or %q)", o.Protocol, ProtocolHTTP, ProtocolGRPC)
+		return nil, fmt.Errorf("unsupported otlp protocol %q (want %q or %q)", o.Protocol, protocolHTTP, protocolGRPC)
 	}
 }
 
@@ -336,7 +336,7 @@ func loggerWithTraceID(sc trace.SpanContext, l log.Logger) log.Logger {
 	if !sc.HasTraceID() {
 		return l
 	}
-	return l.WithValues(LogField, sc.TraceID().String()).Build()
+	return l.WithValues(logField, sc.TraceID().String()).Build()
 }
 
 // encodeP2PSpanContext writes the trace+span ids and flags into a fixed-width
