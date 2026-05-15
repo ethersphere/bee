@@ -209,7 +209,7 @@ func (s *Service) Topics() []TopicInfo {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var topics []TopicInfo
+	topics := make([]TopicInfo, 0, len(s.modes))
 
 	for key, m := range s.modes {
 		info := TopicInfo{

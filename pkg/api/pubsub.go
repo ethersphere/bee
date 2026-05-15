@@ -71,7 +71,7 @@ func (s *Service) pubsubWsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	headers := struct {
-		KeepAlive time.Duration `map:"Swarm-Keep-Alive"`
+		KeepAlive int `map:"Swarm-Keep-Alive"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -106,7 +106,7 @@ func (s *Service) pubsubWsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	logger.Info("websocket upgrade successful")
 
-	pingPeriod := headers.KeepAlive * time.Second
+	pingPeriod := time.Duration(headers.KeepAlive) * time.Second
 	if pingPeriod == 0 {
 		pingPeriod = time.Minute
 	}
