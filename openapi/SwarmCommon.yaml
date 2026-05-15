@@ -1052,6 +1052,33 @@ components:
       properties:
         transactionHash:
           $ref: "#/components/schemas/TransactionHash"
+
+    PubsubTopicInfo:
+      type: object
+      properties:
+        topicAddress:
+          type: string
+          description: "Hex-encoded topic address"
+        mode:
+          type: integer
+          description: "Pubsub mode identifier"
+        role:
+          type: string
+          description: "Role of this node: 'broker' or 'subscriber'"
+        connections:
+          type: array
+          items:
+            type: string
+          description: "List of connected peer overlays"
+
+    PubsubTopicListResponse:
+      type: object
+      properties:
+        topics:
+          type: array
+          items:
+            $ref: "#/components/schemas/PubsubTopicInfo"
+
   headers:
     SwarmTag:
       description: "Tag UID"
@@ -1094,32 +1121,6 @@ components:
         type: string
       required: false
       description: "Indicates which feed version was resolved (v1 or v2)"
-
-    PubsubTopicInfo:
-      type: object
-      properties:
-        topicAddress:
-          type: string
-          description: "Hex-encoded topic address"
-        mode:
-          type: integer
-          description: "Pubsub mode identifier"
-        role:
-          type: string
-          description: "Role of this node: 'broker' or 'subscriber'"
-        connections:
-          type: array
-          items:
-            type: string
-          description: "List of connected peer overlays"
-
-    PubsubTopicListResponse:
-      type: object
-      properties:
-        topics:
-          type: array
-          items:
-            $ref: "#/components/schemas/PubsubTopicInfo"
 
   parameters:
     GasPriceParameter:
