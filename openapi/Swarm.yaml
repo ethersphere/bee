@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 8.0.0
+  version: 8.1.0
   title: Bee API
   description: "API endpoints for interacting with the Swarm network, supporting file operations, messaging, and node management"
 
@@ -2162,6 +2162,32 @@ paths:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/DebugPostageAllBatchesResponse"
 
+        default:
+          description: Default response
+
+  "/batches/{batch_id}":
+    parameters:
+      - in: path
+        name: batch_id
+        schema:
+          $ref: "SwarmCommon.yaml#/components/schemas/BatchID"
+        required: true
+        description: ID of the postage batch
+    get:
+      summary: Get a single globally available postage batch by ID
+      tags:
+        - Postage Stamps
+      responses:
+        "200":
+          description: The postage batch state
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/PostageBatchShort"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         default:
           description: Default response
 

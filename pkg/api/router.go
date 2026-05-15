@@ -639,6 +639,10 @@ func (s *Service) mountBusinessDebug() {
 		"GET": http.HandlerFunc(s.postageGetAllBatchesHandler),
 	})
 
+	handle("/batches/{batch_id}", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.postageGetBatchHandler),
+	})
+
 	handle("/accounting", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.accountingInfoHandler),
 	})
