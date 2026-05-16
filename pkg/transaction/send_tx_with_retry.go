@@ -10,9 +10,9 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
-	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
@@ -85,10 +85,11 @@ func (t *transactionService) prepareTransactionWithRetry(ctx context.Context, re
 	}
 	gasFeeCap, err := t.dynamicGasFeeCap(ctx, gasTipCap)
 	if err != nil {
+		// TODO use base_fee from history
 		return nil, err
 	}
 	if t.maxTxPrice != nil && gasFeeCap.Cmp(t.maxTxPrice) > 0 {
-		return nil, fmt.Errorf("%w: max_fee_per_gas %s exceeds limit %s", ErrTxRetryMaxPriceExceeded, gasFeeCap, t.maxTxPrice)
+		return nil, fmt.Errorf("%w: max_fee_per_gas %s exceeds limit %s", ErrTxMaxPriceExceeded, gasFeeCap, t.maxTxPrice)
 	}
 
 	tx := types.NewTx(&types.DynamicFeeTx{
@@ -128,7 +129,7 @@ func (t *transactionService) broadcastTxWithRetry(ctx context.Context, request *
 
 	signedTx, err := t.signer.SignTx(tx, t.chainID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrSignTransaction, err)
 	}
 
 	t.logger.Info("transaction retry broadcast",
@@ -196,26 +197,32 @@ func (t *transactionService) saveTxInState(signedTx *types.Transaction, saveForR
 // then increases maxPriorityFeePerGas by GasIncreasePercent after each unsuccessful wait, up to MaxRetries.
 func (t *transactionService) SendWithRetry(ctx context.Context, request *TxRequest) (txHash common.Hash, receipt *types.Receipt, err error) {
 	if request.GasPrice != nil {
-		return common.Hash{}, nil, errors.New("SendWithRetry requires automatic gas pricing (GasPrice must be nil)")
+		return common.Hash{}, nil, errors.New("send txs with retry requires automatic gas pricing") // TODO fallback to send
 	}
 
 	signedTx, err := t.broadcastTxWithRetry(ctx, request, nil, nil, 0)
-	if err != nil {
+	if err != nil && isErrCritical(err) {
+		t.logger.Warning("transaction broadcast failed with critical error, stop retry", "attempt", 0, "error", err)
 		return common.Hash{}, nil, err
 	}
 
-	if err := t.saveTxInState(signedTx, true); err != nil {
-		return common.Hash{}, nil, err
+	var retryKey string
+	if signedTx != nil {
+		if err := t.saveTxInState(signedTx, true); err != nil {
+			return common.Hash{}, nil, err
+		}
+		retryKey = retryStateKey(signedTx.Nonce())
 	}
-
-	txRetryKey := retryStateKey(signedTx.Nonce())
-	return t.retry(ctx, txRetryKey)
+	return t.retry(ctx, retryKey)
 }
 
 func (t *transactionService) retry(ctx context.Context, txRetryKey string) (common.Hash, *types.Receipt, error) {
 	var txState RetryState
-	if err := t.store.Get(txRetryKey, &txState); err != nil {
-		return common.Hash{}, nil, err
+
+	if txRetryKey != "" {
+		if err := t.store.Get(txRetryKey, &txState); err != nil {
+			return common.Hash{}, nil, err
+		}
 	}
 
 	for attempt := txState.NextAttempt; attempt <= t.txMaxRetries; attempt++ {
@@ -225,7 +232,7 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string) (comm
 		default:
 		}
 
-		// Wait for the last broadcast transaction to confirm.
+		// Wait for the last broadcast transaction to confirm, or delay if none was sent yet.
 		if txState.LastTxHash != (common.Hash{}) {
 			waitCtx, cancel := context.WithTimeout(ctx, t.txRetryDelay)
 			rec, waitErr := t.WaitForReceipt(waitCtx, txState.LastTxHash)
@@ -236,6 +243,12 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string) (comm
 					return txState.LastTxHash, rec, ErrTransactionReverted
 				}
 				return txState.LastTxHash, rec, nil
+			}
+		} else {
+			select {
+			case <-ctx.Done():
+				return common.Hash{}, nil, ctx.Err()
+			case <-time.After(t.txRetryDelay):
 			}
 		}
 
@@ -250,30 +263,41 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string) (comm
 			Description: txState.Description,
 		}
 
-		signedTx, err := t.broadcastTxWithRetry(ctx, request, &nonce, escalatedTip, attempt)
-		if isErrCritical(err) {
+		var noncePtr *uint64
+		if nonce != 0 {
+			noncePtr = &nonce
+		}
+
+		signedTx, err := t.broadcastTxWithRetry(ctx, request, noncePtr, escalatedTip, attempt)
+		if err != nil && isErrCritical(err) {
+			t.logger.Warning("transaction broadcast failed with critical error, stop retry", "attempt", attempt, "error", err)
 			t.deleteRetryStateAndPending(txRetryKey, txState)
 			return common.Hash{}, nil, err
 		}
+
 		if err != nil {
 			t.logger.Warning("transaction retry broadcast failed, will retry", "attempt", attempt, "error", err)
-			continue
 		}
 
-		// Remove old pending key, register the new tx hash.
+		txState.NextAttempt++
+		txState.AllTxHashes = append(txState.AllTxHashes, txState.LastTxHash)
+
 		if txState.LastTxHash != (common.Hash{}) {
 			_ = t.store.Delete(pendingTransactionKey(txState.LastTxHash))
 		}
 
-		if err := t.saveTxInState(signedTx, false); err != nil {
-			return common.Hash{}, nil, err
+		if signedTx != nil {
+			if err := t.saveTxInState(signedTx, false); err != nil {
+				t.deleteRetryStateAndPending(txRetryKey, txState)
+				return common.Hash{}, nil, err
+			}
+			txState.LastTxHash = signedTx.Hash()
+		} else {
+			txState.LastTxHash = common.Hash{}
 		}
 
-		txState.AllTxHashes = append(txState.AllTxHashes, txState.LastTxHash)
-		txState.NextAttempt = attempt + 1
-		txState.LastTxHash = signedTx.Hash()
-
 		if err := t.store.Put(txRetryKey, txState); err != nil {
+			t.deleteRetryStateAndPending(txRetryKey, txState)
 			return common.Hash{}, nil, err
 		}
 	}
@@ -286,7 +310,37 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string) (comm
 }
 
 func isErrCritical(err error) bool {
-	// TODO implement
+	if errors.Is(err, ErrTransactionReverted) || errors.Is(err, ErrTransactionCancelled) || errors.Is(err, ErrSignTransaction) {
+		return true
+	}
+
+	s := err.Error()
+	nonRetryable := []string{
+		"specified gas price",
+		"AlreadyCommitted",
+		"AlreadyRevealed",
+		"AlreadyClaimed",
+		"NotCommitPhase",
+		"NotRevealPhase",
+		"NotClaimPhase",
+		"CommitRoundOver",
+		"CommitRoundNotStarted",
+		"PhaseLastBlock",
+		"OutOfDepth",
+		"OutOfDepthReveal",
+		"OutOfDepthClaim",
+		"NotStaked",
+		"MustStake2Rounds",
+		"NoReveals",
+		"NoCommitsReceived",
+		"execution reverted",
+		"insufficient funds",
+	}
+	for _, sub := range nonRetryable {
+		if strings.Contains(s, sub) {
+			return true
+		}
+	}
 	return false
 }
 
@@ -308,7 +362,7 @@ func (t *transactionService) retryPendingHashes() (map[common.Hash]struct{}, err
 	return out, err
 }
 
-func (t *transactionService) resumeRetryStates() error {
+func (t *transactionService) resumeRetryTransactions() error {
 	var keys []string
 	var states []RetryState
 	err := t.store.Iterate(retryStatePrefix, func(key, val []byte) (stop bool, err error) {
@@ -324,13 +378,16 @@ func (t *transactionService) resumeRetryStates() error {
 		return err
 	}
 
+	confirmed, err := t.backend.NonceAt(t.ctx, t.sender, nil)
+	if err != nil {
+		// TODO logging, but keep going
+	}
+
 	for i := range keys {
 		key := keys[i]
 		state := states[i]
 
-		if done, err := t.retryStateAlreadyDone(&state); err != nil {
-			return err
-		} else if done {
+		if confirmed > state.Nonce {
 			t.deleteRetryStateAndPending(key, state)
 			continue
 		}
@@ -344,36 +401,4 @@ func (t *transactionService) resumeRetryStates() error {
 		})
 	}
 	return nil
-}
-
-// TODO simplify -> may be refuse
-func (t *transactionService) retryStateAlreadyDone(state *RetryState) (bool, error) {
-	if state.LastTxHash != (common.Hash{}) {
-		rec, err := t.backend.TransactionReceipt(t.ctx, state.LastTxHash)
-		if err == nil && rec != nil {
-			return true, nil
-		}
-		if err != nil && !errors.Is(err, ethereum.NotFound) {
-			return false, err
-		}
-	}
-
-	for _, h := range state.AllTxHashes {
-		rec, err := t.backend.TransactionReceipt(t.ctx, h)
-		if err == nil && rec != nil {
-			return true, nil
-		}
-		if err != nil && !errors.Is(err, ethereum.NotFound) {
-			return false, err
-		}
-	}
-
-	confirmed, err := t.backend.NonceAt(t.ctx, t.sender, nil)
-	if err != nil {
-		return false, err
-	}
-	if confirmed > state.Nonce {
-		return true, nil
-	}
-	return false, nil
 }

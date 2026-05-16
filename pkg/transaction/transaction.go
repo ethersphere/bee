@@ -40,8 +40,10 @@ var (
 	ErrTransactionReverted = errors.New("transaction reverted")
 	ErrUnknownTransaction  = errors.New("unknown transaction")
 	ErrAlreadyImported     = errors.New("already imported")
-	// ErrTxRetryMaxPriceExceeded is returned when SendWithRetry would exceed the configured max fee per gas.
-	ErrTxRetryMaxPriceExceeded = errors.New("transaction retry: exceeds maximum tx price (max fee per gas)")
+	// ErrTxMaxPriceExceeded is returned when SendWithRetry would exceed the configured max fee per gas.
+	ErrTxMaxPriceExceeded = errors.New("transaction retry: exceeds maximum tx price (max fee per gas)")
+	// ErrSignTransaction is returned when signing a transaction fails.
+	ErrSignTransaction = errors.New("sign transaction")
 )
 
 const (
@@ -120,6 +122,8 @@ type Service interface {
 	io.Closer
 	// Send creates a transaction based on the request (with gasprice increased by provided percentage) and sends it.
 	Send(ctx context.Context, request *TxRequest, tipCapBoostPercent int) (txHash common.Hash, err error)
+	// SendWithRetry sends a transaction using fee-history tiers and automatic fee escalation; see send_tx_with_retry.go.
+	SendWithRetry(ctx context.Context, request *TxRequest) (txHash common.Hash, receipt *types.Receipt, err error)
 	// Call simulate a transaction based on the request.
 	Call(ctx context.Context, request *TxRequest) (result []byte, err error)
 	// WaitForReceipt waits until either the transaction with the given hash has been mined or the context is cancelled.
@@ -143,8 +147,6 @@ type Service interface {
 	// UnwrapABIError tries to unwrap the ABI error if the given error is not nil.
 	// The original error is wrapped together with the ABI error if it exists.
 	UnwrapABIError(ctx context.Context, req *TxRequest, err error, abiErrors map[string]abi.Error) error
-	// SendWithRetry sends a transaction using fee-history tiers and automatic fee escalation; see send_tx_with_retry.go.
-	SendWithRetry(ctx context.Context, request *TxRequest) (txHash common.Hash, receipt *types.Receipt, err error)
 }
 
 type transactionService struct {
@@ -204,7 +206,7 @@ func NewService(logger log.Logger, overlayEthAddress common.Address, backend Bac
 		return nil, err
 	}
 
-	if err = t.resumeRetryStates(); err != nil {
+	if err = t.resumeRetryTransactions(); err != nil {
 		return nil, err
 	}
 
