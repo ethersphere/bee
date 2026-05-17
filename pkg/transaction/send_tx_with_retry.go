@@ -32,8 +32,9 @@ type RetryState struct {
 	Value         *big.Int        `json:"value,omitempty"`
 	Description   string          `json:"description,omitempty"`
 
-	// InitialTip is the starting maxPriorityFeePerGas (from fee history); each retry multiplies by (100+GasIncreasePercent)/100.
-	InitialTip *big.Int `json:"initial_tip,omitempty"`
+	// PreviousTip is the maxPriorityFeePerGas used in the last successful broadcast.
+	// Each retry escalates from this value by (100+GasIncreasePercent)/100.
+	PreviousTip *big.Int `json:"previous_tip,omitempty"`
 }
 
 func retryStateKey(nonce uint64) string {
@@ -44,21 +45,12 @@ func mulDivPercent(x *big.Int, num, den int64) *big.Int {
 	return new(big.Int).Div(new(big.Int).Mul(new(big.Int).Set(x), big.NewInt(num)), big.NewInt(den))
 }
 
-// escalateGasTip returns initialTip * ((100+increasePct)/100)^attempt.
-// attempt 0 returns initial unchanged.
-func escalateGasTip(initial *big.Int, attempt, increasePct int) *big.Int {
-	if initial == nil {
+// escalateGasTip returns tip * (100+increasePct)/100 — a single escalation step.
+func escalateGasTip(tip *big.Int, increasePct int) *big.Int {
+	if tip == nil {
 		return nil
 	}
-	if attempt <= 0 {
-		return new(big.Int).Set(initial)
-	}
-	tip := new(big.Int).Set(initial)
-	multiplier := int64(100 + increasePct)
-	for i := 0; i < attempt; i++ {
-		tip = mulDivPercent(tip, multiplier, 100)
-	}
-	return tip
+	return mulDivPercent(tip, int64(100+increasePct), 100)
 }
 
 func (t *transactionService) dynamicGasFeeCap(ctx context.Context, gasTipCap *big.Int) (gasFeeCap *big.Int, err error) {
@@ -80,22 +72,36 @@ func (t *transactionService) prepareTransactionWithRetry(ctx context.Context, re
 		return nil, err
 	}
 
+	var gasFeeCap *big.Int
+
 	if gasTipCap == nil || gasTipCap.Sign() == 0 {
 		fh, err := t.backend.GetFeeAndTipsFromFeeHistory(ctx, nil)
 		if err != nil {
 			return nil, fmt.Errorf("fee history: %w", err)
 		}
-
 		if fh == nil || fh.LatestBaseFee == nil {
 			return nil, errors.New("fee history: missing base fee")
 		}
 		gasTipCap = fh.LowTip
+		gasFeeCap, err = t.dynamicGasFeeCap(ctx, gasTipCap)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		escalated := escalateGasTip(gasTipCap, t.txRetryGasIncreasePercent)
+		gasFeeCap, err = t.dynamicGasFeeCap(ctx, escalated)
+		if err != nil {
+			return nil, err
+		}
+		if t.maxTxPrice == nil || gasFeeCap.Cmp(t.maxTxPrice) <= 0 {
+			gasTipCap = escalated
+		} else {
+			// Escalated tip too expensive — fall back to current tip without escalation.
+			gasFeeCap = new(big.Int).Sub(gasFeeCap, escalated)
+			gasFeeCap.Add(gasFeeCap, gasTipCap)
+		}
 	}
-	gasFeeCap, err := t.dynamicGasFeeCap(ctx, gasTipCap)
-	if err != nil {
-		// TODO use base_fee from history
-		return nil, err
-	}
+
 	if t.maxTxPrice != nil && gasFeeCap.Cmp(t.maxTxPrice) > 0 {
 		return nil, fmt.Errorf("%w: max_fee_per_gas %s exceeds limit %s", ErrTxMaxPriceExceeded, gasFeeCap, t.maxTxPrice)
 	}
@@ -117,14 +123,10 @@ func (t *transactionService) prepareTransactionWithRetry(ctx context.Context, re
 // When fixedNonce is nil a new nonce is allocated (first attempt);
 // otherwise the supplied nonce is reused (replacement transaction).
 func (t *transactionService) broadcastTxWithRetry(ctx context.Context, request *TxRequest, fixedNonce *uint64, gasTipCap *big.Int, attempt int) (*types.Transaction, error) {
-	var (
-		nonce        uint64
-		newGasTipCap *big.Int
-	)
+	var nonce uint64
 
 	if fixedNonce != nil {
 		nonce = *fixedNonce
-		newGasTipCap = escalateGasTip(gasTipCap, attempt, t.txRetryGasIncreasePercent)
 	} else {
 		t.lock.Lock()
 		defer t.lock.Unlock()
@@ -135,7 +137,7 @@ func (t *transactionService) broadcastTxWithRetry(ctx context.Context, request *
 		}
 		nonce = n
 	}
-	tx, err := t.prepareTransactionWithRetry(ctx, request, nonce, newGasTipCap)
+	tx, err := t.prepareTransactionWithRetry(ctx, request, nonce, gasTipCap)
 	if err != nil {
 		return nil, err
 	}
@@ -203,13 +205,13 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 		}
 	}
 
+	if txState.PreviousTip != nil {
+		gasTip = new(big.Int).Set(txState.PreviousTip)
+	}
+
 	for attempt := txState.NextAttempt; attempt < t.txMaxRetries; attempt++ {
 		if txState.NonceAssigned {
 			nonce = &txState.Nonce
-		}
-
-		if gasTip == nil && txState.InitialTip != nil {
-			gasTip = new(big.Int).Set(txState.InitialTip)
 		}
 
 		signedTx, err := t.broadcastTxWithRetry(ctx, request, nonce, gasTip, attempt)
@@ -251,9 +253,8 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 			}
 			return txState.LastTxHash, rec, nil
 		} else if isErrCritical(waitErr) {
-			// TODO false positive cases here
 			t.deleteRetryStateAndPending(txRetryKey, txState)
-			return common.Hash{}, nil, err
+			return common.Hash{}, nil, waitErr
 		}
 	}
 
@@ -294,6 +295,7 @@ func (t *transactionService) updateStates(signedTx *types.Transaction, txState *
 		}
 
 		txState.LastTxHash = txHash
+		txState.PreviousTip = signedTx.GasTipCap()
 
 		if !txState.NonceAssigned {
 			txState.Nonce = signedTx.Nonce()
@@ -302,7 +304,6 @@ func (t *transactionService) updateStates(signedTx *types.Transaction, txState *
 			txState.To = signedTx.To()
 			txState.Data = signedTx.Data()
 			txState.Value = signedTx.Value()
-			txState.InitialTip = signedTx.GasTipCap()
 		}
 	}
 	if txState.NonceAssigned {
