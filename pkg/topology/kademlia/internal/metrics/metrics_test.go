@@ -221,7 +221,7 @@ func TestExclude(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var addr = swarm.RandAddress(t)
+	addr := swarm.RandAddress(t)
 
 	// record unhealthy, unreachable, bootnode
 	mc.Record(addr, metrics.PeerHealth(false), metrics.IsBootnode(true), metrics.PeerReachability(p2p.ReachabilityStatusPrivate))

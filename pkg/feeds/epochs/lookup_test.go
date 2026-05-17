@@ -14,7 +14,7 @@ import (
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 )
 
-func TestFinder_FLAKY(t *testing.T) {
+func TestFinder(t *testing.T) {
 	t.Parallel()
 
 	testf := func(t *testing.T, finderf func(storage.Getter, *feeds.Feed) feeds.Lookup, updaterf func(putter storage.Putter, signer crypto.Signer, topic []byte) (feeds.Updater, error)) {

@@ -4,6 +4,11 @@ on:
   repository_dispatch:
     types: [trigger-beekeeper, beekeeper]
   pull_request:
+    paths-ignore:
+      - packaging/**
+      - openapi/**
+      - '**/*.md'
+      - '.github/ISSUE_TEMPLATE/**'
     branches:
       - "**"
 
@@ -49,7 +54,7 @@ jobs:
           cache: false
           go-version-file: go.mod
       - name: Cache Go Modules
-        uses: actions/cache@v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
         with:
           path: |
             ~/.cache/go-build
@@ -79,7 +84,7 @@ jobs:
           beekeeper version --log-verbosity 0
           mv ~/.beekeeper.yaml .beekeeper.yaml
           mv ~/.beekeeper/local.yaml local.yaml
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: temp-artifacts
           include-hidden-files: true
@@ -100,13 +105,13 @@ jobs:
     needs: [init]
     steps:
       - name: Cache
-        uses: actions/cache@v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
         with:
           path: |
             /tmp/k3s-${{ env.K3S_VERSION }}
           key: k3s-${{ env.K3S_VERSION }}
       - name: "Download Artifact"
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: temp-artifacts
       - name: Unpack artifacts
@@ -215,7 +220,7 @@ jobs:
           echo "Connect to github actions node using"
           echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com"
           curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T $(echo $KEYS | jq -r .peer1_key) ${{ secrets.TUNSHELL_SECRET }} eu.relay.tunshell.com
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: failure()
         with:
           name: debug-dump
@@ -228,7 +233,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: "Download Artifact"
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: temp-artifacts
       - name: Unpack artifacts
@@ -250,7 +255,7 @@ jobs:
           echo RUN_TYPE="MERGE RUN" >> $GITHUB_ENV
       - name: Trigger Bee Factory latest build
         if: github.ref == 'refs/heads/master' && github.event.action != 'beekeeper' && success()
-        uses: peter-evans/repository-dispatch@v2
+        uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4
         with:
           token: ${{ secrets.GHA_PAT_BASIC }}
           repository: ethersphere/bee-factory

@@ -56,7 +56,7 @@ func TestIsOverlayFrozen(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -77,7 +77,6 @@ func TestIsOverlayFrozen(t *testing.T) {
 		if frozen {
 			t.Fatalf("expected owner to not be frozen")
 		}
-
 	})
 }
 
@@ -145,7 +144,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -207,7 +206,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -247,7 +246,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -280,7 +279,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -343,7 +342,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			1,
 		)
 
@@ -376,7 +375,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			1,
 		)
 
@@ -415,7 +414,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -465,7 +464,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -522,13 +521,12 @@ func TestDepositStake(t *testing.T) {
 					}
 					if *request.To == stakingContractAddress {
 						return getPotentialStakeResponse(t, prevStake), nil
-
 					}
 					return nil, errors.New("unexpected call")
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -583,13 +581,12 @@ func TestDepositStake(t *testing.T) {
 					}
 					if *request.To == stakingContractAddress {
 						return getPotentialStakeResponse(t, prevStake), nil
-
 					}
 					return nil, errors.New("unexpected call")
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -616,7 +613,7 @@ func TestDepositStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -685,7 +682,7 @@ func TestChangeHeight(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -749,7 +746,7 @@ func TestChangeHeight(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			newHeight,
 		)
 
@@ -813,7 +810,7 @@ func TestChangeHeight(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			newHeight,
 		)
 
@@ -848,7 +845,7 @@ func TestChangeHeight(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -875,7 +872,7 @@ func TestChangeHeight(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -931,7 +928,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -958,7 +955,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -993,7 +990,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1039,7 +1036,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1080,7 +1077,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1127,7 +1124,7 @@ func TestGetCommittedStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1165,7 +1162,7 @@ func TestGetCommittedStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1203,7 +1200,7 @@ func TestGetCommittedStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1227,7 +1224,7 @@ func TestGetCommittedStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1274,7 +1271,7 @@ func TestGetWithdrawableStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1312,7 +1309,7 @@ func TestGetWithdrawableStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1336,7 +1333,7 @@ func TestGetWithdrawableStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1403,7 +1400,7 @@ func TestWithdrawStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1439,7 +1436,7 @@ func TestWithdrawStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1497,7 +1494,7 @@ func TestWithdrawStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1553,7 +1550,7 @@ func TestWithdrawStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1587,7 +1584,7 @@ func TestWithdrawStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1609,7 +1606,6 @@ func TestMigrateStake(t *testing.T) {
 	stakedAmount := big.NewInt(100000000000000000)
 
 	t.Run("ok", func(t *testing.T) {
-
 		expectedCallDataForPaused, err := stakingContractABI.Pack("paused")
 		if err != nil {
 			t.Fatal(err)
@@ -1663,7 +1659,7 @@ func TestMigrateStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1698,7 +1694,7 @@ func TestMigrateStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1779,7 +1775,7 @@ func TestMigrateStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1790,7 +1786,6 @@ func TestMigrateStake(t *testing.T) {
 	})
 
 	t.Run("tx reverted", func(t *testing.T) {
-
 		expectedCallDataForPaused, err := stakingContractABI.Pack("paused")
 		if err != nil {
 			t.Fatal(err)
@@ -1844,7 +1839,7 @@ func TestMigrateStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1855,7 +1850,6 @@ func TestMigrateStake(t *testing.T) {
 	})
 
 	t.Run("is paused with err", func(t *testing.T) {
-
 		expectedCallDataForPaused, err := stakingContractABI.Pack("paused")
 		if err != nil {
 			t.Fatal(err)
@@ -1879,7 +1873,7 @@ func TestMigrateStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 
@@ -1890,7 +1884,6 @@ func TestMigrateStake(t *testing.T) {
 	})
 
 	t.Run("get stake with err", func(t *testing.T) {
-
 		expectedCallDataForPaused, err := stakingContractABI.Pack("paused")
 		if err != nil {
 			t.Fatal(err)
@@ -1922,7 +1915,7 @@ func TestMigrateStake(t *testing.T) {
 				}),
 			),
 			nonce,
-			false,
+			0,
 			stakingHeight,
 		)
 

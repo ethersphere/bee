@@ -124,7 +124,7 @@ func (s *Service) LocalSnapshot() (*Snapshot, error) {
 			}
 			return false, false, nil
 		},
-		topology.Select{},
+		topology.Select{IncludeBootnodes: true},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("iterate connected peers: %w", err)

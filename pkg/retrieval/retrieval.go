@@ -157,7 +157,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 	spanCtx := context.WithoutCancel(ctx)
 
 	v, _, err := s.singleflight.Do(ctx, flightRoute, func(ctx context.Context) (swarm.Chunk, error) {
-
 		skip := skippeers.NewList(0)
 		defer skip.Close()
 
@@ -170,7 +169,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 		quit := make(chan struct{})
 		defer close(quit)
 
-		var forwards = maxMultiplexForwards
+		forwards := maxMultiplexForwards
 
 		// if we are the origin node, allow many preemptive retries to speed up the retrieval of the chunk.
 		errorsLeft := 1
@@ -197,7 +196,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 		inflight := 0
 
 		for errorsLeft > 0 {
-
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
@@ -212,7 +210,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 				peer, err := s.closestPeer(chunkAddr, fullSkip, origin)
 
 				if errors.Is(err, topology.ErrNotFound) {
-					if skip.PruneExpiresAfter(chunkAddr, overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
+					if skip.PruneExpiresAfter(chunkAddr, overDraftRefresh) == 0 { // no overdraft peers, we have depleted ALL peers
 						if inflight == 0 {
 							loggerV1.Debug("no peers left", "chunk_address", chunkAddr, "errors_left", errorsLeft, "isOrigin", origin, "own_proximity", swarm.Proximity(s.addr.Bytes(), chunkAddr.Bytes()), "error", err)
 							return nil, err
@@ -298,7 +296,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 }
 
 func (s *Service) retrieveChunk(ctx context.Context, quit chan struct{}, chunkAddr, peer swarm.Address, result chan retrievalResult, action accounting.Action, span opentracing.Span) {
-
 	var (
 		startTime = time.Now()
 		err       error
@@ -370,7 +367,6 @@ func (s *Service) retrieveChunk(ctx context.Context, quit chan struct{}, chunkAd
 }
 
 func (s *Service) prepareCredit(ctx context.Context, peer, chunk swarm.Address, origin bool) (accounting.Action, error) {
-
 	price := s.pricer.PeerPrice(peer, chunk)
 	s.metrics.ChunkPrice.Observe(float64(price))
 
@@ -388,7 +384,6 @@ func (s *Service) prepareCredit(ctx context.Context, peer, chunk swarm.Address, 
 // the chunk than this node is, could also be returned, allowing the upstream
 // retrieve request.
 func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address, allowUpstream bool) (swarm.Address, error) {
-
 	var (
 		closest swarm.Address
 		err     error

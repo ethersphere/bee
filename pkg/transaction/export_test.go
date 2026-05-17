@@ -4,6 +4,4 @@
 
 package transaction
 
-var (
-	StoredTransactionKey = storedTransactionKey
-)
+var StoredTransactionKey = storedTransactionKey

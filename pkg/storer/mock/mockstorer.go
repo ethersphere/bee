@@ -196,16 +196,17 @@ func (m *mockStorer) Cache() storage.Putter {
 }
 
 func (m *mockStorer) DirectUpload() storer.PutterSession {
-	return &putterSession{chunkStore: storage.PutterFunc(
-		func(ctx context.Context, ch swarm.Chunk) error {
-			op := &pusher.Op{Chunk: ch, Err: make(chan error, 1), Direct: true}
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case m.chunkPushC <- op:
-				return nil
-			}
-		}),
+	return &putterSession{
+		chunkStore: storage.PutterFunc(
+			func(ctx context.Context, ch swarm.Chunk) error {
+				op := &pusher.Op{Chunk: ch, Err: make(chan error, 1), Direct: true}
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case m.chunkPushC <- op:
+					return nil
+				}
+			}),
 	}
 }
 

@@ -88,7 +88,6 @@ func (r1 *Reader) Equal(r2 io.Reader) (bool, error) {
 // Match compares the contents of the reader with the contents of
 // the given reader. It returns true if the contents are equal upto n bytes
 func (r1 *Reader) Match(r2 io.Reader, l int) (bool, error) {
-
 	read := func(r io.Reader, buf []byte) (n int, err error) {
 		for n < len(buf) && err == nil {
 			i, e := r.Read(buf[n:])

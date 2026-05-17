@@ -32,7 +32,7 @@ func TestSaveLoad(t *testing.T) {
 	defer store.Close()
 	pstore := pstoremock.New()
 	saved := func(id int64) postage.Service {
-		ps, err := postage.NewService(log.Noop, store, pstore, id)
+		ps, err := postage.NewService(log.Noop, store, pstore, id, true)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -48,7 +48,7 @@ func TestSaveLoad(t *testing.T) {
 		return ps
 	}
 	loaded := func(id int64) postage.Service {
-		ps, err := postage.NewService(log.Noop, store, pstore, id)
+		ps, err := postage.NewService(log.Noop, store, pstore, id, true)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -57,6 +57,7 @@ func TestSaveLoad(t *testing.T) {
 	test := func(id int64) {
 		psS := saved(id)
 		psL := loaded(id)
+		defer psL.Close()
 
 		sMap := map[string]struct{}{}
 		stampIssuers := psS.StampIssuers()
@@ -87,10 +88,12 @@ func TestGetStampIssuer(t *testing.T) {
 	}
 	validBlockNumber := testChainState.Block - uint64(postage.BlockThreshold+1)
 	pstore := pstoremock.New(pstoremock.WithChainState(testChainState))
-	ps, err := postage.NewService(log.Noop, store, pstore, chainID)
+	ps, err := postage.NewService(log.Noop, store, pstore, chainID, true)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer ps.Close()
+
 	ids := make([][]byte, 8)
 	for i := range ids {
 		id := make([]byte, 32)
@@ -224,7 +227,7 @@ func TestSetExpired(t *testing.T) {
 		return bytes.Equal(b, batch), nil
 	}))
 
-	ps, err := postage.NewService(log.Noop, store, pstore, 1)
+	ps, err := postage.NewService(log.Noop, store, pstore, 1, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -297,4 +300,115 @@ func TestSetExpired(t *testing.T) {
 	}
 
 	testutil.CleanupCloser(t, ps)
+}
+
+// TestCrashRecovery verifies that bucket counts are restored from stamp items
+// when the service starts after an unclean shutdown (wasClean=false).
+func TestCrashRecovery(t *testing.T) {
+	t.Parallel()
+
+	store := inmemstore.New()
+	defer store.Close()
+	pstore := pstoremock.New()
+
+	issuer := newTestStampIssuer(t, 1000)
+	batchID := issuer.ID()
+
+	// Pick two random chunk addresses and compute their bucket indices.
+	chunkAddr0 := swarm.RandAddress(t)
+	chunkAddr1 := swarm.RandAddress(t)
+	bIdx0 := postage.ToBucket(issuer.BucketDepth(), chunkAddr0)
+	bIdx1 := postage.ToBucket(issuer.BucketDepth(), chunkAddr1)
+
+	// Write StampItems directly, simulating stamps issued before a crash
+	// without the issuer bucket state being saved.
+	// bIdx0: issued at collision count 2 → bucket should recover to 3
+	// bIdx1: issued at collision count 0 → bucket should recover to 1
+	items := []*postage.StampItem{
+		postage.NewStampItem().WithBatchID(batchID).WithChunkAddress(chunkAddr0).WithBatchIndex(postage.IndexToBytes(bIdx0, 2)),
+		postage.NewStampItem().WithBatchID(batchID).WithChunkAddress(chunkAddr1).WithBatchIndex(postage.IndexToBytes(bIdx1, 0)),
+	}
+	for _, item := range items {
+		if err := store.Put(item); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Save the issuer with zero bucket counts to the store.
+	ps, err := postage.NewService(log.Noop, store, pstore, 1, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ps.Add(issuer); err != nil {
+		t.Fatal(err)
+	}
+	if err := ps.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that the issuer on disk still has zero bucket counts (i.e., recovery
+	// has not happened yet). Open with wasClean=true to skip recovery.
+	psCheck, err := postage.NewService(log.Noop, store, pstore, 1, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkIssuers := psCheck.StampIssuers()
+	if len(checkIssuers) != 1 {
+		t.Fatalf("pre-recovery check: expected 1 issuer, got %d", len(checkIssuers))
+	}
+	checkBuckets := checkIssuers[0].Buckets()
+	if checkBuckets[bIdx0] != 0 {
+		t.Errorf("pre-recovery check: bucket %d: want 0, got %d", bIdx0, checkBuckets[bIdx0])
+	}
+	if checkBuckets[bIdx1] != 0 {
+		t.Errorf("pre-recovery check: bucket %d: want 0, got %d", bIdx1, checkBuckets[bIdx1])
+	}
+	if err := psCheck.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Restart with wasClean=false — should trigger bucket recovery.
+	ps2, err := postage.NewService(log.Noop, store, pstore, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	issuers := ps2.StampIssuers()
+	if len(issuers) != 1 {
+		t.Fatalf("expected 1 issuer, got %d", len(issuers))
+	}
+
+	buckets := issuers[0].Buckets()
+	if buckets[bIdx0] != 3 {
+		t.Errorf("bucket %d: want 3, got %d", bIdx0, buckets[bIdx0])
+	}
+	if buckets[bIdx1] != 1 {
+		t.Errorf("bucket %d: want 1, got %d", bIdx1, buckets[bIdx1])
+	}
+
+	// Clean shutdown — recovered counts must be flushed to disk.
+	if err := ps2.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Restart with wasClean=true — recovery is skipped, but counts must still
+	// be correct because ps2.Close() persisted the recovered state.
+	ps3, err := postage.NewService(log.Noop, store, pstore, 1, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ps3.Close()
+
+	issuers3 := ps3.StampIssuers()
+	if len(issuers3) != 1 {
+		t.Fatalf("post-recovery clean restart: expected 1 issuer, got %d", len(issuers3))
+	}
+
+	buckets3 := issuers3[0].Buckets()
+	if buckets3[bIdx0] != 3 {
+		t.Errorf("post-recovery clean restart: bucket %d: want 3, got %d", bIdx0, buckets3[bIdx0])
+	}
+	if buckets3[bIdx1] != 1 {
+		t.Errorf("post-recovery clean restart: bucket %d: want 1, got %d", bIdx1, buckets3[bIdx1])
+	}
 }

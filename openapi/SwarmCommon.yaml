@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 4.3.0
+  version: 5.0.0
   title: Common Data Types
   description: Common data structures and types used throughout the Bee API
 
@@ -77,9 +77,15 @@ components:
       properties:
         balance:
           $ref: "#/components/schemas/BigInt"
+        consumedBalance:
+          $ref: "#/components/schemas/BigInt"
         thresholdReceived:
           $ref: "#/components/schemas/BigInt"
         thresholdGiven:
+          $ref: "#/components/schemas/BigInt"
+        currentThresholdReceived:
+          $ref: "#/components/schemas/BigInt"
+        currentThresholdGiven:
           $ref: "#/components/schemas/BigInt"
         surplusBalance:
           $ref: "#/components/schemas/BigInt"
@@ -126,6 +132,10 @@ components:
         peer:
           $ref: "#/components/schemas/SwarmAddress"
         balance:
+          $ref: "#/components/schemas/BigInt"
+        thresholdreceived:
+          $ref: "#/components/schemas/BigInt"
+        thresholdgiven:
           $ref: "#/components/schemas/BigInt"
 
     Balances:
@@ -299,6 +309,9 @@ components:
       properties:
         uid:
           $ref: "#/components/schemas/Uid"
+        address:
+          $ref: "#/components/schemas/SwarmAddress"
+          description: Root reference associated with the tag once the upload is finalized; zero value before that.
         startedAt:
           $ref: "#/components/schemas/DateTime"
         split:
@@ -363,21 +376,31 @@ components:
           type: array
           nullable: false
           items:
-            $ref: "#/components/schemas/Address"
+            type: object
+            properties:
+              address:
+                $ref: "#/components/schemas/SwarmAddress"
+              fullNode:
+                type: boolean
 
     BlockListedPeers:
-      type: array
-      items:
-        type: object
-        properties:
-          address:
-            $ref: "#/components/schemas/Address"
-          fullNode:
-            type: boolean
-          reason:
-            type: string
-          duration:
-            type: integer
+      type: object
+      properties:
+        peers:
+          type: array
+          nullable: false
+          items:
+            type: object
+            properties:
+              address:
+                $ref: "#/components/schemas/SwarmAddress"
+              fullNode:
+                type: boolean
+              reason:
+                type: string
+              duration:
+                type: integer
+                description: Block duration in seconds
 
     PssRecipient:
       type: string
@@ -467,12 +490,11 @@ components:
       properties:
         beeMode:
           type: string
-          enum: [light, full, dev, ultra-light, unknown]
+          enum: [light, full, ultra-light, unknown]
           description: >
             Gives back in what mode the Bee client has been started. The modes are mutually exclusive
             * `light` - light node; does not participate in forwarding or storing chunks
             * `full` - full node
-            * `dev` - development mode; Bee client for development purposes, blockchain operations are mocked
             * `ultra-light` - ultra-light node; a light node with chain disabled
             * `unknown` - unknown mode
         chequebookEnabled:
@@ -544,17 +566,15 @@ components:
           $ref: "#/components/schemas/BigInt"
         start:
           type: integer
+        owner:
+          $ref: "#/components/schemas/EthereumAddress"
         depth:
           type: integer
         bucketDepth:
           type: integer
-        immutableFlag:
+        immutable:
           type: boolean
         batchTTL:
-          type: integer
-        owner:
-          $ref: "#/components/schemas/EthereumAddress"
-        storageRadius:
           type: integer
 
     DebugPostageBatch:
@@ -591,17 +611,17 @@ components:
         peer:
           $ref: "#/components/schemas/SwarmAddress"
         received:
-          type: integer
+          $ref: "#/components/schemas/BigInt"
         sent:
-          type: integer
+          $ref: "#/components/schemas/BigInt"
 
     Settlements:
       type: object
       properties:
         totalReceived:
-          type: integer
+          $ref: "#/components/schemas/BigInt"
         totalSent:
-          type: integer
+          $ref: "#/components/schemas/BigInt"
         settlements:
           type: array
           nullable: false
@@ -671,7 +691,7 @@ components:
     SwarmOnlyReferencesList:
       type: object
       properties:
-        reference:
+        references:
           type: array
           nullable: false
           items:
@@ -889,7 +909,6 @@ components:
           enum:
             - "light"
             - "full"
-            - "dev"
             - "ultra-light"
             - "unknown"
         reserveSize:
@@ -1163,6 +1182,16 @@ components:
       description: >
         Specify the timeout for chunk retrieval. The default is 30 seconds.
 
+    SwarmLookaheadBufferSizeParameter:
+      in: header
+      name: swarm-lookahead-buffer-size
+      schema:
+        type: integer
+      required: false
+      description: >
+        Override the lookahead buffer size used during retrieval, in bytes. When unset the node
+        picks 8x or 16x the io.Copy default buffer (32 kB) depending on file size.
+
     SwarmOnlyRootChunkParameter:
       in: header
       name: swarm-only-root-chunk
@@ -1176,7 +1205,7 @@ components:
       name: Content-Type
       schema:
         type: string
-      description: The specified content-type is preserved for download of the asset
+      description: "Single file: trimmed Content-Type is stored as-is or, if omitted or empty, inferred from the first bytes without validating against the body; tar (`swarm-collection`) and multipart collection uploads still need a full-body Content-Type (e.g. `application/x-tar` or `multipart/form-data` with boundary) so the request can be parsed."
 
     SwarmIndexDocumentParameter:
       in: header

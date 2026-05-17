@@ -219,7 +219,7 @@ func closer(closers ...io.Closer) io.Closer {
 }
 
 func initInmemRepository() (transaction.Storage, io.Closer, error) {
-	store, err := leveldbstore.New("", nil)
+	store, _, err := leveldbstore.New("", nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed creating inmem levelDB index store: %w", err)
 	}
@@ -262,7 +262,7 @@ func initStore(basePath string, opts *Options) (*leveldbstore.Store, error) {
 			return nil, err
 		}
 	}
-	store, err := leveldbstore.New(path.Join(basePath, "indexstore"), &opt.Options{
+	store, _, err := leveldbstore.New(path.Join(basePath, "indexstore"), &opt.Options{
 		OpenFilesCacheCapacity: int(opts.LdbOpenFilesLimit),
 		BlockCacheCapacity:     int(opts.LdbBlockCacheCapacity),
 		WriteBuffer:            int(opts.LdbWriteBufferSize),
@@ -281,15 +281,15 @@ func initDiskRepository(
 	ctx context.Context,
 	basePath string,
 	opts *Options,
-) (transaction.Storage, *PinIntegrity, io.Closer, error) {
+) (transaction.Storage, *PinIntegrity, io.Closer, int, error) {
 	store, err := initStore(basePath, opts)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed creating levelDB index store: %w", err)
+		return nil, nil, nil, 0, fmt.Errorf("failed creating levelDB index store: %w", err)
 	}
 
 	err = migration.Migrate(store, "core-migration", localmigration.BeforeInitSteps(store, opts.Logger))
 	if err != nil {
-		return nil, nil, nil, errors.Join(store.Close(), fmt.Errorf("failed core migration: %w", err))
+		return nil, nil, nil, 0, errors.Join(store.Close(), fmt.Errorf("failed core migration: %w", err))
 	}
 
 	if opts.LdbStats.Load() != nil {
@@ -341,13 +341,13 @@ func initDiskRepository(
 	if _, err := os.Stat(sharkyBasePath); os.IsNotExist(err) {
 		err := os.Mkdir(sharkyBasePath, 0o777)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, 0, err
 		}
 	}
 
-	recoveryCloser, err := sharkyRecovery(ctx, sharkyBasePath, store, opts)
+	recoveryCloser, pruned, err := sharkyRecovery(ctx, sharkyBasePath, store, opts)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to recover sharky: %w", err)
+		return nil, nil, nil, 0, fmt.Errorf("failed to recover sharky: %w", err)
 	}
 
 	sharky, err := sharky.New(
@@ -356,7 +356,7 @@ func initDiskRepository(
 		swarm.SocMaxChunkSize,
 	)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed creating sharky instance: %w", err)
+		return nil, nil, nil, 0, fmt.Errorf("failed creating sharky instance: %w", err)
 	}
 
 	pinIntegrity := &PinIntegrity{
@@ -364,7 +364,7 @@ func initDiskRepository(
 		Sharky: sharky,
 	}
 
-	return transaction.NewStorage(sharky, store), pinIntegrity, closer(store, sharky, recoveryCloser), nil
+	return transaction.NewStorage(sharky, store), pinIntegrity, closer(store, sharky, recoveryCloser), pruned, nil
 }
 
 const lockKeyNewSession string = "new_session"
@@ -472,6 +472,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		pinIntegrity *PinIntegrity
 		st           transaction.Storage
 		dbCloser     io.Closer
+		pruned       int
 	)
 	if opts == nil {
 		opts = defaultOptions()
@@ -491,7 +492,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			return nil, err
 		}
 	} else {
-		st, pinIntegrity, dbCloser, err = initDiskRepository(ctx, dirPath, opts)
+		st, pinIntegrity, dbCloser, pruned, err = initDiskRepository(ctx, dirPath, opts)
 		if err != nil {
 			return nil, err
 		}
@@ -581,6 +582,9 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		db.metrics.ReserveSize.Set(float64(rs.Size()))
 	}
 	db.metrics.CacheSize.Set(float64(db.cacheObj.Size()))
+	if pruned > 0 {
+		db.metrics.RecoveryPrunedChunkCount.Add(float64(pruned))
+	}
 
 	// Cleanup any dirty state in upload and pinning stores, this could happen
 	// in case of dirty shutdowns

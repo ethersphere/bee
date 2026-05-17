@@ -9,9 +9,8 @@ import (
 )
 
 type metrics struct {
-	TotalRPCCalls  m.Counter
-	TotalRPCErrors m.Counter
-
+	TotalRPCCalls           m.Counter
+	TotalRPCErrors          m.Counter
 	TransactionReceiptCalls m.Counter
 	TransactionCalls        m.Counter
 	BlockNumberCalls        m.Counter
@@ -54,12 +53,6 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "calls_transaction_receipt",
 			Help:      "Count of eth_getTransactionReceipt rpc errors",
-		}),
-		BlockNumberCalls: m.NewCounter(m.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "calls_block_number",
-			Help:      "Count of eth_blockNumber rpc calls",
 		}),
 		BlockHeaderCalls: m.NewCounter(m.CounterOpts{
 			Namespace: m.Namespace,
@@ -125,5 +118,7 @@ func newMetrics() metrics {
 }
 
 func (b *wrappedBackend) Metrics() []m.Collector {
-	return m.PrometheusCollectorsFromFields(b.metrics)
+	collectors := m.PrometheusCollectorsFromFields(b.metrics)
+	collectors = append(collectors, b.blockNumberCache.Collectors()...)
+	return collectors
 }

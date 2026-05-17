@@ -65,9 +65,7 @@ func Respond(w http.ResponseWriter, statusCode int, response any) {
 				Message: message.Error(),
 				Code:    statusCode,
 			}
-		case interface {
-			String() string
-		}:
+		case interface{ String() string }:
 			response = &StatusResponse{
 				Message: message.String(),
 				Code:    statusCode,

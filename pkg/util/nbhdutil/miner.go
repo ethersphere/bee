@@ -15,7 +15,6 @@ import (
 )
 
 func MineOverlay(ctx context.Context, p ecdsa.PublicKey, networkID uint64, targetNeighborhood string) (swarm.Address, []byte, error) {
-
 	nonce := make([]byte, 32)
 
 	neighborhood, err := swarm.ParseBitStrAddress(targetNeighborhood)

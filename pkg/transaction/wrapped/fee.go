@@ -16,9 +16,7 @@ const (
 	baseFeeMultiplier = 2
 )
 
-var (
-	ErrEIP1559NotSupported = errors.New("network does not appear to support EIP-1559 (no baseFee)")
-)
+var ErrEIP1559NotSupported = errors.New("network does not appear to support EIP-1559 (no baseFee)")
 
 // SuggestedFeeAndTip calculates the recommended gasFeeCap (maxFeePerGas) and gasTipCap (maxPriorityFeePerGas) for a transaction.
 // If gasPrice is provided (legacy mode):

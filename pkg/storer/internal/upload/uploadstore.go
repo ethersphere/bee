@@ -115,11 +115,9 @@ func (i pushItem) String() string {
 	return storageutil.JoinFields(i.Namespace(), i.ID())
 }
 
-var (
-	// errTagIDAddressItemUnmarshalInvalidSize is returned when trying
-	// to unmarshal buffer that is not of size tagItemSize.
-	errTagItemUnmarshalInvalidSize = errors.New("unmarshal TagItem: invalid size")
-)
+// errTagIDAddressItemUnmarshalInvalidSize is returned when trying
+// to unmarshal buffer that is not of size tagItemSize.
+var errTagItemUnmarshalInvalidSize = errors.New("unmarshal TagItem: invalid size")
 
 // tagItemSize is the size of a marshaled TagItem.
 const tagItemSize = swarm.HashSize + 7*8
@@ -565,7 +563,6 @@ func CleanupDirty(st transaction.Storage) error {
 
 // Report is the implementation of the PushReporter interface.
 func Report(ctx context.Context, st transaction.Store, chunk swarm.Chunk, state storage.ChunkState) error {
-
 	indexStore := st.IndexStore()
 
 	ui := &uploadItem{Address: chunk.Address(), BatchID: chunk.Stamp().BatchID()}
@@ -624,9 +621,7 @@ func Report(ctx context.Context, st transaction.Store, chunk swarm.Chunk, state 
 	return deleteFunc()
 }
 
-var (
-	errNextTagIDUnmarshalInvalidSize = errors.New("unmarshal nextTagID: invalid size")
-)
+var errNextTagIDUnmarshalInvalidSize = errors.New("unmarshal nextTagID: invalid size")
 
 // nextTagID is a storage.Item which stores a uint64 value in the store.
 type nextTagID uint64

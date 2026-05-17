@@ -62,10 +62,16 @@ func GenerateTestRandomSoChunk(tb testing.TB, cac swarm.Chunk) swarm.Chunk {
 }
 
 // GenerateTestRandomInvalidChunk generates a random, however invalid, content
-// addressed chunk.
+// addressed chunk. The chunk is also guaranteed to be invalid as a SOC: with
+// purely random bytes, the embedded signature recovery byte falls inside
+// btcec's valid range often enough (~0.7%) that soc.FromChunk would succeed
+// and consumers expecting an "invalid" chunk see flaky behavior. Forcing the
+// recovery byte (data[swarm.HashSize+swarm.SocSignatureSize-1]) outside the
+// valid 27..34 range makes signature recovery deterministically fail.
 func GenerateTestRandomInvalidChunk() swarm.Chunk {
 	data := make([]byte, swarm.ChunkSize)
 	_, _ = rand.Read(data)
+	data[swarm.HashSize+swarm.SocSignatureSize-1] = 0xFF
 	key := make([]byte, swarm.SectionSize)
 	_, _ = rand.Read(key)
 	stamp := postagetesting.MustNewStamp()
@@ -91,7 +97,6 @@ func GenerateTestRandomChunkAt(tb testing.TB, target swarm.Address, po int) swar
 	addr := swarm.RandAddressAt(tb, target, po)
 	stamp := postagetesting.MustNewStamp()
 	return swarm.NewChunk(addr, data).WithStamp(stamp)
-
 }
 
 // GenerateValidRandomChunkAt generates an valid chunk with address of proximity order po wrt target.

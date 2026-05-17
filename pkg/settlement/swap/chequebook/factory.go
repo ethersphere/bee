@@ -5,11 +5,10 @@
 package chequebook
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math/big"
-
-	"context"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"

@@ -300,7 +300,6 @@ func ChunkType(ch swarm.Chunk) swarm.ChunkType {
 // but hashing the soc address and the wrapped chunk address is.
 // it is used in the reserve sampling and other places where a key is needed to represent a chunk.
 func IdentityAddress(chunk swarm.Chunk) (swarm.Address, error) {
-
 	if cac.Valid(chunk) {
 		return chunk.Address(), nil
 	}

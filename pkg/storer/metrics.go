@@ -35,6 +35,7 @@ type metrics struct {
 	ReserveSampleDuration         m.HistogramMetricVector
 	ReserveSampleRunSummary       m.GaugeMetricVector
 	ReserveSampleLastRunTimestamp m.Gauge
+	RecoveryPrunedChunkCount      m.Counter
 }
 
 // newMetrics is a convenient constructor for creating new metrics.
@@ -190,6 +191,14 @@ func newMetrics() metrics {
 				Subsystem: subsystem,
 				Name:      "reserve_sample_last_run_timestamp",
 				Help:      "Unix timestamp of the last ReserveSample run completion.",
+			},
+		),
+		RecoveryPrunedChunkCount: m.NewCounter(
+			m.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "recovery_pruned_chunk_count",
+				Help:      "Number of corrupted chunks pruned from the index during sharky recovery.",
 			},
 		),
 	}

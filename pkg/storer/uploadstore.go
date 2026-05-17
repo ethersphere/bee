@@ -23,7 +23,6 @@ const uploadsLock = "pin-upload-store"
 // Report implements the storage.PushReporter by wrapping the internal reporter
 // with a transaction.
 func (db *DB) Report(ctx context.Context, chunk swarm.Chunk, state storage.ChunkState) error {
-
 	unlock := db.Lock(uploadsLock)
 	defer unlock()
 
@@ -63,7 +62,6 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 		}
 		return nil
 	})
-
 	if err != nil {
 		return nil, err
 	}

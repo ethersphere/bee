@@ -7,9 +7,8 @@ package api
 import (
 	"math/big"
 	"net/http"
-	"strings"
-
 	"slices"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/bigint"
