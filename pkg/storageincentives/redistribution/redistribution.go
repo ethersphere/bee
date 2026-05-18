@@ -207,9 +207,6 @@ func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxReque
 	if receipt == nil {
 		return txHash, fmt.Errorf("missing receipt after send with retry")
 	}
-	if receipt.Status == 0 {
-		return txHash, transaction.ErrTransactionReverted
-	}
 	return txHash, nil
 }
 

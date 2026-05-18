@@ -53,57 +53,65 @@ func escalateGasTip(tip *big.Int, increasePct int) *big.Int {
 	return mulDivPercent(tip, int64(100+increasePct), 100)
 }
 
-func (t *transactionService) dynamicGasFeeCap(ctx context.Context, gasTipCap *big.Int) (gasFeeCap *big.Int, err error) {
+func (t *transactionService) suggestGasFeeGasTipCapWithHistory(ctx context.Context, prevGasTipCap *big.Int) (gasFeeCap, gasTipCap *big.Int, err error) {
 	header, err := t.backend.HeaderByNumber(ctx, nil)
 	if err != nil {
-		return nil, err
+		return nil, prevGasTipCap, err
 	}
 	if header == nil || header.BaseFee == nil {
-		return nil, fmt.Errorf("latest block header or base fee unavailable")
+		return nil, prevGasTipCap, fmt.Errorf("latest block header or base fee unavailable")
 	}
+
+	var escalatedGasTip *big.Int
+	if prevGasTipCap == nil || prevGasTipCap.Sign() == 0 {
+		fh, err := t.backend.GetFeeAndTipsFromFeeHistory(ctx, nil)
+		if err != nil {
+			return nil, nil, fmt.Errorf("fee history: %w", err)
+		}
+		if fh == nil {
+			return nil, nil, errors.New("fee history: missing base fee")
+		}
+		escalatedGasTip = fh.MarketTip
+		prevGasTipCap = fh.MarketTip
+	} else {
+		escalatedGasTip = escalateGasTip(prevGasTipCap, t.txRetryGasIncreasePercent)
+	}
+
 	gasFeeCap = new(big.Int).Mul(header.BaseFee, big.NewInt(2))
-	gasFeeCap.Add(gasFeeCap, gasTipCap)
-	return gasFeeCap, nil
+	gasFeeCapWithEscalatedTip := new(big.Int).Add(new(big.Int).Set(gasFeeCap), escalatedGasTip)
+	gasFeeCapWithPreviousTip := new(big.Int).Add(new(big.Int).Set(gasFeeCap), prevGasTipCap)
+
+	t.logger.V(1).Register().Debug("suggest gas fees for retry",
+		"base_fee", header.BaseFee,
+		"previous_tip", prevGasTipCap,
+		"escalated_tip", escalatedGasTip,
+		"gas_fee_cap_with_escalated_tip", gasFeeCapWithEscalatedTip,
+		"gas_fee_cap_with_previous_tip", gasFeeCapWithPreviousTip,
+		"max_tx_price", t.maxTxPrice)
+
+	if t.maxTxPrice != nil && gasFeeCapWithEscalatedTip.Cmp(t.maxTxPrice) > 0 {
+		t.logger.Warning("gas cap fee with escalated gas tip is too high, fallback to previous gas tip",
+			"escalated_gas_tip_cap", escalatedGasTip.String(),
+			"escalated_gas_fee_cap", gasFeeCapWithEscalatedTip.String(),
+			"previous_gas_tip_cap", prevGasTipCap.String())
+
+		if gasFeeCapWithPreviousTip.Cmp(t.maxTxPrice) > 0 {
+			return nil, nil, fmt.Errorf("%w: max_fee_per_gas %s exceeds limit %s", ErrTxMaxPriceExceeded, gasFeeCap, t.maxTxPrice)
+		}
+		return gasFeeCapWithPreviousTip, prevGasTipCap, nil
+	}
+	return gasFeeCapWithEscalatedTip, escalatedGasTip, nil
 }
 
-func (t *transactionService) prepareTransactionWithRetry(ctx context.Context, request *TxRequest, nonce uint64, gasTipCap *big.Int) (*types.Transaction, error) {
+func (t *transactionService) prepareTransactionWithRetry(ctx context.Context, request *TxRequest, nonce uint64, prevGasTipCap *big.Int) (*types.Transaction, error) {
 	gasLimit, err := t.estimateGasLimit(ctx, request)
 	if err != nil {
 		return nil, err
 	}
 
-	var gasFeeCap *big.Int
-
-	if gasTipCap == nil || gasTipCap.Sign() == 0 {
-		fh, err := t.backend.GetFeeAndTipsFromFeeHistory(ctx, nil)
-		if err != nil {
-			return nil, fmt.Errorf("fee history: %w", err)
-		}
-		if fh == nil || fh.LatestBaseFee == nil {
-			return nil, errors.New("fee history: missing base fee")
-		}
-		gasTipCap = fh.LowTip
-		gasFeeCap, err = t.dynamicGasFeeCap(ctx, gasTipCap)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		escalated := escalateGasTip(gasTipCap, t.txRetryGasIncreasePercent)
-		gasFeeCap, err = t.dynamicGasFeeCap(ctx, escalated)
-		if err != nil {
-			return nil, err
-		}
-		if t.maxTxPrice == nil || gasFeeCap.Cmp(t.maxTxPrice) <= 0 {
-			gasTipCap = escalated
-		} else {
-			// Escalated tip too expensive — fall back to current tip without escalation.
-			gasFeeCap = new(big.Int).Sub(gasFeeCap, escalated)
-			gasFeeCap.Add(gasFeeCap, gasTipCap)
-		}
-	}
-
-	if t.maxTxPrice != nil && gasFeeCap.Cmp(t.maxTxPrice) > 0 {
-		return nil, fmt.Errorf("%w: max_fee_per_gas %s exceeds limit %s", ErrTxMaxPriceExceeded, gasFeeCap, t.maxTxPrice)
+	gasFeeCap, newGasTipCap, err := t.suggestGasFeeGasTipCapWithHistory(ctx, prevGasTipCap)
+	if err != nil {
+		return nil, err
 	}
 
 	tx := types.NewTx(&types.DynamicFeeTx{
@@ -113,7 +121,7 @@ func (t *transactionService) prepareTransactionWithRetry(ctx context.Context, re
 		Value:     request.Value,
 		Gas:       gasLimit,
 		GasFeeCap: gasFeeCap,
-		GasTipCap: gasTipCap,
+		GasTipCap: newGasTipCap,
 		Data:      request.Data,
 	})
 	return tx, nil
@@ -147,13 +155,17 @@ func (t *transactionService) broadcastTxWithRetry(ctx context.Context, request *
 		return nil, fmt.Errorf("%w: %w", ErrSignTransaction, err)
 	}
 
-	t.logger.Info("transaction retry broadcast",
+	t.logger.Info("send with retry: broadcast",
 		"attempt", attempt,
+		"tx", signedTx.Hash(),
 		"nonce", nonce,
+		"to", request.To,
+		"gas_limit", tx.Gas(),
 		"gas_fee_cap", tx.GasFeeCap(),
 		"gas_tip_cap", tx.GasTipCap(),
-		"tx", signedTx.Hash(),
-		"timestamp", time.Now().Unix(),
+		"value", tx.Value(),
+		"data_len", len(tx.Data()),
+		"description", request.Description,
 	)
 
 	err = t.backend.SendTransaction(ctx, signedTx)
@@ -186,7 +198,6 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 	var (
 		txState RetryState
 		nonce   *uint64
-		gasTip  *big.Int
 	)
 
 	if txRetryKey != "" {
@@ -205,26 +216,38 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 		}
 	}
 
-	if txState.PreviousTip != nil {
-		gasTip = new(big.Int).Set(txState.PreviousTip)
-	}
+	loggerV1 := t.logger.V(1).Register()
+	loggerV1.Debug("send with retry: started",
+		"description", request.Description,
+		"to", request.To,
+		"max_retries", t.txMaxRetries,
+		"retry_delay", t.txRetryDelay,
+		"gas_increase_percent", t.txRetryGasIncreasePercent,
+		"resume_from_attempt", txState.NextAttempt,
+		"nonce_assigned", txState.NonceAssigned,
+		"previous_tip", txState.PreviousTip)
 
 	for attempt := txState.NextAttempt; attempt < t.txMaxRetries; attempt++ {
 		if txState.NonceAssigned {
 			nonce = &txState.Nonce
 		}
 
-		signedTx, err := t.broadcastTxWithRetry(ctx, request, nonce, gasTip, attempt)
+		signedTx, err := t.broadcastTxWithRetry(ctx, request, nonce, txState.PreviousTip, attempt)
 		if err != nil {
 			if isErrCritical(err) {
-				t.logger.Warning("transaction broadcast failed with critical error, stop retry", "attempt", attempt, "error", err)
+				t.logger.Error(err,
+					"transaction with retry: broadcast failed with critical error, stop retry",
+					"attempt", attempt, "nonce", nonce, "to", txState.To)
 				t.deleteRetryStateAndPending(txRetryKey, txState)
 				return common.Hash{}, nil, err
 			}
-			t.logger.Warning("transaction retry broadcast failed, will retry", "attempt", attempt, "error", err)
+			t.logger.Warning("transaction retry broadcast failed, will retry", "attempt", attempt, "error", err, "to", txState.To)
 		}
 
 		if err := t.updateStates(signedTx, &txState); err != nil {
+			t.logger.Error(err,
+				"transaction with retry: failed update states, stop retry",
+				"attempt", attempt, "nonce", nonce, "to", txState.To)
 			t.deleteRetryStateAndPending(txRetryKey, txState)
 			return common.Hash{}, nil, err
 		}
@@ -233,7 +256,19 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 			txRetryKey = retryStateKey(txState.Nonce)
 		}
 
+		loggerV1.Debug("send with retry: state updated",
+			"attempt", attempt,
+			"tx_hash", txState.LastTxHash,
+			"nonce", txState.Nonce,
+			"nonce_assigned", txState.NonceAssigned,
+			"previous_tip", txState.PreviousTip,
+			"description", request.Description)
+
 		if txState.LastTxHash == (common.Hash{}) {
+			loggerV1.Debug("send with retry: no tx hash after broadcast failure, waiting before next attempt",
+				"attempt", attempt,
+				"retry_delay", t.txRetryDelay,
+				"description", request.Description)
 			select {
 			case <-ctx.Done():
 				return common.Hash{}, nil, ctx.Err()
@@ -247,19 +282,46 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 		cancel()
 
 		if waitErr == nil {
+			loggerV1.Debug("send with retry: receipt received",
+				"tx_hash", txState.LastTxHash,
+				"status", rec.Status,
+				"gas_used", rec.GasUsed,
+				"block_number", rec.BlockNumber,
+				"nonce", txState.Nonce,
+				"description", request.Description)
 			t.deleteRetryStateAndPending(txRetryKey, txState)
 			if rec.Status == 0 {
 				return txState.LastTxHash, rec, ErrTransactionReverted
 			}
 			return txState.LastTxHash, rec, nil
 		} else if isErrCritical(waitErr) {
+			t.logger.Error(waitErr,
+				"send with retry: wait for receipt failed with critical error, stop retry",
+				"attempt", attempt,
+				"tx_hash", txState.LastTxHash,
+				"nonce", txState.Nonce,
+				"description", request.Description)
 			t.deleteRetryStateAndPending(txRetryKey, txState)
 			return common.Hash{}, nil, waitErr
+		} else {
+			loggerV1.Debug("send with retry: receipt not received, will escalate gas",
+				"attempt", attempt,
+				"tx_hash", txState.LastTxHash,
+				"nonce", txState.Nonce,
+				"wait_error", waitErr,
+				"description", request.Description)
 		}
 	}
 
+	exhaustionErr := fmt.Errorf("transaction failed after %d attempts (nonce=%d, description=%s)", t.txMaxRetries, txState.Nonce, txState.Description)
+	t.logger.Error(exhaustionErr,
+		"send with retry: all attempts exhausted",
+		"max_retries", t.txMaxRetries,
+		"nonce", txState.Nonce,
+		"last_tx_hash", txState.LastTxHash,
+		"description", txState.Description)
 	t.deleteRetryStateAndPending(txRetryKey, txState)
-	return txState.LastTxHash, nil, fmt.Errorf("transaction failed after %d attempts (nonce=%d, description=%s)", t.txMaxRetries, txState.Nonce, txState.Description)
+	return txState.LastTxHash, nil, exhaustionErr
 }
 
 func (t *transactionService) updateStates(signedTx *types.Transaction, txState *RetryState) error {
@@ -323,6 +385,7 @@ func isErrCritical(err error) bool {
 	s := err.Error()
 	nonRetryable := []string{
 		"specified gas price",
+		"nonce too low",
 		"AlreadyCommitted",
 		"AlreadyRevealed",
 		"AlreadyClaimed",
@@ -386,17 +449,33 @@ func (t *transactionService) resumeRetryTransactions() error {
 
 	confirmed, err := t.backend.NonceAt(t.ctx, t.sender, nil)
 	if err != nil {
-		// TODO logging, but keep going
+		t.logger.Warning("resume retry: failed to get confirmed nonce, resuming all", "error", err)
 	}
+
+	loggerV1 := t.logger.V(1).Register()
+	loggerV1.Debug("resume retry: scanning persisted retry states",
+		"count", len(keys),
+		"confirmed_nonce", confirmed)
 
 	for i := range keys {
 		key := keys[i]
 		state := states[i]
 
 		if confirmed > state.Nonce {
+			loggerV1.Debug("resume retry: skipping already confirmed transaction",
+				"nonce", state.Nonce,
+				"confirmed_nonce", confirmed,
+				"description", state.Description)
 			t.deleteRetryStateAndPending(key, state)
 			continue
 		}
+
+		loggerV1.Debug("resume retry: resuming persisted retry",
+			"nonce", state.Nonce,
+			"next_attempt", state.NextAttempt,
+			"last_tx_hash", state.LastTxHash,
+			"previous_tip", state.PreviousTip,
+			"description", state.Description)
 
 		sk := key
 		st := state
