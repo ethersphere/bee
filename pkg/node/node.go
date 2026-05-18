@@ -1328,6 +1328,9 @@ func NewBee(
 		if swapBackendMetrics, ok := chainBackend.(metrics.Collector); ok {
 			apiService.MustRegisterMetrics(swapBackendMetrics.Metrics()...)
 		}
+		if txMetrics, ok := transactionService.(metrics.Collector); ok {
+			apiService.MustRegisterMetrics(txMetrics.Metrics()...)
+		}
 
 		if l, ok := logger.(metrics.Collector); ok {
 			apiService.MustRegisterMetrics(l.Metrics()...)

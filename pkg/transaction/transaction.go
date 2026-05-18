@@ -168,6 +168,8 @@ type transactionService struct {
 	txRetryDelay              time.Duration
 	txRetryGasIncreasePercent int
 	maxTxPrice                *big.Int
+
+	metrics retryMetrics
 }
 
 // NewService creates a new transaction service.
@@ -200,6 +202,7 @@ func NewService(logger log.Logger, overlayEthAddress common.Address, backend Bac
 		txRetryDelay:              rc.RetryDelay,
 		txRetryGasIncreasePercent: rc.GasIncreasePercent,
 		maxTxPrice:                rc.MaxTxPrice,
+		metrics:                   newRetryMetrics(),
 	}
 
 	if err = t.waitForAllPendingTx(); err != nil {
