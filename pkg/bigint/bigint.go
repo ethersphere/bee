@@ -23,18 +23,25 @@ func (i *BigInt) MarshalJSON() ([]byte, error) {
 }
 
 func (i *BigInt) UnmarshalJSON(b []byte) error {
-	var val string
-	err := json.Unmarshal(b, &val)
-	if err != nil {
-		return err
-	}
-
 	if i.Int == nil {
 		i.Int = new(big.Int)
 	}
 
-	i.SetString(val, 10)
+	var val string
+	if err := json.Unmarshal(b, &val); err == nil {
+		if _, ok := i.SetString(val, 10); !ok {
+			return fmt.Errorf("bigint: invalid decimal string %q", val)
+		}
+		return nil
+	}
 
+	var num json.Number
+	if err := json.Unmarshal(b, &num); err != nil {
+		return err
+	}
+	if _, ok := i.SetString(num.String(), 10); !ok {
+		return fmt.Errorf("bigint: invalid json number %q", num.String())
+	}
 	return nil
 }
 
@@ -58,5 +65,9 @@ func (i *BigInt) UnmarshalBinary(data []byte) error {
 		return fmt.Errorf("bigint: UnmarshalBinary called with empty data")
 	}
 	i.Int = new(big.Int)
-	return i.GobDecode(data)
+	if err := i.GobDecode(data); err != nil {
+		// fallback: try JSON
+		return i.UnmarshalJSON(data)
+	}
+	return nil
 }
