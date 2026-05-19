@@ -139,17 +139,18 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type postageStampResponse struct {
-	BatchID       hexByte        `json:"batchID"`
-	Utilization   uint32         `json:"utilization"`
-	Usable        bool           `json:"usable"`
-	Label         string         `json:"label"`
-	Depth         uint8          `json:"depth"`
-	Amount        *bigint.BigInt `json:"amount"`
-	BucketDepth   uint8          `json:"bucketDepth"`
-	BlockNumber   uint64         `json:"blockNumber"`
-	ImmutableFlag bool           `json:"immutableFlag"`
-	Exists        bool           `json:"exists"`
-	BatchTTL      int64          `json:"batchTTL"`
+	BatchID            hexByte        `json:"batchID"`
+	Utilization        uint32         `json:"utilization"`
+	UtilizedPercentage float64        `json:"utilizedPercentage"`
+	Usable             bool           `json:"usable"`
+	Label              string         `json:"label"`
+	Depth              uint8          `json:"depth"`
+	Amount             *bigint.BigInt `json:"amount"`
+	BucketDepth        uint8          `json:"bucketDepth"`
+	BlockNumber        uint64         `json:"blockNumber"`
+	ImmutableFlag      bool           `json:"immutableFlag"`
+	Exists             bool           `json:"exists"`
+	BatchTTL           int64          `json:"batchTTL"`
 }
 
 type postageStampsResponse struct {
@@ -205,17 +206,18 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request
 		}
 
 		resp.Stamps = append(resp.Stamps, postageStampResponse{
-			BatchID:       v.ID(),
-			Utilization:   v.Utilization(),
-			Usable:        s.post.IssuerUsable(v),
-			Label:         v.Label(),
-			Depth:         v.Depth(),
-			Amount:        bigint.Wrap(v.Amount()),
-			BucketDepth:   v.BucketDepth(),
-			BlockNumber:   v.BlockNumber(),
-			ImmutableFlag: v.ImmutableFlag(),
-			Exists:        true,
-			BatchTTL:      batchTTL,
+			BatchID:            v.ID(),
+			Utilization:        v.Utilization(),
+			UtilizedPercentage: v.UtilizationPercentage(),
+			Usable:             s.post.IssuerUsable(v),
+			Label:              v.Label(),
+			Depth:              v.Depth(),
+			Amount:             bigint.Wrap(v.Amount()),
+			BucketDepth:        v.BucketDepth(),
+			BlockNumber:        v.BlockNumber(),
+			ImmutableFlag:      v.ImmutableFlag(),
+			Exists:             true,
+			BatchTTL:           batchTTL,
 		})
 	}
 
@@ -395,17 +397,18 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	jsonhttp.OK(w, &postageStampResponse{
-		BatchID:       paths.BatchID,
-		Depth:         issuer.Depth(),
-		BucketDepth:   issuer.BucketDepth(),
-		ImmutableFlag: issuer.ImmutableFlag(),
-		Exists:        true,
-		BatchTTL:      batchTTL,
-		Utilization:   issuer.Utilization(),
-		Usable:        s.post.IssuerUsable(issuer),
-		Label:         issuer.Label(),
-		Amount:        bigint.Wrap(issuer.Amount()),
-		BlockNumber:   issuer.BlockNumber(),
+		BatchID:            paths.BatchID,
+		Depth:              issuer.Depth(),
+		BucketDepth:        issuer.BucketDepth(),
+		ImmutableFlag:      issuer.ImmutableFlag(),
+		Exists:             true,
+		BatchTTL:           batchTTL,
+		Utilization:        issuer.Utilization(),
+		UtilizedPercentage: issuer.UtilizationPercentage(),
+		Usable:             s.post.IssuerUsable(issuer),
+		Label:              issuer.Label(),
+		Amount:             bigint.Wrap(issuer.Amount()),
+		BlockNumber:        issuer.BlockNumber(),
 	})
 }
 

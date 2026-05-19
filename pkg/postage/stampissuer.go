@@ -222,6 +222,14 @@ func (si *StampIssuer) Utilization() uint32 {
 	return si.data.MaxBucketCount
 }
 
+// UtilizationPercentage returns the batch fullness as a fraction in the
+// range [0, 1], computed as Utilization / 2^(BatchDepth - BucketDepth).
+// A value of 1 means the most-filled bucket is full and any further write
+// to that bucket would overflow the batch.
+func (si *StampIssuer) UtilizationPercentage() float64 {
+	return float64(si.data.MaxBucketCount) / float64(uint64(1)<<(si.data.BatchDepth-si.data.BucketDepth))
+}
+
 // ID returns the BatchID for this batch.
 func (si *StampIssuer) ID() []byte {
 	id := make([]byte, len(si.data.BatchID))
