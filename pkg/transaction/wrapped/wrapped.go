@@ -18,9 +18,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/transaction/wrapped/cache"
 )
 
-var (
-	_ transaction.Backend = (*wrappedBackend)(nil)
-)
+var _ transaction.Backend = (*wrappedBackend)(nil)
 
 type blockNumberAnchor struct {
 	number    uint64
@@ -199,6 +197,7 @@ func (b *wrappedBackend) SuggestGasTipCap(ctx context.Context) (*big.Int, error)
 	}
 	return gasTipCap, nil
 }
+
 func (b *wrappedBackend) EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint64, error) {
 	b.metrics.TotalRPCCalls.Inc()
 	b.metrics.EstimateGasCalls.Inc()

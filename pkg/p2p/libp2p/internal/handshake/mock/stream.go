@@ -24,6 +24,7 @@ type Stream struct {
 func NewStream(readBuffer, writeBuffer *bytes.Buffer) *Stream {
 	return &Stream{readBuffer: readBuffer, writeBuffer: writeBuffer}
 }
+
 func (s *Stream) SetReadErr(err error, checkmark int) {
 	s.readError = err
 	s.readErrCheckmark = checkmark

@@ -219,6 +219,8 @@ const (
 	basePrice                     = 10_000                    // minimal price for retrieval and pushsync requests of maximum proximity
 	postageSyncingStallingTimeout = 10 * time.Minute          //
 	postageSyncingBackoffTimeout  = 5 * time.Second           //
+	startupBlockHeightChecks      = 3                         // number of probes at startup before declaring stored chainstate ahead of backend
+	startupBlockHeightBackoff     = 5 * time.Second           // wait between startup block-height probes
 	minPaymentThreshold           = 2 * refreshRate           // minimal accepted payment threshold of full nodes
 	maxPaymentThreshold           = 24 * refreshRate          // maximal accepted payment threshold of full nodes
 	mainnetNetworkID              = uint64(1)                 //
@@ -887,6 +889,47 @@ func NewBee(
 			return nil, errors.New("postage contract is paused")
 		}
 
+		// Refuse to start if the last-synced postage block sits ahead of the
+		// block number reported by the backend. The persisted state was
+		// advanced from earlier RPC responses, so a persistent gap means the
+		// configured blockchain-rpc-endpoint is now returning data for a
+		// different chain than it was previously (a misrouted public RPC, a
+		// changed endpoint, or a load-balancer serving the wrong backend).
+		// Probe a few times with a short backoff so a single bad response
+		// (transient RPC blip, brief failover) does not lock the node out.
+		// Without this guard the postage listener loop would spin until the
+		// 10-minute stalling timeout fires, surfacing as /stamps returning
+		// 503 "syncing in progress" the whole time (issue #4941).
+		if cs := batchStore.GetChainState(); cs.Block > 0 {
+			var (
+				blockHeight uint64
+				blockErr    error
+			)
+			for i := 0; i < startupBlockHeightChecks; i++ {
+				blockHeight, blockErr = chainBackend.BlockNumber(ctx)
+				if blockErr != nil || blockHeight >= cs.Block {
+					break
+				}
+				select {
+				case <-time.After(startupBlockHeightBackoff):
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			}
+			switch {
+			case blockErr != nil:
+				logger.Warning("could not verify block height against stored chainstate", "error", blockErr)
+			case cs.Block > blockHeight:
+				return nil, fmt.Errorf(
+					"blockchain-rpc-endpoint reports block %d after %d checks, but the local batch store has already synced past it to block %d. "+
+						"This means the RPC endpoint is now serving a different chain than it was on a previous run. "+
+						"Confirm that blockchain-rpc-endpoint points to the correct network (compare its eth_chainId and current block height against a second, trusted endpoint). "+
+						"Once the RPC is correct, restart with --resync to rebuild the batch store from the right chain",
+					blockHeight, startupBlockHeightChecks, cs.Block,
+				)
+			}
+		}
+
 		if o.NodeMode == FullMode {
 			err = batchSvc.Start(ctx, postageSyncStart)
 			syncStatus.Store(true)
@@ -1154,7 +1197,6 @@ func NewBee(
 			minStake := big.NewInt(0).Mul(big.NewInt(1<<o.ReserveCapacityDoubling), staking.MinimumStakeAmount)
 			if o.ReserveCapacityDoubling > 0 && stake.Cmp(minStake) < 0 {
 				logger.Warning("staked amount does not sufficiently cover the additional reserve capacity. On-chain height update will be skipped. Node will start, but storage incentives may not function for this capacity.", "missing_stake", new(big.Int).Sub(minStake, stake))
-
 			} else {
 				// make sure that the staking contract has the up to date height
 				tx, updated, err := stakingContract.UpdateHeight(ctx)

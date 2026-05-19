@@ -86,7 +86,6 @@ func (r *peerRegistry) Disconnected(_ network.Network, c network.Conn) {
 	delete(r.bee260Compatibility, peerID)
 	r.mu.Unlock()
 	r.disconnecter.disconnected(overlay)
-
 }
 
 func (r *peerRegistry) addStream(peerID libp2ppeer.ID, stream network.Stream, cancel context.CancelFunc) {
@@ -155,7 +154,6 @@ func (r *peerRegistry) addIfNotExists(c network.Conn, overlay swarm.Address, ful
 	r.overlays[peerID] = overlay
 	r.full[peerID] = full
 	return false
-
 }
 
 func (r *peerRegistry) peerID(overlay swarm.Address) (peerID libp2ppeer.ID, found bool) {

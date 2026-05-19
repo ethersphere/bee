@@ -39,9 +39,11 @@ type marshalerTest struct{ val string }
 func (marshalerTest) MarshalLog() any {
 	return struct{ Inner string }{"I am a log.Marshaler"}
 }
+
 func (marshalerTest) String() string {
 	return "String(): you should not see this"
 }
+
 func (marshalerTest) Error() string {
 	return "Error(): you should not see this"
 }
@@ -61,6 +63,7 @@ type stringerTest struct{ val string }
 func (stringerTest) String() string {
 	return "I am a fmt.Stringer"
 }
+
 func (stringerTest) Error() string {
 	return "Error(): you should not see this"
 }

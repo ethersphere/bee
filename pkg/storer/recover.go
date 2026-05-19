@@ -37,7 +37,7 @@ func sharkyRecovery(ctx context.Context, sharkyBasePath string, store storage.St
 	closer := func() error { return os.Remove(dirtyFilePath) }
 
 	if _, err := os.Stat(dirtyFilePath); errors.Is(err, fs.ErrNotExist) {
-		return closer, 0, os.WriteFile(dirtyFilePath, []byte{}, 0644)
+		return closer, 0, os.WriteFile(dirtyFilePath, []byte{}, 0o644)
 	}
 
 	logger.Info("localstore sharky .DIRTY file exists: starting recovery due to previous dirty exit")

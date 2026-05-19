@@ -58,7 +58,6 @@ func (p *Probe) Healthy() ProbeStatus {
 		return ProbeStatusNOK
 	}
 	return p.healthy.get()
-
 }
 
 // SetHealthy updates the value of the healthy status.

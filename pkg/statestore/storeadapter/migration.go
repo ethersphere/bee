@@ -110,10 +110,8 @@ func deletePrefix(s storage.Store, prefix string) migration.StepFn {
 }
 
 func epochMigration(s storage.Store) migration.StepFn {
-
 	return func() error {
-
-		var deleteEntries = []string{
+		deleteEntries := []string{
 			"statestore_schema",
 			"tags",
 			puller.IntervalPrefix,

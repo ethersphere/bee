@@ -182,7 +182,7 @@ func TestWaitForInflight(t *testing.T) {
 
 	badServer := createRetrieval(t, badServerAddr, badMockStorer, nil, nil, logger, badServerMockAccounting, pricerMock, nil, false)
 
-	var fail = true
+	fail := true
 	var lock sync.Mutex
 
 	recorder := streamtest.New(

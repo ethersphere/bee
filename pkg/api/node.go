@@ -16,7 +16,6 @@ const (
 	UnknownMode BeeNodeMode = iota
 	LightMode
 	FullMode
-	DevMode
 	UltraLightMode
 )
 
@@ -32,8 +31,6 @@ func (b BeeNodeMode) String() string {
 		return "light"
 	case FullMode:
 		return "full"
-	case DevMode:
-		return "dev"
 	case UltraLightMode:
 		return "ultra-light"
 	}

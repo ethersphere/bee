@@ -21,11 +21,9 @@ type (
 	Steps = map[uint64]StepFn
 )
 
-var (
-	// errStorageVersionItemUnmarshalInvalidSize is returned when trying
-	// to unmarshal buffer that is not of size storageVersionItemSize.
-	errStorageVersionItemUnmarshalInvalidSize = errors.New("unmarshal StorageVersionItem: invalid size")
-)
+// errStorageVersionItemUnmarshalInvalidSize is returned when trying
+// to unmarshal buffer that is not of size storageVersionItemSize.
+var errStorageVersionItemUnmarshalInvalidSize = errors.New("unmarshal StorageVersionItem: invalid size")
 
 // Migrate migrates the storage to the latest version.
 // The steps are separated by groups so different lists of steps can run individually, for example,

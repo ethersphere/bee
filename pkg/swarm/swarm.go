@@ -33,15 +33,11 @@ const (
 	SocMaxChunkSize          = SocMinChunkSize + ChunkSize
 )
 
-var (
-	ErrInvalidChunk = errors.New("invalid chunk")
-)
+var ErrInvalidChunk = errors.New("invalid chunk")
 
-var (
-	// Ethereum Address for SOC owner of Dispersed Replicas
-	// generated from private key 0x0100000000000000000000000000000000000000000000000000000000000000
-	ReplicasOwner, _ = hex.DecodeString("dc5b20847f43d67928f49cd4f85d696b5a7617b5")
-)
+// Ethereum Address for SOC owner of Dispersed Replicas
+// generated from private key 0x0100000000000000000000000000000000000000000000000000000000000000
+var ReplicasOwner, _ = hex.DecodeString("dc5b20847f43d67928f49cd4f85d696b5a7617b5")
 
 var (
 	// EmptyAddress is the address that is all zeroes.
@@ -297,7 +293,6 @@ var errBadCharacter = errors.New("bad character in binary address")
 
 // ParseBitStrAddress parses overlay addresses in binary format (eg: 111101101) to it's corresponding overlay address.
 func ParseBitStrAddress(src string) (Address, error) {
-
 	bitPos := 7
 	b := uint8(0)
 
@@ -361,7 +356,6 @@ func (n Neighborhood) Clone() Neighborhood {
 }
 
 func bitStr(src []byte, bits uint8) string {
-
 	ret := ""
 
 	for _, b := range src {

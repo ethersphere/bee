@@ -37,9 +37,11 @@ func newMetrics() nodeMetrics {
 				Name:      "full_sync_duration_minutes",
 				Help:      "Duration in minutes for node full sync to complete",
 				// middle range should be more frequent
-				Buckets: []float64{80, 90, 100, 110,
+				Buckets: []float64{
+					80, 90, 100, 110,
 					120, 125, 130, 135, 140, 145, 150, 155, 160, 165, 170, 175, 180, // 2-3 hours range
-					190, 200, 210, 220, 230, 240},
+					190, 200, 210, 220, 230, 240,
+				},
 			},
 		),
 	}

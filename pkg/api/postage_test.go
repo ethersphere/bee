@@ -302,6 +302,61 @@ func TestGetAllBatches(t *testing.T) {
 	})
 }
 
+// TestGetBatch tests that the endpoint that returns a single globally available
+// postage batch by ID functions correctly.
+func TestGetBatch(t *testing.T) {
+	t.Parallel()
+
+	b := postagetesting.MustNewBatch()
+	b.Value = big.NewInt(20)
+	cs := &postage.ChainState{Block: 10, TotalAmount: big.NewInt(5), CurrentPrice: big.NewInt(2)}
+	bs := mock.New(mock.WithChainState(cs), mock.WithBatch(b))
+	ts, _, _, _ := newTestServer(t, testServerOptions{BatchStore: bs, BlockTime: 2 * time.Second})
+
+	want := api.PostageBatchResponse{
+		BatchID:     b.ID,
+		Value:       bigint.Wrap(b.Value),
+		Start:       b.Start,
+		Owner:       b.Owner,
+		Depth:       b.Depth,
+		BucketDepth: b.BucketDepth,
+		Immutable:   b.Immutable,
+		BatchTTL:    15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
+	}
+
+	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
+		jsonhttptest.Request(t, ts, http.MethodGet, "/batches/"+hex.EncodeToString(b.ID), http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(want),
+		)
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		t.Parallel()
+
+		missing := make([]byte, 32)
+		jsonhttptest.Request(t, ts, http.MethodGet, "/batches/"+hex.EncodeToString(missing), http.StatusNotFound,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
+				Code:    http.StatusNotFound,
+				Message: "batch not found",
+			}),
+		)
+	})
+
+	t.Run("invalid batch id length", func(t *testing.T) {
+		t.Parallel()
+
+		jsonhttptest.Request(t, ts, http.MethodGet, "/batches/abcdef", http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid path params",
+				Reasons: []jsonhttp.Reason{{Field: "batch_id", Error: "want len:32"}},
+			}),
+		)
+	})
+}
+
 func TestPostageGetStamp(t *testing.T) {
 	t.Parallel()
 

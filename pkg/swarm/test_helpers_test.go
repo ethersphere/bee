@@ -37,7 +37,7 @@ func Test_RandAddressAt(t *testing.T) {
 		hw1 := []byte{b1[0], b1[1], 0, 0} // highest words of 1
 		hw1int := binary.BigEndian.Uint32(hw1)
 
-		//bb0 is the bit mask to AND with hw0 and hw1
+		// bb0 is the bit mask to AND with hw0 and hw1
 		bb0 := uint32(0)
 		for i := range bitsInCommon {
 			bb0 |= (1 << (31 - i))

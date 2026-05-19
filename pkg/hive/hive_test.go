@@ -112,6 +112,7 @@ func TestHandlerRateLimit(t *testing.T) {
 		t.Fatal("want nil error")
 	}
 }
+
 func TestBroadcastPeers(t *testing.T) {
 	t.Parallel()
 

@@ -82,7 +82,6 @@ func (db *DB) DirectUpload() PutterSession {
 func (db *DB) Download(cache bool) storage.Getter {
 	return getterWithMetrics{
 		storage.GetterFunc(func(ctx context.Context, address swarm.Address) (ch swarm.Chunk, err error) {
-
 			span, logger, ctx := db.tracer.StartSpanFromContext(ctx, "get-chunk", db.logger)
 			defer func() {
 				if err != nil {

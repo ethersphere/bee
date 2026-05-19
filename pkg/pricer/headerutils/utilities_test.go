@@ -21,7 +21,6 @@ func TestMakePricingHeaders(t *testing.T) {
 	makeHeaders, err := headerutils.MakePricingHeaders(uint64(5348), addr)
 	if err != nil {
 		t.Fatal(err)
-
 	}
 
 	expectedHeaders := p2p.Headers{
@@ -32,7 +31,6 @@ func TestMakePricingHeaders(t *testing.T) {
 	if !reflect.DeepEqual(makeHeaders, expectedHeaders) {
 		t.Fatalf("Made headers not as expected, got %+v, want %+v", makeHeaders, expectedHeaders)
 	}
-
 }
 
 func TestMakePricingResponseHeaders(t *testing.T) {
@@ -54,7 +52,6 @@ func TestMakePricingResponseHeaders(t *testing.T) {
 	if !reflect.DeepEqual(makeHeaders, expectedHeaders) {
 		t.Fatalf("Made headers not as expected, got %+v, want %+v", makeHeaders, expectedHeaders)
 	}
-
 }
 
 func TestParsePricingHeaders(t *testing.T) {
@@ -125,7 +122,6 @@ func TestParseIndexHeader(t *testing.T) {
 	if parsedIndex != uint8(11) {
 		t.Fatalf("Index mismatch, got %v, want %v", parsedIndex, 11)
 	}
-
 }
 
 func TestParseTargetHeader(t *testing.T) {
@@ -145,7 +141,6 @@ func TestParseTargetHeader(t *testing.T) {
 	if !parsedTarget.Equal(addr) {
 		t.Fatalf("Target mismatch, got %v, want %v", parsedTarget, addr)
 	}
-
 }
 
 func TestParsePriceHeader(t *testing.T) {
@@ -163,7 +158,6 @@ func TestParsePriceHeader(t *testing.T) {
 	if parsedPrice != uint64(5348) {
 		t.Fatalf("Index mismatch, got %v, want %v", parsedPrice, 5348)
 	}
-
 }
 
 func TestReadMalformedHeaders(t *testing.T) {
@@ -196,5 +190,4 @@ func TestReadMalformedHeaders(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected error caused by bad length of fields")
 	}
-
 }

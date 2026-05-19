@@ -77,7 +77,6 @@ func TestIsOverlayFrozen(t *testing.T) {
 		if frozen {
 			t.Fatalf("expected owner to not be frozen")
 		}
-
 	})
 }
 
@@ -522,7 +521,6 @@ func TestDepositStake(t *testing.T) {
 					}
 					if *request.To == stakingContractAddress {
 						return getPotentialStakeResponse(t, prevStake), nil
-
 					}
 					return nil, errors.New("unexpected call")
 				}),
@@ -583,7 +581,6 @@ func TestDepositStake(t *testing.T) {
 					}
 					if *request.To == stakingContractAddress {
 						return getPotentialStakeResponse(t, prevStake), nil
-
 					}
 					return nil, errors.New("unexpected call")
 				}),
@@ -1609,7 +1606,6 @@ func TestMigrateStake(t *testing.T) {
 	stakedAmount := big.NewInt(100000000000000000)
 
 	t.Run("ok", func(t *testing.T) {
-
 		expectedCallDataForPaused, err := stakingContractABI.Pack("paused")
 		if err != nil {
 			t.Fatal(err)
@@ -1790,7 +1786,6 @@ func TestMigrateStake(t *testing.T) {
 	})
 
 	t.Run("tx reverted", func(t *testing.T) {
-
 		expectedCallDataForPaused, err := stakingContractABI.Pack("paused")
 		if err != nil {
 			t.Fatal(err)
@@ -1855,7 +1850,6 @@ func TestMigrateStake(t *testing.T) {
 	})
 
 	t.Run("is paused with err", func(t *testing.T) {
-
 		expectedCallDataForPaused, err := stakingContractABI.Pack("paused")
 		if err != nil {
 			t.Fatal(err)
@@ -1890,7 +1884,6 @@ func TestMigrateStake(t *testing.T) {
 	})
 
 	t.Run("get stake with err", func(t *testing.T) {
-
 		expectedCallDataForPaused, err := stakingContractABI.Pack("paused")
 		if err != nil {
 			t.Fatal(err)

@@ -176,9 +176,7 @@ func ReserveRepairer(
 		for _, item := range batchRadiusItems {
 			func(item *reserve.BatchRadiusItem) {
 				eg.Go(func() error {
-
 					return st.Run(context.Background(), func(s transaction.Store) error {
-
 						chunk, err := s.ChunkStore().Get(context.Background(), item.Address)
 						if err != nil {
 							if errors.Is(err, storage.ErrNotFound) {

@@ -66,7 +66,6 @@ const (
 	optionWarmUpTime                       = "warmup-time"
 	optionNameMainNet                      = "mainnet"
 	optionNameRetrievalCaching             = "cache-retrieval"
-	optionNameDevReserveCapacity           = "dev-reserve-capacity"
 	optionNameResync                       = "resync"
 	optionNamePProfBlock                   = "pprof-profile"
 	optionNamePProfMutex                   = "pprof-mutex"
@@ -172,10 +171,6 @@ func newCommand(opts ...option) (c *command, err error) {
 		return nil, err
 	}
 
-	if err := c.initStartDevCmd(); err != nil {
-		return nil, err
-	}
-
 	if err := c.initInitCmd(); err != nil {
 		return nil, err
 	}
@@ -241,7 +236,7 @@ func (c *command) initConfig() (err error) {
 	// Environment
 	config.SetEnvPrefix("bee")
 	config.AutomaticEnv() // read in environment variables that match
-	config.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+	config.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 
 	if c.homeDir != "" && c.cfgFile == "" {
 		c.cfgFile = filepath.Join(c.homeDir, configName+".yaml")

@@ -278,7 +278,6 @@ func (ps *service) Close() error {
 
 // HandleStampExpiry handles stamp expiry for a given id.
 func (ps *service) HandleStampExpiry(ctx context.Context, id []byte) error {
-
 	exists, err := ps.removeIssuer(id)
 	if err != nil {
 		return err
@@ -293,7 +292,6 @@ func (ps *service) HandleStampExpiry(ctx context.Context, id []byte) error {
 
 // removeStampItems
 func (ps *service) removeStampItems(ctx context.Context, batchID []byte) error {
-
 	ps.logger.Debug("removing expired stamp items", "batchID", hex.EncodeToString(batchID))
 
 	deleteItemC := make(chan *StampItem)

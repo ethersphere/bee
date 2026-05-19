@@ -10,13 +10,13 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/api"
-	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/status"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/topology"
+	topologymock "github.com/ethersphere/bee/v2/pkg/topology/mock"
 )
 
 func TestGetStatus(t *testing.T) {
@@ -75,29 +75,35 @@ func TestGetStatus(t *testing.T) {
 		)
 	})
 
-	t.Run("bad request", func(t *testing.T) {
-		t.Parallel()
+}
 
-		client, _, _, _ := newTestServer(t, testServerOptions{
-			BeeMode: api.DevMode,
-			NodeStatus: status.NewService(
-				log.Noop,
-				nil,
-				new(topologyPeersIterNoopMock),
-				"",
-				nil,
-				nil,
-				nil,
-			),
-		})
+// TestGetStatusPeersIncludesBootnodes is a regression test for
+// https://github.com/ethersphere/bee/issues/5111: the /status/peers handler
+// must pass topology.Select{IncludeBootnodes: true} to the topology iterator
+// so that bootnodes appear alongside other peers (matching /peers).
+func TestGetStatusPeersIncludesBootnodes(t *testing.T) {
+	t.Parallel()
 
-		jsonhttptest.Request(t, client, http.MethodGet, url, http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: api.ErrUnsupportedDevNodeOperation.Error(),
-				Code:    http.StatusBadRequest,
-			}),
-		)
+	var captured topology.Select
+	topoOpts := []topologymock.Option{
+		// No WithPeers: the iterator captures the Select arg before yielding
+		// any peers, so we don't need to plumb a streamer for PeerSnapshot.
+		topologymock.WithSelectRecorder(&captured),
+	}
+
+	statusSvc := status.NewService(log.Noop, nil, new(topologyPeersIterNoopMock), api.FullMode.String(), nil, nil, nil)
+
+	client, _, _, _ := newTestServer(t, testServerOptions{
+		BeeMode:      api.FullMode,
+		NodeStatus:   statusSvc,
+		TopologyOpts: topoOpts,
 	})
+
+	jsonhttptest.Request(t, client, http.MethodGet, "/status/peers", http.StatusOK)
+
+	if !captured.IncludeBootnodes {
+		t.Fatalf("/status/peers must pass topology.Select{IncludeBootnodes: true}, got %#v", captured)
+	}
 }
 
 // topologyPeersIterNoopMock is noop topology.PeerIterator.
@@ -110,6 +116,7 @@ func (m *topologyPeersIterNoopMock) EachConnectedPeer(_ topology.EachPeerFunc, _
 func (m *topologyPeersIterNoopMock) EachConnectedPeerRev(_ topology.EachPeerFunc, _ topology.Select) error {
 	return nil
 }
+
 func (m *topologyPeersIterNoopMock) IsReachable() bool {
 	return true
 }
@@ -137,6 +144,7 @@ func (m *statusSnapshotMock) GetChainState() *postage.ChainState { return m.chai
 func (m *statusSnapshotMock) ReserveSizeWithinRadius() uint64 {
 	return m.reserveSizeWithinRadius
 }
+
 func (m *statusSnapshotMock) NeighborhoodsStat(ctx context.Context) ([]*storer.NeighborhoodStat, error) {
 	return m.neighborhoods, nil
 }
