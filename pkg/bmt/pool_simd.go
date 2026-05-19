@@ -104,6 +104,13 @@ type simdTree struct {
 	buffer     []byte
 	concat     [8][]byte
 	leafConcat [8][]byte
+	// hasher is the scalar keccak (prefix-aware when configured) shared across
+	// every scalar hash performed during Sum: the root combine and the outer
+	// span wrap. The SIMD batch paths use the stateless keccak.Sum256xN
+	// primitives instead, so this hasher is the only Hash instance the tree
+	// ever needs. Safe to share because simdHasher is single-threaded per
+	// contract and the pool hands out one tree at a time.
+	hasher hash.Hash
 }
 
 // simdNode is a reusable segment hasher node in the SIMD BMT.
@@ -111,22 +118,22 @@ type simdNode struct {
 	isLeft      bool
 	parent      *simdNode
 	left, right []byte
-	hasher      hash.Hash
 }
 
-func newSIMDNode(index int, parent *simdNode, hasher hash.Hash) *simdNode {
+func newSIMDNode(index int, parent *simdNode, size int) *simdNode {
 	return &simdNode{
 		parent: parent,
 		isLeft: index%2 == 0,
-		hasher: hasher,
-		left:   make([]byte, hasher.Size()),
-		right:  make([]byte, hasher.Size()),
+		left:   make([]byte, size),
+		right:  make([]byte, size),
 	}
 }
 
 func newSIMDTree(maxsize, depth int, hashfunc func() hash.Hash, prefix []byte) *simdTree {
 	prefixLen := len(prefix)
-	n := newSIMDNode(0, nil, hashfunc())
+	hasher := hashfunc()
+	segSize := hasher.Size()
+	n := newSIMDNode(0, nil, segSize)
 	prevlevel := []*simdNode{n}
 	allLevels := [][]*simdNode{prevlevel}
 	count := 2
@@ -134,7 +141,7 @@ func newSIMDTree(maxsize, depth int, hashfunc func() hash.Hash, prefix []byte) *
 		nodes := make([]*simdNode, count)
 		for i := 0; i < count; i++ {
 			parent := prevlevel[i/2]
-			nodes[i] = newSIMDNode(i, parent, hashfunc())
+			nodes[i] = newSIMDNode(i, parent, segSize)
 		}
 		allLevels = append(allLevels, nodes)
 		prevlevel = nodes
@@ -144,7 +151,6 @@ func newSIMDTree(maxsize, depth int, hashfunc func() hash.Hash, prefix []byte) *
 	for i, j := 0, len(allLevels)-1; i < j; i, j = i+1, j-1 {
 		allLevels[i], allLevels[j] = allLevels[j], allLevels[i]
 	}
-	segSize := hashfunc().Size()
 	bufSize := prefixLen + 2*segSize
 	var concat [8][]byte
 	for i := range concat {
@@ -166,5 +172,6 @@ func newSIMDTree(maxsize, depth int, hashfunc func() hash.Hash, prefix []byte) *
 		buffer:     make([]byte, maxsize),
 		concat:     concat,
 		leafConcat: leafConcat,
+		hasher:     hasher,
 	}
 }

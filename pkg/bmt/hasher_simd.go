@@ -84,7 +84,7 @@ func (h *simdHasher) Sum(b []byte) []byte {
 	// subtree hash at depth h.depth. Still prepend the span so the output
 	// shape matches a normal chunk hash.
 	if h.size == 0 {
-		out, _ := doHash(h.baseHasher(), h.span, h.zerohashes[h.depth])
+		out, _ := doHash(h.bmt.hasher, h.span, h.zerohashes[h.depth])
 		return append(b, out...)
 	}
 	// zero-fill the tail of the buffer: every leaf section must carry
@@ -96,19 +96,18 @@ func (h *simdHasher) Sum(b []byte) []byte {
 		// degenerate single-level tree: the whole buffer is already one section,
 		// so there is nothing for SIMD to batch — just run the scalar hasher.
 		secsize := 2 * h.segmentSize
-		root := h.bmt.levels[0][0]
-		rootHash, _ = doHash(root.hasher, h.bmt.buffer[:secsize])
+		rootHash, _ = doHash(h.bmt.hasher, h.bmt.buffer[:secsize])
 	} else {
 		// general case: fan out through the tree via hashSIMD, which processes
 		// each level bottom-up in batches of 4 or 8 hashes per SIMD call.
 		rootHash, _ = h.hashSIMD()
 	}
 	// prepend the span and hash once more to produce the chunk address.
-	// When a prefix is configured, baseHasher() returns a PrefixHasher whose
-	// Reset re-absorbs the prefix, so the final digest is
+	// When a prefix is configured, h.bmt.hasher is a PrefixHasher whose Reset
+	// re-absorbs the prefix, so the final digest is
 	// keccak(prefix || span || rootHash) — the same wrap-per-level rule used
 	// by hashSIMD at every internal level.
-	out, _ := doHash(h.baseHasher(), h.span, rootHash)
+	out, _ := doHash(h.bmt.hasher, h.span, rootHash)
 	return append(b, out...)
 }
 
@@ -138,9 +137,9 @@ func (h *simdHasher) hashSIMD() ([]byte, error) {
 		h.hashNodesBatch(h.bmt.levels[lvl], bw, prefixLen)
 	}
 
-	// Root level: hash using scalar hasher.
+	// Root level: hash using the tree's shared scalar hasher.
 	root := h.bmt.levels[len(h.bmt.levels)-1][0]
-	return doHash(root.hasher, root.left, root.right)
+	return doHash(h.bmt.hasher, root.left, root.right)
 }
 
 // hashLeavesBatch hashes leaf sections in the range [start, end) using SIMD batches.
