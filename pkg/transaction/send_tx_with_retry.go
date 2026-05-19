@@ -19,7 +19,7 @@ import (
 
 const retryStatePrefix = "transaction_retry_"
 
-// RetryState is persisted so SendWithRetry can resume after a node restart.
+// RetryState is persisted so transactions with retry can resume after a node restart.
 type RetryState struct {
 	Nonce         uint64          `json:"nonce"`
 	NonceAssigned bool            `json:"nonce_assigned"`
@@ -41,8 +41,15 @@ func retryStateKey(nonce uint64) string {
 	return fmt.Sprintf("%s%020d", retryStatePrefix, nonce)
 }
 
-func mulDivPercent(x *big.Int, num, den int64) *big.Int {
-	return new(big.Int).Div(new(big.Int).Mul(new(big.Int).Set(x), big.NewInt(num)), big.NewInt(den))
+// SendWithRetry sends an EIP-1559 transaction using one eth_feeHistory snapshot for the initial tip,
+// then increases gas tip by gas_increase_percent after each unsuccessful wait, up to max_retries.
+func (t *transactionService) SendWithRetry(ctx context.Context, request *TxRequest) (txHash common.Hash, receipt *types.Receipt, err error) {
+	if request.GasPrice != nil {
+		err = errors.New("send txs with retry requires automatic gas pricing")
+		t.recordRetryComplete(0, err)
+		return common.Hash{}, nil, err
+	}
+	return t.retry(ctx, "", request)
 }
 
 // escalateGasTip returns tip * (100+increasePct)/100 — a single escalation step.
@@ -50,7 +57,7 @@ func escalateGasTip(tip *big.Int, increasePct int) *big.Int {
 	if tip == nil {
 		return nil
 	}
-	return mulDivPercent(tip, int64(100+increasePct), 100)
+	return new(big.Int).Div(new(big.Int).Mul(new(big.Int).Set(tip), big.NewInt(int64(100+increasePct))), big.NewInt(100))
 }
 
 func (t *transactionService) suggestGasFeeGasTipCapWithHistory(ctx context.Context, prevGasTipCap *big.Int) (gasFeeCap, gasTipCap *big.Int, err error) {
@@ -159,7 +166,7 @@ func (t *transactionService) broadcastTx(ctx context.Context, request *TxRequest
 		"attempt", attempt,
 		"tx", signedTx.Hash(),
 		"nonce", nonce,
-		"to", request.To,
+		"to", addressForLog(request.To),
 		"gas_limit", tx.Gas(),
 		"gas_fee_cap", tx.GasFeeCap(),
 		"gas_tip_cap", tx.GasTipCap(),
@@ -186,18 +193,6 @@ func (t *transactionService) deleteRetryStateAndPending(retryKey string, state R
 		_ = t.store.Delete(pendingTransactionKey(state.LastTxHash))
 	}
 }
-
-// SendWithRetry sends an EIP-1559 transaction using one eth_feeHistory snapshot for the initial tip,
-// then increases gas tip by gas_increase_percent after each unsuccessful wait, up to max_retries.
-func (t *transactionService) SendWithRetry(ctx context.Context, request *TxRequest) (txHash common.Hash, receipt *types.Receipt, err error) {
-	if request.GasPrice != nil {
-		err = errors.New("send txs with retry requires automatic gas pricing") // TODO fallback to send
-		t.recordRetryComplete(0, err)
-		return common.Hash{}, nil, err
-	}
-	return t.retry(ctx, "", request)
-}
-
 func (t *transactionService) retry(ctx context.Context, txRetryKey string, request *TxRequest) (common.Hash, *types.Receipt, error) {
 	var (
 		txState RetryState
@@ -223,7 +218,7 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 	loggerV1 := t.logger.V(1).Register()
 	loggerV1.Debug("send with retry: started",
 		"description", request.Description,
-		"to", request.To,
+		"to", retryToForLog(request, &txState),
 		"max_retries", t.txMaxRetries,
 		"retry_delay", t.txRetryDelay,
 		"gas_increase_percent", t.txRetryGasIncreasePercent,
@@ -241,18 +236,18 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 			if isErrCritical(err) {
 				t.logger.Error(err,
 					"transaction with retry: broadcast failed with critical error, stop retry",
-					"attempt", attempt, "nonce", nonce, "to", txState.To)
+					"attempt", attempt, "nonce", nonce, "to", retryToForLog(request, &txState))
 				t.deleteRetryStateAndPending(txRetryKey, txState)
 				t.recordRetryComplete(txState.NextAttempt, err)
 				return common.Hash{}, nil, err
 			}
-			t.logger.Warning("transaction retry broadcast failed, will retry", "attempt", attempt, "error", err, "to", txState.To)
+			t.logger.Warning("transaction retry broadcast failed, will retry", "attempt", attempt, "error", err, "to", retryToForLog(request, &txState))
 		}
 
 		if err := t.updateStates(signedTx, &txState); err != nil {
 			t.logger.Error(err,
 				"transaction with retry: failed update states, stop retry",
-				"attempt", attempt, "nonce", nonce, "to", txState.To)
+				"attempt", attempt, "nonce", nonce, "to", retryToForLog(request, &txState))
 			t.deleteRetryStateAndPending(txRetryKey, txState)
 			t.recordRetryComplete(txState.NextAttempt, err)
 			return common.Hash{}, nil, err
@@ -498,4 +493,21 @@ func (t *transactionService) resumeRetryTransactions() error {
 		})
 	}
 	return nil
+}
+
+func addressForLog(addr *common.Address) string {
+	if addr == nil {
+		return ""
+	}
+	return addr.Hex()
+}
+
+func retryToForLog(req *TxRequest, state *RetryState) string {
+	if state != nil && state.To != nil {
+		return state.To.Hex()
+	}
+	if req != nil && req.To != nil {
+		return req.To.Hex()
+	}
+	return ""
 }

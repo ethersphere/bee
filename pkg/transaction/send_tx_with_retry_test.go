@@ -27,30 +27,102 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestEscalateGasTip(t *testing.T) {
+func TestSuggestGasFeeGasTipCapWithHistory(t *testing.T) {
 	t.Parallel()
 
-	t.Run("nil returns nil", func(t *testing.T) {
+	const (
+		baseFee        = int64(1000)
+		tipBase        = int64(100)
+		marketTip      = int64(200) // tipBase * 2
+		gasIncreasePct = 20
+		prevTip        = int64(1000)
+		escalatedTip   = int64(1200) // prevTip * 1.2
+		baseFeeCap     = int64(2000) // baseFee * 2
+	)
+
+	headerOption := func() backendmock.Option {
+		return backendmock.WithHeaderbyNumberFunc(func(ctx context.Context, number *big.Int) (*types.Header, error) {
+			return &types.Header{BaseFee: big.NewInt(baseFee)}, nil
+		})
+	}
+
+	feeHistoryOption := func(called *atomic.Int32) backendmock.Option {
+		return backendmock.WithGetFeeAndTipsFromFeeHistoryFunc(func(ctx context.Context, lastBlock *big.Int) (*transaction.FeeHistorySuggestedFeeAndTips, error) {
+			if called != nil {
+				called.Add(1)
+			}
+			return &transaction.FeeHistorySuggestedFeeAndTips{
+				LowTip:        big.NewInt(tipBase),
+				MarketTip:     big.NewInt(marketTip),
+				AggressiveTip: big.NewInt(tipBase * 3),
+				LatestBaseFee: big.NewInt(baseFee),
+			}, nil
+		})
+	}
+
+	t.Run("prevGasTipCap nil uses market tip from fee history", func(t *testing.T) {
 		t.Parallel()
-		assert.Nil(t, transaction.EscalateGasTip(nil, 20))
+
+		var feeHistoryCalls atomic.Int32
+		backend := backendmock.New(headerOption(), feeHistoryOption(&feeHistoryCalls))
+
+		gasFeeCap, gasTipCap, err := transaction.SuggestGasFeeGasTipCapWithHistory(
+			backend, gasIncreasePct, nil, context.Background(), nil,
+		)
+
+		require.NoError(t, err)
+		assert.Equal(t, int32(1), feeHistoryCalls.Load())
+		assert.Equal(t, marketTip, gasTipCap.Int64())
+		assert.Equal(t, baseFeeCap+marketTip, gasFeeCap.Int64())
 	})
 
-	t.Run("single step x1.2", func(t *testing.T) {
+	t.Run("escalates previous tip by configured percent", func(t *testing.T) {
 		t.Parallel()
-		got := transaction.EscalateGasTip(big.NewInt(1000), 20)
-		require.NotNil(t, got)
-		assert.Equal(t, int64(1200), got.Int64())
+
+		var feeHistoryCalls atomic.Int32
+		backend := backendmock.New(headerOption(), feeHistoryOption(&feeHistoryCalls))
+
+		gasFeeCap, gasTipCap, err := transaction.SuggestGasFeeGasTipCapWithHistory(
+			backend, gasIncreasePct, nil, context.Background(), big.NewInt(prevTip),
+		)
+
+		require.NoError(t, err)
+		assert.Equal(t, int32(0), feeHistoryCalls.Load(), "fee history must not be called when previous tip is set")
+		assert.Equal(t, escalatedTip, gasTipCap.Int64())
+		assert.Equal(t, baseFeeCap+escalatedTip, gasFeeCap.Int64())
 	})
 
-	t.Run("compound steps", func(t *testing.T) {
+	t.Run("max tx price exceeded falls back to previous tip", func(t *testing.T) {
 		t.Parallel()
-		tip := big.NewInt(1000)
-		tip = transaction.EscalateGasTip(tip, 20) // 1200
-		assert.Equal(t, int64(1200), tip.Int64())
-		tip = transaction.EscalateGasTip(tip, 20) // 1440
-		assert.Equal(t, int64(1440), tip.Int64())
-		tip = transaction.EscalateGasTip(tip, 20) // 1728
-		assert.Equal(t, int64(1728), tip.Int64())
+
+		// escalated: 2000+1200=3200, previous: 2000+1000=3000
+		maxTxPrice := big.NewInt(baseFeeCap + prevTip + 100)
+
+		backend := backendmock.New(headerOption())
+
+		gasFeeCap, gasTipCap, err := transaction.SuggestGasFeeGasTipCapWithHistory(
+			backend, gasIncreasePct, maxTxPrice, context.Background(), big.NewInt(prevTip),
+		)
+
+		require.NoError(t, err)
+		assert.Equal(t, prevTip, gasTipCap.Int64(), "must fall back to previous tip without escalation")
+		assert.Equal(t, baseFeeCap+prevTip, gasFeeCap.Int64())
+	})
+
+	t.Run("max tx price exceeded and previous tip also exceeds limit returns error", func(t *testing.T) {
+		t.Parallel()
+
+		maxTxPrice := big.NewInt(baseFeeCap + prevTip - 1)
+
+		backend := backendmock.New(headerOption())
+
+		gasFeeCap, gasTipCap, err := transaction.SuggestGasFeeGasTipCapWithHistory(
+			backend, gasIncreasePct, maxTxPrice, context.Background(), big.NewInt(prevTip),
+		)
+
+		assert.ErrorIs(t, err, transaction.ErrTxMaxPriceExceeded)
+		assert.Nil(t, gasFeeCap)
+		assert.Nil(t, gasTipCap)
 	})
 }
 

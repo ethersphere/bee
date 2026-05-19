@@ -40,8 +40,7 @@ var (
 	ErrTransactionReverted = errors.New("transaction reverted")
 	ErrUnknownTransaction  = errors.New("unknown transaction")
 	ErrAlreadyImported     = errors.New("already imported")
-	// ErrTxMaxPriceExceeded is returned when SendWithRetry would exceed the configured max fee per gas.
-	ErrTxMaxPriceExceeded = errors.New("transaction retry: exceeds maximum tx price (max fee per gas)")
+	ErrTxMaxPriceExceeded  = errors.New("transaction retry: exceeds maximum tx price (max fee per gas)")
 	// ErrSignTransaction is returned when signing a transaction fails.
 	ErrSignTransaction = errors.New("sign transaction")
 )
@@ -62,9 +61,6 @@ const (
 	DefaultTransactionRetryGasIncreasePercent = 20
 )
 
-// defaultTransactionRetryMaxTxPriceWei is the default maximum maxFeePerGas (wei per gas unit) for SendWithRetry.
-var defaultTransactionRetryMaxTxPriceWei = big.NewInt(1_000_000)
-
 // ServiceRetryConfig configures SendWithRetry behaviour. Zero values are replaced by defaults in NewService.
 type ServiceRetryConfig struct {
 	MaxRetries         int
@@ -83,9 +79,6 @@ func NormalizeServiceRetryConfig(c ServiceRetryConfig) ServiceRetryConfig {
 	}
 	if c.GasIncreasePercent <= 0 {
 		c.GasIncreasePercent = DefaultTransactionRetryGasIncreasePercent
-	}
-	if c.MaxTxPrice == nil || c.MaxTxPrice.Sign() <= 0 {
-		c.MaxTxPrice = new(big.Int).Set(defaultTransactionRetryMaxTxPriceWei)
 	}
 	return c
 }
@@ -186,6 +179,12 @@ func NewService(logger log.Logger, overlayEthAddress common.Address, backend Bac
 	rc := NormalizeServiceRetryConfig(retryCfg)
 
 	ctx, cancel := context.WithCancel(context.Background())
+	logger.Info("transaction retry configuration",
+		"max_retries", rc.MaxRetries,
+		"retry_delay", rc.RetryDelay,
+		"gas_increase_percent", rc.GasIncreasePercent,
+		"max_tx_price_wei", rc.MaxTxPrice,
+	)
 
 	t := &transactionService{
 		ctx:                       ctx,
