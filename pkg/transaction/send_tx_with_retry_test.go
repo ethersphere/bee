@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"math/big"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -676,7 +677,10 @@ func TestSendWithRetry_ResumeAfterRestart(t *testing.T) {
 	}))
 	require.NoError(t, store.Put(transaction.PendingTransactionKey(lastTxHash), struct{}{}))
 
-	var broadcasts []capturedBroadcast
+	var (
+		broadcastsMu sync.Mutex
+		broadcasts   []capturedBroadcast
+	)
 	var feeHistoryCalls atomic.Int32
 
 	svc, err := transaction.NewService(log.Noop, s.sender,
@@ -691,7 +695,10 @@ func TestSendWithRetry_ResumeAfterRestart(t *testing.T) {
 				return s.nonce, nil
 			}),
 			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
-				broadcasts = append(broadcasts, captureTx(tx))
+				captured := captureTx(tx)
+				broadcastsMu.Lock()
+				broadcasts = append(broadcasts, captured)
+				broadcastsMu.Unlock()
 				return nil
 			}),
 			backendmock.WithTransactionByHashFunc(func(ctx context.Context, hash common.Hash) (*types.Transaction, bool, error) {
@@ -715,17 +722,28 @@ func TestSendWithRetry_ResumeAfterRestart(t *testing.T) {
 	testutil.CleanupCloser(t, svc)
 
 	require.Eventually(t, func() bool {
+		broadcastsMu.Lock()
+		defer broadcastsMu.Unlock()
 		return len(broadcasts) > 0
 	}, 5*time.Second, 10*time.Millisecond, "resume should have triggered a broadcast")
 
+	require.NoError(t, svc.Close())
+
+	broadcastsMu.Lock()
 	require.Len(t, broadcasts, 1)
-	assert.Equal(t, s.nonce, broadcasts[0].Nonce, "resumed transaction must use the same nonce")
+	resumed := broadcasts[0]
+	gasTipCap := new(big.Int).Set(resumed.GasTipCap)
+	gasFeeCap := new(big.Int).Set(resumed.GasFeeCap)
+	resumedNonce := resumed.Nonce
+	broadcastsMu.Unlock()
+
+	assert.Equal(t, s.nonce, resumedNonce, "resumed transaction must use the same nonce")
 
 	expectedTip := transaction.EscalateGasTip(previousTip, 20)
-	assert.Equal(t, expectedTip.Int64(), broadcasts[0].GasTipCap.Int64(),
+	assert.Equal(t, expectedTip.Int64(), gasTipCap.Int64(),
 		"resumed transaction should use escalated tip (one step from persisted PreviousTip)")
 
-	assert.Equal(t, s.expectedGasFeeCap(expectedTip).Int64(), broadcasts[0].GasFeeCap.Int64(),
+	assert.Equal(t, s.expectedGasFeeCap(expectedTip).Int64(), gasFeeCap.Int64(),
 		"resumed gasFeeCap must be baseFee*2 + escalated tip")
 
 	assert.Equal(t, int32(0), feeHistoryCalls.Load(),
