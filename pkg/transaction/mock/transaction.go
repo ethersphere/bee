@@ -34,17 +34,6 @@ func (m *transactionServiceMock) SendWithRetry(ctx context.Context, request *tra
 	if m.sendWithRetry != nil {
 		return m.sendWithRetry(ctx, request)
 	}
-	if m.send != nil {
-		txHash, err := m.send(ctx, request, 0)
-		if err != nil {
-			return common.Hash{}, nil, err
-		}
-		if m.waitForReceipt != nil {
-			rec, err := m.waitForReceipt(ctx, txHash)
-			return txHash, rec, err
-		}
-		return txHash, nil, errors.New("not implemented: SendWithRetry requires waitForReceipt when only send is set")
-	}
 	return common.Hash{}, nil, errors.New("not implemented")
 }
 

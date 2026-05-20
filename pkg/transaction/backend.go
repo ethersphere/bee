@@ -17,21 +17,19 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/transaction/backend"
 )
 
-// FeeHistorySuggestedFeeAndTips are max-fee-per-gas style estimates from eth_feeHistory over the last 100 blocks.
-// Low, Market, and Aggressive are next-block base fee plus the median per-block priority fee at the 10th, 50th,
-// and 90th reward percentiles respectively (each priority tier is floored by the configured minimum tip).
+// FeeHistorySuggestedFeeAndTips are max-fee-per-gas style estimates from eth_feeHistory over the last N blocks (by default 100)
+// Low, Market, and Aggressive are the median per-block priority fee at the 10th, 50th, and 90th reward percentiles respectively (each priority tier is floored by the configured minimum tip).
 type FeeHistorySuggestedFeeAndTips struct {
 	LowTip        *big.Int
 	MarketTip     *big.Int
 	AggressiveTip *big.Int
-	LatestBaseFee *big.Int
 }
 
 // Backend is the minimum of blockchain backend functions we need.
 type Backend interface {
 	backend.Geth
 	SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error)
-	GetFeeAndTipsFromFeeHistory(ctx context.Context, lastBlock *big.Int) (*FeeHistorySuggestedFeeAndTips, error)
+	SuggestedFeeAndTipsFromHistory(ctx context.Context, lastBlock *big.Int) (*FeeHistorySuggestedFeeAndTips, error)
 }
 
 // IsSynced will check if we are synced with the given blockchain backend. This

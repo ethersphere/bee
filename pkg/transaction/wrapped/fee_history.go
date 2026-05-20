@@ -12,18 +12,17 @@ import (
 	"github.com/ethereum/go-ethereum"
 )
 
-func suggestedFeesFromFeeHistoryResult(fh *ethereum.FeeHistory) (low, market, aggressive, baseFee *big.Int, err error) {
+func suggestedFeesFromFeeHistoryResult(fh *ethereum.FeeHistory) (low, market, aggressive *big.Int, err error) {
 	if fh == nil {
-		return nil, nil, nil, nil, errors.New("fee history: empty response")
+		return nil, nil, nil, errors.New("fee history: empty response")
 	}
 	if len(fh.BaseFee) == 0 {
-		return nil, nil, nil, nil, errors.New("fee history: no base fees")
+		return nil, nil, nil, errors.New("fee history: no base fees")
 	}
-	baseFee = fh.BaseFee[len(fh.BaseFee)-1]
 	low = medianPriorityTipAtPercentileIndex(fh.Reward, 0)
 	market = medianPriorityTipAtPercentileIndex(fh.Reward, 1)
 	aggressive = medianPriorityTipAtPercentileIndex(fh.Reward, 2)
-	return low, market, aggressive, baseFee, nil
+	return low, market, aggressive, nil
 }
 
 func medianPriorityTipAtPercentileIndex(reward [][]*big.Int, idx int) *big.Int {

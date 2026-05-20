@@ -19,7 +19,7 @@ import (
 
 const (
 	loggerName = "redistributionContract"
-	// BoostTipPercent is used where the node still applies a tip boost outside SendWithRetry (e.g. agent fee reads).
+	// BoostTipPercent is used where the node sends transactions without retry.
 	BoostTipPercent = 50
 )
 

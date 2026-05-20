@@ -104,11 +104,13 @@ const (
 	configKeyBlockchainRpcIdleTimeout  = "blockchain-rpc.idle-timeout"
 	configKeyBlockchainRpcKeepalive    = "blockchain-rpc.keepalive"
 
-    // transaction retry
+	// transaction retry
 	optionNameTransactionRetryMaxRetries         = "transaction-retry-max-retries"
 	optionNameTransactionRetryDelay              = "transaction-retry-delay"
 	optionNameTransactionRetryGasIncreasePercent = "transaction-retry-gas-increase-percent"
 	optionNameTransactionRetryMaxTxPriceWei      = "transaction-retry-max-tx-price-wei"
+	optionNameFeeHistoryBlockCount               = "fee-history-block-count"
+	optionNameFeeHistoryRewardPercentiles        = "fee-history-reward-percentiles"
 )
 
 var blockchainRpcConfigPairs = []struct{ flat, dotted string }{
@@ -390,8 +392,8 @@ func (c *command) bindBlockchainRpcConfig(cmd *cobra.Command) {
 	}
 }
 
-func txRetryConfigFromCommand(c *command) transaction.ServiceRetryConfig {
-	cfg := transaction.ServiceRetryConfig{
+func txRetryConfigFromCommand(c *command) transaction.TransactionsRetryConfig {
+	cfg := transaction.TransactionsRetryConfig{
 		MaxRetries:         c.config.GetInt(optionNameTransactionRetryMaxRetries),
 		RetryDelay:         c.config.GetDuration(optionNameTransactionRetryDelay),
 		GasIncreasePercent: c.config.GetInt(optionNameTransactionRetryGasIncreasePercent),

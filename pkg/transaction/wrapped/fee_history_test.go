@@ -23,12 +23,9 @@ func TestSuggestedFeeAndTipsFromFeeHistoryResult(t *testing.T) {
 		},
 	}
 
-	low, market, agg, outBase, err := suggestedFeesFromFeeHistoryResult(fh)
+	low, market, agg, err := suggestedFeesFromFeeHistoryResult(fh)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if got, want := outBase.String(), base.String(); got != want {
-		t.Fatalf("base fee: got %s want %s", got, want)
 	}
 	if got, want := low.String(), "15"; got != want {
 		t.Fatalf("low: got %s want %s", got, want)

@@ -17,8 +17,8 @@ import (
 
 var _ m.Collector = (*transactionService)(nil)
 
-// retryMetrics collects SendWithRetry monitoring data for Prometheus dashboards.
-type retryMetrics struct {
+// transactionsWithRetryMetrics collects SendWithRetry monitoring data for Prometheus dashboards.
+type transactionsWithRetryMetrics struct {
 	// AttemptsPerTransaction is the number of broadcast rounds per SendWithRetry invocation
 	// (1 = confirmed on the first broadcast, 2 = one retry, etc.).
 	AttemptsPerTransaction prometheus.Histogram
@@ -30,13 +30,13 @@ type retryMetrics struct {
 	BroadcastGasFeeCap *prometheus.HistogramVec
 }
 
-func newRetryMetrics() retryMetrics {
+func newRetryMetrics() transactionsWithRetryMetrics {
 	subsystem := "transaction_retry"
 
 	// Gas fees on Gnosis/mainnet-style chains: from ~1 gwei to tens of gwei per unit.
 	gasBuckets := prometheus.ExponentialBuckets(1_000_000_000, 2, 14)
 
-	return retryMetrics{
+	return transactionsWithRetryMetrics{
 		AttemptsPerTransaction: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,

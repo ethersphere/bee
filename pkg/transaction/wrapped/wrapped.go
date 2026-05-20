@@ -25,24 +25,20 @@ const feeHistoryDefaultBlockCount = 100
 
 var feeHistoryDefaultRewardPercentiles = []float64{10, 50, 90}
 
-type feeHistoryParams struct {
-	blockCount        uint64
-	rewardPercentiles []float64
-}
-
 type blockNumberAnchor struct {
 	number    uint64
 	timestamp time.Time
 }
 
 type wrappedBackend struct {
-	backend           backend.Geth
-	metrics           metrics
-	minimumGasTipCap  int64
-	blockTime         time.Duration
-	blockSyncInterval uint64
-	blockNumberCache  *cache.SingleFlightCache[blockNumberAnchor]
-	feeHistoryParams  feeHistoryParams
+	backend                     backend.Geth
+	metrics                     metrics
+	minimumGasTipCap            int64
+	blockTime                   time.Duration
+	blockSyncInterval           uint64
+	blockNumberCache            *cache.SingleFlightCache[blockNumberAnchor]
+	feeHistoryBlockCount        uint64
+	feeHistoryRewardPercentiles []float64
 }
 
 func NewBackend(
@@ -51,7 +47,7 @@ func NewBackend(
 	blockTime time.Duration,
 	blockSyncInterval uint64,
 	feeHistoryBlockCount uint64,
-	rewardPercentiles []float64,
+	feeHistoryRewardPercentiles []float64,
 ) transaction.Backend {
 	if blockSyncInterval == 0 {
 		blockSyncInterval = 1
@@ -62,23 +58,21 @@ func NewBackend(
 	}
 
 	var rewardPerc []float64
-	if len(rewardPercentiles) >= 3 {
-		rewardPerc = slices.Clone(rewardPercentiles)
+	if len(feeHistoryRewardPercentiles) >= 3 {
+		rewardPerc = slices.Clone(feeHistoryRewardPercentiles)
 	} else {
 		rewardPerc = slices.Clone(feeHistoryDefaultRewardPercentiles)
 	}
 
 	return &wrappedBackend{
-		backend:           backend,
-		minimumGasTipCap:  int64(minimumGasTipCap),
-		blockTime:         blockTime,
-		metrics:           newMetrics(),
-		blockSyncInterval: blockSyncInterval,
-		blockNumberCache:  cache.NewSingleFlightCache[blockNumberAnchor]("block_number"),
-		feeHistoryParams: feeHistoryParams{
-			blockCount:        feeHistoryBlockCount,
-			rewardPercentiles: rewardPerc,
-		},
+		backend:                     backend,
+		metrics:                     newMetrics(),
+		minimumGasTipCap:            int64(minimumGasTipCap),
+		blockTime:                   blockTime,
+		blockSyncInterval:           blockSyncInterval,
+		blockNumberCache:            cache.NewSingleFlightCache[blockNumberAnchor]("block_number"),
+		feeHistoryBlockCount:        feeHistoryBlockCount,
+		feeHistoryRewardPercentiles: rewardPerc,
 	}
 }
 

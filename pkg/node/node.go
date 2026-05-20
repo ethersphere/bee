@@ -201,8 +201,8 @@ type Options struct {
 	WhitelistedWithdrawalAddress       []string
 }
 
-func txRetryConfigFromOptions(o *Options) transaction.ServiceRetryConfig {
-	c := transaction.ServiceRetryConfig{
+func txRetryConfigFromOptions(o *Options) transaction.TransactionsRetryConfig {
+	c := transaction.TransactionsRetryConfig{
 		MaxRetries:         o.TransactionRetryMaxRetries,
 		RetryDelay:         o.TransactionRetryDelay,
 		GasIncreasePercent: o.TransactionRetryGasIncreasePercent,

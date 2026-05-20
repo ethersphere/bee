@@ -43,7 +43,7 @@ const (
 )
 
 // ParseFeeHistoryRewardPercentiles parses a comma-separated list of floats for eth_feeHistory
-// rewardPercentiles. At least three values in the range [0, 100] are required.
+// rewardPercentiles. Exactly three values in the range [0, 100] are required.
 func ParseFeeHistoryRewardPercentiles(s string) ([]float64, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -65,8 +65,8 @@ func ParseFeeHistoryRewardPercentiles(s string) ([]float64, error) {
 		}
 		out = append(out, v)
 	}
-	if len(out) < 3 {
-		return nil, fmt.Errorf("fee history reward percentiles: need at least 3 values, got %d", len(out))
+	if len(out) != 3 {
+		return nil, fmt.Errorf("fee history reward percentiles: exactly 3 values, got %d", len(out))
 	}
 	return out, nil
 }
@@ -96,7 +96,7 @@ func InitChain(
 	blockSyncInterval uint64,
 	feeHistoryBlockCount uint64,
 	feeHistoryRewardPercentiles []float64,
-	retryCfg transaction.ServiceRetryConfig,
+	retryCfg transaction.TransactionsRetryConfig,
 ) (transaction.Backend, common.Address, int64, transaction.Monitor, transaction.Service, error) {
 	backend := backendnoop.New(chainID)
 

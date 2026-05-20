@@ -61,16 +61,16 @@ const (
 	DefaultTransactionRetryGasIncreasePercent = 20
 )
 
-// ServiceRetryConfig configures SendWithRetry behaviour. Zero values are replaced by defaults in NewService.
-type ServiceRetryConfig struct {
+// TransactionsRetryConfig configures SendWithRetry behaviour. Zero values are replaced by defaults in NewService.
+type TransactionsRetryConfig struct {
 	MaxRetries         int
 	RetryDelay         time.Duration
 	GasIncreasePercent int
-	MaxTxPrice         *big.Int // max maxFeePerGas per gas (wei); nil or non-positive uses default (1_000_000 wei)
+	MaxTxPrice         *big.Int
 }
 
-// NormalizeServiceRetryConfig fills zero fields with package defaults.
-func NormalizeServiceRetryConfig(c ServiceRetryConfig) ServiceRetryConfig {
+// normalizeServiceRetryConfig fills zero fields with package defaults.
+func normalizeServiceRetryConfig(c TransactionsRetryConfig) TransactionsRetryConfig {
 	if c.MaxRetries <= 0 {
 		c.MaxRetries = DefaultSendWithRetryAttempts
 	}
@@ -162,11 +162,11 @@ type transactionService struct {
 	txRetryGasIncreasePercent int
 	maxTxPrice                *big.Int
 
-	metrics retryMetrics
+	metrics transactionsWithRetryMetrics
 }
 
 // NewService creates a new transaction service.
-func NewService(logger log.Logger, overlayEthAddress common.Address, backend Backend, signer crypto.Signer, store storage.StateStorer, chainID *big.Int, monitor Monitor, fallbackGasLimit uint64, retryCfg ServiceRetryConfig) (Service, error) {
+func NewService(logger log.Logger, overlayEthAddress common.Address, backend Backend, signer crypto.Signer, store storage.StateStorer, chainID *big.Int, monitor Monitor, fallbackGasLimit uint64, retryCfg TransactionsRetryConfig) (Service, error) {
 	senderAddress, err := signer.EthereumAddress()
 	if err != nil {
 		return nil, err
@@ -176,7 +176,7 @@ func NewService(logger log.Logger, overlayEthAddress common.Address, backend Bac
 		fallbackGasLimit = FallbackGasLimit
 	}
 
-	rc := NormalizeServiceRetryConfig(retryCfg)
+	rc := normalizeServiceRetryConfig(retryCfg)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	logger.Info("transaction retry configuration",

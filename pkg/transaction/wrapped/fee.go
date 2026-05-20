@@ -84,12 +84,12 @@ func (b *wrappedBackend) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.I
 	return gasFeeCap, gasTipCap, nil
 }
 
-func (b *wrappedBackend) GetFeeAndTipsFromFeeHistory(ctx context.Context, lastBlock *big.Int) (*transaction.FeeHistorySuggestedFeeAndTips, error) {
-	fh, err := b.FeeHistory(ctx, b.feeHistoryParams.blockCount, lastBlock, b.feeHistoryParams.rewardPercentiles)
+func (b *wrappedBackend) SuggestedFeeAndTipsFromHistory(ctx context.Context, lastBlock *big.Int) (*transaction.FeeHistorySuggestedFeeAndTips, error) {
+	fh, err := b.FeeHistory(ctx, b.feeHistoryBlockCount, lastBlock, b.feeHistoryRewardPercentiles)
 	if err != nil {
 		return nil, err
 	}
-	low, market, aggressive, baseFee, err := suggestedFeesFromFeeHistoryResult(fh)
+	low, market, aggressive, err := suggestedFeesFromFeeHistoryResult(fh)
 	if err != nil {
 		b.metrics.FeeHistoryParseErrors.Inc()
 		return nil, err
@@ -98,6 +98,5 @@ func (b *wrappedBackend) GetFeeAndTipsFromFeeHistory(ctx context.Context, lastBl
 		LowTip:        low,
 		MarketTip:     market,
 		AggressiveTip: aggressive,
-		LatestBaseFee: baseFee,
 	}, nil
 }

@@ -19,8 +19,8 @@ import (
 
 const retryStatePrefix = "transaction_retry_"
 
-// RetryState is persisted so transactions with retry can resume after a node restart.
-type RetryState struct {
+// TransactionRetryState is persisted so transactions with retry can resume after a node restart.
+type TransactionRetryState struct {
 	Nonce         uint64          `json:"nonce"`
 	NonceAssigned bool            `json:"nonce_assigned"`
 	NextAttempt   int             `json:"next_attempt"`
@@ -60,6 +60,18 @@ func escalateGasTip(tip *big.Int, increasePct int) *big.Int {
 	return new(big.Int).Div(new(big.Int).Mul(new(big.Int).Set(tip), big.NewInt(int64(100+increasePct))), big.NewInt(100))
 }
 
+// suggestGasFeeGasTipCapWithHistory returns maxFeePerGas (gasFeeCap) and maxPriorityFeePerGas (gasTipCap)
+// for transactions with retry. It reads the latest block base fee and picks a priority fee, then sets
+// gasFeeCap = 2*baseFee + tip (same formula as wrapped.SuggestedFeeAndTip).
+//
+// Priority fee selection:
+//   - First attempt (prevGasTipCap nil or zero): one eth_feeHistory snapshot via
+//     SuggestedFeeAndTipsFromHistory; MarketTip is used as gasTipCap.
+//   - Later attempts: gasTipCap = prevGasTipCap * (100 + txRetryGasIncreasePercent) / 100.
+//
+// When maxTxPrice is set and 2*baseFee + escalated tip exceeds it, the function broadcasts with the
+// un-escalated previous tip (2*baseFee + prevGasTipCap) instead. If that fee cap still exceeds
+// maxTxPrice, it returns ErrTxMaxPriceExceeded.
 func (t *transactionService) suggestGasFeeGasTipCapWithHistory(ctx context.Context, prevGasTipCap *big.Int) (gasFeeCap, gasTipCap *big.Int, err error) {
 	header, err := t.backend.HeaderByNumber(ctx, nil)
 	if err != nil {
@@ -71,7 +83,7 @@ func (t *transactionService) suggestGasFeeGasTipCapWithHistory(ctx context.Conte
 
 	var escalatedGasTip *big.Int
 	if prevGasTipCap == nil || prevGasTipCap.Sign() == 0 {
-		fh, err := t.backend.GetFeeAndTipsFromFeeHistory(ctx, nil)
+		fh, err := t.backend.SuggestedFeeAndTipsFromHistory(ctx, nil)
 		if err != nil {
 			return nil, nil, fmt.Errorf("fee history: %w", err)
 		}
@@ -134,7 +146,7 @@ func (t *transactionService) prepareTransactionWithRetry(ctx context.Context, re
 	return tx, nil
 }
 
-// broadcastTxWithRetry prepares, signs, and sends a transaction.
+// broadcastTx prepares, signs, and sends a transaction.
 // When fixedNonce is nil a new nonce is allocated (first attempt);
 // otherwise the supplied nonce is reused (replacement transaction).
 func (t *transactionService) broadcastTx(ctx context.Context, request *TxRequest, fixedNonce *uint64, gasTipCap *big.Int, attempt int) (*types.Transaction, error) {
@@ -181,7 +193,7 @@ func (t *transactionService) broadcastTx(ctx context.Context, request *TxRequest
 	return signedTx, err
 }
 
-func (t *transactionService) deleteRetryStateAndPending(retryKey string, state RetryState) {
+func (t *transactionService) deleteRetryStateAndPending(retryKey string, state TransactionRetryState) {
 	if retryKey == "" {
 		return
 	}
@@ -195,7 +207,7 @@ func (t *transactionService) deleteRetryStateAndPending(retryKey string, state R
 }
 func (t *transactionService) retry(ctx context.Context, txRetryKey string, request *TxRequest) (common.Hash, *types.Receipt, error) {
 	var (
-		txState RetryState
+		txState TransactionRetryState
 		nonce   *uint64
 	)
 
@@ -331,7 +343,7 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 	return txState.LastTxHash, nil, exhaustionErr
 }
 
-func (t *transactionService) updateStates(signedTx *types.Transaction, txState *RetryState) error {
+func (t *transactionService) updateStates(signedTx *types.Transaction, txState *TransactionRetryState) error {
 	if txState.LastTxHash != (common.Hash{}) {
 		txState.AllTxHashes = append(txState.AllTxHashes, txState.LastTxHash)
 		_ = t.store.Delete(pendingTransactionKey(txState.LastTxHash))
@@ -423,7 +435,7 @@ func isErrCritical(err error) bool {
 func (t *transactionService) retryPendingHashes() (map[common.Hash]struct{}, error) {
 	out := make(map[common.Hash]struct{})
 	err := t.store.Iterate(retryStatePrefix, func(key, val []byte) (stop bool, err error) {
-		var s RetryState
+		var s TransactionRetryState
 		if uErr := json.Unmarshal(val, &s); uErr != nil {
 			return false, uErr
 		}
@@ -440,9 +452,9 @@ func (t *transactionService) retryPendingHashes() (map[common.Hash]struct{}, err
 
 func (t *transactionService) resumeRetryTransactions() error {
 	var keys []string
-	var states []RetryState
+	var states []TransactionRetryState
 	err := t.store.Iterate(retryStatePrefix, func(key, val []byte) (stop bool, err error) {
-		var s RetryState
+		var s TransactionRetryState
 		if uErr := json.Unmarshal(val, &s); uErr != nil {
 			return false, uErr
 		}
@@ -502,7 +514,7 @@ func addressForLog(addr *common.Address) string {
 	return addr.Hex()
 }
 
-func retryToForLog(req *TxRequest, state *RetryState) string {
+func retryToForLog(req *TxRequest, state *TransactionRetryState) string {
 	if state != nil && state.To != nil {
 		return state.To.Hex()
 	}

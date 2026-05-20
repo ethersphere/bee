@@ -176,7 +176,7 @@ func TestTransactionSend(t *testing.T) {
 				}),
 			),
 			0,
-			transaction.ServiceRetryConfig{},
+			transaction.TransactionsRetryConfig{},
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -258,7 +258,7 @@ func TestTransactionSend(t *testing.T) {
 				}),
 			),
 			0,
-			transaction.ServiceRetryConfig{},
+			transaction.TransactionsRetryConfig{},
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -346,7 +346,7 @@ func TestTransactionSend(t *testing.T) {
 				}),
 			),
 			0,
-			transaction.ServiceRetryConfig{},
+			transaction.TransactionsRetryConfig{},
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -426,7 +426,7 @@ func TestTransactionSend(t *testing.T) {
 			chainID,
 			monitormock.New(),
 			0,
-			transaction.ServiceRetryConfig{},
+			transaction.TransactionsRetryConfig{},
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -493,7 +493,7 @@ func TestTransactionSend(t *testing.T) {
 			chainID,
 			monitormock.New(),
 			0,
-			transaction.ServiceRetryConfig{},
+			transaction.TransactionsRetryConfig{},
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -561,7 +561,7 @@ func TestTransactionSend(t *testing.T) {
 			chainID,
 			monitormock.New(),
 			0,
-			transaction.ServiceRetryConfig{},
+			transaction.TransactionsRetryConfig{},
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -631,7 +631,7 @@ func TestTransactionSend(t *testing.T) {
 			chainID,
 			monitormock.New(),
 			0,
-			transaction.ServiceRetryConfig{},
+			transaction.TransactionsRetryConfig{},
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -701,7 +701,7 @@ func TestTransactionSend(t *testing.T) {
 			chainID,
 			monitormock.New(),
 			0,
-			transaction.ServiceRetryConfig{},
+			transaction.TransactionsRetryConfig{},
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -774,7 +774,7 @@ func TestTransactionSend(t *testing.T) {
 			chainID,
 			monitormock.New(),
 			0,
-			transaction.ServiceRetryConfig{},
+			transaction.TransactionsRetryConfig{},
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -849,7 +849,7 @@ func TestTransactionSend(t *testing.T) {
 			chainID,
 			monitormock.New(),
 			0,
-			transaction.ServiceRetryConfig{},
+			transaction.TransactionsRetryConfig{},
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -924,7 +924,7 @@ func TestTransactionSend(t *testing.T) {
 			chainID,
 			monitormock.New(),
 			0,
-			transaction.ServiceRetryConfig{},
+			transaction.TransactionsRetryConfig{},
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -994,7 +994,7 @@ func TestTransactionSend(t *testing.T) {
 			chainID,
 			monitormock.New(),
 			0,
-			transaction.ServiceRetryConfig{},
+			transaction.TransactionsRetryConfig{},
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -1064,7 +1064,7 @@ func TestTransactionSend(t *testing.T) {
 			chainID,
 			monitormock.New(),
 			0,
-			transaction.ServiceRetryConfig{},
+			transaction.TransactionsRetryConfig{},
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -1137,7 +1137,7 @@ func TestTransactionWaitForReceipt(t *testing.T) {
 			}),
 		),
 		0,
-		transaction.ServiceRetryConfig{},
+		transaction.TransactionsRetryConfig{},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -1212,7 +1212,7 @@ func TestTransactionResend(t *testing.T) {
 		chainID,
 		monitormock.New(),
 		0,
-		transaction.ServiceRetryConfig{},
+		transaction.TransactionsRetryConfig{},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -1301,7 +1301,7 @@ func TestTransactionCancel(t *testing.T) {
 			chainID,
 			monitormock.New(),
 			0,
-			transaction.ServiceRetryConfig{},
+			transaction.TransactionsRetryConfig{},
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -1353,7 +1353,7 @@ func TestTransactionCancel(t *testing.T) {
 			chainID,
 			monitormock.New(),
 			0,
-			transaction.ServiceRetryConfig{},
+			transaction.TransactionsRetryConfig{},
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -1440,7 +1440,7 @@ func TestTransactionService_UnwrapABIError(t *testing.T) {
 		chainID,
 		monitormock.New(),
 		0,
-		transaction.ServiceRetryConfig{},
+		transaction.TransactionsRetryConfig{},
 	)
 	if err != nil {
 		t.Fatal(err)

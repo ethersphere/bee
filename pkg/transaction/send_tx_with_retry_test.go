@@ -47,7 +47,7 @@ func TestSuggestGasFeeGasTipCapWithHistory(t *testing.T) {
 	}
 
 	feeHistoryOption := func(called *atomic.Int32) backendmock.Option {
-		return backendmock.WithGetFeeAndTipsFromFeeHistoryFunc(func(ctx context.Context, lastBlock *big.Int) (*transaction.FeeHistorySuggestedFeeAndTips, error) {
+		return backendmock.WithSuggestedFeeAndTipsFromHistoryFunc(func(ctx context.Context, lastBlock *big.Int) (*transaction.FeeHistorySuggestedFeeAndTips, error) {
 			if called != nil {
 				called.Add(1)
 			}
@@ -202,8 +202,8 @@ func (s retryTestSetup) expectedGasFeeCap(tip *big.Int) *big.Int {
 	return new(big.Int).Add(new(big.Int).Mul(s.baseFee, big.NewInt(2)), tip)
 }
 
-func (s retryTestSetup) retryConfig() transaction.ServiceRetryConfig {
-	return transaction.ServiceRetryConfig{
+func (s retryTestSetup) retryConfig() transaction.TransactionsRetryConfig {
+	return transaction.TransactionsRetryConfig{
 		MaxRetries:         3,
 		RetryDelay:         50 * time.Millisecond,
 		GasIncreasePercent: 20,
@@ -233,7 +233,7 @@ func (s retryTestSetup) signerAddr() signermock.Option {
 }
 
 func (s retryTestSetup) feeHistoryOption(counter *atomic.Int32) backendmock.Option {
-	return backendmock.WithGetFeeAndTipsFromFeeHistoryFunc(func(ctx context.Context, lastBlock *big.Int) (*transaction.FeeHistorySuggestedFeeAndTips, error) {
+	return backendmock.WithSuggestedFeeAndTipsFromHistoryFunc(func(ctx context.Context, lastBlock *big.Int) (*transaction.FeeHistorySuggestedFeeAndTips, error) {
 		if counter != nil {
 			counter.Add(1)
 		}
@@ -263,15 +263,6 @@ func (s retryTestSetup) nonceOption() backendmock.Option {
 func (s retryTestSetup) estimateGasOption() backendmock.Option {
 	return backendmock.WithEstimateGasFunc(func(ctx context.Context, msg ethereum.CallMsg) (uint64, error) {
 		return s.gasLimit, nil
-	})
-}
-
-// receiptWatchOK returns a monitor option that immediately returns a successful receipt.
-func receiptWatchOK(status uint64) monitormock.Option {
-	return monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
-		ch := make(chan types.Receipt, 1)
-		ch <- types.Receipt{TxHash: txHash, Status: status}
-		return ch, nil, nil
 	})
 }
 
@@ -342,7 +333,7 @@ func TestSendWithRetry_BroadcastCriticalError(t *testing.T) {
 	assert.Equal(t, s.value.Int64(), broadcasts[0].Value.Int64())
 	assert.Equal(t, s.gasLimit, broadcasts[0].GasLimit)
 
-	var rs transaction.RetryState
+	var rs transaction.TransactionRetryState
 	assert.ErrorIs(t, store.Get(transaction.RetryStateKey(s.nonce), &rs), storage.ErrNotFound,
 		"retry state should be cleaned up after critical error")
 }
@@ -391,7 +382,7 @@ func TestSendWithRetry_WaitForReceiptCriticalError(t *testing.T) {
 	assert.Equal(t, s.expectedGasFeeCap(marketTip).Int64(), broadcasts[0].GasFeeCap.Int64(),
 		"gasFeeCap must be baseFee*2 + MarketTip")
 
-	var rs transaction.RetryState
+	var rs transaction.TransactionRetryState
 	assert.ErrorIs(t, store.Get(transaction.RetryStateKey(s.nonce), &rs), storage.ErrNotFound,
 		"retry state should be cleaned up after critical WaitForReceipt error")
 }
@@ -502,7 +493,7 @@ func TestSendWithRetry_NonCriticalThenSuccess(t *testing.T) {
 	assert.Equal(t, s.recipient, *broadcasts[0].To)
 	assert.Equal(t, s.txData, broadcasts[0].Data)
 
-	var rs transaction.RetryState
+	var rs transaction.TransactionRetryState
 	assert.ErrorIs(t, store.Get(transaction.RetryStateKey(broadcasts[0].Nonce), &rs), storage.ErrNotFound,
 		"retry state should be cleaned up on success")
 	assert.ErrorIs(t, store.Get(transaction.PendingTransactionKey(txHash), &struct{}{}), storage.ErrNotFound,
@@ -578,7 +569,7 @@ func TestSendWithRetry_EscalateGasThenSuccess(t *testing.T) {
 	assert.Equal(t, int32(1), feeHistoryCalls.Load(),
 		"fee history called once: PreviousTip known after first broadcast, retries use escalated tip")
 
-	var rs transaction.RetryState
+	var rs transaction.TransactionRetryState
 	assert.ErrorIs(t, store.Get(transaction.RetryStateKey(broadcasts[0].Nonce), &rs), storage.ErrNotFound,
 		"retry state should be cleaned up on success")
 }
@@ -641,7 +632,7 @@ func TestSendWithRetry_AllAttemptsExhausted(t *testing.T) {
 	assert.Equal(t, int32(1), feeHistoryCalls.Load(),
 		"fee history called once: PreviousTip known after first broadcast, retries use escalated tip")
 
-	var rs transaction.RetryState
+	var rs transaction.TransactionRetryState
 	assert.ErrorIs(t, store.Get(transaction.RetryStateKey(broadcasts[0].Nonce), &rs), storage.ErrNotFound,
 		"retry state should be cleaned up after exhaustion")
 }
@@ -657,7 +648,7 @@ func TestSendWithRetry_ResumeAfterRestart(t *testing.T) {
 	previousTip := new(big.Int).Set(s.tipBase)
 	lastTxHash := common.HexToHash("0xdeadbeef")
 
-	priorState := transaction.RetryState{
+	priorState := transaction.TransactionRetryState{
 		Nonce:         s.nonce,
 		NonceAssigned: true,
 		NextAttempt:   1,
@@ -742,7 +733,7 @@ func TestSendWithRetry_ResumeAfterRestart(t *testing.T) {
 	assert.Equal(t, int32(0), feeHistoryCalls.Load(),
 		"fee history should NOT be called on resume — tip is restored from persisted state")
 
-	var rs transaction.RetryState
+	var rs transaction.TransactionRetryState
 	assert.Eventually(t, func() bool {
 		return errors.Is(store.Get(retryKey, &rs), storage.ErrNotFound)
 	}, 5*time.Second, 10*time.Millisecond, "retry state should be cleaned up after success")
