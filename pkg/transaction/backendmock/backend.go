@@ -239,6 +239,6 @@ func WithFeeHistoryFunc(f func(ctx context.Context, blockCount uint64, lastBlock
 
 func WithSuggestedFeeAndTipsFromHistoryFunc(f func(ctx context.Context, lastBlock *big.Int) (*transaction.FeeHistorySuggestedFeeAndTips, error)) Option {
 	return optionFunc(func(s *backendMock) {
-		s.SuggestedFeeAndTipsFromHistory = f
+		s.suggestedFeeAndTipsFromHistory = f
 	})
 }
