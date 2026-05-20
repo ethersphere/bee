@@ -55,7 +55,6 @@ func TestSuggestGasFeeGasTipCapWithHistory(t *testing.T) {
 				LowTip:        big.NewInt(tipBase),
 				MarketTip:     big.NewInt(marketTip),
 				AggressiveTip: big.NewInt(tipBase * 3),
-				LatestBaseFee: big.NewInt(baseFee),
 			}, nil
 		})
 	}
@@ -241,7 +240,6 @@ func (s retryTestSetup) feeHistoryOption(counter *atomic.Int32) backendmock.Opti
 			LowTip:        new(big.Int).Set(s.tipBase),
 			MarketTip:     new(big.Int).Mul(s.tipBase, big.NewInt(2)),
 			AggressiveTip: new(big.Int).Mul(s.tipBase, big.NewInt(3)),
-			LatestBaseFee: new(big.Int).Set(s.baseFee),
 		}, nil
 	})
 }
