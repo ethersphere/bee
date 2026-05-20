@@ -45,14 +45,14 @@ func refHash(count int, data []byte) ([]byte, error) {
 }
 
 // syncHash hashes the data and the span using the bmt hasher
-func syncHash(h *bmt.Hasher, data []byte) ([]byte, error) {
+func syncHash(h bmt.Hasher, data []byte) ([]byte, error) {
 	h.Reset()
 	h.SetHeaderInt64(int64(len(data)))
 	_, err := h.Write(data)
 	if err != nil {
 		return nil, err
 	}
-	return h.Hash(nil)
+	return h.Sum(nil), nil
 }
 
 // tests if hasher responds with correct hash comparing the reference implementation return value
@@ -67,7 +67,7 @@ func TestHasherEmptyData(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, count, 1))
+			pool := bmt.NewPool(bmt.NewConf(count, 1))
 			h := pool.Get()
 			resHash, err := syncHash(h, nil)
 			if err != nil {
@@ -92,7 +92,7 @@ func TestSyncHasherCorrectness(t *testing.T) {
 			maxValue := count * hashSize
 			var incr int
 			capacity := 1
-			pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, count, capacity))
+			pool := bmt.NewPool(bmt.NewConf(count, capacity))
 			for n := 0; n <= maxValue; n += incr {
 				h := pool.Get()
 				incr = 1 + rand.Intn(5)
@@ -125,7 +125,7 @@ func TestHasherReuse(t *testing.T) {
 func testHasherReuse(t *testing.T, poolsize int) {
 	t.Helper()
 
-	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, testSegmentCount, poolsize))
+	pool := bmt.NewPool(bmt.NewConf(testSegmentCount, poolsize))
 	h := pool.Get()
 	defer pool.Put(h)
 
@@ -145,7 +145,7 @@ func TestBMTConcurrentUse(t *testing.T) {
 	t.Parallel()
 
 	testData := testutil.RandBytesWithSeed(t, 4096, seed)
-	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, testSegmentCount, testPoolSize))
+	pool := bmt.NewPool(bmt.NewConf(testSegmentCount, testPoolSize))
 	cycles := 100
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -178,7 +178,7 @@ func TestBMTWriterBuffers(t *testing.T) {
 		t.Run(fmt.Sprintf("%d_segments", count), func(t *testing.T) {
 			t.Parallel()
 
-			pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, count, testPoolSize))
+			pool := bmt.NewPool(bmt.NewConf(count, testPoolSize))
 			h := pool.Get()
 			defer pool.Put(h)
 
@@ -223,10 +223,7 @@ func TestBMTWriterBuffers(t *testing.T) {
 					}
 				}
 				h.SetHeaderInt64(int64(size))
-				resHash, err := h.Hash(nil)
-				if err != nil {
-					return err
-				}
+				resHash := h.Sum(nil)
 				if !bytes.Equal(resHash, expHash) {
 					return fmt.Errorf("hash mismatch on %v. expected %x, got %x", offsets, expHash, resHash)
 				}
@@ -253,7 +250,7 @@ func TestBMTWriterBuffers(t *testing.T) {
 }
 
 // helper function that compares reference and optimised implementations for correctness
-func testHasherCorrectness(h *bmt.Hasher, data []byte, n, count int) (err error) {
+func testHasherCorrectness(h bmt.Hasher, data []byte, n, count int) (err error) {
 	if len(data) < n {
 		n = len(data)
 	}
@@ -271,11 +268,70 @@ func testHasherCorrectness(h *bmt.Hasher, data []byte, n, count int) (err error)
 	return nil
 }
 
+// TestGoroutineSIMDParity verifies that the goroutine and SIMD pools produce
+// identical root hashes for the same input across every segment count in
+// testSegmentCounts and a spread of write lengths. Iterating over the full
+// segment-count table exercises the degenerate 1-level and shallow-tree branches
+// of simdHasher.Hash that a fixed 128-segment test would miss.
+//
+// On platforms where the dispatcher falls back to the goroutine pool
+// (non-linux/amd64 or CPU without AVX2/AVX-512), both pools end up as goroutine
+// pools and the test degrades to a goroutine-vs-goroutine comparison.
+//
+// Sub-tests are intentionally not run in parallel: the SIMDOptIn flip is global
+// state and concurrent NewPool calls would see flapping values.
+func TestGoroutineSIMDParity(t *testing.T) {
+	testData := testutil.RandBytesWithSeed(t, 4096, seed)
+
+	prev := bmt.SIMDOptIn()
+	defer bmt.SetSIMDOptIn(prev)
+
+	// Representative write lengths; clamped per segment count below. 0 covers the
+	// empty-input path, and the neighbourhood of section boundaries (31/32/33,
+	// 63/64/65) tickles the padding/fall-through in Hash.
+	lengths := []int{0, 1, 31, 32, 33, 63, 64, 65, 128, 500, 1024, 2048, 4095, 4096}
+
+	for _, count := range testSegmentCounts {
+		t.Run(fmt.Sprintf("segments_%d", count), func(t *testing.T) {
+			bmt.SetSIMDOptIn(false)
+			gPool := bmt.NewPool(bmt.NewConf(count, 1))
+			bmt.SetSIMDOptIn(true)
+			sPool := bmt.NewPool(bmt.NewConf(count, 1))
+
+			maxLen := count * hashSize
+			for _, n := range lengths {
+				if n > maxLen {
+					continue
+				}
+				t.Run(fmt.Sprintf("len_%d", n), func(t *testing.T) {
+					gh := gPool.Get()
+					gHash, err := syncHash(gh, testData[:n])
+					gPool.Put(gh)
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					sh := sPool.Get()
+					sHash, err := syncHash(sh, testData[:n])
+					sPool.Put(sh)
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					if !bytes.Equal(gHash, sHash) {
+						t.Fatalf("goroutine/simd mismatch at count=%d len=%d\n  goroutine: %x\n  simd:      %x", count, n, gHash, sHash)
+					}
+				})
+			}
+		})
+	}
+}
+
 // verifies that the bmt.Hasher can be used with the hash.Hash interface
 func TestUseSyncAsOrdinaryHasher(t *testing.T) {
 	t.Parallel()
 
-	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, testSegmentCount, testPoolSize))
+	pool := bmt.NewPool(bmt.NewConf(testSegmentCount, testPoolSize))
 	h := pool.Get()
 	defer pool.Put(h)
 	data := []byte("moodbytesmoodbytesmoodbytesmoodbytes")

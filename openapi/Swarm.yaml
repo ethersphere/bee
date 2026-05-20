@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 8.0.0
+  version: 8.1.0
   title: Bee API
   description: "API endpoints for interacting with the Swarm network, supporting file operations, messaging, and node management"
 
@@ -82,14 +82,14 @@ paths:
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
 
-  "/grantee/{reference}":
+  "/grantee/{address}":
     get:
       summary: "Get the grantee list"
       tags:
         - ACT
       parameters:
         - in: path
-          name: reference
+          name: address
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmEncryptedReference"
           required: true
@@ -119,7 +119,7 @@ paths:
         - ACT
       parameters:
         - in: path
-          name: reference
+          name: address
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmEncryptedReference"
           required: true
@@ -184,6 +184,8 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmEncryptParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmAct"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       requestBody:
         content:
           application/octet-stream:
@@ -209,14 +211,14 @@ paths:
         default:
           description: Default response
 
-  "/bytes/{reference}":
+  "/bytes/{address}":
     get:
       summary: "Retrieve data by reference"
       tags:
         - Bytes
       parameters:
         - in: path
-          name: reference
+          name: address
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
@@ -226,6 +228,7 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyFallbackModeParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmChunkRetrievalTimeoutParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmLookaheadBufferSizeParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActTimestamp"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActPublisher"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
@@ -420,14 +423,14 @@ paths:
         default:
           description: Default response
 
-  "/bzz/{reference}":
+  "/bzz/{address}":
     get:
       summary: "Retrieve a file or index document from a collection"
       tags:
         - BZZ
       parameters:
         - in: path
-          name: reference
+          name: address
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
@@ -437,6 +440,7 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyFallbackModeParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmChunkRetrievalTimeoutParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmLookaheadBufferSizeParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActTimestamp"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActPublisher"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
@@ -487,14 +491,14 @@ paths:
         default:
           description: Default response
 
-  "/bzz/{reference}/{path}":
+  "/bzz/{address}/{path}":
     get:
       summary: "Retrieve a file from a collection by path"
       tags:
         - BZZ
       parameters:
         - in: path
-          name: reference
+          name: address
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
@@ -508,6 +512,9 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyFallbackModeParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmChunkRetrievalTimeoutParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmLookaheadBufferSizeParameter"
       responses:
         "200":
           description: OK
@@ -581,14 +588,14 @@ paths:
         default:
           description: Default response
 
-  "/tags/{uid}":
+  "/tags/{id}":
     get:
       summary: "Get Tag information using Uid"
       tags:
         - Tag
       parameters:
         - in: path
-          name: uid
+          name: id
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/Uid"
           required: true
@@ -614,7 +621,7 @@ paths:
         - Tag
       parameters:
         - in: path
-          name: uid
+          name: id
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/Uid"
           required: true
@@ -636,7 +643,7 @@ paths:
         - Tag
       parameters:
         - in: path
-          name: uid
+          name: id
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/Uid"
           required: true
@@ -758,6 +765,10 @@ paths:
   "/pins/check":
     get:
       summary: Validate pinned chunks integrity
+      description: |
+        Returns a stream of newline-delimited JSON objects (NDJSON), one per pinned reference checked.
+        The response uses chunked transfer encoding; clients should parse each line as an independent
+        `PinIntegrityResponse` object rather than buffering the body into a single JSON value.
       tags:
         - Pinning
       parameters:
@@ -769,7 +780,7 @@ paths:
           description: Optional reference to check; if not provided, all pinned references are checked
       responses:
         "200":
-          description: List of checked root hash references
+          description: NDJSON stream of integrity results, one object per line
           content:
             application/json:
               schema:
@@ -843,9 +854,9 @@ paths:
         - GSOC
       parameters:
         - in: path
-          name: reference
+          name: address
           schema:
-            $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
           description: "Single Owner Chunk address (which may have multiple payloads)"
       responses:
@@ -884,8 +895,12 @@ paths:
           name: swarm-postage-batch-id
           schema:
             $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
-          required: true
+          required: false
+          description: ID of the postage batch to use. Either this or `swarm-postage-stamp` must be supplied.
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageStamp"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmAct"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       requestBody:
@@ -904,6 +919,10 @@ paths:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/ReferenceResponse"
           headers:
+            "swarm-tag":
+              description: Tag UID, returned when an upload session is in use (either because `swarm-tag` was supplied, `swarm-deferred-upload` requested deferred mode, or `swarm-pin` was set).
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/Uid"
             "swarm-act-history-address":
               $ref: "SwarmCommon.yaml#/components/headers/SwarmActHistoryAddress"
         "400":
@@ -912,6 +931,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/401"
         "402":
           $ref: "SwarmCommon.yaml#/components/responses/402"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -1079,14 +1100,14 @@ paths:
         default:
           description: Default response
 
-  "/stewardship/{reference}":
+  "/stewardship/{address}":
     get:
       summary: "Check content availability"
       tags:
         - Stewardship
       parameters:
         - in: path
-          name: reference
+          name: address
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
@@ -1115,7 +1136,7 @@ paths:
         - Stewardship
       parameters:
         - in: path
-          name: reference
+          name: address
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
@@ -1124,7 +1145,8 @@ paths:
           schema:
             $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
           name: swarm-postage-batch-id
-          description: Postage batch to use for re-upload. If none is provided and the file was uploaded on the same node before, it will reuse the same batch. If not found, it will return error. If a new batch is provided, the chunks are stamped again with the new batch.
+          required: true
+          description: Postage batch to use for re-upload. The chunks are re-stamped with this batch.
         - in: header
           schema:
             $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
@@ -1210,14 +1232,14 @@ paths:
         default:
           description: Default response
 
-  "/balances/{address}":
+  "/balances/{peer}":
     get:
       summary: Get the balance with a specific peer
       tags:
         - Balance
       parameters:
         - in: path
-          name: address
+          name: peer
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
@@ -1270,14 +1292,14 @@ paths:
         default:
           description: Default response
 
-  "/consumed/{address}":
+  "/consumed/{peer}":
     get:
       summary: Get past due consumption balance with a specific peer
       tags:
         - Balance
       parameters:
         - in: path
-          name: address
+          name: peer
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
@@ -1333,7 +1355,7 @@ paths:
         - Chunk
       parameters:
         - in: path
-          name: reference
+          name: address
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
@@ -1392,6 +1414,12 @@ paths:
       tags:
         - Envelope
       parameters:
+        - in: path
+          name: address
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
+          required: true
+          description: Swarm address of the chunk to stamp
         - in: header
           name: swarm-postage-batch-id
           schema:
@@ -1413,7 +1441,7 @@ paths:
         default:
           description: Default response
 
-  "/connect/{multiAddress}":
+  "/connect/{multi-address}":
     post:
       summary: Connect to a peer address
       tags:
@@ -1421,7 +1449,7 @@ paths:
       parameters:
         - in: path
           allowReserved: true
-          name: multiAddress
+          name: multi-address
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/MultiAddress"
           required: true
@@ -1467,6 +1495,56 @@ paths:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/ChainState"
+        default:
+          description: Default response
+
+  "/debugstore":
+    get:
+      summary: Get a snapshot of local storage debug info
+      tags:
+        - Status
+      responses:
+        "200":
+          description: Local storage debug info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  Upload:
+                    type: object
+                    properties:
+                      TotalUploaded: { type: integer }
+                      TotalSynced: { type: integer }
+                      PendingUpload: { type: integer }
+                  Pinning:
+                    type: object
+                    properties:
+                      TotalCollections: { type: integer }
+                      TotalChunks: { type: integer }
+                  Cache:
+                    type: object
+                    properties:
+                      Size: { type: integer }
+                      Capacity: { type: integer }
+                  Reserve:
+                    type: object
+                    properties:
+                      SizeWithinRadius: { type: integer }
+                      TotalSize: { type: integer }
+                      Capacity: { type: integer }
+                      LastBinIDs:
+                        type: array
+                        items: { type: integer }
+                      Epoch: { type: integer }
+                  ChunkStore:
+                    type: object
+                    properties:
+                      TotalChunks: { type: integer }
+                      SharedSlots: { type: integer }
+                      ReferenceCount: { type: integer }
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
@@ -1554,14 +1632,14 @@ paths:
         default:
           description: Default response
 
-  "/settlements/{address}":
+  "/settlements/{peer}":
     get:
       summary: Get settlement amounts sent and received with a peer
       tags:
         - Settlements
       parameters:
         - in: path
-          name: address
+          name: peer
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
@@ -1666,12 +1744,12 @@ paths:
         default:
           description: Default response
 
-  "/chequebook/cashout/{peer-id}":
+  "/chequebook/cashout/{peer}":
     get:
       summary: Get the last cashout status for a peer
       parameters:
         - in: path
-          name: peer-id
+          name: peer
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
@@ -1695,7 +1773,7 @@ paths:
       summary: Cash out the last cheque for a peer
       parameters:
         - in: path
-          name: peer-id
+          name: peer
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
@@ -1720,12 +1798,12 @@ paths:
         default:
           description: Default response
 
-  "/chequebook/cheque/{peer-id}":
+  "/chequebook/cheque/{peer}":
     get:
       summary: Get the last cheques for a peer
       parameters:
         - in: path
-          name: peer-id
+          name: peer
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
@@ -1779,14 +1857,14 @@ paths:
       tags:
         - Chequebook
       responses:
-        "201":
+        "200":
           description: Transaction hash of the deposit transaction
           content:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/TransactionResponse"
         "400":
-          $ref: "SwarmCommon.yaml#/components/responses/404"
+          $ref: "SwarmCommon.yaml#/components/responses/400"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -1806,14 +1884,14 @@ paths:
       tags:
         - Chequebook
       responses:
-        "201":
+        "200":
           description: Transaction hash of the withdraw transaction
           content:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/TransactionResponse"
         "400":
-          $ref: "SwarmCommon.yaml#/components/responses/404"
+          $ref: "SwarmCommon.yaml#/components/responses/400"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -1836,12 +1914,12 @@ paths:
         default:
           description: Default response
 
-  "/transactions/{txHash}":
+  "/transactions/{hash}":
     get:
       summary: Retrieve transaction information
       parameters:
         - in: path
-          name: txHash
+          name: hash
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/TransactionHash"
           required: true
@@ -1865,7 +1943,7 @@ paths:
       summary: Rebroadcast a transaction
       parameters:
         - in: path
-          name: txHash
+          name: hash
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/TransactionHash"
           required: true
@@ -1889,7 +1967,7 @@ paths:
       summary: Cancel existing transaction
       parameters:
         - in: path
-          name: txHash
+          name: hash
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/TransactionHash"
           required: true
@@ -2121,6 +2199,32 @@ paths:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/DebugPostageAllBatchesResponse"
 
+        default:
+          description: Default response
+
+  "/batches/{batch_id}":
+    parameters:
+      - in: path
+        name: batch_id
+        schema:
+          $ref: "SwarmCommon.yaml#/components/schemas/BatchID"
+        required: true
+        description: ID of the postage batch
+    get:
+      summary: Get a single globally available postage batch by ID
+      tags:
+        - Postage Stamps
+      responses:
+        "200":
+          description: The postage batch state
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/PostageBatchShort"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         default:
           description: Default response
 
@@ -2396,6 +2500,8 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         default:
           description: Default response
+
+  "/loggers/{exp}/{verbosity}":
     put:
       summary: Set logger(s) verbosity level.
       parameters:
@@ -2405,6 +2511,13 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/LoggerExp"
           required: true
           description: Regular expression or a subsystem that matches the logger(s).
+        - in: path
+          name: verbosity
+          schema:
+            type: string
+            enum: [none, error, warning, info, debug, all]
+          required: true
+          description: Verbosity level to apply to the matching logger(s).
       tags:
         - Logging
       responses:

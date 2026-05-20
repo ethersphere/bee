@@ -77,9 +77,15 @@ components:
       properties:
         balance:
           $ref: "#/components/schemas/BigInt"
+        consumedBalance:
+          $ref: "#/components/schemas/BigInt"
         thresholdReceived:
           $ref: "#/components/schemas/BigInt"
         thresholdGiven:
+          $ref: "#/components/schemas/BigInt"
+        currentThresholdReceived:
+          $ref: "#/components/schemas/BigInt"
+        currentThresholdGiven:
           $ref: "#/components/schemas/BigInt"
         surplusBalance:
           $ref: "#/components/schemas/BigInt"
@@ -126,6 +132,10 @@ components:
         peer:
           $ref: "#/components/schemas/SwarmAddress"
         balance:
+          $ref: "#/components/schemas/BigInt"
+        thresholdreceived:
+          $ref: "#/components/schemas/BigInt"
+        thresholdgiven:
           $ref: "#/components/schemas/BigInt"
 
     Balances:
@@ -299,6 +309,9 @@ components:
       properties:
         uid:
           $ref: "#/components/schemas/Uid"
+        address:
+          $ref: "#/components/schemas/SwarmAddress"
+          description: Root reference associated with the tag once the upload is finalized; zero value before that.
         startedAt:
           $ref: "#/components/schemas/DateTime"
         split:
@@ -363,21 +376,31 @@ components:
           type: array
           nullable: false
           items:
-            $ref: "#/components/schemas/Address"
+            type: object
+            properties:
+              address:
+                $ref: "#/components/schemas/SwarmAddress"
+              fullNode:
+                type: boolean
 
     BlockListedPeers:
-      type: array
-      items:
-        type: object
-        properties:
-          address:
-            $ref: "#/components/schemas/Address"
-          fullNode:
-            type: boolean
-          reason:
-            type: string
-          duration:
-            type: integer
+      type: object
+      properties:
+        peers:
+          type: array
+          nullable: false
+          items:
+            type: object
+            properties:
+              address:
+                $ref: "#/components/schemas/SwarmAddress"
+              fullNode:
+                type: boolean
+              reason:
+                type: string
+              duration:
+                type: integer
+                description: Block duration in seconds
 
     PssRecipient:
       type: string
@@ -543,17 +566,15 @@ components:
           $ref: "#/components/schemas/BigInt"
         start:
           type: integer
+        owner:
+          $ref: "#/components/schemas/EthereumAddress"
         depth:
           type: integer
         bucketDepth:
           type: integer
-        immutableFlag:
+        immutable:
           type: boolean
         batchTTL:
-          type: integer
-        owner:
-          $ref: "#/components/schemas/EthereumAddress"
-        storageRadius:
           type: integer
 
     DebugPostageBatch:
@@ -590,17 +611,17 @@ components:
         peer:
           $ref: "#/components/schemas/SwarmAddress"
         received:
-          type: integer
+          $ref: "#/components/schemas/BigInt"
         sent:
-          type: integer
+          $ref: "#/components/schemas/BigInt"
 
     Settlements:
       type: object
       properties:
         totalReceived:
-          type: integer
+          $ref: "#/components/schemas/BigInt"
         totalSent:
-          type: integer
+          $ref: "#/components/schemas/BigInt"
         settlements:
           type: array
           nullable: false
@@ -670,7 +691,7 @@ components:
     SwarmOnlyReferencesList:
       type: object
       properties:
-        reference:
+        references:
           type: array
           nullable: false
           items:
@@ -1160,6 +1181,16 @@ components:
       required: false
       description: >
         Specify the timeout for chunk retrieval. The default is 30 seconds.
+
+    SwarmLookaheadBufferSizeParameter:
+      in: header
+      name: swarm-lookahead-buffer-size
+      schema:
+        type: integer
+      required: false
+      description: >
+        Override the lookahead buffer size used during retrieval, in bytes. When unset the node
+        picks 8x or 16x the io.Copy default buffer (32 kB) depending on file size.
 
     SwarmOnlyRootChunkParameter:
       in: header
