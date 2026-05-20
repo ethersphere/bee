@@ -991,7 +991,7 @@ paths:
             $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
           name: swarm-redundancy-level
           required: false
-          description: Redundancy level for ACT encryption only
+          description: Redundancy level for the feed manifest upload pipeline and ACT encryption
       responses:
         "201":
           description: Created
