@@ -21,6 +21,7 @@ type Geth interface {
 	ChainID(ctx context.Context) (*big.Int, error)
 	Close()
 	EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint64, error)
+	FeeHistory(ctx context.Context, blockCount uint64, lastBlock *big.Int, rewardPercentiles []float64) (*ethereum.FeeHistory, error)
 	FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error)
 	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)
 	NonceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error)

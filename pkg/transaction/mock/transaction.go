@@ -20,6 +20,7 @@ import (
 type transactionServiceMock struct {
 	estimateTxCost       func(ctx context.Context, gasUnits int64, tip int) (cost *big.Int, gasFeeCap *big.Int, err error)
 	send                 func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error)
+	sendWithRetry        func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, receipt *types.Receipt, err error)
 	waitForReceipt       func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error)
 	watchSentTransaction func(txHash common.Hash) (chan types.Receipt, chan error, error)
 	call                 func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error)
@@ -30,14 +31,11 @@ type transactionServiceMock struct {
 	transactionFee       func(ctx context.Context, txHash common.Hash) (*big.Int, error)
 }
 
-func (m *transactionServiceMock) EstimateTxCost(ctx context.Context, gasUnits int64, tip int) (cost *big.Int, gasFeeCap *big.Int, err error) {
-	if m.estimateTxCost != nil {
-		return m.estimateTxCost(ctx, gasUnits, tip)
+func (m *transactionServiceMock) SendWithRetry(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
+	if m.sendWithRetry != nil {
+		return m.sendWithRetry(ctx, request)
 	}
-	// Default: small fee so callers that enable max-tx-cost checks can override via WithEstimateTxCostFunc.
-	gasFeeCap = big.NewInt(1)
-	cost = new(big.Int).Mul(big.NewInt(gasUnits), gasFeeCap)
-	return cost, gasFeeCap, nil
+	return common.Hash{}, nil, errors.New("not implemented")
 }
 
 func (m *transactionServiceMock) Send(ctx context.Context, request *transaction.TxRequest, boostPercent int) (txHash common.Hash, err error) {
@@ -121,9 +119,9 @@ type optionFunc func(*transactionServiceMock)
 
 func (f optionFunc) apply(r *transactionServiceMock) { f(r) }
 
-func WithEstimateTxCostFunc(f func(ctx context.Context, gasUnits int64, tip int) (cost *big.Int, gasFeeCap *big.Int, err error)) Option {
+func WithSendWithRetryFunc(f func(context.Context, *transaction.TxRequest) (common.Hash, *types.Receipt, error)) Option {
 	return optionFunc(func(s *transactionServiceMock) {
-		s.estimateTxCost = f
+		s.sendWithRetry = f
 	})
 }
 

@@ -128,73 +128,91 @@ type Bee struct {
 }
 
 type Options struct {
-	Addr                          string
-	AllowPrivateCIDRs             bool
-	APIAddr                       string
-	EnableWSS                     bool
-	WSSAddr                       string
-	AutoTLSStorageDir             string
-	BlockchainRpcEndpoint         string
-	BlockchainRpcDialTimeout      time.Duration
-	BlockchainRpcTLSTimeout       time.Duration
-	BlockchainRpcIdleTimeout      time.Duration
-	BlockchainRpcKeepalive        time.Duration
-	BlockProfile                  bool
-	BlockTime                     time.Duration
-	BlockSyncInterval             uint64
-	BootnodeMode                  bool
-	Bootnodes                     []string
-	CacheCapacity                 uint64
-	AutoTLSCAEndpoint             string
-	ChainID                       int64
-	ChequebookEnable              bool
-	CORSAllowedOrigins            []string
-	DataDir                       string
-	DBBlockCacheCapacity          uint64
-	DBDisableSeeksCompaction      bool
-	DBOpenFilesLimit              uint64
-	DBWriteBufferSize             uint64
-	EnableStorageIncentives       bool
-	EnableWS                      bool
-	AutoTLSDomain                 string
-	AutoTLSRegistrationEndpoint   string
-	FullNodeMode                  bool
-	GasLimitFallback              uint64
-	Logger                        log.Logger
-	MinimumGasTipCap              uint64
-	MinimumStorageRadius          uint
-	MutexProfile                  bool
-	NATAddr                       string
-	NATWSSAddr                    string
-	NeighborhoodSuggester         string
-	PaymentEarly                  int64
-	PaymentThreshold              string
-	PaymentTolerance              int64
-	PostageContractAddress        string
-	PostageContractStartBlock     uint64
-	PriceOracleAddress            string
-	RedistributionContractAddress string
-	ReserveCapacityDoubling       int
-	ResolverConnectionCfgs        []multiresolver.ConnectionConfig
-	Resync                        bool
-	RetrievalCaching              bool
-	SkipPostageSnapshot           bool
-	StakingContractAddress        string
-	StatestoreCacheCapacity       uint64
-	StaticNodes                   []swarm.Address
-	SwapEnable                    bool
-	SwapFactoryAddress            string
-	SwapInitialDeposit            string
-	TargetNeighborhood            string
-	TracingEnabled                bool
-	TracingEndpoint               string
-	TracingServiceName            string
-	TrxDebugMode                  bool
-	WarmupTime                    time.Duration
-	WelcomeMessage                string
-	WhitelistedWithdrawalAddress  []string
+	Addr                               string
+	AllowPrivateCIDRs                  bool
+	APIAddr                            string
+	EnableWSS                          bool
+	WSSAddr                            string
+	AutoTLSStorageDir                  string
+	BlockchainRpcEndpoint              string
+	BlockchainRpcDialTimeout           time.Duration
+	BlockchainRpcTLSTimeout            time.Duration
+	BlockchainRpcIdleTimeout           time.Duration
+	BlockchainRpcKeepalive             time.Duration
+	BlockProfile                       bool
+	BlockTime                          time.Duration
+	BlockSyncInterval                  uint64
+	FeeHistoryBlockCount               uint64
+	FeeHistoryRewardPercentiles        []float64
+	TransactionRetryMaxRetries         int
+	TransactionRetryDelay              time.Duration
+	TransactionRetryGasIncreasePercent int
+	TransactionRetryMaxTxPriceWei      uint64
+	BootnodeMode                       bool
+	Bootnodes                          []string
+	CacheCapacity                      uint64
+	AutoTLSCAEndpoint                  string
+	ChainID                            int64
+	ChequebookEnable                   bool
+	CORSAllowedOrigins                 []string
+	DataDir                            string
+	DBBlockCacheCapacity               uint64
+	DBDisableSeeksCompaction           bool
+	DBOpenFilesLimit                   uint64
+	DBWriteBufferSize                  uint64
+	EnableStorageIncentives            bool
+	EnableWS                           bool
+	AutoTLSDomain                      string
+	AutoTLSRegistrationEndpoint        string
+	FullNodeMode                       bool
+	GasLimitFallback                   uint64
+	Logger                             log.Logger
+	MinimumGasTipCap                   uint64
+	MinimumStorageRadius               uint
+	MutexProfile                       bool
+	NATAddr                            string
+	NATWSSAddr                         string
+	NeighborhoodSuggester              string
+	PaymentEarly                       int64
+	PaymentThreshold                   string
+	PaymentTolerance                   int64
+	PostageContractAddress             string
+	PostageContractStartBlock          uint64
+	PriceOracleAddress                 string
+	RedistributionContractAddress      string
+	ReserveCapacityDoubling            int
+	ResolverConnectionCfgs             []multiresolver.ConnectionConfig
+	Resync                             bool
+	RetrievalCaching                   bool
+	SkipPostageSnapshot                bool
+	StakingContractAddress             string
+	StatestoreCacheCapacity            uint64
+	StaticNodes                        []swarm.Address
+	SwapEnable                         bool
+	SwapFactoryAddress                 string
+	SwapInitialDeposit                 string
+	TargetNeighborhood                 string
+	TracingEnabled                     bool
+	TracingEndpoint                    string
+	TracingServiceName                 string
+	TrxDebugMode                       bool
+	WarmupTime                         time.Duration
+	WelcomeMessage                     string
+	WhitelistedWithdrawalAddress       []string
 	MaxTxCost                     uint64
 	MaxTxCostTolerancePercent     uint64
+}
+
+func txRetryConfigFromOptions(o *Options) transaction.TransactionsRetryConfig {
+	c := transaction.TransactionsRetryConfig{
+		MaxRetries:         o.TransactionRetryMaxRetries,
+		RetryDelay:         o.TransactionRetryDelay,
+		GasIncreasePercent: o.TransactionRetryGasIncreasePercent,
+	}
+	if o.TransactionRetryMaxTxPriceWei != 0 {
+		c.MaxTxPrice = new(big.Int).SetUint64(o.TransactionRetryMaxTxPriceWei)
+	}
+	return c
 }
 
 const (
@@ -204,6 +222,8 @@ const (
 	basePrice                     = 10_000                    // minimal price for retrieval and pushsync requests of maximum proximity
 	postageSyncingStallingTimeout = 10 * time.Minute          //
 	postageSyncingBackoffTimeout  = 5 * time.Second           //
+	startupBlockHeightChecks      = 3                         // number of probes at startup before declaring stored chainstate ahead of backend
+	startupBlockHeightBackoff     = 5 * time.Second           // wait between startup block-height probes
 	minPaymentThreshold           = 2 * refreshRate           // minimal accepted payment threshold of full nodes
 	maxPaymentThreshold           = 24 * refreshRate          // maximal accepted payment threshold of full nodes
 	mainnetNetworkID              = uint64(1)                 //
@@ -428,6 +448,9 @@ func NewBee(
 			Keepalive:   o.BlockchainRpcKeepalive,
 		},
 		o.BlockSyncInterval,
+		o.FeeHistoryBlockCount,
+		o.FeeHistoryRewardPercentiles,
+		txRetryConfigFromOptions(o),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("init chain: %w", err)
@@ -867,6 +890,47 @@ func NewBee(
 
 		if paused {
 			return nil, errors.New("postage contract is paused")
+		}
+
+		// Refuse to start if the last-synced postage block sits ahead of the
+		// block number reported by the backend. The persisted state was
+		// advanced from earlier RPC responses, so a persistent gap means the
+		// configured blockchain-rpc-endpoint is now returning data for a
+		// different chain than it was previously (a misrouted public RPC, a
+		// changed endpoint, or a load-balancer serving the wrong backend).
+		// Probe a few times with a short backoff so a single bad response
+		// (transient RPC blip, brief failover) does not lock the node out.
+		// Without this guard the postage listener loop would spin until the
+		// 10-minute stalling timeout fires, surfacing as /stamps returning
+		// 503 "syncing in progress" the whole time (issue #4941).
+		if cs := batchStore.GetChainState(); cs.Block > 0 {
+			var (
+				blockHeight uint64
+				blockErr    error
+			)
+			for i := 0; i < startupBlockHeightChecks; i++ {
+				blockHeight, blockErr = chainBackend.BlockNumber(ctx)
+				if blockErr != nil || blockHeight >= cs.Block {
+					break
+				}
+				select {
+				case <-time.After(startupBlockHeightBackoff):
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			}
+			switch {
+			case blockErr != nil:
+				logger.Warning("could not verify block height against stored chainstate", "error", blockErr)
+			case cs.Block > blockHeight:
+				return nil, fmt.Errorf(
+					"blockchain-rpc-endpoint reports block %d after %d checks, but the local batch store has already synced past it to block %d. "+
+						"This means the RPC endpoint is now serving a different chain than it was on a previous run. "+
+						"Confirm that blockchain-rpc-endpoint points to the correct network (compare its eth_chainId and current block height against a second, trusted endpoint). "+
+						"Once the RPC is correct, restart with --resync to rebuild the batch store from the right chain",
+					blockHeight, startupBlockHeightChecks, cs.Block,
+				)
+			}
 		}
 
 		if o.FullNodeMode {
@@ -1313,6 +1377,9 @@ func NewBee(
 		}
 		if swapBackendMetrics, ok := chainBackend.(metrics.Collector); ok {
 			apiService.MustRegisterMetrics(swapBackendMetrics.Metrics()...)
+		}
+		if txMetrics, ok := transactionService.(metrics.Collector); ok {
+			apiService.MustRegisterMetrics(txMetrics.Metrics()...)
 		}
 
 		if l, ok := logger.(metrics.Collector); ok {

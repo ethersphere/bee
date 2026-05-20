@@ -21,7 +21,8 @@ import (
 )
 
 const (
-	loggerName      = "redistributionContract"
+	loggerName = "redistributionContract"
+	// BoostTipPercent is used where the node sends transactions without retry.
 	BoostTipPercent = 50
 
 	claimRetryInterval   = 15 * time.Second
@@ -242,6 +243,7 @@ func (c *contract) canOverrideClaim(ctx context.Context, opts *ClaimOpts) (*big.
 		}
 		opts.ExpectedReward = reward
 	}
+	txHash, err := c.sendAndWait(ctx, request)
 
 	if opts.ExpectedReward == nil || opts.ExpectedReward.Sign() <= 0 {
 		return nil, false
@@ -312,6 +314,7 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint64) (
 			continue
 		}
 	}
+	txHash, err := c.sendAndWait(ctx, request)
 
 	request := c.newTxRequest(ctx, callData, "commit transaction")
 
@@ -365,6 +368,7 @@ func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommit
 	}
 	request := c.newTxRequest(ctx, callData, "reveal transaction")
 	txHash, err = c.sendAndWaitWithRetry(ctx, request, BoostTipPercent, TxKindReveal)
+	txHash, err := c.sendAndWait(ctx, request)
 	if err != nil {
 		return txHash, fmt.Errorf("reveal: storageDepth %d reserveCommitmentHash %v RandomNonce %v: %w", storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce), err)
 	}
@@ -392,7 +396,7 @@ func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 	return salt[:], nil
 }
 
-func (c *contract) sendAndWaitWithRetry(ctx context.Context, request *transaction.TxRequest, boostPercent int, txKind string) (txHash common.Hash, err error) {
+func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
 	defer func() {
 		err = c.txService.UnwrapABIError(
 			ctx,
@@ -402,57 +406,13 @@ func (c *contract) sendAndWaitWithRetry(ctx context.Context, request *transactio
 		)
 	}()
 
-	var sendAttempt uint64
-	for {
-		txHash, err = c.txService.Send(ctx, request, boostPercent)
-		sendAttempt++
-		if err == nil {
-			break
-		}
-
-		incTxError(txKind, err)
-
-		if isCritical(err) {
-			return txHash, err
-		}
-
-		c.logger.Warning("send failed, will retry",
-			"tx_kind", txKind,
-			"attempt", sendAttempt,
-			"error", err,
-			"error_class", classifyErr(err),
-			"description", request.Description,
-		)
-
-		if txHash == (common.Hash{}) {
-			incSendRetryStage(txKind, "empty_tx_hash_wait")
-			select {
-			case <-ctx.Done():
-				e := ctx.Err()
-				incTxError(txKind, e)
-				return txHash, e
-			case <-time.After(c.blockTime):
-				continue
-			}
-		}
-
-		txHash, err = c.resendWithRetry(ctx, txHash, txKind)
-		if err != nil {
-			return common.Hash{}, err
-		}
-		incSendRetryStage(txKind, "resend_ok")
-		break
-	}
-
-	receipt, err := c.txService.WaitForReceipt(ctx, txHash)
+	txHash, receipt, err := c.txService.SendWithRetry(ctx, request)
 	if err != nil {
 		incTxError(txKind, err)
 		return common.Hash{}, err
 	}
-
-	if receipt.Status == 0 {
-		incTxError(txKind, transaction.ErrTransactionReverted)
-		return txHash, transaction.ErrTransactionReverted
+	if receipt == nil {
+		return txHash, fmt.Errorf("missing receipt after send with retry")
 	}
 
 	return txHash, nil

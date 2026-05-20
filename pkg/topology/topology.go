@@ -63,6 +63,10 @@ type PeerIterator interface {
 type Select struct {
 	Reachable bool
 	Healthy   bool
+	// IncludeBootnodes disables the default bootnode exclusion. Protocol callers
+	// should leave this false; operator-facing status views set it to true so
+	// bootnode peers show up alongside non-bootnode peers.
+	IncludeBootnodes bool
 }
 
 // EachPeerFunc is a callback that is called with a peer and its PO

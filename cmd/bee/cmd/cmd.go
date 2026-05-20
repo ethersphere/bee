@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/node"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 	p2pforge "github.com/ipshipyard/p2p-forge/client"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -90,6 +92,7 @@ const (
 	optionAutoTLSDomain                    = "autotls-domain"
 	optionAutoTLSRegistrationEndpoint      = "autotls-registration-endpoint"
 	optionAutoTLSCAEndpoint                = "autotls-ca-endpoint"
+	optionUseSIMD                          = "use-simd-hashing"
 
 	// blockchain-rpc
 	optionNameBlockchainRpcEndpoint    = "blockchain-rpc-endpoint"
@@ -102,6 +105,14 @@ const (
 	configKeyBlockchainRpcTLSTimeout   = "blockchain-rpc.tls-timeout"
 	configKeyBlockchainRpcIdleTimeout  = "blockchain-rpc.idle-timeout"
 	configKeyBlockchainRpcKeepalive    = "blockchain-rpc.keepalive"
+
+	// transaction retry
+	optionNameTransactionRetryMaxRetries         = "transaction-retry-max-retries"
+	optionNameTransactionRetryDelay              = "transaction-retry-delay"
+	optionNameTransactionRetryGasIncreasePercent = "transaction-retry-gas-increase-percent"
+	optionNameTransactionRetryMaxTxPriceWei      = "transaction-retry-max-tx-price-wei"
+	optionNameFeeHistoryBlockCount               = "fee-history-block-count"
+	optionNameFeeHistoryRewardPercentiles        = "fee-history-reward-percentiles"
 )
 
 var blockchainRpcConfigPairs = []struct{ flat, dotted string }{
@@ -311,6 +322,8 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameStakingAddress, "", "staking contract address")
 	cmd.Flags().Uint64(optionNameBlockTime, 5, "chain block time")
 	cmd.Flags().Uint64(optionNameBlockSyncInterval, 10, "block number cache sync interval in blocks")
+	cmd.Flags().Uint64(optionNameFeeHistoryBlockCount, 100, "eth_feeHistory block count for fee hints")
+	cmd.Flags().String(optionNameFeeHistoryRewardPercentiles, "10,50,90", "comma-separated reward percentiles for eth_feeHistory")
 	cmd.Flags().Duration(optionWarmUpTime, time.Minute*5, "maximum node warmup duration; proceeds when stable or after this time")
 	cmd.Flags().Bool(optionNameMainNet, true, "triggers connect to main net bootnodes.")
 	cmd.Flags().Bool(optionNameRetrievalCaching, true, "enable forwarded content caching")
@@ -345,12 +358,17 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	// expected reward covers the upper-bound cost.
 	cmd.Flags().Uint64(optionNameMaxTxCost, 1_500_000_000_000_000, "maximum total cost in wei per redistribution transaction (gas limit × max fee per gas); 0 means no limit. Default 1.5e15 wei (= 0.0015 xDAI = 1.5 mxDAI) is calibrated for typical Gnosis baseFee up to ~1.5 gwei with default gas-limit-fallback=500000 and 10% tolerance.")
 	cmd.Flags().Uint64(optionNameMaxTxCostTolerancePercent, 10, "percentage above max-tx-cost within which the transaction is still allowed (effective threshold = max-tx-cost × (1 + tol/100))")
+	cmd.Flags().Int(optionNameTransactionRetryMaxRetries, 5, "maximum broadcast attempts for SendWithRetry (e.g. redistribution txs)")
+	cmd.Flags().Duration(optionNameTransactionRetryDelay, time.Minute, "how long to wait for a receipt before escalating fees in transactions with retry")
+	cmd.Flags().Int(optionNameTransactionRetryGasIncreasePercent, 20, "percent increase applied to priority fee after each transactions with retry escalation step")
+	cmd.Flags().Uint64(optionNameTransactionRetryMaxTxPriceWei, 0, "maximum maxFeePerGas in wei per gas for transactions with retry")
 	cmd.Flags().Bool(optionNameP2PWSSEnable, false, "Enable Secure WebSocket P2P connections")
 	cmd.Flags().String(optionP2PWSSAddr, ":1635", "p2p wss address")
 	cmd.Flags().String(optionNATWSSAddr, "", "WSS NAT exposed address")
 	cmd.Flags().String(optionAutoTLSDomain, p2pforge.DefaultForgeDomain, "autotls domain")
 	cmd.Flags().String(optionAutoTLSRegistrationEndpoint, p2pforge.DefaultForgeEndpoint, "autotls registration endpoint")
 	cmd.Flags().String(optionAutoTLSCAEndpoint, p2pforge.DefaultCAEndpoint, "autotls certificate authority endpoint")
+	cmd.Flags().Bool(optionUseSIMD, false, "use SIMD BMT hasher (available only on linux amd64 platforms)")
 }
 
 // preRun must be called from every command's PreRunE, after which c.logger is
@@ -389,6 +407,18 @@ func (c *command) bindBlockchainRpcConfig(cmd *cobra.Command) {
 		_ = c.config.BindPFlag(p.dotted, cmd.Flags().Lookup(p.flat))
 		c.config.RegisterAlias(p.flat, p.dotted)
 	}
+}
+
+func txRetryConfigFromCommand(c *command) transaction.TransactionsRetryConfig {
+	cfg := transaction.TransactionsRetryConfig{
+		MaxRetries:         c.config.GetInt(optionNameTransactionRetryMaxRetries),
+		RetryDelay:         c.config.GetDuration(optionNameTransactionRetryDelay),
+		GasIncreasePercent: c.config.GetInt(optionNameTransactionRetryGasIncreasePercent),
+	}
+	if v := c.config.GetUint64(optionNameTransactionRetryMaxTxPriceWei); v != 0 {
+		cfg.MaxTxPrice = new(big.Int).SetUint64(v)
+	}
+	return cfg
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {

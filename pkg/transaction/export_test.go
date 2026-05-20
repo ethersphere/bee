@@ -4,4 +4,33 @@
 
 package transaction
 
-var StoredTransactionKey = storedTransactionKey
+import (
+	"context"
+	"math/big"
+
+	"github.com/ethersphere/bee/v2/pkg/log"
+)
+
+var (
+	StoredTransactionKey  = storedTransactionKey
+	RetryStateKey         = retryStateKey
+	PendingTransactionKey = pendingTransactionKey
+	EscalateGasTip        = escalateGasTip
+)
+
+// SuggestGasFeeGasTipCapWithHistory exposes suggestGasFeeGasTipCapWithHistory for tests.
+func SuggestGasFeeGasTipCapWithHistory(
+	backend Backend,
+	gasIncreasePercent int,
+	maxTxPrice *big.Int,
+	ctx context.Context,
+	prevGasTipCap *big.Int,
+) (gasFeeCap, gasTipCap *big.Int, err error) {
+	svc := &transactionService{
+		logger:                    log.Noop,
+		backend:                   backend,
+		txRetryGasIncreasePercent: gasIncreasePercent,
+		maxTxPrice:                maxTxPrice,
+	}
+	return svc.suggestGasFeeGasTipCapWithHistory(ctx, prevGasTipCap)
+}

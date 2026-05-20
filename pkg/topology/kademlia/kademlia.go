@@ -1408,8 +1408,10 @@ func (k *Kad) SubscribeTopologyChange() (c <-chan struct{}, unsubscribe func()) 
 
 func excludeFromIterator(filter topology.Select) []im.ExcludeOp {
 	ops := make([]im.ExcludeOp, 0, 3)
-	ops = append(ops, im.Bootnode())
 
+	if !filter.IncludeBootnodes {
+		ops = append(ops, im.Bootnode())
+	}
 	if filter.Reachable {
 		ops = append(ops, im.Reachability(false))
 	}
