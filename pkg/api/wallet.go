@@ -37,12 +37,15 @@ func (s *Service) walletHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bzz, err := s.erc20Service.BalanceOf(r.Context(), s.ethereumAddress)
-	if err != nil {
-		logger.Debug("unable to acquire erc20 balance", "error", err)
-		logger.Error(nil, "unable to acquire erc20 balance")
-		jsonhttp.InternalServerError(w, "unable to acquire erc20 balance")
-		return
+	bzz := new(big.Int)
+	if s.erc20Service != nil {
+		bzz, err = s.erc20Service.BalanceOf(r.Context(), s.ethereumAddress)
+		if err != nil {
+			logger.Debug("unable to acquire erc20 balance", "error", err)
+			logger.Error(nil, "unable to acquire erc20 balance")
+			jsonhttp.InternalServerError(w, "unable to acquire erc20 balance")
+			return
+		}
 	}
 
 	jsonhttp.OK(w, walletResponse{
@@ -95,6 +98,10 @@ func (s *Service) walletWithdrawHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if bzz {
+		if s.erc20Service == nil {
+			jsonhttp.ServiceUnavailable(w, "BZZ token address unavailable")
+			return
+		}
 		currentBalance, err := s.erc20Service.BalanceOf(r.Context(), s.ethereumAddress)
 		if err != nil {
 			logger.Error(err, "unable to get balance")
