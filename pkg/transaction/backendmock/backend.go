@@ -56,8 +56,8 @@ func (m *backendMock) SuggestedFeeAndTip(ctx context.Context, gasPrice *big.Int,
 }
 
 func (m *backendMock) SuggestedFeeAndTipsFromHistory(ctx context.Context, lastBlock *big.Int) (*transaction.FeeHistorySuggestedFeeAndTips, error) {
-	if m.SuggestedFeeAndTipsFromHistory != nil {
-		return m.SuggestedFeeAndTipsFromHistory(ctx, lastBlock)
+	if m.suggestedFeeAndTipsFromHistory != nil {
+		return m.suggestedFeeAndTipsFromHistory(ctx, lastBlock)
 	}
 	return nil, ErrNotImplemented
 }
