@@ -65,7 +65,7 @@ type Agent struct {
 	blocksPerRound         uint64
 	blockTime              time.Duration
 	contract               redistribution.Contract
-	batchExpirer           postagecontract.PostageBatchExpirer
+	postageContract        postagecontract.Interface
 	redistributionStatuser staking.RedistributionStatuser
 	store                  storer.Reserve
 	fullSyncedFunc         func() bool
@@ -83,7 +83,7 @@ func New(overlay swarm.Address,
 	ethAddress common.Address,
 	backend ChainBackend,
 	contract redistribution.Contract,
-	batchExpirer postagecontract.PostageBatchExpirer,
+	postageContract postagecontract.Interface,
 	redistributionStatuser staking.RedistributionStatuser,
 	store storer.Reserve,
 	fullSyncedFunc func() bool,
@@ -103,7 +103,7 @@ func New(overlay swarm.Address,
 		backend:                backend,
 		logger:                 logger.WithName(loggerName).Register(),
 		contract:               contract,
-		batchExpirer:           batchExpirer,
+		postageContract:        postageContract,
 		store:                  store,
 		fullSyncedFunc:         fullSyncedFunc,
 		blocksPerRound:         blocksPerRound,
@@ -350,7 +350,7 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 
 	// In case when there are too many expired batches, Claim trx could runs out of gas.
 	// To prevent this, node should first expire batches before Claiming a reward.
-	err = a.batchExpirer.ExpireBatches(ctx)
+	err = a.postageContract.ExpireBatches(ctx)
 	if err != nil {
 		a.logger.Info("expire batches failed", "err", err)
 		// Even when error happens, proceed with claim handler
@@ -385,7 +385,7 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 		defer cancel()
 	}
 
-	reward, err := a.contract.ExpectedReward(ctx)
+	reward, err := a.postageContract.ExpectedReward(ctx)
 	if err != nil {
 		a.logger.Warning("could not estimate claim reward, override will be disabled", "error", err)
 	}

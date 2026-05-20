@@ -773,10 +773,6 @@ func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) (common.Ha
 	return common.Hash{}, nil
 }
 
-func (m *mockContract) ExpectedReward(context.Context) (*big.Int, error) {
-	return big.NewInt(1_000_000), nil
-}
-
 type mockHealth struct{}
 
 func (m *mockHealth) IsHealthy() bool { return true }

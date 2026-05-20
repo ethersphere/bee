@@ -31,8 +31,6 @@ import (
 
 var (
 	redistributionContractABI = abiutil.MustParseABI(chaincfg.Testnet.RedistributionABI)
-	postageContractABI        = abiutil.MustParseABI(chaincfg.Testnet.PostageStampABI)
-	postageContractAddress    = common.HexToAddress("eeee")
 )
 
 func randChunkInclusionProof(t *testing.T) redistribution.ChunkInclusionProof {
@@ -95,8 +93,6 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			postageContractAddress,
-			postageContractABI,
 			0,
 			0,
 		)
@@ -130,8 +126,6 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			postageContractAddress,
-			postageContractABI,
 			0,
 			0,
 		)
@@ -163,8 +157,6 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			postageContractAddress,
-			postageContractABI,
 			0,
 			0,
 		)
@@ -193,8 +185,6 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			postageContractAddress,
-			postageContractABI,
 			0,
 			0,
 		)
@@ -234,8 +224,6 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			postageContractAddress,
-			postageContractABI,
 			0,
 			0,
 		)
@@ -271,8 +259,6 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			postageContractAddress,
-			postageContractABI,
 			0,
 			0,
 		)
@@ -309,8 +295,6 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			postageContractAddress,
-			postageContractABI,
 			0,
 			0,
 		)
@@ -349,8 +333,6 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			postageContractAddress,
-			postageContractABI,
 			0,
 			0,
 		)
@@ -378,8 +360,6 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			postageContractAddress,
-			postageContractABI,
 			0,
 			0,
 		)
@@ -411,8 +391,6 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			postageContractAddress,
-			postageContractABI,
 			0,
 			0,
 		)
@@ -450,8 +428,6 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			postageContractAddress,
-			postageContractABI,
 			0,
 			0,
 		)
@@ -494,8 +470,6 @@ func TestRedistribution_MaxTxCostWaitsUntilContextDone(t *testing.T) {
 		),
 		redistributionContractAddress,
 		redistributionContractABI,
-		postageContractAddress,
-		postageContractABI,
 		100_000,
 		time.Millisecond,
 		redistribution.WithMaxTxCost(500_000, 0),
@@ -560,8 +534,6 @@ func TestCommit_RetriesUntilCostAcceptableThenSuccess(t *testing.T) {
 		txSvc,
 		redistributionContractAddress,
 		redistributionContractABI,
-		postageContractAddress,
-		postageContractABI,
 		0,
 		testShortBlockTime,
 		redistribution.WithMaxTxCost(500_000, 0),
@@ -596,8 +568,6 @@ func TestCommit_CriticalErrorFails(t *testing.T) {
 		txSvc,
 		redistributionContractAddress,
 		redistributionContractABI,
-		postageContractAddress,
-		postageContractABI,
 		0,
 		testShortBlockTime,
 	)
@@ -643,8 +613,6 @@ func TestCommit_RetriesAfterTransientSendFailure(t *testing.T) {
 		txSvc,
 		redistributionContractAddress,
 		redistributionContractABI,
-		postageContractAddress,
-		postageContractABI,
 		0,
 		testShortBlockTime,
 		redistribution.WithMaxTxCost(2_000_000, 0),
@@ -685,8 +653,6 @@ func TestCommit_contextCancelledWhileWaitingForAcceptableCost(t *testing.T) {
 		txSvc,
 		redistributionContractAddress,
 		redistributionContractABI,
-		postageContractAddress,
-		postageContractABI,
 		0,
 		testShortBlockTime,
 		redistribution.WithMaxTxCost(500_000, 0),
@@ -725,8 +691,6 @@ func TestCommit_withoutMaxTxCostLeavesFeeCapsUnset(t *testing.T) {
 		txSvc,
 		redistributionContractAddress,
 		redistributionContractABI,
-		postageContractAddress,
-		postageContractABI,
 		0,
 		testShortBlockTime,
 	)
@@ -773,8 +737,6 @@ func TestClaim_bypassesMaxTxCost(t *testing.T) {
 		txSvc,
 		redistributionContractAddress,
 		redistributionContractABI,
-		postageContractAddress,
-		postageContractABI,
 		0,
 		testShortBlockTime,
 		redistribution.WithMaxTxCost(500_000, 0),
@@ -824,8 +786,6 @@ func TestClaim_noBypassWhenRewardTooSmall(t *testing.T) {
 		txSvc,
 		redistributionContractAddress,
 		redistributionContractABI,
-		postageContractAddress,
-		postageContractABI,
 		0,
 		testShortBlockTime,
 		redistribution.WithMaxTxCost(500_000, 0),
