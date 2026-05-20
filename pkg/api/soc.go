@@ -48,11 +48,10 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	headers := struct {
-		BatchID        []byte            `map:"Swarm-Postage-Batch-Id"`
-		StampSig       []byte            `map:"Swarm-Postage-Stamp"`
-		Act            bool              `map:"Swarm-Act"`
-		HistoryAddress swarm.Address     `map:"Swarm-Act-History-Address"`
-		RLevel         *redundancy.Level `map:"Swarm-Redundancy-Level" validate:"omitempty,rLevel"`
+		BatchID        []byte        `map:"Swarm-Postage-Batch-Id"`
+		StampSig       []byte        `map:"Swarm-Postage-Stamp"`
+		Act            bool          `map:"Swarm-Act"`
+		HistoryAddress swarm.Address `map:"Swarm-Act-History-Address"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -183,11 +182,8 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	reference := sch.Address()
 	historyReference := swarm.ZeroAddress
 	if headers.Act {
-		rLevel := redundancy.DefaultUploadLevel
-		if headers.RLevel != nil {
-			rLevel = *headers.RLevel
-		}
-		reference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, headers.HistoryAddress, rLevel)
+		// Redundancy level is hardcoded; ACT on SOC is semantically broken and will be removed, see https://github.com/ethersphere/bee/issues/5469.
+		reference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, headers.HistoryAddress, redundancy.DefaultUploadLevel)
 		if err != nil {
 			logger.Debug("access control upload failed", "error", err)
 			logger.Error(nil, "access control upload failed")

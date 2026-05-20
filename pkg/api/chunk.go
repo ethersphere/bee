@@ -186,6 +186,7 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	reference := chunk.Address()
 	historyReference := swarm.ZeroAddress
 	if headers.Act {
+		// Redundancy level is hardcoded; ACT on chunk endpoints is semantically broken and will be removed, see https://github.com/ethersphere/bee/issues/5469.
 		reference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, headers.HistoryAddress, redundancy.DefaultUploadLevel)
 		if err != nil {
 			logger.Debug("access control upload failed", "error", err)

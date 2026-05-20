@@ -296,12 +296,6 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageStamp"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmAct"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
-          name: swarm-redundancy-level
-          required: false
-          description: Redundancy level for ACT encryption only
       requestBody:
         description: Chunk binary data containing at least 8 bytes.
         content:
@@ -894,12 +888,6 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageStamp"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmAct"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
-          name: swarm-redundancy-level
-          required: false
-          description: Redundancy level for ACT encryption only
       requestBody:
         required: true
         description: The SOC binary data, composed of the span (8 bytes) and up to 4KB of payload.
