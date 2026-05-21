@@ -42,6 +42,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/postage/postagecontract"
 	contractMock "github.com/ethersphere/bee/v2/pkg/postage/postagecontract/mock"
 	"github.com/ethersphere/bee/v2/pkg/pss"
+	"github.com/ethersphere/bee/v2/pkg/pubsub"
 	"github.com/ethersphere/bee/v2/pkg/pusher"
 	"github.com/ethersphere/bee/v2/pkg/resolver"
 	resolverMock "github.com/ethersphere/bee/v2/pkg/resolver/mock"
@@ -136,6 +137,7 @@ type testServerOptions struct {
 	ChequebookDisabled  bool
 	SwapDisabled        bool
 	Erc20ServiceNil     bool
+	PubsubService       *pubsub.Service
 }
 
 func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.Conn, string, *chanStorer) {
@@ -210,6 +212,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		Staking:         o.StakingContract,
 		NodeStatus:      o.NodeStatus,
 		PinIntegrity:    o.PinIntegrity,
+		PubsubService:   o.PubsubService,
 	}
 
 	// By default bee mode is set to full mode.
