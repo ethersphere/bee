@@ -163,3 +163,5 @@ password-file: "/opt/homebrew/var/lib/swarm-bee/password"
 # warmup-time: 5m0s
 ## send a welcome message string during handshakes
 # welcome-message: ""
+## SIMD BMT hashing opt-in flag (only available on linux amd64)
+# use-simd-hashing: false
