@@ -546,7 +546,7 @@ func (m *noOpPostageContract) Paused(context.Context) (bool, error) {
 }
 
 func (m *noOpPostageContract) MinimumValidityBlocks(context.Context) (uint64, error) {
-	return 0, nil
+	return 0, ErrChainDisabled
 }
 
 func (m *noOpPostageContract) ExpireBatches(context.Context) error {

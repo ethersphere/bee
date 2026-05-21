@@ -417,11 +417,11 @@ type reserveStateResponse struct {
 }
 
 type chainStateResponse struct {
-	ChainTip              uint64         `json:"chainTip"`              // ChainTip (block height).
-	Block                 uint64         `json:"block"`                 // The block number of the last postage event.
-	TotalAmount           *bigint.BigInt `json:"totalAmount"`           // Cumulative amount paid per stamp.
-	CurrentPrice          *bigint.BigInt `json:"currentPrice"`          // Bzz/chunk/block normalised price.
-	MinimumValidityBlocks uint64         `json:"minimumValidityBlocks"` // Minimum number of blocks a new postage batch must remain valid.
+	ChainTip              uint64         `json:"chainTip"`                        // ChainTip (block height).
+	Block                 uint64         `json:"block"`                           // The block number of the last postage event.
+	TotalAmount           *bigint.BigInt `json:"totalAmount"`                     // Cumulative amount paid per stamp.
+	CurrentPrice          *bigint.BigInt `json:"currentPrice"`                    // Bzz/chunk/block normalised price.
+	MinimumValidityBlocks uint64         `json:"minimumValidityBlocks,omitempty"` // Minimum number of blocks a new postage batch must remain valid.
 }
 
 func (s *Service) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
@@ -456,7 +456,7 @@ func (s *Service) chainStateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	minimumValidityBlocks, err := s.postageContract.MinimumValidityBlocks(r.Context())
-	if err != nil {
+	if err != nil && !errors.Is(err, postagecontract.ErrChainDisabled) {
 		logger.Debug("get minimum validity blocks failed", "error", err)
 		logger.Error(nil, "get minimum validity blocks failed")
 		jsonhttp.InternalServerError(w, "minimum validity blocks unavailable")
