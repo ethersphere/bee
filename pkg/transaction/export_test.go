@@ -25,6 +25,7 @@ func SuggestGasFeeGasTipCapWithHistory(
 	maxTxPrice *big.Int,
 	ctx context.Context,
 	prevGasTipCap *big.Int,
+	overrides *RetryOverrides,
 ) (gasFeeCap, gasTipCap *big.Int, err error) {
 	svc := &transactionService{
 		logger:                    log.Noop,
@@ -32,5 +33,5 @@ func SuggestGasFeeGasTipCapWithHistory(
 		txRetryGasIncreasePercent: gasIncreasePercent,
 		maxTxPrice:                maxTxPrice,
 	}
-	return svc.suggestGasFeeGasTipCapWithHistory(ctx, prevGasTipCap)
+	return svc.suggestGasFeeGasTipCapWithHistory(ctx, prevGasTipCap, overrides)
 }

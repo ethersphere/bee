@@ -12,7 +12,6 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/log"
-	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
@@ -21,7 +20,7 @@ const (
 	loggerName      = "redistributionContract"
 	BoostTipPercent = 50
 
-	minEstimatedGasLimit = 500_000
+	minEstimatedGasLimit = 250_000
 )
 
 // ClaimOpts configures optional claim behaviour: after OverrideAfterBlock (absolute
@@ -112,10 +111,11 @@ func (c *contract) IsWinner(ctx context.Context) (isWinner bool, err error) {
 	return results[0].(bool), nil
 }
 
-// Claim sends a transaction to blockchain if a win is claimed. When the
-// configured max-tx-cost is exceeded, Claim waits claimRetryInterval and
-// retries instead of returning ErrMaxTxCostExceeded. After OverrideAfterBlock
-// (see ClaimOpts), if economics justify it, the limit is bypassed for one send.
+// Claim sends a transaction to blockchain if a win is claimed. When opts is
+// non-nil and the configured max-tx-price would block the broadcast,
+// canOverrideClaim is consulted: if the override block threshold has passed
+// and ExpectedReward covers the estimated cost plus previous round fees,
+// the price cap is bypassed.
 func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs, opts *ClaimOpts) (txHash common.Hash, err error) {
 	callData, err := c.incentivesContractABI.Pack("claim", proofs.A, proofs.B, proofs.C)
 	if err != nil {
@@ -124,53 +124,59 @@ func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs, opts 
 	request := &transaction.TxRequest{
 		To:                   &c.incentivesContractAddress,
 		Data:                 callData,
-		GasPrice:             sctx.GetGasPrice(ctx),
-		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
-		MinEstimatedGasLimit: 500_000,
+		GasLimit:             c.gasLimit,
+		MinEstimatedGasLimit: minEstimatedGasLimit,
 		Value:                big.NewInt(0),
 		Description:          "claim win transaction",
 	}
-	txHash, err = c.sendAndWait(ctx, request)
+
+	retryOpts := []transaction.RetryOption{
+		transaction.WithIgnoreMaxPrice(func(gasFeeCap *big.Int) bool {
+			return c.canOverrideClaim(opts, gasFeeCap)
+		}),
+	}
+
+	txHash, err = c.sendAndWait(ctx, request, retryOpts...)
 	if err != nil {
 		return txHash, fmt.Errorf("claim: %w", err)
 	}
 	return txHash, nil
 }
 
-func (c *contract) canOverrideClaim(ctx context.Context, opts *ClaimOpts) (*big.Int, bool) {
+// canOverrideClaim decides whether the claim transaction should bypass the
+// max-tx-price cap. gasFeeCap is the actual max fee per gas (wei) that the
+// retry loop wants to use — it is provided by suggestGasFeeGasTipCapWithHistory
+// so there is no redundant estimation.
+func (c *contract) canOverrideClaim(opts *ClaimOpts, gasFeeCap *big.Int) bool {
 	if opts == nil || opts.OverrideAfterBlock == 0 || opts.CurrentBlockFn == nil || opts.RoundFees == nil {
-		return nil, false
+		return false
 	}
 
 	if opts.CurrentBlockFn() < opts.OverrideAfterBlock {
-		return nil, false
+		return false
 	}
 
 	if opts.ExpectedReward == nil || opts.ExpectedReward.Sign() <= 0 {
-		return nil, false
+		return false
 	}
 
-	gasUnits := int64(max(sctx.GetGasLimit(ctx), c.gasLimit))
+	gasUnits := c.gasLimit
 	if gasUnits <= 0 {
 		gasUnits = minEstimatedGasLimit
 	}
 
-	estimated, gasFeeCap, err := c.txService.EstimateTxCost(ctx, gasUnits, BoostTipPercent)
-	if err != nil {
-		c.logger.Warning("claim override: estimate failed", "error", err)
-		return nil, false
-	}
-
-	totalSpent := new(big.Int).Add(estimated, opts.RoundFees)
+	txCost := new(big.Int).Mul(gasFeeCap, big.NewInt(int64(gasUnits)))
+	totalSpent := new(big.Int).Add(txCost, opts.RoundFees)
 	if opts.ExpectedReward.Cmp(totalSpent) < 0 {
-		c.logger.Info("claim override: reward does not cover upper-bound cost",
-			"estimated", estimated,
+		c.logger.Info("claim override: reward does not cover cost",
+			"tx_cost", txCost,
 			"round_fees", opts.RoundFees,
+			"total_spent", totalSpent,
 			"expected_reward", opts.ExpectedReward,
 		)
-		return nil, false
+		return false
 	}
-	return gasFeeCap, true
+	return true
 }
 
 // Commit submits the obfusHash hash by sending a transaction to the blockchain.
@@ -182,9 +188,8 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint64) (
 	request := &transaction.TxRequest{
 		To:                   &c.incentivesContractAddress,
 		Data:                 callData,
-		GasPrice:             sctx.GetGasPrice(ctx),
-		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
-		MinEstimatedGasLimit: 500_000,
+		GasLimit:             c.gasLimit,
+		MinEstimatedGasLimit: minEstimatedGasLimit,
 		Value:                big.NewInt(0),
 		Description:          "commit transaction",
 	}
@@ -205,9 +210,8 @@ func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommit
 	request := &transaction.TxRequest{
 		To:                   &c.incentivesContractAddress,
 		Data:                 callData,
-		GasPrice:             sctx.GetGasPrice(ctx),
-		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
-		MinEstimatedGasLimit: 500_000,
+		GasLimit:             c.gasLimit,
+		MinEstimatedGasLimit: minEstimatedGasLimit,
 		Value:                big.NewInt(0),
 		Description:          "reveal transaction",
 	}
@@ -239,7 +243,7 @@ func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 	return salt[:], nil
 }
 
-func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
+func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest, opts ...transaction.RetryOption) (txHash common.Hash, err error) {
 	defer func() {
 		err = c.txService.UnwrapABIError(
 			ctx,
@@ -249,7 +253,7 @@ func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxReque
 		)
 	}()
 
-	txHash, _, err = c.txService.SendWithRetry(ctx, request)
+	txHash, _, err = c.txService.SendWithRetry(ctx, request, opts...)
 	return txHash, err
 }
 

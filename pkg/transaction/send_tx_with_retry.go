@@ -19,6 +19,46 @@ import (
 
 const retryStatePrefix = "transaction_retry_"
 
+// RetryOverrides controls per-call behaviour overrides for SendWithRetry.
+// Fields are optional; nil means "use default behaviour".
+type RetryOverrides struct {
+	// IgnoreMaxPrice is called when maxTxPrice would block a broadcast.
+	// It receives the gasFeeCap (max fee per gas, wei) that would be used
+	// for this attempt. If it returns true, the price cap is bypassed.
+	IgnoreMaxPrice func(gasFeeCap *big.Int) bool
+
+	// RetryDelay, if set, overrides the configured delay between attempts.
+	RetryDelay func(attempt int) time.Duration
+}
+
+// RetryOption configures per-call overrides for SendWithRetry.
+type RetryOption func(*RetryOverrides)
+
+// WithIgnoreMaxPrice returns a RetryOption that installs a predicate called
+// whenever the configured maxTxPrice would block a broadcast.  The predicate
+// receives the gasFeeCap (max fee per gas, wei) that would be used.  When fn
+// returns true the price cap is bypassed for that attempt.
+func WithIgnoreMaxPrice(fn func(gasFeeCap *big.Int) bool) RetryOption {
+	return func(o *RetryOverrides) { o.IgnoreMaxPrice = fn }
+}
+
+// WithRetryDelay returns a RetryOption that overrides the configured
+// per-attempt delay.
+func WithRetryDelay(fn func(attempt int) time.Duration) RetryOption {
+	return func(o *RetryOverrides) { o.RetryDelay = fn }
+}
+
+func applyRetryOptions(opts []RetryOption) *RetryOverrides {
+	if len(opts) == 0 {
+		return nil
+	}
+	var o RetryOverrides
+	for _, fn := range opts {
+		fn(&o)
+	}
+	return &o
+}
+
 // TransactionRetryState is persisted so transactions with retry can resume after a node restart.
 type TransactionRetryState struct {
 	Nonce         uint64          `json:"nonce"`
@@ -43,13 +83,14 @@ func retryStateKey(nonce uint64) string {
 
 // SendWithRetry sends an EIP-1559 transaction using one eth_feeHistory snapshot for the initial tip,
 // then increases gas tip by gas_increase_percent after each unsuccessful wait, up to max_retries.
-func (t *transactionService) SendWithRetry(ctx context.Context, request *TxRequest) (txHash common.Hash, receipt *types.Receipt, err error) {
+// Optional RetryOption values can override per-call retry behaviour (e.g. bypass price cap).
+func (t *transactionService) SendWithRetry(ctx context.Context, request *TxRequest, opts ...RetryOption) (txHash common.Hash, receipt *types.Receipt, err error) {
 	if request.GasPrice != nil {
 		err = errors.New("send txs with retry requires automatic gas pricing")
 		t.recordRetryComplete(0, err)
 		return common.Hash{}, nil, err
 	}
-	return t.retry(ctx, "", request)
+	return t.retry(ctx, "", request, applyRetryOptions(opts))
 }
 
 // escalateGasTip returns tip * (100+increasePct)/100 — a single escalation step.
@@ -72,7 +113,9 @@ func escalateGasTip(tip *big.Int, increasePct int) *big.Int {
 // When maxTxPrice is set and 2*baseFee + escalated tip exceeds it, the function broadcasts with the
 // un-escalated previous tip (2*baseFee + prevGasTipCap) instead. If that fee cap still exceeds
 // maxTxPrice, it returns ErrTxMaxPriceExceeded.
-func (t *transactionService) suggestGasFeeGasTipCapWithHistory(ctx context.Context, prevGasTipCap *big.Int) (gasFeeCap, gasTipCap *big.Int, err error) {
+//
+// When overrides.IgnoreMaxPrice is set and returns true, the maxTxPrice cap is bypassed.
+func (t *transactionService) suggestGasFeeGasTipCapWithHistory(ctx context.Context, prevGasTipCap *big.Int, overrides *RetryOverrides) (gasFeeCap, gasTipCap *big.Int, err error) {
 	header, err := t.backend.HeaderByNumber(ctx, nil)
 	if err != nil {
 		return nil, prevGasTipCap, err
@@ -108,7 +151,18 @@ func (t *transactionService) suggestGasFeeGasTipCapWithHistory(ctx context.Conte
 		"gas_fee_cap_with_previous_tip", gasFeeCapWithPreviousTip,
 		"max_tx_price", t.maxTxPrice)
 
+	canOverride := func(feeCap *big.Int) bool {
+		return overrides != nil && overrides.IgnoreMaxPrice != nil && overrides.IgnoreMaxPrice(feeCap)
+	}
+
 	if t.maxTxPrice != nil && gasFeeCapWithEscalatedTip.Cmp(t.maxTxPrice) > 0 {
+		if canOverride(gasFeeCapWithEscalatedTip) {
+			t.logger.Info("max price override: bypassing limit",
+				"escalated_gas_fee_cap", gasFeeCapWithEscalatedTip,
+				"max_tx_price", t.maxTxPrice)
+			return gasFeeCapWithEscalatedTip, escalatedGasTip, nil
+		}
+
 		t.logger.Warning("gas cap fee with escalated gas tip is too high, fallback to previous gas tip",
 			"escalated_gas_tip_cap", escalatedGasTip.String(),
 			"escalated_gas_fee_cap", gasFeeCapWithEscalatedTip.String(),
@@ -122,13 +176,13 @@ func (t *transactionService) suggestGasFeeGasTipCapWithHistory(ctx context.Conte
 	return gasFeeCapWithEscalatedTip, escalatedGasTip, nil
 }
 
-func (t *transactionService) prepareTransactionWithRetry(ctx context.Context, request *TxRequest, nonce uint64, prevGasTipCap *big.Int) (*types.Transaction, error) {
+func (t *transactionService) prepareTransactionWithRetry(ctx context.Context, request *TxRequest, nonce uint64, prevGasTipCap *big.Int, overrides *RetryOverrides) (*types.Transaction, error) {
 	gasLimit, err := t.estimateGasLimit(ctx, request)
 	if err != nil {
 		return nil, err
 	}
 
-	gasFeeCap, newGasTipCap, err := t.suggestGasFeeGasTipCapWithHistory(ctx, prevGasTipCap)
+	gasFeeCap, newGasTipCap, err := t.suggestGasFeeGasTipCapWithHistory(ctx, prevGasTipCap, overrides)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +203,7 @@ func (t *transactionService) prepareTransactionWithRetry(ctx context.Context, re
 // broadcastTx prepares, signs, and sends a transaction.
 // When fixedNonce is nil a new nonce is allocated (first attempt);
 // otherwise the supplied nonce is reused (replacement transaction).
-func (t *transactionService) broadcastTx(ctx context.Context, request *TxRequest, fixedNonce *uint64, gasTipCap *big.Int, attempt int) (*types.Transaction, error) {
+func (t *transactionService) broadcastTx(ctx context.Context, request *TxRequest, fixedNonce *uint64, gasTipCap *big.Int, attempt int, overrides *RetryOverrides) (*types.Transaction, error) {
 	var nonce uint64
 
 	if fixedNonce != nil {
@@ -164,7 +218,7 @@ func (t *transactionService) broadcastTx(ctx context.Context, request *TxRequest
 		}
 		nonce = n
 	}
-	tx, err := t.prepareTransactionWithRetry(ctx, request, nonce, gasTipCap)
+	tx, err := t.prepareTransactionWithRetry(ctx, request, nonce, gasTipCap, overrides)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +259,7 @@ func (t *transactionService) deleteRetryStateAndPending(retryKey string, state T
 		_ = t.store.Delete(pendingTransactionKey(state.LastTxHash))
 	}
 }
-func (t *transactionService) retry(ctx context.Context, txRetryKey string, request *TxRequest) (common.Hash, *types.Receipt, error) {
+func (t *transactionService) retry(ctx context.Context, txRetryKey string, request *TxRequest, overrides *RetryOverrides) (common.Hash, *types.Receipt, error) {
 	var (
 		txState TransactionRetryState
 		nonce   *uint64
@@ -238,12 +292,19 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 		"nonce_assigned", txState.NonceAssigned,
 		"previous_tip", txState.PreviousTip)
 
+	retryDelay := func(attempt int) time.Duration {
+		if overrides != nil && overrides.RetryDelay != nil {
+			return overrides.RetryDelay(attempt)
+		}
+		return t.txRetryDelay
+	}
+
 	for attempt := txState.NextAttempt; attempt < t.txMaxRetries; attempt++ {
 		if txState.NonceAssigned {
 			nonce = &txState.Nonce
 		}
 
-		signedTx, err := t.broadcastTx(ctx, request, nonce, txState.PreviousTip, attempt)
+		signedTx, err := t.broadcastTx(ctx, request, nonce, txState.PreviousTip, attempt, overrides)
 		if err != nil {
 			if isErrCritical(err) {
 				t.logger.Error(err,
@@ -277,22 +338,24 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 			"previous_tip", txState.PreviousTip,
 			"description", request.Description)
 
+		delay := retryDelay(attempt)
+
 		if txState.LastTxHash == (common.Hash{}) {
 			loggerV1.Debug("send with retry: no tx hash after broadcast failure, waiting before next attempt",
 				"attempt", attempt,
-				"retry_delay", t.txRetryDelay,
+				"retry_delay", delay,
 				"description", request.Description)
 			select {
 			case <-ctx.Done():
 				err := ctx.Err()
 				t.recordRetryComplete(txState.NextAttempt, err)
 				return common.Hash{}, nil, err
-			case <-time.After(t.txRetryDelay):
+			case <-time.After(delay):
 				continue
 			}
 		}
 
-		waitCtx, cancel := context.WithTimeout(ctx, t.txRetryDelay)
+		waitCtx, cancel := context.WithTimeout(ctx, delay)
 		rec, waitErr := t.WaitForReceipt(waitCtx, txState.LastTxHash)
 		cancel()
 
@@ -499,7 +562,7 @@ func (t *transactionService) resumeRetryTransactions() error {
 		sk := key
 		st := state
 		t.wg.Go(func() {
-			if _, _, err := t.retry(t.ctx, sk, nil); err != nil {
+			if _, _, err := t.retry(t.ctx, sk, nil, nil); err != nil {
 				t.logger.Error(err, "resumed transaction retry aborted", "nonce", st.Nonce, "description", st.Description)
 			}
 		})

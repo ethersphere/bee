@@ -31,11 +31,18 @@ type transactionServiceMock struct {
 	transactionFee       func(ctx context.Context, txHash common.Hash) (*big.Int, error)
 }
 
-func (m *transactionServiceMock) SendWithRetry(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
+func (m *transactionServiceMock) SendWithRetry(ctx context.Context, request *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
 	if m.sendWithRetry != nil {
 		return m.sendWithRetry(ctx, request)
 	}
 	return common.Hash{}, nil, errors.New("not implemented")
+}
+
+func (m *transactionServiceMock) EstimateTxCost(ctx context.Context, gasUnits int64, tip int) (*big.Int, *big.Int, error) {
+	if m.estimateTxCost != nil {
+		return m.estimateTxCost(ctx, gasUnits, tip)
+	}
+	return big.NewInt(0), big.NewInt(0), nil
 }
 
 func (m *transactionServiceMock) Send(ctx context.Context, request *transaction.TxRequest, boostPercent int) (txHash common.Hash, err error) {
@@ -122,6 +129,12 @@ func (f optionFunc) apply(r *transactionServiceMock) { f(r) }
 func WithSendWithRetryFunc(f func(context.Context, *transaction.TxRequest) (common.Hash, *types.Receipt, error)) Option {
 	return optionFunc(func(s *transactionServiceMock) {
 		s.sendWithRetry = f
+	})
+}
+
+func WithEstimateTxCostFunc(f func(context.Context, int64, int) (*big.Int, *big.Int, error)) Option {
+	return optionFunc(func(s *transactionServiceMock) {
+		s.estimateTxCost = f
 	})
 }
 

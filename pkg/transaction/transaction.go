@@ -117,7 +117,8 @@ type Service interface {
 	// Send creates a transaction based on the request (with gasprice increased by provided percentage) and sends it.
 	Send(ctx context.Context, request *TxRequest, tipCapBoostPercent int) (txHash common.Hash, err error)
 	// SendWithRetry sends a transaction using fee-history tiers and automatic fee escalation; see send_tx_with_retry.go.
-	SendWithRetry(ctx context.Context, request *TxRequest) (txHash common.Hash, receipt *types.Receipt, err error)
+	// Optional RetryOption values can override per-call retry behaviour (e.g. bypass price cap).
+	SendWithRetry(ctx context.Context, request *TxRequest, opts ...RetryOption) (txHash common.Hash, receipt *types.Receipt, err error)
 	// Call simulate a transaction based on the request.
 	Call(ctx context.Context, request *TxRequest) (result []byte, err error)
 	// WaitForReceipt waits until either the transaction with the given hash has been mined or the context is cancelled.
@@ -442,7 +443,7 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 			return nil, errors.New("gas fee cap must be greater than zero")
 		}
 		if gasFeeCap.Cmp(request.GasFeeCap) > 0 {
-			return nil, fmt.Errorf("%w: suggested=%s requested=%s", ErrFeeCapExceeded, gasFeeCap, request.GasFeeCap)
+			return nil, fmt.Errorf("gas fee cap exceeded: suggested=%s requested=%s", gasFeeCap, request.GasFeeCap)
 		}
 		gasFeeCap = new(big.Int).Set(request.GasFeeCap)
 		if gasTipCap.Cmp(gasFeeCap) > 0 {

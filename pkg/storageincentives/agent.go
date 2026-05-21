@@ -387,7 +387,7 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 
 	reward, err := a.postageContract.ExpectedReward(ctx)
 	if err != nil {
-		a.logger.Warning("could not estimate claim reward, override will be disabled", "error", err)
+		a.logger.Warning("could not estimate claim reward, override max_tx_cost option will be disabled", "error", err)
 	}
 
 	opts := &redistribution.ClaimOpts{
