@@ -160,7 +160,11 @@ func TestPubsubList_NilService(t *testing.T) {
 
 	client, _, _, _ := newTestServer(t, testServerOptions{})
 
-	resp, err := client.Get("/pubsub/")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/pubsub/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +181,11 @@ func TestPubsubList_Empty(t *testing.T) {
 	svc := pubsub.New(nil, log.Noop, true)
 	client, _, _, _ := newTestServer(t, testServerOptions{PubsubService: svc})
 
-	resp, err := client.Get("/pubsub/")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/pubsub/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +203,11 @@ func TestPubsubWs_MissingPeer(t *testing.T) {
 	client, _, listener, _ := newTestServer(t, testServerOptions{PubsubService: svc})
 	_ = listener
 
-	resp, err := client.Get("/pubsub/testtopic")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/pubsub/testtopic", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +224,11 @@ func TestPubsubWs_InvalidMultiaddr(t *testing.T) {
 	svc := pubsub.New(nil, log.Noop, false)
 	client, _, _, _ := newTestServer(t, testServerOptions{PubsubService: svc})
 
-	resp, err := client.Get("/pubsub/testtopic?peer=notamultiaddr")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/pubsub/testtopic?peer=notamultiaddr", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +245,11 @@ func TestPubsubWs_InvalidGsocEthAddress(t *testing.T) {
 	svc := pubsub.New(nil, log.Noop, false)
 	client, _, _, _ := newTestServer(t, testServerOptions{PubsubService: svc})
 
-	resp, err := client.Get("/pubsub/testtopic?peer=/ip4/127.0.0.1/tcp/9000&gsoc-eth-address=ZZZZ&gsoc-topic=aabb")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/pubsub/testtopic?peer=/ip4/127.0.0.1/tcp/9000&gsoc-eth-address=ZZZZ&gsoc-topic=aabb", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +266,11 @@ func TestPubsubWs_InvalidGsocTopic(t *testing.T) {
 	svc := pubsub.New(nil, log.Noop, false)
 	client, _, _, _ := newTestServer(t, testServerOptions{PubsubService: svc})
 
-	resp, err := client.Get("/pubsub/testtopic?peer=/ip4/127.0.0.1/tcp/9000&gsoc-eth-address=aabbccddeeff001122334455667788990011223344&gsoc-topic=ZZZZ")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/pubsub/testtopic?peer=/ip4/127.0.0.1/tcp/9000&gsoc-eth-address=aabbccddeeff001122334455667788990011223344&gsoc-topic=ZZZZ", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -339,7 +363,11 @@ func TestPubsubWs_TwoTopicsListAndMessages(t *testing.T) {
 	}
 
 	// Query the list endpoint — both topics must be present.
-	resp, err := client.Get("/pubsub/")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/pubsub/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
