@@ -593,7 +593,8 @@ func (s *Service) mountBusinessDebug() {
 		s.checkChainAvailability,
 		s.postageSyncStatusCheckHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.postageGetStampHandler),
+			"GET":   http.HandlerFunc(s.postageGetStampHandler),
+			"PATCH": http.HandlerFunc(s.postageUpdateLabelHandler),
 		})),
 	)
 
