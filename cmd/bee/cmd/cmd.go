@@ -89,6 +89,7 @@ const (
 	optionAutoTLSRegistrationEndpoint      = "autotls-registration-endpoint"
 	optionAutoTLSCAEndpoint                = "autotls-ca-endpoint"
 	optionNamePubsubBrokerMode             = "pubsub-broker-mode"
+	optionUseSIMD                          = "use-simd-hashing"
 
 	// blockchain-rpc
 	optionNameBlockchainRpcEndpoint    = "blockchain-rpc-endpoint"
@@ -336,6 +337,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionAutoTLSRegistrationEndpoint, p2pforge.DefaultForgeEndpoint, "autotls registration endpoint")
 	cmd.Flags().String(optionAutoTLSCAEndpoint, p2pforge.DefaultCAEndpoint, "autotls certificate authority endpoint")
 	cmd.Flags().Bool(optionNamePubsubBrokerMode, true, "enable pubsub broker mode")
+	cmd.Flags().Bool(optionUseSIMD, false, "use SIMD BMT hasher (available only on linux amd64 platforms)")
 }
 
 // preRun must be called from every command's PreRunE, after which c.logger is

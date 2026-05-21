@@ -91,5 +91,5 @@ func DoHash(data, span []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	return hasher.Hash(nil)
+	return hasher.Sum(nil), nil
 }
