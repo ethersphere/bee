@@ -85,7 +85,9 @@ func buildPublisherMsg(t *testing.T, tc *socTestCtx, payload []byte) []byte {
 	spanBytes := make([]byte, pubsub.SpanSize)
 	binary.LittleEndian.PutUint64(spanBytes, uint64(len(payload)))
 
-	cacData := append(spanBytes, payload...)
+	cacData := make([]byte, 0, pubsub.SpanSize+len(payload))
+	cacData = append(cacData, spanBytes...)
+	cacData = append(cacData, payload...)
 	ch, err := cac.NewWithDataSpan(cacData)
 	if err != nil {
 		t.Fatal(err)
@@ -101,9 +103,9 @@ func buildPublisherMsg(t *testing.T, tc *socTestCtx, payload []byte) []byte {
 		t.Fatal(err)
 	}
 
-	var msg []byte
+	msg := make([]byte, 0, len(sig)+pubsub.SpanSize+len(payload))
 	msg = append(msg, sig...)
-	msg = append(msg, spanBytes...)
+	msg = append(msg, spanBytes[:pubsub.SpanSize]...)
 	msg = append(msg, payload...)
 	return msg
 }
@@ -213,7 +215,7 @@ func TestReadBrokerMessage_Handshake(t *testing.T) {
 	publisherFrame := buildPublisherMsg(t, tc, payload)
 
 	// Assemble handshake message: [0x02][gsocID(32B)][owner(20B)][sig(65B)][span(8B)][payload]
-	var streamData []byte
+	streamData := make([]byte, 0, 1+len(tc.gsocID)+len(tc.owner)+len(publisherFrame))
 	streamData = append(streamData, pubsub.MsgTypeHandshake)
 	streamData = append(streamData, tc.gsocID...)
 	streamData = append(streamData, tc.owner...)
@@ -245,7 +247,7 @@ func TestReadBrokerMessage_Data(t *testing.T) {
 	publisherFrame := buildPublisherMsg(t, tc, payload)
 
 	// Assemble data message: [0x03][sig(65B)][span(8B)][payload]
-	var streamData []byte
+	streamData := make([]byte, 0, 1+len(publisherFrame))
 	streamData = append(streamData, pubsub.MsgTypeData)
 	streamData = append(streamData, publisherFrame...)
 
@@ -271,7 +273,7 @@ func TestReadBrokerMessage_InvalidSig(t *testing.T) {
 	binary.LittleEndian.PutUint64(spanBytes, uint64(len(payload)))
 	badSig := make([]byte, pubsub.SigSize) // all zeros — invalid signature
 
-	var streamData []byte
+	streamData := make([]byte, 0, 1+len(badSig)+len(spanBytes)+len(payload))
 	streamData = append(streamData, pubsub.MsgTypeData)
 	streamData = append(streamData, badSig...)
 	streamData = append(streamData, spanBytes...)
