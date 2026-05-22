@@ -13,7 +13,6 @@ import (
 	"math/big"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -94,7 +93,6 @@ func TestRedistribution(t *testing.T) {
 			redistributionContractAddress,
 			redistributionContractABI,
 			0,
-			0,
 		)
 
 		isPlaying, err := contract.IsPlaying(ctx, depth)
@@ -127,7 +125,6 @@ func TestRedistribution(t *testing.T) {
 			redistributionContractAddress,
 			redistributionContractABI,
 			0,
-			0,
 		)
 
 		isPlaying, err := contract.IsPlaying(ctx, depth)
@@ -158,7 +155,6 @@ func TestRedistribution(t *testing.T) {
 			redistributionContractAddress,
 			redistributionContractABI,
 			0,
-			0,
 		)
 
 		isWinner, err := contract.IsWinner(ctx)
@@ -186,7 +182,6 @@ func TestRedistribution(t *testing.T) {
 			redistributionContractAddress,
 			redistributionContractABI,
 			0,
-			0,
 		)
 
 		isWinner, err := contract.IsWinner(ctx)
@@ -212,7 +207,7 @@ func TestRedistribution(t *testing.T) {
 			owner,
 			log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
+				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
 					if *request.To == redistributionContractAddress {
 						if !bytes.Equal(expectedCallData[:32], request.Data[:32]) {
 							return common.Hash{}, nil, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -224,7 +219,6 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			0,
 			0,
 		)
 
@@ -247,7 +241,7 @@ func TestRedistribution(t *testing.T) {
 			owner,
 			log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
+				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
 					if *request.To == redistributionContractAddress {
 						if !bytes.Equal(expectedCallData[:32], request.Data[:32]) {
 							return common.Hash{}, nil, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -259,7 +253,6 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			0,
 			0,
 		)
 
@@ -283,7 +276,7 @@ func TestRedistribution(t *testing.T) {
 			owner,
 			log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
+				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
 					if *request.To == redistributionContractAddress {
 						if !bytes.Equal(expectedCallData[:32], request.Data[:32]) {
 							return common.Hash{}, nil, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -295,7 +288,6 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			0,
 			0,
 		)
 
@@ -321,7 +313,7 @@ func TestRedistribution(t *testing.T) {
 			owner,
 			log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
+				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
 					if *request.To == redistributionContractAddress {
 						if !bytes.Equal(expectedCallData[:32], request.Data[:32]) {
 							return common.Hash{}, nil, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -333,7 +325,6 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			0,
 			0,
 		)
 
@@ -360,7 +351,6 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			0,
 			0,
 		)
 
@@ -392,7 +382,6 @@ func TestRedistribution(t *testing.T) {
 			redistributionContractAddress,
 			redistributionContractABI,
 			0,
-			0,
 		)
 
 		_, err := contract.IsPlaying(ctx, depth)
@@ -416,7 +405,7 @@ func TestRedistribution(t *testing.T) {
 			owner,
 			log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
+				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
 					if *request.To == redistributionContractAddress {
 						if !bytes.Equal(expectedCallData, request.Data) {
 							return common.Hash{}, nil, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -429,7 +418,6 @@ func TestRedistribution(t *testing.T) {
 			redistributionContractAddress,
 			redistributionContractABI,
 			0,
-			0,
 		)
 
 		_, err = contract.Commit(ctx, actualHash, 0)
@@ -439,113 +427,6 @@ func TestRedistribution(t *testing.T) {
 	})
 }
 
-func TestRedistribution_MaxTxCostWaitsUntilContextDone(t *testing.T) {
-	t.Parallel()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
-	defer cancel()
-	owner := common.HexToAddress("abcd")
-	overlay := swarm.NewAddress(common.HexToHash("cbd").Bytes())
-	redistributionContractAddress := common.HexToAddress("ffff")
-	var sendCalled atomic.Bool
-
-	proofs := randChunkInclusionProofs(t)
-
-	contract := redistribution.New(
-		overlay,
-		owner,
-		log.Noop,
-		transactionMock.New(
-			transactionMock.WithEstimateTxCostFunc(func(_ context.Context, gasUnits int64, _ int) (*big.Int, *big.Int, error) {
-				gasFeeCap := big.NewInt(10)
-				return new(big.Int).Mul(big.NewInt(gasUnits), gasFeeCap), gasFeeCap, nil
-			}),
-			transactionMock.WithSendFunc(func(context.Context, *transaction.TxRequest, int) (common.Hash, error) {
-				sendCalled.Store(true)
-				return common.Hash{}, errors.New("send should not be called")
-			}),
-			transactionMock.WithWaitForReceiptFunc(func(context.Context, common.Hash) (*types.Receipt, error) {
-				return nil, errors.New("unexpected wait")
-			}),
-		),
-		redistributionContractAddress,
-		redistributionContractABI,
-		100_000,
-		time.Millisecond,
-		redistribution.WithMaxTxCost(500_000, 0),
-	)
-
-	_, err := contract.Claim(ctx, proofs, nil)
-	if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
-		t.Fatalf("want context deadline or cancel, got %v", err)
-	}
-	if sendCalled.Load() {
-		t.Fatal("Send must not be called when cost exceeds limit")
-	}
-}
-
-const testShortBlockTime = 10 * time.Millisecond
-
-// 1. Commit waits while cost too high; after EstimateTxCost improves, tx is sent successfully.
-func TestCommit_RetriesUntilCostAcceptableThenSuccess(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	owner := common.HexToAddress("abcd")
-	overlay := swarm.NewAddress(common.HexToHash("cbd").Bytes())
-	redistributionContractAddress := common.HexToAddress("ffff")
-	testobfus := common.Hex2Bytes("hash")
-	var obfus [32]byte
-	copy(obfus[:], testobfus)
-	expectedHash := common.HexToHash("abc123")
-
-	var estimateCalls atomic.Int32
-	txSvc := transactionMock.New(
-		transactionMock.WithEstimateTxCostFunc(func(_ context.Context, gasUnits int64, _ int) (*big.Int, *big.Int, error) {
-			n := estimateCalls.Add(1)
-			var gasFeeCap *big.Int
-			if n == 1 {
-				gasFeeCap = big.NewInt(10)
-			} else {
-				gasFeeCap = big.NewInt(1)
-			}
-			cost := new(big.Int).Mul(big.NewInt(gasUnits), gasFeeCap)
-			return cost, gasFeeCap, nil
-		}),
-		transactionMock.WithSendFunc(
-			func(ctx context.Context, request *transaction.TxRequest, _ int) (common.Hash, error) {
-				assert.NotNil(t, request.GasFeeCap)
-				assert.Equal(t, 0, big.NewInt(1).Cmp(request.GasFeeCap), "fee cap must match last successful estimate")
-
-				callData, err := redistributionContractABI.Pack("commit", obfus, uint64(0))
-				assert.NoError(t, err)
-				assert.Equal(t, callData, request.Data)
-				return expectedHash, nil
-			}),
-		transactionMock.WithWaitForReceiptFunc(func(context.Context, common.Hash) (*types.Receipt, error) {
-			return &types.Receipt{Status: 1}, nil
-		}),
-	)
-
-	c := redistribution.New(
-		overlay,
-		owner,
-		log.Noop,
-		txSvc,
-		redistributionContractAddress,
-		redistributionContractABI,
-		0,
-		testShortBlockTime,
-		redistribution.WithMaxTxCost(500_000, 0),
-	)
-
-	h, err := c.Commit(ctx, testobfus, 0)
-	assert.NoError(t, err)
-	assert.Equal(t, expectedHash, h)
-	assert.EqualValues(t, 2, estimateCalls.Load(), "should re-estimate after blockTime wait")
-}
-
-// 2. Commit sends a tx but receives a critical error → fails without endless retry.
 func TestCommit_CriticalErrorFails(t *testing.T) {
 	t.Parallel()
 
@@ -556,8 +437,8 @@ func TestCommit_CriticalErrorFails(t *testing.T) {
 	testobfus := common.Hex2Bytes("hash")
 
 	txSvc := transactionMock.New(
-		transactionMock.WithSendFunc(func(context.Context, *transaction.TxRequest, int) (common.Hash, error) {
-			return common.Hash{}, transaction.ErrTransactionReverted
+		transactionMock.WithSendWithRetryFunc(func(_ context.Context, _ *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
+			return common.Hash{}, nil, transaction.ErrTransactionReverted
 		}),
 	)
 
@@ -569,7 +450,6 @@ func TestCommit_CriticalErrorFails(t *testing.T) {
 		redistributionContractAddress,
 		redistributionContractABI,
 		0,
-		testShortBlockTime,
 	)
 
 	_, err := c.Commit(ctx, testobfus, 0)
@@ -577,93 +457,7 @@ func TestCommit_CriticalErrorFails(t *testing.T) {
 	assert.ErrorIs(t, err, transaction.ErrTransactionReverted)
 }
 
-// First Send fails with non-critical error and zero tx hash; wait blockTime, retry Send -> success.
-func TestCommit_RetriesAfterTransientSendFailure(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	owner := common.HexToAddress("abcd")
-	overlay := swarm.NewAddress(common.HexToHash("cbd").Bytes())
-	redistributionContractAddress := common.HexToAddress("ffff")
-	testobfus := common.Hex2Bytes("hash")
-	expectedHash := common.HexToHash("deadbeef")
-
-	var sendCalls atomic.Int32
-	txSvc := transactionMock.New(
-		transactionMock.WithEstimateTxCostFunc(func(_ context.Context, gasUnits int64, _ int) (*big.Int, *big.Int, error) {
-			gasFeeCap := big.NewInt(2)
-			return new(big.Int).Mul(big.NewInt(gasUnits), gasFeeCap), gasFeeCap, nil
-		}),
-		transactionMock.WithSendFunc(func(context.Context, *transaction.TxRequest, int) (common.Hash, error) {
-			if sendCalls.Add(1) == 1 {
-				// Zero hash + non-critical error must trigger a second Send after blockTime.
-				return common.Hash{}, errors.New("temporary rpc failure")
-			}
-			return expectedHash, nil
-		}),
-		transactionMock.WithWaitForReceiptFunc(func(context.Context, common.Hash) (*types.Receipt, error) {
-			return &types.Receipt{Status: 1}, nil
-		}),
-	)
-
-	c := redistribution.New(
-		overlay,
-		owner,
-		log.Noop,
-		txSvc,
-		redistributionContractAddress,
-		redistributionContractABI,
-		0,
-		testShortBlockTime,
-		redistribution.WithMaxTxCost(2_000_000, 0),
-	)
-
-	h, err := c.Commit(ctx, testobfus, 0)
-	assert.NoError(t, err)
-	assert.Equal(t, expectedHash, h)
-	assert.EqualValues(t, 2, sendCalls.Load(), "second Send should happen after zero-hash failure")
-}
-
-// 4. Commit never sends: cost stays above max-tx-cap until context is cancelled.
-func TestCommit_contextCancelledWhileWaitingForAcceptableCost(t *testing.T) {
-	t.Parallel()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	owner := common.HexToAddress("abcd")
-	overlay := swarm.NewAddress(common.HexToHash("cbd").Bytes())
-	redistributionContractAddress := common.HexToAddress("ffff")
-
-	txSvc := transactionMock.New(
-		transactionMock.WithEstimateTxCostFunc(func(_ context.Context, gasUnits int64, _ int) (*big.Int, *big.Int, error) {
-			gasFeeCap := big.NewInt(100)
-			return new(big.Int).Mul(big.NewInt(gasUnits), gasFeeCap), gasFeeCap, nil
-		}),
-		transactionMock.WithSendFunc(func(context.Context, *transaction.TxRequest, int) (common.Hash, error) {
-			t.Fatal("Send must not be called")
-			return common.Hash{}, nil
-		}),
-	)
-
-	c := redistribution.New(
-		overlay,
-		owner,
-		log.Noop,
-		txSvc,
-		redistributionContractAddress,
-		redistributionContractABI,
-		0,
-		testShortBlockTime,
-		redistribution.WithMaxTxCost(500_000, 0),
-	)
-
-	_, err := c.Commit(ctx, common.Hex2Bytes("hash"), 0)
-	assert.ErrorIs(t, err, redistribution.ErrMaxTxCostExceeded)
-}
-
-// No max-tx-cost limit: user pays whatever fee the network/request carries (nil caps on TxRequest).
-func TestCommit_withoutMaxTxCostLeavesFeeCapsUnset(t *testing.T) {
+func TestCommit_withoutGasFeeCapOnRequest(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -674,13 +468,10 @@ func TestCommit_withoutMaxTxCostLeavesFeeCapsUnset(t *testing.T) {
 	expectedHash := common.HexToHash("bbbb")
 
 	txSvc := transactionMock.New(
-		transactionMock.WithSendFunc(func(_ context.Context, request *transaction.TxRequest, _ int) (common.Hash, error) {
+		transactionMock.WithSendWithRetryFunc(func(_ context.Context, request *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
 			assert.Nil(t, request.GasFeeCap)
 			assert.Nil(t, request.GasPrice)
-			return expectedHash, nil
-		}),
-		transactionMock.WithWaitForReceiptFunc(func(context.Context, common.Hash) (*types.Receipt, error) {
-			return &types.Receipt{Status: 1}, nil
+			return expectedHash, &types.Receipt{Status: 1}, nil
 		}),
 	)
 
@@ -692,7 +483,6 @@ func TestCommit_withoutMaxTxCostLeavesFeeCapsUnset(t *testing.T) {
 		redistributionContractAddress,
 		redistributionContractABI,
 		0,
-		testShortBlockTime,
 	)
 
 	h, err := c.Commit(ctx, testobfus, 0)
@@ -700,8 +490,7 @@ func TestCommit_withoutMaxTxCostLeavesFeeCapsUnset(t *testing.T) {
 	assert.Equal(t, expectedHash, h)
 }
 
-// 6. Claim hits max cost; there is 10 blocks remaining before phase end, expectedReward covers upper-bound cost + previous round fees → limit bypassed, tx sent.
-func TestClaim_bypassesMaxTxCost(t *testing.T) {
+func TestClaim_sendsWithRetryOptions(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -712,21 +501,15 @@ func TestClaim_bypassesMaxTxCost(t *testing.T) {
 	expectedHash := common.HexToHash("cafe")
 
 	var sendCalls atomic.Int32
+	var retryOptsLen int
 	txSvc := transactionMock.New(
-		transactionMock.WithEstimateTxCostFunc(func(_ context.Context, gasUnits int64, _ int) (*big.Int, *big.Int, error) {
-			gasFeeCap := big.NewInt(20)
-			return new(big.Int).Mul(big.NewInt(gasUnits), gasFeeCap), gasFeeCap, nil
-		}),
-		transactionMock.WithSendFunc(func(_ context.Context, request *transaction.TxRequest, _ int) (common.Hash, error) {
+		transactionMock.WithSendWithRetryFunc(func(_ context.Context, request *transaction.TxRequest, opts ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
 			sendCalls.Add(1)
+			retryOptsLen = len(opts)
 			callData, err := redistributionContractABI.Pack("claim", proofs.A, proofs.B, proofs.C)
 			assert.NoError(t, err)
 			assert.Equal(t, callData, request.Data)
-			assert.NotNil(t, request.GasFeeCap, "override should pin maxFeePerGas for send")
-			return expectedHash, nil
-		}),
-		transactionMock.WithWaitForReceiptFunc(func(context.Context, common.Hash) (*types.Receipt, error) {
-			return &types.Receipt{Status: 1}, nil
+			return expectedHash, &types.Receipt{Status: 1}, nil
 		}),
 	)
 
@@ -738,14 +521,12 @@ func TestClaim_bypassesMaxTxCost(t *testing.T) {
 		redistributionContractAddress,
 		redistributionContractABI,
 		0,
-		testShortBlockTime,
-		redistribution.WithMaxTxCost(500_000, 0),
 	)
 
 	opts := &redistribution.ClaimOpts{
 		OverrideAfterBlock: 100,
 		CurrentBlockFn:     func() uint64 { return 110 },
-		ExpectedReward:     new(big.Int).Mul(big.NewInt(50), big.NewInt(1_000_000)), // >> estimated + fees
+		ExpectedReward:     new(big.Int).Mul(big.NewInt(50), big.NewInt(1_000_000)),
 		RoundFees:          big.NewInt(100_000),
 	}
 
@@ -753,10 +534,10 @@ func TestClaim_bypassesMaxTxCost(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, expectedHash, h)
 	assert.EqualValues(t, 1, sendCalls.Load())
+	assert.Equal(t, 1, retryOptsLen, "Claim must pass WithIgnoreMaxPrice retry option")
 }
 
-// 7. Same high fees; expected reward does not cover cost — override denied; cancelled ctx exits without Send.
-func TestClaim_noBypassWhenRewardTooSmall(t *testing.T) {
+func TestClaim_contextCanceled(t *testing.T) {
 	t.Parallel()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -767,15 +548,9 @@ func TestClaim_noBypassWhenRewardTooSmall(t *testing.T) {
 	redistributionContractAddress := common.HexToAddress("ffff")
 	proofs := randChunkInclusionProofs(t)
 
-	var sendCalls atomic.Int32
 	txSvc := transactionMock.New(
-		transactionMock.WithEstimateTxCostFunc(func(_ context.Context, gasUnits int64, _ int) (*big.Int, *big.Int, error) {
-			gasFeeCap := big.NewInt(50)
-			return new(big.Int).Mul(big.NewInt(gasUnits), gasFeeCap), gasFeeCap, nil
-		}),
-		transactionMock.WithSendFunc(func(context.Context, *transaction.TxRequest, int) (common.Hash, error) {
-			sendCalls.Add(1)
-			return common.Hash{}, errors.New("Send must not run")
+		transactionMock.WithSendWithRetryFunc(func(ctx context.Context, _ *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
+			return common.Hash{}, nil, ctx.Err()
 		}),
 	)
 
@@ -787,8 +562,6 @@ func TestClaim_noBypassWhenRewardTooSmall(t *testing.T) {
 		redistributionContractAddress,
 		redistributionContractABI,
 		0,
-		testShortBlockTime,
-		redistribution.WithMaxTxCost(500_000, 0),
 	)
 
 	opts := &redistribution.ClaimOpts{
@@ -800,5 +573,4 @@ func TestClaim_noBypassWhenRewardTooSmall(t *testing.T) {
 
 	_, err := c.Claim(ctx, proofs, opts)
 	assert.ErrorIs(t, err, context.Canceled)
-	assert.Zero(t, sendCalls.Load())
 }
