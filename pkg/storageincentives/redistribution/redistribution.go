@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -21,6 +22,9 @@ const (
 	BoostTipPercent = 50
 
 	minEstimatedGasLimit = 250_000
+
+	// redistributionGameTransactionsRetryDelay caps the retry delay for redistribution game txs.
+	redistributionGameTransactionsRetryDelay = 35 * time.Second
 )
 
 // ClaimOpts configures optional claim behaviour: after OverrideAfterBlock (absolute
@@ -50,6 +54,16 @@ type contract struct {
 	incentivesContractAddress common.Address
 	incentivesContractABI     abi.ABI
 	gasLimit                  uint64
+	retryDelayRewrite         func(time.Duration) time.Duration
+}
+
+type Option func(*contract)
+
+// WithRetryDelayRewrite sets a function that rewrites the configured SendWithRetry delay.
+func WithRetryDelayRewrite(fn func(time.Duration) time.Duration) Option {
+	return func(c *contract) {
+		c.retryDelayRewrite = fn
+	}
 }
 
 func New(
@@ -60,8 +74,9 @@ func New(
 	incentivesContractAddress common.Address,
 	incentivesContractABI abi.ABI,
 	gasLimit uint64,
+	opts ...Option,
 ) Contract {
-	return &contract{
+	c := &contract{
 		overlay:                   overlay,
 		owner:                     owner,
 		logger:                    logger.WithName(loggerName).Register(),
@@ -70,6 +85,14 @@ func New(
 		incentivesContractABI:     incentivesContractABI,
 		gasLimit:                  gasLimit,
 	}
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	if c.retryDelayRewrite == nil {
+		c.retryDelayRewrite = сapRetryDelay
+	}
+	return c
 }
 
 // IsPlaying checks if the overlay is participating in the upcoming round.
@@ -244,6 +267,10 @@ func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 }
 
 func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest, opts ...transaction.RetryOption) (txHash common.Hash, err error) {
+	if c.retryDelayRewrite != nil {
+		opts = append(opts, transaction.WithRetryDelay(c.retryDelayRewrite))
+	}
+
 	defer func() {
 		err = c.txService.UnwrapABIError(
 			ctx,
@@ -267,4 +294,13 @@ func (c *contract) callTx(ctx context.Context, callData []byte) ([]byte, error) 
 		return nil, err
 	}
 	return result, nil
+}
+
+// сapRetryDelay limits the retry delay for redistribution game transactions
+// to redistributionGameTransactionsRetryDelay.
+func сapRetryDelay(d time.Duration) time.Duration {
+	if d > redistributionGameTransactionsRetryDelay {
+		return redistributionGameTransactionsRetryDelay
+	}
+	return d
 }

@@ -1352,7 +1352,6 @@ func NewBee(
 
 		if agent != nil {
 			apiService.MustRegisterMetrics(agent.Metrics()...)
-			apiService.MustRegisterMetrics(redistribution.Metrics()...)
 		}
 
 		apiService.MustRegisterMetrics(pushSyncProtocol.Metrics()...)

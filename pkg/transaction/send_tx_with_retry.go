@@ -27,8 +27,8 @@ type RetryOverrides struct {
 	// for this attempt. If it returns true, the price cap is bypassed.
 	IgnoreMaxPrice func(gasFeeCap *big.Int) bool
 
-	// RetryDelay, if set, overrides the configured delay between attempts.
-	RetryDelay func(attempt int) time.Duration
+	// RetryDelay, if set, rewrites the configured delay between attempts.
+	RetryDelay func(time.Duration) time.Duration
 }
 
 // RetryOption configures per-call overrides for SendWithRetry.
@@ -42,9 +42,8 @@ func WithIgnoreMaxPrice(fn func(gasFeeCap *big.Int) bool) RetryOption {
 	return func(o *RetryOverrides) { o.IgnoreMaxPrice = fn }
 }
 
-// WithRetryDelay returns a RetryOption that overrides the configured
-// per-attempt delay.
-func WithRetryDelay(fn func(attempt int) time.Duration) RetryOption {
+// WithRetryDelay returns a RetryOption that rewrites the configured retry delay.
+func WithRetryDelay(fn func(time.Duration) time.Duration) RetryOption {
 	return func(o *RetryOverrides) { o.RetryDelay = fn }
 }
 
@@ -292,11 +291,9 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 		"nonce_assigned", txState.NonceAssigned,
 		"previous_tip", txState.PreviousTip)
 
-	retryDelay := func(attempt int) time.Duration {
-		if overrides != nil && overrides.RetryDelay != nil {
-			return overrides.RetryDelay(attempt)
-		}
-		return t.txRetryDelay
+	retryDelay := t.txRetryDelay
+	if overrides != nil && overrides.RetryDelay != nil {
+		retryDelay = overrides.RetryDelay(t.txRetryDelay)
 	}
 
 	for attempt := txState.NextAttempt; attempt < t.txMaxRetries; attempt++ {
@@ -338,7 +335,7 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 			"previous_tip", txState.PreviousTip,
 			"description", request.Description)
 
-		delay := retryDelay(attempt)
+		delay := retryDelay
 
 		if txState.LastTxHash == (common.Hash{}) {
 			loggerV1.Debug("send with retry: no tx hash after broadcast failure, waiting before next attempt",

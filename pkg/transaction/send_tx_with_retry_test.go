@@ -963,27 +963,45 @@ func TestSendWithRetry_IgnoreMaxPriceOverride(t *testing.T) {
 		"override must receive the same gasFeeCap as the broadcast")
 }
 
-// WithRetryDelay override changes the delay between retry attempts.
-func TestSendWithRetry_RetryDelayOverride(t *testing.T) {
+// RetryDelay can be rewritten per SendWithRetry call after the service is constructed.
+func TestSendWithRetry_RetryDelayPerTransactionOverride(t *testing.T) {
 	t.Parallel()
+
 	s := newRetryTestSetup()
 	store := storemock.NewStateStore()
 	testutil.CleanupCloser(t, store)
 
-	cfg := s.retryConfig()
-	cfg.RetryDelay = 10 * time.Second
+	const (
+		serviceRetryDelay = 200 * time.Millisecond
+		overrideDelay     = 50 * time.Millisecond
+		checkAfter        = 300 * time.Millisecond
+		waitTimeout       = 5 * time.Second
+	)
 
-	var broadcastCount atomic.Int32
+	cfg := s.retryConfig()
+	cfg.MaxRetries = 2
+	cfg.RetryDelay = serviceRetryDelay
+
+	var (
+		sendCalls         atomic.Int32
+		deferFirstPrepare atomic.Bool
+	)
+	sendTxErr := errors.New("rpc error")
 
 	svc, err := transaction.NewService(log.Noop, s.sender,
 		backendmock.New(
 			s.nonceOption(),
 			s.feeHistoryOption(nil),
-			s.headerOption(),
+			backendmock.WithHeaderbyNumberFunc(func(ctx context.Context, number *big.Int) (*types.Header, error) {
+				if deferFirstPrepare.CompareAndSwap(true, false) {
+					return nil, errors.New("temporary RPC error")
+				}
+				return &types.Header{BaseFee: new(big.Int).Set(s.baseFee)}, nil
+			}),
 			s.estimateGasOption(),
 			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
-				broadcastCount.Add(1)
-				return nil
+				sendCalls.Add(1)
+				return sendTxErr
 			}),
 		),
 		signermock.New(s.passThroughSigner(), s.signerAddr()),
@@ -991,12 +1009,7 @@ func TestSendWithRetry_RetryDelayOverride(t *testing.T) {
 		s.chainID,
 		monitormock.New(
 			monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
-				if broadcastCount.Load() <= 1 {
-					return make(chan types.Receipt), make(chan error), nil
-				}
-				ch := make(chan types.Receipt, 1)
-				ch <- types.Receipt{TxHash: txHash, Status: 1}
-				return ch, nil, nil
+				return make(chan types.Receipt), make(chan error), nil
 			}),
 		),
 		0,
@@ -1005,19 +1018,44 @@ func TestSendWithRetry_RetryDelayOverride(t *testing.T) {
 	require.NoError(t, err)
 	testutil.CleanupCloser(t, svc)
 
-	start := time.Now()
-	_, receipt, err := svc.SendWithRetry(context.Background(), s.request(),
-		transaction.WithRetryDelay(func(attempt int) time.Duration {
-			return 50 * time.Millisecond
-		}),
-	)
+	ctx := context.Background()
 
-	require.NoError(t, err)
-	require.NotNil(t, receipt)
-	elapsed := time.Since(start)
-	assert.Less(t, elapsed, 2*time.Second,
-		"with overridden short delay, retry should complete much faster than the 10s default")
-	assert.GreaterOrEqual(t, int(broadcastCount.Load()), 2, "should have retried at least once")
+	// Scenario 1: overridden delay (50ms) — both attempts should complete within checkAfter.
+	done1 := make(chan struct{})
+	go func() {
+		defer close(done1)
+		_, _, _ = svc.SendWithRetry(ctx, s.request(),
+			transaction.WithRetryDelay(func(time.Duration) time.Duration {
+				return overrideDelay
+			}),
+		)
+	}()
+
+	time.Sleep(checkAfter)
+	assert.EqualValues(t, 2, sendCalls.Load(), "overridden 50ms delay should allow 2 broadcasts within 300ms")
+	select {
+	case <-done1:
+	case <-time.After(waitTimeout):
+		t.Fatal("timed out waiting for overridden-delay SendWithRetry to finish")
+	}
+
+	// Scenario 2: default delay (200ms) with first prepare failing — only 1 send within checkAfter.
+	sendCalls.Store(0)
+	deferFirstPrepare.Store(true)
+
+	done2 := make(chan struct{})
+	go func() {
+		defer close(done2)
+		_, _, _ = svc.SendWithRetry(ctx, s.request())
+	}()
+
+	time.Sleep(checkAfter)
+	assert.EqualValues(t, 1, sendCalls.Load(), "default 200ms delay should yield only 1 broadcast within 300ms")
+	select {
+	case <-done2:
+	case <-time.After(waitTimeout):
+		t.Fatal("timed out waiting for default-delay SendWithRetry to finish")
+	}
 }
 
 // failOnNthPutStore wraps a StateStorer and fails the Nth Put call with putErr.
