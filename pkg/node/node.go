@@ -199,8 +199,6 @@ type Options struct {
 	WarmupTime                         time.Duration
 	WelcomeMessage                     string
 	WhitelistedWithdrawalAddress       []string
-	MaxTxCost                          uint64
-	MaxTxCostTolerancePercent          uint64
 }
 
 func txRetryConfigFromOptions(o *Options) transaction.TransactionsRetryConfig {

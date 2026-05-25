@@ -90,7 +90,7 @@ func New(
 	}
 
 	if c.retryDelayRewrite == nil {
-		c.retryDelayRewrite = сapRetryDelay
+		c.retryDelayRewrite = capRetryDelay
 	}
 	return c
 }
@@ -296,9 +296,9 @@ func (c *contract) callTx(ctx context.Context, callData []byte) ([]byte, error) 
 	return result, nil
 }
 
-// сapRetryDelay limits the retry delay for redistribution game transactions
+// capRetryDelay limits the retry delay for redistribution game transactions
 // to redistributionGameTransactionsRetryDelay.
-func сapRetryDelay(d time.Duration) time.Duration {
+func capRetryDelay(d time.Duration) time.Duration {
 	if d > redistributionGameTransactionsRetryDelay {
 		return redistributionGameTransactionsRetryDelay
 	}

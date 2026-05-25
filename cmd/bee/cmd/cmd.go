@@ -84,8 +84,6 @@ const (
 	optionSkipPostageSnapshot              = "skip-postage-snapshot"
 	optionNameMinimumGasTipCap             = "minimum-gas-tip-cap"
 	optionNameGasLimitFallback             = "gas-limit-fallback"
-	optionNameMaxTxCost                    = "max-tx-cost"
-	optionNameMaxTxCostTolerancePercent    = "max-tx-cost-tolerance-percent"
 	optionNameP2PWSSEnable                 = "p2p-wss-enable"
 	optionP2PWSSAddr                       = "p2p-wss-addr"
 	optionNATWSSAddr                       = "nat-wss-addr"
@@ -343,21 +341,6 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionSkipPostageSnapshot, false, "skip postage snapshot")
 	cmd.Flags().Uint64(optionNameMinimumGasTipCap, 0, "minimum gas tip cap in wei for transactions, 0 means use suggested gas tip cap")
 	cmd.Flags().Uint64(optionNameGasLimitFallback, 500_000, "gas limit fallback when estimation fails for contract transactions")
-	// Default 1.5e15 wei (= 0.0015 xDAI = 1.5 mxDAI) is calibrated against the
-	// upper-bound formula used by isTxCostAcceptable:
-	//   estimated = gasUnits × (2·baseFee + boostedTip)
-	// where gasUnits = 500_000 (gas-limit-fallback when not overridden via ctx),
-	// boostedTip = suggestedTip × 1.5 (BoostTipPercent=50, ≈0.15 gwei on Gnosis).
-	// With max-tx-cost-tolerance-percent=10 the effective threshold is 1.65e15 wei,
-	// which permits a gasFeeCap of up to ≈3.3 gwei → roughly baseFee ≤ ~1.5 gwei.
-	// Observed network-wide effective gas prices over the last 10 rounds were
-	// 0.3–0.5 gwei in normal conditions and peaked at ≈1.5 gwei during a spike;
-	// this default keeps commit/reveal flowing through ordinary operation and
-	// only rejects sustained spikes above ≈1.5 gwei baseFee. Claim has its own
-	// override path (see ClaimOpts) and is unaffected by spikes when the
-	// expected reward covers the upper-bound cost.
-	cmd.Flags().Uint64(optionNameMaxTxCost, 1_500_000_000_000_000, "maximum total cost in wei per redistribution transaction (gas limit × max fee per gas); 0 means no limit. Default 1.5e15 wei (= 0.0015 xDAI = 1.5 mxDAI) is calibrated for typical Gnosis baseFee up to ~1.5 gwei with default gas-limit-fallback=500000 and 10% tolerance.")
-	cmd.Flags().Uint64(optionNameMaxTxCostTolerancePercent, 10, "percentage above max-tx-cost within which the transaction is still allowed (effective threshold = max-tx-cost × (1 + tol/100))")
 	cmd.Flags().Int(optionNameTransactionRetryMaxRetries, 5, "maximum broadcast attempts for SendWithRetry (e.g. redistribution txs)")
 	cmd.Flags().Duration(optionNameTransactionRetryDelay, time.Minute, "how long to wait for a receipt before escalating fees in transactions with retry")
 	cmd.Flags().Int(optionNameTransactionRetryGasIncreasePercent, 20, "percent increase applied to priority fee after each transactions with retry escalation step")
