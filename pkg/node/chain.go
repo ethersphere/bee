@@ -15,9 +15,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/ethersphere/bee/v2/pkg/accounting"
 	"github.com/ethersphere/bee/v2/pkg/config"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -33,6 +35,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/ethersphere/bee/v2/pkg/transaction/backendnoop"
 	"github.com/ethersphere/bee/v2/pkg/transaction/wrapped"
+	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
 )
 
 const (
@@ -368,4 +371,276 @@ func (m *noOpChequebookService) LastCheque(common.Address) (*chequebook.SignedCh
 
 func (m *noOpChequebookService) LastCheques() (map[common.Address]*chequebook.SignedCheque, error) {
 	return nil, postagecontract.ErrChainDisabled
+}
+
+// swapServiceDeps is the injection seam for setupSwapService.
+type swapServiceDeps struct {
+	InitSwap func(
+		p2ps *libp2p.Service,
+		logger log.Logger,
+		stateStore storage.StateStorer,
+		networkID uint64,
+		overlayEthAddress common.Address,
+		chequebookService chequebook.Service,
+		chequeStore chequebook.ChequeStore,
+		cashoutService chequebook.CashoutService,
+		accounting settlement.Accounting,
+		priceOracleAddress string,
+		chainID int64,
+		transactionService transaction.Service,
+	) (*swap.Service, priceoracle.Service, error)
+}
+
+// defaultSwapServiceDeps wires the real InitSwap used by NewBee.
+var defaultSwapServiceDeps = swapServiceDeps{
+	InitSwap: InitSwap,
+}
+
+// swapServiceResult collects what setupSwapService produces. SwapService is
+// nil when the gate (SwapEnable && chainEnabled) is closed. PayFunc is set
+// only when SwapService is set AND ChequebookEnable is true; the caller wires
+// it into the accounting service.
+type swapServiceResult struct {
+	SwapService *swap.Service
+	PriceOracle priceoracle.Service
+	PayFunc     accounting.PayFunc
+}
+
+// setupSwapService is the swap-service-init block from NewBee: gated on
+// SwapEnable && chainEnabled, and inside that gate also exposes the
+// ChequebookEnable-only PayFunc wire-up.
+func setupSwapService(
+	o *Options,
+	chainEnabled bool,
+	p2ps *libp2p.Service,
+	logger log.Logger,
+	stateStore storage.StateStorer,
+	networkID uint64,
+	overlayEthAddress common.Address,
+	chequebookService chequebook.Service,
+	chequeStore chequebook.ChequeStore,
+	cashoutService chequebook.CashoutService,
+	acc settlement.Accounting,
+	chainID int64,
+	transactionService transaction.Service,
+	deps swapServiceDeps,
+) (swapServiceResult, error) {
+	if !o.SwapEnable || !chainEnabled {
+		return swapServiceResult{}, nil
+	}
+
+	swapService, priceOracle, err := deps.InitSwap(
+		p2ps,
+		logger,
+		stateStore,
+		networkID,
+		overlayEthAddress,
+		chequebookService,
+		chequeStore,
+		cashoutService,
+		acc,
+		o.PriceOracleAddress,
+		chainID,
+		transactionService,
+	)
+	if err != nil {
+		return swapServiceResult{}, fmt.Errorf("init swap service: %w", err)
+	}
+
+	res := swapServiceResult{
+		SwapService: swapService,
+		PriceOracle: priceOracle,
+	}
+	if o.ChequebookEnable {
+		res.PayFunc = swapService.Pay
+	}
+	return res, nil
+}
+
+// postageContractDeps is the injection seam for setupPostageContract.
+// Only the chain-RPC call (LookupERC20Address) is injectable; the rest is
+// pure lookup / address resolution that runs against the real chain config.
+type postageContractDeps struct {
+	LookupERC20 func(
+		ctx context.Context,
+		ts transaction.Service,
+		postageStampContractAddress common.Address,
+		postageStampContractABI abi.ABI,
+		chainEnabled bool,
+	) (common.Address, error)
+}
+
+// defaultPostageContractDeps wires the real LookupERC20Address used by NewBee.
+var defaultPostageContractDeps = postageContractDeps{
+	LookupERC20: postagecontract.LookupERC20Address,
+}
+
+// postageContractResult collects the resolved postage configuration so the
+// caller can keep working with the same scoped names it used inline before
+// the extraction. ChainConfig is propagated because callers in NewBee also
+// need StakingAddress / RedistributionAddress / ABIs from it.
+type postageContractResult struct {
+	ChainConfig     config.ChainConfig
+	ContractAddress common.Address
+	ContractABI     abi.ABI
+	SyncStartBlock  uint64
+	BzzTokenAddress common.Address
+}
+
+// setupPostageContract resolves the postage stamp contract address and the
+// BZZ token address. Validation of the malformed-address / missing-start-block
+// / unknown-chain cases is already done by validateChainContractOptions; this
+// function trusts the values it receives.
+func setupPostageContract(
+	ctx context.Context,
+	o *Options,
+	chainID int64,
+	chainEnabled bool,
+	transactionService transaction.Service,
+	deps postageContractDeps,
+) (postageContractResult, error) {
+	chainCfg, _ := config.GetByChainID(chainID)
+	addr := chainCfg.PostageStampAddress
+	syncStart := chainCfg.PostageStampStartBlock
+	if o.PostageContractAddress != "" {
+		addr = common.HexToAddress(o.PostageContractAddress)
+		syncStart = o.PostageContractStartBlock
+	}
+
+	contractABI := abiutil.MustParseABI(chainCfg.PostageStampABI)
+
+	bzz, err := deps.LookupERC20(ctx, transactionService, addr, contractABI, chainEnabled)
+	if err != nil {
+		return postageContractResult{}, fmt.Errorf("lookup erc20 postage address: %w", err)
+	}
+
+	return postageContractResult{
+		ChainConfig:     chainCfg,
+		ContractAddress: addr,
+		ContractABI:     contractABI,
+		SyncStartBlock:  syncStart,
+		BzzTokenAddress: bzz,
+	}, nil
+}
+
+// swapDeps is the injection seam for setupSwap. Production wires
+// defaultSwapDeps; tests inject fakes to exercise every error path and
+// configuration combination without touching a real chain backend. Fields are
+// exported so the package_test test file can build a swapDeps directly.
+type swapDeps struct {
+	InitFactory func(
+		logger log.Logger,
+		backend transaction.Backend,
+		chainID int64,
+		ts transaction.Service,
+		factoryAddress string,
+	) (chequebook.Factory, error)
+
+	InitChequebookService func(
+		ctx context.Context,
+		logger log.Logger,
+		stateStore storage.StateStorer,
+		signer crypto.Signer,
+		chainID int64,
+		backend transaction.Backend,
+		overlayEthAddress common.Address,
+		ts transaction.Service,
+		factory chequebook.Factory,
+		initialDeposit string,
+		erc20Service erc20.Service,
+	) (chequebook.Service, error)
+
+	InitChequeStoreCashout func(
+		stateStore storage.StateStorer,
+		backend transaction.Backend,
+		factory chequebook.Factory,
+		chainID int64,
+		overlayEthAddress common.Address,
+		ts transaction.Service,
+	) (chequebook.ChequeStore, chequebook.CashoutService)
+}
+
+// defaultSwapDeps wires the real chain-dependent constructors that production
+// uses inside setupSwap.
+var defaultSwapDeps = swapDeps{
+	InitFactory:            InitChequebookFactory,
+	InitChequebookService:  InitChequebookService,
+	InitChequeStoreCashout: initChequeStoreCashout,
+}
+
+// swapResult is the set of values setupSwap may produce. A nil
+// ChequebookService means "leave the caller's default in place" (i.e. the
+// noOpChequebookService). Other zero-value fields mean the corresponding
+// subsystem was not initialized for this configuration.
+type swapResult struct {
+	Erc20Service      erc20.Service
+	ChequebookService chequebook.Service
+	ChequeStore       chequebook.ChequeStore
+	CashoutService    chequebook.CashoutService
+}
+
+// setupSwap performs the chequebook / cheque-store / cashout wiring that is
+// gated on o.SwapEnable (and, for the chequebook service, on
+// o.ChequebookEnable && chainEnabled). It returns error strings exactly the
+// way the original inline block in NewBee did.
+func setupSwap(
+	ctx context.Context,
+	logger log.Logger,
+	o *Options,
+	chainEnabled bool,
+	chainBackend transaction.Backend,
+	chainID int64,
+	transactionService transaction.Service,
+	stateStore storage.StateStorer,
+	signer crypto.Signer,
+	overlayEthAddress common.Address,
+	deps swapDeps,
+) (swapResult, error) {
+	var res swapResult
+	if !o.SwapEnable {
+		return res, nil
+	}
+
+	factory, err := deps.InitFactory(logger, chainBackend, chainID, transactionService, o.SwapFactoryAddress)
+	if err != nil {
+		return res, fmt.Errorf("init chequebook factory: %w", err)
+	}
+
+	erc20Address, err := factory.ERC20Address(ctx)
+	if err != nil {
+		return res, fmt.Errorf("factory fail: %w", err)
+	}
+
+	res.Erc20Service = erc20.New(transactionService, erc20Address)
+
+	if o.ChequebookEnable && chainEnabled {
+		svc, err := deps.InitChequebookService(
+			ctx,
+			logger,
+			stateStore,
+			signer,
+			chainID,
+			chainBackend,
+			overlayEthAddress,
+			transactionService,
+			factory,
+			o.SwapInitialDeposit,
+			res.Erc20Service,
+		)
+		if err != nil {
+			return swapResult{}, fmt.Errorf("init chequebook service: %w", err)
+		}
+		res.ChequebookService = svc
+	}
+
+	res.ChequeStore, res.CashoutService = deps.InitChequeStoreCashout(
+		stateStore,
+		chainBackend,
+		factory,
+		chainID,
+		overlayEthAddress,
+		transactionService,
+	)
+
+	return res, nil
 }

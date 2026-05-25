@@ -59,7 +59,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20"
-	"github.com/ethersphere/bee/v2/pkg/settlement/swap/priceoracle"
 	"github.com/ethersphere/bee/v2/pkg/stabilization"
 	"github.com/ethersphere/bee/v2/pkg/status"
 	"github.com/ethersphere/bee/v2/pkg/steward"
@@ -225,6 +224,10 @@ func NewBee(
 	session accesscontrol.Session,
 	o *Options,
 ) (b *Bee, err error) {
+	if err := validateOptions(o); err != nil {
+		return nil, err
+	}
+
 	// start time for node warmup duration measurement
 	warmupStartTime := time.Now()
 	var pullSyncStartTime time.Time
@@ -238,14 +241,6 @@ func NewBee(
 	})
 	if err != nil {
 		return nil, fmt.Errorf("tracer: %w", err)
-	}
-
-	if err := validatePublicAddress(o.NATAddr); err != nil {
-		return nil, fmt.Errorf("invalid NAT address %s: %w", o.NATAddr, err)
-	}
-
-	if err := validatePublicAddress(o.NATWSSAddr); err != nil {
-		return nil, fmt.Errorf("invalid NAT WSS address %s: %w", o.NATWSSAddr, err)
 	}
 
 	ctx, ctxCancel := context.WithCancel(ctx)
@@ -286,13 +281,6 @@ func NewBee(
 		}
 	}(b)
 
-	if !o.FullNodeMode && o.ReserveCapacityDoubling != 0 {
-		return nil, fmt.Errorf("reserve capacity doubling is only allowed for full nodes")
-	}
-
-	if o.ReserveCapacityDoubling < 0 || o.ReserveCapacityDoubling > maxAllowedDoubling {
-		return nil, fmt.Errorf("config reserve capacity doubling has to be between default: 0 and maximum: %d", maxAllowedDoubling)
-	}
 	shallowReceiptTolerance := maxAllowedDoubling - o.ReserveCapacityDoubling
 
 	reserveCapacity := (1 << o.ReserveCapacityDoubling) * storer.DefaultReserveCapacity
@@ -435,6 +423,10 @@ func NewBee(
 
 	logger.Info("using chain with network", "chain_id", chainID, "network_id", networkID)
 
+	if err := validateChainContractOptions(o, chainID); err != nil {
+		return nil, err
+	}
+
 	b.ethClientCloser = chainBackend.Close
 	b.transactionCloser = tracerCloser
 	b.transactionMonitorCloser = transactionMonitor
@@ -535,47 +527,16 @@ func NewBee(
 		}
 	}
 
-	if o.SwapEnable {
-		chequebookFactory, err := InitChequebookFactory(logger, chainBackend, chainID, transactionService, o.SwapFactoryAddress)
-		if err != nil {
-			return nil, fmt.Errorf("init chequebook factory: %w", err)
-		}
-
-		erc20Address, err := chequebookFactory.ERC20Address(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("factory fail: %w", err)
-		}
-
-		erc20Service = erc20.New(transactionService, erc20Address)
-
-		if o.ChequebookEnable && chainEnabled {
-			chequebookService, err = InitChequebookService(
-				ctx,
-				logger,
-				stateStore,
-				signer,
-				chainID,
-				chainBackend,
-				overlayEthAddress,
-				transactionService,
-				chequebookFactory,
-				o.SwapInitialDeposit,
-				erc20Service,
-			)
-			if err != nil {
-				return nil, fmt.Errorf("init chequebook service: %w", err)
-			}
-		}
-
-		chequeStore, cashoutService = initChequeStoreCashout(
-			stateStore,
-			chainBackend,
-			chequebookFactory,
-			chainID,
-			overlayEthAddress,
-			transactionService,
-		)
+	swapRes, err := setupSwap(ctx, logger, o, chainEnabled, chainBackend, chainID, transactionService, stateStore, signer, overlayEthAddress, defaultSwapDeps)
+	if err != nil {
+		return nil, err
 	}
+	erc20Service = swapRes.Erc20Service
+	if swapRes.ChequebookService != nil {
+		chequebookService = swapRes.ChequebookService
+	}
+	chequeStore = swapRes.ChequeStore
+	cashoutService = swapRes.CashoutService
 
 	lightNodes := lightnode.NewContainer(swarmAddress)
 
@@ -592,28 +553,10 @@ func NewBee(
 		bootnodes = append(bootnodes, addr)
 	}
 
-	// Perform checks related to payment threshold calculations here to not duplicate
-	// the checks in bootstrap process
-	paymentThreshold, ok := new(big.Int).SetString(o.PaymentThreshold, 10)
-	if !ok {
-		return nil, fmt.Errorf("invalid payment threshold: %s", paymentThreshold)
-	}
-
-	if paymentThreshold.Cmp(big.NewInt(minPaymentThreshold)) < 0 {
-		return nil, fmt.Errorf("payment threshold below minimum generally accepted value, need at least %d", minPaymentThreshold)
-	}
-
-	if paymentThreshold.Cmp(big.NewInt(maxPaymentThreshold)) > 0 {
-		return nil, fmt.Errorf("payment threshold above maximum generally accepted value, needs to be reduced to at most %d", maxPaymentThreshold)
-	}
-
-	if o.PaymentTolerance < 0 {
-		return nil, fmt.Errorf("invalid payment tolerance: %d", o.PaymentTolerance)
-	}
-
-	if o.PaymentEarly > 100 || o.PaymentEarly < 0 {
-		return nil, fmt.Errorf("invalid payment early: %d", o.PaymentEarly)
-	}
+	// PaymentThreshold range, PaymentTolerance and PaymentEarly bounds were
+	// already verified by validateOptions at NewBee entry; re-parsing here is
+	// just to obtain the bigint value for downstream use and cannot fail.
+	paymentThreshold, _ := new(big.Int).SetString(o.PaymentThreshold, 10)
 
 	detector, err := stabilization.NewDetector(stabilization.Config{
 		PeriodDuration:             2 * time.Second,
@@ -692,27 +635,15 @@ func NewBee(
 		eventListener               postage.Listener
 	)
 
-	chainCfg, found := config.GetByChainID(chainID)
-	postageStampContractAddress, postageSyncStart := chainCfg.PostageStampAddress, chainCfg.PostageStampStartBlock
-	if o.PostageContractAddress != "" {
-		if !common.IsHexAddress(o.PostageContractAddress) {
-			return nil, errors.New("malformed postage stamp address")
-		}
-		postageStampContractAddress = common.HexToAddress(o.PostageContractAddress)
-		if o.PostageContractStartBlock == 0 {
-			return nil, errors.New("postage contract start block option not provided")
-		}
-		postageSyncStart = o.PostageContractStartBlock
-	} else if !found {
-		return nil, errors.New("no known postage stamp addresses for this network")
-	}
-
-	postageStampContractABI := abiutil.MustParseABI(chainCfg.PostageStampABI)
-
-	bzzTokenAddress, err := postagecontract.LookupERC20Address(ctx, transactionService, postageStampContractAddress, postageStampContractABI, chainEnabled)
+	postageRes, err := setupPostageContract(ctx, o, chainID, chainEnabled, transactionService, defaultPostageContractDeps)
 	if err != nil {
-		return nil, fmt.Errorf("lookup erc20 postage address: %w", err)
+		return nil, err
 	}
+	chainCfg := postageRes.ChainConfig
+	postageStampContractAddress := postageRes.ContractAddress
+	postageStampContractABI := postageRes.ContractABI
+	postageSyncStart := postageRes.SyncStartBlock
+	bzzTokenAddress := postageRes.BzzTokenAddress
 
 	// Compute gas limit for contract transactions: when TrxDebugMode is enabled,
 	// gas estimation is skipped and DefaultGasLimit is used for all contract calls.
@@ -997,29 +928,21 @@ func NewBee(
 
 	acc.SetRefreshFunc(pseudosettleService.Pay)
 
-	if o.SwapEnable && chainEnabled {
-		var priceOracle priceoracle.Service
-		swapService, priceOracle, err = InitSwap(
-			p2ps,
-			logger,
-			stateStore,
-			networkID,
-			overlayEthAddress,
-			chequebookService,
-			chequeStore,
-			cashoutService,
-			acc,
-			o.PriceOracleAddress,
-			chainID,
-			transactionService,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("init swap service: %w", err)
-		}
-		b.priceOracleCloser = priceOracle
-
-		if o.ChequebookEnable {
-			acc.SetPayFunc(swapService.Pay)
+	swapSvcRes, err := setupSwapService(
+		o, chainEnabled,
+		p2ps, logger, stateStore, networkID, overlayEthAddress,
+		chequebookService, chequeStore, cashoutService, acc,
+		chainID, transactionService,
+		defaultSwapServiceDeps,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if swapSvcRes.SwapService != nil {
+		swapService = swapSvcRes.SwapService
+		b.priceOracleCloser = swapSvcRes.PriceOracle
+		if swapSvcRes.PayFunc != nil {
+			acc.SetPayFunc(swapSvcRes.PayFunc)
 		}
 	}
 
@@ -1144,11 +1067,9 @@ func NewBee(
 		apiService.SetIsWarmingUp(false)
 	}()
 
+	// Staking address malformed-hex was validated by validateChainContractOptions.
 	stakingContractAddress := chainCfg.StakingAddress
 	if o.StakingContractAddress != "" {
-		if !common.IsHexAddress(o.StakingContractAddress) {
-			return nil, errors.New("malformed staking contract address")
-		}
 		stakingContractAddress = common.HexToAddress(o.StakingContractAddress)
 	}
 
@@ -1236,11 +1157,9 @@ func NewBee(
 
 		if o.EnableStorageIncentives {
 
+			// Redistribution address malformed-hex was validated by validateChainContractOptions.
 			redistributionContractAddress := chainCfg.RedistributionAddress
 			if o.RedistributionContractAddress != "" {
-				if !common.IsHexAddress(o.RedistributionContractAddress) {
-					return nil, errors.New("malformed redistribution contract address")
-				}
 				redistributionContractAddress = common.HexToAddress(o.RedistributionContractAddress)
 			}
 
@@ -1530,6 +1449,84 @@ func isChainEnabled(o *Options, swapEndpoint string, logger log.Logger) bool {
 		"full_node_mode", o.FullNodeMode,
 		"blockchain-rpc-endpoint", swapEndpoint)
 	return true // all other modes operate require chain enabled
+}
+
+// validateOptions checks Options for invalid values that can be detected
+// without performing any I/O and without needing chainID. It is the single
+// place where these config-shape errors are caught at NewBee entry.
+func validateOptions(o *Options) error {
+	if err := validatePublicAddress(o.NATAddr); err != nil {
+		return fmt.Errorf("invalid NAT address %s: %w", o.NATAddr, err)
+	}
+	if err := validatePublicAddress(o.NATWSSAddr); err != nil {
+		return fmt.Errorf("invalid NAT WSS address %s: %w", o.NATWSSAddr, err)
+	}
+	if !o.FullNodeMode && o.ReserveCapacityDoubling != 0 {
+		return fmt.Errorf("reserve capacity doubling is only allowed for full nodes")
+	}
+	if o.ReserveCapacityDoubling < 0 || o.ReserveCapacityDoubling > maxAllowedDoubling {
+		return fmt.Errorf("config reserve capacity doubling has to be between default: 0 and maximum: %d", maxAllowedDoubling)
+	}
+	if _, err := parsePaymentThreshold(o.PaymentThreshold); err != nil {
+		return err
+	}
+	if o.PaymentTolerance < 0 {
+		return fmt.Errorf("invalid payment tolerance: %d", o.PaymentTolerance)
+	}
+	if o.PaymentEarly > 100 || o.PaymentEarly < 0 {
+		return fmt.Errorf("invalid payment early: %d", o.PaymentEarly)
+	}
+	// The neighborhood may also be supplied at runtime by the suggester URL;
+	// here we only validate what the user typed into config.
+	if o.TargetNeighborhood != "" {
+		if _, err := swarm.ParseBitStrAddress(o.TargetNeighborhood); err != nil {
+			return fmt.Errorf("invalid neighborhood. %s", o.TargetNeighborhood)
+		}
+	}
+	return nil
+}
+
+// parsePaymentThreshold parses PaymentThreshold and verifies it sits in the
+// accepted [minPaymentThreshold, maxPaymentThreshold] range. The parsed value
+// is returned so callers that need the bigint don't re-parse.
+func parsePaymentThreshold(s string) (*big.Int, error) {
+	pt, ok := new(big.Int).SetString(s, 10)
+	if !ok {
+		return nil, fmt.Errorf("invalid payment threshold: %s", pt)
+	}
+	if pt.Cmp(big.NewInt(minPaymentThreshold)) < 0 {
+		return nil, fmt.Errorf("payment threshold below minimum generally accepted value, need at least %d", minPaymentThreshold)
+	}
+	if pt.Cmp(big.NewInt(maxPaymentThreshold)) > 0 {
+		return nil, fmt.Errorf("payment threshold above maximum generally accepted value, needs to be reduced to at most %d", maxPaymentThreshold)
+	}
+	return pt, nil
+}
+
+// validateChainContractOptions runs after chainID is known. It catches
+// malformed user-supplied contract addresses, the postage "no known address
+// for this network" case, and the missing-start-block case for a custom
+// postage contract. The redistribution check is only performed when
+// EnableStorageIncentives is set, preserving prior behavior.
+func validateChainContractOptions(o *Options, chainID int64) error {
+	_, found := config.GetByChainID(chainID)
+	if o.PostageContractAddress != "" {
+		if !common.IsHexAddress(o.PostageContractAddress) {
+			return errors.New("malformed postage stamp address")
+		}
+		if o.PostageContractStartBlock == 0 {
+			return errors.New("postage contract start block option not provided")
+		}
+	} else if !found {
+		return errors.New("no known postage stamp addresses for this network")
+	}
+	if o.StakingContractAddress != "" && !common.IsHexAddress(o.StakingContractAddress) {
+		return errors.New("malformed staking contract address")
+	}
+	if o.EnableStorageIncentives && o.RedistributionContractAddress != "" && !common.IsHexAddress(o.RedistributionContractAddress) {
+		return errors.New("malformed redistribution contract address")
+	}
+	return nil
 }
 
 func validatePublicAddress(addr string) error {
