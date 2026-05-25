@@ -222,17 +222,18 @@ func TestPostageGetStamps(t *testing.T) {
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampsResponse{
 				Stamps: []api.PostageStampResponse{
 					{
-						BatchID:       b.ID,
-						Utilization:   si.Utilization(),
-						Usable:        true,
-						Label:         si.Label(),
-						Depth:         si.Depth(),
-						Amount:        bigint.Wrap(si.Amount()),
-						BucketDepth:   si.BucketDepth(),
-						BlockNumber:   si.BlockNumber(),
-						ImmutableFlag: si.ImmutableFlag(),
-						Exists:        true,
-						BatchTTL:      15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
+						BatchID:          b.ID,
+						Utilization:      si.Utilization(),
+						UtilizationRatio: si.UtilizationRatio(),
+						Usable:           true,
+						Label:            si.Label(),
+						Depth:            si.Depth(),
+						Amount:           bigint.Wrap(si.Amount()),
+						BucketDepth:      si.BucketDepth(),
+						BlockNumber:      si.BlockNumber(),
+						ImmutableFlag:    si.ImmutableFlag(),
+						Exists:           true,
+						BatchTTL:         15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
 					},
 				},
 			}),
@@ -373,17 +374,18 @@ func TestPostageGetStamp(t *testing.T) {
 
 		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps/"+hex.EncodeToString(b.ID), http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampResponse{
-				BatchID:       b.ID,
-				Utilization:   si.Utilization(),
-				Usable:        true,
-				Label:         si.Label(),
-				Depth:         si.Depth(),
-				Amount:        bigint.Wrap(si.Amount()),
-				BucketDepth:   si.BucketDepth(),
-				BlockNumber:   si.BlockNumber(),
-				ImmutableFlag: si.ImmutableFlag(),
-				Exists:        true,
-				BatchTTL:      15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
+				BatchID:          b.ID,
+				Utilization:      si.Utilization(),
+				UtilizationRatio: si.UtilizationRatio(),
+				Usable:           true,
+				Label:            si.Label(),
+				Depth:            si.Depth(),
+				Amount:           bigint.Wrap(si.Amount()),
+				BucketDepth:      si.BucketDepth(),
+				BlockNumber:      si.BlockNumber(),
+				ImmutableFlag:    si.ImmutableFlag(),
+				Exists:           true,
+				BatchTTL:         15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
 			}),
 		)
 	})

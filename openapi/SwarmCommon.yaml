@@ -529,6 +529,27 @@ components:
           $ref: "#/components/schemas/BatchID"
         utilization:
           type: integer
+          description: >
+            Raw batch fullness indicator: the highest write count among the
+            `2^bucketDepth` collision buckets of the batch. This is **not** a
+            percentage; one unit corresponds to one chunk written into the
+            fullest bucket. Total batch capacity is `2^depth` chunks, while
+            the fullest bucket caps at `2^(depth - bucketDepth)` chunks, so
+            the fractional usage of the batch is
+            `utilization / 2^(depth - bucketDepth)` (also exposed directly as
+            `utilizationRatio`). When the value reaches
+            `2^(depth - bucketDepth)` the batch is effectively full and any
+            further write to the fullest bucket would overflow it.
+        utilizationRatio:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          description: >
+            Fractional batch fullness in the range `[0, 1]`, computed as
+            `utilization / 2^(depth - bucketDepth)`. A value of `1` means the
+            fullest bucket has reached its capacity and the batch can no
+            longer accept writes that would land in that bucket.
         usable:
           description: Indicates whether the batch was discovered by the Bee node and has received sufficient on-chain confirmations
           type: boolean
