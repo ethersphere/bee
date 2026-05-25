@@ -535,10 +535,10 @@ components:
             the fullest bucket caps at `2^(depth - bucketDepth)` chunks, so
             the fractional usage of the batch is
             `utilization / 2^(depth - bucketDepth)` (also exposed directly as
-            `utilizedPercentage`). When the value reaches
+            `utilizationRatio`). When the value reaches
             `2^(depth - bucketDepth)` the batch is effectively full and any
             further write to the fullest bucket would overflow it.
-        utilizedPercentage:
+        utilizationRatio:
           type: number
           format: double
           minimum: 0

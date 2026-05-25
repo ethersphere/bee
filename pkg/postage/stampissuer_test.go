@@ -251,7 +251,7 @@ func TestUtilization(t *testing.T) {
 	}
 }
 
-func TestUtilizationPercentage(t *testing.T) {
+func TestUtilizationRatio(t *testing.T) {
 	t.Parallel()
 
 	// depth=17, bucketDepth=16 => fullest bucket caps at 2^(17-16)=2 chunks.
@@ -259,7 +259,7 @@ func TestUtilizationPercentage(t *testing.T) {
 
 	sti := postage.NewStampIssuer("label", "keyID", make([]byte, 32), big.NewInt(3), depth, bucketDepth, 0, true)
 
-	if got := sti.UtilizationPercentage(); got != 0 {
+	if got := sti.UtilizationRatio(); got != 0 {
 		t.Fatalf("empty issuer: want 0, got %v", got)
 	}
 
@@ -276,10 +276,10 @@ func TestUtilizationPercentage(t *testing.T) {
 	}
 
 	want := float64(sti.Utilization()) / math.Pow(2, float64(depth-bucketDepth))
-	if got := sti.UtilizationPercentage(); got != want {
+	if got := sti.UtilizationRatio(); got != want {
 		t.Fatalf("filled issuer: want %v, got %v", want, got)
 	}
-	if got := sti.UtilizationPercentage(); got != 1 {
+	if got := sti.UtilizationRatio(); got != 1 {
 		t.Fatalf("filled issuer should report 1, got %v", got)
 	}
 }
