@@ -248,7 +248,8 @@ func (g *decoder) runStrategy(s Strategy) error {
 		}(i)
 	}
 
-	for range c {
+	for range len(m) {
+		<-c
 		if g.fetchedCnt.Load() >= int32(g.shardCnt) {
 			return nil
 		}
@@ -257,7 +258,7 @@ func (g *decoder) runStrategy(s Strategy) error {
 		}
 	}
 
-	return nil
+	return errStrategyFailed
 }
 
 // recover wraps the stages of data shard recovery:
