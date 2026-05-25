@@ -1,0 +1,76 @@
+// Copyright 2026 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package config_test
+
+import (
+	"testing"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/go-storage-incentives-abi/abi"
+
+	"github.com/ethersphere/bee/v2/pkg/config"
+)
+
+func TestChainConfigBzzAddress(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		cfg  config.ChainConfig
+		want common.Address
+	}{
+		{
+			name: "mainnet",
+			cfg:  config.Mainnet,
+			want: common.HexToAddress(abi.MainnetBzzTokenAddress),
+		},
+		{
+			name: "testnet",
+			cfg:  config.Testnet,
+			want: common.HexToAddress(abi.TestnetBzzTokenAddress),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if (tc.want == common.Address{}) {
+				t.Fatal("expected a non-zero bzz token address")
+			}
+			if tc.cfg.BzzAddress != tc.want {
+				t.Fatalf("got bzz address %s, want %s", tc.cfg.BzzAddress, tc.want)
+			}
+		})
+	}
+}
+
+func TestGetByChainIDBzzAddress(t *testing.T) {
+	t.Parallel()
+
+	t.Run("known chain", func(t *testing.T) {
+		t.Parallel()
+
+		cfg, found := config.GetByChainID(config.Mainnet.ChainID)
+		if !found {
+			t.Fatal("expected mainnet to be a known chain")
+		}
+		if cfg.BzzAddress != common.HexToAddress(abi.MainnetBzzTokenAddress) {
+			t.Fatalf("got bzz address %s, want %s", cfg.BzzAddress, abi.MainnetBzzTokenAddress)
+		}
+	})
+
+	t.Run("unknown chain", func(t *testing.T) {
+		t.Parallel()
+
+		cfg, found := config.GetByChainID(-1)
+		if found {
+			t.Fatal("expected unknown chain to be reported as not found")
+		}
+		if (cfg.BzzAddress != common.Address{}) {
+			t.Fatalf("expected zero bzz address for unknown chain, got %s", cfg.BzzAddress)
+		}
+	})
+}

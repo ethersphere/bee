@@ -139,6 +139,7 @@ type Options struct {
 	BlockchainRpcTLSTimeout       time.Duration
 	BlockchainRpcIdleTimeout      time.Duration
 	BlockchainRpcKeepalive        time.Duration
+	BzzTokenAddress               string
 	BlockProfile                  bool
 	BlockTime                     time.Duration
 	BlockSyncInterval             uint64
@@ -393,6 +394,10 @@ func NewBee(
 
 	chainEnabled := isChainEnabled(o, o.BlockchainRpcEndpoint, logger)
 
+	if o.SwapEnable && !chainEnabled {
+		return nil, errors.New("swap is enabled but the chain backend is not; provide --blockchain-rpc-endpoint or disable swap")
+	}
+
 	var batchStore postage.Storer = new(postage.NoOpBatchStore)
 	var evictFn func([]byte) error
 
@@ -535,18 +540,25 @@ func NewBee(
 		}
 	}
 
+	chainCfg, found := config.GetByChainID(chainID)
+
+	bzzTokenAddress := chainCfg.BzzAddress
+	if o.BzzTokenAddress != "" {
+		if !common.IsHexAddress(o.BzzTokenAddress) {
+			return nil, errors.New("malformed bzz token address")
+		}
+		bzzTokenAddress = common.HexToAddress(o.BzzTokenAddress)
+	} else if chainEnabled && bzzTokenAddress == (common.Address{}) {
+		return nil, errors.New("no known bzz token address for this network; provide --bzz-token-address")
+	}
+
 	if o.SwapEnable {
 		chequebookFactory, err := InitChequebookFactory(logger, chainBackend, chainID, transactionService, o.SwapFactoryAddress)
 		if err != nil {
 			return nil, fmt.Errorf("init chequebook factory: %w", err)
 		}
 
-		erc20Address, err := chequebookFactory.ERC20Address(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("factory fail: %w", err)
-		}
-
-		erc20Service = erc20.New(transactionService, erc20Address)
+		erc20Service = erc20.New(transactionService, bzzTokenAddress)
 
 		if o.ChequebookEnable && chainEnabled {
 			chequebookService, err = InitChequebookService(
@@ -692,7 +704,6 @@ func NewBee(
 		eventListener               postage.Listener
 	)
 
-	chainCfg, found := config.GetByChainID(chainID)
 	postageStampContractAddress, postageSyncStart := chainCfg.PostageStampAddress, chainCfg.PostageStampStartBlock
 	if o.PostageContractAddress != "" {
 		if !common.IsHexAddress(o.PostageContractAddress) {
@@ -708,11 +719,6 @@ func NewBee(
 	}
 
 	postageStampContractABI := abiutil.MustParseABI(chainCfg.PostageStampABI)
-
-	bzzTokenAddress, err := postagecontract.LookupERC20Address(ctx, transactionService, postageStampContractAddress, postageStampContractABI, chainEnabled)
-	if err != nil {
-		return nil, fmt.Errorf("lookup erc20 postage address: %w", err)
-	}
 
 	// Compute gas limit for contract transactions: when TrxDebugMode is enabled,
 	// gas estimation is skipped and DefaultGasLimit is used for all contract calls.

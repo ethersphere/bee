@@ -50,6 +50,7 @@ const (
 	optionNamePaymentEarly                 = "payment-early-percent"
 	optionNameResolverEndpoints            = "resolver-options"
 	optionNameBootnodeMode                 = "bootnode-mode"
+	optionNameBzzTokenAddress              = "bzz-token-address"
 	optionNameSwapFactoryAddress           = "swap-factory-address"
 	optionNameSwapInitialDeposit           = "swap-initial-deposit"
 	optionNameSwapEnable                   = "swap-enable"
@@ -298,6 +299,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Duration(optionNameBlockchainRpcIdleTimeout, 90*time.Second, "blockchain rpc idle connection timeout")
 	cmd.Flags().Duration(optionNameBlockchainRpcKeepalive, 30*time.Second, "blockchain rpc TCP keepalive interval")
 	cmd.Flags().String(optionNameSwapFactoryAddress, "", "swap factory addresses")
+	cmd.Flags().String(optionNameBzzTokenAddress, "", "bzz token contract address (required on chains without a built-in default)")
 	cmd.Flags().String(optionNameSwapInitialDeposit, "0", "initial deposit if deploying a new chequebook")
 	cmd.Flags().Bool(optionNameSwapEnable, false, "enable swap")
 	cmd.Flags().Bool(optionNameChequebookEnable, true, "enable chequebook")
