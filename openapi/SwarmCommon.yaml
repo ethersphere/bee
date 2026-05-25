@@ -63,6 +63,8 @@ components:
           $ref: "#/components/schemas/BigInt"
         currentPrice:
           $ref: "#/components/schemas/BigInt"
+        minimumValidityBlocks:
+          type: integer
 
     PeerAccountingData:
       type: object
