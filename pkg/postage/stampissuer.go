@@ -227,6 +227,11 @@ func (si *StampIssuer) Utilization() uint32 {
 // A value of 1 means the most-filled bucket is full and any further write
 // to that bucket would overflow the batch.
 func (si *StampIssuer) UtilizationRatio() float64 {
+	// A valid batch always has BatchDepth >= BucketDepth; return 0 for any
+	// other combination so the ratio stays well-defined in [0, 1].
+	if si.data.BatchDepth < si.data.BucketDepth {
+		return 0
+	}
 	return float64(si.data.MaxBucketCount) / float64(uint64(1)<<(si.data.BatchDepth-si.data.BucketDepth))
 }
 

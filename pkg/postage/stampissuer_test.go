@@ -284,6 +284,17 @@ func TestUtilizationRatio(t *testing.T) {
 	}
 }
 
+func TestUtilizationRatioInvalidDepth(t *testing.T) {
+	t.Parallel()
+
+	// batchDepth < bucketDepth is an invalid combination; the ratio should
+	// stay well-defined and report 0.
+	sti := postage.NewStampIssuer("label", "keyID", make([]byte, 32), big.NewInt(3), 8, 16, 0, true)
+	if got := sti.UtilizationRatio(); got != 0 {
+		t.Fatalf("invalid depth: want 0, got %v", got)
+	}
+}
+
 func bytesToIndex(buf []byte) (bucket, index uint32) {
 	index64 := binary.BigEndian.Uint64(buf)
 	bucket = uint32(index64 >> 32)
