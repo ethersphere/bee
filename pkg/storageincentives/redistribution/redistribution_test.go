@@ -534,7 +534,7 @@ func TestClaim_sendsWithRetryOptions(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, expectedHash, h)
 	assert.EqualValues(t, 1, sendCalls.Load())
-	assert.Equal(t, 1, retryOptsLen, "Claim must pass WithIgnoreMaxPrice retry option")
+	assert.Equal(t, 2, retryOptsLen, "Claim must pass WithIgnoreMaxPrice and WithRetryDelay retry options")
 }
 
 func TestClaim_contextCanceled(t *testing.T) {
