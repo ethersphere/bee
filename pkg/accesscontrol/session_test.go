@@ -107,13 +107,11 @@ func TestSessionKeyFromKeystore(t *testing.T) {
 	assertNoError(t, "", err)
 	if !exists {
 		assert.FailNow(t, "Key1 should exist")
-
 	}
 	key1, created, err := ks.Key(tag1, password1, crypto.EDGSecp256_K1)
 	assertNoError(t, "", err)
 	if created {
 		assert.FailNow(t, "Key1 should not be created")
-
 	}
 
 	si2 := mock.NewFromKeystore(ks, tag2, password2, mockKeyFunc)

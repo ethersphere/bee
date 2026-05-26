@@ -888,12 +888,12 @@ func TestAddressBookPrune(t *testing.T) {
 }
 
 // test pruning addressbook after successive failed connect attempts
-func TestAddressBookQuickPrune_FLAKY(t *testing.T) {
+func TestAddressBookQuickPrune(t *testing.T) {
 	t.Parallel()
 
 	var (
-		conns, failedConns       int32 // how many connect calls were made to the p2p mock
-		base, kad, ab, _, signer = newTestKademlia(t, &conns, &failedConns, kademlia.Options{
+		failedConns              int32
+		base, kad, ab, _, signer = newTestKademlia(t, nil, &failedConns, kademlia.Options{
 			TimeToRetry: new(time.Millisecond),
 		})
 	)
@@ -914,24 +914,18 @@ func TestAddressBookQuickPrune_FLAKY(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	addr := swarm.RandAddressAt(t, base, 1)
-	// add one valid peer
-	addOne(t, signer, kad, ab, addr)
-	waitCounter(t, &conns, 1)
-	waitCounter(t, &failedConns, 0)
-
-	// add non connectable peer, check connection and failed connection counters
+	// add non connectable peer; AddPeers triggers the manage loop which
+	// immediately attempts to connect via connectBalanced (the peer is in
+	// bin 1 which is below storageRadius 2, so connectNeighbours skips it).
 	kad.AddPeers(nonConnPeer.Overlay)
-	waitCounter(t, &conns, 0)
-	waitCounter(t, &failedConns, 1)
 
-	// we need to trigger connection attempts maxConnAttempts times
-	for range 3 {
+	for range kademlia.MaxConnAttempts {
 		time.Sleep(10 * time.Millisecond)
 		kad.Trigger()
-		waitCounter(t, &failedConns, 1)
 	}
 
+	// after maxConnAttempts (4) failed dials the peer must be pruned
+	waitCounterAtLeast(t, &failedConns, int32(kademlia.MaxConnAttempts))
 	_, _, err = ab.Get(nonConnPeer.Overlay)
 	if !errors.Is(err, addressbook.ErrNotFound) {
 		t.Fatal(err)
@@ -1178,7 +1172,7 @@ func TestKademlia_SubscribeTopologyChange(t *testing.T) {
 	})
 }
 
-func TestSnapshot_FLAKY(t *testing.T) {
+func TestSnapshot(t *testing.T) {
 	t.Parallel()
 
 	conns := new(int32)
@@ -1193,7 +1187,8 @@ func TestSnapshot_FLAKY(t *testing.T) {
 
 	waitConn(t, conns)
 
-	snap := kad.Snapshot()
+	po := swarm.Proximity(sa.Bytes(), a.Bytes())
+	snap := waitSnapshot(t, kad, po, 1, 1, 1)
 
 	if snap.Connected != 1 {
 		t.Errorf("expected %d connected peers but got %d", 1, snap.Connected)
@@ -1201,9 +1196,6 @@ func TestSnapshot_FLAKY(t *testing.T) {
 	if snap.Population != 1 {
 		t.Errorf("expected population %d but got %d", 1, snap.Population)
 	}
-
-	po := swarm.Proximity(sa.Bytes(), a.Bytes())
-
 	if binP := getBinPopulation(&snap.Bins, po); binP != 1 {
 		t.Errorf("expected bin(%d) to have population %d but got %d", po, 1, snap.Population)
 	}
@@ -1236,7 +1228,6 @@ func TestStart(t *testing.T) {
 
 	t.Run("non-empty addressbook", func(t *testing.T) {
 		t.Parallel()
-		t.Skip("test flakes")
 
 		var conns, failedConns int32 // how many connect calls were made to the p2p mock
 		_, kad, ab, _, signer := newTestKademlia(t, &conns, &failedConns, kademlia.Options{Bootnodes: bootnodes})
@@ -1261,7 +1252,7 @@ func TestStart(t *testing.T) {
 		}
 		testutil.CleanupCloser(t, kad)
 
-		waitCounter(t, &conns, 3)
+		waitCounterAtLeast(t, &conns, 3)
 		waitCounter(t, &failedConns, 0)
 	})
 
@@ -1597,20 +1588,24 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 	}
 }
 
-func TestAnnounceBgBroadcast_FLAKY(t *testing.T) {
+func TestAnnounceBgBroadcast(t *testing.T) {
 	t.Parallel()
 
 	var (
-		conns  int32
-		bgDone = make(chan struct{})
-		p1, p2 = swarm.RandAddress(t), swarm.RandAddress(t)
-		disc   = mock.NewDiscovery(
+		conns     int32
+		bgStarted = make(chan struct{})
+		bgDone    = make(chan struct{})
+		startOnce sync.Once
+		doneOnce  sync.Once
+		p1, p2    = swarm.RandAddress(t), swarm.RandAddress(t)
+		disc      = mock.NewDiscovery(
 			mock.WithBroadcastPeers(func(ctx context.Context, p swarm.Address, _ ...swarm.Address) error {
 				// For the broadcast back to connected peer return early
 				if p.Equal(p2) {
 					return nil
 				}
-				defer close(bgDone)
+				startOnce.Do(func() { close(bgStarted) })
+				defer doneOnce.Do(func() { close(bgDone) })
 				<-ctx.Done()
 				return ctx.Err()
 			}),
@@ -1635,6 +1630,7 @@ func TestAnnounceBgBroadcast_FLAKY(t *testing.T) {
 	if err := kad.Announce(ctx, p2, true); err != nil {
 		t.Fatal(err)
 	}
+	waitChanClosed(t, bgStarted)
 
 	// cancellation should not close background broadcast
 	cancel()
@@ -1651,11 +1647,7 @@ func TestAnnounceBgBroadcast_FLAKY(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	select {
-	case <-bgDone:
-	case <-time.After(time.Millisecond * 100):
-		t.Fatal("background broadcast did not exit on close")
-	}
+	waitChanClosed(t, bgDone)
 }
 
 func TestAnnounceNeighborhoodToNeighbor(t *testing.T) {
@@ -1883,6 +1875,106 @@ func TestIteratorOpts(t *testing.T) {
 		}, topology.Select{Reachable: true, Healthy: true})
 		if err != nil {
 			t.Fatal("iterator returned error")
+		}
+	})
+}
+
+// TestIteratorBootnodes is a regression test for
+// https://github.com/ethersphere/bee/issues/5111: EachConnectedPeer must
+// exclude bootnodes by default (so protocol callers don't gossip to or query
+// them), but include them when the IncludeBootnodes Select flag is set (so
+// operator-facing /status and /status/peers agree with /peers).
+func TestIteratorBootnodes(t *testing.T) {
+	t.Parallel()
+
+	var (
+		conns                    int32
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{})
+	)
+
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	testutil.CleanupCloser(t, kad)
+
+	// Connect a handful of peers and mark every other one as a bootnode.
+	const peerCount = 6
+	all := make([]swarm.Address, 0, peerCount)
+	bootnodes := make(map[string]struct{})
+	for i := range peerCount {
+		addr := swarm.RandAddressAt(t, base, i%4)
+		connectOne(t, signer, kad, ab, addr, nil)
+		all = append(all, addr)
+		if i%2 == 0 {
+			kad.MarkAsBootnode(addr)
+			bootnodes[addr.ByteString()] = struct{}{}
+		}
+	}
+
+	collect := func(filter topology.Select) []swarm.Address {
+		var got []swarm.Address
+		if err := kad.EachConnectedPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+			got = append(got, addr)
+			return false, false, nil
+		}, filter); err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+
+	t.Run("default Select excludes bootnodes", func(t *testing.T) {
+		got := collect(topology.Select{})
+		for _, addr := range got {
+			if _, ok := bootnodes[addr.ByteString()]; ok {
+				t.Fatalf("default iterator returned bootnode %s", addr)
+			}
+		}
+		if want, have := peerCount-len(bootnodes), len(got); want != have {
+			t.Fatalf("default iterator: want %d non-bootnode peers, got %d", want, have)
+		}
+	})
+
+	t.Run("IncludeBootnodes returns the full set", func(t *testing.T) {
+		got := collect(topology.Select{IncludeBootnodes: true})
+		if want, have := len(all), len(got); want != have {
+			t.Fatalf("IncludeBootnodes iterator: want %d peers, got %d", want, have)
+		}
+		seen := make(map[string]struct{}, len(got))
+		for _, addr := range got {
+			seen[addr.ByteString()] = struct{}{}
+		}
+		for _, addr := range all {
+			if _, ok := seen[addr.ByteString()]; !ok {
+				t.Fatalf("IncludeBootnodes iterator missing peer %s", addr)
+			}
+		}
+	})
+
+	t.Run("EachConnectedPeerRev honors IncludeBootnodes", func(t *testing.T) {
+		var got []swarm.Address
+		if err := kad.EachConnectedPeerRev(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+			got = append(got, addr)
+			return false, false, nil
+		}, topology.Select{IncludeBootnodes: true}); err != nil {
+			t.Fatal(err)
+		}
+		if want, have := len(all), len(got); want != have {
+			t.Fatalf("Rev IncludeBootnodes iterator: want %d peers, got %d", want, have)
+		}
+	})
+
+	t.Run("EachConnectedPeerRev default excludes bootnodes", func(t *testing.T) {
+		var got []swarm.Address
+		if err := kad.EachConnectedPeerRev(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+			got = append(got, addr)
+			return false, false, nil
+		}, topology.Select{}); err != nil {
+			t.Fatal(err)
+		}
+		for _, addr := range got {
+			if _, ok := bootnodes[addr.ByteString()]; ok {
+				t.Fatalf("Rev default iterator returned bootnode %s", addr)
+			}
 		}
 	})
 }
@@ -2177,6 +2269,28 @@ func waitCounter(t *testing.T, conns *int32, exp int32) {
 	}
 }
 
+func waitCounterAtLeast(t *testing.T, conns *int32, exp int32) {
+	t.Helper()
+
+	timeout := time.After(spinLockWaitTime)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		got := atomic.LoadInt32(conns)
+		if got >= exp {
+			atomic.StoreInt32(conns, 0)
+			return
+		}
+		select {
+		case <-ticker.C:
+		case <-timeout:
+			t.Fatalf("timed out waiting for counter to reach at least expected value. got %d want >= %d", got, exp)
+			return
+		}
+	}
+}
+
 func waitPeers(t *testing.T, k *kademlia.Kad, peers int) {
 	t.Helper()
 
@@ -2218,6 +2332,42 @@ func waitBcast(t *testing.T, d *mock.Discovery, pivot swarm.Address, addrs ...sw
 	})
 	if err != nil {
 		t.Fatalf("timed out waiting for broadcast to happen")
+	}
+}
+
+func waitChanClosed(t *testing.T, ch <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-ch:
+		return
+	case <-time.After(spinLockWaitTime):
+		t.Fatal("timed out waiting for channel to close")
+	}
+}
+
+func waitSnapshot(t *testing.T, kad *kademlia.Kad, po uint8, connected, population, binPopulation uint64) *topology.KadParams {
+	t.Helper()
+
+	timeout := time.After(spinLockWaitTime)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		snap := kad.Snapshot()
+		if uint64(snap.Connected) == connected &&
+			uint64(snap.Population) == population &&
+			getBinPopulation(&snap.Bins, po) == binPopulation {
+			return snap
+		}
+		select {
+		case <-ticker.C:
+		case <-timeout:
+			t.Fatalf(
+				"timed out waiting for snapshot. got connected=%d population=%d binPopulation=%d want connected=%d population=%d binPopulation=%d",
+				snap.Connected, snap.Population, getBinPopulation(&snap.Bins, po),
+				connected, population, binPopulation,
+			)
+		}
 	}
 }
 

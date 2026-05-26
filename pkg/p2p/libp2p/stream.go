@@ -29,6 +29,7 @@ type stream struct {
 func newStream(s network.Stream, metrics metrics) *stream {
 	return &stream{Stream: s, metrics: metrics}
 }
+
 func (s *stream) Headers() p2p.Headers {
 	return s.headers
 }

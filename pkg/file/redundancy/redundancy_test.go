@@ -67,6 +67,7 @@ func (c *ParityChainWriter) ChainWrite(args *pipeline.PipeWriteArgs) error {
 	c.validCalls = append(c.validCalls, valid)
 	return nil
 }
+
 func (c *ParityChainWriter) Sum() ([]byte, error) {
 	c.Lock()
 	defer c.Unlock()

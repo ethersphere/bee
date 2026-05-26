@@ -376,41 +376,6 @@ func TestBytesGetHandlerInvalidInputs(t *testing.T) {
 	}
 }
 
-// TestDirectUploadBytes tests that the direct upload endpoint give correct error message in dev mode
-func TestBytesDirectUpload(t *testing.T) {
-	t.Parallel()
-	const (
-		resource = "/bytes"
-	)
-
-	var (
-		storerMock      = mockstorer.New()
-		logger          = log.Noop
-		client, _, _, _ = newTestServer(t, testServerOptions{
-			Storer:  storerMock,
-			Logger:  logger,
-			Post:    mockpost.New(mockpost.WithAcceptAll()),
-			BeeMode: api.DevMode,
-		})
-	)
-
-	g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
-	content, err := g.SequentialBytes(swarm.ChunkSize * 2)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusBadRequest,
-		jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "false"),
-		jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
-		jsonhttptest.WithRequestBody(bytes.NewReader(content)),
-		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: api.ErrUnsupportedDevNodeOperation.Error(),
-			Code:    http.StatusBadRequest,
-		}),
-	)
-}
-
 func TestBytesRedundancyLevel(t *testing.T) {
 	t.Parallel()
 

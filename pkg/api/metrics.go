@@ -84,7 +84,6 @@ func newMetrics() metrics {
 }
 
 func toFileSizeBucket(bytes int64) int64 {
-
 	for _, s := range fileSizeBucketsKBytes {
 		if (s * bytesInKB) >= bytes {
 			return s * bytesInKB

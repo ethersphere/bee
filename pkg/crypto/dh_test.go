@@ -89,5 +89,4 @@ func TestSharedKey(t *testing.T) {
 	if !bytes.Equal(sk, expectedSK) {
 		t.Fatalf("incorrect shared key: expected %v, got %x", expectedSK, sk)
 	}
-
 }

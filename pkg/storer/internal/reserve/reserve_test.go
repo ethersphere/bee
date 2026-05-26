@@ -469,7 +469,6 @@ func TestSameChunkAddress(t *testing.T) {
 			t.Fatalf("expected reserve size to increase by 2, got %d", size2-size1)
 		}
 	})
-
 }
 
 func TestReplaceOldIndex(t *testing.T) {

@@ -102,7 +102,6 @@ func (r OldRetrievalIndexItem) String() string {
 
 func RefCountSizeInc(s storage.BatchStore, logger log.Logger) func() error {
 	return func() error {
-
 		logger := logger.WithName("migration-RefCountSizeInc").Register()
 
 		logger.Info("starting migration of replacing chunkstore items to increase refCnt capacity")
@@ -129,7 +128,7 @@ func RefCountSizeInc(s storage.BatchStore, logger log.Logger) func() error {
 			b := s.Batch(context.Background())
 			for _, item := range itemsToDelete[i:end] {
 
-				//create new
+				// create new
 				err = b.Put(&chunkstore.RetrievalIndexItem{
 					Address:   item.Address,
 					Timestamp: item.Timestamp,

@@ -16,9 +16,7 @@ import (
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
 
-var (
-	erc20ABI = abiutil.MustParseABI(sw3abi.ERC20ABIv0_6_9)
-)
+var erc20ABI = abiutil.MustParseABI(sw3abi.ERC20ABIv0_6_9)
 
 func TestBalanceOf(t *testing.T) {
 	t.Parallel()

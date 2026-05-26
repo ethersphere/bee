@@ -18,6 +18,7 @@ type stakingContractMock struct {
 	withdrawAllStake func(ctx context.Context) (common.Hash, error)
 	migrateStake     func(ctx context.Context) (common.Hash, error)
 	isFrozen         func(ctx context.Context, block uint64) (bool, error)
+	updateHeight     func(ctx context.Context) (common.Hash, bool, error)
 }
 
 func (s *stakingContractMock) DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
@@ -28,7 +29,10 @@ func (s *stakingContractMock) ChangeStakeOverlay(_ context.Context, h common.Has
 	return h, nil
 }
 
-func (s *stakingContractMock) UpdateHeight(_ context.Context) (common.Hash, bool, error) {
+func (s *stakingContractMock) UpdateHeight(ctx context.Context) (common.Hash, bool, error) {
+	if s.updateHeight != nil {
+		return s.updateHeight(ctx)
+	}
 	return common.Hash{}, false, nil
 }
 
@@ -93,5 +97,11 @@ func WithMigrateStake(f func(ctx context.Context) (common.Hash, error)) Option {
 func WithIsFrozen(f func(ctx context.Context, block uint64) (bool, error)) Option {
 	return func(mock *stakingContractMock) {
 		mock.isFrozen = f
+	}
+}
+
+func WithUpdateHeight(f func(ctx context.Context) (common.Hash, bool, error)) Option {
+	return func(mock *stakingContractMock) {
+		mock.updateHeight = f
 	}
 }

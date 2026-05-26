@@ -22,9 +22,7 @@ import (
 // loggerName is the tree path name of the logger for this package.
 const loggerName = "priceoracle"
 
-var (
-	errDecodeABI = errors.New("could not decode abi data")
-)
+var errDecodeABI = errors.New("could not decode abi data")
 
 type service struct {
 	logger             log.Logger
@@ -46,9 +44,7 @@ type Service interface {
 	Start()
 }
 
-var (
-	priceOracleABI = abiutil.MustParseABI(priceoracleabi.PriceOracleABIv0_6_9)
-)
+var priceOracleABI = abiutil.MustParseABI(priceoracleabi.PriceOracleABIv0_6_9)
 
 func New(logger log.Logger, priceOracleAddress common.Address, transactionService transaction.Service, timeDivisor int64) Service {
 	return &service{

@@ -144,7 +144,6 @@ func (s *service) salud(mode string, durPercentile float64, connsPercentile floa
 
 	err := s.topology.EachConnectedPeer(func(addr swarm.Address, bin uint8) (stop bool, jumpToNext bool, err error) {
 		wg.Go(func() {
-
 			ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 			defer cancel()
 

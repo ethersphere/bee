@@ -194,7 +194,6 @@ func testDebugInfo(t *testing.T, newStorer func() (*storer.DB, swarm.Address, er
 			t.Fatalf("invalid info (+want -have):\n%s", diff)
 		}
 	})
-
 }
 
 func TestDebugInfo(t *testing.T) {

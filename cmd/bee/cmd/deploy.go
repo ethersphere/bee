@@ -59,6 +59,7 @@ func (c *command) initDeployCmd() error {
 					IdleTimeout: c.config.GetDuration(configKeyBlockchainRpcIdleTimeout),
 					Keepalive:   c.config.GetDuration(configKeyBlockchainRpcKeepalive),
 				},
+				c.config.GetUint64(optionNameBlockSyncInterval),
 			)
 			if err != nil {
 				return err

@@ -66,7 +66,6 @@ const (
 
 // checkOverlay checks the overlay is the same as stored in the statestore
 func checkOverlay(storer storage.StateStorer, overlay swarm.Address) error {
-
 	var storedOverlay swarm.Address
 	err := storer.Get(noncedOverlayKey, &storedOverlay)
 	if err != nil {

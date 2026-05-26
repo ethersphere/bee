@@ -326,7 +326,6 @@ func TestNetStore(t *testing.T) {
 		t.Parallel()
 
 		testNetStore(t, func(r retrieval.Interface) (*storer.DB, error) {
-
 			opts := dbTestOps(swarm.RandAddress(t), 0, nil, nil, time.Second)
 			opts.CacheCapacity = 100
 
