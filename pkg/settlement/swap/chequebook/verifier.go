@@ -41,8 +41,6 @@ func VerifyErrorLabel(err error) string {
 	return "verify_error"
 }
 
-const MinChequebookBalanceValue = 110_000_000_000_000_000
-
 // Verifier runs the chequebook checks from the spec: issuer match, deployed
 // bytecode hash, minimum balance, and uniqueness. When the addressbook already
 // holds an entry for (overlay, chequebook), the issuer and bytecode RPCs are
