@@ -47,7 +47,7 @@ import (
 	resolverMock "github.com/ethersphere/bee/v2/pkg/resolver/mock"
 	"github.com/ethersphere/bee/v2/pkg/settlement/pseudosettle"
 	chequebookmock "github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook/mock"
-	"github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20"
+	erc20pkg "github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20"
 	erc20mock "github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20/mock"
 	swapmock "github.com/ethersphere/bee/v2/pkg/settlement/swap/mock"
 	"github.com/ethersphere/bee/v2/pkg/spinlock"
@@ -135,6 +135,7 @@ type testServerOptions struct {
 	FullAPIDisabled     bool
 	ChequebookDisabled  bool
 	SwapDisabled        bool
+	Erc20ServiceNil     bool
 }
 
 func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.Conn, string, *chanStorer) {
@@ -181,6 +182,10 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		o.StateStorer = storeRecipient
 	}
 	erc20 := erc20mock.New(o.Erc20Opts...)
+	var erc20APIService erc20pkg.Service = erc20
+	if o.Erc20ServiceNil {
+		erc20APIService = nil
+	}
 	backend := backendmock.New(o.BackendOpts...)
 
 	extraOpts := api.ExtraOptions{
@@ -234,7 +239,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	s.Configure(signer, noOpTracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
 		WsPingPeriod:       o.WsPingPeriod,
-	}, extraOpts, 1, erc20)
+	}, extraOpts, 1, erc20APIService)
 
 	s.Mount()
 	if !o.FullAPIDisabled {
@@ -666,7 +671,7 @@ func createRedistributionAgentService(
 	t *testing.T,
 	addr swarm.Address,
 	storer storage.StateStorer,
-	erc20Service erc20.Service,
+	erc20Service erc20pkg.Service,
 	tranService transaction.Service,
 	backend storageincentives.ChainBackend,
 	chainStateGetter postage.ChainStateGetter,

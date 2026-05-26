@@ -37,7 +37,7 @@ func (s *Service) walletHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bzz := new(big.Int)
+	var bzz *big.Int
 	if s.erc20Service != nil {
 		bzz, err = s.erc20Service.BalanceOf(r.Context(), s.ethereumAddress)
 		if err != nil {
