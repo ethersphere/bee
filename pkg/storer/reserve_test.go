@@ -536,6 +536,35 @@ func TestRadiusManager(t *testing.T) {
 		}
 		waitForRadius(t, storer.Reserve(), 0)
 	})
+
+	t.Run("radius stops at minimum_radius", func(t *testing.T) {
+		t.Parallel()
+		opts := dbTestOps(baseAddr, 10, nil, nil, time.Millisecond*500)
+		opts.MinimumStorageRadius = 2
+		storer, err := diskStorer(t, opts)()
+		if err != nil {
+			t.Fatal(err)
+		}
+		readyC := make(chan struct{})
+		// An empty reserve at network radius 3 would normally let the worker
+		// decrement all the way to 0. With MinimumStorageRadius=2 the floor
+		// must hold: the two-step branch has to downgrade to a single step
+		// (because radius-1 == minimumRadius), and once radius reaches the
+		// floor the top-level guard must block any further decrement.
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(3), readyC)
+		select {
+		case <-readyC:
+		case <-t.Context().Done():
+			t.Fatal("start reserve worker timeout")
+		}
+		waitForRadius(t, storer.Reserve(), 2)
+
+		// Hold across several wake-up cycles to confirm the floor sticks.
+		time.Sleep(time.Millisecond * 500 * 3)
+		if got := storer.Reserve().Radius(); got != 2 {
+			t.Fatalf("radius dropped below minimum: want %d, got %d", 2, got)
+		}
+	})
 }
 
 func TestSubscribeBin(t *testing.T) {
