@@ -182,9 +182,9 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		o.StateStorer = storeRecipient
 	}
 	erc20 := erc20mock.New(o.Erc20Opts...)
-	var erc20APIService erc20pkg.Service = erc20
-	if o.Erc20ServiceNil {
-		erc20APIService = nil
+	var erc20APIService erc20pkg.Service
+	if !o.Erc20ServiceNil {
+		erc20APIService = erc20
 	}
 	backend := backendmock.New(o.BackendOpts...)
 
