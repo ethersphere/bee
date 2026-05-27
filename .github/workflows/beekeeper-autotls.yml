@@ -22,6 +22,13 @@ on:
         description: "beelocal repo branch (cluster setup)"
         required: false
         default: "main"
+  # TEMPORARY: lets this PR validate the workflow before it reaches master
+  # (workflow_dispatch is only available once the file is on the default branch).
+  # Remove before merge. Note: inputs are empty under pull_request, so the env
+  # fallbacks below apply (BEEKEEPER_BRANCH=master, BEELOCAL_BRANCH=main).
+  pull_request:
+    paths:
+      - .github/workflows/beekeeper-autotls.yml
 
 env:
   K3S_VERSION: "v1.31.10+k3s1"
@@ -31,8 +38,8 @@ env:
   # Default to the upstream branches; override per-run via the workflow inputs
   # (e.g. point at the feature branches that define the local-dns-autotls cluster
   # and the ci-autotls check until that support is merged upstream).
-  BEELOCAL_BRANCH: ${{ inputs.beelocal_branch }}
-  BEEKEEPER_BRANCH: ${{ inputs.beekeeper_branch }}
+  BEELOCAL_BRANCH: ${{ inputs.beelocal_branch || 'main' }}
+  BEEKEEPER_BRANCH: ${{ inputs.beekeeper_branch || 'master' }}
   BEEKEEPER_METRICS_ENABLED: false
   REACHABILITY_OVERRIDE_PUBLIC: true
   BATCHFACTOR_OVERRIDE_PUBLIC: 2
@@ -73,11 +80,6 @@ jobs:
           path: |
             /tmp/k3s-${{ env.K3S_VERSION }}
           key: k3s-${{ env.K3S_VERSION }}
-      - name: Get Commit Message
-        id: commit
-        run: |
-          MSG=$(git log --format=%s -n 1 ${{ github.sha }})
-          echo "msg=${MSG}" >> $GITHUB_OUTPUT
       - name: Build bee
         run: |
           patch pkg/api/postage.go .github/patches/postage_api.patch
