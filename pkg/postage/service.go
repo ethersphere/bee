@@ -46,6 +46,7 @@ type Service interface {
 	StampIssuers() []*StampIssuer
 	GetStampIssuer([]byte) (*StampIssuer, func() error, error)
 	IssuerUsable(*StampIssuer) bool
+	UpdateIssuerLabel([]byte, string) error
 	BatchEventListener
 	BatchExpiryHandler
 	io.Closer
@@ -245,6 +246,20 @@ func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func() error, e
 		}
 	}
 	return nil, nil, ErrNotFound
+}
+
+// UpdateIssuerLabel updates the label of the stamp issuer with the given batch ID and persists the change.
+func (ps *service) UpdateIssuerLabel(batchID []byte, label string) error {
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
+
+	for _, st := range ps.issuers {
+		if bytes.Equal(batchID, st.data.BatchID) {
+			st.data.Label = label
+			return ps.save(st)
+		}
+	}
+	return ErrNotFound
 }
 
 // save persists the specified stamp issuer to the stamperstore.

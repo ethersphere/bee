@@ -1207,3 +1207,121 @@ func Test_postageDiluteHandler_invalidInputs(t *testing.T) {
 		})
 	}
 }
+
+func TestPostageUpdateLabelStamp(t *testing.T) {
+	t.Parallel()
+
+	batchID := batchOk
+	batchIDStr := batchOkStr
+	updatePath := "/stamps/" + batchIDStr
+
+	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
+		si := postage.NewStampIssuer("original", "test identity", batchID, big.NewInt(3), 24, 6, 1000, false)
+		mp := mockpost.New(mockpost.WithIssuer(si))
+		ts, _, _, _ := newTestServer(t, testServerOptions{
+			Post: mp,
+		})
+
+		jsonhttptest.Request(t, ts, http.MethodPatch, updatePath, http.StatusOK,
+			jsonhttptest.WithRequestHeader("Content-Type", "application/json"),
+			jsonhttptest.WithRequestBody(bytes.NewBufferString(`{"label":"updated"}`)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{Code: http.StatusOK, Message: "OK"}),
+		)
+	})
+
+	t.Run("not-found", func(t *testing.T) {
+		t.Parallel()
+
+		mp := mockpost.New()
+		ts, _, _, _ := newTestServer(t, testServerOptions{
+			Post: mp,
+		})
+
+		jsonhttptest.Request(t, ts, http.MethodPatch, updatePath, http.StatusNotFound,
+			jsonhttptest.WithRequestHeader("Content-Type", "application/json"),
+			jsonhttptest.WithRequestBody(bytes.NewBufferString(`{"label":"updated"}`)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{Code: http.StatusNotFound, Message: "issuer does not exist"}),
+		)
+	})
+
+	t.Run("invalid-body", func(t *testing.T) {
+		t.Parallel()
+
+		si := postage.NewStampIssuer("original", "test identity", batchID, big.NewInt(3), 24, 6, 1000, false)
+		mp := mockpost.New(mockpost.WithIssuer(si))
+		ts, _, _, _ := newTestServer(t, testServerOptions{
+			Post: mp,
+		})
+
+		jsonhttptest.Request(t, ts, http.MethodPatch, updatePath, http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader("Content-Type", "application/json"),
+			jsonhttptest.WithRequestBody(bytes.NewBufferString(`not-json`)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{Code: http.StatusBadRequest, Message: "invalid request body"}),
+		)
+	})
+}
+
+//nolint:tparallel
+func Test_postageUpdateLabelHandler_invalidInputs(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{})
+
+	tests := []struct {
+		name    string
+		batchID string
+		want    jsonhttp.StatusResponse
+	}{{
+		name:    "batch_id - odd hex string",
+		batchID: "123",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "batch_id",
+					Error: api.ErrHexLength.Error(),
+				},
+			},
+		},
+	}, {
+		name:    "batch_id - invalid hex character",
+		batchID: "123G",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "batch_id",
+					Error: api.HexInvalidByteError('G').Error(),
+				},
+			},
+		},
+	}, {
+		name:    "batch_id - invalid length",
+		batchID: "1234",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "batch_id",
+					Error: "want len:32",
+				},
+			},
+		},
+	}}
+
+	//nolint:paralleltest
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			jsonhttptest.Request(t, client, http.MethodPatch, "/stamps/"+tc.batchID, tc.want.Code,
+				jsonhttptest.WithRequestHeader("Content-Type", "application/json"),
+				jsonhttptest.WithRequestBody(bytes.NewBufferString(`{"label":"x"}`)),
+				jsonhttptest.WithExpectedJSONResponse(tc.want),
+			)
+		})
+	}
+}
