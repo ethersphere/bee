@@ -18,7 +18,20 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
+          cache: false
           go-version-file: go.mod
+      - name: Cache Go modules and build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-release-${{ hashFiles('**/go.sum') }}
+          # Cross-compilation recompiles deps per architecture; seed from the
+          # most recent build cache so each release is incremental, not cold.
+          restore-keys: |
+            ${{ runner.os }}-go-release-
+            ${{ runner.os }}-go-
       - name: Docker Hub and Quay Login
         run: |
           printf ${{ secrets.DOCKERHUB_PASSWORD }} | docker login --username ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
