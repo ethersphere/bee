@@ -4,4 +4,10 @@
 
 package bzz
 
-const UnderlayListPrefix = underlayListPrefix
+const (
+	UnderlayListPrefix  = underlayListPrefix
+	MaxUnderlaysPerPeer = maxUnderlaysPerPeer
+	MaxUnderlayBytes    = maxUnderlayBytes
+)
+
+var GenerateSignData = generateSignData

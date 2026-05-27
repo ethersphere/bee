@@ -148,6 +148,8 @@ type Options struct {
 	AutoTLSCAEndpoint             string
 	ChainID                       int64
 	ChequebookEnable              bool
+	ChequebookVerification        bool
+	ChequebookMinBalance          string
 	CORSAllowedOrigins            []string
 	DataDir                       string
 	DBBlockCacheCapacity          uint64
@@ -395,6 +397,10 @@ func NewBee(
 
 	if o.SwapEnable && !chainEnabled {
 		return nil, errors.New("swap is enabled but the chain backend is not; provide --blockchain-rpc-endpoint or disable swap")
+	}
+
+	if o.ChequebookVerification && (!o.FullNodeMode || !o.ChequebookEnable || !chainEnabled) {
+		return nil, fmt.Errorf("chequebook-verification requires full-node mode, chequebook-enable, and an enabled chain backend (full_node=%t, chequebook_enable=%t, chain_enabled=%t)", o.FullNodeMode, o.ChequebookEnable, chainEnabled)
 	}
 
 	var batchStore postage.Storer = new(postage.NoOpBatchStore)
@@ -667,7 +673,29 @@ func NewBee(
 		registry = apiService.MetricsRegistry()
 	}
 
-	p2ps, err := libp2p.New(ctx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
+	chainCfg, found := config.GetByChainID(chainID)
+
+	var (
+		cbVerifier chequebook.Verifier
+		cbRegistry *chequebook.Registry
+	)
+	if o.ChequebookVerification {
+		minBalance, ok := new(big.Int).SetString(o.ChequebookMinBalance, 10)
+		if !ok {
+			return nil, fmt.Errorf("chequebook min balance %q cannot be parsed as base-10 integer", o.ChequebookMinBalance)
+		}
+		cbRegistry = chequebook.NewRegistry()
+		var err error
+		cbVerifier, err = chequebook.NewVerifier(transactionService, chainBackend, cbRegistry, chequebook.VerifierConfig{
+			AcceptedBytecodeHashes: chainCfg.AcceptedChequebookBytecodeHashes,
+			MinBalance:             minBalance,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("new chequebook verifier: %w", err)
+		}
+	}
+
+	libp2pOpts := libp2p.Options{
 		PrivateKey:                  libp2pPrivateKey,
 		NATAddr:                     o.NATAddr,
 		NATWSSAddr:                  o.NATWSSAddr,
@@ -681,9 +709,14 @@ func NewBee(
 		WelcomeMessage:              o.WelcomeMessage,
 		FullNode:                    o.FullNodeMode,
 		Nonce:                       nonce,
-		ValidateOverlay:             chainEnabled,
+		AllowPrivateCIDRs:           o.AllowPrivateCIDRs,
 		Registry:                    registry,
-	})
+		ChequebookVerifier:          cbVerifier,
+	}
+	if cbRegistry != nil {
+		libp2pOpts.ChequebookStorer = cbRegistry
+	}
+	p2ps, err := libp2p.New(ctx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2pOpts)
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
 	}
@@ -692,6 +725,11 @@ func NewBee(
 
 	b.p2pService = p2ps
 	b.p2pHalter = p2ps
+
+	// Publish the local chequebook so handshake records carry it.
+	// noOpChequebookService returns the zero address — meaning "absent" by
+	// construction, so no conditional is needed here.
+	p2ps.SetChequebookAddress(chequebookService.Address())
 
 	post, err := postage.NewService(logger, stamperStore, batchStore, chainID, wasClean)
 	if err != nil {
@@ -706,7 +744,6 @@ func NewBee(
 		eventListener               postage.Listener
 	)
 
-	chainCfg, found := config.GetByChainID(chainID)
 	postageStampContractAddress, postageSyncStart := chainCfg.PostageStampAddress, chainCfg.PostageStampStartBlock
 	if o.PostageContractAddress != "" {
 		if !common.IsHexAddress(o.PostageContractAddress) {
@@ -762,7 +799,15 @@ func NewBee(
 		return nil, fmt.Errorf("pingpong service: %w", err)
 	}
 
-	hive := hive.New(p2ps, addressbook, networkID, o.BootnodeMode, o.AllowPrivateCIDRs, swarmAddress, logger)
+	hiveOpts := hive.Options{
+		BootnodeMode:       o.BootnodeMode,
+		AllowPrivateCIDRs:  o.AllowPrivateCIDRs,
+		ChequebookVerifier: cbVerifier,
+	}
+	if cbRegistry != nil {
+		hiveOpts.ChequebookStorer = cbRegistry
+	}
+	hive := hive.New(p2ps, addressbook, networkID, swarmAddress, logger, hiveOpts)
 
 	if err = p2ps.AddProtocol(hive.Protocol()); err != nil {
 		return nil, fmt.Errorf("hive service: %w", err)
