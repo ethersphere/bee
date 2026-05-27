@@ -244,17 +244,10 @@ github.com/ethereum/c-kzg-4844/v2 v2.1.6/go.mod h1:8HMkUZ5JRv4hpw/XUrYWSQNAUzhHM
 github.com/ethereum/go-bigmodexpfix v0.0.0-20250911101455-f9e208c548ab h1:rvv6MJhy07IMfEKuARQ9TKojGqLVNxQajaXEp/BoqSk=
 github.com/ethereum/go-bigmodexpfix v0.0.0-20250911101455-f9e208c548ab/go.mod h1:IuLm4IsPipXKF7CW5Lzf68PIbZ5yl7FFd74l/E0o9A8=
 github.com/ethereum/go-ethereum v1.10.4/go.mod h1:nEE0TP5MtxGzOMd7egIrbPJMQBnhVU3ELNxhBglIzhg=
-<<<<<<< HEAD
-github.com/ethereum/go-ethereum v1.17.0 h1:2D+1Fe23CwZ5tQoAS5DfwKFNI1HGcTwi65/kRlAVxes=
-github.com/ethereum/go-ethereum v1.17.0/go.mod h1:2W3msvdosS/MCWytpqTcqgFiRYbTH59FxDJzqah120o=
-github.com/ethersphere/batch-archive v0.0.7 h1:vb616eZIU5znxYiUSIBrPBD3/T4scEBNbj8qJjBbsUg=
-github.com/ethersphere/batch-archive v0.0.7/go.mod h1:41BPb192NoK9CYjNB8BAE1J2MtiI/5aq0Wtas5O7A7Q=
-=======
 github.com/ethereum/go-ethereum v1.17.3 h1:Ev/sQHH+UdKZHWjuVzhu2pxhi/sXaPZl23Q+Q5LDd4Q=
 github.com/ethereum/go-ethereum v1.17.3/go.mod h1:f2EhRwqewIZkGoQekywI2Y2RZAMTSavLNkD9qItFy1A=
-github.com/ethersphere/batch-archive v0.0.6 h1:Nt9mundj8CXT42qgGdq1sqKIVOk4KkKC438/FFZdONY=
-github.com/ethersphere/batch-archive v0.0.6/go.mod h1:41BPb192NoK9CYjNB8BAE1J2MtiI/5aq0Wtas5O7A7Q=
->>>>>>> 0b09da1f (chore: bump geth)
+github.com/ethersphere/batch-archive v0.0.7 h1:vb616eZIU5znxYiUSIBrPBD3/T4scEBNbj8qJjBbsUg=
+github.com/ethersphere/batch-archive v0.0.7/go.mod h1:41BPb192NoK9CYjNB8BAE1J2MtiI/5aq0Wtas5O7A7Q=
 github.com/ethersphere/go-price-oracle-abi v0.6.9 h1:bseen6he3PZv5GHOm+KD6s4awaFmVSD9LFx+HpB6rCU=
 github.com/ethersphere/go-price-oracle-abi v0.6.9/go.mod h1:sI/Qj4/zJ23/b1enzwMMv0/hLTpPNVNacEwCWjo6yBk=
 github.com/ethersphere/go-storage-incentives-abi v0.9.4 h1:mSIWXQXg5OQmH10QvXMV5w0vbSibFMaRlBL37gPLTM0=
