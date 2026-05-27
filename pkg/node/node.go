@@ -395,6 +395,10 @@ func NewBee(
 
 	chainEnabled := isChainEnabled(o, o.BlockchainRpcEndpoint, logger)
 
+	if o.SwapEnable && !chainEnabled {
+		return nil, errors.New("swap is enabled but the chain backend is not; provide --blockchain-rpc-endpoint or disable swap")
+	}
+
 	if o.ChequebookVerification && (!o.FullNodeMode || !o.ChequebookEnable || !chainEnabled) {
 		return nil, fmt.Errorf("chequebook-verification requires full-node mode, chequebook-enable, and an enabled chain backend (full_node=%t, chequebook_enable=%t, chain_enabled=%t)", o.FullNodeMode, o.ChequebookEnable, chainEnabled)
 	}
@@ -541,46 +545,56 @@ func NewBee(
 		}
 	}
 
-	if o.SwapEnable {
-		chequebookFactory, err := InitChequebookFactory(logger, chainBackend, chainID, transactionService, o.SwapFactoryAddress)
-		if err != nil {
-			return nil, fmt.Errorf("init chequebook factory: %w", err)
+	if chainEnabled {
+		chequebookFactory, ferr := InitChequebookFactory(logger, chainBackend, chainID, transactionService, o.SwapFactoryAddress)
+		if o.SwapEnable && ferr != nil {
+			return nil, fmt.Errorf("init chequebook factory: %w", ferr)
 		}
 
-		erc20Address, err := chequebookFactory.ERC20Address(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("factory fail: %w", err)
+		if ferr == nil {
+			erc20Address, err := chequebookFactory.ERC20Address(ctx)
+			if err != nil {
+				if o.SwapEnable {
+					return nil, fmt.Errorf("factory fail: %w", err)
+				}
+				logger.Warning("unable to resolve ERC20 token address; BZZ balance will be unavailable via /wallet", "error", err)
+			} else {
+				erc20Service = erc20.New(transactionService, erc20Address)
+			}
+		} else {
+			logger.Warning("unable to init chequebook factory; BZZ balance will be unavailable via /wallet", "error", ferr)
 		}
 
-		erc20Service = erc20.New(transactionService, erc20Address)
+		if o.SwapEnable {
+			if o.ChequebookEnable {
+				var err error
+				chequebookService, err = InitChequebookService(
+					ctx,
+					logger,
+					stateStore,
+					signer,
+					chainID,
+					chainBackend,
+					overlayEthAddress,
+					transactionService,
+					chequebookFactory,
+					o.SwapInitialDeposit,
+					erc20Service,
+				)
+				if err != nil {
+					return nil, fmt.Errorf("init chequebook service: %w", err)
+				}
+			}
 
-		if o.ChequebookEnable && chainEnabled {
-			chequebookService, err = InitChequebookService(
-				ctx,
-				logger,
+			chequeStore, cashoutService = initChequeStoreCashout(
 				stateStore,
-				signer,
-				chainID,
 				chainBackend,
+				chequebookFactory,
+				chainID,
 				overlayEthAddress,
 				transactionService,
-				chequebookFactory,
-				o.SwapInitialDeposit,
-				erc20Service,
 			)
-			if err != nil {
-				return nil, fmt.Errorf("init chequebook service: %w", err)
-			}
 		}
-
-		chequeStore, cashoutService = initChequeStoreCashout(
-			stateStore,
-			chainBackend,
-			chequebookFactory,
-			chainID,
-			overlayEthAddress,
-			transactionService,
-		)
 	}
 
 	lightNodes := lightnode.NewContainer(swarmAddress)
