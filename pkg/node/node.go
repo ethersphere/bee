@@ -552,13 +552,15 @@ func NewBee(
 		return nil, errors.New("no known bzz token address for this network; provide --bzz-token-address")
 	}
 
+	if chainEnabled {
+		erc20Service = erc20.New(transactionService, bzzTokenAddress)
+	}
+
 	if o.SwapEnable {
 		chequebookFactory, err := InitChequebookFactory(logger, chainBackend, chainID, transactionService, o.SwapFactoryAddress)
 		if err != nil {
 			return nil, fmt.Errorf("init chequebook factory: %w", err)
 		}
-
-		erc20Service = erc20.New(transactionService, bzzTokenAddress)
 
 		if o.ChequebookEnable && chainEnabled {
 			chequebookService, err = InitChequebookService(

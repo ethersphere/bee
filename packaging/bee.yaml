@@ -141,3 +141,5 @@ password-file: "/var/lib/bee/password"
 # autotls-registration-endpoint: ""
 ## autotls ca endpoint (default: https://acme-v02.api.letsencrypt.org/directory)
 # autotls-ca-endpoint: ""
+## SIMD BMT hashing opt-in flag (only available on linux amd64)
+# use-simd-hashing: false
