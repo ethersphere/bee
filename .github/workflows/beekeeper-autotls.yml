@@ -1,0 +1,137 @@
+# AutoTLS Beekeeper integration tests.
+#
+# This workflow intentionally does NOT run on every push/PR commit (the AutoTLS
+# cluster is slow to spin up). It runs in two situations only:
+#
+#   1. merge_group     - when a PR enters the merge queue ("Merge when ready").
+#                        It tests the PR merged on top of master; if it fails the
+#                        PR is ejected from the queue and stays unmerged.
+#   2. workflow_dispatch - ad-hoc manual run from the Actions tab against any
+#                          branch (pick it in the "Use workflow from" dropdown,
+#                          or pass an explicit ref input).
+#
+# To make a failure actually block the merge, enable a merge queue on `master`
+# (Settings -> Rules/Branch protection) and add the "Integration tests (autotls)"
+# job below as a required status check. This is a one-time repo-admin action.
+name: Beekeeper AutoTLS
+
+on:
+  merge_group:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch/tag/SHA to test (defaults to the branch selected above)"
+        required: false
+        default: ""
+
+env:
+  K3S_VERSION: "v1.31.10+k3s1"
+  REPLICA: 3
+  RUN_TYPE: "AUTOTLS RUN"
+  SETUP_CONTRACT_IMAGE: "ethersphere/bee-localchain"
+  SETUP_CONTRACT_IMAGE_TAG: "0.9.4"
+  # NOTE: until AutoTLS support is merged upstream, point these at the
+  # beelocal/beekeeper feature branches that define the local-dns-autotls
+  # cluster and the ci-autotls check.
+  BEELOCAL_BRANCH: "main"
+  BEEKEEPER_BRANCH: "master"
+  BEEKEEPER_METRICS_ENABLED: false
+  REACHABILITY_OVERRIDE_PUBLIC: true
+  BATCHFACTOR_OVERRIDE_PUBLIC: 2
+  TIMEOUT: 30m
+  BUCKET_NAME: swarm-beekeeper-artifacts
+  AWS_ACCESS_KEY_ID: ${{ secrets.DO_AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_AWS_SECRET_ACCESS_KEY }}
+  AWS_EC2_METADATA_DISABLED: true
+  AWS_ENDPOINT: fra1.digitaloceanspaces.com
+  VERTAG: ${GITHUB_RUN_ID}
+  P2P_WSS_ENABLE: true
+  PEBBLE_IMAGE_TAG: "2.9.0"
+  P2P_FORGE_IMAGE_TAG: "v0.7.0"
+  PEBBLE_CERTIFICATE_VALIDITY_PERIOD: "500"
+
+jobs:
+  beekeeper-autotls:
+    name: Integration tests (autotls)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          # workflow_dispatch: explicit input wins, else the branch picked in the UI.
+          # merge_group: falls through to the merge-queue ref (PR merged onto master).
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref != '' && inputs.ref || github.ref }}
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          cache: false
+          go-version-file: go.mod
+      - name: Cache Go Modules
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+      - name: Cache k3s
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: |
+            /tmp/k3s-${{ env.K3S_VERSION }}
+          key: k3s-${{ env.K3S_VERSION }}
+      - name: Get Commit Message
+        id: commit
+        run: |
+          MSG=$(git log --format=%s -n 1 ${{ github.sha }})
+          echo "msg=${MSG}" >> $GITHUB_OUTPUT
+      - name: Build bee
+        run: |
+          patch pkg/api/postage.go .github/patches/postage_api.patch
+          patch pkg/retrieval/retrieval.go .github/patches/retrieval.patch
+          make binary
+          mv dist/bee bee
+      - name: Install beekeeper
+        run: |
+          export PATH=$(pwd):$PATH
+          timeout ${TIMEOUT} make beekeeper BEEKEEPER_INSTALL_DIR=$(pwd)
+          beekeeper version --log-verbosity 0
+          sudo mv beekeeper /usr/local/bin/beekeeper
+      - name: Prepare local cluster
+        run: timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet' ACTION=prepare
+      - name: Set kube config
+        run: |
+          mkdir -p ~/.kube
+          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+      - name: Set local cluster (local-dns-autotls)
+        run: timeout ${TIMEOUT} make deploylocal BEEKEEPER_CLUSTER=local-dns-autotls
+      - name: Test pingpong (autotls)
+        id: pingpong-autotls
+        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns-autotls --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done'
+      - name: Test fullconnectivity (autotls)
+        id: fullconnectivity-autotls
+        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns-autotls --checks=ci-full-connectivity; do echo "waiting for full connectivity..."; sleep .3; done'
+      - name: Test retrieval (autotls)
+        id: retrieval-autotls
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns-autotls --checks=ci-retrieval
+      - name: Test autotls
+        id: autotls
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns-autotls --checks=ci-autotls
+      - name: Collect debug artifacts (autotls)
+        if: failure()
+        run: |
+          bash .github/bin/beekeeper_artifacts.sh local-dns-autotls
+          export FAILED='no-test'
+          if ${{ steps.pingpong-autotls.outcome=='failure' }}; then FAILED=pingpong; fi
+          if ${{ steps.fullconnectivity-autotls.outcome=='failure' }}; then FAILED=fullconnectivity; fi
+          if ${{ steps.retrieval-autotls.outcome=='failure' }}; then FAILED=retrieval; fi
+          if ${{ steps.autotls.outcome=='failure' }}; then FAILED=autotls; fi
+          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Autotls Error\nBranch: \`${{ github.head_ref || github.ref_name }}\`\nDebugging artifacts: [click](https://$BUCKET_NAME.$AWS_ENDPOINT/artifacts_$VERTAG.tar.gz)\nStep failed: \`${FAILED}\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
+          echo "Failed test: ${FAILED}"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: failure()
+        with:
+          name: debug-dump-autotls
+          path: dump/
