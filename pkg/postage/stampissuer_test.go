@@ -251,6 +251,50 @@ func TestUtilization(t *testing.T) {
 	}
 }
 
+func TestUtilizationRatio(t *testing.T) {
+	t.Parallel()
+
+	// depth=17, bucketDepth=16 => fullest bucket caps at 2^(17-16)=2 chunks.
+	const depth, bucketDepth uint8 = 17, 16
+
+	sti := postage.NewStampIssuer("label", "keyID", make([]byte, 32), big.NewInt(3), depth, bucketDepth, 0, true)
+
+	if got := sti.UtilizationRatio(); got != 0 {
+		t.Fatalf("empty issuer: want 0, got %v", got)
+	}
+
+	// Fill the issuer until the fullest bucket is full, then check the value
+	// matches the formula utilization / 2^(depth - bucketDepth).
+	for {
+		_, _, err := sti.Increment(swarm.RandAddress(t))
+		if errors.Is(err, postage.ErrBucketFull) {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	want := float64(sti.Utilization()) / math.Pow(2, float64(depth-bucketDepth))
+	if got := sti.UtilizationRatio(); got != want {
+		t.Fatalf("filled issuer: want %v, got %v", want, got)
+	}
+	if got := sti.UtilizationRatio(); got != 1 {
+		t.Fatalf("filled issuer should report 1, got %v", got)
+	}
+}
+
+func TestUtilizationRatioInvalidDepth(t *testing.T) {
+	t.Parallel()
+
+	// batchDepth < bucketDepth is an invalid combination; the ratio should
+	// stay well-defined and report 0.
+	sti := postage.NewStampIssuer("label", "keyID", make([]byte, 32), big.NewInt(3), 8, 16, 0, true)
+	if got := sti.UtilizationRatio(); got != 0 {
+		t.Fatalf("invalid depth: want 0, got %v", got)
+	}
+}
+
 func bytesToIndex(buf []byte) (bucket, index uint32) {
 	index64 := binary.BigEndian.Uint64(buf)
 	bucket = uint32(index64 >> 32)

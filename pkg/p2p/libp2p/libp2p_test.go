@@ -8,12 +8,14 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
+	"errors"
 	"sort"
 	"testing"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
+	"github.com/ethersphere/bee/v2/pkg/bzz"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
@@ -81,6 +83,8 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 	}
 	opts := o.libp2pOpts
 	opts.Nonce = nonce
+	// Tests connect over loopback / private addresses; allow them by default.
+	opts.AllowPrivateCIDRs = true
 
 	if o.autoTLSCertManager != nil {
 		libp2p.SetAutoTLSCertManager(&opts, o.autoTLSCertManager)
@@ -164,4 +168,173 @@ func serviceUnderlayAddress(t *testing.T, s *libp2p.Service) []multiaddr.Multiad
 		t.Fatal(err)
 	}
 	return addrs
+}
+
+// fakeStorer is a libp2p.ChequebookStorer test double that records calls and
+// optionally returns a configured error. When err is nil, it runs the
+// writeAddressbook callback (mirroring the real registry behaviour on success).
+type fakeStorer struct {
+	err            error
+	puts           int
+	cbCallbacks    int
+	lastPeer       swarm.Address
+	lastChequebook common.Address
+}
+
+func (s *fakeStorer) Put(peer swarm.Address, cb common.Address, _ int64, _ bzz.TimestampSource, writeAddressbook func() error) error {
+	s.puts++
+	s.lastPeer = peer
+	s.lastChequebook = cb
+	if s.err != nil {
+		return s.err
+	}
+	if writeAddressbook != nil {
+		s.cbCallbacks++
+		return writeAddressbook()
+	}
+	return nil
+}
+
+func (s *fakeStorer) Remove(_ swarm.Address) {}
+
+// testAddr builds a properly-signed bzz.Address; the addressbook's JSON
+// codec rejects entries with no underlays, so we cannot use a bare struct
+// literal here.
+func testAddr(t *testing.T, cb common.Address) *bzz.Address {
+	t.Helper()
+
+	pk, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := crypto.NewDefaultSigner(pk)
+	nonce := common.HexToHash("0x1").Bytes()
+
+	overlay, err := crypto.NewOverlayAddress(pk.PublicKey, 1, nonce)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	underlay, err := multiaddr.NewMultiaddr("/ip4/127.0.0.1/tcp/1634")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	addr, err := bzz.NewAddress(signer, []multiaddr.Multiaddr{underlay}, overlay, 1, nonce, time.Now().Unix(), cb)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return addr
+}
+
+// TestPutHandshakeAddress_StorerSuccess_VerifiedTrue covers the happy path
+// when chequebookStorer is set: the storer is invoked, its writeAddressbook
+// callback runs, and the addressbook entry is stored with Verified=true.
+func TestPutHandshakeAddress_StorerSuccess_VerifiedTrue(t *testing.T) {
+	t.Parallel()
+
+	book := addressbook.New(mock.NewStateStore())
+	storer := &fakeStorer{}
+	svc := libp2p.NewPutHandshakeAddressTestService(log.Noop, book, storer)
+
+	cb := common.HexToAddress("0x1111111111111111111111111111111111111111")
+	addr := testAddr(t, cb)
+
+	if err := svc.PutHandshakeAddress(addr); err != nil {
+		t.Fatalf("PutHandshakeAddress: %v", err)
+	}
+
+	if storer.puts != 1 {
+		t.Fatalf("storer.Put calls: got %d, want 1", storer.puts)
+	}
+	if storer.cbCallbacks != 1 {
+		t.Fatalf("writeAddressbook callbacks: got %d, want 1", storer.cbCallbacks)
+	}
+	if storer.lastChequebook != cb {
+		t.Fatalf("storer cb: got %s, want %s", storer.lastChequebook.Hex(), cb.Hex())
+	}
+
+	got, verified, err := book.Get(addr.Overlay)
+	if err != nil {
+		t.Fatalf("addressbook.Get: %v", err)
+	}
+	if !verified {
+		t.Fatal("addressbook entry must be stored with Verified=true after successful handshake")
+	}
+	if got.ChequebookAddress != cb {
+		t.Fatalf("addressbook cb: got %s, want %s", got.ChequebookAddress.Hex(), cb.Hex())
+	}
+}
+
+// TestPutHandshakeAddress_StorerTimestampError_Swallowed covers the
+// concurrent-gossip race: when the storer rejects the update with a timestamp
+// sentinel, the error is swallowed (returns nil), the addressbook is not
+// written, and the caller proceeds.
+func TestPutHandshakeAddress_StorerTimestampError_Swallowed(t *testing.T) {
+	t.Parallel()
+
+	book := addressbook.New(mock.NewStateStore())
+	storer := &fakeStorer{err: bzz.ErrTimestampStale}
+	svc := libp2p.NewPutHandshakeAddressTestService(log.Noop, book, storer)
+
+	addr := testAddr(t, common.HexToAddress("0x2222222222222222222222222222222222222222"))
+
+	if err := svc.PutHandshakeAddress(addr); err != nil {
+		t.Fatalf("PutHandshakeAddress: timestamp error must be swallowed, got %v", err)
+	}
+	if storer.cbCallbacks != 0 {
+		t.Fatal("writeAddressbook must not run when storer returns error")
+	}
+	if _, _, err := book.Get(addr.Overlay); !errors.Is(err, addressbook.ErrNotFound) {
+		t.Fatalf("addressbook must remain empty after swallowed timestamp error, got %v", err)
+	}
+}
+
+// TestPutHandshakeAddress_StorerOtherError_Propagated covers the failure path:
+// non-timestamp storer errors propagate to the caller and the addressbook is
+// not written.
+func TestPutHandshakeAddress_StorerOtherError_Propagated(t *testing.T) {
+	t.Parallel()
+
+	book := addressbook.New(mock.NewStateStore())
+	want := errors.New("registry: out of disk")
+	storer := &fakeStorer{err: want}
+	svc := libp2p.NewPutHandshakeAddressTestService(log.Noop, book, storer)
+
+	addr := testAddr(t, common.HexToAddress("0x3333333333333333333333333333333333333333"))
+
+	if err := svc.PutHandshakeAddress(addr); !errors.Is(err, want) {
+		t.Fatalf("PutHandshakeAddress: got %v, want wrapped %v", err, want)
+	}
+	if _, _, err := book.Get(addr.Overlay); !errors.Is(err, addressbook.ErrNotFound) {
+		t.Fatalf("addressbook must remain empty after storer error, got %v", err)
+	}
+}
+
+// TestPutHandshakeAddress_NoStorer_FallbackVerifiedTrue covers the chequebook
+// subsystem disabled path: with chequebookStorer nil, putHandshakeAddress
+// writes directly to the addressbook with Verified=true.
+func TestPutHandshakeAddress_NoStorer_FallbackVerifiedTrue(t *testing.T) {
+	t.Parallel()
+
+	book := addressbook.New(mock.NewStateStore())
+	svc := libp2p.NewPutHandshakeAddressTestService(log.Noop, book, nil)
+
+	cb := common.HexToAddress("0x4444444444444444444444444444444444444444")
+	addr := testAddr(t, cb)
+
+	if err := svc.PutHandshakeAddress(addr); err != nil {
+		t.Fatalf("PutHandshakeAddress: %v", err)
+	}
+
+	got, verified, err := book.Get(addr.Overlay)
+	if err != nil {
+		t.Fatalf("addressbook.Get: %v", err)
+	}
+	if !verified {
+		t.Fatal("addressbook entry must be stored with Verified=true on the no-storer fallback path")
+	}
+	if got.ChequebookAddress != cb {
+		t.Fatalf("addressbook cb: got %s, want %s", got.ChequebookAddress.Hex(), cb.Hex())
+	}
 }

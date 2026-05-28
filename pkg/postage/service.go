@@ -290,37 +290,39 @@ func (ps *service) HandleStampExpiry(ctx context.Context, id []byte) error {
 	return nil
 }
 
-// removeStampItems
+// removeStampItems removes all stamp items belonging to the given batch.
 func (ps *service) removeStampItems(ctx context.Context, batchID []byte) error {
 	ps.logger.Debug("removing expired stamp items", "batchID", hex.EncodeToString(batchID))
 
-	deleteItemC := make(chan *StampItem)
-	go func() {
-		for item := range deleteItemC {
-			_ = ps.store.Delete(item)
-		}
-	}()
+	var toDelete []*StampItem
 
-	count := 0
-
-	defer func() {
-		close(deleteItemC)
-		ps.logger.Debug("removed expired stamps", "batchID", hex.EncodeToString(batchID), "count", count)
-	}()
-
-	return ps.store.Iterate(
+	err := ps.store.Iterate(
 		storage.Query{
 			Factory: func() storage.Item { return new(StampItem) },
 			Prefix:  string(batchID),
 		}, func(result storage.Result) (bool, error) {
-			select {
-			case deleteItemC <- result.Entry.(*StampItem):
-			case <-ctx.Done():
-				return false, ctx.Err()
+			if err := ctx.Err(); err != nil {
+				return false, err
 			}
-			count++
+			toDelete = append(toDelete, result.Entry.(*StampItem))
 			return false, nil
 		})
+	if err != nil {
+		return err
+	}
+
+	var firstErr error
+	for _, item := range toDelete {
+		if err := ps.store.Delete(item); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("remove expired stamp items batch %s: %w", hex.EncodeToString(batchID), err)
+		}
+	}
+	if firstErr != nil {
+		return firstErr
+	}
+
+	ps.logger.Debug("removed expired stamps", "batchID", hex.EncodeToString(batchID), "count", len(toDelete))
+	return nil
 }
 
 // SetExpired removes all expired batches from the stamp issuers.

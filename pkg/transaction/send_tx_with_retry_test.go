@@ -28,17 +28,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSuggestGasFeeGasTipCapWithHistory(t *testing.T) {
+func TestSuggestGasFeeForTier(t *testing.T) {
 	t.Parallel()
 
 	const (
-		baseFee        = int64(1000)
-		tipBase        = int64(100)
-		marketTip      = int64(200) // tipBase * 2
-		gasIncreasePct = 20
-		prevTip        = int64(1000)
-		escalatedTip   = int64(1200) // prevTip * 1.2
-		baseFeeCap     = int64(2000) // baseFee * 2
+		baseFee      = int64(1000)
+		tipBase      = int64(100)
+		marketTip    = int64(200) // tipBase * 2
+		prevTip      = int64(1000)
+		escalatedTip = int64(1150) // prevTip * 1.15
+		baseFeeCap   = int64(2000) // baseFee * 2
 	)
 
 	headerOption := func() backendmock.Option {
@@ -60,14 +59,14 @@ func TestSuggestGasFeeGasTipCapWithHistory(t *testing.T) {
 		})
 	}
 
-	t.Run("prevGasTipCap nil uses market tip from fee history", func(t *testing.T) {
+	t.Run("previous tip nil uses market tip from fee history", func(t *testing.T) {
 		t.Parallel()
 
 		var feeHistoryCalls atomic.Int32
 		backend := backendmock.New(headerOption(), feeHistoryOption(&feeHistoryCalls))
 
-		gasFeeCap, gasTipCap, err := transaction.SuggestGasFeeGasTipCapWithHistory(
-			backend, gasIncreasePct, nil, context.Background(), nil, nil,
+		gasFeeCap, gasTipCap, err := transaction.SuggestGasFeeForTier(
+			backend, nil, context.Background(), int(transaction.FeeTierMarket), nil, nil,
 		)
 
 		require.NoError(t, err)
@@ -82,20 +81,20 @@ func TestSuggestGasFeeGasTipCapWithHistory(t *testing.T) {
 		var feeHistoryCalls atomic.Int32
 		backend := backendmock.New(headerOption(), feeHistoryOption(&feeHistoryCalls))
 
-		gasFeeCap, gasTipCap, err := transaction.SuggestGasFeeGasTipCapWithHistory(
-			backend, gasIncreasePct, nil, context.Background(), big.NewInt(prevTip), nil,
+		gasFeeCap, gasTipCap, err := transaction.SuggestGasFeeForTier(
+			backend, nil, context.Background(), int(transaction.FeeTierMarket), big.NewInt(prevTip),
 		)
 
 		require.NoError(t, err)
-		assert.Equal(t, int32(0), feeHistoryCalls.Load(), "fee history must not be called when previous tip is set")
+		assert.Equal(t, int32(1), feeHistoryCalls.Load(), "fee history is always queried")
 		assert.Equal(t, escalatedTip, gasTipCap.Int64())
 		assert.Equal(t, baseFeeCap+escalatedTip, gasFeeCap.Int64())
 	})
 
-	t.Run("max tx price exceeded falls back to previous tip", func(t *testing.T) {
+	t.Run("max tx price exceeded returns error", func(t *testing.T) {
 		t.Parallel()
 
-		// escalated: 2000+1200=3200, previous: 2000+1000=3000
+		// escalated: 2000+1150=3150
 		maxTxPrice := big.NewInt(baseFeeCap + prevTip + 100)
 
 		backend := backendmock.New(headerOption())
@@ -247,10 +246,11 @@ func (s retryTestSetup) expectedGasFeeCap(tip *big.Int) *big.Int {
 
 func (s retryTestSetup) retryConfig() transaction.TransactionsRetryConfig {
 	return transaction.TransactionsRetryConfig{
-		MaxRetries:         3,
-		RetryDelay:         50 * time.Millisecond,
-		GasIncreasePercent: 20,
-		MaxTxPrice:         big.NewInt(100_000_000),
+		AttemptsPerTier: 3,
+		StartTier:       "market",
+		EndTier:         "market",
+		RetryDelay:      50 * time.Millisecond,
+		MaxTxPrice:      big.NewInt(100_000_000),
 	}
 }
 
@@ -490,6 +490,7 @@ func TestSendWithRetry_NonCriticalThenSuccess(t *testing.T) {
 			backendmock.WithHeaderbyNumberFunc(func(ctx context.Context, number *big.Int) (*types.Header, error) {
 				n := headerCalls.Add(1)
 				if n == 1 {
+					// non-critical error
 					return nil, errors.New("temporary RPC error")
 				}
 				return &types.Header{BaseFee: new(big.Int).Set(s.baseFee)}, nil
@@ -518,8 +519,8 @@ func TestSendWithRetry_NonCriticalThenSuccess(t *testing.T) {
 	txHash, receipt, err := svc.SendWithRetry(context.Background(), s.request())
 
 	require.NoError(t, err)
-	assert.NotEqual(t, common.Hash{}, txHash)
 	require.NotNil(t, receipt)
+	assert.NotEqual(t, common.Hash{}, txHash)
 	assert.Equal(t, uint64(1), receipt.Status)
 
 	assert.GreaterOrEqual(t, int(headerCalls.Load()), 2, "should have retried after non-critical error")
@@ -527,6 +528,7 @@ func TestSendWithRetry_NonCriticalThenSuccess(t *testing.T) {
 		"fee history called once: first attempt failed at HeaderByNumber before reaching fee history")
 
 	require.Len(t, broadcasts, 1, "only one successful broadcast (first attempt failed before SendTransaction)")
+
 	marketTip := s.expectedMarketTip()
 	assert.Equal(t, marketTip.Int64(), broadcasts[0].GasTipCap.Int64(),
 		"tip must be MarketTip (no previous tip was set since first attempt failed)")
@@ -602,14 +604,14 @@ func TestSendWithRetry_EscalateGasThenSuccess(t *testing.T) {
 	assert.Equal(t, s.expectedGasFeeCap(marketTip).Int64(), broadcasts[0].GasFeeCap.Int64(),
 		"first attempt gasFeeCap = baseFee*2 + MarketTip")
 
-	escalatedTip := transaction.EscalateGasTip(marketTip, 20)
+	escalatedTip := transaction.ApplyMempoolBump(marketTip)
 	assert.Equal(t, escalatedTip.Int64(), broadcasts[1].GasTipCap.Int64(),
-		"second attempt must use escalated tip (MarketTip * 1.2)")
+		"second attempt must use escalated tip (MarketTip * 1.15)")
 	assert.Equal(t, s.expectedGasFeeCap(escalatedTip).Int64(), broadcasts[1].GasFeeCap.Int64(),
 		"second attempt gasFeeCap = baseFee*2 + escalated tip")
 
-	assert.Equal(t, int32(1), feeHistoryCalls.Load(),
-		"fee history called once: PreviousTip known after first broadcast, retries use escalated tip")
+	assert.Equal(t, int32(2), feeHistoryCalls.Load(),
+		"fee history is called for each attempt")
 
 	var rs transaction.TransactionRetryState
 	assert.ErrorIs(t, store.Get(transaction.RetryStateKey(broadcasts[0].Nonce), &rs), storage.ErrNotFound,
@@ -650,8 +652,7 @@ func TestSendWithRetry_AllAttemptsExhausted(t *testing.T) {
 
 	txHash, receipt, err := svc.SendWithRetry(context.Background(), s.request())
 
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "transaction failed after 3 attempts")
+	assert.ErrorIs(t, err, transaction.ErrAllAttemptsExhausted)
 	assert.NotEqual(t, common.Hash{}, txHash, "should return last tx hash even on exhaustion")
 	assert.Nil(t, receipt)
 
@@ -659,9 +660,9 @@ func TestSendWithRetry_AllAttemptsExhausted(t *testing.T) {
 
 	assertTxDataUnchanged(t, broadcasts)
 
-	tip0 := s.expectedMarketTip()                // tipBase*2 = 200
-	tip1 := transaction.EscalateGasTip(tip0, 20) // 240
-	tip2 := transaction.EscalateGasTip(tip1, 20) // 288
+	tip0 := s.expectedMarketTip()              // tipBase*2 = 200
+	tip1 := transaction.ApplyMempoolBump(tip0) // 230
+	tip2 := transaction.ApplyMempoolBump(tip1) // 264
 	expectedTips := []*big.Int{tip0, tip1, tip2}
 
 	for i, expectedTip := range expectedTips {
@@ -671,8 +672,8 @@ func TestSendWithRetry_AllAttemptsExhausted(t *testing.T) {
 			"attempt %d: gasFeeCap must be baseFee*2 + tip", i)
 	}
 
-	assert.Equal(t, int32(1), feeHistoryCalls.Load(),
-		"fee history called once: PreviousTip known after first broadcast, retries use escalated tip")
+	assert.Equal(t, int32(3), feeHistoryCalls.Load(),
+		"fee history is called for each attempt")
 
 	var rs transaction.TransactionRetryState
 	assert.ErrorIs(t, store.Get(transaction.RetryStateKey(broadcasts[0].Nonce), &rs), storage.ErrNotFound,
@@ -693,7 +694,6 @@ func TestSendWithRetry_ResumeAfterRestart(t *testing.T) {
 	priorState := transaction.TransactionRetryState{
 		Nonce:         s.nonce,
 		NonceAssigned: true,
-		NextAttempt:   1,
 		LastTxHash:    lastTxHash,
 		AllTxHashes:   nil,
 		GasLimit:      s.gasLimit,
@@ -701,7 +701,6 @@ func TestSendWithRetry_ResumeAfterRestart(t *testing.T) {
 		Data:          s.txData,
 		Value:         s.value,
 		Description:   "test-resume",
-		PreviousTip:   previousTip,
 	}
 
 	retryKey := transaction.RetryStateKey(s.nonce)
@@ -782,15 +781,15 @@ func TestSendWithRetry_ResumeAfterRestart(t *testing.T) {
 
 	assert.Equal(t, s.nonce, resumedNonce, "resumed transaction must use the same nonce")
 
-	expectedTip := transaction.EscalateGasTip(previousTip, 20)
+	expectedTip := s.expectedMarketTip()
 	assert.Equal(t, expectedTip.Int64(), gasTipCap.Int64(),
-		"resumed transaction should use escalated tip (one step from persisted PreviousTip)")
+		"resumed transaction should use market tip from fresh fee history")
 
 	assert.Equal(t, s.expectedGasFeeCap(expectedTip).Int64(), gasFeeCap.Int64(),
 		"resumed gasFeeCap must be baseFee*2 + escalated tip")
 
-	assert.Equal(t, int32(0), feeHistoryCalls.Load(),
-		"fee history should NOT be called on resume — tip is restored from persisted state")
+	assert.Equal(t, int32(1), feeHistoryCalls.Load(),
+		"fee history should be called on resume")
 
 	var rs transaction.TransactionRetryState
 	assert.Eventually(t, func() bool {
@@ -801,101 +800,44 @@ func TestSendWithRetry_ResumeAfterRestart(t *testing.T) {
 // MaxTxPrice cap prevents escalation beyond the configured limit.
 func TestSendWithRetry_MaxTxPriceCap(t *testing.T) {
 	t.Parallel()
+	s := newRetryTestSetup()
+	store := storemock.NewStateStore()
+	testutil.CleanupCloser(t, store)
 
-	t.Run("escalation capped to previous tip", func(t *testing.T) {
-		t.Parallel()
-		s := newRetryTestSetup()
-		store := storemock.NewStateStore()
-		testutil.CleanupCloser(t, store)
+	marketTip := s.expectedMarketTip()
+	// Set maxTxPrice below baseFee*2 + MarketTip so even the first attempt fails.
+	maxTxPrice := new(big.Int).Sub(s.expectedGasFeeCap(marketTip), big.NewInt(1)) // 2199
 
-		marketTip := s.expectedMarketTip() // 200
-		// Set maxTxPrice so that first attempt (baseFee*2 + MarketTip = 2200) fits,
-		// but escalated (baseFee*2 + 240 = 2240) exceeds the cap.
-		maxTxPrice := new(big.Int).Add(s.expectedGasFeeCap(marketTip), big.NewInt(10)) // 2210
+	cfg := s.retryConfig()
+	cfg.MaxTxPrice = maxTxPrice
 
-		cfg := s.retryConfig()
-		cfg.MaxTxPrice = maxTxPrice
+	var broadcasts []capturedBroadcast
 
-		var broadcasts []capturedBroadcast
+	svc, err := transaction.NewService(log.Noop, s.sender,
+		backendmock.New(
+			s.nonceOption(),
+			s.feeHistoryOption(nil),
+			s.headerOption(),
+			s.estimateGasOption(),
+			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+				broadcasts = append(broadcasts, captureTx(tx))
+				return nil
+			}),
+		),
+		signermock.New(s.passThroughSigner(), s.signerAddr()),
+		store,
+		s.chainID,
+		monitormock.New(receiptWatchTimeout()),
+		0,
+		cfg,
+	)
+	require.NoError(t, err)
+	testutil.CleanupCloser(t, svc)
 
-		svc, err := transaction.NewService(log.Noop, s.sender,
-			backendmock.New(
-				s.nonceOption(),
-				s.feeHistoryOption(nil),
-				s.headerOption(),
-				s.estimateGasOption(),
-				backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
-					broadcasts = append(broadcasts, captureTx(tx))
-					return nil
-				}),
-			),
-			signermock.New(s.passThroughSigner(), s.signerAddr()),
-			store,
-			s.chainID,
-			monitormock.New(receiptWatchTimeout()),
-			0,
-			cfg,
-		)
-		require.NoError(t, err)
-		testutil.CleanupCloser(t, svc)
-
-		_, _, err = svc.SendWithRetry(context.Background(), s.request())
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "transaction failed after 3 attempts")
-
-		require.Len(t, broadcasts, 3, "all 3 attempts should have been sent")
-
-		assertTxDataUnchanged(t, broadcasts)
-
-		for i, bc := range broadcasts {
-			assert.Equal(t, marketTip.Int64(), bc.GasTipCap.Int64(),
-				"attempt %d: tip must stay at MarketTip (escalation capped by maxTxPrice)", i)
-			assert.Equal(t, s.expectedGasFeeCap(marketTip).Int64(), bc.GasFeeCap.Int64(),
-				"attempt %d: gasFeeCap must be baseFee*2 + MarketTip (capped)", i)
-		}
-	})
-
-	t.Run("exceeds limit on first attempt", func(t *testing.T) {
-		t.Parallel()
-		s := newRetryTestSetup()
-		store := storemock.NewStateStore()
-		testutil.CleanupCloser(t, store)
-
-		marketTip := s.expectedMarketTip()
-		// Set maxTxPrice below baseFee*2 + MarketTip so even the first attempt fails.
-		maxTxPrice := new(big.Int).Sub(s.expectedGasFeeCap(marketTip), big.NewInt(1)) // 2199
-
-		cfg := s.retryConfig()
-		cfg.MaxTxPrice = maxTxPrice
-
-		var broadcasts []capturedBroadcast
-
-		svc, err := transaction.NewService(log.Noop, s.sender,
-			backendmock.New(
-				s.nonceOption(),
-				s.feeHistoryOption(nil),
-				s.headerOption(),
-				s.estimateGasOption(),
-				backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
-					broadcasts = append(broadcasts, captureTx(tx))
-					return nil
-				}),
-			),
-			signermock.New(s.passThroughSigner(), s.signerAddr()),
-			store,
-			s.chainID,
-			monitormock.New(receiptWatchTimeout()),
-			0,
-			cfg,
-		)
-		require.NoError(t, err)
-		testutil.CleanupCloser(t, svc)
-
-		_, _, err = svc.SendWithRetry(context.Background(), s.request())
-		assert.Error(t, err)
-		assert.Len(t, broadcasts, 0,
-			"no transaction should be sent when maxTxPrice is below the minimum fee")
-	})
+	_, _, err = svc.SendWithRetry(context.Background(), s.request())
+	assert.Error(t, err)
+	assert.Len(t, broadcasts, 0,
+		"no transaction should be sent when maxTxPrice is below the minimum fee")
 }
 
 // WithIgnoreMaxPrice override allows transactions to be sent despite exceeding maxTxPrice.

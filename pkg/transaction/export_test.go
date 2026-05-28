@@ -15,23 +15,31 @@ var (
 	StoredTransactionKey  = storedTransactionKey
 	RetryStateKey         = retryStateKey
 	PendingTransactionKey = pendingTransactionKey
-	EscalateGasTip        = escalateGasTip
+	ApplyMempoolBump      = applyMempoolBump
 )
 
-// SuggestGasFeeGasTipCapWithHistory exposes suggestGasFeeGasTipCapWithHistory for tests.
-func SuggestGasFeeGasTipCapWithHistory(
+const (
+	FeeTierLow        = feeTierLow
+	FeeTierMarket     = feeTierMarket
+	FeeTierAggressive = feeTierAggressive
+
+	MempoolBumpPercent     = mempoolBumpPercent
+	DefaultAttemptsPerTier = defaultAttemptsPerTier
+)
+
+// SuggestGasFeeForTier exposes suggestGasFeeForTier for tests.
+func SuggestGasFeeForTier(
 	backend Backend,
-	gasIncreasePercent int,
 	maxTxPrice *big.Int,
 	ctx context.Context,
-	prevGasTipCap *big.Int,
+	tier int,
+	previousTip *big.Int,
 	overrides *RetryOverrides,
 ) (gasFeeCap, gasTipCap *big.Int, err error) {
 	svc := &transactionService{
-		logger:                    log.Noop,
-		backend:                   backend,
-		txRetryGasIncreasePercent: gasIncreasePercent,
-		maxTxPrice:                maxTxPrice,
+		logger:     log.Noop,
+		backend:    backend,
+		maxTxPrice: maxTxPrice,
 	}
-	return svc.suggestGasFeeGasTipCapWithHistory(ctx, prevGasTipCap, overrides)
+	return svc.suggestGasFeeForTier(ctx, feeTier(tier), previousTip)
 }

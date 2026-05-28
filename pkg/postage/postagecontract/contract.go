@@ -46,6 +46,7 @@ type Interface interface {
 	TopUpBatch(ctx context.Context, batchID []byte, topupBalance *big.Int) (common.Hash, error)
 	DiluteBatch(ctx context.Context, batchID []byte, newDepth uint8) (common.Hash, error)
 	Paused(ctx context.Context) (bool, error)
+	MinimumValidityBlocks(ctx context.Context) (uint64, error)
 	ExpectedReward(ctx context.Context) (*big.Int, error)
 	PostageBatchExpirer
 }
@@ -534,6 +535,14 @@ func (c *postageContract) Paused(ctx context.Context) (bool, error) {
 	return results[0].(bool), nil
 }
 
+func (c *postageContract) MinimumValidityBlocks(ctx context.Context) (uint64, error) {
+	var minimumValidityBlocks uint64
+	if err := c.getProperty(ctx, "minimumValidityBlocks", &minimumValidityBlocks); err != nil {
+		return 0, err
+	}
+	return minimumValidityBlocks, nil
+}
+
 type batchCreatedEvent struct {
 	BatchId           [32]byte
 	TotalAmount       *big.Int
@@ -560,6 +569,10 @@ func (m *noOpPostageContract) DiluteBatch(context.Context, []byte, uint8) (commo
 
 func (m *noOpPostageContract) Paused(context.Context) (bool, error) {
 	return false, nil
+}
+
+func (m *noOpPostageContract) MinimumValidityBlocks(context.Context) (uint64, error) {
+	return 0, ErrChainDisabled
 }
 
 func (m *noOpPostageContract) ExpireBatches(context.Context) error {

@@ -296,7 +296,7 @@ func TestSetExpired(t *testing.T) {
 
 	err = store.Get(itemNotExists)
 	if err == nil {
-		t.Fatal(err)
+		t.Fatal("expected error getting expired stamp item, got nil")
 	}
 
 	testutil.CleanupCloser(t, ps)

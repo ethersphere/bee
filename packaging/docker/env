@@ -37,6 +37,8 @@
 # BEE_CACHE_RETRIEVAL=true
 ## enable chequebook (default true)
 # BEE_CHEQUEBOOK_ENABLE=true
+## reject full-node hive/handshake records that carry no chequebook address
+# BEE_CHEQUEBOOK_VERIFICATION=false
 ## origins with CORS headers enabled (default [])
 # BEE_CORS_ALLOWED_ORIGINS=[]
 ## data directory (default /home/bee/.bee in container)
