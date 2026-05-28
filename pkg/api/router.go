@@ -291,6 +291,13 @@ func (s *Service) mountAPI() {
 		),
 	})
 
+	handle("/chunks/stream/download", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			s.newTracingHandler("chunks-stream-download"),
+			web.FinalHandlerFunc(s.chunkDownloadStreamHandler),
+		),
+	})
+
 	handle("/chunks/{address}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
 			s.actDecryptionHandler(),

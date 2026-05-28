@@ -110,6 +110,68 @@ func TestChunkUploadStream(t *testing.T) {
 }
 
 // nolint:paralleltest
+func TestChunkDownloadStream(t *testing.T) {
+	storerMock := mockstorer.New()
+	_, wsConn, _, _ := newTestServer(t, testServerOptions{
+		Storer: storerMock,
+		Post:   mockpost.New(mockpost.WithAcceptAll()),
+		WsPath: "/chunks/stream/download",
+	})
+
+	t.Run("download existing chunk", func(t *testing.T) {
+		ch := testingc.GenerateTestRandomChunk()
+		if err := storerMock.Put(t.Context(), ch); err != nil {
+			t.Fatal(err)
+		}
+
+		req := append([]byte{'D'}, ch.Address().Bytes()...)
+		if err := wsConn.SetWriteDeadline(time.Now().Add(time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		if err := wsConn.WriteMessage(websocket.BinaryMessage, req); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := wsConn.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		mt, msg, err := wsConn.ReadMessage()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if mt != websocket.BinaryMessage {
+			t.Fatalf("expected binary message, got %d", mt)
+		}
+		if !bytes.Equal(msg, ch.Data()) {
+			t.Fatalf("response does not match chunk data")
+		}
+	})
+
+	t.Run("download missing chunk returns empty", func(t *testing.T) {
+		missing := testingc.GenerateTestRandomChunk().Address()
+		req := append([]byte{'D'}, missing.Bytes()...)
+
+		if err := wsConn.SetWriteDeadline(time.Now().Add(time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		if err := wsConn.WriteMessage(websocket.BinaryMessage, req); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := wsConn.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		mt, msg, err := wsConn.ReadMessage()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if mt != websocket.BinaryMessage || len(msg) != 0 {
+			t.Fatalf("expected empty binary message, got mt=%d len=%d", mt, len(msg))
+		}
+	})
+}
+
+// nolint:paralleltest
 func TestChunkUploadStreamWithStamp(t *testing.T) {
 	// Generate signer and batch for pre-signed stamps
 	key, err := crypto.GenerateSecp256k1Key()

@@ -25,6 +25,15 @@ const streamReadTimeout = 15 * time.Minute
 
 var successWsMsg = []byte{}
 
+// downloadRequestCmd is the 1-byte command prefix used to request a chunk
+// download over the /chunks/stream/download websocket. A download request
+// message is exactly 1 + swarm.HashSize bytes: the command byte followed by
+// the chunk address.
+const downloadRequestCmd byte = 'D'
+
+// downloadRequestSize is the expected size of a download request message.
+const downloadRequestSize = 1 + swarm.HashSize
+
 func (s *Service) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("chunks_stream").Build()
 
@@ -348,6 +357,125 @@ func (s *Service) handleUploadStream(
 		if err != nil {
 			s.logger.Debug("chunk upload stream: sending success message failed", "error", err)
 			s.logger.Error(nil, "chunk upload stream: sending success message failed")
+			return
+		}
+	}
+}
+
+// chunkDownloadStreamHandler upgrades the connection to a websocket and serves
+// chunk download requests. Each request is a binary message of exactly
+// 1 + swarm.HashSize bytes: the command byte 'D' followed by the 32-byte chunk
+// address. On success the server replies with the chunk data (span + payload)
+// in a binary message; if the chunk is not found or cannot be retrieved, the
+// server replies with an empty binary message.
+func (s *Service) chunkDownloadStreamHandler(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("chunks_stream_download").Build()
+
+	upgrader := websocket.Upgrader{
+		ReadBufferSize:  downloadRequestSize,
+		WriteBufferSize: swarm.SocMaxChunkSize,
+		CheckOrigin:     s.checkOrigin,
+	}
+
+	wsConn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		logger.Debug("chunk download stream: upgrade failed", "error", err)
+		logger.Error(nil, "chunk download stream: upgrade failed")
+		jsonhttp.BadRequest(w, "upgrade failed")
+		return
+	}
+
+	s.wsWg.Add(1)
+	go s.handleDownloadStream(logger, wsConn)
+}
+
+func (s *Service) handleDownloadStream(logger log.Logger, conn *websocket.Conn) {
+	defer s.wsWg.Done()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	gone := make(chan struct{})
+
+	defer func() {
+		cancel()
+		_ = conn.Close()
+	}()
+
+	conn.SetCloseHandler(func(code int, text string) error {
+		logger.Debug("chunk download stream: client gone", "code", code, "message", text)
+		close(gone)
+		return nil
+	})
+
+	sendMsg := func(buf []byte) error {
+		if err := conn.SetWriteDeadline(time.Now().Add(writeDeadline)); err != nil {
+			return err
+		}
+		return conn.WriteMessage(websocket.BinaryMessage, buf)
+	}
+
+	sendErrorClose := func(code int, errmsg string) {
+		err := conn.WriteControl(
+			websocket.CloseMessage,
+			websocket.FormatCloseMessage(code, errmsg),
+			time.Now().Add(writeDeadline),
+		)
+		if err != nil {
+			logger.Error(err, "chunk download stream: failed sending close message")
+		}
+	}
+
+	for {
+		select {
+		case <-s.quit:
+			sendErrorClose(websocket.CloseGoingAway, "node shutting down")
+			return
+		case <-gone:
+			return
+		default:
+		}
+
+		if err := conn.SetReadDeadline(time.Now().Add(streamReadTimeout)); err != nil {
+			logger.Debug("chunk download stream: set read deadline failed", "error", err)
+			return
+		}
+
+		mt, msg, err := conn.ReadMessage()
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				logger.Debug("chunk download stream: read message failed", "error", err)
+			}
+			return
+		}
+
+		if mt != websocket.BinaryMessage {
+			logger.Debug("chunk download stream: unexpected message type", "message_type", mt)
+			sendErrorClose(websocket.CloseUnsupportedData, "invalid message")
+			return
+		}
+
+		if len(msg) != downloadRequestSize || msg[0] != downloadRequestCmd {
+			logger.Debug("chunk download stream: invalid request format", "size", len(msg))
+			sendErrorClose(websocket.CloseUnsupportedData, "invalid download request")
+			return
+		}
+
+		address := swarm.NewAddress(msg[1:])
+		ch, err := s.storer.Download(true).Get(ctx, address)
+		if err != nil {
+			if !errors.Is(err, storage.ErrNotFound) {
+				logger.Debug("chunk download stream: get chunk failed", "address", address, "error", err)
+				logger.Error(nil, "chunk download stream: get chunk failed")
+			}
+			if err := sendMsg(successWsMsg); err != nil {
+				logger.Debug("chunk download stream: send empty response failed", "error", err)
+				return
+			}
+			continue
+		}
+
+		if err := sendMsg(ch.Data()); err != nil {
+			logger.Debug("chunk download stream: send chunk failed", "error", err)
 			return
 		}
 	}

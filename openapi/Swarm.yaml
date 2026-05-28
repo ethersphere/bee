@@ -341,6 +341,19 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         default:
           description: Default response
+  "/chunks/stream/download":
+    get:
+      summary: "Stream chunks for download"
+      description: "Establishes a WebSocket connection for downloading chunks. Each request is a 33-byte binary message: a single command byte `D` (0x44) followed by the 32-byte chunk address. On success the server replies with a binary message containing the chunk data (span + payload). If the chunk is not found or cannot be retrieved, the server replies with an empty binary message."
+      tags:
+        - Chunk
+      responses:
+        "200":
+          description: "Connection established"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        default:
+          description: Default response
   "/bzz":
     post:
       summary: "Upload a file or collection of files"
