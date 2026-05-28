@@ -32,7 +32,7 @@ func requestPipelineFactory(ctx context.Context, s storage.Putter, encrypt bool,
 }
 
 func createLs() file.LoadSaver {
-	return loadsave.New(mockStorer.ChunkStore(), mockStorer.Cache(), requestPipelineFactory(context.Background(), mockStorer.Cache(), false, redundancy.NONE), redundancy.DefaultLevel)
+	return loadsave.New(mockStorer.ChunkStore(), mockStorer.Cache(), requestPipelineFactory(context.Background(), mockStorer.Cache(), false, redundancy.NONE), redundancy.DefaultDownloadLevel)
 }
 
 func generateKeyListFixture() ([]*ecdsa.PublicKey, error) {
