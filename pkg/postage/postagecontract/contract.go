@@ -180,6 +180,14 @@ func (c *postageContract) sendApproveTransaction(ctx context.Context, amount *bi
 		)
 	}()
 
+	if !sctx.GetDisableRetry(ctx) {
+		_, receipt, err = c.transactionService.SendWithRetry(ctx, request)
+		if err != nil {
+			return nil, err
+		}
+		return receipt, nil
+	}
+
 	txHash, err := c.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
 	if err != nil {
 		return nil, err
@@ -215,6 +223,14 @@ func (c *postageContract) sendTransaction(ctx context.Context, callData []byte, 
 			c.postageStampContractABI.Errors,
 		)
 	}()
+
+	if !sctx.GetDisableRetry(ctx) {
+		_, receipt, err = c.transactionService.SendWithRetry(ctx, request)
+		if err != nil {
+			return nil, err
+		}
+		return receipt, nil
+	}
 
 	txHash, err := c.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
 	if err != nil {

@@ -94,10 +94,11 @@ const (
 	SwarmActPublisherHeader           = "Swarm-Act-Publisher"
 	SwarmActHistoryAddressHeader      = "Swarm-Act-History-Address"
 
-	ImmutableHeader = "Immutable"
-	GasPriceHeader  = "Gas-Price"
-	GasLimitHeader  = "Gas-Limit"
-	ETagHeader      = "ETag"
+	ImmutableHeader    = "Immutable"
+	GasPriceHeader     = "Gas-Price"
+	GasLimitHeader     = "Gas-Limit"
+	DisableRetryHeader = "Disable-Retry"
+	ETagHeader         = "ETag"
 
 	AuthorizationHeader        = "Authorization"
 	AcceptEncodingHeader       = "Accept-Encoding"
@@ -557,8 +558,9 @@ func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) h
 			logger := s.logger.WithName(handlerName).Build()
 
 			headers := struct {
-				GasPrice *big.Int `map:"Gas-Price"`
-				GasLimit uint64   `map:"Gas-Limit"`
+				GasPrice     *big.Int `map:"Gas-Price"`
+				GasLimit     uint64   `map:"Gas-Limit"`
+				DisableRetry bool     `map:"Disable-Retry"`
 			}{}
 			if response := s.mapStructure(r.Header, &headers); response != nil {
 				response("invalid header params", logger, w)
@@ -567,6 +569,7 @@ func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) h
 			ctx := r.Context()
 			ctx = sctx.SetGasPrice(ctx, headers.GasPrice)
 			ctx = sctx.SetGasLimit(ctx, headers.GasLimit)
+			ctx = sctx.SetDisableRetry(ctx, headers.DisableRetry)
 
 			h.ServeHTTP(w, r.WithContext(ctx))
 		})
@@ -581,7 +584,7 @@ func (s *Service) corsHandler(h http.Handler) http.Handler {
 		SwarmTagHeader, SwarmPinHeader, SwarmEncryptHeader, SwarmIndexDocumentHeader, SwarmErrorDocumentHeader, SwarmCollectionHeader,
 		SwarmPostageBatchIdHeader, SwarmPostageStampHeader, SwarmDeferredUploadHeader, SwarmRedundancyLevelHeader,
 		SwarmRedundancyStrategyHeader, SwarmRedundancyFallbackModeHeader, SwarmChunkRetrievalTimeoutHeader, SwarmLookAheadBufferSizeHeader,
-		SwarmFeedIndexHeader, SwarmFeedIndexNextHeader, SwarmSocSignatureHeader, SwarmOnlyRootChunk, GasPriceHeader, GasLimitHeader, ImmutableHeader,
+		SwarmFeedIndexHeader, SwarmFeedIndexNextHeader, SwarmSocSignatureHeader, SwarmOnlyRootChunk, GasPriceHeader, GasLimitHeader, DisableRetryHeader, ImmutableHeader,
 		SwarmActHeader, SwarmActTimestampHeader, SwarmActPublisherHeader, SwarmActHistoryAddressHeader,
 	}
 	allowedHeadersStr := strings.Join(allowedHeaders, ", ")
