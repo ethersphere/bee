@@ -12,8 +12,6 @@ import (
 	"github.com/ethersphere/go-storage-incentives-abi/abi"
 )
 
-// TODO: consider adding BzzAddress (also as a cmd param) to the ChainConfig and remove the postagecontract.LookupERC20Address function.
-
 type ChainConfig struct {
 	// General.
 	ChainID                int64
@@ -28,6 +26,7 @@ type ChainConfig struct {
 	RedistributionAddress  common.Address
 	SwapPriceOracleAddress common.Address // Swap swear and swindle (S3) Contracts
 	CurrentFactoryAddress  common.Address
+	BzzAddress             common.Address
 
 	// ABIs.
 	StakingABI        string
@@ -65,6 +64,7 @@ var (
 		RedistributionAddress:  common.HexToAddress(abi.TestnetRedistributionAddress),
 		SwapPriceOracleAddress: common.HexToAddress("0x1814e9b3951Df0CB8e12b2bB99c5594514588936"),
 		CurrentFactoryAddress:  common.HexToAddress("0x0fF044F6bB4F684a5A149B46D7eC03ea659F98A1"),
+		BzzAddress:             common.HexToAddress(abi.TestnetBzzTokenAddress),
 
 		StakingABI:        abi.TestnetStakingABI,
 		PostageStampABI:   abi.TestnetPostageStampABI,
@@ -87,6 +87,7 @@ var (
 		RedistributionAddress:  common.HexToAddress(abi.MainnetRedistributionAddress),
 		SwapPriceOracleAddress: common.HexToAddress("0xA57A50a831B31c904A770edBCb706E03afCdbd94"),
 		CurrentFactoryAddress:  common.HexToAddress("0xc2d5a532cf69aa9a1378737d8ccdef884b6e7420"),
+		BzzAddress:             common.HexToAddress(abi.MainnetBzzTokenAddress),
 
 		StakingABI:        abi.MainnetStakingABI,
 		PostageStampABI:   abi.MainnetPostageStampABI,

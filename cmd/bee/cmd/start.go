@@ -297,6 +297,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		BlockchainRpcTLSTimeout:       c.config.GetDuration(configKeyBlockchainRpcTLSTimeout),
 		BlockchainRpcIdleTimeout:      c.config.GetDuration(configKeyBlockchainRpcIdleTimeout),
 		BlockchainRpcKeepalive:        c.config.GetDuration(configKeyBlockchainRpcKeepalive),
+		BzzTokenAddress:               c.config.GetString(optionNameBzzTokenAddress),
 		BlockProfile:                  c.config.GetBool(optionNamePProfBlock),
 		BlockTime:                     networkConfig.blockTime,
 		BlockSyncInterval:             c.config.GetUint64(optionNameBlockSyncInterval),
