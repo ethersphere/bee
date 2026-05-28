@@ -42,7 +42,8 @@ var (
 	ErrAlreadyImported     = errors.New("already imported")
 	ErrTxMaxPriceExceeded  = errors.New("transaction retry: exceeds maximum tx price (max fee per gas)")
 	// ErrSignTransaction is returned when signing a transaction fails.
-	ErrSignTransaction = errors.New("sign transaction")
+	ErrSignTransaction      = errors.New("sign transaction")
+	ErrAllAttemptsExhausted = errors.New("all attempts exhausted")
 )
 
 const (
@@ -53,32 +54,26 @@ const (
 	GasBufferPercent       = 33         // Add 33% buffer to estimated gas
 	FallbackGasLimit       = 500_000    // Fallback when estimation fails and no minimum is set
 
-	// DefaultSendWithRetryAttempts is the default maximum number of broadcast rounds for SendWithRetry.
-	DefaultSendWithRetryAttempts = 5
 	// DefaultSendWithRetryDelay is the default wait for a receipt before escalating fees in SendWithRetry.
 	DefaultSendWithRetryDelay = 1 * time.Minute
-	// DefaultTransactionRetryGasIncreasePercent is the default percent increase applied to priority fee after each retry step.
-	DefaultTransactionRetryGasIncreasePercent = 20
 )
 
 // TransactionsRetryConfig configures SendWithRetry behaviour. Zero values are replaced by defaults in NewService.
 type TransactionsRetryConfig struct {
-	MaxRetries         int
-	RetryDelay         time.Duration
-	GasIncreasePercent int
-	MaxTxPrice         *big.Int
+	RetryDelay      time.Duration
+	AttemptsPerTier int
+	StartTier       string
+	EndTier         string
+	MaxTxPrice      *big.Int
 }
 
 // normalizeServiceRetryConfig fills zero fields with package defaults.
 func normalizeServiceRetryConfig(c TransactionsRetryConfig) TransactionsRetryConfig {
-	if c.MaxRetries <= 0 {
-		c.MaxRetries = DefaultSendWithRetryAttempts
-	}
 	if c.RetryDelay <= 0 {
 		c.RetryDelay = DefaultSendWithRetryDelay
 	}
-	if c.GasIncreasePercent <= 0 {
-		c.GasIncreasePercent = DefaultTransactionRetryGasIncreasePercent
+	if c.AttemptsPerTier <= 0 {
+		c.AttemptsPerTier = defaultAttemptsPerTier
 	}
 	return c
 }
@@ -157,10 +152,11 @@ type transactionService struct {
 	monitor          Monitor
 	fallbackGasLimit uint64
 
-	txMaxRetries              int
-	txRetryDelay              time.Duration
-	txRetryGasIncreasePercent int
-	maxTxPrice                *big.Int
+	txRetryDelay    time.Duration
+	attemptsPerTier int
+	startTier       feeTier
+	endTier         feeTier
+	maxTxPrice      *big.Int
 
 	metrics transactionsWithRetryMetrics
 }
@@ -178,30 +174,44 @@ func NewService(logger log.Logger, overlayEthAddress common.Address, backend Bac
 
 	rc := normalizeServiceRetryConfig(retryCfg)
 
+	startTier, err := ParseFeeTier(rc.StartTier)
+	if err != nil {
+		return nil, fmt.Errorf("start tier: %w", err)
+	}
+	endTier, err := ParseFeeTier(rc.EndTier)
+	if err != nil {
+		return nil, fmt.Errorf("end tier: %w", err)
+	}
+	if startTier > endTier {
+		return nil, fmt.Errorf("start tier %q must not be higher than end tier %q", rc.StartTier, rc.EndTier)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	logger.Info("transaction retry configuration",
-		"max_retries", rc.MaxRetries,
+		"start_tier", startTier.String(),
+		"end_tier", endTier.String(),
+		"attempts_per_tier", rc.AttemptsPerTier,
 		"retry_delay", rc.RetryDelay,
-		"gas_increase_percent", rc.GasIncreasePercent,
 		"max_tx_price_wei", rc.MaxTxPrice,
 	)
 
 	t := &transactionService{
-		ctx:                       ctx,
-		cancel:                    cancel,
-		logger:                    logger.WithName(loggerName).WithValues("sender_address", overlayEthAddress).Register(),
-		backend:                   backend,
-		signer:                    signer,
-		sender:                    senderAddress,
-		store:                     store,
-		chainID:                   chainID,
-		monitor:                   monitor,
-		fallbackGasLimit:          fallbackGasLimit,
-		txMaxRetries:              rc.MaxRetries,
-		txRetryDelay:              rc.RetryDelay,
-		txRetryGasIncreasePercent: rc.GasIncreasePercent,
-		maxTxPrice:                rc.MaxTxPrice,
-		metrics:                   newRetryMetrics(),
+		ctx:              ctx,
+		cancel:           cancel,
+		logger:           logger.WithName(loggerName).WithValues("sender_address", overlayEthAddress).Register(),
+		backend:          backend,
+		signer:           signer,
+		sender:           senderAddress,
+		store:            store,
+		chainID:          chainID,
+		monitor:          monitor,
+		fallbackGasLimit: fallbackGasLimit,
+		txRetryDelay:     rc.RetryDelay,
+		attemptsPerTier:  rc.AttemptsPerTier,
+		startTier:        startTier,
+		endTier:          endTier,
+		maxTxPrice:       rc.MaxTxPrice,
+		metrics:          newRetryMetrics(),
 	}
 
 	if err = t.waitForAllPendingTx(); err != nil {

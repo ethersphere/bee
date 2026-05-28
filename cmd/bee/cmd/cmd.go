@@ -105,12 +105,12 @@ const (
 	configKeyBlockchainRpcKeepalive    = "blockchain-rpc.keepalive"
 
 	// transaction retry
-	optionNameTransactionRetryMaxRetries         = "transaction-retry-max-retries"
-	optionNameTransactionRetryDelay              = "transaction-retry-delay"
-	optionNameTransactionRetryGasIncreasePercent = "transaction-retry-gas-increase-percent"
-	optionNameTransactionRetryMaxTxPriceWei      = "transaction-retry-max-tx-price-wei"
-	optionNameFeeHistoryBlockCount               = "fee-history-block-count"
-	optionNameFeeHistoryRewardPercentiles        = "fee-history-reward-percentiles"
+	optionNameTransactionRetryDelay         = "transaction-retry-delay"
+	optionNameTransactionRetryMaxTxPriceWei = "transaction-retry-max-tx-price-wei"
+	optionNameTransactionRetryStartTier     = "transaction-retry-start-tier"
+	optionNameTransactionRetryEndTier       = "transaction-retry-end-tier"
+	optionNameFeeHistoryBlockCount          = "fee-history-block-count"
+	optionNameFeeHistoryRewardPercentiles   = "fee-history-reward-percentiles"
 )
 
 var blockchainRpcConfigPairs = []struct{ flat, dotted string }{
@@ -341,10 +341,10 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionSkipPostageSnapshot, false, "skip postage snapshot")
 	cmd.Flags().Uint64(optionNameMinimumGasTipCap, 0, "minimum gas tip cap in wei for transactions, 0 means use suggested gas tip cap")
 	cmd.Flags().Uint64(optionNameGasLimitFallback, 500_000, "gas limit fallback when estimation fails for contract transactions")
-	cmd.Flags().Int(optionNameTransactionRetryMaxRetries, 5, "maximum broadcast attempts for SendWithRetry (e.g. redistribution txs)")
 	cmd.Flags().Duration(optionNameTransactionRetryDelay, time.Minute, "how long to wait for a receipt before escalating fees in transactions with retry")
-	cmd.Flags().Int(optionNameTransactionRetryGasIncreasePercent, 20, "percent increase applied to priority fee after each transactions with retry escalation step")
 	cmd.Flags().Uint64(optionNameTransactionRetryMaxTxPriceWei, 0, "maximum maxFeePerGas in wei per gas for transactions with retry")
+	cmd.Flags().String(optionNameTransactionRetryStartTier, "market", "starting fee tier for transaction retry escalation (low, market, aggressive)")
+	cmd.Flags().String(optionNameTransactionRetryEndTier, "aggressive", "ending fee tier for transaction retry escalation (low, market, aggressive)")
 	cmd.Flags().Bool(optionNameP2PWSSEnable, false, "Enable Secure WebSocket P2P connections")
 	cmd.Flags().String(optionP2PWSSAddr, ":1635", "p2p wss address")
 	cmd.Flags().String(optionNATWSSAddr, "", "WSS NAT exposed address")
@@ -394,9 +394,9 @@ func (c *command) bindBlockchainRpcConfig(cmd *cobra.Command) {
 
 func txRetryConfigFromCommand(c *command) transaction.TransactionsRetryConfig {
 	cfg := transaction.TransactionsRetryConfig{
-		MaxRetries:         c.config.GetInt(optionNameTransactionRetryMaxRetries),
-		RetryDelay:         c.config.GetDuration(optionNameTransactionRetryDelay),
-		GasIncreasePercent: c.config.GetInt(optionNameTransactionRetryGasIncreasePercent),
+		RetryDelay: c.config.GetDuration(optionNameTransactionRetryDelay),
+		StartTier:  c.config.GetString(optionNameTransactionRetryStartTier),
+		EndTier:    c.config.GetString(optionNameTransactionRetryEndTier),
 	}
 	if v := c.config.GetUint64(optionNameTransactionRetryMaxTxPriceWei); v != 0 {
 		cfg.MaxTxPrice = new(big.Int).SetUint64(v)

@@ -7,8 +7,6 @@ package transaction
 import (
 	"context"
 	"errors"
-	"math/big"
-	"strconv"
 	"strings"
 
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
@@ -24,18 +22,10 @@ type transactionsWithRetryMetrics struct {
 	AttemptsPerTransaction prometheus.Histogram
 	// OutcomesTotal counts finished SendWithRetry runs by result label.
 	OutcomesTotal *prometheus.CounterVec
-	// BroadcastGasTipCap records maxPriorityFeePerGas (wei) per broadcast attempt index.
-	BroadcastGasTipCap *prometheus.HistogramVec
-	// BroadcastGasFeeCap records maxFeePerGas (wei) per broadcast attempt index.
-	BroadcastGasFeeCap *prometheus.HistogramVec
 }
 
 func newRetryMetrics() transactionsWithRetryMetrics {
 	subsystem := "transaction_retry"
-
-	// Gas fees on Gnosis/mainnet-style chains: from ~1 gwei to tens of gwei per unit.
-	gasBuckets := prometheus.ExponentialBuckets(1_000_000_000, 2, 14)
-
 	return transactionsWithRetryMetrics{
 		AttemptsPerTransaction: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Namespace: m.Namespace,
@@ -50,20 +40,6 @@ func newRetryMetrics() transactionsWithRetryMetrics {
 			Name:      "outcomes_total",
 			Help:      "Finished SendWithRetry invocations by outcome.",
 		}, []string{"result"}),
-		BroadcastGasTipCap: prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "broadcast_gas_tip_cap_wei",
-			Help:      "maxPriorityFeePerGas (wei) of each retry broadcast, labelled by attempt index (0 = first).",
-			Buckets:   gasBuckets,
-		}, []string{"attempt"}),
-		BroadcastGasFeeCap: prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "broadcast_gas_fee_cap_wei",
-			Help:      "maxFeePerGas (wei) of each retry broadcast, labelled by attempt index (0 = first).",
-			Buckets:   gasBuckets,
-		}, []string{"attempt"}),
 	}
 }
 
@@ -71,28 +47,11 @@ func (t *transactionService) Metrics() []prometheus.Collector {
 	return m.PrometheusCollectorsFromFields(t.metrics)
 }
 
-func (t *transactionService) recordRetryBroadcast(attempt int, tip, feeCap *big.Int) {
-	if tip == nil || feeCap == nil {
-		return
-	}
-	attemptLabel := strconv.Itoa(attempt)
-	t.metrics.BroadcastGasTipCap.WithLabelValues(attemptLabel).Observe(weiToFloat(tip))
-	t.metrics.BroadcastGasFeeCap.WithLabelValues(attemptLabel).Observe(weiToFloat(feeCap))
-}
-
 func (t *transactionService) recordRetryComplete(broadcastAttempts int, err error) {
 	t.metrics.OutcomesTotal.WithLabelValues(retryOutcomeLabel(err)).Inc()
 	if broadcastAttempts > 0 {
 		t.metrics.AttemptsPerTransaction.Observe(float64(broadcastAttempts))
 	}
-}
-
-func weiToFloat(v *big.Int) float64 {
-	if v == nil {
-		return 0
-	}
-	f, _ := new(big.Float).SetInt(v).Float64()
-	return f
 }
 
 // retryOutcomeLabel maps a SendWithRetry terminal error to a stable Prometheus label.
@@ -121,7 +80,7 @@ func retryOutcomeLabel(err error) string {
 	if strings.Contains(err.Error(), "send txs with retry requires automatic gas pricing") {
 		return "manual_gas_price"
 	}
-	if isErrCritical(err) {
+	if isNonRetryable(err) {
 		return "critical"
 	}
 	return "other"
