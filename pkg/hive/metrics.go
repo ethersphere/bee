@@ -25,6 +25,13 @@ type metrics struct {
 	PeerUnderlayErr     prometheus.Counter
 	StorePeerErr        prometheus.Counter
 	ReachablePeers      prometheus.Counter
+
+	UnderlayByteSizeExceeded prometheus.Counter
+	UnderlayCountExceeded    prometheus.Counter
+	ChequebookVerification   *prometheus.CounterVec
+	TimestampRejected        *prometheus.CounterVec
+
+	LegacyRecordSkipped prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -103,6 +110,42 @@ func newMetrics() metrics {
 			Name:      "reachable_peers_count",
 			Help:      "Number of peers that are reachable.",
 		}),
+		UnderlayByteSizeExceeded: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "underlay_byte_size_exceeded_count",
+			Help:      "Number of peers dropped due to oversized underlay field.",
+		}),
+		UnderlayCountExceeded: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "underlay_count_exceeded_count",
+			Help:      "Number of peers dropped due to exceeding underlay count limit.",
+		}),
+		LegacyRecordSkipped: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "legacy_record_skipped_count",
+			Help:      "Number of addressbook records skipped during gossip broadcast due to missing timestamp (pre-timestamp legacy entries).",
+		}),
+		TimestampRejected: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "timestamp_rejected_total",
+				Help:      "Number of gossip peer records rejected by timestamp validation. The 'reason' label is one of: invalid, in_future, stale, too_soon.",
+			},
+			[]string{"reason"},
+		),
+		ChequebookVerification: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "chequebook_verification_total",
+				Help:      "Outcomes of chequebook verification during hive gossip ingestion. The 'result' label is one of: success, missing, issuer_mismatch, bytecode_mismatch, insufficient_balance, already_associated, verify_error.",
+			},
+			[]string{"result"},
+		),
 	}
 }
 

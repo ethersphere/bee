@@ -25,6 +25,8 @@
 # swap-enable: false
 ## enable chequebook
 # chequebook-enable: false
+## reject full-node hive/handshake records that carry no chequebook address
+# chequebook-verification: false
 ## swap factory addresses
 # swap-factory-address: ""
 ## initial deposit if deploying a new chequebook

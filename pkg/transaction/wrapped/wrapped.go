@@ -176,6 +176,17 @@ func (b *wrappedBackend) CallContract(ctx context.Context, call ethereum.CallMsg
 	return result, nil
 }
 
+func (b *wrappedBackend) CodeAt(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error) {
+	b.metrics.TotalRPCCalls.Inc()
+	b.metrics.CodeAtCalls.Inc()
+	code, err := b.backend.CodeAt(ctx, contract, blockNumber)
+	if err != nil {
+		b.metrics.TotalRPCErrors.Inc()
+		return nil, err
+	}
+	return code, nil
+}
+
 func (b *wrappedBackend) PendingNonceAt(ctx context.Context, account common.Address) (uint64, error) {
 	b.metrics.TotalRPCCalls.Inc()
 	b.metrics.PendingNonceCalls.Inc()
