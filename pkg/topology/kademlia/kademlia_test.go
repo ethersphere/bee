@@ -17,8 +17,7 @@ import (
 	"testing"
 	"time"
 
-	ma "github.com/multiformats/go-multiaddr"
-
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 	beeCrypto "github.com/ethersphere/bee/v2/pkg/crypto"
@@ -35,12 +34,14 @@ import (
 	im "github.com/ethersphere/bee/v2/pkg/topology/kademlia/internal/metrics"
 	"github.com/ethersphere/bee/v2/pkg/topology/pslice"
 	"github.com/ethersphere/bee/v2/pkg/util/testutil"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 const spinLockWaitTime = time.Second * 5
 
 var (
 	nonConnectableAddress, _                      = ma.NewMultiaddr(underlayBase + "16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkA")
+	nonce                                         = common.HexToHash("0x2").Bytes()
 	defaultExcludeFunc       kademlia.ExcludeFunc = func(...im.ExcludeOp) kademlia.PeerExcludeFunc {
 		return func(swarm.Address) bool { return false }
 	}
@@ -826,11 +827,11 @@ func TestAddressBookPrune(t *testing.T) {
 	}
 	testutil.CleanupCloser(t, kad)
 
-	nonConnPeer, err := bzz.NewAddress(signer, []ma.Multiaddr{nonConnectableAddress}, swarm.RandAddressAt(t, base, 1), 0, nil)
+	nonConnPeer, err := bzz.NewAddress(signer, []ma.Multiaddr{nonConnectableAddress}, swarm.RandAddressAt(t, base, 1), 0, nonce, 1, common.Address{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ab.Put(nonConnPeer.Overlay, *nonConnPeer); err != nil {
+	if err := ab.Put(nonConnPeer.Overlay, *nonConnPeer, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -844,7 +845,7 @@ func TestAddressBookPrune(t *testing.T) {
 	waitCounter(t, &conns, 0)
 	waitCounter(t, &failedConns, 6)
 
-	_, err = ab.Get(nonConnPeer.Overlay)
+	_, _, err = ab.Get(nonConnPeer.Overlay)
 	if !errors.Is(err, addressbook.ErrNotFound) {
 		t.Fatal(err)
 	}
@@ -858,7 +859,7 @@ func TestAddressBookPrune(t *testing.T) {
 	waitCounter(t, &conns, 1)
 	waitCounter(t, &failedConns, 0)
 
-	_, err = ab.Get(nonConnPeer.Overlay)
+	_, _, err = ab.Get(nonConnPeer.Overlay)
 	if !errors.Is(err, addressbook.ErrNotFound) {
 		t.Fatal(err)
 	}
@@ -869,7 +870,7 @@ func TestAddressBookPrune(t *testing.T) {
 	waitCounter(t, &conns, 1)
 	waitCounter(t, &failedConns, 0)
 
-	_, err = ab.Get(nonConnPeer.Overlay)
+	_, _, err = ab.Get(nonConnPeer.Overlay)
 	if !errors.Is(err, addressbook.ErrNotFound) {
 		t.Fatal(err)
 	}
@@ -880,7 +881,7 @@ func TestAddressBookPrune(t *testing.T) {
 	waitCounter(t, &conns, 1)
 	waitCounter(t, &failedConns, 0)
 
-	_, err = ab.Get(nonConnPeer.Overlay)
+	_, _, err = ab.Get(nonConnPeer.Overlay)
 	if !errors.Is(err, addressbook.ErrNotFound) {
 		t.Fatal(err)
 	}
@@ -905,11 +906,11 @@ func TestAddressBookQuickPrune(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 
-	nonConnPeer, err := bzz.NewAddress(signer, []ma.Multiaddr{nonConnectableAddress}, swarm.RandAddressAt(t, base, 1), 0, nil)
+	nonConnPeer, err := bzz.NewAddress(signer, []ma.Multiaddr{nonConnectableAddress}, swarm.RandAddressAt(t, base, 1), 0, nonce, 1, common.Address{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ab.Put(nonConnPeer.Overlay, *nonConnPeer); err != nil {
+	if err := ab.Put(nonConnPeer.Overlay, *nonConnPeer, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -925,7 +926,7 @@ func TestAddressBookQuickPrune(t *testing.T) {
 
 	// after maxConnAttempts (4) failed dials the peer must be pruned
 	waitCounterAtLeast(t, &failedConns, int32(kademlia.MaxConnAttempts))
-	_, err = ab.Get(nonConnPeer.Overlay)
+	_, _, err = ab.Get(nonConnPeer.Overlay)
 	if !errors.Is(err, addressbook.ErrNotFound) {
 		t.Fatal(err)
 	}
@@ -1237,11 +1238,11 @@ func TestStart(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{multiaddr}, peer, 0, nil)
+			bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{multiaddr}, peer, 0, nonce, 1, common.Address{})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := ab.Put(peer, *bzzAddr); err != nil {
+			if err := ab.Put(peer, *bzzAddr, false); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -2151,12 +2152,12 @@ func p2pMock(t *testing.T, ab addressbook.Interface, signer beeCrypto.Signer, co
 			}
 
 			address := swarm.RandAddress(t)
-			bzzAddr, err := bzz.NewAddress(signer, addrs, address, 0, nil)
+			bzzAddr, err := bzz.NewAddress(signer, addrs, address, 0, nonce, 1, common.Address{})
 			if err != nil {
 				return nil, err
 			}
 
-			if err := ab.Put(address, *bzzAddr); err != nil {
+			if err := ab.Put(address, *bzzAddr, false); err != nil {
 				return nil, err
 			}
 
@@ -2182,11 +2183,11 @@ const underlayBase = "/ip4/127.0.0.1/tcp/1634/dns/"
 func connectOne(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addressbook.Putter, peer swarm.Address, expErr error) {
 	t.Helper()
 	underlays := generateMultipleUnderlays(t, 3, underlayBase+peer.String())
-	bzzAddr, err := bzz.NewAddress(signer, underlays, peer, 0, nil)
+	bzzAddr, err := bzz.NewAddress(signer, underlays, peer, 0, nonce, 1, common.Address{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ab.Put(peer, *bzzAddr); err != nil {
+	if err := ab.Put(peer, *bzzAddr, false); err != nil {
 		t.Fatal(err)
 	}
 	err = k.Connected(context.Background(), p2p.Peer{Address: peer}, false)
@@ -2202,11 +2203,11 @@ func addOne(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addressbo
 	if err != nil {
 		t.Fatal(err)
 	}
-	bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{multiaddr}, peer, 0, nil)
+	bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{multiaddr}, peer, 0, nonce, 1, common.Address{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ab.Put(peer, *bzzAddr); err != nil {
+	if err := ab.Put(peer, *bzzAddr, false); err != nil {
 		t.Fatal(err)
 	}
 	k.AddPeers(peer)
@@ -2430,11 +2431,12 @@ func TestAddPeersSkipsSelf(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{multiaddr}, peer3, 0, nil)
+
+	bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{multiaddr}, peer3, 0, nonce, 1, common.Address{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ab.Put(peer3, *bzzAddr); err != nil {
+	if err := ab.Put(peer3, *bzzAddr, false); err != nil {
 		t.Fatal(err)
 	}
 

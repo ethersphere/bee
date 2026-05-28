@@ -10,6 +10,7 @@ import (
 
 	ma "github.com/multiformats/go-multiaddr"
 
+	"github.com/ethersphere/bee/v2/pkg/bzz"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 )
 
@@ -84,7 +85,7 @@ func TestTCPPreferenceOrdering(t *testing.T) {
 				addrs[i] = mustAddr(s)
 			}
 
-			p2p.SortAddrsByTCPPreference(addrs)
+			addrs = bzz.SortUnderlaysByPriority(addrs)
 
 			// Once we've seen a non-TCP address, no TCP address may follow it.
 			seenNonTCP := false
