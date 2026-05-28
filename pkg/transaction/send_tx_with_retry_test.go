@@ -82,7 +82,7 @@ func TestSuggestGasFeeForTier(t *testing.T) {
 		backend := backendmock.New(headerOption(), feeHistoryOption(&feeHistoryCalls))
 
 		gasFeeCap, gasTipCap, err := transaction.SuggestGasFeeForTier(
-			backend, nil, context.Background(), int(transaction.FeeTierMarket), big.NewInt(prevTip),
+			backend, nil, context.Background(), int(transaction.FeeTierMarket), big.NewInt(prevTip), nil,
 		)
 
 		require.NoError(t, err)
@@ -97,26 +97,10 @@ func TestSuggestGasFeeForTier(t *testing.T) {
 		// escalated: 2000+1150=3150
 		maxTxPrice := big.NewInt(baseFeeCap + prevTip + 100)
 
-		backend := backendmock.New(headerOption())
+		backend := backendmock.New(headerOption(), feeHistoryOption(nil))
 
-		gasFeeCap, gasTipCap, err := transaction.SuggestGasFeeGasTipCapWithHistory(
-			backend, gasIncreasePct, maxTxPrice, context.Background(), big.NewInt(prevTip), nil,
-		)
-
-		require.NoError(t, err)
-		assert.Equal(t, prevTip, gasTipCap.Int64(), "must fall back to previous tip without escalation")
-		assert.Equal(t, baseFeeCap+prevTip, gasFeeCap.Int64())
-	})
-
-	t.Run("max tx price exceeded and previous tip also exceeds limit returns error", func(t *testing.T) {
-		t.Parallel()
-
-		maxTxPrice := big.NewInt(baseFeeCap + prevTip - 1)
-
-		backend := backendmock.New(headerOption())
-
-		gasFeeCap, gasTipCap, err := transaction.SuggestGasFeeGasTipCapWithHistory(
-			backend, gasIncreasePct, maxTxPrice, context.Background(), big.NewInt(prevTip), nil,
+		gasFeeCap, gasTipCap, err := transaction.SuggestGasFeeForTier(
+			backend, maxTxPrice, context.Background(), int(transaction.FeeTierMarket), big.NewInt(prevTip), nil,
 		)
 
 		assert.ErrorIs(t, err, transaction.ErrTxMaxPriceExceeded)
@@ -128,7 +112,7 @@ func TestSuggestGasFeeForTier(t *testing.T) {
 		t.Parallel()
 
 		maxTxPrice := big.NewInt(baseFeeCap + prevTip - 1)
-		backend := backendmock.New(headerOption())
+		backend := backendmock.New(headerOption(), feeHistoryOption(nil))
 
 		var receivedFeeCap *big.Int
 		overrides := &transaction.RetryOverrides{
@@ -138,8 +122,8 @@ func TestSuggestGasFeeForTier(t *testing.T) {
 			},
 		}
 
-		gasFeeCap, gasTipCap, err := transaction.SuggestGasFeeGasTipCapWithHistory(
-			backend, gasIncreasePct, maxTxPrice, context.Background(), big.NewInt(prevTip), overrides,
+		gasFeeCap, gasTipCap, err := transaction.SuggestGasFeeForTier(
+			backend, maxTxPrice, context.Background(), int(transaction.FeeTierMarket), big.NewInt(prevTip), overrides,
 		)
 
 		require.NoError(t, err, "override should bypass ErrTxMaxPriceExceeded")
@@ -154,14 +138,14 @@ func TestSuggestGasFeeForTier(t *testing.T) {
 		t.Parallel()
 
 		maxTxPrice := big.NewInt(baseFeeCap + prevTip - 1)
-		backend := backendmock.New(headerOption())
+		backend := backendmock.New(headerOption(), feeHistoryOption(nil))
 
 		overrides := &transaction.RetryOverrides{
 			IgnoreMaxPrice: func(_ *big.Int) bool { return false },
 		}
 
-		_, _, err := transaction.SuggestGasFeeGasTipCapWithHistory(
-			backend, gasIncreasePct, maxTxPrice, context.Background(), big.NewInt(prevTip), overrides,
+		_, _, err := transaction.SuggestGasFeeForTier(
+			backend, maxTxPrice, context.Background(), int(transaction.FeeTierMarket), big.NewInt(prevTip), overrides,
 		)
 
 		assert.ErrorIs(t, err, transaction.ErrTxMaxPriceExceeded)
@@ -921,7 +905,7 @@ func TestSendWithRetry_RetryDelayPerTransactionOverride(t *testing.T) {
 	)
 
 	cfg := s.retryConfig()
-	cfg.MaxRetries = 2
+	cfg.AttemptsPerTier = 2
 	cfg.RetryDelay = serviceRetryDelay
 
 	var (

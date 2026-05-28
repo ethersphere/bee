@@ -41,5 +41,5 @@ func SuggestGasFeeForTier(
 		backend:    backend,
 		maxTxPrice: maxTxPrice,
 	}
-	return svc.suggestGasFeeForTier(ctx, feeTier(tier), previousTip)
+	return svc.suggestGasFeeForTier(ctx, feeTier(tier), previousTip, overrides)
 }

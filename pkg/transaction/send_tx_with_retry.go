@@ -87,7 +87,7 @@ func retryStateKey(nonce uint64) string {
 // escalation. Each tier gets attemptsPerTier broadcast rounds with fresh eth_feeHistory
 // data. A +15% mempool bump floor is applied to ensure replacement transactions are accepted.
 // Optional RetryOption values can override per-call retry behaviour (e.g. bypass price cap).
-func (t *transactionService) SendWithRetry(ctx context.Context, request *TxRequest) (txHash common.Hash, receipt *types.Receipt, err error) {
+func (t *transactionService) SendWithRetry(ctx context.Context, request *TxRequest, opts ...RetryOption) (txHash common.Hash, receipt *types.Receipt, err error) {
 	if request.GasPrice != nil {
 		err = errors.New("send txs with retry requires automatic gas pricing")
 		t.recordRetryComplete(1, err)
@@ -106,7 +106,7 @@ func applyMempoolBump(tip *big.Int) *big.Int {
 
 // suggestGasFeeForTier fetches fresh fee history, picks the tip for the given tier,
 // applies the mempool bump floor relative to previousTip, and computes gasFeeCap.
-func (t *transactionService) suggestGasFeeForTier(ctx context.Context, tier feeTier, previousTip *big.Int) (gasFeeCap, gasTipCap *big.Int, err error) {
+func (t *transactionService) suggestGasFeeForTier(ctx context.Context, tier feeTier, previousTip *big.Int, overrides *RetryOverrides) (gasFeeCap, gasTipCap *big.Int, err error) {
 	header, err := t.backend.HeaderByNumber(ctx, nil)
 	if err != nil {
 		return nil, nil, err
@@ -149,24 +149,14 @@ func (t *transactionService) suggestGasFeeForTier(ctx context.Context, tier feeT
 		return overrides != nil && overrides.IgnoreMaxPrice != nil && overrides.IgnoreMaxPrice(feeCap)
 	}
 
-	if t.maxTxPrice != nil && gasFeeCapWithEscalatedTip.Cmp(t.maxTxPrice) > 0 {
-		if canOverride(gasFeeCapWithEscalatedTip) {
-			t.logger.Info("max price override: bypassing limit",
-				"escalated_gas_fee_cap", gasFeeCapWithEscalatedTip,
-				"max_tx_price", t.maxTxPrice)
-			return gasFeeCapWithEscalatedTip, escalatedGasTip, nil
+	if t.maxTxPrice != nil && gasFeeCapWithTip.Cmp(t.maxTxPrice) > 0 {
+		if !canOverride(gasFeeCapWithTip) {
+			return nil, nil, fmt.Errorf("%w: max_fee_per_gas %s exceeds limit %s", ErrTxMaxPriceExceeded, gasFeeCapWithTip, t.maxTxPrice)
 		}
 
-		t.logger.Warning("gas cap fee with escalated gas tip is too high, fallback to previous gas tip",
-			"escalated_gas_tip_cap", escalatedGasTip.String(),
-			"escalated_gas_fee_cap", gasFeeCapWithEscalatedTip.String(),
-			"previous_gas_tip_cap", prevGasTipCap.String())
-
-		if gasFeeCapWithPreviousTip.Cmp(t.maxTxPrice) > 0 {
-			return nil, nil, fmt.Errorf("%w: max_fee_per_gas %s exceeds limit %s", ErrTxMaxPriceExceeded, gasFeeCap, t.maxTxPrice)
-		}
-		return gasFeeCapWithPreviousTip, prevGasTipCap, nil
+		t.logger.Info("max price override: bypassing limit", "escalated_gas_fee_cap", gasFeeCapWithTip, "max_tx_price", t.maxTxPrice)
 	}
+
 	return gasFeeCapWithTip, tip, nil
 }
 
