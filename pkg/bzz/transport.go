@@ -9,6 +9,7 @@ import (
 
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
+	"github.com/multiformats/go-varint"
 )
 
 // TransportType represents the transport protocol of a multiaddress.
@@ -82,27 +83,81 @@ func ClassifyTransport(addr ma.Multiaddr) TransportType {
 	}
 }
 
+// underlayScore returns a priority score for a multiaddr address.
+// Lower score = higher priority:
+//   - IPv4 over non-IPv4 (+0 vs +100) — rewards IPv4 explicitly so that
+//     DNS-based and IPv6 addresses are deprioritized equally.
+//   - Public over private over loopback (+0 vs +10 vs +20)
+//   - Transport priority: TCP(0) > WS(1) > WSS(2) > Unknown(3)
+func underlayScore(addr ma.Multiaddr) int {
+	score := 0
+
+	// Non-IPv4 penalty (covers IPv6, DNS, and any other network protocol).
+	_, err := addr.ValueForProtocol(ma.P_IP4)
+	if err != nil {
+		score += 100
+	}
+
+	// Loopback penalty (higher than private — only reachable from same host).
+	if manet.IsIPLoopback(addr) {
+		score += 20
+	} else if manet.IsPrivateAddr(addr) {
+		// Private penalty (reachable within local network).
+		score += 10
+	}
+
+	// Transport priority.
+	score += ClassifyTransport(addr).Priority()
+
+	return score
+}
+
+// SortUnderlaysByPriority returns a copy of the addresses sorted by priority.
+// Priority: IPv4 public TCP first, then by transport, then private, then IPv6.
+func SortUnderlaysByPriority(addrs []ma.Multiaddr) []ma.Multiaddr {
+	sorted := make([]ma.Multiaddr, len(addrs))
+	copy(sorted, addrs)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return underlayScore(sorted[i]) < underlayScore(sorted[j])
+	})
+	return sorted
+}
+
+// TruncateUnderlays sorts addresses by priority and truncates to fit within
+// maxUnderlaysPerPeer count and maxUnderlayBytes byte budget. It returns
+// true as the second value if truncation occurred.
+func TruncateUnderlays(addrs []ma.Multiaddr) ([]ma.Multiaddr, bool) {
+	if len(addrs) == 0 {
+		return addrs, false
+	}
+
+	sorted := SortUnderlaysByPriority(addrs)
+	truncated := false
+
+	resultCap := min(len(sorted), maxUnderlaysPerPeer)
+	result := make([]ma.Multiaddr, 0, resultCap)
+	// Account for the 0x99 prefix byte when counting serialized size.
+	totalSize := 1
+	for _, addr := range sorted {
+		if len(result) >= maxUnderlaysPerPeer {
+			truncated = true
+			break
+		}
+		addrBytes := addr.Bytes()
+		addrSize := len(varint.ToUvarint(uint64(len(addrBytes)))) + len(addrBytes)
+		if totalSize+addrSize > maxUnderlayBytes {
+			truncated = true
+			break
+		}
+		totalSize += addrSize
+		result = append(result, addr)
+	}
+	return result, truncated
+}
+
 func SelectBestAdvertisedAddress(addrs []ma.Multiaddr, fallback ma.Multiaddr) ma.Multiaddr {
 	if len(addrs) == 0 {
 		return fallback
 	}
-
-	// Sort addresses: first by transport priority (TCP > WS > WSS), preserving relative order
-	sort.SliceStable(addrs, func(i, j int) bool {
-		return ClassifyTransport(addrs[i]).Priority() < ClassifyTransport(addrs[j]).Priority()
-	})
-
-	for _, addr := range addrs {
-		if manet.IsPublicAddr(addr) {
-			return addr
-		}
-	}
-
-	for _, addr := range addrs {
-		if !manet.IsPrivateAddr(addr) {
-			return addr
-		}
-	}
-
-	return addrs[0]
+	return SortUnderlaysByPriority(addrs)[0]
 }

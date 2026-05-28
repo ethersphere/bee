@@ -30,6 +30,7 @@ type backendMock struct {
 	headerByNumber     func(ctx context.Context, number *big.Int) (*types.Header, error)
 	balanceAt          func(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error)
 	nonceAt            func(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error)
+	codeAt             func(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error)
 }
 
 func (m *backendMock) CallContract(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
@@ -111,6 +112,13 @@ func (m *backendMock) NonceAt(ctx context.Context, account common.Address, block
 		return m.nonceAt(ctx, account, blockNumber)
 	}
 	return 0, ErrNotImplemented
+}
+
+func (m *backendMock) CodeAt(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error) {
+	if m.codeAt != nil {
+		return m.codeAt(ctx, contract, blockNumber)
+	}
+	return nil, ErrNotImplemented
 }
 
 func (m *backendMock) SuggestGasTipCap(ctx context.Context) (*big.Int, error) {
@@ -212,5 +220,11 @@ func WithHeaderbyNumberFunc(f func(ctx context.Context, number *big.Int) (*types
 func WithNonceAtFunc(f func(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error)) Option {
 	return optionFunc(func(s *backendMock) {
 		s.nonceAt = f
+	})
+}
+
+func WithCodeAtFunc(f func(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error)) Option {
+	return optionFunc(func(s *backendMock) {
+		s.codeAt = f
 	})
 }

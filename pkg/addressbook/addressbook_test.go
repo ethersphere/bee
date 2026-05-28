@@ -14,7 +14,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/statestore/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -47,26 +46,30 @@ func run(t *testing.T, f bookFunc) {
 		t.Fatal(err)
 	}
 
-	bzzAddr, err := bzz.NewAddress(crypto.NewDefaultSigner(pk), []ma.Multiaddr{multiaddr}, addr1, 1, trxHash)
+	bzzAddr, err := bzz.NewAddress(crypto.NewDefaultSigner(pk), []ma.Multiaddr{multiaddr}, addr1, 1, trxHash, 1, common.Address{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = store.Put(addr1, *bzzAddr)
+	err = store.Put(addr1, *bzzAddr, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	v, err := store.Get(addr1)
+	v, verified, err := store.Get(addr1)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	if !verified {
+		t.Fatal("expected verified flag to be true")
 	}
 
 	if !bzzAddr.Equal(v) {
 		t.Fatalf("expectted: %s, want %s", v, multiaddr)
 	}
 
-	notFound, err := store.Get(addr2)
+	notFound, _, err := store.Get(addr2)
 	if !errors.Is(err, addressbook.ErrNotFound) {
 		t.Fatal(err)
 	}

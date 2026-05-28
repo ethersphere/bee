@@ -307,6 +307,8 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		AutoTLSCAEndpoint:             c.config.GetString(optionAutoTLSCAEndpoint),
 		ChainID:                       networkConfig.chainID,
 		ChequebookEnable:              c.config.GetBool(optionNameChequebookEnable),
+		ChequebookVerification:        c.config.GetBool(optionNameChequebookVerification),
+		ChequebookMinBalance:          c.config.GetString(optionNameChequebookMinBalance),
 		CORSAllowedOrigins:            c.config.GetStringSlice(optionCORSAllowedOrigins),
 		DataDir:                       c.config.GetString(optionNameDataDir),
 		DBBlockCacheCapacity:          c.config.GetUint64(optionNameDBBlockCacheCapacity),
