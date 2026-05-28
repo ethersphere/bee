@@ -19,7 +19,7 @@ type contractMock struct {
 	expireBatches         func(ctx context.Context) error
 	paused                func(ctx context.Context) (bool, error)
 	minimumValidityBlocks func(ctx context.Context) (uint64, error)
-	expectedReward func(ctx context.Context) (*big.Int, error)
+	expectedReward        func(ctx context.Context) (*big.Int, error)
 }
 
 func (c *contractMock) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) (common.Hash, []byte, error) {
