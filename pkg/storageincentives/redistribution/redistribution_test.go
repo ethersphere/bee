@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"sync/atomic"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -24,9 +25,12 @@ import (
 	transactionMock "github.com/ethersphere/bee/v2/pkg/transaction/mock"
 	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
 	"github.com/ethersphere/bee/v2/pkg/util/testutil"
+	"github.com/stretchr/testify/assert"
 )
 
-var redistributionContractABI = abiutil.MustParseABI(chaincfg.Testnet.RedistributionABI)
+var (
+	redistributionContractABI = abiutil.MustParseABI(chaincfg.Testnet.RedistributionABI)
+)
 
 func randChunkInclusionProof(t *testing.T) redistribution.ChunkInclusionProof {
 	t.Helper()
@@ -203,7 +207,7 @@ func TestRedistribution(t *testing.T) {
 			owner,
 			log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
+				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
 					if *request.To == redistributionContractAddress {
 						if !bytes.Equal(expectedCallData[:32], request.Data[:32]) {
 							return common.Hash{}, nil, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -218,7 +222,7 @@ func TestRedistribution(t *testing.T) {
 			0,
 		)
 
-		_, err = contract.Claim(ctx, proofs)
+		_, err = contract.Claim(ctx, proofs, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -237,7 +241,7 @@ func TestRedistribution(t *testing.T) {
 			owner,
 			log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
+				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
 					if *request.To == redistributionContractAddress {
 						if !bytes.Equal(expectedCallData[:32], request.Data[:32]) {
 							return common.Hash{}, nil, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -252,7 +256,7 @@ func TestRedistribution(t *testing.T) {
 			0,
 		)
 
-		_, err = contract.Claim(ctx, proofs)
+		_, err = contract.Claim(ctx, proofs, nil)
 		if !errors.Is(err, transaction.ErrTransactionReverted) {
 			t.Fatal(err)
 		}
@@ -272,7 +276,7 @@ func TestRedistribution(t *testing.T) {
 			owner,
 			log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
+				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
 					if *request.To == redistributionContractAddress {
 						if !bytes.Equal(expectedCallData[:32], request.Data[:32]) {
 							return common.Hash{}, nil, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -309,7 +313,7 @@ func TestRedistribution(t *testing.T) {
 			owner,
 			log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
+				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
 					if *request.To == redistributionContractAddress {
 						if !bytes.Equal(expectedCallData[:32], request.Data[:32]) {
 							return common.Hash{}, nil, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -401,7 +405,7 @@ func TestRedistribution(t *testing.T) {
 			owner,
 			log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
+				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
 					if *request.To == redistributionContractAddress {
 						if !bytes.Equal(expectedCallData, request.Data) {
 							return common.Hash{}, nil, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -421,4 +425,152 @@ func TestRedistribution(t *testing.T) {
 			t.Fatal("expected error")
 		}
 	})
+}
+
+func TestCommit_CriticalErrorFails(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	owner := common.HexToAddress("abcd")
+	overlay := swarm.NewAddress(common.HexToHash("cbd").Bytes())
+	redistributionContractAddress := common.HexToAddress("ffff")
+	testobfus := common.Hex2Bytes("hash")
+
+	txSvc := transactionMock.New(
+		transactionMock.WithSendWithRetryFunc(func(_ context.Context, _ *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
+			return common.Hash{}, nil, transaction.ErrTransactionReverted
+		}),
+	)
+
+	c := redistribution.New(
+		overlay,
+		owner,
+		log.Noop,
+		txSvc,
+		redistributionContractAddress,
+		redistributionContractABI,
+		0,
+	)
+
+	_, err := c.Commit(ctx, testobfus, 0)
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, transaction.ErrTransactionReverted)
+}
+
+func TestCommit_withoutGasFeeCapOnRequest(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	owner := common.HexToAddress("abcd")
+	overlay := swarm.NewAddress(common.HexToHash("cbd").Bytes())
+	redistributionContractAddress := common.HexToAddress("ffff")
+	testobfus := common.Hex2Bytes("hash")
+	expectedHash := common.HexToHash("bbbb")
+
+	txSvc := transactionMock.New(
+		transactionMock.WithSendWithRetryFunc(func(_ context.Context, request *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
+			assert.Nil(t, request.GasFeeCap)
+			assert.Nil(t, request.GasPrice)
+			return expectedHash, &types.Receipt{Status: 1}, nil
+		}),
+	)
+
+	c := redistribution.New(
+		overlay,
+		owner,
+		log.Noop,
+		txSvc,
+		redistributionContractAddress,
+		redistributionContractABI,
+		0,
+	)
+
+	h, err := c.Commit(ctx, testobfus, 0)
+	assert.NoError(t, err)
+	assert.Equal(t, expectedHash, h)
+}
+
+func TestClaim_sendsWithRetryOptions(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	owner := common.HexToAddress("abcd")
+	overlay := swarm.NewAddress(common.HexToHash("cbd").Bytes())
+	redistributionContractAddress := common.HexToAddress("ffff")
+	proofs := randChunkInclusionProofs(t)
+	expectedHash := common.HexToHash("cafe")
+
+	var sendCalls atomic.Int32
+	var retryOptsLen int
+	txSvc := transactionMock.New(
+		transactionMock.WithSendWithRetryFunc(func(_ context.Context, request *transaction.TxRequest, opts ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
+			sendCalls.Add(1)
+			retryOptsLen = len(opts)
+			callData, err := redistributionContractABI.Pack("claim", proofs.A, proofs.B, proofs.C)
+			assert.NoError(t, err)
+			assert.Equal(t, callData, request.Data)
+			return expectedHash, &types.Receipt{Status: 1}, nil
+		}),
+	)
+
+	c := redistribution.New(
+		overlay,
+		owner,
+		log.Noop,
+		txSvc,
+		redistributionContractAddress,
+		redistributionContractABI,
+		0,
+	)
+
+	opts := &redistribution.ClaimOpts{
+		OverrideAfterBlock: 100,
+		CurrentBlockFn:     func() uint64 { return 110 },
+		ExpectedReward:     new(big.Int).Mul(big.NewInt(50), big.NewInt(1_000_000)),
+		RoundFees:          big.NewInt(100_000),
+	}
+
+	h, err := c.Claim(ctx, proofs, opts)
+	assert.NoError(t, err)
+	assert.Equal(t, expectedHash, h)
+	assert.EqualValues(t, 1, sendCalls.Load())
+	assert.Equal(t, 2, retryOptsLen, "Claim must pass WithIgnoreMaxPrice and WithRetryDelay retry options")
+}
+
+func TestClaim_contextCanceled(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	owner := common.HexToAddress("abcd")
+	overlay := swarm.NewAddress(common.HexToHash("cbd").Bytes())
+	redistributionContractAddress := common.HexToAddress("ffff")
+	proofs := randChunkInclusionProofs(t)
+
+	txSvc := transactionMock.New(
+		transactionMock.WithSendWithRetryFunc(func(ctx context.Context, _ *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
+			return common.Hash{}, nil, ctx.Err()
+		}),
+	)
+
+	c := redistribution.New(
+		overlay,
+		owner,
+		log.Noop,
+		txSvc,
+		redistributionContractAddress,
+		redistributionContractABI,
+		0,
+	)
+
+	opts := &redistribution.ClaimOpts{
+		OverrideAfterBlock: 100,
+		CurrentBlockFn:     func() uint64 { return 200 },
+		ExpectedReward:     big.NewInt(1000),
+		RoundFees:          big.NewInt(1),
+	}
+
+	_, err := c.Claim(ctx, proofs, opts)
+	assert.ErrorIs(t, err, context.Canceled)
 }

@@ -108,10 +108,12 @@ type StoredTransaction struct {
 // limit and nonce management.
 type Service interface {
 	io.Closer
+	EstimateTxCost(ctx context.Context, gasUnits int64, tip int) (cost *big.Int, gasFeeCap *big.Int, err error)
 	// Send creates a transaction based on the request (with gasprice increased by provided percentage) and sends it.
 	Send(ctx context.Context, request *TxRequest, tipCapBoostPercent int) (txHash common.Hash, err error)
 	// SendWithRetry sends a transaction using fee-history tiers and automatic fee escalation; see send_tx_with_retry.go.
-	SendWithRetry(ctx context.Context, request *TxRequest) (txHash common.Hash, receipt *types.Receipt, err error)
+	// Optional RetryOption values can override per-call retry behaviour (e.g. bypass price cap).
+	SendWithRetry(ctx context.Context, request *TxRequest, opts ...RetryOption) (txHash common.Hash, receipt *types.Receipt, err error)
 	// Call simulate a transaction based on the request.
 	Call(ctx context.Context, request *TxRequest) (result []byte, err error)
 	// WaitForReceipt waits until either the transaction with the given hash has been mined or the context is cancelled.
@@ -251,6 +253,15 @@ func (t *transactionService) waitForAllPendingTx() error {
 	}
 
 	return nil
+}
+
+func (t *transactionService) EstimateTxCost(ctx context.Context, gasUnits int64, tip int) (cost *big.Int, gasFeeCap *big.Int, err error) {
+	gasFeeCap, _, err = t.backend.SuggestedFeeAndTip(ctx, nil, tip)
+	if err != nil {
+		return nil, nil, err
+	}
+	cost = new(big.Int).Mul(big.NewInt(gasUnits), gasFeeCap)
+	return cost, gasFeeCap, nil
 }
 
 // Send creates and signs a transaction based on the request and sends it.
@@ -437,6 +448,18 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 	if err != nil {
 		return nil, err
 	}
+	if request.GasFeeCap != nil {
+		if request.GasFeeCap.Sign() <= 0 {
+			return nil, errors.New("gas fee cap must be greater than zero")
+		}
+		if gasFeeCap.Cmp(request.GasFeeCap) > 0 {
+			return nil, fmt.Errorf("gas fee cap exceeded: suggested=%s requested=%s", gasFeeCap, request.GasFeeCap)
+		}
+		gasFeeCap = new(big.Int).Set(request.GasFeeCap)
+		if gasTipCap.Cmp(gasFeeCap) > 0 {
+			gasTipCap = new(big.Int).Set(gasFeeCap)
+		}
+	}
 
 	t.logger.Debug("prepared transaction",
 		"to", request.To,
@@ -582,6 +605,15 @@ func (t *transactionService) ResendTransaction(ctx context.Context, txHash commo
 	gasFeeCap, gasTipCap, err := t.backend.SuggestedFeeAndTip(ctx, sctx.GetGasPrice(ctx), storedTransaction.GasTipBoost)
 	if err != nil {
 		return err
+	}
+	if storedTransaction.GasFeeCap != nil && gasFeeCap.Cmp(storedTransaction.GasFeeCap) > 0 {
+		gasFeeCap = new(big.Int).Set(storedTransaction.GasFeeCap)
+	}
+	if storedTransaction.GasTipCap != nil && gasTipCap.Cmp(storedTransaction.GasTipCap) > 0 {
+		gasTipCap = new(big.Int).Set(storedTransaction.GasTipCap)
+	}
+	if gasTipCap.Cmp(gasFeeCap) > 0 {
+		gasTipCap = new(big.Int).Set(gasFeeCap)
 	}
 
 	tx := types.NewTx(&types.DynamicFeeTx{

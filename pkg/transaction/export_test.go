@@ -19,12 +19,8 @@ var (
 )
 
 const (
-	FeeTierLow        = feeTierLow
-	FeeTierMarket     = feeTierMarket
-	FeeTierAggressive = feeTierAggressive
-
-	MempoolBumpPercent     = mempoolBumpPercent
-	DefaultAttemptsPerTier = defaultAttemptsPerTier
+	FeeTierLow    = feeTierLow
+	FeeTierMarket = feeTierMarket
 )
 
 // SuggestGasFeeForTier exposes suggestGasFeeForTier for tests.
@@ -34,11 +30,14 @@ func SuggestGasFeeForTier(
 	ctx context.Context,
 	tier int,
 	previousTip *big.Int,
+	previousBaseFee *big.Int,
+	overrides *RetryOverrides,
 ) (gasFeeCap, gasTipCap *big.Int, err error) {
 	svc := &transactionService{
 		logger:     log.Noop,
 		backend:    backend,
 		maxTxPrice: maxTxPrice,
 	}
-	return svc.suggestGasFeeForTier(ctx, feeTier(tier), previousTip)
+	cap, tip, _, err := svc.suggestGasFeeForTier(ctx, feeTier(tier), previousTip, previousBaseFee, overrides)
+	return cap, tip, err
 }
