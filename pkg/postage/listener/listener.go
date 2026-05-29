@@ -29,7 +29,6 @@ const loggerName = "listener"
 
 const (
 	blockPage          = 5000      // how many blocks to sync every time we page
-	blockPageSnapshot  = 50000     // how many blocks to sync every time from snapshot
 	tailSize           = 4         // how many blocks to tail from the tip of the chain
 	defaultBatchFactor = uint64(5) // minimal number of blocks to sync at once
 )
@@ -233,15 +232,6 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 
 	l.logger.Debug("batch factor", "value", batchFactor)
 
-	// Type assertion to detect if backend is SnapshotLogFilterer
-	pageSize := uint64(blockPage)
-	if _, isSnapshot := l.ev.(interface{ GetBatchSnapshot() []byte }); isSnapshot {
-		pageSize = blockPageSnapshot
-		l.logger.Debug("using snapshot page size", "page_size", pageSize)
-	} else {
-		l.logger.Debug("using standard page size", "page_size", pageSize)
-	}
-
 	synced := make(chan error)
 	closeOnce := new(sync.Once)
 	paged := true
@@ -322,9 +312,9 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 			}
 
 			// do some paging (sub-optimal)
-			if to-from >= pageSize {
+			if to-from >= blockPage {
 				paged = true
-				to = from + pageSize - 1
+				to = from + blockPage - 1
 			} else {
 				closeOnce.Do(func() { synced <- nil })
 			}
