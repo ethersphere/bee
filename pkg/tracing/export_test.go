@@ -7,3 +7,5 @@ package tracing
 const (
 	LogField = logField
 )
+
+var LoadCAFile = loadCAFile
