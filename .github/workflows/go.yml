@@ -20,11 +20,12 @@ on:
 
 jobs:
   test:
-    name: Test
-    runs-on: ${{ matrix.os }}
+    name: Test (Linux, shard ${{ matrix.shard }})
+    runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        shard: [0, 1, 2, 3]
     steps:
     - name: Checkout
       uses: actions/checkout@v5
@@ -33,23 +34,36 @@ jobs:
       with:
         cache: true
         go-version-file: go.mod
-    - name: Increase UDP buffer sizes (Ubuntu)
-      if: matrix.os == 'ubuntu-latest'
+    - name: Increase UDP buffer sizes
       run: |
         sudo sysctl -w net.core.rmem_max=7500000
         sudo sysctl -w net.core.wmem_max=7500000
+    - name: Test shard with race detector
+      run: |
+        PKGS=$(go list ./... | awk 'NR % 4 == ${{ matrix.shard }}' | tr '\n' ' ')
+        go test -race -failfast $PKGS
+
+  test-compat:
+    name: Build check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v5
+    - name: Setup Go
+      uses: actions/setup-go@v6
+      with:
+        cache: true
+        go-version-file: go.mod
     - name: Increase UDP buffer sizes (macOS)
       if: matrix.os == 'macos-latest'
-      run: |
-        sudo sysctl -w kern.ipc.maxsockbuf=6291456
+      run: sudo sysctl -w kern.ipc.maxsockbuf=6291456
     - name: Build
       run: make build
-    - name: Test with race detector (Ubuntu and MacOS)
-      if: matrix.os != 'windows-latest'
-      run: make test-ci-race
-    - name: Test without race detector (Windows)
-      if: matrix.os == 'windows-latest'
-      run: make test-ci
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -77,6 +91,7 @@ jobs:
       run: make check-whitespace
     - name: go mod tidy check
       uses: katexochen/go-tidy-check@v2
+
   coverage:
     name: Coverage Report
     if: github.ref == 'refs/heads/master'
@@ -87,15 +102,8 @@ jobs:
     - name: Setup Go
       uses: actions/setup-go@v6
       with:
-        cache: false
+        cache: true
         go-version-file: go.mod
-    - name: Cache Go Modules
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cache/go-build
-          ~/go/pkg/mod
-        key: ${{ runner.os }}-go-coverage-${{ hashFiles('**/go.sum') }}
     - name: Test with code coverage
       run: make cover=1 test-ci
     - name: Upload coverage to Codecov
@@ -104,21 +112,17 @@ jobs:
         token: ${{ secrets.CODECOV_TOKEN }}
         fail_ci_if_error: true
         files: ./cover.out
+
   trigger-beekeeper:
     name: Trigger Beekeeper
     runs-on: ubuntu-latest
-    needs: [test, lint, coverage]
+    needs: [test, lint]
     if: github.ref == 'refs/heads/master'
     steps:
     - name: Checkout
       uses: actions/checkout@v5
       with:
         fetch-depth: 0
-    - name: Setup Go
-      uses: actions/setup-go@v6
-      with:
-        cache: false
-        go-version-file: go.mod
     - name: Trigger Beekeeper
       uses: peter-evans/repository-dispatch@v2
       with:
