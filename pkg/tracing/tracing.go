@@ -57,14 +57,34 @@ const p2pCarrierLen = 26
 // flush pending spans on shutdown.
 const shutdownTimeout = 5 * time.Second
 
+// Supported OTLP transport values for Options.Protocol.
+const (
+	protocolHTTP = "http"
+	protocolGRPC = "grpc"
+)
+
 // noopTracer is returned when tracing is disabled or *Tracer is nil so callers
 // always operate against a working trace.Tracer.
 var noopTracer = &Tracer{tracer: noop.NewTracerProvider().Tracer(instrumentationName)}
+
+// httpPropagator carries trace context across HTTP via the W3C TraceContext
+// standard headers (traceparent, tracestate).
+var httpPropagator propagation.TextMapPropagator = propagation.TraceContext{}
 
 // Tracer wraps an OTel Tracer and provides p2p/HTTP carriers plus helpers
 // aligned with bee's tracing API.
 type Tracer struct {
 	tracer trace.Tracer
+}
+
+// otel returns the underlying OTel tracer, falling back to a no-op tracer when
+// the receiver or its tracer is nil. This keeps the exported Tracer safe to use
+// even when obtained without NewTracer (e.g. a zero-value &Tracer{}).
+func (t *Tracer) otel() trace.Tracer {
+	if t == nil || t.tracer == nil {
+		return noopTracer.tracer
+	}
+	return t.tracer
 }
 
 // Options are the constructor parameters for Tracer.
@@ -84,7 +104,7 @@ type Options struct {
 	CAFile string
 	// SamplingRatio is the head-based sampling ratio for the parent-based
 	// sampler in the range [0, 1]. 0 disables sampling for non-parented spans;
-	// 1 samples everything. Negative values are clamped to 0.
+	// 1 samples everything. Values outside [0, 1] are clamped to the nearest bound.
 	SamplingRatio float64
 	// Protocol selects the OTLP exporter transport: "http" or "grpc". Empty
 	// defaults to "http".
@@ -123,6 +143,8 @@ func NewTracer(o *Options) (*Tracer, io.Closer, error) {
 	ratio := o.SamplingRatio
 	if ratio < 0 {
 		ratio = 0
+	} else if ratio > 1 {
+		ratio = 1
 	}
 
 	client, err := newOTLPClient(o)
@@ -141,12 +163,6 @@ func NewTracer(o *Options) (*Tracer, io.Closer, error) {
 	)
 	return &Tracer{tracer: tp.Tracer(instrumentationName)}, providerCloser{tp: tp}, nil
 }
-
-// Supported OTLP transport values for Options.Protocol.
-const (
-	protocolHTTP = "http"
-	protocolGRPC = "grpc"
-)
 
 // newOTLPClient builds the OTLP client for the configured transport. An empty
 // Protocol defaults to HTTP for backward compatibility with the initial OTLP
@@ -200,15 +216,7 @@ func loadCAFile(path string) (*tls.Config, error) {
 // present in ctx. If logger is non-nil, a derived logger annotated with the
 // trace id is returned alongside the new context.
 func (t *Tracer) StartSpanFromContext(ctx context.Context, operationName string, l log.Logger, opts ...trace.SpanStartOption) (trace.Span, log.Logger, context.Context) {
-	if t == nil {
-		t = noopTracer
-	}
-
-	if parent := FromContext(ctx); parent.IsValid() {
-		ctx = trace.ContextWithSpanContext(ctx, parent)
-	}
-
-	ctx, span := t.tracer.Start(ctx, operationName, opts...)
+	ctx, span := t.otel().Start(ctx, operationName, opts...)
 	return span, loggerWithTraceID(span.SpanContext(), l), ctx
 }
 
@@ -216,15 +224,11 @@ func (t *Tracer) StartSpanFromContext(ctx context.Context, operationName string,
 // ctx. Links are the OTel equivalent of OpenTracing's FollowsFrom relation:
 // the new span is causally related but not a direct child.
 func (t *Tracer) FollowSpanFromContext(ctx context.Context, operationName string, l log.Logger, opts ...trace.SpanStartOption) (trace.Span, log.Logger, context.Context) {
-	if t == nil {
-		t = noopTracer
-	}
-
 	if parent := FromContext(ctx); parent.IsValid() {
 		opts = append(opts, trace.WithLinks(trace.Link{SpanContext: parent}))
 	}
 
-	ctx, span := t.tracer.Start(ctx, operationName, opts...)
+	ctx, span := t.otel().Start(ctx, operationName, opts...)
 	return span, loggerWithTraceID(span.SpanContext(), l), ctx
 }
 
@@ -265,10 +269,6 @@ func (t *Tracer) WithContextFromHeaders(ctx context.Context, headers p2p.Headers
 	}
 	return WithContext(ctx, sc), nil
 }
-
-// httpPropagator carries trace context across HTTP via the W3C TraceContext
-// standard headers (traceparent, tracestate).
-var httpPropagator propagation.TextMapPropagator = propagation.TraceContext{}
 
 // AddContextHTTPHeader injects the active span context into HTTP headers.
 // Safe to call on a nil receiver.
