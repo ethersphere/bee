@@ -803,7 +803,10 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		return nil, p2p.ErrPeerNotFound
 	}
 
-	if i.FullNode {
+	// Only persist peers with underlays to the addressbook. Inbound-only peers
+	// (empty underlays, e.g. browsers/wasm) cannot be dialed back, so there is no
+	// point storing them for reconnection.
+	if i.FullNode && len(i.BzzAddress.Underlays) > 0 {
 		if err := s.putHandshakeAddress(i.BzzAddress); err != nil {
 			_ = s.Disconnect(overlay, "failed storing peer in addressbook")
 			return nil, fmt.Errorf("storing bzz address: %w", err)
