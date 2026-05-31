@@ -12,7 +12,6 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 	ma "github.com/multiformats/go-multiaddr"
-	madns "github.com/multiformats/go-multiaddr-dns"
 )
 
 func isDNSProtocol(protoCode int) bool {
@@ -27,7 +26,10 @@ func Discover(ctx context.Context, addr ma.Multiaddr, f func(ma.Multiaddr) (bool
 		return f(addr)
 	}
 
-	dnsResolver := madns.DefaultResolver
+	dnsResolver, err := newDNSResolver()
+	if err != nil {
+		return false, fmt.Errorf("create dns resolver: %w", err)
+	}
 	addrs, err := dnsResolver.Resolve(ctx, addr)
 	if err != nil {
 		return false, fmt.Errorf("dns resolve address %s: %w", addr, err)
