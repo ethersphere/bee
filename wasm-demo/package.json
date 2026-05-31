@@ -1,0 +1,17 @@
+{
+  "name": "wasm-demo",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest",
+    "esbuild": "^0.27.1"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@zenfs/core": "^2.4.4"
+  },
+  "scripts": {
+    "build": "bunx esbuild sw.js --bundle --platform=browser > sw_bundle.js"
+  }
+}
