@@ -108,16 +108,19 @@ async function main() {
     "start",
     "--password",
     "testing",
+    // Mainnet bootnodes. The dnsaddr is resolved in-browser via DoH
+    // (pkg/p2p/discover_js.go), yielding the libp2p.direct AutoTLS secure
+    // WebSocket addresses that the wasmws transport can dial.
     "--bootnode",
-    "/ip4/49.12.172.37/tcp/32510/tls/sni/49-12-172-37.k2k4r8mh36hk5mcrg2syh2amdbl4dmd08fjhtqrtvyn0gef71auumrvf.libp2p.direct/ws/p2p/QmWbXocGMpfa8zApx9kCNwfmc35bbRJv136bdtuQjbR4wL",
+    "/dnsaddr/mainnet.ethswarm.org",
     "--data-dir",
-    "/home/user/.bee/sepolia",
+    "/home/user/.bee/mainnet",
     "--verbosity",
     "debug",
     // '--blockchain-rpc-endpoint',
-    // 'https://ethereum-sepolia-rpc.publicnode.com/ac5b7f52aabd778861c2588f872f15c5fc34f0b343ec3d18ac2e91f5526e9c2b',
-    "--mainnet=false",
-    "--network-id=5",
+    // 'https://rpc.gnosischain.com',
+    "--mainnet=true",
+    "--network-id=1",
     "--p2p-ws-enable",
   ];
 
