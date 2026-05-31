@@ -32,6 +32,7 @@ require (
 	github.com/multiformats/go-multiaddr-dns v0.4.1
 	github.com/multiformats/go-multihash v0.2.3
 	github.com/multiformats/go-multistream v0.6.1
+	github.com/nlepage/go-wasm-http-server/v2 v2.2.1
 	github.com/prometheus/client_golang v1.22.0
 	github.com/spf13/afero v1.10.0
 	github.com/spf13/cobra v1.8.1
@@ -62,6 +63,11 @@ require (
 	resenje.org/multex v0.1.0
 	resenje.org/singleflight v0.4.0
 	resenje.org/web v0.4.3
+)
+
+require (
+	github.com/hack-pad/safejs v0.1.1 // indirect
+	github.com/nlepage/go-js-promise v1.0.0 // indirect
 )
 
 require (
