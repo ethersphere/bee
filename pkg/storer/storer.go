@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
+	nativeFs "io/fs"
 	"math/big"
 	"os"
 	"path"
@@ -18,6 +18,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ethersphere/bee/v2/pkg/fs"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/stabilization"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
@@ -188,7 +189,7 @@ type memFS struct {
 	afero.Fs
 }
 
-func (m *memFS) Open(path string) (fs.File, error) {
+func (m *memFS) Open(path string) (nativeFs.File, error) {
 	return m.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644)
 }
 
@@ -196,8 +197,8 @@ type dirFS struct {
 	basedir string
 }
 
-func (d *dirFS) Open(path string) (fs.File, error) {
-	return os.OpenFile(filepath.Join(d.basedir, path), os.O_RDWR|os.O_CREATE, 0o644)
+func (d *dirFS) Open(path string) (nativeFs.File, error) {
+	return fs.OpenFile(filepath.Join(d.basedir, path), os.O_RDWR|os.O_CREATE, 0o644)
 }
 
 var (

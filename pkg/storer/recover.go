@@ -8,12 +8,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
-	"os"
+	nativeFs "io/fs"
 	"path/filepath"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/fs"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/sharky"
 	"github.com/ethersphere/bee/v2/pkg/soc"
@@ -34,10 +34,10 @@ func sharkyRecovery(ctx context.Context, sharkyBasePath string, store storage.St
 	logger := opts.Logger.WithName(loggerName).Register()
 	dirtyFilePath := filepath.Join(sharkyBasePath, sharkyDirtyFileName)
 
-	closer := func() error { return os.Remove(dirtyFilePath) }
+	closer := func() error { return fs.Remove(dirtyFilePath) }
 
-	if _, err := os.Stat(dirtyFilePath); errors.Is(err, fs.ErrNotExist) {
-		return closer, 0, os.WriteFile(dirtyFilePath, []byte{}, 0o644)
+	if _, err := fs.Stat(dirtyFilePath); errors.Is(err, nativeFs.ErrNotExist) {
+		return closer, 0, fs.WriteFile(dirtyFilePath, []byte{}, 0o644)
 	}
 
 	logger.Info("localstore sharky .DIRTY file exists: starting recovery due to previous dirty exit")
