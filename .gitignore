@@ -33,3 +33,5 @@ _testmain.go
 
 AGENTS.md
 CLAUDE.md
+wasm-demo/bee.wasm
+wasm-demo/sw_bundle.js
