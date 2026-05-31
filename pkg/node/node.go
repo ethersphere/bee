@@ -14,7 +14,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	stdlog "log"
 	"math/big"
 	"net"
 	"net/http"
@@ -483,11 +482,6 @@ func NewBee(
 			runtime.SetBlockProfileRate(1)
 		}
 
-		apiListener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", o.APIAddr)
-		if err != nil {
-			return nil, fmt.Errorf("api listener: %w", err)
-		}
-
 		apiService = api.New(
 			*publicKey,
 			pssPrivateKey.PublicKey,
@@ -509,24 +503,15 @@ func NewBee(
 		apiService.SetIsWarmingUp(true)
 		apiService.SetSwarmAddress(&swarmAddress)
 
-		apiServer := &http.Server{
-			IdleTimeout:       30 * time.Second,
-			ReadHeaderTimeout: 3 * time.Second,
-			Handler:           apiService,
-			ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
+		// startAPIServer has platform-specific implementations: native serves
+		// over a TCP listener; wasm registers the handler with the service worker.
+		apiServer, apiCloser, err := startAPIServer(ctx, o.APIAddr, apiService, b.errorLogWriter, logger)
+		if err != nil {
+			return nil, err
 		}
 
-		go func() {
-			logger.Info("starting debug & api server", "address", apiListener.Addr())
-
-			if err := apiServer.Serve(apiListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				logger.Debug("debug & api server failed to start", "error", err)
-				logger.Error(nil, "debug & api server failed to start")
-			}
-		}()
-
 		b.apiServer = apiServer
-		b.apiCloser = apiServer
+		b.apiCloser = apiCloser
 	}
 
 	if chainEnabled {
