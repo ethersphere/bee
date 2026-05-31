@@ -23,7 +23,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/hashicorp/golang-lru/v2 v2.0.7
-	github.com/ipfs/go-cid v0.5.0
+	github.com/ipfs/go-cid v0.6.0
 	github.com/ipshipyard/p2p-forge v0.7.0
 	github.com/kardianos/service v1.2.2
 	github.com/klauspost/reedsolomon v1.11.8
@@ -61,6 +61,7 @@ require (
 )
 
 require (
+	github.com/coder/websocket v1.8.14 // indirect
 	github.com/hack-pad/safejs v0.1.1 // indirect
 	github.com/nlepage/go-js-promise v1.0.0 // indirect
 )
@@ -133,8 +134,8 @@ require (
 	github.com/multiformats/go-base36 v0.2.0 // indirect
 	github.com/multiformats/go-multiaddr-fmt v0.1.0 // indirect
 	github.com/multiformats/go-multibase v0.2.0 // indirect
-	github.com/multiformats/go-multicodec v0.9.1 // indirect
-	github.com/multiformats/go-varint v0.0.7
+	github.com/multiformats/go-multicodec v0.10.0 // indirect
+	github.com/multiformats/go-varint v0.1.0
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
 	github.com/pelletier/go-toml v1.9.3 // indirect
@@ -175,6 +176,7 @@ require (
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/uber/jaeger-lib v2.2.0+incompatible // indirect
+	github.com/v1rtl/go-libp2p-wasmws v0.0.0-00010101000000-000000000000
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/wealdtech/go-multicodec v1.4.0 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
@@ -185,12 +187,12 @@ require (
 	go.uber.org/mock v0.5.2 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap/exp v0.3.0 // indirect
-	golang.org/x/exp v0.0.0-20250606033433-dcc06ee1d476 // indirect
+	golang.org/x/exp v0.0.0-20251125195548-87e1e737ad39 // indirect
 	golang.org/x/mod v0.32.0 // indirect
 	golang.org/x/telemetry v0.0.0-20260109210033-bd525da824e2 // indirect
 	golang.org/x/text v0.34.0 // indirect
 	golang.org/x/tools v0.41.0 // indirect
-	google.golang.org/protobuf v1.36.6 // indirect
+	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
@@ -204,3 +206,5 @@ replace github.com/libp2p/go-libp2p => ../go-libp2p
 replace github.com/ethereum/go-ethereum => ../go-ethereum
 
 replace github.com/syndtr/goleveldb => ../goleveldb
+
+replace github.com/v1rtl/go-libp2p-wasmws => ../../go-libp2p-wasmws
