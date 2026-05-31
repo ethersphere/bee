@@ -33,9 +33,9 @@ require (
 	github.com/multiformats/go-multihash v0.2.3
 	github.com/multiformats/go-multistream v0.6.1
 	github.com/prometheus/client_golang v1.22.0
-	github.com/spf13/afero v1.6.0
+	github.com/spf13/afero v1.10.0
 	github.com/spf13/cobra v1.8.1
-	github.com/spf13/viper v1.7.0
+	github.com/spf13/viper v1.8.1
 	github.com/stretchr/testify v1.11.1
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
 	github.com/vmihailenco/msgpack/v5 v5.4.1
@@ -67,7 +67,6 @@ require (
 require (
 	filippo.io/bigmod v0.1.1-0.20260103110540-f8a47775ebe5 // indirect
 	filippo.io/keygen v0.0.0-20260114151900-8e2790ea4c5b // indirect
-	github.com/BurntSushi/toml v1.3.2 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProjectZKM/Ziren/crates/go-runtime/zkvm_runtime v0.0.0-20251001021608-1fe7b43fc4d6 // indirect
 	github.com/StackExchange/wmi v1.2.1 // indirect
@@ -97,7 +96,7 @@ require (
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
-	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
+	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/pprof v0.0.0-20250607225305-033d6d78b36a // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect
@@ -120,7 +119,7 @@ require (
 	github.com/libp2p/go-netroute v0.4.0 // indirect
 	github.com/libp2p/go-reuseport v0.4.0 // indirect
 	github.com/libp2p/go-yamux/v5 v5.0.1 // indirect
-	github.com/magiconair/properties v1.8.1 // indirect
+	github.com/magiconair/properties v1.8.5 // indirect
 	github.com/marten-seemann/tcp v0.0.0-20210406111302-dfbc87cc63fd // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mholt/acmez/v3 v3.0.0 // indirect
@@ -128,7 +127,7 @@ require (
 	github.com/mikioh/tcpinfo v0.0.0-20190314235526-30a79bb1804b // indirect
 	github.com/mikioh/tcpopt v0.0.0-20190314235656-172688c1accc // indirect
 	github.com/minio/sha256-simd v1.0.1 // indirect
-	github.com/mitchellh/mapstructure v1.4.1 // indirect
+	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/multiformats/go-base32 v0.1.0 // indirect
 	github.com/multiformats/go-base36 v0.2.0 // indirect
@@ -137,9 +136,8 @@ require (
 	github.com/multiformats/go-multicodec v0.9.1 // indirect
 	github.com/multiformats/go-varint v0.0.7
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
-	github.com/onsi/gomega v1.36.3 // indirect
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
-	github.com/pelletier/go-toml v1.8.0 // indirect
+	github.com/pelletier/go-toml v1.9.3 // indirect
 	github.com/pion/datachannel v1.5.10 // indirect
 	github.com/pion/dtls/v3 v3.1.2 // indirect
 	github.com/pion/ice/v4 v4.0.10 // indirect
@@ -168,8 +166,8 @@ require (
 	github.com/quic-go/webtransport-go v0.10.0 // indirect
 	github.com/shirou/gopsutil v3.21.5+incompatible // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
-	github.com/spf13/cast v1.3.0 // indirect
-	github.com/spf13/jwalterweatherman v1.0.0 // indirect
+	github.com/spf13/cast v1.3.1 // indirect
+	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/subosito/gotenv v1.2.0 // indirect
 	github.com/supranational/blst v0.3.16 // indirect
@@ -202,3 +200,10 @@ require (
 )
 
 replace github.com/codahale/hdrhistogram => github.com/HdrHistogram/hdrhistogram-go v0.0.0-20200919145931-8dac23c8dac1
+
+// WASM forks: js-only patches behind //go:build js; native side is identical to upstream.
+replace github.com/libp2p/go-libp2p => ../go-libp2p
+
+replace github.com/ethereum/go-ethereum => ../go-ethereum
+
+replace github.com/syndtr/goleveldb => ../goleveldb
