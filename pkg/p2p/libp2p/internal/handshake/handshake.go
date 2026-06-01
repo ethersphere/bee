@@ -170,7 +170,6 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 	if observedTruncated {
 		s.metrics.ObservedUnderlaysTruncated.Inc()
 	}
-	peerMultiaddrs = p2p.FilterBee260CompatibleUnderlays(o.bee260compatibility, peerMultiaddrs)
 
 	observedUnderlayBytes, err := bzz.SerializeUnderlays(peerMultiaddrs)
 	if err != nil {
@@ -240,8 +239,6 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 	advertisableUnderlays = slices.CompactFunc(advertisableUnderlays, func(a, b ma.Multiaddr) bool {
 		return a.Equal(b)
 	})
-
-	advertisableUnderlays = p2p.FilterBee260CompatibleUnderlays(o.bee260compatibility, advertisableUnderlays)
 
 	// Truncate to count and byte-size caps before signing.
 	var advTruncated bool
@@ -350,8 +347,6 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 		return a.Equal(b)
 	})
 
-	advertisableUnderlays = p2p.FilterBee260CompatibleUnderlays(o.bee260compatibility, advertisableUnderlays)
-
 	// Truncate to count and byte-size caps before signing.
 	var handleAdvTruncated bool
 	advertisableUnderlays, handleAdvTruncated = bzz.TruncateUnderlays(advertisableUnderlays)
@@ -371,8 +366,6 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 	if handleObsTruncated {
 		s.metrics.ObservedUnderlaysTruncated.Inc()
 	}
-
-	peerMultiaddrs = p2p.FilterBee260CompatibleUnderlays(o.bee260compatibility, peerMultiaddrs)
 
 	synObservedBytes, err := bzz.SerializeUnderlays(peerMultiaddrs)
 	if err != nil {

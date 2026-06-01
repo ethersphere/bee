@@ -6,6 +6,7 @@ package bzz
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 
 	"github.com/multiformats/go-multiaddr"
@@ -38,7 +39,7 @@ const maxUnderlaysPerPeer = 20
 const maxUnderlayBytes = 2048
 
 // SerializeUnderlays serializes a slice of multiaddrs into a single byte slice.
-func SerializeUnderlays(addrs []multiaddr.Multiaddr) []byte {
+func SerializeUnderlays(addrs []multiaddr.Multiaddr) ([]byte, error) {
 	if len(addrs) > maxUnderlaysPerPeer {
 		return nil, fmt.Errorf("underlay count %d exceeds maximum of %d: %w", len(addrs), maxUnderlaysPerPeer, ErrUnderlayCountExceeded)
 	}
