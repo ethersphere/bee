@@ -54,6 +54,8 @@ const (
 	optionNameSwapInitialDeposit           = "swap-initial-deposit"
 	optionNameSwapEnable                   = "swap-enable"
 	optionNameChequebookEnable             = "chequebook-enable"
+	optionNameChequebookVerification       = "chequebook-verification"
+	optionNameChequebookMinBalance         = "chequebook-min-balance"
 	optionNameFullNode                     = "full-node"
 	optionNamePostageContractAddress       = "postage-stamp-address"
 	optionNamePostageContractStartBlock    = "postage-stamp-start-block"
@@ -88,6 +90,7 @@ const (
 	optionAutoTLSDomain                    = "autotls-domain"
 	optionAutoTLSRegistrationEndpoint      = "autotls-registration-endpoint"
 	optionAutoTLSCAEndpoint                = "autotls-ca-endpoint"
+	optionUseSIMD                          = "use-simd-hashing"
 
 	// blockchain-rpc
 	optionNameBlockchainRpcEndpoint    = "blockchain-rpc-endpoint"
@@ -235,7 +238,7 @@ func (c *command) initConfig() (err error) {
 	// Environment
 	config.SetEnvPrefix("bee")
 	config.AutomaticEnv() // read in environment variables that match
-	config.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+	config.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 
 	if c.homeDir != "" && c.cfgFile == "" {
 		c.cfgFile = filepath.Join(c.homeDir, configName+".yaml")
@@ -301,6 +304,8 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameSwapInitialDeposit, "0", "initial deposit if deploying a new chequebook")
 	cmd.Flags().Bool(optionNameSwapEnable, false, "enable swap")
 	cmd.Flags().Bool(optionNameChequebookEnable, true, "enable chequebook")
+	cmd.Flags().Bool(optionNameChequebookVerification, false, "reject full-node hive/handshake records that carry no chequebook address")
+	cmd.Flags().String(optionNameChequebookMinBalance, "110000000000000000", "minimum chequebook token balance required for verification, in token small units (default 11 BZZ)")
 	cmd.Flags().Bool(optionNameFullNode, false, "cause the node to start in full mode")
 	cmd.Flags().String(optionNamePostageContractAddress, "", "postage stamp contract address")
 	cmd.Flags().Uint64(optionNamePostageContractStartBlock, 0, "postage stamp contract start block number")
@@ -334,6 +339,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionAutoTLSDomain, p2pforge.DefaultForgeDomain, "autotls domain")
 	cmd.Flags().String(optionAutoTLSRegistrationEndpoint, p2pforge.DefaultForgeEndpoint, "autotls registration endpoint")
 	cmd.Flags().String(optionAutoTLSCAEndpoint, p2pforge.DefaultCAEndpoint, "autotls certificate authority endpoint")
+	cmd.Flags().Bool(optionUseSIMD, false, "use SIMD BMT hasher (available only on linux amd64 platforms)")
 }
 
 // preRun must be called from every command's PreRunE, after which c.logger is

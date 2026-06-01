@@ -186,7 +186,7 @@ func hasher(span, b []byte) func([]byte) ([]byte, error) {
 		if _, err := hasher.Write(s); err != nil {
 			return nil, err
 		}
-		return hasher.Hash(nil)
+		return hasher.Sum(nil), nil
 	}
 }
 

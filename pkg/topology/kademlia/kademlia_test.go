@@ -17,8 +17,7 @@ import (
 	"testing"
 	"time"
 
-	ma "github.com/multiformats/go-multiaddr"
-
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 	beeCrypto "github.com/ethersphere/bee/v2/pkg/crypto"
@@ -35,12 +34,14 @@ import (
 	im "github.com/ethersphere/bee/v2/pkg/topology/kademlia/internal/metrics"
 	"github.com/ethersphere/bee/v2/pkg/topology/pslice"
 	"github.com/ethersphere/bee/v2/pkg/util/testutil"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 const spinLockWaitTime = time.Second * 5
 
 var (
 	nonConnectableAddress, _                      = ma.NewMultiaddr(underlayBase + "16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkA")
+	nonce                                         = common.HexToHash("0x2").Bytes()
 	defaultExcludeFunc       kademlia.ExcludeFunc = func(...im.ExcludeOp) kademlia.PeerExcludeFunc {
 		return func(swarm.Address) bool { return false }
 	}
@@ -826,11 +827,11 @@ func TestAddressBookPrune(t *testing.T) {
 	}
 	testutil.CleanupCloser(t, kad)
 
-	nonConnPeer, err := bzz.NewAddress(signer, []ma.Multiaddr{nonConnectableAddress}, swarm.RandAddressAt(t, base, 1), 0, nil)
+	nonConnPeer, err := bzz.NewAddress(signer, []ma.Multiaddr{nonConnectableAddress}, swarm.RandAddressAt(t, base, 1), 0, nonce, 1, common.Address{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ab.Put(nonConnPeer.Overlay, *nonConnPeer); err != nil {
+	if err := ab.Put(nonConnPeer.Overlay, *nonConnPeer, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -844,7 +845,7 @@ func TestAddressBookPrune(t *testing.T) {
 	waitCounter(t, &conns, 0)
 	waitCounter(t, &failedConns, 6)
 
-	_, err = ab.Get(nonConnPeer.Overlay)
+	_, _, err = ab.Get(nonConnPeer.Overlay)
 	if !errors.Is(err, addressbook.ErrNotFound) {
 		t.Fatal(err)
 	}
@@ -858,7 +859,7 @@ func TestAddressBookPrune(t *testing.T) {
 	waitCounter(t, &conns, 1)
 	waitCounter(t, &failedConns, 0)
 
-	_, err = ab.Get(nonConnPeer.Overlay)
+	_, _, err = ab.Get(nonConnPeer.Overlay)
 	if !errors.Is(err, addressbook.ErrNotFound) {
 		t.Fatal(err)
 	}
@@ -869,7 +870,7 @@ func TestAddressBookPrune(t *testing.T) {
 	waitCounter(t, &conns, 1)
 	waitCounter(t, &failedConns, 0)
 
-	_, err = ab.Get(nonConnPeer.Overlay)
+	_, _, err = ab.Get(nonConnPeer.Overlay)
 	if !errors.Is(err, addressbook.ErrNotFound) {
 		t.Fatal(err)
 	}
@@ -880,7 +881,7 @@ func TestAddressBookPrune(t *testing.T) {
 	waitCounter(t, &conns, 1)
 	waitCounter(t, &failedConns, 0)
 
-	_, err = ab.Get(nonConnPeer.Overlay)
+	_, _, err = ab.Get(nonConnPeer.Overlay)
 	if !errors.Is(err, addressbook.ErrNotFound) {
 		t.Fatal(err)
 	}
@@ -905,11 +906,11 @@ func TestAddressBookQuickPrune(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 
-	nonConnPeer, err := bzz.NewAddress(signer, []ma.Multiaddr{nonConnectableAddress}, swarm.RandAddressAt(t, base, 1), 0, nil)
+	nonConnPeer, err := bzz.NewAddress(signer, []ma.Multiaddr{nonConnectableAddress}, swarm.RandAddressAt(t, base, 1), 0, nonce, 1, common.Address{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ab.Put(nonConnPeer.Overlay, *nonConnPeer); err != nil {
+	if err := ab.Put(nonConnPeer.Overlay, *nonConnPeer, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -925,7 +926,7 @@ func TestAddressBookQuickPrune(t *testing.T) {
 
 	// after maxConnAttempts (4) failed dials the peer must be pruned
 	waitCounterAtLeast(t, &failedConns, int32(kademlia.MaxConnAttempts))
-	_, err = ab.Get(nonConnPeer.Overlay)
+	_, _, err = ab.Get(nonConnPeer.Overlay)
 	if !errors.Is(err, addressbook.ErrNotFound) {
 		t.Fatal(err)
 	}
@@ -1237,11 +1238,11 @@ func TestStart(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{multiaddr}, peer, 0, nil)
+			bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{multiaddr}, peer, 0, nonce, 1, common.Address{})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := ab.Put(peer, *bzzAddr); err != nil {
+			if err := ab.Put(peer, *bzzAddr, false); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -1878,6 +1879,106 @@ func TestIteratorOpts(t *testing.T) {
 	})
 }
 
+// TestIteratorBootnodes is a regression test for
+// https://github.com/ethersphere/bee/issues/5111: EachConnectedPeer must
+// exclude bootnodes by default (so protocol callers don't gossip to or query
+// them), but include them when the IncludeBootnodes Select flag is set (so
+// operator-facing /status and /status/peers agree with /peers).
+func TestIteratorBootnodes(t *testing.T) {
+	t.Parallel()
+
+	var (
+		conns                    int32
+		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{})
+	)
+
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	testutil.CleanupCloser(t, kad)
+
+	// Connect a handful of peers and mark every other one as a bootnode.
+	const peerCount = 6
+	all := make([]swarm.Address, 0, peerCount)
+	bootnodes := make(map[string]struct{})
+	for i := range peerCount {
+		addr := swarm.RandAddressAt(t, base, i%4)
+		connectOne(t, signer, kad, ab, addr, nil)
+		all = append(all, addr)
+		if i%2 == 0 {
+			kad.MarkAsBootnode(addr)
+			bootnodes[addr.ByteString()] = struct{}{}
+		}
+	}
+
+	collect := func(filter topology.Select) []swarm.Address {
+		var got []swarm.Address
+		if err := kad.EachConnectedPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+			got = append(got, addr)
+			return false, false, nil
+		}, filter); err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+
+	t.Run("default Select excludes bootnodes", func(t *testing.T) {
+		got := collect(topology.Select{})
+		for _, addr := range got {
+			if _, ok := bootnodes[addr.ByteString()]; ok {
+				t.Fatalf("default iterator returned bootnode %s", addr)
+			}
+		}
+		if want, have := peerCount-len(bootnodes), len(got); want != have {
+			t.Fatalf("default iterator: want %d non-bootnode peers, got %d", want, have)
+		}
+	})
+
+	t.Run("IncludeBootnodes returns the full set", func(t *testing.T) {
+		got := collect(topology.Select{IncludeBootnodes: true})
+		if want, have := len(all), len(got); want != have {
+			t.Fatalf("IncludeBootnodes iterator: want %d peers, got %d", want, have)
+		}
+		seen := make(map[string]struct{}, len(got))
+		for _, addr := range got {
+			seen[addr.ByteString()] = struct{}{}
+		}
+		for _, addr := range all {
+			if _, ok := seen[addr.ByteString()]; !ok {
+				t.Fatalf("IncludeBootnodes iterator missing peer %s", addr)
+			}
+		}
+	})
+
+	t.Run("EachConnectedPeerRev honors IncludeBootnodes", func(t *testing.T) {
+		var got []swarm.Address
+		if err := kad.EachConnectedPeerRev(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+			got = append(got, addr)
+			return false, false, nil
+		}, topology.Select{IncludeBootnodes: true}); err != nil {
+			t.Fatal(err)
+		}
+		if want, have := len(all), len(got); want != have {
+			t.Fatalf("Rev IncludeBootnodes iterator: want %d peers, got %d", want, have)
+		}
+	})
+
+	t.Run("EachConnectedPeerRev default excludes bootnodes", func(t *testing.T) {
+		var got []swarm.Address
+		if err := kad.EachConnectedPeerRev(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+			got = append(got, addr)
+			return false, false, nil
+		}, topology.Select{}); err != nil {
+			t.Fatal(err)
+		}
+		for _, addr := range got {
+			if _, ok := bootnodes[addr.ByteString()]; ok {
+				t.Fatalf("Rev default iterator returned bootnode %s", addr)
+			}
+		}
+	})
+}
+
 type boolgen struct {
 	cache     int64
 	remaining int
@@ -2051,12 +2152,12 @@ func p2pMock(t *testing.T, ab addressbook.Interface, signer beeCrypto.Signer, co
 			}
 
 			address := swarm.RandAddress(t)
-			bzzAddr, err := bzz.NewAddress(signer, addrs, address, 0, nil)
+			bzzAddr, err := bzz.NewAddress(signer, addrs, address, 0, nonce, 1, common.Address{})
 			if err != nil {
 				return nil, err
 			}
 
-			if err := ab.Put(address, *bzzAddr); err != nil {
+			if err := ab.Put(address, *bzzAddr, false); err != nil {
 				return nil, err
 			}
 
@@ -2082,11 +2183,11 @@ const underlayBase = "/ip4/127.0.0.1/tcp/1634/dns/"
 func connectOne(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addressbook.Putter, peer swarm.Address, expErr error) {
 	t.Helper()
 	underlays := generateMultipleUnderlays(t, 3, underlayBase+peer.String())
-	bzzAddr, err := bzz.NewAddress(signer, underlays, peer, 0, nil)
+	bzzAddr, err := bzz.NewAddress(signer, underlays, peer, 0, nonce, 1, common.Address{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ab.Put(peer, *bzzAddr); err != nil {
+	if err := ab.Put(peer, *bzzAddr, false); err != nil {
 		t.Fatal(err)
 	}
 	err = k.Connected(context.Background(), p2p.Peer{Address: peer}, false)
@@ -2102,11 +2203,11 @@ func addOne(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addressbo
 	if err != nil {
 		t.Fatal(err)
 	}
-	bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{multiaddr}, peer, 0, nil)
+	bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{multiaddr}, peer, 0, nonce, 1, common.Address{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ab.Put(peer, *bzzAddr); err != nil {
+	if err := ab.Put(peer, *bzzAddr, false); err != nil {
 		t.Fatal(err)
 	}
 	k.AddPeers(peer)
@@ -2330,11 +2431,12 @@ func TestAddPeersSkipsSelf(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{multiaddr}, peer3, 0, nil)
+
+	bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{multiaddr}, peer3, 0, nonce, 1, common.Address{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ab.Put(peer3, *bzzAddr); err != nil {
+	if err := ab.Put(peer3, *bzzAddr, false); err != nil {
 		t.Fatal(err)
 	}
 

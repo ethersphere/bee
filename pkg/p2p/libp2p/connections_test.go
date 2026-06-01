@@ -17,31 +17,28 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/v2/pkg/bzz"
-
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
+	"github.com/ethersphere/bee/v2/pkg/bzz"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/handshake"
+	libp2pmock "github.com/ethersphere/bee/v2/pkg/p2p/libp2p/mock"
 	"github.com/ethersphere/bee/v2/pkg/spinlock"
 	"github.com/ethersphere/bee/v2/pkg/statestore/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology/lightnode"
-	libp2pcrypto "github.com/libp2p/go-libp2p/core/crypto"
-	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
-
 	libp2pm "github.com/libp2p/go-libp2p"
+	libp2pcrypto "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	libp2ppeer "github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
+	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	ma "github.com/multiformats/go-multiaddr"
-
-	libp2pmock "github.com/ethersphere/bee/v2/pkg/p2p/libp2p/mock"
 )
 
 const (
@@ -1384,7 +1381,7 @@ func waitAddrSet(t *testing.T, addr *swarm.Address, mtx *sync.Mutex, exp swarm.A
 
 func checkAddressbook(t *testing.T, ab addressbook.Getter, overlay swarm.Address, underlays []ma.Multiaddr) {
 	t.Helper()
-	addr, err := ab.Get(overlay)
+	addr, _, err := ab.Get(overlay)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1598,7 +1595,7 @@ func TestConnectEmptyPeerstoreSkipsAddressbookAndReacher(t *testing.T) {
 
 	expectPeersEventually(t, s1, overlay2)
 
-	_, err = ab1.Get(overlay2)
+	_, _, err = ab1.Get(overlay2)
 	if err == nil {
 		t.Fatal("expected addressbook to have no entry for NAT peer, but found one")
 	}

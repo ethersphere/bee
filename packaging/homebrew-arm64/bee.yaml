@@ -25,6 +25,8 @@
 # cache-retrieval: true
 ## enable chequebook
 # chequebook-enable: true
+## reject full-node hive/handshake records that carry no chequebook address
+# chequebook-verification: false
 ## config file (default is $HOME/.bee.yaml)
 config: "/opt/homebrew/etc/swarm-bee/bee.yaml"
 ## origins with CORS headers enabled
@@ -139,3 +141,5 @@ password-file: "/opt/homebrew/var/lib/swarm-bee/password"
 # autotls-registration-endpoint: ""
 ## autotls ca endpoint (default: https://acme-v02.api.letsencrypt.org/directory)
 # autotls-ca-endpoint: ""
+## SIMD BMT hashing opt-in flag (only available on linux amd64)
+# use-simd-hashing: false

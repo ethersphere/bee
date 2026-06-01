@@ -156,13 +156,64 @@ func TestSOC(t *testing.T) {
 				DirectUpload: true,
 			})
 			jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusCreated,
-				jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 				jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),
 			)
 			err := spinlock.Wait(time.Second, func() bool { return chanStorer.Has(s.Address()) })
 			if err != nil {
 				t.Fatal(err)
+			}
+		})
+
+		t.Run("deferred upload", func(t *testing.T) {
+			s := testingsoc.GenerateMockSOC(t, testData)
+			hexbatch := hex.EncodeToString(batchOk)
+			storer := mockstorer.New()
+			client, _, _, _ := newTestServer(t, testServerOptions{
+				Storer:       storer,
+				Post:         newTestPostService(),
+				DirectUpload: true,
+			})
+			jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusCreated,
+				jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
+				jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),
+			)
+			// Deferred upload goes through the upload store, not DirectUpload.
+			has, err := storer.ChunkStore().Has(context.Background(), s.Address())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !has {
+				t.Fatal("expected chunk in storer after deferred upload")
+			}
+		})
+
+		t.Run("tag header opts in to deferred and echoes tag", func(t *testing.T) {
+			s := testingsoc.GenerateMockSOC(t, testData)
+			hexbatch := hex.EncodeToString(batchOk)
+			storer := mockstorer.New()
+			client, _, _, _ := newTestServer(t, testServerOptions{
+				Storer:       storer,
+				Post:         newTestPostService(),
+				DirectUpload: true,
+			})
+			tag, err := storer.NewSession()
+			if err != nil {
+				t.Fatalf("failed creating tag: %v", err)
+			}
+			jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusCreated,
+				jsonhttptest.WithRequestHeader(api.SwarmTagHeader, fmt.Sprintf("%d", tag.TagID)),
+				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
+				jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),
+				jsonhttptest.WithExpectedResponseHeader(api.SwarmTagHeader, fmt.Sprintf("%d", tag.TagID)),
+			)
+			has, err := storer.ChunkStore().Has(context.Background(), s.Address())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !has {
+				t.Fatal("expected chunk in storer after tagged upload")
 			}
 		})
 

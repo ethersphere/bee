@@ -5,10 +5,13 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
+	"mime"
 	"net/http"
 	"path"
 	"path/filepath"
@@ -51,6 +54,8 @@ const (
 	largeFileBufferSize = 16 * 32 * 1024
 
 	largeBufferFilesizeThreshold = 10 * 1000000 // ten megs
+
+	contentTypeSniffLen = 512
 )
 
 func lookaheadBufferSize(size int64) int {
@@ -65,7 +70,7 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	defer span.Finish()
 
 	headers := struct {
-		ContentType    string           `map:"Content-Type,mimeMediaType" validate:"required"`
+		ContentType    string           `map:"Content-Type"`
 		BatchID        []byte           `map:"Swarm-Postage-Batch-Id" validate:"required"`
 		SwarmTag       uint64           `map:"Swarm-Tag"`
 		Pin            bool             `map:"Swarm-Pin"`
@@ -135,11 +140,24 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		logger:         logger,
 	}
 
-	if headers.IsDir || headers.ContentType == multiPartFormData {
-		s.dirUploadHandler(ctx, logger, span, ow, r, putter, r.Header.Get(ContentTypeHeader), headers.Encrypt, tag, headers.RLevel, headers.Act, headers.HistoryAddress)
+	contentTypeHdr := strings.TrimSpace(headers.ContentType)
+	r.Header.Set(ContentTypeHeader, contentTypeHdr)
+	mt, _, errParseCT := mime.ParseMediaType(contentTypeHdr)
+	isMultipart := errParseCT == nil && mt == multiPartFormData
+
+	isDirUpload := headers.IsDir || isMultipart
+	if !isDirUpload {
+		s.fileUploadHandler(ctx, logger, span, ow, r, putter, headers.Encrypt, tag, headers.RLevel, headers.Act, headers.HistoryAddress)
 		return
 	}
-	s.fileUploadHandler(ctx, logger, span, ow, r, putter, headers.Encrypt, tag, headers.RLevel, headers.Act, headers.HistoryAddress)
+
+	if contentTypeHdr == "" {
+		logger.Error(nil, "content-type required for directory upload")
+		jsonhttp.BadRequest(w, errInvalidContentType)
+		return
+	}
+
+	s.dirUploadHandler(ctx, logger, span, ow, r, putter, headers.Encrypt, tag, headers.RLevel, headers.Act, headers.HistoryAddress)
 }
 
 // bzzUploadResponse is returned when an HTTP request to upload a file is successful
@@ -172,8 +190,24 @@ func (s *Service) fileUploadHandler(
 
 	p := requestPipelineFn(putter, encrypt, rLevel)
 
+	var body io.Reader = r.Body
+	if r.Header.Get(ContentTypeHeader) == "" {
+		sniffBuf := make([]byte, contentTypeSniffLen)
+		n, err := io.ReadFull(r.Body, sniffBuf)
+		sniffBuf = sniffBuf[:n]
+		if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+			logger.Debug("body read failed", "file_name", queries.FileName, "error", err)
+			logger.Error(nil, "body read failed", "file_name", queries.FileName)
+			jsonhttp.BadRequest(w, "failed to read request body")
+			return
+		}
+
+		r.Header.Set(ContentTypeHeader, http.DetectContentType(sniffBuf))
+		body = io.MultiReader(bytes.NewReader(sniffBuf), r.Body)
+	}
+
 	// first store the file and get its reference
-	fr, err := p(ctx, r.Body)
+	fr, err := p(ctx, body)
 	if err != nil {
 		logger.Debug("file store failed", "file_name", queries.FileName, "error", err)
 		logger.Error(nil, "file store failed", "file_name", queries.FileName)
@@ -238,7 +272,7 @@ func (s *Service) fileUploadHandler(
 	}
 
 	fileMtdt := map[string]string{
-		manifest.EntryMetadataContentTypeKey: r.Header.Get(ContentTypeHeader), // Content-Type has already been validated.
+		manifest.EntryMetadataContentTypeKey: r.Header.Get(ContentTypeHeader),
 		manifest.EntryMetadataFilenameKey:    queries.FileName,
 	}
 

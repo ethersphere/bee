@@ -89,6 +89,10 @@ func (*simulatedBackend) CallContract(ctx context.Context, call ethereum.CallMsg
 	return nil, ErrNotImplemented
 }
 
+func (*simulatedBackend) CodeAt(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error) {
+	return nil, ErrNotImplemented
+}
+
 func (m *simulatedBackend) PendingNonceAt(ctx context.Context, account common.Address) (uint64, error) {
 	return 0, ErrNotImplemented
 }

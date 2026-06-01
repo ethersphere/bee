@@ -39,6 +39,10 @@ func (b *Backend) CallContract(context.Context, ethereum.CallMsg, *big.Int) ([]b
 	return nil, postagecontract.ErrChainDisabled
 }
 
+func (b *Backend) CodeAt(context.Context, common.Address, *big.Int) ([]byte, error) {
+	return nil, postagecontract.ErrChainDisabled
+}
+
 func (b *Backend) HeaderByNumber(context.Context, *big.Int) (*types.Header, error) {
 	return nil, postagecontract.ErrChainDisabled
 }

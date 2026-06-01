@@ -11,12 +11,16 @@ import (
 
 // metrics groups handshake related prometheus counters.
 type metrics struct {
-	SynRx          prometheus.Counter
-	SynRxFailed    prometheus.Counter
-	SynAckTx       prometheus.Counter
-	SynAckTxFailed prometheus.Counter
-	AckRx          prometheus.Counter
-	AckRxFailed    prometheus.Counter
+	SynRx                          prometheus.Counter
+	SynRxFailed                    prometheus.Counter
+	SynAckTx                       prometheus.Counter
+	SynAckTxFailed                 prometheus.Counter
+	AckRx                          prometheus.Counter
+	AckRxFailed                    prometheus.Counter
+	AdvertisableUnderlaysTruncated prometheus.Counter
+	ObservedUnderlaysTruncated     prometheus.Counter
+	TimestampRejected              *prometheus.CounterVec
+	ChequebookVerification         *prometheus.CounterVec
 }
 
 // newMetrics is a convenient constructor for creating new metrics.
@@ -60,6 +64,36 @@ func newMetrics() metrics {
 			Name:      "ack_rx_failed",
 			Help:      "The number of ack messages that were unsuccessfully read.",
 		}),
+		AdvertisableUnderlaysTruncated: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "advertisable_underlays_truncated",
+			Help:      "Number of times own advertisable underlays were truncated before signing.",
+		}),
+		ObservedUnderlaysTruncated: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "observed_underlays_truncated",
+			Help:      "Number of times observed peer underlays were truncated before sending.",
+		}),
+		TimestampRejected: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "timestamp_rejected_total",
+				Help:      "Number of handshake ack messages rejected by timestamp validation. The 'reason' label is one of: invalid, in_future, stale.",
+			},
+			[]string{"reason"},
+		),
+		ChequebookVerification: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "chequebook_verification_total",
+				Help:      "Outcomes of chequebook verification during handshake. The 'result' label is one of: success, missing, issuer_mismatch, bytecode_mismatch, insufficient_balance, already_associated, verify_error.",
+			},
+			[]string{"result"},
+		),
 	}
 }
 

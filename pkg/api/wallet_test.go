@@ -84,6 +84,80 @@ func TestWallet(t *testing.T) {
 				Code:    500,
 			}))
 	})
+
+	t.Run("swap disabled", func(t *testing.T) {
+		t.Parallel()
+
+		srv, _, _, _ := newTestServer(t, testServerOptions{
+			SwapDisabled: true,
+			Erc20Opts: []erc20mock.Option{
+				erc20mock.WithBalanceOfFunc(func(ctx context.Context, address common.Address) (*big.Int, error) {
+					return big.NewInt(10000000000000000), nil
+				}),
+			},
+			BackendOpts: []backendmock.Option{
+				backendmock.WithBalanceAt(func(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error) {
+					return big.NewInt(2000000000000000000), nil
+				}),
+			},
+		})
+
+		jsonhttptest.Request(t, srv, http.MethodGet, "/wallet", http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(api.WalletResponse{
+				BZZ:         bigint.Wrap(big.NewInt(10000000000000000)),
+				NativeToken: bigint.Wrap(big.NewInt(2000000000000000000)),
+				ChainID:     1,
+			}),
+		)
+	})
+
+	t.Run("erc20 service unavailable", func(t *testing.T) {
+		t.Parallel()
+
+		srv, _, _, _ := newTestServer(t, testServerOptions{
+			SwapDisabled:    true,
+			Erc20ServiceNil: true,
+			BackendOpts: []backendmock.Option{
+				backendmock.WithBalanceAt(func(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error) {
+					return big.NewInt(2000000000000000000), nil
+				}),
+			},
+		})
+
+		jsonhttptest.Request(t, srv, http.MethodGet, "/wallet", http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(api.WalletResponse{
+				BZZ:         bigint.Wrap(nil),
+				NativeToken: bigint.Wrap(big.NewInt(2000000000000000000)),
+				ChainID:     1,
+			}),
+		)
+	})
+
+	t.Run("chequebook disabled", func(t *testing.T) {
+		t.Parallel()
+
+		srv, _, _, _ := newTestServer(t, testServerOptions{
+			ChequebookDisabled: true,
+			Erc20Opts: []erc20mock.Option{
+				erc20mock.WithBalanceOfFunc(func(ctx context.Context, address common.Address) (*big.Int, error) {
+					return big.NewInt(10000000000000000), nil
+				}),
+			},
+			BackendOpts: []backendmock.Option{
+				backendmock.WithBalanceAt(func(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error) {
+					return big.NewInt(2000000000000000000), nil
+				}),
+			},
+		})
+
+		jsonhttptest.Request(t, srv, http.MethodGet, "/wallet", http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(api.WalletResponse{
+				BZZ:         bigint.Wrap(big.NewInt(10000000000000000)),
+				NativeToken: bigint.Wrap(big.NewInt(2000000000000000000)),
+				ChainID:     1,
+			}),
+		)
+	})
 }
 
 func TestWalletWithdraw(t *testing.T) {

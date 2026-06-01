@@ -20,6 +20,7 @@ type Geth interface {
 	CallContract(ctx context.Context, msg ethereum.CallMsg, blockNumber *big.Int) ([]byte, error)
 	ChainID(ctx context.Context) (*big.Int, error)
 	Close()
+	CodeAt(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error)
 	EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint64, error)
 	FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error)
 	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)

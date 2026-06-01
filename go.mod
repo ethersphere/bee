@@ -9,7 +9,7 @@ require (
 	github.com/caddyserver/certmagic v0.21.6
 	github.com/coreos/go-semver v0.3.0
 	github.com/ethereum/go-ethereum v1.16.9
-	github.com/ethersphere/batch-archive v0.0.6
+	github.com/ethersphere/batch-archive v0.0.7
 	github.com/ethersphere/go-price-oracle-abi v0.6.9
 	github.com/ethersphere/go-storage-incentives-abi v0.9.4
 	github.com/ethersphere/go-sw3-abi v0.6.9
@@ -103,7 +103,7 @@ require (
 	github.com/ipfs/go-log/v2 v2.6.0 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/jbenet/go-temp-err-catcher v0.1.0 // indirect
-	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
+	github.com/klauspost/cpuid/v2 v2.3.0
 	github.com/koron/go-ssdp v0.0.6 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/libdns/libdns v0.2.2 // indirect

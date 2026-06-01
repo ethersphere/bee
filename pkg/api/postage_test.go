@@ -222,17 +222,18 @@ func TestPostageGetStamps(t *testing.T) {
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampsResponse{
 				Stamps: []api.PostageStampResponse{
 					{
-						BatchID:       b.ID,
-						Utilization:   si.Utilization(),
-						Usable:        true,
-						Label:         si.Label(),
-						Depth:         si.Depth(),
-						Amount:        bigint.Wrap(si.Amount()),
-						BucketDepth:   si.BucketDepth(),
-						BlockNumber:   si.BlockNumber(),
-						ImmutableFlag: si.ImmutableFlag(),
-						Exists:        true,
-						BatchTTL:      15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
+						BatchID:          b.ID,
+						Utilization:      si.Utilization(),
+						UtilizationRatio: si.UtilizationRatio(),
+						Usable:           true,
+						Label:            si.Label(),
+						Depth:            si.Depth(),
+						Amount:           bigint.Wrap(si.Amount()),
+						BucketDepth:      si.BucketDepth(),
+						BlockNumber:      si.BlockNumber(),
+						ImmutableFlag:    si.ImmutableFlag(),
+						Exists:           true,
+						BatchTTL:         15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
 					},
 				},
 			}),
@@ -302,6 +303,61 @@ func TestGetAllBatches(t *testing.T) {
 	})
 }
 
+// TestGetBatch tests that the endpoint that returns a single globally available
+// postage batch by ID functions correctly.
+func TestGetBatch(t *testing.T) {
+	t.Parallel()
+
+	b := postagetesting.MustNewBatch()
+	b.Value = big.NewInt(20)
+	cs := &postage.ChainState{Block: 10, TotalAmount: big.NewInt(5), CurrentPrice: big.NewInt(2)}
+	bs := mock.New(mock.WithChainState(cs), mock.WithBatch(b))
+	ts, _, _, _ := newTestServer(t, testServerOptions{BatchStore: bs, BlockTime: 2 * time.Second})
+
+	want := api.PostageBatchResponse{
+		BatchID:     b.ID,
+		Value:       bigint.Wrap(b.Value),
+		Start:       b.Start,
+		Owner:       b.Owner,
+		Depth:       b.Depth,
+		BucketDepth: b.BucketDepth,
+		Immutable:   b.Immutable,
+		BatchTTL:    15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
+	}
+
+	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
+		jsonhttptest.Request(t, ts, http.MethodGet, "/batches/"+hex.EncodeToString(b.ID), http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(want),
+		)
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		t.Parallel()
+
+		missing := make([]byte, 32)
+		jsonhttptest.Request(t, ts, http.MethodGet, "/batches/"+hex.EncodeToString(missing), http.StatusNotFound,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
+				Code:    http.StatusNotFound,
+				Message: "batch not found",
+			}),
+		)
+	})
+
+	t.Run("invalid batch id length", func(t *testing.T) {
+		t.Parallel()
+
+		jsonhttptest.Request(t, ts, http.MethodGet, "/batches/abcdef", http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid path params",
+				Reasons: []jsonhttp.Reason{{Field: "batch_id", Error: "want len:32"}},
+			}),
+		)
+	})
+}
+
 func TestPostageGetStamp(t *testing.T) {
 	t.Parallel()
 
@@ -318,17 +374,18 @@ func TestPostageGetStamp(t *testing.T) {
 
 		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps/"+hex.EncodeToString(b.ID), http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampResponse{
-				BatchID:       b.ID,
-				Utilization:   si.Utilization(),
-				Usable:        true,
-				Label:         si.Label(),
-				Depth:         si.Depth(),
-				Amount:        bigint.Wrap(si.Amount()),
-				BucketDepth:   si.BucketDepth(),
-				BlockNumber:   si.BlockNumber(),
-				ImmutableFlag: si.ImmutableFlag(),
-				Exists:        true,
-				BatchTTL:      15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
+				BatchID:          b.ID,
+				Utilization:      si.Utilization(),
+				UtilizationRatio: si.UtilizationRatio(),
+				Usable:           true,
+				Label:            si.Label(),
+				Depth:            si.Depth(),
+				Amount:           bigint.Wrap(si.Amount()),
+				BucketDepth:      si.BucketDepth(),
+				BlockNumber:      si.BlockNumber(),
+				ImmutableFlag:    si.ImmutableFlag(),
+				Exists:           true,
+				BatchTTL:         15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
 			}),
 		)
 	})
@@ -413,18 +470,25 @@ func TestChainState(t *testing.T) {
 			TotalAmount:  big.NewInt(50),
 			CurrentPrice: big.NewInt(5),
 		}
+		contract := contractMock.New(
+			contractMock.WithMinimumValidityBlocksFunc(func(ctx context.Context) (uint64, error) {
+				return 17280, nil
+			}),
+		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
 			BatchStore: mock.New(mock.WithChainState(cs)),
 			BackendOpts: []backendmock.Option{backendmock.WithBlockNumberFunc(func(ctx context.Context) (uint64, error) {
 				return 1, nil
 			})},
+			PostageContract: contract,
 		})
 		jsonhttptest.Request(t, ts, http.MethodGet, "/chainstate", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.ChainStateResponse{
-				ChainTip:     1,
-				Block:        123456,
-				TotalAmount:  bigint.Wrap(big.NewInt(50)),
-				CurrentPrice: bigint.Wrap(big.NewInt(5)),
+				ChainTip:              1,
+				Block:                 123456,
+				TotalAmount:           bigint.Wrap(big.NewInt(50)),
+				CurrentPrice:          bigint.Wrap(big.NewInt(5)),
+				MinimumValidityBlocks: 17280,
 			}),
 		)
 	})

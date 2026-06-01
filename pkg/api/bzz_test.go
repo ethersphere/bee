@@ -464,6 +464,81 @@ func TestBzzFiles(t *testing.T) {
 		)
 	})
 
+	t.Run("omit-content-type-uses-sniff", func(t *testing.T) {
+		fileName := "plain.txt"
+		var resp api.BzzUploadResponse
+		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
+			jsonhttptest.WithUnmarshalJSONResponse(&resp),
+		)
+		rootHash := resp.Reference.String()
+		jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(rootHash), http.StatusOK,
+			jsonhttptest.WithExpectedResponse(simpleData),
+			jsonhttptest.WithExpectedContentLength(len(simpleData)),
+			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "text/plain; charset=utf-8"),
+			jsonhttptest.WithExpectedResponseHeader(api.ContentDispositionHeader, fmt.Sprintf(`inline; filename="%s"`, fileName)),
+		)
+	})
+
+	t.Run("image-content-type-preserved", func(t *testing.T) {
+		ct := "image/png"
+		fileName := "test.txt"
+		var resp api.BzzUploadResponse
+		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, ct),
+			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
+			jsonhttptest.WithUnmarshalJSONResponse(&resp),
+		)
+		rootHash := resp.Reference.String()
+		jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(rootHash), http.StatusOK,
+			jsonhttptest.WithExpectedResponse(simpleData),
+			jsonhttptest.WithExpectedContentLength(len(simpleData)),
+			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, ct),
+			jsonhttptest.WithExpectedResponseHeader(api.ContentDispositionHeader, fmt.Sprintf(`inline; filename="%s"`, fileName)),
+		)
+	})
+
+	t.Run("dir-upload-missing-content-type", func(t *testing.T) {
+		tr := tarFiles(t, []f{
+			{
+				data: []byte("robots text"),
+				name: "robots.txt",
+				dir:  "",
+				header: http.Header{
+					api.ContentTypeHeader: {"text/plain; charset=utf-8"},
+				},
+			},
+		})
+
+		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "true"),
+			jsonhttptest.WithRequestBody(tr),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: api.ErrInvalidContentType.Error(),
+				Code:    http.StatusBadRequest,
+			}),
+		)
+	})
+
+	t.Run("dir-upload-missing-content-type-and-body", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "true"),
+			jsonhttptest.WithRequestBody(bytes.NewReader(nil)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: api.ErrInvalidContentType.Error(),
+				Code:    http.StatusBadRequest,
+			}),
+		)
+	})
+
 	t.Run("upload-then-download-and-check-data", func(t *testing.T) {
 		fileName := "sample.html"
 		rootHash := "36e6c1bbdfee6ac21485d5f970479fd1df458d36df9ef4e8179708ed46da557f"
