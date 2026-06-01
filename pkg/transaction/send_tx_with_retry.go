@@ -294,7 +294,7 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 		if terminateTxErr != nil {
 			t.logger.Error(terminateTxErr,
 				"send with retry: finished with error",
-				"attempt", attempt,
+				"attempt", attempt+1,
 				"tx_hash", txState.LastTxHash,
 				"nonce", txState.Nonce,
 				"to", request.To.String(),
@@ -321,25 +321,43 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 				nonce = &txState.Nonce
 			}
 
+			replaced := true
 			signedTx, effectiveBaseFee, err := t.broadcastTx(ctx, request, nonce, tier, previousTip, previousBaseFee, overrides)
-			underpriced := isReplacementUnderpriced(err)
 			if err != nil {
-				if isNonRetryable(err) {
+				switch {
+				case isNonceTooLow(err):
+					// The nonce was consumed between our last receipt check and
+					// this rebroadcast: our previously broadcast tx was most
+					// likely mined. Try to read its receipt exactly once; if
+					// it is absent, propagate the error and stop retrying.
+					if txState.LastTxHash != (common.Hash{}) {
+						if rec, recErr := t.backend.TransactionReceipt(ctx, txState.LastTxHash); recErr == nil && rec != nil {
+							if rec.Status == 0 {
+								terminateTxErr = ErrTransactionReverted
+								return txState.LastTxHash, rec, terminateTxErr
+							}
+							return txState.LastTxHash, rec, nil
+						}
+					}
 					terminateTxErr = err
 					return common.Hash{}, nil, terminateTxErr
-				}
-				if isReplacementUnderpriced(err) {
+				case isReplacementUnderpriced(err):
+					// Couldn't replace transaction, keep watching latest one
+					replaced = false
 					t.logger.Warning("transaction retry broadcast underpriced, keep watching pending tx",
 						"attempt", attempt, "tier", tier.String(), "pending_tx", txState.LastTxHash,
 						"error", err, "to", retryToForLog(request, &txState))
-				} else {
+				case isNonRetryable(err):
+					terminateTxErr = err
+					return common.Hash{}, nil, terminateTxErr
+				default:
 					t.logger.Warning("transaction retry broadcast failed, will retry",
 						"attempt", attempt, "tier", tier.String(), "error", err, "to", retryToForLog(request, &txState))
 				}
 			}
 
-			// if tx replacement wasn't successful, previous tx still in mempool and might be mined
-			if !underpriced {
+			if replaced {
+				// update states only in case if previous tx was replaced - otherwise keep watching latest known tx hash
 				if terminateTxErr = t.updateStates(signedTx, &txState); terminateTxErr != nil {
 					return common.Hash{}, nil, terminateTxErr
 				}
@@ -347,6 +365,7 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 				if signedTx != nil {
 					previousTip = signedTx.GasTipCap()
 				}
+
 				if effectiveBaseFee != nil {
 					previousBaseFee = effectiveBaseFee
 				}
@@ -461,6 +480,10 @@ func isReplacementUnderpriced(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "replacement transaction underpriced")
 }
 
+func isNonceTooLow(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "nonce too low")
+}
+
 func isNonRetryable(err error) bool {
 	if errors.Is(err, ErrTransactionReverted) ||
 		errors.Is(err, ErrTransactionCancelled) ||
@@ -473,7 +496,6 @@ func isNonRetryable(err error) bool {
 	s := err.Error()
 	nonRetryable := []string{
 		"specified gas price",
-		"nonce too low",
 		"AlreadyCommitted",
 		"AlreadyRevealed",
 		"AlreadyClaimed",

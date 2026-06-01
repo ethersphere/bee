@@ -777,6 +777,112 @@ func TestSendWithRetry_AllAttemptsExhausted(t *testing.T) {
 		"retry state should be cleaned up after exhaustion")
 }
 
+// "nonce too low" on a rebroadcast means the nonce was consumed between the
+// last receipt check and this broadcast: the previously broadcast tx was most
+// likely mined. The service must read its receipt exactly once and stop
+// retrying regardless of whether the receipt is found.
+func TestSendWithRetry_NonceTooLow(t *testing.T) {
+	t.Parallel()
+
+	newSvc := func(t *testing.T, store storage.StateStorer, firstTxHash *common.Hash, broadcastCount, receiptCalls *atomic.Int32, receiptFn func(common.Hash) (*types.Receipt, error)) transaction.Service {
+		t.Helper()
+		s := newRetryTestSetup()
+
+		svc, err := transaction.NewService(log.Noop, s.sender,
+			backendmock.New(
+				s.nonceOption(),
+				s.feeHistoryOption(nil),
+				s.headerOption(),
+				s.estimateGasOption(),
+				backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+					if broadcastCount.Add(1) == 1 {
+						*firstTxHash = tx.Hash()
+						return nil
+					}
+					return errors.New("nonce too low")
+				}),
+				backendmock.WithTransactionReceiptFunc(func(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
+					receiptCalls.Add(1)
+					assert.Equal(t, *firstTxHash, txHash, "must read receipt of the previously broadcast tx")
+					return receiptFn(txHash)
+				}),
+			),
+			signermock.New(s.passThroughSigner(), s.signerAddr()),
+			store,
+			s.chainID,
+			// first broadcast's receipt never arrives → escalate to second attempt
+			monitormock.New(receiptWatchTimeout()),
+			0,
+			s.retryConfig(),
+		)
+		require.NoError(t, err)
+		testutil.CleanupCloser(t, svc)
+		return svc
+	}
+
+	t.Run("receipt found stops retry and returns it", func(t *testing.T) {
+		t.Parallel()
+		s := newRetryTestSetup()
+		store := storemock.NewStateStore()
+		testutil.CleanupCloser(t, store)
+
+		var (
+			firstTxHash    common.Hash
+			broadcastCount atomic.Int32
+			receiptCalls   atomic.Int32
+		)
+
+		svc := newSvc(t, store, &firstTxHash, &broadcastCount, &receiptCalls,
+			func(txHash common.Hash) (*types.Receipt, error) {
+				return &types.Receipt{TxHash: txHash, Status: 1}, nil
+			})
+
+		txHash, receipt, err := svc.SendWithRetry(context.Background(), s.request())
+
+		require.NoError(t, err)
+		require.NotNil(t, receipt)
+		assert.Equal(t, firstTxHash, txHash, "must return the mined tx hash")
+		assert.Equal(t, uint64(1), receipt.Status)
+		assert.Equal(t, int32(2), broadcastCount.Load(), "exactly one rebroadcast, no further retries after nonce too low")
+		assert.Equal(t, int32(1), receiptCalls.Load(), "receipt must be read exactly once")
+
+		var rs transaction.TransactionRetryState
+		assert.ErrorIs(t, store.Get(transaction.RetryStateKey(s.nonce), &rs), storage.ErrNotFound,
+			"retry state should be cleaned up after success")
+	})
+
+	t.Run("receipt not found stops retry and returns error", func(t *testing.T) {
+		t.Parallel()
+		s := newRetryTestSetup()
+		store := storemock.NewStateStore()
+		testutil.CleanupCloser(t, store)
+
+		var (
+			firstTxHash    common.Hash
+			broadcastCount atomic.Int32
+			receiptCalls   atomic.Int32
+		)
+
+		svc := newSvc(t, store, &firstTxHash, &broadcastCount, &receiptCalls,
+			func(common.Hash) (*types.Receipt, error) {
+				return nil, ethereum.NotFound
+			})
+
+		txHash, receipt, err := svc.SendWithRetry(context.Background(), s.request())
+
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "nonce too low")
+		assert.Equal(t, common.Hash{}, txHash)
+		assert.Nil(t, receipt)
+		assert.Equal(t, int32(2), broadcastCount.Load(), "exactly one rebroadcast, no further retries after nonce too low")
+		assert.Equal(t, int32(1), receiptCalls.Load(), "receipt must be read exactly once even when not found")
+
+		var rs transaction.TransactionRetryState
+		assert.ErrorIs(t, store.Get(transaction.RetryStateKey(s.nonce), &rs), storage.ErrNotFound,
+			"retry state should be cleaned up after error")
+	})
+}
+
 // Resume after node restart — transaction is re-sent starting from persisted attempt.
 // Verifies nonce, escalated tip, gasFeeCap, and that fee history is NOT called.
 func TestSendWithRetry_ResumeAfterRestart(t *testing.T) {
