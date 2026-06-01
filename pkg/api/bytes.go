@@ -35,18 +35,23 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	defer span.Finish()
 
 	headers := struct {
-		BatchID        []byte           `map:"Swarm-Postage-Batch-Id" validate:"required"`
-		SwarmTag       uint64           `map:"Swarm-Tag"`
-		Pin            bool             `map:"Swarm-Pin"`
-		Deferred       *bool            `map:"Swarm-Deferred-Upload"`
-		Encrypt        bool             `map:"Swarm-Encrypt"`
-		RLevel         redundancy.Level `map:"Swarm-Redundancy-Level" validate:"rLevel"`
-		Act            bool             `map:"Swarm-Act"`
-		HistoryAddress swarm.Address    `map:"Swarm-Act-History-Address"`
+		BatchID        []byte            `map:"Swarm-Postage-Batch-Id" validate:"required"`
+		SwarmTag       uint64            `map:"Swarm-Tag"`
+		Pin            bool              `map:"Swarm-Pin"`
+		Deferred       *bool             `map:"Swarm-Deferred-Upload"`
+		Encrypt        bool              `map:"Swarm-Encrypt"`
+		RLevel         *redundancy.Level `map:"Swarm-Redundancy-Level" validate:"omitempty,rLevel"`
+		Act            bool              `map:"Swarm-Act"`
+		HistoryAddress swarm.Address     `map:"Swarm-Act-History-Address"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
 		return
+	}
+
+	rLevel := redundancy.DefaultUploadLevel
+	if headers.RLevel != nil {
+		rLevel = *headers.RLevel
 	}
 
 	var (
@@ -103,7 +108,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		logger:         logger,
 	}
 
-	p := requestPipelineFn(putter, headers.Encrypt, headers.RLevel)
+	p := requestPipelineFn(putter, headers.Encrypt, rLevel)
 	reference, err := p(ctx, r.Body)
 	if err != nil {
 		logger.Debug("split write all failed", "error", err)
@@ -121,7 +126,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	encryptedReference := reference
 	historyReference := swarm.ZeroAddress
 	if headers.Act {
-		encryptedReference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, headers.HistoryAddress)
+		encryptedReference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, headers.HistoryAddress, rLevel)
 		if err != nil {
 			logger.Debug("access control upload failed", "error", err)
 			logger.Error(nil, "access control upload failed")

@@ -24,11 +24,11 @@ import (
 type Interface interface {
 	// Reupload root hash and all of its underlying
 	// associated chunks to the network.
-	Reupload(context.Context, swarm.Address, postage.Stamper) error
+	Reupload(context.Context, swarm.Address, postage.Stamper, redundancy.Level) error
 
 	// IsRetrievable checks whether the content
 	// on the given address is retrievable.
-	IsRetrievable(context.Context, swarm.Address) (bool, error)
+	IsRetrievable(context.Context, swarm.Address, redundancy.Level) (bool, error)
 }
 
 type steward struct {
@@ -41,8 +41,8 @@ type steward struct {
 func New(ns storer.NetStore, r retrieval.Interface, joinerPutter storage.Putter) Interface {
 	return &steward{
 		netStore:     ns,
-		traverser:    traversal.New(ns.Download(true), joinerPutter, redundancy.DefaultLevel),
-		netTraverser: traversal.New(&netGetter{r}, joinerPutter, redundancy.DefaultLevel),
+		traverser:    traversal.New(ns.Download(true), joinerPutter),
+		netTraverser: traversal.New(&netGetter{r}, joinerPutter),
 		netGetter:    r,
 	}
 }
@@ -52,7 +52,7 @@ func New(ns storer.NetStore, r retrieval.Interface, joinerPutter storage.Putter)
 // addresses and push every chunk individually to the network.
 // It assumes all chunks are available locally. It is therefore
 // advisable to pin the content locally before trying to reupload it.
-func (s *steward) Reupload(ctx context.Context, root swarm.Address, stamper postage.Stamper) error {
+func (s *steward) Reupload(ctx context.Context, root swarm.Address, stamper postage.Stamper, rLevel redundancy.Level) error {
 	uploaderSession := s.netStore.DirectUpload()
 	getter := s.netStore.Download(false)
 
@@ -70,7 +70,7 @@ func (s *steward) Reupload(ctx context.Context, root swarm.Address, stamper post
 		return uploaderSession.Put(ctx, c.WithStamp(stamp))
 	}
 
-	if err := s.traverser.Traverse(ctx, root, fn); err != nil {
+	if err := s.traverser.Traverse(ctx, root, fn, rLevel); err != nil {
 		return errors.Join(
 			fmt.Errorf("traversal of %s failed: %w", root.String(), err),
 			uploaderSession.Cleanup(),
@@ -81,12 +81,12 @@ func (s *steward) Reupload(ctx context.Context, root swarm.Address, stamper post
 }
 
 // IsRetrievable implements Interface.IsRetrievable method.
-func (s *steward) IsRetrievable(ctx context.Context, root swarm.Address) (bool, error) {
+func (s *steward) IsRetrievable(ctx context.Context, root swarm.Address, rLevel redundancy.Level) (bool, error) {
 	fn := func(a swarm.Address) error {
 		_, err := s.netGetter.RetrieveChunk(ctx, a, swarm.ZeroAddress)
 		return err
 	}
-	switch err := s.netTraverser.Traverse(ctx, root, fn); {
+	switch err := s.netTraverser.Traverse(ctx, root, fn, rLevel); {
 	case errors.Is(err, storage.ErrNotFound):
 		return false, nil
 	case errors.Is(err, topology.ErrNotFound):

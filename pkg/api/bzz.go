@@ -70,16 +70,16 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	defer span.Finish()
 
 	headers := struct {
-		ContentType    string           `map:"Content-Type"`
-		BatchID        []byte           `map:"Swarm-Postage-Batch-Id" validate:"required"`
-		SwarmTag       uint64           `map:"Swarm-Tag"`
-		Pin            bool             `map:"Swarm-Pin"`
-		Deferred       *bool            `map:"Swarm-Deferred-Upload"`
-		Encrypt        bool             `map:"Swarm-Encrypt"`
-		IsDir          bool             `map:"Swarm-Collection"`
-		RLevel         redundancy.Level `map:"Swarm-Redundancy-Level" validate:"rLevel"`
-		Act            bool             `map:"Swarm-Act"`
-		HistoryAddress swarm.Address    `map:"Swarm-Act-History-Address"`
+		ContentType    string            `map:"Content-Type"`
+		BatchID        []byte            `map:"Swarm-Postage-Batch-Id" validate:"required"`
+		SwarmTag       uint64            `map:"Swarm-Tag"`
+		Pin            bool              `map:"Swarm-Pin"`
+		Deferred       *bool             `map:"Swarm-Deferred-Upload"`
+		Encrypt        bool              `map:"Swarm-Encrypt"`
+		IsDir          bool              `map:"Swarm-Collection"`
+		RLevel         *redundancy.Level `map:"Swarm-Redundancy-Level" validate:"omitempty,rLevel"`
+		Act            bool              `map:"Swarm-Act"`
+		HistoryAddress swarm.Address     `map:"Swarm-Act-History-Address"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -145,9 +145,14 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	mt, _, errParseCT := mime.ParseMediaType(contentTypeHdr)
 	isMultipart := errParseCT == nil && mt == multiPartFormData
 
+	rLevel := redundancy.DefaultUploadLevel
+	if headers.RLevel != nil {
+		rLevel = *headers.RLevel
+	}
+
 	isDirUpload := headers.IsDir || isMultipart
 	if !isDirUpload {
-		s.fileUploadHandler(ctx, logger, span, ow, r, putter, headers.Encrypt, tag, headers.RLevel, headers.Act, headers.HistoryAddress)
+		s.fileUploadHandler(ctx, logger, span, ow, r, putter, headers.Encrypt, tag, rLevel, headers.Act, headers.HistoryAddress)
 		return
 	}
 
@@ -157,7 +162,7 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.dirUploadHandler(ctx, logger, span, ow, r, putter, headers.Encrypt, tag, headers.RLevel, headers.Act, headers.HistoryAddress)
+	s.dirUploadHandler(ctx, logger, span, ow, r, putter, headers.Encrypt, tag, rLevel, headers.Act, headers.HistoryAddress)
 }
 
 // bzzUploadResponse is returned when an HTTP request to upload a file is successful
@@ -303,7 +308,7 @@ func (s *Service) fileUploadHandler(
 	reference := manifestReference
 	historyReference := swarm.ZeroAddress
 	if act {
-		reference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, historyAddress)
+		reference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, historyAddress, rLevel)
 		if err != nil {
 			logger.Debug("access control upload failed", "error", err)
 			logger.Error(nil, "access control upload failed")
@@ -525,7 +530,7 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 		cache = *headers.Cache
 	}
 
-	rLevel := redundancy.DefaultLevel
+	rLevel := redundancy.DefaultDownloadLevel
 	if headers.RLevel != nil {
 		rLevel = *headers.RLevel
 	}
@@ -748,7 +753,7 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		jsonhttp.BadRequest(w, "could not parse headers")
 		return
 	}
-	rLevel := redundancy.DefaultLevel
+	rLevel := redundancy.DefaultDownloadLevel
 	if headers.RLevel != nil {
 		rLevel = *headers.RLevel
 	}
