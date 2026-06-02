@@ -477,11 +477,21 @@ func (t *transactionService) updateStates(signedTx *types.Transaction, txState *
 }
 
 func isReplacementUnderpriced(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "replacement transaction underpriced")
+	return err != nil && containsNormalized(err.Error(), "replacementtransactionunderpriced")
 }
 
 func isNonceTooLow(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "nonce too low")
+	return err != nil && containsNormalized(err.Error(), "noncetoolow")
+}
+
+// normalizeForMatch lowercases s and strips spaces so that both
+// "insufficient funds" and "InsufficientFunds" match the same needle.
+func normalizeForMatch(s string) string {
+	return strings.ToLower(strings.ReplaceAll(s, " ", ""))
+}
+
+func containsNormalized(haystack, needle string) bool {
+	return strings.Contains(normalizeForMatch(haystack), needle)
 }
 
 func isNonRetryable(err error) bool {
@@ -493,27 +503,27 @@ func isNonRetryable(err error) bool {
 		return true
 	}
 
-	s := err.Error()
+	s := normalizeForMatch(err.Error())
 	nonRetryable := []string{
-		"specified gas price",
-		"AlreadyCommitted",
-		"AlreadyRevealed",
-		"AlreadyClaimed",
-		"NotCommitPhase",
-		"NotRevealPhase",
-		"NotClaimPhase",
-		"CommitRoundOver",
-		"CommitRoundNotStarted",
-		"PhaseLastBlock",
-		"OutOfDepth",
-		"OutOfDepthReveal",
-		"OutOfDepthClaim",
-		"NotStaked",
-		"MustStake2Rounds",
-		"NoReveals",
-		"NoCommitsReceived",
-		"execution reverted",
-		"insufficient funds",
+		"specifiedgasprice",
+		"alreadycommitted",
+		"alreadyrevealed",
+		"alreadyclaimed",
+		"notcommitphase",
+		"notrevealphase",
+		"notclaimphase",
+		"commitroundover",
+		"commitroundnotstarted",
+		"phaselastblock",
+		"outofdepth",
+		"outofdepthreveal",
+		"outofdepthclaim",
+		"notstaked",
+		"muststake2rounds",
+		"noreveals",
+		"nocommitsreceived",
+		"executionreverted",
+		"insufficientfunds",
 	}
 	for _, sub := range nonRetryable {
 		if strings.Contains(s, sub) {
