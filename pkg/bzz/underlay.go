@@ -34,6 +34,10 @@ const maxUnderlayBytes = 2048
 
 // SerializeUnderlays serializes a slice of multiaddrs into a single byte slice.
 func SerializeUnderlays(addrs []multiaddr.Multiaddr) ([]byte, error) {
+	if len(addrs) == 0 {
+		return nil, errors.New("cannot serialize empty byte slice")
+	}
+
 	if len(addrs) > maxUnderlaysPerPeer {
 		return nil, fmt.Errorf("underlay count %d exceeds maximum of %d: %w", len(addrs), maxUnderlaysPerPeer, ErrUnderlayCountExceeded)
 	}
@@ -57,13 +61,12 @@ func SerializeUnderlays(addrs []multiaddr.Multiaddr) ([]byte, error) {
 // DeserializeUnderlays deserializes a byte slice into a slice of multiaddrs.
 func DeserializeUnderlays(data []byte) ([]multiaddr.Multiaddr, error) {
 	if len(data) == 0 {
-		return nil, nil
+		return nil, errors.New("cannot deserialize empty byte slice")
 	}
 
 	if len(data) > maxUnderlayBytes {
 		return nil, fmt.Errorf("underlay data size %d exceeds maximum of %d bytes: %w", len(data), maxUnderlayBytes, ErrUnderlayByteSizeExceeded)
 	}
-
 	return deserializeList(data)
 }
 

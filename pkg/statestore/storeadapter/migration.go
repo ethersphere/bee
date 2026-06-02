@@ -25,14 +25,14 @@ func allSteps(st storage.Store) migration.Steps {
 	// and never execute newly added migrations.
 	noop := func() error { return nil }
 	return map[uint64]migration.StepFn{
-		1: noop,
-		2: noop,
-		3: noop,
-		4: noop,
-		5: noop,
-		6: noop,
-		7: noop,
-		8: noop,
+		1:  noop,
+		2:  noop,
+		3:  noop,
+		4:  noop,
+		5:  noop,
+		6:  noop,
+		7:  noop,
+		8:  noop,
 		9:  rewriteAddressbookEnvelope(st),
 		10: migrateBigIntKeys(st),
 	}

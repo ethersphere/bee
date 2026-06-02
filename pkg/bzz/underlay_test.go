@@ -30,20 +30,16 @@ func TestSerializeUnderlays(t *testing.T) {
 	})
 
 	t.Run("empty list", func(t *testing.T) {
-		addrs := []multiaddr.Multiaddr{}
-		serialized := mustSerializeUnderlays(t, addrs)
-		expected := []byte{}
-		if !bytes.Equal(serialized, expected) {
-			t.Errorf("expected %x for empty list, got %x", expected, serialized)
+		_, err := bzz.SerializeUnderlays([]multiaddr.Multiaddr{})
+		if err == nil {
+			t.Fatal("expected error for empty list, got nil")
 		}
 	})
 
 	t.Run("nil list", func(t *testing.T) {
-		var addrs []multiaddr.Multiaddr = nil
-		serialized := mustSerializeUnderlays(t, addrs)
-		expected := []byte{}
-		if !bytes.Equal(serialized, expected) {
-			t.Errorf("expected %x for nil list, got %x", expected, serialized)
+		_, err := bzz.SerializeUnderlays(nil)
+		if err == nil {
+			t.Fatal("expected error for nil list, got nil")
 		}
 	})
 
@@ -78,41 +74,9 @@ func TestDeserializeUnderlays(t *testing.T) {
 	})
 
 	t.Run("empty byte slice", func(t *testing.T) {
-		deserialized, err := bzz.DeserializeUnderlays([]byte{})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(deserialized) != 0 {
-			t.Errorf("expected empty slice, got %v", deserialized)
-		}
-	})
-
-	t.Run("serialize deserialize empty list", func(t *testing.T) {
-		addrs := []multiaddr.Multiaddr{}
-		serialized := mustSerializeUnderlays(t, addrs)
-		if !bytes.Equal(serialized, []byte{}) {
-			t.Errorf("expected %v, got %v", []byte{}, serialized)
-		}
-		deserialized, err := bzz.DeserializeUnderlays(serialized)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(deserialized) != 0 {
-			t.Errorf("expected empty slice, got %v", deserialized)
-		}
-	})
-
-	t.Run("serialize deserialize nil list", func(t *testing.T) {
-		serialized := mustSerializeUnderlays(t, nil)
-		if !bytes.Equal(serialized, []byte{}) {
-			t.Errorf("expected %v, got %v", []byte{}, serialized)
-		}
-		deserialized, err := bzz.DeserializeUnderlays(serialized)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(deserialized) != 0 {
-			t.Errorf("expected empty slice, got %v", deserialized)
+		_, err := bzz.DeserializeUnderlays([]byte{})
+		if err == nil {
+			t.Fatal("expected error for empty byte slice, got nil")
 		}
 	})
 
@@ -220,14 +184,9 @@ func TestSerializeUnderlaysDeserializeUnderlays(t *testing.T) {
 	})
 
 	t.Run("empty list", func(t *testing.T) {
-		addrs := []multiaddr.Multiaddr{}
-		serialized := mustSerializeUnderlays(t, addrs)
-		deserialized, err := bzz.DeserializeUnderlays(serialized)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(deserialized) != 0 {
-			t.Errorf("expected empty slice from round trip, got %v", deserialized)
+		_, err := bzz.SerializeUnderlays([]multiaddr.Multiaddr{})
+		if err == nil {
+			t.Fatal("expected error for empty list, got nil")
 		}
 	})
 }
