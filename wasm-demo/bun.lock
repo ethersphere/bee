@@ -6,6 +6,7 @@
       "name": "wasm-demo",
       "dependencies": {
         "@zenfs/core": "^2.4.4",
+        "@zenfs/dom": "^1.2.9",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -76,6 +77,8 @@
     "@xterm/xterm": ["@xterm/xterm@5.5.0", "", {}, "sha512-hqJHYaQb5OptNunnyAnkHyM8aCjZ1MEIDTQu1iIbbTD/xops91NB5yq1ZK/dC2JDbVWtF23zUtl9JE2NqwT87A=="],
 
     "@zenfs/core": ["@zenfs/core@2.4.4", "", { "dependencies": { "@types/node": "^24.1.0", "buffer": "^6.0.3", "eventemitter3": "^5.0.1", "kerium": "^1.3.4", "memium": "^0.3.10", "readable-stream": "^4.5.2", "utilium": "^2.5.0" }, "bin": { "make-index": "scripts/make-index.js", "zenfs-test": "scripts/test.js", "zci": "scripts/ci-cli.js" } }, "sha512-4ove99nTRyS3WPNlHN6i0AxMMYW85YBo2lVS/aNXU48dYOl78XiM98d4uly/9PwtllGJHEv9GHkomxS2eoOLFw=="],
+
+    "@zenfs/dom": ["@zenfs/dom@1.2.9", "", { "peerDependencies": { "@zenfs/core": "^2.3.11", "kerium": "^1.3.4", "utilium": "^3.0.0" } }, "sha512-+fVY9XDDml/aYCe9BC2LByM4vHZNXOIfTvuR19r78rV4BxWBy8fgc8GLmO2tHsdKe+nTiyaNt5F7qid55So42Q=="],
 
     "abort-controller": ["abort-controller@3.0.0", "", { "dependencies": { "event-target-shim": "^5.0.0" } }, "sha512-h8lQ8tacZYnR3vNQTgibj+tODHI5/+l06Au2Pcriv/Gmet0eaj4TwWH41sO9wnHDiQsEj19q0drzdWdeAHtweg=="],
 
