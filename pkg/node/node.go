@@ -139,7 +139,7 @@ type Options struct {
 	BlockchainRpcTLSTimeout       time.Duration
 	BlockchainRpcIdleTimeout      time.Duration
 	BlockchainRpcKeepalive        time.Duration
-	BzzTokenAddress               string
+	BzzTokenAddress               common.Address
 	BlockProfile                  bool
 	BlockTime                     time.Duration
 	BlockSyncInterval             uint64
@@ -546,19 +546,17 @@ func NewBee(
 		}
 	}
 
-	chainCfg, found := config.GetByChainID(chainID)
+	chainCfg, knownChain := config.GetByChainID(chainID)
 
 	bzzTokenAddress := chainCfg.BzzAddress
-	if o.BzzTokenAddress != "" {
-		if !common.IsHexAddress(o.BzzTokenAddress) {
-			return nil, errors.New("malformed bzz token address")
-		}
-		bzzTokenAddress = common.HexToAddress(o.BzzTokenAddress)
-	} else if chainEnabled && bzzTokenAddress == (common.Address{}) {
-		return nil, errors.New("no known bzz token address for this network; provide --bzz-token-address")
+	if o.BzzTokenAddress != (common.Address{}) {
+		bzzTokenAddress = o.BzzTokenAddress
 	}
 
 	if chainEnabled {
+		if bzzTokenAddress == (common.Address{}) {
+			return nil, errors.New("no known bzz token address for this network; provide --bzz-token-address")
+		}
 		erc20Service = erc20.New(transactionService, bzzTokenAddress)
 	}
 
@@ -752,7 +750,7 @@ func NewBee(
 			return nil, errors.New("postage contract start block option not provided")
 		}
 		postageSyncStart = o.PostageContractStartBlock
-	} else if !found {
+	} else if !knownChain {
 		return nil, errors.New("no known postage stamp addresses for this network")
 	}
 
