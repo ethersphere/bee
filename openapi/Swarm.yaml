@@ -846,6 +846,48 @@ paths:
         default:
           description: Default response
 
+  "/moc/subscribe/{id}":
+    get:
+      summary: Subscribe to MOC payloads
+      description: "Subscribe to Single Owner Chunks by their identifier, regardless of owner (Mined Owner Chunk)."
+      tags:
+        - MOC
+      parameters:
+        - in: path
+          name: id
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/HexString"
+          required: true
+          description: "Single Owner Chunk identifier (32 bytes, hex encoded)"
+      responses:
+        "200":
+          description: Establishes a WebSocket subscription for incoming messages on the Single Owner Chunk identifier
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
+  "/mic/subscribe/{owner}":
+    get:
+      summary: Subscribe to MIC payloads
+      description: "Subscribe to Single Owner Chunks by their owner ethereum address, regardless of identifier (Mined ID Chunk)."
+      tags:
+        - MIC
+      parameters:
+        - in: path
+          name: owner
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
+          required: true
+          description: "Single Owner Chunk owner ethereum address (20 bytes, hex encoded)"
+      responses:
+        "200":
+          description: Establishes a WebSocket subscription for incoming messages on the Single Owner Chunk owner
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
   "/soc/{owner}/{id}":
     post:
       summary: Upload a Single Owner Chunk
