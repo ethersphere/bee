@@ -34,6 +34,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/gsoc"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/mic"
+	"github.com/ethersphere/bee/v2/pkg/moc"
 	p2pmock "github.com/ethersphere/bee/v2/pkg/p2p/mock"
 	"github.com/ethersphere/bee/v2/pkg/pingpong"
 	"github.com/ethersphere/bee/v2/pkg/postage"
@@ -94,6 +96,8 @@ type testServerOptions struct {
 	Resolver           resolver.Interface
 	Pss                pss.Interface
 	Gsoc               gsoc.Listener
+	Moc                moc.Listener
+	Mic                mic.Listener
 	WsPath             string
 	WsPingPeriod       time.Duration
 	Logger             log.Logger
@@ -201,6 +205,8 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		Resolver:        o.Resolver,
 		Pss:             o.Pss,
 		Gsoc:            o.Gsoc,
+		Moc:             o.Moc,
+		Mic:             o.Mic,
 		FeedFactory:     o.Feeds,
 		Post:            o.Post,
 		AccessControl:   o.AccessControl,
