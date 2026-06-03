@@ -28,8 +28,8 @@ func (ft feeTier) String() string {
 	}
 }
 
-// ParseFeeTier converts a string name to a feeTier value.
-func ParseFeeTier(s string) (feeTier, error) {
+// parseFeeTier converts a string name to a feeTier value.
+func parseFeeTier(s string) (feeTier, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "low":
 		return feeTierLow, nil

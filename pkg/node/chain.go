@@ -12,7 +12,6 @@ import (
 	"math/big"
 	"net"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -42,35 +41,6 @@ const (
 	additionalConfirmations = 2
 )
 
-// ParseFeeHistoryRewardPercentiles parses a comma-separated list of floats for eth_feeHistory
-// rewardPercentiles. Exactly three values in the range [0, 100] are required.
-func ParseFeeHistoryRewardPercentiles(s string) ([]float64, error) {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return nil, errors.New("fee history reward percentiles: empty string")
-	}
-	parts := strings.Split(s, ",")
-	out := make([]float64, 0, len(parts))
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			return nil, errors.New("fee history reward percentiles: empty token")
-		}
-		v, err := strconv.ParseFloat(p, 64)
-		if err != nil {
-			return nil, fmt.Errorf("fee history reward percentiles: parse %q: %w", p, err)
-		}
-		if v < 0 || v > 100 {
-			return nil, fmt.Errorf("fee history reward percentiles: %g out of range [0,100]", v)
-		}
-		out = append(out, v)
-	}
-	if len(out) != 3 {
-		return nil, fmt.Errorf("fee history reward percentiles: exactly 3 values, got %d", len(out))
-	}
-	return out, nil
-}
-
 // BlockchainRPCConfig holds the configuration parameters for the blockchain RPC client transport.
 type BlockchainRPCConfig struct {
 	Endpoint    string
@@ -95,7 +65,6 @@ func InitChain(
 	rpcCfg BlockchainRPCConfig,
 	blockSyncInterval uint64,
 	feeHistoryBlockCount uint64,
-	feeHistoryRewardPercentiles []float64,
 	retryCfg transaction.TransactionsRetryConfig,
 ) (transaction.Backend, common.Address, int64, transaction.Monitor, transaction.Service, error) {
 	backend := backendnoop.New(chainID)
@@ -131,7 +100,7 @@ func InitChain(
 
 		logger.Info("connected to blockchain backend", "version", versionString)
 
-		backend = wrapped.NewBackend(ethclient.NewClient(rpcClient), minimumGasTipCap, pollingInterval, blockSyncInterval, feeHistoryBlockCount, feeHistoryRewardPercentiles)
+		backend = wrapped.NewBackend(ethclient.NewClient(rpcClient), minimumGasTipCap, pollingInterval, blockSyncInterval, feeHistoryBlockCount)
 	}
 
 	backendChainID, err := backend.ChainID(ctx)

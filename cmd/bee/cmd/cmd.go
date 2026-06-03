@@ -112,7 +112,6 @@ const (
 	optionNameTransactionRetryStartTier     = "transaction-retry-start-tier"
 	optionNameTransactionRetryEndTier       = "transaction-retry-end-tier"
 	optionNameFeeHistoryBlockCount          = "fee-history-block-count"
-	optionNameFeeHistoryRewardPercentiles   = "fee-history-reward-percentiles"
 )
 
 var blockchainRpcConfigPairs = []struct{ flat, dotted string }{
@@ -325,7 +324,6 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Uint64(optionNameBlockTime, 5, "chain block time")
 	cmd.Flags().Uint64(optionNameBlockSyncInterval, 10, "block number cache sync interval in blocks")
 	cmd.Flags().Uint64(optionNameFeeHistoryBlockCount, 100, "eth_feeHistory block count for fee hints")
-	cmd.Flags().String(optionNameFeeHistoryRewardPercentiles, "10,50,90", "comma-separated reward percentiles for eth_feeHistory")
 	cmd.Flags().Duration(optionWarmUpTime, time.Minute*5, "maximum node warmup duration; proceeds when stable or after this time")
 	cmd.Flags().Bool(optionNameMainNet, true, "triggers connect to main net bootnodes.")
 	cmd.Flags().Bool(optionNameRetrievalCaching, true, "enable forwarded content caching")

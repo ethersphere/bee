@@ -7,7 +7,6 @@ package transaction
 import (
 	"context"
 	"errors"
-	"strings"
 
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
@@ -74,10 +73,10 @@ func retryOutcomeLabel(err error) string {
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return "context_canceled"
 	}
-	if strings.Contains(err.Error(), "transaction failed after") {
+	if errors.Is(err, ErrAllAttemptsExhausted) {
 		return "attempts_exhausted"
 	}
-	if strings.Contains(err.Error(), "send txs with retry requires automatic gas pricing") {
+	if containsNormalized(err.Error(), "sendtxswithretryrequiresautomaticgaspricing") {
 		return "manual_gas_price"
 	}
 	if isNonRetryable(err) {

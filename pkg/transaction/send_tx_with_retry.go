@@ -72,7 +72,7 @@ func (t *transactionService) suggestGasFeeForTier(ctx context.Context, tier feeT
 		return nil, nil, err
 	}
 	if header == nil || header.BaseFee == nil {
-		return nil, nil, fmt.Errorf("latest block header or base fee unavailable")
+		return nil, nil, errors.New("latest block header or base fee unavailable")
 	}
 
 	// get fee history
@@ -230,9 +230,9 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 	var (
 		previousTip    *big.Int
 		terminateTxErr error
-		attempt        int
 	)
 
+	attempt := 1 // start attempts counting from 1 for metrics
 	defer func() {
 		if terminateTxErr != nil {
 			t.logger.Error(terminateTxErr,
@@ -247,7 +247,7 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 
 		monitorLast := errors.Is(terminateTxErr, ErrTxMaxPriceExceeded)
 		t.deleteRetryStateAndPending(txRetryKey, txState, monitorLast)
-		t.recordRetryComplete(attempt+1, terminateTxErr)
+		t.recordRetryComplete(attempt, terminateTxErr)
 	}()
 
 	for _, tier := range tiers {
@@ -256,26 +256,54 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 				nonce = &txState.Nonce
 			}
 
+			replaced := true
 			signedTx, err := t.broadcastTx(ctx, request, nonce, tier, previousTip)
 			if err != nil {
-				if isNonRetryable(err) {
+				switch {
+				case isNonceTooLow(err):
+					// The nonce was consumed between our last receipt check and
+					// this rebroadcast: our previously broadcast tx was most
+					// likely mined. Try to read its receipt exactly once; if
+					// it is absent, propagate the error and stop retrying.
+					if txState.LastTxHash != (common.Hash{}) {
+						if rec, recErr := t.backend.TransactionReceipt(ctx, txState.LastTxHash); recErr == nil && rec != nil {
+							if rec.Status == 0 {
+								terminateTxErr = ErrTransactionReverted
+								return txState.LastTxHash, rec, terminateTxErr
+							}
+							return txState.LastTxHash, rec, nil
+						}
+					}
 					terminateTxErr = err
 					return common.Hash{}, nil, terminateTxErr
+				case isReplacementUnderpriced(err):
+					// Couldn't replace transaction, keep watching latest one
+					replaced = false
+					t.logger.Warning("transaction retry broadcast underpriced, keep watching pending tx",
+						"attempt", attempt, "tier", tier.String(), "pending_tx", txState.LastTxHash,
+						"error", err, "to", retryToForLog(request, &txState))
+				case isNonRetryable(err):
+					terminateTxErr = err
+					return common.Hash{}, nil, terminateTxErr
+				default:
+					t.logger.Warning("transaction retry broadcast failed, will retry",
+						"attempt", attempt, "tier", tier.String(), "error", err, "to", retryToForLog(request, &txState))
 				}
-				t.logger.Warning("transaction retry broadcast failed, will retry",
-					"attempt", attempt, "tier", tier.String(), "error", err, "to", retryToForLog(request, &txState))
 			}
 
-			if terminateTxErr = t.updateStates(signedTx, &txState); terminateTxErr != nil {
-				return common.Hash{}, nil, terminateTxErr
+			if replaced {
+				// update states only in case if previous tx was replaced - otherwise keep watching latest known tx hash
+				if terminateTxErr = t.updateStates(signedTx, &txState); terminateTxErr != nil {
+					return common.Hash{}, nil, terminateTxErr
+				}
+
+				if signedTx != nil {
+					previousTip = signedTx.GasTipCap()
+				}
 			}
 
 			if txState.NonceAssigned {
 				txRetryKey = retryStateKey(txState.Nonce)
-			}
-
-			if signedTx != nil {
-				previousTip = signedTx.GasTipCap()
 			}
 
 			if txState.LastTxHash == (common.Hash{}) {
@@ -379,6 +407,24 @@ func (t *transactionService) updateStates(signedTx *types.Transaction, txState *
 	return nil
 }
 
+func isReplacementUnderpriced(err error) bool {
+	return err != nil && containsNormalized(err.Error(), "replacementtransactionunderpriced")
+}
+
+func isNonceTooLow(err error) bool {
+	return err != nil && containsNormalized(err.Error(), "noncetoolow")
+}
+
+// normalizeForMatch lowercases s and strips spaces so that both
+// "insufficient funds" and "InsufficientFunds" match the same needle.
+func normalizeForMatch(s string) string {
+	return strings.ToLower(strings.ReplaceAll(s, " ", ""))
+}
+
+func containsNormalized(haystack, needle string) bool {
+	return strings.Contains(normalizeForMatch(haystack), needle)
+}
+
 func isNonRetryable(err error) bool {
 	if errors.Is(err, ErrTransactionReverted) ||
 		errors.Is(err, ErrTransactionCancelled) ||
@@ -388,28 +434,27 @@ func isNonRetryable(err error) bool {
 		return true
 	}
 
-	s := err.Error()
+	s := normalizeForMatch(err.Error())
 	nonRetryable := []string{
-		"specified gas price",
-		"nonce too low",
-		"AlreadyCommitted",
-		"AlreadyRevealed",
-		"AlreadyClaimed",
-		"NotCommitPhase",
-		"NotRevealPhase",
-		"NotClaimPhase",
-		"CommitRoundOver",
-		"CommitRoundNotStarted",
-		"PhaseLastBlock",
-		"OutOfDepth",
-		"OutOfDepthReveal",
-		"OutOfDepthClaim",
-		"NotStaked",
-		"MustStake2Rounds",
-		"NoReveals",
-		"NoCommitsReceived",
-		"execution reverted",
-		"insufficient funds",
+		"specifiedgasprice",
+		"alreadycommitted",
+		"alreadyrevealed",
+		"alreadyclaimed",
+		"notcommitphase",
+		"notrevealphase",
+		"notclaimphase",
+		"commitroundover",
+		"commitroundnotstarted",
+		"phaselastblock",
+		"outofdepth",
+		"outofdepthreveal",
+		"outofdepthclaim",
+		"notstaked",
+		"muststake2rounds",
+		"noreveals",
+		"nocommitsreceived",
+		"executionreverted",
+		"insufficientfunds",
 	}
 	for _, sub := range nonRetryable {
 		if strings.Contains(s, sub) {
@@ -458,8 +503,7 @@ func (t *transactionService) resumeRetryTransactions() error {
 		t.logger.Warning("resume retry: failed to get confirmed nonce, resuming all", "error", err)
 	}
 
-	loggerV1 := t.logger.V(1).Register()
-	loggerV1.Debug("resume retry: scanning persisted retry states",
+	t.logger.Debug("resume retry: scanning persisted retry states",
 		"count", len(keys),
 		"confirmed_nonce", confirmed)
 
@@ -468,7 +512,7 @@ func (t *transactionService) resumeRetryTransactions() error {
 		state := states[i]
 
 		if confirmed > state.Nonce {
-			loggerV1.Debug("resume retry: skipping already confirmed transaction",
+			t.logger.Debug("resume retry: skipping already confirmed transaction",
 				"nonce", state.Nonce,
 				"confirmed_nonce", confirmed,
 				"description", state.Description)
@@ -476,7 +520,7 @@ func (t *transactionService) resumeRetryTransactions() error {
 			continue
 		}
 
-		loggerV1.Debug("resume retry: resuming persisted retry",
+		t.logger.Debug("resume retry: resuming persisted retry",
 			"nonce", state.Nonce,
 			"last_tx_hash", state.LastTxHash,
 			"description", state.Description)

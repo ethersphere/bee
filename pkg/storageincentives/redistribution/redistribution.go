@@ -6,6 +6,7 @@ package redistribution
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 
@@ -205,7 +206,7 @@ func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxReque
 		return txHash, err
 	}
 	if receipt == nil {
-		return txHash, fmt.Errorf("missing receipt after send with retry")
+		return txHash, errors.New("missing receipt after send with retry")
 	}
 	return txHash, nil
 }
