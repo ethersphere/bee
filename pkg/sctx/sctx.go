@@ -21,6 +21,7 @@ type (
 	gasPriceKey      struct{}
 	gasLimitKey      struct{}
 	disableRetryKey  struct{}
+	feePriorityKey   struct{}
 )
 
 // SetHost sets the http request host in the context
@@ -76,4 +77,16 @@ func SetDisableRetry(ctx context.Context, disable bool) context.Context {
 func GetDisableRetry(ctx context.Context) bool {
 	v, ok := ctx.Value(disableRetryKey{}).(bool)
 	return ok && v
+}
+
+func SetFeePriority(ctx context.Context, priority string) context.Context {
+	return context.WithValue(ctx, feePriorityKey{}, priority)
+}
+
+func GetFeePriority(ctx context.Context) string {
+	v, ok := ctx.Value(feePriorityKey{}).(string)
+	if ok {
+		return v
+	}
+	return ""
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	signermock "github.com/ethersphere/bee/v2/pkg/crypto/mock"
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/sctx"
 	storemock "github.com/ethersphere/bee/v2/pkg/statestore/mock"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
@@ -1009,6 +1010,104 @@ func TestSendWithRetry_MaxTxPriceCap(t *testing.T) {
 	assert.Error(t, err)
 	assert.Len(t, broadcasts, 0,
 		"no transaction should be sent when maxTxPrice is below the minimum fee")
+}
+
+func TestSendWithRetry_FeePriorityContextOverride(t *testing.T) {
+	t.Parallel()
+	s := newRetryTestSetup()
+	store := storemock.NewStateStore()
+	testutil.CleanupCloser(t, store)
+
+	var broadcasts []capturedBroadcast
+
+	cfg := s.retryConfig()
+	cfg.StartTier = "market"
+	cfg.EndTier = "aggressive"
+	cfg.AttemptsPerTier = 1
+
+	svc, err := transaction.NewService(log.Noop, s.sender,
+		backendmock.New(
+			s.nonceOption(),
+			s.feeHistoryOption(nil),
+			s.headerOption(),
+			s.estimateGasOption(),
+			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+				broadcasts = append(broadcasts, captureTx(tx))
+				return nil
+			}),
+		),
+		signermock.New(s.passThroughSigner(), s.signerAddr()),
+		store,
+		s.chainID,
+		monitormock.New(
+			monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
+				ch := make(chan types.Receipt, 1)
+				ch <- types.Receipt{TxHash: txHash, Status: 1}
+				return ch, nil, nil
+			}),
+		),
+		0,
+		cfg,
+	)
+	require.NoError(t, err)
+	testutil.CleanupCloser(t, svc)
+
+	ctx := sctx.SetFeePriority(context.Background(), "low")
+	_, receipt, err := svc.SendWithRetry(ctx, s.request())
+	require.NoError(t, err)
+	require.NotNil(t, receipt)
+	require.Len(t, broadcasts, 1)
+	assert.Equal(t, s.tipBase.Int64(), broadcasts[0].GasTipCap.Int64(),
+		"request fee priority must override node start tier")
+}
+
+func TestSendWithRetry_FeePriorityClampedToNodeMax(t *testing.T) {
+	t.Parallel()
+	s := newRetryTestSetup()
+	store := storemock.NewStateStore()
+	testutil.CleanupCloser(t, store)
+
+	var broadcasts []capturedBroadcast
+
+	cfg := s.retryConfig()
+	cfg.StartTier = "low"
+	cfg.EndTier = "market"
+	cfg.AttemptsPerTier = 1
+
+	svc, err := transaction.NewService(log.Noop, s.sender,
+		backendmock.New(
+			s.nonceOption(),
+			s.feeHistoryOption(nil),
+			s.headerOption(),
+			s.estimateGasOption(),
+			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+				broadcasts = append(broadcasts, captureTx(tx))
+				return nil
+			}),
+		),
+		signermock.New(s.passThroughSigner(), s.signerAddr()),
+		store,
+		s.chainID,
+		monitormock.New(
+			monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
+				ch := make(chan types.Receipt, 1)
+				ch <- types.Receipt{TxHash: txHash, Status: 1}
+				return ch, nil, nil
+			}),
+		),
+		0,
+		cfg,
+	)
+	require.NoError(t, err)
+	testutil.CleanupCloser(t, svc)
+
+	ctx := sctx.SetFeePriority(context.Background(), "aggressive")
+	_, receipt, err := svc.SendWithRetry(ctx, s.request())
+	require.NoError(t, err)
+	require.NotNil(t, receipt)
+	require.Len(t, broadcasts, 1)
+	assert.Equal(t, s.expectedMarketTip().Int64(), broadcasts[0].GasTipCap.Int64(),
+		"request fee priority above node ceiling must clamp to end tier")
 }
 
 // failOnNthPutStore wraps a StateStorer and fails the Nth Put call with putErr.

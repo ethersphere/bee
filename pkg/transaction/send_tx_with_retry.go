@@ -15,6 +15,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethersphere/bee/v2/pkg/sctx"
 )
 
 const retryStatePrefix = "transaction_retry_"
@@ -109,6 +110,24 @@ func (t *transactionService) suggestGasFeeForTier(ctx context.Context, tier feeT
 		return nil, nil, fmt.Errorf("%w: max_fee_per_gas %s exceeds limit %s", ErrTxMaxPriceExceeded, gasFeeCapWithTip, t.maxTxPrice)
 	}
 	return gasFeeCapWithTip, tip, nil
+}
+
+func (t *transactionService) tierRangeForRequest(ctx context.Context) ([]feeTier, error) {
+	start := t.startTier
+	if override := sctx.GetFeePriority(ctx); override != "" {
+		parsed, err := parseFeeTier(override)
+		if err != nil {
+			return nil, fmt.Errorf("fee priority: %w", err)
+		}
+		if parsed > t.endTier {
+			t.logger.Warning("fee priority exceeds configured maximum, clamping",
+				"requested", parsed.String(),
+				"maximum", t.endTier.String())
+			parsed = t.endTier
+		}
+		start = parsed
+	}
+	return tierRange(start, t.endTier), nil
 }
 
 func (t *transactionService) prepareTransactionForTier(ctx context.Context, request *TxRequest, nonce uint64, tier feeTier, previousTip *big.Int) (*types.Transaction, error) {
@@ -216,12 +235,15 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 		}
 	}
 
-	tiers := tierRange(t.startTier, t.endTier)
+	tiers, err := t.tierRangeForRequest(ctx)
+	if err != nil {
+		return common.Hash{}, nil, err
+	}
 
 	t.logger.Debug("send with retry: started",
 		"description", request.Description,
 		"to", retryToForLog(request, &txState),
-		"start_tier", t.startTier.String(),
+		"start_tier", tiers[0].String(),
 		"end_tier", t.endTier.String(),
 		"attempts_per_tier", t.attemptsPerTier,
 		"retry_delay", t.txRetryDelay,
@@ -245,7 +267,7 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 				"description", request.Description)
 		}
 
-		monitorLast := errors.Is(terminateTxErr, ErrTxMaxPriceExceeded)
+		monitorLast := errors.Is(terminateTxErr, ErrTxMaxPriceExceeded) || errors.Is(terminateTxErr, ErrAllAttemptsExhausted)
 		t.deleteRetryStateAndPending(txRetryKey, txState, monitorLast)
 		t.recordRetryComplete(attempt, terminateTxErr)
 	}()
