@@ -75,7 +75,16 @@ func (l *listener) Handle(c *soc.SOC) {
 		return // no subscriptions, skip lock
 	}
 
-	h := l.getHandlers(c.OwnerAddress())
+	payload := c.WrappedChunk().Data()[swarm.SpanSize:]
+
+	// The read lock is held for the whole iteration so that a concurrent
+	// Subscribe cleanup (write lock) cannot mutate the handlers slice while it
+	// is being ranged over. Each handler is dereferenced and dispatched to its
+	// own goroutine, so the lock is never held while a handler runs.
+	l.handlersMu.RLock()
+	defer l.handlersMu.RUnlock()
+
+	h := l.handlers[string(c.OwnerAddress())]
 	if h == nil {
 		return // no handler
 	}
@@ -83,16 +92,9 @@ func (l *listener) Handle(c *soc.SOC) {
 
 	for _, hh := range h {
 		go func(hh Handler) {
-			hh(c.WrappedChunk().Data()[swarm.SpanSize:])
+			hh(payload)
 		}(*hh)
 	}
-}
-
-func (l *listener) getHandlers(owner []byte) []*Handler {
-	l.handlersMu.RLock()
-	defer l.handlersMu.RUnlock()
-
-	return l.handlers[string(owner)]
 }
 
 func (l *listener) Close() error {

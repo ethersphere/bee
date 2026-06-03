@@ -6,6 +6,7 @@ package gsoc
 
 import (
 	"sync"
+	"sync/atomic"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/soc"
@@ -24,7 +25,8 @@ type Listener interface {
 
 type listener struct {
 	handlers   map[string][]*Handler
-	handlersMu sync.Mutex
+	handlersMu sync.RWMutex
+	subCount   atomic.Int32
 	quit       chan struct{}
 	logger     log.Logger
 }
@@ -44,6 +46,7 @@ func (l *listener) Subscribe(address swarm.Address, handler Handler) (cleanup fu
 	defer l.handlersMu.Unlock()
 
 	l.handlers[address.ByteString()] = append(l.handlers[address.ByteString()], &handler)
+	l.subCount.Add(1)
 
 	return func() {
 		l.handlersMu.Lock()
@@ -53,6 +56,7 @@ func (l *listener) Subscribe(address swarm.Address, handler Handler) (cleanup fu
 		for i := range h {
 			if h[i] == &handler {
 				l.handlers[address.ByteString()] = append(h[:i], h[i+1:]...)
+				l.subCount.Add(-1)
 				return
 			}
 		}
@@ -61,11 +65,24 @@ func (l *listener) Subscribe(address swarm.Address, handler Handler) (cleanup fu
 
 // Handle is called by push/pull sync and passes the chunk its registered handler
 func (l *listener) Handle(c *soc.SOC) {
+	if l.subCount.Load() == 0 {
+		return // no subscriptions, skip lock
+	}
+
 	addr, err := c.Address()
 	if err != nil {
 		return // no handler
 	}
-	h := l.getHandlers(addr)
+	payload := c.WrappedChunk().Data()[swarm.SpanSize:]
+
+	// The read lock is held for the whole iteration so that a concurrent
+	// Subscribe cleanup (write lock) cannot mutate the handlers slice while it
+	// is being ranged over. Each handler is dereferenced and dispatched to its
+	// own goroutine, so the lock is never held while a handler runs.
+	l.handlersMu.RLock()
+	defer l.handlersMu.RUnlock()
+
+	h := l.handlers[addr.ByteString()]
 	if h == nil {
 		return // no handler
 	}
@@ -73,16 +90,9 @@ func (l *listener) Handle(c *soc.SOC) {
 
 	for _, hh := range h {
 		go func(hh Handler) {
-			hh(c.WrappedChunk().Data()[swarm.SpanSize:])
+			hh(payload)
 		}(*hh)
 	}
-}
-
-func (p *listener) getHandlers(address swarm.Address) []*Handler {
-	p.handlersMu.Lock()
-	defer p.handlersMu.Unlock()
-
-	return p.handlers[address.ByteString()]
 }
 
 func (l *listener) Close() error {
