@@ -132,6 +132,24 @@ var tracingConfigPairs = []struct{ flat, dotted string }{
 	{optionNameTracingServiceName, configKeyTracingServiceName},
 }
 
+// Deprecated tracing options, removed in the OpenTelemetry migration. They are
+// kept only as hidden no-op flags so that existing configs do not break node
+// startup; their values are ignored (see deprecatedTracingKeys).
+const (
+	optionNameTracingEndpoint = "tracing-endpoint"
+	optionNameTracingHost     = "tracing-host"
+	optionNameTracingPort     = "tracing-port"
+)
+
+// deprecatedTracingKeys are the pre-OpenTelemetry tracing options. They are
+// registered as hidden no-op flags so stale configs still start the node, but
+// their values are ignored; operators should migrate to the tracing-otlp-* keys.
+var deprecatedTracingKeys = []string{
+	optionNameTracingEndpoint,
+	optionNameTracingHost,
+	optionNameTracingPort,
+}
+
 var knownNestedKeys = func() map[string]bool {
 	m := make(map[string]bool, len(blockchainRpcConfigPairs)+len(tracingConfigPairs))
 	for _, p := range blockchainRpcConfigPairs {
@@ -312,6 +330,12 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameTracingOTLPProtocol, "http", "OTLP exporter transport: http or grpc")
 	cmd.Flags().Float64(optionNameTracingSamplingRatio, 1.0, "head-based sampling ratio in [0,1]; 0 samples nothing, 1 samples everything")
 	cmd.Flags().String(optionNameTracingServiceName, "bee", "service name identifier for tracing")
+	// Deprecated, no-op tracing flags kept for backward compatibility so that
+	// existing configs do not break node startup. Their values are ignored.
+	for _, name := range deprecatedTracingKeys {
+		cmd.Flags().String(name, "", "deprecated and ignored; use the tracing-otlp-* options")
+		_ = cmd.Flags().MarkDeprecated(name, "no longer used after the OpenTelemetry migration; use the tracing-otlp-* options")
+	}
 	cmd.Flags().String(optionNameVerbosity, "info", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
 	cmd.Flags().String(optionWelcomeMessage, "", "send a welcome message string during handshakes")
 	cmd.Flags().String(optionNamePaymentThreshold, "13500000", "threshold in BZZ where you expect to get paid from your peers")
@@ -399,6 +423,18 @@ func (c *command) bindBlockchainRpcConfig(cmd *cobra.Command) {
 // (tracing.otlp-endpoint) YAML forms, with nested taking precedence.
 func (c *command) bindTracingConfig(cmd *cobra.Command) {
 	c.bindNestedConfig(cmd, tracingConfigPairs)
+}
+
+// warnDeprecatedTracingKeys logs a warning for each pre-OpenTelemetry tracing
+// key found in the config file. The keys are accepted to keep stale configs
+// bootable, but their values are ignored. Keys passed on the command line are
+// already handled by cobra's deprecation notice.
+func (c *command) warnDeprecatedTracingKeys() {
+	for _, key := range deprecatedTracingKeys {
+		if c.config.InConfig(key) {
+			c.logger.Warning("deprecated tracing config key is ignored; use the tracing-otlp-* options", "key", key)
+		}
+	}
 }
 
 func (c *command) bindNestedConfig(cmd *cobra.Command, pairs []struct{ flat, dotted string }) {
