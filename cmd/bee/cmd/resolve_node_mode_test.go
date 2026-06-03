@@ -128,16 +128,63 @@ func TestResolveNodeMode(t *testing.T) {
 			wantMode: node.FullMode,
 		},
 		{
-			// Upgraders relying on the old chequebook-enable=true default must
-			// now fail loudly instead of silently degrading to pseudo-settle.
-			name: "legacy full-node true without chequebook fails",
+			// Upgrade compatibility: chequebook-enable and storage-incentives-enable
+			// defaulted to true before node-mode existed. A legacy --full-node
+			// config that did not set them explicitly is auto-enabled so the node
+			// still starts as a fully-functional full node instead of failing
+			// validation (no silent degradation).
+			name: "legacy full-node true auto-enables chequebook and incentives",
+			config: map[string]any{
+				optionNameFullNode:             true,
+				configKeyBlockchainRpcEndpoint: "http://localhost:8545",
+				optionNameSwapEnable:           true,
+			},
+			wantMode: node.FullMode,
+		},
+		{
+			// The compatibility default only restores the old implicit value; an
+			// operator who explicitly disables chequebook while requesting a full
+			// node has a genuine misconfiguration that must still fail loudly.
+			name: "legacy full-node true with chequebook explicitly false fails",
+			config: map[string]any{
+				optionNameFullNode:             true,
+				configKeyBlockchainRpcEndpoint: "http://localhost:8545",
+				optionNameSwapEnable:           true,
+				optionNameChequebookEnable:     false,
+			},
+			wantErr: "full node requires chequebook-enable",
+		},
+		{
+			// Same: explicitly disabling storage incentives must not be masked.
+			name: "legacy full-node true with storage-incentives explicitly false fails",
 			config: map[string]any{
 				optionNameFullNode:                true,
 				configKeyBlockchainRpcEndpoint:    "http://localhost:8545",
 				optionNameSwapEnable:              true,
-				optionNameStorageIncentivesEnable: true,
+				optionNameChequebookEnable:        true,
+				optionNameStorageIncentivesEnable: false,
 			},
-			wantErr: "full node requires chequebook-enable",
+			wantErr: "storage-incentives-enable",
+		},
+		{
+			// swap-enable was also implied by --full-node before node-mode; a
+			// legacy config with only the RPC endpoint set is fully restored and
+			// starts as a full node rather than failing.
+			name: "legacy full-node true with only rpc auto-enables full stack",
+			config: map[string]any{
+				optionNameFullNode:             true,
+				configKeyBlockchainRpcEndpoint: "http://localhost:8545",
+			},
+			wantMode: node.FullMode,
+		},
+		{
+			// The RPC endpoint is the one thing the compatibility default cannot
+			// invent; a legacy full-node config without it must still fail.
+			name: "legacy full-node true without rpc endpoint fails",
+			config: map[string]any{
+				optionNameFullNode: true,
+			},
+			wantErr: "full node requires blockchain-rpc-endpoint",
 		},
 		{
 			name: "legacy with rpc endpoint infers light mode",
@@ -199,5 +246,36 @@ func TestResolveNodeMode(t *testing.T) {
 				t.Errorf("got mode %q, want %q", gotMode, tt.wantMode)
 			}
 		})
+	}
+}
+
+// TestResolveNodeModeLegacyBackcompatWritesConfig verifies that the legacy
+// --full-node compatibility path writes the restored swap-enable,
+// chequebook-enable and storage-incentives-enable defaults back into the
+// config, so the rest of node startup (which reads them directly from config)
+// sees them enabled.
+func TestResolveNodeModeLegacyBackcompatWritesConfig(t *testing.T) {
+	c := &command{
+		config: viper.New(),
+		logger: log.Noop,
+	}
+	c.config.Set(optionNameFullNode, true)
+	c.config.Set(configKeyBlockchainRpcEndpoint, "http://localhost:8545")
+
+	mode, err := c.resolveNodeMode(c.logger)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if mode != node.FullMode {
+		t.Fatalf("got mode %q, want %q", mode, node.FullMode)
+	}
+	for _, key := range []string{
+		optionNameSwapEnable,
+		optionNameChequebookEnable,
+		optionNameStorageIncentivesEnable,
+	} {
+		if !c.config.GetBool(key) {
+			t.Errorf("expected %q to be written back as true", key)
+		}
 	}
 }

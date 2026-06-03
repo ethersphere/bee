@@ -371,6 +371,31 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 // When neither is set, mode is inferred from blockchain-rpc-endpoint presence
 // (legacy behaviour) without strict validation, for backward compatibility.
 func (c *command) resolveNodeMode(logger log.Logger) (node.NodeMode, error) {
+	// Backward compatibility: before node-mode existed, --full-node implied a
+	// full node with swap, chequebook and storage incentives (chequebook and
+	// incentives even defaulted to true). With the new explicit defaults a
+	// legacy --full-node config that relied on them would fail strict full-mode
+	// validation and the node would not start. When --full-node is used as the
+	// legacy selector (node-mode unset), restore those implied values for any
+	// the operator did not set explicitly, so the upgraded node keeps running as
+	// a fully-functional full node (no silent degradation) instead of failing to
+	// start. Explicitly disabled options are left untouched and still fail
+	// validation below. The values are written back to config so the rest of
+	// node startup picks them up.
+	if c.config.GetBool(optionNameFullNode) && !c.config.IsSet(optionNameNodeMode) {
+		logger.Warning("--full-node is deprecated, use --node-mode=full instead")
+		for _, key := range []string{
+			optionNameSwapEnable,
+			optionNameChequebookEnable,
+			optionNameStorageIncentivesEnable,
+		} {
+			if !c.config.IsSet(key) {
+				logger.Warning("enabling option implied by legacy --full-node; set it explicitly or use --node-mode=full", "option", key)
+				c.config.Set(key, true)
+			}
+		}
+	}
+
 	rpcEndpoint := c.config.GetString(configKeyBlockchainRpcEndpoint)
 	swapEnable := c.config.GetBool(optionNameSwapEnable)
 	chequebookEnable := c.config.GetBool(optionNameChequebookEnable)
@@ -423,11 +448,10 @@ func (c *command) resolveNodeMode(logger log.Logger) (node.NodeMode, error) {
 		return mode, nil
 	}
 
-	// Legacy path: node-mode not set. Apply strict validation when --full-node
-	// requests full mode so upgraders don't silently lose chequebook +
-	// incentives because of the new defaults.
+	// Legacy path: node-mode not set. --full-node requests full mode; implied
+	// options were restored above, so any remaining failure is a genuine
+	// misconfiguration (missing rpc endpoint, or an explicitly disabled option).
 	if c.config.GetBool(optionNameFullNode) {
-		logger.Warning("--full-node is deprecated, use --node-mode=full instead")
 		if err := validateFullMode(); err != nil {
 			return "", err
 		}
