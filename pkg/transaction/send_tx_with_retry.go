@@ -15,6 +15,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethersphere/bee/v2/pkg/sctx"
 )
 
 const retryStatePrefix = "transaction_retry_"
@@ -112,7 +113,7 @@ func (t *transactionService) suggestGasFeeForTier(ctx context.Context, tier feeT
 		return nil, nil, nil, err
 	}
 	if header == nil || header.BaseFee == nil {
-		return nil, nil, nil, fmt.Errorf("latest block header or base fee unavailable")
+		return nil, nil, errors.New("latest block header or base fee unavailable")
 	}
 
 	// get fee history
@@ -168,7 +169,25 @@ func (t *transactionService) suggestGasFeeForTier(ctx context.Context, tier feeT
 	return gasFeeCapWithTip, tip, effectiveBaseFee, nil
 }
 
-func (t *transactionService) prepareTransactionForTier(ctx context.Context, request *TxRequest, nonce uint64, tier feeTier, previousTip, previousBaseFee *big.Int, overrides *RetryOverrides) (*types.Transaction, *big.Int, error) {
+func (t *transactionService) tierRangeForRequest(ctx context.Context) ([]feeTier, error) {
+	start := t.startTier
+	if override := sctx.GetFeePriority(ctx); override != "" {
+		parsed, err := parseFeeTier(override)
+		if err != nil {
+			return nil, fmt.Errorf("fee priority: %w", err)
+		}
+		if parsed > t.endTier {
+			t.logger.Warning("fee priority exceeds configured maximum, clamping",
+				"requested", parsed.String(),
+				"maximum", t.endTier.String())
+			parsed = t.endTier
+		}
+		start = parsed
+	}
+	return tierRange(start, t.endTier), nil
+}
+
+func (t *transactionService) prepareTransactionForTier(ctx context.Context, request *TxRequest, nonce uint64, tier feeTier, previousTip *big.Int) (*types.Transaction, error) {
 	gasLimit, err := t.estimateGasLimit(ctx, request)
 	if err != nil {
 		return nil, nil, err
@@ -273,12 +292,15 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 		}
 	}
 
-	tiers := tierRange(t.startTier, t.endTier)
+	tiers, err := t.tierRangeForRequest(ctx)
+	if err != nil {
+		return common.Hash{}, nil, err
+	}
 
 	t.logger.Debug("send with retry: started",
 		"description", request.Description,
 		"to", retryToForLog(request, &txState),
-		"start_tier", t.startTier.String(),
+		"start_tier", tiers[0].String(),
 		"end_tier", t.endTier.String(),
 		"attempts_per_tier", t.attemptsPerTier,
 		"retry_delay", t.txRetryDelay,
@@ -287,9 +309,9 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 	var (
 		previousTip    *big.Int
 		terminateTxErr error
-		attempt        int
 	)
 
+	attempt := 1 // start attempts counting from 1 for metrics
 	defer func() {
 		if terminateTxErr != nil {
 			t.logger.Error(terminateTxErr,
@@ -302,9 +324,9 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 				"description", request.Description)
 		}
 
-		monitorLast := errors.Is(terminateTxErr, ErrTxMaxPriceExceeded)
+		monitorLast := errors.Is(terminateTxErr, ErrTxMaxPriceExceeded) || errors.Is(terminateTxErr, ErrAllAttemptsExhausted)
 		t.deleteRetryStateAndPending(txRetryKey, txState, monitorLast)
-		t.recordRetryComplete(attempt+1, terminateTxErr)
+		t.recordRetryComplete(attempt, terminateTxErr)
 	}()
 
 	retryDelay := t.txRetryDelay
@@ -312,17 +334,13 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 		retryDelay = overrides.RetryDelay(t.txRetryDelay)
 	}
 	for _, tier := range tiers {
-		// track base fee within same tier
-		// if base_fee would sink between attempts, current_tier+15% might not be enough for tx replacement
-		var previousBaseFee *big.Int
-
 		for k := 0; k < t.attemptsPerTier; k++ {
 			if txState.NonceAssigned {
 				nonce = &txState.Nonce
 			}
 
 			replaced := true
-			signedTx, effectiveBaseFee, err := t.broadcastTx(ctx, request, nonce, tier, previousTip, previousBaseFee, overrides)
+			signedTx, err := t.broadcastTx(ctx, request, nonce, tier, previousTip)
 			if err != nil {
 				switch {
 				case isNonceTooLow(err):
@@ -364,10 +382,6 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 
 				if signedTx != nil {
 					previousTip = signedTx.GasTipCap()
-				}
-
-				if effectiveBaseFee != nil {
-					previousBaseFee = effectiveBaseFee
 				}
 			}
 
@@ -572,8 +586,7 @@ func (t *transactionService) resumeRetryTransactions() error {
 		t.logger.Warning("resume retry: failed to get confirmed nonce, resuming all", "error", err)
 	}
 
-	loggerV1 := t.logger.V(1).Register()
-	loggerV1.Debug("resume retry: scanning persisted retry states",
+	t.logger.Debug("resume retry: scanning persisted retry states",
 		"count", len(keys),
 		"confirmed_nonce", confirmed)
 
@@ -582,7 +595,7 @@ func (t *transactionService) resumeRetryTransactions() error {
 		state := states[i]
 
 		if confirmed > state.Nonce {
-			loggerV1.Debug("resume retry: skipping already confirmed transaction",
+			t.logger.Debug("resume retry: skipping already confirmed transaction",
 				"nonce", state.Nonce,
 				"confirmed_nonce", confirmed,
 				"description", state.Description)
@@ -590,7 +603,7 @@ func (t *transactionService) resumeRetryTransactions() error {
 			continue
 		}
 
-		loggerV1.Debug("resume retry: resuming persisted retry",
+		t.logger.Debug("resume retry: resuming persisted retry",
 			"nonce", state.Nonce,
 			"last_tx_hash", state.LastTxHash,
 			"description", state.Description)

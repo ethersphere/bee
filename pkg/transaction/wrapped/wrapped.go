@@ -47,7 +47,6 @@ func NewBackend(
 	blockTime time.Duration,
 	blockSyncInterval uint64,
 	feeHistoryBlockCount uint64,
-	feeHistoryRewardPercentiles []float64,
 ) transaction.Backend {
 	if blockSyncInterval == 0 {
 		blockSyncInterval = 1
@@ -55,13 +54,6 @@ func NewBackend(
 
 	if feeHistoryBlockCount == 0 {
 		feeHistoryBlockCount = feeHistoryDefaultBlockCount
-	}
-
-	var rewardPerc []float64
-	if len(feeHistoryRewardPercentiles) >= 3 {
-		rewardPerc = slices.Clone(feeHistoryRewardPercentiles)
-	} else {
-		rewardPerc = slices.Clone(feeHistoryDefaultRewardPercentiles)
 	}
 
 	return &wrappedBackend{
@@ -72,7 +64,7 @@ func NewBackend(
 		blockSyncInterval:           blockSyncInterval,
 		blockNumberCache:            cache.NewSingleFlightCache[blockNumberAnchor]("block_number"),
 		feeHistoryBlockCount:        feeHistoryBlockCount,
-		feeHistoryRewardPercentiles: rewardPerc,
+		feeHistoryRewardPercentiles: slices.Clone(feeHistoryDefaultRewardPercentiles),
 	}
 }
 

@@ -42,11 +42,6 @@ func (c *command) initDeployCmd() error {
 
 			ctx := cmd.Context()
 
-			feeHistoryRewardPerc, err := node.ParseFeeHistoryRewardPercentiles(c.config.GetString(optionNameFeeHistoryRewardPercentiles))
-			if err != nil {
-				return err
-			}
-
 			swapBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err := node.InitChain(
 				ctx,
 				logger,
@@ -66,7 +61,6 @@ func (c *command) initDeployCmd() error {
 				},
 				c.config.GetUint64(optionNameBlockSyncInterval),
 				c.config.GetUint64(optionNameFeeHistoryBlockCount),
-				feeHistoryRewardPerc,
 				txRetryConfigFromCommand(c),
 			)
 			if err != nil {

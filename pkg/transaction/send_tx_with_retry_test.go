@@ -18,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	signermock "github.com/ethersphere/bee/v2/pkg/crypto/mock"
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/sctx"
 	storemock "github.com/ethersphere/bee/v2/pkg/statestore/mock"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
@@ -715,6 +716,130 @@ func TestSendWithRetry_UnderpricedKeepsPendingTxHash(t *testing.T) {
 	assert.Equal(t, int32(2), watchCount.Load(), "must wait for receipt again after underpriced broadcast")
 }
 
+// After receipt timeout at market tier, fees escalate to the aggressive tier on the next broadcast.
+func TestSendWithRetry_TierEscalation(t *testing.T) {
+	t.Parallel()
+	s := newRetryTestSetup()
+	store := storemock.NewStateStore()
+	testutil.CleanupCloser(t, store)
+
+	var (
+		broadcasts []capturedBroadcast
+		watchCount atomic.Int32
+	)
+
+	cfg := s.retryConfig()
+	cfg.AttemptsPerTier = 1
+	cfg.StartTier = "market"
+	cfg.EndTier = "aggressive"
+
+	svc, err := transaction.NewService(log.Noop, s.sender,
+		backendmock.New(
+			s.nonceOption(),
+			s.feeHistoryOption(nil),
+			s.headerOption(),
+			s.estimateGasOption(),
+			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+				broadcasts = append(broadcasts, captureTx(tx))
+				return nil
+			}),
+		),
+		signermock.New(s.passThroughSigner(), s.signerAddr()),
+		store,
+		s.chainID,
+		monitormock.New(
+			monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
+				if watchCount.Add(1) == 1 {
+					return make(chan types.Receipt), make(chan error), nil
+				}
+				ch := make(chan types.Receipt, 1)
+				ch <- types.Receipt{TxHash: txHash, Status: 1}
+				return ch, nil, nil
+			}),
+		),
+		0,
+		cfg,
+	)
+	require.NoError(t, err)
+	testutil.CleanupCloser(t, svc)
+
+	txHash, receipt, err := svc.SendWithRetry(context.Background(), s.request())
+
+	require.NoError(t, err)
+	require.NotNil(t, receipt)
+	assert.NotEqual(t, common.Hash{}, txHash)
+
+	require.Len(t, broadcasts, 2, "market then aggressive tier, one attempt each")
+
+	marketTip := s.expectedMarketTip()
+	aggressiveTip := new(big.Int).Mul(s.tipBase, big.NewInt(3))
+	assert.Equal(t, marketTip.Int64(), broadcasts[0].GasTipCap.Int64(),
+		"first broadcast must use market tier tip")
+	assert.Equal(t, aggressiveTip.Int64(), broadcasts[1].GasTipCap.Int64(),
+		"second broadcast must use aggressive tier tip")
+	assert.Equal(t, s.expectedGasFeeCap(marketTip).Int64(), broadcasts[0].GasFeeCap.Int64())
+	assert.Equal(t, s.expectedGasFeeCap(aggressiveTip).Int64(), broadcasts[1].GasFeeCap.Int64())
+}
+
+// Underpriced replacement keeps watching the pending tx hash instead of switching to the rejected one.
+func TestSendWithRetry_UnderpricedKeepsPendingTxHash(t *testing.T) {
+	t.Parallel()
+	s := newRetryTestSetup()
+	store := storemock.NewStateStore()
+	testutil.CleanupCloser(t, store)
+
+	var (
+		broadcastCount atomic.Int32
+		watchCount     atomic.Int32
+		firstTxHash    common.Hash
+	)
+
+	svc, err := transaction.NewService(log.Noop, s.sender,
+		backendmock.New(
+			s.nonceOption(),
+			s.feeHistoryOption(nil),
+			s.headerOption(),
+			s.estimateGasOption(),
+			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+				if broadcastCount.Add(1) == 1 {
+					firstTxHash = tx.Hash()
+					return nil
+				}
+				return errors.New("replacement transaction underpriced")
+			}),
+		),
+		signermock.New(s.passThroughSigner(), s.signerAddr()),
+		store,
+		s.chainID,
+		monitormock.New(
+			monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
+				switch watchCount.Add(1) {
+				case 1:
+					assert.Equal(t, firstTxHash, txHash, "first wait must watch the accepted broadcast")
+					return make(chan types.Receipt), make(chan error), nil
+				default:
+					assert.Equal(t, firstTxHash, txHash, "after underpriced must keep watching the pending tx")
+					ch := make(chan types.Receipt, 1)
+					ch <- types.Receipt{TxHash: txHash, Status: 1}
+					return ch, nil, nil
+				}
+			}),
+		),
+		0,
+		s.retryConfig(),
+	)
+	require.NoError(t, err)
+	testutil.CleanupCloser(t, svc)
+
+	txHash, receipt, err := svc.SendWithRetry(context.Background(), s.request())
+
+	require.NoError(t, err)
+	require.NotNil(t, receipt)
+	assert.Equal(t, firstTxHash, txHash, "must return receipt for the original pending tx")
+	assert.Equal(t, int32(2), broadcastCount.Load(), "second broadcast should still be attempted")
+	assert.Equal(t, int32(2), watchCount.Load(), "must wait for receipt again after underpriced broadcast")
+}
+
 // All attempts exhausted, receipt never found → error.
 // Verifies compound escalation chain, nonce immutability, and gasFeeCap on every attempt.
 func TestSendWithRetry_AllAttemptsExhausted(t *testing.T) {
@@ -1201,6 +1326,104 @@ func TestSendWithRetry_RetryDelayPerTransactionOverride(t *testing.T) {
 	case <-time.After(waitTimeout):
 		t.Fatal("timed out waiting for default-delay SendWithRetry to finish")
 	}
+}
+
+func TestSendWithRetry_FeePriorityContextOverride(t *testing.T) {
+	t.Parallel()
+	s := newRetryTestSetup()
+	store := storemock.NewStateStore()
+	testutil.CleanupCloser(t, store)
+
+	var broadcasts []capturedBroadcast
+
+	cfg := s.retryConfig()
+	cfg.StartTier = "market"
+	cfg.EndTier = "aggressive"
+	cfg.AttemptsPerTier = 1
+
+	svc, err := transaction.NewService(log.Noop, s.sender,
+		backendmock.New(
+			s.nonceOption(),
+			s.feeHistoryOption(nil),
+			s.headerOption(),
+			s.estimateGasOption(),
+			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+				broadcasts = append(broadcasts, captureTx(tx))
+				return nil
+			}),
+		),
+		signermock.New(s.passThroughSigner(), s.signerAddr()),
+		store,
+		s.chainID,
+		monitormock.New(
+			monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
+				ch := make(chan types.Receipt, 1)
+				ch <- types.Receipt{TxHash: txHash, Status: 1}
+				return ch, nil, nil
+			}),
+		),
+		0,
+		cfg,
+	)
+	require.NoError(t, err)
+	testutil.CleanupCloser(t, svc)
+
+	ctx := sctx.SetFeePriority(context.Background(), "low")
+	_, receipt, err := svc.SendWithRetry(ctx, s.request())
+	require.NoError(t, err)
+	require.NotNil(t, receipt)
+	require.Len(t, broadcasts, 1)
+	assert.Equal(t, s.tipBase.Int64(), broadcasts[0].GasTipCap.Int64(),
+		"request fee priority must override node start tier")
+}
+
+func TestSendWithRetry_FeePriorityClampedToNodeMax(t *testing.T) {
+	t.Parallel()
+	s := newRetryTestSetup()
+	store := storemock.NewStateStore()
+	testutil.CleanupCloser(t, store)
+
+	var broadcasts []capturedBroadcast
+
+	cfg := s.retryConfig()
+	cfg.StartTier = "low"
+	cfg.EndTier = "market"
+	cfg.AttemptsPerTier = 1
+
+	svc, err := transaction.NewService(log.Noop, s.sender,
+		backendmock.New(
+			s.nonceOption(),
+			s.feeHistoryOption(nil),
+			s.headerOption(),
+			s.estimateGasOption(),
+			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+				broadcasts = append(broadcasts, captureTx(tx))
+				return nil
+			}),
+		),
+		signermock.New(s.passThroughSigner(), s.signerAddr()),
+		store,
+		s.chainID,
+		monitormock.New(
+			monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
+				ch := make(chan types.Receipt, 1)
+				ch <- types.Receipt{TxHash: txHash, Status: 1}
+				return ch, nil, nil
+			}),
+		),
+		0,
+		cfg,
+	)
+	require.NoError(t, err)
+	testutil.CleanupCloser(t, svc)
+
+	ctx := sctx.SetFeePriority(context.Background(), "aggressive")
+	_, receipt, err := svc.SendWithRetry(ctx, s.request())
+	require.NoError(t, err)
+	require.NotNil(t, receipt)
+	require.Len(t, broadcasts, 1)
+	assert.Equal(t, s.expectedMarketTip().Int64(), broadcasts[0].GasTipCap.Int64(),
+		"request fee priority above node ceiling must clamp to end tier")
 }
 
 // failOnNthPutStore wraps a StateStorer and fails the Nth Put call with putErr.

@@ -143,11 +143,7 @@ type Options struct {
 	BlockTime                     time.Duration
 	BlockSyncInterval             uint64
 	FeeHistoryBlockCount          uint64
-	FeeHistoryRewardPercentiles   []float64
-	TransactionRetryDelay         time.Duration
-	TransactionRetryMaxTxPriceWei uint64
-	TransactionRetryStartTier     string
-	TransactionRetryEndTier       string
+	TransactionRetry              transaction.TransactionsRetryConfig
 	BootnodeMode                  bool
 	Bootnodes                     []string
 	CacheCapacity                 uint64
@@ -201,18 +197,6 @@ type Options struct {
 	WarmupTime                    time.Duration
 	WelcomeMessage                string
 	WhitelistedWithdrawalAddress  []string
-}
-
-func txRetryConfigFromOptions(o *Options) transaction.TransactionsRetryConfig {
-	c := transaction.TransactionsRetryConfig{
-		RetryDelay: o.TransactionRetryDelay,
-		StartTier:  o.TransactionRetryStartTier,
-		EndTier:    o.TransactionRetryEndTier,
-	}
-	if o.TransactionRetryMaxTxPriceWei != 0 {
-		c.MaxTxPrice = new(big.Int).SetUint64(o.TransactionRetryMaxTxPriceWei)
-	}
-	return c
 }
 
 const (
@@ -457,8 +441,7 @@ func NewBee(
 		},
 		o.BlockSyncInterval,
 		o.FeeHistoryBlockCount,
-		o.FeeHistoryRewardPercentiles,
-		txRetryConfigFromOptions(o),
+		o.TransactionRetry,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("init chain: %w", err)
