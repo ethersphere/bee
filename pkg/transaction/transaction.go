@@ -108,7 +108,6 @@ type StoredTransaction struct {
 // limit and nonce management.
 type Service interface {
 	io.Closer
-	EstimateTxCost(ctx context.Context, gasUnits int64, tip int) (cost *big.Int, gasFeeCap *big.Int, err error)
 	// Send creates a transaction based on the request (with gasprice increased by provided percentage) and sends it.
 	Send(ctx context.Context, request *TxRequest, tipCapBoostPercent int) (txHash common.Hash, err error)
 	// SendWithRetry sends a transaction using fee-history tiers and automatic fee escalation; see send_tx_with_retry.go.
@@ -253,15 +252,6 @@ func (t *transactionService) waitForAllPendingTx() error {
 	}
 
 	return nil
-}
-
-func (t *transactionService) EstimateTxCost(ctx context.Context, gasUnits int64, tip int) (cost *big.Int, gasFeeCap *big.Int, err error) {
-	gasFeeCap, _, err = t.backend.SuggestedFeeAndTip(ctx, nil, tip)
-	if err != nil {
-		return nil, nil, err
-	}
-	cost = new(big.Int).Mul(big.NewInt(gasUnits), gasFeeCap)
-	return cost, gasFeeCap, nil
 }
 
 // Send creates and signs a transaction based on the request and sends it.

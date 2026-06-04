@@ -97,20 +97,20 @@ func (t *transactionService) SendWithRetry(ctx context.Context, request *TxReque
 	return t.retry(ctx, "", request, applyRetryOptions(opts))
 }
 
-// applyMempoolBump returns value bumped by mempoolBumpPercent.
-func applyMempoolBump(value *big.Int) *big.Int {
+// applyMempoolBump returns tip bumped by mempoolBumpPercent.
+func applyMempoolBump(tip *big.Int) *big.Int {
 	return new(big.Int).Div(
-		new(big.Int).Mul(new(big.Int).Set(value), big.NewInt(int64(100+mempoolBumpPercent))),
+		new(big.Int).Mul(new(big.Int).Set(tip), big.NewInt(int64(100+mempoolBumpPercent))),
 		big.NewInt(100),
 	)
 }
 
 // suggestGasFeeForTier fetches fresh fee history, picks the tip for the given tier,
 // applies the mempool bump floor relative to previousTip, and computes gasFeeCap.
-func (t *transactionService) suggestGasFeeForTier(ctx context.Context, tier feeTier, previousTip, previousBaseFee *big.Int, overrides *RetryOverrides) (gasFeeCap, gasTipCap, effectiveBaseFee *big.Int, err error) {
+func (t *transactionService) suggestGasFeeForTier(ctx context.Context, tier feeTier, previousTip *big.Int, overrides *RetryOverrides) (gasFeeCap, gasTipCap *big.Int, err error) {
 	header, err := t.backend.HeaderByNumber(ctx, nil)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	if header == nil || header.BaseFee == nil {
 		return nil, nil, errors.New("latest block header or base fee unavailable")
@@ -119,10 +119,10 @@ func (t *transactionService) suggestGasFeeForTier(ctx context.Context, tier feeT
 	// get fee history
 	fh, err := t.backend.SuggestedFeeAndTipsFromHistory(ctx, nil)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("fee history: %w", err)
+		return nil, nil, fmt.Errorf("fee history: %w", err)
 	}
 	if fh == nil {
-		return nil, nil, nil, errors.New("fee history: empty response")
+		return nil, nil, errors.New("fee history: empty response")
 	}
 
 	tip := tierTip(tier, fh)
@@ -135,20 +135,12 @@ func (t *transactionService) suggestGasFeeForTier(ctx context.Context, tier feeT
 		}
 	}
 
-	// during retries base_fee can sink and same_tier_tip+15% alone wouldn't be enough to replace transaction
-	effectiveBaseFee = new(big.Int).Set(header.BaseFee)
-	if previousBaseFee != nil && previousBaseFee.Sign() > 0 && effectiveBaseFee.Cmp(previousBaseFee) < 0 {
-		effectiveBaseFee.Set(applyMempoolBump(previousBaseFee))
-	}
-
-	gasFeeCap = new(big.Int).Mul(effectiveBaseFee, big.NewInt(2))
+	gasFeeCap = new(big.Int).Mul(header.BaseFee, big.NewInt(2))
 	gasFeeCapWithTip := new(big.Int).Add(new(big.Int).Set(gasFeeCap), tip)
 
 	t.logger.Debug("suggest gas fees for retry",
 		"tier", tier.String(),
 		"base_fee", header.BaseFee,
-		"previous_base_fee", previousBaseFee,
-		"effective_base_fee", effectiveBaseFee,
 		"previous_tip", previousTip,
 		"selected_tip", tip,
 		"gas_fee_cap", gasFeeCapWithTip,
@@ -160,13 +152,13 @@ func (t *transactionService) suggestGasFeeForTier(ctx context.Context, tier feeT
 
 	if t.maxTxPrice != nil && gasFeeCapWithTip.Cmp(t.maxTxPrice) > 0 {
 		if !canOverride(gasFeeCapWithTip) {
-			return nil, nil, nil, fmt.Errorf("%w: max_fee_per_gas %s exceeds limit %s", ErrTxMaxPriceExceeded, gasFeeCapWithTip, t.maxTxPrice)
+			return nil, nil, fmt.Errorf("%w: max_fee_per_gas %s exceeds limit %s", ErrTxMaxPriceExceeded, gasFeeCapWithTip, t.maxTxPrice)
 		}
 
 		t.logger.Info("max price override: bypassing limit", "escalated_gas_fee_cap", gasFeeCapWithTip, "max_tx_price", t.maxTxPrice)
 	}
 
-	return gasFeeCapWithTip, tip, effectiveBaseFee, nil
+	return gasFeeCapWithTip, tip, nil
 }
 
 func (t *transactionService) tierRangeForRequest(ctx context.Context) ([]feeTier, error) {
@@ -187,15 +179,15 @@ func (t *transactionService) tierRangeForRequest(ctx context.Context) ([]feeTier
 	return tierRange(start, t.endTier), nil
 }
 
-func (t *transactionService) prepareTransactionForTier(ctx context.Context, request *TxRequest, nonce uint64, tier feeTier, previousTip *big.Int) (*types.Transaction, error) {
+func (t *transactionService) prepareTransactionForTier(ctx context.Context, request *TxRequest, nonce uint64, tier feeTier, previousTip *big.Int, overrides *RetryOverrides) (*types.Transaction, error) {
 	gasLimit, err := t.estimateGasLimit(ctx, request)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	gasFeeCap, gasTipCap, effectiveBaseFee, err := t.suggestGasFeeForTier(ctx, tier, previousTip, previousBaseFee, overrides)
+	gasFeeCap, gasTipCap, err := t.suggestGasFeeForTier(ctx, tier, previousTip, overrides)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	tx := types.NewTx(&types.DynamicFeeTx{
@@ -208,13 +200,13 @@ func (t *transactionService) prepareTransactionForTier(ctx context.Context, requ
 		GasTipCap: gasTipCap,
 		Data:      request.Data,
 	})
-	return tx, effectiveBaseFee, nil
+	return tx, nil
 }
 
 // broadcastTx prepares, signs, and sends a transaction.
 // When fixedNonce is nil a new nonce is allocated (first attempt);
 // otherwise the supplied nonce is reused (replacement transaction).
-func (t *transactionService) broadcastTx(ctx context.Context, request *TxRequest, fixedNonce *uint64, tier feeTier, previousTip, previousBaseFee *big.Int, overrides *RetryOverrides) (*types.Transaction, *big.Int, error) {
+func (t *transactionService) broadcastTx(ctx context.Context, request *TxRequest, fixedNonce *uint64, tier feeTier, previousTip *big.Int, overrides *RetryOverrides) (*types.Transaction, error) {
 	var nonce uint64
 
 	if fixedNonce != nil {
@@ -225,18 +217,18 @@ func (t *transactionService) broadcastTx(ctx context.Context, request *TxRequest
 
 		n, err := t.nextNonce(ctx)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		nonce = n
 	}
-	tx, effectiveBaseFee, err := t.prepareTransactionForTier(ctx, request, nonce, tier, previousTip, previousBaseFee, overrides)
+	tx, err := t.prepareTransactionForTier(ctx, request, nonce, tier, previousTip, overrides)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	signedTx, err := t.signer.SignTx(tx, t.chainID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%w: %w", ErrSignTransaction, err)
+		return nil, fmt.Errorf("%w: %w", ErrSignTransaction, err)
 	}
 
 	t.logger.Info("send with retry: broadcast",
@@ -252,7 +244,7 @@ func (t *transactionService) broadcastTx(ctx context.Context, request *TxRequest
 		"description", request.Description,
 	)
 	err = t.backend.SendTransaction(ctx, signedTx)
-	return signedTx, effectiveBaseFee, err
+	return signedTx, err
 }
 
 func (t *transactionService) deleteRetryStateAndPending(retryKey string, state TransactionRetryState, keepLast bool) {
@@ -340,7 +332,7 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 			}
 
 			replaced := true
-			signedTx, err := t.broadcastTx(ctx, request, nonce, tier, previousTip)
+			signedTx, err := t.broadcastTx(ctx, request, nonce, tier, previousTip, overrides)
 			if err != nil {
 				switch {
 				case isNonceTooLow(err):

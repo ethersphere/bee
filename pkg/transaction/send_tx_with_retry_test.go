@@ -67,7 +67,7 @@ func TestSuggestGasFeeForTier(t *testing.T) {
 		backend := backendmock.New(headerOption(), feeHistoryOption(&feeHistoryCalls))
 
 		gasFeeCap, gasTipCap, err := transaction.SuggestGasFeeForTier(
-			backend, nil, context.Background(), int(transaction.FeeTierMarket), nil, nil, nil,
+			backend, nil, context.Background(), int(transaction.FeeTierMarket), nil, nil,
 		)
 
 		require.NoError(t, err)
@@ -83,7 +83,7 @@ func TestSuggestGasFeeForTier(t *testing.T) {
 		backend := backendmock.New(headerOption(), feeHistoryOption(&feeHistoryCalls))
 
 		gasFeeCap, gasTipCap, err := transaction.SuggestGasFeeForTier(
-			backend, nil, context.Background(), int(transaction.FeeTierMarket), big.NewInt(prevTip), nil, nil,
+			backend, nil, context.Background(), int(transaction.FeeTierMarket), big.NewInt(prevTip), nil,
 		)
 
 		require.NoError(t, err)
@@ -101,7 +101,7 @@ func TestSuggestGasFeeForTier(t *testing.T) {
 		backend := backendmock.New(headerOption(), feeHistoryOption(nil))
 
 		gasFeeCap, gasTipCap, err := transaction.SuggestGasFeeForTier(
-			backend, maxTxPrice, context.Background(), int(transaction.FeeTierMarket), big.NewInt(prevTip), nil, nil,
+			backend, maxTxPrice, context.Background(), int(transaction.FeeTierMarket), big.NewInt(prevTip), nil,
 		)
 
 		assert.ErrorIs(t, err, transaction.ErrTxMaxPriceExceeded)
@@ -124,7 +124,7 @@ func TestSuggestGasFeeForTier(t *testing.T) {
 		}
 
 		gasFeeCap, gasTipCap, err := transaction.SuggestGasFeeForTier(
-			backend, maxTxPrice, context.Background(), int(transaction.FeeTierMarket), big.NewInt(prevTip), nil, overrides,
+			backend, maxTxPrice, context.Background(), int(transaction.FeeTierMarket), big.NewInt(prevTip), overrides,
 		)
 
 		require.NoError(t, err, "override should bypass ErrTxMaxPriceExceeded")
@@ -146,65 +146,11 @@ func TestSuggestGasFeeForTier(t *testing.T) {
 		}
 
 		_, _, err := transaction.SuggestGasFeeForTier(
-			backend, maxTxPrice, context.Background(), int(transaction.FeeTierMarket), big.NewInt(prevTip), nil, overrides,
+			backend, maxTxPrice, context.Background(), int(transaction.FeeTierMarket), big.NewInt(prevTip), overrides,
 		)
 
 		assert.ErrorIs(t, err, transaction.ErrTxMaxPriceExceeded)
 	})
-}
-
-func TestSuggestGasFeeForTier_baseFeeDropUsesBump(t *testing.T) {
-	t.Parallel()
-
-	const (
-		previousBaseFee = int64(1_039_237_808)
-		currentBaseFee  = int64(1_005_339_867)
-		previousTip     = int64(1_440_000)
-		lowTip          = int64(1_440_000)
-	)
-
-	backend := backendmock.New(
-		backendmock.WithHeaderbyNumberFunc(func(ctx context.Context, number *big.Int) (*types.Header, error) {
-			return &types.Header{BaseFee: big.NewInt(currentBaseFee)}, nil
-		}),
-		backendmock.WithSuggestedFeeAndTipsFromHistoryFunc(func(ctx context.Context, lastBlock *big.Int) (*transaction.FeeHistorySuggestedFeeAndTips, error) {
-			return &transaction.FeeHistorySuggestedFeeAndTips{
-				LowTip:        big.NewInt(lowTip),
-				MarketTip:     big.NewInt(lowTip * 2),
-				AggressiveTip: big.NewInt(lowTip * 3),
-			}, nil
-		}),
-	)
-
-	gasFeeCap, gasTipCap, err := transaction.SuggestGasFeeForTier(
-		backend,
-		nil,
-		context.Background(),
-		int(transaction.FeeTierLow),
-		big.NewInt(previousTip),
-		big.NewInt(previousBaseFee),
-		nil,
-	)
-
-	require.NoError(t, err)
-
-	bumpedBaseFee := transaction.ApplyMempoolBump(big.NewInt(previousBaseFee))
-	expectedTip := transaction.ApplyMempoolBump(big.NewInt(previousTip))
-	expectedFeeCap := new(big.Int).Add(
-		new(big.Int).Mul(bumpedBaseFee, big.NewInt(2)),
-		expectedTip,
-	)
-
-	assert.Equal(t, expectedTip.Int64(), gasTipCap.Int64())
-	assert.Equal(t, expectedFeeCap.Int64(), gasFeeCap.Int64(),
-		"gas fee cap must use bumped previous base fee when current base fee dropped")
-
-	firstAttemptFeeCap := new(big.Int).Add(
-		new(big.Int).Mul(big.NewInt(2), big.NewInt(previousBaseFee)),
-		big.NewInt(previousTip),
-	)
-	assert.Greater(t, gasFeeCap.Int64(), firstAttemptFeeCap.Int64(),
-		"replacement fee cap must exceed the first attempt when base fee dropped")
 }
 
 // capturedBroadcast records the parameters of a transaction as seen by SendTransaction.
@@ -655,65 +601,6 @@ func TestSendWithRetry_EscalateGasThenSuccess(t *testing.T) {
 	var rs transaction.TransactionRetryState
 	assert.ErrorIs(t, store.Get(transaction.RetryStateKey(broadcasts[0].Nonce), &rs), storage.ErrNotFound,
 		"retry state should be cleaned up on success")
-}
-
-// Underpriced replacement keeps watching the pending tx hash instead of switching to the rejected one.
-func TestSendWithRetry_UnderpricedKeepsPendingTxHash(t *testing.T) {
-	t.Parallel()
-	s := newRetryTestSetup()
-	store := storemock.NewStateStore()
-	testutil.CleanupCloser(t, store)
-
-	var (
-		broadcastCount atomic.Int32
-		watchCount     atomic.Int32
-		firstTxHash    common.Hash
-	)
-
-	svc, err := transaction.NewService(log.Noop, s.sender,
-		backendmock.New(
-			s.nonceOption(),
-			s.feeHistoryOption(nil),
-			s.headerOption(),
-			s.estimateGasOption(),
-			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
-				if broadcastCount.Add(1) == 1 {
-					firstTxHash = tx.Hash()
-					return nil
-				}
-				return errors.New("replacement transaction underpriced")
-			}),
-		),
-		signermock.New(s.passThroughSigner(), s.signerAddr()),
-		store,
-		s.chainID,
-		monitormock.New(
-			monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
-				switch watchCount.Add(1) {
-				case 1:
-					assert.Equal(t, firstTxHash, txHash, "first wait must watch the accepted broadcast")
-					return make(chan types.Receipt), make(chan error), nil
-				default:
-					assert.Equal(t, firstTxHash, txHash, "after underpriced must keep watching the pending tx")
-					ch := make(chan types.Receipt, 1)
-					ch <- types.Receipt{TxHash: txHash, Status: 1}
-					return ch, nil, nil
-				}
-			}),
-		),
-		0,
-		s.retryConfig(),
-	)
-	require.NoError(t, err)
-	testutil.CleanupCloser(t, svc)
-
-	txHash, receipt, err := svc.SendWithRetry(context.Background(), s.request())
-
-	require.NoError(t, err)
-	require.NotNil(t, receipt)
-	assert.Equal(t, firstTxHash, txHash, "must return receipt for the original pending tx")
-	assert.Equal(t, int32(2), broadcastCount.Load(), "second broadcast should still be attempted")
-	assert.Equal(t, int32(2), watchCount.Load(), "must wait for receipt again after underpriced broadcast")
 }
 
 // After receipt timeout at market tier, fees escalate to the aggressive tier on the next broadcast.

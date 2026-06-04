@@ -6,7 +6,6 @@ package redistribution
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -169,7 +168,7 @@ func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs, opts 
 
 // canOverrideClaim decides whether the claim transaction should bypass the
 // max-tx-price cap. gasFeeCap is the actual max fee per gas (wei) that the
-// retry loop wants to use — it is provided by suggestGasFeeGasTipCapWithHistory
+// retry loop wants to use — it is provided by suggestGasFeeForTier
 // so there is no redundant estimation.
 func (c *contract) canOverrideClaim(opts *ClaimOpts, gasFeeCap *big.Int) bool {
 	if opts == nil || opts.OverrideAfterBlock == 0 || opts.CurrentBlockFn == nil || opts.RoundFees == nil {
