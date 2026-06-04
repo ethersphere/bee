@@ -24,22 +24,26 @@ func TestSerializeUnderlays(t *testing.T) {
 		addrs := []multiaddr.Multiaddr{ip4TCPAddr, p2pAddr, wssAddr, dnsSwarmAddr}
 		serialized := mustSerializeUnderlays(t, addrs)
 
-		if len(serialized) == 0 {
-			t.Error("expected serialized bytes for non-empty list")
+		if serialized[0] != bzz.UnderlayListPrefix {
+			t.Errorf("expected prefix %x for multiple addresses, got %x", bzz.UnderlayListPrefix, serialized[0])
 		}
 	})
 
 	t.Run("empty list", func(t *testing.T) {
-		_, err := bzz.SerializeUnderlays([]multiaddr.Multiaddr{})
-		if err == nil {
-			t.Fatal("expected error for empty list, got nil")
+		addrs := []multiaddr.Multiaddr{}
+		serialized := mustSerializeUnderlays(t, addrs)
+		expected := []byte{bzz.UnderlayListPrefix}
+		if !bytes.Equal(serialized, expected) {
+			t.Errorf("expected %x for empty list, got %x", expected, serialized)
 		}
 	})
 
 	t.Run("nil list", func(t *testing.T) {
-		_, err := bzz.SerializeUnderlays(nil)
-		if err == nil {
-			t.Fatal("expected error for nil list, got nil")
+		var addrs []multiaddr.Multiaddr = nil
+		serialized := mustSerializeUnderlays(t, addrs)
+		expected := []byte{bzz.UnderlayListPrefix}
+		if !bytes.Equal(serialized, expected) {
+			t.Errorf("expected %x for nil list, got %x", expected, serialized)
 		}
 	})
 
@@ -76,13 +80,53 @@ func TestDeserializeUnderlays(t *testing.T) {
 	t.Run("empty byte slice", func(t *testing.T) {
 		_, err := bzz.DeserializeUnderlays([]byte{})
 		if err == nil {
-			t.Fatal("expected error for empty byte slice, got nil")
+			t.Error("expected an error for empty slice, but got nil")
+		}
+	})
+
+	t.Run("list with only prefix", func(t *testing.T) {
+		deserialized, err := bzz.DeserializeUnderlays([]byte{bzz.UnderlayListPrefix})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(deserialized) != 0 {
+			t.Errorf("expected empty slice, got %v", deserialized)
+		}
+	})
+
+	t.Run("serialize deserialize empty list", func(t *testing.T) {
+		addrs := []multiaddr.Multiaddr{}
+		serialized := mustSerializeUnderlays(t, addrs)
+		if !bytes.Equal(serialized, []byte{bzz.UnderlayListPrefix}) {
+			t.Errorf("expected %v, got %v", []byte{bzz.UnderlayListPrefix}, serialized)
+		}
+		deserialized, err := bzz.DeserializeUnderlays(serialized)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(deserialized) != 0 {
+			t.Errorf("expected empty slice, got %v", deserialized)
+		}
+	})
+
+	t.Run("serialize deserialize nil list", func(t *testing.T) {
+		serialized := mustSerializeUnderlays(t, nil)
+		if !bytes.Equal(serialized, []byte{bzz.UnderlayListPrefix}) {
+			t.Errorf("expected %v, got %v", []byte{bzz.UnderlayListPrefix}, serialized)
+		}
+		deserialized, err := bzz.DeserializeUnderlays(serialized)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(deserialized) != 0 {
+			t.Errorf("expected empty slice, got %v", deserialized)
 		}
 	})
 
 	t.Run("corrupted list - length too long", func(t *testing.T) {
 		maBytes := ip4TCPAddr.Bytes()
 		var buf bytes.Buffer
+		buf.WriteByte(bzz.UnderlayListPrefix)
 		buf.Write(varint.ToUvarint(uint64(len(maBytes) + 5))) // Write a length that is too long
 		buf.Write(maBytes)
 
@@ -95,6 +139,7 @@ func TestDeserializeUnderlays(t *testing.T) {
 	t.Run("corrupted list - invalid multiaddr bytes", func(t *testing.T) {
 		invalidAddrBytes := []byte{0xde, 0xad, 0xbe, 0xef}
 		var buf bytes.Buffer
+		buf.WriteByte(bzz.UnderlayListPrefix)
 		buf.Write(varint.ToUvarint(uint64(len(invalidAddrBytes))))
 		buf.Write(invalidAddrBytes)
 
@@ -108,6 +153,7 @@ func TestDeserializeUnderlays(t *testing.T) {
 		// Build a list with MaxUnderlaysPerPeer+1 entries.
 		addr := mustNewMultiaddr(t, "/ip4/1.2.3.4/tcp/80")
 		var buf bytes.Buffer
+		buf.WriteByte(bzz.UnderlayListPrefix)
 		for range bzz.MaxUnderlaysPerPeer + 1 {
 			addrBytes := addr.Bytes()
 			buf.Write(varint.ToUvarint(uint64(len(addrBytes))))
@@ -123,6 +169,7 @@ func TestDeserializeUnderlays(t *testing.T) {
 		// Build a list with exactly MaxUnderlaysPerPeer entries.
 		addr := mustNewMultiaddr(t, "/ip4/1.2.3.4/tcp/80")
 		var buf bytes.Buffer
+		buf.WriteByte(bzz.UnderlayListPrefix)
 		for range bzz.MaxUnderlaysPerPeer {
 			addrBytes := addr.Bytes()
 			buf.Write(varint.ToUvarint(uint64(len(addrBytes))))
@@ -141,6 +188,7 @@ func TestDeserializeUnderlays(t *testing.T) {
 		// Build a payload larger than MaxUnderlayBytes.
 		addr := mustNewMultiaddr(t, "/ip4/1.2.3.4/tcp/80")
 		var buf bytes.Buffer
+		buf.WriteByte(bzz.UnderlayListPrefix)
 		for buf.Len() <= bzz.MaxUnderlayBytes {
 			addrBytes := addr.Bytes()
 			buf.Write(varint.ToUvarint(uint64(len(addrBytes))))
@@ -184,9 +232,14 @@ func TestSerializeUnderlaysDeserializeUnderlays(t *testing.T) {
 	})
 
 	t.Run("empty list", func(t *testing.T) {
-		_, err := bzz.SerializeUnderlays([]multiaddr.Multiaddr{})
-		if err == nil {
-			t.Fatal("expected error for empty list, got nil")
+		addrs := []multiaddr.Multiaddr{}
+		serialized := mustSerializeUnderlays(t, addrs)
+		deserialized, err := bzz.DeserializeUnderlays(serialized)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(deserialized) != 0 {
+			t.Errorf("expected empty slice from round trip, got %v", deserialized)
 		}
 	})
 }

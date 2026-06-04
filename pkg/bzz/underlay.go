@@ -23,6 +23,12 @@ var (
 	ErrUnderlayCountExceeded = errors.New("underlay count exceeded")
 )
 
+// underlayListPrefix is a magic byte designated for identifying a serialized list of multiaddrs.
+// A value of 0x99 (153) was chosen as it is not a defined multiaddr protocol code.
+// This ensures that a failure is triggered by the original multiaddr.NewMultiaddrBytes function,
+// which expects a valid protocol code at the start of the data.
+const underlayListPrefix byte = 0x99
+
 // maxUnderlaysPerPeer is the maximum number of underlay addresses allowed per peer.
 // This prevents abuse where a malicious peer sends a huge number of multiaddrs.
 const maxUnderlaysPerPeer = 20
@@ -34,16 +40,13 @@ const maxUnderlayBytes = 2048
 
 // SerializeUnderlays serializes a slice of multiaddrs into a single byte slice.
 func SerializeUnderlays(addrs []multiaddr.Multiaddr) ([]byte, error) {
-	if len(addrs) == 0 {
-		return nil, errors.New("cannot serialize empty byte slice")
-	}
-
 	if len(addrs) > maxUnderlaysPerPeer {
 		return nil, fmt.Errorf("underlay count %d exceeds maximum of %d: %w", len(addrs), maxUnderlaysPerPeer, ErrUnderlayCountExceeded)
 	}
 
 	// The format is: [varint_len_1][addr_1_bytes]...
 	var buf bytes.Buffer
+	buf.WriteByte(underlayListPrefix)
 
 	for _, addr := range addrs {
 		addrBytes := addr.Bytes()
@@ -67,6 +70,11 @@ func DeserializeUnderlays(data []byte) ([]multiaddr.Multiaddr, error) {
 	if len(data) > maxUnderlayBytes {
 		return nil, fmt.Errorf("underlay data size %d exceeds maximum of %d bytes: %w", len(data), maxUnderlayBytes, ErrUnderlayByteSizeExceeded)
 	}
+
+	if data[0] == underlayListPrefix {
+		return deserializeList(data[1:])
+	}
+
 	return deserializeList(data)
 }
 
