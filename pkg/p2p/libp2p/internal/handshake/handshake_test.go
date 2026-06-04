@@ -1041,3 +1041,202 @@ func TestParseCheckAck_TimestampRejections(t *testing.T) {
 		}
 	})
 }
+
+// testUnderlays returns a single-multiaddr underlay set on the given port so
+// tests can produce distinct canonical underlay sets cheaply.
+func testUnderlays(t *testing.T, port int) []ma.Multiaddr {
+	t.Helper()
+
+	m, err := ma.NewMultiaddr(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d/p2p/16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkA", port))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return []ma.Multiaddr{m}
+}
+
+// TestSignedAddress_StableAcrossCalls verifies that the signed address is
+// minted once per underlay set and reused verbatim on subsequent calls, even
+// when the clock advances (issue #23).
+func TestSignedAddress_StableAcrossCalls(t *testing.T) {
+	t.Parallel()
+
+	networkID := uint64(3)
+	now := time.Unix(1700000000, 0)
+	svc := newTimestampTestService(t, networkID, now)
+
+	underlays := testUnderlays(t, 1634)
+
+	first, err := svc.SignedAddress(underlays)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Timestamp != now.Unix() {
+		t.Fatalf("first timestamp: got %d, want %d", first.Timestamp, now.Unix())
+	}
+
+	svc.SetTime(func() time.Time { return now.Add(time.Hour) })
+
+	second, err := svc.SignedAddress(underlays)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if second.Timestamp != first.Timestamp {
+		t.Fatalf("timestamp changed across calls: got %d, want %d", second.Timestamp, first.Timestamp)
+	}
+	if !bytes.Equal(second.Signature, first.Signature) {
+		t.Fatal("signature changed across calls for the same underlay set")
+	}
+}
+
+// TestSignedAddress_ReSignsOnChange verifies that changing the underlay set or
+// the local chequebook mints a new record with a strictly newer timestamp,
+// even within the same clock second.
+func TestSignedAddress_ReSignsOnChange(t *testing.T) {
+	t.Parallel()
+
+	networkID := uint64(3)
+	now := time.Unix(1700000000, 0)
+	svc := newTimestampTestService(t, networkID, now)
+
+	first, err := svc.SignedAddress(testUnderlays(t, 1634))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	second, err := svc.SignedAddress(testUnderlays(t, 1635))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Timestamp != first.Timestamp+1 {
+		t.Fatalf("expected monotonic bump on underlay change: got %d, want %d", second.Timestamp, first.Timestamp+1)
+	}
+
+	chequebook := common.HexToAddress("0xab4f3b3c1d2e000000000000000000000000cafe")
+	svc.SetChequebookAddress(chequebook)
+
+	third, err := svc.SignedAddress(testUnderlays(t, 1634))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if third.Timestamp <= second.Timestamp {
+		t.Fatalf("expected newer timestamp after chequebook change: got %d, existing %d", third.Timestamp, second.Timestamp)
+	}
+	if third.ChequebookAddress != chequebook {
+		t.Fatalf("chequebook: got %s, want %s", third.ChequebookAddress, chequebook)
+	}
+}
+
+// TestSignedAddress_CacheEviction verifies the LRU semantics of the signed
+// address cache: recently used entries survive an overflow, the least
+// recently used entry is evicted and re-minted on next use.
+func TestSignedAddress_CacheEviction(t *testing.T) {
+	t.Parallel()
+
+	networkID := uint64(3)
+	now := time.Unix(1700000000, 0)
+	svc := newTimestampTestService(t, networkID, now)
+
+	sets := make([][]ma.Multiaddr, handshake.MaxCachedAddresses+1)
+	timestamps := make([]int64, len(sets))
+	for i := range sets {
+		sets[i] = testUnderlays(t, 2000+i)
+	}
+
+	for i := range handshake.MaxCachedAddresses {
+		addr, err := svc.SignedAddress(sets[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+		timestamps[i] = addr.Timestamp
+	}
+
+	// Touch the oldest entry so the upcoming eviction targets sets[1].
+	if _, err := svc.SignedAddress(sets[0]); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := svc.SignedAddress(sets[handshake.MaxCachedAddresses]); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := svc.AddressCacheLen(); got != handshake.MaxCachedAddresses {
+		t.Fatalf("cache length: got %d, want %d", got, handshake.MaxCachedAddresses)
+	}
+
+	survived, err := svc.SignedAddress(sets[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if survived.Timestamp != timestamps[0] {
+		t.Fatalf("touched entry re-minted: got %d, want cached %d", survived.Timestamp, timestamps[0])
+	}
+
+	evicted, err := svc.SignedAddress(sets[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if evicted.Timestamp <= timestamps[1] {
+		t.Fatalf("evicted entry not re-minted: got %d, cached was %d", evicted.Timestamp, timestamps[1])
+	}
+}
+
+// TestHandle_SignedAddressStableAcrossHandshakes verifies end to end that two
+// inbound handshakes advertise a byte-identical BzzAddress record (timestamp
+// and signature) even when the clock advances between them.
+func TestHandle_SignedAddressStableAcrossHandshakes(t *testing.T) {
+	t.Parallel()
+
+	networkID := uint64(3)
+	now := time.Unix(1700000000, 0)
+	svc := newTimestampTestService(t, networkID, now)
+
+	observed := testUnderlays(t, 1634)
+	observedBinary, err := bzz.SerializeUnderlays(observed)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	run := func(clock time.Time) *pb.SynAck {
+		t.Helper()
+
+		svc.SetTime(func() time.Time { return clock })
+
+		var buffer1 bytes.Buffer
+		var buffer2 bytes.Buffer
+		stream1 := mock.NewStream(&buffer1, &buffer2)
+		stream2 := mock.NewStream(&buffer2, &buffer1)
+
+		w := protobuf.NewWriter(stream2)
+		if err := w.WriteMsg(&pb.Syn{ObservedUnderlay: observedBinary}); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.WriteMsg(signProtoAck(t, networkID, clock.Unix())); err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := svc.Handle(context.Background(), stream1, observed); err != nil {
+			t.Fatal(err)
+		}
+
+		_, r := protobuf.NewWriterAndReader(stream2)
+		var got pb.SynAck
+		if err := r.ReadMsg(&got); err != nil {
+			t.Fatal(err)
+		}
+		return &got
+	}
+
+	first := run(now)
+	second := run(now.Add(time.Hour))
+
+	if second.Ack.Address.Timestamp != first.Ack.Address.Timestamp {
+		t.Fatalf("advertised timestamp changed across handshakes: got %d, want %d", second.Ack.Address.Timestamp, first.Ack.Address.Timestamp)
+	}
+	if !bytes.Equal(second.Ack.Address.Signature, first.Ack.Address.Signature) {
+		t.Fatal("advertised signature changed across handshakes")
+	}
+	if !bytes.Equal(second.Ack.Address.Underlay, first.Ack.Address.Underlay) {
+		t.Fatal("advertised underlays changed across handshakes")
+	}
+}

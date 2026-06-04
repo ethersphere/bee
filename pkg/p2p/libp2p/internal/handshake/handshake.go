@@ -6,6 +6,7 @@ package handshake
 
 import (
 	"cmp"
+	"container/list"
 	"context"
 	"errors"
 	"fmt"
@@ -41,6 +42,10 @@ const (
 	// MaxWelcomeMessageLength is maximum number of characters allowed in the welcome message.
 	MaxWelcomeMessageLength = 140
 	handshakeTimeout        = 15 * time.Second
+	// maxCachedAddresses bounds the signed-address cache so that peers
+	// reporting fabricated observed underlays cannot force unbounded growth
+	// or evict the legitimate entries fast enough to defeat record reuse.
+	maxCachedAddresses = 16
 )
 
 var (
@@ -102,6 +107,18 @@ type Service struct {
 	mu                    sync.RWMutex
 	hostAddresser         Addresser
 	now                   func() time.Time
+
+	addrCacheMu   sync.Mutex
+	addrCache     map[string]*list.Element // key: chequebook bytes + serialized underlays
+	addrCacheLRU  *list.List               // *cachedAddress elements, most recently used in front
+	lastTimestamp int64                    // timestamp of the most recently minted address
+}
+
+// cachedAddress is an addrCache entry pairing the cache key with the
+// session-stable signed address minted for it.
+type cachedAddress struct {
+	key  string
+	addr *bzz.Address
 }
 
 // Info contains the information received from the handshake.
@@ -140,6 +157,8 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 		addressbook:           addrbook,
 		chequebookVerifier:    chequebookVerifier,
 		now:                   time.Now,
+		addrCache:             make(map[string]*list.Element),
+		addrCacheLRU:          list.New(),
 	}
 	svc.welcomeMessage.Store(welcomeMessage)
 
@@ -147,14 +166,22 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 }
 
 // SetChequebookAddress sets the local chequebook address included in
-// subsequent signed BzzAddress payloads. The zero value clears it.
+// subsequent signed BzzAddress payloads. The zero value clears it. Cached
+// signed addresses are invalidated so the next handshake re-signs with the
+// new chequebook.
 func (s *Service) SetChequebookAddress(addr common.Address) {
+	s.addrCacheMu.Lock()
+	defer s.addrCacheMu.Unlock()
+
 	if (addr == common.Address{}) {
 		s.chequebookAddr.Store(nil)
-		return
+	} else {
+		cp := addr
+		s.chequebookAddr.Store(&cp)
 	}
-	cp := addr
-	s.chequebookAddr.Store(&cp)
+
+	clear(s.addrCache)
+	s.addrCacheLRU.Init()
 }
 
 func (s *Service) chequebookAddress() common.Address {
@@ -162,6 +189,48 @@ func (s *Service) chequebookAddress() common.Address {
 		return *v
 	}
 	return common.Address{}
+}
+
+// signedAddress returns the session-stable signed BzzAddress advertising the
+// given canonical underlay set, minting and caching one on first use. Reusing
+// the timestamp and signature keeps the record byte-stable across handshakes,
+// so receiving peers see it as unchanged and skip redundant addressbook
+// writes and gossip updates. A new address is minted only when the underlay
+// set or the local chequebook changes, with a monotonically increasing
+// timestamp so distinct records are never issued with equal timestamps.
+func (s *Service) signedAddress(underlays []ma.Multiaddr) (*bzz.Address, error) {
+	underlaysBinary, err := bzz.SerializeUnderlays(underlays)
+	if err != nil {
+		return nil, fmt.Errorf("serialize underlays: %w", err)
+	}
+
+	s.addrCacheMu.Lock()
+	defer s.addrCacheMu.Unlock()
+
+	chequebook := s.chequebookAddress()
+	key := string(chequebook.Bytes()) + string(underlaysBinary)
+
+	if el, ok := s.addrCache[key]; ok {
+		s.addrCacheLRU.MoveToFront(el)
+		return el.Value.(*cachedAddress).addr, nil
+	}
+
+	timestamp := max(s.now().Unix(), s.lastTimestamp+1)
+
+	addr, err := bzz.NewAddress(s.signer, underlays, s.overlay, s.networkID, s.nonce, timestamp, chequebook)
+	if err != nil {
+		return nil, err
+	}
+	s.lastTimestamp = timestamp
+
+	s.addrCache[key] = s.addrCacheLRU.PushFront(&cachedAddress{key: key, addr: addr})
+	if s.addrCacheLRU.Len() > maxCachedAddresses {
+		oldest := s.addrCacheLRU.Back()
+		s.addrCacheLRU.Remove(oldest)
+		delete(s.addrCache, oldest.Value.(*cachedAddress).key)
+	}
+
+	return addr, nil
 }
 
 func (s *Service) SetPicker(n p2p.Picker) {
@@ -268,7 +337,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		s.metrics.AdvertisableUnderlaysTruncated.Inc()
 	}
 
-	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce, s.now().Unix(), s.chequebookAddress())
+	bzzAddress, err := s.signedAddress(advertisableUnderlays)
 	if err != nil {
 		return nil, err
 	}
@@ -381,7 +450,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 		s.metrics.AdvertisableUnderlaysTruncated.Inc()
 	}
 
-	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce, s.now().Unix(), s.chequebookAddress())
+	bzzAddress, err := s.signedAddress(advertisableUnderlays)
 	if err != nil {
 		return nil, err
 	}
