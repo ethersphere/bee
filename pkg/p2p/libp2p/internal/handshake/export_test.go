@@ -28,7 +28,5 @@ func (s *Service) SignedAddress(underlays []ma.Multiaddr) (*bzz.Address, error) 
 }
 
 func (s *Service) AddressCacheLen() int {
-	s.addrCacheMu.Lock()
-	defer s.addrCacheMu.Unlock()
-	return s.addrCacheLRU.Len()
+	return s.addrCache.size()
 }
