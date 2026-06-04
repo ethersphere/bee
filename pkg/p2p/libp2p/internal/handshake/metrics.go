@@ -19,6 +19,7 @@ type metrics struct {
 	AckRxFailed                    prometheus.Counter
 	AdvertisableUnderlaysTruncated prometheus.Counter
 	ObservedUnderlaysTruncated     prometheus.Counter
+	AddressMinted                  prometheus.Counter
 	TimestampRejected              *prometheus.CounterVec
 	ChequebookVerification         *prometheus.CounterVec
 }
@@ -75,6 +76,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "observed_underlays_truncated",
 			Help:      "Number of times observed peer underlays were truncated before sending.",
+		}),
+		AddressMinted: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "address_minted_total",
+			Help:      "Number of session-stable signed addresses minted (signed-address cache misses). Should plateau at a small number per session; linear growth with handshakes indicates advertised-underlay churn.",
 		}),
 		TimestampRejected: prometheus.NewCounterVec(
 			prometheus.CounterOpts{

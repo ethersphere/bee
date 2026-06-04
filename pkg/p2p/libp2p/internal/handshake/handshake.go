@@ -193,7 +193,12 @@ func (s *Service) signedAddress(underlays []ma.Multiaddr) (*bzz.Address, error) 
 	key := string(chequebook.Bytes()) + string(underlaysBinary)
 
 	return s.addrCache.getOrMint(key, s.now().Unix(), func(timestamp int64) (*bzz.Address, error) {
-		return bzz.NewAddress(s.signer, underlays, s.overlay, s.networkID, s.nonce, timestamp, chequebook)
+		addr, err := bzz.NewAddress(s.signer, underlays, s.overlay, s.networkID, s.nonce, timestamp, chequebook)
+		if err != nil {
+			return nil, err
+		}
+		s.metrics.AddressMinted.Inc()
+		return addr, nil
 	})
 }
 
