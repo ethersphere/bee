@@ -65,7 +65,7 @@ type Agent struct {
 	blocksPerRound         uint64
 	blockTime              time.Duration
 	contract               redistribution.Contract
-	postageContract        postagecontract.Interface
+	batchExpirer           postagecontract.PostageBatchExpirer
 	redistributionStatuser staking.RedistributionStatuser
 	store                  storer.Reserve
 	fullSyncedFunc         func() bool
@@ -83,7 +83,7 @@ func New(overlay swarm.Address,
 	ethAddress common.Address,
 	backend ChainBackend,
 	contract redistribution.Contract,
-	postageContract postagecontract.Interface,
+	batchExpirer postagecontract.PostageBatchExpirer,
 	redistributionStatuser staking.RedistributionStatuser,
 	store storer.Reserve,
 	fullSyncedFunc func() bool,
@@ -103,7 +103,7 @@ func New(overlay swarm.Address,
 		backend:                backend,
 		logger:                 logger.WithName(loggerName).Register(),
 		contract:               contract,
-		postageContract:        postageContract,
+		batchExpirer:           batchExpirer,
 		store:                  store,
 		fullSyncedFunc:         fullSyncedFunc,
 		blocksPerRound:         blocksPerRound,
@@ -350,7 +350,7 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 
 	// In case when there are too many expired batches, Claim trx could runs out of gas.
 	// To prevent this, node should first expire batches before Claiming a reward.
-	err = a.postageContract.ExpireBatches(ctx)
+	err = a.batchExpirer.ExpireBatches(ctx)
 	if err != nil {
 		a.logger.Info("expire batches failed", "err", err)
 		// Even when error happens, proceed with claim handler
@@ -377,15 +377,7 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 		return fmt.Errorf("making inclusion proofs: %w", err)
 	}
 
-	claimCtx := ctx
-	phaseEndBlock := (round+1)*a.blocksPerRound - 1
-	if rem := int64(phaseEndBlock) - int64(a.state.currentBlock()); rem > 0 {
-		var cancel context.CancelFunc
-		claimCtx, cancel = context.WithDeadline(ctx, time.Now().Add(time.Duration(rem)*a.blockTime))
-		defer cancel()
-	}
-
-	reward, err := a.postageContract.ExpectedReward(ctx)
+	reward, err := a.batchExpirer.ExpectedReward(ctx)
 	if err != nil {
 		a.logger.Warning("could not estimate claim reward, override max_tx_cost option will be disabled", "error", err)
 	}
@@ -397,7 +389,7 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 		RoundFees:          a.state.RoundFees(round),
 	}
 
-	txHash, err := a.contract.Claim(claimCtx, proofs, opts)
+	txHash, err := a.contract.Claim(ctx, proofs, opts)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			a.logger.Info("claim aborted by context", "round", round, "err", err)

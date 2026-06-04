@@ -47,12 +47,12 @@ type Interface interface {
 	DiluteBatch(ctx context.Context, batchID []byte, newDepth uint8) (common.Hash, error)
 	Paused(ctx context.Context) (bool, error)
 	MinimumValidityBlocks(ctx context.Context) (uint64, error)
-	ExpectedReward(ctx context.Context) (*big.Int, error)
 	PostageBatchExpirer
 }
 
 type PostageBatchExpirer interface {
 	ExpireBatches(ctx context.Context) error
+	ExpectedReward(ctx context.Context) (*big.Int, error)
 }
 
 type postageContract struct {
