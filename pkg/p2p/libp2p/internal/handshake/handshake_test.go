@@ -1127,6 +1127,31 @@ func TestSignedAddress_ReSignsOnChange(t *testing.T) {
 	}
 }
 
+// TestSignedAddress_ClockRegression verifies a record minted after the wall
+// clock steps back still carries a strictly newer timestamp.
+func TestSignedAddress_ClockRegression(t *testing.T) {
+	t.Parallel()
+
+	networkID := uint64(3)
+	now := time.Unix(1700000000, 0)
+	svc := newTimestampTestService(t, networkID, now)
+
+	first, err := svc.SignedAddress(testUnderlays(t, 1634))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	svc.SetTime(func() time.Time { return now.Add(-time.Hour) })
+
+	second, err := svc.SignedAddress(testUnderlays(t, 1635))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Timestamp != first.Timestamp+1 {
+		t.Fatalf("timestamp after clock regression: got %d, want %d", second.Timestamp, first.Timestamp+1)
+	}
+}
+
 // TestSignedAddress_CacheEviction verifies the LRU semantics of the signed
 // address cache: recently used entries survive an overflow, the least
 // recently used entry is evicted and re-minted on next use.
