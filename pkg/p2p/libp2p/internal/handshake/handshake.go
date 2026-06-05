@@ -102,8 +102,7 @@ type Service struct {
 	mu                    sync.RWMutex
 	hostAddresser         Addresser
 	now                   func() time.Time
-
-	addrCache addressCache // session-stable signed address, keyed by chequebook + underlays
+	addrCache             addressCache // session-stable signed address, keyed by chequebook + underlays
 }
 
 // Info contains the information received from the handshake.
@@ -149,19 +148,15 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 }
 
 // SetChequebookAddress sets the local chequebook address included in
-// subsequent signed BzzAddress payloads; the zero value clears it. The cached
-// signed address is purged so the next handshake re-signs. A mint in flight
-// during this call may land after the purge, but is keyed under the old
-// chequebook and simply gets overwritten by the next handshake.
+// subsequent signed BzzAddress payloads; the zero value clears it. The
+// chequebook is part of the signed-address cache key, so the next handshake
+// misses the cache and re-signs with the new chequebook.
 func (s *Service) SetChequebookAddress(addr common.Address) {
 	if (addr == common.Address{}) {
 		s.chequebookAddr.Store(nil)
 	} else {
-		cp := addr
-		s.chequebookAddr.Store(&cp)
+		s.chequebookAddr.Store(&addr)
 	}
-
-	s.addrCache.purge()
 }
 
 func (s *Service) chequebookAddress() common.Address {

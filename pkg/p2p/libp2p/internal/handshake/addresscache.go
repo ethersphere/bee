@@ -49,11 +49,3 @@ func (c *addressCache) getOrMint(key string, now int64, mint func(timestamp int6
 
 	return addr, nil
 }
-
-// purge drops the cached address; the next getOrMint re-signs.
-func (c *addressCache) purge() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.key, c.addr = "", nil
-}
