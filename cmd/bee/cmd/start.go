@@ -164,6 +164,7 @@ func (c *command) initStartCmd() (err error) {
 			c.bindBlockchainRpcConfig(cmd)
 			c.bindTracingConfig(cmd)
 			c.warnDeprecatedTracingKeys()
+			c.warnTracingTLSWithoutCA()
 			return nil
 		},
 	}

@@ -441,6 +441,16 @@ func (c *command) warnDeprecatedTracingKeys() {
 	}
 }
 
+// warnTracingTLSWithoutCA warns when tracing runs over TLS without an explicit
+// CA bundle, in which case the OTLP exporter falls back to the system root CAs.
+func (c *command) warnTracingTLSWithoutCA() {
+	if c.config.GetBool(configKeyTracingEnabled) &&
+		!c.config.GetBool(configKeyTracingOTLPInsecure) &&
+		c.config.GetString(configKeyTracingOTLPCAFile) == "" {
+		c.logger.Warning("tracing: TLS is enabled but no CA bundle is configured; the OTLP exporter will rely on the system root CAs. Provide --tracing-otlp-ca-file, set --tracing-otlp-insecure=true for a plaintext local collector, or disable tracing.")
+	}
+}
+
 func (c *command) bindNestedConfig(cmd *cobra.Command, pairs []struct{ flat, dotted string }) {
 	for _, p := range pairs {
 		// Check before registering the alias; afterwards the flat value is unreachable.

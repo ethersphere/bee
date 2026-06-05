@@ -221,7 +221,11 @@ type Headers map[string][]byte
 
 // Common header names.
 const (
-	HeaderNameTracingSpanContext = "tracing-span-context"
+	// HeaderNameTracingSpanContext carries the serialised span context between
+	// peers. The "-v2" suffix marks the OpenTelemetry carrier format; it differs
+	// from the legacy OpenTracing/Jaeger payload, so the distinct key prevents
+	// mixed-version peers from decoding each other's incompatible payloads.
+	HeaderNameTracingSpanContext = "tracing-span-context-v2"
 )
 
 // NewSwarmStreamName constructs a libp2p compatible stream name out of

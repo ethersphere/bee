@@ -109,9 +109,6 @@ type Options struct {
 	// Protocol selects the OTLP exporter transport: "http" or "grpc". Empty
 	// defaults to "http".
 	Protocol string
-	// Logger, when non-nil, receives startup warnings (e.g. missing CA bundle
-	// when TLS is enabled). NewTracer does not log otherwise.
-	Logger log.Logger
 }
 
 // NewTracer creates a new Tracer and returns a closer that flushes pending
@@ -127,10 +124,6 @@ func NewTracer(o *Options) (*Tracer, io.Closer, error) {
 
 	if o.Endpoint == "" {
 		return nil, nil, errors.New("tracing-otlp-endpoint is required when tracing is enabled")
-	}
-
-	if !o.Insecure && o.CAFile == "" && o.Logger != nil {
-		o.Logger.Warning("tracing: TLS is enabled but no CA bundle is configured; the OTLP exporter will rely on the system root CAs. Provide --tracing-otlp-ca-file, set --tracing-otlp-insecure=true for a plaintext local collector, or disable tracing.")
 	}
 
 	res, err := resource.New(context.Background(),
