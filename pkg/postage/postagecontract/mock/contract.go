@@ -13,11 +13,12 @@ import (
 )
 
 type contractMock struct {
-	createBatch   func(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) (common.Hash, []byte, error)
-	topupBatch    func(ctx context.Context, id []byte, amount *big.Int) (common.Hash, error)
-	diluteBatch   func(ctx context.Context, id []byte, newDepth uint8) (common.Hash, error)
-	expireBatches func(ctx context.Context) error
-	paused        func(ctx context.Context) (bool, error)
+	createBatch           func(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) (common.Hash, []byte, error)
+	topupBatch            func(ctx context.Context, id []byte, amount *big.Int) (common.Hash, error)
+	diluteBatch           func(ctx context.Context, id []byte, newDepth uint8) (common.Hash, error)
+	expireBatches         func(ctx context.Context) error
+	paused                func(ctx context.Context) (bool, error)
+	minimumValidityBlocks func(ctx context.Context) (uint64, error)
 }
 
 func (c *contractMock) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) (common.Hash, []byte, error) {
@@ -38,6 +39,10 @@ func (c *contractMock) ExpireBatches(ctx context.Context) error {
 
 func (s *contractMock) Paused(ctx context.Context) (bool, error) {
 	return s.paused(ctx)
+}
+
+func (c *contractMock) MinimumValidityBlocks(ctx context.Context) (uint64, error) {
+	return c.minimumValidityBlocks(ctx)
 }
 
 // Option is an option passed to New
@@ -81,5 +86,11 @@ func WithExpiresBatchesFunc(f func(ctx context.Context) error) Option {
 func WithPaused(f func(ctx context.Context) (bool, error)) Option {
 	return func(mock *contractMock) {
 		mock.paused = f
+	}
+}
+
+func WithMinimumValidityBlocksFunc(f func(ctx context.Context) (uint64, error)) Option {
+	return func(mock *contractMock) {
+		mock.minimumValidityBlocks = f
 	}
 }

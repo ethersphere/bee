@@ -148,6 +148,8 @@ type Options struct {
 	AutoTLSCAEndpoint             string
 	ChainID                       int64
 	ChequebookEnable              bool
+	ChequebookVerification        bool
+	ChequebookMinBalance          string
 	CORSAllowedOrigins            []string
 	DataDir                       string
 	DBBlockCacheCapacity          uint64
@@ -402,6 +404,14 @@ func NewBee(
 
 	chainEnabled := isChainEnabled(o, o.BlockchainRpcEndpoint, logger)
 
+	if o.SwapEnable && !chainEnabled {
+		return nil, errors.New("swap is enabled but the chain backend is not; provide --blockchain-rpc-endpoint or disable swap")
+	}
+
+	if o.ChequebookVerification && (!o.FullNodeMode || !o.ChequebookEnable || !chainEnabled) {
+		return nil, fmt.Errorf("chequebook-verification requires full-node mode, chequebook-enable, and an enabled chain backend (full_node=%t, chequebook_enable=%t, chain_enabled=%t)", o.FullNodeMode, o.ChequebookEnable, chainEnabled)
+	}
+
 	var batchStore postage.Storer = new(postage.NoOpBatchStore)
 	var evictFn func([]byte) error
 
@@ -544,46 +554,56 @@ func NewBee(
 		}
 	}
 
-	if o.SwapEnable {
-		chequebookFactory, err := InitChequebookFactory(logger, chainBackend, chainID, transactionService, o.SwapFactoryAddress)
-		if err != nil {
-			return nil, fmt.Errorf("init chequebook factory: %w", err)
+	if chainEnabled {
+		chequebookFactory, ferr := InitChequebookFactory(logger, chainBackend, chainID, transactionService, o.SwapFactoryAddress)
+		if o.SwapEnable && ferr != nil {
+			return nil, fmt.Errorf("init chequebook factory: %w", ferr)
 		}
 
-		erc20Address, err := chequebookFactory.ERC20Address(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("factory fail: %w", err)
+		if ferr == nil {
+			erc20Address, err := chequebookFactory.ERC20Address(ctx)
+			if err != nil {
+				if o.SwapEnable {
+					return nil, fmt.Errorf("factory fail: %w", err)
+				}
+				logger.Warning("unable to resolve ERC20 token address; BZZ balance will be unavailable via /wallet", "error", err)
+			} else {
+				erc20Service = erc20.New(transactionService, erc20Address)
+			}
+		} else {
+			logger.Warning("unable to init chequebook factory; BZZ balance will be unavailable via /wallet", "error", ferr)
 		}
 
-		erc20Service = erc20.New(transactionService, erc20Address)
+		if o.SwapEnable {
+			if o.ChequebookEnable {
+				var err error
+				chequebookService, err = InitChequebookService(
+					ctx,
+					logger,
+					stateStore,
+					signer,
+					chainID,
+					chainBackend,
+					overlayEthAddress,
+					transactionService,
+					chequebookFactory,
+					o.SwapInitialDeposit,
+					erc20Service,
+				)
+				if err != nil {
+					return nil, fmt.Errorf("init chequebook service: %w", err)
+				}
+			}
 
-		if o.ChequebookEnable && chainEnabled {
-			chequebookService, err = InitChequebookService(
-				ctx,
-				logger,
+			chequeStore, cashoutService = initChequeStoreCashout(
 				stateStore,
-				signer,
-				chainID,
 				chainBackend,
+				chequebookFactory,
+				chainID,
 				overlayEthAddress,
 				transactionService,
-				chequebookFactory,
-				o.SwapInitialDeposit,
-				erc20Service,
 			)
-			if err != nil {
-				return nil, fmt.Errorf("init chequebook service: %w", err)
-			}
 		}
-
-		chequeStore, cashoutService = initChequeStoreCashout(
-			stateStore,
-			chainBackend,
-			chequebookFactory,
-			chainID,
-			overlayEthAddress,
-			transactionService,
-		)
 	}
 
 	lightNodes := lightnode.NewContainer(swarmAddress)
@@ -662,7 +682,29 @@ func NewBee(
 		registry = apiService.MetricsRegistry()
 	}
 
-	p2ps, err := libp2p.New(ctx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
+	chainCfg, found := config.GetByChainID(chainID)
+
+	var (
+		cbVerifier chequebook.Verifier
+		cbRegistry *chequebook.Registry
+	)
+	if o.ChequebookVerification {
+		minBalance, ok := new(big.Int).SetString(o.ChequebookMinBalance, 10)
+		if !ok {
+			return nil, fmt.Errorf("chequebook min balance %q cannot be parsed as base-10 integer", o.ChequebookMinBalance)
+		}
+		cbRegistry = chequebook.NewRegistry()
+		var err error
+		cbVerifier, err = chequebook.NewVerifier(transactionService, chainBackend, cbRegistry, chequebook.VerifierConfig{
+			AcceptedBytecodeHashes: chainCfg.AcceptedChequebookBytecodeHashes,
+			MinBalance:             minBalance,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("new chequebook verifier: %w", err)
+		}
+	}
+
+	libp2pOpts := libp2p.Options{
 		PrivateKey:                  libp2pPrivateKey,
 		NATAddr:                     o.NATAddr,
 		NATWSSAddr:                  o.NATWSSAddr,
@@ -676,9 +718,14 @@ func NewBee(
 		WelcomeMessage:              o.WelcomeMessage,
 		FullNode:                    o.FullNodeMode,
 		Nonce:                       nonce,
-		ValidateOverlay:             chainEnabled,
+		AllowPrivateCIDRs:           o.AllowPrivateCIDRs,
 		Registry:                    registry,
-	})
+		ChequebookVerifier:          cbVerifier,
+	}
+	if cbRegistry != nil {
+		libp2pOpts.ChequebookStorer = cbRegistry
+	}
+	p2ps, err := libp2p.New(ctx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2pOpts)
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
 	}
@@ -687,6 +734,11 @@ func NewBee(
 
 	b.p2pService = p2ps
 	b.p2pHalter = p2ps
+
+	// Publish the local chequebook so handshake records carry it.
+	// noOpChequebookService returns the zero address — meaning "absent" by
+	// construction, so no conditional is needed here.
+	p2ps.SetChequebookAddress(chequebookService.Address())
 
 	post, err := postage.NewService(logger, stamperStore, batchStore, chainID, wasClean)
 	if err != nil {
@@ -701,7 +753,6 @@ func NewBee(
 		eventListener               postage.Listener
 	)
 
-	chainCfg, found := config.GetByChainID(chainID)
 	postageStampContractAddress, postageSyncStart := chainCfg.PostageStampAddress, chainCfg.PostageStampStartBlock
 	if o.PostageContractAddress != "" {
 		if !common.IsHexAddress(o.PostageContractAddress) {
@@ -757,7 +808,15 @@ func NewBee(
 		return nil, fmt.Errorf("pingpong service: %w", err)
 	}
 
-	hive := hive.New(p2ps, addressbook, networkID, o.BootnodeMode, o.AllowPrivateCIDRs, swarmAddress, logger)
+	hiveOpts := hive.Options{
+		BootnodeMode:       o.BootnodeMode,
+		AllowPrivateCIDRs:  o.AllowPrivateCIDRs,
+		ChequebookVerifier: cbVerifier,
+	}
+	if cbRegistry != nil {
+		hiveOpts.ChequebookStorer = cbRegistry
+	}
+	hive := hive.New(p2ps, addressbook, networkID, swarmAddress, logger, hiveOpts)
 
 	if err = p2ps.AddProtocol(hive.Protocol()); err != nil {
 		return nil, fmt.Errorf("hive service: %w", err)

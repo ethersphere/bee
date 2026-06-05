@@ -7,8 +7,11 @@ package libp2p
 import (
 	"context"
 
+	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/bzz"
+	"github.com/ethersphere/bee/v2/pkg/log"
 	handshake "github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/handshake"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	libp2pm "github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -76,5 +79,40 @@ func (s *Service) SetTransportFlags(hasTCP, hasWS, hasWSS bool) {
 		bzz.TransportTCP: hasTCP,
 		bzz.TransportWS:  hasWS,
 		bzz.TransportWSS: hasWSS,
+	}
+}
+
+// Disconnected drives the unexported disconnect hook so tests can verify
+// its side effects (e.g. chequebook registry eviction) end-to-end.
+func (s *Service) Disconnected(address swarm.Address) {
+	s.disconnected(address)
+}
+
+// NewDisconnectTestService constructs a minimal *Service wired only with the
+// fields needed to drive the disconnect hook. Other fields are left
+// zero-valued; callers must not invoke network-layer methods on it.
+func NewDisconnectTestService(logger log.Logger, storer ChequebookStorer) *Service {
+	return &Service{
+		logger:           logger,
+		metrics:          newMetrics(),
+		peers:            newPeerRegistry(),
+		chequebookStorer: storer,
+	}
+}
+
+// PutHandshakeAddress drives the unexported addressbook-write path so tests
+// can verify its branches end-to-end.
+func (s *Service) PutHandshakeAddress(addr *bzz.Address) error {
+	return s.putHandshakeAddress(addr)
+}
+
+// NewPutHandshakeAddressTestService constructs a minimal *Service wired only
+// with the fields needed to drive putHandshakeAddress. Other fields are left
+// zero-valued; callers must not invoke network-layer methods on it.
+func NewPutHandshakeAddressTestService(logger log.Logger, book addressbook.GetPutter, storer ChequebookStorer) *Service {
+	return &Service{
+		logger:           logger,
+		addressbook:      book,
+		chequebookStorer: storer,
 	}
 }

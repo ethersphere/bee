@@ -6,6 +6,7 @@ package config
 
 import (
 	_ "embed"
+	"encoding/hex"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/go-storage-incentives-abi/abi"
@@ -32,6 +33,23 @@ type ChainConfig struct {
 	StakingABI        string
 	PostageStampABI   string
 	RedistributionABI string
+
+	// AcceptedChequebookBytecodeHashes is the set of Keccak256(eth_getCode)
+	// hashes that the chequebook verifier accepts. One entry per factory
+	// generation. Append-never-remove: removing a hash would reject
+	// chequebooks deployed by that factory generation.
+	// Derive: cast keccak $(cast code <any chequebook addr> --rpc-url <rpc>)
+	AcceptedChequebookBytecodeHashes [][32]byte
+}
+
+// mustHash decodes a 64-character hex string (no 0x prefix) into a [32]byte.
+// Panics on malformed input so misconfigured hashes are caught at startup.
+func mustHash(hexStr string) [32]byte {
+	b, err := hex.DecodeString(hexStr)
+	if err != nil || len(b) != 32 {
+		panic("config: invalid 32-byte hex hash: " + hexStr)
+	}
+	return [32]byte(b)
 }
 
 var (
@@ -51,6 +69,10 @@ var (
 		StakingABI:        abi.TestnetStakingABI,
 		PostageStampABI:   abi.TestnetPostageStampABI,
 		RedistributionABI: abi.TestnetRedistributionABI,
+
+		AcceptedChequebookBytecodeHashes: [][32]byte{
+			mustHash("ba50aa67c6e6f135a8ca57947c015c24192531d47e47a9ec212c0090e0486d46"),
+		},
 	}
 
 	Mainnet = ChainConfig{
@@ -69,6 +91,10 @@ var (
 		StakingABI:        abi.MainnetStakingABI,
 		PostageStampABI:   abi.MainnetPostageStampABI,
 		RedistributionABI: abi.MainnetRedistributionABI,
+
+		AcceptedChequebookBytecodeHashes: [][32]byte{
+			mustHash("81d3de06cadb0970fc653f24cef4689243f9a3d702236370ecf4613673048145"),
+		},
 	}
 )
 
