@@ -13,8 +13,6 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-const MaxCachedAddresses = maxCachedAddresses
-
 func (s *Service) SetTime(f func() time.Time) {
 	s.now = f
 }
@@ -25,8 +23,4 @@ func (s *Service) ParseCheckAck(ctx context.Context, ack *pb.Ack) (*bzz.Address,
 
 func (s *Service) SignedAddress(underlays []ma.Multiaddr) (*bzz.Address, error) {
 	return s.signedAddress(underlays)
-}
-
-func (s *Service) AddressCacheLen() int {
-	return s.addrCache.size()
 }

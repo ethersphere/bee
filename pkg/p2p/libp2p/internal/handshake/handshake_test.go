@@ -1055,8 +1055,8 @@ func testUnderlays(t *testing.T, port int) []ma.Multiaddr {
 }
 
 // TestSignedAddress_StableAcrossCalls verifies that the signed address is
-// minted once per underlay set and reused verbatim on subsequent calls, even
-// when the clock advances (issue #23).
+// minted once and reused verbatim on subsequent calls, even when the clock
+// advances.
 func TestSignedAddress_StableAcrossCalls(t *testing.T) {
 	t.Parallel()
 
@@ -1152,57 +1152,39 @@ func TestSignedAddress_ClockRegression(t *testing.T) {
 	}
 }
 
-// TestSignedAddress_CacheEviction verifies the LRU semantics of the signed
-// address cache: recently used entries survive an overflow, the least
-// recently used entry is evicted and re-minted on next use.
-func TestSignedAddress_CacheEviction(t *testing.T) {
+// TestSignedAddress_LatestEntryOnly verifies the cache keeps only the most
+// recently minted address: returning to a previously used underlay set
+// re-mints with a strictly newer timestamp instead of reviving the old record.
+func TestSignedAddress_LatestEntryOnly(t *testing.T) {
 	t.Parallel()
 
 	networkID := uint64(3)
 	now := time.Unix(1700000000, 0)
 	svc := newTimestampTestService(t, networkID, now)
 
-	sets := make([][]ma.Multiaddr, handshake.MaxCachedAddresses+1)
-	timestamps := make([]int64, len(sets))
-	for i := range sets {
-		sets[i] = testUnderlays(t, 2000+i)
-	}
-
-	for i := range handshake.MaxCachedAddresses {
-		addr, err := svc.SignedAddress(sets[i])
-		if err != nil {
-			t.Fatal(err)
-		}
-		timestamps[i] = addr.Timestamp
-	}
-
-	// Touch the oldest entry so the upcoming eviction targets sets[1].
-	if _, err := svc.SignedAddress(sets[0]); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := svc.SignedAddress(sets[handshake.MaxCachedAddresses]); err != nil {
-		t.Fatal(err)
-	}
-
-	if got := svc.AddressCacheLen(); got != handshake.MaxCachedAddresses {
-		t.Fatalf("cache length: got %d, want %d", got, handshake.MaxCachedAddresses)
-	}
-
-	survived, err := svc.SignedAddress(sets[0])
+	first, err := svc.SignedAddress(testUnderlays(t, 2000))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if survived.Timestamp != timestamps[0] {
-		t.Fatalf("touched entry re-minted: got %d, want cached %d", survived.Timestamp, timestamps[0])
+
+	if _, err := svc.SignedAddress(testUnderlays(t, 2001)); err != nil {
+		t.Fatal(err)
 	}
 
-	evicted, err := svc.SignedAddress(sets[1])
+	reminted, err := svc.SignedAddress(testUnderlays(t, 2000))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if evicted.Timestamp <= timestamps[1] {
-		t.Fatalf("evicted entry not re-minted: got %d, cached was %d", evicted.Timestamp, timestamps[1])
+	if reminted.Timestamp != first.Timestamp+2 {
+		t.Fatalf("expected re-mint with newer timestamp: got %d, want %d", reminted.Timestamp, first.Timestamp+2)
+	}
+
+	cached, err := svc.SignedAddress(testUnderlays(t, 2000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cached.Timestamp != reminted.Timestamp || !bytes.Equal(cached.Signature, reminted.Signature) {
+		t.Fatal("latest entry not reused verbatim")
 	}
 }
 

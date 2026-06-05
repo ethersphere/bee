@@ -41,10 +41,6 @@ const (
 	// MaxWelcomeMessageLength is maximum number of characters allowed in the welcome message.
 	MaxWelcomeMessageLength = 140
 	handshakeTimeout        = 15 * time.Second
-	// maxCachedAddresses bounds the signed-address cache so that peers
-	// reporting fabricated observed underlays cannot force unbounded growth
-	// or evict the legitimate entries fast enough to defeat record reuse.
-	maxCachedAddresses = 16
 )
 
 var (
@@ -107,7 +103,7 @@ type Service struct {
 	hostAddresser         Addresser
 	now                   func() time.Time
 
-	addrCache *addressCache // session-stable signed addresses, keyed by chequebook + underlays
+	addrCache addressCache // session-stable signed address, keyed by chequebook + underlays
 }
 
 // Info contains the information received from the handshake.
@@ -146,7 +142,6 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 		addressbook:           addrbook,
 		chequebookVerifier:    chequebookVerifier,
 		now:                   time.Now,
-		addrCache:             newAddressCache(maxCachedAddresses),
 	}
 	svc.welcomeMessage.Store(welcomeMessage)
 
@@ -154,11 +149,10 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 }
 
 // SetChequebookAddress sets the local chequebook address included in
-// subsequent signed BzzAddress payloads. The zero value clears it. Cached
-// signed addresses are invalidated so the next handshake re-signs with the
-// new chequebook. An entry minted by a handshake in flight during this call
-// may survive the purge, but is keyed under the old chequebook and can no
-// longer be looked up; it ages out of the cache unused.
+// subsequent signed BzzAddress payloads; the zero value clears it. The cached
+// signed address is purged so the next handshake re-signs. A mint in flight
+// during this call may land after the purge, but is keyed under the old
+// chequebook and simply gets overwritten by the next handshake.
 func (s *Service) SetChequebookAddress(addr common.Address) {
 	if (addr == common.Address{}) {
 		s.chequebookAddr.Store(nil)
@@ -178,11 +172,10 @@ func (s *Service) chequebookAddress() common.Address {
 }
 
 // signedAddress returns the session-stable signed BzzAddress advertising the
-// given canonical underlay set, minting and caching one on first use. Reusing
-// the timestamp and signature keeps the record byte-stable across handshakes,
-// so receiving peers see it as unchanged and skip redundant addressbook
-// writes and gossip updates. A new address is minted only when the underlay
-// set or the local chequebook changes.
+// given canonical underlay set. The record is minted on first use and reused
+// byte-stable (same timestamp and signature) across handshakes, so receiving
+// peers see it as unchanged and skip redundant addressbook writes and gossip
+// updates. It is re-minted when the underlay set or the chequebook changes.
 func (s *Service) signedAddress(underlays []ma.Multiaddr) (*bzz.Address, error) {
 	underlaysBinary, err := bzz.SerializeUnderlays(underlays)
 	if err != nil {

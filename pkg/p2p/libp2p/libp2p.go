@@ -773,11 +773,10 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	s.logger.Debug("stream handler: successfully connected to peer (inbound)", "address", i.BzzAddress.Overlay, "light", i.LightString(), "user_agent", peerUserAgent)
 }
 
-// putHandshakeAddress persists a peer's BzzAddress from the handshake.
-// Timestamp and chequebook validation have already run in the handshake; here
-// we only need to perform the atomic registry-plus-addressbook write. The
-// addressbook write is skipped when the stored record is identical and
-// already verified, so steady-state reconnects cost no disk write.
+// putHandshakeAddress persists a peer's BzzAddress, already validated by the
+// handshake, as an atomic registry-plus-addressbook write. The addressbook
+// write is skipped when the stored record is identical and verified, so
+// steady-state reconnects cost no disk write.
 func (s *Service) putHandshakeAddress(addr *bzz.Address) error {
 	existing, verified, err := s.addressbook.Get(addr.Overlay)
 	if err != nil && !errors.Is(err, addressbook.ErrNotFound) {

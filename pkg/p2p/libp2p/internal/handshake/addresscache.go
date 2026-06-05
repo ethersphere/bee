@@ -5,55 +5,37 @@
 package handshake
 
 import (
-	"container/list"
 	"sync"
 
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 )
 
-// addressCache stores the session-stable signed BzzAddress per cache key,
-// evicting the least recently used entry when capacity is exceeded.
+// addressCache stores the most recently minted session-stable signed
+// BzzAddress and the key (chequebook + underlay set) it was minted for. A key
+// change makes the previous record obsolete, so only the latest one is kept.
 //
-// The cache owns the mutex and runs mint inside it, which guarantees two
-// invariants no per-method locking could:
+// Minting runs inside the mutex, which guarantees:
 //
-//   - single flight: concurrent lookups for the same key produce exactly
-//     one signed record;
-//   - monotonic timestamps: every minted record carries a strictly greater
-//     timestamp than the previous one, across all keys, even when the wall
-//     clock repeats a second or steps backwards.
+//   - single flight: concurrent lookups for the same key mint exactly once;
+//   - monotonic timestamps: each mint is strictly newer than the last, even
+//     when the wall clock repeats a second or steps back. Peers reject
+//     records older than the one they hold (see bzz.CheckTimestamp).
 type addressCache struct {
-	mu      sync.Mutex
-	cap     int
-	entries map[string]*list.Element
-	lru     *list.List // *cacheEntry elements, most recently used in front
-	lastTS  int64      // timestamp of the most recently minted address
+	mu     sync.Mutex
+	key    string
+	addr   *bzz.Address
+	lastTS int64 // timestamp of the most recently minted address
 }
 
-// cacheEntry pairs the cache key with the signed address minted for it.
-type cacheEntry struct {
-	key  string
-	addr *bzz.Address
-}
-
-func newAddressCache(capacity int) *addressCache {
-	return &addressCache{
-		cap:     capacity,
-		entries: make(map[string]*list.Element),
-		lru:     list.New(),
-	}
-}
-
-// getOrMint returns the cached address for key, or calls mint exactly once
-// with the next monotonic timestamp, max(now, last+1), and caches the result.
-// A failed mint does not consume the timestamp.
+// getOrMint returns the cached address on a key match, otherwise mints with
+// the next monotonic timestamp, max(now, last+1), and caches the result. A
+// failed mint does not consume the timestamp.
 func (c *addressCache) getOrMint(key string, now int64, mint func(timestamp int64) (*bzz.Address, error)) (*bzz.Address, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if el, ok := c.entries[key]; ok {
-		c.lru.MoveToFront(el)
-		return el.Value.(*cacheEntry).addr, nil
+	if c.addr != nil && c.key == key {
+		return c.addr, nil
 	}
 
 	timestamp := max(now, c.lastTS+1)
@@ -63,30 +45,15 @@ func (c *addressCache) getOrMint(key string, now int64, mint func(timestamp int6
 		return nil, err
 	}
 	c.lastTS = timestamp
-
-	c.entries[key] = c.lru.PushFront(&cacheEntry{key: key, addr: addr})
-	if c.lru.Len() > c.cap {
-		oldest := c.lru.Back()
-		c.lru.Remove(oldest)
-		delete(c.entries, oldest.Value.(*cacheEntry).key)
-	}
+	c.key, c.addr = key, addr
 
 	return addr, nil
 }
 
-// purge drops all cached addresses; the next getOrMint per key re-signs.
+// purge drops the cached address; the next getOrMint re-signs.
 func (c *addressCache) purge() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	clear(c.entries)
-	c.lru.Init()
-}
-
-// size returns the number of cached addresses.
-func (c *addressCache) size() int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	return c.lru.Len()
+	c.key, c.addr = "", nil
 }
