@@ -308,7 +308,7 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 		if terminateTxErr != nil {
 			t.logger.Error(terminateTxErr,
 				"send with retry: finished with error",
-				"attempt", attempt+1,
+				"attempt", attempt,
 				"tx_hash", txState.LastTxHash,
 				"nonce", txState.Nonce,
 				"to", request.To.String(),
