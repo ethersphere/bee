@@ -72,6 +72,9 @@ type Agent struct {
 	commitLock             sync.Mutex
 	health                 Health
 	sampleFlight           singleflight.Group[string, sampleResult]
+	phaseTimingMu          sync.Mutex
+	lastPhaseDetectedAt    time.Time
+	lastPhaseDetectedPhase PhaseType
 }
 
 func New(overlay swarm.Address,
@@ -115,6 +118,8 @@ func New(overlay swarm.Address,
 
 	a.state = state
 
+	redistribution.SetTxObserver(contract, a)
+
 	a.wg.Add(1)
 	go a.start(blockTime, a.blocksPerRound, blocksPerPhase)
 
@@ -142,37 +147,63 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	phaseEvents.On(commit, func(ctx context.Context) {
 		phaseEvents.Cancel(claim)
 
+		start := time.Now()
+		a.recordHandlerDelay(commit)
+
 		round, _ := a.state.currentRoundAndPhase()
 		err := a.handleCommit(ctx, round)
+		a.recordHandlerLatency(commit, start)
 		logErr(commit, round, err)
 	})
 
 	phaseEvents.On(reveal, func(ctx context.Context) {
 		phaseEvents.Cancel(commit, sample)
+
+		start := time.Now()
+		a.recordHandlerDelay(reveal)
+
 		round, _ := a.state.currentRoundAndPhase()
-		logErr(reveal, round, a.handleReveal(ctx, round))
+		err := a.handleReveal(ctx, round)
+		a.recordHandlerLatency(reveal, start)
+		logErr(reveal, round, err)
 	})
 
 	phaseEvents.On(claim, func(ctx context.Context) {
 		phaseEvents.Cancel(reveal)
 		phaseEvents.Publish(sample)
 
+		start := time.Now()
+		a.recordHandlerDelay(claim)
+
 		round, _ := a.state.currentRoundAndPhase()
-		logErr(claim, round, a.handleClaim(ctx, round))
+		err := a.handleClaim(ctx, round)
+		a.recordHandlerLatency(claim, start)
+		logErr(claim, round, err)
 	})
 
 	phaseEvents.On(sample, func(ctx context.Context) {
+		start := time.Now()
+		a.recordHandlerDelay(sample)
+
 		round, _ := a.state.currentRoundAndPhase()
+		a.metrics.SampleStartedRound.Set(float64(round))
+
 		isPhasePlayed, err := a.handleSample(ctx, round)
+		a.recordHandlerLatency(sample, start)
+
+		finishRound, finishPhase := a.state.currentRoundAndPhase()
+		a.metrics.SampleFinishedRound.Set(float64(finishRound))
+
 		logErr(sample, round, err)
 
 		// Sample handled could potentially take long time, therefore it could overlap with commit
 		// phase of next round. When that case happens commit event needs to be triggered once more
 		// in order to handle commit phase with delay.
-		currentRound, currentPhase := a.state.currentRoundAndPhase()
 		if isPhasePlayed &&
-			currentPhase == commit &&
-			currentRound-1 == round {
+			finishPhase == commit &&
+			finishRound-1 == round {
+			a.metrics.SampleOverlap.Inc()
+			a.logger.Info("sample overlapped with next round commit phase", "sample_round", round, "current_round", finishRound)
 			phaseEvents.Publish(commit)
 		}
 	})
@@ -216,6 +247,8 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 		prevPhase = currentPhase
 		a.metrics.CurrentPhase.Set(float64(currentPhase))
+
+		a.recordPhaseDetected(currentPhase, block)
 
 		a.logger.Info("entered new phase", "phase", currentPhase.String(), "round", round, "block", block)
 
@@ -267,14 +300,14 @@ func (a *Agent) handleCommit(ctx context.Context, round uint64) error {
 	defer a.commitLock.Unlock()
 
 	if _, exists := a.state.CommitKey(round); exists {
-		// already committed on this round, phase is skipped
+		a.recordPhaseSkipped(commit, "already_committed")
 		return nil
 	}
 
 	// the sample has to come from previous round to be able to commit it
 	sample, exists := a.state.SampleData(round - 1)
 	if !exists {
-		// In absence of sample, phase is skipped
+		a.recordPhaseSkipped(commit, "no_sample")
 		return nil
 	}
 
@@ -292,18 +325,24 @@ func (a *Agent) handleReveal(ctx context.Context, round uint64) error {
 	// reveal requires the commitKey from the same round
 	commitKey, exists := a.state.CommitKey(round)
 	if !exists {
-		// In absence of commitKey, phase is skipped
+		a.recordPhaseSkipped(reveal, "no_commit_key")
 		return nil
 	}
 
 	// reveal requires sample from previous round
 	sample, exists := a.state.SampleData(round - 1)
 	if !exists {
-		// Sample must have been saved so far
+		a.recordPhaseSkipped(reveal, "sample_not_found")
 		return fmt.Errorf("sample not found in reveal phase")
 	}
 
 	a.metrics.RevealPhase.Inc()
+
+	block, offset, err := a.currentBlockAndOffset(ctx)
+	if err != nil {
+		return err
+	}
+	a.recordActionBlock(actionReveal, block, offset)
 
 	rsh := sample.ReserveSampleHash.Bytes()
 	txHash, err := a.contract.Reveal(ctx, sample.StorageRadius, rsh, commitKey)
@@ -321,15 +360,22 @@ func (a *Agent) handleReveal(ctx context.Context, round uint64) error {
 func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 	hasRevealed := a.state.HasRevealed(round)
 	if !hasRevealed {
-		// When there was no reveal in same round, phase is skipped
+		a.recordPhaseSkipped(claim, "no_reveal")
 		return nil
 	}
 
 	a.metrics.ClaimPhase.Inc()
 
+	block, offset, err := a.currentBlockAndOffset(ctx)
+	if err != nil {
+		return err
+	}
+	a.recordActionBlock(actionIsWinner, block, offset)
+
 	isWinner, err := a.contract.IsWinner(ctx)
 	if err != nil {
 		a.metrics.ErrWinner.Inc()
+		a.recordContractError(actionIsWinner, err)
 		return err
 	}
 
@@ -371,6 +417,12 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 		return fmt.Errorf("making inclusion proofs: %w", err)
 	}
 
+	block, offset, err = a.currentBlockAndOffset(ctx)
+	if err != nil {
+		return err
+	}
+	a.recordActionBlock(actionClaim, block, offset)
+
 	txHash, err := a.contract.Claim(ctx, proofs)
 	if err != nil {
 		a.metrics.ErrClaim.Inc()
@@ -396,16 +448,28 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	committedDepth := a.store.CommittedDepth()
 
 	if a.state.IsFrozen() {
+		a.recordPhaseSkipped(sample, "frozen")
 		a.logger.Info("skipping round because node is frozen")
 		return false, nil
 	}
 
+	block, offset, err := a.currentBlockAndOffset(ctx)
+	if err != nil {
+		return false, err
+	}
+	a.recordActionBlock(actionIsPlaying, block, offset)
+
+	isPlayingStart := time.Now()
 	isPlaying, err := a.contract.IsPlaying(ctx, committedDepth)
+	a.metrics.IsPlayingLatencySeconds.Observe(time.Since(isPlayingStart).Seconds())
 	if err != nil {
 		a.metrics.ErrCheckIsPlaying.Inc()
+		a.recordContractError(actionIsPlaying, err)
+		a.logger.Error(err, "IsPlaying failed", "block", block, "block_offset", offset, "round", round)
 		return false, err
 	}
 	if !isPlaying {
+		a.recordPhaseSkipped(sample, "not_playing")
 		a.logger.Info("not playing in this round")
 		return false, nil
 	}
@@ -414,11 +478,13 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	a.logger.Info("neighbourhood chosen", "round", round)
 
 	if !a.state.IsFullySynced() {
+		a.recordPhaseSkipped(sample, "not_synced")
 		a.logger.Info("skipping round because node is not fully synced")
 		return false, nil
 	}
 
 	if !a.state.IsHealthy() {
+		a.recordPhaseSkipped(sample, "not_healthy")
 		a.logger.Info("skipping round because node is unhealthy", "round", round)
 		return false, nil
 	}
@@ -427,6 +493,7 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("has enough funds to play: %w", err)
 	} else if !hasFunds {
+		a.recordPhaseSkipped(sample, "no_funds")
 		a.logger.Info("insufficient funds to play in next round", "round", round)
 		a.metrics.InsufficientFundsToPlay.Inc()
 		return false, nil
@@ -439,8 +506,10 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	}
 	dur := time.Since(now)
 	a.metrics.SampleDuration.Set(dur.Seconds())
+	a.metrics.SampleDurationSeconds.Observe(dur.Seconds())
 
-	a.logger.Info("produced sample", "hash", sample.ReserveSampleHash, "radius", committedDepth, "round", round)
+	finishBlock, finishOffset := a.state.currentBlock(), a.state.currentBlock()%a.blocksPerRound
+	a.logger.Info("produced sample", "hash", sample.ReserveSampleHash, "radius", committedDepth, "round", round, "duration", dur, "block", finishBlock, "block_offset", finishOffset)
 
 	a.state.SetSampleData(round, sample, dur)
 
@@ -533,6 +602,12 @@ func (a *Agent) commit(ctx context.Context, sample SampleData, round uint64) err
 	if err != nil {
 		return err
 	}
+
+	block, offset, err := a.currentBlockAndOffset(ctx)
+	if err != nil {
+		return err
+	}
+	a.recordActionBlock(actionCommit, block, offset)
 
 	txHash, err := a.contract.Commit(ctx, obfuscatedHash, round)
 	if err != nil {

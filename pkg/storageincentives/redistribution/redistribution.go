@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -39,6 +40,7 @@ type contract struct {
 	incentivesContractAddress common.Address
 	incentivesContractABI     abi.ABI
 	gasLimit                  uint64
+	txObserver                TxObserver
 }
 
 func New(
@@ -68,7 +70,7 @@ func (c *contract) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
 		return false, err
 	}
 
-	result, err := c.callTx(ctx, callData)
+	result, err := c.callTx(ctx, callData, actionIsPlaying)
 	if err != nil {
 		return false, fmt.Errorf("IsPlaying: owner %v depth %d: %w", c.owner, depth, err)
 	}
@@ -88,7 +90,7 @@ func (c *contract) IsWinner(ctx context.Context) (isWinner bool, err error) {
 		return false, err
 	}
 
-	result, err := c.callTx(ctx, callData)
+	result, err := c.callTx(ctx, callData, actionIsWinner)
 	if err != nil {
 		return false, fmt.Errorf("IsWinner: overlay %v : %w", common.BytesToHash(c.overlay.Bytes()), err)
 	}
@@ -115,7 +117,7 @@ func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs) (comm
 		Value:                big.NewInt(0),
 		Description:          "claim win transaction",
 	}
-	txHash, err := c.sendAndWait(ctx, request, BoostTipPercent)
+	txHash, err := c.sendAndWait(ctx, request, BoostTipPercent, actionClaim)
 	if err != nil {
 		return txHash, fmt.Errorf("claim: %w", err)
 	}
@@ -138,7 +140,7 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint64) (
 		Value:                big.NewInt(0),
 		Description:          "commit transaction",
 	}
-	txHash, err := c.sendAndWait(ctx, request, BoostTipPercent)
+	txHash, err := c.sendAndWait(ctx, request, BoostTipPercent, actionCommit)
 	if err != nil {
 		return txHash, fmt.Errorf("commit: obfusHash %v: %w", common.BytesToHash(obfusHash), err)
 	}
@@ -161,7 +163,7 @@ func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommit
 		Value:                big.NewInt(0),
 		Description:          "reveal transaction",
 	}
-	txHash, err := c.sendAndWait(ctx, request, BoostTipPercent)
+	txHash, err := c.sendAndWait(ctx, request, BoostTipPercent, actionReveal)
 	if err != nil {
 		return txHash, fmt.Errorf("reveal: storageDepth %d reserveCommitmentHash %v RandomNonce %v: %w", storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce), err)
 	}
@@ -176,7 +178,7 @@ func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 		return nil, err
 	}
 
-	result, err := c.callTx(ctx, callData)
+	result, err := c.callTx(ctx, callData, actionReserveSalt)
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +191,19 @@ func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 	return salt[:], nil
 }
 
-func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest, boostPercent int) (txHash common.Hash, err error) {
+const (
+	actionIsPlaying   = "is_playing"
+	actionIsWinner    = "is_winner"
+	actionCommit      = "commit"
+	actionReveal      = "reveal"
+	actionClaim       = "claim"
+	actionReserveSalt = "reserve_salt"
+)
+
+func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest, boostPercent int, action string) (txHash common.Hash, err error) {
+	sendTime := time.Now()
+	var minedBlock uint64
+
 	defer func() {
 		err = c.txService.UnwrapABIError(
 			ctx,
@@ -197,6 +211,10 @@ func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxReque
 			err,
 			c.incentivesContractABI.Errors,
 		)
+
+		if c.txObserver != nil {
+			c.txObserver.OnTxCompleted(action, sendTime, minedBlock, err)
+		}
 	}()
 
 	txHash, err = c.txService.Send(ctx, request, boostPercent)
@@ -208,6 +226,10 @@ func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxReque
 		return txHash, err
 	}
 
+	if receipt.BlockNumber != nil {
+		minedBlock = receipt.BlockNumber.Uint64()
+	}
+
 	if receipt.Status == 0 {
 		return txHash, transaction.ErrTransactionReverted
 	}
@@ -215,11 +237,22 @@ func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxReque
 }
 
 // callTx simulates a transaction based on tx request.
-func (c *contract) callTx(ctx context.Context, callData []byte) ([]byte, error) {
-	result, err := c.txService.Call(ctx, &transaction.TxRequest{
+func (c *contract) callTx(ctx context.Context, callData []byte, action string) (result []byte, err error) {
+	request := &transaction.TxRequest{
 		To:   &c.incentivesContractAddress,
 		Data: callData,
-	})
+	}
+
+	defer func() {
+		err = c.txService.UnwrapABIError(
+			ctx,
+			request,
+			err,
+			c.incentivesContractABI.Errors,
+		)
+	}()
+
+	result, err = c.txService.Call(ctx, request)
 	if err != nil {
 		return nil, err
 	}

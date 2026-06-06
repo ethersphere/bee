@@ -6,6 +6,8 @@ package storeadapter
 
 var RewriteAddressbookEnvelope = rewriteAddressbookEnvelope
 
-type LegacyEntry = legacyEntry
-type MigratedEntry = migratedEntry
-type MigratedAddress = migratedAddress
+type (
+	LegacyEntry     = legacyEntry
+	MigratedEntry   = migratedEntry
+	MigratedAddress = migratedAddress
+)
