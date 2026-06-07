@@ -291,7 +291,7 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 
 	t.logger.Debug("send with retry: started",
 		"description", request.Description,
-		"to", retryToForLog(request, &txState),
+		"to", formatToForLog(request, &txState),
 		"start_tier", tiers[0].String(),
 		"end_tier", t.endTier.String(),
 		"attempts_per_tier", t.attemptsPerTier,
@@ -311,8 +311,8 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 				"attempt", attempt,
 				"tx_hash", txState.LastTxHash,
 				"nonce", txState.Nonce,
-				"to", request.To.String(),
-				"value", request.Value.String(),
+				"to", formatToForLog(request, &txState),
+				"value", formatValueForLog(request, &txState),
 				"description", request.Description)
 		}
 
@@ -356,13 +356,13 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 					replaced = false
 					t.logger.Warning("transaction retry broadcast underpriced, keep watching pending tx",
 						"attempt", attempt, "tier", tier.String(), "pending_tx", txState.LastTxHash,
-						"error", err, "to", retryToForLog(request, &txState))
+						"error", err, "to", formatToForLog(request, &txState))
 				case isNonRetryable(err):
 					terminateTxErr = err
 					return common.Hash{}, nil, terminateTxErr
 				default:
 					t.logger.Warning("transaction retry broadcast failed, will retry",
-						"attempt", attempt, "tier", tier.String(), "error", err, "to", retryToForLog(request, &txState))
+						"attempt", attempt, "tier", tier.String(), "error", err, "to", formatToForLog(request, &txState))
 				}
 			}
 
@@ -618,12 +618,22 @@ func addressForLog(addr *common.Address) string {
 	return addr.Hex()
 }
 
-func retryToForLog(req *TxRequest, state *TransactionRetryState) string {
+func formatToForLog(req *TxRequest, state *TransactionRetryState) string {
 	if state != nil && state.To != nil {
 		return state.To.Hex()
 	}
 	if req != nil && req.To != nil {
 		return req.To.Hex()
+	}
+	return ""
+}
+
+func formatValueForLog(req *TxRequest, state *TransactionRetryState) string {
+	if state != nil && state.Value != nil {
+		return state.Value.String()
+	}
+	if req != nil && req.Value != nil {
+		return req.Value.String()
 	}
 	return ""
 }
