@@ -44,7 +44,7 @@ func SerializeUnderlays(addrs []multiaddr.Multiaddr) ([]byte, error) {
 		return nil, fmt.Errorf("underlay count %d exceeds maximum of %d: %w", len(addrs), maxUnderlaysPerPeer, ErrUnderlayCountExceeded)
 	}
 
-	// The format is: [varint_len_1][addr_1_bytes]...
+	// The format is: [prefix_byte][varint_len_1][addr_1_bytes][varint_len_2][addr_2_bytes]...
 	var buf bytes.Buffer
 	buf.WriteByte(underlayListPrefix)
 
@@ -71,11 +71,11 @@ func DeserializeUnderlays(data []byte) ([]multiaddr.Multiaddr, error) {
 		return nil, fmt.Errorf("underlay data size %d exceeds maximum of %d bytes: %w", len(data), maxUnderlayBytes, ErrUnderlayByteSizeExceeded)
 	}
 
-	if data[0] == underlayListPrefix {
-		return deserializeList(data[1:])
+	if data[0] != underlayListPrefix {
+		return nil, errors.New("invalid underlay payload: missing list prefix")
 	}
 
-	return deserializeList(data)
+	return deserializeList(data[1:])
 }
 
 // deserializeList handles the parsing of the underlays list format.

@@ -199,8 +199,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 
 	observedUnderlays, err := bzz.DeserializeUnderlays(resp.Syn.ObservedUnderlay)
 	if err != nil {
-		s.logger.Debug("handshake invalid synack observed underlay payload", "payload_len", len(resp.Syn.ObservedUnderlay), "first_byte", firstByteString(resp.Syn.ObservedUnderlay), "payload_prefix", payloadPrefix(resp.Syn.ObservedUnderlay), "error", err)
-		return nil, ErrInvalidSyn
+		return nil, invalidObservedUnderlayErr(resp.Syn.ObservedUnderlay, err)
 	}
 
 	advertisableUnderlays := make([]ma.Multiaddr, len(observedUnderlays))
@@ -316,8 +315,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 
 	observedUnderlays, err := bzz.DeserializeUnderlays(syn.ObservedUnderlay)
 	if err != nil {
-		s.logger.Debug("handshake invalid inbound syn observed underlay payload", "payload_len", len(syn.ObservedUnderlay), "first_byte", firstByteString(syn.ObservedUnderlay), "payload_prefix", payloadPrefix(syn.ObservedUnderlay), "error", err)
-		return nil, ErrInvalidSyn
+		return nil, invalidObservedUnderlayErr(syn.ObservedUnderlay, err)
 	}
 
 	advertisableUnderlays := make([]ma.Multiaddr, len(observedUnderlays))
@@ -501,20 +499,9 @@ func (s *Service) parseCheckAck(ctx context.Context, ack *pb.Ack) (*bzz.Address,
 	return bzzAddress, nil
 }
 
-func firstByteString(data []byte) string {
-	if len(data) == 0 {
-		return ""
+func invalidObservedUnderlayErr(payload []byte, err error) error {
+	if len(payload) == 0 {
+		return fmt.Errorf("%w: observed underlay (len=0): %v", ErrInvalidSyn, err)
 	}
-	return fmt.Sprintf("0x%02x", data[0])
-}
-
-func payloadPrefix(data []byte) string {
-	if len(data) == 0 {
-		return ""
-	}
-	n := 16
-	if len(data) < n {
-		n = len(data)
-	}
-	return fmt.Sprintf("%x", data[:n])
+	return fmt.Errorf("%w: observed underlay (len=%d, first=0x%02x): %v", ErrInvalidSyn, len(payload), payload[0], err)
 }
