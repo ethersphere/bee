@@ -438,18 +438,6 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 	if err != nil {
 		return nil, err
 	}
-	if request.GasFeeCap != nil {
-		if request.GasFeeCap.Sign() <= 0 {
-			return nil, errors.New("gas fee cap must be greater than zero")
-		}
-		if gasFeeCap.Cmp(request.GasFeeCap) > 0 {
-			return nil, fmt.Errorf("gas fee cap exceeded: suggested=%s requested=%s", gasFeeCap, request.GasFeeCap)
-		}
-		gasFeeCap = new(big.Int).Set(request.GasFeeCap)
-		if gasTipCap.Cmp(gasFeeCap) > 0 {
-			gasTipCap = new(big.Int).Set(gasFeeCap)
-		}
-	}
 
 	t.logger.Debug("prepared transaction",
 		"to", request.To,
