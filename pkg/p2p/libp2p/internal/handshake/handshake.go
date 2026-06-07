@@ -501,7 +501,7 @@ func (s *Service) parseCheckAck(ctx context.Context, ack *pb.Ack) (*bzz.Address,
 
 func invalidObservedUnderlayErr(payload []byte, err error) error {
 	if len(payload) == 0 {
-		return fmt.Errorf("%w: observed underlay (len=0): %v", ErrInvalidSyn, err)
+		return fmt.Errorf("%w: observed underlay (len=0): %w", ErrInvalidSyn, err)
 	}
-	return fmt.Errorf("%w: observed underlay (len=%d, first=0x%02x): %v", ErrInvalidSyn, len(payload), payload[0], err)
+	return fmt.Errorf("%w: observed underlay (len=%d, first=0x%02x): %w", ErrInvalidSyn, len(payload), payload[0], err)
 }
