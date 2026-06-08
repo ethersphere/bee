@@ -199,7 +199,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 
 	observedUnderlays, err := bzz.DeserializeUnderlays(resp.Syn.ObservedUnderlay)
 	if err != nil {
-		return nil, invalidObservedUnderlayErr(resp.Syn.ObservedUnderlay, err)
+		return nil, fmt.Errorf("%w: observed underlay len=%d: %w", ErrInvalidSyn, len(resp.Syn.ObservedUnderlay), err)
 	}
 
 	advertisableUnderlays := make([]ma.Multiaddr, len(observedUnderlays))
@@ -315,7 +315,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 
 	observedUnderlays, err := bzz.DeserializeUnderlays(syn.ObservedUnderlay)
 	if err != nil {
-		return nil, invalidObservedUnderlayErr(syn.ObservedUnderlay, err)
+		return nil, fmt.Errorf("%w: observed underlay len=%d: %w", ErrInvalidSyn, len(syn.ObservedUnderlay), err)
 	}
 
 	advertisableUnderlays := make([]ma.Multiaddr, len(observedUnderlays))
@@ -497,11 +497,4 @@ func (s *Service) parseCheckAck(ctx context.Context, ack *pb.Ack) (*bzz.Address,
 	}
 
 	return bzzAddress, nil
-}
-
-func invalidObservedUnderlayErr(payload []byte, err error) error {
-	if len(payload) == 0 {
-		return fmt.Errorf("%w: observed underlay (len=0): %w", ErrInvalidSyn, err)
-	}
-	return fmt.Errorf("%w: observed underlay (len=%d, first=0x%02x): %w", ErrInvalidSyn, len(payload), payload[0], err)
 }
