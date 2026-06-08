@@ -1144,6 +1144,29 @@ components:
       required: false
       description: Associate upload with an existing Tag UID
 
+    SwarmSocFieldsParameter:
+      in: header
+      name: swarm-soc-fields
+      schema:
+        type: string
+      required: false
+      description: >
+        Comma separated list of Single Owner Chunk fields to be serialized and
+        channeled on every incoming GSOC message, in the given order. Allowed
+        values are: address, recoveredPubKey, identifier, signature,
+        wrappedAddress, span, payload. When omitted it defaults to "payload".
+
+    SwarmCacheWrappedChunkParameter:
+      in: header
+      name: swarm-cache-wrapped-chunk
+      schema:
+        type: boolean
+      required: false
+      description: >
+        Indicates whether the wrapped chunk of every incoming GSOC message should
+        be cached locally so that it can be resolved through the bytes endpoint
+        (useful when the single owner chunk wraps a root chunk larger than 4KB).
+
     SwarmPinParameter:
       in: header
       name: swarm-pin
