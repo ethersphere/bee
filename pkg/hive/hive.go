@@ -69,7 +69,7 @@ type Options struct {
 }
 
 type Service struct {
-	streamer          p2p.Bee260CompatibilityStreamer
+	streamer          p2p.Streamer
 	addressBook       addressbook.GetPutter
 	addPeersHandler   func(...swarm.Address)
 	networkID         uint64
@@ -92,7 +92,7 @@ type Service struct {
 	chequebookStorer   ChequebookStorer
 }
 
-func New(streamer p2p.Bee260CompatibilityStreamer, addressbook addressbook.GetPutter, networkID uint64, overlay swarm.Address, logger log.Logger, o Options) *Service {
+func New(streamer p2p.Streamer, addressbook addressbook.GetPutter, networkID uint64, overlay swarm.Address, logger log.Logger, o Options) *Service {
 	svc := &Service{
 		streamer:           streamer,
 		logger:             logger.WithName(loggerName).Register(),
