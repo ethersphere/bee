@@ -1,0 +1,110 @@
+# AutoTLS Beekeeper integration tests.
+#
+# Manual-only workflow: it never runs on push/PR commits (the AutoTLS cluster is
+# slow to spin up). Trigger it on demand from the Actions tab via "Run workflow":
+#   - pick the branch to test in the "Use workflow from" dropdown (or pass an
+#     explicit `ref` input), and
+#   - optionally override the beekeeper/beelocal branches used by the tooling.
+name: Beekeeper AutoTLS
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch/tag/SHA to test (defaults to the branch selected above)"
+        required: false
+        default: ""
+      beekeeper_branch:
+        description: "beekeeper repo branch (tooling/checks)"
+        required: false
+        default: "master"
+      beelocal_branch:
+        description: "beelocal repo branch (cluster setup)"
+        required: false
+        default: "main"
+  # TEMPORARY: lets this PR validate the workflow before it reaches master
+  # (workflow_dispatch is only available once the file is on the default branch).
+  # Remove before merge. Note: inputs are empty under pull_request, so the env
+  # fallbacks below apply (BEEKEEPER_BRANCH=master, BEELOCAL_BRANCH=main).
+  pull_request:
+    paths:
+      - .github/workflows/beekeeper-autotls.yml
+
+env:
+  K3S_VERSION: "v1.31.10+k3s1"
+  REPLICA: 3
+  SETUP_CONTRACT_IMAGE: "ethersphere/bee-localchain"
+  SETUP_CONTRACT_IMAGE_TAG: "0.9.4"
+  # Default to the upstream branches; override per-run via the workflow inputs
+  # (e.g. point at the feature branches that define the local-dns-autotls cluster
+  # and the ci-autotls check until that support is merged upstream).
+  BEELOCAL_BRANCH: ${{ inputs.beelocal_branch || 'main' }}
+  BEEKEEPER_BRANCH: ${{ inputs.beekeeper_branch || 'master' }}
+  BEEKEEPER_METRICS_ENABLED: false
+  REACHABILITY_OVERRIDE_PUBLIC: true
+  BATCHFACTOR_OVERRIDE_PUBLIC: 2
+  TIMEOUT: 30m
+  P2P_WSS_ENABLE: true
+  PEBBLE_IMAGE_TAG: "2.9.0"
+  P2P_FORGE_IMAGE_TAG: "v0.7.0"
+  PEBBLE_CERTIFICATE_VALIDITY_PERIOD: "500"
+
+jobs:
+  beekeeper-autotls:
+    name: Integration tests (autotls)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          # explicit ref input wins; otherwise the branch picked in the "Run workflow" dropdown.
+          ref: ${{ inputs.ref != '' && inputs.ref || github.ref }}
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          cache: false
+          go-version-file: go.mod
+      - name: Cache Go Modules
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+      - name: Cache k3s
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: |
+            /tmp/k3s-${{ env.K3S_VERSION }}
+          key: k3s-${{ env.K3S_VERSION }}
+      - name: Build bee
+        run: |
+          patch pkg/api/postage.go .github/patches/postage_api.patch
+          patch pkg/retrieval/retrieval.go .github/patches/retrieval.patch
+          make binary
+          mv dist/bee bee
+      - name: Install beekeeper
+        run: |
+          export PATH=$(pwd):$PATH
+          timeout ${TIMEOUT} make beekeeper BEEKEEPER_INSTALL_DIR=$(pwd)
+          beekeeper version --log-verbosity 0
+          sudo mv beekeeper /usr/local/bin/beekeeper
+      - name: Prepare local cluster
+        run: timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet' ACTION=prepare
+      - name: Set kube config
+        run: |
+          mkdir -p ~/.kube
+          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+      - name: Set local cluster (local-dns-autotls)
+        run: timeout ${TIMEOUT} make deploylocal BEEKEEPER_CLUSTER=local-dns-autotls
+      - name: Test pingpong (autotls)
+        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns-autotls --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done'
+      - name: Test fullconnectivity (autotls)
+        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns-autotls --checks=ci-full-connectivity; do echo "waiting for full connectivity..."; sleep .3; done'
+      - name: Test retrieval (autotls)
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns-autotls --checks=ci-retrieval
+      - name: Test autotls
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns-autotls --checks=ci-autotls

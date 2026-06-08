@@ -773,17 +773,28 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	s.logger.Debug("stream handler: successfully connected to peer (inbound)", "address", i.BzzAddress.Overlay, "light", i.LightString(), "user_agent", peerUserAgent)
 }
 
-// putHandshakeAddress persists a peer's BzzAddress from the handshake.
-// Timestamp and chequebook validation have already run in the handshake; here
-// we only need to perform the atomic registry-plus-addressbook write.
+// putHandshakeAddress persists a peer's BzzAddress, already validated by the
+// handshake, as an atomic registry-plus-addressbook write. The addressbook
+// write is skipped when the stored record is identical and verified, so
+// steady-state reconnects cost no disk write.
 func (s *Service) putHandshakeAddress(addr *bzz.Address) error {
+	existing, verified, err := s.addressbook.Get(addr.Overlay)
+	if err != nil && !errors.Is(err, addressbook.ErrNotFound) {
+		return fmt.Errorf("addressbook get: %w", err)
+	}
+	unchanged := err == nil && verified && existing.Equal(addr)
+
 	if s.chequebookStorer != nil {
 		// The addressbook write is passed as a callback so it runs under the
 		// registry's mutex, keeping the in-memory registry and on-disk addressbook
 		// in sync if gossip and a direct handshake race for the same peer.
+		var writeAddressbook func() error
+		if !unchanged {
+			writeAddressbook = func() error { return s.addressbook.Put(addr.Overlay, *addr, true) }
+		}
 		if err := s.chequebookStorer.Put(
 			addr.Overlay, addr.ChequebookAddress, addr.Timestamp, bzz.TimestampSourceHandshake,
-			func() error { return s.addressbook.Put(addr.Overlay, *addr, true) },
+			writeAddressbook,
 		); err != nil {
 			// Concurrent ingestion (e.g. gossip) may have advanced the
 			// stored record between the handshake's stale check and this
@@ -797,6 +808,11 @@ func (s *Service) putHandshakeAddress(addr *bzz.Address) error {
 		}
 		return nil
 	}
+
+	if unchanged {
+		return nil
+	}
+
 	return s.addressbook.Put(addr.Overlay, *addr, true)
 }
 

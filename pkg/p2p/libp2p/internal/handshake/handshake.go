@@ -102,6 +102,7 @@ type Service struct {
 	mu                    sync.RWMutex
 	hostAddresser         Addresser
 	now                   func() time.Time
+	addrCache             addressCache // session-stable signed address, keyed by chequebook + underlays
 }
 
 // Info contains the information received from the handshake.
@@ -147,14 +148,15 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 }
 
 // SetChequebookAddress sets the local chequebook address included in
-// subsequent signed BzzAddress payloads. The zero value clears it.
+// subsequent signed BzzAddress payloads; the zero value clears it. The
+// chequebook is part of the signed-address cache key, so the next handshake
+// misses the cache and re-signs with the new chequebook.
 func (s *Service) SetChequebookAddress(addr common.Address) {
 	if (addr == common.Address{}) {
 		s.chequebookAddr.Store(nil)
-		return
+	} else {
+		s.chequebookAddr.Store(&addr)
 	}
-	cp := addr
-	s.chequebookAddr.Store(&cp)
 }
 
 func (s *Service) chequebookAddress() common.Address {
@@ -162,6 +164,30 @@ func (s *Service) chequebookAddress() common.Address {
 		return *v
 	}
 	return common.Address{}
+}
+
+// signedAddress returns the session-stable signed BzzAddress advertising the
+// given canonical underlay set. The record is minted on first use and reused
+// byte-stable (same timestamp and signature) across handshakes, so receiving
+// peers see it as unchanged and skip redundant addressbook writes and gossip
+// updates. It is re-minted when the underlay set or the chequebook changes.
+func (s *Service) signedAddress(underlays []ma.Multiaddr) (*bzz.Address, error) {
+	underlaysBinary, err := bzz.SerializeUnderlays(underlays)
+	if err != nil {
+		return nil, fmt.Errorf("serialize underlays: %w", err)
+	}
+
+	chequebook := s.chequebookAddress()
+	key := string(chequebook.Bytes()) + string(underlaysBinary)
+
+	return s.addrCache.getOrMint(key, s.now().Unix(), func(timestamp int64) (*bzz.Address, error) {
+		addr, err := bzz.NewAddress(s.signer, underlays, s.overlay, s.networkID, s.nonce, timestamp, chequebook)
+		if err != nil {
+			return nil, err
+		}
+		s.metrics.AddressMinted.Inc()
+		return addr, nil
+	})
 }
 
 func (s *Service) SetPicker(n p2p.Picker) {
@@ -268,7 +294,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		s.metrics.AdvertisableUnderlaysTruncated.Inc()
 	}
 
-	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce, s.now().Unix(), s.chequebookAddress())
+	bzzAddress, err := s.signedAddress(advertisableUnderlays)
 	if err != nil {
 		return nil, err
 	}
@@ -381,7 +407,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 		s.metrics.AdvertisableUnderlaysTruncated.Inc()
 	}
 
-	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce, s.now().Unix(), s.chequebookAddress())
+	bzzAddress, err := s.signedAddress(advertisableUnderlays)
 	if err != nil {
 		return nil, err
 	}
