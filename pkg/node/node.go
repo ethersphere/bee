@@ -566,7 +566,7 @@ func NewBee(
 			return nil, fmt.Errorf("init chequebook factory: %w", err)
 		}
 
-		if o.ChequebookEnable && chainEnabled {
+		if o.ChequebookEnable {
 			chequebookService, err = InitChequebookService(
 				ctx,
 				logger,
