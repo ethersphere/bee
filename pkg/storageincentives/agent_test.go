@@ -215,7 +215,7 @@ type mockchainBackend struct {
 	balance       *big.Int
 }
 
-func (m *mockchainBackend) BlockNumber(context.Context) (uint64, error) {
+func (m *mockchainBackend) currentBlock() (uint64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -233,9 +233,26 @@ func (m *mockchainBackend) BlockNumber(context.Context) (uint64, error) {
 	return ret, nil
 }
 
-func (m *mockchainBackend) HeaderByNumber(context.Context, *big.Int) (*types.Header, error) {
+func (m *mockchainBackend) BlockNumber(context.Context) (uint64, error) {
+	return m.currentBlock()
+}
+
+func (m *mockchainBackend) HeaderByNumber(_ context.Context, number *big.Int) (*types.Header, error) {
+	if number != nil {
+		return &types.Header{
+			Number: number,
+			Time:   uint64(time.Now().Unix()),
+		}, nil
+	}
+
+	block, err := m.currentBlock()
+	if err != nil {
+		return nil, err
+	}
+
 	return &types.Header{
-		Time: uint64(time.Now().Unix()),
+		Number: new(big.Int).SetUint64(block),
+		Time:   uint64(time.Now().Unix()),
 	}, nil
 }
 

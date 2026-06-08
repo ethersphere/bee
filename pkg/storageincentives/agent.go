@@ -209,8 +209,9 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	})
 
 	var (
-		prevPhase    PhaseType = -1
-		currentPhase PhaseType
+		prevPhase     PhaseType = -1
+		currentPhase  PhaseType
+		lastSeenBlock uint64
 	)
 
 	phaseCheck := func(ctx context.Context) {
@@ -218,12 +219,23 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		defer cancel()
 
 		a.metrics.BackendCalls.Inc()
-		block, err := a.backend.BlockNumber(ctx)
+		header, err := a.backend.HeaderByNumber(ctx, nil)
 		if err != nil {
 			a.metrics.BackendErrors.Inc()
-			a.logger.Error(err, "getting block number")
+			a.logger.Error(err, "getting latest block header")
 			return
 		}
+		if header == nil || header.Number == nil {
+			a.metrics.BackendErrors.Inc()
+			a.logger.Error(errors.New("latest block header unavailable"), "getting latest block header")
+			return
+		}
+
+		block := header.Number.Uint64()
+		if block <= lastSeenBlock {
+			return
+		}
+		lastSeenBlock = block
 
 		a.state.SetCurrentBlock(block)
 
