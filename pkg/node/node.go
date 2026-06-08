@@ -548,7 +548,7 @@ func NewBee(
 
 	chainCfg, knownChain := config.GetByChainID(chainID)
 
-	bzzTokenAddress := chainCfg.BzzAddress
+	bzzTokenAddress := chainCfg.TokenContractAddress
 	if o.BzzTokenAddress != (common.Address{}) {
 		bzzTokenAddress = o.BzzTokenAddress
 	}

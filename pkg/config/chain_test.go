@@ -18,7 +18,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/config"
 )
 
-func TestChainConfigBzzAddress(t *testing.T) {
+func TestChainConfigTokenContractAddress(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -45,14 +45,14 @@ func TestChainConfigBzzAddress(t *testing.T) {
 			if (tc.want == common.Address{}) {
 				t.Fatal("expected a non-zero bzz token address")
 			}
-			if tc.cfg.BzzAddress != tc.want {
-				t.Fatalf("got bzz address %s, want %s", tc.cfg.BzzAddress, tc.want)
+			if tc.cfg.TokenContractAddress != tc.want {
+				t.Fatalf("got token contract address %s, want %s", tc.cfg.TokenContractAddress, tc.want)
 			}
 		})
 	}
 }
 
-func TestGetByChainIDBzzAddress(t *testing.T) {
+func TestGetByChainIDTokenContractAddress(t *testing.T) {
 	t.Parallel()
 
 	t.Run("known chain", func(t *testing.T) {
@@ -62,8 +62,8 @@ func TestGetByChainIDBzzAddress(t *testing.T) {
 		if !found {
 			t.Fatal("expected mainnet to be a known chain")
 		}
-		if cfg.BzzAddress != common.HexToAddress(abi.MainnetBzzTokenAddress) {
-			t.Fatalf("got bzz address %s, want %s", cfg.BzzAddress, abi.MainnetBzzTokenAddress)
+		if cfg.TokenContractAddress != common.HexToAddress(abi.MainnetBzzTokenAddress) {
+			t.Fatalf("got token contract address %s, want %s", cfg.TokenContractAddress, abi.MainnetBzzTokenAddress)
 		}
 	})
 
@@ -74,8 +74,8 @@ func TestGetByChainIDBzzAddress(t *testing.T) {
 		if found {
 			t.Fatal("expected unknown chain to be reported as not found")
 		}
-		if (cfg.BzzAddress != common.Address{}) {
-			t.Fatalf("expected zero bzz address for unknown chain, got %s", cfg.BzzAddress)
+		if (cfg.TokenContractAddress != common.Address{}) {
+			t.Fatalf("expected zero token contract address for unknown chain, got %s", cfg.TokenContractAddress)
 		}
 	})
 }
