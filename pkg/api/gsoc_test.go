@@ -195,7 +195,7 @@ func TestGsocWebsocketSocFields(t *testing.T) {
 	socCh, _ = soc.FromChunk(signedCh)
 	g.Handle(socCh)
 
-	expected := make([]byte, 0)
+	expected := make([]byte, 0, len(id)+swarm.HashSize+len(payload))
 	expected = append(expected, id...)
 	expected = append(expected, ch.Address().Bytes()...)
 	expected = append(expected, payload...)
