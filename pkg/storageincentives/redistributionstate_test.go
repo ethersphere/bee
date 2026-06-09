@@ -295,9 +295,10 @@ func TestReward(t *testing.T) {
 	}
 }
 
-// TestFee check if fees increments when called multiple times
-func TestFee(t *testing.T) {
+// TestRoundFee check if fees increments when called multiple times
+func TestRoundFee(t *testing.T) {
 	t.Parallel()
+	const round = 1
 	firstFee := big.NewInt(10)
 	state := createRedistribution(t, nil, []transactionmock.Option{
 		transactionmock.WithTransactionFeeFunc(func(ctx context.Context, txHash common.Hash) (*big.Int, error) {
@@ -305,7 +306,7 @@ func TestFee(t *testing.T) {
 		}),
 	})
 	ctx := context.Background()
-	state.AddFee(ctx, common.Hash{})
+	state.AddRoundFee(ctx, round, common.Hash{})
 	gotFirstResult, err := state.Status()
 	if err != nil {
 		t.Fatal("failed to get status")
@@ -320,7 +321,7 @@ func TestFee(t *testing.T) {
 		}),
 	}...)
 
-	state.AddFee(ctx, common.Hash{})
+	state.AddRoundFee(ctx, round, common.Hash{})
 	gotSecondResult, err := state.Status()
 	if err != nil {
 		t.Fatal("failed to get status")

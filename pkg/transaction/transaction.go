@@ -111,7 +111,8 @@ type Service interface {
 	// Send creates a transaction based on the request (with gasprice increased by provided percentage) and sends it.
 	Send(ctx context.Context, request *TxRequest, tipCapBoostPercent int) (txHash common.Hash, err error)
 	// SendWithRetry sends a transaction using fee-history tiers and automatic fee escalation; see send_tx_with_retry.go.
-	SendWithRetry(ctx context.Context, request *TxRequest) (txHash common.Hash, receipt *types.Receipt, err error)
+	// Optional RetryOption values can override per-call retry behaviour (e.g. bypass price cap).
+	SendWithRetry(ctx context.Context, request *TxRequest, opts ...RetryOption) (txHash common.Hash, receipt *types.Receipt, err error)
 	// Call simulate a transaction based on the request.
 	Call(ctx context.Context, request *TxRequest) (result []byte, err error)
 	// WaitForReceipt waits until either the transaction with the given hash has been mined or the context is cancelled.
@@ -582,6 +583,15 @@ func (t *transactionService) ResendTransaction(ctx context.Context, txHash commo
 	gasFeeCap, gasTipCap, err := t.backend.SuggestedFeeAndTip(ctx, sctx.GetGasPrice(ctx), storedTransaction.GasTipBoost)
 	if err != nil {
 		return err
+	}
+	if storedTransaction.GasFeeCap != nil && gasFeeCap.Cmp(storedTransaction.GasFeeCap) > 0 {
+		gasFeeCap = new(big.Int).Set(storedTransaction.GasFeeCap)
+	}
+	if storedTransaction.GasTipCap != nil && gasTipCap.Cmp(storedTransaction.GasTipCap) > 0 {
+		gasTipCap = new(big.Int).Set(storedTransaction.GasTipCap)
+	}
+	if gasTipCap.Cmp(gasFeeCap) > 0 {
+		gasTipCap = new(big.Int).Set(gasFeeCap)
 	}
 
 	tx := types.NewTx(&types.DynamicFeeTx{

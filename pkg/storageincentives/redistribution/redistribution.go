@@ -6,14 +6,13 @@ package redistribution
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/log"
-	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
@@ -21,13 +20,28 @@ import (
 const (
 	loggerName      = "redistributionContract"
 	BoostTipPercent = 50
+
+	minEstimatedGasLimit = 250_000
+
+	// redistributionGameTransactionsRetryDelay caps the retry delay for redistribution game txs.
+	redistributionGameTransactionsRetryDelay = 35 * time.Second
 )
+
+// ClaimOpts configures optional claim behaviour: after OverrideAfterBlock (absolute
+// chain block number), if ExpectedReward covers upper-bound claim cost plus
+// RoundFees, the max-tx-cost limit is bypassed for that send attempt.
+type ClaimOpts struct {
+	OverrideAfterBlock uint64
+	CurrentBlockFn     func() uint64
+	ExpectedReward     *big.Int
+	RoundFees          *big.Int
+}
 
 type Contract interface {
 	ReserveSalt(context.Context) ([]byte, error)
 	IsPlaying(context.Context, uint8) (bool, error)
 	IsWinner(context.Context) (bool, error)
-	Claim(context.Context, ChunkInclusionProofs) (common.Hash, error)
+	Claim(context.Context, ChunkInclusionProofs, *ClaimOpts) (common.Hash, error)
 	Commit(context.Context, []byte, uint64) (common.Hash, error)
 	Reveal(context.Context, uint8, []byte, []byte) (common.Hash, error)
 }
@@ -40,6 +54,16 @@ type contract struct {
 	incentivesContractAddress common.Address
 	incentivesContractABI     abi.ABI
 	gasLimit                  uint64
+	retryDelayRewrite         func(time.Duration) time.Duration
+}
+
+type Option func(*contract)
+
+// WithRetryDelayRewrite sets a function that rewrites the configured SendWithRetry delay.
+func WithRetryDelayRewrite(fn func(time.Duration) time.Duration) Option {
+	return func(c *contract) {
+		c.retryDelayRewrite = fn
+	}
 }
 
 func New(
@@ -50,8 +74,9 @@ func New(
 	incentivesContractAddress common.Address,
 	incentivesContractABI abi.ABI,
 	gasLimit uint64,
+	opts ...Option,
 ) Contract {
-	return &contract{
+	c := &contract{
 		overlay:                   overlay,
 		owner:                     owner,
 		logger:                    logger.WithName(loggerName).Register(),
@@ -60,6 +85,14 @@ func New(
 		incentivesContractABI:     incentivesContractABI,
 		gasLimit:                  gasLimit,
 	}
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	if c.retryDelayRewrite == nil {
+		c.retryDelayRewrite = capRetryDelay
+	}
+	return c
 }
 
 // IsPlaying checks if the overlay is participating in the upcoming round.
@@ -101,8 +134,12 @@ func (c *contract) IsWinner(ctx context.Context) (isWinner bool, err error) {
 	return results[0].(bool), nil
 }
 
-// Claim sends a transaction to blockchain if a win is claimed.
-func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs) (common.Hash, error) {
+// Claim sends a transaction to blockchain if a win is claimed. When opts is
+// non-nil and the configured max-tx-price would block the broadcast,
+// canOverrideClaim is consulted: if the override block threshold has passed
+// and ExpectedReward covers the estimated cost plus previous round fees,
+// the price cap is bypassed.
+func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs, opts *ClaimOpts) (txHash common.Hash, err error) {
 	callData, err := c.incentivesContractABI.Pack("claim", proofs.A, proofs.B, proofs.C)
 	if err != nil {
 		return common.Hash{}, err
@@ -110,18 +147,59 @@ func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs) (comm
 	request := &transaction.TxRequest{
 		To:                   &c.incentivesContractAddress,
 		Data:                 callData,
-		GasPrice:             sctx.GetGasPrice(ctx),
-		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
-		MinEstimatedGasLimit: 500_000,
+		GasLimit:             c.gasLimit,
+		MinEstimatedGasLimit: minEstimatedGasLimit,
 		Value:                big.NewInt(0),
 		Description:          "claim win transaction",
 	}
-	txHash, err := c.sendAndWait(ctx, request)
+
+	retryOpts := []transaction.RetryOption{
+		transaction.WithIgnoreMaxPrice(func(gasFeeCap *big.Int) bool {
+			return c.canOverrideClaim(opts, gasFeeCap)
+		}),
+	}
+
+	txHash, err = c.sendAndWait(ctx, request, retryOpts...)
 	if err != nil {
 		return txHash, fmt.Errorf("claim: %w", err)
 	}
-
 	return txHash, nil
+}
+
+// canOverrideClaim decides whether the claim transaction should bypass the
+// max-tx-price cap. gasFeeCap is the actual max fee per gas (wei) that the
+// retry loop wants to use — it is provided by suggestGasFeeForTier
+// so there is no redundant estimation.
+func (c *contract) canOverrideClaim(opts *ClaimOpts, gasFeeCap *big.Int) bool {
+	if opts == nil || opts.OverrideAfterBlock == 0 || opts.CurrentBlockFn == nil || opts.RoundFees == nil {
+		return false
+	}
+
+	if opts.CurrentBlockFn() < opts.OverrideAfterBlock {
+		return false
+	}
+
+	if opts.ExpectedReward == nil || opts.ExpectedReward.Sign() <= 0 {
+		return false
+	}
+
+	gasUnits := c.gasLimit
+	if gasUnits <= 0 {
+		gasUnits = minEstimatedGasLimit
+	}
+
+	txCost := new(big.Int).Mul(gasFeeCap, big.NewInt(int64(gasUnits)))
+	totalSpent := new(big.Int).Add(txCost, opts.RoundFees)
+	if opts.ExpectedReward.Cmp(totalSpent) < 0 {
+		c.logger.Info("claim override: reward does not cover cost",
+			"tx_cost", txCost,
+			"round_fees", opts.RoundFees,
+			"total_spent", totalSpent,
+			"expected_reward", opts.ExpectedReward,
+		)
+		return false
+	}
+	return true
 }
 
 // Commit submits the obfusHash hash by sending a transaction to the blockchain.
@@ -133,9 +211,8 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint64) (
 	request := &transaction.TxRequest{
 		To:                   &c.incentivesContractAddress,
 		Data:                 callData,
-		GasPrice:             sctx.GetGasPrice(ctx),
-		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
-		MinEstimatedGasLimit: 500_000,
+		GasLimit:             c.gasLimit,
+		MinEstimatedGasLimit: minEstimatedGasLimit,
 		Value:                big.NewInt(0),
 		Description:          "commit transaction",
 	}
@@ -156,9 +233,8 @@ func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommit
 	request := &transaction.TxRequest{
 		To:                   &c.incentivesContractAddress,
 		Data:                 callData,
-		GasPrice:             sctx.GetGasPrice(ctx),
-		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
-		MinEstimatedGasLimit: 500_000,
+		GasLimit:             c.gasLimit,
+		MinEstimatedGasLimit: minEstimatedGasLimit,
 		Value:                big.NewInt(0),
 		Description:          "reveal transaction",
 	}
@@ -190,7 +266,11 @@ func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 	return salt[:], nil
 }
 
-func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
+func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest, opts ...transaction.RetryOption) (txHash common.Hash, err error) {
+	if c.retryDelayRewrite != nil {
+		opts = append(opts, transaction.WithRetryDelay(c.retryDelayRewrite))
+	}
+
 	defer func() {
 		err = c.txService.UnwrapABIError(
 			ctx,
@@ -200,14 +280,8 @@ func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxReque
 		)
 	}()
 
-	txHash, receipt, err := c.txService.SendWithRetry(ctx, request)
-	if err != nil {
-		return txHash, err
-	}
-	if receipt == nil {
-		return txHash, errors.New("missing receipt after send with retry")
-	}
-	return txHash, nil
+	txHash, _, err = c.txService.SendWithRetry(ctx, request, opts...)
+	return txHash, err
 }
 
 // callTx simulates a transaction based on tx request.
@@ -220,4 +294,13 @@ func (c *contract) callTx(ctx context.Context, callData []byte) ([]byte, error) 
 		return nil, err
 	}
 	return result, nil
+}
+
+// capRetryDelay limits the retry delay for redistribution game transactions
+// to redistributionGameTransactionsRetryDelay.
+func capRetryDelay(d time.Duration) time.Duration {
+	if d > redistributionGameTransactionsRetryDelay {
+		return redistributionGameTransactionsRetryDelay
+	}
+	return d
 }

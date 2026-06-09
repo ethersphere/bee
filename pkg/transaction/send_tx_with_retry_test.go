@@ -67,7 +67,7 @@ func TestSuggestGasFeeForTier(t *testing.T) {
 		backend := backendmock.New(headerOption(), feeHistoryOption(&feeHistoryCalls))
 
 		gasFeeCap, gasTipCap, err := transaction.SuggestGasFeeForTier(
-			backend, nil, context.Background(), int(transaction.FeeTierMarket), nil,
+			backend, nil, context.Background(), int(transaction.FeeTierMarket), nil, nil,
 		)
 
 		require.NoError(t, err)
@@ -83,7 +83,7 @@ func TestSuggestGasFeeForTier(t *testing.T) {
 		backend := backendmock.New(headerOption(), feeHistoryOption(&feeHistoryCalls))
 
 		gasFeeCap, gasTipCap, err := transaction.SuggestGasFeeForTier(
-			backend, nil, context.Background(), int(transaction.FeeTierMarket), big.NewInt(prevTip),
+			backend, nil, context.Background(), int(transaction.FeeTierMarket), big.NewInt(prevTip), nil,
 		)
 
 		require.NoError(t, err)
@@ -101,12 +101,55 @@ func TestSuggestGasFeeForTier(t *testing.T) {
 		backend := backendmock.New(headerOption(), feeHistoryOption(nil))
 
 		gasFeeCap, gasTipCap, err := transaction.SuggestGasFeeForTier(
-			backend, maxTxPrice, context.Background(), int(transaction.FeeTierMarket), big.NewInt(prevTip),
+			backend, maxTxPrice, context.Background(), int(transaction.FeeTierMarket), big.NewInt(prevTip), nil,
 		)
 
 		assert.ErrorIs(t, err, transaction.ErrTxMaxPriceExceeded)
 		assert.Nil(t, gasFeeCap)
 		assert.Nil(t, gasTipCap)
+	})
+
+	t.Run("IgnoreMaxPrice override bypasses limit", func(t *testing.T) {
+		t.Parallel()
+
+		maxTxPrice := big.NewInt(baseFeeCap + prevTip - 1)
+		backend := backendmock.New(headerOption(), feeHistoryOption(nil))
+
+		var receivedFeeCap *big.Int
+		overrides := &transaction.RetryOverrides{
+			IgnoreMaxPrice: func(feeCap *big.Int) bool {
+				receivedFeeCap = feeCap
+				return true
+			},
+		}
+
+		gasFeeCap, gasTipCap, err := transaction.SuggestGasFeeForTier(
+			backend, maxTxPrice, context.Background(), int(transaction.FeeTierMarket), big.NewInt(prevTip), overrides,
+		)
+
+		require.NoError(t, err, "override should bypass ErrTxMaxPriceExceeded")
+		assert.Equal(t, escalatedTip, gasTipCap.Int64(), "must use escalated tip despite exceeding max")
+		assert.Equal(t, baseFeeCap+escalatedTip, gasFeeCap.Int64())
+		assert.NotNil(t, receivedFeeCap, "IgnoreMaxPrice must receive gasFeeCap")
+		assert.Equal(t, gasFeeCap.Int64(), receivedFeeCap.Int64(),
+			"IgnoreMaxPrice must receive the actual gasFeeCap that would be used")
+	})
+
+	t.Run("IgnoreMaxPrice false does not bypass limit", func(t *testing.T) {
+		t.Parallel()
+
+		maxTxPrice := big.NewInt(baseFeeCap + prevTip - 1)
+		backend := backendmock.New(headerOption(), feeHistoryOption(nil))
+
+		overrides := &transaction.RetryOverrides{
+			IgnoreMaxPrice: func(_ *big.Int) bool { return false },
+		}
+
+		_, _, err := transaction.SuggestGasFeeForTier(
+			backend, maxTxPrice, context.Background(), int(transaction.FeeTierMarket), big.NewInt(prevTip), overrides,
+		)
+
+		assert.ErrorIs(t, err, transaction.ErrTxMaxPriceExceeded)
 	})
 }
 
@@ -1038,6 +1081,166 @@ func TestSendWithRetry_MaxTxPriceCap(t *testing.T) {
 	assert.Error(t, err)
 	assert.Len(t, broadcasts, 0,
 		"no transaction should be sent when maxTxPrice is below the minimum fee")
+}
+
+// WithIgnoreMaxPrice override allows transactions to be sent despite exceeding maxTxPrice.
+func TestSendWithRetry_IgnoreMaxPriceOverride(t *testing.T) {
+	t.Parallel()
+	s := newRetryTestSetup()
+	store := storemock.NewStateStore()
+	testutil.CleanupCloser(t, store)
+
+	marketTip := s.expectedMarketTip()
+	maxTxPrice := new(big.Int).Sub(s.expectedGasFeeCap(marketTip), big.NewInt(1))
+
+	cfg := s.retryConfig()
+	cfg.MaxTxPrice = maxTxPrice
+
+	var broadcasts []capturedBroadcast
+	var overrideCalls atomic.Int32
+
+	svc, err := transaction.NewService(log.Noop, s.sender,
+		backendmock.New(
+			s.nonceOption(),
+			s.feeHistoryOption(nil),
+			s.headerOption(),
+			s.estimateGasOption(),
+			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+				broadcasts = append(broadcasts, captureTx(tx))
+				return nil
+			}),
+		),
+		signermock.New(s.passThroughSigner(), s.signerAddr()),
+		store,
+		s.chainID,
+		monitormock.New(
+			monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
+				ch := make(chan types.Receipt, 1)
+				ch <- types.Receipt{TxHash: txHash, Status: 1}
+				return ch, nil, nil
+			}),
+		),
+		0,
+		cfg,
+	)
+	require.NoError(t, err)
+	testutil.CleanupCloser(t, svc)
+
+	var receivedFeeCaps []*big.Int
+	txHash, receipt, err := svc.SendWithRetry(context.Background(), s.request(),
+		transaction.WithIgnoreMaxPrice(func(gasFeeCap *big.Int) bool {
+			overrideCalls.Add(1)
+			receivedFeeCaps = append(receivedFeeCaps, new(big.Int).Set(gasFeeCap))
+			return true
+		}),
+	)
+
+	require.NoError(t, err)
+	assert.NotEqual(t, common.Hash{}, txHash)
+	require.NotNil(t, receipt)
+	assert.Equal(t, uint64(1), receipt.Status)
+
+	require.Len(t, broadcasts, 1, "transaction should be sent despite exceeding maxTxPrice")
+	assert.Equal(t, marketTip.Int64(), broadcasts[0].GasTipCap.Int64())
+	assert.GreaterOrEqual(t, int(overrideCalls.Load()), 1, "override function must have been called")
+	require.Len(t, receivedFeeCaps, 1, "override should have received gasFeeCap")
+	assert.Equal(t, broadcasts[0].GasFeeCap.Int64(), receivedFeeCaps[0].Int64(),
+		"override must receive the same gasFeeCap as the broadcast")
+}
+
+// RetryDelay can be rewritten per SendWithRetry call after the service is constructed.
+func TestSendWithRetry_RetryDelayPerTransactionOverride(t *testing.T) {
+	t.Parallel()
+
+	s := newRetryTestSetup()
+	store := storemock.NewStateStore()
+	testutil.CleanupCloser(t, store)
+
+	const (
+		serviceRetryDelay = 200 * time.Millisecond
+		overrideDelay     = 50 * time.Millisecond
+		checkAfter        = 300 * time.Millisecond
+		waitTimeout       = 5 * time.Second
+	)
+
+	cfg := s.retryConfig()
+	cfg.AttemptsPerTier = 2
+	cfg.RetryDelay = serviceRetryDelay
+
+	var (
+		sendCalls         atomic.Int32
+		deferFirstPrepare atomic.Bool
+	)
+	sendTxErr := errors.New("rpc error")
+
+	svc, err := transaction.NewService(log.Noop, s.sender,
+		backendmock.New(
+			s.nonceOption(),
+			s.feeHistoryOption(nil),
+			backendmock.WithHeaderbyNumberFunc(func(ctx context.Context, number *big.Int) (*types.Header, error) {
+				if deferFirstPrepare.CompareAndSwap(true, false) {
+					return nil, errors.New("temporary RPC error")
+				}
+				return &types.Header{BaseFee: new(big.Int).Set(s.baseFee)}, nil
+			}),
+			s.estimateGasOption(),
+			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+				sendCalls.Add(1)
+				return sendTxErr
+			}),
+		),
+		signermock.New(s.passThroughSigner(), s.signerAddr()),
+		store,
+		s.chainID,
+		monitormock.New(
+			monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
+				return make(chan types.Receipt), make(chan error), nil
+			}),
+		),
+		0,
+		cfg,
+	)
+	require.NoError(t, err)
+	testutil.CleanupCloser(t, svc)
+
+	ctx := context.Background()
+
+	// Scenario 1: overridden delay (50ms) — both attempts should complete within checkAfter.
+	done1 := make(chan struct{})
+	go func() {
+		defer close(done1)
+		_, _, _ = svc.SendWithRetry(ctx, s.request(),
+			transaction.WithRetryDelay(func(time.Duration) time.Duration {
+				return overrideDelay
+			}),
+		)
+	}()
+
+	time.Sleep(checkAfter)
+	assert.EqualValues(t, 2, sendCalls.Load(), "overridden 50ms delay should allow 2 broadcasts within 300ms")
+	select {
+	case <-done1:
+	case <-time.After(waitTimeout):
+		t.Fatal("timed out waiting for overridden-delay SendWithRetry to finish")
+	}
+
+	// Scenario 2: default delay (200ms) with first prepare failing — only 1 send within checkAfter.
+	sendCalls.Store(0)
+	deferFirstPrepare.Store(true)
+
+	done2 := make(chan struct{})
+	go func() {
+		defer close(done2)
+		_, _, _ = svc.SendWithRetry(ctx, s.request())
+	}()
+
+	time.Sleep(checkAfter)
+	assert.EqualValues(t, 1, sendCalls.Load(), "default 200ms delay should yield only 1 broadcast within 300ms")
+	select {
+	case <-done2:
+	case <-time.After(waitTimeout):
+		t.Fatal("timed out waiting for default-delay SendWithRetry to finish")
+	}
 }
 
 func TestSendWithRetry_FeePriorityContextOverride(t *testing.T) {
