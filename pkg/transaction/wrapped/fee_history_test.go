@@ -37,3 +37,17 @@ func TestSuggestedFeeAndTipsFromFeeHistoryResult(t *testing.T) {
 		t.Fatalf("aggressive: got %s want %s", got, want)
 	}
 }
+
+func TestSuggestedFeeAndTipsFromFeeHistoryResult_NoRewardEntries(t *testing.T) {
+	t.Parallel()
+
+	fh := &ethereum.FeeHistory{
+		BaseFee: []*big.Int{big.NewInt(1000)},
+		Reward:  [][]*big.Int{},
+	}
+
+	_, _, _, err := suggestedFeesFromFeeHistoryResult(fh)
+	if err == nil {
+		t.Fatal("expected error when fee history has no reward entries")
+	}
+}

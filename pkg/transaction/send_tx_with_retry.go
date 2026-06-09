@@ -115,7 +115,7 @@ func (t *transactionService) suggestGasFeeForTier(ctx context.Context, tier feeT
 func (t *transactionService) tierRangeForRequest(ctx context.Context) ([]feeTier, error) {
 	start := t.startTier
 	if override := sctx.GetFeePriority(ctx); override != "" {
-		parsed, err := parseFeeTier(override)
+		parsed, err := ParseFeeTier(override)
 		if err != nil {
 			return nil, fmt.Errorf("fee priority: %w", err)
 		}
@@ -199,12 +199,12 @@ func (t *transactionService) broadcastTx(ctx context.Context, request *TxRequest
 }
 
 func (t *transactionService) deleteRetryStateAndPending(retryKey string, state TransactionRetryState, keepLast bool) {
-	if retryKey == "" {
-		return
+	if retryKey != "" {
+		_ = t.store.Delete(retryKey)
 	}
-	_ = t.store.Delete(retryKey)
 	for _, h := range state.AllTxHashes {
 		_ = t.store.Delete(pendingTransactionKey(h))
+		_ = t.store.Delete(storedTransactionKey(h))
 	}
 	if state.LastTxHash != (common.Hash{}) {
 		if !keepLast {
@@ -268,6 +268,9 @@ func (t *transactionService) retry(ctx context.Context, txRetryKey string, reque
 		}
 
 		monitorLast := errors.Is(terminateTxErr, ErrTxMaxPriceExceeded) || errors.Is(terminateTxErr, ErrAllAttemptsExhausted)
+		if monitorLast && txState.LastTxHash != (common.Hash{}) {
+			t.waitForPendingTx(txState.LastTxHash)
+		}
 		t.deleteRetryStateAndPending(txRetryKey, txState, monitorLast)
 		t.recordRetryComplete(attempt, terminateTxErr)
 	}()

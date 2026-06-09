@@ -180,29 +180,7 @@ func (c *postageContract) sendApproveTransaction(ctx context.Context, amount *bi
 		)
 	}()
 
-	if !sctx.GetDisableRetry(ctx) {
-		_, receipt, err = c.transactionService.SendWithRetry(ctx, request)
-		if err != nil {
-			return nil, err
-		}
-		return receipt, nil
-	}
-
-	txHash, err := c.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
-	if err != nil {
-		return nil, err
-	}
-
-	receipt, err = c.transactionService.WaitForReceipt(ctx, txHash)
-	if err != nil {
-		return nil, err
-	}
-
-	if receipt.Status == 0 {
-		return nil, transaction.ErrTransactionReverted
-	}
-
-	return receipt, nil
+	return c.sendRequest(ctx, request)
 }
 
 func (c *postageContract) sendTransaction(ctx context.Context, callData []byte, desc string) (receipt *types.Receipt, err error) {
@@ -224,28 +202,32 @@ func (c *postageContract) sendTransaction(ctx context.Context, callData []byte, 
 		)
 	}()
 
-	if !sctx.GetDisableRetry(ctx) {
-		_, receipt, err = c.transactionService.SendWithRetry(ctx, request)
+	return c.sendRequest(ctx, request)
+}
+
+// sendRequest sends a postage transaction. When Gas-Price is set in the request
+// context the legacy Send path is used (client spend ceiling); otherwise
+// SendWithRetry applies automatic fee escalation.
+func (c *postageContract) sendRequest(ctx context.Context, request *transaction.TxRequest) (*types.Receipt, error) {
+	if sctx.GetGasPrice(ctx) != nil {
+		txHash, err := c.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
 		if err != nil {
 			return nil, err
+		}
+		receipt, err := c.transactionService.WaitForReceipt(ctx, txHash)
+		if err != nil {
+			return nil, err
+		}
+		if receipt.Status == 0 {
+			return nil, transaction.ErrTransactionReverted
 		}
 		return receipt, nil
 	}
 
-	txHash, err := c.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
+	_, receipt, err := c.transactionService.SendWithRetry(ctx, request)
 	if err != nil {
 		return nil, err
 	}
-
-	receipt, err = c.transactionService.WaitForReceipt(ctx, txHash)
-	if err != nil {
-		return nil, err
-	}
-
-	if receipt.Status == 0 {
-		return nil, transaction.ErrTransactionReverted
-	}
-
 	return receipt, nil
 }
 

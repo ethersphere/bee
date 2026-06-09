@@ -19,8 +19,7 @@ import (
 )
 
 const (
-	loggerName = "redistributionContract"
-	// BoostTipPercent is used where the node sends transactions without retry.
+	loggerName      = "redistributionContract"
 	BoostTipPercent = 50
 )
 

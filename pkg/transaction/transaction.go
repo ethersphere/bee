@@ -174,11 +174,11 @@ func NewService(logger log.Logger, overlayEthAddress common.Address, backend Bac
 
 	rc := normalizeServiceRetryConfig(retryCfg)
 
-	startTier, err := parseFeeTier(rc.StartTier)
+	startTier, err := ParseFeeTier(rc.StartTier)
 	if err != nil {
 		return nil, fmt.Errorf("start tier: %w", err)
 	}
-	endTier, err := parseFeeTier(rc.EndTier)
+	endTier, err := ParseFeeTier(rc.EndTier)
 	if err != nil {
 		return nil, fmt.Errorf("end tier: %w", err)
 	}

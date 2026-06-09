@@ -32,17 +32,8 @@ func (ft feeTier) String() string {
 	}
 }
 
-// ParseFeePriority validates a fee priority tier name (for API headers and config).
-func ParseFeePriority(s string) (string, error) {
-	t, err := parseFeeTier(s)
-	if err != nil {
-		return "", err
-	}
-	return t.String(), nil
-}
-
-// parseFeeTier converts a string name to a feeTier value.
-func parseFeeTier(s string) (feeTier, error) {
+// ParseFeeTier validates a fee priority tier name (for API headers and config).
+func ParseFeeTier(s string) (feeTier, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "low":
 		return feeTierLow, nil

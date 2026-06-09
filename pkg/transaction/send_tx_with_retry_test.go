@@ -112,6 +112,7 @@ func TestSuggestGasFeeForTier(t *testing.T) {
 
 // capturedBroadcast records the parameters of a transaction as seen by SendTransaction.
 type capturedBroadcast struct {
+	Hash      common.Hash
 	Nonce     uint64
 	GasTipCap *big.Int
 	GasFeeCap *big.Int
@@ -123,6 +124,7 @@ type capturedBroadcast struct {
 
 func captureTx(tx *types.Transaction) capturedBroadcast {
 	return capturedBroadcast{
+		Hash:      tx.Hash(),
 		Nonce:     tx.Nonce(),
 		GasTipCap: new(big.Int).Set(tx.GasTipCap()),
 		GasFeeCap: new(big.Int).Set(tx.GasFeeCap()),
@@ -558,6 +560,14 @@ func TestSendWithRetry_EscalateGasThenSuccess(t *testing.T) {
 	var rs transaction.TransactionRetryState
 	assert.ErrorIs(t, store.Get(transaction.RetryStateKey(broadcasts[0].Nonce), &rs), storage.ErrNotFound,
 		"retry state should be cleaned up on success")
+
+	firstTxHash := broadcasts[0].Hash
+	lastTxHash := broadcasts[len(broadcasts)-1].Hash
+	assert.ErrorIs(t, store.Get(transaction.StoredTransactionKey(firstTxHash), &rs), storage.ErrNotFound,
+		"superseded stored tx should be removed on success")
+	var stored transaction.StoredTransaction
+	assert.NoError(t, store.Get(transaction.StoredTransactionKey(lastTxHash), &stored),
+		"final stored tx should be kept")
 }
 
 // After receipt timeout at market tier, fees escalate to the aggressive tier on the next broadcast.
@@ -692,8 +702,10 @@ func TestSendWithRetry_AllAttemptsExhausted(t *testing.T) {
 	store := storemock.NewStateStore()
 	testutil.CleanupCloser(t, store)
 
-	var feeHistoryCalls atomic.Int32
-	var broadcasts []capturedBroadcast
+	var (
+		feeHistoryCalls atomic.Int32
+		broadcasts      []capturedBroadcast
+	)
 
 	svc, err := transaction.NewService(log.Noop, s.sender,
 		backendmock.New(
@@ -741,9 +753,25 @@ func TestSendWithRetry_AllAttemptsExhausted(t *testing.T) {
 	assert.Equal(t, int32(3), feeHistoryCalls.Load(),
 		"fee history is called for each attempt")
 
+	lastTxHash := broadcasts[len(broadcasts)-1].Hash
+	assert.Equal(t, lastTxHash, txHash, "last tx hash must match the final broadcast")
+
 	var rs transaction.TransactionRetryState
 	assert.ErrorIs(t, store.Get(transaction.RetryStateKey(broadcasts[0].Nonce), &rs), storage.ErrNotFound,
 		"retry state should be cleaned up after exhaustion")
+
+	var pending struct{}
+	assert.NoError(t, store.Get(transaction.PendingTransactionKey(lastTxHash), &pending),
+		"last pending tx should be kept for monitoring")
+	for _, oldHash := range broadcasts[:len(broadcasts)-1] {
+		assert.ErrorIs(t, store.Get(transaction.PendingTransactionKey(oldHash.Hash), &pending), storage.ErrNotFound,
+			"superseded pending tx should be removed")
+		assert.ErrorIs(t, store.Get(transaction.StoredTransactionKey(oldHash.Hash), &rs), storage.ErrNotFound,
+			"superseded stored tx should be removed")
+	}
+	var stored transaction.StoredTransaction
+	assert.NoError(t, store.Get(transaction.StoredTransactionKey(lastTxHash), &stored),
+		"last stored tx should be kept for resend/cancel")
 }
 
 // "nonce too low" on a rebroadcast means the nonce was consumed between the
