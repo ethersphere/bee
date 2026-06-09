@@ -183,7 +183,7 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, socAddress swarm.Address
 
 		b, err := socFieldsBytes(c, fields)
 		if err != nil {
-			s.logger.Debug("gsoc ws: serialize soc fields failed", "error", err)
+			s.logger.Warning("gsoc ws: serialize soc fields failed", "error", err)
 			return
 		}
 
