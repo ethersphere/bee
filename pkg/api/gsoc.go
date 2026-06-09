@@ -163,7 +163,7 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, socAddress swarm.Address
 	defer s.wsWg.Done()
 
 	var (
-		dataC       = make(chan []byte)
+		dataC       = make(chan []byte, 2) // small buffer to decouple producer/consumer
 		gone        = make(chan struct{})
 		ticker      = time.NewTicker(s.WsPingPeriod)
 		ctx, cancel = context.WithCancel(context.Background()) // for storing cached chunks
@@ -192,6 +192,13 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, socAddress swarm.Address
 		case <-gone:
 			return
 		case <-s.quit:
+			return
+		default:
+			s.logger.Warning("gsoc ws: slow consumer, closing connection")
+			_ = conn.WriteControl(websocket.CloseMessage,
+				websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "slow consumer"),
+				time.Now().Add(writeDeadline))
+			_ = conn.Close()
 			return
 		}
 	})
