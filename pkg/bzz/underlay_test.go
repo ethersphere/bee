@@ -29,6 +29,19 @@ func TestSerializeUnderlays(t *testing.T) {
 		}
 	})
 
+	t.Run("single address list", func(t *testing.T) {
+		addrs := []multiaddr.Multiaddr{dnsSwarmAddr}
+		serialized := mustSerializeUnderlays(t, addrs)
+		expected := dnsSwarmAddr.Bytes() // Should be legacy format without prefix
+
+		if !bytes.Equal(serialized, expected) {
+			t.Errorf("expected single address to serialize to legacy format %x, got %x", expected, serialized)
+		}
+		if serialized[0] == bzz.UnderlayListPrefix {
+			t.Error("single address serialization should not have the list prefix")
+		}
+	})
+
 	t.Run("empty list", func(t *testing.T) {
 		addrs := []multiaddr.Multiaddr{}
 		serialized := mustSerializeUnderlays(t, addrs)
@@ -74,6 +87,17 @@ func TestDeserializeUnderlays(t *testing.T) {
 		}
 		if !reflect.DeepEqual(addrs, deserialized) {
 			t.Errorf("expected %v, got %v", addrs, deserialized)
+		}
+	})
+
+	t.Run("single legacy multiaddr", func(t *testing.T) {
+		singleBytes := wssAddr.Bytes()
+		deserialized, err := bzz.DeserializeUnderlays(singleBytes)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(deserialized) != 1 || !deserialized[0].Equal(wssAddr) {
+			t.Errorf("expected [%v], got %v", wssAddr, deserialized)
 		}
 	})
 
