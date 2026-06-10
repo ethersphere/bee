@@ -1155,6 +1155,8 @@ components:
         channeled on every incoming GSOC message, in the given order. Allowed
         values are: address, recoveredPubKey, identifier, signature,
         wrappedAddress, span, payload. When omitted it defaults to "payload".
+        In order to have random access on the response bytes define payload
+        as the last field in the list since it has variable length.
 
     SwarmCacheWrappedChunkParameter:
       in: header
