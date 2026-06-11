@@ -218,7 +218,7 @@ func (t *transactionService) persistReplaceTx(signedTx *types.Transaction, rs *r
 	}
 
 	retryKey := retryStateKey(rs.nonce)
-	if err := t.store.Put(retryKey, storedTransactionKey(txHash)); err != nil {
+	if err := t.store.Put(retryKey, txHash); err != nil {
 		return err
 	}
 
@@ -452,39 +452,23 @@ func isNonRetryable(err error) bool {
 	return false
 }
 
-// retryPendingHashes returns hashes managed by active retry sessions so that
-// waitForAllPendingTx does not double-watch them.
-func (t *transactionService) retryPendingHashes() (map[common.Hash]struct{}, error) {
-	out := make(map[common.Hash]struct{})
+// pendingRetryTransactions returns hashes managed by active retry sessions
+// so that waitForAllPendingTx does not double-watch them.
+func (t *transactionService) pendingRetryTransactions() (map[common.Hash]string, error) {
+	out := make(map[common.Hash]string)
 	err := t.store.Iterate(retryStatePrefix, func(key, val []byte) (stop bool, err error) {
-		var storedKey string
-		if jErr := json.Unmarshal(val, &storedKey); jErr != nil {
-			return false, jErr
+		var txHash common.Hash
+		if err := json.Unmarshal(val, &txHash); err != nil {
+			return false, err
 		}
-		h := common.HexToHash(strings.TrimPrefix(storedKey, storedTransactionPrefix))
-		out[h] = struct{}{}
+		out[txHash] = string(key)
 		return false, nil
 	})
 	return out, err
 }
 
 func (t *transactionService) resumeRetryTransactions() error {
-	type retryEntry struct {
-		key       string
-		storedKey string
-		txHash    common.Hash
-	}
-
-	var entries []retryEntry
-	err := t.store.Iterate(retryStatePrefix, func(key, val []byte) (stop bool, err error) {
-		var storedKey string
-		if jErr := json.Unmarshal(val, &storedKey); jErr != nil {
-			return false, jErr
-		}
-		h := common.HexToHash(strings.TrimPrefix(storedKey, storedTransactionPrefix))
-		entries = append(entries, retryEntry{key: string(key), storedKey: storedKey, txHash: h})
-		return false, nil
-	})
+	entries, err := t.pendingRetryTransactions()
 	if err != nil {
 		return err
 	}
@@ -494,34 +478,25 @@ func (t *transactionService) resumeRetryTransactions() error {
 		t.logger.Warning("resume send with retry: failed to get confirmed nonce, resuming all", "error", err)
 	}
 
-	t.logger.Debug("resume send with retry: scanning persisted retry states",
-		"count", len(entries),
-		"confirmed_nonce", confirmed)
+	t.logger.Debug("resume send with retry: scanning persisted retry states", "count", len(entries), "confirmed_nonce", confirmed)
 
-	for _, e := range entries {
-		stored, sErr := t.StoredTransaction(e.txHash)
+	for txHash, key := range entries {
+		stored, sErr := t.StoredTransaction(txHash)
 		if sErr != nil {
-			t.logger.Warning("resume send with retry: stored tx not found, cleaning up",
-				"tx_hash", e.txHash, "error", sErr)
-			_ = t.store.Delete(e.key)
+			t.logger.Warning("resume send with retry: stored tx not found, cleaning up", "tx_hash", txHash, "error", sErr)
+			_ = t.store.Delete(key)
 			continue
 		}
 
 		if confirmed > stored.Nonce {
-			t.logger.Debug("resume send with retry: skipping already confirmed transaction",
-				"nonce", stored.Nonce,
-				"confirmed_nonce", confirmed,
-				"description", stored.Description)
-			_ = t.store.Delete(e.key)
-			_ = t.store.Delete(pendingTransactionKey(e.txHash))
-			_ = t.store.Delete(storedTransactionKey(e.txHash))
+			t.logger.Debug("resume send with retry: skipping already confirmed transaction", "nonce", stored.Nonce)
+			_ = t.store.Delete(key)
+			_ = t.store.Delete(pendingTransactionKey(txHash))
+			_ = t.store.Delete(storedTransactionKey(txHash))
 			continue
 		}
 
-		t.logger.Debug("resume send with retry: resuming",
-			"nonce", stored.Nonce,
-			"last_tx_hash", e.txHash,
-			"description", stored.Description)
+		t.logger.Debug("resume send with retry: resuming", "nonce", stored.Nonce, "tx_hash", txHash)
 
 		request := &TxRequest{
 			To:          stored.To,
@@ -534,13 +509,12 @@ func (t *transactionService) resumeRetryTransactions() error {
 		rs := &retryState{
 			nonce:         stored.Nonce,
 			nonceAssigned: true,
-			lastTxHash:    e.txHash,
+			lastTxHash:    txHash,
 		}
 
 		t.wg.Go(func() {
 			if _, _, err := t.sendWithRetry(t.ctx, request, rs); err != nil {
-				t.logger.Error(err, "resumed transaction send with retry aborted",
-					"nonce", stored.Nonce, "description", stored.Description)
+				t.logger.Error(err, "resumed transaction send with finished with error", "nonce", stored.Nonce)
 			}
 		})
 	}

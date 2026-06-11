@@ -890,7 +890,7 @@ func TestSendWithRetry_ResumeAfterRestart(t *testing.T) {
 	lastTxHash := common.HexToHash("0xdeadbeef")
 
 	retryKey := transaction.RetryStateKey(s.nonce)
-	require.NoError(t, store.Put(retryKey, transaction.StoredTransactionKey(lastTxHash)))
+	require.NoError(t, store.Put(retryKey, lastTxHash))
 
 	require.NoError(t, store.Put(transaction.StoredTransactionKey(lastTxHash), transaction.StoredTransaction{
 		To:          &s.recipient,

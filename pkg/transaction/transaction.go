@@ -228,7 +228,7 @@ func NewService(logger log.Logger, overlayEthAddress common.Address, backend Bac
 }
 
 func (t *transactionService) waitForAllPendingTx() error {
-	retryHashes, err := t.retryPendingHashes()
+	retryHashes, err := t.pendingRetryTransactions()
 	if err != nil {
 		return err
 	}
