@@ -563,6 +563,52 @@ func TestTransactionError(t *testing.T) {
 	}
 }
 
+// TestResyncControlsReset checks that the resync flag passed to New determines
+// whether Start resets the store. node.go relies on this to fix #5495: the live
+// batch service is constructed with resync=false after a snapshot rebuilt the
+// store, so Start leaves it intact instead of discarding the snapshot.
+func TestResyncControlsReset(t *testing.T) {
+	t.Parallel()
+
+	t.Run("resync resets the store", func(t *testing.T) {
+		t.Parallel()
+
+		s := mocks.NewStateStore()
+		store := mock.New()
+		svc, err := batchservice.New(s, store, testLog, newMockListener(), nil, nil, nil, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if err := svc.Start(context.Background(), 10); err != nil {
+			t.Fatal(err)
+		}
+
+		if c := store.ResetCalls(); c != 1 {
+			t.Fatalf("expect %d reset calls got %d", 1, c)
+		}
+	})
+
+	t.Run("no resync leaves the store intact", func(t *testing.T) {
+		t.Parallel()
+
+		s := mocks.NewStateStore()
+		store := mock.New()
+		svc, err := batchservice.New(s, store, testLog, newMockListener(), nil, nil, nil, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if err := svc.Start(context.Background(), 10); err != nil {
+			t.Fatal(err)
+		}
+
+		if c := store.ResetCalls(); c != 0 {
+			t.Fatalf("expect %d reset calls got %d", 0, c)
+		}
+	})
+}
+
 func TestChecksum(t *testing.T) {
 	t.Parallel()
 

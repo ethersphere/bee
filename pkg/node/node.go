@@ -787,11 +787,6 @@ func NewBee(
 	eventListener = listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
 	b.listenerCloser = eventListener
 
-	batchSvc, err = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
-	if err != nil {
-		return nil, fmt.Errorf("init batch service: %w", err)
-	}
-
 	// Construct protocols.
 	pingPong := pingpong.New(p2ps, logger, tracer)
 
@@ -892,6 +887,7 @@ func NewBee(
 		}
 	)
 
+	snapshotLoaded := false
 	if !o.SkipPostageSnapshot && !batchStoreExists && (networkID == mainnetNetworkID) && beeNodeMode != api.UltraLightMode {
 		chainBackend := NewSnapshotLogFilterer(logger, archiveSnapshotGetter{})
 
@@ -908,12 +904,20 @@ func NewBee(
 				logger.Error(err, "failed to start batch service from snapshot, continuing outside snapshot block...")
 			} else {
 				postageSyncStart = chainBackend.maxBlockHeight
+				snapshotLoaded = true
 			}
 		}
 		if errClose := snapshotEventListener.Close(); errClose != nil {
 			logger.Error(errClose, "failed to close event listener (snapshot) failure")
 		}
 
+	}
+
+	// Don't resync the live batch service when the snapshot already rebuilt the
+	// store, otherwise it would be discarded and sync would fail (see #5495).
+	batchSvc, err = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync && !snapshotLoaded)
+	if err != nil {
+		return nil, fmt.Errorf("init batch service: %w", err)
 	}
 
 	if batchSvc != nil && chainEnabled {
