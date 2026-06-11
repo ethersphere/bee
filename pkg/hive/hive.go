@@ -324,6 +324,11 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 	peersToAdd := make([]swarm.Address, 0, len(peers.Peers))
 
 	for _, p := range peers.Peers {
+		if p == nil {
+			s.logger.Debug("nil peer entry in Peers message, skipping")
+			continue
+		}
+
 		multiUnderlays, err := bzz.DeserializeUnderlays(p.Underlay)
 		if err != nil {
 			s.metrics.PeerUnderlayErr.Inc()
