@@ -14,6 +14,12 @@ import (
 
 // TODO: consider adding BzzAddress (also as a cmd param) to the ChainConfig and remove the postagecontract.LookupERC20Address function.
 
+const (
+	blocksPerRoundTestnet = 152
+	blocksPerRoundGnosis  = 152
+	blocksPerRoundBase    = 380
+)
+
 type ChainConfig struct {
 	// General.
 	ChainID                int64
@@ -76,9 +82,8 @@ var (
 		AcceptedChequebookBytecodeHashes: [][32]byte{
 			mustHash("ba50aa67c6e6f135a8ca57947c015c24192531d47e47a9ec212c0090e0486d46"),
 		},
-
-		BlocksPerRound: 152,
-		BlocksPerPhase: 4,
+		BlocksPerRound: blocksPerRoundTestnet,
+		BlocksPerPhase: blocksPerRoundTestnet / 4,
 	}
 
 	//github.com/ethersphere/go-storage-incentives-abi v0.9.4
@@ -103,8 +108,8 @@ var (
 		AcceptedChequebookBytecodeHashes: [][32]byte{
 			mustHash("81d3de06cadb0970fc653f24cef4689243f9a3d702236370ecf4613673048145"),
 		},
-		BlocksPerRound: 152,
-		BlocksPerPhase: 4,
+		BlocksPerRound: blocksPerRoundGnosis,
+		BlocksPerPhase: blocksPerRoundGnosis / 4,
 	}
 
 	Base = ChainConfig{
@@ -124,8 +129,8 @@ var (
 		PostageStampABI:   abi.MainnetPostageStampABI,
 		RedistributionABI: abi.MainnetRedistributionABI,
 
-		BlocksPerRound: 380,
-		BlocksPerPhase: 4,
+		BlocksPerRound: blocksPerRoundBase,
+		BlocksPerPhase: blocksPerRoundBase / 4,
 	}
 )
 
