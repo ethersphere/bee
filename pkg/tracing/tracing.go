@@ -20,6 +20,7 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
@@ -109,6 +110,11 @@ type Options struct {
 	// Protocol selects the OTLP exporter transport: "http" or "grpc". Empty
 	// defaults to "http".
 	Protocol string
+	// Logger receives a confirmation line when tracing starts and, via the OTel
+	// global error handler, OTLP span-export failures (e.g. an unreachable or
+	// misconfigured collector). When nil a no-op logger is used, so export
+	// failures are dropped silently.
+	Logger log.Logger
 }
 
 // NewTracer creates a new Tracer and returns a closer that flushes pending
@@ -154,7 +160,33 @@ func NewTracer(o *Options) (*Tracer, io.Closer, error) {
 		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(ratio))),
 		sdktrace.WithBatcher(exporter),
 	)
+
+	logger := o.Logger
+	if logger == nil {
+		logger = log.Noop
+	}
+
+	// Route OTel SDK errors — most importantly OTLP span-export failures from the
+	// batch processor, which are reported through otel.Handle — to bee's logger.
+	// Without this they go to OTel's default handler (stderr via the stdlib log
+	// package) and never reach bee's logs, so an unreachable or misconfigured
+	// collector would fail silently.
+	otel.SetErrorHandler(otelErrorHandler{logger: logger})
+
+	protocol := o.Protocol
+	if protocol == "" {
+		protocol = protocolHTTP
+	}
+	logger.Info("tracing enabled", "endpoint", o.Endpoint, "protocol", protocol, "service_name", o.ServiceName, "sampling_ratio", ratio)
+
 	return &Tracer{tracer: tp.Tracer(instrumentationName)}, providerCloser{tp: tp}, nil
+}
+
+// NewTracerFromProvider wraps an existing OTel TracerProvider in a Tracer. It is
+// primarily useful for tests that need a recording tracer (e.g. one backed by an
+// in-memory span recorder) rather than the OTLP exporter pipeline NewTracer builds.
+func NewTracerFromProvider(tp trace.TracerProvider) *Tracer {
+	return &Tracer{tracer: tp.Tracer(instrumentationName)}
 }
 
 // newOTLPClient builds the OTLP client for the configured transport. An empty
@@ -364,6 +396,18 @@ func decodeP2PSpanContext(b []byte) (trace.SpanContext, bool) {
 		return trace.SpanContext{}, false
 	}
 	return sc, true
+}
+
+// otelErrorHandler routes errors raised by the OTel SDK to bee's structured
+// logger. The batch span processor reports OTLP export failures (e.g. an
+// unreachable or misconfigured collector) through otel.Handle, so installing
+// this handler is what surfaces a broken tracing pipeline in bee's logs.
+type otelErrorHandler struct {
+	logger log.Logger
+}
+
+func (h otelErrorHandler) Handle(err error) {
+	h.logger.Error(err, "tracing: otlp export failed")
 }
 
 // noopCloser is returned when tracing is disabled.

@@ -19,9 +19,6 @@ import (
 	"strings"
 	"time"
 
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
@@ -41,6 +38,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/tracing"
 	"github.com/ethersphere/langos"
 	"github.com/gorilla/mux"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // The size of buffer used for prefetching content with Langos when not using erasure coding
@@ -65,7 +64,7 @@ func lookaheadBufferSize(size int64) int {
 }
 
 func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
-	span, logger, ctx := s.tracer.StartSpanFromContext(r.Context(), "post_bzz", s.logger.WithName("post_bzz").Build())
+	span, logger, ctx := s.tracer.StartSpanFromContext(r.Context(), "bzz-post", s.logger.WithName("post_bzz").Build())
 	defer span.End()
 
 	headers := struct {
@@ -107,7 +106,7 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 			tracing.RecordError(span, err, attribute.String("action", "tag.create"))
 			return
 		}
-		span.SetAttributes(attribute.Int64("tagID", int64(tag)))
+		span.SetAttributes(attribute.Int64("tag_id", int64(tag)))
 	}
 
 	putter, err := s.newStamperPutter(ctx, putterOptions{
@@ -340,7 +339,7 @@ func (s *Service) fileUploadHandler(
 
 	if tagID != 0 {
 		w.Header().Set(SwarmTagHeader, fmt.Sprint(tagID))
-		span.SetAttributes(attribute.Int64("tagID", int64(tagID)))
+		span.SetAttributes(attribute.Int64("tag_id", int64(tagID)))
 	}
 	w.Header().Set(ETagHeader, fmt.Sprintf("%q", reference.String()))
 	w.Header().Set(AccessControlExposeHeaders, SwarmTagHeader)

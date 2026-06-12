@@ -245,6 +245,7 @@ func NewBee(
 		Protocol:      o.TracingProtocol,
 		SamplingRatio: o.TracingSamplingRatio,
 		ServiceName:   o.TracingServiceName,
+		Logger:        logger,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("tracer: %w", err)

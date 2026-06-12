@@ -30,7 +30,7 @@ type bytesPostResponse struct {
 
 // bytesUploadHandler handles upload of raw binary data of arbitrary length.
 func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
-	span, logger, ctx := s.tracer.StartSpanFromContext(r.Context(), "post_bytes", s.logger.WithName("post_bytes").Build())
+	span, logger, ctx := s.tracer.StartSpanFromContext(r.Context(), "bytes-post", s.logger.WithName("post_bytes").Build())
 	defer span.End()
 
 	headers := struct {
@@ -73,7 +73,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 			tracing.RecordError(span, err, attribute.String("action", "tag.create"))
 			return
 		}
-		span.SetAttributes(attribute.Int64("tagID", int64(tag)))
+		span.SetAttributes(attribute.Int64("tag_id", int64(tag)))
 	}
 
 	defer s.observeUploadSpeed(w, r, time.Now(), "bytes", deferred)
