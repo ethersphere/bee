@@ -27,6 +27,9 @@ const (
 
 	balanceCheckBackoffDuration = 20 * time.Second
 	balanceCheckMaxRetries      = 10
+
+	chequebookVerifyBackoffDuration = 5 * time.Second
+	chequebookVerifyMaxRetries      = 12
 )
 
 const (
@@ -122,6 +125,35 @@ func checkBalance(
 
 		return nil
 	}
+}
+
+// verifyChequebookWithRetry verifies that the chequebook has been deployed by
+// the factory, retrying with backoff on failure.
+func verifyChequebookWithRetry(
+	ctx context.Context,
+	logger log.Logger,
+	chequebookFactory Factory,
+	chequebookAddress common.Address,
+) error {
+	var err error
+	for i := range chequebookVerifyMaxRetries {
+		if i > 0 {
+			select {
+			case <-time.After(chequebookVerifyBackoffDuration):
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+
+		err = chequebookFactory.VerifyChequebook(ctx, chequebookAddress)
+		if err == nil {
+			return nil
+		}
+
+		logger.Warning("chequebook factory verification failed, retrying", "chequebook_address", chequebookAddress, "attempt", i+1, "max_attempts", chequebookVerifyMaxRetries, "error", err)
+	}
+
+	return err
 }
 
 // Init initialises the chequebook service.
@@ -224,7 +256,7 @@ func Init(
 	}
 
 	// regardless of how the chequebook service was initialised make sure that the chequebook is valid
-	err = chequebookFactory.VerifyChequebook(ctx, chequebookService.Address())
+	err = verifyChequebookWithRetry(ctx, logger, chequebookFactory, chequebookService.Address())
 	if err != nil {
 		return nil, err
 	}
