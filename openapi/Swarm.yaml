@@ -2032,6 +2032,37 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         default:
           description: Default response
+    patch:
+      summary: Update the label of an existing postage batch
+      tags:
+        - Postage Stamps
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label:
+                  type: string
+                  description: New label for the postage batch
+              required:
+                - label
+      responses:
+        "200":
+          description: Label updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/Response"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
 
   "/stamps/{batch_id}/buckets":
     parameters:

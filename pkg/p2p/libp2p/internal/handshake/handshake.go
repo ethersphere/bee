@@ -69,20 +69,6 @@ type Addresser interface {
 	AdvertizableAddrs() ([]ma.Multiaddr, error)
 }
 
-type Option struct {
-	bee260compatibility bool
-}
-
-// WithBee260Compatibility option ensures that only one underlay address is
-// passed to the peer in p2p protocol messages, so that nodes with version 2.6.0
-// and older can deserialize it. This option can be safely removed when bee
-// version 2.6.0 is deprecated.
-func WithBee260Compatibility(yes bool) func(*Option) {
-	return func(o *Option) {
-		o.bee260compatibility = yes
-	}
-}
-
 // Service can perform initiate or handle a handshake between peers.
 type Service struct {
 	signer                crypto.Signer
@@ -197,13 +183,8 @@ func (s *Service) SetPicker(n p2p.Picker) {
 }
 
 // Handshake initiates a handshake with a peer.
-func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiaddrs []ma.Multiaddr, opts ...func(*Option)) (i *Info, err error) {
+func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiaddrs []ma.Multiaddr) (i *Info, err error) {
 	loggerV1 := s.logger.V(1).Register()
-
-	o := new(Option)
-	for _, set := range opts {
-		set(o)
-	}
 
 	ctx, cancel := context.WithTimeout(ctx, handshakeTimeout)
 	defer cancel()
@@ -215,7 +196,6 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 	if observedTruncated {
 		s.metrics.ObservedUnderlaysTruncated.Inc()
 	}
-	peerMultiaddrs = p2p.FilterBee260CompatibleUnderlays(o.bee260compatibility, peerMultiaddrs)
 
 	observedUnderlayBytes, err := bzz.SerializeUnderlays(peerMultiaddrs)
 	if err != nil {
@@ -245,7 +225,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 
 	observedUnderlays, err := bzz.DeserializeUnderlays(resp.Syn.ObservedUnderlay)
 	if err != nil {
-		return nil, ErrInvalidSyn
+		return nil, fmt.Errorf("%w: observed underlay len=%d: %w", ErrInvalidSyn, len(resp.Syn.ObservedUnderlay), err)
 	}
 
 	advertisableUnderlays := make([]ma.Multiaddr, len(observedUnderlays))
@@ -284,8 +264,6 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 	advertisableUnderlays = slices.CompactFunc(advertisableUnderlays, func(a, b ma.Multiaddr) bool {
 		return a.Equal(b)
 	})
-
-	advertisableUnderlays = p2p.FilterBee260CompatibleUnderlays(o.bee260compatibility, advertisableUnderlays)
 
 	// Truncate to count and byte-size caps before signing.
 	var advTruncated bool
@@ -346,13 +324,8 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 }
 
 // Handle handles an incoming handshake from a peer.
-func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs []ma.Multiaddr, opts ...func(*Option)) (i *Info, err error) {
+func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs []ma.Multiaddr) (i *Info, err error) {
 	loggerV1 := s.logger.V(1).Register()
-
-	o := new(Option)
-	for _, set := range opts {
-		set(o)
-	}
 
 	ctx, cancel := context.WithTimeout(ctx, handshakeTimeout)
 	defer cancel()
@@ -368,7 +341,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 
 	observedUnderlays, err := bzz.DeserializeUnderlays(syn.ObservedUnderlay)
 	if err != nil {
-		return nil, ErrInvalidSyn
+		return nil, fmt.Errorf("%w: observed underlay len=%d: %w", ErrInvalidSyn, len(syn.ObservedUnderlay), err)
 	}
 
 	advertisableUnderlays := make([]ma.Multiaddr, len(observedUnderlays))
@@ -398,8 +371,6 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 		return a.Equal(b)
 	})
 
-	advertisableUnderlays = p2p.FilterBee260CompatibleUnderlays(o.bee260compatibility, advertisableUnderlays)
-
 	// Truncate to count and byte-size caps before signing.
 	var handleAdvTruncated bool
 	advertisableUnderlays, handleAdvTruncated = bzz.TruncateUnderlays(advertisableUnderlays)
@@ -419,8 +390,6 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 	if handleObsTruncated {
 		s.metrics.ObservedUnderlaysTruncated.Inc()
 	}
-
-	peerMultiaddrs = p2p.FilterBee260CompatibleUnderlays(o.bee260compatibility, peerMultiaddrs)
 
 	synObservedBytes, err := bzz.SerializeUnderlays(peerMultiaddrs)
 	if err != nil {

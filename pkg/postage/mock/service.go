@@ -99,6 +99,19 @@ func (m *mockPostage) IssuerUsable(_ *postage.StampIssuer) bool {
 	return true
 }
 
+func (m *mockPostage) UpdateIssuerLabel(id []byte, label string) error {
+	m.issuerLock.Lock()
+	defer m.issuerLock.Unlock()
+
+	_, exists := m.issuersMap[string(id)]
+	if !exists {
+		return postage.ErrNotFound
+	}
+	// label is local metadata only, real persistence is handled by the service implementation.
+	_ = label
+	return nil
+}
+
 func (m *mockPostage) HandleCreate(_ *postage.Batch, _ *big.Int) error { return nil }
 
 func (m *mockPostage) HandleTopUp(_ []byte, _ *big.Int) {}
