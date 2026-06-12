@@ -142,6 +142,8 @@ type Options struct {
 	BlockProfile                  bool
 	BlockTime                     time.Duration
 	BlockSyncInterval             uint64
+	FeeHistoryBlockCount          uint64
+	TransactionRetry              transaction.TransactionsRetryConfig
 	BootnodeMode                  bool
 	Bootnodes                     []string
 	CacheCapacity                 uint64
@@ -438,6 +440,8 @@ func NewBee(
 			Keepalive:   o.BlockchainRpcKeepalive,
 		},
 		o.BlockSyncInterval,
+		o.FeeHistoryBlockCount,
+		o.TransactionRetry,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("init chain: %w", err)
@@ -1408,6 +1412,9 @@ func NewBee(
 		}
 		if swapBackendMetrics, ok := chainBackend.(metrics.Collector); ok {
 			apiService.MustRegisterMetrics(swapBackendMetrics.Metrics()...)
+		}
+		if txMetrics, ok := transactionService.(metrics.Collector); ok {
+			apiService.MustRegisterMetrics(txMetrics.Metrics()...)
 		}
 
 		if l, ok := logger.(metrics.Collector); ok {

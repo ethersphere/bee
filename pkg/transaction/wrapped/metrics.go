@@ -6,8 +6,11 @@ package wrapped
 
 import (
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/prometheus/client_golang/prometheus"
 )
+
+var _ transaction.RetryMetricsRecorder = (*metrics)(nil)
 
 type metrics struct {
 	TotalRPCCalls  prometheus.Counter
@@ -27,10 +30,16 @@ type metrics struct {
 	SendTransactionCalls          prometheus.Counter
 	FilterLogsCalls               prometheus.Counter
 	ChainIDCalls                  prometheus.Counter
+	FeeHistoryCalls               prometheus.Counter
+	FeeHistoryParseErrors         prometheus.Counter
+
+	SendWithRetryAttemptsPerTransaction prometheus.Histogram
+	SendWithRetryOutcomesTotal          *prometheus.CounterVec
 }
 
 func newMetrics() metrics {
 	subsystem := "eth_backend"
+	retrySubsystem := "transaction_retry"
 
 	return metrics{
 		TotalRPCCalls: prometheus.NewCounter(prometheus.CounterOpts{
@@ -129,6 +138,38 @@ func newMetrics() metrics {
 			Name:      "calls_chain_id",
 			Help:      "Count of eth_chainId rpc calls",
 		}),
+		FeeHistoryCalls: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "calls_fee_history",
+			Help:      "Count of eth_feeHistory rpc calls",
+		}),
+		FeeHistoryParseErrors: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "fee_history_parse_errors",
+			Help:      "Count of failures to derive suggested fees from fee history response",
+		}),
+		SendWithRetryAttemptsPerTransaction: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: m.Namespace,
+			Subsystem: retrySubsystem,
+			Name:      "attempts_per_transaction",
+			Help:      "Broadcast attempts per SendWithRetry invocation (1 = no retry needed).",
+			Buckets:   []float64{1, 2, 3, 4, 5, 6, 8, 10},
+		}),
+		SendWithRetryOutcomesTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: retrySubsystem,
+			Name:      "outcomes_total",
+			Help:      "Finished SendWithRetry invocations by outcome.",
+		}, []string{"result"}),
+	}
+}
+
+func (m *metrics) RecordRetryComplete(broadcastAttempts int, err error) {
+	m.SendWithRetryOutcomesTotal.WithLabelValues(transaction.RetryOutcomeLabel(err)).Inc()
+	if broadcastAttempts > 0 {
+		m.SendWithRetryAttemptsPerTransaction.Observe(float64(broadcastAttempts))
 	}
 }
 
@@ -136,4 +177,8 @@ func (b *wrappedBackend) Metrics() []prometheus.Collector {
 	collectors := m.PrometheusCollectorsFromFields(b.metrics)
 	collectors = append(collectors, b.blockNumberCache.Collectors()...)
 	return collectors
+}
+
+func (b *wrappedBackend) RetryMetrics() transaction.RetryMetricsRecorder {
+	return &b.metrics
 }

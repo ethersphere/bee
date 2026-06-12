@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/node"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 	p2pforge "github.com/ipshipyard/p2p-forge/client"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -103,6 +105,13 @@ const (
 	configKeyBlockchainRpcTLSTimeout   = "blockchain-rpc.tls-timeout"
 	configKeyBlockchainRpcIdleTimeout  = "blockchain-rpc.idle-timeout"
 	configKeyBlockchainRpcKeepalive    = "blockchain-rpc.keepalive"
+
+	// transaction retry
+	optionNameTransactionRetryDelay       = "transaction-retry-delay"
+	optionNameTransactionFeePriority      = "transaction-fee-priority"
+	optionNameTransactionFeePriorityMax   = "transaction-fee-priority-max"
+	optionNameTransactionFeeMaxTxPriceWei = "transaction-fee-max-tx-price-wei"
+	optionNameFeeHistoryBlockCount        = "fee-history-block-count"
 )
 
 var blockchainRpcConfigPairs = []struct{ flat, dotted string }{
@@ -314,6 +323,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameStakingAddress, "", "staking contract address")
 	cmd.Flags().Uint64(optionNameBlockTime, 5, "chain block time")
 	cmd.Flags().Uint64(optionNameBlockSyncInterval, 10, "block number cache sync interval in blocks")
+	cmd.Flags().Uint64(optionNameFeeHistoryBlockCount, 100, "eth_feeHistory block count for fee hints")
 	cmd.Flags().Duration(optionWarmUpTime, time.Minute*5, "maximum node warmup duration; proceeds when stable or after this time")
 	cmd.Flags().Bool(optionNameMainNet, true, "triggers connect to main net bootnodes.")
 	cmd.Flags().Bool(optionNameRetrievalCaching, true, "enable forwarded content caching")
@@ -333,6 +343,10 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionSkipPostageSnapshot, false, "skip postage snapshot")
 	cmd.Flags().Uint64(optionNameMinimumGasTipCap, 0, "minimum gas tip cap in wei for transactions, 0 means use suggested gas tip cap")
 	cmd.Flags().Uint64(optionNameGasLimitFallback, 500_000, "gas limit fallback when estimation fails for contract transactions")
+	cmd.Flags().Duration(optionNameTransactionRetryDelay, time.Minute, "how long to wait for a receipt before escalating fees in transactions with retry")
+	cmd.Flags().String(optionNameTransactionFeePriority, "market", "starting fee priority for transaction broadcasts (low, market, aggressive)")
+	cmd.Flags().String(optionNameTransactionFeePriorityMax, "aggressive", "maximum fee priority for transaction escalation (low, market, aggressive)")
+	cmd.Flags().Uint64(optionNameTransactionFeeMaxTxPriceWei, 0, "maximum maxFeePerGas in wei per gas for transactions with retry; 0 means no limit")
 	cmd.Flags().Bool(optionNameP2PWSSEnable, false, "Enable Secure WebSocket P2P connections")
 	cmd.Flags().String(optionP2PWSSAddr, ":1635", "p2p wss address")
 	cmd.Flags().String(optionNATWSSAddr, "", "WSS NAT exposed address")
@@ -378,6 +392,18 @@ func (c *command) bindBlockchainRpcConfig(cmd *cobra.Command) {
 		_ = c.config.BindPFlag(p.dotted, cmd.Flags().Lookup(p.flat))
 		c.config.RegisterAlias(p.flat, p.dotted)
 	}
+}
+
+func txRetryConfigFromCommand(c *command) transaction.TransactionsRetryConfig {
+	cfg := transaction.TransactionsRetryConfig{
+		RetryDelay: c.config.GetDuration(optionNameTransactionRetryDelay),
+		StartTier:  c.config.GetString(optionNameTransactionFeePriority),
+		EndTier:    c.config.GetString(optionNameTransactionFeePriorityMax),
+	}
+	if v := c.config.GetUint64(optionNameTransactionFeeMaxTxPriceWei); v != 0 {
+		cfg.MaxTxPrice = new(big.Int).SetUint64(v)
+	}
+	return cfg
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {

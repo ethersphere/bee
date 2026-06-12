@@ -64,6 +64,8 @@ func InitChain(
 	fallbackGasLimit uint64,
 	rpcCfg BlockchainRPCConfig,
 	blockSyncInterval uint64,
+	feeHistoryBlockCount uint64,
+	retryCfg transaction.TransactionsRetryConfig,
 ) (transaction.Backend, common.Address, int64, transaction.Monitor, transaction.Service, error) {
 	backend := backendnoop.New(chainID)
 
@@ -98,7 +100,7 @@ func InitChain(
 
 		logger.Info("connected to blockchain backend", "version", versionString)
 
-		backend = wrapped.NewBackend(ethclient.NewClient(rpcClient), minimumGasTipCap, pollingInterval, blockSyncInterval)
+		backend = wrapped.NewBackend(ethclient.NewClient(rpcClient), minimumGasTipCap, pollingInterval, blockSyncInterval, feeHistoryBlockCount)
 	}
 
 	backendChainID, err := backend.ChainID(ctx)
@@ -117,7 +119,7 @@ func InitChain(
 
 	transactionMonitor := transaction.NewMonitor(logger, backend, overlayEthAddress, pollingInterval, cancellationDepth)
 
-	transactionService, err := transaction.NewService(logger, overlayEthAddress, backend, signer, stateStore, backendChainID, transactionMonitor, fallbackGasLimit)
+	transactionService, err := transaction.NewService(logger, overlayEthAddress, backend, signer, stateStore, backendChainID, transactionMonitor, fallbackGasLimit, retryCfg)
 	if err != nil {
 		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("transaction service: %w", err)
 	}
