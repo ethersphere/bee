@@ -508,6 +508,45 @@ func (s *Service) estimateBatchTTL(batch *postage.Batch) (int64, error) {
 	return ttl.Int64(), nil
 }
 
+type postageLabelUpdateRequest struct {
+	Label string `json:"label"`
+}
+
+func (s *Service) postageUpdateLabelHandler(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("patch_stamp").Build()
+
+	paths := struct {
+		BatchID []byte `map:"batch_id" validate:"required,len=32"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
+		return
+	}
+	hexBatchID := hex.EncodeToString(paths.BatchID)
+
+	body := postageLabelUpdateRequest{}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		logger.Debug("patch stamp: decode body failed", "batch_id", hexBatchID, "error", err)
+		logger.Error(nil, "patch stamp: decode body failed")
+		jsonhttp.BadRequest(w, "invalid request body")
+		return
+	}
+
+	if err := s.post.UpdateIssuerLabel(paths.BatchID, body.Label); err != nil {
+		logger.Debug("patch stamp: update label failed", "batch_id", hexBatchID, "error", err)
+		logger.Error(nil, "patch stamp: update label failed")
+		switch {
+		case errors.Is(err, postage.ErrNotFound):
+			jsonhttp.NotFound(w, "issuer does not exist")
+		default:
+			jsonhttp.InternalServerError(w, "cannot update label")
+		}
+		return
+	}
+
+	jsonhttp.OK(w, nil)
+}
+
 func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("patch_stamp_topup").Build()
 
