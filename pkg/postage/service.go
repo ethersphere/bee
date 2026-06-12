@@ -255,7 +255,9 @@ func (ps *service) UpdateIssuerLabel(batchID []byte, label string) error {
 
 	for _, st := range ps.issuers {
 		if bytes.Equal(batchID, st.data.BatchID) {
+			st.mtx.Lock()
 			st.data.Label = label
+			st.mtx.Unlock()
 			return ps.save(st)
 		}
 	}

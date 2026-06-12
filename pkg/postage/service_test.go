@@ -412,3 +412,63 @@ func TestCrashRecovery(t *testing.T) {
 		t.Errorf("post-recovery clean restart: bucket %d: want 1, got %d", bIdx1, buckets3[bIdx1])
 	}
 }
+
+func TestUpdateIssuerLabel(t *testing.T) {
+	t.Parallel()
+
+	store := inmemstore.New()
+	defer store.Close()
+	pstore := pstoremock.New()
+
+	ps, err := postage.NewService(log.Noop, store, pstore, 1, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ps.Close()
+
+	issuer := newTestStampIssuer(t, 1000)
+	batchID := issuer.ID()
+
+	if err := ps.Add(issuer); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("not found", func(t *testing.T) {
+		unknown := make([]byte, 32)
+		if err := ps.UpdateIssuerLabel(unknown, "x"); !errors.Is(err, postage.ErrNotFound) {
+			t.Fatalf("expected ErrNotFound, got %v", err)
+		}
+	})
+
+	t.Run("updates in-memory and persists", func(t *testing.T) {
+		const newLabel = "updated-label"
+
+		if err := ps.UpdateIssuerLabel(batchID, newLabel); err != nil {
+			t.Fatal(err)
+		}
+
+		// in-memory label must reflect the update immediately
+		issuers := ps.StampIssuers()
+		var found bool
+		for _, si := range issuers {
+			if bytes.Equal(si.ID(), batchID) {
+				found = true
+				if si.Label() != newLabel {
+					t.Fatalf("in-memory label: got %q, want %q", si.Label(), newLabel)
+				}
+			}
+		}
+		if !found {
+			t.Fatal("issuer not found after update")
+		}
+
+		// persisted label must also reflect the update
+		item := postage.NewStampIssuerItem(batchID)
+		if err := store.Get(item); err != nil {
+			t.Fatal(err)
+		}
+		if item.Issuer.Label() != newLabel {
+			t.Fatalf("persisted label: got %q, want %q", item.Issuer.Label(), newLabel)
+		}
+	})
+}
