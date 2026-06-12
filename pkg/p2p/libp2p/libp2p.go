@@ -224,7 +224,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 
-	// Tweak certain settings
 	cfg := rcmgr.PartialLimitConfig{
 		System: rcmgr.ResourceLimits{
 			Streams:         IncomingStreamCountLimit + OutgoingStreamCountLimit,
@@ -605,7 +604,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	peerAddrs, err := s.peerMultiaddrs(s.ctx, peerID)
 	if err != nil {
 		s.logger.Debug("stream handler: handshake: build remote multiaddrs", "peer_id", peerID, "error", err)
-		s.logger.Error(nil, "stream handler: handshake: build remote multiaddrs", "peer_id", peerID)
+		s.logger.Error(err, "stream handler: handshake: build remote multiaddrs", "peer_id", peerID)
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(peerID)
 		return
@@ -620,7 +619,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		observedAddrs, err = buildFullMAs([]ma.Multiaddr{stream.Conn().RemoteMultiaddr()}, peerID)
 		if err != nil {
 			s.logger.Debug("stream handler: handshake: build remote multiaddrs fallback", "peer_id", peerID, "error", err)
-			s.logger.Error(nil, "stream handler: handshake: build remote multiaddrs fallback", "peer_id", peerID)
+			s.logger.Error(err, "stream handler: handshake: build remote multiaddrs fallback", "peer_id", peerID)
 			_ = handshakeStream.Reset()
 			_ = s.host.Network().ClosePeer(peerID)
 			return
@@ -634,7 +633,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	)
 	if err != nil {
 		s.logger.Debug("stream handler: handshake: handle failed", "peer_id", peerID, "error", err)
-		s.logger.Error(nil, "stream handler: handshake: handle failed", "peer_id", peerID)
+		s.logger.Error(err, "stream handler: handshake: handle failed", "peer_id", peerID)
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(peerID)
 		return
@@ -645,14 +644,14 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	blocked, err := s.blocklist.Exists(overlay)
 	if err != nil {
 		s.logger.Debug("stream handler: blocklisting: exists failed", "peer_address", overlay, "error", err)
-		s.logger.Error(nil, "stream handler: internal error while connecting with peer", "peer_address", overlay)
+		s.logger.Error(err, "stream handler: internal error while connecting with peer", "peer_address", overlay)
 		_ = handshakeStream.Reset()
 		_ = stream.Conn().Close()
 		return
 	}
 
 	if blocked {
-		s.logger.Error(nil, "stream handler: blocked connection from blocklisted peer", "peer_address", overlay)
+		s.logger.Error(err, "stream handler: blocked connection from blocklisted peer", "peer_address", overlay)
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(peerID)
 		return
@@ -662,7 +661,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		s.logger.Debug("stream handler: peer already exists", "peer_address", overlay)
 		if err = handshakeStream.FullClose(); err != nil {
 			s.logger.Debug("stream handler: could not close stream", "peer_address", overlay, "error", err)
-			s.logger.Error(nil, "stream handler: unable to handshake with peer", "peer_address", overlay)
+			s.logger.Error(err, "stream handler: unable to handshake with peer", "peer_address", overlay)
 			_ = stream.Conn().Close()
 		}
 		return
@@ -670,7 +669,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 
 	if err = handshakeStream.FullClose(); err != nil {
 		s.logger.Debug("stream handler: could not close stream", "peer_address", overlay, "error", err)
-		s.logger.Error(nil, "stream handler: unable to handshake with peer", "peer_address", overlay)
+		s.logger.Error(err, "stream handler: unable to handshake with peer", "peer_address", overlay)
 		_ = s.Disconnect(overlay, "could not fully close stream on handshake")
 		return
 	}
@@ -679,7 +678,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	if i.FullNode && len(peerAddrs) > 0 {
 		if err := s.putHandshakeAddress(i.BzzAddress); err != nil {
 			s.logger.Debug("stream handler: addressbook put error", "peer_id", peerID, "error", err)
-			s.logger.Error(nil, "stream handler: unable to persist peer", "peer_id", peerID)
+			s.logger.Error(err, "stream handler: unable to persist peer", "peer_id", peerID)
 			_ = s.Disconnect(i.BzzAddress.Overlay, "unable to persist peer in addressbook")
 			return
 		}
@@ -931,7 +930,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 					_ = stream.Reset()
 					if err := s.Blocklist(overlay, bpe.Duration(), bpe.Error()); err != nil {
 						logger.Debug("blocklist: could not blocklist peer", "peer_id", peerID, "error", err)
-						logger.Error(nil, "unable to blocklist peer", "peer_id", peerID)
+						logger.Error(err, "unable to blocklist peer", "peer_id", peerID)
 					}
 					loggerV1.Debug("handler: peer blocklisted", "protocol", p.Name, "peer_address", overlay)
 				}
@@ -1022,7 +1021,18 @@ func buildHostAddress(peerID libp2ppeer.ID) (ma.Multiaddr, error) {
 	return ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", peerID.String()))
 }
 
-func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *bzz.Address, err error) {
+func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (*bzz.Address, error) {
+	return s.connect(ctx, addrs, false)
+}
+
+// ConnectAllowLight behaves like Connect but does not reject the peer
+// if it identifies itself as a light node. Intended for protocols such
+// as pubsub where broker peers may operate in light-node mode.
+func (s *Service) ConnectAllowLight(ctx context.Context, addrs []ma.Multiaddr) (*bzz.Address, error) {
+	return s.connect(ctx, addrs, true)
+}
+
+func (s *Service) connect(ctx context.Context, addrs []ma.Multiaddr, allowLight bool) (address *bzz.Address, err error) {
 	loggerV1 := s.logger.V(1).Register()
 
 	defer func() {
@@ -1074,6 +1084,13 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		}
 
 		connectCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		// Clear any stale libp2p swarm dial backoff for this peer so that
+		// an explicit Connect call always attempts a real TCP dial rather
+		// than failing immediately with a cached backoff error (which would
+		// still count against the Bee connection breaker).
+		if sw, ok := s.host.Network().(*lp2pswarm.Swarm); ok {
+			sw.Backoff().Clear(info.ID)
+		}
 		err = s.connectionBreaker.Execute(func() error { return s.host.Connect(connectCtx, *info) })
 		cancel()
 
@@ -1146,7 +1163,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		return nil, fmt.Errorf("handshake: %w", err)
 	}
 
-	if !i.FullNode {
+	if !i.FullNode && !allowLight {
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(info.ID)
 		return nil, p2p.ErrDialLightNode
@@ -1157,14 +1174,14 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	blocked, err := s.blocklist.Exists(overlay)
 	if err != nil {
 		s.logger.Debug("blocklisting: exists failed", "peer_id", info.ID, "error", err)
-		s.logger.Error(nil, "internal error while connecting with peer", "peer_id", info.ID)
+		s.logger.Error(err, "internal error while connecting with peer", "peer_id", info.ID)
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(info.ID)
 		return nil, err
 	}
 
 	if blocked {
-		s.logger.Error(nil, "blocked connection to blocklisted peer", "peer_id", info.ID)
+		s.logger.Error(err, "blocked connection to blocklisted peer", "peer_id", info.ID)
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(info.ID)
 		return nil, p2p.ErrPeerBlocklisted
