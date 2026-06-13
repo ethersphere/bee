@@ -8,6 +8,8 @@
 # block-time: "5"
 ## block number cache sync interval in blocks
 # block-sync-interval: 10
+## number of blocks to request per eth_getLogs page when syncing postage events; lower this for RPC providers with restrictive log-range limits
+# block-page: 1500
 ## blockchain rpc configuration
 # blockchain-rpc:
 #   endpoint: ""

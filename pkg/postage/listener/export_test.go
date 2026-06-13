@@ -7,6 +7,6 @@ package listener
 var (
 	TailSize          = tailSize
 	BatchFactor       = defaultBatchFactor
-	BlockPage         = uint64(blockPage)
+	BlockPage         = uint64(5000) // arbitrary configured page size used by tests
 	BlockPageSnapshot = uint64(blockPageSnapshot)
 )

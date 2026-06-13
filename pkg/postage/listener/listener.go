@@ -28,7 +28,7 @@ import (
 const loggerName = "listener"
 
 const (
-	blockPage          = 1500      //5000 // how many blocks to sync every time we page
+	defaultBlockPage   = 1500      // fallback blocks to sync per page when none is configured
 	blockPageSnapshot  = 50000     // how many blocks to sync every time from snapshot
 	tailSize           = 4         // how many blocks to tail from the tip of the chain
 	defaultBatchFactor = uint64(5) // minimal number of blocks to sync at once
@@ -52,6 +52,7 @@ type listener struct {
 	logger    log.Logger
 	ev        BlockHeightContractFilterer
 	blockTime time.Duration
+	blockPage uint64 // how many blocks to sync every time we page
 
 	postageStampContractAddress common.Address
 	postageStampContractABI     abi.ABI
@@ -77,14 +78,20 @@ func New(
 	postageStampContractAddress common.Address,
 	postageStampContractABI abi.ABI,
 	blockTime time.Duration,
+	blockPage uint64,
 	stallingTimeout time.Duration,
 	backoffTime time.Duration,
 ) postage.Listener {
+	if blockPage == 0 {
+		blockPage = defaultBlockPage
+	}
+
 	return &listener{
 		syncingStopped:              syncingStopped,
 		logger:                      logger.WithName(loggerName).Register(),
 		ev:                          ev,
 		blockTime:                   blockTime,
+		blockPage:                   blockPage,
 		postageStampContractAddress: postageStampContractAddress,
 		postageStampContractABI:     postageStampContractABI,
 		quit:                        make(chan struct{}),
@@ -234,7 +241,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 	l.logger.Debug("batch factor", "value", batchFactor)
 
 	// Type assertion to detect if backend is SnapshotLogFilterer
-	pageSize := uint64(blockPage)
+	pageSize := l.blockPage
 	if _, isSnapshot := l.ev.(interface{ GetBatchSnapshot() []byte }); isSnapshot {
 		pageSize = blockPageSnapshot
 		l.logger.Debug("using snapshot page size", "page_size", pageSize)

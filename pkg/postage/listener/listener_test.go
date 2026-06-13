@@ -77,6 +77,7 @@ func TestListener(t *testing.T) {
 			postageStampContractAddress,
 			postageStampContractABI,
 			1,
+			listener.BlockPage,
 			stallingTimeout,
 			backoffTime,
 		)
@@ -118,6 +119,7 @@ func TestListener(t *testing.T) {
 			postageStampContractAddress,
 			postageStampContractABI,
 			1,
+			listener.BlockPage,
 			stallingTimeout,
 			backoffTime,
 		)
@@ -159,6 +161,7 @@ func TestListener(t *testing.T) {
 			postageStampContractAddress,
 			postageStampContractABI,
 			1,
+			listener.BlockPage,
 			stallingTimeout,
 			backoffTime,
 		)
@@ -199,6 +202,7 @@ func TestListener(t *testing.T) {
 			postageStampContractAddress,
 			postageStampContractABI,
 			1,
+			listener.BlockPage,
 			stallingTimeout,
 			backoffTime,
 		)
@@ -262,6 +266,7 @@ func TestListener(t *testing.T) {
 			postageStampContractAddress,
 			postageStampContractABI,
 			1,
+			listener.BlockPage,
 			stallingTimeout,
 			backoffTime,
 		)
@@ -342,6 +347,7 @@ func TestListener(t *testing.T) {
 			postageStampContractAddress,
 			postageStampContractABI,
 			1,
+			listener.BlockPage,
 			stallingTimeout,
 			0,
 		)
@@ -370,6 +376,7 @@ func TestListener(t *testing.T) {
 			postageStampContractAddress,
 			postageStampContractABI,
 			1,
+			listener.BlockPage,
 			50*time.Millisecond,
 			0,
 		)
@@ -397,6 +404,7 @@ func TestListener(t *testing.T) {
 			postageStampContractAddress,
 			postageStampContractABI,
 			1,
+			listener.BlockPage,
 			stallingTimeout,
 			backoffTime,
 		)
@@ -445,6 +453,7 @@ func TestListenerPageSize(t *testing.T) {
 			postageStampContractAddress,
 			postageStampContractABI,
 			1,
+			listener.BlockPage,
 			stallingTimeout,
 			backoffTime,
 		)
