@@ -525,7 +525,7 @@ func TestTransactionOk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	svc2, err := batchservice.New(s, store, testLog, newMockListener(), nil, nil, nil, false)
+	svc2, err := batchservice.New(s, store, testLog, newMockListener(), nil, nil, nil, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -550,7 +550,7 @@ func TestTransactionError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	svc2, err := batchservice.New(s, store, testLog, newMockListener(), nil, nil, nil, false)
+	svc2, err := batchservice.New(s, store, testLog, newMockListener(), nil, nil, nil, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -569,7 +569,7 @@ func TestChecksum(t *testing.T) {
 	s := mocks.NewStateStore()
 	store := mock.New()
 	mockHash := &hs{}
-	svc, err := batchservice.New(s, store, testLog, newMockListener(), nil, nil, func() hash.Hash { return mockHash }, false)
+	svc, err := batchservice.New(s, store, testLog, newMockListener(), nil, nil, func() hash.Hash { return mockHash }, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -592,7 +592,7 @@ func TestChecksumResync(t *testing.T) {
 	s := mocks.NewStateStore()
 	store := mock.New()
 	mockHash := &hs{}
-	svc, err := batchservice.New(s, store, testLog, newMockListener(), nil, nil, func() hash.Hash { return mockHash }, true)
+	svc, err := batchservice.New(s, store, testLog, newMockListener(), nil, nil, func() hash.Hash { return mockHash }, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -611,7 +611,7 @@ func TestChecksumResync(t *testing.T) {
 	// now start a new instance and check that the value gets read from statestore
 	store2 := mock.New()
 	mockHash2 := &hs{}
-	_, err = batchservice.New(s, store2, testLog, newMockListener(), nil, nil, func() hash.Hash { return mockHash2 }, false)
+	_, err = batchservice.New(s, store2, testLog, newMockListener(), nil, nil, func() hash.Hash { return mockHash2 }, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -623,7 +623,7 @@ func TestChecksumResync(t *testing.T) {
 	// when resyncing
 	store3 := mock.New()
 	mockHash3 := &hs{}
-	_, err = batchservice.New(s, store3, testLog, newMockListener(), nil, nil, func() hash.Hash { return mockHash3 }, true)
+	_, err = batchservice.New(s, store3, testLog, newMockListener(), nil, nil, func() hash.Hash { return mockHash3 }, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -641,7 +641,7 @@ func newTestStoreAndServiceWithListener(
 	t.Helper()
 	s := mocks.NewStateStore()
 	store := mock.New(opts...)
-	svc, err := batchservice.New(s, store, testLog, newMockListener(), owner, batchListener, nil, false)
+	svc, err := batchservice.New(s, store, testLog, newMockListener(), owner, batchListener, nil, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
+	"github.com/ethersphere/bee/v2/pkg/tracing"
 	"go.uber.org/atomic"
 )
 
@@ -51,6 +52,7 @@ type service struct {
 	metrics       metrics
 	isSelfHealthy *atomic.Bool
 	reserve       storer.RadiusChecker
+	tracer        *tracing.Tracer
 
 	radiusSubsMtx sync.Mutex
 	radiusC       []chan uint8
@@ -65,6 +67,7 @@ func New(
 	mode string,
 	durPercentile float64,
 	connsPercentile float64,
+	tracer *tracing.Tracer,
 ) *service {
 	metrics := newMetrics()
 
@@ -76,6 +79,7 @@ func New(
 		metrics:       metrics,
 		isSelfHealthy: atomic.NewBool(true),
 		reserve:       reserve,
+		tracer:        tracer,
 	}
 
 	s.wg.Add(1)
@@ -133,6 +137,9 @@ type peer struct {
 // per count, the most common storage radius, and the batch commitment, and based on these values, marks peers as unhealhy that fall beyond
 // the allowed thresholds.
 func (s *service) salud(mode string, durPercentile float64, connsPercentile float64) {
+	span, _, spanCtx := s.tracer.StartSpanFromContext(context.Background(), "salud-round", s.logger)
+	defer span.End()
+
 	var (
 		mtx                  sync.Mutex
 		wg                   sync.WaitGroup
@@ -144,7 +151,7 @@ func (s *service) salud(mode string, durPercentile float64, connsPercentile floa
 
 	err := s.topology.EachConnectedPeer(func(addr swarm.Address, bin uint8) (stop bool, jumpToNext bool, err error) {
 		wg.Go(func() {
-			ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+			ctx, cancel := context.WithTimeout(spanCtx, requestTimeout)
 			defer cancel()
 
 			start := time.Now()

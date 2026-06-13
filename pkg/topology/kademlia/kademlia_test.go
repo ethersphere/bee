@@ -965,7 +965,7 @@ func TestClosestPeer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	kad, err := kademlia.New(base, ab, disc, p2pMock(t, ab, nil, nil, nil), detector, logger, kademlia.Options{})
+	kad, err := kademlia.New(base, ab, disc, p2pMock(t, ab, nil, nil, nil), detector, logger, nil, kademlia.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2087,7 +2087,7 @@ func newTestKademliaWithAddrDiscovery(
 		p2p    = p2pMock(t, ab, signer, connCounter, failedConnCounter) // p2p mock
 		logger = log.Noop                                               // logger
 	)
-	kad, err := kademlia.New(base, ab, disc, p2p, detector, logger, kadOpts)
+	kad, err := kademlia.New(base, ab, disc, p2p, detector, logger, nil, kadOpts)
 	if err != nil {
 		t.Fatal(err)
 	}

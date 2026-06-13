@@ -20,7 +20,9 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/baggage"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -67,9 +69,12 @@ const (
 // always operate against a working trace.Tracer.
 var noopTracer = &Tracer{tracer: noop.NewTracerProvider().Tracer(instrumentationName)}
 
-// httpPropagator carries trace context across HTTP via the W3C TraceContext
-// standard headers (traceparent, tracestate).
-var httpPropagator propagation.TextMapPropagator = propagation.TraceContext{}
+// httpPropagator carries trace context and baggage across HTTP via the W3C
+// TraceContext (traceparent, tracestate) and Baggage (baggage) standard headers.
+var httpPropagator propagation.TextMapPropagator = propagation.NewCompositeTextMapPropagator(
+	propagation.TraceContext{},
+	propagation.Baggage{},
+)
 
 // Tracer wraps an OTel Tracer and provides p2p/HTTP carriers plus helpers
 // aligned with bee's tracing API.
@@ -96,6 +101,15 @@ type Options struct {
 	Endpoint string
 	// ServiceName is reported as the OTel service.name resource attribute.
 	ServiceName string
+	// ServiceVersion is reported as the OTel service.version resource
+	// attribute. When empty the attribute is omitted.
+	ServiceVersion string
+	// Environment is reported as the OTel deployment.environment resource
+	// attribute (e.g. "mainnet", "testnet"). When empty the attribute is omitted.
+	Environment string
+	// InstanceID is reported as the OTel service.instance.id resource attribute
+	// (the node's overlay address). When empty the attribute is omitted.
+	InstanceID string
 	// Insecure disables TLS for the OTLP exporter (useful for a local collector).
 	Insecure bool
 	// CAFile is an optional path to a PEM-encoded CA bundle used to verify
@@ -109,6 +123,10 @@ type Options struct {
 	// Protocol selects the OTLP exporter transport: "http" or "grpc". Empty
 	// defaults to "http".
 	Protocol string
+	// Logger, when set, receives a confirmation line once tracing is wired up
+	// and OTLP exporter errors (e.g. an unreachable collector) via the OTel
+	// global error handler. Optional.
+	Logger log.Logger
 }
 
 // NewTracer creates a new Tracer and returns a closer that flushes pending
@@ -123,12 +141,10 @@ func NewTracer(o *Options) (*Tracer, io.Closer, error) {
 	}
 
 	if o.Endpoint == "" {
-		return nil, nil, errors.New("tracing-otlp-endpoint is required when tracing is enabled")
+		return nil, nil, errors.New("tracing-endpoint is required when tracing is enabled")
 	}
 
-	res, err := resource.New(context.Background(),
-		resource.WithAttributes(semconv.ServiceName(o.ServiceName)),
-	)
+	res, err := newResource(o)
 	if err != nil {
 		return nil, nil, fmt.Errorf("otel resource: %w", err)
 	}
@@ -152,9 +168,43 @@ func NewTracer(o *Options) (*Tracer, io.Closer, error) {
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithResource(res),
 		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(ratio))),
+		// Batch processor keeps SDK defaults; tunable via OTEL_BSP_* env vars.
 		sdktrace.WithBatcher(exporter),
 	)
+	if o.Logger != nil {
+		// Route async OTLP export failures (e.g. an unreachable collector) to the
+		// node logger so they are visible instead of silently dropped.
+		otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) {
+			o.Logger.Warning("tracing exporter error", "error", err)
+		}))
+		o.Logger.Info("tracing enabled", "endpoint", o.Endpoint, "protocol", o.Protocol, "sampling_ratio", ratio)
+	}
+
 	return &Tracer{tracer: tp.Tracer(instrumentationName)}, providerCloser{tp: tp}, nil
+}
+
+// newResource builds the OTel resource describing this node. The env options
+// come before WithAttributes so the configured values win over colliding
+// OTEL_SERVICE_NAME/OTEL_RESOURCE_ATTRIBUTES, while the environment can still
+// add attributes (e.g. cluster, region).
+func newResource(o *Options) (*resource.Resource, error) {
+	attrs := []attribute.KeyValue{semconv.ServiceName(o.ServiceName)}
+	if o.ServiceVersion != "" {
+		attrs = append(attrs, semconv.ServiceVersion(o.ServiceVersion))
+	}
+	if o.Environment != "" {
+		attrs = append(attrs, semconv.DeploymentEnvironment(o.Environment))
+	}
+	if o.InstanceID != "" {
+		attrs = append(attrs, semconv.ServiceInstanceID(o.InstanceID))
+	}
+
+	return resource.New(context.Background(),
+		resource.WithFromEnv(),
+		resource.WithTelemetrySDK(),
+		resource.WithHost(),
+		resource.WithAttributes(attrs...),
+	)
 }
 
 // newOTLPClient builds the OTLP client for the configured transport. An empty
@@ -163,7 +213,10 @@ func NewTracer(o *Options) (*Tracer, io.Closer, error) {
 func newOTLPClient(o *Options) (otlptrace.Client, error) {
 	switch o.Protocol {
 	case "", protocolHTTP:
-		opts := []otlptracehttp.Option{otlptracehttp.WithEndpoint(o.Endpoint)}
+		opts := []otlptracehttp.Option{
+			otlptracehttp.WithEndpoint(o.Endpoint),
+			otlptracehttp.WithCompression(otlptracehttp.GzipCompression),
+		}
 		if o.Insecure {
 			opts = append(opts, otlptracehttp.WithInsecure())
 		} else if o.CAFile != "" {
@@ -175,7 +228,10 @@ func newOTLPClient(o *Options) (otlptrace.Client, error) {
 		}
 		return otlptracehttp.NewClient(opts...), nil
 	case protocolGRPC:
-		opts := []otlptracegrpc.Option{otlptracegrpc.WithEndpoint(o.Endpoint)}
+		opts := []otlptracegrpc.Option{
+			otlptracegrpc.WithEndpoint(o.Endpoint),
+			otlptracegrpc.WithCompressor("gzip"),
+		}
 		if o.Insecure {
 			opts = append(opts, otlptracegrpc.WithInsecure())
 		} else if o.CAFile != "" {
@@ -234,6 +290,9 @@ func (t *Tracer) AddContextHeader(ctx context.Context, headers p2p.Headers) erro
 	}
 
 	headers[p2p.HeaderNameTracingSpanContext] = encodeP2PSpanContext(sc)
+	if bag := baggage.FromContext(ctx); bag.Len() > 0 {
+		headers[p2p.HeaderNameTracingBaggage] = []byte(bag.String())
+	}
 	return nil
 }
 
@@ -253,9 +312,16 @@ func (t *Tracer) FromHeaders(headers p2p.Headers) (trace.SpanContext, error) {
 	return sc, nil
 }
 
-// WithContextFromHeaders extracts a span context from the p2p header and
-// returns a new context carrying it. Safe to call on a nil receiver.
+// WithContextFromHeaders extracts a span context and any baggage from the p2p
+// headers and returns a new context carrying them. Baggage is applied even when
+// no span context is present. Safe to call on a nil receiver.
 func (t *Tracer) WithContextFromHeaders(ctx context.Context, headers p2p.Headers) (context.Context, error) {
+	if v := headers[p2p.HeaderNameTracingBaggage]; v != nil {
+		if bag, err := baggage.Parse(string(v)); err == nil {
+			ctx = baggage.ContextWithBaggage(ctx, bag)
+		}
+	}
+
 	sc, err := t.FromHeaders(headers)
 	if err != nil {
 		return ctx, err
@@ -286,14 +352,15 @@ func (t *Tracer) FromHTTPHeaders(headers http.Header) (trace.SpanContext, error)
 	return sc, nil
 }
 
-// WithContextFromHTTPHeaders extracts a span context from HTTP headers and
-// returns a new context carrying it. Safe to call on a nil receiver.
+// WithContextFromHTTPHeaders extracts a span context and any baggage from HTTP
+// headers and returns a new context carrying them. Baggage is applied even when
+// no span context is present. Safe to call on a nil receiver.
 func (t *Tracer) WithContextFromHTTPHeaders(ctx context.Context, headers http.Header) (context.Context, error) {
-	sc, err := t.FromHTTPHeaders(headers)
-	if err != nil {
-		return ctx, err
+	ctx = httpPropagator.Extract(ctx, propagation.HeaderCarrier(headers))
+	if sc := trace.SpanContextFromContext(ctx); !sc.IsValid() {
+		return ctx, ErrContextNotFound
 	}
-	return WithContext(ctx, sc), nil
+	return ctx, nil
 }
 
 // WithContext stores a span context in ctx using the standard OTel context
@@ -306,6 +373,23 @@ func WithContext(ctx context.Context, sc trace.SpanContext) context.Context {
 // returned SpanContext's IsValid() reports false when none is present.
 func FromContext(ctx context.Context) trace.SpanContext {
 	return trace.SpanContextFromContext(ctx)
+}
+
+// WithBaggageMember returns a context carrying an additional baggage member
+// (key=value) on top of any baggage already present. Baggage propagates across
+// HTTP and p2p hops alongside the trace, letting a value such as a batch id
+// follow a request end to end. The original context is returned unchanged if the
+// key or value is not a valid baggage member.
+func WithBaggageMember(ctx context.Context, key, value string) (context.Context, error) {
+	member, err := baggage.NewMember(key, value)
+	if err != nil {
+		return ctx, err
+	}
+	bag, err := baggage.FromContext(ctx).SetMember(member)
+	if err != nil {
+		return ctx, err
+	}
+	return baggage.ContextWithBaggage(ctx, bag), nil
 }
 
 // RecordError attaches an error event to the span, marks the span status as

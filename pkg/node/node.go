@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	bee "github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/accounting"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
@@ -219,6 +220,19 @@ const (
 	maxAllowedDoubling            = 1
 )
 
+// tracingEnvironment maps a network id to the deployment.environment trace
+// attribute. Unknown ids are reported as "private".
+func tracingEnvironment(networkID uint64) string {
+	switch networkID {
+	case config.Mainnet.NetworkID:
+		return "mainnet"
+	case config.Testnet.NetworkID:
+		return "testnet"
+	default:
+		return "private"
+	}
+}
+
 func NewBee(
 	ctx context.Context,
 	addr string,
@@ -236,19 +250,6 @@ func NewBee(
 	var pullSyncStartTime time.Time
 
 	nodeMetrics := newMetrics()
-
-	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
-		Enabled:       o.TracingEnabled,
-		Endpoint:      o.TracingEndpoint,
-		Insecure:      o.TracingInsecure,
-		CAFile:        o.TracingCAFile,
-		Protocol:      o.TracingProtocol,
-		SamplingRatio: o.TracingSamplingRatio,
-		ServiceName:   o.TracingServiceName,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("tracer: %w", err)
-	}
 
 	if err := validatePublicAddress(o.NATAddr); err != nil {
 		return nil, fmt.Errorf("invalid NAT address %s: %w", o.NATAddr, err)
@@ -283,7 +284,6 @@ func NewBee(
 		logger:         logger,
 		ctxCancel:      ctxCancel,
 		errorLogWriter: sink,
-		tracerCloser:   tracerCloser,
 		syncingStopped: syncutil.NewSignaler(),
 	}
 
@@ -393,6 +393,24 @@ func NewBee(
 	if err = checkOverlay(stateStore, swarmAddress); err != nil {
 		return nil, fmt.Errorf("check overlay address: %w", err)
 	}
+
+	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
+		Enabled:        o.TracingEnabled,
+		Endpoint:       o.TracingEndpoint,
+		Insecure:       o.TracingInsecure,
+		CAFile:         o.TracingCAFile,
+		Protocol:       o.TracingProtocol,
+		SamplingRatio:  o.TracingSamplingRatio,
+		ServiceName:    o.TracingServiceName,
+		ServiceVersion: bee.Version,
+		Environment:    tracingEnvironment(networkID),
+		InstanceID:     swarmAddress.String(),
+		Logger:         logger,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("tracer: %w", err)
+	}
+	b.tracerCloser = tracerCloser
 
 	var (
 		chequebookService chequebook.Service = new(noOpChequebookService)
@@ -795,7 +813,7 @@ func NewBee(
 	eventListener = listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
 	b.listenerCloser = eventListener
 
-	batchSvc, err = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
+	batchSvc, err = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync, tracer)
 	if err != nil {
 		return nil, fmt.Errorf("init batch service: %w", err)
 	}
@@ -824,7 +842,7 @@ func NewBee(
 
 	var swapService *swap.Service
 
-	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, detector, logger,
+	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, detector, logger, tracer,
 		kademlia.Options{Bootnodes: bootnodes, BootnodeMode: o.BootnodeMode, StaticNodes: o.StaticNodes, DataDir: o.DataDir})
 	if err != nil {
 		return nil, fmt.Errorf("unable to create kademlia: %w", err)
@@ -905,7 +923,7 @@ func NewBee(
 
 		snapshotEventListener := listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
 
-		snapshotBatchSvc, err := batchservice.New(stateStore, batchStore, logger, snapshotEventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
+		snapshotBatchSvc, err := batchservice.New(stateStore, batchStore, logger, snapshotEventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync, tracer)
 		if err != nil {
 			logger.Error(err, "failed to initialize batch service from snapshot, continuing outside snapshot block...")
 		} else {
@@ -1113,7 +1131,7 @@ func NewBee(
 		return nil, fmt.Errorf("status service: %w", err)
 	}
 
-	saludService := salud.New(nodeStatus, kad, localStore, logger, detector, api.FullMode.String(), salud.DefaultDurPercentile, salud.DefaultConnsPercentile)
+	saludService := salud.New(nodeStatus, kad, localStore, logger, detector, api.FullMode.String(), salud.DefaultDurPercentile, salud.DefaultConnsPercentile, tracer)
 	b.saludCloser = saludService
 
 	rC, unsub := saludService.SubscribeNetworkStorageRadius()
