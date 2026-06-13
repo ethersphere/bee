@@ -132,7 +132,7 @@ func NewTracer(o *Options) (*Tracer, io.Closer, error) {
 	}
 
 	if o.Endpoint == "" {
-		return nil, nil, errors.New("tracing-otlp-endpoint is required when tracing is enabled")
+		return nil, nil, errors.New("tracing-endpoint is required when tracing is enabled")
 	}
 
 	res, err := newResource(o)

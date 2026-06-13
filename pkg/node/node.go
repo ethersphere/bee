@@ -410,6 +410,9 @@ func NewBee(
 		return nil, fmt.Errorf("tracer: %w", err)
 	}
 	b.tracerCloser = tracerCloser
+	if o.TracingEnabled {
+		logger.Info("tracing enabled", "endpoint", o.TracingEndpoint, "protocol", o.TracingProtocol, "sampling_ratio", o.TracingSamplingRatio)
+	}
 
 	var (
 		chequebookService chequebook.Service = new(noOpChequebookService)

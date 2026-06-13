@@ -40,10 +40,10 @@ const (
 	optionWelcomeMessage                   = "welcome-message"
 	optionCORSAllowedOrigins               = "cors-allowed-origins"
 	optionNameTracingEnabled               = "tracing-enable"
-	optionNameTracingOTLPEndpoint          = "tracing-otlp-endpoint"
-	optionNameTracingOTLPInsecure          = "tracing-otlp-insecure"
-	optionNameTracingOTLPCAFile            = "tracing-otlp-ca-file"
-	optionNameTracingOTLPProtocol          = "tracing-otlp-protocol"
+	optionNameTracingEndpoint              = "tracing-endpoint"
+	optionNameTracingInsecure              = "tracing-insecure"
+	optionNameTracingCAFile                = "tracing-ca-file"
+	optionNameTracingProtocol              = "tracing-protocol"
 	optionNameTracingSamplingRatio         = "tracing-sampling-ratio"
 	optionNameTracingServiceName           = "tracing-service-name"
 	optionNameVerbosity                    = "verbosity"
@@ -108,10 +108,10 @@ const (
 
 	// tracing
 	configKeyTracingEnabled       = "tracing.enable"
-	configKeyTracingOTLPEndpoint  = "tracing.otlp-endpoint"
-	configKeyTracingOTLPInsecure  = "tracing.otlp-insecure"
-	configKeyTracingOTLPCAFile    = "tracing.otlp-ca-file"
-	configKeyTracingOTLPProtocol  = "tracing.otlp-protocol"
+	configKeyTracingEndpoint      = "tracing.endpoint"
+	configKeyTracingInsecure      = "tracing.insecure"
+	configKeyTracingCAFile        = "tracing.ca-file"
+	configKeyTracingProtocol      = "tracing.protocol"
 	configKeyTracingSamplingRatio = "tracing.sampling-ratio"
 	configKeyTracingServiceName   = "tracing.service-name"
 )
@@ -126,10 +126,10 @@ var blockchainRpcConfigPairs = []struct{ flat, dotted string }{
 
 var tracingConfigPairs = []struct{ flat, dotted string }{
 	{optionNameTracingEnabled, configKeyTracingEnabled},
-	{optionNameTracingOTLPEndpoint, configKeyTracingOTLPEndpoint},
-	{optionNameTracingOTLPInsecure, configKeyTracingOTLPInsecure},
-	{optionNameTracingOTLPCAFile, configKeyTracingOTLPCAFile},
-	{optionNameTracingOTLPProtocol, configKeyTracingOTLPProtocol},
+	{optionNameTracingEndpoint, configKeyTracingEndpoint},
+	{optionNameTracingInsecure, configKeyTracingInsecure},
+	{optionNameTracingCAFile, configKeyTracingCAFile},
+	{optionNameTracingProtocol, configKeyTracingProtocol},
 	{optionNameTracingSamplingRatio, configKeyTracingSamplingRatio},
 	{optionNameTracingServiceName, configKeyTracingServiceName},
 }
@@ -137,17 +137,19 @@ var tracingConfigPairs = []struct{ flat, dotted string }{
 // Deprecated tracing options, removed in the OpenTelemetry migration. They are
 // kept only as hidden no-op flags so that existing configs do not break node
 // startup; their values are ignored (see deprecatedTracingKeys).
+//
+// Note: tracing-endpoint is intentionally NOT here — it is reused as the active
+// OTLP endpoint flag (see optionNameTracingEndpoint). Its meaning changed from a
+// Jaeger agent address to an OTLP collector endpoint.
 const (
-	optionNameTracingEndpoint = "tracing-endpoint"
-	optionNameTracingHost     = "tracing-host"
-	optionNameTracingPort     = "tracing-port"
+	optionNameTracingHost = "tracing-host"
+	optionNameTracingPort = "tracing-port"
 )
 
 // deprecatedTracingKeys are the pre-OpenTelemetry tracing options. They are
 // registered as hidden no-op flags so stale configs still start the node, but
-// their values are ignored; operators should migrate to the tracing-otlp-* keys.
+// their values are ignored; operators should migrate to the tracing-* keys.
 var deprecatedTracingKeys = []string{
-	optionNameTracingEndpoint,
 	optionNameTracingHost,
 	optionNameTracingPort,
 }
@@ -326,17 +328,17 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Uint64(optionNameNetworkID, chaincfg.Mainnet.NetworkID, "ID of the Swarm network")
 	cmd.Flags().StringSlice(optionCORSAllowedOrigins, []string{}, "origins with CORS headers enabled")
 	cmd.Flags().Bool(optionNameTracingEnabled, false, "enable tracing")
-	cmd.Flags().String(optionNameTracingOTLPEndpoint, "127.0.0.1:4318", "OTLP endpoint to send tracing data (host:port); default port is 4318 for http, 4317 for grpc")
-	cmd.Flags().Bool(optionNameTracingOTLPInsecure, false, "disable TLS for the OTLP exporter (useful for a local collector); when false, set --tracing-otlp-ca-file to verify the collector certificate against a private CA")
-	cmd.Flags().String(optionNameTracingOTLPCAFile, "", "path to a PEM-encoded CA bundle used to verify the OTLP collector certificate; ignored when --tracing-otlp-insecure=true")
-	cmd.Flags().String(optionNameTracingOTLPProtocol, "http", "OTLP exporter transport: http or grpc")
+	cmd.Flags().String(optionNameTracingEndpoint, "127.0.0.1:4318", "OTLP collector endpoint to send tracing data (host:port); default port is 4318 for http, 4317 for grpc")
+	cmd.Flags().Bool(optionNameTracingInsecure, false, "disable TLS for the OTLP exporter (useful for a local collector); when false, set --tracing-ca-file to verify the collector certificate against a private CA")
+	cmd.Flags().String(optionNameTracingCAFile, "", "path to a PEM-encoded CA bundle used to verify the OTLP collector certificate; ignored when --tracing-insecure=true")
+	cmd.Flags().String(optionNameTracingProtocol, "http", "OTLP exporter transport: http or grpc")
 	cmd.Flags().Float64(optionNameTracingSamplingRatio, 1.0, "head-based sampling ratio in [0,1]; 0 samples nothing, 1 samples everything")
 	cmd.Flags().String(optionNameTracingServiceName, "bee", "service name identifier for tracing")
 	// Deprecated, no-op tracing flags kept for backward compatibility so that
 	// existing configs do not break node startup. Their values are ignored.
 	for _, name := range deprecatedTracingKeys {
-		cmd.Flags().String(name, "", "deprecated and ignored; use the tracing-otlp-* options")
-		_ = cmd.Flags().MarkDeprecated(name, "no longer used after the OpenTelemetry migration; use the tracing-otlp-* options")
+		cmd.Flags().String(name, "", "deprecated and ignored; use the tracing-* options")
+		_ = cmd.Flags().MarkDeprecated(name, "no longer used after the OpenTelemetry migration; use the tracing-* options")
 	}
 	cmd.Flags().String(optionNameVerbosity, "info", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
 	cmd.Flags().String(optionWelcomeMessage, "", "send a welcome message string during handshakes")
@@ -423,8 +425,8 @@ func (c *command) bindBlockchainRpcConfig(cmd *cobra.Command) {
 	c.bindNestedConfig(cmd, blockchainRpcConfigPairs)
 }
 
-// bindTracingConfig supports both flat (tracing-otlp-endpoint) and nested
-// (tracing.otlp-endpoint) YAML forms, with nested taking precedence.
+// bindTracingConfig supports both flat (tracing-endpoint) and nested
+// (tracing.endpoint) YAML forms, with nested taking precedence.
 func (c *command) bindTracingConfig(cmd *cobra.Command) {
 	c.bindNestedConfig(cmd, tracingConfigPairs)
 }
@@ -436,7 +438,7 @@ func (c *command) bindTracingConfig(cmd *cobra.Command) {
 func (c *command) warnDeprecatedTracingKeys() {
 	for _, key := range deprecatedTracingKeys {
 		if c.config.InConfig(key) {
-			c.logger.Warning("deprecated tracing config key is ignored; use the tracing-otlp-* options", "key", key)
+			c.logger.Warning("deprecated tracing config key is ignored; use the tracing-* options", "key", key)
 		}
 	}
 }
@@ -445,9 +447,9 @@ func (c *command) warnDeprecatedTracingKeys() {
 // CA bundle, in which case the OTLP exporter falls back to the system root CAs.
 func (c *command) warnTracingTLSWithoutCA() {
 	if c.config.GetBool(configKeyTracingEnabled) &&
-		!c.config.GetBool(configKeyTracingOTLPInsecure) &&
-		c.config.GetString(configKeyTracingOTLPCAFile) == "" {
-		c.logger.Warning("tracing: TLS is enabled but no CA bundle is configured; the OTLP exporter will rely on the system root CAs. Provide --tracing-otlp-ca-file, set --tracing-otlp-insecure=true for a plaintext local collector, or disable tracing.")
+		!c.config.GetBool(configKeyTracingInsecure) &&
+		c.config.GetString(configKeyTracingCAFile) == "" {
+		c.logger.Warning("tracing: TLS is enabled but no CA bundle is configured; the OTLP exporter will rely on the system root CAs. Provide --tracing-ca-file, set --tracing-insecure=true for a plaintext local collector, or disable tracing.")
 	}
 }
 

@@ -111,14 +111,14 @@ password-file: "/usr/local/var/lib/swarm-bee/password"
 # tracing:
 #   ## enable tracing
 #   enable: false
-#   ## OTLP endpoint to send tracing data (host:port); default port is 4318 for http, 4317 for grpc
-#   otlp-endpoint: 127.0.0.1:4318
+#   ## OTLP collector endpoint to send tracing data (host:port); default port is 4318 for http, 4317 for grpc
+#   endpoint: 127.0.0.1:4318
 #   ## disable TLS for the OTLP exporter (useful for a local collector)
-#   otlp-insecure: false
-#   ## path to a PEM-encoded CA bundle used to verify the OTLP collector certificate; ignored when otlp-insecure is true
-#   otlp-ca-file: ""
+#   insecure: false
+#   ## path to a PEM-encoded CA bundle used to verify the OTLP collector certificate; ignored when insecure is true
+#   ca-file: ""
 #   ## OTLP exporter transport: http or grpc
-#   otlp-protocol: http
+#   protocol: http
 #   ## head-based sampling ratio in [0,1]; 0 samples nothing, 1 samples everything
 #   sampling-ratio: 1.0
 #   ## service name identifier for tracing
