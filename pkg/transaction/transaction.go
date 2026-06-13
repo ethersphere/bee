@@ -291,6 +291,15 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 		})
 
 		if err != nil {
+			// A revert during estimation means the transaction would revert
+			// on-chain too; broadcasting it only burns gas. Abort the send
+			// instead of falling back to a fixed gas limit. The fallback is
+			// reserved for transient (e.g. RPC) estimation failures, where the
+			// transaction may still succeed once mined.
+			if isRevertError(err) {
+				return nil, fmt.Errorf("gas estimation reverted: %w", err)
+			}
+
 			t.logger.Warning("gas estimation failed, using fallback",
 				"error", err,
 				"description", request.Description,
@@ -375,6 +384,17 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 		GasTipCap: gasTipCap,
 		Data:      request.Data,
 	}), nil
+}
+
+// isRevertError reports whether err represents an EVM revert (as opposed to a
+// transient failure such as an RPC timeout). Revert errors carry revert data
+// (rpc.DataError) on most backends; the message check covers backends that only
+// surface the textual "execution reverted" reason.
+func isRevertError(err error) bool {
+	if _, ok := errors.AsType[rpc.DataError](err); ok {
+		return true
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "execution reverted")
 }
 
 func storedTransactionKey(txHash common.Hash) string {

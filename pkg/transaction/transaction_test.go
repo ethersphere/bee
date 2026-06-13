@@ -287,6 +287,60 @@ func TestTransactionSend(t *testing.T) {
 		}
 	})
 
+	t.Run("send aborts when estimation reverts", func(t *testing.T) {
+		t.Parallel()
+
+		// A revert during gas estimation predicts an on-chain revert; the
+		// transaction must not be broadcast (otherwise it is mined and burns gas).
+		request := &transaction.TxRequest{
+			To:                   &recipient,
+			Data:                 txData,
+			Value:                value,
+			MinEstimatedGasLimit: estimatedGasLimit,
+		}
+		store := storemock.NewStateStore()
+
+		transactionService, err := transaction.NewService(logger, sender,
+			backendmock.New(
+				backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+					t.Fatal("transaction with reverting estimation must not be broadcast")
+					return nil
+				}),
+				backendmock.WithEstimateGasFunc(func(ctx context.Context, msg ethereum.CallMsg) (gas uint64, err error) {
+					return 0, errors.New("execution reverted: panic: arithmetic underflow or overflow (0x11)")
+				}),
+				backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
+					return nonce - 1, nil
+				}),
+				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+					return gasFeeCap, suggestedGasTip, nil
+				}),
+			),
+			signerMockForTransaction(t, nil, sender, chainID),
+			store,
+			chainID,
+			monitormock.New(),
+			0,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		testutil.CleanupCloser(t, transactionService)
+
+		_, err = transactionService.Send(context.Background(), request, 0)
+		if err == nil {
+			t.Fatal("expected error when estimation reverts, got nil")
+		}
+
+		pending, err := transactionService.PendingTransactions()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(pending) != 0 {
+			t.Fatalf("expected no pending transaction, got %d", len(pending))
+		}
+	})
+
 	t.Run("sendWithBoost", func(t *testing.T) {
 		t.Parallel()
 
