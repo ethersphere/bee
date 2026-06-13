@@ -20,6 +20,7 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/baggage"
 	"go.opentelemetry.io/otel/codes"
@@ -122,6 +123,10 @@ type Options struct {
 	// Protocol selects the OTLP exporter transport: "http" or "grpc". Empty
 	// defaults to "http".
 	Protocol string
+	// Logger, when set, receives a confirmation line once tracing is wired up
+	// and OTLP exporter errors (e.g. an unreachable collector) via the OTel
+	// global error handler. Optional.
+	Logger log.Logger
 }
 
 // NewTracer creates a new Tracer and returns a closer that flushes pending
@@ -166,6 +171,15 @@ func NewTracer(o *Options) (*Tracer, io.Closer, error) {
 		// Batch processor keeps SDK defaults; tunable via OTEL_BSP_* env vars.
 		sdktrace.WithBatcher(exporter),
 	)
+	if o.Logger != nil {
+		// Route async OTLP export failures (e.g. an unreachable collector) to the
+		// node logger so they are visible instead of silently dropped.
+		otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) {
+			o.Logger.Warning("tracing exporter error", "error", err)
+		}))
+		o.Logger.Info("tracing enabled", "endpoint", o.Endpoint, "protocol", o.Protocol, "sampling_ratio", ratio)
+	}
+
 	return &Tracer{tracer: tp.Tracer(instrumentationName)}, providerCloser{tp: tp}, nil
 }
 
