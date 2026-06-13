@@ -8,4 +8,7 @@ const (
 	LogField = logField
 )
 
-var LoadCAFile = loadCAFile
+var (
+	LoadCAFile  = loadCAFile
+	NewResource = newResource
+)

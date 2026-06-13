@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	bee "github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/accounting"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
@@ -219,6 +220,20 @@ const (
 	maxAllowedDoubling            = 1
 )
 
+// tracingEnvironment maps a Swarm network id to the deployment.environment
+// resource attribute reported on traces, so spans from different networks are
+// distinguishable in an OTLP backend. Unknown ids are reported as "private".
+func tracingEnvironment(networkID uint64) string {
+	switch networkID {
+	case config.Mainnet.NetworkID:
+		return "mainnet"
+	case config.Testnet.NetworkID:
+		return "testnet"
+	default:
+		return "private"
+	}
+}
+
 func NewBee(
 	ctx context.Context,
 	addr string,
@@ -238,13 +253,15 @@ func NewBee(
 	nodeMetrics := newMetrics()
 
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
-		Enabled:       o.TracingEnabled,
-		Endpoint:      o.TracingEndpoint,
-		Insecure:      o.TracingInsecure,
-		CAFile:        o.TracingCAFile,
-		Protocol:      o.TracingProtocol,
-		SamplingRatio: o.TracingSamplingRatio,
-		ServiceName:   o.TracingServiceName,
+		Enabled:        o.TracingEnabled,
+		Endpoint:       o.TracingEndpoint,
+		Insecure:       o.TracingInsecure,
+		CAFile:         o.TracingCAFile,
+		Protocol:       o.TracingProtocol,
+		SamplingRatio:  o.TracingSamplingRatio,
+		ServiceName:    o.TracingServiceName,
+		ServiceVersion: bee.Version,
+		Environment:    tracingEnvironment(networkID),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("tracer: %w", err)

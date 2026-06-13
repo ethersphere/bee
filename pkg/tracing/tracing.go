@@ -96,6 +96,12 @@ type Options struct {
 	Endpoint string
 	// ServiceName is reported as the OTel service.name resource attribute.
 	ServiceName string
+	// ServiceVersion is reported as the OTel service.version resource
+	// attribute. When empty the attribute is omitted.
+	ServiceVersion string
+	// Environment is reported as the OTel deployment.environment resource
+	// attribute (e.g. "mainnet", "testnet"). When empty the attribute is omitted.
+	Environment string
 	// Insecure disables TLS for the OTLP exporter (useful for a local collector).
 	Insecure bool
 	// CAFile is an optional path to a PEM-encoded CA bundle used to verify
@@ -126,9 +132,7 @@ func NewTracer(o *Options) (*Tracer, io.Closer, error) {
 		return nil, nil, errors.New("tracing-otlp-endpoint is required when tracing is enabled")
 	}
 
-	res, err := resource.New(context.Background(),
-		resource.WithAttributes(semconv.ServiceName(o.ServiceName)),
-	)
+	res, err := newResource(o)
 	if err != nil {
 		return nil, nil, fmt.Errorf("otel resource: %w", err)
 	}
@@ -152,9 +156,35 @@ func NewTracer(o *Options) (*Tracer, io.Closer, error) {
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithResource(res),
 		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(ratio))),
+		// The batch span processor keeps the SDK defaults (queue size 2048,
+		// 5s schedule). Operators can tune them via the standard OTEL_BSP_*
+		// environment variables without a bee flag or rebuild.
 		sdktrace.WithBatcher(exporter),
 	)
 	return &Tracer{tracer: tp.Tracer(instrumentationName)}, providerCloser{tp: tp}, nil
+}
+
+// newResource builds the OTel resource describing this node. WithFromEnv,
+// WithTelemetrySDK and WithHost are applied before WithAttributes so the
+// explicitly configured service name/version/environment win over any colliding
+// values from OTEL_RESOURCE_ATTRIBUTES/OTEL_SERVICE_NAME, while operators can
+// still enrich the resource (e.g. cluster, region) via the environment. WithHost
+// adds host.name so spans are attributable to a node in multi-node backends.
+func newResource(o *Options) (*resource.Resource, error) {
+	attrs := []attribute.KeyValue{semconv.ServiceName(o.ServiceName)}
+	if o.ServiceVersion != "" {
+		attrs = append(attrs, semconv.ServiceVersion(o.ServiceVersion))
+	}
+	if o.Environment != "" {
+		attrs = append(attrs, semconv.DeploymentEnvironment(o.Environment))
+	}
+
+	return resource.New(context.Background(),
+		resource.WithFromEnv(),
+		resource.WithTelemetrySDK(),
+		resource.WithHost(),
+		resource.WithAttributes(attrs...),
+	)
 }
 
 // newOTLPClient builds the OTLP client for the configured transport. An empty
@@ -163,7 +193,10 @@ func NewTracer(o *Options) (*Tracer, io.Closer, error) {
 func newOTLPClient(o *Options) (otlptrace.Client, error) {
 	switch o.Protocol {
 	case "", protocolHTTP:
-		opts := []otlptracehttp.Option{otlptracehttp.WithEndpoint(o.Endpoint)}
+		opts := []otlptracehttp.Option{
+			otlptracehttp.WithEndpoint(o.Endpoint),
+			otlptracehttp.WithCompression(otlptracehttp.GzipCompression),
+		}
 		if o.Insecure {
 			opts = append(opts, otlptracehttp.WithInsecure())
 		} else if o.CAFile != "" {
@@ -175,7 +208,10 @@ func newOTLPClient(o *Options) (otlptrace.Client, error) {
 		}
 		return otlptracehttp.NewClient(opts...), nil
 	case protocolGRPC:
-		opts := []otlptracegrpc.Option{otlptracegrpc.WithEndpoint(o.Endpoint)}
+		opts := []otlptracegrpc.Option{
+			otlptracegrpc.WithEndpoint(o.Endpoint),
+			otlptracegrpc.WithCompressor("gzip"),
+		}
 		if o.Insecure {
 			opts = append(opts, otlptracegrpc.WithInsecure())
 		} else if o.CAFile != "" {
