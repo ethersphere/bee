@@ -111,7 +111,7 @@ func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs) (comm
 		Data:                 callData,
 		GasPrice:             sctx.GetGasPrice(ctx),
 		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
-		MinEstimatedGasLimit: 500_000,
+		MinEstimatedGasLimit: 1_000_000,
 		Value:                big.NewInt(0),
 		Description:          "claim win transaction",
 	}

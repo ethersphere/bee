@@ -305,6 +305,11 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 				// Simple transfer - use minimum
 				gasLimit = MinGasLimit
 			}
+
+			// Cap at maximum
+			if gasLimit > MaxGasLimit {
+				gasLimit = MaxGasLimit
+			}
 		} else {
 			// Estimation succeeded - add buffer for state changes
 			gasLimit += gasLimit * GasBufferPercent / 100
