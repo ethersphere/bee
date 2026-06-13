@@ -35,6 +35,7 @@ func TestNewResource(t *testing.T) {
 			ServiceName:    "bee",
 			ServiceVersion: "2.8.0-abcdef",
 			Environment:    "mainnet",
+			InstanceID:     "overlay-abc123",
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -48,6 +49,9 @@ func TestNewResource(t *testing.T) {
 		}
 		if got, ok := attrValue(t, res, semconv.DeploymentEnvironmentKey); !ok || got != "mainnet" {
 			t.Errorf("deployment.environment = %q (present=%v), want %q", got, ok, "mainnet")
+		}
+		if got, ok := attrValue(t, res, semconv.ServiceInstanceIDKey); !ok || got != "overlay-abc123" {
+			t.Errorf("service.instance.id = %q (present=%v), want %q", got, ok, "overlay-abc123")
 		}
 		// WithTelemetrySDK must contribute the SDK identity attributes.
 		if _, ok := attrValue(t, res, semconv.TelemetrySDKNameKey); !ok {

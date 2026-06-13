@@ -102,6 +102,9 @@ type Options struct {
 	// Environment is reported as the OTel deployment.environment resource
 	// attribute (e.g. "mainnet", "testnet"). When empty the attribute is omitted.
 	Environment string
+	// InstanceID is reported as the OTel service.instance.id resource attribute
+	// (the node's overlay address). When empty the attribute is omitted.
+	InstanceID string
 	// Insecure disables TLS for the OTLP exporter (useful for a local collector).
 	Insecure bool
 	// CAFile is an optional path to a PEM-encoded CA bundle used to verify
@@ -156,20 +159,16 @@ func NewTracer(o *Options) (*Tracer, io.Closer, error) {
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithResource(res),
 		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(ratio))),
-		// The batch span processor keeps the SDK defaults (queue size 2048,
-		// 5s schedule). Operators can tune them via the standard OTEL_BSP_*
-		// environment variables without a bee flag or rebuild.
+		// Batch processor keeps SDK defaults; tunable via OTEL_BSP_* env vars.
 		sdktrace.WithBatcher(exporter),
 	)
 	return &Tracer{tracer: tp.Tracer(instrumentationName)}, providerCloser{tp: tp}, nil
 }
 
-// newResource builds the OTel resource describing this node. WithFromEnv,
-// WithTelemetrySDK and WithHost are applied before WithAttributes so the
-// explicitly configured service name/version/environment win over any colliding
-// values from OTEL_RESOURCE_ATTRIBUTES/OTEL_SERVICE_NAME, while operators can
-// still enrich the resource (e.g. cluster, region) via the environment. WithHost
-// adds host.name so spans are attributable to a node in multi-node backends.
+// newResource builds the OTel resource describing this node. The env options
+// come before WithAttributes so the configured values win over colliding
+// OTEL_SERVICE_NAME/OTEL_RESOURCE_ATTRIBUTES, while the environment can still
+// add attributes (e.g. cluster, region).
 func newResource(o *Options) (*resource.Resource, error) {
 	attrs := []attribute.KeyValue{semconv.ServiceName(o.ServiceName)}
 	if o.ServiceVersion != "" {
@@ -177,6 +176,9 @@ func newResource(o *Options) (*resource.Resource, error) {
 	}
 	if o.Environment != "" {
 		attrs = append(attrs, semconv.DeploymentEnvironment(o.Environment))
+	}
+	if o.InstanceID != "" {
+		attrs = append(attrs, semconv.ServiceInstanceID(o.InstanceID))
 	}
 
 	return resource.New(context.Background(),

@@ -220,9 +220,8 @@ const (
 	maxAllowedDoubling            = 1
 )
 
-// tracingEnvironment maps a Swarm network id to the deployment.environment
-// resource attribute reported on traces, so spans from different networks are
-// distinguishable in an OTLP backend. Unknown ids are reported as "private".
+// tracingEnvironment maps a network id to the deployment.environment trace
+// attribute. Unknown ids are reported as "private".
 func tracingEnvironment(networkID uint64) string {
 	switch networkID {
 	case config.Mainnet.NetworkID:
@@ -251,21 +250,6 @@ func NewBee(
 	var pullSyncStartTime time.Time
 
 	nodeMetrics := newMetrics()
-
-	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
-		Enabled:        o.TracingEnabled,
-		Endpoint:       o.TracingEndpoint,
-		Insecure:       o.TracingInsecure,
-		CAFile:         o.TracingCAFile,
-		Protocol:       o.TracingProtocol,
-		SamplingRatio:  o.TracingSamplingRatio,
-		ServiceName:    o.TracingServiceName,
-		ServiceVersion: bee.Version,
-		Environment:    tracingEnvironment(networkID),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("tracer: %w", err)
-	}
 
 	if err := validatePublicAddress(o.NATAddr); err != nil {
 		return nil, fmt.Errorf("invalid NAT address %s: %w", o.NATAddr, err)
@@ -300,7 +284,6 @@ func NewBee(
 		logger:         logger,
 		ctxCancel:      ctxCancel,
 		errorLogWriter: sink,
-		tracerCloser:   tracerCloser,
 		syncingStopped: syncutil.NewSignaler(),
 	}
 
@@ -410,6 +393,23 @@ func NewBee(
 	if err = checkOverlay(stateStore, swarmAddress); err != nil {
 		return nil, fmt.Errorf("check overlay address: %w", err)
 	}
+
+	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
+		Enabled:        o.TracingEnabled,
+		Endpoint:       o.TracingEndpoint,
+		Insecure:       o.TracingInsecure,
+		CAFile:         o.TracingCAFile,
+		Protocol:       o.TracingProtocol,
+		SamplingRatio:  o.TracingSamplingRatio,
+		ServiceName:    o.TracingServiceName,
+		ServiceVersion: bee.Version,
+		Environment:    tracingEnvironment(networkID),
+		InstanceID:     swarmAddress.String(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("tracer: %w", err)
+	}
+	b.tracerCloser = tracerCloser
 
 	var (
 		chequebookService chequebook.Service = new(noOpChequebookService)
