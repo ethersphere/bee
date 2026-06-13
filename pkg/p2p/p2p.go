@@ -226,6 +226,10 @@ const (
 	// from the legacy OpenTracing/Jaeger payload, so the distinct key prevents
 	// mixed-version peers from decoding each other's incompatible payloads.
 	HeaderNameTracingSpanContext = "tracing-span-context-v2"
+	// HeaderNameTracingBaggage carries W3C baggage (a string of key=value pairs)
+	// alongside the span context. It is additive: peers that do not understand it
+	// simply ignore the header, so it never breaks the stream.
+	HeaderNameTracingBaggage = "tracing-baggage"
 )
 
 // NewSwarmStreamName constructs a libp2p compatible stream name out of

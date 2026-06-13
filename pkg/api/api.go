@@ -772,6 +772,9 @@ func (p *putterSessionWrapper) Put(ctx context.Context, chunk swarm.Chunk) error
 	if err != nil {
 		return err
 	}
+	// Attach the batch id as baggage so it follows the chunk across hops (e.g.
+	// direct upload -> pushsync). Best effort: a baggage error must not fail the put.
+	ctx, _ = tracing.WithBaggageMember(ctx, "batch_id", hex.EncodeToString(stamp.BatchID()))
 	return p.PutterSession.Put(ctx, chunk.WithStamp(stamp))
 }
 

@@ -27,8 +27,10 @@ import (
 	im "github.com/ethersphere/bee/v2/pkg/topology/kademlia/internal/metrics"
 	"github.com/ethersphere/bee/v2/pkg/topology/kademlia/internal/waitnext"
 	"github.com/ethersphere/bee/v2/pkg/topology/pslice"
+	"github.com/ethersphere/bee/v2/pkg/tracing"
 	"github.com/ethersphere/bee/v2/pkg/util/ioutil"
 	ma "github.com/multiformats/go-multiaddr"
+	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -202,6 +204,7 @@ type Kad struct {
 	bgBroadcastCancel context.CancelFunc
 	reachability      p2p.ReachabilityStatus
 	detector          *stabilization.Detector
+	tracer            *tracing.Tracer
 }
 
 // New returns a new Kademlia.
@@ -212,6 +215,7 @@ func New(
 	p2pSvc p2p.Service,
 	detector *stabilization.Detector,
 	logger log.Logger,
+	tracer *tracing.Tracer,
 	o Options,
 ) (*Kad, error) {
 	var k *Kad
@@ -253,6 +257,7 @@ func New(
 		staticPeer:        isStaticPeer(opt.StaticNodes),
 		storageRadius:     swarm.MaxPO,
 		detector:          detector,
+		tracer:            tracer,
 	}
 
 	if k.opt.PruneFunc == nil {
@@ -966,6 +971,10 @@ func (k *Kad) recalcDepth() {
 // as well as sends the peers we are connected to the newly connected peer
 func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma []ma.Multiaddr) error {
 	k.logger.Debug("attempting connect to peer", "peer_address", peer)
+
+	span, _, ctx := k.tracer.StartSpanFromContext(ctx, "kademlia-connect", k.logger)
+	span.SetAttributes(attribute.String("peer_address", peer.String()))
+	defer span.End()
 
 	ctx, cancel := context.WithTimeout(ctx, peerConnectionAttemptTimeout)
 	defer cancel()

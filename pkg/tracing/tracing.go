@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/baggage"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -67,9 +68,12 @@ const (
 // always operate against a working trace.Tracer.
 var noopTracer = &Tracer{tracer: noop.NewTracerProvider().Tracer(instrumentationName)}
 
-// httpPropagator carries trace context across HTTP via the W3C TraceContext
-// standard headers (traceparent, tracestate).
-var httpPropagator propagation.TextMapPropagator = propagation.TraceContext{}
+// httpPropagator carries trace context and baggage across HTTP via the W3C
+// TraceContext (traceparent, tracestate) and Baggage (baggage) standard headers.
+var httpPropagator propagation.TextMapPropagator = propagation.NewCompositeTextMapPropagator(
+	propagation.TraceContext{},
+	propagation.Baggage{},
+)
 
 // Tracer wraps an OTel Tracer and provides p2p/HTTP carriers plus helpers
 // aligned with bee's tracing API.
@@ -272,6 +276,9 @@ func (t *Tracer) AddContextHeader(ctx context.Context, headers p2p.Headers) erro
 	}
 
 	headers[p2p.HeaderNameTracingSpanContext] = encodeP2PSpanContext(sc)
+	if bag := baggage.FromContext(ctx); bag.Len() > 0 {
+		headers[p2p.HeaderNameTracingBaggage] = []byte(bag.String())
+	}
 	return nil
 }
 
@@ -291,9 +298,16 @@ func (t *Tracer) FromHeaders(headers p2p.Headers) (trace.SpanContext, error) {
 	return sc, nil
 }
 
-// WithContextFromHeaders extracts a span context from the p2p header and
-// returns a new context carrying it. Safe to call on a nil receiver.
+// WithContextFromHeaders extracts a span context and any baggage from the p2p
+// headers and returns a new context carrying them. Baggage is applied even when
+// no span context is present. Safe to call on a nil receiver.
 func (t *Tracer) WithContextFromHeaders(ctx context.Context, headers p2p.Headers) (context.Context, error) {
+	if v := headers[p2p.HeaderNameTracingBaggage]; v != nil {
+		if bag, err := baggage.Parse(string(v)); err == nil {
+			ctx = baggage.ContextWithBaggage(ctx, bag)
+		}
+	}
+
 	sc, err := t.FromHeaders(headers)
 	if err != nil {
 		return ctx, err
@@ -324,14 +338,15 @@ func (t *Tracer) FromHTTPHeaders(headers http.Header) (trace.SpanContext, error)
 	return sc, nil
 }
 
-// WithContextFromHTTPHeaders extracts a span context from HTTP headers and
-// returns a new context carrying it. Safe to call on a nil receiver.
+// WithContextFromHTTPHeaders extracts a span context and any baggage from HTTP
+// headers and returns a new context carrying them. Baggage is applied even when
+// no span context is present. Safe to call on a nil receiver.
 func (t *Tracer) WithContextFromHTTPHeaders(ctx context.Context, headers http.Header) (context.Context, error) {
-	sc, err := t.FromHTTPHeaders(headers)
-	if err != nil {
-		return ctx, err
+	ctx = httpPropagator.Extract(ctx, propagation.HeaderCarrier(headers))
+	if sc := trace.SpanContextFromContext(ctx); !sc.IsValid() {
+		return ctx, ErrContextNotFound
 	}
-	return WithContext(ctx, sc), nil
+	return ctx, nil
 }
 
 // WithContext stores a span context in ctx using the standard OTel context
@@ -344,6 +359,23 @@ func WithContext(ctx context.Context, sc trace.SpanContext) context.Context {
 // returned SpanContext's IsValid() reports false when none is present.
 func FromContext(ctx context.Context) trace.SpanContext {
 	return trace.SpanContextFromContext(ctx)
+}
+
+// WithBaggageMember returns a context carrying an additional baggage member
+// (key=value) on top of any baggage already present. Baggage propagates across
+// HTTP and p2p hops alongside the trace, letting a value such as a batch id
+// follow a request end to end. The original context is returned unchanged if the
+// key or value is not a valid baggage member.
+func WithBaggageMember(ctx context.Context, key, value string) (context.Context, error) {
+	member, err := baggage.NewMember(key, value)
+	if err != nil {
+		return ctx, err
+	}
+	bag, err := baggage.FromContext(ctx).SetMember(member)
+	if err != nil {
+		return ctx, err
+	}
+	return baggage.ContextWithBaggage(ctx, bag), nil
 }
 
 // RecordError attaches an error event to the span, marks the span status as
