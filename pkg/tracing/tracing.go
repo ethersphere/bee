@@ -316,6 +316,10 @@ func (t *Tracer) FromHeaders(headers p2p.Headers) (trace.SpanContext, error) {
 // headers and returns a new context carrying them. Baggage is applied even when
 // no span context is present. Safe to call on a nil receiver.
 func (t *Tracer) WithContextFromHeaders(ctx context.Context, headers p2p.Headers) (context.Context, error) {
+	// Baggage arrives from an arbitrary remote peer, so treat it as untrusted:
+	// undecodable payloads are ignored, and callers must only ever surface its
+	// values as span attributes. Never promote baggage to metric labels or
+	// unbounded log fields — arbitrary peers could blow up cardinality.
 	if v := headers[p2p.HeaderNameTracingBaggage]; v != nil {
 		if bag, err := baggage.Parse(string(v)); err == nil {
 			ctx = baggage.ContextWithBaggage(ctx, bag)

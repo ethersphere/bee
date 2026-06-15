@@ -105,6 +105,9 @@ func New(
 // Create will create a new batch with the given ID, owner value and depth and
 // stores it in the BatchedStore.
 func (svc *batchService) Create(id, owner []byte, totalAmout, normalisedBalance *big.Int, depth, bucketDepth uint8, immutable bool, txHash common.Hash) error {
+	// Batch creation is driven by on-chain postage events, not a request, so
+	// there is no caller context to parent under: this is intentionally a
+	// detached root span.
 	span, _, _ := svc.tracer.StartSpanFromContext(context.Background(), "postage-batch-create", svc.logger)
 	span.SetAttributes(attribute.String("batch_id", hex.EncodeToString(id)))
 	defer span.End()
