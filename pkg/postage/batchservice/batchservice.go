@@ -40,14 +40,48 @@ type batchService struct {
 
 	checksum hash.Hash // checksum hasher
 	resync   bool
+
+	// snapshotLoaded reports whether the store was rebuilt from a postage
+	// snapshot in New. When true, Start must not reset the store again,
+	// otherwise the freshly loaded snapshot would be discarded (see #5495).
+	snapshotLoaded bool
+	// snapshotResumeBlock is the chain block height the store was rebuilt to
+	// from a postage snapshot. When non-zero, live sync resumes from here.
+	snapshotResumeBlock uint64
 }
 
 type Interface interface {
 	postage.EventUpdater
 }
 
+// Snapshot carries the optional inputs needed to rebuild the batch store from a
+// postage snapshot. When passed to New (non-nil), the store is reset and
+// replayed from the snapshot before the service is returned, and live sync
+// later resumes from the snapshot's block height. New takes ownership of
+// Listener and closes it once the snapshot has been replayed.
+type Snapshot struct {
+	// Listener replays the snapshot's events into the batch store.
+	Listener postage.Listener
+	// Backend reports the block height the snapshot reached, from which live
+	// sync resumes.
+	Backend interface {
+		BlockNumber(context.Context) (uint64, error)
+	}
+	// StartBlock is the block height from which the snapshot is replayed (the
+	// postage contract start block).
+	StartBlock uint64
+}
+
 // New will create a new BatchService.
+//
+// When a snapshot is provided it is replayed before the service is returned
+// (resetting the store first if a resync was requested or a dirty shutdown was
+// detected), and snapshotLoaded reports whether that succeeded. When no snapshot
+// is loaded, a resync or dirty shutdown instead triggers a single reset in Start
+// so live sync rebuilds the store from the chain. The store is therefore reset
+// at most once across New and Start.
 func New(
+	ctx context.Context,
 	stateStore storage.StateStorer,
 	storer postage.Storer,
 	logger log.Logger,
@@ -55,8 +89,9 @@ func New(
 	owner []byte,
 	batchListener postage.BatchEventListener,
 	checksumFunc func() hash.Hash,
+	snapshot *Snapshot,
 	resync bool,
-) (Interface, error) {
+) (Interface, bool, error) {
 	if checksumFunc == nil {
 		checksumFunc = sha3.New256
 	}
@@ -65,37 +100,113 @@ func New(
 		sum = checksumFunc()
 	)
 
+	logger = logger.WithName(loggerName).Register()
+
 	dirty := false
-	err := stateStore.Get(dirtyDBKey, &dirty)
-	if err != nil && !errors.Is(err, storage.ErrNotFound) {
-		return nil, err
+	if err := stateStore.Get(dirtyDBKey, &dirty); err != nil && !errors.Is(err, storage.ErrNotFound) {
+		return nil, false, err
 	}
 
 	if resync {
 		if err := stateStore.Delete(checksumDBKey); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 	} else if !dirty {
 		if err := stateStore.Get(checksumDBKey, &b); err != nil {
 			if !errors.Is(err, storage.ErrNotFound) {
-				return nil, err
+				return nil, false, err
 			}
 		} else {
 			s, err := hex.DecodeString(b)
 			if err != nil {
-				return nil, err
+				return nil, false, err
 			}
 			n, err := sum.Write(s)
 			if err != nil {
-				return nil, err
+				return nil, false, err
 			}
 			if n != len(s) {
-				return nil, errors.New("batchstore checksum init")
+				return nil, false, errors.New("batchstore checksum init")
 			}
 		}
 	}
 
-	return &batchService{stateStore, storer, logger.WithName(loggerName).Register(), listener, owner, batchListener, sum, resync}, nil
+	bs := &batchService{
+		stateStore:    stateStore,
+		storer:        storer,
+		logger:        logger,
+		listener:      listener,
+		owner:         owner,
+		batchListener: batchListener,
+		checksum:      sum,
+		resync:        resync,
+	}
+
+	// When a snapshot is supplied the rebuild happens here: reset the store (only
+	// if a resync was requested or a dirty shutdown was detected, mirroring the
+	// pre-snapshot live path) and replay the snapshot onto it. A failed snapshot
+	// is not fatal; Start then rebuilds from the chain instead.
+	if snapshot != nil {
+		if dirty || resync {
+			if err := bs.reset(dirty); err != nil {
+				return nil, false, err
+			}
+		}
+		if err := bs.loadSnapshot(ctx, snapshot); err != nil {
+			logger.Error(err, "failed to start batch service from snapshot, continuing outside snapshot block...")
+		} else {
+			bs.snapshotLoaded = true
+		}
+	}
+
+	return bs, bs.snapshotLoaded, nil
+}
+
+// reset wipes the batch store so it can be rebuilt from scratch. It is called at
+// most once per startup, from New (snapshot rebuild) or Start (live rebuild).
+func (svc *batchService) reset(dirty bool) error {
+	if dirty {
+		svc.logger.Warning("batch service: dirty shutdown detected, resetting batch store")
+	} else {
+		svc.logger.Warning("batch service: resync requested, resetting batch store")
+	}
+
+	if err := svc.storer.Reset(); err != nil {
+		return err
+	}
+	if err := svc.stateStore.Delete(dirtyDBKey); err != nil {
+		return err
+	}
+	svc.logger.Warning("batch service: batch store has been reset. your node will now resync chain data. this might take a while...")
+
+	return nil
+}
+
+// loadSnapshot rebuilds the (already reset) store from a postage snapshot by
+// replaying its events and records the block height to resume live sync from.
+func (svc *batchService) loadSnapshot(ctx context.Context, snapshot *Snapshot) error {
+	defer func() {
+		if err := snapshot.Listener.Close(); err != nil {
+			svc.logger.Error(err, "failed to close event listener (snapshot) failure")
+		}
+	}()
+
+	startBlock := snapshot.StartBlock
+	if cs := svc.storer.GetChainState(); cs.Block > startBlock {
+		startBlock = cs.Block
+	}
+
+	if err := <-snapshot.Listener.Listen(ctx, startBlock+1, svc); err != nil {
+		return err
+	}
+
+	resumeBlock, err := snapshot.Backend.BlockNumber(ctx)
+	if err != nil {
+		return fmt.Errorf("snapshot block height: %w", err)
+	}
+	svc.snapshotResumeBlock = resumeBlock
+
+	return nil
 }
 
 // Create will create a new batch with the given ID, owner value and depth and
@@ -248,26 +359,23 @@ func (svc *batchService) Start(ctx context.Context, startBlock uint64) (err erro
 		return err
 	}
 
-	if dirty || svc.resync {
-
-		if dirty {
-			svc.logger.Warning("batch service: dirty shutdown detected, resetting batch store")
-		} else {
-			svc.logger.Warning("batch service: resync requested, resetting batch store")
-		}
-
-		if err := svc.storer.Reset(); err != nil {
+	// Reset and rebuild from the live chain when a dirty shutdown is detected or
+	// a resync was requested. A snapshot that already rebuilt the store in New is
+	// left intact: resetting it here would discard the snapshot (see #5495).
+	if dirty || (svc.resync && !svc.snapshotLoaded) {
+		if err := svc.reset(dirty); err != nil {
 			return err
 		}
-		if err := svc.stateStore.Delete(dirtyDBKey); err != nil {
-			return err
-		}
-		svc.logger.Warning("batch service: batch store has been reset. your node will now resync chain data. this might take a while...")
 	}
 
 	cs := svc.storer.GetChainState()
 	if cs.Block > startBlock {
 		startBlock = cs.Block
+	}
+	// When the store was rebuilt from a snapshot, resume live sync from the
+	// snapshot's block height rather than the requested start block.
+	if svc.snapshotResumeBlock > startBlock {
+		startBlock = svc.snapshotResumeBlock
 	}
 
 	syncedChan := svc.listener.Listen(ctx, startBlock+1, svc)
