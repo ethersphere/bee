@@ -209,7 +209,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, trace.WithAttributes(
 		attribute.String("address", chunkAddress.String()),
-		attribute.Int64("tagID", int64(chunk.TagID())),
+		attribute.Int64("tag_id", int64(chunk.TagID())),
 		attribute.String("sender_address", p.Address.String()),
 	))
 

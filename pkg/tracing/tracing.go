@@ -183,6 +183,13 @@ func NewTracer(o *Options) (*Tracer, io.Closer, error) {
 	return &Tracer{tracer: tp.Tracer(instrumentationName)}, providerCloser{tp: tp}, nil
 }
 
+// NewTracerFromProvider wraps an existing OTel TracerProvider in a Tracer. It is
+// primarily useful for tests that need a recording tracer (e.g. one backed by an
+// in-memory span recorder) rather than the OTLP exporter pipeline NewTracer builds.
+func NewTracerFromProvider(tp trace.TracerProvider) *Tracer {
+	return &Tracer{tracer: tp.Tracer(instrumentationName)}
+}
+
 // newResource builds the OTel resource describing this node. The env options
 // come before WithAttributes so the configured values win over colliding
 // OTEL_SERVICE_NAME/OTEL_RESOURCE_ATTRIBUTES, while the environment can still
