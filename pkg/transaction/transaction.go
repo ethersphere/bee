@@ -296,9 +296,9 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 			// instead of falling back to a fixed gas limit. The fallback is
 			// reserved for transient (e.g. RPC) estimation failures, where the
 			// transaction may still succeed once mined.
-			// if isRevertError(err) {
-			// 	return nil, fmt.Errorf("gas estimation reverted: %w", err)
-			// }
+			if isRevertError(err) {
+				return nil, fmt.Errorf("gas estimation reverted: %w", err)
+			}
 
 			t.logger.Warning("gas estimation failed, using fallback",
 				"error", err,
@@ -390,12 +390,12 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 // transient failure such as an RPC timeout). Revert errors carry revert data
 // (rpc.DataError) on most backends; the message check covers backends that only
 // surface the textual "execution reverted" reason.
-// func isRevertError(err error) bool {
-// 	if _, ok := errors.AsType[rpc.DataError](err); ok {
-// 		return true
-// 	}
-// 	return strings.Contains(strings.ToLower(err.Error()), "execution reverted")
-// }
+func isRevertError(err error) bool {
+	if _, ok := errors.AsType[rpc.DataError](err); ok {
+		return true
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "execution reverted")
+}
 
 func storedTransactionKey(txHash common.Hash) string {
 	return fmt.Sprintf("%s%x", storedTransactionPrefix, txHash)

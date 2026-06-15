@@ -121,7 +121,7 @@ var (
 
 		StakingAddress:         common.HexToAddress("0x491075e789DBdbb7d08D95946E665eFB2751eE1E"),
 		PostageStampAddress:    common.HexToAddress("0x8613A18717E30be14852846eC6D45F5010339451"),
-		RedistributionAddress:  common.HexToAddress("0x6a02826e2a56092F56e0ba4dB766c5f4540414C2"),
+		RedistributionAddress:  common.HexToAddress("0xacDcb3Cd8DeaDd798856AF1C8a1b6c27290f75e5"),
 		SwapPriceOracleAddress: common.HexToAddress("0x4c90551763C1498aE96589202E386019655c1781"),
 		CurrentFactoryAddress:  common.HexToAddress("0xe4620F49ebDEF146366E63B08Eb66cAe32d51c8f"),
 
