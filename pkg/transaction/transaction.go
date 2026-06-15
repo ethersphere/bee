@@ -296,9 +296,9 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 			// instead of falling back to a fixed gas limit. The fallback is
 			// reserved for transient (e.g. RPC) estimation failures, where the
 			// transaction may still succeed once mined.
-			if IsRevertError(err) {
-				return nil, fmt.Errorf("gas estimation reverted: %w", err)
-			}
+			// if IsRevertError(err) {
+			// 	return nil, fmt.Errorf("gas estimation reverted: %w", err)
+			// }
 
 			t.logger.Warning("gas estimation failed, using fallback",
 				"error", err,
