@@ -391,6 +391,36 @@ func TestRedistribution(t *testing.T) {
 		}
 	})
 
+	t.Run("IsPlaying - revert treated as not playing", func(t *testing.T) {
+		t.Parallel()
+
+		depth := uint8(10)
+		contract := redistribution.New(
+			overlay,
+			owner,
+			log.Noop,
+			transactionMock.New(
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if *request.To == redistributionContractAddress {
+						return nil, errors.New("execution reverted")
+					}
+					return nil, errors.New("unexpected call")
+				}),
+			),
+			redistributionContractAddress,
+			redistributionContractABI,
+			0,
+		)
+
+		isPlaying, err := contract.IsPlaying(ctx, depth)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if isPlaying {
+			t.Fatal("expected not playing")
+		}
+	})
+
 	t.Run("send tx failed", func(t *testing.T) {
 		t.Parallel()
 

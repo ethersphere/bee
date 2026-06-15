@@ -70,6 +70,12 @@ func (c *contract) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
 
 	result, err := c.callTx(ctx, callData)
 	if err != nil {
+		// The contract reverts for owners that are not eligible to participate
+		// (e.g. an unstaked node, or one without a committed stake).
+		if transaction.IsRevertError(err) {
+			c.logger.Debug("IsPlaying: contract reverted, treating as not playing", "owner", c.owner, "depth", depth, "error", err)
+			return false, nil
+		}
 		return false, fmt.Errorf("IsPlaying: owner %v depth %d: %w", c.owner, depth, err)
 	}
 
@@ -111,7 +117,7 @@ func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs) (comm
 		Data:                 callData,
 		GasPrice:             sctx.GetGasPrice(ctx),
 		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
-		MinEstimatedGasLimit: 1_000_000,
+		MinEstimatedGasLimit: 500_000,
 		Value:                big.NewInt(0),
 		Description:          "claim win transaction",
 	}
