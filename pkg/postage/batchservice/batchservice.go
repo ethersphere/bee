@@ -17,8 +17,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/storage"
-	"github.com/ethersphere/bee/v2/pkg/tracing"
-	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -39,7 +37,6 @@ type batchService struct {
 	listener      postage.Listener
 	owner         []byte
 	batchListener postage.BatchEventListener
-	tracer        *tracing.Tracer
 
 	checksum hash.Hash // checksum hasher
 	resync   bool
@@ -59,7 +56,6 @@ func New(
 	batchListener postage.BatchEventListener,
 	checksumFunc func() hash.Hash,
 	resync bool,
-	tracer *tracing.Tracer,
 ) (Interface, error) {
 	if checksumFunc == nil {
 		checksumFunc = sha3.New256
@@ -99,19 +95,12 @@ func New(
 		}
 	}
 
-	return &batchService{stateStore, storer, logger.WithName(loggerName).Register(), listener, owner, batchListener, tracer, sum, resync}, nil
+	return &batchService{stateStore, storer, logger.WithName(loggerName).Register(), listener, owner, batchListener, sum, resync}, nil
 }
 
 // Create will create a new batch with the given ID, owner value and depth and
 // stores it in the BatchedStore.
 func (svc *batchService) Create(id, owner []byte, totalAmout, normalisedBalance *big.Int, depth, bucketDepth uint8, immutable bool, txHash common.Hash) error {
-	// Batch creation is driven by on-chain postage events, not a request, so
-	// there is no caller context to parent under: this is intentionally a
-	// detached root span.
-	span, _, _ := svc.tracer.StartSpanFromContext(context.Background(), "postage-batch-create", svc.logger)
-	span.SetAttributes(attribute.String("batch_id", hex.EncodeToString(id)))
-	defer span.End()
-
 	// don't add batches which have value which equals total cumulative
 	// payout or that are going to expire already within the next couple of blocks
 	val := big.NewInt(0).Add(svc.storer.GetChainState().TotalAmount, svc.storer.GetChainState().CurrentPrice)
