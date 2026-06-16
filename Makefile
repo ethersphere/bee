@@ -35,6 +35,11 @@ binary: dist FORCE
 	$(GO) version
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o dist/bee ./cmd/bee
 
+.PHONY: chainsim-binary
+chainsim-binary: export CGO_ENABLED=0
+chainsim-binary: dist FORCE
+	$(GO) build -trimpath -o dist/chainsim ./cmd/chainsim
+
 dist:
 	mkdir $@
 
