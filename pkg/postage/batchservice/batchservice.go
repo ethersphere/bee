@@ -148,7 +148,12 @@ func New(
 	// is not fatal; Start then rebuilds from the chain instead.
 	if snapshot != nil {
 		if dirty || resync {
-			if err := bs.reset(dirty); err != nil {
+			if dirty {
+				logger.Warning("batch service: dirty shutdown detected, resetting batch store")
+			} else {
+				logger.Warning("batch service: resync requested, resetting batch store")
+			}
+			if err := bs.reset(); err != nil {
 				return nil, false, err
 			}
 		}
@@ -164,13 +169,9 @@ func New(
 
 // reset wipes the batch store so it can be rebuilt from scratch. It is called at
 // most once per startup, from New (snapshot rebuild) or Start (live rebuild).
-func (svc *batchService) reset(dirty bool) error {
-	if dirty {
-		svc.logger.Warning("batch service: dirty shutdown detected, resetting batch store")
-	} else {
-		svc.logger.Warning("batch service: resync requested, resetting batch store")
-	}
-
+// The reason for the reset is logged by the caller at the point of detection, so
+// the intent is recorded even if the reset itself then fails.
+func (svc *batchService) reset() error {
 	if err := svc.storer.Reset(); err != nil {
 		return err
 	}
@@ -363,7 +364,12 @@ func (svc *batchService) Start(ctx context.Context, startBlock uint64) (err erro
 	// a resync was requested. A snapshot that already rebuilt the store in New is
 	// left intact: resetting it here would discard the snapshot (see #5495).
 	if dirty || (svc.resync && !svc.snapshotLoaded) {
-		if err := svc.reset(dirty); err != nil {
+		if dirty {
+			svc.logger.Warning("batch service: dirty shutdown detected, resetting batch store")
+		} else {
+			svc.logger.Warning("batch service: resync requested, resetting batch store")
+		}
+		if err := svc.reset(); err != nil {
 			return err
 		}
 	}
