@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	bee "github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/accounting"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
@@ -219,6 +220,19 @@ const (
 	maxAllowedDoubling            = 1
 )
 
+// tracingEnvironment maps a network id to the deployment.environment trace
+// attribute. Unknown ids are reported as "private".
+func tracingEnvironment(networkID uint64) string {
+	switch networkID {
+	case config.Mainnet.NetworkID:
+		return "mainnet"
+	case config.Testnet.NetworkID:
+		return "testnet"
+	default:
+		return "private"
+	}
+}
+
 func NewBee(
 	ctx context.Context,
 	addr string,
@@ -236,19 +250,6 @@ func NewBee(
 	var pullSyncStartTime time.Time
 
 	nodeMetrics := newMetrics()
-
-	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
-		Enabled:       o.TracingEnabled,
-		Endpoint:      o.TracingEndpoint,
-		Insecure:      o.TracingInsecure,
-		CAFile:        o.TracingCAFile,
-		Protocol:      o.TracingProtocol,
-		SamplingRatio: o.TracingSamplingRatio,
-		ServiceName:   o.TracingServiceName,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("tracer: %w", err)
-	}
 
 	if err := validatePublicAddress(o.NATAddr); err != nil {
 		return nil, fmt.Errorf("invalid NAT address %s: %w", o.NATAddr, err)
@@ -283,7 +284,6 @@ func NewBee(
 		logger:         logger,
 		ctxCancel:      ctxCancel,
 		errorLogWriter: sink,
-		tracerCloser:   tracerCloser,
 		syncingStopped: syncutil.NewSignaler(),
 	}
 
@@ -393,6 +393,24 @@ func NewBee(
 	if err = checkOverlay(stateStore, swarmAddress); err != nil {
 		return nil, fmt.Errorf("check overlay address: %w", err)
 	}
+
+	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
+		Enabled:        o.TracingEnabled,
+		Endpoint:       o.TracingEndpoint,
+		Insecure:       o.TracingInsecure,
+		CAFile:         o.TracingCAFile,
+		Protocol:       o.TracingProtocol,
+		SamplingRatio:  o.TracingSamplingRatio,
+		ServiceName:    o.TracingServiceName,
+		ServiceVersion: bee.Version,
+		Environment:    tracingEnvironment(networkID),
+		InstanceID:     swarmAddress.String(),
+		Logger:         logger,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("tracer: %w", err)
+	}
+	b.tracerCloser = tracerCloser
 
 	var (
 		chequebookService chequebook.Service = new(noOpChequebookService)
