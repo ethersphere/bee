@@ -18,7 +18,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/transaction/wrapped/cache"
 )
 
-const maxAverageBlockTime = 5 * time.Minute
+const maxAverageBlockTime = 30 * time.Second
 
 var _ transaction.Backend = (*wrappedBackend)(nil)
 

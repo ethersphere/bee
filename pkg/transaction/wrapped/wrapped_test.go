@@ -322,7 +322,7 @@ func Test_BlockNumber_AverageBlockTimeCappedAtMax(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		const (
 			genesisBlock      = uint64(100)
-			configBlockTime   = 5 * time.Second
+			configBlockTime   = 3 * time.Second
 			blockSyncInterval = uint64(10)
 		)
 
@@ -363,7 +363,7 @@ func Test_BlockNumber_AverageBlockTimeCappedAtMax(t *testing.T) {
 		assert.Equal(t, genesisBlock+1, got)
 		assert.Equal(t, int32(2), headerCalls.Load())
 
-		time.Sleep(time.Hour + maxAverageBlockTime)
+		time.Sleep(time.Hour + maxAverageBlockTime/2) // chain stuck and then resumed
 		synctest.Wait()
 
 		got, err = backend.BlockNumber(context.Background())
