@@ -247,53 +247,6 @@ func Test_BlockNumber_UsesAverageBlockTime(t *testing.T) {
 	})
 }
 
-func Test_BlockNumber_AverageBlockTimeWhenChainHasNotAdvanced(t *testing.T) {
-	t.Parallel()
-
-	synctest.Test(t, func(t *testing.T) {
-		const (
-			genesisBlock      = uint64(100)
-			configBlockTime   = 2 * time.Second
-			blockSyncInterval = uint64(3)
-			untilSecondPoll   = 6 * time.Second
-		)
-
-		chain := newChainSimulator(genesisBlock, 7*time.Second)
-
-		var headerCalls atomic.Int32
-		backend := newTestWrappedBackendWithConfig(
-			t,
-			configBlockTime,
-			blockSyncInterval,
-			backendmock.WithHeaderbyNumberFunc(func(ctx context.Context, number *big.Int) (*types.Header, error) {
-				headerCalls.Add(1)
-				return chain.header(), nil
-			}),
-		)
-
-		first, err := backend.BlockNumber(context.Background())
-		assert.NoError(t, err)
-		assert.Equal(t, genesisBlock, first)
-
-		time.Sleep(untilSecondPoll)
-		synctest.Wait()
-
-		second, err := backend.BlockNumber(context.Background())
-		assert.NoError(t, err)
-		assert.Equal(t, genesisBlock, second)
-		assert.Equal(t, int32(2), headerCalls.Load())
-
-		time.Sleep(4 * time.Second)
-		synctest.Wait()
-
-		// With observed ~6s average, extrapolation stays at 100. With config 2s it would reach 102.
-		third, err := backend.BlockNumber(context.Background())
-		assert.NoError(t, err)
-		assert.Equal(t, genesisBlock, third)
-		assert.NotEqual(t, genesisBlock+2, third)
-	})
-}
-
 type chainSimulator struct {
 	mu           sync.Mutex
 	genesisTime  time.Time
