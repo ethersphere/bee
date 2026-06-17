@@ -103,7 +103,7 @@ func (b *wrappedBackend) BlockNumber(ctx context.Context) (uint64, error) {
 
 		newNumber := header.Number.Uint64()
 		newTime := time.Unix(int64(header.Time), 0).UTC()
-		averageBlockTime := b.computeAverageBlockTime(prev, newNumber, newTime, time.Now().UTC())
+		averageBlockTime := b.computeAverageBlockTime(prev, newNumber, newTime)
 		b.metrics.AverageBlockTimeSeconds.Set(averageBlockTime.Seconds())
 
 		return blockNumberAnchor{
@@ -147,7 +147,7 @@ func (b *wrappedBackend) estimatedBlockNumberWithElapsed(anchor blockNumberAncho
 // freshly loaded header. Falls back to the configured block time only when prev
 // is unset. When the chain block number did not advance, wall-clock elapsed
 // since prev is treated as the time for one block.
-func (b *wrappedBackend) computeAverageBlockTime(prev blockNumberAnchor, newNumber uint64, newTime, now time.Time) time.Duration {
+func (b *wrappedBackend) computeAverageBlockTime(prev blockNumberAnchor, newNumber uint64, newTime time.Time) time.Duration {
 	if prev.number == 0 || newNumber <= prev.number {
 		return b.blockTime
 	}
