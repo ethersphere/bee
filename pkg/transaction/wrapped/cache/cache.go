@@ -13,7 +13,7 @@ import (
 )
 
 type (
-	Loader[T any]         func() (T, error)
+	Loader[T any]         func(prev T) (T, error)
 	ReuseEvaluator[T any] func(value T) bool
 )
 
@@ -64,7 +64,12 @@ func (c *SingleFlightCache[T]) PeekOrLoad(ctx context.Context, canReuse ReuseEva
 
 	result, shared, err := c.group.Do(ctx, c.key, func(ctx context.Context) (any, error) {
 		c.metrics.Loads.Inc()
-		value, err := loader()
+
+		c.mu.RLock()
+		prev := c.value
+		c.mu.RUnlock()
+
+		value, err := loader(prev)
 		if err != nil {
 			c.metrics.LoadErrors.Inc()
 			return value, err
