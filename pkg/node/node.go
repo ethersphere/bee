@@ -45,6 +45,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/postage/batchstore"
 	"github.com/ethersphere/bee/v2/pkg/postage/listener"
 	"github.com/ethersphere/bee/v2/pkg/postage/postagecontract"
+	"github.com/ethersphere/bee/v2/pkg/postage/snapshot"
+	"github.com/ethersphere/bee/v2/pkg/postage/snapshot/archive"
 	"github.com/ethersphere/bee/v2/pkg/pricer"
 	"github.com/ethersphere/bee/v2/pkg/pricing"
 	"github.com/ethersphere/bee/v2/pkg/pss"
@@ -892,21 +894,17 @@ func NewBee(
 	// store is reset only when --resync is requested. Either way the store is
 	// reset in a single place (batchservice.New), which avoids a second reset
 	// wiping the snapshot that was just loaded (see #5495).
-	var snapshot *batchservice.Snapshot
+	var batchSnapshot *batchservice.Snapshot
 	if !o.SkipPostageSnapshot && !batchStoreExists && (networkID == mainnetNetworkID) && beeNodeMode != api.UltraLightMode {
-		chainBackend := NewSnapshotLogFilterer(logger, archiveSnapshotGetter{})
-
-		snapshotEventListener := listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
-
-		snapshot = &batchservice.Snapshot{
-			Listener:   snapshotEventListener,
-			Backend:    chainBackend,
-			StartBlock: postageSyncStart,
+		batchSnapshot, err = snapshot.New(ctx, logger, archive.Getter{}, b.syncingStopped, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout, postageSyncStart)
+		if err != nil {
+			// A corrupt snapshot is not fatal: rebuild from the chain instead.
+			logger.Error(err, "postage snapshot unavailable, syncing from chain instead")
 		}
 	}
 
 	var snapshotLoaded bool
-	batchSvc, snapshotLoaded, err = batchservice.New(ctx, stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, snapshot, o.Resync)
+	batchSvc, snapshotLoaded, err = batchservice.New(ctx, stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, batchSnapshot, o.Resync)
 	if err != nil {
 		return nil, fmt.Errorf("init batch service: %w", err)
 	}

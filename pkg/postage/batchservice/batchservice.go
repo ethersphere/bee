@@ -46,7 +46,7 @@ type batchService struct {
 	// otherwise the freshly loaded snapshot would be discarded (see #5495).
 	snapshotLoaded bool
 	// snapshotResumeBlock is the chain block height the store was rebuilt to
-	// from a postage snapshot. When non-zero, live sync resumes from here.
+	// from a postage snapshot. When set, live sync resumes from here.
 	snapshotResumeBlock uint64
 }
 
@@ -62,14 +62,12 @@ type Interface interface {
 type Snapshot struct {
 	// Listener replays the snapshot's events into the batch store.
 	Listener postage.Listener
-	// Backend reports the block height the snapshot reached, from which live
-	// sync resumes.
-	Backend interface {
-		BlockNumber(context.Context) (uint64, error)
-	}
 	// StartBlock is the block height from which the snapshot is replayed (the
 	// postage contract start block).
 	StartBlock uint64
+	// ResumeBlock is the block height the snapshot reached, from which live sync
+	// resumes once the replay completes.
+	ResumeBlock uint64
 }
 
 // New will create a new BatchService.
@@ -147,12 +145,15 @@ func New(
 	// pre-snapshot live path) and replay the snapshot onto it. A failed snapshot
 	// is not fatal; Start then rebuilds from the chain instead.
 	if snapshot != nil {
-		if dirty || resync {
-			if dirty {
-				logger.Warning("batch service: dirty shutdown detected, resetting batch store")
-			} else {
-				logger.Warning("batch service: resync requested, resetting batch store")
-			}
+		var resetReason string
+		switch {
+		case dirty:
+			resetReason = "batch service: dirty shutdown detected, resetting batch store"
+		case resync:
+			resetReason = "batch service: resync requested, resetting batch store"
+		}
+		if resetReason != "" {
+			logger.Warning(resetReason)
 			if err := bs.reset(); err != nil {
 				return nil, false, err
 			}
@@ -201,11 +202,7 @@ func (svc *batchService) loadSnapshot(ctx context.Context, snapshot *Snapshot) e
 		return err
 	}
 
-	resumeBlock, err := snapshot.Backend.BlockNumber(ctx)
-	if err != nil {
-		return fmt.Errorf("snapshot block height: %w", err)
-	}
-	svc.snapshotResumeBlock = resumeBlock
+	svc.snapshotResumeBlock = snapshot.ResumeBlock
 
 	return nil
 }
@@ -363,12 +360,15 @@ func (svc *batchService) Start(ctx context.Context, startBlock uint64) (err erro
 	// Reset and rebuild from the live chain when a dirty shutdown is detected or
 	// a resync was requested. A snapshot that already rebuilt the store in New is
 	// left intact: resetting it here would discard the snapshot (see #5495).
-	if dirty || (svc.resync && !svc.snapshotLoaded) {
-		if dirty {
-			svc.logger.Warning("batch service: dirty shutdown detected, resetting batch store")
-		} else {
-			svc.logger.Warning("batch service: resync requested, resetting batch store")
-		}
+	var resetReason string
+	switch {
+	case dirty:
+		resetReason = "batch service: dirty shutdown detected, resetting batch store"
+	case svc.resync && !svc.snapshotLoaded:
+		resetReason = "batch service: resync requested, resetting batch store"
+	}
+	if resetReason != "" {
+		svc.logger.Warning(resetReason)
 		if err := svc.reset(); err != nil {
 			return err
 		}

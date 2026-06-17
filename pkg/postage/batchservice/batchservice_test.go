@@ -635,15 +635,6 @@ func (r *recordingListener) Close() error {
 	return r.closeErr
 }
 
-type mockSnapshotBackend struct {
-	block uint64
-	err   error
-}
-
-func (m mockSnapshotBackend) BlockNumber(context.Context) (uint64, error) {
-	return m.block, m.err
-}
-
 // TestSnapshotRebuild covers the snapshot rebuild path and the #5495 fix: live
 // sync resumes from the snapshot's block height, and the store is reset at most
 // once even when --resync is set alongside a snapshot (never twice, which would
@@ -654,9 +645,9 @@ func TestSnapshotRebuild(t *testing.T) {
 	newSnapshot := func() (*recordingListener, *batchservice.Snapshot) {
 		snapListener := &recordingListener{}
 		return snapListener, &batchservice.Snapshot{
-			Listener:   snapListener,
-			Backend:    mockSnapshotBackend{block: 4096},
-			StartBlock: 100,
+			Listener:    snapListener,
+			StartBlock:  100,
+			ResumeBlock: 4096,
 		}
 	}
 
@@ -687,11 +678,13 @@ func TestSnapshotRebuild(t *testing.T) {
 			t.Fatal("expected snapshot listener to be closed")
 		}
 
+		// Live sync resumes from the snapshot's block height, not the requested
+		// start block.
 		if err := svc.Start(context.Background(), snapshot.StartBlock); err != nil {
 			t.Fatal(err)
 		}
-		if liveListener.from != 4097 {
-			t.Fatalf("expect live sync from 4097 got %d", liveListener.from)
+		if liveListener.from != snapshot.ResumeBlock+1 {
+			t.Fatalf("expect live sync from %d got %d", snapshot.ResumeBlock+1, liveListener.from)
 		}
 		if c := store.ResetCalls(); c != 0 {
 			t.Fatalf("expect store never reset, got %d", c)
@@ -729,18 +722,18 @@ func TestSnapshotRebuild(t *testing.T) {
 }
 
 // TestSnapshotCornerCases pushes the snapshot rebuild path into its failure and
-// boundary scenarios: a failed replay, an unavailable snapshot block height, a
-// dirty shutdown coinciding with a snapshot, a chain state already ahead of the
-// snapshot, and a listener that errors on close.
+// boundary scenarios: a failed replay, a dirty shutdown coinciding with a
+// snapshot, a chain state already ahead of the snapshot, and a listener that
+// errors on close.
 func TestSnapshotCornerCases(t *testing.T) {
 	t.Parallel()
 
 	newSnapshot := func(listenErr error) (*recordingListener, *batchservice.Snapshot) {
 		snapListener := &recordingListener{listenErr: listenErr}
 		return snapListener, &batchservice.Snapshot{
-			Listener:   snapListener,
-			Backend:    mockSnapshotBackend{block: 4096},
-			StartBlock: 100,
+			Listener:    snapListener,
+			StartBlock:  100,
+			ResumeBlock: 4096,
 		}
 	}
 
@@ -803,30 +796,6 @@ func TestSnapshotCornerCases(t *testing.T) {
 		// from the chain. Two resets is correct here (matrix row 8).
 		if c := store.ResetCalls(); c != 2 {
 			t.Fatalf("expect %d reset calls after Start got %d", 2, c)
-		}
-	})
-
-	t.Run("backend block-height error fails the load", func(t *testing.T) {
-		t.Parallel()
-
-		s := mocks.NewStateStore()
-		store := mock.New()
-		snapListener := &recordingListener{}
-		snapshot := &batchservice.Snapshot{
-			Listener:   snapListener,
-			Backend:    mockSnapshotBackend{block: 4096, err: errTest},
-			StartBlock: 100,
-		}
-
-		_, loaded, err := batchservice.New(context.Background(), s, store, testLog, &recordingListener{}, nil, nil, nil, snapshot, false)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if loaded {
-			t.Fatal("expected load to fail when the snapshot block height is unavailable")
-		}
-		if !snapListener.listened {
-			t.Fatal("expected snapshot replay to have run before the block-height lookup")
 		}
 	})
 
@@ -908,7 +877,6 @@ func TestSnapshotCornerCases(t *testing.T) {
 		snapListener := &recordingListener{closeErr: errTest}
 		snapshot := &batchservice.Snapshot{
 			Listener:   snapListener,
-			Backend:    mockSnapshotBackend{block: 4096},
 			StartBlock: 100,
 		}
 
