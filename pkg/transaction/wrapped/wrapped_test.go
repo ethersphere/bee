@@ -247,6 +247,132 @@ func Test_BlockNumber_UsesAverageBlockTime(t *testing.T) {
 	})
 }
 
+func Test_BlockNumber_AverageBlockTimeResetsWhenChainStuck(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		const (
+			genesisBlock      = uint64(100)
+			configBlockTime   = 5 * time.Second
+			observedBlockTime = 7 * time.Second
+			blockSyncInterval = uint64(100)
+		)
+
+		anchorTime := time.Now().UTC()
+		var headerCalls atomic.Int32
+
+		backend := newTestWrappedBackendWithConfig(
+			t,
+			configBlockTime,
+			blockSyncInterval,
+			backendmock.WithHeaderbyNumberFunc(func(ctx context.Context, number *big.Int) (*types.Header, error) {
+				call := headerCalls.Add(1)
+				switch call {
+				case 1:
+					return &types.Header{
+						Number: big.NewInt(int64(genesisBlock)),
+						Time:   uint64(anchorTime.Unix()),
+					}, nil
+				case 2:
+					return &types.Header{
+						Number: big.NewInt(int64(genesisBlock + 1)),
+						Time:   uint64(anchorTime.Add(observedBlockTime).Unix()),
+					}, nil
+				case 3:
+					return &types.Header{
+						Number: big.NewInt(int64(genesisBlock + 1)),
+						Time:   uint64(anchorTime.Add(observedBlockTime).Unix()),
+					}, nil
+				default:
+					return nil, errors.New("unexpected rpc call")
+				}
+			}),
+		)
+
+		_, err := backend.BlockNumber(context.Background())
+		assert.NoError(t, err)
+
+		time.Sleep(time.Duration(blockSyncInterval) * configBlockTime)
+		synctest.Wait()
+
+		_, err = backend.BlockNumber(context.Background())
+		assert.NoError(t, err)
+		assert.Equal(t, int32(2), headerCalls.Load())
+
+		time.Sleep(time.Duration(blockSyncInterval) * observedBlockTime)
+		synctest.Wait()
+
+		afterStuckPoll, err := backend.BlockNumber(context.Background())
+		assert.NoError(t, err)
+		assert.Equal(t, int32(3), headerCalls.Load())
+
+		elapsed := time.Duration(blockSyncInterval)*configBlockTime + time.Duration(blockSyncInterval)*observedBlockTime
+		chainElapsed := elapsed - observedBlockTime
+		expectedWithConfig := genesisBlock + 1 + uint64(chainElapsed/configBlockTime)
+		expectedWithObserved := genesisBlock + 1 + uint64(chainElapsed/observedBlockTime)
+
+		assert.Equal(t, expectedWithConfig, afterStuckPoll)
+		assert.NotEqual(t, expectedWithObserved, afterStuckPoll)
+	})
+}
+
+func Test_BlockNumber_AverageBlockTimeCappedAtMax(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		const (
+			genesisBlock      = uint64(100)
+			configBlockTime   = 5 * time.Second
+			blockSyncInterval = uint64(10)
+		)
+
+		anchorTime := time.Now().UTC()
+		var headerCalls atomic.Int32
+
+		backend := newTestWrappedBackendWithConfig(
+			t,
+			configBlockTime,
+			blockSyncInterval,
+			backendmock.WithHeaderbyNumberFunc(func(ctx context.Context, number *big.Int) (*types.Header, error) {
+				call := headerCalls.Add(1)
+				switch call {
+				case 1:
+					return &types.Header{
+						Number: big.NewInt(int64(genesisBlock)),
+						Time:   uint64(anchorTime.Unix()),
+					}, nil
+				case 2:
+					return &types.Header{
+						Number: big.NewInt(int64(genesisBlock + 1)),
+						Time:   uint64(anchorTime.Add(time.Hour).Unix()),
+					}, nil
+				default:
+					return nil, errors.New("unexpected rpc call")
+				}
+			}),
+		)
+
+		_, err := backend.BlockNumber(context.Background())
+		assert.NoError(t, err)
+
+		time.Sleep(time.Duration(blockSyncInterval) * configBlockTime)
+		synctest.Wait()
+
+		got, err := backend.BlockNumber(context.Background())
+		assert.NoError(t, err)
+		assert.Equal(t, genesisBlock+1, got)
+		assert.Equal(t, int32(2), headerCalls.Load())
+
+		time.Sleep(time.Hour + maxAverageBlockTime)
+		synctest.Wait()
+
+		got, err = backend.BlockNumber(context.Background())
+		assert.NoError(t, err)
+		assert.Equal(t, genesisBlock+2, got)
+		assert.Equal(t, int32(2), headerCalls.Load())
+	})
+}
+
 type chainSimulator struct {
 	mu           sync.Mutex
 	genesisTime  time.Time

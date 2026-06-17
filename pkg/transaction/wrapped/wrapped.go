@@ -18,6 +18,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/transaction/wrapped/cache"
 )
 
+const maxAverageBlockTime = 5 * time.Minute
+
 var _ transaction.Backend = (*wrappedBackend)(nil)
 
 type blockNumberAnchor struct {
@@ -158,7 +160,12 @@ func (b *wrappedBackend) computeAverageBlockTime(prev blockNumberAnchor, newNumb
 	elapsed := newTime.Sub(prev.timestamp)
 	blocks := newNumber - prev.number
 
-	return elapsed / time.Duration(blocks)
+	averageBlockTime := elapsed / time.Duration(blocks)
+	if averageBlockTime > maxAverageBlockTime {
+		return maxAverageBlockTime
+	}
+
+	return averageBlockTime
 }
 
 func (b *wrappedBackend) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error) {
