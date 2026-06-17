@@ -52,6 +52,17 @@ type Config struct {
 
 	// Seed for synthetic background tip sampling. Zero uses a fixed default seed.
 	RNGSeed int64
+
+	// InclusionProbability enables probabilistic block inclusion when tip is below the network reference.
+	InclusionProbability bool
+	// InclusionMinProbability is the floor inclusion chance for low-tip transactions (0.0–1.0).
+	InclusionMinProbability float64
+
+	// BlockPeriodJitter adds uniform random delay in [-jitter, +jitter] to each block period. Zero disables jitter.
+	BlockPeriodJitter time.Duration
+
+	// MaxTxsPerBlock limits user transactions included per block. Zero means no limit.
+	MaxTxsPerBlock int
 }
 
 // DefaultConfig returns a usable configuration for tests and local simulation.
@@ -110,6 +121,15 @@ func (c Config) normalized() Config {
 	}
 	if c.InitialCongestion > 1 {
 		c.InitialCongestion = 1
+	}
+	if c.InclusionProbability && c.InclusionMinProbability <= 0 {
+		c.InclusionMinProbability = defaultInclusionMinProbability
+	}
+	if c.InclusionMinProbability < 0 {
+		c.InclusionMinProbability = 0
+	}
+	if c.InclusionMinProbability > 1 {
+		c.InclusionMinProbability = 1
 	}
 	return c
 }

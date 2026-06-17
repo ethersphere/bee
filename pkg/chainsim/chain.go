@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
@@ -62,6 +63,11 @@ type SimChain struct {
 	closed bool
 
 	onBlockCommit func(blockNum uint64)
+
+	scheduledBlockDelay time.Duration
+
+	logger log.Logger
+	stats  Stats
 }
 
 type simBlock struct {
@@ -117,6 +123,8 @@ func New(cfg Config) *SimChain {
 		rng:                 rand.New(rand.NewSource(cfg.RNGSeed)), //nolint:gosec // deterministic simulation RNG
 		ctx:                 ctx,
 		cancel:              cancel,
+		logger:              log.Noop,
+		stats:               newStats(),
 	}
 
 	s.blocks = append(s.blocks, &simBlock{
@@ -211,18 +219,26 @@ func (s *SimChain) headerFromBlock(block *simBlock) *types.Header {
 }
 
 func (s *SimChain) Run(ctx context.Context) {
-	ticker := time.NewTicker(s.cfg.BlockPeriod)
-	defer ticker.Stop()
-
 	for {
+		s.mu.Lock()
+		delay := s.nextBlockPeriod()
+		s.mu.Unlock()
+
+		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return
 		case <-s.ctx.Done():
+			timer.Stop()
 			return
-		case <-ticker.C:
-			s.CommitBlock()
+		case <-timer.C:
 		}
+
+		s.mu.Lock()
+		s.scheduledBlockDelay = delay
+		s.mu.Unlock()
+		s.CommitBlock()
 	}
 }
 
@@ -254,9 +270,14 @@ func (s *SimChain) SendTransaction(ctx context.Context, tx *types.Transaction) e
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	s.recordTxReceived()
+
 	sender, err := types.Sender(s.signer, tx)
 	if err != nil {
-		return fmt.Errorf("invalid transaction signature: %w", err)
+		wrapped := fmt.Errorf("invalid transaction signature: %w", err)
+		s.recordTxRejected(wrapped)
+		s.logger.Info("transaction rejected", append(txLogFields(tx, common.Address{}), "reason", wrapped.Error())...)
+		return wrapped
 	}
 
 	entry := &poolEntry{
@@ -265,7 +286,17 @@ func (s *SimChain) SendTransaction(ctx context.Context, tx *types.Transaction) e
 		addedAt: s.blockNum,
 	}
 
-	return s.pool.add(entry, s.baseFee, s.minMempoolTip, s.confirmedNonce(sender), s.balanceOf(sender))
+	replaced := s.pool.getBySenderNonce(sender, tx.Nonce()) != nil
+	if err := s.pool.add(entry, s.baseFee, s.minMempoolTip, s.confirmedNonce(sender), s.balanceOf(sender)); err != nil {
+		s.recordTxRejected(err)
+		s.logger.Info("transaction rejected", append(txLogFields(tx, sender), "reason", err.Error())...)
+		return err
+	}
+
+	s.recordTxAccepted(replaced)
+	fields := append(txLogFields(tx, sender), "replaced", replaced, "mempool_size", s.pool.size())
+	s.logger.Info("transaction accepted", fields...)
+	return nil
 }
 
 func (s *SimChain) TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {

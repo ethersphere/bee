@@ -6,10 +6,30 @@ package chainsim
 
 import (
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethersphere/bee/v2/pkg/log"
 )
+
+// SetScheduledBlockDelay sets the wall-clock delta applied to the next committed block.
+func (s *SimChain) SetScheduledBlockDelay(d time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.scheduledBlockDelay = d
+}
+
+// SetLogger sets the logger used for block and transaction events.
+func (s *SimChain) SetLogger(l log.Logger) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if l == nil {
+		s.logger = log.Noop
+		return
+	}
+	s.logger = l
+}
 
 // SetCongestion sets the fraction of block gas used by synthetic background traffic (0.0–1.0).
 func (s *SimChain) SetCongestion(ratio float64) {

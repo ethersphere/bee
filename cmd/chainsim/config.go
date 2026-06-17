@@ -36,6 +36,11 @@ type YAMLConfig struct {
 	FeeHistoryDepth   int    `yaml:"fee_history_depth"`
 	RNGSeed           int64  `yaml:"rng_seed"`
 
+	InclusionProbability    bool          `yaml:"inclusion_probability"`
+	InclusionMinProbability float64       `yaml:"inclusion_min_probability"`
+	BlockPeriodJitter       time.Duration `yaml:"block_period_jitter"`
+	MaxTxsPerBlock          int           `yaml:"max_txs_per_block"`
+
 	RPC struct {
 		Endpoint string `yaml:"endpoint"`
 	} `yaml:"rpc"`
@@ -124,20 +129,24 @@ func (c YAMLConfig) toSimConfig() (chainsim.Config, error) {
 	}
 
 	return chainsim.Config{
-		ChainID:             big.NewInt(c.ChainID),
-		BlockPeriod:         c.BlockPeriod,
-		BlockGasLimit:       c.BlockGasLimit,
-		InitialBaseFee:      initialBaseFee,
-		MinMempoolTip:       minMempoolTip,
-		InitialCongestion:   c.Congestion,
-		BackgroundTipMean:   backgroundTipMean,
-		BackgroundTipStdDev: backgroundTipStdDev,
-		MaxMempoolSize:      c.MaxMempoolSize,
-		MempoolTTL:          c.MempoolTTL,
-		ReceiptAvailDelay:   c.ReceiptAvailDelay,
-		EstimateGas:         c.EstimateGas,
-		FeeHistoryDepth:     c.FeeHistoryDepth,
-		RNGSeed:             c.RNGSeed,
+		ChainID:                 big.NewInt(c.ChainID),
+		BlockPeriod:             c.BlockPeriod,
+		BlockGasLimit:           c.BlockGasLimit,
+		InitialBaseFee:          initialBaseFee,
+		MinMempoolTip:           minMempoolTip,
+		InitialCongestion:       c.Congestion,
+		BackgroundTipMean:       backgroundTipMean,
+		BackgroundTipStdDev:     backgroundTipStdDev,
+		MaxMempoolSize:          c.MaxMempoolSize,
+		MempoolTTL:              c.MempoolTTL,
+		ReceiptAvailDelay:       c.ReceiptAvailDelay,
+		EstimateGas:             c.EstimateGas,
+		FeeHistoryDepth:         c.FeeHistoryDepth,
+		RNGSeed:                 c.RNGSeed,
+		InclusionProbability:    c.InclusionProbability,
+		InclusionMinProbability: c.InclusionMinProbability,
+		BlockPeriodJitter:       c.BlockPeriodJitter,
+		MaxTxsPerBlock:          c.MaxTxsPerBlock,
 	}, nil
 }
 

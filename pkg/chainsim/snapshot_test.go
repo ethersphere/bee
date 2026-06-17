@@ -61,6 +61,30 @@ func TestSnapshotRoundTrip(t *testing.T) {
 	assert.Equal(t, uint64(1), nonce)
 }
 
+func TestSnapshotPreservesStats(t *testing.T) {
+	t.Parallel()
+
+	cfg := chainsim.DefaultConfig()
+	sim, sender, key := testChain(t, cfg)
+	sim.CommitBlock()
+	snap := sim.Snapshot()
+	require.Equal(t, uint64(1), snap.Stats.BlocksProduced)
+
+	restored, err := chainsim.Restore(cfg, snap)
+	require.NoError(t, err)
+	defer restored.Close()
+
+	stats := restored.Stats()
+	require.Equal(t, uint64(1), stats.BlocksProduced)
+
+	_ = signAndSend(t, restored, key, 0, 500_000_000, 5_000_000_000)
+	stats = restored.Stats()
+	require.Equal(t, uint64(1), stats.TransactionsAccepted)
+	require.Equal(t, uint64(1), stats.TransactionsReceived)
+
+	_ = sender
+}
+
 func TestSnapshotPreservesMempool(t *testing.T) {
 	t.Parallel()
 

@@ -1,6 +1,7 @@
 chain_id: 1337
 
-block_period: 5s
+block_period: 12s
+block_period_jitter: 2s
 block_gas_limit: 30000000
 
 initial_base_fee: "1000000000"
@@ -9,6 +10,10 @@ min_mempool_tip: "100000000"
 congestion: 0.0
 background_tip_mean: "2000000000"
 background_tip_stddev: "500000000"
+
+inclusion_probability: true
+inclusion_min_probability: 0.05
+max_txs_per_block: 100
 
 max_mempool_size: 4096
 mempool_ttl: 50
@@ -21,5 +26,7 @@ rpc:
   endpoint: "127.0.0.1:8545"
 
 state_dir: "chainsim-state"
+
+# Debug state: GET http://127.0.0.1:8545/debug/status
 
 accounts: []

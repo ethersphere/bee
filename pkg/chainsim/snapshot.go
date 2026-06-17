@@ -14,7 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
-const SnapshotVersion = 1
+const SnapshotVersion = 2
 
 // Snapshot is a JSON-serializable chain state.
 type Snapshot struct {
@@ -41,6 +41,8 @@ type Snapshot struct {
 	RNGSeed             int64   `json:"rng_seed"`
 
 	RevertAddresses []string `json:"revert_addresses,omitempty"`
+
+	Stats Stats `json:"stats"`
 }
 
 type nonceRecordJSON struct {
@@ -164,12 +166,14 @@ func (s *SimChain) Snapshot() Snapshot {
 		snap.RevertAddresses = append(snap.RevertAddresses, addr.Hex())
 	}
 
+	snap.Stats = s.stats.copy()
+
 	return snap
 }
 
 // Restore creates a SimChain from configuration and a persisted snapshot.
 func Restore(cfg Config, snap Snapshot) (*SimChain, error) {
-	if snap.Version != SnapshotVersion {
+	if snap.Version < 1 || snap.Version > SnapshotVersion {
 		return nil, fmt.Errorf("unsupported snapshot version %d", snap.Version)
 	}
 
@@ -289,6 +293,10 @@ func Restore(cfg Config, snap Snapshot) (*SimChain, error) {
 	}
 
 	s.rng = rand.New(rand.NewSource(cfg.RNGSeed)) //nolint:gosec // deterministic simulation RNG
+
+	if snap.Version >= 2 {
+		s.stats = snap.Stats.copy()
+	}
 
 	return s, nil
 }

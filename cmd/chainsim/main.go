@@ -7,7 +7,7 @@ package main
 import (
 	"context"
 	"flag"
-	"log"
+	stdlog "log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/chainsim"
+	"github.com/ethersphere/bee/v2/pkg/log"
 )
 
 func main() {
@@ -23,41 +24,44 @@ func main() {
 
 	yamlCfg, err := loadYAMLConfig(*configPath)
 	if err != nil {
-		log.Fatalf("load config: %v", err)
+		stdlog.Fatalf("load config: %v", err)
 	}
 
 	simCfg, err := yamlCfg.toSimConfig()
 	if err != nil {
-		log.Fatalf("sim config: %v", err)
+		stdlog.Fatalf("sim config: %v", err)
 	}
 
 	store, err := newStateStore(yamlCfg.StateDir)
 	if err != nil {
-		log.Fatalf("state store: %v", err)
+		stdlog.Fatalf("state store: %v", err)
 	}
 
 	var sim *chainsim.SimChain
 	if store.exists() {
 		snap, err := store.load()
 		if err != nil {
-			log.Fatalf("load state: %v", err)
+			stdlog.Fatalf("load state: %v", err)
 		}
 		sim, err = chainsim.Restore(simCfg, snap)
 		if err != nil {
-			log.Fatalf("restore state: %v", err)
+			stdlog.Fatalf("restore state: %v", err)
 		}
-		log.Printf("restored state at block %d from %s", sim.BlockCount(), yamlCfg.StateDir)
+		stdlog.Printf("restored state at block %d from %s", sim.BlockCount(), yamlCfg.StateDir)
 	} else {
 		sim = chainsim.New(simCfg)
 		if err := applyGenesisAccounts(sim, yamlCfg.Accounts); err != nil {
-			log.Fatalf("genesis accounts: %v", err)
+			stdlog.Fatalf("genesis accounts: %v", err)
 		}
 		if err := store.save(sim); err != nil {
-			log.Fatalf("save initial state: %v", err)
+			stdlog.Fatalf("save initial state: %v", err)
 		}
-		log.Printf("initialized new chain (chain_id=%d)", yamlCfg.ChainID)
+		stdlog.Printf("initialized new chain (chain_id=%d)", yamlCfg.ChainID)
 	}
 	defer sim.Close()
+
+	logger := log.NewLogger("chainsim", log.WithSink(os.Stderr))
+	sim.SetLogger(logger)
 
 	attachStateSaver(sim, store)
 
@@ -66,27 +70,27 @@ func main() {
 
 	go sim.Run(ctx)
 
-	httpServer := newRPCServer(sim, yamlCfg.ChainID)
+	httpServer := newHTTPServer(sim, yamlCfg.ChainID)
 	httpServer.Addr = yamlCfg.RPC.Endpoint
 
 	go func() {
-		log.Printf("chainsim listening on http://%s", yamlCfg.RPC.Endpoint)
+		stdlog.Printf("chainsim listening on http://%s (debug: http://%s/debug/status)", yamlCfg.RPC.Endpoint, yamlCfg.RPC.Endpoint)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("rpc server: %v", err)
+			stdlog.Printf("rpc server: %v", err)
 			stop()
 		}
 	}()
 
 	<-ctx.Done()
-	log.Printf("shutting down at block %d", sim.BlockCount())
+	stdlog.Printf("shutting down at block %d", sim.BlockCount())
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
-		log.Printf("rpc shutdown: %v", err)
+		stdlog.Printf("rpc shutdown: %v", err)
 	}
 
 	if err := store.save(sim); err != nil {
-		log.Printf("final state save: %v", err)
+		stdlog.Printf("final state save: %v", err)
 	}
 }

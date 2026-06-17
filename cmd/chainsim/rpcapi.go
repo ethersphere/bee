@@ -27,16 +27,20 @@ type rpcServices struct {
 	chainID int64
 }
 
-func newRPCServer(sim *chainsim.SimChain, chainID int64) *http.Server {
+func newHTTPServer(sim *chainsim.SimChain, chainID int64) *http.Server {
 	services := &rpcServices{sim: sim, chainID: chainID}
 
-	server := rpc.NewServer()
-	server.RegisterName("eth", &ethAPI{services})
-	server.RegisterName("web3", &web3API{})
-	server.RegisterName("net", &netAPI{chainID: chainID})
+	rpcServer := rpc.NewServer()
+	rpcServer.RegisterName("eth", &ethAPI{services})
+	rpcServer.RegisterName("web3", &web3API{})
+	rpcServer.RegisterName("net", &netAPI{chainID: chainID})
+
+	mux := http.NewServeMux()
+	mux.Handle("/", rpcServer)
+	mux.HandleFunc("/debug/status", debugStatusHandler(sim))
 
 	return &http.Server{
-		Handler: server,
+		Handler: mux,
 	}
 }
 

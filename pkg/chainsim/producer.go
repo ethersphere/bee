@@ -41,8 +41,9 @@ func (s *SimChain) commitBlockLocked(skipInclusion ...bool) uint64 {
 	include := len(skipInclusion) == 0 || !skipInclusion[0]
 
 	nextNum := s.blockNum + 1
-	nextTime := s.blockTs + uint64(s.cfg.BlockPeriod.Seconds())
-	if s.cfg.BlockPeriod <= 0 {
+	delta := s.blockTimeDelta()
+	nextTime := s.blockTs + uint64(delta.Seconds())
+	if delta <= 0 {
 		nextTime = s.blockTs + 1
 	}
 
@@ -68,11 +69,24 @@ func (s *SimChain) commitBlockLocked(skipInclusion ...bool) uint64 {
 	s.blockNum = nextNum
 	s.blockTs = nextTime
 	s.blocks = append(s.blocks, block)
-	s.pool.evictExpired(s.blockNum)
+	evicted := s.pool.evictExpired(s.blockNum)
+	s.recordMempoolTTLExpirations(len(evicted))
 
 	if len(s.blocks) > s.cfg.FeeHistoryDepth+1 {
 		s.blocks = append([]*simBlock(nil), s.blocks[len(s.blocks)-s.cfg.FeeHistoryDepth-1:]...)
 	}
+
+	s.recordBlockProduced()
+	s.logger.Info("new block",
+		"number", nextNum,
+		"timestamp", nextTime,
+		"base_fee", block.baseFee,
+		"gas_used", block.gasUsed,
+		"gas_limit", block.gasLimit,
+		"tx_count", len(block.txHashes),
+		"mempool_size", s.pool.size(),
+		"ttl_evicted", len(evicted),
+	)
 
 	return nextNum
 }
@@ -84,15 +98,36 @@ func (s *SimChain) includeTransactions(block *simBlock) uint64 {
 	}
 
 	eligible := s.pool.eligible(s.nonces, s.baseFee)
+	refTip := s.referenceInclusionTip()
 	var gasUsed uint64
+	includedCount := 0
 
 	for _, entry := range eligible {
+		if s.cfg.MaxTxsPerBlock > 0 && includedCount >= s.cfg.MaxTxsPerBlock {
+			break
+		}
+
+		if !s.shouldIncludeTx(entry, refTip) {
+			s.recordInclusionDeferred()
+			tip := entry.effectiveTip(s.baseFee)
+			s.logger.Info("transaction deferred",
+				append(txLogFields(entry.tx, entry.sender),
+					"block", block.number,
+					"effective_tip", tip,
+					"reference_tip", refTip,
+					"inclusion_probability", inclusionProbability(tip, refTip, s.cfg.InclusionMinProbability),
+				)...,
+			)
+			continue
+		}
+
 		txGas := entry.tx.Gas()
 		if gasUsed+txGas > availableGas {
 			continue
 		}
 
 		gasUsed += txGas
+		includedCount++
 		block.txHashes = append(block.txHashes, entry.tx.Hash())
 		block.tips = append(block.tips, new(big.Int).Set(entry.effectiveTip(s.baseFee)))
 
@@ -121,6 +156,15 @@ func (s *SimChain) includeTransactions(block *simBlock) uint64 {
 		newNonce := entry.tx.Nonce() + 1
 		s.recordNonce(entry.sender, block.number, newNonce)
 		s.deductCost(entry)
+
+		reverted := status == 0
+		s.recordTxExecuted(reverted)
+		fields := append(txLogFields(entry.tx, entry.sender),
+			"block", block.number,
+			"status", status,
+			"effective_gas_price", new(big.Int).Add(s.baseFee, entry.effectiveTip(s.baseFee)),
+		)
+		s.logger.Info("transaction executed", fields...)
 	}
 
 	return gasUsed

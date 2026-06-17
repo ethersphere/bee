@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"math/big"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -32,7 +33,7 @@ func TestRPCSmoke(t *testing.T) {
 	addr := crypto.PubkeyToAddress(key.PublicKey)
 	sim.SetBalance(addr, big.NewInt(1e18))
 
-	ts := httptest.NewServer(newRPCServer(sim, cfg.ChainID.Int64()).Handler)
+	ts := httptest.NewServer(newHTTPServer(sim, cfg.ChainID.Int64()).Handler)
 	defer ts.Close()
 
 	client, err := ethclient.Dial(ts.URL)
@@ -58,6 +59,27 @@ func TestRPCSmoke(t *testing.T) {
 	balance, err := client.BalanceAt(context.Background(), addr, nil)
 	require.NoError(t, err)
 	require.Equal(t, big.NewInt(1e18), balance)
+}
+
+func TestDebugStatusEndpoint(t *testing.T) {
+	t.Parallel()
+
+	cfg := chainsim.DefaultConfig()
+	sim := chainsim.New(cfg)
+	defer sim.Close()
+
+	ts := httptest.NewServer(newHTTPServer(sim, cfg.ChainID.Int64()).Handler)
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/debug/status")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var status chainsim.DebugStatus
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&status))
+	require.Equal(t, uint64(0), status.BlockNumber)
+	require.NotEmpty(t, status.Fees.BaseFee)
 }
 
 func TestYAMLConfigDefaults(t *testing.T) {
