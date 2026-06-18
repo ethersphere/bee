@@ -146,14 +146,11 @@ func (b *wrappedBackend) estimatedBlockNumberWithElapsed(anchor blockNumberAncho
 }
 
 // computeAverageBlockTime returns the observed block time between prev and the
-// freshly loaded header. Falls back to the configured block time only when prev
-// is unset. When the chain block number did not advance, wall-clock elapsed
-// since prev is treated as the time for one block.
+// freshly loaded header. Falls back to the configured block time when prev is
+// unset, the block number did not increase, or the header timestamp did not
+// strictly increase.
 func (b *wrappedBackend) computeAverageBlockTime(prev blockNumberAnchor, newNumber uint64, newTime time.Time) time.Duration {
-	if prev.number == 0 || newNumber <= prev.number {
-		return b.blockTime
-	}
-	if !newTime.After(prev.timestamp) {
+	if prev.number == 0 || newNumber <= prev.number || !newTime.After(prev.timestamp) {
 		return b.blockTime
 	}
 
