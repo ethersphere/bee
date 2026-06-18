@@ -208,9 +208,13 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 	}
 
 	bootNode := c.config.GetBool(optionNameBootnodeMode)
-	fullNode := c.config.GetBool(optionNameFullNode)
 
-	if bootNode && !fullNode {
+	nodeMode, err := c.resolveNodeMode(logger)
+	if err != nil {
+		return nil, err
+	}
+
+	if bootNode && nodeMode != node.FullMode {
 		return nil, errors.New("boot node must be started as a full node")
 	}
 
@@ -318,7 +322,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		EnableWS:                      c.config.GetBool(optionNameP2PWSEnable),
 		AutoTLSDomain:                 c.config.GetString(optionAutoTLSDomain),
 		AutoTLSRegistrationEndpoint:   c.config.GetString(optionAutoTLSRegistrationEndpoint),
-		FullNodeMode:                  fullNode,
+		NodeMode:                      nodeMode,
 		Logger:                        logger,
 		MinimumGasTipCap:              c.config.GetUint64(optionNameMinimumGasTipCap),
 		GasLimitFallback:              c.config.GetUint64(optionNameGasLimitFallback),
@@ -356,6 +360,109 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 	})
 
 	return b, err
+}
+
+// resolveNodeMode determines the effective node mode from config.
+// --node-mode takes precedence and triggers strict per-mode validation.
+// The deprecated --full-node flag is honoured as a fallback and validated
+// the same way when it requests full mode, so upgraders relying on the old
+// chequebook-enable / storage-incentives-enable defaults fail loudly instead
+// of silently degrading to pseudo-settle / no incentives.
+// When neither is set, mode is inferred from blockchain-rpc-endpoint presence
+// (legacy behaviour) without strict validation, for backward compatibility.
+func (c *command) resolveNodeMode(logger log.Logger) (node.NodeMode, error) {
+	// Backward compatibility: before node-mode existed, --full-node implied a
+	// full node with swap, chequebook and storage incentives (chequebook and
+	// incentives even defaulted to true). With the new explicit defaults a
+	// legacy --full-node config that relied on them would fail strict full-mode
+	// validation and the node would not start. When --full-node is used as the
+	// legacy selector (node-mode unset), restore those implied values for any
+	// the operator did not set explicitly, so the upgraded node keeps running as
+	// a fully-functional full node (no silent degradation) instead of failing to
+	// start. Explicitly disabled options are left untouched and still fail
+	// validation below. The values are written back to config so the rest of
+	// node startup picks them up.
+	if c.config.GetBool(optionNameFullNode) && !c.config.IsSet(optionNameNodeMode) {
+		logger.Warning("--full-node is deprecated, use --node-mode=full instead")
+		for _, key := range []string{
+			optionNameSwapEnable,
+			optionNameChequebookEnable,
+			optionNameStorageIncentivesEnable,
+		} {
+			if !c.config.IsSet(key) {
+				logger.Warning("enabling option implied by legacy --full-node; set it explicitly or use --node-mode=full", "option", key)
+				c.config.Set(key, true)
+			}
+		}
+	}
+
+	rpcEndpoint := c.config.GetString(configKeyBlockchainRpcEndpoint)
+	swapEnable := c.config.GetBool(optionNameSwapEnable)
+	chequebookEnable := c.config.GetBool(optionNameChequebookEnable)
+	incentivesEnable := c.config.GetBool(optionNameStorageIncentivesEnable)
+
+	// chequebook init is gated on swap-enable in NewBee, so this combo is a
+	// silent no-op. Catch it eagerly regardless of mode.
+	if chequebookEnable && !swapEnable {
+		return "", errors.New("chequebook-enable requires swap-enable to be true")
+	}
+
+	validateFullMode := func() error {
+		if rpcEndpoint == "" {
+			return errors.New("full node requires blockchain-rpc-endpoint to be set")
+		}
+		if !swapEnable {
+			return errors.New("full node requires swap-enable to be true")
+		}
+		if !chequebookEnable {
+			return errors.New("full node requires chequebook-enable to be true (cheque issuance)")
+		}
+		if !incentivesEnable {
+			return errors.New("full node requires storage-incentives-enable to be true")
+		}
+		return nil
+	}
+
+	if c.config.IsSet(optionNameNodeMode) {
+		mode := node.NodeMode(c.config.GetString(optionNameNodeMode))
+		if !mode.IsValid() {
+			return "", fmt.Errorf("invalid node-mode %q: must be one of full, light, ultra-light", mode)
+		}
+		if c.config.GetBool(optionNameFullNode) {
+			logger.Warning("--full-node is set alongside --node-mode; --full-node is ignored")
+		}
+		switch mode {
+		case node.FullMode:
+			if err := validateFullMode(); err != nil {
+				return "", err
+			}
+		case node.LightMode:
+			if rpcEndpoint == "" {
+				return "", errors.New("light node requires blockchain-rpc-endpoint to be set")
+			}
+		case node.UltraLightMode:
+			if swapEnable {
+				return "", errors.New("ultra-light node cannot have swap-enable set to true")
+			}
+		}
+		return mode, nil
+	}
+
+	// Legacy path: node-mode not set. --full-node requests full mode; implied
+	// options were restored above, so any remaining failure is a genuine
+	// misconfiguration (missing rpc endpoint, or an explicitly disabled option).
+	if c.config.GetBool(optionNameFullNode) {
+		if err := validateFullMode(); err != nil {
+			return "", err
+		}
+		return node.FullMode, nil
+	}
+
+	// Infer light vs ultra-light from RPC endpoint presence (original behaviour).
+	if rpcEndpoint != "" {
+		return node.LightMode, nil
+	}
+	return node.UltraLightMode, nil
 }
 
 type program struct {

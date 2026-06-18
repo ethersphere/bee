@@ -129,6 +129,23 @@ type Bee struct {
 	ethClientCloser          func()
 }
 
+// NodeMode represents the operational mode of a Bee node as configured by the operator.
+type NodeMode string
+
+const (
+	FullMode       NodeMode = "full"
+	LightMode      NodeMode = "light"
+	UltraLightMode NodeMode = "ultra-light"
+)
+
+func (m NodeMode) IsValid() bool {
+	switch m {
+	case FullMode, LightMode, UltraLightMode:
+		return true
+	}
+	return false
+}
+
 type Options struct {
 	Addr                          string
 	AllowPrivateCIDRs             bool
@@ -162,7 +179,7 @@ type Options struct {
 	EnableWS                      bool
 	AutoTLSDomain                 string
 	AutoTLSRegistrationEndpoint   string
-	FullNodeMode                  bool
+	NodeMode                      NodeMode
 	GasLimitFallback              uint64
 	Logger                        log.Logger
 	MinimumGasTipCap              uint64
@@ -264,7 +281,7 @@ func NewBee(
 
 	// light nodes have zero warmup time for pull/pushsync protocols
 	warmupTime := o.WarmupTime
-	if !o.FullNodeMode {
+	if o.NodeMode != FullMode {
 		warmupTime = 0
 	}
 
@@ -290,7 +307,7 @@ func NewBee(
 		}
 	}(b)
 
-	if !o.FullNodeMode && o.ReserveCapacityDoubling != 0 {
+	if o.NodeMode != FullMode && o.ReserveCapacityDoubling != 0 {
 		return nil, fmt.Errorf("reserve capacity doubling is only allowed for full nodes")
 	}
 
@@ -395,14 +412,14 @@ func NewBee(
 		erc20Service      erc20.Service
 	)
 
-	chainEnabled := isChainEnabled(o, o.BlockchainRpcEndpoint, logger)
+	chainEnabled := isChainEnabled(o, logger)
 
 	if o.SwapEnable && !chainEnabled {
 		return nil, errors.New("swap is enabled but the chain backend is not; provide --blockchain-rpc-endpoint or disable swap")
 	}
 
-	if o.ChequebookVerification && (!o.FullNodeMode || !o.ChequebookEnable || !chainEnabled) {
-		return nil, fmt.Errorf("chequebook-verification requires full-node mode, chequebook-enable, and an enabled chain backend (full_node=%t, chequebook_enable=%t, chain_enabled=%t)", o.FullNodeMode, o.ChequebookEnable, chainEnabled)
+	if o.ChequebookVerification && (o.NodeMode != FullMode || !o.ChequebookEnable || !chainEnabled) {
+		return nil, fmt.Errorf("chequebook-verification requires full-node mode, chequebook-enable, and an enabled chain backend (full_node=%t, chequebook_enable=%t, chain_enabled=%t)", o.NodeMode == FullMode, o.ChequebookEnable, chainEnabled)
 	}
 
 	var batchStore postage.Storer = new(postage.NoOpBatchStore)
@@ -451,10 +468,13 @@ func NewBee(
 	b.transactionCloser = tracerCloser
 	b.transactionMonitorCloser = transactionMonitor
 
-	beeNodeMode := api.LightMode
-	if o.FullNodeMode {
+	var beeNodeMode api.BeeNodeMode
+	switch o.NodeMode {
+	case FullMode:
 		beeNodeMode = api.FullMode
-	} else if !chainEnabled {
+	case LightMode:
+		beeNodeMode = api.LightMode
+	default:
 		beeNodeMode = api.UltraLightMode
 	}
 
@@ -709,7 +729,7 @@ func NewBee(
 		AutoTLSRegistrationEndpoint: o.AutoTLSRegistrationEndpoint,
 		AutoTLSCAEndpoint:           o.AutoTLSCAEndpoint,
 		WelcomeMessage:              o.WelcomeMessage,
-		FullNode:                    o.FullNodeMode,
+		FullNode:                    o.NodeMode == FullMode,
 		Nonce:                       nonce,
 		AllowPrivateCIDRs:           o.AllowPrivateCIDRs,
 		Registry:                    registry,
@@ -847,7 +867,7 @@ func NewBee(
 		MinimumStorageRadius:      o.MinimumStorageRadius,
 	}
 
-	if o.FullNodeMode && !o.BootnodeMode {
+	if o.NodeMode == FullMode && !o.BootnodeMode {
 		// configure reserve only for full node
 		lo.ReserveCapacity = reserveCapacity
 		lo.ReserveWakeUpDuration = reserveWakeUpDuration
@@ -967,7 +987,7 @@ func NewBee(
 			}
 		}
 
-		if o.FullNodeMode {
+		if o.NodeMode == FullMode {
 			err = batchSvc.Start(ctx, postageSyncStart)
 			syncStatus.Store(true)
 			if err != nil {
@@ -992,7 +1012,7 @@ func NewBee(
 	minThreshold := big.NewInt(2 * refreshRate)
 	maxThreshold := big.NewInt(24 * refreshRate)
 
-	if !o.FullNodeMode {
+	if o.NodeMode != FullMode {
 		minThreshold = big.NewInt(2 * lightRefreshRate)
 	}
 
@@ -1025,7 +1045,7 @@ func NewBee(
 
 	var enforcedRefreshRate *big.Int
 
-	if o.FullNodeMode {
+	if o.NodeMode == FullMode {
 		enforcedRefreshRate = big.NewInt(refreshRate)
 	} else {
 		enforcedRefreshRate = big.NewInt(lightRefreshRate)
@@ -1120,7 +1140,7 @@ func NewBee(
 				if prev == uint32(swarm.MaxBins) {
 					close(initialRadiusC)
 				}
-				if !o.FullNodeMode { // light and ultra-light nodes do not have a reserve worker to set the radius.
+				if o.NodeMode != FullMode { // light and ultra-light nodes do not have a reserve worker to set the radius.
 					kad.SetStorageRadius(r)
 				}
 			case <-ctx.Done():
@@ -1147,7 +1167,7 @@ func NewBee(
 		}
 	}
 
-	pushSyncProtocol := pushsync.New(swarmAddress, networkID, nonce, p2ps, localStore, waitNetworkRFunc, kad, o.FullNodeMode && !o.BootnodeMode, pssService.TryUnwrap, gsocService.Handle, validStamp, logger, acc, pricer, signer, tracer, detector, uint8(shallowReceiptTolerance))
+	pushSyncProtocol := pushsync.New(swarmAddress, networkID, nonce, p2ps, localStore, waitNetworkRFunc, kad, o.NodeMode == FullMode && !o.BootnodeMode, pssService.TryUnwrap, gsocService.Handle, validStamp, logger, acc, pricer, signer, tracer, detector, uint8(shallowReceiptTolerance))
 	b.pushSyncCloser = pushSyncProtocol
 
 	// set the pushSyncer in the PSS
@@ -1170,7 +1190,7 @@ func NewBee(
 	pushSyncProtocolSpec := pushSyncProtocol.Protocol()
 	pullSyncProtocolSpec := pullSyncProtocol.Protocol()
 
-	if o.FullNodeMode && !o.BootnodeMode {
+	if o.NodeMode == FullMode && !o.BootnodeMode {
 		logger.Info("starting in full mode")
 	} else {
 		if chainEnabled {
@@ -1252,7 +1272,7 @@ func NewBee(
 		agent         *storageincentives.Agent
 	)
 
-	if o.FullNodeMode && !o.BootnodeMode {
+	if o.NodeMode == FullMode && !o.BootnodeMode {
 		pullerService = puller.New(swarmAddress, stateStore, kad, localStore, pullSyncProtocol, p2ps, logger, puller.Options{})
 		b.pullerCloser = pullerService
 
@@ -1572,21 +1592,13 @@ func (b *Bee) Shutdown() error {
 
 var ErrShutdownInProgress = errors.New("shutdown in progress")
 
-func isChainEnabled(o *Options, swapEndpoint string, logger log.Logger) bool {
-	chainDisabled := swapEndpoint == ""
-	lightMode := !o.FullNodeMode
-
-	if lightMode && chainDisabled {
-		logger.Info("chain backend disabled - starting in ultra-light mode",
-			"full_node_mode", o.FullNodeMode,
-			"blockchain-rpc-endpoint", swapEndpoint)
+func isChainEnabled(o *Options, logger log.Logger) bool {
+	if o.NodeMode == UltraLightMode {
+		logger.Info("chain backend disabled - starting in ultra-light mode")
 		return false
 	}
-
-	logger.Info("chain backend enabled - blockchain functionality available",
-		"full_node_mode", o.FullNodeMode,
-		"blockchain-rpc-endpoint", swapEndpoint)
-	return true // all other modes operate require chain enabled
+	logger.Info("chain backend enabled - blockchain functionality available", "node_mode", o.NodeMode)
+	return true
 }
 
 func validatePublicAddress(addr string) error {
