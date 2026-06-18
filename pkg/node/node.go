@@ -45,6 +45,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/postage/batchstore"
 	"github.com/ethersphere/bee/v2/pkg/postage/listener"
 	"github.com/ethersphere/bee/v2/pkg/postage/postagecontract"
+	"github.com/ethersphere/bee/v2/pkg/postage/snapshot"
+	"github.com/ethersphere/bee/v2/pkg/postage/snapshot/archive"
 	"github.com/ethersphere/bee/v2/pkg/pricer"
 	"github.com/ethersphere/bee/v2/pkg/pricing"
 	"github.com/ethersphere/bee/v2/pkg/pss"
@@ -787,11 +789,6 @@ func NewBee(
 	eventListener = listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
 	b.listenerCloser = eventListener
 
-	batchSvc, err = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
-	if err != nil {
-		return nil, fmt.Errorf("init batch service: %w", err)
-	}
-
 	// Construct protocols.
 	pingPong := pingpong.New(p2ps, logger, tracer)
 
@@ -892,28 +889,29 @@ func NewBee(
 		}
 	)
 
+	// When the postage snapshot applies, hand it to the batch service so it
+	// rebuilds the store from the snapshot during construction; otherwise the
+	// store is reset only when --resync is requested. Either way the store is
+	// reset in a single place (batchservice.New), which avoids a second reset
+	// wiping the snapshot that was just loaded (see #5495).
+	var batchSnapshot *batchservice.Snapshot
 	if !o.SkipPostageSnapshot && !batchStoreExists && (networkID == mainnetNetworkID) && beeNodeMode != api.UltraLightMode {
-		chainBackend := NewSnapshotLogFilterer(logger, archiveSnapshotGetter{})
-
-		snapshotEventListener := listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
-
-		snapshotBatchSvc, err := batchservice.New(stateStore, batchStore, logger, snapshotEventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
+		batchSnapshot, err = snapshot.New(ctx, logger, archive.Getter{}, b.syncingStopped, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout, postageSyncStart)
 		if err != nil {
-			logger.Error(err, "failed to initialize batch service from snapshot, continuing outside snapshot block...")
-		} else {
-			err = snapshotBatchSvc.Start(ctx, postageSyncStart)
-			syncStatus.Store(true)
-			if err != nil {
-				syncErr.Store(err)
-				logger.Error(err, "failed to start batch service from snapshot, continuing outside snapshot block...")
-			} else {
-				postageSyncStart = chainBackend.maxBlockHeight
-			}
+			// A corrupt snapshot is not fatal: rebuild from the chain instead.
+			logger.Error(err, "postage snapshot unavailable, syncing from chain instead")
 		}
-		if errClose := snapshotEventListener.Close(); errClose != nil {
-			logger.Error(errClose, "failed to close event listener (snapshot) failure")
-		}
+	}
 
+	var snapshotLoaded bool
+	batchSvc, snapshotLoaded, err = batchservice.New(ctx, stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, batchSnapshot, o.Resync)
+	if err != nil {
+		return nil, fmt.Errorf("init batch service: %w", err)
+	}
+	if snapshotLoaded {
+		// The snapshot rebuilt the store up to its block height, so the node can
+		// already serve postage requests while the remaining gap syncs live.
+		syncStatus.Store(true)
 	}
 
 	if batchSvc != nil && chainEnabled {
