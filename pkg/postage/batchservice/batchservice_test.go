@@ -564,12 +564,12 @@ func TestTransactionError(t *testing.T) {
 }
 
 // TestResyncControlsReset checks that, with no snapshot, the resync flag passed
-// to New determines whether Start resets the store, and that the reset happens
-// in Start (after node.go's wrong-chain guard has inspected the chain state).
+// to New determines whether the store is reset, and that the reset happens in
+// New (the constructor), with Start never resetting.
 func TestResyncControlsReset(t *testing.T) {
 	t.Parallel()
 
-	t.Run("resync resets the store", func(t *testing.T) {
+	t.Run("resync resets the store in New", func(t *testing.T) {
 		t.Parallel()
 
 		s := mocks.NewStateStore()
@@ -579,16 +579,15 @@ func TestResyncControlsReset(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// The reset is deferred to Start, not New, so the store is untouched
-		// while node.go performs its wrong-chain block-height check.
-		if c := store.ResetCalls(); c != 0 {
-			t.Fatalf("expect %d reset calls before Start got %d", 0, c)
+		// The reset happens in the constructor.
+		if c := store.ResetCalls(); c != 1 {
+			t.Fatalf("expect %d reset calls after New got %d", 1, c)
 		}
 
+		// Start never resets.
 		if err := svc.Start(context.Background(), 10); err != nil {
 			t.Fatal(err)
 		}
-
 		if c := store.ResetCalls(); c != 1 {
 			t.Fatalf("expect %d reset calls got %d", 1, c)
 		}
@@ -755,22 +754,26 @@ func TestSnapshotCornerCases(t *testing.T) {
 		if !snapListener.closed {
 			t.Fatal("expected snapshot listener to be closed even on failure")
 		}
-		// resync=false and the store is empty: nothing to reset.
-		if c := store.ResetCalls(); c != 0 {
-			t.Fatalf("expect %d reset calls got %d", 0, c)
+		// A partial replay may have dirtied the store, so New resets it once to
+		// clean up for the live rebuild.
+		if c := store.ResetCalls(); c != 1 {
+			t.Fatalf("expect %d reset calls after New got %d", 1, c)
 		}
 
 		// Live sync still proceeds, from the requested start block, since no
-		// snapshot resume point was recorded.
+		// snapshot resume point was recorded; Start never resets.
 		if err := svc.Start(context.Background(), snapshot.StartBlock); err != nil {
 			t.Fatal(err)
 		}
 		if liveListener.from != snapshot.StartBlock+1 {
 			t.Fatalf("expect live sync from %d got %d", snapshot.StartBlock+1, liveListener.from)
 		}
+		if c := store.ResetCalls(); c != 1 {
+			t.Fatalf("expect store reset exactly once, got %d", c)
+		}
 	})
 
-	t.Run("replay failure with resync resets in New and again in Start", func(t *testing.T) {
+	t.Run("replay failure with resync resets once before and once after the replay", func(t *testing.T) {
 		t.Parallel()
 
 		s := mocks.NewStateStore()
@@ -785,15 +788,14 @@ func TestSnapshotCornerCases(t *testing.T) {
 		if loaded {
 			t.Fatal("expected snapshot not to be loaded on replay error")
 		}
-		// resync resets once during the (failed) snapshot rebuild...
-		if c := store.ResetCalls(); c != 1 {
-			t.Fatalf("expect %d reset calls after New got %d", 1, c)
+		// resync resets once up front, then the failed replay's cleanup resets
+		// again — both in New. Start never resets.
+		if c := store.ResetCalls(); c != 2 {
+			t.Fatalf("expect %d reset calls after New got %d", 2, c)
 		}
 		if err := svc.Start(context.Background(), snapshot.StartBlock); err != nil {
 			t.Fatal(err)
 		}
-		// ...and again in Start because no snapshot loaded, so the store is rebuilt
-		// from the chain. Two resets is correct here (matrix row 8).
 		if c := store.ResetCalls(); c != 2 {
 			t.Fatalf("expect %d reset calls after Start got %d", 2, c)
 		}
