@@ -557,6 +557,7 @@ func NewBee(
 		if bzzTokenAddress == (common.Address{}) {
 			return nil, errors.New("no known bzz token address for this network; provide --bzz-token-address")
 		}
+		logger.Info("using bzz token address", "address", bzzTokenAddress)
 		erc20Service = erc20.New(transactionService, bzzTokenAddress)
 	}
 
