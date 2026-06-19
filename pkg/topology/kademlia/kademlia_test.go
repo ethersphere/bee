@@ -919,13 +919,22 @@ func TestAddressBookQuickPrune(t *testing.T) {
 	// bin 1 which is below storageRadius 2, so connectNeighbours skips it).
 	kad.AddPeers(nonConnPeer.Overlay)
 
-	for range kademlia.MaxConnAttempts {
-		time.Sleep(10 * time.Millisecond)
+	// keep driving the manage loop until the peer accumulates maxConnAttempts
+	// failed dials. A single Trigger can be wasted if it lands while the peer
+	// is still within its (TimeToRetry) retry window, so we retrigger until the
+	// counter reaches the threshold instead of firing a fixed number of times.
+	// Once pruned at maxConnAttempts, the peer is removed, so the counter cannot
+	// overshoot.
+	err = spinlock.Wait(spinLockWaitTime, func() bool {
 		kad.Trigger()
+		time.Sleep(10 * time.Millisecond)
+		return atomic.LoadInt32(&failedConns) >= int32(kademlia.MaxConnAttempts)
+	})
+	if err != nil {
+		t.Fatalf("timed out waiting for %d failed connection attempts, got %d", kademlia.MaxConnAttempts, atomic.LoadInt32(&failedConns))
 	}
 
 	// after maxConnAttempts (4) failed dials the peer must be pruned
-	waitCounterAtLeast(t, &failedConns, int32(kademlia.MaxConnAttempts))
 	_, _, err = ab.Get(nonConnPeer.Overlay)
 	if !errors.Is(err, addressbook.ErrNotFound) {
 		t.Fatal(err)
@@ -1346,15 +1355,18 @@ func TestOutofDepthPrune(t *testing.T) {
 		t.Fatal("bin 2 should not be balanced")
 	}
 
-	// wait for kademlia connectors and pruning to finish
-	time.Sleep(time.Millisecond * 500)
-
-	// check that no pruning has happened
-	bins := binSizes(kad)
-	for i := range 6 {
-		if bins[i] <= overSaturationPeers {
-			t.Fatalf("bin %d, got %d, want more than %d", i, bins[i], overSaturationPeers)
+	// wait for kademlia connectors to connect the added peers; no pruning
+	// happens yet because the prune func is a no-op at this point.
+	if err := spinlock.Wait(spinLockWaitTime, func() bool {
+		bins := binSizes(kad)
+		for i := range 6 {
+			if bins[i] <= overSaturationPeers {
+				return false
+			}
 		}
+		return true
+	}); err != nil {
+		t.Fatalf("timed out waiting for bins to fill: got %v, want each more than %d", binSizes(kad), overSaturationPeers)
 	}
 
 	kad.SetStorageRadius(6)
@@ -1371,15 +1383,18 @@ func TestOutofDepthPrune(t *testing.T) {
 	addr := swarm.RandAddressAt(t, base, 6)
 	addOne(t, signer, kad, ab, addr)
 
-	// wait for kademlia connectors and pruning to finish
-	time.Sleep(time.Millisecond * 500)
-
-	// check bins have been pruned
-	bins = binSizes(kad)
-	for i := range uint8(5) {
-		if bins[i] != overSaturationPeers {
-			t.Fatalf("bin %d, got %d, want %d", i, bins[i], overSaturationPeers)
+	// wait for kademlia connectors and pruning to finish: bins 0..4 must be
+	// pruned down to exactly overSaturationPeers.
+	if err := spinlock.Wait(spinLockWaitTime, func() bool {
+		bins := binSizes(kad)
+		for i := range uint8(5) {
+			if bins[i] != overSaturationPeers {
+				return false
+			}
 		}
+		return true
+	}); err != nil {
+		t.Fatalf("timed out waiting for bins to be pruned: got %v, want each %d", binSizes(kad), overSaturationPeers)
 	}
 
 	// check that bin 0,1 remains balanced after pruning
