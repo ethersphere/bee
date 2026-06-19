@@ -948,30 +948,3 @@ func TestBatchExpirer(t *testing.T) {
 		}
 	})
 }
-
-func TestLookupERC20Address(t *testing.T) {
-	postageStampContractAddress := common.HexToAddress("ffff")
-	erc20Address := common.HexToAddress("ffff")
-
-	addr, err := postagecontract.LookupERC20Address(
-		context.Background(),
-		transactionMock.New(
-			transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
-				if *request.To != postageStampContractAddress {
-					return nil, fmt.Errorf("called wrong contract. wanted %v, got %v", postageStampContractAddress, request.To)
-				}
-				return common.BytesToHash(erc20Address.Bytes()).Bytes(), nil
-			}),
-		),
-		postageStampContractAddress,
-		postageStampContractABI,
-		true,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if addr != postageStampContractAddress {
-		t.Fatalf("got wrong erc20 address. wanted %v, got %v", erc20Address, addr)
-	}
-}

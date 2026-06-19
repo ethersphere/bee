@@ -7,8 +7,8 @@ on:
     paths-ignore:
       - packaging/**
       - openapi/**
-      - '**/*.md'
-      - '.github/ISSUE_TEMPLATE/**'
+      - "**/*.md"
+      - ".github/ISSUE_TEMPLATE/**"
     branches:
       - "**"
 

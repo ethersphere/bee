@@ -141,6 +141,7 @@ type Options struct {
 	BlockchainRpcTLSTimeout       time.Duration
 	BlockchainRpcIdleTimeout      time.Duration
 	BlockchainRpcKeepalive        time.Duration
+	BzzTokenAddress               common.Address
 	BlockProfile                  bool
 	BlockTime                     time.Duration
 	BlockSyncInterval             uint64
@@ -547,56 +548,54 @@ func NewBee(
 		}
 	}
 
+	chainCfg, knownChain := config.GetByChainID(chainID)
+
+	bzzTokenAddress := chainCfg.TokenContractAddress
+	if o.BzzTokenAddress != (common.Address{}) {
+		bzzTokenAddress = o.BzzTokenAddress
+	}
+
 	if chainEnabled {
-		chequebookFactory, ferr := InitChequebookFactory(logger, chainBackend, chainID, transactionService, o.SwapFactoryAddress)
-		if o.SwapEnable && ferr != nil {
-			return nil, fmt.Errorf("init chequebook factory: %w", ferr)
+		if bzzTokenAddress == (common.Address{}) {
+			return nil, errors.New("no known bzz token address for this network; provide --bzz-token-address")
+		}
+		logger.Info("using bzz token address", "address", bzzTokenAddress)
+		erc20Service = erc20.New(transactionService, bzzTokenAddress)
+	}
+
+	if o.SwapEnable {
+		chequebookFactory, err := InitChequebookFactory(logger, chainBackend, chainID, transactionService, o.SwapFactoryAddress)
+		if err != nil {
+			return nil, fmt.Errorf("init chequebook factory: %w", err)
 		}
 
-		if ferr == nil {
-			erc20Address, err := chequebookFactory.ERC20Address(ctx)
-			if err != nil {
-				if o.SwapEnable {
-					return nil, fmt.Errorf("factory fail: %w", err)
-				}
-				logger.Warning("unable to resolve ERC20 token address; BZZ balance will be unavailable via /wallet", "error", err)
-			} else {
-				erc20Service = erc20.New(transactionService, erc20Address)
-			}
-		} else {
-			logger.Warning("unable to init chequebook factory; BZZ balance will be unavailable via /wallet", "error", ferr)
-		}
-
-		if o.SwapEnable {
-			if o.ChequebookEnable {
-				var err error
-				chequebookService, err = InitChequebookService(
-					ctx,
-					logger,
-					stateStore,
-					signer,
-					chainID,
-					chainBackend,
-					overlayEthAddress,
-					transactionService,
-					chequebookFactory,
-					o.SwapInitialDeposit,
-					erc20Service,
-				)
-				if err != nil {
-					return nil, fmt.Errorf("init chequebook service: %w", err)
-				}
-			}
-
-			chequeStore, cashoutService = initChequeStoreCashout(
+		if o.ChequebookEnable {
+			chequebookService, err = InitChequebookService(
+				ctx,
+				logger,
 				stateStore,
-				chainBackend,
-				chequebookFactory,
+				signer,
 				chainID,
+				chainBackend,
 				overlayEthAddress,
 				transactionService,
+				chequebookFactory,
+				o.SwapInitialDeposit,
+				erc20Service,
 			)
+			if err != nil {
+				return nil, fmt.Errorf("init chequebook service: %w", err)
+			}
 		}
+
+		chequeStore, cashoutService = initChequeStoreCashout(
+			stateStore,
+			chainBackend,
+			chequebookFactory,
+			chainID,
+			overlayEthAddress,
+			transactionService,
+		)
 	}
 
 	lightNodes := lightnode.NewContainer(swarmAddress)
@@ -674,8 +673,6 @@ func NewBee(
 	if apiService != nil {
 		registry = apiService.MetricsRegistry()
 	}
-
-	chainCfg, found := config.GetByChainID(chainID)
 
 	var (
 		cbVerifier chequebook.Verifier
@@ -756,16 +753,11 @@ func NewBee(
 			return nil, errors.New("postage contract start block option not provided")
 		}
 		postageSyncStart = o.PostageContractStartBlock
-	} else if !found {
+	} else if !knownChain {
 		return nil, errors.New("no known postage stamp addresses for this network")
 	}
 
 	postageStampContractABI := abiutil.MustParseABI(chainCfg.PostageStampABI)
-
-	bzzTokenAddress, err := postagecontract.LookupERC20Address(ctx, transactionService, postageStampContractAddress, postageStampContractABI, chainEnabled)
-	if err != nil {
-		return nil, fmt.Errorf("lookup erc20 postage address: %w", err)
-	}
 
 	// Compute gas limit for contract transactions: when TrxDebugMode is enabled,
 	// gas estimation is skipped and DefaultGasLimit is used for all contract calls.
