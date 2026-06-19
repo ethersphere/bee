@@ -41,6 +41,8 @@ type YAMLConfig struct {
 	BlockPeriodJitter       time.Duration `yaml:"block_period_jitter"`
 	MaxTxsPerBlock          int           `yaml:"max_txs_per_block"`
 
+	RandomRevertRate float64 `yaml:"random_revert_rate"`
+
 	RPC struct {
 		Endpoint string `yaml:"endpoint"`
 	} `yaml:"rpc"`
@@ -147,6 +149,7 @@ func (c YAMLConfig) toSimConfig() (chainsim.Config, error) {
 		InclusionMinProbability: c.InclusionMinProbability,
 		BlockPeriodJitter:       c.BlockPeriodJitter,
 		MaxTxsPerBlock:          c.MaxTxsPerBlock,
+		RandomRevertRate:        c.RandomRevertRate,
 	}, nil
 }
 

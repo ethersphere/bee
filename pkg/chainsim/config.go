@@ -13,6 +13,10 @@ const (
 	defaultBlockGasLimit   = 30_000_000
 	defaultFeeHistoryDepth = 100
 	defaultEstimateGas     = 50_000
+	defaultMempoolDuration = 10 * time.Minute
+
+	// DisabledMempoolTTL disables mempool TTL eviction when set as Config.MempoolTTL.
+	DisabledMempoolTTL = ^uint64(0)
 )
 
 // Config configures a simulated chain.
@@ -38,7 +42,8 @@ type Config struct {
 
 	// Mempool limits. Zero disables the limit.
 	MaxMempoolSize int
-	// Evict txs not included after this many blocks. Zero disables TTL eviction.
+	// Evict txs not included after this many blocks. Zero uses a default of 10 minutes
+	// based on BlockPeriod. Set to DisabledMempoolTTL to disable TTL eviction.
 	MempoolTTL uint64
 
 	// Blocks after inclusion before TransactionReceipt returns a result. Zero is instant.
@@ -46,6 +51,9 @@ type Config struct {
 
 	// Default gas returned by EstimateGas when no override is configured.
 	EstimateGas uint64
+
+	// BaseGasUsed is the gas charged per executed transaction. Zero uses the transaction gas limit.
+	BaseGasUsed uint64
 
 	// Number of historical blocks kept for fee history queries.
 	FeeHistoryDepth int
@@ -63,6 +71,9 @@ type Config struct {
 
 	// MaxTxsPerBlock limits user transactions included per block. Zero means no limit.
 	MaxTxsPerBlock int
+
+	// RandomRevertRate is the probability (0.0–1.0) that any executed transaction reverts. Zero disables random reverts.
+	RandomRevertRate float64
 }
 
 // DefaultConfig returns a usable configuration for tests and local simulation.
@@ -80,6 +91,7 @@ func DefaultConfig() Config {
 		MempoolTTL:          0,
 		ReceiptAvailDelay:   0,
 		EstimateGas:         defaultEstimateGas,
+		BaseGasUsed:         21_000,
 		FeeHistoryDepth:     defaultFeeHistoryDepth,
 		RNGSeed:             1,
 	}
@@ -91,6 +103,13 @@ func (c Config) normalized() Config {
 	}
 	if c.BlockPeriod <= 0 {
 		c.BlockPeriod = 5 * time.Second
+	}
+	if c.MempoolTTL == 0 {
+		blocksIn10Min := uint64(defaultMempoolDuration / c.BlockPeriod)
+		if blocksIn10Min == 0 {
+			blocksIn10Min = 1
+		}
+		c.MempoolTTL = blocksIn10Min
 	}
 	if c.BlockGasLimit == 0 {
 		c.BlockGasLimit = defaultBlockGasLimit
@@ -130,6 +149,12 @@ func (c Config) normalized() Config {
 	}
 	if c.InclusionMinProbability > 1 {
 		c.InclusionMinProbability = 1
+	}
+	if c.RandomRevertRate < 0 {
+		c.RandomRevertRate = 0
+	}
+	if c.RandomRevertRate > 1 {
+		c.RandomRevertRate = 1
 	}
 	return c
 }

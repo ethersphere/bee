@@ -177,7 +177,7 @@ func (m *mempool) evictLowestTip(baseFee *big.Int) *poolEntry {
 }
 
 func (m *mempool) evictExpired(currentBlock uint64) []common.Hash {
-	if m.ttlBlocks == 0 {
+	if m.ttlBlocks == 0 || m.ttlBlocks == DisabledMempoolTTL {
 		return nil
 	}
 
@@ -195,15 +195,18 @@ func (m *mempool) eligible(confirmedNonces map[common.Address]uint64, baseFee *b
 	result := make([]*poolEntry, 0, len(m.entries))
 
 	for sender, nonceMap := range m.bySender {
-		nextNonce := confirmedNonces[sender]
-		entry, ok := nonceMap[nextNonce]
-		if !ok {
-			continue
+		nonce := confirmedNonces[sender]
+		for {
+			entry, ok := nonceMap[nonce]
+			if !ok {
+				break
+			}
+			if entry.tx.GasFeeCap().Cmp(baseFee) < 0 {
+				break
+			}
+			result = append(result, entry)
+			nonce++
 		}
-		if entry.tx.GasFeeCap().Cmp(baseFee) < 0 {
-			continue
-		}
-		result = append(result, entry)
 	}
 
 	sort.Slice(result, func(i, j int) bool {

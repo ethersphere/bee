@@ -52,7 +52,7 @@ func (s *SimChain) feeHistoryLocked(lastBlock *big.Int, blockCount int, rewardPe
 		} else {
 			gasUsedRatio = append(gasUsedRatio, float64(block.gasUsed)/float64(block.gasLimit))
 		}
-		reward = append(reward, tipsAtPercentiles(block.tips, rewardPercentiles))
+		reward = append(reward, tipsAtPercentiles(block.tips, rewardPercentiles, s.minMempoolTip))
 	}
 
 	if len(baseFees) == 0 {
@@ -69,7 +69,7 @@ func (s *SimChain) feeHistoryLocked(lastBlock *big.Int, blockCount int, rewardPe
 	}, nil
 }
 
-func tipsAtPercentiles(tips []*big.Int, percentiles []float64) []*big.Int {
+func tipsAtPercentiles(tips []*big.Int, percentiles []float64, fallback *big.Int) []*big.Int {
 	if len(percentiles) == 0 {
 		percentiles = []float64{10, 50, 90}
 	}
@@ -82,7 +82,11 @@ func tipsAtPercentiles(tips []*big.Int, percentiles []float64) []*big.Int {
 		vals = append(vals, new(big.Int).Set(tip))
 	}
 	if len(vals) == 0 {
-		vals = append(vals, big.NewInt(0))
+		fb := big.NewInt(0)
+		if fallback != nil && fallback.Sign() > 0 {
+			fb = new(big.Int).Set(fallback)
+		}
+		vals = append(vals, fb)
 	}
 
 	sort.Slice(vals, func(i, j int) bool {

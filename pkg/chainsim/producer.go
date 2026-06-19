@@ -60,6 +60,10 @@ func (s *SimChain) commitBlockLocked(skipInclusion ...bool) uint64 {
 	}
 
 	backgroundGas := uint64(float64(s.cfg.BlockGasLimit) * s.congestion)
+	remaining := s.cfg.BlockGasLimit - includedGas
+	if backgroundGas > remaining {
+		backgroundGas = remaining
+	}
 	block.gasUsed = includedGas + backgroundGas
 	block.tips = s.backgroundTips()
 
@@ -107,6 +111,10 @@ func (s *SimChain) includeTransactions(block *simBlock) uint64 {
 			break
 		}
 
+		if entry.tx.Nonce() != s.confirmedNonce(entry.sender) {
+			continue
+		}
+
 		if !s.shouldIncludeTx(entry, refTip) {
 			s.recordInclusionDeferred()
 			tip := entry.effectiveTip(s.baseFee)
@@ -122,11 +130,15 @@ func (s *SimChain) includeTransactions(block *simBlock) uint64 {
 		}
 
 		txGas := entry.tx.Gas()
+		actualGas := txGas
+		if s.cfg.BaseGasUsed > 0 && s.cfg.BaseGasUsed < txGas {
+			actualGas = s.cfg.BaseGasUsed
+		}
 		if gasUsed+txGas > availableGas {
 			continue
 		}
 
-		gasUsed += txGas
+		gasUsed += actualGas
 		includedCount++
 		block.txHashes = append(block.txHashes, entry.tx.Hash())
 		block.tips = append(block.tips, new(big.Int).Set(entry.effectiveTip(s.baseFee)))
@@ -137,11 +149,14 @@ func (s *SimChain) includeTransactions(block *simBlock) uint64 {
 				status = 0
 			}
 		}
+		if status == 1 && s.cfg.RandomRevertRate > 0 && s.rng.Float64() < s.cfg.RandomRevertRate {
+			status = 0
+		}
 
 		receipt := &types.Receipt{
 			TxHash:      entry.tx.Hash(),
 			Status:      status,
-			GasUsed:     txGas,
+			GasUsed:     actualGas,
 			BlockNumber: new(big.Int).SetUint64(block.number),
 			BlockHash:   syntheticBlockHash(block.number),
 		}
@@ -155,7 +170,7 @@ func (s *SimChain) includeTransactions(block *simBlock) uint64 {
 
 		newNonce := entry.tx.Nonce() + 1
 		s.recordNonce(entry.sender, block.number, newNonce)
-		s.deductCost(entry)
+		s.deductCost(entry, actualGas)
 
 		reverted := status == 0
 		s.recordTxExecuted(reverted)
@@ -170,7 +185,7 @@ func (s *SimChain) includeTransactions(block *simBlock) uint64 {
 	return gasUsed
 }
 
-func (s *SimChain) deductCost(entry *poolEntry) {
+func (s *SimChain) deductCost(entry *poolEntry, gasUsed uint64) {
 	balance := s.balanceOf(entry.sender)
 	if balance.Sign() == 0 && s.balances[entry.sender] == nil {
 		return
@@ -181,7 +196,7 @@ func (s *SimChain) deductCost(entry *poolEntry) {
 		effectiveGasPrice.Set(entry.tx.GasFeeCap())
 	}
 
-	cost := new(big.Int).Mul(new(big.Int).SetUint64(entry.tx.Gas()), effectiveGasPrice)
+	cost := new(big.Int).Mul(new(big.Int).SetUint64(gasUsed), effectiveGasPrice)
 	cost.Add(cost, entry.tx.Value())
 	balance.Sub(balance, cost)
 	s.balances[entry.sender] = balance

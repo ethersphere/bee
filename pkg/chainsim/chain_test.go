@@ -177,7 +177,7 @@ func TestSimChain_MempoolEviction(t *testing.T) {
 
 	cfg := chainsim.DefaultConfig()
 	cfg.MaxMempoolSize = 1
-	cfg.MempoolTTL = 0
+	cfg.MempoolTTL = chainsim.DisabledMempoolTTL
 
 	sim, _, key := testChain(t, cfg)
 	defer sim.Close()

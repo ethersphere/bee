@@ -290,6 +290,23 @@ func TestMempool_EligibleSortedByTip(t *testing.T) {
 	assert.True(t, eligible[0].effectiveTip(baseFee).Cmp(eligible[1].effectiveTip(baseFee)) >= 0)
 }
 
+func TestMempool_EligibleIncludesNonceChain(t *testing.T) {
+	t.Parallel()
+
+	pool := newMempool(0, 0)
+	baseFee := big.NewInt(1_000)
+	minTip := big.NewInt(100)
+	balance := big.NewInt(1e18)
+
+	for nonce := uint64(0); nonce < 3; nonce++ {
+		tx := signedTx(t, nonce, big.NewInt(200), big.NewInt(3_000))
+		require.NoError(t, pool.add(poolEntryFromTx(t, tx, 0), baseFee, minTip, 0, balance))
+	}
+
+	eligible := pool.eligible(map[common.Address]uint64{}, baseFee)
+	require.Len(t, eligible, 3)
+}
+
 func TestMempool_EligibleSkipsWrongNonce(t *testing.T) {
 	t.Parallel()
 
