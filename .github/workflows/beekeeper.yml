@@ -48,35 +48,71 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.client_payload.ref }}
-      - name: Setup Go
-        uses: actions/setup-go@v6
-        with:
-          cache: false
-          go-version-file: go.mod
-      - name: Cache Go Modules
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
       - name: Get Commit Message
         id: commit
         run: |
           MSG=$(git log --format=%s -n 1 ${{github.event.after}})
           echo "msg=${MSG}" >> $GITHUB_OUTPUT
-      - name: Build - 0
-        run: |
-          make binary
-          mv dist/bee bee-0
-      - name: Apply patches and build - 1
+
+  build-bee:
+    name: Build bee binaries
+    runs-on: ubuntu-latest
+    needs: [init]
+    strategy:
+      matrix:
+        include:
+          - variant: "0"
+            patched: false
+          - variant: "1"
+            patched: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        if: github.event.action != 'beekeeper'
+        with:
+          fetch-depth: 0
+      - name: Checkout
+        uses: actions/checkout@v5
+        if: github.event.action == 'beekeeper'
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.client_payload.ref }}
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          cache: true
+          go-version-file: go.mod
+      - name: Apply patches
+        if: matrix.patched
         run: |
           patch pkg/api/postage.go .github/patches/postage_api.patch
           patch pkg/retrieval/retrieval.go .github/patches/retrieval.patch
+      - name: Build
+        run: |
           make binary
-          mv dist/bee bee-1
+          mv dist/bee bee-${{ matrix.variant }}
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: bee-${{ matrix.variant }}
+          path: bee-${{ matrix.variant }}
+          retention-days: 5
+
+  install-beekeeper:
+    name: Install beekeeper
+    runs-on: ubuntu-latest
+    needs: [init]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        if: github.event.action != 'beekeeper'
+        with:
+          fetch-depth: 0
+      - name: Checkout
+        uses: actions/checkout@v5
+        if: github.event.action == 'beekeeper'
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.client_payload.ref }}
       - name: Install beekeeper
         run: |
           export PATH=$(pwd):$PATH
@@ -86,14 +122,11 @@ jobs:
           mv ~/.beekeeper/local.yaml local.yaml
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: temp-artifacts
+          name: beekeeper-artifacts
           include-hidden-files: true
           path: |
             Dockerfile.goreleaser
             Makefile
-            bee-0
-            bee-1
-            bee-2
             beekeeper
             local.yaml
             .beekeeper.yaml
@@ -102,18 +135,22 @@ jobs:
   beekeeper:
     name: Integration tests
     runs-on: ubuntu-latest
-    needs: [init]
+    needs: [build-bee, install-beekeeper]
     steps:
-      - name: Cache
+      - name: Cache k3s
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
         with:
           path: |
             /tmp/k3s-${{ env.K3S_VERSION }}
           key: k3s-${{ env.K3S_VERSION }}
-      - name: "Download Artifact"
+      - name: Download beekeeper artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: temp-artifacts
+          name: beekeeper-artifacts
+      - name: Download bee-1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: bee-1
       - name: Unpack artifacts
         run: |
           chmod +x bee-1 beekeeper .github/bin/beekeeper_artifacts.sh
@@ -232,10 +269,14 @@ jobs:
     needs: [beekeeper]
     runs-on: ubuntu-latest
     steps:
-      - name: "Download Artifact"
+      - name: Download bee-0
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: temp-artifacts
+          name: bee-0
+      - name: Download beekeeper artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: beekeeper-artifacts
       - name: Unpack artifacts
         run: |
           chmod +x bee-0
