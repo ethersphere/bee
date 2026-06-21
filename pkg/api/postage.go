@@ -458,12 +458,16 @@ func (s *Service) chainStateHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "block number unavailable")
 		return
 	}
-	minimumValidityBlocks, err := s.postageContract.MinimumValidityBlocks(r.Context())
-	if err != nil && !errors.Is(err, postagecontract.ErrChainDisabled) {
-		logger.Debug("get minimum validity blocks failed", "error", err)
-		logger.Error(nil, "get minimum validity blocks failed")
-		jsonhttp.InternalServerError(w, "minimum validity blocks unavailable")
-		return
+	// postageContract is wired in Configure; guard against early calls during startup.
+	var minimumValidityBlocks uint64
+	if s.postageContract != nil {
+		minimumValidityBlocks, err = s.postageContract.MinimumValidityBlocks(r.Context())
+		if err != nil && !errors.Is(err, postagecontract.ErrChainDisabled) {
+			logger.Debug("get minimum validity blocks failed", "error", err)
+			logger.Error(nil, "get minimum validity blocks failed")
+			jsonhttp.InternalServerError(w, "minimum validity blocks unavailable")
+			return
+		}
 	}
 	jsonhttp.OK(w, chainStateResponse{
 		ChainTip:              chainTip,
