@@ -38,6 +38,11 @@ type scenarioEnv struct {
 
 func setupScenario(t *testing.T, name string, cfg chainsim.Config, retryCfg transaction.TransactionsRetryConfig) *scenarioEnv {
 	t.Helper()
+	return setupScenarioWithMonitorDepth(t, name, cfg, retryCfg, 2)
+}
+
+func setupScenarioWithMonitorDepth(t *testing.T, name string, cfg chainsim.Config, retryCfg transaction.TransactionsRetryConfig, cancellationDepth uint64) *scenarioEnv {
+	t.Helper()
 
 	outDir := filepath.Join(scenarioOutputDir(), name)
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
@@ -64,7 +69,7 @@ func setupScenario(t *testing.T, name string, cfg chainsim.Config, retryCfg tran
 	store := storemock.NewStateStore()
 	testutil.CleanupCloser(t, store)
 
-	monitor := transaction.NewMonitor(svcLogger, sim, sender, 30*time.Millisecond, 2)
+	monitor := transaction.NewMonitor(svcLogger, sim, sender, 30*time.Millisecond, cancellationDepth)
 	testutil.CleanupCloser(t, monitor)
 
 	svc, err := transaction.NewService(svcLogger, sender, sim,
@@ -216,9 +221,11 @@ func TestScenario_HappyPath(t *testing.T) {
 }
 
 // --- Scenario 2: Congestion spike then drop ---
+// Congestion=1.0 blocks all user txs. After ~600ms congestion drops and the
+// retried transaction finally gets included.
 func TestScenario_CongestionSpikeDrop(t *testing.T) {
 	cfg := fastSimConfig()
-	cfg.InitialCongestion = 0.95
+	cfg.InitialCongestion = 1.0
 	env := setupScenario(t, "02_congestion_spike_drop", cfg, defaultRetryCfg())
 	defer env.teardown(t)
 
@@ -233,16 +240,24 @@ func TestScenario_CongestionSpikeDrop(t *testing.T) {
 }
 
 // --- Scenario 3: BaseFee spike mid-retry ---
+// Congestion=1.0 blocks inclusion. baseFee spikes to 20gwei after 200ms, then
+// drops to 1gwei after 800ms more and congestion clears. The retry must
+// escalate through tiers to cover the spike and eventually succeed.
 func TestScenario_BaseFeeSpikeRetry(t *testing.T) {
 	cfg := fastSimConfig()
-	env := setupScenario(t, "03_basefee_spike", cfg, defaultRetryCfg())
+	cfg.InitialBaseFee = big.NewInt(5_000_000_000)
+	cfg.InitialCongestion = 1.0
+	retryCfg := defaultRetryCfg()
+	retryCfg.MaxTxPrice = big.NewInt(1_000_000_000_000)
+	env := setupScenario(t, "03_basefee_spike", cfg, retryCfg)
 	defer env.teardown(t)
 
 	go func() {
 		time.Sleep(200 * time.Millisecond)
-		env.sim.SetBaseFee(big.NewInt(100_000_000_000))
+		env.sim.SetBaseFee(big.NewInt(20_000_000_000))
 		time.Sleep(800 * time.Millisecond)
 		env.sim.SetBaseFee(big.NewInt(1_000_000_000))
+		env.sim.SetCongestion(0.0)
 	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -251,16 +266,16 @@ func TestScenario_BaseFeeSpikeRetry(t *testing.T) {
 }
 
 // --- Scenario 4: Transient RPC errors ---
+// Inject errors BEFORE sending so they affect the retry flow.
+// HeaderByNumber errors block fee suggestions; TransactionReceipt errors
+// block receipt polling. The retry loop must survive both.
 func TestScenario_TransientRPCErrors(t *testing.T) {
 	cfg := fastSimConfig()
 	env := setupScenario(t, "04_transient_rpc_errors", cfg, defaultRetryCfg())
 	defer env.teardown(t)
 
-	go func() {
-		time.Sleep(100 * time.Millisecond)
-		env.sim.InjectError("TransactionReceipt", context.DeadlineExceeded, 5)
-		env.sim.InjectError("HeaderByNumber", context.DeadlineExceeded, 3)
-	}()
+	env.sim.InjectError("HeaderByNumber", context.DeadlineExceeded, 3)
+	env.sim.InjectError("TransactionReceipt", context.DeadlineExceeded, 10)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -268,10 +283,15 @@ func TestScenario_TransientRPCErrors(t *testing.T) {
 }
 
 // --- Scenario 5: Receipt delay ---
+// Receipt becomes available only after 3 blocks. The monitor's
+// cancellationDepth must be >= ReceiptAvailDelay so it does not falsely
+// declare the tx cancelled before the receipt materialises.
 func TestScenario_ReceiptDelay(t *testing.T) {
 	cfg := fastSimConfig()
 	cfg.ReceiptAvailDelay = 3
-	env := setupScenario(t, "05_receipt_delay", cfg, defaultRetryCfg())
+	retryCfg := defaultRetryCfg()
+	retryCfg.RetryDelay = 2 * time.Second
+	env := setupScenarioWithMonitorDepth(t, "05_receipt_delay", cfg, retryCfg, 5)
 	defer env.teardown(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -317,9 +337,10 @@ func TestScenario_TransactionRevert(t *testing.T) {
 }
 
 // --- Scenario 8: Random revert rate ---
+// Use rate=1.0 so the revert is deterministic — every tx reverts.
 func TestScenario_RandomRevertRate(t *testing.T) {
 	cfg := fastSimConfig()
-	cfg.RandomRevertRate = 0.5
+	cfg.RandomRevertRate = 1.0
 	env := setupScenario(t, "08_random_revert_rate", cfg, defaultRetryCfg())
 	defer env.teardown(t)
 
@@ -328,7 +349,7 @@ func TestScenario_RandomRevertRate(t *testing.T) {
 	sendOne(t, ctx, env, "08_random_revert_rate")
 }
 
-// --- Scenario 9: Multi-tx burst (10 sequential sends) ---
+// --- Scenario 9: Multi-tx burst (5 sequential sends) ---
 func TestScenario_MultiBurst(t *testing.T) {
 	cfg := fastSimConfig()
 	cfg.MaxTxsPerBlock = 3
@@ -338,15 +359,18 @@ func TestScenario_MultiBurst(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	type txResult struct {
-		idx     int
-		hash    common.Hash
-		receipt *types.Receipt
-		err     error
-		dur     time.Duration
+	const burstSize = 5
+	type burstEntry struct {
+		Scenario   string `json:"scenario"`
+		Index      int    `json:"index"`
+		TxHash     string `json:"tx_hash"`
+		HasReceipt bool   `json:"has_receipt"`
+		Status     uint64 `json:"status,omitempty"`
+		ErrorMsg   string `json:"error,omitempty"`
+		DurationMs int64  `json:"duration_ms"`
 	}
-	results := make([]txResult, 5)
-	for i := range results {
+	entries := make([]burstEntry, burstSize)
+	for i := range entries {
 		recipient := common.HexToAddress("0xabcd")
 		start := time.Now()
 		hash, receipt, err := env.svc.SendWithRetry(ctx, &transaction.TxRequest{
@@ -356,26 +380,32 @@ func TestScenario_MultiBurst(t *testing.T) {
 			GasLimit:    50_000,
 			Description: "09_multi_burst",
 		})
-		results[i] = txResult{i, hash, receipt, err, time.Since(start)}
+		e := burstEntry{
+			Scenario:   "09_multi_burst",
+			Index:      i,
+			TxHash:     hash.Hex(),
+			HasReceipt: receipt != nil,
+			DurationMs: time.Since(start).Milliseconds(),
+		}
+		if receipt != nil {
+			e.Status = receipt.Status
+		}
+		if err != nil {
+			e.ErrorMsg = err.Error()
+		}
+		entries[i] = e
 	}
 
-	var summaries []scenarioResult
-	for _, r := range results {
-		sr := scenarioResult{
-			Scenario:   "09_multi_burst",
-			TxHash:     r.hash.Hex(),
-			HasReceipt: r.receipt != nil,
-			DurationMs: r.dur.Milliseconds(),
-		}
-		if r.receipt != nil {
-			sr.Status = r.receipt.Status
-		}
-		if r.err != nil {
-			sr.ErrorMsg = r.err.Error()
-		}
-		summaries = append(summaries, sr)
+	wrapper := struct {
+		Scenario    string       `json:"scenario"`
+		BlocksTotal uint64       `json:"blocks_total"`
+		Txs         []burstEntry `json:"txs"`
+	}{
+		Scenario:    "09_multi_burst",
+		BlocksTotal: env.sim.BlockCount(),
+		Txs:         entries,
 	}
-	data, _ := json.MarshalIndent(summaries, "", "  ")
+	data, _ := json.MarshalIndent(wrapper, "", "  ")
 	writeFile(t, filepath.Join(env.outDir, "result.json"), data)
 }
 
@@ -409,17 +439,20 @@ func TestScenario_BaseFeeDrop(t *testing.T) {
 }
 
 // --- Scenario 12: Mempool TTL eviction during retry ---
+// Congestion=1.0 means no user tx can be included. TTL=2 blocks means the tx
+// gets evicted after 2 blocks. The retry must re-submit after eviction.
+// After ~1.5s congestion drops and the re-submitted tx gets included.
 func TestScenario_MempoolTTLEviction(t *testing.T) {
 	cfg := fastSimConfig()
 	cfg.MempoolTTL = 2
-	cfg.InitialCongestion = 0.99
+	cfg.InitialCongestion = 1.0
 	retryCfg := defaultRetryCfg()
 	retryCfg.RetryDelay = 500 * time.Millisecond
 	env := setupScenario(t, "12_mempool_ttl_eviction", cfg, retryCfg)
 	defer env.teardown(t)
 
 	go func() {
-		time.Sleep(2 * time.Second)
+		time.Sleep(1500 * time.Millisecond)
 		env.sim.SetCongestion(0.0)
 	}()
 

@@ -222,18 +222,20 @@ func (tm *transactionMonitor) checkPending(block uint64) error {
 		}
 	}
 
-	// Check for cancellations.
+	// Check for cancellations (only when enough blocks have been produced).
 	var cancelledNonces []uint64
-	for nonce := range snapshot {
-		if _, ok := confirmedNonces[nonce]; ok {
-			continue
-		}
-		oldNonce, err := tm.backend.NonceAt(tm.ctx, tm.sender, new(big.Int).SetUint64(block-tm.cancellationDepth))
-		if err != nil {
-			return err
-		}
-		if nonce < oldNonce {
-			cancelledNonces = append(cancelledNonces, nonce)
+	if block > tm.cancellationDepth {
+		for nonce := range snapshot {
+			if _, ok := confirmedNonces[nonce]; ok {
+				continue
+			}
+			oldNonce, err := tm.backend.NonceAt(tm.ctx, tm.sender, new(big.Int).SetUint64(block-tm.cancellationDepth))
+			if err != nil {
+				return err
+			}
+			if nonce < oldNonce {
+				cancelledNonces = append(cancelledNonces, nonce)
+			}
 		}
 	}
 

@@ -26,6 +26,7 @@ type YAMLConfig struct {
 	InitialBaseFee      string  `yaml:"initial_base_fee"`
 	MinMempoolTip       string  `yaml:"min_mempool_tip"`
 	Congestion          float64 `yaml:"congestion"`
+	CongestionStdDev    float64 `yaml:"congestion_stddev"`
 	BackgroundTipMean   string  `yaml:"background_tip_mean"`
 	BackgroundTipStdDev string  `yaml:"background_tip_stddev"`
 
@@ -137,6 +138,7 @@ func (c YAMLConfig) toSimConfig() (chainsim.Config, error) {
 		InitialBaseFee:          initialBaseFee,
 		MinMempoolTip:           minMempoolTip,
 		InitialCongestion:       c.Congestion,
+		CongestionStdDev:        c.CongestionStdDev,
 		BackgroundTipMean:       backgroundTipMean,
 		BackgroundTipStdDev:     backgroundTipStdDev,
 		MaxMempoolSize:          c.MaxMempoolSize,

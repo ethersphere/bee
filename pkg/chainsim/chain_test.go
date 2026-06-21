@@ -240,3 +240,32 @@ func TestSimChain_InjectError(t *testing.T) {
 	_, err := sim.BlockNumber(context.Background())
 	require.Error(t, err)
 }
+
+func TestSimChain_HistoryRetention(t *testing.T) {
+	t.Parallel()
+
+	cfg := chainsim.DefaultConfig()
+	cfg.HistoryRetentionBlocks = 10
+
+	sim, _, key := testChain(t, cfg)
+	defer sim.Close()
+
+	hash := signAndSend(t, sim, key, 0, 500_000_000, 5_000_000_000)
+	sim.CommitBlock()
+
+	ctx := context.Background()
+	receipt, err := sim.TransactionReceipt(ctx, hash)
+	require.NoError(t, err)
+	require.NotNil(t, receipt)
+
+	for range 11 {
+		sim.CommitEmptyBlock()
+	}
+
+	_, err = sim.TransactionReceipt(ctx, hash)
+	require.ErrorIs(t, err, ethereum.NotFound)
+
+	snap := sim.Snapshot()
+	require.LessOrEqual(t, len(snap.Receipts), 20)
+	require.LessOrEqual(t, len(snap.MinedTxs), 20)
+}

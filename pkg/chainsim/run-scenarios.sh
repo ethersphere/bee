@@ -15,10 +15,11 @@
 
 set -euo pipefail
 
-cd "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
+REPO_ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
+cd "${REPO_ROOT}"
 
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-OUTDIR="pkg/chainsim/scenario-results-${TIMESTAMP}"
+OUTDIR="${REPO_ROOT}/pkg/chainsim/scenario-results-${TIMESTAMP}"
 mkdir -p "${OUTDIR}"
 
 RUN_FILTER="${1:-TestScenario}"
@@ -67,13 +68,18 @@ for d in "${OUTDIR}"/*/; do
         status=$(python3 -c "
 import json, sys
 r = json.load(open('${d}result.json'))
-if isinstance(r, list):
+if 'txs' in r:
+    txs = r['txs']
+    ok = sum(1 for x in txs if x.get('has_receipt') and x.get('status') == 1)
+    fail = sum(1 for x in txs if x.get('error'))
+    print(f'{ok} ok, {fail} errors, {len(txs)} total, {r.get(\"blocks_total\",0)} blocks')
+elif isinstance(r, list):
     ok = sum(1 for x in r if x.get('has_receipt') and x.get('status') == 1)
     fail = sum(1 for x in r if x.get('error'))
     print(f'{ok} ok, {fail} errors, {len(r)} total')
 else:
     s = 'OK' if r.get('has_receipt') and r.get('status') == 1 else r.get('error', 'unknown')
-    print(f'{s} ({r.get(\"duration_ms\", 0)}ms)')
+    print(f'{s} ({r.get(\"duration_ms\", 0)}ms, {r.get(\"blocks_total\", 0)} blocks)')
 " 2>/dev/null || echo "?")
     else
         status="no result"
@@ -92,5 +98,27 @@ echo "  ${OUTDIR}/summary.json          — all scenario outcomes"
 echo "  ${OUTDIR}/test-output.log       — full go test output"
 echo "  ${OUTDIR}/*/events.jsonl        — structured event logs"
 echo "  ${OUTDIR}/*/state.json          — chain state snapshots"
+
+# --- Highload tests ---
+if [ "${RUN_FILTER}" = "TestScenario" ] || echo "${RUN_FILTER}" | grep -q 'Highload'; then
+    HL_OUTDIR="${REPO_ROOT}/pkg/chainsim/highload-results-${TIMESTAMP}"
+    mkdir -p "${HL_OUTDIR}"
+    echo ""
+    echo "=== highload tests ==="
+    echo "  output: ${HL_OUTDIR}"
+
+    set +e
+    SCENARIO_OUTPUT_DIR="${HL_OUTDIR}" go test -tags=scenario -v -count=1 \
+        -timeout=600s -run 'TestHighload' \
+        ./pkg/chainsim/... 2>&1 | tee "${HL_OUTDIR}/test-output.log"
+    HL_EXIT=$?
+    set -e
+
+    echo "  highload exit: ${HL_EXIT}"
+    echo "  artifacts: ${HL_OUTDIR}/"
+    if [ ${HL_EXIT} -ne 0 ]; then
+        TEST_EXIT=${HL_EXIT}
+    fi
+fi
 
 exit ${TEST_EXIT}

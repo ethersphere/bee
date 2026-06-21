@@ -36,6 +36,12 @@ type Config struct {
 	// Fraction of block gas reserved for synthetic background traffic (0.0–1.0).
 	InitialCongestion float64
 
+	// CongestionStdDev adds per-block Gaussian noise to congestion so that
+	// background gas fluctuates around the mean rather than sitting exactly on
+	// the gas target. This lets base fee decrease when the mempool is empty,
+	// matching real EIP-1559 behavior. Zero disables noise.
+	CongestionStdDev float64
+
 	// Synthetic tip distribution used for fee history background traffic.
 	BackgroundTipMean   *big.Int
 	BackgroundTipStdDev *big.Int
@@ -57,6 +63,10 @@ type Config struct {
 
 	// Number of historical blocks kept for fee history queries.
 	FeeHistoryDepth int
+
+	// HistoryRetentionBlocks bounds how many recent blocks of receipts, mined txs,
+	// and nonce history are retained in memory. Zero keeps full history.
+	HistoryRetentionBlocks uint64
 
 	// Seed for synthetic background tip sampling. Zero uses a fixed default seed.
 	RNGSeed int64
@@ -140,6 +150,12 @@ func (c Config) normalized() Config {
 	}
 	if c.InitialCongestion > 1 {
 		c.InitialCongestion = 1
+	}
+	if c.CongestionStdDev < 0 {
+		c.CongestionStdDev = 0
+	}
+	if c.CongestionStdDev > 0.5 {
+		c.CongestionStdDev = 0.5
 	}
 	if c.InclusionProbability && c.InclusionMinProbability <= 0 {
 		c.InclusionMinProbability = defaultInclusionMinProbability

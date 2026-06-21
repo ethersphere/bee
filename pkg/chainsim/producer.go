@@ -59,7 +59,17 @@ func (s *SimChain) commitBlockLocked(skipInclusion ...bool) uint64 {
 		includedGas = s.includeTransactions(block)
 	}
 
-	backgroundGas := uint64(float64(s.cfg.BlockGasLimit) * s.congestion)
+	bgCongestion := s.congestion
+	if s.cfg.CongestionStdDev > 0 {
+		bgCongestion += s.rng.NormFloat64() * s.cfg.CongestionStdDev
+		if bgCongestion < 0 {
+			bgCongestion = 0
+		}
+		if bgCongestion > 1 {
+			bgCongestion = 1
+		}
+	}
+	backgroundGas := uint64(float64(s.cfg.BlockGasLimit) * bgCongestion)
 	remaining := s.cfg.BlockGasLimit - includedGas
 	if backgroundGas > remaining {
 		backgroundGas = remaining
@@ -79,6 +89,8 @@ func (s *SimChain) commitBlockLocked(skipInclusion ...bool) uint64 {
 	if len(s.blocks) > s.cfg.FeeHistoryDepth+1 {
 		s.blocks = append([]*simBlock(nil), s.blocks[len(s.blocks)-s.cfg.FeeHistoryDepth-1:]...)
 	}
+
+	s.trimHistoryLocked()
 
 	s.recordBlockProduced()
 	s.logger.Info("new block",
@@ -166,6 +178,7 @@ func (s *SimChain) includeTransactions(block *simBlock) uint64 {
 			includedAt: block.number,
 		}
 		s.minedTxs[entry.tx.Hash()] = entry.tx
+		s.minedOrder = append(s.minedOrder, minedRef{block: block.number, hash: entry.tx.Hash()})
 		s.pool.remove(entry.tx.Hash())
 
 		newNonce := entry.tx.Nonce() + 1

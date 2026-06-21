@@ -7,11 +7,19 @@ package mock
 import (
 	"encoding"
 	"encoding/json"
+	"sort"
 	"strings"
 	"sync"
 
 	"github.com/ethersphere/bee/v2/pkg/storage"
 )
+
+// InspectableStore extends StateStorer with methods for test introspection.
+type InspectableStore interface {
+	storage.StateStorer
+	Len() int
+	KeysWithPrefix(prefix string) []string
+}
 
 var _ storage.StateStorer = (*store)(nil)
 
@@ -92,6 +100,29 @@ func (s *store) Iterate(prefix string, iterFunc storage.StateIterFunc) (err erro
 	return nil
 }
 
+// Len returns the total number of entries in the store.
+func (s *store) Len() int {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	return len(s.store)
+}
+
+// KeysWithPrefix returns a sorted slice of keys that start with prefix.
+func (s *store) KeysWithPrefix(prefix string) []string {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	var keys []string
+	for k := range s.store {
+		if strings.HasPrefix(k, prefix) {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 func (s *store) Close() (err error) {
 	return nil
 }
+
+var _ InspectableStore = (*store)(nil)

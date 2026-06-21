@@ -298,6 +298,8 @@ func Restore(cfg Config, snap Snapshot) (*SimChain, error) {
 		s.stats = snap.Stats.copy()
 	}
 
+	s.rebuildMinedOrderLocked()
+
 	return s, nil
 }
 

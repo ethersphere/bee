@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math/big"
 	"math/rand"
+	"sort"
 	"sync"
 	"time"
 
@@ -43,8 +44,9 @@ type SimChain struct {
 	nonceHistory map[common.Address][]nonceRecord
 	balances     map[common.Address]*big.Int
 
-	receipts map[common.Hash]*receiptRecord
-	minedTxs map[common.Hash]*types.Transaction
+	receipts   map[common.Hash]*receiptRecord
+	minedTxs   map[common.Hash]*types.Transaction
+	minedOrder []minedRef
 
 	congestion          float64
 	backgroundTipMean   *big.Int
@@ -88,6 +90,11 @@ type receiptRecord struct {
 type nonceRecord struct {
 	blockNum uint64
 	nonce    uint64
+}
+
+type minedRef struct {
+	block uint64
+	hash  common.Hash
 }
 
 type errorInjection struct {
@@ -161,6 +168,64 @@ func (s *SimChain) nonceAtBlock(sender common.Address, blockNum uint64) uint64 {
 		nonce = rec.nonce
 	}
 	return nonce
+}
+
+// pruneNonceHistory keeps the last record strictly before cutoff plus all records
+// at or after cutoff so nonceAtBlock still interpolates correctly.
+func pruneNonceHistory(hist []nonceRecord, cutoff uint64) []nonceRecord {
+	if len(hist) == 0 {
+		return hist
+	}
+	keepFrom := 0
+	for i, rec := range hist {
+		if rec.blockNum < cutoff {
+			keepFrom = i
+		} else {
+			break
+		}
+	}
+	if keepFrom == 0 {
+		return hist
+	}
+	return append([]nonceRecord(nil), hist[keepFrom:]...)
+}
+
+func (s *SimChain) trimHistoryLocked() {
+	retention := s.cfg.HistoryRetentionBlocks
+	if retention == 0 || s.blockNum <= retention {
+		return
+	}
+	cutoff := s.blockNum - retention
+
+	i := 0
+	for ; i < len(s.minedOrder); i++ {
+		if s.minedOrder[i].block >= cutoff {
+			break
+		}
+		h := s.minedOrder[i].hash
+		delete(s.receipts, h)
+		delete(s.minedTxs, h)
+	}
+	if i > 0 {
+		s.minedOrder = append([]minedRef(nil), s.minedOrder[i:]...)
+	}
+
+	for addr, hist := range s.nonceHistory {
+		s.nonceHistory[addr] = pruneNonceHistory(hist, cutoff)
+	}
+}
+
+func (s *SimChain) rebuildMinedOrderLocked() {
+	s.minedOrder = make([]minedRef, 0, len(s.receipts))
+	for hash, rec := range s.receipts {
+		s.minedOrder = append(s.minedOrder, minedRef{block: rec.includedAt, hash: hash})
+	}
+	sort.Slice(s.minedOrder, func(i, j int) bool {
+		if s.minedOrder[i].block == s.minedOrder[j].block {
+			return s.minedOrder[i].hash.Hex() < s.minedOrder[j].hash.Hex()
+		}
+		return s.minedOrder[i].block < s.minedOrder[j].block
+	})
 }
 
 func (s *SimChain) balanceOf(sender common.Address) *big.Int {
