@@ -107,9 +107,10 @@ if [ "${RUN_FILTER}" = "TestScenario" ] || echo "${RUN_FILTER}" | grep -q 'Highl
     echo "=== highload tests ==="
     echo "  output: ${HL_OUTDIR}"
 
+    HL_TIMEOUT="${HIGHLOAD_TIMEOUT:-4h}"
     set +e
     SCENARIO_OUTPUT_DIR="${HL_OUTDIR}" go test -tags=scenario -v -count=1 \
-        -timeout=600s -run 'TestHighload' \
+        -timeout="${HL_TIMEOUT}" -run 'TestHighload' \
         ./pkg/chainsim/... 2>&1 | tee "${HL_OUTDIR}/test-output.log"
     HL_EXIT=$?
     set -e

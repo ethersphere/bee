@@ -87,6 +87,7 @@ func (l *JSONLLogger) WithName(name string) log.Builder {
 	}
 	return c
 }
+
 func (l *JSONLLogger) WithValues(kvs ...any) log.Builder {
 	c := l.clone()
 	for i := 0; i+1 < len(kvs); i += 2 {
