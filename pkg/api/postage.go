@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/bigint"
@@ -529,6 +530,14 @@ func (s *Service) postageUpdateLabelHandler(w http.ResponseWriter, r *http.Reque
 		logger.Debug("patch stamp: decode body failed", "batch_id", hexBatchID, "error", err)
 		logger.Error(nil, "patch stamp: decode body failed")
 		jsonhttp.BadRequest(w, "invalid request body")
+		return
+	}
+
+	// label is required by the OpenAPI spec; reject empty/missing rather than
+	// silently blanking the issuer label.
+	if strings.TrimSpace(body.Label) == "" {
+		logger.Debug("patch stamp: empty label", "batch_id", hexBatchID)
+		jsonhttp.BadRequest(w, "label is required")
 		return
 	}
 
