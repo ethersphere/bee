@@ -14,8 +14,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestHighload_BlockJitterVsRetryDelay stresses WaitForReceipt timeouts against
-// variable block production intervals with a short RetryDelay.
+// TestHighload_BlockJitterVsRetryDelay verifies variable block timing does not
+// break receipt waiting or cause runaway replacements.
+//
+// Goal: Confirm SendWithRetry tolerates irregular block production with a short
+// retry delay without excessive RBF churn.
+//
+// How it works: Fast blocks with large jitter and a short RetryDelay; sustained
+// worker load; checks completion, nonce integrity, and bounded mempool replacements.
 func TestHighload_BlockJitterVsRetryDelay(t *testing.T) {
 	duration := stressDuration()
 	workers := envInt("HIGHLOAD_WORKERS", 10)

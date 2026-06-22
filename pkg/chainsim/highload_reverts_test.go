@@ -16,8 +16,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestHighload_RevertsUnderLoad verifies that random on-chain reverts (status=0)
-// are handled correctly under load: store is cleaned, nonces stay contiguous.
+// TestHighload_RevertsUnderLoad verifies on-chain reverts are handled correctly
+// without breaking nonce sequencing or store cleanup.
+//
+// Goal: Confirm reverted transactions consume nonce and do not leave retry or
+// pending leaks under sustained load.
+//
+// How it works: A random revert rate is applied while workers send continuously;
+// asserts mixed success/revert outcomes and a contiguous nonce chain.
 func TestHighload_RevertsUnderLoad(t *testing.T) {
 	duration := stressDuration()
 	workers := envInt("HIGHLOAD_WORKERS", 10)

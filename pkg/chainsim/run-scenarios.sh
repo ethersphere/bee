@@ -2,10 +2,13 @@
 # Run chainsim scenario tests and collect all artifacts into a timestamped directory.
 #
 # Usage:
-#   ./pkg/chainsim/run-scenarios.sh                    # run all scenarios
+#   ./pkg/chainsim/run-scenarios.sh                    # run all scenarios, then highload tests
 #   ./pkg/chainsim/run-scenarios.sh TestScenario_Happy # run one scenario by name
+#   ./pkg/chainsim/run-scenarios.sh TestHighload       # run highload tests only
 #
-# Output goes to: pkg/chainsim/scenario-results-<timestamp>/
+# Scenario output: pkg/chainsim/scenario-results-<timestamp>/
+# Highload output:  pkg/chainsim/highload-results-<timestamp>/
+#   (STRESS_DURATION=15m, HIGHLOAD_DUMP=60s, HIGHLOAD_TIMEOUT=4h by default)
 #
 # Each scenario produces:
 #   events.jsonl  — every structured log event (blocks, tx accept/reject/execute, retry broadcasts)
@@ -108,7 +111,12 @@ if [ "${RUN_FILTER}" = "TestScenario" ] || echo "${RUN_FILTER}" | grep -q 'Highl
     echo "  output: ${HL_OUTDIR}"
 
     HL_TIMEOUT="${HIGHLOAD_TIMEOUT:-4h}"
+    HL_DURATION="${STRESS_DURATION:-15m}"
+    HL_DUMP="${HIGHLOAD_DUMP:-60s}"
+    echo "  duration per test: ${HL_DURATION}"
+    echo "  dump interval:     ${HL_DUMP}"
     set +e
+    STRESS_DURATION="${HL_DURATION}" HIGHLOAD_DUMP="${HL_DUMP}" \
     SCENARIO_OUTPUT_DIR="${HL_OUTDIR}" go test -tags=scenario -v -count=1 \
         -timeout="${HL_TIMEOUT}" -run 'TestHighload' \
         ./pkg/chainsim/... 2>&1 | tee "${HL_OUTDIR}/test-output.log"

@@ -14,7 +14,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestHighload_SoakNoLeaks is a long calm run verifying goroutine/store/history retention.
+// TestHighload_SoakNoLeaks detects goroutine leaks, orphan store keys, and
+// unbounded sim history growth over a long calm run.
+//
+// Goal: Confirm sustained operation does not leak resources or retain unbounded
+// chain history beyond configured limits.
+//
+// How it works: Moderate worker load runs for the full stress duration without
+// chaos drivers; checks store hygiene, history retention, and goroutine settlement.
 func TestHighload_SoakNoLeaks(t *testing.T) {
 	duration := stressDuration()
 	workers := envInt("HIGHLOAD_WORKERS", 8)
@@ -26,6 +33,7 @@ func TestHighload_SoakNoLeaks(t *testing.T) {
 	cfg.BlockPeriodJitter = 20 * time.Millisecond
 	cfg.InitialCongestion = 0.2
 	cfg.CongestionStdDev = 0.05
+	cfg.MaxTxsPerBlock = 4
 	cfg.MempoolTTL = chainsim.DisabledMempoolTTL
 	cfg.RNGSeed = 42
 	cfg.HistoryRetentionBlocks = 2000
@@ -44,9 +52,11 @@ func TestHighload_SoakNoLeaks(t *testing.T) {
 	require.Equal(t, env.store.Len(), len(storedKeys), "unexpected non-stored keys remain")
 
 	snap := env.sim.Snapshot()
-	require.LessOrEqual(t, len(snap.Blocks), cfg.FeeHistoryDepth+2)
+	require.LessOrEqual(t, len(snap.Blocks), cfg.FeeHistoryDepth+2,
+		"blocks not trimmed by FeeHistoryDepth")
 	if snap.BlockNum > cfg.HistoryRetentionBlocks {
-		require.LessOrEqual(t, uint64(len(snap.Receipts)), cfg.HistoryRetentionBlocks+uint64(cfg.MaxTxsPerBlock)*20,
+		maxReceipts := cfg.HistoryRetentionBlocks * uint64(cfg.MaxTxsPerBlock)
+		require.LessOrEqual(t, uint64(len(snap.Receipts)), maxReceipts,
 			"receipts not trimmed by HistoryRetentionBlocks")
 	}
 

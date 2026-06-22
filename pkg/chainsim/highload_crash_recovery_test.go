@@ -24,9 +24,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestHighload_CrashRecovery periodically closes and recreates the transaction
-// service while sim+store keep running, verifying resumeRetryTransactions
-// maintains nonce integrity across restarts.
+// TestHighload_CrashRecovery verifies SendWithRetry survives periodic service
+// restarts without breaking nonce state.
+//
+// Goal: Confirm resumeRetryTransactions restores in-flight work and nonce
+// integrity across repeated process restarts.
+//
+// How it works: Sim and store keep running while the transaction service is
+// torn down and recreated on a schedule; workers resume each epoch; final
+// checks cover retry keys and nonce continuity.
 func TestHighload_CrashRecovery(t *testing.T) {
 	duration := stressDuration()
 	workers := envInt("HIGHLOAD_WORKERS", 8)

@@ -16,8 +16,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestHighload_ReceiptDelayNoFalseCancel verifies that with ReceiptAvailDelay=4 and
-// cancellationDepth=6 the monitor does not falsely cancel transactions under load.
+// TestHighload_ReceiptDelayNoFalseCancel verifies delayed receipts do not
+// trigger false cancellation when monitor depth is configured correctly.
+//
+// Goal: Confirm the transaction monitor waits long enough for late receipts
+// and does not report ErrTransactionCancelled under load.
+//
+// How it works: Receipts appear several blocks late with cancellationDepth above
+// that delay; workers run for the full stress duration; cancelled count must be zero.
 func TestHighload_ReceiptDelayNoFalseCancel(t *testing.T) {
 	duration := stressDuration()
 	workers := envInt("HIGHLOAD_WORKERS", 8)
@@ -46,7 +52,7 @@ func TestHighload_ReceiptDelayNoFalseCancel(t *testing.T) {
 	})
 
 	out := oc.snapshot()
-	require.LessOrEqual(t, out["cancelled"], int64(0),
+	require.Zero(t, out["cancelled"],
 		"false cancellations with cancellationDepth >= ReceiptAvailDelay")
 	require.Positive(t, oc.completed.Load())
 
@@ -58,8 +64,14 @@ func TestHighload_ReceiptDelayNoFalseCancel(t *testing.T) {
 	t.Logf("receipt-delay-ok: outcomes=%v completed=%d", out, oc.completed.Load())
 }
 
-// TestHighload_ReceiptDelayMisconfig is a negative test: cancellationDepth < ReceiptAvailDelay
-// should produce false ErrTransactionCancelled outcomes.
+// TestHighload_ReceiptDelayMisconfig is a negative test for monitor depth
+// shorter than receipt availability delay.
+//
+// Goal: Document that cancellationDepth below ReceiptAvailDelay produces false
+// ErrTransactionCancelled outcomes.
+//
+// How it works: Same delayed-receipt sim but shallow monitor depth; workers run
+// for a short fixed duration; cancelled outcomes are expected.
 func TestHighload_ReceiptDelayMisconfig(t *testing.T) {
 	duration := envDuration("STRESS_DURATION", 2*time.Minute)
 	workers := envInt("HIGHLOAD_WORKERS", 4)

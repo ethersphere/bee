@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"math/rand"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -26,7 +27,9 @@ import (
 )
 
 // cancelChurnWorker cancels its context mid-retry to stress context.Canceled handling.
-func cancelChurnWorker(parent context.Context, stop <-chan struct{}, svc transaction.Service, oc *outcomeCounters, rng *rand.Rand) {
+// Each worker gets its own rng seed to avoid data races on shared *rand.Rand.
+func cancelChurnWorker(parent context.Context, stop <-chan struct{}, svc transaction.Service, oc *outcomeCounters, seed int64) {
+	rng := rand.New(rand.NewSource(seed)) //nolint:gosec
 	for {
 		select {
 		case <-stop:
@@ -37,9 +40,10 @@ func cancelChurnWorker(parent context.Context, stop <-chan struct{}, svc transac
 		}
 		ctx, cancel := context.WithCancel(parent)
 		delay := time.Duration(200+rng.Intn(600)) * time.Millisecond
-		time.AfterFunc(delay, cancel)
+		timer := time.AfterFunc(delay, cancel)
 
 		_, _, err := svc.SendWithRetry(ctx, defaultHighloadTxRequest("cancel-churn"))
+		timer.Stop()
 		cancel()
 		oc.record(err)
 		if parent.Err() != nil {
@@ -48,8 +52,15 @@ func cancelChurnWorker(parent context.Context, stop <-chan struct{}, svc transac
 	}
 }
 
-// TestHighload_HardCancelMidRetry combines context cancellation churn with periodic
-// service restarts, verifying no duplicate nonces and resumability.
+// TestHighload_HardCancelMidRetry verifies that context cancellation churn and
+// service restarts do not corrupt nonce assignment or persistence.
+//
+// Goal: Ensure aggressive caller-side cancellation mid-retry remains safe when
+// combined with periodic service restarts.
+//
+// How it works: Workers repeatedly cancel SendWithRetry contexts during flight;
+// the service is restarted on a timer; asserts no duplicate nonces and a clean
+// retry store at the end.
 func TestHighload_HardCancelMidRetry(t *testing.T) {
 	duration := stressDuration()
 	workers := envInt("HIGHLOAD_WORKERS", 8)
@@ -99,8 +110,9 @@ func TestHighload_HardCancelMidRetry(t *testing.T) {
 
 	baseline := goroutineBaseline()
 	oc := newOutcomeCounters()
-	rng := rand.New(rand.NewSource(123))
 	deadline := time.Now().Add(duration)
+	var workerSeed atomic.Int64
+	workerSeed.Store(100)
 
 	for time.Now().Before(deadline) {
 		svc, mon := newSvc()
@@ -108,9 +120,10 @@ func TestHighload_HardCancelMidRetry(t *testing.T) {
 		var wg sync.WaitGroup
 		for range workers {
 			wg.Add(1)
+			seed := workerSeed.Add(1)
 			go func() {
 				defer wg.Done()
-				cancelChurnWorker(context.Background(), stop, svc, oc, rng)
+				cancelChurnWorker(context.Background(), stop, svc, oc, seed)
 			}()
 		}
 

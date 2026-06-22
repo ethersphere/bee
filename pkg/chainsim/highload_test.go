@@ -497,6 +497,15 @@ func collectNonces(t *testing.T, insp storemock.InspectableStore) []uint64 {
 // Test A: happy path — strict store cleanliness (less greenhouse)
 // ---------------------------------------------------------------------------
 
+// TestHighload_HappyPathStoreClean verifies that sustained SendWithRetry traffic
+// leaves the state store clean under mild network conditions.
+//
+// Goal: Confirm no retry/pending leaks, correct stored counts, and contiguous nonces
+// during a long calm run with light RPC noise.
+//
+// How it works: Multiple workers send transactions for the full stress duration;
+// occasional read-side RPC faults are injected; final assertions check store keys
+// and goroutine settlement.
 func TestHighload_HappyPathStoreClean(t *testing.T) {
 	duration := stressDuration()
 	workers := envInt("HIGHLOAD_WORKERS", 8)
@@ -517,7 +526,7 @@ func TestHighload_HappyPathStoreClean(t *testing.T) {
 	baseline := goroutineBaseline()
 	env := setupHighload(t, "highload_happy", cfg, retryCfg, rotateInterval)
 
-	calmAt := time.Now().Add(duration - quietTail())
+	calmAt := safeCalmAt(duration)
 	stopDrivers := make(chan struct{})
 	go lightReadRPCFaultDriver(stopDrivers, env.sim, rand.New(rand.NewSource(7)), 2*time.Second, calmAt)
 
@@ -579,6 +588,14 @@ func TestHighload_HappyPathStoreClean(t *testing.T) {
 // Test B: stress — nonce correctness and retry under pressure (less greenhouse)
 // ---------------------------------------------------------------------------
 
+// TestHighload_StressNonceAndRetry verifies nonce continuity and retry behavior
+// under congestion waves, limited block space, and fee pressure.
+//
+// Goal: Ensure SendWithRetry keeps making progress and maintains a contiguous
+// nonce chain when the network is congested and block inclusion is scarce.
+//
+// How it works: Many workers run against a fast sim with oscillating congestion,
+// capped base fee, and periodic dumps; completion rate and store hygiene are checked.
 func TestHighload_StressNonceAndRetry(t *testing.T) {
 	duration := stressDuration()
 	workers := envInt("HIGHLOAD_WORKERS", 16)
@@ -590,6 +607,7 @@ func TestHighload_StressNonceAndRetry(t *testing.T) {
 	cfg.BlockPeriodJitter = 25 * time.Millisecond
 	cfg.InitialCongestion = 0.5
 	cfg.CongestionStdDev = 0.15
+	cfg.MaxBaseFee = big.NewInt(500_000_000_000) // 500 gwei — realistic Gnosis ceiling
 	cfg.MaxTxsPerBlock = 2
 	cfg.MaxMempoolSize = 4096
 	cfg.MempoolTTL = chainsim.DisabledMempoolTTL
@@ -605,7 +623,7 @@ func TestHighload_StressNonceAndRetry(t *testing.T) {
 	baseline := goroutineBaseline()
 	env := setupHighloadWithOpts(t, "highload_stress", cfg, retryCfg, rotateInterval, opt)
 
-	calmAt := time.Now().Add(duration - quietTail())
+	calmAt := safeCalmAt(duration)
 	stopDrivers := make(chan struct{})
 	go congestionWaveDriver(stopDrivers, env.sim, 0.85, 0.3, 0.3, 5*time.Second, calmAt)
 

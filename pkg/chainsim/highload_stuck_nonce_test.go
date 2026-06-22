@@ -15,9 +15,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestHighload_StuckNonceMempoolDrop verifies that after mempool TTL eviction and
-// base-fee storms that exhaust retries, the node recovers: pending/retry keys drain
-// and the on-chain nonce catches up with stored transactions.
+// TestHighload_StuckNonceMempoolDrop ensures the node recovers after mempool
+// eviction and base-fee spikes that temporarily block inclusion.
+//
+// Goal: Verify pending/retry state drains and the on-chain nonce catches up
+// with stored transactions after harsh network conditions.
+//
+// How it works: Base-fee storms and congestion waves run while workers send txs;
+// after a calm tail, asserts clean store and contiguous unique nonces on chain.
 func TestHighload_StuckNonceMempoolDrop(t *testing.T) {
 	duration := stressDuration()
 	workers := envInt("HIGHLOAD_WORKERS", 8)
@@ -40,7 +45,7 @@ func TestHighload_StuckNonceMempoolDrop(t *testing.T) {
 	baseline := goroutineBaseline()
 	env := setupHighload(t, "highload_stuck_nonce", cfg, retryCfg, rotateInterval)
 
-	calmAt := time.Now().Add(duration - quietTail())
+	calmAt := safeCalmAt(duration)
 	stopDrivers := make(chan struct{})
 	go baseFeeStormDriver(stopDrivers, env.sim, big.NewInt(80_000_000_000), big.NewInt(1_000_000_000), 4*time.Second, calmAt)
 	go congestionWaveDriver(stopDrivers, env.sim, 1.0, 0.2, 0.0, 5*time.Second, calmAt)

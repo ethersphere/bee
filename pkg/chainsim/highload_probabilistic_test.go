@@ -17,8 +17,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestHighload_ProbabilisticInclusion verifies eventual inclusion under probabilistic
-// block selection with low starting fee tier.
+// TestHighload_ProbabilisticInclusion verifies low-fee transactions are
+// eventually included when the sim uses probabilistic block selection.
+//
+// Goal: Confirm SendWithRetry escalates from a low starting tier and completes
+// transactions even when inclusion is not guaranteed every block.
+//
+// How it works: Workers start at the low fee tier under probabilistic inclusion;
+// asserts deferred inclusions occur, txs complete, and the store stays clean.
 func TestHighload_ProbabilisticInclusion(t *testing.T) {
 	duration := stressDuration()
 	workers := envInt("HIGHLOAD_WORKERS", 8)

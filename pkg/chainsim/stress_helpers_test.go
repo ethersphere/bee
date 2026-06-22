@@ -36,6 +36,16 @@ func quietTail() time.Duration {
 	return envDuration("STRESS_QUIET_TAIL", 2*time.Minute)
 }
 
+// safeCalmAt returns the time at which chaos drivers should stop injecting faults.
+// If duration <= quietTail, drivers still get at least half the duration for chaos.
+func safeCalmAt(duration time.Duration) time.Time {
+	tail := quietTail()
+	if tail >= duration {
+		tail = duration / 2
+	}
+	return time.Now().Add(duration - tail)
+}
+
 func commonRecipient() common.Address {
 	return common.HexToAddress("0xabcd")
 }
@@ -59,7 +69,6 @@ type outcomeCounters struct {
 	mu        sync.Mutex
 	byLabel   map[string]int64
 	completed atomic.Int64
-	inFlight  atomic.Int64
 }
 
 func newOutcomeCounters() *outcomeCounters {
@@ -99,12 +108,10 @@ func instrumentedWorker(ctx context.Context, stop <-chan struct{}, svc transacti
 			return
 		default:
 		}
-		oc.inFlight.Add(1)
 		if wl != nil {
 			wl.inFlight.Add(1)
 		}
 		_, receipt, err := svc.SendWithRetry(ctx, defaultHighloadTxRequest("stress"))
-		oc.inFlight.Add(-1)
 		if wl != nil {
 			wl.inFlight.Add(-1)
 		}
@@ -176,7 +183,9 @@ func uniqueNonces(nonces []uint64) []uint64 {
 
 // assertOnChainNonceChain verifies the confirmed on-chain nonce matches a contiguous
 // stored nonce range. When allowStoredDup is true, duplicate stored entries for the
-// same nonce are ignored (can occur under SendTransaction RPC chaos).
+// same nonce are ignored (can occur under SendTransaction RPC chaos where
+// persistReplaceTx may write a new stored_ key before the old one is cleaned up).
+// TODO: investigate whether persistReplaceTx should be made idempotent w.r.t. nonce.
 func assertOnChainNonceChain(t *testing.T, confirmed uint64, nonces []uint64, allowStoredDup bool) {
 	t.Helper()
 	if len(nonces) == 0 {
@@ -387,17 +396,4 @@ func withCancellationDepth(depth uint64) highloadOpts {
 	opt := defaultHighloadOpts()
 	opt.cancellationDepth = depth
 	return opt
-}
-
-// gnosisLikeConfig returns a Gnosis-chain-like preset (slow blocks, realistic gas).
-func gnosisLikeConfig() chainsim.Config {
-	cfg := chainsim.DefaultConfig()
-	cfg.BlockPeriod = 5 * time.Second
-	cfg.BlockPeriodJitter = 1 * time.Second
-	cfg.BlockGasLimit = 17_000_000
-	cfg.InitialBaseFee = big.NewInt(1_000_000_000)
-	cfg.BackgroundTipMean = big.NewInt(1_500_000_000)
-	cfg.CongestionStdDev = 0.08
-	cfg.MempoolTTL = chainsim.DisabledMempoolTTL
-	return cfg
 }

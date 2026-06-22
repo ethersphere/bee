@@ -18,8 +18,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestHighload_RPCChaos runs continuous random RPC fault injection across all
-// backend methods while workers send transactions under congestion pressure.
+// TestHighload_RPCChaos verifies SendWithRetry remains stable when RPC calls
+// fail intermittently across backend methods.
+//
+// Goal: Confirm the retry loop survives random RPC faults without deadlocking,
+// leaking store keys, or breaking the nonce chain.
+//
+// How it works: Continuous fault injection runs while many workers send under
+// congestion; asserts completions, clean store, and on-chain nonce continuity.
 func TestHighload_RPCChaos(t *testing.T) {
 	duration := stressDuration()
 	workers := envInt("HIGHLOAD_WORKERS", 16)
@@ -45,7 +51,7 @@ func TestHighload_RPCChaos(t *testing.T) {
 	baseline := goroutineBaseline()
 	env := setupHighloadWithOpts(t, "highload_rpc_chaos", cfg, retryCfg, rotateInterval, opt)
 
-	calmAt := time.Now().Add(duration - quietTail())
+	calmAt := safeCalmAt(duration)
 	stopDrivers := make(chan struct{})
 	go rpcFaultDriver(stopDrivers, env.sim, rand.New(rand.NewSource(99)), 500*time.Millisecond, calmAt)
 

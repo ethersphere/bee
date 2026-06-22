@@ -30,6 +30,12 @@ type Config struct {
 	// EIP-1559 base fee at genesis.
 	InitialBaseFee *big.Int
 
+	// MaxBaseFee caps the EIP-1559 base fee. When the calculated next base fee
+	// exceeds this value, it is clamped. This prevents unrealistic exponential
+	// growth in fast-block simulations where congestion > 0.5 is sustained.
+	// Zero/nil disables the cap.
+	MaxBaseFee *big.Int
+
 	// Mempool acceptance floor for priority fee.
 	MinMempoolTip *big.Int
 

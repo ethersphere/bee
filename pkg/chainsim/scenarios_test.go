@@ -209,7 +209,11 @@ func sendOne(t *testing.T, ctx context.Context, env *scenarioEnv, name string) {
 	env.writeResult(t, name, txHash, receipt, err, dur)
 }
 
-// --- Scenario 1: Happy path ---
+// TestScenario_HappyPath verifies a single transaction succeeds under normal conditions.
+//
+// Goal: Confirm the baseline SendWithRetry path works end-to-end on a fast sim.
+//
+// How it works: One transaction is sent with default retry config and mild congestion.
 func TestScenario_HappyPath(t *testing.T) {
 	cfg := fastSimConfig()
 	env := setupScenario(t, "01_happy_path", cfg, defaultRetryCfg())
@@ -220,9 +224,14 @@ func TestScenario_HappyPath(t *testing.T) {
 	sendOne(t, ctx, env, "01_happy_path")
 }
 
-// --- Scenario 2: Congestion spike then drop ---
-// Congestion=1.0 blocks all user txs. After ~600ms congestion drops and the
-// retried transaction finally gets included.
+// TestScenario_CongestionSpikeDrop verifies retry succeeds after a temporary
+// congestion spike blocks inclusion.
+//
+// Goal: Confirm SendWithRetry waits and re-broadcasts until congestion drops
+// and the transaction is included.
+//
+// How it works: Congestion starts at maximum, then is lowered mid-flight while
+// one transaction is in the retry loop.
 func TestScenario_CongestionSpikeDrop(t *testing.T) {
 	cfg := fastSimConfig()
 	cfg.InitialCongestion = 1.0
@@ -239,10 +248,13 @@ func TestScenario_CongestionSpikeDrop(t *testing.T) {
 	sendOne(t, ctx, env, "02_congestion_spike_drop")
 }
 
-// --- Scenario 3: BaseFee spike mid-retry ---
-// Congestion=1.0 blocks inclusion. baseFee spikes to 20gwei after 200ms, then
-// drops to 1gwei after 800ms more and congestion clears. The retry must
-// escalate through tiers to cover the spike and eventually succeed.
+// TestScenario_BaseFeeSpikeRetry verifies fee escalation through a base-fee spike.
+//
+// Goal: Confirm SendWithRetry escalates tiers to cover a temporary base-fee
+// increase and succeeds after fees normalize.
+//
+// How it works: Congestion blocks inclusion while base fee spikes then drops;
+// one transaction must escalate and complete when conditions improve.
 func TestScenario_BaseFeeSpikeRetry(t *testing.T) {
 	cfg := fastSimConfig()
 	cfg.InitialBaseFee = big.NewInt(5_000_000_000)
@@ -265,10 +277,13 @@ func TestScenario_BaseFeeSpikeRetry(t *testing.T) {
 	sendOne(t, ctx, env, "03_basefee_spike")
 }
 
-// --- Scenario 4: Transient RPC errors ---
-// Inject errors BEFORE sending so they affect the retry flow.
-// HeaderByNumber errors block fee suggestions; TransactionReceipt errors
-// block receipt polling. The retry loop must survive both.
+// TestScenario_TransientRPCErrors verifies SendWithRetry survives intermittent
+// RPC failures during fee lookup and receipt polling.
+//
+// Goal: Confirm transient backend errors do not abort the retry loop permanently.
+//
+// How it works: Header and receipt RPC calls fail a fixed number of times before
+// one transaction is sent through the full retry flow.
 func TestScenario_TransientRPCErrors(t *testing.T) {
 	cfg := fastSimConfig()
 	env := setupScenario(t, "04_transient_rpc_errors", cfg, defaultRetryCfg())
@@ -282,10 +297,14 @@ func TestScenario_TransientRPCErrors(t *testing.T) {
 	sendOne(t, ctx, env, "04_transient_rpc_errors")
 }
 
-// --- Scenario 5: Receipt delay ---
-// Receipt becomes available only after 3 blocks. The monitor's
-// cancellationDepth must be >= ReceiptAvailDelay so it does not falsely
-// declare the tx cancelled before the receipt materialises.
+// TestScenario_ReceiptDelay verifies the monitor waits for late receipts when
+// cancellation depth is configured correctly.
+//
+// Goal: Confirm a receipt that appears several blocks late is not treated as
+// a false cancellation.
+//
+// How it works: Receipt availability is delayed; monitor cancellationDepth is
+// set above that delay; one transaction is sent and must complete.
 func TestScenario_ReceiptDelay(t *testing.T) {
 	cfg := fastSimConfig()
 	cfg.ReceiptAvailDelay = 3
@@ -299,7 +318,14 @@ func TestScenario_ReceiptDelay(t *testing.T) {
 	sendOne(t, ctx, env, "05_receipt_delay")
 }
 
-// --- Scenario 6: All tiers exhausted (permanent congestion) ---
+// TestScenario_AllTiersExhausted verifies behavior when inclusion never becomes
+// possible within the configured retry budget.
+//
+// Goal: Confirm SendWithRetry stops cleanly after all tiers and attempts are
+// exhausted under permanent congestion.
+//
+// How it works: Congestion stays at maximum with a small attempts-per-tier
+// budget; one transaction is expected to fail without hanging.
 func TestScenario_AllTiersExhausted(t *testing.T) {
 	cfg := fastSimConfig()
 	cfg.InitialCongestion = 1.0
@@ -313,7 +339,13 @@ func TestScenario_AllTiersExhausted(t *testing.T) {
 	sendOne(t, ctx, env, "06_all_tiers_exhausted")
 }
 
-// --- Scenario 7: Transaction revert (SetRevertAddress) ---
+// TestScenario_TransactionRevert verifies deterministic on-chain revert handling.
+//
+// Goal: Confirm a transaction that always reverts is reported correctly and
+// does not leave the retry loop in an inconsistent state.
+//
+// How it works: The recipient address is marked as reverting; one transaction
+// is sent and the outcome is recorded.
 func TestScenario_TransactionRevert(t *testing.T) {
 	cfg := fastSimConfig()
 	env := setupScenario(t, "07_tx_revert", cfg, defaultRetryCfg())
@@ -336,8 +368,13 @@ func TestScenario_TransactionRevert(t *testing.T) {
 	env.writeResult(t, "07_tx_revert", txHash, receipt, err, dur)
 }
 
-// --- Scenario 8: Random revert rate ---
-// Use rate=1.0 so the revert is deterministic — every tx reverts.
+// TestScenario_RandomRevertRate verifies handling when every executed
+// transaction reverts probabilistically.
+//
+// Goal: Confirm a 100% revert rate produces a reverted receipt without
+// breaking the service flow.
+//
+// How it works: RandomRevertRate is set to certainty; one transaction is sent.
 func TestScenario_RandomRevertRate(t *testing.T) {
 	cfg := fastSimConfig()
 	cfg.RandomRevertRate = 1.0
@@ -349,7 +386,14 @@ func TestScenario_RandomRevertRate(t *testing.T) {
 	sendOne(t, ctx, env, "08_random_revert_rate")
 }
 
-// --- Scenario 9: Multi-tx burst (5 sequential sends) ---
+// TestScenario_MultiBurst verifies sequential nonce assignment across a burst
+// of transactions with limited block space.
+//
+// Goal: Confirm multiple back-to-back SendWithRetry calls maintain correct
+// ordering and inclusion under MaxTxsPerBlock pressure.
+//
+// How it works: Five transactions are sent sequentially on a sim that includes
+// at most three user txs per block; all outcomes are recorded.
 func TestScenario_MultiBurst(t *testing.T) {
 	cfg := fastSimConfig()
 	cfg.MaxTxsPerBlock = 3
@@ -409,7 +453,14 @@ func TestScenario_MultiBurst(t *testing.T) {
 	writeFile(t, filepath.Join(env.outDir, "result.json"), data)
 }
 
-// --- Scenario 10: Probabilistic inclusion with low tip ---
+// TestScenario_ProbabilisticInclusion verifies eventual inclusion with a low
+// starting fee tier under probabilistic block selection.
+//
+// Goal: Confirm SendWithRetry completes when inclusion is probabilistic and
+// network tips are higher than the initial offer.
+//
+// How it works: Probabilistic inclusion is enabled with a low minimum chance;
+// one transaction starts at default tiers and must eventually succeed.
 func TestScenario_ProbabilisticInclusion(t *testing.T) {
 	cfg := fastSimConfig()
 	cfg.InclusionProbability = true
@@ -423,7 +474,14 @@ func TestScenario_ProbabilisticInclusion(t *testing.T) {
 	sendOne(t, ctx, env, "10_probabilistic_inclusion")
 }
 
-// --- Scenario 11: BaseFee floor (empty blocks drive baseFee to minimum) ---
+// TestScenario_BaseFeeDrop verifies SendWithRetry works after base fee falls
+// from a high starting level on mostly empty blocks.
+//
+// Goal: Confirm fee suggestions remain valid when base fee decays toward the
+// EIP-1559 floor before the transaction is sent.
+//
+// How it works: Sim starts with high base fee and zero congestion; after blocks
+// produce low gas usage, one transaction is sent.
 func TestScenario_BaseFeeDrop(t *testing.T) {
 	cfg := fastSimConfig()
 	cfg.InitialBaseFee = big.NewInt(100_000_000_000)
@@ -438,10 +496,14 @@ func TestScenario_BaseFeeDrop(t *testing.T) {
 	sendOne(t, ctx, env, "11_basefee_drop")
 }
 
-// --- Scenario 12: Mempool TTL eviction during retry ---
-// Congestion=1.0 means no user tx can be included. TTL=2 blocks means the tx
-// gets evicted after 2 blocks. The retry must re-submit after eviction.
-// After ~1.5s congestion drops and the re-submitted tx gets included.
+// TestScenario_MempoolTTLEviction verifies re-submission after mempool TTL
+// eviction during retry.
+//
+// Goal: Confirm SendWithRetry recovers when a pending transaction is evicted
+// from the mempool before inclusion.
+//
+// How it works: Full congestion and a short mempool TTL evict the first
+// broadcast; congestion later drops so the re-submitted tx can be included.
 func TestScenario_MempoolTTLEviction(t *testing.T) {
 	cfg := fastSimConfig()
 	cfg.MempoolTTL = 2

@@ -78,6 +78,9 @@ func (s *SimChain) commitBlockLocked(skipInclusion ...bool) uint64 {
 	block.tips = s.backgroundTips()
 
 	s.baseFee = nextBaseFee(s.baseFee, block.gasUsed, s.cfg.BlockGasLimit)
+	if s.cfg.MaxBaseFee != nil && s.baseFee.Cmp(s.cfg.MaxBaseFee) > 0 {
+		s.baseFee.Set(s.cfg.MaxBaseFee)
+	}
 	block.baseFee = new(big.Int).Set(s.baseFee)
 
 	s.blockNum = nextNum
