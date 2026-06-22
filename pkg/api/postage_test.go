@@ -1261,6 +1261,26 @@ func TestPostageUpdateLabelStamp(t *testing.T) {
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{Code: http.StatusBadRequest, Message: "invalid request body"}),
 		)
 	})
+
+	t.Run("empty-label", func(t *testing.T) {
+		t.Parallel()
+
+		// label is required by the spec; an empty/missing/whitespace-only label
+		// must be rejected rather than silently blanking the issuer label.
+		si := postage.NewStampIssuer("original", "test identity", batchID, big.NewInt(3), 24, 6, 1000, false)
+		mp := mockpost.New(mockpost.WithIssuer(si))
+		ts, _, _, _ := newTestServer(t, testServerOptions{
+			Post: mp,
+		})
+
+		for _, body := range []string{`{}`, `{"label":""}`, `{"label":"   "}`} {
+			jsonhttptest.Request(t, ts, http.MethodPatch, updatePath, http.StatusBadRequest,
+				jsonhttptest.WithRequestHeader("Content-Type", "application/json"),
+				jsonhttptest.WithRequestBody(bytes.NewBufferString(body)),
+				jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{Code: http.StatusBadRequest, Message: "label is required"}),
+			)
+		}
+	})
 }
 
 //nolint:tparallel
