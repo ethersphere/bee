@@ -4,4 +4,18 @@
 
 package addressbook
 
+import (
+	"time"
+
+	"github.com/ethersphere/bee/v2/pkg/storage"
+)
+
 type VerifiedAddress = verifiedAddress
+
+// NewWithClock creates an addressbook with an overridable clock, for testing.
+func NewWithClock(storer storage.StateStorer, now func() time.Time) Interface {
+	return &store{
+		store: storer,
+		now:   now,
+	}
+}

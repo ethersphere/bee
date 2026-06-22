@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 	"github.com/ethersphere/bee/v2/pkg/storage"
@@ -22,22 +23,30 @@ var _ Interface = (*store)(nil)
 var ErrNotFound = errors.New("addressbook: not found")
 
 // verifiedAddress pairs a bzz.Address with a flag indicating whether the peer
-// has been verified.
+// has been verified, and the last time the overlay was seen.
 type verifiedAddress struct {
 	Address  *bzz.Address `json:"address"`
 	Verified bool         `json:"verified"`
+	// LastSeen is the Unix timestamp (seconds) of the last time the overlay
+	// was seen over hive or in kademlia. Used to prune stale entries.
+	LastSeen int64 `json:"last_seen"`
 }
 
 // Interface is the AddressBook interface.
 type Interface interface {
 	GetPutter
 	Remover
+	// UpdateLastSeen marks the overlay as seen at the current time.
+	UpdateLastSeen(overlay swarm.Address) error
 	// Overlays returns a list of all overlay addresses saved in addressbook.
 	Overlays() ([]swarm.Address, error)
 	// IterateOverlays exposes overlays in a form of an iterator.
 	IterateOverlays(func(swarm.Address) (bool, error)) error
 	// Addresses returns a list of all bzz.Address-es saved in addressbook.
 	Addresses() ([]bzz.Address, error)
+	// Prune removes all entries whose overlay has not been seen since the
+	// given time.
+	Prune(before time.Time) error
 }
 
 type GetPutter interface {
@@ -63,12 +72,14 @@ type Remover interface {
 
 type store struct {
 	store storage.StateStorer
+	now   func() time.Time
 }
 
 // New creates new addressbook for state storer.
 func New(storer storage.StateStorer) Interface {
 	return &store{
 		store: storer,
+		now:   time.Now,
 	}
 }
 
@@ -90,11 +101,61 @@ func (s *store) Put(overlay swarm.Address, addr bzz.Address, verified bool) (err
 	return s.store.Put(key, &verifiedAddress{
 		Address:  &addr,
 		Verified: verified,
+		LastSeen: s.now().Unix(),
 	})
+}
+
+// UpdateLastSeen marks the overlay as seen at the current time. It is a no-op
+// if the overlay is not present in the addressbook.
+func (s *store) UpdateLastSeen(overlay swarm.Address) error {
+	key := keyPrefix + overlay.String()
+	v := &verifiedAddress{}
+	if err := s.store.Get(key, v); err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil
+		}
+		return err
+	}
+	v.LastSeen = s.now().Unix()
+	return s.store.Put(key, v)
 }
 
 func (s *store) Remove(overlay swarm.Address) error {
 	return s.store.Delete(keyPrefix + overlay.String())
+}
+
+// Prune removes all entries whose overlay has not been seen since before.
+// Entries without a recorded last-seen time (LastSeen == 0) are kept, leaving
+// pruning to a later run once they have been observed.
+func (s *store) Prune(before time.Time) error {
+	cutoff := before.Unix()
+
+	var stale []swarm.Address
+	err := s.store.Iterate(keyPrefix, func(key, value []byte) (stop bool, err error) {
+		entry := &verifiedAddress{}
+		if err := json.Unmarshal(value, entry); err != nil {
+			return true, err
+		}
+		if entry.LastSeen != 0 && entry.LastSeen < cutoff {
+			addr, err := swarm.ParseHexAddress(strings.TrimPrefix(string(key), keyPrefix))
+			if err != nil {
+				return true, err
+			}
+			stale = append(stale, addr)
+		}
+		return false, nil
+	})
+	if err != nil {
+		return err
+	}
+
+	for _, addr := range stale {
+		if err := s.Remove(addr); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (s *store) IterateOverlays(cb func(swarm.Address) (bool, error)) error {

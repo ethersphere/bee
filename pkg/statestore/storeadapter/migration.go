@@ -7,6 +7,7 @@ package storeadapter
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/migration"
@@ -23,15 +24,16 @@ func allSteps(st storage.Store) migration.Steps {
 	// and never execute newly added migrations.
 	noop := func() error { return nil }
 	return map[uint64]migration.StepFn{
-		1: noop,
-		2: noop,
-		3: noop,
-		4: noop,
-		5: noop,
-		6: noop,
-		7: noop,
-		8: noop,
-		9: rewriteAddressbookEnvelope(st),
+		1:  noop,
+		2:  noop,
+		3:  noop,
+		4:  noop,
+		5:  noop,
+		6:  noop,
+		7:  noop,
+		8:  noop,
+		9:  rewriteAddressbookEnvelope(st),
+		10: stampAddressbookLastSeen(st),
 	}
 }
 
@@ -55,6 +57,7 @@ type migratedAddress struct {
 type migratedEntry struct {
 	Address  migratedAddress `json:"address"`
 	Verified bool            `json:"verified"`
+	LastSeen int64           `json:"last_seen"`
 }
 
 // rewriteAddressbookEnvelope wraps each "addressbook_entry_*" legacy
@@ -112,6 +115,68 @@ func rewriteAddressbookEnvelope(s storage.Store) migration.StepFn {
 
 			if err := store.Put(e.key, &out); err != nil {
 				return fmt.Errorf("rewrite addressbook entry %q: %w", e.key, err)
+			}
+		}
+
+		return nil
+	}
+}
+
+// stampAddressbookLastSeen sets "last_seen" to the current time on every
+// "addressbook_entry_*" record that lacks it, so that addresses carried over
+// from before pruning was introduced are not immediately pruned. Entries that
+// already carry a non-zero last_seen are left untouched. The whole record is
+// preserved by merging into the decoded JSON object rather than re-encoding a
+// typed struct.
+func stampAddressbookLastSeen(s storage.Store) migration.StepFn {
+	return func() error {
+		store := &StateStorerAdapter{s}
+
+		type item struct {
+			key string
+			val []byte
+		}
+
+		var batch []item
+		if err := store.Iterate("addressbook_entry_", func(key, val []byte) (stop bool, err error) {
+			batch = append(batch, item{
+				key: string(key),
+				val: append([]byte(nil), val...),
+			})
+			return false, nil
+		}); err != nil {
+			return fmt.Errorf("iterate addressbook entries: %w", err)
+		}
+
+		now := time.Now().Unix()
+
+		for _, e := range batch {
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(e.val, &fields); err != nil {
+				_ = store.Delete(e.key)
+				continue
+			}
+
+			if raw, ok := fields["last_seen"]; ok {
+				var ls int64
+				if json.Unmarshal(raw, &ls) == nil && ls != 0 {
+					continue
+				}
+			}
+
+			stamp, err := json.Marshal(now)
+			if err != nil {
+				return fmt.Errorf("marshal last_seen: %w", err)
+			}
+			fields["last_seen"] = stamp
+
+			out, err := json.Marshal(fields)
+			if err != nil {
+				return fmt.Errorf("marshal addressbook entry %q: %w", e.key, err)
+			}
+
+			if err := store.Put(e.key, json.RawMessage(out)); err != nil {
+				return fmt.Errorf("stamp addressbook entry %q: %w", e.key, err)
 			}
 		}
 
