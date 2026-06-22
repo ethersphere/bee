@@ -37,6 +37,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/hive"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/metrics"
+	"github.com/ethersphere/bee/v2/pkg/mic"
+	"github.com/ethersphere/bee/v2/pkg/moc"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/v2/pkg/pingpong"
@@ -62,6 +64,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/priceoracle"
+	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/stabilization"
 	"github.com/ethersphere/bee/v2/pkg/status"
 	"github.com/ethersphere/bee/v2/pkg/steward"
@@ -112,6 +115,8 @@ type Bee struct {
 	pullSyncCloser           io.Closer
 	pssCloser                io.Closer
 	gsocCloser               io.Closer
+	mocCloser                io.Closer
+	micCloser                io.Closer
 	transactionMonitorCloser io.Closer
 	transactionCloser        io.Closer
 	listenerCloser           io.Closer
@@ -1076,8 +1081,21 @@ func NewBee(
 
 	pssService := pss.New(pssPrivateKey, logger)
 	gsocService := gsoc.New(logger)
+	mocService := moc.New(logger)
+	micService := mic.New(logger)
 	b.pssCloser = pssService
 	b.gsocCloser = gsocService
+	b.mocCloser = mocService
+	b.micCloser = micService
+
+	// socHandler dispatches an incoming single-owner chunk to every
+	// subscription service: by chunk address (gsoc), by id (moc) and by
+	// owner (mic).
+	socHandler := func(c *soc.SOC) {
+		gsocService.Handle(c)
+		mocService.Handle(c)
+		micService.Handle(c)
+	}
 
 	validStamp := postage.ValidStamp(batchStore)
 
@@ -1139,7 +1157,7 @@ func NewBee(
 		}
 	}
 
-	pushSyncProtocol := pushsync.New(swarmAddress, networkID, nonce, p2ps, localStore, waitNetworkRFunc, kad, o.FullNodeMode && !o.BootnodeMode, pssService.TryUnwrap, gsocService.Handle, validStamp, logger, acc, pricer, signer, tracer, detector, uint8(shallowReceiptTolerance))
+	pushSyncProtocol := pushsync.New(swarmAddress, networkID, nonce, p2ps, localStore, waitNetworkRFunc, kad, o.FullNodeMode && !o.BootnodeMode, pssService.TryUnwrap, socHandler, validStamp, logger, acc, pricer, signer, tracer, detector, uint8(shallowReceiptTolerance))
 	b.pushSyncCloser = pushSyncProtocol
 
 	// set the pushSyncer in the PSS
@@ -1155,7 +1173,7 @@ func NewBee(
 
 	pusherService.AddFeed(localStore.PusherFeed())
 
-	pullSyncProtocol := pullsync.New(p2ps, localStore, pssService.TryUnwrap, gsocService.Handle, validStamp, logger, pullsync.DefaultMaxPage)
+	pullSyncProtocol := pullsync.New(p2ps, localStore, pssService.TryUnwrap, socHandler, validStamp, logger, pullsync.DefaultMaxPage)
 	b.pullSyncCloser = pullSyncProtocol
 
 	retrieveProtocolSpec := retrieval.Protocol()
@@ -1350,6 +1368,8 @@ func NewBee(
 		Resolver:        multiResolver,
 		Pss:             pssService,
 		Gsoc:            gsocService,
+		Moc:             mocService,
+		Mic:             micService,
 		FeedFactory:     feedFactory,
 		Post:            post,
 		AccessControl:   accesscontrol,
@@ -1505,6 +1525,8 @@ func (b *Bee) Shutdown() error {
 	closers := []namedCloser{
 		{b.pssCloser, "pss"},
 		{b.gsocCloser, "gsoc"},
+		{b.mocCloser, "moc"},
+		{b.micCloser, "mic"},
 		{b.pusherCloser, "pusher"},
 		{b.pullerCloser, "puller"},
 		{b.accountingCloser, "accounting"},
