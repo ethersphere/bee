@@ -39,30 +39,23 @@ type batchService struct {
 	batchListener postage.BatchEventListener
 
 	checksum hash.Hash // checksum hasher
-
-	// snapshotResumeBlock is the chain block height the store was rebuilt to
-	// from a postage snapshot. When set, live sync resumes from here.
-	snapshotResumeBlock uint64
 }
 
 type Interface interface {
 	postage.EventUpdater
 }
 
-// Snapshot carries the optional inputs needed to rebuild the batch store from a
-// postage snapshot. When passed to New (non-nil), the store is reset and
-// replayed from the snapshot before the service is returned, and live sync
-// later resumes from the snapshot's block height. New takes ownership of
-// Listener and closes it once the snapshot has been replayed.
+// Snapshot carries the optional inputs to rebuild the batch store from a postage
+// snapshot. When passed to New (non-nil), the snapshot is replayed into the store
+// before the service is returned; live sync then resumes from the last block the
+// replay reached (held in the chain state). New owns Listener and closes it once
+// the replay completes.
 type Snapshot struct {
 	// Listener replays the snapshot's events into the batch store.
 	Listener postage.Listener
 	// StartBlock is the block height from which the snapshot is replayed (the
 	// postage contract start block).
 	StartBlock uint64
-	// ResumeBlock is the block height the snapshot reached, from which live sync
-	// resumes once the replay completes.
-	ResumeBlock uint64
 }
 
 // New will create a new BatchService.
@@ -178,8 +171,8 @@ func (svc *batchService) reset() error {
 	return nil
 }
 
-// loadSnapshot rebuilds the (already reset) store from a postage snapshot by
-// replaying its events and records the block height to resume live sync from.
+// loadSnapshot replays a postage snapshot into the store, advancing the chain
+// state as it goes so live sync later resumes from the last block reached.
 func (svc *batchService) loadSnapshot(ctx context.Context, snapshot *Snapshot) error {
 	defer func() {
 		if err := snapshot.Listener.Close(); err != nil {
@@ -192,13 +185,7 @@ func (svc *batchService) loadSnapshot(ctx context.Context, snapshot *Snapshot) e
 		startBlock = cs.Block
 	}
 
-	if err := <-snapshot.Listener.Listen(ctx, startBlock+1, svc); err != nil {
-		return err
-	}
-
-	svc.snapshotResumeBlock = snapshot.ResumeBlock
-
-	return nil
+	return <-snapshot.Listener.Listen(ctx, startBlock+1, svc)
 }
 
 // Create will create a new batch with the given ID, owner value and depth and
@@ -345,15 +332,12 @@ func (svc *batchService) TransactionEnd() error {
 var ErrInterruped = errors.New("postage sync interrupted")
 
 func (svc *batchService) Start(ctx context.Context, startBlock uint64) (err error) {
-	// The store reset already happened in New, so Start only drives live sync.
+	// Any store reset happened in New; Start only drives live sync. The chain
+	// state holds the last synced block (advanced by the snapshot replay, if any),
+	// so live sync resumes exactly where it left off.
 	cs := svc.storer.GetChainState()
 	if cs.Block > startBlock {
 		startBlock = cs.Block
-	}
-	// When the store was rebuilt from a snapshot, resume live sync from the
-	// snapshot's block height rather than the requested start block.
-	if svc.snapshotResumeBlock > startBlock {
-		startBlock = svc.snapshotResumeBlock
 	}
 
 	syncedChan := svc.listener.Listen(ctx, startBlock+1, svc)
