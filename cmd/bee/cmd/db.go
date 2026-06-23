@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/node"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/puller"
@@ -41,40 +42,58 @@ func (c *command) initDBCmd() {
 		Short: "Perform basic DB related operations",
 	}
 
-	dbExportCmd(cmd)
-	dbImportCmd(cmd)
-	dbNukeCmd(cmd)
-	dbInfoCmd(cmd)
-	dbCompactCmd(cmd)
-	dbValidateCmd(cmd)
-	dbValidatePinsCmd(cmd)
-	dbRepairReserve(cmd)
+	c.dbExportCmd(cmd)
+	c.dbImportCmd(cmd)
+	c.dbNukeCmd(cmd)
+	c.dbInfoCmd(cmd)
+	c.dbCompactCmd(cmd)
+	c.dbValidateCmd(cmd)
+	c.dbValidatePinsCmd(cmd)
+	c.dbRepairReserve(cmd)
 
 	c.root.AddCommand(cmd)
 }
 
-func dbInfoCmd(cmd *cobra.Command) {
-	c := &cobra.Command{
-		Use:   "info",
-		Short: "Prints the different indexes present in the Database",
+// newLoggerFromConfig builds a logger using the verbosity resolved from viper.
+func (c *command) newLoggerFromConfig(cmd *cobra.Command) (log.Logger, error) {
+	logger, err := newLogger(cmd, strings.ToLower(c.config.GetString(optionNameVerbosity)))
+	if err != nil {
+		return nil, fmt.Errorf("new logger: %w", err)
+	}
+	return logger, nil
+}
+
+// bindConfigFlags binds a db subcommand's flags to viper. Used as PreRunE so
+// values fall back to env and the config file when a flag is omitted.
+func (c *command) bindConfigFlags(cmd *cobra.Command, _ []string) error {
+	return c.config.BindPFlags(cmd.Flags())
+}
+
+// resolveDataDir returns the data dir from viper (flag, env, or config),
+// erroring when none is set.
+func (c *command) resolveDataDir() (string, error) {
+	dataDir := c.config.GetString(optionNameDataDir)
+	if dataDir == "" {
+		return "", errors.New("no data-dir provided")
+	}
+	return dataDir, nil
+}
+
+func (c *command) dbInfoCmd(parent *cobra.Command) {
+	cmd := &cobra.Command{
+		Use:     "info",
+		Short:   "Prints the different indexes present in the Database",
+		PreRunE: c.bindConfigFlags,
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			start := time.Now()
-			v, err := cmd.Flags().GetString(optionNameVerbosity)
+			logger, err := c.newLoggerFromConfig(cmd)
 			if err != nil {
-				return fmt.Errorf("get verbosity: %w", err)
-			}
-			v = strings.ToLower(v)
-			logger, err := newLogger(cmd, v)
-			if err != nil {
-				return fmt.Errorf("new logger: %w", err)
+				return err
 			}
 
-			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
+			dataDir, err := c.resolveDataDir()
 			if err != nil {
-				return fmt.Errorf("get data-dir: %w", err)
-			}
-			if dataDir == "" {
-				return errors.New("no data-dir provided")
+				return err
 			}
 
 			logger.Info("getting db indices with data-dir", "path", dataDir)
@@ -108,24 +127,20 @@ func dbInfoCmd(cmd *cobra.Command) {
 			return nil
 		},
 	}
-	c.Flags().String(optionNameDataDir, "", "data directory")
-	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
-	cmd.AddCommand(c)
+	cmd.Flags().String(optionNameDataDir, "", "data directory")
+	cmd.Flags().String(optionNameVerbosity, "info", "verbosity level")
+	parent.AddCommand(cmd)
 }
 
-func dbCompactCmd(cmd *cobra.Command) {
-	c := &cobra.Command{
-		Use:   "compact",
-		Short: "Compacts the localstore sharky store.",
+func (c *command) dbCompactCmd(parent *cobra.Command) {
+	cmd := &cobra.Command{
+		Use:     "compact",
+		Short:   "Compacts the localstore sharky store.",
+		PreRunE: c.bindConfigFlags,
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
-			v, err := cmd.Flags().GetString(optionNameVerbosity)
+			logger, err := c.newLoggerFromConfig(cmd)
 			if err != nil {
-				return fmt.Errorf("get verbosity: %w", err)
-			}
-			v = strings.ToLower(v)
-			logger, err := newLogger(cmd, v)
-			if err != nil {
-				return fmt.Errorf("new logger: %w", err)
+				return err
 			}
 
 			d, err := cmd.Flags().GetDuration(optionNameSleepAfter)
@@ -139,12 +154,9 @@ func dbCompactCmd(cmd *cobra.Command) {
 				}
 			}()
 
-			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
+			dataDir, err := c.resolveDataDir()
 			if err != nil {
-				return fmt.Errorf("get data-dir: %w", err)
-			}
-			if dataDir == "" {
-				return errors.New("no data-dir provided")
+				return err
 			}
 
 			validation, err := cmd.Flags().GetBool(optionNameValidation)
@@ -174,34 +186,27 @@ func dbCompactCmd(cmd *cobra.Command) {
 			return nil
 		},
 	}
-	c.Flags().String(optionNameDataDir, "", "data directory")
-	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
-	c.Flags().Bool(optionNameValidation, false, "run chunk validation checks before and after the compaction")
-	c.Flags().Duration(optionNameSleepAfter, time.Duration(0), "time to sleep after the operation finished")
-	cmd.AddCommand(c)
+	cmd.Flags().String(optionNameDataDir, "", "data directory")
+	cmd.Flags().String(optionNameVerbosity, "info", "verbosity level")
+	cmd.Flags().Bool(optionNameValidation, false, "run chunk validation checks before and after the compaction")
+	cmd.Flags().Duration(optionNameSleepAfter, time.Duration(0), "time to sleep after the operation finished")
+	parent.AddCommand(cmd)
 }
 
-func dbValidatePinsCmd(cmd *cobra.Command) {
-	c := &cobra.Command{
-		Use:   "validate-pin",
-		Short: "Validates pin collection chunks with sharky store.",
+func (c *command) dbValidatePinsCmd(parent *cobra.Command) {
+	cmd := &cobra.Command{
+		Use:     "validate-pin",
+		Short:   "Validates pin collection chunks with sharky store.",
+		PreRunE: c.bindConfigFlags,
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
-			v, err := cmd.Flags().GetString(optionNameVerbosity)
+			logger, err := c.newLoggerFromConfig(cmd)
 			if err != nil {
-				return fmt.Errorf("get verbosity: %w", err)
-			}
-			v = strings.ToLower(v)
-			logger, err := newLogger(cmd, v)
-			if err != nil {
-				return fmt.Errorf("new logger: %w", err)
+				return err
 			}
 
-			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
+			dataDir, err := c.resolveDataDir()
 			if err != nil {
-				return fmt.Errorf("get data-dir: %w", err)
-			}
-			if dataDir == "" {
-				return errors.New("no data-dir provided")
+				return err
 			}
 
 			providedPin, err := cmd.Flags().GetString(optionNameCollectionPin)
@@ -229,34 +234,27 @@ func dbValidatePinsCmd(cmd *cobra.Command) {
 			return nil
 		},
 	}
-	c.Flags().String(optionNameDataDir, "", "data directory")
-	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
-	c.Flags().String(optionNameCollectionPin, "", "only validate given pin")
-	c.Flags().String(optionNameOutputLocation, "", "location and name of the output file")
-	cmd.AddCommand(c)
+	cmd.Flags().String(optionNameDataDir, "", "data directory")
+	cmd.Flags().String(optionNameVerbosity, "info", "verbosity level")
+	cmd.Flags().String(optionNameCollectionPin, "", "only validate given pin")
+	cmd.Flags().String(optionNameOutputLocation, "", "location and name of the output file")
+	parent.AddCommand(cmd)
 }
 
-func dbRepairReserve(cmd *cobra.Command) {
-	c := &cobra.Command{
-		Use:   "repair-reserve",
-		Short: "Repairs the reserve by resetting the binIDs and removes dangling entries.",
+func (c *command) dbRepairReserve(parent *cobra.Command) {
+	cmd := &cobra.Command{
+		Use:     "repair-reserve",
+		Short:   "Repairs the reserve by resetting the binIDs and removes dangling entries.",
+		PreRunE: c.bindConfigFlags,
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
-			v, err := cmd.Flags().GetString(optionNameVerbosity)
+			logger, err := c.newLoggerFromConfig(cmd)
 			if err != nil {
-				return fmt.Errorf("get verbosity: %w", err)
-			}
-			v = strings.ToLower(v)
-			logger, err := newLogger(cmd, v)
-			if err != nil {
-				return fmt.Errorf("new logger: %w", err)
+				return err
 			}
 
-			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
+			dataDir, err := c.resolveDataDir()
 			if err != nil {
-				return fmt.Errorf("get data-dir: %w", err)
-			}
-			if dataDir == "" {
-				return errors.New("no data-dir provided")
+				return err
 			}
 
 			logger.Warning("Repair will recreate the reserve entries based on the chunk availability in the chunkstore. The epoch time and bin IDs will be reset.")
@@ -306,33 +304,26 @@ func dbRepairReserve(cmd *cobra.Command) {
 			})
 		},
 	}
-	c.Flags().String(optionNameDataDir, "", "data directory")
-	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
-	c.Flags().Duration(optionNameSleepAfter, time.Duration(0), "time to sleep after the operation finished")
-	cmd.AddCommand(c)
+	cmd.Flags().String(optionNameDataDir, "", "data directory")
+	cmd.Flags().String(optionNameVerbosity, "info", "verbosity level")
+	cmd.Flags().Duration(optionNameSleepAfter, time.Duration(0), "time to sleep after the operation finished")
+	parent.AddCommand(cmd)
 }
 
-func dbValidateCmd(cmd *cobra.Command) {
-	c := &cobra.Command{
-		Use:   "validate",
-		Short: "Validates the localstore sharky store.",
+func (c *command) dbValidateCmd(parent *cobra.Command) {
+	cmd := &cobra.Command{
+		Use:     "validate",
+		Short:   "Validates the localstore sharky store.",
+		PreRunE: c.bindConfigFlags,
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
-			v, err := cmd.Flags().GetString(optionNameVerbosity)
+			logger, err := c.newLoggerFromConfig(cmd)
 			if err != nil {
-				return fmt.Errorf("get verbosity: %w", err)
-			}
-			v = strings.ToLower(v)
-			logger, err := newLogger(cmd, v)
-			if err != nil {
-				return fmt.Errorf("new logger: %w", err)
+				return err
 			}
 
-			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
+			dataDir, err := c.resolveDataDir()
 			if err != nil {
-				return fmt.Errorf("get data-dir: %w", err)
-			}
-			if dataDir == "" {
-				return errors.New("no data-dir provided")
+				return err
 			}
 
 			logger.Warning("Validation ensures that sharky returns a chunk that hashes to the expected reference.")
@@ -355,52 +346,45 @@ func dbValidateCmd(cmd *cobra.Command) {
 			return nil
 		},
 	}
-	c.Flags().String(optionNameDataDir, "", "data directory")
-	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
-	cmd.AddCommand(c)
+	cmd.Flags().String(optionNameDataDir, "", "data directory")
+	cmd.Flags().String(optionNameVerbosity, "info", "verbosity level")
+	parent.AddCommand(cmd)
 }
 
-func dbExportCmd(cmd *cobra.Command) {
-	c := &cobra.Command{
+func (c *command) dbExportCmd(parent *cobra.Command) {
+	cmd := &cobra.Command{
 		Use:   "export",
 		Short: "Perform DB export to a file",
 	}
-	c.PersistentFlags().String(optionNameDataDir, "", "data directory")
-	c.PersistentFlags().String(optionNameVerbosity, "info", "verbosity level")
+	cmd.PersistentFlags().String(optionNameDataDir, "", "data directory")
+	cmd.PersistentFlags().String(optionNameVerbosity, "info", "verbosity level")
 
-	dbExportReserveCmd(c)
-	dbExportPinningCmd(c)
-	cmd.AddCommand(c)
+	c.dbExportReserveCmd(cmd)
+	c.dbExportPinningCmd(cmd)
+	parent.AddCommand(cmd)
 }
 
 type noopRadiusSetter struct{}
 
 func (noopRadiusSetter) SetStorageRadius(uint8) {}
 
-func dbExportReserveCmd(cmd *cobra.Command) {
-	c := &cobra.Command{
-		Use:   "reserve <filename>",
-		Short: "Export reserve DB to a file. Use \"-\" as filename in order to write to STDOUT",
+func (c *command) dbExportReserveCmd(parent *cobra.Command) {
+	cmd := &cobra.Command{
+		Use:     "reserve <filename>",
+		Short:   "Export reserve DB to a file. Use \"-\" as filename in order to write to STDOUT",
+		PreRunE: c.bindConfigFlags,
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			if (len(args)) != 1 {
 				return cmd.Help()
 			}
-			v, err := cmd.Flags().GetString(optionNameVerbosity)
+			logger, err := c.newLoggerFromConfig(cmd)
 			if err != nil {
-				return fmt.Errorf("get verbosity: %w", err)
-			}
-			v = strings.ToLower(v)
-			logger, err := newLogger(cmd, v)
-			if err != nil {
-				return fmt.Errorf("new logger: %w", err)
+				return err
 			}
 
-			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
+			dataDir, err := c.resolveDataDir()
 			if err != nil {
-				return fmt.Errorf("get data-dir: %w", err)
-			}
-			if dataDir == "" {
-				return errors.New("no data-dir provided")
+				return err
 			}
 
 			logger.Info("starting export process with data-dir", "path", dataDir)
@@ -458,33 +442,26 @@ func dbExportReserveCmd(cmd *cobra.Command) {
 			return nil
 		},
 	}
-	cmd.AddCommand(c)
+	parent.AddCommand(cmd)
 }
 
-func dbExportPinningCmd(cmd *cobra.Command) {
-	c := &cobra.Command{
-		Use:   "pinning <filename>",
-		Short: "Export pinning DB to a file. Use \"-\" as filename in order to write to STDOUT",
+func (c *command) dbExportPinningCmd(parent *cobra.Command) {
+	cmd := &cobra.Command{
+		Use:     "pinning <filename>",
+		Short:   "Export pinning DB to a file. Use \"-\" as filename in order to write to STDOUT",
+		PreRunE: c.bindConfigFlags,
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			if (len(args)) != 1 {
 				return cmd.Help()
 			}
-			v, err := cmd.Flags().GetString(optionNameVerbosity)
+			logger, err := c.newLoggerFromConfig(cmd)
 			if err != nil {
-				return fmt.Errorf("get verbosity: %w", err)
-			}
-			v = strings.ToLower(v)
-			logger, err := newLogger(cmd, v)
-			if err != nil {
-				return fmt.Errorf("new logger: %w", err)
+				return err
 			}
 
-			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
+			dataDir, err := c.resolveDataDir()
 			if err != nil {
-				return fmt.Errorf("get data-dir: %w", err)
-			}
-			if dataDir == "" {
-				return errors.New("no data-dir provided")
+				return err
 			}
 
 			logger.Info("starting export process with data-dir", "path", dataDir)
@@ -555,45 +532,38 @@ func dbExportPinningCmd(cmd *cobra.Command) {
 			return nil
 		},
 	}
-	cmd.AddCommand(c)
+	parent.AddCommand(cmd)
 }
 
-func dbImportCmd(cmd *cobra.Command) {
-	c := &cobra.Command{
+func (c *command) dbImportCmd(parent *cobra.Command) {
+	cmd := &cobra.Command{
 		Use:   "import",
 		Short: "Perform DB import from a file",
 	}
-	c.PersistentFlags().String(optionNameDataDir, "", "data directory")
-	c.PersistentFlags().String(optionNameVerbosity, "info", "verbosity level")
+	cmd.PersistentFlags().String(optionNameDataDir, "", "data directory")
+	cmd.PersistentFlags().String(optionNameVerbosity, "info", "verbosity level")
 
-	dbImportReserveCmd(c)
-	dbImportPinningCmd(c)
-	cmd.AddCommand(c)
+	c.dbImportReserveCmd(cmd)
+	c.dbImportPinningCmd(cmd)
+	parent.AddCommand(cmd)
 }
 
-func dbImportReserveCmd(cmd *cobra.Command) {
-	c := &cobra.Command{
-		Use:   "reserve <filename>",
-		Short: "Import reserve DB from a file. Use \"-\" as filename in order to read from STDIN",
+func (c *command) dbImportReserveCmd(parent *cobra.Command) {
+	cmd := &cobra.Command{
+		Use:     "reserve <filename>",
+		Short:   "Import reserve DB from a file. Use \"-\" as filename in order to read from STDIN",
+		PreRunE: c.bindConfigFlags,
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			if (len(args)) != 1 {
 				return cmd.Help()
 			}
-			v, err := cmd.Flags().GetString(optionNameVerbosity)
+			logger, err := c.newLoggerFromConfig(cmd)
 			if err != nil {
-				return fmt.Errorf("get verbosity: %w", err)
+				return err
 			}
-			v = strings.ToLower(v)
-			logger, err := newLogger(cmd, v)
+			dataDir, err := c.resolveDataDir()
 			if err != nil {
-				return fmt.Errorf("new logger: %w", err)
-			}
-			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
-			if err != nil {
-				return fmt.Errorf("get data-dir: %w", err)
-			}
-			if dataDir == "" {
-				return errors.New("no data-dir provided")
+				return err
 			}
 
 			fmt.Printf("starting import process with data-dir at %s\n", dataDir)
@@ -652,32 +622,25 @@ func dbImportReserveCmd(cmd *cobra.Command) {
 		},
 	}
 
-	cmd.AddCommand(c)
+	parent.AddCommand(cmd)
 }
 
-func dbImportPinningCmd(cmd *cobra.Command) {
-	c := &cobra.Command{
-		Use:   "pinning <filename>",
-		Short: "Import pinning DB from a file. Use \"-\" as filename in order to read from STDIN",
+func (c *command) dbImportPinningCmd(parent *cobra.Command) {
+	cmd := &cobra.Command{
+		Use:     "pinning <filename>",
+		Short:   "Import pinning DB from a file. Use \"-\" as filename in order to read from STDIN",
+		PreRunE: c.bindConfigFlags,
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			if (len(args)) != 1 {
 				return cmd.Help()
 			}
-			v, err := cmd.Flags().GetString(optionNameVerbosity)
+			logger, err := c.newLoggerFromConfig(cmd)
 			if err != nil {
-				return fmt.Errorf("get verbosity: %w", err)
+				return err
 			}
-			v = strings.ToLower(v)
-			logger, err := newLogger(cmd, v)
+			dataDir, err := c.resolveDataDir()
 			if err != nil {
-				return fmt.Errorf("new logger: %w", err)
-			}
-			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
-			if err != nil {
-				return fmt.Errorf("get data-dir: %w", err)
-			}
-			if dataDir == "" {
-				return errors.New("no data-dir provided")
+				return err
 			}
 
 			fmt.Printf("starting import process with data-dir at %s\n", dataDir)
@@ -760,10 +723,10 @@ func dbImportPinningCmd(cmd *cobra.Command) {
 			return nil
 		},
 	}
-	cmd.AddCommand(c)
+	parent.AddCommand(cmd)
 }
 
-func dbNukeCmd(cmd *cobra.Command) {
+func (c *command) dbNukeCmd(parent *cobra.Command) {
 	const (
 		optionNameForgetOverlay = "forget-overlay"
 		optionNameForgetStamps  = "forget-stamps"
@@ -774,18 +737,14 @@ func dbNukeCmd(cmd *cobra.Command) {
 		stamperstore = "stamperstore"
 	)
 
-	c := &cobra.Command{
-		Use:   "nuke",
-		Short: "Nuke the DB so that bee resyncs all data next time it boots up.",
+	cmd := &cobra.Command{
+		Use:     "nuke",
+		Short:   "Nuke the DB so that bee resyncs all data next time it boots up.",
+		PreRunE: c.bindConfigFlags,
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
-			v, err := cmd.Flags().GetString(optionNameVerbosity)
+			logger, err := c.newLoggerFromConfig(cmd)
 			if err != nil {
-				return fmt.Errorf("get verbosity: %w", err)
-			}
-			v = strings.ToLower(v)
-			logger, err := newLogger(cmd, v)
-			if err != nil {
-				return fmt.Errorf("new logger: %w", err)
+				return err
 			}
 			d, err := cmd.Flags().GetDuration(optionNameSleepAfter)
 			if err != nil {
@@ -798,12 +757,9 @@ func dbNukeCmd(cmd *cobra.Command) {
 				}
 			}()
 
-			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
+			dataDir, err := c.resolveDataDir()
 			if err != nil {
-				return fmt.Errorf("get data-dir: %w", err)
-			}
-			if dataDir == "" {
-				return errors.New("no data-dir provided")
+				return err
 			}
 
 			logger.Warning("starting to nuke the DB with data-dir", "path", dataDir)
@@ -869,12 +825,12 @@ func dbNukeCmd(cmd *cobra.Command) {
 			return nil
 		},
 	}
-	c.Flags().String(optionNameDataDir, "", "data directory")
-	c.Flags().String(optionNameVerbosity, "trace", "verbosity level")
-	c.Flags().Duration(optionNameSleepAfter, time.Duration(0), "time to sleep after the operation finished")
-	c.Flags().Bool(optionNameForgetOverlay, false, "forget the overlay and deploy a new chequebook on next boot-up")
-	c.Flags().Bool(optionNameForgetStamps, false, "forget the existing stamps belonging to the node. even when forgotten, they will show up again after a chain resync")
-	cmd.AddCommand(c)
+	cmd.Flags().String(optionNameDataDir, "", "data directory")
+	cmd.Flags().String(optionNameVerbosity, "trace", "verbosity level")
+	cmd.Flags().Duration(optionNameSleepAfter, time.Duration(0), "time to sleep after the operation finished")
+	cmd.Flags().Bool(optionNameForgetOverlay, false, "forget the overlay and deploy a new chequebook on next boot-up")
+	cmd.Flags().Bool(optionNameForgetStamps, false, "forget the existing stamps belonging to the node. even when forgotten, they will show up again after a chain resync")
+	parent.AddCommand(cmd)
 }
 
 func removeContent(path string) error {

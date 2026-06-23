@@ -8,7 +8,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -267,6 +269,122 @@ func TestDBInfo(t *testing.T) {
 	if !strings.Contains(buf.String(), fmt.Sprintf("\"msg\"=\"reserve\" \"size_within_radius\"=%d \"total_size\"=%d \"capacity\"=%d", nChunks, nChunks, storer.DefaultReserveCapacity)) {
 		t.Fatal("reserve info not correct")
 	}
+}
+
+func TestDBDataDirFromConfig(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	ctx := context.Background()
+	db := newTestDB(t, ctx, &storer.Options{
+		Batchstore:      new(postage.NoOpBatchStore),
+		RadiusSetter:    kademlia.NewTopologyDriver(),
+		Logger:          testutil.NewLogger(t),
+		ReserveCapacity: storer.DefaultReserveCapacity,
+	}, dataDir)
+
+	nChunks := 10
+	for range nChunks {
+		ch := storagetest.GenerateTestRandomChunk()
+		if err := db.ReservePutter().Put(ctx, ch); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.Close()
+
+	cfgPath := filepath.Join(t.TempDir(), "bee.yaml")
+	if err := os.WriteFile(cfgPath, []byte("data-dir: "+dataDir+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wantSize := fmt.Sprintf("\"total_size\"=%d", nChunks)
+
+	t.Run("data-dir taken from config when flag omitted", func(t *testing.T) {
+		var buf bytes.Buffer
+		err := newCommand(t, cmd.WithArgs("db", "info", "--config", cfgPath), cmd.WithOutput(&buf)).Execute()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(buf.String(), wantSize) {
+			t.Fatalf("reserve info not read from config data-dir; got: %s", buf.String())
+		}
+	})
+
+	t.Run("explicit flag overrides config", func(t *testing.T) {
+		emptyCfg := filepath.Join(t.TempDir(), "bee.yaml")
+		if err := os.WriteFile(emptyCfg, []byte("data-dir: "+t.TempDir()+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		var buf bytes.Buffer
+		err := newCommand(t, cmd.WithArgs("db", "info", "--config", emptyCfg, "--data-dir", dataDir), cmd.WithOutput(&buf)).Execute()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(buf.String(), wantSize) {
+			t.Fatalf("explicit --data-dir did not override config; got: %s", buf.String())
+		}
+	})
+
+	t.Run("errors when neither flag nor config provides data-dir", func(t *testing.T) {
+		err := newCommand(t, cmd.WithArgs("db", "info")).Execute()
+		if err == nil || !strings.Contains(err.Error(), "no data-dir provided") {
+			t.Fatalf("expected no data-dir error, got: %v", err)
+		}
+	})
+}
+
+func TestDBVerbosityFromConfig(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	ctx := context.Background()
+	db := newTestDB(t, ctx, &storer.Options{
+		Batchstore:      new(postage.NoOpBatchStore),
+		RadiusSetter:    kademlia.NewTopologyDriver(),
+		Logger:          testutil.NewLogger(t),
+		ReserveCapacity: storer.DefaultReserveCapacity,
+	}, dataDir)
+	for range 10 {
+		if err := db.ReservePutter().Put(ctx, storagetest.GenerateTestRandomChunk()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.Close()
+
+	writeConfig := func(t *testing.T, verbosity string) string {
+		t.Helper()
+		p := filepath.Join(t.TempDir(), "bee.yaml")
+		body := fmt.Sprintf("data-dir: %s\nverbosity: %s\n", dataDir, verbosity)
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+
+	// "reserve" is logged at info level by db info.
+	const infoMarker = "\"msg\"=\"reserve\""
+
+	t.Run("verbosity taken from config", func(t *testing.T) {
+		var buf bytes.Buffer
+		err := newCommand(t, cmd.WithArgs("db", "info", "--config", writeConfig(t, "error")), cmd.WithOutput(&buf)).Execute()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(buf.String(), infoMarker) {
+			t.Fatalf("expected info logs suppressed by config verbosity=error; got: %s", buf.String())
+		}
+	})
+
+	t.Run("explicit flag overrides config", func(t *testing.T) {
+		var buf bytes.Buffer
+		err := newCommand(t, cmd.WithArgs("db", "info", "--config", writeConfig(t, "error"), "--verbosity", "info"), cmd.WithOutput(&buf)).Execute()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(buf.String(), infoMarker) {
+			t.Fatalf("expected --verbosity to override config; got: %s", buf.String())
+		}
+	})
 }
 
 func TestMarshalChunk(t *testing.T) {
