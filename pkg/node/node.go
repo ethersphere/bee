@@ -881,8 +881,6 @@ func NewBee(
 		}
 	)
 
-	// When it applies, hand the snapshot to the batch service to rebuild the
-	// store during construction (see useEmbeddedSnapshot).
 	var batchSnapshot *batchservice.Snapshot
 	if useEmbeddedSnapshot(o.SkipPostageSnapshot, batchStoreExists, o.Resync, networkID, beeNodeMode) {
 		batchSnapshot, err = snapshot.New(ctx, logger, archive.Getter{}, b.syncingStopped, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout, postageSyncStart)
