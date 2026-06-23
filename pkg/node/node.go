@@ -470,7 +470,7 @@ func NewBee(
 		}
 	}(probe)
 
-	stamperStore, wasClean, err := InitStamperStore(logger, o.DataDir, stateStore)
+	stamperStore, wasDirty, err := InitStamperStore(logger, o.DataDir, stateStore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize stamper store: %w", err)
 	}
@@ -730,7 +730,7 @@ func NewBee(
 	// construction, so no conditional is needed here.
 	p2ps.SetChequebookAddress(chequebookService.Address())
 
-	post, err := postage.NewService(logger, stamperStore, batchStore, chainID, wasClean)
+	post, err := postage.NewService(logger, stamperStore, batchStore, chainID, wasDirty)
 	if err != nil {
 		return nil, fmt.Errorf("postage service: %w", err)
 	}

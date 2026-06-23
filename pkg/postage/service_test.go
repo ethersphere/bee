@@ -32,7 +32,7 @@ func TestSaveLoad(t *testing.T) {
 	defer store.Close()
 	pstore := pstoremock.New()
 	saved := func(id int64) postage.Service {
-		ps, err := postage.NewService(log.Noop, store, pstore, id, true)
+		ps, err := postage.NewService(log.Noop, store, pstore, id, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -48,7 +48,7 @@ func TestSaveLoad(t *testing.T) {
 		return ps
 	}
 	loaded := func(id int64) postage.Service {
-		ps, err := postage.NewService(log.Noop, store, pstore, id, true)
+		ps, err := postage.NewService(log.Noop, store, pstore, id, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -88,7 +88,7 @@ func TestGetStampIssuer(t *testing.T) {
 	}
 	validBlockNumber := testChainState.Block - uint64(postage.BlockThreshold+1)
 	pstore := pstoremock.New(pstoremock.WithChainState(testChainState))
-	ps, err := postage.NewService(log.Noop, store, pstore, chainID, true)
+	ps, err := postage.NewService(log.Noop, store, pstore, chainID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func TestSetExpired(t *testing.T) {
 		return bytes.Equal(b, batch), nil
 	}))
 
-	ps, err := postage.NewService(log.Noop, store, pstore, 1, true)
+	ps, err := postage.NewService(log.Noop, store, pstore, 1, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,7 +303,7 @@ func TestSetExpired(t *testing.T) {
 }
 
 // TestCrashRecovery verifies that bucket counts are restored from stamp items
-// when the service starts after an unclean shutdown (wasClean=false).
+// when the service starts after an unclean shutdown (wasDirty=true).
 func TestCrashRecovery(t *testing.T) {
 	t.Parallel()
 
@@ -335,7 +335,7 @@ func TestCrashRecovery(t *testing.T) {
 	}
 
 	// Save the issuer with zero bucket counts to the store.
-	ps, err := postage.NewService(log.Noop, store, pstore, 1, true)
+	ps, err := postage.NewService(log.Noop, store, pstore, 1, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,8 +347,8 @@ func TestCrashRecovery(t *testing.T) {
 	}
 
 	// Verify that the issuer on disk still has zero bucket counts (i.e., recovery
-	// has not happened yet). Open with wasClean=true to skip recovery.
-	psCheck, err := postage.NewService(log.Noop, store, pstore, 1, true)
+	// has not happened yet). Open with wasDirty=false to skip recovery.
+	psCheck, err := postage.NewService(log.Noop, store, pstore, 1, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -367,8 +367,8 @@ func TestCrashRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Restart with wasClean=false — should trigger bucket recovery.
-	ps2, err := postage.NewService(log.Noop, store, pstore, 1, false)
+	// Restart with wasDirty=true — should trigger bucket recovery.
+	ps2, err := postage.NewService(log.Noop, store, pstore, 1, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -391,9 +391,9 @@ func TestCrashRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Restart with wasClean=true — recovery is skipped, but counts must still
+	// Restart with wasDirty=false — recovery is skipped, but counts must still
 	// be correct because ps2.Close() persisted the recovered state.
-	ps3, err := postage.NewService(log.Noop, store, pstore, 1, true)
+	ps3, err := postage.NewService(log.Noop, store, pstore, 1, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -420,7 +420,7 @@ func TestUpdateIssuerLabel(t *testing.T) {
 	defer store.Close()
 	pstore := pstoremock.New()
 
-	ps, err := postage.NewService(log.Noop, store, pstore, 1, true)
+	ps, err := postage.NewService(log.Noop, store, pstore, 1, false)
 	if err != nil {
 		t.Fatal(err)
 	}
