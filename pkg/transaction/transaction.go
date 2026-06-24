@@ -44,6 +44,8 @@ var (
 	// ErrSignTransaction is returned when signing a transaction fails.
 	ErrSignTransaction      = errors.New("sign transaction")
 	ErrAllAttemptsExhausted = errors.New("all attempts exhausted")
+	// ErrUpdateRetryState is returned when persisting send-with-retry state fails.
+	ErrUpdateRetryState = errors.New("update transaction retry state")
 )
 
 const (
@@ -159,7 +161,7 @@ type transactionService struct {
 	endTier         feeTier
 	maxTxPrice      *big.Int
 
-	metrics transactionsWithRetryMetrics
+	retryMetrics RetryMetricsRecorder
 }
 
 // NewService creates a new transaction service.
@@ -175,11 +177,11 @@ func NewService(logger log.Logger, overlayEthAddress common.Address, backend Bac
 
 	rc := normalizeServiceRetryConfig(retryCfg)
 
-	startTier, err := parseFeeTier(rc.StartTier)
+	startTier, err := ParseFeeTier(rc.StartTier)
 	if err != nil {
 		return nil, fmt.Errorf("start tier: %w", err)
 	}
-	endTier, err := parseFeeTier(rc.EndTier)
+	endTier, err := ParseFeeTier(rc.EndTier)
 	if err != nil {
 		return nil, fmt.Errorf("end tier: %w", err)
 	}
@@ -212,7 +214,7 @@ func NewService(logger log.Logger, overlayEthAddress common.Address, backend Bac
 		startTier:        startTier,
 		endTier:          endTier,
 		maxTxPrice:       rc.MaxTxPrice,
-		metrics:          newRetryMetrics(),
+		retryMetrics:     retryMetricsFromBackend(backend),
 	}
 
 	if err = t.waitForAllPendingTx(); err != nil {
@@ -227,7 +229,7 @@ func NewService(logger log.Logger, overlayEthAddress common.Address, backend Bac
 }
 
 func (t *transactionService) waitForAllPendingTx() error {
-	retryHashes, err := t.retryPendingHashes()
+	retryHashes, err := t.pendingRetryTransactions()
 	if err != nil {
 		return err
 	}

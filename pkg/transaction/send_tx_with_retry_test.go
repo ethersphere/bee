@@ -155,6 +155,7 @@ func TestSuggestGasFeeForTier(t *testing.T) {
 
 // capturedBroadcast records the parameters of a transaction as seen by SendTransaction.
 type capturedBroadcast struct {
+	Hash      common.Hash
 	Nonce     uint64
 	GasTipCap *big.Int
 	GasFeeCap *big.Int
@@ -166,6 +167,7 @@ type capturedBroadcast struct {
 
 func captureTx(tx *types.Transaction) capturedBroadcast {
 	return capturedBroadcast{
+		Hash:      tx.Hash(),
 		Nonce:     tx.Nonce(),
 		GasTipCap: new(big.Int).Set(tx.GasTipCap()),
 		GasFeeCap: new(big.Int).Set(tx.GasFeeCap()),
@@ -360,8 +362,8 @@ func TestSendWithRetry_BroadcastCriticalError(t *testing.T) {
 	assert.Equal(t, s.value.Int64(), broadcasts[0].Value.Int64())
 	assert.Equal(t, s.gasLimit, broadcasts[0].GasLimit)
 
-	var rs transaction.TransactionRetryState
-	assert.ErrorIs(t, store.Get(transaction.RetryStateKey(s.nonce), &rs), storage.ErrNotFound,
+	var v string
+	assert.ErrorIs(t, store.Get(transaction.RetryStateKey(s.nonce), &v), storage.ErrNotFound,
 		"retry state should be cleaned up after critical error")
 }
 
@@ -409,8 +411,8 @@ func TestSendWithRetry_WaitForReceiptCriticalError(t *testing.T) {
 	assert.Equal(t, s.expectedGasFeeCap(marketTip).Int64(), broadcasts[0].GasFeeCap.Int64(),
 		"gasFeeCap must be baseFee*2 + MarketTip")
 
-	var rs transaction.TransactionRetryState
-	assert.ErrorIs(t, store.Get(transaction.RetryStateKey(s.nonce), &rs), storage.ErrNotFound,
+	var v string
+	assert.ErrorIs(t, store.Get(transaction.RetryStateKey(s.nonce), &v), storage.ErrNotFound,
 		"retry state should be cleaned up after critical WaitForReceipt error")
 }
 
@@ -456,7 +458,7 @@ func TestSendWithRetry_UpdateStateError(t *testing.T) {
 // On the first attempt HeaderByNumber fails → prepareTransactionWithRetry fails → broadcastTxWithRetry
 // returns (nil, err) with a non-critical error.
 // UpdateStates receives nil signedTx → state is not updated, only number of attempt increased in-memory
-// After retry delay, second broadcast attempt succeeds → receipt → exit.
+// After sendWithretry delay, second broadcast attempt succeeds → receipt → exit.
 func TestSendWithRetry_NonCriticalThenSuccess(t *testing.T) {
 	t.Parallel()
 	s := newRetryTestSetup()
@@ -522,8 +524,8 @@ func TestSendWithRetry_NonCriticalThenSuccess(t *testing.T) {
 	assert.Equal(t, s.recipient, *broadcasts[0].To)
 	assert.Equal(t, s.txData, broadcasts[0].Data)
 
-	var rs transaction.TransactionRetryState
-	assert.ErrorIs(t, store.Get(transaction.RetryStateKey(broadcasts[0].Nonce), &rs), storage.ErrNotFound,
+	var v string
+	assert.ErrorIs(t, store.Get(transaction.RetryStateKey(broadcasts[0].Nonce), &v), storage.ErrNotFound,
 		"retry state should be cleaned up on success")
 	assert.ErrorIs(t, store.Get(transaction.PendingTransactionKey(txHash), &struct{}{}), storage.ErrNotFound,
 		"pending tx entry should be cleaned up on success")
@@ -598,9 +600,17 @@ func TestSendWithRetry_EscalateGasThenSuccess(t *testing.T) {
 	assert.Equal(t, int32(2), feeHistoryCalls.Load(),
 		"fee history is called for each attempt")
 
-	var rs transaction.TransactionRetryState
-	assert.ErrorIs(t, store.Get(transaction.RetryStateKey(broadcasts[0].Nonce), &rs), storage.ErrNotFound,
+	var v string
+	assert.ErrorIs(t, store.Get(transaction.RetryStateKey(broadcasts[0].Nonce), &v), storage.ErrNotFound,
 		"retry state should be cleaned up on success")
+
+	firstTxHash := broadcasts[0].Hash
+	lastTxHash := broadcasts[len(broadcasts)-1].Hash
+	assert.ErrorIs(t, store.Get(transaction.StoredTransactionKey(firstTxHash), &struct{}{}), storage.ErrNotFound,
+		"superseded stored tx should be removed on success")
+	var stored transaction.StoredTransaction
+	assert.NoError(t, store.Get(transaction.StoredTransactionKey(lastTxHash), &stored),
+		"final stored tx should be kept")
 }
 
 // After receipt timeout at market tier, fees escalate to the aggressive tier on the next broadcast.
@@ -735,8 +745,10 @@ func TestSendWithRetry_AllAttemptsExhausted(t *testing.T) {
 	store := storemock.NewStateStore()
 	testutil.CleanupCloser(t, store)
 
-	var feeHistoryCalls atomic.Int32
-	var broadcasts []capturedBroadcast
+	var (
+		feeHistoryCalls atomic.Int32
+		broadcasts      []capturedBroadcast
+	)
 
 	svc, err := transaction.NewService(log.Noop, s.sender,
 		backendmock.New(
@@ -784,15 +796,30 @@ func TestSendWithRetry_AllAttemptsExhausted(t *testing.T) {
 	assert.Equal(t, int32(3), feeHistoryCalls.Load(),
 		"fee history is called for each attempt")
 
-	var rs transaction.TransactionRetryState
-	assert.ErrorIs(t, store.Get(transaction.RetryStateKey(broadcasts[0].Nonce), &rs), storage.ErrNotFound,
+	lastTxHash := broadcasts[len(broadcasts)-1].Hash
+	assert.Equal(t, lastTxHash, txHash, "last tx hash must match the final broadcast")
+
+	var v string
+	assert.ErrorIs(t, store.Get(transaction.RetryStateKey(broadcasts[0].Nonce), &v), storage.ErrNotFound,
 		"retry state should be cleaned up after exhaustion")
+
+	var pending struct{}
+	assert.NoError(t, store.Get(transaction.PendingTransactionKey(lastTxHash), &pending),
+		"last pending tx should be kept for monitoring")
+	for _, oldHash := range broadcasts[:len(broadcasts)-1] {
+		assert.ErrorIs(t, store.Get(transaction.PendingTransactionKey(oldHash.Hash), &pending), storage.ErrNotFound,
+			"superseded pending tx should be removed")
+		assert.ErrorIs(t, store.Get(transaction.StoredTransactionKey(oldHash.Hash), &struct{}{}), storage.ErrNotFound,
+			"superseded stored tx should be removed")
+	}
+	var stored transaction.StoredTransaction
+	assert.NoError(t, store.Get(transaction.StoredTransactionKey(lastTxHash), &stored),
+		"last stored tx should be kept for resend/cancel")
 }
 
 // "nonce too low" on a rebroadcast means the nonce was consumed between the
 // last receipt check and this broadcast: the previously broadcast tx was most
-// likely mined. The service must read its receipt exactly once and stop
-// retrying regardless of whether the receipt is found.
+// likely mined. The service reads its receipt exactly once and stops retrying.
 func TestSendWithRetry_NonceTooLow(t *testing.T) {
 	t.Parallel()
 
@@ -822,7 +849,6 @@ func TestSendWithRetry_NonceTooLow(t *testing.T) {
 			signermock.New(s.passThroughSigner(), s.signerAddr()),
 			store,
 			s.chainID,
-			// first broadcast's receipt never arrives → escalate to second attempt
 			monitormock.New(receiptWatchTimeout()),
 			0,
 			s.retryConfig(),
@@ -832,7 +858,7 @@ func TestSendWithRetry_NonceTooLow(t *testing.T) {
 		return svc
 	}
 
-	t.Run("receipt found stops retry and returns it", func(t *testing.T) {
+	t.Run("receipt found stops sendWithRetry and returns it", func(t *testing.T) {
 		t.Parallel()
 		s := newRetryTestSetup()
 		store := storemock.NewStateStore()
@@ -858,12 +884,12 @@ func TestSendWithRetry_NonceTooLow(t *testing.T) {
 		assert.Equal(t, int32(2), broadcastCount.Load(), "exactly one rebroadcast, no further retries after nonce too low")
 		assert.Equal(t, int32(1), receiptCalls.Load(), "receipt must be read exactly once")
 
-		var rs transaction.TransactionRetryState
-		assert.ErrorIs(t, store.Get(transaction.RetryStateKey(s.nonce), &rs), storage.ErrNotFound,
+		var v string
+		assert.ErrorIs(t, store.Get(transaction.RetryStateKey(s.nonce), &v), storage.ErrNotFound,
 			"retry state should be cleaned up after success")
 	})
 
-	t.Run("receipt not found stops retry and returns error", func(t *testing.T) {
+	t.Run("receipt not found stops sendWithRetry and returns error", func(t *testing.T) {
 		t.Parallel()
 		s := newRetryTestSetup()
 		store := storemock.NewStateStore()
@@ -889,8 +915,8 @@ func TestSendWithRetry_NonceTooLow(t *testing.T) {
 		assert.Equal(t, int32(2), broadcastCount.Load(), "exactly one rebroadcast, no further retries after nonce too low")
 		assert.Equal(t, int32(1), receiptCalls.Load(), "receipt must be read exactly once even when not found")
 
-		var rs transaction.TransactionRetryState
-		assert.ErrorIs(t, store.Get(transaction.RetryStateKey(s.nonce), &rs), storage.ErrNotFound,
+		var v string
+		assert.ErrorIs(t, store.Get(transaction.RetryStateKey(s.nonce), &v), storage.ErrNotFound,
 			"retry state should be cleaned up after error")
 	})
 }
@@ -906,31 +932,20 @@ func TestSendWithRetry_ResumeAfterRestart(t *testing.T) {
 	previousTip := new(big.Int).Set(s.tipBase)
 	lastTxHash := common.HexToHash("0xdeadbeef")
 
-	priorState := transaction.TransactionRetryState{
-		Nonce:         s.nonce,
-		NonceAssigned: true,
-		LastTxHash:    lastTxHash,
-		AllTxHashes:   nil,
-		GasLimit:      s.gasLimit,
-		To:            &s.recipient,
-		Data:          s.txData,
-		Value:         s.value,
-		Description:   "test-resume",
-	}
-
 	retryKey := transaction.RetryStateKey(s.nonce)
-	require.NoError(t, store.Put(retryKey, priorState))
+	require.NoError(t, store.Put(retryKey, lastTxHash))
 
 	require.NoError(t, store.Put(transaction.StoredTransactionKey(lastTxHash), transaction.StoredTransaction{
-		To:        &s.recipient,
-		Data:      s.txData,
-		GasLimit:  s.gasLimit,
-		Value:     s.value,
-		Nonce:     s.nonce,
-		GasTipCap: previousTip,
-		GasFeeCap: big.NewInt(5000),
-		GasPrice:  big.NewInt(0),
-		Created:   time.Now().Unix(),
+		To:          &s.recipient,
+		Data:        s.txData,
+		GasLimit:    s.gasLimit,
+		Value:       s.value,
+		Nonce:       s.nonce,
+		GasTipCap:   previousTip,
+		GasFeeCap:   big.NewInt(5000),
+		GasPrice:    big.NewInt(0),
+		Created:     time.Now().Unix(),
+		Description: "test-resume",
 	}))
 	require.NoError(t, store.Put(transaction.PendingTransactionKey(lastTxHash), struct{}{}))
 
@@ -1006,9 +1021,9 @@ func TestSendWithRetry_ResumeAfterRestart(t *testing.T) {
 	assert.Equal(t, int32(1), feeHistoryCalls.Load(),
 		"fee history should be called on resume")
 
-	var rs transaction.TransactionRetryState
+	var v string
 	assert.Eventually(t, func() bool {
-		return errors.Is(store.Get(retryKey, &rs), storage.ErrNotFound)
+		return errors.Is(store.Get(retryKey, &v), storage.ErrNotFound)
 	}, 5*time.Second, 10*time.Millisecond, "retry state should be cleaned up after success")
 }
 

@@ -10,7 +10,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
-func TestParseFeePriority(t *testing.T) {
+func TestParseFeeTier(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
@@ -24,18 +24,18 @@ func TestParseFeePriority(t *testing.T) {
 		{"", "market", false},
 		{"banana", "", true},
 	} {
-		got, err := transaction.ParseFeePriority(tc.in)
+		tier, err := transaction.ParseFeeTier(tc.in)
 		if tc.err {
 			if err == nil {
-				t.Fatalf("ParseFeePriority(%q): want error", tc.in)
+				t.Fatalf("ParseFeeTier(%q): want error", tc.in)
 			}
 			continue
 		}
 		if err != nil {
-			t.Fatalf("ParseFeePriority(%q): %v", tc.in, err)
+			t.Fatalf("ParseFeeTier(%q): %v", tc.in, err)
 		}
-		if got != tc.want {
-			t.Fatalf("ParseFeePriority(%q) = %q, want %q", tc.in, got, tc.want)
+		if got := tier.String(); got != tc.want {
+			t.Fatalf("ParseFeeTier(%q) = %q, want %q", tc.in, got, tc.want)
 		}
 	}
 }

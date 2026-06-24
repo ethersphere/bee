@@ -20,7 +20,6 @@ type (
 	requestHostKey   struct{}
 	gasPriceKey      struct{}
 	gasLimitKey      struct{}
-	disableRetryKey  struct{}
 	feePriorityKey   struct{}
 )
 
@@ -68,15 +67,6 @@ func GetGasPrice(ctx context.Context) *big.Int {
 		return v
 	}
 	return nil
-}
-
-func SetDisableRetry(ctx context.Context, disable bool) context.Context {
-	return context.WithValue(ctx, disableRetryKey{}, disable)
-}
-
-func GetDisableRetry(ctx context.Context) bool {
-	v, ok := ctx.Value(disableRetryKey{}).(bool)
-	return ok && v
 }
 
 func SetFeePriority(ctx context.Context, priority string) context.Context {

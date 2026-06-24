@@ -1126,7 +1126,9 @@ components:
       schema:
         $ref: "SwarmCommon.yaml#/components/schemas/GasPrice"
       required: false
-      description: "Gas price for transaction"
+      description: >
+        Maximum gas price for the transaction. When set, the node
+        uses the legacy send path, otherwise transaction is sent with retry and automatically escalated fees.
 
     GasLimitParameter:
       in: header
