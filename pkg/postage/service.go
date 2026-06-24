@@ -66,9 +66,9 @@ type service struct {
 	done chan struct{}
 }
 
-// NewService constructs a new Service. wasClean indicates whether the previous
-// shutdown was graceful; if false, bucket counts are recovered from the stamp store.
-func NewService(logger log.Logger, store storage.Store, postageStore Storer, chainID int64, wasClean bool) (Service, error) {
+// NewService constructs a new Service. wasDirty indicates whether the previous
+// shutdown was unclean; if true, bucket counts are recovered from the stamp store.
+func NewService(logger log.Logger, store storage.Store, postageStore Storer, chainID int64, wasDirty bool) (Service, error) {
 	s := &service{
 		logger:       logger.WithName(loggerName).Register(),
 		store:        store,
@@ -92,7 +92,7 @@ func NewService(logger log.Logger, store storage.Store, postageStore Storer, cha
 		return nil, err
 	}
 
-	if !wasClean {
+	if wasDirty {
 		s.logger.Info("recovering bucket counts from stamper store")
 		if err := s.recoverBuckets(); err != nil {
 			s.logger.Error(err, "postage stamper store recovery failed")
