@@ -303,7 +303,7 @@ type attemptResult struct {
 }
 
 // sendWithRetry is the core retry loop. When resuming, pass a pre-populated retryState.
-func (t *transactionService) sendWithRetry(ctx context.Context, request *TxRequest, rs *retryState) (common.Hash, *types.Receipt, error) {
+func (t *transactionService) sendWithRetry(ctx context.Context, request *TxRequest, rs *retryState, overrides *RetryOverrides) (common.Hash, *types.Receipt, error) {
 	if rs == nil {
 		rs = &retryState{}
 	}
@@ -336,7 +336,7 @@ func (t *transactionService) sendWithRetry(ctx context.Context, request *TxReque
 				nonce = &rs.nonce
 			}
 
-			res := t.attempt(ctx, rs, request, previousTip, tier, nonce)
+			res := t.attempt(ctx, rs, request, previousTip, tier, nonce, overrides)
 			if res.err != nil && (isNonRetryable(res.err) || isNonceTooLow(res.err)) {
 				terminateTxErr = res.err
 				return common.Hash{}, nil, terminateTxErr
@@ -403,10 +403,17 @@ func (t *transactionService) finishRetry(rs *retryState, request *TxRequest, att
 }
 
 // attempt performs a single broadcast+wait cycle: broadcast, persist state, wait for receipt.
-func (t *transactionService) attempt(ctx context.Context, rs *retryState, request *TxRequest, previousTip *big.Int, tier feeTier, nonce *uint64) attemptResult {
+func (t *transactionService) attempt(
+	ctx context.Context,
+	rs *retryState,
+	request *TxRequest,
+	previousTip *big.Int,
+	tier feeTier,
+	nonce *uint64,
+	overrides *RetryOverrides) attemptResult {
 	replaced := true
 
-	signedTx, broadCastErr := t.broadcastTx(ctx, request, nonce, tier, previousTip)
+	signedTx, broadCastErr := t.broadcastTx(ctx, request, nonce, tier, previousTip, overrides)
 	if broadCastErr != nil {
 		switch {
 		case isNonceTooLow(broadCastErr):
@@ -575,7 +582,7 @@ func (t *transactionService) resumeRetryTransactions() error {
 		}
 
 		t.wg.Go(func() {
-			if _, _, err := t.sendWithRetry(t.ctx, request, rs); err != nil {
+			if _, _, err := t.sendWithRetry(t.ctx, request, rs, nil); err != nil {
 				t.logger.Error(err, "resumed transaction send with finished with error", "nonce", stored.Nonce)
 			}
 		})
