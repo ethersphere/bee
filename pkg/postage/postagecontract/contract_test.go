@@ -74,7 +74,7 @@ func TestCreateBatch(t *testing.T) {
 			postageStampContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
+				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
 					switch *request.To {
 					case bzzTokenAddress:
 						return txHashApprove, &types.Receipt{Status: 1}, nil
@@ -308,7 +308,7 @@ func TestTopUpBatch(t *testing.T) {
 			postageStampContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
+				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
 					switch *request.To {
 					case bzzTokenAddress:
 						return txHashApprove, &types.Receipt{Status: 1}, nil
@@ -468,7 +468,7 @@ func TestDiluteBatch(t *testing.T) {
 			postageStampContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
+				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
 					if *request.To == postageStampAddress {
 						if bytes.Equal(expectedCallDataForExpireLimitedBatches[:32], request.Data[:32]) {
 							return txHashApprove, &types.Receipt{Status: 1}, nil
@@ -630,7 +630,7 @@ func TestBatchExpirer(t *testing.T) {
 						}
 					}
 					return nil, errors.New("unexpected call")
-				}), transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
+				}), transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
 					return common.Hash{}, &types.Receipt{Status: 1}, nil
 				}),
 			),
@@ -768,7 +768,7 @@ func TestBatchExpirer(t *testing.T) {
 						}
 					}
 					return nil, errors.New("unexpected call")
-				}), transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
+				}), transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
 					if *request.To == postageContractAddress {
 						if bytes.Equal(expectedCallDataForExpireLimitedBatches[:32], request.Data[:32]) {
 							return common.Hash{}, nil, fmt.Errorf("some error")
@@ -891,7 +891,7 @@ func TestBatchExpirer(t *testing.T) {
 						}
 					}
 					return nil, errors.New("unexpected call")
-				}), transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
+				}), transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest, _ ...transaction.RetryOption) (common.Hash, *types.Receipt, error) {
 					return common.Hash{}, &types.Receipt{Status: 0}, transaction.ErrTransactionReverted
 				}),
 			),
