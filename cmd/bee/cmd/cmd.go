@@ -373,12 +373,14 @@ func (c *command) initLogger(cmd *cobra.Command) error {
 // nested (blockchain-rpc.endpoint) YAML forms, with nested taking precedence.
 func (c *command) bindBlockchainRpcConfig(cmd *cobra.Command) {
 	for _, p := range blockchainRpcConfigPairs {
-		// Check before registering the alias; afterwards the flat value is unreachable.
-		if c.config.InConfig(p.flat) && c.config.InConfig(p.dotted) {
-			c.logger.Warning("config key conflict: nested form takes precedence", "ignored", p.flat, "used", p.dotted)
-		}
+		nested := c.config.Get(p.dotted)
+		conflict := c.config.InConfig(p.flat) && c.config.IsSet(p.dotted)
 		_ = c.config.BindPFlag(p.dotted, cmd.Flags().Lookup(p.flat))
 		c.config.RegisterAlias(p.flat, p.dotted)
+		if conflict {
+			c.logger.Warning("config key conflict: nested form takes precedence", "ignored", p.flat, "used", p.dotted)
+			c.config.Set(p.dotted, nested)
+		}
 	}
 }
 
