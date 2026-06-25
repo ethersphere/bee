@@ -1,7 +1,7 @@
 251c251
 < 	DefaultReserveCapacity        = 1 << 22 // 4194304 chunks
 ---
-> 	DefaultReserveCapacity        = 200 // patched(radius-testing): was 1 << 22
+> 	DefaultReserveCapacity        = 4000 // patched(radius-testing): was 1 << 22
 411c411
 < 		ReserveWakeUpDuration:     time.Minute * 30,
 ---
