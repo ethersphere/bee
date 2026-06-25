@@ -45,6 +45,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/postage/batchstore"
 	"github.com/ethersphere/bee/v2/pkg/postage/listener"
 	"github.com/ethersphere/bee/v2/pkg/postage/postagecontract"
+	"github.com/ethersphere/bee/v2/pkg/postage/snapshot"
+	"github.com/ethersphere/bee/v2/pkg/postage/snapshot/archive"
 	"github.com/ethersphere/bee/v2/pkg/pricer"
 	"github.com/ethersphere/bee/v2/pkg/pricing"
 	"github.com/ethersphere/bee/v2/pkg/pss"
@@ -139,6 +141,7 @@ type Options struct {
 	BlockchainRpcTLSTimeout       time.Duration
 	BlockchainRpcIdleTimeout      time.Duration
 	BlockchainRpcKeepalive        time.Duration
+	BzzTokenAddress               common.Address
 	BlockProfile                  bool
 	BlockTime                     time.Duration
 	BlockSyncInterval             uint64
@@ -467,7 +470,7 @@ func NewBee(
 		}
 	}(probe)
 
-	stamperStore, wasClean, err := InitStamperStore(logger, o.DataDir, stateStore)
+	stamperStore, wasDirty, err := InitStamperStore(logger, o.DataDir, stateStore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize stamper store: %w", err)
 	}
@@ -545,56 +548,54 @@ func NewBee(
 		}
 	}
 
+	chainCfg, knownChain := config.GetByChainID(chainID)
+
+	bzzTokenAddress := chainCfg.TokenContractAddress
+	if o.BzzTokenAddress != (common.Address{}) {
+		bzzTokenAddress = o.BzzTokenAddress
+	}
+
 	if chainEnabled {
-		chequebookFactory, ferr := InitChequebookFactory(logger, chainBackend, chainID, transactionService, o.SwapFactoryAddress)
-		if o.SwapEnable && ferr != nil {
-			return nil, fmt.Errorf("init chequebook factory: %w", ferr)
+		if bzzTokenAddress == (common.Address{}) {
+			return nil, errors.New("no known bzz token address for this network; provide --bzz-token-address")
+		}
+		logger.Info("using bzz token address", "address", bzzTokenAddress)
+		erc20Service = erc20.New(transactionService, bzzTokenAddress)
+	}
+
+	if o.SwapEnable {
+		chequebookFactory, err := InitChequebookFactory(logger, chainBackend, chainID, transactionService, o.SwapFactoryAddress)
+		if err != nil {
+			return nil, fmt.Errorf("init chequebook factory: %w", err)
 		}
 
-		if ferr == nil {
-			erc20Address, err := chequebookFactory.ERC20Address(ctx)
-			if err != nil {
-				if o.SwapEnable {
-					return nil, fmt.Errorf("factory fail: %w", err)
-				}
-				logger.Warning("unable to resolve ERC20 token address; BZZ balance will be unavailable via /wallet", "error", err)
-			} else {
-				erc20Service = erc20.New(transactionService, erc20Address)
-			}
-		} else {
-			logger.Warning("unable to init chequebook factory; BZZ balance will be unavailable via /wallet", "error", ferr)
-		}
-
-		if o.SwapEnable {
-			if o.ChequebookEnable {
-				var err error
-				chequebookService, err = InitChequebookService(
-					ctx,
-					logger,
-					stateStore,
-					signer,
-					chainID,
-					chainBackend,
-					overlayEthAddress,
-					transactionService,
-					chequebookFactory,
-					o.SwapInitialDeposit,
-					erc20Service,
-				)
-				if err != nil {
-					return nil, fmt.Errorf("init chequebook service: %w", err)
-				}
-			}
-
-			chequeStore, cashoutService = initChequeStoreCashout(
+		if o.ChequebookEnable {
+			chequebookService, err = InitChequebookService(
+				ctx,
+				logger,
 				stateStore,
-				chainBackend,
-				chequebookFactory,
+				signer,
 				chainID,
+				chainBackend,
 				overlayEthAddress,
 				transactionService,
+				chequebookFactory,
+				o.SwapInitialDeposit,
+				erc20Service,
 			)
+			if err != nil {
+				return nil, fmt.Errorf("init chequebook service: %w", err)
+			}
 		}
+
+		chequeStore, cashoutService = initChequeStoreCashout(
+			stateStore,
+			chainBackend,
+			chequebookFactory,
+			chainID,
+			overlayEthAddress,
+			transactionService,
+		)
 	}
 
 	lightNodes := lightnode.NewContainer(swarmAddress)
@@ -673,8 +674,6 @@ func NewBee(
 		registry = apiService.MetricsRegistry()
 	}
 
-	chainCfg, found := config.GetByChainID(chainID)
-
 	var (
 		cbVerifier chequebook.Verifier
 		cbRegistry *chequebook.Registry
@@ -731,7 +730,7 @@ func NewBee(
 	// construction, so no conditional is needed here.
 	p2ps.SetChequebookAddress(chequebookService.Address())
 
-	post, err := postage.NewService(logger, stamperStore, batchStore, chainID, wasClean)
+	post, err := postage.NewService(logger, stamperStore, batchStore, chainID, wasDirty)
 	if err != nil {
 		return nil, fmt.Errorf("postage service: %w", err)
 	}
@@ -754,16 +753,11 @@ func NewBee(
 			return nil, errors.New("postage contract start block option not provided")
 		}
 		postageSyncStart = o.PostageContractStartBlock
-	} else if !found {
+	} else if !knownChain {
 		return nil, errors.New("no known postage stamp addresses for this network")
 	}
 
 	postageStampContractABI := abiutil.MustParseABI(chainCfg.PostageStampABI)
-
-	bzzTokenAddress, err := postagecontract.LookupERC20Address(ctx, transactionService, postageStampContractAddress, postageStampContractABI, chainEnabled)
-	if err != nil {
-		return nil, fmt.Errorf("lookup erc20 postage address: %w", err)
-	}
 
 	// Compute gas limit for contract transactions: when TrxDebugMode is enabled,
 	// gas estimation is skipped and DefaultGasLimit is used for all contract calls.
@@ -786,11 +780,6 @@ func NewBee(
 
 	eventListener = listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
 	b.listenerCloser = eventListener
-
-	batchSvc, err = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
-	if err != nil {
-		return nil, fmt.Errorf("init batch service: %w", err)
-	}
 
 	// Construct protocols.
 	pingPong := pingpong.New(p2ps, logger, tracer)
@@ -892,28 +881,29 @@ func NewBee(
 		}
 	)
 
+	// When the postage snapshot applies, hand it to the batch service so it
+	// rebuilds the store from the snapshot during construction; otherwise the
+	// store is reset only when --resync is requested. Either way the store is
+	// reset in a single place (batchservice.New), which avoids a second reset
+	// wiping the snapshot that was just loaded (see #5495).
+	var batchSnapshot *batchservice.Snapshot
 	if !o.SkipPostageSnapshot && !batchStoreExists && (networkID == mainnetNetworkID) && beeNodeMode != api.UltraLightMode {
-		chainBackend := NewSnapshotLogFilterer(logger, archiveSnapshotGetter{})
-
-		snapshotEventListener := listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
-
-		snapshotBatchSvc, err := batchservice.New(stateStore, batchStore, logger, snapshotEventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
+		batchSnapshot, err = snapshot.New(ctx, logger, archive.Getter{}, b.syncingStopped, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout, postageSyncStart)
 		if err != nil {
-			logger.Error(err, "failed to initialize batch service from snapshot, continuing outside snapshot block...")
-		} else {
-			err = snapshotBatchSvc.Start(ctx, postageSyncStart)
-			syncStatus.Store(true)
-			if err != nil {
-				syncErr.Store(err)
-				logger.Error(err, "failed to start batch service from snapshot, continuing outside snapshot block...")
-			} else {
-				postageSyncStart = chainBackend.maxBlockHeight
-			}
+			// A corrupt snapshot is not fatal: rebuild from the chain instead.
+			logger.Error(err, "postage snapshot unavailable, syncing from chain instead")
 		}
-		if errClose := snapshotEventListener.Close(); errClose != nil {
-			logger.Error(errClose, "failed to close event listener (snapshot) failure")
-		}
+	}
 
+	var snapshotLoaded bool
+	batchSvc, snapshotLoaded, err = batchservice.New(ctx, stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, batchSnapshot, o.Resync)
+	if err != nil {
+		return nil, fmt.Errorf("init batch service: %w", err)
+	}
+	if snapshotLoaded {
+		// The snapshot rebuilt the store up to its block height, so the node can
+		// already serve postage requests while the remaining gap syncs live.
+		syncStatus.Store(true)
 	}
 
 	if batchSvc != nil && chainEnabled {

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/bigint"
@@ -458,12 +459,16 @@ func (s *Service) chainStateHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "block number unavailable")
 		return
 	}
-	minimumValidityBlocks, err := s.postageContract.MinimumValidityBlocks(r.Context())
-	if err != nil && !errors.Is(err, postagecontract.ErrChainDisabled) {
-		logger.Debug("get minimum validity blocks failed", "error", err)
-		logger.Error(nil, "get minimum validity blocks failed")
-		jsonhttp.InternalServerError(w, "minimum validity blocks unavailable")
-		return
+	// postageContract is wired in Configure; guard against early calls during startup.
+	var minimumValidityBlocks uint64
+	if s.postageContract != nil {
+		minimumValidityBlocks, err = s.postageContract.MinimumValidityBlocks(r.Context())
+		if err != nil && !errors.Is(err, postagecontract.ErrChainDisabled) {
+			logger.Debug("get minimum validity blocks failed", "error", err)
+			logger.Error(nil, "get minimum validity blocks failed")
+			jsonhttp.InternalServerError(w, "minimum validity blocks unavailable")
+			return
+		}
 	}
 	jsonhttp.OK(w, chainStateResponse{
 		ChainTip:              chainTip,
@@ -529,6 +534,14 @@ func (s *Service) postageUpdateLabelHandler(w http.ResponseWriter, r *http.Reque
 		logger.Debug("patch stamp: decode body failed", "batch_id", hexBatchID, "error", err)
 		logger.Error(nil, "patch stamp: decode body failed")
 		jsonhttp.BadRequest(w, "invalid request body")
+		return
+	}
+
+	// label is required by the OpenAPI spec; reject empty/missing rather than
+	// silently blanking the issuer label.
+	if strings.TrimSpace(body.Label) == "" {
+		logger.Debug("patch stamp: empty label", "batch_id", hexBatchID)
+		jsonhttp.BadRequest(w, "label is required")
 		return
 	}
 

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package node_test
+package snapshot_test
 
 import (
 	"bytes"
@@ -11,13 +11,15 @@ import (
 	"encoding/json"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/v2/pkg/log"
-	"github.com/ethersphere/bee/v2/pkg/node"
 	"github.com/ethersphere/bee/v2/pkg/postage/listener"
+	"github.com/ethersphere/bee/v2/pkg/postage/snapshot"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -50,7 +52,7 @@ func TestNewSnapshotLogFilterer(t *testing.T) {
 	t.Run("invalid gzip", func(t *testing.T) {
 		t.Parallel()
 		getter := newMockSnapshotGetter([]byte("not-gzip"))
-		filterer := node.NewSnapshotLogFilterer(log.Noop, getter)
+		filterer := snapshot.NewSnapshotLogFilterer(log.Noop, getter)
 		_, err := filterer.BlockNumber(context.Background())
 		assert.Error(t, err)
 	})
@@ -63,7 +65,7 @@ func TestNewSnapshotLogFilterer(t *testing.T) {
 		require.NoError(t, err)
 		gz.Close()
 		getter := newMockSnapshotGetter(buf.Bytes())
-		filterer := node.NewSnapshotLogFilterer(log.Noop, getter)
+		filterer := snapshot.NewSnapshotLogFilterer(log.Noop, getter)
 		_, err = filterer.BlockNumber(context.Background())
 		assert.ErrorIs(t, err, listener.ErrParseSnapshot)
 	})
@@ -76,7 +78,7 @@ func TestNewSnapshotLogFilterer(t *testing.T) {
 			{BlockNumber: 2, Topics: []common.Hash{}},
 		}
 		getter := newMockSnapshotGetter(makeSnapshotData(logs))
-		filterer := node.NewSnapshotLogFilterer(log.Noop, getter)
+		filterer := snapshot.NewSnapshotLogFilterer(log.Noop, getter)
 
 		_, err := filterer.BlockNumber(context.Background())
 		assert.ErrorIs(t, err, listener.ErrParseSnapshot)
@@ -91,7 +93,7 @@ func TestNewSnapshotLogFilterer(t *testing.T) {
 			{BlockNumber: 3, Topics: []common.Hash{}},
 		}
 		getter := newMockSnapshotGetter(makeSnapshotData(logs))
-		filterer := node.NewSnapshotLogFilterer(log.Noop, getter)
+		filterer := snapshot.NewSnapshotLogFilterer(log.Noop, getter)
 
 		blockNumber, err := filterer.BlockNumber(context.Background())
 		assert.NoError(t, err)
@@ -107,7 +109,7 @@ func TestNewSnapshotLogFilterer(t *testing.T) {
 			{BlockNumber: 5, Address: common.HexToAddress("0x4"), TxHash: common.HexToHash("0x4"), Topics: []common.Hash{common.HexToHash("0xa4"), common.HexToHash("0xa5")}},
 		}
 		getter := newMockSnapshotGetter(makeSnapshotData(logs))
-		filterer := node.NewSnapshotLogFilterer(log.Noop, getter)
+		filterer := snapshot.NewSnapshotLogFilterer(log.Noop, getter)
 
 		res, err := filterer.FilterLogs(context.Background(), ethereum.FilterQuery{
 			FromBlock: big.NewInt(2),
@@ -148,5 +150,30 @@ func TestNewSnapshotLogFilterer(t *testing.T) {
 		assert.Equal(t, 0, res[1].Topics[0].Cmp(common.HexToHash("0xa1")))
 		assert.Equal(t, 0, res[2].Topics[0].Cmp(common.HexToHash("0xa4")))
 		assert.Equal(t, 0, res[3].Topics[0].Cmp(common.HexToHash("0xa4")))
+	})
+}
+
+func TestNew(t *testing.T) {
+	t.Parallel()
+
+	logs := []types.Log{
+		{BlockNumber: 1, Topics: []common.Hash{}},
+		{BlockNumber: 5, Topics: []common.Hash{}},
+	}
+	getter := newMockSnapshotGetter(makeSnapshotData(logs))
+
+	snap, err := snapshot.New(context.Background(), log.Noop, getter, nil,
+		common.Address{}, abi.ABI{}, time.Second, time.Second, time.Second, 100)
+	require.NoError(t, err)
+	require.NotNil(t, snap)
+	assert.Equal(t, uint64(100), snap.StartBlock)
+	assert.Equal(t, uint64(5), snap.ResumeBlock) // max block height in the snapshot
+	assert.NotNil(t, snap.Listener)
+
+	t.Run("corrupt snapshot returns an error", func(t *testing.T) {
+		t.Parallel()
+		_, err := snapshot.New(context.Background(), log.Noop, newMockSnapshotGetter([]byte("not-gzip")), nil,
+			common.Address{}, abi.ABI{}, time.Second, time.Second, time.Second, 100)
+		assert.Error(t, err)
 	})
 }

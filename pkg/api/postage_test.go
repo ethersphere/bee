@@ -492,6 +492,36 @@ func TestChainState(t *testing.T) {
 			}),
 		)
 	})
+
+	t.Run("nil postage contract during startup omits minimumValidityBlocks", func(t *testing.T) {
+		t.Parallel()
+
+		// postageContract is wired in Configure, which runs after the API starts
+		// serving. /chainstate is reachable before that, so a nil contract must
+		// omit minimumValidityBlocks (omitempty) instead of panicking. Regression
+		// for the startup-window panic.
+		cs := &postage.ChainState{
+			Block:        123456,
+			TotalAmount:  big.NewInt(50),
+			CurrentPrice: big.NewInt(5),
+		}
+		ts, _, _, _ := newTestServer(t, testServerOptions{
+			BatchStore: mock.New(mock.WithChainState(cs)),
+			BackendOpts: []backendmock.Option{backendmock.WithBlockNumberFunc(func(ctx context.Context) (uint64, error) {
+				return 1, nil
+			})},
+			// PostageContract left nil to simulate the startup window before Configure.
+		})
+		jsonhttptest.Request(t, ts, http.MethodGet, "/chainstate", http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(&api.ChainStateResponse{
+				ChainTip:     1,
+				Block:        123456,
+				TotalAmount:  bigint.Wrap(big.NewInt(50)),
+				CurrentPrice: bigint.Wrap(big.NewInt(5)),
+				// MinimumValidityBlocks omitted (0) because the contract is nil.
+			}),
+		)
+	})
 }
 
 func TestPostageTopUpStamp(t *testing.T) {
@@ -1260,6 +1290,26 @@ func TestPostageUpdateLabelStamp(t *testing.T) {
 			jsonhttptest.WithRequestBody(bytes.NewBufferString(`not-json`)),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{Code: http.StatusBadRequest, Message: "invalid request body"}),
 		)
+	})
+
+	t.Run("empty-label", func(t *testing.T) {
+		t.Parallel()
+
+		// label is required by the spec; an empty/missing/whitespace-only label
+		// must be rejected rather than silently blanking the issuer label.
+		si := postage.NewStampIssuer("original", "test identity", batchID, big.NewInt(3), 24, 6, 1000, false)
+		mp := mockpost.New(mockpost.WithIssuer(si))
+		ts, _, _, _ := newTestServer(t, testServerOptions{
+			Post: mp,
+		})
+
+		for _, body := range []string{`{}`, `{"label":""}`, `{"label":"   "}`} {
+			jsonhttptest.Request(t, ts, http.MethodPatch, updatePath, http.StatusBadRequest,
+				jsonhttptest.WithRequestHeader("Content-Type", "application/json"),
+				jsonhttptest.WithRequestBody(bytes.NewBufferString(body)),
+				jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{Code: http.StatusBadRequest, Message: "label is required"}),
+			)
+		}
 	})
 }
 
