@@ -23,6 +23,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/hive"
 	"github.com/ethersphere/bee/v2/pkg/hive/pb"
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
@@ -1343,4 +1344,90 @@ func TestHiveGossipUnderlayCaps(t *testing.T) {
 			t.Fatalf("expected ErrNotFound after count-cap rejection, got err=%v", err)
 		}
 	})
+}
+
+func TestBroadcastPeersGossipDedup(t *testing.T) {
+	t.Parallel()
+
+	logger := log.Noop
+	statestore := mock.NewStateStore()
+	addressbook := ab.New(statestore)
+	networkID := uint64(1)
+
+	underlay, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/1234")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pk, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := crypto.NewDefaultSigner(pk)
+	gossipedOverlay, err := crypto.NewOverlayAddress(pk.PublicKey, networkID, nonce)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gossipedAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{underlay}, gossipedOverlay, networkID, nonce, 1, common.Address{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := addressbook.Put(gossipedAddr.Overlay, *gossipedAddr, true); err != nil {
+		t.Fatal(err)
+	}
+
+	streamer := streamtest.New()
+	serverAddress := swarm.RandAddress(t)
+	server := hive.New(streamer, ab.New(mock.NewStateStore()), networkID, serverAddress, logger, hive.Options{AllowPrivateCIDRs: true})
+	testutil.CleanupCloser(t, server)
+
+	recorder := streamtest.New(streamtest.WithProtocols(server.Protocol()))
+	clientAddress := swarm.RandAddress(t)
+	dedupTTL := 50 * time.Millisecond
+	client := hive.New(recorder, addressbook, networkID, clientAddress, logger, hive.Options{
+		AllowPrivateCIDRs:   true,
+		GossipDedupCacheTTL: dedupTTL,
+	})
+	testutil.CleanupCloser(t, client)
+
+	ctx := context.Background()
+	if err := client.BroadcastPeers(ctx, serverAddress, gossipedOverlay); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.BroadcastPeers(ctx, serverAddress, gossipedOverlay); err != nil {
+		t.Fatal(err)
+	}
+
+	records, err := recorder.Records(serverAddress, "hive", "2.0.0", "peers")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := len(records), 1; got != want {
+		t.Fatalf("got %d gossip messages, want %d", got, want)
+	}
+
+	time.Sleep(dedupTTL + 10*time.Millisecond)
+	if err := client.BroadcastPeers(ctx, serverAddress, gossipedOverlay); err != nil {
+		t.Fatal(err)
+	}
+	records, err = recorder.Records(serverAddress, "hive", "2.0.0", "peers")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := len(records), 2; got != want {
+		t.Fatalf("after ttl got %d gossip messages, want %d", got, want)
+	}
+
+	if err := client.Protocol().DisconnectOut(p2p.Peer{Address: serverAddress, FullNode: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.BroadcastPeers(ctx, serverAddress, gossipedOverlay); err != nil {
+		t.Fatal(err)
+	}
+	records, err = recorder.Records(serverAddress, "hive", "2.0.0", "peers")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := len(records), 3; got != want {
+		t.Fatalf("after disconnect got %d gossip messages, want %d", got, want)
+	}
 }

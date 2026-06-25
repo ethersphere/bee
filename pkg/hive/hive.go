@@ -61,11 +61,16 @@ var (
 // optional: a nil ChequebookVerifier disables the verification gate (and
 // records without a chequebook are accepted); a nil ChequebookStorer means
 // no overlay→chequebook persistence — addressbook writes happen directly.
+//
+// Gossip dedup fields are optional.
 type Options struct {
 	BootnodeMode       bool
 	AllowPrivateCIDRs  bool
 	ChequebookVerifier chequebook.Verifier
 	ChequebookStorer   ChequebookStorer
+
+	GossipDedupCacheTTL      time.Duration
+	GossipDedupPruneInterval time.Duration
 }
 
 type Service struct {
@@ -90,6 +95,7 @@ type Service struct {
 	// chequebook are dropped.
 	chequebookVerifier chequebook.Verifier
 	chequebookStorer   ChequebookStorer
+	gossipDedup        *gossipDedupCache
 }
 
 func New(streamer p2p.Streamer, addressbook addressbook.GetPutter, networkID uint64, overlay swarm.Address, logger log.Logger, o Options) *Service {
@@ -111,6 +117,8 @@ func New(streamer p2p.Streamer, addressbook addressbook.GetPutter, networkID uin
 		chequebookVerifier: o.ChequebookVerifier,
 		chequebookStorer:   o.ChequebookStorer,
 	}
+
+	svc.gossipDedup = newGossipDedupCache(o.GossipDedupCacheTTL, o.GossipDedupPruneInterval)
 
 	if !o.BootnodeMode {
 		svc.startCheckPeersHandler()
@@ -137,6 +145,11 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 var ErrShutdownInProgress = errors.New("shutdown in progress")
 
 func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, peers ...swarm.Address) error {
+	peers = s.filterGossipDedup(addressee, peers)
+	if len(peers) == 0 {
+		return nil
+	}
+
 	maxSize := maxBatchSize
 	s.metrics.BroadcastPeers.Inc()
 	s.metrics.BroadcastPeersPeers.Add(float64(len(peers)))
@@ -173,6 +186,7 @@ func (s *Service) SetAddPeersHandler(h func(addr ...swarm.Address)) {
 
 func (s *Service) Close() error {
 	close(s.quit)
+	s.gossipDedup.close()
 
 	stopped := make(chan struct{})
 	go func() {
@@ -202,7 +216,10 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 		}
 	}()
 	w, _ := protobuf.NewWriterAndReader(stream)
-	var peersRequest pb.Peers
+	var (
+		peersRequest pb.Peers
+		gossiped     []swarm.Address
+	)
 	for _, p := range peers {
 		if p.Equal(s.overlay) {
 			s.logger.Debug("skipping self-address in broadcast", "overlay", p.String())
@@ -248,10 +265,15 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 			Timestamp:         addr.Timestamp,
 			ChequebookAddress: addr.ChequebookAddress.Bytes(),
 		})
+		gossiped = append(gossiped, p)
 	}
 
 	if err := w.WriteMsgWithContext(ctx, &peersRequest); err != nil {
 		return fmt.Errorf("write Peers message: %w", err)
+	}
+
+	if len(gossiped) > 0 {
+		s.gossipDedup.add(peer, gossiped...)
 	}
 
 	return nil
@@ -296,7 +318,20 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 func (s *Service) disconnect(peer p2p.Peer) error {
 	s.inLimiter.Clear(peer.Address.ByteString())
 	s.outLimiter.Clear(peer.Address.ByteString())
+	s.gossipDedup.clearAddressee(peer.Address)
 	return nil
+}
+
+func (s *Service) filterGossipDedup(addressee swarm.Address, peers []swarm.Address) []swarm.Address {
+	filtered := make([]swarm.Address, 0, len(peers))
+	for _, p := range peers {
+		if s.gossipDedup.contains(addressee, p) {
+			s.metrics.GossipDedupSkipped.Inc()
+			continue
+		}
+		filtered = append(filtered, p)
+	}
+	return filtered
 }
 
 func (s *Service) startCheckPeersHandler() {

@@ -32,6 +32,7 @@ type metrics struct {
 	TimestampRejected        *prometheus.CounterVec
 
 	LegacyRecordSkipped prometheus.Counter
+	GossipDedupSkipped  prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -137,6 +138,12 @@ func newMetrics() metrics {
 			},
 			[]string{"reason"},
 		),
+		GossipDedupSkipped: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "gossip_dedup_skipped_total",
+			Help:      "Number of peer gossip entries suppressed by the outbound dedup cache.",
+		}),
 		ChequebookVerification: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Namespace: m.Namespace,
