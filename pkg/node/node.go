@@ -881,13 +881,8 @@ func NewBee(
 		}
 	)
 
-	// When the postage snapshot applies, hand it to the batch service so it
-	// rebuilds the store from the snapshot during construction; otherwise the
-	// store is reset only when --resync is requested. Either way the store is
-	// reset in a single place (batchservice.New), which avoids a second reset
-	// wiping the snapshot that was just loaded (see #5495).
 	var batchSnapshot *batchservice.Snapshot
-	if !o.SkipPostageSnapshot && !batchStoreExists && (networkID == mainnetNetworkID) && beeNodeMode != api.UltraLightMode {
+	if useEmbeddedSnapshot(o.SkipPostageSnapshot, batchStoreExists, o.Resync, networkID, beeNodeMode) {
 		batchSnapshot, err = snapshot.New(ctx, logger, archive.Getter{}, b.syncingStopped, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout, postageSyncStart)
 		if err != nil {
 			// A corrupt snapshot is not fatal: rebuild from the chain instead.
@@ -1635,4 +1630,12 @@ func batchStoreExists(s storage.StateStorer) (bool, error) {
 	})
 
 	return hasOne, err
+}
+
+// useEmbeddedSnapshot reports whether to rebuild the batch store from the
+// embedded snapshot: mainnet, full or light node, and the store will be built
+// from scratch (no store yet, or a resync wipes it), unless explicitly skipped.
+func useEmbeddedSnapshot(skip, batchStoreExists, resync bool, networkID uint64, mode api.BeeNodeMode) bool {
+	storeWillRebuild := !batchStoreExists || resync
+	return !skip && storeWillRebuild && networkID == mainnetNetworkID && mode != api.UltraLightMode
 }
