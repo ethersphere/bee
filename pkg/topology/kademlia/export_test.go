@@ -16,6 +16,7 @@ var (
 		return k.pruneOversaturatedBins
 	}
 	GenerateCommonBinPrefixes = generateCommonBinPrefixes
+	FanoutQuotas              = fanoutQuotas
 )
 
 const (

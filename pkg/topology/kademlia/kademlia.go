@@ -58,6 +58,10 @@ const (
 	defaultTimeToRetry                 = 2 * defaultShortRetry
 	defaultPruneWakeup                 = 5 * time.Minute
 	defaultBroadcastBinSize            = 2
+	// defaultGradientBroadcast enables gradient-weighted fan-out across the
+	// shallow (distant) bins: the same per-Announce gossip budget is shifted
+	// toward bins closer to the neighborhood instead of being spread flatly.
+	defaultGradientBroadcast = true
 )
 
 var (
@@ -98,6 +102,7 @@ type Options struct {
 	OverSaturationPeers         *int
 	BootnodeOverSaturationPeers *int
 	BroadcastBinSize            *int
+	GradientBroadcast           *bool
 	LowWaterMark                *int
 }
 
@@ -119,6 +124,7 @@ type kadOptions struct {
 	OverSaturationPeers         int
 	BootnodeOverSaturationPeers int
 	BroadcastBinSize            int
+	GradientBroadcast           bool
 	LowWaterMark                int
 }
 
@@ -140,6 +146,7 @@ func newKadOptions(o Options) kadOptions {
 		OverSaturationPeers:         defaultValInt(o.OverSaturationPeers, defaultOverSaturationPeers),
 		BootnodeOverSaturationPeers: defaultValInt(o.BootnodeOverSaturationPeers, defaultBootNodeOverSaturationPeers),
 		BroadcastBinSize:            defaultValInt(o.BroadcastBinSize, defaultBroadcastBinSize),
+		GradientBroadcast:           defaultValBool(o.GradientBroadcast, defaultGradientBroadcast),
 		LowWaterMark:                defaultValInt(o.LowWaterMark, defaultLowWaterMark),
 	}
 
@@ -158,6 +165,13 @@ func defaultValInt(v *int, d int) int {
 }
 
 func defaultValDuration(v *time.Duration, d time.Duration) time.Duration {
+	if v == nil {
+		return d
+	}
+	return *v
+}
+
+func defaultValBool(v *bool, d bool) bool {
 	if v == nil {
 		return d
 	}
@@ -1042,6 +1056,29 @@ func (k *Kad) Announce(ctx context.Context, peer swarm.Address, fullnode bool) e
 	depth := k.neighborhoodDepth()
 	isNeighbor := swarm.Proximity(peer.Bytes(), k.base.Bytes()) >= depth
 
+	// Shallow (distant) bins are gossiped to a capped, gradient-weighted subset.
+	// When the peer is a neighbor, bins [depth, MaxBins) keep full gossip;
+	// otherwise every bin is shallow. The number of shallow bins is dynamic (it
+	// tracks storageRadius), so the fan-out budget is derived in the moment from
+	// BroadcastBinSize and the count of non-empty shallow bins.
+	shallowHi := swarm.MaxBins
+	if isNeighbor {
+		shallowHi = depth
+	}
+
+	var (
+		shallowPeers [swarm.MaxBins][]swarm.Address
+		counts       [swarm.MaxBins]int
+		quotas       [swarm.MaxBins]int
+	)
+	for bin := uint8(0); bin < shallowHi; bin++ {
+		shallowPeers[bin] = k.binPeers(bin, true)
+		counts[bin] = len(shallowPeers[bin])
+	}
+	if k.opt.GradientBroadcast {
+		quotas = fanoutQuotas(counts, shallowHi, k.opt.BroadcastBinSize)
+	}
+
 outer:
 	for bin := range swarm.MaxBins {
 
@@ -1053,7 +1090,11 @@ outer:
 		if bin >= depth && isNeighbor {
 			connectedPeers = k.binPeers(bin, false) // broadcast all neighborhood peers
 		} else {
-			connectedPeers, err = randomSubset(k.binPeers(bin, true), k.opt.BroadcastBinSize)
+			count := k.opt.BroadcastBinSize
+			if k.opt.GradientBroadcast {
+				count = quotas[bin]
+			}
+			connectedPeers, err = randomSubset(shallowPeers[bin], count)
 			if err != nil {
 				return err
 			}
@@ -1596,6 +1637,73 @@ func (k *Kad) Close() error {
 	k.logger.Debug("metrics collector finalized", "elapsed", time.Since(start))
 
 	return err
+}
+
+// fanoutQuotas distributes a gossip fan-out budget across the shallow (distant)
+// bins [0, hi), giving bins closer to the neighborhood (higher bin index, i.e.
+// nearer storageRadius) a larger share.
+//
+// The budget is derived in the moment as perBin * <number of non-empty shallow
+// bins>, so it tracks the dynamic number of distant bins (which follows
+// storageRadius) and stays bandwidth-neutral versus the flat per-bin selection:
+// the same total recipients, redistributed toward closer bins. Every non-empty
+// bin keeps a coverage floor of one recipient, each quota is capped by the
+// bin's connected-peer count, and the total stays within budget (it may exceed
+// budget only via the floor, which cannot happen while perBin >= 1). The
+// returned array is indexed by bin.
+func fanoutQuotas(counts [swarm.MaxBins]int, hi uint8, perBin int) [swarm.MaxBins]int {
+	var quotas [swarm.MaxBins]int
+
+	totalWeight := 0
+	active := 0
+	for bin := uint8(0); bin < hi; bin++ {
+		if counts[bin] == 0 {
+			continue
+		}
+		totalWeight += int(bin) + 1
+		quotas[bin] = 1 // coverage floor for every non-empty shallow bin
+		active++
+	}
+	if active == 0 {
+		return quotas
+	}
+
+	budget := perBin * active
+	used := active // floors already handed out
+
+	// Share the budget left after the floors, weighted toward closer bins.
+	if remaining := budget - used; remaining > 0 {
+		for bin := uint8(0); bin < hi; bin++ {
+			if counts[bin] == 0 {
+				continue
+			}
+			extra := remaining * (int(bin) + 1) / totalWeight // proportional floor
+			if room := counts[bin] - quotas[bin]; extra > room {
+				extra = room
+			}
+			quotas[bin] += extra
+			used += extra
+		}
+		// Hand out the rounding leftover, closest bin first.
+		for leftover := budget - used; leftover > 0; {
+			progressed := false
+			for bin := int(hi) - 1; bin >= 0; bin-- {
+				if leftover == 0 {
+					break
+				}
+				if counts[bin] > 0 && quotas[bin] < counts[bin] {
+					quotas[bin]++
+					leftover--
+					progressed = true
+				}
+			}
+			if !progressed {
+				break // every non-empty bin is capped at its peer count
+			}
+		}
+	}
+
+	return quotas
 }
 
 func randomSubset(addrs []swarm.Address, count int) ([]swarm.Address, error) {
