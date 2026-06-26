@@ -508,6 +508,55 @@ func TestContinueSyncing(t *testing.T) {
 	}
 }
 
+// TestSyncErrorBackoff verifies that a non-fatal sync error is followed by a
+// backoff before the next retry. Under synctest the worker blocks after one
+// failed call; without the backoff it would spin and consume both replies, so
+// the "exactly one call" check fails without the fix.
+func TestSyncErrorBackoff(t *testing.T) {
+	addr := swarm.RandAddress(t)
+
+	synctest.Test(t, func(t *testing.T) {
+		// Topmost=0 keeps top < start so the interval never advances and the loop
+		// retries with the same start value. Two replies cover the failed retry.
+		ps := mockps.NewPullSync(
+			mockps.WithCursors([]uint64{100}, 0),
+			mockps.WithSyncError(errors.New("stream error")),
+			mockps.WithReplies(
+				mockps.SyncReply{Bin: 0, Start: 1, Topmost: 0, Peer: addr},
+				mockps.SyncReply{Bin: 0, Start: 1, Topmost: 0, Peer: addr},
+			),
+		)
+		kad := kadMock.NewMockKademlia(
+			kadMock.WithEachPeerRevCalls(kadMock.AddrTuple{Addr: addr, PO: 0}),
+		)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		p := puller.New(swarm.RandAddress(t), mock.NewStateStore(), kad, resMock.NewReserve(resMock.WithRadius(0)), ps, nil, log.Noop, puller.Options{Bins: 1})
+		p.Start(ctx)
+
+		kad.Trigger()
+
+		// One failed call, then the worker blocks in the backoff.
+		synctest.Wait()
+		if got := len(ps.SyncCalls(addr)); got != 1 {
+			t.Fatalf("expected worker to back off after 1 failed call, got %d calls", got)
+		}
+
+		// Sleeping out the backoff releases exactly one retry.
+		time.Sleep(puller.SyncRetryBackoff)
+		synctest.Wait()
+		if got := len(ps.SyncCalls(addr)); got != 2 {
+			t.Fatalf("expected exactly one retry after the backoff, got %d calls", got)
+		}
+
+		if err := p.Close(); err != nil {
+			t.Errorf("close puller: %v", err)
+		}
+	})
+}
+
 // TestRadiusDecreaseLiveness verifies that after a radius decrease a new sync
 // worker starts without the manager blocking while the disconnected peer's
 // in-flight worker drains. Under synctest, a blocking disconnect holds up the

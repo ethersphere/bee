@@ -75,6 +75,8 @@ const (
 	maxChunksPerSecond = 1000 // roughly 4 MB/s
 
 	maxPODelta = 2 // the lowest level of proximity order (of peers) subtracted from the storage radius allowed for chunk syncing.
+
+	syncRetryBackoff = time.Second // minimum wait between retries after a non-fatal sync error
 )
 
 type Options struct {
@@ -384,6 +386,11 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 				}
 				errCount := countErrors(err)
 				p.logger.Debug("syncWorker interval failed", "error_count", errCount, "example_error", errors.Unwrap(err), "peer_address", address, "bin", bin, "cursor", cursor, "start", start, "topmost", top)
+				select {
+				case <-time.After(syncRetryBackoff):
+				case <-ctx.Done():
+					return
+				}
 			}
 
 			_ = p.limiter.WaitN(ctx, count)
