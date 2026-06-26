@@ -71,6 +71,7 @@ type Options struct {
 
 	GossipDedupCacheTTL      time.Duration
 	GossipDedupPruneInterval time.Duration
+	GossipCoalesceInterval   time.Duration
 }
 
 type Service struct {
@@ -96,6 +97,7 @@ type Service struct {
 	chequebookVerifier chequebook.Verifier
 	chequebookStorer   ChequebookStorer
 	gossipDedup        *gossipDedupCache
+	gossipBuf          *gossipBuffer
 }
 
 func New(streamer p2p.Streamer, addressbook addressbook.GetPutter, networkID uint64, overlay swarm.Address, logger log.Logger, o Options) *Service {
@@ -119,10 +121,12 @@ func New(streamer p2p.Streamer, addressbook addressbook.GetPutter, networkID uin
 	}
 
 	svc.gossipDedup = newGossipDedupCache(o.GossipDedupCacheTTL, o.GossipDedupPruneInterval)
+	svc.gossipBuf = newGossipBuffer(o.GossipCoalesceInterval, maxBatchSize)
 
 	if !o.BootnodeMode {
 		svc.startCheckPeersHandler()
 	}
+	svc.startGossipCoalescer()
 
 	return svc
 }
@@ -150,9 +154,34 @@ func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, p
 		return nil
 	}
 
-	maxSize := maxBatchSize
 	s.metrics.BroadcastPeers.Inc()
 	s.metrics.BroadcastPeersPeers.Add(float64(len(peers)))
+
+	// Already-batched messages go out immediately; single-peer gossips are coalesced.
+	if len(peers) >= coalesceThreshold {
+		return s.broadcastNow(ctx, addressee, peers...)
+	}
+
+	select {
+	case <-s.quit:
+		return ErrShutdownInProgress
+	default:
+	}
+
+	// Buffer; if it just filled up, flush it synchronously while still in the call
+	// (caller's ctx is alive here, so it is safe to use).
+	if full := s.gossipBuf.add(s.now(), addressee, peers...); full != nil {
+		s.metrics.GossipCoalescedFlushes.Inc()
+		s.setCoalesceBufferGauge()
+		return s.broadcastNow(ctx, full.addressee, full.addresses()...)
+	}
+	s.setCoalesceBufferGauge()
+	return nil
+}
+
+// broadcastNow performs the synchronous, rate-limited, batched send.
+func (s *Service) broadcastNow(ctx context.Context, addressee swarm.Address, peers ...swarm.Address) error {
+	maxSize := maxBatchSize
 
 	for len(peers) > 0 {
 		if maxSize > len(peers) {
@@ -165,8 +194,8 @@ func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, p
 		}
 
 		select {
-		case <-s.quit:
-			return ErrShutdownInProgress
+		case <-ctx.Done():
+			return ctx.Err()
 		default:
 		}
 
@@ -186,7 +215,6 @@ func (s *Service) SetAddPeersHandler(h func(addr ...swarm.Address)) {
 
 func (s *Service) Close() error {
 	close(s.quit)
-	s.gossipDedup.close()
 
 	stopped := make(chan struct{})
 	go func() {
@@ -194,12 +222,15 @@ func (s *Service) Close() error {
 		s.wg.Wait()
 	}()
 
+	var err error
 	select {
 	case <-stopped:
-		return nil
 	case <-time.After(time.Second * 5):
-		return errors.New("hive: waited 5 seconds to close active goroutines")
+		err = errors.New("hive: waited 5 seconds to close active goroutines")
 	}
+
+	s.gossipDedup.close()
+	return err
 }
 
 func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swarm.Address) (err error) {
@@ -319,6 +350,8 @@ func (s *Service) disconnect(peer p2p.Peer) error {
 	s.inLimiter.Clear(peer.Address.ByteString())
 	s.outLimiter.Clear(peer.Address.ByteString())
 	s.gossipDedup.clearAddressee(peer.Address)
+	s.gossipBuf.clearAddressee(peer.Address)
+	s.setCoalesceBufferGauge()
 	return nil
 }
 
@@ -332,6 +365,46 @@ func (s *Service) filterGossipDedup(addressee swarm.Address, peers []swarm.Addre
 		filtered = append(filtered, p)
 	}
 	return filtered
+}
+
+func (s *Service) startGossipCoalescer() {
+	tick := s.gossipBuf.interval / 4
+	if tick <= 0 {
+		tick = s.gossipBuf.interval
+	}
+
+	s.wg.Go(func() {
+		ticker := time.NewTicker(tick)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				s.flushGossipEntries(s.gossipBuf.takeDue(s.now()))
+			case <-s.quit:
+				s.flushGossipEntries(s.gossipBuf.takeAll())
+				return
+			}
+		}
+	})
+}
+
+func (s *Service) flushGossipEntries(entries []*pendingGossip) {
+	if len(entries) > 0 {
+		s.metrics.GossipCoalescedFlushes.Add(float64(len(entries)))
+	}
+	s.setCoalesceBufferGauge()
+
+	for _, e := range entries {
+		ctx, cancel := context.WithTimeout(context.Background(), messageTimeout)
+		if err := s.broadcastNow(ctx, e.addressee, e.addresses()...); err != nil {
+			s.logger.Debug("hive: coalesced gossip flush failed", "addressee", e.addressee, "error", err)
+		}
+		cancel()
+	}
+}
+
+func (s *Service) setCoalesceBufferGauge() {
+	s.metrics.GossipCoalesceBufferSize.Set(float64(s.gossipBuf.pendingAddressees()))
 }
 
 func (s *Service) startCheckPeersHandler() {
