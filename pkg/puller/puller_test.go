@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -505,6 +506,73 @@ func TestContinueSyncing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// TestRadiusDecreaseLiveness verifies that after a radius decrease a new sync
+// worker starts without the manager blocking while the disconnected peer's
+// in-flight worker drains. Under synctest, a blocking disconnect holds up the
+// restart by cancelDelay; a non-blocking one restarts immediately.
+func TestRadiusDecreaseLiveness(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		const (
+			bins          = 4
+			initialRadius = 2 // peer within depth: only bins >= 2 sync initially
+			newRadius     = 0 // radius decrease: all bins must be resynced
+			// cancelDelay models a slow drain of the in-flight Sync after its
+			// context is cancelled; > 0 and < Close's 10s drain timeout.
+			cancelDelay = time.Second
+		)
+
+		base := swarm.RandAddress(t)
+		// peer PO matches initialRadius so it participates both before and after.
+		peerAddr := swarm.RandAddressAt(t, base, initialRadius)
+
+		rs := resMock.NewReserve(resMock.WithRadius(initialRadius))
+		ps := mockps.NewPullSync(
+			mockps.WithCursors(make([]uint64, bins), 0),
+			mockps.WithSyncCancelDelay(cancelDelay),
+		)
+		kad := kadMock.NewMockKademlia(
+			kadMock.WithEachPeerRevCalls(kadMock.AddrTuple{Addr: peerAddr, PO: initialRadius}),
+		)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		p := puller.New(base, mock.NewStateStore(), kad, rs, ps, nil, log.Noop, puller.Options{Bins: bins})
+		p.Start(ctx)
+
+		// Wait for syncing to start (peer is within depth at radius=2).
+		kad.Trigger()
+		synctest.Wait()
+		if got := ps.TotalSyncCalls(); got < 1 {
+			t.Fatalf("expected syncing to start, got %d sync calls", got)
+		}
+		snapshot := ps.TotalSyncCalls()
+
+		// Radius decrease tears down the peer's workers and restarts them.
+		rs.SetStorageRadius(newRadius)
+		start := time.Now()
+		kad.Trigger()
+		synctest.Wait()
+
+		// A new worker must have started without the manager blocking on the
+		// in-flight drain. Use Errorf not Fatalf so we still reach Close: on the
+		// bug the manager is blocked waiting for the drain and Close's cancel
+		// is what lets the bubble exit.
+		if ps.TotalSyncCalls() <= snapshot {
+			t.Errorf("no new sync worker started after radius decrease (still %d); "+
+				"manager blocked draining the in-flight goroutine during disconnect", ps.TotalSyncCalls())
+		}
+		if elapsed := time.Since(start); elapsed >= cancelDelay {
+			t.Errorf("manager blocked on in-flight drain: elapsed %v, want < %v", elapsed, cancelDelay)
+		}
+
+		// Close inside the bubble so the sleeping goroutines drain.
+		if err := p.Close(); err != nil {
+			t.Errorf("close puller: %v", err)
+		}
+	})
 }
 
 func TestPeerGone(t *testing.T) {
