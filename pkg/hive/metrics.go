@@ -33,9 +33,15 @@ type metrics struct {
 
 	LegacyRecordSkipped prometheus.Counter
 
-	GossipCoalescedFlushes   prometheus.Counter
-	GossipCoalesceDropped    prometheus.Counter
-	GossipCoalesceBufferSize prometheus.Gauge
+	GossipCoalesceImmediateCalls prometheus.Counter
+	GossipCoalesceImmediatePeers prometheus.Counter
+	GossipCoalesceBufferedCalls  prometheus.Counter
+	GossipCoalesceBufferedPeers  prometheus.Counter
+	GossipCoalesceFlushTotal     *prometheus.CounterVec
+	GossipCoalesceFlushPeers     prometheus.Counter
+	GossipCoalesceFlushBatchSize prometheus.Histogram
+	GossipCoalesceDropped        prometheus.Counter
+	GossipCoalesceBufferSize     prometheus.Gauge
 }
 
 func newMetrics() metrics {
@@ -141,11 +147,51 @@ func newMetrics() metrics {
 			},
 			[]string{"reason"},
 		),
-		GossipCoalescedFlushes: prometheus.NewCounter(prometheus.CounterOpts{
+		GossipCoalesceImmediateCalls: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "gossip_coalesced_flushes_total",
-			Help:      "Number of coalesced outbound gossip flushes dispatched.",
+			Name:      "gossip_coalesce_immediate_calls_total",
+			Help:      "Number of BroadcastPeers calls sent immediately without coalescing (batched input).",
+		}),
+		GossipCoalesceImmediatePeers: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "gossip_coalesce_immediate_peers_total",
+			Help:      "Number of peer gossip entries sent immediately without coalescing.",
+		}),
+		GossipCoalesceBufferedCalls: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "gossip_coalesce_buffered_calls_total",
+			Help:      "Number of single-peer BroadcastPeers calls enqueued into the coalesce buffer.",
+		}),
+		GossipCoalesceBufferedPeers: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "gossip_coalesce_buffered_peers_total",
+			Help:      "Number of peer gossip entries enqueued into the coalesce buffer.",
+		}),
+		GossipCoalesceFlushTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "gossip_coalesce_flush_total",
+				Help:      "Number of coalesced gossip flushes dispatched. The reason label is one of: timer, max_batch, shutdown.",
+			},
+			[]string{"reason"},
+		),
+		GossipCoalesceFlushPeers: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "gossip_coalesce_flush_peers_total",
+			Help:      "Number of peer gossip entries dispatched by coalesced flushes.",
+		}),
+		GossipCoalesceFlushBatchSize: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "gossip_coalesce_flush_batch_size",
+			Help:      "Number of peers per coalesced gossip flush.",
+			Buckets:   []float64{1, 2, 5, 10, 15, 20, 25, 30},
 		}),
 		GossipCoalesceDropped: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,

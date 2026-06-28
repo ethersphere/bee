@@ -57,6 +57,12 @@ var (
 	ErrRateLimitExceeded = errors.New("rate limit exceeded")
 )
 
+const (
+	coalesceFlushReasonTimer    = "timer"
+	coalesceFlushReasonMaxBatch = "max_batch"
+	coalesceFlushReasonShutdown = "shutdown"
+)
+
 // Options configures hive.Service at construction. Chequebook fields are
 // optional: a nil ChequebookVerifier disables the verification gate (and
 // records without a chequebook are accepted); a nil ChequebookStorer means
@@ -152,6 +158,9 @@ func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, p
 
 	// Already-batched messages go out immediately; single-peer gossips are coalesced.
 	if len(peers) >= coalesceThreshold {
+		s.metrics.GossipCoalesceImmediateCalls.Inc()
+		s.metrics.GossipCoalesceImmediatePeers.Add(float64(len(peers)))
+		s.logger.Debug("gossip immediate send", "addressee", addressee, "peer_count", len(peers))
 		return s.broadcastNow(ctx, false, addressee, peers...)
 	}
 
@@ -161,11 +170,16 @@ func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, p
 	default:
 	}
 
+	s.metrics.GossipCoalesceBufferedCalls.Inc()
+	s.metrics.GossipCoalesceBufferedPeers.Add(float64(len(peers)))
+	s.logger.Debug("gossip buffered", "addressee", addressee, "peer_count", len(peers))
+
 	// Buffer; if it just filled up, flush it synchronously while still in the call
 	if full := s.gossipBuf.add(s.now(), addressee, peers...); full != nil {
-		s.metrics.GossipCoalescedFlushes.Inc()
+		flushPeers := full.addresses()
+		s.recordCoalesceFlush(coalesceFlushReasonMaxBatch, addressee, flushPeers)
 		s.setCoalesceBufferGauge()
-		return s.broadcastNow(ctx, true, addressee, full.addresses()...)
+		return s.broadcastNow(ctx, true, addressee, flushPeers...)
 	}
 	s.setCoalesceBufferGauge()
 	return nil
@@ -354,27 +368,40 @@ func (s *Service) startGossipCoalescer() {
 		for {
 			select {
 			case <-ticker.C:
-				s.flushGossipEntries(s.gossipBuf.takeDue(s.now()))
+				s.flushGossipEntries(s.gossipBuf.takeDue(s.now()), coalesceFlushReasonTimer)
 			case <-s.quit:
+				s.flushGossipEntries(s.gossipBuf.takeAll(), coalesceFlushReasonShutdown)
 				return
 			}
 		}
 	})
 }
 
-func (s *Service) flushGossipEntries(entries []*pendingGossip) {
-	if len(entries) > 0 {
-		s.metrics.GossipCoalescedFlushes.Add(float64(len(entries)))
-	}
+func (s *Service) flushGossipEntries(entries []*pendingGossip, reason string) {
 	s.setCoalesceBufferGauge()
 
 	for _, e := range entries {
+		peers := e.addresses()
+		s.recordCoalesceFlush(reason, e.addressee, peers)
+
 		ctx, cancel := context.WithTimeout(context.Background(), messageTimeout)
-		if err := s.broadcastNow(ctx, true, e.addressee, e.addresses()...); err != nil {
-			s.logger.Debug("hive: coalesced gossip flush failed", "addressee", e.addressee, "error", err)
+		if err := s.broadcastNow(ctx, true, e.addressee, peers...); err != nil {
+			s.logger.Debug("coalesced gossip flush failed", "addressee", e.addressee, "reason", reason, "batch_size", len(peers), "error", err)
 		}
 		cancel()
 	}
+}
+
+func (s *Service) recordCoalesceFlush(reason string, addressee swarm.Address, peers []swarm.Address) {
+	batchSize := len(peers)
+	if batchSize == 0 {
+		return
+	}
+
+	s.metrics.GossipCoalesceFlushTotal.WithLabelValues(reason).Inc()
+	s.metrics.GossipCoalesceFlushPeers.Add(float64(batchSize))
+	s.metrics.GossipCoalesceFlushBatchSize.Observe(float64(batchSize))
+	s.logger.Debug("coalesced gossip flush", "addressee", addressee, "reason", reason, "batch_size", batchSize)
 }
 
 func (s *Service) setCoalesceBufferGauge() {

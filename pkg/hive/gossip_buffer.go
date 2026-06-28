@@ -83,6 +83,11 @@ func (b *gossipBuffer) takeDue(now time.Time) []*pendingGossip {
 	return b.take(func(e *pendingGossip) bool { return !e.deadline.After(now) })
 }
 
+// takeAll removes and returns everything (used for shutdown drain).
+func (b *gossipBuffer) takeAll() []*pendingGossip {
+	return b.take(func(*pendingGossip) bool { return true })
+}
+
 func (b *gossipBuffer) clearAddressee(addressee swarm.Address) {
 	b.mu.Lock()
 	defer b.mu.Unlock()

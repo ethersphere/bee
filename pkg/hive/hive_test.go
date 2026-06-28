@@ -1515,3 +1515,138 @@ func TestBroadcastPeersCoalesce(t *testing.T) {
 		}
 	})
 }
+
+const hiveGossipBufferisationInterval = time.Second
+
+func Test_HiveGossipBufferisation(t *testing.T) {
+	t.Parallel()
+
+	makeAddressbookWithPeers := func(t *testing.T, n int) (ab.GetPutter, []swarm.Address) {
+		t.Helper()
+
+		addressbook := ab.New(mock.NewStateStore())
+		networkID := uint64(1)
+		overlays := make([]swarm.Address, n)
+
+		for i := range n {
+			underlay, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/" + strconv.Itoa(4000+i))
+			if err != nil {
+				t.Fatal(err)
+			}
+			pk, err := crypto.GenerateSecp256k1Key()
+			if err != nil {
+				t.Fatal(err)
+			}
+			signer := crypto.NewDefaultSigner(pk)
+			overlay, err := crypto.NewOverlayAddress(pk.PublicKey, networkID, nonce)
+			if err != nil {
+				t.Fatal(err)
+			}
+			bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{underlay}, overlay, networkID, nonce, 1, common.Address{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := addressbook.Put(bzzAddr.Overlay, *bzzAddr, true); err != nil {
+				t.Fatal(err)
+			}
+			overlays[i] = bzzAddr.Overlay
+		}
+
+		return addressbook, overlays
+	}
+
+	setupClient := func(t *testing.T, addressbook ab.GetPutter) (*hive.Service, *streamtest.Recorder, swarm.Address) {
+		t.Helper()
+
+		logger := log.Noop
+		networkID := uint64(1)
+
+		streamer := streamtest.New()
+		serverAddress := swarm.RandAddress(t)
+		server := hive.New(streamer, ab.New(mock.NewStateStore()), networkID, serverAddress, logger, hive.Options{AllowPrivateCIDRs: true})
+		testutil.CleanupCloser(t, server)
+
+		recorder := streamtest.New(streamtest.WithProtocols(server.Protocol()))
+		clientAddress := swarm.RandAddress(t)
+		client := hive.New(recorder, addressbook, networkID, clientAddress, logger, hive.Options{
+			AllowPrivateCIDRs:      true,
+			GossipCoalesceInterval: hiveGossipBufferisationInterval,
+		})
+		client.SetCoalesceJitterForTest(0)
+		testutil.CleanupCloser(t, client)
+
+		return client, recorder, serverAddress
+	}
+
+	t.Run("waits for interval before flush", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			const peerCount = 5
+
+			addressbook, overlays := makeAddressbookWithPeers(t, peerCount)
+			client, recorder, serverAddress := setupClient(t, addressbook)
+			ctx := context.Background()
+
+			for _, overlay := range overlays {
+				if err := client.BroadcastPeers(ctx, serverAddress, overlay); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			assertNoGossipRecords(t, recorder, serverAddress)
+
+			time.Sleep(hiveGossipBufferisationInterval + 100*time.Millisecond)
+			synctest.Wait()
+
+			records, err := recorder.Records(serverAddress, "hive", "2.0.0", "peers")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got, want := len(records), 1; got != want {
+				t.Fatalf("got %d gossip messages, want %d", got, want)
+			}
+
+			messages, err := readAndAssertPeersMsgs(records[0].In(), 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got, want := len(messages[0].Peers), peerCount; got != want {
+				t.Fatalf("coalesced peer count: got %d, want %d", got, want)
+			}
+		})
+	})
+
+	t.Run("flushes immediately when buffer is full", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			peerCount := hive.MaxBatchSize
+
+			addressbook, overlays := makeAddressbookWithPeers(t, peerCount)
+			client, recorder, serverAddress := setupClient(t, addressbook)
+			ctx := context.Background()
+
+			for i, overlay := range overlays {
+				if err := client.BroadcastPeers(ctx, serverAddress, overlay); err != nil {
+					t.Fatal(err)
+				}
+				if i == peerCount-2 {
+					assertNoGossipRecords(t, recorder, serverAddress)
+				}
+			}
+
+			records, err := recorder.Records(serverAddress, "hive", "2.0.0", "peers")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got, want := len(records), 1; got != want {
+				t.Fatalf("got %d gossip messages after max batch, want %d", got, want)
+			}
+
+			messages, err := readAndAssertPeersMsgs(records[0].In(), 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got, want := len(messages[0].Peers), peerCount; got != want {
+				t.Fatalf("coalesced peer count: got %d, want %d", got, want)
+			}
+		})
+	})
+}

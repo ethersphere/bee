@@ -27,7 +27,7 @@ func (s *Service) SetCoalesceJitterForTest(d time.Duration) {
 
 // FlushDueGossipForTest flushes coalesced gossip entries whose deadline has passed.
 func (s *Service) FlushDueGossipForTest() {
-	s.flushGossipEntries(s.gossipBuf.takeDue(s.now()))
+	s.flushGossipEntries(s.gossipBuf.takeDue(s.now()), coalesceFlushReasonTimer)
 }
 
 // CheckAndAddPeers exposes the internal ingestion path for tests,
