@@ -216,6 +216,7 @@ const (
 	reserveMinEvictCount          = 1_000
 	cacheMinEvictCount            = 10_000
 	maxAllowedDoubling            = 1
+	addressbookPruneAfter         = 30 * 24 * time.Hour // remove addressbook entries not seen for this long
 )
 
 func NewBee(
@@ -381,6 +382,12 @@ func NewBee(
 	}
 
 	addressbook := addressbook.New(stateStore)
+
+	// Prune addressbook entries whose overlays have not been seen recently, so
+	// the address book does not accumulate stale peers indefinitely.
+	if err := addressbook.Prune(time.Now().Add(-addressbookPruneAfter)); err != nil {
+		logger.Warning("addressbook prune failed", "error", err)
+	}
 
 	logger.Info("using overlay address", "address", swarmAddress)
 
