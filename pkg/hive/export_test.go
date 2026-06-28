@@ -12,18 +12,22 @@ import (
 )
 
 var (
-	MaxBatchSize      = maxBatchSize
-	LimitBurst        = limitBurst
-	CoalesceThreshold = coalesceThreshold
+	MaxBatchSize = maxBatchSize
+	LimitBurst   = limitBurst
 )
 
 func (s *Service) SetTimeFunc(f func() time.Time) {
 	s.now = f
 }
 
-// FlushGossipBufferForTest drains the outbound gossip coalesce buffer synchronously.
-func (s *Service) FlushGossipBufferForTest() {
-	s.flushGossipEntries(s.gossipBuf.takeAll())
+// SetCoalesceJitterForTest fixes coalesce deadline jitter for deterministic tests.
+func (s *Service) SetCoalesceJitterForTest(d time.Duration) {
+	s.gossipBuf.jitter = d
+}
+
+// FlushDueGossipForTest flushes coalesced gossip entries whose deadline has passed.
+func (s *Service) FlushDueGossipForTest() {
+	s.flushGossipEntries(s.gossipBuf.takeDue(s.now()))
 }
 
 // CheckAndAddPeers exposes the internal ingestion path for tests,

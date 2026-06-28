@@ -61,17 +61,13 @@ var (
 // optional: a nil ChequebookVerifier disables the verification gate (and
 // records without a chequebook are accepted); a nil ChequebookStorer means
 // no overlay→chequebook persistence — addressbook writes happen directly.
-//
-// Gossip dedup fields are optional.
 type Options struct {
 	BootnodeMode       bool
 	AllowPrivateCIDRs  bool
 	ChequebookVerifier chequebook.Verifier
 	ChequebookStorer   ChequebookStorer
 
-	GossipDedupCacheTTL      time.Duration
-	GossipDedupPruneInterval time.Duration
-	GossipCoalesceInterval   time.Duration
+	GossipCoalesceInterval time.Duration
 }
 
 type Service struct {
@@ -96,7 +92,6 @@ type Service struct {
 	// chequebook are dropped.
 	chequebookVerifier chequebook.Verifier
 	chequebookStorer   ChequebookStorer
-	gossipDedup        *gossipDedupCache
 	gossipBuf          *gossipBuffer
 }
 
@@ -120,7 +115,6 @@ func New(streamer p2p.Streamer, addressbook addressbook.GetPutter, networkID uin
 		chequebookStorer:   o.ChequebookStorer,
 	}
 
-	svc.gossipDedup = newGossipDedupCache(o.GossipDedupCacheTTL, o.GossipDedupPruneInterval)
 	svc.gossipBuf = newGossipBuffer(o.GossipCoalesceInterval, maxBatchSize)
 
 	if !o.BootnodeMode {
@@ -149,7 +143,6 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 var ErrShutdownInProgress = errors.New("shutdown in progress")
 
 func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, peers ...swarm.Address) error {
-	peers = s.filterGossipDedup(addressee, peers)
 	if len(peers) == 0 {
 		return nil
 	}
@@ -159,7 +152,7 @@ func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, p
 
 	// Already-batched messages go out immediately; single-peer gossips are coalesced.
 	if len(peers) >= coalesceThreshold {
-		return s.broadcastNow(ctx, addressee, peers...)
+		return s.broadcastNow(ctx, false, addressee, peers...)
 	}
 
 	select {
@@ -169,18 +162,19 @@ func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, p
 	}
 
 	// Buffer; if it just filled up, flush it synchronously while still in the call
-	// (caller's ctx is alive here, so it is safe to use).
 	if full := s.gossipBuf.add(s.now(), addressee, peers...); full != nil {
 		s.metrics.GossipCoalescedFlushes.Inc()
 		s.setCoalesceBufferGauge()
-		return s.broadcastNow(ctx, full.addressee, full.addresses()...)
+		return s.broadcastNow(ctx, true, addressee, full.addresses()...)
 	}
 	s.setCoalesceBufferGauge()
 	return nil
 }
 
 // broadcastNow performs the synchronous, rate-limited, batched send.
-func (s *Service) broadcastNow(ctx context.Context, addressee swarm.Address, peers ...swarm.Address) error {
+// When coalesced is true, peers dropped due to rate limiting increment
+// GossipCoalesceDropped.
+func (s *Service) broadcastNow(ctx context.Context, coalesced bool, addressee swarm.Address, peers ...swarm.Address) error {
 	maxSize := maxBatchSize
 
 	for len(peers) > 0 {
@@ -190,6 +184,9 @@ func (s *Service) broadcastNow(ctx context.Context, addressee swarm.Address, pee
 
 		// If broadcasting limit is exceeded, return early
 		if !s.outLimiter.Allow(addressee.ByteString(), maxSize) {
+			if coalesced {
+				s.metrics.GossipCoalesceDropped.Add(float64(len(peers)))
+			}
 			return nil
 		}
 
@@ -229,7 +226,6 @@ func (s *Service) Close() error {
 		err = errors.New("hive: waited 5 seconds to close active goroutines")
 	}
 
-	s.gossipDedup.close()
 	return err
 }
 
@@ -247,10 +243,7 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 		}
 	}()
 	w, _ := protobuf.NewWriterAndReader(stream)
-	var (
-		peersRequest pb.Peers
-		gossiped     []swarm.Address
-	)
+	var peersRequest pb.Peers
 	for _, p := range peers {
 		if p.Equal(s.overlay) {
 			s.logger.Debug("skipping self-address in broadcast", "overlay", p.String())
@@ -296,15 +289,10 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 			Timestamp:         addr.Timestamp,
 			ChequebookAddress: addr.ChequebookAddress.Bytes(),
 		})
-		gossiped = append(gossiped, p)
 	}
 
 	if err := w.WriteMsgWithContext(ctx, &peersRequest); err != nil {
 		return fmt.Errorf("write Peers message: %w", err)
-	}
-
-	if len(gossiped) > 0 {
-		s.gossipDedup.add(peer, gossiped...)
 	}
 
 	return nil
@@ -349,26 +337,13 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 func (s *Service) disconnect(peer p2p.Peer) error {
 	s.inLimiter.Clear(peer.Address.ByteString())
 	s.outLimiter.Clear(peer.Address.ByteString())
-	s.gossipDedup.clearAddressee(peer.Address)
 	s.gossipBuf.clearAddressee(peer.Address)
 	s.setCoalesceBufferGauge()
 	return nil
 }
 
-func (s *Service) filterGossipDedup(addressee swarm.Address, peers []swarm.Address) []swarm.Address {
-	filtered := make([]swarm.Address, 0, len(peers))
-	for _, p := range peers {
-		if s.gossipDedup.contains(addressee, p) {
-			s.metrics.GossipDedupSkipped.Inc()
-			continue
-		}
-		filtered = append(filtered, p)
-	}
-	return filtered
-}
-
 func (s *Service) startGossipCoalescer() {
-	tick := s.gossipBuf.interval / 4
+	tick := s.gossipBuf.interval / 2
 	if tick <= 0 {
 		tick = s.gossipBuf.interval
 	}
@@ -381,7 +356,6 @@ func (s *Service) startGossipCoalescer() {
 			case <-ticker.C:
 				s.flushGossipEntries(s.gossipBuf.takeDue(s.now()))
 			case <-s.quit:
-				s.flushGossipEntries(s.gossipBuf.takeAll())
 				return
 			}
 		}
@@ -396,7 +370,7 @@ func (s *Service) flushGossipEntries(entries []*pendingGossip) {
 
 	for _, e := range entries {
 		ctx, cancel := context.WithTimeout(context.Background(), messageTimeout)
-		if err := s.broadcastNow(ctx, e.addressee, e.addresses()...); err != nil {
+		if err := s.broadcastNow(ctx, true, e.addressee, e.addresses()...); err != nil {
 			s.logger.Debug("hive: coalesced gossip flush failed", "addressee", e.addressee, "error", err)
 		}
 		cancel()

@@ -48,7 +48,7 @@ func newGossipBuffer(interval time.Duration, maxBatch int) *gossipBuffer {
 }
 
 // add buffers peers for the addressee. If the buffer reaches maxBatch it is
-// removed and returned so the caller can flush it immediately; otherwise nil.
+// removed and returned so the caller can flush it immediately.
 func (b *gossipBuffer) add(now time.Time, addressee swarm.Address, peers ...swarm.Address) *pendingGossip {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -56,10 +56,14 @@ func (b *gossipBuffer) add(now time.Time, addressee swarm.Address, peers ...swar
 	key := addressee.ByteString()
 	e, ok := b.pending[key]
 	if !ok {
+		var jitter time.Duration
+		if b.jitter > 0 {
+			jitter = time.Duration(rand.Int64N(int64(b.jitter)))
+		}
 		e = &pendingGossip{
 			addressee: addressee,
 			peers:     make(map[string]swarm.Address),
-			deadline:  now.Add(b.interval + time.Duration(rand.Int64N(int64(b.jitter)))),
+			deadline:  now.Add(b.interval + jitter),
 		}
 		b.pending[key] = e
 	}
@@ -77,11 +81,6 @@ func (b *gossipBuffer) add(now time.Time, addressee swarm.Address, peers ...swar
 // takeDue removes and returns all entries whose deadline has passed.
 func (b *gossipBuffer) takeDue(now time.Time) []*pendingGossip {
 	return b.take(func(e *pendingGossip) bool { return !e.deadline.After(now) })
-}
-
-// takeAll removes and returns everything (used for the shutdown drain).
-func (b *gossipBuffer) takeAll() []*pendingGossip {
-	return b.take(func(*pendingGossip) bool { return true })
 }
 
 func (b *gossipBuffer) clearAddressee(addressee swarm.Address) {

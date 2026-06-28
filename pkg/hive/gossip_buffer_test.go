@@ -63,18 +63,3 @@ func TestGossipBufferMaxBatchFlush(t *testing.T) {
 		t.Fatalf("want empty buffer after maxBatch flush, got %d due", len(due))
 	}
 }
-
-func TestGossipBufferClearAddressee(t *testing.T) {
-	t.Parallel()
-
-	b := newGossipBuffer(time.Second, maxBatchSize)
-	addressee := swarm.RandAddress(t)
-	now := time.Now()
-
-	b.add(now, addressee, swarm.RandAddress(t))
-	b.clearAddressee(addressee)
-
-	if all := b.takeAll(); len(all) != 0 {
-		t.Fatalf("want buffer cleared on disconnect, got %d entries", len(all))
-	}
-}

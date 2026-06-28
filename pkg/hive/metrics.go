@@ -32,9 +32,9 @@ type metrics struct {
 	TimestampRejected        *prometheus.CounterVec
 
 	LegacyRecordSkipped prometheus.Counter
-	GossipDedupSkipped  prometheus.Counter
 
 	GossipCoalescedFlushes   prometheus.Counter
+	GossipCoalesceDropped    prometheus.Counter
 	GossipCoalesceBufferSize prometheus.Gauge
 }
 
@@ -141,17 +141,17 @@ func newMetrics() metrics {
 			},
 			[]string{"reason"},
 		),
-		GossipDedupSkipped: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "gossip_dedup_skipped_total",
-			Help:      "Number of peer gossip entries suppressed by the outbound dedup cache.",
-		}),
 		GossipCoalescedFlushes: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "gossip_coalesced_flushes_total",
 			Help:      "Number of coalesced outbound gossip flushes dispatched.",
+		}),
+		GossipCoalesceDropped: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "gossip_coalesce_dropped_total",
+			Help:      "Number of peer gossip entries dropped during coalesced flush due to outbound rate limiting.",
 		}),
 		GossipCoalesceBufferSize: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: m.Namespace,
