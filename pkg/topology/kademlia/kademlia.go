@@ -456,7 +456,7 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 		k.connectedPeers.Add(peer.addr)
 
 		if err := k.addressBook.UpdateLastSeen(peer.addr); err != nil {
-			k.logger.Debug("could not update last seen for peer", "peer_address", peer.addr, "error", err)
+			k.logger.Warning("could not update last seen for peer", "peer_address", peer.addr, "error", err)
 		}
 
 		k.metrics.TotalOutboundConnections.Inc()
@@ -1219,7 +1219,7 @@ func (k *Kad) onConnected(ctx context.Context, addr swarm.Address) error {
 	k.connectedPeers.Add(addr)
 	k.waitNext.Remove(addr)
 	if err := k.addressBook.UpdateLastSeen(addr); err != nil {
-		k.logger.Debug("could not update last seen for peer", "peer_address", addr, "error", err)
+		k.logger.Warning("could not update last seen for peer", "peer_address", addr, "error", err)
 	}
 	k.recalcDepth()
 	k.notifyManageLoop()

@@ -57,7 +57,7 @@ type migratedAddress struct {
 type migratedEntry struct {
 	Address  migratedAddress `json:"address"`
 	Verified bool            `json:"verified"`
-	LastSeen int64           `json:"last_seen"`
+	LastSeen int64           `json:"last_seen,omitempty"`
 }
 
 // rewriteAddressbookEnvelope wraps each "addressbook_entry_*" legacy
@@ -125,9 +125,9 @@ func rewriteAddressbookEnvelope(s storage.Store) migration.StepFn {
 // stampAddressbookLastSeen sets "last_seen" to the current time on every
 // "addressbook_entry_*" record that lacks it, so that addresses carried over
 // from before pruning was introduced are not immediately pruned. Entries that
-// already carry a non-zero last_seen are left untouched. The whole record is
-// preserved by merging into the decoded JSON object rather than re-encoding a
-// typed struct.
+// already carry a non-zero last_seen are left untouched. The record is decoded
+// into migratedEntry, the current serialization shape, whose last_seen field is
+// omitempty so older records that predate it round-trip unchanged.
 func stampAddressbookLastSeen(s storage.Store) migration.StepFn {
 	return func() error {
 		store := &StateStorerAdapter{s}
@@ -151,31 +151,18 @@ func stampAddressbookLastSeen(s storage.Store) migration.StepFn {
 		now := time.Now().Unix()
 
 		for _, e := range batch {
-			var fields map[string]json.RawMessage
-			if err := json.Unmarshal(e.val, &fields); err != nil {
+			var entry migratedEntry
+			if err := json.Unmarshal(e.val, &entry); err != nil {
 				_ = store.Delete(e.key)
 				continue
 			}
 
-			if raw, ok := fields["last_seen"]; ok {
-				var ls int64
-				if json.Unmarshal(raw, &ls) == nil && ls != 0 {
-					continue
-				}
+			if entry.LastSeen != 0 {
+				continue
 			}
+			entry.LastSeen = now
 
-			stamp, err := json.Marshal(now)
-			if err != nil {
-				return fmt.Errorf("marshal last_seen: %w", err)
-			}
-			fields["last_seen"] = stamp
-
-			out, err := json.Marshal(fields)
-			if err != nil {
-				return fmt.Errorf("marshal addressbook entry %q: %w", e.key, err)
-			}
-
-			if err := store.Put(e.key, json.RawMessage(out)); err != nil {
+			if err := store.Put(e.key, &entry); err != nil {
 				return fmt.Errorf("stamp addressbook entry %q: %w", e.key, err)
 			}
 		}
