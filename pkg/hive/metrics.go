@@ -32,6 +32,13 @@ type metrics struct {
 	TimestampRejected        *prometheus.CounterVec
 
 	LegacyRecordSkipped prometheus.Counter
+
+	GossipCoalesceImmediatePeers prometheus.Counter
+	GossipCoalesceBufferedPeers  prometheus.Counter
+	GossipCoalesceFlushTotal     *prometheus.CounterVec
+	GossipCoalesceFlushPeers     prometheus.Counter
+	GossipCoalesceDropped        prometheus.Counter
+	GossipCoalesceBufferSize     prometheus.Gauge
 }
 
 func newMetrics() metrics {
@@ -137,6 +144,45 @@ func newMetrics() metrics {
 			},
 			[]string{"reason"},
 		),
+		GossipCoalesceImmediatePeers: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "gossip_coalesce_immediate_peers_total",
+			Help:      "Number of peer gossip entries sent immediately without coalescing.",
+		}),
+		GossipCoalesceBufferedPeers: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "gossip_coalesce_buffered_peers_total",
+			Help:      "Number of peer gossip entries enqueued into the coalesce buffer.",
+		}),
+		GossipCoalesceFlushTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "gossip_coalesce_flush_total",
+				Help:      "Number of coalesced gossip flushes dispatched. The reason label is one of: timer, max_batch.",
+			},
+			[]string{"reason"},
+		),
+		GossipCoalesceFlushPeers: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "gossip_coalesce_flush_peers_total",
+			Help:      "Number of peer gossip entries dispatched by coalesced flushes.",
+		}),
+		GossipCoalesceDropped: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "gossip_coalesce_dropped_total",
+			Help:      "Number of peer gossip entries dropped during coalesced flush due to outbound rate limiting.",
+		}),
+		GossipCoalesceBufferSize: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "gossip_coalesce_buffer_size",
+			Help:      "Number of addressees with outbound gossip buffered awaiting coalesced flush.",
+		}),
 		ChequebookVerification: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Namespace: m.Namespace,

@@ -57,6 +57,11 @@ var (
 	ErrRateLimitExceeded = errors.New("rate limit exceeded")
 )
 
+const (
+	coalesceFlushReasonTimer    = "timer"
+	coalesceFlushReasonMaxBatch = "max_batch"
+)
+
 // Options configures hive.Service at construction. Chequebook fields are
 // optional: a nil ChequebookVerifier disables the verification gate (and
 // records without a chequebook are accepted); a nil ChequebookStorer means
@@ -66,6 +71,8 @@ type Options struct {
 	AllowPrivateCIDRs  bool
 	ChequebookVerifier chequebook.Verifier
 	ChequebookStorer   ChequebookStorer
+
+	GossipCoalesceInterval time.Duration
 }
 
 type Service struct {
@@ -90,6 +97,7 @@ type Service struct {
 	// chequebook are dropped.
 	chequebookVerifier chequebook.Verifier
 	chequebookStorer   ChequebookStorer
+	gossipBuf          *gossipBuffer
 }
 
 func New(streamer p2p.Streamer, addressbook addressbook.GetPutter, networkID uint64, overlay swarm.Address, logger log.Logger, o Options) *Service {
@@ -112,9 +120,12 @@ func New(streamer p2p.Streamer, addressbook addressbook.GetPutter, networkID uin
 		chequebookStorer:   o.ChequebookStorer,
 	}
 
+	svc.gossipBuf = newGossipBuffer(o.GossipCoalesceInterval, maxBatchSize)
+
 	if !o.BootnodeMode {
 		svc.startCheckPeersHandler()
 	}
+	svc.startGossipCoalescer()
 
 	return svc
 }
@@ -136,10 +147,55 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 
 var ErrShutdownInProgress = errors.New("shutdown in progress")
 
+// BroadcastPeers sends peer gossip to the addressee. Calls with fewer than
+// coalesceThreshold peers are buffered and flushed asynchronously; errors
+// during deferred dispatch are logged but not returned to the caller.
+// Calls with coalesceThreshold or more peers are sent immediately.
 func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, peers ...swarm.Address) error {
-	maxSize := maxBatchSize
+	if len(peers) == 0 {
+		return nil
+	}
+
 	s.metrics.BroadcastPeers.Inc()
 	s.metrics.BroadcastPeersPeers.Add(float64(len(peers)))
+
+	// Already-batched messages go out immediately; single-peer gossips are coalesced.
+	if len(peers) >= coalesceThreshold {
+		s.metrics.GossipCoalesceImmediatePeers.Add(float64(len(peers)))
+		s.logger.Debug("gossip immediate send", "addressee", addressee, "peer_count", len(peers))
+		_, err := s.broadcastNow(ctx, addressee, peers...)
+		return err
+	}
+
+	select {
+	case <-s.quit:
+		return ErrShutdownInProgress
+	default:
+	}
+
+	s.metrics.GossipCoalesceBufferedPeers.Add(float64(len(peers)))
+	s.logger.Debug("gossip buffered", "addressee", addressee, "peer_count", len(peers))
+
+	// Buffer; if it just filled up, flush it synchronously while still in the call
+	if full := s.gossipBuf.add(s.now(), addressee, peers...); full != nil {
+		flushPeers := full.addresses()
+		s.recordCoalesceFlush(coalesceFlushReasonMaxBatch, addressee, flushPeers)
+		s.setCoalesceBufferGauge()
+		sent, err := s.broadcastNow(ctx, addressee, flushPeers...)
+		if dropped := len(flushPeers) - sent; dropped > 0 {
+			s.metrics.GossipCoalesceDropped.Add(float64(dropped))
+		}
+		return err
+	}
+	s.setCoalesceBufferGauge()
+	return nil
+}
+
+// broadcastNow performs the synchronous, rate-limited, batched send.
+// It returns the number of peers successfully sent.
+func (s *Service) broadcastNow(ctx context.Context, addressee swarm.Address, peers ...swarm.Address) (sent int, err error) {
+	maxSize := maxBatchSize
+	total := len(peers)
 
 	for len(peers) > 0 {
 		if maxSize > len(peers) {
@@ -148,23 +204,25 @@ func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, p
 
 		// If broadcasting limit is exceeded, return early
 		if !s.outLimiter.Allow(addressee.ByteString(), maxSize) {
-			return nil
+			return total - len(peers), nil
 		}
 
 		select {
+		case <-ctx.Done():
+			return total - len(peers), ctx.Err()
 		case <-s.quit:
-			return ErrShutdownInProgress
+			return total - len(peers), ErrShutdownInProgress
 		default:
 		}
 
 		if err := s.sendPeers(ctx, addressee, peers[:maxSize]); err != nil {
-			return err
+			return total - len(peers), err
 		}
 
 		peers = peers[maxSize:]
 	}
 
-	return nil
+	return total, nil
 }
 
 func (s *Service) SetAddPeersHandler(h func(addr ...swarm.Address)) {
@@ -296,7 +354,63 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 func (s *Service) disconnect(peer p2p.Peer) error {
 	s.inLimiter.Clear(peer.Address.ByteString())
 	s.outLimiter.Clear(peer.Address.ByteString())
+	s.gossipBuf.clearAddressee(peer.Address)
+	s.setCoalesceBufferGauge()
 	return nil
+}
+
+func (s *Service) startGossipCoalescer() {
+	tick := s.gossipBuf.interval / 2
+	if tick <= 0 {
+		tick = s.gossipBuf.interval
+	}
+
+	s.wg.Go(func() {
+		ticker := time.NewTicker(tick)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				s.flushGossipEntries(s.gossipBuf.takeDue(s.now()), coalesceFlushReasonTimer)
+			case <-s.quit:
+				return
+			}
+		}
+	})
+}
+
+func (s *Service) flushGossipEntries(entries []*pendingGossip, reason string) {
+	s.setCoalesceBufferGauge()
+
+	for _, e := range entries {
+		peers := e.addresses()
+		s.recordCoalesceFlush(reason, e.addressee, peers)
+
+		ctx, cancel := context.WithTimeout(context.Background(), messageTimeout)
+		sent, err := s.broadcastNow(ctx, e.addressee, peers...)
+		if dropped := len(peers) - sent; dropped > 0 {
+			s.metrics.GossipCoalesceDropped.Add(float64(dropped))
+		}
+		if err != nil {
+			s.logger.Debug("coalesced gossip flush failed", "addressee", e.addressee, "reason", reason, "batch_size", len(peers), "error", err)
+		}
+		cancel()
+	}
+}
+
+func (s *Service) recordCoalesceFlush(reason string, addressee swarm.Address, peers []swarm.Address) {
+	batchSize := len(peers)
+	if batchSize == 0 {
+		return
+	}
+
+	s.metrics.GossipCoalesceFlushTotal.WithLabelValues(reason).Inc()
+	s.metrics.GossipCoalesceFlushPeers.Add(float64(batchSize))
+	s.logger.Debug("coalesced gossip flush", "addressee", addressee, "reason", reason, "batch_size", batchSize)
+}
+
+func (s *Service) setCoalesceBufferGauge() {
+	s.metrics.GossipCoalesceBufferSize.Set(float64(s.gossipBuf.pendingAddressees()))
 }
 
 func (s *Service) startCheckPeersHandler() {
