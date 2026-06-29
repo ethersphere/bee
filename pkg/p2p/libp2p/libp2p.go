@@ -607,7 +607,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		s.logger.Debug("stream handler: handshake: build remote multiaddrs", "peer_id", peerID, "error", err)
 		s.logger.Error(nil, "stream handler: handshake: build remote multiaddrs", "peer_id", peerID)
 		_ = handshakeStream.Reset()
-		_ = s.host.Network().ClosePeer(peerID)
+		_ = stream.Conn().Close()
 		return
 	}
 
@@ -622,7 +622,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 			s.logger.Debug("stream handler: handshake: build remote multiaddrs fallback", "peer_id", peerID, "error", err)
 			s.logger.Error(nil, "stream handler: handshake: build remote multiaddrs fallback", "peer_id", peerID)
 			_ = handshakeStream.Reset()
-			_ = s.host.Network().ClosePeer(peerID)
+			_ = stream.Conn().Close()
 			return
 		}
 	}
@@ -636,7 +636,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		s.logger.Debug("stream handler: handshake: handle failed", "peer_id", peerID, "error", err)
 		s.logger.Error(nil, "stream handler: handshake: handle failed", "peer_id", peerID)
 		_ = handshakeStream.Reset()
-		_ = s.host.Network().ClosePeer(peerID)
+		_ = stream.Conn().Close()
 		return
 	}
 
@@ -1121,7 +1121,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	peerAddrs, err := s.peerMultiaddrs(ctx, peerID)
 	if err != nil {
 		_ = handshakeStream.Reset()
-		_ = s.host.Network().ClosePeer(peerID)
+		_ = stream.Conn().Close()
 		return nil, fmt.Errorf("build peer multiaddrs: %w", err)
 	}
 
@@ -1142,13 +1142,13 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	)
 	if err != nil {
 		_ = handshakeStream.Reset()
-		_ = s.host.Network().ClosePeer(info.ID)
+		_ = stream.Conn().Close()
 		return nil, fmt.Errorf("handshake: %w", err)
 	}
 
 	if !i.FullNode {
 		_ = handshakeStream.Reset()
-		_ = s.host.Network().ClosePeer(info.ID)
+		_ = stream.Conn().Close()
 		return nil, p2p.ErrDialLightNode
 	}
 
@@ -1159,7 +1159,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		s.logger.Debug("blocklisting: exists failed", "peer_id", info.ID, "error", err)
 		s.logger.Error(nil, "internal error while connecting with peer", "peer_id", info.ID)
 		_ = handshakeStream.Reset()
-		_ = s.host.Network().ClosePeer(info.ID)
+		_ = stream.Conn().Close()
 		return nil, err
 	}
 
@@ -1172,7 +1172,8 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 
 	if exists := s.peers.addIfNotExists(stream.Conn(), overlay, i.FullNode); exists {
 		if err := handshakeStream.FullClose(); err != nil {
-			_ = s.Disconnect(overlay, "failed closing handshake stream after connect")
+			// Only close the new (duplicate) connection; keep existing healthy sessions intact.
+			_ = stream.Conn().Close()
 			return nil, fmt.Errorf("peer exists, full close: %w", err)
 		}
 
