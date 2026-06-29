@@ -328,6 +328,8 @@ func TestBroadcastPeers(t *testing.T) {
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
 			run := func(t *testing.T) {
+				t.Helper()
+
 				addressbookclean := ab.New(mock.NewStateStore())
 
 				streamer := streamtest.New()
