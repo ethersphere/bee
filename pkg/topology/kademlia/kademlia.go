@@ -1042,14 +1042,11 @@ func (k *Kad) Announce(ctx context.Context, peer swarm.Address, fullnode bool) e
 	depth := k.neighborhoodDepth()
 	isNeighbor := swarm.Proximity(peer.Bytes(), k.base.Bytes()) >= depth
 
-	k.metrics.AnnounceTotal.Inc()
 	if isNeighbor {
 		k.metrics.AnnounceIsNeighborTotal.WithLabelValues("true").Inc()
 	} else {
 		k.metrics.AnnounceIsNeighborTotal.WithLabelValues("false").Inc()
 	}
-
-	var outgoingGossip int
 
 outer:
 	for bin := range swarm.MaxBins {
@@ -1095,7 +1092,6 @@ outer:
 				break outer
 			default:
 			}
-			outgoingGossip++
 			go func(connectedPeer swarm.Address) {
 				// Create a new deadline ctx to prevent goroutine pile up
 				cCtx, cCancel := context.WithTimeout(k.bgBroadcastCtx, time.Minute)
@@ -1107,8 +1103,6 @@ outer:
 			}(connectedPeer)
 		}
 	}
-
-	k.metrics.AnnounceOutgoingPeerGossipTotal.Add(float64(outgoingGossip))
 
 	if len(addrs) == 0 {
 		return nil
@@ -1136,10 +1130,8 @@ func (k *Kad) recordAnnounceBinSelection(mode string, available, selected int) {
 	if available == 0 {
 		return
 	}
-	k.metrics.AnnounceBinSelectionTotal.WithLabelValues(mode).Inc()
-	k.metrics.AnnounceBinPeersAvailable.Observe(float64(available))
-	k.metrics.AnnounceBinPeersSelected.Observe(float64(selected))
-	k.metrics.AnnounceBinCoverageRatio.Observe(float64(selected) / float64(available))
+	k.metrics.AnnounceBinPeersAvailable.WithLabelValues(mode).Observe(float64(available))
+	k.metrics.AnnounceBinPeersSelected.WithLabelValues(mode).Observe(float64(selected))
 }
 
 // AnnounceTo announces a selected peer to another.
