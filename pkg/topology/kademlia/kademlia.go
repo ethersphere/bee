@@ -1061,9 +1061,6 @@ outer:
 			k.recordAnnounceBinSelection("full", len(connectedPeers), len(connectedPeers))
 		} else {
 			binPeers := k.binPeers(bin, true)
-			if len(binPeers) == 0 {
-				continue
-			}
 			connectedPeers, err = randomSubset(binPeers, k.opt.BroadcastBinSize)
 			if err != nil {
 				k.metrics.AnnounceErrorsTotal.WithLabelValues("random_subset").Inc()
