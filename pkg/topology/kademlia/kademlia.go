@@ -57,7 +57,7 @@ const (
 	defaultShortRetry                  = 10 * time.Second
 	defaultTimeToRetry                 = 2 * defaultShortRetry
 	defaultPruneWakeup                 = 5 * time.Minute
-	defaultBroadcastBinSize            = 2
+	defaultBroadcastBinSize            = 6
 )
 
 var (
@@ -1042,6 +1042,15 @@ func (k *Kad) Announce(ctx context.Context, peer swarm.Address, fullnode bool) e
 	depth := k.neighborhoodDepth()
 	isNeighbor := swarm.Proximity(peer.Bytes(), k.base.Bytes()) >= depth
 
+	k.metrics.AnnounceTotal.Inc()
+	if isNeighbor {
+		k.metrics.AnnounceIsNeighborTotal.WithLabelValues("true").Inc()
+	} else {
+		k.metrics.AnnounceIsNeighborTotal.WithLabelValues("false").Inc()
+	}
+
+	var outgoingGossip int
+
 outer:
 	for bin := range swarm.MaxBins {
 
@@ -1052,11 +1061,18 @@ outer:
 
 		if bin >= depth && isNeighbor {
 			connectedPeers = k.binPeers(bin, false) // broadcast all neighborhood peers
+			k.recordAnnounceBinSelection("full", len(connectedPeers), len(connectedPeers))
 		} else {
-			connectedPeers, err = randomSubset(k.binPeers(bin, true), k.opt.BroadcastBinSize)
+			binPeers := k.binPeers(bin, true)
+			if len(binPeers) == 0 {
+				continue
+			}
+			connectedPeers, err = randomSubset(binPeers, k.opt.BroadcastBinSize)
 			if err != nil {
+				k.metrics.AnnounceErrorsTotal.WithLabelValues("random_subset").Inc()
 				return err
 			}
+			k.recordAnnounceBinSelection("subset", len(binPeers), len(connectedPeers))
 		}
 
 		for _, connectedPeer := range connectedPeers {
@@ -1079,6 +1095,7 @@ outer:
 				break outer
 			default:
 			}
+			outgoingGossip++
 			go func(connectedPeer swarm.Address) {
 				// Create a new deadline ctx to prevent goroutine pile up
 				cCtx, cCancel := context.WithTimeout(k.bgBroadcastCtx, time.Minute)
@@ -1091,6 +1108,8 @@ outer:
 		}
 	}
 
+	k.metrics.AnnounceOutgoingPeerGossipTotal.Add(float64(outgoingGossip))
+
 	if len(addrs) == 0 {
 		return nil
 	}
@@ -1101,13 +1120,26 @@ outer:
 	default:
 	}
 
+	k.metrics.AnnouncePeersSentToNewPeer.Observe(float64(len(addrs)))
+
 	err := k.discovery.BroadcastPeers(ctx, peer, addrs...)
 	if err != nil {
+		k.metrics.AnnounceErrorsTotal.WithLabelValues("broadcast_to_new").Inc()
 		k.logger.Error(err, "could not broadcast to peer", "peer_address", peer)
 		_ = k.p2p.Disconnect(peer, "failed broadcasting to peer")
 	}
 
 	return err
+}
+
+func (k *Kad) recordAnnounceBinSelection(mode string, available, selected int) {
+	if available == 0 {
+		return
+	}
+	k.metrics.AnnounceBinSelectionTotal.WithLabelValues(mode).Inc()
+	k.metrics.AnnounceBinPeersAvailable.Observe(float64(available))
+	k.metrics.AnnounceBinPeersSelected.Observe(float64(selected))
+	k.metrics.AnnounceBinCoverageRatio.Observe(float64(selected) / float64(available))
 }
 
 // AnnounceTo announces a selected peer to another.
