@@ -60,7 +60,6 @@ var (
 const (
 	coalesceFlushReasonTimer    = "timer"
 	coalesceFlushReasonMaxBatch = "max_batch"
-	coalesceFlushReasonShutdown = "shutdown"
 )
 
 // Options configures hive.Service at construction. Chequebook fields are
@@ -148,6 +147,10 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 
 var ErrShutdownInProgress = errors.New("shutdown in progress")
 
+// BroadcastPeers sends peer gossip to the addressee. Calls with fewer than
+// coalesceThreshold peers are buffered and flushed asynchronously; errors
+// during deferred dispatch are logged but not returned to the caller.
+// Calls with coalesceThreshold or more peers are sent immediately.
 func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, peers ...swarm.Address) error {
 	if len(peers) == 0 {
 		return nil
@@ -161,7 +164,8 @@ func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, p
 		s.metrics.GossipCoalesceImmediateCalls.Inc()
 		s.metrics.GossipCoalesceImmediatePeers.Add(float64(len(peers)))
 		s.logger.Debug("gossip immediate send", "addressee", addressee, "peer_count", len(peers))
-		return s.broadcastNow(ctx, false, addressee, peers...)
+		_, err := s.broadcastNow(ctx, addressee, peers...)
+		return err
 	}
 
 	select {
@@ -179,17 +183,21 @@ func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, p
 		flushPeers := full.addresses()
 		s.recordCoalesceFlush(coalesceFlushReasonMaxBatch, addressee, flushPeers)
 		s.setCoalesceBufferGauge()
-		return s.broadcastNow(ctx, true, addressee, flushPeers...)
+		sent, err := s.broadcastNow(ctx, addressee, flushPeers...)
+		if dropped := len(flushPeers) - sent; dropped > 0 {
+			s.metrics.GossipCoalesceDropped.Add(float64(dropped))
+		}
+		return err
 	}
 	s.setCoalesceBufferGauge()
 	return nil
 }
 
 // broadcastNow performs the synchronous, rate-limited, batched send.
-// When coalesced is true, peers dropped due to rate limiting increment
-// GossipCoalesceDropped.
-func (s *Service) broadcastNow(ctx context.Context, coalesced bool, addressee swarm.Address, peers ...swarm.Address) error {
+// It returns the number of peers successfully sent.
+func (s *Service) broadcastNow(ctx context.Context, addressee swarm.Address, peers ...swarm.Address) (sent int, err error) {
 	maxSize := maxBatchSize
+	total := len(peers)
 
 	for len(peers) > 0 {
 		if maxSize > len(peers) {
@@ -198,26 +206,25 @@ func (s *Service) broadcastNow(ctx context.Context, coalesced bool, addressee sw
 
 		// If broadcasting limit is exceeded, return early
 		if !s.outLimiter.Allow(addressee.ByteString(), maxSize) {
-			if coalesced {
-				s.metrics.GossipCoalesceDropped.Add(float64(len(peers)))
-			}
-			return nil
+			return total - len(peers), nil
 		}
 
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return total - len(peers), ctx.Err()
+		case <-s.quit:
+			return total - len(peers), ErrShutdownInProgress
 		default:
 		}
 
 		if err := s.sendPeers(ctx, addressee, peers[:maxSize]); err != nil {
-			return err
+			return total - len(peers), err
 		}
 
 		peers = peers[maxSize:]
 	}
 
-	return nil
+	return total, nil
 }
 
 func (s *Service) SetAddPeersHandler(h func(addr ...swarm.Address)) {
@@ -370,7 +377,8 @@ func (s *Service) startGossipCoalescer() {
 			case <-ticker.C:
 				s.flushGossipEntries(s.gossipBuf.takeDue(s.now()), coalesceFlushReasonTimer)
 			case <-s.quit:
-				s.flushGossipEntries(s.gossipBuf.takeAll(), coalesceFlushReasonShutdown)
+				_ = s.gossipBuf.takeAll()
+				s.setCoalesceBufferGauge()
 				return
 			}
 		}
@@ -385,7 +393,11 @@ func (s *Service) flushGossipEntries(entries []*pendingGossip, reason string) {
 		s.recordCoalesceFlush(reason, e.addressee, peers)
 
 		ctx, cancel := context.WithTimeout(context.Background(), messageTimeout)
-		if err := s.broadcastNow(ctx, true, e.addressee, peers...); err != nil {
+		sent, err := s.broadcastNow(ctx, e.addressee, peers...)
+		if dropped := len(peers) - sent; dropped > 0 {
+			s.metrics.GossipCoalesceDropped.Add(float64(dropped))
+		}
+		if err != nil {
 			s.logger.Debug("coalesced gossip flush failed", "addressee", e.addressee, "reason", reason, "batch_size", len(peers), "error", err)
 		}
 		cancel()

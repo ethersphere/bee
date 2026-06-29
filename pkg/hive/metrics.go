@@ -176,7 +176,7 @@ func newMetrics() metrics {
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "gossip_coalesce_flush_total",
-				Help:      "Number of coalesced gossip flushes dispatched. The reason label is one of: timer, max_batch, shutdown.",
+				Help:      "Number of coalesced gossip flushes dispatched. The reason label is one of: timer, max_batch.",
 			},
 			[]string{"reason"},
 		),

@@ -34,7 +34,7 @@ func TestGossipBufferAddAndDue(t *testing.T) {
 		t.Fatal("unexpected immediate flush")
 	}
 
-	afterDeadline := now.Add(interval + interval/4 + time.Millisecond)
+	afterDeadline := now.Add(interval + defaultGossipCoalesceJitter + time.Millisecond)
 	due := b.takeDue(afterDeadline)
 	if len(due) != 1 {
 		t.Fatalf("want 1 due entry, got %d", len(due))

@@ -243,17 +243,7 @@ func TestBroadcastPeers(t *testing.T) {
 		wantOverlays      []swarm.Address
 		wantBzzAddresses  []bzz.Address
 		allowPrivateCIDRs bool
-		coalesceSingle    bool
 	}{
-		"OK - single record": {
-			addresee:          swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
-			peers:             []swarm.Address{overlays[0]},
-			wantMsgs:          []pb.Peers{{Peers: wantMsgs[0].Peers[:1]}},
-			wantOverlays:      []swarm.Address{overlays[0]},
-			wantBzzAddresses:  []bzz.Address{bzzAddresses[0]},
-			allowPrivateCIDRs: true,
-			coalesceSingle:    true,
-		},
 		"OK - single batch - multiple records": {
 			addresee:          swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
 			peers:             overlays[:15],
@@ -327,71 +317,132 @@ func TestBroadcastPeers(t *testing.T) {
 
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
-			run := func(t *testing.T) {
-				t.Helper()
+			t.Parallel()
 
-				addressbookclean := ab.New(mock.NewStateStore())
+			addressbookclean := ab.New(mock.NewStateStore())
 
-				streamer := streamtest.New()
-				// create a hive server that handles the incoming stream
-				serverAddress := swarm.RandAddress(t)
-				server := hive.New(streamer, addressbookclean, networkID, serverAddress, logger, hive.Options{AllowPrivateCIDRs: true})
-				testutil.CleanupCloser(t, server)
+			streamer := streamtest.New()
+			// create a hive server that handles the incoming stream
+			serverAddress := swarm.RandAddress(t)
+			server := hive.New(streamer, addressbookclean, networkID, serverAddress, logger, hive.Options{AllowPrivateCIDRs: true})
+			testutil.CleanupCloser(t, server)
 
-				// setup the stream recorder to record stream data
-				recorder := streamtest.New(
-					streamtest.WithProtocols(server.Protocol()),
-				)
+			// setup the stream recorder to record stream data
+			recorder := streamtest.New(
+				streamtest.WithProtocols(server.Protocol()),
+			)
 
-				// create a hive client that will do broadcast
-				clientAddress := swarm.RandAddress(t)
-				opts := hive.Options{AllowPrivateCIDRs: tc.allowPrivateCIDRs}
-				var client *hive.Service
-				if tc.coalesceSingle {
-					client = newCoalescingClient(t, recorder, addressbook, networkID, clientAddress, logger, opts)
-				} else {
-					client = hive.New(recorder, addressbook, networkID, clientAddress, logger, opts)
-					testutil.CleanupCloser(t, client)
-				}
+			// create a hive client that will do broadcast
+			clientAddress := swarm.RandAddress(t)
+			client := hive.New(recorder, addressbook, networkID, clientAddress, logger, hive.Options{AllowPrivateCIDRs: tc.allowPrivateCIDRs})
+			testutil.CleanupCloser(t, client)
 
-				if err := client.BroadcastPeers(context.Background(), tc.addresee, tc.peers...); err != nil {
-					t.Fatal(err)
-				}
+			if err := client.BroadcastPeers(context.Background(), tc.addresee, tc.peers...); err != nil {
+				t.Fatal(err)
+			}
 
-				if tc.coalesceSingle {
-					assertNoGossipRecords(t, recorder, tc.addresee)
-					waitForCoalesceFlush(t)
-				}
+			// get a record for this stream
+			records, err := recorder.Records(tc.addresee, "hive", "2.0.0", "peers")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if l := len(records); l != len(tc.wantMsgs) {
+				t.Fatalf("got %v records, want %v", l, len(tc.wantMsgs))
+			}
 
-				// get a record for this stream
-				records, err := recorder.Records(tc.addresee, "hive", "2.0.0", "peers")
+			// there is a one record per batch (wantMsg)
+			for i, record := range records {
+				messages, err := readAndAssertPeersMsgs(record.In(), 1)
 				if err != nil {
 					t.Fatal(err)
 				}
-				if l := len(records); l != len(tc.wantMsgs) {
-					t.Fatalf("got %v records, want %v", l, len(tc.wantMsgs))
-				}
-
-				// there is a one record per batch (wantMsg)
-				for i, record := range records {
-					messages, err := readAndAssertPeersMsgs(record.In(), 1)
-					if err != nil {
-						t.Fatal(err)
-					}
-					comparePeerMsgs(t, messages[0].Peers, tc.wantMsgs[i].Peers)
-				}
-
-				expectOverlaysEventually(t, addressbookclean, tc.wantOverlays)
-				expectBzzAddresessEventually(t, addressbookclean, tc.wantBzzAddresses)
+				comparePeerMsgs(t, messages[0].Peers, tc.wantMsgs[i].Peers)
 			}
-			if tc.coalesceSingle {
-				synctest.Test(t, run)
-			} else {
-				t.Parallel()
-				run(t)
-			}
+
+			expectOverlaysEventually(t, addressbookclean, tc.wantOverlays)
+			expectBzzAddresessEventually(t, addressbookclean, tc.wantBzzAddresses)
 		})
 	}
+}
+
+func TestBroadcastPeersSingleCoalesced(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		logger := log.Noop
+		statestore := mock.NewStateStore()
+		addressbook := ab.New(statestore)
+		networkID := uint64(1)
+
+		underlay, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/2000")
+		if err != nil {
+			t.Fatal(err)
+		}
+		pk, err := crypto.GenerateSecp256k1Key()
+		if err != nil {
+			t.Fatal(err)
+		}
+		signer := crypto.NewDefaultSigner(pk)
+		overlay, err := crypto.NewOverlayAddress(pk.PublicKey, networkID, nonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{underlay}, overlay, networkID, nonce, 1, common.Address{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := addressbook.Put(bzzAddr.Overlay, *bzzAddr, true); err != nil {
+			t.Fatal(err)
+		}
+
+		underlayBytes, err := bzz.SerializeUnderlays(bzzAddr.Underlays)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantMsg := pb.Peers{Peers: []*pb.BzzAddress{{
+			Overlay:   bzzAddr.Overlay.Bytes(),
+			Underlay:  underlayBytes,
+			Signature: bzzAddr.Signature,
+			Nonce:     nonce,
+			Timestamp: bzzAddr.Timestamp,
+		}}}
+
+		addresee := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
+
+		addressbookclean := ab.New(mock.NewStateStore())
+
+		streamer := streamtest.New()
+		serverAddress := swarm.RandAddress(t)
+		server := hive.New(streamer, addressbookclean, networkID, serverAddress, logger, hive.Options{AllowPrivateCIDRs: true})
+		testutil.CleanupCloser(t, server)
+
+		recorder := streamtest.New(streamtest.WithProtocols(server.Protocol()))
+
+		clientAddress := swarm.RandAddress(t)
+		client := newCoalescingClient(t, recorder, addressbook, networkID, clientAddress, logger, hive.Options{AllowPrivateCIDRs: true})
+
+		if err := client.BroadcastPeers(context.Background(), addresee, bzzAddr.Overlay); err != nil {
+			t.Fatal(err)
+		}
+
+		assertNoGossipRecords(t, recorder, addresee)
+		waitForCoalesceFlush(t)
+
+		records, err := recorder.Records(addresee, "hive", "2.0.0", "peers")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if l := len(records); l != 1 {
+			t.Fatalf("got %v records, want 1", l)
+		}
+
+		messages, err := readAndAssertPeersMsgs(records[0].In(), 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		comparePeerMsgs(t, messages[0].Peers, wantMsg.Peers)
+
+		expectOverlaysEventually(t, addressbookclean, []swarm.Address{bzzAddr.Overlay})
+		expectBzzAddresessEventually(t, addressbookclean, []bzz.Address{*bzzAddr})
+	})
 }
 
 func expectOverlaysEventually(t *testing.T, exporter ab.Interface, wantOverlays []swarm.Address) {
@@ -1518,9 +1569,9 @@ func TestBroadcastPeersCoalesce(t *testing.T) {
 	})
 }
 
-const hiveGossipBufferisationInterval = time.Second
+const hiveGossipBufferingInterval = time.Second
 
-func Test_HiveGossipBufferisation(t *testing.T) {
+func TestHiveGossipBuffering(t *testing.T) {
 	t.Parallel()
 
 	makeAddressbookWithPeers := func(t *testing.T, n int) (ab.GetPutter, []swarm.Address) {
@@ -1572,7 +1623,7 @@ func Test_HiveGossipBufferisation(t *testing.T) {
 		clientAddress := swarm.RandAddress(t)
 		client := hive.New(recorder, addressbook, networkID, clientAddress, logger, hive.Options{
 			AllowPrivateCIDRs:      true,
-			GossipCoalesceInterval: hiveGossipBufferisationInterval,
+			GossipCoalesceInterval: hiveGossipBufferingInterval,
 		})
 		client.SetCoalesceJitterForTest(0)
 		testutil.CleanupCloser(t, client)
@@ -1596,7 +1647,7 @@ func Test_HiveGossipBufferisation(t *testing.T) {
 
 			assertNoGossipRecords(t, recorder, serverAddress)
 
-			time.Sleep(hiveGossipBufferisationInterval + 100*time.Millisecond)
+			time.Sleep(hiveGossipBufferingInterval + 100*time.Millisecond)
 			synctest.Wait()
 
 			records, err := recorder.Records(serverAddress, "hive", "2.0.0", "peers")

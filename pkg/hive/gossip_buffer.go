@@ -14,6 +14,7 @@ import (
 
 const (
 	defaultGossipCoalesceInterval = time.Second
+	defaultGossipCoalesceJitter   = 100 * time.Millisecond
 	// coalesceThreshold: gossips with fewer peers are buffered; larger
 	// (already-batched) messages are dispatched immediately.
 	coalesceThreshold = 2
@@ -42,7 +43,7 @@ func newGossipBuffer(interval time.Duration, maxBatch int) *gossipBuffer {
 	return &gossipBuffer{
 		pending:  make(map[string]*pendingGossip),
 		interval: interval,
-		jitter:   interval / 4,
+		jitter:   defaultGossipCoalesceJitter,
 		maxBatch: maxBatch,
 	}
 }
@@ -83,7 +84,7 @@ func (b *gossipBuffer) takeDue(now time.Time) []*pendingGossip {
 	return b.take(func(e *pendingGossip) bool { return !e.deadline.After(now) })
 }
 
-// takeAll removes and returns everything (used for shutdown drain).
+// takeAll removes and returns everything (used to discard pending gossip on shutdown).
 func (b *gossipBuffer) takeAll() []*pendingGossip {
 	return b.take(func(*pendingGossip) bool { return true })
 }
