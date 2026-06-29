@@ -41,7 +41,8 @@ var nonce = common.HexToHash("0x2").Bytes()
 const (
 	spinTimeout          = time.Second * 5
 	testCoalesceInterval = 100 * time.Millisecond
-	testCoalesceWait     = 120 * time.Millisecond
+	// Must exceed interval + max jitter (100ms) before the coalescer flushes.
+	testCoalesceWait = 220 * time.Millisecond
 )
 
 func waitForCoalesceFlush(t *testing.T) {
@@ -63,7 +64,6 @@ func newCoalescingClient(
 
 	opts.GossipCoalesceInterval = testCoalesceInterval
 	client := hive.New(recorder, addressbook, networkID, overlay, logger, opts)
-	client.SetCoalesceJitterForTest(0)
 	testutil.CleanupCloser(t, client)
 	return client
 }
@@ -343,20 +343,30 @@ func TestBroadcastPeers(t *testing.T) {
 
 			// get a record for this stream
 			records, err := recorder.Records(tc.addresee, "hive", "2.0.0", "peers")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if l := len(records); l != len(tc.wantMsgs) {
-				t.Fatalf("got %v records, want %v", l, len(tc.wantMsgs))
-			}
-
-			// there is a one record per batch (wantMsg)
-			for i, record := range records {
-				messages, err := readAndAssertPeersMsgs(record.In(), 1)
+			if len(tc.wantMsgs) == 0 {
+				if err == nil {
+					if len(records) != 0 {
+						t.Fatalf("got %v records, want none", len(records))
+					}
+				} else if !errors.Is(err, streamtest.ErrRecordsNotFound) {
+					t.Fatal(err)
+				}
+			} else {
 				if err != nil {
 					t.Fatal(err)
 				}
-				comparePeerMsgs(t, messages[0].Peers, tc.wantMsgs[i].Peers)
+				if l := len(records); l != len(tc.wantMsgs) {
+					t.Fatalf("got %v records, want %v", l, len(tc.wantMsgs))
+				}
+
+				// there is a one record per batch (wantMsg)
+				for i, record := range records {
+					messages, err := readAndAssertPeersMsgs(record.In(), 1)
+					if err != nil {
+						t.Fatal(err)
+					}
+					comparePeerMsgs(t, messages[0].Peers, tc.wantMsgs[i].Peers)
+				}
 			}
 
 			expectOverlaysEventually(t, addressbookclean, tc.wantOverlays)
@@ -1625,7 +1635,6 @@ func TestHiveGossipBuffering(t *testing.T) {
 			AllowPrivateCIDRs:      true,
 			GossipCoalesceInterval: hiveGossipBufferingInterval,
 		})
-		client.SetCoalesceJitterForTest(0)
 		testutil.CleanupCloser(t, client)
 
 		return client, recorder, serverAddress
@@ -1647,7 +1656,8 @@ func TestHiveGossipBuffering(t *testing.T) {
 
 			assertNoGossipRecords(t, recorder, serverAddress)
 
-			time.Sleep(hiveGossipBufferingInterval + 100*time.Millisecond)
+			// interval + max jitter + half tick period for the coalescer to flush.
+			time.Sleep(hiveGossipBufferingInterval + 600*time.Millisecond)
 			synctest.Wait()
 
 			records, err := recorder.Records(serverAddress, "hive", "2.0.0", "peers")

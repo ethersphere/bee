@@ -20,11 +20,6 @@ func (s *Service) SetTimeFunc(f func() time.Time) {
 	s.now = f
 }
 
-// SetCoalesceJitterForTest fixes coalesce deadline jitter for deterministic tests.
-func (s *Service) SetCoalesceJitterForTest(d time.Duration) {
-	s.gossipBuf.jitter = d
-}
-
 // CheckAndAddPeers exposes the internal ingestion path for tests,
 // bypassing the stream and rate limiter.
 func (s *Service) CheckAndAddPeers(peers pb.Peers) {
