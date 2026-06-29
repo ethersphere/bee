@@ -161,7 +161,6 @@ func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, p
 
 	// Already-batched messages go out immediately; single-peer gossips are coalesced.
 	if len(peers) >= coalesceThreshold {
-		s.metrics.GossipCoalesceImmediateCalls.Inc()
 		s.metrics.GossipCoalesceImmediatePeers.Add(float64(len(peers)))
 		s.logger.Debug("gossip immediate send", "addressee", addressee, "peer_count", len(peers))
 		_, err := s.broadcastNow(ctx, addressee, peers...)
@@ -174,7 +173,6 @@ func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, p
 	default:
 	}
 
-	s.metrics.GossipCoalesceBufferedCalls.Inc()
 	s.metrics.GossipCoalesceBufferedPeers.Add(float64(len(peers)))
 	s.logger.Debug("gossip buffered", "addressee", addressee, "peer_count", len(peers))
 
@@ -240,14 +238,12 @@ func (s *Service) Close() error {
 		s.wg.Wait()
 	}()
 
-	var err error
 	select {
 	case <-stopped:
+		return nil
 	case <-time.After(time.Second * 5):
-		err = errors.New("hive: waited 5 seconds to close active goroutines")
+		return errors.New("hive: waited 5 seconds to close active goroutines")
 	}
-
-	return err
 }
 
 func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swarm.Address) (err error) {
@@ -377,8 +373,6 @@ func (s *Service) startGossipCoalescer() {
 			case <-ticker.C:
 				s.flushGossipEntries(s.gossipBuf.takeDue(s.now()), coalesceFlushReasonTimer)
 			case <-s.quit:
-				_ = s.gossipBuf.takeAll()
-				s.setCoalesceBufferGauge()
 				return
 			}
 		}
@@ -412,7 +406,6 @@ func (s *Service) recordCoalesceFlush(reason string, addressee swarm.Address, pe
 
 	s.metrics.GossipCoalesceFlushTotal.WithLabelValues(reason).Inc()
 	s.metrics.GossipCoalesceFlushPeers.Add(float64(batchSize))
-	s.metrics.GossipCoalesceFlushBatchSize.Observe(float64(batchSize))
 	s.logger.Debug("coalesced gossip flush", "addressee", addressee, "reason", reason, "batch_size", batchSize)
 }
 

@@ -343,30 +343,20 @@ func TestBroadcastPeers(t *testing.T) {
 
 			// get a record for this stream
 			records, err := recorder.Records(tc.addresee, "hive", "2.0.0", "peers")
-			if len(tc.wantMsgs) == 0 {
-				if err == nil {
-					if len(records) != 0 {
-						t.Fatalf("got %v records, want none", len(records))
-					}
-				} else if !errors.Is(err, streamtest.ErrRecordsNotFound) {
-					t.Fatal(err)
-				}
-			} else {
+			if err != nil {
+				t.Fatal(err)
+			}
+			if l := len(records); l != len(tc.wantMsgs) {
+				t.Fatalf("got %v records, want %v", l, len(tc.wantMsgs))
+			}
+
+			// there is a one record per batch (wantMsg)
+			for i, record := range records {
+				messages, err := readAndAssertPeersMsgs(record.In(), 1)
 				if err != nil {
 					t.Fatal(err)
 				}
-				if l := len(records); l != len(tc.wantMsgs) {
-					t.Fatalf("got %v records, want %v", l, len(tc.wantMsgs))
-				}
-
-				// there is a one record per batch (wantMsg)
-				for i, record := range records {
-					messages, err := readAndAssertPeersMsgs(record.In(), 1)
-					if err != nil {
-						t.Fatal(err)
-					}
-					comparePeerMsgs(t, messages[0].Peers, tc.wantMsgs[i].Peers)
-				}
+				comparePeerMsgs(t, messages[0].Peers, tc.wantMsgs[i].Peers)
 			}
 
 			expectOverlaysEventually(t, addressbookclean, tc.wantOverlays)
