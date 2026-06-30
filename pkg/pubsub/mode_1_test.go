@@ -214,7 +214,7 @@ func TestReadBrokerMessage_Handshake(t *testing.T) {
 	payload := []byte("sziasztok!")
 	publisherFrame := buildPublisherMsg(t, tc, payload)
 
-	// Assemble handshake message: [0x02][gsocID(32B)][owner(20B)][sig(65B)][span(8B)][payload]
+	// Assemble handshake message: [0x00][gsocID(32B)][owner(20B)][sig(65B)][span(8B)][payload]
 	streamData := make([]byte, 0, 1+len(tc.gsocID)+len(tc.owner)+len(publisherFrame))
 	streamData = append(streamData, pubsub.MsgTypeHandshake)
 	streamData = append(streamData, tc.gsocID...)
@@ -246,7 +246,7 @@ func TestReadBrokerMessage_Data(t *testing.T) {
 	payload := []byte("data message")
 	publisherFrame := buildPublisherMsg(t, tc, payload)
 
-	// Assemble data message: [0x03][sig(65B)][span(8B)][payload]
+	// Assemble data message: [0x01][sig(65B)][span(8B)][payload]
 	streamData := make([]byte, 0, 1+len(publisherFrame))
 	streamData = append(streamData, pubsub.MsgTypeData)
 	streamData = append(streamData, publisherFrame...)

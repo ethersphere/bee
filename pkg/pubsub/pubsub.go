@@ -33,9 +33,10 @@ const (
 	// Mode constants
 	ModeGSOCEphemeral ModeID = 1
 
-	// Service-level broker message types.
-	// 0x01 is reserved for ping across all modes; mode-specific types start at 0x02.
-	MsgTypePing byte = 0x01
+	// Service-level broker message types are reserved from the top of the byte
+	// downward (0xFF, 0xFE, ...) and are valid across all modes; mode-specific
+	// types grow upward from 0x00.
+	MsgTypePing byte = 0xFF
 
 	// streamPingInterval is how often the broker sends a keepalive ping to each subscriber.
 	streamPingInterval = 30 * time.Second
