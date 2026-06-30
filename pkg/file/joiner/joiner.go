@@ -240,6 +240,13 @@ func (j *joiner) readAtOffset(
 			dataOffsetEnd = dataOffsetStart + lenDataToCopy
 		}
 
+		if dataOffsetStart < 0 || dataOffsetEnd > int64(len(data)) || dataOffsetStart > dataOffsetEnd {
+			eg.Go(func() error {
+				return ErrMalformedTrie
+			})
+			return
+		}
+
 		bs := data[dataOffsetStart:dataOffsetEnd]
 		n := copy(b[bufferOffset:bufferOffset+int64(len(bs))], bs)
 		atomic.AddInt64(bytesRead, int64(n))
