@@ -73,6 +73,8 @@ func TestJoinerBounds(t *testing.T) {
 }
 
 func testJoinerBug(t *testing.T, useLangos bool) {
+	t.Helper()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
