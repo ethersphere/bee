@@ -231,13 +231,30 @@ func (j *joiner) readAtOffset(
 	parity int,
 	eg *errgroup.Group,
 ) {
+	dataLen := int64(len(data))
 	// we are at a leaf data chunk
-	if subTrieSize <= int64(len(data)) {
+	if subTrieSize <= dataLen {
 		dataOffsetStart := off - cur
+		// Ensure that the read offset is within the bounds of this leaf chunk.
+		// A malformed tree might advertise a larger span, leading to an out-of-bounds start offset.
+		if dataOffsetStart < 0 || dataOffsetStart >= dataLen {
+			eg.Go(func() error {
+				return ErrMalformedTrie
+			})
+			return
+		}
 		dataOffsetEnd := dataOffsetStart + bytesToRead
 
-		if lenDataToCopy := int64(len(data)) - dataOffsetStart; bytesToRead > lenDataToCopy {
+		if lenDataToCopy := dataLen - dataOffsetStart; bytesToRead > lenDataToCopy {
 			dataOffsetEnd = dataOffsetStart + lenDataToCopy
+		}
+
+		// Guard against slicing out-of-bounds if the computed end offset is invalid.
+		if dataOffsetEnd < dataOffsetStart || dataOffsetEnd > int64(len(data)) {
+			eg.Go(func() error {
+				return ErrMalformedTrie
+			})
+			return
 		}
 
 		bs := data[dataOffsetStart:dataOffsetEnd]
