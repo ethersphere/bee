@@ -259,7 +259,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 
 				go func() {
 					span, _, ctx := s.tracer.FollowSpanFromContext(spanCtx, "retrieve-chunk", s.logger, trace.WithSpanKind(trace.SpanKindClient), trace.WithAttributes(
-						attribute.String("address", chunkAddr.String()),
+						attribute.String("swarm.chunk.address", chunkAddr.String()),
 					))
 					defer span.End()
 					s.retrieveChunk(ctx, quit, chunkAddr, peer, resultC, action, span)
@@ -309,7 +309,7 @@ func (s *Service) retrieveChunk(ctx context.Context, quit chan struct{}, chunkAd
 			tracing.RecordError(span, err)
 			s.metrics.TotalErrors.Inc()
 		} else {
-			span.SetAttributes(attribute.Bool("success", true))
+			span.SetAttributes(attribute.Bool("swarm.operation.success", true))
 		}
 		select {
 		case result <- retrievalResult{err: err, chunk: chunk, peer: peer}:
@@ -451,15 +451,15 @@ func (s *Service) handler(p2pctx context.Context, p p2p.Peer, stream p2p.Stream)
 	var forwarded bool
 
 	span, _, ctx := s.tracer.StartSpanFromContext(ctx, "handle-retrieve-chunk", s.logger, trace.WithSpanKind(trace.SpanKindServer), trace.WithAttributes(
-		attribute.String("address", addr.String()),
+		attribute.String("swarm.chunk.address", addr.String()),
 	))
 	defer func() {
 		if err != nil {
 			tracing.RecordError(span, err)
 		} else {
-			span.SetAttributes(attribute.Bool("success", true))
+			span.SetAttributes(attribute.Bool("swarm.operation.success", true))
 		}
-		span.SetAttributes(attribute.Bool("forwarded", forwarded))
+		span.SetAttributes(attribute.Bool("swarm.chunk.forwarded", forwarded))
 		span.End()
 	}()
 

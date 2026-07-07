@@ -208,9 +208,9 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	chunkAddress := chunk.Address()
 
 	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, trace.WithSpanKind(trace.SpanKindServer), trace.WithAttributes(
-		attribute.String("address", chunkAddress.String()),
-		attribute.Int64("tag_id", int64(chunk.TagID())),
-		attribute.String("sender_address", p.Address.String()),
+		attribute.String("swarm.chunk.address", chunkAddress.String()),
+		attribute.Int64("swarm.tag.id", int64(chunk.TagID())),
+		attribute.String("swarm.peer.sender_address", p.Address.String()),
 	))
 
 	var (
@@ -222,11 +222,11 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		if err != nil {
 			tracing.RecordError(span, err)
 		} else {
-			attrs := []attribute.KeyValue{attribute.Bool("success", true)}
+			attrs := []attribute.KeyValue{attribute.Bool("swarm.operation.success", true)}
 			if stored {
 				attrs = append(attrs,
-					attribute.Bool("stored", true),
-					attribute.String("reason", reason),
+					attribute.Bool("swarm.chunk.stored", true),
+					attribute.String("swarm.chunk.store_reason", reason),
 				)
 			}
 			span.SetAttributes(attrs...)
@@ -540,14 +540,14 @@ func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptRes
 	now := time.Now()
 
 	spanInner, _, _ := ps.tracer.FollowSpanFromContext(context.WithoutCancel(parentCtx), "push-chunk-async", ps.logger, trace.WithSpanKind(trace.SpanKindClient), trace.WithAttributes(
-		attribute.String("address", ch.Address().String()),
+		attribute.String("swarm.chunk.address", ch.Address().String()),
 	))
 
 	defer func() {
 		if err != nil {
 			tracing.RecordError(spanInner, err)
 		} else {
-			spanInner.SetAttributes(attribute.Bool("success", true))
+			spanInner.SetAttributes(attribute.Bool("swarm.operation.success", true))
 		}
 		spanInner.End()
 		select {
@@ -558,7 +558,7 @@ func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptRes
 
 	defer action.Cleanup()
 
-	spanInner.SetAttributes(attribute.String("peer_address", peer.String()))
+	spanInner.SetAttributes(attribute.String("swarm.peer.address", peer.String()))
 
 	receipt, err = ps.pushChunkToPeer(tracing.WithContext(ctx, spanInner.SpanContext()), peer, ch)
 	if err != nil {
