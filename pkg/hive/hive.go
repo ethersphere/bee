@@ -25,6 +25,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/ratelimit"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	ma "github.com/multiformats/go-multiaddr"
@@ -313,7 +314,9 @@ func (s *Service) startCheckPeersHandler() {
 				return
 			case newPeers := <-s.peersChan:
 				s.wg.Go(func() {
-					s.checkAndAddPeers(ctx, newPeers)
+					safe.Run(s.logger, "hive-check-and-add-peers", func() {
+						s.checkAndAddPeers(ctx, newPeers)
+					})
 				})
 			}
 		}

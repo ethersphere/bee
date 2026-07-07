@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/postage/batchservice"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/ethersphere/bee/v2/pkg/util/syncutil"
 	"github.com/prometheus/client_golang/prometheus"
@@ -352,7 +353,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 		}
 	}
 
-	go func() {
+	safe.Go(l.logger, "postage-listener", func() {
 		err := listenf()
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
@@ -366,7 +367,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 		if l.syncingStopped != nil {
 			l.syncingStopped.Signal() // trigger shutdown in start.go
 		}
-	}()
+	})
 
 	return synced
 }

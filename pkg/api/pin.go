@@ -12,6 +12,7 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -238,7 +239,9 @@ func (s *Service) pinIntegrityHandler(w http.ResponseWriter, r *http.Request) {
 
 	out := make(chan storer.PinStat)
 
-	go s.pinIntegrity.Check(r.Context(), logger, querie.Ref.String(), out)
+	safe.Go(logger, "pin-integrity-check", func() {
+		s.pinIntegrity.Check(r.Context(), logger, querie.Ref.String(), out)
+	})
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {

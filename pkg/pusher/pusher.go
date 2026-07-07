@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/pushsync"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/stabilization"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -89,7 +90,9 @@ func New(
 		attempts:          &attempts{retryCount: retryCount, attempts: make(map[string]int)},
 		smuggler:          make(chan OpChan),
 	}
-	go p.chunksWorker(startupStabilizer)
+	safe.Go(p.logger, "pusher-chunks-worker", func() {
+		p.chunksWorker(startupStabilizer)
+	})
 	return p
 }
 
@@ -178,7 +181,7 @@ func (s *Service) chunksWorker(startupStabilizer stabilization.Subscriber) {
 		s.metrics.TotalSynced.Inc()
 	}
 
-	go func() {
+	safe.Go(s.logger, "pusher-chunks-multiplexer", func() {
 		for {
 			select {
 			case ch, ok := <-chunks:
@@ -192,7 +195,7 @@ func (s *Service) chunksWorker(startupStabilizer stabilization.Subscriber) {
 					return
 				}
 			case apiC := <-s.smuggler:
-				go func() {
+				safe.Go(s.logger, "pusher-smuggler-worker", func() {
 					for {
 						select {
 						case op := <-apiC:
@@ -205,12 +208,12 @@ func (s *Service) chunksWorker(startupStabilizer stabilization.Subscriber) {
 							return
 						}
 					}
-				}()
+				})
 			case <-s.quit:
 				return
 			}
 		}
-	}()
+	})
 
 	defer wg.Wait()
 
@@ -236,7 +239,9 @@ func (s *Service) chunksWorker(startupStabilizer stabilization.Subscriber) {
 			select {
 			case sem <- struct{}{}:
 				wg.Add(1)
-				go push(op)
+				safe.Go(s.logger, "pusher-push-worker", func() {
+					push(op)
+				})
 			case <-s.quit:
 				return
 			}

@@ -20,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/postage/postagecontract"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storageincentives/redistribution"
@@ -116,7 +117,9 @@ func New(overlay swarm.Address,
 	a.state = state
 
 	a.wg.Add(1)
-	go a.start(blockTime, a.blocksPerRound, blocksPerPhase)
+	safe.Go(a.logger, "storageincentives-agent-start", func() {
+		a.start(blockTime, a.blocksPerRound, blocksPerPhase)
+	})
 
 	return a, nil
 }
@@ -222,7 +225,9 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		a.state.SetCurrentEvent(currentPhase, round)
 		a.state.SetFullySynced(a.fullSyncedFunc())
 		a.state.SetHealthy(a.health.IsHealthy())
-		go a.state.purgeStaleRoundData()
+		safe.Go(a.logger, "storageincentives-purge-stale-round-data", func() {
+			a.state.purgeStaleRoundData()
+		})
 
 		// check if node is frozen starting from the next block
 		isFrozen, err := a.redistributionStatuser.IsOverlayFrozen(ctx, block+1)

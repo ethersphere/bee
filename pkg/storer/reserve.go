@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/storageutil"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
@@ -472,43 +473,45 @@ func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan
 	errC := make(chan error, 1)
 
 	db.inFlight.Go(func() {
-		trigger, unsub := db.reserveBinEvents.Subscribe(string(bin))
-		defer unsub()
-		defer close(out)
+		safe.Run(db.logger, "storer-subscribe-bin", func() {
+			trigger, unsub := db.reserveBinEvents.Subscribe(string(bin))
+			defer unsub()
+			defer close(out)
 
-		for {
+			for {
 
-			err := db.reserve.IterateBin(bin, start, func(a swarm.Address, binID uint64, batchID, stampHash []byte) (bool, error) {
-				select {
-				case out <- &BinC{Address: a, BinID: binID, BatchID: batchID, StampHash: stampHash}:
-					start = binID + 1
-				case <-done:
-					return true, nil
-				case <-db.quit:
-					return false, ErrDBQuit
-				case <-ctx.Done():
-					return false, ctx.Err()
+				err := db.reserve.IterateBin(bin, start, func(a swarm.Address, binID uint64, batchID, stampHash []byte) (bool, error) {
+					select {
+					case out <- &BinC{Address: a, BinID: binID, BatchID: batchID, StampHash: stampHash}:
+						start = binID + 1
+					case <-done:
+						return true, nil
+					case <-db.quit:
+						return false, ErrDBQuit
+					case <-ctx.Done():
+						return false, ctx.Err()
+					}
+
+					return false, nil
+				})
+				if err != nil {
+					errC <- err
+					return
 				}
 
-				return false, nil
-			})
-			if err != nil {
-				errC <- err
-				return
+				select {
+				case <-trigger:
+				case <-done:
+					return
+				case <-db.quit:
+					errC <- ErrDBQuit
+					return
+				case <-ctx.Done():
+					errC <- err
+					return
+				}
 			}
-
-			select {
-			case <-trigger:
-			case <-done:
-				return
-			case <-db.quit:
-				errC <- ErrDBQuit
-				return
-			case <-ctx.Done():
-				errC <- err
-				return
-			}
-		}
+		})
 	})
 
 	var doneOnce sync.Once

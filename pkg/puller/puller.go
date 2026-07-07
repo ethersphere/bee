@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/puller/intervalstore"
 	"github.com/ethersphere/bee/v2/pkg/pullsync"
 	"github.com/ethersphere/bee/v2/pkg/rate"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -149,7 +150,9 @@ func (p *Puller) Start(ctx context.Context) {
 		p.cancel = cancel
 
 		p.wg.Add(1)
-		go p.manage(cctx)
+		safe.Go(p.logger, "puller-manage", func() {
+			p.manage(cctx)
+		})
 	})
 }
 
@@ -240,13 +243,13 @@ func (p *Puller) recalcPeers(ctx context.Context, storageRadius uint8) {
 	for _, peer := range p.syncPeers {
 		wg.Add(1)
 		p.wg.Add(1)
-		go func(peer *syncPeer) {
+		safe.Go(p.logger, "puller-recalc-peers", func() {
 			defer p.wg.Done()
 			defer wg.Done()
 			if err := p.syncPeer(ctx, peer, storageRadius); err != nil {
 				p.logger.Debug("sync peer failed", "peer_address", peer.address, "error", err)
 			}
-		}(peer)
+		})
 	}
 	wg.Wait()
 }
@@ -409,12 +412,16 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 	if cursor > 0 {
 		peer.wg.Add(1)
 		p.wg.Add(1)
-		go sync(true, peer.address, cursor)
+		safe.Go(p.logger, "puller-sync-historical", func() {
+			sync(true, peer.address, cursor)
+		})
 	}
 
 	peer.wg.Add(1)
 	p.wg.Add(1)
-	go sync(false, peer.address, cursor+1)
+	safe.Go(p.logger, "puller-sync-live", func() {
+		sync(false, peer.address, cursor+1)
+	})
 }
 
 func (p *Puller) Close() error {
