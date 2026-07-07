@@ -250,7 +250,7 @@ func (j *joiner) readAtOffset(
 		}
 
 		// Guard against slicing out-of-bounds if the computed end offset is invalid.
-		if dataOffsetEnd < dataOffsetStart || dataOffsetEnd > int64(len(data)) {
+		if dataOffsetEnd < dataOffsetStart || dataOffsetEnd > dataLen {
 			eg.Go(func() error {
 				return ErrMalformedTrie
 			})
