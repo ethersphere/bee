@@ -207,7 +207,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	chunk := swarm.NewChunk(swarm.NewAddress(ch.Address), ch.Data)
 	chunkAddress := chunk.Address()
 
-	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, trace.WithAttributes(
+	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, trace.WithSpanKind(trace.SpanKindServer), trace.WithAttributes(
 		attribute.String("address", chunkAddress.String()),
 		attribute.Int64("tag_id", int64(chunk.TagID())),
 		attribute.String("sender_address", p.Address.String()),
@@ -539,7 +539,7 @@ func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptRes
 
 	now := time.Now()
 
-	spanInner, _, _ := ps.tracer.FollowSpanFromContext(context.WithoutCancel(parentCtx), "push-chunk-async", ps.logger, trace.WithAttributes(
+	spanInner, _, _ := ps.tracer.FollowSpanFromContext(context.WithoutCancel(parentCtx), "push-chunk-async", ps.logger, trace.WithSpanKind(trace.SpanKindClient), trace.WithAttributes(
 		attribute.String("address", ch.Address().String()),
 	))
 

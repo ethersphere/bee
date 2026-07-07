@@ -258,7 +258,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 				inflight++
 
 				go func() {
-					span, _, ctx := s.tracer.FollowSpanFromContext(spanCtx, "retrieve-chunk", s.logger, trace.WithAttributes(
+					span, _, ctx := s.tracer.FollowSpanFromContext(spanCtx, "retrieve-chunk", s.logger, trace.WithSpanKind(trace.SpanKindClient), trace.WithAttributes(
 						attribute.String("address", chunkAddr.String()),
 					))
 					defer span.End()
@@ -450,7 +450,7 @@ func (s *Service) handler(p2pctx context.Context, p p2p.Peer, stream p2p.Stream)
 
 	var forwarded bool
 
-	span, _, ctx := s.tracer.StartSpanFromContext(ctx, "handle-retrieve-chunk", s.logger, trace.WithAttributes(
+	span, _, ctx := s.tracer.StartSpanFromContext(ctx, "handle-retrieve-chunk", s.logger, trace.WithSpanKind(trace.SpanKindServer), trace.WithAttributes(
 		attribute.String("address", addr.String()),
 	))
 	defer func() {
