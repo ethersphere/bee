@@ -41,7 +41,7 @@ func TestSteward(t *testing.T) {
 	var (
 		ctx            = context.Background()
 		chunks         = 1000
-		data           = make([]byte, chunks*4096) //1k chunks
+		data           = make([]byte, chunks*4096) // 1k chunks
 		chunkStore     = inmem
 		store          = mockstorer.NewWithChunkStore(chunkStore)
 		localRetrieval = &localRetriever{ChunkStore: chunkStore}
@@ -87,7 +87,7 @@ func TestSteward(t *testing.T) {
 		}
 	}()
 
-	err = s.Reupload(ctx, addr, stamper)
+	err = s.Reupload(ctx, addr, stamper, redundancy.PARANOID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestSteward(t *testing.T) {
 	default:
 	}
 
-	isRetrievable, err := s.IsRetrievable(ctx, addr)
+	isRetrievable, err := s.IsRetrievable(ctx, addr, redundancy.PARANOID)
 	if err != nil {
 		t.Fatal(err)
 	}

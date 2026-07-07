@@ -7,6 +7,7 @@ package status_test
 import (
 	"bytes"
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/api"
@@ -242,6 +243,70 @@ func (m *topologyPeersIterNoopMock) IsReachable() bool {
 	return true
 }
 
+// recordingPeerIterMock captures the topology.Select passed to its iterator
+// methods and yields a configurable set of peers, so callers can verify that
+// LocalSnapshot opts in to bootnode inclusion.
+type recordingPeerIterMock struct {
+	peers           []swarm.Address
+	gotSelect       topology.Select
+	eachConnCalls   int
+	eachConnRevCall int
+}
+
+func (m *recordingPeerIterMock) EachConnectedPeer(f topology.EachPeerFunc, s topology.Select) error {
+	m.gotSelect = s
+	m.eachConnCalls++
+	for _, p := range m.peers {
+		if _, _, err := f(p, 0); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *recordingPeerIterMock) EachConnectedPeerRev(_ topology.EachPeerFunc, s topology.Select) error {
+	m.gotSelect = s
+	m.eachConnRevCall++
+	return nil
+}
+
+func (m *recordingPeerIterMock) IsReachable() bool { return true }
+
+// TestLocalSnapshotIncludesBootnodes is a regression test for
+// https://github.com/ethersphere/bee/issues/5111: LocalSnapshot must ask the
+// topology iterator to include bootnodes so that the connectedPeers count
+// reported by /status matches the peer set returned by /peers.
+func TestLocalSnapshotIncludesBootnodes(t *testing.T) {
+	t.Parallel()
+
+	peers := []swarm.Address{
+		swarm.MustParseHexAddress("11" + strings.Repeat("00", 31)),
+		swarm.MustParseHexAddress("22" + strings.Repeat("00", 31)),
+		swarm.MustParseHexAddress("33" + strings.Repeat("00", 31)),
+	}
+
+	iter := &recordingPeerIterMock{peers: peers}
+	sssMock := &statusSnapshotMock{&pb.Snapshot{BatchCommitment: 1, LastSyncedBlock: 1}}
+
+	svc := status.NewService(log.Noop, nil, iter, api.FullMode.String(), sssMock, sssMock, nil)
+	svc.SetSync(sssMock)
+
+	snap, err := svc.LocalSnapshot()
+	if err != nil {
+		t.Fatalf("LocalSnapshot: %v", err)
+	}
+
+	if !iter.gotSelect.IncludeBootnodes {
+		t.Fatalf("LocalSnapshot must pass topology.Select{IncludeBootnodes: true} to EachConnectedPeer, got %#v", iter.gotSelect)
+	}
+	if iter.eachConnCalls != 1 {
+		t.Fatalf("expected EachConnectedPeer to be called exactly once, got %d", iter.eachConnCalls)
+	}
+	if got, want := snap.ConnectedPeers, uint64(len(peers)); got != want {
+		t.Fatalf("ConnectedPeers: got %d, want %d (every iterated peer must be counted, including bootnodes)", got, want)
+	}
+}
+
 // statusSnapshotMock satisfies the following interfaces:
 //   - Reserve
 //   - SyncReporter
@@ -256,6 +321,7 @@ func (m *statusSnapshotMock) Commitment() (uint64, error) { return m.BatchCommit
 func (m *statusSnapshotMock) GetChainState() *postage.ChainState {
 	return &postage.ChainState{Block: m.LastSyncedBlock}
 }
+
 func (m *statusSnapshotMock) ReserveSizeWithinRadius() uint64 {
 	return m.Snapshot.ReserveSizeWithinRadius
 }

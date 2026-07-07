@@ -101,7 +101,6 @@ func (g *decoder) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, err
 // If the fetch fails and waiting for the recovery is allowed, the function will wait
 // for either a good or bad recovery signal.
 func (g *decoder) fetch(ctx context.Context, i int, waitForRecovery bool) (err error) {
-
 	waitRecovery := func(err error) error {
 		if !waitForRecovery {
 			return err
@@ -152,8 +151,8 @@ func (g *decoder) fetch(ctx context.Context, i int, waitForRecovery bool) (err e
 		}
 
 		g.setData(i, ch.Data())
-		close(g.waits[i])
 		g.fetchedCnt.Add(1)
+		close(g.waits[i])
 		return nil
 	}
 
@@ -171,7 +170,6 @@ func (g *decoder) fetch(ctx context.Context, i int, waitForRecovery bool) (err e
 }
 
 func (g *decoder) prefetch() {
-
 	var err error
 	defer func() {
 		if err != nil {
@@ -205,11 +203,9 @@ func (g *decoder) prefetch() {
 	if err == nil && s > DATA {
 		g.logger.Debug("successful recovery", "strategy", s)
 	}
-
 }
 
 func (g *decoder) runStrategy(s Strategy) error {
-
 	// across the different strategies, the common goal is to fetch at least as many chunks
 	// as the number of data shards.
 	// DATA strategy has a max error tolerance of zero.
@@ -252,7 +248,8 @@ func (g *decoder) runStrategy(s Strategy) error {
 		}(i)
 	}
 
-	for range c {
+	for range len(m) {
+		<-c
 		if g.fetchedCnt.Load() >= int32(g.shardCnt) {
 			return nil
 		}
@@ -261,7 +258,7 @@ func (g *decoder) runStrategy(s Strategy) error {
 		}
 	}
 
-	return nil
+	return errStrategyFailed
 }
 
 // recover wraps the stages of data shard recovery:

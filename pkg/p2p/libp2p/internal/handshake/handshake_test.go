@@ -7,11 +7,14 @@ package handshake_test
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -20,10 +23,17 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/handshake/mock"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/handshake/pb"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
-
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	libp2ppeer "github.com/libp2p/go-libp2p/core/peer"
 	ma "github.com/multiformats/go-multiaddr"
 )
+
+// noopAddressbook is a Getter that returns ErrNotFound for every overlay.
+type noopAddressbook struct{}
+
+func (noopAddressbook) Get(_ swarm.Address) (*bzz.Address, bool, error) {
+	return nil, false, addressbook.ErrNotFound
+}
 
 //nolint:paralleltest
 func TestHandshake(t *testing.T) {
@@ -57,8 +67,14 @@ func TestHandshake(t *testing.T) {
 	node1mas := []ma.Multiaddr{node1ma, node1ma2}
 	node2mas := []ma.Multiaddr{node2ma, node2ma2}
 
-	node1maBinary := bzz.SerializeUnderlays(node1mas)
-	node2maBinary := bzz.SerializeUnderlays(node2mas)
+	node1maBinary, err := bzz.SerializeUnderlays(node1mas)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node2maBinary, err := bzz.SerializeUnderlays(node2mas)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	node1AddrInfos, err := libp2ppeer.AddrInfosFromP2pAddrs(node1ma, node1ma2)
 	if err != nil {
@@ -93,7 +109,9 @@ func TestHandshake(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	node1BzzAddress, err := bzz.NewAddress(signer1, []ma.Multiaddr{node1ma, node1ma2}, addr, networkID, nonce)
+	testTime := time.Unix(1700000000, 0)
+	testTimestamp := testTime.Unix()
+	node1BzzAddress, err := bzz.NewAddress(signer1, []ma.Multiaddr{node1ma, node1ma2}, addr, networkID, nonce, testTimestamp, common.Address{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +119,7 @@ func TestHandshake(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	node2BzzAddress, err := bzz.NewAddress(signer2, []ma.Multiaddr{node2ma, node2ma2}, addr2, networkID, nonce)
+	node2BzzAddress, err := bzz.NewAddress(signer2, []ma.Multiaddr{node2ma, node2ma2}, addr2, networkID, nonce, testTimestamp, common.Address{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,10 +135,11 @@ func TestHandshake(t *testing.T) {
 
 	aaddresser := &AdvertisableAddresserMock{}
 
-	handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nonce, nil, testWelcomeMessage, true, node1AddrInfo.ID, logger)
+	handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nonce, nil, testWelcomeMessage, noopAddressbook{}, node1AddrInfo.ID, nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
+	handshakeService.SetTime(func() time.Time { return testTime })
 
 	t.Run("Handshake - OK", func(t *testing.T) {
 		var buffer1 bytes.Buffer
@@ -138,10 +157,11 @@ func TestHandshake(t *testing.T) {
 					Underlay:  node2maBinary,
 					Overlay:   node2BzzAddress.Overlay.Bytes(),
 					Signature: node2BzzAddress.Signature,
+					Nonce:     nonce,
+					Timestamp: node2BzzAddress.Timestamp,
 				},
 				NetworkID:      networkID,
 				FullNode:       true,
-				Nonce:          nonce,
 				WelcomeMessage: testWelcomeMessage,
 			},
 		}); err != nil {
@@ -163,7 +183,11 @@ func TestHandshake(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if !bytes.Equal(syn.ObservedUnderlay, node2maBinary) {
+		synAddrs, err := bzz.DeserializeUnderlays(syn.ObservedUnderlay)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bzz.AreUnderlaysEqual(synAddrs, node2mas) {
 			t.Fatal("bad syn")
 		}
 
@@ -194,7 +218,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handshake - picker error", func(t *testing.T) {
-		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nonce, nil, "", true, node1AddrInfo.ID, logger)
+		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nonce, nil, "", noopAddressbook{}, node1AddrInfo.ID, nil, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -218,9 +242,10 @@ func TestHandshake(t *testing.T) {
 				Underlay:  node2maBinary,
 				Overlay:   node2BzzAddress.Overlay.Bytes(),
 				Signature: node2BzzAddress.Signature,
+				Nonce:     nonce,
+				Timestamp: node2BzzAddress.Timestamp,
 			},
 			NetworkID: networkID,
-			Nonce:     nonce,
 			FullNode:  true,
 		}); err != nil {
 			t.Fatal(err)
@@ -237,7 +262,7 @@ func TestHandshake(t *testing.T) {
 		const LongMessage = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Morbi consectetur urna ut lorem sollicitudin posuere. Donec sagittis laoreet sapien."
 
 		expectedErr := handshake.ErrWelcomeMessageLength
-		_, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nil, nil, LongMessage, true, node1AddrInfo.ID, logger)
+		_, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nonce, nil, LongMessage, noopAddressbook{}, node1AddrInfo.ID, nil, logger)
 		if err == nil || err.Error() != expectedErr.Error() {
 			t.Fatal("expected:", expectedErr, "got:", err)
 		}
@@ -315,8 +340,9 @@ func TestHandshake(t *testing.T) {
 					Underlay:  node2maBinary,
 					Overlay:   node2BzzAddress.Overlay.Bytes(),
 					Signature: node2BzzAddress.Signature,
+					Nonce:     nonce,
+					Timestamp: node2BzzAddress.Timestamp,
 				},
-				Nonce:     nonce,
 				NetworkID: networkID,
 				FullNode:  true,
 			},
@@ -392,7 +418,7 @@ func TestHandshake(t *testing.T) {
 		}); err != nil {
 			t.Fatal(err)
 		}
-		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nonce, nil, testWelcomeMessage, true, node1AddrInfo.ID, logger)
+		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nonce, nil, testWelcomeMessage, noopAddressbook{}, node1AddrInfo.ID, nil, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -439,20 +465,19 @@ func TestHandshake(t *testing.T) {
 		res, err := handshakeService.Handshake(context.Background(), stream1, node2mas)
 		if !errors.Is(err, testError) {
 			t.Fatalf("expected error %v got %v", testError, err)
-
 		}
 
 		if res != nil {
 			t.Fatal("expected nil res")
 		}
-
 	})
 
 	t.Run("Handle - OK", func(t *testing.T) {
-		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nonce, nil, "", true, node1AddrInfo.ID, logger)
+		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nonce, nil, "", noopAddressbook{}, node1AddrInfo.ID, nil, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
+		handshakeService.SetTime(func() time.Time { return testTime })
 		var buffer1 bytes.Buffer
 		var buffer2 bytes.Buffer
 		stream1 := mock.NewStream(&buffer1, &buffer2)
@@ -470,9 +495,10 @@ func TestHandshake(t *testing.T) {
 				Underlay:  node2maBinary,
 				Overlay:   node2BzzAddress.Overlay.Bytes(),
 				Signature: node2BzzAddress.Signature,
+				Nonce:     nonce,
+				Timestamp: node2BzzAddress.Timestamp,
 			},
 			NetworkID: networkID,
-			Nonce:     nonce,
 			FullNode:  true,
 		}); err != nil {
 			t.Fatal(err)
@@ -491,11 +517,15 @@ func TestHandshake(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if !bytes.Equal(got.Syn.ObservedUnderlay, node2maBinary) {
+		gotSynAddrs, err := bzz.DeserializeUnderlays(got.Syn.ObservedUnderlay)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bzz.AreUnderlaysEqual(gotSynAddrs, node2mas) {
 			t.Fatalf("got bad syn")
 		}
 
-		bzzAddress, err := bzz.ParseAddress(got.Ack.Address.Underlay, got.Ack.Address.Overlay, got.Ack.Address.Signature, got.Ack.Nonce, true, got.Ack.NetworkID)
+		bzzAddress, err := bzz.ParseAddress(got.Ack.Address.Underlay, got.Ack.Address.Overlay, got.Ack.Address.Signature, got.Ack.Address.Nonce, got.Ack.Address.Timestamp, got.Ack.NetworkID, got.Ack.Address.ChequebookAddress)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -507,7 +537,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - read error ", func(t *testing.T) {
-		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nil, nil, "", true, node1AddrInfo.ID, logger)
+		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nonce, nil, "", noopAddressbook{}, node1AddrInfo.ID, nil, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -526,7 +556,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - write error ", func(t *testing.T) {
-		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nil, nil, "", true, node1AddrInfo.ID, logger)
+		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nonce, nil, "", noopAddressbook{}, node1AddrInfo.ID, nil, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -553,7 +583,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - ack read error ", func(t *testing.T) {
-		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nil, nil, "", true, node1AddrInfo.ID, logger)
+		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nonce, nil, "", noopAddressbook{}, node1AddrInfo.ID, nil, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -582,7 +612,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - networkID mismatch ", func(t *testing.T) {
-		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nil, nil, "", true, node1AddrInfo.ID, logger)
+		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nonce, nil, "", noopAddressbook{}, node1AddrInfo.ID, nil, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -621,7 +651,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - invalid ack", func(t *testing.T) {
-		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nil, nil, "", true, node1AddrInfo.ID, logger)
+		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nonce, nil, "", noopAddressbook{}, node1AddrInfo.ID, nil, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -656,7 +686,7 @@ func TestHandshake(t *testing.T) {
 	})
 
 	t.Run("Handle - advertisable error", func(t *testing.T) {
-		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nil, nil, "", true, node1AddrInfo.ID, logger)
+		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nonce, nil, "", noopAddressbook{}, node1AddrInfo.ID, nil, logger)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -685,6 +715,153 @@ func TestHandshake(t *testing.T) {
 
 		if res != nil {
 			t.Fatal("expected nil res")
+		}
+	})
+
+	// Regression tests for nil nested protobuf fields on the handshake
+	// wire: a malicious peer can send syntactically decodable messages that
+	// omit nested pointer fields (SynAck.Syn, SynAck.Ack, Ack.Address), and
+	// the parser must reject them as protocol errors rather than panic
+	// (unauthenticated DoS). Each subtest recovers from panics so the test
+	// binary itself does not crash if a guard is missing.
+	t.Run("Handshake - nil SynAck.Syn", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("handshake panicked on nil SynAck.Syn: %v", r)
+			}
+		}()
+
+		var buffer1 bytes.Buffer
+		var buffer2 bytes.Buffer
+		stream1 := mock.NewStream(&buffer1, &buffer2)
+		stream2 := mock.NewStream(&buffer2, &buffer1)
+
+		w := protobuf.NewWriter(stream2)
+		if err := w.WriteMsg(&pb.SynAck{
+			// Syn is intentionally nil.
+			Ack: &pb.Ack{
+				Address: &pb.BzzAddress{
+					Underlay:          node2maBinary,
+					Overlay:           node2BzzAddress.Overlay.Bytes(),
+					Signature:         node2BzzAddress.Signature,
+					Nonce:             nonce,
+					Timestamp:         node2BzzAddress.Timestamp,
+					ChequebookAddress: node2BzzAddress.ChequebookAddress.Bytes(),
+				},
+				NetworkID: networkID,
+				FullNode:  true,
+			},
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		res, err := handshakeService.Handshake(context.Background(), stream1, node2mas)
+		if res != nil {
+			t.Fatal("res should be nil")
+		}
+		if !errors.Is(err, handshake.ErrInvalidSyn) {
+			t.Fatalf("expected %s, got %v", handshake.ErrInvalidSyn, err)
+		}
+	})
+
+	t.Run("Handshake - nil SynAck.Ack", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("handshake panicked on nil SynAck.Ack: %v", r)
+			}
+		}()
+
+		var buffer1 bytes.Buffer
+		var buffer2 bytes.Buffer
+		stream1 := mock.NewStream(&buffer1, &buffer2)
+		stream2 := mock.NewStream(&buffer2, &buffer1)
+
+		w := protobuf.NewWriter(stream2)
+		if err := w.WriteMsg(&pb.SynAck{
+			Syn: &pb.Syn{
+				ObservedUnderlay: node1maBinary,
+			},
+			// Ack is intentionally nil.
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		res, err := handshakeService.Handshake(context.Background(), stream1, node2mas)
+		if res != nil {
+			t.Fatal("res should be nil")
+		}
+		if !errors.Is(err, handshake.ErrInvalidAck) {
+			t.Fatalf("expected %s, got %v", handshake.ErrInvalidAck, err)
+		}
+	})
+
+	t.Run("Handshake - nil SynAck.Ack.Address", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("handshake panicked on nil Ack.Address: %v", r)
+			}
+		}()
+
+		var buffer1 bytes.Buffer
+		var buffer2 bytes.Buffer
+		stream1 := mock.NewStream(&buffer1, &buffer2)
+		stream2 := mock.NewStream(&buffer2, &buffer1)
+
+		w := protobuf.NewWriter(stream2)
+		if err := w.WriteMsg(&pb.SynAck{
+			Syn: &pb.Syn{
+				ObservedUnderlay: node1maBinary,
+			},
+			Ack: &pb.Ack{
+				// Address is intentionally nil.
+				NetworkID: networkID,
+				FullNode:  true,
+			},
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		res, err := handshakeService.Handshake(context.Background(), stream1, node2mas)
+		if res != nil {
+			t.Fatal("res should be nil")
+		}
+		if !errors.Is(err, handshake.ErrInvalidAck) {
+			t.Fatalf("expected %s, got %v", handshake.ErrInvalidAck, err)
+		}
+	})
+
+	t.Run("Handle - nil Ack.Address", func(t *testing.T) {
+		handshakeService, err := handshake.New(signer1, aaddresser, node1Info.BzzAddress.Overlay, networkID, true, nonce, nil, "", noopAddressbook{}, node1AddrInfo.ID, nil, logger)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var buffer1 bytes.Buffer
+		var buffer2 bytes.Buffer
+		stream1 := mock.NewStream(&buffer1, &buffer2)
+		stream2 := mock.NewStream(&buffer2, &buffer1)
+
+		w := protobuf.NewWriter(stream2)
+		if err := w.WriteMsg(&pb.Syn{
+			ObservedUnderlay: node1maBinary,
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := w.WriteMsg(&pb.Ack{
+			// Address is intentionally nil.
+			NetworkID: networkID,
+			FullNode:  true,
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		res, err := handshakeService.Handle(context.Background(), stream1, node2mas)
+		if res != nil {
+			t.Fatal("res should be nil")
+		}
+		if !errors.Is(err, handshake.ErrInvalidAck) {
+			t.Fatalf("expected %s, got %v", handshake.ErrInvalidAck, err)
 		}
 	})
 }
@@ -724,4 +901,349 @@ func (a *AdvertisableAddresserMock) Resolve(observedAddress ma.Multiaddr) (ma.Mu
 	}
 
 	return observedAddress, nil
+}
+
+// newTimestampTestService builds a handshake.Service wired to a fixed clock so
+// that parseCheckAck can be exercised deterministically.
+func newTimestampTestService(t *testing.T, networkID uint64, now time.Time) *handshake.Service {
+	t.Helper()
+
+	pk, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := crypto.NewDefaultSigner(pk)
+	nonce := common.HexToHash("0x1").Bytes()
+
+	overlay, err := crypto.NewOverlayAddress(pk.PublicKey, networkID, nonce)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	m, err := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/1634/p2p/16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkA")
+	if err != nil {
+		t.Fatal(err)
+	}
+	infos, err := libp2ppeer.AddrInfosFromP2pAddrs(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	svc, err := handshake.New(signer, resolveIdentity{}, overlay, networkID, true, nonce, nil, "", noopAddressbook{}, infos[0].ID, nil, log.Noop)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.SetTime(func() time.Time { return now })
+	return svc
+}
+
+type resolveIdentity struct{}
+
+func (resolveIdentity) Resolve(observed ma.Multiaddr) (ma.Multiaddr, error) {
+	return observed, nil
+}
+
+// signProtoAck builds a signed pb.Ack for a fresh peer identity with the given
+// timestamp, bypassing bzz.NewAddress's positivity guard so rejection paths
+// can be exercised.
+func signProtoAck(t *testing.T, networkID uint64, ts int64) *pb.Ack {
+	t.Helper()
+
+	pk, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := crypto.NewDefaultSigner(pk)
+	nonce := common.HexToHash("0x2").Bytes()
+
+	overlay, err := crypto.NewOverlayAddress(pk.PublicKey, networkID, nonce)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	u, err := ma.NewMultiaddr("/ip4/10.0.0.5/tcp/7070")
+	if err != nil {
+		t.Fatal(err)
+	}
+	underlaysBytes, err := bzz.SerializeUnderlays([]ma.Multiaddr{u})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sig, err := signer.Sign(handshakeSigningBytes(underlaysBytes, overlay.Bytes(), networkID, nonce, ts))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return &pb.Ack{
+		Address: &pb.BzzAddress{
+			Underlay:  underlaysBytes,
+			Overlay:   overlay.Bytes(),
+			Signature: sig,
+			Nonce:     nonce,
+			Timestamp: ts,
+		},
+		NetworkID: networkID,
+		FullNode:  true,
+	}
+}
+
+// handshakeSigningBytes mirrors bzz.generateSignData so this test can produce
+// wire records with timestamps that NewAddress would otherwise reject.
+func handshakeSigningBytes(underlay, overlay []byte, networkID uint64, nonce []byte, timestamp int64) []byte {
+	networkIDBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(networkIDBytes, networkID)
+	tsBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(tsBytes, uint64(timestamp))
+	signData := append([]byte("bee-handshake-"), underlay...)
+	signData = append(signData, overlay...)
+	signData = append(signData, networkIDBytes...)
+	signData = append(signData, nonce...)
+	signData = append(signData, tsBytes...)
+	return append(signData, (common.Address{}).Bytes()...)
+}
+
+// TestParseCheckAck_TimestampRejections exercises the rejection branches of
+// parseCheckAck — future beyond skew, ts=0, negative ts — and confirms a
+// future-at-skew-boundary is accepted.
+func TestParseCheckAck_TimestampRejections(t *testing.T) {
+	t.Parallel()
+
+	networkID := uint64(7)
+	now := time.Unix(1700000000, 0)
+	svc := newTimestampTestService(t, networkID, now)
+
+	t.Run("future beyond skew rejected", func(t *testing.T) {
+		ack := signProtoAck(t, networkID, now.Add(bzz.MaxClockSkew+2*time.Second).Unix())
+		if _, err := svc.ParseCheckAck(context.Background(), ack); !errors.Is(err, bzz.ErrTimestampInFuture) {
+			t.Fatalf("expected ErrTimestampInFuture for future-beyond-skew, got %v", err)
+		}
+	})
+
+	t.Run("future at skew boundary accepted", func(t *testing.T) {
+		ack := signProtoAck(t, networkID, now.Add(bzz.MaxClockSkew).Unix())
+		if _, err := svc.ParseCheckAck(context.Background(), ack); err != nil {
+			t.Fatalf("expected acceptance at skew boundary, got %v", err)
+		}
+	})
+
+	t.Run("zero timestamp rejected", func(t *testing.T) {
+		ack := signProtoAck(t, networkID, 0)
+		if _, err := svc.ParseCheckAck(context.Background(), ack); !errors.Is(err, bzz.ErrTimestampInvalid) {
+			t.Fatalf("expected ErrTimestampInvalid for ts=0, got %v", err)
+		}
+	})
+
+	t.Run("negative timestamp rejected", func(t *testing.T) {
+		ack := signProtoAck(t, networkID, -1)
+		if _, err := svc.ParseCheckAck(context.Background(), ack); !errors.Is(err, bzz.ErrTimestampInvalid) {
+			t.Fatalf("expected ErrTimestampInvalid for negative ts, got %v", err)
+		}
+	})
+}
+
+// testUnderlays returns a single-multiaddr underlay set on the given port so
+// tests can produce distinct canonical underlay sets cheaply.
+func testUnderlays(t *testing.T, port int) []ma.Multiaddr {
+	t.Helper()
+
+	m, err := ma.NewMultiaddr(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d/p2p/16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkA", port))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return []ma.Multiaddr{m}
+}
+
+// TestSignedAddress_StableAcrossCalls verifies that the signed address is
+// minted once and reused verbatim on subsequent calls, even when the clock
+// advances.
+func TestSignedAddress_StableAcrossCalls(t *testing.T) {
+	t.Parallel()
+
+	networkID := uint64(3)
+	now := time.Unix(1700000000, 0)
+	svc := newTimestampTestService(t, networkID, now)
+
+	underlays := testUnderlays(t, 1634)
+
+	first, err := svc.SignedAddress(underlays)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Timestamp != now.Unix() {
+		t.Fatalf("first timestamp: got %d, want %d", first.Timestamp, now.Unix())
+	}
+
+	svc.SetTime(func() time.Time { return now.Add(time.Hour) })
+
+	second, err := svc.SignedAddress(underlays)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if second.Timestamp != first.Timestamp {
+		t.Fatalf("timestamp changed across calls: got %d, want %d", second.Timestamp, first.Timestamp)
+	}
+	if !bytes.Equal(second.Signature, first.Signature) {
+		t.Fatal("signature changed across calls for the same underlay set")
+	}
+}
+
+// TestSignedAddress_ReSignsOnChange verifies that changing the underlay set or
+// the local chequebook mints a new record with a strictly newer timestamp,
+// even within the same clock second.
+func TestSignedAddress_ReSignsOnChange(t *testing.T) {
+	t.Parallel()
+
+	networkID := uint64(3)
+	now := time.Unix(1700000000, 0)
+	svc := newTimestampTestService(t, networkID, now)
+
+	first, err := svc.SignedAddress(testUnderlays(t, 1634))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	second, err := svc.SignedAddress(testUnderlays(t, 1635))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Timestamp != first.Timestamp+1 {
+		t.Fatalf("expected monotonic bump on underlay change: got %d, want %d", second.Timestamp, first.Timestamp+1)
+	}
+
+	chequebook := common.HexToAddress("0xab4f3b3c1d2e000000000000000000000000cafe")
+	svc.SetChequebookAddress(chequebook)
+
+	third, err := svc.SignedAddress(testUnderlays(t, 1634))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if third.Timestamp <= second.Timestamp {
+		t.Fatalf("expected newer timestamp after chequebook change: got %d, existing %d", third.Timestamp, second.Timestamp)
+	}
+	if third.ChequebookAddress != chequebook {
+		t.Fatalf("chequebook: got %s, want %s", third.ChequebookAddress, chequebook)
+	}
+}
+
+// TestSignedAddress_ClockRegression verifies a record minted after the wall
+// clock steps back still carries a strictly newer timestamp.
+func TestSignedAddress_ClockRegression(t *testing.T) {
+	t.Parallel()
+
+	networkID := uint64(3)
+	now := time.Unix(1700000000, 0)
+	svc := newTimestampTestService(t, networkID, now)
+
+	first, err := svc.SignedAddress(testUnderlays(t, 1634))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	svc.SetTime(func() time.Time { return now.Add(-time.Hour) })
+
+	second, err := svc.SignedAddress(testUnderlays(t, 1635))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Timestamp != first.Timestamp+1 {
+		t.Fatalf("timestamp after clock regression: got %d, want %d", second.Timestamp, first.Timestamp+1)
+	}
+}
+
+// TestSignedAddress_LatestEntryOnly verifies the cache keeps only the most
+// recently minted address: returning to a previously used underlay set
+// re-mints with a strictly newer timestamp instead of reviving the old record.
+func TestSignedAddress_LatestEntryOnly(t *testing.T) {
+	t.Parallel()
+
+	networkID := uint64(3)
+	now := time.Unix(1700000000, 0)
+	svc := newTimestampTestService(t, networkID, now)
+
+	first, err := svc.SignedAddress(testUnderlays(t, 2000))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := svc.SignedAddress(testUnderlays(t, 2001)); err != nil {
+		t.Fatal(err)
+	}
+
+	reminted, err := svc.SignedAddress(testUnderlays(t, 2000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reminted.Timestamp != first.Timestamp+2 {
+		t.Fatalf("expected re-mint with newer timestamp: got %d, want %d", reminted.Timestamp, first.Timestamp+2)
+	}
+
+	cached, err := svc.SignedAddress(testUnderlays(t, 2000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cached.Timestamp != reminted.Timestamp || !bytes.Equal(cached.Signature, reminted.Signature) {
+		t.Fatal("latest entry not reused verbatim")
+	}
+}
+
+// TestHandle_SignedAddressStableAcrossHandshakes verifies end to end that two
+// inbound handshakes advertise a byte-identical BzzAddress record (timestamp
+// and signature) even when the clock advances between them.
+func TestHandle_SignedAddressStableAcrossHandshakes(t *testing.T) {
+	t.Parallel()
+
+	networkID := uint64(3)
+	now := time.Unix(1700000000, 0)
+	svc := newTimestampTestService(t, networkID, now)
+
+	observed := testUnderlays(t, 1634)
+	observedBinary, err := bzz.SerializeUnderlays(observed)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	run := func(clock time.Time) *pb.SynAck {
+		t.Helper()
+
+		svc.SetTime(func() time.Time { return clock })
+
+		var buffer1 bytes.Buffer
+		var buffer2 bytes.Buffer
+		stream1 := mock.NewStream(&buffer1, &buffer2)
+		stream2 := mock.NewStream(&buffer2, &buffer1)
+
+		w := protobuf.NewWriter(stream2)
+		if err := w.WriteMsg(&pb.Syn{ObservedUnderlay: observedBinary}); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.WriteMsg(signProtoAck(t, networkID, clock.Unix())); err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := svc.Handle(context.Background(), stream1, observed); err != nil {
+			t.Fatal(err)
+		}
+
+		_, r := protobuf.NewWriterAndReader(stream2)
+		var got pb.SynAck
+		if err := r.ReadMsg(&got); err != nil {
+			t.Fatal(err)
+		}
+		return &got
+	}
+
+	first := run(now)
+	second := run(now.Add(time.Hour))
+
+	if second.Ack.Address.Timestamp != first.Ack.Address.Timestamp {
+		t.Fatalf("advertised timestamp changed across handshakes: got %d, want %d", second.Ack.Address.Timestamp, first.Ack.Address.Timestamp)
+	}
+	if !bytes.Equal(second.Ack.Address.Signature, first.Ack.Address.Signature) {
+		t.Fatal("advertised signature changed across handshakes")
+	}
+	if !bytes.Equal(second.Ack.Address.Underlay, first.Ack.Address.Underlay) {
+		t.Fatal("advertised underlays changed across handshakes")
+	}
 }

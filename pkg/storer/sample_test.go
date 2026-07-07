@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/v2/pkg/bmt"
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 
@@ -26,7 +27,7 @@ func TestReserveSampler(t *testing.T) {
 	const maxPO = 10
 
 	randChunks := func(baseAddr swarm.Address, timeVar uint64) []swarm.Chunk {
-		var chs []swarm.Chunk
+		chs := make([]swarm.Chunk, 0, chunkCountPerPO*maxPO)
 		for po := range maxPO {
 			for range chunkCountPerPO {
 				ch := chunk.GenerateValidRandomChunkAt(t, baseAddr, po).WithBatch(3, 2, false)
@@ -312,10 +313,14 @@ func assertValidSample(t *testing.T, sample storer.Sample, minRadius uint8, anch
 // TestSampleVectorCAC is a deterministic test vector that verifies the chunk
 // address and transformed address produced by MakeSampleUsingChunks for a
 // single hardcoded CAC chunk and anchor. It guards against regressions in the
-// BMT hashing or sampling pipeline.
+// BMT hashing or sampling pipeline, and asserts that both the goroutine and
+// SIMD hasher paths produce identical hashes.
+//
+// Sub-tests are intentionally not run in parallel: SetSIMDOptIn mutates global
+// state and concurrent calls would see flapping values. On platforms where the
+// dispatcher falls back to the goroutine pool (non-linux/amd64 or CPU without
+// AVX2/AVX-512), the SIMD sub-test degrades to a goroutine run.
 func TestSampleVectorCAC(t *testing.T) {
-	t.Parallel()
-
 	// Chunk content: 4096 bytes with repeating pattern i%256.
 	chunkContent := make([]byte, swarm.ChunkSize)
 	for i := range chunkContent {
@@ -342,27 +347,42 @@ func TestSampleVectorCAC(t *testing.T) {
 	// Anchor: exactly 32 bytes, constant across runs.
 	anchor := []byte("swarm-test-anchor-deterministic!")
 
-	sample, err := storer.MakeSampleUsingChunks([]swarm.Chunk{ch}, anchor)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(sample.Items) != 1 {
-		t.Fatalf("expected 1 sample item, got %d", len(sample.Items))
-	}
-
-	item := sample.Items[0]
-
 	const (
 		wantChunkAddr       = "902406053a7a2f3a17f16097e1d0b4b6a4abeae6b84968f5503ae621f9522e16"
 		wantTransformedAddr = "9dee91d1ed794460474ffc942996bd713176731db4581a3c6470fe9862905a60"
 	)
 
-	if got := item.ChunkAddress.String(); got != wantChunkAddr {
-		t.Errorf("chunk address mismatch:\n got:  %s\n want: %s", got, wantChunkAddr)
-	}
-	if got := item.TransformedAddress.String(); got != wantTransformedAddr {
-		t.Errorf("transformed address mismatch:\n got:  %s\n want: %s", got, wantTransformedAddr)
+	prev := bmt.SIMDOptIn()
+	t.Cleanup(func() { bmt.SetSIMDOptIn(prev) })
+
+	for _, tc := range []struct {
+		name string
+		simd bool
+	}{
+		{"goroutine", false},
+		{"simd", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bmt.SetSIMDOptIn(tc.simd)
+
+			sample, err := storer.MakeSampleUsingChunks([]swarm.Chunk{ch}, anchor)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if len(sample.Items) != 1 {
+				t.Fatalf("expected 1 sample item, got %d", len(sample.Items))
+			}
+
+			item := sample.Items[0]
+
+			if got := item.ChunkAddress.String(); got != wantChunkAddr {
+				t.Errorf("chunk address mismatch:\n got:  %s\n want: %s", got, wantChunkAddr)
+			}
+			if got := item.TransformedAddress.String(); got != wantTransformedAddr {
+				t.Errorf("transformed address mismatch:\n got:  %s\n want: %s", got, wantTransformedAddr)
+			}
+		})
 	}
 }
 
@@ -430,9 +450,7 @@ func BenchmarkReserveSample1k(b *testing.B) {
 		anchor       = swarm.RandAddressAt(b, baseAddr, int(radius)).Bytes()
 	)
 
-	b.ResetTimer()
-
-	for range b.N {
+	for b.Loop() {
 		_, err := st.ReserveSample(context.TODO(), anchor, radius, timeVar, nil)
 		if err != nil {
 			b.Fatal(err)

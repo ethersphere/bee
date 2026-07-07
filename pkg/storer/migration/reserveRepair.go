@@ -22,8 +22,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// ReserveRepairer is a migration step that removes all BinItem entries and migrates
-// ChunkBinItem and BatchRadiusItem entries to use a new BinID field.
+// ReserveRepairer runs the manual reserve repair procedure used by the db repair command.
 func ReserveRepairer(
 	st transaction.Storage,
 	chunkTypeFunc func(swarm.Chunk) swarm.ChunkType,
@@ -176,9 +175,7 @@ func ReserveRepairer(
 		for _, item := range batchRadiusItems {
 			func(item *reserve.BatchRadiusItem) {
 				eg.Go(func() error {
-
 					return st.Run(context.Background(), func(s transaction.Store) error {
-
 						chunk, err := s.ChunkStore().Get(context.Background(), item.Address)
 						if err != nil {
 							if errors.Is(err, storage.ErrNotFound) {

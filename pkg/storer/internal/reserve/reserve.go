@@ -99,7 +99,6 @@ func New(
 //  3. A new chunk that has the same address belonging to the same stamp index with an already stored chunk will overwrite the existing chunk
 //     if the new chunk has a higher stamp timestamp (regardless of batch type and chunk type, eg CAC & SOC).
 func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
-
 	// batchID lock, Put vs Eviction
 	r.multx.Lock(string(chunk.Stamp().BatchID()))
 	defer r.multx.Unlock(string(chunk.Stamp().BatchID()))
@@ -129,7 +128,6 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	var shouldIncReserveSize bool
 
 	err = r.st.Run(ctx, func(s transaction.Store) error {
-
 		oldStampIndex, loadedStampIndex, err := stampindex.LoadOrStore(s.IndexStore(), reserveScope, chunk)
 		if err != nil {
 			return fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
@@ -492,6 +490,47 @@ func RemoveChunkMetaData(
 	return errors.Join(errs,
 		trx.IndexStore().Delete(item),
 		trx.IndexStore().Delete(&ChunkBinItem{Bin: item.Bin, BinID: item.BinID}),
+	)
+}
+
+// DeleteCorruptedChunkMetadata removes all reserve index entries for a chunk
+// whose Sharky data was found to be corrupted during recovery. It is intended
+// to be called from the recovery path, where only a storage.IndexStore (not a
+// full transaction.Store) is available. If the chunk has no reserve metadata
+// (e.g. it belongs to the upload store or cache), the function is a no-op.
+func DeleteCorruptedChunkMetadata(store storage.IndexStore, baseAddr swarm.Address, addr swarm.Address) error {
+	stamp, err := chunkstamp.Load(store, reserveScope, addr)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil
+		}
+		return fmt.Errorf("load chunkstamp: %w", err)
+	}
+
+	stampHash, err := stamp.Hash()
+	if err != nil {
+		return fmt.Errorf("compute stamp hash: %w", err)
+	}
+
+	bin := swarm.Proximity(baseAddr.Bytes(), addr.Bytes())
+	batchRadiusItem := &BatchRadiusItem{
+		Bin:       bin,
+		BatchID:   stamp.BatchID(),
+		Address:   addr,
+		StampHash: stampHash,
+	}
+	if err := store.Get(batchRadiusItem); err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil
+		}
+		return fmt.Errorf("get batch radius item: %w", err)
+	}
+
+	return errors.Join(
+		stampindex.Delete(store, reserveScope, stamp),
+		chunkstamp.DeleteWithStamp(store, reserveScope, addr, stamp),
+		store.Delete(batchRadiusItem),
+		store.Delete(&ChunkBinItem{Bin: bin, BinID: batchRadiusItem.BinID}),
 	)
 }
 

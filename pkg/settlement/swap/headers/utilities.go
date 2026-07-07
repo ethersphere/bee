@@ -26,7 +26,6 @@ var (
 )
 
 func MakeSettlementHeaders(exchangeRate, deduction *big.Int) p2p.Headers {
-
 	return p2p.Headers{
 		exchangeRateFieldName: exchangeRate.Bytes(),
 		deductionFieldName:    deduction.Bytes(),
@@ -34,7 +33,6 @@ func MakeSettlementHeaders(exchangeRate, deduction *big.Int) p2p.Headers {
 }
 
 func ParseSettlementResponseHeaders(receivedHeaders p2p.Headers) (exchange, deduction *big.Int, err error) {
-
 	exchangeRate, err := ParseExchangeHeader(receivedHeaders)
 	if err != nil {
 		return nil, nil, err

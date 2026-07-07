@@ -36,7 +36,6 @@ func (s *Service) Exists(name string) (bool, error) {
 	defer s.mu.RUnlock()
 	_, ok := s.m[name]
 	return ok, nil
-
 }
 
 func (s *Service) SetKey(name, password string, edg keystore.EDG) (*ecdsa.PrivateKey, error) {

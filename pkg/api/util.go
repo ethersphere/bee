@@ -150,7 +150,7 @@ func mapStructure(input, output any, hooks map[string]func(v string) (string, er
 
 	// Do input sanity checks.
 	inputVal = reflect.ValueOf(input)
-	if inputVal.Kind() == reflect.Ptr {
+	if inputVal.Kind() == reflect.Pointer {
 		inputVal = inputVal.Elem()
 	}
 	switch {
@@ -163,7 +163,7 @@ func mapStructure(input, output any, hooks map[string]func(v string) (string, er
 	// Do output sanity checks.
 	outputVal = reflect.ValueOf(output)
 	switch {
-	case outputVal.Kind() != reflect.Ptr:
+	case outputVal.Kind() != reflect.Pointer:
 		return errors.New("output is not a pointer")
 	case outputVal.Elem().Kind() != reflect.Struct:
 		return errors.New("output is not a struct")
@@ -174,7 +174,7 @@ func mapStructure(input, output any, hooks map[string]func(v string) (string, er
 	var set func(string, reflect.Value) error
 	set = func(value string, field reflect.Value) error {
 		switch fieldKind := field.Kind(); fieldKind {
-		case reflect.Ptr:
+		case reflect.Pointer:
 			if field.IsNil() {
 				field.Set(reflect.New(field.Type().Elem()))
 			}

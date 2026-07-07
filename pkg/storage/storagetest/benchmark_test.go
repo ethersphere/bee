@@ -17,9 +17,7 @@ const (
 	vs = 100
 )
 
-var (
-	format = "100000000000000%d"
-)
+var format = "100000000000000%d"
 
 func TestCompressibleBytes(t *testing.T) {
 	t.Parallel()

@@ -33,7 +33,7 @@ func (e *epoch) String() string {
 
 // MarshalBinary implements the BinaryMarshaler interface
 func (e *epoch) MarshalBinary() ([]byte, error) {
-	epochBytes := make([]byte, 8)
+	epochBytes := make([]byte, 8, 9)
 	binary.BigEndian.PutUint64(epochBytes, e.start)
 	return crypto.LegacyKeccak256(append(epochBytes, e.level))
 }

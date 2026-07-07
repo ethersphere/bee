@@ -260,7 +260,7 @@ func (l *logger) log(vl Level, mc MessageCategory, err error, msg string, keysAn
 // hash is a hashing function for creating unique identifiers.
 func hash(prefix string, v uint, values string, w io.Writer) string {
 	var sink uintptr
-	if reflect.ValueOf(w).Kind() == reflect.Ptr {
+	if reflect.ValueOf(w).Kind() == reflect.Pointer {
 		sink = reflect.ValueOf(w).Pointer()
 	} else {
 		sink = reflect.ValueOf(&w).Pointer()

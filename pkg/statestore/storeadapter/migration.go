@@ -5,69 +5,116 @@
 package storeadapter
 
 import (
-	"strings"
+	"encoding/json"
+	"fmt"
 
-	"github.com/ethersphere/bee/v2/pkg/puller"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/migration"
 )
 
+// allSteps lists all state store migration steps.
+// All legacy steps are now NOOPs since all nodes have already run these migrations,
+// and new nodes start with an empty database.
 func allSteps(st storage.Store) migration.Steps {
+	// IMPORTANT: keep this noop and all historical version entries that point to it.
+	// migration.Migrate executes steps starting from (storedVersion + 1) and stops
+	// at the first missing version. If an old NOOP version is removed/renumbered,
+	// nodes that already stored a higher version can start beyond the new steps
+	// and never execute newly added migrations.
+	noop := func() error { return nil }
 	return map[uint64]migration.StepFn{
-		1: epochMigration(st),
-		2: deletePrefix(st, puller.IntervalPrefix),
-		3: deletePrefix(st, puller.IntervalPrefix),
-		4: deletePrefix(st, "blocklist"),
-		5: deletePrefix(st, "batchstore"),
-		6: deletePrefix(st, puller.IntervalPrefix),
-		7: deletePrefix(st, puller.IntervalPrefix),
-		8: deletePrefix(st, puller.IntervalPrefix),
+		1: noop,
+		2: noop,
+		3: noop,
+		4: noop,
+		5: noop,
+		6: noop,
+		7: noop,
+		8: noop,
+		9: rewriteAddressbookEnvelope(st),
 	}
 }
 
-func deletePrefix(s storage.Store, prefix string) migration.StepFn {
+type legacyEntry struct {
+	Overlay   string   `json:"overlay"`
+	Underlay  string   `json:"underlay,omitempty"`
+	Underlays []string `json:"underlays"`
+	Signature string   `json:"signature"`
+	Nonce     string   `json:"transaction"`
+}
+
+type migratedAddress struct {
+	Overlay           string   `json:"overlay"`
+	Underlays         []string `json:"underlays"`
+	Signature         string   `json:"signature"`
+	Nonce             string   `json:"nonce"`
+	Timestamp         int64    `json:"timestamp"`
+	ChequebookAddress string   `json:"chequebook,omitempty"`
+}
+
+type migratedEntry struct {
+	Address  migratedAddress `json:"address"`
+	Verified bool            `json:"verified"`
+}
+
+// rewriteAddressbookEnvelope wraps each "addressbook_entry_*" legacy
+// bzz.Address payload as {address, verified:false}. Undecodable records
+// are dropped; already-migrated entries pass through. Two-pass (collect,
+// then write) avoids mutating under the iterator. The legacy shape tagged
+// the nonce "transaction"; current code uses "nonce".
+func rewriteAddressbookEnvelope(s storage.Store) migration.StepFn {
 	return func() error {
 		store := &StateStorerAdapter{s}
-		return store.Iterate(prefix, func(key, val []byte) (stop bool, err error) {
-			return false, store.Delete(string(key))
-		})
-	}
-}
 
-func epochMigration(s storage.Store) migration.StepFn {
-
-	return func() error {
-
-		var deleteEntries = []string{
-			"statestore_schema",
-			"tags",
-			puller.IntervalPrefix,
-			"kademlia-counters",
-			"addressbook",
-			"batch",
+		type item struct {
+			key string
+			val []byte
 		}
 
-		return s.Iterate(storage.Query{
-			Factory: func() storage.Item { return &rawItem{&proxyItem{obj: []byte(nil)}} },
-		}, func(res storage.Result) (stop bool, err error) {
-			if strings.HasPrefix(res.ID, stateStoreNamespace) {
-				return false, nil
-			}
-			for _, e := range deleteEntries {
-				if strings.HasPrefix(res.ID, e) {
-					_ = s.Delete(&rawItem{&proxyItem{key: res.ID}})
-					return false, nil
+		var batch []item
+		if err := store.Iterate("addressbook_entry_", func(key, val []byte) (stop bool, err error) {
+			batch = append(batch, item{
+				key: string(key),
+				val: append([]byte(nil), val...),
+			})
+			return false, nil
+		}); err != nil {
+			return fmt.Errorf("iterate addressbook entries: %w", err)
+		}
+
+		for _, e := range batch {
+			var probe map[string]json.RawMessage
+			if json.Unmarshal(e.val, &probe) == nil {
+				if _, ok := probe["address"]; ok {
+					continue
 				}
 			}
 
-			item := res.Entry.(*rawItem)
-			item.key = res.ID
-			item.ns = stateStoreNamespace
-			if err := s.Put(item); err != nil {
-				return true, err
+			var legacy legacyEntry
+			if err := json.Unmarshal(e.val, &legacy); err != nil || legacy.Overlay == "" {
+				_ = store.Delete(e.key)
+				continue
 			}
-			_ = s.Delete(&rawItem{&proxyItem{key: res.ID}})
-			return false, nil
-		})
+
+			underlays := legacy.Underlays
+			if len(underlays) == 0 && legacy.Underlay != "" {
+				underlays = []string{legacy.Underlay}
+			}
+
+			out := migratedEntry{
+				Address: migratedAddress{
+					Overlay:   legacy.Overlay,
+					Underlays: underlays,
+					Signature: legacy.Signature,
+					Nonce:     legacy.Nonce,
+				},
+			}
+
+			if err := store.Put(e.key, &out); err != nil {
+				return fmt.Errorf("rewrite addressbook entry %q: %w", e.key, err)
+			}
+		}
+
+		return nil
 	}
 }

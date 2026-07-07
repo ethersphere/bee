@@ -29,9 +29,8 @@ func TestLoadSave(t *testing.T) {
 	t.Parallel()
 
 	store := inmemchunkstore.New()
-	ls := loadsave.New(store, store, pipelineFn(store), redundancy.DefaultLevel)
+	ls := loadsave.New(store, store, pipelineFn(store), redundancy.DefaultDownloadLevel)
 	ref, err := ls.Save(context.Background(), data)
-
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +51,7 @@ func TestReadonlyLoadSave(t *testing.T) {
 
 	store := inmemchunkstore.New()
 	factory := pipelineFn(store)
-	ls := loadsave.NewReadonly(store, store, redundancy.DefaultLevel)
+	ls := loadsave.NewReadonly(store, store, redundancy.DefaultDownloadLevel)
 	_, err := ls.Save(context.Background(), data)
 	if !errors.Is(err, loadsave.ErrReadonlyLoadSave) {
 		t.Fatal("expected error but got none")

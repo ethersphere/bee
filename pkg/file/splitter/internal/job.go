@@ -129,7 +129,7 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 
 	var chunkData []byte
 
-	head := make([]byte, swarm.SpanSize)
+	head := make([]byte, swarm.SpanSize, swarm.SpanSize+len(s.buffer[s.cursors[lvl+1]:s.cursors[lvl]]))
 	binary.LittleEndian.PutUint64(head, uint64(span))
 	tail := s.buffer[s.cursors[lvl+1]:s.cursors[lvl]]
 	chunkData = append(head, tail...)
@@ -198,7 +198,7 @@ func (s *SimpleSplitterJob) hashUnfinished() error {
 //	  F   F
 //	F   F   F
 //
-// F   F   F   F S
+// # F   F   F   F S
 //
 // The result will be:
 //
@@ -206,7 +206,7 @@ func (s *SimpleSplitterJob) hashUnfinished() error {
 //	  F    F
 //	F   F   F
 //
-// F   F   F   F
+// # F   F   F   F
 //
 // After which the SS will be hashed to obtain the final root hash
 func (s *SimpleSplitterJob) moveDanglingChunk() error {

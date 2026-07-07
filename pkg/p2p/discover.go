@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math/rand"
 
+	"github.com/ethersphere/bee/v2/pkg/bzz"
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
 )
@@ -35,9 +36,15 @@ func Discover(ctx context.Context, addr ma.Multiaddr, f func(ma.Multiaddr) (bool
 		return false, errors.New("non-resolvable API endpoint")
 	}
 
-	rand.Shuffle(len(addrs), func(i, j int) {
-		addrs[i], addrs[j] = addrs[j], addrs[i]
-	})
+	// If the resolved addresses are real (non-DNS) multiaddrs, order them
+	// with TCP first. Otherwise (still DNS), shuffle randomly as before.
+	if comp, _ := ma.SplitFirst(addrs[0]); !isDNSProtocol(comp.Protocol().Code) {
+		addrs = bzz.SortUnderlaysByPriority(addrs)
+	} else {
+		rand.Shuffle(len(addrs), func(i, j int) {
+			addrs[i], addrs[j] = addrs[j], addrs[i]
+		})
+	}
 	for _, addr := range addrs {
 		stopped, err := Discover(ctx, addr, f)
 		if err != nil {

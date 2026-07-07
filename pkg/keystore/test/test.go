@@ -5,7 +5,6 @@
 package test
 
 import (
-	"bytes"
 	"errors"
 	"testing"
 
@@ -52,7 +51,7 @@ func Service(t *testing.T, s keystore.Service, edg keystore.EDG) {
 	if created {
 		t.Fatal("key is created, but should not be")
 	}
-	if !bytes.Equal(k1.D.Bytes(), k2.D.Bytes()) {
+	if !k1.Equal(k2) {
 		t.Fatal("two keys are not equal")
 	}
 
@@ -70,7 +69,7 @@ func Service(t *testing.T, s keystore.Service, edg keystore.EDG) {
 	if !created {
 		t.Fatal("key is not created")
 	}
-	if bytes.Equal(k1.D.Bytes(), k3.D.Bytes()) {
+	if k1.Equal(k3) {
 		t.Fatal("two keys are equal, but should not be")
 	}
 
@@ -82,7 +81,7 @@ func Service(t *testing.T, s keystore.Service, edg keystore.EDG) {
 	if created {
 		t.Fatal("key is created, but should not be")
 	}
-	if !bytes.Equal(k3.D.Bytes(), k4.D.Bytes()) {
+	if !k3.Equal(k4) {
 		t.Fatal("two keys are not equal")
 	}
 }

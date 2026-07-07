@@ -30,8 +30,10 @@ const (
 )
 
 // ErrNotFound signals that the element was not found.
-var ErrNotFound = errors.New("batchstore: not found")
-var ErrStorageRadiusExceeds = errors.New("batchstore: storage radius must not exceed reserve radius")
+var (
+	ErrNotFound             = errors.New("batchstore: not found")
+	ErrStorageRadiusExceeds = errors.New("batchstore: storage radius must not exceed reserve radius")
+)
 
 type evictFn func(batchID []byte) error
 
@@ -105,7 +107,6 @@ func (s *store) Get(id []byte) (*postage.Batch, error) {
 }
 
 func (s *store) get(id []byte) (*postage.Batch, error) {
-
 	b := &postage.Batch{}
 	err := s.store.Get(batchKey(id), b)
 	if err != nil {
@@ -233,7 +234,6 @@ func (s *store) Commitment() (uint64, error) {
 
 	var totalCommitment int
 	err := s.store.Iterate(batchKeyPrefix, func(key, value []byte) (bool, error) {
-
 		b := &postage.Batch{}
 		if err := b.UnmarshalBinary(value); err != nil {
 			return false, err
@@ -276,7 +276,6 @@ func (s *store) Reset() error {
 // expired batches, and computing a new radius.
 // Must be called under lock.
 func (s *store) saveBatch(b *postage.Batch) error {
-
 	if err := s.store.Put(valueKey(b.Value, b.ID), nil); err != nil {
 		return fmt.Errorf("batchstore: allocate batch %x: %w", b.ID, err)
 	}
@@ -297,11 +296,9 @@ func (s *store) saveBatch(b *postage.Batch) error {
 // cleanup evicts and removes expired batch.
 // Must be called under lock.
 func (s *store) cleanup() error {
-
 	var evictions []*postage.Batch
 
 	err := s.store.Iterate(valueKeyPrefix, func(key, value []byte) (stop bool, err error) {
-
 		b, err := s.get(valueKeyToID(key))
 		if err != nil {
 			return false, err
@@ -349,11 +346,9 @@ func (s *store) cleanup() error {
 // and the node capacity using the formula totalCommitment/node_capacity = 2^R.
 // Must be called under lock.
 func (s *store) computeRadius() error {
-
 	var totalCommitment int
 
 	err := s.store.Iterate(batchKeyPrefix, func(key, value []byte) (bool, error) {
-
 		b := &postage.Batch{}
 		if err := b.UnmarshalBinary(value); err != nil {
 			return false, err

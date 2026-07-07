@@ -39,9 +39,11 @@ type marshalerTest struct{ val string }
 func (marshalerTest) MarshalLog() any {
 	return struct{ Inner string }{"I am a log.Marshaler"}
 }
+
 func (marshalerTest) String() string {
 	return "String(): you should not see this"
 }
+
 func (marshalerTest) Error() string {
 	return "Error(): you should not see this"
 }
@@ -61,6 +63,7 @@ type stringerTest struct{ val string }
 func (stringerTest) String() string {
 	return "I am a fmt.Stringer"
 }
+
 func (stringerTest) Error() string {
 	return "Error(): you should not see this"
 }
@@ -94,7 +97,7 @@ type (
 		String2 string `json:"-"`                 // ignored
 		String3 string `json:"-,"`                // named "-"
 		String4 string `json:"string4,omitempty"` // renamed, ignore if empty
-		String5 string `json:","`                 // no-op
+		String5 string `json:""`                  // no-op
 		String6 string `json:",omitempty"`        // ignore if empty
 	}
 
@@ -103,7 +106,7 @@ type (
 		Bool2 bool `json:"-"`               // ignored
 		Bool3 bool `json:"-,"`              // named "-"
 		Bool4 bool `json:"bool4,omitempty"` // renamed, ignore if empty
-		Bool5 bool `json:","`               // no-op
+		Bool5 bool `json:""`                // no-op
 		Bool6 bool `json:",omitempty"`      // ignore if empty
 	}
 
@@ -112,7 +115,7 @@ type (
 		Int2 int `json:"-"`              // ignored
 		Int3 int `json:"-,"`             // named "-"
 		Int4 int `json:"int4,omitempty"` // renamed, ignore if empty
-		Int5 int `json:","`              // no-op
+		Int5 int `json:""`               // no-op
 		Int6 int `json:",omitempty"`     // ignore if empty
 	}
 
@@ -121,7 +124,7 @@ type (
 		Uint2 uint `json:"-"`               // ignored
 		Uint3 uint `json:"-,"`              // named "-"
 		Uint4 uint `json:"uint4,omitempty"` // renamed, ignore if empty
-		Uint5 uint `json:","`               // no-op
+		Uint5 uint `json:""`                // no-op
 		Uint6 uint `json:",omitempty"`      // ignore if empty
 	}
 
@@ -130,7 +133,7 @@ type (
 		Float2 float64 `json:"-"`                // ignored
 		Float3 float64 `json:"-,"`               // named "-"
 		Float4 float64 `json:"float4,omitempty"` // renamed, ignore if empty
-		Float5 float64 `json:","`                // no-op
+		Float5 float64 `json:""`                 // no-op
 		Float6 float64 `json:",omitempty"`       // ignore if empty
 	}
 
@@ -139,7 +142,7 @@ type (
 		Complex2 complex128 `json:"-"`                  // ignored
 		Complex3 complex128 `json:"-,"`                 // named "-"
 		Complex4 complex128 `json:"complex4,omitempty"` // renamed, ignore if empty
-		Complex5 complex128 `json:","`                  // no-op
+		Complex5 complex128 `json:""`                   // no-op
 		Complex6 complex128 `json:",omitempty"`         // ignore if empty
 	}
 
@@ -148,7 +151,7 @@ type (
 		Ptr2 *string `json:"-"`              // ignored
 		Ptr3 *string `json:"-,"`             // named "-"
 		Ptr4 *string `json:"ptr4,omitempty"` // renamed, ignore if empty
-		Ptr5 *string `json:","`              // no-op
+		Ptr5 *string `json:""`               // no-op
 		Ptr6 *string `json:",omitempty"`     // ignore if empty
 	}
 
@@ -157,7 +160,7 @@ type (
 		Array2 [2]string `json:"-"`                // ignored
 		Array3 [2]string `json:"-,"`               // named "-"
 		Array4 [2]string `json:"array4,omitempty"` // renamed, ignore if empty
-		Array5 [2]string `json:","`                // no-op
+		Array5 [2]string `json:""`                 // no-op
 		Array6 [2]string `json:",omitempty"`       // ignore if empty
 	}
 
@@ -166,7 +169,7 @@ type (
 		Slice2 []string `json:"-"`                // ignored
 		Slice3 []string `json:"-,"`               // named "-"
 		Slice4 []string `json:"slice4,omitempty"` // renamed, ignore if empty
-		Slice5 []string `json:","`                // no-op
+		Slice5 []string `json:""`                 // no-op
 		Slice6 []string `json:",omitempty"`       // ignore if empty
 	}
 
@@ -175,7 +178,7 @@ type (
 		Map2 map[string]string `json:"-"`              // ignored
 		Map3 map[string]string `json:"-,"`             // named "-"
 		Map4 map[string]string `json:"map4,omitempty"` // renamed, ignore if empty
-		Map5 map[string]string `json:","`              // no-op
+		Map5 map[string]string `json:""`               // no-op
 		Map6 map[string]string `json:",omitempty"`     // ignore if empty
 	}
 
@@ -208,7 +211,7 @@ type (
 		Inner2Test `json:"-"`
 		Inner3Test `json:"-,"`
 		Inner4Test `json:"inner4"`
-		Inner5Test `json:","`
+		Inner5Test `json:""`
 		Inner6Test `json:"inner6"`
 	}
 )

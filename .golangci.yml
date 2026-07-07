@@ -67,6 +67,12 @@ linters:
       - linters:
           - paralleltest
         path: pkg/log
+      - linters:
+          - staticcheck
+        text: 'SA5008: should encoding/json ignore this field or name it "-"\? Either use `json:"-"` to ignore the field or use `json:"''-'',"` to specify "-" as the name'
+      - linters:
+          - staticcheck
+        text: "SA5008: malformed `json` tag: invalid trailing ',' character"
     paths:
       - third_party$
       - builtin$

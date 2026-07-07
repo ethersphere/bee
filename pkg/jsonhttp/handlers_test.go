@@ -37,7 +37,7 @@ func TestMethodHandler(t *testing.T) {
 
 		body := "test body"
 
-		r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+		r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", strings.NewReader(body))
 		w := httptest.NewRecorder()
 
 		h.ServeHTTP(w, r)
@@ -62,7 +62,7 @@ func TestMethodHandler(t *testing.T) {
 	t.Run("method not allowed", func(t *testing.T) {
 		t.Parallel()
 
-		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
 		w := httptest.NewRecorder()
 
 		h.ServeHTTP(w, r)
@@ -176,7 +176,7 @@ func TestNewMaxBodyBytesHandler(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(tc.body))
+			r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", strings.NewReader(tc.body))
 			if tc.withoutContentLength {
 				r.Header.Del("Content-Length")
 				r.ContentLength = 0

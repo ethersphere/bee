@@ -120,6 +120,7 @@ func (m *MockP2PForgeCertMgr) Start() error {
 	}
 	return nil
 }
+
 func (m *MockP2PForgeCertMgr) Stop() {
 	m.mu.Lock()
 	defer m.mu.Unlock()

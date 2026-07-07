@@ -8,14 +8,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strconv"
+	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	ma "github.com/multiformats/go-multiaddr"
-
 	ab "github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
@@ -24,16 +25,17 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/p2p/streamtest"
+	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
+	chequebookmock "github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook/mock"
 	"github.com/ethersphere/bee/v2/pkg/spinlock"
 	"github.com/ethersphere/bee/v2/pkg/statestore/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/util/testutil"
+	ma "github.com/multiformats/go-multiaddr"
+	"github.com/multiformats/go-varint"
 )
 
-var (
-	nonce = common.HexToHash("0x2").Bytes()
-	block = common.HexToHash("0x1").Bytes()
-)
+var nonce = common.HexToHash("0x2").Bytes()
 
 const spinTimeout = time.Second * 5
 
@@ -51,7 +53,7 @@ func TestHandlerRateLimit(t *testing.T) {
 	streamer := streamtest.New()
 	// create a hive server that handles the incoming stream
 	serverAddress := swarm.RandAddress(t)
-	server := hive.New(streamer, addressbookclean, networkID, false, true, serverAddress, logger)
+	server := hive.New(streamer, addressbookclean, networkID, serverAddress, logger, hive.Options{AllowPrivateCIDRs: true})
 	testutil.CleanupCloser(t, server)
 
 	// setup the stream recorder to record stream data
@@ -76,16 +78,16 @@ func TestHandlerRateLimit(t *testing.T) {
 			t.Fatal(err)
 		}
 		signer := crypto.NewDefaultSigner(pk)
-		overlay, err := crypto.NewOverlayAddress(pk.PublicKey, networkID, block)
+		overlay, err := crypto.NewOverlayAddress(pk.PublicKey, networkID, nonce)
 		if err != nil {
 			t.Fatal(err)
 		}
-		bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{underlay1, underlay2}, overlay, networkID, nonce)
+		bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{underlay1, underlay2}, overlay, networkID, nonce, 1, common.Address{})
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		err = addressbook.Put(bzzAddr.Overlay, *bzzAddr)
+		err = addressbook.Put(bzzAddr.Overlay, *bzzAddr, true)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -94,14 +96,14 @@ func TestHandlerRateLimit(t *testing.T) {
 
 	// create a hive client that will do broadcast
 	clientAddress := swarm.RandAddress(t)
-	client := hive.New(serverRecorder, addressbook, networkID, false, true, clientAddress, logger)
+	client := hive.New(serverRecorder, addressbook, networkID, clientAddress, logger, hive.Options{AllowPrivateCIDRs: true})
 	err := client.BroadcastPeers(context.Background(), serverAddress, peers...)
 	if err != nil {
 		t.Fatal(err)
 	}
 	testutil.CleanupCloser(t, client)
 
-	rec, err := serverRecorder.Records(serverAddress, "hive", "1.1.0", "peers")
+	rec, err := serverRecorder.Records(serverAddress, "hive", "2.0.0", "peers")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,6 +114,7 @@ func TestHandlerRateLimit(t *testing.T) {
 		t.Fatal("want nil error")
 	}
 }
+
 func TestBroadcastPeers(t *testing.T) {
 	t.Parallel()
 
@@ -146,7 +149,7 @@ func TestBroadcastPeers(t *testing.T) {
 			underlays = []ma.Multiaddr{u, u2}
 		} else {
 			n := (i % 3) + 1
-			for j := 0; j < n; j++ {
+			for j := range n {
 				port := i + j*10000
 				u, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/" + strconv.Itoa(port))
 				if err != nil {
@@ -161,26 +164,31 @@ func TestBroadcastPeers(t *testing.T) {
 			t.Fatal(err)
 		}
 		signer := crypto.NewDefaultSigner(pk)
-		overlay, err := crypto.NewOverlayAddress(pk.PublicKey, networkID, block)
+		overlay, err := crypto.NewOverlayAddress(pk.PublicKey, networkID, nonce)
 		if err != nil {
 			t.Fatal(err)
 		}
-		bzzAddr, err := bzz.NewAddress(signer, underlays, overlay, networkID, nonce)
+		bzzAddr, err := bzz.NewAddress(signer, underlays, overlay, networkID, nonce, 1, common.Address{})
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		bzzAddresses = append(bzzAddresses, *bzzAddr)
 		overlays = append(overlays, bzzAddr.Overlay)
-		if err := addressbook.Put(bzzAddr.Overlay, *bzzAddr); err != nil {
+		if err := addressbook.Put(bzzAddr.Overlay, *bzzAddr, true); err != nil {
 			t.Fatal(err)
 		}
 
+		underlayBytes, err := bzz.SerializeUnderlays(bzzAddresses[i].Underlays)
+		if err != nil {
+			t.Fatal(err)
+		}
 		wantMsgs[i/hive.MaxBatchSize].Peers = append(wantMsgs[i/hive.MaxBatchSize].Peers, &pb.BzzAddress{
 			Overlay:   bzzAddresses[i].Overlay.Bytes(),
-			Underlay:  bzz.SerializeUnderlays(bzzAddresses[i].Underlays),
+			Underlay:  underlayBytes,
 			Signature: bzzAddresses[i].Signature,
 			Nonce:     nonce,
+			Timestamp: bzzAddresses[i].Timestamp,
 		})
 	}
 
@@ -243,21 +251,27 @@ func TestBroadcastPeers(t *testing.T) {
 		"Ok - don't advertise private CIDRs only (but include one public peer)": {
 			addresee: overlays[0],
 			peers:    overlays[58:],
-			wantMsgs: []pb.Peers{{Peers: []*pb.BzzAddress{
-				{
+			wantMsgs: []pb.Peers{{Peers: func() []*pb.BzzAddress {
+				ub, err := bzz.SerializeUnderlays(bzzAddresses[len(bzzAddresses)-1].Underlays)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return []*pb.BzzAddress{{
 					Overlay:   bzzAddresses[len(bzzAddresses)-1].Overlay.Bytes(),
-					Underlay:  bzz.SerializeUnderlays([]ma.Multiaddr{bzzAddresses[len(bzzAddresses)-1].Underlays[0]}),
+					Underlay:  ub,
 					Signature: bzzAddresses[len(bzzAddresses)-1].Signature,
 					Nonce:     nonce,
-				},
-			}}},
+					Timestamp: bzzAddresses[len(bzzAddresses)-1].Timestamp,
+				}}
+			}()}},
 			wantOverlays: []swarm.Address{overlays[len(overlays)-1]},
 			wantBzzAddresses: []bzz.Address{
 				{
-					Underlays:       []ma.Multiaddr{bzzAddresses[len(bzzAddresses)-1].Underlays[0]},
+					Underlays:       bzzAddresses[len(bzzAddresses)-1].Underlays,
 					Overlay:         bzzAddresses[len(bzzAddresses)-1].Overlay,
 					Signature:       bzzAddresses[len(bzzAddresses)-1].Signature,
 					Nonce:           bzzAddresses[len(bzzAddresses)-1].Nonce,
+					Timestamp:       bzzAddresses[len(bzzAddresses)-1].Timestamp,
 					EthereumAddress: bzzAddresses[len(bzzAddresses)-1].EthereumAddress,
 				},
 			},
@@ -274,7 +288,7 @@ func TestBroadcastPeers(t *testing.T) {
 			streamer := streamtest.New()
 			// create a hive server that handles the incoming stream
 			serverAddress := swarm.RandAddress(t)
-			server := hive.New(streamer, addressbookclean, networkID, false, true, serverAddress, logger)
+			server := hive.New(streamer, addressbookclean, networkID, serverAddress, logger, hive.Options{AllowPrivateCIDRs: true})
 			testutil.CleanupCloser(t, server)
 
 			// setup the stream recorder to record stream data
@@ -284,7 +298,7 @@ func TestBroadcastPeers(t *testing.T) {
 
 			// create a hive client that will do broadcast
 			clientAddress := swarm.RandAddress(t)
-			client := hive.New(recorder, addressbook, networkID, false, tc.allowPrivateCIDRs, clientAddress, logger)
+			client := hive.New(recorder, addressbook, networkID, clientAddress, logger, hive.Options{AllowPrivateCIDRs: tc.allowPrivateCIDRs})
 
 			if err := client.BroadcastPeers(context.Background(), tc.addresee, tc.peers...); err != nil {
 				t.Fatal(err)
@@ -292,7 +306,7 @@ func TestBroadcastPeers(t *testing.T) {
 			testutil.CleanupCloser(t, client)
 
 			// get a record for this stream
-			records, err := recorder.Records(tc.addresee, "hive", "1.1.0", "peers")
+			records, err := recorder.Records(tc.addresee, "hive", "2.0.0", "peers")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -422,6 +436,9 @@ func comparePeerMsgs(t *testing.T, got, want []*pb.BzzAddress) {
 			t.Fatalf("peer %s: expected nonce (got=%s want=%s)",
 				ovlHex, shortHex(g.Nonce), shortHex(w.Nonce))
 		}
+		if g.Timestamp != w.Timestamp {
+			t.Fatalf("peer %s: timestamp (got=%d want=%d)", ovlHex, g.Timestamp, w.Timestamp)
+		}
 	}
 }
 
@@ -460,7 +477,6 @@ func TestBroadcastPeersSkipsSelf(t *testing.T) {
 
 	// Create addresses
 	serverAddress := swarm.RandAddress(t)
-	clientAddress := swarm.RandAddress(t)
 
 	// Create a peer address
 	peer1 := swarm.RandAddress(t)
@@ -473,15 +489,15 @@ func TestBroadcastPeersSkipsSelf(t *testing.T) {
 		t.Fatal(err)
 	}
 	signer := crypto.NewDefaultSigner(pk)
-	overlay1, err := crypto.NewOverlayAddress(pk.PublicKey, networkID, block)
+	overlay1, err := crypto.NewOverlayAddress(pk.PublicKey, networkID, nonce)
 	if err != nil {
 		t.Fatal(err)
 	}
-	bzzAddr1, err := bzz.NewAddress(signer, []ma.Multiaddr{underlay1}, overlay1, networkID, nonce)
+	bzzAddr1, err := bzz.NewAddress(signer, []ma.Multiaddr{underlay1}, overlay1, networkID, nonce, 1, common.Address{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := addressbook.Put(bzzAddr1.Overlay, *bzzAddr1); err != nil {
+	if err := addressbook.Put(bzzAddr1.Overlay, *bzzAddr1, true); err != nil {
 		t.Fatal(err)
 	}
 
@@ -495,17 +511,21 @@ func TestBroadcastPeersSkipsSelf(t *testing.T) {
 		t.Fatal(err)
 	}
 	signerClient := crypto.NewDefaultSigner(pkClient)
-	bzzAddrClient, err := bzz.NewAddress(signerClient, []ma.Multiaddr{underlayClient}, clientAddress, networkID, nonce)
+	clientAddress, err := crypto.NewOverlayAddress(pkClient.PublicKey, networkID, nonce)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := addressbook.Put(clientAddress, *bzzAddrClient); err != nil {
+	bzzAddrClient, err := bzz.NewAddress(signerClient, []ma.Multiaddr{underlayClient}, clientAddress, networkID, nonce, 1, common.Address{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := addressbook.Put(clientAddress, *bzzAddrClient, true); err != nil {
 		t.Fatal(err)
 	}
 
 	// Setup server
 	streamer := streamtest.New()
-	server := hive.New(streamer, addressbookclean, networkID, false, true, serverAddress, logger)
+	server := hive.New(streamer, addressbookclean, networkID, serverAddress, logger, hive.Options{AllowPrivateCIDRs: true})
 	testutil.CleanupCloser(t, server)
 
 	serverRecorder := streamtest.New(
@@ -513,7 +533,7 @@ func TestBroadcastPeersSkipsSelf(t *testing.T) {
 	)
 
 	// Setup client
-	client := hive.New(serverRecorder, addressbook, networkID, false, true, clientAddress, logger)
+	client := hive.New(serverRecorder, addressbook, networkID, clientAddress, logger, hive.Options{AllowPrivateCIDRs: true})
 	testutil.CleanupCloser(t, client)
 
 	// Try to broadcast: peer1, clientAddress (self), and another peer
@@ -525,7 +545,7 @@ func TestBroadcastPeersSkipsSelf(t *testing.T) {
 	}
 
 	// Get records
-	records, err := serverRecorder.Records(serverAddress, "hive", "1.1.0", "peers")
+	records, err := serverRecorder.Records(serverAddress, "hive", "2.0.0", "peers")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -578,8 +598,7 @@ func TestReceivePeersSkipsSelf(t *testing.T) {
 	networkID := uint64(1)
 	addressbookclean := ab.New(mock.NewStateStore())
 
-	// Create addresses
-	serverAddress := swarm.RandAddress(t)
+	// Create client address
 	clientAddress := swarm.RandAddress(t)
 
 	// Create a valid peer
@@ -592,15 +611,15 @@ func TestReceivePeersSkipsSelf(t *testing.T) {
 		t.Fatal(err)
 	}
 	signer1 := crypto.NewDefaultSigner(pk1)
-	overlay1, err := crypto.NewOverlayAddress(pk1.PublicKey, networkID, block)
+	overlay1, err := crypto.NewOverlayAddress(pk1.PublicKey, networkID, nonce)
 	if err != nil {
 		t.Fatal(err)
 	}
-	bzzAddr1, err := bzz.NewAddress(signer1, []ma.Multiaddr{underlay1}, overlay1, networkID, nonce)
+	bzzAddr1, err := bzz.NewAddress(signer1, []ma.Multiaddr{underlay1}, overlay1, networkID, nonce, 1, common.Address{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := addressbook.Put(bzzAddr1.Overlay, *bzzAddr1); err != nil {
+	if err := addressbook.Put(bzzAddr1.Overlay, *bzzAddr1, true); err != nil {
 		t.Fatal(err)
 	}
 
@@ -614,18 +633,22 @@ func TestReceivePeersSkipsSelf(t *testing.T) {
 		t.Fatal(err)
 	}
 	signerServer := crypto.NewDefaultSigner(pkServer)
-	bzzAddrServer, err := bzz.NewAddress(signerServer, []ma.Multiaddr{underlayServer}, serverAddress, networkID, nonce)
+	serverAddress, err := crypto.NewOverlayAddress(pkServer.PublicKey, networkID, nonce)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bzzAddrServer, err := bzz.NewAddress(signerServer, []ma.Multiaddr{underlayServer}, serverAddress, networkID, nonce, 1, common.Address{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Add server's own address to client's addressbook (so client can send it)
-	if err := addressbook.Put(serverAddress, *bzzAddrServer); err != nil {
+	if err := addressbook.Put(serverAddress, *bzzAddrServer, true); err != nil {
 		t.Fatal(err)
 	}
 
 	// Setup server that will receive peers including its own address
 	streamer := streamtest.New()
-	server := hive.New(streamer, addressbookclean, networkID, false, true, serverAddress, logger)
+	server := hive.New(streamer, addressbookclean, networkID, serverAddress, logger, hive.Options{AllowPrivateCIDRs: true})
 	testutil.CleanupCloser(t, server)
 
 	serverRecorder := streamtest.New(
@@ -633,7 +656,7 @@ func TestReceivePeersSkipsSelf(t *testing.T) {
 	)
 
 	// Setup client
-	client := hive.New(serverRecorder, addressbook, networkID, false, true, clientAddress, logger)
+	client := hive.New(serverRecorder, addressbook, networkID, clientAddress, logger, hive.Options{AllowPrivateCIDRs: true})
 	testutil.CleanupCloser(t, client)
 
 	// Client broadcasts: valid peer and server's own address
@@ -660,8 +683,664 @@ func TestReceivePeersSkipsSelf(t *testing.T) {
 	}
 
 	// Verify server does have the valid peer
-	_, err = addressbookclean.Get(bzzAddr1.Overlay)
+	_, _, err = addressbookclean.Get(bzzAddr1.Overlay)
 	if err != nil {
 		t.Fatalf("expected server to have valid peer in addressbook, got error: %v", err)
 	}
+}
+
+// Avoids multiaddr port collisions across parallel chequebook tests.
+var cbPortCounter atomic.Uint32
+
+// signedPeerWithChequebook returns a freshly-signed record for a generated
+// identity, with the given chequebook in the signed payload. The returned
+// peerIdentity can be used to sign successive records with different
+// timestamps or chequebooks for the same overlay.
+func signedPeerWithChequebook(t *testing.T, networkID uint64, ts int64, cb common.Address) (*pb.BzzAddress, *peerIdentity, common.Address) {
+	t.Helper()
+
+	pk, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := crypto.NewDefaultSigner(pk)
+	n := common.HexToHash("0xab").Bytes()
+
+	overlay, err := crypto.NewOverlayAddress(pk.PublicKey, networkID, n)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	port := uint16(20000) + uint16(cbPortCounter.Add(1))
+	u, err := ma.NewMultiaddr("/ip4/10.0.0.1/tcp/" + strconv.Itoa(int(port)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	id := &peerIdentity{
+		signer:   signer,
+		overlay:  overlay,
+		nonce:    n,
+		underlay: u,
+	}
+
+	peerEth, err := crypto.NewEthereumAddress(pk.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return id.protoWithChequebook(t, networkID, ts, cb), id, common.BytesToAddress(peerEth)
+}
+
+// protoWithChequebook signs and serialises a record carrying a non-zero
+// chequebook in the signed payload. Companion to (peerIdentity).protoAt
+// in timestamp_test.go (which signs with an empty chequebook).
+func (p *peerIdentity) protoWithChequebook(t *testing.T, networkID uint64, ts int64, cb common.Address) *pb.BzzAddress {
+	t.Helper()
+	addr, err := bzz.NewAddress(p.signer, []ma.Multiaddr{p.underlay}, p.overlay, networkID, p.nonce, ts, cb)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	underlayByes, err := bzz.SerializeUnderlays(addr.Underlays)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return &pb.BzzAddress{
+		Underlay:          underlayByes,
+		Overlay:           addr.Overlay.Bytes(),
+		Signature:         addr.Signature,
+		Nonce:             addr.Nonce,
+		Timestamp:         addr.Timestamp,
+		ChequebookAddress: addr.ChequebookAddress.Bytes(),
+	}
+}
+
+func newHiveForTest(t *testing.T, verifier chequebook.Verifier, storer hive.ChequebookStorer) (*hive.Service, ab.Interface) {
+	t.Helper()
+
+	store := mock.NewStateStore()
+	addressbook := ab.New(store)
+	self := swarm.RandAddress(t)
+	svc := hive.New(streamtest.New(), addressbook, 1, self, log.Noop, hive.Options{
+		AllowPrivateCIDRs:  true,
+		ChequebookVerifier: verifier,
+		ChequebookStorer:   storer,
+	})
+	t.Cleanup(func() { _ = svc.Close() })
+	return svc, addressbook
+}
+
+func TestHive_ChequebookVerifierAcceptsValidRecord(t *testing.T) {
+	t.Parallel()
+
+	cb := common.HexToAddress("0x1111111111111111111111111111111111111111")
+	rec, id, expectedIssuer := signedPeerWithChequebook(t, 1, time.Now().Unix(), cb)
+
+	v := &chequebookmock.Verifier{Behavior: func(got, peerEth common.Address, peerOverlay swarm.Address, _ bool) error {
+		if got != cb {
+			t.Fatalf("verifier got cb %s, want %s", got.Hex(), cb.Hex())
+		}
+		if peerEth != expectedIssuer {
+			t.Fatalf("verifier got eth %s, want %s", peerEth.Hex(), expectedIssuer.Hex())
+		}
+		if !peerOverlay.Equal(id.overlay) {
+			t.Fatalf("verifier got overlay %s, want %s", peerOverlay, id.overlay)
+		}
+		return nil
+	}}
+	storer := &chequebookmock.Storer{}
+	svc, addressbook := newHiveForTest(t, v, storer)
+
+	svc.CheckAndAddPeers(pb.Peers{Peers: []*pb.BzzAddress{rec}})
+
+	if v.Calls != 1 {
+		t.Fatalf("verifier called %d times, want 1", v.Calls)
+	}
+	if got, ok := storer.Puts[id.overlay.String()]; !ok || got != cb {
+		t.Fatalf("storer not called with (%s, %s); got %v", id.overlay, cb.Hex(), storer.Puts)
+	}
+	_, verified, err := addressbook.Get(id.overlay)
+	if err != nil {
+		t.Fatalf("expected peer in addressbook after successful verify, got %v", err)
+	}
+	if !verified {
+		t.Fatal("addressbook entry must be stored with Verified=true after successful verify")
+	}
+}
+
+func TestHive_ChequebookVerifierRejectsBadIssuer(t *testing.T) {
+	t.Parallel()
+
+	cb := common.HexToAddress("0x1111111111111111111111111111111111111111")
+	rec, id, _ := signedPeerWithChequebook(t, 1, time.Now().Unix(), cb)
+
+	v := &chequebookmock.Verifier{Behavior: func(_, _ common.Address, _ swarm.Address, _ bool) error {
+		return chequebook.ErrChequebookIssuerMismatch
+	}}
+	storer := &chequebookmock.Storer{}
+	svc, addressbook := newHiveForTest(t, v, storer)
+
+	svc.CheckAndAddPeers(pb.Peers{Peers: []*pb.BzzAddress{rec}})
+
+	if v.Calls != 1 {
+		t.Fatalf("verifier called %d times, want 1", v.Calls)
+	}
+	if len(storer.Puts) != 0 {
+		t.Fatalf("storer should not be called on rejection, got %v", storer.Puts)
+	}
+	if _, _, err := addressbook.Get(id.overlay); !errors.Is(err, ab.ErrNotFound) {
+		t.Fatalf("expected peer NOT in addressbook after issuer mismatch, got %v", err)
+	}
+}
+
+func TestHive_RejectsMissingChequebook(t *testing.T) {
+	t.Parallel()
+
+	rec, id, _ := signedPeerWithChequebook(t, 1, time.Now().Unix(), common.Address{})
+
+	v := &chequebookmock.Verifier{}
+	svc, addressbook := newHiveForTest(t, v, &chequebookmock.Storer{})
+
+	svc.CheckAndAddPeers(pb.Peers{Peers: []*pb.BzzAddress{rec}})
+
+	if v.Calls != 0 {
+		t.Fatalf("verifier must not run when chequebook is missing")
+	}
+	if _, _, err := addressbook.Get(id.overlay); !errors.Is(err, ab.ErrNotFound) {
+		t.Fatalf("verifier-enabled service must reject empty chequebook, got %v", err)
+	}
+}
+
+func TestHive_VerifierUnconfiguredAcceptsAll(t *testing.T) {
+	t.Parallel()
+
+	svc, addressbook := newHiveForTest(t, nil, nil)
+
+	rec, id, _ := signedPeerWithChequebook(t, 1, time.Now().Unix(), common.Address{})
+
+	// Verifier nil → permissive mode.
+	svc.CheckAndAddPeers(pb.Peers{Peers: []*pb.BzzAddress{rec}})
+
+	_, verified, err := addressbook.Get(id.overlay)
+	if err != nil {
+		t.Fatalf("unconfigured verifier must preserve pre-PR behaviour, got %v", err)
+	}
+	if verified {
+		t.Fatal("addressbook entry must be stored with Verified=false on the no-verifier fallback path")
+	}
+}
+
+// TestHive_VerifyFails_ExistingAddressbookPreserved verifies that when
+// Verify returns an error, the storer is not called and the existing
+// addressbook entry is left untouched.
+func TestHive_VerifyFails_ExistingAddressbookPreserved(t *testing.T) {
+	t.Parallel()
+
+	v := &chequebookmock.Verifier{Behavior: func(_ common.Address, _ common.Address, _ swarm.Address, _ bool) error {
+		return chequebook.ErrChequebookInsufficientBalance
+	}}
+	storer := &chequebookmock.Storer{}
+	svc, addressbook := newHiveForTest(t, v, storer)
+
+	cb := common.HexToAddress("0x1111111111111111111111111111111111111111")
+	rec, id, _ := signedPeerWithChequebook(t, 1, time.Now().Unix()-int64(bzz.MinimumUpdateInterval.Seconds())-1, cb)
+
+	bzzAddr, err := bzz.ParseAddress(rec.Underlay, rec.Overlay, rec.Signature, rec.Nonce, rec.Timestamp, 1, rec.ChequebookAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := addressbook.Put(id.overlay, *bzzAddr, true); err != nil {
+		t.Fatal(err)
+	}
+	originalTimestamp := bzzAddr.Timestamp
+
+	rec2 := id.protoWithChequebook(t, 1, time.Now().Unix(), cb)
+
+	svc.CheckAndAddPeers(pb.Peers{Peers: []*pb.BzzAddress{rec2}})
+
+	if v.Calls != 1 {
+		t.Fatalf("Verify called %d times, want 1", v.Calls)
+	}
+	if len(storer.Puts) != 0 {
+		t.Fatalf("storer must not be called on verify failure, got %v", storer.Puts)
+	}
+	got, _, err := addressbook.Get(id.overlay)
+	if err != nil {
+		t.Fatalf("existing addressbook entry must be preserved, got %v", err)
+	}
+	if got.Timestamp != originalTimestamp {
+		t.Fatalf("addressbook timestamp mutated: got %d, want %d", got.Timestamp, originalTimestamp)
+	}
+}
+
+// TestHive_GossipUpdatesChequebook covers the gossip-source path for a peer
+// whose chequebook address changes between updates: the same overlay arrives
+// twice with a newer timestamp and a different (verifier-accepted) chequebook,
+// and the addressbook must reflect the new chequebook on the second pass.
+// Symmetric to the registry-level TestRegistry_HandshakeIgnoresMinInterval
+// for the gossip ingestion point.
+func TestHive_GossipUpdatesChequebook(t *testing.T) {
+	t.Parallel()
+
+	cbX := common.HexToAddress("0x1111111111111111111111111111111111111111")
+	cbY := common.HexToAddress("0x2222222222222222222222222222222222222222")
+
+	var verified []common.Address
+	v := &chequebookmock.Verifier{Behavior: func(got, _ common.Address, _ swarm.Address, _ bool) error {
+		verified = append(verified, got)
+		return nil
+	}}
+	svc, addressbook := newHiveForTest(t, v, &chequebookmock.Storer{})
+
+	// Backdate ts1 past MinimumUpdateInterval so ts2 := now passes both the
+	// min-interval gate (relative to existing) and the skew gate (relative to now).
+	ts1 := time.Now().Unix() - int64(bzz.MinimumUpdateInterval.Seconds()) - 1
+	rec1, id, _ := signedPeerWithChequebook(t, 1, ts1, cbX)
+	svc.CheckAndAddPeers(pb.Peers{Peers: []*pb.BzzAddress{rec1}})
+
+	got, _, err := addressbook.Get(id.overlay)
+	if err != nil {
+		t.Fatalf("after first gossip: %v", err)
+	}
+	if got.ChequebookAddress != cbX {
+		t.Fatalf("first gossip cb: got %s, want %s", got.ChequebookAddress.Hex(), cbX.Hex())
+	}
+
+	// Same identity re-signs a fresh record with a different chequebook.
+	ts2 := time.Now().Unix()
+	rec2 := id.protoWithChequebook(t, 1, ts2, cbY)
+	svc.CheckAndAddPeers(pb.Peers{Peers: []*pb.BzzAddress{rec2}})
+
+	got, _, err = addressbook.Get(id.overlay)
+	if err != nil {
+		t.Fatalf("after second gossip: %v", err)
+	}
+	if got.ChequebookAddress != cbY {
+		t.Fatalf("second gossip cb: got %s, want %s", got.ChequebookAddress.Hex(), cbY.Hex())
+	}
+	if got.Timestamp != ts2 {
+		t.Fatalf("second gossip ts: got %d, want %d", got.Timestamp, ts2)
+	}
+
+	if len(verified) != 2 {
+		t.Fatalf("verifier called %d times, want 2 (one per gossip)", len(verified))
+	}
+	if verified[0] != cbX || verified[1] != cbY {
+		t.Fatalf("verifier saw chequebooks %v, want [%s, %s]", verified, cbX.Hex(), cbY.Hex())
+	}
+}
+
+// TestHive_VerifierPastVerifiedFalseForNewPeer asserts that for a peer not yet
+// in the addressbook, the verifier is called with pastVerified=false.
+func TestHive_VerifierPastVerifiedFalseForNewPeer(t *testing.T) {
+	t.Parallel()
+
+	cb := common.HexToAddress("0x1111111111111111111111111111111111111111")
+	rec, _, _ := signedPeerWithChequebook(t, 1, time.Now().Unix(), cb)
+
+	var got []bool
+	v := &chequebookmock.Verifier{Behavior: func(_, _ common.Address, _ swarm.Address, pastVerified bool) error {
+		got = append(got, pastVerified)
+		return nil
+	}}
+	svc, _ := newHiveForTest(t, v, &chequebookmock.Storer{})
+
+	svc.CheckAndAddPeers(pb.Peers{Peers: []*pb.BzzAddress{rec}})
+
+	if len(got) != 1 {
+		t.Fatalf("verifier calls: got %d, want 1", len(got))
+	}
+	if got[0] {
+		t.Fatalf("pastVerified: got true, want false for new peer")
+	}
+}
+
+// TestHive_VerifierPastVerifiedTrueForKnownPeer asserts that for a peer whose
+// addressbook entry was previously stored with Verified=true, the verifier is
+// called with pastVerified=true on the next gossip update.
+func TestHive_VerifierPastVerifiedTrueForKnownPeer(t *testing.T) {
+	t.Parallel()
+
+	var got []bool
+	v := &chequebookmock.Verifier{Behavior: func(_, _ common.Address, _ swarm.Address, pastVerified bool) error {
+		got = append(got, pastVerified)
+		return nil
+	}}
+	svc, addressbook := newHiveForTest(t, v, &chequebookmock.Storer{})
+
+	cb := common.HexToAddress("0x1111111111111111111111111111111111111111")
+	// Backdate so the second record is past MinimumUpdateInterval.
+	ts1 := time.Now().Unix() - int64(bzz.MinimumUpdateInterval.Seconds()) - 1
+	rec1, id, _ := signedPeerWithChequebook(t, 1, ts1, cb)
+
+	bzzAddr, err := bzz.ParseAddress(rec1.Underlay, rec1.Overlay, rec1.Signature, rec1.Nonce, rec1.Timestamp, 1, rec1.ChequebookAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := addressbook.Put(id.overlay, *bzzAddr, true); err != nil {
+		t.Fatal(err)
+	}
+
+	rec2 := id.protoWithChequebook(t, 1, time.Now().Unix(), cb)
+	svc.CheckAndAddPeers(pb.Peers{Peers: []*pb.BzzAddress{rec2}})
+
+	if len(got) != 1 {
+		t.Fatalf("verifier calls: got %d, want 1", len(got))
+	}
+	if !got[0] {
+		t.Fatalf("pastVerified: got false, want true for previously-verified peer")
+	}
+}
+
+// peerIdentity bundles a deterministic node identity so tests can produce
+// multiple re-signed BzzAddress records for the same overlay.
+type peerIdentity struct {
+	signer   crypto.Signer
+	overlay  swarm.Address
+	nonce    []byte
+	underlay ma.Multiaddr
+}
+
+// newPeerIdentity returns a deterministic node identity so tests can produce
+// multiple re-signed BzzAddress records for the same overlay.
+func newPeerIdentity(t *testing.T, networkID uint64, underlayStr string) *peerIdentity {
+	t.Helper()
+
+	pk, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	nonce := make([]byte, 32)
+	nonce[31] = 0xAA
+	overlay, err := crypto.NewOverlayAddress(pk.PublicKey, networkID, nonce)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := ma.NewMultiaddr(underlayStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &peerIdentity{
+		signer:   crypto.NewDefaultSigner(pk),
+		overlay:  overlay,
+		nonce:    nonce,
+		underlay: u,
+	}
+}
+
+func (p *peerIdentity) signedAddress(t *testing.T, networkID uint64, ts int64) *bzz.Address {
+	t.Helper()
+	addr, err := bzz.NewAddress(p.signer, []ma.Multiaddr{p.underlay}, p.overlay, networkID, p.nonce, ts, common.Address{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return addr
+}
+
+func (p *peerIdentity) protoAt(t *testing.T, networkID uint64, ts int64) *pb.BzzAddress {
+	t.Helper()
+	addr := p.signedAddress(t, networkID, ts)
+
+	underlayByes, err := bzz.SerializeUnderlays(addr.Underlays)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return &pb.BzzAddress{
+		Overlay:   addr.Overlay.Bytes(),
+		Underlay:  underlayByes,
+		Signature: addr.Signature,
+		Nonce:     addr.Nonce,
+		Timestamp: addr.Timestamp,
+	}
+}
+
+// TestHiveGossipTimestampRules drives checkAndAddPeers directly under a fake
+// clock (testing/synctest) to exercise the timestamp validation paths for the
+// gossip ingestion point.
+func TestHiveGossipTimestampRules(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		networkID := uint64(1)
+		addressbook := ab.New(mock.NewStateStore())
+		selfOverlay := swarm.RandAddress(t)
+		svc := hive.New(streamtest.New(), addressbook, networkID, selfOverlay, log.Noop, hive.Options{AllowPrivateCIDRs: true})
+		t.Cleanup(func() { _ = svc.Close() })
+
+		peer := newPeerIdentity(t, networkID, "/ip4/10.0.0.1/tcp/7070")
+
+		mustGet := func() *bzz.Address {
+			got, _, err := addressbook.Get(peer.overlay)
+			if err != nil {
+				t.Fatalf("addressbook.Get: %v", err)
+			}
+			return got
+		}
+
+		// first gossip is stored
+		ts1 := time.Now().Unix()
+		svc.CheckAndAddPeers(pb.Peers{Peers: []*pb.BzzAddress{peer.protoAt(t, networkID, ts1)}})
+		if got := mustGet(); got.Timestamp != ts1 {
+			t.Fatalf("initial gossip: got ts=%d want ts=%d", got.Timestamp, ts1)
+		}
+
+		// gossip within MinimumUpdateInterval is rejected
+		time.Sleep(bzz.MinimumUpdateInterval / 2)
+		ts2 := time.Now().Unix()
+		svc.CheckAndAddPeers(pb.Peers{Peers: []*pb.BzzAddress{peer.protoAt(t, networkID, ts2)}})
+		if got := mustGet(); got.Timestamp != ts1 {
+			t.Fatalf("gossip within interval should be dropped: got ts=%d want ts=%d", got.Timestamp, ts1)
+		}
+
+		// gossip past MinimumUpdateInterval is accepted
+		time.Sleep(bzz.MinimumUpdateInterval + time.Second)
+		ts3 := time.Now().Unix()
+		svc.CheckAndAddPeers(pb.Peers{Peers: []*pb.BzzAddress{peer.protoAt(t, networkID, ts3)}})
+		if got := mustGet(); got.Timestamp != ts3 {
+			t.Fatalf("gossip past interval should update: got ts=%d want ts=%d", got.Timestamp, ts3)
+		}
+
+		// stale gossip (older than existing) is rejected
+		svc.CheckAndAddPeers(pb.Peers{Peers: []*pb.BzzAddress{peer.protoAt(t, networkID, ts3-1)}})
+		if got := mustGet(); got.Timestamp != ts3 {
+			t.Fatalf("stale gossip should be dropped: got ts=%d want ts=%d", got.Timestamp, ts3)
+		}
+
+		// future gossip beyond MaxClockSkew is rejected
+		future := time.Now().Unix() + int64(bzz.MaxClockSkew.Seconds()) + 10
+		svc.CheckAndAddPeers(pb.Peers{Peers: []*pb.BzzAddress{peer.protoAt(t, networkID, future)}})
+		if got := mustGet(); got.Timestamp != ts3 {
+			t.Fatalf("future gossip beyond skew should be dropped: got ts=%d want ts=%d", got.Timestamp, ts3)
+		}
+	})
+}
+
+// TestHiveGossipLegacyZeroUpgrade verifies that an addressbook entry with
+// Timestamp=0 (pre-upgrade legacy record) is overwritten by a fresh gossip
+// for the same overlay carrying a positive timestamp.
+func TestHiveGossipLegacyZeroUpgrade(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		networkID := uint64(1)
+		addressbook := ab.New(mock.NewStateStore())
+		selfOverlay := swarm.RandAddress(t)
+		svc := hive.New(streamtest.New(), addressbook, networkID, selfOverlay, log.Noop, hive.Options{AllowPrivateCIDRs: true})
+		t.Cleanup(func() { _ = svc.Close() })
+
+		peer := newPeerIdentity(t, networkID, "/ip4/10.0.0.2/tcp/7071")
+
+		// Seed a legacy record with Timestamp=0 directly via the addressbook.
+		// NewAddress refuses ts<=0, so sign with ts=1 and mutate to 0 to
+		// mimic a record produced by a pre-upgrade binary.
+		legacy := peer.signedAddress(t, networkID, 1)
+		legacy.Timestamp = 0
+		if err := addressbook.Put(peer.overlay, *legacy, true); err != nil {
+			t.Fatal(err)
+		}
+
+		// Fresh gossip arrives for the same identity with a positive timestamp.
+		ts := time.Now().Unix()
+		svc.CheckAndAddPeers(pb.Peers{Peers: []*pb.BzzAddress{peer.protoAt(t, networkID, ts)}})
+
+		got, _, err := addressbook.Get(peer.overlay)
+		if err != nil {
+			t.Fatalf("addressbook.Get: %v", err)
+		}
+		if got.Timestamp != ts {
+			t.Fatalf("legacy upgrade: got ts=%d want ts=%d", got.Timestamp, ts)
+		}
+	})
+}
+
+// TestBroadcastSkipsLegacyZeroRecord verifies that the gossip sender drops
+// addressbook entries whose Timestamp is 0 (pre-upgrade records) so peers
+// running the new protocol don't reject them as invalid.
+func TestBroadcastSkipsLegacyZeroRecord(t *testing.T) {
+	t.Parallel()
+
+	networkID := uint64(1)
+	logger := log.Noop
+	clientStore := mock.NewStateStore()
+	clientBook := ab.New(clientStore)
+
+	// Legacy peer: signed with ts=1, mutated to Timestamp=0 to mimic an
+	// addressbook entry carried over from a pre-upgrade binary.
+	legacyPeer := newPeerIdentity(t, networkID, "/ip4/10.0.0.100/tcp/7070")
+	legacyAddr := legacyPeer.signedAddress(t, networkID, 1)
+	legacyAddr.Timestamp = 0
+	if err := clientBook.Put(legacyPeer.overlay, *legacyAddr, true); err != nil {
+		t.Fatal(err)
+	}
+
+	// Modern peer with a positive timestamp — must be included.
+	modernPeer := newPeerIdentity(t, networkID, "/ip4/10.0.0.101/tcp/7071")
+	modernAddr := modernPeer.signedAddress(t, networkID, time.Now().Unix())
+	if err := clientBook.Put(modernPeer.overlay, *modernAddr, true); err != nil {
+		t.Fatal(err)
+	}
+
+	serverBook := ab.New(mock.NewStateStore())
+	serverAddress := swarm.RandAddress(t)
+	serverStreamer := streamtest.New()
+	server := hive.New(serverStreamer, serverBook, networkID, serverAddress, logger, hive.Options{AllowPrivateCIDRs: true})
+	t.Cleanup(func() { _ = server.Close() })
+
+	recorder := streamtest.New(streamtest.WithProtocols(server.Protocol()))
+	clientAddress := swarm.RandAddress(t)
+	client := hive.New(recorder, clientBook, networkID, clientAddress, logger, hive.Options{AllowPrivateCIDRs: true})
+	t.Cleanup(func() { _ = client.Close() })
+
+	addressee := swarm.RandAddress(t)
+	if err := client.BroadcastPeers(context.Background(), addressee, legacyPeer.overlay, modernPeer.overlay); err != nil {
+		t.Fatalf("BroadcastPeers: %v", err)
+	}
+
+	records, err := recorder.Records(addressee, "hive", "2.0.0", "peers")
+	if err != nil {
+		t.Fatalf("recorder.Records: %v", err)
+	}
+	if len(records) == 0 {
+		t.Fatal("expected at least one gossip record")
+	}
+
+	messages, err := readAndAssertPeersMsgs(records[0].In(), 1)
+	if err != nil {
+		t.Fatalf("readAndAssertPeersMsgs: %v", err)
+	}
+
+	sent := messages[0].Peers
+	if len(sent) != 1 {
+		t.Fatalf("expected 1 peer sent (legacy dropped), got %d", len(sent))
+	}
+	if !swarm.NewAddress(sent[0].Overlay).Equal(modernPeer.overlay) {
+		t.Fatalf("expected modern overlay %s, got %s", modernPeer.overlay, swarm.NewAddress(sent[0].Overlay))
+	}
+}
+
+// TestHiveGossipUnderlayCaps drives checkAndAddPeers with crafted peer entries
+// that violate the underlay byte-size and count caps, and verifies the entries
+// are dropped before reaching the addressbook. The byte-size gate runs in
+// DeserializeUnderlays before any signature work, so the Signature field on the
+// crafted records is intentionally bogus.
+//
+// Canonical caps live in pkg/bzz/underlay.go (maxUnderlayBytes=2048,
+// maxUnderlaysPerPeer=20) and are not exported to other packages. The values
+// below are chosen well above those caps so they remain valid even if the
+// limits are widened.
+func TestHiveGossipUnderlayCaps(t *testing.T) {
+	t.Parallel()
+
+	const (
+		oversizedUnderlayBytes = 8192 // > maxUnderlayBytes (2048)
+		oversizedUnderlayCount = 30   // > maxUnderlaysPerPeer (20)
+		bzzUnderlayListPrefix  = 0x99 // underlayListPrefix in pkg/bzz/underlay.go
+	)
+	networkID := uint64(1)
+	ts := time.Now().Unix()
+
+	t.Run("oversized underlay payload", func(t *testing.T) {
+		t.Parallel()
+
+		addressbook := ab.New(mock.NewStateStore())
+		svc := hive.New(streamtest.New(), addressbook, networkID, swarm.RandAddress(t), log.Noop, hive.Options{AllowPrivateCIDRs: true})
+		t.Cleanup(func() { _ = svc.Close() })
+
+		peer := newPeerIdentity(t, networkID, "/ip4/10.0.0.1/tcp/7070")
+		bad := &pb.BzzAddress{
+			Overlay:   peer.overlay.Bytes(),
+			Underlay:  make([]byte, oversizedUnderlayBytes),
+			Signature: []byte{0},
+			Nonce:     peer.nonce,
+			Timestamp: ts,
+		}
+
+		svc.CheckAndAddPeers(pb.Peers{Peers: []*pb.BzzAddress{bad}})
+
+		if _, _, err := addressbook.Get(peer.overlay); !errors.Is(err, ab.ErrNotFound) {
+			t.Fatalf("expected ErrNotFound after oversized underlay rejection, got err=%v", err)
+		}
+	})
+
+	t.Run("too many underlays", func(t *testing.T) {
+		t.Parallel()
+
+		addressbook := ab.New(mock.NewStateStore())
+		svc := hive.New(streamtest.New(), addressbook, networkID, swarm.RandAddress(t), log.Noop, hive.Options{AllowPrivateCIDRs: true})
+		t.Cleanup(func() { _ = svc.Close() })
+
+		peer := newPeerIdentity(t, networkID, "/ip4/10.0.0.2/tcp/7070")
+
+		// Manually serialize oversizedUnderlayCount small multiaddrs using the
+		// on-wire list format. SerializeUnderlays would refuse to emit this,
+		// so the bytes are built directly to exercise the receive-side cap.
+		entry, err := ma.NewMultiaddr("/ip4/1.2.3.4/tcp/80")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var buf bytes.Buffer
+		buf.WriteByte(bzzUnderlayListPrefix)
+		entryBytes := entry.Bytes()
+		for range oversizedUnderlayCount {
+			buf.Write(varint.ToUvarint(uint64(len(entryBytes))))
+			buf.Write(entryBytes)
+		}
+
+		bad := &pb.BzzAddress{
+			Overlay:   peer.overlay.Bytes(),
+			Underlay:  buf.Bytes(),
+			Signature: []byte{0},
+			Nonce:     peer.nonce,
+			Timestamp: ts,
+		}
+
+		svc.CheckAndAddPeers(pb.Peers{Peers: []*pb.BzzAddress{bad}})
+
+		if _, _, err := addressbook.Get(peer.overlay); !errors.Is(err, ab.ErrNotFound) {
+			t.Fatalf("expected ErrNotFound after count-cap rejection, got err=%v", err)
+		}
+	})
 }

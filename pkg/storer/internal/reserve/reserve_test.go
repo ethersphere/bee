@@ -469,7 +469,6 @@ func TestSameChunkAddress(t *testing.T) {
 			t.Fatalf("expected reserve size to increase by 2, got %d", size2-size1)
 		}
 	})
-
 }
 
 func TestReplaceOldIndex(t *testing.T) {
@@ -537,7 +536,7 @@ func TestEvict(t *testing.T) {
 		ts := internal.NewInmemStorage()
 
 		chunksPerBatch := 50
-		var chunks []swarm.Chunk
+		chunks := make([]swarm.Chunk, 0, 3*chunksPerBatch)
 		batches := []*postage.Batch{postagetesting.MustNewBatch(), postagetesting.MustNewBatch(), postagetesting.MustNewBatch()}
 		evictBatch := batches[1]
 
@@ -690,7 +689,7 @@ func TestEvictMaxCount(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var chunks []swarm.Chunk
+	chunks := make([]swarm.Chunk, 0, 20)
 
 	batch := postagetesting.MustNewBatch()
 

@@ -27,7 +27,7 @@ func InitStateStore(logger log.Logger, dataDir string, cacheCapacity uint64) (st
 	} else {
 		dataDir = filepath.Join(dataDir, "statestore")
 	}
-	ldb, err := leveldbstore.New(dataDir, nil)
+	ldb, _, err := leveldbstore.New(dataDir, nil)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -45,18 +45,18 @@ func InitStateStore(logger log.Logger, dataDir string, cacheCapacity uint64) (st
 // InitStamperStore will create new stamper store with the given path to the
 // data directory. When given an empty directory path, the function will instead
 // initialize an in-memory state store that will not be persisted.
-func InitStamperStore(logger log.Logger, dataDir string, stateStore storage.StateStorer) (storage.Store, error) {
+// The returned bool indicates whether the previous shutdown was unclean (dirty).
+func InitStamperStore(logger log.Logger, dataDir string, stateStore storage.StateStorer) (storage.Store, bool, error) {
 	if dataDir == "" {
 		logger.Warning("using in-mem stamper store, no node state will be persisted")
 	} else {
 		dataDir = filepath.Join(dataDir, "stamperstore")
 	}
-	stamperStore, err := leveldbstore.New(dataDir, nil)
+	store, dirty, err := leveldbstore.New(dataDir, nil)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-
-	return stamperStore, nil
+	return store, dirty, nil
 }
 
 const (
@@ -66,7 +66,6 @@ const (
 
 // checkOverlay checks the overlay is the same as stored in the statestore
 func checkOverlay(storer storage.StateStorer, overlay swarm.Address) error {
-
 	var storedOverlay swarm.Address
 	err := storer.Get(noncedOverlayKey, &storedOverlay)
 	if err != nil {

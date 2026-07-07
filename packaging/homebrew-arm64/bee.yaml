@@ -6,18 +6,29 @@
 # api-addr: 127.0.0.1:1633
 ## chain block time
 # block-time: "5"
-## rpc blockchain endpoint
-# blockchain-rpc-endpoint: ""
+## block number cache sync interval in blocks
+# block-sync-interval: 10
+## blockchain rpc configuration
+# blockchain-rpc:
+#   endpoint: ""
+#   dial-timeout: 30s
+#   tls-timeout: 10s
+#   idle-timeout: 90s
+#   keepalive: 30s
 ## initial nodes to connect to
 # bootnode: ["/dnsaddr/mainnet.ethswarm.org"]
 ## cause the node to always accept incoming connections
 # bootnode-mode: false
+## bzz token contract address
+# bzz-token-address: ""
 ## cache capacity in chunks, multiply by 4096 to get approximate capacity in bytes
 # cache-capacity: "1000000"
 ## enable forwarded content caching
 # cache-retrieval: true
 ## enable chequebook
 # chequebook-enable: true
+## reject full-node hive/handshake records that carry no chequebook address
+# chequebook-verification: false
 ## config file (default is $HOME/.bee.yaml)
 config: "/opt/homebrew/etc/swarm-bee/bee.yaml"
 ## origins with CORS headers enabled
@@ -108,6 +119,8 @@ password-file: "/opt/homebrew/var/lib/swarm-bee/password"
 # tracing-port: ""
 ## service name identifier for tracing
 # tracing-service-name: bee
+## gas limit fallback when estimation fails for contract transactions (default 500000)
+# gas-limit-fallback: 500000
 ## skips the gas estimate step for contract transactions
 # transaction-debug-mode: false
 ## log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace
@@ -130,3 +143,5 @@ password-file: "/opt/homebrew/var/lib/swarm-bee/password"
 # autotls-registration-endpoint: ""
 ## autotls ca endpoint (default: https://acme-v02.api.letsencrypt.org/directory)
 # autotls-ca-endpoint: ""
+## SIMD BMT hashing opt-in flag (only available on linux amd64)
+# use-simd-hashing: false

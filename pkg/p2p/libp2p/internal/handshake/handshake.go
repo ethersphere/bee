@@ -14,14 +14,16 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/handshake/pb"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-
 	libp2ppeer "github.com/libp2p/go-libp2p/core/peer"
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -33,7 +35,7 @@ const (
 	// ProtocolName is the text of the name of the handshake protocol.
 	ProtocolName = "handshake"
 	// ProtocolVersion is the current handshake protocol version.
-	ProtocolVersion = "14.0.0"
+	ProtocolVersion = "15.0.0"
 	// StreamName is the name of the stream used for handshake purposes.
 	StreamName = "handshake"
 	// MaxWelcomeMessageLength is maximum number of characters allowed in the welcome message.
@@ -67,20 +69,6 @@ type Addresser interface {
 	AdvertizableAddrs() ([]ma.Multiaddr, error)
 }
 
-type Option struct {
-	bee260compatibility bool
-}
-
-// WithBee260Compatibility option ensures that only one underlay address is
-// passed to the peer in p2p protocol messages, so that nodes with version 2.6.0
-// and older can deserialize it. This option can be safely removed when bee
-// version 2.6.0 is deprecated.
-func WithBee260Compatibility(yes bool) func(*Option) {
-	return func(o *Option) {
-		o.bee260compatibility = yes
-	}
-}
-
 // Service can perform initiate or handle a handshake between peers.
 type Service struct {
 	signer                crypto.Signer
@@ -89,14 +77,18 @@ type Service struct {
 	fullNode              bool
 	nonce                 []byte
 	networkID             uint64
-	validateOverlay       bool
 	welcomeMessage        atomic.Value
+	chequebookAddr        atomic.Pointer[common.Address] // set once the local chequebook is known; nil means absent.
+	chequebookVerifier    chequebook.Verifier            // nil means verification disabled.
+	addressbook           addressbook.Getter
 	logger                log.Logger
 	libp2pID              libp2ppeer.ID
 	metrics               metrics
 	picker                p2p.Picker
 	mu                    sync.RWMutex
 	hostAddresser         Addresser
+	now                   func() time.Time
+	addrCache             addressCache // session-stable signed address, keyed by chequebook + underlays
 }
 
 // Info contains the information received from the handshake.
@@ -113,8 +105,10 @@ func (i *Info) LightString() string {
 	return ""
 }
 
-// New creates a new handshake Service.
-func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, overlay swarm.Address, networkID uint64, fullNode bool, nonce []byte, hostAddresser Addresser, welcomeMessage string, validateOverlay bool, ownPeerID libp2ppeer.ID, logger log.Logger) (*Service, error) {
+// New creates a new handshake Service. A nil chequebookVerifier disables the
+// chequebook gate; otherwise handshake completion requires the peer's
+// chequebook to pass verification.
+func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver, overlay swarm.Address, networkID uint64, fullNode bool, nonce []byte, hostAddresser Addresser, welcomeMessage string, addrbook addressbook.Getter, ownPeerID libp2ppeer.ID, chequebookVerifier chequebook.Verifier, logger log.Logger) (*Service, error) {
 	if len(welcomeMessage) > MaxWelcomeMessageLength {
 		return nil, ErrWelcomeMessageLength
 	}
@@ -125,16 +119,61 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 		overlay:               overlay,
 		networkID:             networkID,
 		fullNode:              fullNode,
-		validateOverlay:       validateOverlay,
 		nonce:                 nonce,
 		libp2pID:              ownPeerID,
 		logger:                logger.WithName(loggerName).Register(),
 		metrics:               newMetrics(),
 		hostAddresser:         hostAddresser,
+		addressbook:           addrbook,
+		chequebookVerifier:    chequebookVerifier,
+		now:                   time.Now,
 	}
 	svc.welcomeMessage.Store(welcomeMessage)
 
 	return svc, nil
+}
+
+// SetChequebookAddress sets the local chequebook address included in
+// subsequent signed BzzAddress payloads; the zero value clears it. The
+// chequebook is part of the signed-address cache key, so the next handshake
+// misses the cache and re-signs with the new chequebook.
+func (s *Service) SetChequebookAddress(addr common.Address) {
+	if (addr == common.Address{}) {
+		s.chequebookAddr.Store(nil)
+	} else {
+		s.chequebookAddr.Store(&addr)
+	}
+}
+
+func (s *Service) chequebookAddress() common.Address {
+	if v := s.chequebookAddr.Load(); v != nil {
+		return *v
+	}
+	return common.Address{}
+}
+
+// signedAddress returns the session-stable signed BzzAddress advertising the
+// given canonical underlay set. The record is minted on first use and reused
+// byte-stable (same timestamp and signature) across handshakes, so receiving
+// peers see it as unchanged and skip redundant addressbook writes and gossip
+// updates. It is re-minted when the underlay set or the chequebook changes.
+func (s *Service) signedAddress(underlays []ma.Multiaddr) (*bzz.Address, error) {
+	underlaysBinary, err := bzz.SerializeUnderlays(underlays)
+	if err != nil {
+		return nil, fmt.Errorf("serialize underlays: %w", err)
+	}
+
+	chequebook := s.chequebookAddress()
+	key := string(chequebook.Bytes()) + string(underlaysBinary)
+
+	return s.addrCache.getOrMint(key, s.now().Unix(), func(timestamp int64) (*bzz.Address, error) {
+		addr, err := bzz.NewAddress(s.signer, underlays, s.overlay, s.networkID, s.nonce, timestamp, chequebook)
+		if err != nil {
+			return nil, err
+		}
+		s.metrics.AddressMinted.Inc()
+		return addr, nil
+	})
 }
 
 func (s *Service) SetPicker(n p2p.Picker) {
@@ -144,23 +183,27 @@ func (s *Service) SetPicker(n p2p.Picker) {
 }
 
 // Handshake initiates a handshake with a peer.
-func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiaddrs []ma.Multiaddr, opts ...func(*Option)) (i *Info, err error) {
+func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiaddrs []ma.Multiaddr) (i *Info, err error) {
 	loggerV1 := s.logger.V(1).Register()
-
-	o := new(Option)
-	for _, set := range opts {
-		set(o)
-	}
 
 	ctx, cancel := context.WithTimeout(ctx, handshakeTimeout)
 	defer cancel()
 
 	w, r := protobuf.NewWriterAndReader(stream)
 
-	peerMultiaddrs = p2p.FilterBee260CompatibleUnderlays(o.bee260compatibility, peerMultiaddrs)
+	var observedTruncated bool
+	peerMultiaddrs, observedTruncated = bzz.TruncateUnderlays(peerMultiaddrs)
+	if observedTruncated {
+		s.metrics.ObservedUnderlaysTruncated.Inc()
+	}
+
+	observedUnderlayBytes, err := bzz.SerializeUnderlays(peerMultiaddrs)
+	if err != nil {
+		return nil, fmt.Errorf("serialize observed underlays: %w", err)
+	}
 
 	if err := w.WriteMsgWithContext(ctx, &pb.Syn{
-		ObservedUnderlay: bzz.SerializeUnderlays(peerMultiaddrs),
+		ObservedUnderlay: observedUnderlayBytes,
 	}); err != nil {
 		return nil, fmt.Errorf("write syn message: %w", err)
 	}
@@ -170,9 +213,19 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return nil, fmt.Errorf("read synack message: %w", err)
 	}
 
+	// Reject malformed SynAck messages where nested pointer fields are
+	// absent. Proto3 generates these as optional pointers, so a peer can
+	// send a decodable message that would otherwise panic on deref.
+	if resp.Syn == nil {
+		return nil, ErrInvalidSyn
+	}
+	if resp.Ack == nil || resp.Ack.Address == nil {
+		return nil, ErrInvalidAck
+	}
+
 	observedUnderlays, err := bzz.DeserializeUnderlays(resp.Syn.ObservedUnderlay)
 	if err != nil {
-		return nil, ErrInvalidSyn
+		return nil, fmt.Errorf("%w: observed underlay len=%d: %w", ErrInvalidSyn, len(resp.Syn.ObservedUnderlay), err)
 	}
 
 	advertisableUnderlays := make([]ma.Multiaddr, len(observedUnderlays))
@@ -212,9 +265,14 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return a.Equal(b)
 	})
 
-	advertisableUnderlays = p2p.FilterBee260CompatibleUnderlays(o.bee260compatibility, advertisableUnderlays)
+	// Truncate to count and byte-size caps before signing.
+	var advTruncated bool
+	advertisableUnderlays, advTruncated = bzz.TruncateUnderlays(advertisableUnderlays)
+	if advTruncated {
+		s.metrics.AdvertisableUnderlaysTruncated.Inc()
+	}
 
-	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce)
+	bzzAddress, err := s.signedAddress(advertisableUnderlays)
 	if err != nil {
 		return nil, err
 	}
@@ -223,22 +281,30 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return nil, ErrNetworkIDIncompatible
 	}
 
-	remoteBzzAddress, err := s.parseCheckAck(resp.Ack)
+	remoteBzzAddress, err := s.parseCheckAck(ctx, resp.Ack)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrInvalidAck, err)
 	}
 
 	// Synced read:
 	welcomeMessage := s.GetWelcomeMessage()
+
+	ackUnderlayBytes, err := bzz.SerializeUnderlays(bzzAddress.Underlays)
+	if err != nil {
+		return nil, fmt.Errorf("serialize ack underlays: %w", err)
+	}
+
 	msg := &pb.Ack{
 		Address: &pb.BzzAddress{
-			Underlay:  bzz.SerializeUnderlays(bzzAddress.Underlays),
-			Overlay:   bzzAddress.Overlay.Bytes(),
-			Signature: bzzAddress.Signature,
+			Underlay:          ackUnderlayBytes,
+			Overlay:           bzzAddress.Overlay.Bytes(),
+			Signature:         bzzAddress.Signature,
+			Nonce:             bzzAddress.Nonce,
+			Timestamp:         bzzAddress.Timestamp,
+			ChequebookAddress: bzzAddress.ChequebookAddress.Bytes(),
 		},
 		NetworkID:      s.networkID,
 		FullNode:       s.fullNode,
-		Nonce:          s.nonce,
 		WelcomeMessage: welcomeMessage,
 	}
 
@@ -258,13 +324,8 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 }
 
 // Handle handles an incoming handshake from a peer.
-func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs []ma.Multiaddr, opts ...func(*Option)) (i *Info, err error) {
+func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs []ma.Multiaddr) (i *Info, err error) {
 	loggerV1 := s.logger.V(1).Register()
-
-	o := new(Option)
-	for _, set := range opts {
-		set(o)
-	}
 
 	ctx, cancel := context.WithTimeout(ctx, handshakeTimeout)
 	defer cancel()
@@ -280,7 +341,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 
 	observedUnderlays, err := bzz.DeserializeUnderlays(syn.ObservedUnderlay)
 	if err != nil {
-		return nil, ErrInvalidSyn
+		return nil, fmt.Errorf("%w: observed underlay len=%d: %w", ErrInvalidSyn, len(syn.ObservedUnderlay), err)
 	}
 
 	advertisableUnderlays := make([]ma.Multiaddr, len(observedUnderlays))
@@ -310,30 +371,51 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 		return a.Equal(b)
 	})
 
-	advertisableUnderlays = p2p.FilterBee260CompatibleUnderlays(o.bee260compatibility, advertisableUnderlays)
+	// Truncate to count and byte-size caps before signing.
+	var handleAdvTruncated bool
+	advertisableUnderlays, handleAdvTruncated = bzz.TruncateUnderlays(advertisableUnderlays)
+	if handleAdvTruncated {
+		s.metrics.AdvertisableUnderlaysTruncated.Inc()
+	}
 
-	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce)
+	bzzAddress, err := s.signedAddress(advertisableUnderlays)
 	if err != nil {
 		return nil, err
 	}
 
 	welcomeMessage := s.GetWelcomeMessage()
 
-	peerMultiaddrs = p2p.FilterBee260CompatibleUnderlays(o.bee260compatibility, peerMultiaddrs)
+	var handleObsTruncated bool
+	peerMultiaddrs, handleObsTruncated = bzz.TruncateUnderlays(peerMultiaddrs)
+	if handleObsTruncated {
+		s.metrics.ObservedUnderlaysTruncated.Inc()
+	}
+
+	synObservedBytes, err := bzz.SerializeUnderlays(peerMultiaddrs)
+	if err != nil {
+		return nil, fmt.Errorf("serialize syn observed underlays: %w", err)
+	}
+
+	synAckUnderlayBytes, err := bzz.SerializeUnderlays(bzzAddress.Underlays)
+	if err != nil {
+		return nil, fmt.Errorf("serialize synack underlays: %w", err)
+	}
 
 	if err := w.WriteMsgWithContext(ctx, &pb.SynAck{
 		Syn: &pb.Syn{
-			ObservedUnderlay: bzz.SerializeUnderlays(peerMultiaddrs),
+			ObservedUnderlay: synObservedBytes,
 		},
 		Ack: &pb.Ack{
 			Address: &pb.BzzAddress{
-				Underlay:  bzz.SerializeUnderlays(bzzAddress.Underlays),
-				Overlay:   bzzAddress.Overlay.Bytes(),
-				Signature: bzzAddress.Signature,
+				Underlay:          synAckUnderlayBytes,
+				Overlay:           bzzAddress.Overlay.Bytes(),
+				Signature:         bzzAddress.Signature,
+				Nonce:             bzzAddress.Nonce,
+				Timestamp:         bzzAddress.Timestamp,
+				ChequebookAddress: bzzAddress.ChequebookAddress.Bytes(),
 			},
 			NetworkID:      s.networkID,
 			FullNode:       s.fullNode,
-			Nonce:          s.nonce,
 			WelcomeMessage: welcomeMessage,
 		},
 	}); err != nil {
@@ -348,6 +430,13 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 		return nil, fmt.Errorf("read ack message: %w", err)
 	}
 	s.metrics.AckRx.Inc()
+
+	// Reject malformed Ack messages with a nil nested BzzAddress — proto3
+	// makes this a pointer field, so a peer can send one that would panic
+	// on deref otherwise.
+	if ack.Address == nil {
+		return nil, ErrInvalidAck
+	}
 
 	if ack.NetworkID != s.networkID {
 		return nil, ErrNetworkIDIncompatible
@@ -365,9 +454,9 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 		}
 	}
 
-	remoteBzzAddress, err := s.parseCheckAck(&ack)
+	remoteBzzAddress, err := s.parseCheckAck(ctx, &ack)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrInvalidAck, err)
 	}
 
 	loggerV1.Debug("handshake finished for peer (inbound)", "peer_address", remoteBzzAddress.Overlay)
@@ -395,10 +484,42 @@ func (s *Service) GetWelcomeMessage() string {
 	return s.welcomeMessage.Load().(string)
 }
 
-func (s *Service) parseCheckAck(ack *pb.Ack) (*bzz.Address, error) {
-	bzzAddress, err := bzz.ParseAddress(ack.Address.Underlay, ack.Address.Overlay, ack.Address.Signature, ack.Nonce, s.validateOverlay, s.networkID)
-	if err != nil {
+func (s *Service) parseCheckAck(ctx context.Context, ack *pb.Ack) (*bzz.Address, error) {
+	// Defence in depth: guard against nil nested fields so this helper is
+	// safe independently of its callers.
+	if ack == nil || ack.Address == nil {
 		return nil, ErrInvalidAck
+	}
+
+	bzzAddress, err := bzz.ParseAddress(ack.Address.Underlay, ack.Address.Overlay, ack.Address.Signature, ack.Address.Nonce, ack.Address.Timestamp, s.networkID, ack.Address.ChequebookAddress)
+	if err != nil {
+		return nil, fmt.Errorf("parse address: %w", err)
+	}
+
+	existing, pastVerified, err := s.addressbook.Get(bzzAddress.Overlay)
+	if err != nil && !errors.Is(err, addressbook.ErrNotFound) {
+		return nil, fmt.Errorf("addressbook get: %w", err)
+	}
+
+	if err := bzz.CheckTimestamp(bzzAddress.Timestamp, existing, bzz.TimestampSourceHandshake, s.now()); err != nil {
+		if reason, ok := bzz.TimestampErrorLabel(err); ok {
+			s.metrics.TimestampRejected.WithLabelValues(reason).Inc()
+		}
+		return nil, fmt.Errorf("check timestamp: %w", err)
+	}
+
+	if s.chequebookVerifier != nil && ack.FullNode {
+		if (bzzAddress.ChequebookAddress == common.Address{}) {
+			s.metrics.ChequebookVerification.WithLabelValues("missing").Inc()
+			return nil, chequebook.ErrChequebookAddressMissing
+		}
+		pairVerified := pastVerified && existing != nil && existing.ChequebookAddress == bzzAddress.ChequebookAddress
+		peerEth := common.BytesToAddress(bzzAddress.EthereumAddress)
+		if err := s.chequebookVerifier.Verify(ctx, bzzAddress.ChequebookAddress, peerEth, bzzAddress.Overlay, pairVerified); err != nil {
+			s.metrics.ChequebookVerification.WithLabelValues(chequebook.VerifyErrorLabel(err)).Inc()
+			return nil, fmt.Errorf("verify chequebook: %w", err)
+		}
+		s.metrics.ChequebookVerification.WithLabelValues("success").Inc()
 	}
 
 	return bzzAddress, nil

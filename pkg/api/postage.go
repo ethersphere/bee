@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/bigint"
@@ -139,17 +140,18 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type postageStampResponse struct {
-	BatchID       hexByte        `json:"batchID"`
-	Utilization   uint32         `json:"utilization"`
-	Usable        bool           `json:"usable"`
-	Label         string         `json:"label"`
-	Depth         uint8          `json:"depth"`
-	Amount        *bigint.BigInt `json:"amount"`
-	BucketDepth   uint8          `json:"bucketDepth"`
-	BlockNumber   uint64         `json:"blockNumber"`
-	ImmutableFlag bool           `json:"immutableFlag"`
-	Exists        bool           `json:"exists"`
-	BatchTTL      int64          `json:"batchTTL"`
+	BatchID          hexByte        `json:"batchID"`
+	Utilization      uint32         `json:"utilization"`
+	UtilizationRatio float64        `json:"utilizationRatio"`
+	Usable           bool           `json:"usable"`
+	Label            string         `json:"label"`
+	Depth            uint8          `json:"depth"`
+	Amount           *bigint.BigInt `json:"amount"`
+	BucketDepth      uint8          `json:"bucketDepth"`
+	BlockNumber      uint64         `json:"blockNumber"`
+	ImmutableFlag    bool           `json:"immutableFlag"`
+	Exists           bool           `json:"exists"`
+	BatchTTL         int64          `json:"batchTTL"`
 }
 
 type postageStampsResponse struct {
@@ -205,17 +207,18 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request
 		}
 
 		resp.Stamps = append(resp.Stamps, postageStampResponse{
-			BatchID:       v.ID(),
-			Utilization:   v.Utilization(),
-			Usable:        s.post.IssuerUsable(v),
-			Label:         v.Label(),
-			Depth:         v.Depth(),
-			Amount:        bigint.Wrap(v.Amount()),
-			BucketDepth:   v.BucketDepth(),
-			BlockNumber:   v.BlockNumber(),
-			ImmutableFlag: v.ImmutableFlag(),
-			Exists:        true,
-			BatchTTL:      batchTTL,
+			BatchID:          v.ID(),
+			Utilization:      v.Utilization(),
+			UtilizationRatio: v.UtilizationRatio(),
+			Usable:           s.post.IssuerUsable(v),
+			Label:            v.Label(),
+			Depth:            v.Depth(),
+			Amount:           bigint.Wrap(v.Amount()),
+			BucketDepth:      v.BucketDepth(),
+			BlockNumber:      v.BlockNumber(),
+			ImmutableFlag:    v.ImmutableFlag(),
+			Exists:           true,
+			BatchTTL:         batchTTL,
 		})
 	}
 
@@ -258,6 +261,50 @@ func (s *Service) postageGetAllBatchesHandler(w http.ResponseWriter, _ *http.Req
 	}
 
 	jsonhttp.OK(w, batchesRes)
+}
+
+func (s *Service) postageGetBatchHandler(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("get_batch").Build()
+
+	paths := struct {
+		BatchID []byte `map:"batch_id" validate:"required,len=32"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
+		return
+	}
+	hexBatchID := hex.EncodeToString(paths.BatchID)
+
+	batch, err := s.batchStore.Get(paths.BatchID)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			jsonhttp.NotFound(w, "batch not found")
+			return
+		}
+		logger.Debug("get batch failed", "batch_id", hexBatchID, "error", err)
+		logger.Error(nil, "get batch failed")
+		jsonhttp.InternalServerError(w, "unable to get batch")
+		return
+	}
+
+	batchTTL, err := s.estimateBatchTTL(batch)
+	if err != nil {
+		logger.Debug("estimate batch expiration failed", "batch_id", hexBatchID, "error", err)
+		logger.Error(nil, "estimate batch expiration failed")
+		jsonhttp.InternalServerError(w, "unable to estimate batch expiration")
+		return
+	}
+
+	jsonhttp.OK(w, postageBatchResponse{
+		BatchID:     batch.ID,
+		Value:       bigint.Wrap(batch.Value),
+		Start:       batch.Start,
+		Owner:       batch.Owner,
+		Depth:       batch.Depth,
+		BucketDepth: batch.BucketDepth,
+		Immutable:   batch.Immutable,
+		BatchTTL:    batchTTL,
+	})
 }
 
 func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.Request) {
@@ -351,17 +398,18 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	jsonhttp.OK(w, &postageStampResponse{
-		BatchID:       paths.BatchID,
-		Depth:         issuer.Depth(),
-		BucketDepth:   issuer.BucketDepth(),
-		ImmutableFlag: issuer.ImmutableFlag(),
-		Exists:        true,
-		BatchTTL:      batchTTL,
-		Utilization:   issuer.Utilization(),
-		Usable:        s.post.IssuerUsable(issuer),
-		Label:         issuer.Label(),
-		Amount:        bigint.Wrap(issuer.Amount()),
-		BlockNumber:   issuer.BlockNumber(),
+		BatchID:          paths.BatchID,
+		Depth:            issuer.Depth(),
+		BucketDepth:      issuer.BucketDepth(),
+		ImmutableFlag:    issuer.ImmutableFlag(),
+		Exists:           true,
+		BatchTTL:         batchTTL,
+		Utilization:      issuer.Utilization(),
+		UtilizationRatio: issuer.UtilizationRatio(),
+		Usable:           s.post.IssuerUsable(issuer),
+		Label:            issuer.Label(),
+		Amount:           bigint.Wrap(issuer.Amount()),
+		BlockNumber:      issuer.BlockNumber(),
 	})
 }
 
@@ -373,10 +421,11 @@ type reserveStateResponse struct {
 }
 
 type chainStateResponse struct {
-	ChainTip     uint64         `json:"chainTip"`     // ChainTip (block height).
-	Block        uint64         `json:"block"`        // The block number of the last postage event.
-	TotalAmount  *bigint.BigInt `json:"totalAmount"`  // Cumulative amount paid per stamp.
-	CurrentPrice *bigint.BigInt `json:"currentPrice"` // Bzz/chunk/block normalised price.
+	ChainTip              uint64         `json:"chainTip"`                        // ChainTip (block height).
+	Block                 uint64         `json:"block"`                           // The block number of the last postage event.
+	TotalAmount           *bigint.BigInt `json:"totalAmount"`                     // Cumulative amount paid per stamp.
+	CurrentPrice          *bigint.BigInt `json:"currentPrice"`                    // Bzz/chunk/block normalised price.
+	MinimumValidityBlocks uint64         `json:"minimumValidityBlocks,omitempty"` // Minimum number of blocks a new postage batch must remain valid.
 }
 
 func (s *Service) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
@@ -410,11 +459,23 @@ func (s *Service) chainStateHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "block number unavailable")
 		return
 	}
+	// postageContract is wired in Configure; guard against early calls during startup.
+	var minimumValidityBlocks uint64
+	if s.postageContract != nil {
+		minimumValidityBlocks, err = s.postageContract.MinimumValidityBlocks(r.Context())
+		if err != nil && !errors.Is(err, postagecontract.ErrChainDisabled) {
+			logger.Debug("get minimum validity blocks failed", "error", err)
+			logger.Error(nil, "get minimum validity blocks failed")
+			jsonhttp.InternalServerError(w, "minimum validity blocks unavailable")
+			return
+		}
+	}
 	jsonhttp.OK(w, chainStateResponse{
-		ChainTip:     chainTip,
-		Block:        state.Block,
-		TotalAmount:  bigint.Wrap(state.TotalAmount),
-		CurrentPrice: bigint.Wrap(state.CurrentPrice),
+		ChainTip:              chainTip,
+		Block:                 state.Block,
+		TotalAmount:           bigint.Wrap(state.TotalAmount),
+		CurrentPrice:          bigint.Wrap(state.CurrentPrice),
+		MinimumValidityBlocks: minimumValidityBlocks,
 	})
 }
 
@@ -450,6 +511,53 @@ func (s *Service) estimateBatchTTL(batch *postage.Batch) (int64, error) {
 	ttl = ttl.Div(ttl, pricePerBlock)
 
 	return ttl.Int64(), nil
+}
+
+type postageLabelUpdateRequest struct {
+	Label string `json:"label"`
+}
+
+func (s *Service) postageUpdateLabelHandler(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("patch_stamp").Build()
+
+	paths := struct {
+		BatchID []byte `map:"batch_id" validate:"required,len=32"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
+		return
+	}
+	hexBatchID := hex.EncodeToString(paths.BatchID)
+
+	body := postageLabelUpdateRequest{}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		logger.Debug("patch stamp: decode body failed", "batch_id", hexBatchID, "error", err)
+		logger.Error(nil, "patch stamp: decode body failed")
+		jsonhttp.BadRequest(w, "invalid request body")
+		return
+	}
+
+	// label is required by the OpenAPI spec; reject empty/missing rather than
+	// silently blanking the issuer label.
+	if strings.TrimSpace(body.Label) == "" {
+		logger.Debug("patch stamp: empty label", "batch_id", hexBatchID)
+		jsonhttp.BadRequest(w, "label is required")
+		return
+	}
+
+	if err := s.post.UpdateIssuerLabel(paths.BatchID, body.Label); err != nil {
+		logger.Debug("patch stamp: update label failed", "batch_id", hexBatchID, "error", err)
+		logger.Error(nil, "patch stamp: update label failed")
+		switch {
+		case errors.Is(err, postage.ErrNotFound):
+			jsonhttp.NotFound(w, "issuer does not exist")
+		default:
+			jsonhttp.InternalServerError(w, "cannot update label")
+		}
+		return
+	}
+
+	jsonhttp.OK(w, nil)
 }
 
 func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {

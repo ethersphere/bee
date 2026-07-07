@@ -248,31 +248,6 @@ func TestChunkInvalidParams(t *testing.T) {
 	})
 }
 
-// TestChunkDirectUpload tests that the direct upload endpoint give correct error message in dev mode
-func TestChunkDirectUpload(t *testing.T) {
-	t.Parallel()
-	var (
-		chunksEndpoint  = "/chunks"
-		chunk           = testingc.GenerateTestRandomChunk()
-		storerMock      = mockstorer.New()
-		client, _, _, _ = newTestServer(t, testServerOptions{
-			Storer:  storerMock,
-			Post:    mockpost.New(mockpost.WithAcceptAll()),
-			BeeMode: api.DevMode,
-		})
-	)
-
-	jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusBadRequest,
-		jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "false"),
-		jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
-		jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
-		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: api.ErrUnsupportedDevNodeOperation.Error(),
-			Code:    http.StatusBadRequest,
-		}),
-	)
-}
-
 // TestPreSignedUpload tests that chunk can be uploaded with pre-signed postage stamp
 func TestPreSignedUpload(t *testing.T) {
 	t.Parallel()

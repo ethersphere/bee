@@ -105,6 +105,24 @@ func (n *Node) MarshalBinary() (bytes []byte, err error) {
 		return nil, ErrInvalidInput
 	}
 
+	// Infer refBytesSize when Add() never set it (directory-only adds): use
+	// our own entry width if present, else the first child ref's width.
+	// Without this, the header reports refBytesSize=0 while the body still
+	// carries full-width data, and the v0.2 reader at line 280 silently drops
+	// every fork.
+	if n.refBytesSize == 0 {
+		if len(n.entry) > 0 {
+			n.refBytesSize = len(n.entry)
+		} else {
+			for _, f := range n.forks {
+				if len(f.ref) > 0 {
+					n.refBytesSize = len(f.ref)
+					break
+				}
+			}
+		}
+	}
+
 	// header
 
 	headerBytes := make([]byte, nodeHeaderSize)
@@ -136,7 +154,7 @@ func (n *Node) MarshalBinary() (bytes []byte, err error) {
 
 	indexBytes := make([]byte, 32)
 
-	var index = &bitsForBytes{}
+	index := &bitsForBytes{}
 	for k := range n.forks {
 		index.set(k)
 	}

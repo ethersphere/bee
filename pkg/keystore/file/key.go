@@ -11,6 +11,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha3"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -21,7 +22,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/keystore"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/scrypt"
-	"golang.org/x/crypto/sha3"
 )
 
 var _ keystore.Service = (*Service)(nil)

@@ -52,7 +52,7 @@ func TestBmtWriter(t *testing.T) {
 			mockChainWriter := mock.NewChainWriter()
 			writer := bmt.NewBmtWriter(mockChainWriter)
 
-			var data []byte
+			data := make([]byte, 0, len(tc.data))
 
 			if !tc.noSpan {
 				data = make([]byte, 8)

@@ -45,6 +45,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/postage/batchstore"
 	"github.com/ethersphere/bee/v2/pkg/postage/listener"
 	"github.com/ethersphere/bee/v2/pkg/postage/postagecontract"
+	"github.com/ethersphere/bee/v2/pkg/postage/snapshot"
+	"github.com/ethersphere/bee/v2/pkg/postage/snapshot/archive"
 	"github.com/ethersphere/bee/v2/pkg/pricer"
 	"github.com/ethersphere/bee/v2/pkg/pricing"
 	"github.com/ethersphere/bee/v2/pkg/pss"
@@ -90,6 +92,7 @@ import (
 const LoggerName = "node"
 
 type Bee struct {
+	logger                   log.Logger
 	p2pService               io.Closer
 	p2pHalter                p2p.Halter
 	ctxCancel                context.CancelFunc
@@ -118,6 +121,7 @@ type Bee struct {
 	saludCloser              io.Closer
 	storageIncetivesCloser   io.Closer
 	pushSyncCloser           io.Closer
+	stabilizationDetector    io.Closer
 	shutdownInProgress       bool
 	shutdownMutex            sync.Mutex
 	syncingStopped           *syncutil.Signaler
@@ -133,14 +137,22 @@ type Options struct {
 	WSSAddr                       string
 	AutoTLSStorageDir             string
 	BlockchainRpcEndpoint         string
+	BlockchainRpcDialTimeout      time.Duration
+	BlockchainRpcTLSTimeout       time.Duration
+	BlockchainRpcIdleTimeout      time.Duration
+	BlockchainRpcKeepalive        time.Duration
+	BzzTokenAddress               common.Address
 	BlockProfile                  bool
 	BlockTime                     time.Duration
+	BlockSyncInterval             uint64
 	BootnodeMode                  bool
 	Bootnodes                     []string
 	CacheCapacity                 uint64
 	AutoTLSCAEndpoint             string
 	ChainID                       int64
 	ChequebookEnable              bool
+	ChequebookVerification        bool
+	ChequebookMinBalance          string
 	CORSAllowedOrigins            []string
 	DataDir                       string
 	DBBlockCacheCapacity          uint64
@@ -152,6 +164,7 @@ type Options struct {
 	AutoTLSDomain                 string
 	AutoTLSRegistrationEndpoint   string
 	FullNodeMode                  bool
+	GasLimitFallback              uint64
 	Logger                        log.Logger
 	MinimumGasTipCap              uint64
 	MinimumStorageRadius          uint
@@ -194,6 +207,8 @@ const (
 	basePrice                     = 10_000                    // minimal price for retrieval and pushsync requests of maximum proximity
 	postageSyncingStallingTimeout = 10 * time.Minute          //
 	postageSyncingBackoffTimeout  = 5 * time.Second           //
+	startupBlockHeightChecks      = 3                         // number of probes at startup before declaring stored chainstate ahead of backend
+	startupBlockHeightBackoff     = 5 * time.Second           // wait between startup block-height probes
 	minPaymentThreshold           = 2 * refreshRate           // minimal accepted payment threshold of full nodes
 	maxPaymentThreshold           = 24 * refreshRate          // maximal accepted payment threshold of full nodes
 	mainnetNetworkID              = uint64(1)                 //
@@ -260,6 +275,7 @@ func NewBee(
 	})
 
 	b = &Bee{
+		logger:         logger,
 		ctxCancel:      ctxCancel,
 		errorLogWriter: sink,
 		tracerCloser:   tracerCloser,
@@ -382,6 +398,14 @@ func NewBee(
 
 	chainEnabled := isChainEnabled(o, o.BlockchainRpcEndpoint, logger)
 
+	if o.SwapEnable && !chainEnabled {
+		return nil, errors.New("swap is enabled but the chain backend is not; provide --blockchain-rpc-endpoint or disable swap")
+	}
+
+	if o.ChequebookVerification && (!o.FullNodeMode || !o.ChequebookEnable || !chainEnabled) {
+		return nil, fmt.Errorf("chequebook-verification requires full-node mode, chequebook-enable, and an enabled chain backend (full_node=%t, chequebook_enable=%t, chain_enabled=%t)", o.FullNodeMode, o.ChequebookEnable, chainEnabled)
+	}
+
 	var batchStore postage.Storer = new(postage.NoOpBatchStore)
 	var evictFn func([]byte) error
 
@@ -403,12 +427,20 @@ func NewBee(
 		ctx,
 		logger,
 		stateStore,
-		o.BlockchainRpcEndpoint,
 		o.ChainID,
 		signer,
 		o.BlockTime,
 		chainEnabled,
 		o.MinimumGasTipCap,
+		o.GasLimitFallback,
+		BlockchainRPCConfig{
+			Endpoint:    o.BlockchainRpcEndpoint,
+			DialTimeout: o.BlockchainRpcDialTimeout,
+			TLSTimeout:  o.BlockchainRpcTLSTimeout,
+			IdleTimeout: o.BlockchainRpcIdleTimeout,
+			Keepalive:   o.BlockchainRpcKeepalive,
+		},
+		o.BlockSyncInterval,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("init chain: %w", err)
@@ -438,7 +470,7 @@ func NewBee(
 		}
 	}(probe)
 
-	stamperStore, err := InitStamperStore(logger, o.DataDir, stateStore)
+	stamperStore, wasDirty, err := InitStamperStore(logger, o.DataDir, stateStore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize stamper store: %w", err)
 	}
@@ -516,20 +548,28 @@ func NewBee(
 		}
 	}
 
+	chainCfg, knownChain := config.GetByChainID(chainID)
+
+	bzzTokenAddress := chainCfg.TokenContractAddress
+	if o.BzzTokenAddress != (common.Address{}) {
+		bzzTokenAddress = o.BzzTokenAddress
+	}
+
+	if chainEnabled {
+		if bzzTokenAddress == (common.Address{}) {
+			return nil, errors.New("no known bzz token address for this network; provide --bzz-token-address")
+		}
+		logger.Info("using bzz token address", "address", bzzTokenAddress)
+		erc20Service = erc20.New(transactionService, bzzTokenAddress)
+	}
+
 	if o.SwapEnable {
 		chequebookFactory, err := InitChequebookFactory(logger, chainBackend, chainID, transactionService, o.SwapFactoryAddress)
 		if err != nil {
 			return nil, fmt.Errorf("init chequebook factory: %w", err)
 		}
 
-		erc20Address, err := chequebookFactory.ERC20Address(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("factory fail: %w", err)
-		}
-
-		erc20Service = erc20.New(transactionService, erc20Address)
-
-		if o.ChequebookEnable && chainEnabled {
+		if o.ChequebookEnable {
 			chequebookService, err = InitChequebookService(
 				ctx,
 				logger,
@@ -606,7 +646,7 @@ func NewBee(
 	if err != nil {
 		return nil, fmt.Errorf("rate stabilizer configuration failed: %w", err)
 	}
-	defer detector.Close()
+	b.stabilizationDetector = detector
 
 	detector.OnMonitoringStart = func(t time.Time) {
 		logger.Info("node warmup check initiated. monitoring activity rate to determine readiness.", "startTime", t)
@@ -634,7 +674,27 @@ func NewBee(
 		registry = apiService.MetricsRegistry()
 	}
 
-	p2ps, err := libp2p.New(ctx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
+	var (
+		cbVerifier chequebook.Verifier
+		cbRegistry *chequebook.Registry
+	)
+	if o.ChequebookVerification {
+		minBalance, ok := new(big.Int).SetString(o.ChequebookMinBalance, 10)
+		if !ok {
+			return nil, fmt.Errorf("chequebook min balance %q cannot be parsed as base-10 integer", o.ChequebookMinBalance)
+		}
+		cbRegistry = chequebook.NewRegistry()
+		var err error
+		cbVerifier, err = chequebook.NewVerifier(transactionService, chainBackend, cbRegistry, chequebook.VerifierConfig{
+			AcceptedBytecodeHashes: chainCfg.AcceptedChequebookBytecodeHashes,
+			MinBalance:             minBalance,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("new chequebook verifier: %w", err)
+		}
+	}
+
+	libp2pOpts := libp2p.Options{
 		PrivateKey:                  libp2pPrivateKey,
 		NATAddr:                     o.NATAddr,
 		NATWSSAddr:                  o.NATWSSAddr,
@@ -648,9 +708,14 @@ func NewBee(
 		WelcomeMessage:              o.WelcomeMessage,
 		FullNode:                    o.FullNodeMode,
 		Nonce:                       nonce,
-		ValidateOverlay:             chainEnabled,
+		AllowPrivateCIDRs:           o.AllowPrivateCIDRs,
 		Registry:                    registry,
-	})
+		ChequebookVerifier:          cbVerifier,
+	}
+	if cbRegistry != nil {
+		libp2pOpts.ChequebookStorer = cbRegistry
+	}
+	p2ps, err := libp2p.New(ctx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2pOpts)
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
 	}
@@ -660,7 +725,12 @@ func NewBee(
 	b.p2pService = p2ps
 	b.p2pHalter = p2ps
 
-	post, err := postage.NewService(logger, stamperStore, batchStore, chainID)
+	// Publish the local chequebook so handshake records carry it.
+	// noOpChequebookService returns the zero address — meaning "absent" by
+	// construction, so no conditional is needed here.
+	p2ps.SetChequebookAddress(chequebookService.Address())
+
+	post, err := postage.NewService(logger, stamperStore, batchStore, chainID, wasDirty)
 	if err != nil {
 		return nil, fmt.Errorf("postage service: %w", err)
 	}
@@ -673,7 +743,6 @@ func NewBee(
 		eventListener               postage.Listener
 	)
 
-	chainCfg, found := config.GetByChainID(chainID)
 	postageStampContractAddress, postageSyncStart := chainCfg.PostageStampAddress, chainCfg.PostageStampStartBlock
 	if o.PostageContractAddress != "" {
 		if !common.IsHexAddress(o.PostageContractAddress) {
@@ -684,15 +753,17 @@ func NewBee(
 			return nil, errors.New("postage contract start block option not provided")
 		}
 		postageSyncStart = o.PostageContractStartBlock
-	} else if !found {
+	} else if !knownChain {
 		return nil, errors.New("no known postage stamp addresses for this network")
 	}
 
 	postageStampContractABI := abiutil.MustParseABI(chainCfg.PostageStampABI)
 
-	bzzTokenAddress, err := postagecontract.LookupERC20Address(ctx, transactionService, postageStampContractAddress, postageStampContractABI, chainEnabled)
-	if err != nil {
-		return nil, fmt.Errorf("lookup erc20 postage address: %w", err)
+	// Compute gas limit for contract transactions: when TrxDebugMode is enabled,
+	// gas estimation is skipped and DefaultGasLimit is used for all contract calls.
+	var contractGasLimit uint64
+	if o.TrxDebugMode {
+		contractGasLimit = transaction.DefaultGasLimit
 	}
 
 	postageStampContractService = postagecontract.New(
@@ -704,16 +775,11 @@ func NewBee(
 		post,
 		batchStore,
 		chainEnabled,
-		o.TrxDebugMode,
+		contractGasLimit,
 	)
 
 	eventListener = listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
 	b.listenerCloser = eventListener
-
-	batchSvc, err = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
-	if err != nil {
-		return nil, fmt.Errorf("init batch service: %w", err)
-	}
 
 	// Construct protocols.
 	pingPong := pingpong.New(p2ps, logger, tracer)
@@ -722,7 +788,15 @@ func NewBee(
 		return nil, fmt.Errorf("pingpong service: %w", err)
 	}
 
-	hive := hive.New(p2ps, addressbook, networkID, o.BootnodeMode, o.AllowPrivateCIDRs, swarmAddress, logger)
+	hiveOpts := hive.Options{
+		BootnodeMode:       o.BootnodeMode,
+		AllowPrivateCIDRs:  o.AllowPrivateCIDRs,
+		ChequebookVerifier: cbVerifier,
+	}
+	if cbRegistry != nil {
+		hiveOpts.ChequebookStorer = cbRegistry
+	}
+	hive := hive.New(p2ps, addressbook, networkID, swarmAddress, logger, hiveOpts)
 
 	if err = p2ps.AddProtocol(hive.Protocol()); err != nil {
 		return nil, fmt.Errorf("hive service: %w", err)
@@ -807,28 +881,24 @@ func NewBee(
 		}
 	)
 
-	if !o.SkipPostageSnapshot && !batchStoreExists && (networkID == mainnetNetworkID) && beeNodeMode != api.UltraLightMode {
-		chainBackend := NewSnapshotLogFilterer(logger, archiveSnapshotGetter{})
-
-		snapshotEventListener := listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
-
-		snapshotBatchSvc, err := batchservice.New(stateStore, batchStore, logger, snapshotEventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
+	var batchSnapshot *batchservice.Snapshot
+	if useEmbeddedSnapshot(o.SkipPostageSnapshot, batchStoreExists, o.Resync, networkID, beeNodeMode) {
+		batchSnapshot, err = snapshot.New(ctx, logger, archive.Getter{}, b.syncingStopped, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout, postageSyncStart)
 		if err != nil {
-			logger.Error(err, "failed to initialize batch service from snapshot, continuing outside snapshot block...")
-		} else {
-			err = snapshotBatchSvc.Start(ctx, postageSyncStart)
-			syncStatus.Store(true)
-			if err != nil {
-				syncErr.Store(err)
-				logger.Error(err, "failed to start batch service from snapshot, continuing outside snapshot block...")
-			} else {
-				postageSyncStart = chainBackend.maxBlockHeight
-			}
+			// A corrupt snapshot is not fatal: rebuild from the chain instead.
+			logger.Error(err, "postage snapshot unavailable, syncing from chain instead")
 		}
-		if errClose := snapshotEventListener.Close(); errClose != nil {
-			logger.Error(errClose, "failed to close event listener (snapshot) failure")
-		}
+	}
 
+	var snapshotLoaded bool
+	batchSvc, snapshotLoaded, err = batchservice.New(ctx, stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, batchSnapshot, o.Resync)
+	if err != nil {
+		return nil, fmt.Errorf("init batch service: %w", err)
+	}
+	if snapshotLoaded {
+		// The snapshot rebuilt the store up to its block height, so the node can
+		// already serve postage requests while the remaining gap syncs live.
+		syncStatus.Store(true)
 	}
 
 	if batchSvc != nil && chainEnabled {
@@ -841,6 +911,47 @@ func NewBee(
 
 		if paused {
 			return nil, errors.New("postage contract is paused")
+		}
+
+		// Refuse to start if the last-synced postage block sits ahead of the
+		// block number reported by the backend. The persisted state was
+		// advanced from earlier RPC responses, so a persistent gap means the
+		// configured blockchain-rpc-endpoint is now returning data for a
+		// different chain than it was previously (a misrouted public RPC, a
+		// changed endpoint, or a load-balancer serving the wrong backend).
+		// Probe a few times with a short backoff so a single bad response
+		// (transient RPC blip, brief failover) does not lock the node out.
+		// Without this guard the postage listener loop would spin until the
+		// 10-minute stalling timeout fires, surfacing as /stamps returning
+		// 503 "syncing in progress" the whole time (issue #4941).
+		if cs := batchStore.GetChainState(); cs.Block > 0 {
+			var (
+				blockHeight uint64
+				blockErr    error
+			)
+			for i := 0; i < startupBlockHeightChecks; i++ {
+				blockHeight, blockErr = chainBackend.BlockNumber(ctx)
+				if blockErr != nil || blockHeight >= cs.Block {
+					break
+				}
+				select {
+				case <-time.After(startupBlockHeightBackoff):
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			}
+			switch {
+			case blockErr != nil:
+				logger.Warning("could not verify block height against stored chainstate", "error", blockErr)
+			case cs.Block > blockHeight:
+				return nil, fmt.Errorf(
+					"blockchain-rpc-endpoint reports block %d after %d checks, but the local batch store has already synced past it to block %d. "+
+						"This means the RPC endpoint is now serving a different chain than it was on a previous run. "+
+						"Confirm that blockchain-rpc-endpoint points to the correct network (compare its eth_chainId and current block height against a second, trusted endpoint). "+
+						"Once the RPC is correct, restart with --resync to rebuild the batch store from the right chain",
+					blockHeight, startupBlockHeightChecks, cs.Block,
+				)
+			}
 		}
 
 		if o.FullNodeMode {
@@ -1085,7 +1196,7 @@ func NewBee(
 		stakingContractAddress = common.HexToAddress(o.StakingContractAddress)
 	}
 
-	stakingContract := staking.New(overlayEthAddress, stakingContractAddress, abiutil.MustParseABI(chainCfg.StakingABI), bzzTokenAddress, transactionService, common.BytesToHash(nonce), o.TrxDebugMode, uint8(o.ReserveCapacityDoubling))
+	stakingContract := staking.New(overlayEthAddress, stakingContractAddress, abiutil.MustParseABI(chainCfg.StakingABI), bzzTokenAddress, transactionService, common.BytesToHash(nonce), contractGasLimit, uint8(o.ReserveCapacityDoubling))
 
 	if chainEnabled {
 
@@ -1105,19 +1216,20 @@ func NewBee(
 				logger.Info("overlay address changed in staking contract", "transaction", tx)
 			}
 
-			// make sure that the staking contract has the up to date height
-			tx, updated, err := stakingContract.UpdateHeight(ctx)
-			if err != nil {
-				return nil, fmt.Errorf("update height in staking contract: %w", err)
-			}
-			if updated {
-				logger.Info("updated new reserve capacity doubling height in the staking contract", "transaction", tx, "new_height", o.ReserveCapacityDoubling)
-			}
-
 			// Check if the staked amount is sufficient to cover the additional neighborhoods.
 			// The staked amount must be at least 2^h * MinimumStake.
-			if o.ReserveCapacityDoubling > 0 && stake.Cmp(big.NewInt(0).Mul(big.NewInt(1<<o.ReserveCapacityDoubling), staking.MinimumStakeAmount)) < 0 {
-				logger.Warning("staked amount does not sufficiently cover the additional reserve capacity. Stake should be at least 2^h * 10 BZZ, where h is the number extra doublings.")
+			minStake := big.NewInt(0).Mul(big.NewInt(1<<o.ReserveCapacityDoubling), staking.MinimumStakeAmount)
+			if o.ReserveCapacityDoubling > 0 && stake.Cmp(minStake) < 0 {
+				logger.Warning("staked amount does not sufficiently cover the additional reserve capacity. On-chain height update will be skipped. Node will start, but storage incentives may not function for this capacity.", "missing_stake", new(big.Int).Sub(minStake, stake))
+			} else {
+				// make sure that the staking contract has the up to date height
+				tx, updated, err := stakingContract.UpdateHeight(ctx)
+				if err != nil {
+					return nil, fmt.Errorf("update height in staking contract: %w", err)
+				}
+				if updated {
+					logger.Info("updated new reserve capacity doubling height in the staking contract", "transaction", tx, "new_height", o.ReserveCapacityDoubling)
+				}
 			}
 		}
 	}
@@ -1176,7 +1288,7 @@ func NewBee(
 				redistributionContractAddress = common.HexToAddress(o.RedistributionContractAddress)
 			}
 
-			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), o.TrxDebugMode)
+			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), contractGasLimit)
 
 			isFullySynced := func() bool {
 				reserveThreshold := reserveCapacity * 5 / 10
@@ -1350,12 +1462,18 @@ func (b *Bee) Shutdown() error {
 	}
 	// tryClose is a convenient closure which decrease
 	// repetitive io.Closer tryClose procedure.
-	tryClose := func(c io.Closer, errMsg string) {
+	tryClose := func(c io.Closer, component string) {
 		if c == nil {
 			return
 		}
+
+		start := time.Now()
+		b.logger.Debug("starting shutdown", "component", component)
+		defer func() {
+			b.logger.Debug("finished shutdown", "component", component, "elapsed", time.Since(start))
+		}()
 		if err := c.Close(); err != nil {
-			mErr = multierror.Append(mErr, fmt.Errorf("%s: %w", errMsg, err))
+			mErr = multierror.Append(mErr, fmt.Errorf("%s: %w", component, err))
 		}
 	}
 
@@ -1429,9 +1547,11 @@ func (b *Bee) Shutdown() error {
 	tryClose(b.tracerCloser, "tracer")
 	tryClose(b.topologyCloser, "topology driver")
 	tryClose(b.storageIncetivesCloser, "storage incentives agent")
+	tryClose(b.stabilizationDetector, "stabilization detector")
+	// close localstore before StateStore to avoid ErrClosed / incomplete flush.
+	tryClose(b.localstoreCloser, "localstore")
 	tryClose(b.stateStoreCloser, "statestore")
 	tryClose(b.stamperStoreCloser, "stamperstore")
-	tryClose(b.localstoreCloser, "localstore")
 	tryClose(b.resolverCloser, "resolver service")
 
 	return mErr
@@ -1510,4 +1630,12 @@ func batchStoreExists(s storage.StateStorer) (bool, error) {
 	})
 
 	return hasOne, err
+}
+
+// useEmbeddedSnapshot reports whether to rebuild the batch store from the
+// embedded snapshot: mainnet, full or light node, and the store will be built
+// from scratch (no store yet, or a resync wipes it), unless explicitly skipped.
+func useEmbeddedSnapshot(skip, batchStoreExists, resync bool, networkID uint64, mode api.BeeNodeMode) bool {
+	storeWillRebuild := !batchStoreExists || resync
+	return !skip && storeWillRebuild && networkID == mainnetNetworkID && mode != api.UltraLightMode
 }

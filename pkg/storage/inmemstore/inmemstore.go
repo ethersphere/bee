@@ -156,7 +156,6 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 	switch q.Order {
 	case storage.KeyAscendingOrder:
 		s.st.WalkPrefix(prefix, func(k string, v any) bool {
-
 			if q.PrefixAtStart && !skipUntil {
 				if k >= prefix+separator+q.Prefix {
 					skipUntil = true

@@ -409,7 +409,7 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 // to peers sent by the producers to the peerConnChan.
 func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup, neighbourhoodChan, balanceChan <-chan *peerConnInfo) {
 	connect := func(peer *peerConnInfo) {
-		bzzAddr, err := k.addressBook.Get(peer.addr)
+		bzzAddr, _, err := k.addressBook.Get(peer.addr)
 		switch {
 		case errors.Is(err, addressbook.ErrNotFound):
 			k.logger.Debug("empty address book entry for peer", "peer_address", peer.addr)
@@ -829,9 +829,13 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 			k.metrics.TotalBootNodesConnectionAttempts.Inc()
 
 			if err != nil {
+				if errors.Is(err, p2p.ErrUnsupportedAddresses) {
+					k.logger.Debug("bootnode address transport not supported, skipping", "bootnode_address", addr)
+					return false, nil
+				}
 				if !errors.Is(err, p2p.ErrAlreadyConnected) {
 					k.logger.Error(err, "connect to bootnode failed", "bootnode_address", addr)
-					return false, err
+					return false, nil
 				}
 				k.logger.Debug("bootnode already connected", "bootnode_address", addr)
 				return false, nil
@@ -1404,8 +1408,10 @@ func (k *Kad) SubscribeTopologyChange() (c <-chan struct{}, unsubscribe func()) 
 
 func excludeFromIterator(filter topology.Select) []im.ExcludeOp {
 	ops := make([]im.ExcludeOp, 0, 3)
-	ops = append(ops, im.Bootnode())
 
+	if !filter.IncludeBootnodes {
+		ops = append(ops, im.Bootnode())
+	}
 	if filter.Reachable {
 		ops = append(ops, im.Reachability(false))
 	}

@@ -44,7 +44,6 @@ func (s *Service) dirUploadHandler(
 	w http.ResponseWriter,
 	r *http.Request,
 	putter storer.PutterSession,
-	contentTypeString string,
 	encrypt bool,
 	tag uint64,
 	rLevel redundancy.Level,
@@ -57,8 +56,8 @@ func (s *Service) dirUploadHandler(
 		return
 	}
 
-	// The error is ignored because the header was already validated by the caller.
-	mediaType, params, _ := mime.ParseMediaType(contentTypeString)
+	// Parse error is ignored; unsupported media types are caught by the default case below.
+	mediaType, params, _ := mime.ParseMediaType(r.Header.Get(ContentTypeHeader))
 
 	var dReader dirReader
 	switch mediaType {
@@ -104,7 +103,7 @@ func (s *Service) dirUploadHandler(
 	encryptedReference := reference
 	historyReference := swarm.ZeroAddress
 	if act {
-		encryptedReference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, historyAddress)
+		encryptedReference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, historyAddress, rLevel)
 		if err != nil {
 			logger.Debug("access control upload failed", "error", err)
 			logger.Error(nil, "access control upload failed")

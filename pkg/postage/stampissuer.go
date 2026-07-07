@@ -151,8 +151,9 @@ func (s stampIssuerData) Clone() stampIssuerData {
 // A StampIssuer instance extends a batch with bucket collision tracking
 // embedded in multiple Stampers, can be used concurrently.
 type StampIssuer struct {
-	data stampIssuerData
-	mtx  sync.Mutex
+	data  stampIssuerData
+	dirty bool
+	mtx   sync.Mutex
 }
 
 // NewStampIssuer constructs a StampIssuer as an extension of a batch for local
@@ -221,6 +222,19 @@ func (si *StampIssuer) Utilization() uint32 {
 	return si.data.MaxBucketCount
 }
 
+// UtilizationRatio returns the batch fullness as a fraction in the
+// range [0, 1], computed as Utilization / 2^(BatchDepth - BucketDepth).
+// A value of 1 means the most-filled bucket is full and any further write
+// to that bucket would overflow the batch.
+func (si *StampIssuer) UtilizationRatio() float64 {
+	// A valid batch always has BatchDepth >= BucketDepth; return 0 for any
+	// other combination so the ratio stays well-defined in [0, 1].
+	if si.data.BatchDepth < si.data.BucketDepth {
+		return 0
+	}
+	return float64(si.data.MaxBucketCount) / float64(uint64(1)<<(si.data.BatchDepth-si.data.BucketDepth))
+}
+
 // ID returns the BatchID for this batch.
 func (si *StampIssuer) ID() []byte {
 	id := make([]byte, len(si.data.BatchID))
@@ -266,6 +280,42 @@ func (si *StampIssuer) Buckets() []uint32 {
 	b := make([]uint32, len(si.data.Buckets))
 	copy(b, si.data.Buckets)
 	return b
+}
+
+// setDirty sets the dirty flag of the StampIssuer indicating it has unsaved bucket changes.
+func (si *StampIssuer) setDirty(dirty bool) {
+	si.mtx.Lock()
+	defer si.mtx.Unlock()
+	si.dirty = dirty
+}
+
+// isDirty returns the dirty flag of the StampIssuer.
+func (si *StampIssuer) isDirty() bool {
+	si.mtx.Lock()
+	defer si.mtx.Unlock()
+	return si.dirty
+}
+
+// recover restores the bucket count from a stored batchIndex, used during crash recovery.
+func (si *StampIssuer) recover(batchIndex []byte) error {
+	si.mtx.Lock()
+	defer si.mtx.Unlock()
+
+	bIdx, bCnt := BucketIndexFromBytes(batchIndex)
+	if bIdx >= uint32(len(si.data.Buckets)) {
+		return fmt.Errorf("bucket index %d out of bounds", bIdx)
+	}
+
+	// bCnt is the collision count WHEN the stamp was issued,
+	// meaning the bucket count has already reached AT LEAST bCnt + 1
+	if si.data.Buckets[bIdx] <= bCnt {
+		si.data.Buckets[bIdx] = bCnt + 1
+
+		if si.data.Buckets[bIdx] > si.data.MaxBucketCount {
+			si.data.MaxBucketCount = si.data.Buckets[bIdx]
+		}
+	}
+	return nil
 }
 
 // StampIssuerItem is a storage.Item implementation for StampIssuer.

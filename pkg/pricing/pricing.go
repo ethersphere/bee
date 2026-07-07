@@ -27,10 +27,8 @@ const (
 	streamName      = "pricing"
 )
 
-var (
-	// ErrThresholdTooLow says that the proposed payment threshold is too low for even a single reserve.
-	ErrThresholdTooLow = errors.New("threshold too low")
-)
+// ErrThresholdTooLow says that the proposed payment threshold is too low for even a single reserve.
+var ErrThresholdTooLow = errors.New("threshold too low")
 
 var _ Interface = (*Service)(nil)
 
@@ -111,7 +109,6 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 }
 
 func (s *Service) init(ctx context.Context, p p2p.Peer) error {
-
 	threshold := s.paymentThreshold
 	if !p.FullNode {
 		threshold = s.lightPaymentThreshold

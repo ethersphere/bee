@@ -6,17 +6,23 @@ package batchservice_test
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
+	"encoding/json"
 	"errors"
 	"hash"
 	"math/big"
 	"testing"
+	"time"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/postage/batchservice"
 	"github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
+	"github.com/ethersphere/bee/v2/pkg/postage/snapshot"
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	mocks "github.com/ethersphere/bee/v2/pkg/statestore/mock"
 	"github.com/ethersphere/bee/v2/pkg/storage"
@@ -29,8 +35,7 @@ var (
 	testTxHash = common.BytesToHash(make([]byte, 32))
 )
 
-type mockListener struct {
-}
+type mockListener struct{}
 
 func (*mockListener) Listen(ctx context.Context, from uint64, updater postage.EventUpdater) <-chan error {
 	c := make(chan error, 1)
@@ -238,7 +243,6 @@ func TestBatchServiceCreate(t *testing.T) {
 
 		validateNoBatch(t, testBatch, batchStore)
 	})
-
 }
 
 func TestBatchServiceTopUp(t *testing.T) {
@@ -484,6 +488,7 @@ func TestBatchServiceUpdatePrice(t *testing.T) {
 		}
 	})
 }
+
 func TestBatchServiceUpdateBlockNumber(t *testing.T) {
 	t.Parallel()
 
@@ -526,7 +531,7 @@ func TestTransactionOk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	svc2, err := batchservice.New(s, store, testLog, newMockListener(), nil, nil, nil, false)
+	svc2, _, err := batchservice.New(context.Background(), s, store, testLog, newMockListener(), nil, nil, nil, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -551,7 +556,7 @@ func TestTransactionError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	svc2, err := batchservice.New(s, store, testLog, newMockListener(), nil, nil, nil, false)
+	svc2, _, err := batchservice.New(context.Background(), s, store, testLog, newMockListener(), nil, nil, nil, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -564,13 +569,423 @@ func TestTransactionError(t *testing.T) {
 	}
 }
 
+// TestResyncControlsReset checks that, with no snapshot, the resync flag passed
+// to New determines whether the store is reset, and that the reset happens in
+// New (the constructor), with Start never resetting.
+func TestResyncControlsReset(t *testing.T) {
+	t.Parallel()
+
+	t.Run("resync resets the store in New", func(t *testing.T) {
+		t.Parallel()
+
+		s := mocks.NewStateStore()
+		store := mock.New()
+		svc, _, err := batchservice.New(context.Background(), s, store, testLog, newMockListener(), nil, nil, nil, nil, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// The reset happens in the constructor.
+		if c := store.ResetCalls(); c != 1 {
+			t.Fatalf("expect %d reset calls after New got %d", 1, c)
+		}
+
+		// Start never resets.
+		if err := svc.Start(context.Background(), 10); err != nil {
+			t.Fatal(err)
+		}
+		if c := store.ResetCalls(); c != 1 {
+			t.Fatalf("expect %d reset calls got %d", 1, c)
+		}
+	})
+
+	t.Run("no resync leaves the store intact", func(t *testing.T) {
+		t.Parallel()
+
+		s := mocks.NewStateStore()
+		store := mock.New()
+		svc, _, err := batchservice.New(context.Background(), s, store, testLog, newMockListener(), nil, nil, nil, nil, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if err := svc.Start(context.Background(), 10); err != nil {
+			t.Fatal(err)
+		}
+
+		if c := store.ResetCalls(); c != 0 {
+			t.Fatalf("expect %d reset calls got %d", 0, c)
+		}
+	})
+}
+
+type recordingListener struct {
+	from      uint64
+	syncedTo  uint64 // when non-zero, the replay advances the chain state to this block
+	listened  bool
+	closed    bool
+	listenErr error
+	closeErr  error
+}
+
+func (r *recordingListener) Listen(_ context.Context, from uint64, updater postage.EventUpdater) <-chan error {
+	r.listened = true
+	r.from = from
+	// Mimic the real listener advancing the chain state during replay.
+	if r.syncedTo != 0 && r.listenErr == nil {
+		_ = updater.UpdateBlockNumber(r.syncedTo)
+	}
+	c := make(chan error, 1)
+	c <- r.listenErr
+	return c
+}
+
+func (r *recordingListener) Close() error {
+	r.closed = true
+	return r.closeErr
+}
+
+// TestSnapshotRebuild covers the snapshot rebuild path: live sync resumes from
+// the block the replay reached (not the snapshot tip), and the store is reset at
+// most once even when --resync is set alongside a snapshot (#5495).
+func TestSnapshotRebuild(t *testing.T) {
+	t.Parallel()
+
+	newSnapshot := func() (*recordingListener, *batchservice.Snapshot) {
+		snapListener := &recordingListener{}
+		return snapListener, &batchservice.Snapshot{
+			Listener:   snapListener,
+			StartBlock: 100,
+		}
+	}
+
+	t.Run("live sync resumes from where the replay stopped, not the snapshot tip", func(t *testing.T) {
+		t.Parallel()
+
+		s := mocks.NewStateStore()
+		store := mock.New()
+		// A valid chain state must exist before the replay advances it.
+		putChainState(t, store, &postage.ChainState{Block: 0, TotalAmount: big.NewInt(0), CurrentPrice: big.NewInt(0)})
+
+		// The real replay stops a few blocks below the snapshot tip (the listener
+		// trims its tip), so live sync must resume where it actually stopped, not
+		// at the tip — otherwise the trimmed blocks are skipped (#5495).
+		snapListener := &recordingListener{syncedTo: 4090}
+		snapshot := &batchservice.Snapshot{Listener: snapListener, StartBlock: 100}
+		liveListener := &recordingListener{}
+
+		svc, loaded, err := batchservice.New(context.Background(), s, store, testLog, liveListener, nil, nil, nil, snapshot, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !loaded {
+			t.Fatal("expected snapshot to be loaded")
+		}
+		// The store is empty when a snapshot applies (snapshot only runs when no
+		// batch store exists), so without --resync there is nothing to reset.
+		if c := store.ResetCalls(); c != 0 {
+			t.Fatalf("expect %d reset calls got %d", 0, c)
+		}
+		if snapListener.from != snapshot.StartBlock+1 {
+			t.Fatalf("expect snapshot replay from %d got %d", snapshot.StartBlock+1, snapListener.from)
+		}
+		if !snapListener.closed {
+			t.Fatal("expected snapshot listener to be closed")
+		}
+
+		// Live sync resumes from cs.Block+1, where the replay stopped.
+		if err := svc.Start(context.Background(), snapshot.StartBlock); err != nil {
+			t.Fatal(err)
+		}
+		if liveListener.from != 4091 {
+			t.Fatalf("expect live sync to resume from 4091 (replay stop +1) got %d", liveListener.from)
+		}
+		if c := store.ResetCalls(); c != 0 {
+			t.Fatalf("expect store never reset, got %d", c)
+		}
+	})
+
+	t.Run("resync alongside a snapshot still resets only once", func(t *testing.T) {
+		t.Parallel()
+
+		s := mocks.NewStateStore()
+		store := mock.New()
+		_, snapshot := newSnapshot()
+		liveListener := &recordingListener{}
+
+		svc, loaded, err := batchservice.New(context.Background(), s, store, testLog, liveListener, nil, nil, nil, snapshot, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !loaded {
+			t.Fatal("expected snapshot to be loaded")
+		}
+		// --resync resets once during the snapshot rebuild in New.
+		if c := store.ResetCalls(); c != 1 {
+			t.Fatalf("expect %d reset calls after New got %d", 1, c)
+		}
+
+		if err := svc.Start(context.Background(), snapshot.StartBlock); err != nil {
+			t.Fatal(err)
+		}
+		// Start must not reset again: that second reset was the #5495 bug.
+		if c := store.ResetCalls(); c != 1 {
+			t.Fatalf("expect store reset exactly once with snapshot+resync, got %d", c)
+		}
+	})
+}
+
+// TestSnapshotCornerCases pushes the snapshot rebuild path into its failure and
+// boundary scenarios: a failed replay, a dirty shutdown coinciding with a
+// snapshot, a chain state already ahead of the snapshot, and a listener that
+// errors on close.
+func TestSnapshotCornerCases(t *testing.T) {
+	t.Parallel()
+
+	newSnapshot := func(listenErr error) (*recordingListener, *batchservice.Snapshot) {
+		snapListener := &recordingListener{listenErr: listenErr}
+		return snapListener, &batchservice.Snapshot{
+			Listener:   snapListener,
+			StartBlock: 100,
+		}
+	}
+
+	t.Run("replay failure falls back to live sync without loading", func(t *testing.T) {
+		t.Parallel()
+
+		s := mocks.NewStateStore()
+		store := mock.New()
+		snapListener, snapshot := newSnapshot(errTest)
+		liveListener := &recordingListener{}
+
+		svc, loaded, err := batchservice.New(context.Background(), s, store, testLog, liveListener, nil, nil, nil, snapshot, false)
+		if err != nil {
+			t.Fatalf("a failed replay must not be fatal: %v", err)
+		}
+		if loaded {
+			t.Fatal("expected snapshot not to be loaded on replay error")
+		}
+		if !snapListener.closed {
+			t.Fatal("expected snapshot listener to be closed even on failure")
+		}
+		// A partial replay may have dirtied the store, so New resets it once to
+		// clean up for the live rebuild.
+		if c := store.ResetCalls(); c != 1 {
+			t.Fatalf("expect %d reset calls after New got %d", 1, c)
+		}
+
+		// Live sync still proceeds, from the requested start block, since no
+		// snapshot resume point was recorded; Start never resets.
+		if err := svc.Start(context.Background(), snapshot.StartBlock); err != nil {
+			t.Fatal(err)
+		}
+		if liveListener.from != snapshot.StartBlock+1 {
+			t.Fatalf("expect live sync from %d got %d", snapshot.StartBlock+1, liveListener.from)
+		}
+		if c := store.ResetCalls(); c != 1 {
+			t.Fatalf("expect store reset exactly once, got %d", c)
+		}
+	})
+
+	t.Run("replay failure with resync resets once before and once after the replay", func(t *testing.T) {
+		t.Parallel()
+
+		s := mocks.NewStateStore()
+		store := mock.New()
+		_, snapshot := newSnapshot(errTest)
+		liveListener := &recordingListener{}
+
+		svc, loaded, err := batchservice.New(context.Background(), s, store, testLog, liveListener, nil, nil, nil, snapshot, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if loaded {
+			t.Fatal("expected snapshot not to be loaded on replay error")
+		}
+		// resync resets once up front, then the failed replay's cleanup resets
+		// again — both in New. Start never resets.
+		if c := store.ResetCalls(); c != 2 {
+			t.Fatalf("expect %d reset calls after New got %d", 2, c)
+		}
+		if err := svc.Start(context.Background(), snapshot.StartBlock); err != nil {
+			t.Fatal(err)
+		}
+		if c := store.ResetCalls(); c != 2 {
+			t.Fatalf("expect %d reset calls after Start got %d", 2, c)
+		}
+	})
+
+	t.Run("dirty shutdown with a snapshot resets exactly once", func(t *testing.T) {
+		t.Parallel()
+
+		s := mocks.NewStateStore()
+		store := mock.New()
+
+		// Simulate a dirty shutdown: a prior service started a transaction and
+		// never finished it, leaving the dirty marker set.
+		prior, _, err := batchservice.New(context.Background(), s, store, testLog, newMockListener(), nil, nil, nil, nil, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := prior.TransactionStart(); err != nil {
+			t.Fatal(err)
+		}
+
+		snapListener, snapshot := newSnapshot(nil)
+		liveListener := &recordingListener{}
+
+		svc, loaded, err := batchservice.New(context.Background(), s, store, testLog, liveListener, nil, nil, nil, snapshot, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !loaded {
+			t.Fatal("expected snapshot to be loaded")
+		}
+		if !snapListener.closed {
+			t.Fatal("expected snapshot listener to be closed")
+		}
+		// The dirty flag triggers one reset during the snapshot rebuild...
+		if c := store.ResetCalls(); c != 1 {
+			t.Fatalf("expect %d reset calls after New got %d", 1, c)
+		}
+		// ...and Start must not reset again and wipe the freshly loaded snapshot.
+		if err := svc.Start(context.Background(), snapshot.StartBlock); err != nil {
+			t.Fatal(err)
+		}
+		if c := store.ResetCalls(); c != 1 {
+			t.Fatalf("expect store reset exactly once, got %d", c)
+		}
+	})
+
+	t.Run("persisted chain state ahead of the snapshot block wins", func(t *testing.T) {
+		t.Parallel()
+
+		s := mocks.NewStateStore()
+		store := mock.New()
+		_, snapshot := newSnapshot(nil)
+		liveListener := &recordingListener{}
+
+		svc, loaded, err := batchservice.New(context.Background(), s, store, testLog, liveListener, nil, nil, nil, snapshot, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !loaded {
+			t.Fatal("expected snapshot to be loaded")
+		}
+
+		// A chain state further ahead than the replay must take precedence so
+		// live sync never rewinds and reprocesses events.
+		putChainState(t, store, &postage.ChainState{Block: 5000, TotalAmount: big.NewInt(0), CurrentPrice: big.NewInt(0)})
+
+		if err := svc.Start(context.Background(), snapshot.StartBlock); err != nil {
+			t.Fatal(err)
+		}
+		if liveListener.from != 5001 {
+			t.Fatalf("expect live sync from 5001 got %d", liveListener.from)
+		}
+	})
+
+	t.Run("snapshot listener close error is not fatal", func(t *testing.T) {
+		t.Parallel()
+
+		s := mocks.NewStateStore()
+		store := mock.New()
+		snapListener := &recordingListener{closeErr: errTest}
+		snapshot := &batchservice.Snapshot{
+			Listener:   snapListener,
+			StartBlock: 100,
+		}
+
+		_, loaded, err := batchservice.New(context.Background(), s, store, testLog, &recordingListener{}, nil, nil, nil, snapshot, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !loaded {
+			t.Fatal("expected snapshot to be loaded despite a listener close error")
+		}
+		if !snapListener.closed {
+			t.Fatal("expected snapshot listener close to be attempted")
+		}
+	})
+}
+
+// TestSnapshotHandoffNoGap guards the snapshot->RPC handoff (#5495): after a
+// snapshot replay, live sync must resume from where the replay stopped
+// (cs.Block+1), not the snapshot's nominal tip (maxBlock+1), which would skip the
+// blocks the listener trims off the tip.
+func TestSnapshotHandoffNoGap(t *testing.T) {
+	t.Parallel()
+
+	const maxBlock = uint64(5000)
+
+	// Newest log at maxBlock; a non-matching address makes the listener filter
+	// the events out, so it only advances the chain state per page.
+	logs := []types.Log{
+		{BlockNumber: 10, Address: common.HexToAddress("0x1"), Topics: []common.Hash{}},
+		{BlockNumber: maxBlock, Address: common.HexToAddress("0x1"), Topics: []common.Hash{}},
+	}
+	snap, err := snapshot.New(context.Background(), testLog, rawSnapshotGetter(gzipSnapshot(t, logs)), nil,
+		common.Address{}, abi.ABI{}, time.Second, time.Minute, time.Second, 0)
+	if err != nil {
+		t.Fatalf("snapshot.New: %v", err)
+	}
+
+	s := mocks.NewStateStore()
+	store := mock.New()
+	// Valid chain state so the replay can advance it.
+	putChainState(t, store, &postage.ChainState{Block: 0, TotalAmount: big.NewInt(0), CurrentPrice: big.NewInt(0)})
+
+	live := &recordingListener{}
+	svc, loaded, err := batchservice.New(context.Background(), s, store, testLog, live, nil, nil, nil, snap, false)
+	if err != nil {
+		t.Fatalf("batchservice.New: %v", err)
+	}
+	if !loaded {
+		t.Fatal("expected snapshot to be loaded")
+	}
+
+	cs := store.GetChainState()
+	if cs.Block >= maxBlock {
+		t.Fatalf("replay reached %d, expected to stop below the snapshot max block %d", cs.Block, maxBlock)
+	}
+
+	if err := svc.Start(context.Background(), 0); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+
+	// Must resume where the replay stopped, not at the snapshot tip.
+	if live.from != cs.Block+1 {
+		t.Fatalf("live sync resumed from %d; must resume from cs.Block+1 = %d (resuming higher skips the snapshot's trimmed tail — see #5495)", live.from, cs.Block+1)
+	}
+}
+
+func gzipSnapshot(t *testing.T, logs []types.Log) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	enc := json.NewEncoder(gz)
+	for _, l := range logs {
+		if err := enc.Encode(l); err != nil {
+			t.Fatalf("encode log: %v", err)
+		}
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatalf("gzip close: %v", err)
+	}
+	return buf.Bytes()
+}
+
+type rawSnapshotGetter []byte
+
+func (g rawSnapshotGetter) GetBatchSnapshot() []byte { return g }
+
 func TestChecksum(t *testing.T) {
 	t.Parallel()
 
 	s := mocks.NewStateStore()
 	store := mock.New()
 	mockHash := &hs{}
-	svc, err := batchservice.New(s, store, testLog, newMockListener(), nil, nil, func() hash.Hash { return mockHash }, false)
+	svc, _, err := batchservice.New(context.Background(), s, store, testLog, newMockListener(), nil, nil, func() hash.Hash { return mockHash }, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -593,7 +1008,7 @@ func TestChecksumResync(t *testing.T) {
 	s := mocks.NewStateStore()
 	store := mock.New()
 	mockHash := &hs{}
-	svc, err := batchservice.New(s, store, testLog, newMockListener(), nil, nil, func() hash.Hash { return mockHash }, true)
+	svc, _, err := batchservice.New(context.Background(), s, store, testLog, newMockListener(), nil, nil, func() hash.Hash { return mockHash }, nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -612,7 +1027,7 @@ func TestChecksumResync(t *testing.T) {
 	// now start a new instance and check that the value gets read from statestore
 	store2 := mock.New()
 	mockHash2 := &hs{}
-	_, err = batchservice.New(s, store2, testLog, newMockListener(), nil, nil, func() hash.Hash { return mockHash2 }, false)
+	_, _, err = batchservice.New(context.Background(), s, store2, testLog, newMockListener(), nil, nil, func() hash.Hash { return mockHash2 }, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -624,7 +1039,7 @@ func TestChecksumResync(t *testing.T) {
 	// when resyncing
 	store3 := mock.New()
 	mockHash3 := &hs{}
-	_, err = batchservice.New(s, store3, testLog, newMockListener(), nil, nil, func() hash.Hash { return mockHash3 }, true)
+	_, _, err = batchservice.New(context.Background(), s, store3, testLog, newMockListener(), nil, nil, func() hash.Hash { return mockHash3 }, nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -642,7 +1057,7 @@ func newTestStoreAndServiceWithListener(
 	t.Helper()
 	s := mocks.NewStateStore()
 	store := mock.New(opts...)
-	svc, err := batchservice.New(s, store, testLog, newMockListener(), owner, batchListener, nil, false)
+	svc, _, err := batchservice.New(context.Background(), s, store, testLog, newMockListener(), owner, batchListener, nil, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}

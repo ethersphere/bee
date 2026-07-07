@@ -15,15 +15,20 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
+	"github.com/ethersphere/bee/v2/pkg/bmt"
+	"github.com/ethersphere/bee/v2/pkg/bmtpool"
 	chaincfg "github.com/ethersphere/bee/v2/pkg/config"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/keccak"
 	"github.com/ethersphere/bee/v2/pkg/keystore"
 	filekeystore "github.com/ethersphere/bee/v2/pkg/keystore/file"
 	memkeystore "github.com/ethersphere/bee/v2/pkg/keystore/mem"
@@ -53,19 +58,7 @@ func (c *command) initStartCmd() (err error) {
 				return cmd.Help()
 			}
 
-			v := strings.ToLower(c.config.GetString(optionNameVerbosity))
-
-			logger, err := newLogger(cmd, v)
-			if err != nil {
-				return fmt.Errorf("new logger: %w", err)
-			}
-
-			if c.isWindowsService {
-				logger, err = createWindowsEventLogger(serviceName, logger)
-				if err != nil {
-					return fmt.Errorf("failed to create windows logger %w", err)
-				}
-			}
+			logger := c.logger
 
 			fmt.Print(beeWelcomeMessage)
 			logger.Info("bee version", "version", bee.Version)
@@ -167,7 +160,11 @@ func (c *command) initStartCmd() (err error) {
 			return nil
 		},
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			return c.config.BindPFlags(cmd.Flags())
+			if err := c.preRun(cmd); err != nil {
+				return err
+			}
+			c.bindBlockchainRpcConfig(cmd)
+			return nil
 		},
 	}
 
@@ -274,6 +271,29 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		neighborhoodSuggester = c.config.GetString(optionNameNeighborhoodSuggester)
 	}
 
+	useSIMD := c.config.GetBool(optionUseSIMD)
+	if useSIMD {
+		if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+			return nil, fmt.Errorf("SIMD hashing requires linux/amd64 (this build is %s/%s)", runtime.GOOS, runtime.GOARCH)
+		}
+		if !keccak.HasSIMD() {
+			return nil, errors.New("SIMD hashing requires a CPU with AVX2 or AVX-512; this CPU has neither")
+		}
+		bmt.SetSIMDOptIn(true)
+		// Rebuild the global bmtpool instance so the new SIMDOptIn value
+		// is reflected in the pool created for hot-path BMT hashing.
+		bmtpool.Rebuild()
+		logger.Info("SIMD hashing enabled", "batch_width", keccak.BatchWidth(), "avx512", keccak.HasAVX512())
+	}
+
+	var bzzTokenAddress common.Address
+	if a := c.config.GetString(optionNameBzzTokenAddress); a != "" {
+		if !common.IsHexAddress(a) {
+			return nil, errors.New("malformed bzz token address")
+		}
+		bzzTokenAddress = common.HexToAddress(a)
+	}
+
 	b, err := node.NewBee(ctx, c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, signerConfig.session, &node.Options{
 		Addr:                          c.config.GetString(optionNameP2PAddr),
 		AllowPrivateCIDRs:             c.config.GetBool(optionNameAllowPrivateCIDRs),
@@ -281,15 +301,23 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		EnableWSS:                     c.config.GetBool(optionNameP2PWSSEnable),
 		WSSAddr:                       c.config.GetString(optionP2PWSSAddr),
 		AutoTLSStorageDir:             filepath.Join(c.config.GetString(optionNameDataDir), "autotls"),
-		BlockchainRpcEndpoint:         c.config.GetString(optionNameBlockchainRpcEndpoint),
+		BlockchainRpcEndpoint:         c.config.GetString(configKeyBlockchainRpcEndpoint),
+		BlockchainRpcDialTimeout:      c.config.GetDuration(configKeyBlockchainRpcDialTimeout),
+		BlockchainRpcTLSTimeout:       c.config.GetDuration(configKeyBlockchainRpcTLSTimeout),
+		BlockchainRpcIdleTimeout:      c.config.GetDuration(configKeyBlockchainRpcIdleTimeout),
+		BlockchainRpcKeepalive:        c.config.GetDuration(configKeyBlockchainRpcKeepalive),
+		BzzTokenAddress:               bzzTokenAddress,
 		BlockProfile:                  c.config.GetBool(optionNamePProfBlock),
 		BlockTime:                     networkConfig.blockTime,
+		BlockSyncInterval:             c.config.GetUint64(optionNameBlockSyncInterval),
 		BootnodeMode:                  bootNode,
 		Bootnodes:                     networkConfig.bootNodes,
 		CacheCapacity:                 c.config.GetUint64(optionNameCacheCapacity),
 		AutoTLSCAEndpoint:             c.config.GetString(optionAutoTLSCAEndpoint),
 		ChainID:                       networkConfig.chainID,
 		ChequebookEnable:              c.config.GetBool(optionNameChequebookEnable),
+		ChequebookVerification:        c.config.GetBool(optionNameChequebookVerification),
+		ChequebookMinBalance:          c.config.GetString(optionNameChequebookMinBalance),
 		CORSAllowedOrigins:            c.config.GetStringSlice(optionCORSAllowedOrigins),
 		DataDir:                       c.config.GetString(optionNameDataDir),
 		DBBlockCacheCapacity:          c.config.GetUint64(optionNameDBBlockCacheCapacity),
@@ -303,6 +331,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		FullNodeMode:                  fullNode,
 		Logger:                        logger,
 		MinimumGasTipCap:              c.config.GetUint64(optionNameMinimumGasTipCap),
+		GasLimitFallback:              c.config.GetUint64(optionNameGasLimitFallback),
 		MinimumStorageRadius:          c.config.GetUint(optionMinimumStorageRadius),
 		MutexProfile:                  c.config.GetBool(optionNamePProfMutex),
 		NATAddr:                       c.config.GetString(optionNameNATAddr),

@@ -36,7 +36,7 @@ func TestStateStoreAdapter(t *testing.T) {
 	test.RunPersist(t, func(t *testing.T, dir string) storage.StateStorer {
 		t.Helper()
 
-		leveldb, err := leveldbstore.New(dir, nil)
+		leveldb, _, err := leveldbstore.New(dir, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -20,7 +20,7 @@ import (
 	"time"
 
 	ocprom "contrib.go.opencensus.io/exporter/prometheus"
-	"github.com/coreos/go-semver/semver"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/bzz"
@@ -33,6 +33,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/handshake"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/reacher"
 	libp2pmock "github.com/ethersphere/bee/v2/pkg/p2p/libp2p/mock"
+	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
@@ -99,7 +100,7 @@ type Service struct {
 	metrics            metrics
 	networkID          uint64
 	handshakeService   *handshake.Service
-	addressbook        addressbook.Putter
+	addressbook        addressbook.GetPutter
 	peers              *peerRegistry
 	connectionBreaker  breaker.Interface
 	blocklist          *blocklist.Blocklist
@@ -119,6 +120,19 @@ type Service struct {
 	autoTLSCertManager autoTLSCertManager
 	zapLogger          *zap.Logger
 	enabledTransports  map[bzz.TransportType]bool
+	allowPrivateCIDRs  bool
+
+	// Persists the overlay→chequebook mapping atomically with the addressbook
+	// write. nil means no chequebook registry (chequebook subsystem disabled).
+	chequebookStorer ChequebookStorer
+}
+
+// ChequebookStorer persists the overlay→chequebook mapping. Put holds its
+// internal mutex for the duration of writeAddressbook, so registry and
+// addressbook writes are atomic with respect to concurrent ingestions.
+type ChequebookStorer interface {
+	Put(peer swarm.Address, chequebook common.Address, timestamp int64, source bzz.TimestampSource, writeAddressbook func() error) error
+	Remove(peer swarm.Address)
 }
 
 type lightnodes interface {
@@ -144,14 +158,16 @@ type Options struct {
 	LightNodeLimit              int
 	WelcomeMessage              string
 	Nonce                       []byte
-	ValidateOverlay             bool
+	AllowPrivateCIDRs           bool
 	hostFactory                 func(...libp2p.Option) (host.Host, error)
 	HeadersRWTimeout            time.Duration
 	Registry                    *prometheus.Registry
 	autoTLSCertManager          autoTLSCertManager
+	ChequebookVerifier          chequebook.Verifier
+	ChequebookStorer            ChequebookStorer
 }
 
-func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (s *Service, returnErr error) {
+func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.GetPutter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (s *Service, returnErr error) {
 	logger = logger.WithName(loggerName).Register()
 
 	parsedAddr, err := parseAddress(addr)
@@ -440,7 +456,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
-	handshakeService, err := handshake.New(signer, newCompositeAddressResolver(tcpResolver, wssResolver), overlay, networkID, o.FullNode, o.Nonce, newHostAddresser(h), o.WelcomeMessage, o.ValidateOverlay, h.ID(), logger)
+	handshakeService, err := handshake.New(signer, newCompositeAddressResolver(tcpResolver, wssResolver), overlay, networkID, o.FullNode, o.Nonce, newHostAddresser(h), o.WelcomeMessage, ab, h.ID(), o.ChequebookVerifier, logger)
 	if err != nil {
 		return nil, fmt.Errorf("handshake service: %w", err)
 	}
@@ -484,6 +500,8 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 			bzz.TransportWS:  o.EnableWS,
 			bzz.TransportWSS: o.EnableWSS,
 		},
+		allowPrivateCIDRs: o.AllowPrivateCIDRs,
+		chequebookStorer:  o.ChequebookStorer,
 	}
 
 	peerRegistry.setDisconnecter(s)
@@ -609,13 +627,10 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		}
 	}
 
-	bee260Compat := s.bee260BackwardCompatibility(peerID)
-
 	i, err := s.handshakeService.Handle(
 		s.ctx,
 		handshakeStream,
 		observedAddrs,
-		handshake.WithBee260Compatibility(bee260Compat),
 	)
 	if err != nil {
 		s.logger.Debug("stream handler: handshake: handle failed", "peer_id", peerID, "error", err)
@@ -662,8 +677,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 
 	// Only persist in addressbook when we have real peerstore addresses.
 	if i.FullNode && len(peerAddrs) > 0 {
-		err = s.addressbook.Put(i.BzzAddress.Overlay, *i.BzzAddress)
-		if err != nil {
+		if err := s.putHandshakeAddress(i.BzzAddress); err != nil {
 			s.logger.Debug("stream handler: addressbook put error", "peer_id", peerID, "error", err)
 			s.logger.Error(nil, "stream handler: unable to persist peer", "peer_id", peerID)
 			_ = s.Disconnect(i.BzzAddress.Overlay, "unable to persist peer in addressbook")
@@ -755,13 +769,58 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	s.logger.Debug("stream handler: successfully connected to peer (inbound)", "address", i.BzzAddress.Overlay, "light", i.LightString(), "user_agent", peerUserAgent)
 }
 
+// putHandshakeAddress persists a peer's BzzAddress, already validated by the
+// handshake, as an atomic registry-plus-addressbook write. The addressbook
+// write is skipped when the stored record is identical and verified, so
+// steady-state reconnects cost no disk write.
+func (s *Service) putHandshakeAddress(addr *bzz.Address) error {
+	existing, verified, err := s.addressbook.Get(addr.Overlay)
+	if err != nil && !errors.Is(err, addressbook.ErrNotFound) {
+		return fmt.Errorf("addressbook get: %w", err)
+	}
+	unchanged := err == nil && verified && existing.Equal(addr)
+
+	if s.chequebookStorer != nil {
+		// The addressbook write is passed as a callback so it runs under the
+		// registry's mutex, keeping the in-memory registry and on-disk addressbook
+		// in sync if gossip and a direct handshake race for the same peer.
+		var writeAddressbook func() error
+		if !unchanged {
+			writeAddressbook = func() error { return s.addressbook.Put(addr.Overlay, *addr, true) }
+		}
+		if err := s.chequebookStorer.Put(
+			addr.Overlay, addr.ChequebookAddress, addr.Timestamp, bzz.TimestampSourceHandshake,
+			writeAddressbook,
+		); err != nil {
+			// Concurrent ingestion (e.g. gossip) may have advanced the
+			// stored record between the handshake's stale check and this
+			// write. The registry surfaces that as a timestamp error; drop
+			// without escalating.
+			if _, ok := bzz.TimestampErrorLabel(err); ok {
+				s.logger.Debug("handshake: chequebook registry rejected update", "overlay", addr.Overlay, "error", err)
+				return nil
+			}
+			return err
+		}
+		return nil
+	}
+
+	if unchanged {
+		return nil
+	}
+
+	return s.addressbook.Put(addr.Overlay, *addr, true)
+}
+
 // isTransportSupported checks if the given transport type is supported by this service.
 func (s *Service) isTransportSupported(t bzz.TransportType) bool {
 	return s.enabledTransports[t]
 }
 
 // filterSupportedAddresses filters multiaddresses to only include those
-// that are supported by the available transports (TCP, WS, WSS).
+// that are supported by the available transports (TCP, WS, WSS) and, when
+// allowPrivateCIDRs is false, drops addresses in private CIDR ranges so we
+// neither dial nor probe them.
 func (s *Service) filterSupportedAddresses(addrs []ma.Multiaddr) []ma.Multiaddr {
 	if len(addrs) == 0 {
 		return addrs
@@ -769,9 +828,13 @@ func (s *Service) filterSupportedAddresses(addrs []ma.Multiaddr) []ma.Multiaddr 
 
 	filtered := make([]ma.Multiaddr, 0, len(addrs))
 	for _, addr := range addrs {
-		if s.isTransportSupported(bzz.ClassifyTransport(addr)) {
-			filtered = append(filtered, addr)
+		if !s.isTransportSupported(bzz.ClassifyTransport(addr)) {
+			continue
 		}
+		if !s.allowPrivateCIDRs && manet.IsPrivateAddr(addr) {
+			continue
+		}
+		filtered = append(filtered, addr)
 	}
 
 	return filtered
@@ -1019,7 +1082,14 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 				s.metrics.ConnectBreakerCount.Inc()
 				return nil, p2p.NewConnectionBackoffError(err, s.connectionBreaker.ClosedUntil())
 			}
-			s.logger.Warning("libp2p connect", "peer_id", peerID, "underlay", info.Addrs, "error", err)
+			if !errors.Is(err, context.Canceled) {
+				select {
+				case <-s.halt:
+					s.logger.Debug("libp2p connect", "peer_id", peerID, "underlay", info.Addrs, "error", err)
+				default:
+					s.logger.Warning("libp2p connect", "peer_id", peerID, "underlay", info.Addrs, "error", err)
+				}
+			}
 			connectErr = err
 			continue
 		}
@@ -1065,13 +1135,10 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		}
 	}
 
-	bee260Compat := s.bee260BackwardCompatibility(peerID)
-
 	i, err := s.handshakeService.Handshake(
 		s.ctx,
 		handshakeStream,
 		observedAddrs,
-		handshake.WithBee260Compatibility(bee260Compat),
 	)
 	if err != nil {
 		_ = handshakeStream.Reset()
@@ -1123,8 +1190,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	}
 
 	if i.FullNode {
-		err = s.addressbook.Put(overlay, *i.BzzAddress)
-		if err != nil {
+		if err := s.putHandshakeAddress(i.BzzAddress); err != nil {
 			_ = s.Disconnect(overlay, "failed storing peer in addressbook")
 			return nil, fmt.Errorf("storing bzz address: %w", err)
 		}
@@ -1230,6 +1296,9 @@ func (s *Service) disconnected(address swarm.Address) {
 	}
 	if s.reacher != nil {
 		s.reacher.Disconnected(address)
+	}
+	if s.chequebookStorer != nil {
+		s.chequebookStorer.Remove(address)
 	}
 }
 
@@ -1356,6 +1425,12 @@ func (s *Service) SetWelcomeMessage(val string) error {
 	return s.handshakeService.SetWelcomeMessage(val)
 }
 
+// SetChequebookAddress sets the local chequebook address included in
+// subsequent signed BzzAddress payloads. The zero value clears it.
+func (s *Service) SetChequebookAddress(addr common.Address) {
+	s.handshakeService.SetChequebookAddress(addr)
+}
+
 // GetWelcomeMessage returns the value of the welcome message.
 func (s *Service) GetWelcomeMessage() string {
 	return s.handshakeService.GetWelcomeMessage()
@@ -1469,45 +1544,6 @@ func (s *Service) peerMultiaddrs(ctx context.Context, peerID libp2ppeer.ID) ([]m
 	mas := waitPeerAddrs(waitPeersCtx, s.host.Peerstore(), peerID)
 
 	return buildFullMAs(mas, peerID)
-}
-
-// IsBee260 implements p2p.Bee260CompatibilityStreamer interface.
-// It checks if a peer is running Bee version older than 2.7.0.
-func (s *Service) IsBee260(overlay swarm.Address) bool {
-	peerID, found := s.peers.peerID(overlay)
-	if !found {
-		return false
-	}
-	return s.bee260BackwardCompatibility(peerID)
-}
-
-var version270 = *semver.Must(semver.NewVersion("2.7.0"))
-
-func (s *Service) bee260BackwardCompatibility(peerID libp2ppeer.ID) bool {
-	if compat, found := s.peers.bee260(peerID); found {
-		return compat
-	}
-
-	userAgent := s.peerUserAgent(s.ctx, peerID)
-	p := strings.SplitN(userAgent, " ", 2)
-	if len(p) != 2 {
-		return false
-	}
-	version := strings.TrimPrefix(p[0], "bee/")
-	v, err := semver.NewVersion(version)
-	if err != nil {
-		return false
-	}
-
-	// Compare major.minor.patch only (ignore pre-release)
-	// This way 2.7.0-rc12 is treated as >= 2.7.0
-	vCore, err := semver.NewVersion(fmt.Sprintf("%d.%d.%d", v.Major, v.Minor, v.Patch))
-	if err != nil {
-		return false
-	}
-	result := vCore.LessThan(version270)
-	s.peers.setBee260(peerID, result)
-	return result
 }
 
 // appendSpace adds a leading space character if the string is not empty.

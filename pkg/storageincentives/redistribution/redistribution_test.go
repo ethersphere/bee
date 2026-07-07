@@ -66,7 +66,7 @@ func TestRedistribution(t *testing.T) {
 	owner := common.HexToAddress("abcd")
 	overlay := swarm.NewAddress(common.HexToHash("cbd").Bytes())
 	redistributionContractAddress := common.HexToAddress("ffff")
-	//nonce := common.BytesToHash(make([]byte, 32))
+	// nonce := common.BytesToHash(make([]byte, 32))
 	txHashDeposited := common.HexToHash("c3a7")
 
 	t.Run("IsPlaying - true", func(t *testing.T) {
@@ -88,7 +88,7 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			false,
+			0,
 		)
 
 		isPlaying, err := contract.IsPlaying(ctx, depth)
@@ -120,7 +120,7 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			false,
+			0,
 		)
 
 		isPlaying, err := contract.IsPlaying(ctx, depth)
@@ -150,7 +150,7 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			false,
+			0,
 		)
 
 		isWinner, err := contract.IsWinner(ctx)
@@ -177,7 +177,7 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			false,
+			0,
 		)
 
 		isWinner, err := contract.IsWinner(ctx)
@@ -223,7 +223,7 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			false,
+			0,
 		)
 
 		_, err = contract.Claim(ctx, proofs)
@@ -265,7 +265,7 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			false,
+			0,
 		)
 
 		_, err = contract.Claim(ctx, proofs)
@@ -308,7 +308,7 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			false,
+			0,
 		)
 
 		_, err = contract.Commit(ctx, testobfus, 0)
@@ -353,7 +353,7 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			false,
+			0,
 		)
 
 		_, err = contract.Reveal(ctx, depth, common.Hex2Bytes("hash"), common.Hex2Bytes("nonce"))
@@ -372,7 +372,6 @@ func TestRedistribution(t *testing.T) {
 			transactionMock.New(
 				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
 					if *request.To == redistributionContractAddress {
-
 						return someSalt, nil
 					}
 					return nil, errors.New("unexpected call")
@@ -380,7 +379,7 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			false,
+			0,
 		)
 
 		salt, err := contract.ReserveSalt(ctx)
@@ -410,7 +409,7 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			false,
+			0,
 		)
 
 		_, err := contract.IsPlaying(ctx, depth)
@@ -443,7 +442,7 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionContractAddress,
 			redistributionContractABI,
-			false,
+			0,
 		)
 
 		_, err = contract.Commit(ctx, common.Hex2Bytes("hash"), 0)

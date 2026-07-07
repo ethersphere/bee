@@ -15,9 +15,7 @@ const (
 	PathSeparator = '/' // path separator
 )
 
-var (
-	ZeroObfuscationKey = make([]byte, 32)
-)
+var ZeroObfuscationKey = make([]byte, 32)
 
 // Error used when lookup path does not match
 var (

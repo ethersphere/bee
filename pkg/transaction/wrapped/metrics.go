@@ -13,19 +13,21 @@ type metrics struct {
 	TotalRPCCalls  prometheus.Counter
 	TotalRPCErrors prometheus.Counter
 
-	TransactionReceiptCalls prometheus.Counter
-	TransactionCalls        prometheus.Counter
-	BlockNumberCalls        prometheus.Counter
-	BlockHeaderCalls        prometheus.Counter
-	BalanceCalls            prometheus.Counter
-	NonceAtCalls            prometheus.Counter
-	PendingNonceCalls       prometheus.Counter
-	CallContractCalls       prometheus.Counter
-	SuggestGasTipCapCalls   prometheus.Counter
-	EstimateGasCalls        prometheus.Counter
-	SendTransactionCalls    prometheus.Counter
-	FilterLogsCalls         prometheus.Counter
-	ChainIDCalls            prometheus.Counter
+	TransactionReceiptCalls       prometheus.Counter
+	TransactionCalls              prometheus.Counter
+	BlockHeaderAsBlockNumberCalls prometheus.Counter
+	BlockHeaderCalls              prometheus.Counter
+	BalanceCalls                  prometheus.Counter
+	NonceAtCalls                  prometheus.Counter
+	PendingNonceCalls             prometheus.Counter
+	CallContractCalls             prometheus.Counter
+	CodeAtCalls                   prometheus.Counter
+	SuggestGasTipCapCalls         prometheus.Counter
+	EstimateGasCalls              prometheus.Counter
+	SendTransactionCalls          prometheus.Counter
+	FilterLogsCalls               prometheus.Counter
+	ChainIDCalls                  prometheus.Counter
+	AverageBlockTimeSeconds       prometheus.Gauge
 }
 
 func newMetrics() metrics {
@@ -56,11 +58,11 @@ func newMetrics() metrics {
 			Name:      "calls_transaction_receipt",
 			Help:      "Count of eth_getTransactionReceipt rpc errors",
 		}),
-		BlockNumberCalls: prometheus.NewCounter(prometheus.CounterOpts{
+		BlockHeaderAsBlockNumberCalls: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "calls_block_number",
-			Help:      "Count of eth_blockNumber rpc calls",
+			Name:      "calls_block_header_as_block_number",
+			Help:      "Count of eth_getBlockByNumber for getting block number rpc calls",
 		}),
 		BlockHeaderCalls: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
@@ -92,6 +94,12 @@ func newMetrics() metrics {
 			Name:      "calls_eth_call",
 			Help:      "Count of eth_call rpc calls",
 		}),
+		CodeAtCalls: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "calls_code_at",
+			Help:      "Count of eth_getCode rpc calls",
+		}),
 		SuggestGasTipCapCalls: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
@@ -122,9 +130,17 @@ func newMetrics() metrics {
 			Name:      "calls_chain_id",
 			Help:      "Count of eth_chainId rpc calls",
 		}),
+		AverageBlockTimeSeconds: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "average_block_time_seconds",
+			Help:      "Observed average block time in seconds, updated on each block number cache refresh.",
+		}),
 	}
 }
 
 func (b *wrappedBackend) Metrics() []prometheus.Collector {
-	return m.PrometheusCollectorsFromFields(b.metrics)
+	collectors := m.PrometheusCollectorsFromFields(b.metrics)
+	collectors = append(collectors, b.blockNumberCache.Collectors()...)
+	return collectors
 }

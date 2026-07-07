@@ -29,18 +29,19 @@ import (
 
 // TestGetter tests the retrieval of chunks with missing data shards
 // using the RACE strategy for a number of erasure code parameters
-func TestGetterRACE_FLAKY(t *testing.T) {
+func TestGetterRACE(t *testing.T) {
 	type getterTest struct {
 		bufSize    int
 		shardCnt   int
 		erasureCnt int
 	}
 
+	rng := mrand.New(mrand.NewSource(1))
 	var tcs []getterTest
 	for bufSize := 3; bufSize <= 128; bufSize += 21 {
 		for shardCnt := bufSize/2 + 1; shardCnt <= bufSize; shardCnt += 21 {
 			parityCnt := bufSize - shardCnt
-			erasures := mrand.Perm(parityCnt - 1)
+			erasures := rng.Perm(parityCnt - 1)
 			if len(erasures) > 3 {
 				erasures = erasures[:3]
 			}
@@ -48,7 +49,7 @@ func TestGetterRACE_FLAKY(t *testing.T) {
 				tcs = append(tcs, getterTest{bufSize, shardCnt, erasureCnt})
 			}
 			tcs = append(tcs, getterTest{bufSize, shardCnt, parityCnt}, getterTest{bufSize, shardCnt, parityCnt + 1})
-			erasures = mrand.Perm(shardCnt - 1)
+			erasures = rng.Perm(shardCnt - 1)
 			if len(erasures) > 3 {
 				erasures = erasures[:3]
 			}
@@ -99,7 +100,7 @@ func testDecodingRACE(t *testing.T, bufSize, shardCnt, erasureCnt int) {
 	addrs := initData(t, buf, shardCnt, store)
 
 	var addr swarm.Address
-	erasures := forget(t, store, addrs, erasureCnt)
+	erasures := forget(t, store, addrs, erasureCnt, deterministicSeed(bufSize, shardCnt, erasureCnt))
 	for _, i := range erasures {
 		if i < shardCnt {
 			addr = addrs[i]
@@ -345,11 +346,12 @@ func checkShardsAvailable(t *testing.T, s storage.ChunkStore, addrs []swarm.Addr
 	}
 }
 
-func forget(t *testing.T, store storage.ChunkStore, addrs []swarm.Address, erasureCnt int) (erasures []int) {
+func forget(t *testing.T, store storage.ChunkStore, addrs []swarm.Address, erasureCnt int, seed int64) (erasures []int) {
 	t.Helper()
 
 	ctx := context.TODO()
-	erasures = mrand.Perm(len(addrs))[:erasureCnt]
+	rng := mrand.New(mrand.NewSource(seed))
+	erasures = rng.Perm(len(addrs))[:erasureCnt]
 	for _, i := range erasures {
 		err := store.Delete(ctx, addrs[i])
 		if err != nil {
@@ -357,4 +359,8 @@ func forget(t *testing.T, store storage.ChunkStore, addrs []swarm.Address, erasu
 		}
 	}
 	return erasures
+}
+
+func deterministicSeed(bufSize, shardCnt, erasureCnt int) int64 {
+	return int64(bufSize)<<32 | int64(shardCnt)<<16 | int64(erasureCnt)
 }

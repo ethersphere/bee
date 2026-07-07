@@ -9,6 +9,7 @@ package stabilization
 
 import (
 	"errors"
+	"io"
 	"math"
 	"sync"
 	"time"
@@ -30,7 +31,10 @@ const (
 	subscriptionTopic int = 0
 )
 
-var _ Subscriber = (*Detector)(nil)
+var (
+	_ Subscriber = (*Detector)(nil)
+	_ io.Closer  = (*Detector)(nil)
+)
 
 // Subscriber defines the interface for stabilization subscription.
 type Subscriber interface {
@@ -222,9 +226,9 @@ func (d *Detector) IsStabilized() bool {
 }
 
 // Close stops the detector and releases any resources.
-func (d *Detector) Close() {
+func (d *Detector) Close() error {
 	if d == nil {
-		return
+		return nil
 	}
 
 	d.mutex.Lock()
@@ -240,6 +244,8 @@ func (d *Detector) Close() {
 	d.currentPeriodCount = 0
 	d.currentPeriodStartTime = time.Time{}
 	d.periodCounts = d.periodCounts[:0]
+
+	return nil
 }
 
 func (d *Detector) startWarmupTimer(t time.Time) {

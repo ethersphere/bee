@@ -440,7 +440,7 @@ func dbExportReserveCmd(cmd *cobra.Command) {
 				hdr := &tar.Header{
 					Name: chunk.Address().String(),
 					Size: int64(len(b)),
-					Mode: 0600,
+					Mode: 0o600,
 				}
 				if err := tw.WriteHeader(hdr); err != nil {
 					return true, fmt.Errorf("writing header: %w", err)
@@ -533,7 +533,7 @@ func dbExportPinningCmd(cmd *cobra.Command) {
 					err = tw.WriteHeader(&tar.Header{
 						Name: root.String() + "/" + addr.String(),
 						Size: int64(len(b)),
-						Mode: 0600,
+						Mode: 0o600,
 					})
 					if err != nil {
 						return true, fmt.Errorf("error writing header: %w", err)
@@ -867,7 +867,8 @@ func dbNukeCmd(cmd *cobra.Command) {
 			}
 
 			return nil
-		}}
+		},
+	}
 	c.Flags().String(optionNameDataDir, "", "data directory")
 	c.Flags().String(optionNameVerbosity, "trace", "verbosity level")
 	c.Flags().Duration(optionNameSleepAfter, time.Duration(0), "time to sleep after the operation finished")

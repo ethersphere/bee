@@ -63,7 +63,7 @@ func testSplitThenJoin(t *testing.T) {
 	}
 
 	// then join
-	r, l, err := joiner.New(ctx, store, store, resultAddress, redundancy.DefaultLevel)
+	r, l, err := joiner.New(ctx, store, store, resultAddress, redundancy.DefaultDownloadLevel)
 	if err != nil {
 		t.Fatal(err)
 	}
