@@ -1130,7 +1130,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		observedAddrs, err = buildFullMAs([]ma.Multiaddr{stream.Conn().RemoteMultiaddr()}, peerID)
 		if err != nil {
 			_ = handshakeStream.Reset()
-			_ = s.host.Network().ClosePeer(peerID)
+			_ = stream.Conn().Close()
 			return nil, fmt.Errorf("build peer multiaddrs fallback: %w", err)
 		}
 	}
