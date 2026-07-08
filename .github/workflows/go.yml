@@ -18,10 +18,15 @@ on:
     branches:
       - '**'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     name: Test (Linux, shard ${{ matrix.shard }})
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -32,8 +37,17 @@ jobs:
     - name: Setup Go
       uses: actions/setup-go@v6
       with:
-        cache: true
+        cache: false
         go-version-file: go.mod
+    - name: Cache Go build cache (per shard)
+      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-test-shard${{ matrix.shard }}-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-test-shard${{ matrix.shard }}-
     - name: Increase UDP buffer sizes
       run: |
         sudo sysctl -w net.core.rmem_max=7500000
@@ -46,6 +60,7 @@ jobs:
   test-compat:
     name: Build check (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -67,6 +82,7 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
     - name: Checkout
       uses: actions/checkout@v5
@@ -99,6 +115,7 @@ jobs:
     name: Coverage Report
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     steps:
     - name: Checkout
       uses: actions/checkout@v5
