@@ -277,6 +277,9 @@ func TestPayment(t *testing.T) {
 	receiverObserver := newTestObserver(map[string]*big.Int{peerID.String(): big.NewInt(debt)}, map[string]*big.Int{})
 	recipient := pseudosettle.New(nil, logger, storeRecipient, receiverObserver, big.NewInt(testRefreshRate), big.NewInt(testRefreshRateLight), mockp2p.New())
 	recipient.SetAccounting(receiverObserver)
+	// Establish a connection time before init so the first-contact allowance is
+	// anchored to it rather than to the Unix epoch.
+	recipient.SetTime(1)
 	err := recipient.Init(context.Background(), peer)
 	if err != nil {
 		t.Fatal(err)
@@ -295,6 +298,50 @@ func TestPayment(t *testing.T) {
 	testCaseAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 30, 30, 1, 1, 1, big.NewInt(debt), big.NewInt(debt), big.NewInt(debt), big.NewInt(debt))
 }
 
+// TestFirstContactAllowanceBounded verifies that the time-based allowance granted
+// on first contact is bounded by the time elapsed since the peer connected, not by
+// the Unix epoch. A peer connected one second ago may only settle a single refresh
+// interval of debt, no matter how large its outstanding debt is. Anchoring at the
+// epoch would let the first refreshment forgive an effectively unbounded amount.
+func TestFirstContactAllowanceBounded(t *testing.T) {
+	t.Parallel()
+
+	logger := log.Noop
+
+	storeRecipient := newStateStore(t)
+
+	peerID := swarm.MustParseHexAddress("9ee7add7")
+	peer := p2p.Peer{Address: peerID, FullNode: true}
+
+	// Debt far larger than a single refresh interval's worth of allowance.
+	debt := int64(1000) * testRefreshRate
+
+	payerObserver := newTestObserver(map[string]*big.Int{peerID.String(): big.NewInt(debt)}, map[string]*big.Int{})
+	receiverObserver := newTestObserver(map[string]*big.Int{peerID.String(): big.NewInt(debt)}, map[string]*big.Int{})
+	recipient := pseudosettle.New(nil, logger, storeRecipient, receiverObserver, big.NewInt(testRefreshRate), big.NewInt(testRefreshRateLight), mockp2p.New())
+	recipient.SetAccounting(receiverObserver)
+	// The peer connects at t=1000000.
+	recipient.SetTime(1000000)
+	err := recipient.Init(context.Background(), peer)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	recorder := streamtest.New(
+		streamtest.WithProtocols(recipient.Protocol()),
+		streamtest.WithBaseAddr(peerID),
+	)
+
+	storePayer := newStateStore(t)
+
+	payer := pseudosettle.New(recorder, logger, storePayer, payerObserver, big.NewInt(testRefreshRate), big.NewInt(testRefreshRateLight), mockp2p.New())
+	payer.SetAccounting(payerObserver)
+
+	// One second after connecting the peer attempts to settle its entire debt.
+	// Only one refresh interval (testRefreshRate) may be accepted, not the full debt.
+	testCaseAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 1000001, 1000001, 1, 1, 1, big.NewInt(debt), big.NewInt(debt), big.NewInt(testRefreshRate), big.NewInt(testRefreshRate))
+}
+
 func TestTimeLimitedPayment(t *testing.T) {
 	t.Parallel()
 
@@ -311,6 +358,9 @@ func TestTimeLimitedPayment(t *testing.T) {
 	receiverObserver := newTestObserver(map[string]*big.Int{peerID.String(): big.NewInt(debt)}, map[string]*big.Int{})
 	recipient := pseudosettle.New(nil, logger, storeRecipient, receiverObserver, big.NewInt(testRefreshRate), big.NewInt(testRefreshRateLight), mockp2p.New())
 	recipient.SetAccounting(receiverObserver)
+	// Establish a connection time before init so the first-contact allowance is
+	// anchored to it rather than to the Unix epoch.
+	recipient.SetTime(1)
 	err := recipient.Init(context.Background(), peer)
 	if err != nil {
 		t.Fatal(err)
@@ -365,6 +415,9 @@ func TestTimeLimitedPaymentLight(t *testing.T) {
 	receiverObserver := newTestObserver(map[string]*big.Int{peerID.String(): big.NewInt(debt)}, map[string]*big.Int{})
 	recipient := pseudosettle.New(nil, logger, storeRecipient, receiverObserver, big.NewInt(testRefreshRate), big.NewInt(testRefreshRateLight), mockp2p.New())
 	recipient.SetAccounting(receiverObserver)
+	// Establish a connection time before init so the first-contact allowance is
+	// anchored to it rather than to the Unix epoch.
+	recipient.SetTime(1)
 	err := recipient.Init(context.Background(), peer)
 	if err != nil {
 		t.Fatal(err)

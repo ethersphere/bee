@@ -60,8 +60,9 @@ type Service struct {
 }
 
 type pseudoSettlePeer struct {
-	lock     sync.Mutex // lock to be held during receiving a payment from this peer
-	fullNode bool
+	lock        sync.Mutex // lock to be held during receiving a payment from this peer
+	fullNode    bool
+	connectedAt int64 // unix time the peer connected; anchors the first-contact allowance
 }
 
 type lastPayment struct {
@@ -108,7 +109,7 @@ func (s *Service) init(ctx context.Context, p p2p.Peer) error {
 
 	_, ok := s.peers[p.Address.String()]
 	if !ok {
-		peerData := &pseudoSettlePeer{fullNode: p.FullNode}
+		peerData := &pseudoSettlePeer{fullNode: p.FullNode, connectedAt: s.timeNow().Unix()}
 		s.peers[p.Address.String()] = peerData
 	}
 
@@ -142,14 +143,18 @@ func totalKeyPeer(key []byte, prefix string) (peer swarm.Address, err error) {
 
 // peerAllowance computes the maximum incoming payment value we accept
 // this is the time based allowance or the peers actual debt, whichever is less
-func (s *Service) peerAllowance(peer swarm.Address, fullNode bool) (limit *big.Int, stamp int64, err error) {
+func (s *Service) peerAllowance(peer swarm.Address, fullNode bool, connectedAt int64) (limit *big.Int, stamp int64, err error) {
 	var lastTime lastPayment
 	err = s.store.Get(totalKey(peer, SettlementReceivedPrefix), &lastTime)
 	if err != nil {
 		if !errors.Is(err, storage.ErrNotFound) {
 			return nil, 0, err
 		}
-		lastTime.Timestamp = int64(0)
+		// First contact with this peer: anchor the time-based allowance to the
+		// connection time rather than the zero epoch. Anchoring at zero would
+		// scale the entire Unix epoch by the refresh rate and let the initial
+		// refreshment forgive an effectively unbounded debt.
+		lastTime.Timestamp = connectedAt
 	}
 
 	currentTime := s.timeNow().Unix()
@@ -210,7 +215,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	pseudoSettlePeer.lock.Lock()
 	defer pseudoSettlePeer.lock.Unlock()
 
-	allowance, timestamp, err := s.peerAllowance(p.Address, pseudoSettlePeer.fullNode)
+	allowance, timestamp, err := s.peerAllowance(p.Address, pseudoSettlePeer.fullNode, pseudoSettlePeer.connectedAt)
 	if err != nil {
 		return err
 	}
