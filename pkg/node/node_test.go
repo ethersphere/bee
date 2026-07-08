@@ -7,6 +7,7 @@ package node_test
 import (
 	"testing"
 
+	"github.com/ethersphere/bee/v2/pkg/api"
 	"github.com/ethersphere/bee/v2/pkg/node"
 )
 
@@ -103,6 +104,46 @@ func TestValidatePublicAddress(t *testing.T) {
 			}
 			if !tc.expErr && err != nil {
 				t.Fatalf("expected no error, but got: %v", err)
+			}
+		})
+	}
+}
+
+func TestUseEmbeddedSnapshot(t *testing.T) {
+	t.Parallel()
+
+	const (
+		mainnet = uint64(1)
+		testnet = uint64(10)
+	)
+
+	testCases := []struct {
+		name             string
+		skip             bool
+		batchStoreExists bool
+		resync           bool
+		networkID        uint64
+		mode             api.BeeNodeMode
+		want             bool
+	}{
+		{name: "first boot on mainnet", networkID: mainnet, mode: api.FullMode, want: true},
+		{name: "existing store, no resync", batchStoreExists: true, networkID: mainnet, mode: api.FullMode, want: false},
+		{name: "resync on a fresh store", resync: true, networkID: mainnet, mode: api.FullMode, want: true},
+		// New behavior: resync rebuilds from the snapshot even with a store present.
+		{name: "resync on an existing store uses the snapshot", batchStoreExists: true, resync: true, networkID: mainnet, mode: api.FullMode, want: true},
+		{name: "resync with skip syncs from the chain", batchStoreExists: true, resync: true, skip: true, networkID: mainnet, mode: api.FullMode, want: false},
+		{name: "skip on first boot", skip: true, networkID: mainnet, mode: api.FullMode, want: false},
+		{name: "light node uses the snapshot", networkID: mainnet, mode: api.LightMode, want: true},
+		{name: "ultra-light never uses the snapshot", resync: true, networkID: mainnet, mode: api.UltraLightMode, want: false},
+		{name: "non-mainnet never uses the snapshot", resync: true, networkID: testnet, mode: api.FullMode, want: false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := node.UseEmbeddedSnapshot(tc.skip, tc.batchStoreExists, tc.resync, tc.networkID, tc.mode)
+			if got != tc.want {
+				t.Fatalf("UseEmbeddedSnapshot = %v, want %v", got, tc.want)
 			}
 		})
 	}

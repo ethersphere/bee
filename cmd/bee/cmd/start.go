@@ -16,11 +16,11 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/bmt"
@@ -163,6 +163,9 @@ func (c *command) initStartCmd() (err error) {
 				return err
 			}
 			c.bindBlockchainRpcConfig(cmd)
+			c.bindTracingConfig(cmd)
+			c.warnDeprecatedTracingKeys()
+			c.warnTracingTLSWithoutCA()
 			return nil
 		},
 	}
@@ -245,12 +248,6 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		networkConfig.blockTime = time.Duration(blockTime) * time.Second
 	}
 
-	tracingEndpoint := c.config.GetString(optionNameTracingEndpoint)
-
-	if c.config.IsSet(optionNameTracingHost) && c.config.IsSet(optionNameTracingPort) {
-		tracingEndpoint = strings.Join([]string{c.config.GetString(optionNameTracingHost), c.config.GetString(optionNameTracingPort)}, ":")
-	}
-
 	staticNodesOpt := c.config.GetStringSlice(optionNameStaticNodes)
 	staticNodes := make([]swarm.Address, 0, len(staticNodesOpt))
 	for _, p := range staticNodesOpt {
@@ -285,6 +282,14 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		logger.Info("SIMD hashing enabled", "batch_width", keccak.BatchWidth(), "avx512", keccak.HasAVX512())
 	}
 
+	var bzzTokenAddress common.Address
+	if a := c.config.GetString(optionNameBzzTokenAddress); a != "" {
+		if !common.IsHexAddress(a) {
+			return nil, errors.New("malformed bzz token address")
+		}
+		bzzTokenAddress = common.HexToAddress(a)
+	}
+
 	b, err := node.NewBee(ctx, c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, signerConfig.session, &node.Options{
 		Addr:                          c.config.GetString(optionNameP2PAddr),
 		AllowPrivateCIDRs:             c.config.GetBool(optionNameAllowPrivateCIDRs),
@@ -297,6 +302,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		BlockchainRpcTLSTimeout:       c.config.GetDuration(configKeyBlockchainRpcTLSTimeout),
 		BlockchainRpcIdleTimeout:      c.config.GetDuration(configKeyBlockchainRpcIdleTimeout),
 		BlockchainRpcKeepalive:        c.config.GetDuration(configKeyBlockchainRpcKeepalive),
+		BzzTokenAddress:               bzzTokenAddress,
 		BlockProfile:                  c.config.GetBool(optionNamePProfBlock),
 		BlockTime:                     networkConfig.blockTime,
 		BlockSyncInterval:             c.config.GetUint64(optionNameBlockSyncInterval),
@@ -346,9 +352,13 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		SwapFactoryAddress:            c.config.GetString(optionNameSwapFactoryAddress),
 		SwapInitialDeposit:            c.config.GetString(optionNameSwapInitialDeposit),
 		TargetNeighborhood:            c.config.GetString(optionNameTargetNeighborhood),
-		TracingEnabled:                c.config.GetBool(optionNameTracingEnabled),
-		TracingEndpoint:               tracingEndpoint,
-		TracingServiceName:            c.config.GetString(optionNameTracingServiceName),
+		TracingEnabled:                c.config.GetBool(configKeyTracingEnabled),
+		TracingEndpoint:               c.config.GetString(configKeyTracingEndpoint),
+		TracingInsecure:               c.config.GetBool(configKeyTracingInsecure),
+		TracingCAFile:                 c.config.GetString(configKeyTracingCAFile),
+		TracingProtocol:               c.config.GetString(configKeyTracingProtocol),
+		TracingSamplingRatio:          c.config.GetFloat64(configKeyTracingSamplingRatio),
+		TracingServiceName:            c.config.GetString(configKeyTracingServiceName),
 		TrxDebugMode:                  c.config.GetBool(optionNameTransactionDebugMode),
 		WarmupTime:                    c.config.GetDuration(optionWarmUpTime),
 		WelcomeMessage:                c.config.GetString(optionWelcomeMessage),

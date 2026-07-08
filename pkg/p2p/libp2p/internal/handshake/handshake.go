@@ -69,20 +69,6 @@ type Addresser interface {
 	AdvertizableAddrs() ([]ma.Multiaddr, error)
 }
 
-type Option struct {
-	bee260compatibility bool
-}
-
-// WithBee260Compatibility option ensures that only one underlay address is
-// passed to the peer in p2p protocol messages, so that nodes with version 2.6.0
-// and older can deserialize it. This option can be safely removed when bee
-// version 2.6.0 is deprecated.
-func WithBee260Compatibility(yes bool) func(*Option) {
-	return func(o *Option) {
-		o.bee260compatibility = yes
-	}
-}
-
 // Service can perform initiate or handle a handshake between peers.
 type Service struct {
 	signer                crypto.Signer
@@ -102,6 +88,7 @@ type Service struct {
 	mu                    sync.RWMutex
 	hostAddresser         Addresser
 	now                   func() time.Time
+	addrCache             addressCache // session-stable signed address, keyed by chequebook + underlays
 }
 
 // Info contains the information received from the handshake.
@@ -147,14 +134,15 @@ func New(signer crypto.Signer, advertisableAddresser AdvertisableAddressResolver
 }
 
 // SetChequebookAddress sets the local chequebook address included in
-// subsequent signed BzzAddress payloads. The zero value clears it.
+// subsequent signed BzzAddress payloads; the zero value clears it. The
+// chequebook is part of the signed-address cache key, so the next handshake
+// misses the cache and re-signs with the new chequebook.
 func (s *Service) SetChequebookAddress(addr common.Address) {
 	if (addr == common.Address{}) {
 		s.chequebookAddr.Store(nil)
-		return
+	} else {
+		s.chequebookAddr.Store(&addr)
 	}
-	cp := addr
-	s.chequebookAddr.Store(&cp)
 }
 
 func (s *Service) chequebookAddress() common.Address {
@@ -164,6 +152,30 @@ func (s *Service) chequebookAddress() common.Address {
 	return common.Address{}
 }
 
+// signedAddress returns the session-stable signed BzzAddress advertising the
+// given canonical underlay set. The record is minted on first use and reused
+// byte-stable (same timestamp and signature) across handshakes, so receiving
+// peers see it as unchanged and skip redundant addressbook writes and gossip
+// updates. It is re-minted when the underlay set or the chequebook changes.
+func (s *Service) signedAddress(underlays []ma.Multiaddr) (*bzz.Address, error) {
+	underlaysBinary, err := bzz.SerializeUnderlays(underlays)
+	if err != nil {
+		return nil, fmt.Errorf("serialize underlays: %w", err)
+	}
+
+	chequebook := s.chequebookAddress()
+	key := string(chequebook.Bytes()) + string(underlaysBinary)
+
+	return s.addrCache.getOrMint(key, s.now().Unix(), func(timestamp int64) (*bzz.Address, error) {
+		addr, err := bzz.NewAddress(s.signer, underlays, s.overlay, s.networkID, s.nonce, timestamp, chequebook)
+		if err != nil {
+			return nil, err
+		}
+		s.metrics.AddressMinted.Inc()
+		return addr, nil
+	})
+}
+
 func (s *Service) SetPicker(n p2p.Picker) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -171,13 +183,8 @@ func (s *Service) SetPicker(n p2p.Picker) {
 }
 
 // Handshake initiates a handshake with a peer.
-func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiaddrs []ma.Multiaddr, opts ...func(*Option)) (i *Info, err error) {
+func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiaddrs []ma.Multiaddr) (i *Info, err error) {
 	loggerV1 := s.logger.V(1).Register()
-
-	o := new(Option)
-	for _, set := range opts {
-		set(o)
-	}
 
 	ctx, cancel := context.WithTimeout(ctx, handshakeTimeout)
 	defer cancel()
@@ -189,7 +196,6 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 	if observedTruncated {
 		s.metrics.ObservedUnderlaysTruncated.Inc()
 	}
-	peerMultiaddrs = p2p.FilterBee260CompatibleUnderlays(o.bee260compatibility, peerMultiaddrs)
 
 	observedUnderlayBytes, err := bzz.SerializeUnderlays(peerMultiaddrs)
 	if err != nil {
@@ -219,7 +225,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 
 	observedUnderlays, err := bzz.DeserializeUnderlays(resp.Syn.ObservedUnderlay)
 	if err != nil {
-		return nil, ErrInvalidSyn
+		return nil, fmt.Errorf("%w: observed underlay len=%d: %w", ErrInvalidSyn, len(resp.Syn.ObservedUnderlay), err)
 	}
 
 	advertisableUnderlays := make([]ma.Multiaddr, len(observedUnderlays))
@@ -259,8 +265,6 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return a.Equal(b)
 	})
 
-	advertisableUnderlays = p2p.FilterBee260CompatibleUnderlays(o.bee260compatibility, advertisableUnderlays)
-
 	// Truncate to count and byte-size caps before signing.
 	var advTruncated bool
 	advertisableUnderlays, advTruncated = bzz.TruncateUnderlays(advertisableUnderlays)
@@ -268,7 +272,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		s.metrics.AdvertisableUnderlaysTruncated.Inc()
 	}
 
-	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce, s.now().Unix(), s.chequebookAddress())
+	bzzAddress, err := s.signedAddress(advertisableUnderlays)
 	if err != nil {
 		return nil, err
 	}
@@ -320,13 +324,8 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 }
 
 // Handle handles an incoming handshake from a peer.
-func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs []ma.Multiaddr, opts ...func(*Option)) (i *Info, err error) {
+func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs []ma.Multiaddr) (i *Info, err error) {
 	loggerV1 := s.logger.V(1).Register()
-
-	o := new(Option)
-	for _, set := range opts {
-		set(o)
-	}
 
 	ctx, cancel := context.WithTimeout(ctx, handshakeTimeout)
 	defer cancel()
@@ -342,7 +341,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 
 	observedUnderlays, err := bzz.DeserializeUnderlays(syn.ObservedUnderlay)
 	if err != nil {
-		return nil, ErrInvalidSyn
+		return nil, fmt.Errorf("%w: observed underlay len=%d: %w", ErrInvalidSyn, len(syn.ObservedUnderlay), err)
 	}
 
 	advertisableUnderlays := make([]ma.Multiaddr, len(observedUnderlays))
@@ -372,8 +371,6 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 		return a.Equal(b)
 	})
 
-	advertisableUnderlays = p2p.FilterBee260CompatibleUnderlays(o.bee260compatibility, advertisableUnderlays)
-
 	// Truncate to count and byte-size caps before signing.
 	var handleAdvTruncated bool
 	advertisableUnderlays, handleAdvTruncated = bzz.TruncateUnderlays(advertisableUnderlays)
@@ -381,7 +378,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 		s.metrics.AdvertisableUnderlaysTruncated.Inc()
 	}
 
-	bzzAddress, err := bzz.NewAddress(s.signer, advertisableUnderlays, s.overlay, s.networkID, s.nonce, s.now().Unix(), s.chequebookAddress())
+	bzzAddress, err := s.signedAddress(advertisableUnderlays)
 	if err != nil {
 		return nil, err
 	}
@@ -393,8 +390,6 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, peerMultiaddrs 
 	if handleObsTruncated {
 		s.metrics.ObservedUnderlaysTruncated.Inc()
 	}
-
-	peerMultiaddrs = p2p.FilterBee260CompatibleUnderlays(o.bee260compatibility, peerMultiaddrs)
 
 	synObservedBytes, err := bzz.SerializeUnderlays(peerMultiaddrs)
 	if err != nil {

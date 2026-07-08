@@ -90,6 +90,7 @@ func init() {
 
 type testServerOptions struct {
 	Storer             api.Storer
+	Tracer             *tracing.Tracer
 	StateStorer        storage.StateStorer
 	Resolver           resolver.Interface
 	Pss                pss.Interface
@@ -231,12 +232,16 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	s.SetSwarmAddress(&o.Overlay)
 	s.SetProbe(o.Probe)
 
-	noOpTracer, tracerCloser, _ := tracing.NewTracer(&tracing.Options{
-		Enabled: false,
-	})
-	testutil.CleanupCloser(t, tracerCloser)
+	tracer := o.Tracer
+	if tracer == nil {
+		noOpTracer, tracerCloser, _ := tracing.NewTracer(&tracing.Options{
+			Enabled: false,
+		})
+		testutil.CleanupCloser(t, tracerCloser)
+		tracer = noOpTracer
+	}
 
-	s.Configure(signer, noOpTracer, api.Options{
+	s.Configure(signer, tracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
 		WsPingPeriod:       o.WsPingPeriod,
 	}, extraOpts, 1, erc20APIService)

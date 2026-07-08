@@ -11,6 +11,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
@@ -262,7 +263,7 @@ func TestSign(t *testing.T) {
 	}
 
 	// verifies if the owner matches
-	recoveredOwner, err := soc.RecoverAddress(signature, toSignBytes)
+	_, recoveredOwner, err := soc.RecoverAddress(signature, toSignBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,7 +300,7 @@ func TestFromChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ownerAddress, err := soc.RecoverAddress(sig, signedDigest)
+	_, ownerAddress, err := soc.RecoverAddress(sig, signedDigest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -338,6 +339,45 @@ func TestFromChunk(t *testing.T) {
 	}
 }
 
+// TestOwnerPubKey verifies that the public key stored on the soc
+// recovered from a chunk derives to the stored owner address.
+func TestOwnerPubKey(t *testing.T) {
+	t.Parallel()
+
+	socAddress := swarm.MustParseHexAddress("9d453ebb73b2fedaaf44ceddcf7a0aa37f3e3d6453fea5841c31f0ea6d61dc85")
+
+	// signed soc chunk of:
+	// id: 0
+	// wrapped chunk of: `foo`
+	// owner: 0x8d3766440f0d7b949a5e32995d09619a7f86e632
+	sch := swarm.NewChunk(socAddress, []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 90, 205, 56, 79, 235, 193, 51, 183, 178, 69, 229, 221, 198, 45, 130, 210, 205, 237, 145, 130, 210, 113, 97, 38, 205, 136, 68, 80, 154, 246, 90, 5, 61, 235, 65, 130, 8, 2, 127, 84, 142, 62, 136, 52, 58, 246, 248, 74, 135, 114, 251, 60, 235, 192, 161, 131, 58, 14, 167, 236, 12, 19, 72, 49, 27, 3, 0, 0, 0, 0, 0, 0, 0, 102, 111, 111})
+
+	recoveredSOC, err := soc.FromChunk(sch)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pubKeyBytes := recoveredSOC.OwnerPubKey()
+	if len(pubKeyBytes) == 0 {
+		t.Fatal("owner public key is empty")
+	}
+
+	// decode the stored public key and derive the ethereum address from it
+	pubKey, err := btcec.ParsePubKey(pubKeyBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	derivedOwner, err := crypto.NewEthereumAddress(*pubKey.ToECDSA())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(derivedOwner, recoveredSOC.OwnerAddress()) {
+		t.Fatalf("owner address mismatch. got %x want %x", derivedOwner, recoveredSOC.OwnerAddress())
+	}
+}
+
 func TestCreateAddress(t *testing.T) {
 	t.Parallel()
 
@@ -371,7 +411,7 @@ func TestRecoverAddress(t *testing.T) {
 	}
 
 	// attempt to recover address from signature
-	addr, err := soc.RecoverAddress(sig, signedDigest)
+	_, addr, err := soc.RecoverAddress(sig, signedDigest)
 	if err != nil {
 		t.Fatal(err)
 	}
