@@ -210,7 +210,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, trace.WithSpanKind(trace.SpanKindServer), trace.WithAttributes(
 		attribute.String("swarm.chunk.address", chunkAddress.String()),
 		attribute.Int64("swarm.tag.id", int64(chunk.TagID())),
-		attribute.String("swarm.peer.sender_address", p.Address.String()),
+		attribute.String("swarm.peer.address", p.Address.String()),
 	))
 
 	var (
