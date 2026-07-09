@@ -12,26 +12,32 @@ import (
 )
 
 // Go runs the given function in a new goroutine and recovers from panic in it.
-// Panics are logged using the provided logger.
+// Panics are logged using the provided logger (if non-nil).
+// If the logger is nil, the function is run without panic recovery.
 func Go(logger log.Logger, name string, fn func()) {
 	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				logger.Error(nil, "goroutine panic recovered", "name", name, "panic", fmt.Sprintf("%v", r), "stack", string(debug.Stack()))
-			}
-		}()
+		if logger != nil {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Error(nil, "goroutine panic recovered", "name", name, "panic", fmt.Sprintf("%v", r), "stack", string(debug.Stack()))
+				}
+			}()
+		}
 		fn()
 	}()
 }
 
 // Run runs the given function synchronously and recovers from panic in it.
-// Panics are logged using the provided logger.
+// Panics are logged using the provided logger (if non-nil).
+// If the logger is nil, the function is run without panic recovery.
 func Run(logger log.Logger, name string, fn func()) {
-	defer func() {
-		if r := recover(); r != nil {
-			logger.Error(nil, "panic recovered", "name", name, "panic", fmt.Sprintf("%v", r), "stack", string(debug.Stack()))
-		}
-	}()
+	if logger != nil {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Error(nil, "panic recovered", "name", name, "panic", fmt.Sprintf("%v", r), "stack", string(debug.Stack()))
+			}
+		}()
+	}
 	fn()
 }
 

@@ -166,6 +166,38 @@ func TestRunFunc(t *testing.T) {
 	})
 }
 
+func TestGoNilLogger(t *testing.T) {
+	done := make(chan struct{})
+	safe.Go(nil, "test-nil-logger-go", func() {
+		close(done)
+	})
+	<-done
+}
+
+func TestRunNilLogger(t *testing.T) {
+	called := false
+	safe.Run(nil, "test-nil-logger-run", func() {
+		called = true
+	})
+	if !called {
+		t.Error("expected function to be called")
+	}
+}
+
+func TestRunNilLoggerPanic(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("expected panic to propagate when logger is nil, but none occurred")
+		} else if r != "panic-to-propagate" {
+			t.Errorf("expected panic 'panic-to-propagate', got %v", r)
+		}
+	}()
+
+	safe.Run(nil, "test-nil-logger-run-panic", func() {
+		panic("panic-to-propagate")
+	})
+}
+
 type mockLogger struct {
 	log.Logger
 	loggedErr     error

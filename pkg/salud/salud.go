@@ -163,6 +163,7 @@ func (s *service) salud(mode string, durPercentile float64, connsPercentile floa
 				}
 
 				mtx.Lock()
+				defer mtx.Unlock()
 				totaldur += dur.Seconds()
 				peer := peer{snapshot, dur, addr, bin, s.reserve.IsWithinStorageRadius(addr)}
 				peers = append(peers, peer)
@@ -170,7 +171,6 @@ func (s *service) salud(mode string, durPercentile float64, connsPercentile floa
 					neighborhoodPeers++
 					neighborhoodTotalDur += dur.Seconds()
 				}
-				mtx.Unlock()
 			})
 		})
 		return false, false, nil

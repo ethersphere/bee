@@ -152,12 +152,12 @@ func validateWork(logger log.Logger, store storage.Store, readFn func(context.Co
 
 	for range 8 {
 		wg.Go(func() {
-			safe.Run(logger, "reserve-validation-worker", func() {
-				buf := make([]byte, swarm.SocMaxChunkSize)
-				for item := range iteratateItemsC {
+			buf := make([]byte, swarm.SocMaxChunkSize)
+			for item := range iteratateItemsC {
+				safe.Run(logger, "reserve-validation-worker", func() {
 					validChunk(item, buf[:item.Location.Length])
-				}
-			})
+				})
+			}
 		})
 	}
 
@@ -328,17 +328,17 @@ func (p *PinIntegrity) Check(ctx context.Context, logger log.Logger, pin string,
 
 		for range 8 {
 			wg.Go(func() {
-				safe.Run(logger, "pin-integrity-worker", func() {
-					buf := make([]byte, swarm.SocMaxChunkSize)
-					for item := range iteratateItemsC {
-						if ctx.Err() != nil {
-							break
-						}
+				buf := make([]byte, swarm.SocMaxChunkSize)
+				for item := range iteratateItemsC {
+					if ctx.Err() != nil {
+						break
+					}
+					safe.Run(logger, "pin-integrity-worker", func() {
 						if !validChunk(item, buf[:item.Location.Length]) {
 							invalid.Add(1)
 						}
-					}
-				})
+					})
+				}
 			})
 		}
 
