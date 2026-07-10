@@ -82,6 +82,9 @@ func (s *store) Get(overlay swarm.Address) (*bzz.Address, bool, error) {
 		}
 		return nil, false, err
 	}
+	if v.Address == nil {
+		return nil, false, ErrNotFound
+	}
 	return v.Address, v.Verified, nil
 }
 
