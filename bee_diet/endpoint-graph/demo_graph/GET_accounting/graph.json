@@ -1,0 +1,272 @@
+{
+  "endpoint": {
+    "mount": "mountBusinessDebug",
+    "method": "GET",
+    "path": "/accounting",
+    "path_v1": "/v1/accounting",
+    "handler": "accountingInfoHandler",
+    "middlewares": [
+      "checkRouteAvailability"
+    ]
+  },
+  "nodes": [
+    {
+      "id": "n:pkg/accounting.__github.com/ethersphere/bee/v2/pkg/accounting.Accounting_.Balance:cap:pkg/storage.StateStorer.Get",
+      "type": "capability",
+      "label": "pkg/storage.StateStorer.Get ← pkg/accounting.(*github.com/ethersphere/bee/v2/pkg/accounting.Accounting).Balance",
+      "layer": "call",
+      "package": "pkg/storage",
+      "interface": "storage.StateStorer",
+      "method": "Get",
+      "op": "read",
+      "metadata": {
+        "caller": "pkg/accounting.(*github.com/ethersphere/bee/v2/pkg/accounting.Accounting).Balance"
+      }
+    },
+    {
+      "id": "n:pkg/accounting.__github.com/ethersphere/bee/v2/pkg/accounting.Accounting_.SurplusBalance:cap:pkg/storage.StateStorer.Get",
+      "type": "capability",
+      "label": "pkg/storage.StateStorer.Get ← pkg/accounting.(*github.com/ethersphere/bee/v2/pkg/accounting.Accounting).SurplusBalance",
+      "layer": "call",
+      "package": "pkg/storage",
+      "interface": "storage.StateStorer",
+      "method": "Get",
+      "op": "read",
+      "metadata": {
+        "caller": "pkg/accounting.(*github.com/ethersphere/bee/v2/pkg/accounting.Accounting).SurplusBalance"
+      }
+    },
+    {
+      "id": "n:pkg/api.accountingInfoHandler:cap:pkg/accounting.Interface.PeerAccounting",
+      "type": "capability",
+      "label": "pkg/accounting.Interface.PeerAccounting ← pkg/api.accountingInfoHandler",
+      "layer": "call",
+      "package": "pkg/accounting",
+      "interface": "accounting.Interface",
+      "method": "PeerAccounting",
+      "field": "accounting",
+      "op": "read",
+      "metadata": {
+        "caller": "pkg/api.accountingInfoHandler",
+        "field": "accounting"
+      }
+    },
+    {
+      "id": "n:pkg/api.accountingInfoHandler:field:pkg/accounting.s.accounting",
+      "type": "service_field",
+      "label": "pkg/accounting.s.accounting ← pkg/api.accountingInfoHandler",
+      "layer": "call",
+      "package": "pkg/accounting",
+      "interface": "accounting.Interface",
+      "field": "accounting",
+      "metadata": {
+        "caller": "pkg/api.accountingInfoHandler",
+        "field": "accounting"
+      }
+    },
+    {
+      "id": "handler:accountingInfoHandler",
+      "type": "handler",
+      "label": "pkg/api.accountingInfoHandler",
+      "layer": "route",
+      "package": "pkg/api"
+    },
+    {
+      "id": "route:GET /accounting",
+      "type": "route",
+      "label": "GET /accounting",
+      "layer": "route",
+      "metadata": {
+        "mount": "mountBusinessDebug"
+      }
+    },
+    {
+      "id": "n:pkg/accounting.Interface.PeerAccounting:wiring:pkg/accounting",
+      "type": "implementation",
+      "label": "pkg/accounting ← pkg/accounting.Interface.PeerAccounting",
+      "layer": "wiring",
+      "package": "pkg/accounting",
+      "metadata": {
+        "caller": "pkg/accounting.Interface.PeerAccounting",
+        "constructor": "pkg/accounting.NewAccounting"
+      }
+    },
+    {
+      "id": "n:pkg/storage.StateStorer.Get:backend:disk_statestore",
+      "type": "backend",
+      "label": "disk:statestore ← pkg/storage.StateStorer.Get",
+      "layer": "wiring",
+      "metadata": {
+        "caller": "pkg/storage.StateStorer.Get"
+      }
+    },
+    {
+      "id": "n:pkg/storage.StateStorer.Get:wiring:pkg/statestore/storeadapter",
+      "type": "implementation",
+      "label": "pkg/statestore/storeadapter ← pkg/storage.StateStorer.Get",
+      "layer": "wiring",
+      "package": "pkg/statestore/storeadapter",
+      "metadata": {
+        "caller": "pkg/storage.StateStorer.Get",
+        "constructor": "pkg/node.InitStateStore"
+      }
+    },
+    {
+      "id": "n:pkg/storage.StateStorer.Get:wiring:pkg/storage/cache",
+      "type": "implementation",
+      "label": "pkg/storage/cache ← pkg/storage.StateStorer.Get",
+      "layer": "wiring",
+      "package": "pkg/storage/cache",
+      "metadata": {
+        "caller": "pkg/storage.StateStorer.Get",
+        "constructor": "pkg/node.InitStateStore"
+      }
+    },
+    {
+      "id": "n:pkg/storage.StateStorer.Get:wiring:pkg/storage/leveldbstore",
+      "type": "implementation",
+      "label": "pkg/storage/leveldbstore ← pkg/storage.StateStorer.Get",
+      "layer": "wiring",
+      "package": "pkg/storage/leveldbstore",
+      "metadata": {
+        "caller": "pkg/storage.StateStorer.Get",
+        "constructor": "pkg/node.InitStateStore"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "handler:accountingInfoHandler",
+      "to": "n:pkg/api.accountingInfoHandler:field:pkg/accounting.s.accounting",
+      "kind": "uses",
+      "branch": "success"
+    },
+    {
+      "from": "n:pkg/accounting.Interface.PeerAccounting:wiring:pkg/accounting",
+      "to": "n:pkg/accounting.__github.com/ethersphere/bee/v2/pkg/accounting.Accounting_.Balance:cap:pkg/storage.StateStorer.Get",
+      "kind": "invokes",
+      "branch": "success"
+    },
+    {
+      "from": "n:pkg/accounting.Interface.PeerAccounting:wiring:pkg/accounting",
+      "to": "n:pkg/accounting.__github.com/ethersphere/bee/v2/pkg/accounting.Accounting_.SurplusBalance:cap:pkg/storage.StateStorer.Get",
+      "kind": "invokes",
+      "branch": "success"
+    },
+    {
+      "from": "n:pkg/accounting.__github.com/ethersphere/bee/v2/pkg/accounting.Accounting_.Balance:cap:pkg/storage.StateStorer.Get",
+      "to": "n:pkg/storage.StateStorer.Get:wiring:pkg/statestore/storeadapter",
+      "kind": "resolves"
+    },
+    {
+      "from": "n:pkg/accounting.__github.com/ethersphere/bee/v2/pkg/accounting.Accounting_.SurplusBalance:cap:pkg/storage.StateStorer.Get",
+      "to": "n:pkg/storage.StateStorer.Get:wiring:pkg/statestore/storeadapter",
+      "kind": "resolves"
+    },
+    {
+      "from": "n:pkg/api.accountingInfoHandler:cap:pkg/accounting.Interface.PeerAccounting",
+      "to": "n:pkg/accounting.Interface.PeerAccounting:wiring:pkg/accounting",
+      "kind": "resolves"
+    },
+    {
+      "from": "n:pkg/api.accountingInfoHandler:field:pkg/accounting.s.accounting",
+      "to": "n:pkg/api.accountingInfoHandler:cap:pkg/accounting.Interface.PeerAccounting",
+      "kind": "invokes",
+      "branch": "success"
+    },
+    {
+      "from": "n:pkg/storage.StateStorer.Get:wiring:pkg/statestore/storeadapter",
+      "to": "n:pkg/storage.StateStorer.Get:wiring:pkg/storage/cache",
+      "kind": "resolves"
+    },
+    {
+      "from": "n:pkg/storage.StateStorer.Get:wiring:pkg/storage/cache",
+      "to": "n:pkg/storage.StateStorer.Get:wiring:pkg/storage/leveldbstore",
+      "kind": "resolves"
+    },
+    {
+      "from": "n:pkg/storage.StateStorer.Get:wiring:pkg/storage/leveldbstore",
+      "to": "n:pkg/storage.StateStorer.Get:backend:disk_statestore",
+      "kind": "uses_backend"
+    },
+    {
+      "from": "route:GET /accounting",
+      "to": "handler:accountingInfoHandler",
+      "kind": "wraps"
+    }
+  ],
+  "capability_packages": [
+    "pkg/accounting",
+    "pkg/api",
+    "pkg/bigint",
+    "pkg/jsonhttp",
+    "pkg/statestore/storeadapter",
+    "pkg/storage",
+    "pkg/storage/cache",
+    "pkg/storage/leveldbstore",
+    "pkg/swarm"
+  ],
+  "direct_calls": true,
+  "entity_projection": {
+    "nodes": [
+      {
+        "id": "entity:field:accounting",
+        "label": "s.accounting",
+        "package": "pkg/accounting",
+        "interface": "accounting.Interface",
+        "field": "accounting",
+        "impl": "pkg/accounting",
+        "methods": [
+          "PeerAccounting"
+        ],
+        "metadata": {
+          "resolution": "wiring"
+        }
+      },
+      {
+        "id": "entity:impl:pkg/statestore/storeadapter",
+        "label": "pkg/statestore/storeadapter",
+        "package": "pkg/statestore/storeadapter",
+        "interface": "storage.StateStorer",
+        "impl": "pkg/statestore/storeadapter",
+        "methods": [
+          "Get"
+        ],
+        "metadata": {
+          "resolution": "wiring"
+        }
+      },
+      {
+        "id": "entity:runtime:api",
+        "label": "pkg/api",
+        "package": "pkg/api"
+      }
+    ],
+    "edges": [
+      {
+        "from": "entity:field:accounting",
+        "to": "entity:impl:pkg/statestore/storeadapter",
+        "kind": "depends_on",
+        "methods": [
+          "Get"
+        ],
+        "branch": "success",
+        "metadata": {
+          "resolution": "wiring"
+        }
+      },
+      {
+        "from": "entity:runtime:api",
+        "to": "entity:field:accounting",
+        "kind": "depends_on",
+        "methods": [
+          "PeerAccounting"
+        ],
+        "branch": "success",
+        "metadata": {
+          "resolution": "wiring"
+        }
+      }
+    ]
+  }
+}
