@@ -6,7 +6,7 @@ Bee has more than a hundred packages — too large to map by hand. LLM output de
 
 `endpoint-graph` walks the code statically (SSA + AST) and builds a **reproducible** graph: which bee entities are reached from a handler or entry point, via which fields and interfaces.
 
-![GET /accounting dependency graph](demo_graph/GET_accounting/graph.svg)
+![mountBusinessDebug endpoints dependency graph](demo_graph/mountBusinessDebug/merged.svg)
 
 ## What this tool does
 
