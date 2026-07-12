@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethersphere/bee/v2/contracts/client"
 	chaincfg "github.com/ethersphere/bee/v2/pkg/config"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/node"
@@ -32,6 +33,8 @@ const (
 	optionNamePassword                     = "password"
 	optionNamePasswordFile                 = "password-file"
 	optionNameAPIAddr                      = "api-addr"
+	optionNameStorageContractAddr          = "storage-contract-addr"
+	optionNameStorageContractDisable       = "storage-contract-disable"
 	optionNameP2PAddr                      = "p2p-addr"
 	optionNameNATAddr                      = "nat-addr"
 	optionNameP2PWSEnable                  = "p2p-ws-enable"
@@ -278,6 +281,8 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNamePassword, "", "password for decrypting keys")
 	cmd.Flags().String(optionNamePasswordFile, "", "path to a file that contains password for decrypting keys")
 	cmd.Flags().String(optionNameAPIAddr, "127.0.0.1:1633", "HTTP API listen address")
+	cmd.Flags().String(optionNameStorageContractAddr, client.DefaultAddr, "storage contract gRPC listen address (envelope seam)")
+	cmd.Flags().Bool(optionNameStorageContractDisable, false, "disable storage contract gRPC and use storage interfaces directly")
 	cmd.Flags().String(optionNameP2PAddr, ":1634", "P2P listen address")
 	cmd.Flags().String(optionNameNATAddr, "", "NAT exposed address")
 	cmd.Flags().Bool(optionNameP2PWSEnable, false, "enable P2P WebSocket transport")

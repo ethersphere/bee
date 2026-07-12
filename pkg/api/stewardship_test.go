@@ -87,7 +87,7 @@ func TestStewardshipWithRedundancy(t *testing.T) {
 	var (
 		storerMock      = mockstorer.New()
 		localRetrieval  = &localRetriever{getter: storerMock.ChunkStore()}
-		s               = steward.New(storerMock, localRetrieval, storerMock.Cache())
+		s               = steward.New(storerMock, localRetrieval, storerMock.ChunkStore(), storerMock.Cache())
 		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer:  storerMock,
 			Logger:  log.Noop,

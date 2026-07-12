@@ -298,6 +298,8 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		Addr:                          c.config.GetString(optionNameP2PAddr),
 		AllowPrivateCIDRs:             c.config.GetBool(optionNameAllowPrivateCIDRs),
 		APIAddr:                       c.config.GetString(optionNameAPIAddr),
+		StorageContractAddr:           c.config.GetString(optionNameStorageContractAddr),
+		StorageContractDisabled:       c.config.GetBool(optionNameStorageContractDisable),
 		EnableWSS:                     c.config.GetBool(optionNameP2PWSSEnable),
 		WSSAddr:                       c.config.GetString(optionP2PWSSAddr),
 		AutoTLSStorageDir:             filepath.Join(c.config.GetString(optionNameDataDir), "autotls"),

@@ -57,7 +57,7 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	putter, err := s.storer.NewCollection(r.Context())
+	putter, err := s.envelopeNewCollection(r.Context())
 	if err != nil {
 		logger.Debug("pin root hash: failed to create collection", "error", err)
 		logger.Error(nil, "pin root hash: failed to create collection")
@@ -65,8 +65,8 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	getter := s.storer.Download(true)
-	traverser := traversal.New(getter, s.storer.Cache())
+	getter := s.envelopeDownload(true)
+	traverser := traversal.New(getter, s.envelopeCache())
 
 	sem := semaphore.NewWeighted(100)
 	var errTraverse error

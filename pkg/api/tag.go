@@ -167,7 +167,7 @@ func (s *Service) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	putter, err := s.storer.Upload(r.Context(), false, tag.TagID)
+	putter, err := s.envelopeUpload(r.Context(), false, tag.TagID)
 	if err != nil {
 		logger.Debug("get tag failed", "tag_id", paths.TagID, "error", err)
 		logger.Error(nil, "get tag failed", "tag_id", paths.TagID)

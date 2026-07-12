@@ -210,7 +210,7 @@ func (s *Service) bytesHeadHandler(w http.ResponseWriter, r *http.Request) {
 		address = v
 	}
 
-	getter := s.storer.Download(true)
+	getter := s.envelopeDownload(true)
 	ch, err := getter.Get(r.Context(), address)
 	if err != nil {
 		logger.Debug("get root chunk failed", "chunk_address", address, "error", err)

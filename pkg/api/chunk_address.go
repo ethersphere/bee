@@ -28,7 +28,7 @@ func (s *Service) hasChunkHandler(w http.ResponseWriter, r *http.Request) {
 		address = v
 	}
 
-	has, err := s.storer.ChunkStore().Has(r.Context(), address)
+	has, err := s.envelopeChunkStore().Has(r.Context(), address)
 	if err != nil {
 		logger.Debug("has chunk failed", "chunk_address", address, "error", err)
 		jsonhttp.BadRequest(w, err)

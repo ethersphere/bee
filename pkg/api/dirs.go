@@ -78,7 +78,7 @@ func (s *Service) dirUploadHandler(
 		dReader,
 		logger,
 		putter,
-		s.storer.ChunkStore(),
+		s.envelopeChunkStore(),
 		r.Header.Get(SwarmIndexDocumentHeader),
 		r.Header.Get(SwarmErrorDocumentHeader),
 		rLevel,

@@ -1,0 +1,214 @@
+// Bee diet experiment: storage seam between envelope and bee processes.
+// Based on pkg/storage/chunkstore.go and pkg/storage/statestore.go interfaces.
+syntax = "proto3";
+
+package bee.contracts.storage.v1;
+
+option go_package = "github.com/ethersphere/bee/v2/contracts/pb";
+
+// ChunkStore mirrors storage.ChunkStore / Getter / Putter / Deleter / Hasser / Replacer.
+service ChunkStore {
+  rpc Get(GetRequest) returns (GetResponse);
+  rpc Put(PutRequest) returns (PutResponse);
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+  rpc Has(HasRequest) returns (HasResponse);
+  rpc Replace(ReplaceRequest) returns (ReplaceResponse);
+  rpc Iterate(IterateRequest) returns (stream ChunkMessage);
+}
+
+// DirectUpload mirrors storer.NetStore.DirectUpload PutterSession over gRPC.
+service DirectUpload {
+  rpc Open(OpenDirectUploadRequest) returns (OpenDirectUploadResponse);
+  rpc Put(DirectUploadPutRequest) returns (PutResponse);
+  rpc PutStream(stream DirectUploadPutRequest) returns (PutResponse);
+  rpc PutBatch(DirectUploadPutBatchRequest) returns (PutResponse);
+  rpc PutBatchStream(stream DirectUploadPutBatchRequest) returns (PutResponse);
+  rpc Done(DirectUploadDoneRequest) returns (DirectUploadDoneResponse);
+  rpc Cleanup(DirectUploadCleanupRequest) returns (DirectUploadCleanupResponse);
+}
+
+message OpenDirectUploadRequest {}
+
+message OpenDirectUploadResponse {
+  uint64 session_id = 1;
+}
+
+message DirectUploadPutRequest {
+  uint64 session_id = 1;
+  ChunkMessage chunk = 2;
+}
+
+message DirectUploadPutBatchRequest {
+  uint64 session_id = 1;
+  repeated ChunkMessage chunks = 2;
+}
+
+message DirectUploadDoneRequest {
+  uint64 session_id = 1;
+  bytes reference = 2;
+}
+
+message DirectUploadDoneResponse {}
+
+message DirectUploadCleanupRequest {
+  uint64 session_id = 1;
+}
+
+message DirectUploadCleanupResponse {}
+
+// UploadStore mirrors storer.UploadStore.Upload PutterSession over gRPC.
+service UploadStore {
+  rpc Open(OpenUploadRequest) returns (OpenUploadResponse);
+  rpc Put(UploadPutRequest) returns (PutResponse);
+  rpc Done(UploadDoneRequest) returns (UploadDoneResponse);
+  rpc Cleanup(UploadCleanupRequest) returns (UploadCleanupResponse);
+}
+
+message OpenUploadRequest {
+  bool pin = 1;
+  uint64 tag_id = 2;
+}
+
+message OpenUploadResponse {
+  uint64 session_id = 1;
+}
+
+message UploadPutRequest {
+  uint64 session_id = 1;
+  ChunkMessage chunk = 2;
+}
+
+message UploadDoneRequest {
+  uint64 session_id = 1;
+  bytes reference = 2;
+}
+
+message UploadDoneResponse {}
+
+message UploadCleanupRequest {
+  uint64 session_id = 1;
+}
+
+message UploadCleanupResponse {}
+
+// PinStore mirrors storer.PinStore.NewCollection PutterSession over gRPC.
+service PinStore {
+  rpc Open(OpenPinRequest) returns (OpenPinResponse);
+  rpc Put(PinPutRequest) returns (PutResponse);
+  rpc Done(PinDoneRequest) returns (PinDoneResponse);
+  rpc Cleanup(PinCleanupRequest) returns (PinCleanupResponse);
+}
+
+message OpenPinRequest {}
+
+message OpenPinResponse {
+  uint64 session_id = 1;
+}
+
+message PinPutRequest {
+  uint64 session_id = 1;
+  ChunkMessage chunk = 2;
+}
+
+message PinDoneRequest {
+  uint64 session_id = 1;
+  bytes reference = 2;
+}
+
+message PinDoneResponse {}
+
+message PinCleanupRequest {
+  uint64 session_id = 1;
+}
+
+message PinCleanupResponse {}
+
+message ChunkMessage {
+  bytes address = 1;
+  bytes data = 2;
+  bytes stamp = 3;
+}
+
+message GetRequest {
+  bytes address = 1;
+  // When true, server uses NetStore.Download(cache=true) semantics.
+  bool cache_on_miss = 2;
+  // When true, server uses LocalStore.ChunkStore().Get (local-only lookup).
+  bool local_only = 3;
+}
+
+message GetResponse {
+  ChunkMessage chunk = 1;
+}
+
+message PutRequest {
+  ChunkMessage chunk = 1;
+}
+
+message PutResponse {}
+
+message DeleteRequest {
+  bytes address = 1;
+}
+
+message DeleteResponse {}
+
+message HasRequest {
+  bytes address = 1;
+}
+
+message HasResponse {
+  bool has = 1;
+}
+
+message ReplaceRequest {
+  ChunkMessage chunk = 1;
+  bool replace_with_newer = 2;
+}
+
+message ReplaceResponse {}
+
+message IterateRequest {}
+
+// StateStore mirrors storage.StateStorer (values as opaque bytes).
+service StateStore {
+  rpc Get(StateGetRequest) returns (StateGetResponse);
+  rpc Put(StatePutRequest) returns (StatePutResponse);
+  rpc Delete(StateDeleteRequest) returns (StateDeleteResponse);
+  rpc Iterate(StateIterateRequest) returns (stream StateEntry);
+  rpc Close(StateCloseRequest) returns (StateCloseResponse);
+}
+
+message StateGetRequest {
+  string key = 1;
+}
+
+message StateGetResponse {
+  bytes value = 1;
+}
+
+message StatePutRequest {
+  string key = 1;
+  bytes value = 2;
+}
+
+message StatePutResponse {}
+
+message StateDeleteRequest {
+  string key = 1;
+}
+
+message StateDeleteResponse {}
+
+message StateIterateRequest {
+  string prefix = 1;
+}
+
+message StateEntry {
+  string key = 1;
+  bytes value = 2;
+}
+
+message StateCloseRequest {}
+
+message StateCloseResponse {}

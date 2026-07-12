@@ -25,6 +25,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/v2/contracts/client"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/accounting"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
@@ -150,6 +151,7 @@ type PinIntegrity interface {
 
 type Service struct {
 	storer          Storer
+	envelopeStorage *client.Client
 	resolver        resolver.Interface
 	pss             pss.Interface
 	gsoc            gsoc.Listener
@@ -268,6 +270,7 @@ type ExtraOptions struct {
 	SyncStatus      func() (bool, error)
 	NodeStatus      *status.Service
 	PinIntegrity    PinIntegrity
+	EnvelopeStorage *client.Client
 }
 
 func New(
@@ -337,6 +340,10 @@ func (s *Service) Configure(signer crypto.Signer, tracer *tracing.Tracer, o Opti
 	s.quit = make(chan struct{})
 
 	s.storer = e.Storer
+	s.envelopeStorage = e.EnvelopeStorage
+	if s.envelopeStorage != nil {
+		s.logger.Info("envelope storage seam enabled", "transport", "grpc", "grep", "storage contract grpc")
+	}
 	s.resolver = e.Resolver
 	s.pss = e.Pss
 	s.gsoc = e.Gsoc
@@ -808,7 +815,9 @@ func (s *Service) newStamperPutter(ctx context.Context, opts putterOptions) (sto
 	}
 
 	var session storer.PutterSession
-	if opts.Deferred || opts.Pin {
+	if s.envelopeStorage != nil {
+		session, err = s.envelopeStamperPutter(ctx, opts)
+	} else if opts.Deferred || opts.Pin {
 		session, err = s.storer.Upload(ctx, opts.Pin, opts.TagID)
 	} else {
 		session = s.storer.DirectUpload()
@@ -837,15 +846,22 @@ func (s *Service) newStampedPutter(ctx context.Context, opts putterOptions, stam
 // newStampedPutterWithBatch creates a stamped putter using a pre-fetched batch.
 // This avoids the database lookup when batch info is already cached.
 func (s *Service) newStampedPutterWithBatch(ctx context.Context, opts putterOptions, stamp *postage.Stamp, storedBatch *postage.Batch) (storer.PutterSession, error) {
-	var session storer.PutterSession
-	var err error
-	if opts.Deferred || opts.Pin {
+	var (
+		session storer.PutterSession
+		err     error
+	)
+	if s.envelopeStorage != nil {
+		session, err = s.envelopeStamperPutter(ctx, opts)
+	} else if opts.Deferred || opts.Pin {
 		session, err = s.storer.Upload(ctx, opts.Pin, opts.TagID)
 		if err != nil {
 			return nil, fmt.Errorf("failed creating session: %w", err)
 		}
 	} else {
 		session = s.storer.DirectUpload()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed creating session: %w", err)
 	}
 
 	stamper := postage.NewPresignedStamper(stamp, storedBatch.Owner)

@@ -45,7 +45,7 @@ func TestSteward(t *testing.T) {
 		chunkStore     = inmem
 		store          = mockstorer.NewWithChunkStore(chunkStore)
 		localRetrieval = &localRetriever{ChunkStore: chunkStore}
-		s              = steward.New(store, localRetrieval, inmem)
+		s              = steward.New(store, localRetrieval, inmem, inmem)
 		stamper        = postagetesting.NewStamper()
 	)
 	n, err := rand.Read(data)

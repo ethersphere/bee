@@ -282,7 +282,7 @@ func (s *Service) socGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	getter := s.storer.Download(true)
+	getter := s.envelopeDownload(true)
 	sch, err := getter.Get(r.Context(), address)
 	if err != nil {
 		logger.Error(err, "soc retrieval has been failed")

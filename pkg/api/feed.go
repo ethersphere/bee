@@ -100,7 +100,7 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wc, feedVer, err := s.resolveFeed(r.Context(), s.storer.Download(false), ch)
+	wc, feedVer, err := s.resolveFeed(r.Context(), s.envelopeDownload(false), ch)
 	if err != nil {
 		logger.Error(nil, "wrapped chunk cannot be retrieved")
 		jsonhttp.NotFound(w, "wrapped chunk cannot be retrieved")
@@ -233,7 +233,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		logger:         logger,
 	}
 
-	l := loadsave.New(s.storer.ChunkStore(), s.storer.Cache(), requestPipelineFactory(r.Context(), putter, false, rLevel), rLevel)
+	l := loadsave.New(s.envelopeChunkStore(), s.envelopeCache(), requestPipelineFactory(r.Context(), putter, false, rLevel), rLevel)
 	feedManifest, err := manifest.NewDefaultManifest(l, false)
 	if err != nil {
 		logger.Debug("create manifest failed", "error", err)

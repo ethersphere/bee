@@ -250,7 +250,7 @@ func (s *Service) fileUploadHandler(
 	}
 
 	factory := requestPipelineFactory(ctx, putter, encrypt, rLevel)
-	l := loadsave.New(s.storer.ChunkStore(), s.storer.Cache(), factory, rLevel)
+	l := loadsave.New(s.envelopeChunkStore(), s.envelopeCache(), factory, rLevel)
 
 	m, err := manifest.NewDefaultManifest(l, encrypt)
 	if err != nil {
@@ -536,7 +536,7 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 	}
 
 	ctx := r.Context()
-	ls := loadsave.NewReadonly(s.storer.Download(cache), s.storer.Cache(), rLevel)
+	ls := loadsave.NewReadonly(s.envelopeDownload(cache), s.envelopeCache(), rLevel)
 	feedDereferenced := false
 
 	ctx, err := getter.SetConfigInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout, logger)
@@ -579,7 +579,7 @@ FETCH:
 				return
 			}
 
-			wc, feedVer, err := s.resolveFeed(ctx, s.storer.Download(cache), ch)
+			wc, feedVer, err := s.resolveFeed(ctx, s.envelopeDownload(cache), ch)
 			if err != nil {
 				if errors.Is(err, feeds.ErrNotLegacyPayload) {
 					logger.Debug("bzz: download: feed is not a legacy payload")
@@ -601,7 +601,7 @@ FETCH:
 
 			address = wc.Address()
 			// modify ls and init with non-existing wrapped chunk
-			ls = loadsave.NewReadonlyWithRootCh(s.storer.Download(cache), s.storer.Cache(), wc, rLevel)
+			ls = loadsave.NewReadonlyWithRootCh(s.envelopeDownload(cache), s.envelopeCache(), wc, rLevel)
 			feedDereferenced = true
 			curBytes, err := cur.MarshalBinary()
 			if err != nil {
@@ -758,14 +758,16 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		rLevel = *headers.RLevel
 	}
 
+	s.logGrpcFileDownload(r.URL.Path, reference, cache)
+
 	var (
 		reader file.Joiner
 		l      int64
 	)
 	if rootCh != nil {
-		reader, l, err = joiner.NewJoiner(ctx, s.storer.Download(cache), s.storer.Cache(), reference, rootCh)
+		reader, l, err = joiner.NewJoiner(ctx, s.envelopeDownload(cache), s.envelopeCache(), reference, rootCh)
 	} else {
-		reader, l, err = joiner.New(ctx, s.storer.Download(cache), s.storer.Cache(), reference, rLevel)
+		reader, l, err = joiner.New(ctx, s.envelopeDownload(cache), s.envelopeCache(), reference, rLevel)
 	}
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) || errors.Is(err, topology.ErrNotFound) {

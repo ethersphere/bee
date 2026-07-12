@@ -26,6 +26,8 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/v2/contracts/client"
+	contractserver "github.com/ethersphere/bee/v2/contracts/server"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/accounting"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
@@ -126,6 +128,8 @@ type Bee struct {
 	shutdownMutex            sync.Mutex
 	syncingStopped           *syncutil.Signaler
 	accesscontrolCloser      io.Closer
+	storageContractCloser    io.Closer
+	envelopeStorageCloser    io.Closer
 	ethClientCloser          func()
 }
 
@@ -133,6 +137,8 @@ type Options struct {
 	Addr                          string
 	AllowPrivateCIDRs             bool
 	APIAddr                       string
+	StorageContractAddr           string
+	StorageContractDisabled       bool
 	EnableWSS                     bool
 	WSSAddr                       string
 	AutoTLSStorageDir             string
@@ -1334,8 +1340,56 @@ func NewBee(
 	)
 	b.resolverCloser = multiResolver
 
-	feedFactory := factory.New(localStore.Download(true))
-	steward := steward.New(localStore, retrieval, localStore.Cache())
+	var envelopeClient *client.Client
+	feedGetter := localStore.Download(true)
+	stewardNetStore := storer.NetStore(localStore)
+	stewardGetter := localStore.Download(true)
+	stewardPutter := localStore.Cache()
+
+	if !o.StorageContractDisabled {
+		storageContractAddr := o.StorageContractAddr
+		if storageContractAddr == "" {
+			storageContractAddr = client.DefaultAddr
+		}
+
+		storageContractSrv := contractserver.New(contractserver.Config{
+			ListenAddr:  storageContractAddr,
+			NetStore:    localStore,
+			CacheStore:  localStore,
+			LocalStore:  localStore,
+			UploadStore: localStore,
+			PinStore:    localStore,
+			StateStore:  stateStore,
+			Logger:      logger,
+		})
+		go func() {
+			if err := storageContractSrv.ListenAndServe(); err != nil {
+				logger.Error(err, "storage contract gRPC server stopped")
+			}
+		}()
+
+		for range 50 {
+			envelopeClient, err = client.Dial(storageContractAddr, logger.WithName("storage_contract_client").Build())
+			if err == nil {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("dial storage contract client: %w", err)
+		}
+		b.envelopeStorageCloser = envelopeClient
+		b.storageContractCloser = storageContractSrv
+		feedGetter = envelopeClient.Download(true)
+		stewardNetStore = envelopeClient.AsNetStore(localStore)
+		stewardGetter = envelopeClient.Download(true)
+		stewardPutter = envelopeClient.Cache()
+	} else {
+		logger.Info("storage contract gRPC disabled; using storage interfaces directly")
+	}
+
+	feedFactory := factory.New(feedGetter)
+	steward := steward.New(stewardNetStore, retrieval, stewardGetter, stewardPutter)
 
 	extraOpts := api.ExtraOptions{
 		Pingpong:        pingPong,
@@ -1359,6 +1413,7 @@ func NewBee(
 		SyncStatus:      syncStatusFn,
 		NodeStatus:      nodeStatus,
 		PinIntegrity:    localStore.PinIntegrity(),
+		EnvelopeStorage: envelopeClient,
 	}
 
 	if o.APIAddr != "" {
@@ -1548,6 +1603,8 @@ func (b *Bee) Shutdown() error {
 		b.ethClientCloser()
 	}
 
+	tryClose(b.envelopeStorageCloser, "envelope storage client")
+	tryClose(b.storageContractCloser, "storage contract server")
 	tryClose(b.accesscontrolCloser, "accesscontrol")
 	tryClose(b.tracerCloser, "tracer")
 	tryClose(b.topologyCloser, "topology driver")

@@ -133,7 +133,7 @@ func (s *Service) actDecryptionHandler() func(h http.Handler) http.Handler {
 			}
 
 			ctx := r.Context()
-			ls := loadsave.NewReadonly(s.storer.Download(cache), s.storer.Cache(), rLevel)
+			ls := loadsave.NewReadonly(s.envelopeDownload(cache), s.envelopeCache(), rLevel)
 			reference, err := s.accesscontrol.DownloadHandler(ctx, ls, paths.Address, headers.Publisher, *headers.HistoryAddress, timestamp)
 			if err != nil {
 				logger.Debug("access control download failed", "error", err)
@@ -167,7 +167,7 @@ func (s *Service) actEncryptionHandler(
 	rLevel redundancy.Level,
 ) (swarm.Address, swarm.Address, error) {
 	publisherPublicKey := &s.publicKey
-	ls := loadsave.New(s.storer.Download(true), s.storer.Cache(), requestPipelineFactory(ctx, putter, false, redundancy.NONE), rLevel)
+	ls := loadsave.New(s.envelopeDownload(true), s.envelopeCache(), requestPipelineFactory(ctx, putter, false, redundancy.NONE), rLevel)
 	storageReference, historyReference, encryptedReference, err := s.accesscontrol.UploadHandler(ctx, ls, reference, publisherPublicKey, historyRootHash)
 	if err != nil {
 		return swarm.ZeroAddress, swarm.ZeroAddress, err
@@ -219,7 +219,7 @@ func (s *Service) actListGranteesHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	publisher := &s.publicKey
-	ls := loadsave.NewReadonly(s.storer.Download(cache), s.storer.Cache(), rLevel)
+	ls := loadsave.NewReadonly(s.envelopeDownload(cache), s.envelopeCache(), rLevel)
 	grantees, err := s.accesscontrol.Get(r.Context(), ls, publisher, paths.GranteesAddress)
 	if err != nil {
 		logger.Debug("could not get grantees", "error", err)
@@ -363,8 +363,8 @@ func (s *Service) actGrantRevokeHandler(w http.ResponseWriter, r *http.Request) 
 
 	granteeref := paths.GranteesAddress
 	publisher := &s.publicKey
-	ls := loadsave.New(s.storer.Download(true), s.storer.Cache(), requestPipelineFactory(ctx, putter, false, redundancy.NONE), rLevel)
-	gls := loadsave.New(s.storer.Download(true), s.storer.Cache(), requestPipelineFactory(ctx, putter, granteeListEncrypt, redundancy.NONE), rLevel)
+	ls := loadsave.New(s.envelopeDownload(true), s.envelopeCache(), requestPipelineFactory(ctx, putter, false, redundancy.NONE), rLevel)
+	gls := loadsave.New(s.envelopeDownload(true), s.envelopeCache(), requestPipelineFactory(ctx, putter, granteeListEncrypt, redundancy.NONE), rLevel)
 	granteeref, encryptedglref, historyref, actref, err := s.accesscontrol.UpdateHandler(ctx, ls, gls, granteeref, historyAddress, publisher, grantees.Addlist, grantees.Revokelist)
 	if err != nil {
 		logger.Debug("failed to update grantee list", "error", err)
@@ -521,8 +521,8 @@ func (s *Service) actCreateGranteesHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	publisher := &s.publicKey
-	ls := loadsave.New(s.storer.Download(true), s.storer.Cache(), requestPipelineFactory(ctx, putter, false, redundancy.NONE), rLevel)
-	gls := loadsave.New(s.storer.Download(true), s.storer.Cache(), requestPipelineFactory(ctx, putter, granteeListEncrypt, redundancy.NONE), rLevel)
+	ls := loadsave.New(s.envelopeDownload(true), s.envelopeCache(), requestPipelineFactory(ctx, putter, false, redundancy.NONE), rLevel)
+	gls := loadsave.New(s.envelopeDownload(true), s.envelopeCache(), requestPipelineFactory(ctx, putter, granteeListEncrypt, redundancy.NONE), rLevel)
 	granteeref, encryptedglref, historyref, actref, err := s.accesscontrol.UpdateHandler(ctx, ls, gls, swarm.ZeroAddress, historyAddress, publisher, list, nil)
 	if err != nil {
 		logger.Debug("failed to create grantee list", "error", err)
