@@ -43,7 +43,8 @@ func Run(logger log.Logger, name string, fn func()) {
 
 // RunFunc returns a function wrapped with panic recovery, suitable for use in errgroup.Go.
 // Panics are logged using the provided logger (if non-nil), and the returned function returns a non-nil error.
-// If the recovered value implements error, it is wrapped using %w to preserve error type checking.
+// Do not try to "unwrap" r to an error, since it is a panic and we don't
+// want to lose the fact that it was a panic.
 func RunFunc(logger log.Logger, name string, fn func() error) func() error {
 	return func() (err error) {
 		defer func() {
@@ -51,11 +52,9 @@ func RunFunc(logger log.Logger, name string, fn func() error) func() error {
 				if logger != nil {
 					logger.Error(nil, "errgroup goroutine panic recovered", "name", name, "panic", fmt.Sprintf("%v", r), "stack", string(debug.Stack()))
 				}
-				if panicErr, ok := r.(error); ok {
-					err = fmt.Errorf("panic in %s: %w", name, panicErr)
-				} else {
-					err = fmt.Errorf("panic in %s: %v", name, r)
-				}
+				// Do not try to "unwrap" r to an error, since it is a panic and we don't
+				// want to lose the fact that it was a panic.
+				err = fmt.Errorf("panic in %s: %v", name, r)
 			}
 		}()
 		return fn()

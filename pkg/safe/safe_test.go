@@ -132,7 +132,7 @@ func TestRunFunc(t *testing.T) {
 		}
 	})
 
-	t.Run("with panic error wrapping", func(t *testing.T) {
+	t.Run("with panic error no wrapping", func(t *testing.T) {
 		logger := &mockLogger{logged: make(chan struct{})}
 
 		type customErr struct {
@@ -147,7 +147,7 @@ func TestRunFunc(t *testing.T) {
 		err := wrapped()
 		if err == nil {
 			t.Error("expected non-nil error from panic recovery, got nil")
-		} else if !errors.Is(err, sentinelErr) {
+		} else if errors.Is(err, sentinelErr) {
 			t.Errorf("expected wrapped error to be errors.Is sentinelErr, got %v", err)
 		}
 	})

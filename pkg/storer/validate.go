@@ -333,11 +333,13 @@ func (p *PinIntegrity) Check(ctx context.Context, logger log.Logger, pin string,
 					if ctx.Err() != nil {
 						break
 					}
+					var isValid bool
 					safe.Run(logger, "pin-integrity-worker", func() {
-						if !validChunk(item, buf[:item.Location.Length]) {
-							invalid.Add(1)
-						}
+						isValid = validChunk(item, buf[:item.Location.Length])
 					})
+					if !isValid {
+						invalid.Add(1)
+					}
 				}
 			})
 		}
