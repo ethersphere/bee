@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"sync"
 	"testing"
 	"time"
 
@@ -416,6 +417,99 @@ func TestListener(t *testing.T) {
 		}
 	})
 }
+
+// TestListenerPageSize verifies that the block paging window is selected based
+// on the backend: a plain backend pages by blockPage, while a backend that also
+// exposes GetBatchSnapshot (the snapshot filterer) pages by blockPageSnapshot.
+func TestListenerPageSize(t *testing.T) {
+	t.Parallel()
+
+	// well above both page sizes so the first iteration is always capped by paging
+	const blockNumber = uint64(200000)
+
+	firstPageTo := func(t *testing.T, mkFilterer func(*pageCaptureFilterer) listener.BlockHeightContractFilterer) uint64 {
+		t.Helper()
+
+		base := &pageCaptureFilterer{
+			blockNumber: blockNumber,
+			firstTo:     make(chan uint64, 1),
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		l := listener.New(
+			nil,
+			log.Noop,
+			mkFilterer(base),
+			postageStampContractAddress,
+			postageStampContractABI,
+			1,
+			stallingTimeout,
+			backoffTime,
+		)
+		testutil.CleanupCloser(t, l)
+
+		go l.Listen(ctx, 0, newEventUpdaterMock())
+
+		select {
+		case to := <-base.firstTo:
+			cancel() // unblock FilterLogs and let the listener shut down cleanly
+			return to
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for first FilterLogs call")
+			return 0
+		}
+	}
+
+	t.Run("standard backend uses block page", func(t *testing.T) {
+		to := firstPageTo(t, func(f *pageCaptureFilterer) listener.BlockHeightContractFilterer {
+			return f
+		})
+		if want := listener.BlockPage - 1; to != want {
+			t.Fatalf("first page ToBlock mismatch: got %d want %d", to, want)
+		}
+	})
+
+	t.Run("snapshot backend uses snapshot page", func(t *testing.T) {
+		to := firstPageTo(t, func(f *pageCaptureFilterer) listener.BlockHeightContractFilterer {
+			return snapshotPageCaptureFilterer{f}
+		})
+		if want := listener.BlockPageSnapshot - 1; to != want {
+			t.Fatalf("first page ToBlock mismatch: got %d want %d", to, want)
+		}
+	})
+}
+
+// pageCaptureFilterer records the ToBlock of the first FilterLogs call so the
+// chosen paging window can be asserted.
+type pageCaptureFilterer struct {
+	blockNumber uint64
+	firstTo     chan uint64
+	once        sync.Once
+}
+
+func (f *pageCaptureFilterer) BlockNumber(context.Context) (uint64, error) {
+	return f.blockNumber, nil
+}
+
+func (f *pageCaptureFilterer) FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error) {
+	f.once.Do(func() {
+		f.firstTo <- q.ToBlock.Uint64()
+	})
+	// block until shutdown so only the first page is observed and the listener
+	// exits via the context-canceled path without paging to completion
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+// snapshotPageCaptureFilterer additionally exposes GetBatchSnapshot, matching the
+// interface the listener type-asserts against to detect a snapshot backend.
+type snapshotPageCaptureFilterer struct {
+	*pageCaptureFilterer
+}
+
+func (snapshotPageCaptureFilterer) GetBatchSnapshot() []byte { return nil }
 
 func newEventUpdaterMock() *updater {
 	return &updater{

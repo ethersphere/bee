@@ -20,7 +20,6 @@ import (
 	"time"
 
 	ocprom "contrib.go.opencensus.io/exporter/prometheus"
-	"github.com/coreos/go-semver/semver"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
@@ -608,7 +607,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		s.logger.Debug("stream handler: handshake: build remote multiaddrs", "peer_id", peerID, "error", err)
 		s.logger.Error(nil, "stream handler: handshake: build remote multiaddrs", "peer_id", peerID)
 		_ = handshakeStream.Reset()
-		_ = s.host.Network().ClosePeer(peerID)
+		_ = stream.Conn().Close()
 		return
 	}
 
@@ -623,24 +622,21 @@ func (s *Service) handleIncoming(stream network.Stream) {
 			s.logger.Debug("stream handler: handshake: build remote multiaddrs fallback", "peer_id", peerID, "error", err)
 			s.logger.Error(nil, "stream handler: handshake: build remote multiaddrs fallback", "peer_id", peerID)
 			_ = handshakeStream.Reset()
-			_ = s.host.Network().ClosePeer(peerID)
+			_ = stream.Conn().Close()
 			return
 		}
 	}
-
-	bee260Compat := s.bee260BackwardCompatibility(peerID)
 
 	i, err := s.handshakeService.Handle(
 		s.ctx,
 		handshakeStream,
 		observedAddrs,
-		handshake.WithBee260Compatibility(bee260Compat),
 	)
 	if err != nil {
 		s.logger.Debug("stream handler: handshake: handle failed", "peer_id", peerID, "error", err)
 		s.logger.Error(nil, "stream handler: handshake: handle failed", "peer_id", peerID)
 		_ = handshakeStream.Reset()
-		_ = s.host.Network().ClosePeer(peerID)
+		_ = stream.Conn().Close()
 		return
 	}
 
@@ -773,17 +769,28 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	s.logger.Debug("stream handler: successfully connected to peer (inbound)", "address", i.BzzAddress.Overlay, "light", i.LightString(), "user_agent", peerUserAgent)
 }
 
-// putHandshakeAddress persists a peer's BzzAddress from the handshake.
-// Timestamp and chequebook validation have already run in the handshake; here
-// we only need to perform the atomic registry-plus-addressbook write.
+// putHandshakeAddress persists a peer's BzzAddress, already validated by the
+// handshake, as an atomic registry-plus-addressbook write. The addressbook
+// write is skipped when the stored record is identical and verified, so
+// steady-state reconnects cost no disk write.
 func (s *Service) putHandshakeAddress(addr *bzz.Address) error {
+	existing, verified, err := s.addressbook.Get(addr.Overlay)
+	if err != nil && !errors.Is(err, addressbook.ErrNotFound) {
+		return fmt.Errorf("addressbook get: %w", err)
+	}
+	unchanged := err == nil && verified && existing.Equal(addr)
+
 	if s.chequebookStorer != nil {
 		// The addressbook write is passed as a callback so it runs under the
 		// registry's mutex, keeping the in-memory registry and on-disk addressbook
 		// in sync if gossip and a direct handshake race for the same peer.
+		var writeAddressbook func() error
+		if !unchanged {
+			writeAddressbook = func() error { return s.addressbook.Put(addr.Overlay, *addr, true) }
+		}
 		if err := s.chequebookStorer.Put(
 			addr.Overlay, addr.ChequebookAddress, addr.Timestamp, bzz.TimestampSourceHandshake,
-			func() error { return s.addressbook.Put(addr.Overlay, *addr, true) },
+			writeAddressbook,
 		); err != nil {
 			// Concurrent ingestion (e.g. gossip) may have advanced the
 			// stored record between the handshake's stale check and this
@@ -797,6 +804,11 @@ func (s *Service) putHandshakeAddress(addr *bzz.Address) error {
 		}
 		return nil
 	}
+
+	if unchanged {
+		return nil
+	}
+
 	return s.addressbook.Put(addr.Overlay, *addr, true)
 }
 
@@ -1109,7 +1121,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 	peerAddrs, err := s.peerMultiaddrs(ctx, peerID)
 	if err != nil {
 		_ = handshakeStream.Reset()
-		_ = s.host.Network().ClosePeer(peerID)
+		_ = stream.Conn().Close()
 		return nil, fmt.Errorf("build peer multiaddrs: %w", err)
 	}
 
@@ -1118,28 +1130,25 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		observedAddrs, err = buildFullMAs([]ma.Multiaddr{stream.Conn().RemoteMultiaddr()}, peerID)
 		if err != nil {
 			_ = handshakeStream.Reset()
-			_ = s.host.Network().ClosePeer(peerID)
+			_ = stream.Conn().Close()
 			return nil, fmt.Errorf("build peer multiaddrs fallback: %w", err)
 		}
 	}
-
-	bee260Compat := s.bee260BackwardCompatibility(peerID)
 
 	i, err := s.handshakeService.Handshake(
 		s.ctx,
 		handshakeStream,
 		observedAddrs,
-		handshake.WithBee260Compatibility(bee260Compat),
 	)
 	if err != nil {
 		_ = handshakeStream.Reset()
-		_ = s.host.Network().ClosePeer(info.ID)
+		_ = stream.Conn().Close()
 		return nil, fmt.Errorf("handshake: %w", err)
 	}
 
 	if !i.FullNode {
 		_ = handshakeStream.Reset()
-		_ = s.host.Network().ClosePeer(info.ID)
+		_ = stream.Conn().Close()
 		return nil, p2p.ErrDialLightNode
 	}
 
@@ -1150,7 +1159,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		s.logger.Debug("blocklisting: exists failed", "peer_id", info.ID, "error", err)
 		s.logger.Error(nil, "internal error while connecting with peer", "peer_id", info.ID)
 		_ = handshakeStream.Reset()
-		_ = s.host.Network().ClosePeer(info.ID)
+		_ = stream.Conn().Close()
 		return nil, err
 	}
 
@@ -1163,7 +1172,8 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 
 	if exists := s.peers.addIfNotExists(stream.Conn(), overlay, i.FullNode); exists {
 		if err := handshakeStream.FullClose(); err != nil {
-			_ = s.Disconnect(overlay, "failed closing handshake stream after connect")
+			// Only close the new (duplicate) connection; keep existing healthy sessions intact.
+			_ = stream.Conn().Close()
 			return nil, fmt.Errorf("peer exists, full close: %w", err)
 		}
 
@@ -1534,45 +1544,6 @@ func (s *Service) peerMultiaddrs(ctx context.Context, peerID libp2ppeer.ID) ([]m
 	mas := waitPeerAddrs(waitPeersCtx, s.host.Peerstore(), peerID)
 
 	return buildFullMAs(mas, peerID)
-}
-
-// IsBee260 implements p2p.Bee260CompatibilityStreamer interface.
-// It checks if a peer is running Bee version older than 2.7.0.
-func (s *Service) IsBee260(overlay swarm.Address) bool {
-	peerID, found := s.peers.peerID(overlay)
-	if !found {
-		return false
-	}
-	return s.bee260BackwardCompatibility(peerID)
-}
-
-var version270 = *semver.Must(semver.NewVersion("2.7.0"))
-
-func (s *Service) bee260BackwardCompatibility(peerID libp2ppeer.ID) bool {
-	if compat, found := s.peers.bee260(peerID); found {
-		return compat
-	}
-
-	userAgent := s.peerUserAgent(s.ctx, peerID)
-	p := strings.SplitN(userAgent, " ", 2)
-	if len(p) != 2 {
-		return false
-	}
-	version := strings.TrimPrefix(p[0], "bee/")
-	v, err := semver.NewVersion(version)
-	if err != nil {
-		return false
-	}
-
-	// Compare major.minor.patch only (ignore pre-release)
-	// This way 2.7.0-rc12 is treated as >= 2.7.0
-	vCore, err := semver.NewVersion(fmt.Sprintf("%d.%d.%d", v.Major, v.Minor, v.Patch))
-	if err != nil {
-		return false
-	}
-	result := vCore.LessThan(version270)
-	s.peers.setBee260(peerID, result)
-	return result
 }
 
 // appendSpace adds a leading space character if the string is not empty.

@@ -19,9 +19,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opentracing/opentracing-go"
-	"github.com/opentracing/opentracing-go/ext"
-	olog "github.com/opentracing/opentracing-go/log"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
@@ -66,20 +65,20 @@ func lookaheadBufferSize(size int64) int {
 }
 
 func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
-	span, logger, ctx := s.tracer.StartSpanFromContext(r.Context(), "post_bzz", s.logger.WithName("post_bzz").Build())
-	defer span.Finish()
+	span, logger, ctx := s.tracer.StartSpanFromContext(r.Context(), "bzz-post", s.logger.WithName("post_bzz").Build())
+	defer span.End()
 
 	headers := struct {
-		ContentType    string           `map:"Content-Type"`
-		BatchID        []byte           `map:"Swarm-Postage-Batch-Id" validate:"required"`
-		SwarmTag       uint64           `map:"Swarm-Tag"`
-		Pin            bool             `map:"Swarm-Pin"`
-		Deferred       *bool            `map:"Swarm-Deferred-Upload"`
-		Encrypt        bool             `map:"Swarm-Encrypt"`
-		IsDir          bool             `map:"Swarm-Collection"`
-		RLevel         redundancy.Level `map:"Swarm-Redundancy-Level" validate:"rLevel"`
-		Act            bool             `map:"Swarm-Act"`
-		HistoryAddress swarm.Address    `map:"Swarm-Act-History-Address"`
+		ContentType    string            `map:"Content-Type"`
+		BatchID        []byte            `map:"Swarm-Postage-Batch-Id" validate:"required"`
+		SwarmTag       uint64            `map:"Swarm-Tag"`
+		Pin            bool              `map:"Swarm-Pin"`
+		Deferred       *bool             `map:"Swarm-Deferred-Upload"`
+		Encrypt        bool              `map:"Swarm-Encrypt"`
+		IsDir          bool              `map:"Swarm-Collection"`
+		RLevel         *redundancy.Level `map:"Swarm-Redundancy-Level" validate:"omitempty,rLevel"`
+		Act            bool              `map:"Swarm-Act"`
+		HistoryAddress swarm.Address     `map:"Swarm-Act-History-Address"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -105,10 +104,10 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 			default:
 				jsonhttp.InternalServerError(w, "cannot get or create tag")
 			}
-			ext.LogError(span, err, olog.String("action", "tag.create"))
+			tracing.RecordError(span, err, attribute.String("action", "tag.create"))
 			return
 		}
-		span.SetTag("tagID", tag)
+		span.SetAttributes(attribute.Int64("tag_id", int64(tag)))
 	}
 
 	putter, err := s.newStamperPutter(ctx, putterOptions{
@@ -130,7 +129,7 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		default:
 			jsonhttp.BadRequest(w, nil)
 		}
-		ext.LogError(span, err, olog.String("action", "new.StamperPutter"))
+		tracing.RecordError(span, err, attribute.String("action", "new.StamperPutter"))
 		return
 	}
 
@@ -145,9 +144,14 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	mt, _, errParseCT := mime.ParseMediaType(contentTypeHdr)
 	isMultipart := errParseCT == nil && mt == multiPartFormData
 
+	rLevel := redundancy.DefaultUploadLevel
+	if headers.RLevel != nil {
+		rLevel = *headers.RLevel
+	}
+
 	isDirUpload := headers.IsDir || isMultipart
 	if !isDirUpload {
-		s.fileUploadHandler(ctx, logger, span, ow, r, putter, headers.Encrypt, tag, headers.RLevel, headers.Act, headers.HistoryAddress)
+		s.fileUploadHandler(ctx, logger, span, ow, r, putter, headers.Encrypt, tag, rLevel, headers.Act, headers.HistoryAddress)
 		return
 	}
 
@@ -157,7 +161,7 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.dirUploadHandler(ctx, logger, span, ow, r, putter, headers.Encrypt, tag, headers.RLevel, headers.Act, headers.HistoryAddress)
+	s.dirUploadHandler(ctx, logger, span, ow, r, putter, headers.Encrypt, tag, rLevel, headers.Act, headers.HistoryAddress)
 }
 
 // bzzUploadResponse is returned when an HTTP request to upload a file is successful
@@ -170,7 +174,7 @@ type bzzUploadResponse struct {
 func (s *Service) fileUploadHandler(
 	ctx context.Context,
 	logger log.Logger,
-	span opentracing.Span,
+	span trace.Span,
 	w http.ResponseWriter,
 	r *http.Request,
 	putter storer.PutterSession,
@@ -217,7 +221,7 @@ func (s *Service) fileUploadHandler(
 		default:
 			jsonhttp.InternalServerError(w, errFileStore)
 		}
-		ext.LogError(span, err, olog.String("action", "file.store"))
+		tracing.RecordError(span, err, attribute.String("action", "file.store"))
 		return
 	}
 
@@ -303,7 +307,7 @@ func (s *Service) fileUploadHandler(
 	reference := manifestReference
 	historyReference := swarm.ZeroAddress
 	if act {
-		reference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, historyAddress)
+		reference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, historyAddress, rLevel)
 		if err != nil {
 			logger.Debug("access control upload failed", "error", err)
 			logger.Error(nil, "access control upload failed")
@@ -326,15 +330,17 @@ func (s *Service) fileUploadHandler(
 		logger.Debug("done split failed", "reference", manifestReference, "error", err)
 		logger.Error(nil, "done split failed")
 		jsonhttp.InternalServerError(w, "done split failed")
-		ext.LogError(span, err, olog.String("action", "putter.Done"))
+		tracing.RecordError(span, err, attribute.String("action", "putter.Done"))
 		return
 	}
-	span.LogFields(olog.Bool("success", true))
-	span.SetTag("root_address", reference)
+	span.SetAttributes(
+		attribute.Bool("success", true),
+		attribute.String("root_address", reference.String()),
+	)
 
 	if tagID != 0 {
 		w.Header().Set(SwarmTagHeader, fmt.Sprint(tagID))
-		span.SetTag("tagID", tagID)
+		span.SetAttributes(attribute.Int64("tag_id", int64(tagID)))
 	}
 	w.Header().Set(ETagHeader, fmt.Sprintf("%q", reference.String()))
 	w.Header().Set(AccessControlExposeHeaders, SwarmTagHeader)
@@ -525,7 +531,7 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 		cache = *headers.Cache
 	}
 
-	rLevel := redundancy.DefaultLevel
+	rLevel := redundancy.DefaultDownloadLevel
 	if headers.RLevel != nil {
 		rLevel = *headers.RLevel
 	}
@@ -748,7 +754,7 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		jsonhttp.BadRequest(w, "could not parse headers")
 		return
 	}
-	rLevel := redundancy.DefaultLevel
+	rLevel := redundancy.DefaultDownloadLevel
 	if headers.RLevel != nil {
 		rLevel = *headers.RLevel
 	}

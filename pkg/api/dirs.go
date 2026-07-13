@@ -29,9 +29,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
-	"github.com/opentracing/opentracing-go"
-	"github.com/opentracing/opentracing-go/ext"
-	olog "github.com/opentracing/opentracing-go/log"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var errEmptyDir = errors.New("no files in root directory")
@@ -40,7 +39,7 @@ var errEmptyDir = errors.New("no files in root directory")
 func (s *Service) dirUploadHandler(
 	ctx context.Context,
 	logger log.Logger,
-	span opentracing.Span,
+	span trace.Span,
 	w http.ResponseWriter,
 	r *http.Request,
 	putter storer.PutterSession,
@@ -96,14 +95,14 @@ func (s *Service) dirUploadHandler(
 		default:
 			jsonhttp.InternalServerError(w, errDirectoryStore)
 		}
-		ext.LogError(span, err, olog.String("action", "dir.store"))
+		tracing.RecordError(span, err, attribute.String("action", "dir.store"))
 		return
 	}
 
 	encryptedReference := reference
 	historyReference := swarm.ZeroAddress
 	if act {
-		encryptedReference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, historyAddress)
+		encryptedReference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, historyAddress, rLevel)
 		if err != nil {
 			logger.Debug("access control upload failed", "error", err)
 			logger.Error(nil, "access control upload failed")
@@ -126,13 +125,13 @@ func (s *Service) dirUploadHandler(
 		logger.Debug("store dir failed", "error", err)
 		logger.Error(nil, "store dir failed")
 		jsonhttp.InternalServerError(w, errDirectoryStore)
-		ext.LogError(span, err, olog.String("action", "putter.Done"))
+		tracing.RecordError(span, err, attribute.String("action", "putter.Done"))
 		return
 	}
 
 	if tag != 0 {
 		w.Header().Set(SwarmTagHeader, fmt.Sprint(tag))
-		span.LogFields(olog.Bool("success", true))
+		span.SetAttributes(attribute.Bool("success", true))
 	}
 	w.Header().Set(AccessControlExposeHeaders, SwarmTagHeader)
 	if act {

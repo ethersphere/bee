@@ -18,11 +18,14 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/transaction/wrapped/cache"
 )
 
+const maxAverageBlockTime = 30 * time.Second
+
 var _ transaction.Backend = (*wrappedBackend)(nil)
 
 type blockNumberAnchor struct {
-	number    uint64
-	timestamp time.Time
+	number           uint64
+	timestamp        time.Time
+	averageBlockTime time.Duration
 }
 
 type wrappedBackend struct {
@@ -86,7 +89,7 @@ func (b *wrappedBackend) BlockNumber(ctx context.Context) (uint64, error) {
 		return elapsedBlocks < b.blockSyncInterval
 	}
 
-	loadFreshBlockFn := func() (blockNumberAnchor, error) {
+	loadFreshBlockFn := func(prev blockNumberAnchor) (blockNumberAnchor, error) {
 		b.metrics.TotalRPCCalls.Inc()
 		b.metrics.BlockHeaderAsBlockNumberCalls.Inc()
 
@@ -99,9 +102,16 @@ func (b *wrappedBackend) BlockNumber(ctx context.Context) (uint64, error) {
 			b.metrics.TotalRPCErrors.Inc()
 			return blockNumberAnchor{}, errors.New("latest block header unavailable")
 		}
+
+		newNumber := header.Number.Uint64()
+		newTime := time.Unix(int64(header.Time), 0).UTC()
+		averageBlockTime := b.computeAverageBlockTime(prev, newNumber, newTime)
+		b.metrics.AverageBlockTimeSeconds.Set(averageBlockTime.Seconds())
+
 		return blockNumberAnchor{
-			number:    header.Number.Uint64(),
-			timestamp: time.Unix(int64(header.Time), 0).UTC(),
+			number:           newNumber,
+			timestamp:        newTime,
+			averageBlockTime: averageBlockTime,
 		}, nil
 	}
 
@@ -126,8 +136,33 @@ func (b *wrappedBackend) estimatedBlockNumberWithElapsed(anchor blockNumberAncho
 		return anchor.number, 0
 	}
 
-	elapsedBlocks := uint64(now.Sub(anchor.timestamp) / b.blockTime)
+	blockTime := anchor.averageBlockTime
+	if blockTime == 0 {
+		blockTime = b.blockTime
+	}
+
+	elapsedBlocks := uint64(now.Sub(anchor.timestamp) / blockTime)
 	return anchor.number + elapsedBlocks, elapsedBlocks
+}
+
+// computeAverageBlockTime returns the observed block time between prev and the
+// freshly loaded header. Falls back to the configured block time when prev is
+// unset, the block number did not increase, or the header timestamp did not
+// strictly increase.
+func (b *wrappedBackend) computeAverageBlockTime(prev blockNumberAnchor, newNumber uint64, newTime time.Time) time.Duration {
+	if prev.number == 0 || newNumber <= prev.number || !newTime.After(prev.timestamp) {
+		return b.blockTime
+	}
+
+	elapsed := newTime.Sub(prev.timestamp)
+	blocks := newNumber - prev.number
+
+	averageBlockTime := elapsed / time.Duration(blocks)
+	if averageBlockTime > maxAverageBlockTime {
+		return maxAverageBlockTime
+	}
+
+	return averageBlockTime
 }
 
 func (b *wrappedBackend) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error) {

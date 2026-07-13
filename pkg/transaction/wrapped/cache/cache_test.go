@@ -37,7 +37,7 @@ func TestPeekOrLoadHit(t *testing.T) {
 		func(value uint64) bool {
 			return true
 		},
-		func() (uint64, error) {
+		func(_ uint64) (uint64, error) {
 			loadCount.Add(1)
 			return 0, errors.New("loader must not run")
 		},
@@ -59,7 +59,7 @@ func TestPeekOrLoadMiss(t *testing.T) {
 		func(value uint64) bool {
 			return false
 		},
-		func() (uint64, error) {
+		func(_ uint64) (uint64, error) {
 			loadCount.Add(1)
 			return 99, nil
 		},
@@ -75,7 +75,7 @@ func TestPeekOrLoadMiss(t *testing.T) {
 		func(value uint64) bool {
 			return true
 		},
-		func() (uint64, error) {
+		func(_ uint64) (uint64, error) {
 			verifyLoads.Add(1)
 			return 0, errors.New("unexpected load on verify")
 		},
@@ -97,7 +97,7 @@ func TestPeekOrLoadError(t *testing.T) {
 		func(value uint64) bool {
 			return false
 		},
-		func() (uint64, error) {
+		func(_ uint64) (uint64, error) {
 			loadCount.Add(1)
 			return 99, errLoad
 		},
@@ -112,7 +112,7 @@ func TestPeekOrLoadError(t *testing.T) {
 		func(value uint64) bool {
 			return false
 		},
-		func() (uint64, error) {
+		func(_ uint64) (uint64, error) {
 			loadCount.Add(1)
 			return 0, errLoad
 		},
@@ -143,7 +143,7 @@ func TestPeekOrLoadSingleflight(t *testing.T) {
 					func(value uint64) bool {
 						return false
 					},
-					func() (uint64, error) {
+					func(_ uint64) (uint64, error) {
 						loadCount.Add(1)
 						<-gate
 						return value, nil
@@ -186,7 +186,7 @@ func TestPeekOrLoadContextCancellation(t *testing.T) {
 				func(value uint64) bool {
 					return false
 				},
-				func() (uint64, error) {
+				func(_ uint64) (uint64, error) {
 					<-gate
 					return expectedVal, nil
 				},
@@ -200,7 +200,7 @@ func TestPeekOrLoadContextCancellation(t *testing.T) {
 				func(value uint64) bool {
 					return false
 				},
-				func() (uint64, error) {
+				func(_ uint64) (uint64, error) {
 					<-gate
 					return expectedVal, nil
 				},

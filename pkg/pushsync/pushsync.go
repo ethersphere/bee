@@ -29,9 +29,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
-	"github.com/opentracing/opentracing-go"
-	"github.com/opentracing/opentracing-go/ext"
-	olog "github.com/opentracing/opentracing-go/log"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/time/rate"
 )
 
@@ -208,7 +207,11 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	chunk := swarm.NewChunk(swarm.NewAddress(ch.Address), ch.Data)
 	chunkAddress := chunk.Address()
 
-	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()}, opentracing.Tag{Key: "tagID", Value: chunk.TagID()}, opentracing.Tag{Key: "sender_address", Value: p.Address.String()})
+	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, trace.WithAttributes(
+		attribute.String("address", chunkAddress.String()),
+		attribute.Int64("tag_id", int64(chunk.TagID())),
+		attribute.String("sender_address", p.Address.String()),
+	))
 
 	var (
 		stored bool
@@ -217,17 +220,18 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	defer func() {
 		if err != nil {
-			ext.LogError(span, err)
+			tracing.RecordError(span, err)
 		} else {
-			var logs []olog.Field
-			logs = append(logs, olog.Bool("success", true))
+			attrs := []attribute.KeyValue{attribute.Bool("success", true)}
 			if stored {
-				logs = append(logs, olog.Bool("stored", true))
-				logs = append(logs, olog.String("reason", reason))
+				attrs = append(attrs,
+					attribute.Bool("stored", true),
+					attribute.String("reason", reason),
+				)
 			}
-			span.LogFields(logs...)
+			span.SetAttributes(attrs...)
 		}
-		span.Finish()
+		span.End()
 	}()
 
 	stamp := new(postage.Stamp)
@@ -535,15 +539,17 @@ func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptRes
 
 	now := time.Now()
 
-	spanInner, _, _ := ps.tracer.FollowSpanFromContext(context.WithoutCancel(parentCtx), "push-chunk-async", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
+	spanInner, _, _ := ps.tracer.FollowSpanFromContext(context.WithoutCancel(parentCtx), "push-chunk-async", ps.logger, trace.WithAttributes(
+		attribute.String("address", ch.Address().String()),
+	))
 
 	defer func() {
 		if err != nil {
-			ext.LogError(spanInner, err)
+			tracing.RecordError(spanInner, err)
 		} else {
-			spanInner.LogFields(olog.Bool("success", true))
+			spanInner.SetAttributes(attribute.Bool("success", true))
 		}
-		spanInner.Finish()
+		spanInner.End()
 		select {
 		case resultChan <- receiptResult{pushTime: now, peer: peer, err: err, receipt: receipt}:
 		case <-parentCtx.Done():
@@ -552,9 +558,9 @@ func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptRes
 
 	defer action.Cleanup()
 
-	spanInner.LogFields(olog.String("peer_address", peer.String()))
+	spanInner.SetAttributes(attribute.String("peer_address", peer.String()))
 
-	receipt, err = ps.pushChunkToPeer(tracing.WithContext(ctx, spanInner.Context()), peer, ch)
+	receipt, err = ps.pushChunkToPeer(tracing.WithContext(ctx, spanInner.SpanContext()), peer, ch)
 	if err != nil {
 		return
 	}

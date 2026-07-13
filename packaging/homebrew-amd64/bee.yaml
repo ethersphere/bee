@@ -89,6 +89,8 @@
 ## ── Storage ───────────────────────────────────────────────────────────────────
 ## data directory
 data-dir: "/usr/local/var/lib/swarm-bee"
+## bzz token contract address
+# bzz-token-address: ""
 ## cache capacity in chunks, multiply by 4096 to get approximate capacity in bytes
 # cache-capacity: "1000000"
 ## enable forwarded content caching
@@ -145,16 +147,22 @@ password-file: "/usr/local/var/lib/swarm-bee/password"
 ## ── Logging / tracing ─────────────────────────────────────────────────────────
 ## log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace
 # verbosity: info
-## enable tracing
-# tracing-enable: false
-## endpoint to send tracing data
-# tracing-endpoint: 127.0.0.1:6831
-## host to send tracing data
-# tracing-host: ""
-## port to send tracing data
-# tracing-port: ""
-## service name identifier for tracing
-# tracing-service-name: bee
+## tracing settings
+# tracing:
+#   ## enable tracing
+#   enable: false
+#   ## OTLP collector endpoint to send tracing data (host:port); default port is 4318 for http, 4317 for grpc
+#   endpoint: 127.0.0.1:4318
+#   ## disable TLS for the OTLP exporter (useful for a local collector)
+#   insecure: false
+#   ## path to a PEM-encoded CA bundle used to verify the OTLP collector certificate; ignored when insecure is true
+#   ca-file: ""
+#   ## OTLP exporter transport: http or grpc
+#   protocol: http
+#   ## head-based sampling ratio in [0,1]; 0 samples nothing, 1 samples everything
+#   sampling-ratio: 1.0
+#   ## service name identifier for tracing
+#   service-name: bee
 ## enable pprof mutex profile
 # pprof-mutex: false
 ## enable pprof block profile
