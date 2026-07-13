@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/statestore/mock"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -136,19 +137,132 @@ func TestUpdateLastSeen(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// advance the clock and bump last-seen; the entry must survive a prune at
-	// the original time.
-	now = time.Unix(5000, 0)
+	// advance the clock past the update interval and bump last-seen; the entry
+	// must survive a prune at the original time.
+	seenAt := now.Add(2 * 24 * time.Hour)
+	now = seenAt
 	if err := store.UpdateLastSeen(overlay); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := store.Prune(time.Unix(4000, 0)); err != nil {
+	if err := store.Prune(seenAt.Add(-time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := store.Get(overlay); err != nil {
 		t.Fatalf("entry pruned despite recent last-seen: %v", err)
 	}
+}
+
+// TestUpdateLastSeenThrottled asserts that a bump within lastSeenUpdateInterval
+// does not write. Hive calls UpdateLastSeen on every gossip sighting, so this
+// is what keeps the write rate bounded to roughly one per peer per day.
+func TestUpdateLastSeenThrottled(t *testing.T) {
+	t.Parallel()
+
+	base := time.Unix(1_000_000, 0)
+	now := base
+	mockStore := mock.NewStateStore()
+	store := addressbook.NewWithClock(mockStore, func() time.Time { return now })
+
+	overlay := swarm.NewAddress([]byte{0, 1, 2, 3})
+	if err := store.Put(overlay, newTestAddr(t, overlay), true); err != nil {
+		t.Fatal(err)
+	}
+
+	// well inside the interval: must not touch the record.
+	now = base.Add(time.Hour)
+	if err := store.UpdateLastSeen(overlay); err != nil {
+		t.Fatal(err)
+	}
+	if got := lastSeenOf(t, mockStore, overlay); got != base.Unix() {
+		t.Fatalf("throttled update wrote: last_seen = %d, want %d", got, base.Unix())
+	}
+
+	// past the interval: must write.
+	now = base.Add(addressbook.LastSeenUpdateInterval + time.Second)
+	if err := store.UpdateLastSeen(overlay); err != nil {
+		t.Fatal(err)
+	}
+	if got := lastSeenOf(t, mockStore, overlay); got != now.Unix() {
+		t.Fatalf("update past interval did not write: last_seen = %d, want %d", got, now.Unix())
+	}
+}
+
+// TestUpdateLastSeenKeepsConcurrentPut pins the read-modify-write in
+// UpdateLastSeen against a Put that lands between its read and its write.
+// Without serialization the Put's Verified flag is rolled back, which would
+// also desync the addressbook from hive's chequebook registry.
+func TestUpdateLastSeenKeepsConcurrentPut(t *testing.T) {
+	t.Parallel()
+
+	base := time.Unix(1_000_000, 0)
+	now := base
+	hooked := &hookStore{StateStorer: mock.NewStateStore()}
+	book := addressbook.NewWithClock(hooked, func() time.Time { return now })
+
+	overlay := swarm.NewAddress([]byte{0, 1, 2, 3})
+	addr := newTestAddr(t, overlay)
+
+	// a known, not-yet-verified peer.
+	if err := book.Put(overlay, addr, false); err != nil {
+		t.Fatal(err)
+	}
+	// move past the throttle so UpdateLastSeen really writes.
+	now = base.Add(addressbook.LastSeenUpdateInterval + time.Second)
+
+	// While UpdateLastSeen holds the entry it has just read, hive verifies the
+	// same peer and stores it with Verified=true.
+	started, finished := make(chan struct{}), make(chan struct{})
+	hooked.onGet = func() {
+		go func() {
+			defer close(finished)
+			close(started)
+			if err := book.Put(overlay, addr, true); err != nil {
+				t.Error(err)
+			}
+		}()
+		<-started
+		// Give the writer time to land. Serialized, it blocks on the
+		// addressbook lock until UpdateLastSeen returns; unsynchronized, its
+		// write completes here and is then overwritten below.
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	if err := book.UpdateLastSeen(overlay); err != nil {
+		t.Fatal(err)
+	}
+	<-finished
+
+	if _, verified, err := book.Get(overlay); err != nil || !verified {
+		t.Fatalf("concurrent Put(verified=true) was rolled back: verified=%v err=%v", verified, err)
+	}
+}
+
+// hookStore fires onGet once, immediately after a Get returns, to interleave a
+// concurrent writer inside UpdateLastSeen's read-modify-write.
+type hookStore struct {
+	storage.StateStorer
+	onGet func()
+}
+
+func (h *hookStore) Get(key string, i any) error {
+	err := h.StateStorer.Get(key, i)
+	if h.onGet != nil {
+		f := h.onGet
+		h.onGet = nil
+		f()
+	}
+	return err
+}
+
+func lastSeenOf(t *testing.T, store storage.StateStorer, overlay swarm.Address) int64 {
+	t.Helper()
+
+	v := &addressbook.VerifiedAddress{}
+	if err := store.Get("addressbook_entry_"+overlay.String(), v); err != nil {
+		t.Fatalf("get entry: %v", err)
+	}
+	return v.LastSeen
 }
 
 func TestPrune(t *testing.T) {

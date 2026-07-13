@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/bzz"
@@ -17,6 +18,12 @@ import (
 )
 
 const keyPrefix = "addressbook_entry_"
+
+// lastSeenUpdateInterval is the resolution at which UpdateLastSeen persists.
+// Hive reports the same peer on every gossip round, while pruning operates on
+// a scale of weeks, so a write is skipped when the stored value is already
+// this fresh.
+const lastSeenUpdateInterval = 24 * time.Hour
 
 var _ Interface = (*store)(nil)
 
@@ -54,6 +61,14 @@ type GetPutter interface {
 	Putter
 }
 
+// GetPutUpdater is the addressbook surface needed by hive: it stores peers it
+// learns about and refreshes the last-seen time of the ones it already knows.
+type GetPutUpdater interface {
+	GetPutter
+	// UpdateLastSeen marks the overlay as seen at the current time.
+	UpdateLastSeen(overlay swarm.Address) error
+}
+
 type Getter interface {
 	// Get returns the saved bzz.Address for the requested overlay together
 	// with its verification flag.
@@ -73,6 +88,10 @@ type Remover interface {
 type store struct {
 	store storage.StateStorer
 	now   func() time.Time
+
+	// mu serializes the read-modify-write in UpdateLastSeen against Put, so a
+	// concurrent Put is not rolled back by a stale copy of the entry.
+	mu sync.Mutex
 }
 
 // New creates new addressbook for state storer.
@@ -97,6 +116,9 @@ func (s *store) Get(overlay swarm.Address) (*bzz.Address, bool, error) {
 }
 
 func (s *store) Put(overlay swarm.Address, addr bzz.Address, verified bool) (err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	key := keyPrefix + overlay.String()
 	return s.store.Put(key, &verifiedAddress{
 		Address:  &addr,
@@ -106,8 +128,12 @@ func (s *store) Put(overlay swarm.Address, addr bzz.Address, verified bool) (err
 }
 
 // UpdateLastSeen marks the overlay as seen at the current time. It is a no-op
-// if the overlay is not present in the addressbook.
+// if the overlay is not present in the addressbook, or if the recorded time is
+// younger than lastSeenUpdateInterval.
 func (s *store) UpdateLastSeen(overlay swarm.Address) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	key := keyPrefix + overlay.String()
 	v := &verifiedAddress{}
 	if err := s.store.Get(key, v); err != nil {
@@ -116,7 +142,13 @@ func (s *store) UpdateLastSeen(overlay swarm.Address) error {
 		}
 		return err
 	}
-	v.LastSeen = s.now().Unix()
+
+	now := s.now().Unix()
+	if now-v.LastSeen < int64(lastSeenUpdateInterval.Seconds()) {
+		return nil
+	}
+
+	v.LastSeen = now
 	return s.store.Put(key, v)
 }
 
