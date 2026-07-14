@@ -558,8 +558,8 @@ paths:
           name: prefix
           schema:
             type: string
-          required: false
-          description: Path prefix to list under (default is the manifest root).
+          required: true
+          description: Path prefix to list under; use an empty value to list the manifest root.
         - in: query
           name: delimiter
           schema:
