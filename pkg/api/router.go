@@ -359,6 +359,20 @@ func (s *Service) mountAPI() {
 		),
 	})
 
+	handle("/manifest/{address}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u := r.URL
+		u.Path += "/"
+		http.Redirect(w, r, u.String(), http.StatusPermanentRedirect)
+	}))
+
+	handle("/manifest/{address}/{path:.*}", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			s.newTracingHandler("manifest-list"),
+			s.actDecryptionHandler(),
+			web.FinalHandlerFunc(s.manifestListHandler),
+		),
+	})
+
 	handle("/pss/send/{topic}/{targets}", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
 			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkSize),

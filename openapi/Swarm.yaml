@@ -536,6 +536,77 @@ paths:
         default:
           description: Default response
 
+  "/manifest/{address}/{prefix}":
+    get:
+      summary: "List the contents of a manifest (server-side trie walk)"
+      description: >
+        Enumerate the entries of a manifest without downloading and traversing
+        the Mantaray trie client-side. Semantics follow S3 ListObjectsV2:
+        optional path prefix, an optional delimiter for shallow
+        (pseudo-directory) listings, and lexicographic pagination via
+        `limit`/`after`. See ethersphere/bee#5535.
+      tags:
+        - BZZ
+      parameters:
+        - in: path
+          name: address
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
+          required: true
+          description: Swarm address of the manifest.
+        - in: path
+          name: prefix
+          schema:
+            type: string
+          required: false
+          description: Path prefix to list under (default is the manifest root).
+        - in: query
+          name: delimiter
+          schema:
+            type: string
+          required: false
+          description: >
+            If set (typically `/`), return a shallow listing: entries directly
+            under the prefix plus `commonPrefixes` for deeper paths. If unset,
+            the listing is recursive.
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 1000
+          required: false
+          description: Maximum number of entries (plus common prefixes) per page. Node-enforced hard cap.
+        - in: query
+          name: after
+          schema:
+            type: string
+          required: false
+          description: Continuation token; return entries strictly after this path.
+        - in: query
+          name: sizes
+          schema:
+            type: boolean
+            default: false
+          required: false
+          description: >
+            If true, resolve each entry's byte length from its root-chunk span
+            (one extra chunk read per entry).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/ManifestList"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
   "/tags":
     get:
       summary: Get list of tags
