@@ -353,7 +353,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 		}
 	})
 
-	safe.Go(l.logger, "postage-listener", func() {
+	go func() {
 		err := listenf()
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
@@ -367,7 +367,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 		if l.syncingStopped != nil {
 			l.syncingStopped.Signal() // trigger shutdown in start.go
 		}
-	})
+	}()
 
 	return synced
 }

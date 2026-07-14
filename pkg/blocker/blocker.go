@@ -11,7 +11,6 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
-	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"go.uber.org/atomic"
 )
@@ -63,31 +62,27 @@ func New(blocklister p2p.Blocklister, flagTimeout, blockDuration, wakeUpTime tim
 	}
 
 	b.closeWg.Go(func() {
-		safe.Run(b.logger, "blocker-network-status-sequencer", func() {
-			for {
-				select {
-				case <-b.quit:
-					return
-				case <-time.After(sequencerResolution):
-					if b.blocklister.NetworkStatus() == p2p.NetworkStatusAvailable {
-						b.sequence.Inc()
-					}
+		for {
+			select {
+			case <-b.quit:
+				return
+			case <-time.After(sequencerResolution):
+				if b.blocklister.NetworkStatus() == p2p.NetworkStatusAvailable {
+					b.sequence.Inc()
 				}
 			}
-		})
+		}
 	})
 
 	b.closeWg.Go(func() {
-		safe.Run(b.logger, "blocker-blacklist-worker", func() {
-			for {
-				select {
-				case <-time.After(wakeUpTime):
-					b.block()
-				case <-b.quit:
-					return
-				}
+		for {
+			select {
+			case <-time.After(wakeUpTime):
+				b.block()
+			case <-b.quit:
+				return
 			}
-		})
+		}
 	})
 
 	return b

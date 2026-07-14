@@ -90,9 +90,7 @@ func New(
 		attempts:          &attempts{retryCount: retryCount, attempts: make(map[string]int)},
 		smuggler:          make(chan OpChan),
 	}
-	safe.Go(p.logger, "pusher-chunks-worker", func() {
-		p.chunksWorker(startupStabilizer)
-	})
+	go p.chunksWorker(startupStabilizer)
 	return p
 }
 
@@ -181,7 +179,7 @@ func (s *Service) chunksWorker(startupStabilizer stabilization.Subscriber) {
 		s.metrics.TotalSynced.Inc()
 	}
 
-	safe.Go(s.logger, "pusher-chunks-multiplexer", func() {
+	go func() {
 		for {
 			select {
 			case ch, ok := <-chunks:
@@ -195,7 +193,7 @@ func (s *Service) chunksWorker(startupStabilizer stabilization.Subscriber) {
 					return
 				}
 			case apiC := <-s.smuggler:
-				safe.Go(s.logger, "pusher-smuggler-worker", func() {
+				go func() {
 					for {
 						select {
 						case op := <-apiC:
@@ -208,12 +206,12 @@ func (s *Service) chunksWorker(startupStabilizer stabilization.Subscriber) {
 							return
 						}
 					}
-				})
+				}()
 			case <-s.quit:
 				return
 			}
 		}
-	})
+	}()
 
 	defer wg.Wait()
 

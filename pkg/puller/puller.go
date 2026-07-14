@@ -150,9 +150,7 @@ func (p *Puller) Start(ctx context.Context) {
 		p.cancel = cancel
 
 		p.wg.Add(1)
-		safe.Go(p.logger, "puller-manage", func() {
-			p.manage(cctx)
-		})
+		go p.manage(cctx)
 	})
 }
 
@@ -243,13 +241,13 @@ func (p *Puller) recalcPeers(ctx context.Context, storageRadius uint8) {
 	for _, peer := range p.syncPeers {
 		wg.Add(1)
 		p.wg.Add(1)
-		safe.Go(p.logger, "puller-recalc-peers", func() {
+		go func(peer *syncPeer) {
 			defer p.wg.Done()
 			defer wg.Done()
 			if err := p.syncPeer(ctx, peer, storageRadius); err != nil {
 				p.logger.Debug("sync peer failed", "peer_address", peer.address, "error", err)
 			}
-		})
+		}(peer)
 	}
 	wg.Wait()
 }

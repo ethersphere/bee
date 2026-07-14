@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
-	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 )
 
@@ -100,7 +99,7 @@ func NewService(logger log.Logger, store storage.Store, postageStore Storer, cha
 		}
 	}
 
-	safe.Go(s.logger, "postage-service", s.run)
+	go s.run()
 
 	return s, nil
 }

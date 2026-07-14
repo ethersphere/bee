@@ -117,9 +117,7 @@ func New(overlay swarm.Address,
 	a.state = state
 
 	a.wg.Add(1)
-	safe.Go(a.logger, "storageincentives-agent-start", func() {
-		a.start(blockTime, a.blocksPerRound, blocksPerPhase)
-	})
+	go a.start(blockTime, a.blocksPerRound, blocksPerPhase)
 
 	return a, nil
 }
