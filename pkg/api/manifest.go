@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -21,8 +22,15 @@ import (
 )
 
 const (
+	// manifestListDefaultLimit is the page size used when the client does not
+	// request one. Callers paginate the rest via after/nextMarker.
 	manifestListDefaultLimit = 1000
-	manifestListMaxLimit     = 10000
+	// manifestListMaxLimit bounds a single page. The whole page is buffered in
+	// memory before it is written, so this caps per-request allocation; it does
+	// not limit total enumeration, which is unbounded via after/nextMarker. An
+	// over-cap limit is rejected rather than silently clamped, so the client
+	// keeps an accurate view of its own page size.
+	manifestListMaxLimit = 1000000
 )
 
 // emptyManifestEntry is the reference bee's uploader stores for manifest-level
@@ -73,9 +81,15 @@ func (s *Service) manifestListHandler(w http.ResponseWriter, r *http.Request) {
 		response("invalid query params", logger, w)
 		return
 	}
-	// enforce the node-side hard cap; a non-positive limit falls back to it too.
-	if queries.Limit <= 0 || queries.Limit > manifestListMaxLimit {
-		queries.Limit = manifestListMaxLimit
+	// reject an over-cap limit explicitly rather than silently clamping it, so
+	// the client is not misled about its page size. a non-positive limit falls
+	// back to the default.
+	if queries.Limit > manifestListMaxLimit {
+		jsonhttp.BadRequest(w, fmt.Sprintf("limit exceeds maximum of %d", manifestListMaxLimit))
+		return
+	}
+	if queries.Limit <= 0 {
+		queries.Limit = manifestListDefaultLimit
 	}
 
 	address := paths.Address
