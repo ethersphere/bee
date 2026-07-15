@@ -176,6 +176,11 @@ func TestManifestList(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodGet,
 			fmt.Sprintf("/manifest/%s/nope/", ref), http.StatusNotFound)
 	})
+
+	t.Run("limit above cap is 400", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodGet,
+			fmt.Sprintf("/manifest/%s/?limit=1000001", ref), http.StatusBadRequest)
+	})
 }
 
 func equalStrings(a, b []string) bool {

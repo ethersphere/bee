@@ -574,8 +574,12 @@ paths:
           schema:
             type: integer
             default: 1000
+            maximum: 1000000
           required: false
-          description: Maximum number of entries (plus common prefixes) per page. Node-enforced hard cap.
+          description: >
+            Maximum number of entries (plus common prefixes) per page. A value
+            above the node's hard cap (1000000) is rejected with 400; a
+            non-positive value falls back to the default.
         - in: query
           name: after
           schema:
