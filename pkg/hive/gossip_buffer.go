@@ -5,7 +5,8 @@
 package hive
 
 import (
-	"math/rand/v2"
+	"maps"
+	"slices"
 	"sync"
 	"time"
 
@@ -14,7 +15,6 @@ import (
 
 const (
 	defaultGossipCoalesceInterval = time.Second
-	defaultGossipCoalesceJitter   = 100 * time.Millisecond
 	// coalesceThreshold: gossips with fewer peers are buffered; larger
 	// (already-batched) messages are dispatched immediately.
 	coalesceThreshold = 2
@@ -24,16 +24,14 @@ const (
 // flushed as one batched message.
 type gossipBuffer struct {
 	mu       sync.Mutex
-	pending  map[string]*pendingGossip // addressee bytestring -> buffered peers
+	pending  map[string]map[string]swarm.Address // addressee key -> peer key -> peer
 	interval time.Duration
-	jitter   time.Duration
 	maxBatch int
 }
 
-type pendingGossip struct {
+type gossipBatch struct {
 	addressee swarm.Address
-	peers     map[string]swarm.Address // peer bytestring -> address (set semantics)
-	deadline  time.Time
+	peers     []swarm.Address
 }
 
 func newGossipBuffer(interval time.Duration, maxBatch int) *gossipBuffer {
@@ -41,81 +39,63 @@ func newGossipBuffer(interval time.Duration, maxBatch int) *gossipBuffer {
 		interval = defaultGossipCoalesceInterval
 	}
 	return &gossipBuffer{
-		pending:  make(map[string]*pendingGossip),
+		pending:  make(map[string]map[string]swarm.Address),
 		interval: interval,
-		jitter:   defaultGossipCoalesceJitter,
 		maxBatch: maxBatch,
 	}
 }
 
-// add buffers peers for the addressee. If the buffer reaches maxBatch it is
+// stagePeers buffers peers for the addressee. If the buffer reaches maxBatch it is
 // removed and returned so the caller can flush it immediately.
-func (b *gossipBuffer) add(now time.Time, addressee swarm.Address, peers ...swarm.Address) *pendingGossip {
+func (b *gossipBuffer) stagePeers(addressee swarm.Address, peers ...swarm.Address) (flushPeers []swarm.Address, flush bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	key := addressee.ByteString()
-	e, ok := b.pending[key]
+	peerSet, ok := b.pending[key]
 	if !ok {
-		var jitter time.Duration
-		if b.jitter > 0 {
-			jitter = time.Duration(rand.Int64N(int64(b.jitter)))
-		}
-		e = &pendingGossip{
-			addressee: addressee,
-			peers:     make(map[string]swarm.Address),
-			deadline:  now.Add(b.interval + jitter),
-		}
-		b.pending[key] = e
+		peerSet = make(map[string]swarm.Address)
+		b.pending[key] = peerSet
 	}
 	for _, p := range peers {
-		e.peers[p.ByteString()] = p
+		peerSet[p.ByteString()] = p
 	}
 
-	if len(e.peers) >= b.maxBatch {
+	if len(peerSet) >= b.maxBatch {
 		delete(b.pending, key)
-		return e
+		return slices.Collect(maps.Values(peerSet)), true
 	}
-	return nil
+	return nil, false
 }
 
-// takeDue removes and returns all entries whose deadline has passed.
-func (b *gossipBuffer) takeDue(now time.Time) []*pendingGossip {
-	return b.take(func(e *pendingGossip) bool { return !e.deadline.After(now) })
+// takeAll removes and returns all buffered entries.
+func (b *gossipBuffer) takeAll() []gossipBatch {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if len(b.pending) == 0 {
+		return nil
+	}
+
+	out := make([]gossipBatch, 0, len(b.pending))
+	for key, peerSet := range b.pending {
+		out = append(out, gossipBatch{
+			addressee: swarm.NewAddress([]byte(key)),
+			peers:     slices.Collect(maps.Values(peerSet)),
+		})
+	}
+	b.pending = make(map[string]map[string]swarm.Address)
+	return out
 }
 
 func (b *gossipBuffer) clearAddressee(addressee swarm.Address) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-
 	delete(b.pending, addressee.ByteString())
 }
 
 func (b *gossipBuffer) pendingAddressees() int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-
 	return len(b.pending)
-}
-
-func (b *gossipBuffer) take(match func(*pendingGossip) bool) []*pendingGossip {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	var out []*pendingGossip
-	for key, e := range b.pending {
-		if match(e) {
-			out = append(out, e)
-			delete(b.pending, key)
-		}
-	}
-	return out
-}
-
-func (e *pendingGossip) addresses() []swarm.Address {
-	out := make([]swarm.Address, 0, len(e.peers))
-	for _, p := range e.peers {
-		out = append(out, p)
-	}
-	return out
 }

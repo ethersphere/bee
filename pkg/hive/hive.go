@@ -163,8 +163,7 @@ func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, p
 	if len(peers) >= coalesceThreshold {
 		s.metrics.GossipCoalesceImmediatePeers.Add(float64(len(peers)))
 		s.logger.Debug("gossip immediate send", "addressee", addressee, "peer_count", len(peers))
-		_, err := s.broadcastNow(ctx, addressee, peers...)
-		return err
+		return s.broadcastNow(ctx, addressee, false, peers...)
 	}
 
 	select {
@@ -177,52 +176,49 @@ func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, p
 	s.logger.Debug("gossip buffered", "addressee", addressee, "peer_count", len(peers))
 
 	// Buffer; if it just filled up, flush it synchronously while still in the call
-	if full := s.gossipBuf.add(s.now(), addressee, peers...); full != nil {
-		flushPeers := full.addresses()
+	if flushPeers, flush := s.gossipBuf.stagePeers(addressee, peers...); flush {
 		s.recordCoalesceFlush(coalesceFlushReasonMaxBatch, addressee, flushPeers)
 		s.setCoalesceBufferGauge()
-		sent, err := s.broadcastNow(ctx, addressee, flushPeers...)
-		if dropped := len(flushPeers) - sent; dropped > 0 {
-			s.metrics.GossipCoalesceDropped.Add(float64(dropped))
-		}
-		return err
+		return s.broadcastNow(ctx, addressee, true, flushPeers...)
 	}
 	s.setCoalesceBufferGauge()
 	return nil
 }
 
 // broadcastNow performs the synchronous, rate-limited, batched send.
-// It returns the number of peers successfully sent.
-func (s *Service) broadcastNow(ctx context.Context, addressee swarm.Address, peers ...swarm.Address) (sent int, err error) {
+func (s *Service) broadcastNow(ctx context.Context, addressee swarm.Address, coalesced bool, peers ...swarm.Address) error {
 	maxSize := maxBatchSize
-	total := len(peers)
 
 	for len(peers) > 0 {
 		if maxSize > len(peers) {
 			maxSize = len(peers)
 		}
 
-		// If broadcasting limit is exceeded, return early
 		if !s.outLimiter.Allow(addressee.ByteString(), maxSize) {
-			return total - len(peers), nil
+			if coalesced {
+				s.metrics.GossipCoalesceDropped.Add(float64(len(peers)))
+			}
+			return nil
 		}
 
 		select {
 		case <-ctx.Done():
-			return total - len(peers), ctx.Err()
+			return ctx.Err()
 		case <-s.quit:
-			return total - len(peers), ErrShutdownInProgress
+			return ErrShutdownInProgress
 		default:
 		}
 
 		if err := s.sendPeers(ctx, addressee, peers[:maxSize]); err != nil {
-			return total - len(peers), err
+			if coalesced {
+				s.metrics.GossipCoalesceDropped.Add(float64(len(peers)))
+			}
+			return err
 		}
 
 		peers = peers[maxSize:]
 	}
-
-	return total, nil
+	return nil
 }
 
 func (s *Service) SetAddPeersHandler(h func(addr ...swarm.Address)) {
@@ -360,18 +356,16 @@ func (s *Service) disconnect(peer p2p.Peer) error {
 }
 
 func (s *Service) startGossipCoalescer() {
-	tick := s.gossipBuf.interval / 2
-	if tick <= 0 {
-		tick = s.gossipBuf.interval
-	}
-
 	s.wg.Go(func() {
-		ticker := time.NewTicker(tick)
+		ticker := time.NewTicker(s.gossipBuf.interval)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
-				s.flushGossipEntries(s.gossipBuf.takeDue(s.now()), coalesceFlushReasonTimer)
+				for _, batch := range s.gossipBuf.takeAll() {
+					s.flushGossipBatch(batch.addressee, batch.peers, coalesceFlushReasonTimer)
+				}
+				s.setCoalesceBufferGauge()
 			case <-s.quit:
 				return
 			}
@@ -379,23 +373,15 @@ func (s *Service) startGossipCoalescer() {
 	})
 }
 
-func (s *Service) flushGossipEntries(entries []*pendingGossip, reason string) {
-	s.setCoalesceBufferGauge()
+func (s *Service) flushGossipBatch(addressee swarm.Address, peers []swarm.Address, reason string) {
+	s.recordCoalesceFlush(reason, addressee, peers)
 
-	for _, e := range entries {
-		peers := e.addresses()
-		s.recordCoalesceFlush(reason, e.addressee, peers)
-
-		ctx, cancel := context.WithTimeout(context.Background(), messageTimeout)
-		sent, err := s.broadcastNow(ctx, e.addressee, peers...)
-		if dropped := len(peers) - sent; dropped > 0 {
-			s.metrics.GossipCoalesceDropped.Add(float64(dropped))
-		}
-		if err != nil {
-			s.logger.Debug("coalesced gossip flush failed", "addressee", e.addressee, "reason", reason, "batch_size", len(peers), "error", err)
-		}
-		cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), messageTimeout)
+	err := s.broadcastNow(ctx, addressee, true, peers...)
+	if err != nil {
+		s.logger.Debug("coalesced gossip flush failed", "addressee", addressee, "reason", reason, "batch_size", len(peers), "error", err)
 	}
+	cancel()
 }
 
 func (s *Service) recordCoalesceFlush(reason string, addressee swarm.Address, peers []swarm.Address) {

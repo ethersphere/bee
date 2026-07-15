@@ -11,36 +11,39 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-func TestGossipBufferAddAndDue(t *testing.T) {
+func TestGossipBufferAddAndTakeAll(t *testing.T) {
 	t.Parallel()
 
-	const interval = 100 * time.Millisecond
-
-	b := newGossipBuffer(interval, maxBatchSize)
+	b := newGossipBuffer(time.Second, maxBatchSize)
 	addressee := swarm.RandAddress(t)
 	peer1 := swarm.RandAddress(t)
 	peer2 := swarm.RandAddress(t)
 
-	now := time.Now()
-	if full := b.add(now, addressee, peer1); full != nil {
+	if pending := b.takeAll(); len(pending) != 0 {
+		t.Fatalf("want no pending entries, got %d", len(pending))
+	}
+
+	if _, flush := b.stagePeers(addressee, peer1); flush {
 		t.Fatal("unexpected immediate flush")
 	}
 
-	if due := b.takeDue(now); len(due) != 0 {
-		t.Fatalf("want no due entries, got %d", len(due))
-	}
-
-	if full := b.add(now, addressee, peer2); full != nil {
+	if _, flush := b.stagePeers(addressee, peer2); flush {
 		t.Fatal("unexpected immediate flush")
 	}
 
-	afterDeadline := now.Add(interval + defaultGossipCoalesceJitter + time.Millisecond)
-	due := b.takeDue(afterDeadline)
-	if len(due) != 1 {
-		t.Fatalf("want 1 due entry, got %d", len(due))
+	pending := b.takeAll()
+	if len(pending) != 1 {
+		t.Fatalf("want 1 pending entry, got %d", len(pending))
 	}
-	if got := len(due[0].addresses()); got != 2 {
+	if got := len(pending[0].peers); got != 2 {
 		t.Fatalf("want 2 coalesced peers, got %d", got)
+	}
+	if !pending[0].addressee.Equal(addressee) {
+		t.Fatal("unexpected addressee in pending batch")
+	}
+
+	if pending := b.takeAll(); len(pending) != 0 {
+		t.Fatalf("want empty buffer after takeAll, got %d pending", len(pending))
 	}
 }
 
@@ -49,17 +52,16 @@ func TestGossipBufferMaxBatchFlush(t *testing.T) {
 
 	b := newGossipBuffer(time.Second, 2)
 	addressee := swarm.RandAddress(t)
-	now := time.Now()
 
-	b.add(now, addressee, swarm.RandAddress(t))
-	full := b.add(now, addressee, swarm.RandAddress(t))
-	if full == nil {
+	b.stagePeers(addressee, swarm.RandAddress(t))
+	flushPeers, flush := b.stagePeers(addressee, swarm.RandAddress(t))
+	if !flush {
 		t.Fatal("want immediate flush at maxBatch")
 	}
-	if got := len(full.addresses()); got != 2 {
+	if got := len(flushPeers); got != 2 {
 		t.Fatalf("want 2 peers in full batch, got %d", got)
 	}
-	if due := b.takeDue(now.Add(time.Second)); len(due) != 0 {
-		t.Fatalf("want empty buffer after maxBatch flush, got %d due", len(due))
+	if pending := b.takeAll(); len(pending) != 0 {
+		t.Fatalf("want empty buffer after maxBatch flush, got %d pending", len(pending))
 	}
 }

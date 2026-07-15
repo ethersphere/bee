@@ -41,8 +41,8 @@ var nonce = common.HexToHash("0x2").Bytes()
 const (
 	spinTimeout          = time.Second * 5
 	testCoalesceInterval = 100 * time.Millisecond
-	// Must exceed interval + max jitter (100ms) before the coalescer flushes.
-	testCoalesceWait = 220 * time.Millisecond
+	// Must exceed one coalesce interval before the ticker flushes.
+	testCoalesceWait = 150 * time.Millisecond
 )
 
 func waitForCoalesceFlush(t *testing.T) {
@@ -1608,7 +1608,7 @@ func TestHiveGossipBuffering(t *testing.T) {
 		return addressbook, overlays
 	}
 
-	setupClient := func(t *testing.T, addressbook ab.GetPutter) (*hive.Service, *streamtest.Recorder, swarm.Address) {
+	setupClient := func(t *testing.T, addressbook ab.GetPutter, coalesceInterval time.Duration) (*hive.Service, *streamtest.Recorder, swarm.Address) {
 		t.Helper()
 
 		logger := log.Noop
@@ -1623,7 +1623,7 @@ func TestHiveGossipBuffering(t *testing.T) {
 		clientAddress := swarm.RandAddress(t)
 		client := hive.New(recorder, addressbook, networkID, clientAddress, logger, hive.Options{
 			AllowPrivateCIDRs:      true,
-			GossipCoalesceInterval: hiveGossipBufferingInterval,
+			GossipCoalesceInterval: coalesceInterval,
 		})
 		testutil.CleanupCloser(t, client)
 
@@ -1635,7 +1635,7 @@ func TestHiveGossipBuffering(t *testing.T) {
 			const peerCount = 5
 
 			addressbook, overlays := makeAddressbookWithPeers(t, peerCount)
-			client, recorder, serverAddress := setupClient(t, addressbook)
+			client, recorder, serverAddress := setupClient(t, addressbook, hiveGossipBufferingInterval)
 			ctx := context.Background()
 
 			for _, overlay := range overlays {
@@ -1646,8 +1646,8 @@ func TestHiveGossipBuffering(t *testing.T) {
 
 			assertNoGossipRecords(t, recorder, serverAddress)
 
-			// interval + max jitter + half tick period for the coalescer to flush.
-			time.Sleep(hiveGossipBufferingInterval + 600*time.Millisecond)
+			// One coalesce interval plus a small margin for the ticker to flush.
+			time.Sleep(hiveGossipBufferingInterval + 200*time.Millisecond)
 			synctest.Wait()
 
 			records, err := recorder.Records(serverAddress, "hive", "2.0.0", "peers")
@@ -1670,10 +1670,13 @@ func TestHiveGossipBuffering(t *testing.T) {
 
 	t.Run("flushes immediately when buffer is full", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
+			// Long interval so the coalescer ticker cannot fire before maxBatch flush.
+			const coalesceInterval = time.Hour
+
 			peerCount := hive.MaxBatchSize
 
 			addressbook, overlays := makeAddressbookWithPeers(t, peerCount)
-			client, recorder, serverAddress := setupClient(t, addressbook)
+			client, recorder, serverAddress := setupClient(t, addressbook, coalesceInterval)
 			ctx := context.Background()
 
 			for i, overlay := range overlays {

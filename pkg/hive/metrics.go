@@ -175,7 +175,7 @@ func newMetrics() metrics {
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "gossip_coalesce_dropped_total",
-			Help:      "Number of peer gossip entries dropped during coalesced flush due to outbound rate limiting.",
+			Help:      "Number of peer gossip entries dropped during coalesced flush (e.g. outbound rate limiting or send failure).",
 		}),
 		GossipCoalesceBufferSize: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: m.Namespace,
