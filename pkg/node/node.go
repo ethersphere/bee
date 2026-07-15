@@ -381,13 +381,14 @@ func NewBee(
 		return nil, fmt.Errorf("batchstore: exists: %w", err)
 	}
 
-	addressbook := addressbook.New(stateStore)
-
-	// Prune addressbook entries whose overlays have not been seen recently, so
-	// the address book does not accumulate stale peers indefinitely.
-	if err := addressbook.Prune(time.Now().Add(-addressbookPruneAfter)); err != nil {
+	// Drop addressbook entries whose overlays have not been seen recently, so
+	// the address book does not accumulate stale peers indefinitely. Non-fatal:
+	// a failed prune must never block boot.
+	if err := addressbook.Prune(stateStore, time.Now().Add(-addressbookPruneAfter)); err != nil {
 		logger.Warning("addressbook prune failed", "error", err)
 	}
+
+	addressbook := addressbook.New(stateStore)
 
 	logger.Info("using overlay address", "address", swarmAddress)
 

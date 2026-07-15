@@ -259,9 +259,8 @@ func TestStampAddressbookLastSeen(t *testing.T) {
 // TestAddressbookPruneRealStore drives addressbook.Prune over the production
 // storage path (leveldb behind StateStorerAdapter), whose iterator key
 // semantics differ from the in-memory mock used in the addressbook package's
-// own tests. It confirms that overlays are correctly reconstructed from the
-// iterated keys so the right entries are pruned and the survivors remain
-// readable through the addressbook.
+// own tests. It confirms that the right entries are pruned and the survivors
+// remain readable through the addressbook.
 func TestAddressbookPruneRealStore(t *testing.T) {
 	t.Parallel()
 
@@ -298,11 +297,11 @@ func TestAddressbookPruneRealStore(t *testing.T) {
 	seed("aabb", 1000)
 	seed("ccdd", 9000)
 
-	book := addressbook.New(store)
-	if err := book.Prune(time.Unix(5000, 0)); err != nil {
+	if err := addressbook.Prune(store, time.Unix(5000, 0)); err != nil {
 		t.Fatalf("prune: %v", err)
 	}
 
+	book := addressbook.New(store)
 	if _, _, err := book.Get(stale); !errors.Is(err, addressbook.ErrNotFound) {
 		t.Fatalf("stale entry should have been pruned, got err=%v", err)
 	}

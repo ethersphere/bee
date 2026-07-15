@@ -70,7 +70,7 @@ type Options struct {
 
 type Service struct {
 	streamer          p2p.Streamer
-	addressBook       addressbook.GetPutUpdater
+	addressBook       addressbook.GetPutSeener
 	addPeersHandler   func(...swarm.Address)
 	networkID         uint64
 	logger            log.Logger
@@ -92,7 +92,7 @@ type Service struct {
 	chequebookStorer   ChequebookStorer
 }
 
-func New(streamer p2p.Streamer, addressbook addressbook.GetPutUpdater, networkID uint64, overlay swarm.Address, logger log.Logger, o Options) *Service {
+func New(streamer p2p.Streamer, addressbook addressbook.GetPutSeener, networkID uint64, overlay swarm.Address, logger log.Logger, o Options) *Service {
 	svc := &Service{
 		streamer:           streamer,
 		logger:             logger.WithName(loggerName).Register(),
@@ -369,18 +369,19 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 			continue
 		}
 
-		if err := bzz.CheckTimestamp(bzzAddress.Timestamp, existing, bzz.TimestampSourceGossip, s.now()); err != nil {
-			// A peer re-presenting a record we already hold has nothing new to
-			// store, but it is still a sighting: peers mint their bzz.Address
-			// once and gossip it unchanged for their whole uptime. Refresh
-			// last-seen so peers we keep hearing about, but never dial, do not
-			// look stale to the pruner. Both errors imply a known peer, since
-			// an unknown one short-circuits inside CheckTimestamp.
-			if errors.Is(err, bzz.ErrTimestampStale) || errors.Is(err, bzz.ErrTimestampTooSoon) {
-				if err := s.addressBook.UpdateLastSeen(overlayAddr); err != nil {
-					s.logger.Debug("hive gossip: update last seen", "overlay", overlayAddr.String(), "error", err)
-				}
+		// Hearing about a peer we already know is a sighting in its own right,
+		// whether or not the record it carries is newer than the one we hold.
+		// Peers mint their bzz.Address once and gossip it unchanged for their
+		// whole uptime, so for a known peer there is almost never anything new
+		// to store, and the pruner would evict peers we are told about
+		// constantly.
+		if existing != nil {
+			if err := s.addressBook.Seen(overlayAddr); err != nil {
+				s.logger.Debug("hive gossip: mark peer seen", "overlay", overlayAddr.String(), "error", err)
 			}
+		}
+
+		if err := bzz.CheckTimestamp(bzzAddress.Timestamp, existing, bzz.TimestampSourceGossip, s.now()); err != nil {
 			s.bumpTimestampMetric(err)
 			s.logger.Debug("hive gossip: timestamp validation failed", "overlay", overlayAddr.String(), "error", err)
 			continue

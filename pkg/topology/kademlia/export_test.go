@@ -18,6 +18,12 @@ var (
 	GenerateCommonBinPrefixes = generateCommonBinPrefixes
 )
 
+// MarkConnectedPeersSeen runs the sweep the manage loop performs on every
+// lastSeenRefreshInterval tick.
+func (k *Kad) MarkConnectedPeersSeen() error {
+	return k.markConnectedPeersSeen()
+}
+
 const (
 	DefaultBitSuffixLength     = defaultBitSuffixLength
 	DefaultSaturationPeers     = defaultSaturationPeers

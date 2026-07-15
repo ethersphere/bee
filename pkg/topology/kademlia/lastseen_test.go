@@ -27,11 +27,13 @@ type spyBook struct {
 	seen map[string]int
 }
 
-func (s *spyBook) UpdateLastSeen(o swarm.Address) error {
+func (s *spyBook) Seen(overlays ...swarm.Address) error {
 	s.mu.Lock()
-	s.seen[o.String()]++
+	for _, o := range overlays {
+		s.seen[o.String()]++
+	}
 	s.mu.Unlock()
-	return s.Interface.UpdateLastSeen(o)
+	return s.Interface.Seen(overlays...)
 }
 
 func (s *spyBook) count(o swarm.Address) int {
@@ -40,7 +42,11 @@ func (s *spyBook) count(o swarm.Address) int {
 	return s.seen[o.String()]
 }
 
-func TestKademliaBumpsLastSeenOnConnect(t *testing.T) {
+// TestMarkConnectedPeersSeen covers the sweep the manage loop runs on every
+// lastSeenRefreshInterval tick. A peer we hold a connection to is seen
+// continuously, so marking it on the connect event alone would let the
+// addressbook pruner evict our longest-lived peers.
+func TestMarkConnectedPeersSeen(t *testing.T) {
 	t.Parallel()
 
 	detector, err := stabilization.NewDetector(stabilization.Config{
@@ -77,18 +83,14 @@ func TestKademliaBumpsLastSeenOnConnect(t *testing.T) {
 	testutil.CleanupCloser(t, kad)
 	kad.SetStorageRadius(0)
 
-	// Inbound path: Connected -> onConnected -> UpdateLastSeen.
-	inbound := swarm.RandAddress(t)
-	connectOne(t, signer, kad, spy, inbound, nil)
-	if got := spy.count(inbound); got == 0 {
-		t.Fatalf("inbound connect did not bump last-seen for %s", inbound)
+	connected := swarm.RandAddress(t)
+	connectOne(t, signer, kad, spy, connected, nil)
+
+	if err := kad.MarkConnectedPeersSeen(); err != nil {
+		t.Fatal(err)
 	}
 
-	// Outbound path: manage loop dials -> connect closure -> UpdateLastSeen.
-	outbound := swarm.RandAddressAt(t, base, 0)
-	addOne(t, signer, kad, spy, outbound)
-	waitConn(t, &conns)
-	if got := spy.count(outbound); got == 0 {
-		t.Fatalf("outbound connect did not bump last-seen for %s", outbound)
+	if got := spy.count(connected); got != 1 {
+		t.Fatalf("connected peer marked seen %d times, want 1", got)
 	}
 }

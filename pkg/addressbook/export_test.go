@@ -12,13 +12,7 @@ import (
 
 type VerifiedAddress = verifiedAddress
 
-// LastSeenUpdateInterval exposes the UpdateLastSeen write throttle.
-const LastSeenUpdateInterval = lastSeenUpdateInterval
-
 // NewWithClock creates an addressbook with an overridable clock, for testing.
 func NewWithClock(storer storage.StateStorer, now func() time.Time) Interface {
-	return &store{
-		store: storer,
-		now:   now,
-	}
+	return newStore(storer, now)
 }

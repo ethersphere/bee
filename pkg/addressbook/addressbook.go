@@ -19,12 +19,6 @@ import (
 
 const keyPrefix = "addressbook_entry_"
 
-// lastSeenUpdateInterval is the resolution at which UpdateLastSeen persists.
-// Hive reports the same peer on every gossip round, while pruning operates on
-// a scale of weeks, so a write is skipped when the stored value is already
-// this fresh.
-const lastSeenUpdateInterval = 24 * time.Hour
-
 var _ Interface = (*store)(nil)
 
 var ErrNotFound = errors.New("addressbook: not found")
@@ -43,17 +37,13 @@ type verifiedAddress struct {
 type Interface interface {
 	GetPutter
 	Remover
-	// UpdateLastSeen marks the overlay as seen at the current time.
-	UpdateLastSeen(overlay swarm.Address) error
+	Seener
 	// Overlays returns a list of all overlay addresses saved in addressbook.
 	Overlays() ([]swarm.Address, error)
 	// IterateOverlays exposes overlays in a form of an iterator.
 	IterateOverlays(func(swarm.Address) (bool, error)) error
 	// Addresses returns a list of all bzz.Address-es saved in addressbook.
 	Addresses() ([]bzz.Address, error)
-	// Prune removes all entries whose overlay has not been seen since the
-	// given time.
-	Prune(before time.Time) error
 }
 
 type GetPutter interface {
@@ -61,12 +51,11 @@ type GetPutter interface {
 	Putter
 }
 
-// GetPutUpdater is the addressbook surface needed by hive: it stores peers it
-// learns about and refreshes the last-seen time of the ones it already knows.
-type GetPutUpdater interface {
+// GetPutSeener is the addressbook surface needed by hive: it stores the peers
+// it learns about and marks the ones it already knows as seen.
+type GetPutSeener interface {
 	GetPutter
-	// UpdateLastSeen marks the overlay as seen at the current time.
-	UpdateLastSeen(overlay swarm.Address) error
+	Seener
 }
 
 type Getter interface {
@@ -85,20 +74,29 @@ type Remover interface {
 	Remove(overlay swarm.Address) error
 }
 
+type Seener interface {
+	// Seen marks the overlays as seen at the current time.
+	Seen(overlays ...swarm.Address) error
+}
+
 type store struct {
 	store storage.StateStorer
 	now   func() time.Time
 
-	// mu serializes the read-modify-write in UpdateLastSeen against Put, so a
+	// mu serializes the read-modify-write in Seen against Put, so that a
 	// concurrent Put is not rolled back by a stale copy of the entry.
 	mu sync.Mutex
 }
 
 // New creates new addressbook for state storer.
 func New(storer storage.StateStorer) Interface {
+	return newStore(storer, time.Now)
+}
+
+func newStore(storer storage.StateStorer, now func() time.Time) *store {
 	return &store{
 		store: storer,
-		now:   time.Now,
+		now:   now,
 	}
 }
 
@@ -127,53 +125,54 @@ func (s *store) Put(overlay swarm.Address, addr bzz.Address, verified bool) (err
 	})
 }
 
-// UpdateLastSeen marks the overlay as seen at the current time. It is a no-op
-// if the overlay is not present in the addressbook, or if the recorded time is
-// younger than lastSeenUpdateInterval.
-func (s *store) UpdateLastSeen(overlay swarm.Address) error {
+// Seen marks the overlays as seen at the current time. An overlay that is not
+// present in the addressbook is skipped.
+func (s *store) Seen(overlays ...swarm.Address) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	key := keyPrefix + overlay.String()
-	v := &verifiedAddress{}
-	if err := s.store.Get(key, v); err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil
-		}
-		return err
-	}
-
 	now := s.now().Unix()
-	if now-v.LastSeen < int64(lastSeenUpdateInterval.Seconds()) {
-		return nil
+
+	for _, overlay := range overlays {
+		key := keyPrefix + overlay.String()
+
+		v := &verifiedAddress{}
+		if err := s.store.Get(key, v); err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				continue
+			}
+			return err
+		}
+
+		v.LastSeen = now
+		if err := s.store.Put(key, v); err != nil {
+			return err
+		}
 	}
 
-	v.LastSeen = now
-	return s.store.Put(key, v)
+	return nil
 }
 
 func (s *store) Remove(overlay swarm.Address) error {
 	return s.store.Delete(keyPrefix + overlay.String())
 }
 
-// Prune removes all entries whose overlay has not been seen since before.
-// Entries without a recorded last-seen time (LastSeen == 0) are kept, leaving
-// pruning to a later run once they have been observed.
-func (s *store) Prune(before time.Time) error {
+// Prune removes all entries from storer whose overlay has not been seen since
+// before. Entries without a recorded last-seen time (LastSeen == 0) are kept,
+// leaving them to a later run once they have been observed. It is a one-shot
+// maintenance step meant to run at startup, before the address book is shared
+// with its writers, so it takes no lock.
+func Prune(storer storage.StateStorer, before time.Time) error {
 	cutoff := before.Unix()
 
-	var stale []swarm.Address
-	err := s.store.Iterate(keyPrefix, func(key, value []byte) (stop bool, err error) {
+	var stale []string
+	err := storer.Iterate(keyPrefix, func(key, value []byte) (stop bool, err error) {
 		entry := &verifiedAddress{}
 		if err := json.Unmarshal(value, entry); err != nil {
 			return true, err
 		}
 		if entry.LastSeen != 0 && entry.LastSeen < cutoff {
-			addr, err := swarm.ParseHexAddress(strings.TrimPrefix(string(key), keyPrefix))
-			if err != nil {
-				return true, err
-			}
-			stale = append(stale, addr)
+			stale = append(stale, string(key))
 		}
 		return false, nil
 	})
@@ -181,8 +180,8 @@ func (s *store) Prune(before time.Time) error {
 		return err
 	}
 
-	for _, addr := range stale {
-		if err := s.Remove(addr); err != nil {
+	for _, key := range stale {
+		if err := storer.Delete(key); err != nil {
 			return err
 		}
 	}

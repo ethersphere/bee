@@ -117,101 +117,101 @@ func run(t *testing.T, f bookFunc) {
 	}
 }
 
-func TestUpdateLastSeen(t *testing.T) {
+// TestSeen covers a sighting of a peer we already hold: the last-seen time
+// moves, and the entry then survives a prune that would otherwise catch it. An
+// overlay we do not know is skipped rather than created.
+func TestSeen(t *testing.T) {
 	t.Parallel()
 
-	now := time.Unix(1000, 0)
-	store := addressbook.NewWithClock(mock.NewStateStore(), func() time.Time { return now })
+	base := time.Unix(1_000_000, 0)
+	now := base
+	state := mock.NewStateStore()
+	book := addressbook.NewWithClock(state, func() time.Time { return now })
 
 	overlay := swarm.NewAddress([]byte{0, 1, 2, 3})
 
-	// UpdateLastSeen on a missing overlay is a no-op and must not create an entry.
-	if err := store.UpdateLastSeen(overlay); err != nil {
+	// an unknown overlay is skipped, not created.
+	if err := book.Seen(overlay); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := store.Get(overlay); !errors.Is(err, addressbook.ErrNotFound) {
+	if _, _, err := book.Get(overlay); !errors.Is(err, addressbook.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 
-	if err := store.Put(overlay, newTestAddr(t, overlay), true); err != nil {
+	if err := book.Put(overlay, newTestAddr(t, overlay), true); err != nil {
 		t.Fatal(err)
 	}
 
-	// advance the clock past the update interval and bump last-seen; the entry
-	// must survive a prune at the original time.
-	seenAt := now.Add(2 * 24 * time.Hour)
-	now = seenAt
-	if err := store.UpdateLastSeen(overlay); err != nil {
+	// a much later sighting moves last-seen forward, so a prune whose cutoff
+	// predates it keeps the entry.
+	now = base.Add(90 * 24 * time.Hour)
+	if err := book.Seen(overlay); err != nil {
 		t.Fatal(err)
+	}
+	if got := lastSeenOf(t, state, overlay); got != now.Unix() {
+		t.Fatalf("seen did not move last seen: got %d, want %d", got, now.Unix())
 	}
 
-	if err := store.Prune(seenAt.Add(-time.Hour)); err != nil {
+	if err := addressbook.Prune(state, now.Add(-time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := store.Get(overlay); err != nil {
-		t.Fatalf("entry pruned despite recent last-seen: %v", err)
+	if _, verified, err := book.Get(overlay); err != nil || !verified {
+		t.Fatalf("entry pruned despite a recent sighting: verified=%v err=%v", verified, err)
 	}
 }
 
-// TestUpdateLastSeenThrottled asserts that a bump within lastSeenUpdateInterval
-// does not write. Hive calls UpdateLastSeen on every gossip sighting, so this
-// is what keeps the write rate bounded to roughly one per peer per day.
-func TestUpdateLastSeenThrottled(t *testing.T) {
+// TestSeenVariadic marks several overlays in one call, which is how kademlia
+// refreshes everything it is connected to.
+func TestSeenVariadic(t *testing.T) {
 	t.Parallel()
 
-	base := time.Unix(1_000_000, 0)
-	now := base
-	mockStore := mock.NewStateStore()
-	store := addressbook.NewWithClock(mockStore, func() time.Time { return now })
+	now := time.Unix(1_000_000, 0)
+	state := mock.NewStateStore()
+	book := addressbook.NewWithClock(state, func() time.Time { return now })
 
-	overlay := swarm.NewAddress([]byte{0, 1, 2, 3})
-	if err := store.Put(overlay, newTestAddr(t, overlay), true); err != nil {
+	overlays := []swarm.Address{
+		swarm.NewAddress([]byte{0, 1, 2, 3}),
+		swarm.NewAddress([]byte{0, 1, 2, 4}),
+	}
+	for _, overlay := range overlays {
+		if err := book.Put(overlay, newTestAddr(t, overlay), true); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	now = now.Add(time.Hour)
+	if err := book.Seen(overlays...); err != nil {
 		t.Fatal(err)
 	}
 
-	// well inside the interval: must not touch the record.
-	now = base.Add(time.Hour)
-	if err := store.UpdateLastSeen(overlay); err != nil {
-		t.Fatal(err)
-	}
-	if got := lastSeenOf(t, mockStore, overlay); got != base.Unix() {
-		t.Fatalf("throttled update wrote: last_seen = %d, want %d", got, base.Unix())
-	}
-
-	// past the interval: must write.
-	now = base.Add(addressbook.LastSeenUpdateInterval + time.Second)
-	if err := store.UpdateLastSeen(overlay); err != nil {
-		t.Fatal(err)
-	}
-	if got := lastSeenOf(t, mockStore, overlay); got != now.Unix() {
-		t.Fatalf("update past interval did not write: last_seen = %d, want %d", got, now.Unix())
+	for _, overlay := range overlays {
+		if got := lastSeenOf(t, state, overlay); got != now.Unix() {
+			t.Fatalf("overlay %s not marked seen: got %d, want %d", overlay, got, now.Unix())
+		}
 	}
 }
 
-// TestUpdateLastSeenKeepsConcurrentPut pins the read-modify-write in
-// UpdateLastSeen against a Put that lands between its read and its write.
-// Without serialization the Put's Verified flag is rolled back, which would
+// TestSeenKeepsConcurrentPut pins Seen's read-modify-write against a Put that
+// lands between its read and its write. Seen rewrites the whole record, so
+// without serialization the Put's verified flag is rolled back, which would
 // also desync the addressbook from hive's chequebook registry.
-func TestUpdateLastSeenKeepsConcurrentPut(t *testing.T) {
+func TestSeenKeepsConcurrentPut(t *testing.T) {
 	t.Parallel()
 
-	base := time.Unix(1_000_000, 0)
-	now := base
+	now := time.Unix(1_000_000, 0)
 	hooked := &hookStore{StateStorer: mock.NewStateStore()}
 	book := addressbook.NewWithClock(hooked, func() time.Time { return now })
 
 	overlay := swarm.NewAddress([]byte{0, 1, 2, 3})
 	addr := newTestAddr(t, overlay)
 
-	// a known, not-yet-verified peer.
+	// a known, not yet verified peer.
 	if err := book.Put(overlay, addr, false); err != nil {
 		t.Fatal(err)
 	}
-	// move past the throttle so UpdateLastSeen really writes.
-	now = base.Add(addressbook.LastSeenUpdateInterval + time.Second)
 
-	// While UpdateLastSeen holds the entry it has just read, hive verifies the
-	// same peer and stores it with Verified=true.
+	// While Seen holds the entry it has just read, hive verifies the same peer
+	// and stores it with Verified=true.
 	started, finished := make(chan struct{}), make(chan struct{})
 	hooked.onGet = func() {
 		go func() {
@@ -223,12 +223,12 @@ func TestUpdateLastSeenKeepsConcurrentPut(t *testing.T) {
 		}()
 		<-started
 		// Give the writer time to land. Serialized, it blocks on the
-		// addressbook lock until UpdateLastSeen returns; unsynchronized, its
-		// write completes here and is then overwritten below.
+		// addressbook lock until Seen returns; unsynchronized, its write
+		// completes here and is then overwritten below.
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	if err := book.UpdateLastSeen(overlay); err != nil {
+	if err := book.Seen(overlay); err != nil {
 		t.Fatal(err)
 	}
 	<-finished
@@ -239,7 +239,7 @@ func TestUpdateLastSeenKeepsConcurrentPut(t *testing.T) {
 }
 
 // hookStore fires onGet once, immediately after a Get returns, to interleave a
-// concurrent writer inside UpdateLastSeen's read-modify-write.
+// concurrent writer inside Seen's read-modify-write.
 type hookStore struct {
 	storage.StateStorer
 	onGet func()
@@ -255,69 +255,71 @@ func (h *hookStore) Get(key string, i any) error {
 	return err
 }
 
-func lastSeenOf(t *testing.T, store storage.StateStorer, overlay swarm.Address) int64 {
+func lastSeenOf(t *testing.T, state storage.StateStorer, overlay swarm.Address) int64 {
 	t.Helper()
 
 	v := &addressbook.VerifiedAddress{}
-	if err := store.Get("addressbook_entry_"+overlay.String(), v); err != nil {
+	if err := state.Get("addressbook_entry_"+overlay.String(), v); err != nil {
 		t.Fatalf("get entry: %v", err)
 	}
 	return v.LastSeen
 }
 
+// TestPrune drops overlays last seen before the cutoff and keeps the rest.
 func TestPrune(t *testing.T) {
 	t.Parallel()
 
-	now := time.Unix(0, 0)
-	store := addressbook.NewWithClock(mock.NewStateStore(), func() time.Time { return now })
+	now := time.Unix(1_000_000_000, 0)
+	state := mock.NewStateStore()
+	book := addressbook.NewWithClock(state, func() time.Time { return now })
 
 	stale := swarm.NewAddress([]byte{0, 1, 2, 3})
+	if err := book.Put(stale, newTestAddr(t, stale), true); err != nil {
+		t.Fatal(err)
+	}
+
+	now = now.Add(48 * time.Hour)
 	fresh := swarm.NewAddress([]byte{0, 1, 2, 4})
-
-	now = time.Unix(1000, 0)
-	if err := store.Put(stale, newTestAddr(t, stale), true); err != nil {
+	if err := book.Put(fresh, newTestAddr(t, fresh), true); err != nil {
 		t.Fatal(err)
 	}
 
-	now = time.Unix(9000, 0)
-	if err := store.Put(fresh, newTestAddr(t, fresh), true); err != nil {
+	// cutoff sits between the two puts: stale is before it, fresh is after.
+	if err := addressbook.Prune(state, now.Add(-time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := store.Prune(time.Unix(5000, 0)); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, _, err := store.Get(stale); !errors.Is(err, addressbook.ErrNotFound) {
+	if _, _, err := book.Get(stale); !errors.Is(err, addressbook.ErrNotFound) {
 		t.Fatalf("stale entry should have been pruned, got err=%v", err)
 	}
-	if _, _, err := store.Get(fresh); err != nil {
+	if _, _, err := book.Get(fresh); err != nil {
 		t.Fatalf("fresh entry should survive: %v", err)
 	}
 }
 
+// TestPruneKeepsEntriesWithoutLastSeen covers records that predate pruning and
+// have not been stamped by the migration. They are kept, and stamped on their
+// next sighting.
 func TestPruneKeepsEntriesWithoutLastSeen(t *testing.T) {
 	t.Parallel()
 
-	mockStore := mock.NewStateStore()
+	state := mock.NewStateStore()
 	overlay := swarm.NewAddress([]byte{0, 1, 2, 3})
 
-	// Seed an entry without a last_seen field, mirroring records that predate
-	// pruning before the stamping migration runs.
-	if err := mockStore.Put("addressbook_entry_"+overlay.String(), &addressbook.VerifiedAddress{
+	if err := state.Put("addressbook_entry_"+overlay.String(), &addressbook.VerifiedAddress{
 		Address:  addrPtr(newTestAddr(t, overlay)),
 		Verified: true,
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	store := addressbook.New(mockStore)
-	if err := store.Prune(time.Unix(5000, 0)); err != nil {
+	if err := addressbook.Prune(state, time.Unix(5_000_000_000, 0)); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, _, err := store.Get(overlay); err != nil {
-		t.Fatalf("entry without last_seen must not be pruned: %v", err)
+	book := addressbook.New(state)
+	if _, _, err := book.Get(overlay); err != nil {
+		t.Fatalf("entry without a last-seen time must not be pruned: %v", err)
 	}
 }
 
