@@ -174,6 +174,46 @@ func TestPersistRemove(t *testing.T) {
 	}
 }
 
+// TestPersistDirectoryOnlyAdds covers the case where every Add() to a node
+// carries an empty entry (only forks/metadata), so the lazy-init in Add()
+// never sets refBytesSize. Without the marshal-time inference, the header
+// would report refBytesSize=0 even though the children have full-width refs,
+// and the v0.2 reader would silently drop every fork.
+func TestPersistDirectoryOnlyAdds(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	ls := mantaray.LoadSaver(newMockLoadSaver())
+
+	n := mantaray.New()
+	n.SetObfuscationKey(mantaray.ZeroObfuscationKey)
+
+	paths := [][]byte{[]byte("foo"), []byte("bar"), []byte("baz")}
+	for _, p := range paths {
+		// empty entry; only metadata. Mirrors bee/pkg/api/bzz.go:266 which
+		// adds the root path with swarm.ZeroAddress (a nil []byte).
+		if err := n.Add(ctx, p, nil, map[string]string{"k": "v"}, ls); err != nil {
+			t.Fatalf("add %q: %v", p, err)
+		}
+	}
+
+	if err := n.Save(ctx, ls); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	ref := n.Reference()
+
+	nn := mantaray.NewNodeRef(ref)
+	for _, p := range paths {
+		ln, err := nn.LookupNode(ctx, p, ls)
+		if err != nil {
+			t.Fatalf("lookup %q: %v", p, err)
+		}
+		if v := ln.Metadata()["k"]; v != "v" {
+			t.Fatalf("lookup %q: expected metadata k=v, got %q", p, v)
+		}
+	}
+}
+
 type (
 	addr          [32]byte
 	mockLoadSaver struct {

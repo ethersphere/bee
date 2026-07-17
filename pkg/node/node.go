@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	bee "github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/accounting"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
@@ -193,6 +194,10 @@ type Options struct {
 	TargetNeighborhood            string
 	TracingEnabled                bool
 	TracingEndpoint               string
+	TracingInsecure               bool
+	TracingCAFile                 string
+	TracingProtocol               string
+	TracingSamplingRatio          float64
 	TracingServiceName            string
 	TrxDebugMode                  bool
 	WarmupTime                    time.Duration
@@ -218,6 +223,19 @@ const (
 	maxAllowedDoubling            = 1
 )
 
+// tracingEnvironment maps a network id to the deployment.environment trace
+// attribute. Unknown ids are reported as "private".
+func tracingEnvironment(networkID uint64) string {
+	switch networkID {
+	case config.Mainnet.NetworkID:
+		return "mainnet"
+	case config.Testnet.NetworkID:
+		return "testnet"
+	default:
+		return "private"
+	}
+}
+
 func NewBee(
 	ctx context.Context,
 	addr string,
@@ -235,15 +253,6 @@ func NewBee(
 	var pullSyncStartTime time.Time
 
 	nodeMetrics := newMetrics()
-
-	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
-		Enabled:     o.TracingEnabled,
-		Endpoint:    o.TracingEndpoint,
-		ServiceName: o.TracingServiceName,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("tracer: %w", err)
-	}
 
 	if err := validatePublicAddress(o.NATAddr); err != nil {
 		return nil, fmt.Errorf("invalid NAT address %s: %w", o.NATAddr, err)
@@ -278,7 +287,6 @@ func NewBee(
 		logger:         logger,
 		ctxCancel:      ctxCancel,
 		errorLogWriter: sink,
-		tracerCloser:   tracerCloser,
 		syncingStopped: syncutil.NewSignaler(),
 	}
 
@@ -389,6 +397,24 @@ func NewBee(
 		return nil, fmt.Errorf("check overlay address: %w", err)
 	}
 
+	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
+		Enabled:        o.TracingEnabled,
+		Endpoint:       o.TracingEndpoint,
+		Insecure:       o.TracingInsecure,
+		CAFile:         o.TracingCAFile,
+		Protocol:       o.TracingProtocol,
+		SamplingRatio:  o.TracingSamplingRatio,
+		ServiceName:    o.TracingServiceName,
+		ServiceVersion: bee.Version,
+		Environment:    tracingEnvironment(networkID),
+		InstanceID:     swarmAddress.String(),
+		Logger:         logger,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("tracer: %w", err)
+	}
+	b.tracerCloser = tracerCloser
+
 	var (
 		chequebookService chequebook.Service = new(noOpChequebookService)
 		chequeStore       chequebook.ChequeStore
@@ -470,7 +496,7 @@ func NewBee(
 		}
 	}(probe)
 
-	stamperStore, wasClean, err := InitStamperStore(logger, o.DataDir, stateStore)
+	stamperStore, wasDirty, err := InitStamperStore(logger, o.DataDir, stateStore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize stamper store: %w", err)
 	}
@@ -730,7 +756,7 @@ func NewBee(
 	// construction, so no conditional is needed here.
 	p2ps.SetChequebookAddress(chequebookService.Address())
 
-	post, err := postage.NewService(logger, stamperStore, batchStore, chainID, wasClean)
+	post, err := postage.NewService(logger, stamperStore, batchStore, chainID, wasDirty)
 	if err != nil {
 		return nil, fmt.Errorf("postage service: %w", err)
 	}
@@ -881,13 +907,8 @@ func NewBee(
 		}
 	)
 
-	// When the postage snapshot applies, hand it to the batch service so it
-	// rebuilds the store from the snapshot during construction; otherwise the
-	// store is reset only when --resync is requested. Either way the store is
-	// reset in a single place (batchservice.New), which avoids a second reset
-	// wiping the snapshot that was just loaded (see #5495).
 	var batchSnapshot *batchservice.Snapshot
-	if !o.SkipPostageSnapshot && !batchStoreExists && (networkID == mainnetNetworkID) && beeNodeMode != api.UltraLightMode {
+	if useEmbeddedSnapshot(o.SkipPostageSnapshot, batchStoreExists, o.Resync, networkID, beeNodeMode) {
 		batchSnapshot, err = snapshot.New(ctx, logger, archive.Getter{}, b.syncingStopped, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout, postageSyncStart)
 		if err != nil {
 			// A corrupt snapshot is not fatal: rebuild from the chain instead.
@@ -1635,4 +1656,12 @@ func batchStoreExists(s storage.StateStorer) (bool, error) {
 	})
 
 	return hasOne, err
+}
+
+// useEmbeddedSnapshot reports whether to rebuild the batch store from the
+// embedded snapshot: mainnet, full or light node, and the store will be built
+// from scratch (no store yet, or a resync wipes it), unless explicitly skipped.
+func useEmbeddedSnapshot(skip, batchStoreExists, resync bool, networkID uint64, mode api.BeeNodeMode) bool {
+	storeWillRebuild := !batchStoreExists || resync
+	return !skip && storeWillRebuild && networkID == mainnetNetworkID && mode != api.UltraLightMode
 }

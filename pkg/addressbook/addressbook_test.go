@@ -5,6 +5,7 @@
 package addressbook_test
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -323,3 +324,44 @@ func TestPruneKeepsEntriesWithoutLastSeen(t *testing.T) {
 }
 
 func addrPtr(a bzz.Address) *bzz.Address { return &a }
+
+type mockCorruptedStore struct{}
+
+func (m *mockCorruptedStore) Get(key string, i any) error {
+	corruptedJSON := []byte(`{"address": null}`)
+	return json.Unmarshal(corruptedJSON, i)
+}
+
+func (m *mockCorruptedStore) Put(key string, i any) error {
+	return nil
+}
+
+func (m *mockCorruptedStore) Delete(key string) error {
+	return nil
+}
+
+func (m *mockCorruptedStore) Iterate(prefix string, fn storage.StateIterFunc) error {
+	return nil
+}
+
+func (m *mockCorruptedStore) Close() error {
+	return nil
+}
+
+func TestGetCorruptedNilAddress(t *testing.T) {
+	t.Parallel()
+
+	corruptedStore := &mockCorruptedStore{}
+	book := addressbook.New(corruptedStore)
+
+	addr := swarm.NewAddress([]byte{0, 1, 2, 3})
+
+	v, _, err := book.Get(addr)
+	if !errors.Is(err, addressbook.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound for corrupted entry, got %v", err)
+	}
+
+	if v != nil {
+		t.Fatalf("expected nil address, got %s", v)
+	}
+}

@@ -41,8 +41,10 @@ const (
 	optionCORSAllowedOrigins               = "cors-allowed-origins"
 	optionNameTracingEnabled               = "tracing-enable"
 	optionNameTracingEndpoint              = "tracing-endpoint"
-	optionNameTracingHost                  = "tracing-host"
-	optionNameTracingPort                  = "tracing-port"
+	optionNameTracingInsecure              = "tracing-insecure"
+	optionNameTracingCAFile                = "tracing-ca-file"
+	optionNameTracingProtocol              = "tracing-protocol"
+	optionNameTracingSamplingRatio         = "tracing-sampling-ratio"
 	optionNameTracingServiceName           = "tracing-service-name"
 	optionNameVerbosity                    = "verbosity"
 	optionNamePaymentThreshold             = "payment-threshold"
@@ -104,6 +106,15 @@ const (
 	configKeyBlockchainRpcTLSTimeout   = "blockchain-rpc.tls-timeout"
 	configKeyBlockchainRpcIdleTimeout  = "blockchain-rpc.idle-timeout"
 	configKeyBlockchainRpcKeepalive    = "blockchain-rpc.keepalive"
+
+	// tracing
+	configKeyTracingEnabled       = "tracing.enable"
+	configKeyTracingEndpoint      = "tracing.endpoint"
+	configKeyTracingInsecure      = "tracing.insecure"
+	configKeyTracingCAFile        = "tracing.ca-file"
+	configKeyTracingProtocol      = "tracing.protocol"
+	configKeyTracingSamplingRatio = "tracing.sampling-ratio"
+	configKeyTracingServiceName   = "tracing.service-name"
 )
 
 var blockchainRpcConfigPairs = []struct{ flat, dotted string }{
@@ -114,9 +125,42 @@ var blockchainRpcConfigPairs = []struct{ flat, dotted string }{
 	{optionNameBlockchainRpcKeepalive, configKeyBlockchainRpcKeepalive},
 }
 
+var tracingConfigPairs = []struct{ flat, dotted string }{
+	{optionNameTracingEnabled, configKeyTracingEnabled},
+	{optionNameTracingEndpoint, configKeyTracingEndpoint},
+	{optionNameTracingInsecure, configKeyTracingInsecure},
+	{optionNameTracingCAFile, configKeyTracingCAFile},
+	{optionNameTracingProtocol, configKeyTracingProtocol},
+	{optionNameTracingSamplingRatio, configKeyTracingSamplingRatio},
+	{optionNameTracingServiceName, configKeyTracingServiceName},
+}
+
+// Deprecated tracing options, removed in the OpenTelemetry migration. They are
+// kept only as hidden no-op flags so that existing configs do not break node
+// startup; their values are ignored (see deprecatedTracingKeys).
+//
+// Note: tracing-endpoint is intentionally NOT here — it is reused as the active
+// OTLP endpoint flag (see optionNameTracingEndpoint). Its meaning changed from a
+// Jaeger agent address to an OTLP collector endpoint.
+const (
+	optionNameTracingHost = "tracing-host"
+	optionNameTracingPort = "tracing-port"
+)
+
+// deprecatedTracingKeys are the pre-OpenTelemetry tracing options. They are
+// registered as hidden no-op flags so stale configs still start the node, but
+// their values are ignored; operators should migrate to the tracing-* keys.
+var deprecatedTracingKeys = []string{
+	optionNameTracingHost,
+	optionNameTracingPort,
+}
+
 var knownNestedKeys = func() map[string]bool {
-	m := make(map[string]bool, len(blockchainRpcConfigPairs))
+	m := make(map[string]bool, len(blockchainRpcConfigPairs)+len(tracingConfigPairs))
 	for _, p := range blockchainRpcConfigPairs {
+		m[p.dotted] = true
+	}
+	for _, p := range tracingConfigPairs {
 		m[p.dotted] = true
 	}
 	return m
@@ -285,10 +329,18 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Uint64(optionNameNetworkID, chaincfg.Mainnet.NetworkID, "ID of the Swarm network")
 	cmd.Flags().StringSlice(optionCORSAllowedOrigins, []string{}, "origins with CORS headers enabled")
 	cmd.Flags().Bool(optionNameTracingEnabled, false, "enable tracing")
-	cmd.Flags().String(optionNameTracingEndpoint, "127.0.0.1:6831", "endpoint to send tracing data")
-	cmd.Flags().String(optionNameTracingHost, "", "host to send tracing data")
-	cmd.Flags().String(optionNameTracingPort, "", "port to send tracing data")
+	cmd.Flags().String(optionNameTracingEndpoint, "127.0.0.1:4318", "OTLP collector endpoint to send tracing data (host:port); default port is 4318 for http, 4317 for grpc")
+	cmd.Flags().Bool(optionNameTracingInsecure, false, "disable TLS for the OTLP exporter (useful for a local collector); when false, set --tracing-ca-file to verify the collector certificate against a private CA")
+	cmd.Flags().String(optionNameTracingCAFile, "", "path to a PEM-encoded CA bundle used to verify the OTLP collector certificate; ignored when --tracing-insecure=true")
+	cmd.Flags().String(optionNameTracingProtocol, "http", "OTLP exporter transport: http or grpc")
+	cmd.Flags().Float64(optionNameTracingSamplingRatio, 1.0, "head-based sampling ratio in [0,1]; 0 samples nothing, 1 samples everything")
 	cmd.Flags().String(optionNameTracingServiceName, "bee", "service name identifier for tracing")
+	// Deprecated, no-op tracing flags kept for backward compatibility so that
+	// existing configs do not break node startup. Their values are ignored.
+	for _, name := range deprecatedTracingKeys {
+		cmd.Flags().String(name, "", "deprecated and ignored; use the tracing-* options")
+		_ = cmd.Flags().MarkDeprecated(name, "no longer used after the OpenTelemetry migration; use the tracing-* options")
+	}
 	cmd.Flags().String(optionNameVerbosity, "info", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
 	cmd.Flags().String(optionWelcomeMessage, "", "send a welcome message string during handshakes")
 	cmd.Flags().String(optionNamePaymentThreshold, "13500000", "threshold in BZZ where you expect to get paid from your peers")
@@ -372,13 +424,47 @@ func (c *command) initLogger(cmd *cobra.Command) error {
 // bindBlockchainRpcConfig supports both flat (blockchain-rpc-endpoint) and
 // nested (blockchain-rpc.endpoint) YAML forms, with nested taking precedence.
 func (c *command) bindBlockchainRpcConfig(cmd *cobra.Command) {
-	for _, p := range blockchainRpcConfigPairs {
-		// Check before registering the alias; afterwards the flat value is unreachable.
-		if c.config.InConfig(p.flat) && c.config.InConfig(p.dotted) {
-			c.logger.Warning("config key conflict: nested form takes precedence", "ignored", p.flat, "used", p.dotted)
+	c.bindNestedConfig(cmd, blockchainRpcConfigPairs)
+}
+
+// bindTracingConfig supports both flat (tracing-endpoint) and nested
+// (tracing.endpoint) YAML forms, with nested taking precedence.
+func (c *command) bindTracingConfig(cmd *cobra.Command) {
+	c.bindNestedConfig(cmd, tracingConfigPairs)
+}
+
+// warnDeprecatedTracingKeys logs a warning for each pre-OpenTelemetry tracing
+// key found in the config file. The keys are accepted to keep stale configs
+// bootable, but their values are ignored. Keys passed on the command line are
+// already handled by cobra's deprecation notice.
+func (c *command) warnDeprecatedTracingKeys() {
+	for _, key := range deprecatedTracingKeys {
+		if c.config.InConfig(key) {
+			c.logger.Warning("deprecated tracing config key is ignored; use the tracing-* options", "key", key)
 		}
+	}
+}
+
+// warnTracingTLSWithoutCA warns when tracing runs over TLS without an explicit
+// CA bundle, in which case the OTLP exporter falls back to the system root CAs.
+func (c *command) warnTracingTLSWithoutCA() {
+	if c.config.GetBool(configKeyTracingEnabled) &&
+		!c.config.GetBool(configKeyTracingInsecure) &&
+		c.config.GetString(configKeyTracingCAFile) == "" {
+		c.logger.Warning("tracing: TLS is enabled but no CA bundle is configured; the OTLP exporter will rely on the system root CAs. Provide --tracing-ca-file, set --tracing-insecure=true for a plaintext local collector, or disable tracing.")
+	}
+}
+
+func (c *command) bindNestedConfig(cmd *cobra.Command, pairs []struct{ flat, dotted string }) {
+	for _, p := range pairs {
+		nested := c.config.Get(p.dotted)
+		conflict := c.config.InConfig(p.flat) && c.config.IsSet(p.dotted)
 		_ = c.config.BindPFlag(p.dotted, cmd.Flags().Lookup(p.flat))
 		c.config.RegisterAlias(p.flat, p.dotted)
+		if conflict {
+			c.logger.Warning("config key conflict: nested form takes precedence", "ignored", p.flat, "used", p.dotted)
+			c.config.Set(p.dotted, nested)
+		}
 	}
 }
 

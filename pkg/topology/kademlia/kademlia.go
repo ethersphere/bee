@@ -197,6 +197,7 @@ type Kad struct {
 	logger            log.Logger // logger
 	bootnode          bool       // indicates whether the node is working in bootnode mode
 	collector         *im.Collector
+	metricsDB         *shed.DB      // backing store for the metrics collector; closed on shutdown
 	quit              chan struct{} // quit channel
 	halt              chan struct{} // halt channel
 	done              chan struct{} // signal that `manage` has quit
@@ -252,6 +253,7 @@ func New(
 		logger:            logger.WithName(loggerName).Register(),
 		bootnode:          opt.BootnodeMode,
 		collector:         imc,
+		metricsDB:         sdb,
 		quit:              make(chan struct{}),
 		halt:              make(chan struct{}),
 		done:              make(chan struct{}),
@@ -1631,6 +1633,12 @@ func (k *Kad) Close() error {
 		k.logger.Debug("unable to finalize open sessions", "error", err)
 	}
 	k.logger.Debug("metrics collector finalized", "elapsed", time.Since(start))
+
+	if k.metricsDB != nil {
+		if dbErr := k.metricsDB.Close(); dbErr != nil {
+			k.logger.Debug("unable to close metrics store", "error", dbErr)
+		}
+	}
 
 	return err
 }

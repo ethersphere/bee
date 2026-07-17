@@ -13,8 +13,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
-	"github.com/opentracing/opentracing-go/ext"
-	olog "github.com/opentracing/opentracing-go/log"
+	"github.com/ethersphere/bee/v2/pkg/tracing"
+	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -32,11 +32,12 @@ func (db *DB) DirectUpload() PutterSession {
 					defer func() { <-db.directUploadLimiter }()
 
 					span, logger, ctx := db.tracer.FollowSpanFromContext(ctx, "put-direct-upload", db.logger)
+					span.SetAttributes(attribute.String("address", ch.Address().String()))
 					defer func() {
 						if err != nil {
-							ext.LogError(span, err)
+							tracing.RecordError(span, err)
 						}
-						span.Finish()
+						span.End()
 					}()
 
 					for {
@@ -83,22 +84,23 @@ func (db *DB) Download(cache bool) storage.Getter {
 	return getterWithMetrics{
 		storage.GetterFunc(func(ctx context.Context, address swarm.Address) (ch swarm.Chunk, err error) {
 			span, logger, ctx := db.tracer.StartSpanFromContext(ctx, "get-chunk", db.logger)
+			span.SetAttributes(attribute.String("address", address.String()))
 			defer func() {
 				if err != nil {
-					ext.LogError(span, err)
+					tracing.RecordError(span, err)
 				} else {
-					span.LogFields(olog.Bool("success", true))
+					span.SetAttributes(attribute.Bool("success", true))
 				}
-				span.Finish()
+				span.End()
 			}()
 
 			ch, err = db.Lookup().Get(ctx, address)
 			switch {
 			case err == nil:
-				span.LogFields(olog.String("step", "chunk found locally"))
+				span.AddEvent("chunk found locally")
 				return ch, nil
 			case errors.Is(err, storage.ErrNotFound):
-				span.LogFields(olog.String("step", "retrieve chunk from network"))
+				span.AddEvent("retrieve chunk from network")
 				if db.retrieval != nil {
 					// if chunk is not found locally, retrieve it from the network
 					ch, err = db.retrieval.RetrieveChunk(ctx, address, swarm.ZeroAddress)
