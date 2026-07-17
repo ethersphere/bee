@@ -12,6 +12,9 @@ import (
 
 type VerifiedAddress = verifiedAddress
 
+// PruneAfter is how long an overlay may go unseen before newStore drops it.
+const PruneAfter = pruneAfter
+
 // NewWithClock creates an addressbook with an overridable clock, for testing.
 func NewWithClock(storer storage.StateStorer, now func() time.Time) Interface {
 	return newStore(storer, now)

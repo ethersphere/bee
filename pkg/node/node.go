@@ -216,7 +216,6 @@ const (
 	reserveMinEvictCount          = 1_000
 	cacheMinEvictCount            = 10_000
 	maxAllowedDoubling            = 1
-	addressbookPruneAfter         = 30 * 24 * time.Hour // remove addressbook entries not seen for this long
 )
 
 func NewBee(
@@ -379,13 +378,6 @@ func NewBee(
 	batchStoreExists, err := batchStoreExists(stateStore)
 	if err != nil {
 		return nil, fmt.Errorf("batchstore: exists: %w", err)
-	}
-
-	// Drop addressbook entries whose overlays have not been seen recently, so
-	// the address book does not accumulate stale peers indefinitely. Non-fatal:
-	// a failed prune must never block boot.
-	if err := addressbook.Prune(stateStore, time.Now().Add(-addressbookPruneAfter)); err != nil {
-		logger.Warning("addressbook prune failed", "error", err)
 	}
 
 	addressbook := addressbook.New(stateStore)

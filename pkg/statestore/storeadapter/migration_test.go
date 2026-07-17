@@ -292,14 +292,13 @@ func TestAddressbookPruneRealStore(t *testing.T) {
 		}
 	}
 
+	// the addressbook prunes when it is opened, against its own clock, which
+	// this package cannot override — so seed relative to the wall clock.
+	now := time.Now()
 	stale := swarm.MustParseHexAddress("aabb")
 	fresh := swarm.MustParseHexAddress("ccdd")
-	seed("aabb", 1000)
-	seed("ccdd", 9000)
-
-	if err := addressbook.Prune(store, time.Unix(5000, 0)); err != nil {
-		t.Fatalf("prune: %v", err)
-	}
+	seed("aabb", now.Add(-90*24*time.Hour).Unix())
+	seed("ccdd", now.Add(-24*time.Hour).Unix())
 
 	book := addressbook.New(store)
 	if _, _, err := book.Get(stale); !errors.Is(err, addressbook.ErrNotFound) {

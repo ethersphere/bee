@@ -152,10 +152,10 @@ func TestSeen(t *testing.T) {
 		t.Fatalf("seen did not move last seen: got %d, want %d", got, now.Unix())
 	}
 
-	if err := addressbook.Prune(state, now.Add(-time.Hour)); err != nil {
-		t.Fatal(err)
-	}
-	if _, verified, err := book.Get(overlay); err != nil || !verified {
+	// reopening the book prunes whatever has gone unseen for PruneAfter; the
+	// sighting above is what keeps this entry.
+	reopened := addressbook.NewWithClock(state, func() time.Time { return now })
+	if _, verified, err := reopened.Get(overlay); err != nil || !verified {
 		t.Fatalf("entry pruned despite a recent sighting: verified=%v err=%v", verified, err)
 	}
 }
@@ -269,7 +269,8 @@ func lastSeenOf(t *testing.T, state storage.StateStorer, overlay swarm.Address) 
 func TestPrune(t *testing.T) {
 	t.Parallel()
 
-	now := time.Unix(1_000_000_000, 0)
+	base := time.Unix(1_000_000_000, 0)
+	now := base
 	state := mock.NewStateStore()
 	book := addressbook.NewWithClock(state, func() time.Time { return now })
 
@@ -284,15 +285,15 @@ func TestPrune(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// cutoff sits between the two puts: stale is before it, fresh is after.
-	if err := addressbook.Prune(state, now.Add(-time.Hour)); err != nil {
-		t.Fatal(err)
-	}
+	// Reopen with a clock that puts the cutoff between the two puts: the first
+	// overlay has gone unseen for longer than PruneAfter, the second has not.
+	reopenAt := base.Add(addressbook.PruneAfter + time.Hour)
+	reopened := addressbook.NewWithClock(state, func() time.Time { return reopenAt })
 
-	if _, _, err := book.Get(stale); !errors.Is(err, addressbook.ErrNotFound) {
+	if _, _, err := reopened.Get(stale); !errors.Is(err, addressbook.ErrNotFound) {
 		t.Fatalf("stale entry should have been pruned, got err=%v", err)
 	}
-	if _, _, err := book.Get(fresh); err != nil {
+	if _, _, err := reopened.Get(fresh); err != nil {
 		t.Fatalf("fresh entry should survive: %v", err)
 	}
 }
@@ -313,11 +314,9 @@ func TestPruneKeepsEntriesWithoutLastSeen(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := addressbook.Prune(state, time.Unix(5_000_000_000, 0)); err != nil {
-		t.Fatal(err)
-	}
-
-	book := addressbook.New(state)
+	// open the book far past any plausible cutoff: the entry still survives,
+	// because it carries no last-seen time to judge it by.
+	book := addressbook.NewWithClock(state, func() time.Time { return time.Unix(5_000_000_000, 0) })
 	if _, _, err := book.Get(overlay); err != nil {
 		t.Fatalf("entry without a last-seen time must not be pruned: %v", err)
 	}

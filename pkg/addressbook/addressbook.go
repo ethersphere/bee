@@ -17,7 +17,13 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-const keyPrefix = "addressbook_entry_"
+const (
+	keyPrefix = "addressbook_entry_"
+
+	// pruneAfter is how long an overlay may go unseen before its entry is
+	// dropped when the addressbook is opened.
+	pruneAfter = 30 * 24 * time.Hour
+)
 
 var _ Interface = (*store)(nil)
 
@@ -94,10 +100,18 @@ func New(storer storage.StateStorer) Interface {
 }
 
 func newStore(storer storage.StateStorer, now func() time.Time) *store {
-	return &store{
+	s := &store{
 		store: storer,
 		now:   now,
 	}
+
+	// Drop entries whose overlays have not been seen recently, so the address
+	// book does not accumulate stale peers indefinitely. Best-effort: this is
+	// garbage collection, and failing it only leaves the stale entries in place
+	// for another run, which must not stop a node from starting.
+	_ = s.prune(s.now().Add(-pruneAfter))
+
+	return s
 }
 
 func (s *store) Get(overlay swarm.Address) (*bzz.Address, bool, error) {
@@ -157,19 +171,22 @@ func (s *store) Remove(overlay swarm.Address) error {
 	return s.store.Delete(keyPrefix + overlay.String())
 }
 
-// Prune removes all entries from storer whose overlay has not been seen since
-// before. Entries without a recorded last-seen time (LastSeen == 0) are kept,
-// leaving them to a later run once they have been observed. It is a one-shot
-// maintenance step meant to run at startup, before the address book is shared
-// with its writers, so it takes no lock.
-func Prune(storer storage.StateStorer, before time.Time) error {
+// prune removes all entries whose overlay has not been seen since before.
+// Entries without a recorded last-seen time (LastSeen == 0) are kept, leaving
+// them to a later run once they have been observed, as are entries that cannot
+// be unmarshaled: a single unreadable record must not cost us the sweep.
+//
+// It runs from newStore, before the store is shared with its writers, so it
+// takes no lock.
+func (s *store) prune(before time.Time) error {
 	cutoff := before.Unix()
 
 	var stale []string
-	err := storer.Iterate(keyPrefix, func(key, value []byte) (stop bool, err error) {
+	err := s.store.Iterate(keyPrefix, func(key, value []byte) (stop bool, err error) {
 		entry := &verifiedAddress{}
 		if err := json.Unmarshal(value, entry); err != nil {
-			return true, err
+			//nolint:nilerr // an unreadable record is skipped, not fatal: it must not cost us the rest of the sweep
+			return false, nil
 		}
 		if entry.LastSeen != 0 && entry.LastSeen < cutoff {
 			stale = append(stale, string(key))
@@ -181,7 +198,7 @@ func Prune(storer storage.StateStorer, before time.Time) error {
 	}
 
 	for _, key := range stale {
-		if err := storer.Delete(key); err != nil {
+		if err := s.store.Delete(key); err != nil {
 			return err
 		}
 	}
