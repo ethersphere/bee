@@ -7,8 +7,10 @@ package libp2p
 import (
 	"errors"
 	"io"
+	"strings"
 	"time"
 
+	"github.com/coreos/go-semver/semver"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/libp2p/go-libp2p/core/network"
 )
@@ -36,6 +38,15 @@ func (s *stream) Headers() p2p.Headers {
 
 func (s *stream) ResponseHeaders() p2p.Headers {
 	return s.responseHeaders
+}
+
+func (s *stream) Version() (*semver.Version, error) {
+	parts := strings.Split(string(s.Stream.Protocol()), "/")
+	partsLen := len(parts)
+	if partsLen < 2 {
+		return nil, errors.New("invalid protocol version")
+	}
+	return semver.NewVersion(parts[partsLen-2])
 }
 
 func (s *stream) Reset() error {
