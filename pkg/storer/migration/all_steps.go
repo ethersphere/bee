@@ -31,6 +31,7 @@ func AfterInitSteps(
 		5: legacyNoopStep,
 		6: legacyNoopStep,
 		7: legacyNoopStep,
+		8: step_08(st, logger),
 	}
 }
 

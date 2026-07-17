@@ -4,13 +4,18 @@
 package storage_test
 
 import (
+	"bytes"
 	"encoding/hex"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storage"
+	testingc "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
@@ -76,6 +81,109 @@ func TestIdentityAddress(t *testing.T) {
 		// Verify the address matches the CAC address
 		if !addr.Equal(cacChunk.Address()) {
 			t.Fatalf("expected address %s, got %s", cacChunk.Address(), addr)
+		}
+	})
+}
+
+func TestChunkSum(t *testing.T) {
+	t.Parallel()
+
+	t.Run("cac is deterministic and 16 bytes", func(t *testing.T) {
+		t.Parallel()
+		ch := testingc.GenerateTestRandomChunk()
+
+		sum, err := storage.ChunkSum(ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(sum) != storage.ChunkSumSize {
+			t.Fatalf("expected sum length %d, got %d", storage.ChunkSumSize, len(sum))
+		}
+
+		again, err := storage.ChunkSum(ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(sum, again) {
+			t.Fatal("expected deterministic sum")
+		}
+	})
+
+	t.Run("divergent socs share address but produce different sums", func(t *testing.T) {
+		t.Parallel()
+
+		privKey, err := crypto.GenerateSecp256k1Key()
+		if err != nil {
+			t.Fatal(err)
+		}
+		signer := crypto.NewDefaultSigner(privKey)
+		id := make([]byte, swarm.HashSize)
+
+		inner1, err := cac.New([]byte("content-one"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		inner2, err := cac.New([]byte("content-two"))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		soc1, err := soc.New(id, inner1).Sign(signer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		soc2, err := soc.New(id, inner2).Sign(signer)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// same owner and id yield the same SOC address despite different content
+		if !soc1.Address().Equal(soc2.Address()) {
+			t.Fatalf("expected equal soc addresses, got %s and %s", soc1.Address(), soc2.Address())
+		}
+
+		// stamp both with the same stamp so batchID and stampHash are identical;
+		// only the folded wrapped-CAC address should differ the sums.
+		stamp := postagetesting.MustNewStamp()
+
+		sum1, err := storage.ChunkSum(soc1.WithStamp(stamp))
+		if err != nil {
+			t.Fatal(err)
+		}
+		sum2, err := storage.ChunkSum(soc2.WithStamp(stamp))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if bytes.Equal(sum1, sum2) {
+			t.Fatal("divergent socs must produce different sums")
+		}
+	})
+
+	t.Run("cac sum survives stamp marshal round-trip", func(t *testing.T) {
+		t.Parallel()
+		ch := testingc.GenerateTestRandomChunk()
+
+		s1, err := storage.ChunkSum(ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		raw, err := ch.Stamp().MarshalBinary()
+		if err != nil {
+			t.Fatal(err)
+		}
+		st := new(postage.Stamp)
+		if err := st.UnmarshalBinary(raw); err != nil {
+			t.Fatal(err)
+		}
+
+		s2, err := storage.ChunkSum(swarm.NewChunk(ch.Address(), ch.Data()).WithStamp(st))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(s1, s2) {
+			t.Fatal("sum must be stable across stamp marshal round-trip")
 		}
 	})
 }

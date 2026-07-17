@@ -295,6 +295,38 @@ func ChunkType(ch swarm.Chunk) swarm.ChunkType {
 	return swarm.ChunkTypeUnspecified
 }
 
+// ChunkSumSize is the length in bytes of the pullsync divergence checksum.
+const ChunkSumSize = 16
+
+// ChunkSum computes the pullsync divergence checksum for a stamped chunk.
+//
+//	CAC: keccak256(batchID ‖ stampHash)[:16]
+//	SOC: keccak256(batchID ‖ stampHash ‖ wrappedCacAddress)[:16]
+//
+// Folding the wrapped CAC address into the SOC sum makes two SOCs that share a
+// SOC address but wrap different content produce distinct sums, so both can be
+// pulled and reconciled. The chunk must carry a stamp.
+func ChunkSum(ch swarm.Chunk) ([]byte, error) {
+	stampHash, err := ch.Stamp().Hash()
+	if err != nil {
+		return nil, fmt.Errorf("stamp hash: %w", err)
+	}
+
+	h := swarm.NewHasher()
+	_, _ = h.Write(ch.Stamp().BatchID())
+	_, _ = h.Write(stampHash)
+
+	if soc.Valid(ch) {
+		s, err := soc.FromChunk(ch)
+		if err != nil {
+			return nil, fmt.Errorf("soc from chunk: %w", err)
+		}
+		_, _ = h.Write(s.WrappedChunk().Address().Bytes())
+	}
+
+	return h.Sum(nil)[:ChunkSumSize], nil
+}
+
 // IdentityAddress returns the internally used address for the chunk
 // since the single owner chunk address is not a unique identifier for the chunk,
 // but hashing the soc address and the wrapped chunk address is.

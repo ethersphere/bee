@@ -15,6 +15,7 @@ import (
 
 var (
 	errMarshalInvalidAddress = errors.New("marshal: invalid address")
+	errMarshalInvalidSize    = errors.New("marshal: invalid size")
 	errUnmarshalInvalidSize  = errors.New("unmarshal: invalid size")
 )
 
@@ -112,6 +113,7 @@ type ChunkBinItem struct {
 	BatchID   []byte
 	StampHash []byte
 	ChunkType swarm.ChunkType
+	Sum       []byte // pullsync divergence checksum, storage.ChunkSumSize bytes
 }
 
 func (c *ChunkBinItem) Namespace() string {
@@ -144,10 +146,11 @@ func (c *ChunkBinItem) Clone() storage.Item {
 		BatchID:   copyBytes(c.BatchID),
 		StampHash: copyBytes(c.StampHash),
 		ChunkType: c.ChunkType,
+		Sum:       copyBytes(c.Sum),
 	}
 }
 
-const chunkBinItemSize = 1 + 8 + swarm.HashSize + swarm.HashSize + 1 + swarm.HashSize
+const chunkBinItemSize = 1 + 8 + swarm.HashSize + swarm.HashSize + 1 + swarm.HashSize + storage.ChunkSumSize
 
 func (c *ChunkBinItem) Marshal() ([]byte, error) {
 	if c.Address.IsZero() {
@@ -173,6 +176,9 @@ func (c *ChunkBinItem) Marshal() ([]byte, error) {
 	i += 1
 
 	copy(buf[i:i+swarm.HashSize], c.StampHash)
+	i += swarm.HashSize
+
+	copy(buf[i:i+storage.ChunkSumSize], c.Sum)
 	return buf, nil
 }
 
@@ -198,6 +204,53 @@ func (c *ChunkBinItem) Unmarshal(buf []byte) error {
 	i += 1
 
 	c.StampHash = copyBytes(buf[i : i+swarm.HashSize])
+	i += swarm.HashSize
+
+	c.Sum = copyBytes(buf[i : i+storage.ChunkSumSize])
+	return nil
+}
+
+// ChunkSumItem is an existence index keyed by chunk address and pullsync
+// divergence checksum. It answers "do I already hold a chunk at this address
+// with this exact content checksum?" in O(1) for the pullsync want-decision.
+type ChunkSumItem struct {
+	Address swarm.Address
+	Sum     []byte // storage.ChunkSumSize bytes
+}
+
+func (c *ChunkSumItem) Namespace() string { return "chunkSum" }
+
+// address/sum
+func (c *ChunkSumItem) ID() string {
+	return string(c.Address.Bytes()) + string(c.Sum)
+}
+
+func (c *ChunkSumItem) String() string {
+	return path.Join(c.Namespace(), c.ID())
+}
+
+func (c *ChunkSumItem) Clone() storage.Item {
+	if c == nil {
+		return nil
+	}
+	return &ChunkSumItem{
+		Address: c.Address.Clone(),
+		Sum:     copyBytes(c.Sum),
+	}
+}
+
+// existence-only index: the identity lives entirely in the key.
+func (c *ChunkSumItem) Marshal() ([]byte, error) {
+	if c.Address.IsZero() {
+		return nil, errMarshalInvalidAddress
+	}
+	if len(c.Sum) != storage.ChunkSumSize {
+		return nil, errMarshalInvalidSize
+	}
+	return []byte{}, nil // existence-only
+}
+
+func (c *ChunkSumItem) Unmarshal(_ []byte) error {
 	return nil
 }
 

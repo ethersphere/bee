@@ -49,11 +49,13 @@ func init() {
 		chunks[i] = testingc.GenerateTestRandomChunk()
 		addrs[i] = chunks[i].Address()
 		stampHash, _ := chunks[i].Stamp().Hash()
+		sum, _ := storage.ChunkSum(chunks[i])
 		results[i] = &storer.BinC{
 			Address:   addrs[i],
 			BatchID:   chunks[i].Stamp().BatchID(),
 			BinID:     uint64(i),
 			StampHash: stampHash,
+			Sum:       sum,
 		}
 	}
 }
@@ -165,11 +167,16 @@ func TestIncoming_WantErrors(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			sum, err := storage.ChunkSum(c)
+			if err != nil {
+				t.Fatal(err)
+			}
 			tResults[i] = &storer.BinC{
 				Address:   c.Address(),
 				BatchID:   c.Stamp().BatchID(),
 				BinID:     uint64(i + 5), // start from a higher bin id
 				StampHash: stampHash,
+				Sum:       sum,
 			}
 		}
 
@@ -314,11 +321,11 @@ func TestGetCursorsError(t *testing.T) {
 func haveChunks(t *testing.T, s *mock.ReserveStore, chunks ...swarm.Chunk) {
 	t.Helper()
 	for _, c := range chunks {
-		stampHash, err := c.Stamp().Hash()
+		sum, err := storage.ChunkSum(c)
 		if err != nil {
 			t.Fatal(err)
 		}
-		have, err := s.ReserveHas(c.Address(), c.Stamp().BatchID(), stampHash)
+		have, err := s.ReserveHas(c.Address(), sum)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -36,7 +36,7 @@ const loggerName = "pullsync"
 
 const (
 	protocolName     = "pullsync"
-	protocolVersion  = "1.4.0"
+	protocolVersion  = "2.0.0"
 	streamName       = "pullsync"
 	cursorStreamName = "cursors"
 )
@@ -164,8 +164,10 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 	// while makeOffer is executing (waiting for the new chunks)
 	w, r := protobuf.NewWriterAndReader(stream)
 
-	// make an offer to the upstream peer in return for the requested range
-	offer, err := s.makeOffer(ctx, rn)
+	// make an offer to the upstream peer in return for the requested range.
+	// the bincs slice is retained so processWant can resolve wanted chunks by
+	// their batch ID and stamp hash, which are no longer carried on the wire.
+	offer, bincs, err := s.makeOffer(ctx, rn)
 	if err != nil {
 		return fmt.Errorf("make offer: %w", err)
 	}
@@ -187,7 +189,7 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 		return fmt.Errorf("read want: %w", err)
 	}
 
-	chs, err := s.processWant(ctx, offer, &want)
+	chs, err := s.processWant(ctx, bincs, &want)
 	if err != nil {
 		return fmt.Errorf("process want: %w", err)
 	}
@@ -274,8 +276,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		}
 
 		addr := offer.Chunks[i].Address
-		batchID := offer.Chunks[i].BatchID
-		stampHash := offer.Chunks[i].StampHash
+		sum := offer.Chunks[i].Sum
 		if len(addr) != swarm.HashSize {
 			return 0, 0, fmt.Errorf("inconsistent hash length")
 		}
@@ -288,14 +289,14 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		}
 		s.metrics.Offered.Inc()
 		if s.store.IsWithinStorageRadius(a) {
-			have, err = s.store.ReserveHas(a, batchID, stampHash)
+			have, err = s.store.ReserveHas(a, sum)
 			if err != nil {
 				s.logger.Debug("storage has", "error", err)
 				return 0, 0, err
 			}
 
 			if !have {
-				wantChunks[a.ByteString()+string(batchID)+string(stampHash)] = struct{}{}
+				wantChunks[a.ByteString()+string(sum)] = struct{}{}
 				ctr++
 				s.metrics.Wanted.Inc()
 				bv.Set(i)
@@ -331,13 +332,16 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 			chunkErr = errors.Join(chunkErr, err)
 			continue
 		}
-		stampHash, err := stamp.Hash()
+
+		// recompute the divergence checksum from the delivered chunk and stamp
+		// and match it against the outstanding (address, sum) want set.
+		sum, err := storage.ChunkSum(newChunk.WithStamp(stamp))
 		if err != nil {
 			chunkErr = errors.Join(chunkErr, err)
 			continue
 		}
 
-		wantChunkID := addr.ByteString() + string(stamp.BatchID()) + string(stampHash)
+		wantChunkID := addr.ByteString() + string(sum)
 		if _, ok := wantChunks[wantChunkID]; !ok {
 			s.logger.Debug("want chunks", "error", ErrUnsolicitedChunk, "peer_address", peer, "chunk_address", addr)
 			chunkErr = errors.Join(chunkErr, ErrUnsolicitedChunk)
@@ -396,20 +400,23 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 	return topmost, chunksPut, chunkErr
 }
 
-// makeOffer tries to assemble an offer for a given requested interval.
-func (s *Syncer) makeOffer(ctx context.Context, rn pb.Get) (*pb.Offer, error) {
-	addrs, top, err := s.collectAddrs(ctx, uint8(rn.Bin), rn.Start)
+// makeOffer tries to assemble an offer for a given requested interval. It
+// returns both the wire offer (carrying only address and sum per chunk) and the
+// underlying BinC slice, which the caller keeps to resolve wanted chunks by
+// batch ID and stamp hash when fulfilling the subsequent Want.
+func (s *Syncer) makeOffer(ctx context.Context, rn pb.Get) (*pb.Offer, []*storer.BinC, error) {
+	bincs, top, err := s.collectAddrs(ctx, uint8(rn.Bin), rn.Start)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	o := new(pb.Offer)
 	o.Topmost = top
-	o.Chunks = make([]*pb.Chunk, 0, len(addrs))
-	for _, v := range addrs {
-		o.Chunks = append(o.Chunks, &pb.Chunk{Address: v.Address.Bytes(), BatchID: v.BatchID, StampHash: v.StampHash})
+	o.Chunks = make([]*pb.Chunk, 0, len(bincs))
+	for _, v := range bincs {
+		o.Chunks = append(o.Chunks, &pb.Chunk{Address: v.Address.Bytes(), Sum: v.Sum})
 	}
-	return o, nil
+	return o, bincs, nil
 }
 
 type collectAddrsResult struct {
@@ -447,7 +454,7 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 					break LOOP // The stream has been closed.
 				}
 
-				chs = append(chs, &storer.BinC{Address: c.Address, BatchID: c.BatchID, StampHash: c.StampHash})
+				chs = append(chs, &storer.BinC{Address: c.Address, BatchID: c.BatchID, StampHash: c.StampHash, Sum: c.Sum})
 				if c.BinID > topmost {
 					topmost = c.BinID
 				}
@@ -479,32 +486,31 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 	return v.chs, v.topmost, nil
 }
 
-// processWant compares a received Want to a sent Offer and returns
+// processWant compares a received Want to the offered BinC slice and returns
 // the appropriate chunks from the local store.
-func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]swarm.Chunk, error) {
-	bv, err := bitvector.NewFromBytes(w.BitVector, len(o.Chunks))
+func (s *Syncer) processWant(ctx context.Context, bincs []*storer.BinC, w *pb.Want) ([]swarm.Chunk, error) {
+	bv, err := bitvector.NewFromBytes(w.BitVector, len(bincs))
 	if err != nil {
 		return nil, err
 	}
 
-	chunks := make([]swarm.Chunk, 0, len(o.Chunks))
-	for i := 0; i < len(o.Chunks); i++ {
-		if o.Chunks[i] == nil {
+	chunks := make([]swarm.Chunk, 0, len(bincs))
+	for i := 0; i < len(bincs); i++ {
+		if bincs[i] == nil {
 			return nil, fmt.Errorf("nil chunk at index %d in offer", i)
 		}
 
 		if bv.Get(i) {
-			ch := o.Chunks[i]
-			addr := swarm.NewAddress(ch.Address)
+			c := bincs[i]
 			s.metrics.SentWanted.Inc()
-			c, err := s.store.ReserveGet(ctx, addr, ch.BatchID, ch.StampHash)
+			ch, err := s.store.ReserveGet(ctx, c.Address, c.BatchID, c.StampHash)
 			if err != nil {
-				s.logger.Debug("processing want: unable to find chunk", "chunk_address", addr, "batch_id", hex.EncodeToString(ch.BatchID))
+				s.logger.Debug("processing want: unable to find chunk", "chunk_address", c.Address, "batch_id", hex.EncodeToString(c.BatchID))
 				chunks = append(chunks, swarm.NewChunk(swarm.ZeroAddress, nil))
 				s.metrics.MissingChunks.Inc()
 				continue
 			}
-			chunks = append(chunks, c)
+			chunks = append(chunks, ch)
 		}
 	}
 	return chunks, nil

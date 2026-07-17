@@ -290,7 +290,7 @@ func (db *DB) ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte
 	return db.reserve.Get(ctx, addr, batchID, stampHash)
 }
 
-func (db *DB) ReserveHas(addr swarm.Address, batchID []byte, stampHash []byte) (has bool, err error) {
+func (db *DB) ReserveHas(addr swarm.Address, sum []byte) (has bool, err error) {
 	dur := captureDuration(time.Now())
 	defer func() {
 		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "ReserveHas").Observe(dur())
@@ -302,7 +302,7 @@ func (db *DB) ReserveHas(addr swarm.Address, batchID []byte, stampHash []byte) (
 		}
 	}()
 
-	return db.reserve.Has(addr, batchID, stampHash)
+	return db.reserve.HasSum(addr, sum)
 }
 
 // ReservePutter returns a Putter for inserting chunks into the reserve.
@@ -463,6 +463,7 @@ type BinC struct {
 	BinID     uint64
 	BatchID   []byte
 	StampHash []byte
+	Sum       []byte
 }
 
 // SubscribeBin returns a channel that feeds all the chunks in the reserve from a certain bin between a start and end binIDs.
@@ -478,9 +479,9 @@ func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan
 
 		for {
 
-			err := db.reserve.IterateBin(bin, start, func(a swarm.Address, binID uint64, batchID, stampHash []byte) (bool, error) {
+			err := db.reserve.IterateBin(bin, start, func(a swarm.Address, binID uint64, batchID, stampHash, sum []byte) (bool, error) {
 				select {
-				case out <- &BinC{Address: a, BinID: binID, BatchID: batchID, StampHash: stampHash}:
+				case out <- &BinC{Address: a, BinID: binID, BatchID: batchID, StampHash: stampHash, Sum: sum}:
 					start = binID + 1
 				case <-done:
 					return true, nil

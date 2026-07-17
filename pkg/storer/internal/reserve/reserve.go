@@ -119,6 +119,11 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 
 	chunkType := storage.ChunkType(chunk)
 
+	sum, err := storage.ChunkSum(chunk)
+	if err != nil {
+		return err
+	}
+
 	bin := swarm.Proximity(r.baseAddr.Bytes(), chunk.Address().Bytes())
 
 	// bin lock
@@ -172,7 +177,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 				// delete old chunk index items
 				err = errors.Join(
 					s.IndexStore().Delete(oldBatchRadiusItem),
-					s.IndexStore().Delete(&ChunkBinItem{Bin: oldBatchRadiusItem.Bin, BinID: oldBatchRadiusItem.BinID}),
+					deleteChunkBinItem(s.IndexStore(), oldBatchRadiusItem.Bin, oldBatchRadiusItem.BinID),
 					stampindex.Delete(s.IndexStore(), reserveScope, oldStamp),
 					chunkstamp.DeleteWithStamp(s.IndexStore(), reserveScope, oldBatchRadiusItem.Address, oldStamp),
 				)
@@ -202,7 +207,9 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 						BatchID:   chunk.Stamp().BatchID(),
 						ChunkType: chunkType,
 						StampHash: stampHash,
+						Sum:       sum,
 					}),
+					s.IndexStore().Put(&ChunkSumItem{Address: chunk.Address(), Sum: sum}),
 				)
 				if err != nil {
 					return err
@@ -256,7 +263,9 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 				BatchID:   chunk.Stamp().BatchID(),
 				ChunkType: chunkType,
 				StampHash: stampHash,
+				Sum:       sum,
 			}),
+			s.IndexStore().Put(&ChunkSumItem{Address: chunk.Address(), Sum: sum}),
 		)
 		if err != nil {
 			return err
@@ -300,6 +309,12 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 func (r *Reserve) Has(addr swarm.Address, batchID []byte, stampHash []byte) (bool, error) {
 	item := &BatchRadiusItem{Bin: swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes()), BatchID: batchID, Address: addr, StampHash: stampHash}
 	return r.st.IndexStore().Has(item)
+}
+
+// HasSum reports whether the reserve holds a chunk at addr whose pullsync
+// divergence checksum equals sum. Used by the pullsync want-decision.
+func (r *Reserve) HasSum(addr swarm.Address, sum []byte) (bool, error) {
+	return r.st.IndexStore().Has(&ChunkSumItem{Address: addr, Sum: sum})
 }
 
 func (r *Reserve) Get(ctx context.Context, addr swarm.Address, batchID []byte, stampHash []byte) (swarm.Chunk, error) {
@@ -448,6 +463,24 @@ func (r *Reserve) removeChunk(
 	return RemoveChunkWithItem(ctx, trx, item)
 }
 
+// deleteChunkBinItem removes the ChunkBinItem identified by (bin, binID)
+// together with its companion ChunkSumItem, keeping the pullsync sum index
+// consistent. It is a no-op if the ChunkBinItem does not exist.
+func deleteChunkBinItem(store storage.IndexStore, bin uint8, binID uint64) error {
+	cbi := &ChunkBinItem{Bin: bin, BinID: binID}
+	err := store.Get(cbi)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil
+		}
+		return err
+	}
+	return errors.Join(
+		store.Delete(cbi),
+		store.Delete(&ChunkSumItem{Address: cbi.Address, Sum: cbi.Sum}),
+	)
+}
+
 func RemoveChunkWithItem(
 	ctx context.Context,
 	trx transaction.Store,
@@ -465,7 +498,7 @@ func RemoveChunkWithItem(
 
 	return errors.Join(errs,
 		trx.IndexStore().Delete(item),
-		trx.IndexStore().Delete(&ChunkBinItem{Bin: item.Bin, BinID: item.BinID}),
+		deleteChunkBinItem(trx.IndexStore(), item.Bin, item.BinID),
 		trx.ChunkStore().Delete(ctx, item.Address),
 	)
 }
@@ -489,7 +522,7 @@ func RemoveChunkMetaData(
 
 	return errors.Join(errs,
 		trx.IndexStore().Delete(item),
-		trx.IndexStore().Delete(&ChunkBinItem{Bin: item.Bin, BinID: item.BinID}),
+		deleteChunkBinItem(trx.IndexStore(), item.Bin, item.BinID),
 	)
 }
 
@@ -530,11 +563,11 @@ func DeleteCorruptedChunkMetadata(store storage.IndexStore, baseAddr swarm.Addre
 		stampindex.Delete(store, reserveScope, stamp),
 		chunkstamp.DeleteWithStamp(store, reserveScope, addr, stamp),
 		store.Delete(batchRadiusItem),
-		store.Delete(&ChunkBinItem{Bin: bin, BinID: batchRadiusItem.BinID}),
+		deleteChunkBinItem(store, bin, batchRadiusItem.BinID),
 	)
 }
 
-func (r *Reserve) IterateBin(bin uint8, startBinID uint64, cb func(swarm.Address, uint64, []byte, []byte) (bool, error)) error {
+func (r *Reserve) IterateBin(bin uint8, startBinID uint64, cb func(swarm.Address, uint64, []byte, []byte, []byte) (bool, error)) error {
 	err := r.st.IndexStore().Iterate(storage.Query{
 		Factory:       func() storage.Item { return &ChunkBinItem{} },
 		Prefix:        binIDToString(bin, startBinID),
@@ -545,7 +578,7 @@ func (r *Reserve) IterateBin(bin uint8, startBinID uint64, cb func(swarm.Address
 			return true, nil
 		}
 
-		stop, err := cb(item.Address, item.BinID, item.BatchID, item.StampHash)
+		stop, err := cb(item.Address, item.BinID, item.BatchID, item.StampHash, item.Sum)
 		if stop || err != nil {
 			return true, err
 		}
@@ -631,7 +664,7 @@ func (r *Reserve) Reset(ctx context.Context) error {
 				return errors.Join(
 					s.ChunkStore().Delete(ctx, item.Address),
 					s.IndexStore().Delete(item),
-					s.IndexStore().Delete(&ChunkBinItem{Bin: item.Bin, BinID: item.BinID}),
+					deleteChunkBinItem(s.IndexStore(), item.Bin, item.BinID),
 				)
 			})
 		})

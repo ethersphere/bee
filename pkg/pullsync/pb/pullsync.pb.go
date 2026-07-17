@@ -163,9 +163,8 @@ func (m *Get) GetStart() uint64 {
 }
 
 type Chunk struct {
-	Address   []byte `protobuf:"bytes,1,opt,name=Address,proto3" json:"Address,omitempty"`
-	BatchID   []byte `protobuf:"bytes,2,opt,name=BatchID,proto3" json:"BatchID,omitempty"`
-	StampHash []byte `protobuf:"bytes,3,opt,name=StampHash,proto3" json:"StampHash,omitempty"`
+	Address []byte `protobuf:"bytes,1,opt,name=Address,proto3" json:"Address,omitempty"`
+	Sum     []byte `protobuf:"bytes,2,opt,name=Sum,proto3" json:"Sum,omitempty"`
 }
 
 func (m *Chunk) Reset()         { *m = Chunk{} }
@@ -208,16 +207,9 @@ func (m *Chunk) GetAddress() []byte {
 	return nil
 }
 
-func (m *Chunk) GetBatchID() []byte {
+func (m *Chunk) GetSum() []byte {
 	if m != nil {
-		return m.BatchID
-	}
-	return nil
-}
-
-func (m *Chunk) GetStampHash() []byte {
-	if m != nil {
-		return m.StampHash
+		return m.Sum
 	}
 	return nil
 }
@@ -536,17 +528,10 @@ func (m *Chunk) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if len(m.StampHash) > 0 {
-		i -= len(m.StampHash)
-		copy(dAtA[i:], m.StampHash)
-		i = encodeVarintPullsync(dAtA, i, uint64(len(m.StampHash)))
-		i--
-		dAtA[i] = 0x1a
-	}
-	if len(m.BatchID) > 0 {
-		i -= len(m.BatchID)
-		copy(dAtA[i:], m.BatchID)
-		i = encodeVarintPullsync(dAtA, i, uint64(len(m.BatchID)))
+	if len(m.Sum) > 0 {
+		i -= len(m.Sum)
+		copy(dAtA[i:], m.Sum)
+		i = encodeVarintPullsync(dAtA, i, uint64(len(m.Sum)))
 		i--
 		dAtA[i] = 0x12
 	}
@@ -740,11 +725,7 @@ func (m *Chunk) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovPullsync(uint64(l))
 	}
-	l = len(m.BatchID)
-	if l > 0 {
-		n += 1 + l + sovPullsync(uint64(l))
-	}
-	l = len(m.StampHash)
+	l = len(m.Sum)
 	if l > 0 {
 		n += 1 + l + sovPullsync(uint64(l))
 	}
@@ -1157,7 +1138,7 @@ func (m *Chunk) Unmarshal(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field BatchID", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Sum", wireType)
 			}
 			var byteLen int
 			for shift := uint(0); ; shift += 7 {
@@ -1184,43 +1165,9 @@ func (m *Chunk) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.BatchID = append(m.BatchID[:0], dAtA[iNdEx:postIndex]...)
-			if m.BatchID == nil {
-				m.BatchID = []byte{}
-			}
-			iNdEx = postIndex
-		case 3:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field StampHash", wireType)
-			}
-			var byteLen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowPullsync
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				byteLen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if byteLen < 0 {
-				return ErrInvalidLengthPullsync
-			}
-			postIndex := iNdEx + byteLen
-			if postIndex < 0 {
-				return ErrInvalidLengthPullsync
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.StampHash = append(m.StampHash[:0], dAtA[iNdEx:postIndex]...)
-			if m.StampHash == nil {
-				m.StampHash = []byte{}
+			m.Sum = append(m.Sum[:0], dAtA[iNdEx:postIndex]...)
+			if m.Sum == nil {
+				m.Sum = []byte{}
 			}
 			iNdEx = postIndex
 		default:

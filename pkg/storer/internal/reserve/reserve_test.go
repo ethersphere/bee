@@ -768,7 +768,7 @@ func TestIterate(t *testing.T) {
 		r := createReserve(t)
 
 		var id uint64 = 1
-		err := r.IterateBin(1, 0, func(ch swarm.Address, binID uint64, _, _ []byte) (bool, error) {
+		err := r.IterateBin(1, 0, func(ch swarm.Address, binID uint64, _, _, _ []byte) (bool, error) {
 			if binID != id {
 				t.Fatalf("got %d, want %d", binID, id)
 			}
