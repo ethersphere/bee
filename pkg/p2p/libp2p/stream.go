@@ -41,7 +41,7 @@ func (s *stream) ResponseHeaders() p2p.Headers {
 }
 
 func (s *stream) Version() (*semver.Version, error) {
-	parts := strings.Split(string(s.Stream.Protocol()), "/")
+	parts := strings.Split(string(s.Protocol()), "/")
 	partsLen := len(parts)
 	if partsLen < 2 {
 		return nil, errors.New("invalid protocol version")
