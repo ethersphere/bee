@@ -1161,3 +1161,168 @@ func checkChunkInIndexStore(t *testing.T, s storage.Reader, bin uint8, binId uin
 	checkStore(t, s, &reserve.BatchRadiusItem{Bin: bin, BatchID: ch.Stamp().BatchID(), Address: ch.Address(), StampHash: stampHash}, false)
 	checkStore(t, s, &reserve.ChunkBinItem{Bin: bin, BinID: binId, StampHash: stampHash}, false)
 }
+
+// TestSOCDivergence covers two single owner chunks that share an address, batch
+// and stamp while wrapping different content. Both are valid, so the storage
+// layer settles which one the neighborhood keeps, and it must reach the same
+// answer regardless of the order the chunks arrive in.
+func TestSOCDivergence(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	signer := getSigner(t)
+	batch := postagetesting.MustNewBatch()
+
+	// same signer and id, different payloads: same SOC address, different
+	// wrapped CAC.
+	s1 := soctesting.GenerateMockSocWithSigner(t, []byte("data"), signer)
+	s2 := soctesting.GenerateMockSocWithSigner(t, []byte("update"), signer)
+
+	// the stamp signs the chunk address, which both chunks share, so a single
+	// stamp legitimately applies to both.
+	stamp := postagetesting.MustNewFields(batch.ID, 0, 1)
+	ch1 := s1.Chunk().WithStamp(stamp)
+	ch2 := s2.Chunk().WithStamp(stamp)
+
+	if !ch1.Address().Equal(ch2.Address()) {
+		t.Fatal("expected the diverging chunks to share an address")
+	}
+
+	// the chunk wrapping the lower CAC address is the one both nodes must keep.
+	winner, loser := ch1, ch2
+	if bytes.Compare(s2.WrappedChunk.Address().Bytes(), s1.WrappedChunk.Address().Bytes()) < 0 {
+		winner, loser = ch2, ch1
+	}
+
+	for _, tc := range []struct {
+		name  string
+		order []swarm.Chunk
+	}{
+		{"winner first", []swarm.Chunk{winner, loser}},
+		{"loser first", []swarm.Chunk{loser, winner}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			baseAddr := swarm.RandAddress(t)
+			ts := internal.NewInmemStorage()
+			r, err := reserve.New(baseAddr, ts, 0, kademlia.NewTopologyDriver(), log.Noop)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if err := r.Put(ctx, tc.order[0]); err != nil {
+				t.Fatal(err)
+			}
+			sizeAfterFirst := r.Size()
+
+			err = r.Put(ctx, tc.order[1])
+			// the second put only errors when the incoming chunk is the loser.
+			if tc.order[1] == loser {
+				if !errors.Is(err, storage.ErrDivergentChunkRejected) {
+					t.Fatalf("expected ErrDivergentChunkRejected, got %v", err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+
+			// whichever order they arrived in, the winner is what is stored.
+			stored, err := ts.ChunkStore().Get(ctx, winner.Address())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(stored.Data(), winner.Data()) {
+				t.Fatal("expected the tie-break winner to be stored")
+			}
+
+			// divergence resolution replaces a chunk, it does not add one.
+			if got := r.Size(); got != sizeAfterFirst {
+				t.Fatalf("expected reserve size to stay %d, got %d", sizeAfterFirst, got)
+			}
+
+			// the sum index tracks the stored chunk only.
+			winnerSum, err := storage.ChunkSum(winner)
+			if err != nil {
+				t.Fatal(err)
+			}
+			loserSum, err := storage.ChunkSum(loser)
+			if err != nil {
+				t.Fatal(err)
+			}
+			has, err := r.HasSum(winner.Address(), winnerSum)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !has {
+				t.Fatal("expected the winner sum to be indexed")
+			}
+			has, err = r.HasSum(loser.Address(), loserSum)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if has {
+				t.Fatal("expected the loser sum not to be indexed")
+			}
+		})
+	}
+}
+
+// TestSOCDivergenceBumpsBinID asserts that replacing a diverging chunk moves it
+// to the top of its bin, so peers that already synced past the old bin ID are
+// offered the replacement.
+func TestSOCDivergenceBumpsBinID(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	baseAddr := swarm.RandAddress(t)
+	ts := internal.NewInmemStorage()
+	r, err := reserve.New(baseAddr, ts, 0, kademlia.NewTopologyDriver(), log.Noop)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	signer := getSigner(t)
+	batch := postagetesting.MustNewBatch()
+	s1 := soctesting.GenerateMockSocWithSigner(t, []byte("data"), signer)
+	s2 := soctesting.GenerateMockSocWithSigner(t, []byte("update"), signer)
+	stamp := postagetesting.MustNewFields(batch.ID, 0, 1)
+	ch1 := s1.Chunk().WithStamp(stamp)
+	ch2 := s2.Chunk().WithStamp(stamp)
+
+	// put the losing chunk first so the second put performs the replacement.
+	first, second := ch1, ch2
+	if bytes.Compare(s2.WrappedChunk.Address().Bytes(), s1.WrappedChunk.Address().Bytes()) > 0 {
+		first, second = ch2, ch1
+	}
+
+	if err := r.Put(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+
+	bin := swarm.Proximity(baseAddr.Bytes(), first.Address().Bytes())
+	stampHash, err := stamp.Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	item := &reserve.BatchRadiusItem{Bin: bin, BatchID: batch.ID, Address: first.Address(), StampHash: stampHash}
+	if err := ts.IndexStore().Get(item); err != nil {
+		t.Fatal(err)
+	}
+	oldBinID := item.BinID
+
+	if err := r.Put(ctx, second); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ts.IndexStore().Get(item); err != nil {
+		t.Fatal(err)
+	}
+	if item.BinID <= oldBinID {
+		t.Fatalf("expected bin id to be bumped past %d, got %d", oldBinID, item.BinID)
+	}
+
+	// the stale bin entry must be gone, leaving exactly one per bin id.
+	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin, BinID: oldBinID}, true)
+	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin, BinID: item.BinID}, false)
+}

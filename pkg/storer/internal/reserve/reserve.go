@@ -108,15 +108,6 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 		return err
 	}
 
-	// check if the chunk with the same batch, stamp timestamp and index is already stored
-	has, err := r.Has(chunk.Address(), chunk.Stamp().BatchID(), stampHash)
-	if err != nil {
-		return err
-	}
-	if has {
-		return nil
-	}
-
 	chunkType := storage.ChunkType(chunk)
 
 	sum, err := storage.ChunkSum(chunk)
@@ -125,6 +116,27 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	}
 
 	bin := swarm.Proximity(r.baseAddr.Bytes(), chunk.Address().Bytes())
+
+	// check if the chunk with the same batch, stamp timestamp and index is already stored
+	has, err := r.Has(chunk.Address(), chunk.Stamp().BatchID(), stampHash)
+	if err != nil {
+		return err
+	}
+	if has {
+		// Address, batch and stamp all match, but two single owner chunks can
+		// share those and still wrap different content. The sum tells them
+		// apart: if it matches we already hold this exact chunk, otherwise the
+		// chunks diverge and a tie-break decides which one the neighborhood
+		// keeps.
+		hasSum, err := r.HasSum(chunk.Address(), sum)
+		if err != nil {
+			return err
+		}
+		if hasSum {
+			return nil
+		}
+		return r.resolveDivergence(ctx, chunk, sum, stampHash, bin, chunkType)
+	}
 
 	// bin lock
 	r.multx.Lock(strconv.Itoa(int(bin)))
@@ -304,6 +316,106 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 		r.size.Add(1)
 	}
 	return nil
+}
+
+// resolveDivergence settles two single owner chunks that share an address,
+// batch and stamp but wrap different content. Both are individually valid, so
+// the protocol cannot pick between them; the choice is made here, in the
+// storage layer, by a tie-break that depends only on the two payloads. Every
+// node in the neighborhood therefore converges on the same chunk no matter
+// which one it received first.
+//
+// If the incoming chunk wins it replaces the stored one in place, reusing the
+// existing stamp index and stamp entries, which are identical for both. The
+// bin ID is bumped so that peers which already synced past the old bin ID are
+// offered the replacement, propagating the resolution outwards.
+//
+// The reserve size is unchanged either way: one chunk goes in, one comes out.
+func (r *Reserve) resolveDivergence(
+	ctx context.Context,
+	chunk swarm.Chunk,
+	sum []byte,
+	stampHash []byte,
+	bin uint8,
+	chunkType swarm.ChunkType,
+) error {
+	// bin lock
+	r.multx.Lock(strconv.Itoa(int(bin)))
+	defer r.multx.Unlock(strconv.Itoa(int(bin)))
+
+	return r.st.Run(ctx, func(s transaction.Store) error {
+		stored, err := s.ChunkStore().Get(ctx, chunk.Address())
+		if err != nil {
+			return fmt.Errorf("failed loading diverging chunk %s: %w", chunk.Address(), err)
+		}
+
+		wins, err := storage.DivergentChunkWins(stored, chunk)
+		if err != nil {
+			return fmt.Errorf("divergence tie-break for chunk %s: %w", chunk.Address(), err)
+		}
+
+		if !wins {
+			r.logger.Debug(
+				"discarding diverging chunk",
+				"address", chunk.Address(),
+				"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
+			)
+			return fmt.Errorf("diverging chunk %s lost tie-break: %w", chunk.Address(), storage.ErrDivergentChunkRejected)
+		}
+
+		item := &BatchRadiusItem{
+			Bin:       bin,
+			Address:   chunk.Address(),
+			BatchID:   chunk.Stamp().BatchID(),
+			StampHash: stampHash,
+		}
+		// load item to get the binID of the chunk being replaced
+		if err := s.IndexStore().Get(item); err != nil {
+			return err
+		}
+
+		// drop the bin and sum entries of the replaced chunk
+		if err := deleteChunkBinItem(s.IndexStore(), item.Bin, item.BinID); err != nil {
+			return err
+		}
+
+		binID, err := r.IncBinID(s.IndexStore(), bin)
+		if err != nil {
+			return err
+		}
+
+		r.logger.Debug(
+			"replacing diverging chunk",
+			"address", chunk.Address(),
+			"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
+			"old_bin_id", item.BinID,
+			"new_bin_id", binID,
+		)
+
+		// the BatchRadiusItem key does not cover the binID, so putting it again
+		// with the new binID overwrites the existing entry.
+		item.BinID = binID
+		err = errors.Join(
+			s.IndexStore().Put(item),
+			s.IndexStore().Put(&ChunkBinItem{
+				Bin:       bin,
+				BinID:     binID,
+				Address:   chunk.Address(),
+				BatchID:   chunk.Stamp().BatchID(),
+				ChunkType: chunkType,
+				StampHash: stampHash,
+				Sum:       sum,
+			}),
+			s.IndexStore().Put(&ChunkSumItem{Address: chunk.Address(), Sum: sum}),
+		)
+		if err != nil {
+			return err
+		}
+
+		// swap the payload without touching the reference count: the chunk
+		// store entry is reused, only its content changes.
+		return s.ChunkStore().Replace(ctx, chunk, false)
+	})
 }
 
 func (r *Reserve) Has(addr swarm.Address, batchID []byte, stampHash []byte) (bool, error) {

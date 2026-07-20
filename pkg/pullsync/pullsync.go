@@ -391,6 +391,14 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 					chunkErr = errors.Join(chunkErr, err)
 					continue
 				}
+				// the chunk diverged from the one already stored and lost the
+				// tie-break. The neighborhood converges on the stored chunk, so
+				// this is an expected outcome rather than a sync error.
+				if errors.Is(err, storage.ErrDivergentChunkRejected) {
+					s.logger.Debug("divergent chunk rejected", "error", err, "peer_address", peer, "chunk", c)
+					s.metrics.DivergentRejected.Inc()
+					continue
+				}
 				return 0, 0, errors.Join(chunkErr, err)
 			}
 			chunksPut++

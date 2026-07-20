@@ -5,6 +5,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -19,6 +20,12 @@ import (
 var (
 	ErrOverwriteNewerChunk = errors.New("overwriting chunk with newer timestamp")
 	ErrUnknownChunkType    = errors.New("unknown chunk type")
+
+	// ErrDivergentChunkRejected is returned when a chunk that diverges from an
+	// already stored one at the same address, batch and stamp loses the
+	// deterministic tie-break and is therefore not stored. It is not a failure:
+	// the node already holds the chunk the whole neighborhood converges on.
+	ErrDivergentChunkRejected = errors.New("divergent chunk rejected by tie-break")
 )
 
 // Result represents the item returned by the read operation, which returns
@@ -325,6 +332,39 @@ func ChunkSum(ch swarm.Chunk) ([]byte, error) {
 	}
 
 	return h.Sum(nil)[:ChunkSumSize], nil
+}
+
+// DivergentChunkWins reports whether the incoming chunk should replace the
+// stored one when the two share an address, batch and stamp but wrap different
+// content. Both chunks must be single owner chunks; a content addressed chunk
+// cannot diverge, since its address is the hash of its own payload.
+//
+// The winner is the chunk wrapping the lexicographically lower CAC address.
+// The rule depends on nothing but the two payloads, so every node in the
+// neighborhood converges on the same chunk regardless of the order in which
+// they arrive.
+func DivergentChunkWins(stored, incoming swarm.Chunk) (bool, error) {
+	storedAddr, err := wrappedAddress(stored)
+	if err != nil {
+		return false, fmt.Errorf("stored chunk: %w", err)
+	}
+	incomingAddr, err := wrappedAddress(incoming)
+	if err != nil {
+		return false, fmt.Errorf("incoming chunk: %w", err)
+	}
+	return bytes.Compare(incomingAddr.Bytes(), storedAddr.Bytes()) < 0, nil
+}
+
+// wrappedAddress returns the address of the CAC wrapped by a single owner chunk.
+func wrappedAddress(ch swarm.Chunk) (swarm.Address, error) {
+	if !soc.Valid(ch) {
+		return swarm.ZeroAddress, fmt.Errorf("%w: not a single owner chunk", ErrUnknownChunkType)
+	}
+	s, err := soc.FromChunk(ch)
+	if err != nil {
+		return swarm.ZeroAddress, fmt.Errorf("soc from chunk: %w", err)
+	}
+	return s.WrappedChunk().Address(), nil
 }
 
 // IdentityAddress returns the internally used address for the chunk
