@@ -15,6 +15,7 @@ type metrics struct {
 	MissingChunks        prometheus.Counter     // number of reserve get errs
 	ReceivedZeroAddress  prometheus.Counter     // number of delivered chunks with invalid address
 	ReceivedInvalidChunk prometheus.Counter     // number of delivered chunks with invalid address
+	DivergentRejected    prometheus.Counter     // number of delivered chunks that lost the divergence tie-break
 	Delivered            prometheus.Counter     // number of chunk deliveries
 	SentOffered          prometheus.Counter     // number of chunks offered
 	SentWanted           prometheus.Counter     // number of chunks wanted
@@ -56,6 +57,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "received_invalid_chunks",
 			Help:      "Total invalid chunks delivered.",
+		}),
+		DivergentRejected: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "divergent_rejected",
+			Help:      "Total delivered chunks discarded for losing the divergence tie-break.",
 		}),
 		Delivered: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
