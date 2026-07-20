@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/stabilization"
 	"github.com/ethersphere/bee/v2/pkg/status"
 	"github.com/ethersphere/bee/v2/pkg/storer"
@@ -144,31 +145,33 @@ func (s *service) salud(mode string, durPercentile float64, connsPercentile floa
 
 	err := s.topology.EachConnectedPeer(func(addr swarm.Address, bin uint8) (stop bool, jumpToNext bool, err error) {
 		wg.Go(func() {
-			ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
-			defer cancel()
+			safe.Run(s.logger, "salud-peer-snapshot", func() {
+				ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+				defer cancel()
 
-			start := time.Now()
-			snapshot, err := s.status.PeerSnapshot(ctx, addr)
-			dur := time.Since(start)
+				start := time.Now()
+				snapshot, err := s.status.PeerSnapshot(ctx, addr)
+				dur := time.Since(start)
 
-			if err != nil {
-				s.topology.UpdatePeerHealth(addr, false, dur)
-				return
-			}
+				if err != nil {
+					s.topology.UpdatePeerHealth(addr, false, dur)
+					return
+				}
 
-			if snapshot.BeeMode != mode {
-				return
-			}
+				if snapshot.BeeMode != mode {
+					return
+				}
 
-			mtx.Lock()
-			totaldur += dur.Seconds()
-			peer := peer{snapshot, dur, addr, bin, s.reserve.IsWithinStorageRadius(addr)}
-			peers = append(peers, peer)
-			if peer.neighbor {
-				neighborhoodPeers++
-				neighborhoodTotalDur += dur.Seconds()
-			}
-			mtx.Unlock()
+				mtx.Lock()
+				defer mtx.Unlock()
+				totaldur += dur.Seconds()
+				peer := peer{snapshot, dur, addr, bin, s.reserve.IsWithinStorageRadius(addr)}
+				peers = append(peers, peer)
+				if peer.neighbor {
+					neighborhoodPeers++
+					neighborhoodTotalDur += dur.Seconds()
+				}
+			})
 		})
 		return false, false, nil
 	}, topology.Select{})

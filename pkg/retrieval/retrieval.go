@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/pricer"
 	pb "github.com/ethersphere/bee/v2/pkg/retrieval/pb"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/skippeers"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
@@ -257,13 +258,13 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 
 				inflight++
 
-				go func() {
+				safe.Go(loggerV1, "retrieval-retrieve-chunk", func() {
 					span, _, ctx := s.tracer.FollowSpanFromContext(spanCtx, "retrieve-chunk", s.logger, trace.WithAttributes(
 						attribute.String("address", chunkAddr.String()),
 					))
 					defer span.End()
 					s.retrieveChunk(ctx, quit, chunkAddr, peer, resultC, action, span)
-				}()
+				})
 
 			case res := <-resultC:
 

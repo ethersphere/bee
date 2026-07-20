@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/puller/intervalstore"
 	"github.com/ethersphere/bee/v2/pkg/pullsync"
 	"github.com/ethersphere/bee/v2/pkg/rate"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -409,12 +410,16 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 	if cursor > 0 {
 		peer.wg.Add(1)
 		p.wg.Add(1)
-		go sync(true, peer.address, cursor)
+		safe.Go(p.logger, "puller-sync-historical", func() {
+			sync(true, peer.address, cursor)
+		})
 	}
 
 	peer.wg.Add(1)
 	p.wg.Add(1)
-	go sync(false, peer.address, cursor+1)
+	safe.Go(p.logger, "puller-sync-live", func() {
+		sync(false, peer.address, cursor+1)
+	})
 }
 
 func (p *Puller) Close() error {

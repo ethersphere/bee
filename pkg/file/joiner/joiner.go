@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy/getter"
 	"github.com/ethersphere/bee/v2/pkg/replicas"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"golang.org/x/sync/errgroup"
@@ -296,7 +297,7 @@ func (j *joiner) readAtOffset(
 		currentReadSize = min(currentReadSize, subtrieSpan)
 
 		func(address swarm.Address, b []byte, cur, subTrieSize, off, bufferOffset, bytesToRead, subtrieSpanLimit int64) {
-			eg.Go(func() error {
+			eg.Go(safe.RunFunc(nil, "joiner-read-at-offset", func() error {
 				ch, err := g.Get(j.ctx, addr)
 				if err != nil {
 					return err
@@ -312,7 +313,7 @@ func (j *joiner) readAtOffset(
 
 				j.readAtOffset(b, chunkData, cur, subtrieSpan, off, bufferOffset, currentReadSize, bytesRead, subtrieParity, eg)
 				return nil
-			})
+			}))
 		}(addr, b, cur, subtrieSpan, off, bufferOffset, currentReadSize, subtrieSpanLimit)
 
 		bufferOffset += currentReadSize

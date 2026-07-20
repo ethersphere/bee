@@ -22,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/pricer"
 	"github.com/ethersphere/bee/v2/pkg/pushsync/pb"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/skippeers"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/stabilization"
@@ -242,7 +243,9 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	chunk.WithStamp(stamp)
 
 	if cac.Valid(chunk) {
-		go ps.unwrap(chunk)
+		safe.Go(ps.logger, "pushsync-unwrap-chunk", func() {
+			ps.unwrap(chunk)
+		})
 	} else if chunk, err := soc.FromChunk(chunk); err == nil {
 		addr, err := chunk.Address()
 		if err != nil {
@@ -424,7 +427,9 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 					if inflight == 0 {
 						if ps.fullNode {
 							if cac.Valid(ch) {
-								go ps.unwrap(ch)
+								safe.Go(ps.logger, "pushsync-unwrap-ch", func() {
+									ps.unwrap(ch)
+								})
 							}
 							return nil, topology.ErrWantSelf
 						}
@@ -477,7 +482,9 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			ps.metrics.TotalSendAttempts.Inc()
 			inflight++
 
-			go ps.push(ctx, resultChan, peer, ch, action)
+			safe.Go(ps.logger, "pushsync-push", func() {
+				ps.push(ctx, resultChan, peer, ch, action)
+			})
 
 		case result := <-resultChan:
 			inflight--

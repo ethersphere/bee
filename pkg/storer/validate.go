@@ -15,6 +15,7 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/sharky"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storage"
@@ -153,7 +154,9 @@ func validateWork(logger log.Logger, store storage.Store, readFn func(context.Co
 		wg.Go(func() {
 			buf := make([]byte, swarm.SocMaxChunkSize)
 			for item := range iteratateItemsC {
-				validChunk(item, buf[:item.Location.Length])
+				safe.Run(logger, "reserve-validation-worker", func() {
+					validChunk(item, buf[:item.Location.Length])
+				})
 			}
 		})
 	}
@@ -330,7 +333,11 @@ func (p *PinIntegrity) Check(ctx context.Context, logger log.Logger, pin string,
 					if ctx.Err() != nil {
 						break
 					}
-					if !validChunk(item, buf[:item.Location.Length]) {
+					var isValid bool
+					safe.Run(logger, "pin-integrity-worker", func() {
+						isValid = validChunk(item, buf[:item.Location.Length])
+					})
+					if !isValid {
 						invalid.Add(1)
 					}
 				}

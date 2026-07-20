@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/bmt"
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	chunk "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
@@ -93,7 +94,7 @@ func (db *DB) ReserveSample(
 	chunkC := make(chan *reserve.ChunkBinItem, 3*workers)
 
 	// Phase 1: Iterate chunk addresses
-	g.Go(func() error {
+	g.Go(safe.RunFunc(db.logger, "storer-sample-iterate-chunks", func() error {
 		start := time.Now()
 		stats := SampleStats{}
 		defer func() {
@@ -115,7 +116,7 @@ func (db *DB) ReserveSample(
 			}
 		})
 		return err
-	})
+	}))
 
 	// Phase 2: Get the chunk data and calculate transformed hash
 	sampleItemChan := make(chan SampleItem, 3*workers)
@@ -123,7 +124,7 @@ func (db *DB) ReserveSample(
 	db.logger.Debug("reserve sampler workers", "count", workers)
 
 	for range workers {
-		g.Go(func() error {
+		g.Go(safe.RunFunc(db.logger, "storer-sample-worker", func() error {
 			wstat := SampleStats{}
 			hasher := bmt.NewPrefixHasher(anchor)
 			defer func() {
@@ -177,7 +178,7 @@ func (db *DB) ReserveSample(
 			}
 
 			return nil
-		})
+		}))
 	}
 
 	go func() {
