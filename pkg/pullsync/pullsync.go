@@ -201,20 +201,34 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 		s.logger.Debug("rate limited peer", "wait_duration", waitDur, "peer_address", p.Address)
 	}
 
+	const maxBatchSize = 25 // maximal number for the allowed delimitedReaderMaxSize
+	batch := pb.DeliveryBatch{Deliveries: make([]*pb.Delivery, 0, maxBatchSize)}
+
 	for _, c := range chs {
 		var stamp []byte
 		if c.Stamp() != nil {
 			stamp, err = c.Stamp().MarshalBinary()
 			if err != nil {
-				return fmt.Errorf("serialise stamp: %w", err)
+				return fmt.Errorf("serialize stamp: %w", err)
 			}
 		}
 
-		deliver := pb.Delivery{Address: c.Address().Bytes(), Data: c.Data(), Stamp: stamp}
-		if err := w.WriteMsgWithContext(ctx, &deliver); err != nil {
-			return fmt.Errorf("write delivery: %w", err)
+		batch.Deliveries = append(batch.Deliveries, &pb.Delivery{Address: c.Address().Bytes(), Data: c.Data(), Stamp: stamp})
+
+		if len(batch.Deliveries) >= maxBatchSize {
+			if err := w.WriteMsgWithContext(ctx, &batch); err != nil {
+				return fmt.Errorf("write delivery batch: %w", err)
+			}
+			s.metrics.Sent.Add(float64(len(batch.Deliveries)))
+			batch.Deliveries = batch.Deliveries[:0]
 		}
-		s.metrics.Sent.Inc()
+	}
+
+	if len(batch.Deliveries) > 0 {
+		if err := w.WriteMsgWithContext(ctx, &batch); err != nil {
+			return fmt.Errorf("write delivery batch: %w", err)
+		}
+		s.metrics.Sent.Add(float64(len(batch.Deliveries)))
 	}
 
 	return nil
@@ -311,65 +325,70 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 	chunksToPut := make([]swarm.Chunk, 0, ctr)
 
 	var chunkErr error
-	for ; ctr > 0; ctr-- {
-		var delivery pb.Delivery
-		if err = r.ReadMsgWithContext(ctx, &delivery); err != nil {
-			return 0, 0, errors.Join(chunkErr, fmt.Errorf("read delivery: %w", err))
+	for ctr > 0 {
+		var batch pb.DeliveryBatch
+		if err = r.ReadMsgWithContext(ctx, &batch); err != nil {
+			return 0, 0, errors.Join(chunkErr, fmt.Errorf("read delivery batch: %w", err))
 		}
 
-		addr := swarm.NewAddress(delivery.Address)
-		if addr.Equal(swarm.ZeroAddress) {
-			s.logger.Debug("received zero address chunk", "peer_address", peer)
-			s.metrics.ReceivedZeroAddress.Inc()
-			continue
-		}
+		for _, delivery := range batch.Deliveries {
+			ctr--
 
-		newChunk := swarm.NewChunk(addr, delivery.Data)
+			addr := swarm.NewAddress(delivery.Address)
+			if addr.Equal(swarm.ZeroAddress) {
+				s.logger.Debug("received zero address chunk", "peer_address", peer)
+				s.metrics.ReceivedZeroAddress.Inc()
+				continue
+			}
 
-		stamp := new(postage.Stamp)
-		if err = stamp.UnmarshalBinary(delivery.Stamp); err != nil {
-			chunkErr = errors.Join(chunkErr, err)
-			continue
-		}
-		stampHash, err := stamp.Hash()
-		if err != nil {
-			chunkErr = errors.Join(chunkErr, err)
-			continue
-		}
+			newChunk := swarm.NewChunk(addr, delivery.Data)
 
-		wantChunkID := addr.ByteString() + string(stamp.BatchID()) + string(stampHash)
-		if _, ok := wantChunks[wantChunkID]; !ok {
-			s.logger.Debug("want chunks", "error", ErrUnsolicitedChunk, "peer_address", peer, "chunk_address", addr)
-			chunkErr = errors.Join(chunkErr, ErrUnsolicitedChunk)
-			continue
-		}
-
-		delete(wantChunks, wantChunkID)
-
-		chunk, err := s.validStamp(newChunk.WithStamp(stamp))
-		if err != nil {
-			s.logger.Debug("unverified stamp", "error", err, "peer_address", peer, "chunk_address", newChunk)
-			chunkErr = errors.Join(chunkErr, err)
-			continue
-		}
-
-		if cac.Valid(chunk) {
-			go s.unwrap(chunk)
-		} else if chunk, err := soc.FromChunk(chunk); err == nil {
-			addr, err := chunk.Address()
+			stamp := new(postage.Stamp)
+			if err = stamp.UnmarshalBinary(delivery.Stamp); err != nil {
+				chunkErr = errors.Join(chunkErr, err)
+				continue
+			}
+			stampHash, err := stamp.Hash()
 			if err != nil {
 				chunkErr = errors.Join(chunkErr, err)
 				continue
 			}
-			s.logger.Debug("sync gsoc", "peer_address", peer, "chunk_address", addr, "wrapped_chunk_address", chunk.WrappedChunk().Address())
-			s.gsocHandler(chunk)
-		} else {
-			s.logger.Debug("invalid cac/soc chunk", "error", swarm.ErrInvalidChunk, "peer_address", peer, "chunk", chunk)
-			chunkErr = errors.Join(chunkErr, swarm.ErrInvalidChunk)
-			s.metrics.ReceivedInvalidChunk.Inc()
-			continue
+
+			wantChunkID := addr.ByteString() + string(stamp.BatchID()) + string(stampHash)
+			if _, ok := wantChunks[wantChunkID]; !ok {
+				s.logger.Debug("want chunks", "error", ErrUnsolicitedChunk, "peer_address", peer, "chunk_address", addr)
+				chunkErr = errors.Join(chunkErr, ErrUnsolicitedChunk)
+				continue
+			}
+
+			delete(wantChunks, wantChunkID)
+
+			chunk, err := s.validStamp(newChunk.WithStamp(stamp))
+			if err != nil {
+				s.logger.Debug("unverified stamp", "error", err, "peer_address", peer, "chunk_address", newChunk)
+				chunkErr = errors.Join(chunkErr, err)
+				continue
+			}
+
+			if cac.Valid(chunk) {
+				go s.unwrap(chunk)
+			} else if chunk, err := soc.FromChunk(chunk); err == nil {
+				addr, err := chunk.Address()
+				if err != nil {
+					chunkErr = errors.Join(chunkErr, err)
+					continue
+				}
+				s.logger.Debug("sync gsoc", "peer_address", peer, "chunk_address", addr, "wrapped_chunk_address", chunk.WrappedChunk().Address())
+				s.gsocHandler(chunk)
+			} else {
+				s.logger.Debug("invalid cac/soc chunk", "error", swarm.ErrInvalidChunk, "peer_address", peer, "chunk", chunk)
+				chunkErr = errors.Join(chunkErr, swarm.ErrInvalidChunk)
+				s.metrics.ReceivedInvalidChunk.Inc()
+				continue
+			}
+
+			chunksToPut = append(chunksToPut, chunk)
 		}
-		chunksToPut = append(chunksToPut, chunk)
 	}
 
 	chunksPut := 0

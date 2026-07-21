@@ -41,3 +41,7 @@ message Delivery {
   bytes Data = 2;
   bytes Stamp = 3;
 }
+
+message DeliveryBatch {
+  repeated Delivery Deliveries = 1;
+}

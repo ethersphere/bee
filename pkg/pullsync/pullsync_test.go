@@ -329,7 +329,7 @@ func haveChunks(t *testing.T, s *mock.ReserveStore, chunks ...swarm.Chunk) {
 }
 
 func newPullSync(
-	t *testing.T,
+	t testing.TB,
 	s p2p.Streamer,
 	maxPage uint64,
 	o ...mock.Option,
@@ -344,7 +344,7 @@ func newPullSync(
 }
 
 func newPullSyncWithStamperValidator(
-	t *testing.T,
+	t testing.TB,
 	s p2p.Streamer,
 	maxPage uint64,
 	validStamp postage.ValidStampFn,
