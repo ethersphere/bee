@@ -95,7 +95,7 @@ func (s *Service) dirUploadHandler(
 		default:
 			jsonhttp.InternalServerError(w, errDirectoryStore)
 		}
-		tracing.RecordError(span, err, attribute.String("action", "dir.store"))
+		tracing.RecordError(span, err, attribute.String("swarm.operation.action", "dir.store"))
 		return
 	}
 
@@ -125,13 +125,13 @@ func (s *Service) dirUploadHandler(
 		logger.Debug("store dir failed", "error", err)
 		logger.Error(nil, "store dir failed")
 		jsonhttp.InternalServerError(w, errDirectoryStore)
-		tracing.RecordError(span, err, attribute.String("action", "putter.Done"))
+		tracing.RecordError(span, err, attribute.String("swarm.operation.action", "putter.Done"))
 		return
 	}
 
 	if tag != 0 {
 		w.Header().Set(SwarmTagHeader, fmt.Sprint(tag))
-		span.SetAttributes(attribute.Bool("success", true))
+		span.SetAttributes(attribute.Bool("swarm.operation.success", true))
 	}
 	w.Header().Set(AccessControlExposeHeaders, SwarmTagHeader)
 	if act {

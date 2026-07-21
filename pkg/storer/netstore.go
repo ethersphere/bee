@@ -32,7 +32,7 @@ func (db *DB) DirectUpload() PutterSession {
 					defer func() { <-db.directUploadLimiter }()
 
 					span, logger, ctx := db.tracer.FollowSpanFromContext(ctx, "put-direct-upload", db.logger)
-					span.SetAttributes(attribute.String("address", ch.Address().String()))
+					span.SetAttributes(attribute.String("swarm.chunk.address", ch.Address().String()))
 					defer func() {
 						if err != nil {
 							tracing.RecordError(span, err)
@@ -84,12 +84,12 @@ func (db *DB) Download(cache bool) storage.Getter {
 	return getterWithMetrics{
 		storage.GetterFunc(func(ctx context.Context, address swarm.Address) (ch swarm.Chunk, err error) {
 			span, logger, ctx := db.tracer.StartSpanFromContext(ctx, "get-chunk", db.logger)
-			span.SetAttributes(attribute.String("address", address.String()))
+			span.SetAttributes(attribute.String("swarm.chunk.address", address.String()))
 			defer func() {
 				if err != nil {
 					tracing.RecordError(span, err)
 				} else {
-					span.SetAttributes(attribute.Bool("success", true))
+					span.SetAttributes(attribute.Bool("swarm.operation.success", true))
 				}
 				span.End()
 			}()

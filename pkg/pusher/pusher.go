@@ -171,7 +171,7 @@ func (s *Service) chunksWorker(startupStabilizer stabilization.Subscriber) {
 			s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
 			tracing.RecordError(op.Span, err)
 		} else {
-			op.Span.SetAttributes(attribute.Bool("success", true))
+			op.Span.SetAttributes(attribute.Bool("swarm.operation.success", true))
 		}
 
 		s.metrics.SyncTime.Observe(time.Since(startTime).Seconds())
