@@ -167,20 +167,43 @@ func (db *DB) reserveWorker(ctx context.Context, ready chan<- struct{}) {
 		case <-thresholdTicker.C:
 
 			radius := db.reserve.Radius()
+			if radius <= db.reserveOptions.minimumRadius {
+				continue
+			}
 			count, err := db.countWithinRadius(ctx)
 			if err != nil {
 				db.logger.Warning("reserve worker count within radius", "error", err)
 				continue
 			}
 
-			if count < threshold(db.reserve.Capacity()) && db.syncer.SyncRate() == 0 && radius > db.reserveOptions.minimumRadius {
-				radius--
-				if err := db.reserve.SetRadius(radius); err != nil {
-					db.logger.Error(err, "reserve set radius")
-				}
-				db.metrics.StorageRadius.Set(float64(radius))
-				db.logger.Info("reserve radius decrease", "radius", radius)
+			t := threshold(db.reserve.Capacity())
+			if count >= t {
+				continue
 			}
+
+			// Decrement the storage radius. The decrement is gated only on
+			// the reserve fill state (count < threshold) and the operator's
+			// minimum-radius floor. There is no sync-rate gate here, which
+			// mirrors the unreserve path that raises radius without
+			// consulting sync activity. A previous SyncRate() == 0 gate
+			// proved structurally unreachable on live networks: peer churn
+			// kept historical sync above zero, and the resetIntervals call
+			// in puller.onChange (triggered by this very radius change)
+			// retriggered historical sync, locking the gate closed (issues
+			// #5396, #5428). When count is well below threshold, jump by
+			// two steps to keep adjustments bounded but recover faster from
+			// large gaps; under uniform CAC bin distribution each step
+			// roughly doubles count-within-radius.
+			steps := uint8(1)
+			if count*4 <= t && radius-1 > db.reserveOptions.minimumRadius {
+				steps = 2
+			}
+			radius -= steps
+			if err := db.reserve.SetRadius(radius); err != nil {
+				db.logger.Error(err, "reserve set radius")
+			}
+			db.metrics.StorageRadius.Set(float64(radius))
+			db.logger.Info("reserve radius decrease", "radius", radius, "steps", steps, "count_within_radius", count, "threshold", t)
 		}
 	}
 }
