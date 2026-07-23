@@ -120,7 +120,8 @@ func run(t *testing.T, f bookFunc) {
 
 // TestSeen covers a sighting of a peer we already hold: the last-seen time
 // moves, and the entry then survives a prune that would otherwise catch it. An
-// overlay we do not know is skipped rather than created.
+// overlay we do not know is skipped rather than created, and a sighting soon
+// after the last one is throttled rather than written.
 func TestSeen(t *testing.T) {
 	t.Parallel()
 
@@ -141,6 +142,16 @@ func TestSeen(t *testing.T) {
 
 	if err := book.Put(overlay, newTestAddr(t, overlay), true); err != nil {
 		t.Fatal(err)
+	}
+
+	// a sighting within the throttle window is not written back; last-seen
+	// stays at the time of the Put.
+	now = base.Add(time.Hour)
+	if err := book.Seen(overlay); err != nil {
+		t.Fatal(err)
+	}
+	if got := lastSeenOf(t, state, overlay); got != base.Unix() {
+		t.Fatalf("throttled sighting moved last seen: got %d, want %d", got, base.Unix())
 	}
 
 	// a much later sighting moves last-seen forward, so a prune whose cutoff
@@ -180,7 +191,7 @@ func TestSeenVariadic(t *testing.T) {
 		}
 	}
 
-	now = now.Add(time.Hour)
+	now = now.Add(25 * time.Hour)
 	if err := book.Seen(overlays...); err != nil {
 		t.Fatal(err)
 	}
@@ -210,6 +221,9 @@ func TestSeenKeepsConcurrentPut(t *testing.T) {
 	if err := book.Put(overlay, addr, false); err != nil {
 		t.Fatal(err)
 	}
+
+	// move past the throttle window, so that Seen takes its write path.
+	now = now.Add(25 * time.Hour)
 
 	// While Seen holds the entry it has just read, hive verifies the same peer
 	// and stores it with Verified=true.

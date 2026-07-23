@@ -23,6 +23,12 @@ const (
 	// pruneAfter is how long an overlay may go unseen before its entry is
 	// dropped when the addressbook is opened.
 	pruneAfter = 30 * 24 * time.Hour
+
+	// seenInterval throttles Seen's disk writes: a sighting of an overlay
+	// already seen within this window is not written back. Sightings are
+	// frequent (every hive gossip and kademlia manage tick) and almost always
+	// redundant, given that pruning acts on a much coarser scale.
+	seenInterval = 24 * time.Hour
 )
 
 var _ Interface = (*store)(nil)
@@ -81,7 +87,8 @@ type Remover interface {
 }
 
 type Seener interface {
-	// Seen marks the overlays as seen at the current time.
+	// Seen marks the overlays as seen at the current time. Writes are
+	// throttled: an overlay already marked seen recently is left untouched.
 	Seen(overlays ...swarm.Address) error
 }
 
@@ -144,7 +151,8 @@ func (s *store) Put(overlay swarm.Address, addr bzz.Address, verified bool) (err
 }
 
 // Seen marks the overlays as seen at the current time. An overlay that is not
-// present in the addressbook is skipped.
+// present in the addressbook is skipped, as is one already seen within
+// seenInterval, to keep redundant sightings off the disk.
 func (s *store) Seen(overlays ...swarm.Address) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -160,6 +168,10 @@ func (s *store) Seen(overlays ...swarm.Address) error {
 				continue
 			}
 			return err
+		}
+
+		if now-v.LastSeen < int64(seenInterval/time.Second) {
+			continue
 		}
 
 		v.LastSeen = now
