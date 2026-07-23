@@ -104,12 +104,18 @@ func (p *Params) ChunkWrite(chunkLevel int, data []byte, callback ParityChunkCal
 
 // ChunkWrite caches the chunk data on the given chunk level and if it is full then it calls Encode
 func (p *Params) chunkWrite(chunkLevel int, data []byte, callback ParityChunkCallback) error {
-	// data is only valid for this call (see pipeline.PipeWriteArgs) but the
-	// shard buffer holds it until the level is encoded, so it must be copied.
-	dataCopy := make([]byte, len(data))
-	copy(dataCopy, data)
+	// data is only valid for this call (see pipeline.PipeWriteArgs), so copy it
+	// into the slot's own array. Slots refill from index 0 after each encode,
+	// so this allocates once per slot rather than once per chunk.
+	i := p.cursor[chunkLevel]
+	slot := p.buffer[chunkLevel][i]
+	if cap(slot) < len(data) {
+		slot = make([]byte, len(data))
+	}
+	slot = slot[:len(data)]
+	copy(slot, data)
 
-	p.buffer[chunkLevel][p.cursor[chunkLevel]] = dataCopy
+	p.buffer[chunkLevel][i] = slot
 	p.cursor[chunkLevel]++
 
 	// add parity chunk if it is necessary
@@ -141,6 +147,8 @@ func (p *Params) encode(chunkLevel int, callback ParityChunkCallback) error {
 		return err
 	}
 
+	// allocated fresh, not reused like the data slots: these are handed
+	// downstream below and must stay owned by whoever stores them
 	pz := len(p.buffer[chunkLevel][0])
 	for i := shards; i < n; i++ {
 		p.buffer[chunkLevel][i] = make([]byte, pz)
