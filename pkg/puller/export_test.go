@@ -6,7 +6,10 @@ package puller
 
 import "github.com/ethersphere/bee/v2/pkg/swarm"
 
-var PeerIntervalKey = peerIntervalKey
+var (
+	PeerIntervalKey  = peerIntervalKey
+	SyncRetryBackoff = syncRetryBackoff
+)
 
 func (p *Puller) IsSyncing(addr swarm.Address) bool {
 	p.syncPeersMtx.Lock()
