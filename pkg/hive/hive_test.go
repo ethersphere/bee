@@ -23,6 +23,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/hive"
 	"github.com/ethersphere/bee/v2/pkg/hive/pb"
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
@@ -37,7 +38,50 @@ import (
 
 var nonce = common.HexToHash("0x2").Bytes()
 
-const spinTimeout = time.Second * 5
+const (
+	spinTimeout          = time.Second * 5
+	testCoalesceInterval = 100 * time.Millisecond
+	// Must exceed one coalesce interval before the ticker flushes.
+	testCoalesceWait = 150 * time.Millisecond
+)
+
+func waitForCoalesceFlush(t *testing.T) {
+	t.Helper()
+	time.Sleep(testCoalesceWait)
+	synctest.Wait()
+}
+
+func newCoalescingClient(
+	t *testing.T,
+	recorder p2p.Streamer,
+	addressbook ab.GetPutter,
+	networkID uint64,
+	overlay swarm.Address,
+	logger log.Logger,
+	opts hive.Options,
+) *hive.Service {
+	t.Helper()
+
+	opts.GossipCoalesceInterval = testCoalesceInterval
+	client := hive.New(recorder, addressbook, networkID, overlay, logger, opts)
+	testutil.CleanupCloser(t, client)
+	return client
+}
+
+func assertNoGossipRecords(t *testing.T, recorder *streamtest.Recorder, addressee swarm.Address) {
+	t.Helper()
+
+	records, err := recorder.Records(addressee, "hive", "2.0.0", "peers")
+	if err == nil {
+		if len(records) != 0 {
+			t.Fatalf("got %d gossip records, want none before coalesce flush", len(records))
+		}
+		return
+	}
+	if !errors.Is(err, streamtest.ErrRecordsNotFound) {
+		t.Fatal(err)
+	}
+}
 
 func TestHandlerRateLimit(t *testing.T) {
 	t.Parallel()
@@ -200,14 +244,6 @@ func TestBroadcastPeers(t *testing.T) {
 		wantBzzAddresses  []bzz.Address
 		allowPrivateCIDRs bool
 	}{
-		"OK - single record": {
-			addresee:          swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
-			peers:             []swarm.Address{overlays[0]},
-			wantMsgs:          []pb.Peers{{Peers: wantMsgs[0].Peers[:1]}},
-			wantOverlays:      []swarm.Address{overlays[0]},
-			wantBzzAddresses:  []bzz.Address{bzzAddresses[0]},
-			allowPrivateCIDRs: true,
-		},
 		"OK - single batch - multiple records": {
 			addresee:          swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
 			peers:             overlays[:15],
@@ -299,11 +335,11 @@ func TestBroadcastPeers(t *testing.T) {
 			// create a hive client that will do broadcast
 			clientAddress := swarm.RandAddress(t)
 			client := hive.New(recorder, addressbook, networkID, clientAddress, logger, hive.Options{AllowPrivateCIDRs: tc.allowPrivateCIDRs})
+			testutil.CleanupCloser(t, client)
 
 			if err := client.BroadcastPeers(context.Background(), tc.addresee, tc.peers...); err != nil {
 				t.Fatal(err)
 			}
-			testutil.CleanupCloser(t, client)
 
 			// get a record for this stream
 			records, err := recorder.Records(tc.addresee, "hive", "2.0.0", "peers")
@@ -327,6 +363,86 @@ func TestBroadcastPeers(t *testing.T) {
 			expectBzzAddresessEventually(t, addressbookclean, tc.wantBzzAddresses)
 		})
 	}
+}
+
+func TestBroadcastPeersSingleCoalesced(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		logger := log.Noop
+		statestore := mock.NewStateStore()
+		addressbook := ab.New(statestore)
+		networkID := uint64(1)
+
+		underlay, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/2000")
+		if err != nil {
+			t.Fatal(err)
+		}
+		pk, err := crypto.GenerateSecp256k1Key()
+		if err != nil {
+			t.Fatal(err)
+		}
+		signer := crypto.NewDefaultSigner(pk)
+		overlay, err := crypto.NewOverlayAddress(pk.PublicKey, networkID, nonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{underlay}, overlay, networkID, nonce, 1, common.Address{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := addressbook.Put(bzzAddr.Overlay, *bzzAddr, true); err != nil {
+			t.Fatal(err)
+		}
+
+		underlayBytes, err := bzz.SerializeUnderlays(bzzAddr.Underlays)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantMsg := pb.Peers{Peers: []*pb.BzzAddress{{
+			Overlay:   bzzAddr.Overlay.Bytes(),
+			Underlay:  underlayBytes,
+			Signature: bzzAddr.Signature,
+			Nonce:     nonce,
+			Timestamp: bzzAddr.Timestamp,
+		}}}
+
+		addresee := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
+
+		addressbookclean := ab.New(mock.NewStateStore())
+
+		streamer := streamtest.New()
+		serverAddress := swarm.RandAddress(t)
+		server := hive.New(streamer, addressbookclean, networkID, serverAddress, logger, hive.Options{AllowPrivateCIDRs: true})
+		testutil.CleanupCloser(t, server)
+
+		recorder := streamtest.New(streamtest.WithProtocols(server.Protocol()))
+
+		clientAddress := swarm.RandAddress(t)
+		client := newCoalescingClient(t, recorder, addressbook, networkID, clientAddress, logger, hive.Options{AllowPrivateCIDRs: true})
+
+		if err := client.BroadcastPeers(context.Background(), addresee, bzzAddr.Overlay); err != nil {
+			t.Fatal(err)
+		}
+
+		assertNoGossipRecords(t, recorder, addresee)
+		waitForCoalesceFlush(t)
+
+		records, err := recorder.Records(addresee, "hive", "2.0.0", "peers")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if l := len(records); l != 1 {
+			t.Fatalf("got %v records, want 1", l)
+		}
+
+		messages, err := readAndAssertPeersMsgs(records[0].In(), 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		comparePeerMsgs(t, messages[0].Peers, wantMsg.Peers)
+
+		expectOverlaysEventually(t, addressbookclean, []swarm.Address{bzzAddr.Overlay})
+		expectBzzAddresessEventually(t, addressbookclean, []bzz.Address{*bzzAddr})
+	})
 }
 
 func expectOverlaysEventually(t *testing.T, exporter ab.Interface, wantOverlays []swarm.Address) {
@@ -1342,5 +1458,251 @@ func TestHiveGossipUnderlayCaps(t *testing.T) {
 		if _, _, err := addressbook.Get(peer.overlay); !errors.Is(err, ab.ErrNotFound) {
 			t.Fatalf("expected ErrNotFound after count-cap rejection, got err=%v", err)
 		}
+	})
+}
+
+func TestBroadcastPeersCoalesce(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		logger := log.Noop
+		statestore := mock.NewStateStore()
+		addressbook := ab.New(statestore)
+		networkID := uint64(1)
+
+		overlays := make([]swarm.Address, 3)
+		for i := range overlays {
+			underlay, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/" + strconv.Itoa(2000+i))
+			if err != nil {
+				t.Fatal(err)
+			}
+			pk, err := crypto.GenerateSecp256k1Key()
+			if err != nil {
+				t.Fatal(err)
+			}
+			signer := crypto.NewDefaultSigner(pk)
+			overlay, err := crypto.NewOverlayAddress(pk.PublicKey, networkID, nonce)
+			if err != nil {
+				t.Fatal(err)
+			}
+			bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{underlay}, overlay, networkID, nonce, 1, common.Address{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := addressbook.Put(bzzAddr.Overlay, *bzzAddr, true); err != nil {
+				t.Fatal(err)
+			}
+			overlays[i] = bzzAddr.Overlay
+		}
+
+		streamer := streamtest.New()
+		serverAddress := swarm.RandAddress(t)
+		server := hive.New(streamer, ab.New(mock.NewStateStore()), networkID, serverAddress, logger, hive.Options{AllowPrivateCIDRs: true})
+		testutil.CleanupCloser(t, server)
+
+		recorder := streamtest.New(streamtest.WithProtocols(server.Protocol()))
+		clientAddress := swarm.RandAddress(t)
+		client := newCoalescingClient(t, recorder, addressbook, networkID, clientAddress, logger, hive.Options{
+			AllowPrivateCIDRs: true,
+		})
+
+		ctx := context.Background()
+		for _, overlay := range overlays {
+			if err := client.BroadcastPeers(ctx, serverAddress, overlay); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		assertNoGossipRecords(t, recorder, serverAddress)
+		waitForCoalesceFlush(t)
+
+		records, err := recorder.Records(serverAddress, "hive", "2.0.0", "peers")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, want := len(records), 1; got != want {
+			t.Fatalf("after flush got %d gossip messages, want %d", got, want)
+		}
+
+		messages, err := readAndAssertPeersMsgs(records[0].In(), 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, want := len(messages[0].Peers), len(overlays); got != want {
+			t.Fatalf("coalesced peer count: got %d, want %d", got, want)
+		}
+
+		// Batched gossip is sent immediately without coalescing (use fresh peers).
+		batchedOverlays := make([]swarm.Address, 2)
+		for i := range batchedOverlays {
+			underlay, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/" + strconv.Itoa(3000+i))
+			if err != nil {
+				t.Fatal(err)
+			}
+			pk, err := crypto.GenerateSecp256k1Key()
+			if err != nil {
+				t.Fatal(err)
+			}
+			signer := crypto.NewDefaultSigner(pk)
+			overlay, err := crypto.NewOverlayAddress(pk.PublicKey, networkID, nonce)
+			if err != nil {
+				t.Fatal(err)
+			}
+			bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{underlay}, overlay, networkID, nonce, 1, common.Address{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := addressbook.Put(bzzAddr.Overlay, *bzzAddr, true); err != nil {
+				t.Fatal(err)
+			}
+			batchedOverlays[i] = bzzAddr.Overlay
+		}
+
+		if err := client.BroadcastPeers(ctx, serverAddress, batchedOverlays...); err != nil {
+			t.Fatal(err)
+		}
+		records, err = recorder.Records(serverAddress, "hive", "2.0.0", "peers")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, want := len(records), 2; got != want {
+			t.Fatalf("after batched broadcast got %d gossip messages, want %d", got, want)
+		}
+	})
+}
+
+const hiveGossipBufferingInterval = time.Second
+
+func TestHiveGossipBuffering(t *testing.T) {
+	t.Parallel()
+
+	makeAddressbookWithPeers := func(t *testing.T, n int) (ab.GetPutter, []swarm.Address) {
+		t.Helper()
+
+		addressbook := ab.New(mock.NewStateStore())
+		networkID := uint64(1)
+		overlays := make([]swarm.Address, n)
+
+		for i := range n {
+			underlay, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/" + strconv.Itoa(4000+i))
+			if err != nil {
+				t.Fatal(err)
+			}
+			pk, err := crypto.GenerateSecp256k1Key()
+			if err != nil {
+				t.Fatal(err)
+			}
+			signer := crypto.NewDefaultSigner(pk)
+			overlay, err := crypto.NewOverlayAddress(pk.PublicKey, networkID, nonce)
+			if err != nil {
+				t.Fatal(err)
+			}
+			bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{underlay}, overlay, networkID, nonce, 1, common.Address{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := addressbook.Put(bzzAddr.Overlay, *bzzAddr, true); err != nil {
+				t.Fatal(err)
+			}
+			overlays[i] = bzzAddr.Overlay
+		}
+
+		return addressbook, overlays
+	}
+
+	setupClient := func(t *testing.T, addressbook ab.GetPutter, coalesceInterval time.Duration) (*hive.Service, *streamtest.Recorder, swarm.Address) {
+		t.Helper()
+
+		logger := log.Noop
+		networkID := uint64(1)
+
+		streamer := streamtest.New()
+		serverAddress := swarm.RandAddress(t)
+		server := hive.New(streamer, ab.New(mock.NewStateStore()), networkID, serverAddress, logger, hive.Options{AllowPrivateCIDRs: true})
+		testutil.CleanupCloser(t, server)
+
+		recorder := streamtest.New(streamtest.WithProtocols(server.Protocol()))
+		clientAddress := swarm.RandAddress(t)
+		client := hive.New(recorder, addressbook, networkID, clientAddress, logger, hive.Options{
+			AllowPrivateCIDRs:      true,
+			GossipCoalesceInterval: coalesceInterval,
+		})
+		testutil.CleanupCloser(t, client)
+
+		return client, recorder, serverAddress
+	}
+
+	t.Run("waits for interval before flush", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			const peerCount = 5
+
+			addressbook, overlays := makeAddressbookWithPeers(t, peerCount)
+			client, recorder, serverAddress := setupClient(t, addressbook, hiveGossipBufferingInterval)
+			ctx := context.Background()
+
+			for _, overlay := range overlays {
+				if err := client.BroadcastPeers(ctx, serverAddress, overlay); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			assertNoGossipRecords(t, recorder, serverAddress)
+
+			// One coalesce interval plus a small margin for the ticker to flush.
+			time.Sleep(hiveGossipBufferingInterval + 200*time.Millisecond)
+			synctest.Wait()
+
+			records, err := recorder.Records(serverAddress, "hive", "2.0.0", "peers")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got, want := len(records), 1; got != want {
+				t.Fatalf("got %d gossip messages, want %d", got, want)
+			}
+
+			messages, err := readAndAssertPeersMsgs(records[0].In(), 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got, want := len(messages[0].Peers), peerCount; got != want {
+				t.Fatalf("coalesced peer count: got %d, want %d", got, want)
+			}
+		})
+	})
+
+	t.Run("flushes immediately when buffer is full", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			// Long interval so the coalescer ticker cannot fire before maxBatch flush.
+			const coalesceInterval = time.Hour
+
+			peerCount := hive.MaxBatchSize
+
+			addressbook, overlays := makeAddressbookWithPeers(t, peerCount)
+			client, recorder, serverAddress := setupClient(t, addressbook, coalesceInterval)
+			ctx := context.Background()
+
+			for i, overlay := range overlays {
+				if err := client.BroadcastPeers(ctx, serverAddress, overlay); err != nil {
+					t.Fatal(err)
+				}
+				if i == peerCount-2 {
+					assertNoGossipRecords(t, recorder, serverAddress)
+				}
+			}
+
+			records, err := recorder.Records(serverAddress, "hive", "2.0.0", "peers")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got, want := len(records), 1; got != want {
+				t.Fatalf("got %d gossip messages after max batch, want %d", got, want)
+			}
+
+			messages, err := readAndAssertPeersMsgs(records[0].In(), 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got, want := len(messages[0].Peers), peerCount; got != want {
+				t.Fatalf("coalesced peer count: got %d, want %d", got, want)
+			}
+		})
 	})
 }
