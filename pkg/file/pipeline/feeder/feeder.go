@@ -48,6 +48,8 @@ func (f *chunkFeeder) Write(b []byte) (int, error) {
 	}
 
 	// if we are here it means we have to do at least one write
+	// d is reused for every chunk this call emits, so downstream writers that
+	// retain it must copy first (see pipeline.PipeWriteArgs).
 	d := make([]byte, f.size+span)
 	var sp int // span of current write
 

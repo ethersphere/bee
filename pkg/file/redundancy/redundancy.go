@@ -104,8 +104,12 @@ func (p *Params) ChunkWrite(chunkLevel int, data []byte, callback ParityChunkCal
 
 // ChunkWrite caches the chunk data on the given chunk level and if it is full then it calls Encode
 func (p *Params) chunkWrite(chunkLevel int, data []byte, callback ParityChunkCallback) error {
-	// append chunk to the buffer
-	p.buffer[chunkLevel][p.cursor[chunkLevel]] = data
+	// data is only valid for this call (see pipeline.PipeWriteArgs) but the
+	// shard buffer holds it until the level is encoded, so it must be copied.
+	dataCopy := make([]byte, len(data))
+	copy(dataCopy, data)
+
+	p.buffer[chunkLevel][p.cursor[chunkLevel]] = dataCopy
 	p.cursor[chunkLevel]++
 
 	// add parity chunk if it is necessary

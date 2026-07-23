@@ -7,13 +7,16 @@ package builder_test
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"strconv"
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline/builder"
+	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	test "github.com/ethersphere/bee/v2/pkg/file/testing"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/util/testutil"
@@ -165,5 +168,69 @@ func benchmarkPipeline(b *testing.B, count int) {
 	_, err = p.Sum()
 	if err != nil {
 		b.Fatal(err)
+	}
+}
+
+// copyingChunkStore copies chunk data on Put. inmemchunkstore retains the
+// caller's slice, so copying here isolates the pipeline's aliasing from the
+// store's own.
+type copyingChunkStore struct {
+	storage.ChunkStore
+}
+
+func (c *copyingChunkStore) Put(ctx context.Context, ch swarm.Chunk) error {
+	data := make([]byte, len(ch.Data()))
+	copy(data, ch.Data())
+	return c.ChunkStore.Put(ctx, swarm.NewChunk(ch.Address(), data))
+}
+
+// TestRedundancySingleWriteDistinctShards asserts that every shard of a
+// multi-chunk write is a distinct copy rather than an alias of a reused
+// producer buffer. Aliased shards make the parities encode duplicated data,
+// which stays invisible until a chunk is lost and recovery returns garbage.
+func TestRedundancySingleWriteDistinctShards(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := &copyingChunkStore{ChunkStore: inmemchunkstore.New()}
+
+	level := redundancy.MEDIUM
+	shardCnt := level.GetMaxShards()
+	parityCnt := level.GetParities(shardCnt)
+
+	p := builder.NewPipelineBuilder(ctx, store, false, level)
+
+	// a single Write carrying many chunks is what triggers the buffer reuse
+	data := make([]byte, shardCnt*swarm.ChunkSize)
+	if _, err := rand.Read(data); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Write(data); err != nil {
+		t.Fatal(err)
+	}
+	sum, err := p.Sum()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	root, err := store.Get(ctx, swarm.NewAddress(sum))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	refs := root.Data()[swarm.SpanSize:]
+	want := shardCnt + parityCnt
+	if len(refs)/swarm.HashSize != want {
+		t.Fatalf("root holds %d references, want %d", len(refs)/swarm.HashSize, want)
+	}
+
+	seen := make(map[string]int, want)
+	for i := 0; i < want; i++ {
+		ref := string(refs[i*swarm.HashSize : (i+1)*swarm.HashSize])
+		if prev, dup := seen[ref]; dup {
+			t.Fatalf("reference at slot %d duplicates slot %d: shards are aliased, not copied "+
+				"(%d distinct references out of %d)", i, prev, len(seen), want)
+		}
+		seen[ref] = i
 	}
 }
