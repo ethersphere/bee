@@ -158,7 +158,7 @@ func testCaseNotAccepted(t *testing.T, recorder *streamtest.Recorder, payerObser
 	}
 }
 
-func testCaseAccepted(t *testing.T, recorder *streamtest.Recorder, payerObserver, receiverObserver *testObserver, payer, recipient *pseudosettle.Service, peerID swarm.Address, payerTime, recipientTime int64, recordsLength, msgLength, recMsgLength int, debtAmount, amount, accepted, totalAmount *big.Int) {
+func testCaseAccepted(t *testing.T, recorder *streamtest.Recorder, payerObserver, receiverObserver *testObserver, payer, recipient *pseudosettle.Service, peerID swarm.Address, payerTime, recipientTime, interval int64, recordsLength, msgLength, recMsgLength int, debtAmount, amount, accepted, totalAmount *big.Int) {
 	t.Helper()
 
 	payer.SetTime(payerTime)
@@ -173,6 +173,11 @@ func testCaseAccepted(t *testing.T, recorder *streamtest.Recorder, payerObserver
 	case sent := <-payerObserver.refreshSentCalled:
 		if sent.err != nil {
 			t.Fatal(sent.err)
+		}
+		// the interval the payer bases its allowance expectation on must match the
+		// one the recipient granted against, otherwise the payer blocklists it
+		if sent.interval != interval {
+			t.Fatalf("got alleged interval %d, want %d", sent.interval, interval)
 		}
 		acceptedAmount.Set(sent.amount)
 	case <-time.After(1 * time.Second):
@@ -277,9 +282,6 @@ func TestPayment(t *testing.T) {
 	receiverObserver := newTestObserver(map[string]*big.Int{peerID.String(): big.NewInt(debt)}, map[string]*big.Int{})
 	recipient := pseudosettle.New(nil, logger, storeRecipient, receiverObserver, big.NewInt(testRefreshRate), big.NewInt(testRefreshRateLight), mockp2p.New())
 	recipient.SetAccounting(receiverObserver)
-	// Establish a connection time before init so the first-contact allowance is
-	// anchored to it rather than to the Unix epoch.
-	recipient.SetTime(1)
 	err := recipient.Init(context.Background(), peer)
 	if err != nil {
 		t.Fatal(err)
@@ -294,16 +296,20 @@ func TestPayment(t *testing.T) {
 
 	payer := pseudosettle.New(recorder, logger, storePayer, payerObserver, big.NewInt(testRefreshRate), big.NewInt(testRefreshRateLight), mockp2p.New())
 	payer.SetAccounting(payerObserver)
+	err = payer.Init(context.Background(), peer)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// set time to non-zero, attempt payment based on debt, expect full amount to be accepted
-	testCaseAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 30, 30, 1, 1, 1, big.NewInt(debt), big.NewInt(debt), big.NewInt(debt), big.NewInt(debt))
+	testCaseAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 30, 30, 1, 1, 1, 1, big.NewInt(debt), big.NewInt(debt), big.NewInt(debt), big.NewInt(debt))
 }
 
-// TestFirstContactAllowanceBounded verifies that the time-based allowance granted
-// on first contact is bounded by the time elapsed since the peer connected, not by
-// the Unix epoch. A peer connected one second ago may only settle a single refresh
-// interval of debt, no matter how large its outstanding debt is. Anchoring at the
-// epoch would let the first refreshment forgive an effectively unbounded amount.
-func TestFirstContactAllowanceBounded(t *testing.T) {
+// TestFirstRefreshmentBounded verifies that the first refreshment of a connection is
+// bounded by a single refresh interval. Without a stored settlement the timestamp
+// defaults to the Unix epoch, which would scale the whole epoch by the refresh rate
+// and forgive the peer's entire outstanding debt in one go.
+func TestFirstRefreshmentBounded(t *testing.T) {
 	t.Parallel()
 
 	logger := log.Noop
@@ -313,15 +319,13 @@ func TestFirstContactAllowanceBounded(t *testing.T) {
 	peerID := swarm.MustParseHexAddress("9ee7add7")
 	peer := p2p.Peer{Address: peerID, FullNode: true}
 
-	// Debt far larger than a single refresh interval's worth of allowance.
+	// debt far larger than a single refresh interval's worth of allowance
 	debt := int64(1000) * testRefreshRate
 
 	payerObserver := newTestObserver(map[string]*big.Int{peerID.String(): big.NewInt(debt)}, map[string]*big.Int{})
 	receiverObserver := newTestObserver(map[string]*big.Int{peerID.String(): big.NewInt(debt)}, map[string]*big.Int{})
 	recipient := pseudosettle.New(nil, logger, storeRecipient, receiverObserver, big.NewInt(testRefreshRate), big.NewInt(testRefreshRateLight), mockp2p.New())
 	recipient.SetAccounting(receiverObserver)
-	// The peer connects at t=1000000.
-	recipient.SetTime(1000000)
 	err := recipient.Init(context.Background(), peer)
 	if err != nil {
 		t.Fatal(err)
@@ -336,10 +340,68 @@ func TestFirstContactAllowanceBounded(t *testing.T) {
 
 	payer := pseudosettle.New(recorder, logger, storePayer, payerObserver, big.NewInt(testRefreshRate), big.NewInt(testRefreshRateLight), mockp2p.New())
 	payer.SetAccounting(payerObserver)
+	err = payer.Init(context.Background(), peer)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	// One second after connecting the peer attempts to settle its entire debt.
-	// Only one refresh interval (testRefreshRate) may be accepted, not the full debt.
-	testCaseAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 1000001, 1000001, 1, 1, 1, big.NewInt(debt), big.NewInt(debt), big.NewInt(testRefreshRate), big.NewInt(testRefreshRate))
+	// the peer attempts to settle its entire debt, only one refresh interval is accepted
+	testCaseAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 1000000, 1000000, 1, 1, 1, 1, big.NewInt(debt), big.NewInt(debt), big.NewInt(testRefreshRate), big.NewInt(testRefreshRate))
+}
+
+// TestReconnectRefreshmentBounded verifies that allowance does not accrue while a peer
+// is disconnected. The stored settlement timestamp survives the disconnect, so on
+// reconnection the first refreshment is bounded by a single refresh interval rather
+// than by the time since the last settlement.
+func TestReconnectRefreshmentBounded(t *testing.T) {
+	t.Parallel()
+
+	logger := log.Noop
+
+	storeRecipient := newStateStore(t)
+
+	peerID := swarm.MustParseHexAddress("9ee7add7")
+	peer := p2p.Peer{Address: peerID, FullNode: true}
+
+	debt := int64(1000) * testRefreshRate
+
+	payerObserver := newTestObserver(map[string]*big.Int{peerID.String(): big.NewInt(debt)}, map[string]*big.Int{})
+	receiverObserver := newTestObserver(map[string]*big.Int{peerID.String(): big.NewInt(debt)}, map[string]*big.Int{})
+	recipient := pseudosettle.New(nil, logger, storeRecipient, receiverObserver, big.NewInt(testRefreshRate), big.NewInt(testRefreshRateLight), mockp2p.New())
+	recipient.SetAccounting(receiverObserver)
+	err := recipient.Init(context.Background(), peer)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	recorder := streamtest.New(
+		streamtest.WithProtocols(recipient.Protocol()),
+		streamtest.WithBaseAddr(peerID),
+	)
+
+	storePayer := newStateStore(t)
+
+	payer := pseudosettle.New(recorder, logger, storePayer, payerObserver, big.NewInt(testRefreshRate), big.NewInt(testRefreshRateLight), mockp2p.New())
+	payer.SetAccounting(payerObserver)
+	err = payer.Init(context.Background(), peer)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	testCaseAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 10000, 10000, 1, 1, 1, 1, big.NewInt(debt), big.NewInt(debt), big.NewInt(testRefreshRate), big.NewInt(testRefreshRate))
+
+	for _, s := range []*pseudosettle.Service{payer, recipient} {
+		if err := s.Terminate(peer); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Init(context.Background(), peer); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// an hour of disconnected time must not be forgiven on reconnection
+	sentSum := big.NewInt(2 * testRefreshRate)
+	testCaseAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 13600, 13600, 1, 2, 1, 1, big.NewInt(debt), big.NewInt(debt), big.NewInt(testRefreshRate), sentSum)
 }
 
 func TestTimeLimitedPayment(t *testing.T) {
@@ -358,9 +420,6 @@ func TestTimeLimitedPayment(t *testing.T) {
 	receiverObserver := newTestObserver(map[string]*big.Int{peerID.String(): big.NewInt(debt)}, map[string]*big.Int{})
 	recipient := pseudosettle.New(nil, logger, storeRecipient, receiverObserver, big.NewInt(testRefreshRate), big.NewInt(testRefreshRateLight), mockp2p.New())
 	recipient.SetAccounting(receiverObserver)
-	// Establish a connection time before init so the first-contact allowance is
-	// anchored to it rather than to the Unix epoch.
-	recipient.SetTime(1)
 	err := recipient.Init(context.Background(), peer)
 	if err != nil {
 		t.Fatal(err)
@@ -375,28 +434,32 @@ func TestTimeLimitedPayment(t *testing.T) {
 
 	payer := pseudosettle.New(recorder, logger, storePayer, payerObserver, big.NewInt(testRefreshRate), big.NewInt(testRefreshRateLight), mockp2p.New())
 	payer.SetAccounting(payerObserver)
+	err = payer.Init(context.Background(), peer)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Set time to 10000, attempt payment based on debt, expect full amount accepted
-	testCaseAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 10000, 10000, 1, 1, 1, big.NewInt(debt), big.NewInt(debt), big.NewInt(debt), big.NewInt(debt))
+	testCaseAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 10000, 10000, 1, 1, 1, 1, big.NewInt(debt), big.NewInt(debt), big.NewInt(debt), big.NewInt(debt))
 
 	// Set time 3 seconds later, attempt settlement below time based refreshment rate, expect full amount accepted
 	sentSum := big.NewInt(debt + testRefreshRate*3/2)
-	testCaseAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 10003, 10003, 2, 1, 1, big.NewInt(testRefreshRate*3/2), big.NewInt(testRefreshRate*3/2), big.NewInt(testRefreshRate*3/2), sentSum)
+	testCaseAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 10003, 10003, 3, 2, 1, 1, big.NewInt(testRefreshRate*3/2), big.NewInt(testRefreshRate*3/2), big.NewInt(testRefreshRate*3/2), sentSum)
 
 	// set time 1 seconds later, attempt settlement over the time-based allowed limit, expect partial amount accepted
 	sentSum = big.NewInt(debt + testRefreshRate*3/2 + testRefreshRate)
-	testCaseAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 10004, 10004, 3, 1, 1, big.NewInt(testRefreshRate*3), big.NewInt(testRefreshRate*3), big.NewInt(testRefreshRate), sentSum)
+	testCaseAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 10004, 10004, 1, 3, 1, 1, big.NewInt(testRefreshRate*3), big.NewInt(testRefreshRate*3), big.NewInt(testRefreshRate), sentSum)
 
 	// set time to same second as previous case on recipient, 1 second later on payer, attempt settlement, expect sent but failed
 	testCaseNotAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 10005, 10004, 4, big.NewInt(2*testRefreshRate), big.NewInt(2*testRefreshRate), io.EOF)
 
 	// set time 6 seconds later, attempt with debt over time based allowance, expect partial accept
 	sentSum = big.NewInt(debt + testRefreshRate*3/2 + testRefreshRate + 6*testRefreshRate)
-	testCaseAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 10010, 10010, 5, 1, 1, big.NewInt(9*testRefreshRate), big.NewInt(9*testRefreshRate), big.NewInt(6*testRefreshRate), sentSum)
+	testCaseAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 10010, 10010, 6, 5, 1, 1, big.NewInt(9*testRefreshRate), big.NewInt(9*testRefreshRate), big.NewInt(6*testRefreshRate), sentSum)
 
 	// set time 10 seconds later, attempt with debt below time based allowance, expect full amount accepted
 	sentSum = big.NewInt(debt + testRefreshRate*3/2 + testRefreshRate + 6*testRefreshRate + 5*testRefreshRate)
-	testCaseAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 10020, 10020, 6, 1, 1, big.NewInt(5*testRefreshRate), big.NewInt(5*testRefreshRate), big.NewInt(5*testRefreshRate), sentSum)
+	testCaseAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 10020, 10020, 10, 6, 1, 1, big.NewInt(5*testRefreshRate), big.NewInt(5*testRefreshRate), big.NewInt(5*testRefreshRate), sentSum)
 }
 
 func TestTimeLimitedPaymentLight(t *testing.T) {
@@ -415,9 +478,6 @@ func TestTimeLimitedPaymentLight(t *testing.T) {
 	receiverObserver := newTestObserver(map[string]*big.Int{peerID.String(): big.NewInt(debt)}, map[string]*big.Int{})
 	recipient := pseudosettle.New(nil, logger, storeRecipient, receiverObserver, big.NewInt(testRefreshRate), big.NewInt(testRefreshRateLight), mockp2p.New())
 	recipient.SetAccounting(receiverObserver)
-	// Establish a connection time before init so the first-contact allowance is
-	// anchored to it rather than to the Unix epoch.
-	recipient.SetTime(1)
 	err := recipient.Init(context.Background(), peer)
 	if err != nil {
 		t.Fatal(err)
@@ -432,23 +492,27 @@ func TestTimeLimitedPaymentLight(t *testing.T) {
 
 	payer := pseudosettle.New(recorder, logger, storePayer, payerObserver, big.NewInt(testRefreshRateLight), big.NewInt(testRefreshRateLight), mockp2p.New())
 	payer.SetAccounting(payerObserver)
+	err = payer.Init(context.Background(), peer)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	// Set time to 10000, attempt payment based on debt, expect full amount accepted
-	testCaseAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 10000, 10000, 1, 1, 1, big.NewInt(debt), big.NewInt(debt), big.NewInt(debt), big.NewInt(debt))
+	// Set time to 10000, attempt payment based on debt, expect one light refresh interval accepted
+	testCaseAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 10000, 10000, 1, 1, 1, 1, big.NewInt(debt), big.NewInt(debt), big.NewInt(testRefreshRateLight), big.NewInt(testRefreshRateLight))
 	// Set time 3 seconds later, attempt settlement below time based light refreshment rate, expect full amount accepted
-	sentSum := big.NewInt(debt + testRefreshRateLight*3)
-	testCaseAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 10003, 10003, 2, 1, 1, big.NewInt(testRefreshRate*3/2), big.NewInt(testRefreshRate*3/2), big.NewInt(testRefreshRateLight*3), sentSum)
+	sentSum := big.NewInt(testRefreshRateLight + testRefreshRateLight*3)
+	testCaseAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 10003, 10003, 3, 2, 1, 1, big.NewInt(testRefreshRate*3/2), big.NewInt(testRefreshRate*3/2), big.NewInt(testRefreshRateLight*3), sentSum)
 	// set time 1 seconds later, attempt settlement over the time-based light allowed limit, expect partial amount accepted
-	sentSum = big.NewInt(debt + testRefreshRateLight*3 + testRefreshRateLight)
-	testCaseAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 10004, 10004, 3, 1, 1, big.NewInt(testRefreshRate*3), big.NewInt(testRefreshRate*3), big.NewInt(testRefreshRateLight), sentSum)
+	sentSum = big.NewInt(testRefreshRateLight + testRefreshRateLight*3 + testRefreshRateLight)
+	testCaseAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 10004, 10004, 1, 3, 1, 1, big.NewInt(testRefreshRate*3), big.NewInt(testRefreshRate*3), big.NewInt(testRefreshRateLight), sentSum)
 	// set time to same second as previous case on recipient, 1 second later on payer, attempt settlement, expect sent but failed
 	testCaseNotAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 10005, 10004, 4, big.NewInt(2*testRefreshRate), big.NewInt(2*testRefreshRate), io.EOF)
 	// set time 6 seconds later, attempt with debt over time based light allowance, expect partial accept
-	sentSum = big.NewInt(debt + testRefreshRateLight*3 + testRefreshRateLight + 6*testRefreshRateLight)
-	testCaseAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 10010, 10010, 5, 1, 1, big.NewInt(9*testRefreshRate), big.NewInt(9*testRefreshRate), big.NewInt(6*testRefreshRateLight), sentSum)
+	sentSum = big.NewInt(testRefreshRateLight + testRefreshRateLight*3 + testRefreshRateLight + 6*testRefreshRateLight)
+	testCaseAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 10010, 10010, 6, 5, 1, 1, big.NewInt(9*testRefreshRate), big.NewInt(9*testRefreshRate), big.NewInt(6*testRefreshRateLight), sentSum)
 	// set time 100 seconds later, attempt with debt below time based allowance, expect full amount accepted
-	sentSum = big.NewInt(debt + testRefreshRateLight*3 + testRefreshRateLight + 6*testRefreshRateLight + 50*testRefreshRateLight)
-	testCaseAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 10110, 10110, 6, 1, 1, big.NewInt(50*testRefreshRateLight), big.NewInt(50*testRefreshRateLight), big.NewInt(50*testRefreshRateLight), sentSum)
+	sentSum = big.NewInt(testRefreshRateLight + testRefreshRateLight*3 + testRefreshRateLight + 6*testRefreshRateLight + 50*testRefreshRateLight)
+	testCaseAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 10110, 10110, 100, 6, 1, 1, big.NewInt(50*testRefreshRateLight), big.NewInt(50*testRefreshRateLight), big.NewInt(50*testRefreshRateLight), sentSum)
 }
 
 func newStateStore(t *testing.T) storage.StateStorer {
