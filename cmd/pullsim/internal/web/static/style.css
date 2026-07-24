@@ -1,0 +1,151 @@
+/* Copyright 2026 The Swarm Authors. All rights reserved. */
+
+* { box-sizing: border-box; }
+
+:root {
+  --bg: #0e1116;
+  --panel: #171b22;
+  --panel-2: #1e242d;
+  --border: #2a313c;
+  --text: #d7dde5;
+  --muted: #8b96a5;
+  --accent: #46c8b6;   /* full / teal */
+  --amber: #e0a84e;    /* po-only */
+  --grey: #4b5563;     /* idle */
+  --traced: #57d977;   /* traced chunk */
+  --danger: #e06c6c;
+}
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+#app {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Sidebar */
+#sidebar {
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  padding: 14px;
+  overflow-y: auto;
+}
+#sidebar h1 {
+  font-size: 15px;
+  margin: 0 0 2px;
+  letter-spacing: .3px;
+}
+#sidebar .sub { color: var(--muted); font-size: 11px; margin-bottom: 14px; }
+
+.group {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 12px;
+}
+.group h2 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: var(--muted);
+  margin: 0 0 8px;
+}
+.row { display: flex; align-items: center; justify-content: space-between; margin: 6px 0; gap: 8px; }
+.row label { color: var(--muted); flex: 0 0 auto; }
+.row input[type=number], .row input[type=text], .row select {
+  background: #0d1015;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 5px;
+  padding: 4px 6px;
+  width: 110px;
+  font: inherit;
+}
+.row input[type=range] { flex: 1; }
+button {
+  background: var(--accent);
+  color: #07100e;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+}
+button.secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+button:active { transform: translateY(1px); }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* Stats strip */
+#stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+#stats .stat {
+  background: #0d1015;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+#stats .stat .k { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .5px; }
+#stats .stat .v { font-size: 16px; font-weight: 600; }
+
+/* Legend */
+#legend .item { display: flex; align-items: center; gap: 8px; margin: 5px 0; font-size: 12px; color: var(--muted); }
+#legend .swatch { width: 22px; height: 3px; border-radius: 2px; flex: 0 0 auto; }
+
+/* Canvas area */
+#stage { position: relative; overflow: hidden; }
+#canvas { display: block; width: 100%; height: 100%; }
+
+/* Detail panel overlay */
+#detail {
+  position: absolute;
+  top: 12px; right: 12px;
+  width: 260px;
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  background: rgba(23,27,34,.94);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  display: none;
+}
+#detail.show { display: block; }
+#detail h3 { margin: 0 0 6px; font-size: 13px; }
+#detail .close { position: absolute; top: 8px; right: 10px; color: var(--muted); cursor: pointer; }
+.bar { height: 10px; background: #0d1015; border-radius: 3px; margin: 3px 0; overflow: hidden; }
+.bar > span { display: block; height: 100%; background: var(--accent); }
+.kv { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; }
+.stream-row { border-top: 1px solid var(--border); padding: 5px 0; font-size: 11px; }
+
+#toast {
+  position: absolute;
+  bottom: 12px; left: 12px;
+  background: rgba(23,27,34,.94);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: var(--muted);
+  font-size: 11px;
+  display: none;
+}
+.paused-badge {
+  position: absolute; top: 12px; left: 12px;
+  background: var(--danger); color: #1b0d0d;
+  padding: 3px 8px; border-radius: 5px; font-weight: 600; font-size: 11px;
+  display: none;
+}
+.status-dot { display:inline-block; width:8px;height:8px;border-radius:50%; background: var(--danger); margin-right:6px; }
+.status-dot.ok { background: var(--traced); }

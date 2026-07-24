@@ -1,0 +1,81 @@
+<!doctype html>
+<!-- Copyright 2026 The Swarm Authors. All rights reserved. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pullsim — pull-sync network simulator</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <h1>pullsim</h1>
+    <div class="sub"><span id="wsdot" class="status-dot"></span><span id="wsstatus">connecting…</span></div>
+
+    <div class="group" id="stats"></div>
+
+    <div class="group">
+      <h2>Network</h2>
+      <div class="row"><label>nodes</label><input id="c-nodes" type="number" min="2" max="50" value="20"></div>
+      <div class="row"><label>topology</label>
+        <select id="c-topology">
+          <option value="full">full</option>
+          <option value="ring">ring</option>
+          <option value="k-nearest">k-nearest</option>
+          <option value="random">random</option>
+        </select>
+      </div>
+      <div class="row"><label>degree</label><input id="c-degree" type="number" min="1" max="49" value="6"></div>
+      <div class="row"><label>bins</label><input id="c-bins" type="number" min="2" max="16" value="8"></div>
+      <div class="row"><label>latency ms</label><input id="c-latency" type="number" min="0" max="1000" value="5"></div>
+      <div class="row"><label>clusters</label><input id="c-clusters" type="number" min="1" max="12" value="1"></div>
+      <div class="row"><label>seed</label><input id="c-seed" type="number" value="0"></div>
+      <button id="rebuild">Rebuild</button>
+    </div>
+
+    <div class="group">
+      <h2>Radius (live)</h2>
+      <div class="row">
+        <input id="radius" type="range" min="0" max="7" step="1" value="0">
+        <span class="mono" id="radius-val">0</span>
+      </div>
+    </div>
+
+    <div class="group">
+      <h2>Inject</h2>
+      <div class="row"><label>node</label><input id="i-node" type="number" min="0" value="0"></div>
+      <div class="row"><label>count</label><input id="i-count" type="number" min="1" value="1"></div>
+      <div class="row"><label>rate /s</label><input id="i-rate" type="number" min="0" value="0"></div>
+      <div class="row"><label>min PO</label><input id="i-minpo" type="number" min="0" value="0"></div>
+      <button id="inject">Inject</button>
+      <button id="inject-stop" class="secondary" style="margin-top:6px;">Stop stream</button>
+      <div class="sub" style="margin-top:6px;">count=1 traces the chunk (green wavefront). Click a node to target it.</div>
+    </div>
+
+    <div class="group">
+      <h2>Legend</h2>
+      <div id="legend">
+        <div class="item"><span class="swatch" style="background:var(--accent)"></span>full — syncs all bins</div>
+        <div class="item"><span class="swatch" style="background:var(--amber)"></span>po-only — syncs one bin</div>
+        <div class="item"><span class="swatch" style="background:var(--grey)"></span>idle — not syncing</div>
+        <div class="item"><span class="swatch" style="background:var(--accent);opacity:.5;border-top:2px dashed var(--accent)"></span>dashed — awaiting offer (coalescing)</div>
+        <div class="item"><span class="swatch" style="background:var(--traced)"></span>delivering / holds traced chunk</div>
+      </div>
+    </div>
+
+    <div class="group">
+      <button id="pause" class="secondary">Pause rendering</button>
+    </div>
+  </aside>
+
+  <main id="stage">
+    <canvas id="canvas"></canvas>
+    <div class="paused-badge" id="paused">PAUSED (rendering only)</div>
+    <div id="detail"></div>
+    <div id="toast"></div>
+  </main>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
