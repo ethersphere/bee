@@ -311,9 +311,18 @@ func ChunkSum(ch swarm.Chunk) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("stamp hash: %w", err)
 	}
+	return ChunkSumFromParts(ch.Stamp().BatchID(), stampHash, ch)
+}
 
+// ChunkSumFromParts computes the pullsync divergence checksum from an already
+// known batch ID and stamp hash. It is equivalent to ChunkSum for a chunk
+// carrying a matching stamp, but spares callers that hold the parts in an
+// index item (migrations, repairs) from loading and rehashing the stamp. The
+// chunk is consulted only to fold in the wrapped CAC address for single owner
+// chunks.
+func ChunkSumFromParts(batchID, stampHash []byte, ch swarm.Chunk) ([]byte, error) {
 	h := swarm.NewHasher()
-	_, _ = h.Write(ch.Stamp().BatchID())
+	_, _ = h.Write(batchID)
 	_, _ = h.Write(stampHash)
 
 	if soc.Valid(ch) {

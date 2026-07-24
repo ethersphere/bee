@@ -7,6 +7,7 @@ package reserve
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"path"
 
 	"github.com/ethersphere/bee/v2/pkg/storage"
@@ -131,6 +132,18 @@ func binIDToString(bin uint8, binID uint64) string {
 	return string(bin) + string(binIDBytes)
 }
 
+const chunkBinIDLength = 1 + 8
+
+// ParseChunkBinID parses a raw ChunkBinItem key ID, the inverse of
+// binIDToString. It allows key-only deletion of entries whose stored value
+// cannot be unmarshaled, such as records left in a pre-Sum serialization.
+func ParseChunkBinID(id string) (bin uint8, binID uint64, err error) {
+	if len(id) != chunkBinIDLength {
+		return 0, 0, fmt.Errorf("reserve: invalid chunkBin key length %d", len(id))
+	}
+	return id[0], binary.BigEndian.Uint64([]byte(id[1:])), nil
+}
+
 func (c *ChunkBinItem) String() string {
 	return path.Join(c.Namespace(), c.ID())
 }
@@ -155,6 +168,9 @@ const chunkBinItemSize = 1 + 8 + swarm.HashSize + swarm.HashSize + 1 + swarm.Has
 func (c *ChunkBinItem) Marshal() ([]byte, error) {
 	if c.Address.IsZero() {
 		return nil, errMarshalInvalidAddress
+	}
+	if len(c.Sum) != storage.ChunkSumSize {
+		return nil, errMarshalInvalidSize
 	}
 
 	buf := make([]byte, chunkBinItemSize)

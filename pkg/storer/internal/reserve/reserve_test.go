@@ -1161,3 +1161,168 @@ func checkChunkInIndexStore(t *testing.T, s storage.Reader, bin uint8, binId uin
 	checkStore(t, s, &reserve.BatchRadiusItem{Bin: bin, BatchID: ch.Stamp().BatchID(), Address: ch.Address(), StampHash: stampHash}, false)
 	checkStore(t, s, &reserve.ChunkBinItem{Bin: bin, BinID: binId, StampHash: stampHash}, false)
 }
+
+// TestChunkSumIndexLockstep asserts the invariant the pullsync want-decision
+// depends on: a ChunkSumItem exists exactly as long as its chunk is in the
+// reserve. A stale entry would make the node silently refuse to sync a chunk
+// it no longer holds.
+func TestChunkSumIndexLockstep(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	baseAddr := swarm.RandAddress(t)
+	ts := internal.NewInmemStorage()
+	r, err := reserve.New(baseAddr, ts, 0, kademlia.NewTopologyDriver(), log.Noop)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	batch := postagetesting.MustNewBatch()
+	ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewBatchStamp(batch.ID))
+	if err := r.Put(ctx, ch); err != nil {
+		t.Fatal(err)
+	}
+
+	sum, err := storage.ChunkSum(ch)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	has, err := r.HasSum(ch.Address(), sum)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !has {
+		t.Fatal("expected chunk sum to be indexed after put")
+	}
+
+	evicted, err := r.EvictBatchBin(ctx, batch.ID, math.MaxInt, swarm.MaxBins)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if evicted != 1 {
+		t.Fatalf("expected 1 chunk evicted, got %d", evicted)
+	}
+
+	has, err = r.HasSum(ch.Address(), sum)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if has {
+		t.Fatal("expected chunk sum index entry to be removed by eviction")
+	}
+}
+
+// TestSOCSiblingSumRefresh covers a single owner chunk address stored under
+// multiple batches. The payload is stored once per address, so replacing it
+// through one batch's entry must refresh the divergence checksums of the other
+// batches' entries; a stale sum would keep advertising content the node no
+// longer holds and keep matching offers for content it cannot store.
+func TestSOCSiblingSumRefresh(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	baseAddr := swarm.RandAddress(t)
+	ts := internal.NewInmemStorage()
+	r, err := reserve.New(baseAddr, ts, 0, kademlia.NewTopologyDriver(), log.Noop)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	signer := getSigner(t)
+	batchA := postagetesting.MustNewBatch()
+	batchB := postagetesting.MustNewBatch()
+
+	// same owner and id: all three chunks share one SOC address
+	s1 := soctesting.GenerateMockSocWithSigner(t, []byte("v1"), signer)
+	s2 := soctesting.GenerateMockSocWithSigner(t, []byte("v2"), signer)
+	s3 := soctesting.GenerateMockSocWithSigner(t, []byte("v3"), signer)
+
+	stampA := postagetesting.MustNewFields(batchA.ID, 0, 1)
+	stampB := postagetesting.MustNewFields(batchB.ID, 0, 1)
+	chA := s1.Chunk().WithStamp(stampA)
+	chB := s2.Chunk().WithStamp(stampB)
+
+	addr := chA.Address()
+	bin := swarm.Proximity(baseAddr.Bytes(), addr.Bytes())
+
+	stampHashA, err := stampA.Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stampHashB, err := stampB.Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// sumOf reads the sum stored on the ChunkBinItem of the entry identified
+	// by the given batch and stamp hash.
+	sumOf := func(batchID, stampHash []byte) []byte {
+		t.Helper()
+		item := &reserve.BatchRadiusItem{Bin: bin, BatchID: batchID, Address: addr, StampHash: stampHash}
+		if err := ts.IndexStore().Get(item); err != nil {
+			t.Fatal(err)
+		}
+		cbi := &reserve.ChunkBinItem{Bin: bin, BinID: item.BinID}
+		if err := ts.IndexStore().Get(cbi); err != nil {
+			t.Fatal(err)
+		}
+		return cbi.Sum
+	}
+
+	if err := r.Put(ctx, chA); err != nil {
+		t.Fatal(err)
+	}
+	staleSumA := sumOf(batchA.ID, stampHashA)
+
+	// storing the same address under batch B replaces the shared payload with
+	// v2; batch A's entry must be re-summed against the new payload.
+	if err := r.Put(ctx, chB); err != nil {
+		t.Fatal(err)
+	}
+
+	freshSumA, err := storage.ChunkSumFromParts(batchA.ID, stampHashA, chB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(sumOf(batchA.ID, stampHashA), freshSumA) {
+		t.Fatal("expected batch A entry to be re-summed against the replacing payload")
+	}
+	has, err := r.HasSum(addr, staleSumA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if has {
+		t.Fatal("expected the stale sum of batch A to be dropped")
+	}
+	has, err = r.HasSum(addr, freshSumA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !has {
+		t.Fatal("expected the refreshed sum of batch A to be indexed")
+	}
+
+	// the same-batch replacement path (higher stamp timestamp) must refresh
+	// batch B's entry the same way.
+	staleSumB := sumOf(batchB.ID, stampHashB)
+	chA2 := s3.Chunk().WithStamp(postagetesting.MustNewFields(batchA.ID, 0, 2))
+	if err := r.Put(ctx, chA2); err != nil {
+		t.Fatal(err)
+	}
+
+	freshSumB, err := storage.ChunkSumFromParts(batchB.ID, stampHashB, chA2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(sumOf(batchB.ID, stampHashB), freshSumB) {
+		t.Fatal("expected batch B entry to be re-summed against the replacing payload")
+	}
+	has, err = r.HasSum(addr, staleSumB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if has {
+		t.Fatal("expected the stale sum of batch B to be dropped")
+	}
+}
