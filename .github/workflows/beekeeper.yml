@@ -30,6 +30,11 @@ env:
   AWS_EC2_METADATA_DISABLED: true
   AWS_ENDPOINT: fra1.digitaloceanspaces.com
   VERTAG: ${GITHUB_RUN_ID}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   init:
     name: Init
@@ -48,35 +53,78 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.client_payload.ref }}
-      - name: Setup Go
-        uses: actions/setup-go@v6
-        with:
-          cache: false
-          go-version-file: go.mod
-      - name: Cache Go Modules
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
       - name: Get Commit Message
         id: commit
         run: |
           MSG=$(git log --format=%s -n 1 ${{github.event.after}})
           echo "msg=${MSG}" >> $GITHUB_OUTPUT
-      - name: Build - 0
-        run: |
-          make binary
-          mv dist/bee bee-0
-      - name: Apply patches and build - 1
+
+  build-bee:
+    name: Build bee binaries
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - variant: "0"
+            patched: false
+          - variant: "1"
+            patched: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        if: github.event.action != 'beekeeper'
+        with:
+          fetch-depth: 0
+      - name: Checkout
+        uses: actions/checkout@v5
+        if: github.event.action == 'beekeeper'
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.client_payload.ref }}
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          cache: false
+          go-version-file: go.mod
+      - name: Cache Go build cache (binary)
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-binary-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-binary-
+      - name: Apply patches
+        if: matrix.patched
         run: |
           patch pkg/api/postage.go .github/patches/postage_api.patch
           patch pkg/retrieval/retrieval.go .github/patches/retrieval.patch
+      - name: Build
+        run: |
           make binary
-          mv dist/bee bee-1
+          mv dist/bee bee-${{ matrix.variant }}
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: bee-${{ matrix.variant }}
+          path: bee-${{ matrix.variant }}
+          retention-days: 5
+
+  install-beekeeper:
+    name: Install beekeeper
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        if: github.event.action != 'beekeeper'
+        with:
+          fetch-depth: 0
+      - name: Checkout
+        uses: actions/checkout@v5
+        if: github.event.action == 'beekeeper'
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.client_payload.ref }}
       - name: Install beekeeper
         run: |
           export PATH=$(pwd):$PATH
@@ -86,34 +134,66 @@ jobs:
           mv ~/.beekeeper/local.yaml local.yaml
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: temp-artifacts
+          name: beekeeper-artifacts
           include-hidden-files: true
           path: |
             Dockerfile.goreleaser
             Makefile
-            bee-0
-            bee-1
-            bee-2
             beekeeper
             local.yaml
             .beekeeper.yaml
             .github/bin/beekeeper_artifacts.sh
           retention-days: 5
   beekeeper:
-    name: Integration tests
+    name: Integration tests (${{ matrix.shard }})
     runs-on: ubuntu-latest
-    needs: [init]
+    needs: [init, build-bee, install-beekeeper]
+    timeout-minutes: 40
+    env:
+      VERTAG: ${GITHUB_RUN_ID}-${{ matrix.shard }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: chain
+            checks: >-
+              ci-pingpong
+              ci-full-connectivity
+              ci-settlements
+              ci-manifest
+              ci-manifest-v1
+              ci-postage
+              ci-stake
+              ci-withdraw
+              ci-act
+          - shard: data
+            checks: >-
+              ci-pingpong
+              ci-full-connectivity
+              ci-pss
+              ci-soc
+              ci-gsoc
+              ci-pushsync-chunks
+              ci-pushsync-light-chunks
+              ci-retrieval
+              ci-redundancy
+              ci-feed-v1
+              ci-feed
     steps:
-      - name: Cache
+      - name: Cache k3s
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
         with:
           path: |
             /tmp/k3s-${{ env.K3S_VERSION }}
           key: k3s-${{ env.K3S_VERSION }}
-      - name: "Download Artifact"
+      - name: Download beekeeper artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: temp-artifacts
+          name: beekeeper-artifacts
+      - name: Download bee-1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: bee-1
       - name: Unpack artifacts
         run: |
           chmod +x bee-1 beekeeper .github/bin/beekeeper_artifacts.sh
@@ -131,99 +211,53 @@ jobs:
       - name: Set local cluster
         run: |
           timeout ${TIMEOUT} make deploylocal BEEKEEPER_CLUSTER=local-dns
-      - name: Test pingpong
-        id: pingpong
-        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done'
-      - name: Test fullconnectivity
-        id: fullconnectivity
-        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks=ci-full-connectivity; do echo "waiting for full connectivity..."; sleep .3; done'
-      - name: Test settlements
-        id: settlements
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-settlements
-      - name: Sleep for time allowance to replenish
-        run: sleep 2
-      - name: Test pss
-        id: pss
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-pss
-      - name: Test soc
-        id: soc
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-soc
-      - name: Test gsoc
-        id: gsoc
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-gsoc
-      - name: Test pushsync (chunks)
-        id: pushsync-chunks-1
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-pushsync-chunks
-      - name: Test pushsync (light mode chunks)
-        id: pushsync-chunks-2
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
-      - name: Test retrieval
-        id: retrieval
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-retrieval
-      - name: Test manifest
-        id: manifest
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-manifest
-      - name: Test manifest v1
-        id: manifest-v1
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-manifest-v1
-      - name: Test postage stamps
-        id: postage-stamps
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks ci-postage
-      - name: Test staking
-        id: stake
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks ci-stake
-      - name: Test withdraw
-        id: withdraw
-        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks ci-withdraw; do echo "waiting for withdraw..."; sleep .3; done'
-      - name: Test redundancy
-        id: redundancy
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks ci-redundancy
-      - name: Test act
-        id: act
-        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks ci-act; do echo "waiting for act..."; sleep .3; done'
-      - name: Test feeds v1
-        id: feeds-v1
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-feed-v1
-      - name: Test feeds
-        id: feeds
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-feed
+      - name: Run checks (${{ matrix.shard }})
+        run: |
+          RETRY_CHECKS="ci-pingpong ci-full-connectivity ci-withdraw ci-act"
+          run_check() {
+            if [[ " ${RETRY_CHECKS} " == *" $1 "* ]]; then
+              timeout ${TIMEOUT} bash -c "until beekeeper check --cluster-name local-dns --checks $1; do echo \"waiting for $1...\"; sleep .3; done"
+            else
+              timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks "$1"
+            fi
+          }
+          for check in ${{ matrix.checks }}; do
+            echo "::group::${check}"
+            if ! run_check "${check}"; then
+              echo "FAILED=${check}" >> $GITHUB_ENV
+              echo "::endgroup::"
+              echo "::error::beekeeper check ${check} failed"
+              exit 1
+            fi
+            echo "::endgroup::"
+            if [ "${check}" = "ci-settlements" ]; then
+              sleep 2
+            fi
+          done
       - name: Collect debug artifacts
         if: failure()
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           bash .github/bin/beekeeper_artifacts.sh local-dns
-          export FAILED='no-test'
-          if ${{ steps.pingpong.outcome=='failure' }}; then FAILED=pingpong; fi
-          if ${{ steps.fullconnectivity.outcome=='failure' }}; then FAILED=fullconnectivity; fi
-          if ${{ steps.settlements.outcome=='failure' }}; then FAILED=settlements; fi
-          if ${{ steps.pss.outcome=='failure' }}; then FAILED=pss; fi
-          if ${{ steps.soc.outcome=='failure' }}; then FAILED=soc; fi
-          if ${{ steps.gsoc.outcome=='failure' }}; then FAILED=gsoc; fi
-          if ${{ steps.pushsync-chunks-1.outcome=='failure' }}; then FAILED=pushsync-chunks-1; fi
-          if ${{ steps.pushsync-chunks-2.outcome=='failure' }}; then FAILED=pushsync-chunks-2; fi
-          if ${{ steps.retrieval.outcome=='failure' }}; then FAILED=retrieval; fi
-          if ${{ steps.manifest.outcome=='failure' }}; then FAILED=manifest; fi
-          if ${{ steps.manifest-v1.outcome=='failure' }}; then FAILED=manifest-v1; fi
-          if ${{ steps.postage-stamps.outcome=='failure' }}; then FAILED=postage-stamps; fi
-          if ${{ steps.stake.outcome=='failure' }}; then FAILED=stake; fi
-          if ${{ steps.withdraw.outcome=='failure' }}; then FAILED=withdraw; fi
-          if ${{ steps.redundancy.outcome=='failure' }}; then FAILED=redundancy; fi
-          if ${{ steps.feeds.outcome=='failure' }}; then FAILED=feeds; fi
-          if ${{ steps.feeds-v1.outcome=='failure' }}; then FAILED=feeds-v1; fi
-          if ${{ steps.act.outcome=='failure' }}; then FAILED=act; fi
-          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Error\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebugging artifacts: [click](https://$BUCKET_NAME.$AWS_ENDPOINT/artifacts_$VERTAG.tar.gz)\nStep failed: \`${FAILED}\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
-          echo "Failed test: ${FAILED}"
+          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Error (shard ${{ matrix.shard }})\nBranch: \`${HEAD_REF}\`\nUser: @${PR_AUTHOR}\nDebugging artifacts: [click](https://$BUCKET_NAME.$AWS_ENDPOINT/artifacts_$VERTAG.tar.gz)\nStep failed: \`${FAILED:-no-test}\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
+          echo "Failed test: ${FAILED:-no-test}"
       - name: Create tunshell session for debug
         if: failure() && contains(needs.init.outputs.msg, '[debug]')
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
-          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**Integration tests** Beekeeper Debug\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebug shell: \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
+          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**Integration tests** Beekeeper Debug (shard ${{ matrix.shard }})\nBranch: \`${HEAD_REF}\`\nUser: @${PR_AUTHOR}\nDebug shell: \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
           echo "Connect to github actions node using"
           echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com"
           curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T $(echo $KEYS | jq -r .peer1_key) ${{ secrets.TUNSHELL_SECRET }} eu.relay.tunshell.com
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: failure()
         with:
-          name: debug-dump
+          name: debug-dump-${{ matrix.shard }}
           path: dump/
   retag:
     name: Retag and Trigger ArgoCD
@@ -232,10 +266,14 @@ jobs:
     needs: [beekeeper]
     runs-on: ubuntu-latest
     steps:
-      - name: "Download Artifact"
+      - name: Download bee-0
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: temp-artifacts
+          name: bee-0
+      - name: Download beekeeper artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: beekeeper-artifacts
       - name: Unpack artifacts
         run: |
           chmod +x bee-0
