@@ -5,6 +5,7 @@
 package migration_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"testing"
@@ -55,6 +56,8 @@ func TestReserveRepair(t *testing.T) {
 				BatchID:   ch.Stamp().BatchID(),
 				ChunkType: swarm.ChunkTypeContentAddressed,
 				StampHash: stampHash,
+				// zeroed sum: the repair must recompute it
+				Sum: make([]byte, storage.ChunkSumSize),
 			}
 			err = store.Run(context.Background(), func(s transaction.Store) error {
 				return s.IndexStore().Put(cb)
@@ -97,16 +100,64 @@ func TestReserveRepair(t *testing.T) {
 		}
 	}
 
+	// seed a stale chunk sum entry with no backing chunk; the repair sweep
+	// must remove it, otherwise the node would refuse to sync that chunk.
+	staleSum := &reserve.ChunkSumItem{
+		Address: swarm.RandAddress(t),
+		Sum:     make([]byte, storage.ChunkSumSize),
+	}
+	err := store.Run(context.Background(), func(s transaction.Store) error {
+		return s.IndexStore().Put(staleSum)
+	})
+	assert.NoError(t, err)
+
 	assert.NoError(t, stepFn())
+
+	has, err := store.IndexStore().Has(staleSum)
+	assert.NoError(t, err)
+	if has {
+		t.Fatal("expected stale chunk sum item to be removed by repair")
+	}
+
+	// every surviving chunk must have its sum rebuilt in both indexes.
+	for b := 2; b < 5; b++ {
+		for _, ch := range chunksPO[b] {
+			sum, err := storage.ChunkSum(ch)
+			assert.NoError(t, err)
+			has, err := store.IndexStore().Has(&reserve.ChunkSumItem{Address: ch.Address(), Sum: sum})
+			assert.NoError(t, err)
+			if !has {
+				t.Fatalf("expected chunk sum item for chunk %s after repair", ch.Address())
+			}
+		}
+	}
+
+	chunkByAddr := make(map[string]swarm.Chunk)
+	for b := 2; b < 5; b++ {
+		for _, ch := range chunksPO[b] {
+			chunkByAddr[ch.Address().ByteString()] = ch
+		}
+	}
 
 	binIDs := make(map[uint8][]uint64)
 	cbCount := 0
-	err := store.IndexStore().Iterate(
+	err = store.IndexStore().Iterate(
 		storage.Query{Factory: func() storage.Item { return &reserve.ChunkBinItem{} }},
 		func(res storage.Result) (stop bool, err error) {
 			cb := res.Entry.(*reserve.ChunkBinItem)
 			if cb.ChunkType != swarm.ChunkTypeContentAddressed {
 				return false, errors.New("chunk type should be content addressed")
+			}
+			ch, ok := chunkByAddr[cb.Address.ByteString()]
+			if !ok {
+				return false, errors.New("chunk bin item for unknown chunk")
+			}
+			sum, err := storage.ChunkSum(ch)
+			if err != nil {
+				return false, err
+			}
+			if !bytes.Equal(cb.Sum, sum) {
+				return false, errors.New("chunk bin item sum not recomputed by repair")
 			}
 			binIDs[cb.Bin] = append(binIDs[cb.Bin], cb.BinID)
 			cbCount++
@@ -148,7 +199,7 @@ func TestReserveRepair(t *testing.T) {
 
 	assert.Equal(t, cbCount, brCount)
 
-	has, err := store.IndexStore().Has(&reserve.EpochItem{})
+	has, err = store.IndexStore().Has(&reserve.EpochItem{})
 	if has {
 		t.Fatal("epoch item should be deleted")
 	}
