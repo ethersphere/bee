@@ -137,9 +137,15 @@ const chunkBinIDLength = 1 + 8
 // ParseChunkBinID parses a raw ChunkBinItem key ID, the inverse of
 // binIDToString. It allows key-only deletion of entries whose stored value
 // cannot be unmarshaled, such as records left in a pre-Sum serialization.
+// The bin is bounded: binIDToString rune-encodes the bin byte, so values at
+// or above swarm.MaxBins (which never occur in real keys) would not survive
+// the ID round-trip and are rejected instead of being misinterpreted.
 func ParseChunkBinID(id string) (bin uint8, binID uint64, err error) {
 	if len(id) != chunkBinIDLength {
 		return 0, 0, fmt.Errorf("reserve: invalid chunkBin key length %d", len(id))
+	}
+	if id[0] >= swarm.MaxBins {
+		return 0, 0, fmt.Errorf("reserve: invalid bin %d in chunkBin key", id[0])
 	}
 	return id[0], binary.BigEndian.Uint64([]byte(id[1:])), nil
 }

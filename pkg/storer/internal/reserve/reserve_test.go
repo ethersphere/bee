@@ -8,11 +8,13 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"math/rand"
 	"testing"
 	"testing/synctest"
 
+	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
@@ -1325,4 +1327,122 @@ func TestSOCSiblingSumRefresh(t *testing.T) {
 	if has {
 		t.Fatal("expected the stale sum of batch B to be dropped")
 	}
+}
+
+// TestChunkSumIndexRandomOps drives the reserve with a randomized sequence of
+// overlapping SOC puts (shared addresses across batches, timestamp
+// replacements), CAC puts and batch evictions, and repeatedly asserts the
+// invariant the pullsync want-decision depends on: the ChunkSumItem index is
+// exactly the set of (address, sum) pairs of the live ChunkBinItems, and every
+// stored sum matches the payload actually held in the chunkstore.
+func TestChunkSumIndexRandomOps(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	baseAddr := swarm.RandAddress(t)
+	st := internal.NewInmemStorage()
+	r, err := reserve.New(baseAddr, st, 0, kademlia.NewTopologyDriver(), log.Noop)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rng := rand.New(rand.NewSource(42))
+
+	// small pools force address sharing, stamp collisions and replacements
+	signers := []crypto.Signer{getSigner(t), getSigner(t)}
+	batches := [][]byte{
+		postagetesting.MustNewBatch().ID,
+		postagetesting.MustNewBatch().ID,
+		postagetesting.MustNewBatch().ID,
+	}
+
+	checkInvariant := func(op int) {
+		t.Helper()
+
+		// live (address, sum) pairs according to the chunk bin index; sums
+		// must match the payload currently in the chunkstore.
+		live := make(map[string]int)
+		err := st.IndexStore().Iterate(
+			storage.Query{Factory: func() storage.Item { return &reserve.ChunkBinItem{} }},
+			func(res storage.Result) (bool, error) {
+				cbi := res.Entry.(*reserve.ChunkBinItem)
+				ch, err := st.ChunkStore().Get(ctx, cbi.Address)
+				if err != nil {
+					return false, fmt.Errorf("op %d: chunk missing for live index entry %s: %w", op, cbi.Address, err)
+				}
+				want, err := storage.ChunkSumFromParts(cbi.BatchID, cbi.StampHash, ch)
+				if err != nil {
+					return false, err
+				}
+				if !bytes.Equal(cbi.Sum, want) {
+					return false, fmt.Errorf("op %d: stale sum on entry %s", op, cbi.Address)
+				}
+				live[cbi.Address.ByteString()+string(cbi.Sum)]++
+				return false, nil
+			},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// the sum index must be exactly the live set, in both directions
+		indexed := make(map[string]int)
+		err = st.IndexStore().Iterate(
+			storage.Query{
+				Factory:      func() storage.Item { return &reserve.ChunkSumItem{} },
+				ItemProperty: storage.QueryItemID,
+			},
+			func(res storage.Result) (bool, error) {
+				if len(res.ID) != swarm.HashSize+storage.ChunkSumSize {
+					return false, fmt.Errorf("op %d: malformed chunk sum key length %d", op, len(res.ID))
+				}
+				indexed[res.ID]++
+				return false, nil
+			},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for k := range indexed {
+			if live[k] == 0 {
+				t.Fatalf("op %d: orphaned chunk sum entry (no live chunk bin item)", op)
+			}
+		}
+		for k, n := range live {
+			if n > 1 {
+				t.Fatalf("op %d: %d chunk bin items share one (address, sum) pair", op, n)
+			}
+			if indexed[k] == 0 {
+				t.Fatalf("op %d: live chunk bin item without chunk sum entry", op)
+			}
+		}
+	}
+
+	ts := uint64(0)
+	for op := range 200 {
+		switch v := rng.Intn(10); {
+		case v < 6: // SOC put: shared addresses, random payload, random batch
+			ts++
+			s := soctesting.GenerateMockSocWithSigner(t, fmt.Appendf(nil, "payload-%d", rng.Intn(4)), signers[rng.Intn(len(signers))])
+			stamp := postagetesting.MustNewFields(batches[rng.Intn(len(batches))], 0, ts)
+			err = r.Put(ctx, s.Chunk().WithStamp(stamp))
+		case v < 8: // CAC put
+			ch, cerr := cac.New(fmt.Appendf(nil, "cac-%d", op))
+			if cerr != nil {
+				t.Fatal(cerr)
+			}
+			err = r.Put(ctx, ch.WithStamp(postagetesting.MustNewBatchStamp(batches[rng.Intn(len(batches))])))
+		default: // evict a whole batch
+			_, err = r.EvictBatchBin(ctx, batches[rng.Intn(len(batches))], math.MaxInt, swarm.MaxBins)
+		}
+		if err != nil && !errors.Is(err, storage.ErrOverwriteNewerChunk) {
+			t.Fatalf("op %d: %v", op, err)
+		}
+
+		if op%20 == 19 {
+			checkInvariant(op)
+		}
+	}
+	checkInvariant(200)
 }

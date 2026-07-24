@@ -187,3 +187,50 @@ func TestChunkSum(t *testing.T) {
 		}
 	})
 }
+
+// FuzzChunkSum exercises the checksum computation with fully arbitrary chunk
+// data and stamp fields. Pullsync recomputes the sum on delivered chunks
+// before their validity is checked, so this path processes attacker-controlled
+// bytes and must never panic. It also pins the equivalence of ChunkSum and
+// ChunkSumFromParts whenever a sum is computable at all.
+func FuzzChunkSum(f *testing.F) {
+	inner, err := cac.New([]byte("seed payload"))
+	if err != nil {
+		f.Fatal(err)
+	}
+	validSoc := testingc.GenerateTestRandomSoChunk(f, inner)
+	f.Add(validSoc.Data(), []byte("batch"), []byte("index"), []byte("ts"), []byte("sig"))
+	f.Add([]byte{}, []byte{}, []byte{}, []byte{}, []byte{})
+	f.Add(make([]byte, swarm.ChunkWithSpanSize), make([]byte, 32), make([]byte, 8), make([]byte, 8), make([]byte, 65))
+
+	f.Fuzz(func(t *testing.T, data, batchID, index, ts, sig []byte) {
+		if len(data) > swarm.SocMaxChunkSize {
+			t.Skip()
+		}
+
+		hasher := swarm.NewHasher()
+		_, _ = hasher.Write(data)
+		ch := swarm.NewChunk(swarm.NewAddress(hasher.Sum(nil)), data).
+			WithStamp(postage.NewStamp(batchID, index, ts, sig))
+
+		sum, err := storage.ChunkSum(ch) // must not panic on any input
+		if err != nil {
+			return
+		}
+		if len(sum) != storage.ChunkSumSize {
+			t.Fatalf("sum length %d, want %d", len(sum), storage.ChunkSumSize)
+		}
+
+		stampHash, err := ch.Stamp().Hash()
+		if err != nil {
+			t.Fatalf("sum computed but stamp hash failed: %v", err)
+		}
+		fromParts, err := storage.ChunkSumFromParts(ch.Stamp().BatchID(), stampHash, ch)
+		if err != nil {
+			t.Fatalf("sum computed but parts variant failed: %v", err)
+		}
+		if !bytes.Equal(sum, fromParts) {
+			t.Fatal("ChunkSum and ChunkSumFromParts disagree")
+		}
+	})
+}
