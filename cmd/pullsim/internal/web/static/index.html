@@ -49,8 +49,8 @@
       <div class="row"><label>rate /s</label><input id="i-rate" type="number" min="0" value="0"></div>
       <div class="row"><label>min PO</label><input id="i-minpo" type="number" min="0" value="0"></div>
       <button id="inject">Inject</button>
-      <button id="inject-stop" class="secondary" style="margin-top:6px;">Stop stream</button>
-      <div class="sub" style="margin-top:6px;">count=1 traces the chunk (green wavefront). Click a node to target it.</div>
+      <button id="inject-stop" class="secondary" style="margin-top:6px;">Stop injecting</button>
+      <div class="sub" style="margin-top:6px;">count=1 traces the chunk (green wavefront). Click a node to target it. Stopping only halts the chunk drip &mdash; peers keep exchanging live-sync traffic.</div>
     </div>
 
     <div class="group">
@@ -65,13 +65,16 @@
     </div>
 
     <div class="group">
-      <button id="pause" class="secondary">Pause rendering</button>
+      <button id="freeze" class="secondary">Freeze live events</button>
+      <button id="pause" class="secondary" style="margin-top:6px;">Pause rendering</button>
+      <div class="sub" style="margin-top:6px;">Freeze holds the last snapshot so you can read edge state; the sim keeps running. Pause only stops drawing.</div>
     </div>
   </aside>
 
   <main id="stage">
     <canvas id="canvas"></canvas>
     <div class="paused-badge" id="paused">PAUSED (rendering only)</div>
+    <div class="paused-badge" id="frozen" style="top:44px;">FROZEN (live events held)</div>
     <div id="detail"></div>
     <div id="toast"></div>
   </main>

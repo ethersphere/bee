@@ -30,15 +30,20 @@
     edgeDirMap: new Map(),   // "from-to" -> entry
     edgeMap: new Map(),      // "min-max" -> {po,mode}
     pulses: [],              // {from,to,t0,count}
-    tracedSince: new Map(),  // nodeIndex -> ms
+    tracedAt: new Map(),     // nodeIndex -> frozen latency in ms since tracedT0
+    tracedT0: null,          // performance.now() at the traced inject, or null
+    tracedLast: null,        // performance.now() of the most recent arrival
+    tracedSettled: false,    // no new arrival for settleAfterMs
     hoverNode: -1,
     hoverEdge: null,         // "from-to"
     selectNode: -1,
     paused: false,
+    frozen: false,           // hold the last snapshot; the sim keeps running
     dpr: 1,
   };
 
   const now = () => performance.now();
+  const settleAfterMs = 3000; // quiet period before a traced run counts as settled
 
   // ---- websocket ----
   let ws;
@@ -63,15 +68,23 @@
         applySnapshot(m.snap);
         break;
       case 'snap':
+        if (state.frozen) break;
         applySnapshot(m);
         break;
       case 'sync':
+        if (state.frozen) break;
         if (m.count > 0) state.pulses.push({ from: m.from, to: m.peer, t0: now(), count: m.count });
         break;
       case 'config':
         applyConfig(m.config);
         break;
       case 'inject':
+        if (m.traced) {
+          state.tracedAt.clear();
+          state.tracedT0 = now();
+          state.tracedLast = null;
+          state.tracedSettled = false;
+        }
         toast(`injected ${m.count} chunk(s) at node ${m.node}`);
         break;
       case 'radius':
@@ -115,8 +128,15 @@
 
     const t = now();
     for (const n of state.nodes) {
-      if (n.hasTraced && !state.tracedSince.has(n.index)) state.tracedSince.set(n.index, t);
-      if (!n.hasTraced) state.tracedSince.delete(n.index);
+      if (n.hasTraced && !state.tracedAt.has(n.index) && state.tracedT0 != null) {
+        state.tracedAt.set(n.index, t - state.tracedT0);
+        state.tracedLast = t;
+        state.tracedSettled = false;
+      }
+      if (!n.hasTraced) state.tracedAt.delete(n.index);
+    }
+    if (state.tracedLast != null && t - state.tracedLast >= settleAfterMs) {
+      state.tracedSettled = true;
     }
     renderStats();
     if (state.selectNode >= 0) renderDetail();
@@ -124,11 +144,22 @@
 
   function renderStats() {
     const s = state.stats;
+    const reached = state.tracedT0 == null
+      ? '—'
+      : `${state.tracedAt.size} / ${state.nodes.length}`;
+    let spread = '—';
+    if (state.tracedT0 != null) {
+      let max = 0;
+      for (const v of state.tracedAt.values()) if (v > max) max = v;
+      spread = `${(max / 1000).toFixed(1)}s${state.tracedSettled ? ' · settled' : ''}`;
+    }
     $('stats').innerHTML = `
       <div class="stat"><div class="k">chunks</div><div class="v">${s.chunks ?? 0}</div></div>
       <div class="stat"><div class="k">syncs/s</div><div class="v">${(s.syncsPerSec ?? 0).toFixed(0)}</div></div>
       <div class="stat"><div class="k">dropped</div><div class="v">${s.dropped ?? 0}</div></div>
-      <div class="stat"><div class="k">goroutines</div><div class="v">${s.goroutines ?? 0}</div></div>`;
+      <div class="stat"><div class="k">goroutines</div><div class="v">${s.goroutines ?? 0}</div></div>
+      <div class="stat"><div class="k">spread</div><div class="v">${spread}</div></div>
+      <div class="stat"><div class="k">reached</div><div class="v">${reached}</div></div>`;
   }
 
   // ---- geometry ----
@@ -295,7 +326,6 @@
   }
 
   function drawNodes() {
-    const t = now();
     for (const n of state.nodes) {
       const p = nodePos(n);
       const r = nodeRadius(n);
@@ -317,9 +347,9 @@
         ctx.lineWidth = 2;
         ctx.stroke();
         ctx.restore();
-        const since = state.tracedSince.get(n.index);
-        if (since != null) {
-          label(p.x, p.y - r - 8, `${((t - since) / 1000).toFixed(1)}s`, C.traced);
+        const lat = state.tracedAt.get(n.index);
+        if (lat != null) {
+          label(p.x, p.y - r - 8, `${(lat / 1000).toFixed(1)}s`, C.traced);
         }
       }
 
@@ -528,7 +558,14 @@
       minPo: +$('i-minpo').value,
     });
   };
-  $('inject-stop').onclick = () => post('/api/inject/stop', {});
+  $('inject-stop').onclick = () =>
+    post('/api/inject/stop', {}).then(() => toast('injection stopped'));
+
+  $('freeze').onclick = () => {
+    state.frozen = !state.frozen;
+    $('frozen').style.display = state.frozen ? 'block' : 'none';
+    $('freeze').textContent = state.frozen ? 'Resume live events' : 'Freeze live events';
+  };
 
   $('pause').onclick = () => {
     state.paused = !state.paused;

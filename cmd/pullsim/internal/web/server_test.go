@@ -101,6 +101,51 @@ func TestServer_NetworkAndInject(t *testing.T) {
 	}
 }
 
+// TestServer_RebuildKeepsSyncing guards against starting the rebuilt network
+// with the HTTP request context: that context is cancelled the moment the
+// rebuild response is written, which silently kills every puller.
+func TestServer_RebuildKeepsSyncing(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+
+	rb := httpPost(t, ts.URL+"/api/network",
+		`{"nodes":2,"bins":4,"topology":"full","radius":0,"seed":9}`)
+	rb.Body.Close()
+	if rb.StatusCode != http.StatusOK {
+		t.Fatalf("rebuild failed: %d", rb.StatusCode)
+	}
+
+	ir := httpPost(t, ts.URL+"/api/inject", `{"node":0,"count":4,"minPo":0}`)
+	ir.Body.Close()
+	if ir.StatusCode != http.StatusOK {
+		t.Fatalf("inject failed: %d", ir.StatusCode)
+	}
+
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		resp := httpGet(t, ts.URL+"/api/network")
+		var net struct {
+			Snapshot struct {
+				Nodes []struct {
+					ReserveSize int `json:"reserveSize"`
+				} `json:"nodes"`
+			} `json:"snapshot"`
+		}
+		err := json.NewDecoder(resp.Body).Decode(&net)
+		resp.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(net.Snapshot.Nodes) == 2 && net.Snapshot.Nodes[1].ReserveSize > 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("node 1 never synced any chunk after rebuild")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
 func TestServer_WebsocketHello(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t)

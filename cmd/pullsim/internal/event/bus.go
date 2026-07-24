@@ -457,12 +457,13 @@ func (b *Bus) encodeInject(e Inject) []byte {
 		addrs[i] = short(a)
 	}
 	return mustJSON(struct {
-		T     string   `json:"t"`
-		Ts    int64    `json:"ts"`
-		Node  int      `json:"node"`
-		Count int      `json:"count"`
-		Addrs []string `json:"addrs"`
-	}{KindInject, b.now().UnixMilli(), e.Node, e.Count, addrs})
+		T      string   `json:"t"`
+		Ts     int64    `json:"ts"`
+		Node   int      `json:"node"`
+		Count  int      `json:"count"`
+		Addrs  []string `json:"addrs"`
+		Traced bool     `json:"traced"`
+	}{KindInject, b.now().UnixMilli(), e.Node, e.Count, addrs, e.Traced})
 }
 
 func (b *Bus) encodeRadius(e Radius) []byte {

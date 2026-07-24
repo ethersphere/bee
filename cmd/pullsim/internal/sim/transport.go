@@ -227,20 +227,28 @@ type link struct {
 	cancel    context.CancelFunc
 	onClosed  func(*link)
 	closeOnce sync.Once
+	taps      sync.WaitGroup
 }
 
 func (l *link) startTaps() {
 	if l.hooks.OnMsg == nil {
 		return
 	}
-	go l.decode(l.c2s.tap, dirC2S)
-	go l.decode(l.s2c.tap, dirS2C)
+	l.taps.Add(2)
+	go func() { defer l.taps.Done(); l.decode(l.c2s.tap, dirC2S) }()
+	go func() { defer l.taps.Done(); l.decode(l.s2c.tap, dirS2C) }()
 }
 
 func (l *link) close() {
 	l.closeOnce.Do(func() {
 		l.c2s.close()
 		l.s2c.close()
+		// The taps decode asynchronously, so they lag the writers. Wait for
+		// them to drain the already-buffered bytes before announcing the
+		// close, otherwise consumers see messages for a stream they were
+		// already told had ended. Closing the tap queues above makes the
+		// decoders return once drained, so this cannot block indefinitely.
+		l.taps.Wait()
 		if l.cancel != nil {
 			l.cancel()
 		}

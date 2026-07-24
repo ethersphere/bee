@@ -30,6 +30,11 @@ var staticFS embed.FS
 type Server struct {
 	logger log.Logger
 
+	// baseCtx has the process lifetime; networks are started with it so a
+	// rebuild triggered by a short-lived HTTP request is not cancelled with
+	// that request.
+	baseCtx context.Context
+
 	mu  sync.Mutex
 	net *sim.Network
 	bus *event.Bus
@@ -37,11 +42,11 @@ type Server struct {
 
 // NewServer builds the initial network and starts the bus and pullers.
 func NewServer(ctx context.Context, cfg sim.Config, logger log.Logger) (*Server, error) {
-	s := &Server{logger: logger}
+	s := &Server{logger: logger, baseCtx: ctx}
 	s.bus = event.NewBus(event.ProviderFunc(s.snapshot))
 	s.bus.Start()
 
-	if err := s.build(ctx, cfg); err != nil {
+	if err := s.build(cfg); err != nil {
 		s.bus.Close()
 		return nil, err
 	}
@@ -50,7 +55,7 @@ func NewServer(ctx context.Context, cfg sim.Config, logger log.Logger) (*Server,
 
 // build closes any existing network and starts a fresh one. Caller must not
 // hold s.mu.
-func (s *Server) build(ctx context.Context, cfg sim.Config) error {
+func (s *Server) build(cfg sim.Config) error {
 	n, err := sim.BuildNetwork(cfg, s.logger)
 	if err != nil {
 		return err
@@ -65,7 +70,7 @@ func (s *Server) build(ctx context.Context, cfg sim.Config) error {
 	if old != nil {
 		old.Close()
 	}
-	n.Start(ctx)
+	n.Start(s.baseCtx)
 
 	c := n.Config()
 	s.bus.Publish(event.Config{
@@ -155,7 +160,7 @@ func (s *Server) handleNetwork(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		if err := s.build(r.Context(), cfg.toSim()); err != nil {
+		if err := s.build(cfg.toSim()); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}

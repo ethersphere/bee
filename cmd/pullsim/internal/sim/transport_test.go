@@ -307,3 +307,78 @@ func TestTransport_CloseUnblocksParkedHandler(t *testing.T) {
 		t.Fatal("parked handler did not return after transport Close")
 	}
 }
+
+// TestTransport_NoMsgAfterStreamClose guards the wire-tap ordering contract:
+// the taps decode asynchronously, so without draining them on close the
+// consumer sees Offer/Delivery events for a stream it was already told had
+// ended. The event bus deletes its per-stream aggregate on close, so a late
+// Delivery would resurrect it with no Offer recorded and render as "DLV n/0".
+func TestTransport_NoMsgAfterStreamClose(t *testing.T) {
+	t.Parallel()
+
+	const n = 64
+	handler := func(_ context.Context, _ p2p.Peer, stream p2p.Stream) error {
+		w := protobuf.NewWriter(stream)
+		offered := make([]*pb.Chunk, n)
+		for i := range offered {
+			offered[i] = &pb.Chunk{Address: make([]byte, swarm.HashSize)}
+		}
+		if err := w.WriteMsg(&pb.Offer{Topmost: 1, Chunks: offered}); err != nil {
+			return err
+		}
+		for i := 0; i < n; i++ {
+			if err := w.WriteMsg(&pb.Delivery{Address: make([]byte, swarm.HashSize)}); err != nil {
+				return err
+			}
+		}
+		return stream.FullClose()
+	}
+
+	var (
+		mu         sync.Mutex
+		closed     = map[uint64]bool{}
+		afterClose int
+	)
+	hooks := TransportHooks{
+		OnMsg: func(m MsgEvent) {
+			mu.Lock()
+			defer mu.Unlock()
+			if closed[m.StreamID] {
+				afterClose++
+			}
+		},
+		OnStream: func(s StreamEvent) {
+			mu.Lock()
+			defer mu.Unlock()
+			if s.Phase == StreamClose {
+				closed[s.StreamID] = true
+			}
+		},
+	}
+
+	tr, server := newPair(t, handler, hooks)
+
+	stream, err := tr.NewStream(context.Background(), server, nil, "pullsync", "1.4.0", streamNamePullsync)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := protobuf.NewReader(stream)
+	var offer pb.Offer
+	if err := r.ReadMsg(&offer); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < n; i++ {
+		var d pb.Delivery
+		if err := r.ReadMsg(&d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = stream.FullClose()
+	_ = tr.Close()
+
+	mu.Lock()
+	defer mu.Unlock()
+	if afterClose != 0 {
+		t.Fatalf("%d wire messages emitted after their stream close event", afterClose)
+	}
+}

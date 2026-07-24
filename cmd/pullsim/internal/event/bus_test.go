@@ -128,3 +128,43 @@ func drainLatestSnap(ch <-chan []byte) []byte {
 		}
 	}
 }
+
+func TestBus_InjectFrameCarriesTraced(t *testing.T) {
+	t.Parallel()
+
+	b := NewBus(stubProvider{})
+	b.Start()
+	defer b.Close()
+
+	ch, unsub := b.Subscribe()
+	defer unsub()
+	<-ch // discard the hello frame
+
+	b.Publish(Inject{Node: 2, Count: 1, Traced: true})
+	b.Publish(Inject{Node: 3, Count: 10, Traced: false})
+
+	for _, want := range []struct {
+		node   float64
+		traced bool
+	}{{2, true}, {3, false}} {
+		select {
+		case frame := <-ch:
+			m := decode(t, frame)
+			if m["t"] != KindInject {
+				t.Fatalf("expected inject frame, got %v", m["t"])
+			}
+			if m["node"].(float64) != want.node {
+				t.Fatalf("expected node %v, got %v", want.node, m["node"])
+			}
+			got, ok := m["traced"]
+			if !ok {
+				t.Fatal("inject frame has no traced field")
+			}
+			if got.(bool) != want.traced {
+				t.Fatalf("node %v: expected traced %v, got %v", want.node, want.traced, got)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for inject frame")
+		}
+	}
+}
