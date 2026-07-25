@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"time"
 
 	"github.com/coreos/go-semver/semver"
@@ -207,6 +208,40 @@ type HandlerFunc func(context.Context, Peer, Stream) error
 
 // HandlerMiddleware decorates a HandlerFunc by returning a new one.
 type HandlerMiddleware func(HandlerFunc) HandlerFunc
+
+// VersionedHandler represents a HandlerFunc associated with a minimum supported Version threshold.
+type VersionedHandler struct {
+	Version *semver.Version
+	Handler HandlerFunc
+}
+
+// NewVersionedHandlersFunc creates a new HandlerFunc that dispatches stream execution
+// based on the stream version.
+//
+// Handlers are evaluated in descending order of Version. The first handler where
+// stream.Version >= handler.Version will be executed.
+func NewVersionedHandlersFunc(handlers ...VersionedHandler) HandlerFunc {
+	sorted := make([]VersionedHandler, len(handlers))
+	copy(sorted, handlers)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[j].Version.LessThan(*sorted[i].Version)
+	})
+
+	return func(ctx context.Context, p Peer, stream Stream) error {
+		v, err := stream.Version()
+		if err != nil {
+			return fmt.Errorf("get stream version: %w", err)
+		}
+
+		for _, h := range sorted {
+			if !v.LessThan(*h.Version) {
+				return h.Handler(ctx, p, stream)
+			}
+		}
+
+		return fmt.Errorf("no handler found for stream version: %s", v.String())
+	}
+}
 
 // HeadlerFunc is returning response headers based on the received request
 // headers.
