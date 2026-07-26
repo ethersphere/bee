@@ -1326,3 +1326,172 @@ func TestSOCDivergenceBumpsBinID(t *testing.T) {
 	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin, BinID: oldBinID}, true)
 	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin, BinID: item.BinID}, false)
 }
+
+// TestCACStampIndexCollision covers two content-addressed chunks that share a
+// batch stamp index and timestamp but have different addresses. The reserve
+// keeps the lexicographically lower address regardless of arrival order.
+func TestCACStampIndexCollision(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	batch := postagetesting.MustNewBatch()
+	stamp := postagetesting.MustNewFields(batch.ID, 0, 1)
+
+	baseAddr := swarm.RandAddress(t)
+	ch1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(stamp)
+	ch2 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(stamp.Clone())
+	if ch1.Address().Equal(ch2.Address()) {
+		t.Fatal("expected different CAC addresses")
+	}
+
+	winner, loser := ch1, ch2
+	if bytes.Compare(ch2.Address().Bytes(), ch1.Address().Bytes()) < 0 {
+		winner, loser = ch2, ch1
+	}
+
+	for _, tc := range []struct {
+		name  string
+		order []swarm.Chunk
+	}{
+		{"winner first", []swarm.Chunk{winner, loser}},
+		{"loser first", []swarm.Chunk{loser, winner}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ts := internal.NewInmemStorage()
+			r, err := reserve.New(baseAddr, ts, 0, kademlia.NewTopologyDriver(), log.Noop)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if err := r.Put(ctx, tc.order[0]); err != nil {
+				t.Fatal(err)
+			}
+			sizeAfterFirst := r.Size()
+
+			err = r.Put(ctx, tc.order[1])
+			if tc.order[1].Address().Equal(loser.Address()) {
+				if !errors.Is(err, storage.ErrDivergentChunkRejected) {
+					t.Fatalf("expected ErrDivergentChunkRejected, got %v", err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+
+			if _, err := ts.ChunkStore().Get(ctx, winner.Address()); err != nil {
+				t.Fatalf("expected winner stored: %v", err)
+			}
+			if _, err := ts.ChunkStore().Get(ctx, loser.Address()); !errors.Is(err, storage.ErrNotFound) {
+				t.Fatalf("expected loser absent, got %v", err)
+			}
+
+			item, err := stampindex.Load(ts.IndexStore(), "reserve", winner.Stamp())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !item.ChunkAddress.Equal(winner.Address()) {
+				t.Fatalf("stamp index points to %s, want %s", item.ChunkAddress, winner.Address())
+			}
+
+			if got := r.Size(); got != sizeAfterFirst {
+				t.Fatalf("expected reserve size to stay %d, got %d", sizeAfterFirst, got)
+			}
+
+			winnerSum, err := storage.ChunkSum(winner)
+			if err != nil {
+				t.Fatal(err)
+			}
+			loserSum, err := storage.ChunkSum(loser)
+			if err != nil {
+				t.Fatal(err)
+			}
+			has, err := r.HasSum(winner.Address(), winnerSum)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !has {
+				t.Fatal("expected the winner sum to be indexed")
+			}
+			has, err = r.HasSum(loser.Address(), loserSum)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if has {
+				t.Fatal("expected the loser sum not to be indexed")
+			}
+		})
+	}
+}
+
+// TestCACStampIndexCollisionBumpsBinID asserts that accepting a lower-address
+// CAC over a stamp-index collision writes it at a fresh bin ID for pullsync.
+func TestCACStampIndexCollisionBumpsBinID(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	baseAddr := swarm.RandAddress(t)
+	ts := internal.NewInmemStorage()
+	r, err := reserve.New(baseAddr, ts, 0, kademlia.NewTopologyDriver(), log.Noop)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	batch := postagetesting.MustNewBatch()
+	stamp := postagetesting.MustNewFields(batch.ID, 0, 1)
+	ch1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(stamp)
+	ch2 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(stamp.Clone())
+
+	first, second := ch1, ch2
+	if bytes.Compare(ch2.Address().Bytes(), ch1.Address().Bytes()) > 0 {
+		first, second = ch2, ch1
+	}
+
+	if err := r.Put(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+
+	firstStampHash, err := first.Stamp().Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstBin := swarm.Proximity(baseAddr.Bytes(), first.Address().Bytes())
+	oldItem := &reserve.BatchRadiusItem{
+		Bin:       firstBin,
+		BatchID:   batch.ID,
+		Address:   first.Address(),
+		StampHash: firstStampHash,
+	}
+	if err := ts.IndexStore().Get(oldItem); err != nil {
+		t.Fatal(err)
+	}
+	oldBinID := oldItem.BinID
+
+	if err := r.Put(ctx, second); err != nil {
+		t.Fatal(err)
+	}
+
+	secondStampHash, err := second.Stamp().Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondBin := swarm.Proximity(baseAddr.Bytes(), second.Address().Bytes())
+	newItem := &reserve.BatchRadiusItem{
+		Bin:       secondBin,
+		BatchID:   batch.ID,
+		Address:   second.Address(),
+		StampHash: secondStampHash,
+	}
+	if err := ts.IndexStore().Get(newItem); err != nil {
+		t.Fatal(err)
+	}
+	if secondBin == firstBin && newItem.BinID <= oldBinID {
+		t.Fatalf("expected bin id to be bumped past %d, got %d", oldBinID, newItem.BinID)
+	}
+
+	checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{
+		Bin: firstBin, BatchID: batch.ID, Address: first.Address(), StampHash: firstStampHash,
+	}, true)
+	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: firstBin, BinID: oldBinID}, true)
+	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: secondBin, BinID: newItem.BinID}, false)
+}
