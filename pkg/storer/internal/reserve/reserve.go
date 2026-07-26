@@ -99,6 +99,9 @@ func New(
 //     the existing chunk if the new chunk has a higher stamp timestamp (regardless of batch type).
 //  3. A new chunk that has the same address belonging to the same stamp index with an already stored chunk will overwrite the existing chunk
 //     if the new chunk has a higher stamp timestamp (regardless of batch type and chunk type, eg CAC & SOC).
+//  4. Two different chunk addresses that share the same batch stamp index and timestamp are settled by a tie-break:
+//     the lexicographically lower chunk address wins. The loser is rejected; the winner replaces the stored chunk
+//     through the usual remove-and-store path (including a fresh bin ID for pullsync).
 func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	socReplaced, err := r.putChunk(ctx, chunk)
 	if err != nil {
@@ -178,19 +181,51 @@ func (r *Reserve) putChunk(ctx context.Context, chunk swarm.Chunk) (socReplaced 
 
 		// index collision
 		if loadedStampIndex {
-
 			prev := binary.BigEndian.Uint64(oldStampIndex.StampTimestamp)
 			curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
-			if prev >= curr {
+			if prev > curr {
 				return fmt.Errorf("overwrite same chunk. prev %d cur %d batch %s: %w", prev, curr, hex.EncodeToString(chunk.Stamp().BatchID()), storage.ErrOverwriteNewerChunk)
 			}
 
-			r.logger.Debug(
-				"replacing chunk stamp index",
-				"old_chunk", oldStampIndex.ChunkAddress,
-				"new_chunk", chunk.Address(),
-				"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
-			)
+			// Same stamp index and timestamp, different chunk addresses: both
+			// claims are otherwise valid, so settle on the lower address.
+			if prev == curr && chunkType == swarm.ChunkTypeContentAddressed && !oldStampIndex.ChunkAddress.Equal(chunk.Address()) {
+				if bytes.Compare(chunk.Address().Bytes(), oldStampIndex.ChunkAddress.Bytes()) >= 0 {
+					r.logger.Debug(
+						"discarding stamp index collision",
+						"old_chunk", oldStampIndex.ChunkAddress,
+						"new_chunk", chunk.Address(),
+						"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
+						"stamp_index", hex.EncodeToString(chunk.Stamp().Index()),
+						"stamp_timestamp", binary.BigEndian.Uint64(chunk.Stamp().Timestamp()),
+						"incoming_stamp_hash", hex.EncodeToString(stampHash),
+						"stored_stamp_hash", hex.EncodeToString(oldStampIndex.StampHash),
+					)
+					return fmt.Errorf(
+						"stamp index collision chunk %s lost tie-break: %w",
+						chunk.Address(),
+						storage.ErrDivergentChunkRejected,
+					)
+				}
+				r.logger.Debug(
+					"replacing stamp index collision",
+					"old_chunk", oldStampIndex.ChunkAddress,
+					"new_chunk", chunk.Address(),
+					"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
+					"stamp_index", hex.EncodeToString(chunk.Stamp().Index()),
+					"stamp_timestamp", binary.BigEndian.Uint64(chunk.Stamp().Timestamp()),
+					"incoming_stamp_hash", hex.EncodeToString(stampHash),
+					"stored_stamp_hash", hex.EncodeToString(oldStampIndex.StampHash),
+				)
+				// Incoming wins: fall through to removeChunk + store below.
+			} else {
+				r.logger.Debug(
+					"replacing chunk stamp index",
+					"old_chunk", oldStampIndex.ChunkAddress,
+					"new_chunk", chunk.Address(),
+					"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
+				)
+			}
 
 			// same chunk address
 			if oldStampIndex.ChunkAddress.Equal(chunk.Address()) {
