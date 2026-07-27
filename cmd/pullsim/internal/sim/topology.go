@@ -26,15 +26,21 @@ const (
 	TopologyKNearest Topology = "k-nearest"
 	// TopologyRandom connects each node to ~degree random peers (symmetrised).
 	TopologyRandom Topology = "random"
+	// TopologyKademlia mirrors Bee's kademlia: up to degree peers in each
+	// proximity order bin below the storage radius, and every peer at or above
+	// it (the neighborhood is fully connected). Unlike k-nearest, which only
+	// links close peers, holding a few peers in every bin gives the graph
+	// O(log N) diameter.
+	TopologyKademlia Topology = "kademlia"
 )
 
 // ParseTopology validates and returns a Topology.
 func ParseTopology(s string) (Topology, error) {
 	switch Topology(s) {
-	case TopologyFull, TopologyRing, TopologyKNearest, TopologyRandom:
+	case TopologyFull, TopologyRing, TopologyKNearest, TopologyRandom, TopologyKademlia:
 		return Topology(s), nil
 	default:
-		return "", fmt.Errorf("unknown topology %q (want full|ring|k-nearest|random)", s)
+		return "", fmt.Errorf("unknown topology %q (want full|ring|k-nearest|random|kademlia)", s)
 	}
 }
 
@@ -50,7 +56,11 @@ func edgePO(a, b swarm.Address, bins uint8) uint8 {
 
 // buildAdjacency returns, for each node index, the sorted set of peer indices
 // it is connected to. The graph is always symmetric.
-func buildAdjacency(topo Topology, addrs []swarm.Address, degree int, rng *rand.Rand) [][]int {
+//
+// bins and radius are only read by TopologyKademlia. The graph is built once,
+// from the configured radius; a later SetRadius changes sync behaviour but does
+// not rewire the topology, so reshaping it needs a rebuild.
+func buildAdjacency(topo Topology, addrs []swarm.Address, degree int, bins, radius uint8, rng *rand.Rand) [][]int {
 	n := len(addrs)
 	sets := make([]map[int]struct{}, n)
 	for i := range sets {
@@ -108,6 +118,41 @@ func buildAdjacency(topo Topology, addrs []swarm.Address, degree int, rng *rand.
 			}
 			for _, j := range others[:k] {
 				link(i, j)
+			}
+		}
+
+	case TopologyKademlia:
+		for i := 0; i < n; i++ {
+			// Bucket every other node by proximity order. A slice indexed by
+			// bin, not a map, so the rng is consumed in a fixed order and the
+			// graph stays reproducible from the seed.
+			byBin := make([][]int, bins)
+			for j := 0; j < n; j++ {
+				if j == i {
+					continue
+				}
+				po := edgePO(addrs[i], addrs[j], bins)
+				byBin[po] = append(byBin[po], j)
+			}
+			for po := 0; po < int(bins); po++ {
+				peers := byBin[po]
+				if uint8(po) >= radius {
+					// Neighborhood: everyone this close is a peer.
+					for _, j := range peers {
+						link(i, j)
+					}
+					continue
+				}
+				// Below the radius the bin is merely saturated: shuffle so the
+				// choice is not biased by address order, then take degree.
+				rng.Shuffle(len(peers), func(a, b int) { peers[a], peers[b] = peers[b], peers[a] })
+				k := degree
+				if k > len(peers) {
+					k = len(peers)
+				}
+				for _, j := range peers[:k] {
+					link(i, j)
+				}
 			}
 		}
 

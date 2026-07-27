@@ -173,11 +173,16 @@ func runBench(ctx context.Context, opts benchOptions, logger log.Logger) error {
 	// no matter how many nodes there are. That is the opposite of a
 	// size-scaling measurement, and it is quiet enough to be mistaken for a
 	// result. Warn (on stderr, so the CSV on stdout stays clean) and proceed.
-	if opts.Base.Topology == sim.TopologyFull && opts.Base.Radius == 0 {
+	//
+	// Kademlia at radius 0 degenerates to the same thing: with radius 0 every
+	// bin is inside the neighborhood, so every peer is linked and the graph is
+	// a full mesh.
+	if opts.Base.Radius == 0 &&
+		(opts.Base.Topology == sim.TopologyFull || opts.Base.Topology == sim.TopologyKademlia) {
 		logger.Warning(
-			"single-hop configuration: -topology full with -radius 0 makes every node a direct peer of the origin, "+
+			"single-hop configuration: this topology at -radius 0 makes every node a direct peer of the origin, "+
 				"so spanMs is pinned near pullsync's ~1s pageTimeout regardless of node count; "+
-				"use -topology ring or -topology k-nearest -degree 6 to measure size scaling",
+				"use -topology ring, or -topology kademlia with a non-zero -radius, to measure size scaling",
 			"topology", string(opts.Base.Topology), "radius", opts.Base.Radius,
 		)
 	}

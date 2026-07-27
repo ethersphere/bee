@@ -164,7 +164,7 @@ func BuildNetwork(cfg Config, logger log.Logger) (*Network, error) {
 	}
 
 	// Topology and per-edge proximity orders.
-	n.adj = buildAdjacency(cfg.Topology, addrs, cfg.Degree, rng)
+	n.adj = buildAdjacency(cfg.Topology, addrs, cfg.Degree, cfg.Bins, cfg.Radius, rng)
 	n.poMatrix = make([][]uint8, cfg.Nodes)
 	for i := range n.poMatrix {
 		n.poMatrix[i] = make([]uint8, cfg.Nodes)

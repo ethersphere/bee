@@ -23,7 +23,7 @@ network from the sidebar.
 
 ### Flags
 
-`-listen :8080 -nodes 20 -bins 8 -topology full|ring|k-nearest|random -degree 6`
+`-listen :8080 -nodes 20 -bins 8 -topology full|ring|k-nearest|random|kademlia -degree 6`
 `-radius 0 -latency 5ms -maxpage 64 -clusters 1 -seed 0 -settle 3s -v`
 
 `-settle` is the batch quiescence window and applies to **both** the server and
@@ -105,9 +105,44 @@ scales with cluster size. The sweep prints a warning on stderr when it is run
 in that configuration.
 
 To actually measure that, force multiple hops with a bounded-degree topology:
-`-topology ring` maximizes diameter for a given N, `-topology k-nearest
--degree 6` is a reasonable middle ground between hop count and goroutine
-cost. Expect spans to quantize to roughly one second per hop.
+
+- `-topology ring` maximizes diameter for a given N (roughly `N/degree` hops),
+  so it gives the steepest, easiest-to-read size dependence.
+- `-topology kademlia` is the realistic one — it is what Bee actually builds.
+  Each node keeps up to `-degree` peers in every proximity order bin below the
+  storage radius, and links every peer at or above it, so the neighborhood is
+  fully connected while the sub-radius bins stay sparse.
+
+  Expect it to produce a **flat** span, and understand why before reading that
+  as a bug. Pull-sync only replicates a chunk into nodes whose storage radius
+  covers it — that is, the origin's neighborhood — and kademlia connects that
+  neighborhood fully. So replication is one hop by construction, no matter how
+  large the network is. Measured with `-clusters 3 -radius 5 -bench-minpo 6`,
+  N of 9/18/36 gives `spanMs` 1007/1007/1007 with `replicas` 2/5/11: growing
+  the network grows how many nodes hold the chunk, not how long it takes to get
+  there. That flatness is the property kademlia exists to provide.
+
+  Use the ring instead if what you want is a hop-count curve; the ring is not a
+  model of any real Swarm deployment, but it is the configuration in which hop
+  count and node count actually covary.
+- `-topology k-nearest -degree 6` is a middle ground between hop count and
+  goroutine cost, but note it only links *close* peers, so it is not a model of
+  any real routing table.
+
+Expect spans to quantize to roughly one second per hop.
+
+`-topology kademlia` needs a non-zero `-radius` to mean anything: at radius 0
+every bin falls inside the neighborhood, every peer gets linked, and the graph
+degenerates to a full mesh. The sweep warns about this too. Note also that the
+graph is built once, from the configured radius — moving the radius slider in
+the UI changes sync behaviour but does not rewire the topology, so reshaping it
+needs a rebuild.
+
+It also needs `-clusters` above 1. Addresses are otherwise spread uniformly over
+the whole 32-byte space, so at any useful radius almost no pair of nodes is
+close enough to be in each other's neighborhood: nothing replicates, and every
+sweep cell comes back `no-replicas`. `-clusters 3` concentrates the addresses
+into three neighborhoods, which is what makes a non-zero radius meaningful.
 
 A non-zero `-radius` is also worth adding — at radius 0 every node stores
 everything regardless of topology, which flattens the very effect you're trying
