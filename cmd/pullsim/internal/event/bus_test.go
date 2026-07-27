@@ -23,6 +23,22 @@ func decode(t *testing.T, frame []byte) map[string]any {
 	return m
 }
 
+// waitFrame reads frames until one of the given kind arrives.
+func waitFrame(t *testing.T, ch <-chan []byte, kind string) []byte {
+	t.Helper()
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case frame := <-ch:
+			if decode(t, frame)["t"] == kind {
+				return frame
+			}
+		case <-deadline:
+			t.Fatalf("no %q frame within timeout", kind)
+		}
+	}
+}
+
 func TestBus_HelloOnSubscribe(t *testing.T) {
 	t.Parallel()
 
@@ -166,5 +182,130 @@ func TestBus_InjectFrameCarriesTraced(t *testing.T) {
 		case <-time.After(2 * time.Second):
 			t.Fatal("timed out waiting for inject frame")
 		}
+	}
+}
+
+func TestBus_BroadcastsBatchFrame(t *testing.T) {
+	b := NewBus(stubProvider{})
+	b.Start()
+	defer b.Close()
+
+	ch, cancel := b.Subscribe()
+	defer cancel()
+	<-ch // hello
+
+	b.Publish(Batch{BatchSnap: BatchSnap{
+		ID: 7, Origin: 3, Chunks: 10, Replicas: 42, NodesReached: 9,
+		Settled: true, LateReplicas: 5, SpanMs: 1234, InjectMs: 0, TailMs: 1234,
+		PerDeliveryP50Ms: 300, PerDeliveryP95Ms: 900, PerDeliveryMaxMs: 1100,
+	}})
+
+	frame := waitFrame(t, ch, KindBatch)
+	m := decode(t, frame)
+	batch, ok := m["batch"].(map[string]any)
+	if !ok {
+		t.Fatalf("frame has no batch object: %v", m)
+	}
+	if batch["id"] != float64(7) {
+		t.Errorf("got id %v, want 7", batch["id"])
+	}
+	if batch["spanMs"] != float64(1234) {
+		t.Errorf("got spanMs %v, want 1234", batch["spanMs"])
+	}
+	if batch["settled"] != true {
+		t.Errorf("got settled %v, want true", batch["settled"])
+	}
+	// I1: truncation evidence has to reach the browser.
+	if batch["lateReplicas"] != float64(5) {
+		t.Errorf("got lateReplicas %v, want 5", batch["lateReplicas"])
+	}
+	// I2: the percentiles are a per-delivery distribution, and are named so.
+	for k, want := range map[string]float64{
+		"perDeliveryP50Ms": 300, "perDeliveryP95Ms": 900, "perDeliveryMaxMs": 1100,
+	} {
+		if batch[k] != want {
+			t.Errorf("got %s %v, want %v", k, batch[k], want)
+		}
+	}
+	for _, gone := range []string{"perChunkP50Ms", "perChunkP95Ms", "perChunkMaxMs"} {
+		if _, ok := batch[gone]; ok {
+			t.Errorf("stale field %s still on the wire", gone)
+		}
+	}
+}
+
+// I6: the settle window must reach the browser, or a rebuild silently resets a
+// non-default -settle back to 3s.
+func TestBus_ConfigCarriesSettleWindow(t *testing.T) {
+	b := NewBus(stubProvider{})
+	b.Start()
+	defer b.Close()
+
+	ch, cancel := b.Subscribe()
+	defer cancel()
+	<-ch // hello
+
+	b.Publish(Config{Nodes: 4, Topology: "full", SettleAfterMs: 10000})
+
+	m := decode(t, waitFrame(t, ch, KindConfig))
+	cfg, ok := m["config"].(map[string]any)
+	if !ok {
+		t.Fatalf("frame has no config object: %v", m)
+	}
+	if cfg["settleAfterMs"] != float64(10000) {
+		t.Errorf("got settleAfterMs %v, want 10000", cfg["settleAfterMs"])
+	}
+}
+
+func TestBus_BatchFramesAreNotRateLimited(t *testing.T) {
+	b := NewBus(stubProvider{})
+	b.Start()
+	defer b.Close()
+
+	ch, cancel := b.Subscribe()
+	defer cancel()
+	<-ch // hello
+
+	// Well past maxDiscretePerSec; every batch frame must still be delivered.
+	const n = maxDiscretePerSec + 20
+	for i := 0; i < n; i++ {
+		b.Publish(Batch{BatchSnap: BatchSnap{ID: i + 1}})
+	}
+	seen := 0
+	deadline := time.After(3 * time.Second)
+	for seen < n {
+		select {
+		case frame := <-ch:
+			if decode(t, frame)["t"] == KindBatch {
+				seen++
+			}
+		case <-deadline:
+			t.Fatalf("got %d batch frames, want %d", seen, n)
+		}
+	}
+}
+
+func TestBus_SnapshotCarriesBatches(t *testing.T) {
+	b := NewBus(stubProvider{snap: Snapshot{
+		Batches: []BatchSnap{{ID: 1, Chunks: 5, SpanMs: 900}},
+	}})
+	b.Start()
+	defer b.Close()
+
+	ch, cancel := b.Subscribe()
+	defer cancel()
+
+	m := decode(t, <-ch) // hello carries a snapshot
+	snap, ok := m["snap"].(map[string]any)
+	if !ok {
+		t.Fatalf("hello has no snap: %v", m)
+	}
+	batches, ok := snap["batches"].([]any)
+	if !ok || len(batches) != 1 {
+		t.Fatalf("got batches %v, want one entry", snap["batches"])
+	}
+	first := batches[0].(map[string]any)
+	if first["chunks"] != float64(5) {
+		t.Errorf("got chunks %v, want 5", first["chunks"])
 	}
 }

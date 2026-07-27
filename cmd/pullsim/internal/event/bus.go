@@ -188,6 +188,10 @@ func (b *Bus) handle(ev any) {
 		b.lastConfig = e
 		b.mu.Unlock()
 		b.broadcast(b.encodeConfig(e))
+	case Batch:
+		// Batches are rare and are the point of the measurement, so they are
+		// never dropped by the discrete-event rate limit.
+		b.broadcast(b.encodeBatch(e))
 	}
 }
 
@@ -481,6 +485,14 @@ func (b *Bus) encodeConfig(e Config) []byte {
 		Ts     int64  `json:"ts"`
 		Config Config `json:"config"`
 	}{KindConfig, b.now().UnixMilli(), e})
+}
+
+func (b *Bus) encodeBatch(e Batch) []byte {
+	return mustJSON(struct {
+		T     string    `json:"t"`
+		Ts    int64     `json:"ts"`
+		Batch BatchSnap `json:"batch"`
+	}{KindBatch, b.now().UnixMilli(), e.BatchSnap})
 }
 
 func mustJSON(v any) []byte {

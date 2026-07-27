@@ -26,6 +26,7 @@
     nodes: [],
     edges: [],
     edgeDir: [],
+    batches: [],             // BatchSnap[] from the snapshot, oldest first
     stats: {},
     edgeDirMap: new Map(),   // "from-to" -> entry
     edgeMap: new Map(),      // "min-max" -> {po,mode}
@@ -90,6 +91,13 @@
       case 'radius':
         // reflected in snapshots; no-op
         break;
+      case 'batch': {
+        const b = m.batch;
+        if (b && b.settled) {
+          toast(`batch #${b.id} settled in ${(b.spanMs / 1000).toFixed(1)}s · ${b.replicas} replicas · ${b.nodesReached} nodes`);
+        }
+        break;
+      }
       default: break;
     }
   }
@@ -104,6 +112,7 @@
     $('c-latency').value = cfg.latencyMs;
     $('c-clusters').value = cfg.clusters;
     $('c-seed').value = cfg.seed;
+    $('settle-val').textContent = fmtSecs(cfg.settleAfterMs || 0);
     const rs = $('radius');
     rs.max = String(Math.max(0, cfg.bins - 1));
     rs.value = String(cfg.radius);
@@ -116,6 +125,7 @@
     state.nodes = s.nodes || [];
     state.edges = s.edges || [];
     state.edgeDir = s.edgeDir || [];
+    state.batches = s.batches || [];
     state.stats = s.stats || {};
 
     state.edgeDirMap.clear();
@@ -140,6 +150,41 @@
     }
     renderStats();
     if (state.selectNode >= 0) renderDetail();
+    renderBatches();
+  }
+
+  const fmtSecs = (ms) => `${(ms / 1000).toFixed(1)}s`;
+
+  function renderBatches() {
+    const el = $('batches');
+    if (!state.batches.length) {
+      el.innerHTML = '<div class="sub">no batches yet — inject to measure</div>';
+      return;
+    }
+    // Newest first: the snapshot carries them oldest first.
+    const rows = state.batches.slice().reverse().map((b) => {
+      const cls = b.settled ? 'batch settled' : 'batch running';
+      const p = b.settled && b.perDeliveryP95Ms
+        ? `<span class="batch-p">per-delivery p50 ${fmtSecs(b.perDeliveryP50Ms)} · p95 ${fmtSecs(b.perDeliveryP95Ms)}</span>`
+        : '';
+      // Late replicas mean the settle window closed the batch too early, so
+      // the span above is a floor, not the real propagation time.
+      const late = b.lateReplicas
+        ? `<span class="batch-late">⚠ ${b.lateReplicas} late replica${b.lateReplicas === 1 ? '' : 's'} — span truncated, raise the settle window</span>`
+        : '';
+      return `<div class="${cls}">
+        <div class="batch-head">
+          <span class="batch-id">#${b.id}</span>
+          <span class="batch-span">span ${fmtSecs(b.spanMs)}</span>
+          <span class="batch-state">${b.settled ? 'settled' : 'running'}</span>
+        </div>
+        <div class="batch-meta">
+          node ${b.origin} · ${b.chunks} chunk${b.chunks === 1 ? '' : 's'}
+          · ${b.replicas} replicas · ${b.nodesReached} nodes ${p}${late}
+        </div>
+      </div>`;
+    });
+    el.innerHTML = rows.join('');
   }
 
   function renderStats() {
@@ -542,6 +587,9 @@
       clusters: +$('c-clusters').value,
       seed: +$('c-seed').value,
       radius: +$('radius').value,
+      // Echo the settle window back, or a rebuild would silently reset a
+      // non-default -settle to the 3s applyDefaults value.
+      settleAfterMs: +(state.config.settleAfterMs || 0),
     }).then((r) => { applyConfig(r.config); applySnapshot(r.snapshot); state.selectNode = -1; toast('rebuilt'); });
   };
 

@@ -18,6 +18,7 @@ package sim
 
 import (
 	"context"
+	"errors"
 	"runtime"
 	"testing"
 	"time"
@@ -68,7 +69,7 @@ func TestNetwork_FullMeshPropagation(t *testing.T) {
 		Nodes: 5, Bins: 4, Topology: TopologyFull, Radius: 0, Seed: 1,
 	})
 
-	addrs, err := n.Inject(0, 1, 0, 0)
+	_, addrs, err := n.Inject(0, 1, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +89,7 @@ func TestNetwork_RingMultiHop(t *testing.T) {
 		Nodes: 6, Bins: 4, Topology: TopologyRing, Degree: 2, Radius: 0, Seed: 2,
 	})
 
-	addrs, err := n.Inject(0, 1, 0, 0)
+	_, addrs, err := n.Inject(0, 1, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +111,7 @@ func TestNetwork_RadiusPartition(t *testing.T) {
 	})
 
 	// Mine a chunk very close to node 0 (>= radius bits shared with node 0).
-	addrs, err := n.Inject(0, 1, 0, radius)
+	_, addrs, err := n.Inject(0, 1, 0, radius)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +149,7 @@ func TestNetwork_ShutdownAndGoroutines(t *testing.T) {
 	}
 	n.Start(context.Background())
 
-	if _, err := n.Inject(0, 3, 0, 0); err != nil {
+	if _, _, err := n.Inject(0, 3, 0, 0); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(2 * time.Second)
@@ -175,4 +176,181 @@ func TestNetwork_ShutdownAndGoroutines(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	t.Fatalf("goroutine leak: before=%d after=%d", before, after)
+}
+
+func TestNetworkBatchSettles(t *testing.T) {
+	// SettleAfter must exceed the real pullsync round trip (empirically ~1s,
+	// due to its page-collection coalescing window), or the batch settles
+	// before any replica arrives.
+	n := startNetwork(t, Config{
+		Nodes:       6,
+		Bins:        4,
+		Topology:    TopologyFull,
+		Latency:     time.Millisecond,
+		SettleAfter: 3 * time.Second,
+	})
+
+	id, addrs, err := n.Inject(0, 5, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id <= 0 {
+		t.Fatalf("got batch ID %d, want > 0", id)
+	}
+	if len(addrs) != 5 {
+		t.Fatalf("got %d addrs, want 5", len(addrs))
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	b, err := n.WaitBatch(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !b.Settled {
+		t.Error("batch not settled")
+	}
+	if b.Chunks != 5 {
+		t.Errorf("got Chunks %d, want 5", b.Chunks)
+	}
+	if b.Replicas == 0 {
+		t.Error("got 0 replicas, want the batch to have propagated")
+	}
+	if b.NodesReached == 0 {
+		t.Error("got 0 nodes reached, want the batch to have propagated")
+	}
+	if b.Metrics.SpanMs <= 0 {
+		t.Errorf("got SpanMs %d, want > 0", b.Metrics.SpanMs)
+	}
+	// A burst inject feeds everything at once, so the span is all tail.
+	if b.Metrics.InjectMs != 0 {
+		t.Errorf("got InjectMs %d, want 0 for a burst inject", b.Metrics.InjectMs)
+	}
+	if b.Metrics.TailMs != b.Metrics.SpanMs {
+		t.Errorf("got TailMs %d, want %d", b.Metrics.TailMs, b.Metrics.SpanMs)
+	}
+}
+
+func TestNetworkSnapshotIncludesBatches(t *testing.T) {
+	n := startNetwork(t, Config{
+		Nodes: 4, Bins: 4, Topology: TopologyFull,
+		Latency: time.Millisecond, SettleAfter: 500 * time.Millisecond,
+	})
+	id, _, err := n.Inject(0, 2, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap := n.Snapshot()
+	if len(snap.Batches) != 1 {
+		t.Fatalf("got %d batches in snapshot, want 1", len(snap.Batches))
+	}
+	if snap.Batches[0].ID != id {
+		t.Errorf("got batch ID %d, want %d", snap.Batches[0].ID, id)
+	}
+	if snap.Batches[0].Chunks != 2 {
+		t.Errorf("got Chunks %d, want 2", snap.Batches[0].Chunks)
+	}
+}
+
+func TestNetworkWaitBatchHonorsContext(t *testing.T) {
+	n := startNetwork(t, Config{
+		Nodes: 4, Bins: 4, Topology: TopologyFull,
+		Latency: time.Millisecond, SettleAfter: time.Hour, // never settles
+	})
+	id, _, err := n.Inject(0, 1, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	b, err := n.WaitBatch(ctx, id)
+	if err == nil {
+		t.Fatal("got nil error, want context deadline exceeded")
+	}
+	// The partial batch must still come back so a timed-out sweep cell can
+	// report what it observed.
+	if b.ID != id {
+		t.Errorf("got partial batch ID %d, want %d", b.ID, id)
+	}
+}
+
+// I5: WaitBatch documents a shutdown wakeup, so a caller passing a
+// non-cancellable context must not hang forever after Close.
+func TestNetworkWaitBatchWakesOnClose(t *testing.T) {
+	n, err := BuildNetwork(Config{
+		Nodes: 4, Bins: 4, Topology: TopologyFull, Radius: 0, Seed: 11,
+		Latency: time.Millisecond, SettleAfter: time.Hour, // never settles
+	}, log.Noop)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n.Start(context.Background())
+
+	id, _, err := n.Inject(0, 1, 0, 0)
+	if err != nil {
+		n.Close()
+		t.Fatal(err)
+	}
+
+	type result struct {
+		b   Batch
+		err error
+	}
+	res := make(chan result, 1)
+	go func() {
+		// Deliberately not cancellable: only Close can wake this.
+		b, err := n.WaitBatch(context.Background(), id)
+		res <- result{b, err}
+	}()
+
+	time.Sleep(200 * time.Millisecond)
+	early := false
+	select {
+	case r := <-res:
+		early = true
+		t.Errorf("WaitBatch returned before Close: %+v %v", r.b, r.err)
+	default:
+	}
+
+	n.Close()
+	if early {
+		return
+	}
+
+	select {
+	case r := <-res:
+		if !errors.Is(r.err, ErrNetworkClosed) {
+			t.Errorf("got error %v, want ErrNetworkClosed", r.err)
+		}
+		if r.b.ID != id {
+			t.Errorf("got partial batch ID %d, want %d", r.b.ID, id)
+		}
+		if r.b.Settled {
+			t.Error("batch reported settled although it never settled")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("WaitBatch did not wake on Close")
+	}
+}
+
+// C1b: the bench mines its chunks at -bench-minpo, which is what makes a
+// non-zero -radius sweep produce any replicas at all.
+func TestNetworkInjectHonorsMinPO(t *testing.T) {
+	n := startNetwork(t, Config{
+		Nodes: 4, Bins: 8, Topology: TopologyFull, Radius: 0, Seed: 12,
+		Latency: time.Millisecond, SettleAfter: time.Hour,
+	})
+	const minPO = 5
+	_, addrs, err := n.Inject(0, 4, 0, minPO)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := n.Nodes()[0].Addr
+	for i, a := range addrs {
+		if po := swarm.Proximity(a.Bytes(), base.Bytes()); po < minPO {
+			t.Errorf("chunk %d at PO %d from the origin, want >= %d", i, po, minPO)
+		}
+	}
 }

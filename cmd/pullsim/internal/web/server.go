@@ -77,6 +77,7 @@ func (s *Server) build(cfg sim.Config) error {
 		Nodes: c.Nodes, Bins: c.Bins, Topology: string(c.Topology), Degree: c.Degree,
 		Radius: c.Radius, MaxPage: c.MaxPage, LatencyMs: c.Latency.Milliseconds(),
 		Clusters: c.Clusters, Seed: c.Seed,
+		SettleAfterMs: c.SettleAfter.Milliseconds(),
 	})
 	return nil
 }
@@ -120,28 +121,30 @@ func (s *Server) Close() {
 // --- REST handlers ---
 
 type configJSON struct {
-	Nodes     int    `json:"nodes"`
-	Bins      uint8  `json:"bins"`
-	Topology  string `json:"topology"`
-	Degree    int    `json:"degree"`
-	Radius    uint8  `json:"radius"`
-	LatencyMs int64  `json:"latencyMs"`
-	MaxPage   uint64 `json:"maxPage"`
-	Clusters  int    `json:"clusters"`
-	Seed      int64  `json:"seed"`
+	Nodes         int    `json:"nodes"`
+	Bins          uint8  `json:"bins"`
+	Topology      string `json:"topology"`
+	Degree        int    `json:"degree"`
+	Radius        uint8  `json:"radius"`
+	LatencyMs     int64  `json:"latencyMs"`
+	MaxPage       uint64 `json:"maxPage"`
+	Clusters      int    `json:"clusters"`
+	Seed          int64  `json:"seed"`
+	SettleAfterMs int64  `json:"settleAfterMs"`
 }
 
 func (c configJSON) toSim() sim.Config {
 	return sim.Config{
-		Nodes:    c.Nodes,
-		Bins:     c.Bins,
-		Topology: sim.Topology(c.Topology),
-		Degree:   c.Degree,
-		Radius:   c.Radius,
-		Latency:  time.Duration(c.LatencyMs) * time.Millisecond,
-		MaxPage:  c.MaxPage,
-		Clusters: c.Clusters,
-		Seed:     c.Seed,
+		Nodes:       c.Nodes,
+		Bins:        c.Bins,
+		Topology:    sim.Topology(c.Topology),
+		Degree:      c.Degree,
+		Radius:      c.Radius,
+		Latency:     time.Duration(c.LatencyMs) * time.Millisecond,
+		MaxPage:     c.MaxPage,
+		Clusters:    c.Clusters,
+		Seed:        c.Seed,
+		SettleAfter: time.Duration(c.SettleAfterMs) * time.Millisecond,
 	}
 }
 
@@ -149,7 +152,7 @@ func fromSim(c sim.Config) configJSON {
 	return configJSON{
 		Nodes: c.Nodes, Bins: c.Bins, Topology: string(c.Topology), Degree: c.Degree,
 		Radius: c.Radius, LatencyMs: c.Latency.Milliseconds(), MaxPage: c.MaxPage,
-		Clusters: c.Clusters, Seed: c.Seed,
+		Clusters: c.Clusters, Seed: c.Seed, SettleAfterMs: c.SettleAfter.Milliseconds(),
 	}
 }
 
@@ -208,7 +211,7 @@ func (s *Server) handleInject(w http.ResponseWriter, r *http.Request) {
 	if body.Count == 0 {
 		body.Count = 1
 	}
-	addrs, err := n.Inject(body.Node, body.Count, body.Rate, body.MinPO)
+	batchID, addrs, err := n.Inject(body.Node, body.Count, body.Rate, body.MinPO)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -217,7 +220,7 @@ func (s *Server) handleInject(w http.ResponseWriter, r *http.Request) {
 	for i, a := range addrs {
 		strs[i] = a.String()
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"addrs": strs})
+	writeJSON(w, http.StatusOK, map[string]any{"batchID": batchID, "addrs": strs})
 }
 
 func (s *Server) handleInjectStop(w http.ResponseWriter, r *http.Request) {

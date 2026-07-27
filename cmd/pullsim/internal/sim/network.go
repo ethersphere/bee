@@ -7,6 +7,7 @@ package sim
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -23,17 +24,25 @@ import (
 
 var _ event.Provider = (*Network)(nil)
 
-// Config parameterises a simulated network.
+// defaultSettleAfter is the quiescence window after which a batch that has
+// received no further puts is considered done propagating.
+const defaultSettleAfter = 3 * time.Second
+
+// sweepInterval is how often quiescent batches are checked for completion.
+const sweepInterval = 250 * time.Millisecond
+
+// Config parameterizes a simulated network.
 type Config struct {
-	Nodes    int
-	Bins     uint8
-	Topology Topology
-	Degree   int
-	Radius   uint8
-	Latency  time.Duration
-	MaxPage  uint64
-	Clusters int
-	Seed     int64
+	Nodes       int
+	Bins        uint8
+	Topology    Topology
+	Degree      int
+	Radius      uint8
+	Latency     time.Duration
+	MaxPage     uint64
+	Clusters    int
+	Seed        int64
+	SettleAfter time.Duration
 }
 
 func (c *Config) applyDefaults() {
@@ -51,6 +60,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Degree == 0 {
 		c.Degree = 6
+	}
+	if c.SettleAfter <= 0 {
+		c.SettleAfter = defaultSettleAfter
 	}
 }
 
@@ -81,6 +93,11 @@ type Network struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
+	// tracker holds its own mutex and never calls back into the Network, so it
+	// is kept outside the mu-guarded block.
+	tracker *tracker
+	sweepWG sync.WaitGroup
+
 	mu          sync.Mutex
 	bus         *event.Bus
 	radius      uint8
@@ -108,6 +125,7 @@ func BuildNetwork(cfg Config, logger log.Logger) (*Network, error) {
 		idx:        make(map[string]int, cfg.Nodes),
 		traced:     make(map[string]bool),
 		nodeTraced: make([]bool, cfg.Nodes),
+		tracker:    newTracker(cfg.SettleAfter, time.Now),
 	}
 
 	epoch := uint64(time.Now().UnixNano())
@@ -226,6 +244,10 @@ func (n *Network) index(a swarm.Address) int {
 
 func (n *Network) putHook(idx int) func(PutEvent) {
 	return func(pe PutEvent) {
+		// Fold into the batch tracker first, holding no Network lock: the
+		// tracker has its own mutex and never calls back in here.
+		n.tracker.observePut(idx, pe.Address, pe.Source)
+
 		traced := n.isTraced(pe.Address)
 		if traced {
 			n.mu.Lock()
@@ -266,11 +288,31 @@ func (n *Network) markTraced(addrs []swarm.Address) {
 	n.mu.Unlock()
 }
 
-// Start launches every node's puller.
+// Start launches every node's puller and the batch sweep loop.
 func (n *Network) Start(ctx context.Context) {
 	n.ctx, n.cancel = context.WithCancel(ctx)
 	for _, nd := range n.nodes {
 		nd.Puller.Start(n.ctx)
+	}
+	n.sweepWG.Add(1)
+	go n.sweepLoop(n.ctx)
+}
+
+// sweepLoop settles quiescent batches and publishes them. It exits with the
+// network context.
+func (n *Network) sweepLoop(ctx context.Context) {
+	defer n.sweepWG.Done()
+	tick := time.NewTicker(sweepInterval)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+			for _, b := range n.tracker.sweep() {
+				n.publish(event.Batch{BatchSnap: batchSnap(b)})
+			}
+		}
 	}
 }
 
@@ -282,6 +324,11 @@ func (n *Network) Close() {
 	if n.cancel != nil {
 		n.cancel()
 	}
+	// Wake anything blocked in WaitBatch before waiting on the sweep loop:
+	// after the context is cancelled no batch can ever settle, so an unsettled
+	// batch's done channel would otherwise never close.
+	n.tracker.stop()
+	n.sweepWG.Wait()
 	closeConcurrent(n.nodes, func(nd *Node) { _ = nd.Puller.Close() })
 	closeConcurrent(n.nodes, func(nd *Node) { _ = nd.Transport.Close() })
 	closeConcurrent(n.nodes, func(nd *Node) { _ = nd.Syncer.Close() })
@@ -328,13 +375,14 @@ func (n *Network) Radius() uint8 {
 
 // Inject mines count chunks near node's base at proximity >= minPO and stores
 // them, optionally streaming at ratePerSec (<=0 or count==1 stores
-// immediately). count==1 marks the chunk as traced. Returns the addresses.
-func (n *Network) Inject(node, count int, ratePerSec float64, minPO uint8) ([]swarm.Address, error) {
+// immediately). count==1 marks the chunk as traced. It returns the propagation
+// batch ID (see WaitBatch) and the addresses.
+func (n *Network) Inject(node, count int, ratePerSec float64, minPO uint8) (int, []swarm.Address, error) {
 	if node < 0 || node >= len(n.nodes) {
-		return nil, fmt.Errorf("node index %d out of range", node)
+		return 0, nil, fmt.Errorf("node index %d out of range", node)
 	}
 	if count < 1 {
-		return nil, fmt.Errorf("count must be >= 1")
+		return 0, nil, fmt.Errorf("count must be >= 1")
 	}
 	nd := n.nodes[node]
 
@@ -352,6 +400,8 @@ func (n *Network) Inject(node, count int, ratePerSec float64, minPO uint8) ([]sw
 		addrs[i] = ch.Address()
 	}
 
+	batchID := n.tracker.register(node, addrs)
+
 	traced := count == 1
 	if traced {
 		n.markTraced(addrs)
@@ -362,7 +412,7 @@ func (n *Network) Inject(node, count int, ratePerSec float64, minPO uint8) ([]sw
 		for _, ch := range chunks {
 			_ = nd.Reserve.Inject(ch)
 		}
-		return addrs, nil
+		return batchID, addrs, nil
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -386,7 +436,52 @@ func (n *Network) Inject(node, count int, ratePerSec float64, minPO uint8) ([]sw
 		}
 	}()
 
-	return addrs, nil
+	return batchID, addrs, nil
+}
+
+// Batches returns the retained propagation batches, oldest first.
+func (n *Network) Batches() []Batch { return n.tracker.list() }
+
+// Batch returns a single batch by ID.
+func (n *Network) Batch(id int) (Batch, bool) { return n.tracker.get(id) }
+
+// ErrNetworkClosed is returned by WaitBatch when the network shut down before
+// the batch settled. The partial batch is returned alongside it.
+var ErrNetworkClosed = errors.New("network closed before batch settled")
+
+// WaitBatch blocks until the batch stops propagating, the context is done, or
+// the network shuts down. On any error it still returns the batch as observed
+// so far, so a caller that timed out can report partial results.
+func (n *Network) WaitBatch(ctx context.Context, id int) (Batch, error) {
+	done := n.tracker.wait(id)
+	select {
+	case <-done:
+		b, ok := n.tracker.get(id)
+		if !ok {
+			return Batch{}, fmt.Errorf("batch %d no longer retained", id)
+		}
+		if !b.Settled {
+			// Woken by Close, not by settling.
+			return b, ErrNetworkClosed
+		}
+		return b, nil
+	case <-ctx.Done():
+		b, _ := n.tracker.get(id)
+		return b, ctx.Err()
+	}
+}
+
+// batchSnap converts a tracked batch to its wire form.
+func batchSnap(b Batch) event.BatchSnap {
+	return event.BatchSnap{
+		ID: b.ID, Origin: b.Origin, Chunks: b.Chunks,
+		Replicas: b.Replicas, NodesReached: b.NodesReached, Settled: b.Settled,
+		LateReplicas: b.LateReplicas,
+		SpanMs:       b.Metrics.SpanMs, InjectMs: b.Metrics.InjectMs, TailMs: b.Metrics.TailMs,
+		PerDeliveryP50Ms: b.Metrics.PerDeliveryP50Ms,
+		PerDeliveryP95Ms: b.Metrics.PerDeliveryP95Ms,
+		PerDeliveryMaxMs: b.Metrics.PerDeliveryMaxMs,
+	}
 }
 
 // StopInject cancels all in-progress streaming injects.
@@ -436,10 +531,17 @@ func (n *Network) Snapshot() event.Snapshot {
 		}
 	}
 
+	tracked := n.Batches()
+	batches := make([]event.BatchSnap, len(tracked))
+	for i, b := range tracked {
+		batches[i] = batchSnap(b)
+	}
+
 	return event.Snapshot{
-		Nodes: nodes,
-		Edges: edges,
-		Stats: event.Stats{Chunks: total, Goroutines: runtime.NumGoroutine()},
+		Nodes:   nodes,
+		Edges:   edges,
+		Batches: batches,
+		Stats:   event.Stats{Chunks: total, Goroutines: runtime.NumGoroutine()},
 	}
 }
 

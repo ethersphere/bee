@@ -22,6 +22,7 @@ const (
 	KindInject = "inject"
 	KindRadius = "radius"
 	KindConfig = "config"
+	KindBatch  = "batch"
 )
 
 // Edge sync modes derived from puller rules vs. radius.
@@ -129,6 +130,37 @@ type Config struct {
 	LatencyMs int64  `json:"latencyMs"`
 	Clusters  int    `json:"clusters"`
 	Seed      int64  `json:"seed"`
+	// SettleAfterMs is the batch quiescence window, surfaced so the UI can
+	// echo it back on a rebuild instead of silently resetting it.
+	SettleAfterMs int64 `json:"settleAfterMs"`
+}
+
+// BatchSnap reports one tracked injection batch and its propagation timings.
+// A running batch carries live span/inject/tail and zero percentiles; the
+// percentiles are filled in once the batch settles.
+type BatchSnap struct {
+	ID           int  `json:"id"`
+	Origin       int  `json:"origin"`
+	Chunks       int  `json:"chunks"`
+	Replicas     int  `json:"replicas"`
+	NodesReached int  `json:"nodesReached"`
+	Settled      bool `json:"settled"`
+	// LateReplicas counts replicas that arrived after the batch was declared
+	// settled; non-zero means the settle window truncated the measurement.
+	LateReplicas int `json:"lateReplicas"`
+
+	SpanMs   int64 `json:"spanMs"`
+	InjectMs int64 `json:"injectMs"`
+	TailMs   int64 `json:"tailMs"`
+
+	PerDeliveryP50Ms int64 `json:"perDeliveryP50Ms"`
+	PerDeliveryP95Ms int64 `json:"perDeliveryP95Ms"`
+	PerDeliveryMaxMs int64 `json:"perDeliveryMaxMs"`
+}
+
+// Batch is published when a tracked batch stops propagating.
+type Batch struct {
+	BatchSnap
 }
 
 // Snapshot structures (the authoritative periodic frame).
@@ -185,13 +217,14 @@ type Stats struct {
 	Goroutines  int     `json:"goroutines"`
 }
 
-// Snapshot is the full authoritative state frame. Nodes/Edges/Stats.Chunks/
-// Stats.Goroutines are filled by the Provider; the Bus fills EdgeDir and the
-// remaining Stats fields.
+// Snapshot is the full authoritative state frame. Nodes/Edges/Batches/
+// Stats.Chunks/Stats.Goroutines are filled by the Provider; the Bus fills
+// EdgeDir and the remaining Stats fields.
 type Snapshot struct {
 	Nodes   []NodeSnap    `json:"nodes"`
 	Edges   []EdgeSnap    `json:"edges"`
 	EdgeDir []EdgeDirSnap `json:"edgeDir"`
+	Batches []BatchSnap   `json:"batches"`
 	Stats   Stats         `json:"stats"`
 }
 

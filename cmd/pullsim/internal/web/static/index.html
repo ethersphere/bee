@@ -54,6 +54,12 @@
     </div>
 
     <div class="group">
+      <h2>Propagation</h2>
+      <div id="batches"><div class="sub">no batches yet — inject to measure</div></div>
+      <div class="sub" style="margin-top:6px;">Span is first inject &rarr; last chunk stored anywhere, so a running row&rsquo;s span freezes between arrivals rather than ticking. A batch settles once no chunk of it has landed for the settle window (<span id="settle-val">&mdash;</span>); the quiet window itself is not counted. Late replicas after settling mean the window was too short and the span is truncated.</div>
+    </div>
+
+    <div class="group">
       <h2>Legend</h2>
       <div id="legend">
         <div class="item"><span class="swatch" style="background:var(--accent)"></span>full — syncs all bins</div>

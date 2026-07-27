@@ -149,3 +149,25 @@ button:active { transform: translateY(1px); }
 }
 .status-dot { display:inline-block; width:8px;height:8px;border-radius:50%; background: var(--danger); margin-right:6px; }
 .status-dot.ok { background: var(--traced); }
+
+/* propagation batches */
+.batch {
+  border-left: 2px solid var(--grey);
+  padding: 4px 0 4px 8px;
+  margin-bottom: 6px;
+  font-size: 11px;
+}
+.batch.running { border-left-color: var(--amber); }
+.batch.settled { border-left-color: var(--accent); }
+.batch-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+}
+.batch-id { font-family: monospace; color: var(--muted); }
+.batch-span { font-family: monospace; color: var(--text); font-size: 13px; }
+.batch-state { color: var(--muted); text-transform: uppercase; font-size: 9px; letter-spacing: .5px; }
+.batch-meta { color: var(--muted); margin-top: 2px; line-height: 1.4; }
+.batch-p { display: block; }
+.batch-late { display: block; color: var(--amber); }
