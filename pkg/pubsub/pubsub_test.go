@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coreos/go-semver/semver"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/pubsub"
@@ -36,6 +37,7 @@ func (p *pipeStream) Reset() error {
 	p.pw.CloseWithError(io.ErrUnexpectedEOF)
 	return nil
 }
+func (p *pipeStream) Version() (*semver.Version, error) { return nil, nil }
 
 // newService creates a pubsub.Service with a nil P2P backend.
 // This is valid for tests that never reach any P2P method call.

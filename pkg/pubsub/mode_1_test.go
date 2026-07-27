@@ -12,6 +12,7 @@ import (
 	"io"
 	"testing"
 
+	"github.com/coreos/go-semver/semver"
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -28,12 +29,13 @@ type readerStream struct {
 	headers p2p.Headers
 }
 
-func (r *readerStream) Write(p []byte) (int, error)  { return len(p), nil }
-func (r *readerStream) Close() error                 { return nil }
-func (r *readerStream) ResponseHeaders() p2p.Headers { return nil }
-func (r *readerStream) Headers() p2p.Headers         { return r.headers }
-func (r *readerStream) FullClose() error             { return nil }
-func (r *readerStream) Reset() error                 { return nil }
+func (r *readerStream) Write(p []byte) (int, error)       { return len(p), nil }
+func (r *readerStream) Close() error                      { return nil }
+func (r *readerStream) ResponseHeaders() p2p.Headers      { return nil }
+func (r *readerStream) Headers() p2p.Headers              { return r.headers }
+func (r *readerStream) FullClose() error                  { return nil }
+func (r *readerStream) Reset() error                      { return nil }
+func (r *readerStream) Version() (*semver.Version, error) { return nil, nil }
 
 func newReaderStream(data []byte, headers p2p.Headers) *readerStream {
 	return &readerStream{Reader: bytes.NewReader(data), headers: headers}
