@@ -270,12 +270,11 @@ func TestPutOrderConvergence(t *testing.T) {
 			},
 		},
 		{
-			// UNRESOLVED on this branch: same SOC address, same slot and
-			// timestamp, but separately stamped (distinct signatures, hence
-			// distinct stamp hashes). Bypasses resolveDivergence (stamp hashes
-			// differ) and the CAC tie-break (wrong type): last write wins.
-			name:       "divergent socs, equal timestamp, distinct stamps",
-			unresolved: true,
+			// Same SOC address, same slot and timestamp, but separately stamped
+			// (distinct signatures, hence distinct stamp hashes). The SOC
+			// stamp-overwrite guard settles on the lower stamp hash, so the
+			// shared payload converges regardless of order.
+			name: "divergent socs, equal timestamp, distinct stamps",
 			chunks: func(t *testing.T) []swarm.Chunk {
 				t.Helper()
 				return []swarm.Chunk{
@@ -285,11 +284,9 @@ func TestPutOrderConvergence(t *testing.T) {
 			},
 		},
 		{
-			// UNRESOLVED on this branch: different SOC addresses in the same
-			// slot at the same timestamp. Not content addressed, so the
-			// tie-break is skipped: last write wins.
-			name:       "soc vs soc, different addresses, same slot, equal timestamp",
-			unresolved: true,
+			// Different SOC addresses in the same slot at the same timestamp.
+			// The lower-address tie-break now applies to all chunk types.
+			name: "soc vs soc, different addresses, same slot, equal timestamp",
 			chunks: func(t *testing.T) []swarm.Chunk {
 				t.Helper()
 				return []swarm.Chunk{
@@ -299,12 +296,9 @@ func TestPutOrderConvergence(t *testing.T) {
 			},
 		},
 		{
-			// UNRESOLVED on this branch: mixed types in the same slot at the
-			// same timestamp. The tie-break fires only when the INCOMING chunk
-			// is content addressed, so the two directions disagree whenever
-			// the CAC has the lower address.
-			name:       "cac vs soc, same slot, equal timestamp, cac address lower",
-			unresolved: true,
+			// Mixed types in the same slot at the same timestamp. The
+			// lower-address tie-break is type-agnostic, so convergence holds.
+			name: "cac vs soc, same slot, equal timestamp, cac address lower",
 			chunks: func(t *testing.T) []swarm.Chunk {
 				t.Helper()
 				socCh := newTestSOC(t, signer, id1, []byte("soc payload"))
@@ -323,12 +317,10 @@ func TestPutOrderConvergence(t *testing.T) {
 			},
 		},
 		{
-			// UNRESOLVED on this branch: byte-identical CAC re-stamped in the
-			// same slot at the same timestamp with a different signature. The
-			// entries swap stamp hashes depending on order, so peers holding
-			// different stampings keep exchanging and replacing forever.
-			name:       "identical cac, same slot, equal timestamp, distinct stamps",
-			unresolved: true,
+			// Byte-identical CAC re-stamped in the same slot at the same
+			// timestamp with a different signature. The stamp-hash tie-break
+			// settles on one stamping deterministically.
+			name: "identical cac, same slot, equal timestamp, distinct stamps",
 			chunks: func(t *testing.T) []swarm.Chunk {
 				t.Helper()
 				payload := []byte("identical cac payload")

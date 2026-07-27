@@ -199,7 +199,7 @@ func (r *Reserve) putChunk(ctx context.Context, chunk swarm.Chunk) (socReplaced 
 
 			// Same stamp index and timestamp, different chunk addresses: both
 			// claims are otherwise valid, so settle on the lower address.
-			if prev == curr && chunkType == swarm.ChunkTypeContentAddressed && !oldStampIndex.ChunkAddress.Equal(chunk.Address()) {
+			if prev == curr && !oldStampIndex.ChunkAddress.Equal(chunk.Address()) {
 				if bytes.Compare(chunk.Address().Bytes(), oldStampIndex.ChunkAddress.Bytes()) >= 0 {
 					r.logger.Debug(
 						"discarding stamp index collision",
@@ -239,6 +239,14 @@ func (r *Reserve) putChunk(ctx context.Context, chunk swarm.Chunk) (socReplaced 
 
 			// same chunk address
 			if oldStampIndex.ChunkAddress.Equal(chunk.Address()) {
+				// Same address, same timestamp: settle on the lower stamp hash.
+				if prev == curr && bytes.Compare(oldStampIndex.StampHash, stampHash) <= 0 {
+					return fmt.Errorf(
+						"stamp index collision chunk %s lost stamp-hash tie-break: %w",
+						chunk.Address(),
+						storage.ErrOverwriteNewerChunk,
+					)
+				}
 
 				oldStamp, err := chunkstamp.LoadWithStampHash(s.IndexStore(), reserveScope, oldStampIndex.ChunkAddress, oldStampIndex.StampHash)
 				if err != nil {
