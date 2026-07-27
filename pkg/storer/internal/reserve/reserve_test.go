@@ -1612,106 +1612,10 @@ func TestSOCDivergenceBumpsBinID(t *testing.T) {
 	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin, BinID: item.BinID}, false)
 }
 
-// TestCACStampIndexCollision covers two content-addressed chunks that share a
-// batch stamp index and timestamp but have different addresses. The reserve
-// keeps the lexicographically lower address regardless of arrival order.
+// TestCACStampIndexCollisionBumps asserts that accepting a lower-address
+// CAC over a stamp-index collision writes it at a fresh bin ID for pullsync,
+// while the postage stamp index slot still points at the winning chunk.
 func TestCACStampIndexCollision(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	batch := postagetesting.MustNewBatch()
-	stamp := postagetesting.MustNewFields(batch.ID, 0, 1)
-
-	baseAddr := swarm.RandAddress(t)
-	ch1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(stamp)
-	ch2 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(stamp.Clone())
-	if ch1.Address().Equal(ch2.Address()) {
-		t.Fatal("expected different CAC addresses")
-	}
-
-	winner, loser := ch1, ch2
-	if bytes.Compare(ch2.Address().Bytes(), ch1.Address().Bytes()) < 0 {
-		winner, loser = ch2, ch1
-	}
-
-	for _, tc := range []struct {
-		name  string
-		order []swarm.Chunk
-	}{
-		{"winner first", []swarm.Chunk{winner, loser}},
-		{"loser first", []swarm.Chunk{loser, winner}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			ts := internal.NewInmemStorage()
-			r, err := reserve.New(baseAddr, ts, 0, kademlia.NewTopologyDriver(), log.Noop)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			if err := r.Put(ctx, tc.order[0]); err != nil {
-				t.Fatal(err)
-			}
-			sizeAfterFirst := r.Size()
-
-			err = r.Put(ctx, tc.order[1])
-			if tc.order[1].Address().Equal(loser.Address()) {
-				if !errors.Is(err, storage.ErrDivergentChunkRejected) {
-					t.Fatalf("expected ErrDivergentChunkRejected, got %v", err)
-				}
-			} else if err != nil {
-				t.Fatal(err)
-			}
-
-			if _, err := ts.ChunkStore().Get(ctx, winner.Address()); err != nil {
-				t.Fatalf("expected winner stored: %v", err)
-			}
-			if _, err := ts.ChunkStore().Get(ctx, loser.Address()); !errors.Is(err, storage.ErrNotFound) {
-				t.Fatalf("expected loser absent, got %v", err)
-			}
-
-			item, err := stampindex.Load(ts.IndexStore(), "reserve", winner.Stamp())
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !item.ChunkAddress.Equal(winner.Address()) {
-				t.Fatalf("stamp index points to %s, want %s", item.ChunkAddress, winner.Address())
-			}
-
-			if got := r.Size(); got != sizeAfterFirst {
-				t.Fatalf("expected reserve size to stay %d, got %d", sizeAfterFirst, got)
-			}
-
-			winnerSum, err := storage.ChunkSum(winner)
-			if err != nil {
-				t.Fatal(err)
-			}
-			loserSum, err := storage.ChunkSum(loser)
-			if err != nil {
-				t.Fatal(err)
-			}
-			has, err := r.HasSum(winner.Address(), winnerSum)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !has {
-				t.Fatal("expected the winner sum to be indexed")
-			}
-			has, err = r.HasSum(loser.Address(), loserSum)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if has {
-				t.Fatal("expected the loser sum not to be indexed")
-			}
-		})
-	}
-}
-
-// TestCACStampIndexCollisionBumpsBinID asserts that accepting a lower-address
-// CAC over a stamp-index collision writes it at a fresh bin ID for pullsync.
-func TestCACStampIndexCollisionBumpsBinID(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -1752,6 +1656,15 @@ func TestCACStampIndexCollisionBumpsBinID(t *testing.T) {
 	}
 	oldBinID := oldItem.BinID
 
+	oldStampIndex, err := stampindex.Load(ts.IndexStore(), "reserve", first.Stamp())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !oldStampIndex.ChunkAddress.Equal(first.Address()) {
+		t.Fatalf("stamp index points to %s, want %s", oldStampIndex.ChunkAddress, first.Address())
+	}
+	wantStampIndex := append([]byte(nil), oldStampIndex.StampIndex...)
+
 	if err := r.Put(ctx, second); err != nil {
 		t.Fatal(err)
 	}
@@ -1772,6 +1685,34 @@ func TestCACStampIndexCollisionBumpsBinID(t *testing.T) {
 	}
 	if secondBin == firstBin && newItem.BinID <= oldBinID {
 		t.Fatalf("expected bin id to be bumped past %d, got %d", oldBinID, newItem.BinID)
+	}
+
+	newStampIndex, err := stampindex.Load(ts.IndexStore(), "reserve", second.Stamp())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(newStampIndex.StampIndex, wantStampIndex) {
+		t.Fatalf("stamp index slot changed: got %x, want %x", newStampIndex.StampIndex, wantStampIndex)
+	}
+	if !newStampIndex.ChunkAddress.Equal(second.Address()) {
+		t.Fatalf("stamp index points to %s, want %s", newStampIndex.ChunkAddress, second.Address())
+	}
+	if !bytes.Equal(newStampIndex.StampHash, secondStampHash) {
+		t.Fatalf("stamp index hash %x, want %x", newStampIndex.StampHash, secondStampHash)
+	}
+
+	storedStamp, err := chunkstamp.LoadWithStampHash(ts.IndexStore(), "reserve", second.Address(), secondStampHash)
+	if err != nil {
+		t.Fatalf("expected chunkstamp for winning chunk: %v", err)
+	}
+	if !bytes.Equal(storedStamp.Index(), wantStampIndex) {
+		t.Fatalf("stored stamp index %x, want %x", storedStamp.Index(), wantStampIndex)
+	}
+	if !bytes.Equal(storedStamp.BatchID(), batch.ID) {
+		t.Fatalf("stored stamp batch %x, want %x", storedStamp.BatchID(), batch.ID)
+	}
+	if _, err := chunkstamp.LoadWithStampHash(ts.IndexStore(), "reserve", first.Address(), firstStampHash); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("expected old chunkstamp gone, got %v", err)
 	}
 
 	checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{

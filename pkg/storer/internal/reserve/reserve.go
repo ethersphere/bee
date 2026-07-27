@@ -140,15 +140,6 @@ func (r *Reserve) putChunk(ctx context.Context, chunk swarm.Chunk) (socReplaced 
 
 	bin := swarm.Proximity(r.baseAddr.Bytes(), chunk.Address().Bytes())
 
-	chunkType := storage.ChunkType(chunk)
-
-	sum, err := storage.ChunkSum(chunk)
-	if err != nil {
-		return err
-	}
-
-	bin := swarm.Proximity(r.baseAddr.Bytes(), chunk.Address().Bytes())
-
 	// check if the chunk with the same batch, stamp timestamp and index is already stored
 	has, err := r.Has(chunk.Address(), chunk.Stamp().BatchID(), stampHash)
 	if err != nil {
