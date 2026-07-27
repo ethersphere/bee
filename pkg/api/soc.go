@@ -15,6 +15,7 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/soc"
@@ -215,7 +216,8 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	reference := sch.Address()
 	historyReference := swarm.ZeroAddress
 	if headers.Act {
-		reference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, headers.HistoryAddress)
+		// Redundancy level is hardcoded; ACT on SOC is semantically broken and will be removed, see https://github.com/ethersphere/bee/issues/5469.
+		reference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, headers.HistoryAddress, redundancy.DefaultUploadLevel)
 		if err != nil {
 			logger.Debug("access control upload failed", "error", err)
 			logger.Error(nil, "access control upload failed")

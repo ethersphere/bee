@@ -2,7 +2,10 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package node
+// Package snapshot provides a BlockHeightContractFilterer backed by a
+// pre-computed postage batch snapshot, used to rebuild the batch store from an
+// embedded snapshot instead of replaying the whole postage contract history.
+package snapshot
 
 import (
 	"bytes"
@@ -17,7 +20,6 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/core/types"
-	archive "github.com/ethersphere/batch-archive"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage/listener"
 )
@@ -26,12 +28,6 @@ var _ listener.BlockHeightContractFilterer = (*SnapshotLogFilterer)(nil)
 
 type SnapshotGetter interface {
 	GetBatchSnapshot() []byte
-}
-
-type archiveSnapshotGetter struct{}
-
-func (a archiveSnapshotGetter) GetBatchSnapshot() []byte {
-	return archive.GetBatchSnapshot()
 }
 
 type SnapshotLogFilterer struct {

@@ -71,7 +71,10 @@ jobs:
     - name: GolangCI-Lint
       uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0
       with:
-        skip-cache: false
+        # Disable the golangci-lint cache: a restored stale cache has produced
+        # phantom staticcheck findings in files unrelated to the PR diff. The
+        # full lint run is fast enough that correctness is worth the trade-off.
+        skip-cache: true
         version: v2.11.3
     - name: Whitespace check
       run: make check-whitespace

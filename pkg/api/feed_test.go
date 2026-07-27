@@ -280,7 +280,7 @@ func TestFeed_Post(t *testing.T) {
 			}),
 		)
 
-		ls := loadsave.NewReadonly(mockStorer.ChunkStore(), mockStorer.Cache(), redundancy.DefaultLevel)
+		ls := loadsave.NewReadonly(mockStorer.ChunkStore(), mockStorer.Cache(), redundancy.DefaultDownloadLevel)
 		i, err := manifest.NewMantarayManifestReference(expReference, ls)
 		if err != nil {
 			t.Fatal(err)

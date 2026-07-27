@@ -338,3 +338,161 @@ func TestPutHandshakeAddress_NoStorer_FallbackVerifiedTrue(t *testing.T) {
 		t.Fatalf("addressbook cb: got %s, want %s", got.ChequebookAddress.Hex(), cb.Hex())
 	}
 }
+
+// countingBook wraps an addressbook and counts writes going through Put.
+type countingBook struct {
+	addressbook.GetPutter
+	puts int
+}
+
+func (b *countingBook) Put(overlay swarm.Address, addr bzz.Address, verified bool) error {
+	b.puts++
+	return b.GetPutter.Put(overlay, addr, verified)
+}
+
+// testAddrPair builds two properly-signed bzz.Addresses for the same peer
+// identity, the second with a newer timestamp, mirroring a peer whose record
+// genuinely changed between two handshakes.
+func testAddrPair(t *testing.T, cb common.Address) (*bzz.Address, *bzz.Address) {
+	t.Helper()
+
+	pk, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := crypto.NewDefaultSigner(pk)
+	nonce := common.HexToHash("0x1").Bytes()
+
+	overlay, err := crypto.NewOverlayAddress(pk.PublicKey, 1, nonce)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	underlay, err := multiaddr.NewMultiaddr("/ip4/127.0.0.1/tcp/1634")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ts := time.Now().Unix()
+	first, err := bzz.NewAddress(signer, []multiaddr.Multiaddr{underlay}, overlay, 1, nonce, ts, cb)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := bzz.NewAddress(signer, []multiaddr.Multiaddr{underlay}, overlay, 1, nonce, ts+1, cb)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return first, second
+}
+
+// TestPutHandshakeAddress_UnchangedRecord_SkipsAddressbookWrite covers the
+// reconnect path with the storer wired: a byte-identical, already-verified
+// record skips the addressbook write, while the storer still runs so the
+// chequebook-overlay mapping dropped on disconnect is re-registered.
+func TestPutHandshakeAddress_UnchangedRecord_SkipsAddressbookWrite(t *testing.T) {
+	t.Parallel()
+
+	book := addressbook.New(mock.NewStateStore())
+	storer := &fakeStorer{}
+	svc := libp2p.NewPutHandshakeAddressTestService(log.Noop, book, storer)
+
+	addr := testAddr(t, common.HexToAddress("0x5555555555555555555555555555555555555555"))
+
+	if err := svc.PutHandshakeAddress(addr); err != nil {
+		t.Fatalf("PutHandshakeAddress: %v", err)
+	}
+	if err := svc.PutHandshakeAddress(addr); err != nil {
+		t.Fatalf("PutHandshakeAddress (reconnect): %v", err)
+	}
+
+	if storer.puts != 2 {
+		t.Fatalf("storer.Put calls: got %d, want 2 (mapping must re-register on reconnect)", storer.puts)
+	}
+	if storer.cbCallbacks != 1 {
+		t.Fatalf("writeAddressbook callbacks: got %d, want 1 (unchanged record must skip the write)", storer.cbCallbacks)
+	}
+}
+
+// TestPutHandshakeAddress_NoStorer_UnchangedRecord_SkipsWrite covers the
+// reconnect path with the chequebook subsystem disabled: the second put of an
+// identical record performs no addressbook write.
+func TestPutHandshakeAddress_NoStorer_UnchangedRecord_SkipsWrite(t *testing.T) {
+	t.Parallel()
+
+	book := &countingBook{GetPutter: addressbook.New(mock.NewStateStore())}
+	svc := libp2p.NewPutHandshakeAddressTestService(log.Noop, book, nil)
+
+	addr := testAddr(t, common.HexToAddress("0x6666666666666666666666666666666666666666"))
+
+	if err := svc.PutHandshakeAddress(addr); err != nil {
+		t.Fatalf("PutHandshakeAddress: %v", err)
+	}
+	if err := svc.PutHandshakeAddress(addr); err != nil {
+		t.Fatalf("PutHandshakeAddress (reconnect): %v", err)
+	}
+
+	if book.puts != 1 {
+		t.Fatalf("addressbook writes: got %d, want 1 (unchanged record must skip the write)", book.puts)
+	}
+}
+
+// TestPutHandshakeAddress_IdenticalButUnverified_Writes guards the verified
+// upgrade: a record identical to the stored one but persisted with
+// Verified=false (e.g. by gossip) must still be re-written with Verified=true.
+func TestPutHandshakeAddress_IdenticalButUnverified_Writes(t *testing.T) {
+	t.Parallel()
+
+	inner := addressbook.New(mock.NewStateStore())
+	book := &countingBook{GetPutter: inner}
+	svc := libp2p.NewPutHandshakeAddressTestService(log.Noop, book, nil)
+
+	addr := testAddr(t, common.HexToAddress("0x7777777777777777777777777777777777777777"))
+
+	if err := inner.Put(addr.Overlay, *addr, false); err != nil {
+		t.Fatalf("seed addressbook: %v", err)
+	}
+
+	if err := svc.PutHandshakeAddress(addr); err != nil {
+		t.Fatalf("PutHandshakeAddress: %v", err)
+	}
+
+	if book.puts != 1 {
+		t.Fatalf("addressbook writes: got %d, want 1 (unverified record must be upgraded)", book.puts)
+	}
+	_, verified, err := inner.Get(addr.Overlay)
+	if err != nil {
+		t.Fatalf("addressbook.Get: %v", err)
+	}
+	if !verified {
+		t.Fatal("addressbook entry must be upgraded to Verified=true by the handshake")
+	}
+}
+
+// TestPutHandshakeAddress_ChangedRecord_Writes verifies a genuinely updated
+// record for a known overlay is still written.
+func TestPutHandshakeAddress_ChangedRecord_Writes(t *testing.T) {
+	t.Parallel()
+
+	book := &countingBook{GetPutter: addressbook.New(mock.NewStateStore())}
+	svc := libp2p.NewPutHandshakeAddressTestService(log.Noop, book, nil)
+
+	first, second := testAddrPair(t, common.HexToAddress("0x8888888888888888888888888888888888888888"))
+
+	if err := svc.PutHandshakeAddress(first); err != nil {
+		t.Fatalf("PutHandshakeAddress: %v", err)
+	}
+	if err := svc.PutHandshakeAddress(second); err != nil {
+		t.Fatalf("PutHandshakeAddress (updated record): %v", err)
+	}
+
+	if book.puts != 2 {
+		t.Fatalf("addressbook writes: got %d, want 2 (changed record must be written)", book.puts)
+	}
+	got, _, err := book.Get(first.Overlay)
+	if err != nil {
+		t.Fatalf("addressbook.Get: %v", err)
+	}
+	if got.Timestamp != second.Timestamp {
+		t.Fatalf("stored timestamp: got %d, want %d", got.Timestamp, second.Timestamp)
+	}
+}

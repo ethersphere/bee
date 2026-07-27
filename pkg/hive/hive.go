@@ -69,8 +69,8 @@ type Options struct {
 }
 
 type Service struct {
-	streamer          p2p.Bee260CompatibilityStreamer
-	addressBook       addressbook.GetPutter
+	streamer          p2p.Streamer
+	addressBook       addressbook.GetPutSeener
 	addPeersHandler   func(...swarm.Address)
 	networkID         uint64
 	logger            log.Logger
@@ -92,7 +92,7 @@ type Service struct {
 	chequebookStorer   ChequebookStorer
 }
 
-func New(streamer p2p.Bee260CompatibilityStreamer, addressbook addressbook.GetPutter, networkID uint64, overlay swarm.Address, logger log.Logger, o Options) *Service {
+func New(streamer p2p.Streamer, addressbook addressbook.GetPutSeener, networkID uint64, overlay swarm.Address, logger log.Logger, o Options) *Service {
 	svc := &Service{
 		streamer:           streamer,
 		logger:             logger.WithName(loggerName).Register(),
@@ -324,6 +324,11 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 	peersToAdd := make([]swarm.Address, 0, len(peers.Peers))
 
 	for _, p := range peers.Peers {
+		if p == nil {
+			s.logger.Debug("nil peer entry in Peers message, skipping")
+			continue
+		}
+
 		multiUnderlays, err := bzz.DeserializeUnderlays(p.Underlay)
 		if err != nil {
 			s.metrics.PeerUnderlayErr.Inc()
@@ -362,6 +367,18 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 		if err != nil && !errors.Is(err, addressbook.ErrNotFound) {
 			s.logger.Debug("hive gossip: addressbook lookup failed", "overlay", overlayAddr.String(), "error", err)
 			continue
+		}
+
+		// Hearing about a peer we already know is a sighting in its own right,
+		// whether or not the record it carries is newer than the one we hold.
+		// Peers mint their bzz.Address once and gossip it unchanged for their
+		// whole uptime, so for a known peer there is almost never anything new
+		// to store, and the pruner would evict peers we are told about
+		// constantly.
+		if existing != nil {
+			if err := s.addressBook.Seen(overlayAddr); err != nil {
+				s.logger.Debug("hive gossip: mark peer seen", "overlay", overlayAddr.String(), "error", err)
+			}
 		}
 
 		if err := bzz.CheckTimestamp(bzzAddress.Timestamp, existing, bzz.TimestampSourceGossip, s.now()); err != nil {

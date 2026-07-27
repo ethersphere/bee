@@ -57,6 +57,7 @@ func TestBytes(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestHeader(api.SwarmRedundancyLevelHeader, "0"),
 			jsonhttptest.WithRequestBody(bytes.NewReader(content)),
 			jsonhttptest.WithExpectedJSONResponse(api.BytesPostResponse{
 				Reference: chunkAddr,

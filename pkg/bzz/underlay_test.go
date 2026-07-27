@@ -268,42 +268,6 @@ func TestSerializeUnderlaysDeserializeUnderlays(t *testing.T) {
 	})
 }
 
-func TestLegacyCompatibility(t *testing.T) {
-	ip4TCPAddr := mustNewMultiaddr(t, "/ip4/1.2.3.4/tcp/5678/p2p/QmWqeeHEqG2db37JsuKUxyJ2JF8LtVJMGohKVT8h3aeCVH")
-	p2pAddr := mustNewMultiaddr(t, "/ip4/65.108.66.216/tcp/16341/p2p/QmVuCJ3M96c7vwv4MQBv7WY1HWQacyCEHvM99R8MUDj95d")
-	dnsSwarmAddr := mustNewMultiaddr(t, "/dnsaddr/mainnet.ethswarm.org")
-
-	t.Run("legacy parser fails on new list format", func(t *testing.T) {
-		addrs := []multiaddr.Multiaddr{ip4TCPAddr, p2pAddr, dnsSwarmAddr}
-		listBytes := mustSerializeUnderlays(t, addrs) // This will have the prefix
-		_, err := multiaddr.NewMultiaddrBytes(listBytes)
-		if err == nil {
-			t.Error("expected legacy NewMultiaddrBytes to fail on list format, but it succeeded")
-		}
-	})
-
-	t.Run("legacy parser succeeds on new single-addr format", func(t *testing.T) {
-		addrs := []multiaddr.Multiaddr{dnsSwarmAddr}
-		singleBytes := mustSerializeUnderlays(t, addrs) // This will NOT have the prefix
-		_, err := multiaddr.NewMultiaddrBytes(singleBytes)
-		if err != nil {
-			t.Errorf("expected legacy NewMultiaddrBytes to succeed on single-addr format, but it failed: %v", err)
-		}
-	})
-
-	t.Run("new parser succeeds on legacy format", func(t *testing.T) {
-		singleBytes := p2pAddr.Bytes()
-		deserialized, err := bzz.DeserializeUnderlays(singleBytes)
-		if err != nil {
-			t.Fatalf("Deserialize failed on legacy bytes: %v", err)
-		}
-		expected := []multiaddr.Multiaddr{p2pAddr}
-		if !reflect.DeepEqual(expected, deserialized) {
-			t.Errorf("expected %v, got %v", expected, deserialized)
-		}
-	})
-}
-
 func mustSerializeUnderlays(tb testing.TB, addrs []multiaddr.Multiaddr) []byte {
 	tb.Helper()
 	b, err := bzz.SerializeUnderlays(addrs)

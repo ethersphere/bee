@@ -27,6 +27,7 @@ type metrics struct {
 	SendTransactionCalls          prometheus.Counter
 	FilterLogsCalls               prometheus.Counter
 	ChainIDCalls                  prometheus.Counter
+	AverageBlockTimeSeconds       prometheus.Gauge
 }
 
 func newMetrics() metrics {
@@ -128,6 +129,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "calls_chain_id",
 			Help:      "Count of eth_chainId rpc calls",
+		}),
+		AverageBlockTimeSeconds: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "average_block_time_seconds",
+			Help:      "Observed average block time in seconds, updated on each block number cache refresh.",
 		}),
 	}
 }

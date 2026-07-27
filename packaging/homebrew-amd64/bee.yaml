@@ -19,6 +19,8 @@
 # bootnode: ["/dnsaddr/mainnet.ethswarm.org"]
 ## cause the node to always accept incoming connections
 # bootnode-mode: false
+## bzz token contract address
+# bzz-token-address: ""
 ## cache capacity in chunks, multiply by 4096 to get approximate capacity in bytes
 # cache-capacity: "1000000"
 ## enable forwarded content caching
@@ -107,16 +109,22 @@ password-file: "/usr/local/var/lib/swarm-bee/password"
 # swap-initial-deposit: "0"
 ## neighborhood to target in binary format (ex: 111111001) for mining the initial overlay
 # target-neighborhood: ""
-## enable tracing
-# tracing-enable: false
-## endpoint to send tracing data
-# tracing-endpoint: 127.0.0.1:6831
-## host to send tracing data
-# tracing-host: ""
-## port to send tracing data
-# tracing-port: ""
-## service name identifier for tracing
-# tracing-service-name: bee
+## tracing settings
+# tracing:
+#   ## enable tracing
+#   enable: false
+#   ## OTLP collector endpoint to send tracing data (host:port); default port is 4318 for http, 4317 for grpc
+#   endpoint: 127.0.0.1:4318
+#   ## disable TLS for the OTLP exporter (useful for a local collector)
+#   insecure: false
+#   ## path to a PEM-encoded CA bundle used to verify the OTLP collector certificate; ignored when insecure is true
+#   ca-file: ""
+#   ## OTLP exporter transport: http or grpc
+#   protocol: http
+#   ## head-based sampling ratio in [0,1]; 0 samples nothing, 1 samples everything
+#   sampling-ratio: 1.0
+#   ## service name identifier for tracing
+#   service-name: bee
 ## gas limit fallback when estimation fails for contract transactions (default 500000)
 # gas-limit-fallback: 500000
 ## skips the gas estimate step for contract transactions

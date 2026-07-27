@@ -26,25 +26,24 @@ import (
 // Traverser represents service which traverse through address dependent chunks.
 type Traverser interface {
 	// Traverse iterates through each address related to the supplied one, if possible.
-	Traverse(context.Context, swarm.Address, swarm.AddressIterFunc) error
+	Traverse(context.Context, swarm.Address, swarm.AddressIterFunc, redundancy.Level) error
 }
 
 // New constructs for a new Traverser.
-func New(getter storage.Getter, putter storage.Putter, rLevel redundancy.Level) Traverser {
-	return &service{getter: getter, putter: putter, rLevel: rLevel}
+func New(getter storage.Getter, putter storage.Putter) Traverser {
+	return &service{getter: getter, putter: putter}
 }
 
 // service is implementation of Traverser using storage.Storer as its storage.
 type service struct {
 	getter storage.Getter
 	putter storage.Putter
-	rLevel redundancy.Level
 }
 
 // Traverse implements Traverser.Traverse method.
-func (s *service) Traverse(ctx context.Context, addr swarm.Address, iterFn swarm.AddressIterFunc) error {
+func (s *service) Traverse(ctx context.Context, addr swarm.Address, iterFn swarm.AddressIterFunc, rLevel redundancy.Level) error {
 	processBytes := func(ref swarm.Address) error {
-		j, _, err := joiner.New(ctx, s.getter, s.putter, ref, s.rLevel)
+		j, _, err := joiner.New(ctx, s.getter, s.putter, ref, rLevel)
 		if err != nil {
 			return fmt.Errorf("traversal: joiner error on %q: %w", ref, err)
 		}
@@ -67,7 +66,7 @@ func (s *service) Traverse(ctx context.Context, addr swarm.Address, iterFn swarm
 		}
 	}
 
-	j, _, err := joiner.New(ctx, s.getter, s.putter, addr, s.rLevel)
+	j, _, err := joiner.New(ctx, s.getter, s.putter, addr, rLevel)
 	if err != nil {
 		return err
 	}
@@ -77,7 +76,7 @@ func (s *service) Traverse(ctx context.Context, addr swarm.Address, iterFn swarm
 	// then the reference is likely a manifest reference. This is because manifest holds metadata
 	// that points to the actual data file, and this metadata is assumed to be small - Less than or equal to swarm.ChunkSize.
 	if j.Size() <= swarm.ChunkSize {
-		ls := loadsave.NewReadonly(s.getter, s.putter, s.rLevel)
+		ls := loadsave.NewReadonly(s.getter, s.putter, rLevel)
 		switch mf, err := manifest.NewDefaultManifestReference(addr, ls); {
 		case errors.Is(err, manifest.ErrInvalidManifestType):
 			break

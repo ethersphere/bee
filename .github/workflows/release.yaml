@@ -18,7 +18,20 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
+          cache: false
           go-version-file: go.mod
+      - name: Cache Go modules and build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-release-${{ hashFiles('**/go.sum') }}
+          # Cross-compilation recompiles deps per architecture; seed from the
+          # most recent build cache so each release is incremental, not cold.
+          restore-keys: |
+            ${{ runner.os }}-go-release-
+            ${{ runner.os }}-go-
       - name: Docker Hub and Quay Login
         run: |
           printf ${{ secrets.DOCKERHUB_PASSWORD }} | docker login --username ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
@@ -37,7 +50,7 @@ jobs:
         run: |
           echo "BEE_API_VERSION=$(grep '^  version:' openapi/Swarm.yaml | awk '{print $2}')" >> $GITHUB_ENV
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
+        uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7.2.2
         with:
           version: '~> v2'
           args: release --clean --timeout 1h
