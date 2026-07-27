@@ -201,6 +201,10 @@ func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount 
 			return nil, err
 		}
 		cumulativePayout = big.NewInt(0)
+	} else if lastCheque.CumulativePayout == nil {
+		// a corrupt statestore entry unmarshals into a non-nil cheque with a
+		// nil cumulativePayout; guard against the arithmetic below.
+		return nil, fmt.Errorf("nil cumulative payout on cheque loaded from statestore for beneficiary %x: %w", beneficiary, ErrNoCheque)
 	} else {
 		cumulativePayout = lastCheque.CumulativePayout
 	}

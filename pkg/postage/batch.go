@@ -9,6 +9,9 @@ import (
 	"math/big"
 )
 
+// batchSize is the number of bytes in the serialisation of a batch
+const batchSize = 95
+
 // Batch represents a postage batch, a payment on the blockchain.
 type Batch struct {
 	ID          []byte   // batch ID
@@ -24,9 +27,18 @@ type Batch struct {
 // postage batch to a byte slice.
 // serialised as ID(32)|big endian value(32)|start block(8)|owner addr(20)|BucketDepth(1)|depth(1)|immutable(1)
 func (b *Batch) MarshalBinary() ([]byte, error) {
-	out := make([]byte, 95)
-	copy(out, b.ID)
+	if b.Value == nil {
+		return nil, ErrBatchInvalid
+	}
 	value := b.Value.Bytes()
+	// the fields are copied into fixed size windows; an oversized field would
+	// either silently overwrite a neighbouring field or, for the value, index
+	// out of range.
+	if len(value) > 32 || len(b.ID) > 32 || len(b.Owner) > 20 {
+		return nil, ErrBatchInvalid
+	}
+	out := make([]byte, batchSize)
+	copy(out, b.ID)
 	copy(out[64-len(value):], value)
 	binary.BigEndian.PutUint64(out[64:72], b.Start)
 	copy(out[72:], b.Owner)
@@ -41,6 +53,13 @@ func (b *Batch) MarshalBinary() ([]byte, error) {
 // UnmarshalBinary implements BinaryUnmarshaller. It will attempt deserialize
 // the given byte slice into the batch.
 func (b *Batch) UnmarshalBinary(buf []byte) error {
+	// a shorter buffer cannot be deserialised. longer buffers are tolerated:
+	// bee <v2.0.0 serialised batches as 96 bytes (with a trailing storage
+	// radius byte) and such records may still be present in the state store,
+	// where they have always been read as the first 95 bytes.
+	if len(buf) < batchSize {
+		return ErrBatchInvalid
+	}
 	b.ID = buf[:32]
 	b.Value = big.NewInt(0).SetBytes(buf[32:64])
 	b.Start = binary.BigEndian.Uint64(buf[64:72])

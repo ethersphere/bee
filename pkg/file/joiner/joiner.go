@@ -8,6 +8,7 @@ package joiner
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -147,8 +148,14 @@ func New(ctx context.Context, g storage.Getter, putter storage.Putter, address s
 // A Joiner provides Read, Seek and Size functionalities.
 func NewJoiner(ctx context.Context, g storage.Getter, putter storage.Putter, address swarm.Address, rootChunk swarm.Chunk) (file.Joiner, int64, error) {
 	chunkData := rootChunk.Data()
-	rootData := chunkData[swarm.SpanSize:]
+	if len(chunkData) < swarm.SpanSize {
+		return nil, 0, fmt.Errorf("joiner: root chunk %s has %d bytes, want at least %d: %w", address, len(chunkData), swarm.SpanSize, swarm.ErrInvalidChunk)
+	}
 	refLength := len(address.Bytes())
+	if refLength != swarm.HashSize && refLength != encryption.ReferenceSize {
+		return nil, 0, fmt.Errorf("joiner: root address %s has reference length %d: %w", address, refLength, storage.ErrReferenceLength)
+	}
+	rootData := chunkData[swarm.SpanSize:]
 	encryption := refLength == encryption.ReferenceSize
 	rLevel, span := chunkToSpan(chunkData)
 	rootParity := 0
@@ -303,7 +310,11 @@ func (j *joiner) readAtOffset(
 					return err
 				}
 
-				chunkData := ch.Data()[8:]
+				if len(ch.Data()) < swarm.SpanSize {
+					return ErrMalformedTrie
+				}
+
+				chunkData := ch.Data()[swarm.SpanSize:]
 				subtrieLevel, subtrieSpan := j.chunkToSpan(ch.Data())
 				_, subtrieParity := file.ReferenceCount(uint64(subtrieSpan), subtrieLevel, j.refLength == encryption.ReferenceSize)
 
@@ -443,7 +454,11 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 			return err
 		}
 
-		chunkData := ch.Data()[8:]
+		if len(ch.Data()) < swarm.SpanSize {
+			return ErrMalformedTrie
+		}
+
+		chunkData := ch.Data()[swarm.SpanSize:]
 		subtrieLevel, subtrieSpan := j.chunkToSpan(ch.Data())
 		_, parities := file.ReferenceCount(uint64(subtrieSpan), subtrieLevel, j.refLength != swarm.HashSize)
 
