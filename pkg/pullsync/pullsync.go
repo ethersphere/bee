@@ -287,6 +287,9 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 			s.logger.Debug("syncer got a zero address hash on offer", "peer_address", peer)
 			continue
 		}
+		if len(sum) != storage.ChunkSumSize {
+			return 0, 0, fmt.Errorf("inconsistent chunk sum length")
+		}
 		s.metrics.Offered.Inc()
 		if s.store.IsWithinStorageRadius(a) {
 			have, err = s.store.ReserveHas(a, sum)

@@ -103,14 +103,42 @@ func New(
 //     the lexicographically lower chunk address wins. The loser is rejected; the winner replaces the stored chunk
 //     through the usual remove-and-store path (including a fresh bin ID for pullsync).
 func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
+	socReplaced, err := r.putChunk(ctx, chunk)
+	if err != nil {
+		return err
+	}
+	if socReplaced {
+		// A single owner chunk's payload is stored once per address while index
+		// entries exist per stamp: replacing the payload invalidates the
+		// divergence checksums of co-resident entries under other stamps. The
+		// refresh runs after the put transaction, with no locks held, because
+		// it takes the sibling entries' batch locks (see refreshSiblingSums).
+		return r.refreshSiblingSums(ctx, chunk.Address())
+	}
+	return nil
+}
+
+// putChunk stores the chunk and reports whether the shared payload of an
+// already stored single owner chunk was replaced, in which case the sums of
+// co-resident entries must be refreshed by the caller.
+func (r *Reserve) putChunk(ctx context.Context, chunk swarm.Chunk) (socReplaced bool, err error) {
 	// batchID lock, Put vs Eviction
 	r.multx.Lock(string(chunk.Stamp().BatchID()))
 	defer r.multx.Unlock(string(chunk.Stamp().BatchID()))
 
 	stampHash, err := chunk.Stamp().Hash()
 	if err != nil {
-		return err
+		return false, err
 	}
+
+	chunkType := storage.ChunkType(chunk)
+
+	sum, err := storage.ChunkSum(chunk)
+	if err != nil {
+		return false, err
+	}
+
+	bin := swarm.Proximity(r.baseAddr.Bytes(), chunk.Address().Bytes())
 
 	chunkType := storage.ChunkType(chunk)
 
@@ -124,7 +152,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	// check if the chunk with the same batch, stamp timestamp and index is already stored
 	has, err := r.Has(chunk.Address(), chunk.Stamp().BatchID(), stampHash)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if has {
 		// Address, batch and stamp all match, but two single owner chunks can
@@ -134,12 +162,18 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 		// keeps.
 		hasSum, err := r.HasSum(chunk.Address(), sum)
 		if err != nil {
-			return err
+			return false, err
 		}
 		if hasSum {
-			return nil
+			return false, nil
 		}
-		return r.resolveDivergence(ctx, chunk, sum, stampHash, bin, chunkType)
+		if err := r.resolveDivergence(ctx, chunk, sum, stampHash, bin, chunkType); err != nil {
+			return false, err
+		}
+		// the tie-break winner replaced the shared payload, so co-resident
+		// entries under other stamps need their sums refreshed like on any
+		// other single owner chunk replacement.
+		return true, nil
 	}
 
 	// bin lock
@@ -265,6 +299,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 
 				if chunkType == swarm.ChunkTypeSingleOwner {
 					r.logger.Debug("replacing soc in chunkstore", "address", chunk.Address())
+					socReplaced = true
 					return s.ChunkStore().Replace(ctx, chunk, false)
 				}
 
@@ -327,6 +362,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			}
 			if has {
 				r.logger.Debug("replacing soc in chunkstore", "address", chunk.Address())
+				socReplaced = true
 				err = s.ChunkStore().Replace(ctx, chunk, true)
 			} else {
 				err = s.ChunkStore().Put(ctx, chunk)
@@ -346,10 +382,100 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 		return nil
 	})
 	if err != nil {
-		return err
+		return false, err
 	}
 	if shouldIncReserveSize {
 		r.size.Add(1)
+	}
+	return socReplaced, nil
+}
+
+// refreshSiblingSums recomputes the divergence checksum of every reserve entry
+// at the given address after its shared payload was replaced. Without the
+// refresh, entries under other stamps keep advertising content the node no
+// longer holds (peers reject the deliveries as unsolicited) and keep matching
+// offers for content it cannot store.
+//
+// It must be called with no reserve locks held: each sibling entry is updated
+// under its own batch lock, one at a time, mirroring the Put-vs-Eviction lock
+// discipline. The sum is recomputed from the currently committed payload
+// rather than the caller's chunk, so concurrent replacements converge on the
+// content that committed last. Entries whose sum already matches, including
+// the caller's own, are left untouched.
+func (r *Reserve) refreshSiblingSums(ctx context.Context, addr swarm.Address) error {
+	bin := swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes())
+
+	// collect first: the underlying stores do not support writes during an
+	// iteration. A stamp deleted between collection and its locked update is
+	// skipped when its index entry turns up missing.
+	var stamps []swarm.Stamp
+	err := chunkstamp.IterateAll(r.st.IndexStore(), reserveScope, addr, func(stamp swarm.Stamp) (bool, error) {
+		stamps = append(stamps, stamp)
+		return false, nil
+	})
+	if err != nil {
+		return fmt.Errorf("iterate stamps for %s: %w", addr, err)
+	}
+
+	for _, stamp := range stamps {
+		stampHash, err := stamp.Hash()
+		if err != nil {
+			return err
+		}
+
+		err = func() error {
+			// batchID lock, refresh vs Put/Eviction
+			r.multx.Lock(string(stamp.BatchID()))
+			defer r.multx.Unlock(string(stamp.BatchID()))
+
+			return r.st.Run(ctx, func(s transaction.Store) error {
+				chunk, err := s.ChunkStore().Get(ctx, addr)
+				if err != nil {
+					if errors.Is(err, storage.ErrNotFound) {
+						return nil
+					}
+					return err
+				}
+
+				sum, err := storage.ChunkSumFromParts(stamp.BatchID(), stampHash, chunk)
+				if err != nil {
+					return err
+				}
+
+				item := &BatchRadiusItem{Bin: bin, BatchID: stamp.BatchID(), Address: addr, StampHash: stampHash}
+				err = s.IndexStore().Get(item)
+				if err != nil {
+					if errors.Is(err, storage.ErrNotFound) {
+						return nil
+					}
+					return err
+				}
+
+				cbi := &ChunkBinItem{Bin: bin, BinID: item.BinID}
+				err = s.IndexStore().Get(cbi)
+				if err != nil {
+					if errors.Is(err, storage.ErrNotFound) {
+						return nil
+					}
+					return err
+				}
+
+				if bytes.Equal(cbi.Sum, sum) {
+					return nil
+				}
+
+				oldSum := cbi.Sum
+				cbi.Sum = sum
+				return errors.Join(
+					s.IndexStore().Delete(&ChunkSumItem{Address: addr, Sum: oldSum}),
+					s.IndexStore().Put(cbi),
+					s.IndexStore().Put(&ChunkSumItem{Address: addr, Sum: sum}),
+				)
+			})
+		}()
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -621,12 +747,64 @@ func deleteChunkBinItem(store storage.IndexStore, bin uint8, binID uint64) error
 		if errors.Is(err, storage.ErrNotFound) {
 			return nil
 		}
+		// The stored value predates the Sum field (pre-migration record, seen
+		// during the Sum backfill migration and the sharky recovery that runs
+		// before it). Such a record cannot have a companion ChunkSumItem, so
+		// deleting by key alone is complete.
+		if errors.Is(err, errUnmarshalInvalidSize) {
+			return store.Delete(&ChunkBinItem{Bin: bin, BinID: binID})
+		}
 		return err
 	}
 	return errors.Join(
 		store.Delete(cbi),
 		store.Delete(&ChunkSumItem{Address: cbi.Address, Sum: cbi.Sum}),
 	)
+}
+
+// RemoveMalformedChunkBinItems deletes chunkBin entries whose stored value
+// does not match the current serialization, without unmarshaling them. Such
+// entries are orphaned pre-Sum records (a ChunkBinItem without a matching
+// BatchRadiusItem is never rewritten by the Sum backfill migration) and would
+// otherwise fail every full iteration of the namespace: the reserve sampler,
+// pullsync bin subscriptions and the reserve repairer. They have no companion
+// ChunkSumItem to remove. Returns the number of entries deleted.
+func RemoveMalformedChunkBinItems(ctx context.Context, st transaction.Storage) (int, error) {
+	var malformed []*ChunkBinItem
+	err := st.IndexStore().Iterate(storage.Query{
+		Factory:      func() storage.Item { return &ChunkBinItem{} },
+		ItemProperty: storage.QueryItemSize,
+	}, func(res storage.Result) (bool, error) {
+		if res.Size == chunkBinItemSize {
+			return false, nil
+		}
+		bin, binID, err := ParseChunkBinID(res.ID)
+		if err != nil {
+			return false, err
+		}
+		malformed = append(malformed, &ChunkBinItem{Bin: bin, BinID: binID})
+		return false, nil
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	const batchSize = 1000
+	for i := 0; i < len(malformed); i += batchSize {
+		end := min(i+batchSize, len(malformed))
+		err := st.Run(ctx, func(s transaction.Store) error {
+			for _, item := range malformed[i:end] {
+				if err := s.IndexStore().Delete(item); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return 0, err
+		}
+	}
+	return len(malformed), nil
 }
 
 func RemoveChunkWithItem(

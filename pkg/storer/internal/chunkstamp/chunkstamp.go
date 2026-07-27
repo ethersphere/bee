@@ -147,6 +147,23 @@ func Load(s storage.Reader, scope string, addr swarm.Address) (swarm.Stamp, erro
 	return LoadWithBatchID(s, scope, addr, nil)
 }
 
+// IterateAll iterates all stamps stored for the given scope and address.
+func IterateAll(s storage.Reader, scope string, addr swarm.Address, fn func(swarm.Stamp) (bool, error)) error {
+	return s.Iterate(
+		storage.Query{
+			Factory: func() storage.Item {
+				return &Item{
+					scope:   []byte(scope),
+					address: addr,
+				}
+			},
+		},
+		func(res storage.Result) (bool, error) {
+			return fn(res.Entry.(*Item).stamp)
+		},
+	)
+}
+
 // LoadWithBatchID returns swarm.Stamp related to the given address and batchID.
 func LoadWithBatchID(s storage.Reader, scope string, addr swarm.Address, batchID []byte) (swarm.Stamp, error) {
 	var stamp swarm.Stamp
