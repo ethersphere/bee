@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coreos/go-semver/semver"
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
@@ -63,7 +64,8 @@ func (s *pipeStreamAPI) Close() error {
 	s.once.Do(func() { s.pr.Close(); s.pw.Close() })
 	return nil
 }
-func (s *pipeStreamAPI) Reset() error { return s.Close() }
+func (s *pipeStreamAPI) Reset() error                      { return s.Close() }
+func (s *pipeStreamAPI) Version() (*semver.Version, error) { return nil, nil }
 
 // pubsubMockP2P implements pubsub.P2P for testing.
 // Only ConnectAllowLight and NewStream do real work; all other methods are stubs.
@@ -105,12 +107,13 @@ func (s *nopStream) Read(p []byte) (int, error) {
 	<-s.done
 	return 0, io.EOF
 }
-func (s *nopStream) Write(p []byte) (int, error)  { return len(p), nil }
-func (s *nopStream) Close() error                 { s.once.Do(func() { close(s.done) }); return nil }
-func (s *nopStream) ResponseHeaders() p2p.Headers { return nil }
-func (s *nopStream) Headers() p2p.Headers         { return nil }
-func (s *nopStream) FullClose() error             { return s.Close() }
-func (s *nopStream) Reset() error                 { return s.Close() }
+func (s *nopStream) Write(p []byte) (int, error)       { return len(p), nil }
+func (s *nopStream) Close() error                      { s.once.Do(func() { close(s.done) }); return nil }
+func (s *nopStream) ResponseHeaders() p2p.Headers      { return nil }
+func (s *nopStream) Headers() p2p.Headers              { return nil }
+func (s *nopStream) FullClose() error                  { return s.Close() }
+func (s *nopStream) Reset() error                      { return s.Close() }
+func (s *nopStream) Version() (*semver.Version, error) { return nil, nil }
 
 func newPubsubService(t *testing.T) (*pubsub.Service, *nopStream) {
 	t.Helper()
