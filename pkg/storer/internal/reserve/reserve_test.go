@@ -1164,8 +1164,6 @@ func checkChunkInIndexStore(t *testing.T, s storage.Reader, bin uint8, binId uin
 	checkStore(t, s, &reserve.ChunkBinItem{Bin: bin, BinID: binId, StampHash: stampHash}, false)
 }
 
-<<<<<<< HEAD
-=======
 // TestChunkSumIndexLockstep asserts the invariant the pullsync want-decision
 // depends on: a ChunkSumItem exists exactly as long as its chunk is in the
 // reserve. A stale entry would make the node silently refuse to sync a chunk
@@ -1449,7 +1447,6 @@ func TestChunkSumIndexRandomOps(t *testing.T) {
 	checkInvariant(200)
 }
 
->>>>>>> origin/feat/pullsync-soc-convergence
 // TestSOCDivergence covers two single owner chunks that share an address, batch
 // and stamp while wrapping different content. Both are valid, so the storage
 // layer settles which one the neighborhood keeps, and it must reach the same
