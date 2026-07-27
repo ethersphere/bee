@@ -809,11 +809,6 @@ func NewBee(
 	eventListener = listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
 	b.listenerCloser = eventListener
 
-	batchSvc, err = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
-	if err != nil {
-		return nil, fmt.Errorf("init batch service: %w", err)
-	}
-
 	pubsubSvc := pubsub.New(p2ps, logger, o.PubsubBrokerMode)
 	if err = p2ps.AddProtocol(pubsubSvc.Protocol()); err != nil {
 		return nil, fmt.Errorf("pubsub protocol: %w", err)
