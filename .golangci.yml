@@ -13,9 +13,11 @@ linters:
     - goconst
     - goheader
     - goprintffuncname
+    - gosec
     - importas
     - misspell
     - nilerr
+    - nilnil
     - noctx
     - paralleltest
     - prealloc

@@ -157,7 +157,7 @@ func serialize(publicKeys []*ecdsa.PublicKey) ([]byte, error) {
 }
 
 func deserialize(data []byte) []*ecdsa.PublicKey {
-	if len(data) == 0 {
+	if len(data) == 0 || len(data)%publicKeyLen != 0 {
 		return []*ecdsa.PublicKey{}
 	}
 

@@ -34,6 +34,18 @@ const (
 	scryptR     = 8
 	scryptP     = 1
 	scryptDKLen = 32
+
+	// maxScryptMem bounds the memory scrypt.Key is allowed to allocate for a
+	// keyfile supplied set of parameters (it allocates 128*N*r bytes), so that
+	// a malformed or hostile keyfile cannot exhaust the node's memory.
+	maxScryptMem = 1 << 30
+	// maxScryptP bounds the parallelization factor, which drives both the
+	// number of sequential smix passes and the size of the pbkdf2 block.
+	maxScryptP = 1 << 8
+	// maxScryptDKLen bounds the derived key length, which is allocated verbatim
+	// by pbkdf2. Anything shorter than scryptDKLen cannot satisfy the 32 bytes
+	// this package reads out of the derived key.
+	maxScryptDKLen = 1 << 16
 )
 
 // This format is compatible with Ethereum JSON v3 key file format.
@@ -63,6 +75,28 @@ type kdfParams struct {
 	P     int    `json:"p"`
 	DKLen int    `json:"dklen"`
 	Salt  string `json:"salt"`
+}
+
+// validate checks that the scrypt parameters decoded from a keyfile are usable.
+// Parameters are attacker controlled, so they are rejected rather than passed to
+// scrypt.Key, which panics on a zero key length and happily allocates 128*N*r
+// bytes for any well formed but oversized N and r.
+func (p kdfParams) validate() error {
+	switch {
+	case p.DKLen < scryptDKLen || p.DKLen > maxScryptDKLen:
+		return fmt.Errorf("invalid scrypt kdf parameters: dklen must be between %d and %d, got %d", scryptDKLen, maxScryptDKLen, p.DKLen)
+	case p.N <= 1 || p.N&(p.N-1) != 0 || p.N > maxScryptMem/128:
+		return fmt.Errorf("invalid scrypt kdf parameters: n must be a power of two between 2 and %d, got %d", maxScryptMem/128, p.N)
+	case p.R <= 0 || p.R > maxScryptMem/128:
+		return fmt.Errorf("invalid scrypt kdf parameters: r must be greater than 0 and at most %d, got %d", maxScryptMem/128, p.R)
+	case p.P <= 0 || p.P > maxScryptP:
+		return fmt.Errorf("invalid scrypt kdf parameters: p must be greater than 0 and at most %d, got %d", maxScryptP, p.P)
+	// p.R is > 0 above, so this states N*128*R > maxScryptMem without the
+	// multiplication overflowing or needing an unsigned conversion.
+	case p.N > maxScryptMem/128/p.R:
+		return fmt.Errorf("invalid scrypt kdf parameters: n and r require more than %d bytes of memory", maxScryptMem)
+	}
+	return nil
 }
 
 func encryptKey(k *ecdsa.PrivateKey, password string, edg keystore.EDG) ([]byte, error) {
@@ -214,6 +248,9 @@ func getKDFKey(v keyCripto, password []byte) ([]byte, error) {
 	salt, err := hex.DecodeString(v.KDFParams.Salt)
 	if err != nil {
 		return nil, fmt.Errorf("hex decode salt: %w", err)
+	}
+	if err := v.KDFParams.validate(); err != nil {
+		return nil, err
 	}
 	return scrypt.Key(
 		password,
