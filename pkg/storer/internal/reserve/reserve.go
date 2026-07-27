@@ -102,6 +102,10 @@ func New(
 //  4. Two different chunk addresses that share the same batch stamp index and timestamp are settled by a tie-break:
 //     the lexicographically lower chunk address wins. The loser is rejected; the winner replaces the stored chunk
 //     through the usual remove-and-store path (including a fresh bin ID for pullsync).
+//  5. Two single owner chunks that share an address under different stamps (any batch or stamp
+//     index) settle on one shared payload: a strictly higher stamp timestamp replaces it; equal
+//     timestamps are settled by the lexicographically lower stamp hash. An older stamp is
+//     rejected. Same-stamp divergence remains handled by resolveDivergence above.
 func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	socReplaced, err := r.putChunk(ctx, chunk)
 	if err != nil {
@@ -174,6 +178,12 @@ func (r *Reserve) putChunk(ctx context.Context, chunk swarm.Chunk) (socReplaced 
 	var shouldIncReserveSize bool
 
 	err = r.st.Run(ctx, func(s transaction.Store) error {
+		if chunkType == swarm.ChunkTypeSingleOwner {
+			if err := checkSOCStampOverwrite(ctx, s, chunk, stampHash); err != nil {
+				return err
+			}
+		}
+
 		oldStampIndex, loadedStampIndex, err := stampindex.LoadOrStore(s.IndexStore(), reserveScope, chunk)
 		if err != nil {
 			return fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
@@ -379,6 +389,37 @@ func (r *Reserve) putChunk(ctx context.Context, chunk swarm.Chunk) (socReplaced 
 		r.size.Add(1)
 	}
 	return socReplaced, nil
+}
+
+// checkSOCStampOverwrite rejects an incoming single owner chunk when the
+// address already holds a payload under a stamp that should keep winning:
+// a strictly higher timestamp, or an equal timestamp with a lower or equal
+// stamp hash. Must run before LoadOrStore, which writes immediately.
+func checkSOCStampOverwrite(ctx context.Context, s transaction.Store, chunk swarm.Chunk, stampHash []byte) error {
+	hasPayload, err := s.ChunkStore().Has(ctx, chunk.Address())
+	if err != nil || !hasPayload {
+		return err
+	}
+
+	curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
+	return chunkstamp.IterateAll(s.IndexStore(), reserveScope, chunk.Address(), func(st swarm.Stamp) (bool, error) {
+		prev := binary.BigEndian.Uint64(st.Timestamp())
+		if prev > curr {
+			return true, fmt.Errorf("overwrite same chunk. prev %d cur %d batch %s: %w",
+				prev, curr, hex.EncodeToString(chunk.Stamp().BatchID()), storage.ErrOverwriteNewerChunk)
+		}
+		if prev == curr {
+			prevHash, err := st.Hash()
+			if err != nil {
+				return true, err
+			}
+			if bytes.Compare(prevHash, stampHash) <= 0 {
+				return true, fmt.Errorf("overwrite same chunk. prev %d cur %d batch %s: %w",
+					prev, curr, hex.EncodeToString(chunk.Stamp().BatchID()), storage.ErrOverwriteNewerChunk)
+			}
+		}
+		return false, nil
+	})
 }
 
 // refreshSiblingSums recomputes the divergence checksum of every reserve entry
