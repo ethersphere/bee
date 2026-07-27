@@ -23,12 +23,12 @@ func TestGossipBufferAddAndTakeAll(t *testing.T) {
 		t.Fatalf("want no pending entries, got %d", len(pending))
 	}
 
-	if _, flush := b.stagePeers(addressee, peer1); flush {
-		t.Fatal("unexpected immediate flush")
+	if b.stagePeers(addressee, peer1) {
+		t.Fatal("unexpected wakeup")
 	}
 
-	if _, flush := b.stagePeers(addressee, peer2); flush {
-		t.Fatal("unexpected immediate flush")
+	if b.stagePeers(addressee, peer2) {
+		t.Fatal("unexpected wakeup")
 	}
 
 	pending := b.takeAll()
@@ -54,11 +54,14 @@ func TestGossipBufferMaxBatchFlush(t *testing.T) {
 	addressee := swarm.RandAddress(t)
 
 	b.stagePeers(addressee, swarm.RandAddress(t))
-	flushPeers, flush := b.stagePeers(addressee, swarm.RandAddress(t))
-	if !flush {
-		t.Fatal("want immediate flush at maxBatch")
+	if !b.stagePeers(addressee, swarm.RandAddress(t)) {
+		t.Fatal("want wakeup at maxBatch")
 	}
-	if got := len(flushPeers); got != 2 {
+	ready := b.takeReady()
+	if len(ready) != 1 {
+		t.Fatalf("want 1 ready batch, got %d", len(ready))
+	}
+	if got := len(ready[0].peers); got != 2 {
 		t.Fatalf("want 2 peers in full batch, got %d", got)
 	}
 	if pending := b.takeAll(); len(pending) != 0 {

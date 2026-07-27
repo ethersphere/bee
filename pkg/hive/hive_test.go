@@ -419,9 +419,7 @@ func TestBroadcastPeersSingleCoalesced(t *testing.T) {
 		clientAddress := swarm.RandAddress(t)
 		client := newCoalescingClient(t, recorder, addressbook, networkID, clientAddress, logger, hive.Options{AllowPrivateCIDRs: true})
 
-		if err := client.BroadcastPeers(context.Background(), addresee, bzzAddr.Overlay); err != nil {
-			t.Fatal(err)
-		}
+		client.GossipPeer(addresee, bzzAddr.Overlay)
 
 		assertNoGossipRecords(t, recorder, addresee)
 		waitForCoalesceFlush(t)
@@ -1506,9 +1504,7 @@ func TestBroadcastPeersCoalesce(t *testing.T) {
 
 		ctx := context.Background()
 		for _, overlay := range overlays {
-			if err := client.BroadcastPeers(ctx, serverAddress, overlay); err != nil {
-				t.Fatal(err)
-			}
+			client.GossipPeer(serverAddress, overlay)
 		}
 
 		assertNoGossipRecords(t, recorder, serverAddress)
@@ -1636,12 +1632,9 @@ func TestHiveGossipBuffering(t *testing.T) {
 
 			addressbook, overlays := makeAddressbookWithPeers(t, peerCount)
 			client, recorder, serverAddress := setupClient(t, addressbook, hiveGossipBufferingInterval)
-			ctx := context.Background()
 
 			for _, overlay := range overlays {
-				if err := client.BroadcastPeers(ctx, serverAddress, overlay); err != nil {
-					t.Fatal(err)
-				}
+				client.GossipPeer(serverAddress, overlay)
 			}
 
 			assertNoGossipRecords(t, recorder, serverAddress)
@@ -1677,16 +1670,16 @@ func TestHiveGossipBuffering(t *testing.T) {
 
 			addressbook, overlays := makeAddressbookWithPeers(t, peerCount)
 			client, recorder, serverAddress := setupClient(t, addressbook, coalesceInterval)
-			ctx := context.Background()
 
 			for i, overlay := range overlays {
-				if err := client.BroadcastPeers(ctx, serverAddress, overlay); err != nil {
-					t.Fatal(err)
-				}
+				client.GossipPeer(serverAddress, overlay)
 				if i == peerCount-2 {
 					assertNoGossipRecords(t, recorder, serverAddress)
 				}
 			}
+
+			// Max-batch flush is asynchronous via the coalescer wakeup.
+			synctest.Wait()
 
 			records, err := recorder.Records(serverAddress, "hive", "2.0.0", "peers")
 			if err != nil {

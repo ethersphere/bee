@@ -1079,15 +1079,7 @@ outer:
 				break outer
 			default:
 			}
-			go func(connectedPeer swarm.Address) {
-				// Create a new deadline ctx to prevent goroutine pile up
-				cCtx, cCancel := context.WithTimeout(k.bgBroadcastCtx, time.Minute)
-				defer cCancel()
-
-				if err := k.discovery.BroadcastPeers(cCtx, connectedPeer, peer); err != nil {
-					k.logger.Debug("peer gossip failed", "new_peer_address", peer, "connected_peer_address", connectedPeer, "error", err)
-				}
-			}(connectedPeer)
+			k.discovery.GossipPeer(connectedPeer, peer)
 		}
 	}
 

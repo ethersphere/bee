@@ -56,6 +56,10 @@ func (d *Discovery) BroadcastPeers(ctx context.Context, addressee swarm.Address,
 	return nil
 }
 
+func (d *Discovery) GossipPeer(addressee, peer swarm.Address) {
+	_ = d.BroadcastPeers(context.Background(), addressee, peer)
+}
+
 func (d *Discovery) Broadcasts() int {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()

@@ -1592,24 +1592,9 @@ func TestAnnounceBgBroadcast(t *testing.T) {
 	t.Parallel()
 
 	var (
-		conns     int32
-		bgStarted = make(chan struct{})
-		bgDone    = make(chan struct{})
-		startOnce sync.Once
-		doneOnce  sync.Once
-		p1, p2    = swarm.RandAddress(t), swarm.RandAddress(t)
-		disc      = mock.NewDiscovery(
-			mock.WithBroadcastPeers(func(ctx context.Context, p swarm.Address, _ ...swarm.Address) error {
-				// For the broadcast back to connected peer return early
-				if p.Equal(p2) {
-					return nil
-				}
-				startOnce.Do(func() { close(bgStarted) })
-				defer doneOnce.Do(func() { close(bgDone) })
-				<-ctx.Done()
-				return ctx.Err()
-			}),
-		)
+		conns                 int32
+		p1, p2                = swarm.RandAddress(t), swarm.RandAddress(t)
+		disc                  = mock.NewDiscovery()
 		_, kad, ab, _, signer = newTestKademliaWithDiscovery(t, disc, &conns, nil, kademlia.Options{
 			ExcludeFunc: defaultExcludeFunc,
 		})
@@ -1618,36 +1603,34 @@ func TestAnnounceBgBroadcast(t *testing.T) {
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+	testutil.CleanupCloser(t, kad)
 
 	// first add a peer from AddPeers, wait for the connection
 	addOne(t, signer, kad, ab, p1)
 	waitConn(t, &conns)
 
-	// Create a context to cancel and call Announce manually. On the cancellation of
-	// this context ensure that the BroadcastPeers call in the background is unaffected
+	// GossipPeer is fire-and-forget buffering; announce ctx cancel must not
+	// prevent gossip of the new peer to already-connected peers.
 	ctx, cancel := context.WithCancel(context.Background())
-
 	if err := kad.Announce(ctx, p2, true); err != nil {
 		t.Fatal(err)
 	}
-	waitChanClosed(t, bgStarted)
-
-	// cancellation should not close background broadcast
 	cancel()
 
-	select {
-	case <-bgDone:
-		t.Fatal("background broadcast exited")
-	case <-time.After(time.Millisecond * 100):
+	records, exists := disc.AddresseeRecords(p1)
+	if !exists {
+		t.Fatal("expected gossip of new peer to connected peer")
 	}
-
-	// All background broadcasts will be cancelled on Close. Ensure that the BroadcastPeers
-	// call gets the context cancellation
-	if err := kad.Close(); err != nil {
-		t.Fatal(err)
+	found := false
+	for _, addr := range records {
+		if addr.Equal(p2) {
+			found = true
+			break
+		}
 	}
-
-	waitChanClosed(t, bgDone)
+	if !found {
+		t.Fatal("connected peer was not gossiped about the announced peer")
+	}
 }
 
 func TestAnnounceNeighborhoodToNeighbor(t *testing.T) {

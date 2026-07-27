@@ -98,6 +98,7 @@ type Service struct {
 	chequebookVerifier chequebook.Verifier
 	chequebookStorer   ChequebookStorer
 	gossipBuf          *gossipBuffer
+	gossipWakeup       chan struct{}
 }
 
 func New(streamer p2p.Streamer, addressbook addressbook.GetPutter, networkID uint64, overlay swarm.Address, logger log.Logger, o Options) *Service {
@@ -118,6 +119,7 @@ func New(streamer p2p.Streamer, addressbook addressbook.GetPutter, networkID uin
 		now:                time.Now,
 		chequebookVerifier: o.ChequebookVerifier,
 		chequebookStorer:   o.ChequebookStorer,
+		gossipWakeup:       make(chan struct{}, 1),
 	}
 
 	svc.gossipBuf = newGossipBuffer(o.GossipCoalesceInterval, maxBatchSize)
@@ -147,10 +149,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 
 var ErrShutdownInProgress = errors.New("shutdown in progress")
 
-// BroadcastPeers sends peer gossip to the addressee. Calls with fewer than
-// coalesceThreshold peers are buffered and flushed asynchronously; errors
-// during deferred dispatch are logged but not returned to the caller.
-// Calls with coalesceThreshold or more peers are sent immediately.
+// BroadcastPeers sends peer gossip to the addressee immediately.
 func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, peers ...swarm.Address) error {
 	if len(peers) == 0 {
 		return nil
@@ -158,31 +157,34 @@ func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, p
 
 	s.metrics.BroadcastPeers.Inc()
 	s.metrics.BroadcastPeersPeers.Add(float64(len(peers)))
+	return s.broadcastNow(ctx, addressee, false, peers...)
+}
 
-	// Already-batched messages go out immediately; single-peer gossips are coalesced.
-	if len(peers) >= coalesceThreshold {
-		s.metrics.GossipCoalesceImmediatePeers.Add(float64(len(peers)))
-		s.logger.Debug("gossip immediate send", "addressee", addressee, "peer_count", len(peers))
-		return s.broadcastNow(ctx, addressee, false, peers...)
-	}
-
+// GossipPeer buffers a single peer for coalesced asynchronous gossip.
+// Buffering never blocks on network I/O; the coalescer worker performs sends.
+func (s *Service) GossipPeer(addressee, peer swarm.Address) {
 	select {
 	case <-s.quit:
-		return ErrShutdownInProgress
+		return
 	default:
 	}
 
-	s.metrics.GossipCoalesceBufferedPeers.Add(float64(len(peers)))
-	s.logger.Debug("gossip buffered", "addressee", addressee, "peer_count", len(peers))
+	s.metrics.BroadcastPeers.Inc()
+	s.metrics.BroadcastPeersPeers.Inc()
+	s.metrics.GossipCoalesceBufferedPeers.Inc()
+	s.logger.Debug("gossip buffered", "addressee", addressee, "peer_count", 1)
 
-	// Buffer; if it just filled up, flush it synchronously while still in the call
-	if flushPeers, flush := s.gossipBuf.stagePeers(addressee, peers...); flush {
-		s.recordCoalesceFlush(coalesceFlushReasonMaxBatch, addressee, flushPeers)
-		s.setCoalesceBufferGauge()
-		return s.broadcastNow(ctx, addressee, true, flushPeers...)
+	if s.gossipBuf.stagePeers(addressee, peer) {
+		s.notifyGossipWakeup()
 	}
 	s.setCoalesceBufferGauge()
-	return nil
+}
+
+func (s *Service) notifyGossipWakeup() {
+	select {
+	case s.gossipWakeup <- struct{}{}:
+	default:
+	}
 }
 
 // broadcastNow performs the synchronous, rate-limited, batched send.
@@ -364,6 +366,11 @@ func (s *Service) startGossipCoalescer() {
 			case <-ticker.C:
 				for _, batch := range s.gossipBuf.takeAll() {
 					s.flushGossipBatch(batch.addressee, batch.peers, coalesceFlushReasonTimer)
+				}
+				s.setCoalesceBufferGauge()
+			case <-s.gossipWakeup:
+				for _, batch := range s.gossipBuf.takeReady() {
+					s.flushGossipBatch(batch.addressee, batch.peers, coalesceFlushReasonMaxBatch)
 				}
 				s.setCoalesceBufferGauge()
 			case <-s.quit:

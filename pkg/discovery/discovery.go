@@ -13,5 +13,8 @@ import (
 )
 
 type Driver interface {
+	// BroadcastPeers sends peer gossip to the addressee immediately.
 	BroadcastPeers(ctx context.Context, addressee swarm.Address, peers ...swarm.Address) error
+	// GossipPeer buffers a single peer for coalesced asynchronous gossip.
+	GossipPeer(addressee, peer swarm.Address)
 }

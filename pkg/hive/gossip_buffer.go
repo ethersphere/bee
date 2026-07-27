@@ -13,18 +13,14 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-const (
-	defaultGossipCoalesceInterval = time.Second
-	// coalesceThreshold: gossips with fewer peers are buffered; larger
-	// (already-batched) messages are dispatched immediately.
-	coalesceThreshold = 2
-)
+const defaultGossipCoalesceInterval = time.Second
 
 // gossipBuffer accumulates single-peer outbound gossip per addressee so it can be
 // flushed as one batched message.
 type gossipBuffer struct {
 	mu       sync.Mutex
 	pending  map[string]map[string]swarm.Address // addressee key -> peer key -> peer
+	ready    []gossipBatch                       // full batches waiting for worker flush
 	interval time.Duration
 	maxBatch int
 }
@@ -45,9 +41,9 @@ func newGossipBuffer(interval time.Duration, maxBatch int) *gossipBuffer {
 	}
 }
 
-// stagePeers buffers peers for the addressee. If the buffer reaches maxBatch it is
-// removed and returned so the caller can flush it immediately.
-func (b *gossipBuffer) stagePeers(addressee swarm.Address, peers ...swarm.Address) (flushPeers []swarm.Address, flush bool) {
+// stagePeers buffers peers for the addressee. If the buffer reaches maxBatch the
+// batch is moved to the ready queue and wakeup is requested for the worker.
+func (b *gossipBuffer) stagePeers(addressee swarm.Address, peers ...swarm.Address) (wakeup bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -63,21 +59,33 @@ func (b *gossipBuffer) stagePeers(addressee swarm.Address, peers ...swarm.Addres
 
 	if len(peerSet) >= b.maxBatch {
 		delete(b.pending, key)
-		return slices.Collect(maps.Values(peerSet)), true
+		b.ready = append(b.ready, gossipBatch{
+			addressee: addressee,
+			peers:     slices.Collect(maps.Values(peerSet)),
+		})
+		return true
 	}
-	return nil, false
+	return false
 }
 
-// takeAll removes and returns all buffered entries.
+// takeReady removes and returns batches that filled to maxBatch.
+func (b *gossipBuffer) takeReady() []gossipBatch {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	out := b.ready
+	b.ready = nil
+	return out
+}
+
+// takeAll removes and returns all buffered entries (ready and pending).
 func (b *gossipBuffer) takeAll() []gossipBatch {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	if len(b.pending) == 0 {
-		return nil
-	}
+	out := b.ready
+	b.ready = nil
 
-	out := make([]gossipBatch, 0, len(b.pending))
 	for key, peerSet := range b.pending {
 		out = append(out, gossipBatch{
 			addressee: swarm.NewAddress([]byte(key)),
@@ -92,10 +100,19 @@ func (b *gossipBuffer) clearAddressee(addressee swarm.Address) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	delete(b.pending, addressee.ByteString())
+	n := 0
+	for _, batch := range b.ready {
+		if batch.addressee.Equal(addressee) {
+			continue
+		}
+		b.ready[n] = batch
+		n++
+	}
+	b.ready = b.ready[:n]
 }
 
 func (b *gossipBuffer) pendingAddressees() int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return len(b.pending)
+	return len(b.pending) + len(b.ready)
 }

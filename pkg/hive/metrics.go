@@ -33,12 +33,11 @@ type metrics struct {
 
 	LegacyRecordSkipped prometheus.Counter
 
-	GossipCoalesceImmediatePeers prometheus.Counter
-	GossipCoalesceBufferedPeers  prometheus.Counter
-	GossipCoalesceFlushTotal     *prometheus.CounterVec
-	GossipCoalesceFlushPeers     prometheus.Counter
-	GossipCoalesceDropped        prometheus.Counter
-	GossipCoalesceBufferSize     prometheus.Gauge
+	GossipCoalesceBufferedPeers prometheus.Counter
+	GossipCoalesceFlushTotal    *prometheus.CounterVec
+	GossipCoalesceFlushPeers    prometheus.Counter
+	GossipCoalesceDropped       prometheus.Counter
+	GossipCoalesceBufferSize    prometheus.Gauge
 }
 
 func newMetrics() metrics {
@@ -144,12 +143,6 @@ func newMetrics() metrics {
 			},
 			[]string{"reason"},
 		),
-		GossipCoalesceImmediatePeers: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "gossip_coalesce_immediate_peers_total",
-			Help:      "Number of peer gossip entries sent immediately without coalescing.",
-		}),
 		GossipCoalesceBufferedPeers: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
