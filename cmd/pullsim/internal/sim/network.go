@@ -93,15 +93,18 @@ type Network struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	// tracker holds its own mutex and never calls back into the Network, so it
-	// is kept outside the mu-guarded block.
+	// tracker and healer hold their own mutexes and never call back into the
+	// Network, so they are kept outside the mu-guarded block.
 	tracker *tracker
+	healer  *healTracker
 	sweepWG sync.WaitGroup
 
 	mu          sync.Mutex
 	bus         *event.Bus
 	radius      uint8
 	nodeTraced  []bool
+	departed    []bool
+	churnRng    *rand.Rand
 	traced      map[string]bool
 	injectSeq   int64
 	injectStops []context.CancelFunc
@@ -125,7 +128,12 @@ func BuildNetwork(cfg Config, logger log.Logger) (*Network, error) {
 		idx:        make(map[string]int, cfg.Nodes),
 		traced:     make(map[string]bool),
 		nodeTraced: make([]bool, cfg.Nodes),
-		tracker:    newTracker(cfg.SettleAfter, time.Now),
+		departed:   make([]bool, cfg.Nodes),
+		// A dedicated stream so a churn pick cannot shift with unrelated rng
+		// use, keeping a seeded run reproducible.
+		churnRng: rand.New(rand.NewSource(cfg.Seed ^ 0x63687572)),
+		tracker:  newTracker(cfg.SettleAfter, time.Now),
+		healer:   newHealTracker(cfg.SettleAfter, time.Now),
 	}
 
 	epoch := uint64(time.Now().UnixNano())
@@ -247,6 +255,7 @@ func (n *Network) putHook(idx int) func(PutEvent) {
 		// Fold into the batch tracker first, holding no Network lock: the
 		// tracker has its own mutex and never calls back in here.
 		n.tracker.observePut(idx, pe.Address, pe.Source)
+		n.healer.observePut(idx, presenceKey(pe.Address, pe.BatchID, pe.StampHash), pe.Source)
 
 		traced := n.isTraced(pe.Address)
 		if traced {
@@ -312,6 +321,9 @@ func (n *Network) sweepLoop(ctx context.Context) {
 			for _, b := range n.tracker.sweep() {
 				n.publish(event.Batch{BatchSnap: batchSnap(b)})
 			}
+			for _, h := range n.healer.sweep() {
+				n.publish(event.Heal{HealSnap: healSnap(h)})
+			}
 		}
 	}
 }
@@ -328,11 +340,18 @@ func (n *Network) Close() {
 	// after the context is cancelled no batch can ever settle, so an unsettled
 	// batch's done channel would otherwise never close.
 	n.tracker.stop()
+	n.healer.stop()
 	n.sweepWG.Wait()
-	closeConcurrent(n.nodes, func(nd *Node) { _ = nd.Puller.Close() })
-	closeConcurrent(n.nodes, func(nd *Node) { _ = nd.Transport.Close() })
-	closeConcurrent(n.nodes, func(nd *Node) { _ = nd.Syncer.Close() })
-	closeConcurrent(n.nodes, func(nd *Node) { _ = nd.Reserve.Close() })
+	// Departed nodes were already torn down by Churn. pullsync's Syncer.Close
+	// closes an unguarded channel, so closing one twice panics.
+	live := make([]*Node, 0, len(n.nodes))
+	for _, i := range n.Survivors() {
+		live = append(live, n.nodes[i])
+	}
+	closeConcurrent(live, func(nd *Node) { _ = nd.Puller.Close() })
+	closeConcurrent(live, func(nd *Node) { _ = nd.Transport.Close() })
+	closeConcurrent(live, func(nd *Node) { _ = nd.Syncer.Close() })
+	closeConcurrent(live, func(nd *Node) { _ = nd.Reserve.Close() })
 }
 
 func closeConcurrent(nodes []*Node, fn func(*Node)) {
@@ -350,19 +369,78 @@ func closeConcurrent(nodes []*Node, fn func(*Node)) {
 	wg.Wait()
 }
 
-// SetRadius applies a new storage radius to every node and triggers each
-// kademlia so the pullers re-evaluate promptly.
+// SetRadius applies a new storage radius to every surviving node and triggers
+// each kademlia so the pullers re-evaluate promptly.
+//
+// A decrease opens a heal episode: it widens what every node accepts, so the
+// deficit is snapshotted the moment the new radius is in force and before any
+// puller can act on it. An increase or a no-op opens nothing — a node never
+// backfills its way out of a narrower responsibility.
 func (n *Network) SetRadius(r uint8) {
 	if r >= n.cfg.Bins {
 		r = n.cfg.Bins - 1
 	}
 	n.mu.Lock()
+	prev := n.radius
 	n.radius = r
+	alive := n.survivorsLocked()
 	n.mu.Unlock()
-	for i, nd := range n.nodes {
-		nd.Reserve.SetRadius(r)
-		nd.Kad.Trigger()
+
+	for _, i := range alive {
+		n.nodes[i].Reserve.SetRadius(r)
+	}
+
+	// Registered between applying the radius and triggering the pullers, so no
+	// heal-eligible put can land before the episode exists to record it.
+	if r < prev {
+		n.healer.open(prev, r, n.deficitSets())
+	}
+
+	for _, i := range alive {
+		n.nodes[i].Kad.Trigger()
 		n.publish(event.Radius{Node: i, Radius: r})
+	}
+}
+
+// Heals returns the retained heal episodes, oldest first.
+func (n *Network) Heals() []Heal { return n.healer.list() }
+
+// Heal returns a single heal episode by ID.
+func (n *Network) Heal(id int) (Heal, bool) { return n.healer.get(id) }
+
+// WaitHeal blocks until the heal episode settles, the context is done, or the
+// network shuts down. It mirrors WaitBatch, including the ErrNetworkClosed
+// contract: on any error the episode as observed so far is still returned, so a
+// caller that timed out can report the residual deficit.
+func (n *Network) WaitHeal(ctx context.Context, id int) (Heal, error) {
+	done := n.healer.wait(id)
+	select {
+	case <-done:
+		h, ok := n.healer.get(id)
+		if !ok {
+			return Heal{}, fmt.Errorf("heal %d no longer retained", id)
+		}
+		if !h.Settled {
+			// Woken by Close, not by settling.
+			return h, ErrNetworkClosed
+		}
+		return h, nil
+	case <-ctx.Done():
+		h, _ := n.healer.get(id)
+		return h, ctx.Err()
+	}
+}
+
+// healSnap converts a heal episode to its wire form.
+func healSnap(h Heal) event.HealSnap {
+	per := make([]event.NodeHealSnap, len(h.PerNode))
+	for i, p := range h.PerNode {
+		per[i] = event.NodeHealSnap{Node: p.Node, Total: p.Total, Healed: p.Healed}
+	}
+	return event.HealSnap{
+		ID: h.ID, FromRadius: h.FromRadius, ToRadius: h.ToRadius,
+		Total: h.Total, Healed: h.Healed, Remaining: h.Remaining,
+		Settled: h.Settled, HealSpanMs: h.HealSpanMs, PerNode: per,
 	}
 }
 
@@ -445,8 +523,9 @@ func (n *Network) Batches() []Batch { return n.tracker.list() }
 // Batch returns a single batch by ID.
 func (n *Network) Batch(id int) (Batch, bool) { return n.tracker.get(id) }
 
-// ErrNetworkClosed is returned by WaitBatch when the network shut down before
-// the batch settled. The partial batch is returned alongside it.
+// ErrNetworkClosed is returned by WaitBatch and WaitHeal when the network shut
+// down before the batch or heal episode settled. The partial result is returned
+// alongside it.
 var ErrNetworkClosed = errors.New("network closed before batch settled")
 
 // WaitBatch blocks until the batch stops propagating, the context is done, or
@@ -505,22 +584,40 @@ func (n *Network) Snapshot() event.Snapshot {
 	total := 0
 	for i, nd := range n.nodes {
 		size := nd.Reserve.ReserveSize()
-		total += size
+		bins := nd.Reserve.BinCounts()
 		radii[i] = nd.Reserve.StorageRadius()
+		// A departed node keeps its slot and its ring position so the hole is
+		// visible and nothing renumbers, but its chunks are gone: they must not
+		// be counted into the live total, and the node must not be reported as
+		// still holding them. The closed reserve retains its contents in memory,
+		// which is an implementation detail and not a fact about the network.
+		if n.departed[i] {
+			size = 0
+			bins = make([]int, len(bins))
+		} else {
+			total += size
+		}
 		nodes[i] = event.NodeSnap{
 			Index:       i,
 			AddrPrefix:  nd.Addr.String()[:8],
 			Angle:       angleOf(nd.Addr),
 			Radius:      radii[i],
 			ReserveSize: size,
-			BinCounts:   nd.Reserve.BinCounts(),
+			BinCounts:   bins,
 			HasTraced:   n.nodeTraced[i],
+			Departed:    n.departed[i],
 		}
 	}
 
 	edges := make([]event.EdgeSnap, 0)
 	for i, peers := range n.adj {
+		if n.departed[i] {
+			continue
+		}
 		for _, j := range peers {
+			if n.departed[j] {
+				continue
+			}
 			if i < j {
 				po := n.poMatrix[i][j]
 				edges = append(edges, event.EdgeSnap{
@@ -537,10 +634,17 @@ func (n *Network) Snapshot() event.Snapshot {
 		batches[i] = batchSnap(b)
 	}
 
+	episodes := n.healer.list()
+	heals := make([]event.HealSnap, len(episodes))
+	for i, h := range episodes {
+		heals[i] = healSnap(h)
+	}
+
 	return event.Snapshot{
 		Nodes:   nodes,
 		Edges:   edges,
 		Batches: batches,
+		Heals:   heals,
 		Stats:   event.Stats{Chunks: total, Goroutines: runtime.NumGoroutine()},
 	}
 }

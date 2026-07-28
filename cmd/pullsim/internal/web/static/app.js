@@ -17,6 +17,7 @@
     text: cssVar('--text') || '#d7dde5',
     muted: cssVar('--muted') || '#8b96a5',
     panel: cssVar('--panel') || '#171b22',
+    departed: cssVar('--departed') || '#3b434f',
   };
   const modeColor = (m) => m === 'full' ? C.full : m === 'po-only' ? C.poonly : C.idle;
 
@@ -27,6 +28,7 @@
     edges: [],
     edgeDir: [],
     batches: [],             // BatchSnap[] from the snapshot, oldest first
+    heals: [],               // HealSnap[] from the snapshot, oldest first
     stats: {},
     edgeDirMap: new Map(),   // "from-to" -> entry
     edgeMap: new Map(),      // "min-max" -> {po,mode}
@@ -98,6 +100,15 @@
         }
         break;
       }
+      case 'heal': {
+        const h = m.heal;
+        if (h && h.settled) {
+          // A remainder is an expected outcome, so it is reported, not warned about.
+          const rest = h.remaining ? ` · ${h.remaining} out of reach` : '';
+          toast(`heal #${h.id} settled in ${(h.healSpanMs / 1000).toFixed(1)}s · ${h.healed}/${h.total} healed${rest}`);
+        }
+        break;
+      }
       default: break;
     }
   }
@@ -113,11 +124,14 @@
     $('c-clusters').value = cfg.clusters;
     $('c-seed').value = cfg.seed;
     $('settle-val').textContent = fmtSecs(cfg.settleAfterMs || 0);
+    $('heal-settle-val').textContent = fmtSecs(cfg.settleAfterMs || 0);
     const rs = $('radius');
     rs.max = String(Math.max(0, cfg.bins - 1));
     rs.value = String(cfg.radius);
     $('radius-val').textContent = String(cfg.radius);
     $('i-node').max = String(cfg.nodes - 1);
+    // Churn must leave at least two survivors behind.
+    $('k-count').max = String(Math.max(1, cfg.nodes - 2));
   }
 
   function applySnapshot(s) {
@@ -126,6 +140,7 @@
     state.edges = s.edges || [];
     state.edgeDir = s.edgeDir || [];
     state.batches = s.batches || [];
+    state.heals = s.heals || [];
     state.stats = s.stats || {};
 
     state.edgeDirMap.clear();
@@ -151,7 +166,10 @@
     renderStats();
     if (state.selectNode >= 0) renderDetail();
     renderBatches();
+    renderHeals();
   }
+
+  const liveNodes = () => state.nodes.filter((n) => !n.departed);
 
   const fmtSecs = (ms) => `${(ms / 1000).toFixed(1)}s`;
 
@@ -187,11 +205,54 @@
     el.innerHTML = rows.join('');
   }
 
+  // A heal episode is opened by a radius decrease: the chunks a survivor is
+  // newly responsible for but does not hold. Mirrors renderBatches.
+  function renderHeals() {
+    const el = $('heals');
+    if (!state.heals.length) {
+      el.innerHTML = '<div class="sub">no heal episodes yet — lower the radius to open one</div>';
+      return;
+    }
+    // Newest first: the snapshot carries them oldest first.
+    const rows = state.heals.slice().reverse().map((h) => {
+      const cls = h.settled ? 'heal settled' : 'heal running';
+      const pct = h.total ? (h.healed / h.total) * 100 : 100;
+      // Not a warning: a chunk whose only surviving holder is out of pull-sync
+      // range simply cannot be fetched, which is what the sim is here to show.
+      const rest = h.settled && h.remaining
+        ? `<span class="heal-residual">${h.remaining} not reachable by pull-sync from the surviving peers</span>`
+        : '';
+      const outstanding = (h.perNode || [])
+        .filter((p) => p.healed < p.total)
+        .map((p) => `node ${p.node}: ${p.healed}/${p.total}`);
+      const tip = outstanding.length ? ` title="${esc(outstanding.join('\n'))}"` : '';
+      return `<div class="${cls}"${tip}>
+        <div class="heal-head">
+          <span class="heal-id">#${h.id}</span>
+          <span class="heal-span">span ${fmtSecs(h.healSpanMs)}</span>
+          <span class="heal-state">${h.settled ? 'settled' : 'running'}</span>
+        </div>
+        <div class="heal-bar"><span style="width:${pct}%"></span></div>
+        <div class="heal-meta">
+          radius <span class="heal-radius">${h.fromRadius} &rarr; ${h.toRadius}</span>
+          · healed ${h.healed} / ${h.total} · ${h.remaining} remaining${rest}
+        </div>
+      </div>`;
+    });
+    el.innerHTML = rows.join('');
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, (c) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
   function renderStats() {
     const s = state.stats;
+    const live = liveNodes().length;
     const reached = state.tracedT0 == null
       ? '—'
-      : `${state.tracedAt.size} / ${state.nodes.length}`;
+      : `${state.tracedAt.size} / ${live}`;
     let spread = '—';
     if (state.tracedT0 != null) {
       let max = 0;
@@ -204,7 +265,10 @@
       <div class="stat"><div class="k">dropped</div><div class="v">${s.dropped ?? 0}</div></div>
       <div class="stat"><div class="k">goroutines</div><div class="v">${s.goroutines ?? 0}</div></div>
       <div class="stat"><div class="k">spread</div><div class="v">${spread}</div></div>
-      <div class="stat"><div class="k">reached</div><div class="v">${reached}</div></div>`;
+      <div class="stat"><div class="k">reached</div><div class="v">${reached}</div></div>
+      ${live < state.nodes.length
+        ? `<div class="stat"><div class="k">departed</div><div class="v">${state.nodes.length - live}</div></div>`
+        : ''}`;
   }
 
   // ---- geometry ----
@@ -377,12 +441,27 @@
       ctx.save();
       ctx.beginPath();
       ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-      ctx.fillStyle = n.index === state.selectNode ? C.full : '#2b3444';
-      ctx.strokeStyle = n.index === state.hoverNode ? C.text : '#40506a';
+      // A departed node keeps its ring slot and greys out, so the hole it left
+      // stays where it happened. Its edges are already gone from the snapshot.
+      if (n.departed) ctx.globalAlpha = 0.45;
+      ctx.fillStyle = n.departed ? C.departed : n.index === state.selectNode ? C.full : '#2b3444';
+      ctx.strokeStyle = n.departed ? C.departed : n.index === state.hoverNode ? C.text : '#40506a';
       ctx.lineWidth = 1.5;
       ctx.fill();
       ctx.stroke();
       ctx.restore();
+
+      if (n.departed) {
+        // index label, dimmed
+        ctx.save();
+        ctx.globalAlpha = 0.6;
+        ctx.fillStyle = C.muted;
+        ctx.font = '9px ui-monospace, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(String(n.index), p.x, p.y + 3);
+        ctx.restore();
+        continue;
+      }
 
       if (n.hasTraced) {
         ctx.save();
@@ -501,7 +580,8 @@
     const n = pickNode(mx, my);
     if (n >= 0) {
       state.selectNode = n;
-      $('i-node').value = String(n);
+      // A departed node cannot take an injection, so leave the target alone.
+      if (!state.nodes[n].departed) $('i-node').value = String(n);
       renderDetail();
     } else {
       state.selectNode = -1;
@@ -553,7 +633,7 @@
 
     $('detail').innerHTML = `
       <span class="close" onclick="this.parentNode.classList.remove('show')">✕</span>
-      <h3>node ${idx} · <span class="mono">${n.addrPrefix}</span></h3>
+      <h3>node ${idx}${n.departed ? ' · departed' : ''} · <span class="mono">${n.addrPrefix}</span></h3>
       <div class="kv"><span>reserve</span><span>${n.reserveSize}</span></div>
       <div class="kv"><span>radius</span><span>${n.radius}</span></div>
       ${bins}
@@ -590,12 +670,32 @@
       // Echo the settle window back, or a rebuild would silently reset a
       // non-default -settle to the 3s applyDefaults value.
       settleAfterMs: +(state.config.settleAfterMs || 0),
-    }).then((r) => { applyConfig(r.config); applySnapshot(r.snapshot); state.selectNode = -1; toast('rebuilt'); });
+    }).then((r) => {
+      applyConfig(r.config);
+      applySnapshot(r.snapshot);
+      state.selectNode = -1;
+      $('churn-out').textContent = 'no departures yet';
+      $('churn-out').classList.remove('hit');
+      toast('rebuilt');
+    });
   };
 
   $('radius').oninput = () => {
     $('radius-val').textContent = $('radius').value;
     post('/api/radius', { radius: +$('radius').value });
+  };
+
+  $('kill').onclick = () => {
+    post('/api/churn', { count: +$('k-count').value }).then((r) => {
+      const n = (r.departed || []).length;
+      // lost is the floor under any recovery: chunks now held by nobody.
+      $('churn-out').innerHTML =
+        `${n} departed (${(r.departed || []).join(', ')}) · ${r.survivors} left · `
+        + `<span class="mono">lost ${r.lost}</span> chunk${r.lost === 1 ? '' : 's'} · `
+        + `rewire +${r.edgesAdded}/-${r.edgesRemoved} edges`;
+      $('churn-out').classList.add('hit');
+      toast(`${n} node(s) departed · ${r.lost} chunk(s) lost`);
+    });
   };
 
   $('inject').onclick = () => {

@@ -31,7 +31,7 @@ type Node struct {
 	Reserve   *SimReserve
 	Transport *Transport
 	Syncer    *pullsync.Syncer
-	Kad       *kadmock.Mock
+	Kad       *simKad
 	Puller    *puller.Puller
 }
 
@@ -78,8 +78,7 @@ func (nd *Node) attachPuller(
 	peers []kadmock.AddrTuple,
 	onSync func(SyncEvent),
 ) {
-	nd.Kad = kadmock.NewMockKademlia()
-	nd.Kad.AddRevPeers(peers...)
+	nd.Kad = newSimKad(peers)
 
 	state := statestoremock.NewStateStore()
 	wrapped := newSyncWrap(nd.Syncer, onSync)

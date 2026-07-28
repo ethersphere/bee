@@ -25,6 +25,11 @@ network from the sidebar.
 
 `-listen :8080 -nodes 20 -bins 8 -topology full|ring|k-nearest|random|kademlia -degree 6`
 `-radius 0 -latency 5ms -maxpage 64 -clusters 1 -seed 0 -settle 3s -v`
+`-churn 0 -churn-after 30s -churn-radius 0`
+
+`-churn` and its two companions script a departure scenario in server mode; see
+[Churn and radius backfill](#churn-and-radius-backfill). They are rejected in
+sweep mode.
 
 `-settle` is the batch quiescence window and applies to **both** the server and
 the sweep. In sweep mode `-bench-settle` overrides it, but only if you actually
@@ -157,6 +162,75 @@ Keep `-settle` comfortably above 1s (the 3s default is right); below that the
 batch is judged settled before the first replica arrives, which shows up as
 `no-replicas` rows, and marginal windows show up as `truncated`.
 
+## Churn and radius backfill
+
+Nodes can leave a running network, and the radius change you make in response
+drives the survivors to pull the chunks they have newly become responsible for.
+
+```bash
+go run ./cmd/pullsim -topology kademlia -clusters 3 -radius 5 -nodes 18
+```
+
+Inject at `-minpo 5`, kill a few nodes from the Churn panel, then drop the
+radius to 4 and watch the Heal panel. From a shell, `-churn N -churn-after 10s
+-churn-radius R` runs the same scenario without the UI.
+
+**This does nothing at `-radius 0`**, the default. There every node stores
+everything, so no node has a deficit, and churn has no radius effect to reveal —
+only the data it destroys. The configuration above is the one where the radius
+is doing real work, and it is the same one the sweep section recommends, for the
+same reason.
+
+### What a departure is
+
+A hard departure. The node's puller, transport, syncer and reserve are closed,
+and its chunks go with it unless a survivor already held a replica; `lost`
+reports how many did not. Survivors then re-wire: the adjacency is recomputed
+over the surviving addresses and applied as a delta, modelling kademlia
+re-bootstrapping into bins the departures emptied. Departed nodes keep their
+index and their position on the ring, so the hole stays visible and nothing
+renumbers mid-run.
+
+### What heals, and why
+
+Nothing in the sync path is simulated — the effect is entirely production code.
+The pullsync client gates every `want` on `IsWithinStorageRadius`
+(`pkg/pullsync/pullsync.go`), so lowering the radius widens what a node will
+accept; and the puller, on a radius *decrease* only, disconnects its sync peers
+and calls `resetIntervals` (`pkg/puller/puller.go`), so history is offered
+again. A drop from R to R-1 therefore opens bin R-1 against neighbors, and the
+chunks the node previously ignored arrive.
+
+A **heal episode** opens on each decrease. It snapshots every survivor's
+deficit — chunks that exist somewhere in the network, fall within that node's
+new radius, and are absent from its reserve — and drains it, settling under the
+same quiescence window as batch propagation (`-settle`). It reports
+`healed / total`, `remaining`, and a span.
+
+### Residual `remaining` is an outcome, not a failure
+
+A settled episode can leave chunks unhealed, and that is not a bug. Dropping to
+R-1 makes a node responsible for bin R-1, but the puller only pulls bin R-1 from
+a peer at `PO >= R-1`, or the single bin `po` from a peer where
+`radius - po <= 2`. A chunk whose only surviving holder is neither is simply not
+reachable by pull-sync from that node. It is reported rather than hidden, and no
+test asserts it is zero.
+
+**In the clustered configuration above you will see `remaining 0`, and that is
+expected too.** `-clusters` places addresses at proximity `bins+4` from their
+cluster base, which caps them all at the maximum PO, so every surviving
+cluster-mate is a full-sync peer at any radius and the unreachable case cannot
+arise inside a cluster. Seeing the residue needs a *sparse* neighborhood —
+survivors sitting at a PO just above the new radius rather than far above it,
+which is what `-topology k-nearest` or a low `-degree` kademlia run gives you.
+The clustered setup is the one that shows the backfill working; the sparse one
+is what shows its limits.
+
+Expect the heal to be abrupt rather than gradual. The radius drop makes the
+puller disconnect its peers and reset intervals in one go, so the whole deficit
+tends to arrive in a single re-offer round — around one second, the same
+`pageTimeout` floor the propagation section describes.
+
 ### Goroutine budget
 
 Roughly `N·(N-1)·Bins·2` live sync workers for a full mesh (N=50, Bins=8 ≈ 39k).
@@ -168,7 +242,8 @@ Prefer `-topology k-nearest -degree 6` for large N.
   in-memory `p2p.Streamer` transport with a protobuf wire tap, address/chunk
   generation, topologies, the instrumented syncer decorator, the batch
   propagation tracker (quiescence-based settle detection with per-batch
-  timing metrics), and the `Network` orchestrator. Knows nothing about HTTP.
+  timing metrics), churn plus the deficit/heal tracker, and the `Network`
+  orchestrator. Knows nothing about HTTP.
 - `internal/event` — wire schema + fan-out `Bus` that folds wire messages into
   per-directed-edge state and emits authoritative 250 ms snapshots. Knows
   nothing about the protocol.

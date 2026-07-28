@@ -52,8 +52,16 @@ func newTestServer(t *testing.T) *httptest.Server {
 	// server never coalesces two peers on one singleflight key. That avoids the
 	// upstream resenje.org/singleflight data race (see sim/network_test.go) and
 	// lets these HTTP/websocket plumbing tests run cleanly under -race.
+	return newTestServerN(t, 2)
+}
+
+// newTestServerN is newTestServer with an explicit node count, for the churn
+// tests: Churn refuses to leave fewer than 2 survivors, so a successful
+// departure needs at least 3 nodes.
+func newTestServerN(t *testing.T, nodes int) *httptest.Server {
+	t.Helper()
 	srv, err := web.NewServer(context.Background(), sim.Config{
-		Nodes: 2, Bins: 4, Topology: sim.TopologyFull, Radius: 0, Seed: 7,
+		Nodes: nodes, Bins: 4, Topology: sim.TopologyFull, Radius: 0, Seed: 7,
 	}, log.Noop)
 	if err != nil {
 		t.Fatal(err)
@@ -171,6 +179,86 @@ func TestServer_WebsocketHello(t *testing.T) {
 	}
 	if _, ok := m["snap"]; !ok {
 		t.Fatal("hello frame missing snapshot")
+	}
+}
+
+// churnResult mirrors sim.ChurnResult's json tags, which are the shape the UI
+// consumes; decoding into it here pins that contract.
+type churnResult struct {
+	Departed     []int `json:"departed"`
+	Survivors    int   `json:"survivors"`
+	Lost         int   `json:"lost"`
+	EdgesAdded   int   `json:"edgesAdded"`
+	EdgesRemoved int   `json:"edgesRemoved"`
+}
+
+func postChurn(t *testing.T, ts *httptest.Server, body string) (*http.Response, churnResult) {
+	t.Helper()
+	resp := httpPost(t, ts.URL+"/api/churn", body)
+	defer resp.Body.Close()
+	var res churnResult
+	if resp.StatusCode == http.StatusOK {
+		if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return resp, res
+}
+
+func TestServer_ChurnCount(t *testing.T) {
+	t.Parallel()
+	ts := newTestServerN(t, 3)
+
+	resp, res := postChurn(t, ts, `{"count":1}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("churn failed: %d", resp.StatusCode)
+	}
+	if len(res.Departed) != 1 {
+		t.Fatalf("expected 1 departure, got %v", res.Departed)
+	}
+	if res.Survivors != 2 {
+		t.Fatalf("expected 2 survivors, got %d", res.Survivors)
+	}
+}
+
+func TestServer_ChurnNodes(t *testing.T) {
+	t.Parallel()
+	ts := newTestServerN(t, 3)
+
+	resp, res := postChurn(t, ts, `{"nodes":[1]}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("churn failed: %d", resp.StatusCode)
+	}
+	if len(res.Departed) != 1 || res.Departed[0] != 1 {
+		t.Fatalf("expected node 1 to depart, got %v", res.Departed)
+	}
+	if res.Survivors != 2 {
+		t.Fatalf("expected 2 survivors, got %d", res.Survivors)
+	}
+}
+
+func TestServer_ChurnRejectsBadBody(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{"both", `{"count":1,"nodes":[1]}`},
+		{"neither", `{}`},
+		// Every sim-side rejection is a bad request, not a server fault: on a
+		// 2-node network departing one node would leave a single survivor.
+		{"too few survivors", `{"count":1}`},
+		{"out of range", `{"nodes":[9]}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ts := newTestServer(t)
+			resp, _ := postChurn(t, ts, tc.body)
+			if resp.StatusCode != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d", resp.StatusCode)
+			}
+		})
 	}
 }
 

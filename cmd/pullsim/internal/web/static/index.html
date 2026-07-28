@@ -44,6 +44,14 @@
     </div>
 
     <div class="group">
+      <h2>Churn</h2>
+      <div class="row"><label>nodes</label><input id="k-count" type="number" min="1" value="1"></div>
+      <button id="kill" class="danger">Kill</button>
+      <div class="sub" id="churn-out" style="margin-top:6px;">no departures yet</div>
+      <div class="sub" style="margin-top:6px;">Departed nodes leave hard &mdash; their reserve goes with them. They keep their ring position so the hole stays visible. <span class="mono">lost</span> is the chunks that survive in no reserve; drop the radius afterwards to let survivors backfill what they are newly responsible for.</div>
+    </div>
+
+    <div class="group">
       <h2>Inject</h2>
       <div class="row"><label>node</label><input id="i-node" type="number" min="0" value="0"></div>
       <div class="row"><label>count</label><input id="i-count" type="number" min="1" value="1"></div>
@@ -61,6 +69,12 @@
     </div>
 
     <div class="group">
+      <h2>Healing</h2>
+      <div id="heals"><div class="sub">no heal episodes yet — lower the radius to open one</div></div>
+      <div class="sub" style="margin-top:6px;">Lowering the radius widens what each node accepts and opens an episode: the chunks survivors have newly become responsible for but do not hold yet. Span is the radius drop &rarr; last chunk healed, so a running row&rsquo;s span freezes between arrivals. An episode settles on the same quiet window as a batch (<span id="heal-settle-val">&mdash;</span>). Chunks can remain: pull-sync only offers a bin from a peer close enough to serve it, so a chunk whose only surviving holder is out of range is simply unreachable from that node &mdash; an outcome of the topology, not a failure.</div>
+    </div>
+
+    <div class="group">
       <h2>Legend</h2>
       <div id="legend">
         <div class="item"><span class="swatch" style="background:var(--accent)"></span>full — syncs all bins</div>
@@ -68,6 +82,7 @@
         <div class="item"><span class="swatch" style="background:var(--grey)"></span>idle — not syncing</div>
         <div class="item"><span class="swatch" style="background:var(--accent);opacity:.5;border-top:2px dashed var(--accent)"></span>dashed — awaiting offer (coalescing)</div>
         <div class="item"><span class="swatch" style="background:var(--traced)"></span>delivering / holds traced chunk</div>
+        <div class="item"><span class="swatch swatch-dot" style="background:var(--departed)"></span>departed — left the network</div>
       </div>
     </div>
 

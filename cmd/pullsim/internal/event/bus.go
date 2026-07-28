@@ -192,6 +192,11 @@ func (b *Bus) handle(ev any) {
 		// Batches are rare and are the point of the measurement, so they are
 		// never dropped by the discrete-event rate limit.
 		b.broadcast(b.encodeBatch(e))
+	case Heal:
+		// Same reasoning as Batch: rare, and the measurement itself.
+		b.broadcast(b.encodeHeal(e))
+	case Churn:
+		b.broadcast(b.encodeChurn(e))
 	}
 }
 
@@ -493,6 +498,22 @@ func (b *Bus) encodeBatch(e Batch) []byte {
 		Ts    int64     `json:"ts"`
 		Batch BatchSnap `json:"batch"`
 	}{KindBatch, b.now().UnixMilli(), e.BatchSnap})
+}
+
+func (b *Bus) encodeHeal(e Heal) []byte {
+	return mustJSON(struct {
+		T    string   `json:"t"`
+		Ts   int64    `json:"ts"`
+		Heal HealSnap `json:"heal"`
+	}{KindHeal, b.now().UnixMilli(), e.HealSnap})
+}
+
+func (b *Bus) encodeChurn(e Churn) []byte {
+	return mustJSON(struct {
+		T     string `json:"t"`
+		Ts    int64  `json:"ts"`
+		Churn Churn  `json:"churn"`
+	}{KindChurn, b.now().UnixMilli(), e})
 }
 
 func mustJSON(v any) []byte {

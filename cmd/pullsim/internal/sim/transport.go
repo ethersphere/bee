@@ -129,6 +129,27 @@ func (t *Transport) SetHandler(dest swarm.Address, spec p2p.ProtocolSpec) {
 	t.mu.Unlock()
 }
 
+// RemoveHandler drops the destination peer's protocol spec and tears down every
+// live stream to it, which is what a peer disconnect looks like on the wire: no
+// further dial can succeed, and any parked handler on the far side is released.
+// It must not be called while the Network mutex is held, because closing a link
+// publishes stream-lifecycle events back through the Network.
+func (t *Transport) RemoveHandler(dest swarm.Address) {
+	key := dest.String()
+	t.mu.Lock()
+	delete(t.handlers, key)
+	ls := make([]*link, 0, len(t.links))
+	for l := range t.links {
+		if l.server.String() == key {
+			ls = append(ls, l)
+		}
+	}
+	t.mu.Unlock()
+	for _, l := range ls {
+		l.close()
+	}
+}
+
 // NewStream dials the destination peer's handler for the named stream and
 // returns the client end of an in-memory duplex stream.
 func (t *Transport) NewStream(_ context.Context, address swarm.Address, _ p2p.Headers, protocol, _, stream string) (p2p.Stream, error) {
@@ -189,10 +210,12 @@ func (t *Transport) NewStream(_ context.Context, address swarm.Address, _ p2p.He
 }
 
 // Close tears down all live streams for this transport, cancelling parked
-// handler contexts.
+// handler contexts, and drops every registered handler so a later dial fails
+// outright rather than opening a stream on an already-cancelled context.
 func (t *Transport) Close() error {
 	t.baseCancel()
 	t.mu.Lock()
+	clear(t.handlers)
 	ls := make([]*link, 0, len(t.links))
 	for l := range t.links {
 		ls = append(ls, l)

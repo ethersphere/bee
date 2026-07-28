@@ -14,6 +14,7 @@
   --grey: #4b5563;     /* idle */
   --traced: #57d977;   /* traced chunk */
   --danger: #e06c6c;
+  --departed: #3b434f; /* node that left the network */
 }
 
 html, body {
@@ -83,6 +84,7 @@ button {
   width: 100%;
 }
 button.secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+button.danger { background: var(--danger); color: #1b0d0d; }
 button:active { transform: translateY(1px); }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
@@ -104,6 +106,7 @@ button:active { transform: translateY(1px); }
 /* Legend */
 #legend .item { display: flex; align-items: center; gap: 8px; margin: 5px 0; font-size: 12px; color: var(--muted); }
 #legend .swatch { width: 22px; height: 3px; border-radius: 2px; flex: 0 0 auto; }
+#legend .swatch-dot { width: 10px; height: 10px; border-radius: 50%; margin: 0 6px; }
 
 /* Canvas area */
 #stage { position: relative; overflow: hidden; }
@@ -171,3 +174,32 @@ button:active { transform: translateY(1px); }
 .batch-meta { color: var(--muted); margin-top: 2px; line-height: 1.4; }
 .batch-p { display: block; }
 .batch-late { display: block; color: var(--amber); }
+
+/* heal episodes — same shape as the propagation batches above */
+.heal {
+  border-left: 2px solid var(--grey);
+  padding: 4px 0 4px 8px;
+  margin-bottom: 6px;
+  font-size: 11px;
+}
+.heal.running { border-left-color: var(--amber); }
+.heal.settled { border-left-color: var(--accent); }
+.heal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+}
+.heal-id { font-family: monospace; color: var(--muted); }
+.heal-span { font-family: monospace; color: var(--text); font-size: 13px; }
+.heal-state { color: var(--muted); text-transform: uppercase; font-size: 9px; letter-spacing: .5px; }
+.heal-meta { color: var(--muted); margin-top: 2px; line-height: 1.4; }
+.heal-radius { font-family: monospace; color: var(--text); }
+/* A residual is a legitimate outcome, so it reads as plain detail, not a warning. */
+.heal-residual { display: block; color: var(--muted); }
+.heal-bar { height: 6px; background: #0d1015; border-radius: 3px; margin: 4px 0 2px; overflow: hidden; }
+.heal-bar > span { display: block; height: 100%; background: var(--accent); }
+
+/* churn readout */
+#churn-out.hit { color: var(--text); }
+#churn-out .mono { color: var(--danger); }

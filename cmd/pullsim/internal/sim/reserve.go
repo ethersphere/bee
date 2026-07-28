@@ -29,11 +29,23 @@ const (
 // PutEvent is emitted, outside the reserve lock, whenever a new chunk is
 // stored. The owning node index is attached by the caller wiring the hook.
 type PutEvent struct {
-	Address     swarm.Address
-	Bin         uint8
-	BinID       uint64
+	Address swarm.Address
+	Bin     uint8
+	BinID   uint64
+	// BatchID and StampHash complete the (address, batchID, stampHash) triple
+	// pullsync wants on. The deficit tracker strikes entries off on that triple,
+	// so it must be able to see it here.
+	BatchID     []byte
+	StampHash   []byte
 	Source      PutSource
 	ReserveSize int
+}
+
+// Entry identifies one stored chunk by the triple pullsync wants on.
+type Entry struct {
+	Address   swarm.Address
+	BatchID   []byte
+	StampHash []byte
 }
 
 // binEntry is one append-only record in a bin log, ordered by BinID.
@@ -140,6 +152,8 @@ func (r *SimReserve) put(ch swarm.Chunk, source PutSource) error {
 			Address:     ch.Address(),
 			Bin:         bin,
 			BinID:       binID,
+			BatchID:     batchID,
+			StampHash:   stampHash,
 			Source:      source,
 			ReserveSize: size,
 		})
@@ -330,6 +344,21 @@ func (r *SimReserve) HasAddress(addr swarm.Address) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.byAddr[addr.ByteString()] > 0
+}
+
+// Entries returns every stored chunk as an (address, batchID, stampHash)
+// triple. It is the input to the deficit maths: the union of all surviving
+// reserves' entries is the live chunk universe.
+func (r *SimReserve) Entries() []Entry {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]Entry, 0, len(r.presence))
+	for _, log := range r.binLogs {
+		for _, e := range log {
+			out = append(out, Entry{Address: e.address, BatchID: e.batchID, StampHash: e.stampHash})
+		}
+	}
+	return out
 }
 
 // BinCounts returns a snapshot of the per-bin chunk counts.

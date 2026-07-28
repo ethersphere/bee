@@ -41,6 +41,10 @@ func main() {
 		settle   = flag.Duration("settle", 3*time.Second, "batch quiescence window before a batch counts as done propagating")
 		verbose  = flag.Bool("v", false, "verbose protocol logging")
 
+		churn       = flag.Int("churn", 0, "number of nodes to depart after start (0 disables churn)")
+		churnAfter  = flag.Duration("churn-after", 30*time.Second, "delay after start before the nodes depart")
+		churnRadius = flag.Uint("churn-radius", 0, "storage radius to set after the departures (only applied when passed)")
+
 		bench       = flag.Bool("bench", false, "run a headless propagation sweep instead of the HTTP server")
 		benchNodes  = flag.String("bench-nodes", "10,20,30,40,50", "sweep: comma-separated node counts")
 		benchChunks = flag.String("bench-chunks", "1,10,100", "sweep: comma-separated batch sizes")
@@ -55,10 +59,18 @@ func main() {
 
 	// -settle governs both modes; -bench-settle only overrides it when the
 	// operator actually passed it, so the two modes cannot silently diverge.
+	// Radius 0 is a legal radius, so the churn radius is only applied when the
+	// operator actually passed the flag, not when it merely reads as zero.
 	settleAfter := *settle
+	churnRadiusSet := false
 	flag.Visit(func(f *flag.Flag) {
-		if f.Name == "bench-settle" && *bench {
-			settleAfter = *benchSettle
+		switch f.Name {
+		case "bench-settle":
+			if *bench {
+				settleAfter = *benchSettle
+			}
+		case "churn-radius":
+			churnRadiusSet = true
 		}
 	})
 
@@ -98,6 +110,12 @@ func main() {
 			v = log.VerbosityDebug
 		}
 		benchLogger := log.NewLogger("pullsim", log.WithSink(os.Stderr), log.WithVerbosity(v), log.WithTimestamp())
+		// The churn scenario belongs to the server mode; the sweep rebuilds a
+		// network per cell and has nowhere to hang it. Fail rather than ignore.
+		if *churn > 0 {
+			benchLogger.Error(nil, "-churn is not supported with -bench")
+			os.Exit(1)
+		}
 		nodesGrid, err := parseGrid(*benchNodes)
 		if err != nil {
 			benchLogger.Error(err, "invalid -bench-nodes")
@@ -158,6 +176,19 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
+	if *churn > 0 {
+		// -v routes everything to the stdout debug logger; without it the
+		// default logger is a noop, which would swallow the one result a
+		// scripted churn run exists to print. So the scenario gets its own
+		// operator-level logger, the same way the sweep does.
+		churnLogger := logger
+		if !*verbose {
+			churnLogger = log.NewLogger("pullsim", log.WithSink(os.Stdout),
+				log.WithVerbosity(log.VerbosityInfo), log.WithTimestamp())
+		}
+		go runChurn(ctx, server, *churn, *churnAfter, uint8(*churnRadius), churnRadiusSet, churnLogger)
+	}
+
 	go func() {
 		logger.Info("pullsim listening", "addr", *listen)
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -172,4 +203,38 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	_ = httpSrv.Shutdown(shutdownCtx)
+}
+
+// runChurn waits out the delay, departs count nodes and optionally sets the
+// post-churn radius. It returns on ctx cancellation, so Ctrl-C never leaves it
+// waiting on a network that is being torn down.
+func runChurn(ctx context.Context, server *web.Server, count int, after time.Duration,
+	radius uint8, radiusSet bool, logger log.Logger,
+) {
+	t := time.NewTimer(after)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return
+	case <-t.C:
+	}
+
+	n := server.Network()
+	if n == nil {
+		logger.Error(nil, "churn skipped: no network")
+		return
+	}
+	res, err := n.ChurnRandom(count)
+	if err != nil {
+		logger.Error(err, "churn failed", "count", count)
+		return
+	}
+	logger.Info("churn done", "departed", res.Departed, "survivors", res.Survivors,
+		"lost", res.Lost, "edges_added", res.EdgesAdded, "edges_removed", res.EdgesRemoved)
+
+	if !radiusSet {
+		return
+	}
+	n.SetRadius(radius)
+	logger.Info("churn radius applied", "radius", n.Radius())
 }

@@ -82,6 +82,10 @@ func (s *Server) build(cfg sim.Config) error {
 	return nil
 }
 
+// Network returns the network currently being driven, or nil before the first
+// successful build. It is the handle scripted (non-UI) drivers use.
+func (s *Server) Network() *sim.Network { return s.current() }
+
 func (s *Server) current() *sim.Network {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -102,6 +106,7 @@ func (s *Server) Handler() http.Handler {
 	r.HandleFunc("/ws", s.handleWS)
 	r.HandleFunc("/api/network", s.handleNetwork).Methods(http.MethodGet, http.MethodPost)
 	r.HandleFunc("/api/radius", s.handleRadius).Methods(http.MethodPost)
+	r.HandleFunc("/api/churn", s.handleChurn).Methods(http.MethodPost)
 	r.HandleFunc("/api/inject", s.handleInject).Methods(http.MethodPost)
 	r.HandleFunc("/api/inject/stop", s.handleInjectStop).Methods(http.MethodPost)
 
@@ -190,6 +195,51 @@ func (s *Server) handleRadius(w http.ResponseWriter, r *http.Request) {
 	}
 	n.SetRadius(body.Radius)
 	writeJSON(w, http.StatusOK, map[string]any{"radius": n.Radius()})
+}
+
+func (s *Server) handleChurn(w http.ResponseWriter, r *http.Request) {
+	// Count is a pointer so that an explicit {"count":0} is still "count was
+	// given" and gets the sim's own range error rather than being read as
+	// "nodes form".
+	var body struct {
+		Count *int  `json:"count"`
+		Nodes []int `json:"nodes"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if body.Count != nil && body.Nodes != nil {
+		writeError(w, http.StatusBadRequest, "specify either count or nodes, not both")
+		return
+	}
+	if body.Count == nil && body.Nodes == nil {
+		writeError(w, http.StatusBadRequest, "specify either count or nodes")
+		return
+	}
+	n := s.current()
+	if n == nil {
+		writeError(w, http.StatusServiceUnavailable, "no network")
+		return
+	}
+
+	// Every error out of Churn/ChurnRandom is a rejected request (bad index,
+	// repeated index, already departed, too few survivors), so they all map to
+	// 400 like the other handlers' input errors.
+	var (
+		res sim.ChurnResult
+		err error
+	)
+	if body.Count != nil {
+		res, err = n.ChurnRandom(*body.Count)
+	} else {
+		res, err = n.Churn(body.Nodes)
+	}
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
 }
 
 func (s *Server) handleInject(w http.ResponseWriter, r *http.Request) {

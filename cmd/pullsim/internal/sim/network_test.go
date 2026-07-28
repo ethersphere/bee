@@ -335,6 +335,113 @@ func TestNetworkWaitBatchWakesOnClose(t *testing.T) {
 	}
 }
 
+// TestNetworkChurnHealsAfterRadiusDrop is the end-to-end statement of the whole
+// feature: a clustered kademlia network at radius R where the chunks sit at PO
+// R-1, so every node but the origin deliberately refuses them; some nodes
+// depart; the operator drops the radius to R-1; the survivors must then pull
+// what they have newly become responsible for.
+//
+// The assertion is that the *reported* healed count rises, not that the deficit
+// reaches zero. A chunk whose only surviving holder is not a pull-sync source
+// for the newly opened bin is unrecoverable by design, so a residue is a
+// legitimate outcome and is reported rather than asserted away.
+func TestNetworkChurnHealsAfterRadiusDrop(t *testing.T) {
+	const (
+		radius   = 4
+		nodes    = 12
+		clusters = 2
+		chunks   = 20
+	)
+
+	n := startNetwork(t, Config{
+		Nodes: nodes, Bins: 8, Topology: TopologyKademlia, Degree: 4,
+		Radius: radius, Clusters: clusters, Seed: 41,
+		Latency: time.Millisecond, SettleAfter: 3 * time.Second,
+	})
+
+	// Chunks at PO radius-1 from node 0: inside nobody's radius, so only the
+	// origin holds them while the radius is R.
+	if _, _, err := n.Inject(0, chunks, 0, radius-1); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(3 * time.Second)
+
+	// Depart three of node 0's own neighborhood: they are the nodes that will
+	// be responsible once the radius drops, so churning them is what makes the
+	// backfill non-trivial.
+	base := n.Nodes()[0].Addr
+	var neighborhood []int
+	for _, nd := range n.Nodes() {
+		if nd.Index != 0 && swarm.Proximity(base.Bytes(), nd.Addr.Bytes()) >= radius {
+			neighborhood = append(neighborhood, nd.Index)
+		}
+	}
+	if len(neighborhood) < 4 {
+		t.Fatalf("test setup: node 0 has only %d neighbors, want >= 4", len(neighborhood))
+	}
+	res, err := n.Churn(neighborhood[:3])
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("churn: departed=%v survivors=%d lost=%d edges +%d/-%d",
+		res.Departed, res.Survivors, res.Lost, res.EdgesAdded, res.EdgesRemoved)
+
+	before := n.Deficit()
+	totalBefore := 0
+	for _, d := range before {
+		totalBefore += d
+	}
+
+	n.SetRadius(radius - 1)
+
+	heals := n.Heals()
+	if len(heals) != 1 {
+		t.Fatalf("got %d heal episodes, want 1", len(heals))
+	}
+	id := heals[0].ID
+	if heals[0].Total == 0 {
+		t.Fatalf("heal episode opened with nothing to do (deficit before the drop was %d)", totalBefore)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	h, err := n.WaitHeal(ctx, id)
+	if err != nil {
+		t.Fatalf("WaitHeal: %v (partial: %+v)", err, h)
+	}
+	t.Logf("heal %d: %d->%d total=%d healed=%d remaining=%d span=%dms",
+		h.ID, h.FromRadius, h.ToRadius, h.Total, h.Healed, h.Remaining, h.HealSpanMs)
+	for _, p := range h.PerNode {
+		t.Logf("  node %2d: %d/%d", p.Node, p.Healed, p.Total)
+	}
+
+	if !h.Settled {
+		t.Error("heal episode did not settle")
+	}
+	if h.Healed == 0 {
+		t.Fatalf("no chunks healed at all out of a deficit of %d", h.Total)
+	}
+	if h.Healed+h.Remaining != h.Total {
+		t.Errorf("healed %d + remaining %d != total %d", h.Healed, h.Remaining, h.Total)
+	}
+	// Residual allowance: the outcome must be a clear majority recovered, not a
+	// hardcoded zero deficit.
+	if h.Healed*2 < h.Total {
+		t.Errorf("only %d of %d chunks healed; expected the majority to be recoverable",
+			h.Healed, h.Total)
+	}
+	// The live deficit must have fallen too, independently of the tracker.
+	after := 0
+	for _, d := range n.Deficit() {
+		after += d
+	}
+	t.Logf("deficit: %d before the drop, %d after the heal", totalBefore, after)
+	if h.Remaining > 0 {
+		t.Logf("residual deficit of %d is a reported outcome, not a failure", h.Remaining)
+	}
+}
+
 // C1b: the bench mines its chunks at -bench-minpo, which is what makes a
 // non-zero -radius sweep produce any replicas at all.
 func TestNetworkInjectHonorsMinPO(t *testing.T) {

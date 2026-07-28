@@ -23,6 +23,8 @@ const (
 	KindRadius = "radius"
 	KindConfig = "config"
 	KindBatch  = "batch"
+	KindHeal   = "heal"
+	KindChurn  = "churn"
 )
 
 // Edge sync modes derived from puller rules vs. radius.
@@ -163,6 +165,43 @@ type Batch struct {
 	BatchSnap
 }
 
+// NodeHealSnap is one node's share of a heal episode.
+type NodeHealSnap struct {
+	Node   int `json:"node"`
+	Total  int `json:"total"`
+	Healed int `json:"healed"`
+}
+
+// HealSnap reports one heal episode: the backfill opened by a storage-radius
+// decrease. Remaining is a legitimate outcome rather than an error — a chunk
+// whose only surviving holder is not a pull-sync source for the newly opened
+// bin cannot be recovered, and is reported as residue.
+type HealSnap struct {
+	ID         int            `json:"id"`
+	FromRadius uint8          `json:"fromRadius"`
+	ToRadius   uint8          `json:"toRadius"`
+	Total      int            `json:"total"`
+	Healed     int            `json:"healed"`
+	Remaining  int            `json:"remaining"`
+	Settled    bool           `json:"settled"`
+	HealSpanMs int64          `json:"healSpanMs"`
+	PerNode    []NodeHealSnap `json:"perNode"`
+}
+
+// Heal is published when a heal episode settles.
+type Heal struct {
+	HealSnap
+}
+
+// Churn is published when nodes depart the network.
+type Churn struct {
+	Departed     []int `json:"departed"`
+	Survivors    int   `json:"survivors"`
+	Lost         int   `json:"lost"`
+	EdgesAdded   int   `json:"edgesAdded"`
+	EdgesRemoved int   `json:"edgesRemoved"`
+}
+
 // Snapshot structures (the authoritative periodic frame).
 
 // NodeSnap is the per-node view.
@@ -174,6 +213,9 @@ type NodeSnap struct {
 	ReserveSize int     `json:"reserveSize"`
 	BinCounts   []int   `json:"binCounts"`
 	HasTraced   bool    `json:"hasTraced"`
+	// Departed marks a node that has left the network. It keeps its index and
+	// ring position so nothing renumbers, but it contributes no edges.
+	Departed bool `json:"departed"`
 }
 
 // EdgeSnap is the per-undirected-pair static view.
@@ -225,6 +267,7 @@ type Snapshot struct {
 	Edges   []EdgeSnap    `json:"edges"`
 	EdgeDir []EdgeDirSnap `json:"edgeDir"`
 	Batches []BatchSnap   `json:"batches"`
+	Heals   []HealSnap    `json:"heals"`
 	Stats   Stats         `json:"stats"`
 }
 
