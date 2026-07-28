@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	pullsyncold "github.com/ethersphere/bee-old/pkg/pullsync"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -61,56 +60,6 @@ func BenchmarkDeliveryLibP2P(b *testing.B) {
 
 				store2 := &customClientReserve{Reserve: mock.NewReserve()}
 				psClient := pullsync.New(clientService, store2, func(swarm.Chunk) {}, func(*soc.SOC) {}, func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil }, logger, uint64(n))
-
-				if err := clientService.AddProtocol(psClient.Protocol()); err != nil {
-					b.Fatal(err)
-				}
-
-				serverAddrs, err := serverService.Addresses()
-				if err != nil {
-					b.Fatal(err)
-				}
-
-				_, err = clientService.Connect(context.Background(), serverAddrs)
-				if err != nil {
-					b.Fatal(err)
-				}
-
-				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
-					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-					_, count, err := psClient.Sync(ctx, serverAddr, 0, 0)
-					cancel()
-
-					if err != nil {
-						b.Fatalf("Sync failed: %v", err)
-					}
-					if count != n {
-						b.Fatalf("Expected %d chunks, got %d", n, count)
-					}
-				}
-			})
-
-			b.Run("v2.8.1", func(b *testing.B) {
-				logger := log.Noop
-				serverService, serverAddr := newLibp2pService(b, 1, logger)
-				clientService, _ := newLibp2pService(b, 1, logger)
-
-				baseReserve := mock.NewReserve()
-				res1 := &customReserve{
-					Reserve: baseReserve,
-					chunks:  testChunks,
-					results: testResults,
-				}
-
-				psServer := pullsyncold.New(serverService, res1, func(swarm.Chunk) {}, func(*soc.SOC) {}, func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil }, logger, uint64(n))
-
-				if err := serverService.AddProtocol(psServer.Protocol()); err != nil {
-					b.Fatal(err)
-				}
-
-				store2 := &customClientReserve{Reserve: mock.NewReserve()}
-				psClient := pullsyncold.New(clientService, store2, func(swarm.Chunk) {}, func(*soc.SOC) {}, func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil }, logger, uint64(n))
 
 				if err := clientService.AddProtocol(psClient.Protocol()); err != nil {
 					b.Fatal(err)
@@ -267,34 +216,6 @@ func BenchmarkDeliveryPipe(b *testing.B) {
 
 					store2 := &customClientReserve{Reserve: mock.NewReserve()}
 					psClient := pullsync.New(streamer, store2, func(swarm.Chunk) {}, func(*soc.SOC) {}, func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil }, log.Noop, uint64(n))
-
-					b.StartTimer()
-					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-					_, count, err := psClient.Sync(ctx, swarm.ZeroAddress, 0, 0)
-					cancel()
-					b.StopTimer()
-
-					if err != nil {
-						b.Fatalf("Sync failed: %v", err)
-					}
-					if count != n {
-						b.Fatalf("Expected %d chunks, got %d", n, count)
-					}
-					psClient.Close()
-					psServer.Close()
-				}
-			})
-
-			b.Run("v2.8.1", func(b *testing.B) {
-				for i := 0; i < b.N; i++ {
-					b.StopTimer()
-					store1 := mock.NewReserve(mock.WithSubscribeResp(testResults, nil), mock.WithChunks(testChunks...))
-					psServer := pullsyncold.New(nil, store1, func(swarm.Chunk) {}, func(*soc.SOC) {}, func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil }, log.Noop, uint64(n))
-
-					streamer := &pipeStreamer{serverHandler: psServer.Protocol().StreamSpecs[0].Handler}
-
-					store2 := &customClientReserve{Reserve: mock.NewReserve()}
-					psClient := pullsyncold.New(streamer, store2, func(swarm.Chunk) {}, func(*soc.SOC) {}, func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil }, log.Noop, uint64(n))
 
 					b.StartTimer()
 					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

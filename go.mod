@@ -11,7 +11,7 @@ require (
 	github.com/ethereum/go-ethereum v1.17.3
 	github.com/ethersphere/batch-archive v0.0.8
 	github.com/ethersphere/go-price-oracle-abi v0.6.9
-	github.com/ethersphere/go-storage-incentives-abi v0.9.4
+	github.com/ethersphere/go-storage-incentives-abi v0.9.3-rc4
 	github.com/ethersphere/go-sw3-abi v0.6.9
 	github.com/ethersphere/langos v1.0.0
 	github.com/go-playground/validator/v10 v10.19.0
@@ -66,7 +66,6 @@ require (
 
 require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
-	github.com/ethersphere/bee-old v0.0.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect
@@ -206,5 +205,3 @@ require (
 )
 
 replace github.com/codahale/hdrhistogram => github.com/HdrHistogram/hdrhistogram-go v0.0.0-20200919145931-8dac23c8dac1
-
-replace github.com/ethersphere/bee-old => github.com/ethersphere/bee/v2 v2.8.1
