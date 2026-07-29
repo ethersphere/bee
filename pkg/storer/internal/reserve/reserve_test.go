@@ -2245,7 +2245,7 @@ func TestAdvancedReserveCornerCases(t *testing.T) {
 		stamp := postagetesting.MustNewFields(batch.ID, 0, 10)
 
 		// Generate 4 SOCs with different payloads and sort them by wrapped CAC address
-		var socChunks []swarm.Chunk
+		socChunks := make([]swarm.Chunk, 0, 100)
 		for i := range 100 {
 			c := soctesting.GenerateMockSocWithSigner(t, fmt.Appendf(nil, "payload %d", i), signer).Chunk().WithStamp(stamp)
 			socChunks = append(socChunks, c)
