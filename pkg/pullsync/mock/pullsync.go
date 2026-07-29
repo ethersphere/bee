@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/pullsync"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -36,6 +37,15 @@ func WithReplies(replies ...SyncReply) Option {
 	})
 }
 
+// WithSyncCancelDelay adds an artificial delay after context cancellation in
+// the blocking Sync path (when no reply is configured), simulating slow TCP
+// teardown latency.
+func WithSyncCancelDelay(d time.Duration) Option {
+	return optionFunc(func(p *PullSyncMock) {
+		p.cancelDelay = d
+	})
+}
+
 func toID(a swarm.Address, bin uint8, start uint64) string {
 	return fmt.Sprintf("%s-%d-%d", a, bin, start)
 }
@@ -51,11 +61,13 @@ type SyncReply struct {
 type PullSyncMock struct {
 	mtx             sync.Mutex
 	syncCalls       []SyncReply
+	totalSyncCalls  int // every Sync() entry, including blocking ones
 	syncErr         error
 	cursors         []uint64
 	epoch           uint64
 	getCursorsPeers []swarm.Address
 	replies         map[string][]SyncReply
+	cancelDelay     time.Duration // extra delay after ctx cancellation in blocking path
 
 	quit chan struct{}
 }
@@ -74,6 +86,8 @@ func NewPullSync(opts ...Option) *PullSyncMock {
 func (p *PullSyncMock) Sync(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (topmost uint64, count int, err error) {
 	p.mtx.Lock()
 
+	p.totalSyncCalls++
+
 	id := toID(peer, bin, start)
 	replies := p.replies[id]
 
@@ -84,9 +98,22 @@ func (p *PullSyncMock) Sync(ctx context.Context, peer swarm.Address, bin uint8, 
 		p.mtx.Unlock()
 		return reply.Topmost, reply.Count, p.syncErr
 	}
+
+	cancelDelay := p.cancelDelay
 	p.mtx.Unlock()
+
 	<-ctx.Done()
+	if cancelDelay > 0 {
+		time.Sleep(cancelDelay)
+	}
 	return 0, 0, ctx.Err()
+}
+
+// TotalSyncCalls returns the total number of Sync() invocations, including blocking ones.
+func (p *PullSyncMock) TotalSyncCalls() int {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+	return p.totalSyncCalls
 }
 
 func (p *PullSyncMock) GetCursors(_ context.Context, peer swarm.Address) ([]uint64, uint64, error) {
