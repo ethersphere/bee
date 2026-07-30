@@ -210,8 +210,7 @@ func (s *Service) bytesHeadHandler(w http.ResponseWriter, r *http.Request) {
 		ContentTypeHeader: {"application/octet-stream"},
 	}
 
-	// share the download path with the GET handler so that the length is resolved
-	// by the joiner. It strips the redundancy level that may be encoded in the
-	// root chunk span, and splits an encrypted reference into address and key.
+	// share the GET path: the joiner strips the redundancy level encoded in the
+	// root chunk span and splits an encrypted reference into address and key.
 	s.downloadHandler(logger, w, r, address, additionalHeaders, true, true, nil)
 }

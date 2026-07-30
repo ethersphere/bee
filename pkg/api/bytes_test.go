@@ -442,11 +442,8 @@ func TestBytesRedundancyLevel(t *testing.T) {
 	}
 }
 
-// TestBytesHead tests that a HEAD request reports the same entity headers as a
-// GET, for every redundancy level and for encrypted references. The redundancy
-// level is encoded into the most significant byte of the root chunk span and has
-// to be stripped before the length is read out of it, and an encrypted reference
-// carries a decryption key that is not part of the root chunk address.
+// TestBytesHead tests that HEAD reports the same entity headers as GET, for every
+// redundancy level and for encrypted references.
 func TestBytesHead(t *testing.T) {
 	t.Parallel()
 
@@ -496,8 +493,7 @@ func TestBytesHead(t *testing.T) {
 }
 
 // TestBytesHeadErrorsMatchGet tests that HEAD reports the same status as GET for
-// references that cannot be served, so a client probing with HEAD is not told
-// something different from what the subsequent GET would do.
+// references that cannot be served.
 func TestBytesHeadErrorsMatchGet(t *testing.T) {
 	t.Parallel()
 
