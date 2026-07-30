@@ -268,19 +268,30 @@ paths:
                 type: string
                 example: application/octet-stream
             Content-Length:
-              description: The size of the chunk in bytes.
+              description: The size of the retrievable content in bytes.
               schema:
                 type: integer
                 example: 1024
+            Accept-Ranges:
+              description: Indicates that ranged requests are supported for the reference.
+              schema:
+                type: string
+                example: bytes
+            ETag:
+              description: The reference, as an entity tag.
+              schema:
+                type: string
             Access-Control-Expose-Headers:
               description: Headers exposed for CORS.
               schema:
                 type: string
-                example: Accept-Ranges, Content-Encoding
+                example: Content-Disposition, Accept-Ranges, Content-Encoding
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
@@ -484,10 +495,37 @@ paths:
       responses:
         "200":
           description: Chunk exists
+          headers:
+            Content-Type:
+              description: The MIME type of the resource.
+              schema:
+                type: string
+                example: application/octet-stream
+            Content-Length:
+              description: The size of the retrievable content in bytes.
+              schema:
+                type: integer
+                example: 1024
+            Accept-Ranges:
+              description: Indicates that ranged requests are supported for the reference.
+              schema:
+                type: string
+                example: bytes
+            ETag:
+              description: The reference, as an entity tag.
+              schema:
+                type: string
+            Access-Control-Expose-Headers:
+              description: Headers exposed for CORS.
+              schema:
+                type: string
+                example: Content-Disposition, Accept-Ranges, Content-Encoding
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 

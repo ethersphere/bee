@@ -441,3 +441,86 @@ func TestBytesRedundancyLevel(t *testing.T) {
 		})
 	}
 }
+
+// TestBytesHead tests that a HEAD request reports the same entity headers as a
+// GET, for every redundancy level and for encrypted references. The redundancy
+// level is encoded into the most significant byte of the root chunk span and has
+// to be stripped before the length is read out of it, and an encrypted reference
+// carries a decryption key that is not part of the root chunk address.
+func TestBytesHead(t *testing.T) {
+	t.Parallel()
+
+	g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
+	content, err := g.SequentialBytes(swarm.ChunkSize * 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for level := redundancy.NONE; level <= redundancy.PARANOID; level++ {
+		for _, encrypt := range []bool{false, true} {
+			t.Run(fmt.Sprintf("level %d encrypt %v", level, encrypt), func(t *testing.T) {
+				t.Parallel()
+
+				client, _, _, _ := newTestServer(t, testServerOptions{
+					Storer: mockstorer.New(),
+					Post:   mockpost.New(mockpost.WithAcceptAll()),
+				})
+
+				var resp struct {
+					Reference swarm.Address `json:"reference"`
+				}
+				jsonhttptest.Request(t, client, http.MethodPost, "/bytes", http.StatusCreated,
+					jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+					jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+					jsonhttptest.WithRequestHeader(api.SwarmRedundancyLevelHeader, strconv.Itoa(int(level))),
+					jsonhttptest.WithRequestHeader(api.SwarmEncryptHeader, strconv.FormatBool(encrypt)),
+					jsonhttptest.WithRequestBody(bytes.NewReader(content)),
+					jsonhttptest.WithUnmarshalJSONResponse(&resp),
+				)
+
+				resource := "/bytes/" + resp.Reference.String()
+
+				jsonhttptest.Request(t, client, http.MethodHead, resource, http.StatusOK,
+					jsonhttptest.WithExpectedContentLength(len(content)),
+					jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "application/octet-stream"),
+					jsonhttptest.WithExpectedResponseHeader(api.AcceptRangesHeader, "bytes"),
+				)
+				jsonhttptest.Request(t, client, http.MethodGet, resource, http.StatusOK,
+					jsonhttptest.WithExpectedContentLength(len(content)),
+					jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "application/octet-stream"),
+					jsonhttptest.WithExpectedResponseHeader(api.AcceptRangesHeader, "bytes"),
+				)
+			})
+		}
+	}
+}
+
+// TestBytesHeadErrorsMatchGet tests that HEAD reports the same status as GET for
+// references that cannot be served, so a client probing with HEAD is not told
+// something different from what the subsequent GET would do.
+func TestBytesHeadErrorsMatchGet(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{
+		Storer: mockstorer.New(),
+		Post:   mockpost.New(mockpost.WithAcceptAll()),
+	})
+
+	tests := []struct {
+		name string
+		ref  string
+		want int
+	}{
+		{"unresolvable address", "abcd", http.StatusInternalServerError},
+		{"unknown address", "0000000000000000000000000000000000000000000000000000000000000001", http.StatusNotFound},
+		{"invalid address", "zzzz", http.StatusBadRequest},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resource := "/bytes/" + tt.ref
+			jsonhttptest.Request(t, client, http.MethodHead, resource, tt.want)
+			jsonhttptest.Request(t, client, http.MethodGet, resource, tt.want)
+		})
+	}
+}

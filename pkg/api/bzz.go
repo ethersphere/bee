@@ -794,6 +794,12 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 	w.Header().Add(AccessControlExposeHeaders, ContentDispositionHeader)
 
 	if headersOnly {
+		// http.ServeContent, which advertises range support on the GET path, is
+		// never reached here, so the header has to be set explicitly to keep HEAD
+		// responses consistent with GET, as RFC 9110 section 9.3.2 requires.
+		w.Header().Set(AcceptRangesHeader, "bytes")
+		w.Header().Add(AccessControlExposeHeaders, AcceptRangesHeader)
+		w.Header().Add(AccessControlExposeHeaders, ContentEncodingHeader)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
