@@ -285,7 +285,7 @@ paths:
               description: Headers exposed for CORS.
               schema:
                 type: string
-                example: Content-Disposition, Accept-Ranges, Content-Encoding
+                example: Content-Disposition, Accept-Ranges
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
@@ -519,7 +519,7 @@ paths:
               description: Headers exposed for CORS.
               schema:
                 type: string
-                example: Content-Disposition, Accept-Ranges, Content-Encoding
+                example: Content-Disposition, Accept-Ranges
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":

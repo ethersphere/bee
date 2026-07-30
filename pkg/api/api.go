@@ -107,7 +107,6 @@ const (
 	ContentTypeHeader          = "Content-Type"
 	ContentDispositionHeader   = "Content-Disposition"
 	ContentLengthHeader        = "Content-Length"
-	ContentEncodingHeader      = "Content-Encoding"
 	AcceptRangesHeader         = "Accept-Ranges"
 	RangeHeader                = "Range"
 	OriginHeader               = "Origin"

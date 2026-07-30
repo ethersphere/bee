@@ -794,11 +794,10 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 	w.Header().Add(AccessControlExposeHeaders, ContentDispositionHeader)
 
 	if headersOnly {
-		// http.ServeContent sets these on the GET path, but is not reached here.
+		// http.ServeContent sets this on the GET path, but is not reached here.
 		// "bytes" is the range unit, not the endpoint.
 		w.Header().Set(AcceptRangesHeader, "bytes")
 		w.Header().Add(AccessControlExposeHeaders, AcceptRangesHeader)
-		w.Header().Add(AccessControlExposeHeaders, ContentEncodingHeader)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
