@@ -726,6 +726,40 @@ components:
         - $ref: "#/components/schemas/SwarmEncryptedReference"
         - $ref: "#/components/schemas/DomainName"
 
+    ManifestListEntry:
+      type: object
+      properties:
+        path:
+          type: string
+        reference:
+          $ref: "#/components/schemas/SwarmReference"
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        size:
+          type: integer
+          description: Present only when the request set sizes=true and the span could be read.
+
+    ManifestList:
+      type: object
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/ManifestListEntry"
+        commonPrefixes:
+          type: array
+          description: Pseudo-directory prefixes; present only when a delimiter was supplied.
+          items:
+            type: string
+        truncated:
+          type: boolean
+          description: True when more entries remain beyond this page.
+        nextMarker:
+          type: string
+          description: Continuation token to pass as `after` for the next page.
+
     SwapCashoutResult:
       type: object
       properties:
