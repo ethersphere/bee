@@ -507,9 +507,9 @@ func TestBytesHeadErrorsMatchGet(t *testing.T) {
 		ref  string
 		want int
 	}{
-		{"unresolvable address", "abcd", http.StatusInternalServerError},
+		{"short address", "abcd", http.StatusInternalServerError},
 		{"unknown address", "0000000000000000000000000000000000000000000000000000000000000001", http.StatusNotFound},
-		{"invalid address", "zzzz", http.StatusBadRequest},
+		{"non-hex address", "zzzz", http.StatusBadRequest},
 	}
 
 	for _, tt := range tests {
