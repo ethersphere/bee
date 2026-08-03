@@ -8,6 +8,7 @@ package pullsync
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -303,7 +304,32 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 				ctr++
 				s.metrics.Wanted.Inc()
 				bv.Set(i)
+				s.logger.Debug("pullsync want chunk",
+					"peer_address", peer,
+					"bin", bin,
+					"offer_idx", i,
+					"chunk_address", a,
+					"sum", hex.EncodeToString(sum),
+					"start", start,
+					"offer_topmost", topmost,
+				)
+			} else {
+				s.logger.Debug("pullsync skip offer, already have sum",
+					"peer_address", peer,
+					"bin", bin,
+					"offer_idx", i,
+					"chunk_address", a,
+					"sum", hex.EncodeToString(sum),
+					"start", start,
+					"offer_topmost", topmost,
+				)
 			}
+		} else {
+			s.logger.Debug("pullsync skip offer, outside storage radius",
+				"peer_address", peer,
+				"bin", bin,
+				"chunk_address", a,
+			)
 		}
 	}
 
@@ -313,6 +339,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 	}
 
 	chunksToPut := make([]swarm.Chunk, 0, ctr)
+	wanted := ctr
 
 	var chunkErr error
 	for ; ctr > 0; ctr-- {
@@ -345,17 +372,53 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		}
 
 		wantChunkID := addr.ByteString() + string(sum)
+		stampHash, hashErr := stamp.Hash()
+		stampHashHex := ""
+		if hashErr == nil {
+			stampHashHex = hex.EncodeToString(stampHash)
+		}
 		if _, ok := wantChunks[wantChunkID]; !ok {
-			s.logger.Debug("want chunks", "error", ErrUnsolicitedChunk, "peer_address", peer, "chunk_address", addr)
+			s.logger.Debug("pullsync unsolicited delivery",
+				"error", ErrUnsolicitedChunk,
+				"peer_address", peer,
+				"chunk_address", addr,
+				"batch_id", hex.EncodeToString(stamp.BatchID()),
+				"stamp_hash", stampHashHex,
+				"stamp_index", hex.EncodeToString(stamp.Index()),
+				"stamp_timestamp", binary.BigEndian.Uint64(stamp.Timestamp()),
+				"recomputed_sum", hex.EncodeToString(sum),
+				"bin", bin,
+				"offer_topmost", topmost,
+			)
 			chunkErr = errors.Join(chunkErr, ErrUnsolicitedChunk)
 			continue
 		}
 
 		delete(wantChunks, wantChunkID)
 
+		s.logger.Debug("pullsync delivery accepted for want",
+			"peer_address", peer,
+			"chunk_address", addr,
+			"batch_id", hex.EncodeToString(stamp.BatchID()),
+			"stamp_hash", stampHashHex,
+			"stamp_index", hex.EncodeToString(stamp.Index()),
+			"stamp_timestamp", binary.BigEndian.Uint64(stamp.Timestamp()),
+			"recomputed_sum", hex.EncodeToString(sum),
+			"bin", bin,
+			"offer_topmost", topmost,
+		)
+
 		chunk, err := s.validStamp(newChunk.WithStamp(stamp))
 		if err != nil {
-			s.logger.Debug("unverified stamp", "error", err, "peer_address", peer, "chunk_address", newChunk)
+			s.logger.Debug("unverified stamp",
+				"error", err,
+				"peer_address", peer,
+				"chunk_address", addr,
+				"batch_id", hex.EncodeToString(stamp.BatchID()),
+				"stamp_timestamp", binary.BigEndian.Uint64(stamp.Timestamp()),
+				"bin", bin,
+				"offer_topmost", topmost,
+			)
 			chunkErr = errors.Join(chunkErr, err)
 			continue
 		}
@@ -390,7 +453,14 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 				// in case of these errors, no new items are added to the storage, so it
 				// is safe to continue with the next chunk
 				if errors.Is(err, storage.ErrOverwriteNewerChunk) {
-					s.logger.Debug("overwrite newer chunk", "error", err, "peer_address", peer, "chunk", c)
+					s.logger.Debug("overwrite newer chunk",
+						"error", err,
+						"peer_address", peer,
+						"chunk_address", c.Address(),
+						"batch_id", hex.EncodeToString(c.Stamp().BatchID()),
+						"stamp_timestamp", binary.BigEndian.Uint64(c.Stamp().Timestamp()),
+						"bin", bin,
+					)
 					chunkErr = errors.Join(chunkErr, err)
 					continue
 				}
@@ -398,14 +468,49 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 				// tie-break. The neighborhood converges on the stored chunk, so
 				// this is an expected outcome rather than a sync error.
 				if errors.Is(err, storage.ErrDivergentChunkRejected) {
-					s.logger.Debug("divergent chunk rejected", "error", err, "peer_address", peer, "chunk", c)
+					s.logger.Debug("divergent chunk rejected",
+						"error", err,
+						"peer_address", peer,
+						"chunk_address", c.Address(),
+						"batch_id", hex.EncodeToString(c.Stamp().BatchID()),
+						"stamp_timestamp", binary.BigEndian.Uint64(c.Stamp().Timestamp()),
+						"bin", bin,
+					)
 					s.metrics.DivergentRejected.Inc()
 					continue
 				}
+				s.logger.Debug("pullsync reserve put failed",
+					"error", err,
+					"peer_address", peer,
+					"chunk_address", c.Address(),
+					"batch_id", hex.EncodeToString(c.Stamp().BatchID()),
+					"stamp_timestamp", binary.BigEndian.Uint64(c.Stamp().Timestamp()),
+					"bin", bin,
+				)
 				return 0, 0, errors.Join(chunkErr, err)
 			}
+			s.logger.Debug("pullsync reserve put ok",
+				"peer_address", peer,
+				"chunk_address", c.Address(),
+				"batch_id", hex.EncodeToString(c.Stamp().BatchID()),
+				"stamp_index", hex.EncodeToString(c.Stamp().Index()),
+				"stamp_timestamp", binary.BigEndian.Uint64(c.Stamp().Timestamp()),
+				"bin", bin,
+			)
 			chunksPut++
 		}
+	}
+
+	if chunkErr != nil {
+		s.logger.Debug("pullsync sync finished with chunk errors",
+			"error", chunkErr,
+			"peer_address", peer,
+			"bin", bin,
+			"start", start,
+			"offer_topmost", topmost,
+			"chunks_put", chunksPut,
+			"wanted", wanted,
+		)
 	}
 
 	return topmost, chunksPut, chunkErr
@@ -424,9 +529,26 @@ func (s *Syncer) makeOffer(ctx context.Context, rn pb.Get) (*pb.Offer, []*storer
 	o := new(pb.Offer)
 	o.Topmost = top
 	o.Chunks = make([]*pb.Chunk, 0, len(bincs))
-	for _, v := range bincs {
+	for i, v := range bincs {
 		o.Chunks = append(o.Chunks, &pb.Chunk{Address: v.Address.Bytes(), Sum: v.Sum})
+		s.logger.Debug("pullsync offer chunk",
+			"bin", rn.Bin,
+			"start", rn.Start,
+			"offer_idx", i,
+			"bin_id", v.BinID,
+			"chunk_address", v.Address,
+			"batch_id", hex.EncodeToString(v.BatchID),
+			"stamp_hash", hex.EncodeToString(v.StampHash),
+			"sum", hex.EncodeToString(v.Sum),
+			"offer_topmost", top,
+		)
 	}
+	s.logger.Debug("pullsync offer summary",
+		"bin", rn.Bin,
+		"start", rn.Start,
+		"count", len(bincs),
+		"offer_topmost", top,
+	)
 	return o, bincs, nil
 }
 
@@ -465,7 +587,7 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 					break LOOP // The stream has been closed.
 				}
 
-				chs = append(chs, &storer.BinC{Address: c.Address, BatchID: c.BatchID, StampHash: c.StampHash, Sum: c.Sum})
+				chs = append(chs, &storer.BinC{Address: c.Address, BinID: c.BinID, BatchID: c.BatchID, StampHash: c.StampHash, Sum: c.Sum})
 				if c.BinID > topmost {
 					topmost = c.BinID
 				}
@@ -516,11 +638,34 @@ func (s *Syncer) processWant(ctx context.Context, bincs []*storer.BinC, w *pb.Wa
 			s.metrics.SentWanted.Inc()
 			ch, err := s.store.ReserveGet(ctx, c.Address, c.BatchID, c.StampHash)
 			if err != nil {
-				s.logger.Debug("processing want: unable to find chunk", "chunk_address", c.Address, "batch_id", hex.EncodeToString(c.BatchID))
+				s.logger.Debug("processing want: unable to find chunk",
+					"chunk_address", c.Address,
+					"batch_id", hex.EncodeToString(c.BatchID),
+					"stamp_hash", hex.EncodeToString(c.StampHash),
+					"bin_id", c.BinID,
+					"sum", hex.EncodeToString(c.Sum),
+					"offer_idx", i,
+				)
 				chunks = append(chunks, swarm.NewChunk(swarm.ZeroAddress, nil))
 				s.metrics.MissingChunks.Inc()
 				continue
 			}
+			stampTS := uint64(0)
+			stampIndex := ""
+			if ch.Stamp() != nil {
+				stampTS = binary.BigEndian.Uint64(ch.Stamp().Timestamp())
+				stampIndex = hex.EncodeToString(ch.Stamp().Index())
+			}
+			s.logger.Debug("pullsync deliver chunk",
+				"offer_idx", i,
+				"bin_id", c.BinID,
+				"chunk_address", c.Address,
+				"batch_id", hex.EncodeToString(c.BatchID),
+				"stamp_hash", hex.EncodeToString(c.StampHash),
+				"stamp_index", stampIndex,
+				"stamp_timestamp", stampTS,
+				"sum", hex.EncodeToString(c.Sum),
+			)
 			chunks = append(chunks, ch)
 		}
 	}

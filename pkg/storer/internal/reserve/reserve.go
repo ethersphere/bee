@@ -18,6 +18,7 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
 	pinstore "github.com/ethersphere/bee/v2/pkg/storer/internal/pinning"
@@ -104,8 +105,7 @@ func New(
 //     through the usual remove-and-store path (including a fresh bin ID for pullsync).
 //  5. Two single owner chunks that share an address under different stamps (any batch or stamp
 //     index) settle on one shared payload: a strictly higher stamp timestamp replaces it; equal
-//     timestamps are settled by the lexicographically lower stamp hash. An older stamp is
-//     rejected. Same-stamp divergence remains handled by resolveDivergence above.
+//     timestamps are settled by the lexicographically lower stamp hash. Same-stamp divergence remains handled by resolveDivergence above.
 func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	socReplaced, err := r.putChunk(ctx, chunk)
 	if err != nil {
@@ -117,7 +117,11 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 		// divergence checksums of co-resident entries under other stamps. The
 		// refresh runs after the put transaction, with no locks held, because
 		// it takes the sibling entries' batch locks (see refreshSiblingSums).
-		return r.refreshSiblingSums(ctx, chunk.Address())
+		if err := r.refreshSiblingSums(ctx, chunk.Address()); err != nil {
+			return err
+		}
+		r.logAddressStampState(chunk.Address(), "after_payload_replace_refresh")
+		return nil
 	}
 	return nil
 }
@@ -149,6 +153,13 @@ func (r *Reserve) putChunk(ctx context.Context, chunk swarm.Chunk) (socReplaced 
 	if err != nil {
 		return false, err
 	}
+	stampTS := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
+	batchHex := hex.EncodeToString(chunk.Stamp().BatchID())
+	stampHashHex := hex.EncodeToString(stampHash)
+	stampIndexHex := hex.EncodeToString(chunk.Stamp().Index())
+	sumHex := hex.EncodeToString(sum)
+	wrappedHex := wrappedAddrHex(chunk)
+
 	if has {
 		// Address, batch and stamp all match, but two single owner chunks can
 		// share those and still wrap different content. The sum tells them
@@ -160,8 +171,30 @@ func (r *Reserve) putChunk(ctx context.Context, chunk swarm.Chunk) (socReplaced 
 			return false, err
 		}
 		if hasSum {
+			r.logger.Debug("putChunk same stamp+sum noop",
+				"address", chunk.Address(),
+				"batch_id", batchHex,
+				"stamp_hash", stampHashHex,
+				"stamp_index", stampIndexHex,
+				"stamp_timestamp", stampTS,
+				"bin", bin,
+				"sum", sumHex,
+				"wrapped_chunk_address", wrappedHex,
+				"chunk_type", chunkType,
+			)
 			return false, nil
 		}
+		r.logger.Debug("putChunk same stamp divergent sum, resolveDivergence",
+			"address", chunk.Address(),
+			"batch_id", batchHex,
+			"stamp_hash", stampHashHex,
+			"stamp_index", stampIndexHex,
+			"stamp_timestamp", stampTS,
+			"bin", bin,
+			"sum", sumHex,
+			"wrapped_chunk_address", wrappedHex,
+			"chunk_type", chunkType,
+		)
 		if err := r.resolveDivergence(ctx, chunk, sum, stampHash, bin, chunkType); err != nil {
 			return false, err
 		}
@@ -176,12 +209,37 @@ func (r *Reserve) putChunk(ctx context.Context, chunk swarm.Chunk) (socReplaced 
 	defer r.multx.Unlock(strconv.Itoa(int(bin)))
 
 	var shouldIncReserveSize bool
+	path := "putCAC"
 	if chunkType == swarm.ChunkTypeSingleOwner {
+		path = "putSOC"
+		r.logger.Debug("putChunk new stamp, putSOC",
+			"address", chunk.Address(),
+			"batch_id", batchHex,
+			"stamp_hash", stampHashHex,
+			"stamp_index", stampIndexHex,
+			"stamp_timestamp", stampTS,
+			"bin", bin,
+			"sum", sumHex,
+			"wrapped_chunk_address", wrappedHex,
+		)
 		socReplaced, shouldIncReserveSize, err = r.putSOC(ctx, chunk, sum, stampHash, bin)
 	} else {
 		shouldIncReserveSize, err = r.putCAC(ctx, chunk, sum, stampHash, bin)
 	}
 	if err != nil {
+		r.logger.Debug("putChunk failed",
+			"error", err,
+			"address", chunk.Address(),
+			"batch_id", batchHex,
+			"stamp_hash", stampHashHex,
+			"stamp_index", stampIndexHex,
+			"stamp_timestamp", stampTS,
+			"bin", bin,
+			"sum", sumHex,
+			"wrapped_chunk_address", wrappedHex,
+			"chunk_type", chunkType,
+			"path", path,
+		)
 		return false, err
 	}
 	if shouldIncReserveSize {
@@ -192,22 +250,29 @@ func (r *Reserve) putChunk(ctx context.Context, chunk swarm.Chunk) (socReplaced 
 
 func (r *Reserve) putSOC(ctx context.Context, chunk swarm.Chunk, sum, stampHash []byte, bin uint8) (socReplaced, shouldInc bool, err error) {
 	err = r.st.Run(ctx, func(s transaction.Store) error {
-		if err := checkSOCStampOverwrite(ctx, s, chunk, stampHash); err != nil {
-			return err
-		}
-
 		oldStampIndex, loaded, err := stampindex.LoadOrStore(s.IndexStore(), reserveScope, chunk)
 		if err != nil {
 			return fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
 		}
 
 		if loaded {
-			sameAddr, err := r.resolveStampIndexCollision(ctx, s, chunk, oldStampIndex, sum, stampHash, bin, swarm.ChunkTypeSingleOwner)
+			sameAddr, err := r.resolveStampIndexCollision(ctx, s, chunk, oldStampIndex, sum, stampHash, bin)
 			if err != nil {
+				r.logger.Debug("putSOC stamp index collision rejected",
+					"error", err,
+					"address", chunk.Address(),
+					"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
+					"stamp_timestamp", binary.BigEndian.Uint64(chunk.Stamp().Timestamp()),
+				)
 				return err
 			}
 			if sameAddr {
-				r.logger.Debug("replacing soc in chunkstore", "address", chunk.Address())
+				r.logger.Debug("replacing soc in chunkstore",
+					"address", chunk.Address(),
+					"reason", "same_address_stamp_index_collision",
+					"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
+					"stamp_timestamp", binary.BigEndian.Uint64(chunk.Stamp().Timestamp()),
+				)
 				socReplaced = true
 				return s.ChunkStore().Replace(ctx, chunk, false)
 			}
@@ -222,10 +287,30 @@ func (r *Reserve) putSOC(ctx context.Context, chunk swarm.Chunk, sum, stampHash 
 			return err
 		}
 		if has {
-			r.logger.Debug("replacing soc in chunkstore", "address", chunk.Address())
+			r.logger.Debug("replacing soc in chunkstore",
+				"address", chunk.Address(),
+				"reason", "cross_stamp_payload_replace",
+				"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
+				"stamp_hash", hex.EncodeToString(stampHash),
+				"stamp_index", hex.EncodeToString(chunk.Stamp().Index()),
+				"stamp_timestamp", binary.BigEndian.Uint64(chunk.Stamp().Timestamp()),
+				"bin", bin,
+				"sum", hex.EncodeToString(sum),
+				"wrapped_chunk_address", wrappedAddrHex(chunk),
+			)
 			socReplaced = true
 			err = s.ChunkStore().Replace(ctx, chunk, true)
 		} else {
+			r.logger.Debug("storing new soc in chunkstore",
+				"address", chunk.Address(),
+				"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
+				"stamp_hash", hex.EncodeToString(stampHash),
+				"stamp_index", hex.EncodeToString(chunk.Stamp().Index()),
+				"stamp_timestamp", binary.BigEndian.Uint64(chunk.Stamp().Timestamp()),
+				"bin", bin,
+				"sum", hex.EncodeToString(sum),
+				"wrapped_chunk_address", wrappedAddrHex(chunk),
+			)
 			err = s.ChunkStore().Put(ctx, chunk)
 		}
 		if err != nil {
@@ -235,12 +320,13 @@ func (r *Reserve) putSOC(ctx context.Context, chunk swarm.Chunk, sum, stampHash 
 		shouldInc = !loaded
 		return nil
 	})
+	if err == nil && (socReplaced || shouldInc) {
+		r.logAddressStampState(chunk.Address(), "after_putSOC")
+	}
 	return
 }
 
 func (r *Reserve) putCAC(ctx context.Context, chunk swarm.Chunk, sum, stampHash []byte, bin uint8) (shouldInc bool, err error) {
-	chunkType := storage.ChunkType(chunk)
-
 	err = r.st.Run(ctx, func(s transaction.Store) error {
 		oldStampIndex, loaded, err := stampindex.LoadOrStore(s.IndexStore(), reserveScope, chunk)
 		if err != nil {
@@ -248,7 +334,7 @@ func (r *Reserve) putCAC(ctx context.Context, chunk swarm.Chunk, sum, stampHash 
 		}
 
 		if loaded {
-			sameAddr, err := r.resolveStampIndexCollision(ctx, s, chunk, oldStampIndex, sum, stampHash, bin, chunkType)
+			sameAddr, err := r.resolveStampIndexCollision(ctx, s, chunk, oldStampIndex, sum, stampHash, bin)
 			if err != nil {
 				return err
 			}
@@ -285,8 +371,7 @@ func (r *Reserve) putCAC(ctx context.Context, chunk swarm.Chunk, sum, stampHash 
 func (r *Reserve) resolveStampIndexCollision(
 	ctx context.Context, s transaction.Store,
 	chunk swarm.Chunk, oldStampIndex *stampindex.Item,
-	sum, stampHash []byte, bin uint8, chunkType swarm.ChunkType,
-) (sameAddr bool, err error) {
+	sum, stampHash []byte, bin uint8) (sameAddr bool, err error) {
 	prev := binary.BigEndian.Uint64(oldStampIndex.StampTimestamp)
 	curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
 	if prev > curr {
@@ -410,6 +495,19 @@ func (r *Reserve) storeReserveEntries(s transaction.Store, chunk swarm.Chunk, su
 		return err
 	}
 
+	r.logger.Debug("storeReserveEntries allocated bin_id",
+		"address", chunk.Address(),
+		"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
+		"stamp_hash", hex.EncodeToString(stampHash),
+		"stamp_index", hex.EncodeToString(chunk.Stamp().Index()),
+		"stamp_timestamp", binary.BigEndian.Uint64(chunk.Stamp().Timestamp()),
+		"bin", bin,
+		"bin_id", binID,
+		"sum", hex.EncodeToString(sum),
+		"wrapped_chunk_address", wrappedAddrHex(chunk),
+		"chunk_type", chunkType,
+	)
+
 	return errors.Join(
 		chunkstamp.Store(s.IndexStore(), reserveScope, chunk),
 		s.IndexStore().Put(&BatchRadiusItem{
@@ -430,45 +528,6 @@ func (r *Reserve) storeReserveEntries(s transaction.Store, chunk swarm.Chunk, su
 		}),
 		s.IndexStore().Put(&ChunkSumItem{Address: chunk.Address(), Sum: sum}),
 	)
-}
-
-// checkSOCStampOverwrite rejects an incoming single owner chunk when the
-// address already holds a payload under a stamp that should keep winning:
-// a strictly higher timestamp, or an equal timestamp with a lower or equal
-// stamp hash. Must run before LoadOrStore, which writes immediately.
-
-// Possible scenario without this check:
-// - SOC at address X arrives with batch A, stampIndex 0, timestamp 10, payload "hello" → stored
-// - Same SOC address X arrives with batch B, stampIndex 0, timestamp 5, payload "world"
-// - LoadOrStore looks up (reserve, batchB, stampIndex=0) → not found (different batch) → no collision
-// - Proceed to storeReserveEntries → new index entries written
-// - ChunkStore.Has(X) → true → Replace(chunk, true) → newer payload "hello" silently overwritten with "world"
-func checkSOCStampOverwrite(ctx context.Context, s transaction.Store, chunk swarm.Chunk, stampHash []byte) error {
-	hasPayload, err := s.ChunkStore().Has(ctx, chunk.Address())
-	if err != nil || !hasPayload {
-		return err
-	}
-
-	curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
-	return chunkstamp.IterateAll(s.IndexStore(), reserveScope, chunk.Address(), func(st swarm.Stamp) (bool, error) {
-		// check all stamps regardless batch: we must be sure there no "newer" stamp in store
-		prev := binary.BigEndian.Uint64(st.Timestamp())
-		if prev > curr {
-			return true, fmt.Errorf("overwrite same chunk. prev %d cur %d batch %s: %w",
-				prev, curr, hex.EncodeToString(chunk.Stamp().BatchID()), storage.ErrOverwriteNewerChunk)
-		}
-		if prev == curr {
-			prevHash, err := st.Hash()
-			if err != nil {
-				return true, err
-			}
-			if bytes.Compare(prevHash, stampHash) <= 0 {
-				return true, fmt.Errorf("overwrite same chunk. prev %d cur %d batch %s: %w",
-					prev, curr, hex.EncodeToString(chunk.Stamp().BatchID()), storage.ErrOverwriteNewerChunk)
-			}
-		}
-		return false, nil
-	})
 }
 
 // refreshSiblingSums recomputes the divergence checksum of every reserve entry
@@ -542,11 +601,34 @@ func (r *Reserve) refreshSiblingSums(ctx context.Context, addr swarm.Address) er
 				}
 
 				if bytes.Equal(cbi.Sum, sum) {
+					r.logger.Debug("refreshSiblingSums sum unchanged",
+						"address", addr,
+						"batch_id", hex.EncodeToString(stamp.BatchID()),
+						"stamp_hash", hex.EncodeToString(stampHash),
+						"stamp_index", hex.EncodeToString(stamp.Index()),
+						"stamp_timestamp", binary.BigEndian.Uint64(stamp.Timestamp()),
+						"bin", bin,
+						"bin_id", item.BinID,
+						"sum", hex.EncodeToString(sum),
+						"wrapped_chunk_address", wrappedAddrHex(chunk),
+					)
 					return nil
 				}
 
 				oldSum := cbi.Sum
 				cbi.Sum = sum
+				r.logger.Debug("refreshSiblingSums updating sum",
+					"address", addr,
+					"batch_id", hex.EncodeToString(stamp.BatchID()),
+					"stamp_hash", hex.EncodeToString(stampHash),
+					"stamp_index", hex.EncodeToString(stamp.Index()),
+					"stamp_timestamp", binary.BigEndian.Uint64(stamp.Timestamp()),
+					"bin", bin,
+					"bin_id", item.BinID,
+					"old_sum", hex.EncodeToString(oldSum),
+					"new_sum", hex.EncodeToString(sum),
+					"wrapped_chunk_address", wrappedAddrHex(chunk),
+				)
 				return errors.Join(
 					s.IndexStore().Delete(&ChunkSumItem{Address: addr, Sum: oldSum}),
 					s.IndexStore().Put(cbi),
@@ -597,11 +679,23 @@ func (r *Reserve) resolveDivergence(
 			return fmt.Errorf("divergence tie-break for chunk %s: %w", chunk.Address(), err)
 		}
 
+		storedSum, _ := storage.ChunkSum(stored.WithStamp(chunk.Stamp()))
+		storedWrapped := wrappedAddrHex(stored)
+		incomingWrapped := wrappedAddrHex(chunk)
+
 		if !wins {
 			r.logger.Debug(
 				"discarding diverging chunk",
 				"address", chunk.Address(),
 				"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
+				"stamp_hash", hex.EncodeToString(stampHash),
+				"stamp_index", hex.EncodeToString(chunk.Stamp().Index()),
+				"stamp_timestamp", binary.BigEndian.Uint64(chunk.Stamp().Timestamp()),
+				"bin", bin,
+				"stored_sum", hex.EncodeToString(storedSum),
+				"incoming_sum", hex.EncodeToString(sum),
+				"stored_wrapped_chunk_address", storedWrapped,
+				"incoming_wrapped_chunk_address", incomingWrapped,
 			)
 			return fmt.Errorf("diverging chunk %s lost tie-break: %w", chunk.Address(), storage.ErrDivergentChunkRejected)
 		}
@@ -631,8 +725,16 @@ func (r *Reserve) resolveDivergence(
 			"replacing diverging chunk",
 			"address", chunk.Address(),
 			"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
+			"stamp_hash", hex.EncodeToString(stampHash),
+			"stamp_index", hex.EncodeToString(chunk.Stamp().Index()),
+			"stamp_timestamp", binary.BigEndian.Uint64(chunk.Stamp().Timestamp()),
+			"bin", bin,
 			"old_bin_id", item.BinID,
 			"new_bin_id", binID,
+			"stored_sum", hex.EncodeToString(storedSum),
+			"incoming_sum", hex.EncodeToString(sum),
+			"stored_wrapped_chunk_address", storedWrapped,
+			"incoming_wrapped_chunk_address", incomingWrapped,
 		)
 
 		// the BatchRadiusItem key does not cover the binID, so putting it again
@@ -1202,4 +1304,65 @@ func (r *Reserve) IncBinID(store storage.IndexStore, bin uint8) (uint64, error) 
 	item.BinID += 1
 
 	return item.BinID, store.Put(item)
+}
+
+func wrappedAddrHex(ch swarm.Chunk) string {
+	if !soc.Valid(ch) {
+		return ""
+	}
+	sch, err := soc.FromChunk(ch)
+	if err != nil {
+		return ""
+	}
+	return sch.WrappedChunk().Address().String()
+}
+
+// logAddressStampState dumps every stamp index entry at addr for diagnostic runs.
+func (r *Reserve) logAddressStampState(addr swarm.Address, event string) {
+	bin := swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes())
+	payloadWrapped := ""
+	if ch, err := r.st.ChunkStore().Get(context.Background(), addr); err == nil {
+		payloadWrapped = wrappedAddrHex(ch)
+	}
+
+	err := chunkstamp.IterateAll(r.st.IndexStore(), reserveScope, addr, func(stamp swarm.Stamp) (bool, error) {
+		stampHash, err := stamp.Hash()
+		if err != nil {
+			return false, nil
+		}
+		item := &BatchRadiusItem{Bin: bin, BatchID: stamp.BatchID(), Address: addr, StampHash: stampHash}
+		if err := r.st.IndexStore().Get(item); err != nil {
+			r.logger.Debug("stamp state entry missing batch radius",
+				"event", event,
+				"address", addr,
+				"batch_id", hex.EncodeToString(stamp.BatchID()),
+				"stamp_hash", hex.EncodeToString(stampHash),
+				"stamp_index", hex.EncodeToString(stamp.Index()),
+				"stamp_timestamp", binary.BigEndian.Uint64(stamp.Timestamp()),
+				"error", err,
+			)
+			return false, nil
+		}
+		cbi := &ChunkBinItem{Bin: bin, BinID: item.BinID}
+		sumHex := ""
+		if err := r.st.IndexStore().Get(cbi); err == nil {
+			sumHex = hex.EncodeToString(cbi.Sum)
+		}
+		r.logger.Debug("stamp state entry",
+			"event", event,
+			"address", addr,
+			"payload_wrapped_chunk_address", payloadWrapped,
+			"batch_id", hex.EncodeToString(stamp.BatchID()),
+			"stamp_hash", hex.EncodeToString(stampHash),
+			"stamp_index", hex.EncodeToString(stamp.Index()),
+			"stamp_timestamp", binary.BigEndian.Uint64(stamp.Timestamp()),
+			"bin", bin,
+			"bin_id", item.BinID,
+			"sum", sumHex,
+		)
+		return false, nil
+	})
+	if err != nil {
+		r.logger.Debug("stamp state iterate failed", "event", event, "address", addr, "error", err)
+	}
 }

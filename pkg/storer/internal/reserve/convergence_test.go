@@ -331,6 +331,37 @@ func TestPutOrderConvergence(t *testing.T) {
 			},
 		},
 		{
+			// Same SOC address, same batch, equal timestamp, different stamp
+			// indices. putSOC treats this as a new stamp entry and replaces the
+			// shared payload unconditionally (last-write wins). Desired: settle
+			// on the lexicographically lower stamp hash like the same-slot path.
+			name:       "divergent socs, equal timestamp, distinct stamp indices",
+			unresolved: true,
+			chunks: func(t *testing.T) []swarm.Chunk {
+				t.Helper()
+				return []swarm.Chunk{
+					newTestSOC(t, signer, id1, []byte("soc payload one")).WithStamp(postagetesting.MustNewFields(batchA.ID, 0, 5)),
+					newTestSOC(t, signer, id1, []byte("soc payload two")).WithStamp(postagetesting.MustNewFields(batchA.ID, 1, 5)),
+				}
+			},
+		},
+		{
+			// Same SOC address under two batches at the same timestamp.
+			// putSOC currently replaces the shared payload on the second stamp
+			// unconditionally (last-write wins), so arrival order decides the
+			// payload. Desired: settle on the lexicographically lower stamp
+			// hash, matching the same-slot equal-timestamp path.
+			name:       "divergent socs, equal timestamp, distinct batches",
+			unresolved: true,
+			chunks: func(t *testing.T) []swarm.Chunk {
+				t.Helper()
+				return []swarm.Chunk{
+					newTestSOC(t, signer, id1, []byte("soc payload one")).WithStamp(postagetesting.MustNewFields(batchA.ID, 0, 5)),
+					newTestSOC(t, signer, id1, []byte("soc payload two")).WithStamp(postagetesting.MustNewFields(batchB.ID, 0, 5)),
+				}
+			},
+		},
+		{
 			// Three-way conflict across batches: the batch B entry must end
 			// serving whatever payload the batch A conflict settles on, with
 			// its sum refreshed accordingly.
