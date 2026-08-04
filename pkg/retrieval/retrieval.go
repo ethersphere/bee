@@ -259,7 +259,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 				inflight++
 
 				safe.Go(loggerV1, "retrieval-retrieve-chunk", func() {
-					span, _, ctx := s.tracer.FollowSpanFromContext(spanCtx, "retrieve-chunk", s.logger, trace.WithAttributes(
+					span, _, ctx := s.tracer.FollowSpanFromContext(spanCtx, "retrieve-chunk", s.logger, trace.WithSpanKind(trace.SpanKindClient), trace.WithAttributes(
 						attribute.String("swarm.chunk.address", chunkAddr.String()),
 					))
 					defer span.End()
