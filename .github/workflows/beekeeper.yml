@@ -153,10 +153,10 @@ jobs:
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-gsoc
       - name: Test pushsync (chunks)
         id: pushsync-chunks-1
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-pushsync-chunks
+        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks=ci-pushsync-chunks; do echo "waiting for pushsync-chunks..."; sleep .3; done'
       - name: Test pushsync (light mode chunks)
         id: pushsync-chunks-2
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks; do echo "waiting for pushsync-light-chunks..."; sleep .3; done'
       - name: Test retrieval
         id: retrieval
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-retrieval
