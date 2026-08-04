@@ -611,6 +611,9 @@ func Report(ctx context.Context, st transaction.Store, chunk swarm.Chunk, state 
 		ti.Synced++
 	case storage.ChunkSynced:
 		ti.Synced++
+	case storage.ChunkCouldNotSync:
+		// no Synced bump: failure is observable via Split-Synced and the
+		// pusher's total_could_not_sync metric
 	}
 
 	err = indexStore.Put(ti)
