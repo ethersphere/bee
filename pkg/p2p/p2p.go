@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/coreos/go-semver/semver"
-
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/libp2p/go-libp2p/core/network"
