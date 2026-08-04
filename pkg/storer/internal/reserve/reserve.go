@@ -371,7 +371,8 @@ func (r *Reserve) putCAC(ctx context.Context, chunk swarm.Chunk, sum, stampHash 
 func (r *Reserve) resolveStampIndexCollision(
 	ctx context.Context, s transaction.Store,
 	chunk swarm.Chunk, oldStampIndex *stampindex.Item,
-	sum, stampHash []byte, bin uint8) (sameAddr bool, err error) {
+	sum, stampHash []byte, bin uint8,
+) (sameAddr bool, err error) {
 	prev := binary.BigEndian.Uint64(oldStampIndex.StampTimestamp)
 	curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
 	if prev > curr {
@@ -672,6 +673,31 @@ func (r *Reserve) resolveDivergence(
 		stored, err := s.ChunkStore().Get(ctx, chunk.Address())
 		if err != nil {
 			return fmt.Errorf("failed loading diverging chunk %s: %w", chunk.Address(), err)
+		}
+
+		// Verify timestamp precedence: an incoming chunk with an older timestamp
+		// can never displace a stored chunk.
+		prevTimestamp := binary.BigEndian.Uint64(stored.Stamp().Timestamp())
+		currTimestamp := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
+		if prevTimestamp > currTimestamp {
+			return fmt.Errorf("overwrite same chunk. prev %d cur %d batch %s: %w", prevTimestamp, currTimestamp, hex.EncodeToString(chunk.Stamp().BatchID()), storage.ErrOverwriteNewerChunk)
+		}
+
+		// At equal timestamp, if the stamps differ, the lower stamp hash wins.
+		if prevTimestamp == currTimestamp {
+			storedStampHash, err := stored.Stamp().Hash()
+			if err != nil {
+				return err
+			}
+			if !bytes.Equal(storedStampHash, stampHash) && bytes.Compare(storedStampHash, stampHash) < 0 {
+				r.logger.Debug(
+					"discarding diverging chunk (weaker stamp hash at equal timestamp)",
+					"address", chunk.Address(),
+					"stored_stamp_hash", hex.EncodeToString(storedStampHash),
+					"incoming_stamp_hash", hex.EncodeToString(stampHash),
+				)
+				return fmt.Errorf("diverging chunk %s lost stamp-hash tie-break: %w", chunk.Address(), storage.ErrDivergentChunkRejected)
+			}
 		}
 
 		wins, err := storage.DivergentChunkWins(stored, chunk)
@@ -1307,6 +1333,9 @@ func (r *Reserve) IncBinID(store storage.IndexStore, bin uint8) (uint64, error) 
 }
 
 func wrappedAddrHex(ch swarm.Chunk) string {
+	if ch == nil {
+		return ""
+	}
 	if !soc.Valid(ch) {
 		return ""
 	}
@@ -1328,6 +1357,7 @@ func (r *Reserve) logAddressStampState(addr swarm.Address, event string) {
 	err := chunkstamp.IterateAll(r.st.IndexStore(), reserveScope, addr, func(stamp swarm.Stamp) (bool, error) {
 		stampHash, err := stamp.Hash()
 		if err != nil {
+			// nolint:nilerr
 			return false, nil
 		}
 		item := &BatchRadiusItem{Bin: bin, BatchID: stamp.BatchID(), Address: addr, StampHash: stampHash}
