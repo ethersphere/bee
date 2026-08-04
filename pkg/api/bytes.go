@@ -70,10 +70,10 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 			default:
 				jsonhttp.InternalServerError(w, "cannot get or create tag")
 			}
-			tracing.RecordError(span, err, attribute.String("action", "tag.create"))
+			tracing.RecordError(span, err, attribute.String("swarm.operation.action", "tag.create"))
 			return
 		}
-		span.SetAttributes(attribute.Int64("tag_id", int64(tag)))
+		span.SetAttributes(attribute.Int64("swarm.tag.id", int64(tag)))
 	}
 
 	defer s.observeUploadSpeed(w, r, time.Now(), "bytes", deferred)
@@ -97,7 +97,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		default:
 			jsonhttp.BadRequest(w, nil)
 		}
-		tracing.RecordError(span, err, attribute.String("action", "new.StamperPutter"))
+		tracing.RecordError(span, err, attribute.String("swarm.operation.action", "new.StamperPutter"))
 		return
 	}
 
@@ -118,7 +118,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		default:
 			jsonhttp.InternalServerError(ow, "split write all failed")
 		}
-		tracing.RecordError(span, err, attribute.String("action", "split.WriteAll"))
+		tracing.RecordError(span, err, attribute.String("swarm.operation.action", "split.WriteAll"))
 		return
 	}
 
@@ -142,14 +142,14 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	span.SetAttributes(attribute.String("root_address", encryptedReference.String()))
+	span.SetAttributes(attribute.String("swarm.chunk.root_address", encryptedReference.String()))
 
 	err = putter.Done(reference)
 	if err != nil {
 		logger.Debug("done split failed", "error", err)
 		logger.Error(nil, "done split failed")
 		jsonhttp.InternalServerError(ow, "done split failed")
-		tracing.RecordError(span, err, attribute.String("action", "putter.Done"))
+		tracing.RecordError(span, err, attribute.String("swarm.operation.action", "putter.Done"))
 		return
 	}
 
@@ -157,7 +157,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(SwarmTagHeader, fmt.Sprint(tag))
 	}
 
-	span.SetAttributes(attribute.Bool("success", true))
+	span.SetAttributes(attribute.Bool("swarm.operation.success", true))
 
 	w.Header().Set(AccessControlExposeHeaders, SwarmTagHeader)
 	if headers.Act {

@@ -13,6 +13,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/coreos/go-semver/semver"
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -166,6 +167,7 @@ type Stream interface {
 	Headers() Headers
 	FullClose() error
 	Reset() error
+	Version() (*semver.Version, error)
 }
 
 // ProtocolSpec defines a collection of Stream specifications with handlers.
