@@ -486,6 +486,17 @@ func TestBytesHead(t *testing.T) {
 						jsonhttptest.WithNonEmptyResponseHeader("Last-Modified"),
 					)
 				}
+
+				// The range is resolved against the length decoded from the root
+				// chunk span, so it has to hold for every redundancy level and for
+				// encrypted references, where that span is decrypted first.
+				for _, method := range []string{http.MethodHead, http.MethodGet} {
+					jsonhttptest.Request(t, client, method, resource, http.StatusPartialContent,
+						jsonhttptest.WithRequestHeader(api.RangeHeader, "bytes=0-10"),
+						jsonhttptest.WithExpectedContentLength(11),
+						jsonhttptest.WithExpectedResponseHeader(api.ContentRangeHeader, fmt.Sprintf("bytes 0-10/%d", len(content))),
+					)
+				}
 			})
 		}
 	}
