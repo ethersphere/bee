@@ -477,18 +477,109 @@ func TestBytesHead(t *testing.T) {
 
 				resource := "/bytes/" + resp.Reference.String()
 
-				jsonhttptest.Request(t, client, http.MethodHead, resource, http.StatusOK,
-					jsonhttptest.WithExpectedContentLength(len(content)),
-					jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "application/octet-stream"),
-					jsonhttptest.WithExpectedResponseHeader(api.AcceptRangesHeader, "bytes"),
-				)
-				jsonhttptest.Request(t, client, http.MethodGet, resource, http.StatusOK,
-					jsonhttptest.WithExpectedContentLength(len(content)),
-					jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "application/octet-stream"),
-					jsonhttptest.WithExpectedResponseHeader(api.AcceptRangesHeader, "bytes"),
-				)
+				for _, method := range []string{http.MethodHead, http.MethodGet} {
+					jsonhttptest.Request(t, client, method, resource, http.StatusOK,
+						jsonhttptest.WithExpectedContentLength(len(content)),
+						jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "application/octet-stream"),
+						jsonhttptest.WithExpectedResponseHeader(api.AcceptRangesHeader, "bytes"),
+						jsonhttptest.WithExpectedResponseHeader(api.ETagHeader, fmt.Sprintf("%q", resp.Reference)),
+						jsonhttptest.WithNonEmptyResponseHeader("Last-Modified"),
+					)
+				}
 			})
 		}
+	}
+}
+
+// TestBytesHeadRangeAndConditional tests that HEAD applies Range and precondition
+// headers exactly as GET does, since HEAD differs from GET only in sending no body.
+func TestBytesHeadRangeAndConditional(t *testing.T) {
+	t.Parallel()
+
+	g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
+	content, err := g.SequentialBytes(swarm.ChunkSize * 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	client, _, _, _ := newTestServer(t, testServerOptions{
+		Storer: mockstorer.New(),
+		Post:   mockpost.New(mockpost.WithAcceptAll()),
+	})
+
+	var resp struct {
+		Reference swarm.Address `json:"reference"`
+	}
+	jsonhttptest.Request(t, client, http.MethodPost, "/bytes", http.StatusCreated,
+		jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+		jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+		jsonhttptest.WithRequestBody(bytes.NewReader(content)),
+		jsonhttptest.WithUnmarshalJSONResponse(&resp),
+	)
+
+	resource := "/bytes/" + resp.Reference.String()
+	etag := fmt.Sprintf("%q", resp.Reference)
+
+	tests := []struct {
+		name    string
+		header  [2]string
+		want    int
+		headers []jsonhttptest.Option
+	}{
+		{
+			name:   "satisfiable range",
+			header: [2]string{api.RangeHeader, "bytes=0-99"},
+			want:   http.StatusPartialContent,
+			headers: []jsonhttptest.Option{
+				jsonhttptest.WithExpectedContentLength(100),
+				jsonhttptest.WithExpectedResponseHeader(api.ContentRangeHeader, fmt.Sprintf("bytes 0-99/%d", len(content))),
+			},
+		},
+		{
+			name:   "unsatisfiable range",
+			header: [2]string{api.RangeHeader, "bytes=99999999-"},
+			want:   http.StatusRequestedRangeNotSatisfiable,
+			headers: []jsonhttptest.Option{
+				jsonhttptest.WithExpectedResponseHeader(api.ContentRangeHeader, fmt.Sprintf("bytes */%d", len(content))),
+			},
+		},
+		{
+			name:   "matching if-none-match",
+			header: [2]string{"If-None-Match", etag},
+			want:   http.StatusNotModified,
+			headers: []jsonhttptest.Option{
+				jsonhttptest.WithNoResponseBody(),
+			},
+		},
+		{
+			name:   "non-matching if-none-match",
+			header: [2]string{"If-None-Match", `"0000000000000000000000000000000000000000000000000000000000000001"`},
+			want:   http.StatusOK,
+			headers: []jsonhttptest.Option{
+				jsonhttptest.WithExpectedContentLength(len(content)),
+			},
+		},
+		{
+			// A body-less response must not inherit the full content length, or the
+			// server truncates the connection and the client sees an unexpected EOF.
+			name:   "non-matching if-match",
+			header: [2]string{"If-Match", `"0000000000000000000000000000000000000000000000000000000000000001"`},
+			want:   http.StatusPreconditionFailed,
+			headers: []jsonhttptest.Option{
+				jsonhttptest.WithNoResponseBody(),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, method := range []string{http.MethodHead, http.MethodGet} {
+				opts := append([]jsonhttptest.Option{
+					jsonhttptest.WithRequestHeader(tt.header[0], tt.header[1]),
+				}, tt.headers...)
+				jsonhttptest.Request(t, client, method, resource, tt.want, opts...)
+			}
+		})
 	}
 }
 

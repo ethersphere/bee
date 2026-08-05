@@ -246,6 +246,9 @@ paths:
           description: Default response
     head:
       summary: Retrieve headers containing the content type and length for the reference
+      description: >
+        Identical to GET on the same reference except that no content is sent,
+        so Range and conditional request headers are honored the same way.
       tags:
         - Bytes
       parameters:
@@ -286,15 +289,44 @@ paths:
               description: The reference, as an entity tag.
               schema:
                 type: string
+            Last-Modified:
+              description: The time the response was generated.
+              schema:
+                type: string
             Access-Control-Expose-Headers:
               description: Headers exposed for CORS.
               schema:
                 type: string
-                example: Content-Disposition, Accept-Ranges
+                example: Content-Disposition
+        "206":
+          description: Headers for the range requested via the Range header.
+          headers:
+            Content-Range:
+              description: The range covered, and the total size of the content.
+              schema:
+                type: string
+                example: bytes 0-1023/4096
+            Content-Length:
+              description: The size of the requested range in bytes.
+              schema:
+                type: integer
+                example: 1024
+        "304":
+          description: The entity tag in If-None-Match matches the reference.
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
+        "412":
+          description: A conditional request header was not satisfied.
+        "416":
+          description: The requested range cannot be satisfied.
+          headers:
+            Content-Range:
+              description: The total size of the content.
+              schema:
+                type: string
+                example: bytes */4096
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -485,6 +517,9 @@ paths:
           description: Default response
     head:
       summary: Retrieve headers with content type and length for the reference
+      description: >
+        Identical to GET on the same reference except that no content is sent,
+        so Range and conditional request headers are honored the same way.
       tags:
         - BZZ
       parameters:
@@ -525,15 +560,44 @@ paths:
               description: The reference, as an entity tag.
               schema:
                 type: string
+            Last-Modified:
+              description: The time the response was generated.
+              schema:
+                type: string
             Access-Control-Expose-Headers:
               description: Headers exposed for CORS.
               schema:
                 type: string
-                example: Content-Disposition, Accept-Ranges
+                example: Content-Disposition
+        "206":
+          description: Headers for the range requested via the Range header.
+          headers:
+            Content-Range:
+              description: The range covered, and the total size of the content.
+              schema:
+                type: string
+                example: bytes 0-1023/4096
+            Content-Length:
+              description: The size of the requested range in bytes.
+              schema:
+                type: integer
+                example: 1024
+        "304":
+          description: The entity tag in If-None-Match matches the reference.
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
+        "412":
+          description: A conditional request header was not satisfied.
+        "416":
+          description: The requested range cannot be satisfied.
+          headers:
+            Content-Range:
+              description: The total size of the content.
+              schema:
+                type: string
+                example: bytes */4096
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:

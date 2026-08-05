@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"path"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -790,15 +789,17 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 	if etag {
 		w.Header().Set(ETagHeader, fmt.Sprintf("%q", reference))
 	}
-	w.Header().Set(ContentLengthHeader, strconv.FormatInt(l, 10))
+	// Content-Length is left to http.ServeContent, which knows how many bytes the
+	// response actually carries. Setting it here would survive into the responses
+	// that carry no content, notably the 412 from a failed precondition.
 	w.Header().Add(AccessControlExposeHeaders, ContentDispositionHeader)
 
+	// http.ServeContent writes no body for HEAD, so header-only responses take the
+	// same path as GET and inherit its preconditions, Range handling and headers.
+	// The reader is passed unbuffered: a response without a body has nothing to
+	// read ahead for.
 	if headersOnly {
-		// http.ServeContent would set this, but the GET path is not reached here.
-		// "bytes" is the range unit, not the endpoint.
-		w.Header().Set(AcceptRangesHeader, "bytes")
-		w.Header().Add(AccessControlExposeHeaders, AcceptRangesHeader)
-		w.WriteHeader(http.StatusOK)
+		http.ServeContent(w, r, "", time.Now(), reader)
 		return
 	}
 
