@@ -125,18 +125,19 @@ func New(
 	if o.Bins != 0 {
 		bins = o.Bins
 	}
+	histRate := rate.New(DefaultHistRateWindow)
 	p := &Puller{
 		base:        addr,
 		statestore:  stateStore,
 		topology:    topology,
 		radius:      reserveState,
 		syncer:      pullSync,
-		metrics:     newMetrics(),
+		metrics:     newMetrics(histRate.Rate),
 		logger:      logger.WithName(loggerName).Register(),
 		syncPeers:   make(map[string]*syncPeer),
 		bins:        bins,
 		blockLister: blockLister,
-		rate:        rate.New(DefaultHistRateWindow),
+		rate:        histRate,
 		cancel:      func() { /* Noop, since the context is initialized in the Start(). */ },
 		limiter:     ratelimit.NewLimiter(ratelimit.Every(time.Second/maxChunksPerSecond), maxChunksPerSecond),
 	}
