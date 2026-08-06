@@ -169,6 +169,9 @@ jobs:
       - name: Test postage stamps
         id: postage-stamps
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks ci-postage
+      - name: Test stamp expiry
+        id: stamp-expiry
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks ci-stamp-expiry
       - name: Test staking
         id: stake
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks ci-stake
@@ -204,6 +207,7 @@ jobs:
           if ${{ steps.manifest.outcome=='failure' }}; then FAILED=manifest; fi
           if ${{ steps.manifest-v1.outcome=='failure' }}; then FAILED=manifest-v1; fi
           if ${{ steps.postage-stamps.outcome=='failure' }}; then FAILED=postage-stamps; fi
+          if ${{ steps.stamp-expiry.outcome=='failure' }}; then FAILED=stamp-expiry; fi
           if ${{ steps.stake.outcome=='failure' }}; then FAILED=stake; fi
           if ${{ steps.withdraw.outcome=='failure' }}; then FAILED=withdraw; fi
           if ${{ steps.redundancy.outcome=='failure' }}; then FAILED=redundancy; fi
