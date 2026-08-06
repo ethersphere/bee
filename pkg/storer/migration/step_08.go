@@ -56,7 +56,7 @@ func step_08(
 				// in which case iteration lands on the next entry; matching on
 				// the ID rather than skipping the first result unconditionally
 				// avoids silently dropping that entry.
-				if res.ID == lastID {
+				if res.Entry.ID() == lastID {
 					return false, nil
 				}
 				items = append(items, res.Entry.(*reserve.BatchRadiusItem))
