@@ -1,0 +1,62 @@
+// Copyright 2026 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package safe
+
+import (
+	"fmt"
+	"runtime/debug"
+
+	"github.com/ethersphere/bee/v2/pkg/log"
+)
+
+// Go runs the given function in a new goroutine and recovers from panic in it.
+// Panics are logged using the provided logger (if non-nil).
+// If the logger is nil, the function is run without panic recovery.
+func Go(logger log.Logger, name string, fn func()) {
+	go func() {
+		if logger != nil {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Error(nil, "goroutine panic recovered", "name", name, "panic", fmt.Sprintf("%v", r), "stack", string(debug.Stack()))
+				}
+			}()
+		}
+		fn()
+	}()
+}
+
+// Run runs the given function synchronously and recovers from panic in it.
+// Panics are logged using the provided logger (if non-nil).
+// If the logger is nil, the function is run without panic recovery.
+func Run(logger log.Logger, name string, fn func()) {
+	if logger != nil {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Error(nil, "panic recovered", "name", name, "panic", fmt.Sprintf("%v", r), "stack", string(debug.Stack()))
+			}
+		}()
+	}
+	fn()
+}
+
+// RunFunc returns a function wrapped with panic recovery, suitable for use in errgroup.Go.
+// Panics are logged using the provided logger (if non-nil), and the returned function returns a non-nil error.
+// Do not try to "unwrap" r to an error, since it is a panic and we don't
+// want to lose the fact that it was a panic.
+func RunFunc(logger log.Logger, name string, fn func() error) func() error {
+	return func() (err error) {
+		defer func() {
+			if r := recover(); r != nil {
+				if logger != nil {
+					logger.Error(nil, "errgroup goroutine panic recovered", "name", name, "panic", fmt.Sprintf("%v", r), "stack", string(debug.Stack()))
+				}
+				// Do not try to "unwrap" r to an error, since it is a panic and we don't
+				// want to lose the fact that it was a panic.
+				err = fmt.Errorf("panic in %s: %v", name, r)
+			}
+		}()
+		return fn()
+	}
+}

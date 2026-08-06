@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/puller/intervalstore"
 	"github.com/ethersphere/bee/v2/pkg/pullsync"
 	"github.com/ethersphere/bee/v2/pkg/rate"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -124,18 +125,19 @@ func New(
 	if o.Bins != 0 {
 		bins = o.Bins
 	}
+	histRate := rate.New(DefaultHistRateWindow)
 	p := &Puller{
 		base:        addr,
 		statestore:  stateStore,
 		topology:    topology,
 		radius:      reserveState,
 		syncer:      pullSync,
-		metrics:     newMetrics(),
+		metrics:     newMetrics(histRate.Rate),
 		logger:      logger.WithName(loggerName).Register(),
 		syncPeers:   make(map[string]*syncPeer),
 		bins:        bins,
 		blockLister: blockLister,
-		rate:        rate.New(DefaultHistRateWindow),
+		rate:        histRate,
 		cancel:      func() { /* Noop, since the context is initialized in the Start(). */ },
 		limiter:     ratelimit.NewLimiter(ratelimit.Every(time.Second/maxChunksPerSecond), maxChunksPerSecond),
 	}
@@ -432,12 +434,16 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 	if cursor > 0 {
 		peer.wg.Add(1)
 		p.wg.Add(1)
-		go sync(true, peer.address, cursor)
+		safe.Go(p.logger, "puller-sync-historical", func() {
+			sync(true, peer.address, cursor)
+		})
 	}
 
 	peer.wg.Add(1)
 	p.wg.Add(1)
-	go sync(false, peer.address, cursor+1)
+	safe.Go(p.logger, "puller-sync-live", func() {
+		sync(false, peer.address, cursor+1)
+	})
 }
 
 func (p *Puller) Close() error {

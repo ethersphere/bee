@@ -18,6 +18,7 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
@@ -891,7 +892,7 @@ func (r *Reserve) EvictBatchBin(
 
 	for _, item := range evictedItems {
 		func(item *BatchRadiusItem) {
-			eg.Go(func() error {
+			eg.Go(safe.RunFunc(r.logger, "reserve-eviction-remove-chunk", func() error {
 				err := r.st.Run(ctx, func(s transaction.Store) error {
 					return RemoveChunkWithItem(ctx, s, item)
 				})
@@ -900,13 +901,13 @@ func (r *Reserve) EvictBatchBin(
 				}
 				evicted.Add(1)
 				return nil
-			})
+			}))
 		}(item)
 	}
 
 	for _, item := range pinnedEvictedItems {
 		func(item *BatchRadiusItem) {
-			eg.Go(func() error {
+			eg.Go(safe.RunFunc(r.logger, "reserve-eviction-remove-metadata", func() error {
 				err := r.st.Run(ctx, func(s transaction.Store) error {
 					return RemoveChunkMetaData(ctx, s, item)
 				})
@@ -915,7 +916,7 @@ func (r *Reserve) EvictBatchBin(
 				}
 				evicted.Add(1)
 				return nil
-			})
+			}))
 		}(item)
 	}
 
@@ -1194,7 +1195,7 @@ func (r *Reserve) Reset(ctx context.Context) error {
 		return err
 	}
 	for _, item := range bRitems {
-		eg.Go(func() error {
+		eg.Go(safe.RunFunc(r.logger, "reserve-cleanup-delete-chunk", func() error {
 			return r.st.Run(ctx, func(s transaction.Store) error {
 				return errors.Join(
 					s.ChunkStore().Delete(ctx, item.Address),
@@ -1202,7 +1203,7 @@ func (r *Reserve) Reset(ctx context.Context) error {
 					deleteChunkBinItem(s.IndexStore(), item.Bin, item.BinID),
 				)
 			})
-		})
+		}))
 	}
 
 	err = eg.Wait()
@@ -1223,14 +1224,14 @@ func (r *Reserve) Reset(ctx context.Context) error {
 		return err
 	}
 	for _, item := range sitems {
-		eg.Go(func() error {
+		eg.Go(safe.RunFunc(r.logger, "reserve-cleanup-delete-stamp", func() error {
 			return r.st.Run(ctx, func(s transaction.Store) error {
 				return errors.Join(
 					s.IndexStore().Delete(item),
 					chunkstamp.DeleteWithStamp(s.IndexStore(), reserveScope, item.ChunkAddress, postage.NewStamp(item.BatchID, item.StampIndex, item.StampTimestamp, nil)),
 				)
 			})
-		})
+		}))
 	}
 
 	err = eg.Wait()
