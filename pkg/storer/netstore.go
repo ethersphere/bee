@@ -10,6 +10,7 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/pusher"
 	"github.com/ethersphere/bee/v2/pkg/pushsync"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
@@ -28,7 +29,7 @@ func (db *DB) DirectUpload() PutterSession {
 		Putter: putterWithMetrics{
 			storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk) error {
 				db.directUploadLimiter <- struct{}{}
-				eg.Go(func() (err error) {
+				eg.Go(safe.RunFunc(db.logger, "storer-netstore-direct-upload", func() (err error) {
 					defer func() { <-db.directUploadLimiter }()
 
 					span, logger, ctx := db.tracer.FollowSpanFromContext(ctx, "put-direct-upload", db.logger)
@@ -68,7 +69,7 @@ func (db *DB) DirectUpload() PutterSession {
 							}
 						}
 					}
-				})
+				}))
 				return nil
 			}),
 			db.metrics,

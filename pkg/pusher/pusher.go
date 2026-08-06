@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/pushsync"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/stabilization"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -236,7 +237,9 @@ func (s *Service) chunksWorker(startupStabilizer stabilization.Subscriber) {
 			select {
 			case sem <- struct{}{}:
 				wg.Add(1)
-				go push(op)
+				safe.Go(s.logger, "pusher-push-worker", func() {
+					push(op)
+				})
 			case <-s.quit:
 				return
 			}
