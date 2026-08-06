@@ -5,13 +5,17 @@
 package api_test
 
 import (
+	"bytes"
+	"context"
 	"encoding/hex"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/v2/pkg/api"
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/gsoc"
@@ -134,7 +138,121 @@ func TestGsocPong(t *testing.T) {
 	}
 }
 
+// TestGsocWebsocketWrappedChunkData verifies that the Swarm-Soc-Fields header
+// allows requesting the whole wrapped chunk data (span + payload).
+func TestGsocWebsocketWrappedChunkData(t *testing.T) {
+	t.Parallel()
+
+	var (
+		id                  = make([]byte, 32)
+		headers             = http.Header{api.SwarmSocFieldsHeader: []string{"span,payload"}}
+		g, cl, signer, _, _ = newGsocTestWithOpts(t, id, 0, headers)
+		respC               = make(chan error, 1)
+		payload             = []byte("The most dangerous phrase in the language is: ‘We've always done it this way.’")
+	)
+
+	err := cl.SetReadDeadline(time.Now().Add(longTimeout))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cl.SetReadLimit(swarm.ChunkSize)
+
+	ch, _ := cac.New(payload)
+	socCh := soc.New(id, ch)
+	signedCh, _ := socCh.Sign(signer)
+	socCh, _ = soc.FromChunk(signedCh)
+	g.Handle(socCh)
+
+	// span (8 bytes) + payload == full wrapped chunk data
+	go expectMessage(t, cl, respC, ch.Data())
+	if err := <-respC; err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestGsocWebsocketSocFields verifies that multiple SOC fields are serialized in
+// the order they are provided in the Swarm-Soc-Fields header.
+func TestGsocWebsocketSocFields(t *testing.T) {
+	t.Parallel()
+
+	var (
+		id                  = make([]byte, 32)
+		headers             = http.Header{api.SwarmSocFieldsHeader: []string{"identifier,wrappedAddress,payload"}}
+		g, cl, signer, _, _ = newGsocTestWithOpts(t, id, 0, headers)
+		respC               = make(chan error, 1)
+		payload             = []byte("The future is already here — it's just not evenly distributed.")
+	)
+
+	err := cl.SetReadDeadline(time.Now().Add(longTimeout))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cl.SetReadLimit(swarm.ChunkSize)
+
+	ch, _ := cac.New(payload)
+	socCh := soc.New(id, ch)
+	signedCh, _ := socCh.Sign(signer)
+	socCh, _ = soc.FromChunk(signedCh)
+	g.Handle(socCh)
+
+	expected := make([]byte, 0, len(id)+swarm.HashSize+len(payload))
+	expected = append(expected, id...)
+	expected = append(expected, ch.Address().Bytes()...)
+	expected = append(expected, payload...)
+
+	go expectMessage(t, cl, respC, expected)
+	if err := <-respC; err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestGsocWebsocketCacheWrappedChunk verifies that the Swarm-Cache-Wrapped-Chunk
+// header causes the wrapped chunk to be stored in the cache so that it can be
+// resolved through the bytes endpoint.
+func TestGsocWebsocketCacheWrappedChunk(t *testing.T) {
+	t.Parallel()
+
+	var (
+		id                       = make([]byte, 32)
+		headers                  = http.Header{api.SwarmCacheWrappedChunkHeader: []string{"true"}}
+		g, cl, signer, _, storer = newGsocTestWithOpts(t, id, 0, headers)
+		respC                    = make(chan error, 1)
+		payload                  = []byte("If you don't like change, you're going to like irrelevance even less.")
+	)
+
+	err := cl.SetReadDeadline(time.Now().Add(longTimeout))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cl.SetReadLimit(swarm.ChunkSize)
+
+	ch, _ := cac.New(payload)
+	socCh := soc.New(id, ch)
+	signedCh, _ := socCh.Sign(signer)
+	socCh, _ = soc.FromChunk(signedCh)
+	g.Handle(socCh)
+
+	go expectMessage(t, cl, respC, payload)
+	if err := <-respC; err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := storer.ChunkStore().Get(context.Background(), ch.Address())
+	if err != nil {
+		t.Fatalf("wrapped chunk not cached: %v", err)
+	}
+	if !bytes.Equal(got.Data(), ch.Data()) {
+		t.Fatal("cached wrapped chunk data mismatch")
+	}
+}
+
 func newGsocTest(t *testing.T, socId []byte, pingPeriod time.Duration) (gsoc.Listener, *websocket.Conn, crypto.Signer, string) {
+	t.Helper()
+	g, cl, signer, listener, _ := newGsocTestWithOpts(t, socId, pingPeriod, nil)
+	return g, cl, signer, listener
+}
+
+func newGsocTestWithOpts(t *testing.T, socId []byte, pingPeriod time.Duration, headers http.Header) (gsoc.Listener, *websocket.Conn, crypto.Signer, string, api.Storer) {
 	t.Helper()
 	if pingPeriod == 0 {
 		pingPeriod = 10 * time.Second
@@ -161,11 +279,12 @@ func newGsocTest(t *testing.T, socId []byte, pingPeriod time.Duration) (gsoc.Lis
 	_, cl, listener, _ := newTestServer(t, testServerOptions{
 		Gsoc:         gsoc,
 		WsPath:       fmt.Sprintf("/gsoc/subscribe/%s", hex.EncodeToString(chunkAddr.Bytes())),
+		WsHeaders:    headers,
 		Storer:       storer,
 		BatchStore:   batchStore,
 		Logger:       log.Noop,
 		WsPingPeriod: pingPeriod,
 	})
 
-	return gsoc, cl, signer, listener
+	return gsoc, cl, signer, listener, storer
 }

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 8.1.0
+  version: 8.2.0
   title: Bee API
   description: "API endpoints for interacting with the Swarm network, supporting file operations, messaging, and node management"
 
@@ -859,9 +859,17 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
           description: "Single Owner Chunk address (which may have multiple payloads)"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmSocFieldsParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCacheWrappedChunkParameter"
       responses:
         "200":
-          description: Establishes a WebSocket subscription for incoming messages on the Single Owner Chunk address
+          description: >
+            Establishes a WebSocket subscription for incoming messages on the
+            Single Owner Chunk address. Each message is the binary serialization
+            of the Single Owner Chunk fields requested through the
+            swarm-soc-fields header (defaults to the wrapped chunk payload).
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:

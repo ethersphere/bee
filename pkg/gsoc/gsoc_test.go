@@ -37,17 +37,17 @@ func TestRegister(t *testing.T) {
 		address1, _ = soc.CreateAddress(socId1, owner.Bytes())
 		address2, _ = soc.CreateAddress(socId2, owner.Bytes())
 
-		h1 = func(m []byte) {
+		h1 = func(*soc.SOC) {
 			h1Calls++
 			msgChan <- struct{}{}
 		}
 
-		h2 = func(m []byte) {
+		h2 = func(*soc.SOC) {
 			h2Calls++
 			msgChan <- struct{}{}
 		}
 
-		h3 = func(m []byte) {
+		h3 = func(*soc.SOC) {
 			h3Calls++
 			msgChan <- struct{}{}
 		}
