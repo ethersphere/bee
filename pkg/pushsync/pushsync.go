@@ -24,6 +24,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/pricer"
 	"github.com/ethersphere/bee/v2/pkg/pushsync/pb"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/skippeers"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/stabilization"
@@ -209,10 +210,10 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	chunk := swarm.NewChunk(swarm.NewAddress(ch.Address), ch.Data)
 	chunkAddress := chunk.Address()
 
-	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, trace.WithAttributes(
-		attribute.String("address", chunkAddress.String()),
-		attribute.Int64("tag_id", int64(chunk.TagID())),
-		attribute.String("sender_address", p.Address.String()),
+	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, trace.WithSpanKind(trace.SpanKindServer), trace.WithAttributes(
+		attribute.String("swarm.chunk.address", chunkAddress.String()),
+		attribute.Int64("swarm.tag.id", int64(chunk.TagID())),
+		attribute.String("swarm.peer.address", p.Address.String()),
 	))
 
 	var (
@@ -224,11 +225,11 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		if err != nil {
 			tracing.RecordError(span, err)
 		} else {
-			attrs := []attribute.KeyValue{attribute.Bool("success", true)}
+			attrs := []attribute.KeyValue{attribute.Bool("swarm.operation.success", true)}
 			if stored {
 				attrs = append(attrs,
-					attribute.Bool("stored", true),
-					attribute.String("reason", reason),
+					attribute.Bool("swarm.chunk.stored", true),
+					attribute.String("swarm.chunk.store_reason", reason),
 				)
 			}
 			span.SetAttributes(attrs...)
@@ -244,7 +245,9 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	chunk.WithStamp(stamp)
 
 	if cac.Valid(chunk) {
-		go ps.unwrap(chunk)
+		safe.Go(ps.logger, "pushsync-unwrap-chunk", func() {
+			ps.unwrap(chunk)
+		})
 	} else if chunk, err := soc.FromChunk(chunk); err == nil {
 		addr, err := chunk.Address()
 		if err != nil {
@@ -471,7 +474,9 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 					if inflight == 0 {
 						if ps.fullNode {
 							if cac.Valid(ch) {
-								go ps.unwrap(ch)
+								safe.Go(ps.logger, "pushsync-unwrap-ch", func() {
+									ps.unwrap(ch)
+								})
 							}
 							return nil, topology.ErrWantSelf
 						}
@@ -524,7 +529,9 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			ps.metrics.TotalSendAttempts.Inc()
 			inflight++
 
-			go ps.push(ctx, resultChan, peer, ch, action)
+			safe.Go(ps.logger, "pushsync-push", func() {
+				ps.push(ctx, resultChan, peer, ch, action)
+			})
 
 		case result := <-resultChan:
 			inflight--
@@ -586,15 +593,15 @@ func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptRes
 
 	now := time.Now()
 
-	spanInner, _, _ := ps.tracer.FollowSpanFromContext(context.WithoutCancel(parentCtx), "push-chunk-async", ps.logger, trace.WithAttributes(
-		attribute.String("address", ch.Address().String()),
+	spanInner, _, _ := ps.tracer.FollowSpanFromContext(context.WithoutCancel(parentCtx), "push-chunk-async", ps.logger, trace.WithSpanKind(trace.SpanKindClient), trace.WithAttributes(
+		attribute.String("swarm.chunk.address", ch.Address().String()),
 	))
 
 	defer func() {
 		if err != nil {
 			tracing.RecordError(spanInner, err)
 		} else {
-			spanInner.SetAttributes(attribute.Bool("success", true))
+			spanInner.SetAttributes(attribute.Bool("swarm.operation.success", true))
 		}
 		spanInner.End()
 		select {
@@ -605,7 +612,7 @@ func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptRes
 
 	defer action.Cleanup()
 
-	spanInner.SetAttributes(attribute.String("peer_address", peer.String()))
+	spanInner.SetAttributes(attribute.String("swarm.peer.address", peer.String()))
 
 	receipt, err = ps.pushChunkToPeer(tracing.WithContext(ctx, spanInner.SpanContext()), peer, ch)
 	if err != nil {
