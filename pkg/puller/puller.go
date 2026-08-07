@@ -398,12 +398,35 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 
 			// pulled at least one chunk
 			if top >= start {
+				if err != nil {
+					p.logger.Debug("syncWorker advancing interval despite sync errors",
+						"error", err,
+						"peer_address", address,
+						"bin", bin,
+						"cursor", cursor,
+						"start", start,
+						"topmost", top,
+						"count", count,
+						"historical", isHistorical,
+					)
+				}
 				if err := p.addPeerInterval(address, bin, start, top); err != nil {
 					p.metrics.SyncWorkerErrCounter.Inc()
 					p.logger.Error(err, "syncWorker could not persist interval for peer, quitting", "peer_address", address)
 					return
 				}
 				start = top + 1
+			} else if err != nil {
+				p.logger.Debug("syncWorker not advancing interval after sync error",
+					"error", err,
+					"peer_address", address,
+					"bin", bin,
+					"cursor", cursor,
+					"start", start,
+					"topmost", top,
+					"count", count,
+					"historical", isHistorical,
+				)
 			}
 		}
 	}

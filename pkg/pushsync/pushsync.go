@@ -8,6 +8,8 @@ package pushsync
 
 import (
 	"context"
+	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
@@ -269,13 +271,51 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 		chunkToPut, err := ps.validStamp(chunk)
 		if err != nil {
+			ps.logger.Debug("pushsync invalid stamp",
+				"error", err,
+				"peer_address", p.Address,
+				"chunk_address", chunkAddress,
+				"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
+				"stamp_index", hex.EncodeToString(chunk.Stamp().Index()),
+				"stamp_timestamp", binary.BigEndian.Uint64(chunk.Stamp().Timestamp()),
+			)
 			return fmt.Errorf("invalid stamp: %w", err)
+		}
+
+		sumHex := ""
+		if sum, sumErr := storage.ChunkSum(chunkToPut); sumErr == nil {
+			sumHex = hex.EncodeToString(sum)
+		}
+		wrappedHex := ""
+		if sch, socErr := soc.FromChunk(chunkToPut); socErr == nil {
+			wrappedHex = sch.WrappedChunk().Address().String()
 		}
 
 		err = ps.store.ReservePutter().Put(ctx, chunkToPut)
 		if err != nil {
+			ps.logger.Debug("pushsync reserve put failed",
+				"error", err,
+				"peer_address", p.Address,
+				"chunk_address", chunkAddress,
+				"batch_id", hex.EncodeToString(chunkToPut.Stamp().BatchID()),
+				"stamp_index", hex.EncodeToString(chunkToPut.Stamp().Index()),
+				"stamp_timestamp", binary.BigEndian.Uint64(chunkToPut.Stamp().Timestamp()),
+				"sum", sumHex,
+				"wrapped_chunk_address", wrappedHex,
+				"path", reason,
+			)
 			return fmt.Errorf("reserve put: %w", err)
 		}
+		ps.logger.Debug("pushsync reserve put ok",
+			"peer_address", p.Address,
+			"chunk_address", chunkAddress,
+			"batch_id", hex.EncodeToString(chunkToPut.Stamp().BatchID()),
+			"stamp_index", hex.EncodeToString(chunkToPut.Stamp().Index()),
+			"stamp_timestamp", binary.BigEndian.Uint64(chunkToPut.Stamp().Timestamp()),
+			"sum", sumHex,
+			"wrapped_chunk_address", wrappedHex,
+			"path", reason,
+		)
 
 		signature, err := ps.signer.Sign(chunkToPut.Address().Bytes())
 		if err != nil {
@@ -310,6 +350,13 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return store(ctx)
 	case err == nil:
 		ps.metrics.Forwarder.Inc()
+		ps.logger.Debug("pushsync forward chunk",
+			"peer_address", p.Address,
+			"chunk_address", chunkAddress,
+			"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
+			"stamp_index", hex.EncodeToString(chunk.Stamp().Index()),
+			"stamp_timestamp", binary.BigEndian.Uint64(chunk.Stamp().Timestamp()),
+		)
 
 		debit, err := ps.accounting.PrepareDebit(ctx, p.Address, price)
 		if err != nil {

@@ -5,6 +5,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -19,6 +20,12 @@ import (
 var (
 	ErrOverwriteNewerChunk = errors.New("overwriting chunk with newer timestamp")
 	ErrUnknownChunkType    = errors.New("unknown chunk type")
+
+	// ErrDivergentChunkRejected is returned when a chunk that diverges from an
+	// already stored one at the same address, batch and stamp loses the
+	// deterministic tie-break and is therefore not stored. It is not a failure:
+	// the node already holds the chunk the whole neighborhood converges on.
+	ErrDivergentChunkRejected = errors.New("divergent chunk rejected by tie-break")
 )
 
 // Result represents the item returned by the read operation, which returns
@@ -293,6 +300,80 @@ func ChunkType(ch swarm.Chunk) swarm.ChunkType {
 		return swarm.ChunkTypeSingleOwner
 	}
 	return swarm.ChunkTypeUnspecified
+}
+
+// ChunkSumSize is the length in bytes of the pullsync divergence checksum.
+const ChunkSumSize = 16
+
+// ChunkSum computes the pullsync divergence checksum for a stamped chunk.
+//
+//	CAC: keccak256(batchID ‖ stampHash)[:16]
+//	SOC: keccak256(batchID ‖ stampHash ‖ wrappedCacAddress)[:16]
+//
+// Folding the wrapped CAC address into the SOC sum makes two SOCs that share a
+// SOC address but wrap different content produce distinct sums, so both can be
+// pulled and reconciled. The chunk must carry a stamp.
+func ChunkSum(ch swarm.Chunk) ([]byte, error) {
+	stampHash, err := ch.Stamp().Hash()
+	if err != nil {
+		return nil, fmt.Errorf("stamp hash: %w", err)
+	}
+	return ChunkSumFromParts(ch.Stamp().BatchID(), stampHash, ch)
+}
+
+// ChunkSumFromParts computes the pullsync divergence checksum from an already
+// known batch ID and stamp hash. It is equivalent to ChunkSum for a chunk
+// carrying a matching stamp, but spares callers that hold the parts in an
+// index item (migrations, repairs) from loading and rehashing the stamp. The
+// chunk is consulted only to fold in the wrapped CAC address for single owner
+// chunks.
+func ChunkSumFromParts(batchID, stampHash []byte, ch swarm.Chunk) ([]byte, error) {
+	h := swarm.NewHasher()
+	_, _ = h.Write(batchID)
+	_, _ = h.Write(stampHash)
+
+	if soc.Valid(ch) {
+		s, err := soc.FromChunk(ch)
+		if err != nil {
+			return nil, fmt.Errorf("soc from chunk: %w", err)
+		}
+		_, _ = h.Write(s.WrappedChunk().Address().Bytes())
+	}
+
+	return h.Sum(nil)[:ChunkSumSize], nil
+}
+
+// DivergentChunkWins reports whether the incoming chunk should replace the
+// stored one when the two share an address, batch and stamp but wrap different
+// content. Both chunks must be single owner chunks; a content addressed chunk
+// cannot diverge, since its address is the hash of its own payload.
+//
+// The winner is the chunk wrapping the lexicographically lower CAC address.
+// The rule depends on nothing but the two payloads, so every node in the
+// neighborhood converges on the same chunk regardless of the order in which
+// they arrive.
+func DivergentChunkWins(stored, incoming swarm.Chunk) (bool, error) {
+	storedAddr, err := wrappedAddress(stored)
+	if err != nil {
+		return false, fmt.Errorf("stored chunk: %w", err)
+	}
+	incomingAddr, err := wrappedAddress(incoming)
+	if err != nil {
+		return false, fmt.Errorf("incoming chunk: %w", err)
+	}
+	return bytes.Compare(incomingAddr.Bytes(), storedAddr.Bytes()) < 0, nil
+}
+
+// wrappedAddress returns the address of the CAC wrapped by a single owner chunk.
+func wrappedAddress(ch swarm.Chunk) (swarm.Address, error) {
+	if !soc.Valid(ch) {
+		return swarm.ZeroAddress, fmt.Errorf("%w: not a single owner chunk", ErrUnknownChunkType)
+	}
+	s, err := soc.FromChunk(ch)
+	if err != nil {
+		return swarm.ZeroAddress, fmt.Errorf("soc from chunk: %w", err)
+	}
+	return s.WrappedChunk().Address(), nil
 }
 
 // IdentityAddress returns the internally used address for the chunk

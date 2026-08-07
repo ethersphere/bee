@@ -8,6 +8,7 @@ package pullsync
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -36,7 +37,7 @@ const loggerName = "pullsync"
 
 const (
 	protocolName     = "pullsync"
-	protocolVersion  = "1.4.0"
+	protocolVersion  = "2.0.0"
 	streamName       = "pullsync"
 	cursorStreamName = "cursors"
 )
@@ -164,8 +165,10 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 	// while makeOffer is executing (waiting for the new chunks)
 	w, r := protobuf.NewWriterAndReader(stream)
 
-	// make an offer to the upstream peer in return for the requested range
-	offer, err := s.makeOffer(ctx, rn)
+	// make an offer to the upstream peer in return for the requested range.
+	// the bincs slice is retained so processWant can resolve wanted chunks by
+	// their batch ID and stamp hash, which are no longer carried on the wire.
+	offer, bincs, err := s.makeOffer(ctx, rn)
 	if err != nil {
 		return fmt.Errorf("make offer: %w", err)
 	}
@@ -187,7 +190,7 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 		return fmt.Errorf("read want: %w", err)
 	}
 
-	chs, err := s.processWant(ctx, offer, &want)
+	chs, err := s.processWant(ctx, bincs, &want)
 	if err != nil {
 		return fmt.Errorf("process want: %w", err)
 	}
@@ -274,8 +277,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		}
 
 		addr := offer.Chunks[i].Address
-		batchID := offer.Chunks[i].BatchID
-		stampHash := offer.Chunks[i].StampHash
+		sum := offer.Chunks[i].Sum
 		if len(addr) != swarm.HashSize {
 			return 0, 0, fmt.Errorf("inconsistent hash length")
 		}
@@ -286,20 +288,48 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 			s.logger.Debug("syncer got a zero address hash on offer", "peer_address", peer)
 			continue
 		}
+		if len(sum) != storage.ChunkSumSize {
+			return 0, 0, fmt.Errorf("inconsistent chunk sum length")
+		}
 		s.metrics.Offered.Inc()
 		if s.store.IsWithinStorageRadius(a) {
-			have, err = s.store.ReserveHas(a, batchID, stampHash)
+			have, err = s.store.ReserveHas(a, sum)
 			if err != nil {
 				s.logger.Debug("storage has", "error", err)
 				return 0, 0, err
 			}
 
 			if !have {
-				wantChunks[a.ByteString()+string(batchID)+string(stampHash)] = struct{}{}
+				wantChunks[a.ByteString()+string(sum)] = struct{}{}
 				ctr++
 				s.metrics.Wanted.Inc()
 				bv.Set(i)
+				s.logger.Debug("pullsync want chunk",
+					"peer_address", peer,
+					"bin", bin,
+					"offer_idx", i,
+					"chunk_address", a,
+					"sum", hex.EncodeToString(sum),
+					"start", start,
+					"offer_topmost", topmost,
+				)
+			} else {
+				s.logger.Debug("pullsync skip offer, already have sum",
+					"peer_address", peer,
+					"bin", bin,
+					"offer_idx", i,
+					"chunk_address", a,
+					"sum", hex.EncodeToString(sum),
+					"start", start,
+					"offer_topmost", topmost,
+				)
 			}
+		} else {
+			s.logger.Debug("pullsync skip offer, outside storage radius",
+				"peer_address", peer,
+				"bin", bin,
+				"chunk_address", a,
+			)
 		}
 	}
 
@@ -309,6 +339,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 	}
 
 	chunksToPut := make([]swarm.Chunk, 0, ctr)
+	wanted := ctr
 
 	var chunkErr error
 	for ; ctr > 0; ctr-- {
@@ -331,24 +362,63 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 			chunkErr = errors.Join(chunkErr, err)
 			continue
 		}
-		stampHash, err := stamp.Hash()
+
+		// recompute the divergence checksum from the delivered chunk and stamp
+		// and match it against the outstanding (address, sum) want set.
+		sum, err := storage.ChunkSum(newChunk.WithStamp(stamp))
 		if err != nil {
 			chunkErr = errors.Join(chunkErr, err)
 			continue
 		}
 
-		wantChunkID := addr.ByteString() + string(stamp.BatchID()) + string(stampHash)
+		wantChunkID := addr.ByteString() + string(sum)
+		stampHash, hashErr := stamp.Hash()
+		stampHashHex := ""
+		if hashErr == nil {
+			stampHashHex = hex.EncodeToString(stampHash)
+		}
 		if _, ok := wantChunks[wantChunkID]; !ok {
-			s.logger.Debug("want chunks", "error", ErrUnsolicitedChunk, "peer_address", peer, "chunk_address", addr)
+			s.logger.Debug("pullsync unsolicited delivery",
+				"error", ErrUnsolicitedChunk,
+				"peer_address", peer,
+				"chunk_address", addr,
+				"batch_id", hex.EncodeToString(stamp.BatchID()),
+				"stamp_hash", stampHashHex,
+				"stamp_index", hex.EncodeToString(stamp.Index()),
+				"stamp_timestamp", binary.BigEndian.Uint64(stamp.Timestamp()),
+				"recomputed_sum", hex.EncodeToString(sum),
+				"bin", bin,
+				"offer_topmost", topmost,
+			)
 			chunkErr = errors.Join(chunkErr, ErrUnsolicitedChunk)
 			continue
 		}
 
 		delete(wantChunks, wantChunkID)
 
+		s.logger.Debug("pullsync delivery accepted for want",
+			"peer_address", peer,
+			"chunk_address", addr,
+			"batch_id", hex.EncodeToString(stamp.BatchID()),
+			"stamp_hash", stampHashHex,
+			"stamp_index", hex.EncodeToString(stamp.Index()),
+			"stamp_timestamp", binary.BigEndian.Uint64(stamp.Timestamp()),
+			"recomputed_sum", hex.EncodeToString(sum),
+			"bin", bin,
+			"offer_topmost", topmost,
+		)
+
 		chunk, err := s.validStamp(newChunk.WithStamp(stamp))
 		if err != nil {
-			s.logger.Debug("unverified stamp", "error", err, "peer_address", peer, "chunk_address", newChunk)
+			s.logger.Debug("unverified stamp",
+				"error", err,
+				"peer_address", peer,
+				"chunk_address", addr,
+				"batch_id", hex.EncodeToString(stamp.BatchID()),
+				"stamp_timestamp", binary.BigEndian.Uint64(stamp.Timestamp()),
+				"bin", bin,
+				"offer_topmost", topmost,
+			)
 			chunkErr = errors.Join(chunkErr, err)
 			continue
 		}
@@ -383,33 +453,103 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 				// in case of these errors, no new items are added to the storage, so it
 				// is safe to continue with the next chunk
 				if errors.Is(err, storage.ErrOverwriteNewerChunk) {
-					s.logger.Debug("overwrite newer chunk", "error", err, "peer_address", peer, "chunk", c)
+					s.logger.Debug("overwrite newer chunk",
+						"error", err,
+						"peer_address", peer,
+						"chunk_address", c.Address(),
+						"batch_id", hex.EncodeToString(c.Stamp().BatchID()),
+						"stamp_timestamp", binary.BigEndian.Uint64(c.Stamp().Timestamp()),
+						"bin", bin,
+					)
 					chunkErr = errors.Join(chunkErr, err)
 					continue
 				}
+				// the chunk diverged from the one already stored and lost the
+				// tie-break. The neighborhood converges on the stored chunk, so
+				// this is an expected outcome rather than a sync error.
+				if errors.Is(err, storage.ErrDivergentChunkRejected) {
+					s.logger.Debug("divergent chunk rejected",
+						"error", err,
+						"peer_address", peer,
+						"chunk_address", c.Address(),
+						"batch_id", hex.EncodeToString(c.Stamp().BatchID()),
+						"stamp_timestamp", binary.BigEndian.Uint64(c.Stamp().Timestamp()),
+						"bin", bin,
+					)
+					s.metrics.DivergentRejected.Inc()
+					continue
+				}
+				s.logger.Debug("pullsync reserve put failed",
+					"error", err,
+					"peer_address", peer,
+					"chunk_address", c.Address(),
+					"batch_id", hex.EncodeToString(c.Stamp().BatchID()),
+					"stamp_timestamp", binary.BigEndian.Uint64(c.Stamp().Timestamp()),
+					"bin", bin,
+				)
 				return 0, 0, errors.Join(chunkErr, err)
 			}
+			s.logger.Debug("pullsync reserve put ok",
+				"peer_address", peer,
+				"chunk_address", c.Address(),
+				"batch_id", hex.EncodeToString(c.Stamp().BatchID()),
+				"stamp_index", hex.EncodeToString(c.Stamp().Index()),
+				"stamp_timestamp", binary.BigEndian.Uint64(c.Stamp().Timestamp()),
+				"bin", bin,
+			)
 			chunksPut++
 		}
+	}
+
+	if chunkErr != nil {
+		s.logger.Debug("pullsync sync finished with chunk errors",
+			"error", chunkErr,
+			"peer_address", peer,
+			"bin", bin,
+			"start", start,
+			"offer_topmost", topmost,
+			"chunks_put", chunksPut,
+			"wanted", wanted,
+		)
 	}
 
 	return topmost, chunksPut, chunkErr
 }
 
-// makeOffer tries to assemble an offer for a given requested interval.
-func (s *Syncer) makeOffer(ctx context.Context, rn pb.Get) (*pb.Offer, error) {
-	addrs, top, err := s.collectAddrs(ctx, uint8(rn.Bin), rn.Start)
+// makeOffer tries to assemble an offer for a given requested interval. It
+// returns both the wire offer (carrying only address and sum per chunk) and the
+// underlying BinC slice, which the caller keeps to resolve wanted chunks by
+// batch ID and stamp hash when fulfilling the subsequent Want.
+func (s *Syncer) makeOffer(ctx context.Context, rn pb.Get) (*pb.Offer, []*storer.BinC, error) {
+	bincs, top, err := s.collectAddrs(ctx, uint8(rn.Bin), rn.Start)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	o := new(pb.Offer)
 	o.Topmost = top
-	o.Chunks = make([]*pb.Chunk, 0, len(addrs))
-	for _, v := range addrs {
-		o.Chunks = append(o.Chunks, &pb.Chunk{Address: v.Address.Bytes(), BatchID: v.BatchID, StampHash: v.StampHash})
+	o.Chunks = make([]*pb.Chunk, 0, len(bincs))
+	for i, v := range bincs {
+		o.Chunks = append(o.Chunks, &pb.Chunk{Address: v.Address.Bytes(), Sum: v.Sum})
+		s.logger.Debug("pullsync offer chunk",
+			"bin", rn.Bin,
+			"start", rn.Start,
+			"offer_idx", i,
+			"bin_id", v.BinID,
+			"chunk_address", v.Address,
+			"batch_id", hex.EncodeToString(v.BatchID),
+			"stamp_hash", hex.EncodeToString(v.StampHash),
+			"sum", hex.EncodeToString(v.Sum),
+			"offer_topmost", top,
+		)
 	}
-	return o, nil
+	s.logger.Debug("pullsync offer summary",
+		"bin", rn.Bin,
+		"start", rn.Start,
+		"count", len(bincs),
+		"offer_topmost", top,
+	)
+	return o, bincs, nil
 }
 
 type collectAddrsResult struct {
@@ -447,7 +587,7 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 					break LOOP // The stream has been closed.
 				}
 
-				chs = append(chs, &storer.BinC{Address: c.Address, BatchID: c.BatchID, StampHash: c.StampHash})
+				chs = append(chs, &storer.BinC{Address: c.Address, BinID: c.BinID, BatchID: c.BatchID, StampHash: c.StampHash, Sum: c.Sum})
 				if c.BinID > topmost {
 					topmost = c.BinID
 				}
@@ -479,32 +619,54 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 	return v.chs, v.topmost, nil
 }
 
-// processWant compares a received Want to a sent Offer and returns
+// processWant compares a received Want to the offered BinC slice and returns
 // the appropriate chunks from the local store.
-func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]swarm.Chunk, error) {
-	bv, err := bitvector.NewFromBytes(w.BitVector, len(o.Chunks))
+func (s *Syncer) processWant(ctx context.Context, bincs []*storer.BinC, w *pb.Want) ([]swarm.Chunk, error) {
+	bv, err := bitvector.NewFromBytes(w.BitVector, len(bincs))
 	if err != nil {
 		return nil, err
 	}
 
-	chunks := make([]swarm.Chunk, 0, len(o.Chunks))
-	for i := 0; i < len(o.Chunks); i++ {
-		if o.Chunks[i] == nil {
+	chunks := make([]swarm.Chunk, 0, len(bincs))
+	for i := 0; i < len(bincs); i++ {
+		if bincs[i] == nil {
 			return nil, fmt.Errorf("nil chunk at index %d in offer", i)
 		}
 
 		if bv.Get(i) {
-			ch := o.Chunks[i]
-			addr := swarm.NewAddress(ch.Address)
+			c := bincs[i]
 			s.metrics.SentWanted.Inc()
-			c, err := s.store.ReserveGet(ctx, addr, ch.BatchID, ch.StampHash)
+			ch, err := s.store.ReserveGet(ctx, c.Address, c.BatchID, c.StampHash)
 			if err != nil {
-				s.logger.Debug("processing want: unable to find chunk", "chunk_address", addr, "batch_id", hex.EncodeToString(ch.BatchID))
+				s.logger.Debug("processing want: unable to find chunk",
+					"chunk_address", c.Address,
+					"batch_id", hex.EncodeToString(c.BatchID),
+					"stamp_hash", hex.EncodeToString(c.StampHash),
+					"bin_id", c.BinID,
+					"sum", hex.EncodeToString(c.Sum),
+					"offer_idx", i,
+				)
 				chunks = append(chunks, swarm.NewChunk(swarm.ZeroAddress, nil))
 				s.metrics.MissingChunks.Inc()
 				continue
 			}
-			chunks = append(chunks, c)
+			stampTS := uint64(0)
+			stampIndex := ""
+			if ch.Stamp() != nil {
+				stampTS = binary.BigEndian.Uint64(ch.Stamp().Timestamp())
+				stampIndex = hex.EncodeToString(ch.Stamp().Index())
+			}
+			s.logger.Debug("pullsync deliver chunk",
+				"offer_idx", i,
+				"bin_id", c.BinID,
+				"chunk_address", c.Address,
+				"batch_id", hex.EncodeToString(c.BatchID),
+				"stamp_hash", hex.EncodeToString(c.StampHash),
+				"stamp_index", stampIndex,
+				"stamp_timestamp", stampTS,
+				"sum", hex.EncodeToString(c.Sum),
+			)
+			chunks = append(chunks, ch)
 		}
 	}
 	return chunks, nil
