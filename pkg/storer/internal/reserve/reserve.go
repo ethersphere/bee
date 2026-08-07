@@ -675,6 +675,13 @@ func (r *Reserve) resolveDivergence(
 		if err != nil {
 			return fmt.Errorf("failed loading diverging chunk %s: %w", chunk.Address(), err)
 		}
+		// ChunkStore returns payload only; stamp is in the chunkstamp index.
+		// stampHash is the same key Has() already confirmed for this put.
+		stamp, err := chunkstamp.LoadWithStampHash(s.IndexStore(), reserveScope, chunk.Address(), stampHash)
+		if err != nil {
+			return fmt.Errorf("failed loading stamp for diverging chunk %s: %w", chunk.Address(), err)
+		}
+		stored = stored.WithStamp(stamp)
 
 		// Verify timestamp precedence: an incoming chunk with an older timestamp
 		// can never displace a stored chunk.
@@ -706,7 +713,7 @@ func (r *Reserve) resolveDivergence(
 			return fmt.Errorf("divergence tie-break for chunk %s: %w", chunk.Address(), err)
 		}
 
-		storedSum, _ := storage.ChunkSum(stored.WithStamp(chunk.Stamp()))
+		storedSum, _ := storage.ChunkSum(stored)
 		storedWrapped := wrappedAddrHex(stored)
 		incomingWrapped := wrappedAddrHex(chunk)
 
