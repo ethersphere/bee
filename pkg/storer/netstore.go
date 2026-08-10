@@ -10,6 +10,7 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/pusher"
 	"github.com/ethersphere/bee/v2/pkg/pushsync"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
@@ -28,11 +29,11 @@ func (db *DB) DirectUpload() PutterSession {
 		Putter: putterWithMetrics{
 			storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk) error {
 				db.directUploadLimiter <- struct{}{}
-				eg.Go(func() (err error) {
+				eg.Go(safe.RunFunc(db.logger, "storer-netstore-direct-upload", func() (err error) {
 					defer func() { <-db.directUploadLimiter }()
 
 					span, logger, ctx := db.tracer.FollowSpanFromContext(ctx, "put-direct-upload", db.logger)
-					span.SetAttributes(attribute.String("address", ch.Address().String()))
+					span.SetAttributes(attribute.String("swarm.chunk.address", ch.Address().String()))
 					defer func() {
 						if err != nil {
 							tracing.RecordError(span, err)
@@ -68,7 +69,7 @@ func (db *DB) DirectUpload() PutterSession {
 							}
 						}
 					}
-				})
+				}))
 				return nil
 			}),
 			db.metrics,
@@ -84,12 +85,12 @@ func (db *DB) Download(cache bool) storage.Getter {
 	return getterWithMetrics{
 		storage.GetterFunc(func(ctx context.Context, address swarm.Address) (ch swarm.Chunk, err error) {
 			span, logger, ctx := db.tracer.StartSpanFromContext(ctx, "get-chunk", db.logger)
-			span.SetAttributes(attribute.String("address", address.String()))
+			span.SetAttributes(attribute.String("swarm.chunk.address", address.String()))
 			defer func() {
 				if err != nil {
 					tracing.RecordError(span, err)
 				} else {
-					span.SetAttributes(attribute.Bool("success", true))
+					span.SetAttributes(attribute.Bool("swarm.operation.success", true))
 				}
 				span.End()
 			}()

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -70,15 +71,20 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, e
 
 	// concurrently call to retrieve chunk using original CAC address
 	g.wg.Go(func() {
-		ch, err := g.Getter.Get(ctx, addr)
+		err := safe.RunFunc(nil, "replicas-get-original", func() error {
+			ch, err := g.Getter.Get(ctx, addr)
+			if err != nil {
+				return err
+			}
+
+			select {
+			case resultC <- ch:
+			case <-ctx.Done():
+			}
+			return nil
+		})()
 		if err != nil {
 			errc <- err
-			return
-		}
-
-		select {
-		case resultC <- ch:
-		case <-ctx.Done():
 		}
 	})
 	// counters
@@ -129,21 +135,25 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, e
 			}
 
 			g.wg.Go(func() {
-				ch, err := g.Getter.Get(ctx, swarm.NewAddress(so.addr))
+				err := safe.RunFunc(nil, "replicas-get-replica", func() error {
+					ch, err := g.Getter.Get(ctx, swarm.NewAddress(so.addr))
+					if err != nil {
+						return err
+					}
+
+					soc, err := soc.FromChunk(ch)
+					if err != nil {
+						return err
+					}
+
+					select {
+					case resultC <- soc.WrappedChunk():
+					case <-ctx.Done():
+					}
+					return nil
+				})()
 				if err != nil {
 					errc <- err
-					return
-				}
-
-				soc, err := soc.FromChunk(ch)
-				if err != nil {
-					errc <- err
-					return
-				}
-
-				select {
-				case resultC <- soc.WrappedChunk():
-				case <-ctx.Done():
 				}
 			})
 			n++
