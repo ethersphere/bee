@@ -151,3 +151,5 @@ password-file: "/opt/homebrew/var/lib/swarm-bee/password"
 # autotls-ca-endpoint: ""
 ## SIMD BMT hashing opt-in flag (only available on linux amd64)
 # use-simd-hashing: false
+## limit of possible connected light nodes (default: 100)
+# light-node-limit: 100
