@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/safe"
+	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
 	pinstore "github.com/ethersphere/bee/v2/pkg/storer/internal/pinning"
@@ -100,7 +101,7 @@ func New(
 //     the existing chunk if the new chunk has a higher stamp timestamp (regardless of batch type).
 //  3. A new chunk that has the same address belonging to the same stamp index with an already stored chunk will overwrite the existing chunk
 //     if the new chunk has a higher stamp timestamp (regardless of batch type and chunk type, eg CAC & SOC).
-//  4. Two different chunk addresses that share the same batch stamp index and timestamp are settled by a tie-break:
+//  4. Two different chunk addresses that share the same batch, stamp index and timestamp are settled by a tie-break:
 //     the lexicographically lower chunk address wins. The loser is rejected; the winner replaces the stored chunk
 //     through the usual remove-and-store path (including a fresh bin ID for pullsync).
 //  5. Two single owner chunks that share an address under different stamps (any batch or stamp
@@ -112,23 +113,12 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 		return err
 	}
 	if socReplaced {
-		// A single owner chunk's payload is stored once per address while index
-		// entries exist per stamp: replacing the payload invalidates the
-		// divergence checksums of co-resident entries under other stamps. The
-		// refresh runs after the put transaction, with no locks held, because
-		// it takes the sibling entries' batch locks (see refreshSiblingSums).
-		if err := r.refreshSiblingSums(ctx, chunk.Address()); err != nil {
-			return err
-		}
+		return r.refreshSiblingSums(ctx, chunk.Address())
 	}
 	return nil
 }
 
-// putChunk stores the chunk and reports whether the shared payload of an
-// already stored single owner chunk was replaced, in which case the sums of
-// co-resident entries must be refreshed by the caller.
 func (r *Reserve) putChunk(ctx context.Context, chunk swarm.Chunk) (socReplaced bool, err error) {
-	// batchID lock, Put vs Eviction
 	r.multx.Lock(string(chunk.Stamp().BatchID()))
 	defer r.multx.Unlock(string(chunk.Stamp().BatchID()))
 
@@ -198,7 +188,7 @@ func (r *Reserve) putChunk(ctx context.Context, chunk swarm.Chunk) (socReplaced 
 		shouldIncReserveSize, err = r.putCAC(ctx, chunk, sum, stampHash, bin)
 	}
 	if err != nil {
-		r.logger.Error(err, "put chunk failed",
+		r.logger.Error(err, "put chunk",
 			"address", chunk.Address(), "batch_id", batchHex,
 			"stamp_hash", stampHashHex, "stamp_index", stampIndexHex,
 			"stamp_timestamp", stampTS, "chunk_type", chunkType,
@@ -215,7 +205,7 @@ func (r *Reserve) putSOC(ctx context.Context, chunk swarm.Chunk, sum, stampHash 
 	err = r.st.Run(ctx, func(s transaction.Store) error {
 		oldStampIndex, loaded, err := stampindex.LoadOrStore(s.IndexStore(), reserveScope, chunk)
 		if err != nil {
-			return fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
+			return fmt.Errorf("load or store stamp index for chunk %v: %w", chunk, err)
 		}
 
 		if loaded {
@@ -256,7 +246,7 @@ func (r *Reserve) putCAC(ctx context.Context, chunk swarm.Chunk, sum, stampHash 
 	err = r.st.Run(ctx, func(s transaction.Store) error {
 		oldStampIndex, loaded, err := stampindex.LoadOrStore(s.IndexStore(), reserveScope, chunk)
 		if err != nil {
-			return fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
+			return fmt.Errorf("load or store stamp index for chunk %v: %w", chunk, err)
 		}
 
 		if loaded {
@@ -374,12 +364,12 @@ func (r *Reserve) resolveStampIndexCollision(
 
 	err = r.removeChunk(ctx, s, oldStampIndex.ChunkAddress, oldStampIndex.BatchID, oldStampIndex.StampHash)
 	if err != nil {
-		return false, fmt.Errorf("failed removing older chunk %s: %w", oldStampIndex.ChunkAddress, err)
+		return false, fmt.Errorf("remove older chunk %s: %w", oldStampIndex.ChunkAddress, err)
 	}
 
 	err = stampindex.Store(s.IndexStore(), reserveScope, chunk)
 	if err != nil {
-		return false, fmt.Errorf("failed updating stamp index: %w", err)
+		return false, fmt.Errorf("update stamp index: %w", err)
 	}
 
 	return false, nil
@@ -550,13 +540,13 @@ func (r *Reserve) resolveDivergence(
 	return r.st.Run(ctx, func(s transaction.Store) error {
 		stored, err := s.ChunkStore().Get(ctx, chunk.Address())
 		if err != nil {
-			return fmt.Errorf("failed loading diverging chunk %s: %w", chunk.Address(), err)
+			return fmt.Errorf("load diverging chunk %s: %w", chunk.Address(), err)
 		}
 		// ChunkStore returns payload only; stamp is in the chunkstamp index.
 		// stampHash is the same key Has() already confirmed for this put.
 		stamp, err := chunkstamp.LoadWithStampHash(s.IndexStore(), reserveScope, chunk.Address(), stampHash)
 		if err != nil {
-			return fmt.Errorf("failed loading stamp for diverging chunk %s: %w", chunk.Address(), err)
+			return fmt.Errorf("load stamp for diverging chunk %s: %w", chunk.Address(), err)
 		}
 		stored = stored.WithStamp(stamp)
 
@@ -585,7 +575,7 @@ func (r *Reserve) resolveDivergence(
 			}
 		}
 
-		wins, err := storage.DivergentChunkWins(stored, chunk)
+		wins, err := storage.DivergentSocChunkWins(stored, chunk)
 		if err != nil {
 			return fmt.Errorf("divergence tie-break for chunk %s: %w", chunk.Address(), err)
 		}

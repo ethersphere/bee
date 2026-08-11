@@ -6,7 +6,6 @@ package storer
 
 import (
 	"context"
-	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -311,24 +310,11 @@ func (db *DB) ReservePutter() storage.Putter {
 	return putterWithMetrics{
 		storage.PutterFunc(
 			func(ctx context.Context, chunk swarm.Chunk) error {
-				stampTS := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
-				batchHex := hex.EncodeToString(chunk.Stamp().BatchID())
 				err := db.reserve.Put(ctx, chunk)
 				if err != nil {
-					db.logger.Debug("reserve put error",
-						"error", err,
-						"address", chunk.Address(),
-						"batch_id", batchHex,
-						"stamp_timestamp", stampTS,
-					)
+					db.logger.Debug("reserve put error", "error", err)
 					return fmt.Errorf("reserve putter.Put: %w", err)
 				}
-				db.logger.Debug("reserve put ok",
-					"address", chunk.Address(),
-					"batch_id", batchHex,
-					"stamp_index", hex.EncodeToString(chunk.Stamp().Index()),
-					"stamp_timestamp", stampTS,
-				)
 				db.reserveBinEvents.Trigger(string(db.po(chunk.Address())))
 				if !db.reserve.IsWithinCapacity() {
 					db.events.Trigger(reserveOverCapacity)

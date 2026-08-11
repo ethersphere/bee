@@ -70,7 +70,7 @@ func TestIdentityAddress(t *testing.T) {
 		data := []byte("data")
 		cacChunk, err := cac.New(data)
 		if err != nil {
-			t.Fatalf("failed to create content addressed chunk: %v", err)
+			t.Fatalf("create content addressed chunk: %v", err)
 		}
 
 		// Call IdentityAddress with the CAC
@@ -236,7 +236,7 @@ func FuzzChunkSum(f *testing.F) {
 	})
 }
 
-func TestDivergentChunkWins(t *testing.T) {
+func TestDivergentSocChunkWins(t *testing.T) {
 	t.Parallel()
 
 	privKey, err := crypto.GenerateSecp256k1Key()
@@ -275,7 +275,7 @@ func TestDivergentChunkWins(t *testing.T) {
 	t.Run("lower wrapped address wins", func(t *testing.T) {
 		t.Parallel()
 
-		wins, err := storage.DivergentChunkWins(higher, lower)
+		wins, err := storage.DivergentSocChunkWins(higher, lower)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -287,7 +287,7 @@ func TestDivergentChunkWins(t *testing.T) {
 	t.Run("tie-break is antisymmetric", func(t *testing.T) {
 		t.Parallel()
 
-		wins, err := storage.DivergentChunkWins(lower, higher)
+		wins, err := storage.DivergentSocChunkWins(lower, higher)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -299,7 +299,7 @@ func TestDivergentChunkWins(t *testing.T) {
 	t.Run("a chunk does not displace itself", func(t *testing.T) {
 		t.Parallel()
 
-		wins, err := storage.DivergentChunkWins(lower, lower)
+		wins, err := storage.DivergentSocChunkWins(lower, lower)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -312,10 +312,10 @@ func TestDivergentChunkWins(t *testing.T) {
 		t.Parallel()
 
 		cac := testingc.GenerateTestRandomChunk()
-		if _, err := storage.DivergentChunkWins(cac, lower); !errors.Is(err, storage.ErrUnknownChunkType) {
+		if _, err := storage.DivergentSocChunkWins(cac, lower); !errors.Is(err, storage.ErrUnknownChunkType) {
 			t.Fatalf("expected ErrUnknownChunkType, got %v", err)
 		}
-		if _, err := storage.DivergentChunkWins(lower, cac); !errors.Is(err, storage.ErrUnknownChunkType) {
+		if _, err := storage.DivergentSocChunkWins(lower, cac); !errors.Is(err, storage.ErrUnknownChunkType) {
 			t.Fatalf("expected ErrUnknownChunkType, got %v", err)
 		}
 	})

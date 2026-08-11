@@ -47,7 +47,7 @@ func FuzzChunkBinItemUnmarshal(f *testing.F) {
 		}
 		out, err := item.Marshal()
 		if err != nil {
-			t.Fatalf("unmarshaled value failed to marshal: %v", err)
+			t.Fatalf("marshal after unmarshal: %v", err)
 		}
 		if !bytes.Equal(out, data) {
 			t.Fatal("marshal round-trip changed the value")

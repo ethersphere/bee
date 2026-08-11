@@ -345,7 +345,6 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		}
 
 		wantChunkID := addr.ByteString() + string(sum)
-
 		if _, ok := wantChunks[wantChunkID]; !ok {
 			s.logger.Debug("want chunks", "error", ErrUnsolicitedChunk, "peer_address", peer, "chunk_address", addr)
 			chunkErr = errors.Join(chunkErr, ErrUnsolicitedChunk)
@@ -426,7 +425,6 @@ func (s *Syncer) makeOffer(ctx context.Context, rn pb.Get) (*pb.Offer, []*storer
 	o.Chunks = make([]*pb.Chunk, 0, len(bincs))
 	for _, v := range bincs {
 		o.Chunks = append(o.Chunks, &pb.Chunk{Address: v.Address.Bytes(), Sum: v.Sum})
-
 	}
 	return o, bincs, nil
 }
