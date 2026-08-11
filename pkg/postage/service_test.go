@@ -472,3 +472,64 @@ func TestUpdateIssuerLabel(t *testing.T) {
 		}
 	})
 }
+
+func TestResetStampIssuer(t *testing.T) {
+	t.Parallel()
+
+	store := inmemstore.New()
+	pstore := pstoremock.New(pstoremock.WithChainState(&postage.ChainState{Block: 1000}))
+	ps, err := postage.NewService(log.Noop, store, pstore, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ps.Close()
+
+	batchID := make([]byte, 32)
+	batchID[0] = 42
+
+	mutableIssuer := postage.NewStampIssuer("label", "keyID", batchID, big.NewInt(3), 16, 8, 0, false)
+	if err := ps.Add(mutableIssuer); err != nil {
+		t.Fatal(err)
+	}
+
+	addr := swarm.NewAddress([]byte{1, 2, 3, 4})
+	// Increment until bucket is full
+	for range mutableIssuer.BucketUpperBound() {
+		if _, _, err := mutableIssuer.Increment(addr); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, _, err := mutableIssuer.Increment(addr); !errors.Is(err, postage.ErrBucketFull) {
+		t.Fatalf("want %v, got %v", postage.ErrBucketFull, err)
+	}
+
+	// Reset via service
+	if err := ps.ResetStampIssuer(batchID); err != nil {
+		t.Fatalf("unexpected error resetting issuer: %v", err)
+	}
+
+	// Increment should succeed after reset
+	if _, _, err := mutableIssuer.Increment(addr); err != nil {
+		t.Fatalf("unexpected error incrementing after reset: %v", err)
+	}
+
+	// Test non-existent batch
+	notFoundID := make([]byte, 32)
+	notFoundID[0] = 99
+	if err := ps.ResetStampIssuer(notFoundID); !errors.Is(err, postage.ErrNotFound) {
+		t.Fatalf("want %v, got %v", postage.ErrNotFound, err)
+	}
+
+	// Test immutable batch reset
+	immutableBatchID := make([]byte, 32)
+	immutableBatchID[0] = 77
+	immutableIssuer := postage.NewStampIssuer("label", "keyID", immutableBatchID, big.NewInt(3), 16, 8, 0, true)
+	if err := ps.Add(immutableIssuer); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ps.ResetStampIssuer(immutableBatchID); !errors.Is(err, postage.ErrBatchImmutable) {
+		t.Fatalf("want %v, got %v", postage.ErrBatchImmutable, err)
+	}
+}

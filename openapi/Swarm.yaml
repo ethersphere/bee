@@ -2090,6 +2090,28 @@ paths:
         default:
           description: Default response
 
+  "/stamps/{batch_id}/reset":
+    parameters:
+      - in: path
+        name: batch_id
+        schema:
+          $ref: "SwarmCommon.yaml#/components/schemas/BatchID"
+        required: true
+        description: Swarm address of the stamp
+    post:
+      summary: Reset collision bucket counters of a mutable postage batch
+      tags:
+        - Postage Stamps
+      responses:
+        "200":
+          $ref: "SwarmCommon.yaml#/components/responses/200"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        default:
+          description: Default response
+
   "/stamps/{amount}/{depth}":
     post:
       summary: Buy a new postage batch.

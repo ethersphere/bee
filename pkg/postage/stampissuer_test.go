@@ -6,7 +6,6 @@ package postage_test
 
 import (
 	crand "crypto/rand"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -183,15 +182,24 @@ func Test_StampIssuer_inc(t *testing.T) {
 			}
 		}
 
-		// Incrementing stamp issuer above upper bound should return index starting from 0
-		for i := range count {
-			idxb, _, err := sti.Increment(addr)
-			if err != nil {
-				t.Fatal(err)
+		// Incrementing stamp issuer above upper bound should return ErrBucketFull
+		for range count {
+			_, _, err := sti.Increment(addr)
+			if !errors.Is(err, postage.ErrBucketFull) {
+				t.Fatal("bucket should be full")
 			}
+		}
 
-			if _, idx := bytesToIndex(idxb); idx != i {
-				t.Fatalf("bucket should be full %v", idx)
+		// Reset bucket counters
+		if err := sti.Reset(); err != nil {
+			t.Fatalf("unexpected error on reset: %v", err)
+		}
+
+		// Should be able to increment again after reset
+		for range count {
+			_, _, err := sti.Increment(addr)
+			if err != nil {
+				t.Fatalf("unexpected error after reset: %v", err)
 			}
 		}
 	})
@@ -216,6 +224,11 @@ func Test_StampIssuer_inc(t *testing.T) {
 			if !errors.Is(err, postage.ErrBucketFull) {
 				t.Fatal("bucket should be full")
 			}
+		}
+
+		// Reset on immutable batch should fail
+		if err := sti.Reset(); !errors.Is(err, postage.ErrBatchImmutable) {
+			t.Fatalf("want %v, got %v", postage.ErrBatchImmutable, err)
 		}
 	})
 }
@@ -293,11 +306,4 @@ func TestUtilizationRatioInvalidDepth(t *testing.T) {
 	if got := sti.UtilizationRatio(); got != 0 {
 		t.Fatalf("invalid depth: want 0, got %v", got)
 	}
-}
-
-func bytesToIndex(buf []byte) (bucket, index uint32) {
-	index64 := binary.BigEndian.Uint64(buf)
-	bucket = uint32(index64 >> 32)
-	index = uint32(index64)
-	return bucket, index
 }

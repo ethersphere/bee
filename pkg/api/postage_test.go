@@ -425,6 +425,54 @@ func TestPostageGetBuckets(t *testing.T) {
 	})
 }
 
+func TestPostageResetHandler(t *testing.T) {
+	t.Parallel()
+
+	batchOk := make([]byte, 32)
+	batchOk[0] = 0x01
+	batchOkStr := hex.EncodeToString(batchOk)
+
+	si := postage.NewStampIssuer("label", "keyID", batchOk, big.NewInt(3), 16, 8, 1, false)
+	mp := mockpost.New(mockpost.WithIssuer(si))
+	ts, _, _, _ := newTestServer(t, testServerOptions{
+		Post: mp,
+	})
+
+	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
+		jsonhttptest.Request(t, ts, http.MethodPost, "/stamps/"+batchOkStr+"/reset", http.StatusOK)
+	})
+
+	t.Run("batch not found", func(t *testing.T) {
+		t.Parallel()
+
+		mpNotFound := mockpost.New()
+		tsNotFound, _, _, _ := newTestServer(t, testServerOptions{Post: mpNotFound})
+
+		jsonhttptest.Request(t, tsNotFound, http.MethodPost, "/stamps/"+batchOkStr+"/reset", http.StatusNotFound)
+	})
+
+	t.Run("immutable batch", func(t *testing.T) {
+		t.Parallel()
+
+		batchImmutable := make([]byte, 32)
+		batchImmutable[0] = 0x02
+		batchImmutableStr := hex.EncodeToString(batchImmutable)
+
+		siImmutable := postage.NewStampIssuer("label", "keyID", batchImmutable, big.NewInt(3), 16, 8, 1, true)
+		mpImmutable := mockpost.New(mockpost.WithIssuer(siImmutable))
+		tsImmutable, _, _, _ := newTestServer(t, testServerOptions{Post: mpImmutable})
+
+		jsonhttptest.Request(t, tsImmutable, http.MethodPost, "/stamps/"+batchImmutableStr+"/reset", http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "batch is immutable",
+			}),
+		)
+	})
+}
+
 func TestReserveState(t *testing.T) {
 	t.Parallel()
 

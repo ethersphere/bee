@@ -112,6 +112,17 @@ func (m *mockPostage) UpdateIssuerLabel(id []byte, label string) error {
 	return nil
 }
 
+func (m *mockPostage) ResetStampIssuer(id []byte) error {
+	m.issuerLock.Lock()
+	defer m.issuerLock.Unlock()
+
+	i, exists := m.issuersMap[string(id)]
+	if !exists {
+		return postage.ErrNotFound
+	}
+	return i.Reset()
+}
+
 func (m *mockPostage) HandleCreate(_ *postage.Batch, _ *big.Int) error { return nil }
 
 func (m *mockPostage) HandleTopUp(_ []byte, _ *big.Int) {}

@@ -349,6 +349,38 @@ func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.R
 	jsonhttp.OK(w, resp)
 }
 
+func (s *Service) postageResetHandler(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("reset_stamp_buckets").Build()
+
+	paths := struct {
+		BatchID []byte `map:"batch_id" validate:"required,len=32"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
+		return
+	}
+	hexBatchID := hex.EncodeToString(paths.BatchID)
+
+	err := s.post.ResetStampIssuer(paths.BatchID)
+	if err != nil {
+		logger.Debug("reset stamp issuer failed", "batch_id", hexBatchID, "error", err)
+		logger.Error(nil, "reset stamp issuer failed")
+		switch {
+		case errors.Is(err, postage.ErrNotUsable):
+			jsonhttp.BadRequest(w, "batch not usable")
+		case errors.Is(err, postage.ErrNotFound):
+			jsonhttp.NotFound(w, "issuer does not exist")
+		case errors.Is(err, postage.ErrBatchImmutable):
+			jsonhttp.BadRequest(w, "batch is immutable")
+		default:
+			jsonhttp.InternalServerError(w, "reset stamp issuer failed")
+		}
+		return
+	}
+
+	jsonhttp.OK(w, nil)
+}
+
 func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_stamp").Build()
 

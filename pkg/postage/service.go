@@ -47,6 +47,7 @@ type Service interface {
 	GetStampIssuer([]byte) (*StampIssuer, func() error, error)
 	IssuerUsable(*StampIssuer) bool
 	UpdateIssuerLabel([]byte, string) error
+	ResetStampIssuer([]byte) error
 	BatchEventListener
 	BatchExpiryHandler
 	io.Closer
@@ -258,6 +259,25 @@ func (ps *service) UpdateIssuerLabel(batchID []byte, label string) error {
 			st.mtx.Lock()
 			st.data.Label = label
 			st.mtx.Unlock()
+			return ps.save(st)
+		}
+	}
+	return ErrNotFound
+}
+
+// ResetStampIssuer resets the collision bucket counters of the stamp issuer with the given batch ID and persists the change.
+func (ps *service) ResetStampIssuer(batchID []byte) error {
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
+
+	for _, st := range ps.issuers {
+		if bytes.Equal(batchID, st.data.BatchID) {
+			if !ps.IssuerUsable(st) {
+				return ErrNotUsable
+			}
+			if err := st.Reset(); err != nil {
+				return err
+			}
 			return ps.save(st)
 		}
 	}

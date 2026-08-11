@@ -19,6 +19,8 @@ import (
 )
 
 var (
+	// ErrBatchImmutable is returned when attempting to reset an immutable batch.
+	ErrBatchImmutable = errors.New("batch is immutable")
 	// errStampItemMarshalBatchIDInvalid is returned when trying to
 	// marshal a stampItem with invalid batchID.
 	errStampItemMarshalBatchIDInvalid = errors.New("marshal postage.stampItem: batchID is invalid")
@@ -184,12 +186,7 @@ func (si *StampIssuer) increment(addr swarm.Address) (batchIndex []byte, batchTi
 	bCnt := si.data.Buckets[bIdx]
 
 	if bCnt == si.BucketUpperBound() {
-		if si.ImmutableFlag() {
-			return nil, nil, ErrBucketFull
-		}
-
-		bCnt = 0
-		si.data.Buckets[bIdx] = 0
+		return nil, nil, ErrBucketFull
 	}
 
 	si.data.Buckets[bIdx]++
@@ -198,6 +195,24 @@ func (si *StampIssuer) increment(addr swarm.Address) (batchIndex []byte, batchTi
 	}
 
 	return indexToBytes(bIdx, bCnt), unixTime(), nil
+}
+
+// Reset clears all collision bucket counts for the issuer if it is mutable.
+// It returns ErrBatchImmutable if the batch is immutable.
+func (si *StampIssuer) Reset() error {
+	si.mtx.Lock()
+	defer si.mtx.Unlock()
+
+	if si.data.ImmutableFlag {
+		return ErrBatchImmutable
+	}
+
+	for i := range si.data.Buckets {
+		si.data.Buckets[i] = 0
+	}
+	si.data.MaxBucketCount = 0
+	si.dirty = true
+	return nil
 }
 
 // Label returns the label of the issuer.

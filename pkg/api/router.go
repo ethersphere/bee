@@ -604,6 +604,14 @@ func (s *Service) mountBusinessDebug() {
 		})),
 	)
 
+	handle("/stamps/{batch_id}/reset", web.ChainHandlers(
+		s.checkChainAvailability,
+		s.postageSyncStatusCheckHandler,
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"POST": http.HandlerFunc(s.postageResetHandler),
+		})),
+	)
+
 	handle("/stamps/{amount}/{depth}", web.ChainHandlers(
 		s.checkChainAvailability,
 		s.postageAccessHandler,
