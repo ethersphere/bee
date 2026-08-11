@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/postage"
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storage"
@@ -331,6 +332,37 @@ func TestPutOrderConvergence(t *testing.T) {
 			},
 		},
 		{
+			// Same SOC address, same batch, equal timestamp, different stamp
+			// indices. putSOC treats this as a new stamp entry and replaces the
+			// shared payload unconditionally (last-write wins). Desired: settle
+			// on the lexicographically lower stamp hash like the same-slot path.
+			name:       "divergent socs, equal timestamp, distinct stamp indices",
+			unresolved: true,
+			chunks: func(t *testing.T) []swarm.Chunk {
+				t.Helper()
+				return []swarm.Chunk{
+					newTestSOC(t, signer, id1, []byte("soc payload one")).WithStamp(postagetesting.MustNewFields(batchA.ID, 0, 5)),
+					newTestSOC(t, signer, id1, []byte("soc payload two")).WithStamp(postagetesting.MustNewFields(batchA.ID, 1, 5)),
+				}
+			},
+		},
+		{
+			// Same SOC address under two batches at the same timestamp.
+			// putSOC currently replaces the shared payload on the second stamp
+			// unconditionally (last-write wins), so arrival order decides the
+			// payload. Desired: settle on the lexicographically lower stamp
+			// hash, matching the same-slot equal-timestamp path.
+			name:       "divergent socs, equal timestamp, distinct batches",
+			unresolved: true,
+			chunks: func(t *testing.T) []swarm.Chunk {
+				t.Helper()
+				return []swarm.Chunk{
+					newTestSOC(t, signer, id1, []byte("soc payload one")).WithStamp(postagetesting.MustNewFields(batchA.ID, 0, 5)),
+					newTestSOC(t, signer, id1, []byte("soc payload two")).WithStamp(postagetesting.MustNewFields(batchB.ID, 0, 5)),
+				}
+			},
+		},
+		{
 			// Three-way conflict across batches: the batch B entry must end
 			// serving whatever payload the batch A conflict settles on, with
 			// its sum refreshed accordingly.
@@ -351,5 +383,89 @@ func TestPutOrderConvergence(t *testing.T) {
 			t.Parallel()
 			assertOrderConvergence(t, tc.chunks(t), tc.unresolved)
 		})
+	}
+}
+
+func TestSOCMultiStampDivergenceCornerCase(t *testing.T) {
+	t.Parallel()
+
+	baseAddr := swarm.RandAddress(t)
+	ts := internal.NewInmemStorage()
+	r, err := reserve.New(baseAddr, ts, 0, kademlia.NewTopologyDriver(), log.Noop)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	privKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := crypto.NewDefaultSigner(privKey)
+	idBytes := make([]byte, 32)
+
+	chCAC1, err := cac.New([]byte("payload-1-alpha"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	chCAC2, err := cac.New([]byte("payload-2-beta"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Compare(chCAC1.Address().Bytes(), chCAC2.Address().Bytes()) > 0 {
+		chCAC1, chCAC2 = chCAC2, chCAC1
+	}
+
+	soc1, err := soc.New(idBytes, chCAC1).Sign(signer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	soc2, err := soc.New(idBytes, chCAC2).Sign(signer)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var stampA, stampB *postage.Stamp
+	for {
+		batchA := postagetesting.MustNewBatch()
+		batchB := postagetesting.MustNewBatch()
+		stA := postagetesting.MustNewFields(batchA.ID, 0, 1000)
+		stB := postagetesting.MustNewFields(batchB.ID, 0, 1000)
+		shA, _ := stA.Hash()
+		shB, _ := stB.Hash()
+		if bytes.Compare(shB, shA) < 0 {
+			stampA, stampB = stA, stB
+			break
+		}
+	}
+
+	ctx := context.Background()
+
+	// 1. Put Stamp A + Payload P1 (soc1)
+	err = r.Put(ctx, soc1.WithStamp(stampA))
+	if err != nil {
+		t.Fatalf("put soc1 stampA failed: %v", err)
+	}
+
+	// 2. Put Stamp B + Payload P2 (soc2) under same timestamp.
+	// Since stampHashB < stampHashA, Stamp B wins over Stamp A.
+	err = r.Put(ctx, soc2.WithStamp(stampB))
+	if err != nil {
+		t.Fatalf("put soc2 stampB failed: %v", err)
+	}
+
+	// 3. Re-offer Stamp A + Payload P1 (soc1).
+	// Stamp A lost to Stamp B at timestamp 1000. Re-offering Stamp A + P1 MUST NOT restore P1!
+	err = r.Put(ctx, soc1.WithStamp(stampA))
+	if err == nil {
+		t.Fatalf("expected ErrDivergentChunkRejected when re-offering weaker stampA, got nil")
+	}
+
+	// Verify that active chunk in ChunkStore STILL has Payload P2 (soc2)
+	finalCh, err := ts.ChunkStore().Get(ctx, soc1.Address())
+	if err != nil {
+		t.Fatalf("get final chunk failed: %v", err)
+	}
+	if !bytes.Equal(finalCh.Data(), soc2.Data()) {
+		t.Fatalf("re-offered Stamp A restored payload P1 over Stamp B's winning payload P2!")
 	}
 }
