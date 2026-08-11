@@ -45,6 +45,12 @@ const (
 	// Each underlay address gets up to 15s for connection (in libp2p.Connect).
 	// This budget allows multiple addresses to be tried sequentially per peer.
 	peerConnectionAttemptTimeout = 45 * time.Second // timeout for establishing a new connection with peer.
+
+	// lastSeenRefreshInterval is how often the peers we are connected to are
+	// marked as seen in the addressbook. A peer we hold a connection to is
+	// seen continuously, so marking it on the connect event alone would let
+	// the addressbook pruner evict our longest-lived, most valuable peers.
+	lastSeenRefreshInterval = 15 * time.Minute
 )
 
 // Default option values
@@ -515,6 +521,22 @@ func (k *Kad) notifyManageLoop() {
 	}
 }
 
+// markConnectedPeersSeen marks every currently connected peer as seen in the
+// addressbook.
+func (k *Kad) markConnectedPeersSeen() error {
+	var peers []swarm.Address
+	_ = k.connectedPeers.EachBin(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+		peers = append(peers, addr)
+		return false, false, nil
+	})
+
+	if len(peers) == 0 {
+		return nil
+	}
+
+	return k.addressBook.Seen(peers...)
+}
+
 // manage is a forever loop that manages the connection to new peers
 // once they get added or once others leave.
 func (k *Kad) manage() {
@@ -566,6 +588,21 @@ func (k *Kad) manage() {
 				} else {
 					k.metrics.InternalMetricsFlushTime.Observe(time.Since(start).Seconds())
 					loggerV1.Debug("flush metrics done", "elapsed", time.Since(start))
+				}
+			}
+		}
+	})
+
+	k.wg.Go(func() {
+		for {
+			select {
+			case <-k.halt:
+				return
+			case <-k.quit:
+				return
+			case <-time.After(lastSeenRefreshInterval):
+				if err := k.markConnectedPeersSeen(); err != nil {
+					k.logger.Warning("could not mark connected peers as seen", "error", err)
 				}
 			}
 		}

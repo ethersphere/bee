@@ -15,6 +15,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/coreos/go-semver/semver"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -876,5 +877,47 @@ func testRecords(t *testing.T, records []*streamtest.Record, want [][2]string, w
 		if gotOut != w[1] {
 			t.Errorf("got stream out %q, want %q", gotOut, w[1])
 		}
+	}
+}
+
+func TestStreamVersion(t *testing.T) {
+	t.Parallel()
+
+	recorder := streamtest.New(
+		streamtest.WithProtocols(
+			newTestProtocol(func(_ context.Context, peer p2p.Peer, stream p2p.Stream) error {
+				v, err := stream.Version()
+				if err != nil {
+					t.Errorf("handler: unexpected error: %v", err)
+				}
+				if v == nil || v.String() != "1.0.1" {
+					t.Errorf("handler: got version %v, want 1.0.1", v)
+				}
+				return nil
+			}),
+		),
+	)
+
+	stream, err := recorder.NewStream(context.Background(), swarm.ZeroAddress, nil, testProtocolName, testProtocolVersion, testStreamName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+
+	v, err := stream.Version()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if v == nil {
+		t.Fatal("nil version")
+	}
+
+	if v.String() != "1.0.1" {
+		t.Fatalf("got string version %v, want 1.0.1", v)
+	}
+
+	if !v.Equal(semver.Version{Major: 1, Minor: 0, Patch: 1}) {
+		t.Fatalf("got semver version %v, want 1.0.1", v)
 	}
 }
