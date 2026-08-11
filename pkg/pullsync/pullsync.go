@@ -345,6 +345,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		}
 
 		wantChunkID := addr.ByteString() + string(sum)
+
 		if _, ok := wantChunks[wantChunkID]; !ok {
 			s.logger.Debug("want chunks", "error", ErrUnsolicitedChunk, "peer_address", peer, "chunk_address", addr)
 			chunkErr = errors.Join(chunkErr, ErrUnsolicitedChunk)
@@ -398,7 +399,6 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 				// tie-break. The neighborhood converges on the stored chunk, so
 				// this is an expected outcome rather than a sync error.
 				if errors.Is(err, storage.ErrDivergentChunkRejected) {
-					s.logger.Debug("divergent chunk rejected", "error", err, "peer_address", peer, "chunk", c)
 					s.metrics.DivergentRejected.Inc()
 					continue
 				}
@@ -426,6 +426,7 @@ func (s *Syncer) makeOffer(ctx context.Context, rn pb.Get) (*pb.Offer, []*storer
 	o.Chunks = make([]*pb.Chunk, 0, len(bincs))
 	for _, v := range bincs {
 		o.Chunks = append(o.Chunks, &pb.Chunk{Address: v.Address.Bytes(), Sum: v.Sum})
+
 	}
 	return o, bincs, nil
 }
@@ -465,7 +466,7 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 					break LOOP // The stream has been closed.
 				}
 
-				chs = append(chs, &storer.BinC{Address: c.Address, BatchID: c.BatchID, StampHash: c.StampHash, Sum: c.Sum})
+				chs = append(chs, &storer.BinC{Address: c.Address, BinID: c.BinID, BatchID: c.BatchID, StampHash: c.StampHash, Sum: c.Sum})
 				if c.BinID > topmost {
 					topmost = c.BinID
 				}

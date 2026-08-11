@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/pricer"
 	pb "github.com/ethersphere/bee/v2/pkg/retrieval/pb"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/skippeers"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
@@ -257,13 +258,13 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 
 				inflight++
 
-				go func() {
-					span, _, ctx := s.tracer.FollowSpanFromContext(spanCtx, "retrieve-chunk", s.logger, trace.WithAttributes(
-						attribute.String("address", chunkAddr.String()),
+				safe.Go(loggerV1, "retrieval-retrieve-chunk", func() {
+					span, _, ctx := s.tracer.FollowSpanFromContext(spanCtx, "retrieve-chunk", s.logger, trace.WithSpanKind(trace.SpanKindClient), trace.WithAttributes(
+						attribute.String("swarm.chunk.address", chunkAddr.String()),
 					))
 					defer span.End()
 					s.retrieveChunk(ctx, quit, chunkAddr, peer, resultC, action, span)
-				}()
+				})
 
 			case res := <-resultC:
 
@@ -309,7 +310,7 @@ func (s *Service) retrieveChunk(ctx context.Context, quit chan struct{}, chunkAd
 			tracing.RecordError(span, err)
 			s.metrics.TotalErrors.Inc()
 		} else {
-			span.SetAttributes(attribute.Bool("success", true))
+			span.SetAttributes(attribute.Bool("swarm.operation.success", true))
 		}
 		select {
 		case result <- retrievalResult{err: err, chunk: chunk, peer: peer}:
@@ -450,16 +451,16 @@ func (s *Service) handler(p2pctx context.Context, p p2p.Peer, stream p2p.Stream)
 
 	var forwarded bool
 
-	span, _, ctx := s.tracer.StartSpanFromContext(ctx, "handle-retrieve-chunk", s.logger, trace.WithAttributes(
-		attribute.String("address", addr.String()),
+	span, _, ctx := s.tracer.StartSpanFromContext(ctx, "handle-retrieve-chunk", s.logger, trace.WithSpanKind(trace.SpanKindServer), trace.WithAttributes(
+		attribute.String("swarm.chunk.address", addr.String()),
 	))
 	defer func() {
 		if err != nil {
 			tracing.RecordError(span, err)
 		} else {
-			span.SetAttributes(attribute.Bool("success", true))
+			span.SetAttributes(attribute.Bool("swarm.operation.success", true))
 		}
-		span.SetAttributes(attribute.Bool("forwarded", forwarded))
+		span.SetAttributes(attribute.Bool("swarm.chunk.forwarded", forwarded))
 		span.End()
 	}()
 
