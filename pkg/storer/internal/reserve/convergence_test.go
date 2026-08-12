@@ -336,8 +336,7 @@ func TestPutOrderConvergence(t *testing.T) {
 			// indices. putSOC treats this as a new stamp entry and replaces the
 			// shared payload unconditionally (last-write wins). Desired: settle
 			// on the lexicographically lower stamp hash like the same-slot path.
-			name:       "divergent socs, equal timestamp, distinct stamp indices",
-			unresolved: true,
+			name: "divergent socs, equal timestamp, distinct stamp indices",
 			chunks: func(t *testing.T) []swarm.Chunk {
 				t.Helper()
 				return []swarm.Chunk{
@@ -352,8 +351,7 @@ func TestPutOrderConvergence(t *testing.T) {
 			// unconditionally (last-write wins), so arrival order decides the
 			// payload. Desired: settle on the lexicographically lower stamp
 			// hash, matching the same-slot equal-timestamp path.
-			name:       "divergent socs, equal timestamp, distinct batches",
-			unresolved: true,
+			name: "divergent socs, equal timestamp, distinct batches",
 			chunks: func(t *testing.T) []swarm.Chunk {
 				t.Helper()
 				return []swarm.Chunk{

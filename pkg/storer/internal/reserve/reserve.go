@@ -219,17 +219,41 @@ func (r *Reserve) putSOC(ctx context.Context, chunk swarm.Chunk, sum, stampHash 
 			}
 		}
 
-		if err := r.storeReserveEntries(s, chunk, sum, stampHash, bin); err != nil {
-			return err
-		}
-
 		has, err := s.ChunkStore().Has(ctx, chunk.Address())
 		if err != nil {
 			return err
 		}
+
+		incomingWins := true
 		if has {
-			socReplaced = true
-			err = s.ChunkStore().Replace(ctx, chunk, true)
+			stored, err := s.ChunkStore().Get(ctx, chunk.Address())
+			if err == nil {
+				incomingWins, err = r.evaluateSOCDivergence(s, chunk, stored, stampHash)
+				if err != nil {
+					return err
+				}
+			}
+		}
+
+		entrySum := sum
+		if has && !incomingWins {
+			stored, err := s.ChunkStore().Get(ctx, chunk.Address())
+			if err == nil {
+				if storedSum, err := storage.ChunkSumFromParts(chunk.Stamp().BatchID(), stampHash, stored); err == nil {
+					entrySum = storedSum
+				}
+			}
+		}
+
+		if err := r.storeReserveEntries(s, chunk, entrySum, stampHash, bin); err != nil {
+			return err
+		}
+
+		if has {
+			if incomingWins {
+				socReplaced = true
+				err = s.ChunkStore().Replace(ctx, chunk, true)
+			}
 		} else {
 			err = s.ChunkStore().Put(ctx, chunk)
 		}
@@ -240,6 +264,62 @@ func (r *Reserve) putSOC(ctx context.Context, chunk swarm.Chunk, sum, stampHash 
 		return nil
 	})
 	return
+}
+
+func (r *Reserve) evaluateSOCDivergence(
+	s transaction.Store,
+	incoming swarm.Chunk,
+	stored swarm.Chunk,
+	incomingStampHash []byte,
+) (incomingWins bool, err error) {
+	if bytes.Equal(stored.Data(), incoming.Data()) {
+		return true, nil
+	}
+
+	var highestPrevTimestamp uint64
+	var bestStoredStamp swarm.Stamp
+
+	_ = chunkstamp.IterateAll(s.IndexStore(), reserveScope, incoming.Address(), func(st swarm.Stamp) (bool, error) {
+		ts := binary.BigEndian.Uint64(st.Timestamp())
+		if bestStoredStamp == nil || ts > highestPrevTimestamp {
+			highestPrevTimestamp = ts
+			bestStoredStamp = st
+		}
+		return false, nil
+	})
+	if bestStoredStamp == nil {
+		bestStoredStamp = stored.Stamp()
+		if bestStoredStamp != nil {
+			highestPrevTimestamp = binary.BigEndian.Uint64(bestStoredStamp.Timestamp())
+		}
+	}
+
+	storedWithStamp := stored.WithStamp(bestStoredStamp)
+	currTimestamp := binary.BigEndian.Uint64(incoming.Stamp().Timestamp())
+
+	if highestPrevTimestamp > currTimestamp {
+		return false, nil
+	}
+
+	if currTimestamp > highestPrevTimestamp {
+		return true, nil
+	}
+
+	if highestPrevTimestamp == currTimestamp {
+		storedStampHash, err := storedWithStamp.Stamp().Hash()
+		if err == nil && !bytes.Equal(storedStampHash, incomingStampHash) {
+			if bytes.Compare(storedStampHash, incomingStampHash) < 0 {
+				return false, nil
+			}
+			return true, nil
+		}
+	}
+
+	wins, err := storage.DivergentSocChunkWins(storedWithStamp, incoming)
+	if err != nil {
+		return false, err
+	}
+	return wins, nil
 }
 
 func (r *Reserve) putCAC(ctx context.Context, chunk swarm.Chunk, sum, stampHash []byte, bin uint8) (shouldInc bool, err error) {
@@ -549,16 +629,34 @@ func (r *Reserve) resolveDivergence(
 		}
 		stored = stored.WithStamp(stamp)
 
-		// Verify timestamp precedence: an incoming chunk with an older timestamp
-		// can never displace a stored chunk.
-		prevTimestamp := binary.BigEndian.Uint64(stored.Stamp().Timestamp())
+		// Verify timestamp precedence across all active co-resident stamps.
+		var highestPrevTimestamp uint64
+		var bestStoredStamp swarm.Stamp
+
+		_ = chunkstamp.IterateAll(s.IndexStore(), reserveScope, chunk.Address(), func(st swarm.Stamp) (bool, error) {
+			ts := binary.BigEndian.Uint64(st.Timestamp())
+			if bestStoredStamp == nil || ts > highestPrevTimestamp {
+				highestPrevTimestamp = ts
+				bestStoredStamp = st
+			}
+			return false, nil
+		})
+		if bestStoredStamp == nil {
+			stamp, err := chunkstamp.Load(s.IndexStore(), reserveScope, chunk.Address())
+			if err != nil {
+				return fmt.Errorf("load stamp for diverging chunk %s: %w", chunk.Address(), err)
+			}
+			bestStoredStamp = stamp
+			highestPrevTimestamp = binary.BigEndian.Uint64(stamp.Timestamp())
+		}
+		stored = stored.WithStamp(bestStoredStamp)
+
 		currTimestamp := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
-		if prevTimestamp > currTimestamp {
-			return fmt.Errorf("overwrite same chunk. prev %d cur %d batch %s: %w", prevTimestamp, currTimestamp, hex.EncodeToString(chunk.Stamp().BatchID()), storage.ErrOverwriteNewerChunk)
+		if highestPrevTimestamp > currTimestamp {
+			return fmt.Errorf("overwrite same chunk. prev %d cur %d batch %s: %w", highestPrevTimestamp, currTimestamp, hex.EncodeToString(chunk.Stamp().BatchID()), storage.ErrOverwriteNewerChunk)
 		}
 
-		// At equal timestamp, if the stamps differ, the lower stamp hash wins.
-		if prevTimestamp == currTimestamp {
+		if highestPrevTimestamp == currTimestamp && chunkType != swarm.ChunkTypeSingleOwner {
 			storedStampHash, err := stored.Stamp().Hash()
 			if err != nil {
 				return err
