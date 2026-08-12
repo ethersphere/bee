@@ -139,3 +139,17 @@ func MapStructure(input, output any, hooks map[string]func(v string) (string, er
 func NewParseError(entry, value string, cause error) error {
 	return newParseError(entry, value, cause)
 }
+
+type SocFields = socFields
+
+type (
+	BpsTopicResponse  = bpsTopicResponse
+	BpsCohortResponse = bpsCohortResponse
+)
+
+var (
+	ParsePublishFrame = parsePublishFrame
+	ParseSocFields    = parseSocFields
+	SerializeSoc      = serializeSoc
+	BpsResolveTopic   = bpsResolveTopic
+)

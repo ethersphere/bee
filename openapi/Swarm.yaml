@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 8.1.1
+  version: 8.2.0
   title: Bee API
   description: "API endpoints for interacting with the Swarm network, supporting file operations, messaging, and node management"
 
@@ -976,6 +976,142 @@ paths:
           description: Establishes a WebSocket subscription for incoming messages on the Single Owner Chunk address
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
+  "/pubsub":
+    get:
+      summary: List active pubsub topics
+      tags:
+        - PubSub
+      responses:
+        "200":
+          description: List of pubsub topics this node currently participates in
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "SwarmCommon.yaml#/components/schemas/BpsTopicStatus"
+        "501":
+          description: Pubsub is not enabled on this node
+        default:
+          description: Default response
+
+  "/pubsub/{topic}":
+    get:
+      summary: Open or join a pubsub topic (WebSocket)
+      description: >
+        Upgrades the connection to a WebSocket attached to one pubsub topic. Presence of any
+        cohort query parameter (binding, publishers, admin, publisher-list, closed, history)
+        opens the cohort for that topic; their absence subscribes to a topic that is already
+        open. Presence of the owner query parameter makes the session a publisher.
+
+
+        Signing of publish frames is performed client-side; the node holds no publisher keys.
+        For an ANCHOR-bound topic, inbound publisher frames are binary
+        `sig(65) || span(8) || payload`, and the Single Owner Chunk id is the topic itself. For a
+        FEED_TOPIC-bound topic, inbound publisher frames are binary
+        `index(8, big-endian) || sig(65) || span(8) || payload`, and the id is
+        keccak256(topic || index). There is no `index` query parameter: the feed index rides on
+        every publish frame.
+
+
+        Outbound (subscriber) messages are payload-only binary frames by default, or JSON text
+        frames with hex-encoded fields when Swarm-Soc-Fields names more than payload alone. Under
+        an explicit publisher regime, a subscriber has no way to independently verify a
+        publisher's cohort spec ahead of the broker's own enforcement; treat delivered messages
+        accordingly until the broker vouches for the cohort.
+
+
+        A second local WebSocket client attaching to a topic that is already open on this node is
+        muxed onto the existing p2p session rather than admitted as a new one: closed-cohort and
+        capacity checks are enforced by the broker per p2p session, not per local WS client.
+      tags:
+        - PubSub
+      parameters:
+        - in: path
+          name: topic
+          schema:
+            type: string
+          required: true
+          description: >
+            Topic name: either a 64-hex-character string naming a 32-byte topic directly, or any
+            other string, which is hashed (keccak256) into a topic as a mnemonic.
+        - in: query
+          name: peer
+          schema:
+            type: string
+          required: true
+          description: Underlay multiaddr of the broker peer for this topic.
+        - in: query
+          name: binding
+          schema:
+            type: string
+            enum:
+              - anchor
+              - feed
+          required: false
+          description: How a publish frame's Single Owner Chunk id is derived. Presence of this or any other cohort parameter opens the cohort.
+        - in: query
+          name: publishers
+          schema:
+            type: string
+            enum:
+              - single
+              - list
+          required: false
+          description: Whether the cohort has one publisher (single) or an explicit publisher list (list).
+        - in: query
+          name: admin
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
+          required: false
+          description: Ethereum address of the cohort's admin.
+        - in: query
+          name: publisher-list
+          schema:
+            type: string
+          required: false
+          description: Comma-separated list of 20-byte hex Ethereum addresses allowed to publish, used with `publishers=list`.
+        - in: query
+          name: closed
+          schema:
+            type: boolean
+          required: false
+          description: Whether the cohort is closed to publishers not on the publisher list.
+        - in: query
+          name: history
+          schema:
+            type: boolean
+          required: false
+          description: "Whether the cohort should deliver history to new subscribers. Not supported by this node; a cohort spec naming `history: true` is refused."
+        - in: query
+          name: owner
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
+          required: false
+          description: Ethereum address of the publisher signing outbound frames. Presence of this parameter makes the session a publisher.
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmKeepAlive"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmSocFields"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCacheWrappedChunk"
+      responses:
+        "101":
+          description: Switching protocols; a pubsub WebSocket session for the topic is established
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "403":
+          description: The request was rejected — the cohort is closed, or the caller is not a publisher of the cohort
+        "404":
+          description: Unknown topic
+        "409":
+          description: The requested cohort specification conflicts with the cohort's live specification
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        "501":
+          description: Pubsub is not enabled on this node
+        "503":
+          description: The broker is at capacity for this topic
         default:
           description: Default response
 

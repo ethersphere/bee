@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/accounting"
+	"github.com/ethersphere/bee/v2/pkg/bps"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
@@ -96,6 +97,9 @@ const (
 	SwarmActTimestampHeader           = "Swarm-Act-Timestamp"
 	SwarmActPublisherHeader           = "Swarm-Act-Publisher"
 	SwarmActHistoryAddressHeader      = "Swarm-Act-History-Address"
+	SwarmKeepAliveHeader              = "Swarm-Keep-Alive"
+	SwarmSocFieldsHeader              = "Swarm-Soc-Fields"
+	SwarmCacheWrappedChunkHeader      = "Swarm-Cache-Wrapped-Chunk"
 
 	ImmutableHeader = "Immutable"
 	GasPriceHeader  = "Gas-Price"
@@ -149,6 +153,12 @@ type Storer interface {
 	storer.NeighborhoodStats
 }
 
+// BpsBridge is the surface of pkg/bps the API needs.
+type BpsBridge interface {
+	Attach(ctx context.Context, o bps.AttachOptions) (bps.Attachment, error)
+	Status() []bps.TopicStatus
+}
+
 type PinIntegrity interface {
 	Check(ctx context.Context, logger log.Logger, pin string, out chan storer.PinStat)
 }
@@ -158,6 +168,7 @@ type Service struct {
 	resolver        resolver.Interface
 	pss             pss.Interface
 	gsoc            gsoc.Listener
+	bps             BpsBridge
 	steward         steward.Interface
 	logger          log.Logger
 	loggerV1        log.Logger
@@ -264,6 +275,7 @@ type ExtraOptions struct {
 	Resolver        resolver.Interface
 	Pss             pss.Interface
 	Gsoc            gsoc.Listener
+	Bps             BpsBridge
 	FeedFactory     feeds.Factory
 	Post            postage.Service
 	AccessControl   accesscontrol.Controller
@@ -345,6 +357,7 @@ func (s *Service) Configure(signer crypto.Signer, tracer *tracing.Tracer, o Opti
 	s.resolver = e.Resolver
 	s.pss = e.Pss
 	s.gsoc = e.Gsoc
+	s.bps = e.Bps
 	s.feedFactory = e.FeedFactory
 	s.post = e.Post
 	s.accesscontrol = e.AccessControl

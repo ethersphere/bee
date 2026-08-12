@@ -1,0 +1,113 @@
+// Copyright 2026 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// Broadcast Pub/Sub (BPS) — protocol messages and types.
+// Spec: SWIP-60, https://github.com/ethersphere/SWIPs/pull/104
+//
+// Enum zero values (*_UNSPECIFIED): proto3 requires a zero value; it is
+// deliberately NOT a legitimate wire value. It exists so that an unset field
+// is detectable and no implementation can silently rely on a default.
+// Receivers MUST reject messages carrying it.
+//
+// The singlehop (depth = 1) subset is concrete; multihop control-plane
+// messages are reserved.
+
+syntax = "proto3";
+
+package bps;
+
+option go_package = "pb";
+
+// What the topic binds to (see SWIP-60: binding semantics).
+enum TopicBinding {
+  TOPIC_BINDING_UNSPECIFIED = 0; // invalid on the wire
+  ANCHOR     = 1; // topic = full SOC/GSOC address; dedup on the wrapped CAC
+  SOC_ID     = 2; // topic = SOC id; any owner with PO(addr, anchor) >= PO_MIN
+  OWNER      = 3; // topic = SOC owner; any id under the same PO constraint (MIC)
+  FEED_TOPIC = 4; // id = keccak256(topic || index); graffiti MIC / feed streams
+}
+
+// Who may author.
+enum PublisherRegime {
+  PUBLISHER_REGIME_UNSPECIFIED = 0; // invalid on the wire
+  EXPLICIT_SINGLE = 1; // opener is the sole publisher
+  EXPLICIT_LIST   = 2; // set fixed at genesis: admin + publisher_list
+  IMPLICIT        = 3; // authorship implied by the topic binding
+  ALL             = 4; // every peer publishes
+}
+
+// Fixed by the cohort's opener; immutable for the cohort's lifetime.
+message CohortSpec {
+  bytes           topic          = 1; // 32 bytes, meaning per binding
+  TopicBinding    binding        = 2;
+  PublisherRegime publishers     = 3;
+  bool            history        = 4;
+  bytes           admin          = 5; // 20-byte eth address; set iff EXPLICIT_*
+  repeated bytes  publisher_list = 6; // 20-byte eth addresses, excl. admin
+  reserved 7;                         // was po_min — now protocol constant
+  bool            closed         = 8; // no audience
+}
+
+// Opener -> broker: the one peer that fixes the cohort.
+message Open {
+  CohortSpec    cohort = 1;
+  PublisherAuth auth   = 2; // present iff the opener publishes
+}
+
+// Joiner -> broker: names the topic — nothing more.
+message Subscribe {
+  bytes         topic = 1; // 32 bytes
+  PublisherAuth auth  = 2; // present iff publisher
+}
+
+// Peer -> broker: the first frame on a fresh stream. Not in SWIP-60 as
+// published; added because Open and Subscribe are otherwise indistinguishable
+// on the wire. See the design doc.
+message Hello {
+  oneof handshake {
+    Open      open      = 1;
+    Subscribe subscribe = 2;
+  }
+}
+
+message PublisherAuth {
+  bytes owner = 1; // 20-byte eth address of the SOC owner key
+  bytes id    = 2; // 32-byte SOC id, when the binding fixes it
+}
+
+// Broker -> peer, answering Open or Subscribe.
+message Ack {
+  Status     status = 1;
+  CohortSpec cohort = 2; // set iff status == OK
+}
+
+enum Status {
+  STATUS_UNSPECIFIED = 0; // invalid on the wire
+  OK                 = 1;
+  FULL               = 2; // broker at its per-topic capacity
+  UNKNOWN_TOPIC      = 3; // Subscribe for a topic the broker does not serve
+  REJECTED           = 4; // publisher not on the list, invalid auth, etc.
+}
+
+// A full single-owner chunk in transit. Every frame is self-contained.
+message Soc {
+  bytes id        = 1; // 32 bytes
+  bytes owner     = 2; // 20 bytes
+  bytes signature = 3; // 65 bytes
+  bytes span      = 4; // 8 bytes LE
+  bytes payload   = 5; // wrapped-CAC data, <= 4096 bytes
+}
+
+// Publisher -> broker.
+message Publish {
+  Soc soc = 1;
+}
+
+// Broker -> subscriber.
+message Broadcast {
+  oneof frame {
+    Soc soc = 1;
+    // 2–15 reserved: multihop control plane.
+  }
+}

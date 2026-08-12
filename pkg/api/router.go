@@ -370,6 +370,14 @@ func (s *Service) mountAPI() {
 		"GET": http.HandlerFunc(s.pssWsHandler),
 	})
 
+	handle("/pubsub", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(web.FinalHandlerFunc(s.bpsTopicsHandler)),
+	})
+
+	handle("/pubsub/{topic}", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.bpsWsHandler),
+	})
+
 	handle("/gsoc/subscribe/{address}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
 			web.FinalHandlerFunc(s.gsocWsHandler),

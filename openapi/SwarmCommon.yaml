@@ -1075,6 +1075,56 @@ components:
       properties:
         transactionHash:
           $ref: "#/components/schemas/TransactionHash"
+
+    BpsCohortSpec:
+      type: object
+      description: The cohort specification of a pubsub topic, when known.
+      properties:
+        binding:
+          type: string
+          enum:
+            - anchor
+            - feed
+          description: How a publish frame's Single Owner Chunk id is derived. "anchor" uses the topic itself as the id; "feed" derives the id from the topic and the 8-byte big-endian index carried on every publish frame.
+        publishers:
+          type: string
+          enum:
+            - single
+            - list
+          description: Whether the cohort has one publisher (single) or an explicit publisher list (list).
+        admin:
+          type: string
+          description: Hex-encoded (no 0x prefix) 20-byte Ethereum address of the cohort's admin, or empty when unset.
+        publisherList:
+          type: array
+          items:
+            type: string
+            description: Hex-encoded (no 0x prefix) 20-byte Ethereum address.
+        closed:
+          type: boolean
+          description: Whether the cohort is closed to publishers not on the publisher list.
+        history:
+          type: boolean
+          description: Whether the cohort delivers history to new subscribers. Not supported by this node.
+
+    BpsTopicStatus:
+      type: object
+      description: The status of one pubsub topic this node participates in.
+      properties:
+        topic:
+          $ref: "#/components/schemas/SwarmAddress"
+        role:
+          type: string
+          enum:
+            - broker
+            - client
+          description: Whether this node brokers the topic or is a client of it.
+        peers:
+          type: integer
+          description: Number of peers currently attached to the topic on this node.
+        cohort:
+          $ref: "#/components/schemas/BpsCohortSpec"
+
   headers:
     SwarmTag:
       description: "Tag UID"
@@ -1330,6 +1380,38 @@ components:
         format: int64
       required: false
       description: "ACT history Unix timestamp"
+
+    SwarmKeepAlive:
+      in: header
+      name: Swarm-Keep-Alive
+      schema:
+        type: integer
+        format: int64
+        default: 60
+      required: false
+      description: "Ping period, in seconds, of the pubsub websocket session. Must be a positive integer. Default: 60"
+
+    SwarmSocFields:
+      in: header
+      name: Swarm-Soc-Fields
+      schema:
+        type: string
+      required: false
+      description: >
+        Comma-separated list of Single Owner Chunk fields to include in outbound pubsub websocket
+        messages: address, recoveredPubKey, identifier, signature, wrappedAddress, span, payload.
+        Default: payload. When the selection is payload only, messages are sent as binary frames
+        containing the raw payload; any other selection is sent as a JSON text frame with
+        hex-encoded values for exactly the requested fields.
+
+    SwarmCacheWrappedChunk:
+      in: header
+      name: Swarm-Cache-Wrapped-Chunk
+      schema:
+        type: boolean
+        default: "false"
+      required: false
+      description: "Indicates whether each message's wrapped chunk should be stored in the local cache. Default: false"
 
   responses:
     "200":

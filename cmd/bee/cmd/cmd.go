@@ -50,6 +50,7 @@ const (
 	optionNamePaymentThreshold             = "payment-threshold"
 	optionNamePaymentTolerance             = "payment-tolerance-percent"
 	optionNamePaymentEarly                 = "payment-early-percent"
+	optionNamePubsubCapacity               = "pubsub-capacity"
 	optionNameResolverEndpoints            = "resolver-options"
 	optionNameBootnodeMode                 = "bootnode-mode"
 	optionNameBzzTokenAddress              = "bzz-token-address"
@@ -347,6 +348,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNamePaymentThreshold, "13500000", "threshold in BZZ where you expect to get paid from your peers")
 	cmd.Flags().Int64(optionNamePaymentTolerance, 25, "excess debt above payment threshold in percentages where you disconnect from your peer")
 	cmd.Flags().Int64(optionNamePaymentEarly, 50, "percentage below the peers payment threshold when we initiate settlement")
+	cmd.Flags().Int(optionNamePubsubCapacity, 32, "per-topic connection capacity this node offers as a pubsub broker")
 	cmd.Flags().StringSlice(optionNameResolverEndpoints, []string{}, "ENS compatible API endpoint for a TLD and with contract address, can be repeated, format [tld:][contract-addr@]url")
 	cmd.Flags().Bool(optionNameBootnodeMode, false, "cause the node to always accept incoming connections")
 	cmd.Flags().String(optionNameBlockchainRpcEndpoint, "", "rpc blockchain endpoint")

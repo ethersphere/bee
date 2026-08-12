@@ -31,6 +31,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/accounting"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/bps"
 	"github.com/ethersphere/bee/v2/pkg/config"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/feeds/factory"
@@ -113,6 +114,7 @@ type Bee struct {
 	pullSyncCloser           io.Closer
 	pssCloser                io.Closer
 	gsocCloser               io.Closer
+	bpsCloser                io.Closer
 	transactionMonitorCloser io.Closer
 	transactionCloser        io.Closer
 	listenerCloser           io.Closer
@@ -149,6 +151,7 @@ type Options struct {
 	BlockSyncInterval             uint64
 	BootnodeMode                  bool
 	Bootnodes                     []string
+	BpsCapacity                   int
 	CacheCapacity                 uint64
 	AutoTLSCAEndpoint             string
 	ChainID                       int64
@@ -1103,6 +1106,15 @@ func NewBee(
 	b.pssCloser = pssService
 	b.gsocCloser = gsocService
 
+	bpsService := bps.New(p2ps, logger, bps.Options{Capacity: o.BpsCapacity})
+	b.bpsCloser = bpsService
+	if o.FullNodeMode && !o.BootnodeMode {
+		if err = p2ps.AddProtocol(bpsService.Protocol()); err != nil {
+			return nil, fmt.Errorf("bps service: %w", err)
+		}
+	}
+	bpsBridge := bps.NewBridge(bpsService, p2ps, logger)
+
 	validStamp := postage.ValidStamp(batchStore)
 
 	// metrics exposed on the status protocol
@@ -1378,6 +1390,7 @@ func NewBee(
 		Resolver:        multiResolver,
 		Pss:             pssService,
 		Gsoc:            gsocService,
+		Bps:             bpsBridge,
 		FeedFactory:     feedFactory,
 		Post:            post,
 		AccessControl:   accesscontrol,
@@ -1424,6 +1437,7 @@ func NewBee(
 		if pssServiceMetrics, ok := pssService.(metrics.Collector); ok {
 			apiService.MustRegisterMetrics(pssServiceMetrics.Metrics()...)
 		}
+		apiService.MustRegisterMetrics(bpsService.Metrics()...)
 		if swapBackendMetrics, ok := chainBackend.(metrics.Collector); ok {
 			apiService.MustRegisterMetrics(swapBackendMetrics.Metrics()...)
 		}
