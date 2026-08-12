@@ -543,8 +543,7 @@ func (r *Reserve) resolveDivergence(
 			return fmt.Errorf("load diverging chunk %s: %w", chunk.Address(), err)
 		}
 		// ChunkStore returns payload only; stamp is in the chunkstamp index.
-		// stampHash is the same key Has() already confirmed for this put.
-		stamp, err := chunkstamp.LoadWithStampHash(s.IndexStore(), reserveScope, chunk.Address(), stampHash)
+		stamp, err := chunkstamp.Load(s.IndexStore(), reserveScope, chunk.Address())
 		if err != nil {
 			return fmt.Errorf("load stamp for diverging chunk %s: %w", chunk.Address(), err)
 		}
