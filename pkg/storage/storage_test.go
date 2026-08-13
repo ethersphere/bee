@@ -6,6 +6,7 @@ package storage_test
 import (
 	"bytes"
 	"encoding/hex"
+	"errors"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -69,7 +70,7 @@ func TestIdentityAddress(t *testing.T) {
 		data := []byte("data")
 		cacChunk, err := cac.New(data)
 		if err != nil {
-			t.Fatalf("failed to create content addressed chunk: %v", err)
+			t.Fatalf("create content addressed chunk: %v", err)
 		}
 
 		// Call IdentityAddress with the CAC
@@ -231,6 +232,91 @@ func FuzzChunkSum(f *testing.F) {
 		}
 		if !bytes.Equal(sum, fromParts) {
 			t.Fatal("ChunkSum and ChunkSumFromParts disagree")
+		}
+	})
+}
+
+func TestDivergentSocChunkWins(t *testing.T) {
+	t.Parallel()
+
+	privKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := crypto.NewDefaultSigner(privKey)
+	id := make([]byte, swarm.HashSize)
+
+	newSOC := func(data string) swarm.Chunk {
+		t.Helper()
+		inner, err := cac.New([]byte(data))
+		if err != nil {
+			t.Fatal(err)
+		}
+		ch, err := soc.New(id, inner).Sign(signer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ch.WithStamp(postagetesting.MustNewStamp())
+	}
+
+	lower, higher := newSOC("content-one"), newSOC("content-two")
+	lowerInner, err := soc.UnwrapCAC(lower)
+	if err != nil {
+		t.Fatal(err)
+	}
+	higherInner, err := soc.UnwrapCAC(higher)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Compare(lowerInner.Address().Bytes(), higherInner.Address().Bytes()) > 0 {
+		lower, higher = higher, lower
+	}
+
+	t.Run("lower wrapped address wins", func(t *testing.T) {
+		t.Parallel()
+
+		wins, err := storage.DivergentSocChunkWins(higher, lower)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !wins {
+			t.Fatal("expected the chunk wrapping the lower cac address to win")
+		}
+	})
+
+	t.Run("tie-break is antisymmetric", func(t *testing.T) {
+		t.Parallel()
+
+		wins, err := storage.DivergentSocChunkWins(lower, higher)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if wins {
+			t.Fatal("expected the chunk wrapping the higher cac address to lose")
+		}
+	})
+
+	t.Run("a chunk does not displace itself", func(t *testing.T) {
+		t.Parallel()
+
+		wins, err := storage.DivergentSocChunkWins(lower, lower)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if wins {
+			t.Fatal("expected an identical chunk not to win")
+		}
+	})
+
+	t.Run("content addressed chunks cannot diverge", func(t *testing.T) {
+		t.Parallel()
+
+		cac := testingc.GenerateTestRandomChunk()
+		if _, err := storage.DivergentSocChunkWins(cac, lower); !errors.Is(err, storage.ErrUnknownChunkType) {
+			t.Fatalf("expected ErrUnknownChunkType, got %v", err)
+		}
+		if _, err := storage.DivergentSocChunkWins(lower, cac); !errors.Is(err, storage.ErrUnknownChunkType) {
+			t.Fatalf("expected ErrUnknownChunkType, got %v", err)
 		}
 	})
 }

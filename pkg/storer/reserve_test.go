@@ -36,12 +36,16 @@ func TestIndexCollision(t *testing.T) {
 		putter := storer.ReservePutter()
 
 		ch1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(stamp)
+		ch2 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(stamp)
+		if bytes.Compare(ch1.Address().Bytes(), ch2.Address().Bytes()) > 0 {
+			ch1, ch2 = ch2, ch1
+		}
+
 		err := putter.Put(context.Background(), ch1)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		ch2 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(stamp)
 		err = putter.Put(context.Background(), ch2)
 		if err == nil {
 			t.Fatal("expected index collision error")

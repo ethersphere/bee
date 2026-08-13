@@ -394,6 +394,13 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 					chunkErr = errors.Join(chunkErr, err)
 					continue
 				}
+				// the chunk diverged from the one already stored and lost the
+				// tie-break. The neighborhood converges on the stored chunk, so
+				// this is an expected outcome rather than a sync error.
+				if errors.Is(err, storage.ErrDivergentChunkRejected) {
+					s.metrics.DivergentRejected.Inc()
+					continue
+				}
 				return 0, 0, errors.Join(chunkErr, err)
 			}
 			chunksPut++
@@ -457,7 +464,7 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 					break LOOP // The stream has been closed.
 				}
 
-				chs = append(chs, &storer.BinC{Address: c.Address, BatchID: c.BatchID, StampHash: c.StampHash, Sum: c.Sum})
+				chs = append(chs, &storer.BinC{Address: c.Address, BinID: c.BinID, BatchID: c.BatchID, StampHash: c.StampHash, Sum: c.Sum})
 				if c.BinID > topmost {
 					topmost = c.BinID
 				}

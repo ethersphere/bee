@@ -19,7 +19,7 @@ env:
   SETUP_CONTRACT_IMAGE: "ethersphere/bee-localchain"
   SETUP_CONTRACT_IMAGE_TAG: "0.9.4"
   BEELOCAL_BRANCH: "main"
-  BEEKEEPER_BRANCH: "master"
+  BEEKEEPER_BRANCH: "feat/pullsync-chuns-convergence"
   BEEKEEPER_METRICS_ENABLED: false
   REACHABILITY_OVERRIDE_PUBLIC: true
   BATCHFACTOR_OVERRIDE_PUBLIC: 2
@@ -151,12 +151,16 @@ jobs:
       - name: Test gsoc
         id: gsoc
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-gsoc
+      - name: Test socmatrix
+        id: socmatrix
+        # Check allows up to 60m; wall clock is typically ~20–30m (16 scenarios + sync-wait).
+        run: timeout 60m beekeeper check --cluster-name local-dns --checks=ci-socmatrix
       - name: Test pushsync (chunks)
         id: pushsync-chunks-1
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-pushsync-chunks
+        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks=ci-pushsync-chunks; do echo "waiting for pushsync-chunks..."; sleep .3; done'
       - name: Test pushsync (light mode chunks)
         id: pushsync-chunks-2
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks; do echo "waiting for pushsync-light-chunks..."; sleep .3; done'
       - name: Test retrieval
         id: retrieval
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-retrieval
@@ -198,6 +202,7 @@ jobs:
           if ${{ steps.pss.outcome=='failure' }}; then FAILED=pss; fi
           if ${{ steps.soc.outcome=='failure' }}; then FAILED=soc; fi
           if ${{ steps.gsoc.outcome=='failure' }}; then FAILED=gsoc; fi
+          if ${{ steps.socmatrix.outcome=='failure' }}; then FAILED=socmatrix; fi
           if ${{ steps.pushsync-chunks-1.outcome=='failure' }}; then FAILED=pushsync-chunks-1; fi
           if ${{ steps.pushsync-chunks-2.outcome=='failure' }}; then FAILED=pushsync-chunks-2; fi
           if ${{ steps.retrieval.outcome=='failure' }}; then FAILED=retrieval; fi
