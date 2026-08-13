@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -44,10 +45,13 @@ func (p *putter) Put(ctx context.Context, ch swarm.Chunk) (err error) {
 	wg := sync.WaitGroup{}
 	for r := range rr.c {
 		wg.Go(func() {
-			sch, err := soc.New(r.id, ch).Sign(signer)
-			if err == nil {
-				err = p.putter.Put(ctx, sch)
-			}
+			err := safe.RunFunc(nil, "replicas-put", func() error {
+				sch, err := soc.New(r.id, ch).Sign(signer)
+				if err != nil {
+					return err
+				}
+				return p.putter.Put(ctx, sch)
+			})()
 			errc <- err
 		})
 	}

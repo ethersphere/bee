@@ -246,6 +246,9 @@ paths:
           description: Default response
     head:
       summary: Retrieve headers containing the content type and length for the reference
+      description: >
+        Identical to GET on the same reference except that no content is sent,
+        so Range and conditional request headers are honored the same way.
       tags:
         - Bytes
       parameters:
@@ -255,12 +258,17 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
           description: Swarm address of chunk
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyFallbackModeParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmChunkRetrievalTimeoutParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActTimestamp"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActPublisher"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       responses:
         "200":
-          description: The chunk exists.
+          description: Headers for the content at the reference.
           headers:
             Content-Type:
               description: The MIME type of the resource (e.g., application/octet-stream).
@@ -268,19 +276,59 @@ paths:
                 type: string
                 example: application/octet-stream
             Content-Length:
-              description: The size of the chunk in bytes.
+              description: The size of the retrievable content in bytes.
               schema:
                 type: integer
                 example: 1024
+            Accept-Ranges:
+              description: Indicates that ranged requests are supported for the reference.
+              schema:
+                type: string
+                example: bytes
+            ETag:
+              description: The reference, as an entity tag.
+              schema:
+                type: string
+            Last-Modified:
+              description: The time the response was generated.
+              schema:
+                type: string
             Access-Control-Expose-Headers:
               description: Headers exposed for CORS.
               schema:
                 type: string
-                example: Accept-Ranges, Content-Encoding
+                example: Content-Disposition
+        "206":
+          description: Headers for the range requested via the Range header.
+          headers:
+            Content-Range:
+              description: The range covered, and the total size of the content.
+              schema:
+                type: string
+                example: bytes 0-1023/4096
+            Content-Length:
+              description: The size of the requested range in bytes.
+              schema:
+                type: integer
+                example: 1024
+        "304":
+          description: The entity tag in If-None-Match matches the reference.
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
+        "412":
+          description: A conditional request header was not satisfied.
+        "416":
+          description: The requested range cannot be satisfied.
+          headers:
+            Content-Range:
+              description: The total size of the content.
+              schema:
+                type: string
+                example: bytes */4096
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
@@ -469,6 +517,9 @@ paths:
           description: Default response
     head:
       summary: Retrieve headers with content type and length for the reference
+      description: >
+        Identical to GET on the same reference except that no content is sent,
+        so Range and conditional request headers are honored the same way.
       tags:
         - BZZ
       parameters:
@@ -478,16 +529,77 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
           description: Swarm address of chunk
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyFallbackModeParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmChunkRetrievalTimeoutParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActTimestamp"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActPublisher"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       responses:
         "200":
-          description: Chunk exists
+          description: Headers for the content at the reference.
+          headers:
+            Content-Type:
+              description: The MIME type of the resource.
+              schema:
+                type: string
+                example: application/octet-stream
+            Content-Length:
+              description: The size of the retrievable content in bytes.
+              schema:
+                type: integer
+                example: 1024
+            Accept-Ranges:
+              description: Indicates that ranged requests are supported for the reference.
+              schema:
+                type: string
+                example: bytes
+            ETag:
+              description: The reference, as an entity tag.
+              schema:
+                type: string
+            Last-Modified:
+              description: The time the response was generated.
+              schema:
+                type: string
+            Access-Control-Expose-Headers:
+              description: Headers exposed for CORS.
+              schema:
+                type: string
+                example: Content-Disposition
+        "206":
+          description: Headers for the range requested via the Range header.
+          headers:
+            Content-Range:
+              description: The range covered, and the total size of the content.
+              schema:
+                type: string
+                example: bytes 0-1023/4096
+            Content-Length:
+              description: The size of the requested range in bytes.
+              schema:
+                type: integer
+                example: 1024
+        "304":
+          description: The entity tag in If-None-Match matches the reference.
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
+        "412":
+          description: A conditional request header was not satisfied.
+        "416":
+          description: The requested range cannot be satisfied.
+          headers:
+            Content-Range:
+              description: The total size of the content.
+              schema:
+                type: string
+                example: bytes */4096
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 

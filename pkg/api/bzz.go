@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"path"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -104,10 +103,10 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 			default:
 				jsonhttp.InternalServerError(w, "cannot get or create tag")
 			}
-			tracing.RecordError(span, err, attribute.String("action", "tag.create"))
+			tracing.RecordError(span, err, attribute.String("swarm.operation.action", "tag.create"))
 			return
 		}
-		span.SetAttributes(attribute.Int64("tag_id", int64(tag)))
+		span.SetAttributes(attribute.Int64("swarm.tag.id", int64(tag)))
 	}
 
 	putter, err := s.newStamperPutter(ctx, putterOptions{
@@ -129,7 +128,7 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		default:
 			jsonhttp.BadRequest(w, nil)
 		}
-		tracing.RecordError(span, err, attribute.String("action", "new.StamperPutter"))
+		tracing.RecordError(span, err, attribute.String("swarm.operation.action", "new.StamperPutter"))
 		return
 	}
 
@@ -221,7 +220,7 @@ func (s *Service) fileUploadHandler(
 		default:
 			jsonhttp.InternalServerError(w, errFileStore)
 		}
-		tracing.RecordError(span, err, attribute.String("action", "file.store"))
+		tracing.RecordError(span, err, attribute.String("swarm.operation.action", "file.store"))
 		return
 	}
 
@@ -330,17 +329,17 @@ func (s *Service) fileUploadHandler(
 		logger.Debug("done split failed", "reference", manifestReference, "error", err)
 		logger.Error(nil, "done split failed")
 		jsonhttp.InternalServerError(w, "done split failed")
-		tracing.RecordError(span, err, attribute.String("action", "putter.Done"))
+		tracing.RecordError(span, err, attribute.String("swarm.operation.action", "putter.Done"))
 		return
 	}
 	span.SetAttributes(
-		attribute.Bool("success", true),
-		attribute.String("root_address", reference.String()),
+		attribute.Bool("swarm.operation.success", true),
+		attribute.String("swarm.chunk.root_address", reference.String()),
 	)
 
 	if tagID != 0 {
 		w.Header().Set(SwarmTagHeader, fmt.Sprint(tagID))
-		span.SetAttributes(attribute.Int64("tag_id", int64(tagID)))
+		span.SetAttributes(attribute.Int64("swarm.tag.id", int64(tagID)))
 	}
 	w.Header().Set(ETagHeader, fmt.Sprintf("%q", reference.String()))
 	w.Header().Set(AccessControlExposeHeaders, SwarmTagHeader)
@@ -790,11 +789,17 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 	if etag {
 		w.Header().Set(ETagHeader, fmt.Sprintf("%q", reference))
 	}
-	w.Header().Set(ContentLengthHeader, strconv.FormatInt(l, 10))
+	// Content-Length is left to http.ServeContent, which knows how many bytes the
+	// response actually carries. Setting it here would survive into the responses
+	// that carry no content, notably the 412 from a failed precondition.
 	w.Header().Add(AccessControlExposeHeaders, ContentDispositionHeader)
 
+	// http.ServeContent writes no body for HEAD, so header-only responses take the
+	// same path as GET and inherit its preconditions, Range handling and headers.
+	// The reader is passed unbuffered: a response without a body has nothing to
+	// read ahead for.
 	if headersOnly {
-		w.WriteHeader(http.StatusOK)
+		http.ServeContent(w, r, "", time.Now(), reader)
 		return
 	}
 

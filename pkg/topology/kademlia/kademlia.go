@@ -45,6 +45,12 @@ const (
 	// Each underlay address gets up to 15s for connection (in libp2p.Connect).
 	// This budget allows multiple addresses to be tried sequentially per peer.
 	peerConnectionAttemptTimeout = 45 * time.Second // timeout for establishing a new connection with peer.
+
+	// lastSeenRefreshInterval is how often the peers we are connected to are
+	// marked as seen in the addressbook. A peer we hold a connection to is
+	// seen continuously, so marking it on the connect event alone would let
+	// the addressbook pruner evict our longest-lived, most valuable peers.
+	lastSeenRefreshInterval = 15 * time.Minute
 )
 
 // Default option values
@@ -191,6 +197,7 @@ type Kad struct {
 	logger            log.Logger // logger
 	bootnode          bool       // indicates whether the node is working in bootnode mode
 	collector         *im.Collector
+	metricsDB         *shed.DB      // backing store for the metrics collector; closed on shutdown
 	quit              chan struct{} // quit channel
 	halt              chan struct{} // halt channel
 	done              chan struct{} // signal that `manage` has quit
@@ -246,6 +253,7 @@ func New(
 		logger:            logger.WithName(loggerName).Register(),
 		bootnode:          opt.BootnodeMode,
 		collector:         imc,
+		metricsDB:         sdb,
 		quit:              make(chan struct{}),
 		halt:              make(chan struct{}),
 		done:              make(chan struct{}),
@@ -513,6 +521,22 @@ func (k *Kad) notifyManageLoop() {
 	}
 }
 
+// markConnectedPeersSeen marks every currently connected peer as seen in the
+// addressbook.
+func (k *Kad) markConnectedPeersSeen() error {
+	var peers []swarm.Address
+	_ = k.connectedPeers.EachBin(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+		peers = append(peers, addr)
+		return false, false, nil
+	})
+
+	if len(peers) == 0 {
+		return nil
+	}
+
+	return k.addressBook.Seen(peers...)
+}
+
 // manage is a forever loop that manages the connection to new peers
 // once they get added or once others leave.
 func (k *Kad) manage() {
@@ -564,6 +588,21 @@ func (k *Kad) manage() {
 				} else {
 					k.metrics.InternalMetricsFlushTime.Observe(time.Since(start).Seconds())
 					loggerV1.Debug("flush metrics done", "elapsed", time.Since(start))
+				}
+			}
+		}
+	})
+
+	k.wg.Go(func() {
+		for {
+			select {
+			case <-k.halt:
+				return
+			case <-k.quit:
+				return
+			case <-time.After(lastSeenRefreshInterval):
+				if err := k.markConnectedPeersSeen(); err != nil {
+					k.logger.Warning("could not mark connected peers as seen", "error", err)
 				}
 			}
 		}
@@ -1594,6 +1633,12 @@ func (k *Kad) Close() error {
 		k.logger.Debug("unable to finalize open sessions", "error", err)
 	}
 	k.logger.Debug("metrics collector finalized", "elapsed", time.Since(start))
+
+	if k.metricsDB != nil {
+		if dbErr := k.metricsDB.Close(); dbErr != nil {
+			k.logger.Debug("unable to close metrics store", "error", dbErr)
+		}
+	}
 
 	return err
 }
