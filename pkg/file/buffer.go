@@ -68,6 +68,13 @@ func (c *ChunkPipe) Write(b []byte) (int, error) {
 	return nw, nil
 }
 
+// CloseRead closes the read side of the underlying pipe. A pending or
+// subsequent Write then fails with io.ErrClosedPipe, which lets a writer
+// blocked on the pipe (e.g. the copier in SplitWriteAll) unblock and exit.
+func (c *ChunkPipe) CloseRead() error {
+	return c.ReadCloser.Close()
+}
+
 // Close implements io.Closer
 func (c *ChunkPipe) Close() error {
 	if c.cursor > 0 {
