@@ -394,14 +394,30 @@ func (r *Reserve) resolveStampIndexCollision(
 	}
 
 	if oldStampIndex.ChunkAddress.Equal(chunk.Address()) {
-		// Same address, same timestamp, same batch id: settle on the lower stamp hash.
-		// Paranoid check: normally such stamps are invalid (invalid signature) and rejected earlier.
-		if prev == curr && bytes.Compare(oldStampIndex.StampHash, stampHash) <= 0 {
-			return false, fmt.Errorf(
-				"stamp index collision chunk %s lost stamp-hash tie-break: %w",
-				chunk.Address(),
-				storage.ErrOverwriteNewerChunk,
-			)
+		if prev == curr {
+			if bytes.Equal(oldStampIndex.StampHash, stampHash) {
+				stored, err := s.ChunkStore().Get(ctx, chunk.Address())
+				if err != nil {
+					return false, err
+				}
+				wins, err := storage.DivergentSocChunkWins(stored, chunk)
+				if err != nil {
+					return false, err
+				}
+				if !wins {
+					return false, fmt.Errorf(
+						"diverging chunk %s lost tie-break: %w",
+						chunk.Address(),
+						storage.ErrDivergentChunkRejected,
+					)
+				}
+			} else if bytes.Compare(oldStampIndex.StampHash, stampHash) < 0 {
+				return false, fmt.Errorf(
+					"stamp index collision chunk %s lost stamp-hash tie-break: %w",
+					chunk.Address(),
+					storage.ErrOverwriteNewerChunk,
+				)
+			}
 		}
 
 		oldStamp, err := chunkstamp.LoadWithStampHash(s.IndexStore(), reserveScope, oldStampIndex.ChunkAddress, oldStampIndex.StampHash)
