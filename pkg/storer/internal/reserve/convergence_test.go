@@ -148,6 +148,18 @@ func permutations(n int) [][]int {
 	return out
 }
 
+func cloneChunks(chunks []swarm.Chunk) []swarm.Chunk {
+	cloned := make([]swarm.Chunk, len(chunks))
+	for i, c := range chunks {
+		var st swarm.Stamp
+		if s := c.Stamp(); s != nil {
+			st = s.Clone()
+		}
+		cloned[i] = swarm.NewChunk(c.Address(), c.Data()).WithStamp(st)
+	}
+	return cloned
+}
+
 // runOrder applies the chunks to a fresh reserve in the given order and
 // returns the state fingerprint.
 func runOrder(t *testing.T, chunks []swarm.Chunk, order []int) string {
@@ -159,8 +171,9 @@ func runOrder(t *testing.T, chunks []swarm.Chunk, order []int) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	freshChunks := cloneChunks(chunks)
 	for _, i := range order {
-		if err := r.Put(context.Background(), chunks[i]); err != nil && !benignPutErr(err) {
+		if err := r.Put(context.Background(), freshChunks[i]); err != nil && !benignPutErr(err) {
 			t.Fatalf("order %v chunk %d: %v", order, i, err)
 		}
 	}
@@ -304,7 +317,7 @@ func TestPutOrderConvergence(t *testing.T) {
 				t.Helper()
 				socCh := newTestSOC(t, signer, id1, []byte("soc payload"))
 				// search a payload whose CAC address sorts below the SOC's
-				for i := range 64 {
+				for i := range 2048 {
 					cacCh := newTestCAC(t, fmt.Appendf(nil, "cac payload %d", i))
 					if bytes.Compare(cacCh.Address().Bytes(), socCh.Address().Bytes()) < 0 {
 						return []swarm.Chunk{
