@@ -364,8 +364,7 @@ func TestPutOrderConvergence(t *testing.T) {
 			// Three-way conflict across batches: the batch B entry must end
 			// serving whatever payload the batch A conflict settles on, with
 			// its sum refreshed accordingly.
-			name:       "divergent socs with a sibling entry under another batch",
-			unresolved: true,
+			name: "divergent socs with a sibling entry under another batch",
 			chunks: func(t *testing.T) []swarm.Chunk {
 				t.Helper()
 				stamp := postagetesting.MustNewFields(batchA.ID, 0, 7)
@@ -463,17 +462,17 @@ func TestSOCMultiStampDivergenceCornerCase(t *testing.T) {
 		t.Fatal("expected payload P2 after putting stampB")
 	}
 
-	// Re-offer stamp A with lower-wrapped P1: same-stamp resolveDivergence
-	// accepts it, so the store settles on P1.
-	if err := r.Put(ctx, soc1.WithStamp(stampA)); err != nil {
-		t.Fatalf("re-offer soc1 stampA: %v", err)
+	// Re-offering weaker stamp A must be rejected by tie-break against stronger stamp B.
+	err = r.Put(ctx, soc1.WithStamp(stampA))
+	if !errors.Is(err, storage.ErrDivergentChunkRejected) {
+		t.Fatalf("expected ErrDivergentChunkRejected on weaker re-offer, got: %v", err)
 	}
 
 	finalCh, err := ts.ChunkStore().Get(ctx, soc1.Address())
 	if err != nil {
 		t.Fatalf("get final chunk: %v", err)
 	}
-	if !bytes.Equal(finalCh.Data(), soc1.Data()) {
-		t.Fatal("expected payload P1 after re-offering lower-wrapped stampA variant")
+	if !bytes.Equal(finalCh.Data(), soc2.Data()) {
+		t.Fatal("expected payload P2 to be retained after rejecting weaker stampA re-offer")
 	}
 }

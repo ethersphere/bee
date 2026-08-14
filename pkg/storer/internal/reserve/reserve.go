@@ -284,6 +284,12 @@ func (r *Reserve) evaluateSOCDivergence(
 		if bestStoredStamp == nil || ts > highestPrevTimestamp {
 			highestPrevTimestamp = ts
 			bestStoredStamp = st
+		} else if ts == highestPrevTimestamp {
+			bestHash, err1 := bestStoredStamp.Hash()
+			currHash, err2 := st.Hash()
+			if err1 == nil && err2 == nil && bytes.Compare(currHash, bestHash) < 0 {
+				bestStoredStamp = st
+			}
 		}
 		return false, nil
 	})
@@ -638,6 +644,12 @@ func (r *Reserve) resolveDivergence(
 			if bestStoredStamp == nil || ts > highestPrevTimestamp {
 				highestPrevTimestamp = ts
 				bestStoredStamp = st
+			} else if ts == highestPrevTimestamp {
+				bestHash, err1 := bestStoredStamp.Hash()
+				currHash, err2 := st.Hash()
+				if err1 == nil && err2 == nil && bytes.Compare(currHash, bestHash) < 0 {
+					bestStoredStamp = st
+				}
 			}
 			return false, nil
 		})
@@ -656,7 +668,7 @@ func (r *Reserve) resolveDivergence(
 			return fmt.Errorf("overwrite same chunk. prev %d cur %d batch %s: %w", highestPrevTimestamp, currTimestamp, hex.EncodeToString(chunk.Stamp().BatchID()), storage.ErrOverwriteNewerChunk)
 		}
 
-		if highestPrevTimestamp == currTimestamp && chunkType != swarm.ChunkTypeSingleOwner {
+		if highestPrevTimestamp == currTimestamp {
 			storedStampHash, err := stored.Stamp().Hash()
 			if err != nil {
 				return err
