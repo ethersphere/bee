@@ -4,4 +4,7 @@
 
 package node
 
-var ValidatePublicAddress = validatePublicAddress
+var (
+	ValidatePublicAddress = validatePublicAddress
+	UseEmbeddedSnapshot   = useEmbeddedSnapshot
+)

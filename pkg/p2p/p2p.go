@@ -13,6 +13,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/coreos/go-semver/semver"
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -166,6 +167,7 @@ type Stream interface {
 	Headers() Headers
 	FullClose() error
 	Reset() error
+	Version() (*semver.Version, error)
 }
 
 // ProtocolSpec defines a collection of Stream specifications with handlers.
@@ -215,7 +217,11 @@ type Headers map[string][]byte
 
 // Common header names.
 const (
-	HeaderNameTracingSpanContext = "tracing-span-context"
+	// HeaderNameTracingSpanContext carries the serialised span context between
+	// peers. The "-v2" suffix marks the OpenTelemetry carrier format; it differs
+	// from the legacy OpenTracing/Jaeger payload, so the distinct key prevents
+	// mixed-version peers from decoding each other's incompatible payloads.
+	HeaderNameTracingSpanContext = "tracing-span-context-v2"
 )
 
 // NewSwarmStreamName constructs a libp2p compatible stream name out of

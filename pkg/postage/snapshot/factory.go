@@ -17,11 +17,10 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/util/syncutil"
 )
 
-// New assembles the postage-snapshot inputs the batch service needs to rebuild
-// the store from the embedded snapshot: a listener that replays the snapshot's
-// logs, the block the replay starts from, and the block height it reaches. The
-// snapshot is parsed eagerly to resolve that height, so a corrupt snapshot
-// surfaces here as an error and the caller can fall back to a full chain rebuild.
+// New builds the inputs the batch service needs to rebuild the store from the
+// embedded snapshot: a listener that replays the snapshot's logs and the block to
+// start from. The snapshot is parsed eagerly here so a corrupt one fails fast and
+// the caller can fall back to a full chain rebuild.
 func New(
 	ctx context.Context,
 	logger log.Logger,
@@ -36,16 +35,16 @@ func New(
 ) (*batchservice.Snapshot, error) {
 	filterer := NewSnapshotLogFilterer(logger, getter)
 
-	resumeBlock, err := filterer.BlockNumber(ctx)
-	if err != nil {
+	// Parse the snapshot now so a corrupt one fails fast here; left to the
+	// listener it would stall until the sync timeout before falling back.
+	if _, err := filterer.BlockNumber(ctx); err != nil {
 		return nil, fmt.Errorf("read postage snapshot: %w", err)
 	}
 
 	eventListener := listener.New(syncingStopped, logger, filterer, contractAddress, contractABI, blockTime, stallingTimeout, backoffTimeout)
 
 	return &batchservice.Snapshot{
-		Listener:    eventListener,
-		StartBlock:  startBlock,
-		ResumeBlock: resumeBlock,
+		Listener:   eventListener,
+		StartBlock: startBlock,
 	}, nil
 }

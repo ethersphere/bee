@@ -18,14 +18,15 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/pushsync"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/stabilization"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
-	"github.com/opentracing/opentracing-go"
-	"github.com/opentracing/opentracing-go/ext"
-	olog "github.com/opentracing/opentracing-go/log"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -35,7 +36,7 @@ type Op struct {
 	Chunk  swarm.Chunk
 	Err    chan error
 	Direct bool
-	Span   opentracing.Span
+	Span   trace.Span
 
 	identityAddress swarm.Address
 }
@@ -155,9 +156,9 @@ func (s *Service) chunksWorker(startupStabilizer stabilization.Subscriber) {
 
 		spanCtx := ctx
 		if op.Span != nil {
-			spanCtx = tracing.WithContext(spanCtx, op.Span.Context())
+			spanCtx = tracing.WithContext(spanCtx, op.Span.SpanContext())
 		} else {
-			op.Span = opentracing.NoopTracer{}.StartSpan("noOp")
+			_, op.Span = noop.NewTracerProvider().Tracer(loggerName).Start(spanCtx, "noOp")
 		}
 
 		if op.Direct {
@@ -169,9 +170,9 @@ func (s *Service) chunksWorker(startupStabilizer stabilization.Subscriber) {
 		if err != nil {
 			s.metrics.TotalErrors.Inc()
 			s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
-			ext.LogError(op.Span, err)
+			tracing.RecordError(op.Span, err)
 		} else {
-			op.Span.LogFields(olog.Bool("success", true))
+			op.Span.SetAttributes(attribute.Bool("swarm.operation.success", true))
 		}
 
 		s.metrics.SyncTime.Observe(time.Since(startTime).Seconds())
@@ -236,7 +237,9 @@ func (s *Service) chunksWorker(startupStabilizer stabilization.Subscriber) {
 			select {
 			case sem <- struct{}{}:
 				wg.Add(1)
-				go push(op)
+				safe.Go(s.logger, "pusher-push-worker", func() {
+					push(op)
+				})
 			case <-s.quit:
 				return
 			}

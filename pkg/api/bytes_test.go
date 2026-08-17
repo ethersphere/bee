@@ -441,3 +441,184 @@ func TestBytesRedundancyLevel(t *testing.T) {
 		})
 	}
 }
+
+// TestBytesHead tests that HEAD reports the same entity headers as GET, for every
+// redundancy level and for encrypted references.
+func TestBytesHead(t *testing.T) {
+	t.Parallel()
+
+	g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
+	content, err := g.SequentialBytes(swarm.ChunkSize * 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for level := redundancy.NONE; level <= redundancy.PARANOID; level++ {
+		for _, encrypt := range []bool{false, true} {
+			t.Run(fmt.Sprintf("level %d encrypt %v", level, encrypt), func(t *testing.T) {
+				t.Parallel()
+
+				client, _, _, _ := newTestServer(t, testServerOptions{
+					Storer: mockstorer.New(),
+					Post:   mockpost.New(mockpost.WithAcceptAll()),
+				})
+
+				var resp struct {
+					Reference swarm.Address `json:"reference"`
+				}
+				jsonhttptest.Request(t, client, http.MethodPost, "/bytes", http.StatusCreated,
+					jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+					jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+					jsonhttptest.WithRequestHeader(api.SwarmRedundancyLevelHeader, strconv.Itoa(int(level))),
+					jsonhttptest.WithRequestHeader(api.SwarmEncryptHeader, strconv.FormatBool(encrypt)),
+					jsonhttptest.WithRequestBody(bytes.NewReader(content)),
+					jsonhttptest.WithUnmarshalJSONResponse(&resp),
+				)
+
+				resource := "/bytes/" + resp.Reference.String()
+
+				for _, method := range []string{http.MethodHead, http.MethodGet} {
+					jsonhttptest.Request(t, client, method, resource, http.StatusOK,
+						jsonhttptest.WithExpectedContentLength(len(content)),
+						jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "application/octet-stream"),
+						jsonhttptest.WithExpectedResponseHeader(api.AcceptRangesHeader, "bytes"),
+						jsonhttptest.WithExpectedResponseHeader(api.ETagHeader, fmt.Sprintf("%q", resp.Reference)),
+						jsonhttptest.WithNonEmptyResponseHeader("Last-Modified"),
+					)
+				}
+
+				// The range is resolved against the length decoded from the root
+				// chunk span, so it has to hold for every redundancy level and for
+				// encrypted references, where that span is decrypted first.
+				for _, method := range []string{http.MethodHead, http.MethodGet} {
+					jsonhttptest.Request(t, client, method, resource, http.StatusPartialContent,
+						jsonhttptest.WithRequestHeader(api.RangeHeader, "bytes=0-10"),
+						jsonhttptest.WithExpectedContentLength(11),
+						jsonhttptest.WithExpectedResponseHeader(api.ContentRangeHeader, fmt.Sprintf("bytes 0-10/%d", len(content))),
+					)
+				}
+			})
+		}
+	}
+}
+
+// TestBytesHeadRangeAndConditional tests that HEAD applies Range and precondition
+// headers exactly as GET does, since HEAD differs from GET only in sending no body.
+func TestBytesHeadRangeAndConditional(t *testing.T) {
+	t.Parallel()
+
+	g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
+	content, err := g.SequentialBytes(swarm.ChunkSize * 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	client, _, _, _ := newTestServer(t, testServerOptions{
+		Storer: mockstorer.New(),
+		Post:   mockpost.New(mockpost.WithAcceptAll()),
+	})
+
+	var resp struct {
+		Reference swarm.Address `json:"reference"`
+	}
+	jsonhttptest.Request(t, client, http.MethodPost, "/bytes", http.StatusCreated,
+		jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+		jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+		jsonhttptest.WithRequestBody(bytes.NewReader(content)),
+		jsonhttptest.WithUnmarshalJSONResponse(&resp),
+	)
+
+	resource := "/bytes/" + resp.Reference.String()
+	etag := fmt.Sprintf("%q", resp.Reference)
+
+	tests := []struct {
+		name    string
+		header  [2]string
+		want    int
+		headers []jsonhttptest.Option
+	}{
+		{
+			name:   "satisfiable range",
+			header: [2]string{api.RangeHeader, "bytes=0-99"},
+			want:   http.StatusPartialContent,
+			headers: []jsonhttptest.Option{
+				jsonhttptest.WithExpectedContentLength(100),
+				jsonhttptest.WithExpectedResponseHeader(api.ContentRangeHeader, fmt.Sprintf("bytes 0-99/%d", len(content))),
+			},
+		},
+		{
+			name:   "unsatisfiable range",
+			header: [2]string{api.RangeHeader, "bytes=99999999-"},
+			want:   http.StatusRequestedRangeNotSatisfiable,
+			headers: []jsonhttptest.Option{
+				jsonhttptest.WithExpectedResponseHeader(api.ContentRangeHeader, fmt.Sprintf("bytes */%d", len(content))),
+			},
+		},
+		{
+			name:   "matching if-none-match",
+			header: [2]string{"If-None-Match", etag},
+			want:   http.StatusNotModified,
+			headers: []jsonhttptest.Option{
+				jsonhttptest.WithNoResponseBody(),
+			},
+		},
+		{
+			name:   "non-matching if-none-match",
+			header: [2]string{"If-None-Match", `"0000000000000000000000000000000000000000000000000000000000000001"`},
+			want:   http.StatusOK,
+			headers: []jsonhttptest.Option{
+				jsonhttptest.WithExpectedContentLength(len(content)),
+			},
+		},
+		{
+			// A body-less response must not inherit the full content length, or the
+			// server truncates the connection and the client sees an unexpected EOF.
+			name:   "non-matching if-match",
+			header: [2]string{"If-Match", `"0000000000000000000000000000000000000000000000000000000000000001"`},
+			want:   http.StatusPreconditionFailed,
+			headers: []jsonhttptest.Option{
+				jsonhttptest.WithNoResponseBody(),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, method := range []string{http.MethodHead, http.MethodGet} {
+				opts := append([]jsonhttptest.Option{
+					jsonhttptest.WithRequestHeader(tt.header[0], tt.header[1]),
+				}, tt.headers...)
+				jsonhttptest.Request(t, client, method, resource, tt.want, opts...)
+			}
+		})
+	}
+}
+
+// TestBytesHeadErrorsMatchGet tests that HEAD reports the same status as GET for
+// references that cannot be served.
+func TestBytesHeadErrorsMatchGet(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{
+		Storer: mockstorer.New(),
+		Post:   mockpost.New(mockpost.WithAcceptAll()),
+	})
+
+	tests := []struct {
+		name string
+		ref  string
+		want int
+	}{
+		{"short address", "abcd", http.StatusInternalServerError},
+		{"unknown address", "0000000000000000000000000000000000000000000000000000000000000001", http.StatusNotFound},
+		{"non-hex address", "zzzz", http.StatusBadRequest},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resource := "/bytes/" + tt.ref
+			jsonhttptest.Request(t, client, http.MethodHead, resource, tt.want)
+			jsonhttptest.Request(t, client, http.MethodGet, resource, tt.want)
+		})
+	}
+}
