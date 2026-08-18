@@ -65,3 +65,23 @@ func TestGossipBufferMaxBatchFlush(t *testing.T) {
 		t.Fatalf("want empty buffer after maxBatch flush, got %d pending", len(pending))
 	}
 }
+
+func TestGossipBufferMaxBatchFlushWithoutPendingInsert(t *testing.T) {
+	t.Parallel()
+
+	b := newGossipBuffer(time.Second, 2)
+	addressee := swarm.RandAddress(t)
+	peer1 := swarm.RandAddress(t)
+	peer2 := swarm.RandAddress(t)
+
+	flushPeers, flush := b.stagePeers(addressee, peer1, peer2)
+	if !flush {
+		t.Fatal("want immediate flush when first insert meets maxBatch")
+	}
+	if got := len(flushPeers); got != 2 {
+		t.Fatalf("want 2 peers in full batch, got %d", got)
+	}
+	if pending := b.takeAll(); len(pending) != 0 {
+		t.Fatalf("want no pending insert after maxBatch flush, got %d pending", len(pending))
+	}
+}

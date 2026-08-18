@@ -17,6 +17,9 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	ma "github.com/multiformats/go-multiaddr"
+	"github.com/multiformats/go-varint"
+
 	ab "github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
@@ -32,8 +35,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/statestore/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/util/testutil"
-	ma "github.com/multiformats/go-multiaddr"
-	"github.com/multiformats/go-varint"
 )
 
 var nonce = common.HexToHash("0x2").Bytes()
@@ -54,7 +55,7 @@ func waitForCoalesceFlush(t *testing.T) {
 func newCoalescingClient(
 	t *testing.T,
 	recorder p2p.Streamer,
-	addressbook ab.GetPutter,
+	addressbook ab.GetPutSeener,
 	networkID uint64,
 	overlay swarm.Address,
 	logger log.Logger,
@@ -66,6 +67,41 @@ func newCoalescingClient(
 	client := hive.New(recorder, addressbook, networkID, overlay, logger, opts)
 	testutil.CleanupCloser(t, client)
 	return client
+}
+
+// addTestOverlays puts n random peers into the addressbook and returns their overlays.
+func addTestOverlays(t *testing.T, book ab.Putter, networkID uint64, n, portBase int) []swarm.Address {
+	t.Helper()
+
+	if n <= 0 {
+		return nil
+	}
+
+	overlays := make([]swarm.Address, n)
+	for i := range n {
+		underlay, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/" + strconv.Itoa(portBase+i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		pk, err := crypto.GenerateSecp256k1Key()
+		if err != nil {
+			t.Fatal(err)
+		}
+		signer := crypto.NewDefaultSigner(pk)
+		overlay, err := crypto.NewOverlayAddress(pk.PublicKey, networkID, nonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bzzAddr, err := bzz.NewAddress(signer, []ma.Multiaddr{underlay}, overlay, networkID, nonce, 1, common.Address{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := book.Put(bzzAddr.Overlay, *bzzAddr, true); err != nil {
+			t.Fatal(err)
+		}
+		overlays[i] = bzzAddr.Overlay
+	}
+	return overlays
 }
 
 func assertNoGossipRecords(t *testing.T, recorder *streamtest.Recorder, addressee swarm.Address) {
@@ -286,7 +322,9 @@ func TestBroadcastPeers(t *testing.T) {
 		},
 		"Ok - don't advertise private CIDRs only (but include one public peer)": {
 			addresee: overlays[0],
-			peers:    overlays[58:],
+			// Last CoalesceThreshold peers so the call is sent immediately;
+			// only the final overlay is public.
+			peers: overlays[len(overlays)-hive.CoalesceThreshold:],
 			wantMsgs: []pb.Peers{{Peers: func() []*pb.BzzAddress {
 				ub, err := bzz.SerializeUnderlays(bzzAddresses[len(bzzAddresses)-1].Underlays)
 				if err != nil {
@@ -652,8 +690,10 @@ func TestBroadcastPeersSkipsSelf(t *testing.T) {
 	client := hive.New(serverRecorder, addressbook, networkID, clientAddress, logger, hive.Options{AllowPrivateCIDRs: true})
 	testutil.CleanupCloser(t, client)
 
-	// Try to broadcast: peer1, clientAddress (self), and another peer
+	// Try to broadcast: peer1, clientAddress (self), and another peer.
+	// Pad to CoalesceThreshold so the message is sent immediately.
 	peersIncludingSelf := []swarm.Address{bzzAddr1.Overlay, clientAddress, peer1}
+	peersIncludingSelf = append(peersIncludingSelf, addTestOverlays(t, addressbook, networkID, hive.CoalesceThreshold-len(peersIncludingSelf), 5000)...)
 
 	err = client.BroadcastPeers(context.Background(), serverAddress, peersIncludingSelf...)
 	if err != nil {
@@ -775,8 +815,10 @@ func TestReceivePeersSkipsSelf(t *testing.T) {
 	client := hive.New(serverRecorder, addressbook, networkID, clientAddress, logger, hive.Options{AllowPrivateCIDRs: true})
 	testutil.CleanupCloser(t, client)
 
-	// Client broadcasts: valid peer and server's own address
+	// Client broadcasts: valid peer and server's own address.
+	// Pad to CoalesceThreshold so the message is sent immediately.
 	peersIncludingSelf := []swarm.Address{bzzAddr1.Overlay, serverAddress}
+	peersIncludingSelf = append(peersIncludingSelf, addTestOverlays(t, addressbook, networkID, hive.CoalesceThreshold-len(peersIncludingSelf), 6000)...)
 
 	err = client.BroadcastPeers(context.Background(), serverAddress, peersIncludingSelf...)
 	if err != nil {
@@ -1351,7 +1393,9 @@ func TestBroadcastSkipsLegacyZeroRecord(t *testing.T) {
 	t.Cleanup(func() { _ = client.Close() })
 
 	addressee := swarm.RandAddress(t)
-	if err := client.BroadcastPeers(context.Background(), addressee, legacyPeer.overlay, modernPeer.overlay); err != nil {
+	peers := []swarm.Address{legacyPeer.overlay, modernPeer.overlay}
+	peers = append(peers, addTestOverlays(t, clientBook, networkID, hive.CoalesceThreshold-len(peers), 7000)...)
+	if err := client.BroadcastPeers(context.Background(), addressee, peers...); err != nil {
 		t.Fatalf("BroadcastPeers: %v", err)
 	}
 
@@ -1369,11 +1413,21 @@ func TestBroadcastSkipsLegacyZeroRecord(t *testing.T) {
 	}
 
 	sent := messages[0].Peers
-	if len(sent) != 1 {
-		t.Fatalf("expected 1 peer sent (legacy dropped), got %d", len(sent))
+	if len(sent) != hive.CoalesceThreshold-1 {
+		t.Fatalf("expected %d peers sent (legacy dropped), got %d", hive.CoalesceThreshold-1, len(sent))
 	}
-	if !swarm.NewAddress(sent[0].Overlay).Equal(modernPeer.overlay) {
-		t.Fatalf("expected modern overlay %s, got %s", modernPeer.overlay, swarm.NewAddress(sent[0].Overlay))
+	foundModern := false
+	for _, p := range sent {
+		overlay := swarm.NewAddress(p.Overlay)
+		if overlay.Equal(legacyPeer.overlay) {
+			t.Fatal("legacy overlay should have been dropped")
+		}
+		if overlay.Equal(modernPeer.overlay) {
+			foundModern = true
+		}
+	}
+	if !foundModern {
+		t.Fatalf("expected modern overlay %s in sent peers", modernPeer.overlay)
 	}
 }
 
@@ -1531,7 +1585,7 @@ func TestBroadcastPeersCoalesce(t *testing.T) {
 		}
 
 		// Batched gossip is sent immediately without coalescing (use fresh peers).
-		batchedOverlays := make([]swarm.Address, 2)
+		batchedOverlays := make([]swarm.Address, hive.CoalesceThreshold)
 		for i := range batchedOverlays {
 			underlay, err := ma.NewMultiaddr("/ip4/127.0.0.1/udp/" + strconv.Itoa(3000+i))
 			if err != nil {
@@ -1574,7 +1628,7 @@ const hiveGossipBufferingInterval = time.Second
 func TestHiveGossipBuffering(t *testing.T) {
 	t.Parallel()
 
-	makeAddressbookWithPeers := func(t *testing.T, n int) (ab.GetPutter, []swarm.Address) {
+	makeAddressbookWithPeers := func(t *testing.T, n int) (ab.GetPutSeener, []swarm.Address) {
 		t.Helper()
 
 		addressbook := ab.New(mock.NewStateStore())
@@ -1608,7 +1662,7 @@ func TestHiveGossipBuffering(t *testing.T) {
 		return addressbook, overlays
 	}
 
-	setupClient := func(t *testing.T, addressbook ab.GetPutter, coalesceInterval time.Duration) (*hive.Service, *streamtest.Recorder, swarm.Address) {
+	setupClient := func(t *testing.T, addressbook ab.GetPutSeener, coalesceInterval time.Duration) (*hive.Service, *streamtest.Recorder, swarm.Address) {
 		t.Helper()
 
 		logger := log.Noop

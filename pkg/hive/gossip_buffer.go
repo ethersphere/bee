@@ -14,10 +14,10 @@ import (
 )
 
 const (
-	defaultGossipCoalesceInterval = time.Second
+	defaultGossipCoalesceInterval = 5 * time.Second
 	// coalesceThreshold: gossips with fewer peers are buffered; larger
 	// (already-batched) messages are dispatched immediately.
-	coalesceThreshold = 2
+	coalesceThreshold = 5
 )
 
 // gossipBuffer accumulates single-peer outbound gossip per addressee so it can be
@@ -46,25 +46,28 @@ func newGossipBuffer(interval time.Duration, maxBatch int) *gossipBuffer {
 }
 
 // stagePeers buffers peers for the addressee. If the buffer reaches maxBatch it is
-// removed and returned so the caller can flush it immediately.
+// removed and returned so the caller can flush it immediately. A new addressee is
+// not written to pending if the merged set already meets maxBatch.
 func (b *gossipBuffer) stagePeers(addressee swarm.Address, peers ...swarm.Address) (flushPeers []swarm.Address, flush bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	key := addressee.ByteString()
-	peerSet, ok := b.pending[key]
-	if !ok {
+	peerSet, exist := b.pending[key]
+	if !exist {
 		peerSet = make(map[string]swarm.Address)
-		b.pending[key] = peerSet
 	}
 	for _, p := range peers {
 		peerSet[p.ByteString()] = p
 	}
-
 	if len(peerSet) >= b.maxBatch {
-		delete(b.pending, key)
+		if exist {
+			delete(b.pending, key)
+		}
 		return slices.Collect(maps.Values(peerSet)), true
 	}
+
+	b.pending[key] = peerSet
 	return nil, false
 }
 
@@ -84,7 +87,7 @@ func (b *gossipBuffer) takeAll() []gossipBatch {
 			peers:     slices.Collect(maps.Values(peerSet)),
 		})
 	}
-	b.pending = make(map[string]map[string]swarm.Address)
+	clear(b.pending)
 	return out
 }
 

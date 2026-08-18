@@ -18,6 +18,10 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
+	"golang.org/x/sync/semaphore"
+
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 	"github.com/ethersphere/bee/v2/pkg/hive/pb"
@@ -28,9 +32,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-	ma "github.com/multiformats/go-multiaddr"
-	manet "github.com/multiformats/go-multiaddr/net"
-	"golang.org/x/sync/semaphore"
 )
 
 // ChequebookStorer persists the overlay→chequebook mapping. Put holds its
@@ -364,9 +365,11 @@ func (s *Service) startGossipCoalescer() {
 			select {
 			case <-ticker.C:
 				for _, batch := range s.gossipBuf.takeAll() {
-					s.flushGossipBatch(batch.addressee, batch.peers, coalesceFlushReasonTimer)
+					go func(batch gossipBatch) {
+						s.flushGossipBatch(batch.addressee, batch.peers, coalesceFlushReasonTimer)
+					}(batch)
 				}
-				s.setCoalesceBufferGauge()
+
 			case <-s.quit:
 				return
 			}
@@ -378,11 +381,13 @@ func (s *Service) flushGossipBatch(addressee swarm.Address, peers []swarm.Addres
 	s.recordCoalesceFlush(reason, addressee, peers)
 
 	ctx, cancel := context.WithTimeout(context.Background(), messageTimeout)
+	defer cancel()
+
 	err := s.broadcastNow(ctx, addressee, true, peers...)
 	if err != nil {
 		s.logger.Debug("coalesced gossip flush failed", "addressee", addressee, "reason", reason, "batch_size", len(peers), "error", err)
 	}
-	cancel()
+	s.setCoalesceBufferGauge()
 }
 
 func (s *Service) recordCoalesceFlush(reason string, addressee swarm.Address, peers []swarm.Address) {
