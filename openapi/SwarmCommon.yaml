@@ -681,6 +681,8 @@ components:
       properties:
         stakedAmount:
           $ref: "#/components/schemas/BigInt"
+        minimumDeposit:
+          $ref: "#/components/schemas/BigInt"
 
     GetWithdrawableResponse:
       type: object

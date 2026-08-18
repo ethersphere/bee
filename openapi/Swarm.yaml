@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 8.1.0
+  version: 8.2.0
   title: Bee API
   description: "API endpoints for interacting with the Swarm network, supporting file operations, messaging, and node management"
 
@@ -2567,7 +2567,7 @@ paths:
   "/stake":
     get:
       summary: Get the staked amount.
-      description: This endpoint fetches the total staked amount from the blockchain.
+      description: This endpoint fetches the total staked amount and the minimum additional deposit from the blockchain. The first deposit is at least 0.1 BZZ times 2^height. Subsequent deposits are at least 1 PLUR, or more if the price oracle has increased since the last deposit.
       tags:
         - Staking
       responses:

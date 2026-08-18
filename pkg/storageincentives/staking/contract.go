@@ -13,16 +13,18 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethersphere/go-sw3-abi/sw3abi"
+
 	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
-	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
 
 var (
 	MinimumStakeAmount = big.NewInt(100000000000000000)
 
-	erc20ABI = abiutil.MustParseABI(sw3abi.ERC20ABIv0_6_9)
+	erc20ABI       = abiutil.MustParseABI(sw3abi.ERC20ABIv0_6_9)
+	priceOracleABI = abiutil.MustParseABI(`[{"inputs":[],"name":"currentPrice","outputs":[{"internalType":"uint32","name":"","type":"uint32"}],"stateMutability":"view","type":"function"}]`)
 
 	ErrInsufficientStakeAmount = errors.New("insufficient stake amount")
 	ErrInsufficientFunds       = errors.New("insufficient token balance")
@@ -37,10 +39,25 @@ var (
 	migrateStakeDescription  = "Migrate stake"
 )
 
+// MinDepositError is returned when a deposit is below the amount required by the
+// staking contract, including the non-decreasing commitment rule.
+type MinDepositError struct {
+	Minimum *big.Int
+}
+
+func (e *MinDepositError) Error() string {
+	return fmt.Sprintf("insufficient stake amount: minimum %s", e.Minimum)
+}
+
+func (e *MinDepositError) Unwrap() error {
+	return ErrInsufficientStakeAmount
+}
+
 type Contract interface {
 	DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error)
 	ChangeStakeOverlay(ctx context.Context, nonce common.Hash) (common.Hash, error)
 	GetPotentialStake(ctx context.Context) (*big.Int, error)
+	GetMinDeposit(ctx context.Context) (*big.Int, error)
 	GetWithdrawableStake(ctx context.Context) (*big.Int, error)
 	WithdrawStake(ctx context.Context) (common.Hash, error)
 	MigrateStake(ctx context.Context) (common.Hash, error)
@@ -86,19 +103,13 @@ func New(
 }
 
 func (c *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
-	prevStakedAmount, err := c.GetPotentialStake(ctx)
+	minDeposit, err := c.GetMinDeposit(ctx)
 	if err != nil {
 		return common.Hash{}, err
 	}
 
-	if len(prevStakedAmount.Bits()) == 0 {
-		if stakedAmount.Cmp(MinimumStakeAmount) == -1 {
-			return common.Hash{}, ErrInsufficientStakeAmount
-		}
-	}
-
-	if big.NewInt(0).Add(prevStakedAmount, stakedAmount).Cmp(big.NewInt(0).Mul(big.NewInt(1<<c.height), MinimumStakeAmount)) < 0 {
-		return common.Hash{}, fmt.Errorf("stake amount does not sufficiently cover the additional reserve capacity: %w", ErrInsufficientStakeAmount)
+	if stakedAmount.Cmp(minDeposit) < 0 {
+		return common.Hash{}, &MinDepositError{Minimum: minDeposit}
 	}
 
 	balance, err := c.getBalance(ctx)
@@ -154,11 +165,59 @@ func (c *contract) UpdateHeight(ctx context.Context) (common.Hash, bool, error) 
 }
 
 func (c *contract) GetPotentialStake(ctx context.Context) (*big.Int, error) {
-	stakedAmount, err := c.getPotentialStake(ctx)
+	_, potential, err := c.getStake(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("staking contract: failed to get stake: %w", err)
 	}
-	return stakedAmount, nil
+	return potential, nil
+}
+
+func (c *contract) GetMinDeposit(ctx context.Context) (*big.Int, error) {
+	committed, potential, err := c.getStake(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("staking contract: failed to get stake: %w", err)
+	}
+
+	var price uint32
+	if committed.Sign() > 0 {
+		price, err = c.getCurrentPrice(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("staking contract: failed to get oracle price: %w", err)
+		}
+	}
+
+	return calculateMinDeposit(potential, committed, price, c.height), nil
+}
+
+// calculateMinDeposit returns the minimum additional deposit in PLUR that
+// manageStake will accept. The first deposit must cover 2^height * MIN_STAKE.
+// Later deposits must keep committed stake from decreasing after a price
+// increase; if that constraint is already satisfied the minimum is 1 PLUR.
+func calculateMinDeposit(potential, committed *big.Int, price uint32, height uint8) *big.Int {
+	minAdd := new(big.Int)
+
+	minTotal := new(big.Int).Lsh(new(big.Int).Set(MinimumStakeAmount), uint(height))
+	if gap := new(big.Int).Sub(minTotal, potential); gap.Sign() > 0 {
+		minAdd.Set(gap)
+	}
+
+	if price != 0 && committed.Sign() > 0 {
+		required := new(big.Int).SetUint64(uint64(price))
+		required.Lsh(required, uint(height))
+		required.Mul(required, committed)
+		if gap := new(big.Int).Sub(required, potential); gap.Cmp(minAdd) > 0 {
+			minAdd.Set(gap)
+		}
+	}
+
+	if minAdd.Sign() == 0 {
+		if potential.Sign() > 0 {
+			return big.NewInt(1)
+		}
+		return new(big.Int).Set(MinimumStakeAmount)
+	}
+
+	return minAdd
 }
 
 func (c *contract) GetWithdrawableStake(ctx context.Context) (*big.Int, error) {
@@ -327,17 +386,17 @@ func (c *contract) sendManageStakeTransaction(ctx context.Context, stakedAmount 
 	return receipt, nil
 }
 
-func (c *contract) getPotentialStake(ctx context.Context) (*big.Int, error) {
+func (c *contract) getStake(ctx context.Context) (committed, potential *big.Int, err error) {
 	callData, err := c.stakingContractABI.Pack("stakes", c.owner)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	result, err := c.transactionService.Call(ctx, &transaction.TxRequest{
 		To:   &c.stakingContractAddress,
 		Data: callData,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("get potential stake: %w", err)
+		return nil, nil, fmt.Errorf("get potential stake: %w", err)
 	}
 
 	// overlay bytes32,
@@ -346,14 +405,71 @@ func (c *contract) getPotentialStake(ctx context.Context) (*big.Int, error) {
 	// lastUpdatedBlockNumber uint256,
 	results, err := c.stakingContractABI.Unpack("stakes", result)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if len(results) < 4 {
-		return nil, ErrUnexpectedLength
+		return nil, nil, ErrUnexpectedLength
 	}
 
-	return abi.ConvertType(results[2], new(big.Int)).(*big.Int), nil
+	committed = abi.ConvertType(results[1], new(big.Int)).(*big.Int)
+	potential = abi.ConvertType(results[2], new(big.Int)).(*big.Int)
+	return committed, potential, nil
+}
+
+func (c *contract) getCurrentPrice(ctx context.Context) (uint32, error) {
+	callData, err := c.stakingContractABI.Pack("OracleContract")
+	if err != nil {
+		return 0, err
+	}
+
+	result, err := c.transactionService.Call(ctx, &transaction.TxRequest{
+		To:   &c.stakingContractAddress,
+		Data: callData,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("get oracle address: %w", err)
+	}
+
+	results, err := c.stakingContractABI.Unpack("OracleContract", result)
+	if err != nil {
+		return 0, err
+	}
+
+	if len(results) == 0 {
+		return 0, errors.New("unexpected empty results")
+	}
+
+	oracleAddr := *abi.ConvertType(results[0], new(common.Address)).(*common.Address)
+
+	callData, err = priceOracleABI.Pack("currentPrice")
+	if err != nil {
+		return 0, err
+	}
+
+	result, err = c.transactionService.Call(ctx, &transaction.TxRequest{
+		To:   &oracleAddr,
+		Data: callData,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("get current price: %w", err)
+	}
+
+	results, err = priceOracleABI.Unpack("currentPrice", result)
+	if err != nil {
+		return 0, err
+	}
+
+	if len(results) == 0 {
+		return 0, errors.New("unexpected empty results")
+	}
+
+	price, ok := results[0].(uint32)
+	if !ok {
+		return 0, fmt.Errorf("unexpected oracle price type %T", results[0])
+	}
+
+	return price, nil
 }
 
 func (c *contract) getWithdrawableStake(ctx context.Context) (*big.Int, error) {
