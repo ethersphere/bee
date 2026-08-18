@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ethersphere/bee/v2/pkg/file/redundancy/stampcarrier"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
@@ -45,8 +46,8 @@ func (l Level) GetParities(shards int) int {
 
 // GetMaxShards returns back the maximum number of effective data chunks
 func (l Level) GetMaxShards() int {
-	p := l.GetParities(swarm.Branches)
-	return swarm.Branches - p
+	m, _, _ := l.Composition(false)
+	return m
 }
 
 // GetEncParities returns number of parities for encrypted chunks based on appendix F table 6
@@ -94,8 +95,45 @@ func (l Level) getEncErasureTable() (erasureTable, error) {
 
 // GetMaxEncShards returns back the maximum number of effective encrypted data chunks
 func (l Level) GetMaxEncShards() int {
-	p := l.GetEncParities(swarm.EncryptedBranches)
-	return (swarm.Branches - p) / 2
+	m, _, _ := l.Composition(true)
+	return m
+}
+
+// Composition returns the layout of a full intermediate chunk at this
+// redundancy level: m data references, k parities and c stamp carriers
+// (always followed by stampcarrier.GroupParities carrier parities).
+// m is the largest data count whose complete layout fits the 128 32-byte
+// reference slots of a chunk: m*refWords + k(m) + c(m+k) + 2 <= 128,
+// with c = ceil((m+k)/48). See the design doc §3.1.
+func (l Level) Composition(encrypted bool) (m, k, c int) {
+	if l == NONE {
+		if encrypted {
+			return swarm.Branches / 2, 0, 0
+		}
+		return swarm.Branches, 0, 0
+	}
+	refWords, parities := 1, l.GetParities
+	if encrypted {
+		refWords, parities = 2, l.GetEncParities
+	}
+	for m = swarm.Branches; m > 0; m-- {
+		k = parities(m)
+		c = stampcarrier.Count(m + k)
+		if refWords*m+k+c+stampcarrier.GroupParities <= swarm.Branches {
+			return m, k, c
+		}
+	}
+	return 0, 0, 0
+}
+
+// CarrierRefs returns the number of trailing 32-byte stamp-carrier
+// references (carriers plus group parities) of a parent with the given
+// number of data+parity children.
+func (l Level) CarrierRefs(children int) int {
+	if l == NONE {
+		return 0
+	}
+	return stampcarrier.Count(children) + stampcarrier.GroupParities
 }
 
 // GetReplicaCount returns back the dispersed replica number

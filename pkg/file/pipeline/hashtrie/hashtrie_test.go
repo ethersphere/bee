@@ -70,6 +70,12 @@ func newErasureHashTrieWriter(
 		lsw := store.NewStoreWriter(ctx, s, parityChunkPipeline)
 		return bmt.NewBmtWriter(lsw)
 	}
+	// stamp carriers are plain CACs and are neither intermediate nor parity
+	// chunks, so they are not counted by either of the test counters
+	cpf := func() pipeline.ChainWriter {
+		lsw := store.NewStoreWriter(ctx, s, nil)
+		return bmt.NewBmtWriter(lsw)
+	}
 
 	hashSize := swarm.HashSize
 	if encryptChunks {
@@ -77,7 +83,7 @@ func newErasureHashTrieWriter(
 	}
 
 	r := redundancy.New(rLevel, encryptChunks, ppf)
-	ht := hashtrie.NewHashTrieWriter(ctx, hashSize, r, pf, replicaPutter, rLevel)
+	ht := hashtrie.NewHashTrieWriter(ctx, hashSize, r, pf, cpf, replicaPutter, rLevel)
 	return r, ht
 }
 
@@ -141,7 +147,7 @@ func TestLevels(t *testing.T) {
 				return bmt.NewBmtWriter(lsw)
 			}
 
-			ht := hashtrie.NewHashTrieWriter(ctx, hashSize, redundancy.New(0, false, pf), pf, s, 0)
+			ht := hashtrie.NewHashTrieWriter(ctx, hashSize, redundancy.New(0, false, pf), pf, pf, s, 0)
 
 			for i := 0; i < tc.writes; i++ {
 				a := &pipeline.PipeWriteArgs{Ref: addr.Bytes(), Span: span}
@@ -194,7 +200,7 @@ func TestLevels_TrieFull(t *testing.T) {
 			Params: *r,
 		}
 
-		ht = hashtrie.NewHashTrieWriter(ctx, hashSize, rMock, pf, s, redundancy.DefaultDownloadLevel)
+		ht = hashtrie.NewHashTrieWriter(ctx, hashSize, rMock, pf, pf, s, redundancy.DefaultDownloadLevel)
 	)
 
 	// to create a level wrap we need to do branching^(level-1) writes
@@ -235,7 +241,7 @@ func TestRegression(t *testing.T) {
 			lsw := store.NewStoreWriter(ctx, s, nil)
 			return bmt.NewBmtWriter(lsw)
 		}
-		ht = hashtrie.NewHashTrieWriter(ctx, hashSize, redundancy.New(0, false, pf), pf, s, 0)
+		ht = hashtrie.NewHashTrieWriter(ctx, hashSize, redundancy.New(0, false, pf), pf, pf, s, 0)
 	)
 	binary.LittleEndian.PutUint64(span, 4096)
 
@@ -297,14 +303,14 @@ func TestRedundancy(t *testing.T) {
 			desc:       "redundancy write for not encrypted data",
 			level:      redundancy.INSANE,
 			encryption: false,
-			writes:     98, // 97 chunk references fit into one chunk + 1 carrier
-			parities:   37, // 31 (full ch) + 6 (2 ref)
+			writes:     93, // 92 chunk references fit into one chunk + 1 carrier
+			parities:   36, // 30 (full ch) + 6 (2 ref)
 		},
 		{
 			desc:       "redundancy write for encrypted data",
 			level:      redundancy.PARANOID,
 			encryption: true,
-			writes:     21,  // 21 encrypted chunk references fit into one chunk + 1 carrier
+			writes:     19,  // 18 encrypted chunk references fit into one chunk + 1 carrier
 			parities:   116, // 87 (full ch) + 29 (2 ref)
 		},
 	} {
@@ -365,7 +371,7 @@ func TestRedundancy(t *testing.T) {
 				t.Fatalf("encoded level differs from the uploaded one %d. Got: %d", tc.level, level)
 			}
 			expectedParities := tc.parities - r.Parities(r.MaxShards())
-			_, parity := file.ReferenceCount(bmtUtils.LengthFromSpan(sp), level, tc.encryption)
+			_, parity, _ := file.ReferenceCount(bmtUtils.LengthFromSpan(sp), level, tc.encryption)
 			if expectedParities != parity {
 				t.Fatalf("want parity %d got %d", expectedParities, parity)
 			}

@@ -60,8 +60,8 @@ func DecryptChunkData(chunkData []byte, encryptionKey encryption.Key) ([]byte, e
 	length := binary.LittleEndian.Uint64(span)
 	if length > swarm.ChunkSize {
 		dataRefSize := uint64(swarm.HashSize + encryption.KeyLength)
-		dataShards, parities := file.ReferenceCount(length, level, true)
-		length = dataRefSize*uint64(dataShards) + uint64(parities*swarm.HashSize)
+		dataShards, parities, carrierRefs := file.ReferenceCount(length, level, true)
+		length = dataRefSize*uint64(dataShards) + uint64((parities+carrierRefs)*swarm.HashSize)
 	}
 
 	c := make([]byte, length+8)

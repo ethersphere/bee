@@ -29,24 +29,47 @@ func ChunkPayloadSize(data []byte) (int, error) {
 	return 0, errors.New("redundancy getter: intermediate chunk does not have at least a child")
 }
 
-// ChunkAddresses returns data shards and parities of the intermediate chunk
+// ChunkAddresses returns the child (data + parity) addresses of the
+// intermediate chunk and the data shard count. Trailing stamp-carrier
+// references are excluded — see CarrierAddresses.
 // assumes data is truncated by ChunkPayloadSize
-func ChunkAddresses(data []byte, parities, reflen int) (addrs []swarm.Address, shardCnt int) {
-	shardCnt = (len(data) - parities*swarm.HashSize) / reflen
-	for offset := 0; offset < len(data); offset += reflen {
+func ChunkAddresses(data []byte, parities, carrierRefs, reflen int) (addrs []swarm.Address, shardCnt int) {
+	shardCnt = (len(data) - (parities+carrierRefs)*swarm.HashSize) / reflen
+	dataLen := shardCnt * reflen
+	// a malformed parent may advertise more parity and carrier references than
+	// its payload can hold; do not index outside of it
+	if dataLen < 0 || dataLen+parities*swarm.HashSize > len(data) {
+		return nil, shardCnt
+	}
+	for offset := 0; offset < dataLen; offset += reflen {
 		addrs = append(addrs, swarm.NewAddress(data[offset:offset+swarm.HashSize]))
-		if len(addrs) == shardCnt && reflen != swarm.HashSize {
-			reflen = swarm.HashSize
-			offset += reflen
-		}
+	}
+	for i := range parities {
+		offset := dataLen + i*swarm.HashSize
+		addrs = append(addrs, swarm.NewAddress(data[offset:offset+swarm.HashSize]))
 	}
 	return addrs, shardCnt
 }
 
+// CarrierAddresses returns the trailing stamp-carrier group references of the
+// intermediate chunk, carriers first then carrier parities.
+// assumes data is truncated by ChunkPayloadSize
+func CarrierAddresses(data []byte, carrierRefs int) []swarm.Address {
+	if carrierRefs <= 0 || carrierRefs*swarm.HashSize > len(data) {
+		return nil
+	}
+	addrs := make([]swarm.Address, 0, carrierRefs)
+	for i := carrierRefs; i > 0; i-- {
+		offset := len(data) - i*swarm.HashSize
+		addrs = append(addrs, swarm.NewAddress(data[offset:offset+swarm.HashSize]))
+	}
+	return addrs
+}
+
 // ReferenceCount brute-forces the data shard count from which identify the parity count as well in a substree
 // assumes span > swarm.chunkSize
-// returns data and parity shard number
-func ReferenceCount(span uint64, level redundancy.Level, encrytedChunk bool) (int, int) {
+// returns data shard, parity and stamp-carrier reference counts
+func ReferenceCount(span uint64, level redundancy.Level, encrytedChunk bool) (int, int, int) {
 	// assume we have a trie of size `span` then we can assume that all of
 	// the forks except for the last one on the right are of equal size
 	// this is due to how the splitter wraps levels.
@@ -88,5 +111,5 @@ func ReferenceCount(span uint64, level redundancy.Level, encrytedChunk bool) (in
 		parityAddresses = level.GetEncParities(dataShardAddresses)
 	}
 
-	return dataShardAddresses, parityAddresses
+	return dataShardAddresses, parityAddresses, level.CarrierRefs(dataShardAddresses + parityAddresses)
 }

@@ -26,13 +26,14 @@ import (
 )
 
 type joiner struct {
-	addr         swarm.Address
-	rootData     []byte
-	span         int64
-	off          int64
-	refLength    int
-	rootParity   int
-	maxBranching int // maximum branching in an intermediate chunk
+	addr            swarm.Address
+	rootData        []byte
+	span            int64
+	off             int64
+	refLength       int
+	rootParity      int
+	rootCarrierRefs int
+	maxBranching    int // maximum branching in an intermediate chunk
 
 	ctx         context.Context
 	decoders    *decoderCache
@@ -83,7 +84,7 @@ func (g *decoderCache) createRemoveCallback(key string) func(error) {
 }
 
 // GetOrCreate returns a decoder for the given chunk address
-func (g *decoderCache) GetOrCreate(addrs []swarm.Address, shardCnt int) storage.Getter {
+func (g *decoderCache) GetOrCreate(addrs, carrierAddrs []swarm.Address, shardCnt int) storage.Getter {
 	// since a recovery decoder is not allowed, simply return the underlying netstore
 	if g.config.Strict && g.config.Strategy == getter.NONE {
 		return g.fetcher
@@ -112,7 +113,7 @@ func (g *decoderCache) GetOrCreate(addrs []swarm.Address, shardCnt int) storage.
 				if ok && d != nil {
 					return d
 				}
-				d = getter.New(addrs, shardCnt, g.fetcher, g.putter, decoderCallback, g.config)
+				d = getter.New(addrs, carrierAddrs, shardCnt, g.fetcher, g.putter, decoderCallback, g.config)
 				g.cache[key] = d
 				return d
 			}
@@ -123,7 +124,7 @@ func (g *decoderCache) GetOrCreate(addrs []swarm.Address, shardCnt int) storage.
 	}
 
 	removeCallback := g.createRemoveCallback(key)
-	d = getter.New(addrs, shardCnt, g.fetcher, g.putter, removeCallback, g.config)
+	d = getter.New(addrs, carrierAddrs, shardCnt, g.fetcher, g.putter, removeCallback, g.config)
 	g.cache[key] = d
 	return d
 }
@@ -152,6 +153,7 @@ func NewJoiner(ctx context.Context, g storage.Getter, putter storage.Putter, add
 	encryption := refLength == encryption.ReferenceSize
 	rLevel, span := chunkToSpan(chunkData)
 	rootParity := 0
+	rootCarrierRefs := 0
 	maxBranching := swarm.ChunkSize / refLength
 	spanFn := func(data []byte) (redundancy.Level, int64) {
 		return 0, int64(bmt.LengthFromSpan(data[:swarm.SpanSize]))
@@ -162,8 +164,9 @@ func NewJoiner(ctx context.Context, g storage.Getter, putter storage.Putter, add
 	}
 	// override stuff if root chunk has redundancy
 	if rLevel != redundancy.NONE {
-		_, parities := file.ReferenceCount(uint64(span), rLevel, encryption)
+		_, parities, carrierRefs := file.ReferenceCount(uint64(span), rLevel, encryption)
 		rootParity = parities
+		rootCarrierRefs = carrierRefs
 
 		spanFn = chunkToSpan
 		if encryption {
@@ -178,15 +181,16 @@ func NewJoiner(ctx context.Context, g storage.Getter, putter storage.Putter, add
 	}
 
 	j := &joiner{
-		addr:         rootChunk.Address(),
-		refLength:    refLength,
-		ctx:          ctx,
-		decoders:     NewDecoderCache(g, putter, conf),
-		span:         span,
-		rootData:     rootData,
-		rootParity:   rootParity,
-		maxBranching: maxBranching,
-		chunkToSpan:  spanFn,
+		addr:            rootChunk.Address(),
+		refLength:       refLength,
+		ctx:             ctx,
+		decoders:        NewDecoderCache(g, putter, conf),
+		span:            span,
+		rootData:        rootData,
+		rootParity:      rootParity,
+		rootCarrierRefs: rootCarrierRefs,
+		maxBranching:    maxBranching,
+		chunkToSpan:     spanFn,
 	}
 
 	return j, span, nil
@@ -213,7 +217,7 @@ func (j *joiner) ReadAt(buffer []byte, off int64) (read int, err error) {
 	readLen := min(int64(cap(buffer)), j.span-off)
 	var bytesRead int64
 	var eg errgroup.Group
-	j.readAtOffset(buffer, j.rootData, 0, j.span, off, 0, readLen, &bytesRead, j.rootParity, &eg)
+	j.readAtOffset(buffer, j.rootData, 0, j.span, off, 0, readLen, &bytesRead, j.rootParity, j.rootCarrierRefs, &eg)
 
 	err = eg.Wait()
 	if err != nil {
@@ -229,7 +233,7 @@ func (j *joiner) readAtOffset(
 	b, data []byte,
 	cur, subTrieSize, off, bufferOffset, bytesToRead int64,
 	bytesRead *int64,
-	parity int,
+	parity, carrierRefs int,
 	eg *errgroup.Group,
 ) {
 	dataLen := int64(len(data))
@@ -271,15 +275,15 @@ func (j *joiner) readAtOffset(
 		return
 	}
 
-	addrs, shardCnt := file.ChunkAddresses(data[:pSize], parity, j.refLength)
-	g := store.New(j.decoders.GetOrCreate(addrs, shardCnt))
+	addrs, shardCnt := file.ChunkAddresses(data[:pSize], parity, carrierRefs, j.refLength)
+	g := store.New(j.decoders.GetOrCreate(addrs, file.CarrierAddresses(data[:pSize], carrierRefs), shardCnt))
 	for cursor := 0; cursor < len(data); cursor += j.refLength {
 		if bytesToRead == 0 {
 			break
 		}
 
 		// fast forward the cursor
-		sec := j.subtrieSection(cursor, pSize, parity, subTrieSize)
+		sec := j.subtrieSection(cursor, pSize, parity, carrierRefs, subTrieSize)
 		if cur+sec <= off {
 			cur += sec
 			continue
@@ -305,13 +309,13 @@ func (j *joiner) readAtOffset(
 
 				chunkData := ch.Data()[8:]
 				subtrieLevel, subtrieSpan := j.chunkToSpan(ch.Data())
-				_, subtrieParity := file.ReferenceCount(uint64(subtrieSpan), subtrieLevel, j.refLength == encryption.ReferenceSize)
+				_, subtrieParity, subtrieCarriers := file.ReferenceCount(uint64(subtrieSpan), subtrieLevel, j.refLength == encryption.ReferenceSize)
 
 				if subtrieSpan > subtrieSpanLimit {
 					return ErrMalformedTrie
 				}
 
-				j.readAtOffset(b, chunkData, cur, subtrieSpan, off, bufferOffset, currentReadSize, bytesRead, subtrieParity, eg)
+				j.readAtOffset(b, chunkData, cur, subtrieSpan, off, bufferOffset, currentReadSize, bytesRead, subtrieParity, subtrieCarriers, eg)
 				return nil
 			}))
 		}(addr, b, cur, subtrieSpan, off, bufferOffset, currentReadSize, subtrieSpanLimit)
@@ -323,13 +327,14 @@ func (j *joiner) readAtOffset(
 	}
 }
 
-// getShards returns the effective reference number respective to the intermediate chunk payload length and its parities
-func (j *joiner) getShards(payloadSize, parities int) int {
-	return (payloadSize - parities*swarm.HashSize) / j.refLength
+// getShards returns the effective reference number respective to the intermediate chunk payload length,
+// its parities and its trailing stamp-carrier references
+func (j *joiner) getShards(payloadSize, parities, carrierRefs int) int {
+	return (payloadSize - (parities+carrierRefs)*swarm.HashSize) / j.refLength
 }
 
 // brute-forces the subtrie size for each of the sections in this intermediate chunk
-func (j *joiner) subtrieSection(startIdx, payloadSize, parities int, subtrieSize int64) int64 {
+func (j *joiner) subtrieSection(startIdx, payloadSize, parities, carrierRefs int, subtrieSize int64) int64 {
 	// assume we have a trie of size `y` then we can assume that all of
 	// the forks except for the last one on the right are of equal size
 	// this is due to how the splitter wraps levels.
@@ -338,8 +343,8 @@ func (j *joiner) subtrieSection(startIdx, payloadSize, parities int, subtrieSize
 	// where y is the size of the subtrie, refs are the number of references
 	// x is constant (the brute forced value) and l is the size of the last subtrie
 	var (
-		refs       = int64(j.getShards(payloadSize, parities)) // how many effective references in the intermediate chunk
-		branching  = int64(j.maxBranching)                     // branching factor is chunkSize divided by reference length
+		refs       = int64(j.getShards(payloadSize, parities, carrierRefs)) // how many effective references in the intermediate chunk
+		branching  = int64(j.maxBranching)                                  // branching factor is chunkSize divided by reference length
 		branchSize = int64(swarm.ChunkSize)
 	)
 	for {
@@ -395,10 +400,10 @@ func (j *joiner) IterateChunkAddresses(fn swarm.AddressIterFunc) error {
 		return err
 	}
 
-	return j.processChunkAddresses(j.ctx, fn, j.rootData, j.span, j.rootParity)
+	return j.processChunkAddresses(j.ctx, fn, j.rootData, j.span, j.rootParity, j.rootCarrierRefs)
 }
 
-func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIterFunc, data []byte, subTrieSize int64, parity int) error {
+func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIterFunc, data []byte, subTrieSize int64, parity, carrierRefs int) error {
 	// we are at a leaf data chunk
 	if subTrieSize <= int64(len(data)) {
 		return nil
@@ -414,8 +419,8 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 	if err != nil {
 		return err
 	}
-	addrs, shardCnt := file.ChunkAddresses(data[:eSize], parity, j.refLength)
-	g := store.New(j.decoders.GetOrCreate(addrs, shardCnt))
+	addrs, shardCnt := file.ChunkAddresses(data[:eSize], parity, carrierRefs, j.refLength)
+	g := store.New(j.decoders.GetOrCreate(addrs, file.CarrierAddresses(data[:eSize], carrierRefs), shardCnt))
 	for i, addr := range addrs {
 		if err := fn(addr); err != nil {
 			return err
@@ -424,7 +429,7 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 		if j.refLength == encryption.ReferenceSize {
 			cursor += swarm.HashSize * min(i, shardCnt)
 		}
-		sec := j.subtrieSection(cursor, eSize, parity, subTrieSize)
+		sec := j.subtrieSection(cursor, eSize, parity, carrierRefs, subTrieSize)
 		if sec <= swarm.ChunkSize {
 			continue
 		}
@@ -445,10 +450,18 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 
 		chunkData := ch.Data()[8:]
 		subtrieLevel, subtrieSpan := j.chunkToSpan(ch.Data())
-		_, parities := file.ReferenceCount(uint64(subtrieSpan), subtrieLevel, j.refLength != swarm.HashSize)
+		_, parities, carriers := file.ReferenceCount(uint64(subtrieSpan), subtrieLevel, j.refLength != swarm.HashSize)
 
-		err = j.processChunkAddresses(ctx, fn, chunkData, subtrieSpan, parities)
+		err = j.processChunkAddresses(ctx, fn, chunkData, subtrieSpan, parities, carriers)
 		if err != nil {
+			return err
+		}
+	}
+
+	// stamp carriers are leaves by construction, they are reported but never
+	// descended into (spec §6)
+	for _, addr := range file.CarrierAddresses(data[:eSize], carrierRefs) {
+		if err := fn(addr); err != nil {
 			return err
 		}
 	}

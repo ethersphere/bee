@@ -19,6 +19,7 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy/getter"
+	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	inmem "github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
@@ -111,7 +112,7 @@ func testDecodingRACE(t *testing.T, bufSize, shardCnt, erasureCnt int) {
 		t.Skip("no data shard erased")
 	}
 
-	g := getter.New(addrs, shardCnt, store, store, func(error) {}, getter.DefaultConfig)
+	g := getter.New(addrs, nil, shardCnt, store, store, func(error) {}, getter.DefaultConfig)
 
 	parityCnt := len(buf) - shardCnt
 	_, err := g.Get(context.Background(), addr)
@@ -174,7 +175,7 @@ func testDecodingFallback(t *testing.T, s getter.Strategy, strict bool) {
 		Strict:       strict,
 		FetchTimeout: strategyTimeout / 2,
 	}
-	g := getter.New(addrs, shardCnt, store, store, func(error) {}, conf)
+	g := getter.New(addrs, nil, shardCnt, store, store, func(error) {}, conf)
 
 	// launch delayed and erased chunk retrieval
 	wg := sync.WaitGroup{}
@@ -259,6 +260,61 @@ func testDecodingFallback(t *testing.T, s getter.Strategy, strict bool) {
 		if !strict || s != getter.NONE {
 			t.Fatal("unexpected timeout using strategy", s, "with strict", strict)
 		}
+	}
+}
+
+// TestRecoverParityShard checks that a missing parity chunk attempted by the
+// RACE strategy is reconstructed and saved back to the store.
+func TestRecoverParityShard(t *testing.T) {
+	t.Parallel()
+
+	shardCnt, parityCnt := 4, 2
+	store := mockstorer.NewDelayedStore(inmem.New())
+	buf := make([][]byte, shardCnt+parityCnt)
+	addrs := initData(t, buf, shardCnt, store)
+	// remove one parity chunk from the store
+	victim := addrs[shardCnt] // first parity shard
+	if err := store.Delete(context.Background(), victim); err != nil {
+		t.Fatal(err)
+	}
+
+	// Delay every shard except the victim. Under RACE, all shard fetches
+	// (data and parity) are launched as goroutines, and the strategy returns
+	// as soon as shardCnt of them succeed, canceling the rest. If the missing
+	// shard's fetch goroutine hasn't been scheduled yet at that point, it
+	// never even attempts the fetch (see fetch's initRecovery check), so it
+	// would not be picked up by missingAttemptedParityShards. Delaying the
+	// shards that will succeed guarantees every fetch goroutine - including
+	// the one for the missing shard, which fails immediately - gets to run
+	// and mark itself in-flight well before the strategy can conclude.
+	for i, addr := range addrs {
+		if i == shardCnt {
+			continue // the victim; it fails immediately, no delay needed
+		}
+		store.Delay(addr, 100*time.Millisecond)
+	}
+
+	conf := getter.Config{
+		Strategy:     getter.RACE,
+		FetchTimeout: 500 * time.Millisecond,
+		Logger:       log.Noop,
+	}
+	// the remove callback fires when the prefetch/recovery cycle finishes
+	done := make(chan struct{})
+	g := getter.New(addrs, nil, shardCnt, store, store, func(error) { close(done) }, conf)
+
+	// fetching any data shard exercises the getter; recovery runs in prefetch
+	if _, err := g.Get(context.Background(), addrs[0]); err != nil {
+		t.Fatal(err)
+	}
+	<-done
+
+	ch, err := store.Get(context.Background(), victim)
+	if err != nil {
+		t.Fatalf("parity shard was not reconstructed and saved: %v", err)
+	}
+	if !bytes.Equal(ch.Data(), buf[shardCnt]) {
+		t.Fatal("reconstructed parity shard has incorrect data")
 	}
 }
 

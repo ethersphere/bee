@@ -12,6 +12,7 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
+	"github.com/ethersphere/bee/v2/pkg/file/redundancy/stampcarrier"
 	"github.com/ethersphere/bee/v2/pkg/replicas"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -37,9 +38,11 @@ type hashTrieWriter struct {
 	effectiveChunkCounters []uint8        // counts the effective  chunk references in intermediate chunks. key is the chunk level.
 	maxChildrenChunks      uint8          // maximum number of chunk references in intermediate chunks.
 	replicaPutter          storage.Putter // putter to save dispersed replicas of the root chunk
+	stamps                 [][][]byte     // marshaled postage stamps of the children of each level, index-aligned with the references written to that level
+	carrierPipelineFn      pipeline.PipelineFunc
 }
 
-func NewHashTrieWriter(ctx context.Context, refLen int, rParams redundancy.RedundancyParams, pipelineFn pipeline.PipelineFunc, replicaPutter storage.Putter, rLevel redundancy.Level) pipeline.ChainWriter {
+func NewHashTrieWriter(ctx context.Context, refLen int, rParams redundancy.RedundancyParams, pipelineFn, carrierPipelineFn pipeline.PipelineFunc, replicaPutter storage.Putter, rLevel redundancy.Level) pipeline.ChainWriter {
 	h := &hashTrieWriter{
 		ctx:                    ctx,
 		refSize:                refLen,
@@ -47,13 +50,15 @@ func NewHashTrieWriter(ctx context.Context, refLen int, rParams redundancy.Redun
 		buffer:                 make([]byte, swarm.ChunkWithSpanSize*9*2), // double size as temp workaround for weak calculation of needed buffer space
 		rParams:                rParams,
 		pipelineFn:             pipelineFn,
+		carrierPipelineFn:      carrierPipelineFn,
 		chunkCounters:          make([]uint8, 9),
 		effectiveChunkCounters: make([]uint8, 9),
 		maxChildrenChunks:      uint8(rParams.MaxShards() + rParams.Parities(rParams.MaxShards())),
 		replicaPutter:          replicas.NewPutter(replicaPutter, rLevel),
+		stamps:                 make([][][]byte, 9),
 	}
-	h.parityChunkFn = func(level int, span, address []byte) error {
-		return h.writeToIntermediateLevel(level, true, span, address, []byte{})
+	h.parityChunkFn = func(level int, span, address, stamp []byte) error {
+		return h.writeToIntermediateLevel(level, true, span, address, []byte{}, stamp)
 	}
 
 	return h
@@ -71,13 +76,13 @@ func (h *hashTrieWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
 		return errTrieFull
 	}
 	if h.rParams.Level() == redundancy.NONE {
-		return h.writeToIntermediateLevel(1, false, p.Span, p.Ref, p.Key)
+		return h.writeToIntermediateLevel(1, false, p.Span, p.Ref, p.Key, p.Stamp)
 	} else {
-		return h.writeToDataLevel(p.Span, p.Ref, p.Key, p.Data)
+		return h.writeToDataLevel(p.Span, p.Ref, p.Key, p.Data, p.Stamp)
 	}
 }
 
-func (h *hashTrieWriter) writeToIntermediateLevel(level int, parityChunk bool, span, ref, key []byte) error {
+func (h *hashTrieWriter) writeToIntermediateLevel(level int, parityChunk bool, span, ref, key, stamp []byte) error {
 	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(span)], span)
 	h.cursors[level] += len(span)
 	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(ref)], ref)
@@ -90,6 +95,10 @@ func (h *hashTrieWriter) writeToIntermediateLevel(level int, parityChunk bool, s
 		h.effectiveChunkCounters[level]++
 	}
 	h.chunkCounters[level]++
+	// record the child stamp so that it can be packed into the stamp carriers
+	// of this level when it gets wrapped. an unknown (nil) stamp still takes
+	// its slot to keep the recorded stamps index-aligned with the references.
+	h.stamps[level] = append(h.stamps[level], stamp)
 	if h.chunkCounters[level] == h.maxChildrenChunks {
 		// at this point the erasure coded chunks have been written
 		err := h.wrapFullLevel(level)
@@ -99,9 +108,9 @@ func (h *hashTrieWriter) writeToIntermediateLevel(level int, parityChunk bool, s
 }
 
 // writeToDataLevel caches data chunks and call writeToIntermediateLevel
-func (h *hashTrieWriter) writeToDataLevel(span, ref, key, data []byte) error {
+func (h *hashTrieWriter) writeToDataLevel(span, ref, key, data, stamp []byte) error {
 	// write dataChunks to the level above
-	err := h.writeToIntermediateLevel(1, false, span, ref, key)
+	err := h.writeToIntermediateLevel(1, false, span, ref, key, stamp)
 	if err != nil {
 		return err
 	}
@@ -144,6 +153,13 @@ func (h *hashTrieWriter) wrapFullLevel(level int) error {
 		hashes = append(hashes, hash...)
 		parities++
 	}
+	if h.rParams.Level() != redundancy.NONE {
+		carrierRefs, err := h.writeStampCarriers(level)
+		if err != nil {
+			return err
+		}
+		hashes = append(hashes, carrierRefs...)
+	}
 	spb := make([]byte, 8, 8+len(hashes))
 	binary.LittleEndian.PutUint64(spb, sp)
 	if parities > 0 {
@@ -160,7 +176,7 @@ func (h *hashTrieWriter) wrapFullLevel(level int) error {
 		return err
 	}
 
-	err = h.writeToIntermediateLevel(level+1, false, args.Span, args.Ref, args.Key)
+	err = h.writeToIntermediateLevel(level+1, false, args.Span, args.Ref, args.Key, args.Stamp)
 	if err != nil {
 		return err
 	}
@@ -174,10 +190,42 @@ func (h *hashTrieWriter) wrapFullLevel(level int) error {
 	// by setting the cursors to the cursors of one level above
 	h.cursors[level] = h.cursors[level+1]
 	h.chunkCounters[level], h.effectiveChunkCounters[level] = 0, 0
+	h.stamps[level] = nil
 	if level+1 == 8 {
 		h.full = true
 	}
 	return nil
+}
+
+// writeStampCarriers packs the collected child stamps of the level into
+// stamp carrier payloads (spec §4), erasure codes the group (c, 2), stores
+// all members as plain CACs and returns their concatenated 32-byte
+// references, ordered carriers first then group parities.
+func (h *hashTrieWriter) writeStampCarriers(level int) ([]byte, error) {
+	if len(h.stamps[level]) != int(h.chunkCounters[level]) {
+		return nil, fmt.Errorf("hashtrie: stamp count %d does not match child count %d on level %d",
+			len(h.stamps[level]), h.chunkCounters[level], level)
+	}
+	payloads, err := stampcarrier.Pack(h.stamps[level])
+	if err != nil {
+		return nil, err
+	}
+	parities, err := stampcarrier.EncodeGroup(payloads)
+	if err != nil {
+		return nil, err
+	}
+	var refs []byte
+	for _, payload := range append(payloads, parities...) {
+		span := make([]byte, swarm.SpanSize)
+		binary.LittleEndian.PutUint64(span, uint64(len(payload)))
+		writer := h.carrierPipelineFn()
+		args := pipeline.PipeWriteArgs{Data: append(span, payload...), Span: span}
+		if err := writer.ChainWrite(&args); err != nil {
+			return nil, err
+		}
+		refs = append(refs, args.Ref...)
+	}
+	return refs, nil
 }
 
 // Sum returns the Swarm merkle-root content-addressed hash
@@ -226,6 +274,10 @@ func (h *hashTrieWriter) Sum() ([]byte, error) {
 			// that might or might not have data. the eventual result is that the last
 			// hash generated will always be carried over to the last level (8), then returned.
 			h.cursors[i+1] = h.cursors[i]
+			// the carried over reference lands after the references already
+			// present on the next level, so its stamp does the same
+			h.stamps[i+1] = append(h.stamps[i+1], h.stamps[i]...)
+			h.stamps[i] = nil
 			// replace cached chunk to the level as well
 			err := h.rParams.ElevateCarrierChunk(i-1, h.parityChunkFn)
 			if err != nil {

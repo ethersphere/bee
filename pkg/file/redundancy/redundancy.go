@@ -13,7 +13,7 @@ import (
 )
 
 // ParityChunkCallback is called when a new parity chunk has been created
-type ParityChunkCallback func(level int, span, address []byte) error
+type ParityChunkCallback func(level int, span, address, stamp []byte) error
 
 type RedundancyParams interface {
 	MaxShards() int // returns the maximum data shard number being used in an intermediate chunk
@@ -160,7 +160,7 @@ func (p *Params) encode(chunkLevel int, callback ParityChunkCallback) error {
 			return err
 		}
 
-		err = callback(chunkLevel+1, span, args.Ref)
+		err = callback(chunkLevel+1, span, args.Ref, args.Stamp)
 		if err != nil {
 			return err
 		}

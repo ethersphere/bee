@@ -24,6 +24,7 @@ type (
 	modeKey         struct{}
 	fetchTimeoutKey struct{}
 	loggerKey       struct{}
+	batchOwnerKey   struct{}
 	Strategy        = int
 )
 
@@ -33,6 +34,10 @@ type Config struct {
 	Strict       bool
 	FetchTimeout time.Duration
 	Logger       log.Logger
+	// BatchOwnerFn resolves a postage batch ID to the batch owner's ethereum
+	// address for validating recovered stamps. When nil, recovered chunks are
+	// saved unstamped.
+	BatchOwnerFn func(batchID []byte) ([]byte, error)
 }
 
 const (
@@ -82,6 +87,12 @@ func NewConfigFromContext(ctx context.Context, def Config) (conf Config, err err
 			return conf, e("strategy timeout")
 		}
 	}
+	if val := ctx.Value(batchOwnerKey{}); val != nil {
+		conf.BatchOwnerFn, ok = val.(func(batchID []byte) ([]byte, error))
+		if !ok {
+			return conf, e("batch owner resolver")
+		}
+	}
 
 	return conf, nil
 }
@@ -103,6 +114,11 @@ func SetFetchTimeout(ctx context.Context, timeout time.Duration) context.Context
 
 func SetLogger(ctx context.Context, l log.Logger) context.Context {
 	return context.WithValue(ctx, loggerKey{}, l)
+}
+
+// SetBatchOwnerFn sets the resolver used to validate recovered stamps
+func SetBatchOwnerFn(ctx context.Context, fn func(batchID []byte) ([]byte, error)) context.Context {
+	return context.WithValue(ctx, batchOwnerKey{}, fn)
 }
 
 // SetConfigInContext sets the config params in the context

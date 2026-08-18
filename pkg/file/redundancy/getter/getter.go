@@ -7,6 +7,7 @@ package getter
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"sync/atomic"
 
@@ -25,36 +26,43 @@ var (
 // if retrieves children of an intermediate chunk potentially using erasure decoding
 // it caches sibling chunks if erasure decoding started already
 type decoder struct {
-	fetcher      storage.Getter  // network retrieval interface to fetch chunks
-	putter       storage.Putter  // interface to local storage to save reconstructed chunks
-	addrs        []swarm.Address // all addresses of the intermediate chunk
-	inflight     []atomic.Bool   // locks to protect wait channels and RS buffer
-	cache        map[string]int  // map from chunk address shard position index
-	waits        []chan error    // wait channels for each chunk
-	rsbuf        [][]byte        // RS buffer of data + parity shards for erasure decoding
-	goodRecovery chan struct{}   // signal channel for successful retrieval of shardCnt chunks
-	badRecovery  chan struct{}   // signals that either the recovery has failed or not allowed to run
-	initRecovery chan struct{}   // signals that the recovery has been initialized
-	lastLen      int             // length of the last data chunk in the RS buffer
-	shardCnt     int             // number of data shards
-	parityCnt    int             // number of parity shards
-	mu           sync.Mutex      // mutex to protect buffer
-	fetchedCnt   atomic.Int32    // count successful retrievals
-	failedCnt    atomic.Int32    // count successful retrievals
-	remove       func(error)     // callback to remove decoder from decoders cache
-	config       Config          // configuration
-	logger       log.Logger
+	fetcher         storage.Getter          // network retrieval interface to fetch chunks
+	putter          storage.Putter          // interface to local storage to save reconstructed chunks
+	addrs           []swarm.Address         // all addresses of the intermediate chunk
+	carrierAddrs    []swarm.Address         // stamp-carrier group addresses of the intermediate chunk, used to recover the original stamps of reconstructed shards
+	inflight        []atomic.Bool           // locks to protect wait channels and RS buffer
+	fetchErrs       []atomic.Pointer[error] // per-shard fetch error, recorded before waits[i] closes on failure
+	cache           map[string]int          // map from chunk address shard position index
+	waits           []chan error            // wait channels for each chunk
+	rsbuf           [][]byte                // RS buffer of data + parity shards for erasure decoding
+	goodRecovery    chan struct{}           // signal channel for successful retrieval of shardCnt chunks
+	badRecovery     chan struct{}           // signals that either the recovery has failed or not allowed to run
+	initRecovery    chan struct{}           // signals that the recovery has been initialized
+	lastLen         int                     // length of the last data chunk in the RS buffer
+	shardCnt        int                     // number of data shards
+	parityCnt       int                     // number of parity shards
+	mu              sync.Mutex              // mutex to protect buffer
+	fetchedCnt      atomic.Int32            // count successful retrievals
+	failedCnt       atomic.Int32            // count successful retrievals
+	remove          func(error)             // callback to remove decoder from decoders cache
+	config          Config                  // configuration
+	carrierOnce     sync.Once               // guards the one-time carrier group load
+	carrierPayloads [][]byte                // reconstructed carrier payloads
+	carrierErr      error                   // carrier group load result
+	logger          log.Logger
 }
 
 // New returns a decoder object used to retrieve children of an intermediate chunk
-func New(addrs []swarm.Address, shardCnt int, g storage.Getter, p storage.Putter, remove func(error), conf Config) storage.Getter {
+func New(addrs, carrierAddrs []swarm.Address, shardCnt int, g storage.Getter, p storage.Putter, remove func(error), conf Config) storage.Getter {
 	size := len(addrs)
 
 	d := &decoder{
 		fetcher:      g,
 		putter:       p,
 		addrs:        addrs,
+		carrierAddrs: carrierAddrs,
 		inflight:     make([]atomic.Bool, size),
+		fetchErrs:    make([]atomic.Pointer[error], size),
 		cache:        make(map[string]int, size),
 		waits:        make([]chan error, size),
 		rsbuf:        make([][]byte, size),
@@ -146,6 +154,7 @@ func (g *decoder) fetch(ctx context.Context, i int, waitForRecovery bool) (err e
 		ch, err := g.fetcher.Get(fctx, g.addrs[i])
 		if err != nil {
 			g.failedCnt.Add(1)
+			g.fetchErrs[i].Store(&err)
 			close(g.waits[i])
 			return waitRecovery(err)
 		}
@@ -261,29 +270,41 @@ func (g *decoder) runStrategy(s Strategy) error {
 	return errStrategyFailed
 }
 
-// recover wraps the stages of data shard recovery:
-// 1. gather missing data shards
-// 2. decode using Reed-Solomon decoder
-// 3. save reconstructed chunks
+// recover wraps the stages of shard recovery:
+//  1. gather missing data shards and missing attempted parity shards
+//  2. decode using Reed-Solomon decoder
+//  3. save reconstructed chunks - data shard saves are fatal (as before this
+//     change), parity shard saves are best-effort so that a parity write
+//     failure never turns an otherwise-successful data recovery into an
+//     error (graceful degradation: this must never be worse than before
+//     parity reconstruction was added)
 func (g *decoder) recover() error {
-	// gather missing shards
-	m := g.missingDataShards()
-	if len(m) == 0 {
-		return nil // recovery is not needed as there are no missing data chunks
+	dm := g.missingDataShards()
+	pm := g.missingAttemptedParityShards()
+	if len(dm)+len(pm) == 0 {
+		return nil // recovery is not needed as there are no missing chunks
 	}
 
-	// decode using Reed-Solomon decoder
-	if err := g.decode(); err != nil {
+	if err := g.decode(len(pm) > 0); err != nil {
 		return err
 	}
 
-	// save chunks
-	return g.save(m)
+	// recover the original stamps before the buffer lock is taken: carrier
+	// retrieval goes through the network fetcher and must not block
+	// concurrent shard reads
+	stamps := g.recoverStamps(slices.Concat(dm, pm))
+
+	if err := g.save(dm, stamps); err != nil {
+		return err
+	}
+
+	g.saveParity(pm, stamps)
+	return nil
 }
 
-// decode uses Reed-Solomon erasure coding decoder to recover data shards
-// it must be called after shqrdcnt shards are retrieved
-func (g *decoder) decode() error {
+// decode uses the Reed-Solomon erasure coding decoder to recover shards.
+// it must be called after shardCnt shards are retrieved.
+func (g *decoder) decode(full bool) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
@@ -292,7 +313,9 @@ func (g *decoder) decode() error {
 		return err
 	}
 
-	// decode data
+	if full {
+		return enc.Reconstruct(g.rsbuf)
+	}
 	return enc.ReconstructData(g.rsbuf)
 }
 
@@ -314,6 +337,41 @@ func (g *decoder) missingDataShards() (m []int) {
 		if g.getData(i) == nil {
 			m = append(m, i)
 		}
+	}
+	return m
+}
+
+// missingAttemptedParityShards returns parity shard indexes whose retrieval
+// was attempted and genuinely failed (e.g. not found, or timed out via the
+// per-fetch FetchTimeout). Unattempted parity shards are not rebuilt, since
+// waiting on their wait channel could block forever - nothing closes it
+// unless fly(i) won the singleflight for that index.
+//
+// Under RACE, runStrategy's own `defer cancel()` fires as soon as shardCnt
+// shards have succeeded, canceling any still-inflight fetches for the
+// remaining shards (including parity ones, since those are fetched with
+// waitForRecovery=false and so never race fetch's separate initRecovery
+// cancellation goroutine). A parity fetch aborted this way closes its wait
+// channel with nil data and a context.Canceled error, even though the chunk
+// may well be present - that is not a genuine miss and must not trigger a
+// reconstruct+resave on every healthy read.
+func (g *decoder) missingAttemptedParityShards() (m []int) {
+	for i := g.shardCnt; i < len(g.addrs); i++ {
+		if !g.inflight[i].Load() {
+			continue
+		}
+		<-g.waits[i] // bounded: every attempted fetch closes its wait channel
+		if g.getData(i) != nil {
+			continue
+		}
+		errPtr := g.fetchErrs[i].Load()
+		if errPtr == nil || errors.Is(*errPtr, context.Canceled) {
+			// no recorded error, or the fetch was aborted because the
+			// strategy already concluded via other shards - not a genuine
+			// miss, so leave this parity shard alone
+			continue
+		}
+		m = append(m, i)
 	}
 	return m
 }
@@ -351,13 +409,39 @@ func (g *decoder) fly(i int) (success bool) {
 }
 
 // save iterate over reconstructed shards and puts the corresponding chunks to local storage
-func (g *decoder) save(missing []int) error {
+func (g *decoder) save(missing []int, stamps map[int]swarm.Stamp) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	for _, i := range missing {
-		if err := g.putter.Put(context.Background(), swarm.NewChunk(g.addrs[i], g.rsbuf[i])); err != nil {
+		if err := g.putter.Put(context.Background(), g.chunk(i, stamps)); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// saveParity best-effort persists reconstructed parity shards to local
+// storage. Unlike save, a write failure here is only logged, not returned,
+// so it can never turn an otherwise-successful data recovery into an error.
+func (g *decoder) saveParity(missing []int, stamps map[int]swarm.Stamp) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for _, i := range missing {
+		if err := g.putter.Put(context.Background(), g.chunk(i, stamps)); err != nil {
+			g.logger.Debug("parity save failed", "address", g.addrs[i], "error", err)
+		}
+	}
+}
+
+// chunk wraps the reconstructed shard i into a chunk, attaching its recovered
+// original stamp when the carrier group yielded a valid one (spec §7).
+// Without a recovered stamp the chunk is saved unstamped, exactly as before
+// stamp carriers existed.
+// it must be called under mutex protection
+func (g *decoder) chunk(i int, stamps map[int]swarm.Stamp) swarm.Chunk {
+	ch := swarm.NewChunk(g.addrs[i], g.rsbuf[i])
+	if stamp, ok := stamps[i]; ok {
+		ch = ch.WithStamp(stamp)
+	}
+	return ch
 }

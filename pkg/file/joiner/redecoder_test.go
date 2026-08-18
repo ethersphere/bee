@@ -90,7 +90,7 @@ func TestReDecoderFlow(t *testing.T) {
 	j := joiner.NewDecoderCache(netFetcher, mockStore, config)
 
 	// Step 1: Initializing decoder and triggering recovery
-	decoder := j.GetOrCreate(addresses, dataShardCount)
+	decoder := j.GetOrCreate(addresses, nil, dataShardCount)
 	if decoder == nil {
 		t.Fatal("Failed to create decoder")
 	}
@@ -133,7 +133,7 @@ func TestReDecoderFlow(t *testing.T) {
 	}
 
 	// Step 3: Testing ReDecoder fallback
-	newDecoder := j.GetOrCreate(addresses, dataShardCount)
+	newDecoder := j.GetOrCreate(addresses, nil, dataShardCount)
 	if newDecoder == nil {
 		t.Fatal("Failed to create ReDecoder")
 	}

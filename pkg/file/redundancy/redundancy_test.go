@@ -101,7 +101,7 @@ func TestEncode(t *testing.T) {
 					// checks parity pipelinecalls are valid
 
 					parityCount := 0
-					parityCallback := func(level int, span, address []byte) error {
+					parityCallback := func(level int, span, address, stamp []byte) error {
 						parityCount++
 						return nil
 					}
