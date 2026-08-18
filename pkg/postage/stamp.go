@@ -228,6 +228,20 @@ func (s *Stamp) Valid(chunkAddr swarm.Address, ownerAddr []byte, depth, bucketDe
 	return nil
 }
 
+// ValidBinding checks that the stamp's signature binds it to the given chunk
+// address and was issued by the given batch owner. Unlike Valid it performs
+// no bucket or index checks, which need on-chain batch parameters.
+func (s *Stamp) ValidBinding(chunkAddr swarm.Address, ownerAddr []byte) error {
+	signerAddr, err := RecoverBatchOwner(chunkAddr, s)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(signerAddr, ownerAddr) {
+		return ErrOwnerMismatch
+	}
+	return nil
+}
+
 // RecoverBatchOwner returns ethereum address that signed postage batch of supplied stamp.
 func RecoverBatchOwner(chunkAddr swarm.Address, stamp swarm.Stamp) ([]byte, error) {
 	toSign, err := ToSignDigest(chunkAddr.Bytes(), stamp.BatchID(), stamp.Index(), stamp.Timestamp())

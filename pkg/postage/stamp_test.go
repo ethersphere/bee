@@ -146,3 +146,35 @@ func TestValidStamp(t *testing.T) {
 		t.Fatalf("invalid batch immutablility added on chunk exp %t got %t", b.Immutable, ch.Immutable())
 	}
 }
+
+// TestValidBinding tests that ValidBinding accepts a stamp signed by the
+// owner for the right chunk address and rejects everything else.
+func TestValidBinding(t *testing.T) {
+	privKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, err := crypto.NewEthereumAddress(privKey.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := crypto.NewDefaultSigner(privKey)
+	ch := chunktesting.GenerateTestRandomChunk()
+	stamp := postagetesting.MustNewValidStamp(signer, ch.Address())
+
+	if err := stamp.ValidBinding(ch.Address(), owner); err != nil {
+		t.Fatalf("expected valid binding: %v", err)
+	}
+
+	// wrong chunk address
+	other := chunktesting.GenerateTestRandomChunk()
+	if err := stamp.ValidBinding(other.Address(), owner); err == nil {
+		t.Fatal("expected error for wrong chunk address")
+	}
+
+	// wrong owner
+	wrongOwner := make([]byte, len(owner))
+	if err := stamp.ValidBinding(ch.Address(), wrongOwner); err == nil {
+		t.Fatal("expected error for wrong owner")
+	}
+}
