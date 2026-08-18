@@ -692,7 +692,8 @@ func TestBroadcastPeersSkipsSelf(t *testing.T) {
 
 	// Try to broadcast: peer1, clientAddress (self), and another peer.
 	// Pad to CoalesceThreshold so the message is sent immediately.
-	peersIncludingSelf := []swarm.Address{bzzAddr1.Overlay, clientAddress, peer1}
+	peersIncludingSelf := make([]swarm.Address, 0, hive.CoalesceThreshold)
+	peersIncludingSelf = append(peersIncludingSelf, bzzAddr1.Overlay, clientAddress, peer1)
 	peersIncludingSelf = append(peersIncludingSelf, addTestOverlays(t, addressbook, networkID, hive.CoalesceThreshold-len(peersIncludingSelf), 5000)...)
 
 	err = client.BroadcastPeers(context.Background(), serverAddress, peersIncludingSelf...)
@@ -817,7 +818,8 @@ func TestReceivePeersSkipsSelf(t *testing.T) {
 
 	// Client broadcasts: valid peer and server's own address.
 	// Pad to CoalesceThreshold so the message is sent immediately.
-	peersIncludingSelf := []swarm.Address{bzzAddr1.Overlay, serverAddress}
+	peersIncludingSelf := make([]swarm.Address, 0, hive.CoalesceThreshold)
+	peersIncludingSelf = append(peersIncludingSelf, bzzAddr1.Overlay, serverAddress)
 	peersIncludingSelf = append(peersIncludingSelf, addTestOverlays(t, addressbook, networkID, hive.CoalesceThreshold-len(peersIncludingSelf), 6000)...)
 
 	err = client.BroadcastPeers(context.Background(), serverAddress, peersIncludingSelf...)
@@ -1393,7 +1395,8 @@ func TestBroadcastSkipsLegacyZeroRecord(t *testing.T) {
 	t.Cleanup(func() { _ = client.Close() })
 
 	addressee := swarm.RandAddress(t)
-	peers := []swarm.Address{legacyPeer.overlay, modernPeer.overlay}
+	peers := make([]swarm.Address, 0, hive.CoalesceThreshold)
+	peers = append(peers, legacyPeer.overlay, modernPeer.overlay)
 	peers = append(peers, addTestOverlays(t, clientBook, networkID, hive.CoalesceThreshold-len(peers), 7000)...)
 	if err := client.BroadcastPeers(context.Background(), addressee, peers...); err != nil {
 		t.Fatalf("BroadcastPeers: %v", err)
