@@ -171,22 +171,23 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, socAddress swarm.Address
 	defer s.wsWg.Done()
 
 	var (
-		dataC       = make(chan []byte, 2) // small buffer to decouple producer/consumer
-		gone        = make(chan struct{})
-		slow        = make(chan struct{})
-		slowOnce    sync.Once
-		ticker      = time.NewTicker(s.WsPingPeriod)
-		ctx, cancel = context.WithCancel(context.Background()) // for storing cached chunks
-		err         error
+		dataC    = make(chan []byte, 2) // small buffer to decouple producer/consumer
+		gone     = make(chan struct{})
+		slow     = make(chan struct{})
+		slowOnce sync.Once
+		ticker   = time.NewTicker(s.WsPingPeriod)
+		err      error
 	)
 	defer func() {
-		cancel()
 		ticker.Stop()
 		_ = conn.Close()
 	}()
 	cleanup := s.gsoc.Subscribe(socAddress, func(c *soc.SOC) {
 		if cacheWrappedChunk {
-			if err := s.storer.Cache().Put(ctx, c.WrappedChunk()); err != nil {
+			// Caching is a node-local side effect independent of this
+			// subscriber's connection, so it must not be aborted just
+			// because the websocket closes mid-write.
+			if err := s.storer.Cache().Put(context.Background(), c.WrappedChunk()); err != nil {
 				s.logger.Debug("gsoc ws: cache wrapped chunk failed", "error", err)
 			}
 		}
