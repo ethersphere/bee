@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
@@ -165,6 +166,8 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, socAddress swarm.Address
 	var (
 		dataC       = make(chan []byte, 2) // small buffer to decouple producer/consumer
 		gone        = make(chan struct{})
+		slow        = make(chan struct{})
+		slowOnce    sync.Once
 		ticker      = time.NewTicker(s.WsPingPeriod)
 		ctx, cancel = context.WithCancel(context.Background()) // for storing cached chunks
 		err         error
@@ -190,16 +193,14 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, socAddress swarm.Address
 		select {
 		case dataC <- b:
 		case <-gone:
-			return
+		case <-slow:
 		case <-s.quit:
-			return
 		default:
+			// The connection writer is single-threaded in the main loop below;
+			// only signal it here instead of writing/closing the conn from this
+			// callback goroutine, which can run concurrently with the writer.
 			s.logger.Warning("gsoc ws: slow consumer, closing connection")
-			_ = conn.WriteControl(websocket.CloseMessage,
-				websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "slow consumer"),
-				time.Now().Add(writeDeadline))
-			_ = conn.Close()
-			return
+			slowOnce.Do(func() { close(slow) })
 		}
 	})
 
@@ -240,6 +241,16 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, socAddress swarm.Address
 			return
 		case <-gone:
 			// client gone
+			return
+		case <-slow:
+			err = conn.SetWriteDeadline(time.Now().Add(writeDeadline))
+			if err != nil {
+				s.logger.Debug("gsoc ws: set write deadline failed", "error", err)
+				return
+			}
+			_ = conn.WriteControl(websocket.CloseMessage,
+				websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "slow consumer"),
+				time.Now().Add(writeDeadline))
 			return
 		case <-ticker.C:
 			err = conn.SetWriteDeadline(time.Now().Add(writeDeadline))
