@@ -206,6 +206,43 @@ func TestGsocWebsocketSocFields(t *testing.T) {
 	}
 }
 
+// TestGsocWebsocketSocFieldsDeduplication verifies that repeated field names in
+// the Swarm-Soc-Fields header are de-duplicated, keeping only the first
+// occurrence, instead of serializing the same field multiple times.
+func TestGsocWebsocketSocFieldsDeduplication(t *testing.T) {
+	t.Parallel()
+
+	var (
+		id                  = make([]byte, 32)
+		headers             = http.Header{api.SwarmSocFieldsHeader: []string{"payload,payload,identifier,payload,identifier"}}
+		g, cl, signer, _, _ = newGsocTestWithOpts(t, id, 0, headers)
+		respC               = make(chan error, 1)
+		payload             = []byte("Simplicity is the ultimate sophistication.")
+	)
+
+	err := cl.SetReadDeadline(time.Now().Add(longTimeout))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cl.SetReadLimit(swarm.ChunkSize)
+
+	ch, _ := cac.New(payload)
+	socCh := soc.New(id, ch)
+	signedCh, _ := socCh.Sign(signer)
+	socCh, _ = soc.FromChunk(signedCh)
+	g.Handle(socCh)
+
+	// each requested field must appear exactly once, in first-occurrence order
+	expected := make([]byte, 0, len(payload)+len(id))
+	expected = append(expected, payload...)
+	expected = append(expected, id...)
+
+	go expectMessage(t, cl, respC, expected)
+	if err := <-respC; err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestGsocWebsocketCacheWrappedChunk verifies that the Swarm-Cache-Wrapped-Chunk
 // header causes the wrapped chunk to be stored in the cache so that it can be
 // resolved through the bytes endpoint.

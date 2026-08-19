@@ -55,14 +55,17 @@ const maxSocFieldsSize = swarm.SocMaxChunkSize +
 
 // parseSocFields parses the SwarmSocFieldsHeader value into a list of SOC field
 // identifiers. When the header is empty it defaults to the payload field only,
-// which preserves backward compatibility.
+// which preserves backward compatibility. Duplicate fields are dropped, keeping
+// the first occurrence, so the returned slice never exceeds len(validSocFields)
+// entries regardless of how many times a field is repeated in the header.
 func parseSocFields(header string) ([]string, error) {
 	if strings.TrimSpace(header) == "" {
 		return []string{socFieldPayload}, nil
 	}
 
+	seen := make(map[string]bool, len(validSocFields))
 	parts := strings.Split(header, ",")
-	fields := make([]string, 0, len(parts))
+	fields := make([]string, 0, len(validSocFields))
 	for _, p := range parts {
 		f := strings.ToLower(strings.TrimSpace(p))
 		if f == "" {
@@ -71,6 +74,10 @@ func parseSocFields(header string) ([]string, error) {
 		if !slices.Contains(validSocFields, f) {
 			return nil, fmt.Errorf("unknown soc field: %q", p)
 		}
+		if seen[f] {
+			continue
+		}
+		seen[f] = true
 		fields = append(fields, f)
 	}
 	if len(fields) == 0 {
