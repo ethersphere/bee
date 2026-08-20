@@ -5,6 +5,8 @@
 package libp2p
 
 import (
+	"strings"
+
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	ma "github.com/multiformats/go-multiaddr"
@@ -14,7 +16,19 @@ import (
 
 const (
 	connectionTransportLabelName = "transport"
-	connectionTransportHelp      = "The 'transport' label is one of: tcp, ws, wss, quic-v1, quic, unknown."
+	connectionPublicLabelName    = "public"
+)
+
+var (
+	transportLabelValues = []string{
+		bzz.TransportTCP.String(),
+		bzz.TransportWS.String(),
+		bzz.TransportWSS.String(),
+		bzz.TransportQUICV1.String(),
+		bzz.TransportQUIC.String(),
+		bzz.TransportUnknown.String(),
+	}
+	publicLabelValues = []string{"true", "false"}
 )
 
 type metrics struct {
@@ -23,8 +37,6 @@ type metrics struct {
 	// using reflection
 	CreatedConnectionCount     *prometheus.CounterVec
 	HandledConnectionCount     *prometheus.CounterVec
-	PublicAddressConnections   *prometheus.CounterVec
-	PrivateAddressConnections  *prometheus.CounterVec
 	CreatedStreamCount         prometheus.Counter
 	ClosedStreamCount          prometheus.Counter
 	StreamResetCount           prometheus.Counter
@@ -41,44 +53,41 @@ type metrics struct {
 
 func newMetrics() metrics {
 	subsystem := "libp2p"
+	transportHelp := "The 'transport' label is one of: " + strings.Join(transportLabelValues, ", ")
+	publicHelp := "The 'public' label is one of: " + strings.Join(publicLabelValues, ", ") + " (true = public remote multiaddr)."
+
+	createdConnectionCount := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "created_connection_count",
+			Help:      "Number of initiated outgoing libp2p connections. " + transportHelp,
+		},
+		[]string{connectionTransportLabelName},
+	)
+
+	handledConnectionCount := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "handled_connection_count",
+			Help:      "Number of handled incoming libp2p connections. " + transportHelp + " " + publicHelp,
+		},
+		[]string{connectionTransportLabelName, connectionPublicLabelName},
+	)
+
+	// Ensure all expected label value combinations exist as 0-valued series,
+	// so Grafana shows a flat line instead of "No Data".
+	for _, transport := range transportLabelValues {
+		createdConnectionCount.WithLabelValues(transport).Add(0)
+		for _, public := range publicLabelValues {
+			handledConnectionCount.WithLabelValues(transport, public).Add(0)
+		}
+	}
 
 	return metrics{
-		CreatedConnectionCount: prometheus.NewCounterVec(
-			prometheus.CounterOpts{
-				Namespace: m.Namespace,
-				Subsystem: subsystem,
-				Name:      "created_connection_count",
-				Help:      "Number of initiated outgoing libp2p connections. " + connectionTransportHelp,
-			},
-			[]string{connectionTransportLabelName},
-		),
-		HandledConnectionCount: prometheus.NewCounterVec(
-			prometheus.CounterOpts{
-				Namespace: m.Namespace,
-				Subsystem: subsystem,
-				Name:      "handled_connection_count",
-				Help:      "Number of handled incoming libp2p connections. " + connectionTransportHelp,
-			},
-			[]string{connectionTransportLabelName},
-		),
-		PublicAddressConnections: prometheus.NewCounterVec(
-			prometheus.CounterOpts{
-				Namespace: m.Namespace,
-				Subsystem: subsystem,
-				Name:      "public_address_connections_total",
-				Help:      "Number of libp2p connections whose remote multiaddr is a public address. " + connectionTransportHelp,
-			},
-			[]string{connectionTransportLabelName},
-		),
-		PrivateAddressConnections: prometheus.NewCounterVec(
-			prometheus.CounterOpts{
-				Namespace: m.Namespace,
-				Subsystem: subsystem,
-				Name:      "private_address_connections_total",
-				Help:      "Number of libp2p connections whose remote multiaddr is a private address. " + connectionTransportHelp,
-			},
-			[]string{connectionTransportLabelName},
-		),
+		CreatedConnectionCount: createdConnectionCount,
+		HandledConnectionCount: handledConnectionCount,
 		CreatedStreamCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
@@ -159,35 +168,15 @@ func (m metrics) incCreatedConnection(addr ma.Multiaddr) {
 }
 
 func (m metrics) observeHandledConnection(addr ma.Multiaddr) {
-	transport := connectionTransportLabel(addr)
-	m.HandledConnectionCount.WithLabelValues(transport).Inc()
+	public := "false"
 	if manet.IsPublicAddr(addr) {
-		m.PublicAddressConnections.WithLabelValues(transport).Inc()
-		return
+		public = "true"
 	}
-	m.PrivateAddressConnections.WithLabelValues(transport).Inc()
+	m.HandledConnectionCount.WithLabelValues(connectionTransportLabel(addr), public).Inc()
 }
 
-// connectionTransportLabel returns the Prometheus transport label for a connection
-// multiaddr. Live WSS connections are often encoded with the deprecated /wss
-// component rather than the /tls/.../ws form used in advertised AutoTLS addresses.
 func connectionTransportLabel(addr ma.Multiaddr) string {
-	if addr == nil {
-		return bzz.TransportUnknown.String()
-	}
-	if _, err := addr.ValueForProtocol(ma.P_WSS); err == nil {
-		return bzz.TransportWSS.String()
-	}
-	if t := bzz.ClassifyTransport(addr); t != bzz.TransportUnknown {
-		return t.String()
-	}
-	if _, err := addr.ValueForProtocol(ma.P_QUIC_V1); err == nil {
-		return "quic-v1"
-	}
-	if _, err := addr.ValueForProtocol(ma.P_QUIC); err == nil {
-		return "quic"
-	}
-	return bzz.TransportUnknown.String()
+	return bzz.ClassifyTransport(addr).String()
 }
 
 func (s *Service) Metrics() []prometheus.Collector {
