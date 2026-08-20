@@ -124,7 +124,7 @@ jobs:
           sudo mv beekeeper /usr/local/bin/beekeeper
       - name: Prepare local cluster
         run: |
-          timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet' ACTION=prepare
+          timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet' ACTION=prepare REGISTRY_PORT=5002
       - name: Set kube config
         run: |
           mkdir -p ~/.kube
@@ -243,7 +243,7 @@ jobs:
           mv bee-0 bee
       - name: Build image
         run: |
-          timeout ${TIMEOUT} make beelocal ACTION=build OPTS='ci skip-vet skip-push'
+          timeout ${TIMEOUT} make beelocal ACTION=build OPTS='ci skip-vet skip-push' REGISTRY_PORT=5002
       - name: Retag Docker image and push
         if: github.ref == 'refs/heads/master' && github.event.action != 'beekeeper' && success()
         run: |
