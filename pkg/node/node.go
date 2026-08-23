@@ -1224,7 +1224,16 @@ func NewBee(
 		stakingContractAddress = common.HexToAddress(o.StakingContractAddress)
 	}
 
-	stakingContract := staking.New(overlayEthAddress, stakingContractAddress, abiutil.MustParseABI(chainCfg.StakingABI), bzzTokenAddress, transactionService, common.BytesToHash(nonce), contractGasLimit, uint8(o.ReserveCapacityDoubling), chainCfg.IncentivesPriceOracleAddress)
+	stakingContractABI := abiutil.MustParseABI(chainCfg.StakingABI)
+	var stakingPriceOracleAddress common.Address
+	if chainEnabled {
+		stakingPriceOracleAddress, err = staking.GetPriceOracleAddress(ctx, stakingContractAddress, stakingContractABI, transactionService)
+		if err != nil {
+			return nil, fmt.Errorf("get staking price oracle address: %w", err)
+		}
+	}
+
+	stakingContract := staking.New(overlayEthAddress, stakingContractAddress, stakingContractABI, bzzTokenAddress, transactionService, common.BytesToHash(nonce), contractGasLimit, uint8(o.ReserveCapacityDoubling), stakingPriceOracleAddress)
 
 	if chainEnabled {
 

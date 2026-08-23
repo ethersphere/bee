@@ -21,13 +21,12 @@ type ChainConfig struct {
 	SwarmTokenSymbol       string
 
 	// Addresses.
-	StakingAddress               common.Address
-	PostageStampAddress          common.Address
-	RedistributionAddress        common.Address
-	IncentivesPriceOracleAddress common.Address // storage-incentives PriceOracle (postage / stake commitment)
-	SwapPriceOracleAddress       common.Address // Swap swear and swindle (S3) Contracts
-	CurrentFactoryAddress        common.Address
-	TokenContractAddress         common.Address
+	StakingAddress         common.Address
+	PostageStampAddress    common.Address
+	RedistributionAddress  common.Address
+	SwapPriceOracleAddress common.Address // Swap swear and swindle (S3) Contracts
+	CurrentFactoryAddress  common.Address
+	TokenContractAddress   common.Address
 
 	// ABIs.
 	StakingABI        string
@@ -60,13 +59,12 @@ var (
 		NativeTokenSymbol:      "ETH",
 		SwarmTokenSymbol:       "sBZZ",
 
-		StakingAddress:               common.HexToAddress(abi.TestnetStakingAddress),
-		PostageStampAddress:          common.HexToAddress(abi.TestnetPostageStampAddress),
-		RedistributionAddress:        common.HexToAddress(abi.TestnetRedistributionAddress),
-		IncentivesPriceOracleAddress: common.HexToAddress(abi.TestnetPriceOracleAddress),
-		SwapPriceOracleAddress:       common.HexToAddress("0x1814e9b3951Df0CB8e12b2bB99c5594514588936"),
-		CurrentFactoryAddress:        common.HexToAddress("0x0fF044F6bB4F684a5A149B46D7eC03ea659F98A1"),
-		TokenContractAddress:         common.HexToAddress(abi.TestnetBzzTokenAddress),
+		StakingAddress:         common.HexToAddress(abi.TestnetStakingAddress),
+		PostageStampAddress:    common.HexToAddress(abi.TestnetPostageStampAddress),
+		RedistributionAddress:  common.HexToAddress(abi.TestnetRedistributionAddress),
+		SwapPriceOracleAddress: common.HexToAddress("0x1814e9b3951Df0CB8e12b2bB99c5594514588936"),
+		CurrentFactoryAddress:  common.HexToAddress("0x0fF044F6bB4F684a5A149B46D7eC03ea659F98A1"),
+		TokenContractAddress:   common.HexToAddress(abi.TestnetBzzTokenAddress),
 
 		StakingABI:        abi.TestnetStakingABI,
 		PostageStampABI:   abi.TestnetPostageStampABI,
@@ -84,13 +82,12 @@ var (
 		NativeTokenSymbol:      "xDAI",
 		SwarmTokenSymbol:       "xBZZ",
 
-		StakingAddress:               common.HexToAddress(abi.MainnetStakingAddress),
-		PostageStampAddress:          common.HexToAddress(abi.MainnetPostageStampAddress),
-		RedistributionAddress:        common.HexToAddress(abi.MainnetRedistributionAddress),
-		IncentivesPriceOracleAddress: common.HexToAddress(abi.MainnetPriceOracleAddress),
-		SwapPriceOracleAddress:       common.HexToAddress("0xA57A50a831B31c904A770edBCb706E03afCdbd94"),
-		CurrentFactoryAddress:        common.HexToAddress("0xc2d5a532cf69aa9a1378737d8ccdef884b6e7420"),
-		TokenContractAddress:         common.HexToAddress(abi.MainnetBzzTokenAddress),
+		StakingAddress:         common.HexToAddress(abi.MainnetStakingAddress),
+		PostageStampAddress:    common.HexToAddress(abi.MainnetPostageStampAddress),
+		RedistributionAddress:  common.HexToAddress(abi.MainnetRedistributionAddress),
+		SwapPriceOracleAddress: common.HexToAddress("0xA57A50a831B31c904A770edBCb706E03afCdbd94"),
+		CurrentFactoryAddress:  common.HexToAddress("0xc2d5a532cf69aa9a1378737d8ccdef884b6e7420"),
+		TokenContractAddress:   common.HexToAddress(abi.MainnetBzzTokenAddress),
 
 		StakingABI:        abi.MainnetStakingABI,
 		PostageStampABI:   abi.MainnetPostageStampABI,

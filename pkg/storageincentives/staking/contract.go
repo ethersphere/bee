@@ -105,6 +105,36 @@ func New(
 	}
 }
 
+// GetPriceOracleAddress returns the price oracle configured by the staking contract.
+func GetPriceOracleAddress(ctx context.Context, stakingAddress common.Address, stakingABI abi.ABI, transactionService transaction.Service) (common.Address, error) {
+	callData, err := stakingABI.Pack("OracleContract")
+	if err != nil {
+		return common.Address{}, err
+	}
+
+	result, err := transactionService.Call(ctx, &transaction.TxRequest{
+		To:   &stakingAddress,
+		Data: callData,
+	})
+	if err != nil {
+		return common.Address{}, err
+	}
+
+	results, err := stakingABI.Unpack("OracleContract", result)
+	if err != nil {
+		return common.Address{}, err
+	}
+	if len(results) == 0 {
+		return common.Address{}, ErrUnexpectedLength
+	}
+
+	oracleAddress, ok := results[0].(common.Address)
+	if !ok {
+		return common.Address{}, fmt.Errorf("unexpected oracle address type %T", results[0])
+	}
+	return oracleAddress, nil
+}
+
 func (c *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
 	minDeposit, err := c.GetMinDeposit(ctx)
 	if err != nil {
@@ -194,13 +224,11 @@ func (c *contract) GetMinDeposit(ctx context.Context) (*big.Int, error) {
 
 // calculateMinDeposit returns the minimum additional deposit in PLUR that manageStake will accept according to contract.
 func calculateMinDeposit(potential, committed *big.Int, price uint32, height uint8) *big.Int {
-	minAdd := new(big.Int)
+	minAdd := big.NewInt(1)
 
-	// potential stake should be at least MIN_STAKE * 2^height.
-	// minAdd = max(0, minTotal - potential).
-	minTotal := new(big.Int).Lsh(new(big.Int).Set(MinimumStakeAmount), uint(height))
-	if gap := new(big.Int).Sub(minTotal, potential); gap.Sign() > 0 {
-		minAdd.Set(gap)
+	// The contract applies the minimum stake floor only when creating a stake.
+	if potential.Sign() == 0 {
+		minAdd.Lsh(new(big.Int).Set(MinimumStakeAmount), uint(height))
 	}
 
 	if price != 0 && committed.Sign() > 0 {
@@ -214,11 +242,6 @@ func calculateMinDeposit(potential, committed *big.Int, price uint32, height uin
 		}
 	}
 
-	// floors and commitment already satisfied.
-	// DepositStake still needs a positive addAmount; 1 PLUR is enough.
-	if minAdd.Sign() == 0 {
-		return big.NewInt(1)
-	}
 	return minAdd
 }
 

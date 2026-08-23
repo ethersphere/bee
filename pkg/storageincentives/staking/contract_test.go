@@ -93,6 +93,14 @@ func TestCalculateMinDeposit(t *testing.T) {
 			height:    1,
 			want:      new(big.Int).Mul(committedAtMin, big.NewInt(2)),
 		},
+		{
+			name:      "existing slashed stake does not restore initial floor",
+			potential: new(big.Int).Div(minStake, big.NewInt(10)),
+			committed: committedAtMin,
+			price:     100,
+			height:    0,
+			want:      big.NewInt(1),
+		},
 	}
 
 	for _, tc := range tests {
