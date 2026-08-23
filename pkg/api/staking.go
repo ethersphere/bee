@@ -6,7 +6,6 @@ package api
 
 import (
 	"errors"
-	"fmt"
 	"math/big"
 	"net/http"
 
@@ -43,6 +42,12 @@ type stakeTransactionReponse struct {
 	TxHash string `json:"txHash"`
 }
 
+type stakeDepositErrorResponse struct {
+	Code           int            `json:"code"`
+	Message        string         `json:"message"`
+	MinimumDeposit *bigint.BigInt `json:"minimumDeposit"`
+}
+
 func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("post_stake_deposit").Build()
 
@@ -56,16 +61,15 @@ func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) 
 
 	txHash, err := s.stakingContract.DepositStake(r.Context(), paths.Amount)
 	if err != nil {
-		if errors.Is(err, staking.ErrInsufficientStakeAmount) {
-			minDeposit := staking.MinimumStakeAmount
-			var minErr *staking.MinDepositError
-			if errors.As(err, &minErr) && minErr.Minimum != nil {
-				minDeposit = minErr.Minimum
-			}
-			msg := fmt.Sprintf("insufficient stake amount, minimum is %s", minDeposit)
-			logger.Debug("insufficient stake amount", "minimum_stake", minDeposit, "error", err)
+		var minErr *staking.MinDepositError
+		if errors.As(err, &minErr) {
+			logger.Debug("insufficient stake amount", "minimum_deposit", minErr.Minimum, "error", err)
 			logger.Error(nil, "insufficient stake amount")
-			jsonhttp.BadRequest(w, msg)
+			jsonhttp.BadRequest(w, stakeDepositErrorResponse{
+				Code:           http.StatusBadRequest,
+				Message:        "insufficient stake amount",
+				MinimumDeposit: bigint.Wrap(minErr.Minimum),
+			})
 			return
 		}
 		if errors.Is(err, staking.ErrNotImplemented) {

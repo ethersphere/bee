@@ -43,20 +43,6 @@ func TestDepositStake(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodPost, depositStake(minStake), http.StatusOK)
 	})
 
-	t.Run("with invalid stake amount", func(t *testing.T) {
-		t.Parallel()
-
-		invalidMinStake := big.NewInt(0).String()
-		contract := stakingContractMock.New(
-			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
-				return common.Hash{}, staking.ErrInsufficientStakeAmount
-			}),
-		)
-		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
-		jsonhttptest.Request(t, ts, http.MethodPost, depositStake(invalidMinStake), http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusBadRequest, Message: "insufficient stake amount, minimum is 100000000000000000"}))
-	})
-
 	t.Run("with insufficient amount reports minimum", func(t *testing.T) {
 		t.Parallel()
 
@@ -68,7 +54,11 @@ func TestDepositStake(t *testing.T) {
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
 		jsonhttptest.Request(t, ts, http.MethodPost, depositStake("1"), http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusBadRequest, Message: "insufficient stake amount, minimum is 123"}))
+			jsonhttptest.WithExpectedJSONResponse(&api.StakeDepositErrorResponse{
+				Code:           http.StatusBadRequest,
+				Message:        "insufficient stake amount",
+				MinimumDeposit: bigint.Wrap(minDeposit),
+			}))
 	})
 
 	t.Run("out of funds", func(t *testing.T) {

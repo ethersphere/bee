@@ -2558,7 +2558,11 @@ paths:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/StakeTransactionResponse"
         "400":
-          $ref: "SwarmCommon.yaml#/components/responses/400"
+          description: Deposit amount is below the required minimum.
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/StakeDepositErrorResponse"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
