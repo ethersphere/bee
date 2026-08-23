@@ -24,7 +24,10 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
 )
 
-var stakingContractABI = abiutil.MustParseABI(chaincfg.Testnet.StakingABI)
+var (
+	stakingContractABI = abiutil.MustParseABI(chaincfg.Testnet.StakingABI)
+	priceOracleAddress = common.HexToAddress("1111")
+)
 
 const stakingHeight = uint8(0)
 
@@ -135,6 +138,7 @@ func TestIsOverlayFrozen(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		frozen, err := contract.IsOverlayFrozen(ctx, uint64(height-1))
@@ -223,6 +227,7 @@ func TestDepositStake(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err = contract.DepositStake(ctx, stakedAmount)
@@ -285,6 +290,7 @@ func TestDepositStake(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err = contract.DepositStake(ctx, stakedAmount)
@@ -325,6 +331,7 @@ func TestDepositStake(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err := contract.DepositStake(ctx, big.NewInt(0))
@@ -358,6 +365,7 @@ func TestDepositStake(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err := contract.DepositStake(ctx, big.NewInt(100000000000000000))
@@ -421,6 +429,7 @@ func TestDepositStake(t *testing.T) {
 			nonce,
 			0,
 			1,
+			priceOracleAddress,
 		)
 
 		_, err = contract.DepositStake(ctx, stakedAmount)
@@ -454,6 +463,7 @@ func TestDepositStake(t *testing.T) {
 			nonce,
 			0,
 			1,
+			priceOracleAddress,
 		)
 
 		_, err := contract.DepositStake(ctx, stakedAmount)
@@ -485,6 +495,7 @@ func TestDepositStake(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err := contract.DepositStake(ctx, big.NewInt(1))
@@ -545,6 +556,7 @@ func TestDepositStake(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err = contract.DepositStake(ctx, addAmount)
@@ -584,6 +596,7 @@ func TestDepositStake(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err := contract.DepositStake(ctx, stakedAmount)
@@ -634,6 +647,7 @@ func TestDepositStake(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err = contract.DepositStake(ctx, stakedAmount)
@@ -696,6 +710,7 @@ func TestDepositStake(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err = contract.DepositStake(ctx, stakedAmount)
@@ -756,6 +771,7 @@ func TestDepositStake(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err = contract.DepositStake(ctx, stakedAmount)
@@ -783,6 +799,7 @@ func TestDepositStake(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err := contract.DepositStake(ctx, stakedAmount)
@@ -852,6 +869,7 @@ func TestChangeHeight(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, updated, err := contract.UpdateHeight(ctx)
@@ -916,6 +934,7 @@ func TestChangeHeight(t *testing.T) {
 			nonce,
 			0,
 			newHeight,
+			priceOracleAddress,
 		)
 
 		_, updated, err := contract.UpdateHeight(ctx)
@@ -980,6 +999,7 @@ func TestChangeHeight(t *testing.T) {
 			nonce,
 			0,
 			newHeight,
+			priceOracleAddress,
 		)
 
 		_, updated, err := contract.UpdateHeight(ctx)
@@ -1015,6 +1035,7 @@ func TestChangeHeight(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err := contract.DepositStake(ctx, stakedAmount)
@@ -1042,6 +1063,7 @@ func TestChangeHeight(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, _, err := contract.UpdateHeight(ctx)
@@ -1098,6 +1120,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err = contract.ChangeStakeOverlay(ctx, nonce)
@@ -1125,6 +1148,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err := contract.ChangeStakeOverlay(ctx, nonce)
@@ -1160,6 +1184,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		newNonce := make([]byte, 32)
@@ -1206,6 +1231,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err = contract.ChangeStakeOverlay(ctx, nonce)
@@ -1247,6 +1273,7 @@ func TestChangeStakeOverlay(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err = contract.ChangeStakeOverlay(ctx, nonce)
@@ -1294,6 +1321,7 @@ func TestGetCommittedStake(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		stakedAmount, err := contract.GetPotentialStake(ctx)
@@ -1332,6 +1360,7 @@ func TestGetCommittedStake(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err = contract.GetPotentialStake(ctx)
@@ -1370,6 +1399,7 @@ func TestGetCommittedStake(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err = contract.GetPotentialStake(ctx)
@@ -1394,6 +1424,7 @@ func TestGetCommittedStake(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err := contract.GetPotentialStake(ctx)
@@ -1432,6 +1463,7 @@ func TestGetMinDeposit(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		got, err := contract.GetMinDeposit(ctx)
@@ -1461,6 +1493,7 @@ func TestGetMinDeposit(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		got, err := contract.GetMinDeposit(ctx)
@@ -1511,6 +1544,7 @@ func TestGetWithdrawableStake(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		withdrawableStake, err := contract.GetWithdrawableStake(ctx)
@@ -1549,6 +1583,7 @@ func TestGetWithdrawableStake(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err = contract.GetPotentialStake(ctx)
@@ -1573,6 +1608,7 @@ func TestGetWithdrawableStake(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err := contract.GetPotentialStake(ctx)
@@ -1640,6 +1676,7 @@ func TestWithdrawStake(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err = contract.WithdrawStake(ctx)
@@ -1676,6 +1713,7 @@ func TestWithdrawStake(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err = contract.WithdrawStake(ctx)
@@ -1734,6 +1772,7 @@ func TestWithdrawStake(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err = contract.WithdrawStake(ctx)
@@ -1790,6 +1829,7 @@ func TestWithdrawStake(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err = contract.WithdrawStake(ctx)
@@ -1824,6 +1864,7 @@ func TestWithdrawStake(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err = contract.WithdrawStake(ctx)
@@ -1899,6 +1940,7 @@ func TestMigrateStake(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err = contract.MigrateStake(ctx)
@@ -1934,6 +1976,7 @@ func TestMigrateStake(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err = contract.MigrateStake(ctx)
@@ -2015,6 +2058,7 @@ func TestMigrateStake(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err = contract.MigrateStake(ctx)
@@ -2079,6 +2123,7 @@ func TestMigrateStake(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err = contract.MigrateStake(ctx)
@@ -2113,6 +2158,7 @@ func TestMigrateStake(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err = contract.WithdrawStake(ctx)
@@ -2155,6 +2201,7 @@ func TestMigrateStake(t *testing.T) {
 			nonce,
 			0,
 			stakingHeight,
+			priceOracleAddress,
 		)
 
 		_, err = contract.MigrateStake(ctx)
@@ -2172,11 +2219,6 @@ func newStakeCallFunc(
 ) func(ctx context.Context, request *transaction.TxRequest) ([]byte, error) {
 	t.Helper()
 
-	oracleCallData, err := stakingContractABI.Pack("OracleContract")
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	return func(_ context.Context, request *transaction.TxRequest) ([]byte, error) {
 		switch *request.To {
 		case bzzAddr:
@@ -2184,9 +2226,6 @@ func newStakeCallFunc(
 		case oracleAddr:
 			return big.NewInt(int64(price)).FillBytes(make([]byte, 32)), nil
 		case stakingAddr:
-			if bytes.Equal(request.Data, oracleCallData) {
-				return common.LeftPadBytes(oracleAddr.Bytes(), 32), nil
-			}
 			return getStakeResponse(t, committed, potential), nil
 		default:
 			return nil, errors.New("unexpected call")

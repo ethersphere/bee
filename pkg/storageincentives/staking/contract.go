@@ -74,6 +74,7 @@ type contract struct {
 	stakingContractAddress common.Address
 	stakingContractABI     abi.ABI
 	bzzTokenAddress        common.Address
+	priceOracleAddress     common.Address
 	transactionService     transaction.Service
 	overlayNonce           common.Hash
 	gasLimit               uint64
@@ -89,12 +90,14 @@ func New(
 	nonce common.Hash,
 	gasLimit uint64,
 	height uint8,
+	priceOracleAddress common.Address,
 ) Contract {
 	return &contract{
 		owner:                  owner,
 		stakingContractAddress: stakingContractAddress,
 		stakingContractABI:     stakingContractABI,
 		bzzTokenAddress:        bzzTokenAddress,
+		priceOracleAddress:     priceOracleAddress,
 		transactionService:     transactionService,
 		overlayNonce:           nonce,
 		gasLimit:               gasLimit,
@@ -189,34 +192,33 @@ func (c *contract) GetMinDeposit(ctx context.Context) (*big.Int, error) {
 	return calculateMinDeposit(potential, committed, price, c.height), nil
 }
 
-// calculateMinDeposit returns the minimum additional deposit in PLUR that
-// manageStake will accept. The first deposit must cover 2^height * MIN_STAKE.
-// Later deposits must keep committed stake from decreasing after a price
-// increase; if that constraint is already satisfied the minimum is 1 PLUR.
+// calculateMinDeposit returns the minimum additional deposit in PLUR that manageStake will accept according to contract.
 func calculateMinDeposit(potential, committed *big.Int, price uint32, height uint8) *big.Int {
 	minAdd := new(big.Int)
 
+	// potential stake should be at least MIN_STAKE * 2^height.
+	// minAdd = max(0, minTotal - potential).
 	minTotal := new(big.Int).Lsh(new(big.Int).Set(MinimumStakeAmount), uint(height))
 	if gap := new(big.Int).Sub(minTotal, potential); gap.Sign() > 0 {
 		minAdd.Set(gap)
 	}
 
 	if price != 0 && committed.Sign() > 0 {
+		// User already has committed stake.
+		// Commitment protection: required = committed * price * 2^height
 		required := new(big.Int).SetUint64(uint64(price))
-		required.Lsh(required, uint(height))
-		required.Mul(required, committed)
+		required.Lsh(required, uint(height)) // * 2^height
+		required.Mul(required, committed)    // * committed
 		if gap := new(big.Int).Sub(required, potential); gap.Cmp(minAdd) > 0 {
 			minAdd.Set(gap)
 		}
 	}
 
+	// floors and commitment already satisfied.
+	// DepositStake still needs a positive addAmount; 1 PLUR is enough.
 	if minAdd.Sign() == 0 {
-		if potential.Sign() > 0 {
-			return big.NewInt(1)
-		}
-		return new(big.Int).Set(MinimumStakeAmount)
+		return big.NewInt(1)
 	}
-
 	return minAdd
 }
 
@@ -396,7 +398,7 @@ func (c *contract) getStake(ctx context.Context) (committed, potential *big.Int,
 		Data: callData,
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("get potential stake: %w", err)
+		return nil, nil, fmt.Errorf("get stakes: %w", err)
 	}
 
 	// overlay bytes32,
@@ -418,44 +420,20 @@ func (c *contract) getStake(ctx context.Context) (committed, potential *big.Int,
 }
 
 func (c *contract) getCurrentPrice(ctx context.Context) (uint32, error) {
-	callData, err := c.stakingContractABI.Pack("OracleContract")
+	callData, err := priceOracleABI.Pack("currentPrice")
 	if err != nil {
 		return 0, err
 	}
 
 	result, err := c.transactionService.Call(ctx, &transaction.TxRequest{
-		To:   &c.stakingContractAddress,
-		Data: callData,
-	})
-	if err != nil {
-		return 0, fmt.Errorf("get oracle address: %w", err)
-	}
-
-	results, err := c.stakingContractABI.Unpack("OracleContract", result)
-	if err != nil {
-		return 0, err
-	}
-
-	if len(results) == 0 {
-		return 0, errors.New("unexpected empty results")
-	}
-
-	oracleAddr := *abi.ConvertType(results[0], new(common.Address)).(*common.Address)
-
-	callData, err = priceOracleABI.Pack("currentPrice")
-	if err != nil {
-		return 0, err
-	}
-
-	result, err = c.transactionService.Call(ctx, &transaction.TxRequest{
-		To:   &oracleAddr,
+		To:   &c.priceOracleAddress,
 		Data: callData,
 	})
 	if err != nil {
 		return 0, fmt.Errorf("get current price: %w", err)
 	}
 
-	results, err = priceOracleABI.Unpack("currentPrice", result)
+	results, err := priceOracleABI.Unpack("currentPrice", result)
 	if err != nil {
 		return 0, err
 	}
