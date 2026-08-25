@@ -1,10 +1,14 @@
-// Copyright 2024 The Swarm Authors. All rights reserved.
+// Copyright 2026 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package gsoc
+// Package mic provides subscriptions to single-owner chunks by their owner
+// ethereum address. A MIC (Mined ID Chunk) subscription is matched against the
+// owner of every incoming single-owner chunk, regardless of its id.
+package mic
 
 import (
+	"encoding/hex"
 	"sync"
 	"sync/atomic"
 
@@ -13,12 +17,12 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-// Handler defines code to be executed upon reception of a GSOC sub message.
-// it is used as a parameter definition.
+// Handler defines code to be executed upon reception of a MIC message.
+// It is used as a parameter definition.
 type Handler func([]byte)
 
 type Listener interface {
-	Subscribe(address swarm.Address, handler Handler) (cleanup func())
+	Subscribe(owner []byte, handler Handler) (cleanup func())
 	Handle(c *soc.SOC)
 	Close() error
 }
@@ -31,7 +35,7 @@ type listener struct {
 	logger     log.Logger
 }
 
-// New returns a new GSOC listener service.
+// New returns a new MIC listener service.
 func New(logger log.Logger) Listener {
 	return &listener{
 		logger:   logger,
@@ -40,22 +44,23 @@ func New(logger log.Logger) Listener {
 	}
 }
 
-// Subscribe allows the definition of a Handler func on a specific GSOC address.
-func (l *listener) Subscribe(address swarm.Address, handler Handler) (cleanup func()) {
+// Subscribe allows the definition of a Handler func on a specific SOC owner.
+func (l *listener) Subscribe(owner []byte, handler Handler) (cleanup func()) {
 	l.handlersMu.Lock()
 	defer l.handlersMu.Unlock()
 
-	l.handlers[address.ByteString()] = append(l.handlers[address.ByteString()], &handler)
+	key := string(owner)
+	l.handlers[key] = append(l.handlers[key], &handler)
 	l.subCount.Add(1)
 
 	return func() {
 		l.handlersMu.Lock()
 		defer l.handlersMu.Unlock()
 
-		h := l.handlers[address.ByteString()]
+		h := l.handlers[key]
 		for i := range h {
 			if h[i] == &handler {
-				l.handlers[address.ByteString()] = append(h[:i], h[i+1:]...)
+				l.handlers[key] = append(h[:i], h[i+1:]...)
 				l.subCount.Add(-1)
 				return
 			}
@@ -63,16 +68,13 @@ func (l *listener) Subscribe(address swarm.Address, handler Handler) (cleanup fu
 	}
 }
 
-// Handle is called by push/pull sync and passes the chunk its registered handler
+// Handle is called by push/pull sync and passes the chunk to the handlers
+// registered on its owner.
 func (l *listener) Handle(c *soc.SOC) {
 	if l.subCount.Load() == 0 {
 		return // no subscriptions, skip lock
 	}
 
-	addr, err := c.Address()
-	if err != nil {
-		return // no handler
-	}
 	payload := c.WrappedChunk().Data()[swarm.SpanSize:]
 
 	// The read lock is held for the whole iteration so that a concurrent
@@ -82,11 +84,11 @@ func (l *listener) Handle(c *soc.SOC) {
 	l.handlersMu.RLock()
 	defer l.handlersMu.RUnlock()
 
-	h := l.handlers[addr.ByteString()]
+	h := l.handlers[string(c.OwnerAddress())]
 	if h == nil {
 		return // no handler
 	}
-	l.logger.Debug("new incoming GSOC message", "GSOC Address", addr, "wrapped chunk address", c.WrappedChunk().Address())
+	l.logger.Debug("new incoming MIC message", "soc owner", hex.EncodeToString(c.OwnerAddress()), "wrapped chunk address", c.WrappedChunk().Address())
 
 	for _, hh := range h {
 		go func(hh Handler) {

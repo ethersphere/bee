@@ -376,6 +376,18 @@ func (s *Service) mountAPI() {
 		),
 	})
 
+	handle("/moc/subscribe/{id}", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			web.FinalHandlerFunc(s.mocWsHandler),
+		),
+	})
+
+	handle("/mic/subscribe/{owner}", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			web.FinalHandlerFunc(s.micWsHandler),
+		),
+	})
+
 	handle("/tags", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.listTagsHandler),
 		"POST": web.ChainHandlers(
