@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 8.1.0
+  version: 8.2.0
   title: Bee API
   description: "API endpoints for interacting with the Swarm network, supporting file operations, messaging, and node management"
 
@@ -210,6 +210,93 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
+
+  "/@/{address}":
+    parameters:
+      - in: path
+        name: address
+        schema:
+          $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
+        required: true
+        description: Swarm address reference of the WASM module
+      - $ref: "SwarmCommon.yaml#/components/parameters/SwarmWasmFuelLimit"
+      - $ref: "SwarmCommon.yaml#/components/parameters/SwarmWasmMemoryLimit"
+      - $ref: "SwarmCommon.yaml#/components/parameters/SwarmWasmEntrypoint"
+    get: &executeOperation
+      summary: "Execute a WASM module stored in Swarm"
+      description: >
+        Downloads the WebAssembly module at the given address, runs it in a
+        sandbox with the request body as its input and returns what it wrote as
+        output. Disabled by default; the node operator enables it with
+        `--wasm-execute-enable`.
+
+
+        Every HTTP method is accepted, including ones not listed here, and the
+        module decides how to react to it: the method is handed to the module as
+        the `REQUEST_METHOD` environment variable, following CGI convention. The
+        one exception is `OPTIONS`, which the node answers itself as a CORS
+        preflight so it never reaches untrusted code.
+
+
+        The representation of the result is negotiated with the `Accept` header:
+        `application/json` (the default) returns the full execution envelope,
+        `application/octet-stream` and `text/html` return the raw output. Any
+        other media type is rejected with 406.
+
+
+        A verdict on the program itself (`trap`, `invalid-module`) is reported
+        as 400 with the verdict in the `swarm-wasm-status` header; a failure
+        local to this node is reported as 500.
+      tags:
+        - Execute
+      requestBody:
+        required: false
+        description: Input handed to the module
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: The module ran and produced a result
+          headers:
+            "swarm-wasm-status":
+              $ref: "SwarmCommon.yaml#/components/headers/SwarmWasmStatus"
+            "swarm-wasm-fuel-consumed":
+              $ref: "SwarmCommon.yaml#/components/headers/SwarmWasmFuelConsumed"
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+            text/html:
+              schema:
+                type: string
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/WasmExecutionResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "403":
+          $ref: "SwarmCommon.yaml#/components/responses/403"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "406":
+          $ref: "SwarmCommon.yaml#/components/responses/406"
+        "413":
+          $ref: "SwarmCommon.yaml#/components/responses/413"
+        "429":
+          $ref: "SwarmCommon.yaml#/components/responses/429"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+    head: *executeOperation
+    post: *executeOperation
+    put: *executeOperation
+    patch: *executeOperation
+    delete: *executeOperation
 
   "/bytes/{address}":
     get:

@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 5.0.0
+  version: 5.1.0
   title: Common Data Types
   description: Common data structures and types used throughout the Bee API
 
@@ -656,6 +656,35 @@ components:
       pattern: "^[A-Fa-f0-9]{64}$"
       example: "36b7efd913ca4cf880b8eeac5093fa27b0825906c600685b6abdd6566e6cfe8f"
 
+    WasmStatus:
+      type: string
+      description: >
+        Outcome of a WASM execution. `ok`, `out-of-fuel`, `trap` and
+        `invalid-module` are verdicts on the program itself; `host-error` is a
+        failure local to the node and says nothing about the program.
+      enum:
+        - ok
+        - out-of-fuel
+        - trap
+        - invalid-module
+        - host-error
+
+    WasmExecutionResponse:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/WasmStatus"
+        output:
+          type: string
+          format: byte
+          description: Bytes the module wrote to its output
+        fuelConsumed:
+          type: integer
+          format: int64
+        trapMessage:
+          type: string
+          description: Explanation of a non-`ok` status
+
     PublicKey:
       type: string
       pattern: "^[A-Fa-f0-9]{66}$"
@@ -1081,6 +1110,17 @@ components:
       schema:
         $ref: "SwarmCommon.yaml#/components/schemas/Uid"
 
+    SwarmWasmStatus:
+      description: "Outcome of the execution"
+      schema:
+        $ref: "#/components/schemas/WasmStatus"
+
+    SwarmWasmFuelConsumed:
+      description: "Amount of fuel (gas) the execution consumed"
+      schema:
+        type: integer
+        format: int64
+
     SwarmFeedIndex:
       description: "The index of the found update"
       schema:
@@ -1288,6 +1328,39 @@ components:
       description: >
         Indicates whether the uploaded data should be sent to the network immediately or deferred. Default: deferred (true)
 
+    SwarmWasmFuelLimit:
+      in: header
+      name: swarm-wasm-fuel-limit
+      schema:
+        type: integer
+        format: int64
+      required: false
+      description: >
+        Fuel (gas) budget for the execution. Values above the limit configured
+        on the node are clamped to it. Defaults to the node configured value.
+
+    SwarmWasmMemoryLimit:
+      in: header
+      name: swarm-wasm-memory-limit
+      schema:
+        type: integer
+        format: int64
+      required: false
+      description: >
+        Maximum linear memory in bytes the module may allocate. Values above the
+        limit configured on the node are clamped to it. Defaults to the node
+        configured value.
+
+    SwarmWasmEntrypoint:
+      in: header
+      name: swarm-wasm-entrypoint
+      schema:
+        type: string
+      required: false
+      description: >
+        Exported function to invoke. Defaults to the WASI command entrypoint
+        `_start`.
+
     SwarmCache:
       in: header
       name: swarm-cache
@@ -1356,6 +1429,24 @@ components:
             $ref: "#/components/schemas/ProblemDetails"
     "404":
       description: Not Found
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+    "403":
+      description: Forbidden
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+    "406":
+      description: Not Acceptable
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+    "413":
+      description: Payload Too Large
       content:
         application/problem+json:
           schema:

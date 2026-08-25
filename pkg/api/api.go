@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/accounting"
+	"github.com/ethersphere/bee/v2/pkg/compute"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
@@ -94,12 +95,19 @@ const (
 	SwarmActPublisherHeader           = "Swarm-Act-Publisher"
 	SwarmActHistoryAddressHeader      = "Swarm-Act-History-Address"
 
+	SwarmWasmFuelLimitHeader    = "Swarm-Wasm-Fuel-Limit"
+	SwarmWasmMemoryLimitHeader  = "Swarm-Wasm-Memory-Limit"
+	SwarmWasmEntrypointHeader   = "Swarm-Wasm-Entrypoint"
+	SwarmWasmStatusHeader       = "Swarm-Wasm-Status"
+	SwarmWasmFuelConsumedHeader = "Swarm-Wasm-Fuel-Consumed"
+
 	ImmutableHeader = "Immutable"
 	GasPriceHeader  = "Gas-Price"
 	GasLimitHeader  = "Gas-Limit"
 	ETagHeader      = "ETag"
 
 	AuthorizationHeader        = "Authorization"
+	AcceptHeader               = "Accept"
 	AcceptEncodingHeader       = "Accept-Encoding"
 	ContentTypeHeader          = "Content-Type"
 	ContentDispositionHeader   = "Content-Disposition"
@@ -194,6 +202,9 @@ type Service struct {
 	stamperStore storage.Store
 	pinIntegrity PinIntegrity
 
+	compute       compute.Engine
+	executeConfig ExecuteConfig
+
 	syncStatus func() (bool, error)
 
 	swap        swap.Interface
@@ -268,6 +279,8 @@ type ExtraOptions struct {
 	SyncStatus      func() (bool, error)
 	NodeStatus      *status.Service
 	PinIntegrity    PinIntegrity
+	Compute         compute.Engine
+	ExecuteConfig   ExecuteConfig
 }
 
 func New(
@@ -379,6 +392,9 @@ func (s *Service) Configure(signer crypto.Signer, tracer *tracing.Tracer, o Opti
 	}
 
 	s.pinIntegrity = e.PinIntegrity
+
+	s.compute = e.Compute
+	s.executeConfig = e.ExecuteConfig
 }
 
 func (s *Service) SetProbe(probe *Probe) {

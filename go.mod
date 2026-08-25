@@ -49,7 +49,7 @@ require (
 	golang.org/x/crypto v0.48.0
 	golang.org/x/net v0.50.0
 	golang.org/x/sync v0.19.0
-	golang.org/x/sys v0.41.0
+	golang.org/x/sys v0.44.0
 	golang.org/x/term v0.40.0
 	golang.org/x/time v0.12.0
 	gopkg.in/yaml.v2 v2.4.0
@@ -58,6 +58,8 @@ require (
 	resenje.org/singleflight v0.4.0
 	resenje.org/web v0.4.3
 )
+
+require github.com/tetratelabs/wazero v1.12.0
 
 require (
 	filippo.io/bigmod v0.1.1-0.20260103110540-f8a47775ebe5 // indirect

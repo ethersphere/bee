@@ -86,6 +86,14 @@ const (
 	optionNameMinimumGasTipCap             = "minimum-gas-tip-cap"
 	optionNameGasLimitFallback             = "gas-limit-fallback"
 	optionNameP2PWSSEnable                 = "p2p-wss-enable"
+	optionNameWasmExecuteEnable            = "wasm-execute-enable"
+	optionNameWasmWorkers                  = "wasm-workers"
+	optionNameWasmExecTimeout              = "wasm-exec-timeout"
+	optionNameWasmMaxModuleSize            = "wasm-max-module-size"
+	optionNameWasmFuel                     = "wasm-fuel"
+	optionNameWasmMaxFuel                  = "wasm-max-fuel"
+	optionNameWasmMemory                   = "wasm-memory"
+	optionNameWasmMaxMemory                = "wasm-max-memory"
 	optionP2PWSSAddr                       = "p2p-wss-addr"
 	optionNATWSSAddr                       = "nat-wss-addr"
 	optionAutoTLSDomain                    = "autotls-domain"
@@ -336,6 +344,14 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Uint64(optionNameMinimumGasTipCap, 0, "minimum gas tip cap in wei for transactions, 0 means use suggested gas tip cap")
 	cmd.Flags().Uint64(optionNameGasLimitFallback, 500_000, "gas limit fallback when estimation fails for contract transactions")
 	cmd.Flags().Bool(optionNameP2PWSSEnable, false, "Enable Secure WebSocket P2P connections")
+	cmd.Flags().Bool(optionNameWasmExecuteEnable, false, "enable the experimental WASM execute endpoint")
+	cmd.Flags().Int(optionNameWasmWorkers, 0, "maximum number of concurrent WASM executions, 0 means min(number of CPUs, 8)")
+	cmd.Flags().Duration(optionNameWasmExecTimeout, 10*time.Second, "wall-clock watchdog timeout for a single WASM execution")
+	cmd.Flags().Uint64(optionNameWasmMaxModuleSize, 16*1024*1024, "maximum size in bytes of a WASM module that may be executed")
+	cmd.Flags().Uint64(optionNameWasmFuel, 100_000_000, "default fuel (gas) budget for a single WASM execution")
+	cmd.Flags().Uint64(optionNameWasmMaxFuel, 1_000_000_000, "maximum fuel (gas) budget a request may ask for")
+	cmd.Flags().Uint64(optionNameWasmMemory, 32*1024*1024, "default linear memory limit in bytes for a single WASM execution")
+	cmd.Flags().Uint64(optionNameWasmMaxMemory, 256*1024*1024, "maximum linear memory limit in bytes a request may ask for")
 	cmd.Flags().String(optionP2PWSSAddr, ":1635", "p2p wss address")
 	cmd.Flags().String(optionNATWSSAddr, "", "WSS NAT exposed address")
 	cmd.Flags().String(optionAutoTLSDomain, p2pforge.DefaultForgeDomain, "autotls domain")

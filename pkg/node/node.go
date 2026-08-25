@@ -30,6 +30,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/accounting"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/compute"
 	"github.com/ethersphere/bee/v2/pkg/config"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/feeds/factory"
@@ -91,6 +92,10 @@ import (
 // LoggerName is the tree path name of the logger for this package.
 const LoggerName = "node"
 
+// maxWasmWorkers caps the automatically chosen number of concurrent WASM
+// executions so a many-core node does not devote all of it to untrusted code.
+const maxWasmWorkers = 8
+
 type Bee struct {
 	logger                   log.Logger
 	p2pService               io.Closer
@@ -126,6 +131,7 @@ type Bee struct {
 	shutdownMutex            sync.Mutex
 	syncingStopped           *syncutil.Signaler
 	accesscontrolCloser      io.Closer
+	computeCloser            io.Closer
 	ethClientCloser          func()
 }
 
@@ -198,6 +204,14 @@ type Options struct {
 	WarmupTime                    time.Duration
 	WelcomeMessage                string
 	WhitelistedWithdrawalAddress  []string
+	WasmExecuteEnable             bool
+	WasmWorkers                   int
+	WasmExecTimeout               time.Duration
+	WasmMaxModuleSize             uint64
+	WasmFuel                      uint64
+	WasmMaxFuel                   uint64
+	WasmMemory                    uint64
+	WasmMaxMemory                 uint64
 }
 
 const (
@@ -1332,6 +1346,24 @@ func NewBee(
 	feedFactory := factory.New(localStore.Download(true))
 	steward := steward.New(localStore, retrieval, localStore.Cache())
 
+	var computeService compute.Engine
+	if o.WasmExecuteEnable {
+		workers := o.WasmWorkers
+		if workers < 1 {
+			workers = min(runtime.NumCPU(), maxWasmWorkers)
+		}
+		cs, err := compute.New(compute.Options{
+			Workers:  workers,
+			Watchdog: o.WasmExecTimeout,
+			Logger:   logger,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("compute service: %w", err)
+		}
+		computeService = cs
+		b.computeCloser = cs
+	}
+
 	extraOpts := api.ExtraOptions{
 		Pingpong:        pingPong,
 		TopologyDriver:  kad,
@@ -1354,6 +1386,14 @@ func NewBee(
 		SyncStatus:      syncStatusFn,
 		NodeStatus:      nodeStatus,
 		PinIntegrity:    localStore.PinIntegrity(),
+		Compute:         computeService,
+		ExecuteConfig: api.ExecuteConfig{
+			MaxModuleSize: o.WasmMaxModuleSize,
+			DefaultFuel:   o.WasmFuel,
+			MaxFuel:       o.WasmMaxFuel,
+			DefaultMemory: o.WasmMemory,
+			MaxMemory:     o.WasmMaxMemory,
+		},
 	}
 
 	if o.APIAddr != "" {
@@ -1543,6 +1583,7 @@ func (b *Bee) Shutdown() error {
 		b.ethClientCloser()
 	}
 
+	tryClose(b.computeCloser, "compute")
 	tryClose(b.accesscontrolCloser, "accesscontrol")
 	tryClose(b.tracerCloser, "tracer")
 	tryClose(b.topologyCloser, "topology driver")

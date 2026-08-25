@@ -26,6 +26,7 @@ import (
 	mockac "github.com/ethersphere/bee/v2/pkg/accesscontrol/mock"
 	accountingmock "github.com/ethersphere/bee/v2/pkg/accounting/mock"
 	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/compute"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
@@ -131,6 +132,8 @@ type testServerOptions struct {
 	RedistributionAgent *storageincentives.Agent
 	NodeStatus          *status.Service
 	PinIntegrity        api.PinIntegrity
+	Compute             compute.Engine
+	ExecuteConfig       api.ExecuteConfig
 	WhitelistedAddr     string
 	FullAPIDisabled     bool
 	ChequebookDisabled  bool
@@ -210,6 +213,8 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		Staking:         o.StakingContract,
 		NodeStatus:      o.NodeStatus,
 		PinIntegrity:    o.PinIntegrity,
+		Compute:         o.Compute,
+		ExecuteConfig:   o.ExecuteConfig,
 	}
 
 	// By default bee mode is set to full mode.

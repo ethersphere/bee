@@ -199,6 +199,16 @@ func (s *Service) checkSwapAvailability(handler http.Handler) http.Handler {
 	})
 }
 
+func (s *Service) checkExecuteAvailability(handler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.compute == nil {
+			jsonhttp.Forbidden(w, "WASM execution is disabled. This endpoint is unavailable.")
+			return
+		}
+		handler.ServeHTTP(w, r)
+	})
+}
+
 func (s *Service) checkChequebookAvailability(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !s.chequebookEnabled {
@@ -261,6 +271,15 @@ func (s *Service) mountAPI() {
 			web.FinalHandlerFunc(s.bytesUploadHandler),
 		),
 	})
+
+	// Registered without a jsonhttp.MethodHandler on purpose: every HTTP method
+	// reaches the module, which is told which one it was called with.
+	handle("/@/{address}", web.ChainHandlers(
+		s.checkExecuteAvailability,
+		s.contentLengthMetricMiddleware(),
+		s.newTracingHandler("execute"),
+		web.FinalHandlerFunc(s.executeHandler),
+	))
 
 	handle("/bytes/{address}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(

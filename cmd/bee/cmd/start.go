@@ -363,6 +363,14 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		WarmupTime:                    c.config.GetDuration(optionWarmUpTime),
 		WelcomeMessage:                c.config.GetString(optionWelcomeMessage),
 		WhitelistedWithdrawalAddress:  c.config.GetStringSlice(optionNameWhitelistedWithdrawalAddress),
+		WasmExecuteEnable:             c.config.GetBool(optionNameWasmExecuteEnable),
+		WasmWorkers:                   c.config.GetInt(optionNameWasmWorkers),
+		WasmExecTimeout:               c.config.GetDuration(optionNameWasmExecTimeout),
+		WasmMaxModuleSize:             c.config.GetUint64(optionNameWasmMaxModuleSize),
+		WasmFuel:                      c.config.GetUint64(optionNameWasmFuel),
+		WasmMaxFuel:                   c.config.GetUint64(optionNameWasmMaxFuel),
+		WasmMemory:                    c.config.GetUint64(optionNameWasmMemory),
+		WasmMaxMemory:                 c.config.GetUint64(optionNameWasmMaxMemory),
 	})
 
 	return b, err
