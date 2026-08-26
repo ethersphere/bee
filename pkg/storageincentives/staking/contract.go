@@ -90,49 +90,17 @@ func New(
 	nonce common.Hash,
 	gasLimit uint64,
 	height uint8,
-	priceOracleAddress common.Address,
 ) Contract {
 	return &contract{
 		owner:                  owner,
 		stakingContractAddress: stakingContractAddress,
 		stakingContractABI:     stakingContractABI,
 		bzzTokenAddress:        bzzTokenAddress,
-		priceOracleAddress:     priceOracleAddress,
 		transactionService:     transactionService,
 		overlayNonce:           nonce,
 		gasLimit:               gasLimit,
 		height:                 height,
 	}
-}
-
-// GetPriceOracleAddress returns the price oracle configured by the staking contract.
-func GetPriceOracleAddress(ctx context.Context, stakingAddress common.Address, stakingABI abi.ABI, transactionService transaction.Service) (common.Address, error) {
-	callData, err := stakingABI.Pack("OracleContract")
-	if err != nil {
-		return common.Address{}, err
-	}
-
-	result, err := transactionService.Call(ctx, &transaction.TxRequest{
-		To:   &stakingAddress,
-		Data: callData,
-	})
-	if err != nil {
-		return common.Address{}, err
-	}
-
-	results, err := stakingABI.Unpack("OracleContract", result)
-	if err != nil {
-		return common.Address{}, err
-	}
-	if len(results) == 0 {
-		return common.Address{}, ErrUnexpectedLength
-	}
-
-	oracleAddress, ok := results[0].(common.Address)
-	if !ok {
-		return common.Address{}, fmt.Errorf("unexpected oracle address type %T", results[0])
-	}
-	return oracleAddress, nil
 }
 
 func (c *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
@@ -443,13 +411,18 @@ func (c *contract) getStake(ctx context.Context) (committed, potential *big.Int,
 }
 
 func (c *contract) getCurrentPrice(ctx context.Context) (uint32, error) {
+	oracleAddress, err := c.getPriceOracleAddress(ctx)
+	if err != nil {
+		return 0, err
+	}
+
 	callData, err := priceOracleABI.Pack("currentPrice")
 	if err != nil {
 		return 0, err
 	}
 
 	result, err := c.transactionService.Call(ctx, &transaction.TxRequest{
-		To:   &c.priceOracleAddress,
+		To:   &oracleAddress,
 		Data: callData,
 	})
 	if err != nil {
@@ -471,6 +444,45 @@ func (c *contract) getCurrentPrice(ctx context.Context) (uint32, error) {
 	}
 
 	return price, nil
+}
+
+// getPriceOracleAddress resolves the price oracle from the staking contract on first use.
+func (c *contract) getPriceOracleAddress(ctx context.Context) (common.Address, error) {
+	if (c.priceOracleAddress != common.Address{}) {
+		return c.priceOracleAddress, nil
+	}
+
+	callData, err := c.stakingContractABI.Pack("OracleContract")
+	if err != nil {
+		return common.Address{}, err
+	}
+
+	result, err := c.transactionService.Call(ctx, &transaction.TxRequest{
+		To:   &c.stakingContractAddress,
+		Data: callData,
+	})
+	if err != nil {
+		return common.Address{}, fmt.Errorf("get price oracle address: %w", err)
+	}
+
+	results, err := c.stakingContractABI.Unpack("OracleContract", result)
+	if err != nil {
+		return common.Address{}, err
+	}
+	if len(results) == 0 {
+		return common.Address{}, ErrUnexpectedLength
+	}
+
+	oracleAddress, ok := results[0].(common.Address)
+	if !ok {
+		return common.Address{}, fmt.Errorf("unexpected oracle address type %T", results[0])
+	}
+	if (oracleAddress == common.Address{}) {
+		return common.Address{}, errors.New("staking contract returned zero price oracle address")
+	}
+
+	c.priceOracleAddress = oracleAddress
+	return oracleAddress, nil
 }
 
 func (c *contract) getWithdrawableStake(ctx context.Context) (*big.Int, error) {
