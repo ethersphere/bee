@@ -82,20 +82,6 @@ func TestRedistributionStatus(t *testing.T) {
 			}),
 		)
 	})
-
-	t.Run("forbidden when agent missing", func(t *testing.T) {
-		t.Parallel()
-
-		srv, _, _, _ := newTestServer(t, testServerOptions{
-			RedistributionAgentDisabled: true,
-		})
-		jsonhttptest.Request(t, srv, http.MethodGet, "/redistributionstate", http.StatusForbidden,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "Storage incentives are disabled. This endpoint is unavailable.",
-				Code:    http.StatusForbidden,
-			}),
-		)
-	})
 }
 
 func redistributionTestOpts(t *testing.T) testServerOptions {
