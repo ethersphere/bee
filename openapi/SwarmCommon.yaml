@@ -825,6 +825,9 @@ components:
           type: boolean
         isHealthy:
           type: boolean
+        enabled:
+          type: boolean
+          description: Whether the node will commit in new redistribution rounds. A disabled node still finishes a round that already has an on-chain commit. Re-enabling during a commit phase that was already skipped does not retry that round; participation resumes on the next sample/commit cycle.
         phase:
           type: string
         round:
@@ -845,6 +848,21 @@ components:
           $ref: "#/components/schemas/BigInt"
         fees:
           $ref: "#/components/schemas/BigInt"
+
+    RedistributionEnableRequest:
+      type: object
+      required:
+        - enabled
+      properties:
+        enabled:
+          type: boolean
+          description: Whether the node should enter new redistribution rounds.
+
+    RedistributionEnableResponse:
+      type: object
+      properties:
+        enabled:
+          type: boolean
 
     PendingTransactionsResponse:
       type: object

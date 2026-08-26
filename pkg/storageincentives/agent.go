@@ -12,10 +12,13 @@ import (
 	"io"
 	"math/big"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"resenje.org/singleflight"
+
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
@@ -28,7 +31,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
-	"resenje.org/singleflight"
 )
 
 const loggerName = "storageincentives"
@@ -73,6 +75,7 @@ type Agent struct {
 	commitLock             sync.Mutex
 	health                 Health
 	sampleFlight           singleflight.Group[string, sampleResult]
+	disabled               atomic.Bool
 }
 
 func New(overlay swarm.Address,
@@ -269,6 +272,11 @@ func (a *Agent) handleCommit(ctx context.Context, round uint64) error {
 	a.commitLock.Lock()
 	defer a.commitLock.Unlock()
 
+	if !a.IsEnabled() {
+		a.logger.Info("skipping commit because redistribution is disabled", "round", round)
+		return nil
+	}
+
 	if _, exists := a.state.CommitKey(round); exists {
 		// already committed on this round, phase is skipped
 		return nil
@@ -400,6 +408,11 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 
 	if a.state.IsFrozen() {
 		a.logger.Info("skipping round because node is frozen")
+		return false, nil
+	}
+
+	if !a.IsEnabled() {
+		a.logger.Info("skipping round because redistribution is disabled", "round", round)
 		return false, nil
 	}
 
@@ -579,6 +592,17 @@ func (a *Agent) wrapCommit(storageRadius uint8, sample []byte, key []byte) ([]by
 // Status returns the node status
 func (a *Agent) Status() (*Status, error) {
 	return a.state.Status()
+}
+
+// SetEnabled controls whether the node may enter new redistribution rounds.
+// Disabling does not abort an in-flight commit or skip reveal/claim of a round
+// that already has a commit key.
+func (a *Agent) SetEnabled(enabled bool) {
+	a.disabled.Store(!enabled)
+}
+
+func (a *Agent) IsEnabled() bool {
+	return !a.disabled.Load()
 }
 
 type SampleWithProofs struct {

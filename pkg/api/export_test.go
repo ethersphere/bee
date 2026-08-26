@@ -98,6 +98,8 @@ type (
 	StakeTransactionReponse           = stakeTransactionReponse
 	StatusSnapshotResponse            = statusSnapshotResponse
 	StatusResponse                    = statusResponse
+	RedistributionStatusResponse      = redistributionStatusResponse
+	RedistributionToggleResponse      = redistributionToggleResponse
 )
 
 var (
