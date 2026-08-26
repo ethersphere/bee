@@ -26,7 +26,6 @@ import (
 
 var (
 	stakingContractABI = abiutil.MustParseABI(chaincfg.Testnet.StakingABI)
-	priceOracleAddress = common.HexToAddress("1111")
 )
 
 const stakingHeight = uint8(0)

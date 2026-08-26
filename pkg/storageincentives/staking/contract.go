@@ -203,8 +203,8 @@ func calculateMinDeposit(potential, committed *big.Int, price uint32, height uin
 		// User already has committed stake.
 		// Commitment protection: required = committed * price * 2^height
 		required := new(big.Int).SetUint64(uint64(price))
-		required.Lsh(required, uint(height)) // * 2^height
-		required.Mul(required, committed)    // * committed
+		required = new(big.Int).Lsh(required, uint(height)) // * 2^height
+		required = new(big.Int).Mul(required, committed)    // * committed
 		if gap := new(big.Int).Sub(required, potential); gap.Cmp(minAdd) > 0 {
 			minAdd.Set(gap)
 		}
