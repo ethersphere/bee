@@ -17,7 +17,7 @@ import (
 func Test_ContainsAddress(t *testing.T) {
 	t.Parallel()
 
-	addrs := makeAddreses(t, 10)
+	addrs := makeAddresses(t, 10)
 	multiAddr := makeMultiUnderlayAddress(t)
 
 	tt := []struct {
@@ -28,8 +28,8 @@ func Test_ContainsAddress(t *testing.T) {
 		{addresses: nil, search: bzz.Address{}},
 		{addresses: nil, search: makeAddress(t)},
 		{addresses: make([]bzz.Address, 10), search: bzz.Address{}, contains: true},
-		{addresses: makeAddreses(t, 0), search: makeAddress(t)},
-		{addresses: makeAddreses(t, 10), search: makeAddress(t)},
+		{addresses: makeAddresses(t, 0), search: makeAddress(t)},
+		{addresses: makeAddresses(t, 10), search: makeAddress(t)},
 		{addresses: addrs, search: addrs[0], contains: true},
 		{addresses: addrs, search: addrs[1], contains: true},
 		{addresses: addrs, search: addrs[3], contains: true},
@@ -46,7 +46,7 @@ func Test_ContainsAddress(t *testing.T) {
 	}
 }
 
-func makeAddreses(t *testing.T, count int) []bzz.Address {
+func makeAddresses(t *testing.T, count int) []bzz.Address {
 	t.Helper()
 
 	result := make([]bzz.Address, count)
