@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coreos/go-semver/semver"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/spinlock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -122,10 +123,12 @@ func (r *Recorder) NewStream(ctx context.Context, addr swarm.Address, h p2p.Head
 		}
 	}
 
+	version, versionErr := semver.NewVersion(protocolVersion)
+
 	recordIn := newRecord(r.messageLatency)
 	recordOut := newRecord(r.messageLatency)
-	streamOut := newStream(recordIn, recordOut)
-	streamIn := newStream(recordOut, recordIn)
+	streamOut := newStream(recordIn, recordOut, version, versionErr)
+	streamIn := newStream(recordOut, recordIn, version, versionErr)
 
 	var handler p2p.HandlerFunc
 	var headler p2p.HeadlerFunc
@@ -260,10 +263,12 @@ type stream struct {
 	responseHeaders p2p.Headers
 	closed          bool
 	lock            sync.Mutex
+	version         *semver.Version
+	versionErr      error
 }
 
-func newStream(in, out *record) *stream {
-	return &stream{in: in, out: out}
+func newStream(in, out *record, version *semver.Version, versionErr error) *stream {
+	return &stream{in: in, out: out, version: version, versionErr: versionErr}
 }
 
 func (s *stream) Read(p []byte) (int, error) {
@@ -288,6 +293,10 @@ func (s *stream) Headers() p2p.Headers {
 
 func (s *stream) ResponseHeaders() p2p.Headers {
 	return s.responseHeaders
+}
+
+func (s *stream) Version() (*semver.Version, error) {
+	return s.version, s.versionErr
 }
 
 func (s *stream) Close() error {

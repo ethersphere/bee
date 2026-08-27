@@ -1441,3 +1441,70 @@ func TestTransactionService_UnwrapABIError(t *testing.T) {
 		t.Fatal("wrapped error without rpc api error data")
 	}
 }
+
+// TestTransactionService_UnwrapABIError_ShortRevertData is a regression test
+// for SLICE-03: an RPC provider that returns empty ("0x") or malformed revert
+// data yields a buffer shorter than the 4-byte error selector. The ABI-error
+// selector loop must not slice buf[:4] on such a buffer, which would panic.
+func TestTransactionService_UnwrapABIError_ShortRevertData(t *testing.T) {
+	t.Parallel()
+
+	var (
+		sender      = common.HexToAddress("0xddff")
+		recipient   = common.HexToAddress("0xbbbddd")
+		chainID     = big.NewInt(5)
+		txData      = common.Hex2Bytes("0xabcdee")
+		value       = big.NewInt(1)
+		contractABI = abiutil.MustParseABI(`[{"inputs":[{"internalType":"uint256","name":"available","type":"uint256"},{"internalType":"uint256","name":"required","type":"uint256"}],"name":"InsufficientBalance","type":"error"}]`)
+	)
+
+	signedTx := types.NewTx(&types.DynamicFeeTx{
+		ChainID: chainID,
+		To:      &recipient,
+		Value:   value,
+		Gas:     21000,
+		Data:    txData,
+	})
+	request := &transaction.TxRequest{To: &recipient, Data: txData, Value: value}
+
+	for _, tc := range []struct {
+		name string
+		data string // revert data returned by the RPC provider
+	}{
+		{name: "empty revert data", data: "0x"},
+		{name: "shorter than selector", data: "0xabcd"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			rpcAPIErr := &rpcAPIError{code: 3, msg: "execution reverted", err: tc.data}
+
+			transactionService, err := transaction.NewService(log.Noop, sender,
+				backendmock.New(
+					backendmock.WithCallContractFunc(func(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
+						return nil, rpcAPIErr
+					}),
+				),
+				signerMockForTransaction(t, signedTx, recipient, chainID),
+				storemock.NewStateStore(),
+				chainID,
+				monitormock.New(),
+				0,
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			testutil.CleanupCloser(t, transactionService)
+
+			originErr := errors.New("origin error")
+			// Must not panic on the short buffer, and must still wrap the origin.
+			wrappedErr := transactionService.UnwrapABIError(ctx, request, originErr, contractABI.Errors)
+			if !errors.Is(wrappedErr, originErr) {
+				t.Fatalf("origin error not wrapped, got %v", wrappedErr)
+			}
+		})
+	}
+}

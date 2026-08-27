@@ -107,6 +107,8 @@ const (
 	ContentTypeHeader          = "Content-Type"
 	ContentDispositionHeader   = "Content-Disposition"
 	ContentLengthHeader        = "Content-Length"
+	ContentRangeHeader         = "Content-Range"
+	AcceptRangesHeader         = "Accept-Ranges"
 	RangeHeader                = "Range"
 	OriginHeader               = "Origin"
 	AccessControlExposeHeaders = "Access-Control-Expose-Headers"
@@ -389,7 +391,9 @@ func (s *Service) SetProbe(probe *Probe) {
 }
 
 func (s *Service) SetIsWarmingUp(v bool) {
-	s.isWarmingUp = v
+	if s != nil {
+		s.isWarmingUp = v
+	}
 }
 
 // Close hangs up running websockets on shutdown.

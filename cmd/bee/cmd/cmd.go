@@ -61,6 +61,7 @@ const (
 	optionNameChequebookVerification       = "chequebook-verification"
 	optionNameChequebookMinBalance         = "chequebook-min-balance"
 	optionNameFullNode                     = "full-node" // Deprecated: use node-mode instead.
+	optionNameLightNodeLimit               = "light-node-limit"
 	optionNamePostageContractAddress       = "postage-stamp-address"
 	optionNamePostageContractStartBlock    = "postage-stamp-start-block"
 	optionNamePriceOracleAddress           = "price-oracle-address"
@@ -366,6 +367,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	if err := cmd.Flags().MarkDeprecated(optionNameFullNode, "use --node-mode=full instead"); err != nil {
 		panic(err)
 	}
+	cmd.Flags().Int(optionNameLightNodeLimit, 100, "light node limit")
 	cmd.Flags().String(optionNamePostageContractAddress, "", "postage stamp contract address")
 	cmd.Flags().Uint64(optionNamePostageContractStartBlock, 0, "postage stamp contract start block number")
 	cmd.Flags().String(optionNamePriceOracleAddress, "", "price oracle contract address")
