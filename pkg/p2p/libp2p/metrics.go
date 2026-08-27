@@ -20,12 +20,11 @@ const (
 )
 
 var (
+	// TCP/WS/WSS only: bee does not register QUIC today.
 	transportLabelValues = []string{
 		bzz.TransportTCP.String(),
 		bzz.TransportWS.String(),
 		bzz.TransportWSS.String(),
-		bzz.TransportQUICV1.String(),
-		bzz.TransportQUIC.String(),
 		bzz.TransportUnknown.String(),
 	}
 	publicLabelValues = []string{"true", "false"}
@@ -56,14 +55,16 @@ func newMetrics() metrics {
 	transportHelp := "The 'transport' label is one of: " + strings.Join(transportLabelValues, ", ")
 	publicHelp := "The 'public' label is one of: " + strings.Join(publicLabelValues, ", ") + " (true = public remote multiaddr)."
 
+	connectionLabels := []string{connectionTransportLabelName, connectionPublicLabelName}
+
 	createdConnectionCount := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "created_connection_count",
-			Help:      "Number of initiated outgoing libp2p connections. " + transportHelp,
+			Help:      "Number of initiated outgoing libp2p connections. " + transportHelp + " " + publicHelp,
 		},
-		[]string{connectionTransportLabelName},
+		connectionLabels,
 	)
 
 	handledConnectionCount := prometheus.NewCounterVec(
@@ -73,14 +74,14 @@ func newMetrics() metrics {
 			Name:      "handled_connection_count",
 			Help:      "Number of handled incoming libp2p connections. " + transportHelp + " " + publicHelp,
 		},
-		[]string{connectionTransportLabelName, connectionPublicLabelName},
+		connectionLabels,
 	)
 
 	// Ensure all expected label value combinations exist as 0-valued series,
 	// so Grafana shows a flat line instead of "No Data".
 	for _, transport := range transportLabelValues {
-		createdConnectionCount.WithLabelValues(transport).Add(0)
 		for _, public := range publicLabelValues {
+			createdConnectionCount.WithLabelValues(transport, public).Add(0)
 			handledConnectionCount.WithLabelValues(transport, public).Add(0)
 		}
 	}
@@ -164,19 +165,22 @@ func newMetrics() metrics {
 }
 
 func (m metrics) incCreatedConnection(addr ma.Multiaddr) {
-	m.CreatedConnectionCount.WithLabelValues(connectionTransportLabel(addr)).Inc()
+	m.CreatedConnectionCount.WithLabelValues(connectionTransportLabel(addr), connectionPublicLabel(addr)).Inc()
 }
 
 func (m metrics) observeHandledConnection(addr ma.Multiaddr) {
-	public := "false"
-	if manet.IsPublicAddr(addr) {
-		public = "true"
-	}
-	m.HandledConnectionCount.WithLabelValues(connectionTransportLabel(addr), public).Inc()
+	m.HandledConnectionCount.WithLabelValues(connectionTransportLabel(addr), connectionPublicLabel(addr)).Inc()
 }
 
 func connectionTransportLabel(addr ma.Multiaddr) string {
 	return bzz.ClassifyTransport(addr).String()
+}
+
+func connectionPublicLabel(addr ma.Multiaddr) string {
+	if manet.IsPublicAddr(addr) {
+		return "true"
+	}
+	return "false"
 }
 
 func (s *Service) Metrics() []prometheus.Collector {
