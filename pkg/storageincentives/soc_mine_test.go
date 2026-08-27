@@ -31,6 +31,10 @@ import (
 // to generate uploads using the input
 // cat socs.txt | tail 19 | head 16 | perl -pne 's/([a-f0-9]+)\t([a-f0-9]+)\t([a-f0-9]+)\t([a-f0-9]+)/echo -n $4 | xxd -r -p | curl -X POST \"http:\/\/localhost:1633\/soc\/$1\/$2?sig=$3\" -H \"accept: application\/json, text\/plain, \/\" -H \"content-type: application\/octet-stream\" -H \"swarm-postage-batch-id: 14b26beca257e763609143c6b04c2c487f01a051798c535c2f542ce75a97c05f\" --data-binary \@-/'
 func TestSocMine(t *testing.T) {
+	if os.Getenv("CI") != "" {
+		t.Skip("meant to be run for ad hoc testing")
+	}
+
 	// the anchor used in neighbourhood selection and reserve salt for sampling
 	prefix, err := hex.DecodeString("3617319a054d772f909f7c479a2cebe5066e836a939412e32403c99029b92eff")
 	if err != nil {
