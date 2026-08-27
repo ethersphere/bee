@@ -216,6 +216,54 @@ func TestResolveNodeMode(t *testing.T) {
 			},
 			wantMode: node.UltraLightMode,
 		},
+		{
+			name: "node-mode takes precedence over legacy full-node with warning",
+			config: map[string]any{
+				optionNameNodeMode:             "light",
+				optionNameFullNode:             true,
+				configKeyBlockchainRpcEndpoint: "http://localhost:8545",
+			},
+			wantMode: node.LightMode,
+		},
+		{
+			name: "ultra-light with rpc endpoint ignores rpc and succeeds",
+			config: map[string]any{
+				optionNameNodeMode:             "ultra-light",
+				configKeyBlockchainRpcEndpoint: "http://localhost:8545",
+			},
+			wantMode: node.UltraLightMode,
+		},
+		{
+			name: "light mode with rpc, swap and chequebook succeeds",
+			config: map[string]any{
+				optionNameNodeMode:             "light",
+				configKeyBlockchainRpcEndpoint: "http://localhost:8545",
+				optionNameSwapEnable:           true,
+				optionNameChequebookEnable:     true,
+			},
+			wantMode: node.LightMode,
+		},
+		{
+			name: "empty node-mode string fails validation",
+			config: map[string]any{
+				optionNameNodeMode: "",
+			},
+			wantErr: "invalid node-mode",
+		},
+		{
+			name: "uppercase node-mode string fails validation",
+			config: map[string]any{
+				optionNameNodeMode: "FULL",
+			},
+			wantErr: "invalid node-mode",
+		},
+		{
+			name: "whitespace node-mode string fails validation",
+			config: map[string]any{
+				optionNameNodeMode: " full ",
+			},
+			wantErr: "invalid node-mode",
+		},
 	}
 
 	for _, tt := range tests {

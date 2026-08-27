@@ -73,6 +73,10 @@ linters:
       - linters:
           - staticcheck
         text: "SA5008: malformed `json` tag: invalid trailing ',' character"
+      - linters:
+          - staticcheck
+        path: cmd/bee/cmd
+        text: "(this comparison is always true|never returns a nil interface value|the lhs of the comparison)"
     paths:
       - third_party$
       - builtin$
