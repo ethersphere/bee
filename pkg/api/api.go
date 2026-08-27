@@ -391,7 +391,9 @@ func (s *Service) SetProbe(probe *Probe) {
 }
 
 func (s *Service) SetIsWarmingUp(v bool) {
-	s.isWarmingUp = v
+	if s != nil {
+		s.isWarmingUp = v
+	}
 }
 
 // Close hangs up running websockets on shutdown.

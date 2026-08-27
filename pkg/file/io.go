@@ -14,6 +14,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
+var errReadCountMismatch = errors.New("read count mismatch")
+
 // simpleReadCloser wraps a byte slice in a io.ReadCloser implementation.
 type simpleReadCloser struct {
 	buffer io.Reader
@@ -74,26 +76,39 @@ func JoinReadAll(ctx context.Context, j Joiner, outFile io.Writer) (int64, error
 // SplitWriteAll writes all input from provided reader to the provided splitter
 func SplitWriteAll(ctx context.Context, s Splitter, r io.Reader, l int64, toEncrypt bool) (swarm.Address, error) {
 	chunkPipe := NewChunkPipe()
+	// since both the writer and the reader goroutines respect context
+	// there's no need for this channel to be buffered
 	errC := make(chan error)
 	go func() {
 		buf := make([]byte, swarm.ChunkSize)
 		c, err := io.CopyBuffer(chunkPipe, r, buf)
-		if err != nil {
-			errC <- err
+		if err == nil && c != l {
+			err = errReadCountMismatch
 		}
-		if c != l {
-			errC <- errors.New("read count mismatch")
+		if closeErr := chunkPipe.Close(); err == nil {
+			err = closeErr
 		}
-		err = chunkPipe.Close()
-		if err != nil {
-			errC <- err
+		select {
+		case errC <- err:
+		case <-ctx.Done():
 		}
-		close(errC)
 	}()
 
 	addr, err := s.Split(ctx, chunkPipe, l, toEncrypt)
 	if err != nil {
-		return swarm.ZeroAddress, err
+		// Split failed: the copier may be blocked writing into the pipe because
+		// nothing is reading it anymore. Close the read side so that write fails
+		// with io.ErrClosedPipe, then join the copier so its goroutine and the
+		// ChunkPipe are released instead of leaked.
+		if cp, ok := chunkPipe.(*ChunkPipe); ok {
+			_ = cp.CloseRead()
+		}
+		select {
+		case <-errC:
+			return swarm.ZeroAddress, err
+		case <-ctx.Done():
+			return swarm.ZeroAddress, ctx.Err()
+		}
 	}
 
 	select {

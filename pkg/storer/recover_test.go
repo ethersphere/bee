@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -208,5 +209,35 @@ func TestRecoveryPrunesUnreadableChunks(t *testing.T) {
 	_, err = st2.Storage().ChunkStore().Get(ctx, badChunk.Address())
 	if !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound for unreadable chunk, got: %v", err)
+	}
+}
+
+// TestSharkyDirtyFilePermissions is a regression test for PERM-02: the
+// localstore .DIRTY sentinel was created world-readable (0o644). It must not be
+// group- or world-accessible.
+func TestSharkyDirtyFilePermissions(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("permission bits are not meaningful on windows")
+	}
+
+	ctx := context.Background()
+	basePath := t.TempDir()
+	opts := dbTestOps(swarm.RandAddress(t), 1000, nil, nil, time.Minute)
+
+	// Opening the storer runs sharky recovery, which creates the .DIRTY
+	// sentinel; it is removed again on a clean Close.
+	st, err := storer.New(ctx, basePath, opts)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	info, err := os.Stat(filepath.Join(basePath, "sharky", ".DIRTY"))
+	if err != nil {
+		t.Fatalf("stat .DIRTY: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm&0o077 != 0 {
+		t.Fatalf(".DIRTY sentinel is group/other-accessible: %#o", perm)
 	}
 }
