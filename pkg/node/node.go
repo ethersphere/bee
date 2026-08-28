@@ -1446,6 +1446,7 @@ func NewBee(
 		apiService.SetRedistributionAgent(agent)
 
 		// api metrics are constructed on api.Service.Configure
+		apiService.MustRegisterMetrics(apiService.Metrics()...)
 		statusMetricsRegistry.MustRegister(apiService.StatusMetrics()...)
 	}
 
