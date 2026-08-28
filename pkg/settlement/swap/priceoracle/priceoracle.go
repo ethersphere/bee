@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"math/big"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -28,6 +29,7 @@ type service struct {
 	logger             log.Logger
 	priceOracleAddress common.Address
 	transactionService transaction.Service
+	ratesMu            sync.Mutex // guards exchangeRate and deduction
 	exchangeRate       *big.Int
 	deduction          *big.Int
 	timeDivisor        int64
@@ -75,8 +77,7 @@ func (s *service) Start() {
 				s.logger.Error(err, "could not get price")
 			} else {
 				loggerV1.Debug("updated exchange rate and deduction", "new_exchange_rate", exchangeRate, "new_deduction", deduction)
-				s.exchangeRate = exchangeRate
-				s.deduction = deduction
+				s.setRates(exchangeRate, deduction)
 			}
 
 			ts := time.Now().Unix()
@@ -133,14 +134,28 @@ func (s *service) GetPrice(ctx context.Context) (*big.Int, *big.Int, error) {
 	return exchangeRate, deduction, nil
 }
 
+// setRates atomically replaces the cached exchange rate and deduction. It is
+// called from the poll loop and must stay synchronised against CurrentRates.
+func (s *service) setRates(exchangeRate, deduction *big.Int) {
+	s.ratesMu.Lock()
+	s.exchangeRate = exchangeRate
+	s.deduction = deduction
+	s.ratesMu.Unlock()
+}
+
 func (s *service) CurrentRates() (exchangeRate, deduction *big.Int, err error) {
-	if s.exchangeRate.Cmp(big.NewInt(0)) == 0 {
+	s.ratesMu.Lock()
+	exchangeRate = s.exchangeRate
+	deduction = s.deduction
+	s.ratesMu.Unlock()
+
+	if exchangeRate == nil || exchangeRate.Cmp(big.NewInt(0)) == 0 {
 		return nil, nil, errors.New("exchange rate not yet available")
 	}
-	if s.deduction == nil {
+	if deduction == nil {
 		return nil, nil, errors.New("deduction amount not yet available")
 	}
-	return s.exchangeRate, s.deduction, nil
+	return exchangeRate, deduction, nil
 }
 
 func (s *service) Close() error {

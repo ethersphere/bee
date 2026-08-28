@@ -225,7 +225,7 @@ func ValidatePinCollectionChunks(ctx context.Context, basePath, pin, location st
 
 	location = path.Join(fileLoc, fileName)
 
-	f, err := os.OpenFile(location, os.O_CREATE|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(location, os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return fmt.Errorf("open output file for writing: %w", err)
 	}
