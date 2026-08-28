@@ -32,6 +32,7 @@ type statusSnapshotResponse struct {
 	LastSyncedBlock         uint64  `json:"lastSyncedBlock"`
 	CommittedDepth          uint8   `json:"committedDepth"`
 	IsWarmingUp             bool    `json:"isWarmingUp"`
+	IsWasmEnabled           bool    `json:"isWasmEnabled"`
 }
 
 type statusResponse struct {
@@ -92,6 +93,7 @@ func (s *Service) statusGetHandler(w http.ResponseWriter, _ *http.Request) {
 		LastSyncedBlock:         ss.LastSyncedBlock,
 		CommittedDepth:          uint8(ss.CommittedDepth),
 		IsWarmingUp:             s.isWarmingUp,
+		IsWasmEnabled:           s.compute != nil,
 	})
 }
 

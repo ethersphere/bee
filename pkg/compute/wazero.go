@@ -28,12 +28,12 @@ const (
 	envRequestMethod = "REQUEST_METHOD"
 )
 
-// wazeroEngine is the phase-0, in-process execution engine.
+// wazeroEngine is the in-process execution engine.
 //
-// WARNING: it does NOT meter execution deterministically and it wires WASI
-// stdin/stdout for I/O, so its output is not guaranteed reproducible across
-// nodes. It exists to exercise the download/API/wiring path and to be swapped
-// out for the deterministic out-of-process wasmtime worker.
+// WARNING: it does NOT meter execution deterministically, it wires WASI
+// stdin/stdout for I/O, and a module reaching the node through the swarm host
+// module observes node-local state. Its output is not reproducible across
+// nodes. See the package documentation.
 type wazeroEngine struct {
 	logger log.Logger
 }
@@ -46,7 +46,14 @@ func newWazeroEngine(logger log.Logger) *wazeroEngine {
 // whatever the module writes to stdout as the result. A fresh runtime is created
 // per call so no state leaks between executions.
 func (e *wazeroEngine) Execute(ctx context.Context, req Request) (Result, error) {
-	e.logger.Debug("execute: starting", "module_size", len(req.Module), "input_size", len(req.Input), "method", req.Method, "entrypoint", req.Limits.Entrypoint, "memory_limit", req.Limits.Memory)
+	return e.execute(ctx, req, newBudget(req.Limits), 0)
+}
+
+// execute runs one module at the given nesting depth. The budget is shared by
+// pointer across the whole call tree, so a module cannot multiply its host-call
+// allowance by recursing through swarm_execute.
+func (e *wazeroEngine) execute(ctx context.Context, req Request, b *budget, depth uint32) (Result, error) {
+	e.logger.Debug("execute: starting", "module_size", len(req.Module), "input_size", len(req.Input), "method", req.Method, "entrypoint", req.Limits.Entrypoint, "memory_limit", req.Limits.Memory, "depth", depth)
 
 	cfg := wazero.NewRuntimeConfig().
 		// Interrupt execution when the context (watchdog) is cancelled.
@@ -62,6 +69,31 @@ func (e *wazeroEngine) Execute(ctx context.Context, req Request) (Result, error)
 		return Result{Status: StatusHostError, TrapMessage: err.Error()}, err
 	}
 
+	// The swarm module is built per execution, closing over this tree's budget
+	// and depth. Nothing is shared between untrusted programs.
+	var hs *hostState
+	if req.Host != nil {
+		hs = &hostState{
+			host:     req.Host,
+			budget:   b,
+			depth:    depth,
+			maxDepth: req.Limits.Depth(),
+			logger:   e.logger,
+		}
+		hs.nested = func(ctx context.Context, module, input []byte) (Result, error) {
+			nested := req
+			nested.Module = module
+			nested.Input = input
+			// A nested module is always run as a WASI command: the caller's
+			// entrypoint header describes the outermost module only.
+			nested.Limits.Entrypoint = ""
+			return e.execute(ctx, nested, b, depth+1)
+		}
+		if err := buildSwarmModule(ctx, r, hs); err != nil {
+			return Result{Status: StatusHostError, TrapMessage: err.Error()}, err
+		}
+	}
+
 	compiled, err := r.CompileModule(ctx, req.Module)
 	if err != nil {
 		e.logger.Debug("execute: compile failed", "error", err)
@@ -72,7 +104,7 @@ func (e *wazeroEngine) Execute(ctx context.Context, req Request) (Result, error)
 	// Reject anything the sandbox does not provide up front, so an unsatisfiable
 	// import is a deterministic verdict on the module rather than a link failure
 	// surfacing as a trap.
-	if err := checkImports(compiled); err != nil {
+	if err := checkImports(compiled, hs != nil); err != nil {
 		e.logger.Debug("execute: rejected import", "error", err)
 		return Result{Status: StatusInvalidModule, TrapMessage: err.Error()}, nil
 	}
@@ -106,9 +138,14 @@ func (e *wazeroEngine) Execute(ctx context.Context, req Request) (Result, error)
 		modCfg = modCfg.WithStartFunctions()
 	}
 
+	// For a WASI command module `_start` runs during instantiation, so a host
+	// call — and a host abort — can happen here.
 	mod, err := r.InstantiateModule(ctx, compiled, modCfg)
 	if err != nil {
 		e.logger.Debug("execute: instantiate failed", "error", err)
+		if res, aborted := hostAbort(hs); aborted {
+			return res, hs.err
+		}
 		if res, ok := classifyRunError(err, stdout.Bytes()); ok {
 			e.logger.Debug("execute: instantiate error classified", "status", res.Status)
 			return res, nil
@@ -125,6 +162,9 @@ func (e *wazeroEngine) Execute(ctx context.Context, req Request) (Result, error)
 		}
 		if _, err := fn.Call(ctx); err != nil {
 			e.logger.Debug("execute: entrypoint call failed", "entrypoint", req.Limits.Entrypoint, "error", err)
+			if res, aborted := hostAbort(hs); aborted {
+				return res, hs.err
+			}
 			if res, ok := classifyRunError(err, stdout.Bytes()); ok {
 				e.logger.Debug("execute: entrypoint error classified", "status", res.Status)
 				return res, nil
@@ -133,19 +173,50 @@ func (e *wazeroEngine) Execute(ctx context.Context, req Request) (Result, error)
 		}
 	}
 
+	// Defence in depth: a recorded host failure outranks an apparently clean run.
+	if res, aborted := hostAbort(hs); aborted {
+		return res, hs.err
+	}
+
 	e.logger.Debug("execute: ok", "output_size", stdout.Len())
 	return Result{Status: StatusOK, Output: stdout.Bytes()}, nil
 }
 
+// hostAbort reports whether the run was torn down by a node-local host failure
+// and, if so, the verdict to return. A host abort unwinds the guest as a trap,
+// but a trap is a verdict on the program and this was not one: it must surface
+// as StatusHostError with a non-nil error, never as StatusTrap.
+func hostAbort(hs *hostState) (Result, bool) {
+	if hs == nil || hs.err == nil {
+		return Result{}, false
+	}
+	return Result{Status: StatusHostError, TrapMessage: hs.err.Error()}, true
+}
+
 // checkImports verifies the module only imports from the host environment the
 // sandbox instantiates. Importing memory is not supported at all.
-func checkImports(compiled wazero.CompiledModule) error {
+//
+// Rejecting up front means an unsatisfiable import is a deterministic verdict on
+// the module (StatusInvalidModule) rather than a link failure surfacing as a
+// trap. The WASI namespace is accepted wholesale — wasi_snapshot_preview1
+// provides all of preview1 — while the swarm namespace is checked name by name
+// against what buildSwarmModule actually defines.
+func checkImports(compiled wazero.CompiledModule, hostAvailable bool) error {
 	for _, f := range compiled.ImportedFunctions() {
 		moduleName, name, ok := f.Import()
 		if !ok {
 			continue
 		}
-		if moduleName != wasiModuleName {
+		switch moduleName {
+		case wasiModuleName:
+		case swarmModuleName:
+			if !hostAvailable {
+				return fmt.Errorf("import %q from module %q: node access is not available", name, moduleName)
+			}
+			if _, ok := swarmExports[name]; !ok {
+				return fmt.Errorf("unknown import %q from module %q", name, moduleName)
+			}
+		default:
 			return fmt.Errorf("unsupported import %q from module %q", name, moduleName)
 		}
 	}

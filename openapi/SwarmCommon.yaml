@@ -659,12 +659,11 @@ components:
     WasmStatus:
       type: string
       description: >
-        Outcome of a WASM execution. `ok`, `out-of-fuel`, `trap` and
-        `invalid-module` are verdicts on the program itself; `host-error` is a
-        failure local to the node and says nothing about the program.
+        Outcome of a WASM execution. `ok`, `trap` and `invalid-module` are
+        verdicts on the program itself; `host-error` is a failure local to the
+        node and says nothing about the program.
       enum:
         - ok
-        - out-of-fuel
         - trap
         - invalid-module
         - host-error
@@ -678,9 +677,6 @@ components:
           type: string
           format: byte
           description: Bytes the module wrote to its output
-        fuelConsumed:
-          type: integer
-          format: int64
         trapMessage:
           type: string
           description: Explanation of a non-`ok` status
@@ -988,6 +984,8 @@ components:
           type: integer
         isWarmingUp:
           type: boolean
+        isWasmEnabled:
+          type: boolean
 
     StatusPeersResponse:
       type: object
@@ -1114,12 +1112,6 @@ components:
       description: "Outcome of the execution"
       schema:
         $ref: "#/components/schemas/WasmStatus"
-
-    SwarmWasmFuelConsumed:
-      description: "Amount of fuel (gas) the execution consumed"
-      schema:
-        type: integer
-        format: int64
 
     SwarmFeedIndex:
       description: "The index of the found update"
@@ -1328,17 +1320,6 @@ components:
       description: >
         Indicates whether the uploaded data should be sent to the network immediately or deferred. Default: deferred (true)
 
-    SwarmWasmFuelLimit:
-      in: header
-      name: swarm-wasm-fuel-limit
-      schema:
-        type: integer
-        format: int64
-      required: false
-      description: >
-        Fuel (gas) budget for the execution. Values above the limit configured
-        on the node are clamped to it. Defaults to the node configured value.
-
     SwarmWasmMemoryLimit:
       in: header
       name: swarm-wasm-memory-limit
@@ -1359,7 +1340,40 @@ components:
       required: false
       description: >
         Exported function to invoke. Defaults to the WASI command entrypoint
-        `_start`.
+        `_start`. Applies to the outermost module only: a module run through
+        `swarm_execute` is always started as a WASI command.
+
+    SwarmWasmHostCallsLimit:
+      in: header
+      name: swarm-wasm-host-calls-limit
+      schema:
+        type: integer
+      required: false
+      description: >
+        Maximum number of `swarm` host calls the execution may make, shared
+        across nested executions. May only lower the node's configured value.
+
+    SwarmWasmHostBytesLimit:
+      in: header
+      name: swarm-wasm-host-bytes-limit
+      schema:
+        type: integer
+      required: false
+      description: >
+        Maximum total payload, in bytes, that `swarm` host calls may move in
+        either direction, shared across nested executions. May only lower the
+        node's configured value.
+
+    SwarmWasmDepthLimit:
+      in: header
+      name: swarm-wasm-depth-limit
+      schema:
+        type: integer
+      required: false
+      description: >
+        Maximum number of execution levels a `swarm_execute` call tree may
+        reach, the outermost execution included, so `1` permits no nesting at
+        all. May only lower the node's configured value.
 
     SwarmCache:
       in: header

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/compute"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
@@ -24,57 +25,68 @@ func TestGetStatus(t *testing.T) {
 
 	const url = "/status"
 
-	t.Run("node", func(t *testing.T) {
-		t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		engine compute.Engine
+	}{
+		{name: "node"},
+		// The WASM engine is only wired up when the execute endpoint is enabled,
+		// so its presence is what the flag reports.
+		{name: "node with wasm engine", engine: new(mockEngine)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-		mode := api.FullMode
-		ssr := api.StatusSnapshotResponse{
-			Proximity:               256,
-			BeeMode:                 mode.String(),
-			ReserveSize:             128,
-			ReserveSizeWithinRadius: 64,
-			PullsyncRate:            64,
-			StorageRadius:           8,
-			ConnectedPeers:          0,
-			NeighborhoodSize:        1,
-			BatchCommitment:         1,
-			IsReachable:             true,
-			LastSyncedBlock:         6092500,
-			CommittedDepth:          1,
-		}
+			mode := api.FullMode
+			ssr := api.StatusSnapshotResponse{
+				Proximity:               256,
+				BeeMode:                 mode.String(),
+				ReserveSize:             128,
+				ReserveSizeWithinRadius: 64,
+				PullsyncRate:            64,
+				StorageRadius:           8,
+				ConnectedPeers:          0,
+				NeighborhoodSize:        1,
+				BatchCommitment:         1,
+				IsReachable:             true,
+				LastSyncedBlock:         6092500,
+				CommittedDepth:          1,
+				IsWasmEnabled:           tc.engine != nil,
+			}
 
-		ssMock := &statusSnapshotMock{
-			syncRate:                ssr.PullsyncRate,
-			reserveSize:             int(ssr.ReserveSize),
-			reserveSizeWithinRadius: ssr.ReserveSizeWithinRadius,
-			storageRadius:           ssr.StorageRadius,
-			commitment:              ssr.BatchCommitment,
-			chainState:              &postage.ChainState{Block: ssr.LastSyncedBlock},
-			committedDepth:          ssr.CommittedDepth,
-		}
+			ssMock := &statusSnapshotMock{
+				syncRate:                ssr.PullsyncRate,
+				reserveSize:             int(ssr.ReserveSize),
+				reserveSizeWithinRadius: ssr.ReserveSizeWithinRadius,
+				storageRadius:           ssr.StorageRadius,
+				commitment:              ssr.BatchCommitment,
+				chainState:              &postage.ChainState{Block: ssr.LastSyncedBlock},
+				committedDepth:          ssr.CommittedDepth,
+			}
 
-		statusSvc := status.NewService(
-			log.Noop,
-			nil,
-			new(topologyPeersIterNoopMock),
-			mode.String(),
-			ssMock,
-			ssMock,
-			nil,
-		)
+			statusSvc := status.NewService(
+				log.Noop,
+				nil,
+				new(topologyPeersIterNoopMock),
+				mode.String(),
+				ssMock,
+				ssMock,
+				nil,
+			)
 
-		statusSvc.SetSync(ssMock)
+			statusSvc.SetSync(ssMock)
 
-		client, _, _, _ := newTestServer(t, testServerOptions{
-			BeeMode:    mode,
-			NodeStatus: statusSvc,
+			client, _, _, _ := newTestServer(t, testServerOptions{
+				BeeMode:    mode,
+				NodeStatus: statusSvc,
+				Compute:    tc.engine,
+			})
+
+			jsonhttptest.Request(t, client, http.MethodGet, url, http.StatusOK,
+				jsonhttptest.WithExpectedJSONResponse(ssr),
+			)
 		})
-
-		jsonhttptest.Request(t, client, http.MethodGet, url, http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(ssr),
-		)
-	})
-
+	}
 }
 
 // TestGetStatusPeersIncludesBootnodes is a regression test for

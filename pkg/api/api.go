@@ -95,11 +95,12 @@ const (
 	SwarmActPublisherHeader           = "Swarm-Act-Publisher"
 	SwarmActHistoryAddressHeader      = "Swarm-Act-History-Address"
 
-	SwarmWasmFuelLimitHeader    = "Swarm-Wasm-Fuel-Limit"
-	SwarmWasmMemoryLimitHeader  = "Swarm-Wasm-Memory-Limit"
-	SwarmWasmEntrypointHeader   = "Swarm-Wasm-Entrypoint"
-	SwarmWasmStatusHeader       = "Swarm-Wasm-Status"
-	SwarmWasmFuelConsumedHeader = "Swarm-Wasm-Fuel-Consumed"
+	SwarmWasmMemoryLimitHeader = "Swarm-Wasm-Memory-Limit"
+	SwarmWasmEntrypointHeader  = "Swarm-Wasm-Entrypoint"
+	SwarmWasmHostCallsHeader   = "Swarm-Wasm-Host-Calls-Limit"
+	SwarmWasmHostBytesHeader   = "Swarm-Wasm-Host-Bytes-Limit"
+	SwarmWasmDepthHeader       = "Swarm-Wasm-Depth-Limit"
+	SwarmWasmStatusHeader      = "Swarm-Wasm-Status"
 
 	ImmutableHeader = "Immutable"
 	GasPriceHeader  = "Gas-Price"
@@ -598,7 +599,8 @@ func (s *Service) corsHandler(h http.Handler) http.Handler {
 		SwarmPostageBatchIdHeader, SwarmPostageStampHeader, SwarmDeferredUploadHeader, SwarmRedundancyLevelHeader,
 		SwarmRedundancyStrategyHeader, SwarmRedundancyFallbackModeHeader, SwarmChunkRetrievalTimeoutHeader, SwarmLookAheadBufferSizeHeader,
 		SwarmFeedIndexHeader, SwarmFeedIndexNextHeader, SwarmSocSignatureHeader, SwarmOnlyRootChunk, GasPriceHeader, GasLimitHeader, ImmutableHeader,
-		SwarmActHeader, SwarmActTimestampHeader, SwarmActPublisherHeader, SwarmActHistoryAddressHeader,
+		SwarmActHeader, SwarmActTimestampHeader, SwarmActPublisherHeader, SwarmActHistoryAddressHeader, SwarmWasmMemoryLimitHeader, SwarmWasmEntrypointHeader,
+		SwarmWasmHostCallsHeader, SwarmWasmHostBytesHeader, SwarmWasmDepthHeader, SwarmWasmStatusHeader,
 	}
 	allowedHeadersStr := strings.Join(allowedHeaders, ", ")
 

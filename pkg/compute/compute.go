@@ -24,7 +24,7 @@ type Options struct {
 	// Workers bounds the number of concurrent executions. Values < 1 become 1.
 	Workers int
 	// Watchdog is a wall-clock safety timeout that kills a hung execution. It is
-	// NOT a deterministic budget (see fuel) and a kill yields StatusHostError.
+	// NOT a deterministic budget and a kill yields StatusHostError.
 	Watchdog time.Duration
 	// Logger is used for operator diagnostics.
 	Logger log.Logger

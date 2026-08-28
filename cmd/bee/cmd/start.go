@@ -367,10 +367,14 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		WasmWorkers:                   c.config.GetInt(optionNameWasmWorkers),
 		WasmExecTimeout:               c.config.GetDuration(optionNameWasmExecTimeout),
 		WasmMaxModuleSize:             c.config.GetUint64(optionNameWasmMaxModuleSize),
-		WasmFuel:                      c.config.GetUint64(optionNameWasmFuel),
-		WasmMaxFuel:                   c.config.GetUint64(optionNameWasmMaxFuel),
 		WasmMemory:                    c.config.GetUint64(optionNameWasmMemory),
 		WasmMaxMemory:                 c.config.GetUint64(optionNameWasmMaxMemory),
+		WasmHostCalls:                 c.config.GetUint64(optionNameWasmHostCalls),
+		WasmMaxHostCalls:              c.config.GetUint64(optionNameWasmMaxHostCalls),
+		WasmHostBytes:                 c.config.GetUint64(optionNameWasmHostBytes),
+		WasmMaxHostBytes:              c.config.GetUint64(optionNameWasmMaxHostBytes),
+		WasmExecDepth:                 c.config.GetUint64(optionNameWasmExecDepth),
+		WasmMaxExecDepth:              c.config.GetUint64(optionNameWasmMaxExecDepth),
 	})
 
 	return b, err

@@ -90,10 +90,14 @@ const (
 	optionNameWasmWorkers                  = "wasm-workers"
 	optionNameWasmExecTimeout              = "wasm-exec-timeout"
 	optionNameWasmMaxModuleSize            = "wasm-max-module-size"
-	optionNameWasmFuel                     = "wasm-fuel"
-	optionNameWasmMaxFuel                  = "wasm-max-fuel"
 	optionNameWasmMemory                   = "wasm-memory"
 	optionNameWasmMaxMemory                = "wasm-max-memory"
+	optionNameWasmHostCalls                = "wasm-host-calls"
+	optionNameWasmMaxHostCalls             = "wasm-max-host-calls"
+	optionNameWasmHostBytes                = "wasm-host-bytes"
+	optionNameWasmMaxHostBytes             = "wasm-max-host-bytes"
+	optionNameWasmExecDepth                = "wasm-exec-depth"
+	optionNameWasmMaxExecDepth             = "wasm-max-exec-depth"
 	optionP2PWSSAddr                       = "p2p-wss-addr"
 	optionNATWSSAddr                       = "nat-wss-addr"
 	optionAutoTLSDomain                    = "autotls-domain"
@@ -348,10 +352,14 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Int(optionNameWasmWorkers, 0, "maximum number of concurrent WASM executions, 0 means min(number of CPUs, 8)")
 	cmd.Flags().Duration(optionNameWasmExecTimeout, 10*time.Second, "wall-clock watchdog timeout for a single WASM execution")
 	cmd.Flags().Uint64(optionNameWasmMaxModuleSize, 16*1024*1024, "maximum size in bytes of a WASM module that may be executed")
-	cmd.Flags().Uint64(optionNameWasmFuel, 100_000_000, "default fuel (gas) budget for a single WASM execution")
-	cmd.Flags().Uint64(optionNameWasmMaxFuel, 1_000_000_000, "maximum fuel (gas) budget a request may ask for")
 	cmd.Flags().Uint64(optionNameWasmMemory, 32*1024*1024, "default linear memory limit in bytes for a single WASM execution")
 	cmd.Flags().Uint64(optionNameWasmMaxMemory, 256*1024*1024, "maximum linear memory limit in bytes a request may ask for")
+	cmd.Flags().Uint64(optionNameWasmHostCalls, 64, "default number of swarm host calls a single WASM execution may make")
+	cmd.Flags().Uint64(optionNameWasmMaxHostCalls, 1024, "maximum number of swarm host calls a request may ask for")
+	cmd.Flags().Uint64(optionNameWasmHostBytes, 32*1024*1024, "default total bytes swarm host calls of a single WASM execution may move")
+	cmd.Flags().Uint64(optionNameWasmMaxHostBytes, 256*1024*1024, "maximum total bytes moved by swarm host calls a request may ask for")
+	cmd.Flags().Uint64(optionNameWasmExecDepth, 4, "default maximum nesting depth of swarm_execute calls")
+	cmd.Flags().Uint64(optionNameWasmMaxExecDepth, 8, "maximum nesting depth of swarm_execute calls a request may ask for")
 	cmd.Flags().String(optionP2PWSSAddr, ":1635", "p2p wss address")
 	cmd.Flags().String(optionNATWSSAddr, "", "WSS NAT exposed address")
 	cmd.Flags().String(optionAutoTLSDomain, p2pforge.DefaultForgeDomain, "autotls domain")

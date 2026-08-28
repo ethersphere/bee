@@ -3,22 +3,30 @@
 // license that can be found in the LICENSE file.
 
 // Package compute runs untrusted WebAssembly modules downloaded from Swarm in a
-// sandboxed execution engine and returns the deterministic result of the
-// computation.
+// sandboxed execution engine and returns the result of the computation.
 //
-// This is the phase-0 skeleton: it executes modules in-process with wazero and
-// does NOT yet enforce deterministic gas metering. It is intended to validate
-// the API, download and wiring path end-to-end and must not be relied upon for
-// reproducible-across-nodes output. A later phase replaces the engine with an
-// out-of-process wasmtime worker that meters execution by deterministic fuel.
+// This is an experimental prototype. Modules run in-process with wazero and may
+// call back into the node through the swarm host module to read and write Swarm
+// data (see Host). Two properties the production design calls for are therefore
+// absent, deferred rather than rejected:
+//
+//   - Output is NOT reproducible across nodes. A host call reads what this node
+//     happens to hold, and wazero has no gas metering, so there is no
+//     deterministic budget bounding the work a module may do.
+//   - There is no process boundary. An engine escape lands in the node's own
+//     address space, which is tolerable only because wazero is pure Go and
+//     memory-safe. Keep the endpoint off public gateways.
+//
+// What does hold: node work is bounded (a concurrency semaphore, a wall-clock
+// watchdog and the host-call budgets in Limits), and a node-local failure is
+// never laundered into a program verdict — it surfaces as StatusHostError.
 package compute
 
 import "context"
 
 // Status classifies the outcome of a WASM execution.
 //
-// StatusOK, StatusOutOfFuel, StatusTrap and StatusInvalidModule are program
-// verdicts and are intended to be deterministic across nodes. StatusHostError
+// StatusOK, StatusTrap and StatusInvalidModule are program verdicts and are intended to be deterministic across nodes. StatusHostError
 // signals an infrastructure failure local to this node (spawn failure, watchdog
 // kill, IPC error) and must never be treated as a program result.
 type Status uint8
@@ -26,8 +34,6 @@ type Status uint8
 const (
 	// StatusOK indicates the module ran to completion and produced output.
 	StatusOK Status = iota + 1
-	// StatusOutOfFuel indicates the module exceeded its deterministic gas budget.
-	StatusOutOfFuel
 	// StatusTrap indicates the module trapped (unreachable, out-of-bounds, non-zero exit, ...).
 	StatusTrap
 	// StatusInvalidModule indicates the bytes failed validation/compilation or import checks.
@@ -41,8 +47,6 @@ func (s Status) String() string {
 	switch s {
 	case StatusOK:
 		return "ok"
-	case StatusOutOfFuel:
-		return "out-of-fuel"
 	case StatusTrap:
 		return "trap"
 	case StatusInvalidModule:
@@ -56,17 +60,17 @@ func (s Status) String() string {
 
 // Result is the outcome of executing a module.
 type Result struct {
-	Status       Status
-	Output       []byte
-	FuelConsumed uint64
-	TrapMessage  string
+	Status      Status
+	Output      []byte
+	TrapMessage string
 }
 
 // Request describes a single execution: the module to run, the caller-supplied
 // input and the request metadata the module is allowed to observe.
 //
-// Every field is derived from the incoming HTTP request, never from the host, so
-// the same Request produces the same Result on every node.
+// Every field but Host is derived from the incoming HTTP request. Host calls
+// read node-local state, so a module using them is not reproducible across
+// nodes; see the package documentation.
 type Request struct {
 	// Module is the WASM binary to execute.
 	Module []byte
@@ -78,6 +82,12 @@ type Request struct {
 	Input []byte
 	// Limits bound the execution.
 	Limits Limits
+	// Host serves the calls the module makes back into the node. It is
+	// per-request: uploads it performs belong to one execution and no more.
+	//
+	// A nil Host leaves the swarm module uninstantiated, so a module importing
+	// it is StatusInvalidModule rather than trapping mid-run.
+	Host Host
 }
 
 // Engine executes a single WASM module in isolation and returns its Result.

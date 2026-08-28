@@ -293,7 +293,6 @@ func TestStatusString(t *testing.T) {
 		want   string
 	}{
 		{compute.StatusOK, "ok"},
-		{compute.StatusOutOfFuel, "out-of-fuel"},
 		{compute.StatusTrap, "trap"},
 		{compute.StatusInvalidModule, "invalid-module"},
 		{compute.StatusHostError, "host-error"},

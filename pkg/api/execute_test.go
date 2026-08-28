@@ -73,9 +73,8 @@ func TestExecute(t *testing.T) {
 
 	module := []byte("this stands in for a wasm module")
 	engine := &mockEngine{result: compute.Result{
-		Status:       compute.StatusOK,
-		Output:       []byte("computed output"),
-		FuelConsumed: 4711,
+		Status: compute.StatusOK,
+		Output: []byte("computed output"),
 	}}
 
 	client := newExecuteTestServer(t, engine, api.ExecuteConfig{})
@@ -86,7 +85,6 @@ func TestExecute(t *testing.T) {
 		jsonhttptest.WithRequestBody(bytes.NewReader([]byte("the input"))),
 		jsonhttptest.WithExpectedResponse([]byte("computed output")),
 		jsonhttptest.WithExpectedResponseHeader(api.SwarmWasmStatusHeader, "ok"),
-		jsonhttptest.WithExpectedResponseHeader(api.SwarmWasmFuelConsumedHeader, "4711"),
 	)
 
 	if engine.calls != 1 {
@@ -198,12 +196,6 @@ func TestExecuteStatusMapping(t *testing.T) {
 			wantStatus: "ok",
 		},
 		{
-			name:       "out of fuel",
-			result:     compute.Result{Status: compute.StatusOutOfFuel},
-			wantHTTP:   http.StatusOK,
-			wantStatus: "out-of-fuel",
-		},
-		{
 			name:       "trap",
 			result:     compute.Result{Status: compute.StatusTrap, TrapMessage: "unreachable"},
 			wantHTTP:   http.StatusBadRequest,
@@ -306,9 +298,8 @@ func TestExecuteContentNegotiation(t *testing.T) {
 			t.Parallel()
 
 			engine := &mockEngine{result: compute.Result{
-				Status:       compute.StatusOK,
-				Output:       output,
-				FuelConsumed: 42,
+				Status: compute.StatusOK,
+				Output: output,
 			}}
 			client := newExecuteTestServer(t, engine, api.ExecuteConfig{})
 			addr := uploadModule(t, client, []byte("module"))
@@ -332,9 +323,8 @@ func TestExecuteContentNegotiation(t *testing.T) {
 
 			if tc.wantJSON {
 				var resp struct {
-					Status       string `json:"status"`
-					Output       []byte `json:"output"`
-					FuelConsumed uint64 `json:"fuelConsumed"`
+					Status string `json:"status"`
+					Output []byte `json:"output"`
 				}
 				if err := json.Unmarshal(body, &resp); err != nil {
 					t.Fatalf("unmarshal response %q: %v", body, err)
@@ -344,9 +334,6 @@ func TestExecuteContentNegotiation(t *testing.T) {
 				}
 				if !bytes.Equal(resp.Output, output) {
 					t.Errorf("got output %q, want %q", resp.Output, output)
-				}
-				if resp.FuelConsumed != 42 {
-					t.Errorf("got fuel consumed %d, want 42", resp.FuelConsumed)
 				}
 			}
 
@@ -363,39 +350,82 @@ func TestExecuteLimits(t *testing.T) {
 	t.Parallel()
 
 	cfg := api.ExecuteConfig{
-		DefaultFuel:   1000,
-		MaxFuel:       5000,
-		DefaultMemory: 2048,
-		MaxMemory:     8192,
+		DefaultMemory:    2048,
+		MaxMemory:        8192,
+		DefaultHostCalls: 16,
+		MaxHostCalls:     64,
+		DefaultHostBytes: 1024,
+		MaxHostBytes:     4096,
+		DefaultDepth:     2,
+		MaxDepth:         4,
+	}
+
+	// defaults are the limits a request without any override resolves to.
+	defaults := compute.Limits{
+		Memory:       2048,
+		MaxHostCalls: 16,
+		MaxHostBytes: 1024,
+		MaxDepth:     2,
+	}
+	with := func(f func(*compute.Limits)) compute.Limits {
+		l := defaults
+		f(&l)
+		return l
 	}
 
 	for _, tc := range []struct {
-		name       string
-		fuel       string
-		memory     string
-		entrypoint string
-		want       compute.Limits
+		name    string
+		headers map[string]string
+		want    compute.Limits
 	}{
 		{
 			name: "defaults",
-			want: compute.Limits{Fuel: 1000, Memory: 2048},
+			want: defaults,
 		},
 		{
-			name:   "request below the maximum is honored",
-			fuel:   "200",
-			memory: "1024",
-			want:   compute.Limits{Fuel: 200, Memory: 1024},
+			name:    "request below the maximum is honored",
+			headers: map[string]string{api.SwarmWasmMemoryLimitHeader: "1024"},
+			want:    with(func(l *compute.Limits) { l.Memory = 1024 }),
 		},
 		{
-			name:   "request above the maximum is clamped",
-			fuel:   "999999",
-			memory: "999999",
-			want:   compute.Limits{Fuel: 5000, Memory: 8192},
+			name:    "request above the maximum is clamped",
+			headers: map[string]string{api.SwarmWasmMemoryLimitHeader: "999999"},
+			want:    with(func(l *compute.Limits) { l.Memory = 8192 }),
 		},
 		{
-			name:       "entrypoint is passed through",
-			entrypoint: "run",
-			want:       compute.Limits{Fuel: 1000, Memory: 2048, Entrypoint: "run"},
+			name:    "entrypoint is passed through",
+			headers: map[string]string{api.SwarmWasmEntrypointHeader: "run"},
+			want:    with(func(l *compute.Limits) { l.Entrypoint = "run" }),
+		},
+		{
+			name:    "host calls below the maximum are honored",
+			headers: map[string]string{api.SwarmWasmHostCallsHeader: "32"},
+			want:    with(func(l *compute.Limits) { l.MaxHostCalls = 32 }),
+		},
+		{
+			name:    "host calls above the maximum are clamped",
+			headers: map[string]string{api.SwarmWasmHostCallsHeader: "999999"},
+			want:    with(func(l *compute.Limits) { l.MaxHostCalls = 64 }),
+		},
+		{
+			name:    "host bytes below the maximum are honored",
+			headers: map[string]string{api.SwarmWasmHostBytesHeader: "2048"},
+			want:    with(func(l *compute.Limits) { l.MaxHostBytes = 2048 }),
+		},
+		{
+			name:    "host bytes above the maximum are clamped",
+			headers: map[string]string{api.SwarmWasmHostBytesHeader: "999999"},
+			want:    with(func(l *compute.Limits) { l.MaxHostBytes = 4096 }),
+		},
+		{
+			name:    "depth below the maximum is honored",
+			headers: map[string]string{api.SwarmWasmDepthHeader: "1"},
+			want:    with(func(l *compute.Limits) { l.MaxDepth = 1 }),
+		},
+		{
+			name:    "depth above the maximum is clamped",
+			headers: map[string]string{api.SwarmWasmDepthHeader: "999999"},
+			want:    with(func(l *compute.Limits) { l.MaxDepth = 4 }),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -409,14 +439,8 @@ func TestExecuteLimits(t *testing.T) {
 				jsonhttptest.WithRequestHeader(api.AcceptHeader, "application/octet-stream"),
 				jsonhttptest.WithNoResponseBody(),
 			}
-			if tc.fuel != "" {
-				opts = append(opts, jsonhttptest.WithRequestHeader(api.SwarmWasmFuelLimitHeader, tc.fuel))
-			}
-			if tc.memory != "" {
-				opts = append(opts, jsonhttptest.WithRequestHeader(api.SwarmWasmMemoryLimitHeader, tc.memory))
-			}
-			if tc.entrypoint != "" {
-				opts = append(opts, jsonhttptest.WithRequestHeader(api.SwarmWasmEntrypointHeader, tc.entrypoint))
+			for name, value := range tc.headers {
+				opts = append(opts, jsonhttptest.WithRequestHeader(name, value))
 			}
 
 			jsonhttptest.Request(t, client, http.MethodPost, "/@/"+addr.String(), http.StatusOK, opts...)
@@ -447,9 +471,9 @@ func TestExecuteInvalidRequest(t *testing.T) {
 		)
 	})
 
-	t.Run("invalid fuel limit", func(t *testing.T) {
+	t.Run("invalid memory limit", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, "/@/"+swarm.RandAddress(t).String(), http.StatusBadRequest,
-			jsonhttptest.WithRequestHeader(api.SwarmWasmFuelLimitHeader, "not a number"),
+			jsonhttptest.WithRequestHeader(api.SwarmWasmMemoryLimitHeader, "not a number"),
 		)
 	})
 

@@ -8,7 +8,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/ethersphere/bee/v2/pkg/compute"
@@ -26,18 +25,24 @@ import (
 // Per-request headers may only lower a limit below its configured maximum.
 type ExecuteConfig struct {
 	MaxModuleSize uint64
-	DefaultFuel   uint64
-	MaxFuel       uint64
 	DefaultMemory uint64
 	MaxMemory     uint64
+	// Bounds on what a module may make the node do through the swarm host
+	// module. wazero has no gas metering, so these are what stop a module
+	// fetching or storing without end.
+	DefaultHostCalls uint64
+	MaxHostCalls     uint64
+	DefaultHostBytes uint64
+	MaxHostBytes     uint64
+	DefaultDepth     uint64
+	MaxDepth         uint64
 }
 
 // executeResponse is the structured (JSON) representation of an execution result.
 type executeResponse struct {
-	Status       string `json:"status"`
-	Output       []byte `json:"output"`
-	FuelConsumed uint64 `json:"fuelConsumed"`
-	TrapMessage  string `json:"trapMessage,omitempty"`
+	Status      string `json:"status"`
+	Output      []byte `json:"output"`
+	TrapMessage string `json:"trapMessage,omitempty"`
 }
 
 // executeHandler downloads the WASM module addressed by {address}, runs it in the
@@ -66,9 +71,11 @@ func (s *Service) executeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	headers := struct {
-		Fuel       *uint64 `map:"Swarm-Wasm-Fuel-Limit"`
 		Memory     *uint64 `map:"Swarm-Wasm-Memory-Limit"`
 		Entrypoint string  `map:"Swarm-Wasm-Entrypoint"`
+		HostCalls  *uint64 `map:"Swarm-Wasm-Host-Calls-Limit"`
+		HostBytes  *uint64 `map:"Swarm-Wasm-Host-Bytes-Limit"`
+		Depth      *uint64 `map:"Swarm-Wasm-Depth-Limit"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -84,9 +91,11 @@ func (s *Service) executeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	lim := compute.Limits{
-		Fuel:       clampLimit(headers.Fuel, s.executeConfig.DefaultFuel, s.executeConfig.MaxFuel),
-		Memory:     clampLimit(headers.Memory, s.executeConfig.DefaultMemory, s.executeConfig.MaxMemory),
-		Entrypoint: headers.Entrypoint,
+		Memory:       clampLimit(headers.Memory, s.executeConfig.DefaultMemory, s.executeConfig.MaxMemory),
+		Entrypoint:   headers.Entrypoint,
+		MaxHostCalls: uint32(clampLimit(headers.HostCalls, s.executeConfig.DefaultHostCalls, s.executeConfig.MaxHostCalls)),
+		MaxHostBytes: clampLimit(headers.HostBytes, s.executeConfig.DefaultHostBytes, s.executeConfig.MaxHostBytes),
+		MaxDepth:     uint32(clampLimit(headers.Depth, s.executeConfig.DefaultDepth, s.executeConfig.MaxDepth)),
 	}
 
 	// Download and reassemble the module bytes, capped at the configured maximum.
@@ -128,13 +137,21 @@ func (s *Service) executeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The host is per-request: any upload it opens belongs to this execution
+	// alone and is committed or dropped below.
+	host := s.newExecuteHost(logger, lim.HostBytes())
+
 	result, err := s.compute.Execute(r.Context(), compute.Request{
 		Module: module,
 		Method: r.Method,
 		Input:  input,
 		Limits: lim,
+		Host:   host,
 	})
 	if err != nil {
+		if cerr := host.Close(false); cerr != nil {
+			logger.Debug("execute: discarding upload session failed", "error", cerr)
+		}
 		if errors.Is(err, compute.ErrBusy) {
 			jsonhttp.TooManyRequests(w, "execution workers busy")
 			return
@@ -142,6 +159,15 @@ func (s *Service) executeHandler(w http.ResponseWriter, r *http.Request) {
 		logger.Debug("execute: execution failed", "address", paths.Address, "error", err)
 		logger.Error(nil, "execute: execution failed")
 		jsonhttp.InternalServerError(w, "execution failed")
+		return
+	}
+
+	// Only a clean run commits its uploads; a trapped or rejected module leaves
+	// nothing behind.
+	if err := host.Close(result.Status == compute.StatusOK); err != nil {
+		logger.Debug("execute: closing upload session failed", "error", err)
+		logger.Error(nil, "execute: closing upload session failed")
+		jsonhttp.InternalServerError(w, "could not store uploaded data")
 		return
 	}
 
@@ -153,7 +179,6 @@ func (s *Service) executeHandler(w http.ResponseWriter, r *http.Request) {
 // chosen format.
 func renderExecResult(w http.ResponseWriter, format string, res compute.Result) {
 	w.Header().Set(SwarmWasmStatusHeader, res.Status.String())
-	w.Header().Set(SwarmWasmFuelConsumedHeader, strconv.FormatUint(res.FuelConsumed, 10))
 
 	switch res.Status {
 	case compute.StatusInvalidModule, compute.StatusTrap:
@@ -165,14 +190,13 @@ func renderExecResult(w http.ResponseWriter, format string, res compute.Result) 
 		return
 	}
 
-	// StatusOK or StatusOutOfFuel: 200. For out-of-fuel there may be no output.
+	// StatusOK: 200.
 	switch format {
 	case formatJSON:
 		jsonhttp.OK(w, executeResponse{
-			Status:       res.Status.String(),
-			Output:       res.Output,
-			FuelConsumed: res.FuelConsumed,
-			TrapMessage:  res.TrapMessage,
+			Status:      res.Status.String(),
+			Output:      res.Output,
+			TrapMessage: res.TrapMessage,
 		})
 	case formatHTML:
 		w.Header().Set(ContentTypeHeader, "text/html; charset=utf-8")
@@ -190,10 +214,9 @@ func renderExecResult(w http.ResponseWriter, format string, res compute.Result) 
 func execErrorBody(format string, res compute.Result) interface{} {
 	if format == formatJSON {
 		return executeResponse{
-			Status:       res.Status.String(),
-			Output:       res.Output,
-			FuelConsumed: res.FuelConsumed,
-			TrapMessage:  res.TrapMessage,
+			Status:      res.Status.String(),
+			Output:      res.Output,
+			TrapMessage: res.TrapMessage,
 		}
 	}
 	msg := res.Status.String()

@@ -219,9 +219,11 @@ paths:
           $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
         required: true
         description: Swarm address reference of the WASM module
-      - $ref: "SwarmCommon.yaml#/components/parameters/SwarmWasmFuelLimit"
       - $ref: "SwarmCommon.yaml#/components/parameters/SwarmWasmMemoryLimit"
       - $ref: "SwarmCommon.yaml#/components/parameters/SwarmWasmEntrypoint"
+      - $ref: "SwarmCommon.yaml#/components/parameters/SwarmWasmHostCallsLimit"
+      - $ref: "SwarmCommon.yaml#/components/parameters/SwarmWasmHostBytesLimit"
+      - $ref: "SwarmCommon.yaml#/components/parameters/SwarmWasmDepthLimit"
     get: &executeOperation
       summary: "Execute a WASM module stored in Swarm"
       description: >
@@ -247,6 +249,33 @@ paths:
         A verdict on the program itself (`trap`, `invalid-module`) is reported
         as 400 with the verdict in the `swarm-wasm-status` header; a failure
         local to this node is reported as 500.
+
+
+        **Node access.** Besides `wasi_snapshot_preview1`, a module may import a
+        host module named `swarm` to read and write Swarm data:
+        `swarm_bytes_get`, `swarm_bytes_put`, `swarm_chunk_get`,
+        `swarm_chunk_put` and `swarm_execute`. The full ABI, including the
+        result codes and the caller-provides-buffer convention, is documented in
+        `pkg/compute/README.md`. Importing a name that module does not define is
+        rejected before the module runs.
+
+
+        Uploads are paid for by the postage batch the module passes to a put
+        call, which it can only have received as input; the node resolves it
+        exactly as `POST /chunks` does, so this path grants no authority the
+        HTTP API does not already grant. One execution gets one upload session
+        and therefore one batch. Uploads are **deferred**: when the response
+        returns, the data is in the local upload store but not yet acknowledged
+        by the network, and the session is committed only if the execution
+        succeeded — a module that traps leaves nothing behind.
+
+
+        **Experimental.** Output is not reproducible across nodes: a module
+        reaching the node observes state local to it, and this engine enforces
+        no deterministic gas budget. What a module may make the node do is
+        bounded by the host-call, host-byte and depth budgets instead. 
+        The endpoint runs untrusted code in the node's own process and
+        should not be enabled on a public gateway.
       tags:
         - Execute
       requestBody:
@@ -263,8 +292,6 @@ paths:
           headers:
             "swarm-wasm-status":
               $ref: "SwarmCommon.yaml#/components/headers/SwarmWasmStatus"
-            "swarm-wasm-fuel-consumed":
-              $ref: "SwarmCommon.yaml#/components/headers/SwarmWasmFuelConsumed"
           content:
             application/octet-stream:
               schema:

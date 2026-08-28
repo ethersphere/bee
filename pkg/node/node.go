@@ -208,10 +208,14 @@ type Options struct {
 	WasmWorkers                   int
 	WasmExecTimeout               time.Duration
 	WasmMaxModuleSize             uint64
-	WasmFuel                      uint64
-	WasmMaxFuel                   uint64
 	WasmMemory                    uint64
 	WasmMaxMemory                 uint64
+	WasmHostCalls                 uint64
+	WasmMaxHostCalls              uint64
+	WasmHostBytes                 uint64
+	WasmMaxHostBytes              uint64
+	WasmExecDepth                 uint64
+	WasmMaxExecDepth              uint64
 }
 
 const (
@@ -1389,10 +1393,15 @@ func NewBee(
 		Compute:         computeService,
 		ExecuteConfig: api.ExecuteConfig{
 			MaxModuleSize: o.WasmMaxModuleSize,
-			DefaultFuel:   o.WasmFuel,
-			MaxFuel:       o.WasmMaxFuel,
 			DefaultMemory: o.WasmMemory,
 			MaxMemory:     o.WasmMaxMemory,
+
+			DefaultHostCalls: o.WasmHostCalls,
+			MaxHostCalls:     o.WasmMaxHostCalls,
+			DefaultHostBytes: o.WasmHostBytes,
+			MaxHostBytes:     o.WasmMaxHostBytes,
+			DefaultDepth:     o.WasmExecDepth,
+			MaxDepth:         o.WasmMaxExecDepth,
 		},
 	}
 
