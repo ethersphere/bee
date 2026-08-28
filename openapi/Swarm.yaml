@@ -2431,10 +2431,11 @@ paths:
       summary: Enable or disable participation in new redistribution rounds
       description: >
         Controls whether the node will commit in a new redistribution round.
-        Disabling does not abort an in-flight commit and does not skip reveal or claim
-        for a round that already committed. Re-enabling during a commit phase that was
-        already skipped does not retry that round; participation resumes on the next
-        sample/commit cycle. After a node restart participation is enabled again.
+        Sampling still runs while disabled so that a later re-enable can commit
+        in the following commit phase. Disabling does not abort an in-flight
+        commit and does not skip reveal or claim for a round that already committed.
+        Re-enabling during a commit phase that was already skipped does not retry
+        that round. After a node restart participation is enabled again.
       tags:
         - RedistributionState
       requestBody:

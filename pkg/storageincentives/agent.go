@@ -411,11 +411,6 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 		return false, nil
 	}
 
-	if !a.IsEnabled() {
-		a.logger.Info("skipping round because redistribution is disabled", "round", round)
-		return false, nil
-	}
-
 	isPlaying, err := a.contract.IsPlaying(ctx, committedDepth)
 	if err != nil {
 		a.metrics.ErrCheckIsPlaying.Inc()

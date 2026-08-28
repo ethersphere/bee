@@ -827,7 +827,7 @@ components:
           type: boolean
         enabled:
           type: boolean
-          description: Whether the node will commit in new redistribution rounds. A disabled node still finishes a round that already has an on-chain commit. Re-enabling during a commit phase that was already skipped does not retry that round; participation resumes on the next sample/commit cycle.
+          description: Whether the node will commit in new redistribution rounds. Sampling still runs while disabled. A disabled node still finishes a round that already has an on-chain commit. Re-enabling during a commit phase that was already skipped does not retry that round.
         phase:
           type: string
         round:
@@ -856,7 +856,7 @@ components:
       properties:
         enabled:
           type: boolean
-          description: Whether the node should enter new redistribution rounds.
+          description: Whether the node should commit in new redistribution rounds. Sampling still runs while disabled.
 
     RedistributionEnableResponse:
       type: object

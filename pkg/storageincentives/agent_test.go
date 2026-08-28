@@ -203,7 +203,7 @@ func TestAgentParticipationToggle(t *testing.T) {
 	)
 	bigBalance := big.NewInt(4_000_000_000)
 
-	t.Run("disabled before sample skips playing and commit", func(t *testing.T) {
+	t.Run("disabled before sample still samples but skips commit", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			wait := make(chan struct{}, 1)
 			backend := &mockchainBackend{
@@ -227,8 +227,8 @@ func TestAgentParticipationToggle(t *testing.T) {
 			<-wait
 			synctest.Wait()
 
-			if got := contract.playingCount(); got != 0 {
-				t.Fatalf("expected no isPlaying calls, got %d", got)
+			if got := contract.playingCount(); got == 0 {
+				t.Fatal("expected sampling to run while disabled")
 			}
 			if got := contract.countCalls(commitCall); got != 0 {
 				t.Fatalf("expected no commit calls, got %d", got)
