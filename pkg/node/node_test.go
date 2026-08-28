@@ -148,3 +148,38 @@ func TestUseEmbeddedSnapshot(t *testing.T) {
 		})
 	}
 }
+
+// trackingCloser records whether Close was called.
+type trackingCloser struct{ closed bool }
+
+func (c *trackingCloser) Close() error {
+	c.closed = true
+	return nil
+}
+
+// TestShutdownRegistersPushSyncAndRetrieval is a regression test for LEAK-02
+// and LEAK-03: the push-sync and retrieval closers were never added to the
+// Shutdown closer fan-out, so their background prune workers leaked on every
+// node stop. Both must be registered so Shutdown joins them.
+func TestShutdownRegistersPushSyncAndRetrieval(t *testing.T) {
+	t.Parallel()
+
+	pushSync := &trackingCloser{}
+	retrieval := &trackingCloser{}
+
+	b := node.NewTestBeeWithClosers(pushSync, retrieval)
+	closers := b.ShutdownClosersByName()
+
+	for name, want := range map[string]*trackingCloser{
+		"push sync": pushSync,
+		"retrieval": retrieval,
+	} {
+		got, ok := closers[name]
+		if !ok {
+			t.Fatalf("closer %q not registered in Shutdown fan-out", name)
+		}
+		if got != want {
+			t.Fatalf("closer %q registered with the wrong instance", name)
+		}
+	}
+}

@@ -55,7 +55,11 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 		t.Fatal(err)
 	}
 
-	addr := ":0"
+	// Bind loopback only so host.Addrs() stays small and independent of the
+	// machine's docker/bridge NICs. Handshake truncates underlays to
+	// maxUnderlaysPerPeer; listening on :0 expands to every local interface
+	// and breaks addressbook equality checks on hosts with many addresses.
+	addr := "127.0.0.1:0"
 
 	if o.Logger == nil {
 		o.Logger = log.Noop
