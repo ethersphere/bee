@@ -5,16 +5,37 @@
 package libp2p
 
 import (
+	"strings"
+
+	"github.com/ethersphere/bee/v2/pkg/bzz"
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
+	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/prometheus/client_golang/prometheus"
+)
+
+const (
+	connectionTransportLabelName = "transport"
+	connectionPublicLabelName    = "public"
+)
+
+var (
+	// TCP/WS/WSS only: bee does not register QUIC today.
+	transportLabelValues = []string{
+		bzz.TransportTCP.String(),
+		bzz.TransportWS.String(),
+		bzz.TransportWSS.String(),
+		bzz.TransportUnknown.String(),
+	}
+	publicLabelValues = []string{"true", "false"}
 )
 
 type metrics struct {
 	// all metrics fields must be exported
 	// to be able to return them by Metrics()
 	// using reflection
-	CreatedConnectionCount     prometheus.Counter
-	HandledConnectionCount     prometheus.Counter
+	CreatedConnectionCount     *prometheus.CounterVec
+	HandledConnectionCount     *prometheus.CounterVec
 	CreatedStreamCount         prometheus.Counter
 	ClosedStreamCount          prometheus.Counter
 	StreamResetCount           prometheus.Counter
@@ -31,20 +52,43 @@ type metrics struct {
 
 func newMetrics() metrics {
 	subsystem := "libp2p"
+	transportHelp := "The 'transport' label is one of: " + strings.Join(transportLabelValues, ", ")
+	publicHelp := "The 'public' label is one of: " + strings.Join(publicLabelValues, ", ") + " (true = public remote multiaddr)."
 
-	return metrics{
-		CreatedConnectionCount: prometheus.NewCounter(prometheus.CounterOpts{
+	connectionLabels := []string{connectionTransportLabelName, connectionPublicLabelName}
+
+	createdConnectionCount := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "created_connection_count",
-			Help:      "Number of initiated outgoing libp2p connections.",
-		}),
-		HandledConnectionCount: prometheus.NewCounter(prometheus.CounterOpts{
+			Help:      "Number of initiated outgoing libp2p connections. " + transportHelp + " " + publicHelp,
+		},
+		connectionLabels,
+	)
+
+	handledConnectionCount := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "handled_connection_count",
-			Help:      "Number of handled incoming libp2p connections.",
-		}),
+			Help:      "Number of handled incoming libp2p connections. " + transportHelp + " " + publicHelp,
+		},
+		connectionLabels,
+	)
+
+	// Ensure all expected label value combinations exist as 0-valued series,
+	// so Grafana shows a flat line instead of "No Data".
+	for _, transport := range transportLabelValues {
+		for _, public := range publicLabelValues {
+			createdConnectionCount.WithLabelValues(transport, public).Add(0)
+			handledConnectionCount.WithLabelValues(transport, public).Add(0)
+		}
+	}
+
+	return metrics{
+		CreatedConnectionCount: createdConnectionCount,
+		HandledConnectionCount: handledConnectionCount,
 		CreatedStreamCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
@@ -118,6 +162,25 @@ func newMetrics() metrics {
 			Help:      "The duration spent exchanging the headers.",
 		}),
 	}
+}
+
+func (m metrics) incCreatedConnection(addr ma.Multiaddr) {
+	m.CreatedConnectionCount.WithLabelValues(connectionTransportLabel(addr), connectionPublicLabel(addr)).Inc()
+}
+
+func (m metrics) observeHandledConnection(addr ma.Multiaddr) {
+	m.HandledConnectionCount.WithLabelValues(connectionTransportLabel(addr), connectionPublicLabel(addr)).Inc()
+}
+
+func connectionTransportLabel(addr ma.Multiaddr) string {
+	return bzz.ClassifyTransport(addr).String()
+}
+
+func connectionPublicLabel(addr ma.Multiaddr) string {
+	if manet.IsPublicAddr(addr) {
+		return "true"
+	}
+	return "false"
 }
 
 func (s *Service) Metrics() []prometheus.Collector {
