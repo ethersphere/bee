@@ -166,7 +166,7 @@ func (c *contract) UpdateHeight(ctx context.Context) (common.Hash, bool, error) 
 }
 
 func (c *contract) GetPotentialStake(ctx context.Context) (*big.Int, error) {
-	_, potential, err := c.getStake(ctx)
+	_, potential, _, err := c.getStake(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("staking contract: failed to get stake: %w", err)
 	}
@@ -174,7 +174,7 @@ func (c *contract) GetPotentialStake(ctx context.Context) (*big.Int, error) {
 }
 
 func (c *contract) GetMinDeposit(ctx context.Context) (*big.Int, error) {
-	committed, potential, err := c.getStake(ctx)
+	committed, potential, stakeExists, err := c.getStake(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("staking contract: failed to get stake: %w", err)
 	}
@@ -187,20 +187,20 @@ func (c *contract) GetMinDeposit(ctx context.Context) (*big.Int, error) {
 		}
 	}
 
-	return calculateMinDeposit(potential, committed, price, c.height), nil
+	return calculateMinDeposit(potential, committed, price, c.height, stakeExists), nil
 }
 
 // calculateMinDeposit returns the minimum additional deposit in PLUR that manageStake will accept according to contract.
-func calculateMinDeposit(potential, committed *big.Int, price uint32, height uint8) *big.Int {
+// stakeExists mirrors Solidity's _stakingSet != 0 (lastUpdatedBlockNumber != 0).
+func calculateMinDeposit(potential, committed *big.Int, price uint32, height uint8, stakeExists bool) *big.Int {
 	minAdd := big.NewInt(1)
 
-	// The contract applies the minimum stake floor only when creating a stake.
-	if potential.Sign() == 0 {
-		minAdd.Lsh(new(big.Int).Set(MinimumStakeAmount), uint(height))
+	// Contract: BelowMinimumStake when addAmount < MIN_STAKE * 2^height && _stakingSet == 0.
+	if !stakeExists {
+		minAdd = new(big.Int).Lsh(new(big.Int).Set(MinimumStakeAmount), uint(height))
 	}
 
 	if price != 0 && committed.Sign() > 0 {
-		// User already has committed stake.
 		// Commitment protection: required = committed * price * 2^height
 		required := new(big.Int).SetUint64(uint64(price))
 		required = new(big.Int).Lsh(required, uint(height)) // * 2^height
@@ -379,17 +379,17 @@ func (c *contract) sendManageStakeTransaction(ctx context.Context, stakedAmount 
 	return receipt, nil
 }
 
-func (c *contract) getStake(ctx context.Context) (committed, potential *big.Int, err error) {
+func (c *contract) getStake(ctx context.Context) (committed, potential *big.Int, stakeExists bool, err error) {
 	callData, err := c.stakingContractABI.Pack("stakes", c.owner)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 	result, err := c.transactionService.Call(ctx, &transaction.TxRequest{
 		To:   &c.stakingContractAddress,
 		Data: callData,
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("get stakes: %w", err)
+		return nil, nil, false, fmt.Errorf("get stakes: %w", err)
 	}
 
 	// overlay bytes32,
@@ -398,16 +398,17 @@ func (c *contract) getStake(ctx context.Context) (committed, potential *big.Int,
 	// lastUpdatedBlockNumber uint256,
 	results, err := c.stakingContractABI.Unpack("stakes", result)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 
 	if len(results) < 4 {
-		return nil, nil, ErrUnexpectedLength
+		return nil, nil, false, ErrUnexpectedLength
 	}
 
 	committed = abi.ConvertType(results[1], new(big.Int)).(*big.Int)
 	potential = abi.ConvertType(results[2], new(big.Int)).(*big.Int)
-	return committed, potential, nil
+	lastUpdated := abi.ConvertType(results[3], new(big.Int)).(*big.Int)
+	return committed, potential, lastUpdated.Sign() != 0, nil
 }
 
 func (c *contract) getCurrentPrice(ctx context.Context) (uint32, error) {

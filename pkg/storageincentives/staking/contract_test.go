@@ -37,68 +37,85 @@ func TestCalculateMinDeposit(t *testing.T) {
 	committedAtMin := new(big.Int).Div(minStake, big.NewInt(1000)) // potential/price at price 1000
 
 	tests := []struct {
-		name      string
-		potential *big.Int
-		committed *big.Int
-		price     uint32
-		height    uint8
-		want      *big.Int
+		name        string
+		potential   *big.Int
+		committed   *big.Int
+		price       uint32
+		height      uint8
+		stakeExists bool
+		want        *big.Int
 	}{
 		{
-			name:      "first deposit height 0",
-			potential: big.NewInt(0),
-			committed: big.NewInt(0),
-			price:     1000,
-			height:    0,
-			want:      minStake,
+			name:        "first deposit height 0",
+			potential:   big.NewInt(0),
+			committed:   big.NewInt(0),
+			price:       1000,
+			height:      0,
+			stakeExists: false,
+			want:        minStake,
 		},
 		{
-			name:      "first deposit height 1",
-			potential: big.NewInt(0),
-			committed: big.NewInt(0),
-			price:     1000,
-			height:    1,
-			want:      new(big.Int).Mul(minStake, big.NewInt(2)),
+			name:        "first deposit height 1",
+			potential:   big.NewInt(0),
+			committed:   big.NewInt(0),
+			price:       1000,
+			height:      1,
+			stakeExists: false,
+			want:        new(big.Int).Mul(minStake, big.NewInt(2)),
 		},
 		{
-			name:      "subsequent with surplus is one plur",
-			potential: new(big.Int).Mul(minStake, big.NewInt(2)),
-			committed: committedAtMin,
-			price:     1000,
-			height:    0,
-			want:      big.NewInt(1),
+			name:        "subsequent with surplus is one plur",
+			potential:   new(big.Int).Mul(minStake, big.NewInt(2)),
+			committed:   committedAtMin,
+			price:       1000,
+			height:      0,
+			stakeExists: true,
+			want:        big.NewInt(1),
 		},
 		{
-			name:      "exact cover is one plur",
-			potential: new(big.Int).Set(minStake),
-			committed: committedAtMin,
-			price:     1000,
-			height:    0,
-			want:      big.NewInt(1),
+			name:        "exact cover is one plur",
+			potential:   new(big.Int).Set(minStake),
+			committed:   committedAtMin,
+			price:       1000,
+			height:      0,
+			stakeExists: true,
+			want:        big.NewInt(1),
 		},
 		{
-			name:      "price increase requires gap",
-			potential: new(big.Int).Set(minStake),
-			committed: committedAtMin,
-			price:     1001,
-			height:    0,
-			want:      committedAtMin,
+			name:        "price increase requires gap",
+			potential:   new(big.Int).Set(minStake),
+			committed:   committedAtMin,
+			price:       1001,
+			height:      0,
+			stakeExists: true,
+			want:        committedAtMin,
 		},
 		{
-			name:      "height doubles required potential",
-			potential: new(big.Int).Mul(minStake, big.NewInt(2)),
-			committed: committedAtMin,
-			price:     1001,
-			height:    1,
-			want:      new(big.Int).Mul(committedAtMin, big.NewInt(2)),
+			name:        "height doubles required potential",
+			potential:   new(big.Int).Mul(minStake, big.NewInt(2)),
+			committed:   committedAtMin,
+			price:       1001,
+			height:      1,
+			stakeExists: true,
+			want:        new(big.Int).Mul(committedAtMin, big.NewInt(2)),
 		},
 		{
-			name:      "existing slashed stake does not restore initial floor",
-			potential: new(big.Int).Div(minStake, big.NewInt(10)),
-			committed: committedAtMin,
-			price:     100,
-			height:    0,
-			want:      big.NewInt(1),
+			name:        "existing slashed stake does not restore initial floor",
+			potential:   new(big.Int).Div(minStake, big.NewInt(10)),
+			committed:   committedAtMin,
+			price:       100,
+			height:      0,
+			stakeExists: true,
+			want:        big.NewInt(1),
+		},
+		{
+			name:        "initialized stake with zero potential does not restore initial floor",
+			potential:   big.NewInt(0),
+			committed:   big.NewInt(0),
+			price:       200,
+			height:      0,
+			stakeExists: true,
+			want:        big.NewInt(1),
 		},
 	}
 
@@ -106,7 +123,7 @@ func TestCalculateMinDeposit(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := staking.CalculateMinDeposit(tc.potential, tc.committed, tc.price, tc.height)
+			got := staking.CalculateMinDeposit(tc.potential, tc.committed, tc.price, tc.height, tc.stakeExists)
 			if got.Cmp(tc.want) != 0 {
 				t.Fatalf("got %s, want %s", got, tc.want)
 			}
@@ -1481,6 +1498,36 @@ func TestGetMinDeposit(t *testing.T) {
 			t.Fatalf("got %s, want %s", got, committed)
 		}
 	})
+
+	t.Run("initialized stake with zero potential", func(t *testing.T) {
+		t.Parallel()
+
+		contract := staking.New(
+			owner,
+			stakingAddress,
+			stakingContractABI,
+			bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if *request.To == stakingAddress {
+						return getStakeResponseWithLastUpdated(t, big.NewInt(0), big.NewInt(0), big.NewInt(1000)), nil
+					}
+					return nil, errors.New("unexpected call")
+				}),
+			),
+			nonce,
+			0,
+			stakingHeight,
+		)
+
+		got, err := contract.GetMinDeposit(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Cmp(big.NewInt(1)) != 0 {
+			t.Fatalf("got %s, want 1", got)
+		}
+	})
 }
 
 func TestGetWithdrawableStake(t *testing.T) {
@@ -2207,10 +2254,21 @@ func newStakeCallFunc(
 func getStakeResponse(t *testing.T, committed, potential *big.Int) []byte {
 	t.Helper()
 
+	lastUpdated := big.NewInt(0)
+	if committed.Sign() > 0 || potential.Sign() > 0 {
+		lastUpdated = big.NewInt(1)
+	}
+	return getStakeResponseWithLastUpdated(t, committed, potential, lastUpdated)
+}
+
+func getStakeResponseWithLastUpdated(t *testing.T, committed, potential, lastUpdated *big.Int) []byte {
+	t.Helper()
+
 	ret := make([]byte, 32*5)
 	copy(ret, swarm.RandAddress(t).Bytes())
 	copy(ret[32:], committed.FillBytes(make([]byte, 32)))
 	copy(ret[64:], potential.FillBytes(make([]byte, 32)))
+	copy(ret[96:], lastUpdated.FillBytes(make([]byte, 32)))
 
 	return ret
 }
