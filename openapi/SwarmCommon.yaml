@@ -866,7 +866,9 @@ components:
 
     FeedType:
       type: string
-      pattern: "^(sequence|epoch)$"
+      description: Feed indexing scheme. Only sequence is supported by the HTTP API.
+      enum:
+        - sequence
 
     IsRetrievableResponse:
       type: object

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 8.1.1
+  version: 8.1.2
   title: Bee API
   description: "API endpoints for interacting with the Swarm network, supporting file operations, messaging, and node management"
 
@@ -1114,7 +1114,7 @@ paths:
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/FeedType"
           required: false
-          description: "Feed indexing scheme (default: sequence)"
+          description: "Feed indexing scheme. Only sequence is supported; other values are ignored and sequence is always used."
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmAct"
@@ -1179,7 +1179,7 @@ paths:
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/FeedType"
           required: false
-          description: "Feed indexing scheme (default: sequence)"
+          description: "Feed indexing scheme. Only sequence is supported; other values are ignored and sequence is always used."
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmOnlyRootChunkParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
