@@ -100,6 +100,11 @@ func (i *Item) Unmarshal(bytes []byte) error {
 		return errStampItemUnmarshalInvalidSize
 	}
 	nsLen := int(binary.LittleEndian.Uint64(bytes))
+	// nsLen is a signed narrowing of a wire-derived uint64; a negative value
+	// balances the size equality check below and then panics make([]byte, 0, nsLen).
+	if nsLen < 0 {
+		return errStampItemUnmarshalInvalidSize
+	}
 	if len(bytes) != 8+nsLen+swarm.HashSize+swarm.StampIndexSize+swarm.StampTimestampSize+swarm.HashSize+swarm.HashSize {
 		return errStampItemUnmarshalInvalidSize
 	}

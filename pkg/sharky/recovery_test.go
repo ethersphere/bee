@@ -9,7 +9,11 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"math/rand"
+	"os"
+	"path"
+	"runtime"
 	"testing"
 	"time"
 
@@ -22,6 +26,47 @@ func TestMissingShard(t *testing.T) {
 	_, err := sharky.NewRecovery(t.TempDir(), 1, 8)
 	if !errors.Is(err, sharky.ErrShardNotFound) {
 		t.Fatalf("want %v, got %v", sharky.ErrShardNotFound, err)
+	}
+}
+
+// TestRecoveryShardOutOfRange checks that a persisted Shard value at or beyond
+// the shard count is rejected instead of panicking with index out of range, as
+// recovery locations decode from the same on-disk records as Store locations.
+func TestRecoveryShardOutOfRange(t *testing.T) {
+	t.Parallel()
+
+	const shards = 2
+	dir := t.TempDir()
+	newSharky(t, dir, shards, 8)
+
+	r, err := sharky.NewRecovery(dir, shards, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := r.Close(); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	ctx := context.Background()
+	// Shard index equal to the shard count is one past the last valid shard.
+	loc := sharky.Location{Shard: uint8(shards), Slot: 0, Length: 1}
+
+	if err := r.Add(loc); !errors.Is(err, sharky.ErrShardNotFound) {
+		t.Fatalf("Add: expected %v, got %v", sharky.ErrShardNotFound, err)
+	}
+	if err := r.Read(ctx, loc, make([]byte, 1)); !errors.Is(err, sharky.ErrShardNotFound) {
+		t.Fatalf("Read: expected %v, got %v", sharky.ErrShardNotFound, err)
+	}
+	if err := r.Move(ctx, loc, sharky.Location{}); !errors.Is(err, sharky.ErrShardNotFound) {
+		t.Fatalf("Move from: expected %v, got %v", sharky.ErrShardNotFound, err)
+	}
+	if err := r.Move(ctx, sharky.Location{}, loc); !errors.Is(err, sharky.ErrShardNotFound) {
+		t.Fatalf("Move to: expected %v, got %v", sharky.ErrShardNotFound, err)
+	}
+	if err := r.TruncateAt(ctx, uint8(shards), 0); !errors.Is(err, sharky.ErrShardNotFound) {
+		t.Fatalf("TruncateAt: expected %v, got %v", sharky.ErrShardNotFound, err)
 	}
 }
 
@@ -169,4 +214,56 @@ func newSharky(t *testing.T, dir string, shards, datasize int) *sharky.Store {
 	})
 
 	return s
+}
+
+// TestRecoveryFilePermissions verifies that the free slot files recreated on the
+// recovery path are not readable by other users on the host. This path bypasses
+// the store's own file opener, so without it the tightened permissions would be
+// reverted on every unclean shutdown.
+func TestRecoveryFilePermissions(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("permission bits are not meaningful on windows")
+	}
+
+	const shards = 2
+
+	dir := t.TempDir()
+	s, err := sharky.New(&dirFS{basedir: dir}, shards, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Write(context.Background(), []byte("test")); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// remove the free files so that recovery has to recreate them.
+	for i := range shards {
+		if err := os.Remove(path.Join(dir, fmt.Sprintf("free_%03d", i))); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	r, err := sharky.NewRecovery(dir, shards, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	for i := range shards {
+		name := path.Join(dir, fmt.Sprintf("free_%03d", i))
+		fi, err := os.Stat(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := fi.Mode().Perm(); got != 0o600 {
+			t.Errorf("%s: got mode %O, want %O", name, got, 0o600)
+		}
+	}
 }

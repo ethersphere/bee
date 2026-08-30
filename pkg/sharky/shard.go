@@ -36,6 +36,10 @@ func (l *Location) MarshalBinary() ([]byte, error) {
 
 // UnmarshalBinary constructs the location from byte representation
 func (l *Location) UnmarshalBinary(buf []byte) error {
+	// Reject short buffers before indexing buf[0], buf[1:5] and buf[5:].
+	if len(buf) < LocationSize {
+		return ErrInvalidLocation
+	}
 	l.Shard = buf[0]
 	l.Slot = binary.LittleEndian.Uint32(buf[1:5])
 	l.Length = binary.LittleEndian.Uint16(buf[5:])

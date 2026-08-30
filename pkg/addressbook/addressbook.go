@@ -96,8 +96,9 @@ type store struct {
 	store storage.StateStorer
 	now   func() time.Time
 
-	// mu serializes the read-modify-write in Seen against Put, so that a
-	// concurrent Put is not rolled back by a stale copy of the entry.
+	// mu serializes the read-modify-write in Seen against Put and Remove, so
+	// that a concurrent Put is not rolled back and a concurrent Remove is not
+	// undone by a stale copy of the entry.
 	mu sync.Mutex
 }
 
@@ -184,6 +185,9 @@ func (s *store) Seen(overlays ...swarm.Address) error {
 }
 
 func (s *store) Remove(overlay swarm.Address) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	return s.store.Delete(keyPrefix + overlay.String())
 }
 
