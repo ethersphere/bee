@@ -48,19 +48,32 @@ func loadHostFixture(t *testing.T, name string) []byte {
 // stores puts in a shared chunk store and its Cleanup is a no-op, so committing
 // and discarding look identical from the outside; this records which one the
 // handler actually chose.
+//
+// It also holds the session to the context it was opened with. The real upload
+// store batches its writes against that context, so a session opened on one
+// that dies before the run is finished can never be committed; the mock ignores
+// the context entirely, which is what let a cancelled-by-construction session
+// pass every test here and fail on a node.
 type sessionRecorder struct {
 	storer.PutterSession
+	ctx     context.Context
 	done    *atomic.Bool
 	cleaned *atomic.Bool
 }
 
 func (s sessionRecorder) Done(addr swarm.Address) error {
 	s.done.Store(true)
+	if err := s.ctx.Err(); err != nil {
+		return err
+	}
 	return s.PutterSession.Done(addr)
 }
 
 func (s sessionRecorder) Cleanup() error {
 	s.cleaned.Store(true)
+	if err := s.ctx.Err(); err != nil {
+		return err
+	}
 	return s.PutterSession.Cleanup()
 }
 
@@ -76,7 +89,7 @@ func (r *recordingStorer) Upload(ctx context.Context, pin bool, tagID uint64) (s
 	if err != nil {
 		return nil, err
 	}
-	return sessionRecorder{PutterSession: session, done: &r.done, cleaned: &r.cleaned}, nil
+	return sessionRecorder{PutterSession: session, ctx: ctx, done: &r.done, cleaned: &r.cleaned}, nil
 }
 
 // newHostTestServer wires the real wazero engine behind the execute endpoint so

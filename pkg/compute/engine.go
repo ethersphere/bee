@@ -63,6 +63,38 @@ type Result struct {
 	Status      Status
 	Output      []byte
 	TrapMessage string
+	// Response is the HTTP metadata the guest set through swarm_response_status
+	// and swarm_response_header. It is populated only on StatusOK: a module that
+	// trapped has no say in how its failure is rendered, exactly as a module that
+	// trapped commits no upload.
+	//
+	// Note the deliberate asymmetry with Output, which a trapped module does keep
+	// (see classifyRunError). Partial output is evidence about what went wrong;
+	// partial response metadata would be an instruction the node should not follow.
+	Response ResponseMeta
+}
+
+// Header is one response header the guest set. Duplicates are kept in the order
+// they were set, because Link and Vary legitimately repeat.
+type Header struct {
+	Name  string
+	Value string
+}
+
+// ResponseMeta is the HTTP status and headers a guest asked for. Its zero value
+// means the guest asked for nothing, which is the pre-existing behaviour and is
+// what Empty reports.
+type ResponseMeta struct {
+	// Status is the HTTP status code, or 0 when the guest did not set one.
+	Status int
+	// Headers are the accepted headers, in the order the guest set them.
+	Headers []Header
+}
+
+// Empty reports whether the guest set no response metadata at all. The API layer
+// uses it to decide whether a wildcard Accept still means "give me the envelope".
+func (r ResponseMeta) Empty() bool {
+	return r.Status == 0 && len(r.Headers) == 0
 }
 
 // Request describes a single execution: the module to run, the caller-supplied
@@ -80,6 +112,17 @@ type Request struct {
 	Method string
 	// Input is the request body, handed to the guest on stdin.
 	Input []byte
+	// Env carries the rest of the request metadata, CGI-style: PATH_INFO,
+	// QUERY_STRING, the allowlisted HTTP_* headers and so on.
+	//
+	// It is an ordered slice rather than a map because the guest can observe the
+	// order through environ_get, and Go's map iteration is random: a map would
+	// make a module's view of its own environment differ between two runs on the
+	// same node for no reason.
+	//
+	// REQUEST_METHOD comes from Method, not from here; a duplicate entry is
+	// ignored. The host environment is never inherited.
+	Env []EnvVar
 	// Limits bound the execution.
 	Limits Limits
 	// Host serves the calls the module makes back into the node. It is
@@ -88,6 +131,12 @@ type Request struct {
 	// A nil Host leaves the swarm module uninstantiated, so a module importing
 	// it is StatusInvalidModule rather than trapping mid-run.
 	Host Host
+}
+
+// EnvVar is one environment variable the endpoint derived from the request.
+type EnvVar struct {
+	Name  string
+	Value string
 }
 
 // Engine executes a single WASM module in isolation and returns its Result.

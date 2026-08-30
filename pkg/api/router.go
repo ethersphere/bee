@@ -274,12 +274,20 @@ func (s *Service) mountAPI() {
 
 	// Registered without a jsonhttp.MethodHandler on purpose: every HTTP method
 	// reaches the module, which is told which one it was called with.
-	handle("/@/{address}", web.ChainHandlers(
+	//
+	// Both the bare and the trailing-path form serve. Unlike /bzz, which redirects
+	// the bare form to the directory form, /@/{address} is a function invocation:
+	// POST /@/{address} with a body is how a module is called, and most modules
+	// are pure compute for which a trailing slash means nothing. A module that
+	// wants the /bzz behaviour issues the redirect itself, using SCRIPT_NAME.
+	executeHandler := web.ChainHandlers(
 		s.checkExecuteAvailability,
 		s.contentLengthMetricMiddleware(),
 		s.newTracingHandler("execute"),
 		web.FinalHandlerFunc(s.executeHandler),
-	))
+	)
+	handle("/@/{address}", executeHandler)
+	handle("/@/{address}/{path:.*}", executeHandler)
 
 	handle("/bytes/{address}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(

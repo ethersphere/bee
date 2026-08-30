@@ -234,16 +234,28 @@ paths:
 
 
         Every HTTP method is accepted, including ones not listed here, and the
-        module decides how to react to it: the method is handed to the module as
-        the `REQUEST_METHOD` environment variable, following CGI convention. The
-        one exception is `OPTIONS`, which the node answers itself as a CORS
-        preflight so it never reaches untrusted code.
+        module decides how to react to it. The one exception is `OPTIONS`, which
+        the node answers itself as a CORS preflight so it never reaches
+        untrusted code.
+
+
+        **Request metadata** reaches the module CGI-style, through the
+        environment: `REQUEST_METHOD`, `SCRIPT_NAME`, `PATH_INFO`,
+        `QUERY_STRING`, `REQUEST_URI`, `CONTENT_TYPE`, `CONTENT_LENGTH` and the
+        allowlisted request headers as `HTTP_*`. A trailing path is available at
+        `/@/{address}/{path}` and arrives as `PATH_INFO`, which is empty on the
+        bare form. The host environment is never inherited, and
+        `Authorization`, `Proxy-Authorization` and `Cookie` are never forwarded.
+        The environment is capped; overflow is a 431.
 
 
         The representation of the result is negotiated with the `Accept` header:
-        `application/json` (the default) returns the full execution envelope,
+        `application/json` returns the full execution envelope,
         `application/octet-stream` and `text/html` return the raw output. Any
-        other media type is rejected with 406.
+        other media type is rejected with 406. A wildcard `Accept` returns the
+        envelope unless the module set response metadata of its own, in which
+        case it returns the raw output with the module's content type — which is
+        what lets a browser load a module's stylesheets and images.
 
 
         A verdict on the program itself (`trap`, `invalid-module`) is reported
@@ -258,6 +270,17 @@ paths:
         result codes and the caller-provides-buffer convention, is documented in
         `pkg/compute/README.md`. Importing a name that module does not define is
         rejected before the module runs.
+
+
+        **Shaping the response.** The same host module offers
+        `swarm_response_status` and `swarm_response_header`, which let a module
+        set the HTTP status and headers rather than having them derived from the
+        verdict and the caller's `Accept`. These need no node access and are
+        available even when it is switched off. A module cannot set
+        `Swarm-Wasm-*`, `Access-Control-*`, `Set-Cookie`, the origin-wide
+        security headers or the hop-by-hop headers. Response metadata is
+        committed only on a clean run: a module that traps sets no headers, just
+        as it stores nothing.
 
 
         Uploads are paid for by the postage batch the module passes to a put
@@ -319,6 +342,35 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
+    head: *executeOperation
+    post: *executeOperation
+    put: *executeOperation
+    patch: *executeOperation
+    delete: *executeOperation
+
+  "/@/{address}/{path}":
+    parameters:
+      - in: path
+        name: address
+        schema:
+          $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
+        required: true
+        description: Swarm address reference of the WASM module
+      - in: path
+        name: path
+        schema:
+          type: string
+        required: true
+        allowEmptyValue: true
+        description: >
+          Path handed to the module as `PATH_INFO`, prefixed with `/`. May be
+          empty, which is how `/@/{address}/` differs from `/@/{address}`.
+      - $ref: "SwarmCommon.yaml#/components/parameters/SwarmWasmMemoryLimit"
+      - $ref: "SwarmCommon.yaml#/components/parameters/SwarmWasmEntrypoint"
+      - $ref: "SwarmCommon.yaml#/components/parameters/SwarmWasmHostCallsLimit"
+      - $ref: "SwarmCommon.yaml#/components/parameters/SwarmWasmHostBytesLimit"
+      - $ref: "SwarmCommon.yaml#/components/parameters/SwarmWasmDepthLimit"
+    get: *executeOperation
     head: *executeOperation
     post: *executeOperation
     put: *executeOperation

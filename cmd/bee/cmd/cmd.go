@@ -98,6 +98,10 @@ const (
 	optionNameWasmMaxHostBytes             = "wasm-max-host-bytes"
 	optionNameWasmExecDepth                = "wasm-exec-depth"
 	optionNameWasmMaxExecDepth             = "wasm-max-exec-depth"
+	optionNameWasmMaxResponseHeaders       = "wasm-max-response-headers"
+	optionNameWasmMaxResponseHeaderBytes   = "wasm-max-response-header-bytes"
+	optionNameWasmRequestHeaders           = "wasm-request-headers"
+	optionNameWasmMaxEnvBytes              = "wasm-max-env-bytes"
 	optionP2PWSSAddr                       = "p2p-wss-addr"
 	optionNATWSSAddr                       = "nat-wss-addr"
 	optionAutoTLSDomain                    = "autotls-domain"
@@ -360,6 +364,13 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Uint64(optionNameWasmMaxHostBytes, 256*1024*1024, "maximum total bytes moved by swarm host calls a request may ask for")
 	cmd.Flags().Uint64(optionNameWasmExecDepth, 4, "default maximum nesting depth of swarm_execute calls")
 	cmd.Flags().Uint64(optionNameWasmMaxExecDepth, 8, "maximum nesting depth of swarm_execute calls a request may ask for")
+	// No default/maximum pair for these: the request-header overrides exist so a
+	// caller can bound risk it is exposed to, and a caller is not exposed to the
+	// response header budget.
+	cmd.Flags().Uint64(optionNameWasmMaxResponseHeaders, 32, "maximum number of response headers a WASM module may set")
+	cmd.Flags().Uint64(optionNameWasmMaxResponseHeaderBytes, 8*1024, "maximum total size in bytes of the response headers a WASM module may set")
+	cmd.Flags().StringSlice(optionNameWasmRequestHeaders, nil, "request headers exposed to a WASM module as CGI HTTP_* variables; replaces the built-in list. Authorization, Proxy-Authorization and Cookie are never exposed")
+	cmd.Flags().Uint64(optionNameWasmMaxEnvBytes, 16*1024, "maximum total size in bytes of the request metadata exposed to a WASM module")
 	cmd.Flags().String(optionP2PWSSAddr, ":1635", "p2p wss address")
 	cmd.Flags().String(optionNATWSSAddr, "", "WSS NAT exposed address")
 	cmd.Flags().String(optionAutoTLSDomain, p2pforge.DefaultForgeDomain, "autotls domain")

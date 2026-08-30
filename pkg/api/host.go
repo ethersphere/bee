@@ -31,6 +31,13 @@ type executeHost struct {
 	cache    bool
 	maxBytes uint64
 
+	// sessionCtx scopes the upload session to the request rather than to the
+	// run. A host call's own context is the watchdog's, and that is cancelled
+	// the moment Execute returns — before Close commits — so a session opened
+	// on it can only ever fail to commit. The request context is what every
+	// other upload endpoint uses, and it is still live at Close.
+	sessionCtx context.Context
+
 	// mu guards the lazily opened session. A guest is single-threaded and
 	// nested executions are sequential, but the session outlives individual
 	// calls and is cheap to guard.
@@ -41,10 +48,12 @@ type executeHost struct {
 
 var _ compute.Host = (*executeHost)(nil)
 
-// newExecuteHost builds the per-request host. maxBytes is the execution's byte
-// budget, used to refuse an oversized download before it is materialised.
-func (s *Service) newExecuteHost(logger log.Logger, maxBytes uint64) *executeHost {
-	return &executeHost{s: s, logger: logger, cache: true, maxBytes: maxBytes}
+// newExecuteHost builds the per-request host. ctx is the request's, and outlives
+// the run so the upload session can still be committed. maxBytes is the
+// execution's byte budget, used to refuse an oversized download before it is
+// materialised.
+func (s *Service) newExecuteHost(ctx context.Context, logger log.Logger, maxBytes uint64) *executeHost {
+	return &executeHost{s: s, logger: logger, cache: true, maxBytes: maxBytes, sessionCtx: ctx}
 }
 
 // BytesGet reassembles data of arbitrary length, as GET /bytes does.
@@ -74,7 +83,7 @@ func (h *executeHost) BytesGet(ctx context.Context, addr swarm.Address) ([]byte,
 // Encryption and redundancy are deliberately not exposed to the guest: an
 // encrypted reference is 64 bytes and the guest ABI writes a fixed 32.
 func (h *executeHost) BytesPut(ctx context.Context, batchID, data []byte) (swarm.Address, error) {
-	putter, err := h.putter(ctx, batchID)
+	putter, err := h.putter(batchID)
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
@@ -98,7 +107,7 @@ func (h *executeHost) ChunkGet(ctx context.Context, addr swarm.Address) ([]byte,
 // /chunks there is no single owner chunk path: a SOC needs a signature the
 // guest has no way to produce.
 func (h *executeHost) ChunkPut(ctx context.Context, batchID, data []byte) (swarm.Address, error) {
-	putter, err := h.putter(ctx, batchID)
+	putter, err := h.putter(batchID)
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
@@ -115,11 +124,12 @@ func (h *executeHost) ChunkPut(ctx context.Context, batchID, data []byte) (swarm
 }
 
 // putter returns the execution's upload session, opening it on the first put so
-// a module that never uploads never creates one.
+// a module that never uploads never creates one. It takes no context: the
+// session is scoped to sessionCtx, not to the call that happened to open it.
 //
 // One execution gets one session and therefore one batch: a put with a
 // different batch than the one that opened it is refused.
-func (h *executeHost) putter(ctx context.Context, batchID []byte) (storer.PutterSession, error) {
+func (h *executeHost) putter(batchID []byte) (storer.PutterSession, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -136,7 +146,7 @@ func (h *executeHost) putter(ctx context.Context, batchID []byte) (storer.Putter
 	if err != nil {
 		return nil, err
 	}
-	session, err := h.s.newStamperPutter(ctx, putterOptions{
+	session, err := h.s.newStamperPutter(h.sessionCtx, putterOptions{
 		BatchID: batchID,
 		TagID:   tag,
 		// Deferred: a put returns once the chunk is stored locally and the

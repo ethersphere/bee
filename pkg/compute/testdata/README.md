@@ -34,5 +34,19 @@ module observes:
 | `hostputtrap` | `[32-byte batch id][payload]` | `[errno][32-byte reference]`, then traps |
 | `hostunknown` | — | — (imports a function the host module does not define) |
 
+## Response fixtures
+
+These import `swarm_response_status` and `swarm_response_header`, which shape the
+HTTP response and need no `Host` — `respok`, `respbad` and `respflood` run with
+node access switched off.
+
+| Fixture | stdin | stdout |
+|---|---|---|
+| `respok` | — | `hi`, having set status 201 and three headers, one of them a repeat |
+| `respbad` | — | `[6 x errno]`: CR/LF in a name, a `Swarm-Wasm-Status` override, an `Access-Control-*` name, `Set-Cookie`, status 99, a value length of `0xffffffff` |
+| `respflood` | — | `[accepted count][errno that stopped the loop]` — observes the count and byte caps |
+| `resptrap` | — | `part`, having set a status and a header, then traps |
+| `respcode` | — | `[errno]` from one valid header: `OK` outermost, `DENIED` when nested |
+
 Each fixture writes its payload field only when the call succeeded, so a
 non-zero result code yields the fixed-width fields alone.

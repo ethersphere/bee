@@ -375,6 +375,10 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		WasmMaxHostBytes:              c.config.GetUint64(optionNameWasmMaxHostBytes),
 		WasmExecDepth:                 c.config.GetUint64(optionNameWasmExecDepth),
 		WasmMaxExecDepth:              c.config.GetUint64(optionNameWasmMaxExecDepth),
+		WasmMaxResponseHeaders:        c.config.GetUint64(optionNameWasmMaxResponseHeaders),
+		WasmMaxResponseHeaderBytes:    c.config.GetUint64(optionNameWasmMaxResponseHeaderBytes),
+		WasmRequestHeaders:            c.config.GetStringSlice(optionNameWasmRequestHeaders),
+		WasmMaxEnvBytes:               c.config.GetUint64(optionNameWasmMaxEnvBytes),
 	})
 
 	return b, err

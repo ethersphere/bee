@@ -7,11 +7,13 @@ package compute
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
+	"golang.org/x/net/http/httpguts"
 )
 
 // Host serves the calls a running module makes back into the node.
@@ -70,16 +72,133 @@ const (
 // guest calling proc_exit with the same code is never mistaken for a host error.
 const exitCodeHostAbort uint32 = 0xBEE0
 
-// swarmExports is the exact set of functions the swarm host module defines.
-// checkImports rejects anything outside it before instantiation, so an unknown
-// swarm import is a deterministic StatusInvalidModule rather than a link trap.
-// TestSwarmExportsMatchBuilder keeps this in step with buildSwarmModule.
-var swarmExports = map[string]struct{}{
-	"swarm_bytes_get": {},
-	"swarm_bytes_put": {},
-	"swarm_chunk_get": {},
-	"swarm_chunk_put": {},
-	"swarm_execute":   {},
+// The swarm host module is defined in two halves, because they have different
+// preconditions. checkImports rejects anything outside the applicable set before
+// instantiation, so an unknown swarm import is a deterministic
+// StatusInvalidModule rather than a link trap.
+// TestSwarmExportsMatchBuilder keeps both in step with buildSwarmModule.
+var (
+	// swarmResponseExports shape the HTTP response. They cause no node work and
+	// are therefore always available, even when the node runs with node access
+	// switched off: setting a Content-Type is not a reason to need a Host.
+	swarmResponseExports = map[string]struct{}{
+		"swarm_response_status": {},
+		"swarm_response_header": {},
+	}
+	// swarmHostExports reach the node's data and exist only when a Host does.
+	swarmHostExports = map[string]struct{}{
+		"swarm_bytes_get": {},
+		"swarm_bytes_put": {},
+		"swarm_chunk_get": {},
+		"swarm_chunk_put": {},
+		"swarm_execute":   {},
+	}
+)
+
+// Response headers a guest may not set. Everything else is allowed: a response
+// header carries only what the guest already knows, so an allowlist here would be
+// endless friction (Cache-Control, ETag, Location, Link, Vary, ...). The request
+// direction is the opposite — see the allowlist in pkg/api, which guards the
+// operator's secrets.
+var (
+	// A guest must not forge the node's own protocol namespace, and must not
+	// touch CORS: the node sets Access-Control-Allow-Credentials, so a guest
+	// setting Allow-Origin would be a genuine cross-origin credential leak.
+	deniedResponseHeaderPrefixes = []string{"swarm-wasm-", "access-control-"}
+
+	deniedResponseHeaders = map[string]struct{}{
+		// Hop-by-hop and framing: Go owns the wire format.
+		"connection":          {},
+		"keep-alive":          {},
+		"proxy-authenticate":  {},
+		"proxy-authorization": {},
+		"te":                  {},
+		"trailer":             {},
+		"transfer-encoding":   {},
+		"upgrade":             {},
+		"content-length":      {},
+		"host":                {},
+		// Every module shares the node's origin with the node's own authenticated
+		// API, so a guest-set cookie is session fixation across all of them.
+		// Revisit only behind a per-module origin.
+		"set-cookie": {},
+		// Origin-wide and persistent: a guest must not be able to reconfigure or
+		// brick the operator's origin.
+		"strict-transport-security": {},
+		"public-key-pins":           {},
+		"clear-site-data":           {},
+	}
+)
+
+// DeniedResponseHeader reports whether a guest is forbidden from setting name.
+// It is exported so the API layer can re-check before applying, keeping an engine
+// bug from becoming a leak.
+func DeniedResponseHeader(name string) bool {
+	lower := strings.ToLower(name)
+	for _, prefix := range deniedResponseHeaderPrefixes {
+		if strings.HasPrefix(lower, prefix) {
+			return true
+		}
+	}
+	_, denied := deniedResponseHeaders[lower]
+	return denied
+}
+
+// responseState accumulates what the guest asked for through swarm_response_*.
+// It belongs to the outermost execution alone; see hostState.resp.
+type responseState struct {
+	status     int
+	headers    []Header
+	bytes      uint32
+	maxHeaders uint32
+	maxBytes   uint32
+}
+
+func newResponseState(l Limits) *responseState {
+	return &responseState{
+		maxHeaders: l.ResponseHeaders(),
+		maxBytes:   l.ResponseHeaderBytes(),
+	}
+}
+
+// add records an accepted header, charging it against the two caps.
+func (r *responseState) add(name, value string) uint32 {
+	if uint32(len(r.headers)) >= r.maxHeaders {
+		return errnoBudgetExhausted
+	}
+	// Subtract rather than add: bytes never exceeds maxBytes, so this cannot
+	// overflow the way bytes+size could for a large configured maximum.
+	size := uint32(len(name) + len(value))
+	if size > r.maxBytes-r.bytes {
+		return errnoBudgetExhausted
+	}
+	r.bytes += size
+	r.headers = append(r.headers, Header{Name: name, Value: value})
+	return errnoOK
+}
+
+// snapshot renders what the guest set. A nil receiver is the no-metadata case.
+func (r *responseState) snapshot() ResponseMeta {
+	if r == nil {
+		return ResponseMeta{}
+	}
+	return ResponseMeta{Status: r.status, Headers: r.headers}
+}
+
+// validResponseHeaderValue accepts HTAB and printable ASCII only.
+//
+// This is deliberately stricter than RFC 9110, which also permits obs-text
+// (0x80-0xFF): those bytes have no agreed encoding in a header value and are a
+// smuggling surface. Rejecting control characters here subsumes CR/LF injection —
+// Go's net/http would silently strip newlines on write, and a silent mangling is
+// worse for a guest than a result code it can branch on.
+func validResponseHeaderValue(value string) bool {
+	for i := 0; i < len(value); i++ {
+		if c := value[i]; c != '\t' && (c < 0x20 || c > 0x7e) {
+			return false
+		}
+	}
+	return true
 }
 
 // budget bounds the node work one execution tree may cause. It is shared by
@@ -127,6 +246,11 @@ type hostState struct {
 	// maxDepth bounds the number of execution levels, the outermost included.
 	maxDepth uint32
 	logger   log.Logger
+	// resp accumulates the guest's HTTP response metadata. It is non-nil only at
+	// depth 0: a module reached through swarm_execute is a library call, not an
+	// HTTP request, and must not be able to rewrite its caller's response. A nil
+	// resp is what makes the response calls return DENIED when nested.
+	resp *responseState
 	// err records a node-local failure. When set, the run is aborted and its
 	// verdict is StatusHostError regardless of how wazero reports the unwind.
 	err error
@@ -161,8 +285,28 @@ func classifyHostErr(err error) (uint32, bool) {
 }
 
 // buildSwarmModule instantiates the swarm host module against the runtime.
+//
+// The response functions are always defined; the data functions only when a Host
+// is present, which is what makes an unavailable node a deterministic
+// invalid-module for a data import while still letting any module set a
+// Content-Type.
 func buildSwarmModule(ctx context.Context, r wazero.Runtime, h *hostState) error {
-	_, err := r.NewHostModuleBuilder(swarmModuleName).
+	b := r.NewHostModuleBuilder(swarmModuleName).
+		NewFunctionBuilder().
+		WithFunc(h.responseStatus).
+		WithParameterNames("code").
+		Export("swarm_response_status").
+		NewFunctionBuilder().
+		WithFunc(h.responseHeader).
+		WithParameterNames("name_ptr", "name_len", "val_ptr", "val_len").
+		Export("swarm_response_header")
+
+	if h.host == nil {
+		_, err := b.Instantiate(ctx)
+		return err
+	}
+
+	_, err := b.
 		NewFunctionBuilder().
 		WithFunc(h.bytesGet).
 		WithParameterNames("addr_ptr", "buf_ptr", "buf_len", "out_len_ptr").
@@ -185,6 +329,61 @@ func buildSwarmModule(ctx context.Context, r wazero.Runtime, h *hostState) error
 		Export("swarm_execute").
 		Instantiate(ctx)
 	return err
+}
+
+// responseStatus sets the HTTP status the node will answer with.
+//
+// The last call wins. 1xx is refused because writing an informational status
+// through an http.ResponseWriter desynchronises the connection; 5xx is allowed,
+// because a module must be able to report its own failure and Swarm-Wasm-Status
+// already distinguishes the guest's 500 (ok) from the node's (host-error).
+func (h *hostState) responseStatus(_ context.Context, _ api.Module, code uint32) uint32 {
+	if h.resp == nil {
+		return errnoDenied
+	}
+	if code < 200 || code > 599 {
+		return errnoInvalid
+	}
+	h.resp.status = int(code)
+	return errnoOK
+}
+
+// responseHeader appends a header to the response.
+//
+// The checks run in a fixed order and the SDK harness mirrors it exactly, so a
+// module gets the same result code locally and on a node. Lengths are validated
+// before any guest memory is read, so an absurd val_len never allocates, and a
+// rejected call charges nothing.
+func (h *hostState) responseHeader(_ context.Context, mod api.Module, namePtr, nameLen, valPtr, valLen uint32) uint32 {
+	if h.resp == nil {
+		return errnoDenied
+	}
+	mem := mod.Memory()
+	if mem == nil {
+		return errnoInvalid
+	}
+	if nameLen == 0 || nameLen > MaxResponseHeaderNameLen || valLen > MaxResponseHeaderValueLen {
+		return errnoInvalid
+	}
+
+	nameBytes, ok := mem.Read(namePtr, nameLen)
+	if !ok {
+		return errnoInvalid
+	}
+	valueBytes, ok := mem.Read(valPtr, valLen)
+	if !ok {
+		return errnoInvalid
+	}
+	// Memory.Read aliases guest memory; string() copies.
+	name, value := string(nameBytes), string(valueBytes)
+
+	if !httpguts.ValidHeaderFieldName(name) || !validResponseHeaderValue(value) {
+		return errnoInvalid
+	}
+	if DeniedResponseHeader(name) {
+		return errnoDenied
+	}
+	return h.resp.add(name, value)
 }
 
 func (h *hostState) bytesGet(ctx context.Context, mod api.Module, addrPtr, bufPtr, bufLen, outLenPtr uint32) uint32 {
@@ -220,6 +419,9 @@ func (h *hostState) get(
 	}
 
 	mem := mod.Memory()
+	if mem == nil {
+		return errnoInvalid
+	}
 	addr, ok := readAddress(mem, addrPtr)
 	if !ok {
 		return errnoInvalid
@@ -240,6 +442,9 @@ func (h *hostState) get(
 // length through outLenPtr so a too-small buffer can be retried.
 func (h *hostState) deliver(ctx context.Context, mod api.Module, bufPtr, bufLen, outLenPtr uint32, data []byte) uint32 {
 	mem := mod.Memory()
+	if mem == nil {
+		return errnoInvalid
+	}
 	if !mem.WriteUint32Le(outLenPtr, uint32(len(data))) {
 		return errnoInvalid
 	}
@@ -277,6 +482,9 @@ func (h *hostState) put(
 	}
 
 	mem := mod.Memory()
+	if mem == nil {
+		return errnoInvalid
+	}
 	batchID, ok := mem.Read(batchPtr, swarm.HashSize)
 	if !ok {
 		return errnoInvalid
@@ -318,6 +526,9 @@ func (h *hostState) execute(ctx context.Context, mod api.Module, addrPtr, inputP
 	}
 
 	mem := mod.Memory()
+	if mem == nil {
+		return errnoInvalid
+	}
 	addr, ok := readAddress(mem, addrPtr)
 	if !ok {
 		return errnoInvalid
@@ -357,6 +568,10 @@ func (h *hostState) execute(ctx context.Context, mod api.Module, addrPtr, inputP
 }
 
 // readAddress reads a fixed-width Swarm address out of guest memory.
+//
+// Callers check mod.Memory() for nil first: a module may import the swarm
+// functions and declare no memory at all (nothing in checkImports requires one),
+// and api.Memory is a typed-nil interface in that case.
 func readAddress(mem api.Memory, ptr uint32) (swarm.Address, bool) {
 	b, ok := mem.Read(ptr, swarm.HashSize)
 	if !ok {

@@ -406,26 +406,43 @@ func TestSwarmExportsMatchBuilder(t *testing.T) {
 	// checkImports rejects swarm imports outside the allowlist before the
 	// module is instantiated. If the allowlist and the builder drift apart, a
 	// real function becomes unreachable or a missing one becomes a link trap.
-	defined, err := compute.SwarmModuleExports(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
+	//
+	// The module is built in two halves: the response functions always, the data
+	// functions only when a Host is present. Both shapes are checked, because a
+	// drift in either is the same class of bug.
+	for _, tc := range []struct {
+		name          string
+		hostAvailable bool
+		allowed       map[string]struct{}
+	}{
+		{"with node access", true, compute.SwarmExports()},
+		{"without node access", false, compute.SwarmResponseExports},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	allowed := make([]string, 0, len(compute.SwarmExports))
-	for name := range compute.SwarmExports {
-		allowed = append(allowed, name)
-	}
-	sort.Strings(allowed)
-	sort.Strings(defined)
+			defined, err := compute.SwarmModuleExports(t.Context(), tc.hostAvailable)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-	if len(allowed) != len(defined) {
-		t.Fatalf("allowlist %v, host module defines %v", allowed, defined)
-	}
-	for i := range allowed {
-		if allowed[i] != defined[i] {
-			t.Errorf("allowlist %v, host module defines %v", allowed, defined)
-			break
-		}
+			allowed := make([]string, 0, len(tc.allowed))
+			for name := range tc.allowed {
+				allowed = append(allowed, name)
+			}
+			sort.Strings(allowed)
+			sort.Strings(defined)
+
+			if len(allowed) != len(defined) {
+				t.Fatalf("allowlist %v, host module defines %v", allowed, defined)
+			}
+			for i := range allowed {
+				if allowed[i] != defined[i] {
+					t.Errorf("allowlist %v, host module defines %v", allowed, defined)
+					break
+				}
+			}
+		})
 	}
 }
 

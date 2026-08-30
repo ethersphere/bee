@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/tetratelabs/wazero"
@@ -46,13 +47,24 @@ func newWazeroEngine(logger log.Logger) *wazeroEngine {
 // whatever the module writes to stdout as the result. A fresh runtime is created
 // per call so no state leaks between executions.
 func (e *wazeroEngine) Execute(ctx context.Context, req Request) (Result, error) {
-	return e.execute(ctx, req, newBudget(req.Limits), 0)
+	// The response state is created once, here, and handed only to the outermost
+	// execution. Nested modules see a nil one and are refused.
+	return e.execute(ctx, req, newBudget(req.Limits), newResponseState(req.Limits), 0)
 }
 
 // execute runs one module at the given nesting depth. The budget is shared by
 // pointer across the whole call tree, so a module cannot multiply its host-call
 // allowance by recursing through swarm_execute.
-func (e *wazeroEngine) execute(ctx context.Context, req Request, b *budget, depth uint32) (Result, error) {
+func (e *wazeroEngine) execute(ctx context.Context, req Request, b *budget, resp *responseState, depth uint32) (res Result, err error) {
+	// Attached on the way out rather than at each return site: a run can finish
+	// through classifyRunError (a WASI exit 0 is a clean run reported as an error
+	// by wazero), and a return-site edit would miss that path.
+	defer func() {
+		if res.Status == StatusOK {
+			res.Response = resp.snapshot()
+		}
+	}()
+
 	e.logger.Debug("execute: starting", "module_size", len(req.Module), "input_size", len(req.Input), "method", req.Method, "entrypoint", req.Limits.Entrypoint, "memory_limit", req.Limits.Memory, "depth", depth)
 
 	cfg := wazero.NewRuntimeConfig().
@@ -71,15 +83,21 @@ func (e *wazeroEngine) execute(ctx context.Context, req Request, b *budget, dept
 
 	// The swarm module is built per execution, closing over this tree's budget
 	// and depth. Nothing is shared between untrusted programs.
-	var hs *hostState
+	// The swarm module is built per execution, closing over this tree's budget and
+	// depth, and is always instantiated: the response half needs no Host.
+	hs := &hostState{
+		host:     req.Host,
+		budget:   b,
+		depth:    depth,
+		maxDepth: req.Limits.Depth(),
+		logger:   e.logger,
+	}
+	// Only the outermost execution owns the response. Nested modules get a nil
+	// responseState, which is what makes swarm_response_* return DENIED.
+	if depth == 0 {
+		hs.resp = resp
+	}
 	if req.Host != nil {
-		hs = &hostState{
-			host:     req.Host,
-			budget:   b,
-			depth:    depth,
-			maxDepth: req.Limits.Depth(),
-			logger:   e.logger,
-		}
 		hs.nested = func(ctx context.Context, module, input []byte) (Result, error) {
 			nested := req
 			nested.Module = module
@@ -87,11 +105,11 @@ func (e *wazeroEngine) execute(ctx context.Context, req Request, b *budget, dept
 			// A nested module is always run as a WASI command: the caller's
 			// entrypoint header describes the outermost module only.
 			nested.Limits.Entrypoint = ""
-			return e.execute(ctx, nested, b, depth+1)
+			return e.execute(ctx, nested, b, resp, depth+1)
 		}
-		if err := buildSwarmModule(ctx, r, hs); err != nil {
-			return Result{Status: StatusHostError, TrapMessage: err.Error()}, err
-		}
+	}
+	if err := buildSwarmModule(ctx, r, hs); err != nil {
+		return Result{Status: StatusHostError, TrapMessage: err.Error()}, err
 	}
 
 	compiled, err := r.CompileModule(ctx, req.Module)
@@ -104,7 +122,9 @@ func (e *wazeroEngine) execute(ctx context.Context, req Request, b *budget, dept
 	// Reject anything the sandbox does not provide up front, so an unsatisfiable
 	// import is a deterministic verdict on the module rather than a link failure
 	// surfacing as a trap.
-	if err := checkImports(compiled, hs != nil); err != nil {
+	// hs is always non-nil now that the response half needs no Host, so node
+	// availability is req.Host, not the presence of a hostState.
+	if err := checkImports(compiled, req.Host != nil); err != nil {
 		e.logger.Debug("execute: rejected import", "error", err)
 		return Result{Status: StatusInvalidModule, TrapMessage: err.Error()}, nil
 	}
@@ -130,6 +150,21 @@ func (e *wazeroEngine) execute(ctx context.Context, req Request, b *budget, dept
 	// same environment on every node.
 	if req.Method != "" {
 		modCfg = modCfg.WithEnv(envRequestMethod, req.Method)
+	}
+	for _, v := range req.Env {
+		// Method owns REQUEST_METHOD; a duplicate would give the guest two
+		// entries for one name.
+		if v.Name == envRequestMethod {
+			continue
+		}
+		// A name carrying "=" or NUL would corrupt the WASI environ block, which
+		// is a flat run of NUL-terminated "name=value" strings. The API layer
+		// sanitises too; this is the engine refusing to emit a malformed block
+		// whatever it is handed.
+		if strings.ContainsAny(v.Name, "=\x00") || strings.ContainsRune(v.Value, 0) {
+			continue
+		}
+		modCfg = modCfg.WithEnv(v.Name, v.Value)
 	}
 
 	// With an explicit entrypoint, disable the automatic `_start` invocation and
@@ -210,10 +245,14 @@ func checkImports(compiled wazero.CompiledModule, hostAvailable bool) error {
 		switch moduleName {
 		case wasiModuleName:
 		case swarmModuleName:
+			if _, ok := swarmResponseExports[name]; ok {
+				// Shaping the response causes no node work, so it needs no Host.
+				continue
+			}
 			if !hostAvailable {
 				return fmt.Errorf("import %q from module %q: node access is not available", name, moduleName)
 			}
-			if _, ok := swarmExports[name]; !ok {
+			if _, ok := swarmHostExports[name]; !ok {
 				return fmt.Errorf("unknown import %q from module %q", name, moduleName)
 			}
 		default:

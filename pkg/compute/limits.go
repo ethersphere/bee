@@ -23,15 +23,40 @@ type Limits struct {
 	// may reach, the outermost execution included, so 1 permits no nesting at
 	// all. Zero means defaultMaxDepth.
 	MaxDepth uint32
+	// MaxResponseHeaders bounds how many response headers a guest may set.
+	// Zero means defaultMaxResponseHeaders.
+	MaxResponseHeaders uint32
+	// MaxResponseHeaderBytes bounds the total size of the response headers a
+	// guest may set, counting name and value. Zero means
+	// defaultMaxResponseHeaderBytes.
+	//
+	// Unlike the host budgets these are not exposed as per-request headers. That
+	// pattern exists so a caller can lower risk it is exposed to, and a caller is
+	// not exposed to this one: setting a header costs the caller nothing, the
+	// node's exposure is a few kilobytes, and lowering it can only break the
+	// module.
+	MaxResponseHeaderBytes uint32
 }
 
 // Defaults applied when a limit is left unset. They are deliberately modest:
 // this engine has no work-based bound, so the host budgets are what stop a
 // module from making the node fetch or store without end.
 const (
-	defaultMaxHostCalls uint32 = 64
-	defaultMaxHostBytes uint64 = 32 << 20
-	defaultMaxDepth     uint32 = 4
+	defaultMaxHostCalls           uint32 = 64
+	defaultMaxHostBytes           uint64 = 32 << 20
+	defaultMaxDepth               uint32 = 4
+	defaultMaxResponseHeaders     uint32 = 32
+	defaultMaxResponseHeaderBytes uint32 = 8 << 10
+)
+
+// Hard caps on a single response header, not configurable. They bound the work a
+// rejected call can cause: both are checked before any guest memory is read, so a
+// value length of 2^32-1 never allocates.
+const (
+	// MaxResponseHeaderNameLen is the longest response header name accepted.
+	MaxResponseHeaderNameLen uint32 = 128
+	// MaxResponseHeaderValueLen is the longest response header value accepted.
+	MaxResponseHeaderValueLen uint32 = 4 << 10
 )
 
 // HostCalls, HostBytes and Depth resolve a limit against its default. They are
@@ -61,6 +86,23 @@ func (l Limits) Depth() uint32 {
 		return defaultMaxDepth
 	}
 	return l.MaxDepth
+}
+
+// ResponseHeaders is the effective limit on how many headers a guest may set.
+func (l Limits) ResponseHeaders() uint32 {
+	if l.MaxResponseHeaders == 0 {
+		return defaultMaxResponseHeaders
+	}
+	return l.MaxResponseHeaders
+}
+
+// ResponseHeaderBytes is the effective limit on the total size of a guest's
+// response headers, counting name and value.
+func (l Limits) ResponseHeaderBytes() uint32 {
+	if l.MaxResponseHeaderBytes == 0 {
+		return defaultMaxResponseHeaderBytes
+	}
+	return l.MaxResponseHeaderBytes
 }
 
 const (

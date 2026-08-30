@@ -1,6 +1,7 @@
-;; Writes the single environment entry the sandbox provides
-;; ("REQUEST_METHOD=<method>") to stdout, so tests can observe that request
-;; metadata reaches the guest.
+;; Writes the whole environment block the sandbox provides to stdout, so tests
+;; can observe what request metadata reaches the guest and in what order. Entries
+;; arrive as "NAME=value" separated by NUL; the trailing NUL is dropped, so a
+;; single entry ("REQUEST_METHOD=POST") comes out as itself.
 ;;
 ;; environ_sizes_get stores the entry count at address 0 and the buffer size at
 ;; address 4; environ_get stores the pointer array at 64 and the NUL-terminated

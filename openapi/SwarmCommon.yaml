@@ -680,6 +680,22 @@ components:
         trapMessage:
           type: string
           description: Explanation of a non-`ok` status
+        httpStatus:
+          type: integer
+          description: >
+            HTTP status the module asked for through `swarm_response_status`,
+            absent when it asked for none. In this representation it is reported
+            rather than applied, so that a client can tell the module's own 404
+            from the node's.
+        headers:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          description: >
+            Response headers the module set through `swarm_response_header`,
+            grouped by name. Reported rather than applied, as with `httpStatus`.
 
     PublicKey:
       type: string

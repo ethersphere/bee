@@ -216,6 +216,10 @@ type Options struct {
 	WasmMaxHostBytes              uint64
 	WasmExecDepth                 uint64
 	WasmMaxExecDepth              uint64
+	WasmMaxResponseHeaders        uint64
+	WasmMaxResponseHeaderBytes    uint64
+	WasmRequestHeaders            []string
+	WasmMaxEnvBytes               uint64
 }
 
 const (
@@ -1352,6 +1356,12 @@ func NewBee(
 
 	var computeService compute.Engine
 	if o.WasmExecuteEnable {
+		// A configuration that would hand an untrusted module the operator's
+		// credentials stops the node rather than producing a warning nobody
+		// reads.
+		if err := api.ValidateRequestHeaders(o.WasmRequestHeaders); err != nil {
+			return nil, fmt.Errorf("%s: %w", "wasm-request-headers", err)
+		}
 		workers := o.WasmWorkers
 		if workers < 1 {
 			workers = min(runtime.NumCPU(), maxWasmWorkers)
@@ -1402,6 +1412,11 @@ func NewBee(
 			MaxHostBytes:     o.WasmMaxHostBytes,
 			DefaultDepth:     o.WasmExecDepth,
 			MaxDepth:         o.WasmMaxExecDepth,
+
+			MaxResponseHeaders:     o.WasmMaxResponseHeaders,
+			MaxResponseHeaderBytes: o.WasmMaxResponseHeaderBytes,
+			RequestHeaders:         o.WasmRequestHeaders,
+			MaxEnvBytes:            o.WasmMaxEnvBytes,
 		},
 	}
 
