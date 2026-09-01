@@ -434,7 +434,7 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 		}
 	}
 
-	if cursor > 0 {
+	if cursor > 0 && bin < swarm.MaxBins {
 		p.activeHistSyncsMu.Lock()
 		p.activeHistSyncs[bin]++
 		p.activeHistSyncsMu.Unlock()
