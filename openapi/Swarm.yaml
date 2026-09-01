@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 8.1.1
+  version: 8.2.0
   title: Bee API
   description: "API endpoints for interacting with the Swarm network, supporting file operations, messaging, and node management"
 
@@ -2421,6 +2421,38 @@ paths:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/PeerAccountingData"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
+  "/redistribution":
+    put:
+      summary: Enable or disable participation in new redistribution rounds
+      description: >
+        Controls whether the node will commit in a new redistribution round.
+        Sampling still runs while disabled so that a later re-enable can commit
+        in the following commit phase. Disabling does not abort an in-flight
+        commit and does not skip reveal or claim for a round that already committed.
+        Re-enabling during a commit phase that was already skipped does not retry
+        that round. After a node restart participation is enabled again.
+      tags:
+        - RedistributionState
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "SwarmCommon.yaml#/components/schemas/RedistributionEnableRequest"
+      responses:
+        "200":
+          description: Participation flag updated
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/RedistributionEnableResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
