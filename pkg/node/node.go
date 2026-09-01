@@ -1327,7 +1327,7 @@ func NewBee(
 			isReserveSynced := func(depth uint8) bool {
 				reserveThreshold := reserveCapacity * 5 / 10
 				logger.Debug("Sync status check evaluated", "stabilized", detector.IsStabilized())
-				return localStore.ReserveSize() >= reserveThreshold && pullerService.IsReserveSynced(depth) && detector.IsStabilized()
+				return localStore.ReserveSizeWithinRadius() >= uint64(reserveThreshold) && pullerService.IsReserveSynced(depth) && detector.IsStabilized()
 			}
 
 			agent, err = storageincentives.New(
