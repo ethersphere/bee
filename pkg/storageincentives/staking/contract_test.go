@@ -11,11 +11,11 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-
 	chaincfg "github.com/ethersphere/bee/v2/pkg/config"
 	"github.com/ethersphere/bee/v2/pkg/storageincentives/staking"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -24,9 +24,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
 )
 
-var (
-	stakingContractABI = abiutil.MustParseABI(chaincfg.Testnet.StakingABI)
-)
+var stakingContractABI = abiutil.MustParseABI(chaincfg.Testnet.StakingABI)
 
 const stakingHeight = uint8(0)
 
@@ -1526,6 +1524,50 @@ func TestGetMinDeposit(t *testing.T) {
 		}
 		if got.Cmp(big.NewInt(1)) != 0 {
 			t.Fatalf("got %s, want 1", got)
+		}
+	})
+
+	t.Run("concurrent oracle resolution", func(t *testing.T) {
+		t.Parallel()
+
+		potential := new(big.Int).Set(staking.MinimumStakeAmount)
+		committed := new(big.Int).Div(potential, big.NewInt(1000))
+		price := uint32(1001)
+
+		contract := staking.New(
+			owner,
+			stakingAddress,
+			stakingContractABI,
+			bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WithCallFunc(newStakeCallFunc(t, stakingAddress, oracleAddr, bzzTokenAddress, committed, potential, potential, price)),
+			),
+			nonce,
+			0,
+			stakingHeight,
+		)
+
+		const n = 32
+		errCh := make(chan error, n)
+		var wg sync.WaitGroup
+		wg.Add(n)
+		for range n {
+			go func() {
+				defer wg.Done()
+				got, err := contract.GetMinDeposit(ctx)
+				if err != nil {
+					errCh <- err
+					return
+				}
+				if got.Cmp(committed) != 0 {
+					errCh <- fmt.Errorf("got %s, want %s", got, committed)
+				}
+			}()
+		}
+		wg.Wait()
+		close(errCh)
+		for err := range errCh {
+			t.Fatal(err)
 		}
 	})
 }

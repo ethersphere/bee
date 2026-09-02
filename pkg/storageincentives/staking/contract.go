@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"sync"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -74,6 +75,7 @@ type contract struct {
 	stakingContractAddress common.Address
 	stakingContractABI     abi.ABI
 	bzzTokenAddress        common.Address
+	mtx                    sync.Mutex
 	priceOracleAddress     common.Address
 	transactionService     transaction.Service
 	overlayNonce           common.Hash
@@ -449,6 +451,9 @@ func (c *contract) getCurrentPrice(ctx context.Context) (uint32, error) {
 
 // getPriceOracleAddress resolves the price oracle from the staking contract on first use.
 func (c *contract) getPriceOracleAddress(ctx context.Context) (common.Address, error) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
 	if (c.priceOracleAddress != common.Address{}) {
 		return c.priceOracleAddress, nil
 	}

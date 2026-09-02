@@ -2571,7 +2571,7 @@ paths:
   "/stake":
     get:
       summary: Get the staked amount.
-      description: This endpoint fetches the total staked amount and the minimum additional deposit from the blockchain. The first deposit is at least 0.1 BZZ times 2^height. Subsequent deposits are at least 1 PLUR, or more if the price oracle has increased since the last deposit.
+      description: This endpoint fetches the total staked amount and the minimum additional deposit from the blockchain. The first deposit is at least 10 BZZ times 2^height. Subsequent deposits are at least 1 PLUR, or more if the price oracle has increased since the last deposit.
       tags:
         - Staking
       responses:
