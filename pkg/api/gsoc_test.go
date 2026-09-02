@@ -290,7 +290,7 @@ func TestGsocWebsocketInvalidFieldsHeader(t *testing.T) {
 func TestGsocWebsocketSlowConsumer(t *testing.T) {
 	t.Parallel()
 
-	const messageCount = 10
+	const messageCount = 32 // exceeds dataC's buffer so the overflow is hit deterministically
 
 	var (
 		id         = make([]byte, 32)
