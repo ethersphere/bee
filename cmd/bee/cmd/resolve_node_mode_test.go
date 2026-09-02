@@ -93,6 +93,15 @@ func TestResolveNodeMode(t *testing.T) {
 			wantErr: "light node requires blockchain-rpc-endpoint",
 		},
 		{
+			name: "light mode rejects storage-incentives-enable",
+			config: map[string]any{
+				optionNameNodeMode:                "light",
+				configKeyBlockchainRpcEndpoint:    "http://localhost:8545",
+				optionNameStorageIncentivesEnable: true,
+			},
+			wantErr: "light node cannot have storage-incentives-enable",
+		},
+		{
 			name: "ultra-light mode succeeds",
 			config: map[string]any{
 				optionNameNodeMode: "ultra-light",
@@ -106,6 +115,14 @@ func TestResolveNodeMode(t *testing.T) {
 				optionNameSwapEnable: true,
 			},
 			wantErr: "ultra-light node cannot have swap-enable",
+		},
+		{
+			name: "ultra-light mode rejects storage-incentives-enable",
+			config: map[string]any{
+				optionNameNodeMode:                "ultra-light",
+				optionNameStorageIncentivesEnable: true,
+			},
+			wantErr: "ultra-light node cannot have storage-incentives-enable",
 		},
 		{
 			name: "invalid node-mode value fails",

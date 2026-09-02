@@ -451,9 +451,15 @@ func (c *command) resolveNodeMode(logger log.Logger) (node.NodeMode, error) {
 			if rpcEndpoint == "" {
 				return "", errors.New("light node requires blockchain-rpc-endpoint to be set")
 			}
+			if incentivesEnable {
+				return "", errors.New("light node cannot have storage-incentives-enable set to true")
+			}
 		case node.UltraLightMode:
 			if swapEnable {
 				return "", errors.New("ultra-light node cannot have swap-enable set to true")
+			}
+			if incentivesEnable {
+				return "", errors.New("ultra-light node cannot have storage-incentives-enable set to true")
 			}
 		}
 		return mode, nil
