@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -17,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/mock"
+	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/steward"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
@@ -63,25 +63,36 @@ func TestSteward(t *testing.T) {
 	}
 
 	chunkCount := int(inmem.count.Load())
+	replicaCount := redundancy.PARANOID.GetReplicaCount()
+	wantPushed := chunkCount + replicaCount
 	done := make(chan struct{})
 	errc := make(chan error, 1)
+	replicaAddrs := make(map[string]struct{})
+	var replicaMu sync.Mutex
 	go func() {
 		defer close(done)
 		count := 0
 		for op := range store.PusherFeed() {
-			has, err := chunkStore.Has(ctx, op.Chunk.Address())
-			if err != nil || !has {
-				if !has {
-					err = errors.New("chunk not found")
-				}
+			// DirectUpload only forwards pushed chunks over the feed; it does not
+			// persist them. Persist here so the post-reupload assertions (Has,
+			// IsRetrievable) observe pushed-but-not-yet-locally-known chunks the
+			// same way a real pushsync round-trip eventually would.
+			if err := chunkStore.Put(ctx, op.Chunk); err != nil {
 				select {
 				case errc <- err:
 				default:
 				}
 				return
 			}
+
+			if sch, err := soc.FromChunk(op.Chunk); err == nil && bytes.Equal(sch.OwnerAddress(), swarm.ReplicasOwner) {
+				replicaMu.Lock()
+				replicaAddrs[op.Chunk.Address().String()] = struct{}{}
+				replicaMu.Unlock()
+			}
+
 			count++
-			if count == chunkCount {
+			if count == wantPushed {
 				return
 			}
 		}
@@ -113,8 +124,22 @@ func TestSteward(t *testing.T) {
 	}
 
 	count := len(localRetrieval.retrievedChunks)
-	if count != chunkCount {
-		t.Fatalf("unexpected no of unique chunks retrieved: want %d have %d", chunkCount, count)
+	// IsRetrievable's root-chunk fetch goes through joiner -> replicas.NewGetter, which
+	// races the original root address against an initial batch of 2 replica candidate
+	// addresses before the first success cancels the rest (see replicas/getter.go). With
+	// real dispersed replicas now present (this is what this fix creates), up to 2 of
+	// those speculative replica fetches can also succeed and get recorded before
+	// cancellation lands, on top of the trie chunks retrieved by traversal.
+	const maxSpeculativeRootFetches = 2
+	if count < chunkCount || count > chunkCount+maxSpeculativeRootFetches {
+		t.Fatalf("unexpected no of unique chunks retrieved: want between %d and %d, have %d", chunkCount, chunkCount+maxSpeculativeRootFetches, count)
+	}
+
+	replicaMu.Lock()
+	gotReplicas := len(replicaAddrs)
+	replicaMu.Unlock()
+	if gotReplicas != replicaCount {
+		t.Fatalf("unexpected no of dispersed replicas re-uploaded: want %d have %d", replicaCount, gotReplicas)
 	}
 }
 
