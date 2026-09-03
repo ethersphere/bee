@@ -5,6 +5,8 @@
 package kademlia
 
 import (
+	"context"
+
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	im "github.com/ethersphere/bee/v2/pkg/topology/kademlia/internal/metrics"
@@ -22,6 +24,12 @@ var (
 // lastSeenRefreshInterval tick.
 func (k *Kad) MarkConnectedPeersSeen() error {
 	return k.markConnectedPeersSeen()
+}
+
+// RebroadcastNeighborhood runs the neighborhood gossip the manage loop
+// performs every fifteen minutes.
+func (k *Kad) RebroadcastNeighborhood(ctx context.Context) {
+	k.rebroadcastNeighborhood(ctx)
 }
 
 const (

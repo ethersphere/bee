@@ -1779,6 +1779,67 @@ func TestAnnounceNeighborhoodToNeighbor(t *testing.T) {
 	}
 }
 
+// TestRebroadcastNeighborhood checks that the periodic neighborhood gossip
+// sends every neighbor exactly one message listing all the other neighbors.
+func TestRebroadcastNeighborhood(t *testing.T) {
+	t.Parallel()
+
+	var (
+		conns                       int32
+		base, kad, ab, disc, signer = newTestKademlia(t, &conns, nil, kademlia.Options{})
+	)
+
+	// With a storage radius of zero every connected peer is a neighbor.
+	kad.SetStorageRadius(0)
+
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	testutil.CleanupCloser(t, kad)
+
+	const n = 4
+	neighbors := make([]swarm.Address, n)
+	for i := range neighbors {
+		neighbors[i] = swarm.RandAddressAt(t, base, i)
+		connectOne(t, signer, kad, ab, neighbors[i], nil)
+	}
+	waitPeers(t, kad, n)
+
+	// Connecting peer j announces it to the j peers connected before it and
+	// introduces those j peers to it. Wait for all of that to land before
+	// clearing the recorder, so only the rebroadcast is measured.
+	wantAnnounces := 0
+	for j := 1; j < n; j++ {
+		wantAnnounces += j + 1
+	}
+	if err := spinlock.Wait(spinLockWaitTime, func() bool {
+		return disc.Broadcasts() == wantAnnounces
+	}); err != nil {
+		t.Fatalf("waiting for announce broadcasts: got %d, want %d", disc.Broadcasts(), wantAnnounces)
+	}
+	disc.Reset()
+
+	kad.RebroadcastNeighborhood(context.Background())
+
+	for _, addressee := range neighbors {
+		got, ok := disc.AddresseeRecords(addressee)
+		if !ok {
+			t.Fatalf("neighbor %s received no rebroadcast", addressee)
+		}
+		if len(got) != n-1 {
+			t.Fatalf("neighbor %s received %d peers, want %d", addressee, len(got), n-1)
+		}
+		if swarm.ContainsAddress(got, addressee) {
+			t.Fatalf("neighbor %s was told about itself", addressee)
+		}
+		for _, other := range neighbors {
+			if !other.Equal(addressee) && !swarm.ContainsAddress(got, other) {
+				t.Fatalf("neighbor %s was not told about %s", addressee, other)
+			}
+		}
+	}
+}
+
 func TestIteratorOpts(t *testing.T) {
 	t.Parallel()
 
