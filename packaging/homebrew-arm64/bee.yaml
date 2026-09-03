@@ -2,9 +2,12 @@
 
 ## ── Node mode ────────────────────────────────────────────────────────────────
 ## Selects the operational mode of this node.
-##   full        - participates in storage and incentives; requires swap-enable and blockchain-rpc
+##   full        - participates in storage and incentives; requires blockchain-rpc;
+##                 implies swap-enable, chequebook-enable and storage-incentives-enable
 ##   light       - uploads and downloads only; requires blockchain-rpc
-##   ultra-light - free-tier downloads only; no blockchain connection needed (default)
+##   ultra-light - free-tier downloads only; no blockchain connection needed
+## When unset, the mode is inferred from the deprecated full-node option and
+## blockchain-rpc presence (deprecated, removed in v2.11.0).
 # node-mode: ultra-light
 
 ## ── Blockchain / RPC (required for full and light nodes) ─────────────────────
@@ -23,7 +26,7 @@
 ## ── Swap / chequebook (full and light nodes only) ────────────────────────────
 ## enable swap
 # swap-enable: false
-## enable chequebook
+## enable chequebook (requires swap-enable; implied by node-mode: full)
 # chequebook-enable: false
 ## reject full-node hive/handshake records that carry no chequebook address
 # chequebook-verification: false
@@ -33,7 +36,7 @@
 # swap-initial-deposit: "0"
 
 ## ── Full node only ────────────────────────────────────────────────────────────
-## enable storage incentives feature
+## enable storage incentives feature (implied by node-mode: full)
 # storage-incentives-enable: false
 ## reserve capacity doubling
 # reserve-capacity-doubling: 0
