@@ -12,9 +12,9 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/v2/pkg/bigint"
 
 	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/bigint"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/v2/pkg/sctx"
@@ -43,18 +43,22 @@ func TestDepositStake(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodPost, depositStake(minStake), http.StatusOK)
 	})
 
-	t.Run("with invalid stake amount", func(t *testing.T) {
+	t.Run("with insufficient amount reports minimum", func(t *testing.T) {
 		t.Parallel()
 
-		invalidMinStake := big.NewInt(0).String()
+		minDeposit := big.NewInt(123)
 		contract := stakingContractMock.New(
 			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
-				return common.Hash{}, staking.ErrInsufficientStakeAmount
+				return common.Hash{}, &staking.MinDepositError{Minimum: minDeposit}
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
-		jsonhttptest.Request(t, ts, http.MethodPost, depositStake(invalidMinStake), http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusBadRequest, Message: "insufficient stake amount"}))
+		jsonhttptest.Request(t, ts, http.MethodPost, depositStake("1"), http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(&api.StakeDepositErrorResponse{
+				Code:           http.StatusBadRequest,
+				Message:        "insufficient stake amount",
+				MinimumDeposit: bigint.Wrap(minDeposit),
+			}))
 	})
 
 	t.Run("out of funds", func(t *testing.T) {
@@ -134,7 +138,10 @@ func TestGetStakeCommitted(t *testing.T) {
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
 		jsonhttptest.Request(t, ts, http.MethodGet, "/stake", http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(&api.GetStakeResponse{StakedAmount: bigint.Wrap(big.NewInt(1))}))
+			jsonhttptest.WithExpectedJSONResponse(&api.GetStakeResponse{
+				StakedAmount:   bigint.Wrap(big.NewInt(1)),
+				MinimumDeposit: bigint.Wrap(big.NewInt(1)),
+			}))
 	})
 
 	t.Run("with error", func(t *testing.T) {
@@ -148,6 +155,22 @@ func TestGetStakeCommitted(t *testing.T) {
 		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contractWithError})
 		jsonhttptest.Request(t, ts, http.MethodGet, "/stake", http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusInternalServerError, Message: "get staked amount failed"}))
+	})
+
+	t.Run("minimum deposit error", func(t *testing.T) {
+		t.Parallel()
+
+		contractWithError := stakingContractMock.New(
+			stakingContractMock.WithGetStake(func(ctx context.Context) (*big.Int, error) {
+				return big.NewInt(1), nil
+			}),
+			stakingContractMock.WithGetMinDeposit(func(ctx context.Context) (*big.Int, error) {
+				return nil, fmt.Errorf("get minimum deposit failed")
+			}),
+		)
+		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contractWithError})
+		jsonhttptest.Request(t, ts, http.MethodGet, "/stake", http.StatusInternalServerError,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusInternalServerError, Message: "get minimum deposit failed"}))
 	})
 }
 
