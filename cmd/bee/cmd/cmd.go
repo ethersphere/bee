@@ -358,7 +358,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameSwapFactoryAddress, "", "swap factory addresses")
 	cmd.Flags().String(optionNameBzzTokenAddress, "", "bzz token contract address")
 	cmd.Flags().String(optionNameSwapInitialDeposit, "0", "initial deposit if deploying a new chequebook")
-	cmd.Flags().String(optionNameNodeMode, string(node.UltraLightMode), "node operational mode: full, light, or ultra-light")
+	cmd.Flags().String(optionNameNodeMode, "", "node operational mode: full, light, or ultra-light (unset: inferred from deprecated full-node and blockchain-rpc-endpoint)")
 	cmd.Flags().Bool(optionNameSwapEnable, false, "enable swap")
 	cmd.Flags().Bool(optionNameChequebookEnable, false, "enable chequebook (requires swap-enable)")
 	cmd.Flags().Bool(optionNameChequebookVerification, false, "reject full-node hive/handshake records that carry no chequebook address")
