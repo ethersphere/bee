@@ -18,6 +18,10 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
+	"golang.org/x/sync/semaphore"
+
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 	"github.com/ethersphere/bee/v2/pkg/hive/pb"
@@ -28,9 +32,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-	ma "github.com/multiformats/go-multiaddr"
-	manet "github.com/multiformats/go-multiaddr/net"
-	"golang.org/x/sync/semaphore"
 )
 
 // ChequebookStorer persists the overlay→chequebook mapping. Put holds its
@@ -58,6 +59,11 @@ var (
 	ErrRateLimitExceeded = errors.New("rate limit exceeded")
 )
 
+const (
+	coalesceFlushReasonTimer    = "timer"
+	coalesceFlushReasonMaxBatch = "max_batch"
+)
+
 // Options configures hive.Service at construction. Chequebook fields are
 // optional: a nil ChequebookVerifier disables the verification gate (and
 // records without a chequebook are accepted); a nil ChequebookStorer means
@@ -67,6 +73,8 @@ type Options struct {
 	AllowPrivateCIDRs  bool
 	ChequebookVerifier chequebook.Verifier
 	ChequebookStorer   ChequebookStorer
+
+	GossipCoalesceInterval time.Duration
 }
 
 type Service struct {
@@ -79,6 +87,8 @@ type Service struct {
 	inLimiter         *ratelimit.Limiter
 	outLimiter        *ratelimit.Limiter
 	quit              chan struct{}
+	bgCtx             context.Context
+	bgCancel          context.CancelFunc
 	wg                sync.WaitGroup
 	peersChan         chan pb.Peers
 	sem               *semaphore.Weighted
@@ -91,9 +101,11 @@ type Service struct {
 	// chequebook are dropped.
 	chequebookVerifier chequebook.Verifier
 	chequebookStorer   ChequebookStorer
+	gossipBuf          *gossipBuffer
 }
 
 func New(streamer p2p.Streamer, addressbook addressbook.GetPutSeener, networkID uint64, overlay swarm.Address, logger log.Logger, o Options) *Service {
+	bgCtx, bgCancel := context.WithCancel(context.Background())
 	svc := &Service{
 		streamer:           streamer,
 		logger:             logger.WithName(loggerName).Register(),
@@ -103,6 +115,8 @@ func New(streamer p2p.Streamer, addressbook addressbook.GetPutSeener, networkID 
 		inLimiter:          ratelimit.New(limitRate, limitBurst),
 		outLimiter:         ratelimit.New(limitRate, limitBurst),
 		quit:               make(chan struct{}),
+		bgCtx:              bgCtx,
+		bgCancel:           bgCancel,
 		peersChan:          make(chan pb.Peers),
 		sem:                semaphore.NewWeighted(int64(swarm.MaxBins)),
 		bootnode:           o.BootnodeMode,
@@ -113,9 +127,12 @@ func New(streamer p2p.Streamer, addressbook addressbook.GetPutSeener, networkID 
 		chequebookStorer:   o.ChequebookStorer,
 	}
 
+	svc.gossipBuf = newGossipBuffer(o.GossipCoalesceInterval, maxBatchSize)
+
 	if !o.BootnodeMode {
 		svc.startCheckPeersHandler()
 	}
+	svc.startGossipCoalescer()
 
 	return svc
 }
@@ -137,34 +154,78 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 
 var ErrShutdownInProgress = errors.New("shutdown in progress")
 
+// BroadcastPeers sends peer gossip to the addressee. Calls with fewer than
+// coalesceThreshold peers are buffered and flushed asynchronously; errors
+// during deferred dispatch are logged but not returned to the caller.
+// Calls with coalesceThreshold or more peers are sent immediately.
 func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, peers ...swarm.Address) error {
-	maxSize := maxBatchSize
+	if len(peers) == 0 {
+		return nil
+	}
+
 	s.metrics.BroadcastPeers.Inc()
 	s.metrics.BroadcastPeersPeers.Add(float64(len(peers)))
+
+	// Already-batched messages go out immediately; single-peer gossips are coalesced.
+	if len(peers) >= coalesceThreshold {
+		s.metrics.GossipCoalesceImmediatePeers.Add(float64(len(peers)))
+		s.logger.Debug("gossip immediate send", "addressee", addressee, "peer_count", len(peers))
+		return s.broadcastNow(ctx, addressee, false, peers...)
+	}
+
+	select {
+	case <-s.quit:
+		return ErrShutdownInProgress
+	default:
+	}
+
+	s.metrics.GossipCoalesceBufferedPeers.Add(float64(len(peers)))
+	s.logger.Debug("gossip buffered", "addressee", addressee, "peer_count", len(peers))
+
+	// Buffer; if it just filled up, flush it synchronously while still in the call
+	if flushPeers, flush := s.gossipBuf.stagePeers(addressee, peers...); flush {
+		s.recordCoalesceFlush(coalesceFlushReasonMaxBatch, addressee, flushPeers)
+		s.setCoalesceBufferGauge()
+		return s.broadcastNow(ctx, addressee, true, flushPeers...)
+	}
+	s.setCoalesceBufferGauge()
+	return nil
+}
+
+// broadcastNow performs the synchronous, rate-limited, batched send.
+func (s *Service) broadcastNow(ctx context.Context, addressee swarm.Address, coalesced bool, peers ...swarm.Address) error {
+	maxSize := maxBatchSize
 
 	for len(peers) > 0 {
 		if maxSize > len(peers) {
 			maxSize = len(peers)
 		}
 
-		// If broadcasting limit is exceeded, return early
 		if !s.outLimiter.Allow(addressee.ByteString(), maxSize) {
+			if coalesced {
+				s.metrics.GossipCoalesceDropped.Add(float64(len(peers)))
+			}
+			s.logger.Debug("gossip dropped by outbound rate limiter", "addressee", addressee, "dropped", len(peers), "coalesced", coalesced)
 			return nil
 		}
 
 		select {
+		case <-ctx.Done():
+			return ctx.Err()
 		case <-s.quit:
 			return ErrShutdownInProgress
 		default:
 		}
 
 		if err := s.sendPeers(ctx, addressee, peers[:maxSize]); err != nil {
+			if coalesced {
+				s.metrics.GossipCoalesceDropped.Add(float64(len(peers)))
+			}
 			return err
 		}
 
 		peers = peers[maxSize:]
 	}
-
 	return nil
 }
 
@@ -174,6 +235,7 @@ func (s *Service) SetAddPeersHandler(h func(addr ...swarm.Address)) {
 
 func (s *Service) Close() error {
 	close(s.quit)
+	s.bgCancel()
 
 	stopped := make(chan struct{})
 	go func() {
@@ -297,25 +359,69 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 func (s *Service) disconnect(peer p2p.Peer) error {
 	s.inLimiter.Clear(peer.Address.ByteString())
 	s.outLimiter.Clear(peer.Address.ByteString())
+	s.gossipBuf.clearAddressee(peer.Address)
+	s.setCoalesceBufferGauge()
 	return nil
 }
 
-func (s *Service) startCheckPeersHandler() {
-	ctx, cancel := context.WithCancel(context.Background())
+func (s *Service) startGossipCoalescer() {
 	s.wg.Go(func() {
-		<-s.quit
-		cancel()
-	})
+		ticker := time.NewTicker(s.gossipBuf.interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				for _, batch := range s.gossipBuf.takeAll() {
+					s.wg.Go(func() {
+						s.flushGossipBatch(batch.addressee, batch.peers, coalesceFlushReasonTimer)
+					})
+				}
 
+			case <-s.quit:
+				return
+			}
+		}
+	})
+}
+
+func (s *Service) flushGossipBatch(addressee swarm.Address, peers []swarm.Address, reason string) {
+	s.recordCoalesceFlush(reason, addressee, peers)
+
+	ctx, cancel := context.WithTimeout(s.bgCtx, messageTimeout)
+	defer cancel()
+
+	err := s.broadcastNow(ctx, addressee, true, peers...)
+	if err != nil {
+		s.logger.Debug("coalesced gossip flush failed", "addressee", addressee, "reason", reason, "batch_size", len(peers), "error", err)
+	}
+	s.setCoalesceBufferGauge()
+}
+
+func (s *Service) recordCoalesceFlush(reason string, addressee swarm.Address, peers []swarm.Address) {
+	batchSize := len(peers)
+	if batchSize == 0 {
+		return
+	}
+
+	s.metrics.GossipCoalesceFlushTotal.WithLabelValues(reason).Inc()
+	s.metrics.GossipCoalesceFlushPeers.Add(float64(batchSize))
+	s.logger.Debug("coalesced gossip flush", "addressee", addressee, "reason", reason, "batch_size", batchSize)
+}
+
+func (s *Service) setCoalesceBufferGauge() {
+	s.metrics.GossipCoalesceBufferSize.Set(float64(s.gossipBuf.pendingAddressees()))
+}
+
+func (s *Service) startCheckPeersHandler() {
 	s.wg.Go(func() {
 		for {
 			select {
-			case <-ctx.Done():
+			case <-s.bgCtx.Done():
 				return
 			case newPeers := <-s.peersChan:
 				s.wg.Go(func() {
 					safe.Run(s.logger, "hive-check-and-add-peers", func() {
-						s.checkAndAddPeers(ctx, newPeers)
+						s.checkAndAddPeers(s.bgCtx, newPeers)
 					})
 				})
 			}
