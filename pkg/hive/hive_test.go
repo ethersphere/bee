@@ -1763,3 +1763,87 @@ func TestHiveGossipBuffering(t *testing.T) {
 		})
 	})
 }
+
+// blockUntilCancelStreamer blocks NewStream until ctx is cancelled, then
+// reports that the blocked call has returned.
+type blockUntilCancelStreamer struct {
+	entered  chan struct{}
+	finished chan struct{}
+}
+
+func (s *blockUntilCancelStreamer) NewStream(ctx context.Context, _ swarm.Address, _ p2p.Headers, _, _, _ string) (p2p.Stream, error) {
+	select {
+	case <-s.entered:
+	default:
+		close(s.entered)
+	}
+	<-ctx.Done()
+	select {
+	case <-s.finished:
+	default:
+		close(s.finished)
+	}
+	return nil, ctx.Err()
+}
+
+// TestCoalescedFlushCancelsOnClose verifies that an in-flight async flush does
+// not keep running until messageTimeout after Service.Close. The flush must
+// observe bgCtx cancellation and exit promptly.
+func TestCoalescedFlushCancelsOnClose(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		const peerCount = 3
+
+		addressbook := ab.New(mock.NewStateStore())
+		networkID := uint64(1)
+		overlays := addTestOverlays(t, addressbook, networkID, peerCount, 5000)
+
+		entered := make(chan struct{})
+		finished := make(chan struct{})
+		streamer := &blockUntilCancelStreamer{entered: entered, finished: finished}
+
+		clientAddress := swarm.RandAddress(t)
+		addressee := swarm.RandAddress(t)
+		client := hive.New(streamer, addressbook, networkID, clientAddress, log.Noop, hive.Options{
+			AllowPrivateCIDRs:      true,
+			GossipCoalesceInterval: hiveGossipBufferingInterval,
+		})
+
+		ctx := context.Background()
+		for _, overlay := range overlays {
+			if err := client.BroadcastPeers(ctx, addressee, overlay); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		time.Sleep(hiveGossipBufferingInterval + 200*time.Millisecond)
+		synctest.Wait()
+
+		select {
+		case <-entered:
+		default:
+			t.Fatal("expected coalesced flush to block in NewStream before Close")
+		}
+
+		closeAt := time.Now()
+		if err := client.Close(); err != nil {
+			t.Fatalf("Close during coalesced flush: %v", err)
+		}
+
+		// synctest.Wait advances the fake clock only as far as needed for all
+		// goroutines to become durably blocked. If the flush were still waiting
+		// on messageTimeout alone, Wait would advance by a full minute.
+		synctest.Wait()
+
+		select {
+		case <-finished:
+		default:
+			t.Fatal("flush goroutine still blocked in NewStream after Close")
+		}
+
+		if elapsed := time.Since(closeAt); elapsed >= hive.MessageTimeout {
+			t.Fatalf("flush lasted %v after Close; want exit via bgCtx cancel before messageTimeout (%v)", elapsed, hive.MessageTimeout)
+		}
+	})
+}

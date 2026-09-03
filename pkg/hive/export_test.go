@@ -15,6 +15,7 @@ var (
 	MaxBatchSize      = maxBatchSize
 	LimitBurst        = limitBurst
 	CoalesceThreshold = coalesceThreshold
+	MessageTimeout    = messageTimeout
 )
 
 func (s *Service) SetTimeFunc(f func() time.Time) {

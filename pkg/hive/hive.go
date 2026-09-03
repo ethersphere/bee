@@ -87,6 +87,8 @@ type Service struct {
 	inLimiter         *ratelimit.Limiter
 	outLimiter        *ratelimit.Limiter
 	quit              chan struct{}
+	bgCtx             context.Context
+	bgCancel          context.CancelFunc
 	wg                sync.WaitGroup
 	peersChan         chan pb.Peers
 	sem               *semaphore.Weighted
@@ -103,6 +105,7 @@ type Service struct {
 }
 
 func New(streamer p2p.Streamer, addressbook addressbook.GetPutSeener, networkID uint64, overlay swarm.Address, logger log.Logger, o Options) *Service {
+	bgCtx, bgCancel := context.WithCancel(context.Background())
 	svc := &Service{
 		streamer:           streamer,
 		logger:             logger.WithName(loggerName).Register(),
@@ -112,6 +115,8 @@ func New(streamer p2p.Streamer, addressbook addressbook.GetPutSeener, networkID 
 		inLimiter:          ratelimit.New(limitRate, limitBurst),
 		outLimiter:         ratelimit.New(limitRate, limitBurst),
 		quit:               make(chan struct{}),
+		bgCtx:              bgCtx,
+		bgCancel:           bgCancel,
 		peersChan:          make(chan pb.Peers),
 		sem:                semaphore.NewWeighted(int64(swarm.MaxBins)),
 		bootnode:           o.BootnodeMode,
@@ -200,6 +205,7 @@ func (s *Service) broadcastNow(ctx context.Context, addressee swarm.Address, coa
 			if coalesced {
 				s.metrics.GossipCoalesceDropped.Add(float64(len(peers)))
 			}
+			s.logger.Debug("gossip dropped by outbound rate limiter", "addressee", addressee, "dropped", len(peers), "coalesced", coalesced)
 			return nil
 		}
 
@@ -229,6 +235,7 @@ func (s *Service) SetAddPeersHandler(h func(addr ...swarm.Address)) {
 
 func (s *Service) Close() error {
 	close(s.quit)
+	s.bgCancel()
 
 	stopped := make(chan struct{})
 	go func() {
@@ -365,9 +372,9 @@ func (s *Service) startGossipCoalescer() {
 			select {
 			case <-ticker.C:
 				for _, batch := range s.gossipBuf.takeAll() {
-					go func(batch gossipBatch) {
+					s.wg.Go(func() {
 						s.flushGossipBatch(batch.addressee, batch.peers, coalesceFlushReasonTimer)
-					}(batch)
+					})
 				}
 
 			case <-s.quit:
@@ -380,7 +387,7 @@ func (s *Service) startGossipCoalescer() {
 func (s *Service) flushGossipBatch(addressee swarm.Address, peers []swarm.Address, reason string) {
 	s.recordCoalesceFlush(reason, addressee, peers)
 
-	ctx, cancel := context.WithTimeout(context.Background(), messageTimeout)
+	ctx, cancel := context.WithTimeout(s.bgCtx, messageTimeout)
 	defer cancel()
 
 	err := s.broadcastNow(ctx, addressee, true, peers...)
@@ -406,21 +413,15 @@ func (s *Service) setCoalesceBufferGauge() {
 }
 
 func (s *Service) startCheckPeersHandler() {
-	ctx, cancel := context.WithCancel(context.Background())
-	s.wg.Go(func() {
-		<-s.quit
-		cancel()
-	})
-
 	s.wg.Go(func() {
 		for {
 			select {
-			case <-ctx.Done():
+			case <-s.bgCtx.Done():
 				return
 			case newPeers := <-s.peersChan:
 				s.wg.Go(func() {
 					safe.Run(s.logger, "hive-check-and-add-peers", func() {
-						s.checkAndAddPeers(ctx, newPeers)
+						s.checkAndAddPeers(s.bgCtx, newPeers)
 					})
 				})
 			}
