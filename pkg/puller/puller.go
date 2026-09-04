@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 
+	ratelimit "golang.org/x/time/rate"
+
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/puller/intervalstore"
@@ -26,7 +28,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
-	ratelimit "golang.org/x/time/rate"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -106,6 +107,9 @@ type Puller struct {
 
 	rate *rate.Rate // rate of historical syncing
 
+	activeHistSyncs   [swarm.MaxBins]int
+	activeHistSyncsMu sync.RWMutex
+
 	start sync.Once
 
 	limiter *ratelimit.Limiter
@@ -157,6 +161,28 @@ func (p *Puller) Start(ctx context.Context) {
 
 func (p *Puller) SyncRate() float64 {
 	return p.rate.Rate()
+}
+
+// IsBinSyncing returns true if any peer is actively running historical sync for the given bin.
+func (p *Puller) IsBinSyncing(bin uint8) bool {
+	if bin >= p.bins {
+		return false
+	}
+	p.activeHistSyncsMu.RLock()
+	defer p.activeHistSyncsMu.RUnlock()
+	return p.activeHistSyncs[bin] > 0
+}
+
+// IsReserveSynced returns true if no bins at or above the given depth are actively syncing.
+func (p *Puller) IsReserveSynced(depth uint8) bool {
+	p.activeHistSyncsMu.RLock()
+	defer p.activeHistSyncsMu.RUnlock()
+	for bin := depth; bin < p.bins; bin++ {
+		if p.activeHistSyncs[bin] > 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func (p *Puller) manage(ctx context.Context) {
@@ -408,10 +434,19 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 		}
 	}
 
-	if cursor > 0 {
+	if cursor > 0 && bin < swarm.MaxBins {
+		p.activeHistSyncsMu.Lock()
+		p.activeHistSyncs[bin]++
+		p.activeHistSyncsMu.Unlock()
+
 		peer.wg.Add(1)
 		p.wg.Add(1)
 		safe.Go(p.logger, "puller-sync-historical", func() {
+			defer func() {
+				p.activeHistSyncsMu.Lock()
+				p.activeHistSyncs[bin]--
+				p.activeHistSyncsMu.Unlock()
+			}()
 			sync(true, peer.address, cursor)
 		})
 	}

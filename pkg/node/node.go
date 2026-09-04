@@ -26,6 +26,13 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/hashicorp/go-multierror"
+	ma "github.com/multiformats/go-multiaddr"
+	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/crypto/sha3"
+	"golang.org/x/net/idna"
+	"golang.org/x/sync/errgroup"
+
 	bee "github.com/ethersphere/bee/v2"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/accounting"
@@ -81,12 +88,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/util/ioutil"
 	"github.com/ethersphere/bee/v2/pkg/util/nbhdutil"
 	"github.com/ethersphere/bee/v2/pkg/util/syncutil"
-	"github.com/hashicorp/go-multierror"
-	ma "github.com/multiformats/go-multiaddr"
-	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/crypto/sha3"
-	"golang.org/x/net/idna"
-	"golang.org/x/sync/errgroup"
 )
 
 // LoggerName is the tree path name of the logger for this package.
@@ -1323,10 +1324,10 @@ func NewBee(
 
 			redistributionContract := redistribution.New(swarmAddress, overlayEthAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI), contractGasLimit)
 
-			isFullySynced := func() bool {
+			isReserveSynced := func(depth uint8) bool {
 				reserveThreshold := reserveCapacity * 5 / 10
 				logger.Debug("Sync status check evaluated", "stabilized", detector.IsStabilized())
-				return localStore.ReserveSize() >= reserveThreshold && pullerService.SyncRate() == 0 && detector.IsStabilized()
+				return localStore.ReserveSizeWithinRadius() >= uint64(reserveThreshold) && pullerService.IsReserveSynced(depth) && detector.IsStabilized()
 			}
 
 			agent, err = storageincentives.New(
@@ -1337,7 +1338,7 @@ func NewBee(
 				postageStampContractService,
 				stakingContract,
 				localStore,
-				isFullySynced,
+				isReserveSynced,
 				o.BlockTime,
 				storageincentives.DefaultBlocksPerRound,
 				storageincentives.DefaultBlocksPerPhase,
