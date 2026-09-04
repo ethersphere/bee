@@ -22,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/gorilla/mux"
 )
 
@@ -256,15 +257,18 @@ func (s *Service) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 
 	chunk, err := s.storer.Download(cache).Get(r.Context(), address)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
+		switch {
+		case errors.Is(err, storage.ErrNotFound):
 			loggerV1.Debug("chunk not found", "address", address)
 			jsonhttp.NotFound(w, "chunk not found")
-			return
-
+		case errors.Is(err, topology.ErrNotFound):
+			loggerV1.Debug("no peers available to retrieve chunk", "address", address)
+			jsonhttp.ServiceUnavailable(w, "chunk could not be retrieved because no usable peer was available")
+		default:
+			logger.Debug("read chunk failed", "chunk_address", address, "error", err)
+			logger.Error(nil, "read chunk failed")
+			jsonhttp.InternalServerError(w, "read chunk failed")
 		}
-		logger.Debug("read chunk failed", "chunk_address", address, "error", err)
-		logger.Error(nil, "read chunk failed")
-		jsonhttp.InternalServerError(w, "read chunk failed")
 		return
 	}
 	w.Header().Set(ContentTypeHeader, "binary/octet-stream")
