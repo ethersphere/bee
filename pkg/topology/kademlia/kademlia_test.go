@@ -11,6 +11,7 @@ import (
 	"math"
 	"math/rand"
 	"reflect"
+	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -1779,64 +1780,44 @@ func TestAnnounceNeighborhoodToNeighbor(t *testing.T) {
 	}
 }
 
-// TestRebroadcastNeighborhood checks that the periodic neighborhood gossip
-// sends every neighbor exactly one message listing all the other neighbors.
-func TestRebroadcastNeighborhood(t *testing.T) {
+// TestNeighborhoodBroadcasts checks the sets the periodic neighborhood gossip
+// sends out: every neighbor is told about all the other neighbors and never
+// about itself, and the input is not modified along the way.
+func TestNeighborhoodBroadcasts(t *testing.T) {
 	t.Parallel()
 
-	var (
-		conns                       int32
-		base, kad, ab, disc, signer = newTestKademlia(t, &conns, nil, kademlia.Options{})
-	)
-
-	// With a storage radius of zero every connected peer is a neighbor.
-	kad.SetStorageRadius(0)
-
-	if err := kad.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	testutil.CleanupCloser(t, kad)
-
-	const n = 4
-	neighbors := make([]swarm.Address, n)
+	neighbors := make([]swarm.Address, 4)
 	for i := range neighbors {
-		neighbors[i] = swarm.RandAddressAt(t, base, i)
-		connectOne(t, signer, kad, ab, neighbors[i], nil)
+		neighbors[i] = swarm.RandAddress(t)
 	}
-	waitPeers(t, kad, n)
+	input := slices.Clone(neighbors)
 
-	// Connecting peer j announces it to the j peers connected before it and
-	// introduces those j peers to it. Wait for all of that to land before
-	// clearing the recorder, so only the rebroadcast is measured.
-	wantAnnounces := 0
-	for j := 1; j < n; j++ {
-		wantAnnounces += j + 1
+	broadcasts := kademlia.NeighborhoodBroadcasts(neighbors)
+
+	if len(broadcasts) != len(neighbors) {
+		t.Fatalf("got %d broadcasts, want %d", len(broadcasts), len(neighbors))
 	}
-	if err := spinlock.Wait(spinLockWaitTime, func() bool {
-		return disc.Broadcasts() == wantAnnounces
-	}); err != nil {
-		t.Fatalf("waiting for announce broadcasts: got %d, want %d", disc.Broadcasts(), wantAnnounces)
+	for i, others := range broadcasts {
+		want := slices.Concat(input[:i], input[i+1:])
+		if !slices.EqualFunc(others, want, swarm.Address.Equal) {
+			t.Fatalf("neighbor %d: got %v, want %v", i, others, want)
+		}
 	}
-	disc.Reset()
+	if !slices.EqualFunc(neighbors, input, swarm.Address.Equal) {
+		t.Fatalf("input was modified: got %v, want %v", neighbors, input)
+	}
+}
 
-	kad.RebroadcastNeighborhood(context.Background())
+func TestNeighborhoodBroadcastsSmall(t *testing.T) {
+	t.Parallel()
 
-	for _, addressee := range neighbors {
-		got, ok := disc.AddresseeRecords(addressee)
-		if !ok {
-			t.Fatalf("neighbor %s received no rebroadcast", addressee)
-		}
-		if len(got) != n-1 {
-			t.Fatalf("neighbor %s received %d peers, want %d", addressee, len(got), n-1)
-		}
-		if swarm.ContainsAddress(got, addressee) {
-			t.Fatalf("neighbor %s was told about itself", addressee)
-		}
-		for _, other := range neighbors {
-			if !other.Equal(addressee) && !swarm.ContainsAddress(got, other) {
-				t.Fatalf("neighbor %s was not told about %s", addressee, other)
-			}
-		}
+	if got := kademlia.NeighborhoodBroadcasts(nil); len(got) != 0 {
+		t.Fatalf("no neighbors: got %v, want none", got)
+	}
+
+	got := kademlia.NeighborhoodBroadcasts([]swarm.Address{swarm.RandAddress(t)})
+	if len(got) != 1 || len(got[0]) != 0 {
+		t.Fatalf("single neighbor: got %v, want one empty set", got)
 	}
 }
 

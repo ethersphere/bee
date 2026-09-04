@@ -538,6 +538,16 @@ func (k *Kad) markConnectedPeersSeen() error {
 	return k.addressBook.Seen(peers...)
 }
 
+// neighborhoodBroadcasts returns, for every neighbor, the other neighbors it
+// should be told about.
+func neighborhoodBroadcasts(neighbors []swarm.Address) [][]swarm.Address {
+	broadcasts := make([][]swarm.Address, len(neighbors))
+	for i := range neighbors {
+		broadcasts[i] = slices.Concat(neighbors[:i], neighbors[i+1:])
+	}
+	return broadcasts
+}
+
 // rebroadcastNeighborhood tells each neighbor about the other neighbors.
 func (k *Kad) rebroadcastNeighborhood(ctx context.Context) {
 	var neighbors []swarm.Address
@@ -548,11 +558,9 @@ func (k *Kad) rebroadcastNeighborhood(ctx context.Context) {
 		neighbors = append(neighbors, addr)
 		return false, false, nil
 	})
+	broadcasts := neighborhoodBroadcasts(neighbors)
 	for i, peer := range neighbors {
-		// Concat allocates a new slice; appending to neighbors[:i] in place
-		// would overwrite the entries the loop has yet to visit.
-		others := slices.Concat(neighbors[:i], neighbors[i+1:])
-		if err := k.discovery.BroadcastPeers(ctx, peer, others...); err != nil {
+		if err := k.discovery.BroadcastPeers(ctx, peer, broadcasts[i]...); err != nil {
 			k.logger.Debug("broadcast neighborhood failure", "peer_address", peer, "error", err)
 		}
 	}
