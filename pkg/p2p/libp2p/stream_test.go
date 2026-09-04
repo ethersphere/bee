@@ -79,7 +79,6 @@ func TestStreamVersion(t *testing.T) {
 
 			if v == nil {
 				t.Fatal("expected version to be non-nil")
-				return
 			}
 
 			expected := semver.Version{Major: tc.wantMajor, Minor: tc.wantMinor}
