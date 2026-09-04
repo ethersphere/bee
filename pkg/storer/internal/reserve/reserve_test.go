@@ -8,16 +8,21 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"math/rand"
+	"slices"
 	"testing"
 	"testing/synctest"
 
+	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
+	"github.com/ethersphere/bee/v2/pkg/soc"
 	soctesting "github.com/ethersphere/bee/v2/pkg/soc/testing"
+
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	chunk "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal"
@@ -768,7 +773,7 @@ func TestIterate(t *testing.T) {
 		r := createReserve(t)
 
 		var id uint64 = 1
-		err := r.IterateBin(1, 0, func(ch swarm.Address, binID uint64, _, _ []byte) (bool, error) {
+		err := r.IterateBin(1, 0, func(ch swarm.Address, binID uint64, _, _, _ []byte) (bool, error) {
 			if binID != id {
 				t.Fatalf("got %d, want %d", binID, id)
 			}
@@ -1160,4 +1165,1049 @@ func checkChunkInIndexStore(t *testing.T, s storage.Reader, bin uint8, binId uin
 
 	checkStore(t, s, &reserve.BatchRadiusItem{Bin: bin, BatchID: ch.Stamp().BatchID(), Address: ch.Address(), StampHash: stampHash}, false)
 	checkStore(t, s, &reserve.ChunkBinItem{Bin: bin, BinID: binId, StampHash: stampHash}, false)
+}
+
+// TestChunkSumIndexLockstep asserts the invariant the pullsync want-decision
+// depends on: a ChunkSumItem exists exactly as long as its chunk is in the
+// reserve. A stale entry would make the node silently refuse to sync a chunk
+// it no longer holds.
+func TestChunkSumIndexLockstep(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	baseAddr := swarm.RandAddress(t)
+	ts := internal.NewInmemStorage()
+	r, err := reserve.New(baseAddr, ts, 0, kademlia.NewTopologyDriver(), log.Noop)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	batch := postagetesting.MustNewBatch()
+	ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewBatchStamp(batch.ID))
+	if err := r.Put(ctx, ch); err != nil {
+		t.Fatal(err)
+	}
+
+	sum, err := storage.ChunkSum(ch)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	has, err := r.HasSum(ch.Address(), sum)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !has {
+		t.Fatal("expected chunk sum to be indexed after put")
+	}
+
+	evicted, err := r.EvictBatchBin(ctx, batch.ID, math.MaxInt, swarm.MaxBins)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if evicted != 1 {
+		t.Fatalf("expected 1 chunk evicted, got %d", evicted)
+	}
+
+	has, err = r.HasSum(ch.Address(), sum)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if has {
+		t.Fatal("expected chunk sum index entry to be removed by eviction")
+	}
+}
+
+// TestSOCSiblingSumRefresh covers a single owner chunk address stored under
+// multiple batches. The payload is stored once per address, so replacing it
+// through one batch's entry must refresh the divergence checksums of the other
+// batches' entries; a stale sum would keep advertising content the node no
+// longer holds and keep matching offers for content it cannot store.
+func TestSOCSiblingSumRefresh(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	baseAddr := swarm.RandAddress(t)
+	ts := internal.NewInmemStorage()
+	r, err := reserve.New(baseAddr, ts, 0, kademlia.NewTopologyDriver(), log.Noop)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	signer := getSigner(t)
+	batchA := postagetesting.MustNewBatch()
+	batchB := postagetesting.MustNewBatch()
+
+	// same owner and id: all three chunks share one SOC address
+	s1 := soctesting.GenerateMockSocWithSigner(t, []byte("v1"), signer)
+	s2 := soctesting.GenerateMockSocWithSigner(t, []byte("v2"), signer)
+	s3 := soctesting.GenerateMockSocWithSigner(t, []byte("v3"), signer)
+
+	stampA := postagetesting.MustNewFields(batchA.ID, 0, 1)
+	stampB := postagetesting.MustNewFields(batchB.ID, 0, 2)
+	chA := s1.Chunk().WithStamp(stampA)
+	chB := s2.Chunk().WithStamp(stampB)
+
+	addr := chA.Address()
+	bin := swarm.Proximity(baseAddr.Bytes(), addr.Bytes())
+
+	stampHashA, err := stampA.Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stampHashB, err := stampB.Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// sumOf reads the sum stored on the ChunkBinItem of the entry identified
+	// by the given batch and stamp hash.
+	sumOf := func(batchID, stampHash []byte) []byte {
+		t.Helper()
+		item := &reserve.BatchRadiusItem{Bin: bin, BatchID: batchID, Address: addr, StampHash: stampHash}
+		if err := ts.IndexStore().Get(item); err != nil {
+			t.Fatal(err)
+		}
+		cbi := &reserve.ChunkBinItem{Bin: bin, BinID: item.BinID}
+		if err := ts.IndexStore().Get(cbi); err != nil {
+			t.Fatal(err)
+		}
+		return cbi.Sum
+	}
+
+	if err := r.Put(ctx, chA); err != nil {
+		t.Fatal(err)
+	}
+	staleSumA := sumOf(batchA.ID, stampHashA)
+
+	// storing the same address under batch B replaces the shared payload with
+	// v2; batch A's entry must be re-summed against the new payload.
+	if err := r.Put(ctx, chB); err != nil {
+		t.Fatal(err)
+	}
+
+	freshSumA, err := storage.ChunkSumFromParts(batchA.ID, stampHashA, chB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(sumOf(batchA.ID, stampHashA), freshSumA) {
+		t.Fatal("expected batch A entry to be re-summed against the replacing payload")
+	}
+	has, err := r.HasSum(addr, staleSumA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if has {
+		t.Fatal("expected the stale sum of batch A to be dropped")
+	}
+	has, err = r.HasSum(addr, freshSumA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !has {
+		t.Fatal("expected the refreshed sum of batch A to be indexed")
+	}
+
+	// the same-batch replacement path (higher stamp timestamp) must refresh
+	// batch B's entry the same way.
+	staleSumB := sumOf(batchB.ID, stampHashB)
+	chA2 := s3.Chunk().WithStamp(postagetesting.MustNewFields(batchA.ID, 0, 3))
+	if err := r.Put(ctx, chA2); err != nil {
+		t.Fatal(err)
+	}
+
+	freshSumB, err := storage.ChunkSumFromParts(batchB.ID, stampHashB, chA2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(sumOf(batchB.ID, stampHashB), freshSumB) {
+		t.Fatal("expected batch B entry to be re-summed against the replacing payload")
+	}
+	has, err = r.HasSum(addr, staleSumB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if has {
+		t.Fatal("expected the stale sum of batch B to be dropped")
+	}
+}
+
+// TestChunkSumIndexRandomOps drives the reserve with a randomized sequence of
+// overlapping SOC puts (shared addresses across batches, timestamp
+// replacements), CAC puts and batch evictions, and repeatedly asserts the
+// invariant the pullsync want-decision depends on: the ChunkSumItem index is
+// exactly the set of (address, sum) pairs of the live ChunkBinItems, and every
+// stored sum matches the payload actually held in the chunkstore.
+func TestChunkSumIndexRandomOps(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	baseAddr := swarm.RandAddress(t)
+	st := internal.NewInmemStorage()
+	r, err := reserve.New(baseAddr, st, 0, kademlia.NewTopologyDriver(), log.Noop)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rng := rand.New(rand.NewSource(42))
+
+	// small pools force address sharing, stamp collisions and replacements
+	signers := []crypto.Signer{getSigner(t), getSigner(t)}
+	batches := [][]byte{
+		postagetesting.MustNewBatch().ID,
+		postagetesting.MustNewBatch().ID,
+		postagetesting.MustNewBatch().ID,
+	}
+
+	checkInvariant := func(op int) {
+		t.Helper()
+
+		// live (address, sum) pairs according to the chunk bin index; sums
+		// must match the payload currently in the chunkstore.
+		live := make(map[string]int)
+		err := st.IndexStore().Iterate(
+			storage.Query{Factory: func() storage.Item { return &reserve.ChunkBinItem{} }},
+			func(res storage.Result) (bool, error) {
+				cbi := res.Entry.(*reserve.ChunkBinItem)
+				ch, err := st.ChunkStore().Get(ctx, cbi.Address)
+				if err != nil {
+					return false, fmt.Errorf("op %d: chunk missing for live index entry %s: %w", op, cbi.Address, err)
+				}
+				want, err := storage.ChunkSumFromParts(cbi.BatchID, cbi.StampHash, ch)
+				if err != nil {
+					return false, err
+				}
+				if !bytes.Equal(cbi.Sum, want) {
+					return false, fmt.Errorf("op %d: stale sum on entry %s", op, cbi.Address)
+				}
+				live[cbi.Address.ByteString()+string(cbi.Sum)]++
+				return false, nil
+			},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// the sum index must be exactly the live set, in both directions
+		indexed := make(map[string]int)
+		err = st.IndexStore().Iterate(
+			storage.Query{
+				Factory:      func() storage.Item { return &reserve.ChunkSumItem{} },
+				ItemProperty: storage.QueryItemID,
+			},
+			func(res storage.Result) (bool, error) {
+				if len(res.ID) != swarm.HashSize+storage.ChunkSumSize {
+					return false, fmt.Errorf("op %d: malformed chunk sum key length %d", op, len(res.ID))
+				}
+				indexed[res.ID]++
+				return false, nil
+			},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for k := range indexed {
+			if live[k] == 0 {
+				t.Fatalf("op %d: orphaned chunk sum entry (no live chunk bin item)", op)
+			}
+		}
+		for k, n := range live {
+			if n > 1 {
+				t.Fatalf("op %d: %d chunk bin items share one (address, sum) pair", op, n)
+			}
+			if indexed[k] == 0 {
+				t.Fatalf("op %d: live chunk bin item without chunk sum entry", op)
+			}
+		}
+	}
+
+	ts := uint64(0)
+	for op := range 200 {
+		switch v := rng.Intn(10); {
+		case v < 6: // SOC put: shared addresses, random payload, random batch
+			ts++
+			s := soctesting.GenerateMockSocWithSigner(t, fmt.Appendf(nil, "payload-%d", rng.Intn(4)), signers[rng.Intn(len(signers))])
+			stamp := postagetesting.MustNewFields(batches[rng.Intn(len(batches))], 0, ts)
+			err = r.Put(ctx, s.Chunk().WithStamp(stamp))
+		case v < 8: // CAC put
+			ch, cerr := cac.New(fmt.Appendf(nil, "cac-%d", op))
+			if cerr != nil {
+				t.Fatal(cerr)
+			}
+			err = r.Put(ctx, ch.WithStamp(postagetesting.MustNewBatchStamp(batches[rng.Intn(len(batches))])))
+		default: // evict a whole batch
+			_, err = r.EvictBatchBin(ctx, batches[rng.Intn(len(batches))], math.MaxInt, swarm.MaxBins)
+		}
+		if err != nil && !errors.Is(err, storage.ErrOverwriteNewerChunk) {
+			t.Fatalf("op %d: %v", op, err)
+		}
+
+		if op%20 == 19 {
+			checkInvariant(op)
+		}
+	}
+	checkInvariant(200)
+}
+
+// TestSOCCrossBatchTimestamp covers two single owner chunks that share an
+// address but are stamped under different batches. The shared chunkstore
+// payload is replaced when the incoming stamp timestamp is strictly higher,
+// or when timestamps are equal and the incoming stamp hash is lower. An older
+// stamp is rejected so neighborhoods converge.
+func TestSOCCrossBatchTimestamp(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	signer := getSigner(t)
+	batchA := postagetesting.MustNewBatch()
+	batchB := postagetesting.MustNewBatch()
+
+	sOlder := soctesting.GenerateMockSocWithSigner(t, []byte("older"), signer)
+	sNewer := soctesting.GenerateMockSocWithSigner(t, []byte("newer"), signer)
+	if !sOlder.Chunk().Address().Equal(sNewer.Chunk().Address()) {
+		t.Fatal("expected shared SOC address")
+	}
+
+	t.Run("higher timestamp replaces", func(t *testing.T) {
+		t.Parallel()
+
+		baseAddr := swarm.RandAddress(t)
+		ts := internal.NewInmemStorage()
+		r, err := reserve.New(baseAddr, ts, 0, kademlia.NewTopologyDriver(), log.Noop)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		older := sOlder.Chunk().WithStamp(postagetesting.MustNewFields(batchA.ID, 0, 1))
+		newer := sNewer.Chunk().WithStamp(postagetesting.MustNewFields(batchB.ID, 0, 2))
+
+		if err := r.Put(ctx, older); err != nil {
+			t.Fatal(err)
+		}
+		if err := r.Put(ctx, newer); err != nil {
+			t.Fatal(err)
+		}
+
+		got, err := ts.ChunkStore().Get(ctx, newer.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got.Data(), newer.Data()) {
+			t.Fatal("expected payload from the higher-timestamp stamp")
+		}
+	})
+}
+
+// TestSOCDivergence covers two single owner chunks that share an address, batch
+// and stamp while wrapping different content. Both are valid, so the storage
+// layer settles which one the neighborhood keeps, and it must reach the same
+// answer regardless of the order the chunks arrive in.
+func TestSOCDivergence(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	signer := getSigner(t)
+	batch := postagetesting.MustNewBatch()
+
+	// same signer and id, different payloads: same SOC address, different
+	// wrapped CAC.
+	s1 := soctesting.GenerateMockSocWithSigner(t, []byte("data"), signer)
+	s2 := soctesting.GenerateMockSocWithSigner(t, []byte("update"), signer)
+
+	// the stamp signs the chunk address, which both chunks share, so a single
+	// stamp legitimately applies to both.
+	stamp := postagetesting.MustNewFields(batch.ID, 0, 1)
+	ch1 := s1.Chunk().WithStamp(stamp)
+	ch2 := s2.Chunk().WithStamp(stamp)
+
+	if !ch1.Address().Equal(ch2.Address()) {
+		t.Fatal("expected the diverging chunks to share an address")
+	}
+
+	// the chunk wrapping the lower CAC address is the one both nodes must keep.
+	winner, loser := ch1, ch2
+	if bytes.Compare(s2.WrappedChunk.Address().Bytes(), s1.WrappedChunk.Address().Bytes()) < 0 {
+		winner, loser = ch2, ch1
+	}
+
+	for _, tc := range []struct {
+		name  string
+		order []swarm.Chunk
+	}{
+		{"winner first", []swarm.Chunk{winner, loser}},
+		{"loser first", []swarm.Chunk{loser, winner}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			baseAddr := swarm.RandAddress(t)
+			ts := internal.NewInmemStorage()
+			r, err := reserve.New(baseAddr, ts, 0, kademlia.NewTopologyDriver(), log.Noop)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if err := r.Put(ctx, tc.order[0]); err != nil {
+				t.Fatal(err)
+			}
+			sizeAfterFirst := r.Size()
+
+			err = r.Put(ctx, tc.order[1])
+			// the second put only errors when the incoming chunk is the loser.
+			if tc.order[1] == loser {
+				if !errors.Is(err, storage.ErrDivergentChunkRejected) {
+					t.Fatalf("expected ErrDivergentChunkRejected, got %v", err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+
+			// whichever order they arrived in, the winner is what is stored.
+			stored, err := ts.ChunkStore().Get(ctx, winner.Address())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(stored.Data(), winner.Data()) {
+				t.Fatal("expected the tie-break winner to be stored")
+			}
+
+			// divergence resolution replaces a chunk, it does not add one.
+			if got := r.Size(); got != sizeAfterFirst {
+				t.Fatalf("expected reserve size to stay %d, got %d", sizeAfterFirst, got)
+			}
+
+			// the sum index tracks the stored chunk only.
+			winnerSum, err := storage.ChunkSum(winner)
+			if err != nil {
+				t.Fatal(err)
+			}
+			loserSum, err := storage.ChunkSum(loser)
+			if err != nil {
+				t.Fatal(err)
+			}
+			has, err := r.HasSum(winner.Address(), winnerSum)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !has {
+				t.Fatal("expected the winner sum to be indexed")
+			}
+			has, err = r.HasSum(loser.Address(), loserSum)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if has {
+				t.Fatal("expected the loser sum not to be indexed")
+			}
+		})
+	}
+}
+
+// TestSOCDivergenceBumpsBinID asserts that replacing a diverging chunk moves it
+// to the top of its bin, so peers that already synced past the old bin ID are
+// offered the replacement.
+func TestSOCDivergenceBumpsBinID(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	baseAddr := swarm.RandAddress(t)
+	ts := internal.NewInmemStorage()
+	r, err := reserve.New(baseAddr, ts, 0, kademlia.NewTopologyDriver(), log.Noop)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	signer := getSigner(t)
+	batch := postagetesting.MustNewBatch()
+	s1 := soctesting.GenerateMockSocWithSigner(t, []byte("data"), signer)
+	s2 := soctesting.GenerateMockSocWithSigner(t, []byte("update"), signer)
+	stamp := postagetesting.MustNewFields(batch.ID, 0, 1)
+	ch1 := s1.Chunk().WithStamp(stamp)
+	ch2 := s2.Chunk().WithStamp(stamp)
+
+	// put the losing chunk first so the second put performs the replacement.
+	first, second := ch1, ch2
+	if bytes.Compare(s2.WrappedChunk.Address().Bytes(), s1.WrappedChunk.Address().Bytes()) > 0 {
+		first, second = ch2, ch1
+	}
+
+	if err := r.Put(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+
+	bin := swarm.Proximity(baseAddr.Bytes(), first.Address().Bytes())
+	stampHash, err := stamp.Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	item := &reserve.BatchRadiusItem{Bin: bin, BatchID: batch.ID, Address: first.Address(), StampHash: stampHash}
+	if err := ts.IndexStore().Get(item); err != nil {
+		t.Fatal(err)
+	}
+	oldBinID := item.BinID
+
+	if err := r.Put(ctx, second); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ts.IndexStore().Get(item); err != nil {
+		t.Fatal(err)
+	}
+	if item.BinID <= oldBinID {
+		t.Fatalf("expected bin id to be bumped past %d, got %d", oldBinID, item.BinID)
+	}
+
+	// the stale bin entry must be gone, leaving exactly one per bin id.
+	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin, BinID: oldBinID}, true)
+	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: bin, BinID: item.BinID}, false)
+}
+
+// TestCACStampIndexCollisionBumps asserts that accepting a lower-address
+// CAC over a stamp-index collision writes it at a fresh bin ID for pullsync,
+// while the postage stamp index slot still points at the winning chunk.
+func TestCACStampIndexCollision(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	baseAddr := swarm.RandAddress(t)
+	ts := internal.NewInmemStorage()
+	r, err := reserve.New(baseAddr, ts, 0, kademlia.NewTopologyDriver(), log.Noop)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	batch := postagetesting.MustNewBatch()
+	stamp := postagetesting.MustNewFields(batch.ID, 0, 1)
+	ch1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(stamp)
+	ch2 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(stamp.Clone())
+
+	first, second := ch1, ch2
+	if bytes.Compare(ch2.Address().Bytes(), ch1.Address().Bytes()) > 0 {
+		first, second = ch2, ch1
+	}
+
+	if err := r.Put(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+
+	firstStampHash, err := first.Stamp().Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstBin := swarm.Proximity(baseAddr.Bytes(), first.Address().Bytes())
+	oldItem := &reserve.BatchRadiusItem{
+		Bin:       firstBin,
+		BatchID:   batch.ID,
+		Address:   first.Address(),
+		StampHash: firstStampHash,
+	}
+	if err := ts.IndexStore().Get(oldItem); err != nil {
+		t.Fatal(err)
+	}
+	oldBinID := oldItem.BinID
+
+	oldStampIndex, err := stampindex.Load(ts.IndexStore(), "reserve", first.Stamp())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !oldStampIndex.ChunkAddress.Equal(first.Address()) {
+		t.Fatalf("stamp index points to %s, want %s", oldStampIndex.ChunkAddress, first.Address())
+	}
+	wantStampIndex := append([]byte(nil), oldStampIndex.StampIndex...)
+
+	if err := r.Put(ctx, second); err != nil {
+		t.Fatal(err)
+	}
+
+	secondStampHash, err := second.Stamp().Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondBin := swarm.Proximity(baseAddr.Bytes(), second.Address().Bytes())
+	newItem := &reserve.BatchRadiusItem{
+		Bin:       secondBin,
+		BatchID:   batch.ID,
+		Address:   second.Address(),
+		StampHash: secondStampHash,
+	}
+	if err := ts.IndexStore().Get(newItem); err != nil {
+		t.Fatal(err)
+	}
+	if secondBin == firstBin && newItem.BinID <= oldBinID {
+		t.Fatalf("expected bin id to be bumped past %d, got %d", oldBinID, newItem.BinID)
+	}
+
+	newStampIndex, err := stampindex.Load(ts.IndexStore(), "reserve", second.Stamp())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(newStampIndex.StampIndex, wantStampIndex) {
+		t.Fatalf("stamp index slot changed: got %x, want %x", newStampIndex.StampIndex, wantStampIndex)
+	}
+	if !newStampIndex.ChunkAddress.Equal(second.Address()) {
+		t.Fatalf("stamp index points to %s, want %s", newStampIndex.ChunkAddress, second.Address())
+	}
+	if !bytes.Equal(newStampIndex.StampHash, secondStampHash) {
+		t.Fatalf("stamp index hash %x, want %x", newStampIndex.StampHash, secondStampHash)
+	}
+
+	storedStamp, err := chunkstamp.LoadWithStampHash(ts.IndexStore(), "reserve", second.Address(), secondStampHash)
+	if err != nil {
+		t.Fatalf("expected chunkstamp for winning chunk: %v", err)
+	}
+	if !bytes.Equal(storedStamp.Index(), wantStampIndex) {
+		t.Fatalf("stored stamp index %x, want %x", storedStamp.Index(), wantStampIndex)
+	}
+	if !bytes.Equal(storedStamp.BatchID(), batch.ID) {
+		t.Fatalf("stored stamp batch %x, want %x", storedStamp.BatchID(), batch.ID)
+	}
+	if _, err := chunkstamp.LoadWithStampHash(ts.IndexStore(), "reserve", first.Address(), firstStampHash); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("expected old chunkstamp gone, got %v", err)
+	}
+
+	checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{
+		Bin: firstBin, BatchID: batch.ID, Address: first.Address(), StampHash: firstStampHash,
+	}, true)
+	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: firstBin, BinID: oldBinID}, true)
+	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: secondBin, BinID: newItem.BinID}, false)
+}
+
+func TestResolveStampIndexCollisionCornerCases(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	baseAddr := swarm.RandAddress(t)
+
+	newTestReserve := func(t *testing.T) (*reserve.Reserve, transaction.Storage) {
+		t.Helper()
+		ts := internal.NewInmemStorage()
+		r, err := reserve.New(baseAddr, ts, 0, kademlia.NewTopologyDriver(), log.Noop)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r, ts
+	}
+
+	mustCAC := func(t *testing.T, data []byte) swarm.Chunk {
+		t.Helper()
+		ch, err := cac.New(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ch
+	}
+
+	t.Run("collision with older timestamp rejected", func(t *testing.T) {
+		t.Parallel()
+		r, ts := newTestReserve(t)
+		batch := postagetesting.MustNewBatch()
+
+		ch1 := mustCAC(t, []byte("chunk 1 payload")).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 10))
+		ch2 := mustCAC(t, []byte("chunk 2 payload")).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 5))
+
+		if err := r.Put(ctx, ch1); err != nil {
+			t.Fatal(err)
+		}
+
+		err := r.Put(ctx, ch2)
+		if !errors.Is(err, storage.ErrOverwriteNewerChunk) {
+			t.Fatalf("expected ErrOverwriteNewerChunk, got %v", err)
+		}
+
+		ch1StampHash, _ := ch1.Stamp().Hash()
+		ch2StampHash, _ := ch2.Stamp().Hash()
+
+		has1, err := r.Has(ch1.Address(), batch.ID, ch1StampHash)
+		if err != nil || !has1 {
+			t.Fatalf("expected ch1 in reserve")
+		}
+		has2, err := r.Has(ch2.Address(), batch.ID, ch2StampHash)
+		if err != nil || has2 {
+			t.Fatalf("expected ch2 NOT in reserve")
+		}
+		_ = ts
+	})
+
+	t.Run("collision equal timestamp higher address lost tie-break", func(t *testing.T) {
+		t.Parallel()
+		r, _ := newTestReserve(t)
+		batch := postagetesting.MustNewBatch()
+
+		var chLower, chHigher swarm.Chunk
+		for i := range 100 {
+			c := mustCAC(t, fmt.Appendf(nil, "payload %d", i))
+			if chLower == nil {
+				chLower = c
+				continue
+			}
+			if bytes.Compare(c.Address().Bytes(), chLower.Address().Bytes()) < 0 {
+				chHigher = chLower
+				chLower = c
+			} else if chHigher == nil {
+				chHigher = c
+			}
+			if chLower != nil && chHigher != nil {
+				break
+			}
+		}
+
+		chLower = chLower.WithStamp(postagetesting.MustNewFields(batch.ID, 0, 10))
+		chHigher = chHigher.WithStamp(postagetesting.MustNewFields(batch.ID, 0, 10))
+
+		if err := r.Put(ctx, chLower); err != nil {
+			t.Fatal(err)
+		}
+
+		err := r.Put(ctx, chHigher)
+		if !errors.Is(err, storage.ErrDivergentChunkRejected) {
+			t.Fatalf("expected ErrDivergentChunkRejected, got %v", err)
+		}
+
+		chLowerStampHash, _ := chLower.Stamp().Hash()
+		chHigherStampHash, _ := chHigher.Stamp().Hash()
+
+		hasLower, _ := r.Has(chLower.Address(), batch.ID, chLowerStampHash)
+		hasHigher, _ := r.Has(chHigher.Address(), batch.ID, chHigherStampHash)
+		if !hasLower || hasHigher {
+			t.Fatalf("expected lower address chunk kept, higher rejected")
+		}
+	})
+
+	t.Run("collision equal timestamp lower address wins tie-break", func(t *testing.T) {
+		t.Parallel()
+		r, _ := newTestReserve(t)
+		batch := postagetesting.MustNewBatch()
+
+		var chLower, chHigher swarm.Chunk
+		for i := range 100 {
+			c := mustCAC(t, fmt.Appendf(nil, "payload %d", i))
+			if chLower == nil {
+				chLower = c
+				continue
+			}
+			if bytes.Compare(c.Address().Bytes(), chLower.Address().Bytes()) < 0 {
+				chHigher = chLower
+				chLower = c
+			} else if chHigher == nil {
+				chHigher = c
+			}
+			if chLower != nil && chHigher != nil {
+				break
+			}
+		}
+
+		chLower = chLower.WithStamp(postagetesting.MustNewFields(batch.ID, 0, 10))
+		chHigher = chHigher.WithStamp(postagetesting.MustNewFields(batch.ID, 0, 10))
+
+		if err := r.Put(ctx, chHigher); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := r.Put(ctx, chLower); err != nil {
+			t.Fatalf("expected lower address chunk to replace higher address: %v", err)
+		}
+
+		chLowerStampHash, _ := chLower.Stamp().Hash()
+		chHigherStampHash, _ := chHigher.Stamp().Hash()
+
+		hasLower, _ := r.Has(chLower.Address(), batch.ID, chLowerStampHash)
+		hasHigher, _ := r.Has(chHigher.Address(), batch.ID, chHigherStampHash)
+		if !hasLower || hasHigher {
+			t.Fatalf("expected lower address chunk to replace higher address")
+		}
+	})
+
+	t.Run("collision newer timestamp replaces old chunk", func(t *testing.T) {
+		t.Parallel()
+		r, _ := newTestReserve(t)
+		batch := postagetesting.MustNewBatch()
+
+		ch1 := mustCAC(t, []byte("chunk 1 payload")).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 10))
+		ch2 := mustCAC(t, []byte("chunk 2 payload")).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 20))
+
+		if err := r.Put(ctx, ch1); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := r.Put(ctx, ch2); err != nil {
+			t.Fatalf("expected ch2 to replace ch1: %v", err)
+		}
+
+		ch1StampHash, _ := ch1.Stamp().Hash()
+		ch2StampHash, _ := ch2.Stamp().Hash()
+
+		has1, _ := r.Has(ch1.Address(), batch.ID, ch1StampHash)
+		has2, _ := r.Has(ch2.Address(), batch.ID, ch2StampHash)
+		if has1 || !has2 {
+			t.Fatalf("expected ch2 in reserve, ch1 removed")
+		}
+	})
+
+	t.Run("collision on multi-stamped chunk keeps chunk when other stamp remains", func(t *testing.T) {
+		t.Parallel()
+		r, ts := newTestReserve(t)
+		batch1 := postagetesting.MustNewBatch()
+		batch2 := postagetesting.MustNewBatch()
+
+		ch1 := mustCAC(t, []byte("chunk 1 payload"))
+		ch1Stamp1 := ch1.WithStamp(postagetesting.MustNewFields(batch1.ID, 0, 10))
+
+		chOther := mustCAC(t, []byte("other chunk payload")).WithStamp(postagetesting.MustNewFields(batch2.ID, 0, 10))
+
+		ch2 := mustCAC(t, []byte("chunk 2 payload")).WithStamp(postagetesting.MustNewFields(batch1.ID, 0, 20))
+
+		if err := r.Put(ctx, ch1Stamp1); err != nil {
+			t.Fatal(err)
+		}
+		if err := r.Put(ctx, chOther); err != nil {
+			t.Fatal(err)
+		}
+
+		sizeBefore := r.Size()
+		if sizeBefore != 2 {
+			t.Fatalf("expected reserve size 2, got %d", sizeBefore)
+		}
+
+		// Now put ch2 with batch1 stamp index 0 and newer timestamp
+		if err := r.Put(ctx, ch2); err != nil {
+			t.Fatalf("expected ch2 to succeed: %v", err)
+		}
+
+		// Size should be unchanged: batch1 index 0 transferred from ch1 to ch2
+		if got := r.Size(); got != 2 {
+			t.Fatalf("expected reserve size to remain 2, got %d", got)
+		}
+
+		ch1Stamp1Hash, _ := ch1Stamp1.Stamp().Hash()
+		chOtherStampHash, _ := chOther.Stamp().Hash()
+		ch2StampHash, _ := ch2.Stamp().Hash()
+
+		// ch1 with batch1 should be gone
+		has1, _ := r.Has(ch1.Address(), batch1.ID, ch1Stamp1Hash)
+		if has1 {
+			t.Fatalf("expected ch1 with batch1 stamp removed from reserve")
+		}
+
+		// chOther with batch2 should STILL be in reserve
+		hasOther, _ := r.Has(chOther.Address(), batch2.ID, chOtherStampHash)
+		if !hasOther {
+			t.Fatalf("expected chOther STILL in reserve")
+		}
+
+		// ch2 with batch1 should be in reserve
+		has2, _ := r.Has(ch2.Address(), batch1.ID, ch2StampHash)
+		if !has2 {
+			t.Fatalf("expected ch2 with batch1 stamp in reserve")
+		}
+
+		// ch1 payload should be removed from chunkstore
+		_, err := ts.ChunkStore().Get(ctx, ch1.Address())
+		if !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("expected ch1 payload removed from chunkstore, got error: %v", err)
+		}
+	})
+}
+
+func TestAdvancedReserveCornerCases(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	baseAddr := swarm.RandAddress(t)
+
+	newTestReserve := func(t *testing.T) (*reserve.Reserve, transaction.Storage) {
+		t.Helper()
+		ts := internal.NewInmemStorage()
+		r, err := reserve.New(baseAddr, ts, 0, kademlia.NewTopologyDriver(), log.Noop)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r, ts
+	}
+
+	mustCAC := func(t *testing.T, data []byte) swarm.Chunk {
+		t.Helper()
+		ch, err := cac.New(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ch
+	}
+
+	t.Run("multi-stamp eviction chain cleans up chunkstore when final stamp evicted", func(t *testing.T) {
+		t.Parallel()
+		r, ts := newTestReserve(t)
+
+		batch1 := postagetesting.MustNewBatch()
+		batch2 := postagetesting.MustNewBatch()
+		batch3 := postagetesting.MustNewBatch()
+
+		data := []byte("chunk A payload")
+		chAStamp1 := mustCAC(t, data).WithStamp(postagetesting.MustNewFields(batch1.ID, 0, 10))
+		chAStamp2 := mustCAC(t, data).WithStamp(postagetesting.MustNewFields(batch2.ID, 0, 10))
+		chAStamp3 := mustCAC(t, data).WithStamp(postagetesting.MustNewFields(batch3.ID, 0, 10))
+
+		chB := mustCAC(t, []byte("chunk B payload")).WithStamp(postagetesting.MustNewFields(batch1.ID, 0, 20))
+		chC := mustCAC(t, []byte("chunk C payload")).WithStamp(postagetesting.MustNewFields(batch2.ID, 0, 20))
+		chD := mustCAC(t, []byte("chunk D payload")).WithStamp(postagetesting.MustNewFields(batch3.ID, 0, 20))
+
+		// Put chA with 3 different stamps
+		if err := r.Put(ctx, chAStamp1); err != nil {
+			t.Fatalf("put chAStamp1 failed: %v", err)
+		}
+		if err := r.Put(ctx, chAStamp2); err != nil {
+			t.Fatalf("put chAStamp2 failed: %v", err)
+		}
+		if err := r.Put(ctx, chAStamp3); err != nil {
+			t.Fatalf("put chAStamp3 failed: %v", err)
+		}
+
+		if got := r.Size(); got != 3 {
+			t.Fatalf("expected reserve size 3, got %d", got)
+		}
+
+		chAAddr := chAStamp1.Address()
+
+		// Evict Stamp 1: Put chB (batch 1, index 0, ts 20)
+		if err := r.Put(ctx, chB); err != nil {
+			t.Fatal(err)
+		}
+		if got := r.Size(); got != 3 {
+			t.Fatalf("expected reserve size 3 after 1st eviction, got %d", got)
+		}
+		// chA must STILL be in chunkstore (2 stamps remain)
+		if _, err := ts.ChunkStore().Get(ctx, chAAddr); err != nil {
+			t.Fatalf("chA should still exist after 1st eviction: %v", err)
+		}
+
+		// Evict Stamp 2: Put chC (batch 2, index 0, ts 20)
+		if err := r.Put(ctx, chC); err != nil {
+			t.Fatal(err)
+		}
+		if got := r.Size(); got != 3 {
+			t.Fatalf("expected reserve size 3 after 2nd eviction, got %d", got)
+		}
+		// chA must STILL be in chunkstore (1 stamp remains)
+		if _, err := ts.ChunkStore().Get(ctx, chAAddr); err != nil {
+			t.Fatalf("chA should still exist after 2nd eviction: %v", err)
+		}
+
+		// Evict Stamp 3: Put chD (batch 3, index 0, ts 20)
+		if err := r.Put(ctx, chD); err != nil {
+			t.Fatal(err)
+		}
+		if got := r.Size(); got != 3 {
+			t.Fatalf("expected reserve size 3 after 3rd eviction, got %d", got)
+		}
+		// NOW chA must be COMPLETELY GONE from chunkstore (0 stamps remain)
+		if _, err := ts.ChunkStore().Get(ctx, chAAddr); !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("expected chA to be deleted from chunkstore after 3rd eviction, got %v", err)
+		}
+
+		// Check index cleanliness: total BatchRadiusItems must equal 3
+		countBR, err := ts.IndexStore().Count(&reserve.BatchRadiusItem{})
+		if err != nil || countBR != 3 {
+			t.Fatalf("expected 3 BatchRadiusItems, got count %d, err %v", countBR, err)
+		}
+		countCB, err := ts.IndexStore().Count(&reserve.ChunkBinItem{})
+		if err != nil || countCB != 3 {
+			t.Fatalf("expected 3 ChunkBinItems, got count %d, err %v", countCB, err)
+		}
+		countCS, err := ts.IndexStore().Count(&reserve.ChunkSumItem{})
+		if err != nil || countCS != 3 {
+			t.Fatalf("expected 3 ChunkSumItems, got count %d, err %v", countCS, err)
+		}
+	})
+
+	t.Run("sequential divergent SOC chain tie-breaks converge on lowest wrapped address", func(t *testing.T) {
+		t.Parallel()
+		r, ts := newTestReserve(t)
+
+		privKey, err := crypto.GenerateSecp256k1Key()
+		if err != nil {
+			t.Fatal(err)
+		}
+		signer := crypto.NewDefaultSigner(privKey)
+		batch := postagetesting.MustNewBatch()
+		stamp := postagetesting.MustNewFields(batch.ID, 0, 10)
+
+		// Generate 4 SOCs with different payloads and sort them by wrapped CAC address
+		socChunks := make([]swarm.Chunk, 0, 100)
+		for i := range 100 {
+			c := soctesting.GenerateMockSocWithSigner(t, fmt.Appendf(nil, "payload %d", i), signer).Chunk().WithStamp(stamp)
+			socChunks = append(socChunks, c)
+		}
+
+		// Sort by wrapped CAC address
+		wrappedAddr := func(ch swarm.Chunk) swarm.Address {
+			s, _ := soc.FromChunk(ch)
+			return s.WrappedChunk().Address()
+		}
+
+		slices.SortFunc(socChunks, func(a, b swarm.Chunk) int {
+			return bytes.Compare(wrappedAddr(a).Bytes(), wrappedAddr(b).Bytes())
+		})
+
+		// Take C0 (lowest), C1, C2, C3 (highest)
+		c0 := socChunks[0]
+		c1 := socChunks[1]
+		c2 := socChunks[2]
+		c3 := socChunks[3]
+
+		socAddress := c0.Address()
+
+		// 1. Put C2 (3rd lowest) first
+		if err := r.Put(ctx, c2); err != nil {
+			t.Fatal(err)
+		}
+		stored, err := ts.ChunkStore().Get(ctx, socAddress)
+		if err != nil || !bytes.Equal(stored.Data(), c2.Data()) {
+			t.Fatalf("expected C2 stored first")
+		}
+
+		// 2. Put C1 (2nd lowest): C1 < C2 so C1 wins tie-break and replaces C2
+		if err := r.Put(ctx, c1); err != nil {
+			t.Fatal(err)
+		}
+		stored, err = ts.ChunkStore().Get(ctx, socAddress)
+		if err != nil || !bytes.Equal(stored.Data(), c1.Data()) {
+			t.Fatalf("expected C1 to replace C2")
+		}
+
+		// 3. Put C3 (highest): C3 > C1 so C3 loses tie-break
+		err = r.Put(ctx, c3)
+		if !errors.Is(err, storage.ErrDivergentChunkRejected) {
+			t.Fatalf("expected ErrDivergentChunkRejected for C3, got %v", err)
+		}
+		stored, err = ts.ChunkStore().Get(ctx, socAddress)
+		if err != nil || !bytes.Equal(stored.Data(), c1.Data()) {
+			t.Fatalf("expected C1 retained after C3 rejection")
+		}
+
+		// 4. Put C0 (lowest): C0 < C1 so C0 wins tie-break and replaces C1
+		if err := r.Put(ctx, c0); err != nil {
+			t.Fatal(err)
+		}
+		stored, err = ts.ChunkStore().Get(ctx, socAddress)
+		if err != nil || !bytes.Equal(stored.Data(), c0.Data()) {
+			t.Fatalf("expected C0 to replace C1 as overall winner")
+		}
+
+		// Verify ChunkSumItem matches C0's sum
+		c0Sum, err := storage.ChunkSum(c0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		hasSum, err := r.HasSum(socAddress, c0Sum)
+		if err != nil || !hasSum {
+			t.Fatalf("expected reserve to have C0 sum")
+		}
+
+		c1Sum, _ := storage.ChunkSum(c1)
+		hasC1Sum, _ := r.HasSum(socAddress, c1Sum)
+		if hasC1Sum {
+			t.Fatalf("expected reserve NOT to have C1 sum")
+		}
+	})
 }

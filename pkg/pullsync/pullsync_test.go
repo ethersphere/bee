@@ -12,6 +12,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/streamtest"
@@ -19,6 +20,7 @@ import (
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	"github.com/ethersphere/bee/v2/pkg/pullsync"
 	"github.com/ethersphere/bee/v2/pkg/soc"
+	soctesting "github.com/ethersphere/bee/v2/pkg/soc/testing"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	testingc "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer"
@@ -49,11 +51,13 @@ func init() {
 		chunks[i] = testingc.GenerateTestRandomChunk()
 		addrs[i] = chunks[i].Address()
 		stampHash, _ := chunks[i].Stamp().Hash()
+		sum, _ := storage.ChunkSum(chunks[i])
 		results[i] = &storer.BinC{
 			Address:   addrs[i],
 			BatchID:   chunks[i].Stamp().BatchID(),
 			BinID:     uint64(i),
 			StampHash: stampHash,
+			Sum:       sum,
 		}
 	}
 }
@@ -165,11 +169,16 @@ func TestIncoming_WantErrors(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			sum, err := storage.ChunkSum(c)
+			if err != nil {
+				t.Fatal(err)
+			}
 			tResults[i] = &storer.BinC{
 				Address:   c.Address(),
 				BatchID:   c.Stamp().BatchID(),
 				BinID:     uint64(i + 5), // start from a higher bin id
 				StampHash: stampHash,
+				Sum:       sum,
 			}
 		}
 
@@ -314,11 +323,11 @@ func TestGetCursorsError(t *testing.T) {
 func haveChunks(t *testing.T, s *mock.ReserveStore, chunks ...swarm.Chunk) {
 	t.Helper()
 	for _, c := range chunks {
-		stampHash, err := c.Stamp().Hash()
+		sum, err := storage.ChunkSum(c)
 		if err != nil {
 			t.Fatal(err)
 		}
-		have, err := s.ReserveHas(c.Address(), c.Stamp().BatchID(), stampHash)
+		have, err := s.ReserveHas(c.Address(), sum)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -373,4 +382,77 @@ func newPullSyncWithStamperValidator(
 		}
 	})
 	return ps, storage
+}
+
+// TestIncoming_DivergentSOC covers the core SWIP-101 property end to end: a
+// single owner chunk that shares address, batch and stamp with one the client
+// already holds, but wraps different content, must be wanted and delivered.
+// Under the previous content-blind want-check it was silently skipped, which
+// kept neighborhoods from ever converging. An identical chunk must still not
+// be wanted.
+func TestIncoming_DivergentSOC(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		privKey, err := crypto.GenerateSecp256k1Key()
+		if err != nil {
+			t.Fatal(err)
+		}
+		signer := crypto.NewDefaultSigner(privKey)
+
+		// same owner and id: same SOC address. The stamp signs the (shared)
+		// chunk address, so one stamp legitimately covers both chunks and the
+		// stamp hashes are identical: only the sums tell them apart.
+		stamp := postagetesting.MustNewStamp()
+		held := soctesting.GenerateMockSocWithSigner(t, []byte("held"), signer).Chunk().WithStamp(stamp)
+		divergent := soctesting.GenerateMockSocWithSigner(t, []byte("divergent"), signer).Chunk().WithStamp(stamp)
+
+		stampHash, err := stamp.Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		offer := func(ch swarm.Chunk) []*storer.BinC {
+			sum, err := storage.ChunkSum(ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return []*storer.BinC{{
+				Address:   ch.Address(),
+				BatchID:   stamp.BatchID(),
+				BinID:     1,
+				StampHash: stampHash,
+				Sum:       sum,
+			}}
+		}
+
+		// divergent content is wanted
+		{
+			ps, _ := newPullSync(t, nil, 1, mock.WithSubscribeResp(offer(divergent), nil), mock.WithChunks(divergent))
+			recorder := streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+			psClient, clientDb := newPullSync(t, recorder, 0, mock.WithChunks(held))
+
+			if _, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0); err != nil {
+				t.Fatal(err)
+			}
+
+			if p := clientDb.PutCalls(); p != 1 {
+				t.Fatalf("divergent soc must be delivered: want 1 put, got %d", p)
+			}
+			haveChunks(t, clientDb, divergent)
+		}
+
+		// identical content is not wanted
+		{
+			ps, _ := newPullSync(t, nil, 1, mock.WithSubscribeResp(offer(held), nil), mock.WithChunks(held))
+			recorder := streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+			psClient, clientDb := newPullSync(t, recorder, 0, mock.WithChunks(held))
+
+			if _, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0); err != nil {
+				t.Fatal(err)
+			}
+
+			if p := clientDb.PutCalls(); p != 0 {
+				t.Fatalf("identical soc must not be delivered: want 0 puts, got %d", p)
+			}
+		}
+	})
 }
