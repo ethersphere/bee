@@ -37,8 +37,8 @@
 # BEE_CACHE_CAPACITY=1000000
 ## enable forwarded content caching (default true)
 # BEE_CACHE_RETRIEVAL=true
-## enable chequebook (default true)
-# BEE_CHEQUEBOOK_ENABLE=true
+## enable chequebook; requires swap; implied by BEE_NODE_MODE=full (default false)
+# BEE_CHEQUEBOOK_ENABLE=false
 ## reject full-node hive/handshake records that carry no chequebook address
 # BEE_CHEQUEBOOK_VERIFICATION=false
 ## origins with CORS headers enabled (default [])
@@ -53,7 +53,7 @@
 # BEE_DB_OPEN_FILES_LIMIT=200
 ## size of the database write buffer in bytes (default 33554432)
 # BEE_DB_WRITE_BUFFER_SIZE=33554432
-## cause the node to start in full mode (default false)
+## cause the node to start in full mode (deprecated: use BEE_NODE_MODE=full) (default false)
 # BEE_FULL_NODE=false
 ## gas limit fallback when estimation fails for contract transactions (default 500000)
 # BEE_GAS_LIMIT_FALLBACK=500000
@@ -71,6 +71,8 @@
 # BEE_NEIGHBORHOOD_SUGGESTER=https://api.swarmscan.io/v1/network/neighborhoods/suggestion
 ## ID of the Swarm network (default mainnet id from bee)
 # BEE_NETWORK_ID=1
+## node operational mode: full, light, or ultra-light; unset infers the mode from BEE_FULL_NODE and BEE_BLOCKCHAIN_RPC_ENDPOINT (deprecated)
+# BEE_NODE_MODE=ultra-light
 ## P2P listen address (default :1634)
 # BEE_P2P_ADDR=:1634
 ## enable P2P WebSocket transport (default false)
@@ -115,8 +117,8 @@
 # BEE_STATIC_NODES=[]
 ## lru memory caching capacity in number of statestore entries (default 100000)
 # BEE_STATESTORE_CACHE_CAPACITY=100000
-## enable storage incentives feature (default true)
-# BEE_STORAGE_INCENTIVES_ENABLE=true
+## enable storage incentives feature; full node only; implied by BEE_NODE_MODE=full (default false)
+# BEE_STORAGE_INCENTIVES_ENABLE=false
 ## enable swap (default false)
 # BEE_SWAP_ENABLE=false
 ## swap factory addresses (default empty)
