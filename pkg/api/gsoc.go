@@ -171,7 +171,10 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, socAddress swarm.Address
 	defer s.wsWg.Done()
 
 	var (
-		dataC    = make(chan []byte, 2) // small buffer to decouple producer/consumer
+		// Buffered enough to absorb a legitimate burst of concurrently delivered
+		// GSOC messages (e.g. several chunks pushed to this address at once)
+		// without tripping the slow-consumer detection below.
+		dataC    = make(chan []byte, 16)
 		gone     = make(chan struct{})
 		slow     = make(chan struct{})
 		slowOnce sync.Once
