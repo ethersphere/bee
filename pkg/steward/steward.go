@@ -11,8 +11,11 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/encryption"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/replicas"
 	"github.com/ethersphere/bee/v2/pkg/retrieval"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer"
@@ -75,6 +78,41 @@ func (s *steward) Reupload(ctx context.Context, root swarm.Address, stamper post
 			fmt.Errorf("traversal of %s failed: %w", root.String(), err),
 			uploaderSession.Cleanup(),
 		)
+	}
+
+	if rLevel != redundancy.NONE {
+		// Dispersed replicas are keyed on the 32-byte content address. root can be
+		// an encrypted reference (address + decryption key), so trim it before
+		// deriving replica addresses, or they won't match what a downloader
+		// deriving replicas from the plain address expects.
+		contentAddr := root
+		if len(root.Bytes()) == encryption.ReferenceSize {
+			contentAddr = swarm.NewAddress(root.Bytes()[:swarm.HashSize])
+		}
+
+		rootChunk, err := getter.Get(ctx, contentAddr)
+		if err != nil {
+			return errors.Join(fmt.Errorf("get root chunk for dispersed replicas: %w", err), uploaderSession.Cleanup())
+		}
+
+		if !cac.Valid(rootChunk) {
+			return errors.Join(fmt.Errorf("root chunk %s is not a valid content-addressed chunk", contentAddr), uploaderSession.Cleanup())
+		}
+
+		// Stamp each replica individually as it is put, keyed on its own SOC
+		// address - not the root chunk's address, which replicas.NewPutter
+		// wraps into a differently-addressed SOC chunk per replica.
+		stampedPutter := storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk) error {
+			stamp, err := stamper.Stamp(ch.Address(), ch.Address())
+			if err != nil {
+				return fmt.Errorf("stamping replica %s: %w", ch.Address(), err)
+			}
+			return uploaderSession.Put(ctx, ch.WithStamp(stamp))
+		})
+
+		if err := replicas.NewPutter(stampedPutter, rLevel).Put(ctx, rootChunk); err != nil {
+			return errors.Join(fmt.Errorf("re-uploading dispersed replicas: %w", err), uploaderSession.Cleanup())
+		}
 	}
 
 	return uploaderSession.Done(root)
