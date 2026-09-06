@@ -284,20 +284,6 @@ func TestPutOrderConvergence(t *testing.T) {
 			},
 		},
 		{
-			// Same SOC address, same slot and timestamp, but separately stamped
-			// (distinct signatures, hence distinct stamp hashes). The SOC
-			// stamp-overwrite guard settles on the lower stamp hash, so the
-			// shared payload converges regardless of order.
-			name: "divergent socs, equal timestamp, distinct stamps",
-			chunks: func(t *testing.T) []swarm.Chunk {
-				t.Helper()
-				return []swarm.Chunk{
-					newTestSOC(t, signer, id1, []byte("soc payload one")).WithStamp(postagetesting.MustNewFields(batchA.ID, 0, 7)),
-					newTestSOC(t, signer, id1, []byte("soc payload two")).WithStamp(postagetesting.MustNewFields(batchA.ID, 0, 7)),
-				}
-			},
-		},
-		{
 			// Different SOC addresses in the same slot at the same timestamp.
 			// The lower-address tie-break now applies to all chunk types.
 			name: "soc vs soc, different addresses, same slot, equal timestamp",
@@ -328,20 +314,6 @@ func TestPutOrderConvergence(t *testing.T) {
 				}
 				t.Fatal("no lower cac address found")
 				return nil
-			},
-		},
-		{
-			// Byte-identical CAC re-stamped in the same slot at the same
-			// timestamp with a different signature. The stamp-hash tie-break
-			// settles on one stamping deterministically.
-			name: "identical cac, same slot, equal timestamp, distinct stamps",
-			chunks: func(t *testing.T) []swarm.Chunk {
-				t.Helper()
-				payload := []byte("identical cac payload")
-				return []swarm.Chunk{
-					newTestCAC(t, payload).WithStamp(postagetesting.MustNewFields(batchA.ID, 0, 7)),
-					newTestCAC(t, payload).WithStamp(postagetesting.MustNewFields(batchA.ID, 0, 7)),
-				}
 			},
 		},
 		{

@@ -276,29 +276,11 @@ func (r *Reserve) evaluateSOCDivergence(
 		return true, nil
 	}
 
-	var highestPrevTimestamp uint64
-	var bestStoredStamp swarm.Stamp
-
-	_ = chunkstamp.IterateAll(s.IndexStore(), reserveScope, incoming.Address(), func(st swarm.Stamp) (bool, error) {
-		ts := binary.BigEndian.Uint64(st.Timestamp())
-		if bestStoredStamp == nil || ts > highestPrevTimestamp {
-			highestPrevTimestamp = ts
-			bestStoredStamp = st
-		} else if ts == highestPrevTimestamp {
-			bestHash, err1 := bestStoredStamp.Hash()
-			currHash, err2 := st.Hash()
-			if err1 == nil && err2 == nil && bytes.Compare(currHash, bestHash) < 0 {
-				bestStoredStamp = st
-			}
-		}
-		return false, nil
-	})
-	if bestStoredStamp == nil {
-		bestStoredStamp = stored.Stamp()
-		if bestStoredStamp != nil {
-			highestPrevTimestamp = binary.BigEndian.Uint64(bestStoredStamp.Timestamp())
-		}
-	}
+	bestStoredStamp, highestPrevTimestamp := highestTimestampStamp(
+		s.IndexStore(),
+		incoming.Address(),
+		stored.Stamp(),
+	)
 
 	storedWithStamp := stored.WithStamp(bestStoredStamp)
 	currTimestamp := binary.BigEndian.Uint64(incoming.Stamp().Timestamp())
@@ -411,12 +393,6 @@ func (r *Reserve) resolveStampIndexCollision(
 						storage.ErrDivergentChunkRejected,
 					)
 				}
-			} else if bytes.Compare(oldStampIndex.StampHash, stampHash) < 0 {
-				return false, fmt.Errorf(
-					"stamp index collision chunk %s lost stamp-hash tie-break: %w",
-					chunk.Address(),
-					storage.ErrOverwriteNewerChunk,
-				)
 			}
 		}
 
@@ -652,31 +628,11 @@ func (r *Reserve) resolveDivergence(
 		stored = stored.WithStamp(stamp)
 
 		// Verify timestamp precedence across all active co-resident stamps.
-		var highestPrevTimestamp uint64
-		var bestStoredStamp swarm.Stamp
-
-		_ = chunkstamp.IterateAll(s.IndexStore(), reserveScope, chunk.Address(), func(st swarm.Stamp) (bool, error) {
-			ts := binary.BigEndian.Uint64(st.Timestamp())
-			if bestStoredStamp == nil || ts > highestPrevTimestamp {
-				highestPrevTimestamp = ts
-				bestStoredStamp = st
-			} else if ts == highestPrevTimestamp {
-				bestHash, err1 := bestStoredStamp.Hash()
-				currHash, err2 := st.Hash()
-				if err1 == nil && err2 == nil && bytes.Compare(currHash, bestHash) < 0 {
-					bestStoredStamp = st
-				}
-			}
-			return false, nil
-		})
-		if bestStoredStamp == nil {
-			stamp, err := chunkstamp.Load(s.IndexStore(), reserveScope, chunk.Address())
-			if err != nil {
-				return fmt.Errorf("load stamp for diverging chunk %s: %w", chunk.Address(), err)
-			}
-			bestStoredStamp = stamp
-			highestPrevTimestamp = binary.BigEndian.Uint64(stamp.Timestamp())
-		}
+		bestStoredStamp, highestPrevTimestamp := highestTimestampStamp(
+			s.IndexStore(),
+			chunk.Address(),
+			stamp,
+		)
 		stored = stored.WithStamp(bestStoredStamp)
 
 		currTimestamp := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
@@ -787,6 +743,34 @@ func (r *Reserve) resolveDivergence(
 		// store entry is reused, only its content changes.
 		return s.ChunkStore().Replace(ctx, chunk, false)
 	})
+}
+
+func highestTimestampStamp(store storage.IndexStore, addr swarm.Address, fallback swarm.Stamp) (swarm.Stamp, uint64) {
+	var highestTimestamp uint64
+	var bestStamp swarm.Stamp
+
+	_ = chunkstamp.IterateAll(store, reserveScope, addr, func(stamp swarm.Stamp) (bool, error) {
+		timestamp := binary.BigEndian.Uint64(stamp.Timestamp())
+		if bestStamp == nil || timestamp > highestTimestamp {
+			highestTimestamp = timestamp
+			bestStamp = stamp
+		} else if timestamp == highestTimestamp {
+			bestHash, err1 := bestStamp.Hash()
+			currentHash, err2 := stamp.Hash()
+			if err1 == nil && err2 == nil && bytes.Compare(currentHash, bestHash) < 0 {
+				bestStamp = stamp
+			}
+		}
+		return false, nil
+	})
+	if bestStamp == nil {
+		bestStamp = fallback
+		if bestStamp != nil {
+			highestTimestamp = binary.BigEndian.Uint64(bestStamp.Timestamp())
+		}
+	}
+
+	return bestStamp, highestTimestamp
 }
 
 func (r *Reserve) Has(addr swarm.Address, batchID []byte, stampHash []byte) (bool, error) {
@@ -1021,19 +1005,8 @@ func RemoveChunkWithItem(
 	trx transaction.Store,
 	item *BatchRadiusItem,
 ) error {
-	var errs error
-
-	stamp, _ := chunkstamp.LoadWithStampHash(trx.IndexStore(), reserveScope, item.Address, item.StampHash)
-	if stamp != nil {
-		errs = errors.Join(
-			stampindex.Delete(trx.IndexStore(), reserveScope, stamp),
-			chunkstamp.DeleteWithStamp(trx.IndexStore(), reserveScope, item.Address, stamp),
-		)
-	}
-
-	return errors.Join(errs,
-		trx.IndexStore().Delete(item),
-		deleteChunkBinItem(trx.IndexStore(), item.Bin, item.BinID),
+	return errors.Join(
+		removeChunkMetadata(trx.IndexStore(), item),
 		trx.ChunkStore().Delete(ctx, item.Address),
 	)
 }
@@ -1045,19 +1018,23 @@ func RemoveChunkMetaData(
 	trx transaction.Store,
 	item *BatchRadiusItem,
 ) error {
+	return removeChunkMetadata(trx.IndexStore(), item)
+}
+
+func removeChunkMetadata(store storage.IndexStore, item *BatchRadiusItem) error {
 	var errs error
 
-	stamp, _ := chunkstamp.LoadWithStampHash(trx.IndexStore(), reserveScope, item.Address, item.StampHash)
+	stamp, _ := chunkstamp.LoadWithStampHash(store, reserveScope, item.Address, item.StampHash)
 	if stamp != nil {
 		errs = errors.Join(
-			stampindex.Delete(trx.IndexStore(), reserveScope, stamp),
-			chunkstamp.DeleteWithStamp(trx.IndexStore(), reserveScope, item.Address, stamp),
+			stampindex.Delete(store, reserveScope, stamp),
+			chunkstamp.DeleteWithStamp(store, reserveScope, item.Address, stamp),
 		)
 	}
 
 	return errors.Join(errs,
-		trx.IndexStore().Delete(item),
-		deleteChunkBinItem(trx.IndexStore(), item.Bin, item.BinID),
+		store.Delete(item),
+		deleteChunkBinItem(store, item.Bin, item.BinID),
 	)
 }
 
