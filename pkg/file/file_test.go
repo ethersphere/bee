@@ -90,3 +90,30 @@ func testSplitThenJoin(t *testing.T) {
 		t.Fatalf("data mismatch %d", len(data))
 	}
 }
+
+// errSplitter is a Splitter that fails without consuming its input, modelling
+// an s.Split failure while the copier goroutine is still feeding the pipe.
+type errSplitter struct{ err error }
+
+func (s errSplitter) Split(_ context.Context, _ io.ReadCloser, _ int64, _ bool) (swarm.Address, error) {
+	return swarm.ZeroAddress, s.err
+}
+
+// TestSplitWriteAllSplitError is a regression test for LEAK-01. When s.Split
+// fails, the copier goroutine is left blocked writing into the ChunkPipe and
+// was never joined, leaking one goroutine and one ChunkPipe per failed upload.
+// goleak (see main_test.go) fails the package if the goroutine leaks.
+func TestSplitWriteAllSplitError(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("split failed")
+
+	// More than one chunk, so the copier blocks writing into the pipe while
+	// the (failing) splitter is not reading it.
+	data := make([]byte, swarm.ChunkSize*2)
+
+	_, err := file.SplitWriteAll(context.Background(), errSplitter{err: wantErr}, bytes.NewReader(data), int64(len(data)), false)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected %v, got %v", wantErr, err)
+	}
+}

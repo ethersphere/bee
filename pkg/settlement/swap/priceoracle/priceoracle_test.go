@@ -7,6 +7,7 @@ package priceoracle_test
 import (
 	"context"
 	"math/big"
+	"sync"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -57,4 +58,40 @@ func TestExchangeGetPrice(t *testing.T) {
 	if expectedDeduce.Cmp(deduce) != 0 {
 		t.Fatalf("got wrong deduce. wanted %d, got %d", expectedDeduce, deduce)
 	}
+}
+
+// TestCurrentRatesConcurrentWithUpdates is a regression test for RACE-01: the
+// price-oracle poll loop writes exchangeRate and deduction while every
+// settlement path reads them through CurrentRates. Run under -race, an
+// unsynchronised write against the concurrent read is reported as fatal.
+func TestCurrentRatesConcurrentWithUpdates(t *testing.T) {
+	t.Parallel()
+
+	ex := priceoracle.New(
+		log.Noop,
+		common.HexToAddress("0xabcd"),
+		transactionmock.New(),
+		1,
+	)
+
+	const iterations = 1000
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		for i := 1; i <= iterations; i++ {
+			priceoracle.SetRates(ex, big.NewInt(int64(i)), big.NewInt(int64(i)))
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		for i := 0; i < iterations; i++ {
+			_, _, _ = ex.CurrentRates()
+		}
+	}()
+
+	wg.Wait()
 }

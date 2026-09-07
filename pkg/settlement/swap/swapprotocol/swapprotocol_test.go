@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math/big"
+	"sync/atomic"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -344,5 +345,130 @@ func TestCantEmitChequeIneligibleDeduction(t *testing.T) {
 	}
 	if len(messages) != 0 {
 		t.Fatalf("got %v messages, want %v", len(messages), 0)
+	}
+}
+
+// TestHandlerRejectsNilCheque is a regression test for NIL-06: a peer-supplied
+// cheque whose body is the JSON literal null unmarshals to a nil
+// *SignedCheque with a nil error. The handler must reject it before it reaches
+// ReceiveCheque, whose chequestore path dereferences cheque.Beneficiary
+// unconditionally and would otherwise crash the process.
+func TestHandlerRejectsNilCheque(t *testing.T) {
+	t.Parallel()
+
+	logger := log.Noop
+	commonAddr := common.HexToAddress("0xab")
+	peerID := swarm.MustParseHexAddress("9ee7add7")
+
+	var received atomic.Bool
+	swapReceiver := swapmock.NewSwap(
+		swapmock.WithReceiveChequeFunc(func(_ context.Context, _ swarm.Address, cheque *chequebook.SignedCheque, _, _ *big.Int) error {
+			received.Store(true)
+			// Touch a field the way the real chequestore does; if the nil guard
+			// regresses this dereference is what crashes the process.
+			_ = cheque.Beneficiary
+			return nil
+		}),
+	)
+
+	priceOracle := priceoraclemock.New(big.NewInt(50), big.NewInt(500))
+	swapp := swapprotocol.New(nil, logger, commonAddr, priceOracle)
+	swapp.SetSwap(swapReceiver)
+
+	recorder := streamtest.New(
+		streamtest.WithProtocols(swapp.Protocol()),
+		streamtest.WithBaseAddr(peerID),
+	)
+
+	stream, err := recorder.NewStream(context.Background(), peerID, nil, "swap", "1.0.0", "swap")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w := protobuf.NewWriter(stream)
+	if err := w.WriteMsgWithContext(context.Background(), &pb.EmitCheque{Cheque: []byte("null")}); err != nil {
+		t.Fatal(err)
+	}
+	if err := stream.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	records, err := recorder.Records(peerID, "swap", "1.0.0", "swap")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l := len(records); l != 1 {
+		t.Fatalf("got %v records, want %v", l, 1)
+	}
+
+	if err := records[0].Err(); !errors.Is(err, swapprotocol.ErrNilCheque) {
+		t.Fatalf("expected error %v, got %v", swapprotocol.ErrNilCheque, err)
+	}
+
+	if received.Load() {
+		t.Fatal("nil cheque reached ReceiveCheque; guard did not hold")
+	}
+}
+
+// TestHandlerRejectsNilCumulativePayout covers a peer-supplied cheque that
+// omits cumulativePayout: it unmarshals into a non-nil cheque whose
+// CumulativePayout is a nil *big.Int, which the chequestore passes to
+// big.Int.Sub. The handler must reject it before it gets there.
+func TestHandlerRejectsNilCumulativePayout(t *testing.T) {
+	t.Parallel()
+
+	logger := log.Noop
+	commonAddr := common.HexToAddress("0xab")
+	peerID := swarm.MustParseHexAddress("9ee7add7")
+
+	var received atomic.Bool
+	swapReceiver := swapmock.NewSwap(
+		swapmock.WithReceiveChequeFunc(func(_ context.Context, _ swarm.Address, cheque *chequebook.SignedCheque, _, _ *big.Int) error {
+			received.Store(true)
+			// The way the real chequestore uses it; if the guard regresses this
+			// nil dereference is what crashes the process.
+			_ = big.NewInt(0).Sub(cheque.CumulativePayout, big.NewInt(0))
+			return nil
+		}),
+	)
+
+	priceOracle := priceoraclemock.New(big.NewInt(50), big.NewInt(500))
+	swapp := swapprotocol.New(nil, logger, commonAddr, priceOracle)
+	swapp.SetSwap(swapReceiver)
+
+	recorder := streamtest.New(
+		streamtest.WithProtocols(swapp.Protocol()),
+		streamtest.WithBaseAddr(peerID),
+	)
+
+	stream, err := recorder.NewStream(context.Background(), peerID, nil, "swap", "1.0.0", "swap")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cheque := []byte(`{"beneficiary":"0x00000000000000000000000000000000000000be","chequebook":"0x00000000000000000000000000000000000000cb","signature":"AAA="}`)
+
+	w := protobuf.NewWriter(stream)
+	if err := w.WriteMsgWithContext(context.Background(), &pb.EmitCheque{Cheque: cheque}); err != nil {
+		t.Fatal(err)
+	}
+	if err := stream.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	records, err := recorder.Records(peerID, "swap", "1.0.0", "swap")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l := len(records); l != 1 {
+		t.Fatalf("got %v records, want %v", l, 1)
+	}
+
+	if err := records[0].Err(); !errors.Is(err, swapprotocol.ErrNilCumulativePayout) {
+		t.Fatalf("expected error %v, got %v", swapprotocol.ErrNilCumulativePayout, err)
+	}
+
+	if received.Load() {
+		t.Fatal("cheque with nil cumulative payout reached ReceiveCheque; guard did not hold")
 	}
 }

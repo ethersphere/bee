@@ -5,15 +5,12 @@
 package api
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
-	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/postage"
@@ -209,24 +206,11 @@ func (s *Service) bytesHeadHandler(w http.ResponseWriter, r *http.Request) {
 		address = v
 	}
 
-	getter := s.storer.Download(true)
-	ch, err := getter.Get(r.Context(), address)
-	if err != nil {
-		logger.Debug("get root chunk failed", "chunk_address", address, "error", err)
-		logger.Error(nil, "get root chunk failed")
-		w.WriteHeader(http.StatusNotFound)
-		return
+	additionalHeaders := http.Header{
+		ContentTypeHeader: {"application/octet-stream"},
 	}
 
-	w.Header().Add(AccessControlExposeHeaders, "Accept-Ranges, Content-Encoding")
-	w.Header().Add(ContentTypeHeader, "application/octet-stream")
-	var span int64
-
-	if cac.Valid(ch) {
-		span = int64(binary.LittleEndian.Uint64(ch.Data()[:swarm.SpanSize]))
-	} else {
-		span = int64(len(ch.Data()))
-	}
-	w.Header().Set(ContentLengthHeader, strconv.FormatInt(span, 10))
-	w.WriteHeader(http.StatusOK) // HEAD requests do not write a body
+	// share the GET path: the joiner strips the redundancy level encoded in the
+	// root chunk span and splits an encrypted reference into address and key.
+	s.downloadHandler(logger, w, r, address, additionalHeaders, true, true, nil)
 }

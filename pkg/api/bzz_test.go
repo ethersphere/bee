@@ -597,6 +597,7 @@ func TestBzzFiles(t *testing.T) {
 				jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
 				jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "text/html; charset=utf-8"),
 				jsonhttptest.WithExpectedContentLength(21),
+				jsonhttptest.WithExpectedResponseHeader(api.AcceptRangesHeader, "bytes"),
 			)
 		})
 	})

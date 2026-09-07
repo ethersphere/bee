@@ -638,6 +638,13 @@ func (t *transactionService) UnwrapABIError(ctx context.Context, req *TxRequest,
 		return fmt.Errorf("%w: %s", err, reason)
 	}
 
+	// Revert data must be at least a 4-byte error selector; some RPC providers
+	// return empty ("0x") or malformed data for a reverted transaction, which
+	// would otherwise panic on the buf[:4] slice below.
+	if len(buf) < 4 {
+		return err
+	}
+
 	for _, abiError := range abiErrors {
 		if !bytes.Equal(buf[:4], abiError.ID[:4]) {
 			continue

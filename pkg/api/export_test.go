@@ -94,6 +94,7 @@ type (
 	WalletResponse                    = walletResponse
 	WalletTxResponse                  = walletTxResponse
 	GetStakeResponse                  = getStakeResponse
+	StakeDepositErrorResponse         = stakeDepositErrorResponse
 	GetWithdrawableResponse           = getWithdrawableResponse
 	StakeTransactionReponse           = stakeTransactionReponse
 	StatusSnapshotResponse            = statusSnapshotResponse
