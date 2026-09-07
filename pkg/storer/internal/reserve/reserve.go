@@ -224,24 +224,33 @@ func (r *Reserve) putSOC(ctx context.Context, chunk swarm.Chunk, sum, stampHash 
 			return err
 		}
 
+		// The address may already hold a payload under other stamps. The
+		// incoming stamp is new either way (the caller checked), so it always
+		// gets its own reserve entry; the tie-break only decides which payload
+		// the address keeps.
+		var stored swarm.Chunk
 		incomingWins := true
 		if has {
-			stored, err := s.ChunkStore().Get(ctx, chunk.Address())
-			if err == nil {
-				incomingWins, err = r.evaluateSOCDivergence(s, chunk, stored, stampHash)
-				if err != nil {
-					return err
-				}
+			stored, err = s.ChunkStore().Get(ctx, chunk.Address())
+			if err != nil {
+				return fmt.Errorf("load stored chunk %s: %w", chunk.Address(), err)
+			}
+			incomingWins, err = r.evaluateSOCDivergence(s, chunk, stored, stampHash)
+			if err != nil {
+				return err
 			}
 		}
 
 		entrySum := sum
 		if has && !incomingWins {
-			stored, err := s.ChunkStore().Get(ctx, chunk.Address())
-			if err == nil {
-				if storedSum, err := storage.ChunkSumFromParts(chunk.Stamp().BatchID(), stampHash, stored); err == nil {
-					entrySum = storedSum
-				}
+			// The stored payload stays. A stamp signs the address, not the
+			// content, so the incoming stamp is a valid claim on the stored
+			// payload and its entry advertises that payload's sum: that is
+			// what the node delivers for the entry, and peers reject a
+			// mismatching sum as unsolicited.
+			entrySum, err = storage.ChunkSumFromParts(chunk.Stamp().BatchID(), stampHash, stored)
+			if err != nil {
+				return fmt.Errorf("sum stored chunk %s: %w", chunk.Address(), err)
 			}
 		}
 
@@ -249,13 +258,17 @@ func (r *Reserve) putSOC(ctx context.Context, chunk swarm.Chunk, sum, stampHash 
 			return err
 		}
 
-		if has {
-			if incomingWins {
-				socReplaced = true
-				err = s.ChunkStore().Replace(ctx, chunk, true)
-			}
-		} else {
+		switch {
+		case !has:
 			err = s.ChunkStore().Put(ctx, chunk)
+		case incomingWins:
+			socReplaced = true
+			err = s.ChunkStore().Replace(ctx, chunk, true)
+		default:
+			// keep the stored payload; the new entry references it, so the
+			// chunkstore reference count must follow or evicting the other
+			// stamps would drop the payload from under this entry.
+			err = s.ChunkStore().Put(ctx, stored)
 		}
 		if err != nil {
 			return err
@@ -629,6 +642,15 @@ func (r *Reserve) resolveSOCDivergence(
 		if err != nil {
 			return fmt.Errorf("load diverging chunk %s: %w", chunk.Address(), err)
 		}
+
+		// The entry exists but its sum did not match. A content addressed
+		// chunk cannot diverge, and a single owner chunk with the very same
+		// payload has nothing to settle: both mean the sum index is missing
+		// or stale for this entry, so repair it instead of judging the chunk
+		// against itself.
+		if chunkType != swarm.ChunkTypeSingleOwner || bytes.Equal(stored.Data(), chunk.Data()) {
+			return r.restoreEntrySum(s, chunk, sum, stampHash, bin)
+		}
 		// ChunkStore returns payload only; stamp is in the chunkstamp index.
 		stamp, err := chunkstamp.Load(s.IndexStore(), reserveScope, chunk.Address())
 		if err != nil {
@@ -796,6 +818,35 @@ func highestTimestampStamp(store storage.IndexStore, addr swarm.Address, fallbac
 	}
 
 	return bestStamp, highestTimestamp
+}
+
+// restoreEntrySum rewrites the sum recorded for an existing reserve entry and
+// its ChunkSumItem. It is the repair path for an entry whose sum index is
+// missing or stale (an interrupted migration or repair), taken when the
+// incoming chunk carries the content the entry already serves.
+func (r *Reserve) restoreEntrySum(s transaction.Store, chunk swarm.Chunk, sum, stampHash []byte, bin uint8) error {
+	item := &BatchRadiusItem{
+		Bin:       bin,
+		Address:   chunk.Address(),
+		BatchID:   chunk.Stamp().BatchID(),
+		StampHash: stampHash,
+	}
+	if err := s.IndexStore().Get(item); err != nil {
+		return fmt.Errorf("load entry for chunk %s: %w", chunk.Address(), err)
+	}
+	cbi := &ChunkBinItem{Bin: bin, BinID: item.BinID}
+	if err := s.IndexStore().Get(cbi); err != nil {
+		return fmt.Errorf("load bin entry for chunk %s: %w", chunk.Address(), err)
+	}
+	var errs error
+	if len(cbi.Sum) != 0 && !bytes.Equal(cbi.Sum, sum) {
+		errs = s.IndexStore().Delete(&ChunkSumItem{Address: chunk.Address(), Sum: cbi.Sum})
+	}
+	cbi.Sum = sum
+	return errors.Join(errs,
+		s.IndexStore().Put(cbi),
+		s.IndexStore().Put(&ChunkSumItem{Address: chunk.Address(), Sum: sum}),
+	)
 }
 
 func (r *Reserve) Has(addr swarm.Address, batchID []byte, stampHash []byte) (bool, error) {

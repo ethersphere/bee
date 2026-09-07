@@ -456,3 +456,109 @@ func TestIncoming_DivergentSOC(t *testing.T) {
 		}
 	})
 }
+
+// TestIncoming_DivergentRejected covers a delivered chunk that the reserve
+// rejects with ErrDivergentChunkRejected: a legitimate outcome, so the sync
+// must report no error, advance the cursor, and keep the other chunks.
+func TestIncoming_DivergentRejected(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		putHook := func(c swarm.Chunk) error {
+			if c.Address().Equal(chunks[1].Address()) {
+				return storage.ErrDivergentChunkRejected
+			}
+			return nil
+		}
+
+		var (
+			topMost            = uint64(4)
+			ps, _              = newPullSync(t, nil, 5, mock.WithSubscribeResp(results, nil), mock.WithChunks(chunks...))
+			recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+			psClient, clientDb = newPullSync(t, recorder, 0, mock.WithPutHook(putHook))
+		)
+
+		topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
+		if err != nil {
+			t.Fatalf("a lost tie-break is not a sync error, got %v", err)
+		}
+		if topmost != topMost {
+			t.Fatalf("got offer topmost %d but want %d", topmost, topMost)
+		}
+		if count != len(chunks)-1 {
+			t.Fatalf("got %d chunks but want %d", count, len(chunks)-1)
+		}
+		haveChunks(t, clientDb, append(chunks[:1:1], chunks[2:]...)...)
+		if has, _ := clientDb.ReserveHas(chunks[1].Address(), results[1].Sum); has {
+			t.Fatal("rejected chunk must not be stored")
+		}
+	})
+}
+
+// TestIncoming_OfferSumLength covers an offer carrying a sum of the wrong
+// length: the whole offer is refused and the cursor does not advance.
+func TestIncoming_OfferSumLength(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		tResults := make([]*storer.BinC, len(results))
+		for i, r := range results {
+			cp := *r
+			tResults[i] = &cp
+		}
+		tResults[2].Sum = []byte{1, 2, 3}
+
+		var (
+			ps, _              = newPullSync(t, nil, 5, mock.WithSubscribeResp(tResults, nil), mock.WithChunks(chunks...))
+			recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+			psClient, clientDb = newPullSync(t, recorder, 0)
+		)
+
+		topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
+		if err == nil {
+			t.Fatal("expected an error for a malformed offer sum")
+		}
+		if topmost != 0 || count != 0 {
+			t.Fatalf("got topmost %d and count %d, want 0 and 0", topmost, count)
+		}
+		if p := clientDb.PutCalls(); p != 0 {
+			t.Fatalf("want 0 puts but got %d", p)
+		}
+	})
+}
+
+// TestIncoming_StaleOfferSum covers a sender whose offer advertises a sum that
+// does not match the payload it then delivers (a stale sum on its side). The
+// receiver wants the chunk, recomputes the sum on delivery, rejects it as
+// unsolicited, stores the rest and still advances the cursor: the stale entry
+// is never obtainable from that peer, but it does not stall the sync.
+func TestIncoming_StaleOfferSum(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		tResults := make([]*storer.BinC, len(results))
+		for i, r := range results {
+			cp := *r
+			tResults[i] = &cp
+		}
+		stale := append([]byte(nil), results[1].Sum...)
+		stale[0] ^= 0xff
+		tResults[1].Sum = stale
+
+		var (
+			topMost            = uint64(4)
+			ps, _              = newPullSync(t, nil, 5, mock.WithSubscribeResp(tResults, nil), mock.WithChunks(chunks...))
+			recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+			psClient, clientDb = newPullSync(t, recorder, 0)
+		)
+
+		topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
+		if !errors.Is(err, pullsync.ErrUnsolicitedChunk) {
+			t.Fatalf("expected %v, got %v", pullsync.ErrUnsolicitedChunk, err)
+		}
+		if topmost != topMost {
+			t.Fatalf("got offer topmost %d but want %d", topmost, topMost)
+		}
+		if count != len(chunks)-1 {
+			t.Fatalf("got %d chunks but want %d", count, len(chunks)-1)
+		}
+		haveChunks(t, clientDb, append(chunks[:1:1], chunks[2:]...)...)
+		if has, _ := clientDb.ReserveHas(chunks[1].Address(), results[1].Sum); has {
+			t.Fatal("chunk delivered under a stale sum must not be stored")
+		}
+	})
+}
