@@ -261,7 +261,7 @@ func TestPutOrderConvergence(t *testing.T) {
 		},
 		{
 			// Phase 2 core case: same SOC address, byte-identical stamp,
-			// different payloads; resolveDivergence must make this converge.
+			// different payloads; resolveSOCDivergence must make this converge.
 			name: "divergent socs, identical stamp",
 			chunks: func(t *testing.T) []swarm.Chunk {
 				t.Helper()
@@ -371,7 +371,7 @@ func TestPutOrderConvergence(t *testing.T) {
 // TestSOCMultiStampDivergenceCornerCase checks multi-stamp SOC settlement on
 // one address. A new stamp currently replaces the shared payload unconditionally
 // (putSOC); a later same-stamp re-offer of a lower-wrapped payload is accepted
-// via resolveDivergence. The reserve therefore ends on a single deterministic
+// via resolveSOCDivergence. The reserve therefore ends on a single deterministic
 // body (lexicographically lower wrapped CAC), which is what neighborhood
 // convergence requires — not retention of whichever stamp hash was "stronger".
 func TestSOCMultiStampDivergenceCornerCase(t *testing.T) {
@@ -399,7 +399,7 @@ func TestSOCMultiStampDivergenceCornerCase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// P1 has the lower wrapped address so resolveDivergence prefers it over P2.
+	// P1 has the lower wrapped address so resolveSOCDivergence prefers it over P2.
 	if bytes.Compare(chCAC1.Address().Bytes(), chCAC2.Address().Bytes()) > 0 {
 		chCAC1, chCAC2 = chCAC2, chCAC1
 	}

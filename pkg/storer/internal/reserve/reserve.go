@@ -106,7 +106,7 @@ func New(
 //     through the usual remove-and-store path (including a fresh bin ID for pullsync).
 //  5. Two single owner chunks that share an address under different stamps (any batch or stamp
 //     index) settle on one shared payload: a strictly higher stamp timestamp replaces it; equal
-//     timestamps are settled by the lexicographically lower stamp hash. Same-stamp divergence remains handled by resolveDivergence above.
+//     timestamps are settled by the lexicographically lower stamp hash. Same-stamp divergence remains handled by resolveSOCDivergence above.
 func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	socReplaced, err := r.putChunk(ctx, chunk)
 	if err != nil {
@@ -168,7 +168,7 @@ func (r *Reserve) putChunk(ctx context.Context, chunk swarm.Chunk) (socReplaced 
 			"sum", sumHex,
 			"chunk_type", chunkType,
 		)
-		if err := r.resolveDivergence(ctx, chunk, sum, stampHash, bin, chunkType); err != nil {
+		if err := r.resolveSOCDivergence(ctx, chunk, sum, stampHash, bin, chunkType); err != nil {
 			return false, err
 		}
 		// the tie-break winner replaced the shared payload, so co-resident
@@ -266,6 +266,15 @@ func (r *Reserve) putSOC(ctx context.Context, chunk swarm.Chunk, sum, stampHash 
 	return
 }
 
+// evaluateSOCDivergence decides whether an incoming single owner chunk should
+// replace the payload already stored at that address but with stamp with different stamp hash
+//
+// The incoming stamp is compared with the strongest stored stamp on that address:
+// - a strictly newer timestamp wins;
+// - equal timestamps prefer the lower stamp hash;
+// - a remaining tie prefers the lower wrapped CAC.
+// Matching payloads are treated as a win so the new stamp can be indexed
+// against the existing body.
 func (r *Reserve) evaluateSOCDivergence(
 	s transaction.Store,
 	incoming swarm.Chunk,
@@ -590,7 +599,7 @@ func (r *Reserve) refreshSiblingSums(ctx context.Context, addr swarm.Address) er
 	return nil
 }
 
-// resolveDivergence settles two single owner chunks that share an address,
+// resolveSOCDivergence settles two single owner chunks that share an address,
 // batch and stamp but wrap different content. Both are individually valid, so
 // the protocol cannot pick between them; the choice is made here, in the
 // storage layer, by a tie-break that depends only on the two payloads. Every
@@ -603,7 +612,7 @@ func (r *Reserve) refreshSiblingSums(ctx context.Context, addr swarm.Address) er
 // offered the replacement, propagating the resolution outwards.
 //
 // The reserve size is unchanged either way: one chunk goes in, one comes out.
-func (r *Reserve) resolveDivergence(
+func (r *Reserve) resolveSOCDivergence(
 	ctx context.Context,
 	chunk swarm.Chunk,
 	sum []byte,
@@ -745,6 +754,22 @@ func (r *Reserve) resolveDivergence(
 	})
 }
 
+// highestTimestampStamp selects the stamp that represents the precedence of
+// the payload shared by all reserve entries for addr. A single owner chunk is
+// stored once by address but may have multiple stamps, so divergence handling
+// needs one deterministic stamp against which to compare an incoming version.
+//
+//  1. The stamp with the highest timestamp is selected.
+//  2. If multiple stamps have that timestamp, the one with
+//     the lexicographically lower stamp hash is selected
+//  3. If addr has no indexed stamps, fallback and its timestamp are returned.
+//
+// This total ordering makes the selected stamp independent of index
+// iteration and stamp arrival order, provided the nodes hold the same set of
+// stamps. Divergent chunk resolution can therefore compare against the same
+// stored-stamp precedence on every node instead of making the winning payload
+// depend on which stamp happened to be observed first. If addr has no indexed
+// stamps, fallback and its timestamp are returned.
 func highestTimestampStamp(store storage.IndexStore, addr swarm.Address, fallback swarm.Stamp) (swarm.Stamp, uint64) {
 	var highestTimestamp uint64
 	var bestStamp swarm.Stamp
