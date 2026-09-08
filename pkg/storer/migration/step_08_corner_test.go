@@ -7,6 +7,7 @@ package migration_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -167,5 +168,73 @@ func TestStep08SameAddressRemovalsReleasePayload(t *testing.T) {
 	err := st.IndexStore().Get(&chunkstore.RetrievalIndexItem{Address: sc.Address()})
 	if !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("payload with no reserve entries must leave the chunkstore, got %v", err)
+	}
+}
+
+// TestStep08UnreadableChunkRemoval covers a chunk whose payload cannot be read
+// from the chunkstore due to disk/I/O corruption. Rather than aborting migration
+// and causing a fatal bootloop on startup, step_08 removes the corrupted entry
+// and allows the node to start and re-sync.
+func TestStep08UnreadableChunkRemoval(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	sh, err := sharky.New(&dirFS{basedir: dir}, 32, swarm.SocMaxChunkSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ldb, _, err := leveldbstore.New("", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := transaction.NewStorage(sh, ldb)
+	t.Cleanup(func() { _ = st.Close() })
+
+	baseAddr := swarm.RandAddress(t)
+	c1, err := cac.New([]byte("corrupted chunk data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch1 := c1.WithStamp(postagetesting.MustNewStamp())
+	stampHash, err := ch1.Stamp().Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := swarm.Proximity(baseAddr.Bytes(), ch1.Address().Bytes())
+	seedLegacyEntry(t, st, bin, 1, ch1, stampHash)
+
+	// Truncate the exact shard file containing this chunk so sharky.Read fails with EOF.
+	rIdx := &chunkstore.RetrievalIndexItem{Address: ch1.Address()}
+	if err := st.IndexStore().Get(rIdx); err != nil {
+		t.Fatal(err)
+	}
+	shardFile := filepath.Join(dir, fmt.Sprintf("shard_%03d", rIdx.Location.Shard))
+	if err := os.Truncate(shardFile, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify ChunkStore().Get fails with a non-ErrNotFound error.
+	_, err = st.ChunkStore().Get(context.Background(), ch1.Address())
+	if err == nil || errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("expected non-ErrNotFound error when reading truncated chunk, got %v", err)
+	}
+
+	// Migration should tolerate the unreadable chunk and complete without error.
+	if err := localmigration.Step08(st, log.Noop)(); err != nil {
+		t.Fatalf("step_08 failed on unreadable chunk: %v", err)
+	}
+
+	// The corrupted reserve entry must be removed.
+	has, err := st.IndexStore().Has(&reserve.BatchRadiusItem{
+		Bin:       bin,
+		BatchID:   ch1.Stamp().BatchID(),
+		Address:   ch1.Address(),
+		StampHash: stampHash,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if has {
+		t.Fatal("expected unreadable chunk reserve entry to be removed")
 	}
 }

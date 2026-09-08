@@ -26,11 +26,11 @@ import (
 // and a companion ChunkSumItem existence row is created for the pullsync
 // want-decision. The sum is derived from the batch ID and stamp hash already
 // carried by the BatchRadiusItem, so stamps are never loaded. Chunks missing
-// from the chunkstore, with an invalid type or with an unset stamp hash are
-// removed, consistent with the reserve repair procedure. Finally, orphaned
-// pre-migration ChunkBinItems (no matching BatchRadiusItem, hence never
-// rewritten) are swept by raw key so no old-format record survives to break
-// later iterations.
+// from the chunkstore, unreadable, with an invalid type, with an unset stamp
+// hash or failing checksum are removed, consistent with the reserve repair
+// procedure. Finally, orphaned pre-migration ChunkBinItems (no matching
+// BatchRadiusItem, hence never rewritten) are swept by raw key so no old-format
+// record survives to break later iterations.
 //
 // The BatchRadiusItem namespace is paged through in fixed windows instead of
 // being loaded whole: at reserve capacity the full index is millions of
@@ -43,9 +43,13 @@ func step_08(
 	return func() error {
 		logger.Info("starting pullsync chunk sum backfill migration; do not interrupt or kill the process...")
 
-		const pageSize = 1000
+		const (
+			pageSize       = 1000
+			reportInterval = 50000
+		)
 
 		backfilled, removed := 0, 0
+		lastReported := 0
 		lastID := ""
 
 		for {
@@ -85,7 +89,8 @@ func step_08(
 				case errors.Is(err, storage.ErrNotFound):
 					remove = true
 				case err != nil:
-					return err
+					logger.Warning("unreadable chunk during sum backfill, removing reserve entry", "address", item.Address, "error", err)
+					remove = true
 				}
 
 				var chunkType swarm.ChunkType
@@ -96,6 +101,15 @@ func step_08(
 					// chunk with proper stamp data.
 					remove = chunkType == swarm.ChunkTypeUnspecified ||
 						bytes.Equal(item.StampHash, swarm.EmptyAddress.Bytes())
+				}
+
+				var sum []byte
+				if !remove {
+					sum, err = storage.ChunkSumFromParts(item.BatchID, item.StampHash, chunk)
+					if err != nil {
+						logger.Warning("invalid chunk sum during backfill, removing reserve entry", "address", item.Address, "error", err)
+						remove = true
+					}
 				}
 
 				if remove {
@@ -111,10 +125,6 @@ func step_08(
 
 				// the sum only needs the batch ID and stamp hash, both already
 				// on the item, so the stamp itself is never loaded.
-				sum, err := storage.ChunkSumFromParts(item.BatchID, item.StampHash, chunk)
-				if err != nil {
-					return err
-				}
 				backfill = append(backfill, &reserve.ChunkBinItem{
 					Bin:       item.Bin,
 					BinID:     item.BinID,
@@ -142,6 +152,11 @@ func step_08(
 				return err
 			}
 			backfilled += len(backfill)
+
+			if (backfilled+removed)-lastReported >= reportInterval {
+				lastReported = backfilled + removed
+				logger.Info("pullsync chunk sum backfill in progress", "processed", lastReported, "backfilled", backfilled, "removed", removed)
+			}
 		}
 
 		swept, err := reserve.RemoveMalformedChunkBinItems(context.Background(), st)
