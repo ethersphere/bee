@@ -1454,7 +1454,8 @@ func TestChunkSumIndexRandomOps(t *testing.T) {
 // address but are stamped under different batches. The shared chunkstore
 // payload is replaced when the incoming stamp timestamp is strictly higher,
 // or when timestamps are equal and the incoming stamp hash is lower. An older
-// stamp is rejected so neighborhoods converge.
+// stamp does not replace the stored payload; its reserve entry is recorded with
+// the winning payload's sum so neighborhoods converge.
 func TestSOCCrossBatchTimestamp(t *testing.T) {
 	t.Parallel()
 

@@ -318,8 +318,7 @@ func TestPutOrderConvergence(t *testing.T) {
 		},
 		{
 			// Same SOC address, same batch, equal timestamp, different stamp
-			// indices. putSOC treats this as a new stamp entry and replaces the
-			// shared payload unconditionally (last-write wins). Desired: settle
+			// indices. evaluateSOCDivergence resolves the collision by settling
 			// on the lexicographically lower stamp hash like the same-slot path.
 			name: "divergent socs, equal timestamp, distinct stamp indices",
 			chunks: func(t *testing.T) []swarm.Chunk {
@@ -332,9 +331,7 @@ func TestPutOrderConvergence(t *testing.T) {
 		},
 		{
 			// Same SOC address under two batches at the same timestamp.
-			// putSOC currently replaces the shared payload on the second stamp
-			// unconditionally (last-write wins), so arrival order decides the
-			// payload. Desired: settle on the lexicographically lower stamp
+			// evaluateSOCDivergence settles on the lexicographically lower stamp
 			// hash, matching the same-slot equal-timestamp path.
 			name: "divergent socs, equal timestamp, distinct batches",
 			chunks: func(t *testing.T) []swarm.Chunk {
@@ -369,11 +366,10 @@ func TestPutOrderConvergence(t *testing.T) {
 }
 
 // TestSOCMultiStampDivergenceCornerCase checks multi-stamp SOC settlement on
-// one address. A new stamp currently replaces the shared payload unconditionally
-// (putSOC); a later same-stamp re-offer of a lower-wrapped payload is accepted
-// via resolveSOCDivergence. The reserve therefore ends on a single deterministic
-// body (lexicographically lower wrapped CAC), which is what neighborhood
-// convergence requires — not retention of whichever stamp hash was "stronger".
+// one address. At equal timestamps, a stamp with a lower stamp hash wins the
+// divergence evaluation (evaluateSOCDivergence); a later re-offer of the losing
+// stamp is rejected. The reserve therefore ends on a single deterministic
+// body, which is what neighborhood convergence requires.
 func TestSOCMultiStampDivergenceCornerCase(t *testing.T) {
 	t.Parallel()
 
@@ -435,7 +431,7 @@ func TestSOCMultiStampDivergenceCornerCase(t *testing.T) {
 		t.Fatalf("put soc1 stampA: %v", err)
 	}
 
-	// New stamp B replaces the shared payload (blind Replace in putSOC).
+	// Stamp B has a lower stamp hash, so it wins the divergence evaluation and replaces the payload.
 	if err := r.Put(ctx, soc2.WithStamp(stampB)); err != nil {
 		t.Fatalf("put soc2 stampB: %v", err)
 	}
