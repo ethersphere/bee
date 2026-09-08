@@ -112,6 +112,9 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	if err != nil {
 		return err
 	}
+	// When a winning SOC replaces the shared payload, refreshSiblingSums updates
+	// the sums of all co-resident entries under other stamps. This is called
+	// outside putChunk (after releasing the batch lock) to avoid multi-batch deadlocks.
 	if socReplaced {
 		return r.refreshSiblingSums(ctx, chunk.Address())
 	}
@@ -203,11 +206,14 @@ func (r *Reserve) putChunk(ctx context.Context, chunk swarm.Chunk) (socReplaced 
 
 func (r *Reserve) putSOC(ctx context.Context, chunk swarm.Chunk, sum, stampHash []byte, bin uint8) (socReplaced, shouldInc bool, err error) {
 	err = r.st.Run(ctx, func(s transaction.Store) error {
+		// Step 1: Check for a same-slot (batchID, stampIndex) collision.
 		oldStampIndex, loaded, err := stampindex.LoadOrStore(s.IndexStore(), reserveScope, chunk)
 		if err != nil {
 			return fmt.Errorf("load or store stamp index for chunk %v: %w", chunk, err)
 		}
 
+		// If the slot is already occupied, resolve collision: either a re-stamp
+		// of the same address, or slot reuse by a newer chunk at another address.
 		var sameSlotSameAddr bool
 		if loaded {
 			sameAddr, err := r.resolveStampIndexCollision(ctx, s, chunk, oldStampIndex, sum, stampHash, bin)
@@ -217,6 +223,8 @@ func (r *Reserve) putSOC(ctx context.Context, chunk swarm.Chunk, sum, stampHash 
 			sameSlotSameAddr = sameAddr
 		}
 
+		// Step 2: Check if this SOC address already holds a payload on disk
+		// (under this or any sibling batch stamps).
 		has, err := s.ChunkStore().Has(ctx, chunk.Address())
 		if err != nil {
 			return err
@@ -233,6 +241,8 @@ func (r *Reserve) putSOC(ctx context.Context, chunk swarm.Chunk, sum, stampHash 
 			if err != nil {
 				return fmt.Errorf("load stored chunk %s: %w", chunk.Address(), err)
 			}
+			// When evaluating cross-stamp divergence, fallback to stored stamp only
+			// if this is not a same-slot collision at the same address.
 			var fallbackStamp swarm.Stamp
 			if !sameSlotSameAddr {
 				fallbackStamp = stored.Stamp()
@@ -243,43 +253,49 @@ func (r *Reserve) putSOC(ctx context.Context, chunk swarm.Chunk, sum, stampHash 
 			}
 		}
 
+		// Step 3: Determine entrySum. If the incoming chunk lost the tie-break,
+		// the node retains the stored payload. Because stamps sign the address
+		// rather than content, the incoming stamp remains a valid claim on that
+		// address, but its reserve entry must advertise the stored payload's sum
+		// so pullsync offers match the payload actually delivered to peers.
 		entrySum := sum
 		if has && !incomingWins {
-			// The stored payload stays. A stamp signs the address, not the
-			// content, so the incoming stamp is a valid claim on the stored
-			// payload and its entry advertises that payload's sum: that is
-			// what the node delivers for the entry, and peers reject a
-			// mismatching sum as unsolicited.
 			entrySum, err = storage.ChunkSumFromParts(chunk.Stamp().BatchID(), stampHash, stored)
 			if err != nil {
 				return fmt.Errorf("sum stored chunk %s: %w", chunk.Address(), err)
 			}
 		}
 
+		// Step 4: Index the reserve entries (BatchRadiusItem, ChunkBinItem, ChunkSumItem).
 		if err := r.storeReserveEntries(s, chunk, entrySum, stampHash, bin); err != nil {
 			return err
 		}
 
+		// Step 5: Update ChunkStore payload and maintain reference counts.
 		switch {
 		case !has:
+			// First time this SOC address is stored; write the new payload.
 			err = s.ChunkStore().Put(ctx, chunk)
 		case incomingWins:
+			// Incoming chunk outranked stored payload; replace it on disk.
 			if !bytes.Equal(stored.Data(), chunk.Data()) {
 				socReplaced = true
 			}
 			err = s.ChunkStore().Replace(ctx, chunk, !sameSlotSameAddr)
 		case !sameSlotSameAddr:
-			// keep the stored payload; the new entry references it, so the
-			// chunkstore reference count must follow or evicting the other
-			// stamps would drop the payload from under this entry.
+			// Incoming chunk lost tie-break, but brings a distinct stamp on the
+			// stored payload. Bump the stored payload's reference count so evicting
+			// the other stamps does not prematurely delete the shared payload.
 			err = s.ChunkStore().Put(ctx, stored)
 		default:
-			// sameSlotSameAddr: incoming lost on same-slot re-stamp; stored
-			// payload stays, and its reference count is already held by this slot.
+			// sameSlotSameAddr: Incoming lost on a same-slot re-stamp; stored payload
+			// is retained and its reference count is already held by this slot.
 		}
 		if err != nil {
 			return err
 		}
+
+		// Step 6: Only increment reserve size if a brand new stamp slot was added.
 		shouldInc = !loaded
 		return nil
 	})
@@ -287,14 +303,14 @@ func (r *Reserve) putSOC(ctx context.Context, chunk swarm.Chunk, sum, stampHash 
 }
 
 // evaluateSOCDivergence decides whether an incoming single owner chunk should
-// replace the payload already stored at that address but with stamp with different stamp hash
+// replace the payload already stored at that address under another stamp.
 //
 // The incoming stamp is compared with the strongest stored stamp on that address:
 // - a strictly newer timestamp wins;
-// - equal timestamps prefer the lower stamp hash;
-// - a remaining tie prefers the lower wrapped CAC.
+// - equal timestamps prefer the lexicographically lower stamp hash;
+// - a remaining tie prefers the lower wrapped CAC payload address.
 // Matching payloads are treated as a win so the new stamp can be indexed
-// against the existing body.
+// against the existing body without payload modification.
 func (r *Reserve) evaluateSOCDivergence(
 	s transaction.Store,
 	incoming swarm.Chunk,
@@ -302,6 +318,7 @@ func (r *Reserve) evaluateSOCDivergence(
 	incomingStampHash []byte,
 	fallbackStamp swarm.Stamp,
 ) (incomingWins bool, err error) {
+	// If the underlying payloads are identical, there is no divergence.
 	if bytes.Equal(stored.Data(), incoming.Data()) {
 		return true, nil
 	}
@@ -315,6 +332,7 @@ func (r *Reserve) evaluateSOCDivergence(
 	storedWithStamp := stored.WithStamp(bestStoredStamp)
 	currTimestamp := binary.BigEndian.Uint64(incoming.Stamp().Timestamp())
 
+	// Rule 1: Strictly newer timestamp wins.
 	if highestPrevTimestamp > currTimestamp {
 		return false, nil
 	}
@@ -323,6 +341,7 @@ func (r *Reserve) evaluateSOCDivergence(
 		return true, nil
 	}
 
+	// Rule 2: Equal timestamps tie-break on lower stamp hash.
 	if highestPrevTimestamp == currTimestamp {
 		if storedWithStamp.Stamp() != nil {
 			storedStampHash, err := storedWithStamp.Stamp().Hash()
@@ -335,6 +354,7 @@ func (r *Reserve) evaluateSOCDivergence(
 		}
 	}
 
+	// Rule 3: Tie-break on lexicographically lower wrapped CAC address.
 	wins, err := storage.DivergentSocChunkWins(storedWithStamp, incoming)
 	if err != nil {
 		return false, err
@@ -342,6 +362,10 @@ func (r *Reserve) evaluateSOCDivergence(
 	return wins, nil
 }
 
+// putCAC writes a content-addressed chunk to the reserve.
+// Unlike SOCs, CAC chunks cannot diverge (their address is the cryptographic
+// hash of their payload). If a same-slot collision points to the same address,
+// only the index entries are rewritten without touching ChunkStore.
 func (r *Reserve) putCAC(ctx context.Context, chunk swarm.Chunk, sum, stampHash []byte, bin uint8) (shouldInc bool, err error) {
 	err = r.st.Run(ctx, func(s transaction.Store) error {
 		oldStampIndex, loaded, err := stampindex.LoadOrStore(s.IndexStore(), reserveScope, chunk)
@@ -409,6 +433,7 @@ func (r *Reserve) resolveStampIndexCollision(
 		}
 	}
 
+	// Branch 1: Same address re-stamped in the same slot.
 	if oldStampIndex.ChunkAddress.Equal(chunk.Address()) {
 		if prev == curr {
 			if bytes.Equal(oldStampIndex.StampHash, stampHash) {
@@ -430,6 +455,9 @@ func (r *Reserve) resolveStampIndexCollision(
 			}
 		}
 
+		// Prune previous slot metadata (BatchRadiusItem, ChunkBinItem, and stamp entries).
+		// Note: The payload in ChunkStore is NOT deleted here because it is either being
+		// updated or retained at this same address.
 		oldStamp, err := chunkstamp.LoadWithStampHash(s.IndexStore(), reserveScope, oldStampIndex.ChunkAddress, oldStampIndex.StampHash)
 		if err != nil {
 			return false, err
@@ -464,13 +492,10 @@ func (r *Reserve) resolveStampIndexCollision(
 		return true, nil
 	}
 
-	// An older and different chunk with the same batchID and stamp index has been previously
-	// saved to the reserve. We must do the below before saving the new chunk:
-	// 1. Delete the old chunk from the chunkstore.
-	// 2. Delete the old chunk's stamp data.
-	// 3. Delete ALL old chunk related items from the reserve.
-	// 4. Update the stamp index.
-
+	// Branch 2: Slot reuse across different chunk addresses.
+	// An older chunk at a different address with the same (batchID, stampIndex) slot
+	// is being overwritten by a newer timestamp. Remove the old chunk completely
+	// (metadata and payload refcount decrement) and update the stamp index.
 	err = r.removeChunk(ctx, s, oldStampIndex.ChunkAddress, oldStampIndex.BatchID, oldStampIndex.StampHash)
 	if err != nil {
 		return false, fmt.Errorf("remove older chunk %s: %w", oldStampIndex.ChunkAddress, err)

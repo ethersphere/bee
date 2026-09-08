@@ -86,6 +86,8 @@ func step_08(
 			for _, item := range items {
 				remove := false
 
+				// Guard against corrupted databases containing duplicate (bin, binID) entries.
+				// Prune duplicates to prevent orphaned ChunkSumItem records.
 				if seen, ok := seenBinIDs[item.Bin]; ok {
 					if prevAddr, exists := seen[item.BinID]; exists {
 						logger.Warning("duplicate binID during sum backfill, removing corrupt reserve entry", "bin", item.Bin, "bin_id", item.BinID, "existing_address", prevAddr, "duplicate_address", item.Address)
@@ -103,6 +105,8 @@ func step_08(
 					case errors.Is(err, storage.ErrNotFound):
 						remove = true
 					case err != nil:
+						// Non-fatal: unreadable chunks (I/O or shard corruption) are pruned
+						// rather than aborting startup, preventing bootloops and allowing pullsync recovery.
 						logger.Warning("unreadable chunk during sum backfill, removing reserve entry", "address", item.Address, "error", err)
 						remove = true
 					}

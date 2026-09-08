@@ -243,6 +243,7 @@ func ReserveRepairer(
 						}
 
 						item.BinID = newID(int(item.Bin))
+						// Recover legacy entries that were saved with an empty/zero stamp hash.
 						if bytes.Equal(item.StampHash, swarm.EmptyAddress.Bytes()) {
 							stamp, err := chunkstamp.LoadWithBatchID(s.IndexStore(), "reserve", item.Address, item.BatchID)
 							if err != nil {
@@ -255,6 +256,8 @@ func ReserveRepairer(
 							if err != nil {
 								return err
 							}
+							// Delete the old zero-hash key before mutating StampHash;
+							// otherwise the old record remains orphaned and fails validation.
 							if err := s.IndexStore().Delete(item); err != nil {
 								return err
 							}

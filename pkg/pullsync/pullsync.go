@@ -290,12 +290,15 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 			s.logger.Debug("syncer got a zero address hash on offer", "peer_address", peer)
 			continue
 		}
+		// Skip offers with missing or invalid chunk sum length rather than failing
+		// the interval, preventing infinite zero-backoff 100% CPU retry loops.
 		if len(sum) != storage.ChunkSumSize {
 			s.logger.Debug("syncer got inconsistent chunk sum length on offer", "peer_address", peer, "chunk_address", a, "sum_len", len(sum))
 			continue
 		}
 		s.metrics.Offered.Inc()
 		if s.store.IsWithinStorageRadius(a) {
+			// SWIP-101: Check if local reserve holds this exact (address, sum) pair.
 			have, err = s.store.ReserveHas(a, sum)
 			if err != nil {
 				s.logger.Debug("storage has", "error", err)
@@ -303,6 +306,8 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 			}
 
 			if !have {
+				// Index by composite key (address + sum) so divergent chunks at
+				// the same address can be matched against delivery.
 				wantChunks[a.ByteString()+string(sum)] = struct{}{}
 				ctr++
 				s.metrics.Wanted.Inc()
