@@ -42,14 +42,11 @@ func TestSameSlotRestampHonorsOtherStamps(t *testing.T) {
 
 	t.Run("all orders converge", func(t *testing.T) {
 		t.Parallel()
-		assertOrderConvergence(t, []swarm.Chunk{v1A, v1B, v2A}, true)
+		assertOrderConvergence(t, []swarm.Chunk{v1A, v1B, v2A}, false)
 	})
 
 	t.Run("same slot re-stamp cannot outrank a higher stamp under another batch", func(t *testing.T) {
 		t.Parallel()
-		if !strictConvergence() {
-			t.Skip("KNOWN UNRESOLVED: the same-slot replacement path ignores other live stamps; set RESERVE_STRICT_CONVERGENCE=1 to enforce")
-		}
 		h := newPutHarness(t)
 
 		h.put(v1B) // timestamp 100 under batch B holds the address
