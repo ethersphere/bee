@@ -13,13 +13,14 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-	"golang.org/x/sync/errgroup"
 )
 
 // ReserveRepairer runs the manual reserve repair procedure used by the db repair command.
@@ -243,12 +244,18 @@ func ReserveRepairer(
 
 						item.BinID = newID(int(item.Bin))
 						if bytes.Equal(item.StampHash, swarm.EmptyAddress.Bytes()) {
-							stamp, err := chunkstamp.LoadWithStampHash(s.IndexStore(), "reserve", item.Address, item.StampHash)
+							stamp, err := chunkstamp.LoadWithBatchID(s.IndexStore(), "reserve", item.Address, item.BatchID)
 							if err != nil {
+								if errors.Is(err, storage.ErrNotFound) {
+									return reserve.RemoveChunkWithItem(context.Background(), s, item)
+								}
 								return err
 							}
 							stampHash, err := stamp.Hash()
 							if err != nil {
+								return err
+							}
+							if err := s.IndexStore().Delete(item); err != nil {
 								return err
 							}
 							item.StampHash = stampHash

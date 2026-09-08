@@ -10,6 +10,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	chunktest "github.com/ethersphere/bee/v2/pkg/storage/testing"
@@ -19,7 +21,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	localmigration "github.com/ethersphere/bee/v2/pkg/storer/migration"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestReserveRepair(t *testing.T) {
@@ -204,4 +205,93 @@ func TestReserveRepair(t *testing.T) {
 		t.Fatal("epoch item should be deleted")
 	}
 	assert.NoError(t, err)
+}
+
+// TestReserveRepairEmptyStampHashRecovered verifies that an entry with an empty
+// StampHash has its hash recovered from the chunkstamp index during repair (M3).
+func TestReserveRepairEmptyStampHashRecovered(t *testing.T) {
+	t.Parallel()
+
+	store := internal.NewInmemStorage()
+	baseAddr := swarm.RandAddress(t)
+	stepFn := localmigration.ReserveRepairer(store, func(_ swarm.Chunk) swarm.ChunkType {
+		return swarm.ChunkTypeContentAddressed
+	}, log.Noop)
+
+	ch := chunktest.GenerateTestRandomChunkAt(t, baseAddr, 0)
+	stampHash, err := ch.Stamp().Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Seed chunk in chunkstore and chunkstamp
+	err = store.Run(context.Background(), func(s transaction.Store) error {
+		return errors.Join(
+			chunkstamp.Store(s.IndexStore(), "reserve", ch),
+			s.ChunkStore().Put(context.Background(), ch),
+		)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Seed ChunkBinItem and BatchRadiusItem with empty StampHash (simulating legacy entry)
+	cb := &reserve.ChunkBinItem{
+		Bin:       0,
+		BinID:     0,
+		Address:   ch.Address(),
+		BatchID:   ch.Stamp().BatchID(),
+		ChunkType: swarm.ChunkTypeContentAddressed,
+		StampHash: swarm.EmptyAddress.Bytes(),
+		Sum:       make([]byte, storage.ChunkSumSize),
+	}
+	br := &reserve.BatchRadiusItem{
+		BatchID:   ch.Stamp().BatchID(),
+		Bin:       0,
+		Address:   ch.Address(),
+		BinID:     0,
+		StampHash: swarm.EmptyAddress.Bytes(),
+	}
+	err = store.Run(context.Background(), func(s transaction.Store) error {
+		return errors.Join(
+			s.IndexStore().Put(cb),
+			s.IndexStore().Put(br),
+		)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Run repair: it should recover the stampHash via LoadWithBatchID and succeed
+	if err := stepFn(); err != nil {
+		t.Fatalf("repair failed: %v", err)
+	}
+
+	// Verify BatchRadiusItem now has the recovered stampHash
+	resBR := &reserve.BatchRadiusItem{
+		BatchID:   ch.Stamp().BatchID(),
+		Bin:       0,
+		Address:   ch.Address(),
+		StampHash: stampHash,
+	}
+	has, err := store.IndexStore().Has(resBR)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !has {
+		t.Fatal("expected BatchRadiusItem to be updated with recovered StampHash")
+	}
+
+	// Verify ChunkSumItem was created with the proper sum
+	sum, err := storage.ChunkSum(ch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hasSum, err := store.IndexStore().Has(&reserve.ChunkSumItem{Address: ch.Address(), Sum: sum})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasSum {
+		t.Fatal("expected ChunkSumItem to be created with recovered sum")
+	}
 }

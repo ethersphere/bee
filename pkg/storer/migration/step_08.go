@@ -27,10 +27,10 @@ import (
 // want-decision. The sum is derived from the batch ID and stamp hash already
 // carried by the BatchRadiusItem, so stamps are never loaded. Chunks missing
 // from the chunkstore, unreadable, with an invalid type, with an unset stamp
-// hash or failing checksum are removed, consistent with the reserve repair
-// procedure. Finally, orphaned pre-migration ChunkBinItems (no matching
-// BatchRadiusItem, hence never rewritten) are swept by raw key so no old-format
-// record survives to break later iterations.
+// hash, failing checksum or sharing a duplicate (bin, binID) are removed,
+// consistent with the reserve repair procedure. Finally, orphaned pre-migration
+// ChunkBinItems (no matching BatchRadiusItem, hence never rewritten) are swept
+// by raw key so no old-format record survives to break later iterations.
 //
 // The BatchRadiusItem namespace is paged through in fixed windows instead of
 // being loaded whole: at reserve capacity the full index is millions of
@@ -51,6 +51,7 @@ func step_08(
 		backfilled, removed := 0, 0
 		lastReported := 0
 		lastID := ""
+		seenBinIDs := make(map[uint8]map[uint64]swarm.Address)
 
 		for {
 			var items []*reserve.BatchRadiusItem
@@ -83,14 +84,28 @@ func step_08(
 			// would both see the same count and leak the payload.
 			var backfill []*reserve.ChunkBinItem
 			for _, item := range items {
-				chunk, err := st.ChunkStore().Get(context.Background(), item.Address)
 				remove := false
-				switch {
-				case errors.Is(err, storage.ErrNotFound):
-					remove = true
-				case err != nil:
-					logger.Warning("unreadable chunk during sum backfill, removing reserve entry", "address", item.Address, "error", err)
-					remove = true
+
+				if seen, ok := seenBinIDs[item.Bin]; ok {
+					if prevAddr, exists := seen[item.BinID]; exists {
+						logger.Warning("duplicate binID during sum backfill, removing corrupt reserve entry", "bin", item.Bin, "bin_id", item.BinID, "existing_address", prevAddr, "duplicate_address", item.Address)
+						remove = true
+					}
+				} else {
+					seenBinIDs[item.Bin] = make(map[uint64]swarm.Address)
+				}
+
+				var chunk swarm.Chunk
+				if !remove {
+					var err error
+					chunk, err = st.ChunkStore().Get(context.Background(), item.Address)
+					switch {
+					case errors.Is(err, storage.ErrNotFound):
+						remove = true
+					case err != nil:
+						logger.Warning("unreadable chunk during sum backfill, removing reserve entry", "address", item.Address, "error", err)
+						remove = true
+					}
 				}
 
 				var chunkType swarm.ChunkType
@@ -105,6 +120,7 @@ func step_08(
 
 				var sum []byte
 				if !remove {
+					var err error
 					sum, err = storage.ChunkSumFromParts(item.BatchID, item.StampHash, chunk)
 					if err != nil {
 						logger.Warning("invalid chunk sum during backfill, removing reserve entry", "address", item.Address, "error", err)
@@ -122,6 +138,8 @@ func step_08(
 					}
 					continue
 				}
+
+				seenBinIDs[item.Bin][item.BinID] = item.Address
 
 				// the sum only needs the batch ID and stamp hash, both already
 				// on the item, so the stamp itself is never loaded.

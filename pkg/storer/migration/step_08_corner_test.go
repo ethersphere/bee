@@ -238,3 +238,89 @@ func TestStep08UnreadableChunkRemoval(t *testing.T) {
 		t.Fatal("expected unreadable chunk reserve entry to be removed")
 	}
 }
+
+// TestStep08DuplicateBinIDRemoval covers two BatchRadiusItems sharing the same
+// (bin, binID). The migration must keep the first entry, remove the duplicate
+// entry, and avoid leaving an orphaned ChunkSumItem.
+func TestStep08DuplicateBinIDRemoval(t *testing.T) {
+	t.Parallel()
+
+	st := newRealStorage(t)
+	baseAddr := swarm.RandAddress(t)
+
+	c1, err := cac.New([]byte("first chunk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch1 := c1.WithStamp(postagetesting.MustNewStamp())
+	stampHash1, err := ch1.Stamp().Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c2, err := cac.New([]byte("second chunk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch2 := c2.WithStamp(postagetesting.MustNewStamp())
+	stampHash2, err := ch2.Stamp().Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bin := swarm.Proximity(baseAddr.Bytes(), ch1.Address().Bytes())
+	// Seed first chunk at (bin, binID = 10)
+	seedLegacyEntry(t, st, bin, 10, ch1, stampHash1)
+
+	// Seed second chunk sharing the exact same bin and binID = 10
+	seedLegacyEntry(t, st, bin, 10, ch2, stampHash2)
+
+	if err := localmigration.Step08(st, log.Noop)(); err != nil {
+		t.Fatalf("step_08 failed on duplicate binID: %v", err)
+	}
+
+	sum1, err := storage.ChunkSum(ch1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum2, err := storage.ChunkSum(ch2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hasSum1, err := st.IndexStore().Has(&reserve.ChunkSumItem{Address: ch1.Address(), Sum: sum1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hasSum2, err := st.IndexStore().Has(&reserve.ChunkSumItem{Address: ch2.Address(), Sum: sum2})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hasBR1, err := st.IndexStore().Has(&reserve.BatchRadiusItem{
+		Bin:       bin,
+		BatchID:   ch1.Stamp().BatchID(),
+		Address:   ch1.Address(),
+		StampHash: stampHash1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hasBR2, err := st.IndexStore().Has(&reserve.BatchRadiusItem{
+		Bin:       bin,
+		BatchID:   ch2.Stamp().BatchID(),
+		Address:   ch2.Address(),
+		StampHash: stampHash2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Exactly one entry must survive and its ChunkSumItem must exist
+	if hasSum1 == hasSum2 {
+		t.Fatalf("expected exactly one item to survive, got hasSum1=%v hasSum2=%v", hasSum1, hasSum2)
+	}
+	if hasSum1 != hasBR1 || hasSum2 != hasBR2 {
+		t.Fatalf("ChunkSumItem presence must match BatchRadiusItem presence (no orphan): hasSum1=%v hasBR1=%v, hasSum2=%v hasBR2=%v", hasSum1, hasBR1, hasSum2, hasBR2)
+	}
+}
