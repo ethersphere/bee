@@ -16,6 +16,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"resenje.org/singleflight"
+
 	"github.com/ethersphere/bee/v2/pkg/bitvector"
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -28,7 +30,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-	"resenje.org/singleflight"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -272,13 +273,15 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 
 	for i := 0; i < len(offer.Chunks); i++ {
 		if offer.Chunks[i] == nil {
-			return 0, 0, fmt.Errorf("nil chunk at index %d in offer from peer %s", i, peer)
+			s.logger.Debug("syncer got nil chunk on offer", "peer_address", peer, "index", i)
+			continue
 		}
 
 		addr := offer.Chunks[i].Address
 		sum := offer.Chunks[i].Sum
 		if len(addr) != swarm.HashSize {
-			return 0, 0, fmt.Errorf("inconsistent hash length")
+			s.logger.Debug("syncer got inconsistent hash length on offer", "peer_address", peer, "index", i, "addr_len", len(addr))
+			continue
 		}
 
 		a := swarm.NewAddress(addr)
@@ -288,7 +291,8 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 			continue
 		}
 		if len(sum) != storage.ChunkSumSize {
-			return 0, 0, fmt.Errorf("inconsistent chunk sum length")
+			s.logger.Debug("syncer got inconsistent chunk sum length on offer", "peer_address", peer, "chunk_address", a, "sum_len", len(sum))
+			continue
 		}
 		s.metrics.Offered.Inc()
 		if s.store.IsWithinStorageRadius(a) {
@@ -391,13 +395,13 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 				// is safe to continue with the next chunk
 				if errors.Is(err, storage.ErrOverwriteNewerChunk) {
 					s.logger.Debug("overwrite newer chunk", "error", err, "peer_address", peer, "chunk", c)
-					chunkErr = errors.Join(chunkErr, err)
 					continue
 				}
 				// the chunk diverged from the one already stored and lost the
 				// tie-break. The neighborhood converges on the stored chunk, so
 				// this is an expected outcome rather than a sync error.
 				if errors.Is(err, storage.ErrDivergentChunkRejected) {
+					s.logger.Debug("divergent chunk rejected", "error", err, "peer_address", peer, "chunk", c)
 					s.metrics.DivergentRejected.Inc()
 					continue
 				}

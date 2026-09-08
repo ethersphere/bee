@@ -205,10 +205,13 @@ func TestIncoming_WantErrors(t *testing.T) {
 		)
 
 		topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
-		for _, e := range []error{storage.ErrOverwriteNewerChunk, validStampErr, swarm.ErrInvalidChunk} {
+		for _, e := range []error{validStampErr, swarm.ErrInvalidChunk} {
 			if !errors.Is(err, e) {
 				t.Fatalf("expected error %v", err)
 			}
+		}
+		if errors.Is(err, storage.ErrOverwriteNewerChunk) {
+			t.Fatal("ErrOverwriteNewerChunk must not be treated as a sync error")
 		}
 
 		if count != 3 {
@@ -493,8 +496,46 @@ func TestIncoming_DivergentRejected(t *testing.T) {
 	})
 }
 
+// TestIncoming_OverwriteNewerChunk covers a delivered chunk that the reserve
+// rejects with ErrOverwriteNewerChunk: carrying an older timestamp is a
+// legitimate outcome, so the sync must report no error, advance the cursor,
+// and keep the other chunks.
+func TestIncoming_OverwriteNewerChunk(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		putHook := func(c swarm.Chunk) error {
+			if c.Address().Equal(chunks[1].Address()) {
+				return storage.ErrOverwriteNewerChunk
+			}
+			return nil
+		}
+
+		var (
+			topMost            = uint64(4)
+			ps, _              = newPullSync(t, nil, 5, mock.WithSubscribeResp(results, nil), mock.WithChunks(chunks...))
+			recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+			psClient, clientDb = newPullSync(t, recorder, 0, mock.WithPutHook(putHook))
+		)
+
+		topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
+		if err != nil {
+			t.Fatalf("an older timestamp is not a sync error, got %v", err)
+		}
+		if topmost != topMost {
+			t.Fatalf("got offer topmost %d but want %d", topmost, topMost)
+		}
+		if count != len(chunks)-1 {
+			t.Fatalf("got %d chunks but want %d", count, len(chunks)-1)
+		}
+		haveChunks(t, clientDb, append(chunks[:1:1], chunks[2:]...)...)
+		if has, _ := clientDb.ReserveHas(chunks[1].Address(), results[1].Sum); has {
+			t.Fatal("rejected older chunk must not be stored")
+		}
+	})
+}
+
 // TestIncoming_OfferSumLength covers an offer carrying a sum of the wrong
-// length: the whole offer is refused and the cursor does not advance.
+// length: the malformed entry is skipped, valid chunks are synced, and the
+// cursor advances to avoid a hot retry loop.
 func TestIncoming_OfferSumLength(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		tResults := make([]*storer.BinC, len(results))
@@ -505,20 +546,28 @@ func TestIncoming_OfferSumLength(t *testing.T) {
 		tResults[2].Sum = []byte{1, 2, 3}
 
 		var (
+			topMost            = uint64(4)
 			ps, _              = newPullSync(t, nil, 5, mock.WithSubscribeResp(tResults, nil), mock.WithChunks(chunks...))
 			recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
 			psClient, clientDb = newPullSync(t, recorder, 0)
 		)
 
 		topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
-		if err == nil {
-			t.Fatal("expected an error for a malformed offer sum")
+		if err != nil {
+			t.Fatalf("unexpected error for a malformed offer sum: %v", err)
 		}
-		if topmost != 0 || count != 0 {
-			t.Fatalf("got topmost %d and count %d, want 0 and 0", topmost, count)
+		if topmost != topMost {
+			t.Fatalf("got topmost %d, want %d", topmost, topMost)
 		}
-		if p := clientDb.PutCalls(); p != 0 {
-			t.Fatalf("want 0 puts but got %d", p)
+		if count != len(chunks)-1 {
+			t.Fatalf("got count %d, want %d", count, len(chunks)-1)
+		}
+		if p := clientDb.PutCalls(); p != len(chunks)-1 {
+			t.Fatalf("want %d puts but got %d", len(chunks)-1, p)
+		}
+		haveChunks(t, clientDb, append(chunks[:2:2], chunks[3:]...)...)
+		if has, _ := clientDb.ReserveHas(chunks[2].Address(), results[2].Sum); has {
+			t.Fatal("chunk with malformed offer sum must not be stored")
 		}
 	})
 }
