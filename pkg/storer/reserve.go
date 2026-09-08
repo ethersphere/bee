@@ -39,6 +39,7 @@ var (
 type Syncer interface {
 	// Number of active historical syncing jobs.
 	SyncRate() float64
+	IsReserveSynced(depth uint8) bool
 	Start(context.Context)
 }
 
@@ -173,7 +174,7 @@ func (db *DB) reserveWorker(ctx context.Context, ready chan<- struct{}) {
 				continue
 			}
 
-			if count < threshold(db.reserve.Capacity()) && db.syncer.SyncRate() == 0 && radius > db.reserveOptions.minimumRadius {
+			if count < threshold(db.reserve.Capacity()) && db.syncer.IsReserveSynced(radius) && radius > db.reserveOptions.minimumRadius {
 				radius--
 				if err := db.reserve.SetRadius(radius); err != nil {
 					db.logger.Error(err, "reserve set radius")
