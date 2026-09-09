@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/gorilla/mux"
@@ -187,12 +188,16 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, socAddress swarm.Address
 	}()
 	cleanup := s.gsoc.Subscribe(socAddress, func(c *soc.SOC) {
 		if cacheWrappedChunk {
+			// This callback runs on the push/pull sync goroutine that
+			// delivered the chunk, so the store write must not block it.
 			// Caching is a node-local side effect independent of this
 			// subscriber's connection, so it must not be aborted just
 			// because the websocket closes mid-write.
-			if err := s.storer.Cache().Put(context.Background(), c.WrappedChunk()); err != nil {
-				s.logger.Debug("gsoc ws: cache wrapped chunk failed", "error", err)
-			}
+			safe.Go(s.logger, "gsoc-cache-wrapped-chunk", func() {
+				if err := s.storer.Cache().Put(context.Background(), c.WrappedChunk()); err != nil {
+					s.logger.Debug("gsoc ws: cache wrapped chunk failed", "error", err)
+				}
+			})
 		}
 
 		b, err := socFieldsBytes(c, fields)

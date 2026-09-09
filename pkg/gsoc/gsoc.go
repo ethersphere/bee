@@ -5,9 +5,11 @@
 package gsoc
 
 import (
+	"slices"
 	"sync"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -60,7 +62,9 @@ func (l *listener) Subscribe(address swarm.Address, handler Handler) (cleanup fu
 	}
 }
 
-// Handle is called by push/pull sync and passes the chunk its registered handler
+// Handle is called by push/pull sync and passes the chunk its registered
+// handler. Handlers are invoked synchronously, in subscription order, on the
+// caller's goroutine, so they must not block on long running work.
 func (l *listener) Handle(c *soc.SOC) {
 	addr, err := c.Address()
 	if err != nil {
@@ -73,7 +77,11 @@ func (l *listener) Handle(c *soc.SOC) {
 	l.logger.Debug("new incoming GSOC message", "GSOC Address", addr, "wrapped chunk address", c.WrappedChunk().Address())
 
 	for _, hh := range h {
-		(*hh)(c)
+		// The caller is a push/pull sync stream handler; a panicking
+		// subscriber must not unwind into it.
+		safe.Run(l.logger, "gsoc-handler", func() {
+			(*hh)(c)
+		})
 	}
 }
 
@@ -81,7 +89,9 @@ func (p *listener) getHandlers(address swarm.Address) []*Handler {
 	p.handlersMu.Lock()
 	defer p.handlersMu.Unlock()
 
-	return p.handlers[address.ByteString()]
+	// Handlers are invoked outside of the lock, so hand out a copy: Subscribe
+	// and its cleanup func mutate the stored slice in place.
+	return slices.Clone(p.handlers[address.ByteString()])
 }
 
 func (l *listener) Close() error {
