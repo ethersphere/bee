@@ -9,7 +9,6 @@ import (
 	"sync"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
-	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -77,11 +76,7 @@ func (l *listener) Handle(c *soc.SOC) {
 	l.logger.Debug("new incoming GSOC message", "GSOC Address", addr, "wrapped chunk address", c.WrappedChunk().Address())
 
 	for _, hh := range h {
-		// The caller is a push/pull sync stream handler; a panicking
-		// subscriber must not unwind into it.
-		safe.Run(l.logger, "gsoc-handler", func() {
-			(*hh)(c)
-		})
+		(*hh)(c)
 	}
 }
 
