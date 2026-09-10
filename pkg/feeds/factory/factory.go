@@ -7,15 +7,17 @@ package factory
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/feeds"
 	"github.com/ethersphere/bee/v2/pkg/feeds/epochs"
 	"github.com/ethersphere/bee/v2/pkg/feeds/sequence"
+	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
+
+var _ m.Collector = (*factory)(nil)
 
 type factory struct {
 	storage.Getter
@@ -46,7 +48,7 @@ func (f *factory) NewLookup(t feeds.Type, feed *feeds.Feed) (feeds.Lookup, error
 func (f *factory) wrapLookup(t feeds.Type, lookup feeds.Lookup) feeds.Lookup {
 	return &instrumentedLookup{
 		lookup: lookup,
-		typ:    strings.ToLower(t.String()),
+		typ:    lookupType(t),
 		m:      f.metrics,
 	}
 }
@@ -63,6 +65,17 @@ func (l *instrumentedLookup) At(ctx context.Context, at int64, after uint64) (sw
 	ch, cur, next, err := l.lookup.At(ctx, at, after)
 	l.m.LookupDuration.WithLabelValues(l.typ, lookupResult(ch, err)).Observe(time.Since(start).Seconds())
 	return ch, cur, next, err
+}
+
+func lookupType(t feeds.Type) string {
+	switch t {
+	case feeds.Sequence:
+		return "sequence"
+	case feeds.Epoch:
+		return "epoch"
+	default:
+		return "unknown"
+	}
 }
 
 func lookupResult(ch swarm.Chunk, err error) string {
