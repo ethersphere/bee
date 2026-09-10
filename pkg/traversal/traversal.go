@@ -27,6 +27,16 @@ import (
 type Traverser interface {
 	// Traverse iterates through each address related to the supplied one, if possible.
 	Traverse(context.Context, swarm.Address, swarm.AddressIterFunc, redundancy.Level) error
+
+	// TraverseWithRoots is Traverse, additionally invoking rootFn for every
+	// reference that is the root of a chunk trie of its own: the supplied
+	// reference and, when it is a manifest, every mantaray node and file
+	// reference it points at. Each of those was fed through its own pipeline at
+	// upload time, so each has its own dispersed replicas; a caller restoring
+	// replicas needs this set and not only the flat chunk iteration. A single
+	// owner chunk reference is not reported, as it has no replicas. rootFn may
+	// be nil, in which case this is exactly Traverse.
+	TraverseWithRoots(ctx context.Context, addr swarm.Address, chunkFn, rootFn swarm.AddressIterFunc, rLevel redundancy.Level) error
 }
 
 // New constructs for a new Traverser.
@@ -42,7 +52,17 @@ type service struct {
 
 // Traverse implements Traverser.Traverse method.
 func (s *service) Traverse(ctx context.Context, addr swarm.Address, iterFn swarm.AddressIterFunc, rLevel redundancy.Level) error {
+	return s.TraverseWithRoots(ctx, addr, iterFn, nil, rLevel)
+}
+
+// TraverseWithRoots implements Traverser.TraverseWithRoots method.
+func (s *service) TraverseWithRoots(ctx context.Context, addr swarm.Address, iterFn, rootFn swarm.AddressIterFunc, rLevel redundancy.Level) error {
 	processBytes := func(ref swarm.Address) error {
+		if rootFn != nil {
+			if err := rootFn(ref); err != nil {
+				return fmt.Errorf("traversal: root callback on %q: %w", ref, err)
+			}
+		}
 		j, _, err := joiner.New(ctx, s.getter, s.putter, ref, rLevel)
 		if err != nil {
 			return fmt.Errorf("traversal: joiner error on %q: %w", ref, err)
@@ -61,7 +81,9 @@ func (s *service) Traverse(ctx context.Context, addr swarm.Address, iterFn swarm
 			return fmt.Errorf("traversal: failed to get root chunk %s: %w", addr.String(), err)
 		}
 		if soc.Valid(ch) {
-			// if this is a SOC, the traversal will be just be the single chunk
+			// if this is a SOC, the traversal will be just be the single chunk.
+			// It is not reported to rootFn: a SOC is not a chunk-trie root and
+			// carries no dispersed replicas.
 			return iterFn(addr)
 		}
 	}

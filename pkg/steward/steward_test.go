@@ -14,11 +14,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
+	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
+	"github.com/ethersphere/bee/v2/pkg/manifest"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/mock"
 	"github.com/ethersphere/bee/v2/pkg/soc"
+	soctesting "github.com/ethersphere/bee/v2/pkg/soc/testing"
 	"github.com/ethersphere/bee/v2/pkg/steward"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
@@ -102,22 +107,34 @@ func TestSteward(t *testing.T) {
 		defer close(done)
 		count := 0
 		for op := range store.PusherFeed() {
-			// DirectUpload only forwards pushed chunks over the feed; it does not
-			// persist them. Persist here so the post-reupload assertions (Has,
-			// IsRetrievable) observe pushed-but-not-yet-locally-known chunks the
-			// same way a real pushsync round-trip eventually would.
-			if err := chunkStore.Put(ctx, op.Chunk); err != nil {
+			// Dispersed replicas are newly minted single owner chunks, so unlike
+			// the trie chunks they are not expected in the local store. Record
+			// them and move on without persisting: putting them into the store
+			// the retriever reads from would let IsRetrievable's speculative
+			// replica fetches succeed and blur the retrieved-chunk count below.
+			if sch, err := soc.FromChunk(op.Chunk); err == nil && bytes.Equal(sch.OwnerAddress(), swarm.ReplicasOwner) {
+				replicaMu.Lock()
+				replicaAddrs[op.Chunk.Address().String()] = struct{}{}
+				replicaMu.Unlock()
+
+				count++
+				if count == wantPushed {
+					return
+				}
+				continue
+			}
+
+			// Every other pushed chunk must be one the steward actually holds.
+			has, err := chunkStore.Has(ctx, op.Chunk.Address())
+			if err != nil || !has {
+				if !has {
+					err = fmt.Errorf("chunk %s not found", op.Chunk.Address())
+				}
 				select {
 				case errc <- err:
 				default:
 				}
 				return
-			}
-
-			if sch, err := soc.FromChunk(op.Chunk); err == nil && bytes.Equal(sch.OwnerAddress(), swarm.ReplicasOwner) {
-				replicaMu.Lock()
-				replicaAddrs[op.Chunk.Address().String()] = struct{}{}
-				replicaMu.Unlock()
 			}
 
 			count++
@@ -127,9 +144,21 @@ func TestSteward(t *testing.T) {
 		}
 	}()
 
-	err = s.Reupload(ctx, addr, stamper, redundancy.PARANOID)
-	if err != nil {
-		t.Fatal(err)
+	// Reupload is run in its own goroutine and guarded by the same deadline: the
+	// feed goroutine stops consuming once it has seen wantPushed chunks, so any
+	// extra push would block Reupload forever on the unbuffered pusher channel.
+	// Guarding only the wait below would let that hang until the go test timeout
+	// kills the whole package instead of reporting a clean failure here.
+	reuploadErr := make(chan error, 1)
+	go func() { reuploadErr <- s.Reupload(ctx, addr, stamper, redundancy.PARANOID) }()
+
+	select {
+	case err = <-reuploadErr:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("reupload took too long to finish, it is likely blocked pushing more chunks than expected")
 	}
 
 	select {
@@ -152,16 +181,14 @@ func TestSteward(t *testing.T) {
 		t.Fatalf("re-uploaded content on %q should be retrievable", addr)
 	}
 
-	count := len(localRetrieval.retrievedChunks)
-	// IsRetrievable's root-chunk fetch goes through joiner -> replicas.NewGetter, which
-	// races the original root address against an initial batch of 2 replica candidate
-	// addresses before the first success cancels the rest (see replicas/getter.go). With
-	// real dispersed replicas now present (this is what this fix creates), up to 2 of
-	// those speculative replica fetches can also succeed and get recorded before
-	// cancellation lands, on top of the trie chunks retrieved by traversal.
-	const maxSpeculativeRootFetches = 2
-	if count < chunkCount || count > chunkCount+maxSpeculativeRootFetches {
-		t.Fatalf("unexpected no of unique chunks retrieved: want between %d and %d, have %d", chunkCount, chunkCount+maxSpeculativeRootFetches, count)
+	// IsRetrievable's root fetch goes through joiner -> replicas.NewGetter, which
+	// races the root address against speculative replica fetches and abandons the
+	// losers without waiting for them (see replicas/getter.go). Those goroutines
+	// keep writing to retrievedChunks after IsRetrievable has returned, so the
+	// read has to take the same lock they do.
+	count := localRetrieval.retrievedCount()
+	if count != chunkCount {
+		t.Fatalf("unexpected no of unique chunks retrieved: want %d have %d", chunkCount, count)
 	}
 
 	replicaMu.Lock()
@@ -188,11 +215,12 @@ func (s *strictAddressChunkStore) Get(ctx context.Context, addr swarm.Address) (
 	return s.ChunkStore.Get(ctx, addr)
 }
 
-// TestStewardEncryptedReference verifies that Reupload correctly derives dispersed
-// replica addresses from an encrypted reference (address + decryption key), by
-// trimming it to the 32-byte content address before deriving replicas - otherwise
-// the replica addresses computed would not match what a downloader deriving
-// replicas from the plain content address expects.
+// TestStewardEncryptedReference verifies that Reupload handles an encrypted
+// reference (address + decryption key). The reference has to be trimmed to its
+// 32-byte content address before the root chunk is looked up, because that is
+// what the chunk store is keyed on. Note the replica addresses themselves would
+// be the same either way: replicator.replicate copies the reference into a fixed
+// 32-byte id, so the trailing key bytes never reach the derivation.
 func TestStewardEncryptedReference(t *testing.T) {
 	t.Parallel()
 	inmem := &counter{ChunkStore: &strictAddressChunkStore{ChunkStore: inmemchunkstore.New()}}
@@ -277,12 +305,11 @@ func TestStewardEncryptedReference(t *testing.T) {
 		t.Fatalf("unexpected no of dispersed replicas re-uploaded: want %d have %d", replicaCount, gotReplicas)
 	}
 
-	// Every replica must wrap the plain 32-byte content address's chunk, and
-	// replicas.NewPutter derives replica addresses from that same chunk's
-	// address (ch.Address()) - so this also proves replica addresses were
-	// derived from contentAddr, not the 64-byte encrypted reference. If the
-	// reference had not been trimmed before the fix, this lookup would have
-	// failed (get root chunk for dispersed replicas) or wrapped the wrong chunk.
+	// Every replica must wrap the chunk at the plain 32-byte content address.
+	// Without the trim the root chunk lookup itself fails, which is what this
+	// guards - strictAddressChunkStore above rejects a non-32-byte Get so the
+	// failure surfaces here rather than being masked by inmemchunkstore's
+	// silent truncation.
 	for addrStr := range replicaAddrs {
 		replicaAddr := swarm.MustParseHexAddress(addrStr)
 		sch, err := chunkStore.Get(ctx, replicaAddr)
@@ -323,6 +350,12 @@ type localRetriever struct {
 	retrievedChunks map[string]struct{}
 }
 
+func (lr *localRetriever) retrievedCount() int {
+	lr.mu.Lock()
+	defer lr.mu.Unlock()
+	return len(lr.retrievedChunks)
+}
+
 func (lr *localRetriever) RetrieveChunk(ctx context.Context, addr, sourceAddr swarm.Address) (chunk swarm.Chunk, err error) {
 	ch, err := lr.Get(ctx, addr)
 	if err != nil {
@@ -337,4 +370,156 @@ func (lr *localRetriever) RetrieveChunk(ctx context.Context, addr, sourceAddr sw
 	}
 	lr.retrievedChunks[addr.String()] = struct{}{}
 	return ch, nil
+}
+
+// TestStewardSOCRoot covers a single owner chunk reference - a feed update or a
+// GSOC payload. traversal.Traverse supports a SOC root and the API documents the
+// stewardship reference as being of any type, so re-uploading one must succeed.
+// It is checked at redundancy.DefaultUploadLevel because that is what the API
+// falls back to when a client sends no Swarm-Redundancy-Level header, i.e. the
+// default path rather than an exotic one. A SOC carries no dispersed replicas,
+// so there is simply nothing for the replica step to restore.
+func TestStewardSOCRoot(t *testing.T) {
+	t.Parallel()
+
+	var (
+		ctx        = context.Background()
+		chunkStore = inmemchunkstore.New()
+		store      = mockstorer.NewWithChunkStore(chunkStore)
+		s          = steward.New(store, &localRetriever{ChunkStore: chunkStore}, chunkStore)
+		stamper    = postagetesting.NewStamper()
+	)
+
+	privKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := make([]byte, 64)
+	if _, err := rand.Read(data); err != nil {
+		t.Fatal(err)
+	}
+	socChunk := soctesting.GenerateMockSocWithSigner(t, data, crypto.NewDefaultSigner(privKey)).Chunk()
+	if err := chunkStore.Put(ctx, socChunk); err != nil {
+		t.Fatal(err)
+	}
+
+	pushed := make(chan swarm.Chunk, 8)
+	stop := make(chan struct{})
+	defer close(stop)
+	go func() {
+		for {
+			select {
+			case op := <-store.PusherFeed():
+				select {
+				case pushed <- op.Chunk:
+				default:
+				}
+			case <-stop:
+				return
+			}
+		}
+	}()
+
+	if err := s.Reupload(ctx, socChunk.Address(), stamper, redundancy.DefaultUploadLevel); err != nil {
+		t.Fatalf("re-uploading a single owner chunk reference: %v", err)
+	}
+
+	select {
+	case ch := <-pushed:
+		if !ch.Address().Equal(socChunk.Address()) {
+			t.Fatalf("pushed chunk %s, want the soc %s", ch.Address(), socChunk.Address())
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("soc chunk was not re-uploaded")
+	}
+}
+
+// TestStewardManifestPerFileReplicas covers a bzz-shaped upload, where the file
+// and the manifest wrapping it go through separate pipelines and each ends up
+// with dispersed replicas of its own root chunk. Re-uploading the manifest
+// reference has to restore both sets: a GET /bzz/{ref}/{path} joins the *file*
+// reference through replicas.NewGetter, so restoring only the top level
+// reference leaves the download with no replica fallback.
+func TestStewardManifestPerFileReplicas(t *testing.T) {
+	t.Parallel()
+
+	var (
+		ctx        = context.Background()
+		chunkStore = inmemchunkstore.New()
+		store      = mockstorer.NewWithChunkStore(chunkStore)
+		s          = steward.New(store, &localRetriever{ChunkStore: chunkStore}, chunkStore)
+		stamper    = postagetesting.NewStamper()
+		rLevel     = redundancy.MEDIUM
+	)
+
+	data := make([]byte, 3*4096)
+	if _, err := rand.Read(data); err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload the way pkg/api/bzz.go does: the file first, then a manifest
+	// pointing at it, each through its own pipeline.
+	filePipe := builder.NewPipelineBuilder(ctx, chunkStore, false, redundancy.NONE)
+	fileRoot, err := builder.FeedPipeline(ctx, filePipe, bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	factory := func() pipeline.Interface {
+		return builder.NewPipelineBuilder(ctx, chunkStore, false, redundancy.NONE)
+	}
+	ls := loadsave.New(chunkStore, chunkStore, factory, redundancy.NONE)
+	mf, err := manifest.NewDefaultManifest(ls, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mf.Add(ctx, "data.bin", manifest.NewEntry(fileRoot, nil)); err != nil {
+		t.Fatal(err)
+	}
+	manifestRoot, err := mf.Store(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var (
+		mu      sync.Mutex
+		wrapped = make(map[string]int)
+	)
+	stop := make(chan struct{})
+	defer close(stop)
+	go func() {
+		for {
+			select {
+			case op := <-store.PusherFeed():
+				if sch, err := soc.FromChunk(op.Chunk); err == nil && bytes.Equal(sch.OwnerAddress(), swarm.ReplicasOwner) {
+					mu.Lock()
+					wrapped[sch.WrappedChunk().Address().String()]++
+					mu.Unlock()
+				}
+			case <-stop:
+				return
+			}
+		}
+	}()
+
+	if err := s.Reupload(ctx, manifestRoot, stamper, rLevel); err != nil {
+		t.Fatal(err)
+	}
+
+	want := rLevel.GetReplicaCount()
+	deadline := time.After(3 * time.Second)
+	for {
+		mu.Lock()
+		gotFile, gotManifest := wrapped[fileRoot.String()], wrapped[manifestRoot.String()]
+		mu.Unlock()
+		if gotFile >= want && gotManifest >= want {
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("dispersed replicas re-uploaded: file root %s got %d want %d, manifest root %s got %d want %d",
+				fileRoot, gotFile, want, manifestRoot, gotManifest, want)
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
 }

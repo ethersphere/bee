@@ -507,3 +507,101 @@ func pipelineFactory(s storage.Putter, encrypt bool) func() pipeline.Interface {
 		return builder.NewPipelineBuilder(context.Background(), s, encrypt, 0)
 	}
 }
+
+// TestTraversalWithRootsManifest checks that TraverseWithRoots reports each
+// chunk-trie root of a manifest - the manifest itself and every file it points
+// at - and not only the reference it was given. Dispersed replicas are created
+// per trie root at upload time, so a caller restoring them needs this set.
+func TestTraversalWithRootsManifest(t *testing.T) {
+	t.Parallel()
+
+	store := inmemchunkstore.New()
+	ctx := context.Background()
+
+	var (
+		fileNames = []string{"a.bin", "b.bin"}
+		fileRoots = make([]swarm.Address, 0, len(fileNames))
+		ls        = loadsave.New(store, store, pipelineFactory(store, false), redundancy.NONE)
+	)
+	for range fileNames {
+		pipe := builder.NewPipelineBuilder(ctx, store, false, redundancy.NONE)
+		ref, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(generateSample(swarm.ChunkSize)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		fileRoots = append(fileRoots, ref)
+	}
+
+	mf, err := manifest.NewDefaultManifest(ls, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, name := range fileNames {
+		if err := mf.Add(ctx, name, manifest.NewEntry(fileRoots[i], nil)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	manifestRoot, err := mf.Store(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var (
+		mu    sync.Mutex
+		roots = make(map[string]bool)
+	)
+	rootFn := func(addr swarm.Address) error {
+		mu.Lock()
+		defer mu.Unlock()
+		roots[addr.String()] = true
+		return nil
+	}
+
+	iter := newAddressIterator(true)
+	err = traversal.New(store, store).TraverseWithRoots(ctx, manifestRoot, iter.Next, rootFn, redundancy.NONE)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	for _, want := range append([]swarm.Address{manifestRoot}, fileRoots...) {
+		if !roots[want.String()] {
+			t.Fatalf("trie root %s was not reported, got %d roots", want, len(roots))
+		}
+	}
+}
+
+// TestTraversalWithRootsSOC checks that a single owner chunk reference is not
+// reported as a trie root: it is not the root of a chunk trie and carries no
+// dispersed replicas, so there is nothing for a caller to restore.
+func TestTraversalWithRootsSOC(t *testing.T) {
+	t.Parallel()
+
+	store := inmemchunkstore.New()
+	ctx := context.Background()
+
+	sch := testingsoc.GenerateMockSOC(t, generateSample(swarm.ChunkSize)).Chunk()
+	if err := store.Put(ctx, sch); err != nil {
+		t.Fatal(err)
+	}
+
+	var reported []swarm.Address
+	rootFn := func(addr swarm.Address) error {
+		reported = append(reported, addr)
+		return nil
+	}
+
+	iter := newAddressIterator(false)
+	err := traversal.New(store, store).TraverseWithRoots(ctx, sch.Address(), iter.Next, rootFn, redundancy.NONE)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(reported) != 0 {
+		t.Fatalf("expected no trie roots for a soc reference, got %v", reported)
+	}
+	if !iter.seen[sch.Address().String()] {
+		t.Fatal("the soc chunk itself should still be iterated")
+	}
+}

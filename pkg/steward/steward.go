@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/encryption"
@@ -59,63 +60,110 @@ func (s *steward) Reupload(ctx context.Context, root swarm.Address, stamper post
 	uploaderSession := s.netStore.DirectUpload()
 	getter := s.netStore.Download(false)
 
+	// stampedPut stamps a chunk against its own identity address and hands it to
+	// the upload session. The identity address is the key the stamper dedups on,
+	// so it has to match what the original upload used: for a content addressed
+	// chunk that is the chunk address, for a single owner chunk - which every
+	// dispersed replica is - it is H(socAddress || wrappedChunkAddress).
+	// Getting this wrong consumes a fresh batch index for a chunk that already
+	// has one, and yields a stamp the receiving reserve cannot deduplicate.
+	stampedPut := func(ctx context.Context, ch swarm.Chunk) error {
+		idAddr, err := storage.IdentityAddress(ch)
+		if err != nil {
+			return fmt.Errorf("identity address of chunk %s: %w", ch.Address(), err)
+		}
+
+		stamp, err := stamper.Stamp(ch.Address(), idAddr)
+		if err != nil {
+			return fmt.Errorf("stamping chunk %s: %w", ch.Address(), err)
+		}
+
+		return uploaderSession.Put(ctx, ch.WithStamp(stamp))
+	}
+
 	fn := func(addr swarm.Address) error {
 		c, err := getter.Get(ctx, addr)
 		if err != nil {
 			return err
 		}
 
-		stamp, err := stamper.Stamp(c.Address(), c.Address())
-		if err != nil {
-			return fmt.Errorf("stamping chunk %s: %w", c.Address(), err)
-		}
-
-		return uploaderSession.Put(ctx, c.WithStamp(stamp))
+		return stampedPut(ctx, c)
 	}
 
-	if err := s.traverser.Traverse(ctx, root, fn, rLevel); err != nil {
+	// Dispersed replicas are created per chunk trie root at upload time by the
+	// hashtrie writer, not by the traversal, so traversal alone never restores
+	// them. A bzz upload builds several tries - one per file plus one per
+	// mantaray node - and each has replicas of its own, so every root the
+	// traversal reports needs them recreated, not just the top level reference.
+	var (
+		replicaMu   sync.Mutex
+		seenRoots   = make(map[string]struct{})
+		replicaErrs []error
+	)
+
+	rootFn := func(addr swarm.Address) error {
+		if rLevel == redundancy.NONE {
+			return nil
+		}
+
+		// A reference can be encrypted, in which case it carries the decryption
+		// key in its trailing bytes. The chunk store is keyed on the 32 byte
+		// content address, so trim before looking the root chunk up.
+		contentAddr := addr
+		if len(addr.Bytes()) == encryption.ReferenceSize {
+			contentAddr = swarm.NewAddress(addr.Bytes()[:swarm.HashSize])
+		}
+
+		replicaMu.Lock()
+		_, seen := seenRoots[contentAddr.String()]
+		seenRoots[contentAddr.String()] = struct{}{}
+		replicaMu.Unlock()
+		if seen {
+			return nil
+		}
+
+		rootChunk, err := getter.Get(ctx, contentAddr)
+		if err != nil {
+			replicaMu.Lock()
+			replicaErrs = append(replicaErrs, fmt.Errorf("get root chunk %s for dispersed replicas: %w", contentAddr, err))
+			replicaMu.Unlock()
+			return nil
+		}
+
+		// Only content addressed roots carry dispersed replicas. A single owner
+		// chunk reference - a feed update or a GSOC - is a valid stewardship
+		// target that the traversal supports, but it has no replicas to restore.
+		if !cac.Valid(rootChunk) {
+			return nil
+		}
+
+		// Re-pushing replicas is best effort. The content chunks are already on
+		// their way, and failing the whole reupload here would throw that work
+		// away and, in the API handler, skip persisting the batch indices the
+		// successful pushes already consumed.
+		if err := replicas.NewPutter(storage.PutterFunc(stampedPut), rLevel).Put(ctx, rootChunk); err != nil {
+			replicaMu.Lock()
+			replicaErrs = append(replicaErrs, fmt.Errorf("dispersed replicas of %s: %w", contentAddr, err))
+			replicaMu.Unlock()
+		}
+
+		return nil
+	}
+
+	if err := s.traverser.TraverseWithRoots(ctx, root, fn, rootFn, rLevel); err != nil {
 		return errors.Join(
 			fmt.Errorf("traversal of %s failed: %w", root.String(), err),
 			uploaderSession.Cleanup(),
 		)
 	}
 
-	if rLevel != redundancy.NONE {
-		// Dispersed replicas are keyed on the 32-byte content address. root can be
-		// an encrypted reference (address + decryption key), so trim it before
-		// deriving replica addresses, or they won't match what a downloader
-		// deriving replicas from the plain address expects.
-		contentAddr := root
-		if len(root.Bytes()) == encryption.ReferenceSize {
-			contentAddr = swarm.NewAddress(root.Bytes()[:swarm.HashSize])
-		}
-
-		rootChunk, err := getter.Get(ctx, contentAddr)
-		if err != nil {
-			return errors.Join(fmt.Errorf("get root chunk for dispersed replicas: %w", err), uploaderSession.Cleanup())
-		}
-
-		if !cac.Valid(rootChunk) {
-			return errors.Join(fmt.Errorf("root chunk %s is not a valid content-addressed chunk", contentAddr), uploaderSession.Cleanup())
-		}
-
-		// Stamp each replica individually as it is put, keyed on its own SOC
-		// address - not the root chunk's address, which replicas.NewPutter
-		// wraps into a differently-addressed SOC chunk per replica.
-		stampedPutter := storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk) error {
-			stamp, err := stamper.Stamp(ch.Address(), ch.Address())
-			if err != nil {
-				return fmt.Errorf("stamping replica %s: %w", ch.Address(), err)
-			}
-			return uploaderSession.Put(ctx, ch.WithStamp(stamp))
-		})
-
-		if err := replicas.NewPutter(stampedPutter, rLevel).Put(ctx, rootChunk); err != nil {
-			return errors.Join(fmt.Errorf("re-uploading dispersed replicas: %w", err), uploaderSession.Cleanup())
-		}
+	if err := uploaderSession.Done(root); err != nil {
+		return err
 	}
 
-	return uploaderSession.Done(root)
+	// Reported only after the session is committed, so the content reupload
+	// stands even when some replicas could not be pushed.
+	return errors.Join(replicaErrs...)
 }
 
 // IsRetrievable implements Interface.IsRetrievable method.
