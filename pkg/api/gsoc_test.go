@@ -338,7 +338,7 @@ func TestGsocWebsocketSlowConsumer(t *testing.T) {
 	}
 	testutil.CleanupCloser(t, cl)
 
-	// never read from cl, so the dataC buffer (cap 2) fills up almost
+	// never read from cl, so the dataC buffer (cap 16) fills up almost
 	// immediately: the first message blocks the single writer goroutine
 	// (nothing reads the pipe), and the next ones queue up and overflow.
 	for i := range messageCount {
