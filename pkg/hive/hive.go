@@ -174,6 +174,8 @@ func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, p
 	}
 
 	select {
+	case <-ctx.Done():
+		return ctx.Err()
 	case <-s.quit:
 		return ErrShutdownInProgress
 	default:
