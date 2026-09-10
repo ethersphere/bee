@@ -1214,7 +1214,7 @@ func (s *Service) Connect(ctx context.Context, addrs []ma.Multiaddr) (address *b
 		return nil, fmt.Errorf("libp2p connect: peer %s does not exist %w", overlay, p2p.ErrPeerNotFound)
 	}
 
-	s.metrics.CreatedConnectionCount.Inc()
+	s.metrics.incCreatedConnection(stream.Conn().RemoteMultiaddr())
 
 	if len(peerAddrs) > 0 {
 		s.notifyReacherConnected(overlay, peerAddrs)
@@ -1572,8 +1572,8 @@ type connectionNotifier struct {
 	network.Notifiee
 }
 
-func (c *connectionNotifier) Connected(_ network.Network, _ network.Conn) {
-	c.metrics.HandledConnectionCount.Inc()
+func (c *connectionNotifier) Connected(_ network.Network, conn network.Conn) {
+	c.metrics.observeHandledConnection(conn.RemoteMultiaddr())
 }
 
 // isNetworkOrHostUnreachableError determines based on the

@@ -96,6 +96,8 @@ const (
 	SwarmActTimestampHeader           = "Swarm-Act-Timestamp"
 	SwarmActPublisherHeader           = "Swarm-Act-Publisher"
 	SwarmActHistoryAddressHeader      = "Swarm-Act-History-Address"
+	SwarmSocFieldsHeader              = "Swarm-Soc-Fields"
+	SwarmCacheWrappedChunkHeader      = "Swarm-Cache-Wrapped-Chunk"
 
 	ImmutableHeader = "Immutable"
 	GasPriceHeader  = "Gas-Price"
@@ -391,7 +393,9 @@ func (s *Service) SetProbe(probe *Probe) {
 }
 
 func (s *Service) SetIsWarmingUp(v bool) {
-	s.isWarmingUp = v
+	if s != nil {
+		s.isWarmingUp = v
+	}
 }
 
 // Close hangs up running websockets on shutdown.
@@ -605,6 +609,7 @@ func (s *Service) corsHandler(h http.Handler) http.Handler {
 		SwarmRedundancyStrategyHeader, SwarmRedundancyFallbackModeHeader, SwarmChunkRetrievalTimeoutHeader, SwarmLookAheadBufferSizeHeader,
 		SwarmFeedIndexHeader, SwarmFeedIndexNextHeader, SwarmSocSignatureHeader, SwarmOnlyRootChunk, GasPriceHeader, GasLimitHeader, ImmutableHeader,
 		SwarmActHeader, SwarmActTimestampHeader, SwarmActPublisherHeader, SwarmActHistoryAddressHeader,
+		SwarmSocFieldsHeader, SwarmCacheWrappedChunkHeader,
 	}
 	allowedHeadersStr := strings.Join(allowedHeaders, ", ")
 

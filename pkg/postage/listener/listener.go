@@ -302,6 +302,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 				l.metrics.BackendErrors.Inc()
 				l.logger.Warning("could not get block number", "error", err)
 				lastConfirmedBlock = 0
+				paged = false
 				continue
 			}
 
@@ -339,6 +340,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 				l.metrics.BackendErrors.Inc()
 				l.logger.Warning("could not get blockchain log", "error", err)
 				lastConfirmedBlock = 0
+				paged = false
 				continue
 			}
 

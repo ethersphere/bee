@@ -227,6 +227,18 @@ func Test_UnmarshalBinary(t *testing.T) {
 		return data
 	}
 
+	// build assembles a plaintext node: a zero obfuscation key (so XOR
+	// decryption is the identity), the given version hash, a single
+	// attacker-controlled refBytesSize byte, and an optional body tail.
+	build := func(versionHash []byte, refBytesSize byte, tail []byte) []byte {
+		t.Helper()
+		//nolint:prealloc
+		data := make([]byte, nodeHeaderSize+len(tail))
+		copy(data[nodeObfuscationKeySize:nodeObfuscationKeySize+versionHashSize], versionHash)
+		data[nodeHeaderSize-1] = refBytesSize
+		return append(data, tail...)
+	}
+
 	tests := []struct {
 		name    string // name for test case
 		data    []byte // node binary data
@@ -265,6 +277,24 @@ func Test_UnmarshalBinary(t *testing.T) {
 		{ // fork with metadata where metadata size value exceeds actual metadata size (size is 96, want 93)
 			name:    "invalid manifest size 96",
 			data:    decode("00000000000000000000000000000000000000000000000000000000000000005768b3b6a7db56d21d1abff40d41cebfc83448fed8d7e9b06ec0d3b073f28f200000000000000000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000016012f0000000000000000000000000000000000000000000000000000000000e87f95c3d081c4fede769b6c69e27b435e525cbd25c6715c607e7c531e32963900607b22776562736974652d696e6465782d646f63756d656e74223a2233356561656538316262363338303436393965633637316265323736326465626665346662643330636461646139303232393239646131613965366134366436227d0a"),
+			wantErr: ErrInvalidManifest,
+		},
+		{ // SLICE-01: v0.1 declares refBytesSize=255 but carries no entry bytes,
+			// so data[nodeHeaderSize:nodeHeaderSize+refBytesSize] is out of range.
+			name:    "v0.1 entry slice out of range",
+			data:    build(version01HashBytes, 0xff, nil),
+			wantErr: ErrInvalidManifest,
+		},
+		{ // SLICE-02: v0.2 declares refBytesSize=255 but carries no entry bytes,
+			// so the entry slice is out of range.
+			name:    "v0.2 entry slice out of range",
+			data:    build(version02HashBytes, 0xff, nil),
+			wantErr: ErrInvalidManifest,
+		},
+		{ // SLICE-02: v0.2 with a zero-length entry but no trailing 32-byte fork
+			// index, so data[offset:offset+32] is out of range.
+			name:    "v0.2 missing fork index",
+			data:    build(version02HashBytes, 0x00, nil),
 			wantErr: ErrInvalidManifest,
 		},
 	}

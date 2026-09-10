@@ -253,6 +253,55 @@ func TestSeenKeepsConcurrentPut(t *testing.T) {
 	}
 }
 
+// TestSeenRaceWithRemove pins Seen's read-modify-write against a concurrent
+// Remove of the same overlay. Remove takes the same lock as Put and Seen, so
+// it cannot run while Seen holds the entry it has just read: the removal
+// always wins over Seen's stale write-back.
+func TestSeenRaceWithRemove(t *testing.T) {
+	t.Parallel()
+
+	now := time.Unix(1_000_000, 0)
+	hooked := &hookStore{StateStorer: mock.NewStateStore()}
+	book := addressbook.NewWithClock(hooked, func() time.Time { return now })
+
+	overlay := swarm.NewAddress([]byte{0, 1, 2, 3})
+	addr := newTestAddr(t, overlay)
+
+	if err := book.Put(overlay, addr, true); err != nil {
+		t.Fatal(err)
+	}
+
+	// move past the throttle window, so that Seen takes its write path.
+	now = now.Add(25 * time.Hour)
+
+	// While Seen holds the entry it has just read, kademlia decides the peer is
+	// bad (too many failed connection attempts, overlay mismatch, light node)
+	// and removes it.
+	started, finished := make(chan struct{}), make(chan struct{})
+	hooked.onGet = func() {
+		go func() {
+			defer close(finished)
+			close(started)
+			if err := book.Remove(overlay); err != nil {
+				t.Error(err)
+			}
+		}()
+		<-started
+		// Give Remove a chance to run before Seen writes back. Serialized on
+		// the addressbook lock, it blocks here until Seen returns.
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	if err := book.Seen(overlay); err != nil {
+		t.Fatal(err)
+	}
+	<-finished
+
+	if _, _, err := book.Get(overlay); !errors.Is(err, addressbook.ErrNotFound) {
+		t.Fatalf("concurrent Remove was undone by Seen's stale write-back: err=%v", err)
+	}
+}
+
 // hookStore fires onGet once, immediately after a Get returns, to interleave a
 // concurrent writer inside Seen's read-modify-write.
 type hookStore struct {
