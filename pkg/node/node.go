@@ -1325,12 +1325,6 @@ func NewBee(
 
 			isFullySynced := func() bool {
 				reserveThreshold := reserveCapacity * 5 / 10
-				// Local beekeeper clusters use networkID 0 and never fill half of
-				// DefaultReserveCapacity (~2M). Lower the bar so storage incentives
-				// can be exercised locally without uploading millions of chunks.
-				if networkID == 0 {
-					reserveThreshold = 1
-				}
 				logger.Debug("Sync status check evaluated", "stabilized", detector.IsStabilized())
 				return localStore.ReserveSize() >= reserveThreshold && pullerService.SyncRate() == 0 && detector.IsStabilized()
 			}
