@@ -9,12 +9,14 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
+
 	"github.com/ethersphere/bee/v2/pkg/storageincentives/staking"
 )
 
 type stakingContractMock struct {
 	depositStake     func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error)
 	getStake         func(ctx context.Context) (*big.Int, error)
+	getMinDeposit    func(ctx context.Context) (*big.Int, error)
 	withdrawAllStake func(ctx context.Context) (common.Hash, error)
 	migrateStake     func(ctx context.Context) (common.Hash, error)
 	isFrozen         func(ctx context.Context, block uint64) (bool, error)
@@ -38,6 +40,13 @@ func (s *stakingContractMock) UpdateHeight(ctx context.Context) (common.Hash, bo
 
 func (s *stakingContractMock) GetPotentialStake(ctx context.Context) (*big.Int, error) {
 	return s.getStake(ctx)
+}
+
+func (s *stakingContractMock) GetMinDeposit(ctx context.Context) (*big.Int, error) {
+	if s.getMinDeposit != nil {
+		return s.getMinDeposit(ctx)
+	}
+	return big.NewInt(1), nil
 }
 
 func (s *stakingContractMock) GetWithdrawableStake(ctx context.Context) (*big.Int, error) {
@@ -79,6 +88,12 @@ func WithDepositStake(f func(ctx context.Context, stakedAmount *big.Int) (common
 func WithGetStake(f func(ctx context.Context) (*big.Int, error)) Option {
 	return func(mock *stakingContractMock) {
 		mock.getStake = f
+	}
+}
+
+func WithGetMinDeposit(f func(ctx context.Context) (*big.Int, error)) Option {
+	return func(mock *stakingContractMock) {
+		mock.getMinDeposit = f
 	}
 }
 

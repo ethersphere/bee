@@ -481,6 +481,89 @@ func TestListenerPageSize(t *testing.T) {
 	})
 }
 
+// TestListenerBackoffAfterPagedError verifies that a failed FilterLogs call
+// while paging still causes the listener to wait for the backoff duration
+// before retrying, instead of hot-looping (regression test for the paged
+// flag not being reset on the error path).
+func TestListenerBackoffAfterPagedError(t *testing.T) {
+	t.Parallel()
+
+	const testBackoff = 300 * time.Millisecond
+
+	f := &backoffFilterer{done: make(chan struct{})}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	l := listener.New(
+		nil,
+		log.Noop,
+		f,
+		postageStampContractAddress,
+		postageStampContractABI,
+		1,
+		stallingTimeout,
+		testBackoff,
+	)
+	testutil.CleanupCloser(t, l)
+
+	go l.Listen(ctx, 0, newEventUpdaterMock())
+
+	select {
+	case <-f.done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for FilterLogs calls")
+	}
+
+	f.mu.Lock()
+	calls := append([]time.Time(nil), f.calls...)
+	f.mu.Unlock()
+
+	if len(calls) < 3 {
+		t.Fatalf("expected at least 3 FilterLogs calls, got %d", len(calls))
+	}
+
+	// calls[0] and calls[1] are the two failed attempts while paged; the gap
+	// between them, and between the second failure and the succeeding call,
+	// must be at least the configured backoff. Without resetting paged on
+	// the error path, these gaps collapse to ~0 (hot loop).
+	if gap := calls[1].Sub(calls[0]); gap < testBackoff {
+		t.Fatalf("expected backoff of at least %s between failed paged calls, got %s", testBackoff, gap)
+	}
+	if gap := calls[2].Sub(calls[1]); gap < testBackoff {
+		t.Fatalf("expected backoff of at least %s before retrying after a failed paged call, got %s", testBackoff, gap)
+	}
+}
+
+// backoffFilterer always reports a block number far enough ahead to keep the
+// listener in paging mode, fails the first two FilterLogs calls, then blocks
+// on the third to let the test capture call timestamps deterministically.
+type backoffFilterer struct {
+	mu        sync.Mutex
+	calls     []time.Time
+	done      chan struct{}
+	closeOnce sync.Once
+}
+
+func (f *backoffFilterer) BlockNumber(context.Context) (uint64, error) {
+	return listener.BlockPage * 3, nil
+}
+
+func (f *backoffFilterer) FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error) {
+	f.mu.Lock()
+	f.calls = append(f.calls, time.Now())
+	n := len(f.calls)
+	f.mu.Unlock()
+
+	if n <= 2 {
+		return nil, errors.New("dummy filter error")
+	}
+
+	f.closeOnce.Do(func() { close(f.done) })
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
 // pageCaptureFilterer records the ToBlock of the first FilterLogs call so the
 // chosen paging window can be asserted.
 type pageCaptureFilterer struct {
