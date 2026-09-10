@@ -2426,8 +2426,25 @@ paths:
         default:
           description: Default response
 
-  "/redistribution":
-    put:
+  "/redistributionstate":
+    get:
+      summary: Get the node's redistribution game status
+      tags:
+        - RedistributionState
+      responses:
+        "200":
+          description: Redistribution status info
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/RedistributionStatusResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+    patch:
       summary: Enable or disable participation in new redistribution rounds
       description: >
         Controls whether the node will commit in a new redistribution round.
@@ -2451,25 +2468,6 @@ paths:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/RedistributionEnableResponse"
-        "400":
-          $ref: "SwarmCommon.yaml#/components/responses/400"
-        "500":
-          $ref: "SwarmCommon.yaml#/components/responses/500"
-        default:
-          description: Default response
-
-  "/redistributionstate":
-    get:
-      summary: Get the node's redistribution game status
-      tags:
-        - RedistributionState
-      responses:
-        "200":
-          description: Redistribution status info
-          content:
-            application/json:
-              schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/RedistributionStatusResponse"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "500":

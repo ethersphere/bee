@@ -676,14 +676,8 @@ func (s *Service) mountBusinessDebug() {
 	handle("/redistributionstate", web.ChainHandlers(
 		s.checkStorageIncentivesAvailability,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.redistributionStatusHandler),
-		})),
-	)
-
-	handle("/redistribution", web.ChainHandlers(
-		s.checkStorageIncentivesAvailability,
-		web.FinalHandler(jsonhttp.MethodHandler{
-			"PUT": http.HandlerFunc(s.redistributionToggleHandler),
+			"GET":   http.HandlerFunc(s.redistributionStatusHandler),
+			"PATCH": http.HandlerFunc(s.redistributionToggleHandler),
 		})),
 	)
 

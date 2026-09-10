@@ -118,6 +118,7 @@ func New(overlay swarm.Address,
 	}
 
 	a.state = state
+	a.metrics.Enabled.Set(1)
 
 	a.wg.Add(1)
 	go a.start(blockTime, a.blocksPerRound, blocksPerPhase)
@@ -594,6 +595,11 @@ func (a *Agent) Status() (*Status, error) {
 // that already has a commit key.
 func (a *Agent) SetEnabled(enabled bool) {
 	a.disabled.Store(!enabled)
+	if enabled {
+		a.metrics.Enabled.Set(1)
+	} else {
+		a.metrics.Enabled.Set(0)
+	}
 }
 
 func (a *Agent) IsEnabled() bool {

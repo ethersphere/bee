@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-
 	"github.com/ethersphere/bee/v2/pkg/api"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
@@ -60,6 +59,101 @@ func TestRedistributionStatus(t *testing.T) {
 		)
 		if !got.Enabled {
 			t.Fatal("expected redistribution to be enabled by default")
+		}
+		if got.HasCommittedThisRound {
+			t.Fatal("expected no commit in the current round")
+		}
+		if got.HasRevealedThisRound {
+			t.Fatal("expected no reveal in the current round")
+		}
+	})
+
+	t.Run("committed and revealed flags", func(t *testing.T) {
+		t.Parallel()
+
+		store := statestore.NewStateStore()
+		err := store.Put("redistribution_state", storageincentives.Status{
+			Phase: storageincentives.PhaseType(1),
+			Round: 1,
+			Block: 12,
+			RoundData: map[uint64]storageincentives.RoundData{
+				1: {
+					CommitKey:   []byte{1, 2, 3},
+					HasRevealed: true,
+				},
+			},
+		})
+		if err != nil {
+			t.Errorf("redistribution put state: %v", err)
+		}
+		srv, _, _, _ := newTestServer(t, testServerOptions{
+			StateStorer: store,
+			TransactionOpts: []mock.Option{
+				mock.WithTransactionFeeFunc(func(ctx context.Context, txHash common.Hash) (*big.Int, error) {
+					return big.NewInt(1000), nil
+				}),
+			},
+			BackendOpts: []backendmock.Option{
+				backendmock.WithBalanceAt(func(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error) {
+					return big.NewInt(100000000), nil
+				}),
+				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+					return big.NewInt(1), big.NewInt(2), nil
+				}),
+			},
+		})
+		var got api.RedistributionStatusResponse
+		jsonhttptest.Request(t, srv, http.MethodGet, "/redistributionstate", http.StatusOK,
+			jsonhttptest.WithUnmarshalJSONResponse(&got),
+		)
+		if !got.HasCommittedThisRound {
+			t.Fatal("expected commit in the current round")
+		}
+		if !got.HasRevealedThisRound {
+			t.Fatal("expected reveal in the current round")
+		}
+	})
+
+	t.Run("committed but not revealed", func(t *testing.T) {
+		t.Parallel()
+
+		store := statestore.NewStateStore()
+		err := store.Put("redistribution_state", storageincentives.Status{
+			Phase: storageincentives.PhaseType(1),
+			Round: 1,
+			Block: 12,
+			RoundData: map[uint64]storageincentives.RoundData{
+				1: {CommitKey: []byte{1, 2, 3}},
+			},
+		})
+		if err != nil {
+			t.Errorf("redistribution put state: %v", err)
+		}
+		srv, _, _, _ := newTestServer(t, testServerOptions{
+			StateStorer: store,
+			TransactionOpts: []mock.Option{
+				mock.WithTransactionFeeFunc(func(ctx context.Context, txHash common.Hash) (*big.Int, error) {
+					return big.NewInt(1000), nil
+				}),
+			},
+			BackendOpts: []backendmock.Option{
+				backendmock.WithBalanceAt(func(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error) {
+					return big.NewInt(100000000), nil
+				}),
+				backendmock.WithSuggestedFeeAndTipFunc(func(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
+					return big.NewInt(1), big.NewInt(2), nil
+				}),
+			},
+		})
+		var got api.RedistributionStatusResponse
+		jsonhttptest.Request(t, srv, http.MethodGet, "/redistributionstate", http.StatusOK,
+			jsonhttptest.WithUnmarshalJSONResponse(&got),
+		)
+		if !got.HasCommittedThisRound {
+			t.Fatal("expected commit in the current round")
+		}
+		if got.HasRevealedThisRound {
+			t.Fatal("expected no reveal in the current round")
 		}
 	})
 
@@ -117,12 +211,12 @@ func redistributionTestOpts(t *testing.T) testServerOptions {
 func TestRedistributionToggle(t *testing.T) {
 	t.Parallel()
 
-	t.Run("put false then true", func(t *testing.T) {
+	t.Run("patch false then true", func(t *testing.T) {
 		t.Parallel()
 
 		srv, _, _, _ := newTestServer(t, redistributionTestOpts(t))
 
-		jsonhttptest.Request(t, srv, http.MethodPut, "/redistribution", http.StatusOK,
+		jsonhttptest.Request(t, srv, http.MethodPatch, "/redistributionstate", http.StatusOK,
 			jsonhttptest.WithJSONRequestBody(map[string]any{"enabled": false}),
 			jsonhttptest.WithExpectedJSONResponse(api.RedistributionToggleResponse{Enabled: false}),
 		)
@@ -135,7 +229,7 @@ func TestRedistributionToggle(t *testing.T) {
 			t.Fatal("expected redistribution to be disabled")
 		}
 
-		jsonhttptest.Request(t, srv, http.MethodPut, "/redistribution", http.StatusOK,
+		jsonhttptest.Request(t, srv, http.MethodPatch, "/redistributionstate", http.StatusOK,
 			jsonhttptest.WithJSONRequestBody(map[string]any{"enabled": true}),
 			jsonhttptest.WithExpectedJSONResponse(api.RedistributionToggleResponse{Enabled: true}),
 		)
@@ -152,7 +246,7 @@ func TestRedistributionToggle(t *testing.T) {
 		t.Parallel()
 
 		srv, _, _, _ := newTestServer(t, redistributionTestOpts(t))
-		jsonhttptest.Request(t, srv, http.MethodPut, "/redistribution", http.StatusBadRequest,
+		jsonhttptest.Request(t, srv, http.MethodPatch, "/redistributionstate", http.StatusBadRequest,
 			jsonhttptest.WithJSONRequestBody(map[string]any{}),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "enabled is required",
@@ -165,7 +259,7 @@ func TestRedistributionToggle(t *testing.T) {
 		t.Parallel()
 
 		srv, _, _, _ := newTestServer(t, redistributionTestOpts(t))
-		jsonhttptest.Request(t, srv, http.MethodPut, "/redistribution", http.StatusBadRequest,
+		jsonhttptest.Request(t, srv, http.MethodPatch, "/redistributionstate", http.StatusBadRequest,
 			jsonhttptest.WithJSONRequestBody(map[string]any{"enabled": nil}),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "enabled is required",
@@ -178,7 +272,7 @@ func TestRedistributionToggle(t *testing.T) {
 		t.Parallel()
 
 		srv, _, _, _ := newTestServer(t, redistributionTestOpts(t))
-		jsonhttptest.Request(t, srv, http.MethodPut, "/redistribution", http.StatusBadRequest,
+		jsonhttptest.Request(t, srv, http.MethodPatch, "/redistributionstate", http.StatusBadRequest,
 			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "application/json"),
 			jsonhttptest.WithRequestBody(bytes.NewReader([]byte("{invalid"))),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
@@ -195,7 +289,7 @@ func TestRedistributionToggle(t *testing.T) {
 			BeeMode:     api.LightMode,
 			StateStorer: statestore.NewStateStore(),
 		})
-		jsonhttptest.Request(t, srv, http.MethodPut, "/redistribution", http.StatusBadRequest,
+		jsonhttptest.Request(t, srv, http.MethodPatch, "/redistributionstate", http.StatusBadRequest,
 			jsonhttptest.WithJSONRequestBody(map[string]any{"enabled": false}),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: api.ErrOperationSupportedOnlyInFullMode.Error(),
@@ -210,7 +304,7 @@ func TestRedistributionToggle(t *testing.T) {
 		srv, _, _, _ := newTestServer(t, testServerOptions{
 			RedistributionAgentDisabled: true,
 		})
-		jsonhttptest.Request(t, srv, http.MethodPut, "/redistribution", http.StatusForbidden,
+		jsonhttptest.Request(t, srv, http.MethodPatch, "/redistributionstate", http.StatusForbidden,
 			jsonhttptest.WithJSONRequestBody(map[string]any{"enabled": false}),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "Storage incentives are disabled. This endpoint is unavailable.",
@@ -225,7 +319,7 @@ func TestRedistributionToggle(t *testing.T) {
 		srv, _, _, _ := newTestServer(t, testServerOptions{
 			FullAPIDisabled: true,
 		})
-		jsonhttptest.Request(t, srv, http.MethodPut, "/redistribution", http.StatusServiceUnavailable,
+		jsonhttptest.Request(t, srv, http.MethodPatch, "/redistributionstate", http.StatusServiceUnavailable,
 			jsonhttptest.WithJSONRequestBody(map[string]any{"enabled": false}),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "Node is syncing. This endpoint is unavailable. Try again later.",

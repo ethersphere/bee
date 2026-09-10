@@ -30,6 +30,8 @@ type redistributionStatusResponse struct {
 	Fees                      *bigint.BigInt `json:"fees"`
 	IsHealthy                 bool           `json:"isHealthy"`
 	Enabled                   bool           `json:"enabled"`
+	HasCommittedThisRound     bool           `json:"hasCommittedThisRound"`
+	HasRevealedThisRound      bool           `json:"hasRevealedThisRound"`
 }
 
 type redistributionToggleRequest struct {
@@ -64,6 +66,7 @@ func (s *Service) redistributionStatusHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	rd := status.RoundData[status.Round]
 	jsonhttp.OK(w, redistributionStatusResponse{
 		MinimumGasFunds:           bigint.Wrap(minGasFunds),
 		HasSufficientFunds:        hasSufficientFunds,
@@ -81,11 +84,13 @@ func (s *Service) redistributionStatusHandler(w http.ResponseWriter, r *http.Req
 		Fees:                      bigint.Wrap(status.Fees),
 		IsHealthy:                 status.IsHealthy,
 		Enabled:                   s.redistributionAgent.IsEnabled(),
+		HasCommittedThisRound:     rd.CommitKey != nil,
+		HasRevealedThisRound:      rd.HasRevealed,
 	})
 }
 
 func (s *Service) redistributionToggleHandler(w http.ResponseWriter, r *http.Request) {
-	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger.WithName("put_redistribution").Build())
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger.WithName("patch_redistributionstate").Build())
 
 	if s.beeMode != FullMode {
 		jsonhttp.BadRequest(w, errOperationSupportedOnlyInFullMode)
