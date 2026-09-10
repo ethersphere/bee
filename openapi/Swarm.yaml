@@ -345,8 +345,6 @@ paths:
             $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
           required: false
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageStamp"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmAct"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       requestBody:
         description: Chunk binary data containing at least 8 bytes.
         content:
@@ -362,8 +360,6 @@ paths:
               description: Tag UID from the request `swarm-tag` header if provided.
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/Uid"
-            "swarm-act-history-address":
-              $ref: "SwarmCommon.yaml#/components/headers/SwarmActHistoryAddress"
           content:
             application/json:
               schema:
@@ -971,9 +967,17 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
           description: "Single Owner Chunk address (which may have multiple payloads)"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmSocFieldsParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCacheWrappedChunkParameter"
       responses:
         "200":
-          description: Establishes a WebSocket subscription for incoming messages on the Single Owner Chunk address
+          description: >
+            Establishes a WebSocket subscription for incoming messages on the
+            Single Owner Chunk address. Each message is the binary serialization
+            of the Single Owner Chunk fields requested through the
+            swarm-soc-fields header (defaults to the wrapped chunk payload).
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -1013,8 +1017,6 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmAct"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       requestBody:
         required: true
         description: The SOC binary data, composed of the span (8 bytes) and up to 4KB of payload.
@@ -1035,8 +1037,6 @@ paths:
               description: Tag UID, returned when an upload session is in use (either because `swarm-tag` was supplied, `swarm-deferred-upload` requested deferred mode, or `swarm-pin` was set).
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/Uid"
-            "swarm-act-history-address":
-              $ref: "SwarmCommon.yaml#/components/headers/SwarmActHistoryAddress"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "401":
@@ -2588,7 +2588,11 @@ paths:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/StakeTransactionResponse"
         "400":
-          $ref: "SwarmCommon.yaml#/components/responses/400"
+          description: Deposit amount is below the required minimum.
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/StakeDepositErrorResponse"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -2597,7 +2601,7 @@ paths:
   "/stake":
     get:
       summary: Get the staked amount.
-      description: This endpoint fetches the total staked amount from the blockchain.
+      description: This endpoint fetches the total staked amount and the minimum additional deposit from the blockchain. The first deposit is at least 10 BZZ times 2^height. Subsequent deposits are at least 1 PLUR, or more if the price oracle has increased since the last deposit.
       tags:
         - Staking
       responses:
