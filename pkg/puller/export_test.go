@@ -15,7 +15,7 @@ func (p *Puller) IsSyncing(addr swarm.Address) bool {
 	return ok
 }
 
-func (p *Puller) IsBinSyncing(addr swarm.Address, bin uint8) bool {
+func (p *Puller) IsPeerBinSyncing(addr swarm.Address, bin uint8) bool {
 	p.syncPeersMtx.Lock()
 	defer p.syncPeersMtx.Unlock()
 	if peer, ok := p.syncPeers[addr.ByteString()]; ok {

@@ -22,6 +22,9 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/gorilla/websocket"
+	"resenje.org/web"
+
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	mockac "github.com/ethersphere/bee/v2/pkg/accesscontrol/mock"
 	accountingmock "github.com/ethersphere/bee/v2/pkg/accounting/mock"
@@ -70,8 +73,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/transaction/backendmock"
 	transactionmock "github.com/ethersphere/bee/v2/pkg/transaction/mock"
 	"github.com/ethersphere/bee/v2/pkg/util/testutil"
-	"github.com/gorilla/websocket"
-	"resenje.org/web"
 )
 
 var (
@@ -702,7 +703,7 @@ func createRedistributionAgentService(
 		postageContract,
 		stakingContract,
 		mockstorer.NewReserve(),
-		func() bool { return true },
+		func(uint8) bool { return true },
 		time.Millisecond*10,
 		blocksPerRound,
 		blocksPerPhase,
