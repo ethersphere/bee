@@ -55,11 +55,12 @@ const (
 	optionNameBzzTokenAddress              = "bzz-token-address"
 	optionNameSwapFactoryAddress           = "swap-factory-address"
 	optionNameSwapInitialDeposit           = "swap-initial-deposit"
+	optionNameNodeMode                     = "node-mode"
 	optionNameSwapEnable                   = "swap-enable"
 	optionNameChequebookEnable             = "chequebook-enable"
 	optionNameChequebookVerification       = "chequebook-verification"
 	optionNameChequebookMinBalance         = "chequebook-min-balance"
-	optionNameFullNode                     = "full-node"
+	optionNameFullNode                     = "full-node" // Deprecated: use node-mode instead.
 	optionNameLightNodeLimit               = "light-node-limit"
 	optionNamePostageContractAddress       = "postage-stamp-address"
 	optionNamePostageContractStartBlock    = "postage-stamp-start-block"
@@ -357,11 +358,15 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameSwapFactoryAddress, "", "swap factory addresses")
 	cmd.Flags().String(optionNameBzzTokenAddress, "", "bzz token contract address")
 	cmd.Flags().String(optionNameSwapInitialDeposit, "0", "initial deposit if deploying a new chequebook")
+	cmd.Flags().String(optionNameNodeMode, "", "node operational mode: full, light, or ultra-light (unset: inferred from deprecated full-node and blockchain-rpc-endpoint)")
 	cmd.Flags().Bool(optionNameSwapEnable, false, "enable swap")
 	cmd.Flags().Bool(optionNameChequebookEnable, true, "enable chequebook")
 	cmd.Flags().Bool(optionNameChequebookVerification, false, "reject full-node hive/handshake records that carry no chequebook address")
 	cmd.Flags().String(optionNameChequebookMinBalance, "110000000000000000", "minimum chequebook token balance required for verification, in token small units (default 11 BZZ)")
-	cmd.Flags().Bool(optionNameFullNode, false, "cause the node to start in full mode")
+	cmd.Flags().Bool(optionNameFullNode, false, "cause the node to start in full mode (deprecated: use --node-mode=full)")
+	if err := cmd.Flags().MarkDeprecated(optionNameFullNode, "use --node-mode=full instead"); err != nil {
+		panic(err)
+	}
 	cmd.Flags().Int(optionNameLightNodeLimit, 100, "light node limit")
 	cmd.Flags().String(optionNamePostageContractAddress, "", "postage stamp contract address")
 	cmd.Flags().Uint64(optionNamePostageContractStartBlock, 0, "postage stamp contract start block number")

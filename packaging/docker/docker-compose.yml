@@ -39,6 +39,7 @@ services:
       - BEE_NAT_WSS_ADDR
       - BEE_NEIGHBORHOOD_SUGGESTER
       - BEE_NETWORK_ID
+      - BEE_NODE_MODE
       - BEE_P2P_ADDR
       - BEE_P2P_WS_ENABLE
       - BEE_P2P_WSS_ADDR
