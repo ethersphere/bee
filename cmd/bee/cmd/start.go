@@ -382,17 +382,18 @@ const legacyNodeModeRemovalVersion = "v2.11.0"
 // two regimes, selected by whether node-mode is set.
 //
 // node-mode unset (legacy): the node behaves exactly as releases before
-// node-mode existed. chequebook-enable and storage-incentives-enable fall back
-// to their former default of true when not set, the mode is inferred from the
+// node-mode existed. Flag defaults of true for chequebook-enable and
+// storage-incentives-enable remain in effect, the mode is inferred from the
 // deprecated full-node option and the presence of blockchain-rpc-endpoint, and
 // no further validation is applied. A deprecation warning names the equivalent
 // node-mode value and the release in which the inference is removed.
 //
 // node-mode set: the mode owns the config. Options the mode implies are
 // enabled unless the operator explicitly disabled them, options the mode
-// cannot support are rejected when explicitly enabled, and
-// blockchain-rpc-endpoint is required for light and full nodes. Implied values
-// are written back to config so the rest of node startup picks them up.
+// cannot support are rejected when explicitly enabled (overriding the pflag
+// defaults of true when unset), and blockchain-rpc-endpoint is required for
+// light and full nodes. Implied values are written back to config so the rest
+// of node startup picks them up.
 func (c *command) resolveNodeMode(logger log.Logger) (node.NodeMode, error) {
 	modeStr := c.config.GetString(optionNameNodeMode)
 	if modeStr == "" {
@@ -419,6 +420,12 @@ func (c *command) resolveNodeMode(logger log.Logger) (node.NodeMode, error) {
 		// for them, so implying the options would only cost a chequebook deploy.
 		if !c.config.GetBool(optionNameBootnodeMode) {
 			c.enableImpliedOption(logger, mode, optionNameSwapEnable)
+			// If swap was explicitly turned off by the operator and chequebook
+			// was not explicitly configured, turn off chequebook to prevent an
+			// accidental contradiction with disabled swap.
+			if !c.config.GetBool(optionNameSwapEnable) && !c.config.IsSet(optionNameChequebookEnable) {
+				c.config.Set(optionNameChequebookEnable, false)
+			}
 			if c.config.GetBool(optionNameSwapEnable) {
 				c.enableImpliedOption(logger, mode, optionNameChequebookEnable)
 			}
@@ -428,15 +435,29 @@ func (c *command) resolveNodeMode(logger log.Logger) (node.NodeMode, error) {
 		if rpcEndpoint == "" {
 			return "", errors.New("light node requires blockchain-rpc-endpoint to be set")
 		}
-		if c.config.GetBool(optionNameStorageIncentivesEnable) {
+		// Storage incentives are full-node only; override the pflag default of true when unset.
+		if !c.config.IsSet(optionNameStorageIncentivesEnable) {
+			c.config.Set(optionNameStorageIncentivesEnable, false)
+		} else if c.config.GetBool(optionNameStorageIncentivesEnable) {
 			return "", errors.New("light node cannot have storage-incentives-enable set to true")
+		}
+		// Chequebook requires swap; if swap is off and chequebook was not explicitly configured, override to false.
+		if !c.config.GetBool(optionNameSwapEnable) && !c.config.IsSet(optionNameChequebookEnable) {
+			c.config.Set(optionNameChequebookEnable, false)
 		}
 	case node.UltraLightMode:
 		if c.config.GetBool(optionNameSwapEnable) {
 			return "", errors.New("ultra-light node cannot have swap-enable set to true")
 		}
-		if c.config.GetBool(optionNameStorageIncentivesEnable) {
+		// Storage incentives are not supported on ultra-light; override the pflag default of true when unset.
+		if !c.config.IsSet(optionNameStorageIncentivesEnable) {
+			c.config.Set(optionNameStorageIncentivesEnable, false)
+		} else if c.config.GetBool(optionNameStorageIncentivesEnable) {
 			return "", errors.New("ultra-light node cannot have storage-incentives-enable set to true")
+		}
+		// Chequebook is not supported on ultra-light; override the pflag default of true when unset.
+		if !c.config.IsSet(optionNameChequebookEnable) {
+			c.config.Set(optionNameChequebookEnable, false)
 		}
 	}
 
@@ -470,11 +491,9 @@ func (c *command) enableImpliedOption(logger log.Logger, mode node.NodeMode, key
 // backend for every full node and failed at chain init without one, so the
 // early error changes the message, not the outcome.
 func (c *command) resolveLegacyNodeMode(logger log.Logger) (node.NodeMode, error) {
-	// chequebook-enable and storage-incentives-enable used to default to true.
-	// Restore that for configs that leave them unset so an upgraded node keeps
-	// its settlement and incentives behaviour. Both stay gated in NewBee
-	// (chequebook on swap-enable, incentives on full mode), so this cannot start
-	// anything the previous release would not have started.
+	// chequebook-enable and storage-incentives-enable default to true.
+	// Ensure they are populated in config when unset (e.g. bare viper in tests)
+	// so an upgraded node keeps its settlement and incentives behaviour.
 	for _, key := range []string{optionNameChequebookEnable, optionNameStorageIncentivesEnable} {
 		if !c.config.IsSet(key) {
 			c.config.Set(key, true)

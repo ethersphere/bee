@@ -37,8 +37,8 @@
 # BEE_CACHE_CAPACITY=1000000
 ## enable forwarded content caching (default true)
 # BEE_CACHE_RETRIEVAL=true
-## enable chequebook; requires swap; implied by BEE_NODE_MODE=full (default false)
-# BEE_CHEQUEBOOK_ENABLE=false
+## enable chequebook (default true)
+# BEE_CHEQUEBOOK_ENABLE=true
 ## reject full-node hive/handshake records that carry no chequebook address
 # BEE_CHEQUEBOOK_VERIFICATION=false
 ## origins with CORS headers enabled (default [])
@@ -117,8 +117,8 @@
 # BEE_STATIC_NODES=[]
 ## lru memory caching capacity in number of statestore entries (default 100000)
 # BEE_STATESTORE_CACHE_CAPACITY=100000
-## enable storage incentives feature; full node only; implied by BEE_NODE_MODE=full (default false)
-# BEE_STORAGE_INCENTIVES_ENABLE=false
+## enable storage incentives feature (default true)
+# BEE_STORAGE_INCENTIVES_ENABLE=true
 ## enable swap (default false)
 # BEE_SWAP_ENABLE=false
 ## swap factory addresses (default empty)

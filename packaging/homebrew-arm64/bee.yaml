@@ -27,7 +27,7 @@
 ## enable swap
 # swap-enable: false
 ## enable chequebook (requires swap-enable; implied by node-mode: full)
-# chequebook-enable: false
+# chequebook-enable: true
 ## reject full-node hive/handshake records that carry no chequebook address
 # chequebook-verification: false
 ## swap factory addresses
@@ -37,7 +37,7 @@
 
 ## ── Full node only ────────────────────────────────────────────────────────────
 ## enable storage incentives feature (implied by node-mode: full)
-# storage-incentives-enable: false
+# storage-incentives-enable: true
 ## reserve capacity doubling
 # reserve-capacity-doubling: 0
 ## minimum radius storage threshold
