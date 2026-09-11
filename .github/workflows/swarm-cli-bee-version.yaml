@@ -1,14 +1,19 @@
 name: Bump Bee version in Swarm CLI
 
-# On a stable Bee release, trigger swarm-cli's update-bee-version workflow
+# On a stable Bee release, notify swarm-cli's update-bee-version workflow
 # (ethersphere/swarm-cli, added in #760), which bumps the Bee version in
 # quickstart.ts and opens a PR there. Cross-repo dispatch needs more than the
 # default GITHUB_TOKEN, so it uses the BEE_RUNNER GitHub App (the same App
 # swarm-cli's own workflow uses) scoped to swarm-cli.
+#
+# Triggered by the tag push, not by the release event: releases here are cut by
+# goreleaser using GITHUB_TOKEN, and events raised by GITHUB_TOKEN do not start
+# further workflow runs, so `release: released` never fired.
 
 on:
-  release:
-    types: [released] # stable releases only (skips drafts and pre-releases/RCs)
+  push:
+    tags:
+      - 'v*.*.*'
   workflow_dispatch: # manual trigger for testing / re-runs
     inputs:
       version:
@@ -19,6 +24,11 @@ permissions: {}
 
 jobs:
   dispatch-swarm-cli:
+    # Stable tags only: pre-releases and RCs carry a '-' suffix. Manual runs are
+    # always allowed so a specific version can be re-sent.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      !contains(github.ref_name, '-')
     runs-on: ubuntu-latest
     steps:
       - name: Generate token for swarm-cli
@@ -29,13 +39,19 @@ jobs:
           private-key: ${{ secrets.BEE_RUNNER_KEY }}
           owner: ethersphere
           repositories: swarm-cli
+          permission-contents: write
 
       - name: Dispatch swarm-cli update-bee-version
+        uses: actions/github-script@v7
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          VERSION: ${{ github.event.release.tag_name || inputs.version }}
-        run: |
-          echo "Dispatching swarm-cli update-bee-version for ${VERSION}"
-          gh workflow run update-bee-version.yaml \
-            --repo ethersphere/swarm-cli \
-            -f version="${VERSION}"
+          # swarm-cli validates the leading 'v', so send the tag unchanged.
+          VERSION: ${{ inputs.version || github.ref_name }}
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            await github.rest.repos.createDispatchEvent({
+              owner: 'ethersphere',
+              repo: 'swarm-cli',
+              event_type: 'bee-released',
+              client_payload: { version: process.env.VERSION }
+            })
