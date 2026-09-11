@@ -31,6 +31,12 @@ type metrics struct {
 	Blocklist                             prometheus.Counter
 	ReachabilityStatus                    *prometheus.GaugeVec
 	PeersReachabilityStatus               *prometheus.GaugeVec
+
+	AnnounceIsNeighborTotal    *prometheus.CounterVec
+	AnnounceBinPeersAvailable  *prometheus.HistogramVec
+	AnnounceBinPeersSelected   *prometheus.HistogramVec
+	AnnouncePeersSentToNewPeer prometheus.Histogram
+	AnnounceErrorsTotal        *prometheus.CounterVec
 }
 
 // newMetrics is a convenient constructor for creating new metrics.
@@ -163,6 +169,51 @@ func newMetrics() metrics {
 				Help:      "The reachability status of peers.",
 			},
 			[]string{"peers_reachability_status"},
+		),
+		AnnounceIsNeighborTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "announce_is_neighbor_total",
+				Help:      "Number of peer announce operations. The is_neighbor label is one of: true, false.",
+			},
+			[]string{"is_neighbor"},
+		),
+		AnnounceBinPeersAvailable: prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "announce_bin_peers_available",
+				Help:      "Number of connected peers available in a bin before announce selection. The mode label is one of: full, subset.",
+				Buckets:   []float64{1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 18, 25, 32},
+			},
+			[]string{"mode"},
+		),
+		AnnounceBinPeersSelected: prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "announce_bin_peers_selected",
+				Help:      "Number of peers selected from a bin during announce. The mode label is one of: full, subset.",
+				Buckets:   []float64{1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 18, 25, 32},
+			},
+			[]string{"mode"},
+		),
+		AnnouncePeersSentToNewPeer: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "announce_peers_sent_to_new_peer",
+			Help:      "Number of existing peers sent to a newly connected peer in a single announce.",
+			Buckets:   []float64{1, 2, 5, 10, 15, 20, 30, 40, 50, 75, 100, 150, 200},
+		}),
+		AnnounceErrorsTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "announce_errors_total",
+				Help:      "Number of announce errors. The reason label is one of: random_subset, broadcast_to_new.",
+			},
+			[]string{"reason"},
 		),
 	}
 }
