@@ -12,6 +12,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/streamtest"
@@ -19,6 +20,7 @@ import (
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	"github.com/ethersphere/bee/v2/pkg/pullsync"
 	"github.com/ethersphere/bee/v2/pkg/soc"
+	soctesting "github.com/ethersphere/bee/v2/pkg/soc/testing"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	testingc "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer"
@@ -49,11 +51,13 @@ func init() {
 		chunks[i] = testingc.GenerateTestRandomChunk()
 		addrs[i] = chunks[i].Address()
 		stampHash, _ := chunks[i].Stamp().Hash()
+		sum, _ := storage.ChunkSum(chunks[i])
 		results[i] = &storer.BinC{
 			Address:   addrs[i],
 			BatchID:   chunks[i].Stamp().BatchID(),
 			BinID:     uint64(i),
 			StampHash: stampHash,
+			Sum:       sum,
 		}
 	}
 }
@@ -165,11 +169,16 @@ func TestIncoming_WantErrors(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			sum, err := storage.ChunkSum(c)
+			if err != nil {
+				t.Fatal(err)
+			}
 			tResults[i] = &storer.BinC{
 				Address:   c.Address(),
 				BatchID:   c.Stamp().BatchID(),
 				BinID:     uint64(i + 5), // start from a higher bin id
 				StampHash: stampHash,
+				Sum:       sum,
 			}
 		}
 
@@ -196,10 +205,13 @@ func TestIncoming_WantErrors(t *testing.T) {
 		)
 
 		topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
-		for _, e := range []error{storage.ErrOverwriteNewerChunk, validStampErr, swarm.ErrInvalidChunk} {
+		for _, e := range []error{validStampErr, swarm.ErrInvalidChunk} {
 			if !errors.Is(err, e) {
 				t.Fatalf("expected error %v", err)
 			}
+		}
+		if errors.Is(err, storage.ErrOverwriteNewerChunk) {
+			t.Fatal("ErrOverwriteNewerChunk must not be treated as a sync error")
 		}
 
 		if count != 3 {
@@ -314,11 +326,11 @@ func TestGetCursorsError(t *testing.T) {
 func haveChunks(t *testing.T, s *mock.ReserveStore, chunks ...swarm.Chunk) {
 	t.Helper()
 	for _, c := range chunks {
-		stampHash, err := c.Stamp().Hash()
+		sum, err := storage.ChunkSum(c)
 		if err != nil {
 			t.Fatal(err)
 		}
-		have, err := s.ReserveHas(c.Address(), c.Stamp().BatchID(), stampHash)
+		have, err := s.ReserveHas(c.Address(), sum)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -373,4 +385,229 @@ func newPullSyncWithStamperValidator(
 		}
 	})
 	return ps, storage
+}
+
+// TestIncoming_DivergentSOC covers the core SWIP-101 property end to end: a
+// single owner chunk that shares address, batch and stamp with one the client
+// already holds, but wraps different content, must be wanted and delivered.
+// Under the previous content-blind want-check it was silently skipped, which
+// kept neighborhoods from ever converging. An identical chunk must still not
+// be wanted.
+func TestIncoming_DivergentSOC(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		privKey, err := crypto.GenerateSecp256k1Key()
+		if err != nil {
+			t.Fatal(err)
+		}
+		signer := crypto.NewDefaultSigner(privKey)
+
+		// same owner and id: same SOC address. The stamp signs the (shared)
+		// chunk address, so one stamp legitimately covers both chunks and the
+		// stamp hashes are identical: only the sums tell them apart.
+		stamp := postagetesting.MustNewStamp()
+		held := soctesting.GenerateMockSocWithSigner(t, []byte("held"), signer).Chunk().WithStamp(stamp)
+		divergent := soctesting.GenerateMockSocWithSigner(t, []byte("divergent"), signer).Chunk().WithStamp(stamp)
+
+		stampHash, err := stamp.Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		offer := func(ch swarm.Chunk) []*storer.BinC {
+			sum, err := storage.ChunkSum(ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return []*storer.BinC{{
+				Address:   ch.Address(),
+				BatchID:   stamp.BatchID(),
+				BinID:     1,
+				StampHash: stampHash,
+				Sum:       sum,
+			}}
+		}
+
+		// divergent content is wanted
+		{
+			ps, _ := newPullSync(t, nil, 1, mock.WithSubscribeResp(offer(divergent), nil), mock.WithChunks(divergent))
+			recorder := streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+			psClient, clientDb := newPullSync(t, recorder, 0, mock.WithChunks(held))
+
+			if _, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0); err != nil {
+				t.Fatal(err)
+			}
+
+			if p := clientDb.PutCalls(); p != 1 {
+				t.Fatalf("divergent soc must be delivered: want 1 put, got %d", p)
+			}
+			haveChunks(t, clientDb, divergent)
+		}
+
+		// identical content is not wanted
+		{
+			ps, _ := newPullSync(t, nil, 1, mock.WithSubscribeResp(offer(held), nil), mock.WithChunks(held))
+			recorder := streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+			psClient, clientDb := newPullSync(t, recorder, 0, mock.WithChunks(held))
+
+			if _, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0); err != nil {
+				t.Fatal(err)
+			}
+
+			if p := clientDb.PutCalls(); p != 0 {
+				t.Fatalf("identical soc must not be delivered: want 0 puts, got %d", p)
+			}
+		}
+	})
+}
+
+// TestIncoming_DivergentRejected covers a delivered chunk that the reserve
+// rejects with ErrDivergentChunkRejected: a legitimate outcome, so the sync
+// must report no error, advance the cursor, and keep the other chunks.
+func TestIncoming_DivergentRejected(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		putHook := func(c swarm.Chunk) error {
+			if c.Address().Equal(chunks[1].Address()) {
+				return storage.ErrDivergentChunkRejected
+			}
+			return nil
+		}
+
+		var (
+			topMost            = uint64(4)
+			ps, _              = newPullSync(t, nil, 5, mock.WithSubscribeResp(results, nil), mock.WithChunks(chunks...))
+			recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+			psClient, clientDb = newPullSync(t, recorder, 0, mock.WithPutHook(putHook))
+		)
+
+		topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
+		if err != nil {
+			t.Fatalf("a lost tie-break is not a sync error, got %v", err)
+		}
+		if topmost != topMost {
+			t.Fatalf("got offer topmost %d but want %d", topmost, topMost)
+		}
+		if count != len(chunks)-1 {
+			t.Fatalf("got %d chunks but want %d", count, len(chunks)-1)
+		}
+		haveChunks(t, clientDb, append(chunks[:1:1], chunks[2:]...)...)
+		if has, _ := clientDb.ReserveHas(chunks[1].Address(), results[1].Sum); has {
+			t.Fatal("rejected chunk must not be stored")
+		}
+	})
+}
+
+// TestIncoming_OverwriteNewerChunk covers a delivered chunk that the reserve
+// rejects with ErrOverwriteNewerChunk: carrying an older timestamp is a
+// legitimate outcome, so the sync must report no error, advance the cursor,
+// and keep the other chunks.
+func TestIncoming_OverwriteNewerChunk(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		putHook := func(c swarm.Chunk) error {
+			if c.Address().Equal(chunks[1].Address()) {
+				return storage.ErrOverwriteNewerChunk
+			}
+			return nil
+		}
+
+		var (
+			topMost            = uint64(4)
+			ps, _              = newPullSync(t, nil, 5, mock.WithSubscribeResp(results, nil), mock.WithChunks(chunks...))
+			recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+			psClient, clientDb = newPullSync(t, recorder, 0, mock.WithPutHook(putHook))
+		)
+
+		topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
+		if err != nil {
+			t.Fatalf("an older timestamp is not a sync error, got %v", err)
+		}
+		if topmost != topMost {
+			t.Fatalf("got offer topmost %d but want %d", topmost, topMost)
+		}
+		if count != len(chunks)-1 {
+			t.Fatalf("got %d chunks but want %d", count, len(chunks)-1)
+		}
+		haveChunks(t, clientDb, append(chunks[:1:1], chunks[2:]...)...)
+		if has, _ := clientDb.ReserveHas(chunks[1].Address(), results[1].Sum); has {
+			t.Fatal("rejected older chunk must not be stored")
+		}
+	})
+}
+
+// TestIncoming_OfferSumLength covers an offer carrying a sum of the wrong
+// length: the malformed entry is skipped, valid chunks are synced, and the
+// cursor advances to avoid a hot retry loop.
+func TestIncoming_OfferSumLength(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		tResults := make([]*storer.BinC, len(results))
+		for i, r := range results {
+			cp := *r
+			tResults[i] = &cp
+		}
+		tResults[2].Sum = []byte{1, 2, 3}
+
+		var (
+			topMost            = uint64(4)
+			ps, _              = newPullSync(t, nil, 5, mock.WithSubscribeResp(tResults, nil), mock.WithChunks(chunks...))
+			recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+			psClient, clientDb = newPullSync(t, recorder, 0)
+		)
+
+		topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
+		if err != nil {
+			t.Fatalf("unexpected error for a malformed offer sum: %v", err)
+		}
+		if topmost != topMost {
+			t.Fatalf("got topmost %d, want %d", topmost, topMost)
+		}
+		if count != len(chunks)-1 {
+			t.Fatalf("got count %d, want %d", count, len(chunks)-1)
+		}
+		if p := clientDb.PutCalls(); p != len(chunks)-1 {
+			t.Fatalf("want %d puts but got %d", len(chunks)-1, p)
+		}
+		haveChunks(t, clientDb, append(chunks[:2:2], chunks[3:]...)...)
+		if has, _ := clientDb.ReserveHas(chunks[2].Address(), results[2].Sum); has {
+			t.Fatal("chunk with malformed offer sum must not be stored")
+		}
+	})
+}
+
+// TestIncoming_StaleOfferSum covers a sender whose offer advertises a sum that
+// does not match the payload it then delivers (a stale sum on its side). The
+// receiver wants the chunk, recomputes the sum on delivery, rejects it as
+// unsolicited, stores the rest and still advances the cursor: the stale entry
+// is never obtainable from that peer, but it does not stall the sync.
+func TestIncoming_StaleOfferSum(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		tResults := make([]*storer.BinC, len(results))
+		for i, r := range results {
+			cp := *r
+			tResults[i] = &cp
+		}
+		stale := append([]byte(nil), results[1].Sum...)
+		stale[0] ^= 0xff
+		tResults[1].Sum = stale
+
+		var (
+			topMost            = uint64(4)
+			ps, _              = newPullSync(t, nil, 5, mock.WithSubscribeResp(tResults, nil), mock.WithChunks(chunks...))
+			recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+			psClient, clientDb = newPullSync(t, recorder, 0)
+		)
+
+		topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
+		if !errors.Is(err, pullsync.ErrUnsolicitedChunk) {
+			t.Fatalf("expected %v, got %v", pullsync.ErrUnsolicitedChunk, err)
+		}
+		if topmost != topMost {
+			t.Fatalf("got offer topmost %d but want %d", topmost, topMost)
+		}
+		if count != len(chunks)-1 {
+			t.Fatalf("got %d chunks but want %d", count, len(chunks)-1)
+		}
+		haveChunks(t, clientDb, append(chunks[:1:1], chunks[2:]...)...)
+		if has, _ := clientDb.ReserveHas(chunks[1].Address(), results[1].Sum); has {
+			t.Fatal("chunk delivered under a stale sum must not be stored")
+		}
+	})
 }
