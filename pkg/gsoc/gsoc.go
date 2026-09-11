@@ -13,9 +13,8 @@ import (
 )
 
 // Handler defines code to be executed upon reception of a GSOC sub message.
-// it is used as a parameter definition. It receives the recovered single owner
-// chunk so the consumer has access to all of its properties.
-type Handler func(*soc.SOC)
+// it is used as a parameter definition.
+type Handler func([]byte)
 
 type Listener interface {
 	Subscribe(address swarm.Address, handler Handler) (cleanup func())
@@ -74,7 +73,7 @@ func (l *listener) Handle(c *soc.SOC) {
 
 	for _, hh := range h {
 		go func(hh Handler) {
-			hh(c)
+			hh(c.WrappedChunk().Data()[swarm.SpanSize:])
 		}(*hh)
 	}
 }
