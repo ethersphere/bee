@@ -95,6 +95,7 @@ const (
 	optionAutoTLSRegistrationEndpoint      = "autotls-registration-endpoint"
 	optionAutoTLSCAEndpoint                = "autotls-ca-endpoint"
 	optionUseSIMD                          = "use-simd-hashing"
+	optionNamePubsubBrokerMode             = "pubsub-broker-mode"
 
 	// blockchain-rpc
 	optionNameBlockchainRpcEndpoint    = "blockchain-rpc-endpoint"
@@ -395,6 +396,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionAutoTLSDomain, p2pforge.DefaultForgeDomain, "autotls domain")
 	cmd.Flags().String(optionAutoTLSRegistrationEndpoint, p2pforge.DefaultForgeEndpoint, "autotls registration endpoint")
 	cmd.Flags().String(optionAutoTLSCAEndpoint, p2pforge.DefaultCAEndpoint, "autotls certificate authority endpoint")
+	cmd.Flags().Bool(optionNamePubsubBrokerMode, true, "enable pubsub broker mode")
 	cmd.Flags().Bool(optionUseSIMD, false, "use SIMD BMT hasher (available only on linux amd64 platforms)")
 }
 
