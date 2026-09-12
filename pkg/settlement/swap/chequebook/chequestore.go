@@ -41,6 +41,8 @@ var (
 // ChequeStore handles the verification and storage of received cheques
 type ChequeStore interface {
 	// ReceiveCheque verifies and stores a cheque. It returns the total amount earned.
+	// exchangeRate and deduction must be non-nil; they are supplied by the local
+	// node (from the price oracle), not by the peer.
 	ReceiveCheque(ctx context.Context, cheque *SignedCheque, exchangeRate, deduction *big.Int) (*big.Int, error)
 	// LastCheque returns the last cheque we received from a specific chequebook.
 	LastCheque(chequebook common.Address) (*SignedCheque, error)
@@ -105,6 +107,7 @@ func (s *chequeStore) LastCheque(chequebook common.Address) (*SignedCheque, erro
 }
 
 // ReceiveCheque verifies and stores a cheque. It returns the totam amount earned.
+// exchangeRate and deduction must be non-nil.
 func (s *chequeStore) ReceiveCheque(ctx context.Context, cheque *SignedCheque, exchangeRate, deduction *big.Int) (*big.Int, error) {
 	// verify we are the beneficiary
 	if cheque.Beneficiary != s.beneficiary {
@@ -138,9 +141,10 @@ func (s *chequeStore) ReceiveCheque(ctx context.Context, cheque *SignedCheque, e
 		}
 
 		lastCumulativePayout = big.NewInt(0)
-	} else if lastReceivedCheque == nil {
-		// A corrupt statestore entry (e.g. a literal JSON null) unmarshals into a
-		// nil pointer without an error; guard against dereferencing it below.
+	} else if lastReceivedCheque == nil || lastReceivedCheque.CumulativePayout == nil {
+		// A corrupt statestore entry (e.g. a literal JSON null or an object
+		// omitting cumulativePayout) unmarshals into a nil pointer without an
+		// error; guard against dereferencing it below.
 		return nil, fmt.Errorf("nil cheque loaded from statestore for chequebook %x: %w", cheque.Chequebook, ErrNoCheque)
 	} else {
 		lastCumulativePayout = lastReceivedCheque.CumulativePayout

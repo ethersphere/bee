@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -94,4 +95,38 @@ func TestCurrentRatesConcurrentWithUpdates(t *testing.T) {
 	}()
 
 	wg.Wait()
+}
+
+func TestCurrentRatesConcurrentWithUpdatesSync(t *testing.T) {
+	priceOracleAddress := common.HexToAddress("0xabcd")
+	expectedPrice := big.NewInt(100)
+	expectedDeduce := big.NewInt(200)
+
+	result := make([]byte, 64)
+	expectedPrice.FillBytes(result[0:32])
+	expectedDeduce.FillBytes(result[32:64])
+
+	ex := priceoracle.New(
+		log.Noop,
+		priceOracleAddress,
+		transactionmock.New(
+			transactionmock.WithABICall(
+				&priceOracleABI,
+				priceOracleAddress,
+				result,
+				"getPrice",
+			),
+		),
+		1, // 1 second divisor so poll loop updates rapidly
+	)
+
+	ex.Start()
+	defer ex.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	for ctx.Err() == nil {
+		_, _, _ = ex.CurrentRates()
+	}
 }
