@@ -35,6 +35,10 @@ var (
 	// ErrMissingReference is returned when the reference for the manifest file
 	// is missing.
 	ErrMissingReference = errors.New("manifest: missing reference")
+
+	// ErrStopWalk can be returned by a WalkEntryFunc to terminate an entry
+	// walk early without the walk itself reporting an error.
+	ErrStopWalk = errors.New("manifest: stop walk")
 )
 
 // StoreSizeFunc is a callback on every content size that will be stored by
@@ -66,6 +70,23 @@ type Entry interface {
 	Reference() swarm.Address
 	// Metadata returns the metadata of the file.
 	Metadata() map[string]string
+}
+
+// WalkEntryFunc is the type of the function called for each manifest entry
+// visited by an EntryWalker. Entries are visited in deterministic
+// (lexicographic) path order. Returning ErrStopWalk terminates the walk
+// cleanly; any other error aborts the walk and is propagated.
+type WalkEntryFunc func(path string, entry Entry) error
+
+// EntryWalker is an optional interface implemented by manifests that can
+// enumerate their entries server-side. It powers manifest listing without
+// forcing every Interface implementation to support traversal, and without
+// exposing the underlying trie representation to callers.
+type EntryWalker interface {
+	// WalkEntry visits every value entry whose path is at or below prefix,
+	// in lexicographic order, calling fn for each. A prefix of "" (or
+	// RootPath) walks the whole manifest.
+	WalkEntry(ctx context.Context, prefix string, fn WalkEntryFunc) error
 }
 
 // NewDefaultManifest creates a new manifest with default type.
