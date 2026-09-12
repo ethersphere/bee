@@ -20,7 +20,9 @@ import (
 	mockbatchstore "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
 	mockpost "github.com/ethersphere/bee/v2/pkg/postage/mock"
 	"github.com/ethersphere/bee/v2/pkg/spinlock"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
+	"github.com/ethersphere/bee/v2/pkg/topology"
 
 	"github.com/ethersphere/bee/v2/pkg/api"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
@@ -29,6 +31,17 @@ import (
 	testingc "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
+
+// noPeersChunkStore simulates a netstore whose network retrieval failed
+// because no peers were available, as opposed to the chunk genuinely
+// not existing anywhere.
+type noPeersChunkStore struct {
+	*inmemchunkstore.ChunkStore
+}
+
+func (noPeersChunkStore) Get(context.Context, swarm.Address) (swarm.Chunk, error) {
+	return nil, topology.ErrNotFound
+}
 
 // nolint:paralleltest,tparallel
 // TestChunkUploadDownload uploads a chunk to an API that verifies the chunk according
@@ -136,6 +149,21 @@ func TestChunkHasHandler(t *testing.T) {
 		jsonhttptest.Request(t, testServer, http.MethodHead, "/chunks/abcd1100zz", http.StatusBadRequest,
 			jsonhttptest.WithNoResponseBody())
 	})
+}
+
+// nolint:paralleltest,tparallel
+func TestChunkGetHandlerNoPeers(t *testing.T) {
+	storerMock := mockstorer.NewWithChunkStore(noPeersChunkStore{inmemchunkstore.New()})
+	testServer, _, _, _ := newTestServer(t, testServerOptions{
+		Storer: storerMock,
+	})
+
+	jsonhttptest.Request(t, testServer, http.MethodGet, "/chunks/"+swarm.MustParseHexAddress("aabbcc").String(), http.StatusServiceUnavailable,
+		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+			Message: "chunk could not be retrieved because no usable peer was available",
+			Code:    http.StatusServiceUnavailable,
+		}),
+	)
 }
 
 func TestChunkHandlersInvalidInputs(t *testing.T) {
