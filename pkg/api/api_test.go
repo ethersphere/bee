@@ -22,6 +22,9 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/gorilla/websocket"
+	"resenje.org/web"
+
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	mockac "github.com/ethersphere/bee/v2/pkg/accesscontrol/mock"
 	accountingmock "github.com/ethersphere/bee/v2/pkg/accounting/mock"
@@ -70,8 +73,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/transaction/backendmock"
 	transactionmock "github.com/ethersphere/bee/v2/pkg/transaction/mock"
 	"github.com/ethersphere/bee/v2/pkg/util/testutil"
-	"github.com/gorilla/websocket"
-	"resenje.org/web"
 )
 
 var (
@@ -126,17 +127,18 @@ type testServerOptions struct {
 	BatchStore postage.Storer
 	SyncStatus func() (bool, error)
 
-	BackendOpts         []backendmock.Option
-	Erc20Opts           []erc20mock.Option
-	BeeMode             api.BeeNodeMode
-	RedistributionAgent *storageincentives.Agent
-	NodeStatus          *status.Service
-	PinIntegrity        api.PinIntegrity
-	WhitelistedAddr     string
-	FullAPIDisabled     bool
-	ChequebookDisabled  bool
-	SwapDisabled        bool
-	Erc20ServiceNil     bool
+	BackendOpts                 []backendmock.Option
+	Erc20Opts                   []erc20mock.Option
+	BeeMode                     api.BeeNodeMode
+	RedistributionAgent         *storageincentives.Agent
+	RedistributionAgentDisabled bool
+	NodeStatus                  *status.Service
+	PinIntegrity                api.PinIntegrity
+	WhitelistedAddr             string
+	FullAPIDisabled             bool
+	ChequebookDisabled          bool
+	SwapDisabled                bool
+	Erc20ServiceNil             bool
 }
 
 func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.Conn, string, *chanStorer) {
@@ -223,11 +225,13 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 
 	s.SetP2P(o.P2P)
 
-	if o.RedistributionAgent == nil {
-		o.RedistributionAgent, _ = createRedistributionAgentService(t, o.Overlay, o.StateStorer, erc20, transaction, backend, o.BatchStore)
-		s.SetRedistributionAgent(o.RedistributionAgent)
+	if !o.RedistributionAgentDisabled {
+		if o.RedistributionAgent == nil {
+			o.RedistributionAgent, _ = createRedistributionAgentService(t, o.Overlay, o.StateStorer, erc20, transaction, backend, o.BatchStore)
+			s.SetRedistributionAgent(o.RedistributionAgent)
+		}
+		testutil.CleanupCloser(t, o.RedistributionAgent)
 	}
-	testutil.CleanupCloser(t, o.RedistributionAgent)
 
 	s.SetSwarmAddress(&o.Overlay)
 	s.SetProbe(o.Probe)

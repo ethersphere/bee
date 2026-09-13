@@ -837,6 +837,15 @@ components:
           type: boolean
         isHealthy:
           type: boolean
+        enabled:
+          type: boolean
+          description: Whether the node will commit in new redistribution rounds. Sampling still runs while disabled. A disabled node still finishes a round that already has an on-chain commit. Re-enabling during a commit phase that was already skipped does not retry that round.
+        hasCommittedThisRound:
+          type: boolean
+          description: Whether the node has already committed in the current round. Operators can shut down without freeze risk when this is false.
+        hasRevealedThisRound:
+          type: boolean
+          description: Whether the node has revealed in the current round. After a commit, the node must reveal before it is safe to shut down.
         phase:
           type: string
         round:
@@ -857,6 +866,21 @@ components:
           $ref: "#/components/schemas/BigInt"
         fees:
           $ref: "#/components/schemas/BigInt"
+
+    RedistributionEnableRequest:
+      type: object
+      required:
+        - enabled
+      properties:
+        enabled:
+          type: boolean
+          description: Whether the node should commit in new redistribution rounds. Sampling still runs while disabled.
+
+    RedistributionEnableResponse:
+      type: object
+      properties:
+        enabled:
+          type: boolean
 
     PendingTransactionsResponse:
       type: object
