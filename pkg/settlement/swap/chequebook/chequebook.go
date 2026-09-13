@@ -83,6 +83,7 @@ type service struct {
 	totalIssuedReserved *big.Int
 	coveringBalance     *big.Int
 	coveringBalanceAt   time.Time
+	metrics             metrics
 }
 
 // New creates a new chequebook service for the provided chequebook contract.
@@ -96,6 +97,7 @@ func New(transactionService transaction.Service, address, ownerAddress common.Ad
 		store:               store,
 		chequeSigner:        chequeSigner,
 		totalIssuedReserved: big.NewInt(0),
+		metrics:             newMetrics(),
 	}, nil
 }
 
@@ -155,8 +157,11 @@ func (s *service) availableBalance(ctx context.Context) (*big.Int, error) {
 func (s *service) getOrLoadCoveringBalance(ctx context.Context) (*big.Int, error) {
 	now := time.Now().UTC()
 	if s.coveringBalance != nil && now.Sub(s.coveringBalanceAt) < coveringBalanceCacheValidity {
+		s.metrics.CoveringBalanceCacheHit.Inc()
 		return new(big.Int).Set(s.coveringBalance), nil
 	}
+
+	s.metrics.CoveringBalanceCacheMiss.Inc()
 
 	totalPaidOut, err := s.contract.TotalPaidOut(ctx)
 	if err != nil {
@@ -176,6 +181,7 @@ func (s *service) getOrLoadCoveringBalance(ctx context.Context) (*big.Int, error
 func (s *service) invalidateCoveringBalance() {
 	s.lock.Lock()
 	defer s.lock.Unlock()
+	s.metrics.CoveringBalanceCacheInvalidation.Inc()
 	s.coveringBalance = nil
 	s.coveringBalanceAt = time.Time{}
 }
@@ -209,6 +215,7 @@ func (s *service) reserveTotalIssued(ctx context.Context, amount *big.Int) (*big
 	}
 
 	if amount.Cmp(big.NewInt(0).Sub(availableBalance, s.totalIssuedReserved)) > 0 {
+		s.metrics.OutOfFunds.Inc()
 		return nil, ErrOutOfFunds
 	}
 
