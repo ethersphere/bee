@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/sctx"
@@ -30,6 +31,8 @@ type SendChequeFunc func(cheque *SignedCheque) error
 const (
 	lastIssuedChequeKeyPrefix = "swap_chequebook_last_issued_cheque_"
 	totalIssuedKey            = "swap_chequebook_total_issued_"
+
+	coveringBalanceCacheValidity = 5 * time.Minute
 )
 
 var (
@@ -78,6 +81,8 @@ type service struct {
 	store               storage.StateStorer
 	chequeSigner        ChequeSigner
 	totalIssuedReserved *big.Int
+	coveringBalance     *big.Int
+	coveringBalanceAt   time.Time
 }
 
 // New creates a new chequebook service for the provided chequebook contract.
@@ -111,7 +116,13 @@ func (s *service) Deposit(ctx context.Context, amount *big.Int) (hash common.Has
 		return common.Hash{}, ErrInsufficientFunds
 	}
 
-	return s.erc20Service.Transfer(ctx, s.address, amount)
+	hash, err = s.erc20Service.Transfer(ctx, s.address, amount)
+	if err != nil {
+		return common.Hash{}, err
+	}
+
+	s.invalidateCoveringBalance()
+	return hash, nil
 }
 
 // Balance returns the token balance of the chequebook.
@@ -121,7 +132,33 @@ func (s *service) Balance(ctx context.Context) (*big.Int, error) {
 
 // AvailableBalance returns the token balance of the chequebook which is not yet used for uncashed cheques.
 func (s *service) AvailableBalance(ctx context.Context) (*big.Int, error) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	return s.availableBalance(ctx)
+}
+
+func (s *service) availableBalance(ctx context.Context) (*big.Int, error) {
 	totalIssued, err := s.totalIssued()
+	if err != nil {
+		return nil, err
+	}
+
+	coveringBalance, err := s.getOrLoadCoveringBalance(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return new(big.Int).Sub(coveringBalance, totalIssued), nil
+}
+
+func (s *service) getOrLoadCoveringBalance(ctx context.Context) (*big.Int, error) {
+	now := time.Now().UTC()
+	if s.coveringBalance != nil && now.Sub(s.coveringBalanceAt) < coveringBalanceCacheValidity {
+		return new(big.Int).Set(s.coveringBalance), nil
+	}
+
+	totalPaidOut, err := s.contract.TotalPaidOut(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -131,16 +168,16 @@ func (s *service) AvailableBalance(ctx context.Context) (*big.Int, error) {
 		return nil, err
 	}
 
-	totalPaidOut, err := s.contract.TotalPaidOut(ctx)
-	if err != nil {
-		return nil, err
-	}
+	s.coveringBalance = new(big.Int).Add(balance, totalPaidOut)
+	s.coveringBalanceAt = now
+	return new(big.Int).Set(s.coveringBalance), nil
+}
 
-	// balance plus totalPaidOut is the total amount ever put into the chequebook (ignoring deposits and withdrawals which cancelled out)
-	// minus the total amount we issued from this chequebook this gives use the portion of the balance not covered by any cheques
-	availableBalance := big.NewInt(0).Add(balance, totalPaidOut)
-	availableBalance = availableBalance.Sub(availableBalance, totalIssued)
-	return availableBalance, nil
+func (s *service) invalidateCoveringBalance() {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	s.coveringBalance = nil
+	s.coveringBalanceAt = time.Time{}
 }
 
 // WaitForDeposit waits for the deposit transaction to confirm and verifies the result.
@@ -152,6 +189,8 @@ func (s *service) WaitForDeposit(ctx context.Context, txHash common.Hash) error 
 	if receipt.Status != 1 {
 		return transaction.ErrTransactionReverted
 	}
+
+	s.invalidateCoveringBalance()
 	return nil
 }
 
@@ -164,7 +203,7 @@ func (s *service) reserveTotalIssued(ctx context.Context, amount *big.Int) (*big
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	availableBalance, err := s.AvailableBalance(ctx)
+	availableBalance, err := s.availableBalance(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -349,5 +388,12 @@ func (s *service) Withdraw(ctx context.Context, amount *big.Int) (hash common.Ha
 		return common.Hash{}, err
 	}
 
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	if s.coveringBalance != nil {
+		s.coveringBalance.Sub(s.coveringBalance, amount)
+		s.coveringBalanceAt = time.Now().UTC()
+	}
 	return txHash, nil
 }
