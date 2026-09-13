@@ -127,22 +127,18 @@ type testServerOptions struct {
 	BatchStore postage.Storer
 	SyncStatus func() (bool, error)
 
-	BackendOpts                 []backendmock.Option
-	Erc20Opts                   []erc20mock.Option
-	BeeMode                     api.BeeNodeMode
-	RedistributionAgent         *storageincentives.Agent
+	BackendOpts         []backendmock.Option
+	Erc20Opts           []erc20mock.Option
+	BeeMode             api.BeeNodeMode
+	RedistributionAgent *storageincentives.Agent
 	RedistributionAgentDisabled bool
-	NodeStatus                  *status.Service
-	PinIntegrity                api.PinIntegrity
-	WhitelistedAddr             string
-	FullAPIDisabled             bool
-	ChequebookDisabled          bool
-	SwapDisabled                bool
-	Erc20ServiceNil             bool
-	// ServiceOut, when set, receives the constructed *api.Service so tests
-	// can drive it directly (e.g. via a custom net.Listener) instead of
-	// through the httptest.Server this function also sets up.
-	ServiceOut **api.Service
+	NodeStatus          *status.Service
+	PinIntegrity        api.PinIntegrity
+	WhitelistedAddr     string
+	FullAPIDisabled     bool
+	ChequebookDisabled  bool
+	SwapDisabled        bool
+	Erc20ServiceNil     bool
 }
 
 func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.Conn, string, *chanStorer) {
@@ -257,10 +253,6 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	s.Mount()
 	if !o.FullAPIDisabled {
 		s.EnableFullAPI()
-	}
-
-	if o.ServiceOut != nil {
-		*o.ServiceOut = s
 	}
 
 	if o.DirectUpload {
