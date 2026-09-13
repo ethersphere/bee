@@ -22,4 +22,5 @@ func TestSetIsWarmingUpNilReceiver(t *testing.T) {
 	// Must not panic.
 	s.SetIsWarmingUp(false)
 	s.SetIsWarmingUp(true)
+	s.SetBeeStatus(nil)
 }

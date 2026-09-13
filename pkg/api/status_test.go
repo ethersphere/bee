@@ -41,6 +41,7 @@ func TestGetStatus(t *testing.T) {
 			IsReachable:             true,
 			LastSyncedBlock:         6092500,
 			CommittedDepth:          1,
+			BeeStatus:               "unknown",
 		}
 
 		ssMock := &statusSnapshotMock{
@@ -75,6 +76,23 @@ func TestGetStatus(t *testing.T) {
 		)
 	})
 
+	t.Run("available before full api", func(t *testing.T) {
+		t.Parallel()
+
+		client, _, _, _ := newTestServer(t, testServerOptions{
+			BeeMode:         api.FullMode,
+			FullAPIDisabled: true,
+			BeeStatus:       testBeeStatus{code: 4, name: "opening_localstore"},
+		})
+
+		jsonhttptest.Request(t, client, http.MethodGet, url, http.StatusOK,
+			jsonhttptest.WithExpectedJSONResponse(api.StatusSnapshotResponse{
+				Proximity: 256,
+				BeeMode:   api.FullMode.String(),
+				BeeStatus: "opening_localstore",
+			}),
+		)
+	})
 }
 
 // TestGetStatusPeersIncludesBootnodes is a regression test for

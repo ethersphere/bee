@@ -137,6 +137,7 @@ type testServerOptions struct {
 	ChequebookDisabled  bool
 	SwapDisabled        bool
 	Erc20ServiceNil     bool
+	BeeStatus           api.BeeStatus
 }
 
 func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.Conn, string, *chanStorer) {
@@ -231,6 +232,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 
 	s.SetSwarmAddress(&o.Overlay)
 	s.SetProbe(o.Probe)
+	s.SetBeeStatus(o.BeeStatus)
 
 	tracer := o.Tracer
 	if tracer == nil {

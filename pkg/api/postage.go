@@ -431,20 +431,26 @@ type chainStateResponse struct {
 func (s *Service) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
 	logger := s.logger.WithName("get_reservestate").Build()
 
-	commitment, err := s.batchStore.Commitment()
-	if err != nil {
-		logger.Debug("batch store commitment calculation failed", "error", err)
-		logger.Error(nil, "batch store commitment calculation failed")
-		jsonhttp.InternalServerError(w, "unable to calculate commitment")
-		return
+	resp := reserveStateResponse{}
+
+	if s.batchStore != nil {
+		commitment, err := s.batchStore.Commitment()
+		if err != nil {
+			logger.Debug("batch store commitment calculation failed", "error", err)
+			logger.Error(nil, "batch store commitment calculation failed")
+			jsonhttp.InternalServerError(w, "unable to calculate commitment")
+			return
+		}
+		resp.Radius = s.batchStore.Radius()
+		resp.Commitment = commitment
 	}
 
-	jsonhttp.OK(w, reserveStateResponse{
-		Radius:                  s.batchStore.Radius(),
-		StorageRadius:           s.storer.StorageRadius(),
-		Commitment:              commitment,
-		ReserveCapacityDoubling: s.storer.CapacityDoubling(),
-	})
+	if s.storer != nil {
+		resp.StorageRadius = s.storer.StorageRadius()
+		resp.ReserveCapacityDoubling = s.storer.CapacityDoubling()
+	}
+
+	jsonhttp.OK(w, resp)
 }
 
 // chainStateHandler returns the current chain state.

@@ -182,7 +182,7 @@ func (s *Service) mountTechnicalDebug() {
 func (s *Service) checkRouteAvailability(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !s.fullAPIEnabled {
-			jsonhttp.ServiceUnavailable(w, "Node is syncing. This endpoint is unavailable. Try again later.")
+			jsonhttp.ServiceUnavailable(w, fmt.Sprintf("node is not ready: %s", s.BeeStatusString()))
 			return
 		}
 		handler.ServeHTTP(w, r)
@@ -421,6 +421,12 @@ func (s *Service) mountBusinessDebug() {
 		s.router.Handle(rootPath+path, routeHandler)
 	}
 
+	// handleAlways registers diagnostic GET routes that must work before EnableFullAPI.
+	handleAlways := func(path string, handler http.Handler) {
+		s.router.Handle(path, handler)
+		s.router.Handle(rootPath+path, handler)
+	}
+
 	if s.transaction != nil {
 		handle("/transactions", jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.transactionListHandler),
@@ -441,7 +447,7 @@ func (s *Service) mountBusinessDebug() {
 		"POST": http.HandlerFunc(s.pingpongHandler),
 	})
 
-	handle("/reservestate", jsonhttp.MethodHandler{
+	handleAlways("/reservestate", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.reserveStateHandler),
 	})
 
@@ -679,7 +685,7 @@ func (s *Service) mountBusinessDebug() {
 		})),
 	)
 
-	handle("/status", jsonhttp.MethodHandler{
+	handleAlways("/status", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
 			httpaccess.NewHTTPAccessSuppressLogHandler(),
 			web.FinalHandlerFunc(s.statusGetHandler),

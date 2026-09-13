@@ -19,12 +19,14 @@ func (s *Service) readinessHandler(w http.ResponseWriter, _ *http.Request) {
 			Status:     "ready",
 			Version:    bee.Version,
 			APIVersion: Version,
+			BeeStatus:  s.BeeStatusString(),
 		})
 	} else {
 		jsonhttp.BadRequest(w, ReadyStatusResponse{
 			Status:     "notReady",
 			Version:    bee.Version,
 			APIVersion: Version,
+			BeeStatus:  s.BeeStatusString(),
 		})
 	}
 }

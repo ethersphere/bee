@@ -129,6 +129,7 @@ type Bee struct {
 	syncingStopped           *syncutil.Signaler
 	accesscontrolCloser      io.Closer
 	ethClientCloser          func()
+	status                   *StatusStore
 }
 
 type Options struct {
@@ -290,7 +291,9 @@ func NewBee(
 		ctxCancel:      ctxCancel,
 		errorLogWriter: sink,
 		syncingStopped: syncutil.NewSignaler(),
+		status:         NewStatusStore(),
 	}
+	b.setStatus(StatusStarting)
 
 	defer func(b *Bee) {
 		if err != nil {
@@ -539,6 +542,7 @@ func NewBee(
 		apiService.SetProbe(probe)
 		apiService.SetIsWarmingUp(true)
 		apiService.SetSwarmAddress(&swarmAddress)
+		apiService.SetBeeStatus(b.status)
 
 		apiServer := &http.Server{
 			IdleTimeout:       30 * time.Second,
@@ -568,6 +572,7 @@ func NewBee(
 		}
 		if !isSynced {
 			logger.Info("waiting to sync with the blockchain backend")
+			b.setStatus(StatusWaitingChainSync)
 
 			err := transaction.WaitSynced(ctx, logger, chainBackend, maxDelay)
 			if err != nil {
@@ -598,6 +603,7 @@ func NewBee(
 		}
 
 		if o.ChequebookEnable {
+			b.setStatus(StatusStartingChequebook)
 			chequebookService, err = InitChequebookService(
 				ctx,
 				logger,
@@ -877,6 +883,7 @@ func NewBee(
 		lo.ReserveCapacityDoubling = o.ReserveCapacityDoubling
 	}
 
+	b.setStatus(StatusOpeningLocalstore)
 	localStore, err := storer.New(ctx, path, lo)
 	if err != nil {
 		return nil, fmt.Errorf("localstore: %w", err)
@@ -886,6 +893,7 @@ func NewBee(
 
 	if resetReserve {
 		logger.Warning("resetting the reserve")
+		b.setStatus(StatusResettingReserve)
 		err := localStore.ResetReserve(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("reset reserve: %w", err)
@@ -912,6 +920,7 @@ func NewBee(
 
 	var batchSnapshot *batchservice.Snapshot
 	if useEmbeddedSnapshot(o.SkipPostageSnapshot, batchStoreExists, o.Resync, networkID, beeNodeMode) {
+		b.setStatus(StatusLoadingPostageSnapshot)
 		batchSnapshot, err = snapshot.New(ctx, logger, archive.Getter{}, b.syncingStopped, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout, postageSyncStart)
 		if err != nil {
 			// A corrupt snapshot is not fatal: rebuild from the chain instead.
@@ -984,6 +993,7 @@ func NewBee(
 		}
 
 		if o.FullNodeMode {
+			b.setStatus(StatusSyncingPostage)
 			err = batchSvc.Start(ctx, postageSyncStart)
 			syncStatus.Store(true)
 			if err != nil {
@@ -1215,6 +1225,7 @@ func NewBee(
 		defer unsubscribe()
 		<-sub
 		logger.Info("node warmup stabilization complete, updating API status")
+		b.setReadyFromWarmup()
 		// apiService is nil when the API is disabled (empty --api-addr).
 		if apiService != nil {
 			apiService.SetIsWarmingUp(false)
@@ -1256,6 +1267,7 @@ func NewBee(
 				logger.Warning("staked amount does not sufficiently cover the additional reserve capacity. On-chain height update will be skipped. Node will start, but storage incentives may not function for this capacity.", "missing_stake", new(big.Int).Sub(minStake, stake))
 			} else {
 				// make sure that the staking contract has the up to date height
+				b.setStatus(StatusUpdatingStakeHeight)
 				tx, updated, err := stakingContract.UpdateHeight(ctx)
 				if err != nil {
 					return nil, fmt.Errorf("update height in staking contract: %w", err)
@@ -1275,6 +1287,10 @@ func NewBee(
 	if o.FullNodeMode && !o.BootnodeMode {
 		pullerService = puller.New(swarmAddress, stateStore, kad, localStore, pullSyncProtocol, p2ps, logger, puller.Options{})
 		b.pullerCloser = pullerService
+
+		localStore.SetReservePhaseFunc(func(phase string) {
+			b.applyReservePhase(phase, pullerService.SyncRate, detector.IsStabilized)
+		})
 
 		// we pass an empty channel since startup synchronization is not needed for production code, only tests.
 		localStore.StartReserveWorker(ctx, pullerService, waitNetworkRFunc, nil)
@@ -1303,6 +1319,7 @@ func NewBee(
 							fullSyncTime := pullSyncStartTime.Sub(t)
 							logger.Info("full sync done", "duration", fullSyncTime)
 							nodeMetrics.FullSyncDuration.Observe(fullSyncTime.Minutes())
+							b.setReadyAfterSync()
 							syncCheckTicker.Stop()
 							return
 						}
@@ -1441,6 +1458,12 @@ func NewBee(
 			WsPingPeriod:       60 * time.Second,
 		}, extraOpts, chainID, erc20Service)
 
+		if detector.IsStabilized() {
+			b.setReadyFromWarmup()
+		} else {
+			b.setStatusIfIdle(StatusWarmingUp)
+		}
+
 		apiService.EnableFullAPI()
 
 		apiService.SetRedistributionAgent(agent)
@@ -1448,6 +1471,10 @@ func NewBee(
 		// api metrics are constructed on api.Service.Configure
 		apiService.MustRegisterMetrics(apiService.Metrics()...)
 		statusMetricsRegistry.MustRegister(apiService.StatusMetrics()...)
+	} else if detector.IsStabilized() {
+		b.setReadyFromWarmup()
+	} else {
+		b.setStatusIfIdle(StatusWarmingUp)
 	}
 
 	if err := kad.Start(ctx); err != nil {

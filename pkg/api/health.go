@@ -15,6 +15,7 @@ type healthStatusResponse struct {
 	Status     string `json:"status"`
 	Version    string `json:"version"`
 	APIVersion string `json:"apiVersion"`
+	BeeStatus  string `json:"beeStatus"`
 }
 
 func (s *Service) healthHandler(w http.ResponseWriter, _ *http.Request) {
@@ -23,5 +24,6 @@ func (s *Service) healthHandler(w http.ResponseWriter, _ *http.Request) {
 		Status:     status.String(),
 		Version:    bee.Version,
 		APIVersion: Version,
+		BeeStatus:  s.BeeStatusString(),
 	})
 }

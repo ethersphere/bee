@@ -29,6 +29,12 @@ const (
 	reserveUnreserved   = "reserveUnreserved"
 	batchExpiry         = "batchExpiry"
 	batchExpiryDone     = "batchExpiryDone"
+
+	// ReservePhase* values are reported through ReservePhaseFunc / SetReservePhaseFunc.
+	ReservePhaseCounting = "counting_reserve"
+	ReservePhaseEvicting = "evicting_reserve"
+	ReservePhaseSyncing  = "syncing_reserve"
+	ReservePhaseIdle     = "idle"
 )
 
 var (
@@ -82,6 +88,7 @@ func (db *DB) startReserveWorkers(
 	}
 
 	// syncing can now begin now that the reserver worker is running
+	db.reportPhase(ReservePhaseSyncing)
 	db.syncer.Start(ctx)
 }
 
@@ -130,7 +137,9 @@ func (db *DB) reserveWorker(ctx context.Context, ready chan<- struct{}) {
 	thresholdTicker := time.NewTicker(db.reserveOptions.wakeupDuration)
 	defer thresholdTicker.Stop()
 
+	db.reportPhase(ReservePhaseCounting)
 	_, _ = db.countWithinRadius(ctx)
+	db.reportPhase(ReservePhaseIdle)
 
 	if !db.reserve.IsWithinCapacity() {
 		db.events.Trigger(reserveOverCapacity)
@@ -346,6 +355,9 @@ func (db *DB) unreserve(ctx context.Context) (err error) {
 	if target <= 0 {
 		return nil
 	}
+
+	db.reportPhase(ReservePhaseEvicting)
+	defer db.reportPhase(ReservePhaseIdle)
 
 	db.logger.Info("unreserve start", "target", target, "radius", radius)
 

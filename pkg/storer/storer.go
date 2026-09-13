@@ -397,6 +397,9 @@ type Options struct {
 	CacheMinEvictCount uint64
 
 	MinimumStorageRadius uint
+
+	// ReservePhaseFunc reports reserve worker activity to the node status store.
+	ReservePhaseFunc func(phase string)
 }
 
 func defaultOptions() *Options {
@@ -459,6 +462,7 @@ type reserveOpts struct {
 	cacheMinEvictCount uint64
 	minimumRadius      uint8
 	capacityDoubling   int
+	phaseFunc          func(string)
 }
 
 // New returns a newly constructed DB object which implements all the above
@@ -553,6 +557,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			cacheMinEvictCount: opts.CacheMinEvictCount,
 			minimumRadius:      uint8(opts.MinimumStorageRadius),
 			capacityDoubling:   opts.ReserveCapacityDoubling,
+			phaseFunc:          opts.ReservePhaseFunc,
 		},
 		directUploadLimiter: make(chan struct{}, pusher.ConcurrentPushes),
 		pinIntegrity:        pinIntegrity,
@@ -685,6 +690,21 @@ func (db *DB) StartReserveWorker(ctx context.Context, s Syncer, radius func() (u
 		db.syncer = s
 		go db.startReserveWorkers(ctx, radius, ready)
 	})
+}
+
+// SetReservePhaseFunc sets the callback used by the reserve worker to report
+// counting, eviction and pullsync phases. Must be called before StartReserveWorker.
+func (db *DB) SetReservePhaseFunc(fn func(string)) {
+	if db == nil {
+		return
+	}
+	db.reserveOptions.phaseFunc = fn
+}
+
+func (db *DB) reportPhase(phase string) {
+	if db.reserveOptions.phaseFunc != nil {
+		db.reserveOptions.phaseFunc(phase)
+	}
 }
 
 type noopRetrieval struct{}

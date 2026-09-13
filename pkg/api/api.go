@@ -226,6 +226,12 @@ type Service struct {
 
 	statusService *status.Service
 	isWarmingUp   bool
+	beeStatus     BeeStatus
+}
+
+type BeeStatus interface {
+	StatusCode() int32
+	StatusString() string
 }
 
 func (s *Service) SetP2P(p2p p2p.DebugService) {
@@ -394,6 +400,26 @@ func (s *Service) SetIsWarmingUp(v bool) {
 	if s != nil {
 		s.isWarmingUp = v
 	}
+}
+
+func (s *Service) SetBeeStatus(status BeeStatus) {
+	if s != nil {
+		s.beeStatus = status
+	}
+}
+
+func (s *Service) BeeStatusCode() int32 {
+	if s == nil || s.beeStatus == nil {
+		return 0
+	}
+	return s.beeStatus.StatusCode()
+}
+
+func (s *Service) BeeStatusString() string {
+	if s == nil || s.beeStatus == nil {
+		return "unknown"
+	}
+	return s.beeStatus.StatusString()
 }
 
 // Close hangs up running websockets on shutdown.

@@ -503,6 +503,25 @@ components:
           type: boolean
         swapEnabled:
           type: boolean
+        beeStatus:
+          type: string
+          description: >
+            Current node startup or runtime phase. The zero/unknown value means
+            the phase has not been reported yet.
+            * `starting`
+            * `waiting_chain_sync`
+            * `starting_chequebook`
+            * `opening_localstore`
+            * `resetting_reserve`
+            * `loading_postage_snapshot`
+            * `syncing_postage`
+            * `updating_stake_height`
+            * `warming_up`
+            * `counting_reserve`
+            * `evicting_reserve`
+            * `syncing_reserve`
+            * `ready`
+            * `unknown`
 
     HealthStatus:
       type: object
@@ -521,6 +540,9 @@ components:
           type: string
           default: "0.0.0"
           description: The default value is set in case the bee binary was not build correctly.
+        beeStatus:
+          type: string
+          description: Current node startup or runtime phase. See Node.beeStatus.
 
     PostageBatch:
       type: object
@@ -971,6 +993,9 @@ components:
           type: integer
         isWarmingUp:
           type: boolean
+        beeStatus:
+          type: string
+          description: Current node startup or runtime phase. See Node.beeStatus.
 
     StatusPeersResponse:
       type: object

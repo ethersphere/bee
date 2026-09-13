@@ -26,6 +26,7 @@ func TestHealth(t *testing.T) {
 			Status:     "nok",
 			Version:    bee.Version,
 			APIVersion: api.Version,
+			BeeStatus:  "unknown",
 		}))
 	})
 
@@ -42,6 +43,7 @@ func TestHealth(t *testing.T) {
 			Status:     "nok",
 			Version:    bee.Version,
 			APIVersion: api.Version,
+			BeeStatus:  "unknown",
 		}))
 
 		// When we set health probe to OK it should indicate that node is healthy
@@ -50,6 +52,7 @@ func TestHealth(t *testing.T) {
 			Status:     "ok",
 			Version:    bee.Version,
 			APIVersion: api.Version,
+			BeeStatus:  "unknown",
 		}))
 
 		// When we set health probe to NOK it should indicate that node is not healthy
@@ -58,6 +61,7 @@ func TestHealth(t *testing.T) {
 			Status:     "nok",
 			Version:    bee.Version,
 			APIVersion: api.Version,
+			BeeStatus:  "unknown",
 		}))
 	})
 }

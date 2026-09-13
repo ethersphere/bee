@@ -32,6 +32,7 @@ type statusSnapshotResponse struct {
 	LastSyncedBlock         uint64  `json:"lastSyncedBlock"`
 	CommittedDepth          uint8   `json:"committedDepth"`
 	IsWarmingUp             bool    `json:"isWarmingUp"`
+	BeeStatus               string  `json:"beeStatus,omitempty"`
 }
 
 type statusResponse struct {
@@ -69,6 +70,33 @@ func (s *Service) statusAccessHandler(h http.Handler) http.Handler {
 func (s *Service) statusGetHandler(w http.ResponseWriter, _ *http.Request) {
 	logger := s.logger.WithName("get_status").Build()
 
+	overlay := ""
+	if s.overlay != nil {
+		overlay = s.overlay.String()
+	}
+
+	resp := statusSnapshotResponse{
+		Proximity:   256,
+		Overlay:     overlay,
+		BeeMode:     s.beeMode.String(),
+		IsWarmingUp: s.isWarmingUp,
+		BeeStatus:   s.BeeStatusString(),
+	}
+
+	if s.batchStore != nil {
+		if commitment, err := s.batchStore.Commitment(); err == nil {
+			resp.BatchCommitment = commitment
+		}
+		if cs := s.batchStore.GetChainState(); cs != nil {
+			resp.LastSyncedBlock = cs.Block
+		}
+	}
+
+	if s.statusService == nil {
+		jsonhttp.OK(w, resp)
+		return
+	}
+
 	ss, err := s.statusService.LocalSnapshot()
 	if err != nil {
 		logger.Debug("status snapshot", "error", err)
@@ -77,22 +105,19 @@ func (s *Service) statusGetHandler(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 
-	jsonhttp.OK(w, statusSnapshotResponse{
-		Proximity:               256,
-		Overlay:                 s.overlay.String(),
-		BeeMode:                 ss.BeeMode,
-		ReserveSize:             ss.ReserveSize,
-		ReserveSizeWithinRadius: ss.ReserveSizeWithinRadius,
-		PullsyncRate:            ss.PullsyncRate,
-		StorageRadius:           uint8(ss.StorageRadius),
-		ConnectedPeers:          ss.ConnectedPeers,
-		NeighborhoodSize:        ss.NeighborhoodSize,
-		BatchCommitment:         ss.BatchCommitment,
-		IsReachable:             ss.IsReachable,
-		LastSyncedBlock:         ss.LastSyncedBlock,
-		CommittedDepth:          uint8(ss.CommittedDepth),
-		IsWarmingUp:             s.isWarmingUp,
-	})
+	resp.BeeMode = ss.BeeMode
+	resp.ReserveSize = ss.ReserveSize
+	resp.ReserveSizeWithinRadius = ss.ReserveSizeWithinRadius
+	resp.PullsyncRate = ss.PullsyncRate
+	resp.StorageRadius = uint8(ss.StorageRadius)
+	resp.ConnectedPeers = ss.ConnectedPeers
+	resp.NeighborhoodSize = ss.NeighborhoodSize
+	resp.BatchCommitment = ss.BatchCommitment
+	resp.IsReachable = ss.IsReachable
+	resp.LastSyncedBlock = ss.LastSyncedBlock
+	resp.CommittedDepth = uint8(ss.CommittedDepth)
+
+	jsonhttp.OK(w, resp)
 }
 
 // statusGetPeersHandler returns the status of currently connected peers.

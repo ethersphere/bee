@@ -23,6 +23,7 @@ type nodeResponse struct {
 	BeeMode           string `json:"beeMode"`
 	ChequebookEnabled bool   `json:"chequebookEnabled"`
 	SwapEnabled       bool   `json:"swapEnabled"`
+	BeeStatus         string `json:"beeStatus"`
 }
 
 func (b BeeNodeMode) String() string {
@@ -43,5 +44,6 @@ func (s *Service) nodeGetHandler(w http.ResponseWriter, _ *http.Request) {
 		BeeMode:           s.beeMode.String(),
 		ChequebookEnabled: s.chequebookEnabled,
 		SwapEnabled:       s.swapEnabled,
+		BeeStatus:         s.BeeStatusString(),
 	})
 }

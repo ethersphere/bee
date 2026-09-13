@@ -69,6 +69,7 @@ func TestAddresses(t *testing.T) {
 			BeeMode:           api.FullMode.String(),
 			ChequebookEnabled: true,
 			SwapEnabled:       true,
+			BeeStatus:         "unknown",
 		}),
 	)
 }
