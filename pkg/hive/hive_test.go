@@ -1787,8 +1787,8 @@ func (s *blockUntilCancelStreamer) NewStream(ctx context.Context, _ swarm.Addres
 }
 
 // TestCoalescedFlushCancelsOnClose verifies that an in-flight async flush does
-// not keep running until messageTimeout after Service.Close. The flush must
-// observe bgCtx cancellation and exit promptly.
+// not keep running until messageTimeout after Service.Close. The flush context
+// is cancelled when quit is closed, so NewStream must return promptly.
 func TestCoalescedFlushCancelsOnClose(t *testing.T) {
 	t.Parallel()
 
@@ -1843,7 +1843,7 @@ func TestCoalescedFlushCancelsOnClose(t *testing.T) {
 		}
 
 		if elapsed := time.Since(closeAt); elapsed >= hive.MessageTimeout {
-			t.Fatalf("flush lasted %v after Close; want exit via bgCtx cancel before messageTimeout (%v)", elapsed, hive.MessageTimeout)
+			t.Fatalf("flush lasted %v after Close; want exit via quit before messageTimeout (%v)", elapsed, hive.MessageTimeout)
 		}
 	})
 }

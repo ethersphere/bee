@@ -87,8 +87,6 @@ type Service struct {
 	inLimiter         *ratelimit.Limiter
 	outLimiter        *ratelimit.Limiter
 	quit              chan struct{}
-	bgCtx             context.Context
-	bgCancel          context.CancelFunc
 	wg                sync.WaitGroup
 	peersChan         chan pb.Peers
 	sem               *semaphore.Weighted
@@ -105,7 +103,6 @@ type Service struct {
 }
 
 func New(streamer p2p.Streamer, addressbook addressbook.GetPutSeener, networkID uint64, overlay swarm.Address, logger log.Logger, o Options) *Service {
-	bgCtx, bgCancel := context.WithCancel(context.Background())
 	svc := &Service{
 		streamer:           streamer,
 		logger:             logger.WithName(loggerName).Register(),
@@ -115,8 +112,6 @@ func New(streamer p2p.Streamer, addressbook addressbook.GetPutSeener, networkID 
 		inLimiter:          ratelimit.New(limitRate, limitBurst),
 		outLimiter:         ratelimit.New(limitRate, limitBurst),
 		quit:               make(chan struct{}),
-		bgCtx:              bgCtx,
-		bgCancel:           bgCancel,
 		peersChan:          make(chan pb.Peers),
 		sem:                semaphore.NewWeighted(int64(swarm.MaxBins)),
 		bootnode:           o.BootnodeMode,
@@ -237,7 +232,6 @@ func (s *Service) SetAddPeersHandler(h func(addr ...swarm.Address)) {
 
 func (s *Service) Close() error {
 	close(s.quit)
-	s.bgCancel()
 
 	stopped := make(chan struct{})
 	go func() {
@@ -389,8 +383,15 @@ func (s *Service) startGossipCoalescer() {
 func (s *Service) flushGossipBatch(addressee swarm.Address, peers []swarm.Address, reason string) {
 	s.recordCoalesceFlush(reason, addressee, peers)
 
-	ctx, cancel := context.WithTimeout(s.bgCtx, messageTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), messageTimeout)
 	defer cancel()
+	s.wg.Go(func() {
+		select {
+		case <-s.quit:
+			cancel()
+		case <-ctx.Done():
+		}
+	})
 
 	err := s.broadcastNow(ctx, addressee, true, peers...)
 	if err != nil {
@@ -415,15 +416,21 @@ func (s *Service) setCoalesceBufferGauge() {
 }
 
 func (s *Service) startCheckPeersHandler() {
+	ctx, cancel := context.WithCancel(context.Background())
+	s.wg.Go(func() {
+		<-s.quit
+		cancel()
+	})
+
 	s.wg.Go(func() {
 		for {
 			select {
-			case <-s.bgCtx.Done():
+			case <-ctx.Done():
 				return
 			case newPeers := <-s.peersChan:
 				s.wg.Go(func() {
 					safe.Run(s.logger, "hive-check-and-add-peers", func() {
-						s.checkAndAddPeers(s.bgCtx, newPeers)
+						s.checkAndAddPeers(ctx, newPeers)
 					})
 				})
 			}
