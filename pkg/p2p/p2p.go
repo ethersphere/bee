@@ -193,6 +193,7 @@ type Peer struct {
 	Address         swarm.Address
 	FullNode        bool
 	EthereumAddress []byte
+	Underlay        ma.Multiaddr
 }
 
 // BlockListedPeer holds information about a Peer that is blocked.

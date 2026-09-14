@@ -777,6 +777,9 @@ func TestTopologyNotifier(t *testing.T) {
 	waitAddrSet(t, &n1connectedPeer.Address, &mtx, overlay2)
 
 	mtx.Lock()
+	if n1connectedPeer.Underlay == nil {
+		t.Fatal("expected non-nil underlay for inbound peer")
+	}
 	expectZeroAddress(t, n1disconnectedPeer.Address, n2connectedPeer.Address, n2disconnectedPeer.Address)
 	mtx.Unlock()
 
@@ -1262,6 +1265,241 @@ func TestReachabilityUpdate(t *testing.T) {
 	case <-secondUpdate:
 	case <-time.After(time.Second):
 		t.Fatalf("test timed out")
+	}
+}
+
+func TestReachabilityUpdate_AutoNATv2(t *testing.T) {
+	t.Parallel()
+
+	s1, _ := newService(t, 1, libp2pServiceOpts{
+		libp2pOpts: libp2p.WithHostFactory(
+			func(_ ...libp2pm.Option) (host.Host, error) {
+				return bhost.NewHost(swarmt.GenSwarm(t), &bhost.HostOpts{})
+			},
+		),
+	})
+
+	emitReachabilityChanged, _ := s1.Host().EventBus().Emitter(new(event.EvtLocalReachabilityChanged), eventbus.Stateful)
+	emitHostReachableAddrsChanged, _ := s1.Host().EventBus().Emitter(new(event.EvtHostReachableAddrsChanged), eventbus.Stateful)
+
+	firstPublic := make(chan struct{})
+	unexpectedPrivate := make(chan struct{})
+	confirmedPrivate := make(chan struct{})
+
+	var isPublic atomic.Bool
+
+	s1.SetPickyNotifier(mockReachabilityNotifier(func(status p2p.ReachabilityStatus) {
+		if status == p2p.ReachabilityStatusPublic {
+			isPublic.Store(true)
+			select {
+			case <-firstPublic:
+			default:
+				close(firstPublic)
+			}
+		}
+		if status == p2p.ReachabilityStatusPrivate {
+			if isPublic.Load() {
+				// We should not transition to private if public was confirmed by AutoNAT v2
+				select {
+				case <-unexpectedPrivate:
+				default:
+					close(unexpectedPrivate)
+				}
+			} else {
+				select {
+				case <-confirmedPrivate:
+				default:
+					close(confirmedPrivate)
+				}
+			}
+		}
+	}))
+
+	// 1. AutoNAT v2 reports a public IPv6 address is reachable
+	testAddr := ma.StringCast("/ip6/2001:db8::1/tcp/1634")
+	err := emitHostReachableAddrsChanged.Emit(event.EvtHostReachableAddrsChanged{
+		Reachable: []ma.Multiaddr{testAddr},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case <-firstPublic:
+	case <-time.After(time.Second):
+		t.Fatalf("timed out waiting for AutoNAT v2 public reachability update")
+	}
+
+	// 2. AutoNAT v1 reports private (e.g. failing on IPv4 in dual-stack) - should be ignored!
+	err = emitReachabilityChanged.Emit(event.EvtLocalReachabilityChanged{Reachability: network.ReachabilityPrivate})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case <-unexpectedPrivate:
+		t.Fatalf("unexpectedly received private reachability update after AutoNAT v2 confirmed reachable address")
+	case <-time.After(100 * time.Millisecond):
+		// Expected: private event was ignored because AutoNAT v2 confirmed public address
+	}
+
+	// 3. AutoNAT v2 reports all addresses are unreachable -> should transition to private
+	isPublic.Store(false)
+	err = emitHostReachableAddrsChanged.Emit(event.EvtHostReachableAddrsChanged{
+		Reachable:   nil,
+		Unreachable: []ma.Multiaddr{testAddr},
+		Unknown:     nil,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case <-confirmedPrivate:
+	case <-time.After(time.Second):
+		t.Fatalf("timed out waiting for confirmed private reachability update")
+	}
+}
+
+func TestReachabilityUpdate_AutoNATv2_MixedDualStack(t *testing.T) {
+	t.Parallel()
+
+	s1, _ := newService(t, 1, libp2pServiceOpts{
+		libp2pOpts: libp2p.WithHostFactory(
+			func(_ ...libp2pm.Option) (host.Host, error) {
+				return bhost.NewHost(swarmt.GenSwarm(t), &bhost.HostOpts{})
+			},
+		),
+	})
+
+	emitReachabilityChanged, _ := s1.Host().EventBus().Emitter(new(event.EvtLocalReachabilityChanged), eventbus.Stateful)
+	emitHostReachableAddrsChanged, _ := s1.Host().EventBus().Emitter(new(event.EvtHostReachableAddrsChanged), eventbus.Stateful)
+
+	gotPublic := make(chan struct{})
+	unexpectedPrivate := make(chan struct{})
+
+	var isPublic atomic.Bool
+
+	s1.SetPickyNotifier(mockReachabilityNotifier(func(status p2p.ReachabilityStatus) {
+		if status == p2p.ReachabilityStatusPublic {
+			isPublic.Store(true)
+			select {
+			case <-gotPublic:
+			default:
+				close(gotPublic)
+			}
+		}
+		if status == p2p.ReachabilityStatusPrivate {
+			if isPublic.Load() {
+				select {
+				case <-unexpectedPrivate:
+				default:
+					close(unexpectedPrivate)
+				}
+			}
+		}
+	}))
+
+	// Dual-stack environment: IPv6 is reachable, IPv4 is unreachable (e.g. CGNAT/firewall)
+	ipv6Addr := ma.StringCast("/ip6/2001:db8::1/tcp/1634")
+	ipv4Addr := ma.StringCast("/ip4/192.0.2.1/tcp/1634")
+
+	err := emitHostReachableAddrsChanged.Emit(event.EvtHostReachableAddrsChanged{
+		Reachable:   []ma.Multiaddr{ipv6Addr},
+		Unreachable: []ma.Multiaddr{ipv4Addr},
+		Unknown:     nil,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case <-gotPublic:
+	case <-time.After(time.Second):
+		t.Fatalf("timed out waiting for AutoNAT v2 public reachability update in dual-stack setup")
+	}
+
+	// AutoNAT v1 reports Private because IPv4 dialback failed; must be ignored
+	err = emitReachabilityChanged.Emit(event.EvtLocalReachabilityChanged{Reachability: network.ReachabilityPrivate})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case <-unexpectedPrivate:
+		t.Fatalf("unexpectedly received private reachability update when public IPv6 was verified")
+	case <-time.After(100 * time.Millisecond):
+		// Expected: node remains public
+	}
+}
+
+func TestReachabilityUpdate_AutoNATv1Fallback(t *testing.T) {
+	t.Parallel()
+
+	s1, _ := newService(t, 1, libp2pServiceOpts{
+		libp2pOpts: libp2p.WithHostFactory(
+			func(_ ...libp2pm.Option) (host.Host, error) {
+				return bhost.NewHost(swarmt.GenSwarm(t), &bhost.HostOpts{})
+			},
+		),
+	})
+
+	emitReachabilityChanged, _ := s1.Host().EventBus().Emitter(new(event.EvtLocalReachabilityChanged), eventbus.Stateful)
+	emitHostReachableAddrsChanged, _ := s1.Host().EventBus().Emitter(new(event.EvtHostReachableAddrsChanged), eventbus.Stateful)
+
+	gotPublic := make(chan struct{})
+	gotPrivate := make(chan struct{})
+
+	s1.SetPickyNotifier(mockReachabilityNotifier(func(status p2p.ReachabilityStatus) {
+		if status == p2p.ReachabilityStatusPublic {
+			select {
+			case <-gotPublic:
+			default:
+				close(gotPublic)
+			}
+		}
+		if status == p2p.ReachabilityStatusPrivate {
+			select {
+			case <-gotPrivate:
+			default:
+				close(gotPrivate)
+			}
+		}
+	}))
+
+	// 1. AutoNAT v2 has unknown addresses (e.g. no AutoNAT v2 peers yet)
+	testAddr := ma.StringCast("/ip4/1.2.3.4/tcp/1634")
+	err := emitHostReachableAddrsChanged.Emit(event.EvtHostReachableAddrsChanged{
+		Reachable:   nil,
+		Unreachable: nil,
+		Unknown:     []ma.Multiaddr{testAddr},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 2. AutoNAT v1 reports public -> should be respected as fallback
+	err = emitReachabilityChanged.Emit(event.EvtLocalReachabilityChanged{Reachability: network.ReachabilityPublic})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case <-gotPublic:
+	case <-time.After(time.Second):
+		t.Fatalf("timed out waiting for public reachability via autonat v1 fallback")
+	}
+
+	// 3. AutoNAT v1 reports private when AutoNAT v2 has no confirmed reachable addrs -> should be respected as fallback
+	err = emitReachabilityChanged.Emit(event.EvtLocalReachabilityChanged{Reachability: network.ReachabilityPrivate})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case <-gotPrivate:
+	case <-time.After(time.Second):
+		t.Fatalf("timed out waiting for private reachability via autonat v1 fallback")
 	}
 }
 

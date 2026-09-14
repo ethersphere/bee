@@ -363,6 +363,9 @@ components:
         sessionConnectionDirection:
           type: string
           nullable: false
+        sessionConnectionUnderlay:
+          type: string
+          nullable: true
         latencyEWMA:
           type: integer
           nullable: false

@@ -47,7 +47,7 @@ func IsBootnode(b bool) RecordOp {
 // value. The force flag will force the peer re-login if he's already logged in.
 // The time is set as Unix timestamp ignoring the timezone. The operation will
 // panic if the given time is before the Unix epoch.
-func PeerLogIn(t time.Time, dir PeerConnectionDirection) RecordOp {
+func PeerLogIn(t time.Time, dir PeerConnectionDirection, underlay ...string) RecordOp {
 	return func(cs *Counters) {
 		cs.Lock()
 		defer cs.Unlock()
@@ -62,6 +62,9 @@ func PeerLogIn(t time.Time, dir PeerConnectionDirection) RecordOp {
 			panic(fmt.Errorf("time before unix epoch: %s", t))
 		}
 		cs.sessionConnDirection = dir
+		if len(underlay) > 0 {
+			cs.sessionConnUnderlay = underlay[0]
+		}
 		cs.lastSeenTimestamp = ls
 	}
 }
@@ -144,6 +147,7 @@ type Snapshot struct {
 	ConnectionTotalDuration    time.Duration
 	SessionConnectionDuration  time.Duration
 	SessionConnectionDirection PeerConnectionDirection
+	SessionConnectionUnderlay  string
 	LatencyEWMA                time.Duration
 	Reachability               p2p.ReachabilityStatus
 	Healthy                    bool
@@ -174,6 +178,7 @@ type Counters struct {
 	sessionConnRetry     uint64
 	sessionConnDuration  time.Duration
 	sessionConnDirection PeerConnectionDirection
+	sessionConnUnderlay  string
 	latencyEWMA          time.Duration
 	ReachabilityStatus   p2p.ReachabilityStatus
 	Healthy              bool
@@ -225,6 +230,7 @@ func (cs *Counters) snapshot(t time.Time) *Snapshot {
 		ConnectionTotalDuration:    connTotalDuration,
 		SessionConnectionDuration:  sessionConnDuration,
 		SessionConnectionDirection: cs.sessionConnDirection,
+		SessionConnectionUnderlay:  cs.sessionConnUnderlay,
 		LatencyEWMA:                cs.latencyEWMA,
 		Reachability:               cs.ReachabilityStatus,
 		Healthy:                    cs.Healthy,

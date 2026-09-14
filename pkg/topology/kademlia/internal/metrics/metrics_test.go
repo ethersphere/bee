@@ -62,13 +62,17 @@ func TestPeerMetricsCollector(t *testing.T) {
 	}
 
 	// Login.
-	mc.Record(addr, metrics.PeerLogIn(t1, metrics.PeerConnectionDirectionInbound))
+	underlayAddr := "/ip4/127.0.0.1/tcp/1634"
+	mc.Record(addr, metrics.PeerLogIn(t1, metrics.PeerConnectionDirectionInbound, underlayAddr))
 	ss = snapshot(t, mc, t2, addr)
 	if have, want := ss.LastSeenTimestamp, t1.UnixNano(); have != want {
 		t.Fatalf("Snapshot(%q, ...): last seen counter mismatch: have %d; want %d", addr, have, want)
 	}
 	if have, want := ss.SessionConnectionDirection, metrics.PeerConnectionDirectionInbound; have != want {
 		t.Fatalf("Snapshot(%q, ...): session connection direction counter mismatch: have %q; want %q", addr, have, want)
+	}
+	if have, want := ss.SessionConnectionUnderlay, underlayAddr; have != want {
+		t.Fatalf("Snapshot(%q, ...): session connection underlay mismatch: have %q; want %q", addr, have, want)
 	}
 	if have, want := ss.SessionConnectionDuration, t2.Sub(t1); have != want {
 		t.Fatalf("Snapshot(%q, ...): session connection duration counter mismatch: have %s; want %s", addr, have, want)

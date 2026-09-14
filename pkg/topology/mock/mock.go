@@ -28,6 +28,7 @@ type mock struct {
 	health          map[string]bool
 	lastSelect      topology.Select
 	selectRecorder  *topology.Select
+	snapshot        *topology.KadParams
 }
 
 var _ topology.Driver = (*mock)(nil)
@@ -59,6 +60,12 @@ func WithClosestPeer(addr swarm.Address) Option {
 func WithClosestPeerErr(err error) Option {
 	return optionFunc(func(d *mock) {
 		d.closestPeerErr = err
+	})
+}
+
+func WithSnapshot(s *topology.KadParams) Option {
+	return optionFunc(func(d *mock) {
+		d.snapshot = s
 	})
 }
 
@@ -255,6 +262,9 @@ func (d *mock) LastSelect() topology.Select {
 }
 
 func (d *mock) Snapshot() *topology.KadParams {
+	if d.snapshot != nil {
+		return d.snapshot
+	}
 	return new(topology.KadParams)
 }
 

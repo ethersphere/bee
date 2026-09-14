@@ -464,7 +464,11 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 		k.connectedPeers.Add(peer.addr)
 
 		k.metrics.TotalOutboundConnections.Inc()
-		k.collector.Record(peer.addr, im.PeerLogIn(time.Now(), im.PeerConnectionDirectionOutbound))
+		var underlay string
+		if len(bzzAddr.Underlays) > 0 {
+			underlay = bzzAddr.Underlays[0].String()
+		}
+		k.collector.Record(peer.addr, im.PeerLogIn(time.Now(), im.PeerConnectionDirectionOutbound, underlay))
 
 		k.recalcDepth()
 
@@ -885,7 +889,11 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 			}
 
 			k.metrics.TotalOutboundConnections.Inc()
-			k.collector.Record(bzzAddress.Overlay, im.PeerLogIn(time.Now(), im.PeerConnectionDirectionOutbound), im.IsBootnode(true))
+			var underlay string
+			if len(bzzAddress.Underlays) > 0 {
+				underlay = bzzAddress.Underlays[0].String()
+			}
+			k.collector.Record(bzzAddress.Overlay, im.PeerLogIn(time.Now(), im.PeerConnectionDirectionOutbound, underlay), im.IsBootnode(true))
 			loggerV1.Debug("connected to bootnode", "bootnode_address", addr)
 			connected++
 
@@ -1221,7 +1229,11 @@ func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool
 	defer func() {
 		if err == nil {
 			k.metrics.TotalInboundConnections.Inc()
-			k.collector.Record(peer.Address, im.PeerLogIn(time.Now(), im.PeerConnectionDirectionInbound))
+			var underlay string
+			if peer.Underlay != nil {
+				underlay = peer.Underlay.String()
+			}
+			k.collector.Record(peer.Address, im.PeerLogIn(time.Now(), im.PeerConnectionDirectionInbound, underlay))
 		}
 	}()
 
@@ -1697,6 +1709,7 @@ func createMetricsSnapshotView(ss *im.Snapshot) *topology.MetricSnapshotView {
 		ConnectionTotalDuration:    ss.ConnectionTotalDuration.Truncate(time.Second).Seconds(),
 		SessionConnectionDuration:  ss.SessionConnectionDuration.Truncate(time.Second).Seconds(),
 		SessionConnectionDirection: string(ss.SessionConnectionDirection),
+		SessionConnectionUnderlay:  ss.SessionConnectionUnderlay,
 		LatencyEWMA:                ss.LatencyEWMA.Milliseconds(),
 		Reachability:               ss.Reachability.String(),
 		Healthy:                    ss.Healthy,

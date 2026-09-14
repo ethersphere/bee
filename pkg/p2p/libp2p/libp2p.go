@@ -402,6 +402,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	opts = append(opts, libp2p.AddrsFactory(addrFactory))
 
 	opts = append(opts, transports...)
+	opts = append(opts, libp2p.EnableAutoNATv2())
 
 	if o.hostFactory == nil {
 		// Use the default libp2p host creation
@@ -559,26 +560,50 @@ func parseAddress(addr string) (*parsedAddress, error) {
 }
 
 func (s *Service) reachabilityWorker() error {
-	sub, err := s.host.EventBus().Subscribe([]any{new(event.EvtLocalReachabilityChanged)})
+	sub, err := s.host.EventBus().Subscribe([]any{
+		new(event.EvtLocalReachabilityChanged),
+		new(event.EvtHostReachableAddrsChanged),
+	})
 	if err != nil {
 		return fmt.Errorf("failed subscribing to reachability event %w", err)
 	}
 
 	go func() {
 		defer sub.Close()
+		var hasReachableAddrs bool
 		for {
 			select {
 			case <-s.ctx.Done():
 				return
 			case e := <-sub.Out():
-				if r, ok := e.(event.EvtLocalReachabilityChanged); ok {
-					select {
-					case <-s.ready:
-					case <-s.halt:
-						return
+				select {
+				case <-s.ready:
+				case <-s.halt:
+					return
+				}
+				switch r := e.(type) {
+				case event.EvtHostReachableAddrsChanged:
+					s.logger.Debug("host reachable addrs changed", "reachable", len(r.Reachable), "unreachable", len(r.Unreachable), "unknown", len(r.Unknown))
+					if len(r.Reachable) > 0 {
+						hasReachableAddrs = true
+						s.logger.Debug("reachability updated from autonatv2", "reachability", p2p.ReachabilityStatusPublic.String(), "reachable_addrs", r.Reachable)
+						s.notifier.UpdateReachability(p2p.ReachabilityStatusPublic)
+					} else if len(r.Unreachable) > 0 && len(r.Unknown) == 0 {
+						hasReachableAddrs = false
+						s.logger.Debug("reachability updated from autonatv2", "reachability", p2p.ReachabilityStatusPrivate.String())
+						s.notifier.UpdateReachability(p2p.ReachabilityStatusPrivate)
 					}
+				case event.EvtLocalReachabilityChanged:
 					s.logger.Debug("reachability changed", "new_reachability", r.Reachability.String())
-					s.notifier.UpdateReachability(p2p.ReachabilityStatus(r.Reachability))
+					newReach := p2p.ReachabilityStatus(r.Reachability)
+					// If AutoNAT v2 confirmed that we have reachable public addresses,
+					// do not allow an AutoNAT v1 dial-back failure (e.g. over an unforwarded IPv4 path in dual-stack)
+					// to override reachability to Private.
+					if hasReachableAddrs && newReach == p2p.ReachabilityStatusPrivate {
+						s.logger.Debug("ignoring autonatv1 private reachability: autonatv2 confirmed reachable addresses")
+						continue
+					}
+					s.notifier.UpdateReachability(newReach)
 				}
 			}
 		}
@@ -685,7 +710,12 @@ func (s *Service) handleIncoming(stream network.Stream) {
 		}
 	}
 
-	peer := p2p.Peer{Address: overlay, FullNode: i.FullNode, EthereumAddress: i.BzzAddress.EthereumAddress}
+	peer := p2p.Peer{
+		Address:         overlay,
+		FullNode:        i.FullNode,
+		EthereumAddress: i.BzzAddress.EthereumAddress,
+		Underlay:        stream.Conn().RemoteMultiaddr(),
+	}
 
 	s.protocolsmu.RLock()
 	for _, tn := range s.protocols {

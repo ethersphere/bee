@@ -1225,6 +1225,108 @@ func TestSnapshot(t *testing.T) {
 	if binP := getBinPopulation(&snap.Bins, po); binP != 1 {
 		t.Errorf("expected bin(%d) to have population %d but got %d", po, 1, snap.Population)
 	}
+
+	peers := getBinConnectedPeers(&snap.Bins, po)
+	if len(peers) != 1 {
+		t.Fatalf("expected 1 connected peer in bin %d but got %d", po, len(peers))
+	}
+	if peers[0].Metrics == nil {
+		t.Fatal("expected non-nil metrics for connected peer")
+	}
+	expectedUnderlay := underlayBase + a.String()
+	if peers[0].Metrics.SessionConnectionUnderlay != expectedUnderlay {
+		t.Errorf("expected sessionConnectionUnderlay %q, got %q", expectedUnderlay, peers[0].Metrics.SessionConnectionUnderlay)
+	}
+}
+
+func getBinConnectedPeers(bins *topology.KadBins, po uint8) []*topology.PeerInfo {
+	rv := reflect.ValueOf(bins)
+	bin := fmt.Sprintf("Bin%d", po)
+	b0 := reflect.Indirect(rv).FieldByName(bin)
+	cp := b0.FieldByName("ConnectedPeers")
+	return cp.Interface().([]*topology.PeerInfo)
+}
+
+func TestConnected_InboundUnderlay(t *testing.T) {
+	t.Parallel()
+
+	conns := new(int32)
+	sa, kad, _, _, signer := newTestKademlia(t, conns, nil, kademlia.Options{})
+	_ = signer
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	testutil.CleanupCloser(t, kad)
+
+	peerAddr := swarm.RandAddress(t)
+	underlayAddr, err := ma.NewMultiaddr("/ip6/2001:db8::1/tcp/1634")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = kad.Connected(context.Background(), p2p.Peer{
+		Address:  peerAddr,
+		FullNode: true,
+		Underlay: underlayAddr,
+	}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	po := swarm.Proximity(sa.Bytes(), peerAddr.Bytes())
+	snap := kad.Snapshot()
+	peers := getBinConnectedPeers(&snap.Bins, po)
+	if len(peers) != 1 {
+		t.Fatalf("expected 1 connected peer in bin %d, got %d", po, len(peers))
+	}
+	if peers[0].Metrics == nil {
+		t.Fatal("expected non-nil metrics for inbound connected peer")
+	}
+	if have, want := peers[0].Metrics.SessionConnectionDirection, "inbound"; have != want {
+		t.Errorf("expected sessionConnectionDirection %q, got %q", want, have)
+	}
+	if have, want := peers[0].Metrics.SessionConnectionUnderlay, underlayAddr.String(); have != want {
+		t.Errorf("expected sessionConnectionUnderlay %q, got %q", want, have)
+	}
+}
+
+func TestConnected_InboundNilUnderlay(t *testing.T) {
+	t.Parallel()
+
+	conns := new(int32)
+	sa, kad, _, _, signer := newTestKademlia(t, conns, nil, kademlia.Options{})
+	_ = signer
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	testutil.CleanupCloser(t, kad)
+
+	peerAddr := swarm.RandAddress(t)
+
+	err := kad.Connected(context.Background(), p2p.Peer{
+		Address:  peerAddr,
+		FullNode: true,
+		Underlay: nil,
+	}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	po := swarm.Proximity(sa.Bytes(), peerAddr.Bytes())
+	snap := kad.Snapshot()
+	peers := getBinConnectedPeers(&snap.Bins, po)
+	if len(peers) != 1 {
+		t.Fatalf("expected 1 connected peer in bin %d, got %d", po, len(peers))
+	}
+	if peers[0].Metrics == nil {
+		t.Fatal("expected non-nil metrics for inbound connected peer")
+	}
+	if have, want := peers[0].Metrics.SessionConnectionDirection, "inbound"; have != want {
+		t.Errorf("expected sessionConnectionDirection %q, got %q", want, have)
+	}
+	if have, want := peers[0].Metrics.SessionConnectionUnderlay, ""; have != want {
+		t.Errorf("expected empty sessionConnectionUnderlay, got %q", have)
+	}
 }
 
 func getBinPopulation(bins *topology.KadBins, po uint8) uint64 {
