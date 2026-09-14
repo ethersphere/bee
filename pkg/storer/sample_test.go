@@ -517,6 +517,53 @@ func benchmarkReserveSample(b *testing.B, chunkCountPerPO int) {
 	}
 }
 
+// BenchmarkTransformedAddress measures the sampler's per-chunk hashing on its
+// own, separately for a content-addressed and a single owner chunk.
+//
+// The SOC case is the reason this exists. Both ReserveSample benchmarks build
+// their reserve with chunk.GenerateValidRandomChunkAt, which produces CAC
+// chunks only, so the SOC branch of transformedAddress is never measured by
+// them. Any work the SOC path does over and above hashing the wrapped CAC shows
+// up here and nowhere else.
+func BenchmarkTransformedAddress(b *testing.B) {
+	anchor := []byte("swarm-test-anchor-deterministic!")
+
+	content := make([]byte, swarm.ChunkSize)
+	for i := range content {
+		content[i] = byte(i)
+	}
+
+	cacChunk, err := cac.New(content)
+	if err != nil {
+		b.Fatal(err)
+	}
+	socChunk := chunk.GenerateTestRandomSoChunk(b, cacChunk)
+
+	for _, tc := range []struct {
+		name string
+		ch   swarm.Chunk
+		typ  swarm.ChunkType
+	}{
+		{"cac", cacChunk, swarm.ChunkTypeContentAddressed},
+		{"soc", socChunk, swarm.ChunkTypeSingleOwner},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			// One hasher reused across iterations, as a sampler worker does.
+			hasher := bmt.NewPrefixHasher(anchor)
+
+			b.ReportAllocs()
+			b.SetBytes(int64(len(tc.ch.Data())))
+			b.ResetTimer()
+
+			for b.Loop() {
+				if _, err := storer.TransformedAddress(hasher, tc.ch, tc.typ); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
 // BenchmarkSampleHashing measures the time taken by MakeSampleUsingChunks to
 // hash a fixed set of CAC chunks.
 func BenchmarkSampleHashing(b *testing.B) {
