@@ -127,6 +127,11 @@ func (db *DB) ReserveSample(
 		g.Go(safe.RunFunc(db.logger, "storer-sample-worker", func() error {
 			wstat := SampleStats{}
 			hasher := bmt.NewPrefixHasher(anchor)
+			// One handle per worker rather than one per chunk: building it
+			// allocates, and the sampler asks for a chunk millions of times per
+			// round. It is not shared between workers because the read-only
+			// chunk store makes no thread-safety promise.
+			chunkStore := db.ChunkStore()
 			defer func() {
 				addStats(wstat)
 			}()
@@ -147,7 +152,7 @@ func (db *DB) ReserveSample(
 
 				chunkLoadStart := time.Now()
 
-				chunk, err := db.ChunkStore().Get(ctx, chItem.Address)
+				chunk, err := chunkStore.Get(ctx, chItem.Address)
 				chunkLoadDuration := time.Since(chunkLoadStart)
 
 				if err != nil {
