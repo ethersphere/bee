@@ -1396,6 +1396,19 @@ func (c *chunkStore) Get(_ context.Context, addr swarm.Address) (swarm.Chunk, er
 	return chunk, nil
 }
 
+func (c *chunkStore) GetInto(ctx context.Context, addr swarm.Address, buf []byte) (int, error) {
+	ch, err := c.Get(ctx, addr)
+	if err != nil {
+		return 0, err
+	}
+	data := ch.Data()
+	if len(buf) < len(data) {
+		return 0, fmt.Errorf("chunk store: buffer too small: %d < %d", len(buf), len(data))
+	}
+	copy(buf, data)
+	return len(data), nil
+}
+
 func (c *chunkStore) Put(_ context.Context, ch swarm.Chunk) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()

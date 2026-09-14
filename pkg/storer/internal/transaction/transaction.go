@@ -225,6 +225,13 @@ func (c *chunkStoreTrx) Get(ctx context.Context, addr swarm.Address) (ch swarm.C
 	return ch, err
 }
 
+func (c *chunkStoreTrx) GetInto(ctx context.Context, addr swarm.Address, buf []byte) (n int, err error) {
+	defer handleMetric("chunkstore_get", c.metrics)(&err)
+	unlock := c.lock(addr)
+	defer unlock()
+	return chunkstore.GetInto(ctx, c.indexStore, c.sharkyTrx, addr, buf)
+}
+
 func (c *chunkStoreTrx) Has(ctx context.Context, addr swarm.Address) (_ bool, err error) {
 	defer handleMetric("chunkstore_has", c.metrics)(&err)
 	unlock := c.lock(addr)

@@ -6,6 +6,7 @@ package inmemchunkstore
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/ethersphere/bee/v2/pkg/storage"
@@ -37,6 +38,22 @@ func (c *ChunkStore) Get(_ context.Context, addr swarm.Address) (swarm.Chunk, er
 		return nil, storage.ErrNotFound
 	}
 	return chunk.chunk, nil
+}
+
+func (c *ChunkStore) GetInto(_ context.Context, addr swarm.Address, buf []byte) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	chunk, ok := c.chunks[c.key(addr)]
+	if !ok {
+		return 0, storage.ErrNotFound
+	}
+	data := chunk.chunk.Data()
+	if len(buf) < len(data) {
+		return 0, fmt.Errorf("chunk store: buffer too small: %d < %d", len(buf), len(data))
+	}
+	copy(buf, data)
+	return len(data), nil
 }
 
 func (c *ChunkStore) Put(_ context.Context, ch swarm.Chunk) error {

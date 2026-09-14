@@ -17,13 +17,12 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/sharky"
 	soctesting "github.com/ethersphere/bee/v2/pkg/soc/testing"
-	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
-
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
 	"github.com/ethersphere/bee/v2/pkg/storage/storagetest"
 	chunktest "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstore"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
@@ -561,6 +560,21 @@ func BenchmarkChunkStoreGet(b *testing.B) {
 
 		for b.Loop() {
 			if _, err := cs.Get(ctx, addr); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+
+	b.Run("get_into", func(b *testing.B) {
+		st, addr := setup(b)
+		cs := st.ChunkStore()
+		buf := make([]byte, swarm.SocMaxChunkSize)
+
+		b.ReportAllocs()
+		b.ResetTimer()
+
+		for b.Loop() {
+			if _, err := cs.GetInto(ctx, addr, buf); err != nil {
 				b.Fatal(err)
 			}
 		}
