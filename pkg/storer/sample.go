@@ -38,6 +38,12 @@ type SampleItem struct {
 	Stamp              *postage.Stamp
 }
 
+type sampleItemInternal struct {
+	transformedAddress swarm.Address
+	chunkAddress       swarm.Address
+	batchID            []byte
+}
+
 type Sample struct {
 	Stats SampleStats
 	Items []SampleItem
@@ -120,7 +126,7 @@ func (db *DB) ReserveSample(
 	}))
 
 	// Phase 2: Get the chunk data and calculate transformed hash
-	sampleItemChan := make(chan SampleItem, 3*workers)
+	sampleItemChan := make(chan sampleItemInternal, 3*workers)
 
 	db.logger.Debug("reserve sampler workers", "count", workers)
 
@@ -173,10 +179,10 @@ func (db *DB) ReserveSample(
 				wstat.TaddrDuration += time.Since(taddrStart)
 
 				select {
-				case sampleItemChan <- SampleItem{
-					TransformedAddress: taddr,
-					ChunkAddress:       chItem.Address,
-					Stamp:              postage.NewStamp(chItem.BatchID, nil, nil, nil),
+				case sampleItemChan <- sampleItemInternal{
+					transformedAddress: taddr,
+					chunkAddress:       chItem.Address,
+					batchID:            chItem.BatchID,
 				}:
 				case <-gCtx.Done():
 					return gCtx.Err()
@@ -233,18 +239,18 @@ func (db *DB) ReserveSample(
 			currentMaxAddr = sampleItems[len(sampleItems)-1].TransformedAddress
 		}
 
-		if le(item.TransformedAddress, currentMaxAddr) || len(sampleItems) < SampleSize {
-			stamp, err := chunkstamp.LoadWithBatchID(db.storage.IndexStore(), "reserve", item.ChunkAddress, item.Stamp.BatchID())
+		if le(item.transformedAddress, currentMaxAddr) || len(sampleItems) < SampleSize {
+			stamp, err := chunkstamp.LoadWithBatchID(db.storage.IndexStore(), "reserve", item.chunkAddress, item.batchID)
 			if err != nil {
 				stats.StampLoadFailed++
-				db.logger.Debug("failed loading stamp", "chunk_address", item.ChunkAddress, "error", err)
+				db.logger.Debug("failed loading stamp", "chunk_address", item.chunkAddress, "error", err)
 				continue
 			}
 
-			ch, err := phase3ChunkStore.Get(ctx, item.ChunkAddress)
+			ch, err := phase3ChunkStore.Get(ctx, item.chunkAddress)
 			if err != nil {
 				stats.ChunkLoadFailed++
-				db.logger.Debug("failed loading chunk", "chunk_address", item.ChunkAddress, "error", err)
+				db.logger.Debug("failed loading chunk", "chunk_address", item.chunkAddress, "error", err)
 				continue
 			}
 
@@ -266,10 +272,12 @@ func (db *DB) ReserveSample(
 			stampValidDuration := time.Since(stampValidStart)
 			stats.ValidStampDuration += stampValidDuration
 
-			item.Stamp = postage.NewStamp(stamp.BatchID(), stamp.Index(), stamp.Timestamp(), stamp.Sig())
-			item.ChunkData = ch.Data()
-
-			insert(item)
+			insert(SampleItem{
+				TransformedAddress: item.transformedAddress,
+				ChunkAddress:       item.chunkAddress,
+				ChunkData:          ch.Data(),
+				Stamp:              postage.NewStamp(stamp.BatchID(), stamp.Index(), stamp.Timestamp(), stamp.Sig()),
+			})
 			stats.SampleInserts++
 		}
 	}
