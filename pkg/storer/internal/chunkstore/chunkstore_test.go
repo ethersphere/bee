@@ -497,17 +497,72 @@ type chunkStore struct {
 	sharky *sharky.Store
 }
 
-func makeStorage(t *testing.T) *chunkStore {
-	t.Helper()
+func makeStorage(tb testing.TB) *chunkStore {
+	tb.Helper()
 
 	store := inmemstore.New()
 	sharky, err := sharky.New(&memFS{Fs: afero.NewMemMapFs()}, 1, swarm.SocMaxChunkSize)
-	assert.NoError(t, err)
+	assert.NoError(tb, err)
 
-	t.Cleanup(func() {
-		assert.NoError(t, store.Close())
-		assert.NoError(t, sharky.Close())
+	tb.Cleanup(func() {
+		assert.NoError(tb, store.Close())
+		assert.NoError(tb, sharky.Close())
 	})
 
 	return &chunkStore{transaction.NewStorage(sharky, store), sharky}
+}
+
+// BenchmarkChunkStoreGet measures a single chunk read: one retrieval-index
+// lookup followed by one sharky read. It is the micro-benchmark for the read
+// path that the reserve sampler drives once per chunk.
+//
+// The two variants differ only in where the ChunkStore handle comes from.
+// "per_call" mirrors what the sampler does today, building a fresh handle for
+// every chunk; "hoisted" builds it once. The gap between them is the cost of
+// that handle alone.
+func BenchmarkChunkStoreGet(b *testing.B) {
+	ctx := context.Background()
+
+	setup := func(b *testing.B) (*chunkStore, swarm.Address) {
+		b.Helper()
+
+		st := makeStorage(b)
+		ch := chunktest.GenerateTestRandomChunk()
+
+		err := st.Run(ctx, func(s transaction.Store) error {
+			return s.ChunkStore().Put(ctx, ch)
+		})
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		return st, ch.Address()
+	}
+
+	b.Run("per_call", func(b *testing.B) {
+		st, addr := setup(b)
+
+		b.ReportAllocs()
+		b.ResetTimer()
+
+		for b.Loop() {
+			if _, err := st.ChunkStore().Get(ctx, addr); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+
+	b.Run("hoisted", func(b *testing.B) {
+		st, addr := setup(b)
+		cs := st.ChunkStore()
+
+		b.ReportAllocs()
+		b.ResetTimer()
+
+		for b.Loop() {
+			if _, err := cs.Get(ctx, addr); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
 }
