@@ -278,15 +278,17 @@ func TestGsocWebsocketInvalidFieldsHeader(t *testing.T) {
 	)
 }
 
-// TestGsocWebsocketSlowConsumer verifies that when a subscriber cannot keep up
-// with incoming GSOC messages, the server closes the connection instead of
-// blocking indefinitely or racing on the underlying websocket connection.
+// TestGsocWebsocketSlowConsumer verifies that a subscriber that falls behind
+// incoming GSOC messages is not dropped or disconnected: the server queues
+// every message (no cap) and delivers the full backlog, in order, once the
+// consumer catches up, instead of racing on the underlying websocket
+// connection or blocking the (synchronous) GSOC handler indefinitely.
 //
 // The connection is served over an in-memory net.Pipe, which is fully
 // synchronous (unbuffered): a write only completes once a matching read
-// consumes it. This makes the small dataC buffer overflow deterministically
-// as soon as the client stops reading, instead of depending on the size of
-// the OS's (possibly very large, auto-tuned) TCP socket buffers.
+// consumes it, so the server-side writer is deterministically blocked on the
+// first message for as long as the client doesn't read, while further
+// messages still queue up behind it without being dropped.
 func TestGsocWebsocketSlowConsumer(t *testing.T) {
 	t.Parallel()
 
@@ -338,12 +340,14 @@ func TestGsocWebsocketSlowConsumer(t *testing.T) {
 	}
 	testutil.CleanupCloser(t, cl)
 
-	// never read from cl, so the dataC buffer (cap 2) fills up almost
-	// immediately: the first message blocks the single writer goroutine
-	// (nothing reads the pipe), and the next ones queue up and overflow.
+	// never read from cl while queuing every message: the first message
+	// blocks the single writer goroutine (nothing reads the pipe yet), and
+	// the rest pile up behind it in the unbounded queue instead of being
+	// dropped.
+	payloads := make([][]byte, messageCount)
 	for i := range messageCount {
-		payload := []byte{byte(i)}
-		ch, _ := cac.New(payload)
+		payloads[i] = []byte{byte(i)}
+		ch, _ := cac.New(payloads[i])
 		socCh := soc.New(id, ch)
 		signedCh, _ := socCh.Sign(signer)
 		socCh, _ = soc.FromChunk(signedCh)
@@ -354,16 +358,16 @@ func TestGsocWebsocketSlowConsumer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Drain whatever messages had already been handed to the (synchronous)
-	// pipe before the overflow was detected; the connection must eventually
-	// be closed instead of the server delivering every message regardless of
-	// how far behind the consumer falls.
-	var readErr error
-	for i := 0; i < messageCount && readErr == nil; i++ {
-		_, _, readErr = cl.ReadMessage()
-	}
-	if readErr == nil {
-		t.Fatal("expected connection to be closed for a slow consumer")
+	// the whole backlog must arrive, in order, once the consumer starts
+	// reading again.
+	for i, want := range payloads {
+		_, got, err := cl.ReadMessage()
+		if err != nil {
+			t.Fatalf("message %d: %v", i, err)
+		}
+		if !bytes.Equal(got, want) {
+			t.Fatalf("message %d: got %q, want %q", i, got, want)
+		}
 	}
 }
 

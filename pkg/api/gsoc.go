@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
@@ -170,10 +171,12 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, socAddress swarm.Address
 	defer s.wsWg.Done()
 
 	var (
-		dataC  = make(chan []byte)
-		gone   = make(chan struct{})
-		ticker = time.NewTicker(s.WsPingPeriod)
-		err    error
+		queueMu sync.Mutex
+		queue   [][]byte
+		wake    = make(chan struct{}, 1)
+		gone    = make(chan struct{})
+		ticker  = time.NewTicker(s.WsPingPeriod)
+		err     error
 	)
 	defer func() {
 		ticker.Stop()
@@ -195,10 +198,16 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, socAddress swarm.Address
 			return
 		}
 
+		queueMu.Lock()
+		queue = append(queue, b)
+		queueMu.Unlock()
+
+		// Non-blocking: the writer only needs to know there is something to
+		// drain, not one notification per message, so a full wake channel
+		// means it is already going to pick this up.
 		select {
-		case dataC <- b:
-		case <-gone:
-		case <-s.quit:
+		case wake <- struct{}{}:
+		default:
 		}
 	})
 
@@ -212,17 +221,31 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, socAddress swarm.Address
 
 	for {
 		select {
-		case b := <-dataC:
-			err = conn.SetWriteDeadline(time.Now().Add(writeDeadline))
-			if err != nil {
-				s.logger.Debug("gsoc ws: set write deadline failed", "error", err)
-				return
-			}
+		case <-wake:
+			for {
+				queueMu.Lock()
+				if len(queue) == 0 {
+					queueMu.Unlock()
+					break
+				}
+				b := queue[0]
+				queue = queue[1:]
+				if len(queue) == 0 {
+					queue = nil // release the backing array once drained
+				}
+				queueMu.Unlock()
 
-			err = conn.WriteMessage(websocket.BinaryMessage, b)
-			if err != nil {
-				s.logger.Debug("gsoc ws: write message failed", "error", err)
-				return
+				err = conn.SetWriteDeadline(time.Now().Add(writeDeadline))
+				if err != nil {
+					s.logger.Debug("gsoc ws: set write deadline failed", "error", err)
+					return
+				}
+
+				err = conn.WriteMessage(websocket.BinaryMessage, b)
+				if err != nil {
+					s.logger.Debug("gsoc ws: write message failed", "error", err)
+					return
+				}
 			}
 
 		case <-s.quit:
