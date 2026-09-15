@@ -184,12 +184,13 @@ func ReplaceLoc(ctx context.Context, s storage.IndexStore, sh storage.Sharky, gu
 	}
 
 	oldLoc := rIdx.Location
+	if guard != nil {
+		guard.MarkFreed(LocationToChunkLocation(oldLoc))
+	}
+
 	err = sh.Release(ctx, oldLoc)
 	if err != nil {
 		return storage.ChunkLocation{}, fmt.Errorf("chunkstore: failed to release sharky location: %w", err)
-	}
-	if guard != nil {
-		guard.MarkFreed(LocationToChunkLocation(oldLoc))
 	}
 
 	loc, err := sh.Write(ctx, ch.Data())
