@@ -622,10 +622,10 @@ func TestLocatingChunkStore(t *testing.T) {
 
 	buf := make([]byte, swarm.SocMaxChunkSize)
 
-	// 1. Direct read via valid ChunkLocation
+	// 1. Without active session, GetIntoLoc falls back to standard GetInto safely
 	n, err := lg.GetIntoLoc(ctx, ch.Address(), loc, buf)
 	if err != nil {
-		t.Fatalf("getIntoLoc: %v", err)
+		t.Fatalf("getIntoLoc without session: %v", err)
 	}
 	if !bytes.Equal(buf[:n], ch.Data()) {
 		t.Fatal("chunk data does not match")
@@ -640,9 +640,18 @@ func TestLocatingChunkStore(t *testing.T) {
 		t.Fatal("chunk data does not match on zero location fallback")
 	}
 
-	// 3. Guard active and chunk deleted: GetIntoLoc falls back and returns ErrNotFound
+	// 3. With active session, direct read succeeds
 	done := st.StartSamplingSession()
 
+	n, err = lg.GetIntoLoc(ctx, ch.Address(), loc, buf)
+	if err != nil {
+		t.Fatalf("getIntoLoc with active session: %v", err)
+	}
+	if !bytes.Equal(buf[:n], ch.Data()) {
+		t.Fatal("chunk data does not match with active session")
+	}
+
+	// 4. Guard active and chunk deleted: GetIntoLoc falls back and returns ErrNotFound
 	err = st.Run(ctx, func(s transaction.Store) error {
 		return s.ChunkStore().Delete(ctx, ch.Address())
 	})
