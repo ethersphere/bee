@@ -664,5 +664,48 @@ func TestLocatingChunkStore(t *testing.T) {
 		t.Fatalf("expected ErrNotFound for deleted chunk, got %v", err)
 	}
 
+	// 5. ReplaceLoc marks old location as freed, while new location is valid
+	ch2 := chunktest.GenerateTestRandomChunk()
+	var loc2 storage.ChunkLocation
+	err = st.Run(ctx, func(s transaction.Store) error {
+		lp := s.ChunkStore().(storage.LocatingPutter)
+		loc2, err = lp.PutLoc(ctx, ch2)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("putLoc ch2: %v", err)
+	}
+
+	updatedData := append(ch2.Data()[:swarm.SpanSize], bytes.Repeat([]byte{0x42}, len(ch2.Data())-swarm.SpanSize)...)
+	ch2Updated := swarm.NewChunk(ch2.Address(), updatedData)
+
+	var newLoc2 storage.ChunkLocation
+	err = st.Run(ctx, func(s transaction.Store) error {
+		lr := s.ChunkStore().(storage.LocatingReplacer)
+		newLoc2, err = lr.ReplaceLoc(ctx, ch2Updated, false)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("replaceLoc ch2: %v", err)
+	}
+
+	// Reading with old location hint must fallback to indexStore and return updated data
+	n, err = lg.GetIntoLoc(ctx, ch2.Address(), loc2, buf)
+	if err != nil {
+		t.Fatalf("getIntoLoc old loc2: %v", err)
+	}
+	if !bytes.Equal(buf[:n], ch2Updated.Data()) {
+		t.Fatal("expected updated chunk data on old location fallback")
+	}
+
+	// Reading with new location hint reads directly and matches updated data
+	n, err = lg.GetIntoLoc(ctx, ch2.Address(), newLoc2, buf)
+	if err != nil {
+		t.Fatalf("getIntoLoc new loc2: %v", err)
+	}
+	if !bytes.Equal(buf[:n], ch2Updated.Data()) {
+		t.Fatal("expected updated chunk data on new location")
+	}
+
 	done()
 }
