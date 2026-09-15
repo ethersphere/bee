@@ -1223,7 +1223,10 @@ func TestReserveChunkLocation(t *testing.T) {
 		t.Fatal("expected ChunkBinItem to have non-zero Location after Put")
 	}
 
-	// Read directly using the location hint
+	// Read directly using the location hint within a sampling session
+	done := st.StartSamplingSession()
+	defer done()
+
 	cs := st.ChunkStore()
 	lg, ok := cs.(storage.LocatingGetterInto)
 	if !ok {

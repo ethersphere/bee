@@ -77,3 +77,14 @@ func (g *LocationGuard) IsFreed(loc storage.ChunkLocation) bool {
 	_, found := g.freed[loc]
 	return found
 }
+
+// SessionActive reports whether at least one sampling session is currently active.
+func (g *LocationGuard) SessionActive() bool {
+	if g == nil {
+		return false
+	}
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	return g.active > 0
+}

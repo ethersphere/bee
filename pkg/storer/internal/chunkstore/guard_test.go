@@ -20,6 +20,9 @@ func TestLocationGuard(t *testing.T) {
 	loc2 := storage.ChunkLocation{1, 0, 0, 0, 20, 0, 4}
 
 	// Inactive guard: MarkFreed should be a no-op
+	if guard.SessionActive() {
+		t.Fatal("expected SessionActive to be false initially")
+	}
 	guard.MarkFreed(loc1)
 	if guard.IsFreed(loc1) {
 		t.Fatal("expected IsFreed to be false when guard is inactive")
@@ -27,6 +30,9 @@ func TestLocationGuard(t *testing.T) {
 
 	// Start session
 	done := guard.StartSession()
+	if !guard.SessionActive() {
+		t.Fatal("expected SessionActive to be true during session")
+	}
 
 	// Marking freed during active session
 	guard.MarkFreed(loc1)
@@ -40,6 +46,9 @@ func TestLocationGuard(t *testing.T) {
 	// End session
 	done()
 
+	if guard.SessionActive() {
+		t.Fatal("expected SessionActive to be false after session completed")
+	}
 	if guard.IsFreed(loc1) {
 		t.Fatal("expected IsFreed to be false after session completed")
 	}

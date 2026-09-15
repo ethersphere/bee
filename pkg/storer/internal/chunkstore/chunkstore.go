@@ -103,7 +103,7 @@ func GetIntoLoc(
 	loc storage.ChunkLocation,
 	buf []byte,
 ) (int, error) {
-	if loc.IsZero() || (guard != nil && guard.IsFreed(loc)) {
+	if loc.IsZero() || guard == nil || !guard.SessionActive() || guard.IsFreed(loc) {
 		return GetInto(ctx, r, s, addr, buf)
 	}
 
