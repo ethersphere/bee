@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
@@ -171,12 +170,11 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, socAddress swarm.Address
 	defer s.wsWg.Done()
 
 	var (
-		dataC    = make(chan []byte, 2) // small buffer to decouple producer/consumer
-		gone     = make(chan struct{})
-		slow     = make(chan struct{})
-		slowOnce sync.Once
-		ticker   = time.NewTicker(s.WsPingPeriod)
-		err      error
+		dataC  = make(chan []byte)
+		gone   = make(chan struct{})
+		slow   = make(chan struct{})
+		ticker = time.NewTicker(s.WsPingPeriod)
+		err    error
 	)
 	defer func() {
 		ticker.Stop()
@@ -204,11 +202,7 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, socAddress swarm.Address
 		case <-slow:
 		case <-s.quit:
 		default:
-			// The connection writer is single-threaded in the main loop below;
-			// only signal it here instead of writing/closing the conn from this
-			// callback goroutine, which can run concurrently with the writer.
-			s.logger.Warning("gsoc ws: slow consumer, closing connection")
-			slowOnce.Do(func() { close(slow) })
+			s.logger.Warning("gsoc ws: slow consumer, messages piled up.")
 		}
 	})
 
