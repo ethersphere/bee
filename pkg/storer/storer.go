@@ -243,7 +243,7 @@ const loggerName = "storer"
 // Default options for levelDB.
 const (
 	defaultOpenFilesLimit         = uint64(256)
-	defaultBlockCacheCapacity     = uint64(256 * 1024 * 1024)
+	defaultBlockCacheCapacity     = uint64(64 * 1024 * 1024)
 	defaultWriteBufferSize        = uint64(32 * 1024 * 1024)
 	defaultDisableSeeksCompaction = false
 	defaultCacheCapacity          = uint64(1_000_000)
