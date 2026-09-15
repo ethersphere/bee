@@ -246,6 +246,14 @@ func (c *chunkStoreTrx) GetInto(ctx context.Context, addr swarm.Address, buf []b
 	return chunkstore.GetInto(ctx, c.indexStore, c.sharkyTrx, addr, buf)
 }
 
+// GetIntoLoc reads chunk data using an opaque ChunkLocation hint.
+//
+// CRITICAL SAFETY INVARIANT (Pillar 2 of LocationGuard safety chain):
+// unlock := c.lock(addr) MUST be held here to guarantee mutual exclusion with concurrent
+// Delete and ReplaceLoc operations. Those operations mark locations as freed in LocationGuard
+// under the same per-address lock before releasing the Sharky slot. Without this lock, a
+// concurrent GetIntoLoc call could read from Sharky after slot release but before or during
+// guard update, leading to use-after-free corruption if the slot is reused.
 func (c *chunkStoreTrx) GetIntoLoc(ctx context.Context, addr swarm.Address, loc storage.ChunkLocation, buf []byte) (n int, err error) {
 	defer handleMetric("chunkstore_get", c.metrics)(&err)
 	unlock := c.lock(addr)
