@@ -958,7 +958,7 @@ func NewBee(
 				blockHeight uint64
 				blockErr    error
 			)
-			for i := 0; i < startupBlockHeightChecks; i++ {
+			for range startupBlockHeightChecks {
 				blockHeight, blockErr = chainBackend.BlockNumber(ctx)
 				if blockErr != nil || blockHeight >= cs.Block {
 					break

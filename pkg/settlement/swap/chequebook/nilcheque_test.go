@@ -62,12 +62,10 @@ func TestChequeStoreReceiveChequeNilLastReceived(t *testing.T) {
 	cs := chequebook.NewChequeStore(store, nil, 1, beneficiary, nil, nil)
 
 	cheque := &chequebook.SignedCheque{
-		Cheque: chequebook.Cheque{
-			Beneficiary:      beneficiary,
-			Chequebook:       chequebookAddr,
-			CumulativePayout: big.NewInt(100),
-		},
-		Signature: []byte{},
+		Beneficiary:      beneficiary,
+		Chequebook:       chequebookAddr,
+		CumulativePayout: big.NewInt(100),
+		Signature:        []byte{},
 	}
 
 	_, err := cs.ReceiveCheque(context.Background(), cheque, big.NewInt(1), big.NewInt(0))
