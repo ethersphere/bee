@@ -38,7 +38,7 @@ func TestSingleNodeHistoryLookup(t *testing.T) {
 	t.Parallel()
 	storer := mockstorer.New()
 	ctx := context.Background()
-	ls := loadsave.New(storer.ChunkStore(), storer.Cache(), pipelineFactory(storer.Cache(), false), redundancy.DefaultLevel)
+	ls := loadsave.New(storer.ChunkStore(), storer.Cache(), pipelineFactory(storer.Cache(), false), redundancy.DefaultDownloadLevel)
 
 	h, err := accesscontrol.NewHistory(ls)
 	assertNoError(t, "create history", err)
@@ -62,7 +62,7 @@ func TestMultiNodeHistoryLookup(t *testing.T) {
 	t.Parallel()
 	storer := mockstorer.New()
 	ctx := context.Background()
-	ls := loadsave.New(storer.ChunkStore(), storer.Cache(), pipelineFactory(storer.Cache(), false), redundancy.DefaultLevel)
+	ls := loadsave.New(storer.ChunkStore(), storer.Cache(), pipelineFactory(storer.Cache(), false), redundancy.DefaultDownloadLevel)
 
 	h, err := accesscontrol.NewHistory(ls)
 	assertNoError(t, "create history", err)
@@ -134,7 +134,7 @@ func TestHistoryStore(t *testing.T) {
 	t.Parallel()
 	storer := mockstorer.New()
 	ctx := context.Background()
-	ls := loadsave.New(storer.ChunkStore(), storer.Cache(), pipelineFactory(storer.Cache(), false), redundancy.DefaultLevel)
+	ls := loadsave.New(storer.ChunkStore(), storer.Cache(), pipelineFactory(storer.Cache(), false), redundancy.DefaultDownloadLevel)
 
 	h1, err := accesscontrol.NewHistory(ls)
 	assertNoError(t, "create history", err)

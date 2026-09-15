@@ -4,4 +4,7 @@
 
 package staking
 
-var Erc20ABI = erc20ABI
+var (
+	Erc20ABI            = erc20ABI
+	CalculateMinDeposit = calculateMinDeposit
+)

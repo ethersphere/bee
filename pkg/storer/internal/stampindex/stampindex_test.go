@@ -267,3 +267,20 @@ func TestLoadOrStore(t *testing.T) {
 		})
 	}
 }
+
+// TestItemUnmarshalNegativeNamespaceLength is a regression test for SLICE-04.
+// A crafted namespace-length prefix of 0xFFFFFFFFFFFFFFF8 narrows via int() to
+// -8, which balances the size-equality guard (the fixed 112-byte tail cancels
+// the arithmetic) and then panics make([]byte, 0, nsLen) with cap out of range.
+func TestItemUnmarshalNegativeNamespaceLength(t *testing.T) {
+	t.Parallel()
+
+	// len == 8 + nsLen + 112; with nsLen == -8 the required length is 112.
+	buf := make([]byte, 112)
+	copy(buf[:8], []byte{0xF8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
+
+	err := new(stampindex.Item).Unmarshal(buf)
+	if !errors.Is(err, stampindex.ErrStampItemUnmarshalInvalidSize) {
+		t.Fatalf("expected %v, got %v", stampindex.ErrStampItemUnmarshalInvalidSize, err)
+	}
+}

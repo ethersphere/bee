@@ -14,6 +14,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 
@@ -170,5 +171,49 @@ func requestPipelineFn(s storage.Putter, encrypt bool, rLevel redundancy.Level) 
 	return func(ctx context.Context, r io.Reader) (swarm.Address, error) {
 		pipe := builder.NewPipelineBuilder(ctx, s, encrypt, rLevel)
 		return builder.FeedPipeline(ctx, pipe, r)
+	}
+}
+
+// TestDBSplitChunksFilePermissions is a regression test for PERM-01: the
+// "split chunks" command wrote each chunk payload file world-readable (0o644),
+// disclosing chunk contents to other local users on a shared host. Files must
+// not be group- or world-accessible.
+func TestDBSplitChunksFilePermissions(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("permission bits are not meaningful on windows")
+	}
+
+	buf := make([]byte, 16*1024)
+	if _, err := crand.Read(buf); err != nil {
+		t.Fatal(err)
+	}
+
+	inputFileName := path.Join(t.TempDir(), "input")
+	if err := os.WriteFile(inputFileName, buf, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	outputDir := t.TempDir()
+
+	err := newCommand(t, cmd.WithArgs("split", "chunks", "--input-file", inputFileName, "--output-dir", outputDir)).Execute()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := os.ReadDir(outputDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) == 0 {
+		t.Fatal("no chunk files were written")
+	}
+	for _, e := range entries {
+		info, err := e.Info()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if perm := info.Mode().Perm(); perm&0o077 != 0 {
+			t.Fatalf("chunk file %s is group/other-accessible: %#o", e.Name(), perm)
+		}
 	}
 }

@@ -13,19 +13,15 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-// ErrSwarmageddon is returned in case of a vis mayor called Swarmageddon.
-// Swarmageddon is the situation when none of the replicas can be retrieved.
-// If 2^{depth} replicas were uploaded and they all have valid postage stamps
-// then the probability of Swarmageddon is less than 0.000001
-// assuming the error rate of chunk retrievals stays below the level expressed
-// as depth by the publisher.
 var (
-	ErrSwarmageddon = errors.New("swarmageddon has begun")
+	// ErrContentNotFound is returned when content and erasure coded content cannot be found.
+	ErrContentNotFound = errors.New("erasure coded content not found")
 	// errGetterExhausted is returned when the retry loop exhausts all levels without
 	// receiving a result or enough errors to trigger ErrSwarmageddon.
 	// This path should never be reached under normal operation.
@@ -70,15 +66,20 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, e
 
 	// concurrently call to retrieve chunk using original CAC address
 	g.wg.Go(func() {
-		ch, err := g.Getter.Get(ctx, addr)
+		err := safe.RunFunc(nil, "replicas-get-original", func() error {
+			ch, err := g.Getter.Get(ctx, addr)
+			if err != nil {
+				return err
+			}
+
+			select {
+			case resultC <- ch:
+			case <-ctx.Done():
+			}
+			return nil
+		})()
 		if err != nil {
 			errc <- err
-			return
-		}
-
-		select {
-		case resultC <- ch:
-		case <-ctx.Done():
 		}
 	})
 	// counters
@@ -109,7 +110,7 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, e
 			errs = errors.Join(errs, err)
 			errcnt++
 			if errcnt > total {
-				return nil, errors.Join(ErrSwarmageddon, errs)
+				return nil, errors.Join(ErrContentNotFound, errs)
 			}
 
 			// ticker switches on the address channel
@@ -129,21 +130,25 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, e
 			}
 
 			g.wg.Go(func() {
-				ch, err := g.Getter.Get(ctx, swarm.NewAddress(so.addr))
+				err := safe.RunFunc(nil, "replicas-get-replica", func() error {
+					ch, err := g.Getter.Get(ctx, swarm.NewAddress(so.addr))
+					if err != nil {
+						return err
+					}
+
+					soc, err := soc.FromChunk(ch)
+					if err != nil {
+						return err
+					}
+
+					select {
+					case resultC <- soc.WrappedChunk():
+					case <-ctx.Done():
+					}
+					return nil
+				})()
 				if err != nil {
 					errc <- err
-					return
-				}
-
-				soc, err := soc.FromChunk(ch)
-				if err != nil {
-					errc <- err
-					return
-				}
-
-				select {
-				case resultC <- soc.WrappedChunk():
-				case <-ctx.Done():
 				}
 			})
 			n++

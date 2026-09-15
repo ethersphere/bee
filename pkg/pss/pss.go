@@ -20,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/pushsync"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 )
@@ -180,7 +181,9 @@ func (p *pss) TryUnwrap(c swarm.Chunk) {
 		wg.Add(1)
 		go func(hh Handler) {
 			defer wg.Done()
-			hh(ctx, msg)
+			safe.Run(p.logger, "pss-handler", func() {
+				hh(ctx, msg)
+			})
 		}(*hh)
 	}
 	go func() {

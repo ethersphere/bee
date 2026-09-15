@@ -290,3 +290,40 @@ func TestConcurrency(t *testing.T) {
 		})
 	}
 }
+
+// TestLocationUnmarshalShortBuffer is a regression test for SLICE-06:
+// Location.UnmarshalBinary indexes buf[0], buf[1:5] and buf[5:] directly, so a
+// buffer shorter than LocationSize must be rejected rather than panicking.
+func TestLocationUnmarshalShortBuffer(t *testing.T) {
+	t.Parallel()
+
+	var l sharky.Location
+	if err := l.UnmarshalBinary(make([]byte, sharky.LocationSize-1)); !errors.Is(err, sharky.ErrInvalidLocation) {
+		t.Fatalf("expected %v, got %v", sharky.ErrInvalidLocation, err)
+	}
+}
+
+// TestReadReleaseShardOutOfRange is a regression test for SLICE-06: a persisted
+// Shard value at or beyond the shard count is used directly as s.shards[Shard],
+// an index-out-of-range panic on the retrieval path. Read and Release must
+// bounds-check the shard index instead.
+func TestReadReleaseShardOutOfRange(t *testing.T) {
+	t.Parallel()
+
+	const shards = 2
+	s, err := sharky.New(&dirFS{basedir: t.TempDir()}, shards, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	// Shard index equal to the shard count is one past the last valid shard.
+	loc := sharky.Location{Shard: uint8(shards), Slot: 0, Length: 1}
+
+	if err := s.Read(context.Background(), loc, make([]byte, 1)); !errors.Is(err, sharky.ErrShardNotFound) {
+		t.Fatalf("Read: expected %v, got %v", sharky.ErrShardNotFound, err)
+	}
+	if err := s.Release(context.Background(), loc); !errors.Is(err, sharky.ErrShardNotFound) {
+		t.Fatalf("Release: expected %v, got %v", sharky.ErrShardNotFound, err)
+	}
+}

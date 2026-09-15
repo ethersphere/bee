@@ -31,7 +31,7 @@ func (s *Service) pingpongHandler(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	span, logger, ctx := s.tracer.StartSpanFromContext(ctx, "pingpong-api", logger)
-	defer span.Finish()
+	defer span.End()
 
 	rtt, err := s.pingpong.Ping(ctx, paths.Address, "ping")
 	if err != nil {

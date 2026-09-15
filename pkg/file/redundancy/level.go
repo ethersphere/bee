@@ -173,5 +173,9 @@ func GetReplicaCounts() [5]int {
 // we use an approximation as the successive powers of 2
 var replicaCounts = [5]int{0, 2, 4, 8, 16}
 
-// DefaultLevel is the default redundancy level
-const DefaultLevel = PARANOID
+// DefaultDownloadLevel is the default redundancy level for downloading chunks
+// expected to exist in the network (non-feed chunks)
+const DefaultDownloadLevel = PARANOID
+
+// DefaultUploadLevel is the default redundancy level for uploading chunks
+const DefaultUploadLevel = MEDIUM

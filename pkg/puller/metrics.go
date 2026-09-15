@@ -15,9 +15,10 @@ type metrics struct {
 	SyncedCounter         *prometheus.CounterVec // number of synced chunks
 	SyncWorkerErrCounter  prometheus.Counter     // count number of errors
 	MaxUintErrCounter     prometheus.Counter     // how many times we got maxuint as topmost
+	PullsyncRate          prometheus.GaugeFunc   // rate of historical syncing
 }
 
-func newMetrics() metrics {
+func newMetrics(pullsyncRate func() float64) metrics {
 	subsystem := "puller"
 
 	return metrics{
@@ -51,6 +52,12 @@ func newMetrics() metrics {
 			Name:      "max_uint_errors",
 			Help:      "Total max uint errors.",
 		}),
+		PullsyncRate: prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "pullsync_rate",
+			Help:      "Rate of historical syncing in chunks.",
+		}, pullsyncRate),
 	}
 }
 

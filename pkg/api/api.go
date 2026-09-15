@@ -63,6 +63,9 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/hashicorp/go-multierror"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel/codes"
+	semconv "go.opentelemetry.io/otel/semconv/v1.25.0"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -105,6 +108,8 @@ const (
 	ContentTypeHeader          = "Content-Type"
 	ContentDispositionHeader   = "Content-Disposition"
 	ContentLengthHeader        = "Content-Length"
+	ContentRangeHeader         = "Content-Range"
+	AcceptRangesHeader         = "Accept-Ranges"
 	RangeHeader                = "Range"
 	OriginHeader               = "Origin"
 	AccessControlExposeHeaders = "Access-Control-Expose-Headers"
@@ -387,7 +392,9 @@ func (s *Service) SetProbe(probe *Probe) {
 }
 
 func (s *Service) SetIsWarmingUp(v bool) {
-	s.isWarmingUp = v
+	if s != nil {
+		s.isWarmingUp = v
+	}
 }
 
 // Close hangs up running websockets on shutdown.
@@ -463,8 +470,8 @@ func (s *Service) newTracingHandler(spanName string) func(h http.Handler) http.H
 				// ignore
 			}
 
-			span, _, ctx := s.tracer.StartSpanFromContext(ctx, spanName, s.logger)
-			defer span.Finish()
+			span, _, ctx := s.tracer.StartSpanFromContext(ctx, spanName, s.logger, trace.WithSpanKind(trace.SpanKindServer))
+			defer span.End()
 
 			err = s.tracer.AddContextHTTPHeader(ctx, r.Header)
 			if err != nil {
@@ -473,6 +480,23 @@ func (s *Service) newTracingHandler(spanName string) func(h http.Handler) http.H
 			}
 
 			h.ServeHTTP(w, r.WithContext(ctx))
+
+			// The response status code is captured upstream by responseCodeMetricsHandler's
+			// *responseWriter, which exposes Status(). Read it to annotate the span with the
+			// standard HTTP server attributes so the request is queryable in Tempo/Grafana.
+			if sw, ok := w.(interface{ Status() int }); ok {
+				code := sw.Status()
+				span.SetAttributes(
+					semconv.HTTPRequestMethodKey.String(r.Method),
+					semconv.HTTPRoute(spanName),
+					semconv.HTTPResponseStatusCode(code),
+				)
+				// OTel server-span convention: 5xx marks the span as Error; 4xx is a client
+				// error and stays Unset, still queryable via http.response.status_code.
+				if code >= 500 {
+					span.SetStatus(codes.Error, http.StatusText(code))
+				}
+			}
 		})
 	}
 }
@@ -609,7 +633,7 @@ func (s *Service) corsHandler(h http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.Header().Set("Access-Control-Allow-Origin", o)
 			w.Header().Set("Access-Control-Allow-Headers", allowedHeadersStr)
-			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS, POST, PUT, DELETE")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS, POST, PUT, PATCH, DELETE")
 			w.Header().Set("Access-Control-Max-Age", "3600")
 		}
 		h.ServeHTTP(w, r)

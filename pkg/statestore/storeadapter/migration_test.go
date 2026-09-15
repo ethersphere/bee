@@ -7,6 +7,7 @@ package storeadapter_test
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
@@ -188,6 +189,169 @@ func TestRewriteAddressbookEnvelope_AddressbookConsumes(t *testing.T) {
 	}
 	if len(got.Signature) == 0 {
 		t.Fatal("signature dropped during migration")
+	}
+}
+
+func TestStampAddressbookLastSeen(t *testing.T) {
+	t.Parallel()
+
+	raw := newTestStore(t)
+	store, err := storeadapter.NewStateStorerAdapter(raw)
+	if err != nil {
+		t.Fatalf("NewStateStorerAdapter: %v", err)
+	}
+
+	const prefix = "addressbook_entry_"
+
+	// entry carried over from before pruning: no last_seen.
+	stampKey := prefix + "aabb"
+	if err := store.Put(stampKey, &storeadapter.MigratedEntry{
+		Address: storeadapter.MigratedAddress{
+			Overlay:   "aabb",
+			Underlays: []string{"/ip4/1.1.1.1"},
+			Signature: "sig==",
+			Nonce:     "deadbeef",
+			Timestamp: 12345,
+		},
+		Verified: true,
+	}); err != nil {
+		t.Fatalf("seed stamp: %v", err)
+	}
+
+	// entry that already has a last_seen must not be touched.
+	keepKey := prefix + "ccdd"
+	const existingLastSeen = int64(42)
+	if err := store.Put(keepKey, &storeadapter.MigratedEntry{
+		Address:  storeadapter.MigratedAddress{Overlay: "ccdd"},
+		LastSeen: existingLastSeen,
+	}); err != nil {
+		t.Fatalf("seed keep: %v", err)
+	}
+
+	if err := storeadapter.StampAddressbookLastSeen(raw)(); err != nil {
+		t.Fatalf("migration: %v", err)
+	}
+
+	var stamped storeadapter.MigratedEntry
+	if err := store.Get(stampKey, &stamped); err != nil {
+		t.Fatalf("get stamped: %v", err)
+	}
+	if stamped.LastSeen == 0 {
+		t.Fatal("last_seen was not stamped")
+	}
+	// other fields must survive the merge.
+	if !stamped.Verified || stamped.Address.Overlay != "aabb" || stamped.Address.Timestamp != 12345 {
+		t.Fatalf("entry mutated unexpectedly: %+v", stamped)
+	}
+	if len(stamped.Address.Underlays) != 1 || stamped.Address.Underlays[0] != "/ip4/1.1.1.1" {
+		t.Fatalf("underlays lost: %v", stamped.Address.Underlays)
+	}
+
+	var kept storeadapter.MigratedEntry
+	if err := store.Get(keepKey, &kept); err != nil {
+		t.Fatalf("get kept: %v", err)
+	}
+	if kept.LastSeen != existingLastSeen {
+		t.Fatalf("existing last_seen overwritten: got %d want %d", kept.LastSeen, existingLastSeen)
+	}
+}
+
+// TestAddressbookPruneRealStore drives addressbook.Prune over the production
+// storage path (leveldb behind StateStorerAdapter), whose iterator key
+// semantics differ from the in-memory mock used in the addressbook package's
+// own tests. It confirms that the right entries are pruned and the survivors
+// remain readable through the addressbook.
+func TestAddressbookPruneRealStore(t *testing.T) {
+	t.Parallel()
+
+	const (
+		prefix         = "addressbook_entry_"
+		validSignature = "c2lnbmF0dXJl" // base64("signature")
+		validUnderlay  = "/ip4/127.0.0.1/tcp/1634"
+		nonceHex       = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+	)
+
+	store, err := storeadapter.NewStateStorerAdapter(newTestStore(t))
+	if err != nil {
+		t.Fatalf("NewStateStorerAdapter: %v", err)
+	}
+
+	seed := func(overlayHex string, lastSeen int64) {
+		t.Helper()
+		if err := store.Put(prefix+overlayHex, &storeadapter.MigratedEntry{
+			Address: storeadapter.MigratedAddress{
+				Overlay:   overlayHex,
+				Underlays: []string{validUnderlay},
+				Signature: validSignature,
+				Nonce:     nonceHex,
+			},
+			Verified: true,
+			LastSeen: lastSeen,
+		}); err != nil {
+			t.Fatalf("seed %s: %v", overlayHex, err)
+		}
+	}
+
+	// the addressbook prunes when it is opened, against its own clock, which
+	// this package cannot override — so seed relative to the wall clock.
+	now := time.Now()
+	stale := swarm.MustParseHexAddress("aabb")
+	fresh := swarm.MustParseHexAddress("ccdd")
+	seed("aabb", now.Add(-90*24*time.Hour).Unix())
+	seed("ccdd", now.Add(-24*time.Hour).Unix())
+
+	book := addressbook.New(store)
+	if _, _, err := book.Get(stale); !errors.Is(err, addressbook.ErrNotFound) {
+		t.Fatalf("stale entry should have been pruned, got err=%v", err)
+	}
+
+	got, _, err := book.Get(fresh)
+	if err != nil {
+		t.Fatalf("fresh entry should survive prune: %v", err)
+	}
+	if !got.Overlay.Equal(fresh) {
+		t.Fatalf("survivor overlay mismatch: got %s want %s", got.Overlay, fresh)
+	}
+}
+
+func TestStampAddressbookLastSeen_Idempotent(t *testing.T) {
+	t.Parallel()
+
+	raw := newTestStore(t)
+	store, err := storeadapter.NewStateStorerAdapter(raw)
+	if err != nil {
+		t.Fatalf("NewStateStorerAdapter: %v", err)
+	}
+
+	key := "addressbook_entry_aabb"
+	if err := store.Put(key, &storeadapter.MigratedEntry{
+		Address:  storeadapter.MigratedAddress{Overlay: "aabb"},
+		Verified: true,
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	if err := storeadapter.StampAddressbookLastSeen(raw)(); err != nil {
+		t.Fatalf("first run: %v", err)
+	}
+
+	var first storeadapter.MigratedEntry
+	if err := store.Get(key, &first); err != nil {
+		t.Fatalf("get after first run: %v", err)
+	}
+
+	for i := 0; i < 2; i++ {
+		if err := storeadapter.StampAddressbookLastSeen(raw)(); err != nil {
+			t.Fatalf("rerun %d: %v", i, err)
+		}
+	}
+
+	var got storeadapter.MigratedEntry
+	if err := store.Get(key, &got); err != nil {
+		t.Fatalf("get after repeated runs: %v", err)
+	}
+	if got.LastSeen != first.LastSeen {
+		t.Fatalf("last_seen changed across reruns: got %d want %d", got.LastSeen, first.LastSeen)
 	}
 }
 

@@ -43,7 +43,7 @@ func TestJoiner_ErrReferenceLength(t *testing.T) {
 	t.Parallel()
 
 	store := inmemchunkstore.New()
-	_, _, err := joiner.New(context.Background(), store, store, swarm.ZeroAddress, redundancy.DefaultLevel)
+	_, _, err := joiner.New(context.Background(), store, store, swarm.ZeroAddress, redundancy.DefaultDownloadLevel)
 
 	if !errors.Is(err, storage.ErrReferenceLength) {
 		t.Fatalf("expected ErrReferenceLength %x but got %v", swarm.ZeroAddress, err)
@@ -72,7 +72,7 @@ func TestJoinerSingleChunk(t *testing.T) {
 	}
 
 	// read back data and compare
-	joinReader, l, err := joiner.New(ctx, store, store, mockAddr, redundancy.DefaultLevel)
+	joinReader, l, err := joiner.New(ctx, store, store, mockAddr, redundancy.DefaultDownloadLevel)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestJoinerDecryptingStore_NormalChunk(t *testing.T) {
 	}
 
 	// read back data and compare
-	joinReader, l, err := joiner.New(ctx, st, st, mockAddr, redundancy.DefaultLevel)
+	joinReader, l, err := joiner.New(ctx, st, st, mockAddr, redundancy.DefaultDownloadLevel)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestJoinerWithReference(t *testing.T) {
 	}
 
 	// read back data and compare
-	joinReader, l, err := joiner.New(ctx, st, st, rootChunk.Address(), redundancy.DefaultLevel)
+	joinReader, l, err := joiner.New(ctx, st, st, rootChunk.Address(), redundancy.DefaultDownloadLevel)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +212,7 @@ func TestJoinerMalformed(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	joinReader, _, err := joiner.New(ctx, store, store, rootChunk.Address(), redundancy.DefaultLevel)
+	joinReader, _, err := joiner.New(ctx, store, store, rootChunk.Address(), redundancy.DefaultDownloadLevel)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,7 +257,7 @@ func TestEncryptDecrypt(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			reader, l, err := joiner.New(context.Background(), store, store, resultAddress, redundancy.DefaultLevel)
+			reader, l, err := joiner.New(context.Background(), store, store, resultAddress, redundancy.DefaultDownloadLevel)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -343,7 +343,7 @@ func TestSeek(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			j, _, err := joiner.New(ctx, store, store, addr, redundancy.DefaultLevel)
+			j, _, err := joiner.New(ctx, store, store, addr, redundancy.DefaultDownloadLevel)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -619,7 +619,7 @@ func TestPrefetch(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			j, _, err := joiner.New(ctx, store, store, addr, redundancy.DefaultLevel)
+			j, _, err := joiner.New(ctx, store, store, addr, redundancy.DefaultDownloadLevel)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -667,7 +667,7 @@ func TestJoinerReadAt(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		j, _, err := joiner.New(ctx, store, store, rootChunk.Address(), redundancy.DefaultLevel)
+		j, _, err := joiner.New(ctx, store, store, rootChunk.Address(), redundancy.DefaultDownloadLevel)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -715,7 +715,7 @@ func TestJoinerOneLevel(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		j, _, err := joiner.New(ctx, store, store, rootChunk.Address(), redundancy.DefaultLevel)
+		j, _, err := joiner.New(ctx, store, store, rootChunk.Address(), redundancy.DefaultDownloadLevel)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -809,7 +809,7 @@ func TestJoinerTwoLevelsAcrossChunk(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		j, _, err := joiner.New(ctx, store, store, rootChunk.Address(), redundancy.DefaultLevel)
+		j, _, err := joiner.New(ctx, store, store, rootChunk.Address(), redundancy.DefaultDownloadLevel)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -865,7 +865,7 @@ func TestJoinerIterateChunkAddresses(t *testing.T) {
 
 		createdAddresses := []swarm.Address{rootChunk.Address(), firstAddress, secondAddress}
 
-		j, _, err := joiner.New(ctx, store, store, rootChunk.Address(), redundancy.DefaultLevel)
+		j, _, err := joiner.New(ctx, store, store, rootChunk.Address(), redundancy.DefaultDownloadLevel)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -919,7 +919,7 @@ func TestJoinerIterateChunkAddresses_Encrypted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	j, l, err := joiner.New(context.Background(), store, store, resultAddress, redundancy.DefaultLevel)
+	j, l, err := joiner.New(context.Background(), store, store, resultAddress, redundancy.DefaultDownloadLevel)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1123,7 +1123,7 @@ func TestJoinerRedundancy(t *testing.T) {
 					t.Fatal(err)
 				}
 
-				joinReader, rootSpan, err := joiner.New(ctx, store, store, swarmAddr, redundancy.DefaultLevel)
+				joinReader, rootSpan, err := joiner.New(ctx, store, store, swarmAddr, redundancy.DefaultDownloadLevel)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -1318,7 +1318,7 @@ func runRedundancyTest(t *testing.T, rLevel redundancy.Level, encrypt bool, size
 			t.Fatal(err)
 		}
 
-		j, _, err := joiner.New(ctx, store, store, addr, redundancy.DefaultLevel)
+		j, _, err := joiner.New(ctx, store, store, addr, redundancy.DefaultDownloadLevel)
 		if err != nil {
 			t.Fatal(err)
 		}

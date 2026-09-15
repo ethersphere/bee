@@ -22,6 +22,8 @@ func TestMain(m *testing.M) {
 		goleak.IgnoreTopFunction("github.com/libp2p/go-cidranger/net.NewNetwork"),
 		goleak.IgnoreTopFunction("github.com/libp2p/go-cidranger/net.Network.LeastCommonBitPosition"),
 		goleak.IgnoreTopFunction("go.opencensus.io/stats/view.(*worker).start"),
+		// goleveldb's mpoolDrain lingers for up to 1s after the store is closed.
+		goleak.IgnoreTopFunction("github.com/syndtr/goleveldb/leveldb.(*DB).mpoolDrain"),
 		goleak.IgnoreTopFunction("github.com/libp2p/go-cidranger.(*prefixTrie).insert"),
 	)
 }

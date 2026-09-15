@@ -194,7 +194,7 @@ func TestLevels_TrieFull(t *testing.T) {
 			Params: *r,
 		}
 
-		ht = hashtrie.NewHashTrieWriter(ctx, hashSize, rMock, pf, s, redundancy.DefaultLevel)
+		ht = hashtrie.NewHashTrieWriter(ctx, hashSize, rMock, pf, s, redundancy.DefaultDownloadLevel)
 	)
 
 	// to create a level wrap we need to do branching^(level-1) writes

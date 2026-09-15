@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coreos/go-semver/semver"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf/internal/pb"
@@ -347,6 +348,10 @@ func (noopWriteCloser) ResponseHeaders() p2p.Headers {
 	return nil
 }
 
+func (noopWriteCloser) Version() (*semver.Version, error) {
+	return nil, nil
+}
+
 func (noopWriteCloser) Close() error {
 	return nil
 }
@@ -377,6 +382,10 @@ func (noopReadCloser) Headers() p2p.Headers {
 
 func (noopReadCloser) ResponseHeaders() p2p.Headers {
 	return nil
+}
+
+func (noopReadCloser) Version() (*semver.Version, error) {
+	return nil, nil
 }
 
 func (noopReadCloser) Close() error {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -30,6 +31,19 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
 		response("invalid path params", logger, w)
 		return
+	}
+
+	headers := struct {
+		RLevel *redundancy.Level `map:"Swarm-Redundancy-Level" validate:"omitempty,rLevel"`
+	}{}
+	if response := s.mapStructure(r.Header, &headers); response != nil {
+		response("invalid header params", logger, w)
+		return
+	}
+
+	rLevel := redundancy.DefaultDownloadLevel
+	if headers.RLevel != nil {
+		rLevel = *headers.RLevel
 	}
 
 	has, err := s.storer.HasPin(paths.Reference)
@@ -53,7 +67,7 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 	}
 
 	getter := s.storer.Download(true)
-	traverser := traversal.New(getter, s.storer.Cache(), redundancy.DefaultLevel)
+	traverser := traversal.New(getter, s.storer.Cache())
 
 	sem := semaphore.NewWeighted(100)
 	var errTraverse error
@@ -93,6 +107,7 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 			}()
 			return nil
 		},
+		rLevel,
 	)
 
 	wg.Wait()
@@ -224,7 +239,9 @@ func (s *Service) pinIntegrityHandler(w http.ResponseWriter, r *http.Request) {
 
 	out := make(chan storer.PinStat)
 
-	go s.pinIntegrity.Check(r.Context(), logger, querie.Ref.String(), out)
+	safe.Go(logger, "pin-integrity-check", func() {
+		s.pinIntegrity.Check(r.Context(), logger, querie.Ref.String(), out)
+	})
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {

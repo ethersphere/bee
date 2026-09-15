@@ -2,7 +2,10 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package node
+// Package snapshot provides a BlockHeightContractFilterer backed by a
+// pre-computed postage batch snapshot, used to rebuild the batch store from an
+// embedded snapshot instead of replaying the whole postage contract history.
+package snapshot
 
 import (
 	"bytes"
@@ -17,7 +20,6 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/core/types"
-	archive "github.com/ethersphere/batch-archive"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage/listener"
 )
@@ -26,12 +28,6 @@ var _ listener.BlockHeightContractFilterer = (*SnapshotLogFilterer)(nil)
 
 type SnapshotGetter interface {
 	GetBatchSnapshot() []byte
-}
-
-type archiveSnapshotGetter struct{}
-
-func (a archiveSnapshotGetter) GetBatchSnapshot() []byte {
-	return archive.GetBatchSnapshot()
 }
 
 type SnapshotLogFilterer struct {
@@ -75,6 +71,16 @@ func (f *SnapshotLogFilterer) loadSnapshot() error {
 	return nil
 }
 
+// parseLogs decodes the snapshot NDJSON into types.Log entries.
+//
+// The snapshot is produced by ethersphere/batch-export, whose default slim
+// encoding carries only the types.Log fields Bee reads today: address, topics,
+// data, blockNumber, transactionHash (and logIndex). Any other field —
+// BlockHash, TxIndex, Removed — decodes to its zero value here with no error.
+// Before consuming a new types.Log field anywhere downstream of this filterer
+// (FilterLogs callers, listener.processEvent, transaction.ParseEvent), extend
+// SlimLog in batch-export's pkg/filestore and republish the snapshot first;
+// otherwise the field is silently empty for snapshot-sourced logs.
 func (f *SnapshotLogFilterer) parseLogs(reader io.Reader) error {
 	var parsedLogs []types.Log
 	var currentMaxBlockHeight uint64

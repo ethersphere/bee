@@ -284,6 +284,21 @@ func TestClassifyTransport(t *testing.T) {
 			expected: bzz.TransportWSS,
 		},
 		{
+			name:     "WSS address with deprecated /wss component",
+			addr:     mustMultiaddr("/ip4/104.28.194.73/tcp/443/wss/p2p/QmfSx1ujzboapD5h2CiqTJqUy46FeTDwXBszB3XUCfKEEj"),
+			expected: bzz.TransportWSS,
+		},
+		{
+			name:     "QUIC v1 address",
+			addr:     mustMultiaddr("/ip4/1.2.3.4/udp/1234/quic-v1"),
+			expected: bzz.TransportQUICV1,
+		},
+		{
+			name:     "legacy QUIC address",
+			addr:     mustMultiaddr("/ip4/1.2.3.4/udp/1234/quic"),
+			expected: bzz.TransportQUIC,
+		},
+		{
 			name:     "UDP address returns unknown",
 			addr:     mustMultiaddr("/ip4/127.0.0.1/udp/8080"),
 			expected: bzz.TransportUnknown,
@@ -315,6 +330,8 @@ func TestTransportTypePriority(t *testing.T) {
 		{bzz.TransportTCP, 0},
 		{bzz.TransportWS, 1},
 		{bzz.TransportWSS, 2},
+		{bzz.TransportQUICV1, 3},
+		{bzz.TransportQUIC, 3},
 		{bzz.TransportUnknown, 3},
 	}
 
@@ -326,15 +343,24 @@ func TestTransportTypePriority(t *testing.T) {
 		})
 	}
 
-	// Verify priority ordering: TCP < WS < WSS < Unknown
+	// Verify priority ordering: TCP < WS < WSS < QUIC/Unknown
 	if bzz.TransportTCP.Priority() >= bzz.TransportWS.Priority() {
 		t.Error("TCP priority should be lower (better) than WS")
 	}
 	if bzz.TransportWS.Priority() >= bzz.TransportWSS.Priority() {
 		t.Error("WS priority should be lower (better) than WSS")
 	}
-	if bzz.TransportWSS.Priority() >= bzz.TransportUnknown.Priority() {
-		t.Error("WSS priority should be lower (better) than Unknown")
+	if bzz.TransportWSS.Priority() >= bzz.TransportQUICV1.Priority() {
+		t.Error("WSS priority should be lower (better) than QUIC v1")
+	}
+	if bzz.TransportWSS.Priority() >= bzz.TransportQUIC.Priority() {
+		t.Error("WSS priority should be lower (better) than legacy QUIC")
+	}
+	if bzz.TransportQUICV1.Priority() != bzz.TransportUnknown.Priority() {
+		t.Error("QUIC v1 priority should match Unknown")
+	}
+	if bzz.TransportQUIC.Priority() != bzz.TransportUnknown.Priority() {
+		t.Error("legacy QUIC priority should match Unknown")
 	}
 }
 
