@@ -172,7 +172,6 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, socAddress swarm.Address
 	var (
 		dataC  = make(chan []byte)
 		gone   = make(chan struct{})
-		slow   = make(chan struct{})
 		ticker = time.NewTicker(s.WsPingPeriod)
 		err    error
 	)
@@ -199,10 +198,7 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, socAddress swarm.Address
 		select {
 		case dataC <- b:
 		case <-gone:
-		case <-slow:
 		case <-s.quit:
-		default:
-			s.logger.Warning("gsoc ws: slow consumer, messages piled up.")
 		}
 	})
 
@@ -243,16 +239,6 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, socAddress swarm.Address
 			return
 		case <-gone:
 			// client gone
-			return
-		case <-slow:
-			err = conn.SetWriteDeadline(time.Now().Add(writeDeadline))
-			if err != nil {
-				s.logger.Debug("gsoc ws: set write deadline failed", "error", err)
-				return
-			}
-			_ = conn.WriteControl(websocket.CloseMessage,
-				websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "slow consumer"),
-				time.Now().Add(writeDeadline))
 			return
 		case <-ticker.C:
 			err = conn.SetWriteDeadline(time.Now().Add(writeDeadline))
