@@ -163,27 +163,16 @@ func (s *Service) gsocWsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.wsWg.Add(1)
-	go s.gsocListeningWs(conn, paths.Address, fields, headers.CacheWrappedChunk)
-}
-
-func (s *Service) gsocListeningWs(conn *websocket.Conn, socAddress swarm.Address, fields []string, cacheWrappedChunk bool) {
-	defer s.wsWg.Done()
-
-	var (
-		queueMu sync.Mutex
-		queue   [][]byte
-		wake    = make(chan struct{}, 1)
-		gone    = make(chan struct{})
-		ticker  = time.NewTicker(s.WsPingPeriod)
-		err     error
-	)
-	defer func() {
-		ticker.Stop()
-		_ = conn.Close()
-	}()
-	cleanup := s.gsoc.Subscribe(socAddress, func(c *soc.SOC) {
-		if cacheWrappedChunk {
+	// Subscribe synchronously, before handing the connection off to its own
+	// goroutine: Upgrade already flushed the 101 response, so the client can
+	// start sending GSOC-triggering activity immediately. Subscribing here
+	// instead of inside the spawned goroutine closes the window in which an
+	// update could arrive before the handler is registered and be silently
+	// missed.
+	queue := &gsocQueue{}
+	wake := make(chan struct{}, 1)
+	cleanup := s.gsoc.Subscribe(paths.Address, func(c *soc.SOC) {
+		if headers.CacheWrappedChunk {
 			// Caching is a node-local side effect independent of this
 			// subscriber's connection, so it must not be aborted just
 			// because the websocket closes mid-write.
@@ -198,9 +187,7 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, socAddress swarm.Address
 			return
 		}
 
-		queueMu.Lock()
-		queue = append(queue, b)
-		queueMu.Unlock()
+		queue.push(b)
 
 		// Non-blocking: the writer only needs to know there is something to
 		// drain, not one notification per message, so a full wake channel
@@ -211,7 +198,51 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, socAddress swarm.Address
 		}
 	})
 
+	s.wsWg.Add(1)
+	go s.gsocListeningWs(conn, cleanup, queue, wake)
+}
+
+// gsocQueue is an unbounded FIFO of pending outgoing GSOC messages: the
+// producer (the GSOC subscription callback) must never block or drop a
+// message, no matter how far behind the websocket writer falls.
+type gsocQueue struct {
+	mu    sync.Mutex
+	items [][]byte
+}
+
+func (q *gsocQueue) push(b []byte) {
+	q.mu.Lock()
+	q.items = append(q.items, b)
+	q.mu.Unlock()
+}
+
+// pop returns the oldest queued message, or ok=false if the queue is empty.
+func (q *gsocQueue) pop() (b []byte, ok bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if len(q.items) == 0 {
+		return nil, false
+	}
+	b, q.items = q.items[0], q.items[1:]
+	if len(q.items) == 0 {
+		q.items = nil // release the backing array once drained
+	}
+	return b, true
+}
+
+func (s *Service) gsocListeningWs(conn *websocket.Conn, cleanup func(), queue *gsocQueue, wake chan struct{}) {
+	defer s.wsWg.Done()
 	defer cleanup()
+
+	var (
+		gone   = make(chan struct{})
+		ticker = time.NewTicker(s.WsPingPeriod)
+		err    error
+	)
+	defer func() {
+		ticker.Stop()
+		_ = conn.Close()
+	}()
 
 	conn.SetCloseHandler(func(code int, text string) error {
 		s.logger.Debug("gsoc ws: client gone", "code", code, "message", text)
@@ -223,17 +254,10 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, socAddress swarm.Address
 		select {
 		case <-wake:
 			for {
-				queueMu.Lock()
-				if len(queue) == 0 {
-					queueMu.Unlock()
+				b, ok := queue.pop()
+				if !ok {
 					break
 				}
-				b := queue[0]
-				queue = queue[1:]
-				if len(queue) == 0 {
-					queue = nil // release the backing array once drained
-				}
-				queueMu.Unlock()
 
 				err = conn.SetWriteDeadline(time.Now().Add(writeDeadline))
 				if err != nil {
