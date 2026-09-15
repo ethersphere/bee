@@ -146,3 +146,56 @@ func TestReserveItems(t *testing.T) {
 		})
 	}
 }
+
+func TestChunkBinItemDualFormat(t *testing.T) {
+	t.Parallel()
+
+	addr := swarm.NewAddress(storagetest.MaxAddressBytes[:])
+	batchID := []byte("01234567890123456789012345678901")
+	stampHash := []byte("abcdefghijklmnopqrstuvwxyz123456")
+	loc := storage.ChunkLocation{1, 2, 3, 4, 5, 6, 7, 8}
+
+	item := &reserve.ChunkBinItem{
+		Bin:       5,
+		BinID:     42,
+		Address:   addr,
+		BatchID:   batchID,
+		StampHash: stampHash,
+		ChunkType: swarm.ChunkTypeContentAddressed,
+		Location:  loc,
+	}
+
+	// Marshal produces new format with location
+	buf, err := item.Marshal()
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if len(buf) != 114 {
+		t.Fatalf("expected 114 bytes, got %d", len(buf))
+	}
+
+	// Unmarshal new format preserves location
+	recovered := new(reserve.ChunkBinItem)
+	if err := recovered.Unmarshal(buf); err != nil {
+		t.Fatalf("unmarshal new format: %v", err)
+	}
+	if recovered.Location != loc {
+		t.Fatalf("expected location %v, got %v", loc, recovered.Location)
+	}
+	if !recovered.Address.Equal(addr) {
+		t.Fatalf("expected address %v, got %v", addr, recovered.Address)
+	}
+
+	// Unmarshal legacy 106-byte format succeeds with zero location
+	legacyBuf := buf[:106]
+	legacyRecovered := new(reserve.ChunkBinItem)
+	if err := legacyRecovered.Unmarshal(legacyBuf); err != nil {
+		t.Fatalf("unmarshal legacy format: %v", err)
+	}
+	if !legacyRecovered.Location.IsZero() {
+		t.Fatalf("expected zero location for legacy item, got %v", legacyRecovered.Location)
+	}
+	if !legacyRecovered.Address.Equal(addr) {
+		t.Fatalf("expected address %v, got %v", addr, legacyRecovered.Address)
+	}
+}

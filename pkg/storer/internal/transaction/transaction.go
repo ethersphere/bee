@@ -55,6 +55,7 @@ type Storage interface {
 	NewTransaction(context.Context) (Transaction, func())
 	Run(context.Context, func(Store) error) error
 	Close() error
+	StartSamplingSession() func()
 }
 
 type store struct {
@@ -62,10 +63,15 @@ type store struct {
 	bstore      storage.BatchStore
 	metrics     metrics
 	chunkLocker *multex.Multex
+	guard       *chunkstore.LocationGuard
 }
 
 func NewStorage(sharky *sharky.Store, bstore storage.BatchStore) Storage {
-	return &store{sharky, bstore, newMetrics(), multex.New()}
+	return &store{sharky, bstore, newMetrics(), multex.New(), chunkstore.NewLocationGuard()}
+}
+
+func (s *store) StartSamplingSession() func() {
+	return s.guard.StartSession()
 }
 
 type transaction struct {
@@ -94,7 +100,7 @@ func (s *store) NewTransaction(ctx context.Context) (Transaction, func()) {
 		start:      time.Now(),
 		batch:      b,
 		indexstore: index,
-		chunkStore: &chunkStoreTrx{index, sharky, s.chunkLocker, make(map[string]struct{}), s.metrics, false},
+		chunkStore: &chunkStoreTrx{index, sharky, s.chunkLocker, make(map[string]struct{}), s.metrics, false, s.guard},
 		sharkyTrx:  sharky,
 		metrics:    s.metrics,
 	}
@@ -121,7 +127,7 @@ func (s *store) IndexStore() storage.Reader {
 func (s *store) ChunkStore() storage.ReadOnlyChunkStore {
 	indexStore := &indexTrx{s.bstore, nil, s.metrics}
 	sharyTrx := &sharkyTrx{s.sharky, s.metrics, nil, nil}
-	return &chunkStoreTrx{indexStore, sharyTrx, s.chunkLocker, nil, s.metrics, true}
+	return &chunkStoreTrx{indexStore, sharyTrx, s.chunkLocker, nil, s.metrics, true, s.guard}
 }
 
 // Run creates a new transaction and gives the caller access to the transaction
@@ -208,6 +214,13 @@ func (t *transaction) ChunkStore() storage.ChunkStore {
 	return t.chunkStore
 }
 
+var (
+	_ storage.ChunkStore         = (*chunkStoreTrx)(nil)
+	_ storage.LocatingPutter     = (*chunkStoreTrx)(nil)
+	_ storage.LocatingReplacer   = (*chunkStoreTrx)(nil)
+	_ storage.LocatingGetterInto = (*chunkStoreTrx)(nil)
+)
+
 type chunkStoreTrx struct {
 	indexStore   storage.IndexStore
 	sharkyTrx    *sharkyTrx
@@ -215,6 +228,7 @@ type chunkStoreTrx struct {
 	lockedAddrs  map[string]struct{}
 	metrics      metrics
 	readOnly     bool
+	guard        *chunkstore.LocationGuard
 }
 
 func (c *chunkStoreTrx) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
@@ -232,6 +246,13 @@ func (c *chunkStoreTrx) GetInto(ctx context.Context, addr swarm.Address, buf []b
 	return chunkstore.GetInto(ctx, c.indexStore, c.sharkyTrx, addr, buf)
 }
 
+func (c *chunkStoreTrx) GetIntoLoc(ctx context.Context, addr swarm.Address, loc storage.ChunkLocation, buf []byte) (n int, err error) {
+	defer handleMetric("chunkstore_get", c.metrics)(&err)
+	unlock := c.lock(addr)
+	defer unlock()
+	return chunkstore.GetIntoLoc(ctx, c.indexStore, c.sharkyTrx, c.guard, addr, loc, buf)
+}
+
 func (c *chunkStoreTrx) Has(ctx context.Context, addr swarm.Address) (_ bool, err error) {
 	defer handleMetric("chunkstore_has", c.metrics)(&err)
 	unlock := c.lock(addr)
@@ -246,11 +267,18 @@ func (c *chunkStoreTrx) Put(ctx context.Context, ch swarm.Chunk) (err error) {
 	return chunkstore.Put(ctx, c.indexStore, c.sharkyTrx, ch)
 }
 
+func (c *chunkStoreTrx) PutLoc(ctx context.Context, ch swarm.Chunk) (loc storage.ChunkLocation, err error) {
+	defer handleMetric("chunkstore_put", c.metrics)(&err)
+	unlock := c.lock(ch.Address())
+	defer unlock()
+	return chunkstore.PutLoc(ctx, c.indexStore, c.sharkyTrx, ch)
+}
+
 func (c *chunkStoreTrx) Delete(ctx context.Context, addr swarm.Address) (err error) {
 	defer handleMetric("chunkstore_delete", c.metrics)(&err)
 	unlock := c.lock(addr)
 	defer unlock()
-	return chunkstore.Delete(ctx, c.indexStore, c.sharkyTrx, addr)
+	return chunkstore.Delete(ctx, c.indexStore, c.sharkyTrx, c.guard, addr)
 }
 
 func (c *chunkStoreTrx) Iterate(ctx context.Context, fn storage.IterateChunkFn) (err error) {
@@ -262,7 +290,14 @@ func (c *chunkStoreTrx) Replace(ctx context.Context, ch swarm.Chunk, emplace boo
 	defer handleMetric("chunkstore_replace", c.metrics)(&err)
 	unlock := c.lock(ch.Address())
 	defer unlock()
-	return chunkstore.Replace(ctx, c.indexStore, c.sharkyTrx, ch, emplace)
+	return chunkstore.Replace(ctx, c.indexStore, c.sharkyTrx, c.guard, ch, emplace)
+}
+
+func (c *chunkStoreTrx) ReplaceLoc(ctx context.Context, ch swarm.Chunk, emplace bool) (loc storage.ChunkLocation, err error) {
+	defer handleMetric("chunkstore_replace", c.metrics)(&err)
+	unlock := c.lock(ch.Address())
+	defer unlock()
+	return chunkstore.ReplaceLoc(ctx, c.indexStore, c.sharkyTrx, c.guard, ch, emplace)
 }
 
 func (c *chunkStoreTrx) lock(addr swarm.Address) func() {

@@ -112,6 +112,7 @@ type ChunkBinItem struct {
 	BatchID   []byte
 	StampHash []byte
 	ChunkType swarm.ChunkType
+	Location  storage.ChunkLocation
 }
 
 func (c *ChunkBinItem) Namespace() string {
@@ -144,17 +145,22 @@ func (c *ChunkBinItem) Clone() storage.Item {
 		BatchID:   copyBytes(c.BatchID),
 		StampHash: copyBytes(c.StampHash),
 		ChunkType: c.ChunkType,
+		Location:  c.Location,
 	}
 }
 
-const chunkBinItemSize = 1 + 8 + swarm.HashSize + swarm.HashSize + 1 + swarm.HashSize
+const (
+	legacyChunkBinItemSize  = 1 + 8 + swarm.HashSize + swarm.HashSize + 1 + swarm.HashSize // 106
+	chunkBinItemSizeWithLoc = legacyChunkBinItemSize + 8                                   // 114
+	chunkBinItemSize        = chunkBinItemSizeWithLoc
+)
 
 func (c *ChunkBinItem) Marshal() ([]byte, error) {
 	if c.Address.IsZero() {
 		return nil, errMarshalInvalidAddress
 	}
 
-	buf := make([]byte, chunkBinItemSize)
+	buf := make([]byte, chunkBinItemSizeWithLoc)
 	i := 0
 
 	buf[i] = c.Bin
@@ -173,11 +179,14 @@ func (c *ChunkBinItem) Marshal() ([]byte, error) {
 	i += 1
 
 	copy(buf[i:i+swarm.HashSize], c.StampHash)
+	i += swarm.HashSize
+
+	copy(buf[i:i+8], c.Location[:])
 	return buf, nil
 }
 
 func (c *ChunkBinItem) Unmarshal(buf []byte) error {
-	if len(buf) != chunkBinItemSize {
+	if len(buf) != legacyChunkBinItemSize && len(buf) != chunkBinItemSizeWithLoc {
 		return errUnmarshalInvalidSize
 	}
 
@@ -198,6 +207,13 @@ func (c *ChunkBinItem) Unmarshal(buf []byte) error {
 	i += 1
 
 	c.StampHash = copyBytes(buf[i : i+swarm.HashSize])
+	i += swarm.HashSize
+
+	if len(buf) == chunkBinItemSizeWithLoc {
+		copy(c.Location[:], buf[i:i+8])
+	} else {
+		c.Location = storage.ChunkLocation{}
+	}
 	return nil
 }
 

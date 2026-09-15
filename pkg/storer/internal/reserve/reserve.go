@@ -170,10 +170,26 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 					return err
 				}
 
+				oldChunkBinItem := &ChunkBinItem{Bin: oldBatchRadiusItem.Bin, BinID: oldBatchRadiusItem.BinID}
+				_ = s.IndexStore().Get(oldChunkBinItem)
+				loc := oldChunkBinItem.Location
+
+				if chunkType == swarm.ChunkTypeSingleOwner {
+					r.logger.Debug("replacing soc in chunkstore", "address", chunk.Address())
+					if lr, ok := s.ChunkStore().(storage.LocatingReplacer); ok {
+						loc, err = lr.ReplaceLoc(ctx, chunk, false)
+					} else {
+						err = s.ChunkStore().Replace(ctx, chunk, false)
+					}
+					if err != nil {
+						return err
+					}
+				}
+
 				// delete old chunk index items
 				err = errors.Join(
 					s.IndexStore().Delete(oldBatchRadiusItem),
-					s.IndexStore().Delete(&ChunkBinItem{Bin: oldBatchRadiusItem.Bin, BinID: oldBatchRadiusItem.BinID}),
+					s.IndexStore().Delete(oldChunkBinItem),
 					stampindex.Delete(s.IndexStore(), reserveScope, oldStamp),
 					chunkstamp.DeleteWithStamp(s.IndexStore(), reserveScope, oldBatchRadiusItem.Address, oldStamp),
 				)
@@ -203,15 +219,11 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 						BatchID:   chunk.Stamp().BatchID(),
 						ChunkType: chunkType,
 						StampHash: stampHash,
+						Location:  loc,
 					}),
 				)
 				if err != nil {
 					return err
-				}
-
-				if chunkType == swarm.ChunkTypeSingleOwner {
-					r.logger.Debug("replacing soc in chunkstore", "address", chunk.Address())
-					return s.ChunkStore().Replace(ctx, chunk, false)
 				}
 
 				return nil
@@ -241,6 +253,34 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			return err
 		}
 
+		var loc storage.ChunkLocation
+		if chunkType == swarm.ChunkTypeSingleOwner {
+			var has bool
+			has, err = s.ChunkStore().Has(ctx, chunk.Address())
+			if err != nil {
+				return err
+			}
+			if has {
+				r.logger.Debug("replacing soc in chunkstore", "address", chunk.Address())
+				if lr, ok := s.ChunkStore().(storage.LocatingReplacer); ok {
+					loc, err = lr.ReplaceLoc(ctx, chunk, true)
+				} else {
+					err = s.ChunkStore().Replace(ctx, chunk, true)
+				}
+			} else if lp, ok := s.ChunkStore().(storage.LocatingPutter); ok {
+				loc, err = lp.PutLoc(ctx, chunk)
+			} else {
+				err = s.ChunkStore().Put(ctx, chunk)
+			}
+		} else if lp, ok := s.ChunkStore().(storage.LocatingPutter); ok {
+			loc, err = lp.PutLoc(ctx, chunk)
+		} else {
+			err = s.ChunkStore().Put(ctx, chunk)
+		}
+		if err != nil {
+			return err
+		}
+
 		err = errors.Join(
 			chunkstamp.Store(s.IndexStore(), reserveScope, chunk),
 			s.IndexStore().Put(&BatchRadiusItem{
@@ -257,28 +297,9 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 				BatchID:   chunk.Stamp().BatchID(),
 				ChunkType: chunkType,
 				StampHash: stampHash,
+				Location:  loc,
 			}),
 		)
-		if err != nil {
-			return err
-		}
-
-		var has bool
-		if chunkType == swarm.ChunkTypeSingleOwner {
-			has, err = s.ChunkStore().Has(ctx, chunk.Address())
-			if err != nil {
-				return err
-			}
-			if has {
-				r.logger.Debug("replacing soc in chunkstore", "address", chunk.Address())
-				err = s.ChunkStore().Replace(ctx, chunk, true)
-			} else {
-				err = s.ChunkStore().Put(ctx, chunk)
-			}
-		} else {
-			err = s.ChunkStore().Put(ctx, chunk)
-		}
-
 		if err != nil {
 			return err
 		}
@@ -286,7 +307,6 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 		if !loadedStampIndex {
 			shouldIncReserveSize = true
 		}
-
 		return nil
 	})
 	if err != nil {

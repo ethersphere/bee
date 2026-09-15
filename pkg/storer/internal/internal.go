@@ -77,7 +77,8 @@ func (t *inmemTrx) IndexStore() storage.IndexStore { return t.indexStore }
 func (t *inmemTrx) ChunkStore() storage.ChunkStore { return t.chunkStore }
 func (t *inmemTrx) Commit() error                  { return nil }
 
-func (t *inmemStorage) Close() error { return nil }
+func (t *inmemStorage) Close() error                 { return nil }
+func (t *inmemStorage) StartSamplingSession() func() { return func() {} }
 func (t *inmemStorage) Run(ctx context.Context, f func(s transaction.Store) error) error {
 	trx, done := t.NewTransaction(ctx)
 	defer done()
