@@ -340,6 +340,47 @@ func TestGsocWebsocketSlowConsumer(t *testing.T) {
 	}
 	testutil.CleanupCloser(t, cl)
 
+	// Subscribe runs synchronously in the HTTP handler before the connection
+	// is handed off to its own goroutine, but Dial returning only means the
+	// handshake bytes were exchanged over the pipe — it is not a
+	// happens-before guarantee that the server has gone on to call
+	// Subscribe. Those are two independent continuations of the same
+	// rendezvous, and either goroutine can be scheduled first; a message
+	// sent right after Dial can race Subscribe and, if it loses, is dropped
+	// before any handler exists to queue it — permanently, not just
+	// delayed. Real network I/O (as in TestGsocWebsocketMessageOrdering)
+	// involves enough actual syscalls to force scheduler yields that this is
+	// a non-issue in practice, but this test deliberately uses an in-memory
+	// net.Pipe (see comment above) to avoid depending on real I/O timing,
+	// which removes that cushion.
+	//
+	// Give the server's goroutine time to reach Subscribe before sending
+	// anything: this can't be done by retrying a read with a short deadline
+	// instead, because gorilla/websocket permanently poisons a *Conn for all
+	// further reads once any read — including one that merely times out —
+	// returns an error, so a read that might legitimately need a retry
+	// cannot be attempted more than once on the same connection.
+	time.Sleep(300 * time.Millisecond)
+
+	// Confirm the subscription is actually active (rather than silently
+	// trusting the sleep) with a single throwaway round-trip.
+	warmup := []byte{0xff}
+	{
+		ch, _ := cac.New(warmup)
+		socCh := soc.New(id, ch)
+		signedCh, _ := socCh.Sign(signer)
+		socCh, _ = soc.FromChunk(signedCh)
+		gsocSvc.Handle(socCh)
+	}
+	if err := cl.SetReadDeadline(time.Now().Add(longTimeout)); err != nil {
+		t.Fatal(err)
+	}
+	if _, got, err := cl.ReadMessage(); err != nil {
+		t.Fatalf("warmup message: %v", err)
+	} else if !bytes.Equal(got, warmup) {
+		t.Fatalf("warmup message: got %q, want %q", got, warmup)
+	}
+
 	// never read from cl while queuing every message: the first message
 	// blocks the single writer goroutine (nothing reads the pipe yet), and
 	// the rest pile up behind it in the unbounded queue instead of being
@@ -352,10 +393,6 @@ func TestGsocWebsocketSlowConsumer(t *testing.T) {
 		signedCh, _ := socCh.Sign(signer)
 		socCh, _ = soc.FromChunk(signedCh)
 		gsocSvc.Handle(socCh)
-	}
-
-	if err := cl.SetReadDeadline(time.Now().Add(longTimeout)); err != nil {
-		t.Fatal(err)
 	}
 
 	// the whole backlog must arrive, in order, once the consumer starts
