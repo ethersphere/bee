@@ -201,6 +201,28 @@ func (c *ChunkBinItem) Unmarshal(buf []byte) error {
 	return nil
 }
 
+const chunkBinItemAddressOffset = 1 + 8
+
+// ChunkBinItemAddress returns the raw 32-byte chunk address from serialized ChunkBinItem bytes.
+func ChunkBinItemAddress(buf []byte) ([]byte, bool) {
+	if len(buf) != chunkBinItemSize {
+		return nil, false
+	}
+	return buf[chunkBinItemAddressOffset : chunkBinItemAddressOffset+swarm.HashSize], true
+}
+
+// ProximityFilter returns a storage.Filter that excludes items whose chunk address
+// has a proximity to anchor less than committedDepth.
+func ProximityFilter(anchor []byte, committedDepth uint8) storage.Filter {
+	return func(_ string, val []byte) bool {
+		addr, ok := ChunkBinItemAddress(val)
+		if !ok {
+			return false
+		}
+		return swarm.Proximity(addr, anchor) < committedDepth
+	}
+}
+
 // BinItem stores the latest binIDs for each bin between 0 and swarm.MaxBins
 type BinItem struct {
 	Bin   uint8

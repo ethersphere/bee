@@ -585,11 +585,12 @@ func (r *Reserve) IterateChunks(startBin uint8, cb func(swarm.Chunk) (bool, erro
 	return err
 }
 
-func (r *Reserve) IterateChunksItems(startBin uint8, cb func(*ChunkBinItem) (bool, error)) error {
+func (r *Reserve) IterateChunksItems(startBin uint8, cb func(*ChunkBinItem) (bool, error), filters ...storage.Filter) error {
 	err := r.st.IndexStore().Iterate(storage.Query{
 		Factory:       func() storage.Item { return &ChunkBinItem{} },
 		Prefix:        binIDToString(startBin, 0),
 		PrefixAtStart: true,
+		Filters:       filters,
 	}, func(res storage.Result) (bool, error) {
 		item := res.Entry.(*ChunkBinItem)
 		stop, err := cb(item)

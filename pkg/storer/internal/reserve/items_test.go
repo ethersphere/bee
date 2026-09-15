@@ -146,3 +146,55 @@ func TestReserveItems(t *testing.T) {
 		})
 	}
 }
+
+func TestChunkBinItemAddressAndProximityFilter(t *testing.T) {
+	t.Parallel()
+
+	baseAddr := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")
+	closeAddr := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000001")
+	farAddr := swarm.MustParseHexAddress("8000000000000000000000000000000000000000000000000000000000000000")
+
+	itemClose := &reserve.ChunkBinItem{
+		Bin:       0,
+		BinID:     1,
+		Address:   closeAddr,
+		BatchID:   storagetest.MaxAddressBytes[:],
+		StampHash: storagetest.MaxAddressBytes[:],
+	}
+	bufClose, err := itemClose.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	itemFar := &reserve.ChunkBinItem{
+		Bin:       0,
+		BinID:     2,
+		Address:   farAddr,
+		BatchID:   storagetest.MaxAddressBytes[:],
+		StampHash: storagetest.MaxAddressBytes[:],
+	}
+	bufFar, err := itemFar.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	addr, ok := reserve.ChunkBinItemAddress(bufClose)
+	if !ok || !swarm.NewAddress(addr).Equal(closeAddr) {
+		t.Fatalf("expected address %s, got %s", closeAddr, swarm.NewAddress(addr))
+	}
+
+	filter := reserve.ProximityFilter(baseAddr.Bytes(), 1)
+	// farAddr has proximity 0 to baseAddr (< 1) -> should be filtered out (true)
+	if !filter("", bufFar) {
+		t.Fatal("expected farAddr to be filtered out")
+	}
+	// closeAddr has proximity 255 to baseAddr (>= 1) -> should NOT be filtered out (false)
+	if filter("", bufClose) {
+		t.Fatal("expected closeAddr to NOT be filtered out")
+	}
+
+	// Corrupted buffer should not be filtered out so Unmarshal handles it
+	if filter("", []byte{1, 2, 3}) {
+		t.Fatal("expected invalid buffer to NOT be filtered out")
+	}
+}

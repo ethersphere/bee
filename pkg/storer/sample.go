@@ -103,10 +103,9 @@ func (db *DB) ReserveSample(
 			addStats(stats)
 		}()
 
+		filter := reserve.ProximityFilter(anchor, committedDepth)
+
 		err := db.reserve.IterateChunksItems(db.StorageRadius(), func(ch *reserve.ChunkBinItem) (bool, error) {
-			if swarm.Proximity(ch.Address.Bytes(), anchor) < committedDepth {
-				return false, nil
-			}
 			select {
 			case chunkC <- ch:
 				stats.TotalIterated++
@@ -114,7 +113,7 @@ func (db *DB) ReserveSample(
 			case <-ctx.Done():
 				return false, ctx.Err()
 			}
-		})
+		}, filter)
 		return err
 	}))
 
