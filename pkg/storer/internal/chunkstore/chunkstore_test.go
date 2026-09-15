@@ -580,3 +580,54 @@ func BenchmarkChunkStoreGet(b *testing.B) {
 		}
 	})
 }
+
+// TestGetInto checks the buffer contract of GetInto: the size check is on
+// capacity, so one reusable buffer passed as buf[:0] serves both a CAC and a
+// larger SOC, and a buffer that cannot hold the chunk is rejected.
+func TestGetInto(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	st := makeStorage(t)
+
+	cac := chunktest.GenerateTestRandomChunk()
+	soc := soctesting.GenerateMockSOC(t, cac.Data()[swarm.SpanSize:]).Chunk()
+	if len(soc.Data()) <= len(cac.Data()) {
+		t.Fatalf("soc data (%d) should be larger than cac data (%d)", len(soc.Data()), len(cac.Data()))
+	}
+
+	for _, ch := range []swarm.Chunk{cac, soc} {
+		err := st.Run(ctx, func(s transaction.Store) error {
+			return s.ChunkStore().Put(ctx, ch)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cs := st.ChunkStore()
+
+	t.Run("reused buffer with spare capacity", func(t *testing.T) {
+		buf := make([]byte, 0, swarm.SocMaxChunkSize)
+		for _, ch := range []swarm.Chunk{cac, soc, cac} {
+			n, err := cs.GetInto(ctx, ch.Address(), buf)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n != len(ch.Data()) || !bytes.Equal(buf[:n], ch.Data()) {
+				t.Fatalf("chunk %s: got %d bytes, want %d with matching data", ch.Address(), n, len(ch.Data()))
+			}
+		}
+	})
+
+	t.Run("capacity too small", func(t *testing.T) {
+		buf := make([]byte, 0, len(soc.Data())-1)
+		n, err := cs.GetInto(ctx, soc.Address(), buf)
+		if err == nil {
+			t.Fatal("expected error for buffer with insufficient capacity")
+		}
+		if n != 0 {
+			t.Fatalf("got %d bytes, want 0", n)
+		}
+	})
+}

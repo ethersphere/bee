@@ -22,8 +22,9 @@ type Getter interface {
 }
 
 // GetterInto is like Getter but reads chunk data into a caller-provided buffer,
-// avoiding per-call allocations. The buffer must be large enough to hold the chunk.
-// Returns the number of bytes read into buf.
+// avoiding per-call allocations. The buffer's capacity must be large enough to
+// hold the chunk. Returns the number of bytes read into buf; callers reslice
+// with it.
 type GetterInto interface {
 	GetInto(ctx context.Context, addr swarm.Address, buf []byte) (int, error)
 }

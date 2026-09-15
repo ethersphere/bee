@@ -60,8 +60,8 @@ func GetInto(ctx context.Context, r storage.Reader, s storage.Sharky, addr swarm
 		return 0, fmt.Errorf("chunk store: failed reading retrievalIndex for address %s: %w", addr, err)
 	}
 	n := int(rIdx.Location.Length)
-	if len(buf) < n {
-		return 0, fmt.Errorf("chunk store: buffer too small: %d < %d", len(buf), n)
+	if cap(buf) < n {
+		return 0, fmt.Errorf("chunk store: buffer too small: %d < %d", cap(buf), n)
 	}
 	err = s.Read(ctx, rIdx.Location, buf[:n])
 	if err != nil {

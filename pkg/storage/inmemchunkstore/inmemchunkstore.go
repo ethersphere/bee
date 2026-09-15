@@ -49,11 +49,10 @@ func (c *ChunkStore) GetInto(_ context.Context, addr swarm.Address, buf []byte) 
 		return 0, storage.ErrNotFound
 	}
 	data := chunk.chunk.Data()
-	if len(buf) < len(data) {
-		return 0, fmt.Errorf("chunk store: buffer too small: %d < %d", len(buf), len(data))
+	if cap(buf) < len(data) {
+		return 0, fmt.Errorf("chunk store: buffer too small: %d < %d", cap(buf), len(data))
 	}
-	copy(buf, data)
-	return len(data), nil
+	return copy(buf[:len(data)], data), nil
 }
 
 func (c *ChunkStore) Put(_ context.Context, ch swarm.Chunk) error {
