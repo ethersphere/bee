@@ -22,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/soc"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	chunk "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
@@ -84,6 +85,8 @@ func (db *DB) ReserveSample(
 
 	workers := max(4, runtime.NumCPU())
 	t := time.Now()
+
+	defer db.StartSamplingSession()()
 
 	defer func() {
 		duration := time.Since(t)
@@ -160,7 +163,15 @@ func (db *DB) ReserveSample(
 
 				chunkLoadStart := time.Now()
 
-				n, err := chunkStore.GetInto(gCtx, chItem.Address, buf)
+				var (
+					n   int
+					err error
+				)
+				if lg, ok := chunkStore.(storage.LocatingGetterInto); ok {
+					n, err = lg.GetIntoLoc(gCtx, chItem.Address, chItem.Location, buf)
+				} else {
+					n, err = chunkStore.GetInto(gCtx, chItem.Address, buf)
+				}
 				chunkLoadDuration := time.Since(chunkLoadStart)
 
 				if err != nil {

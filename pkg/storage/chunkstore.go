@@ -52,6 +52,30 @@ type Replacer interface {
 	Replace(context.Context, swarm.Chunk, bool) error
 }
 
+// ChunkLocation is an opaque locator hint for accelerated chunk retrieval.
+type ChunkLocation [8]byte
+
+// IsZero reports whether the ChunkLocation is unset.
+func (c ChunkLocation) IsZero() bool {
+	return c == ChunkLocation{}
+}
+
+// LocatingPutter is an optional capability of a Putter that returns a ChunkLocation hint.
+type LocatingPutter interface {
+	PutLoc(ctx context.Context, ch swarm.Chunk) (ChunkLocation, error)
+}
+
+// LocatingReplacer is an optional capability of a Replacer that returns a ChunkLocation hint.
+type LocatingReplacer interface {
+	ReplaceLoc(ctx context.Context, ch swarm.Chunk, emplace bool) (ChunkLocation, error)
+}
+
+// LocatingGetterInto is an optional capability of a GetterInto that uses a ChunkLocation hint.
+type LocatingGetterInto interface {
+	GetterInto
+	GetIntoLoc(ctx context.Context, addr swarm.Address, loc ChunkLocation, buf []byte) (int, error)
+}
+
 // PutterFunc type is an adapter to allow the use of
 // ChunkStore as Putter interface. If f is a function
 // with the appropriate signature, PutterFunc(f) is a

@@ -8,8 +8,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io/fs"
 	"math"
 	"math/rand"
+	"os"
 	"testing"
 	"testing/synctest"
 
@@ -17,8 +19,10 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
+	"github.com/ethersphere/bee/v2/pkg/sharky"
 	soctesting "github.com/ethersphere/bee/v2/pkg/soc/testing"
 	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
 	chunk "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
@@ -28,6 +32,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	kademlia "github.com/ethersphere/bee/v2/pkg/topology/mock"
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -1160,4 +1165,78 @@ func checkChunkInIndexStore(t *testing.T, s storage.Reader, bin uint8, binId uin
 
 	checkStore(t, s, &reserve.BatchRadiusItem{Bin: bin, BatchID: ch.Stamp().BatchID(), Address: ch.Address(), StampHash: stampHash}, false)
 	checkStore(t, s, &reserve.ChunkBinItem{Bin: bin, BinID: binId, StampHash: stampHash}, false)
+}
+
+type memFS struct {
+	afero.Fs
+}
+
+func (m *memFS) Open(path string) (fs.File, error) {
+	return m.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644)
+}
+
+func TestReserveChunkLocation(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	sharky, err := sharky.New(&memFS{Fs: fs}, 1, swarm.SocMaxChunkSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	store := inmemstore.New()
+	st := transaction.NewStorage(sharky, store)
+	defer st.Close()
+
+	baseAddr := swarm.RandAddress(t)
+	r, err := reserve.New(
+		baseAddr,
+		st,
+		0, kademlia.NewTopologyDriver(),
+		log.Noop,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0)
+
+	err = r.Put(ctx, ch)
+	if err != nil {
+		t.Fatalf("put: %v", err)
+	}
+
+	var foundLoc storage.ChunkLocation
+	err = r.IterateChunksItems(0, func(ci *reserve.ChunkBinItem) (bool, error) {
+		if ci.Address.Equal(ch.Address()) {
+			foundLoc = ci.Location
+			return true, nil
+		}
+		return false, nil
+	})
+	if err != nil {
+		t.Fatalf("iterate: %v", err)
+	}
+
+	if foundLoc.IsZero() {
+		t.Fatal("expected ChunkBinItem to have non-zero Location after Put")
+	}
+
+	// Read directly using the location hint
+	cs := st.ChunkStore()
+	lg, ok := cs.(storage.LocatingGetterInto)
+	if !ok {
+		t.Fatal("ChunkStore does not implement LocatingGetterInto")
+	}
+
+	buf := make([]byte, swarm.SocMaxChunkSize)
+	n, err := lg.GetIntoLoc(ctx, ch.Address(), foundLoc, buf)
+	if err != nil {
+		t.Fatalf("GetIntoLoc: %v", err)
+	}
+
+	if !bytes.Equal(buf[:n], ch.Data()) {
+		t.Fatal("chunk data read via location hint does not match")
+	}
 }

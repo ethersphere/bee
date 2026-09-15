@@ -580,3 +580,80 @@ func BenchmarkChunkStoreGet(b *testing.B) {
 		}
 	})
 }
+
+func TestLocatingChunkStore(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	sharky, err := sharky.New(&memFS{Fs: fs}, 1, swarm.SocMaxChunkSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	store := inmemstore.New()
+	st := transaction.NewStorage(sharky, store)
+	defer st.Close()
+
+	ch := chunktest.GenerateTestRandomChunk()
+	ctx := context.Background()
+
+	var loc storage.ChunkLocation
+	err = st.Run(ctx, func(s transaction.Store) error {
+		lp, ok := s.ChunkStore().(storage.LocatingPutter)
+		if !ok {
+			return errors.New("chunkStore does not implement LocatingPutter")
+		}
+		var err error
+		loc, err = lp.PutLoc(ctx, ch)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("putLoc: %v", err)
+	}
+	if loc.IsZero() {
+		t.Fatal("expected non-zero ChunkLocation from PutLoc")
+	}
+
+	cs := st.ChunkStore()
+	lg, ok := cs.(storage.LocatingGetterInto)
+	if !ok {
+		t.Fatal("chunkStore does not implement LocatingGetterInto")
+	}
+
+	buf := make([]byte, swarm.SocMaxChunkSize)
+
+	// 1. Direct read via valid ChunkLocation
+	n, err := lg.GetIntoLoc(ctx, ch.Address(), loc, buf)
+	if err != nil {
+		t.Fatalf("getIntoLoc: %v", err)
+	}
+	if !bytes.Equal(buf[:n], ch.Data()) {
+		t.Fatal("chunk data does not match")
+	}
+
+	// 2. Fallback read via zero ChunkLocation
+	n, err = lg.GetIntoLoc(ctx, ch.Address(), storage.ChunkLocation{}, buf)
+	if err != nil {
+		t.Fatalf("getIntoLoc zero: %v", err)
+	}
+	if !bytes.Equal(buf[:n], ch.Data()) {
+		t.Fatal("chunk data does not match on zero location fallback")
+	}
+
+	// 3. Guard active and chunk deleted: GetIntoLoc falls back and returns ErrNotFound
+	done := st.StartSamplingSession()
+
+	err = st.Run(ctx, func(s transaction.Store) error {
+		return s.ChunkStore().Delete(ctx, ch.Address())
+	})
+	if err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+
+	_, err = lg.GetIntoLoc(ctx, ch.Address(), loc, buf)
+	if !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound for deleted chunk, got %v", err)
+	}
+
+	done()
+}
