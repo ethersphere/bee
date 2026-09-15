@@ -17,7 +17,7 @@ type Batch struct {
 	Owner       []byte   // owner's ethereum address
 	Depth       uint8    // batch depth, i.e., size = 2^{depth}
 	BucketDepth uint8    // the depth of neighbourhoods t
-	Immutable   bool     // if the batch allows adding new capacity (dilution)
+	Immutable   bool     // if true, chunks cannot be overwritten when buckets are full
 }
 
 // MarshalBinary implements BinaryMarshaller. It will attempt to serialize the

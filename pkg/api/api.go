@@ -618,7 +618,7 @@ func (s *Service) corsHandler(h http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.Header().Set("Access-Control-Allow-Origin", o)
 			w.Header().Set("Access-Control-Allow-Headers", allowedHeadersStr)
-			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS, POST, PUT, DELETE")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS, POST, PUT, PATCH, DELETE")
 			w.Header().Set("Access-Control-Max-Age", "3600")
 		}
 		h.ServeHTTP(w, r)

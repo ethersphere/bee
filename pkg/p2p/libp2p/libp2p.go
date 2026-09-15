@@ -634,7 +634,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	)
 	if err != nil {
 		s.logger.Debug("stream handler: handshake: handle failed", "peer_id", peerID, "error", err)
-		s.logger.Error(nil, "stream handler: handshake: handle failed", "peer_id", peerID)
+		s.logger.Warning("stream handler: handshake: handle failed", "peer_id", peerID)
 		_ = handshakeStream.Reset()
 		_ = stream.Conn().Close()
 		return

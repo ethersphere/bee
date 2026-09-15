@@ -71,6 +71,16 @@ func (f *SnapshotLogFilterer) loadSnapshot() error {
 	return nil
 }
 
+// parseLogs decodes the snapshot NDJSON into types.Log entries.
+//
+// The snapshot is produced by ethersphere/batch-export, whose default slim
+// encoding carries only the types.Log fields Bee reads today: address, topics,
+// data, blockNumber, transactionHash (and logIndex). Any other field —
+// BlockHash, TxIndex, Removed — decodes to its zero value here with no error.
+// Before consuming a new types.Log field anywhere downstream of this filterer
+// (FilterLogs callers, listener.processEvent, transaction.ParseEvent), extend
+// SlimLog in batch-export's pkg/filestore and republish the snapshot first;
+// otherwise the field is silently empty for snapshot-sourced logs.
 func (f *SnapshotLogFilterer) parseLogs(reader io.Reader) error {
 	var parsedLogs []types.Log
 	var currentMaxBlockHeight uint64
