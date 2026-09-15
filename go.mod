@@ -1,6 +1,6 @@
 module github.com/ethersphere/bee/v2
 
-go 1.26
+go 1.27.0
 
 require (
 	contrib.go.opencensus.io/exporter/prometheus v0.4.2
@@ -14,6 +14,7 @@ require (
 	github.com/ethersphere/go-storage-incentives-abi v0.9.4
 	github.com/ethersphere/go-sw3-abi v0.6.9
 	github.com/ethersphere/langos v1.0.0
+	github.com/felixge/fgprof v0.9.5
 	github.com/go-playground/validator/v10 v10.19.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/google/go-cmp v0.7.0
@@ -26,13 +27,16 @@ require (
 	github.com/ipfs/go-cid v0.5.0
 	github.com/ipshipyard/p2p-forge v0.7.0
 	github.com/kardianos/service v1.2.2
+	github.com/klauspost/cpuid/v2 v2.3.0
 	github.com/klauspost/reedsolomon v1.11.8
 	github.com/libp2p/go-libp2p v0.48.0
 	github.com/multiformats/go-multiaddr v0.16.1
 	github.com/multiformats/go-multiaddr-dns v0.4.1
 	github.com/multiformats/go-multihash v0.2.3
 	github.com/multiformats/go-multistream v0.6.1
+	github.com/multiformats/go-varint v0.0.7
 	github.com/prometheus/client_golang v1.22.0
+	github.com/prometheus/common v0.64.0
 	github.com/spf13/afero v1.6.0
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.7.0
@@ -86,7 +90,6 @@ require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect
 	github.com/dunglas/httpsfv v1.1.0 // indirect
 	github.com/ethereum/c-kzg-4844/v2 v2.1.6 // indirect
-	github.com/felixge/fgprof v0.9.5
 	github.com/flynn/noise v1.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
@@ -109,7 +112,6 @@ require (
 	github.com/ipfs/go-log/v2 v2.6.0 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/jbenet/go-temp-err-catcher v0.1.0 // indirect
-	github.com/klauspost/cpuid/v2 v2.3.0
 	github.com/koron/go-ssdp v0.0.6 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/libdns/libdns v0.2.2 // indirect
@@ -135,7 +137,6 @@ require (
 	github.com/multiformats/go-multiaddr-fmt v0.1.0 // indirect
 	github.com/multiformats/go-multibase v0.2.0 // indirect
 	github.com/multiformats/go-multicodec v0.9.1 // indirect
-	github.com/multiformats/go-varint v0.0.7
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/onsi/gomega v1.36.3 // indirect
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
@@ -160,7 +161,6 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
-	github.com/prometheus/common v0.64.0
 	github.com/prometheus/procfs v0.16.1 // indirect
 	github.com/prometheus/statsd_exporter v0.26.1 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect

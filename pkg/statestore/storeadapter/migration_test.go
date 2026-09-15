@@ -340,7 +340,7 @@ func TestStampAddressbookLastSeen_Idempotent(t *testing.T) {
 		t.Fatalf("get after first run: %v", err)
 	}
 
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if err := storeadapter.StampAddressbookLastSeen(raw)(); err != nil {
 			t.Fatalf("rerun %d: %v", i, err)
 		}
@@ -374,7 +374,7 @@ func TestRewriteAddressbookEnvelope_Idempotent(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if err := storeadapter.RewriteAddressbookEnvelope(raw)(); err != nil {
 			t.Fatalf("run %d: %v", i, err)
 		}

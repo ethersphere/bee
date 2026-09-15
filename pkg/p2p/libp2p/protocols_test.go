@@ -470,8 +470,7 @@ func expectErrNotSupported(t *testing.T, err error) {
 	if e := (*p2p.IncompatibleStreamError)(nil); !errors.As(err, &e) {
 		t.Fatalf("got error %v, want %T", err, e)
 	}
-	var e2 multistream.ErrNotSupported[protocol.ID]
-	if !errors.As(err, &e2) {
+	if e2, ok := errors.AsType[multistream.ErrNotSupported[protocol.ID]](err); !ok {
 		t.Fatalf("got error %v, want %v", err, &e2)
 	}
 }

@@ -492,8 +492,7 @@ func TestListenerBackoffAfterPagedError(t *testing.T) {
 
 	f := &backoffFilterer{done: make(chan struct{})}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	l := listener.New(
 		nil,

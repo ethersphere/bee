@@ -292,8 +292,7 @@ func (c *command) initConfig() (err error) {
 
 	// If a config file is found, read it in.
 	if err := config.ReadInConfig(); err != nil {
-		var e viper.ConfigFileNotFoundError
-		if !errors.As(err, &e) {
+		if _, ok := errors.AsType[viper.ConfigFileNotFoundError](err); !ok {
 			return err
 		}
 	}

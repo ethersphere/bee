@@ -1033,9 +1033,8 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma []ma.Multiaddr
 		k.logger.Info("could not connect to peer", "peer_address", peer, "error", err)
 
 		retryTime := time.Now().Add(k.opt.TimeToRetry)
-		var e *p2p.ConnectionBackoffError
 		failedAttempts := 0
-		if errors.As(err, &e) {
+		if e, ok := errors.AsType[*p2p.ConnectionBackoffError](err); ok {
 			retryTime = e.TryAfter()
 		} else {
 			failedAttempts = k.waitNext.Attempts(peer)
