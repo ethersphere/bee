@@ -243,7 +243,7 @@ const loggerName = "storer"
 // Default options for levelDB.
 const (
 	defaultOpenFilesLimit         = uint64(256)
-	defaultBlockCacheCapacity     = uint64(32 * 1024 * 1024)
+	defaultBlockCacheCapacity     = uint64(256 * 1024 * 1024)
 	defaultWriteBufferSize        = uint64(32 * 1024 * 1024)
 	defaultDisableSeeksCompaction = false
 	defaultCacheCapacity          = uint64(1_000_000)
@@ -269,7 +269,7 @@ func initStore(basePath string, opts *Options) (*leveldbstore.Store, error) {
 		WriteBuffer:            int(opts.LdbWriteBufferSize),
 		DisableSeeksCompaction: opts.LdbDisableSeeksCompaction,
 		CompactionL0Trigger:    8,
-		Filter:                 filter.NewBloomFilter(64),
+		Filter:                 filter.NewBloomFilter(10),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed creating levelDB index store: %w", err)
