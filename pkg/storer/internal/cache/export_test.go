@@ -42,8 +42,8 @@ func (c *Cache) RemoveOldestMaxBatch(ctx context.Context, st transaction.Storage
 }
 
 func (c *Cache) State(store storage.Reader) CacheState {
-	state := CacheState{}
-	state.Size = uint64(c.Size())
+	state := CacheState{
+		Size: uint64(c.Size())}
 	runner := swarm.ZeroAddress
 
 	err := store.Iterate(

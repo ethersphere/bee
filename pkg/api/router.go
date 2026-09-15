@@ -123,19 +123,19 @@ func (s *Service) EnableFullAPI() {
 
 func (s *Service) mountTechnicalDebug() {
 	s.router.Handle("/node", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.nodeGetHandler),
+		http.MethodGet: http.HandlerFunc(s.nodeGetHandler),
 	})
 
 	s.router.Handle("/addresses", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.addressesHandler),
+		http.MethodGet: http.HandlerFunc(s.addressesHandler),
 	})
 
 	s.router.Handle("/chainstate", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.chainStateHandler),
+		http.MethodGet: http.HandlerFunc(s.chainStateHandler),
 	})
 
 	s.router.Handle("/debugstore", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
+		http.MethodGet: web.ChainHandlers(
 			httpaccess.NewHTTPAccessSuppressLogHandler(),
 			web.FinalHandlerFunc(s.debugStorage),
 		),
@@ -164,21 +164,21 @@ func (s *Service) mountTechnicalDebug() {
 	s.router.Handle("/debug/vars", expvar.Handler())
 
 	s.router.Handle("/loggers", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
+		http.MethodGet: web.ChainHandlers(
 			httpaccess.NewHTTPAccessSuppressLogHandler(),
 			web.FinalHandlerFunc(s.loggerGetHandler),
 		),
 	})
 
 	s.router.Handle("/loggers/{exp}", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
+		http.MethodGet: web.ChainHandlers(
 			httpaccess.NewHTTPAccessSuppressLogHandler(),
 			web.FinalHandlerFunc(s.loggerGetHandler),
 		),
 	})
 
 	s.router.Handle("/loggers/{exp}/{verbosity}", jsonhttp.MethodHandler{
-		"PUT": web.ChainHandlers(
+		http.MethodPut: web.ChainHandlers(
 			httpaccess.NewHTTPAccessSuppressLogHandler(),
 			web.FinalHandlerFunc(s.loggerSetVerbosityHandler),
 		),
@@ -250,7 +250,7 @@ func (s *Service) mountAPI() {
 	subdomainRouter := s.router.Host("{subdomain:.*}.swarm.localhost").Subrouter()
 
 	subdomainRouter.Handle("/{path:.*}", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
+		http.MethodGet: web.ChainHandlers(
 			web.FinalHandlerFunc(s.subdomainHandler),
 		),
 	})
@@ -271,7 +271,7 @@ func (s *Service) mountAPI() {
 	}
 
 	handle("/bytes", jsonhttp.MethodHandler{
-		"POST": web.ChainHandlers(
+		http.MethodPost: web.ChainHandlers(
 			s.contentLengthMetricMiddleware(),
 			s.newTracingHandler("bytes-upload"),
 			web.FinalHandlerFunc(s.bytesUploadHandler),
@@ -279,14 +279,14 @@ func (s *Service) mountAPI() {
 	})
 
 	handle("/bytes/{address}", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
+		http.MethodGet: web.ChainHandlers(
 			s.contentLengthMetricMiddleware(),
 			s.downloadSpeedMetricMiddleware("bytes"),
 			s.newTracingHandler("bytes-download"),
 			s.actDecryptionHandler(),
 			web.FinalHandlerFunc(s.bytesGetHandler),
 		),
-		"HEAD": web.ChainHandlers(
+		http.MethodHead: web.ChainHandlers(
 			s.newTracingHandler("bytes-head"),
 			s.actDecryptionHandler(),
 			web.FinalHandlerFunc(s.bytesHeadHandler),
@@ -294,52 +294,52 @@ func (s *Service) mountAPI() {
 	})
 
 	handle("/chunks", jsonhttp.MethodHandler{
-		"POST": web.ChainHandlers(
+		http.MethodPost: web.ChainHandlers(
 			jsonhttp.NewMaxBodyBytesHandler(swarm.SocMaxChunkSize),
 			web.FinalHandlerFunc(s.chunkUploadHandler),
 		),
 	})
 
 	handle("/chunks/stream", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
+		http.MethodGet: web.ChainHandlers(
 			s.newTracingHandler("chunks-stream-upload"),
 			web.FinalHandlerFunc(s.chunkUploadStreamHandler),
 		),
 	})
 
 	handle("/chunks/{address}", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
+		http.MethodGet: web.ChainHandlers(
 			s.actDecryptionHandler(),
 			web.FinalHandlerFunc(s.chunkGetHandler),
 		),
-		"HEAD": web.ChainHandlers(
+		http.MethodHead: web.ChainHandlers(
 			s.actDecryptionHandler(),
 			web.FinalHandlerFunc(s.hasChunkHandler),
 		),
 	})
 
 	handle("/envelope/{address}", jsonhttp.MethodHandler{
-		"POST": http.HandlerFunc(s.envelopePostHandler),
+		http.MethodPost: http.HandlerFunc(s.envelopePostHandler),
 	})
 
 	handle("/soc/{owner}/{id}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.socGetHandler),
-		"POST": web.ChainHandlers(
+		http.MethodGet: http.HandlerFunc(s.socGetHandler),
+		http.MethodPost: web.ChainHandlers(
 			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkWithSpanSize),
 			web.FinalHandlerFunc(s.socUploadHandler),
 		),
 	})
 
 	handle("/feeds/{owner}/{topic}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.feedGetHandler),
-		"POST": web.ChainHandlers(
+		http.MethodGet: http.HandlerFunc(s.feedGetHandler),
+		http.MethodPost: web.ChainHandlers(
 			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkWithSpanSize),
 			web.FinalHandlerFunc(s.feedPostHandler),
 		),
 	})
 
 	handle("/bzz", jsonhttp.MethodHandler{
-		"POST": web.ChainHandlers(
+		http.MethodPost: web.ChainHandlers(
 			s.contentLengthMetricMiddleware(),
 			s.newTracingHandler("bzz-upload"),
 			web.FinalHandlerFunc(s.bzzUploadHandler),
@@ -347,12 +347,12 @@ func (s *Service) mountAPI() {
 	})
 
 	handle("/grantee", jsonhttp.MethodHandler{
-		"POST": http.HandlerFunc(s.actCreateGranteesHandler),
+		http.MethodPost: http.HandlerFunc(s.actCreateGranteesHandler),
 	})
 
 	handle("/grantee/{address}", jsonhttp.MethodHandler{
-		"GET":   http.HandlerFunc(s.actListGranteesHandler),
-		"PATCH": http.HandlerFunc(s.actGrantRevokeHandler),
+		http.MethodGet:   http.HandlerFunc(s.actListGranteesHandler),
+		http.MethodPatch: http.HandlerFunc(s.actGrantRevokeHandler),
 	})
 
 	handle("/bzz/{address}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -362,71 +362,71 @@ func (s *Service) mountAPI() {
 	}))
 
 	handle("/bzz/{address}/{path:.*}", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
+		http.MethodGet: web.ChainHandlers(
 			s.contentLengthMetricMiddleware(),
 			s.newTracingHandler("bzz-download"),
 			s.actDecryptionHandler(),
 			s.downloadSpeedMetricMiddleware("bzz"),
 			web.FinalHandlerFunc(s.bzzDownloadHandler),
 		),
-		"HEAD": web.ChainHandlers(
+		http.MethodHead: web.ChainHandlers(
 			s.actDecryptionHandler(),
 			web.FinalHandlerFunc(s.bzzHeadHandler),
 		),
 	})
 
 	handle("/pss/send/{topic}/{targets}", jsonhttp.MethodHandler{
-		"POST": web.ChainHandlers(
+		http.MethodPost: web.ChainHandlers(
 			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkSize),
 			web.FinalHandlerFunc(s.pssPostHandler),
 		),
 	})
 
 	handle("/pss/subscribe/{topic}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.pssWsHandler),
+		http.MethodGet: http.HandlerFunc(s.pssWsHandler),
 	})
 
 	handle("/gsoc/subscribe/{address}", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
+		http.MethodGet: web.ChainHandlers(
 			web.FinalHandlerFunc(s.gsocWsHandler),
 		),
 	})
 
 	handle("/tags", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.listTagsHandler),
-		"POST": web.ChainHandlers(
+		http.MethodGet: http.HandlerFunc(s.listTagsHandler),
+		http.MethodPost: web.ChainHandlers(
 			jsonhttp.NewMaxBodyBytesHandler(1024),
 			web.FinalHandlerFunc(s.createTagHandler),
 		),
 	})
 
 	handle("/tags/{id}", jsonhttp.MethodHandler{
-		"GET":    http.HandlerFunc(s.getTagHandler),
-		"DELETE": http.HandlerFunc(s.deleteTagHandler),
-		"PATCH": web.ChainHandlers(
+		http.MethodGet:    http.HandlerFunc(s.getTagHandler),
+		http.MethodDelete: http.HandlerFunc(s.deleteTagHandler),
+		http.MethodPatch: web.ChainHandlers(
 			jsonhttp.NewMaxBodyBytesHandler(1024),
 			web.FinalHandlerFunc(s.doneSplitHandler),
 		),
 	})
 
 	handle("/pins", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.listPinnedRootHashes),
+		http.MethodGet: http.HandlerFunc(s.listPinnedRootHashes),
 	})
 
 	handle("/pins/check", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.pinIntegrityHandler),
+		http.MethodGet: http.HandlerFunc(s.pinIntegrityHandler),
 	})
 
 	handle("/pins/{reference}", jsonhttp.MethodHandler{
-		"GET":    http.HandlerFunc(s.getPinnedRootHash),
-		"POST":   http.HandlerFunc(s.pinRootHash),
-		"DELETE": http.HandlerFunc(s.unpinRootHash),
+		http.MethodGet:    http.HandlerFunc(s.getPinnedRootHash),
+		http.MethodPost:   http.HandlerFunc(s.pinRootHash),
+		http.MethodDelete: http.HandlerFunc(s.unpinRootHash),
 	},
 	)
 
 	handle("/stewardship/{address}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.stewardshipGetHandler),
-		"PUT": http.HandlerFunc(s.stewardshipPutHandler),
+		http.MethodGet: http.HandlerFunc(s.stewardshipGetHandler),
+		http.MethodPut: http.HandlerFunc(s.stewardshipPutHandler),
 	})
 }
 
@@ -439,105 +439,105 @@ func (s *Service) mountBusinessDebug() {
 
 	if s.transaction != nil {
 		handle("/transactions", jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.transactionListHandler),
+			http.MethodGet: http.HandlerFunc(s.transactionListHandler),
 		})
 
 		handle("/transactions/{hash}", jsonhttp.MethodHandler{
-			"GET":    http.HandlerFunc(s.transactionDetailHandler),
-			"POST":   http.HandlerFunc(s.transactionResendHandler),
-			"DELETE": http.HandlerFunc(s.transactionCancelHandler),
+			http.MethodGet:    http.HandlerFunc(s.transactionDetailHandler),
+			http.MethodPost:   http.HandlerFunc(s.transactionResendHandler),
+			http.MethodDelete: http.HandlerFunc(s.transactionCancelHandler),
 		})
 	}
 
 	handle("/peers", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.peersHandler),
+		http.MethodGet: http.HandlerFunc(s.peersHandler),
 	})
 
 	handle("/pingpong/{address}", jsonhttp.MethodHandler{
-		"POST": http.HandlerFunc(s.pingpongHandler),
+		http.MethodPost: http.HandlerFunc(s.pingpongHandler),
 	})
 
 	handle("/reservestate", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.reserveStateHandler),
+		http.MethodGet: http.HandlerFunc(s.reserveStateHandler),
 	})
 
 	handle("/connect/{multi-address:.+}", jsonhttp.MethodHandler{
-		"POST": http.HandlerFunc(s.peerConnectHandler),
+		http.MethodPost: http.HandlerFunc(s.peerConnectHandler),
 	})
 
 	handle("/blocklist", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.blocklistedPeersHandler),
+		http.MethodGet: http.HandlerFunc(s.blocklistedPeersHandler),
 	})
 
 	handle("/peers/{address}", jsonhttp.MethodHandler{
-		"DELETE": http.HandlerFunc(s.peerDisconnectHandler),
+		http.MethodDelete: http.HandlerFunc(s.peerDisconnectHandler),
 	})
 
 	handle("/topology", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.topologyHandler),
+		http.MethodGet: http.HandlerFunc(s.topologyHandler),
 	})
 
 	handle("/welcome-message", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.getWelcomeMessageHandler),
-		"POST": web.ChainHandlers(
+		http.MethodGet: http.HandlerFunc(s.getWelcomeMessageHandler),
+		http.MethodPost: web.ChainHandlers(
 			jsonhttp.NewMaxBodyBytesHandler(welcomeMessageMaxRequestSize),
 			web.FinalHandlerFunc(s.setWelcomeMessageHandler),
 		),
 	})
 
 	handle("/balances", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.compensatedBalancesHandler),
+		http.MethodGet: http.HandlerFunc(s.compensatedBalancesHandler),
 	})
 
 	handle("/balances/{peer}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.compensatedPeerBalanceHandler),
+		http.MethodGet: http.HandlerFunc(s.compensatedPeerBalanceHandler),
 	})
 
 	handle("/consumed", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.balancesHandler),
+		http.MethodGet: http.HandlerFunc(s.balancesHandler),
 	})
 
 	handle("/consumed/{peer}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.peerBalanceHandler),
+		http.MethodGet: http.HandlerFunc(s.peerBalanceHandler),
 	})
 
 	handle("/timesettlements", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.settlementsHandlerPseudosettle),
+		http.MethodGet: http.HandlerFunc(s.settlementsHandlerPseudosettle),
 	})
 
 	handle("/settlements", web.ChainHandlers(
 		s.checkSwapAvailability,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.settlementsHandler),
+			http.MethodGet: http.HandlerFunc(s.settlementsHandler),
 		}),
 	))
 
 	handle("/settlements/{peer}", web.ChainHandlers(
 		s.checkSwapAvailability,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.peerSettlementsHandler),
+			http.MethodGet: http.HandlerFunc(s.peerSettlementsHandler),
 		}),
 	))
 
 	handle("/chequebook/cheque/{peer}", web.ChainHandlers(
 		s.checkSwapAvailability,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.chequebookLastPeerHandler),
+			http.MethodGet: http.HandlerFunc(s.chequebookLastPeerHandler),
 		}),
 	))
 
 	handle("/chequebook/cheque", web.ChainHandlers(
 		s.checkSwapAvailability,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.chequebookAllLastHandler),
+			http.MethodGet: http.HandlerFunc(s.chequebookAllLastHandler),
 		}),
 	))
 
 	handle("/chequebook/cashout/{peer}", web.ChainHandlers(
 		s.checkSwapAvailability,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.swapCashoutStatusHandler),
-			"POST": web.ChainHandlers(
+			http.MethodGet: http.HandlerFunc(s.swapCashoutStatusHandler),
+			http.MethodPost: web.ChainHandlers(
 				s.gasConfigMiddleware("swap cashout"),
 				web.FinalHandlerFunc(s.swapCashoutHandler),
 			),
@@ -547,21 +547,21 @@ func (s *Service) mountBusinessDebug() {
 	handle("/chequebook/balance", web.ChainHandlers(
 		s.checkChequebookAvailability,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.chequebookBalanceHandler),
+			http.MethodGet: http.HandlerFunc(s.chequebookBalanceHandler),
 		}),
 	))
 
 	handle("/chequebook/address", web.ChainHandlers(
 		s.checkChequebookAvailability,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.chequebookAddressHandler),
+			http.MethodGet: http.HandlerFunc(s.chequebookAddressHandler),
 		}),
 	))
 
 	handle("/chequebook/deposit", web.ChainHandlers(
 		s.checkChequebookAvailability,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"POST": web.ChainHandlers(
+			http.MethodPost: web.ChainHandlers(
 				s.gasConfigMiddleware("chequebook deposit"),
 				web.FinalHandlerFunc(s.chequebookDepositHandler),
 			),
@@ -571,7 +571,7 @@ func (s *Service) mountBusinessDebug() {
 	handle("/chequebook/withdraw", web.ChainHandlers(
 		s.checkChequebookAvailability,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"POST": web.ChainHandlers(
+			http.MethodPost: web.ChainHandlers(
 				s.gasConfigMiddleware("chequebook withdraw"),
 				web.FinalHandlerFunc(s.chequebookWithdrawHandler),
 			),
@@ -581,14 +581,14 @@ func (s *Service) mountBusinessDebug() {
 	handle("/wallet", web.ChainHandlers(
 		s.checkChainAvailability,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.walletHandler),
+			http.MethodGet: http.HandlerFunc(s.walletHandler),
 		}),
 	))
 
 	handle("/wallet/withdraw/{coin}", web.ChainHandlers(
 		s.checkChainAvailability,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"POST": web.ChainHandlers(
+			http.MethodPost: web.ChainHandlers(
 				s.gasConfigMiddleware("wallet withdraw"),
 				web.FinalHandlerFunc(s.walletWithdrawHandler),
 			),
@@ -599,7 +599,7 @@ func (s *Service) mountBusinessDebug() {
 		s.checkChainAvailability,
 		s.postageSyncStatusCheckHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.postageGetStampsHandler),
+			http.MethodGet: http.HandlerFunc(s.postageGetStampsHandler),
 		})),
 	)
 
@@ -607,8 +607,8 @@ func (s *Service) mountBusinessDebug() {
 		s.checkChainAvailability,
 		s.postageSyncStatusCheckHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET":   http.HandlerFunc(s.postageGetStampHandler),
-			"PATCH": http.HandlerFunc(s.postageUpdateLabelHandler),
+			http.MethodGet:   http.HandlerFunc(s.postageGetStampHandler),
+			http.MethodPatch: http.HandlerFunc(s.postageUpdateLabelHandler),
 		})),
 	)
 
@@ -616,7 +616,7 @@ func (s *Service) mountBusinessDebug() {
 		s.checkChainAvailability,
 		s.postageSyncStatusCheckHandler,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.postageGetStampBucketsHandler),
+			http.MethodGet: http.HandlerFunc(s.postageGetStampBucketsHandler),
 		})),
 	)
 
@@ -626,7 +626,7 @@ func (s *Service) mountBusinessDebug() {
 		s.postageSyncStatusCheckHandler,
 		s.gasConfigMiddleware("create batch"),
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"POST": http.HandlerFunc(s.postageCreateHandler),
+			http.MethodPost: http.HandlerFunc(s.postageCreateHandler),
 		})),
 	)
 
@@ -636,7 +636,7 @@ func (s *Service) mountBusinessDebug() {
 		s.postageSyncStatusCheckHandler,
 		s.gasConfigMiddleware("topup batch"),
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"PATCH": http.HandlerFunc(s.postageTopUpHandler),
+			http.MethodPatch: http.HandlerFunc(s.postageTopUpHandler),
 		})),
 	)
 
@@ -646,28 +646,28 @@ func (s *Service) mountBusinessDebug() {
 		s.postageSyncStatusCheckHandler,
 		s.gasConfigMiddleware("dilute batch"),
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"PATCH": http.HandlerFunc(s.postageDiluteHandler),
+			http.MethodPatch: http.HandlerFunc(s.postageDiluteHandler),
 		})),
 	)
 
 	handle("/batches", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.postageGetAllBatchesHandler),
+		http.MethodGet: http.HandlerFunc(s.postageGetAllBatchesHandler),
 	})
 
 	handle("/batches/{batch_id}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.postageGetBatchHandler),
+		http.MethodGet: http.HandlerFunc(s.postageGetBatchHandler),
 	})
 
 	handle("/accounting", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.accountingInfoHandler),
+		http.MethodGet: http.HandlerFunc(s.accountingInfoHandler),
 	})
 
 	handle("/stake/withdrawable", web.ChainHandlers(
 		s.stakingAccessHandler,
 		s.gasConfigMiddleware("get or withdraw withdrawable stake"),
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET":    http.HandlerFunc(s.getWithdrawableStakeHandler),
-			"DELETE": http.HandlerFunc(s.withdrawStakeHandler),
+			http.MethodGet:    http.HandlerFunc(s.getWithdrawableStakeHandler),
+			http.MethodDelete: http.HandlerFunc(s.withdrawStakeHandler),
 		})),
 	)
 
@@ -675,7 +675,7 @@ func (s *Service) mountBusinessDebug() {
 		s.stakingAccessHandler,
 		s.gasConfigMiddleware("deposit stake"),
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"POST": http.HandlerFunc(s.stakingDepositHandler),
+			http.MethodPost: http.HandlerFunc(s.stakingDepositHandler),
 		}),
 	))
 
@@ -683,28 +683,28 @@ func (s *Service) mountBusinessDebug() {
 		s.stakingAccessHandler,
 		s.gasConfigMiddleware("get or migrate stake"),
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET":    http.HandlerFunc(s.getPotentialStake),
-			"DELETE": http.HandlerFunc(s.migrateStakeHandler),
+			http.MethodGet:    http.HandlerFunc(s.getPotentialStake),
+			http.MethodDelete: http.HandlerFunc(s.migrateStakeHandler),
 		})),
 	)
 
 	handle("/redistributionstate", web.ChainHandlers(
 		s.checkStorageIncentivesAvailability,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET":   http.HandlerFunc(s.redistributionStatusHandler),
-			"PATCH": http.HandlerFunc(s.redistributionToggleHandler),
+			http.MethodGet:   http.HandlerFunc(s.redistributionStatusHandler),
+			http.MethodPatch: http.HandlerFunc(s.redistributionToggleHandler),
 		})),
 	)
 
 	handle("/status", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
+		http.MethodGet: web.ChainHandlers(
 			httpaccess.NewHTTPAccessSuppressLogHandler(),
 			web.FinalHandlerFunc(s.statusGetHandler),
 		),
 	})
 
 	handle("/status/peers", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
+		http.MethodGet: web.ChainHandlers(
 			httpaccess.NewHTTPAccessSuppressLogHandler(),
 			s.statusAccessHandler,
 			web.FinalHandlerFunc(s.statusGetPeersHandler),
@@ -712,7 +712,7 @@ func (s *Service) mountBusinessDebug() {
 	})
 
 	handle("/status/neighborhoods", jsonhttp.MethodHandler{
-		"GET": web.ChainHandlers(
+		http.MethodGet: web.ChainHandlers(
 			httpaccess.NewHTTPAccessSuppressLogHandler(),
 			s.statusAccessHandler,
 			web.FinalHandlerFunc(s.statusGetNeighborhoods),
@@ -720,6 +720,6 @@ func (s *Service) mountBusinessDebug() {
 	})
 
 	handle("/rchash/{depth}/{anchor1}/{anchor2}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.rchash),
+		http.MethodGet: http.HandlerFunc(s.rchash),
 	})
 }
