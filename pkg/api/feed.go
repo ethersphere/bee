@@ -132,7 +132,7 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	sig := socCh.Signature()
 
 	additionalHeaders := http.Header{
-		ContentTypeHeader:              {"application/octet-stream"},
+		ContentTypeHeader:              {contentTypeOctetStream},
 		SwarmFeedIndexHeader:           {hex.EncodeToString(curBytes)},
 		SwarmFeedIndexNextHeader:       {hex.EncodeToString(nextBytes)},
 		SwarmSocSignatureHeader:        {hex.EncodeToString(sig)},

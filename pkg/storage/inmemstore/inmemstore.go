@@ -7,6 +7,7 @@ package inmemstore
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
@@ -208,12 +209,12 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 		if retErr != nil {
 			break
 		}
-		for i := len(results) - 1; i >= 0; i-- {
+		for _, result := range slices.Backward(results) {
 			if q.SkipFirst && !firstSkipped {
 				firstSkipped = true
 				continue
 			}
-			stop, err := fn(results[i])
+			stop, err := fn(result)
 			if err != nil {
 				return fmt.Errorf("failed in iterate function: %w", err)
 			}

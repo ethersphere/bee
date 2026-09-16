@@ -36,12 +36,10 @@ func TestCashout(t *testing.T) {
 	cumulativePayout := big.NewInt(500)
 
 	cheque := &chequebook.SignedCheque{
-		Cheque: chequebook.Cheque{
-			Beneficiary:      common.HexToAddress("aaaa"),
-			CumulativePayout: cumulativePayout,
-			Chequebook:       chequebookAddress,
-		},
-		Signature: []byte{},
+		Beneficiary:      common.HexToAddress("aaaa"),
+		CumulativePayout: cumulativePayout,
+		Chequebook:       chequebookAddress,
+		Signature:        []byte{},
 	}
 
 	store := storemock.NewStateStore()
@@ -137,12 +135,10 @@ func TestCashoutBounced(t *testing.T) {
 	cumulativePayout := big.NewInt(500)
 
 	cheque := &chequebook.SignedCheque{
-		Cheque: chequebook.Cheque{
-			Beneficiary:      common.HexToAddress("aaaa"),
-			CumulativePayout: cumulativePayout,
-			Chequebook:       chequebookAddress,
-		},
-		Signature: []byte{},
+		Beneficiary:      common.HexToAddress("aaaa"),
+		CumulativePayout: cumulativePayout,
+		Chequebook:       chequebookAddress,
+		Signature:        []byte{},
 	}
 
 	store := storemock.NewStateStore()
@@ -243,12 +239,10 @@ func TestCashoutStatusReverted(t *testing.T) {
 	beneficiary := common.HexToAddress("aaaa")
 
 	cheque := &chequebook.SignedCheque{
-		Cheque: chequebook.Cheque{
-			Beneficiary:      beneficiary,
-			CumulativePayout: cumulativePayout,
-			Chequebook:       chequebookAddress,
-		},
-		Signature: []byte{},
+		Beneficiary:      beneficiary,
+		CumulativePayout: cumulativePayout,
+		Chequebook:       chequebookAddress,
+		Signature:        []byte{},
 	}
 
 	store := storemock.NewStateStore()
@@ -317,12 +311,10 @@ func TestCashoutStatusPending(t *testing.T) {
 	cumulativePayout := big.NewInt(500)
 
 	cheque := &chequebook.SignedCheque{
-		Cheque: chequebook.Cheque{
-			Beneficiary:      common.HexToAddress("aaaa"),
-			CumulativePayout: cumulativePayout,
-			Chequebook:       chequebookAddress,
-		},
-		Signature: []byte{},
+		Beneficiary:      common.HexToAddress("aaaa"),
+		CumulativePayout: cumulativePayout,
+		Chequebook:       chequebookAddress,
+		Signature:        []byte{},
 	}
 
 	store := storemock.NewStateStore()

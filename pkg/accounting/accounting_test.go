@@ -607,8 +607,7 @@ func TestAccountingDisconnect(t *testing.T) {
 	}
 	debitAction.Cleanup()
 
-	var e *p2p.BlockPeerError
-	if !errors.As(err, &e) {
+	if _, ok := errors.AsType[*p2p.BlockPeerError](err); !ok {
 		t.Fatalf("expected BlockPeerError, got %v", err)
 	}
 }
