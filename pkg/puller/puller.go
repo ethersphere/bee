@@ -179,6 +179,7 @@ func (p *Puller) IsReserveSynced(depth uint8) bool {
 	defer p.activeHistSyncsMu.RUnlock()
 	for bin := depth; bin < p.bins; bin++ {
 		if p.activeHistSyncs[bin] > 0 {
+			p.logger.Debug("reserve not synced", "depth", depth, "active_bin", bin, "active_hist_syncs", p.activeHistSyncs[bin], "sync_rate", p.rate.Rate())
 			return false
 		}
 	}
@@ -205,13 +206,15 @@ func (p *Puller) manage(ctx context.Context) {
 		// 1. previously evicted chunks
 		// 2. previously ignored chunks due to a higher radius
 		if newRadius < prevRadius {
+			p.logger.Info("radius decrease", "old_radius", prevRadius, "new_radius", newRadius, "sync_rate", p.rate.Rate())
 			for _, peer := range p.syncPeers {
 				p.disconnectPeer(peer.address)
 			}
 			if err := p.resetIntervals(prevRadius); err != nil {
 				p.logger.Debug("reset lower sync radius failed", "error", err)
 			}
-			p.logger.Debug("radius decrease", "old_radius", prevRadius, "new_radius", newRadius)
+		} else if prevRadius != 0 && newRadius > prevRadius {
+			p.logger.Info("radius increase", "old_radius", prevRadius, "new_radius", newRadius, "sync_rate", p.rate.Rate())
 		}
 		prevRadius = newRadius
 
@@ -382,6 +385,7 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 
 				// historical sync has caught up to the cursor, exit
 				if start > cursor {
+					p.logger.Info("historical sync caught up", "peer_address", address, "bin", bin, "cursor", cursor, "sync_rate", p.rate.Rate())
 					return
 				}
 			}
@@ -418,6 +422,7 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 			if isHistorical {
 				p.metrics.SyncedCounter.WithLabelValues("historical").Add(float64(count))
 				p.rate.Add(count)
+				p.logger.Info("historical sync rate", "peer_address", address, "bin", bin, "count", count, "sync_rate", p.rate.Rate(), "rate_window", DefaultHistRateWindow)
 			} else {
 				p.metrics.SyncedCounter.WithLabelValues("live").Add(float64(count))
 			}
@@ -437,7 +442,10 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 	if cursor > 0 && bin < swarm.MaxBins {
 		p.activeHistSyncsMu.Lock()
 		p.activeHistSyncs[bin]++
+		active := p.activeHistSyncs[bin]
 		p.activeHistSyncsMu.Unlock()
+
+		p.logger.Info("historical sync start", "peer_address", peer.address, "bin", bin, "cursor", cursor, "active_hist_syncs", active, "sync_rate", p.rate.Rate(), "rate_window", DefaultHistRateWindow)
 
 		peer.wg.Add(1)
 		p.wg.Add(1)
@@ -445,7 +453,9 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 			defer func() {
 				p.activeHistSyncsMu.Lock()
 				p.activeHistSyncs[bin]--
+				remaining := p.activeHistSyncs[bin]
 				p.activeHistSyncsMu.Unlock()
+				p.logger.Info("historical sync done", "peer_address", peer.address, "bin", bin, "active_hist_syncs", remaining, "sync_rate", p.rate.Rate(), "rate_window", DefaultHistRateWindow)
 			}()
 			sync(true, peer.address, cursor)
 		})

@@ -174,13 +174,48 @@ func (db *DB) reserveWorker(ctx context.Context, ready chan<- struct{}) {
 				continue
 			}
 
-			if count < threshold(db.reserve.Capacity()) && db.syncer.IsReserveSynced(radius) && radius > db.reserveOptions.minimumRadius {
+			capacity := db.reserve.Capacity()
+			th := threshold(capacity)
+			belowThreshold := count < th
+			synced := db.syncer.IsReserveSynced(radius)
+			syncRate := db.syncer.SyncRate()
+			aboveMin := radius > db.reserveOptions.minimumRadius
+
+			if belowThreshold && synced && aboveMin {
+				oldRadius := radius
 				radius--
 				if err := db.reserve.SetRadius(radius); err != nil {
 					db.logger.Error(err, "reserve set radius")
 				}
 				db.metrics.StorageRadius.Set(float64(radius))
-				db.logger.Info("reserve radius decrease", "radius", radius)
+				db.logger.Info(
+					"reserve radius decrease",
+					"old_radius", oldRadius,
+					"new_radius", radius,
+					"count_within_radius", count,
+					"threshold", th,
+					"is_reserve_synced", synced,
+					"sync_rate", syncRate,
+					"sync_rate_zero", syncRate == 0,
+				)
+			} else {
+				reason := "count_above_threshold"
+				if belowThreshold && !synced {
+					reason = "historical_sync_active"
+				} else if belowThreshold && !aboveMin {
+					reason = "at_minimum_radius"
+				}
+				db.logger.Info(
+					"reserve radius decrease skipped",
+					"reason", reason,
+					"radius", radius,
+					"count_within_radius", count,
+					"threshold", th,
+					"is_reserve_synced", synced,
+					"sync_rate", syncRate,
+					"sync_rate_zero", syncRate == 0,
+					"minimum_radius", db.reserveOptions.minimumRadius,
+				)
 			}
 		}
 	}
@@ -396,9 +431,12 @@ func (db *DB) unreserve(ctx context.Context) (err error) {
 			}
 		}
 
+		oldRadius := radius
 		radius++
-		db.logger.Info("reserve radius increase", "radius", radius)
-		_ = db.reserve.SetRadius(radius)
+		db.logger.Info("reserve radius increase", "old_radius", oldRadius, "new_radius", radius, "evicted", totalEvicted, "target", target)
+		if err := db.reserve.SetRadius(radius); err != nil {
+			db.logger.Error(err, "reserve set radius")
+		}
 		db.metrics.StorageRadius.Set(float64(radius))
 	}
 
