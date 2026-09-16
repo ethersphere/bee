@@ -210,7 +210,7 @@ func (j *joiner) ReadAt(buffer []byte, off int64) (read int, err error) {
 		return 0, io.EOF
 	}
 
-	readLen := min(int64(cap(buffer)), j.span-off)
+	readLen := min(int64(len(buffer)), j.span-off)
 	var bytesRead int64
 	var eg errgroup.Group
 	j.readAtOffset(buffer, j.rootData, 0, j.span, off, 0, readLen, &bytesRead, j.rootParity, &eg)
