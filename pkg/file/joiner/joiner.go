@@ -193,7 +193,8 @@ func NewJoiner(ctx context.Context, g storage.Getter, putter storage.Putter, add
 }
 
 // Read is called by the consumer to retrieve the joined data.
-// It must be called with a buffer equal to the maximum chunk size.
+// It reads up to len(b) bytes into b, advances the read offset by the number
+// of bytes read, and returns io.EOF once the end of the data is reached.
 func (j *joiner) Read(b []byte) (n int, err error) {
 	read, err := j.ReadAt(b, j.off)
 	if err != nil && !errors.Is(err, io.EOF) {
