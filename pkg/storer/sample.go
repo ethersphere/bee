@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/soc"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	chunk "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
@@ -127,6 +128,7 @@ func (db *DB) ReserveSample(
 		g.Go(safe.RunFunc(db.logger, "storer-sample-worker", func() error {
 			wstat := SampleStats{}
 			hasher := bmt.NewPrefixHasher(anchor)
+			chunkStore := db.storage.ChunkStore(storage.WithDontFillCache())
 			defer func() {
 				addStats(wstat)
 			}()
@@ -147,7 +149,7 @@ func (db *DB) ReserveSample(
 
 				chunkLoadStart := time.Now()
 
-				chunk, err := db.ChunkStore().Get(ctx, chItem.Address)
+				chunk, err := chunkStore.Get(ctx, chItem.Address)
 				chunkLoadDuration := time.Since(chunkLoadStart)
 
 				if err != nil {

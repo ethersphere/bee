@@ -70,8 +70,10 @@ type inmemTrx struct {
 	chunkStore storage.ChunkStore
 }
 
-func (t *inmemStorage) IndexStore() storage.Reader             { return t.indexStore }
-func (t *inmemStorage) ChunkStore() storage.ReadOnlyChunkStore { return t.chunkStore }
+func (t *inmemStorage) IndexStore() storage.Reader { return t.indexStore }
+func (t *inmemStorage) ChunkStore(_ ...storage.ReadOption) storage.ReadOnlyChunkStore {
+	return t.chunkStore
+}
 
 func (t *inmemTrx) IndexStore() storage.IndexStore { return t.indexStore }
 func (t *inmemTrx) ChunkStore() storage.ChunkStore { return t.chunkStore }

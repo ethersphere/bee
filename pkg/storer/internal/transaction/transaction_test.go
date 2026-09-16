@@ -5,6 +5,7 @@
 package transaction_test
 
 import (
+	"bytes"
 	"context"
 	"io/fs"
 	"os"
@@ -19,6 +20,9 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/stretchr/testify/assert"
+	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/syndtr/goleveldb/leveldb/opt"
+	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
 type dirFS struct {
@@ -186,4 +190,91 @@ func Test_TransactionStorage(t *testing.T) {
 			t.Fatal("should NOT have chunk")
 		}
 	})
+}
+
+// TestChunkStoreDontFillCache proves that chunk reads made through a chunk
+// store derived with storage.WithDontFillCache leave the block cache of the
+// index store as it is, while the plain chunk store populates it.
+func TestChunkStoreDontFillCache(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	sharkyStore, err := sharky.New(&dirFS{basedir: t.TempDir()}, 32, swarm.SocMaxChunkSize)
+	if err != nil {
+		t.Fatalf("create sharky: %v", err)
+	}
+
+	store, _, err := leveldbstore.New(t.TempDir(), &opt.Options{
+		BlockCacheCapacity:  1024 * 1024,
+		BlockSize:           1024,
+		CompactionTableSize: 64 * 1024,
+	})
+	if err != nil {
+		t.Fatalf("create index store: %v", err)
+	}
+
+	st := transaction.NewStorage(sharkyStore, store)
+	t.Cleanup(func() {
+		assert.NoError(t, st.Close())
+	})
+
+	const numChunks = 500
+	chunks := make([]swarm.Chunk, numChunks)
+	err = st.Run(ctx, func(s transaction.Store) error {
+		for i := range chunks {
+			chunks[i] = test.GenerateTestRandomChunk()
+			if err := s.ChunkStore().Put(ctx, chunks[i]); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("put chunks: %v", err)
+	}
+	// Flush the memtable into tables so that reads go through the block cache.
+	if err := store.DB().CompactRange(util.Range{}); err != nil {
+		t.Fatalf("compact: %v", err)
+	}
+
+	blockCacheSize := func() int {
+		t.Helper()
+		var stats leveldb.DBStats
+		if err := store.DB().Stats(&stats); err != nil {
+			t.Fatalf("stats: %v", err)
+		}
+		return stats.BlockCacheSize
+	}
+
+	readAll := func(cs storage.ReadOnlyChunkStore) {
+		t.Helper()
+		for _, ch := range chunks {
+			got, err := cs.Get(ctx, ch.Address())
+			if err != nil {
+				t.Fatalf("get %s: %v", ch.Address(), err)
+			}
+			if !bytes.Equal(got.Data(), ch.Data()) {
+				t.Fatalf("get %s: data mismatch", ch.Address())
+			}
+		}
+	}
+
+	noFill := st.ChunkStore(storage.WithDontFillCache())
+
+	// The first pass still caches the index blocks of every table,
+	// the second pass must not add anything on top of that.
+	readAll(noFill)
+	afterFirstPass := blockCacheSize()
+	readAll(noFill)
+	afterSecondPass := blockCacheSize()
+	if afterSecondPass != afterFirstPass {
+		t.Fatalf("no-fill reads changed the block cache size: %d -> %d", afterFirstPass, afterSecondPass)
+	}
+
+	readAll(st.ChunkStore())
+	afterFillPass := blockCacheSize()
+	if afterFillPass <= afterSecondPass {
+		t.Fatalf("plain reads did not add data blocks to the block cache: %d -> %d", afterSecondPass, afterFillPass)
+	}
 }

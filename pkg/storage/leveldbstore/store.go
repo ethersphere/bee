@@ -107,7 +107,11 @@ func (s *Store) Close() (err error) {
 
 // Get implements the storage.Store interface.
 func (s *Store) Get(item storage.Item) error {
-	val, err := s.db.Get(key(item), nil)
+	return s.get(item, nil)
+}
+
+func (s *Store) get(item storage.Item, ro *opt.ReadOptions) error {
+	val, err := s.db.Get(key(item), ro)
 
 	if errors.Is(err, leveldb.ErrNotFound) {
 		return storage.ErrNotFound
@@ -126,12 +130,20 @@ func (s *Store) Get(item storage.Item) error {
 
 // Has implements the storage.Store interface.
 func (s *Store) Has(k storage.Key) (bool, error) {
-	return s.db.Has(key(k), nil)
+	return s.has(k, nil)
+}
+
+func (s *Store) has(k storage.Key, ro *opt.ReadOptions) (bool, error) {
+	return s.db.Has(key(k), ro)
 }
 
 // GetSize implements the storage.Store interface.
 func (s *Store) GetSize(k storage.Key) (int, error) {
-	val, err := s.db.Get(key(k), nil)
+	return s.getSize(k, nil)
+}
+
+func (s *Store) getSize(k storage.Key, ro *opt.ReadOptions) (int, error) {
+	val, err := s.db.Get(key(k), ro)
 
 	if errors.Is(err, leveldb.ErrNotFound) {
 		return 0, storage.ErrNotFound
@@ -255,8 +267,12 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 
 // Count implements the storage.Store interface.
 func (s *Store) Count(key storage.Key) (int, error) {
+	return s.count(key, nil)
+}
+
+func (s *Store) count(key storage.Key, ro *opt.ReadOptions) (int, error) {
 	keys := util.BytesPrefix([]byte(key.Namespace() + separator))
-	iter := s.db.NewIterator(keys, nil)
+	iter := s.db.NewIterator(keys, ro)
 
 	var c int
 	for iter.Next() {
@@ -267,6 +283,31 @@ func (s *Store) Count(key storage.Key) (int, error) {
 
 	return c, iter.Error()
 }
+
+// ReaderWithOptions implements the storage.ReadOptioner interface.
+func (s *Store) ReaderWithOptions(opts ...storage.ReadOption) storage.Reader {
+	var o storage.ReadOptions
+	for _, apply := range opts {
+		apply(&o)
+	}
+	return &reader{store: s, ro: &opt.ReadOptions{DontFillCache: o.DontFillCache}}
+}
+
+// reader is a read-only view of the Store which
+// applies the same read options to every read.
+type reader struct {
+	store *Store
+	ro    *opt.ReadOptions
+}
+
+func (r *reader) Get(item storage.Item) error        { return r.store.get(item, r.ro) }
+func (r *reader) Has(k storage.Key) (bool, error)    { return r.store.has(k, r.ro) }
+func (r *reader) GetSize(k storage.Key) (int, error) { return r.store.getSize(k, r.ro) }
+func (r *reader) Count(k storage.Key) (int, error)   { return r.store.count(k, r.ro) }
+
+// Iterate implements the storage.Reader interface.
+// Iterators never fill the block cache, see Store.Iterate.
+func (r *reader) Iterate(q storage.Query, fn storage.IterateFn) error { return r.store.Iterate(q, fn) }
 
 // Put implements the storage.Store interface.
 func (s *Store) Put(item storage.Item) error {

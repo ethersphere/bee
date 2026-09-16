@@ -47,7 +47,7 @@ type Store interface {
 
 type ReadOnlyStore interface {
 	IndexStore() storage.Reader
-	ChunkStore() storage.ReadOnlyChunkStore
+	ChunkStore(...storage.ReadOption) storage.ReadOnlyChunkStore
 }
 
 type Storage interface {
@@ -118,8 +118,12 @@ func (s *store) IndexStore() storage.Reader {
 	return &indexTrx{s.bstore, nil, s.metrics}
 }
 
-func (s *store) ChunkStore() storage.ReadOnlyChunkStore {
-	indexStore := &indexTrx{s.bstore, nil, s.metrics}
+func (s *store) ChunkStore(opts ...storage.ReadOption) storage.ReadOnlyChunkStore {
+	var reader storage.Reader = s.bstore
+	if ro, ok := s.bstore.(storage.ReadOptioner); ok && len(opts) > 0 {
+		reader = ro.ReaderWithOptions(opts...)
+	}
+	indexStore := &indexTrx{reader, nil, s.metrics}
 	sharyTrx := &sharkyTrx{s.sharky, s.metrics, nil, nil}
 	return &chunkStoreTrx{indexStore, sharyTrx, s.chunkLocker, nil, s.metrics, true}
 }

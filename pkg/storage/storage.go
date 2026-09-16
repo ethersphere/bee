@@ -181,6 +181,31 @@ type Reader interface {
 	Count(Key) (int, error)
 }
 
+// ReadOptions tunes how a Reader performs its read operations.
+type ReadOptions struct {
+	// DontFillCache asks the store not to keep the blocks read on behalf of
+	// this reader in its block cache. It is meant for one-off scans which
+	// would otherwise evict the working set of the other readers.
+	DontFillCache bool
+}
+
+// ReadOption configures ReadOptions.
+type ReadOption func(*ReadOptions)
+
+// WithDontFillCache returns a ReadOption which keeps
+// the reads from filling the block cache of the store.
+func WithDontFillCache() ReadOption {
+	return func(o *ReadOptions) { o.DontFillCache = true }
+}
+
+// ReadOptioner is implemented by stores which can derive
+// a Reader that performs its reads with custom ReadOptions.
+type ReadOptioner interface {
+	// ReaderWithOptions returns a Reader over the same data
+	// which applies the given ReadOptions to every read.
+	ReaderWithOptions(...ReadOption) Reader
+}
+
 // Writer groups methods that change the state of the store.
 type Writer interface {
 	// Put inserts or updates the given Item identified by its Key.ID.
