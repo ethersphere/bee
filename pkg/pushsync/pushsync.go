@@ -375,6 +375,14 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	)
 
 	if origin {
+		// as the originator of the chunk, do not push a chunk whose stamp is
+		// no longer valid, e.g. because its batch expired or was deleted.
+		// forwarding peers are not checked here, since postage sync lag may
+		// make a still valid stamp look invalid to them.
+		if _, err := ps.validStamp(ch); err != nil {
+			return nil, fmt.Errorf("pushsync: invalid stamp for chunk %s: %w", ch.Address(), err)
+		}
+
 		ticker := time.NewTicker(preemptiveInterval)
 		defer ticker.Stop()
 		preemptiveTicker = ticker.C

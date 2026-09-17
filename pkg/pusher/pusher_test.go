@@ -17,7 +17,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
-	batchstoremock "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
 	"github.com/ethersphere/bee/v2/pkg/pusher"
 	"github.com/ethersphere/bee/v2/pkg/pushsync"
 	pushsyncmock "github.com/ethersphere/bee/v2/pkg/pushsync/mock"
@@ -34,10 +33,11 @@ import (
 const spinTimeout = time.Second * 3
 
 var (
-	block                 = common.HexToHash("0x1").Bytes()
-	defaultMockBatchStore = batchstoremock.New(batchstoremock.WithExistsFunc(func(b []byte) (bool, error) {
-		return true, nil
-	}))
+	block = common.HexToHash("0x1").Bytes()
+	// defaultValidStamp accepts every stamp.
+	defaultValidStamp = func(ch swarm.Chunk) (swarm.Chunk, error) {
+		return ch, nil
+	}
 	defaultRetryCount = 3
 )
 
@@ -136,7 +136,7 @@ func TestChunkSyncing(t *testing.T) {
 		t,
 		storer,
 		pushSyncService,
-		defaultMockBatchStore,
+		defaultValidStamp,
 		defaultRetryCount,
 	)
 
@@ -183,7 +183,7 @@ func TestChunkStored(t *testing.T) {
 		t,
 		storer,
 		pushSyncService,
-		defaultMockBatchStore,
+		defaultValidStamp,
 		defaultRetryCount,
 	)
 
@@ -241,7 +241,7 @@ func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
 		t,
 		storer,
 		pushSyncService,
-		defaultMockBatchStore,
+		defaultValidStamp,
 		defaultRetryCount,
 	)
 
@@ -285,7 +285,7 @@ func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
 		t,
 		storer,
 		pushSyncService,
-		defaultMockBatchStore,
+		defaultValidStamp,
 		defaultRetryCount,
 	)
 
@@ -328,7 +328,7 @@ func TestPusherRetryShallow(t *testing.T) {
 		t,
 		storer,
 		pushSyncService,
-		defaultMockBatchStore,
+		defaultValidStamp,
 		defaultRetryCount,
 	)
 
@@ -355,7 +355,10 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 	key, _ := crypto.GenerateSecp256k1Key()
 	signer := crypto.NewDefaultSigner(key)
 
+	var callCount int32
+
 	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
+		atomic.AddInt32(&callCount, 1)
 		signature, _ := signer.Sign(chunk.Address().Bytes())
 		receipt := &pushsync.Receipt{
 			Address:   swarm.NewAddress(chunk.Address().Bytes()),
@@ -367,9 +370,11 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 
 	wantErr := errors.New("dummy error")
 
-	bmock := batchstoremock.New(batchstoremock.WithExistsFunc(func(b []byte) (bool, error) {
-		return false, wantErr
-	}))
+	// the batch row may still exist while the stamp itself is no longer
+	// valid, so the validator, not a mere existence check, must reject it.
+	validStamp := func(ch swarm.Chunk) (swarm.Chunk, error) {
+		return nil, wantErr
+	}
 
 	storer := &mockStorer{
 		chunks: make(chan swarm.Chunk),
@@ -379,7 +384,7 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 		t,
 		storer,
 		pushSyncService,
-		bmock,
+		validStamp,
 		defaultRetryCount,
 	)
 
@@ -392,6 +397,9 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 		})
 		if err != nil {
 			t.Fatal(err)
+		}
+		if c := atomic.LoadInt32(&callCount); c != 0 {
+			t.Fatalf("got %d pushsync calls, want none", c)
 		}
 	})
 
@@ -408,6 +416,9 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 		if !errors.Is(err, wantErr) {
 			t.Fatalf("unexpected error on push %v", err)
 		}
+		if c := atomic.LoadInt32(&callCount); c != 0 {
+			t.Fatalf("got %d pushsync calls, want none", c)
+		}
 	})
 }
 
@@ -415,7 +426,7 @@ func createPusher(
 	t *testing.T,
 	storer pusher.Storer,
 	pushSyncService pushsync.PushSyncer,
-	validStamp postage.BatchExist,
+	validStamp postage.ValidStampFn,
 	retryCount int,
 ) *pusher.Service {
 	t.Helper()

@@ -220,7 +220,7 @@ const (
 	minPaymentThreshold           = 2 * refreshRate           // minimal accepted payment threshold of full nodes
 	maxPaymentThreshold           = 24 * refreshRate          // maximal accepted payment threshold of full nodes
 	mainnetNetworkID              = uint64(1)                 //
-	reserveWakeUpDuration         = 15 * time.Minute          // time to wait before waking up reserveWorker
+	reserveWakeUpDuration         = 3 * time.Minute          // time to wait before waking up reserveWorker
 	reserveMinEvictCount          = 1_000
 	cacheMinEvictCount            = 10_000
 	maxAllowedDoubling            = 1
@@ -1176,7 +1176,7 @@ func NewBee(
 
 	statusMetricsRegistry.MustRegister(retrieval.StatusMetrics()...)
 
-	pusherService := pusher.New(networkID, localStore, pushSyncProtocol, batchStore, logger, detector, pusher.DefaultRetryCount)
+	pusherService := pusher.New(networkID, localStore, pushSyncProtocol, validStamp, logger, detector, pusher.DefaultRetryCount)
 	b.pusherCloser = pusherService
 
 	pusherService.AddFeed(localStore.PusherFeed())

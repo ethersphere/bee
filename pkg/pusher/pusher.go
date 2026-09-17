@@ -53,7 +53,7 @@ type Service struct {
 	networkID         uint64
 	storer            Storer
 	pushSyncer        pushsync.PushSyncer
-	batchExist        postage.BatchExist
+	validStamp        postage.ValidStampFn
 	logger            log.Logger
 	metrics           metrics
 	quit              chan struct{}
@@ -72,7 +72,7 @@ func New(
 	networkID uint64,
 	storer Storer,
 	pushSyncer pushsync.PushSyncer,
-	batchExist postage.BatchExist,
+	validStamp postage.ValidStampFn,
 	logger log.Logger,
 	startupStabilizer stabilization.Subscriber,
 	retryCount int,
@@ -81,7 +81,7 @@ func New(
 		networkID:         networkID,
 		storer:            storer,
 		pushSyncer:        pushSyncer,
-		batchExist:        batchExist,
+		validStamp:        validStamp,
 		logger:            logger.WithName(loggerName).Register(),
 		metrics:           newMetrics(),
 		quit:              make(chan struct{}),
@@ -254,8 +254,7 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 
 	defer s.inflight.delete(op.identityAddress, op.Chunk.Stamp().BatchID())
 
-	ok, err := s.batchExist.Exists(op.Chunk.Stamp().BatchID())
-	if !ok || err != nil {
+	if _, err := s.validStamp(op.Chunk); err != nil {
 		loggerV1.Warning(
 			"stamp is no longer valid, skipping syncing for chunk",
 			"batch_id", hex.EncodeToString(op.Chunk.Stamp().BatchID()),
@@ -314,8 +313,7 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 		}
 	}()
 
-	ok, err := s.batchExist.Exists(op.Chunk.Stamp().BatchID())
-	if !ok || err != nil {
+	if _, err = s.validStamp(op.Chunk); err != nil {
 		loggerV1.Warning(
 			"stamp is no longer valid, skipping direct upload for chunk",
 			"batch_id", hex.EncodeToString(op.Chunk.Stamp().BatchID()),
