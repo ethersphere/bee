@@ -20,6 +20,7 @@ type (
 	requestHostKey   struct{}
 	gasPriceKey      struct{}
 	gasLimitKey      struct{}
+	feePriorityKey   struct{}
 )
 
 // SetHost sets the http request host in the context
@@ -66,4 +67,16 @@ func GetGasPrice(ctx context.Context) *big.Int {
 		return v
 	}
 	return nil
+}
+
+func SetFeePriority(ctx context.Context, priority string) context.Context {
+	return context.WithValue(ctx, feePriorityKey{}, priority)
+}
+
+func GetFeePriority(ctx context.Context) string {
+	v, ok := ctx.Value(feePriorityKey{}).(string)
+	if ok {
+		return v
+	}
+	return ""
 }

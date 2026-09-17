@@ -74,36 +74,25 @@ func TestCreateBatch(t *testing.T) {
 			postageStampContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
 					switch *request.To {
 					case bzzTokenAddress:
-						return txHashApprove, nil
+						return txHashApprove, &types.Receipt{Status: 1}, nil
 					case postageStampAddress:
 						if bytes.Equal(expectedCallDataForExpireLimitedBatches[:32], request.Data[:32]) {
-							return txHashApprove, nil
+							return txHashApprove, &types.Receipt{Status: 1}, nil
 						}
 						if !bytes.Equal(expectedCallData[:100], request.Data[:100]) {
-							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
+							return common.Hash{}, nil, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
 						}
-						return txHashCreate, nil
-					}
-					return common.Hash{}, errors.New("sent to wrong contract")
-				}),
-				transactionMock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
-					switch txHash {
-					case txHashApprove:
-						return &types.Receipt{
-							Status: 1,
-						}, nil
-					case txHashCreate:
-						return &types.Receipt{
+						return txHashCreate, &types.Receipt{
 							Logs: []*types.Log{
 								newCreateEvent(postageStampAddress, batchID),
 							},
 							Status: 1,
 						}, nil
 					}
-					return nil, errors.New("unknown tx hash")
+					return common.Hash{}, nil, errors.New("sent to wrong contract")
 				}),
 				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
 					if *request.To == bzzTokenAddress {
@@ -319,33 +308,22 @@ func TestTopUpBatch(t *testing.T) {
 			postageStampContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
 					switch *request.To {
 					case bzzTokenAddress:
-						return txHashApprove, nil
+						return txHashApprove, &types.Receipt{Status: 1}, nil
 					case postageStampAddress:
 						if !bytes.Equal(expectedCallData[:64], request.Data[:64]) {
-							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
+							return common.Hash{}, nil, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
 						}
-						return txHashTopup, nil
-					}
-					return common.Hash{}, errors.New("sent to wrong contract")
-				}),
-				transactionMock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
-					switch txHash {
-					case txHashApprove:
-						return &types.Receipt{
-							Status: 1,
-						}, nil
-					case txHashTopup:
-						return &types.Receipt{
+						return txHashTopup, &types.Receipt{
 							Logs: []*types.Log{
 								newTopUpEvent(postageStampAddress, batch),
 							},
 							Status: 1,
 						}, nil
 					}
-					return nil, errors.New("unknown tx hash")
+					return common.Hash{}, nil, errors.New("sent to wrong contract")
 				}),
 				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
 					if *request.To == bzzTokenAddress {
@@ -490,33 +468,22 @@ func TestDiluteBatch(t *testing.T) {
 			postageStampContractABI,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+				transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
 					if *request.To == postageStampAddress {
 						if bytes.Equal(expectedCallDataForExpireLimitedBatches[:32], request.Data[:32]) {
-							return txHashApprove, nil
+							return txHashApprove, &types.Receipt{Status: 1}, nil
 						}
 						if !bytes.Equal(expectedCallData[:64], request.Data[:64]) {
-							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
+							return common.Hash{}, nil, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
 						}
-						return txHashDilute, nil
-					}
-					return common.Hash{}, errors.New("sent to wrong contract")
-				}),
-				transactionMock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
-					if txHash == txHashDilute {
-						return &types.Receipt{
+						return txHashDilute, &types.Receipt{
 							Logs: []*types.Log{
 								newDiluteEvent(postageStampAddress, batch),
 							},
 							Status: 1,
 						}, nil
 					}
-					if txHash == txHashApprove {
-						return &types.Receipt{
-							Status: 1,
-						}, nil
-					}
-					return nil, errors.New("unknown tx hash")
+					return common.Hash{}, nil, errors.New("sent to wrong contract")
 				}),
 				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
 					if *request.To == postageStampAddress {
@@ -663,12 +630,8 @@ func TestBatchExpirer(t *testing.T) {
 						}
 					}
 					return nil, errors.New("unexpected call")
-				}), transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, i int) (txHash common.Hash, err error) {
-					return common.Hash{}, nil
-				}), transactionMock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
-					return &types.Receipt{
-						Status: 1,
-					}, nil
+				}), transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
+					return common.Hash{}, &types.Receipt{Status: 1}, nil
 				}),
 			),
 			postageMock,
@@ -805,13 +768,13 @@ func TestBatchExpirer(t *testing.T) {
 						}
 					}
 					return nil, errors.New("unexpected call")
-				}), transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, i int) (txHash common.Hash, err error) {
+				}), transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
 					if *request.To == postageContractAddress {
 						if bytes.Equal(expectedCallDataForExpireLimitedBatches[:32], request.Data[:32]) {
-							return txHash, fmt.Errorf("some error")
+							return common.Hash{}, nil, fmt.Errorf("some error")
 						}
 					}
-					return txHash, errors.New("unexpected call")
+					return common.Hash{}, nil, errors.New("unexpected call")
 				}),
 			),
 			postageMock,
@@ -928,12 +891,8 @@ func TestBatchExpirer(t *testing.T) {
 						}
 					}
 					return nil, errors.New("unexpected call")
-				}), transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, i int) (txHash common.Hash, err error) {
-					return common.Hash{}, nil
-				}), transactionMock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
-					return &types.Receipt{
-						Status: 0,
-					}, nil
+				}), transactionMock.WithSendWithRetryFunc(func(ctx context.Context, request *transaction.TxRequest) (common.Hash, *types.Receipt, error) {
+					return common.Hash{}, &types.Receipt{Status: 0}, transaction.ErrTransactionReverted
 				}),
 			),
 			postageMock,

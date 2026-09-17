@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"math/big"
+	"slices"
 	"time"
 
 	"github.com/ethereum/go-ethereum"
@@ -22,6 +23,10 @@ const maxAverageBlockTime = 30 * time.Second
 
 var _ transaction.Backend = (*wrappedBackend)(nil)
 
+const feeHistoryDefaultBlockCount = 100
+
+var feeHistoryDefaultRewardPercentiles = []float64{10, 50, 90}
+
 type blockNumberAnchor struct {
 	number           uint64
 	timestamp        time.Time
@@ -29,12 +34,14 @@ type blockNumberAnchor struct {
 }
 
 type wrappedBackend struct {
-	backend           backend.Geth
-	metrics           metrics
-	minimumGasTipCap  int64
-	blockTime         time.Duration
-	blockSyncInterval uint64
-	blockNumberCache  *cache.SingleFlightCache[blockNumberAnchor]
+	backend                     backend.Geth
+	metrics                     metrics
+	minimumGasTipCap            int64
+	blockTime                   time.Duration
+	blockSyncInterval           uint64
+	blockNumberCache            *cache.SingleFlightCache[blockNumberAnchor]
+	feeHistoryBlockCount        uint64
+	feeHistoryRewardPercentiles []float64
 }
 
 func NewBackend(
@@ -42,18 +49,25 @@ func NewBackend(
 	minimumGasTipCap uint64,
 	blockTime time.Duration,
 	blockSyncInterval uint64,
+	feeHistoryBlockCount uint64,
 ) transaction.Backend {
 	if blockSyncInterval == 0 {
 		blockSyncInterval = 1
 	}
 
+	if feeHistoryBlockCount == 0 {
+		feeHistoryBlockCount = feeHistoryDefaultBlockCount
+	}
+
 	return &wrappedBackend{
-		backend:           backend,
-		minimumGasTipCap:  int64(minimumGasTipCap),
-		blockTime:         blockTime,
-		metrics:           newMetrics(),
-		blockSyncInterval: blockSyncInterval,
-		blockNumberCache:  cache.NewSingleFlightCache[blockNumberAnchor]("block_number"),
+		backend:                     backend,
+		metrics:                     newMetrics(),
+		minimumGasTipCap:            int64(minimumGasTipCap),
+		blockTime:                   blockTime,
+		blockSyncInterval:           blockSyncInterval,
+		blockNumberCache:            cache.NewSingleFlightCache[blockNumberAnchor]("block_number"),
+		feeHistoryBlockCount:        feeHistoryBlockCount,
+		feeHistoryRewardPercentiles: slices.Clone(feeHistoryDefaultRewardPercentiles),
 	}
 }
 
@@ -286,6 +300,17 @@ func (b *wrappedBackend) ChainID(ctx context.Context) (*big.Int, error) {
 		return nil, err
 	}
 	return chainID, nil
+}
+
+func (b *wrappedBackend) FeeHistory(ctx context.Context, blockCount uint64, lastBlock *big.Int, rewardPercentiles []float64) (*ethereum.FeeHistory, error) {
+	b.metrics.TotalRPCCalls.Inc()
+	b.metrics.FeeHistoryCalls.Inc()
+	fh, err := b.backend.FeeHistory(ctx, blockCount, lastBlock, rewardPercentiles)
+	if err != nil {
+		b.metrics.TotalRPCErrors.Inc()
+		return nil, err
+	}
+	return fh, nil
 }
 
 func (b *wrappedBackend) Close() {
