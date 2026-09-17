@@ -582,8 +582,9 @@ func BenchmarkChunkStoreGet(b *testing.B) {
 }
 
 // TestGetInto checks the buffer contract of GetInto: the size check is on
-// capacity, so one reusable buffer passed as buf[:0] serves both a CAC and a
-// larger SOC, and a buffer that cannot hold the chunk is rejected.
+// len(buf), one full-length buffer serves both a CAC and a larger SOC via the
+// returned count, nothing is written past len(buf), and a buffer whose length
+// is too short is rejected even when its capacity would fit the chunk.
 func TestGetInto(t *testing.T) {
 	t.Parallel()
 
@@ -607,8 +608,8 @@ func TestGetInto(t *testing.T) {
 
 	cs := st.ChunkStore()
 
-	t.Run("reused buffer with spare capacity", func(t *testing.T) {
-		buf := make([]byte, 0, swarm.SocMaxChunkSize)
+	t.Run("reused buffer serves CAC and SOC", func(t *testing.T) {
+		buf := make([]byte, swarm.SocMaxChunkSize)
 		for _, ch := range []swarm.Chunk{cac, soc, cac} {
 			n, err := cs.GetInto(ctx, ch.Address(), buf)
 			if err != nil {
@@ -620,11 +621,32 @@ func TestGetInto(t *testing.T) {
 		}
 	})
 
-	t.Run("capacity too small", func(t *testing.T) {
-		buf := make([]byte, 0, len(soc.Data())-1)
+	t.Run("does not write past len", func(t *testing.T) {
+		backing := make([]byte, swarm.SocMaxChunkSize)
+		for i := range backing {
+			backing[i] = 0xff
+		}
+		buf := backing[:len(cac.Data())]
+		n, err := cs.GetInto(ctx, cac.Address(), buf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n != len(cac.Data()) || !bytes.Equal(buf, cac.Data()) {
+			t.Fatalf("got %d bytes, want %d with matching data", n, len(cac.Data()))
+		}
+		for i := n; i < len(backing); i++ {
+			if backing[i] != 0xff {
+				t.Fatalf("GetInto wrote past len(buf) at index %d", i)
+			}
+		}
+	})
+
+	t.Run("length too small", func(t *testing.T) {
+		// Capacity would fit the chunk; only the length is short.
+		buf := make([]byte, len(soc.Data())-1, swarm.SocMaxChunkSize)
 		n, err := cs.GetInto(ctx, soc.Address(), buf)
 		if err == nil {
-			t.Fatal("expected error for buffer with insufficient capacity")
+			t.Fatal("expected error for buffer shorter than the chunk")
 		}
 		if n != 0 {
 			t.Fatalf("got %d bytes, want 0", n)
