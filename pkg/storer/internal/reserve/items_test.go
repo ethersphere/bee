@@ -5,6 +5,8 @@
 package reserve_test
 
 import (
+	"bytes"
+	"encoding/hex"
 	"fmt"
 	"testing"
 
@@ -234,5 +236,49 @@ func TestProximityFilterMatchesUnmarshal(t *testing.T) {
 				t.Fatalf("po %d depth %d: filter excludes=%v, unmarshaled item excludes=%v", po, depth, got, want)
 			}
 		}
+	}
+}
+
+// TestChunkBinItemLayout pins the serialized ChunkBinItem bytes. Marshal and
+// Unmarshal otherwise only round-trip through each other, so a consistently
+// shifted layout would pass every other test while changing the on-disk format.
+func TestChunkBinItemLayout(t *testing.T) {
+	t.Parallel()
+
+	item := &reserve.ChunkBinItem{
+		Bin:       9,
+		BinID:     0x0102030405060708,
+		Address:   swarm.NewAddress(bytes.Repeat([]byte{0x11}, swarm.HashSize)),
+		BatchID:   bytes.Repeat([]byte{0x22}, swarm.HashSize),
+		ChunkType: swarm.ChunkTypeContentAddressed,
+		StampHash: bytes.Repeat([]byte{0x33}, swarm.HashSize),
+	}
+	want := "09" + // bin
+		"0102030405060708" + // binID
+		"1111111111111111111111111111111111111111111111111111111111111111" + // address
+		"2222222222222222222222222222222222222222222222222222222222222222" + // batchID
+		"01" + // chunk type
+		"3333333333333333333333333333333333333333333333333333333333333333" // stamp hash
+
+	buf, err := item.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := hex.EncodeToString(buf); got != want {
+		t.Fatalf("serialized ChunkBinItem\n got %s\nwant %s", got, want)
+	}
+
+	wantBuf, err := hex.DecodeString(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := &reserve.ChunkBinItem{}
+	if err := got.Unmarshal(wantBuf); err != nil {
+		t.Fatal(err)
+	}
+	if !got.Address.Equal(item.Address) || !bytes.Equal(got.BatchID, item.BatchID) ||
+		!bytes.Equal(got.StampHash, item.StampHash) ||
+		got.Bin != item.Bin || got.BinID != item.BinID || got.ChunkType != item.ChunkType {
+		t.Fatalf("unmarshaled ChunkBinItem\n got %+v\nwant %+v", got, item)
 	}
 }
