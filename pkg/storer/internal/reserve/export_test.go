@@ -11,4 +11,5 @@ type (
 var (
 	ErrMarshalInvalidAddress = errMarshalInvalidAddress
 	ErrUnmarshalInvalidSize  = errUnmarshalInvalidSize
+	ChunkBinItemAddress      = chunkBinItemAddress
 )

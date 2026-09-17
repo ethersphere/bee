@@ -198,3 +198,41 @@ func TestChunkBinItemAddressAndProximityFilter(t *testing.T) {
 		t.Fatal("expected invalid buffer to NOT be filtered out")
 	}
 }
+
+// TestProximityFilterMatchesUnmarshal checks that ProximityFilter reaches the
+// same verdict on the raw bytes as a proximity check on the unmarshaled item,
+// for every proximity order and committed depth. It knows nothing about the
+// layout, so a layout change leaves it untouched.
+func TestProximityFilterMatchesUnmarshal(t *testing.T) {
+	t.Parallel()
+
+	anchor := swarm.RandAddress(t)
+
+	for po := 0; po <= int(swarm.MaxPO); po++ {
+		item := &reserve.ChunkBinItem{
+			Bin:       uint8(po),
+			BinID:     uint64(po) + 1,
+			Address:   swarm.RandAddressAt(t, anchor, po),
+			BatchID:   swarm.RandAddress(t).Bytes(),
+			StampHash: swarm.RandAddress(t).Bytes(),
+			ChunkType: swarm.ChunkTypeContentAddressed,
+		}
+		buf, err := item.Marshal()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		unmarshaled := &reserve.ChunkBinItem{}
+		if err := unmarshaled.Unmarshal(buf); err != nil {
+			t.Fatal(err)
+		}
+
+		for depth := uint8(0); depth <= swarm.MaxPO+1; depth++ {
+			want := swarm.Proximity(unmarshaled.Address.Bytes(), anchor.Bytes()) < depth
+			got := reserve.ProximityFilter(anchor.Bytes(), depth)("", buf)
+			if got != want {
+				t.Fatalf("po %d depth %d: filter excludes=%v, unmarshaled item excludes=%v", po, depth, got, want)
+			}
+		}
+	}
+}
