@@ -113,7 +113,7 @@ type Service interface {
 	io.Closer
 	// Send creates a transaction based on the request (with gasprice increased by provided percentage) and sends it.
 	Send(ctx context.Context, request *TxRequest, tipCapBoostPercent int) (txHash common.Hash, err error)
-	// SendWithRetry sends a transaction using fee-history tiers and automatic fee escalation; see send_tx_with_retry.go.
+	// SendWithRetry sends a transaction using fee-history tiers and automatic fee escalation; see transaction_with_retry.go.
 	SendWithRetry(ctx context.Context, request *TxRequest) (txHash common.Hash, receipt *types.Receipt, err error)
 	// Call simulate a transaction based on the request.
 	Call(ctx context.Context, request *TxRequest) (result []byte, err error)
@@ -229,7 +229,7 @@ func NewService(logger log.Logger, overlayEthAddress common.Address, backend Bac
 }
 
 func (t *transactionService) waitForAllPendingTx() error {
-	retryHashes, err := t.pendingRetryTransactions()
+	retryStates, err := t.pendingRetryTransactions()
 	if err != nil {
 		return err
 	}
@@ -237,6 +237,13 @@ func (t *transactionService) waitForAllPendingTx() error {
 	pendingTxs, err := t.PendingTransactions()
 	if err != nil {
 		return err
+	}
+
+	retryHashes := make(map[common.Hash]struct{})
+	for _, rs := range retryStates {
+		for _, h := range rs.allHashes() {
+			retryHashes[h] = struct{}{}
+		}
 	}
 
 	nonRetry := make([]common.Hash, 0, len(pendingTxs))

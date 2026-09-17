@@ -509,6 +509,15 @@ func TestSendWithRetry_EscalateGasThenSuccess(t *testing.T) {
 			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
 				broadcastCount.Add(1)
 				broadcasts = append(broadcasts, captureTx(tx))
+				if len(broadcasts) == 2 {
+					first := broadcasts[0].Hash
+					var stored transaction.StoredTransaction
+					assert.NoError(t, store.Get(transaction.StoredTransactionKey(first), &stored),
+						"superseded stored tx must remain until a result is known")
+					var pending struct{}
+					assert.NoError(t, store.Get(transaction.PendingTransactionKey(first), &pending),
+						"superseded pending tx must remain until a result is known")
+				}
 				return nil
 			}),
 		),
@@ -890,7 +899,7 @@ func TestSendWithRetry_ResumeAfterRestart(t *testing.T) {
 	lastTxHash := common.HexToHash("0xdeadbeef")
 
 	retryKey := transaction.RetryStateKey(s.nonce)
-	require.NoError(t, store.Put(retryKey, lastTxHash))
+	require.NoError(t, store.Put(retryKey, transaction.RetriedTransaction{Nonce: s.nonce, CurrentHash: lastTxHash}))
 
 	require.NoError(t, store.Put(transaction.StoredTransactionKey(lastTxHash), transaction.StoredTransaction{
 		To:          &s.recipient,

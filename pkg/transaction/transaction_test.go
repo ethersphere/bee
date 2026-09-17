@@ -1511,6 +1511,7 @@ func TestTransactionService_UnwrapABIError_ShortRevertData(t *testing.T) {
 				chainID,
 				monitormock.New(),
 				0,
+				transaction.TransactionsRetryConfig{},
 			)
 			if err != nil {
 				t.Fatal(err)
