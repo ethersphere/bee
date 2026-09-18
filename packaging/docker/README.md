@@ -11,7 +11,7 @@ wget -q https://raw.githubusercontent.com/ethersphere/bee/master/packaging/docke
 
 Set all configuration variables inside `.env`
 
-If you want to run node in full mode, set `BEE_FULL_NODE=true`
+Select the node mode with `BEE_NODE_MODE` (`full`, `light`, or `ultra-light`). A full node needs `BEE_BLOCKCHAIN_RPC_ENDPOINT` and implies swap, chequebook and storage incentives.
 
 Bee requires an Ethereum endpoint to function. Obtain a free Infura account and set:
 
