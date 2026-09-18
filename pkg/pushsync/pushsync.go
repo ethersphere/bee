@@ -424,6 +424,19 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			retry()
 		case <-retryC:
 
+			// The origin node revalidates the stamp on every peer attempt, so an
+			// expiry landing mid-push aborts the remaining attempts. Forwarding
+			// nodes must not, since postage sync lag could reject otherwise valid
+			// chunks; they validate at store time instead.
+			if origin {
+				// validStamp may mutate the chunk it is handed, and ch is read
+				// concurrently by the inflight push goroutines, so validate a copy.
+				chCopy := swarm.NewChunk(ch.Address(), ch.Data()).WithStamp(ch.Stamp())
+				if _, err := ps.validStamp(chCopy); err != nil {
+					return nil, fmt.Errorf("pushsync: invalid stamp for chunk %s: %w", ch.Address(), err)
+				}
+			}
+
 			// Origin peers should not store the chunk initially so that the chunk is always forwarded into the network.
 			// If no peer can be found from an origin peer, the origin peer may store the chunk.
 			// Non-origin peers store the chunk if the chunk is within depth.
