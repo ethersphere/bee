@@ -147,7 +147,17 @@ func (c *ChunkBinItem) Clone() storage.Item {
 	}
 }
 
-const chunkBinItemSize = 1 + 8 + swarm.HashSize + swarm.HashSize + 1 + swarm.HashSize
+// Serialized ChunkBinItem layout, shared by Marshal, Unmarshal and the raw-bytes
+// read behind ProximityFilter. Changing it is an on-disk format change.
+const (
+	chunkBinItemBinOffset       = 0
+	chunkBinItemBinIDOffset     = chunkBinItemBinOffset + 1
+	chunkBinItemAddressOffset   = chunkBinItemBinIDOffset + 8
+	chunkBinItemBatchIDOffset   = chunkBinItemAddressOffset + swarm.HashSize
+	chunkBinItemChunkTypeOffset = chunkBinItemBatchIDOffset + swarm.HashSize
+	chunkBinItemStampHashOffset = chunkBinItemChunkTypeOffset + 1
+	chunkBinItemSize            = chunkBinItemStampHashOffset + swarm.HashSize
+)
 
 func (c *ChunkBinItem) Marshal() ([]byte, error) {
 	if c.Address.IsZero() {
@@ -155,50 +165,51 @@ func (c *ChunkBinItem) Marshal() ([]byte, error) {
 	}
 
 	buf := make([]byte, chunkBinItemSize)
-	i := 0
-
-	buf[i] = c.Bin
-	i += 1
-
-	binary.BigEndian.PutUint64(buf[i:i+8], c.BinID)
-	i += 8
-
-	copy(buf[i:i+swarm.HashSize], c.Address.Bytes())
-	i += swarm.HashSize
-
-	copy(buf[i:i+swarm.HashSize], c.BatchID)
-	i += swarm.HashSize
-
-	buf[i] = uint8(c.ChunkType)
-	i += 1
-
-	copy(buf[i:i+swarm.HashSize], c.StampHash)
+	buf[chunkBinItemBinOffset] = c.Bin
+	binary.BigEndian.PutUint64(buf[chunkBinItemBinIDOffset:chunkBinItemAddressOffset], c.BinID)
+	copy(buf[chunkBinItemAddressOffset:chunkBinItemBatchIDOffset], c.Address.Bytes())
+	copy(buf[chunkBinItemBatchIDOffset:chunkBinItemChunkTypeOffset], c.BatchID)
+	buf[chunkBinItemChunkTypeOffset] = uint8(c.ChunkType)
+	copy(buf[chunkBinItemStampHashOffset:chunkBinItemSize], c.StampHash)
 	return buf, nil
 }
 
 func (c *ChunkBinItem) Unmarshal(buf []byte) error {
-	if len(buf) != chunkBinItemSize {
+	addr, ok := chunkBinItemAddress(buf)
+	if !ok {
 		return errUnmarshalInvalidSize
 	}
 
-	i := 0
-	c.Bin = buf[i]
-	i += 1
-
-	c.BinID = binary.BigEndian.Uint64(buf[i : i+8])
-	i += 8
-
-	c.Address = swarm.NewAddress(buf[i : i+swarm.HashSize]).Clone()
-	i += swarm.HashSize
-
-	c.BatchID = copyBytes(buf[i : i+swarm.HashSize])
-	i += swarm.HashSize
-
-	c.ChunkType = swarm.ChunkType(buf[i])
-	i += 1
-
-	c.StampHash = copyBytes(buf[i : i+swarm.HashSize])
+	c.Bin = buf[chunkBinItemBinOffset]
+	c.BinID = binary.BigEndian.Uint64(buf[chunkBinItemBinIDOffset:chunkBinItemAddressOffset])
+	c.Address = swarm.NewAddress(addr).Clone()
+	c.BatchID = copyBytes(buf[chunkBinItemBatchIDOffset:chunkBinItemChunkTypeOffset])
+	c.ChunkType = swarm.ChunkType(buf[chunkBinItemChunkTypeOffset])
+	c.StampHash = copyBytes(buf[chunkBinItemStampHashOffset:chunkBinItemSize])
 	return nil
+}
+
+// chunkBinItemAddress returns the chunk address bytes of a serialized
+// ChunkBinItem without unmarshaling the rest of it. The returned slice
+// aliases buf.
+func chunkBinItemAddress(buf []byte) ([]byte, bool) {
+	if len(buf) != chunkBinItemSize {
+		return nil, false
+	}
+	return buf[chunkBinItemAddressOffset:chunkBinItemBatchIDOffset], true
+}
+
+// ProximityFilter returns a storage.Filter that excludes serialized ChunkBinItems
+// whose chunk address has a proximity to anchor below committedDepth, without
+// unmarshaling them. Values of unexpected size pass through so Unmarshal reports them.
+func ProximityFilter(anchor []byte, committedDepth uint8) storage.Filter {
+	return func(_ string, val []byte) bool {
+		addr, ok := chunkBinItemAddress(val)
+		if !ok {
+			return false
+		}
+		return swarm.Proximity(addr, anchor) < committedDepth
+	}
 }
 
 // BinItem stores the latest binIDs for each bin between 0 and swarm.MaxBins
