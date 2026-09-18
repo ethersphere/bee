@@ -5,6 +5,7 @@
 package mockstorer
 
 import (
+	"bytes"
 	"context"
 	"math/big"
 	"sync"
@@ -173,7 +174,7 @@ func (s *ReserveStore) SubscribeBin(ctx context.Context, bin uint8, start uint64
 	go func() {
 		for _, c := range r.chunks {
 			select {
-			case out <- &storer.BinC{Address: c.Address, BatchID: c.BatchID, BinID: c.BinID, StampHash: c.StampHash}:
+			case out <- &storer.BinC{Address: c.Address, BatchID: c.BatchID, BinID: c.BinID, StampHash: c.StampHash, Sum: c.Sum}:
 			case <-ctx.Done():
 				select {
 				case errC <- ctx.Err():
@@ -254,11 +255,22 @@ func (s *ReserveStore) put(_ context.Context, chs ...swarm.Chunk) error {
 }
 
 // Has chunks.
-func (s *ReserveStore) ReserveHas(addr swarm.Address, batchID []byte, stampHash []byte) (bool, error) {
-	if _, ok := s.chunks[addr.String()+string(batchID)+string(stampHash)]; !ok {
-		return false, nil
+func (s *ReserveStore) ReserveHas(addr swarm.Address, sum []byte) (bool, error) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	for _, c := range s.chunks {
+		if !c.Address().Equal(addr) || c.Stamp() == nil {
+			continue
+		}
+		cs, err := storage.ChunkSum(c)
+		if err != nil {
+			return false, err
+		}
+		if bytes.Equal(cs, sum) {
+			return true, nil
+		}
 	}
-	return true, nil
+	return false, nil
 }
 
 func (s *ReserveStore) ReserveSample(context.Context, []byte, uint8, uint64, *big.Int) (storer.Sample, error) {
