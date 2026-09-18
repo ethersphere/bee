@@ -14,8 +14,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/bmt"
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/postage"
-
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
+	"github.com/ethersphere/bee/v2/pkg/soc"
 	chunk "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -302,11 +302,52 @@ func assertValidSample(t *testing.T, sample storer.Sample, minRadius uint8, anch
 		assertSampleItem(item, i)
 	}
 
+	assertSampleDataIntact(t, sample)
+	assertSampleDataNotShared(t, sample)
+
 	// Assert that transformed addresses are in ascending order
 	for i := 0; i < len(sample.Items)-1; i++ {
 		if sample.Items[i].TransformedAddress.Compare(sample.Items[i+1].TransformedAddress) != -1 {
 			t.Fatalf("incorrect order of samples")
 		}
+	}
+}
+
+// assertSampleDataIntact checks that every item's ChunkData still reproduces its
+// ChunkAddress.
+//
+// The sampler currently hands out the buffer that the chunk store allocated for
+// each chunk, so the data is trivially intact. That stops being true the moment
+// chunks are read into a buffer that the worker reuses: unless the bytes handed
+// to a SampleItem are copied out, every item except the last one a worker
+// touched carries the contents of some later chunk instead.
+func assertSampleDataIntact(t *testing.T, sample storer.Sample) {
+	t.Helper()
+
+	for i, item := range sample.Items {
+		ch := swarm.NewChunk(item.ChunkAddress, item.ChunkData)
+		if !cac.Valid(ch) && !soc.Valid(ch) {
+			t.Fatalf("sample item [%d]: chunk data does not reproduce address %s", i, item.ChunkAddress)
+		}
+	}
+}
+
+// assertSampleDataNotShared checks that no two items are backed by the same
+// array. It catches a reused read buffer even in the case where the surviving
+// contents happen to stay valid for one of the aliased items.
+func assertSampleDataNotShared(t *testing.T, sample storer.Sample) {
+	t.Helper()
+
+	seen := make(map[*byte]int, len(sample.Items))
+	for i, item := range sample.Items {
+		if len(item.ChunkData) == 0 {
+			continue
+		}
+		first := &item.ChunkData[0]
+		if j, ok := seen[first]; ok {
+			t.Fatalf("sample items [%d] and [%d] share one backing array", j, i)
+		}
+		seen[first] = i
 	}
 }
 
@@ -420,11 +461,27 @@ func assertSampleNoErrors(t *testing.T, sample storer.Sample) {
 // method, including DB iteration, chunk loading, stamp validation, and sample
 // assembly.
 func BenchmarkReserveSample1k(b *testing.B) {
-	const chunkCountPerPO = 100
+	benchmarkReserveSample(b, 100)
+}
+
+// BenchmarkReserveSample10k is BenchmarkReserveSample1k over a reserve ten
+// times the size. The per-chunk costs of the sampler are linear in the number
+// of chunks iterated, so a change that only removes a fixed overhead reads the
+// same at both sizes while a change to a per-chunk allocation does not. The
+// larger reserve is also where garbage collection starts to show.
+func BenchmarkReserveSample10k(b *testing.B) {
+	benchmarkReserveSample(b, 1000)
+}
+
+// benchmarkReserveSample fills a reserve with chunkCountPerPO chunks in each of
+// the first maxPO proximity orders and then samples it repeatedly.
+func benchmarkReserveSample(b *testing.B, chunkCountPerPO int) {
+	b.Helper()
+
 	const maxPO = 10
 
 	baseAddr := swarm.RandAddress(b)
-	opts := dbTestOps(baseAddr, 5000, nil, nil, time.Second)
+	opts := dbTestOps(baseAddr, 5*chunkCountPerPO*maxPO, nil, nil, time.Second)
 	opts.ValidStamp = func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil }
 
 	st, err := diskStorer(b, opts)()
@@ -450,11 +507,60 @@ func BenchmarkReserveSample1k(b *testing.B) {
 		anchor       = swarm.RandAddressAt(b, baseAddr, int(radius)).Bytes()
 	)
 
+	b.ResetTimer()
+
 	for b.Loop() {
 		_, err := st.ReserveSample(context.TODO(), anchor, radius, timeVar, nil)
 		if err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+// BenchmarkTransformedAddress measures the sampler's per-chunk hashing on its
+// own, separately for a content-addressed and a single owner chunk.
+//
+// The SOC case is the reason this exists. Both ReserveSample benchmarks build
+// their reserve with chunk.GenerateValidRandomChunkAt, which produces CAC
+// chunks only, so the SOC branch of transformedAddress is never measured by
+// them. Any work the SOC path does over and above hashing the wrapped CAC shows
+// up here and nowhere else.
+func BenchmarkTransformedAddress(b *testing.B) {
+	anchor := []byte("swarm-test-anchor-deterministic!")
+
+	content := make([]byte, swarm.ChunkSize)
+	for i := range content {
+		content[i] = byte(i)
+	}
+
+	cacChunk, err := cac.New(content)
+	if err != nil {
+		b.Fatal(err)
+	}
+	socChunk := chunk.GenerateTestRandomSoChunk(b, cacChunk)
+
+	for _, tc := range []struct {
+		name string
+		ch   swarm.Chunk
+		typ  swarm.ChunkType
+	}{
+		{"cac", cacChunk, swarm.ChunkTypeContentAddressed},
+		{"soc", socChunk, swarm.ChunkTypeSingleOwner},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			// One hasher reused across iterations, as a sampler worker does.
+			hasher := bmt.NewPrefixHasher(anchor)
+
+			b.ReportAllocs()
+			b.SetBytes(int64(len(tc.ch.Data())))
+			b.ResetTimer()
+
+			for b.Loop() {
+				if _, err := storer.TransformedAddress(hasher, tc.ch, tc.typ); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
 
