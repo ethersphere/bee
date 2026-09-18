@@ -17,13 +17,12 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/sharky"
 	soctesting "github.com/ethersphere/bee/v2/pkg/soc/testing"
-	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
-
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
 	"github.com/ethersphere/bee/v2/pkg/storage/storagetest"
 	chunktest "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstore"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
@@ -497,17 +496,216 @@ type chunkStore struct {
 	sharky *sharky.Store
 }
 
-func makeStorage(t *testing.T) *chunkStore {
-	t.Helper()
+func makeStorage(tb testing.TB) *chunkStore {
+	tb.Helper()
 
 	store := inmemstore.New()
 	sharky, err := sharky.New(&memFS{Fs: afero.NewMemMapFs()}, 1, swarm.SocMaxChunkSize)
-	assert.NoError(t, err)
+	assert.NoError(tb, err)
 
-	t.Cleanup(func() {
-		assert.NoError(t, store.Close())
-		assert.NoError(t, sharky.Close())
+	tb.Cleanup(func() {
+		assert.NoError(tb, store.Close())
+		assert.NoError(tb, sharky.Close())
 	})
 
 	return &chunkStore{transaction.NewStorage(sharky, store), sharky}
+}
+
+// BenchmarkChunkStoreGet measures a single chunk read: one retrieval-index
+// lookup followed by one sharky read. It is the micro-benchmark for the read
+// path that the reserve sampler drives once per chunk.
+//
+// The two variants differ only in where the ChunkStore handle comes from.
+// "per_call" mirrors what the sampler does today, building a fresh handle for
+// every chunk; "hoisted" builds it once. The gap between them is the cost of
+// that handle alone.
+func BenchmarkChunkStoreGet(b *testing.B) {
+	ctx := context.Background()
+
+	setup := func(b *testing.B) (*chunkStore, swarm.Address) {
+		b.Helper()
+
+		st := makeStorage(b)
+		ch := chunktest.GenerateTestRandomChunk()
+
+		err := st.Run(ctx, func(s transaction.Store) error {
+			return s.ChunkStore().Put(ctx, ch)
+		})
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		return st, ch.Address()
+	}
+
+	b.Run("per_call", func(b *testing.B) {
+		st, addr := setup(b)
+
+		b.ReportAllocs()
+		b.ResetTimer()
+
+		for b.Loop() {
+			if _, err := st.ChunkStore().Get(ctx, addr); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+
+	b.Run("hoisted", func(b *testing.B) {
+		st, addr := setup(b)
+		cs := st.ChunkStore()
+
+		b.ReportAllocs()
+		b.ResetTimer()
+
+		for b.Loop() {
+			if _, err := cs.Get(ctx, addr); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+
+	b.Run("get_into", func(b *testing.B) {
+		st, addr := setup(b)
+		cs := st.ChunkStore()
+		buf := make([]byte, swarm.SocMaxChunkSize)
+
+		b.ReportAllocs()
+		b.ResetTimer()
+
+		for b.Loop() {
+			if _, err := cs.GetInto(ctx, addr, buf); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+}
+
+func TestLocatingChunkStore(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	sharky, err := sharky.New(&memFS{Fs: fs}, 1, swarm.SocMaxChunkSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	store := inmemstore.New()
+	st := transaction.NewStorage(sharky, store)
+	defer st.Close()
+
+	ch := chunktest.GenerateTestRandomChunk()
+	ctx := context.Background()
+
+	var loc storage.ChunkLocation
+	err = st.Run(ctx, func(s transaction.Store) error {
+		lp, ok := s.ChunkStore().(storage.LocatingPutter)
+		if !ok {
+			return errors.New("chunkStore does not implement LocatingPutter")
+		}
+		var err error
+		loc, err = lp.PutLoc(ctx, ch)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("putLoc: %v", err)
+	}
+	if loc.IsZero() {
+		t.Fatal("expected non-zero ChunkLocation from PutLoc")
+	}
+
+	cs := st.ChunkStore()
+	lg, ok := cs.(storage.LocatingGetterInto)
+	if !ok {
+		t.Fatal("chunkStore does not implement LocatingGetterInto")
+	}
+
+	buf := make([]byte, swarm.SocMaxChunkSize)
+
+	// 1. Without active session, GetIntoLoc falls back to standard GetInto safely
+	n, err := lg.GetIntoLoc(ctx, ch.Address(), loc, buf)
+	if err != nil {
+		t.Fatalf("getIntoLoc without session: %v", err)
+	}
+	if !bytes.Equal(buf[:n], ch.Data()) {
+		t.Fatal("chunk data does not match")
+	}
+
+	// 2. Fallback read via zero ChunkLocation
+	n, err = lg.GetIntoLoc(ctx, ch.Address(), storage.ChunkLocation{}, buf)
+	if err != nil {
+		t.Fatalf("getIntoLoc zero: %v", err)
+	}
+	if !bytes.Equal(buf[:n], ch.Data()) {
+		t.Fatal("chunk data does not match on zero location fallback")
+	}
+
+	// 3. With active session, direct read succeeds
+	done := st.StartSamplingSession()
+
+	n, err = lg.GetIntoLoc(ctx, ch.Address(), loc, buf)
+	if err != nil {
+		t.Fatalf("getIntoLoc with active session: %v", err)
+	}
+	if !bytes.Equal(buf[:n], ch.Data()) {
+		t.Fatal("chunk data does not match with active session")
+	}
+
+	// 4. Guard active and chunk deleted: GetIntoLoc falls back and returns ErrNotFound
+	err = st.Run(ctx, func(s transaction.Store) error {
+		return s.ChunkStore().Delete(ctx, ch.Address())
+	})
+	if err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+
+	_, err = lg.GetIntoLoc(ctx, ch.Address(), loc, buf)
+	if !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound for deleted chunk, got %v", err)
+	}
+
+	// 5. ReplaceLoc marks old location as freed, while new location is valid
+	ch2 := chunktest.GenerateTestRandomChunk()
+	var loc2 storage.ChunkLocation
+	err = st.Run(ctx, func(s transaction.Store) error {
+		lp := s.ChunkStore().(storage.LocatingPutter)
+		loc2, err = lp.PutLoc(ctx, ch2)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("putLoc ch2: %v", err)
+	}
+
+	updatedData := append(ch2.Data()[:swarm.SpanSize], bytes.Repeat([]byte{0x42}, len(ch2.Data())-swarm.SpanSize)...)
+	ch2Updated := swarm.NewChunk(ch2.Address(), updatedData)
+
+	var newLoc2 storage.ChunkLocation
+	err = st.Run(ctx, func(s transaction.Store) error {
+		lr := s.ChunkStore().(storage.LocatingReplacer)
+		newLoc2, err = lr.ReplaceLoc(ctx, ch2Updated, false)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("replaceLoc ch2: %v", err)
+	}
+
+	// Reading with old location hint must fallback to indexStore and return updated data
+	n, err = lg.GetIntoLoc(ctx, ch2.Address(), loc2, buf)
+	if err != nil {
+		t.Fatalf("getIntoLoc old loc2: %v", err)
+	}
+	if !bytes.Equal(buf[:n], ch2Updated.Data()) {
+		t.Fatal("expected updated chunk data on old location fallback")
+	}
+
+	// Reading with new location hint reads directly and matches updated data
+	n, err = lg.GetIntoLoc(ctx, ch2.Address(), newLoc2, buf)
+	if err != nil {
+		t.Fatalf("getIntoLoc new loc2: %v", err)
+	}
+	if !bytes.Equal(buf[:n], ch2Updated.Data()) {
+		t.Fatal("expected updated chunk data on new location")
+	}
+
+	done()
 }
