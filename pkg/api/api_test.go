@@ -90,26 +90,28 @@ func init() {
 }
 
 type testServerOptions struct {
-	Storer             api.Storer
-	Tracer             *tracing.Tracer
-	StateStorer        storage.StateStorer
-	Resolver           resolver.Interface
-	Pss                pss.Interface
-	Gsoc               gsoc.Listener
-	WsPath             string
-	WsPingPeriod       time.Duration
-	Logger             log.Logger
-	PreventRedirect    bool
-	Feeds              feeds.Factory
-	CORSAllowedOrigins []string
-	PostageContract    postagecontract.Interface
-	StakingContract    staking.Contract
-	Post               postage.Service
-	AccessControl      accesscontrol.Controller
-	Steward            steward.Interface
-	WsHeaders          http.Header
-	DirectUpload       bool
-	Probe              *api.Probe
+	Storer                      api.Storer
+	Tracer                      *tracing.Tracer
+	StateStorer                 storage.StateStorer
+	Resolver                    resolver.Interface
+	Pss                         pss.Interface
+	Gsoc                        gsoc.Listener
+	WsPath                      string
+	WsPingPeriod                time.Duration
+	ChunkDeliveryWriteDeadline  time.Duration
+	ChunkDownloadRequestTimeout time.Duration
+	Logger                      log.Logger
+	PreventRedirect             bool
+	Feeds                       feeds.Factory
+	CORSAllowedOrigins          []string
+	PostageContract             postagecontract.Interface
+	StakingContract             staking.Contract
+	Post                        postage.Service
+	AccessControl               accesscontrol.Controller
+	Steward                     steward.Interface
+	WsHeaders                   http.Header
+	DirectUpload                bool
+	Probe                       *api.Probe
 
 	Overlay         swarm.Address
 	PublicKey       ecdsa.PublicKey
@@ -246,8 +248,10 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	}
 
 	s.Configure(signer, tracer, api.Options{
-		CORSAllowedOrigins: o.CORSAllowedOrigins,
-		WsPingPeriod:       o.WsPingPeriod,
+		CORSAllowedOrigins:          o.CORSAllowedOrigins,
+		WsPingPeriod:                o.WsPingPeriod,
+		ChunkDeliveryWriteDeadline:  o.ChunkDeliveryWriteDeadline,
+		ChunkDownloadRequestTimeout: o.ChunkDownloadRequestTimeout,
 	}, extraOpts, 1, erc20APIService)
 
 	s.Mount()

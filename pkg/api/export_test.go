@@ -45,6 +45,20 @@ var (
 	SuccessWsMsg = successWsMsg
 )
 
+const (
+	ChunkDownloadSubprotocol = chunkDownloadSubprotocol
+	ChunkUploadSubprotocol   = chunkUploadSubprotocol
+
+	ChunkDownloadOpcode = chunkDownloadOpcode
+
+	WsChunkDeliverySuccess  = wsChunkDeliverySuccess
+	WsChunkDeliveryNotFound = wsChunkDeliveryNotFound
+	WsChunkDeliveryError    = wsChunkDeliveryError
+
+	MaxDownloadBatchSize = maxDownloadBatchSize
+	MaxDownloadFrameSize = maxDownloadFrameSize
+)
+
 var (
 	FileSizeBucketsKBytes = fileSizeBucketsKBytes
 	ToFileSizeBucket      = toFileSizeBucket
