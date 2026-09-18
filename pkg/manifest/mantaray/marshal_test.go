@@ -291,6 +291,12 @@ func Test_UnmarshalBinary(t *testing.T) {
 			data:    build(version02HashBytes, 0xff, nil),
 			wantErr: ErrInvalidManifest,
 		},
+		{ // a bare v0.1 header (obfuscation key + version hash + refBytesSize)
+			// with no entry bytes following it.
+			name:    "v0.1 header without entry",
+			data:    decode("52fdfc072182654f163f5f0f9a621d729566c74d10037c4d7bbb0407d1e2c63050ac787fbce1061870e8d34e0a638bc7e812c7ca4ebd31d626a572ba47b06f31"),
+			wantErr: ErrInvalidManifest,
+		},
 		{ // SLICE-02: v0.2 with a zero-length entry but no trailing 32-byte fork
 			// index, so data[offset:offset+32] is out of range.
 			name:    "v0.2 missing fork index",

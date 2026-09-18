@@ -235,3 +235,48 @@ func TestGranteeRemoveTwo(t *testing.T) {
 	err = gl.Remove([]*ecdsa.PublicKey{keys[0]})
 	assertNoError(t, "granteelist remove", err)
 }
+
+func TestGranteeDeserializeMalformedLength(t *testing.T) {
+	t.Parallel()
+
+	keys, err := generateKeyListFixture()
+	assertNoError(t, "key generation", err)
+	valid, err := accesscontrol.Serialize(keys)
+	assertNoError(t, "key serialization", err)
+
+	for _, tc := range []struct {
+		name string
+		data []byte
+	}{
+		{name: "empty", data: []byte{}},
+		{name: "single byte", data: []byte{0x04}},
+		{name: "one byte short", data: valid[:len(valid)-1]},
+		{name: "one byte long", data: append(append([]byte{}, valid...), 0x04)},
+		{name: "truncated first key", data: valid[:accesscontrol.PublicKeyLen-1]},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Empty(t, accesscontrol.Deserialize(tc.data))
+		})
+	}
+
+	assert.Len(t, accesscontrol.Deserialize(valid), len(keys))
+}
+
+// TestNewGranteeListReferenceMalformedBlob asserts that loading a stored blob
+// whose length is not a multiple of the public key length yields an empty
+// grantee list instead of panicking while the blob is sliced into keys.
+func TestNewGranteeListReferenceMalformedBlob(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	ls := createLs()
+
+	ref, err := ls.Save(ctx, []byte("0"))
+	assertNoError(t, "save malformed grantee blob", err)
+
+	gl, err := accesscontrol.NewGranteeListReference(ctx, ls, swarm.NewAddress(ref))
+	assertNoError(t, "granteelist load", err)
+	assert.Empty(t, gl.Get())
+}

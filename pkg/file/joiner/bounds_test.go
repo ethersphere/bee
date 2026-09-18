@@ -7,6 +7,7 @@ package joiner_test
 import (
 	"context"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"io"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/file/joiner"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/langos"
@@ -140,5 +142,88 @@ func testJoinerBug(t *testing.T, useLangos bool) {
 		} else if !errors.Is(err, joiner.ErrMalformedTrie) {
 			t.Fatalf("expected ErrMalformedTrie, got: %v", err)
 		}
+	}
+}
+
+// TestNewJoinerMalformedRootChunk asserts that NewJoiner, which takes an
+// already fetched root chunk from the caller, rejects root chunks it cannot
+// parse instead of panicking: data shorter than the span prefix, and
+// references that are neither a plain nor an encrypted reference.
+func TestNewJoinerMalformedRootChunk(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name    string
+		addr    swarm.Address
+		data    []byte
+		wantErr error
+	}{
+		{
+			name:    "empty root data",
+			addr:    swarm.NewAddress(make([]byte, swarm.HashSize)),
+			data:    nil,
+			wantErr: swarm.ErrInvalidChunk,
+		},
+		{
+			name:    "single byte root data",
+			addr:    swarm.NewAddress(make([]byte, swarm.HashSize)),
+			data:    []byte("0"),
+			wantErr: swarm.ErrInvalidChunk,
+		},
+		{
+			name:    "root data shorter than span",
+			addr:    swarm.NewAddress(make([]byte, swarm.HashSize)),
+			data:    make([]byte, swarm.SpanSize-1),
+			wantErr: swarm.ErrInvalidChunk,
+		},
+		{
+			name:    "empty address",
+			addr:    swarm.NewAddress(nil),
+			data:    make([]byte, swarm.ChunkWithSpanSize),
+			wantErr: storage.ErrReferenceLength,
+		},
+		{
+			name:    "unsupported reference length",
+			addr:    swarm.NewAddress(make([]byte, swarm.HashSize+1)),
+			data:    make([]byte, swarm.ChunkWithSpanSize),
+			wantErr: storage.ErrReferenceLength,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			store := inmemchunkstore.New()
+			_, _, err := joiner.NewJoiner(context.Background(), store, store, tc.addr, swarm.NewChunk(tc.addr, tc.data))
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("got error %v, want %v", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+// TestNewJoinerEmptyRootPayload asserts that a root chunk consisting of nothing
+// but a span prefix, advertising a span that makes the joiner treat it as an
+// intermediate chunk, is reported as malformed rather than panicking while the
+// empty payload is parsed for child references.
+func TestNewJoinerEmptyRootPayload(t *testing.T) {
+	t.Parallel()
+
+	store := inmemchunkstore.New()
+	addr := swarm.NewAddress(make([]byte, swarm.HashSize))
+	data := make([]byte, swarm.SpanSize)
+	binary.LittleEndian.PutUint64(data, uint64(swarm.ChunkSize)*2)
+
+	j, span, err := joiner.NewJoiner(context.Background(), store, store, addr, swarm.NewChunk(addr, data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if span != int64(swarm.ChunkSize)*2 {
+		t.Fatalf("got span %d, want %d", span, swarm.ChunkSize*2)
+	}
+	if _, err := j.ReadAt(make([]byte, swarm.ChunkSize), 0); err == nil {
+		t.Fatal("expected an error reading a root chunk with no payload")
+	}
+	if err := j.IterateChunkAddresses(func(swarm.Address) error { return nil }); err == nil {
+		t.Fatal("expected an error iterating a root chunk with no payload")
 	}
 }
