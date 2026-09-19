@@ -20,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	mockbatchstore "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
 	mockpost "github.com/ethersphere/bee/v2/pkg/postage/mock"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"gitlab.com/nolash/go-mockbytes"
@@ -621,4 +622,17 @@ func TestBytesHeadErrorsMatchGet(t *testing.T) {
 			jsonhttptest.Request(t, client, http.MethodGet, resource, tt.want)
 		})
 	}
+}
+
+// TestBytesGetHandlerNoPeers verifies that a retrieval failure caused by having no available peers
+func TestBytesGetHandlerNoPeers(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{
+		Storer: mockstorer.NewWithChunkStore(noPeersChunkStore{inmemchunkstore.New()}),
+		Post:   mockpost.New(mockpost.WithAcceptAll()),
+	})
+
+	ref := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000001")
+	jsonhttptest.Request(t, client, http.MethodGet, "/bytes/"+ref.String(), http.StatusServiceUnavailable)
 }
