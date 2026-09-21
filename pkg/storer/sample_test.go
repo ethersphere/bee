@@ -13,6 +13,7 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/bmt"
 	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	"github.com/ethersphere/bee/v2/pkg/soc"
@@ -356,11 +357,6 @@ func assertSampleDataNotShared(t *testing.T, sample storer.Sample) {
 // single hardcoded CAC chunk and anchor. It guards against regressions in the
 // BMT hashing or sampling pipeline, and asserts that both the goroutine and
 // SIMD hasher paths produce identical hashes.
-//
-// Sub-tests are intentionally not run in parallel: SetSIMDOptIn mutates global
-// state and concurrent calls would see flapping values. On platforms where the
-// dispatcher falls back to the goroutine pool (non-linux/amd64 or CPU without
-// AVX2/AVX-512), the SIMD sub-test degrades to a goroutine run.
 func TestSampleVectorCAC(t *testing.T) {
 	// Chunk content: 4096 bytes with repeating pattern i%256.
 	chunkContent := make([]byte, swarm.ChunkSize)
@@ -373,25 +369,71 @@ func TestSampleVectorCAC(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Attach a hardcoded (but otherwise irrelevant) stamp so that
-	// MakeSampleUsingChunks can read ch.Stamp() without panicking.
-	batchID := make([]byte, 32)
-	for i := range batchID {
-		batchID[i] = byte(i + 1)
+	// The stamp is irrelevant to the vector; MakeSampleUsingChunks only needs
+	// ch.Stamp() to not panic.
+	ch = ch.WithStamp(postagetesting.MustNewStamp())
+
+	assertSampleVector(t, ch,
+		"902406053a7a2f3a17f16097e1d0b4b6a4abeae6b84968f5503ae621f9522e16",
+		"9dee91d1ed794460474ffc942996bd713176731db4581a3c6470fe9862905a60",
+	)
+}
+
+// TestSampleVectorSOC is the SOC counterpart of TestSampleVectorCAC. The
+// sampler reads the wrapped CAC straight out of the raw chunk data instead of
+// rebuilding it through soc.UnwrapCAC, which drops the length validation and
+// the redundant BMT hash that path performed; the vector was cross-checked
+// against it. Neither asserted address depends on the signature, so the vector
+// survives the ECDSA nonce.
+func TestSampleVectorSOC(t *testing.T) {
+	// Wrapped CAC content: the same payload TestSampleVectorCAC uses.
+	chunkContent := make([]byte, swarm.ChunkSize)
+	for i := range chunkContent {
+		chunkContent[i] = byte(i % 256)
 	}
-	sig := make([]byte, 65)
-	for i := range sig {
-		sig[i] = byte(i + 1)
+
+	wrappedCh, err := cac.New(chunkContent)
+	if err != nil {
+		t.Fatal(err)
 	}
-	ch = ch.WithStamp(postage.NewStamp(batchID, make([]byte, 8), make([]byte, 8), sig))
+
+	id := make([]byte, swarm.HashSize)
+	for i := range id {
+		id[i] = byte(i + 1)
+	}
+
+	// Fixed key, so that the owner address and with it the SOC address is
+	// constant across runs. Not the replicas signer, which soc.Valid
+	// special-cases into the dispersed replica rule.
+	privKeyData := make([]byte, 32)
+	for i := range privKeyData {
+		privKeyData[i] = byte(i + 1)
+	}
+
+	ch, err := soc.New(id, wrappedCh).Sign(crypto.NewDefaultSigner(crypto.Secp256k1PrivateKeyFromBytes(privKeyData)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch = ch.WithStamp(postagetesting.MustNewStamp())
+
+	assertSampleVector(t, ch,
+		"6f8d756905e023c9a6cb9f11dd22feec5c6fcfff33d9115bae3be210be162ebb",
+		"014d0e6a4caeaebe37bed9d7fb76d1049122e2e9e5659d4528537f6162d670bc",
+	)
+}
+
+// assertSampleVector checks the chunk and transformed addresses MakeSampleUsingChunks
+// produces for ch against a pinned vector, on both the goroutine and SIMD hasher paths.
+//
+// Sub-tests are intentionally not run in parallel: SetSIMDOptIn mutates global
+// state and concurrent calls would see flapping values. On platforms where the
+// dispatcher falls back to the goroutine pool (non-linux/amd64 or CPU without
+// AVX2/AVX-512), the SIMD sub-test degrades to a goroutine run.
+func assertSampleVector(t *testing.T, ch swarm.Chunk, wantChunkAddr, wantTransformedAddr string) {
+	t.Helper()
 
 	// Anchor: exactly 32 bytes, constant across runs.
 	anchor := []byte("swarm-test-anchor-deterministic!")
-
-	const (
-		wantChunkAddr       = "902406053a7a2f3a17f16097e1d0b4b6a4abeae6b84968f5503ae621f9522e16"
-		wantTransformedAddr = "9dee91d1ed794460474ffc942996bd713176731db4581a3c6470fe9862905a60"
-	)
 
 	prev := bmt.SIMDOptIn()
 	t.Cleanup(func() { bmt.SetSIMDOptIn(prev) })

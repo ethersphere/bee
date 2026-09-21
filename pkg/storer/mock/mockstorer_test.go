@@ -5,6 +5,7 @@
 package mockstorer_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
 	chunktesting "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	storer "github.com/ethersphere/bee/v2/pkg/storer"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
@@ -266,4 +268,56 @@ func TestMockStorer(t *testing.T) {
 			t.Fatalf("expected all pins to be deleted, found %d", len(pins))
 		}
 	})
+}
+
+// TestForgettingStoreGetInto asserts that GetInto honours Miss the same way Get does.
+func TestForgettingStoreGetInto(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	ch := chunktesting.GenerateTestRandomChunk()
+
+	store := mockstorer.NewForgettingStore(inmemchunkstore.New())
+	if err := store.Put(ctx, ch); err != nil {
+		t.Fatal(err)
+	}
+
+	buf := make([]byte, swarm.ChunkWithSpanSize)
+
+	n, err := store.GetInto(ctx, ch.Address(), buf)
+	if err != nil {
+		t.Fatalf("GetInto before Miss: %v", err)
+	}
+	if !bytes.Equal(buf[:n], ch.Data()) {
+		t.Fatal("GetInto returned unexpected chunk data")
+	}
+
+	store.Miss(ch.Address())
+
+	if _, err := store.GetInto(ctx, ch.Address(), buf); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("GetInto after Miss: got %v, want %v", err, storage.ErrNotFound)
+	}
+}
+
+// TestDelayedStoreGetInto asserts that GetInto observes a registered delay.
+func TestDelayedStoreGetInto(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	ch := chunktesting.GenerateTestRandomChunk()
+
+	store := mockstorer.NewDelayedStore(inmemchunkstore.New())
+	if err := store.Put(context.Background(), ch); err != nil {
+		t.Fatal(err)
+	}
+
+	// A delay no read would outlast, so the cancelled context must win.
+	store.Delay(ch.Address(), time.Hour)
+
+	buf := make([]byte, swarm.ChunkWithSpanSize)
+	if _, err := store.GetInto(ctx, ch.Address(), buf); !errors.Is(err, context.Canceled) {
+		t.Fatalf("GetInto with pending delay: got %v, want %v", err, context.Canceled)
+	}
 }

@@ -231,6 +231,8 @@ func (db *DB) ReserveSample(
 	// Phase 3: Assemble the sample. Here we need to assemble only the first SampleSize
 	// no of items from the results of the 2nd phase.
 	// In this step stamps are loaded and validated only if chunk will be added to sample.
+	// Runs on ctx rather than gCtx: the errgroup cancels gCtx when Wait returns,
+	// which can happen while sampleItemChan still has buffered items to drain.
 	phase3ChunkStore := db.ChunkStore()
 	stats := SampleStats{}
 	for item := range sampleItemChan {
