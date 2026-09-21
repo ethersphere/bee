@@ -264,7 +264,7 @@ func receiptWatchErr(err error) monitormock.Option {
 	return monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
 		ch := make(chan error, 1)
 		ch <- err
-		return nil, ch, nil
+		return make(chan types.Receipt), ch, nil
 	})
 }
 
@@ -382,10 +382,15 @@ func TestSendWithRetry_UpdateStateError(t *testing.T) {
 	callCount := 0
 	failingStore := &failOnNthPutStore{
 		StateStorer: storemock.NewStateStore(),
-		failOnPut:   1,
+		failOnPut:   3,
 		putErr:      putErr,
 		callCount:   &callCount,
 	}
+	receiptC := make(chan types.Receipt, 1)
+	var (
+		txHash     common.Hash
+		watchCount atomic.Int32
+	)
 
 	svc, err := transaction.NewService(log.Noop, s.sender,
 		backendmock.New(
@@ -394,13 +399,20 @@ func TestSendWithRetry_UpdateStateError(t *testing.T) {
 			s.headerOption(),
 			s.estimateGasOption(),
 			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+				txHash = tx.Hash()
 				return nil
 			}),
 		),
 		signermock.New(s.passThroughSigner(), s.signerAddr()),
 		failingStore,
 		s.chainID,
-		monitormock.New(),
+		monitormock.New(
+			monitormock.WithWatchTransactionFunc(func(hash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
+				watchCount.Add(1)
+				assert.Equal(t, txHash, hash)
+				return receiptC, make(chan error), nil
+			}),
+		),
 		0,
 		s.retryConfig(),
 	)
@@ -409,6 +421,13 @@ func TestSendWithRetry_UpdateStateError(t *testing.T) {
 
 	_, _, err = svc.SendWithRetry(context.Background(), s.request())
 	assert.ErrorIs(t, err, putErr)
+	assert.Equal(t, int32(1), watchCount.Load(), "broadcast transaction must remain monitored")
+
+	receiptC <- types.Receipt{TxHash: txHash, Status: 1}
+	require.Eventually(t, func() bool {
+		return errors.Is(failingStore.Get(transaction.PendingTransactionKey(txHash), &struct{}{}), storage.ErrNotFound)
+	}, time.Second, 10*time.Millisecond)
+	assert.NoError(t, failingStore.Get(transaction.StoredTransactionKey(txHash), &transaction.StoredTransaction{}))
 }
 
 // First broadcast fails (non-critical, signedTx nil because prepare fails), second succeeds.
@@ -499,6 +518,8 @@ func TestSendWithRetry_EscalateGasThenSuccess(t *testing.T) {
 	var broadcastCount atomic.Int32
 	var feeHistoryCalls atomic.Int32
 	var broadcasts []capturedBroadcast
+	receiptC := make(chan types.Receipt, 1)
+	errC := make(chan error, 1)
 
 	svc, err := transaction.NewService(log.Noop, s.sender,
 		backendmock.New(
@@ -527,11 +548,10 @@ func TestSendWithRetry_EscalateGasThenSuccess(t *testing.T) {
 		monitormock.New(
 			monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
 				if broadcastCount.Load() <= 1 {
-					return make(chan types.Receipt), make(chan error), nil
+					return receiptC, errC, nil
 				}
-				ch := make(chan types.Receipt, 1)
-				ch <- types.Receipt{TxHash: txHash, Status: 1}
-				return ch, nil, nil
+				receiptC <- types.Receipt{TxHash: txHash, Status: 1}
+				return make(chan types.Receipt, 1), make(chan error, 1), nil
 			}),
 		),
 		0,
@@ -579,6 +599,173 @@ func TestSendWithRetry_EscalateGasThenSuccess(t *testing.T) {
 		"final stored tx should be kept")
 }
 
+func TestSendWithRetry_PreviousHashConfirmed(t *testing.T) {
+	t.Parallel()
+	s := newRetryTestSetup()
+	store := storemock.NewStateStore()
+	testutil.CleanupCloser(t, store)
+
+	var (
+		broadcasts []capturedBroadcast
+		watchCount atomic.Int32
+		receiptC   = make(chan types.Receipt, 1)
+		errC       = make(chan error, 1)
+	)
+
+	svc, err := transaction.NewService(log.Noop, s.sender,
+		backendmock.New(
+			s.nonceOption(),
+			s.feeHistoryOption(nil),
+			s.headerOption(),
+			s.estimateGasOption(),
+			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+				broadcasts = append(broadcasts, captureTx(tx))
+				return nil
+			}),
+		),
+		signermock.New(s.passThroughSigner(), s.signerAddr()),
+		store,
+		s.chainID,
+		monitormock.New(
+			monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
+				if watchCount.Add(1) == 1 {
+					return receiptC, errC, nil
+				}
+				require.Len(t, broadcasts, 2)
+				assert.Equal(t, broadcasts[1].Hash, txHash)
+				receiptC <- types.Receipt{TxHash: broadcasts[0].Hash, Status: 1}
+				return make(chan types.Receipt, 1), make(chan error, 1), nil
+			}),
+		),
+		0,
+		s.retryConfig(),
+	)
+	require.NoError(t, err)
+	testutil.CleanupCloser(t, svc)
+
+	txHash, receipt, err := svc.SendWithRetry(context.Background(), s.request())
+
+	require.NoError(t, err)
+	require.NotNil(t, receipt)
+	require.Len(t, broadcasts, 2)
+	assert.Equal(t, broadcasts[0].Hash, txHash)
+	assert.Equal(t, broadcasts[0].Hash, receipt.TxHash)
+	assert.Equal(t, int32(2), watchCount.Load(), "each accepted hash must be registered")
+}
+
+func TestSendWithRetry_ReplacementHashConfirmed(t *testing.T) {
+	t.Parallel()
+	s := newRetryTestSetup()
+	store := storemock.NewStateStore()
+	testutil.CleanupCloser(t, store)
+
+	var (
+		broadcasts   []capturedBroadcast
+		receiptC     = make(chan types.Receipt, 1)
+		errC         = make(chan error, 1)
+		watchCount   atomic.Int32
+		receiptCalls []common.Hash
+	)
+
+	svc, err := transaction.NewService(log.Noop, s.sender,
+		backendmock.New(
+			s.nonceOption(),
+			s.feeHistoryOption(nil),
+			s.headerOption(),
+			s.estimateGasOption(),
+			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+				broadcasts = append(broadcasts, captureTx(tx))
+				return nil
+			}),
+			backendmock.WithTransactionReceiptFunc(func(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
+				receiptCalls = append(receiptCalls, txHash)
+				if len(broadcasts) == 3 && txHash == broadcasts[1].Hash {
+					return &types.Receipt{TxHash: txHash, Status: 1}, nil
+				}
+				return nil, ethereum.NotFound
+			}),
+		),
+		signermock.New(s.passThroughSigner(), s.signerAddr()),
+		store,
+		s.chainID,
+		monitormock.New(
+			monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
+				if watchCount.Add(1) == 1 {
+					return receiptC, errC, nil
+				}
+				if len(broadcasts) == 3 {
+					errC <- transaction.ErrTransactionCancelled
+				}
+				return make(chan types.Receipt, 1), make(chan error, 1), nil
+			}),
+		),
+		0,
+		s.retryConfig(),
+	)
+	require.NoError(t, err)
+	testutil.CleanupCloser(t, svc)
+
+	txHash, receipt, err := svc.SendWithRetry(context.Background(), s.request())
+
+	require.NoError(t, err)
+	require.NotNil(t, receipt)
+	require.Len(t, broadcasts, 3)
+	assert.Equal(t, broadcasts[1].Hash, txHash)
+	assert.Equal(t, []common.Hash{broadcasts[2].Hash, broadcasts[1].Hash}, receiptCalls)
+
+	var stored transaction.StoredTransaction
+	assert.ErrorIs(t, store.Get(transaction.StoredTransactionKey(broadcasts[0].Hash), &stored), storage.ErrNotFound)
+	assert.NoError(t, store.Get(transaction.StoredTransactionKey(broadcasts[1].Hash), &stored))
+	assert.ErrorIs(t, store.Get(transaction.StoredTransactionKey(broadcasts[2].Hash), &stored), storage.ErrNotFound)
+}
+
+func TestSendWithRetry_ExternalNonceCancellation(t *testing.T) {
+	t.Parallel()
+	s := newRetryTestSetup()
+	store := storemock.NewStateStore()
+	testutil.CleanupCloser(t, store)
+
+	errC := make(chan error, 1)
+	var txHash common.Hash
+
+	svc, err := transaction.NewService(log.Noop, s.sender,
+		backendmock.New(
+			s.nonceOption(),
+			s.feeHistoryOption(nil),
+			s.headerOption(),
+			s.estimateGasOption(),
+			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+				txHash = tx.Hash()
+				return nil
+			}),
+			backendmock.WithTransactionReceiptFunc(func(context.Context, common.Hash) (*types.Receipt, error) {
+				return nil, ethereum.NotFound
+			}),
+		),
+		signermock.New(s.passThroughSigner(), s.signerAddr()),
+		store,
+		s.chainID,
+		monitormock.New(
+			monitormock.WithWatchTransactionFunc(func(common.Hash, uint64) (<-chan types.Receipt, <-chan error, error) {
+				errC <- transaction.ErrTransactionCancelled
+				return make(chan types.Receipt), errC, nil
+			}),
+		),
+		0,
+		s.retryConfig(),
+	)
+	require.NoError(t, err)
+	testutil.CleanupCloser(t, svc)
+
+	_, _, err = svc.SendWithRetry(context.Background(), s.request())
+
+	require.ErrorIs(t, err, transaction.ErrTransactionCancelled)
+	var state transaction.RetriedTransaction
+	assert.ErrorIs(t, store.Get(transaction.RetryStateKey(s.nonce), &state), storage.ErrNotFound)
+	assert.ErrorIs(t, store.Get(transaction.PendingTransactionKey(txHash), &struct{}{}), storage.ErrNotFound)
+	assert.ErrorIs(t, store.Get(transaction.StoredTransactionKey(txHash), &transaction.StoredTransaction{}), storage.ErrNotFound)
+}
+
 // After receipt timeout at market tier, fees escalate to the aggressive tier on the next broadcast.
 func TestSendWithRetry_TierEscalation(t *testing.T) {
 	t.Parallel()
@@ -589,6 +776,8 @@ func TestSendWithRetry_TierEscalation(t *testing.T) {
 	var (
 		broadcasts []capturedBroadcast
 		watchCount atomic.Int32
+		receiptC   = make(chan types.Receipt, 1)
+		errC       = make(chan error, 1)
 	)
 
 	cfg := s.retryConfig()
@@ -613,11 +802,10 @@ func TestSendWithRetry_TierEscalation(t *testing.T) {
 		monitormock.New(
 			monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
 				if watchCount.Add(1) == 1 {
-					return make(chan types.Receipt), make(chan error), nil
+					return receiptC, errC, nil
 				}
-				ch := make(chan types.Receipt, 1)
-				ch <- types.Receipt{TxHash: txHash, Status: 1}
-				return ch, nil, nil
+				receiptC <- types.Receipt{TxHash: txHash, Status: 1}
+				return make(chan types.Receipt, 1), make(chan error, 1), nil
 			}),
 		),
 		0,
@@ -655,6 +843,8 @@ func TestSendWithRetry_UnderpricedKeepsPendingTxHash(t *testing.T) {
 		broadcastCount atomic.Int32
 		watchCount     atomic.Int32
 		firstTxHash    common.Hash
+		receiptC       = make(chan types.Receipt, 1)
+		errC           = make(chan error, 1)
 	)
 
 	svc, err := transaction.NewService(log.Noop, s.sender,
@@ -668,6 +858,7 @@ func TestSendWithRetry_UnderpricedKeepsPendingTxHash(t *testing.T) {
 					firstTxHash = tx.Hash()
 					return nil
 				}
+				receiptC <- types.Receipt{TxHash: firstTxHash, Status: 1}
 				return errors.New("replacement transaction underpriced")
 			}),
 		),
@@ -676,16 +867,9 @@ func TestSendWithRetry_UnderpricedKeepsPendingTxHash(t *testing.T) {
 		s.chainID,
 		monitormock.New(
 			monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
-				switch watchCount.Add(1) {
-				case 1:
-					assert.Equal(t, firstTxHash, txHash, "first wait must watch the accepted broadcast")
-					return make(chan types.Receipt), make(chan error), nil
-				default:
-					assert.Equal(t, firstTxHash, txHash, "after underpriced must keep watching the pending tx")
-					ch := make(chan types.Receipt, 1)
-					ch <- types.Receipt{TxHash: txHash, Status: 1}
-					return ch, nil, nil
-				}
+				watchCount.Add(1)
+				assert.Equal(t, firstTxHash, txHash)
+				return receiptC, errC, nil
 			}),
 		),
 		0,
@@ -700,7 +884,7 @@ func TestSendWithRetry_UnderpricedKeepsPendingTxHash(t *testing.T) {
 	require.NotNil(t, receipt)
 	assert.Equal(t, firstTxHash, txHash, "must return receipt for the original pending tx")
 	assert.Equal(t, int32(2), broadcastCount.Load(), "second broadcast should still be attempted")
-	assert.Equal(t, int32(2), watchCount.Load(), "must wait for receipt again after underpriced broadcast")
+	assert.Equal(t, int32(1), watchCount.Load(), "rejected replacement must not be registered")
 }
 
 // All attempts exhausted, receipt never found → error.
@@ -714,6 +898,7 @@ func TestSendWithRetry_AllAttemptsExhausted(t *testing.T) {
 	var (
 		feeHistoryCalls atomic.Int32
 		broadcasts      []capturedBroadcast
+		watchCount      atomic.Int32
 	)
 
 	svc, err := transaction.NewService(log.Noop, s.sender,
@@ -730,7 +915,12 @@ func TestSendWithRetry_AllAttemptsExhausted(t *testing.T) {
 		signermock.New(s.passThroughSigner(), s.signerAddr()),
 		store,
 		s.chainID,
-		monitormock.New(receiptWatchTimeout()),
+		monitormock.New(
+			monitormock.WithWatchTransactionFunc(func(common.Hash, uint64) (<-chan types.Receipt, <-chan error, error) {
+				watchCount.Add(1)
+				return make(chan types.Receipt), make(chan error), nil
+			}),
+		),
 		0,
 		s.retryConfig(),
 	)
@@ -744,6 +934,7 @@ func TestSendWithRetry_AllAttemptsExhausted(t *testing.T) {
 	assert.Nil(t, receipt)
 
 	require.Len(t, broadcasts, 3, "should have made exactly maxRetries attempts")
+	assert.Equal(t, int32(len(broadcasts)), watchCount.Load(), "every accepted hash must be registered")
 
 	assertTxDataUnchanged(t, broadcasts)
 
@@ -765,22 +956,87 @@ func TestSendWithRetry_AllAttemptsExhausted(t *testing.T) {
 	lastTxHash := broadcasts[len(broadcasts)-1].Hash
 	assert.Equal(t, lastTxHash, txHash, "last tx hash must match the final broadcast")
 
-	var v string
-	assert.ErrorIs(t, store.Get(transaction.RetryStateKey(broadcasts[0].Nonce), &v), storage.ErrNotFound,
-		"retry state should be cleaned up after exhaustion")
+	var retryState transaction.RetriedTransaction
+	assert.NoError(t, store.Get(transaction.RetryStateKey(broadcasts[0].Nonce), &retryState),
+		"retry state should remain while the session is monitored")
 
-	var pending struct{}
-	assert.NoError(t, store.Get(transaction.PendingTransactionKey(lastTxHash), &pending),
-		"last pending tx should be kept for monitoring")
-	for _, oldHash := range broadcasts[:len(broadcasts)-1] {
-		assert.ErrorIs(t, store.Get(transaction.PendingTransactionKey(oldHash.Hash), &pending), storage.ErrNotFound,
-			"superseded pending tx should be removed")
-		assert.ErrorIs(t, store.Get(transaction.StoredTransactionKey(oldHash.Hash), &struct{}{}), storage.ErrNotFound,
-			"superseded stored tx should be removed")
+	for _, broadcast := range broadcasts {
+		var pending struct{}
+		assert.NoError(t, store.Get(transaction.PendingTransactionKey(broadcast.Hash), &pending),
+			"pending tx should remain until the retry session has a result")
+		var stored transaction.StoredTransaction
+		assert.NoError(t, store.Get(transaction.StoredTransactionKey(broadcast.Hash), &stored),
+			"stored tx should remain until the retry session has a result")
 	}
+}
+
+func TestSendWithRetry_ExhaustedPreviousHashConfirmed(t *testing.T) {
+	t.Parallel()
+	s := newRetryTestSetup()
+	store := storemock.NewStateStore()
+	testutil.CleanupCloser(t, store)
+
+	var (
+		broadcasts []capturedBroadcast
+		receiptC   = make(chan types.Receipt, 1)
+		errC       = make(chan error, 1)
+	)
+
+	cfg := s.retryConfig()
+	cfg.AttemptsPerTier = 2
+
+	svc, err := transaction.NewService(log.Noop, s.sender,
+		backendmock.New(
+			s.nonceOption(),
+			s.feeHistoryOption(nil),
+			s.headerOption(),
+			s.estimateGasOption(),
+			backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+				broadcasts = append(broadcasts, captureTx(tx))
+				return nil
+			}),
+			backendmock.WithTransactionReceiptFunc(func(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
+				if len(broadcasts) == 2 && txHash == broadcasts[0].Hash {
+					return &types.Receipt{TxHash: txHash, Status: 1}, nil
+				}
+				return nil, ethereum.NotFound
+			}),
+		),
+		signermock.New(s.passThroughSigner(), s.signerAddr()),
+		store,
+		s.chainID,
+		monitormock.New(
+			monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
+				if len(broadcasts) == 1 {
+					return receiptC, errC, nil
+				}
+				return make(chan types.Receipt, 1), make(chan error, 1), nil
+			}),
+		),
+		0,
+		cfg,
+	)
+	require.NoError(t, err)
+	testutil.CleanupCloser(t, svc)
+
+	_, _, err = svc.SendWithRetry(context.Background(), s.request())
+	require.ErrorIs(t, err, transaction.ErrAllAttemptsExhausted)
+	require.Len(t, broadcasts, 2)
+
+	firstHash := broadcasts[0].Hash
+	lastHash := broadcasts[1].Hash
+	errC <- transaction.ErrTransactionCancelled
+
+	require.Eventually(t, func() bool {
+		var state transaction.RetriedTransaction
+		return errors.Is(store.Get(transaction.RetryStateKey(s.nonce), &state), storage.ErrNotFound)
+	}, time.Second, 10*time.Millisecond)
+
 	var stored transaction.StoredTransaction
-	assert.NoError(t, store.Get(transaction.StoredTransactionKey(lastTxHash), &stored),
-		"last stored tx should be kept for resend/cancel")
+	assert.NoError(t, store.Get(transaction.StoredTransactionKey(firstHash), &stored),
+		"confirmed stored tx should be kept")
+	assert.ErrorIs(t, store.Get(transaction.StoredTransactionKey(lastHash), &stored), storage.ErrNotFound,
+		"unconfirmed replacement should be removed")
 }
 
 // "nonce too low" on a rebroadcast means the nonce was consumed between the
@@ -881,9 +1137,9 @@ func TestSendWithRetry_NonceTooLow(t *testing.T) {
 		assert.Equal(t, int32(2), broadcastCount.Load(), "exactly one rebroadcast, no further retries after nonce too low")
 		assert.Equal(t, int32(1), receiptCalls.Load(), "receipt must be read exactly once even when not found")
 
-		var v string
-		assert.ErrorIs(t, store.Get(transaction.RetryStateKey(s.nonce), &v), storage.ErrNotFound,
-			"retry state should be cleaned up after error")
+		var retryState transaction.RetriedTransaction
+		assert.NoError(t, store.Get(transaction.RetryStateKey(s.nonce), &retryState),
+			"retry state should remain while the session is monitored")
 	})
 }
 
@@ -896,28 +1152,39 @@ func TestSendWithRetry_ResumeAfterRestart(t *testing.T) {
 	testutil.CleanupCloser(t, store)
 
 	previousTip := new(big.Int).Set(s.tipBase)
+	firstTxHash := common.HexToHash("0xaaaa")
+	secondTxHash := common.HexToHash("0xbbbb")
 	lastTxHash := common.HexToHash("0xdeadbeef")
 
 	retryKey := transaction.RetryStateKey(s.nonce)
-	require.NoError(t, store.Put(retryKey, transaction.RetriedTransaction{Nonce: s.nonce, CurrentHash: lastTxHash}))
-
-	require.NoError(t, store.Put(transaction.StoredTransactionKey(lastTxHash), transaction.StoredTransaction{
-		To:          &s.recipient,
-		Data:        s.txData,
-		GasLimit:    s.gasLimit,
-		Value:       s.value,
-		Nonce:       s.nonce,
-		GasTipCap:   previousTip,
-		GasFeeCap:   big.NewInt(5000),
-		GasPrice:    big.NewInt(0),
-		Created:     time.Now().Unix(),
-		Description: "test-resume",
+	require.NoError(t, store.Put(retryKey, transaction.RetriedTransaction{
+		Nonce:         s.nonce,
+		NonceAssigned: true,
+		CurrentHash:   lastTxHash,
+		PrevHashes:    []common.Hash{firstTxHash, secondTxHash},
 	}))
-	require.NoError(t, store.Put(transaction.PendingTransactionKey(lastTxHash), struct{}{}))
+
+	for _, hash := range []common.Hash{firstTxHash, secondTxHash, lastTxHash} {
+		require.NoError(t, store.Put(transaction.StoredTransactionKey(hash), transaction.StoredTransaction{
+			To:          &s.recipient,
+			Data:        s.txData,
+			GasLimit:    s.gasLimit,
+			Value:       s.value,
+			Nonce:       s.nonce,
+			GasTipCap:   previousTip,
+			GasFeeCap:   big.NewInt(5000),
+			GasPrice:    big.NewInt(0),
+			Created:     time.Now().Unix(),
+			Description: "test-resume",
+		}))
+		require.NoError(t, store.Put(transaction.PendingTransactionKey(hash), struct{}{}))
+	}
 
 	var (
 		broadcastsMu sync.Mutex
 		broadcasts   []capturedBroadcast
+		watchedMu    sync.Mutex
+		watched      []common.Hash
 	)
 	var feeHistoryCalls atomic.Int32
 
@@ -948,8 +1215,14 @@ func TestSendWithRetry_ResumeAfterRestart(t *testing.T) {
 		s.chainID,
 		monitormock.New(
 			monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
+				watchedMu.Lock()
+				watched = append(watched, txHash)
+				isSentinel := len(watched) == 1
+				watchedMu.Unlock()
 				ch := make(chan types.Receipt, 1)
-				ch <- types.Receipt{TxHash: txHash, Status: 1}
+				if isSentinel {
+					ch <- types.Receipt{TxHash: txHash, Status: 1}
+				}
 				return ch, nil, nil
 			}),
 		),
@@ -964,6 +1237,11 @@ func TestSendWithRetry_ResumeAfterRestart(t *testing.T) {
 		defer broadcastsMu.Unlock()
 		return len(broadcasts) > 0
 	}, 5*time.Second, 10*time.Millisecond, "resume should have triggered a broadcast")
+
+	watchedMu.Lock()
+	require.GreaterOrEqual(t, len(watched), 3)
+	assert.Equal(t, []common.Hash{firstTxHash, secondTxHash, lastTxHash}, watched[:3])
+	watchedMu.Unlock()
 
 	require.NoError(t, svc.Close())
 
