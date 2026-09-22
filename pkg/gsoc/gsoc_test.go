@@ -5,6 +5,7 @@
 package gsoc_test
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/cac"
@@ -88,4 +89,57 @@ func ensureCalls(t *testing.T, calls *int, exp int) {
 	if exp != *calls {
 		t.Fatalf("expected %d calls, found %d", exp, *calls)
 	}
+}
+
+// TestConcurrentSubscribeHandle verifies that subscriptions coming and going
+// while messages are handled is safe: Handle iterates the handlers of an
+// address without holding the lock, so a subscription ending concurrently must
+// not mutate the slice it is iterating. Run with -race to be meaningful.
+func TestConcurrentSubscribeHandle(t *testing.T) {
+	t.Parallel()
+
+	const (
+		goroutines = 4
+		iterations = 200
+	)
+
+	var (
+		g          = gsoc.New(log.Noop)
+		socID      = testutil.RandBytes(t, 32)
+		privKey, _ = crypto.GenerateSecp256k1Key()
+		signer     = crypto.NewDefaultSigner(privKey)
+		owner, _   = signer.EthereumAddress()
+		address, _ = soc.CreateAddress(socID, owner.Bytes())
+		noop       = func(*soc.SOC) {}
+	)
+
+	ch, _ := cac.New([]byte("Hello there!"))
+	socCh := soc.New(socID, ch)
+	signedCh, _ := socCh.Sign(signer)
+	socCh, _ = soc.FromChunk(signedCh)
+
+	// a subscription that outlives the test, so that Handle always has
+	// handlers to iterate over.
+	cleanup := g.Subscribe(address, noop)
+	defer cleanup()
+
+	var wg sync.WaitGroup
+	for range goroutines {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range iterations {
+				g.Subscribe(address, noop)()
+			}
+		}()
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range iterations {
+				g.Handle(socCh)
+			}
+		}()
+	}
+	wg.Wait()
 }

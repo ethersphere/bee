@@ -5,6 +5,7 @@
 package gsoc
 
 import (
+	"slices"
 	"sync"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -40,20 +41,28 @@ func New(logger log.Logger) Listener {
 }
 
 // Subscribe allows the definition of a Handler func on a specific GSOC address.
+//
+// Handle iterates the handlers of an address without holding handlersMu, so a
+// slice that has been handed out must never be written to again. Subscribing
+// and unsubscribing therefore publish a new slice instead of appending to, or
+// shifting elements within, the backing array a concurrent Handle may be
+// reading.
 func (l *listener) Subscribe(address swarm.Address, handler Handler) (cleanup func()) {
+	key := address.ByteString()
+
 	l.handlersMu.Lock()
 	defer l.handlersMu.Unlock()
 
-	l.handlers[address.ByteString()] = append(l.handlers[address.ByteString()], &handler)
+	l.handlers[key] = append(slices.Clone(l.handlers[key]), &handler)
 
 	return func() {
 		l.handlersMu.Lock()
 		defer l.handlersMu.Unlock()
 
-		h := l.handlers[address.ByteString()]
+		h := l.handlers[key]
 		for i := range h {
 			if h[i] == &handler {
-				l.handlers[address.ByteString()] = append(h[:i], h[i+1:]...)
+				l.handlers[key] = slices.Delete(slices.Clone(h), i, i+1)
 				return
 			}
 		}
@@ -67,7 +76,7 @@ func (l *listener) Handle(c *soc.SOC) {
 		return // no handler
 	}
 	h := l.getHandlers(addr)
-	if h == nil {
+	if len(h) == 0 {
 		return // no handler
 	}
 	l.logger.Debug("new incoming GSOC message", "GSOC Address", addr, "wrapped chunk address", c.WrappedChunk().Address())
@@ -77,6 +86,9 @@ func (l *listener) Handle(c *soc.SOC) {
 	}
 }
 
+// getHandlers returns the handlers currently subscribed to address. The
+// returned slice is shared with the subscription bookkeeping and must only be
+// read, see Subscribe.
 func (p *listener) getHandlers(address swarm.Address) []*Handler {
 	p.handlersMu.Lock()
 	defer p.handlersMu.Unlock()
