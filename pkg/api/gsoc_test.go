@@ -279,16 +279,10 @@ func TestGsocWebsocketInvalidFieldsHeader(t *testing.T) {
 }
 
 // TestGsocWebsocketSlowConsumer verifies that a subscriber that falls behind
-// incoming GSOC messages is not dropped or disconnected: the server queues
-// every message (no cap) and delivers the full backlog, in order, once the
-// consumer catches up, instead of racing on the underlying websocket
-// connection or blocking the (synchronous) GSOC handler indefinitely.
-//
-// The connection is served over an in-memory net.Pipe, which is fully
-// synchronous (unbuffered): a write only completes once a matching read
-// consumes it, so the server-side writer is deterministically blocked on the
-// first message for as long as the client doesn't read, while further
-// messages still queue up behind it without being dropped.
+// incoming GSOC messages is not dropped or disconnected: the server queues the
+// messages and delivers the backlog, in order, once the consumer catches up,
+// instead of racing on the underlying websocket connection or blocking the
+// (synchronous) GSOC handler indefinitely.
 func TestGsocWebsocketSlowConsumer(t *testing.T) {
 	t.Parallel()
 
@@ -406,17 +400,19 @@ func TestGsocQueueRelease(t *testing.T) {
 
 // newGsocPipeTest subscribes to the GSOC address of socID over an in-memory
 // net.Pipe instead of a real socket, so that a test fully controls when the
-// client reads: writes to a pipe block until the other side reads, which is
-// what makes the server side queue observable. It returns the listener to
-// publish through, the client end of the subscription and the signer owning
-// the subscribed address.
-func newGsocPipeTest(t *testing.T, socID []byte) (gsoc.Listener, *websocket.Conn, crypto.Signer) {
+// client reads: a pipe is unbuffered, so a write only completes once the other
+// side reads it, which pins the server side writer on the first message and
+// makes the queue behind it observable. A real socket would absorb the whole
+// backlog in its kernel buffers instead. It returns once the subscription is
+// registered, handing back the listener to publish through, the client end of
+// the subscription and the signer owning the subscribed address.
+func newGsocPipeTest(t *testing.T, socID []byte) (*subscribedListener, *websocket.Conn, crypto.Signer) {
 	t.Helper()
 
 	var (
 		batchStore = mockbatchstore.New()
 		storer     = mockstorer.New()
-		gsocSvc    = gsoc.New(log.Noop)
+		gsocSvc    = newSubscribedListener(gsoc.New(log.Noop))
 	)
 	testutil.CleanupCloser(t, gsocSvc)
 
@@ -456,47 +452,42 @@ func newGsocPipeTest(t *testing.T, socID []byte) (gsoc.Listener, *websocket.Conn
 	}
 	testutil.CleanupCloser(t, cl)
 
-	// Subscribe runs synchronously in the HTTP handler before the connection
-	// is handed off to its own goroutine, but Dial returning only means the
-	// handshake bytes were exchanged over the pipe — it is not a
-	// happens-before guarantee that the server has gone on to call
-	// Subscribe. Those are two independent continuations of the same
-	// rendezvous, and either goroutine can be scheduled first; a message
-	// sent right after Dial can race Subscribe and, if it loses, is dropped
-	// before any handler exists to queue it — permanently, not just
-	// delayed. Real network I/O (as in TestGsocWebsocketMessageOrdering)
-	// involves enough actual syscalls to force scheduler yields that this is
-	// a non-issue in practice, but the in-memory pipe used here removes that
-	// cushion.
-	//
-	// Give the server's goroutine time to reach Subscribe before sending
-	// anything: this can't be done by retrying a read with a short deadline
-	// instead, because gorilla/websocket permanently poisons a *Conn for all
-	// further reads once any read — including one that merely times out —
-	// returns an error, so a read that might legitimately need a retry
-	// cannot be attempted more than once on the same connection.
-	time.Sleep(300 * time.Millisecond)
-
-	// Confirm the subscription is actually active (rather than silently
-	// trusting the sleep) with a single throwaway round-trip.
-	warmup := []byte{0xff}
-	{
-		ch, _ := cac.New(warmup)
-		socCh := soc.New(socID, ch)
-		signedCh, _ := socCh.Sign(signer)
-		socCh, _ = soc.FromChunk(signedCh)
-		gsocSvc.Handle(socCh)
+	// Dial returning only means the handshake bytes were exchanged over the
+	// pipe; it says nothing about how far the server side handler has got.
+	// Publishing before it reaches Subscribe would lose the message for good
+	// — there is no subscriber to queue it — so wait for the registration
+	// itself.
+	select {
+	case <-gsocSvc.subscribed:
+	case <-time.After(longTimeout):
+		t.Fatal("timed out waiting for the gsoc subscription")
 	}
+
 	if err := cl.SetReadDeadline(time.Now().Add(longTimeout)); err != nil {
 		t.Fatal(err)
 	}
-	if _, got, err := cl.ReadMessage(); err != nil {
-		t.Fatalf("warmup message: %v", err)
-	} else if !bytes.Equal(got, warmup) {
-		t.Fatalf("warmup message: got %q, want %q", got, warmup)
-	}
 
 	return gsocSvc, cl, signer
+}
+
+// subscribedListener reports the completion of the first Subscribe call on a
+// channel. The GSOC listener offers no readiness signal of its own, and the
+// websocket handshake is not one either: a test that published as soon as Dial
+// returned would race the server goroutine's continuation into Subscribe.
+type subscribedListener struct {
+	gsoc.Listener
+	subscribed chan struct{}
+	once       sync.Once
+}
+
+func newSubscribedListener(l gsoc.Listener) *subscribedListener {
+	return &subscribedListener{Listener: l, subscribed: make(chan struct{})}
+}
+
+func (l *subscribedListener) Subscribe(address swarm.Address, handler gsoc.Handler) func() {
+	cleanup := l.Listener.Subscribe(address, handler)
+	l.once.Do(func() { close(l.subscribed) })
+	return cleanup
 }
 
 // pipeListener is a net.Listener that hands out pre-established net.Conn
