@@ -976,6 +976,9 @@ paths:
             Single Owner Chunk address. Each message is the binary serialization
             of the Single Owner Chunk fields requested through the
             swarm-soc-fields header (defaults to the wrapped chunk payload).
+            Pending messages are buffered per subscription up to a fixed limit;
+            a client that does not keep up with the incoming rate misses the
+            oldest of them, as they are discarded in favor of the newest ones.
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "500":

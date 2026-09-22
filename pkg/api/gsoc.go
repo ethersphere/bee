@@ -33,6 +33,13 @@ const (
 	socFieldPayload         = "payload"
 )
 
+// gsocQueueCapacity is the maximum number of pending outgoing messages held
+// per GSOC websocket subscription. Since a serialized message is at most
+// maxSocFieldsSize bytes, this caps a single subscription's backlog at a bit
+// over 1 MB, while still leaving enough room to absorb the bursts a client
+// that keeps reading can be expected to work through.
+const gsocQueueCapacity = 256
+
 var validSocFields = []string{
 	socFieldAddress,
 	socFieldRecoveredPubKey,
@@ -169,7 +176,7 @@ func (s *Service) gsocWsHandler(w http.ResponseWriter, r *http.Request) {
 	// instead of inside the spawned goroutine closes the window in which an
 	// update could arrive before the handler is registered and be silently
 	// missed.
-	queue := &gsocQueue{}
+	queue := newGsocQueue()
 	wake := make(chan struct{}, 1)
 	cleanup := s.gsoc.Subscribe(paths.Address, func(c *soc.SOC) {
 		if headers.CacheWrappedChunk {
@@ -202,32 +209,67 @@ func (s *Service) gsocWsHandler(w http.ResponseWriter, r *http.Request) {
 	go s.gsocListeningWs(conn, cleanup, queue, wake)
 }
 
-// gsocQueue is an unbounded FIFO of pending outgoing GSOC messages: the
-// producer (the GSOC subscription callback) must never block or drop a
-// message, no matter how far behind the websocket writer falls.
+// gsocQueue is a bounded FIFO ring buffer of pending outgoing GSOC messages.
+//
+// The producer (the GSOC subscription callback) runs on the node's chunk
+// handling path, so it must never block on the websocket writer; with an
+// unbounded queue that would let anyone spamming a subscribed GSOC address
+// grow the backlog without limit and exhaust the node's memory whenever the
+// client does not keep up. Once the queue is full the oldest pending message
+// is therefore evicted to make room for the newest one: for a real-time
+// subscription a fresh update is worth more than a stale one.
 type gsocQueue struct {
-	mu    sync.Mutex
-	items [][]byte
+	mu      sync.Mutex
+	items   [][]byte // ring buffer, fixed length gsocQueueCapacity
+	head    int      // index of the oldest queued message
+	size    int      // number of queued messages
+	dropped uint64   // messages evicted since the last droppedCount call
 }
 
+func newGsocQueue() *gsocQueue {
+	return &gsocQueue{items: make([][]byte, gsocQueueCapacity)}
+}
+
+// push queues a message, evicting the oldest one if the queue is full.
 func (q *gsocQueue) push(b []byte) {
 	q.mu.Lock()
-	q.items = append(q.items, b)
-	q.mu.Unlock()
+	defer q.mu.Unlock()
+
+	if q.size == len(q.items) {
+		q.items[q.head] = nil
+		q.head = (q.head + 1) % len(q.items)
+		q.size--
+		q.dropped++
+	}
+	q.items[(q.head+q.size)%len(q.items)] = b
+	q.size++
 }
 
 // pop returns the oldest queued message, or ok=false if the queue is empty.
 func (q *gsocQueue) pop() (b []byte, ok bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	if len(q.items) == 0 {
+
+	if q.size == 0 {
 		return nil, false
 	}
-	b, q.items = q.items[0], q.items[1:]
-	if len(q.items) == 0 {
-		q.items = nil // release the backing array once drained
-	}
+	b = q.items[q.head]
+	q.items[q.head] = nil // drop the reference so the message can be collected
+	q.head = (q.head + 1) % len(q.items)
+	q.size--
 	return b, true
+}
+
+// droppedCount returns how many messages were evicted since the previous call
+// and resets the counter, so that a slow subscriber is reported once per drain
+// instead of once per lost message.
+func (q *gsocQueue) droppedCount() uint64 {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	dropped := q.dropped
+	q.dropped = 0
+	return dropped
 }
 
 func (s *Service) gsocListeningWs(conn *websocket.Conn, cleanup func(), queue *gsocQueue, wake chan struct{}) {
@@ -270,6 +312,10 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, cleanup func(), queue *g
 					s.logger.Debug("gsoc ws: write message failed", "error", err)
 					return
 				}
+			}
+
+			if dropped := queue.droppedCount(); dropped > 0 {
+				s.logger.Warning("gsoc ws: subscriber too slow, messages dropped", "count", dropped)
 			}
 
 		case <-s.quit:

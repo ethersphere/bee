@@ -45,6 +45,8 @@ var (
 	SuccessWsMsg = successWsMsg
 )
 
+const GsocQueueCapacity = gsocQueueCapacity
+
 var (
 	FileSizeBucketsKBytes = fileSizeBucketsKBytes
 	ToFileSizeBucket      = toFileSizeBucket

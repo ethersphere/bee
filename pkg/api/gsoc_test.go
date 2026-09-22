@@ -294,8 +294,105 @@ func TestGsocWebsocketSlowConsumer(t *testing.T) {
 
 	const messageCount = 10
 
+	id := make([]byte, 32)
+	gsocSvc, cl, signer := newGsocPipeTest(t, id)
+
+	// never read from cl while queuing every message: the first message
+	// blocks the single writer goroutine (nothing reads the pipe yet), and
+	// the rest pile up behind it in the queue. messageCount is well below
+	// api.GsocQueueCapacity, so none of them is evicted.
+	payloads := make([][]byte, messageCount)
+	for i := range messageCount {
+		payloads[i] = []byte{byte(i)}
+		ch, _ := cac.New(payloads[i])
+		socCh := soc.New(id, ch)
+		signedCh, _ := socCh.Sign(signer)
+		socCh, _ = soc.FromChunk(signedCh)
+		gsocSvc.Handle(socCh)
+	}
+
+	// the whole backlog must arrive, in order, once the consumer starts
+	// reading again.
+	for i, want := range payloads {
+		_, got, err := cl.ReadMessage()
+		if err != nil {
+			t.Fatalf("message %d: %v", i, err)
+		}
+		if !bytes.Equal(got, want) {
+			t.Fatalf("message %d: got %q, want %q", i, got, want)
+		}
+	}
+}
+
+// TestGsocWebsocketQueueBound verifies that a subscriber which stops reading
+// cannot make the server side queue grow without limit: once the queue is full
+// the oldest pending messages are evicted, while the most recent ones are still
+// delivered, in order.
+func TestGsocWebsocketQueueBound(t *testing.T) {
+	t.Parallel()
+
+	const messageCount = api.GsocQueueCapacity + 16
+
+	id := make([]byte, 32)
+	gsocSvc, cl, signer := newGsocPipeTest(t, id)
+
+	// never read from cl while queuing every message: the first message
+	// blocks the single writer goroutine (nothing reads the pipe yet), and
+	// the rest pile up behind it until the queue is full and starts dropping
+	// its oldest entries.
+	for i := range messageCount {
+		payload := []byte{byte(i >> 8), byte(i)}
+		ch, _ := cac.New(payload)
+		socCh := soc.New(id, ch)
+		signedCh, _ := socCh.Sign(signer)
+		socCh, _ = soc.FromChunk(signedCh)
+		gsocSvc.Handle(socCh)
+	}
+
+	// the newest message is never evicted, so reading until it arrives
+	// terminates. At most one message can have left the queue before the
+	// writer blocked on the pipe, which puts the whole backlog the consumer
+	// can still see at api.GsocQueueCapacity+1 messages.
 	var (
-		id         = make([]byte, 32)
+		received int
+		last     = -1
+	)
+	for {
+		_, got, err := cl.ReadMessage()
+		if err != nil {
+			t.Fatalf("message %d: %v", received, err)
+		}
+		if len(got) != 2 {
+			t.Fatalf("message %d: got payload %q, want 2 bytes", received, got)
+		}
+		received++
+
+		index := int(got[0])<<8 | int(got[1])
+		if index <= last {
+			t.Fatalf("message %d: got index %d after %d, want increasing order", received, index, last)
+		}
+		last = index
+
+		if index == messageCount-1 {
+			break
+		}
+	}
+
+	if received > api.GsocQueueCapacity+1 {
+		t.Fatalf("got %d messages, want at most %d: the queue is not bounded", received, api.GsocQueueCapacity+1)
+	}
+}
+
+// newGsocPipeTest subscribes to the GSOC address of socID over an in-memory
+// net.Pipe instead of a real socket, so that a test fully controls when the
+// client reads: writes to a pipe block until the other side reads, which is
+// what makes the server side queue observable. It returns the listener to
+// publish through, the client end of the subscription and the signer owning
+// the subscribed address.
+func newGsocPipeTest(t *testing.T, socID []byte) (gsoc.Listener, *websocket.Conn, crypto.Signer) {
+	t.Helper()
+
+	var (
 		batchStore = mockbatchstore.New()
 		storer     = mockstorer.New()
 		gsocSvc    = gsoc.New(log.Noop)
@@ -320,7 +417,7 @@ func TestGsocWebsocketSlowConsumer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	chunkAddr, _ := soc.CreateAddress(id, owner.Bytes())
+	chunkAddr, _ := soc.CreateAddress(socID, owner.Bytes())
 
 	ln := newPipeListener()
 	srv := &http.Server{Handler: svc}
@@ -350,9 +447,8 @@ func TestGsocWebsocketSlowConsumer(t *testing.T) {
 	// before any handler exists to queue it — permanently, not just
 	// delayed. Real network I/O (as in TestGsocWebsocketMessageOrdering)
 	// involves enough actual syscalls to force scheduler yields that this is
-	// a non-issue in practice, but this test deliberately uses an in-memory
-	// net.Pipe (see comment above) to avoid depending on real I/O timing,
-	// which removes that cushion.
+	// a non-issue in practice, but the in-memory pipe used here removes that
+	// cushion.
 	//
 	// Give the server's goroutine time to reach Subscribe before sending
 	// anything: this can't be done by retrying a read with a short deadline
@@ -367,7 +463,7 @@ func TestGsocWebsocketSlowConsumer(t *testing.T) {
 	warmup := []byte{0xff}
 	{
 		ch, _ := cac.New(warmup)
-		socCh := soc.New(id, ch)
+		socCh := soc.New(socID, ch)
 		signedCh, _ := socCh.Sign(signer)
 		socCh, _ = soc.FromChunk(signedCh)
 		gsocSvc.Handle(socCh)
@@ -381,31 +477,7 @@ func TestGsocWebsocketSlowConsumer(t *testing.T) {
 		t.Fatalf("warmup message: got %q, want %q", got, warmup)
 	}
 
-	// never read from cl while queuing every message: the first message
-	// blocks the single writer goroutine (nothing reads the pipe yet), and
-	// the rest pile up behind it in the unbounded queue instead of being
-	// dropped.
-	payloads := make([][]byte, messageCount)
-	for i := range messageCount {
-		payloads[i] = []byte{byte(i)}
-		ch, _ := cac.New(payloads[i])
-		socCh := soc.New(id, ch)
-		signedCh, _ := socCh.Sign(signer)
-		socCh, _ = soc.FromChunk(signedCh)
-		gsocSvc.Handle(socCh)
-	}
-
-	// the whole backlog must arrive, in order, once the consumer starts
-	// reading again.
-	for i, want := range payloads {
-		_, got, err := cl.ReadMessage()
-		if err != nil {
-			t.Fatalf("message %d: %v", i, err)
-		}
-		if !bytes.Equal(got, want) {
-			t.Fatalf("message %d: got %q, want %q", i, got, want)
-		}
-	}
+	return gsocSvc, cl, signer
 }
 
 // pipeListener is a net.Listener that hands out pre-established net.Conn
