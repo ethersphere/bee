@@ -222,22 +222,27 @@ func (s *Service) gsocWsHandler(w http.ResponseWriter, r *http.Request) {
 // is therefore evicted to make room for the newest one: for a real-time
 // subscription a fresh update is worth more than a stale one.
 type gsocQueue struct {
-	mu      sync.Mutex
-	items   [][]byte // ring buffer, fixed length gsocQueueCapacity
-	head    int      // index of the oldest queued message
-	size    int      // number of queued messages
-	dropped uint64   // messages evicted since the last droppedCount call
+	mu       sync.Mutex
+	items    [][]byte // ring buffer, fixed length gsocQueueCapacity
+	head     int      // index of the oldest queued message
+	size     int      // number of queued messages
+	dropped  uint64   // messages evicted since the last droppedCount call
+	released bool     // set once the writer is gone, see release
 }
 
 func newGsocQueue() *gsocQueue {
 	return &gsocQueue{items: make([][]byte, gsocQueueCapacity)}
 }
 
-// push queues a message, evicting the oldest one if the queue is full.
+// push queues a message, evicting the oldest one if the queue is full. It is a
+// no-op once the queue has been released.
 func (q *gsocQueue) push(b []byte) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
+	if q.released {
+		return
+	}
 	if q.size == len(q.items) {
 		q.items[q.head] = nil
 		q.head = (q.head + 1) % len(q.items)
@@ -275,8 +280,27 @@ func (q *gsocQueue) droppedCount() uint64 {
 	return dropped
 }
 
+// release discards the undelivered backlog and stops the queue from accepting
+// further messages. Nothing drains the queue once its writer is gone, so the
+// pending messages are dead weight from that point on; dropping them here
+// frees them right away instead of keeping them alive for as long as a
+// producer that is still mid-callback can reach the queue.
+func (q *gsocQueue) release() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	clear(q.items)
+	q.head = 0
+	q.size = 0
+	q.released = true
+}
+
 func (s *Service) gsocListeningWs(conn *websocket.Conn, cleanup func(), queue *gsocQueue, wake chan struct{}) {
 	defer s.wsWg.Done()
+	// Defers run in reverse order: unsubscribe first, so that no producer can
+	// queue anything new, and only then drop whatever backlog this connection
+	// never got to write out.
+	defer queue.release()
 	defer cleanup()
 
 	var (

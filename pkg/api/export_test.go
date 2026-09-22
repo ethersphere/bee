@@ -47,6 +47,14 @@ var (
 
 const GsocQueueCapacity = gsocQueueCapacity
 
+type GsocQueue = gsocQueue
+
+func NewGsocQueue() *GsocQueue { return newGsocQueue() }
+
+func (q *GsocQueue) Push(b []byte)       { q.push(b) }
+func (q *GsocQueue) Pop() ([]byte, bool) { return q.pop() }
+func (q *GsocQueue) Release()            { q.release() }
+
 var (
 	FileSizeBucketsKBytes = fileSizeBucketsKBytes
 	ToFileSizeBucket      = toFileSizeBucket

@@ -383,6 +383,27 @@ func TestGsocWebsocketQueueBound(t *testing.T) {
 	}
 }
 
+// TestGsocQueueRelease verifies that the backlog of a subscription whose
+// writer is gone is discarded, rather than kept around by a producer that is
+// still mid-callback when the connection is torn down.
+func TestGsocQueueRelease(t *testing.T) {
+	t.Parallel()
+
+	q := api.NewGsocQueue()
+	q.Push([]byte("queued before release"))
+
+	q.Release()
+
+	if b, ok := q.Pop(); ok {
+		t.Fatalf("got %q after release, want the backlog to be discarded", b)
+	}
+
+	q.Push([]byte("queued after release"))
+	if b, ok := q.Pop(); ok {
+		t.Fatalf("got %q after release, want a late push to be discarded", b)
+	}
+}
+
 // newGsocPipeTest subscribes to the GSOC address of socID over an in-memory
 // net.Pipe instead of a real socket, so that a test fully controls when the
 // client reads: writes to a pipe block until the other side reads, which is
