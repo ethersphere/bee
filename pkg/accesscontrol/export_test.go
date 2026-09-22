@@ -10,7 +10,7 @@ import "crypto/ecdsa"
 const PublicKeyLen = publicKeyLen
 
 // Deserialize exposes the unexported grantee-list blob parser for fuzzing.
-func Deserialize(data []byte) []*ecdsa.PublicKey {
+func Deserialize(data []byte) ([]*ecdsa.PublicKey, error) {
 	return deserialize(data)
 }
 

@@ -96,8 +96,12 @@ lint: linter
 	$(GOLANGCI_LINT) run ./...
 
 .PHONY: nilaway
-nilaway:
+nilaway: nilaway-bin
 	$(GOBIN)/nilaway ./...
+
+.PHONY: nilaway-bin
+nilaway-bin:
+	test -f $(GOBIN)/nilaway || $(GO) install go.uber.org/nilaway/cmd/nilaway@latest
 
 .PHONY: linter
 linter:

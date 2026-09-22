@@ -20,8 +20,8 @@ import (
 // (deserialize), which decodes a concatenation of 65-byte secp256k1 public
 // keys loaded from a file.LoadSaver, i.e. peer-controlled / persisted bytes.
 // It asserts the offset-driven slicing never panics on any length, and checks
-// the success invariants that the number of parsed keys is bounded by the
-// input length and that any parsed key re-marshals canonically (round-trip).
+// the success invariants that the number of parsed keys matches the input
+// length and that any parsed key re-marshals canonically (round-trip).
 func FuzzDeserializeGranteeList(f *testing.F) {
 	keys, err := generateKeyListFixture()
 	if err != nil {
@@ -40,11 +40,14 @@ func FuzzDeserializeGranteeList(f *testing.F) {
 	f.Add(make([]byte, 2*accesscontrol.PublicKeyLen))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		res := accesscontrol.Deserialize(data)
+		res, err := accesscontrol.Deserialize(data)
+		if err != nil {
+			return
+		}
 
-		// Success invariant: parsed keys cannot exceed input capacity.
-		if len(res) > len(data)/accesscontrol.PublicKeyLen {
-			t.Fatalf("parsed %d keys from %d bytes (max %d)", len(res), len(data), len(data)/accesscontrol.PublicKeyLen)
+		// Success invariant: every input byte belongs to exactly one parsed key.
+		if len(res) != len(data)/accesscontrol.PublicKeyLen || len(data)%accesscontrol.PublicKeyLen != 0 {
+			t.Fatalf("parsed %d keys from %d bytes", len(res), len(data))
 		}
 
 		// Round-trip: parsed keys must re-marshal and re-parse to the same count.
@@ -53,7 +56,10 @@ func FuzzDeserializeGranteeList(f *testing.F) {
 			if err != nil {
 				t.Fatalf("serialize of parsed keys: %v", err)
 			}
-			again := accesscontrol.Deserialize(b)
+			again, err := accesscontrol.Deserialize(b)
+			if err != nil {
+				t.Fatalf("deserialize of re-serialized keys: %v", err)
+			}
 			if len(again) != len(res) {
 				t.Fatalf("round-trip key count mismatch: got %d, want %d", len(again), len(res))
 			}

@@ -14,9 +14,9 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 )
 
-// FuzzFeedPostHandler drives arbitrary HTTP feed creation requests through the feed
-// router path, testing the control-flow bug (CF-01) where error handling in feed creation
-// must never fall through to dereference a nil manifest.
+// FuzzFeedPostHandler drives arbitrary HTTP feed creation requests with fuzzed
+// owner and topic path segments through the feed router, asserting the handler
+// never panics on malformed input.
 func FuzzFeedPostHandler(f *testing.F) {
 	privKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {

@@ -65,6 +65,10 @@ func TestExchangeGetPrice(t *testing.T) {
 // price-oracle poll loop writes exchangeRate and deduction while every
 // settlement path reads them through CurrentRates. Run under -race, an
 // unsynchronised write against the concurrent read is reported as fatal.
+//
+// The test intentionally has no assertions: without -race it is a no-op and
+// always passes. Do not delete it or add assertions to "strengthen" it; its
+// only job is to give the race detector concurrent reads and writes to observe.
 func TestCurrentRatesConcurrentWithUpdates(t *testing.T) {
 	t.Parallel()
 
