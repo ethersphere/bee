@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -40,45 +39,49 @@ const (
 // that keeps reading can be expected to work through.
 const gsocQueueCapacity = 256
 
-var validSocFields = []string{
-	socFieldAddress,
-	socFieldRecoveredPubKey,
-	socFieldIdentifier,
-	socFieldSignature,
-	socFieldWrappedAddress,
-	socFieldSpan,
-	socFieldPayload,
+// socFieldSizes is the single source of truth for the valid SOC fields: it maps
+// every field identifier to the maximum number of bytes its serialized form
+// occupies. A field added here is accepted by parseSocFields and accounted for
+// in maxSocFieldsSize without any further change.
+var socFieldSizes = map[string]int{
+	socFieldAddress:         swarm.HashSize,
+	socFieldRecoveredPubKey: soc.OwnerPubKeySize,
+	socFieldIdentifier:      swarm.HashSize,
+	socFieldSignature:       swarm.SocSignatureSize,
+	socFieldWrappedAddress:  swarm.HashSize,
+	socFieldSpan:            swarm.SpanSize,
+	socFieldPayload:         swarm.ChunkSize,
 }
 
 // maxSocFieldsSize is the maximum size of a serialized SOC fields message when
-// every field is requested: the whole single owner chunk (identifier +
-// signature + span + payload, i.e. SocMaxChunkSize) plus the derived metadata
-// fields that are not part of the chunk on the wire (soc address, recovered
-// public key and wrapped chunk address).
-const maxSocFieldsSize = swarm.SocMaxChunkSize +
-	swarm.HashSize + // soc address
-	soc.OwnerPubKeySize + // recovered public key
-	swarm.HashSize // wrapped chunk address
+// every field is requested. It is derived from socFieldSizes so that it stays
+// correct when fields are added or removed.
+var maxSocFieldsSize = func() (size int) {
+	for _, s := range socFieldSizes {
+		size += s
+	}
+	return size
+}()
 
 // parseSocFields parses the SwarmSocFieldsHeader value into a list of SOC field
 // identifiers. When the header is empty it defaults to the payload field only,
 // which preserves backward compatibility. Duplicate fields are dropped, keeping
-// the first occurrence, so the returned slice never exceeds len(validSocFields)
+// the first occurrence, so the returned slice never exceeds len(socFieldSizes)
 // entries regardless of how many times a field is repeated in the header.
 func parseSocFields(header string) ([]string, error) {
 	if strings.TrimSpace(header) == "" {
 		return []string{socFieldPayload}, nil
 	}
 
-	seen := make(map[string]bool, len(validSocFields))
+	seen := make(map[string]bool, len(socFieldSizes))
 	parts := strings.Split(header, ",")
-	fields := make([]string, 0, len(validSocFields))
+	fields := make([]string, 0, len(socFieldSizes))
 	for _, p := range parts {
 		f := strings.ToLower(strings.TrimSpace(p))
 		if f == "" {
 			continue
 		}
-		if !slices.Contains(validSocFields, f) {
+		if _, ok := socFieldSizes[f]; !ok {
 			return nil, fmt.Errorf("unknown soc field: %q", p)
 		}
 		if seen[f] {
