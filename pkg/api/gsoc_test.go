@@ -316,17 +316,24 @@ func TestGsocWebsocketSlowConsumer(t *testing.T) {
 	id := make([]byte, 32)
 	gsocSvc, cl, signer := newGsocPipeTest(t, id)
 
+	// Build the chunks before publishing any of them: from the first publish
+	// until the consumer starts reading again the server's writer is blocked
+	// on the pipe against its write deadline, so only the publishing loop
+	// belongs inside that window.
+	payloads := make([][]byte, messageCount)
+	socs := make([]*soc.SOC, messageCount)
+	for i := range socs {
+		payloads[i] = []byte{byte(i)}
+		ch, _ := cac.New(payloads[i])
+		signedCh, _ := soc.New(id, ch).Sign(signer)
+		socs[i], _ = soc.FromChunk(signedCh)
+	}
+
 	// never read from cl while queuing every message: the first message
 	// blocks the single writer goroutine (nothing reads the pipe yet), and
 	// the rest pile up behind it in the queue. messageCount is well below
 	// api.GsocQueueCapacity, so none of them is evicted.
-	payloads := make([][]byte, messageCount)
-	for i := range messageCount {
-		payloads[i] = []byte{byte(i)}
-		ch, _ := cac.New(payloads[i])
-		socCh := soc.New(id, ch)
-		signedCh, _ := socCh.Sign(signer)
-		socCh, _ = soc.FromChunk(signedCh)
+	for _, socCh := range socs {
 		gsocSvc.Handle(socCh)
 	}
 
@@ -355,16 +362,24 @@ func TestGsocWebsocketQueueBound(t *testing.T) {
 	id := make([]byte, 32)
 	gsocSvc, cl, signer := newGsocPipeTest(t, id)
 
+	// Build every chunk before publishing any of them. Signing and recovering
+	// a few hundred single owner chunks is the expensive part of this test,
+	// and from the first publish until the consumer starts reading again the
+	// server's writer sits blocked on the pipe, against a write deadline that
+	// closes the connection if it is not drained in time. Only the publishing
+	// loop belongs inside that window.
+	socs := make([]*soc.SOC, messageCount)
+	for i := range socs {
+		ch, _ := cac.New([]byte{byte(i >> 8), byte(i)})
+		signedCh, _ := soc.New(id, ch).Sign(signer)
+		socs[i], _ = soc.FromChunk(signedCh)
+	}
+
 	// never read from cl while queuing every message: the first message
 	// blocks the single writer goroutine (nothing reads the pipe yet), and
 	// the rest pile up behind it until the queue is full and starts dropping
 	// its oldest entries.
-	for i := range messageCount {
-		payload := []byte{byte(i >> 8), byte(i)}
-		ch, _ := cac.New(payload)
-		socCh := soc.New(id, ch)
-		signedCh, _ := socCh.Sign(signer)
-		socCh, _ = soc.FromChunk(signedCh)
+	for _, socCh := range socs {
 		gsocSvc.Handle(socCh)
 	}
 
