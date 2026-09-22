@@ -36,7 +36,7 @@ func TestRedistributionStatus(t *testing.T) {
 		if err != nil {
 			t.Errorf("redistribution put state: %v", err)
 		}
-		srv, _, _, _ := newTestServer(t, testServerOptions{
+		srv, _, _, _, _ := newTestServer(t, testServerOptions{
 			StateStorer: store,
 			TransactionOpts: []mock.Option{
 				mock.WithTransactionFeeFunc(func(ctx context.Context, txHash common.Hash) (*big.Int, error) {
@@ -86,7 +86,7 @@ func TestRedistributionStatus(t *testing.T) {
 		if err != nil {
 			t.Errorf("redistribution put state: %v", err)
 		}
-		srv, _, _, _ := newTestServer(t, testServerOptions{
+		srv, _, _, _, _ := newTestServer(t, testServerOptions{
 			StateStorer: store,
 			TransactionOpts: []mock.Option{
 				mock.WithTransactionFeeFunc(func(ctx context.Context, txHash common.Hash) (*big.Int, error) {
@@ -129,7 +129,7 @@ func TestRedistributionStatus(t *testing.T) {
 		if err != nil {
 			t.Errorf("redistribution put state: %v", err)
 		}
-		srv, _, _, _ := newTestServer(t, testServerOptions{
+		srv, _, _, _, _ := newTestServer(t, testServerOptions{
 			StateStorer: store,
 			TransactionOpts: []mock.Option{
 				mock.WithTransactionFeeFunc(func(ctx context.Context, txHash common.Hash) (*big.Int, error) {
@@ -160,7 +160,7 @@ func TestRedistributionStatus(t *testing.T) {
 	t.Run("bad request", func(t *testing.T) {
 		t.Parallel()
 
-		srv, _, _, _ := newTestServer(t, testServerOptions{
+		srv, _, _, _, _ := newTestServer(t, testServerOptions{
 			BeeMode:     api.LightMode,
 			StateStorer: statestore.NewStateStore(),
 			TransactionOpts: []mock.Option{
@@ -214,7 +214,7 @@ func TestRedistributionToggle(t *testing.T) {
 	t.Run("patch false then true", func(t *testing.T) {
 		t.Parallel()
 
-		srv, _, _, _ := newTestServer(t, redistributionTestOpts(t))
+		srv, _, _, _, _ := newTestServer(t, redistributionTestOpts(t))
 
 		jsonhttptest.Request(t, srv, http.MethodPatch, "/redistributionstate", http.StatusOK,
 			jsonhttptest.WithJSONRequestBody(map[string]any{"enabled": false}),
@@ -245,7 +245,7 @@ func TestRedistributionToggle(t *testing.T) {
 	t.Run("missing enabled", func(t *testing.T) {
 		t.Parallel()
 
-		srv, _, _, _ := newTestServer(t, redistributionTestOpts(t))
+		srv, _, _, _, _ := newTestServer(t, redistributionTestOpts(t))
 		jsonhttptest.Request(t, srv, http.MethodPatch, "/redistributionstate", http.StatusBadRequest,
 			jsonhttptest.WithJSONRequestBody(map[string]any{}),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
@@ -258,7 +258,7 @@ func TestRedistributionToggle(t *testing.T) {
 	t.Run("null enabled", func(t *testing.T) {
 		t.Parallel()
 
-		srv, _, _, _ := newTestServer(t, redistributionTestOpts(t))
+		srv, _, _, _, _ := newTestServer(t, redistributionTestOpts(t))
 		jsonhttptest.Request(t, srv, http.MethodPatch, "/redistributionstate", http.StatusBadRequest,
 			jsonhttptest.WithJSONRequestBody(map[string]any{"enabled": nil}),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
@@ -271,7 +271,7 @@ func TestRedistributionToggle(t *testing.T) {
 	t.Run("malformed json", func(t *testing.T) {
 		t.Parallel()
 
-		srv, _, _, _ := newTestServer(t, redistributionTestOpts(t))
+		srv, _, _, _, _ := newTestServer(t, redistributionTestOpts(t))
 		jsonhttptest.Request(t, srv, http.MethodPatch, "/redistributionstate", http.StatusBadRequest,
 			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "application/json"),
 			jsonhttptest.WithRequestBody(bytes.NewReader([]byte("{invalid"))),
@@ -285,7 +285,7 @@ func TestRedistributionToggle(t *testing.T) {
 	t.Run("light mode", func(t *testing.T) {
 		t.Parallel()
 
-		srv, _, _, _ := newTestServer(t, testServerOptions{
+		srv, _, _, _, _ := newTestServer(t, testServerOptions{
 			BeeMode:     api.LightMode,
 			StateStorer: statestore.NewStateStore(),
 		})
@@ -301,7 +301,7 @@ func TestRedistributionToggle(t *testing.T) {
 	t.Run("forbidden when agent missing", func(t *testing.T) {
 		t.Parallel()
 
-		srv, _, _, _ := newTestServer(t, testServerOptions{
+		srv, _, _, _, _ := newTestServer(t, testServerOptions{
 			RedistributionAgentDisabled: true,
 		})
 		jsonhttptest.Request(t, srv, http.MethodPatch, "/redistributionstate", http.StatusForbidden,
@@ -316,7 +316,7 @@ func TestRedistributionToggle(t *testing.T) {
 	t.Run("unavailable when full api disabled", func(t *testing.T) {
 		t.Parallel()
 
-		srv, _, _, _ := newTestServer(t, testServerOptions{
+		srv, _, _, _, _ := newTestServer(t, testServerOptions{
 			FullAPIDisabled: true,
 		})
 		jsonhttptest.Request(t, srv, http.MethodPatch, "/redistributionstate", http.StatusServiceUnavailable,

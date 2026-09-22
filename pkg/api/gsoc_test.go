@@ -262,7 +262,7 @@ func TestGsocWebsocketInvalidFieldsHeader(t *testing.T) {
 	)
 	testutil.CleanupCloser(t, gsocSvc)
 
-	client, _, _, _ := newTestServer(t, testServerOptions{
+	client, _, _, _, _ := newTestServer(t, testServerOptions{
 		Gsoc:       gsocSvc,
 		Storer:     storer,
 		BatchStore: batchStore,
@@ -417,16 +417,14 @@ func newGsocPipeTest(t *testing.T, socID []byte) (gsoc.Listener, *websocket.Conn
 		batchStore = mockbatchstore.New()
 		storer     = mockstorer.New()
 		gsocSvc    = gsoc.New(log.Noop)
-		svc        *api.Service
 	)
 	testutil.CleanupCloser(t, gsocSvc)
 
-	newTestServer(t, testServerOptions{
+	_, _, _, _, svc := newTestServer(t, testServerOptions{
 		Gsoc:       gsocSvc,
 		Storer:     storer,
 		BatchStore: batchStore,
 		Logger:     log.Noop,
-		ServiceOut: &svc,
 	})
 
 	privKey, err := crypto.GenerateSecp256k1Key()
@@ -652,7 +650,7 @@ func newGsocTestWithOpts(t *testing.T, socId []byte, pingPeriod time.Duration, h
 	gsoc := gsoc.New(log.NewLogger("test"))
 	testutil.CleanupCloser(t, gsoc)
 
-	_, cl, listener, _ := newTestServer(t, testServerOptions{
+	_, cl, listener, _, _ := newTestServer(t, testServerOptions{
 		Gsoc:         gsoc,
 		WsPath:       fmt.Sprintf("/gsoc/subscribe/%s", hex.EncodeToString(chunkAddr.Bytes())),
 		WsHeaders:    headers,

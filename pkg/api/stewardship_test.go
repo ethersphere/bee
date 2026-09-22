@@ -36,7 +36,7 @@ func TestStewardship(t *testing.T) {
 		storer      = mockstorer.New()
 		addr        = swarm.NewAddress([]byte{31: 128})
 	)
-	client, _, _, _ := newTestServer(t, testServerOptions{
+	client, _, _, _, _ := newTestServer(t, testServerOptions{
 		Storer:  storer,
 		Logger:  logger,
 		Steward: stewardMock,
@@ -85,10 +85,10 @@ func TestStewardshipWithRedundancy(t *testing.T) {
 	t.Parallel()
 
 	var (
-		storerMock      = mockstorer.New()
-		localRetrieval  = &localRetriever{getter: storerMock.ChunkStore()}
-		s               = steward.New(storerMock, localRetrieval, storerMock.Cache())
-		client, _, _, _ = newTestServer(t, testServerOptions{
+		storerMock         = mockstorer.New()
+		localRetrieval     = &localRetriever{getter: storerMock.ChunkStore()}
+		s                  = steward.New(storerMock, localRetrieval, storerMock.Cache())
+		client, _, _, _, _ = newTestServer(t, testServerOptions{
 			Storer:  storerMock,
 			Logger:  log.Noop,
 			Steward: s,
@@ -124,7 +124,7 @@ func TestStewardshipWithRedundancy(t *testing.T) {
 func TestStewardshipInvalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{
+	client, _, _, _, _ := newTestServer(t, testServerOptions{
 		Storer: mockstorer.New(),
 	})
 
