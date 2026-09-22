@@ -803,7 +803,11 @@ func newTestPostService() postage.Service {
 			"",
 			batchOk,
 			big.NewInt(3),
-			11,
+			// batch depth over bucket depth: uploads here are a handful of
+			// chunks with random addresses, and an immutable batch fails the
+			// whole request once one bucket is full, so leave enough room per
+			// bucket for several of them to collide.
+			16,
 			10,
 			1000,
 			true,
