@@ -323,6 +323,23 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, cleanup func(), queue *g
 		select {
 		case <-wake:
 			for {
+				// Draining a backlog must not outlast the node. A consumer
+				// that keeps every write just under the write deadline makes
+				// each message cost seconds, so a full queue would otherwise
+				// hold this goroutine for minutes: long past the second that
+				// Close waits for it, leaving the shutdown to report open
+				// websockets and starving the keepalive ping in the meantime.
+				// Re-check the exits between messages to bound that to the
+				// single write already in flight.
+				select {
+				case <-s.quit:
+					s.gsocWsNotifyClose(conn)
+					return
+				case <-gone:
+					return
+				default:
+				}
+
 				b, ok := queue.pop()
 				if !ok {
 					break
@@ -347,15 +364,7 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, cleanup func(), queue *g
 
 		case <-s.quit:
 			// shutdown
-			err = conn.SetWriteDeadline(time.Now().Add(writeDeadline))
-			if err != nil {
-				s.logger.Debug("gsoc ws: set write deadline failed", "error", err)
-				return
-			}
-			err = conn.WriteMessage(websocket.CloseMessage, []byte{})
-			if err != nil {
-				s.logger.Debug("gsoc ws: write close message failed", "error", err)
-			}
+			s.gsocWsNotifyClose(conn)
 			return
 		case <-gone:
 			// client gone
@@ -371,5 +380,17 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, cleanup func(), queue *g
 				return
 			}
 		}
+	}
+}
+
+// gsocWsNotifyClose tells the subscriber that the node is going away. It is
+// best effort: the connection is closed either way once the writer returns.
+func (s *Service) gsocWsNotifyClose(conn *websocket.Conn) {
+	if err := conn.SetWriteDeadline(time.Now().Add(writeDeadline)); err != nil {
+		s.logger.Debug("gsoc ws: set write deadline failed", "error", err)
+		return
+	}
+	if err := conn.WriteMessage(websocket.CloseMessage, []byte{}); err != nil {
+		s.logger.Debug("gsoc ws: write close message failed", "error", err)
 	}
 }
