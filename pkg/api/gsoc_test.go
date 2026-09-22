@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -174,14 +175,19 @@ func TestGsocWebsocketWrappedChunkData(t *testing.T) {
 	}
 }
 
-// TestGsocWebsocketSocFields verifies that multiple SOC fields are serialized in
-// the order they are provided in the Swarm-Soc-Fields header.
+// TestGsocWebsocketSocFields verifies that every SOC field can be requested
+// through the Swarm-Soc-Fields header, that field names are case insensitive
+// and that the fields are serialized in the order they are listed in the
+// header rather than in any order internal to the node. Every expected field
+// is derived from the signer and the wrapped chunk, so the recovered public
+// key in particular is checked against an independently compressed key rather
+// than against whatever the SOC happens to carry.
 func TestGsocWebsocketSocFields(t *testing.T) {
 	t.Parallel()
 
 	var (
 		id                  = make([]byte, 32)
-		headers             = http.Header{api.SwarmSocFieldsHeader: []string{"identifier,wrappedAddress,payload"}}
+		headers             = http.Header{api.SwarmSocFieldsHeader: []string{"payload,address,recoveredPubKey,identifier,signature,wrappedAddress,span"}}
 		g, cl, signer, _, _ = newGsocTestWithOpts(t, id, 0, headers)
 		respC               = make(chan error, 1)
 		payload             = []byte("The future is already here — it's just not evenly distributed.")
@@ -199,10 +205,29 @@ func TestGsocWebsocketSocFields(t *testing.T) {
 	socCh, _ = soc.FromChunk(signedCh)
 	g.Handle(socCh)
 
-	expected := make([]byte, 0, len(id)+swarm.HashSize+len(payload))
-	expected = append(expected, id...)
-	expected = append(expected, ch.Address().Bytes()...)
-	expected = append(expected, payload...)
+	pubKey, err := signer.PublicKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, err := signer.EthereumAddress()
+	if err != nil {
+		t.Fatal(err)
+	}
+	socAddr, err := soc.CreateAddress(id, owner.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expected := slices.Concat(
+		payload,
+		socAddr.Bytes(),
+		crypto.EncodeSecp256k1PublicKey(pubKey),
+		id,
+		// the signature is what follows the identifier in the signed chunk
+		signedCh.Data()[swarm.HashSize:swarm.HashSize+swarm.SocSignatureSize],
+		ch.Address().Bytes(),
+		ch.Data()[:swarm.SpanSize],
+	)
 
 	go expectMessage(t, cl, respC, expected)
 	if err := <-respC; err != nil {
@@ -377,6 +402,38 @@ func TestGsocWebsocketQueueBound(t *testing.T) {
 	}
 }
 
+// TestGsocWebsocketStalledConsumer verifies the failure mode of a subscriber
+// that never reads: the writer cannot hand its message over, so the write
+// deadline fires and it gives up on the connection. On its way out it closes
+// the connection, unsubscribes from the GSOC address so that nothing can queue
+// further messages, and releases the backlog nothing will ever drain (see
+// TestGsocQueueRelease for what release itself drops). The test therefore runs
+// for as long as the write deadline.
+func TestGsocWebsocketStalledConsumer(t *testing.T) {
+	t.Parallel()
+
+	id := make([]byte, 32)
+	gsocSvc, cl, signer := newGsocPipeTest(t, id)
+
+	// a single message suffices: the pipe is unbuffered, so this one write
+	// pins the writer until its deadline expires.
+	ch, _ := cac.New([]byte("nobody is going to read this"))
+	socCh := soc.New(id, ch)
+	signedCh, _ := socCh.Sign(signer)
+	socCh, _ = soc.FromChunk(signedCh)
+	gsocSvc.Handle(socCh)
+
+	select {
+	case <-gsocSvc.unsubscribed:
+	case <-time.After(longTimeout):
+		t.Fatal("the writer did not give up on a consumer that never reads")
+	}
+
+	if _, _, err := cl.ReadMessage(); err == nil {
+		t.Fatal("read a message off a connection the writer gave up on, want it closed")
+	}
+}
+
 // TestGsocQueueRelease verifies that the backlog of a subscription whose
 // writer is gone is discarded, rather than kept around by a producer that is
 // still mid-callback when the connection is torn down.
@@ -470,24 +527,35 @@ func newGsocPipeTest(t *testing.T, socID []byte) (*subscribedListener, *websocke
 	return gsocSvc, cl, signer
 }
 
-// subscribedListener reports the completion of the first Subscribe call on a
-// channel. The GSOC listener offers no readiness signal of its own, and the
-// websocket handshake is not one either: a test that published as soon as Dial
-// returned would race the server goroutine's continuation into Subscribe.
+// subscribedListener reports the completion of the first Subscribe call, and
+// of the cleanup that ends it, on channels. The GSOC listener offers no
+// readiness signal of its own, and the websocket handshake is not one either:
+// a test that published as soon as Dial returned would race the server
+// goroutine's continuation into Subscribe. The cleanup signal is the other end
+// of that: it is how a test observes the writer giving up on a connection.
 type subscribedListener struct {
 	gsoc.Listener
-	subscribed chan struct{}
-	once       sync.Once
+	subscribed   chan struct{}
+	unsubscribed chan struct{}
+	subOnce      sync.Once
+	unsubOnce    sync.Once
 }
 
 func newSubscribedListener(l gsoc.Listener) *subscribedListener {
-	return &subscribedListener{Listener: l, subscribed: make(chan struct{})}
+	return &subscribedListener{
+		Listener:     l,
+		subscribed:   make(chan struct{}),
+		unsubscribed: make(chan struct{}),
+	}
 }
 
 func (l *subscribedListener) Subscribe(address swarm.Address, handler gsoc.Handler) func() {
 	cleanup := l.Listener.Subscribe(address, handler)
-	l.once.Do(func() { close(l.subscribed) })
-	return cleanup
+	l.subOnce.Do(func() { close(l.subscribed) })
+	return func() {
+		cleanup()
+		l.unsubOnce.Do(func() { close(l.unsubscribed) })
+	}
 }
 
 // pipeListener is a net.Listener that hands out pre-established net.Conn
