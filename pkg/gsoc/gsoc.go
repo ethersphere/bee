@@ -62,7 +62,14 @@ func (l *listener) Subscribe(address swarm.Address, handler Handler) (cleanup fu
 		h := l.handlers[key]
 		for i := range h {
 			if h[i] == &handler {
-				l.handlers[key] = slices.Delete(slices.Clone(h), i, i+1)
+				if len(h) == 1 {
+					// drop the entry with its last subscriber, so that
+					// addresses subscribed to briefly do not accumulate in
+					// the map for the lifetime of the node.
+					delete(l.handlers, key)
+				} else {
+					l.handlers[key] = slices.Delete(slices.Clone(h), i, i+1)
+				}
 				return
 			}
 		}
