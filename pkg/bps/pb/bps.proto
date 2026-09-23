@@ -10,54 +10,6 @@ option go_package = "pb";
 
 
 
-// What the topic binds to. One binding.
-enum TopicBinding {
-  TOPIC_BINDING_UNSPECIFIED = 0; // invalid on the wire
-  FEED_TOPIC                = 4; // signed id = keccak256(topic || index). SWIP-60's
-                                 // number; 1, 2, 3, 5 are SWIP-60's other bindings
-}
-
-// The cohort's identity. Fixed by whoever joins first; immutable.
-message CohortSpec {
-  bytes        topic   = 1; // 32 bytes
-  TopicBinding binding = 2; // FEED_TOPIC
-  bytes        admin   = 5; // 20 bytes, required
-  reserved 3, 4, 6, 7, 8, 9; // SWIP-60: publishers, history, (unused), (unused),
-                             // (unused), spectators — none apply here
-}
-
-// Proof of an identity, bound to the stream it arrives on:
-//   owner = ecrecover( keccak256("bps-join:v1" || topic || admin), signature )
-// The preimage is static and carries no node identity (SWIP-60): the same key works
-// from any node, and a join never links an address to a peer id. It is therefore
-// replayable, and a replayed identity is worthless: authorship rests on the message
-// signature, never on the handshake.
-message Auth {
-  bytes signature = 1; // 65 bytes
-  reserved 2;          // SWIP-60: id, for bindings that do not fix it
-}
-
-// Peer -> broker: the first and only handshake frame on a fresh stream. Creates the
-// cohort if no live cohort has this spec, attaches to it otherwise. `auth` binds an
-// identity to THIS stream; absent, the stream has none and is read-only.
-//message Join {
-  //CohortSpec cohort = 1;
-  //Auth       auth   = 2;
-//}
-
-enum Status {
-  STATUS_UNSPECIFIED = 0; // invalid on the wire
-  OK                 = 1;
-  FULL               = 2; // a capacity bound (see Resource bounds)
-  REJECTED           = 4; // spec outside this SWIP, or a reserved field set
-  reserved 3;             // SWIP-60: UNKNOWN_TOPIC — cannot occur: Join creates
-}
-
-// Broker -> peer, answering Join. Status only. A non-OK Ack ends the stream.
-message Ack {
-  Status status = 1;
-  reserved 2, 3, 4, 5;    // SWIP-60: spec echo and service SOCs — nothing to echo
-}
 
 // Both directions after the handshake: admin -> broker is a publication, broker ->
 // subscriber a delivery of the same bytes. The single-owner chunk travels as its
@@ -76,7 +28,6 @@ message PayloadMessage {
   oneof payload_message {
     Publish publish = 1;
     Broadcast broadcast = 2;
-
   }
 }
 
