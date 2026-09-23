@@ -27,6 +27,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	mockbatchstore "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
 	"github.com/ethersphere/bee/v2/pkg/soc"
+	"github.com/ethersphere/bee/v2/pkg/spinlock"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/util/testutil"
@@ -685,8 +686,17 @@ func TestGsocWebsocketCacheWrappedChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := storer.ChunkStore().Get(context.Background(), ch.Address())
-	if err != nil {
+	// The chunk is cached on its own goroutine, so it may not be in the store
+	// yet by the time the message reaches the client.
+	var got swarm.Chunk
+	if err := spinlock.Wait(longTimeout, func() bool {
+		c, err := storer.ChunkStore().Get(context.Background(), ch.Address())
+		if err != nil {
+			return false
+		}
+		got = c
+		return true
+	}); err != nil {
 		t.Fatalf("wrapped chunk not cached: %v", err)
 	}
 	if !bytes.Equal(got.Data(), ch.Data()) {

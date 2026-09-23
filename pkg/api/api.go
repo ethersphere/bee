@@ -182,6 +182,12 @@ type Service struct {
 	wsWg sync.WaitGroup // wait for all websockets to close on exit
 	quit chan struct{}
 
+	// bgCtx is the context form of quit: it is canceled by Close and bounds
+	// node-local work that a handler starts and that has to outlive the
+	// request or connection which triggered it.
+	bgCtx    context.Context
+	bgCancel context.CancelFunc
+
 	overlay           *swarm.Address
 	publicKey         ecdsa.PublicKey
 	pssPublicKey      ecdsa.PublicKey
@@ -342,6 +348,7 @@ func (s *Service) Configure(signer crypto.Signer, tracer *tracing.Tracer, o Opti
 	s.metrics = newMetrics()
 
 	s.quit = make(chan struct{})
+	s.bgCtx, s.bgCancel = context.WithCancel(context.Background())
 
 	s.storer = e.Storer
 	s.resolver = e.Resolver
@@ -402,6 +409,7 @@ func (s *Service) SetIsWarmingUp(v bool) {
 func (s *Service) Close() error {
 	s.logger.Info("api shutting down")
 	close(s.quit)
+	s.bgCancel()
 
 	done := make(chan struct{})
 	go func() {
