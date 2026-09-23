@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/v2/pkg/encryption"
 	"github.com/ethersphere/bee/v2/pkg/file/joiner"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
@@ -62,12 +63,18 @@ func FuzzJoinerReadAt(f *testing.F) {
 		return s
 	}
 
-	// seed 1: a small leaf root chunk (span + payload, no children).
+	// seed 1: a small leaf root chunk (span + payload, no children), for both the
+	// plain (32-byte) and encrypted (64-byte) reference paths.
 	leaf := append(span(5), []byte("hello")...)
-	f.Add(leaf)
+	f.Add(leaf, false)
+	f.Add(leaf, true)
 
 	// seed 2: an intermediate root chunk advertising a span larger than a single
-	// chunk, with two 32-byte child references, plus a pool to serve children from.
+	// chunk, with two 32-byte child references, plus a pool to serve children
+	// from. No 64-byte (encrypted) intermediate seed is added: it deterministically
+	// reaches a known span-overflow in file.ReferenceCount that is fixed
+	// separately. The fuzzer still explores the encrypted intermediate path via
+	// the encryptedRef argument.
 	child1 := make([]byte, swarm.HashSize)
 	child2 := make([]byte, swarm.HashSize)
 	for i := range child1 {
@@ -80,9 +87,9 @@ func FuzzJoinerReadAt(f *testing.F) {
 	// descends into the trie and terminates quickly. (Non-zero child spans are
 	// left for the fuzzer to explore under its per-input timeout.)
 	pool := make([]byte, swarm.ChunkWithSpanSize*2)
-	f.Add(append(inter, pool...))
+	f.Add(append(inter, pool...), false)
 
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(t *testing.T, data []byte, encryptedRef bool) {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 
@@ -95,8 +102,14 @@ func FuzzJoinerReadAt(f *testing.F) {
 		rootData := data[:split]
 		g := &fuzzGetter{pool: data[split:]}
 
-		// Fixed 32-byte root address selects the non-encrypted (refLength == 32) path.
-		rootAddr := swarm.NewAddress(make([]byte, swarm.HashSize))
+		// The root address width selects the reference/encryption path: 32 bytes
+		// is the plain path, 64 bytes the encrypted one (which also changes
+		// maxBranching inside the joiner).
+		refLength := swarm.HashSize
+		if encryptedRef {
+			refLength = encryption.ReferenceSize
+		}
+		rootAddr := swarm.NewAddress(make([]byte, refLength))
 		rootChunk := swarm.NewChunk(rootAddr, rootData)
 
 		// NewJoiner must tolerate any root chunk bytes (including < SpanSize).
