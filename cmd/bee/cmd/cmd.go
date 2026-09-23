@@ -16,6 +16,7 @@ import (
 	chaincfg "github.com/ethersphere/bee/v2/pkg/config"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/node"
+	"github.com/ethersphere/bee/v2/pkg/postage/listener"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	p2pforge "github.com/ipshipyard/p2p-forge/client"
 	"github.com/spf13/cobra"
@@ -63,6 +64,7 @@ const (
 	optionNameLightNodeLimit               = "light-node-limit"
 	optionNamePostageContractAddress       = "postage-stamp-address"
 	optionNamePostageContractStartBlock    = "postage-stamp-start-block"
+	optionNamePostageSyncBlockRange        = "postage-sync-block-range"
 	optionNamePriceOracleAddress           = "price-oracle-address"
 	optionNameRedistributionAddress        = "redistribution-address"
 	optionNameStakingAddress               = "staking-address"
@@ -365,6 +367,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Int(optionNameLightNodeLimit, 100, "light node limit")
 	cmd.Flags().String(optionNamePostageContractAddress, "", "postage stamp contract address")
 	cmd.Flags().Uint64(optionNamePostageContractStartBlock, 0, "postage stamp contract start block number")
+	cmd.Flags().Uint64(optionNamePostageSyncBlockRange, listener.DefaultBlockPage, "maximum number of blocks per eth_getLogs request when syncing postage contract events")
 	cmd.Flags().String(optionNamePriceOracleAddress, "", "price oracle contract address")
 	cmd.Flags().String(optionNameRedistributionAddress, "", "redistribution contract address")
 	cmd.Flags().String(optionNameStakingAddress, "", "staking contract address")
