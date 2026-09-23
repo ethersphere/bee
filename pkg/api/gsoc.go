@@ -350,8 +350,8 @@ func (q *gsocQueue) pop() (b []byte, ok bool) {
 }
 
 // droppedCount returns how many messages were evicted since the previous call
-// and resets the counter, so that a slow subscriber is reported once per drain
-// instead of once per lost message.
+// and resets the counter, so that a slow subscriber is reported once per
+// reporting period instead of once per lost message.
 func (q *gsocQueue) droppedCount() uint64 {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -403,44 +403,30 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, cleanup func(), queue *g
 	for {
 		select {
 		case <-wake:
-			for {
-				// Draining a backlog must not outlast the node. A consumer
-				// that keeps every write just under the write deadline makes
-				// each message cost seconds, so a full queue would otherwise
-				// hold this goroutine for minutes: long past the second that
-				// Close waits for it, leaving the shutdown to report open
-				// websockets and starving the keepalive ping in the meantime.
-				// Re-check the exits between messages to bound that to the
-				// single write already in flight.
-				select {
-				case <-s.quit:
-					s.gsocWsNotifyClose(conn)
-					return
-				case <-gone:
-					return
-				default:
-				}
-
-				b, ok := queue.pop()
-				if !ok {
-					break
-				}
-
-				err = conn.SetWriteDeadline(time.Now().Add(writeDeadline))
-				if err != nil {
-					s.logger.Debug("gsoc ws: set write deadline failed", "error", err)
-					return
-				}
-
-				err = conn.WriteMessage(websocket.BinaryMessage, b)
-				if err != nil {
-					s.logger.Debug("gsoc ws: write message failed", "error", err)
-					return
-				}
+			// Write a single message per iteration and re-arm wake, instead
+			// of draining the whole queue here: the outer select then keeps
+			// serving the keepalive ping, the shutdown and the client-gone
+			// signals between messages, however long the backlog stays
+			// non-empty. A spurious wake just finds the queue empty.
+			b, ok := queue.pop()
+			if !ok {
+				continue
+			}
+			select {
+			case wake <- struct{}{}:
+			default:
 			}
 
-			if dropped := queue.droppedCount(); dropped > 0 {
-				s.logger.Warning("gsoc ws: subscriber too slow, messages dropped", "count", dropped)
+			err = conn.SetWriteDeadline(time.Now().Add(writeDeadline))
+			if err != nil {
+				s.logger.Debug("gsoc ws: set write deadline failed", "error", err)
+				return
+			}
+
+			err = conn.WriteMessage(websocket.BinaryMessage, b)
+			if err != nil {
+				s.logger.Debug("gsoc ws: write message failed", "error", err)
+				return
 			}
 
 		case <-s.quit:
@@ -451,6 +437,13 @@ func (s *Service) gsocListeningWs(conn *websocket.Conn, cleanup func(), queue *g
 			// client gone
 			return
 		case <-ticker.C:
+			// Report evictions once per ping period rather than per message,
+			// so that a subscriber that stays behind is reported periodically
+			// without flooding the operator log.
+			if dropped := queue.droppedCount(); dropped > 0 {
+				s.logger.Warning("gsoc ws: subscriber too slow, messages dropped", "count", dropped)
+			}
+
 			err = conn.SetWriteDeadline(time.Now().Add(writeDeadline))
 			if err != nil {
 				s.logger.Debug("gsoc ws: set write deadline failed", "error", err)

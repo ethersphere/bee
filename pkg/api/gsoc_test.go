@@ -390,7 +390,7 @@ func TestGsocWebsocketSlowConsumer(t *testing.T) {
 	const messageCount = 10
 
 	id := make([]byte, 32)
-	gsocSvc, cl, signer := newGsocPipeTest(t, id)
+	gsocSvc, cl, signer := newGsocPipeTest(t, id, 0)
 
 	// Build the chunks before publishing any of them: from the first publish
 	// until the consumer starts reading again the server's writer is blocked
@@ -436,7 +436,7 @@ func TestGsocWebsocketQueueBound(t *testing.T) {
 	const messageCount = api.GsocQueueCapacity + 16
 
 	id := make([]byte, 32)
-	gsocSvc, cl, signer := newGsocPipeTest(t, id)
+	gsocSvc, cl, signer := newGsocPipeTest(t, id, 0)
 
 	// Build every chunk before publishing any of them. Signing and recovering
 	// a few hundred single owner chunks is the expensive part of this test,
@@ -493,6 +493,68 @@ func TestGsocWebsocketQueueBound(t *testing.T) {
 	}
 }
 
+// TestGsocWebsocketPingUnderBacklog verifies that the keepalive ping keeps
+// flowing while the subscriber lags behind a continuous stream of messages, so
+// that a backlog that never drains cannot starve the ping and make the client
+// drop the connection on its own pong timeout. The connection runs over an
+// unbuffered pipe, so every write blocks until the client reads it and the
+// queue stays non-empty for the whole test.
+func TestGsocWebsocketPingUnderBacklog(t *testing.T) {
+	t.Parallel()
+
+	const (
+		pingPeriod = 50 * time.Millisecond
+		duration   = time.Second
+		readDelay  = 5 * time.Millisecond
+		minPings   = 5
+	)
+
+	var (
+		id                  = make([]byte, 32)
+		gsocSvc, cl, signer = newGsocPipeTest(t, id, pingPeriod)
+		pings               atomic.Int64
+	)
+
+	ch, _ := cac.New([]byte("keep the writer busy"))
+	signedCh, _ := soc.New(id, ch).Sign(signer)
+	socCh, _ := soc.FromChunk(signedCh)
+
+	cl.SetPingHandler(func(string) error {
+		pings.Add(1)
+		return nil
+	})
+
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				gsocSvc.Handle(socCh)
+				time.Sleep(time.Millisecond)
+			}
+		}
+	}()
+	defer func() {
+		close(stop)
+		<-done
+	}()
+
+	for end := time.Now().Add(duration); time.Now().Before(end); {
+		if _, _, err := cl.ReadMessage(); err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		time.Sleep(readDelay)
+	}
+
+	if got := pings.Load(); got < minPings {
+		t.Fatalf("got %d pings in %v at a %v period, want at least %d", got, duration, pingPeriod, minPings)
+	}
+}
+
 // TestGsocWebsocketStalledConsumer verifies the failure mode of a subscriber
 // that never reads: the writer cannot hand its message over, so the write
 // deadline fires and it gives up on the connection. On its way out it closes
@@ -504,7 +566,7 @@ func TestGsocWebsocketStalledConsumer(t *testing.T) {
 	t.Parallel()
 
 	id := make([]byte, 32)
-	gsocSvc, cl, signer := newGsocPipeTest(t, id)
+	gsocSvc, cl, signer := newGsocPipeTest(t, id, 0)
 
 	// a single message suffices: the pipe is unbuffered, so this one write
 	// pins the writer until its deadline expires.
@@ -554,7 +616,7 @@ func TestGsocQueueRelease(t *testing.T) {
 // backlog in its kernel buffers instead. It returns once the subscription is
 // registered, handing back the listener to publish through, the client end of
 // the subscription and the signer owning the subscribed address.
-func newGsocPipeTest(t *testing.T, socID []byte) (*subscribedListener, *websocket.Conn, crypto.Signer) {
+func newGsocPipeTest(t *testing.T, socID []byte, pingPeriod time.Duration) (*subscribedListener, *websocket.Conn, crypto.Signer) {
 	t.Helper()
 
 	var (
@@ -565,10 +627,11 @@ func newGsocPipeTest(t *testing.T, socID []byte) (*subscribedListener, *websocke
 	testutil.CleanupCloser(t, gsocSvc)
 
 	_, _, _, _, svc := newTestServer(t, testServerOptions{
-		Gsoc:       gsocSvc,
-		Storer:     storer,
-		BatchStore: batchStore,
-		Logger:     log.Noop,
+		Gsoc:         gsocSvc,
+		Storer:       storer,
+		BatchStore:   batchStore,
+		Logger:       log.Noop,
+		WsPingPeriod: pingPeriod,
 	})
 
 	privKey, err := crypto.GenerateSecp256k1Key()
