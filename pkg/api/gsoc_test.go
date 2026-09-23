@@ -301,10 +301,82 @@ func TestGsocWebsocketInvalidFieldsHeader(t *testing.T) {
 	jsonhttptest.Request(t, client, http.MethodGet, "/gsoc/subscribe/"+addrHex, http.StatusBadRequest,
 		jsonhttptest.WithRequestHeader(api.SwarmSocFieldsHeader, "bogusfield"),
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-			Message: "invalid soc fields header",
+			Message: "invalid soc fields",
 			Code:    http.StatusBadRequest,
 		}),
 	)
+}
+
+// TestGsocWebsocketQueryParams verifies that the subscription options can also
+// be given as query parameters, since browser WebSocket clients cannot set
+// request headers, and that query parameters take precedence over headers.
+func TestGsocWebsocketQueryParams(t *testing.T) {
+	t.Parallel()
+
+	payload := []byte("Any sufficiently advanced technology is indistinguishable from magic.")
+
+	for _, tc := range []struct {
+		name    string
+		headers http.Header
+		query   url.Values
+		fields  func(id []byte, ch swarm.Chunk) []byte
+		cached  bool
+	}{
+		{
+			name:   "query only",
+			query:  url.Values{"swarm-soc-fields": {"identifier,payload"}, "swarm-cache-wrapped-chunk": {"true"}},
+			fields: func(id []byte, ch swarm.Chunk) []byte { return slices.Concat(id, payload) },
+			cached: true,
+		},
+		{
+			name: "query precedence",
+			headers: http.Header{
+				api.SwarmSocFieldsHeader:         []string{"identifier,payload"},
+				api.SwarmCacheWrappedChunkHeader: []string{"true"},
+			},
+			query:  url.Values{"swarm-soc-fields": {"span,payload"}, "swarm-cache-wrapped-chunk": {"false"}},
+			fields: func(id []byte, ch swarm.Chunk) []byte { return ch.Data() },
+			cached: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var (
+				id                       = make([]byte, 32)
+				g, cl, signer, _, storer = newGsocTestWithQuery(t, id, 0, tc.headers, tc.query)
+				respC                    = make(chan error, 1)
+			)
+
+			err := cl.SetReadDeadline(time.Now().Add(longTimeout))
+			if err != nil {
+				t.Fatal(err)
+			}
+			cl.SetReadLimit(swarm.ChunkSize)
+
+			ch, _ := cac.New(payload)
+			socCh := soc.New(id, ch)
+			signedCh, _ := socCh.Sign(signer)
+			socCh, _ = soc.FromChunk(signedCh)
+			g.Handle(socCh)
+
+			go expectMessage(t, cl, respC, tc.fields(id, ch))
+			if err := <-respC; err != nil {
+				t.Fatal(err)
+			}
+
+			if tc.cached {
+				if err := spinlock.Wait(longTimeout, func() bool {
+					_, err := storer.ChunkStore().Get(context.Background(), ch.Address())
+					return err == nil
+				}); err != nil {
+					t.Fatalf("wrapped chunk not cached: %v", err)
+				}
+			} else if _, err := storer.ChunkStore().Get(context.Background(), ch.Address()); err == nil {
+				t.Fatal("wrapped chunk cached despite query precedence")
+			}
+		})
+	}
 }
 
 // TestGsocWebsocketSlowConsumer verifies that a subscriber that falls behind
@@ -880,6 +952,11 @@ func newGsocTest(t *testing.T, socId []byte, pingPeriod time.Duration) (gsoc.Lis
 
 func newGsocTestWithOpts(t *testing.T, socId []byte, pingPeriod time.Duration, headers http.Header) (gsoc.Listener, *websocket.Conn, crypto.Signer, string, api.Storer) {
 	t.Helper()
+	return newGsocTestWithQuery(t, socId, pingPeriod, headers, nil)
+}
+
+func newGsocTestWithQuery(t *testing.T, socId []byte, pingPeriod time.Duration, headers http.Header, query url.Values) (gsoc.Listener, *websocket.Conn, crypto.Signer, string, api.Storer) {
+	t.Helper()
 	if pingPeriod == 0 {
 		pingPeriod = 10 * time.Second
 	}
@@ -906,6 +983,7 @@ func newGsocTestWithOpts(t *testing.T, socId []byte, pingPeriod time.Duration, h
 		Gsoc:         gsoc,
 		WsPath:       fmt.Sprintf("/gsoc/subscribe/%s", hex.EncodeToString(chunkAddr.Bytes())),
 		WsHeaders:    headers,
+		WsQuery:      query,
 		Storer:       storer,
 		BatchStore:   batchStore,
 		Logger:       log.Noop,

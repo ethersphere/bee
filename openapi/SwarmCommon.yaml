@@ -1206,6 +1206,28 @@ components:
         be cached locally so that it can be resolved through the bytes endpoint
         (useful when the single owner chunk wraps a root chunk larger than 4KB).
 
+    SwarmSocFieldsQueryParameter:
+      in: query
+      name: swarm-soc-fields
+      schema:
+        type: string
+      required: false
+      description: >
+        Same as the swarm-soc-fields header, for clients that cannot set request
+        headers (e.g. browser WebSocket). Takes precedence over the header when
+        both are given.
+
+    SwarmCacheWrappedChunkQueryParameter:
+      in: query
+      name: swarm-cache-wrapped-chunk
+      schema:
+        type: boolean
+      required: false
+      description: >
+        Same as the swarm-cache-wrapped-chunk header, for clients that cannot set
+        request headers (e.g. browser WebSocket). Takes precedence over the header
+        when both are given.
+
     SwarmPinParameter:
       in: header
       name: swarm-pin

@@ -108,6 +108,7 @@ type testServerOptions struct {
 	AccessControl      accesscontrol.Controller
 	Steward            steward.Interface
 	WsHeaders          http.Header
+	WsQuery            url.Values
 	DirectUpload       bool
 	Probe              *api.Probe
 
@@ -295,7 +296,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	)
 
 	if o.WsPath != "" {
-		u := url.URL{Scheme: "ws", Host: ts.Listener.Addr().String(), Path: o.WsPath}
+		u := url.URL{Scheme: "ws", Host: ts.Listener.Addr().String(), Path: o.WsPath, RawQuery: o.WsQuery.Encode()}
 		conn, _, err = websocket.DefaultDialer.Dial(u.String(), o.WsHeaders)
 		if err != nil {
 			t.Fatalf("dial: %v. url %v", err, u.String())

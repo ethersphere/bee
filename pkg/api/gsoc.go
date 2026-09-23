@@ -139,18 +139,36 @@ func (s *Service) gsocWsHandler(w http.ResponseWriter, r *http.Request) {
 
 	headers := struct {
 		SocFields         string `map:"Swarm-Soc-Fields"`
-		CacheWrappedChunk bool   `map:"Swarm-Cache-Wrapped-Chunk"`
+		CacheWrappedChunk *bool  `map:"Swarm-Cache-Wrapped-Chunk"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
 		return
 	}
 
+	// Browser WebSocket clients cannot set request headers, so the same
+	// options are also accepted as query parameters. Query parameters take
+	// precedence over headers.
+	queries := struct {
+		SocFields         string `map:"swarm-soc-fields"`
+		CacheWrappedChunk *bool  `map:"swarm-cache-wrapped-chunk"`
+	}{}
+	if response := s.mapStructure(r.URL.Query(), &queries); response != nil {
+		response("invalid query params", logger, w)
+		return
+	}
+	if queries.SocFields != "" {
+		headers.SocFields = queries.SocFields
+	}
+	if queries.CacheWrappedChunk != nil {
+		headers.CacheWrappedChunk = queries.CacheWrappedChunk
+	}
+
 	fields, err := parseSocFields(headers.SocFields)
 	if err != nil {
-		logger.Debug("invalid soc fields header", "error", err)
-		logger.Error(nil, "invalid soc fields header")
-		jsonhttp.BadRequest(w, "invalid soc fields header")
+		logger.Debug("invalid soc fields", "error", err)
+		logger.Error(nil, "invalid soc fields")
+		jsonhttp.BadRequest(w, "invalid soc fields")
 		return
 	}
 
@@ -185,7 +203,7 @@ func (s *Service) gsocWsHandler(w http.ResponseWriter, r *http.Request) {
 	// that a chunk arriving in between is cached rather than announced to a
 	// client that cannot resolve it yet.
 	releaseCache := func() {}
-	if headers.CacheWrappedChunk {
+	if headers.CacheWrappedChunk != nil && *headers.CacheWrappedChunk {
 		releaseCache = s.cacheGsocWrappedChunks(paths.Address)
 	}
 
