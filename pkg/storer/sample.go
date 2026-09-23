@@ -233,7 +233,7 @@ func (db *DB) ReserveSample(
 	// In this step stamps are loaded and validated only if chunk will be added to sample.
 	// Runs on ctx rather than gCtx: the errgroup cancels gCtx when Wait returns,
 	// which can happen while sampleItemChan still has buffered items to drain.
-	phase3ChunkStore := db.ChunkStore()
+	assemblyChunkStore := db.ChunkStore()
 	stats := SampleStats{}
 	for item := range sampleItemChan {
 		currentMaxAddr := swarm.EmptyAddress
@@ -249,10 +249,10 @@ func (db *DB) ReserveSample(
 				continue
 			}
 
-			ch, err := phase3ChunkStore.Get(ctx, item.chunkAddress)
+			ch, err := assemblyChunkStore.Get(ctx, item.chunkAddress)
 			if err != nil {
-				stats.ChunkLoadFailed++
-				db.logger.Debug("failed loading chunk", "chunk_address", item.chunkAddress, "error", err)
+				stats.AssemblyChunkLoadFailed++
+				db.logger.Debug("failed loading chunk during assembly", "chunk_address", item.chunkAddress, "error", err)
 				continue
 			}
 
@@ -335,6 +335,9 @@ func transformedAddressCAC(hasher bmt.Hasher, data []byte) (swarm.Address, error
 	if len(data) < bmt.SpanSize {
 		return swarm.ZeroAddress, errors.New("chunk data too short for span")
 	}
+	if len(data) > swarm.ChunkWithSpanSize {
+		return swarm.ZeroAddress, errors.New("chunk data too large for cac")
+	}
 	hasher.Reset()
 	hasher.SetHeader(data[:bmt.SpanSize])
 
@@ -349,6 +352,9 @@ func transformedAddressCAC(hasher bmt.Hasher, data []byte) (swarm.Address, error
 func transformedAddressSOC(hasher bmt.Hasher, socAddr swarm.Address, data []byte) (swarm.Address, error) {
 	if len(data) < swarm.SocMinChunkSize {
 		return swarm.ZeroAddress, errors.New("chunk data too short for soc")
+	}
+	if len(data) > swarm.SocMaxChunkSize {
+		return swarm.ZeroAddress, errors.New("chunk data too large for soc")
 	}
 	cursor := swarm.HashSize + swarm.SocSignatureSize
 	cacData := data[cursor:]
@@ -383,6 +389,7 @@ type SampleStats struct {
 	RogueChunk                int64
 	ChunkLoadDuration         time.Duration
 	ChunkLoadFailed           int64
+	AssemblyChunkLoadFailed   int64
 	StampLoadFailed           int64
 }
 
@@ -399,6 +406,7 @@ func (s *SampleStats) add(other SampleStats) {
 	s.RogueChunk += other.RogueChunk
 	s.ChunkLoadDuration += other.ChunkLoadDuration
 	s.ChunkLoadFailed += other.ChunkLoadFailed
+	s.AssemblyChunkLoadFailed += other.AssemblyChunkLoadFailed
 	s.StampLoadFailed += other.StampLoadFailed
 	s.TotalIterated += other.TotalIterated
 }
@@ -472,6 +480,7 @@ func (db *DB) recordReserveSampleMetrics(duration time.Duration, stats *SampleSt
 		"duration_seconds":                     duration.Seconds(),
 		"chunks_iterated":                      float64(stats.TotalIterated),
 		"chunks_load_failed":                   float64(stats.ChunkLoadFailed),
+		"assembly_chunks_load_failed":          float64(stats.AssemblyChunkLoadFailed),
 		"stamp_validations":                    float64(stats.SampleInserts),
 		"invalid_stamps":                       float64(stats.InvalidStamp),
 		"below_balance_ignored":                float64(stats.BelowBalanceIgnored),

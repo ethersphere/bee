@@ -469,11 +469,56 @@ func assertSampleVector(t *testing.T, ch swarm.Chunk, wantChunkAddr, wantTransfo
 	}
 }
 
+func TestTransformedAddressCACInvalidLength(t *testing.T) {
+	t.Parallel()
+
+	hasher := bmt.NewPrefixHasher([]byte("anchor"))
+	addr := swarm.RandAddress(t)
+
+	// Too short (< bmt.SpanSize)
+	shortData := make([]byte, bmt.SpanSize-1)
+	chShort := swarm.NewChunk(addr, shortData)
+	if _, err := storer.TransformedAddress(hasher, chShort, swarm.ChunkTypeContentAddressed); err == nil {
+		t.Fatal("expected error for chunk shorter than SpanSize")
+	}
+
+	// Too large (> swarm.ChunkWithSpanSize)
+	largeData := make([]byte, swarm.ChunkWithSpanSize+1)
+	chLarge := swarm.NewChunk(addr, largeData)
+	if _, err := storer.TransformedAddress(hasher, chLarge, swarm.ChunkTypeContentAddressed); err == nil {
+		t.Fatal("expected error for chunk larger than ChunkWithSpanSize")
+	}
+}
+
+func TestTransformedAddressSOCInvalidLength(t *testing.T) {
+	t.Parallel()
+
+	hasher := bmt.NewPrefixHasher([]byte("anchor"))
+	addr := swarm.RandAddress(t)
+
+	// Too short (< swarm.SocMinChunkSize)
+	shortData := make([]byte, swarm.SocMinChunkSize-1)
+	chShort := swarm.NewChunk(addr, shortData)
+	if _, err := storer.TransformedAddress(hasher, chShort, swarm.ChunkTypeSingleOwner); err == nil {
+		t.Fatal("expected error for chunk shorter than SocMinChunkSize")
+	}
+
+	// Too large (> swarm.SocMaxChunkSize)
+	largeData := make([]byte, swarm.SocMaxChunkSize+1)
+	chLarge := swarm.NewChunk(addr, largeData)
+	if _, err := storer.TransformedAddress(hasher, chLarge, swarm.ChunkTypeSingleOwner); err == nil {
+		t.Fatal("expected error for chunk larger than SocMaxChunkSize")
+	}
+}
+
 func assertSampleNoErrors(t *testing.T, sample storer.Sample) {
 	t.Helper()
 
 	if sample.Stats.ChunkLoadFailed != 0 {
 		t.Fatalf("got unexpected failed chunk loads")
+	}
+	if sample.Stats.AssemblyChunkLoadFailed != 0 {
+		t.Fatalf("got unexpected failed assembly chunk loads")
 	}
 	if sample.Stats.RogueChunk != 0 {
 		t.Fatalf("got unexpected rogue chunks")
