@@ -115,8 +115,9 @@ const (
 )
 
 const (
-	multiPartFormData = "multipart/form-data"
-	contentTypeTar    = "application/x-tar"
+	multiPartFormData      = "multipart/form-data"
+	contentTypeTar         = "application/x-tar"
+	contentTypeOctetStream = "application/octet-stream"
 )
 
 var (
@@ -316,7 +317,7 @@ func New(
 	}
 	s.validate = validator.New()
 	s.validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
-		name := strings.SplitN(fld.Tag.Get(mapStructureTagName), ",", 2)[0]
+		name, _, _ := strings.Cut(fld.Tag.Get(mapStructureTagName), ",")
 		if name == "-" {
 			return ""
 		}
@@ -686,16 +687,14 @@ func (s *Service) mapStructure(input, output any) func(string, log.Logger, http.
 					})
 					continue
 				}
-				var perr *parseError
-				if errors.As(err, &perr) {
+				if perr, ok := errors.AsType[*parseError](err); ok {
 					resp.Reasons = append(resp.Reasons, jsonhttp.Reason{
 						Field: perr.Entry,
 						Error: perr.Cause.Error(),
 					})
 					continue
 				}
-				var verr *validationError
-				if errors.As(err, &verr) {
+				if verr, ok := errors.AsType[*validationError](err); ok {
 					resp.Reasons = append(resp.Reasons, jsonhttp.Reason{
 						Field: verr.Entry,
 						Error: verr.Cause.Error(),
