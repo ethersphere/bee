@@ -100,18 +100,21 @@ type testServerOptions struct {
 	WsPingPeriod                time.Duration
 	ChunkDeliveryWriteDeadline  time.Duration
 	ChunkDownloadRequestTimeout time.Duration
-	Logger                      log.Logger
-	PreventRedirect             bool
-	Feeds                       feeds.Factory
-	CORSAllowedOrigins          []string
-	PostageContract             postagecontract.Interface
-	StakingContract             staking.Contract
-	Post                        postage.Service
-	AccessControl               accesscontrol.Controller
-	Steward                     steward.Interface
-	WsHeaders                   http.Header
-	DirectUpload                bool
-	Probe                       *api.Probe
+	// Service, when set, receives the api.Service and makes the caller
+	// responsible for closing it, so a test can assert on Close directly.
+	Service            **api.Service
+	Logger             log.Logger
+	PreventRedirect    bool
+	Feeds              feeds.Factory
+	CORSAllowedOrigins []string
+	PostageContract    postagecontract.Interface
+	StakingContract    staking.Contract
+	Post               postage.Service
+	AccessControl      accesscontrol.Controller
+	Steward            steward.Interface
+	WsHeaders          http.Header
+	DirectUpload       bool
+	Probe              *api.Probe
 
 	Overlay         swarm.Address
 	PublicKey       ecdsa.PublicKey
@@ -223,7 +226,11 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	}
 
 	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, []string{o.WhitelistedAddr}, o.Logger, transaction, o.BatchStore, o.BeeMode, !o.ChequebookDisabled, !o.SwapDisabled, backend, o.CORSAllowedOrigins, inmemstore.New())
-	testutil.CleanupCloser(t, s)
+	if o.Service != nil {
+		*o.Service = s
+	} else {
+		testutil.CleanupCloser(t, s)
+	}
 
 	s.SetP2P(o.P2P)
 

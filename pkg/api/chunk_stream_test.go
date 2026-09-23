@@ -1418,32 +1418,92 @@ func TestChunkDownloadStream_RequestTimeout(t *testing.T) {
 	}
 }
 
-// An idle download stream must not hold up node shutdown. The read loop blocks
-// in ReadMessage for streamReadTimeout, so it can only notice s.quit if the
-// connection is closed out from under it. newTestServer closes the api.Service
-// during cleanup and fails the test if Close reports open websockets, which is
-// where this test's assertion lives.
-func TestChunkDownloadStream_ShutdownWithOpenStream(t *testing.T) {
+// Shutting the node down must not wait on download streams, whatever state they
+// are in. The hard case is a client that has stopped reading: a worker is then
+// blocked in conn.WriteMessage, holding the websocket's write lock, and neither
+// cancelling ctx nor sending a close frame releases it — only closing the
+// socket does. Each case asserts Close directly rather than leaving it to
+// cleanup, because Close is the thing under test.
+func TestChunkDownloadStream_Shutdown(t *testing.T) {
 	t.Parallel()
 
-	_, _, addr, _ := newTestServer(t, testServerOptions{
-		Storer: mockstorer.New(),
-	})
+	for _, tc := range []struct {
+		name string
+		// flood is how many chunks to request without ever reading a reply;
+		// zero leaves the stream idle.
+		flood int
+		// protocolError sends a malformed frame once a worker is blocked, so
+		// the read loop tears the stream down itself — with that writer still
+		// stuck — before the node shuts down. The flood has to stay small
+		// enough that the read loop is still reading and sees the frame.
+		protocolError bool
+	}{
+		{name: "idle stream"},
+		{name: "client stopped reading", flood: 2000},
+		{name: "client stopped reading, then stream torn down", flood: 1200, protocolError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	dialer := &websocket.Dialer{
-		Subprotocols: []string{api.ChunkDownloadSubprotocol},
-	}
-	wsConn, _, err := dialer.Dial("ws://"+addr+"/chunks/stream", nil)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	// Deliberately not closed: the connection has to still be open when the
-	// service shuts down, otherwise this asserts nothing.
+			var svc *api.Service
+			cs := inmemchunkstore.New()
+			_, _, addr, _ := newTestServer(t, testServerOptions{
+				Storer:  mockstorer.NewWithChunkStore(cs),
+				Service: &svc,
+			})
+			closed := false
+			t.Cleanup(func() {
+				if !closed {
+					_ = svc.Close()
+				}
+			})
 
-	// Let the read loop settle into ReadMessage before the service is closed.
-	if err := spinlock.Wait(streamTestTimeout, func() bool {
-		return wsConn.WriteMessage(websocket.PingMessage, nil) == nil
-	}); err != nil {
-		t.Fatal(err)
+			addrs := make([]swarm.Address, tc.flood)
+			for i := range addrs {
+				ch := testingc.GenerateTestRandomChunk()
+				if err := cs.Put(context.Background(), ch); err != nil {
+					t.Fatal(err)
+				}
+				addrs[i] = ch.Address()
+			}
+
+			dialer := &websocket.Dialer{
+				Subprotocols: []string{api.ChunkDownloadSubprotocol},
+			}
+			wsConn, _, err := dialer.Dial("ws://"+addr+"/chunks/stream", nil)
+			if err != nil {
+				t.Fatalf("dial: %v", err)
+			}
+			// Never read from wsConn: the socket must still be open, and
+			// undrained, when the service shuts down.
+			t.Cleanup(func() { _ = wsConn.Close() })
+
+			for i := 0; i < tc.flood; i += 100 {
+				_ = wsConn.SetWriteDeadline(time.Now().Add(streamTestTimeout))
+				if err := wsConn.WriteMessage(websocket.BinaryMessage, downloadRequest(addrs[i:min(i+100, tc.flood)]...)); err != nil {
+					break // the node has stopped reading; enough is queued
+				}
+			}
+			// Let the workers fill the socket and block, and the read loop
+			// settle into ReadMessage.
+			time.Sleep(500 * time.Millisecond)
+
+			// Only now, with a writer already stuck, tear the stream down. Sent
+			// any earlier, the read loop exits before anything is blocked and the
+			// teardown ordering is never exercised.
+			if tc.protocolError {
+				_ = wsConn.SetWriteDeadline(time.Now().Add(streamTestTimeout))
+				if err := wsConn.WriteMessage(websocket.TextMessage, []byte("not a frame")); err != nil {
+					t.Fatal(err)
+				}
+				time.Sleep(300 * time.Millisecond)
+			}
+
+			closed = true
+			start := time.Now()
+			if err := svc.Close(); err != nil {
+				t.Fatalf("Close after %v: %v", time.Since(start), err)
+			}
+		})
 	}
 }

@@ -395,6 +395,8 @@ paths:
         - `1009` (message too big) — the frame carried more than 256 addresses, or exceeded the maximum frame size.
         - `1001` (going away) — the node is shutting down.
 
+        Replies already received before a close are valid, and nothing is sent after it. Every reply carries its address, so any requested address that has no reply was not answered and can be requested again on a new connection. Requesting the same address twice on one connection makes this ambiguous and should be avoided.
+
         If both are supplied, `Sec-WebSocket-Protocol: swarm-chunk-download` takes precedence over the `mode` query parameter.
       tags:
         - Chunk

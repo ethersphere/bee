@@ -42,10 +42,13 @@ const (
 	// for the same job.
 	chunkDownloadRequestTimeout = getter.DefaultFetchTimeout
 
-	// chunkStreamCloseDeadline bounds a control frame write. Control frames do
-	// not inherit the delivery deadline: tearing the stream down must not wait
-	// on a peer that has stopped reading.
-	chunkStreamCloseDeadline = 5 * time.Second
+	// chunkStreamCloseDeadline bounds a close frame write, and is short on
+	// purpose. gorilla serialises WriteControl behind any WriteMessage in
+	// progress, so when the client has stopped reading, the close frame waits on
+	// a delivery that is never going to finish. That client would not read the
+	// close frame anyway, so it is given up on quickly and the socket closed.
+	// This must stay well inside api.Close's one-second budget.
+	chunkStreamCloseDeadline = 250 * time.Millisecond
 
 	chunkDownloadSubprotocol = "swarm-chunk-download"
 	chunkUploadSubprotocol   = "swarm-chunk-upload"
@@ -270,9 +273,18 @@ func (s *Service) handleDownloadStream(
 	defer s.metrics.ChunkStreamOpenConnections.WithLabelValues("download").Dec()
 
 	ctx, cancel := context.WithCancel(context.Background())
+	jobs := make(chan swarm.Address, maxDownloadQueueSize)
+	var wg sync.WaitGroup
+
+	// One teardown, in this order. The socket is closed before waiting on the
+	// workers because a worker blocked writing to a client that has stopped
+	// reading is released only by the socket closing: cancel does not reach it,
+	// and the write deadline is minutes long.
 	defer func() {
 		cancel()
 		_ = conn.Close()
+		close(jobs)
+		wg.Wait()
 	}()
 
 	conn.SetReadLimit(maxDownloadFrameSize)
@@ -294,9 +306,9 @@ func (s *Service) handleDownloadStream(
 		return nil
 	}
 
-	// WriteControl may be called concurrently with WriteMessage, so this
-	// deliberately does not take writeMu: a delivery that is blocked on a slow
-	// reader must not delay the close frame that tells the client why.
+	// Best effort. This does not take writeMu, but gorilla still queues it
+	// behind a WriteMessage in progress, so a blocked delivery delays it by up
+	// to chunkStreamCloseDeadline — which is why that deadline is short.
 	sendErrorClose := func(code int, errmsg string) {
 		_ = conn.WriteControl(
 			websocket.CloseMessage,
@@ -321,15 +333,12 @@ func (s *Service) handleDownloadStream(
 	go func() {
 		select {
 		case <-s.quit:
+			cancel()
 			sendErrorClose(websocket.CloseGoingAway, "node shutting down")
 			_ = conn.Close()
-			cancel()
 		case <-ctx.Done():
 		}
 	}()
-
-	jobs := make(chan swarm.Address, maxDownloadQueueSize)
-	var wg sync.WaitGroup
 
 	for range defaultDownloadWorkers {
 		wg.Add(1)
@@ -348,12 +357,6 @@ func (s *Service) handleDownloadStream(
 			}
 		}()
 	}
-
-	defer func() {
-		cancel()
-		close(jobs)
-		wg.Wait()
-	}()
 
 	for {
 		select {
