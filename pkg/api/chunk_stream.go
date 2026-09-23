@@ -312,19 +312,22 @@ func (s *Service) handleDownloadStream(
 		return nil
 	})
 
-	// The read loop can sit in ReadMessage for streamReadTimeout, so it cannot
-	// notice s.quit on its own. Closing the connection makes the pending read
-	// return at once, which is what lets api.Close finish inside its budget.
+	// Shutdown is the one event nothing else in this method can observe: the read
+	// loop can sit in ReadMessage for streamReadTimeout, and the workers only
+	// watch ctx. So this is the single place s.quit is handled — it tells the
+	// client why, unblocks the pending read by closing the connection, and
+	// cancels ctx so the workers and the producer wind down through the same
+	// path they use for every other teardown.
 	go func() {
 		select {
 		case <-s.quit:
 			sendErrorClose(websocket.CloseGoingAway, "node shutting down")
 			_ = conn.Close()
+			cancel()
 		case <-ctx.Done():
 		}
 	}()
 
-	loggerV1 := logger.V(1).Build()
 	jobs := make(chan swarm.Address, maxDownloadQueueSize)
 	var wg sync.WaitGroup
 
@@ -340,7 +343,7 @@ func (s *Service) handleDownloadStream(
 					if !ok {
 						return
 					}
-					s.fetchAndSendChunk(ctx, logger, loggerV1, addr, cache, sendMsg)
+					s.fetchAndSendChunk(ctx, logger, addr, cache, sendMsg)
 				}
 			}
 		}()
@@ -354,9 +357,6 @@ func (s *Service) handleDownloadStream(
 
 	for {
 		select {
-		case <-s.quit:
-			// The watcher goroutine above sends the close frame.
-			return
 		case <-gone:
 			return
 		default:
@@ -382,6 +382,8 @@ func (s *Service) handleDownloadStream(
 			return
 		}
 
+		// The leading byte is the command, so a valid frame is the opcode plus a
+		// whole number of addresses: 1 + 32n, with n >= 1.
 		if len(msg) < 1+swarm.HashSize || (len(msg)-1)%swarm.HashSize != 0 {
 			logger.Debug("chunk download stream: invalid message length", "length", len(msg))
 			sendErrorClose(websocket.CloseUnsupportedData, "invalid message length")
@@ -416,8 +418,6 @@ func (s *Service) handleDownloadStream(
 			case jobs <- addr:
 			case <-ctx.Done():
 				return
-			case <-s.quit:
-				return
 			}
 		}
 	}
@@ -431,7 +431,6 @@ func (s *Service) handleDownloadStream(
 func (s *Service) fetchAndSendChunk(
 	streamCtx context.Context,
 	logger log.Logger,
-	loggerV1 log.Logger,
 	addr swarm.Address,
 	cache bool,
 	sendMsg func([]byte) error,
@@ -454,7 +453,7 @@ func (s *Service) fetchAndSendChunk(
 		// HTTP download path also reports as not found (see bzz.go).
 		if errors.Is(err, storage.ErrNotFound) || errors.Is(err, topology.ErrNotFound) {
 			status = wsChunkDeliveryNotFound
-			loggerV1.Debug("chunk download stream: chunk not found", "address", addr)
+			logger.V(1).Build().Debug("chunk download stream: chunk not found", "address", addr)
 		} else if errors.Is(err, context.DeadlineExceeded) {
 			logger.Debug("chunk download stream: chunk retrieval timed out", "address", addr, "timeout", s.chunkDownloadRequestTimeout)
 		} else {
