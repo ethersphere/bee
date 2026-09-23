@@ -179,26 +179,19 @@ func (s *Service) gsocWsHandler(w http.ResponseWriter, r *http.Request) {
 	// instead of inside the spawned goroutine closes the window in which an
 	// update could arrive before the handler is registered and be silently
 	// missed.
+	//
+	// Caching the wrapped chunks is a subscription of its own, shared by every
+	// subscriber of this address that asked for it. It is registered first, so
+	// that a chunk arriving in between is cached rather than announced to a
+	// client that cannot resolve it yet.
+	releaseCache := func() {}
+	if headers.CacheWrappedChunk {
+		releaseCache = s.cacheGsocWrappedChunks(paths.Address)
+	}
+
 	queue := newGsocQueue()
 	wake := make(chan struct{}, 1)
 	cleanup := s.gsoc.Subscribe(paths.Address, func(c *soc.SOC) {
-		if headers.CacheWrappedChunk {
-			// This callback runs inline on the push and pull sync stream
-			// goroutines, so the store write is handed to its own goroutine:
-			// done here it would hold up the chunk's own storage and, on the
-			// push sync path, the receipt the sending peer is waiting for.
-			// Caching is also a node-local side effect independent of this
-			// subscriber's connection, so it must not be aborted just because
-			// the websocket closes mid-write; it is bound to the node's
-			// lifetime instead.
-			wrapped := c.WrappedChunk()
-			safe.Go(s.logger, "gsoc-cache-wrapped-chunk", func() {
-				if err := s.storer.Cache().Put(s.bgCtx, wrapped); err != nil {
-					s.logger.Debug("gsoc ws: cache wrapped chunk failed", "error", err)
-				}
-			})
-		}
-
 		b, err := socFieldsBytes(c, fields)
 		if err != nil {
 			s.logger.Warning("gsoc ws: serialize soc fields failed", "error", err)
@@ -217,7 +210,69 @@ func (s *Service) gsocWsHandler(w http.ResponseWriter, r *http.Request) {
 	})
 
 	s.wsWg.Add(1)
-	go s.gsocListeningWs(conn, cleanup, queue, wake)
+	go s.gsocListeningWs(conn, func() {
+		cleanup()
+		releaseCache()
+	}, queue, wake)
+}
+
+// gsocCacheSub is the subscription that caches the wrapped chunks delivered on
+// one GSOC address, together with the number of websocket subscribers of that
+// address currently interested in it. Caching is a node-local side effect, so
+// it is done once per chunk no matter how many subscribers asked for it: done
+// per subscriber instead, the very same chunk would be written to the store as
+// many times as there are subscribers.
+type gsocCacheSub struct {
+	refs    int
+	cleanup func()
+}
+
+// cacheGsocWrappedChunks subscribes to the given GSOC address to cache the
+// wrapped chunk of every message delivered on it, unless that subscription is
+// already in place, and returns the release of this caller's interest in it.
+// The subscription ends with the release of the last interest in it.
+func (s *Service) cacheGsocWrappedChunks(address swarm.Address) (release func()) {
+	key := address.ByteString()
+
+	s.gsocCacheMu.Lock()
+	defer s.gsocCacheMu.Unlock()
+
+	sub, ok := s.gsocCacheSubs[key]
+	if !ok {
+		sub = &gsocCacheSub{}
+		sub.cleanup = s.gsoc.Subscribe(address, func(c *soc.SOC) {
+			// This callback runs inline on the push and pull sync stream
+			// goroutines, so the store write is handed to its own goroutine:
+			// done here it would hold up the chunk's own storage and, on the
+			// push sync path, the receipt the sending peer is waiting for.
+			// Caching is also independent of any single subscriber's
+			// connection, so it must not be aborted just because a websocket
+			// closes mid-write; it is bound to the node's lifetime instead.
+			wrapped := c.WrappedChunk()
+			safe.Go(s.logger, "gsoc-cache-wrapped-chunk", func() {
+				if err := s.storer.Cache().Put(s.bgCtx, wrapped); err != nil {
+					s.logger.Debug("gsoc ws: cache wrapped chunk failed", "error", err)
+				}
+			})
+		})
+		s.gsocCacheSubs[key] = sub
+	}
+	sub.refs++
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			s.gsocCacheMu.Lock()
+			defer s.gsocCacheMu.Unlock()
+
+			sub.refs--
+			if sub.refs > 0 {
+				return
+			}
+			delete(s.gsocCacheSubs, key)
+			sub.cleanup()
+		})
+	}
 }
 
 // gsocQueue is a bounded FIFO ring buffer of pending outgoing GSOC messages.

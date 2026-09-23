@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -28,6 +29,8 @@ import (
 	mockbatchstore "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/spinlock"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/util/testutil"
@@ -701,6 +704,171 @@ func TestGsocWebsocketCacheWrappedChunk(t *testing.T) {
 	}
 	if !bytes.Equal(got.Data(), ch.Data()) {
 		t.Fatal("cached wrapped chunk data mismatch")
+	}
+}
+
+// TestGsocWebsocketCacheWrappedChunkOnce verifies that the wrapped chunk of a
+// message is written to the cache once, no matter how many subscribers of the
+// address asked for it: the store write is a node-local side effect done on
+// behalf of the node, not of a connection, and repeating it per subscriber
+// would multiply the work the sync stream goroutines pay for.
+func TestGsocWebsocketCacheWrappedChunkOnce(t *testing.T) {
+	t.Parallel()
+
+	var (
+		id         = make([]byte, 32)
+		headers    = http.Header{api.SwarmCacheWrappedChunkHeader: []string{"true"}}
+		chunkStore = &countingChunkStore{ChunkStore: inmemchunkstore.New()}
+		gsocSvc    = &countingListener{Listener: gsoc.New(log.Noop)}
+		payloads   = [][]byte{[]byte("the first message"), []byte("the second message")}
+	)
+	testutil.CleanupCloser(t, gsocSvc)
+
+	privKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := crypto.NewDefaultSigner(privKey)
+	owner, err := signer.EthereumAddress()
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunkAddr, _ := soc.CreateAddress(id, owner.Bytes())
+	wsPath := "/gsoc/subscribe/" + hex.EncodeToString(chunkAddr.Bytes())
+
+	_, cl, listener, _, _ := newTestServer(t, testServerOptions{
+		Gsoc:         gsocSvc,
+		WsPath:       wsPath,
+		WsHeaders:    headers,
+		Storer:       mockstorer.NewWithChunkStore(chunkStore),
+		BatchStore:   mockbatchstore.New(),
+		Logger:       log.Noop,
+		WsPingPeriod: 10 * time.Second,
+	})
+
+	u := url.URL{Scheme: "ws", Host: listener, Path: wsPath}
+	cl2, _, err := websocket.DefaultDialer.Dial(u.String(), headers)
+	if err != nil {
+		t.Fatalf("dial: %v. url %v", err, u.String())
+	}
+	testutil.CleanupCloser(t, cl2)
+
+	for _, c := range []*websocket.Conn{cl, cl2} {
+		if err := c.SetReadDeadline(time.Now().Add(longTimeout)); err != nil {
+			t.Fatal(err)
+		}
+		c.SetReadLimit(swarm.ChunkSize)
+	}
+
+	// Neither Dial returning nor the websocket handshake says that the
+	// subscription behind the connection is registered, so wait for the
+	// subscriptions themselves: one per connection, plus the single caching
+	// one the two of them share.
+	if err := spinlock.Wait(longTimeout, func() bool { return gsocSvc.subs.Load() >= 3 }); err != nil {
+		t.Fatalf("subscriptions not registered: %v", err)
+	}
+
+	for _, payload := range payloads {
+		ch, _ := cac.New(payload)
+		socCh := soc.New(id, ch)
+		signedCh, _ := socCh.Sign(signer)
+		socCh, _ = soc.FromChunk(signedCh)
+		gsocSvc.Handle(socCh)
+
+		respC := make(chan error, 2)
+		go expectMessage(t, cl, respC, payload)
+		go expectMessage(t, cl2, respC, payload)
+		for range 2 {
+			if err := <-respC; err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		// The chunk is cached on its own goroutine, so it may not be in the
+		// store yet by the time the messages reach the clients.
+		if err := spinlock.Wait(longTimeout, func() bool {
+			_, err := chunkStore.Get(context.Background(), ch.Address())
+			return err == nil
+		}); err != nil {
+			t.Fatalf("wrapped chunk not cached: %v", err)
+		}
+	}
+
+	// Both messages are cached by now, so a write per subscriber rather than
+	// per message would already have happened.
+	if puts, want := chunkStore.puts.Load(), int32(len(payloads)); puts != want {
+		t.Fatalf("got %d cache writes, want %d: one per message, not one per subscriber", puts, want)
+	}
+}
+
+// TestGsocCacheSubscriptionShared verifies the bookkeeping behind that single
+// cache write: the subscribers of one address share a single caching
+// subscription, which is registered with the first of them and dropped only
+// once the last one is gone.
+func TestGsocCacheSubscriptionShared(t *testing.T) {
+	t.Parallel()
+
+	var (
+		address = swarm.RandAddress(t)
+		gsocSvc = &countingListener{Listener: gsoc.New(log.Noop)}
+	)
+	testutil.CleanupCloser(t, gsocSvc)
+
+	_, _, _, _, svc := newTestServer(t, testServerOptions{
+		Gsoc:       gsocSvc,
+		Storer:     mockstorer.New(),
+		BatchStore: mockbatchstore.New(),
+		Logger:     log.Noop,
+	})
+
+	first := svc.CacheGsocWrappedChunks(address)
+	second := svc.CacheGsocWrappedChunks(address)
+	if subs := gsocSvc.subs.Load(); subs != 1 {
+		t.Fatalf("got %d subscriptions for two subscribers, want 1", subs)
+	}
+
+	first()
+	if subs := gsocSvc.subs.Load(); subs != 1 {
+		t.Fatalf("got %d subscriptions after one subscriber left, want the other one to keep it", subs)
+	}
+
+	second()
+	if subs := gsocSvc.subs.Load(); subs != 0 {
+		t.Fatalf("got %d subscriptions after the last subscriber left, want 0", subs)
+	}
+
+	// A subscriber arriving after the address was dropped subscribes anew.
+	third := svc.CacheGsocWrappedChunks(address)
+	if subs := gsocSvc.subs.Load(); subs != 1 {
+		t.Fatalf("got %d subscriptions for a new subscriber, want 1", subs)
+	}
+	third()
+}
+
+// countingChunkStore counts the chunks written to the store it wraps.
+type countingChunkStore struct {
+	storage.ChunkStore
+	puts atomic.Int32
+}
+
+func (s *countingChunkStore) Put(ctx context.Context, ch swarm.Chunk) error {
+	s.puts.Add(1)
+	return s.ChunkStore.Put(ctx, ch)
+}
+
+// countingListener counts the subscriptions registered on the GSOC listener it
+// wraps, so that a test can wait for the api to have registered all of them.
+type countingListener struct {
+	gsoc.Listener
+	subs atomic.Int32
+}
+
+func (l *countingListener) Subscribe(address swarm.Address, handler gsoc.Handler) func() {
+	cleanup := l.Listener.Subscribe(address, handler)
+	l.subs.Add(1)
+	return func() {
+		cleanup()
+		l.subs.Add(-1)
 	}
 }
 

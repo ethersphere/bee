@@ -188,6 +188,11 @@ type Service struct {
 	bgCtx    context.Context
 	bgCancel context.CancelFunc
 
+	// gsocCacheSubs holds the caching subscriptions shared by the GSOC
+	// websocket subscribers, keyed by GSOC address, see gsoc.go.
+	gsocCacheMu   sync.Mutex
+	gsocCacheSubs map[string]*gsocCacheSub
+
 	overlay           *swarm.Address
 	publicKey         ecdsa.PublicKey
 	pssPublicKey      ecdsa.PublicKey
@@ -349,6 +354,7 @@ func (s *Service) Configure(signer crypto.Signer, tracer *tracing.Tracer, o Opti
 
 	s.quit = make(chan struct{})
 	s.bgCtx, s.bgCancel = context.WithCancel(context.Background())
+	s.gsocCacheSubs = make(map[string]*gsocCacheSub)
 
 	s.storer = e.Storer
 	s.resolver = e.Resolver
