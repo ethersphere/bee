@@ -2,6 +2,12 @@ project_name: bee
 
 version: 2
 
+before:
+  hooks:
+    # Prime the module cache once up front so cross-compilation targets do not
+    # each trigger their own dependency download.
+    - go mod download
+
 release:
   prerelease: auto
 

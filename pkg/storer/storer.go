@@ -197,7 +197,7 @@ type dirFS struct {
 }
 
 func (d *dirFS) Open(path string) (fs.File, error) {
-	return os.OpenFile(filepath.Join(d.basedir, path), os.O_RDWR|os.O_CREATE, 0o644)
+	return os.OpenFile(filepath.Join(d.basedir, path), os.O_RDWR|os.O_CREATE, 0o600)
 }
 
 var (
@@ -258,7 +258,7 @@ func initStore(basePath string, opts *Options) (*leveldbstore.Store, error) {
 	ldbBasePath := path.Join(basePath, indexPath)
 
 	if _, err := os.Stat(ldbBasePath); os.IsNotExist(err) {
-		err := os.MkdirAll(ldbBasePath, 0o777)
+		err := os.MkdirAll(ldbBasePath, 0o700)
 		if err != nil {
 			return nil, err
 		}
@@ -340,7 +340,7 @@ func initDiskRepository(
 	sharkyBasePath := path.Join(basePath, sharkyPath)
 
 	if _, err := os.Stat(sharkyBasePath); os.IsNotExist(err) {
-		err := os.Mkdir(sharkyBasePath, 0o777)
+		err := os.Mkdir(sharkyBasePath, 0o700)
 		if err != nil {
 			return nil, nil, nil, 0, err
 		}

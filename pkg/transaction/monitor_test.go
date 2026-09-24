@@ -388,3 +388,123 @@ func TestMonitorWatchTransaction(t *testing.T) {
 		}
 	})
 }
+
+func TestMonitorWatchNonce(t *testing.T) {
+	t.Parallel()
+
+	logger := log.Noop
+	nonce := uint64(10)
+	sender := common.HexToAddress("0xffee")
+	pollingInterval := 1 * time.Millisecond
+	cancellationDepth := uint64(5)
+	testTimeout := 5 * time.Second
+
+	t.Run("signals when nonce increases", func(t *testing.T) {
+		t.Parallel()
+
+		monitor := transaction.NewMonitor(
+			logger,
+			backendsimulation.New(
+				backendsimulation.WithBlocks(
+					backendsimulation.Block{
+						Number: 0,
+						NoncesAt: map[backendsimulation.AccountAtKey]uint64{
+							{BlockNumber: 0, Account: sender}: nonce,
+						},
+					},
+					backendsimulation.Block{
+						Number: 1,
+						NoncesAt: map[backendsimulation.AccountAtKey]uint64{
+							{BlockNumber: 1, Account: sender}: nonce + 1,
+						},
+					},
+				),
+			),
+			sender,
+			pollingInterval,
+			cancellationDepth,
+		)
+		t.Cleanup(func() { _ = monitor.Close() })
+
+		doneC, errC := monitor.WatchNonce(nonce)
+
+		select {
+		case <-doneC:
+		case err := <-errC:
+			t.Fatal(err)
+		case <-time.After(testTimeout):
+			t.Fatal("timed out")
+		}
+	})
+
+	t.Run("does not signal while nonce is unchanged", func(t *testing.T) {
+		t.Parallel()
+
+		monitor := transaction.NewMonitor(
+			logger,
+			backendsimulation.New(
+				backendsimulation.WithBlocks(
+					backendsimulation.Block{
+						Number: 0,
+						NoncesAt: map[backendsimulation.AccountAtKey]uint64{
+							{BlockNumber: 0, Account: sender}: nonce,
+						},
+					},
+					backendsimulation.Block{
+						Number: 1,
+						NoncesAt: map[backendsimulation.AccountAtKey]uint64{
+							{BlockNumber: 1, Account: sender}: nonce,
+						},
+					},
+				),
+			),
+			sender,
+			pollingInterval,
+			cancellationDepth,
+		)
+		t.Cleanup(func() { _ = monitor.Close() })
+
+		doneC, errC := monitor.WatchNonce(nonce)
+
+		select {
+		case <-doneC:
+			t.Fatal("got nonce signal")
+		case err := <-errC:
+			t.Fatal(err)
+		case <-time.After(50 * time.Millisecond):
+		}
+	})
+
+	t.Run("shutdown while waiting", func(t *testing.T) {
+		t.Parallel()
+
+		monitor := transaction.NewMonitor(
+			logger,
+			backendsimulation.New(
+				backendsimulation.WithBlocks(
+					backendsimulation.Block{Number: 0},
+				),
+			),
+			sender,
+			pollingInterval,
+			cancellationDepth,
+		)
+
+		doneC, errC := monitor.WatchNonce(nonce)
+
+		if err := monitor.Close(); err != nil {
+			t.Fatal(err)
+		}
+
+		select {
+		case <-doneC:
+			t.Fatal("got nonce signal")
+		case err := <-errC:
+			if !errors.Is(err, transaction.ErrMonitorClosed) {
+				t.Fatalf("got wrong error. wanted %v, got %v", transaction.ErrMonitorClosed, err)
+			}
+		case <-time.After(testTimeout):
+			t.Fatal("timed out")
+		}
+	})
+}

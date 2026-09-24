@@ -4,7 +4,10 @@
 
 package storeadapter
 
-var RewriteAddressbookEnvelope = rewriteAddressbookEnvelope
+var (
+	RewriteAddressbookEnvelope = rewriteAddressbookEnvelope
+	StampAddressbookLastSeen   = stampAddressbookLastSeen
+)
 
 type (
 	LegacyEntry     = legacyEntry

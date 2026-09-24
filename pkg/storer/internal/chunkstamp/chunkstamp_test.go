@@ -279,3 +279,24 @@ func TestStoreLoadDelete(t *testing.T) {
 		})
 	}
 }
+
+// TestItemUnmarshalNegativeNamespaceLength is a regression test for SLICE-05.
+// A crafted namespace-length prefix of 0xFFFFFFFFFFFFFFF8 narrows via int() to
+// -8, which balances the size-equality guard (the StampSize tail cancels the
+// arithmetic) and then panics make([]byte, 0, nsLen) with cap out of range on
+// the retrieval/eviction path. The address is set so the unfixed code reaches
+// the scope allocation.
+func TestItemUnmarshalNegativeNamespaceLength(t *testing.T) {
+	t.Parallel()
+
+	// len == 8 + nsLen + postage.StampSize; with nsLen == -8 the required
+	// length is postage.StampSize.
+	buf := make([]byte, postage.StampSize)
+	copy(buf[:8], []byte{0xF8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
+
+	item := new(chunkstamp.Item).WithAddress(swarm.RandAddress(t))
+	err := item.Unmarshal(buf)
+	if !errors.Is(err, chunkstamp.ErrUnmarshalInvalidChunkStampItemSize) {
+		t.Fatalf("expected %v, got %v", chunkstamp.ErrUnmarshalInvalidChunkStampItemSize, err)
+	}
+}

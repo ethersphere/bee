@@ -597,6 +597,7 @@ func TestBzzFiles(t *testing.T) {
 				jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
 				jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "text/html; charset=utf-8"),
 				jsonhttptest.WithExpectedContentLength(21),
+				jsonhttptest.WithExpectedResponseHeader(api.AcceptRangesHeader, "bytes"),
 			)
 		})
 	})
@@ -877,7 +878,7 @@ func TestFeedIndirection(t *testing.T) {
 	}
 
 	m, err := manifest.NewDefaultManifest(
-		loadsave.New(storer.ChunkStore(), storer.Cache(), pipelineFactory(storer.Cache(), false, 0), redundancy.DefaultLevel),
+		loadsave.New(storer.ChunkStore(), storer.Cache(), pipelineFactory(storer.Cache(), false, 0), redundancy.DefaultDownloadLevel),
 		false,
 	)
 	if err != nil {

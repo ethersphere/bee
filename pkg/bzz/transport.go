@@ -24,6 +24,10 @@ const (
 	TransportWS
 	// TransportWSS indicates WebSocket with TLS (secure).
 	TransportWSS
+	// TransportQUICV1 indicates QUIC (version 1) transport.
+	TransportQUICV1
+	// TransportQUIC indicates legacy QUIC transport.
+	TransportQUIC
 )
 
 // String returns a string representation of the transport type.
@@ -35,13 +39,17 @@ func (t TransportType) String() string {
 		return "ws"
 	case TransportWSS:
 		return "wss"
+	case TransportQUICV1:
+		return "quic-v1"
+	case TransportQUIC:
+		return "quic"
 	default:
 		return "unknown"
 	}
 }
 
 // Priority returns the sorting priority for the transport type.
-// Lower value = higher priority: TCP (0) > WS (1) > WSS (2) > Unknown (3)
+// Lower value = higher priority: TCP(0) > WS(1) > WSS(2) > QUIC/Unknown(3).
 func (t TransportType) Priority() int {
 	switch t {
 	case TransportTCP:
@@ -50,6 +58,10 @@ func (t TransportType) Priority() int {
 		return 1
 	case TransportWSS:
 		return 2
+	case TransportQUICV1, TransportQUIC:
+		// Treat QUIC like unknown for address sorting so existing selection
+		// behavior stays stable.
+		return 3
 	default:
 		return 3
 	}
@@ -70,12 +82,19 @@ func ClassifyTransport(addr ma.Multiaddr) TransportType {
 	hasWS := hasProtocol(ma.P_WS)
 	hasTLS := hasProtocol(ma.P_TLS)
 	hasTCP := hasProtocol(ma.P_TCP)
+	hasWSS := hasProtocol(ma.P_WSS) // deprecated component used by libp2p live conns
+	hasQUICV1 := hasProtocol(ma.P_QUIC_V1)
+	hasQUIC := hasProtocol(ma.P_QUIC)
 
 	switch {
-	case hasWS && hasTLS:
+	case hasWSS || hasWS && hasTLS:
 		return TransportWSS
 	case hasWS:
 		return TransportWS
+	case hasQUICV1:
+		return TransportQUICV1
+	case hasQUIC:
+		return TransportQUIC
 	case hasTCP:
 		return TransportTCP
 	default:

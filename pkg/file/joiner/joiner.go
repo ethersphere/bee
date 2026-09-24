@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy/getter"
 	"github.com/ethersphere/bee/v2/pkg/replicas"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"golang.org/x/sync/errgroup"
@@ -231,13 +232,30 @@ func (j *joiner) readAtOffset(
 	parity int,
 	eg *errgroup.Group,
 ) {
+	dataLen := int64(len(data))
 	// we are at a leaf data chunk
-	if subTrieSize <= int64(len(data)) {
+	if subTrieSize <= dataLen {
 		dataOffsetStart := off - cur
+		// Ensure that the read offset is within the bounds of this leaf chunk.
+		// A malformed tree might advertise a larger span, leading to an out-of-bounds start offset.
+		if dataOffsetStart < 0 || dataOffsetStart >= dataLen {
+			eg.Go(func() error {
+				return ErrMalformedTrie
+			})
+			return
+		}
 		dataOffsetEnd := dataOffsetStart + bytesToRead
 
-		if lenDataToCopy := int64(len(data)) - dataOffsetStart; bytesToRead > lenDataToCopy {
+		if lenDataToCopy := dataLen - dataOffsetStart; bytesToRead > lenDataToCopy {
 			dataOffsetEnd = dataOffsetStart + lenDataToCopy
+		}
+
+		// Guard against slicing out-of-bounds if the computed end offset is invalid.
+		if dataOffsetEnd < dataOffsetStart || dataOffsetEnd > dataLen {
+			eg.Go(func() error {
+				return ErrMalformedTrie
+			})
+			return
 		}
 
 		bs := data[dataOffsetStart:dataOffsetEnd]
@@ -279,7 +297,7 @@ func (j *joiner) readAtOffset(
 		currentReadSize = min(currentReadSize, subtrieSpan)
 
 		func(address swarm.Address, b []byte, cur, subTrieSize, off, bufferOffset, bytesToRead, subtrieSpanLimit int64) {
-			eg.Go(func() error {
+			eg.Go(safe.RunFunc(nil, "joiner-read-at-offset", func() error {
 				ch, err := g.Get(j.ctx, addr)
 				if err != nil {
 					return err
@@ -295,7 +313,7 @@ func (j *joiner) readAtOffset(
 
 				j.readAtOffset(b, chunkData, cur, subtrieSpan, off, bufferOffset, currentReadSize, bytesRead, subtrieParity, eg)
 				return nil
-			})
+			}))
 		}(addr, b, cur, subtrieSpan, off, bufferOffset, currentReadSize, subtrieSpanLimit)
 
 		bufferOffset += currentReadSize

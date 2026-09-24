@@ -131,6 +131,10 @@ func TestCors(t *testing.T) {
 			expectedMethods: "GET, POST",
 		},
 		{
+			endpoint:        "redistributionstate",
+			expectedMethods: "GET, PATCH",
+		},
+		{
 			endpoint:        "bzz",
 			expectedMethods: "POST",
 		},
@@ -183,6 +187,11 @@ func TestCorsStatus(t *testing.T) {
 			endpoint:          "tags",
 			notAllowedMethods: http.MethodDelete,
 			allowedMethods:    "GET, POST",
+		},
+		{
+			endpoint:          "redistributionstate",
+			notAllowedMethods: http.MethodPut,
+			allowedMethods:    "GET, PATCH",
 		},
 		{
 			endpoint:          "bzz",

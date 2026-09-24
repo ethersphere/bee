@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 8.1.0
+  version: 8.1.1
   title: Bee API
   description: "API endpoints for interacting with the Swarm network, supporting file operations, messaging, and node management"
 
@@ -59,6 +59,11 @@ paths:
             $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
           name: swarm-act-history-address
           required: false
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
+          name: swarm-redundancy-level
+          required: false
       requestBody:
         required: true
         content:
@@ -89,6 +94,11 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmEncryptedReference"
           required: true
           description: Grantee list reference
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
+          name: swarm-redundancy-level
+          required: false
       responses:
         "200":
           description: OK
@@ -138,6 +148,11 @@ paths:
           schema:
             $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
           name: swarm-deferred-upload
+          required: false
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
+          name: swarm-redundancy-level
           required: false
       requestBody:
         required: true
@@ -231,6 +246,9 @@ paths:
           description: Default response
     head:
       summary: Retrieve headers containing the content type and length for the reference
+      description: >
+        Identical to GET on the same reference except that no content is sent,
+        so Range and conditional request headers are honored the same way.
       tags:
         - Bytes
       parameters:
@@ -240,12 +258,17 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
           description: Swarm address of chunk
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyFallbackModeParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmChunkRetrievalTimeoutParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActTimestamp"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActPublisher"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       responses:
         "200":
-          description: The chunk exists.
+          description: Headers for the content at the reference.
           headers:
             Content-Type:
               description: The MIME type of the resource (e.g., application/octet-stream).
@@ -253,19 +276,59 @@ paths:
                 type: string
                 example: application/octet-stream
             Content-Length:
-              description: The size of the chunk in bytes.
+              description: The size of the retrievable content in bytes.
               schema:
                 type: integer
                 example: 1024
+            Accept-Ranges:
+              description: Indicates that ranged requests are supported for the reference.
+              schema:
+                type: string
+                example: bytes
+            ETag:
+              description: The reference, as an entity tag.
+              schema:
+                type: string
+            Last-Modified:
+              description: The time the response was generated.
+              schema:
+                type: string
             Access-Control-Expose-Headers:
               description: Headers exposed for CORS.
               schema:
                 type: string
-                example: Accept-Ranges, Content-Encoding
+                example: Content-Disposition
+        "206":
+          description: Headers for the range requested via the Range header.
+          headers:
+            Content-Range:
+              description: The range covered, and the total size of the content.
+              schema:
+                type: string
+                example: bytes 0-1023/4096
+            Content-Length:
+              description: The size of the requested range in bytes.
+              schema:
+                type: integer
+                example: 1024
+        "304":
+          description: The entity tag in If-None-Match matches the reference.
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
+        "412":
+          description: A conditional request header was not satisfied.
+        "416":
+          description: The requested range cannot be satisfied.
+          headers:
+            Content-Range:
+              description: The total size of the content.
+              schema:
+                type: string
+                example: bytes */4096
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
@@ -282,8 +345,6 @@ paths:
             $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
           required: false
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageStamp"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmAct"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       requestBody:
         description: Chunk binary data containing at least 8 bytes.
         content:
@@ -299,8 +360,6 @@ paths:
               description: Tag UID from the request `swarm-tag` header if provided.
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/Uid"
-            "swarm-act-history-address":
-              $ref: "SwarmCommon.yaml#/components/headers/SwarmActHistoryAddress"
           content:
             application/json:
               schema:
@@ -454,6 +513,9 @@ paths:
           description: Default response
     head:
       summary: Retrieve headers with content type and length for the reference
+      description: >
+        Identical to GET on the same reference except that no content is sent,
+        so Range and conditional request headers are honored the same way.
       tags:
         - BZZ
       parameters:
@@ -463,16 +525,77 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
           description: Swarm address of chunk
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyFallbackModeParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmChunkRetrievalTimeoutParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActTimestamp"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActPublisher"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       responses:
         "200":
-          description: Chunk exists
+          description: Headers for the content at the reference.
+          headers:
+            Content-Type:
+              description: The MIME type of the resource.
+              schema:
+                type: string
+                example: application/octet-stream
+            Content-Length:
+              description: The size of the retrievable content in bytes.
+              schema:
+                type: integer
+                example: 1024
+            Accept-Ranges:
+              description: Indicates that ranged requests are supported for the reference.
+              schema:
+                type: string
+                example: bytes
+            ETag:
+              description: The reference, as an entity tag.
+              schema:
+                type: string
+            Last-Modified:
+              description: The time the response was generated.
+              schema:
+                type: string
+            Access-Control-Expose-Headers:
+              description: Headers exposed for CORS.
+              schema:
+                type: string
+                example: Content-Disposition
+        "206":
+          description: Headers for the range requested via the Range header.
+          headers:
+            Content-Range:
+              description: The range covered, and the total size of the content.
+              schema:
+                type: string
+                example: bytes 0-1023/4096
+            Content-Length:
+              description: The size of the requested range in bytes.
+              schema:
+                type: integer
+                example: 1024
+        "304":
+          description: The entity tag in If-None-Match matches the reference.
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
+        "412":
+          description: A conditional request header was not satisfied.
+        "416":
+          description: The requested range cannot be satisfied.
+          headers:
+            Content-Range:
+              description: The total size of the content.
+              schema:
+                type: string
+                example: bytes */4096
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
 
@@ -666,6 +789,12 @@ paths:
       summary: Pin a root hash by reference
       tags:
         - Pinning
+      parameters:
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
+          name: swarm-redundancy-level
+          required: false
       responses:
         "200":
           description: Pin already exists
@@ -880,8 +1009,6 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmAct"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       requestBody:
         required: true
         description: The SOC binary data, composed of the span (8 bytes) and up to 4KB of payload.
@@ -902,8 +1029,6 @@ paths:
               description: Tag UID, returned when an upload session is in use (either because `swarm-tag` was supplied, `swarm-deferred-upload` requested deferred mode, or `swarm-pin` was set).
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/Uid"
-            "swarm-act-history-address":
-              $ref: "SwarmCommon.yaml#/components/headers/SwarmActHistoryAddress"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "401":
@@ -986,6 +1111,12 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmAct"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
+          name: swarm-redundancy-level
+          required: false
+          description: Redundancy level for the feed manifest upload pipeline and ACT encryption
       responses:
         "201":
           description: Created
@@ -1085,6 +1216,11 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
           description: "Root hash of content (can be of any type: collection, file, chunk)"
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
+          name: swarm-redundancy-level
+          required: false
       responses:
         "200":
           description: Returns if the content is retrievable
@@ -1115,6 +1251,11 @@ paths:
           name: swarm-postage-batch-id
           required: true
           description: Postage batch to use for re-upload. The chunks are re-stamped with this batch.
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
+          name: swarm-redundancy-level
+          required: false
       responses:
         "200":
           description: OK
@@ -1995,6 +2136,37 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         default:
           description: Default response
+    patch:
+      summary: Update the label of an existing postage batch
+      tags:
+        - Postage Stamps
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label:
+                  type: string
+                  description: New label for the postage batch
+              required:
+                - label
+      responses:
+        "200":
+          description: Label updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/Response"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
 
   "/stamps/{batch_id}/buckets":
     parameters:
@@ -2264,6 +2436,36 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
+    patch:
+      summary: Enable or disable participation in new redistribution rounds
+      description: >
+        Controls whether the node will commit in a new redistribution round.
+        Sampling still runs while disabled so that a later re-enable can commit
+        in the following commit phase. Disabling does not abort an in-flight
+        commit and does not skip reveal or claim for a round that already committed.
+        Re-enabling during a commit phase that was already skipped does not retry
+        that round. After a node restart participation is enabled again.
+      tags:
+        - RedistributionState
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "SwarmCommon.yaml#/components/schemas/RedistributionEnableRequest"
+      responses:
+        "200":
+          description: Participation flag updated
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/RedistributionEnableResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
   "/wallet":
     get:
       summary: Get wallet balance for BZZ and xDAI
@@ -2378,7 +2580,11 @@ paths:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/StakeTransactionResponse"
         "400":
-          $ref: "SwarmCommon.yaml#/components/responses/400"
+          description: Deposit amount is below the required minimum.
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/StakeDepositErrorResponse"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -2387,7 +2593,7 @@ paths:
   "/stake":
     get:
       summary: Get the staked amount.
-      description: This endpoint fetches the total staked amount from the blockchain.
+      description: This endpoint fetches the total staked amount and the minimum additional deposit from the blockchain. The first deposit is at least 10 BZZ times 2^height. Subsequent deposits are at least 1 PLUR, or more if the price oracle has increased since the last deposit.
       tags:
         - Staking
       responses:

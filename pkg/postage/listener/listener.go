@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/postage/batchservice"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/ethersphere/bee/v2/pkg/util/syncutil"
 	"github.com/prometheus/client_golang/prometheus"
@@ -250,7 +251,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 	lastConfirmedBlock := uint64(0)
 
 	l.wg.Add(1)
-	listenf := func() error {
+	listenf := safe.RunFunc(l.logger, "postage-listener-func", func() error {
 		defer l.wg.Done()
 		for {
 			// if for whatever reason we are stuck for too long we terminate
@@ -301,6 +302,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 				l.metrics.BackendErrors.Inc()
 				l.logger.Warning("could not get block number", "error", err)
 				lastConfirmedBlock = 0
+				paged = false
 				continue
 			}
 
@@ -338,6 +340,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 				l.metrics.BackendErrors.Inc()
 				l.logger.Warning("could not get blockchain log", "error", err)
 				lastConfirmedBlock = 0
+				paged = false
 				continue
 			}
 
@@ -350,7 +353,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 			totalTimeMetric(l.metrics.PageProcessDuration, start)
 			l.metrics.PagesProcessed.Inc()
 		}
-	}
+	})
 
 	go func() {
 		err := listenf()

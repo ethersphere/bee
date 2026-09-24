@@ -19,6 +19,7 @@ type metrics struct {
 	NeighborhoodSelected    prometheus.Counter
 	SampleDuration          prometheus.Gauge
 	Round                   prometheus.Gauge
+	Enabled                 prometheus.Gauge
 	InsufficientFundsToPlay prometheus.Counter
 
 	// total calls to chain backend
@@ -90,6 +91,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "round",
 			Help:      "Current round calculated from the block height.",
+		}),
+		Enabled: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "redistribution_enabled",
+			Help:      "Whether the node will commit in new redistribution rounds (1 enabled, 0 disabled).",
 		}),
 
 		// total call

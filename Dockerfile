@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     useradd -r -g bee --uid 999 --no-log-init -m bee;
 
 # make sure mounted volumes have correct permissions
-RUN mkdir -p /home/bee/.bee && chown 999:999 /home/bee/.bee
+RUN mkdir -p /home/bee/.bee && chown 999:999 /home/bee/.bee && chmod 700 /home/bee/.bee
 
 COPY --from=build /src/dist/bee /usr/local/bin/bee
 

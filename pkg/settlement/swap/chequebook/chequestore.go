@@ -95,6 +95,12 @@ func (s *chequeStore) LastCheque(chequebook common.Address) (*SignedCheque, erro
 		return nil, ErrNoCheque
 	}
 
+	// A corrupt statestore entry (e.g. a literal JSON null) unmarshals into a
+	// nil pointer without an error; guard against returning it for later deref.
+	if cheque == nil {
+		return nil, fmt.Errorf("nil cheque loaded from statestore for chequebook %x: %w", chequebook, ErrNoCheque)
+	}
+
 	return cheque, nil
 }
 
@@ -103,6 +109,12 @@ func (s *chequeStore) ReceiveCheque(ctx context.Context, cheque *SignedCheque, e
 	// verify we are the beneficiary
 	if cheque.Beneficiary != s.beneficiary {
 		return nil, ErrWrongBeneficiary
+	}
+
+	// A peer-supplied cheque omitting cumulativePayout unmarshals into a nil
+	// *big.Int without an error; guard against dereferencing it below.
+	if cheque.CumulativePayout == nil {
+		return nil, ErrChequeInvalid
 	}
 
 	// don't allow concurrent processing of cheques
@@ -126,6 +138,10 @@ func (s *chequeStore) ReceiveCheque(ctx context.Context, cheque *SignedCheque, e
 		}
 
 		lastCumulativePayout = big.NewInt(0)
+	} else if lastReceivedCheque == nil {
+		// A corrupt statestore entry (e.g. a literal JSON null) unmarshals into a
+		// nil pointer without an error; guard against dereferencing it below.
+		return nil, fmt.Errorf("nil cheque loaded from statestore for chequebook %x: %w", cheque.Chequebook, ErrNoCheque)
 	} else {
 		lastCumulativePayout = lastReceivedCheque.CumulativePayout
 	}
