@@ -42,8 +42,8 @@ func TestChunkUploadStream(t *testing.T) {
 	wsHeaders.Set(api.SwarmPostageBatchIdHeader, batchOkStr)
 
 	var (
-		storerMock               = mockstorer.New()
-		_, wsConn, _, chanStorer = newTestServer(t, testServerOptions{
+		storerMock                  = mockstorer.New()
+		_, wsConn, _, chanStorer, _ = newTestServer(t, testServerOptions{
 			Storer:       storerMock,
 			Post:         mockpost.New(mockpost.WithAcceptAll()),
 			WsPath:       "/chunks/stream",
@@ -161,8 +161,8 @@ func TestChunkUploadStreamWithStamp(t *testing.T) {
 	wsHeaders.Set(api.ContentTypeHeader, "application/octet-stream")
 
 	var (
-		storerMock               = mockstorer.New()
-		_, wsConn, _, chanStorer = newTestServer(t, testServerOptions{
+		storerMock                  = mockstorer.New()
+		_, wsConn, _, chanStorer, _ = newTestServer(t, testServerOptions{
 			Storer:       storerMock,
 			Post:         mockpost.New(mockpost.WithAcceptAll()),
 			BatchStore:   batchStore,
@@ -218,8 +218,8 @@ func TestChunkUploadStreamInvalidStamp(t *testing.T) {
 	wsHeaders.Set(api.ContentTypeHeader, "application/octet-stream")
 
 	var (
-		storerMock      = mockstorer.New()
-		_, wsConn, _, _ = newTestServer(t, testServerOptions{
+		storerMock         = mockstorer.New()
+		_, wsConn, _, _, _ = newTestServer(t, testServerOptions{
 			Storer:       storerMock,
 			Post:         mockpost.New(mockpost.WithAcceptAll()),
 			WsPath:       "/chunks/stream",
@@ -298,9 +298,9 @@ func TestChunkBidirectionalStream_UploadAndDownload(t *testing.T) {
 	wsHeaders.Set("Sec-WebSocket-Protocol", api.ChunkStreamSubprotocol)
 
 	var (
-		cs                       = inmemchunkstore.New()
-		storerMock               = mockstorer.NewWithChunkStore(cs)
-		_, wsConn, _, chanStorer = newTestServer(t, testServerOptions{
+		cs                          = inmemchunkstore.New()
+		storerMock                  = mockstorer.NewWithChunkStore(cs)
+		_, wsConn, _, chanStorer, _ = newTestServer(t, testServerOptions{
 			Storer:       storerMock,
 			Post:         mockpost.New(mockpost.WithAcceptAll()),
 			WsPath:       "/chunks/stream",
@@ -398,9 +398,9 @@ func TestChunkBidirectionalStream_Interleaved(t *testing.T) {
 	wsHeaders.Set("Sec-WebSocket-Protocol", api.ChunkStreamSubprotocol)
 
 	var (
-		cs              = inmemchunkstore.New()
-		storerMock      = mockstorer.NewWithChunkStore(cs)
-		_, wsConn, _, _ = newTestServer(t, testServerOptions{
+		cs                 = inmemchunkstore.New()
+		storerMock         = mockstorer.NewWithChunkStore(cs)
+		_, wsConn, _, _, _ = newTestServer(t, testServerOptions{
 			Storer:       storerMock,
 			Post:         mockpost.New(mockpost.WithAcceptAll()),
 			WsPath:       "/chunks/stream",
@@ -482,9 +482,9 @@ func TestChunkBidirectionalStream_PerRequestErrors(t *testing.T) {
 	wsHeaders.Set("Sec-WebSocket-Protocol", api.ChunkStreamSubprotocol)
 
 	var (
-		cs              = inmemchunkstore.New()
-		storerMock      = mockstorer.NewWithChunkStore(cs)
-		_, wsConn, _, _ = newTestServer(t, testServerOptions{
+		cs                 = inmemchunkstore.New()
+		storerMock         = mockstorer.NewWithChunkStore(cs)
+		_, wsConn, _, _, _ = newTestServer(t, testServerOptions{
 			Storer:       storerMock,
 			Post:         mockpost.New(mockpost.WithAcceptAll()),
 			WsPath:       "/chunks/stream",
@@ -639,7 +639,7 @@ func TestChunkBidirectionalStream_DirectUploadFailure(t *testing.T) {
 		failErr: injectedErr,
 	}
 
-	_, wsConn, _, _ := newTestServer(t, testServerOptions{
+	_, wsConn, _, _, _ := newTestServer(t, testServerOptions{
 		Storer:       storerMock,
 		Post:         mockpost.New(mockpost.WithAcceptAll()),
 		WsPath:       "/chunks/stream",
@@ -718,7 +718,7 @@ func TestChunkBidirectionalStream_Fairness(t *testing.T) {
 		blockCh: blockCh,
 	}
 
-	_, wsConn, _, _ := newTestServer(t, testServerOptions{
+	_, wsConn, _, _, _ := newTestServer(t, testServerOptions{
 		Storer:       storerMock,
 		Post:         mockpost.New(mockpost.WithAcceptAll()),
 		WsPath:       "/chunks/stream",
@@ -806,7 +806,7 @@ func TestChunkBidirectionalStream_QueueBusy(t *testing.T) {
 		blockCh: blockCh,
 	}
 
-	_, wsConn, _, _ := newTestServer(t, testServerOptions{
+	_, wsConn, _, _, _ := newTestServer(t, testServerOptions{
 		Storer:       storerMock,
 		Post:         mockpost.New(mockpost.WithAcceptAll()),
 		WsPath:       "/chunks/stream",
@@ -890,8 +890,8 @@ func TestChunkBidirectionalStream_PerChunkStamp(t *testing.T) {
 	wsHeaders.Set("Sec-WebSocket-Protocol", api.ChunkStreamSubprotocol)
 
 	var (
-		storerMock      = mockstorer.New()
-		_, wsConn, _, _ = newTestServer(t, testServerOptions{
+		storerMock         = mockstorer.New()
+		_, wsConn, _, _, _ = newTestServer(t, testServerOptions{
 			Storer:       storerMock,
 			Post:         mockpost.New(mockpost.WithAcceptAll()),
 			BatchStore:   batchStore,
@@ -943,8 +943,8 @@ func TestChunkBidirectionalStream_QueryParamMode(t *testing.T) {
 	wsHeaders.Set(api.SwarmPostageBatchIdHeader, batchOkStr)
 
 	var (
-		storerMock    = mockstorer.New()
-		_, _, addr, _ = newTestServer(t, testServerOptions{
+		storerMock       = mockstorer.New()
+		_, _, addr, _, _ = newTestServer(t, testServerOptions{
 			Storer:       storerMock,
 			Post:         mockpost.New(mockpost.WithAcceptAll()),
 			DirectUpload: true,
@@ -986,7 +986,7 @@ func TestChunkBidirectionalStream_CacheOption(t *testing.T) {
 	cs := inmemchunkstore.New()
 	storerMock := mockstorer.NewWithChunkStore(cs)
 
-	_, wsConn, _, _ := newTestServer(t, testServerOptions{
+	_, wsConn, _, _, _ := newTestServer(t, testServerOptions{
 		Storer:       storerMock,
 		Post:         mockpost.New(mockpost.WithAcceptAll()),
 		WsPath:       "/chunks/stream",
@@ -1038,8 +1038,8 @@ func TestChunkBidirectionalStream_ProtocolViolation(t *testing.T) {
 	wsHeaders.Set("Sec-WebSocket-Protocol", api.ChunkStreamSubprotocol)
 
 	var (
-		storerMock      = mockstorer.New()
-		_, wsConn, _, _ = newTestServer(t, testServerOptions{
+		storerMock         = mockstorer.New()
+		_, wsConn, _, _, _ = newTestServer(t, testServerOptions{
 			Storer:       storerMock,
 			Post:         mockpost.New(mockpost.WithAcceptAll()),
 			WsPath:       "/chunks/stream",
@@ -1076,7 +1076,7 @@ func TestChunkBidirectionalStream_Shutdown(t *testing.T) {
 	cs := inmemchunkstore.New()
 	storerMock := mockstorer.NewWithChunkStore(cs)
 
-	_, wsConn, _, _ := newTestServer(t, testServerOptions{
+	_, wsConn, _, _, _ := newTestServer(t, testServerOptions{
 		Storer:       storerMock,
 		Post:         mockpost.New(mockpost.WithAcceptAll()),
 		WsPath:       "/chunks/stream",
@@ -1124,7 +1124,7 @@ func TestChunkBidirectionalStream_FeedSizedSOC(t *testing.T) {
 	cs := inmemchunkstore.New()
 	storerMock := mockstorer.NewWithChunkStore(cs)
 
-	_, wsConn, _, _ := newTestServer(t, testServerOptions{
+	_, wsConn, _, _, _ := newTestServer(t, testServerOptions{
 		Storer:       storerMock,
 		Post:         mockpost.New(mockpost.WithAcceptAll()),
 		WsPath:       "/chunks/stream",
@@ -1252,7 +1252,7 @@ func TestChunkBidirectionalStream_TagWithPerChunkStamp(t *testing.T) {
 	wsHeaders.Set("Sec-WebSocket-Protocol", api.ChunkStreamSubprotocol)
 	// SwarmPostageBatchIdHeader is intentionally omitted to verify tag support with per-chunk stamps
 
-	_, wsConn, _, _ := newTestServer(t, testServerOptions{
+	_, wsConn, _, _, _ := newTestServer(t, testServerOptions{
 		Storer:     storerMock,
 		Post:       mockpost.New(mockpost.WithAcceptAll()),
 		BatchStore: batchStore,
@@ -1307,7 +1307,7 @@ func TestChunkBidirectionalStream_ShutdownWithPendingWrites(t *testing.T) {
 		blockCh: blockCh,
 	}
 
-	_, wsConn, _, _ := newTestServer(t, testServerOptions{
+	_, wsConn, _, _, _ := newTestServer(t, testServerOptions{
 		Storer:       storerMock,
 		Post:         mockpost.New(mockpost.WithAcceptAll()),
 		WsPath:       "/chunks/stream",
@@ -1364,7 +1364,7 @@ func TestChunkBidirectionalStream_ShutdownClientStoppedReading(t *testing.T) {
 	wsHeaders.Set(api.ContentTypeHeader, "application/octet-stream")
 	wsHeaders.Set("Sec-WebSocket-Protocol", api.ChunkStreamSubprotocol)
 
-	_, wsConn, _, _ := newTestServer(t, testServerOptions{
+	_, wsConn, _, _, _ := newTestServer(t, testServerOptions{
 		Storer:    storerMock,
 		Post:      mockpost.New(mockpost.WithAcceptAll()),
 		WsPath:    "/chunks/stream",

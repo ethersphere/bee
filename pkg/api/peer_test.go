@@ -50,7 +50,7 @@ func TestConnect(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addrs []ma.Multiaddr) (*bzz.Address, error) {
 			for _, addr := range addrs {
 				if addr.String() == errorUnderlay {
@@ -79,7 +79,7 @@ func TestConnect(t *testing.T) {
 	})
 
 	t.Run("error - add peer", func(t *testing.T) {
-		testServer, _, _, _ := newTestServer(t, testServerOptions{
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			P2P: mock.New(mock.WithConnectFunc(func(ctx context.Context, addrs []ma.Multiaddr) (*bzz.Address, error) {
 				for _, addr := range addrs {
 					if addr.String() == errorUnderlay {
@@ -107,7 +107,7 @@ func TestDisconnect(t *testing.T) {
 	errorAddress := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59a")
 	testErr := errors.New("test error")
 
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		P2P: mock.New(mock.WithDisconnectFunc(func(addr swarm.Address, reason string) error {
 			if reason != "user requested disconnect" {
 				return testErr
@@ -163,7 +163,7 @@ func TestPeer(t *testing.T) {
 	t.Parallel()
 
 	overlay := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		P2P: mock.New(mock.WithPeersFunc(func() []p2p.Peer {
 			return []p2p.Peer{{Address: overlay}}
 		})),
@@ -184,7 +184,7 @@ func TestBlocklistedPeers(t *testing.T) {
 	t.Parallel()
 
 	overlay := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		P2P: mock.New(mock.WithBlocklistedPeersFunc(func() ([]p2p.BlockListedPeer, error) {
 			return []p2p.BlockListedPeer{{Peer: p2p.Peer{Address: overlay}}}, nil
 		})),
@@ -201,7 +201,7 @@ func TestBlocklistedPeersErr(t *testing.T) {
 	t.Parallel()
 
 	overlay := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		P2P: mock.New(mock.WithBlocklistedPeersFunc(func() ([]p2p.BlockListedPeer, error) {
 			return []p2p.BlockListedPeer{{Peer: p2p.Peer{Address: overlay}}}, errors.New("some error")
 		})),
@@ -219,7 +219,7 @@ func TestBlocklistedPeersErr(t *testing.T) {
 func Test_peerConnectHandler_invalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{})
+	client, _, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name         string
@@ -254,7 +254,7 @@ func Test_peerConnectHandler_invalidInputs(t *testing.T) {
 func Test_peerDisconnectHandler_invalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{})
+	client, _, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name    string

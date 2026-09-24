@@ -96,6 +96,8 @@ const (
 	SwarmActTimestampHeader           = "Swarm-Act-Timestamp"
 	SwarmActPublisherHeader           = "Swarm-Act-Publisher"
 	SwarmActHistoryAddressHeader      = "Swarm-Act-History-Address"
+	SwarmSocFieldsHeader              = "Swarm-Soc-Fields"
+	SwarmCacheWrappedChunkHeader      = "Swarm-Cache-Wrapped-Chunk"
 
 	ImmutableHeader = "Immutable"
 	GasPriceHeader  = "Gas-Price"
@@ -179,6 +181,17 @@ type Service struct {
 
 	wsWg sync.WaitGroup // wait for all websockets to close on exit
 	quit chan struct{}
+
+	// bgCtx is the context form of quit: it is canceled by Close and bounds
+	// node-local work that a handler starts and that has to outlive the
+	// request or connection which triggered it.
+	bgCtx    context.Context
+	bgCancel context.CancelFunc
+
+	// gsocCacheSubs holds the caching subscriptions shared by the GSOC
+	// websocket subscribers, keyed by GSOC address, see gsoc.go.
+	gsocCacheMu   sync.Mutex
+	gsocCacheSubs map[string]*gsocCacheSub
 
 	overlay           *swarm.Address
 	publicKey         ecdsa.PublicKey
@@ -349,6 +362,8 @@ func (s *Service) Configure(signer crypto.Signer, tracer *tracing.Tracer, o Opti
 	s.metrics = newMetrics()
 
 	s.quit = make(chan struct{})
+	s.bgCtx, s.bgCancel = context.WithCancel(context.Background())
+	s.gsocCacheSubs = make(map[string]*gsocCacheSub)
 
 	s.storer = e.Storer
 	s.resolver = e.Resolver
@@ -419,6 +434,7 @@ func (s *Service) SetIsWarmingUp(v bool) {
 func (s *Service) Close() error {
 	s.logger.Info("api shutting down")
 	close(s.quit)
+	s.bgCancel()
 
 	done := make(chan struct{})
 	go func() {
@@ -626,6 +642,7 @@ func (s *Service) corsHandler(h http.Handler) http.Handler {
 		SwarmRedundancyStrategyHeader, SwarmRedundancyFallbackModeHeader, SwarmChunkRetrievalTimeoutHeader, SwarmLookAheadBufferSizeHeader,
 		SwarmFeedIndexHeader, SwarmFeedIndexNextHeader, SwarmSocSignatureHeader, SwarmOnlyRootChunk, GasPriceHeader, GasLimitHeader, ImmutableHeader,
 		SwarmActHeader, SwarmActTimestampHeader, SwarmActPublisherHeader, SwarmActHistoryAddressHeader,
+		SwarmSocFieldsHeader, SwarmCacheWrappedChunkHeader,
 	}
 	allowedHeadersStr := strings.Join(allowedHeaders, ", ")
 

@@ -411,7 +411,7 @@ func TestEndpointOptions(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			testServer, _, _, _ := newTestServer(t, tc.serverOptions)
+			testServer, _, _, _, _ := newTestServer(t, tc.serverOptions)
 
 			routeToName := func(route string) string {
 				if route == "/" {
