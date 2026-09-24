@@ -32,14 +32,4 @@ message Claim {
   bytes sig = 1; // the challenge signature that takes over the cohort. signs the challenge in JoinAck.
 }
 
-message ClaimAck {}
-
-
-message SystemMessage {
-  oneof sys_message {
-    Join join = 1;
-    Claim claim =2;
-  }
-}
-
-
+//message ClaimAck {}

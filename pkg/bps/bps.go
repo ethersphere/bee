@@ -167,67 +167,76 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 	}
 	w, r := protobuf.NewWriterAndReader(stream)
 
-	var sysMsg pb.SystemMessage
-	if err := r.ReadMsgWithContext(ctx, &sysMsg); err != nil {
+	var join pb.Join
+	if err := r.ReadMsgWithContext(ctx, &join); err != nil {
 		go stream.FullClose()
 		return fmt.Errorf("read sys message: %w", err)
 	}
 
-	if join := sysMsg.GetJoin(); join != nil {
-		// peer is trying to join the cohort. accept and return the challenge
-		ack := pb.JoinAck{Challenge: []byte{0, 1, 2, 3}}
-		if err := w.WriteMsgWithContext(ctx, &ack); err != nil {
-			go stream.FullClose()
-			return fmt.Errorf("write claim: %w", err)
+	// peer is trying to join the cohort. accept and return the challenge
+	ack := pb.JoinAck{Challenge: []byte{0, 1, 2, 3}}
+	if err := w.WriteMsgWithContext(ctx, &ack); err != nil {
+		go stream.FullClose()
+		return fmt.Errorf("write claim: %w", err)
+	}
+
+	// add to the cohort and get a channel to receive the broadcasts on
+	ch := make(chan []byte) // replace with the registry channel later
+
+	// the writer side - reads messages off the publisher channel
+	// and pushes them to the subscriber stream
+	go func() {
+		defer stream.FullClose()
+		for {
+			// await messages, then write to the stream once they come in
+			select {
+			case msg := <-ch:
+				m := pb.Broadcast{Soc: msg}
+				if err := w.WriteMsgWithContext(ctx, &m); err != nil {
+					s.logger.Error(err, "write broadcast")
+					return
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	// peer is trying to claim the cohort. if the challenge doesn't add up - kick them off
+	//_ = claim.Challenge
+	// check if claim signature pk matches the feed owner address on the registry
+	// if it does - this is an atomic swap - the current stream becomes the publisher stream
+	// and the next challenge changes randomly, so that if needed, the publisher can reclaim
+	// later and rejoin + reclaim.
+
+	// writer side - we first try to read a claim. we can wait indefinitely here.
+	// once a claim is accepted, we prompte the stream to be a publisher stream
+	// then continuously try to read from it broadcast messages and push them over the
+	// publisher channel
+	ch1 := make(chan []byte) // replace with the cohort send channel later
+	go func() {
+		defer stream.FullClose()
+		claim := pb.Claim{}
+		if err := r.ReadMsgWithContext(ctx, &claim); err != nil {
+			s.logger.Error(err, "read claim")
+			return
 		}
 
-		// add to the cohort and get a channel to receive the broadcasts on
-		ch := make(chan []byte) // replace with the registry channel later
-		go func() {
-			defer stream.FullClose()
-			for {
-				// await messages, then write to the stream once they come in
-				select {
-				case msg := <-ch:
-					m := pb.Broadcast{Soc: msg}
-					if err := w.WriteMsgWithContext(ctx, &m); err != nil {
-						s.logger.Error(err, "write broadcast")
-						return
-					}
-				case <-ctx.Done():
-					return
-				}
-			}
-		}()
-		return nil
-	}
-	if claim := sysMsg.GetClaim(); claim != nil {
-		// peer is trying to claim the cohort. if the challenge doesn't add up - kick them off
-		//_ = claim.Challenge
-		// check if claim signature pk matches the feed owner address on the registry
-		// if it does - this is an atomic swap - the current stream becomes the publisher stream
-		// and the next challenge changes randomly, so that if needed, the publisher can reclaim
-		// later and rejoin + reclaim.
+		// do the checks on the claim, if it is wrong then we reset the stream
 
-		ch := make(chan []byte) // replace with the cohort send channel later
-		go func() {
-			defer stream.FullClose()
-			for {
-				// await messages, then write to the cohort channel
-				m := pb.Broadcast{}
-				if err := r.ReadMsgWithContext(ctx, &m); err != nil {
-					s.logger.Error(err, "read broadcast")
-					return
-				}
-				select {
-				case ch <- m.Soc:
-				case <-ctx.Done():
-					return
-				}
+		for {
+			// await messages, then write to the cohort channel
+			m := pb.Broadcast{}
+			if err := r.ReadMsgWithContext(ctx, &m); err != nil {
+				s.logger.Error(err, "read broadcast")
+				return
 			}
-		}()
-		return nil
-	}
-
+			select {
+			case ch1 <- m.Soc:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 	return nil
 }
