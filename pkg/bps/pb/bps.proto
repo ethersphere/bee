@@ -8,14 +8,6 @@ package bps;
 
 option go_package = "pb";
 
-
-
-
-// Both directions after the handshake: admin -> broker is a publication, broker ->
-// subscriber a delivery of the same bytes. The single-owner chunk travels as its
-// stored chunk data, opaque to the protocol and validated by the ordinary SOC code
-// once the `id` slot has been rewritten as the Frames section says:
-//   id (32) || signature (65) || span (8, LE) || payload (<= 4096)
 message Broadcast {
   bytes soc = 1;
 }
@@ -31,5 +23,3 @@ message JoinAck {
 message Claim {
   bytes sig = 1; // the challenge signature that takes over the cohort. signs the challenge in JoinAck.
 }
-
-//message ClaimAck {}
