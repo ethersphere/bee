@@ -22,10 +22,9 @@ import (
 const loggerName = "bps"
 
 const (
-	protocolName      = "bps"
-	protocolVersion   = "1.0.0"
-	streamNameSystem  = "bps-system"
-	streamNameMessage = "bps-message"
+	protocolName    = "bps"
+	protocolVersion = "1.0.0"
+	streamName      = "bps"
 )
 
 // Interface is the main interface of the bps protocol.
@@ -41,9 +40,6 @@ type Service struct {
 	// cohort registry - keep track of members, publisher, channels, challenge, streams?
 	registry *CohortRegistry
 
-	// joined
-	joined map[string]chan []byte
-
 	logger log.Logger
 }
 
@@ -52,7 +48,6 @@ func New(streamer p2p.Streamer, logger log.Logger) *Service {
 	return &Service{
 		streamer: streamer,
 		registry: NewRegistry(),
-		joined:   make(map[string]chan []byte),
 		logger:   logger.WithName(loggerName).Register(),
 	}
 }
@@ -64,11 +59,8 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 		Version: protocolVersion,
 		StreamSpecs: []p2p.StreamSpec{
 			{
-				Name:    streamNameSystem,
-				Handler: s.handlerSystem,
-			}, {
-				Name:    streamNameMessage,
-				Handler: s.handlerMessage,
+				Name:    streamName,
+				Handler: s.handler,
 			},
 		},
 	}
@@ -78,7 +70,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 // with the payloads once they arrive. Returns the challenge and a channel that would send
 // the payloads over it.
 func (s *Service) Join(ctx context.Context, address swarm.Address, topic []byte) ([]byte, chan []byte, error) {
-	stream, err := s.streamer.NewStream(ctx, address, nil, protocolName, protocolVersion, streamNameSystem)
+	stream, err := s.streamer.NewStream(ctx, address, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
 		return nil, nil, fmt.Errorf("new stream: %w", err)
 	}
@@ -123,7 +115,7 @@ func (s *Service) Join(ctx context.Context, address swarm.Address, topic []byte)
 // claim a given topic on a broker with the provided signature. returns the write channel used in order
 // to send later payloads
 func (s *Service) Claim(ctx context.Context, address swarm.Address, topic, sig []byte) (chan []byte, error) {
-	stream, err := s.streamer.NewStream(ctx, address, nil, protocolName, protocolVersion, streamNameSystem)
+	stream, err := s.streamer.NewStream(ctx, address, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
 		return nil, fmt.Errorf("new stream: %w", err)
 	}
@@ -164,10 +156,11 @@ func (s *Service) Claim(ctx context.Context, address swarm.Address, topic, sig [
 			}
 		}
 	}()
+	return ch, nil
 }
 
-func (s *Service) handlerSystem(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
-	_, r := protobuf.NewWriterAndReader(stream)
+func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
+	w, r := protobuf.NewWriterAndReader(stream)
 	defer stream.FullClose()
 
 	var sysMsg pb.SystemMessage
@@ -177,46 +170,14 @@ func (s *Service) handlerSystem(ctx context.Context, p p2p.Peer, stream p2p.Stre
 
 	if join := sysMsg.GetJoin(); join != nil {
 		// peer is trying to join the cohort. accept and return the challenge
-
+		ack := pb.JoinAck{Challenge: []byte{0, 1, 2, 3}}
+		if err := w.WriteMsgWithContext(ctx, &ack); err != nil {
+			return fmt.Errorf("write claim: %w", err)
+		}
 		return nil
 	}
 	if claim := sysMsg.GetClaim(); claim != nil {
 		// peer is trying to claim the cohort. if the challenge doesn't add up - kick them off
-
-		return nil
-	}
-
-	return nil
-}
-
-func (s *Service) Publish(ctx context.Context, topic []byte, message []byte) error {
-	// grabs an existing publish stream or creates it then pushes the message down the pipe
-	// the stream stays alive and is reused later on for future messages
-	return nil
-}
-
-// handlerMessage handles incoming messages. on non-brokers, it tries to find the
-// topic in the joined map, then notify the subscribed reader off the channel.
-// the stream is reused and kept with a long-running goroutine.
-func (s *Service) handlerMessage(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
-	_, r := protobuf.NewWriterAndReader(stream)
-	//defer stream.FullClose() // NO FULL CLOSE HERE
-	//
-	var msg pb.PayloadMessage
-	if err := r.ReadMsgWithContext(ctx, &msg); err != nil {
-		return fmt.Errorf("read sys message: %w", err)
-	}
-
-	if publish := msg.GetPublish(); publish != nil {
-		// we got a publish message - this means we are a broker.
-		// if there's a cohort - publish the message to the peers. launch a goroutine
-		// and read off the channel and feed it to the different readers
-		return nil
-	}
-	if bcast := msg.GetBroadcast(); bcast != nil {
-		// we got a broadcast on this stream, it means we are a subscriber here.
-		// find the subscriber channel(s), launch polling goroutine and duly notify
-		// when something comes in on the stream
 
 		return nil
 	}

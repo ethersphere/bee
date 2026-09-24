@@ -7,6 +7,7 @@ package bps_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/bps"
@@ -17,7 +18,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-func TestGreet(t *testing.T) {
+func TestJoin(t *testing.T) {
 	t.Parallel()
 
 	logger := log.Noop
@@ -31,29 +32,27 @@ func TestGreet(t *testing.T) {
 	client := bps.New(recorder, logger)
 
 	addr := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
-	greeting := "world"
+	topic := []byte{0, 1, 2, 3, 4}
+	// greeting := "world"
 
-	response, err := client.Greet(context.Background(), addr, greeting)
+	challenge, _, err := client.Join(context.Background(), addr, topic)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	if want := "hello, world"; response != want {
-		t.Fatalf("got response %q, want %q", response, want)
-	}
-
+	fmt.Println(challenge)
 	records, err := recorder.Records(addr, "bps", "1.0.0", "bps")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if l := len(records); l != 1 {
-		t.Fatalf("got %v records, want %v", l, 1)
+		t.Fatalf("got %v records, want %v", l, 2)
 	}
 	record := records[0]
 
+	// client -> server: SystemMessage{Join}
 	messages, err := protobuf.ReadMessages(
 		bytes.NewReader(record.In()),
-		func() protobuf.Message { return new(pb.Hello) },
+		func() protobuf.Message { return new(pb.SystemMessage) },
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -61,13 +60,18 @@ func TestGreet(t *testing.T) {
 	if l := len(messages); l != 1 {
 		t.Fatalf("got %v messages, want %v", l, 1)
 	}
-	if got := messages[0].(*pb.Hello).Greeting; got != greeting {
-		t.Fatalf("got greeting %q, want %q", got, greeting)
+	join := messages[0].(*pb.SystemMessage).GetJoin()
+	if join == nil {
+		t.Fatal("expected join message")
+	}
+	if !bytes.Equal(join.Topic, topic) {
+		t.Fatalf("got topic %x, want %x", join.Topic, topic)
 	}
 
+	// server -> client returns challenge
 	messages, err = protobuf.ReadMessages(
 		bytes.NewReader(record.Out()),
-		func() protobuf.Message { return new(pb.Welcome) },
+		func() protobuf.Message { return new(pb.JoinAck) },
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -75,11 +79,11 @@ func TestGreet(t *testing.T) {
 	if l := len(messages); l != 1 {
 		t.Fatalf("got %v messages, want %v", l, 1)
 	}
-	if got, want := messages[0].(*pb.Welcome).Response, "hello, world"; got != want {
-		t.Fatalf("got response %q, want %q", got, want)
+	cl := messages[0].(*pb.JoinAck).Challenge
+	if cl == nil {
+		t.Fatal("expected joinack message")
 	}
-
-	if err := record.Err(); err != nil {
-		t.Fatal(err)
+	if !bytes.Equal(challenge, cl) {
+		t.Fatalf("got challenge %x, want %x", cl, challenge)
 	}
 }
