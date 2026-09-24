@@ -8,6 +8,7 @@ package bps
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -27,11 +28,16 @@ const (
 	streamName      = "bps"
 )
 
+var errNotBroker = errors.New("not a broker")
+
 // Service is the bps protocol service.
 type Service struct {
 	mtx      sync.Mutex
+	fullNode bool
 	streamer p2p.Streamer
+
 	// cohort registry - keep track of members, publisher, channels, challenge, streams?
+	// this is only relevant for the actual broker. subscribers don't care of manage this state at all.
 	registry *CohortRegistry
 
 	logger log.Logger
@@ -60,7 +66,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 	}
 }
 
-// Join onto a topic at the broker at address.
+// Join onto a topic at the broker at address. This is called on the subscriber.
 // Returns the challenge and a channel that would send the payloads over it.
 func (s *Service) Join(ctx context.Context, address swarm.Address, topic []byte) ([]byte, chan []byte, error) {
 	stream, err := s.streamer.NewStream(ctx, address, nil, protocolName, protocolVersion, streamName)
@@ -106,6 +112,7 @@ func (s *Service) Join(ctx context.Context, address swarm.Address, topic []byte)
 }
 
 // claim a given topic on a broker (at address) with the provided signature.
+// this is called on the subsciber that wants to become a publisher.
 // returns the write channel used in order to send later payloads.
 func (s *Service) Claim(ctx context.Context, address swarm.Address, topic, sig []byte) (chan []byte, error) {
 	stream, err := s.streamer.NewStream(ctx, address, nil, protocolName, protocolVersion, streamName)
@@ -152,7 +159,12 @@ func (s *Service) Claim(ctx context.Context, address swarm.Address, topic, sig [
 	return ch, nil
 }
 
+// handler is the protocol handler on the broker.
 func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
+	if !s.fullNode {
+		stream.Reset()
+		return errNotBroker
+	}
 	w, r := protobuf.NewWriterAndReader(stream)
 
 	var sysMsg pb.SystemMessage
