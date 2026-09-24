@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy/getter"
 	"github.com/ethersphere/bee/v2/pkg/replicas"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"golang.org/x/sync/errgroup"
@@ -192,7 +193,8 @@ func NewJoiner(ctx context.Context, g storage.Getter, putter storage.Putter, add
 }
 
 // Read is called by the consumer to retrieve the joined data.
-// It must be called with a buffer equal to the maximum chunk size.
+// It reads up to len(b) bytes into b, advances the read offset by the number
+// of bytes read, and returns io.EOF once the end of the data is reached.
 func (j *joiner) Read(b []byte) (n int, err error) {
 	read, err := j.ReadAt(b, j.off)
 	if err != nil && !errors.Is(err, io.EOF) {
@@ -209,7 +211,7 @@ func (j *joiner) ReadAt(buffer []byte, off int64) (read int, err error) {
 		return 0, io.EOF
 	}
 
-	readLen := min(int64(cap(buffer)), j.span-off)
+	readLen := min(int64(len(buffer)), j.span-off)
 	var bytesRead int64
 	var eg errgroup.Group
 	j.readAtOffset(buffer, j.rootData, 0, j.span, off, 0, readLen, &bytesRead, j.rootParity, &eg)
@@ -231,13 +233,30 @@ func (j *joiner) readAtOffset(
 	parity int,
 	eg *errgroup.Group,
 ) {
+	dataLen := int64(len(data))
 	// we are at a leaf data chunk
-	if subTrieSize <= int64(len(data)) {
+	if subTrieSize <= dataLen {
 		dataOffsetStart := off - cur
+		// Ensure that the read offset is within the bounds of this leaf chunk.
+		// A malformed tree might advertise a larger span, leading to an out-of-bounds start offset.
+		if dataOffsetStart < 0 || dataOffsetStart >= dataLen {
+			eg.Go(func() error {
+				return ErrMalformedTrie
+			})
+			return
+		}
 		dataOffsetEnd := dataOffsetStart + bytesToRead
 
-		if lenDataToCopy := int64(len(data)) - dataOffsetStart; bytesToRead > lenDataToCopy {
+		if lenDataToCopy := dataLen - dataOffsetStart; bytesToRead > lenDataToCopy {
 			dataOffsetEnd = dataOffsetStart + lenDataToCopy
+		}
+
+		// Guard against slicing out-of-bounds if the computed end offset is invalid.
+		if dataOffsetEnd < dataOffsetStart || dataOffsetEnd > dataLen {
+			eg.Go(func() error {
+				return ErrMalformedTrie
+			})
+			return
 		}
 
 		bs := data[dataOffsetStart:dataOffsetEnd]
@@ -279,7 +298,7 @@ func (j *joiner) readAtOffset(
 		currentReadSize = min(currentReadSize, subtrieSpan)
 
 		func(address swarm.Address, b []byte, cur, subTrieSize, off, bufferOffset, bytesToRead, subtrieSpanLimit int64) {
-			eg.Go(func() error {
+			eg.Go(safe.RunFunc(nil, "joiner-read-at-offset", func() error {
 				ch, err := g.Get(j.ctx, addr)
 				if err != nil {
 					return err
@@ -295,7 +314,7 @@ func (j *joiner) readAtOffset(
 
 				j.readAtOffset(b, chunkData, cur, subtrieSpan, off, bufferOffset, currentReadSize, bytesRead, subtrieParity, eg)
 				return nil
-			})
+			}))
 		}(addr, b, cur, subtrieSpan, off, bufferOffset, currentReadSize, subtrieSpanLimit)
 
 		bufferOffset += currentReadSize

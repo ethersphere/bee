@@ -12,9 +12,9 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/v2/pkg/bigint"
 
 	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/bigint"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/v2/pkg/sctx"
@@ -39,22 +39,26 @@ func TestDepositStake(t *testing.T) {
 				return txHash, nil
 			}),
 		)
-		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
+		ts, _, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
 		jsonhttptest.Request(t, ts, http.MethodPost, depositStake(minStake), http.StatusOK)
 	})
 
-	t.Run("with invalid stake amount", func(t *testing.T) {
+	t.Run("with insufficient amount reports minimum", func(t *testing.T) {
 		t.Parallel()
 
-		invalidMinStake := big.NewInt(0).String()
+		minDeposit := big.NewInt(123)
 		contract := stakingContractMock.New(
 			stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
-				return common.Hash{}, staking.ErrInsufficientStakeAmount
+				return common.Hash{}, &staking.MinDepositError{Minimum: minDeposit}
 			}),
 		)
-		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
-		jsonhttptest.Request(t, ts, http.MethodPost, depositStake(invalidMinStake), http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusBadRequest, Message: "insufficient stake amount"}))
+		ts, _, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
+		jsonhttptest.Request(t, ts, http.MethodPost, depositStake("1"), http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(&api.StakeDepositErrorResponse{
+				Code:           http.StatusBadRequest,
+				Message:        "insufficient stake amount",
+				MinimumDeposit: bigint.Wrap(minDeposit),
+			}))
 	})
 
 	t.Run("out of funds", func(t *testing.T) {
@@ -65,7 +69,7 @@ func TestDepositStake(t *testing.T) {
 				return common.Hash{}, staking.ErrInsufficientFunds
 			}),
 		)
-		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
+		ts, _, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
 		jsonhttptest.Request(t, ts, http.MethodPost, depositStake(minStake), http.StatusBadRequest)
 		jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusBadRequest, Message: "out of funds"})
 	})
@@ -78,7 +82,7 @@ func TestDepositStake(t *testing.T) {
 				return common.Hash{}, fmt.Errorf("some error")
 			}),
 		)
-		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
+		ts, _, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
 		jsonhttptest.Request(t, ts, http.MethodPost, depositStake(minStake), http.StatusInternalServerError)
 		jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusInternalServerError, Message: "cannot stake"})
 	})
@@ -94,7 +98,7 @@ func TestDepositStake(t *testing.T) {
 				return common.Hash{}, false, fmt.Errorf("update height failed")
 			}),
 		)
-		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
+		ts, _, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
 		jsonhttptest.Request(t, ts, http.MethodPost, depositStake(minStake), http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.StakeTransactionReponse{TxHash: txHash.String()}))
 	})
@@ -111,7 +115,7 @@ func TestDepositStake(t *testing.T) {
 				return txHash, nil
 			}),
 		)
-		ts, _, _, _ := newTestServer(t, testServerOptions{
+		ts, _, _, _, _ := newTestServer(t, testServerOptions{
 			StakingContract: contract,
 		})
 
@@ -132,9 +136,12 @@ func TestGetStakeCommitted(t *testing.T) {
 				return big.NewInt(1), nil
 			}),
 		)
-		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
+		ts, _, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
 		jsonhttptest.Request(t, ts, http.MethodGet, "/stake", http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(&api.GetStakeResponse{StakedAmount: bigint.Wrap(big.NewInt(1))}))
+			jsonhttptest.WithExpectedJSONResponse(&api.GetStakeResponse{
+				StakedAmount:   bigint.Wrap(big.NewInt(1)),
+				MinimumDeposit: bigint.Wrap(big.NewInt(1)),
+			}))
 	})
 
 	t.Run("with error", func(t *testing.T) {
@@ -145,9 +152,25 @@ func TestGetStakeCommitted(t *testing.T) {
 				return big.NewInt(0), fmt.Errorf("get stake failed")
 			}),
 		)
-		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contractWithError})
+		ts, _, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contractWithError})
 		jsonhttptest.Request(t, ts, http.MethodGet, "/stake", http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusInternalServerError, Message: "get staked amount failed"}))
+	})
+
+	t.Run("minimum deposit error", func(t *testing.T) {
+		t.Parallel()
+
+		contractWithError := stakingContractMock.New(
+			stakingContractMock.WithGetStake(func(ctx context.Context) (*big.Int, error) {
+				return big.NewInt(1), nil
+			}),
+			stakingContractMock.WithGetMinDeposit(func(ctx context.Context) (*big.Int, error) {
+				return nil, fmt.Errorf("get minimum deposit failed")
+			}),
+		)
+		ts, _, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contractWithError})
+		jsonhttptest.Request(t, ts, http.MethodGet, "/stake", http.StatusInternalServerError,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusInternalServerError, Message: "get minimum deposit failed"}))
 	})
 }
 
@@ -162,7 +185,7 @@ func TestGetStakeWithdrawable(t *testing.T) {
 				return big.NewInt(1), nil
 			}),
 		)
-		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
+		ts, _, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
 		jsonhttptest.Request(t, ts, http.MethodGet, "/stake/withdrawable", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.GetWithdrawableResponse{WithdrawableAmount: bigint.Wrap(big.NewInt(1))}))
 	})
@@ -175,7 +198,7 @@ func TestGetStakeWithdrawable(t *testing.T) {
 				return big.NewInt(0), fmt.Errorf("get stake failed")
 			}),
 		)
-		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contractWithError})
+		ts, _, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contractWithError})
 		jsonhttptest.Request(t, ts, http.MethodGet, "/stake/withdrawable", http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusInternalServerError, Message: "get staked amount failed"}))
 	})
@@ -184,7 +207,7 @@ func TestGetStakeWithdrawable(t *testing.T) {
 func Test_stakingDepositHandler_invalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{})
+	client, _, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name   string
@@ -229,7 +252,7 @@ func TestWithdrawStake(t *testing.T) {
 				return txHash, nil
 			}),
 		)
-		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
+		ts, _, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
 		jsonhttptest.Request(t, ts, http.MethodDelete, "/stake/withdrawable", http.StatusOK, jsonhttptest.WithExpectedJSONResponse(
 			&api.StakeTransactionReponse{TxHash: txHash.String()}))
 	})
@@ -242,7 +265,7 @@ func TestWithdrawStake(t *testing.T) {
 				return common.Hash{}, staking.ErrInsufficientStake
 			}),
 		)
-		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
+		ts, _, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
 		jsonhttptest.Request(t, ts, http.MethodDelete, "/stake/withdrawable", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusBadRequest, Message: "insufficient stake to withdraw"}))
 	})
@@ -255,7 +278,7 @@ func TestWithdrawStake(t *testing.T) {
 				return common.Hash{}, fmt.Errorf("some error")
 			}),
 		)
-		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
+		ts, _, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
 		jsonhttptest.Request(t, ts, http.MethodDelete, "/stake/withdrawable", http.StatusInternalServerError)
 		jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusInternalServerError, Message: "cannot withdraw stake"})
 	})
@@ -272,7 +295,7 @@ func TestWithdrawStake(t *testing.T) {
 				return txHash, nil
 			}),
 		)
-		ts, _, _, _ := newTestServer(t, testServerOptions{
+		ts, _, _, _, _ := newTestServer(t, testServerOptions{
 			StakingContract: contract,
 		})
 
@@ -295,7 +318,7 @@ func TestMigrateStake(t *testing.T) {
 				return txHash, nil
 			}),
 		)
-		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
+		ts, _, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
 		jsonhttptest.Request(t, ts, http.MethodDelete, "/stake", http.StatusOK, jsonhttptest.WithExpectedJSONResponse(
 			&api.StakeTransactionReponse{TxHash: txHash.String()}))
 	})
@@ -308,7 +331,7 @@ func TestMigrateStake(t *testing.T) {
 				return common.Hash{}, staking.ErrInsufficientStake
 			}),
 		)
-		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
+		ts, _, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
 		jsonhttptest.Request(t, ts, http.MethodDelete, "/stake", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusBadRequest, Message: "insufficient stake to migrate"}))
 	})
@@ -321,7 +344,7 @@ func TestMigrateStake(t *testing.T) {
 				return common.Hash{}, fmt.Errorf("some error")
 			}),
 		)
-		ts, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
+		ts, _, _, _, _ := newTestServer(t, testServerOptions{StakingContract: contract})
 		jsonhttptest.Request(t, ts, http.MethodDelete, "/stake", http.StatusInternalServerError)
 		jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusInternalServerError, Message: "cannot withdraw stake"})
 	})
@@ -338,7 +361,7 @@ func TestMigrateStake(t *testing.T) {
 				return txHash, nil
 			}),
 		)
-		ts, _, _, _ := newTestServer(t, testServerOptions{
+		ts, _, _, _, _ := newTestServer(t, testServerOptions{
 			StakingContract: contract,
 		})
 

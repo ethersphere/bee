@@ -13,18 +13,20 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-// ErrSwarmageddon is returned in case of a vis mayor called Swarmageddon.
-// Swarmageddon is the situation when none of the replicas can be retrieved.
-// If 2^{depth} replicas were uploaded and they all have valid postage stamps
-// then the probability of Swarmageddon is less than 0.000001
-// assuming the error rate of chunk retrievals stays below the level expressed
-// as depth by the publisher.
-var ErrSwarmageddon = errors.New("swarmageddon has begun")
+var (
+	// ErrContentNotFound is returned when content and erasure coded content cannot be found.
+	ErrContentNotFound = errors.New("erasure coded content not found")
+	// errGetterExhausted is returned when the retry loop exhausts all levels without
+	// receiving a result or enough errors to trigger ErrSwarmageddon.
+	// This path should never be reached under normal operation.
+	errGetterExhausted = errors.New("replicas getter: exhausted all levels without result (unexpected)")
+)
 
 // getter is the private implementation of storage.Getter, an interface for
 // retrieving chunks. This getter embeds the original simple chunk getter and extends it
@@ -48,6 +50,9 @@ func NewGetter(g storage.Getter, level redundancy.Level) storage.Getter {
 
 // Get makes the getter satisfy the storage.Getter interface
 func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
+	if g.level == redundancy.NONE {
+		return g.Getter.Get(ctx, addr)
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -61,15 +66,20 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, e
 
 	// concurrently call to retrieve chunk using original CAC address
 	g.wg.Go(func() {
-		ch, err := g.Getter.Get(ctx, addr)
+		err := safe.RunFunc(nil, "replicas-get-original", func() error {
+			ch, err := g.Getter.Get(ctx, addr)
+			if err != nil {
+				return err
+			}
+
+			select {
+			case resultC <- ch:
+			case <-ctx.Done():
+			}
+			return nil
+		})()
 		if err != nil {
 			errc <- err
-			return
-		}
-
-		select {
-		case resultC <- ch:
-		case <-ctx.Done():
 		}
 	})
 	// counters
@@ -77,7 +87,11 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, e
 	target := 2 // the number of replicas attempted to download in this batch
 	total := g.level.GetReplicaCount()
 
-	//
+	// The replicator feeds replica addresses in batches that double each RetryInterval
+	// (2, 2, 4, 8, 16 for PARANOID). The replicator exhausts exactly at the last iteration,
+	// which then drains a nil from `next` and becomes an indefinite wait on resultC/errc.
+	// The loop therefore always terminates via resultC (success) or Swarmageddon (all fail),
+	// never by falling through to the return below.
 	rr := newReplicator(addr, g.level)
 	next := rr.c
 	var wait <-chan time.Time // nil channel to disable case
@@ -96,7 +110,7 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, e
 			errs = errors.Join(errs, err)
 			errcnt++
 			if errcnt > total {
-				return nil, errors.Join(ErrSwarmageddon, errs)
+				return nil, errors.Join(ErrContentNotFound, errs)
 			}
 
 			// ticker switches on the address channel
@@ -116,21 +130,25 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, e
 			}
 
 			g.wg.Go(func() {
-				ch, err := g.Getter.Get(ctx, swarm.NewAddress(so.addr))
+				err := safe.RunFunc(nil, "replicas-get-replica", func() error {
+					ch, err := g.Getter.Get(ctx, swarm.NewAddress(so.addr))
+					if err != nil {
+						return err
+					}
+
+					soc, err := soc.FromChunk(ch)
+					if err != nil {
+						return err
+					}
+
+					select {
+					case resultC <- soc.WrappedChunk():
+					case <-ctx.Done():
+					}
+					return nil
+				})()
 				if err != nil {
 					errc <- err
-					return
-				}
-
-				soc, err := soc.FromChunk(ch)
-				if err != nil {
-					errc <- err
-					return
-				}
-
-				select {
-				case resultC <- soc.WrappedChunk():
-				case <-ctx.Done():
 				}
 			})
 			n++
@@ -142,5 +160,6 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, e
 		}
 	}
 
-	return nil, nil
+	// unreachable: the loop always exits via resultC or Swarmageddon (see comment above)
+	return nil, errGetterExhausted
 }

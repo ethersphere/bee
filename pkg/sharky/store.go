@@ -20,6 +20,8 @@ var (
 	ErrTooLong = errors.New("data too long")
 	// ErrQuitting returned by Write when the store is Closed before the write completes.
 	ErrQuitting = errors.New("quitting")
+	// ErrInvalidLocation returned when a Location cannot be decoded from a buffer.
+	ErrInvalidLocation = errors.New("invalid location")
 )
 
 // Store models the sharded fix-length blobstore
@@ -113,6 +115,9 @@ func (s *Store) create(index uint8, maxDataSize int, basedir fs.FS) (*shard, err
 // Read reads the content of the blob found at location into the byte buffer given
 // The location is assumed to be obtained by an earlier Write call storing the blob
 func (s *Store) Read(ctx context.Context, loc Location, buf []byte) (err error) {
+	if int(loc.Shard) >= len(s.shards) {
+		return ErrShardNotFound
+	}
 	sh := s.shards[loc.Shard]
 	select {
 	case sh.reads <- read{ctx: ctx, buf: buf[:loc.Length], slot: loc.Slot}:
@@ -185,6 +190,9 @@ func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error
 // even after reuse, the slot may be used by a very short blob and leaves the
 // rest of the old blob bytes untouched
 func (s *Store) Release(ctx context.Context, loc Location) error {
+	if int(loc.Shard) >= len(s.shards) {
+		return ErrShardNotFound
+	}
 	sh := s.shards[loc.Shard]
 	err := sh.release(ctx, loc.Slot)
 	s.metrics.TotalReleaseCalls.Inc()

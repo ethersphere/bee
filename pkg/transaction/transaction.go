@@ -22,6 +22,7 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 )
@@ -232,20 +233,22 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, boost
 
 func (t *transactionService) waitForPendingTx(txHash common.Hash) {
 	t.wg.Go(func() {
-		switch _, err := t.WaitForReceipt(t.ctx, txHash); err {
-		case nil:
-			t.logger.Info("pending transaction confirmed", "tx", txHash)
-			err = t.store.Delete(pendingTransactionKey(txHash))
-			if err != nil {
-				t.logger.Error(err, "unregistering finished pending transaction failed", "tx", txHash)
+		safe.Run(t.logger, "transaction-wait-pending", func() {
+			switch _, err := t.WaitForReceipt(t.ctx, txHash); err {
+			case nil:
+				t.logger.Info("pending transaction confirmed", "tx", txHash)
+				err = t.store.Delete(pendingTransactionKey(txHash))
+				if err != nil {
+					t.logger.Error(err, "unregistering finished pending transaction failed", "tx", txHash)
+				}
+			default:
+				if errors.Is(err, ErrTransactionCancelled) {
+					t.logger.Warning("pending transaction cancelled", "tx", txHash)
+				} else {
+					t.logger.Error(err, "waiting for pending transaction failed", "tx", txHash)
+				}
 			}
-		default:
-			if errors.Is(err, ErrTransactionCancelled) {
-				t.logger.Warning("pending transaction cancelled", "tx", txHash)
-			} else {
-				t.logger.Error(err, "waiting for pending transaction failed", "tx", txHash)
-			}
-		}
+		})
 	})
 }
 
@@ -633,6 +636,13 @@ func (t *transactionService) UnwrapABIError(ctx context.Context, req *TxRequest,
 
 	if reason, uErr := abi.UnpackRevert(buf); uErr == nil {
 		return fmt.Errorf("%w: %s", err, reason)
+	}
+
+	// Revert data must be at least a 4-byte error selector; some RPC providers
+	// return empty ("0x") or malformed data for a reverted transaction, which
+	// would otherwise panic on the buf[:4] slice below.
+	if len(buf) < 4 {
+		return err
 	}
 
 	for _, abiError := range abiErrors {

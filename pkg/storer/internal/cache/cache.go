@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -215,7 +216,7 @@ func (c *Cache) RemoveOldest(ctx context.Context, st transaction.Storage, count 
 
 	for _, item := range evictItems {
 		func(item *cacheEntry) {
-			eg.Go(func() error {
+			eg.Go(safe.RunFunc(nil, "cache-evict", func() error {
 				c.glock.Lock(item.Address.ByteString())
 				defer c.glock.Unlock(item.Address.ByteString())
 				err := st.Run(ctx, func(s transaction.Store) error {
@@ -233,7 +234,7 @@ func (c *Cache) RemoveOldest(ctx context.Context, st transaction.Storage, count 
 				}
 				c.size.Add(-1)
 				return nil
-			})
+			}))
 		}(item)
 	}
 

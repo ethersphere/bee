@@ -13,10 +13,11 @@ import (
 	"runtime"
 
 	"github.com/ethersphere/bee/v2/pkg/encryption"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/ethersphere/bee/v2/pkg/safe"
 	"github.com/ethersphere/bee/v2/pkg/storage/storageutil"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -273,14 +274,14 @@ func deleteCollectionChunks(ctx context.Context, st transaction.Storage, collect
 
 	for _, item := range chunksToDelete {
 		func(item *pinChunkItem) {
-			eg.Go(func() error {
+			eg.Go(safe.RunFunc(nil, "pinning-delete-chunks", func() error {
 				return st.Run(ctx, func(s transaction.Store) error {
 					return errors.Join(
 						s.IndexStore().Delete(item),
 						s.ChunkStore().Delete(ctx, item.Addr),
 					)
 				})
-			})
+			}))
 		}(item)
 	}
 

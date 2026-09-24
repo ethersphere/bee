@@ -13,7 +13,6 @@ import (
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/v2/pkg/bigint"
 	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/v2/pkg/storage"
@@ -247,20 +246,19 @@ func (s *service) Issue(ctx context.Context, beneficiary common.Address, amount 
 		return nil, err
 	}
 	totalIssued = totalIssued.Add(totalIssued, amount)
-	return availableBalance, s.store.Put(totalIssuedKey, &bigint.BigInt{Int: totalIssued})
+	return availableBalance, s.store.Put(totalIssuedKey, totalIssued)
 }
 
 // returns the total amount in cheques issued so far
-func (s *service) totalIssued() (*big.Int, error) {
-	var w bigint.BigInt
-	err := s.store.Get(totalIssuedKey, &w)
+func (s *service) totalIssued() (totalIssued *big.Int, err error) {
+	err = s.store.Get(totalIssuedKey, &totalIssued)
 	if err != nil {
 		if !errors.Is(err, storage.ErrNotFound) {
 			return nil, err
 		}
 		return big.NewInt(0), nil
 	}
-	return w.Int, nil
+	return totalIssued, nil
 }
 
 // LastCheque returns the last cheque we issued for the beneficiary.
@@ -273,6 +271,11 @@ func (s *service) LastCheque(beneficiary common.Address) (*SignedCheque, error) 
 		}
 		return nil, ErrNoCheque
 	}
+
+	if lastCheque == nil {
+		return nil, fmt.Errorf("nil cheque loaded from statestore for beneficiary %x: %w", beneficiary, ErrNoCheque)
+	}
+
 	return lastCheque, nil
 }
 
@@ -299,6 +302,10 @@ func (s *service) LastCheques() (map[common.Address]*SignedCheque, error) {
 
 			lastCheque, err := s.LastCheque(addr)
 			if err != nil {
+				if errors.Is(err, ErrNoCheque) {
+					return false, nil
+				}
+
 				return false, err
 			}
 

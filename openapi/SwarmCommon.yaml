@@ -681,6 +681,18 @@ components:
       properties:
         stakedAmount:
           $ref: "#/components/schemas/BigInt"
+        minimumDeposit:
+          $ref: "#/components/schemas/BigInt"
+
+    StakeDepositErrorResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        minimumDeposit:
+          $ref: "#/components/schemas/BigInt"
 
     GetWithdrawableResponse:
       type: object
@@ -825,6 +837,15 @@ components:
           type: boolean
         isHealthy:
           type: boolean
+        enabled:
+          type: boolean
+          description: Whether the node will commit in new redistribution rounds. Sampling still runs while disabled. A disabled node still finishes a round that already has an on-chain commit. Re-enabling during a commit phase that was already skipped does not retry that round.
+        hasCommittedThisRound:
+          type: boolean
+          description: Whether the node has already committed in the current round. Operators can shut down without freeze risk when this is false.
+        hasRevealedThisRound:
+          type: boolean
+          description: Whether the node has revealed in the current round. After a commit, the node must reveal before it is safe to shut down.
         phase:
           type: string
         round:
@@ -845,6 +866,21 @@ components:
           $ref: "#/components/schemas/BigInt"
         fees:
           $ref: "#/components/schemas/BigInt"
+
+    RedistributionEnableRequest:
+      type: object
+      required:
+        - enabled
+      properties:
+        enabled:
+          type: boolean
+          description: Whether the node should commit in new redistribution rounds. Sampling still runs while disabled.
+
+    RedistributionEnableResponse:
+      type: object
+      properties:
+        enabled:
+          type: boolean
 
     PendingTransactionsResponse:
       type: object
@@ -1143,6 +1179,54 @@ components:
         $ref: "SwarmCommon.yaml#/components/schemas/Uid"
       required: false
       description: Associate upload with an existing Tag UID
+
+    SwarmSocFieldsParameter:
+      in: header
+      name: swarm-soc-fields
+      schema:
+        type: string
+        default: "payload"
+      required: false
+      description: >
+        Comma separated list of Single Owner Chunk fields to be serialized and
+        channeled on every incoming GSOC message, in the given order. Allowed
+        values are: address, recoveredPubKey, identifier, signature,
+        wrappedAddress, span, payload. When omitted it defaults to "payload".
+        In order to have random access on the response bytes define payload
+        as the last field in the list since it has variable length.
+
+    SwarmCacheWrappedChunkParameter:
+      in: header
+      name: swarm-cache-wrapped-chunk
+      schema:
+        type: boolean
+      required: false
+      description: >
+        Indicates whether the wrapped chunk of every incoming GSOC message should
+        be cached locally so that it can be resolved through the bytes endpoint
+        (useful when the single owner chunk wraps a root chunk larger than 4KB).
+
+    SwarmSocFieldsQueryParameter:
+      in: query
+      name: swarm-soc-fields
+      schema:
+        type: string
+      required: false
+      description: >
+        Same as the swarm-soc-fields header, for clients that cannot set request
+        headers (e.g. browser WebSocket). Takes precedence over the header when
+        both are given.
+
+    SwarmCacheWrappedChunkQueryParameter:
+      in: query
+      name: swarm-cache-wrapped-chunk
+      schema:
+        type: boolean
+      required: false
+      description: >
+        Same as the swarm-cache-wrapped-chunk header, for clients that cannot set
+        request headers (e.g. browser WebSocket). Takes precedence over the header
+        when both are given.
 
     SwarmPinParameter:
       in: header

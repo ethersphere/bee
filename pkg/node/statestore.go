@@ -7,6 +7,7 @@ package node
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -26,6 +27,11 @@ func InitStateStore(logger log.Logger, dataDir string, cacheCapacity uint64) (st
 		logger.Warning("using in-mem state store, no node state will be persisted")
 	} else {
 		dataDir = filepath.Join(dataDir, "statestore")
+		// goleveldb creates its directory with mode 0o755; pre-create it with
+		// tighter permissions so the state data is not world-readable.
+		if err := os.MkdirAll(dataDir, 0o700); err != nil {
+			return nil, nil, err
+		}
 	}
 	ldb, _, err := leveldbstore.New(dataDir, nil)
 	if err != nil {
@@ -51,6 +57,11 @@ func InitStamperStore(logger log.Logger, dataDir string, stateStore storage.Stat
 		logger.Warning("using in-mem stamper store, no node state will be persisted")
 	} else {
 		dataDir = filepath.Join(dataDir, "stamperstore")
+		// goleveldb creates its directory with mode 0o755; pre-create it with
+		// tighter permissions so the stamp issuer data is not world-readable.
+		if err := os.MkdirAll(dataDir, 0o700); err != nil {
+			return nil, false, err
+		}
 	}
 	store, dirty, err := leveldbstore.New(dataDir, nil)
 	if err != nil {

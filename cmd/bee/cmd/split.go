@@ -104,7 +104,7 @@ func splitRefs(cmd *cobra.Command) {
 				refs = append(refs, ch.Address().String())
 				return nil
 			})
-			writer, err := os.OpenFile(outputFileName, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+			writer, err := os.OpenFile(outputFileName, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 			if err != nil {
 				return fmt.Errorf("open output file: %w", err)
 			}
@@ -192,7 +192,7 @@ func splitChunks(cmd *cobra.Command) {
 			var chunksCount atomic.Int64
 			store := newPutter(func(chunk swarm.Chunk) error {
 				filePath := filepath.Join(outputDir, chunk.Address().String())
-				err := os.WriteFile(filePath, chunk.Data(), 0o644)
+				err := os.WriteFile(filePath, chunk.Data(), 0o600)
 				if err != nil {
 					return err
 				}

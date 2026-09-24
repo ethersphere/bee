@@ -151,8 +151,8 @@ func (g *decoder) fetch(ctx context.Context, i int, waitForRecovery bool) (err e
 		}
 
 		g.setData(i, ch.Data())
-		close(g.waits[i])
 		g.fetchedCnt.Add(1)
+		close(g.waits[i])
 		return nil
 	}
 

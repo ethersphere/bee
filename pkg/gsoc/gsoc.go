@@ -5,6 +5,7 @@
 package gsoc
 
 import (
+	"slices"
 	"sync"
 	"sync/atomic"
 
@@ -14,8 +15,9 @@ import (
 )
 
 // Handler defines code to be executed upon reception of a GSOC sub message.
-// it is used as a parameter definition.
-type Handler func([]byte)
+// it is used as a parameter definition. It receives the recovered single owner
+// chunk so the consumer has access to all of its properties.
+type Handler func(*soc.SOC)
 
 type Listener interface {
 	Subscribe(address swarm.Address, handler Handler) (cleanup func())
@@ -41,22 +43,35 @@ func New(logger log.Logger) Listener {
 }
 
 // Subscribe allows the definition of a Handler func on a specific GSOC address.
+//
+// Handle iterates the handlers of an address without holding handlersMu, so a
+// slice that has been handed out must never be written to again. Subscribing
+// and unsubscribing therefore publish a new slice instead of appending to, or
+// shifting elements within, the backing array a concurrent Handle may be
+// reading.
 func (l *listener) Subscribe(address swarm.Address, handler Handler) (cleanup func()) {
+	key := address.ByteString()
+
 	l.handlersMu.Lock()
 	defer l.handlersMu.Unlock()
 
-	l.handlers[address.ByteString()] = append(l.handlers[address.ByteString()], &handler)
-	l.subCount.Add(1)
+	l.handlers[key] = append(slices.Clone(l.handlers[key]), &handler)
 
 	return func() {
 		l.handlersMu.Lock()
 		defer l.handlersMu.Unlock()
 
-		h := l.handlers[address.ByteString()]
+		h := l.handlers[key]
 		for i := range h {
 			if h[i] == &handler {
-				l.handlers[address.ByteString()] = append(h[:i], h[i+1:]...)
-				l.subCount.Add(-1)
+				if len(h) == 1 {
+					// drop the entry with its last subscriber, so that
+					// addresses subscribed to briefly do not accumulate in
+					// the map for the lifetime of the node.
+					delete(l.handlers, key)
+				} else {
+					l.handlers[key] = slices.Delete(slices.Clone(h), i, i+1)
+				}
 				return
 			}
 		}
@@ -73,26 +88,25 @@ func (l *listener) Handle(c *soc.SOC) {
 	if err != nil {
 		return // no handler
 	}
-	payload := c.WrappedChunk().Data()[swarm.SpanSize:]
-
-	// The read lock is held for the whole iteration so that a concurrent
-	// Subscribe cleanup (write lock) cannot mutate the handlers slice while it
-	// is being ranged over. Each handler is dereferenced and dispatched to its
-	// own goroutine, so the lock is never held while a handler runs.
-	l.handlersMu.RLock()
-	defer l.handlersMu.RUnlock()
-
-	h := l.handlers[addr.ByteString()]
-	if h == nil {
+	h := l.getHandlers(addr)
+	if len(h) == 0 {
 		return // no handler
 	}
 	l.logger.Debug("new incoming GSOC message", "GSOC Address", addr, "wrapped chunk address", c.WrappedChunk().Address())
 
 	for _, hh := range h {
-		go func(hh Handler) {
-			hh(payload)
-		}(*hh)
+		(*hh)(c)
 	}
+}
+
+// getHandlers returns the handlers currently subscribed to address. The
+// returned slice is shared with the subscription bookkeeping and must only be
+// read, see Subscribe.
+func (p *listener) getHandlers(address swarm.Address) []*Handler {
+	p.handlersMu.Lock()
+	defer p.handlersMu.Unlock()
+
+	return p.handlers[address.ByteString()]
 }
 
 func (l *listener) Close() error {

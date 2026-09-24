@@ -65,6 +65,9 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/hashicorp/go-multierror"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel/codes"
+	semconv "go.opentelemetry.io/otel/semconv/v1.25.0"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -95,6 +98,8 @@ const (
 	SwarmActTimestampHeader           = "Swarm-Act-Timestamp"
 	SwarmActPublisherHeader           = "Swarm-Act-Publisher"
 	SwarmActHistoryAddressHeader      = "Swarm-Act-History-Address"
+	SwarmSocFieldsHeader              = "Swarm-Soc-Fields"
+	SwarmCacheWrappedChunkHeader      = "Swarm-Cache-Wrapped-Chunk"
 
 	ImmutableHeader = "Immutable"
 	GasPriceHeader  = "Gas-Price"
@@ -106,6 +111,8 @@ const (
 	ContentTypeHeader          = "Content-Type"
 	ContentDispositionHeader   = "Content-Disposition"
 	ContentLengthHeader        = "Content-Length"
+	ContentRangeHeader         = "Content-Range"
+	AcceptRangesHeader         = "Accept-Ranges"
 	RangeHeader                = "Range"
 	OriginHeader               = "Origin"
 	AccessControlExposeHeaders = "Access-Control-Expose-Headers"
@@ -178,6 +185,17 @@ type Service struct {
 
 	wsWg sync.WaitGroup // wait for all websockets to close on exit
 	quit chan struct{}
+
+	// bgCtx is the context form of quit: it is canceled by Close and bounds
+	// node-local work that a handler starts and that has to outlive the
+	// request or connection which triggered it.
+	bgCtx    context.Context
+	bgCancel context.CancelFunc
+
+	// gsocCacheSubs holds the caching subscriptions shared by the GSOC
+	// websocket subscribers, keyed by GSOC address, see gsoc.go.
+	gsocCacheMu   sync.Mutex
+	gsocCacheSubs map[string]*gsocCacheSub
 
 	overlay           *swarm.Address
 	publicKey         ecdsa.PublicKey
@@ -341,6 +359,8 @@ func (s *Service) Configure(signer crypto.Signer, tracer *tracing.Tracer, o Opti
 	s.metrics = newMetrics()
 
 	s.quit = make(chan struct{})
+	s.bgCtx, s.bgCancel = context.WithCancel(context.Background())
+	s.gsocCacheSubs = make(map[string]*gsocCacheSub)
 
 	s.storer = e.Storer
 	s.resolver = e.Resolver
@@ -394,13 +414,16 @@ func (s *Service) SetProbe(probe *Probe) {
 }
 
 func (s *Service) SetIsWarmingUp(v bool) {
-	s.isWarmingUp = v
+	if s != nil {
+		s.isWarmingUp = v
+	}
 }
 
 // Close hangs up running websockets on shutdown.
 func (s *Service) Close() error {
 	s.logger.Info("api shutting down")
 	close(s.quit)
+	s.bgCancel()
 
 	done := make(chan struct{})
 	go func() {
@@ -470,8 +493,8 @@ func (s *Service) newTracingHandler(spanName string) func(h http.Handler) http.H
 				// ignore
 			}
 
-			span, _, ctx := s.tracer.StartSpanFromContext(ctx, spanName, s.logger)
-			defer span.Finish()
+			span, _, ctx := s.tracer.StartSpanFromContext(ctx, spanName, s.logger, trace.WithSpanKind(trace.SpanKindServer))
+			defer span.End()
 
 			err = s.tracer.AddContextHTTPHeader(ctx, r.Header)
 			if err != nil {
@@ -480,6 +503,23 @@ func (s *Service) newTracingHandler(spanName string) func(h http.Handler) http.H
 			}
 
 			h.ServeHTTP(w, r.WithContext(ctx))
+
+			// The response status code is captured upstream by responseCodeMetricsHandler's
+			// *responseWriter, which exposes Status(). Read it to annotate the span with the
+			// standard HTTP server attributes so the request is queryable in Tempo/Grafana.
+			if sw, ok := w.(interface{ Status() int }); ok {
+				code := sw.Status()
+				span.SetAttributes(
+					semconv.HTTPRequestMethodKey.String(r.Method),
+					semconv.HTTPRoute(spanName),
+					semconv.HTTPResponseStatusCode(code),
+				)
+				// OTel server-span convention: 5xx marks the span as Error; 4xx is a client
+				// error and stays Unset, still queryable via http.response.status_code.
+				if code >= 500 {
+					span.SetStatus(codes.Error, http.StatusText(code))
+				}
+			}
 		})
 	}
 }
@@ -591,6 +631,7 @@ func (s *Service) corsHandler(h http.Handler) http.Handler {
 		SwarmRedundancyStrategyHeader, SwarmRedundancyFallbackModeHeader, SwarmChunkRetrievalTimeoutHeader, SwarmLookAheadBufferSizeHeader,
 		SwarmFeedIndexHeader, SwarmFeedIndexNextHeader, SwarmSocSignatureHeader, SwarmOnlyRootChunk, GasPriceHeader, GasLimitHeader, ImmutableHeader,
 		SwarmActHeader, SwarmActTimestampHeader, SwarmActPublisherHeader, SwarmActHistoryAddressHeader,
+		SwarmSocFieldsHeader, SwarmCacheWrappedChunkHeader,
 	}
 	allowedHeadersStr := strings.Join(allowedHeaders, ", ")
 
@@ -599,7 +640,7 @@ func (s *Service) corsHandler(h http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.Header().Set("Access-Control-Allow-Origin", o)
 			w.Header().Set("Access-Control-Allow-Headers", allowedHeadersStr)
-			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS, POST, PUT, DELETE")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS, POST, PUT, PATCH, DELETE")
 			w.Header().Set("Access-Control-Max-Age", "3600")
 		}
 		h.ServeHTTP(w, r)

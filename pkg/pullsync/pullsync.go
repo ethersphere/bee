@@ -269,6 +269,9 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 	}
 
 	for i := 0; i < len(offer.Chunks); i++ {
+		if offer.Chunks[i] == nil {
+			return 0, 0, fmt.Errorf("nil chunk at index %d in offer from peer %s", i, peer)
+		}
 
 		addr := offer.Chunks[i].Address
 		batchID := offer.Chunks[i].BatchID
@@ -486,6 +489,10 @@ func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]sw
 
 	chunks := make([]swarm.Chunk, 0, len(o.Chunks))
 	for i := 0; i < len(o.Chunks); i++ {
+		if o.Chunks[i] == nil {
+			return nil, fmt.Errorf("nil chunk at index %d in offer", i)
+		}
+
 		if bv.Get(i) {
 			ch := o.Chunks[i]
 			addr := swarm.NewAddress(ch.Address)

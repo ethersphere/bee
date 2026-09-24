@@ -43,7 +43,7 @@ func TestJoiner_ErrReferenceLength(t *testing.T) {
 	t.Parallel()
 
 	store := inmemchunkstore.New()
-	_, _, err := joiner.New(context.Background(), store, store, swarm.ZeroAddress, redundancy.DefaultLevel)
+	_, _, err := joiner.New(context.Background(), store, store, swarm.ZeroAddress, redundancy.DefaultDownloadLevel)
 
 	if !errors.Is(err, storage.ErrReferenceLength) {
 		t.Fatalf("expected ErrReferenceLength %x but got %v", swarm.ZeroAddress, err)
@@ -72,7 +72,7 @@ func TestJoinerSingleChunk(t *testing.T) {
 	}
 
 	// read back data and compare
-	joinReader, l, err := joiner.New(ctx, store, store, mockAddr, redundancy.DefaultLevel)
+	joinReader, l, err := joiner.New(ctx, store, store, mockAddr, redundancy.DefaultDownloadLevel)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestJoinerDecryptingStore_NormalChunk(t *testing.T) {
 	}
 
 	// read back data and compare
-	joinReader, l, err := joiner.New(ctx, st, st, mockAddr, redundancy.DefaultLevel)
+	joinReader, l, err := joiner.New(ctx, st, st, mockAddr, redundancy.DefaultDownloadLevel)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestJoinerWithReference(t *testing.T) {
 	}
 
 	// read back data and compare
-	joinReader, l, err := joiner.New(ctx, st, st, rootChunk.Address(), redundancy.DefaultLevel)
+	joinReader, l, err := joiner.New(ctx, st, st, rootChunk.Address(), redundancy.DefaultDownloadLevel)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +212,7 @@ func TestJoinerMalformed(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	joinReader, _, err := joiner.New(ctx, store, store, rootChunk.Address(), redundancy.DefaultLevel)
+	joinReader, _, err := joiner.New(ctx, store, store, rootChunk.Address(), redundancy.DefaultDownloadLevel)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,7 +257,7 @@ func TestEncryptDecrypt(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			reader, l, err := joiner.New(context.Background(), store, store, resultAddress, redundancy.DefaultLevel)
+			reader, l, err := joiner.New(context.Background(), store, store, resultAddress, redundancy.DefaultDownloadLevel)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -343,7 +343,7 @@ func TestSeek(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			j, _, err := joiner.New(ctx, store, store, addr, redundancy.DefaultLevel)
+			j, _, err := joiner.New(ctx, store, store, addr, redundancy.DefaultDownloadLevel)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -619,7 +619,7 @@ func TestPrefetch(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			j, _, err := joiner.New(ctx, store, store, addr, redundancy.DefaultLevel)
+			j, _, err := joiner.New(ctx, store, store, addr, redundancy.DefaultDownloadLevel)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -667,7 +667,7 @@ func TestJoinerReadAt(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		j, _, err := joiner.New(ctx, store, store, rootChunk.Address(), redundancy.DefaultLevel)
+		j, _, err := joiner.New(ctx, store, store, rootChunk.Address(), redundancy.DefaultDownloadLevel)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -715,7 +715,7 @@ func TestJoinerOneLevel(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		j, _, err := joiner.New(ctx, store, store, rootChunk.Address(), redundancy.DefaultLevel)
+		j, _, err := joiner.New(ctx, store, store, rootChunk.Address(), redundancy.DefaultDownloadLevel)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -809,7 +809,7 @@ func TestJoinerTwoLevelsAcrossChunk(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		j, _, err := joiner.New(ctx, store, store, rootChunk.Address(), redundancy.DefaultLevel)
+		j, _, err := joiner.New(ctx, store, store, rootChunk.Address(), redundancy.DefaultDownloadLevel)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -865,7 +865,7 @@ func TestJoinerIterateChunkAddresses(t *testing.T) {
 
 		createdAddresses := []swarm.Address{rootChunk.Address(), firstAddress, secondAddress}
 
-		j, _, err := joiner.New(ctx, store, store, rootChunk.Address(), redundancy.DefaultLevel)
+		j, _, err := joiner.New(ctx, store, store, rootChunk.Address(), redundancy.DefaultDownloadLevel)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -919,7 +919,7 @@ func TestJoinerIterateChunkAddresses_Encrypted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	j, l, err := joiner.New(context.Background(), store, store, resultAddress, redundancy.DefaultLevel)
+	j, l, err := joiner.New(context.Background(), store, store, resultAddress, redundancy.DefaultDownloadLevel)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1123,7 +1123,7 @@ func TestJoinerRedundancy(t *testing.T) {
 					t.Fatal(err)
 				}
 
-				joinReader, rootSpan, err := joiner.New(ctx, store, store, swarmAddr, redundancy.DefaultLevel)
+				joinReader, rootSpan, err := joiner.New(ctx, store, store, swarmAddr, redundancy.DefaultDownloadLevel)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -1318,7 +1318,7 @@ func runRedundancyTest(t *testing.T, rLevel redundancy.Level, encrypt bool, size
 			t.Fatal(err)
 		}
 
-		j, _, err := joiner.New(ctx, store, store, addr, redundancy.DefaultLevel)
+		j, _, err := joiner.New(ctx, store, store, addr, redundancy.DefaultDownloadLevel)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1446,4 +1446,118 @@ func (c *chunkStore) Iterate(_ context.Context, fn storage.IterateChunkFn) error
 
 func (c *chunkStore) Close() error {
 	return nil
+}
+
+// TestJoinerReadBufferLength verifies that Read and ReadAt honour len(buffer)
+// and not cap(buffer). A slice handed to a reader may have spare capacity that
+// belongs to the caller, so writing into it corrupts unrelated data and the
+// returned count breaks the io.Reader contract, which requires n <= len(p).
+func TestJoinerReadBufferLength(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	store := inmemchunkstore.New()
+
+	data := make([]byte, swarm.ChunkSize*8)
+	if _, err := io.ReadFull(rand.Reader, data); err != nil {
+		t.Fatal(err)
+	}
+
+	pipe := builder.NewPipelineBuilder(ctx, store, false, redundancy.DefaultUploadLevel)
+	addr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const readLen = 10
+
+	// backing has far more capacity than the read asks for, and the region past
+	// readLen is filled with a sentinel the joiner must leave untouched.
+	newBuffer := func() ([]byte, []byte) {
+		backing := make([]byte, swarm.ChunkSize*4)
+		for i := range backing {
+			backing[i] = 0xff
+		}
+		return backing[:readLen], backing
+	}
+
+	assertUntouched := func(t *testing.T, backing []byte) {
+		t.Helper()
+		for i := readLen; i < len(backing); i++ {
+			if backing[i] != 0xff {
+				t.Fatalf("joiner wrote past len(buffer) at index %d", i)
+			}
+		}
+	}
+
+	t.Run("Read", func(t *testing.T) {
+		t.Parallel()
+
+		j, _, err := joiner.New(ctx, store, store, addr, redundancy.DefaultDownloadLevel)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		b, backing := newBuffer()
+		n, err := j.Read(b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n != readLen {
+			t.Fatalf("got n %d, want %d", n, readLen)
+		}
+		if !bytes.Equal(b, data[:readLen]) {
+			t.Fatal("read data does not match")
+		}
+		assertUntouched(t, backing)
+	})
+
+	t.Run("ReadAt", func(t *testing.T) {
+		t.Parallel()
+
+		j, _, err := joiner.New(ctx, store, store, addr, redundancy.DefaultDownloadLevel)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		const off = swarm.ChunkSize + 5
+
+		b, backing := newBuffer()
+		n, err := j.ReadAt(b, off)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n != readLen {
+			t.Fatalf("got n %d, want %d", n, readLen)
+		}
+		if !bytes.Equal(b, data[off:off+readLen]) {
+			t.Fatal("read data does not match")
+		}
+		assertUntouched(t, backing)
+	})
+
+	// io.CopyN wraps the joiner in an io.LimitedReader, which reslices its buffer
+	// down to the remaining byte count while leaving the capacity intact. A joiner
+	// that reads up to cap drives LimitedReader.N negative and truncates the copy,
+	// which is how a ranged HTTP response loses its tail.
+	t.Run("CopyN", func(t *testing.T) {
+		t.Parallel()
+
+		j, _, err := joiner.New(ctx, store, store, addr, redundancy.DefaultDownloadLevel)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var buf bytes.Buffer
+		n, err := io.CopyN(&buf, j, readLen)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n != readLen {
+			t.Fatalf("got n %d, want %d", n, readLen)
+		}
+		if !bytes.Equal(buf.Bytes(), data[:readLen]) {
+			t.Fatal("copied data does not match")
+		}
+	})
 }

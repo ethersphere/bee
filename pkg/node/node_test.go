@@ -7,6 +7,7 @@ package node_test
 import (
 	"testing"
 
+	"github.com/ethersphere/bee/v2/pkg/api"
 	"github.com/ethersphere/bee/v2/pkg/node"
 )
 
@@ -105,5 +106,80 @@ func TestValidatePublicAddress(t *testing.T) {
 				t.Fatalf("expected no error, but got: %v", err)
 			}
 		})
+	}
+}
+
+func TestUseEmbeddedSnapshot(t *testing.T) {
+	t.Parallel()
+
+	const (
+		mainnet = uint64(1)
+		testnet = uint64(10)
+	)
+
+	testCases := []struct {
+		name             string
+		skip             bool
+		batchStoreExists bool
+		resync           bool
+		networkID        uint64
+		mode             api.BeeNodeMode
+		want             bool
+	}{
+		{name: "first boot on mainnet", networkID: mainnet, mode: api.FullMode, want: true},
+		{name: "existing store, no resync", batchStoreExists: true, networkID: mainnet, mode: api.FullMode, want: false},
+		{name: "resync on a fresh store", resync: true, networkID: mainnet, mode: api.FullMode, want: true},
+		// New behavior: resync rebuilds from the snapshot even with a store present.
+		{name: "resync on an existing store uses the snapshot", batchStoreExists: true, resync: true, networkID: mainnet, mode: api.FullMode, want: true},
+		{name: "resync with skip syncs from the chain", batchStoreExists: true, resync: true, skip: true, networkID: mainnet, mode: api.FullMode, want: false},
+		{name: "skip on first boot", skip: true, networkID: mainnet, mode: api.FullMode, want: false},
+		{name: "light node uses the snapshot", networkID: mainnet, mode: api.LightMode, want: true},
+		{name: "ultra-light never uses the snapshot", resync: true, networkID: mainnet, mode: api.UltraLightMode, want: false},
+		{name: "non-mainnet never uses the snapshot", resync: true, networkID: testnet, mode: api.FullMode, want: false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := node.UseEmbeddedSnapshot(tc.skip, tc.batchStoreExists, tc.resync, tc.networkID, tc.mode)
+			if got != tc.want {
+				t.Fatalf("UseEmbeddedSnapshot = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// trackingCloser records whether Close was called.
+type trackingCloser struct{ closed bool }
+
+func (c *trackingCloser) Close() error {
+	c.closed = true
+	return nil
+}
+
+// TestShutdownRegistersPushSyncAndRetrieval is a regression test for LEAK-02
+// and LEAK-03: the push-sync and retrieval closers were never added to the
+// Shutdown closer fan-out, so their background prune workers leaked on every
+// node stop. Both must be registered so Shutdown joins them.
+func TestShutdownRegistersPushSyncAndRetrieval(t *testing.T) {
+	t.Parallel()
+
+	pushSync := &trackingCloser{}
+	retrieval := &trackingCloser{}
+
+	b := node.NewTestBeeWithClosers(pushSync, retrieval)
+	closers := b.ShutdownClosersByName()
+
+	for name, want := range map[string]*trackingCloser{
+		"push sync": pushSync,
+		"retrieval": retrieval,
+	} {
+		got, ok := closers[name]
+		if !ok {
+			t.Fatalf("closer %q not registered in Shutdown fan-out", name)
+		}
+		if got != want {
+			t.Fatalf("closer %q registered with the wrong instance", name)
+		}
 	}
 }

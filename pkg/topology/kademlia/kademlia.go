@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"math/rand"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 
@@ -45,6 +46,12 @@ const (
 	// Each underlay address gets up to 15s for connection (in libp2p.Connect).
 	// This budget allows multiple addresses to be tried sequentially per peer.
 	peerConnectionAttemptTimeout = 45 * time.Second // timeout for establishing a new connection with peer.
+
+	// lastSeenRefreshInterval is how often the peers we are connected to are
+	// marked as seen in the addressbook. A peer we hold a connection to is
+	// seen continuously, so marking it on the connect event alone would let
+	// the addressbook pruner evict our longest-lived, most valuable peers.
+	lastSeenRefreshInterval = 15 * time.Minute
 )
 
 // Default option values
@@ -191,6 +198,7 @@ type Kad struct {
 	logger            log.Logger // logger
 	bootnode          bool       // indicates whether the node is working in bootnode mode
 	collector         *im.Collector
+	metricsDB         *shed.DB      // backing store for the metrics collector; closed on shutdown
 	quit              chan struct{} // quit channel
 	halt              chan struct{} // halt channel
 	done              chan struct{} // signal that `manage` has quit
@@ -246,6 +254,7 @@ func New(
 		logger:            logger.WithName(loggerName).Register(),
 		bootnode:          opt.BootnodeMode,
 		collector:         imc,
+		metricsDB:         sdb,
 		quit:              make(chan struct{}),
 		halt:              make(chan struct{}),
 		done:              make(chan struct{}),
@@ -513,6 +522,50 @@ func (k *Kad) notifyManageLoop() {
 	}
 }
 
+// markConnectedPeersSeen marks every currently connected peer as seen in the
+// addressbook.
+func (k *Kad) markConnectedPeersSeen() error {
+	var peers []swarm.Address
+	_ = k.connectedPeers.EachBin(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+		peers = append(peers, addr)
+		return false, false, nil
+	})
+
+	if len(peers) == 0 {
+		return nil
+	}
+
+	return k.addressBook.Seen(peers...)
+}
+
+// neighborhoodBroadcasts returns, for every neighbor, the other neighbors it
+// should be told about.
+func neighborhoodBroadcasts(neighbors []swarm.Address) [][]swarm.Address {
+	broadcasts := make([][]swarm.Address, len(neighbors))
+	for i := range neighbors {
+		broadcasts[i] = slices.Concat(neighbors[:i], neighbors[i+1:])
+	}
+	return broadcasts
+}
+
+// rebroadcastNeighborhood tells each neighbor about the other neighbors.
+func (k *Kad) rebroadcastNeighborhood(ctx context.Context) {
+	var neighbors []swarm.Address
+	_ = k.connectedPeers.EachBin(func(addr swarm.Address, bin uint8) (stop bool, jumpToNext bool, err error) {
+		if bin < k.neighborhoodDepth() {
+			return true, false, nil
+		}
+		neighbors = append(neighbors, addr)
+		return false, false, nil
+	})
+	broadcasts := neighborhoodBroadcasts(neighbors)
+	for i, peer := range neighbors {
+		if err := k.discovery.BroadcastPeers(ctx, peer, broadcasts[i]...); err != nil {
+			k.logger.Debug("broadcast neighborhood failure", "peer_address", peer, "error", err)
+		}
+	}
+}
+
 // manage is a forever loop that manages the connection to new peers
 // once they get added or once others leave.
 func (k *Kad) manage() {
@@ -569,6 +622,21 @@ func (k *Kad) manage() {
 		}
 	})
 
+	k.wg.Go(func() {
+		for {
+			select {
+			case <-k.halt:
+				return
+			case <-k.quit:
+				return
+			case <-time.After(lastSeenRefreshInterval):
+				if err := k.markConnectedPeersSeen(); err != nil {
+					k.logger.Warning("could not mark connected peers as seen", "error", err)
+				}
+			}
+		}
+	})
+
 	// tell each neighbor about other neighbors periodically
 	k.wg.Go(func() {
 		for {
@@ -578,19 +646,7 @@ func (k *Kad) manage() {
 			case <-k.quit:
 				return
 			case <-time.After(15 * time.Minute):
-				var neighbors []swarm.Address
-				_ = k.connectedPeers.EachBin(func(addr swarm.Address, bin uint8) (stop bool, jumpToNext bool, err error) {
-					if bin < k.neighborhoodDepth() {
-						return true, false, nil
-					}
-					neighbors = append(neighbors, addr)
-					return false, false, nil
-				})
-				for i, peer := range neighbors {
-					if err := k.discovery.BroadcastPeers(ctx, peer, append(neighbors[:i], neighbors[i+1:]...)...); err != nil {
-						k.logger.Debug("broadcast neighborhood failure", "peer_address", peer, "error", err)
-					}
-				}
+				k.rebroadcastNeighborhood(ctx)
 			}
 		}
 	})
@@ -1594,6 +1650,12 @@ func (k *Kad) Close() error {
 		k.logger.Debug("unable to finalize open sessions", "error", err)
 	}
 	k.logger.Debug("metrics collector finalized", "elapsed", time.Since(start))
+
+	if k.metricsDB != nil {
+		if dbErr := k.metricsDB.Close(); dbErr != nil {
+			k.logger.Debug("unable to close metrics store", "error", dbErr)
+		}
+	}
 
 	return err
 }

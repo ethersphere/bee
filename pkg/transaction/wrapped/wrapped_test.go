@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"math/big"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -61,7 +62,7 @@ func Test_BlockNumberReturns_FreshCache(t *testing.T) {
 		}))
 
 		now := time.Now().UTC()
-		backend.blockNumberCache.Set(blockNumberAnchor{
+		setBlockAnchor(backend, blockNumberAnchor{
 			number:    cachedBlock,
 			timestamp: now,
 		})
@@ -91,7 +92,7 @@ func Test_BlockNumber_ReturnsCalculatedBlock(t *testing.T) {
 		}))
 
 		now := time.Now().UTC()
-		backend.blockNumberCache.Set(blockNumberAnchor{
+		setBlockAnchor(backend, blockNumberAnchor{
 			number:    anchorBlock,
 			timestamp: now.Add(-time.Duration(elapsedBlocks) * testBlockTime),
 		})
@@ -124,7 +125,7 @@ func Test_BlockNumber_ExpiredAnchor(t *testing.T) {
 		}))
 
 		now := time.Now().UTC()
-		backend.blockNumberCache.Set(blockNumberAnchor{
+		setBlockAnchor(backend, blockNumberAnchor{
 			number:    staleBlock,
 			timestamp: now.Add(-time.Duration(elapsedBlocks) * testBlockTime),
 		})
@@ -161,7 +162,7 @@ func Test_BlockNumber_ExpiredAnchor_RetriesAfterRPCError(t *testing.T) {
 		}))
 
 		now := time.Now().UTC()
-		backend.blockNumberCache.Set(blockNumberAnchor{
+		setBlockAnchor(backend, blockNumberAnchor{
 			number:    staleBlock,
 			timestamp: now.Add(-time.Duration(elapsedBlocks) * testBlockTime),
 		})
@@ -180,14 +181,265 @@ func Test_BlockNumber_ExpiredAnchor_RetriesAfterRPCError(t *testing.T) {
 	})
 }
 
+func Test_BlockNumber_UsesAverageBlockTime(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		const genesisBlock = uint64(100)
+
+		const (
+			realBlockTime     = 7 * time.Second
+			configBlockTime   = 2 * time.Second
+			blockSyncInterval = uint64(3)
+			cacheHitAdvance   = 4 * time.Second
+			untilSecondPoll   = 4 * time.Second
+		)
+
+		// Chain produces blocks every 7s; goroutine must exit before the bubble ends.
+		chain := newChainSimulator(genesisBlock, realBlockTime)
+		go chain.advanceEvery(realBlockTime, 1)
+		synctest.Wait()
+
+		var headerCalls atomic.Int32
+		backend := newTestWrappedBackendWithConfig(
+			t,
+			configBlockTime,
+			blockSyncInterval,
+			backendmock.WithHeaderbyNumberFunc(func(ctx context.Context, number *big.Int) (*types.Header, error) {
+				headerCalls.Add(1)
+				assert.Nil(t, number)
+				return chain.header(), nil
+			}),
+		)
+
+		// Step 1: initial poll, anchor at block 100, uses pre-set blocktime for further calculations
+		first, err := backend.BlockNumber(context.Background())
+		assert.NoError(t, err)
+		assert.Equal(t, genesisBlock, first)
+		assert.Equal(t, int32(1), headerCalls.Load())
+
+		time.Sleep(cacheHitAdvance)
+		synctest.Wait()
+
+		// Step 2: cache hit with config block time (2s) — node estimates 102, chain is at 100.
+		ahead, err := backend.BlockNumber(context.Background())
+		assert.NoError(t, err)
+		assert.Greater(t, ahead, chain.blockNumber())
+
+		time.Sleep(untilSecondPoll)
+		synctest.Wait()
+
+		// Step 3: cache expired, second poll — average block time becomes 7s, estimate realigns to 101.
+		corrected, err := backend.BlockNumber(context.Background())
+		assert.NoError(t, err)
+		assert.Equal(t, chain.blockNumber(), corrected)
+		assert.Equal(t, int32(2), headerCalls.Load())
+
+		time.Sleep(cacheHitAdvance)
+		synctest.Wait()
+
+		// Step 4: cache hit uses average block time: block from shouldn't be ahead
+		steady, err := backend.BlockNumber(context.Background())
+		assert.NoError(t, err)
+		assert.Equal(t, chain.blockNumber(), steady)
+		assert.NotEqual(t, corrected+1, steady)
+		assert.Equal(t, int32(2), headerCalls.Load())
+	})
+}
+
+func Test_BlockNumber_AverageBlockTimeResetsWhenChainStuck(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		const (
+			genesisBlock      = uint64(100)
+			configBlockTime   = 5 * time.Second
+			observedBlockTime = 7 * time.Second
+			blockSyncInterval = uint64(100)
+		)
+
+		anchorTime := time.Now().UTC()
+		var headerCalls atomic.Int32
+
+		backend := newTestWrappedBackendWithConfig(
+			t,
+			configBlockTime,
+			blockSyncInterval,
+			backendmock.WithHeaderbyNumberFunc(func(ctx context.Context, number *big.Int) (*types.Header, error) {
+				call := headerCalls.Add(1)
+				switch call {
+				case 1:
+					return &types.Header{
+						Number: big.NewInt(int64(genesisBlock)),
+						Time:   uint64(anchorTime.Unix()),
+					}, nil
+				case 2:
+					return &types.Header{
+						Number: big.NewInt(int64(genesisBlock + 1)),
+						Time:   uint64(anchorTime.Add(observedBlockTime).Unix()),
+					}, nil
+				case 3:
+					return &types.Header{
+						Number: big.NewInt(int64(genesisBlock + 1)),
+						Time:   uint64(anchorTime.Add(observedBlockTime).Unix()),
+					}, nil
+				default:
+					return nil, errors.New("unexpected rpc call")
+				}
+			}),
+		)
+
+		_, err := backend.BlockNumber(context.Background())
+		assert.NoError(t, err)
+
+		time.Sleep(time.Duration(blockSyncInterval) * configBlockTime)
+		synctest.Wait()
+
+		_, err = backend.BlockNumber(context.Background())
+		assert.NoError(t, err)
+		assert.Equal(t, int32(2), headerCalls.Load())
+
+		time.Sleep(time.Duration(blockSyncInterval) * observedBlockTime)
+		synctest.Wait()
+
+		afterStuckPoll, err := backend.BlockNumber(context.Background())
+		assert.NoError(t, err)
+		assert.Equal(t, int32(3), headerCalls.Load())
+
+		elapsed := time.Duration(blockSyncInterval)*configBlockTime + time.Duration(blockSyncInterval)*observedBlockTime
+		chainElapsed := elapsed - observedBlockTime
+		expectedWithConfig := genesisBlock + 1 + uint64(chainElapsed/configBlockTime)
+		expectedWithObserved := genesisBlock + 1 + uint64(chainElapsed/observedBlockTime)
+
+		assert.Equal(t, expectedWithConfig, afterStuckPoll)
+		assert.NotEqual(t, expectedWithObserved, afterStuckPoll)
+	})
+}
+
+func Test_BlockNumber_AverageBlockTimeCappedAtMax(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		const (
+			genesisBlock      = uint64(100)
+			configBlockTime   = 3 * time.Second
+			blockSyncInterval = uint64(10)
+		)
+
+		anchorTime := time.Now().UTC()
+		var headerCalls atomic.Int32
+
+		backend := newTestWrappedBackendWithConfig(
+			t,
+			configBlockTime,
+			blockSyncInterval,
+			backendmock.WithHeaderbyNumberFunc(func(ctx context.Context, number *big.Int) (*types.Header, error) {
+				call := headerCalls.Add(1)
+				switch call {
+				case 1:
+					return &types.Header{
+						Number: big.NewInt(int64(genesisBlock)),
+						Time:   uint64(anchorTime.Unix()),
+					}, nil
+				case 2:
+					return &types.Header{
+						Number: big.NewInt(int64(genesisBlock + 1)),
+						Time:   uint64(anchorTime.Add(time.Hour).Unix()),
+					}, nil
+				default:
+					return nil, errors.New("unexpected rpc call")
+				}
+			}),
+		)
+
+		_, err := backend.BlockNumber(context.Background())
+		assert.NoError(t, err)
+
+		time.Sleep(time.Duration(blockSyncInterval) * configBlockTime)
+		synctest.Wait()
+
+		got, err := backend.BlockNumber(context.Background())
+		assert.NoError(t, err)
+		assert.Equal(t, genesisBlock+1, got)
+		assert.Equal(t, int32(2), headerCalls.Load())
+
+		time.Sleep(time.Hour + maxAverageBlockTime/2) // chain stuck and then resumed
+		synctest.Wait()
+
+		got, err = backend.BlockNumber(context.Background())
+		assert.NoError(t, err)
+		assert.Equal(t, genesisBlock+2, got)
+		assert.Equal(t, int32(2), headerCalls.Load())
+	})
+}
+
+type chainSimulator struct {
+	mu           sync.Mutex
+	genesisTime  time.Time
+	genesisBlock uint64
+	block        uint64
+	blockTime    time.Duration
+}
+
+func newChainSimulator(genesisBlock uint64, blockTime time.Duration) *chainSimulator {
+	return &chainSimulator{
+		genesisTime:  time.Now().UTC(),
+		genesisBlock: genesisBlock,
+		block:        genesisBlock,
+		blockTime:    blockTime,
+	}
+}
+
+func (c *chainSimulator) advanceEvery(blockTime time.Duration, count int) {
+	for range count {
+		time.Sleep(blockTime)
+		c.mu.Lock()
+		c.block++
+		c.mu.Unlock()
+	}
+}
+
+func (c *chainSimulator) header() *types.Header {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	blockOffset := c.block - c.genesisBlock
+	return &types.Header{
+		Number: big.NewInt(int64(c.block)),
+		Time:   uint64(c.genesisTime.Add(c.blockTime * time.Duration(blockOffset)).Unix()),
+	}
+}
+
+func (c *chainSimulator) blockNumber() uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.block
+}
+
+func setBlockAnchor(backend *wrappedBackend, anchor blockNumberAnchor) {
+	backend.blockNumberCache.Set(anchor)
+}
+
 func newTestWrappedBackend(t *testing.T, opts ...backendmock.Option) *wrappedBackend {
+	t.Helper()
+
+	return newTestWrappedBackendWithConfig(t, testBlockTime, testBlockSyncInterval, opts...)
+}
+
+func newTestWrappedBackendWithConfig(
+	t *testing.T,
+	blockTime time.Duration,
+	blockSyncInterval uint64,
+	opts ...backendmock.Option,
+) *wrappedBackend {
 	t.Helper()
 
 	backend, ok := NewBackend(
 		backendmock.New(opts...),
 		testMinimumGasTipCap,
-		testBlockTime,
-		testBlockSyncInterval,
+		blockTime,
+		blockSyncInterval,
 	).(*wrappedBackend)
 	assert.True(t, ok)
 

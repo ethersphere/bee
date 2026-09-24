@@ -56,6 +56,10 @@ func newReader(r ggio.Reader) Reader {
 }
 
 func (r Reader) ReadMsgWithContext(ctx context.Context, msg proto.Message) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	errChan := make(chan error, 1)
 	go func() {
 		errChan <- r.ReadMsg(msg)
@@ -78,6 +82,10 @@ func newWriter(r ggio.Writer) Writer {
 }
 
 func (w Writer) WriteMsgWithContext(ctx context.Context, msg proto.Message) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	errChan := make(chan error, 1)
 	go func() {
 		errChan <- w.WriteMsg(msg)
