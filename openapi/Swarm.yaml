@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 8.2.0
+  version: 8.3.0
   title: Bee API
   description: "API endpoints for interacting with the Swarm network, supporting file operations, messaging, and node management"
 
@@ -377,27 +377,25 @@ paths:
     get:
       summary: "Stream chunks for upload or download"
       description: |
-        Establishes a WebSocket connection for streaming chunks. The direction is fixed at handshake time: a connection is either an upload stream or a download stream, never both.
+        Establishes a WebSocket connection for streaming chunks. Supports full-duplex bi-directional streaming using Protobuf framing, as well as legacy upload streaming.
 
-        **Upload Mode** (default, or requested via `Sec-WebSocket-Protocol: swarm-chunk-upload`):
+        **Bidirectional Stream Mode** (negotiated via `Sec-WebSocket-Protocol: swarm-chunk-stream` or query param `mode=stream`):
+        Clients and server exchange binary Protobuf messages defined by `pkg/api/pb/chunkstream.proto` (`chunkstream.Request` and `chunkstream.Response`). Both uploads (`PutRequest`) and downloads (`GetRequest`) are supported simultaneously on the same connection with request/response correlation via a client-assigned `Id`.
+        - `PutRequest`: uploads a chunk (`Data`, optional `Stamp`, and explicit `Type`: `CHUNK_TYPE_UNSPECIFIED = 0` (rejected), `CHUNK_TYPE_CAC = 1` for standard Content Addressed Chunks, or `CHUNK_TYPE_SOC = 2` for Single Owner Chunks). `STATUS_OK` confirms that the chunk was successfully pushed to network peers (direct upload) or safely stored in the local reserve (tagged deferred upload).
+        - `GetRequest`: retrieves a chunk by `Address` (with optional `CacheOption`: `CACHE_DEFAULT = 0`, `CACHE_DISABLE = 1`, `CACHE_ENABLE = 2`).
+        - `Response`: returns matching `Id`, `Status` (`STATUS_UNSPECIFIED = 0`, `STATUS_OK = 1`, `STATUS_NOT_FOUND = 2`, `STATUS_ERROR = 3`, `STATUS_BAD_REQUEST = 4`, `STATUS_BUSY = 5` [queue full — retry with backoff]), `Address`, `Data` (for Get), and sanitized `Error` message.
+        - Frame size limit: 64 KiB maximum per WebSocket message.
+        - WebSocket Close Codes:
+          - `1000` (Normal Closure): Client-initiated clean disconnect.
+          - `1001` (Going Away): Node is shutting down.
+          - `1003` (Unsupported Data): Non-binary frame or invalid protobuf payload received.
+          - `1009` (Message Too Big): Message exceeds the 64 KiB size limit.
+        - Fault Tolerance & Recovery: Individual chunk errors (e.g. not found, bad request, queue full) return a `Response` message carrying the request `Id` and do not close the stream. `STATUS_BUSY` indicates worker queue saturation; clients should retry with exponential backoff. If the connection drops or is closed, clients should reconnect and re-send any requests whose IDs never received a response.
+
+        **Upload Mode** (legacy default, or requested via query param `mode=upload`):
         Clients send chunks as binary messages `[8-byte span][data]`. Each uploaded chunk receives an empty binary acknowledgment frame (`len = 0`). When a tag is specified, chunks are stored locally and synced; without a tag, chunks are directly uploaded.
 
-        **Download Mode** (negotiated via `Sec-WebSocket-Protocol: swarm-chunk-download` or query param `mode=download`):
-        Clients send binary request frames of `[1-byte command][32-byte address]...`: the command byte `D` (`0x44`) requests chunks, followed by one or more 32-byte Swarm chunk addresses concatenated together (up to 256 addresses per frame). A frame whose length is not `1 + 32n` is rejected, as is an unrecognised command byte.
-
-        The server delivers binary responses asynchronously and out-of-order as chunks are retrieved. Exactly one response frame is sent per requested address:
-        - `[0x00][32-byte address][chunk span (8 bytes) + payload]` for successful chunk retrieval.
-        - `[0x01][32-byte address]` (33 bytes total) when the chunk is not found in the reserve and no peer could serve it.
-        - `[0x02][32-byte address]` (33 bytes total) when an internal or retrieval error occurs.
-
-        Protocol errors close the connection instead of returning a status frame, dropping any requests still in flight:
-        - `1003` (unsupported data) — the frame was not binary, its length was not `1 + 32n`, or the command byte was not recognised.
-        - `1009` (message too big) — the frame carried more than 256 addresses, or exceeded the maximum frame size.
-        - `1001` (going away) — the node is shutting down.
-
-        Replies already received before a close are valid, and nothing is sent after it. Every reply carries its address, so any requested address that has no reply was not answered and can be requested again on a new connection. Requesting the same address twice on one connection makes this ambiguous and should be avoided.
-
-        If both are supplied, `Sec-WebSocket-Protocol: swarm-chunk-download` takes precedence over the `mode` query parameter.
+        If both are supplied, the `Sec-WebSocket-Protocol` subprotocol header takes precedence over the `mode` query parameter.
       tags:
         - Chunk
       parameters:
@@ -405,9 +403,9 @@ paths:
           name: mode
           schema:
             type: string
-            enum: [upload, download]
+            enum: [stream, upload]
           required: false
-          description: "Stream direction mode. Set to `download` to retrieve chunks (can also be negotiated via `Sec-WebSocket-Protocol: swarm-chunk-download`). Any other value is rejected with `400`."
+          description: "Stream mode. Set to `stream` for bidirectional Protobuf streaming (can also be negotiated via `Sec-WebSocket-Protocol: swarm-chunk-stream`). Legacy mode: `upload`. Any other value is rejected with `400`."
         - in: query
           name: cache
           schema:
@@ -423,7 +421,7 @@ paths:
           description: "Associate upload with an existing Tag UID (use when WebSocket client cannot set custom headers)"
         - in: header
           name: swarm-postage-batch-id
-          description: "ID of Postage Batch that is used to upload data with. Optional when chunks include pre-signed postage stamps. Not required in download mode."
+          description: "ID of Postage Batch that is used to upload data with. Optional when chunks include pre-signed postage stamps."
           required: false
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"

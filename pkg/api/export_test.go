@@ -45,20 +45,6 @@ var (
 	SuccessWsMsg = successWsMsg
 )
 
-const (
-	ChunkDownloadSubprotocol = chunkDownloadSubprotocol
-	ChunkUploadSubprotocol   = chunkUploadSubprotocol
-
-	ChunkDownloadOpcode = chunkDownloadOpcode
-
-	WsChunkDeliverySuccess  = wsChunkDeliverySuccess
-	WsChunkDeliveryNotFound = wsChunkDeliveryNotFound
-	WsChunkDeliveryError    = wsChunkDeliveryError
-
-	MaxDownloadBatchSize = maxDownloadBatchSize
-	MaxDownloadFrameSize = maxDownloadFrameSize
-)
-
 var (
 	FileSizeBucketsKBytes = fileSizeBucketsKBytes
 	ToFileSizeBucket      = toFileSizeBucket
@@ -156,3 +142,9 @@ func MapStructure(input, output any, hooks map[string]func(v string) (string, er
 func NewParseError(entry, value string, cause error) error {
 	return newParseError(entry, value, cause)
 }
+
+const (
+	ChunkStreamSubprotocol  = chunkStreamSubprotocol
+	MaxStreamQueueSize      = maxStreamQueueSize
+	DefaultStreamSubWorkers = defaultStreamSubWorkers
+)

@@ -1,0 +1,90 @@
+// Copyright 2026 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto3";
+
+package chunkstream;
+
+option go_package = "pb";
+
+// Request is sent by a client to either download (Get) or upload (Put) a chunk.
+message Request {
+  // Id is a client-assigned unique request identifier for correlating responses.
+  uint64 Id = 1;
+  // Body contains either a GetRequest or PutRequest.
+  oneof body {
+    GetRequest Get = 2;
+    PutRequest Put = 3;
+  }
+}
+
+// CacheOption controls whether the chunk should be cached locally during retrieval.
+enum CacheOption {
+  // CACHE_DEFAULT uses the node's stream-level or default caching behavior.
+  CACHE_DEFAULT = 0;
+  // CACHE_DISABLE explicitly skips caching the chunk in local store.
+  CACHE_DISABLE = 1;
+  // CACHE_ENABLE explicitly caches the chunk in local store.
+  CACHE_ENABLE = 2;
+}
+
+// GetRequest requests the retrieval of a chunk by its Swarm address.
+message GetRequest {
+  // Address is the 32-byte chunk address (CAC or SOC address).
+  bytes Address = 1;
+  // Cache optionally overrides cache behavior for this retrieval.
+  CacheOption Cache = 2;
+}
+
+// ChunkType specifies whether the chunk being uploaded is a CAC or SOC.
+enum ChunkType {
+  // CHUNK_TYPE_UNSPECIFIED is the default proto3 zero-value; rejected by server.
+  CHUNK_TYPE_UNSPECIFIED = 0;
+  // CHUNK_TYPE_CAC indicates a standard Content Addressed Chunk.
+  CHUNK_TYPE_CAC = 1;
+  // CHUNK_TYPE_SOC indicates a Single Owner Chunk.
+  CHUNK_TYPE_SOC = 2;
+}
+
+// PutRequest requests the storage and network push of a chunk.
+message PutRequest {
+  // Data contains the serialized chunk bytes.
+  // For CAC: span (8 bytes) + payload (up to 4096 bytes).
+  // For SOC: id (32 bytes) + signature (65 bytes) + span (8 bytes) + payload (up to 4096 bytes).
+  bytes Data = 1;
+  // Stamp contains the serialized postage stamp (optional if batch ID provided in connection headers).
+  bytes Stamp = 2;
+  // Type specifies whether the chunk is a CAC or SOC.
+  ChunkType Type = 3;
+}
+
+// Response is sent by the server in reply to each client Request.
+message Response {
+  // Id matches the client-provided Request.Id.
+  uint64 Id = 1;
+  // Status indicates the outcome of the request.
+  Status Status = 2;
+  // Address is the 32-byte address of the chunk retrieved or uploaded.
+  bytes Address = 3;
+  // Data contains chunk bytes for successful Get operations.
+  bytes Data = 4;
+  // Error contains a sanitized description if Status is not STATUS_OK.
+  string Error = 5;
+}
+
+// Status represents the result status of a chunk stream request.
+enum Status {
+  // STATUS_UNSPECIFIED is the default proto3 zero-value; never returned by the server.
+  STATUS_UNSPECIFIED = 0;
+  // STATUS_OK indicates the request succeeded.
+  STATUS_OK = 1;
+  // STATUS_NOT_FOUND indicates the requested chunk was not found on download.
+  STATUS_NOT_FOUND = 2;
+  // STATUS_ERROR indicates an internal server error or storage failure.
+  STATUS_ERROR = 3;
+  // STATUS_BAD_REQUEST indicates invalid client input (e.g. malformed data, invalid stamp, unspecified type).
+  STATUS_BAD_REQUEST = 4;
+  // STATUS_BUSY indicates the server worker queue is full; client should retry with backoff.
+  STATUS_BUSY = 5;
+}
