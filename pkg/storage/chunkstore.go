@@ -21,6 +21,13 @@ type Getter interface {
 	Get(context.Context, swarm.Address) (swarm.Chunk, error)
 }
 
+// GetterInto is like Getter but reads chunk data into a caller-provided buffer,
+// avoiding per-call allocations. The buffer must be large enough to hold the chunk.
+// Returns the number of bytes read into buf.
+type GetterInto interface {
+	GetInto(ctx context.Context, addr swarm.Address, buf []byte) (int, error)
+}
+
 // Putter is the interface that wraps the basic Put method.
 type Putter interface {
 	// Put a chunk into the store alongside with its postage stamp.
@@ -43,6 +50,30 @@ type Hasser interface {
 type Replacer interface {
 	// Replace a chunk in the store.
 	Replace(context.Context, swarm.Chunk, bool) error
+}
+
+// ChunkLocation is an opaque locator hint for accelerated chunk retrieval.
+type ChunkLocation [8]byte
+
+// IsZero reports whether the ChunkLocation is unset.
+func (c ChunkLocation) IsZero() bool {
+	return c == ChunkLocation{}
+}
+
+// LocatingPutter is an optional capability of a Putter that returns a ChunkLocation hint.
+type LocatingPutter interface {
+	PutLoc(ctx context.Context, ch swarm.Chunk) (ChunkLocation, error)
+}
+
+// LocatingReplacer is an optional capability of a Replacer that returns a ChunkLocation hint.
+type LocatingReplacer interface {
+	ReplaceLoc(ctx context.Context, ch swarm.Chunk, emplace bool) (ChunkLocation, error)
+}
+
+// LocatingGetterInto is an optional capability of a GetterInto that uses a ChunkLocation hint.
+type LocatingGetterInto interface {
+	GetterInto
+	GetIntoLoc(ctx context.Context, addr swarm.Address, loc ChunkLocation, buf []byte) (int, error)
 }
 
 // PutterFunc type is an adapter to allow the use of
@@ -73,6 +104,7 @@ type ChunkGetterDeleter interface {
 
 type ChunkStore interface {
 	Getter
+	GetterInto
 	Putter
 	Deleter
 	Hasser
@@ -84,5 +116,6 @@ type ChunkStore interface {
 
 type ReadOnlyChunkStore interface {
 	Getter
+	GetterInto
 	Hasser
 }
