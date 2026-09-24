@@ -253,24 +253,24 @@ func (s retryTestSetup) estimateGasOption() backendmock.Option {
 }
 
 func nonceWatchIdle() monitormock.Option {
-	return monitormock.WithWatchNonceFunc(func(uint64) (<-chan struct{}, <-chan error, error) {
-		return make(chan struct{}), make(chan error), nil
+	return monitormock.WithWatchNonceFunc(func(uint64) (<-chan struct{}, <-chan error) {
+		return make(chan struct{}), make(chan error)
 	})
 }
 
 func nonceWatchSignal() monitormock.Option {
-	return monitormock.WithWatchNonceFunc(func(uint64) (<-chan struct{}, <-chan error, error) {
+	return monitormock.WithWatchNonceFunc(func(uint64) (<-chan struct{}, <-chan error) {
 		doneC := make(chan struct{}, 1)
 		doneC <- struct{}{}
-		return doneC, make(chan error), nil
+		return doneC, make(chan error)
 	})
 }
 
 func nonceWatchErr(err error) monitormock.Option {
-	return monitormock.WithWatchNonceFunc(func(uint64) (<-chan struct{}, <-chan error, error) {
+	return monitormock.WithWatchNonceFunc(func(uint64) (<-chan struct{}, <-chan error) {
 		errC := make(chan error, 1)
 		errC <- err
-		return make(chan struct{}), errC, nil
+		return make(chan struct{}), errC
 	})
 }
 
@@ -420,10 +420,10 @@ func TestSendWithRetry_UpdateStateError(t *testing.T) {
 		failingStore,
 		s.chainID,
 		monitormock.New(
-			monitormock.WithWatchNonceFunc(func(nonce uint64) (<-chan struct{}, <-chan error, error) {
+			monitormock.WithWatchNonceFunc(func(nonce uint64) (<-chan struct{}, <-chan error) {
 				watchCount.Add(1)
 				assert.Equal(t, s.nonce, nonce)
-				return doneC, make(chan error), nil
+				return doneC, make(chan error)
 			}),
 		),
 		0,
@@ -555,8 +555,8 @@ func TestSendWithRetry_EscalateGasThenSuccess(t *testing.T) {
 		store,
 		s.chainID,
 		monitormock.New(
-			monitormock.WithWatchNonceFunc(func(uint64) (<-chan struct{}, <-chan error, error) {
-				return doneC, make(chan error), nil
+			monitormock.WithWatchNonceFunc(func(uint64) (<-chan struct{}, <-chan error) {
+				return doneC, make(chan error)
 			}),
 		),
 		0,
@@ -640,9 +640,9 @@ func TestSendWithRetry_PreviousHashConfirmed(t *testing.T) {
 		store,
 		s.chainID,
 		monitormock.New(
-			monitormock.WithWatchNonceFunc(func(uint64) (<-chan struct{}, <-chan error, error) {
+			monitormock.WithWatchNonceFunc(func(uint64) (<-chan struct{}, <-chan error) {
 				watchCount.Add(1)
-				return doneC, make(chan error), nil
+				return doneC, make(chan error)
 			}),
 		),
 		0,
@@ -696,8 +696,8 @@ func TestSendWithRetry_ReplacementHashConfirmed(t *testing.T) {
 		store,
 		s.chainID,
 		monitormock.New(
-			monitormock.WithWatchNonceFunc(func(uint64) (<-chan struct{}, <-chan error, error) {
-				return doneC, make(chan error), nil
+			monitormock.WithWatchNonceFunc(func(uint64) (<-chan struct{}, <-chan error) {
+				return doneC, make(chan error)
 			}),
 		),
 		0,
@@ -747,8 +747,8 @@ func TestSendWithRetry_ExternalNonceCancellation(t *testing.T) {
 		store,
 		s.chainID,
 		monitormock.New(
-			monitormock.WithWatchNonceFunc(func(uint64) (<-chan struct{}, <-chan error, error) {
-				return doneC, make(chan error), nil
+			monitormock.WithWatchNonceFunc(func(uint64) (<-chan struct{}, <-chan error) {
+				return doneC, make(chan error)
 			}),
 		),
 		0,
@@ -802,8 +802,8 @@ func TestSendWithRetry_TierEscalation(t *testing.T) {
 		store,
 		s.chainID,
 		monitormock.New(
-			monitormock.WithWatchNonceFunc(func(uint64) (<-chan struct{}, <-chan error, error) {
-				return doneC, make(chan error), nil
+			monitormock.WithWatchNonceFunc(func(uint64) (<-chan struct{}, <-chan error) {
+				return doneC, make(chan error)
 			}),
 		),
 		0,
@@ -864,9 +864,9 @@ func TestSendWithRetry_UnderpricedKeepsPendingTxHash(t *testing.T) {
 		store,
 		s.chainID,
 		monitormock.New(
-			monitormock.WithWatchNonceFunc(func(uint64) (<-chan struct{}, <-chan error, error) {
+			monitormock.WithWatchNonceFunc(func(uint64) (<-chan struct{}, <-chan error) {
 				watchCount.Add(1)
-				return doneC, make(chan error), nil
+				return doneC, make(chan error)
 			}),
 		),
 		0,
@@ -913,9 +913,9 @@ func TestSendWithRetry_AllAttemptsExhausted(t *testing.T) {
 		store,
 		s.chainID,
 		monitormock.New(
-			monitormock.WithWatchNonceFunc(func(uint64) (<-chan struct{}, <-chan error, error) {
+			monitormock.WithWatchNonceFunc(func(uint64) (<-chan struct{}, <-chan error) {
 				watchCount.Add(1)
-				return make(chan struct{}), make(chan error), nil
+				return make(chan struct{}), make(chan error)
 			}),
 		),
 		0,
@@ -1002,8 +1002,8 @@ func TestSendWithRetry_ExhaustedPreviousHashConfirmed(t *testing.T) {
 		store,
 		s.chainID,
 		monitormock.New(
-			monitormock.WithWatchNonceFunc(func(uint64) (<-chan struct{}, <-chan error, error) {
-				return doneC, make(chan error), nil
+			monitormock.WithWatchNonceFunc(func(uint64) (<-chan struct{}, <-chan error) {
+				return doneC, make(chan error)
 			}),
 		),
 		0,
@@ -1213,11 +1213,11 @@ func TestSendWithRetry_ResumeAfterRestart(t *testing.T) {
 		store,
 		s.chainID,
 		monitormock.New(
-			monitormock.WithWatchNonceFunc(func(nonce uint64) (<-chan struct{}, <-chan error, error) {
+			monitormock.WithWatchNonceFunc(func(nonce uint64) (<-chan struct{}, <-chan error) {
 				watchedNonce.Store(nonce)
 				doneC := make(chan struct{}, 1)
 				doneC <- struct{}{}
-				return doneC, make(chan error), nil
+				return doneC, make(chan error)
 			}),
 		),
 		0,

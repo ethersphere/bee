@@ -16,7 +16,7 @@ import (
 
 type transactionMonitorMock struct {
 	watchTransaction func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error)
-	watchNonce       func(nonce uint64) (<-chan struct{}, <-chan error, error)
+	watchNonce       func(nonce uint64) (<-chan struct{}, <-chan error)
 	waitBlock        func(ctx context.Context, block *big.Int) (*types.Block, error)
 }
 
@@ -27,11 +27,11 @@ func (m *transactionMonitorMock) WatchTransaction(txHash common.Hash, nonce uint
 	return nil, nil, errors.New("not implemented")
 }
 
-func (m *transactionMonitorMock) WatchNonce(nonce uint64) (<-chan struct{}, <-chan error, error) {
+func (m *transactionMonitorMock) WatchNonce(nonce uint64) (<-chan struct{}, <-chan error) {
 	if m.watchNonce != nil {
 		return m.watchNonce(nonce)
 	}
-	return nil, nil, errors.New("not implemented")
+	return nil, nil
 }
 
 func (m *transactionMonitorMock) WaitBlock(ctx context.Context, block *big.Int) (*types.Block, error) {
@@ -60,7 +60,7 @@ func WithWatchTransactionFunc(f func(txHash common.Hash, nonce uint64) (<-chan t
 	})
 }
 
-func WithWatchNonceFunc(f func(nonce uint64) (<-chan struct{}, <-chan error, error)) Option {
+func WithWatchNonceFunc(f func(nonce uint64) (<-chan struct{}, <-chan error)) Option {
 	return optionFunc(func(s *transactionMonitorMock) {
 		s.watchNonce = f
 	})

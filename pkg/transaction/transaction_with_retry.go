@@ -352,17 +352,13 @@ func (t *transactionService) finishRetry(rs *RetriedTransaction, request *TxRequ
 	t.retryMetrics.RecordRetryComplete(attempt, terminateTxErr)
 }
 
-func (t *transactionService) watchRetryNonce(nonce uint64, watch *retryNonceWatch) error {
+func (t *transactionService) watchRetryNonce(nonce uint64, watch *retryNonceWatch) {
 	if watch.doneC != nil {
-		return nil
+		return
 	}
-	doneC, errC, err := t.monitor.WatchNonce(nonce)
-	if err != nil {
-		return err
-	}
+	doneC, errC := t.monitor.WatchNonce(nonce)
 	watch.doneC = doneC
 	watch.errC = errC
-	return nil
 }
 
 func (t *transactionService) receiptForRetryHashes(ctx context.Context, rs *RetriedTransaction) *types.Receipt {
@@ -394,6 +390,13 @@ func (t *transactionService) attempt(ctx context.Context, rs *RetriedTransaction
 		case isReplacementUnderpriced(broadCastErr):
 			// Base fee dropped between attempts within the same tier,
 			// so the bumped tip was not enough for the mempool to accept the replacement.
+			t.logger.Warning("send with retry: replacement underpriced",
+				"error", broadCastErr,
+				"tx", signedTx.Hash(),
+				"nonce", signedTx.Nonce(),
+				"gas_tip_cap", signedTx.GasTipCap(),
+				"gas_fee_cap", signedTx.GasFeeCap(),
+			)
 			replaced = false
 		case isNonRetryable(broadCastErr):
 			return attemptResult{err: broadCastErr}
@@ -406,9 +409,7 @@ func (t *transactionService) attempt(ctx context.Context, rs *RetriedTransaction
 	if replaced {
 		persistErr := t.persistReplaceTx(signedTx, rs, request.Description)
 		if rs.NonceAssigned {
-			if err := t.watchRetryNonce(rs.Nonce, nonceWatch); err != nil {
-				return attemptResult{err: fmt.Errorf("%w: watch retried nonce: %w", ErrUpdateRetryState, err)}
-			}
+			t.watchRetryNonce(rs.Nonce, nonceWatch)
 		}
 		if persistErr != nil {
 			return attemptResult{err: fmt.Errorf("%w: %w", ErrUpdateRetryState, persistErr)}
@@ -602,10 +603,7 @@ func (t *transactionService) resumeRetryTransactions() error {
 		}
 
 		nonceWatch := &retryNonceWatch{}
-		if err := t.watchRetryNonce(rs.Nonce, nonceWatch); err != nil {
-			t.logger.Error(err, "resume transaction with retry: watch", "nonce", nonce)
-			continue
-		}
+		t.watchRetryNonce(rs.Nonce, nonceWatch)
 
 		t.wg.Go(func() {
 			if _, _, err := t.sendWithRetry(t.ctx, request, &rs, nonceWatch); err != nil {

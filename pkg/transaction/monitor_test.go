@@ -426,10 +426,7 @@ func TestMonitorWatchNonce(t *testing.T) {
 		)
 		t.Cleanup(func() { _ = monitor.Close() })
 
-		doneC, errC, err := monitor.WatchNonce(nonce)
-		if err != nil {
-			t.Fatal(err)
-		}
+		doneC, errC := monitor.WatchNonce(nonce)
 
 		select {
 		case <-doneC:
@@ -467,10 +464,7 @@ func TestMonitorWatchNonce(t *testing.T) {
 		)
 		t.Cleanup(func() { _ = monitor.Close() })
 
-		doneC, errC, err := monitor.WatchNonce(nonce)
-		if err != nil {
-			t.Fatal(err)
-		}
+		doneC, errC := monitor.WatchNonce(nonce)
 
 		select {
 		case <-doneC:
@@ -496,10 +490,7 @@ func TestMonitorWatchNonce(t *testing.T) {
 			cancellationDepth,
 		)
 
-		doneC, errC, err := monitor.WatchNonce(nonce)
-		if err != nil {
-			t.Fatal(err)
-		}
+		doneC, errC := monitor.WatchNonce(nonce)
 
 		if err := monitor.Close(); err != nil {
 			t.Fatal(err)

@@ -32,7 +32,7 @@ type Monitor interface {
 	// WatchTransaction watches the transaction until either there is 1 confirmation or a competing transaction with cancellationDepth confirmations.
 	WatchTransaction(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error)
 	// WatchNonce notifies when the sender's confirmed nonce becomes greater than nonce.
-	WatchNonce(nonce uint64) (<-chan struct{}, <-chan error, error)
+	WatchNonce(nonce uint64) (<-chan struct{}, <-chan error)
 }
 
 type transactionMonitor struct {
@@ -116,7 +116,7 @@ func (tm *transactionMonitor) WatchTransaction(txHash common.Hash, nonce uint64)
 	return receiptC, errC, nil
 }
 
-func (tm *transactionMonitor) WatchNonce(nonce uint64) (<-chan struct{}, <-chan error, error) {
+func (tm *transactionMonitor) WatchNonce(nonce uint64) (<-chan struct{}, <-chan error) {
 	loggerV1 := tm.logger.V(1).Register()
 
 	tm.lock.Lock()
@@ -132,8 +132,7 @@ func (tm *transactionMonitor) WatchNonce(nonce uint64) (<-chan struct{}, <-chan 
 	tm.triggerWatchAdded()
 
 	loggerV1.Debug("starting to watch nonce", "nonce", nonce)
-
-	return doneC, errC, nil
+	return doneC, errC
 }
 
 func (tm *transactionMonitor) triggerWatchAdded() {
