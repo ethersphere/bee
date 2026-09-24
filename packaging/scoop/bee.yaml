@@ -77,6 +77,8 @@ password-file: "./password"
 # postage-stamp-address: ""
 ## postage stamp contract start block number
 # postage-stamp-start-block: "0"
+## maximum number of blocks per eth_getLogs request when syncing postage contract events
+# postage-sync-block-range: 1000
 ## enable pprof mutex profile
 # pprof-mutex: false
 ## enable pprof block profile
