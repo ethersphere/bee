@@ -29,11 +29,61 @@ import (
 type counter struct {
 	storage.ChunkStore
 	count atomic.Int32
+
+	mu       sync.Mutex
+	replicas map[string]struct{}
 }
 
 func (c *counter) Put(ctx context.Context, ch swarm.Chunk) (err error) {
 	c.count.Add(1)
+	if isDispersedReplica(ch) {
+		c.mu.Lock()
+		if c.replicas == nil {
+			c.replicas = make(map[string]struct{})
+		}
+		c.replicas[ch.Address().String()] = struct{}{}
+		c.mu.Unlock()
+	}
 	return c.ChunkStore.Put(ctx, ch)
+}
+
+// replicaSet returns a snapshot of the dispersed replica addresses written
+// through this store so far.
+func (c *counter) replicaSet() map[string]struct{} {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make(map[string]struct{}, len(c.replicas))
+	for addr := range c.replicas {
+		out[addr] = struct{}{}
+	}
+	return out
+}
+
+// isDispersedReplica reports whether ch is a SOC-wrapped dispersed replica,
+// i.e. signed by the well-known replicas owner rather than a user key.
+func isDispersedReplica(ch swarm.Chunk) bool {
+	sch, err := soc.FromChunk(ch)
+	return err == nil && bytes.Equal(sch.OwnerAddress(), swarm.ReplicasOwner)
+}
+
+// assertSameReplicas fails if the two address sets differ, reporting what the
+// original upload produced versus what the re-upload did.
+func assertSameReplicas(t *testing.T, want, got map[string]struct{}) {
+	t.Helper()
+
+	if len(got) != len(want) {
+		t.Errorf("dispersed replica count: upload produced %d, re-upload produced %d", len(want), len(got))
+	}
+	for addr := range want {
+		if _, ok := got[addr]; !ok {
+			t.Errorf("replica %s produced by the upload path but not re-uploaded", addr)
+		}
+	}
+	for addr := range got {
+		if _, ok := want[addr]; !ok {
+			t.Errorf("replica %s re-uploaded but never produced by the upload path", addr)
+		}
+	}
 }
 
 // recordingStamper wraps a postage.Stamper and records the address each Stamp
@@ -85,15 +135,28 @@ func TestSteward(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	pipe := builder.NewPipelineBuilder(ctx, chunkStore, false, redundancy.NONE)
+	// Upload at the same redundancy level the re-upload uses, so the dispersed
+	// replicas the regular upload path creates (hashtrie -> replicas.NewPutter)
+	// are actually present to compare the re-uploaded ones against. With
+	// redundancy.NONE the upload creates no replicas at all, and the replica
+	// assertions below would pass against anything Reupload happened to emit.
+	pipe := builder.NewPipelineBuilder(ctx, chunkStore, false, redundancy.PARANOID)
 	addr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	chunkCount := int(inmem.count.Load())
+	// Snapshot before the re-upload starts writing through the same store.
+	uploadReplicas := inmem.replicaSet()
 	replicaCount := redundancy.PARANOID.GetReplicaCount()
-	wantPushed := chunkCount + replicaCount
+	if len(uploadReplicas) != replicaCount {
+		t.Fatalf("upload path produced %d dispersed replicas, want %d", len(uploadReplicas), replicaCount)
+	}
+
+	// Replicas are not part of the trie, so traversal does not walk them:
+	// the re-upload pushes the trie chunks plus a fresh set of replicas.
+	trieChunkCount := int(inmem.count.Load()) - len(uploadReplicas)
+	wantPushed := trieChunkCount + replicaCount
 	done := make(chan struct{})
 	errc := make(chan error, 1)
 	replicaAddrs := make(map[string]struct{})
@@ -114,7 +177,7 @@ func TestSteward(t *testing.T) {
 				return
 			}
 
-			if sch, err := soc.FromChunk(op.Chunk); err == nil && bytes.Equal(sch.OwnerAddress(), swarm.ReplicasOwner) {
+			if isDispersedReplica(op.Chunk) {
 				replicaMu.Lock()
 				replicaAddrs[op.Chunk.Address().String()] = struct{}{}
 				replicaMu.Unlock()
@@ -160,16 +223,21 @@ func TestSteward(t *testing.T) {
 	// those speculative replica fetches can also succeed and get recorded before
 	// cancellation lands, on top of the trie chunks retrieved by traversal.
 	const maxSpeculativeRootFetches = 2
-	if count < chunkCount || count > chunkCount+maxSpeculativeRootFetches {
-		t.Fatalf("unexpected no of unique chunks retrieved: want between %d and %d, have %d", chunkCount, chunkCount+maxSpeculativeRootFetches, count)
+	if count < trieChunkCount || count > trieChunkCount+maxSpeculativeRootFetches {
+		t.Fatalf("unexpected no of unique chunks retrieved: want between %d and %d, have %d", trieChunkCount, trieChunkCount+maxSpeculativeRootFetches, count)
 	}
 
 	replicaMu.Lock()
-	gotReplicas := len(replicaAddrs)
-	replicaMu.Unlock()
-	if gotReplicas != replicaCount {
-		t.Fatalf("unexpected no of dispersed replicas re-uploaded: want %d have %d", replicaCount, gotReplicas)
+	gotReplicas := make(map[string]struct{}, len(replicaAddrs))
+	for addr := range replicaAddrs {
+		gotReplicas[addr] = struct{}{}
 	}
+	replicaMu.Unlock()
+
+	// The re-uploaded replicas must be exactly the ones the regular upload path
+	// produced: same count and same addresses. Asserting only the count would
+	// not catch replicas derived from the wrong root chunk.
+	assertSameReplicas(t, uploadReplicas, gotReplicas)
 }
 
 // strictAddressChunkStore wraps a storage.ChunkStore and requires Get to be
@@ -214,7 +282,10 @@ func TestStewardEncryptedReference(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	pipe := builder.NewPipelineBuilder(ctx, chunkStore, true, redundancy.NONE)
+	// Upload at the same redundancy level as the re-upload, so the replicas the
+	// regular upload path derives from the plain content address are present to
+	// compare against (see the equivalent comment in TestSteward).
+	pipe := builder.NewPipelineBuilder(ctx, chunkStore, true, redundancy.PARANOID)
 	addr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))
 	if err != nil {
 		t.Fatal(err)
@@ -226,11 +297,19 @@ func TestStewardEncryptedReference(t *testing.T) {
 	replicaCount := redundancy.PARANOID.GetReplicaCount()
 	contentAddr := swarm.NewAddress(addr.Bytes()[:swarm.HashSize])
 
+	// Snapshot before the re-upload writes through the same store.
+	uploadReplicas := inmem.replicaSet()
+	if len(uploadReplicas) != replicaCount {
+		t.Fatalf("upload path produced %d dispersed replicas, want %d", len(uploadReplicas), replicaCount)
+	}
+
 	replicaAddrs := make(map[string]struct{})
 	var replicaMu sync.Mutex
 	done := make(chan struct{})
 	errc := make(chan error, 1)
-	wantPushed := int(inmem.count.Load()) + replicaCount
+	// Replicas are not walked by traversal, so the re-upload pushes the trie
+	// chunks plus a fresh set of replicas.
+	wantPushed := int(inmem.count.Load()) - len(uploadReplicas) + replicaCount
 	go func() {
 		defer close(done)
 		count := 0
@@ -242,7 +321,7 @@ func TestStewardEncryptedReference(t *testing.T) {
 				}
 				return
 			}
-			if sch, err := soc.FromChunk(op.Chunk); err == nil && bytes.Equal(sch.OwnerAddress(), swarm.ReplicasOwner) {
+			if isDispersedReplica(op.Chunk) {
 				replicaMu.Lock()
 				replicaAddrs[op.Chunk.Address().String()] = struct{}{}
 				replicaMu.Unlock()
@@ -271,11 +350,17 @@ func TestStewardEncryptedReference(t *testing.T) {
 	}
 
 	replicaMu.Lock()
-	gotReplicas := len(replicaAddrs)
-	replicaMu.Unlock()
-	if gotReplicas != replicaCount {
-		t.Fatalf("unexpected no of dispersed replicas re-uploaded: want %d have %d", replicaCount, gotReplicas)
+	gotReplicas := make(map[string]struct{}, len(replicaAddrs))
+	for addr := range replicaAddrs {
+		gotReplicas[addr] = struct{}{}
 	}
+	replicaMu.Unlock()
+
+	// The re-uploaded replicas must be exactly the ones the upload path derived
+	// from the plain content address. If Reupload had derived them from the
+	// 64-byte encrypted reference instead, the addresses would differ and this
+	// would fail even though the count still matched.
+	assertSameReplicas(t, uploadReplicas, gotReplicas)
 
 	// Every replica must wrap the plain 32-byte content address's chunk, and
 	// replicas.NewPutter derives replica addresses from that same chunk's
