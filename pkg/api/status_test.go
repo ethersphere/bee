@@ -65,7 +65,7 @@ func TestGetStatus(t *testing.T) {
 
 		statusSvc.SetSync(ssMock)
 
-		client, _, _, _ := newTestServer(t, testServerOptions{
+		client, _, _, _, _ := newTestServer(t, testServerOptions{
 			BeeMode:    mode,
 			NodeStatus: statusSvc,
 		})
@@ -93,7 +93,7 @@ func TestGetStatusPeersIncludesBootnodes(t *testing.T) {
 
 	statusSvc := status.NewService(log.Noop, nil, new(topologyPeersIterNoopMock), api.FullMode.String(), nil, nil, nil)
 
-	client, _, _, _ := newTestServer(t, testServerOptions{
+	client, _, _, _, _ := newTestServer(t, testServerOptions{
 		BeeMode:      api.FullMode,
 		NodeStatus:   statusSvc,
 		TopologyOpts: topoOpts,

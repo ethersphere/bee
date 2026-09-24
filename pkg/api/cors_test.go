@@ -85,7 +85,7 @@ func TestCORSHeaders(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			t.Cleanup(cancel)
 
-			client, _, _, _ := newTestServer(t, testServerOptions{
+			client, _, _, _, _ := newTestServer(t, testServerOptions{
 				CORSAllowedOrigins: tc.allowedOrigins,
 			})
 
@@ -162,7 +162,7 @@ func TestCors(t *testing.T) {
 		t.Run(tc.endpoint, func(t *testing.T) {
 			t.Parallel()
 
-			client, _, _, _ := newTestServer(t, testServerOptions{
+			client, _, _, _, _ := newTestServer(t, testServerOptions{
 				CORSAllowedOrigins: []string{origin},
 			})
 
@@ -222,7 +222,7 @@ func TestCorsStatus(t *testing.T) {
 		t.Run(tc.endpoint, func(t *testing.T) {
 			t.Parallel()
 
-			client, _, _, _ := newTestServer(t, testServerOptions{
+			client, _, _, _, _ := newTestServer(t, testServerOptions{
 				CORSAllowedOrigins: []string{origin},
 			})
 

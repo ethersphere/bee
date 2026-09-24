@@ -39,7 +39,7 @@ func TestAddresses(t *testing.T) {
 
 	ethereumAddress := common.HexToAddress("abcd")
 
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		PublicKey:       privateKey.PublicKey,
 		PSSPublicKey:    pssPrivateKey.PublicKey,
 		Overlay:         overlay,
@@ -78,7 +78,7 @@ func TestAddresses_error(t *testing.T) {
 
 	testErr := errors.New("test error")
 
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		P2P: mock.New(mock.WithAddressesFunc(func() ([]multiaddr.Multiaddr, error) {
 			return nil, testErr
 		})),
