@@ -215,16 +215,24 @@ func TestSteward(t *testing.T) {
 		t.Fatalf("re-uploaded content on %q should be retrievable", addr)
 	}
 
-	count := len(localRetrieval.retrievedChunks)
-	// IsRetrievable's root-chunk fetch goes through joiner -> replicas.NewGetter, which
-	// races the original root address against an initial batch of 2 replica candidate
-	// addresses before the first success cancels the rest (see replicas/getter.go). With
-	// real dispersed replicas now present (this is what this fix creates), up to 2 of
-	// those speculative replica fetches can also succeed and get recorded before
-	// cancellation lands, on top of the trie chunks retrieved by traversal.
-	const maxSpeculativeRootFetches = 2
-	if count < trieChunkCount || count > trieChunkCount+maxSpeculativeRootFetches {
-		t.Fatalf("unexpected no of unique chunks retrieved: want between %d and %d, have %d", trieChunkCount, trieChunkCount+maxSpeculativeRootFetches, count)
+	// IsRetrievable's root-chunk fetch goes through joiner -> replicas.NewGetter,
+	// which races the original root address against speculative replica candidate
+	// addresses and only cancels the losers once the first fetch wins. Those
+	// speculative fetches are for replica addresses, and some of them land before
+	// cancellation does, so count only the trie chunks traversal is responsible
+	// for and the assertion stays exact instead of needing a tolerance.
+	//
+	// Read through the accessor: the losing prefetch goroutines can still be
+	// writing to the map at this point.
+	retrieved := localRetrieval.retrievedSnapshot()
+	count := 0
+	for addr := range retrieved {
+		if _, isReplica := uploadReplicas[addr]; !isReplica {
+			count++
+		}
+	}
+	if count != trieChunkCount {
+		t.Fatalf("unexpected no of unique non-replica chunks retrieved: want %d have %d", trieChunkCount, count)
 	}
 
 	replicaMu.Lock()
@@ -406,6 +414,23 @@ type localRetriever struct {
 	storage.ChunkStore
 	mu              sync.Mutex
 	retrievedChunks map[string]struct{}
+}
+
+// retrievedSnapshot returns a copy of the addresses retrieved so far.
+//
+// The redundancy getter keeps speculative prefetch goroutines running after
+// IsRetrievable has returned (they are only cancelled once the first fetch
+// wins), so this map is still being written to while the test reads it.
+// Callers must go through this accessor rather than touching the map directly.
+func (lr *localRetriever) retrievedSnapshot() map[string]struct{} {
+	lr.mu.Lock()
+	defer lr.mu.Unlock()
+
+	out := make(map[string]struct{}, len(lr.retrievedChunks))
+	for addr := range lr.retrievedChunks {
+		out[addr] = struct{}{}
+	}
+	return out
 }
 
 func (lr *localRetriever) RetrieveChunk(ctx context.Context, addr, sourceAddr swarm.Address) (chunk swarm.Chunk, err error) {
