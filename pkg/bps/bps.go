@@ -27,12 +27,6 @@ const (
 	streamName      = "bps"
 )
 
-// Interface is the main interface of the bps protocol.
-//type Interface interface {
-//Join(ctx context.Context, p p2p.Peer, topic []byte, notify <-chan []byte) error
-//Publish(ctx context.Context, topic []byte, message []byte) error
-//}
-
 // Service is the bps protocol service.
 type Service struct {
 	mtx      sync.Mutex
@@ -66,9 +60,8 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 	}
 }
 
-// Join onto a topic at the remote peer. The channel passed at registration will be notified
-// with the payloads once they arrive. Returns the challenge and a channel that would send
-// the payloads over it.
+// Join onto a topic at the broker at address.
+// Returns the challenge and a channel that would send the payloads over it.
 func (s *Service) Join(ctx context.Context, address swarm.Address, topic []byte) ([]byte, chan []byte, error) {
 	stream, err := s.streamer.NewStream(ctx, address, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
@@ -112,8 +105,8 @@ func (s *Service) Join(ctx context.Context, address swarm.Address, topic []byte)
 	return joinAck.Challenge, rxCh, nil
 }
 
-// claim a given topic on a broker with the provided signature. returns the write channel used in order
-// to send later payloads
+// claim a given topic on a broker (at address) with the provided signature.
+// returns the write channel used in order to send later payloads.
 func (s *Service) Claim(ctx context.Context, address swarm.Address, topic, sig []byte) (chan []byte, error) {
 	stream, err := s.streamer.NewStream(ctx, address, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
@@ -161,10 +154,10 @@ func (s *Service) Claim(ctx context.Context, address swarm.Address, topic, sig [
 
 func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
 	w, r := protobuf.NewWriterAndReader(stream)
-	defer stream.FullClose()
 
 	var sysMsg pb.SystemMessage
 	if err := r.ReadMsgWithContext(ctx, &sysMsg); err != nil {
+		go stream.FullClose()
 		return fmt.Errorf("read sys message: %w", err)
 	}
 
@@ -172,13 +165,55 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 		// peer is trying to join the cohort. accept and return the challenge
 		ack := pb.JoinAck{Challenge: []byte{0, 1, 2, 3}}
 		if err := w.WriteMsgWithContext(ctx, &ack); err != nil {
+			go stream.FullClose()
 			return fmt.Errorf("write claim: %w", err)
 		}
+
+		// add to the cohort and get a channel to receive the broadcasts on
+		ch := make(chan []byte) // replace with the registry channel later
+		go func() {
+			defer stream.FullClose()
+			for {
+				// await messages, then write to the stream once they come in
+				select {
+				case msg := <-ch:
+					m := pb.Broadcast{Soc: msg}
+					if err := w.WriteMsgWithContext(ctx, &m); err != nil {
+						s.logger.Error(err, "write broadcast")
+						return
+					}
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
 		return nil
 	}
 	if claim := sysMsg.GetClaim(); claim != nil {
 		// peer is trying to claim the cohort. if the challenge doesn't add up - kick them off
+		//_ = claim.Challenge
+		// check if claim signature pk matches the feed owner address on the registry
+		// if it does - this is an atomic swap - the current stream becomes the publisher stream
+		// and the next challenge changes randomly, so that if needed, the publisher can reclaim
+		// later and rejoin + reclaim.
 
+		ch := make(chan []byte) // replace with the cohort send channel later
+		go func() {
+			defer stream.FullClose()
+			for {
+				// await messages, then write to the cohort channel
+				m := pb.Broadcast{}
+				if err := r.ReadMsgWithContext(ctx, &m); err != nil {
+					s.logger.Error(err, "read broadcast")
+					return
+				}
+				select {
+				case ch <- m.Soc:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
 		return nil
 	}
 
