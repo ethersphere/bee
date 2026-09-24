@@ -20,17 +20,6 @@ message Broadcast {
   bytes soc = 1;
 }
 
-message Publish {
- bytes soc = 1;
-}
-
-message PayloadMessage {
-  oneof payload_message {
-    Publish publish = 1;
-    Broadcast broadcast = 2;
-  }
-}
-
 message Join {
   bytes topic = 1;
 }
@@ -40,8 +29,10 @@ message JoinAck {
 }
 
 message Claim {
-  bytes challengeSig = 1; // the challenge signature that takes over the cohort. signs the challenge in JoinAck.
+  bytes sig = 1; // the challenge signature that takes over the cohort. signs the challenge in JoinAck.
 }
+
+message ClaimAck {}
 
 
 message SystemMessage {
