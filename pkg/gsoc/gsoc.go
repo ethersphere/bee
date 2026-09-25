@@ -7,6 +7,7 @@ package gsoc
 import (
 	"slices"
 	"sync"
+	"sync/atomic"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/soc"
@@ -26,7 +27,8 @@ type Listener interface {
 
 type listener struct {
 	handlers   map[string][]*Handler
-	handlersMu sync.Mutex
+	handlersMu sync.RWMutex
+	subCount   atomic.Int32
 	quit       chan struct{}
 	logger     log.Logger
 }
@@ -78,6 +80,10 @@ func (l *listener) Subscribe(address swarm.Address, handler Handler) (cleanup fu
 
 // Handle is called by push/pull sync and passes the chunk its registered handler
 func (l *listener) Handle(c *soc.SOC) {
+	if l.subCount.Load() == 0 {
+		return // no subscriptions, skip lock
+	}
+
 	addr, err := c.Address()
 	if err != nil {
 		return // no handler
