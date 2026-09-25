@@ -75,9 +75,7 @@ func (s *Service) Join(ctx context.Context, address swarm.Address, topic []byte)
 	}
 
 	w, r := protobuf.NewWriterAndReader(stream)
-	joinMsg := pb.SystemMessage{SysMessage: &pb.SystemMessage_Join{
-		Join: &pb.Join{Topic: topic},
-	}}
+	joinMsg := pb.Join{Topic: topic}
 	if err := w.WriteMsgWithContext(ctx, &joinMsg); err != nil {
 		return nil, nil, fmt.Errorf("write join msg: %w", err)
 	}
@@ -120,19 +118,12 @@ func (s *Service) Claim(ctx context.Context, address swarm.Address, topic, sig [
 		return nil, fmt.Errorf("new stream: %w", err)
 	}
 
-	w, r := protobuf.NewWriterAndReader(stream)
-	claim := pb.SystemMessage{SysMessage: &pb.SystemMessage_Claim{
-		Claim: &pb.Claim{Sig: topic},
-	}}
+	w, _ := protobuf.NewWriterAndReader(stream)
+	claim := pb.Claim{Sig: topic}
 	if err := w.WriteMsgWithContext(ctx, &claim); err != nil {
 		return nil, fmt.Errorf("write claim: %w", err)
 	}
-	claimAck := pb.ClaimAck{}
 	// if the claim is wrong we will just get kicked off with a stream reset and the read will fail
-	if err := r.ReadMsgWithContext(ctx, &claimAck); err != nil {
-		return nil, fmt.Errorf("read claim ack: %w", err)
-	}
-
 	ch := make(chan []byte)
 
 	// from now on we expect only to write updates to this stream
@@ -173,6 +164,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 		return fmt.Errorf("read sys message: %w", err)
 	}
 
+	// register in the cohort and return the secret
 	// peer is trying to join the cohort. accept and return the challenge
 	ack := pb.JoinAck{Challenge: []byte{0, 1, 2, 3}}
 	if err := w.WriteMsgWithContext(ctx, &ack); err != nil {
