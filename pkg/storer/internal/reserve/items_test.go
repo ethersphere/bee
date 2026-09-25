@@ -43,6 +43,7 @@ func TestReserveItems(t *testing.T) {
 					Bin:       9,
 					BinID:     100,
 					StampHash: storagetest.MaxAddressBytes[:],
+					Sum:       storagetest.MaxAddressBytes[:storage.ChunkSumSize],
 				},
 				Factory: func() storage.Item { return new(reserve.ChunkBinItem) },
 			},

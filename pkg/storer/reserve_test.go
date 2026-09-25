@@ -36,12 +36,16 @@ func TestIndexCollision(t *testing.T) {
 		putter := storer.ReservePutter()
 
 		ch1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(stamp)
+		ch2 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(stamp)
+		if bytes.Compare(ch1.Address().Bytes(), ch2.Address().Bytes()) > 0 {
+			ch1, ch2 = ch2, ch1
+		}
+
 		err := putter.Put(context.Background(), ch1)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		ch2 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(stamp)
 		err = putter.Put(context.Background(), ch2)
 		if err == nil {
 			t.Fatal("expected index collision error")
@@ -251,11 +255,11 @@ func TestEvictBatch(t *testing.T) {
 	reserve := st.Reserve()
 
 	for _, ch := range chunks {
-		stampHash, err := ch.Stamp().Hash()
+		sum, err := storage.ChunkSum(ch)
 		if err != nil {
 			t.Fatal(err)
 		}
-		has, err := st.ReserveHas(ch.Address(), ch.Stamp().BatchID(), stampHash)
+		has, err := st.ReserveHas(ch.Address(), sum)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -347,11 +351,11 @@ func TestUnreserveCap(t *testing.T) {
 
 		for po, chunks := range chunksPO {
 			for _, ch := range chunks {
-				stampHash, err := ch.Stamp().Hash()
+				sum, err := storage.ChunkSum(ch)
 				if err != nil {
 					t.Fatal(err)
 				}
-				has, err := storer.ReserveHas(ch.Address(), ch.Stamp().BatchID(), stampHash)
+				has, err := storer.ReserveHas(ch.Address(), sum)
 				if err != nil {
 					t.Fatal(err)
 				}
