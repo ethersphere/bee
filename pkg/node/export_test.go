@@ -11,6 +11,7 @@ var (
 	UseEmbeddedSnapshot   = useEmbeddedSnapshot
 	SnapshotApplies       = snapshotApplies
 	SnapshotSkipReason    = snapshotSkipReason
+	ChooseSnapshotSource  = chooseSnapshotSource
 )
 
 // NewTestBeeWithClosers builds a Bee with only the push-sync and retrieval

@@ -73,7 +73,7 @@ password-file: "/usr/local/var/lib/swarm-bee/password"
 # payment-threshold: "13500000"
 ## excess debt above payment threshold in percentages where you disconnect from your peer
 # payment-tolerance-percent: 25
-## path to a gzip NDJSON postage batch snapshot; overrides the embedded snapshot
+## path to a postage batch snapshot (NDJSON, optionally gzip-compressed); overrides the embedded snapshot
 # postage-snapshot-file: ""
 ## postage stamp contract address
 # postage-stamp-address: ""

@@ -913,27 +913,35 @@ func NewBee(
 	)
 
 	var batchSnapshot *batchservice.Snapshot
-	switch {
-	case o.PostageSnapshotFile != "":
-		// The operator asked for this file explicitly: warn when it cannot apply,
-		// and refuse to start when it applies but is unusable.
-		if reason := snapshotSkipReason(batchStoreExists, o.Resync, beeNodeMode); reason != "" {
-			logger.Warning("postage snapshot file will not be used", "path", o.PostageSnapshotFile, "reason", reason)
-			break
-		}
-		var info snapshot.SnapshotInfo
-		batchSnapshot, info, err = snapshot.NewFromFile(ctx, logger, o.PostageSnapshotFile, b.syncingStopped, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout, postageSyncStart)
-		if err != nil {
+	snapshotSource, strictSnapshot, skipReason := chooseSnapshotSource(o.PostageSnapshotFile, o.SkipPostageSnapshot, batchStoreExists, o.Resync, networkID, beeNodeMode)
+	if skipReason != "" {
+		logger.Warning("postage snapshot file will not be used", "path", o.PostageSnapshotFile, "reason", skipReason)
+	}
+	if snapshotSource != nil {
+		snap, info, err := snapshot.Load(logger, snapshotSource, snapshot.Config{
+			Contract:        postageStampContractAddress,
+			ABI:             postageStampContractABI,
+			StartBlock:      postageSyncStart,
+			BlockTime:       o.BlockTime,
+			StallingTimeout: postageSyncingStallingTimeout,
+			BackoffTimeout:  postageSyncingBackoffTimeout,
+			SyncingStopped:  b.syncingStopped,
+			Strict:          strictSnapshot,
+		})
+		switch {
+		case err != nil && strictSnapshot:
+			// The operator asked for this file explicitly, so do not start without it.
 			return nil, fmt.Errorf("postage snapshot file %q: %w", o.PostageSnapshotFile, err)
-		}
-		logger.Info("using postage snapshot", "source", "file", "path", o.PostageSnapshotFile, "log_count", info.LogCount, "max_block", info.MaxBlock)
-	case useEmbeddedSnapshot(o.SkipPostageSnapshot, batchStoreExists, o.Resync, networkID, beeNodeMode):
-		batchSnapshot, err = snapshot.New(ctx, logger, archive.Getter{}, b.syncingStopped, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout, postageSyncStart)
-		if err != nil {
-			// A corrupt snapshot is not fatal: rebuild from the chain instead.
+		case err != nil:
+			// A corrupt embedded snapshot is not fatal: rebuild from the chain instead.
 			logger.Error(err, "postage snapshot unavailable, syncing from chain instead")
-		} else {
-			logger.Info("using postage snapshot", "source", "embedded")
+		default:
+			batchSnapshot = snap
+			keysAndValues := []any{"source", info.Source, "log_count", info.LogCount, "max_block", info.MaxBlock}
+			if strictSnapshot {
+				keysAndValues = append(keysAndValues, "path", o.PostageSnapshotFile)
+			}
+			logger.Info("using postage snapshot", keysAndValues...)
 		}
 	}
 
@@ -1717,4 +1725,21 @@ func snapshotSkipReason(batchStoreExists, resync bool, mode api.BeeNodeMode) str
 // from scratch (no store yet, or a resync wipes it), unless explicitly skipped.
 func useEmbeddedSnapshot(skip, batchStoreExists, resync bool, networkID uint64, mode api.BeeNodeMode) bool {
 	return !skip && snapshotApplies(batchStoreExists, resync, mode) && networkID == mainnetNetworkID
+}
+
+// chooseSnapshotSource picks where the postage snapshot comes from, if anywhere.
+// A file named by the operator wins on any network and is strict: any problem
+// with it is fatal. The embedded snapshot is best effort. skipReason is set when
+// a file was named but will not be used.
+func chooseSnapshotSource(file string, skip, batchStoreExists, resync bool, networkID uint64, mode api.BeeNodeMode) (src snapshot.Source, strict bool, skipReason string) {
+	if file != "" {
+		if reason := snapshotSkipReason(batchStoreExists, resync, mode); reason != "" {
+			return nil, false, reason
+		}
+		return snapshot.File(file), true, ""
+	}
+	if useEmbeddedSnapshot(skip, batchStoreExists, resync, networkID, mode) {
+		return snapshot.Embedded(archive.Getter{}), false, ""
+	}
+	return nil, false, ""
 }

@@ -7,13 +7,18 @@ package archive_test
 import (
 	"context"
 	"math/big"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	chaincfg "github.com/ethersphere/bee/v2/pkg/config"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage/snapshot"
 	"github.com/ethersphere/bee/v2/pkg/postage/snapshot/archive"
+	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -32,14 +37,12 @@ func TestSnapshotLogFilterer_RealSnapshot(t *testing.T) {
 	// batch-archive bump only surfaces at runtime as a stalled postage sync.
 	require.NotEmpty(t, getter.GetBatchSnapshot(), "embedded batch snapshot is empty")
 
-	filterer := snapshot.NewSnapshotLogFilterer(log.Noop, getter)
-
-	maxBlock, err := filterer.BlockNumber(context.Background())
+	filterer, info, err := snapshot.Parse(log.Noop, snapshot.Embedded(getter), common.Address{}, false)
 	if err != nil {
 		t.Fatalf("embedded batch snapshot failed to parse: %v", err)
 	}
-	if maxBlock == 0 {
-		t.Fatal("embedded batch snapshot has no logs (max block height 0)")
+	if info.LogCount == 0 {
+		t.Fatal("embedded batch snapshot has no logs")
 	}
 
 	t.Run("filter range", func(t *testing.T) {
@@ -68,23 +71,19 @@ func TestSnapshotLogFilterer_RealSnapshot(t *testing.T) {
 	})
 }
 
-func BenchmarkNewSnapshotLogFilterer_Load(b *testing.B) {
-	getter := archive.Getter{}
+func BenchmarkParse(b *testing.B) {
+	src := snapshot.Embedded(archive.Getter{})
 
 	for b.Loop() {
-		filterer := snapshot.NewSnapshotLogFilterer(log.Noop, getter)
-		_, err := filterer.BlockNumber(context.Background())
-		if err != nil {
+		if _, _, err := snapshot.Parse(log.Noop, src, common.Address{}, false); err != nil {
 			b.Fatal(err)
 		}
 	}
 }
 
 func BenchmarkSnapshotLogFilterer(b *testing.B) {
-	getter := archive.Getter{}
-	filterer := snapshot.NewSnapshotLogFilterer(log.Noop, getter)
-	// ensure loaded
-	if _, err := filterer.BlockNumber(context.Background()); err != nil {
+	filterer, _, err := snapshot.Parse(log.Noop, snapshot.Embedded(archive.Getter{}), common.Address{}, false)
+	if err != nil {
 		b.Fatal(err)
 	}
 
@@ -101,4 +100,38 @@ func BenchmarkSnapshotLogFilterer(b *testing.B) {
 			}
 		}
 	})
+}
+
+// TestLoadFile_RealSnapshot feeds the embedded blob through the operator file
+// path, strictly, against the mainnet contract and start block it was exported
+// for. It proves the strict validation accepts a real batch-export file: the
+// slim line format, the sort order, the contract address on every line, and a
+// max block far enough past the contract start block.
+func TestLoadFile_RealSnapshot(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "export.ndjson.gzip")
+	if err := os.WriteFile(path, archive.Getter{}.GetBatchSnapshot(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	snap, info, err := snapshot.Load(log.Noop, snapshot.File(path), snapshot.Config{
+		Contract:        chaincfg.Mainnet.PostageStampAddress,
+		ABI:             abiutil.MustParseABI(chaincfg.Mainnet.PostageStampABI),
+		StartBlock:      chaincfg.Mainnet.PostageStampStartBlock,
+		BlockTime:       time.Second,
+		StallingTimeout: time.Minute,
+		BackoffTimeout:  time.Second,
+		Strict:          true,
+	})
+	if err != nil {
+		t.Fatalf("embedded snapshot rejected by the file path: %v", err)
+	}
+	t.Cleanup(func() { _ = snap.Listener.Close() })
+
+	_, embeddedInfo, err := snapshot.Parse(log.Noop, snapshot.Embedded(archive.Getter{}), common.Address{}, false)
+	require.NoError(t, err)
+	assert.Equal(t, "file", info.Source)
+	assert.Equal(t, embeddedInfo.LogCount, info.LogCount)
+	assert.Equal(t, embeddedInfo.MaxBlock, info.MaxBlock)
 }

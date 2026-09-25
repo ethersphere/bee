@@ -221,3 +221,57 @@ func TestSnapshotApplies(t *testing.T) {
 		})
 	}
 }
+
+func TestChooseSnapshotSource(t *testing.T) {
+	t.Parallel()
+
+	const (
+		mainnet = uint64(1)
+		testnet = uint64(10)
+		file    = "/data/snapshot.ndjson.gz"
+	)
+
+	testCases := []struct {
+		name             string
+		file             string
+		skip             bool
+		batchStoreExists bool
+		resync           bool
+		networkID        uint64
+		mode             api.BeeNodeMode
+		wantSource       string // "" for none
+		wantStrict       bool
+		wantSkipReason   string
+	}{
+		{name: "file on a fresh store", file: file, networkID: mainnet, mode: api.FullMode, wantSource: "file", wantStrict: true},
+		{name: "file works on any network", file: file, networkID: testnet, mode: api.LightMode, wantSource: "file", wantStrict: true},
+		{name: "file with resync on an existing store", file: file, batchStoreExists: true, resync: true, networkID: testnet, mode: api.FullMode, wantSource: "file", wantStrict: true},
+		{name: "file on an existing store is not used", file: file, batchStoreExists: true, networkID: mainnet, mode: api.FullMode, wantSkipReason: "batch store already exists; use --resync to rebuild it from the snapshot"},
+		{name: "file on an ultra-light node is not used", file: file, networkID: mainnet, mode: api.UltraLightMode, wantSkipReason: "ultra-light node does not sync postage data"},
+		{name: "embedded on a fresh mainnet store", networkID: mainnet, mode: api.FullMode, wantSource: "embedded"},
+		{name: "embedded is skipped when asked", skip: true, networkID: mainnet, mode: api.FullMode},
+		{name: "no embedded snapshot off mainnet", networkID: testnet, mode: api.FullMode},
+		{name: "no embedded snapshot on an existing store", batchStoreExists: true, networkID: mainnet, mode: api.FullMode},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			src, strict, skipReason := node.ChooseSnapshotSource(tc.file, tc.skip, tc.batchStoreExists, tc.resync, tc.networkID, tc.mode)
+
+			gotSource := ""
+			if src != nil {
+				gotSource = src.Name()
+			}
+			if gotSource != tc.wantSource {
+				t.Fatalf("source = %q, want %q", gotSource, tc.wantSource)
+			}
+			if strict != tc.wantStrict {
+				t.Fatalf("strict = %v, want %v", strict, tc.wantStrict)
+			}
+			if skipReason != tc.wantSkipReason {
+				t.Fatalf("skip reason = %q, want %q", skipReason, tc.wantSkipReason)
+			}
+		})
+	}
+}
