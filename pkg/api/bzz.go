@@ -696,6 +696,8 @@ FETCH:
 			}
 
 			jsonhttp.NotFound(w, "path address not found")
+		} else if errors.Is(err, topology.ErrNotFound) {
+			jsonhttp.ServiceUnavailable(w, "content could not be retrieved because no usable peer was available")
 		} else {
 			jsonhttp.NotFound(w, nil)
 		}
@@ -768,10 +770,16 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		reader, l, err = joiner.New(ctx, s.storer.Download(cache), s.storer.Cache(), reference, rLevel)
 	}
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) || errors.Is(err, topology.ErrNotFound) {
+		if errors.Is(err, storage.ErrNotFound) {
 			logger.Debug("api download: not found ", "address", reference, "error", err)
 			logger.Error(nil, err.Error())
 			jsonhttp.NotFound(w, nil)
+			return
+		}
+		if errors.Is(err, topology.ErrNotFound) {
+			logger.Debug("api download: no peers available", "address", reference, "error", err)
+			logger.Error(nil, err.Error())
+			jsonhttp.ServiceUnavailable(w, "content could not be retrieved because no usable peer was available")
 			return
 		}
 		logger.Debug("api download: unexpected error", "address", reference, "error", err)
