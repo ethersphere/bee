@@ -14,7 +14,6 @@ var (
 	ValidatePublicAddress = validatePublicAddress
 	UseEmbeddedSnapshot   = useEmbeddedSnapshot
 	IsChainEnabled        = isChainEnabled
-	SnapshotApplies       = snapshotApplies
 	SnapshotSkipReason    = snapshotSkipReason
 	ChooseSnapshotSource  = chooseSnapshotSource
 )

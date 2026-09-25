@@ -24,7 +24,6 @@ func TestCheckPostageSnapshotOptions(t *testing.T) {
 		{name: "neither set"},
 		{name: "only skip", skip: true},
 		{name: "only file", file: "/data/snapshot.ndjson.gz"},
-		{name: "skip with empty file", skip: true, file: ""},
 		{name: "both set", skip: true, file: "/data/snapshot.ndjson.gz", wantErr: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

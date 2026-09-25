@@ -16,51 +16,43 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/util/syncutil"
 )
 
-// Config holds what Load needs to build the replay listener and to validate a
-// strict source.
+// Config holds what Load needs to validate a snapshot and build its replay
+// listener.
 type Config struct {
-	// Contract is the postage stamp contract whose events the snapshot holds.
-	Contract common.Address
-	ABI      abi.ABI
-	// StartBlock is the block the replay starts after (the postage contract
-	// start block).
-	StartBlock      uint64
+	Contract        common.Address
+	ABI             abi.ABI
+	StartBlock      uint64 // the postage contract start block
 	BlockTime       time.Duration
 	StallingTimeout time.Duration
 	BackoffTimeout  time.Duration
 	SyncingStopped  *syncutil.Signaler
-	// Strict rejects a snapshot that is empty, holds logs from another contract,
-	// or does not reach far enough past StartBlock for the replay to make
-	// progress. It is set for a source the operator asked for explicitly.
-	Strict bool
 }
 
-// Load parses src and wraps it in the listener that replays it into the batch
-// store. The snapshot is parsed eagerly so a corrupt one fails here, not after
-// the sync timeout; the source is closed before Load returns.
+// Load parses src, rejects a snapshot that is empty, holds logs from another
+// contract, or does not reach far enough past StartBlock for the replay to make
+// progress, and wraps it in the listener that replays it into the batch store.
+// All of this happens eagerly so a bad snapshot fails here, not after the sync
+// timeout.
 func Load(logger log.Logger, src Source, cfg Config) (*batchservice.Snapshot, Info, error) {
 	logger.Info("loading batch snapshot", "source", src.Name())
 
-	var checks []Check
-	if cfg.Strict {
-		checks = append(checks, FromContract(cfg.Contract))
-	}
-	filterer, info, err := Parse(logger, src, checks...)
+	filterer, info, err := Parse(logger, src)
 	if err != nil {
 		return nil, Info{}, err
 	}
-	if cfg.Strict {
-		if info.LogCount == 0 {
-			return nil, Info{}, ErrEmptySnapshot
-		}
-		// The replay starts at StartBlock+1; below that the listener would wait
-		// for the stalling timeout and then shut the node down.
-		if target, ok := listener.SyncTarget(info.MaxBlock); !ok || target < cfg.StartBlock+1 {
-			return nil, Info{}, fmt.Errorf("%w: max block %d, start block %d", ErrBlockHeightTooLow, info.MaxBlock, cfg.StartBlock)
-		}
+	if info.LogCount == 0 {
+		return nil, Info{}, ErrEmptySnapshot
+	}
+	if err := filterer.checkContract(cfg.Contract); err != nil {
+		return nil, Info{}, err
+	}
+	// The replay starts at StartBlock+1; below that the listener would wait for
+	// the stalling timeout and then shut the node down.
+	if target, ok := listener.SyncTarget(info.MaxBlock); !ok || target < cfg.StartBlock+1 {
+		return nil, Info{}, fmt.Errorf("%w: max block %d, start block %d", ErrBlockHeightTooLow, info.MaxBlock, cfg.StartBlock)
 	}
 
-	eventListener := listener.New(cfg.SyncingStopped, logger, filterer, cfg.Contract, cfg.ABI, cfg.BlockTime, cfg.StallingTimeout, cfg.BackoffTimeout, listener.SnapshotBlockPage)
+	eventListener := listener.New(cfg.SyncingStopped, logger, filterer, cfg.Contract, cfg.ABI, cfg.BlockTime, cfg.StallingTimeout, cfg.BackoffTimeout, blockPage)
 
 	return &batchservice.Snapshot{
 		Listener:   eventListener,
