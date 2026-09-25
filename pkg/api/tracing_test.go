@@ -44,7 +44,7 @@ func TestTracingHTTPSpan(t *testing.T) {
 	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
 
 	storerMock := mockstorer.New()
-	client, _, _, _ := newTestServer(t, testServerOptions{
+	client, _, _, _, _ := newTestServer(t, testServerOptions{
 		Storer: storerMock,
 		Tracer: tracing.NewTracerFromProvider(tp),
 		Logger: log.Noop,

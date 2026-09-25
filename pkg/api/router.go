@@ -11,15 +11,16 @@ import (
 	"net/http/pprof"
 	"strings"
 
-	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
-	"github.com/ethersphere/bee/v2/pkg/log/httpaccess"
-	"github.com/ethersphere/bee/v2/pkg/swarm"
-	"github.com/ethersphere/bee/v2/pkg/transaction/backendnoop"
 	"github.com/felixge/fgprof"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"resenje.org/web"
+
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/log/httpaccess"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/transaction/backendnoop"
 )
 
 const (
@@ -675,7 +676,8 @@ func (s *Service) mountBusinessDebug() {
 	handle("/redistributionstate", web.ChainHandlers(
 		s.checkStorageIncentivesAvailability,
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.redistributionStatusHandler),
+			"GET":   http.HandlerFunc(s.redistributionStatusHandler),
+			"PATCH": http.HandlerFunc(s.redistributionToggleHandler),
 		})),
 	)
 

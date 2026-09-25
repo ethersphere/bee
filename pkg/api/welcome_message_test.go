@@ -22,7 +22,7 @@ func TestGetWelcomeMessage(t *testing.T) {
 
 	const DefaultTestWelcomeMessage = "Hello World!"
 
-	srv, _, _, _ := newTestServer(t, testServerOptions{
+	srv, _, _, _, _ := newTestServer(t, testServerOptions{
 		P2P: mock.New(mock.WithGetWelcomeMessageFunc(func() string {
 			return DefaultTestWelcomeMessage
 		})),
@@ -74,7 +74,7 @@ func TestSetWelcomeMessage(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			mockP2P := mock.New()
 
-			srv, _, _, _ := newTestServer(t, testServerOptions{
+			srv, _, _, _, _ := newTestServer(t, testServerOptions{
 				P2P: mockP2P,
 			})
 
@@ -110,7 +110,7 @@ func TestSetWelcomeMessageInternalServerError(t *testing.T) {
 	testError := errors.New("Could not set value")
 	testURL := "/welcome-message"
 
-	srv, _, _, _ := newTestServer(t, testServerOptions{
+	srv, _, _, _, _ := newTestServer(t, testServerOptions{
 		P2P: mock.New(mock.WithSetWelcomeMessageFunc(func(string) error {
 			return testError
 		})),
