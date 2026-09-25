@@ -109,7 +109,7 @@ data-dir: "./data"
 # postage-stamp-start-block: "0"
 ## maximum number of blocks per eth_getLogs request when syncing postage contract events
 # postage-sync-block-range: 1000
-## path to a gzip NDJSON postage batch snapshot; overrides the embedded snapshot
+## path to a postage batch snapshot (NDJSON, optionally gzip-compressed); overrides the embedded snapshot
 # postage-snapshot-file: ""
 ## skip postage snapshot
 # skip-postage-snapshot: false
