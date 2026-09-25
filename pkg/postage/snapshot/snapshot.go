@@ -157,13 +157,16 @@ type SnapshotLogFilterer struct {
 var _ listener.BlockHeightContractFilterer = (*SnapshotLogFilterer)(nil)
 
 // Parse reads src to the end and indexes its logs, which must be sorted by
-// block number. Blank lines are skipped.
+// block number and emitted by contract. Blank lines are skipped. A log from
+// another contract would be filtered out during replay while the chain state
+// still advanced past it, silently skipping history; checking it here also
+// rejects a snapshot for another network at its first line.
 //
 // The snapshot comes from ethersphere/batch-export in its slim encoding: only
 // address, topics, data, blockNumber, transactionHash and logIndex are set,
 // every other types.Log field decodes to its zero value without error. Extend
 // SlimLog in batch-export before reading a new field from snapshot logs.
-func Parse(logger log.Logger, src Source) (*SnapshotLogFilterer, Info, error) {
+func Parse(logger log.Logger, src Source, contract common.Address) (*SnapshotLogFilterer, Info, error) {
 	reader, err := src.Open()
 	if err != nil {
 		return nil, Info{}, err
@@ -193,6 +196,10 @@ func Parse(logger log.Logger, src Source) (*SnapshotLogFilterer, Info, error) {
 			parseErr = fmt.Errorf("%w: line %d: block %d after block %d, snapshot is not sorted by block number", ErrParseSnapshot, line, l.BlockNumber, maxBlock)
 			break
 		}
+		if l.Address != contract {
+			parseErr = fmt.Errorf("%w: line %d has address %s, expected %s", ErrContractMismatch, line, l.Address.Hex(), contract.Hex())
+			break
+		}
 		maxBlock = l.BlockNumber
 		logs = append(logs, l)
 	}
@@ -207,18 +214,6 @@ func Parse(logger log.Logger, src Source) (*SnapshotLogFilterer, Info, error) {
 
 	filterer := &SnapshotLogFilterer{logger: logger, logs: logs, maxBlock: maxBlock}
 	return filterer, Info{LogCount: len(logs), MaxBlock: maxBlock}, nil
-}
-
-// checkContract reports ErrContractMismatch for the first log not emitted by
-// contract. A log from another contract would be filtered out during replay
-// while the chain state still advanced past it, silently skipping history.
-func (f *SnapshotLogFilterer) checkContract(contract common.Address) error {
-	for i, l := range f.logs {
-		if l.Address != contract {
-			return fmt.Errorf("%w: log %d has address %s, expected %s", ErrContractMismatch, i+1, l.Address.Hex(), contract.Hex())
-		}
-	}
-	return nil
 }
 
 func (f *SnapshotLogFilterer) FilterLogs(_ context.Context, query ethereum.FilterQuery) ([]types.Log, error) {
