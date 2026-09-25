@@ -12,13 +12,18 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"os"
 	"slices"
 	"sort"
 	"sync"
+	"syscall"
 
 	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage/listener"
@@ -26,8 +31,54 @@ import (
 
 var _ listener.BlockHeightContractFilterer = (*SnapshotLogFilterer)(nil)
 
+var (
+	// ErrEmptySnapshot is returned when a snapshot file holds no logs.
+	ErrEmptySnapshot = errors.New("snapshot: no logs")
+	// ErrContractMismatch is returned when a snapshot file holds a log emitted by
+	// a contract other than the configured postage contract.
+	ErrContractMismatch = errors.New("snapshot: log from unexpected contract")
+	// ErrBlockHeightTooLow is returned when a snapshot file does not reach far
+	// enough past the start block for the replay to make progress.
+	ErrBlockHeightTooLow = errors.New("snapshot: max block not ahead of start block")
+)
+
 type SnapshotGetter interface {
 	GetBatchSnapshot() []byte
+}
+
+// fileGetter holds a snapshot read from disk until it has been parsed.
+type fileGetter struct {
+	data []byte
+}
+
+var _ SnapshotGetter = (*fileGetter)(nil)
+
+// readFile reads the snapshot file at path into memory. A directory is rejected
+// up front: reading one fails with an OS-specific error, which on Windows does
+// not say what is wrong.
+func readFile(path string) (*fileGetter, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if info.IsDir() {
+		return nil, &fs.PathError{Op: "open", Path: path, Err: syscall.EISDIR}
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return &fileGetter{data: data}, nil
+}
+
+func (g *fileGetter) GetBatchSnapshot() []byte {
+	return g.data
+}
+
+// release drops the raw bytes once they are parsed so they are not kept alive
+// for the whole replay.
+func (g *fileGetter) release() {
+	g.data = nil
 }
 
 type SnapshotLogFilterer struct {
@@ -65,6 +116,10 @@ func (f *SnapshotLogFilterer) loadSnapshot() error {
 	if err := f.parseLogs(gzipReader); err != nil {
 		f.logger.Error(err, "failed to parse logs from snapshot")
 		return err
+	}
+
+	if r, ok := f.getter.(interface{ release() }); ok {
+		r.release()
 	}
 
 	f.logger.Info("batch snapshot loaded successfully", "log_count", len(f.loadedLogs), "max_block_height", f.maxBlockHeight)
@@ -184,4 +239,15 @@ func (f *SnapshotLogFilterer) BlockNumber(_ context.Context) (uint64, error) {
 		return 0, fmt.Errorf("failed to ensure snapshot was loaded for BlockNumber: %w", err)
 	}
 	return f.maxBlockHeight, nil
+}
+
+// checkContract reports ErrContractMismatch for the first loaded log not emitted
+// by contract. Lines are 1-based, matching the NDJSON file.
+func (f *SnapshotLogFilterer) checkContract(contract common.Address) error {
+	for i, l := range f.loadedLogs {
+		if l.Address != contract {
+			return fmt.Errorf("%w: line %d has address %s, expected %s", ErrContractMismatch, i+1, l.Address.Hex(), contract.Hex())
+		}
+	}
+	return nil
 }

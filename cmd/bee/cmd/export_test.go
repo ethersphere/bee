@@ -32,7 +32,8 @@ func (c *Command) CheckUnknownParamsForTest(cmd *cobra.Command) error {
 }
 
 var (
-	NewCommand = newCommand
+	NewCommand                  = newCommand
+	CheckPostageSnapshotOptions = checkPostageSnapshotOptions
 
 	// avoid unused lint errors until the functions are used
 	_ = WithCfgFile

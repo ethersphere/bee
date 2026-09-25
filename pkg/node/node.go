@@ -180,6 +180,7 @@ type Options struct {
 	PaymentTolerance              int64
 	PostageContractAddress        string
 	PostageContractStartBlock     uint64
+	PostageSnapshotFile           string
 	PostageSyncBlockRange         uint64
 	PriceOracleAddress            string
 	RedistributionContractAddress string
@@ -912,11 +913,27 @@ func NewBee(
 	)
 
 	var batchSnapshot *batchservice.Snapshot
-	if useEmbeddedSnapshot(o.SkipPostageSnapshot, batchStoreExists, o.Resync, networkID, beeNodeMode) {
+	switch {
+	case o.PostageSnapshotFile != "":
+		// The operator asked for this file explicitly: warn when it cannot apply,
+		// and refuse to start when it applies but is unusable.
+		if reason := snapshotSkipReason(batchStoreExists, o.Resync, beeNodeMode); reason != "" {
+			logger.Warning("postage snapshot file will not be used", "path", o.PostageSnapshotFile, "reason", reason)
+			break
+		}
+		var info snapshot.SnapshotInfo
+		batchSnapshot, info, err = snapshot.NewFromFile(ctx, logger, o.PostageSnapshotFile, b.syncingStopped, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout, postageSyncStart)
+		if err != nil {
+			return nil, fmt.Errorf("postage snapshot file %q: %w", o.PostageSnapshotFile, err)
+		}
+		logger.Info("using postage snapshot", "source", "file", "path", o.PostageSnapshotFile, "log_count", info.LogCount, "max_block", info.MaxBlock)
+	case useEmbeddedSnapshot(o.SkipPostageSnapshot, batchStoreExists, o.Resync, networkID, beeNodeMode):
 		batchSnapshot, err = snapshot.New(ctx, logger, archive.Getter{}, b.syncingStopped, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout, postageSyncStart)
 		if err != nil {
 			// A corrupt snapshot is not fatal: rebuild from the chain instead.
 			logger.Error(err, "postage snapshot unavailable, syncing from chain instead")
+		} else {
+			logger.Info("using postage snapshot", "source", "embedded")
 		}
 	}
 
@@ -1676,10 +1693,28 @@ func batchStoreExists(s storage.StateStorer) (bool, error) {
 	return hasOne, err
 }
 
+// snapshotApplies reports whether a postage snapshot would be replayed: the
+// batch store is being rebuilt and the node syncs postage data.
+func snapshotApplies(batchStoreExists, resync bool, mode api.BeeNodeMode) bool {
+	return snapshotSkipReason(batchStoreExists, resync, mode) == ""
+}
+
+// snapshotSkipReason explains why a postage snapshot would not be replayed, or
+// returns an empty string when it would be.
+func snapshotSkipReason(batchStoreExists, resync bool, mode api.BeeNodeMode) string {
+	switch {
+	case mode == api.UltraLightMode:
+		return "ultra-light node does not sync postage data"
+	case batchStoreExists && !resync:
+		return "batch store already exists; use --resync to rebuild it from the snapshot"
+	default:
+		return ""
+	}
+}
+
 // useEmbeddedSnapshot reports whether to rebuild the batch store from the
 // embedded snapshot: mainnet, full or light node, and the store will be built
 // from scratch (no store yet, or a resync wipes it), unless explicitly skipped.
 func useEmbeddedSnapshot(skip, batchStoreExists, resync bool, networkID uint64, mode api.BeeNodeMode) bool {
-	storeWillRebuild := !batchStoreExists || resync
-	return !skip && storeWillRebuild && networkID == mainnetNetworkID && mode != api.UltraLightMode
+	return !skip && snapshotApplies(batchStoreExists, resync, mode) && networkID == mainnetNetworkID
 }

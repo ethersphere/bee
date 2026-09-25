@@ -958,3 +958,26 @@ type Option interface {
 type optionFunc func(*mockFilterer)
 
 func (f optionFunc) apply(r *mockFilterer) { f(r) }
+
+func TestSyncTarget(t *testing.T) {
+	t.Parallel()
+
+	// Tests run with the default batch factor (5) and tail size (4).
+	for _, tc := range []struct {
+		head   uint64
+		want   uint64
+		wantOK bool
+	}{
+		{head: 0, want: 0, wantOK: false},
+		{head: 3, want: 0, wantOK: false},
+		{head: 4, want: 0, wantOK: true},
+		{head: 13, want: 5, wantOK: true},
+		{head: 14, want: 10, wantOK: true},
+		{head: 104, want: 100, wantOK: true},
+	} {
+		got, ok := listener.SyncTarget(tc.head)
+		if got != tc.want || ok != tc.wantOK {
+			t.Errorf("SyncTarget(%d) = (%d, %v), want (%d, %v)", tc.head, got, ok, tc.want, tc.wantOK)
+		}
+	}
+}

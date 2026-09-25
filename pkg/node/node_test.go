@@ -183,3 +183,41 @@ func TestShutdownRegistersPushSyncAndRetrieval(t *testing.T) {
 		}
 	}
 }
+
+func TestSnapshotApplies(t *testing.T) {
+	t.Parallel()
+
+	const (
+		reasonUltraLight = "ultra-light node does not sync postage data"
+		reasonStore      = "batch store already exists; use --resync to rebuild it from the snapshot"
+	)
+
+	testCases := []struct {
+		name             string
+		batchStoreExists bool
+		resync           bool
+		mode             api.BeeNodeMode
+		want             bool
+		wantReason       string
+	}{
+		{name: "fresh store", mode: api.FullMode, want: true},
+		{name: "resync on an existing store", batchStoreExists: true, resync: true, mode: api.FullMode, want: true},
+		{name: "existing store without resync", batchStoreExists: true, mode: api.FullMode, wantReason: reasonStore},
+		{name: "light node applies", mode: api.LightMode, want: true},
+		{name: "ultra-light", mode: api.UltraLightMode, wantReason: reasonUltraLight},
+		{name: "ultra-light takes precedence over an existing store", batchStoreExists: true, mode: api.UltraLightMode, wantReason: reasonUltraLight},
+		{name: "ultra-light with resync", batchStoreExists: true, resync: true, mode: api.UltraLightMode, wantReason: reasonUltraLight},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := node.SnapshotApplies(tc.batchStoreExists, tc.resync, tc.mode); got != tc.want {
+				t.Fatalf("SnapshotApplies = %v, want %v", got, tc.want)
+			}
+			if got := node.SnapshotSkipReason(tc.batchStoreExists, tc.resync, tc.mode); got != tc.wantReason {
+				t.Fatalf("SnapshotSkipReason = %q, want %q", got, tc.wantReason)
+			}
+		})
+	}
+}
