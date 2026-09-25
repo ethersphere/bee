@@ -71,8 +71,10 @@ func gzipBytes(data []byte) []byte {
 	return buf.Bytes()
 }
 
+// parse parses src expecting logs from the zero address, which is what logs
+// built without an Address carry.
 func parse(src snapshot.Source) (*snapshot.SnapshotLogFilterer, snapshot.Info, error) {
-	return snapshot.Parse(log.Noop, src)
+	return snapshot.Parse(log.Noop, src, common.Address{})
 }
 
 func TestParse(t *testing.T) {
@@ -104,7 +106,7 @@ func TestParse(t *testing.T) {
 
 	t.Run("parse error names the line", func(t *testing.T) {
 		t.Parallel()
-		raw := string(makeNDJSON([]types.Log{priceLog(1, 1)})) + "garbage\n"
+		raw := string(makeNDJSON([]types.Log{{BlockNumber: 1, Topics: []common.Hash{}}})) + "garbage\n"
 		_, _, err := parse(embedded(gzipBytes([]byte(raw))))
 		require.ErrorIs(t, err, snapshot.ErrParseSnapshot)
 		assert.ErrorContains(t, err, "line 2")
@@ -112,10 +114,33 @@ func TestParse(t *testing.T) {
 
 	t.Run("blank lines are skipped", func(t *testing.T) {
 		t.Parallel()
-		raw := "\n" + string(makeNDJSON([]types.Log{priceLog(1, 1)})) + "\n\n"
+		raw := "\n" + string(makeNDJSON([]types.Log{{BlockNumber: 1, Topics: []common.Hash{}}})) + "\n\n"
 		_, info, err := parse(embedded(gzipBytes([]byte(raw))))
 		require.NoError(t, err)
 		assert.Equal(t, 1, info.LogCount)
+	})
+
+	t.Run("contract mismatch names the line", func(t *testing.T) {
+		t.Parallel()
+		other := common.HexToAddress("0x1234567890123456789012345678901234567890")
+		// A blank line before the foreign log puts it on file line 4, not log 3.
+		raw := string(makeNDJSON([]types.Log{{BlockNumber: 1, Topics: []common.Hash{}}, {BlockNumber: 2, Topics: []common.Hash{}}})) +
+			"\n" + string(makeNDJSON([]types.Log{{BlockNumber: 3, Address: other, Topics: []common.Hash{}}}))
+		_, _, err := parse(embedded(gzipBytes([]byte(raw))))
+		require.ErrorIs(t, err, snapshot.ErrContractMismatch)
+		assert.ErrorContains(t, err, "line 4")
+		assert.ErrorContains(t, err, other.Hex())
+	})
+
+	// The contract is checked while decoding, so a snapshot for another network
+	// is rejected at its first line, before the rest is read.
+	t.Run("contract mismatch stops at the first line", func(t *testing.T) {
+		t.Parallel()
+		other := common.HexToAddress("0x1234567890123456789012345678901234567890")
+		raw := string(makeNDJSON([]types.Log{{BlockNumber: 1, Address: other, Topics: []common.Hash{}}})) + "garbage\n"
+		_, _, err := parse(embedded(gzipBytes([]byte(raw))))
+		require.ErrorIs(t, err, snapshot.ErrContractMismatch)
+		assert.ErrorContains(t, err, "line 1")
 	})
 
 	t.Run("info and block number", func(t *testing.T) {
@@ -144,8 +169,9 @@ func TestParse(t *testing.T) {
 			{BlockNumber: 4, Address: common.HexToAddress("0x4"), TxHash: common.HexToHash("0x4"), Topics: []common.Hash{common.HexToHash("0xa4")}},
 			{BlockNumber: 5, Address: common.HexToAddress("0x4"), TxHash: common.HexToHash("0x4"), Topics: []common.Hash{common.HexToHash("0xa4"), common.HexToHash("0xa5")}},
 		}
-		filterer, _, err := parse(embedded(makeSnapshotData(logs)))
-		require.NoError(t, err)
+		// Logs from several contracts, to test address filtering; Parse would
+		// reject them.
+		filterer := snapshot.NewFilterer(logs)
 
 		res, err := filterer.FilterLogs(context.Background(), ethereum.FilterQuery{
 			FromBlock: big.NewInt(2),
@@ -400,7 +426,7 @@ func TestLoadFile(t *testing.T) {
 		assert.ErrorIs(t, err, snapshot.ErrEmptySnapshot)
 	})
 
-	t.Run("contract mismatch names the log", func(t *testing.T) {
+	t.Run("contract mismatch on line 3", func(t *testing.T) {
 		t.Parallel()
 		other := common.HexToAddress("0x1234567890123456789012345678901234567890")
 		bad := priceLog(115, 3)
@@ -409,7 +435,7 @@ func TestLoadFile(t *testing.T) {
 
 		_, _, err := loadFile(path, startBlock)
 		require.ErrorIs(t, err, snapshot.ErrContractMismatch)
-		assert.ErrorContains(t, err, "log 3")
+		assert.ErrorContains(t, err, "line 3")
 		assert.ErrorContains(t, err, other.Hex())
 		assert.ErrorContains(t, err, fileContract.Hex())
 	})
@@ -443,13 +469,12 @@ func TestReplayStopsBelowMaxBlock(t *testing.T) {
 
 	const maxBlock = uint64(5000)
 
-	// Logs span up to maxBlock under an arbitrary address. The listener is built
-	// with the zero contract address, so FilterLogs filters them all out and only
-	// the per-page UpdateBlockNumber(to) advances the chain state — isolating the
-	// resume point from event processing.
+	// Logs span up to maxBlock with no topics, so FilterLogs filters them all
+	// out and only the per-page UpdateBlockNumber(to) advances the chain state —
+	// isolating the resume point from event processing.
 	logs := []types.Log{
-		{BlockNumber: 10, Address: common.HexToAddress("0x1"), Topics: []common.Hash{}},
-		{BlockNumber: maxBlock, Address: common.HexToAddress("0x1"), Topics: []common.Hash{}},
+		{BlockNumber: 10, Topics: []common.Hash{}},
+		{BlockNumber: maxBlock, Topics: []common.Hash{}},
 	}
 	filterer, _, err := parse(embedded(makeSnapshotData(logs)))
 	require.NoError(t, err)

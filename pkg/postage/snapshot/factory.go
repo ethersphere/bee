@@ -36,15 +36,12 @@ type Config struct {
 func Load(logger log.Logger, src Source, cfg Config) (*batchservice.Snapshot, Info, error) {
 	logger.Info("loading batch snapshot", "source", src.Name())
 
-	filterer, info, err := Parse(logger, src)
+	filterer, info, err := Parse(logger, src, cfg.Contract)
 	if err != nil {
 		return nil, Info{}, err
 	}
 	if info.LogCount == 0 {
 		return nil, Info{}, ErrEmptySnapshot
-	}
-	if err := filterer.checkContract(cfg.Contract); err != nil {
-		return nil, Info{}, err
 	}
 	// The replay starts at StartBlock+1; below that the listener would wait for
 	// the stalling timeout and then shut the node down.
