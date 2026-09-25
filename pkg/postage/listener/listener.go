@@ -32,8 +32,11 @@ const loggerName = "listener"
 // FilterLogs call while paging.
 const DefaultBlockPage = uint64(1000)
 
+// SnapshotBlockPage is the number of blocks per FilterLogs call when replaying a
+// postage snapshot, which serves from memory and needs no small pages.
+const SnapshotBlockPage = uint64(50000)
+
 const (
-	blockPageSnapshot  = 50000     // how many blocks to sync every time from snapshot
 	tailSize           = 4         // how many blocks to tail from the tip of the chain
 	defaultBatchFactor = uint64(5) // minimal number of blocks to sync at once
 )
@@ -265,14 +268,8 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 
 	l.logger.Debug("batch factor", "value", batchFactor)
 
-	// Type assertion to detect if backend is SnapshotLogFilterer
 	pageSize := l.blockPage
-	if _, isSnapshot := l.ev.(interface{ GetBatchSnapshot() []byte }); isSnapshot {
-		pageSize = blockPageSnapshot
-		l.logger.Debug("using snapshot page size", "page_size", pageSize)
-	} else {
-		l.logger.Debug("using standard page size", "page_size", pageSize)
-	}
+	l.logger.Debug("block page size", "page_size", pageSize)
 
 	synced := make(chan error)
 	closeOnce := new(sync.Once)

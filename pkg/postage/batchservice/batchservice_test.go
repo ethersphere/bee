@@ -924,10 +924,14 @@ func TestSnapshotHandoffNoGap(t *testing.T) {
 		{BlockNumber: 10, Address: common.HexToAddress("0x1"), Topics: []common.Hash{}},
 		{BlockNumber: maxBlock, Address: common.HexToAddress("0x1"), Topics: []common.Hash{}},
 	}
-	snap, err := snapshot.New(context.Background(), testLog, rawSnapshotGetter(gzipSnapshot(t, logs)), nil,
-		common.Address{}, abi.ABI{}, time.Second, time.Minute, time.Second, 0)
+	snap, _, err := snapshot.Load(testLog, snapshot.Embedded(rawSnapshotGetter(gzipSnapshot(t, logs))), snapshot.Config{
+		ABI:             abi.ABI{},
+		BlockTime:       time.Second,
+		StallingTimeout: time.Minute,
+		BackoffTimeout:  time.Second,
+	})
 	if err != nil {
-		t.Fatalf("snapshot.New: %v", err)
+		t.Fatalf("snapshot.Load: %v", err)
 	}
 
 	s := mocks.NewStateStore()
