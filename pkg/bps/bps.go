@@ -31,6 +31,11 @@ const (
 	streamName      = "bps"
 )
 
+// broadcastBufferSize is the per-member buffer for broadcast messages.
+// Delivery is lossy by design (a slow member must not stall the cohort),
+// so the buffer absorbs short bursts while the member's stream is busy.
+const broadcastBufferSize = 1
+
 var errNotBroker = errors.New("not a broker")
 
 // Service is the bps protocol service.
@@ -48,11 +53,13 @@ type Service struct {
 }
 
 // New returns a new bps Service.
-func New(streamer p2p.Streamer, logger log.Logger) *Service {
+func New(streamer p2p.Streamer, overlay swarm.Address, fullNode bool, logger log.Logger) *Service {
 	return &Service{
-		streamer: streamer,
-		// registry: NewRegistry(),
-		logger: logger.WithName(loggerName).Register(),
+		fullNode:    fullNode,
+		selfOverlay: overlay,
+		streamer:    streamer,
+		cohorts:     make(map[string]*cohort),
+		logger:      logger.WithName(loggerName).Register(),
 	}
 }
 
@@ -88,7 +95,7 @@ func (s *Service) Join(ctx context.Context, address swarm.Address, topic []byte)
 		return nil, nil, nil, nil, fmt.Errorf("read join ack: %w", err)
 	}
 
-	rxCh := make(chan []byte)
+	rxCh := make(chan []byte, broadcastBufferSize)
 
 	// reading should always yield broadcast msgs
 	go func() {
@@ -158,11 +165,13 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 		stream.Reset()
 		return errNotBroker
 	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	defer stream.FullClose()
 	w, r := protobuf.NewWriterAndReader(stream)
 
 	var join pb.Join
 	if err := r.ReadMsgWithContext(ctx, &join); err != nil {
-		go stream.FullClose()
 		return fmt.Errorf("read sys message: %w", err)
 	}
 
@@ -172,7 +181,6 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 	// peer is trying to join the cohort. accept and return the challenge
 	ack := pb.JoinAck{Challenge: challenge}
 	if err := w.WriteMsgWithContext(ctx, &ack); err != nil {
-		go stream.FullClose()
 		s.left(p.Address, join.Topic)
 		return fmt.Errorf("write claim: %w", err)
 	}
@@ -184,7 +192,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		defer stream.FullClose()
+		defer cancel()
 		for {
 			// await messages, then write to the stream once they come in
 			select {
@@ -213,7 +221,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) er
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		defer stream.FullClose()
+		defer cancel()
 		claim := pb.Claim{}
 		if err := r.ReadMsgWithContext(ctx, &claim); err != nil {
 			s.logger.Error(err, "read claim")
@@ -308,6 +316,7 @@ func (s *Service) claim(overlay swarm.Address, topic, socBlob []byte) (chan []by
 		return nil, errInvalidProof
 	}
 
+	publisher := member
 	txCh := make(chan []byte)
 	go func() {
 		for v := range txCh {
@@ -317,9 +326,12 @@ func (s *Service) claim(overlay swarm.Address, topic, socBlob []byte) (chan []by
 				s.mtx.Unlock()
 				return
 			}
-			for _, member := range co.members {
+			for _, m := range co.members {
+				if m == publisher {
+					continue
+				}
 				select {
-				case member.ch <- v:
+				case m.ch <- v:
 				default:
 				}
 			}
@@ -342,7 +354,7 @@ func newMember() *member {
 	}
 
 	return &member{
-		ch:        make(chan []byte),
+		ch:        make(chan []byte, broadcastBufferSize),
 		challenge: challenge,
 	}
 }
