@@ -9,7 +9,13 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"io"
+	"io/fs"
 	"math/big"
+	"os"
+	"path/filepath"
+	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -17,9 +23,12 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	chaincfg "github.com/ethersphere/bee/v2/pkg/config"
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/postage/batchservice"
 	"github.com/ethersphere/bee/v2/pkg/postage/listener"
 	"github.com/ethersphere/bee/v2/pkg/postage/snapshot"
+	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -241,3 +250,204 @@ func (r *blockRecorder) UpdatePrice(_ *big.Int, _ common.Hash) error            
 func (r *blockRecorder) Start(_ context.Context, _ uint64) error                        { return nil }
 func (r *blockRecorder) TransactionStart() error                                        { return nil }
 func (r *blockRecorder) TransactionEnd() error                                          { return nil }
+
+var (
+	fileContract    = common.HexToAddress("0x45A1502382541Cd610CC9068e88727426b696293")
+	fileContractABI = abiutil.MustParseABI(chaincfg.Testnet.PostageStampABI)
+	priceTopic      = fileContractABI.Events["PriceUpdate"].ID
+)
+
+// writeSnapshotFile writes data to a file in a fresh temp dir and returns its path.
+func writeSnapshotFile(t *testing.T, data []byte) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "snapshot.ndjson.gz")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// gzipRaw compresses raw NDJSON text into a single gzip member.
+func gzipRaw(t *testing.T, raw string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write([]byte(raw)); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// priceLog is a PriceUpdate event from the file contract at the given block.
+func priceLog(block uint64, price int64) types.Log {
+	return types.Log{
+		Address:     fileContract,
+		Topics:      []common.Hash{priceTopic},
+		Data:        common.LeftPadBytes(big.NewInt(price).Bytes(), 32),
+		BlockNumber: block,
+		TxHash:      common.BigToHash(big.NewInt(int64(block))),
+	}
+}
+
+func newFromFile(path string, startBlock uint64) (*batchservice.Snapshot, snapshot.SnapshotInfo, error) {
+	return snapshot.NewFromFile(context.Background(), log.Noop, path, nil,
+		fileContract, fileContractABI, time.Second, time.Minute, time.Second, startBlock)
+}
+
+func TestNewFromFile(t *testing.T) {
+	t.Parallel()
+
+	const startBlock = uint64(100)
+
+	t.Run("valid file replays its events", func(t *testing.T) {
+		t.Parallel()
+		path := writeSnapshotFile(t, makeSnapshotData([]types.Log{
+			priceLog(110, 42),
+			priceLog(120, 43),
+		}))
+
+		snap, info, err := newFromFile(path, startBlock)
+		require.NoError(t, err)
+		assert.Equal(t, snapshot.SnapshotInfo{LogCount: 2, MaxBlock: 120}, info)
+		assert.Equal(t, startBlock, snap.StartBlock)
+
+		rec := &priceRecorder{}
+		require.NoError(t, <-snap.Listener.Listen(context.Background(), snap.StartBlock+1, rec))
+		// Close waits for the in-flight page to be processed, so the recorder is
+		// complete once it returns.
+		require.NoError(t, snap.Listener.Close())
+		// Head 120 trims to 115, so only the block-110 event is replayed; the
+		// block-120 one is left for live sync.
+		assert.Equal(t, []int64{42}, rec.got())
+	})
+
+	t.Run("real batch-export line format", func(t *testing.T) {
+		t.Parallel()
+		// Shape of a line written by batch-export: hex quantities, lowercase
+		// address, no blockHash or transactionIndex.
+		line := `{"address":"0x45a1502382541cd610cc9068e88727426b696293","topics":["` + priceTopic.Hex() + `"],` +
+			`"data":"0x` + common.Bytes2Hex(common.LeftPadBytes([]byte{7}, 32)) + `",` +
+			`"blockNumber":"0x78","transactionHash":"0x9b1a200b3b9c757e88fe4579c87d6dd27ec781284a69163a6436ce5d29a9baaa","logIndex":"0x0"}` + "\n"
+		path := writeSnapshotFile(t, gzipRaw(t, line))
+
+		_, info, err := newFromFile(path, startBlock)
+		require.NoError(t, err)
+		assert.Equal(t, snapshot.SnapshotInfo{LogCount: 1, MaxBlock: 120}, info)
+	})
+
+	t.Run("multi-member gzip", func(t *testing.T) {
+		t.Parallel()
+		// The second member starts on the block the first one ended on.
+		data := append(
+			makeSnapshotData([]types.Log{priceLog(105, 1), priceLog(110, 2)}),
+			makeSnapshotData([]types.Log{priceLog(110, 3), priceLog(130, 4)})...,
+		)
+		path := writeSnapshotFile(t, data)
+
+		_, info, err := newFromFile(path, startBlock)
+		require.NoError(t, err)
+		assert.Equal(t, snapshot.SnapshotInfo{LogCount: 4, MaxBlock: 130}, info)
+	})
+
+	t.Run("missing file", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := newFromFile(filepath.Join(t.TempDir(), "missing.gz"), startBlock)
+		assert.ErrorIs(t, err, fs.ErrNotExist)
+	})
+
+	t.Run("directory path", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := newFromFile(t.TempDir(), startBlock)
+		require.ErrorIs(t, err, syscall.EISDIR)
+		// Rejected before any read, so the error is the same on every OS; on
+		// Windows reading a directory handle fails with an unrelated error.
+		var pathErr *fs.PathError
+		require.ErrorAs(t, err, &pathErr)
+		assert.Equal(t, "open", pathErr.Op)
+	})
+
+	t.Run("empty file", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := newFromFile(writeSnapshotFile(t, nil), startBlock)
+		assert.ErrorIs(t, err, io.EOF)
+	})
+
+	t.Run("not gzip", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := newFromFile(writeSnapshotFile(t, []byte(`{"blockNumber":"0x1"}`+"\n")), startBlock)
+		assert.ErrorIs(t, err, gzip.ErrHeader)
+	})
+
+	t.Run("gzip with non-JSON lines", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := newFromFile(writeSnapshotFile(t, gzipRaw(t, "not-a-log-entry\n")), startBlock)
+		assert.ErrorIs(t, err, listener.ErrParseSnapshot)
+	})
+
+	t.Run("gzip with no logs", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := newFromFile(writeSnapshotFile(t, makeSnapshotData(nil)), startBlock)
+		assert.ErrorIs(t, err, snapshot.ErrEmptySnapshot)
+	})
+
+	t.Run("contract mismatch on line 3", func(t *testing.T) {
+		t.Parallel()
+		other := common.HexToAddress("0x1234567890123456789012345678901234567890")
+		bad := priceLog(115, 3)
+		bad.Address = other
+		path := writeSnapshotFile(t, makeSnapshotData([]types.Log{priceLog(105, 1), priceLog(110, 2), bad, priceLog(120, 4)}))
+
+		_, _, err := newFromFile(path, startBlock)
+		require.ErrorIs(t, err, snapshot.ErrContractMismatch)
+		assert.ErrorContains(t, err, "line 3")
+		assert.ErrorContains(t, err, other.Hex())
+		assert.ErrorContains(t, err, fileContract.Hex())
+	})
+
+	t.Run("max block at start block", func(t *testing.T) {
+		t.Parallel()
+		// Head 100 trims to 95, below the first replayed block 101.
+		path := writeSnapshotFile(t, makeSnapshotData([]types.Log{priceLog(90, 1), priceLog(startBlock, 2)}))
+		_, _, err := newFromFile(path, startBlock)
+		assert.ErrorIs(t, err, snapshot.ErrBlockHeightTooLow)
+	})
+
+	t.Run("max block below tail", func(t *testing.T) {
+		t.Parallel()
+		path := writeSnapshotFile(t, makeSnapshotData([]types.Log{priceLog(2, 1)}))
+		_, _, err := newFromFile(path, 0)
+		assert.ErrorIs(t, err, snapshot.ErrBlockHeightTooLow)
+	})
+}
+
+// priceRecorder is a postage.EventUpdater that records every price update.
+type priceRecorder struct {
+	mu     sync.Mutex
+	prices []int64
+}
+
+func (r *priceRecorder) got() []int64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.prices
+}
+
+func (r *priceRecorder) UpdatePrice(price *big.Int, _ common.Hash) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.prices = append(r.prices, price.Int64())
+	return nil
+}
+
+func (r *priceRecorder) Create(_, _ []byte, _, _ *big.Int, _, _ uint8, _ bool, _ common.Hash) error {
+	return nil
+}
+func (r *priceRecorder) TopUp(_ []byte, _, _ *big.Int, _ common.Hash) error             { return nil }
+func (r *priceRecorder) UpdateDepth(_ []byte, _ uint8, _ *big.Int, _ common.Hash) error { return nil }
+func (r *priceRecorder) UpdateBlockNumber(_ uint64) error                               { return nil }
+func (r *priceRecorder) Start(_ context.Context, _ uint64) error                        { return nil }
+func (r *priceRecorder) TransactionStart() error                                        { return nil }
+func (r *priceRecorder) TransactionEnd() error                                          { return nil }

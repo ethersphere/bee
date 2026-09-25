@@ -47,6 +47,28 @@ var (
 	ErrParseSnapshot         = errors.New("failed to parse snapshot data")
 )
 
+// SyncTarget returns the highest block Listen syncs up to when the backend
+// reports blockNumber as its head: the head minus the reorg-safety tail, rounded
+// down to the batch factor. It reports false while the head is still within the
+// tail, in which case Listen makes no progress.
+func SyncTarget(blockNumber uint64) (uint64, bool) {
+	if blockNumber < tailSize {
+		return 0, false
+	}
+	bf := batchFactor()
+	return (blockNumber - tailSize) / bf * bf, true
+}
+
+// batchFactor returns the effective batch factor: the build-time override when it
+// parses to a positive value, the default otherwise.
+func batchFactor() uint64 {
+	bf, err := strconv.ParseUint(batchFactorOverridePublic, 10, 64)
+	if err != nil || bf == 0 {
+		return defaultBatchFactor
+	}
+	return bf
+}
+
 type BlockHeightContractFilterer interface {
 	FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error)
 	BlockNumber(context.Context) (uint64, error)
