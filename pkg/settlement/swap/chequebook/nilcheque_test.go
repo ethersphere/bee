@@ -130,3 +130,38 @@ func TestChequeStoreReceiveChequeNilCumulativePayout(t *testing.T) {
 		t.Fatalf("expected %v, got %v", chequebook.ErrChequeInvalid, err)
 	}
 }
+
+// TestChequeStoreEmptyObjectLastReceived is a regression test for a
+// last-received-cheque entry holding an empty JSON object: it unmarshals into a
+// non-nil cheque whose CumulativePayout is a nil *big.Int, which the incoming
+// cheque comparison would dereference. ReceiveCheque must reject it instead of
+// panicking, and LastCheque must never report success with a nil cheque.
+func TestChequeStoreEmptyObjectLastReceived(t *testing.T) {
+	t.Parallel()
+
+	store := newRawStore()
+	beneficiary := common.HexToAddress("0xbe")
+	chequebookAddr := common.HexToAddress("0xcb")
+
+	store.setRaw(chequebook.LastReceivedChequeKey(chequebookAddr), []byte("{}"))
+
+	cs := chequebook.NewChequeStore(store, nil, 1, beneficiary, nil, nil)
+
+	lastCheque, err := cs.LastCheque(chequebookAddr)
+	if err == nil && lastCheque == nil {
+		t.Fatal("LastCheque returned a nil cheque with a nil error")
+	}
+
+	cheque := &chequebook.SignedCheque{
+		Cheque: chequebook.Cheque{
+			Beneficiary:      beneficiary,
+			Chequebook:       chequebookAddr,
+			CumulativePayout: big.NewInt(100),
+		},
+		Signature: make([]byte, 65),
+	}
+
+	if _, err := cs.ReceiveCheque(context.Background(), cheque, big.NewInt(1), big.NewInt(0)); err == nil {
+		t.Fatal("expected an error for a corrupted last received cheque")
+	}
+}
