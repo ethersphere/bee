@@ -37,10 +37,13 @@ import (
 const maxLineBytes = 4 << 20
 
 var (
+	// ErrParseSnapshot is returned when a snapshot does not decode as sorted
+	// NDJSON of logs. It wraps the line that failed.
+	ErrParseSnapshot = errors.New("failed to parse snapshot data")
 	// ErrEmptySnapshot is returned when a strict snapshot holds no logs.
 	ErrEmptySnapshot = errors.New("snapshot: no logs")
-	// ErrContractMismatch is returned when a strict snapshot holds a log emitted
-	// by a contract other than the configured postage contract.
+	// ErrContractMismatch is returned by FromContract for a log emitted by a
+	// contract other than the configured postage contract.
 	ErrContractMismatch = errors.New("snapshot: log from unexpected contract")
 	// ErrBlockHeightTooLow is returned when a strict snapshot does not reach far
 	// enough past the start block for the replay to make progress.
@@ -149,7 +152,7 @@ type entry struct {
 
 // decode yields the logs in r, one per NDJSON line. Blank lines are skipped. A
 // line that does not decode, or a read failure, ends the sequence with an error;
-// decode errors wrap listener.ErrParseSnapshot.
+// decode errors wrap ErrParseSnapshot.
 //
 // The snapshot is produced by ethersphere/batch-export, whose default slim
 // encoding carries only the types.Log fields Bee reads today: address, topics,
@@ -178,7 +181,7 @@ func decode(r io.Reader) iter.Seq2[entry, error] {
 					yield(entry{line: line}, fmt.Errorf("read snapshot: %w", readErr))
 					return
 				}
-				yield(entry{line: line}, fmt.Errorf("%w: line %d: %w", listener.ErrParseSnapshot, line, err))
+				yield(entry{line: line}, fmt.Errorf("%w: line %d: %w", ErrParseSnapshot, line, err))
 				return
 			}
 			if !yield(entry{line: line, log: l}, nil) {
@@ -209,12 +212,26 @@ type SnapshotLogFilterer struct {
 
 var _ listener.BlockHeightContractFilterer = (*SnapshotLogFilterer)(nil)
 
+// Check inspects one decoded log at its 1-based line and rejects the snapshot
+// by returning an error.
+type Check func(line int, l types.Log) error
+
+// FromContract is a Check that every log was emitted by contract. A log from
+// another contract would be filtered out during replay while the chain state
+// still advanced past it, silently skipping history.
+func FromContract(contract common.Address) Check {
+	return func(line int, l types.Log) error {
+		if l.Address != contract {
+			return fmt.Errorf("%w: line %d has address %s, expected %s", ErrContractMismatch, line, l.Address.Hex(), contract.Hex())
+		}
+		return nil
+	}
+}
+
 // Parse reads src to the end and indexes its logs, which must be sorted by
-// block number. When strict, the snapshot must also hold at least one log, and
-// every log must come from contract: a log from another contract would be
-// filtered out during replay while the chain state still advanced past it,
-// silently skipping history.
-func Parse(logger log.Logger, src Source, contract common.Address, strict bool) (*SnapshotLogFilterer, Info, error) {
+// block number. Each log is also run through checks, in order, while it is
+// decoded, so a rejection names the offending line.
+func Parse(logger log.Logger, src Source, checks ...Check) (*SnapshotLogFilterer, Info, error) {
 	reader, err := src.Open()
 	if err != nil {
 		return nil, Info{}, err
@@ -232,17 +249,15 @@ func Parse(logger log.Logger, src Source, contract common.Address, strict bool) 
 		// FilterLogs binary-searches by block number.
 		if e.log.BlockNumber < maxBlock {
 			return nil, Info{}, fmt.Errorf("%w: line %d: block %d after block %d, snapshot is not sorted by block number",
-				listener.ErrParseSnapshot, e.line, e.log.BlockNumber, maxBlock)
+				ErrParseSnapshot, e.line, e.log.BlockNumber, maxBlock)
 		}
-		if strict && e.log.Address != contract {
-			return nil, Info{}, fmt.Errorf("%w: line %d has address %s, expected %s",
-				ErrContractMismatch, e.line, e.log.Address.Hex(), contract.Hex())
+		for _, check := range checks {
+			if err := check(e.line, e.log); err != nil {
+				return nil, Info{}, err
+			}
 		}
 		maxBlock = e.log.BlockNumber
 		logs = append(logs, e.log)
-	}
-	if strict && len(logs) == 0 {
-		return nil, Info{}, ErrEmptySnapshot
 	}
 
 	filterer := &SnapshotLogFilterer{

@@ -37,7 +37,7 @@ func TestSnapshotLogFilterer_RealSnapshot(t *testing.T) {
 	// batch-archive bump only surfaces at runtime as a stalled postage sync.
 	require.NotEmpty(t, getter.GetBatchSnapshot(), "embedded batch snapshot is empty")
 
-	filterer, info, err := snapshot.Parse(log.Noop, snapshot.Embedded(getter), common.Address{}, false)
+	filterer, info, err := snapshot.Parse(log.Noop, snapshot.Embedded(getter))
 	if err != nil {
 		t.Fatalf("embedded batch snapshot failed to parse: %v", err)
 	}
@@ -75,14 +75,14 @@ func BenchmarkParse(b *testing.B) {
 	src := snapshot.Embedded(archive.Getter{})
 
 	for b.Loop() {
-		if _, _, err := snapshot.Parse(log.Noop, src, common.Address{}, false); err != nil {
+		if _, _, err := snapshot.Parse(log.Noop, src); err != nil {
 			b.Fatal(err)
 		}
 	}
 }
 
 func BenchmarkSnapshotLogFilterer(b *testing.B) {
-	filterer, _, err := snapshot.Parse(log.Noop, snapshot.Embedded(archive.Getter{}), common.Address{}, false)
+	filterer, _, err := snapshot.Parse(log.Noop, snapshot.Embedded(archive.Getter{}))
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func TestLoadFile_RealSnapshot(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = snap.Listener.Close() })
 
-	_, embeddedInfo, err := snapshot.Parse(log.Noop, snapshot.Embedded(archive.Getter{}), common.Address{}, false)
+	_, embeddedInfo, err := snapshot.Parse(log.Noop, snapshot.Embedded(archive.Getter{}))
 	require.NoError(t, err)
 	assert.Equal(t, "file", info.Source)
 	assert.Equal(t, embeddedInfo.LogCount, info.LogCount)

@@ -86,9 +86,9 @@ func gzipRaw(t *testing.T, raw string) []byte {
 	return buf.Bytes()
 }
 
-// parse is Parse without the strict checks.
+// parse is Parse with no checks.
 func parse(src snapshot.Source) (*snapshot.SnapshotLogFilterer, snapshot.Info, error) {
-	return snapshot.Parse(log.Noop, src, common.Address{}, false)
+	return snapshot.Parse(log.Noop, src)
 }
 
 func TestParse(t *testing.T) {
@@ -103,7 +103,7 @@ func TestParse(t *testing.T) {
 	t.Run("invalid log entry", func(t *testing.T) {
 		t.Parallel()
 		_, _, err := parse(embedded(gzipRaw(t, "not-a-log-entry")))
-		assert.ErrorIs(t, err, listener.ErrParseSnapshot)
+		assert.ErrorIs(t, err, snapshot.ErrParseSnapshot)
 	})
 
 	t.Run("non-sorted", func(t *testing.T) {
@@ -114,7 +114,7 @@ func TestParse(t *testing.T) {
 			{BlockNumber: 2, Topics: []common.Hash{}},
 		}
 		_, _, err := parse(embedded(makeSnapshotData(logs)))
-		require.ErrorIs(t, err, listener.ErrParseSnapshot)
+		require.ErrorIs(t, err, snapshot.ErrParseSnapshot)
 		assert.ErrorContains(t, err, "line 3")
 	})
 
@@ -122,7 +122,7 @@ func TestParse(t *testing.T) {
 		t.Parallel()
 		raw := string(makeNDJSON([]types.Log{priceLog(1, 1)})) + "garbage\n"
 		_, _, err := parse(embedded(gzipRaw(t, raw)))
-		require.ErrorIs(t, err, listener.ErrParseSnapshot)
+		require.ErrorIs(t, err, snapshot.ErrParseSnapshot)
 		assert.ErrorContains(t, err, "line 2")
 	})
 
@@ -132,6 +132,26 @@ func TestParse(t *testing.T) {
 		_, info, err := parse(embedded(gzipRaw(t, raw)))
 		require.NoError(t, err)
 		assert.Equal(t, 1, info.LogCount)
+	})
+
+	t.Run("contract check names the line", func(t *testing.T) {
+		t.Parallel()
+		other := common.HexToAddress("0x1234567890123456789012345678901234567890")
+		bad := priceLog(3, 3)
+		bad.Address = other
+		// A blank line before the bad log puts it on file line 4, not log 3.
+		raw := string(makeNDJSON([]types.Log{priceLog(1, 1), priceLog(2, 2)})) + "\n" + string(makeNDJSON([]types.Log{bad}))
+
+		_, _, err := snapshot.Parse(log.Noop, embedded(gzipRaw(t, raw)), snapshot.FromContract(fileContract))
+		require.ErrorIs(t, err, snapshot.ErrContractMismatch)
+		assert.ErrorContains(t, err, "line 4")
+		assert.ErrorContains(t, err, other.Hex())
+		assert.ErrorContains(t, err, fileContract.Hex())
+
+		// Without the check the same snapshot parses.
+		_, info, err := parse(embedded(gzipRaw(t, raw)))
+		require.NoError(t, err)
+		assert.Equal(t, 3, info.LogCount)
 	})
 
 	t.Run("info and block number", func(t *testing.T) {
@@ -402,13 +422,13 @@ func TestLoadFile(t *testing.T) {
 	t.Run("plain non-JSON", func(t *testing.T) {
 		t.Parallel()
 		_, _, err := loadFile(writeSnapshotFile(t, "snapshot.ndjson", []byte("not-a-log-entry\n")), startBlock)
-		assert.ErrorIs(t, err, listener.ErrParseSnapshot)
+		assert.ErrorIs(t, err, snapshot.ErrParseSnapshot)
 	})
 
 	t.Run("gzip with non-JSON lines", func(t *testing.T) {
 		t.Parallel()
 		_, _, err := loadFile(writeSnapshotFile(t, "snapshot.ndjson.gz", gzipRaw(t, "not-a-log-entry\n")), startBlock)
-		assert.ErrorIs(t, err, listener.ErrParseSnapshot)
+		assert.ErrorIs(t, err, snapshot.ErrParseSnapshot)
 	})
 
 	t.Run("truncated gzip", func(t *testing.T) {

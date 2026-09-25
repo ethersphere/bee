@@ -41,11 +41,18 @@ type Config struct {
 func Load(logger log.Logger, src Source, cfg Config) (*batchservice.Snapshot, Info, error) {
 	logger.Info("loading batch snapshot", "source", src.Name())
 
-	filterer, info, err := Parse(logger, src, cfg.Contract, cfg.Strict)
+	var checks []Check
+	if cfg.Strict {
+		checks = append(checks, FromContract(cfg.Contract))
+	}
+	filterer, info, err := Parse(logger, src, checks...)
 	if err != nil {
 		return nil, Info{}, err
 	}
 	if cfg.Strict {
+		if info.LogCount == 0 {
+			return nil, Info{}, ErrEmptySnapshot
+		}
 		// The replay starts at StartBlock+1; below that the listener would wait
 		// for the stalling timeout and then shut the node down.
 		if target, ok := listener.SyncTarget(info.MaxBlock); !ok || target < cfg.StartBlock+1 {
