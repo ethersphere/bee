@@ -43,7 +43,7 @@ func (c *CohortRegistry) Join(overlay swarm.Address, topic []byte, ch chan []byt
 		challenge: challenge,
 	}
 
-	return nil
+	return challenge
 }
 
 type cohort struct {
