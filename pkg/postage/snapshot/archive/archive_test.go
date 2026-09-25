@@ -102,11 +102,9 @@ func BenchmarkSnapshotLogFilterer(b *testing.B) {
 	})
 }
 
-// TestLoadFile_RealSnapshot feeds the embedded blob through the operator file
-// path, strictly, against the mainnet contract and start block it was exported
-// for. It proves the strict validation accepts a real batch-export file: the
-// slim line format, the sort order, the contract address on every line, and a
-// max block far enough past the contract start block.
+// TestLoadFile_RealSnapshot runs the embedded blob through the file path against
+// the mainnet contract it was exported for, proving the checks accept a real
+// batch-export file.
 func TestLoadFile_RealSnapshot(t *testing.T) {
 	t.Parallel()
 
@@ -122,7 +120,6 @@ func TestLoadFile_RealSnapshot(t *testing.T) {
 		BlockTime:       time.Second,
 		StallingTimeout: time.Minute,
 		BackoffTimeout:  time.Second,
-		Strict:          true,
 	})
 	if err != nil {
 		t.Fatalf("embedded snapshot rejected by the file path: %v", err)
@@ -131,7 +128,6 @@ func TestLoadFile_RealSnapshot(t *testing.T) {
 
 	_, embeddedInfo, err := snapshot.Parse(log.Noop, snapshot.Embedded(archive.Getter{}))
 	require.NoError(t, err)
-	assert.Equal(t, "file", info.Source)
 	assert.Equal(t, embeddedInfo.LogCount, info.LogCount)
 	assert.Equal(t, embeddedInfo.MaxBlock, info.MaxBlock)
 }

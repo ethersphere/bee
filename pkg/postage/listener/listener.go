@@ -32,10 +32,6 @@ const loggerName = "listener"
 // FilterLogs call while paging.
 const DefaultBlockPage = uint64(1000)
 
-// SnapshotBlockPage is the number of blocks per FilterLogs call when replaying a
-// postage snapshot, which serves from memory and needs no small pages.
-const SnapshotBlockPage = uint64(50000)
-
 const (
 	tailSize           = 4         // how many blocks to tail from the tip of the chain
 	defaultBatchFactor = uint64(5) // minimal number of blocks to sync at once
@@ -259,13 +255,8 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 		return nil
 	}
 
-	batchFactor, err := strconv.ParseUint(batchFactorOverridePublic, 10, 64)
-	if err != nil {
-		l.logger.Warning("batch factor conversation failed", "batch_factor", batchFactor, "error", err)
-		batchFactor = defaultBatchFactor
-	}
-
-	l.logger.Debug("batch factor", "value", batchFactor)
+	bf := batchFactor()
+	l.logger.Debug("batch factor", "value", bf)
 
 	pageSize := l.blockPage
 	l.logger.Debug("block page size", "page_size", pageSize)
@@ -298,7 +289,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 			// otherwise we just use the backoff time
 			var expectedWaitTime time.Duration
 			if lastConfirmedBlock != 0 {
-				nextExpectedBatchBlock := (lastConfirmedBlock/batchFactor + 1) * batchFactor
+				nextExpectedBatchBlock := (lastConfirmedBlock/bf + 1) * bf
 				remainingBlocks := nextExpectedBatchBlock - lastConfirmedBlock
 				expectedWaitTime = l.blockTime * time.Duration(remainingBlocks)
 			} else {
@@ -330,17 +321,13 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 				continue
 			}
 
-			if to < tailSize {
+			target, ok := SyncTarget(to)
+			if !ok {
 				// in a test blockchain there might be not be enough blocks yet
 				continue
 			}
-
-			// consider to-tailSize as the "latest" block we need to sync to
-			to = to - tailSize
-			lastConfirmedBlock = to
-
-			// round down to the largest multiple of batchFactor
-			to = (to / batchFactor) * batchFactor
+			lastConfirmedBlock = to - tailSize
+			to = target
 
 			if to < from {
 				// if the blockNumber is actually less than what we already, it might mean the backend is not synced or some reorg scenario

@@ -45,24 +45,15 @@ func (m mockSnapshotGetter) GetBatchSnapshot() []byte {
 	return m.data
 }
 
-// embedded is an embedded source holding data as its blob.
 func embedded(data []byte) snapshot.Source {
 	return snapshot.Embedded(newMockSnapshotGetter(data))
 }
 
 // makeSnapshotData encodes logs as gzip NDJSON, the embedded snapshot format.
 func makeSnapshotData(logs []types.Log) []byte {
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	enc := json.NewEncoder(gz)
-	for _, l := range logs {
-		_ = enc.Encode(l)
-	}
-	gz.Close()
-	return buf.Bytes()
+	return gzipBytes(makeNDJSON(logs))
 }
 
-// makeNDJSON encodes logs as plain, uncompressed NDJSON.
 func makeNDJSON(logs []types.Log) []byte {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -72,21 +63,14 @@ func makeNDJSON(logs []types.Log) []byte {
 	return buf.Bytes()
 }
 
-// gzipRaw compresses raw text into a single gzip member.
-func gzipRaw(t *testing.T, raw string) []byte {
-	t.Helper()
+func gzipBytes(data []byte) []byte {
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
-	if _, err := gz.Write([]byte(raw)); err != nil {
-		t.Fatal(err)
-	}
-	if err := gz.Close(); err != nil {
-		t.Fatal(err)
-	}
+	_, _ = gz.Write(data)
+	_ = gz.Close()
 	return buf.Bytes()
 }
 
-// parse is Parse with no checks.
 func parse(src snapshot.Source) (*snapshot.SnapshotLogFilterer, snapshot.Info, error) {
 	return snapshot.Parse(log.Noop, src)
 }
@@ -102,7 +86,7 @@ func TestParse(t *testing.T) {
 
 	t.Run("invalid log entry", func(t *testing.T) {
 		t.Parallel()
-		_, _, err := parse(embedded(gzipRaw(t, "not-a-log-entry")))
+		_, _, err := parse(embedded(gzipBytes([]byte("not-a-log-entry"))))
 		assert.ErrorIs(t, err, snapshot.ErrParseSnapshot)
 	})
 
@@ -121,7 +105,7 @@ func TestParse(t *testing.T) {
 	t.Run("parse error names the line", func(t *testing.T) {
 		t.Parallel()
 		raw := string(makeNDJSON([]types.Log{priceLog(1, 1)})) + "garbage\n"
-		_, _, err := parse(embedded(gzipRaw(t, raw)))
+		_, _, err := parse(embedded(gzipBytes([]byte(raw))))
 		require.ErrorIs(t, err, snapshot.ErrParseSnapshot)
 		assert.ErrorContains(t, err, "line 2")
 	})
@@ -129,29 +113,9 @@ func TestParse(t *testing.T) {
 	t.Run("blank lines are skipped", func(t *testing.T) {
 		t.Parallel()
 		raw := "\n" + string(makeNDJSON([]types.Log{priceLog(1, 1)})) + "\n\n"
-		_, info, err := parse(embedded(gzipRaw(t, raw)))
+		_, info, err := parse(embedded(gzipBytes([]byte(raw))))
 		require.NoError(t, err)
 		assert.Equal(t, 1, info.LogCount)
-	})
-
-	t.Run("contract check names the line", func(t *testing.T) {
-		t.Parallel()
-		other := common.HexToAddress("0x1234567890123456789012345678901234567890")
-		bad := priceLog(3, 3)
-		bad.Address = other
-		// A blank line before the bad log puts it on file line 4, not log 3.
-		raw := string(makeNDJSON([]types.Log{priceLog(1, 1), priceLog(2, 2)})) + "\n" + string(makeNDJSON([]types.Log{bad}))
-
-		_, _, err := snapshot.Parse(log.Noop, embedded(gzipRaw(t, raw)), snapshot.FromContract(fileContract))
-		require.ErrorIs(t, err, snapshot.ErrContractMismatch)
-		assert.ErrorContains(t, err, "line 4")
-		assert.ErrorContains(t, err, other.Hex())
-		assert.ErrorContains(t, err, fileContract.Hex())
-
-		// Without the check the same snapshot parses.
-		_, info, err := parse(embedded(gzipRaw(t, raw)))
-		require.NoError(t, err)
-		assert.Equal(t, 3, info.LogCount)
 	})
 
 	t.Run("info and block number", func(t *testing.T) {
@@ -164,7 +128,7 @@ func TestParse(t *testing.T) {
 		}
 		filterer, info, err := parse(embedded(makeSnapshotData(logs)))
 		require.NoError(t, err)
-		assert.Equal(t, snapshot.Info{Source: "embedded", LogCount: 4, MaxBlock: 3}, info)
+		assert.Equal(t, snapshot.Info{LogCount: 4, MaxBlock: 3}, info)
 
 		blockNumber, err := filterer.BlockNumber(context.Background())
 		require.NoError(t, err)
@@ -232,7 +196,7 @@ func TestLoad(t *testing.T) {
 		t.Parallel()
 		logs := []types.Log{
 			{BlockNumber: 1, Topics: []common.Hash{}},
-			{BlockNumber: 5, Topics: []common.Hash{}},
+			{BlockNumber: 110, Topics: []common.Hash{}},
 		}
 		snap, info, err := snapshot.Load(log.Noop, embedded(makeSnapshotData(logs)), snapshot.Config{
 			ABI:        abi.ABI{},
@@ -243,25 +207,24 @@ func TestLoad(t *testing.T) {
 		t.Cleanup(func() { _ = snap.Listener.Close() })
 		assert.Equal(t, uint64(100), snap.StartBlock)
 		assert.NotNil(t, snap.Listener)
-		assert.Equal(t, snapshot.Info{Source: "embedded", LogCount: 2, MaxBlock: 5}, info)
+		assert.Equal(t, snapshot.Info{LogCount: 2, MaxBlock: 110}, info)
 	})
 
-	// The embedded snapshot is best effort: no contract or emptiness checks.
-	t.Run("embedded is not strict", func(t *testing.T) {
+	// The embedded snapshot gets the same checks as a file; a bad blob falls
+	// back to chain sync instead of stalling the listener or skipping history.
+	t.Run("embedded is checked too", func(t *testing.T) {
 		t.Parallel()
 		other := priceLog(110, 1)
 		other.Address = common.HexToAddress("0x1234567890123456789012345678901234567890")
-		foreign, _, err := snapshot.Load(log.Noop, embedded(makeSnapshotData([]types.Log{other})), snapshot.Config{
+		_, _, err := snapshot.Load(log.Noop, embedded(makeSnapshotData([]types.Log{other})), snapshot.Config{
 			Contract:   fileContract,
 			ABI:        fileContractABI,
 			StartBlock: 100,
 		})
-		require.NoError(t, err)
-		t.Cleanup(func() { _ = foreign.Listener.Close() })
+		assert.ErrorIs(t, err, snapshot.ErrContractMismatch)
 
-		empty, _, err := snapshot.Load(log.Noop, embedded(makeSnapshotData(nil)), snapshot.Config{ABI: abi.ABI{}})
-		require.NoError(t, err)
-		t.Cleanup(func() { _ = empty.Listener.Close() })
+		_, _, err = snapshot.Load(log.Noop, embedded(makeSnapshotData(nil)), snapshot.Config{ABI: abi.ABI{}})
+		assert.ErrorIs(t, err, snapshot.ErrEmptySnapshot)
 	})
 
 	t.Run("corrupt embedded snapshot returns an error", func(t *testing.T) {
@@ -272,13 +235,11 @@ func TestLoad(t *testing.T) {
 }
 
 var (
-	fileContract    = common.HexToAddress("0x45A1502382541Cd610CC9068e88727426b696293")
-	fileContractABI = abiutil.MustParseABI(chaincfg.Testnet.PostageStampABI)
+	fileContract    = chaincfg.Mainnet.PostageStampAddress
+	fileContractABI = abiutil.MustParseABI(chaincfg.Mainnet.PostageStampABI)
 	priceTopic      = fileContractABI.Events["PriceUpdate"].ID
 )
 
-// writeSnapshotFile writes data to a file with the given name in a fresh temp
-// dir and returns its path.
 func writeSnapshotFile(t *testing.T, name string, data []byte) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), name)
@@ -299,8 +260,6 @@ func priceLog(block uint64, price int64) types.Log {
 	}
 }
 
-// loadFile loads the snapshot file at path the way the node does for an
-// operator-provided file: strictly.
 func loadFile(path string, startBlock uint64) (*batchservice.Snapshot, snapshot.Info, error) {
 	return snapshot.Load(log.Noop, snapshot.File(path), snapshot.Config{
 		Contract:        fileContract,
@@ -309,7 +268,6 @@ func loadFile(path string, startBlock uint64) (*batchservice.Snapshot, snapshot.
 		BlockTime:       time.Second,
 		StallingTimeout: time.Minute,
 		BackoffTimeout:  time.Second,
-		Strict:          true,
 	})
 }
 
@@ -327,7 +285,7 @@ func TestLoadFile(t *testing.T) {
 
 		snap, info, err := loadFile(path, startBlock)
 		require.NoError(t, err)
-		assert.Equal(t, snapshot.Info{Source: "file", LogCount: 2, MaxBlock: 120}, info)
+		assert.Equal(t, snapshot.Info{LogCount: 2, MaxBlock: 120}, info)
 		assert.Equal(t, startBlock, snap.StartBlock)
 
 		rec := &priceRecorder{}
@@ -347,11 +305,11 @@ func TestLoadFile(t *testing.T) {
 		line := `{"address":"0x45a1502382541cd610cc9068e88727426b696293","topics":["` + priceTopic.Hex() + `"],` +
 			`"data":"0x` + common.Bytes2Hex(common.LeftPadBytes([]byte{7}, 32)) + `",` +
 			`"blockNumber":"0x78","transactionHash":"0x9b1a200b3b9c757e88fe4579c87d6dd27ec781284a69163a6436ce5d29a9baaa","logIndex":"0x0"}` + "\n"
-		path := writeSnapshotFile(t, "snapshot.ndjson.gz", gzipRaw(t, line))
+		path := writeSnapshotFile(t, "snapshot.ndjson.gz", gzipBytes([]byte(line)))
 
 		_, info, err := loadFile(path, startBlock)
 		require.NoError(t, err)
-		assert.Equal(t, snapshot.Info{Source: "file", LogCount: 1, MaxBlock: 120}, info)
+		assert.Equal(t, snapshot.Info{LogCount: 1, MaxBlock: 120}, info)
 	})
 
 	t.Run("multi-member gzip", func(t *testing.T) {
@@ -365,7 +323,7 @@ func TestLoadFile(t *testing.T) {
 
 		_, info, err := loadFile(path, startBlock)
 		require.NoError(t, err)
-		assert.Equal(t, snapshot.Info{Source: "file", LogCount: 4, MaxBlock: 130}, info)
+		assert.Equal(t, snapshot.Info{LogCount: 4, MaxBlock: 130}, info)
 	})
 
 	t.Run("plain NDJSON", func(t *testing.T) {
@@ -374,17 +332,16 @@ func TestLoadFile(t *testing.T) {
 
 		_, info, err := loadFile(path, startBlock)
 		require.NoError(t, err)
-		assert.Equal(t, snapshot.Info{Source: "file", LogCount: 2, MaxBlock: 120}, info)
+		assert.Equal(t, snapshot.Info{LogCount: 2, MaxBlock: 120}, info)
 	})
 
-	// The content decides the format, not the file name.
 	t.Run("plain NDJSON named .gz", func(t *testing.T) {
 		t.Parallel()
 		path := writeSnapshotFile(t, "snapshot.gz", makeNDJSON([]types.Log{priceLog(110, 1), priceLog(120, 2)}))
 
 		_, info, err := loadFile(path, startBlock)
 		require.NoError(t, err)
-		assert.Equal(t, snapshot.Info{Source: "file", LogCount: 2, MaxBlock: 120}, info)
+		assert.Equal(t, snapshot.Info{LogCount: 2, MaxBlock: 120}, info)
 	})
 
 	t.Run("gzip named .ndjson", func(t *testing.T) {
@@ -393,7 +350,7 @@ func TestLoadFile(t *testing.T) {
 
 		_, info, err := loadFile(path, startBlock)
 		require.NoError(t, err)
-		assert.Equal(t, snapshot.Info{Source: "file", LogCount: 2, MaxBlock: 120}, info)
+		assert.Equal(t, snapshot.Info{LogCount: 2, MaxBlock: 120}, info)
 	})
 
 	t.Run("missing file", func(t *testing.T) {
@@ -406,8 +363,7 @@ func TestLoadFile(t *testing.T) {
 		t.Parallel()
 		_, _, err := loadFile(t.TempDir(), startBlock)
 		require.ErrorIs(t, err, syscall.EISDIR)
-		// Rejected before any read, so the error is the same on every OS; on
-		// Windows reading a directory handle fails with an unrelated error.
+		// Rejected before any read; see fileSource.Open.
 		var pathErr *fs.PathError
 		require.ErrorAs(t, err, &pathErr)
 		assert.Equal(t, "open", pathErr.Op)
@@ -427,7 +383,7 @@ func TestLoadFile(t *testing.T) {
 
 	t.Run("gzip with non-JSON lines", func(t *testing.T) {
 		t.Parallel()
-		_, _, err := loadFile(writeSnapshotFile(t, "snapshot.ndjson.gz", gzipRaw(t, "not-a-log-entry\n")), startBlock)
+		_, _, err := loadFile(writeSnapshotFile(t, "snapshot.ndjson.gz", gzipBytes([]byte("not-a-log-entry\n"))), startBlock)
 		assert.ErrorIs(t, err, snapshot.ErrParseSnapshot)
 	})
 
@@ -444,7 +400,7 @@ func TestLoadFile(t *testing.T) {
 		assert.ErrorIs(t, err, snapshot.ErrEmptySnapshot)
 	})
 
-	t.Run("contract mismatch on line 3", func(t *testing.T) {
+	t.Run("contract mismatch names the log", func(t *testing.T) {
 		t.Parallel()
 		other := common.HexToAddress("0x1234567890123456789012345678901234567890")
 		bad := priceLog(115, 3)
@@ -453,7 +409,7 @@ func TestLoadFile(t *testing.T) {
 
 		_, _, err := loadFile(path, startBlock)
 		require.ErrorIs(t, err, snapshot.ErrContractMismatch)
-		assert.ErrorContains(t, err, "line 3")
+		assert.ErrorContains(t, err, "log 3")
 		assert.ErrorContains(t, err, other.Hex())
 		assert.ErrorContains(t, err, fileContract.Hex())
 	})
@@ -498,9 +454,8 @@ func TestReplayStopsBelowMaxBlock(t *testing.T) {
 	filterer, _, err := parse(embedded(makeSnapshotData(logs)))
 	require.NoError(t, err)
 
-	// The page size Load uses: one page covers the whole snapshot, so the first
-	// block recorded is the trimmed tip.
-	l := listener.New(nil, log.Noop, filterer, common.Address{}, abi.ABI{}, time.Second, time.Minute, time.Second, listener.SnapshotBlockPage)
+	// The page size Load uses, so one page covers the whole snapshot.
+	l := listener.New(nil, log.Noop, filterer, common.Address{}, abi.ABI{}, time.Second, time.Minute, time.Second, snapshot.BlockPage)
 	t.Cleanup(func() { _ = l.Close() })
 
 	rec := &blockRecorder{blocks: make(chan uint64, 8)}
@@ -523,27 +478,35 @@ func TestReplayStopsBelowMaxBlock(t *testing.T) {
 	}
 }
 
-// blockRecorder is a postage.EventUpdater that reports every block the listener
-// commits via UpdateBlockNumber and ignores everything else.
-type blockRecorder struct{ blocks chan uint64 }
+// noopUpdater is a postage.EventUpdater that ignores everything; recorders
+// embed it and override what they record.
+type noopUpdater struct{}
+
+func (noopUpdater) Create(_, _ []byte, _, _ *big.Int, _, _ uint8, _ bool, _ common.Hash) error {
+	return nil
+}
+func (noopUpdater) TopUp(_ []byte, _, _ *big.Int, _ common.Hash) error             { return nil }
+func (noopUpdater) UpdateDepth(_ []byte, _ uint8, _ *big.Int, _ common.Hash) error { return nil }
+func (noopUpdater) UpdatePrice(_ *big.Int, _ common.Hash) error                    { return nil }
+func (noopUpdater) UpdateBlockNumber(_ uint64) error                               { return nil }
+func (noopUpdater) Start(_ context.Context, _ uint64) error                        { return nil }
+func (noopUpdater) TransactionStart() error                                        { return nil }
+func (noopUpdater) TransactionEnd() error                                          { return nil }
+
+// blockRecorder reports every block the listener commits via UpdateBlockNumber.
+type blockRecorder struct {
+	noopUpdater
+	blocks chan uint64
+}
 
 func (r *blockRecorder) UpdateBlockNumber(blockNumber uint64) error {
 	r.blocks <- blockNumber
 	return nil
 }
 
-func (r *blockRecorder) Create(_, _ []byte, _, _ *big.Int, _, _ uint8, _ bool, _ common.Hash) error {
-	return nil
-}
-func (r *blockRecorder) TopUp(_ []byte, _, _ *big.Int, _ common.Hash) error             { return nil }
-func (r *blockRecorder) UpdateDepth(_ []byte, _ uint8, _ *big.Int, _ common.Hash) error { return nil }
-func (r *blockRecorder) UpdatePrice(_ *big.Int, _ common.Hash) error                    { return nil }
-func (r *blockRecorder) Start(_ context.Context, _ uint64) error                        { return nil }
-func (r *blockRecorder) TransactionStart() error                                        { return nil }
-func (r *blockRecorder) TransactionEnd() error                                          { return nil }
-
-// priceRecorder is a postage.EventUpdater that records every price update.
+// priceRecorder records every price update.
 type priceRecorder struct {
+	noopUpdater
 	mu     sync.Mutex
 	prices []int64
 }
@@ -560,13 +523,3 @@ func (r *priceRecorder) UpdatePrice(price *big.Int, _ common.Hash) error {
 	r.prices = append(r.prices, price.Int64())
 	return nil
 }
-
-func (r *priceRecorder) Create(_, _ []byte, _, _ *big.Int, _, _ uint8, _ bool, _ common.Hash) error {
-	return nil
-}
-func (r *priceRecorder) TopUp(_ []byte, _, _ *big.Int, _ common.Hash) error             { return nil }
-func (r *priceRecorder) UpdateDepth(_ []byte, _ uint8, _ *big.Int, _ common.Hash) error { return nil }
-func (r *priceRecorder) UpdateBlockNumber(_ uint64) error                               { return nil }
-func (r *priceRecorder) Start(_ context.Context, _ uint64) error                        { return nil }
-func (r *priceRecorder) TransactionStart() error                                        { return nil }
-func (r *priceRecorder) TransactionEnd() error                                          { return nil }

@@ -109,13 +109,14 @@ func TestValidatePublicAddress(t *testing.T) {
 	}
 }
 
+// Network IDs as the node sees them (mainnetNetworkID in node.go).
+const (
+	mainnet = uint64(1)
+	testnet = uint64(10)
+)
+
 func TestUseEmbeddedSnapshot(t *testing.T) {
 	t.Parallel()
-
-	const (
-		mainnet = uint64(1)
-		testnet = uint64(10)
-	)
 
 	testCases := []struct {
 		name             string
@@ -184,7 +185,7 @@ func TestShutdownRegistersPushSyncAndRetrieval(t *testing.T) {
 	}
 }
 
-func TestSnapshotApplies(t *testing.T) {
+func TestSnapshotSkipReason(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -197,26 +198,22 @@ func TestSnapshotApplies(t *testing.T) {
 		batchStoreExists bool
 		resync           bool
 		mode             api.BeeNodeMode
-		want             bool
-		wantReason       string
+		want             string // "" when the snapshot applies
 	}{
-		{name: "fresh store", mode: api.FullMode, want: true},
-		{name: "resync on an existing store", batchStoreExists: true, resync: true, mode: api.FullMode, want: true},
-		{name: "existing store without resync", batchStoreExists: true, mode: api.FullMode, wantReason: reasonStore},
-		{name: "light node applies", mode: api.LightMode, want: true},
-		{name: "ultra-light", mode: api.UltraLightMode, wantReason: reasonUltraLight},
-		{name: "ultra-light takes precedence over an existing store", batchStoreExists: true, mode: api.UltraLightMode, wantReason: reasonUltraLight},
-		{name: "ultra-light with resync", batchStoreExists: true, resync: true, mode: api.UltraLightMode, wantReason: reasonUltraLight},
+		{name: "fresh store", mode: api.FullMode},
+		{name: "resync on an existing store", batchStoreExists: true, resync: true, mode: api.FullMode},
+		{name: "existing store without resync", batchStoreExists: true, mode: api.FullMode, want: reasonStore},
+		{name: "light node applies", mode: api.LightMode},
+		{name: "ultra-light", mode: api.UltraLightMode, want: reasonUltraLight},
+		{name: "ultra-light takes precedence over an existing store", batchStoreExists: true, mode: api.UltraLightMode, want: reasonUltraLight},
+		{name: "ultra-light with resync", batchStoreExists: true, resync: true, mode: api.UltraLightMode, want: reasonUltraLight},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if got := node.SnapshotApplies(tc.batchStoreExists, tc.resync, tc.mode); got != tc.want {
-				t.Fatalf("SnapshotApplies = %v, want %v", got, tc.want)
-			}
-			if got := node.SnapshotSkipReason(tc.batchStoreExists, tc.resync, tc.mode); got != tc.wantReason {
-				t.Fatalf("SnapshotSkipReason = %q, want %q", got, tc.wantReason)
+			if got := node.SnapshotSkipReason(tc.batchStoreExists, tc.resync, tc.mode); got != tc.want {
+				t.Fatalf("SnapshotSkipReason = %q, want %q", got, tc.want)
 			}
 		})
 	}
@@ -225,11 +222,7 @@ func TestSnapshotApplies(t *testing.T) {
 func TestChooseSnapshotSource(t *testing.T) {
 	t.Parallel()
 
-	const (
-		mainnet = uint64(1)
-		testnet = uint64(10)
-		file    = "/data/snapshot.ndjson.gz"
-	)
+	const file = "/data/snapshot.ndjson.gz"
 
 	testCases := []struct {
 		name             string
@@ -240,12 +233,11 @@ func TestChooseSnapshotSource(t *testing.T) {
 		networkID        uint64
 		mode             api.BeeNodeMode
 		wantSource       string // "" for none
-		wantStrict       bool
 		wantSkipReason   string
 	}{
-		{name: "file on a fresh store", file: file, networkID: mainnet, mode: api.FullMode, wantSource: "file", wantStrict: true},
-		{name: "file works on any network", file: file, networkID: testnet, mode: api.LightMode, wantSource: "file", wantStrict: true},
-		{name: "file with resync on an existing store", file: file, batchStoreExists: true, resync: true, networkID: testnet, mode: api.FullMode, wantSource: "file", wantStrict: true},
+		{name: "file on a fresh store", file: file, networkID: mainnet, mode: api.FullMode, wantSource: "file"},
+		{name: "file works on any network", file: file, networkID: testnet, mode: api.LightMode, wantSource: "file"},
+		{name: "file with resync on an existing store", file: file, batchStoreExists: true, resync: true, networkID: testnet, mode: api.FullMode, wantSource: "file"},
 		{name: "file on an existing store is not used", file: file, batchStoreExists: true, networkID: mainnet, mode: api.FullMode, wantSkipReason: "batch store already exists; use --resync to rebuild it from the snapshot"},
 		{name: "file on an ultra-light node is not used", file: file, networkID: mainnet, mode: api.UltraLightMode, wantSkipReason: "ultra-light node does not sync postage data"},
 		{name: "embedded on a fresh mainnet store", networkID: mainnet, mode: api.FullMode, wantSource: "embedded"},
@@ -257,7 +249,7 @@ func TestChooseSnapshotSource(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			src, strict, skipReason := node.ChooseSnapshotSource(tc.file, tc.skip, tc.batchStoreExists, tc.resync, tc.networkID, tc.mode)
+			src, skipReason := node.ChooseSnapshotSource(tc.file, tc.skip, tc.batchStoreExists, tc.resync, tc.networkID, tc.mode)
 
 			gotSource := ""
 			if src != nil {
@@ -265,9 +257,6 @@ func TestChooseSnapshotSource(t *testing.T) {
 			}
 			if gotSource != tc.wantSource {
 				t.Fatalf("source = %q, want %q", gotSource, tc.wantSource)
-			}
-			if strict != tc.wantStrict {
-				t.Fatalf("strict = %v, want %v", strict, tc.wantStrict)
 			}
 			if skipReason != tc.wantSkipReason {
 				t.Fatalf("skip reason = %q, want %q", skipReason, tc.wantSkipReason)

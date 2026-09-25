@@ -913,7 +913,7 @@ func NewBee(
 	)
 
 	var batchSnapshot *batchservice.Snapshot
-	snapshotSource, strictSnapshot, skipReason := chooseSnapshotSource(o.PostageSnapshotFile, o.SkipPostageSnapshot, batchStoreExists, o.Resync, networkID, beeNodeMode)
+	snapshotSource, skipReason := chooseSnapshotSource(o.PostageSnapshotFile, o.SkipPostageSnapshot, batchStoreExists, o.Resync, networkID, beeNodeMode)
 	if skipReason != "" {
 		logger.Warning("postage snapshot file will not be used", "path", o.PostageSnapshotFile, "reason", skipReason)
 	}
@@ -926,10 +926,9 @@ func NewBee(
 			StallingTimeout: postageSyncingStallingTimeout,
 			BackoffTimeout:  postageSyncingBackoffTimeout,
 			SyncingStopped:  b.syncingStopped,
-			Strict:          strictSnapshot,
 		})
 		switch {
-		case err != nil && strictSnapshot:
+		case err != nil && o.PostageSnapshotFile != "":
 			// The operator asked for this file explicitly, so do not start without it.
 			return nil, fmt.Errorf("postage snapshot file %q: %w", o.PostageSnapshotFile, err)
 		case err != nil:
@@ -937,11 +936,7 @@ func NewBee(
 			logger.Error(err, "postage snapshot unavailable, syncing from chain instead")
 		default:
 			batchSnapshot = snap
-			keysAndValues := []any{"source", info.Source, "log_count", info.LogCount, "max_block", info.MaxBlock}
-			if strictSnapshot {
-				keysAndValues = append(keysAndValues, "path", o.PostageSnapshotFile)
-			}
-			logger.Info("using postage snapshot", keysAndValues...)
+			logger.Info("using postage snapshot", "source", snapshotSource.Name(), "path", o.PostageSnapshotFile, "log_count", info.LogCount, "max_block", info.MaxBlock)
 		}
 	}
 
@@ -1701,12 +1696,6 @@ func batchStoreExists(s storage.StateStorer) (bool, error) {
 	return hasOne, err
 }
 
-// snapshotApplies reports whether a postage snapshot would be replayed: the
-// batch store is being rebuilt and the node syncs postage data.
-func snapshotApplies(batchStoreExists, resync bool, mode api.BeeNodeMode) bool {
-	return snapshotSkipReason(batchStoreExists, resync, mode) == ""
-}
-
 // snapshotSkipReason explains why a postage snapshot would not be replayed, or
 // returns an empty string when it would be.
 func snapshotSkipReason(batchStoreExists, resync bool, mode api.BeeNodeMode) string {
@@ -1724,22 +1713,20 @@ func snapshotSkipReason(batchStoreExists, resync bool, mode api.BeeNodeMode) str
 // embedded snapshot: mainnet, full or light node, and the store will be built
 // from scratch (no store yet, or a resync wipes it), unless explicitly skipped.
 func useEmbeddedSnapshot(skip, batchStoreExists, resync bool, networkID uint64, mode api.BeeNodeMode) bool {
-	return !skip && snapshotApplies(batchStoreExists, resync, mode) && networkID == mainnetNetworkID
+	return !skip && snapshotSkipReason(batchStoreExists, resync, mode) == "" && networkID == mainnetNetworkID
 }
 
-// chooseSnapshotSource picks where the postage snapshot comes from, if anywhere.
-// A file named by the operator wins on any network and is strict: any problem
-// with it is fatal. The embedded snapshot is best effort. skipReason is set when
-// a file was named but will not be used.
-func chooseSnapshotSource(file string, skip, batchStoreExists, resync bool, networkID uint64, mode api.BeeNodeMode) (src snapshot.Source, strict bool, skipReason string) {
+// chooseSnapshotSource picks the snapshot source, if any. A file named by the
+// operator wins on any network; skipReason says why it will not be used.
+func chooseSnapshotSource(file string, skip, batchStoreExists, resync bool, networkID uint64, mode api.BeeNodeMode) (src snapshot.Source, skipReason string) {
 	if file != "" {
 		if reason := snapshotSkipReason(batchStoreExists, resync, mode); reason != "" {
-			return nil, false, reason
+			return nil, reason
 		}
-		return snapshot.File(file), true, ""
+		return snapshot.File(file), ""
 	}
 	if useEmbeddedSnapshot(skip, batchStoreExists, resync, networkID, mode) {
-		return snapshot.Embedded(archive.Getter{}), false, ""
+		return snapshot.Embedded(archive.Getter{}), ""
 	}
-	return nil, false, ""
+	return nil, ""
 }
