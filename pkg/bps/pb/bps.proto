@@ -1,0 +1,25 @@
+// Copyright 2026 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto3";
+
+package bps;
+
+option go_package = "pb";
+
+message Broadcast {
+  bytes soc = 1;
+}
+
+message Join {
+  bytes topic = 1;
+}
+
+message JoinAck {
+  bytes challenge = 1; // the challenge to sign in order to claim the cohort's publishing role stream
+}
+
+message Claim {
+  bytes soc = 1; // the soc chunk body to claim the publishing rights
+}
