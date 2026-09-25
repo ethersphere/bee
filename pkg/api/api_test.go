@@ -90,14 +90,19 @@ func init() {
 }
 
 type testServerOptions struct {
-	Storer             api.Storer
-	Tracer             *tracing.Tracer
-	StateStorer        storage.StateStorer
-	Resolver           resolver.Interface
-	Pss                pss.Interface
-	Gsoc               gsoc.Listener
-	WsPath             string
-	WsPingPeriod       time.Duration
+	Storer                      api.Storer
+	Tracer                      *tracing.Tracer
+	StateStorer                 storage.StateStorer
+	Resolver                    resolver.Interface
+	Pss                         pss.Interface
+	Gsoc                        gsoc.Listener
+	WsPath                      string
+	WsPingPeriod                time.Duration
+	ChunkDeliveryWriteDeadline  time.Duration
+	ChunkDownloadRequestTimeout time.Duration
+	// Service, when set, receives the api.Service and makes the caller
+	// responsible for closing it, so a test can assert on Close directly.
+	Service            **api.Service
 	Logger             log.Logger
 	PreventRedirect    bool
 	Feeds              feeds.Factory
@@ -227,7 +232,11 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	}
 
 	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, []string{o.WhitelistedAddr}, o.Logger, transaction, o.BatchStore, o.BeeMode, !o.ChequebookDisabled, !o.SwapDisabled, backend, o.CORSAllowedOrigins, inmemstore.New())
-	testutil.CleanupCloser(t, s)
+	if o.Service != nil {
+		*o.Service = s
+	} else {
+		testutil.CleanupCloser(t, s)
+	}
 
 	s.SetP2P(o.P2P)
 
@@ -252,8 +261,10 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	}
 
 	s.Configure(signer, tracer, api.Options{
-		CORSAllowedOrigins: o.CORSAllowedOrigins,
-		WsPingPeriod:       o.WsPingPeriod,
+		CORSAllowedOrigins:          o.CORSAllowedOrigins,
+		WsPingPeriod:                o.WsPingPeriod,
+		ChunkDeliveryWriteDeadline:  o.ChunkDeliveryWriteDeadline,
+		ChunkDownloadRequestTimeout: o.ChunkDownloadRequestTimeout,
 	}, extraOpts, 1, erc20APIService)
 
 	s.Mount()

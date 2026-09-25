@@ -156,3 +156,9 @@ func MapStructure(input, output any, hooks map[string]func(v string) (string, er
 func NewParseError(entry, value string, cause error) error {
 	return newParseError(entry, value, cause)
 }
+
+const (
+	ChunkStreamSubprotocol  = chunkStreamSubprotocol
+	MaxStreamQueueSize      = maxStreamQueueSize
+	DefaultStreamSubWorkers = defaultStreamSubWorkers
+)

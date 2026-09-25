@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 8.2.0
+  version: 8.3.0
   title: Bee API
   description: "API endpoints for interacting with the Swarm network, supporting file operations, messaging, and node management"
 
@@ -375,11 +375,43 @@ paths:
 
   "/chunks/stream":
     get:
-      summary: "Stream chunks for upload"
-      description: "Establishes a WebSocket connection for streaming chunks. Each uploaded chunk receives a binary acknowledgment (`0`). Chunks are sent as binary messages. When a tag is specified, chunks are stored locally and uploaded to the network after the stream closes. Without a tag, chunks are directly uploaded to the network as they arrive."
+      summary: "Stream chunks for upload or download"
+      description: |
+        Establishes a WebSocket connection for streaming chunks. Supports full-duplex bi-directional streaming using Protobuf framing, as well as legacy upload streaming.
+
+        **Bidirectional Stream Mode** (negotiated via `Sec-WebSocket-Protocol: swarm-chunk-stream` or query param `mode=stream`):
+        Clients and server exchange binary Protobuf messages defined by `pkg/api/pb/chunkstream.proto` (`chunkstream.Request` and `chunkstream.Response`). Both uploads (`PutRequest`) and downloads (`GetRequest`) are supported simultaneously on the same connection with request/response correlation via a client-assigned `Id`.
+        - `PutRequest`: uploads a chunk (`Data`, optional `Stamp`, and explicit `Type`: `CHUNK_TYPE_UNSPECIFIED = 0` (rejected), `CHUNK_TYPE_CAC = 1` for standard Content Addressed Chunks, or `CHUNK_TYPE_SOC = 2` for Single Owner Chunks). `STATUS_OK` confirms that the chunk was successfully pushed to network peers (direct upload) or safely stored in the local reserve (tagged deferred upload).
+        - `GetRequest`: retrieves a chunk by `Address` (with optional `CacheOption`: `CACHE_DEFAULT = 0`, `CACHE_DISABLE = 1`, `CACHE_ENABLE = 2`).
+        - `Response`: returns matching `Id`, `Status` (`STATUS_UNSPECIFIED = 0`, `STATUS_OK = 1`, `STATUS_NOT_FOUND = 2`, `STATUS_ERROR = 3`, `STATUS_BAD_REQUEST = 4`, `STATUS_BUSY = 5` [queue full — retry with backoff]), `Address`, `Data` (for Get), and sanitized `Error` message.
+        - Frame size limit: 64 KiB maximum per WebSocket message.
+        - WebSocket Close Codes:
+          - `1000` (Normal Closure): Client-initiated clean disconnect.
+          - `1001` (Going Away): Node is shutting down.
+          - `1003` (Unsupported Data): Non-binary frame or invalid protobuf payload received.
+          - `1009` (Message Too Big): Message exceeds the 64 KiB size limit.
+        - Fault Tolerance & Recovery: Individual chunk errors (e.g. not found, bad request, queue full) return a `Response` message carrying the request `Id` and do not close the stream. `STATUS_BUSY` indicates worker queue saturation; clients should retry with exponential backoff. If the connection drops or is closed, clients should reconnect and re-send any requests whose IDs never received a response.
+
+        **Upload Mode** (legacy default, or requested via query param `mode=upload`):
+        Clients send chunks as binary messages `[8-byte span][data]`. Each uploaded chunk receives an empty binary acknowledgment frame (`len = 0`). When a tag is specified, chunks are stored locally and synced; without a tag, chunks are directly uploaded.
+
+        If both are supplied, the `Sec-WebSocket-Protocol` subprotocol header takes precedence over the `mode` query parameter.
       tags:
         - Chunk
       parameters:
+        - in: query
+          name: mode
+          schema:
+            type: string
+            enum: [stream, upload]
+          required: false
+          description: "Stream mode. Set to `stream` for bidirectional Protobuf streaming (can also be negotiated via `Sec-WebSocket-Protocol: swarm-chunk-stream`). Legacy mode: `upload`. Any other value is rejected with `400`."
+        - in: query
+          name: cache
+          schema:
+            type: boolean
+          required: false
+          description: "Enable or disable chunk caching when downloading (default: true). Overridden by `Swarm-Cache` header if present."
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
         - in: query
           name: swarm-tag
@@ -393,6 +425,7 @@ paths:
           required: false
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
       responses:
         "200":
           description: "Connection established"
