@@ -21,5 +21,5 @@ message JoinAck {
 }
 
 message Claim {
-  bytes sig = 1; // the challenge signature that takes over the cohort. signs the challenge in JoinAck.
+  bytes soc = 1; // the soc chunk body to claim the publishing rights
 }
