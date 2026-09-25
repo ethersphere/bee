@@ -14,6 +14,8 @@ var (
 	ValidatePublicAddress = validatePublicAddress
 	UseEmbeddedSnapshot   = useEmbeddedSnapshot
 	IsChainEnabled        = isChainEnabled
+	SnapshotApplies       = snapshotApplies
+	SnapshotSkipReason    = snapshotSkipReason
 )
 
 // NewTestBeeWithClosers builds a Bee with only the push-sync and retrieval
