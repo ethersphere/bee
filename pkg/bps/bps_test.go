@@ -7,83 +7,98 @@ package bps_test
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/bps"
-	"github.com/ethersphere/bee/v2/pkg/bps/pb"
+	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
-	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/v2/pkg/p2p/streamtest"
+	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-func TestJoin(t *testing.T) {
+func TestClaimAndBroadcast(t *testing.T) {
 	t.Parallel()
 
 	logger := log.Noop
 
-	server := bps.New(nil, logger)
+	brokerAddr := swarm.RandAddress(t)
+	broker := bps.New(nil, brokerAddr, true, logger)
 
-	recorder := streamtest.New(
-		streamtest.WithProtocols(server.Protocol()),
-	)
+	// each client gets its own recorder so that the broker sees distinct peer overlays
+	newClient := func() *bps.Service {
+		recorder := streamtest.New(
+			streamtest.WithProtocols(broker.Protocol()),
+			streamtest.WithBaseAddr(swarm.RandAddress(t)),
+		)
+		return bps.New(recorder, swarm.RandAddress(t), false, logger)
+	}
+	publisher := newClient()
+	subscriber := newClient()
 
-	client := bps.New(recorder, logger)
-
-	addr := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
-	topic := []byte{0, 1, 2, 3, 4}
-	// greeting := "world"
-
-	challenge, _, err := client.Join(context.Background(), addr, topic)
+	// the public topic is the soc address of the claim: keccak(id | owner)
+	key, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Println(challenge)
-	records, err := recorder.Records(addr, "bps", "1.0.0", "bps")
+	signer := crypto.NewDefaultSigner(key)
+	owner, err := crypto.NewEthereumAddress(key.PublicKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if l := len(records); l != 1 {
-		t.Fatalf("got %v records, want %v", l, 2)
-	}
-	record := records[0]
-
-	// client -> server: SystemMessage{Join}
-	messages, err := protobuf.ReadMessages(
-		bytes.NewReader(record.In()),
-		func() protobuf.Message { return new(pb.SystemMessage) },
-	)
+	id := make([]byte, swarm.HashSize)
+	copy(id, "bps-test-topic")
+	topic, err := soc.CreateAddress(id, owner)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if l := len(messages); l != 1 {
-		t.Fatalf("got %v messages, want %v", l, 1)
-	}
-	join := messages[0].(*pb.SystemMessage).GetJoin()
-	if join == nil {
-		t.Fatal("expected join message")
-	}
-	if !bytes.Equal(join.Topic, topic) {
-		t.Fatalf("got topic %x, want %x", join.Topic, topic)
 	}
 
-	// server -> client returns challenge
-	messages, err = protobuf.ReadMessages(
-		bytes.NewReader(record.Out()),
-		func() protobuf.Message { return new(pb.JoinAck) },
-	)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	_, subRx, _, _, err := subscriber.Join(ctx, brokerAddr, topic.Bytes())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if l := len(messages); l != 1 {
-		t.Fatalf("got %v messages, want %v", l, 1)
+
+	challenge, pubRx, pubTx, claim, err := publisher.Join(ctx, brokerAddr, topic.Bytes())
+	if err != nil {
+		t.Fatal(err)
 	}
-	cl := messages[0].(*pb.JoinAck).Challenge
-	if cl == nil {
-		t.Fatal("expected joinack message")
+
+	// claim payload: challenge | broker overlay
+	payload := append(append([]byte{}, challenge...), brokerAddr.Bytes()...)
+	ch, err := cac.New(payload)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !bytes.Equal(challenge, cl) {
-		t.Fatalf("got challenge %x, want %x", cl, challenge)
+	proof, err := soc.New(id, ch).Sign(signer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claim(proof.Data())
+
+	msg := []byte("hello cohort")
+	select {
+	case pubTx <- msg:
+	case <-time.After(time.Second):
+		t.Fatal("timed out sending broadcast")
+	}
+
+	select {
+	case got := <-subRx:
+		if !bytes.Equal(got, msg) {
+			t.Fatalf("got message %q, want %q", got, msg)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for subscriber to receive broadcast")
+	}
+
+	select {
+	case got := <-pubRx:
+		t.Fatalf("publisher received its own broadcast %q", got)
+	case <-time.After(100 * time.Millisecond):
 	}
 }
