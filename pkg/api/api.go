@@ -99,10 +99,11 @@ const (
 	SwarmSocFieldsHeader              = "Swarm-Soc-Fields"
 	SwarmCacheWrappedChunkHeader      = "Swarm-Cache-Wrapped-Chunk"
 
-	ImmutableHeader = "Immutable"
-	GasPriceHeader  = "Gas-Price"
-	GasLimitHeader  = "Gas-Limit"
-	ETagHeader      = "ETag"
+	ImmutableHeader   = "Immutable"
+	GasPriceHeader    = "Gas-Price"
+	GasLimitHeader    = "Gas-Limit"
+	FeePriorityHeader = "Fee-Priority"
+	ETagHeader        = "ETag"
 
 	AuthorizationHeader        = "Authorization"
 	AcceptEncodingHeader       = "Accept-Encoding"
@@ -597,8 +598,9 @@ func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) h
 			logger := s.logger.WithName(handlerName).Build()
 
 			headers := struct {
-				GasPrice *big.Int `map:"Gas-Price"`
-				GasLimit uint64   `map:"Gas-Limit"`
+				GasPrice    *big.Int `map:"Gas-Price"`
+				GasLimit    uint64   `map:"Gas-Limit"`
+				FeePriority string   `map:"Fee-Priority"`
 			}{}
 			if response := s.mapStructure(r.Header, &headers); response != nil {
 				response("invalid header params", logger, w)
@@ -607,6 +609,22 @@ func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) h
 			ctx := r.Context()
 			ctx = sctx.SetGasPrice(ctx, headers.GasPrice)
 			ctx = sctx.SetGasLimit(ctx, headers.GasLimit)
+			if headers.FeePriority != "" {
+				tier, err := transaction.ParseFeeTier(headers.FeePriority)
+				if err != nil {
+					logger.Debug("invalid fee priority header", "error", err)
+					jsonhttp.BadRequest(w, jsonhttp.StatusResponse{
+						Message: "invalid header params",
+						Code:    http.StatusBadRequest,
+						Reasons: []jsonhttp.Reason{{
+							Field: FeePriorityHeader,
+							Error: err.Error(),
+						}},
+					})
+					return
+				}
+				ctx = sctx.SetFeePriority(ctx, tier.String())
+			}
 
 			h.ServeHTTP(w, r.WithContext(ctx))
 		})
@@ -621,7 +639,7 @@ func (s *Service) corsHandler(h http.Handler) http.Handler {
 		SwarmTagHeader, SwarmPinHeader, SwarmEncryptHeader, SwarmIndexDocumentHeader, SwarmErrorDocumentHeader, SwarmCollectionHeader,
 		SwarmPostageBatchIdHeader, SwarmPostageStampHeader, SwarmDeferredUploadHeader, SwarmRedundancyLevelHeader,
 		SwarmRedundancyStrategyHeader, SwarmRedundancyFallbackModeHeader, SwarmChunkRetrievalTimeoutHeader, SwarmLookAheadBufferSizeHeader,
-		SwarmFeedIndexHeader, SwarmFeedIndexNextHeader, SwarmSocSignatureHeader, SwarmOnlyRootChunk, GasPriceHeader, GasLimitHeader, ImmutableHeader,
+		SwarmFeedIndexHeader, SwarmFeedIndexNextHeader, SwarmSocSignatureHeader, SwarmOnlyRootChunk, GasPriceHeader, GasLimitHeader, FeePriorityHeader, ImmutableHeader,
 		SwarmActHeader, SwarmActTimestampHeader, SwarmActPublisherHeader, SwarmActHistoryAddressHeader,
 		SwarmSocFieldsHeader, SwarmCacheWrappedChunkHeader,
 	}
