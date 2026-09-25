@@ -427,8 +427,7 @@ func TestListener(t *testing.T) {
 }
 
 // TestListenerPageSize verifies that the block paging window is the configured
-// block page, with zero falling back to the default. A snapshot replay passes
-// SnapshotBlockPage explicitly.
+// block page, with zero falling back to the default.
 func TestListenerPageSize(t *testing.T) {
 	t.Parallel()
 
@@ -493,13 +492,6 @@ func TestListenerPageSize(t *testing.T) {
 		const blockPage = 5000
 		to := firstPageTo(t, blockPage, standard)
 		if want := uint64(blockPage - 1); to != want {
-			t.Fatalf("first page ToBlock mismatch: got %d want %d", to, want)
-		}
-	})
-
-	t.Run("snapshot page is used when passed", func(t *testing.T) {
-		to := firstPageTo(t, listener.SnapshotBlockPage, standard)
-		if want := listener.SnapshotBlockPage - 1; to != want {
 			t.Fatalf("first page ToBlock mismatch: got %d want %d", to, want)
 		}
 	})

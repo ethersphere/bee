@@ -5,8 +5,7 @@
 // Package snapshot rebuilds the postage batch store from a pre-computed snapshot
 // of postage contract events instead of replaying the whole contract history
 // from the chain. A snapshot is NDJSON, one types.Log per line, sorted by block
-// number, optionally gzip-compressed. It comes from a Source: the blob embedded
-// in the binary, or a file the operator points at.
+// number, optionally gzip-compressed.
 package snapshot
 
 import (
@@ -14,12 +13,10 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
-	"iter"
 	"os"
 	"slices"
 	"sort"
@@ -32,17 +29,17 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/postage/listener"
 )
 
-// maxLineBytes bounds one NDJSON line. A postage event log is a few hundred
-// bytes; the limit only stops a garbage file from being read without end.
-const maxLineBytes = 4 << 20
+// blockPage is the number of blocks per FilterLogs call during replay; the
+// snapshot is served from memory, so pages can be large.
+const blockPage = uint64(50000)
 
 var (
 	// ErrParseSnapshot is returned when a snapshot does not decode as sorted
-	// NDJSON of logs. It wraps the line that failed.
+	// NDJSON of logs.
 	ErrParseSnapshot = errors.New("failed to parse snapshot data")
 	// ErrEmptySnapshot is returned when a strict snapshot holds no logs.
 	ErrEmptySnapshot = errors.New("snapshot: no logs")
-	// ErrContractMismatch is returned by FromContract for a log emitted by a
+	// ErrContractMismatch is returned when a strict snapshot holds a log from a
 	// contract other than the configured postage contract.
 	ErrContractMismatch = errors.New("snapshot: log from unexpected contract")
 	// ErrBlockHeightTooLow is returned when a strict snapshot does not reach far
@@ -95,108 +92,55 @@ type fileSource struct {
 
 func (fileSource) Name() string { return "file" }
 
-// Open streams the file. A directory is rejected up front: reading one fails
-// with an OS-specific error, which on Windows does not say what is wrong.
 func (s fileSource) Open() (io.ReadCloser, error) {
 	file, err := os.Open(s.path)
 	if err != nil {
 		return nil, err
 	}
-	info, err := file.Stat()
+	reader, err := snapshotReader(file)
 	if err != nil {
 		_ = file.Close()
 		return nil, err
 	}
+	return readCloser{reader, file}, nil
+}
+
+// snapshotReader returns a reader that yields the file's content as plain
+// NDJSON.
+func snapshotReader(file *os.File) (io.Reader, error) {
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	// Reading a directory fails with an OS-specific error that on Windows does
+	// not say what is wrong, so reject it up front.
 	if info.IsDir() {
-		_ = file.Close()
-		return nil, &fs.PathError{Op: "open", Path: s.path, Err: syscall.EISDIR}
+		return nil, &fs.PathError{Op: "open", Path: file.Name(), Err: syscall.EISDIR}
 	}
 
 	buffered := bufio.NewReader(file)
 	magic, err := buffered.Peek(2)
 	if err != nil && !errors.Is(err, io.EOF) {
-		_ = file.Close()
 		return nil, err
 	}
 	if len(magic) == 2 && magic[0] == 0x1f && magic[1] == 0x8b {
 		gzipReader, err := gzip.NewReader(buffered)
 		if err != nil {
-			_ = file.Close()
 			return nil, fmt.Errorf("create gzip reader: %w", err)
 		}
-		return &fileReader{Reader: gzipReader, gzip: gzipReader, file: file}, nil
+		return gzipReader, nil
 	}
-	return &fileReader{Reader: buffered, file: file}, nil
+	return buffered, nil
 }
 
-// fileReader streams a snapshot file, decompressing it when it is gzip.
-type fileReader struct {
+// readCloser pairs a decoding reader with the file it reads from.
+type readCloser struct {
 	io.Reader
-	gzip *gzip.Reader // nil for plain NDJSON
-	file *os.File
-}
-
-func (r *fileReader) Close() error {
-	var err error
-	if r.gzip != nil {
-		err = r.gzip.Close()
-	}
-	return errors.Join(err, r.file.Close())
-}
-
-// entry is one decoded snapshot line.
-type entry struct {
-	line int // 1-based
-	log  types.Log
-}
-
-// decode yields the logs in r, one per NDJSON line. Blank lines are skipped. A
-// line that does not decode, or a read failure, ends the sequence with an error;
-// decode errors wrap ErrParseSnapshot.
-//
-// The snapshot is produced by ethersphere/batch-export, whose default slim
-// encoding carries only the types.Log fields Bee reads today: address, topics,
-// data, blockNumber, transactionHash (and logIndex). Any other field —
-// BlockHash, TxIndex, Removed — decodes to its zero value here with no error.
-// Before consuming a new types.Log field anywhere downstream of this package
-// (FilterLogs callers, listener.processEvent, transaction.ParseEvent), extend
-// SlimLog in batch-export's pkg/filestore and republish the snapshot first;
-// otherwise the field is silently empty for snapshot-sourced logs.
-func decode(r io.Reader) iter.Seq2[entry, error] {
-	return func(yield func(entry, error) bool) {
-		scanner := bufio.NewScanner(r)
-		scanner.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
-		line := 0
-		for scanner.Scan() {
-			line++
-			raw := bytes.TrimSpace(scanner.Bytes())
-			if len(raw) == 0 {
-				continue
-			}
-			var l types.Log
-			if err := json.Unmarshal(raw, &l); err != nil {
-				// A stream that breaks mid-line hands the partial line here first;
-				// report the read error, not the line.
-				if readErr := scanner.Err(); readErr != nil {
-					yield(entry{line: line}, fmt.Errorf("read snapshot: %w", readErr))
-					return
-				}
-				yield(entry{line: line}, fmt.Errorf("%w: line %d: %w", ErrParseSnapshot, line, err))
-				return
-			}
-			if !yield(entry{line: line, log: l}, nil) {
-				return
-			}
-		}
-		if err := scanner.Err(); err != nil {
-			yield(entry{line: line}, fmt.Errorf("read snapshot: %w", err))
-		}
-	}
+	io.Closer
 }
 
 // Info describes a parsed snapshot.
 type Info struct {
-	Source   string
 	LogCount int
 	MaxBlock uint64
 }
@@ -212,26 +156,14 @@ type SnapshotLogFilterer struct {
 
 var _ listener.BlockHeightContractFilterer = (*SnapshotLogFilterer)(nil)
 
-// Check inspects one decoded log at its 1-based line and rejects the snapshot
-// by returning an error.
-type Check func(line int, l types.Log) error
-
-// FromContract is a Check that every log was emitted by contract. A log from
-// another contract would be filtered out during replay while the chain state
-// still advanced past it, silently skipping history.
-func FromContract(contract common.Address) Check {
-	return func(line int, l types.Log) error {
-		if l.Address != contract {
-			return fmt.Errorf("%w: line %d has address %s, expected %s", ErrContractMismatch, line, l.Address.Hex(), contract.Hex())
-		}
-		return nil
-	}
-}
-
 // Parse reads src to the end and indexes its logs, which must be sorted by
-// block number. Each log is also run through checks, in order, while it is
-// decoded, so a rejection names the offending line.
-func Parse(logger log.Logger, src Source, checks ...Check) (*SnapshotLogFilterer, Info, error) {
+// block number. Blank lines are skipped.
+//
+// The snapshot comes from ethersphere/batch-export in its slim encoding: only
+// address, topics, data, blockNumber, transactionHash and logIndex are set,
+// every other types.Log field decodes to its zero value without error. Extend
+// SlimLog in batch-export before reading a new field from snapshot logs.
+func Parse(logger log.Logger, src Source) (*SnapshotLogFilterer, Info, error) {
 	reader, err := src.Open()
 	if err != nil {
 		return nil, Info{}, err
@@ -241,31 +173,52 @@ func Parse(logger log.Logger, src Source, checks ...Check) (*SnapshotLogFilterer
 	var (
 		logs     []types.Log
 		maxBlock uint64
+		line     int
+		parseErr error
 	)
-	for e, err := range decode(reader) {
-		if err != nil {
-			return nil, Info{}, err
+	scanner := bufio.NewScanner(reader)
+	for scanner.Scan() {
+		line++
+		raw := bytes.TrimSpace(scanner.Bytes())
+		if len(raw) == 0 {
+			continue
+		}
+		var l types.Log
+		if err := l.UnmarshalJSON(raw); err != nil {
+			parseErr = fmt.Errorf("%w: line %d: %w", ErrParseSnapshot, line, err)
+			break
 		}
 		// FilterLogs binary-searches by block number.
-		if e.log.BlockNumber < maxBlock {
-			return nil, Info{}, fmt.Errorf("%w: line %d: block %d after block %d, snapshot is not sorted by block number",
-				ErrParseSnapshot, e.line, e.log.BlockNumber, maxBlock)
+		if l.BlockNumber < maxBlock {
+			parseErr = fmt.Errorf("%w: line %d: block %d after block %d, snapshot is not sorted by block number", ErrParseSnapshot, line, l.BlockNumber, maxBlock)
+			break
 		}
-		for _, check := range checks {
-			if err := check(e.line, e.log); err != nil {
-				return nil, Info{}, err
-			}
-		}
-		maxBlock = e.log.BlockNumber
-		logs = append(logs, e.log)
+		maxBlock = l.BlockNumber
+		logs = append(logs, l)
+	}
+	// A stream that breaks mid-line hands the partial line to the loop before
+	// the scanner reports the read error, so the read error is checked first.
+	if err := scanner.Err(); err != nil {
+		return nil, Info{}, fmt.Errorf("read snapshot: %w", err)
+	}
+	if parseErr != nil {
+		return nil, Info{}, parseErr
 	}
 
-	filterer := &SnapshotLogFilterer{
-		logger:   logger,
-		logs:     logs,
-		maxBlock: maxBlock,
+	filterer := &SnapshotLogFilterer{logger: logger, logs: logs, maxBlock: maxBlock}
+	return filterer, Info{LogCount: len(logs), MaxBlock: maxBlock}, nil
+}
+
+// checkContract reports ErrContractMismatch for the first log not emitted by
+// contract. A log from another contract would be filtered out during replay
+// while the chain state still advanced past it, silently skipping history.
+func (f *SnapshotLogFilterer) checkContract(contract common.Address) error {
+	for i, l := range f.logs {
+		if l.Address != contract {
+			return fmt.Errorf("%w: log %d has address %s, expected %s", ErrContractMismatch, i+1, l.Address.Hex(), contract.Hex())
+		}
 	}
-	return filterer, Info{Source: src.Name(), LogCount: len(logs), MaxBlock: maxBlock}, nil
+	return nil
 }
 
 func (f *SnapshotLogFilterer) FilterLogs(_ context.Context, query ethereum.FilterQuery) ([]types.Log, error) {

@@ -13,7 +13,6 @@ import (
 var (
 	ValidatePublicAddress = validatePublicAddress
 	UseEmbeddedSnapshot   = useEmbeddedSnapshot
-	SnapshotApplies       = snapshotApplies
 	SnapshotSkipReason    = snapshotSkipReason
 	ChooseSnapshotSource  = chooseSnapshotSource
 )

@@ -918,11 +918,11 @@ func TestSnapshotHandoffNoGap(t *testing.T) {
 
 	const maxBlock = uint64(5000)
 
-	// Newest log at maxBlock; a non-matching address makes the listener filter
-	// the events out, so it only advances the chain state per page.
+	// Newest log at maxBlock; empty topics make the listener filter the events
+	// out, so it only advances the chain state per page.
 	logs := []types.Log{
-		{BlockNumber: 10, Address: common.HexToAddress("0x1"), Topics: []common.Hash{}},
-		{BlockNumber: maxBlock, Address: common.HexToAddress("0x1"), Topics: []common.Hash{}},
+		{BlockNumber: 10, Topics: []common.Hash{}},
+		{BlockNumber: maxBlock, Topics: []common.Hash{}},
 	}
 	snap, _, err := snapshot.Load(testLog, snapshot.Embedded(rawSnapshotGetter(gzipSnapshot(t, logs))), snapshot.Config{
 		ABI:             abi.ABI{},
