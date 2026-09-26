@@ -1415,6 +1415,7 @@ func NewBee(
 		apiService.MustRegisterMetrics(retrieval.Metrics()...)
 		apiService.MustRegisterMetrics(lightNodes.Metrics()...)
 		apiService.MustRegisterMetrics(hive.Metrics()...)
+		apiService.MustRegisterMetrics(feedFactory.(metrics.Collector).Metrics()...)
 
 		if bs, ok := batchStore.(metrics.Collector); ok {
 			apiService.MustRegisterMetrics(bs.Metrics()...)
