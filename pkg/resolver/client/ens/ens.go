@@ -6,10 +6,14 @@ package ens
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"strings"
+	"time"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	goens "github.com/wealdtech/go-ens/v3"
@@ -22,6 +26,18 @@ import (
 const (
 	defaultENSContractAddress = "00000000000C2E074eC69A0dFb2997BA6C7d2e1e"
 	swarmContentHashPrefix    = "bzz://"
+
+	// probeTimeout bounds the extra call made when the configured contract is
+	// not an ENS registry.
+	probeTimeout = 10 * time.Second
+)
+
+var (
+	// supportsInterfaceSelector is the EIP-165 supportsInterface(bytes4) selector.
+	supportsInterfaceSelector = []byte{0x01, 0xff, 0xc9, 0xa7}
+	// contenthashInterfaceID is the EIP-165 id of the ENS contenthash resolver
+	// profile (ENSIP-7), contenthash(bytes32).
+	contenthashInterfaceID = []byte{0xbc, 0x1c, 0x58, 0xd1}
 )
 
 // Address is the swarm bzz address.
@@ -44,13 +60,23 @@ var (
 
 // Client is a name resolution client that can connect to ENS via an
 // Ethereum endpoint.
+//
+// The configured contract is normally an ENS registry. It may instead be a
+// contract that implements the ENS resolver profile itself (contenthash,
+// addr, text on EIP-137 name hashes) without a registry in front, as some
+// ENS-compatible name services do; such a contract is detected when it is
+// dialled, and names are then resolved by asking it for the content hash
+// directly.
 type Client struct {
-	endpoint     string
-	contractAddr string
-	ethCl        *ethclient.Client
-	connectFn    func(string, string) (*ethclient.Client, *goens.Registry, error)
-	resolveFn    func(*goens.Registry, common.Address, string) (string, error)
-	registry     *goens.Registry
+	endpoint        string
+	contractAddr    string
+	ethCl           *ethclient.Client
+	connectFn       func(string, string) (*ethclient.Client, *goens.Registry, error)
+	resolveFn       func(*goens.Registry, common.Address, string) (string, error)
+	resolveDirectFn func(*ethclient.Client, common.Address, string) (string, error)
+	registry        *goens.Registry
+	// direct is set when the contract is a resolver rather than a registry.
+	direct bool
 }
 
 // Option is a function that applies an option to a Client.
@@ -59,9 +85,10 @@ type Option func(*Client)
 // NewClient will return a new Client.
 func NewClient(endpoint string, opts ...Option) (client.Interface, error) {
 	c := &Client{
-		endpoint:  endpoint,
-		connectFn: wrapDial,
-		resolveFn: wrapResolve,
+		endpoint:        endpoint,
+		connectFn:       wrapDial,
+		resolveFn:       wrapResolve,
+		resolveDirectFn: wrapResolveDirect,
 	}
 
 	// Apply all options to the Client.
@@ -84,6 +111,9 @@ func NewClient(endpoint string, opts ...Option) (client.Interface, error) {
 	}
 	c.ethCl = ethCl
 	c.registry = registry
+	// A live connection without a registry means the contract answered the
+	// resolver-profile probe in the dial function.
+	c.direct = registry == nil && ethCl != nil
 
 	return c, nil
 }
@@ -112,7 +142,16 @@ func (c *Client) Resolve(name string) (Address, error) {
 		return swarm.ZeroAddress, fmt.Errorf("resolveFn: %w", ErrNotImplemented)
 	}
 
-	hash, err := c.resolveFn(c.registry, common.HexToAddress(c.contractAddr), name)
+	var hash string
+	var err error
+	if c.direct {
+		if c.resolveDirectFn == nil {
+			return swarm.ZeroAddress, fmt.Errorf("resolveDirectFn: %w", ErrNotImplemented)
+		}
+		hash, err = c.resolveDirectFn(c.ethCl, common.HexToAddress(c.contractAddr), name)
+	} else {
+		hash, err = c.resolveFn(c.registry, common.HexToAddress(c.contractAddr), name)
+	}
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("%w: %w", err, ErrResolveFailed)
 	}
@@ -159,10 +198,74 @@ func wrapDial(endpoint, contractAddr string) (*ethclient.Client, *goens.Registry
 	// Ensure that the ENS registry client is deployed to the given contract address.
 	_, err = registry.Owner("")
 	if err != nil {
+		// Not a registry. The contract may still be a resolver that serves the
+		// ENS resolver profile directly (no registry in front); in that case
+		// return a nil registry and resolve against the contract itself.
+		ctx, cancel := context.WithTimeout(context.Background(), probeTimeout)
+		defer cancel()
+		isResolver, probeErr := supportsContenthash(ctx, ethCl, common.HexToAddress(contractAddr))
+		if probeErr == nil && isResolver {
+			return ethCl, nil, nil
+		}
 		return nil, nil, fmt.Errorf("owner: %w", err)
 	}
 
 	return ethCl, registry, nil
+}
+
+// contractCaller is the part of an Ethereum client needed for the EIP-165
+// probe; it lets tests use a fake instead of a live connection.
+type contractCaller interface {
+	CallContract(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error)
+}
+
+// supportsContenthash reports whether the contract at addr answers true to
+// EIP-165 supportsInterface for the ENS contenthash resolver profile.
+func supportsContenthash(ctx context.Context, caller contractCaller, addr common.Address) (bool, error) {
+	// supportsInterface(bytes4): selector, then the 4-byte id left-aligned in
+	// a 32-byte word.
+	data := make([]byte, 0, 4+32)
+	data = append(data, supportsInterfaceSelector...)
+	data = append(data, contenthashInterfaceID...)
+	data = append(data, make([]byte, 28)...)
+	out, err := caller.CallContract(ctx, ethereum.CallMsg{To: &addr, Data: data}, nil)
+	if err != nil {
+		return false, err
+	}
+	// A bool return is a 32-byte word; anything else means the contract does
+	// not implement EIP-165 (or does not exist).
+	if len(out) != 32 {
+		return false, nil
+	}
+	return out[31] == 1, nil
+}
+
+// wrapResolveDirect reads the content hash from a contract that implements
+// the ENS resolver profile for the name itself, without a registry lookup.
+// An unregistered name has no record and yields an empty content hash.
+func wrapResolveDirect(ethCl *ethclient.Client, contractAddr common.Address, name string) (string, error) {
+	ensR, err := goens.NewResolverAt(ethCl, name, contractAddr)
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", resolver.ErrServiceNotAvailable, err)
+	}
+
+	ch, err := ensR.Contenthash()
+	if err != nil {
+		if strings.Contains(err.Error(), "429") || strings.Contains(err.Error(), "rate limit") {
+			return "", fmt.Errorf("%w: %w", resolver.ErrServiceNotAvailable, err)
+		}
+		return "", fmt.Errorf("contenthash: %w: %w", err, resolver.ErrInvalidContentHash)
+	}
+	if len(ch) == 0 {
+		return "", fmt.Errorf("%w: %w", errNameNotRegistered, resolver.ErrNotFound)
+	}
+
+	addr, err := goens.ContenthashToString(ch)
+	if err != nil {
+		return "", fmt.Errorf("contenthash to string: %w: %w", err, resolver.ErrInvalidContentHash)
+	}
+
+	return addr, nil
 }
 
 func wrapResolve(registry *goens.Registry, _ common.Address, name string) (string, error) {
