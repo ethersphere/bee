@@ -131,6 +131,32 @@ func (m *mantarayManifest) Store(ctx context.Context, storeSizeFn ...StoreSizeFu
 	return address, nil
 }
 
+func (m *mantarayManifest) WalkEntry(ctx context.Context, prefix string, fn WalkEntryFunc) error {
+	walker := func(path []byte, node *mantaray.Node, err error) error {
+		if err != nil {
+			return err
+		}
+		if node == nil || !node.IsValueType() {
+			return nil
+		}
+		entry := NewEntry(swarm.NewAddress(node.Entry()), node.Metadata())
+		return fn(string(path), entry)
+	}
+
+	err := m.trie.WalkNode(ctx, []byte(prefix), m.ls, walker)
+	if err != nil {
+		if errors.Is(err, ErrStopWalk) {
+			return nil
+		}
+		if errors.Is(err, mantaray.ErrNotFound) {
+			return ErrNotFound
+		}
+		return err
+	}
+
+	return nil
+}
+
 func (m *mantarayManifest) IterateAddresses(ctx context.Context, fn swarm.AddressIterFunc) error {
 	reference := swarm.NewAddress(m.trie.Reference())
 
