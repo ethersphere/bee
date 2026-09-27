@@ -13,6 +13,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/coreos/go-semver/semver"
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -141,12 +142,6 @@ type Streamer interface {
 	NewStream(ctx context.Context, address swarm.Address, h Headers, protocol, version, stream string) (Stream, error)
 }
 
-// Bee260CompatibilityStreamer is able to create a new Stream and check if a peer is running Bee 2.6.0.
-type Bee260CompatibilityStreamer interface {
-	NewStream(ctx context.Context, address swarm.Address, h Headers, protocol, version, stream string) (Stream, error)
-	IsBee260(address swarm.Address) bool
-}
-
 type StreamerDisconnecter interface {
 	Streamer
 	Disconnecter
@@ -172,6 +167,7 @@ type Stream interface {
 	Headers() Headers
 	FullClose() error
 	Reset() error
+	Version() (*semver.Version, error)
 }
 
 // ProtocolSpec defines a collection of Stream specifications with handlers.
@@ -221,7 +217,11 @@ type Headers map[string][]byte
 
 // Common header names.
 const (
-	HeaderNameTracingSpanContext = "tracing-span-context"
+	// HeaderNameTracingSpanContext carries the serialised span context between
+	// peers. The "-v2" suffix marks the OpenTelemetry carrier format; it differs
+	// from the legacy OpenTracing/Jaeger payload, so the distinct key prevents
+	// mixed-version peers from decoding each other's incompatible payloads.
+	HeaderNameTracingSpanContext = "tracing-span-context-v2"
 )
 
 // NewSwarmStreamName constructs a libp2p compatible stream name out of
@@ -242,19 +242,4 @@ func (e *ChunkDeliveryError) Error() string {
 // NewChunkDeliveryError is a convenience constructor for ChunkDeliveryError.
 func NewChunkDeliveryError(msg string) error {
 	return &ChunkDeliveryError{msg: msg}
-}
-
-// FilterBee260CompatibleUnderlays select a single underlay to pass if
-// bee260compatibility is true. Otherwise it passes the unmodified underlays
-// slice. This function can be safely removed when bee version 2.6.0 is
-// deprecated.
-func FilterBee260CompatibleUnderlays(bee260compatibility bool, underlays []ma.Multiaddr) []ma.Multiaddr {
-	if !bee260compatibility {
-		return underlays
-	}
-	underlay := bzz.SelectBestAdvertisedAddress(underlays, nil)
-	if underlay == nil {
-		return underlays
-	}
-	return []ma.Multiaddr{underlay}
 }

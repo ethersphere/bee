@@ -1,0 +1,41 @@
+name: Bump Bee version in Swarm CLI
+
+# On a stable Bee release, trigger swarm-cli's update-bee-version workflow
+# (ethersphere/swarm-cli, added in #760), which bumps the Bee version in
+# quickstart.ts and opens a PR there. Cross-repo dispatch needs more than the
+# default GITHUB_TOKEN, so it uses the BEE_RUNNER GitHub App (the same App
+# swarm-cli's own workflow uses) scoped to swarm-cli.
+
+on:
+  release:
+    types: [released] # stable releases only (skips drafts and pre-releases/RCs)
+  workflow_dispatch: # manual trigger for testing / re-runs
+    inputs:
+      version:
+        description: 'Bee version tag to send (e.g. v2.9.0)'
+        required: true
+
+permissions: {}
+
+jobs:
+  dispatch-swarm-cli:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate token for swarm-cli
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.BEE_RUNNER_APP_ID }}
+          private-key: ${{ secrets.BEE_RUNNER_KEY }}
+          owner: ethersphere
+          repositories: swarm-cli
+
+      - name: Dispatch swarm-cli update-bee-version
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          VERSION: ${{ github.event.release.tag_name || inputs.version }}
+        run: |
+          echo "Dispatching swarm-cli update-bee-version for ${VERSION}"
+          gh workflow run update-bee-version.yaml \
+            --repo ethersphere/swarm-cli \
+            -f version="${VERSION}"

@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/postage"
@@ -49,13 +48,11 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	headers := struct {
-		BatchID        []byte        `map:"Swarm-Postage-Batch-Id"`
-		StampSig       []byte        `map:"Swarm-Postage-Stamp"`
-		SwarmTag       uint64        `map:"Swarm-Tag"`
-		Pin            bool          `map:"Swarm-Pin"`
-		Deferred       *bool         `map:"Swarm-Deferred-Upload"`
-		Act            bool          `map:"Swarm-Act"`
-		HistoryAddress swarm.Address `map:"Swarm-Act-History-Address"`
+		BatchID  []byte `map:"Swarm-Postage-Batch-Id"`
+		StampSig []byte `map:"Swarm-Postage-Stamp"`
+		SwarmTag uint64 `map:"Swarm-Tag"`
+		Pin      bool   `map:"Swarm-Pin"`
+		Deferred *bool  `map:"Swarm-Deferred-Upload"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -212,27 +209,6 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	reference := sch.Address()
-	historyReference := swarm.ZeroAddress
-	if headers.Act {
-		reference, historyReference, err = s.actEncryptionHandler(r.Context(), putter, reference, headers.HistoryAddress)
-		if err != nil {
-			logger.Debug("access control upload failed", "error", err)
-			logger.Error(nil, "access control upload failed")
-			switch {
-			case errors.Is(err, accesscontrol.ErrNotFound):
-				jsonhttp.NotFound(w, "act or history entry not found")
-			case errors.Is(err, accesscontrol.ErrInvalidPublicKey) || errors.Is(err, accesscontrol.ErrSecretKeyInfinity):
-				jsonhttp.BadRequest(w, "invalid public key")
-			case errors.Is(err, accesscontrol.ErrUnexpectedType):
-				jsonhttp.BadRequest(w, "failed to create history")
-			default:
-				jsonhttp.InternalServerError(w, errActUpload)
-			}
-			return
-		}
-	}
-
 	err = putter.Done(sch.Address())
 	if err != nil {
 		logger.Debug("done split failed", "error", err)
@@ -245,12 +221,8 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set(AccessControlExposeHeaders, SwarmTagHeader)
-	if headers.Act {
-		w.Header().Set(SwarmActHistoryAddressHeader, historyReference.String())
-		w.Header().Add(AccessControlExposeHeaders, SwarmActHistoryAddressHeader)
-	}
 
-	jsonhttp.Created(w, socPostResponse{Reference: reference})
+	jsonhttp.Created(w, socPostResponse{Reference: sch.Address()})
 }
 
 func (s *Service) socGetHandler(w http.ResponseWriter, r *http.Request) {

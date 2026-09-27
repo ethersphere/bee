@@ -9,11 +9,11 @@ import (
 	"math/big"
 	"net/http"
 
-	"github.com/ethersphere/bee/v2/pkg/bigint"
+	"github.com/gorilla/mux"
 
+	"github.com/ethersphere/bee/v2/pkg/bigint"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/storageincentives/staking"
-	"github.com/gorilla/mux"
 )
 
 func (s *Service) stakingAccessHandler(h http.Handler) http.Handler {
@@ -31,7 +31,8 @@ func (s *Service) stakingAccessHandler(h http.Handler) http.Handler {
 }
 
 type getStakeResponse struct {
-	StakedAmount *bigint.BigInt `json:"stakedAmount"`
+	StakedAmount   *bigint.BigInt `json:"stakedAmount"`
+	MinimumDeposit *bigint.BigInt `json:"minimumDeposit"`
 }
 
 type getWithdrawableResponse struct {
@@ -39,6 +40,12 @@ type getWithdrawableResponse struct {
 }
 type stakeTransactionReponse struct {
 	TxHash string `json:"txHash"`
+}
+
+type stakeDepositErrorResponse struct {
+	Code           int            `json:"code"`
+	Message        string         `json:"message"`
+	MinimumDeposit *bigint.BigInt `json:"minimumDeposit"`
 }
 
 func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) {
@@ -54,10 +61,15 @@ func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) 
 
 	txHash, err := s.stakingContract.DepositStake(r.Context(), paths.Amount)
 	if err != nil {
-		if errors.Is(err, staking.ErrInsufficientStakeAmount) {
-			logger.Debug("insufficient stake amount", "minimum_stake", staking.MinimumStakeAmount, "error", err)
+		var minErr *staking.MinDepositError
+		if errors.As(err, &minErr) {
+			logger.Debug("insufficient stake amount", "minimum_deposit", minErr.Minimum, "error", err)
 			logger.Error(nil, "insufficient stake amount")
-			jsonhttp.BadRequest(w, "insufficient stake amount")
+			jsonhttp.BadRequest(w, stakeDepositErrorResponse{
+				Code:           http.StatusBadRequest,
+				Message:        "insufficient stake amount",
+				MinimumDeposit: bigint.Wrap(minErr.Minimum),
+			})
 			return
 		}
 		if errors.Is(err, staking.ErrNotImplemented) {
@@ -105,7 +117,18 @@ func (s *Service) getPotentialStake(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonhttp.OK(w, getStakeResponse{StakedAmount: bigint.Wrap(stakedAmount)})
+	minDeposit, err := s.stakingContract.GetMinDeposit(r.Context())
+	if err != nil {
+		logger.Debug("get minimum deposit failed", "overlayAddr", s.overlay, "error", err)
+		logger.Error(nil, "get minimum deposit failed")
+		jsonhttp.InternalServerError(w, "get minimum deposit failed")
+		return
+	}
+
+	jsonhttp.OK(w, getStakeResponse{
+		StakedAmount:   bigint.Wrap(stakedAmount),
+		MinimumDeposit: bigint.Wrap(minDeposit),
+	})
 }
 
 func (s *Service) getWithdrawableStakeHandler(w http.ResponseWriter, r *http.Request) {

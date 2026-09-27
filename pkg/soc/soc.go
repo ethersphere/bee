@@ -25,10 +25,11 @@ type ID []byte
 
 // SOC wraps a content-addressed chunk.
 type SOC struct {
-	id        ID
-	owner     []byte // owner is the address in bytes of SOC owner.
-	signature []byte
-	chunk     swarm.Chunk // wrapped chunk.
+	id          ID
+	owner       []byte // owner is the address in bytes of SOC owner.
+	signature   []byte
+	chunk       swarm.Chunk // wrapped chunk.
+	ownerPubKey []byte
 }
 
 // New creates a new SOC representation from arbitrary id and
@@ -81,6 +82,11 @@ func (s *SOC) Signature() []byte {
 // OwnerAddress returns the ethereum address of the SOC owner.
 func (s *SOC) OwnerAddress() []byte {
 	return s.owner
+}
+
+// OwnerPubKey returns the public key of the SOC owner.
+func (s *SOC) OwnerPubKey() []byte {
+	return s.ownerPubKey
 }
 
 // ID returns the SOC id.
@@ -174,13 +180,14 @@ func FromChunk(sch swarm.Chunk) (*SOC, error) {
 	}
 
 	// recover owner information
-	recoveredOwnerAddress, err := recoverAddress(s.signature, toSignBytes)
+	recoveredOwnerPubKey, recoveredOwnerAddress, err := recoverAddress(s.signature, toSignBytes)
 	if err != nil {
 		return nil, err
 	}
 	if len(recoveredOwnerAddress) != crypto.AddressSize {
 		return nil, errInvalidAddress
 	}
+	s.ownerPubKey = recoveredOwnerPubKey
 	s.owner = recoveredOwnerAddress
 	s.chunk = ch
 
@@ -209,15 +216,16 @@ func hash(values ...[]byte) ([]byte, error) {
 	return h.Sum(nil), nil
 }
 
-// recoverAddress returns the ethereum address of the owner of a SOC.
-func recoverAddress(signature, digest []byte) ([]byte, error) {
+// recoverAddress returns the ethereum address and public key of the owner of a SOC.
+func recoverAddress(signature, digest []byte) ([]byte, []byte, error) {
 	recoveredPublicKey, err := crypto.Recover(signature, digest)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	recoveredEthereumAddress, err := crypto.NewEthereumAddress(*recoveredPublicKey)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return recoveredEthereumAddress, nil
+
+	return crypto.EncodeSecp256k1PublicKey(recoveredPublicKey), recoveredEthereumAddress, nil
 }

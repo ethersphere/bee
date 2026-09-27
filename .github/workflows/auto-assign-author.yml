@@ -1,0 +1,35 @@
+name: Auto-assign PR author
+
+# When a PR is opened without an assignee, assign its author, so no PR is left
+# unassigned (visibility in boards/filters/reports). This only sets the assignee
+# field — it is not a review-accountability mechanism (that's CODEOWNERS).
+
+on:
+  pull_request:
+    types: [opened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  assign-author:
+    runs-on: ubuntu-latest
+    # Only internal-branch PRs (fork PRs get a read-only token and their author
+    # isn't a collaborator, so assignment can't apply), and only when the author
+    # left it unassigned. Skip bot/agent authors: assigning an agent (e.g. a
+    # Copilot coding-agent PR) requires a user token, which GITHUB_TOKEN is not.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository
+      && github.event.pull_request.assignees[0] == null
+      && github.event.pull_request.user.type != 'Bot'
+    steps:
+      - uses: actions/github-script@v7
+        continue-on-error: true
+        with:
+          script: |
+            await github.rest.issues.addAssignees({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              assignees: [context.payload.pull_request.user.login],
+            });

@@ -183,7 +183,7 @@ func TestController_UpdateHandler(t *testing.T) {
 	assertNoError(t, "Session key", err)
 	refCipher := encryption.New(keys[0], 0, 0, sha3.NewLegacyKeccak256)
 	ls := createLs()
-	gls := loadsave.New(mockStorer.ChunkStore(), mockStorer.Cache(), requestPipelineFactory(context.Background(), mockStorer.Cache(), true, redundancy.NONE), redundancy.DefaultLevel)
+	gls := loadsave.New(mockStorer.ChunkStore(), mockStorer.Cache(), requestPipelineFactory(context.Background(), mockStorer.Cache(), true, redundancy.NONE), redundancy.DefaultDownloadLevel)
 	c := accesscontrol.NewController(al)
 	href, err := getHistoryFixture(t, ctx, ls, al, &publisher.PublicKey)
 	assertNoError(t, "history fixture create", err)
@@ -310,7 +310,7 @@ func TestController_Get(t *testing.T) {
 	al1 := accesscontrol.NewLogic(diffieHellman1)
 	al2 := accesscontrol.NewLogic(diffieHellman2)
 	ls := createLs()
-	gls := loadsave.New(mockStorer.ChunkStore(), mockStorer.Cache(), requestPipelineFactory(context.Background(), mockStorer.Cache(), true, redundancy.NONE), redundancy.DefaultLevel)
+	gls := loadsave.New(mockStorer.ChunkStore(), mockStorer.Cache(), requestPipelineFactory(context.Background(), mockStorer.Cache(), true, redundancy.NONE), redundancy.DefaultDownloadLevel)
 	c1 := accesscontrol.NewController(al1)
 	c2 := accesscontrol.NewController(al2)
 

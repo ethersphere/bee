@@ -7,6 +7,7 @@ package mock
 import (
 	"context"
 
+	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -18,14 +19,14 @@ type Steward struct {
 
 // Reupload implements steward.Interface Reupload method.
 // The given address is recorded.
-func (s *Steward) Reupload(_ context.Context, addr swarm.Address, _ postage.Stamper) error {
+func (s *Steward) Reupload(_ context.Context, addr swarm.Address, _ postage.Stamper, _ redundancy.Level) error {
 	s.addr = addr
 	return nil
 }
 
 // IsRetrievable implements steward.Interface IsRetrievable method.
 // The method always returns true.
-func (s *Steward) IsRetrievable(_ context.Context, addr swarm.Address) (bool, error) {
+func (s *Steward) IsRetrievable(_ context.Context, addr swarm.Address, _ redundancy.Level) (bool, error) {
 	return addr.Equal(s.addr), nil
 }
 
