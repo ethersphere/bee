@@ -435,14 +435,39 @@ func (t *transactionService) waitNonceChanged(ctx context.Context, rs *RetriedTr
 
 	select {
 	case <-nonceWatch.doneC:
-		if receipt := t.receiptForRetryHashes(waitCtx, rs); receipt != nil {
+		// The nonce can move before the receipt is visible: inclusion is a block
+		// ahead of ReceiptAvailDelay, or TransactionReceipt is temporarily failing.
+		// Keep looking until this attempt's wait ends, and only then treat a
+		// missing receipt as cancellation.
+		if receipt := t.pollRetryReceipt(waitCtx, rs); receipt != nil {
 			return attemptResult{receipt: receipt}
+		}
+		if ctx.Err() != nil {
+			return attemptResult{signedTx: signedTx, err: ctx.Err()}
 		}
 		return attemptResult{signedTx: signedTx, err: ErrTransactionCancelled}
 	case err := <-nonceWatch.errC:
 		return attemptResult{signedTx: signedTx, err: err}
 	case <-waitCtx.Done():
 		return attemptResult{signedTx: signedTx, err: waitCtx.Err()}
+	}
+}
+
+func (t *transactionService) pollRetryReceipt(ctx context.Context, rs *RetriedTransaction) *types.Receipt {
+	if receipt := t.receiptForRetryHashes(ctx, rs); receipt != nil {
+		return receipt
+	}
+	ticker := time.NewTicker(20 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			if receipt := t.receiptForRetryHashes(ctx, rs); receipt != nil {
+				return receipt
+			}
+		}
 	}
 }
 

@@ -47,12 +47,12 @@ func (s *SimChain) referenceInclusionTip() *big.Int {
 	return s.minMempoolTip
 }
 
-func (s *SimChain) shouldIncludeTx(entry *poolEntry, refTip *big.Int) bool {
+func (s *SimChain) shouldIncludeTx(entry *poolEntry, baseFee, refTip *big.Int) bool {
 	if !s.cfg.InclusionProbability {
 		return true
 	}
 
-	tip := entry.effectiveTip(s.baseFee)
+	tip := entry.effectiveTip(baseFee)
 	prob := inclusionProbability(tip, refTip, s.cfg.InclusionMinProbability)
 	if prob >= 1.0 {
 		return true

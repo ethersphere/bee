@@ -112,10 +112,13 @@ On `SendTransaction()`, the simulation checks:
 ### Transaction replacement (RBF)
 
 If the mempool already has a transaction with the same (sender, nonce), a new
-transaction can replace it when the **10% bump** rule is satisfied:
+transaction can replace it when this simulator's synthetic replacement policy
+is satisfied. The default bump is **15%**, matching Bee's retry floor. It is
+not an Ethereum consensus rule and can be changed with
+`ReplacementBumpPercent`:
 
-- `newTip ≥ oldTip × 1.10`
-- `newFeeCap ≥ oldFeeCap × 1.10`
+- `newTip ≥ oldTip × (100 + ReplacementBumpPercent) / 100`
+- `newFeeCap ≥ oldFeeCap × (100 + ReplacementBumpPercent) / 100`
 
 If the bump is insufficient — `replacement transaction underpriced`.
 
@@ -138,14 +141,16 @@ to disable.
 
 ### Block inclusion
 
-When producing a block, **eligible** transactions are selected from the mempool:
+When producing a block, the simulator repeatedly selects executable heads:
 
-1. Transaction nonce must match the sender's confirmed nonce (sequential nonce
-   chains from one sender are supported).
-2. `GasFeeCap ≥ baseFee` of the current block.
-3. Eligible transactions are sorted by descending effective tip.
-4. Included until available gas `(1 − congestion) × BlockGasLimit` is exhausted.
-5. `MaxTxsPerBlock` — additional cap on user transactions per block (default 0 —
+1. For each sender, only the transaction at the confirmed nonce is eligible.
+2. `GasFeeCap ≥ baseFee` of the block being built.
+3. Those head transactions are sorted by descending effective tip.
+4. After one transaction is included, heads are selected again, so nonce N+1
+   can enter the same block immediately after nonce N.
+5. Inclusion stops when available gas `(1 − congestion) × BlockGasLimit` is
+   exhausted or no remaining head fits.
+6. `MaxTxsPerBlock` — additional cap on user transactions per block (default 0 —
    no limit).
 
 ---
@@ -154,12 +159,13 @@ When producing a block, **eligible** transactions are selected from the mempool:
 
 ### Synthetic tips
 
-Each block generates synthetic tips for fee history, modelling background
-network traffic:
+When a block contains background gas, that gas is split across at most 20
+synthetic reward samples:
 
 - `BackgroundTipMean` — mean tip (default 2 gwei).
 - `BackgroundTipStdDev` — standard deviation (default 0.5 gwei).
 - Distribution — normal (Box–Muller), clamped at zero from below.
+- No samples are created when background gas is zero.
 
 ### FeeHistory
 
@@ -168,8 +174,11 @@ over the last `FeeHistoryDepth` blocks (default 100). Percentiles 10th, 50th,
 and 90th are used by `SendWithRetry` to pick a tip tier (market, urgent,
 aggressive).
 
-If a block has no real tips (empty or genesis), `MinMempoolTip` is used as a
-fallback.
+Reward percentiles are gas-weighted and include both included user
+transactions and synthetic background samples. An empty block reports zero
+priority-fee rewards. A block header stores the base fee used to execute that
+block; the separately stored next base fee is appended as the final
+`eth_feeHistory` base-fee entry.
 
 ---
 

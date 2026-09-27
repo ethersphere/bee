@@ -10,10 +10,11 @@ import (
 )
 
 const (
-	defaultBlockGasLimit   = 30_000_000
-	defaultFeeHistoryDepth = 100
-	defaultEstimateGas     = 50_000
-	defaultMempoolDuration = 10 * time.Minute
+	defaultBlockGasLimit          = 30_000_000
+	defaultFeeHistoryDepth        = 100
+	defaultEstimateGas            = 50_000
+	defaultMempoolDuration        = 10 * time.Minute
+	defaultReplacementBumpPercent = 15
 
 	// DisabledMempoolTTL disables mempool TTL eviction when set as Config.MempoolTTL.
 	DisabledMempoolTTL = ^uint64(0)
@@ -51,6 +52,11 @@ type Config struct {
 	// Synthetic tip distribution used for fee history background traffic.
 	BackgroundTipMean   *big.Int
 	BackgroundTipStdDev *big.Int
+
+	// ReplacementBumpPercent is this simulator's synthetic same-nonce replacement
+	// policy. It is not an Ethereum consensus rule. Zero uses the default, which
+	// matches Bee's retry floor.
+	ReplacementBumpPercent int
 
 	// Mempool limits. Zero disables the limit.
 	MaxMempoolSize int
@@ -95,21 +101,22 @@ type Config struct {
 // DefaultConfig returns a usable configuration for tests and local simulation.
 func DefaultConfig() Config {
 	return Config{
-		ChainID:             big.NewInt(1337),
-		BlockPeriod:         5 * time.Second,
-		BlockGasLimit:       defaultBlockGasLimit,
-		InitialBaseFee:      big.NewInt(1_000_000_000),
-		MinMempoolTip:       big.NewInt(100_000_000),
-		InitialCongestion:   0.0,
-		BackgroundTipMean:   big.NewInt(2_000_000_000),
-		BackgroundTipStdDev: big.NewInt(500_000_000),
-		MaxMempoolSize:      0,
-		MempoolTTL:          0,
-		ReceiptAvailDelay:   0,
-		EstimateGas:         defaultEstimateGas,
-		BaseGasUsed:         21_000,
-		FeeHistoryDepth:     defaultFeeHistoryDepth,
-		RNGSeed:             1,
+		ChainID:                big.NewInt(1337),
+		BlockPeriod:            5 * time.Second,
+		BlockGasLimit:          defaultBlockGasLimit,
+		InitialBaseFee:         big.NewInt(1_000_000_000),
+		MinMempoolTip:          big.NewInt(100_000_000),
+		InitialCongestion:      0.0,
+		BackgroundTipMean:      big.NewInt(2_000_000_000),
+		BackgroundTipStdDev:    big.NewInt(500_000_000),
+		ReplacementBumpPercent: defaultReplacementBumpPercent,
+		MaxMempoolSize:         0,
+		MempoolTTL:             0,
+		ReceiptAvailDelay:      0,
+		EstimateGas:            defaultEstimateGas,
+		BaseGasUsed:            21_000,
+		FeeHistoryDepth:        defaultFeeHistoryDepth,
+		RNGSeed:                1,
 	}
 }
 
@@ -141,6 +148,9 @@ func (c Config) normalized() Config {
 	}
 	if c.BackgroundTipStdDev == nil {
 		c.BackgroundTipStdDev = big.NewInt(500_000_000)
+	}
+	if c.ReplacementBumpPercent <= 0 {
+		c.ReplacementBumpPercent = defaultReplacementBumpPercent
 	}
 	if c.EstimateGas == 0 {
 		c.EstimateGas = defaultEstimateGas

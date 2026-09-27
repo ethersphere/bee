@@ -51,14 +51,12 @@ func (s *SimChain) SetMinMempoolTip(tip *big.Int) {
 	s.minMempoolTip = new(big.Int).Set(tip)
 }
 
-// SetBaseFee overrides the current base fee immediately.
+// SetBaseFee sets the base fee used by the next block. Already produced block
+// headers keep the fee at which their transactions executed.
 func (s *SimChain) SetBaseFee(fee *big.Int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.baseFee = new(big.Int).Set(fee)
-	if block := s.latestBlock(); block != nil {
-		block.baseFee = new(big.Int).Set(fee)
-	}
 }
 
 // SetBackgroundTipMean sets the mean of synthetic background tips used for fee history.
@@ -104,6 +102,7 @@ func (s *SimChain) SetRevertAddress(addr common.Address) {
 }
 
 // InjectError makes the next count calls to method return err.
+// For SendTransaction the error is returned before mempool admission.
 func (s *SimChain) InjectError(method string, err error, count int) {
 	if count <= 0 || err == nil {
 		return
@@ -111,6 +110,21 @@ func (s *SimChain) InjectError(method string, err error, count int) {
 	s.errMu.Lock()
 	defer s.errMu.Unlock()
 	s.errInjections[method] = append(s.errInjections[method], errorInjection{
+		err:   err,
+		count: count,
+	})
+}
+
+// InjectSendErrorAfterAdmit admits the next count SendTransaction calls into
+// the mempool and then returns err. This models an RPC timeout after the
+// execution client has already accepted the transaction.
+func (s *SimChain) InjectSendErrorAfterAdmit(err error, count int) {
+	if count <= 0 || err == nil {
+		return
+	}
+	s.errMu.Lock()
+	defer s.errMu.Unlock()
+	s.postAdmitSendErrors = append(s.postAdmitSendErrors, errorInjection{
 		err:   err,
 		count: count,
 	})

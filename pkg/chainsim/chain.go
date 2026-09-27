@@ -56,9 +56,10 @@ type SimChain struct {
 
 	revertAddresses map[common.Address]struct{}
 
-	errInjections map[string][]errorInjection
-	errMu         sync.Mutex
-	rng           *rand.Rand
+	errInjections       map[string][]errorInjection
+	postAdmitSendErrors []errorInjection
+	errMu               sync.Mutex
+	rng                 *rand.Rand
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -72,13 +73,19 @@ type SimChain struct {
 	stats  Stats
 }
 
+// rewardSample is one gas-weighted priority-fee observation in a block.
+type rewardSample struct {
+	tip     *big.Int
+	gasUsed uint64
+}
+
 type simBlock struct {
 	number   uint64
 	time     uint64
 	baseFee  *big.Int
 	gasUsed  uint64
 	gasLimit uint64
-	tips     []*big.Int
+	rewards  []rewardSample
 	txHashes []common.Hash
 }
 
@@ -113,7 +120,7 @@ func New(cfg Config) *SimChain {
 		blockNum:            0,
 		blockTs:             uint64(time.Now().Unix()),
 		baseFee:             new(big.Int).Set(cfg.InitialBaseFee),
-		pool:                newMempool(cfg.MaxMempoolSize, cfg.MempoolTTL),
+		pool:                newMempool(cfg.MaxMempoolSize, cfg.MempoolTTL, cfg.ReplacementBumpPercent),
 		blocks:              make([]*simBlock, 0, 16),
 		nonces:              make(map[common.Address]uint64),
 		nonceHistory:        make(map[common.Address][]nonceRecord),
@@ -239,17 +246,23 @@ func (s *SimChain) balanceOf(sender common.Address) *big.Int {
 func (s *SimChain) injectErr(method string) error {
 	s.errMu.Lock()
 	defer s.errMu.Unlock()
+	queue := s.errInjections[method]
+	err := consumeInjection(&queue)
+	s.errInjections[method] = queue
+	return err
+}
 
-	for len(s.errInjections[method]) > 0 {
-		inj := s.errInjections[method][0]
+func consumeInjection(queue *[]errorInjection) error {
+	for len(*queue) > 0 {
+		inj := (*queue)[0]
 		if inj.count <= 0 {
-			s.errInjections[method] = s.errInjections[method][1:]
+			*queue = (*queue)[1:]
 			continue
 		}
 		inj.count--
-		s.errInjections[method][0] = inj
+		(*queue)[0] = inj
 		if inj.count == 0 {
-			s.errInjections[method] = s.errInjections[method][1:]
+			*queue = (*queue)[1:]
 		}
 		return inj.err
 	}
@@ -361,7 +374,17 @@ func (s *SimChain) SendTransaction(ctx context.Context, tx *types.Transaction) e
 	s.recordTxAccepted(replaced)
 	fields := append(txLogFields(tx, sender), "replaced", replaced, "mempool_size", s.pool.size())
 	s.logger.Info("transaction accepted", fields...)
+	if err := s.consumePostAdmitSendError(); err != nil {
+		s.logger.Info("transaction admitted but rpc returned error", append(fields, "error", err.Error())...)
+		return err
+	}
 	return nil
+}
+
+func (s *SimChain) consumePostAdmitSendError() error {
+	s.errMu.Lock()
+	defer s.errMu.Unlock()
+	return consumeInjection(&s.postAdmitSendErrors)
 }
 
 func (s *SimChain) TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {

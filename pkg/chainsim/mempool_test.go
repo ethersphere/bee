@@ -60,7 +60,7 @@ func poolEntryFromTx(t *testing.T, tx *types.Transaction, addedAt uint64) *poolE
 func TestMempool_AddAndGet(t *testing.T) {
 	t.Parallel()
 
-	pool := newMempool(0, 0)
+	pool := newMempool(0, 0, 0)
 	baseFee := big.NewInt(1_000)
 	minTip := big.NewInt(100)
 	balance := big.NewInt(1e18)
@@ -81,7 +81,7 @@ func TestMempool_AddAndGet(t *testing.T) {
 func TestMempool_Remove(t *testing.T) {
 	t.Parallel()
 
-	pool := newMempool(0, 0)
+	pool := newMempool(0, 0, 0)
 	baseFee := big.NewInt(1_000)
 	minTip := big.NewInt(100)
 	balance := big.NewInt(1e18)
@@ -98,7 +98,7 @@ func TestMempool_Remove(t *testing.T) {
 func TestMempool_RejectNonceTooLow(t *testing.T) {
 	t.Parallel()
 
-	pool := newMempool(0, 0)
+	pool := newMempool(0, 0, 0)
 	tx := signedTx(t, 0, big.NewInt(200), big.NewInt(3_000))
 	entry := poolEntryFromTx(t, tx, 0)
 
@@ -110,7 +110,7 @@ func TestMempool_RejectNonceTooLow(t *testing.T) {
 func TestMempool_RejectLowFeeCap(t *testing.T) {
 	t.Parallel()
 
-	pool := newMempool(0, 0)
+	pool := newMempool(0, 0, 0)
 	tx := signedTx(t, 0, big.NewInt(200), big.NewInt(500))
 	entry := poolEntryFromTx(t, tx, 0)
 
@@ -122,7 +122,7 @@ func TestMempool_RejectLowFeeCap(t *testing.T) {
 func TestMempool_RejectLowTip(t *testing.T) {
 	t.Parallel()
 
-	pool := newMempool(0, 0)
+	pool := newMempool(0, 0, 0)
 	tx := signedTx(t, 0, big.NewInt(50), big.NewInt(3_000))
 	entry := poolEntryFromTx(t, tx, 0)
 
@@ -134,7 +134,7 @@ func TestMempool_RejectLowTip(t *testing.T) {
 func TestMempool_RejectInsufficientFunds(t *testing.T) {
 	t.Parallel()
 
-	pool := newMempool(0, 0)
+	pool := newMempool(0, 0, 0)
 	tx := signedTx(t, 0, big.NewInt(200), big.NewInt(3_000))
 	entry := poolEntryFromTx(t, tx, 0)
 
@@ -146,7 +146,7 @@ func TestMempool_RejectInsufficientFunds(t *testing.T) {
 func TestMempool_ReplacementAccepted(t *testing.T) {
 	t.Parallel()
 
-	pool := newMempool(0, 0)
+	pool := newMempool(0, 0, 0)
 	baseFee := big.NewInt(1_000)
 	minTip := big.NewInt(100)
 	balance := big.NewInt(1e18)
@@ -166,7 +166,7 @@ func TestMempool_ReplacementAccepted(t *testing.T) {
 func TestMempool_ReplacementUnderpriced_TipTooLow(t *testing.T) {
 	t.Parallel()
 
-	pool := newMempool(0, 0)
+	pool := newMempool(0, 0, 0)
 	baseFee := big.NewInt(1_000)
 	minTip := big.NewInt(100)
 	balance := big.NewInt(1e18)
@@ -184,7 +184,7 @@ func TestMempool_ReplacementUnderpriced_TipTooLow(t *testing.T) {
 func TestMempool_ReplacementUnderpriced_FeeCapTooLow(t *testing.T) {
 	t.Parallel()
 
-	pool := newMempool(0, 0)
+	pool := newMempool(0, 0, 0)
 	baseFee := big.NewInt(1_000)
 	minTip := big.NewInt(100)
 	balance := big.NewInt(1e18)
@@ -201,7 +201,7 @@ func TestMempool_ReplacementUnderpriced_FeeCapTooLow(t *testing.T) {
 func TestMempool_EvictOnFull(t *testing.T) {
 	t.Parallel()
 
-	pool := newMempool(2, 0)
+	pool := newMempool(2, 0, 0)
 	baseFee := big.NewInt(1_000)
 	minTip := big.NewInt(100)
 	balance := big.NewInt(1e18)
@@ -222,7 +222,7 @@ func TestMempool_EvictOnFull(t *testing.T) {
 func TestMempool_EvictExpired(t *testing.T) {
 	t.Parallel()
 
-	pool := newMempool(0, 5)
+	pool := newMempool(0, 5, 0)
 	baseFee := big.NewInt(1_000)
 	minTip := big.NewInt(100)
 	balance := big.NewInt(1e18)
@@ -238,7 +238,7 @@ func TestMempool_EvictExpired(t *testing.T) {
 func TestMempool_NewTxRejectedWhenFullAndLowTip(t *testing.T) {
 	t.Parallel()
 
-	pool := newMempool(2, 0)
+	pool := newMempool(2, 0, 0)
 	baseFee := big.NewInt(1_000)
 	minTip := big.NewInt(100)
 	balance := big.NewInt(1e18)
@@ -258,7 +258,7 @@ func TestMempool_NewTxRejectedWhenFullAndLowTip(t *testing.T) {
 func TestMempool_EligibleSortedByTip(t *testing.T) {
 	t.Parallel()
 
-	pool := newMempool(0, 0)
+	pool := newMempool(0, 0, 0)
 	baseFee := big.NewInt(1_000)
 	minTip := big.NewInt(100)
 	balance := big.NewInt(1e18)
@@ -285,15 +285,15 @@ func TestMempool_EligibleSortedByTip(t *testing.T) {
 	require.NoError(t, pool.add(makeForSender(testKey, testSender, 0, 200), baseFee, minTip, 0, balance))
 	require.NoError(t, pool.add(makeForSender(keyB, senderB, 0, 500), baseFee, minTip, 0, balance))
 
-	eligible := pool.eligible(map[common.Address]uint64{}, baseFee)
+	eligible := pool.executableHeads(map[common.Address]uint64{}, baseFee)
 	require.Len(t, eligible, 2)
 	assert.True(t, eligible[0].effectiveTip(baseFee).Cmp(eligible[1].effectiveTip(baseFee)) >= 0)
 }
 
-func TestMempool_EligibleIncludesNonceChain(t *testing.T) {
+func TestMempool_ExecutableHeadsOnlyCurrentNonce(t *testing.T) {
 	t.Parallel()
 
-	pool := newMempool(0, 0)
+	pool := newMempool(0, 0, 0)
 	baseFee := big.NewInt(1_000)
 	minTip := big.NewInt(100)
 	balance := big.NewInt(1e18)
@@ -303,14 +303,15 @@ func TestMempool_EligibleIncludesNonceChain(t *testing.T) {
 		require.NoError(t, pool.add(poolEntryFromTx(t, tx, 0), baseFee, minTip, 0, balance))
 	}
 
-	eligible := pool.eligible(map[common.Address]uint64{}, baseFee)
-	require.Len(t, eligible, 3)
+	eligible := pool.executableHeads(map[common.Address]uint64{}, baseFee)
+	require.Len(t, eligible, 1)
+	assert.Equal(t, uint64(0), eligible[0].tx.Nonce())
 }
 
 func TestMempool_EligibleSkipsWrongNonce(t *testing.T) {
 	t.Parallel()
 
-	pool := newMempool(0, 0)
+	pool := newMempool(0, 0, 0)
 	baseFee := big.NewInt(1_000)
 	minTip := big.NewInt(100)
 	balance := big.NewInt(1e18)
@@ -318,14 +319,14 @@ func TestMempool_EligibleSkipsWrongNonce(t *testing.T) {
 	tx := signedTx(t, 1, big.NewInt(200), big.NewInt(3_000))
 	require.NoError(t, pool.add(poolEntryFromTx(t, tx, 0), baseFee, minTip, 0, balance))
 
-	eligible := pool.eligible(map[common.Address]uint64{testSender: 0}, baseFee)
+	eligible := pool.executableHeads(map[common.Address]uint64{testSender: 0}, baseFee)
 	assert.Empty(t, eligible)
 }
 
 func TestMempool_EligibleSkipsLowFeeCap(t *testing.T) {
 	t.Parallel()
 
-	pool := newMempool(0, 0)
+	pool := newMempool(0, 0, 0)
 	baseFee := big.NewInt(1_000)
 	minTip := big.NewInt(100)
 	balance := big.NewInt(1e18)
@@ -333,14 +334,14 @@ func TestMempool_EligibleSkipsLowFeeCap(t *testing.T) {
 	tx := signedTx(t, 0, big.NewInt(200), big.NewInt(3_000))
 	require.NoError(t, pool.add(poolEntryFromTx(t, tx, 0), baseFee, minTip, 0, balance))
 
-	eligible := pool.eligible(map[common.Address]uint64{}, big.NewInt(4_000))
+	eligible := pool.executableHeads(map[common.Address]uint64{}, big.NewInt(4_000))
 	assert.Empty(t, eligible)
 }
 
 func TestMempool_PendingNonce(t *testing.T) {
 	t.Parallel()
 
-	pool := newMempool(0, 0)
+	pool := newMempool(0, 0, 0)
 	baseFee := big.NewInt(1_000)
 	minTip := big.NewInt(100)
 	balance := big.NewInt(1e18)
@@ -356,7 +357,7 @@ func TestMempool_PendingNonce(t *testing.T) {
 func TestMempool_PendingNonceGap(t *testing.T) {
 	t.Parallel()
 
-	pool := newMempool(0, 0)
+	pool := newMempool(0, 0, 0)
 	baseFee := big.NewInt(1_000)
 	minTip := big.NewInt(100)
 	balance := big.NewInt(1e18)
@@ -367,4 +368,32 @@ func TestMempool_PendingNonceGap(t *testing.T) {
 	require.NoError(t, pool.add(poolEntryFromTx(t, tx7, 0), baseFee, minTip, 5, balance))
 
 	assert.Equal(t, uint64(6), pool.pendingNonce(testSender, 5))
+}
+
+func TestMempool_ReplacementBumpBoundary(t *testing.T) {
+	t.Parallel()
+
+	pool := newMempool(0, 0, 15)
+	baseFee := big.NewInt(1_000)
+	minTip := big.NewInt(100)
+	balance := big.NewInt(1e18)
+
+	first := signedTx(t, 0, big.NewInt(1_000), big.NewInt(5_000))
+	require.NoError(t, pool.add(poolEntryFromTx(t, first, 0), baseFee, minTip, 0, balance))
+
+	below := signedTx(t, 0, big.NewInt(1_149), big.NewInt(5_750))
+	err := pool.add(poolEntryFromTx(t, below, 0), baseFee, minTip, 0, balance)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "replacement transaction underpriced")
+	assert.NotNil(t, pool.getByHash(first.Hash()))
+
+	feeCapBelow := signedTx(t, 0, big.NewInt(1_150), big.NewInt(5_749))
+	err = pool.add(poolEntryFromTx(t, feeCapBelow, 0), baseFee, minTip, 0, balance)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "replacement transaction underpriced")
+
+	exact := signedTx(t, 0, big.NewInt(1_150), big.NewInt(5_750))
+	require.NoError(t, pool.add(poolEntryFromTx(t, exact, 0), baseFee, minTip, 0, balance))
+	assert.NotNil(t, pool.getByHash(exact.Hash()))
+	assert.Nil(t, pool.getByHash(first.Hash()))
 }

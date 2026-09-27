@@ -14,8 +14,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
-const replacementBumpPercent = 10
-
 // poolEntry is a single transaction stored in the mempool.
 type poolEntry struct {
 	tx      *types.Transaction
@@ -35,18 +33,23 @@ func (e *poolEntry) effectiveTip(baseFee *big.Int) *big.Int {
 }
 
 type mempool struct {
-	entries   map[common.Hash]*poolEntry
-	bySender  map[common.Address]map[uint64]*poolEntry
-	maxSize   int
-	ttlBlocks uint64
+	entries                map[common.Hash]*poolEntry
+	bySender               map[common.Address]map[uint64]*poolEntry
+	maxSize                int
+	ttlBlocks              uint64
+	replacementBumpPercent int
 }
 
-func newMempool(maxSize int, ttlBlocks uint64) *mempool {
+func newMempool(maxSize int, ttlBlocks uint64, replacementBumpPercent int) *mempool {
+	if replacementBumpPercent <= 0 {
+		replacementBumpPercent = defaultReplacementBumpPercent
+	}
 	return &mempool{
-		entries:   make(map[common.Hash]*poolEntry),
-		bySender:  make(map[common.Address]map[uint64]*poolEntry),
-		maxSize:   maxSize,
-		ttlBlocks: ttlBlocks,
+		entries:                make(map[common.Hash]*poolEntry),
+		bySender:               make(map[common.Address]map[uint64]*poolEntry),
+		maxSize:                maxSize,
+		ttlBlocks:              ttlBlocks,
+		replacementBumpPercent: replacementBumpPercent,
 	}
 }
 
@@ -93,11 +96,12 @@ func bump(val *big.Int, percent int) *big.Int {
 	)
 }
 
-func isValidReplacement(old, new *types.Transaction) bool {
-	if new.GasTipCap().Cmp(bump(old.GasTipCap(), replacementBumpPercent)) < 0 {
+func (m *mempool) isValidReplacement(old, new *types.Transaction) bool {
+	percent := m.replacementBumpPercent
+	if new.GasTipCap().Cmp(bump(old.GasTipCap(), percent)) < 0 {
 		return false
 	}
-	if new.GasFeeCap().Cmp(bump(old.GasFeeCap(), replacementBumpPercent)) < 0 {
+	if new.GasFeeCap().Cmp(bump(old.GasFeeCap(), percent)) < 0 {
 		return false
 	}
 	return true
@@ -134,7 +138,7 @@ func (m *mempool) add(entry *poolEntry, baseFee, minTip *big.Int, confirmedNonce
 
 	existing := m.getBySenderNonce(entry.sender, entry.tx.Nonce())
 	if existing != nil {
-		if !isValidReplacement(existing.tx, entry.tx) {
+		if !m.isValidReplacement(existing.tx, entry.tx) {
 			return errors.New("replacement transaction underpriced")
 		}
 		m.remove(existing.tx.Hash())
@@ -191,26 +195,28 @@ func (m *mempool) evictExpired(currentBlock uint64) []common.Hash {
 	return evicted
 }
 
-func (m *mempool) eligible(confirmedNonces map[common.Address]uint64, baseFee *big.Int) []*poolEntry {
-	result := make([]*poolEntry, 0, len(m.entries))
+// executableHeads returns only the transaction each sender can execute now:
+// the one at that sender's confirmed nonce whose fee cap covers baseFee.
+func (m *mempool) executableHeads(confirmedNonces map[common.Address]uint64, baseFee *big.Int) []*poolEntry {
+	result := make([]*poolEntry, 0, len(m.bySender))
 
 	for sender, nonceMap := range m.bySender {
-		nonce := confirmedNonces[sender]
-		for {
-			entry, ok := nonceMap[nonce]
-			if !ok {
-				break
-			}
-			if entry.tx.GasFeeCap().Cmp(baseFee) < 0 {
-				break
-			}
-			result = append(result, entry)
-			nonce++
+		entry := nonceMap[confirmedNonces[sender]]
+		if entry == nil {
+			continue
 		}
+		if entry.tx.GasFeeCap().Cmp(baseFee) < 0 {
+			continue
+		}
+		result = append(result, entry)
 	}
 
 	sort.Slice(result, func(i, j int) bool {
-		return result[i].effectiveTip(baseFee).Cmp(result[j].effectiveTip(baseFee)) > 0
+		cmp := result[i].effectiveTip(baseFee).Cmp(result[j].effectiveTip(baseFee))
+		if cmp != 0 {
+			return cmp > 0
+		}
+		return result[i].tx.Hash().Hex() < result[j].tx.Hash().Hex()
 	})
 
 	return result

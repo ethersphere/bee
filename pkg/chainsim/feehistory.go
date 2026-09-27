@@ -52,7 +52,7 @@ func (s *SimChain) feeHistoryLocked(lastBlock *big.Int, blockCount int, rewardPe
 		} else {
 			gasUsedRatio = append(gasUsedRatio, float64(block.gasUsed)/float64(block.gasLimit))
 		}
-		reward = append(reward, tipsAtPercentiles(block.tips, rewardPercentiles, s.minMempoolTip))
+		reward = append(reward, rewardsAtPercentiles(block.rewards, rewardPercentiles))
 	}
 
 	if len(baseFees) == 0 {
@@ -69,56 +69,54 @@ func (s *SimChain) feeHistoryLocked(lastBlock *big.Int, blockCount int, rewardPe
 	}, nil
 }
 
-func tipsAtPercentiles(tips []*big.Int, percentiles []float64, fallback *big.Int) []*big.Int {
+func rewardsAtPercentiles(samples []rewardSample, percentiles []float64) []*big.Int {
 	if len(percentiles) == 0 {
 		percentiles = []float64{10, 50, 90}
 	}
 
-	vals := make([]*big.Int, 0, len(tips))
-	for _, tip := range tips {
-		if tip == nil {
+	vals := make([]rewardSample, 0, len(samples))
+	var totalGas uint64
+	for _, sample := range samples {
+		if sample.tip == nil || sample.gasUsed == 0 {
 			continue
 		}
-		vals = append(vals, new(big.Int).Set(tip))
+		vals = append(vals, rewardSample{
+			tip:     new(big.Int).Set(sample.tip),
+			gasUsed: sample.gasUsed,
+		})
+		totalGas += sample.gasUsed
 	}
-	if len(vals) == 0 {
-		fb := big.NewInt(0)
-		if fallback != nil && fallback.Sign() > 0 {
-			fb = new(big.Int).Set(fallback)
-		}
-		vals = append(vals, fb)
-	}
-
 	sort.Slice(vals, func(i, j int) bool {
-		return vals[i].Cmp(vals[j]) < 0
+		return vals[i].tip.Cmp(vals[j].tip) < 0
 	})
 
 	out := make([]*big.Int, len(percentiles))
 	for i, p := range percentiles {
-		out[i] = percentileBigInt(vals, p)
+		out[i] = gasWeightedPercentile(vals, totalGas, p)
 	}
 	return out
 }
 
-func percentileBigInt(vals []*big.Int, p float64) *big.Int {
-	if len(vals) == 0 {
+func gasWeightedPercentile(samples []rewardSample, totalGas uint64, percentile float64) *big.Int {
+	if len(samples) == 0 || totalGas == 0 {
 		return big.NewInt(0)
 	}
-	if p <= 0 {
-		return new(big.Int).Set(vals[0])
+	if percentile <= 0 {
+		return new(big.Int).Set(samples[0].tip)
 	}
-	if p >= 100 {
-		return new(big.Int).Set(vals[len(vals)-1])
+	if percentile >= 100 {
+		return new(big.Int).Set(samples[len(samples)-1].tip)
 	}
 
-	rank := int(float64(len(vals)-1) * p / 100.0)
-	if rank < 0 {
-		rank = 0
+	target := float64(totalGas) * percentile / 100
+	var accumulated uint64
+	for _, sample := range samples {
+		accumulated += sample.gasUsed
+		if float64(accumulated) >= target {
+			return new(big.Int).Set(sample.tip)
+		}
 	}
-	if rank >= len(vals) {
-		rank = len(vals) - 1
-	}
-	return new(big.Int).Set(vals[rank])
+	return new(big.Int).Set(samples[len(samples)-1].tip)
 }
 
 func suggestedFeesFromFeeHistory(fh *ethereum.FeeHistory) (*transaction.FeeHistorySuggestedFeeAndTips, error) {

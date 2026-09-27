@@ -75,13 +75,14 @@ func (s *SimChain) commitBlockLocked(skipInclusion ...bool) uint64 {
 		backgroundGas = remaining
 	}
 	block.gasUsed = includedGas + backgroundGas
-	block.tips = s.backgroundTips()
+	block.rewards = append(block.rewards, s.backgroundRewards(backgroundGas)...)
 
-	s.baseFee = nextBaseFee(s.baseFee, block.gasUsed, s.cfg.BlockGasLimit)
+	// s.baseFee becomes the next block's price. block.baseFee stays the price
+	// used to validate and execute transactions in this block.
+	s.baseFee = nextBaseFee(block.baseFee, block.gasUsed, s.cfg.BlockGasLimit)
 	if s.cfg.MaxBaseFee != nil && s.baseFee.Cmp(s.cfg.MaxBaseFee) > 0 {
 		s.baseFee.Set(s.cfg.MaxBaseFee)
 	}
-	block.baseFee = new(big.Int).Set(s.baseFee)
 
 	s.blockNum = nextNum
 	s.blockTs = nextTime
@@ -100,6 +101,7 @@ func (s *SimChain) commitBlockLocked(skipInclusion ...bool) uint64 {
 		"number", nextNum,
 		"timestamp", nextTime,
 		"base_fee", block.baseFee,
+		"next_base_fee", s.baseFee,
 		"gas_used", block.gasUsed,
 		"gas_limit", block.gasLimit,
 		"tx_count", len(block.txHashes),
@@ -116,98 +118,116 @@ func (s *SimChain) includeTransactions(block *simBlock) uint64 {
 		return 0
 	}
 
-	eligible := s.pool.eligible(s.nonces, s.baseFee)
 	refTip := s.referenceInclusionTip()
 	var gasUsed uint64
 	includedCount := 0
+	attempted := make(map[common.Hash]struct{})
 
-	for _, entry := range eligible {
+	for {
 		if s.cfg.MaxTxsPerBlock > 0 && includedCount >= s.cfg.MaxTxsPerBlock {
 			break
 		}
 
-		if entry.tx.Nonce() != s.confirmedNonce(entry.sender) {
-			continue
-		}
-
-		if !s.shouldIncludeTx(entry, refTip) {
-			s.recordInclusionDeferred()
-			tip := entry.effectiveTip(s.baseFee)
-			s.logger.Info("transaction deferred",
-				append(txLogFields(entry.tx, entry.sender),
-					"block", block.number,
-					"effective_tip", tip,
-					"reference_tip", refTip,
-					"inclusion_probability", inclusionProbability(tip, refTip, s.cfg.InclusionMinProbability),
-				)...,
-			)
-			continue
-		}
-
-		txGas := entry.tx.Gas()
-		actualGas := txGas
-		if s.cfg.BaseGasUsed > 0 && s.cfg.BaseGasUsed < txGas {
-			actualGas = s.cfg.BaseGasUsed
-		}
-		if gasUsed+txGas > availableGas {
-			continue
-		}
-
-		gasUsed += actualGas
-		includedCount++
-		block.txHashes = append(block.txHashes, entry.tx.Hash())
-		block.tips = append(block.tips, new(big.Int).Set(entry.effectiveTip(s.baseFee)))
-
-		status := uint64(1)
-		if entry.tx.To() != nil {
-			if _, revert := s.revertAddresses[*entry.tx.To()]; revert {
-				status = 0
+		candidates := s.pool.executableHeads(s.nonces, block.baseFee)
+		included := false
+		for _, entry := range candidates {
+			hash := entry.tx.Hash()
+			if _, seen := attempted[hash]; seen {
+				continue
 			}
-		}
-		if status == 1 && s.cfg.RandomRevertRate > 0 && s.rng.Float64() < s.cfg.RandomRevertRate {
-			status = 0
-		}
+			attempted[hash] = struct{}{}
 
-		receipt := &types.Receipt{
-			TxHash:      entry.tx.Hash(),
-			Status:      status,
-			GasUsed:     actualGas,
-			BlockNumber: new(big.Int).SetUint64(block.number),
-			BlockHash:   syntheticBlockHash(block.number),
+			if !s.shouldIncludeTx(entry, block.baseFee, refTip) {
+				s.recordInclusionDeferred()
+				tip := entry.effectiveTip(block.baseFee)
+				s.logger.Info("transaction deferred",
+					append(txLogFields(entry.tx, entry.sender),
+						"block", block.number,
+						"effective_tip", tip,
+						"reference_tip", refTip,
+						"inclusion_probability", inclusionProbability(tip, refTip, s.cfg.InclusionMinProbability),
+					)...,
+				)
+				continue
+			}
+
+			txGas := entry.tx.Gas()
+			actualGas := txGas
+			if s.cfg.BaseGasUsed > 0 && s.cfg.BaseGasUsed < txGas {
+				actualGas = s.cfg.BaseGasUsed
+			}
+			if gasUsed+txGas > availableGas {
+				continue
+			}
+
+			s.includeOne(block, entry, actualGas)
+			gasUsed += actualGas
+			includedCount++
+			included = true
+			break
 		}
-
-		s.receipts[entry.tx.Hash()] = &receiptRecord{
-			receipt:    receipt,
-			includedAt: block.number,
+		if !included {
+			break
 		}
-		s.minedTxs[entry.tx.Hash()] = entry.tx
-		s.minedOrder = append(s.minedOrder, minedRef{block: block.number, hash: entry.tx.Hash()})
-		s.pool.remove(entry.tx.Hash())
-
-		newNonce := entry.tx.Nonce() + 1
-		s.recordNonce(entry.sender, block.number, newNonce)
-		s.deductCost(entry, actualGas)
-
-		reverted := status == 0
-		s.recordTxExecuted(reverted)
-		fields := append(txLogFields(entry.tx, entry.sender),
-			"block", block.number,
-			"status", status,
-			"effective_gas_price", new(big.Int).Add(s.baseFee, entry.effectiveTip(s.baseFee)),
-		)
-		s.logger.Info("transaction executed", fields...)
 	}
 
 	return gasUsed
 }
 
-func (s *SimChain) deductCost(entry *poolEntry, gasUsed uint64) {
+func (s *SimChain) includeOne(block *simBlock, entry *poolEntry, actualGas uint64) {
+	tip := entry.effectiveTip(block.baseFee)
+	block.txHashes = append(block.txHashes, entry.tx.Hash())
+	block.rewards = append(block.rewards, rewardSample{
+		tip:     new(big.Int).Set(tip),
+		gasUsed: actualGas,
+	})
+
+	status := uint64(1)
+	if entry.tx.To() != nil {
+		if _, revert := s.revertAddresses[*entry.tx.To()]; revert {
+			status = 0
+		}
+	}
+	if status == 1 && s.cfg.RandomRevertRate > 0 && s.rng.Float64() < s.cfg.RandomRevertRate {
+		status = 0
+	}
+
+	receipt := &types.Receipt{
+		TxHash:           entry.tx.Hash(),
+		Status:           status,
+		GasUsed:          actualGas,
+		BlockNumber:      new(big.Int).SetUint64(block.number),
+		BlockHash:        syntheticBlockHash(block.number),
+		TransactionIndex: uint(len(block.txHashes) - 1),
+	}
+
+	s.receipts[entry.tx.Hash()] = &receiptRecord{
+		receipt:    receipt,
+		includedAt: block.number,
+	}
+	s.minedTxs[entry.tx.Hash()] = entry.tx
+	s.minedOrder = append(s.minedOrder, minedRef{block: block.number, hash: entry.tx.Hash()})
+	s.pool.remove(entry.tx.Hash())
+
+	s.recordNonce(entry.sender, block.number, entry.tx.Nonce()+1)
+	s.deductCost(entry, block.baseFee, actualGas)
+
+	s.recordTxExecuted(status == 0)
+	fields := append(txLogFields(entry.tx, entry.sender),
+		"block", block.number,
+		"status", status,
+		"effective_gas_price", new(big.Int).Add(block.baseFee, tip),
+	)
+	s.logger.Info("transaction executed", fields...)
+}
+
+func (s *SimChain) deductCost(entry *poolEntry, baseFee *big.Int, gasUsed uint64) {
 	balance := s.balanceOf(entry.sender)
 	if balance.Sign() == 0 && s.balances[entry.sender] == nil {
 		return
 	}
 
-	effectiveGasPrice := new(big.Int).Add(s.baseFee, entry.effectiveTip(s.baseFee))
+	effectiveGasPrice := new(big.Int).Add(baseFee, entry.effectiveTip(baseFee))
 	if effectiveGasPrice.Cmp(entry.tx.GasFeeCap()) > 0 {
 		effectiveGasPrice.Set(entry.tx.GasFeeCap())
 	}
@@ -258,18 +278,32 @@ func syntheticBlockHash(number uint64) common.Hash {
 	return hash
 }
 
-func (s *SimChain) backgroundTips() []*big.Int {
-	const backgroundTxCount = 20
-	tips := make([]*big.Int, 0, backgroundTxCount)
+func (s *SimChain) backgroundRewards(backgroundGas uint64) []rewardSample {
+	if backgroundGas == 0 {
+		return nil
+	}
 
-	for i := 0; i < backgroundTxCount; i++ {
+	const maxSamples = 20
+	count := backgroundGas
+	if count > maxSamples {
+		count = maxSamples
+	}
+	gasPerSample := backgroundGas / count
+	remainder := backgroundGas % count
+
+	rewards := make([]rewardSample, 0, count)
+	for i := uint64(0); i < count; i++ {
+		gas := gasPerSample
+		if i < remainder {
+			gas++
+		}
 		tip := sampleTip(s.rng, s.backgroundTipMean, s.backgroundTipStdDev)
 		if tip.Cmp(s.minMempoolTip) < 0 {
 			tip.Set(s.minMempoolTip)
 		}
-		tips = append(tips, tip)
+		rewards = append(rewards, rewardSample{tip: tip, gasUsed: gas})
 	}
-	return tips
+	return rewards
 }
 
 func sampleTip(rng *rand.Rand, mean, stdDev *big.Int) *big.Int {

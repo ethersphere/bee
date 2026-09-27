@@ -14,7 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
-const SnapshotVersion = 2
+const SnapshotVersion = 3
 
 // Snapshot is a JSON-serializable chain state.
 type Snapshot struct {
@@ -51,13 +51,20 @@ type nonceRecordJSON struct {
 }
 
 type blockSnapshot struct {
-	Number   uint64   `json:"number"`
-	Time     uint64   `json:"time"`
-	BaseFee  string   `json:"base_fee"`
-	GasUsed  uint64   `json:"gas_used"`
-	GasLimit uint64   `json:"gas_limit"`
-	Tips     []string `json:"tips"`
+	Number   uint64           `json:"number"`
+	Time     uint64           `json:"time"`
+	BaseFee  string           `json:"base_fee"`
+	GasUsed  uint64           `json:"gas_used"`
+	GasLimit uint64           `json:"gas_limit"`
+	Rewards  []rewardSnapshot `json:"rewards,omitempty"`
+	// Tips is the pre-gas-weight snapshot format. Restore treats each tip as one gas unit.
+	Tips     []string `json:"tips,omitempty"`
 	TxHashes []string `json:"tx_hashes"`
+}
+
+type rewardSnapshot struct {
+	Tip     string `json:"tip"`
+	GasUsed uint64 `json:"gas_used"`
 }
 
 type receiptSnapshot struct {
@@ -129,7 +136,7 @@ func (s *SimChain) Snapshot() Snapshot {
 			BaseFee:  block.baseFee.String(),
 			GasUsed:  block.gasUsed,
 			GasLimit: block.gasLimit,
-			Tips:     bigIntsToStrings(block.tips),
+			Rewards:  rewardSamplesToSnapshots(block.rewards),
 			TxHashes: hashesToStrings(block.txHashes),
 		}
 		snap.Blocks[i] = bs
@@ -231,7 +238,7 @@ func Restore(cfg Config, snap Snapshot) (*SimChain, error) {
 			baseFee:  blockBaseFee,
 			gasUsed:  bs.GasUsed,
 			gasLimit: bs.GasLimit,
-			tips:     stringsToBigInts(bs.Tips),
+			rewards:  rewardSnapshotsToSamples(bs),
 			txHashes: stringsToHashes(bs.TxHashes),
 		})
 	}
@@ -260,7 +267,7 @@ func Restore(cfg Config, snap Snapshot) (*SimChain, error) {
 		s.minedTxs[common.HexToHash(mt.Hash)] = tx
 	}
 
-	s.pool = newMempool(cfg.MaxMempoolSize, cfg.MempoolTTL)
+	s.pool = newMempool(cfg.MaxMempoolSize, cfg.MempoolTTL, cfg.ReplacementBumpPercent)
 	for _, me := range snap.Mempool {
 		tx, err := decodeTxRLP(me.TxRLP)
 		if err != nil {
@@ -323,22 +330,38 @@ func decodeTxRLP(encoded string) (*types.Transaction, error) {
 	return tx, nil
 }
 
-func bigIntsToStrings(vals []*big.Int) []string {
-	out := make([]string, len(vals))
-	for i, v := range vals {
-		out[i] = v.String()
+func rewardSamplesToSnapshots(samples []rewardSample) []rewardSnapshot {
+	out := make([]rewardSnapshot, len(samples))
+	for i, sample := range samples {
+		tip := "0"
+		if sample.tip != nil {
+			tip = sample.tip.String()
+		}
+		out[i] = rewardSnapshot{Tip: tip, GasUsed: sample.gasUsed}
 	}
 	return out
 }
 
-func stringsToBigInts(vals []string) []*big.Int {
-	out := make([]*big.Int, len(vals))
-	for i, v := range vals {
-		bi, ok := new(big.Int).SetString(v, 10)
-		if !ok {
-			bi = new(big.Int)
+func rewardSnapshotsToSamples(bs blockSnapshot) []rewardSample {
+	if len(bs.Rewards) > 0 {
+		out := make([]rewardSample, len(bs.Rewards))
+		for i, reward := range bs.Rewards {
+			tip, ok := new(big.Int).SetString(reward.Tip, 10)
+			if !ok {
+				tip = new(big.Int)
+			}
+			out[i] = rewardSample{tip: tip, gasUsed: reward.GasUsed}
 		}
-		out[i] = bi
+		return out
+	}
+
+	out := make([]rewardSample, len(bs.Tips))
+	for i, tipStr := range bs.Tips {
+		tip, ok := new(big.Int).SetString(tipStr, 10)
+		if !ok {
+			tip = new(big.Int)
+		}
+		out[i] = rewardSample{tip: tip, gasUsed: 1}
 	}
 	return out
 }
