@@ -80,7 +80,7 @@ func (c *command) initStartCmd() (err error) {
 			// Building bee node can take up some time (because node.NewBee(...) is compute have function )
 			// Because of this we need to do it in background so that program could be terminated when interrupt signal is received
 			// while bee node is being constructed.
-			respC := buildBeeNodeAsync(ctx, c, cmd, logger)
+			respC := buildBeeNodeAsync(ctx, cancel, c, cmd, logger)
 			var beeNode atomic.Value
 
 			p := &program{
@@ -181,18 +181,24 @@ type buildBeeNodeResp struct {
 	err error
 }
 
-func buildBeeNodeAsync(ctx context.Context, c *command, cmd *cobra.Command, logger log.Logger) <-chan buildBeeNodeResp {
+func buildBeeNodeAsync(ctx context.Context, shutdown context.CancelFunc, c *command, cmd *cobra.Command, logger log.Logger) <-chan buildBeeNodeResp {
 	respC := make(chan buildBeeNodeResp, 1)
 
 	go func() {
-		bee, err := buildBeeNode(ctx, c, cmd, logger)
+		bee, err := buildBeeNode(ctx, shutdown, c, cmd, logger)
 		respC <- buildBeeNodeResp{bee, err}
 	}()
 
 	return respC
 }
 
-func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger log.Logger) (*node.Bee, error) {
+// buildBeeNode builds the node. shutdown cancels the node's main context and
+// is what the update restart calls: it takes the same path as SIGINT/SIGTERM
+// (start returns, stop runs Bee.Shutdown) and bee exits with status 0. The
+// supervisor must therefore restart bee-runner on a clean exit too (k8s
+// restartPolicy Always, systemd Restart=always, docker --restart always or
+// unless-stopped).
+func buildBeeNode(ctx context.Context, shutdown context.CancelFunc, c *command, cmd *cobra.Command, logger log.Logger) (*node.Bee, error) {
 	var err error
 
 	// If the resolver is specified, resolve all connection strings
@@ -366,6 +372,8 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		UpdateCheckInterval:           c.config.GetDuration(optionNameUpdateCheckInterval),
 		UpdateCheckRunner:             runnerHandoff(),
 		UpdateCheckURL:                c.config.GetString(optionNameUpdateCheckURL),
+		UpdateRestart:                 c.config.GetBool(optionNameUpdateRestart),
+		UpdateRestartShutdown:         shutdown,
 		WarmupTime:                    c.config.GetDuration(optionWarmUpTime),
 		WelcomeMessage:                c.config.GetString(optionWelcomeMessage),
 		WhitelistedWithdrawalAddress:  c.config.GetStringSlice(optionNameWhitelistedWithdrawalAddress),

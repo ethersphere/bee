@@ -112,7 +112,7 @@ func TestSignedReleaseRefused(t *testing.T) {
 }
 
 // A release key that is not in its canonical form is not used: the check
-// falls back to the unsigned /info.
+// falls back to the unsigned /info, and the update restart stays inactive.
 func TestInvalidReleaseKey(t *testing.T) {
 	t.Parallel()
 
@@ -121,10 +121,14 @@ func TestInvalidReleaseKey(t *testing.T) {
 		reg.offer(t, newerRelease)
 		o := runnerOptions(reg)
 		o.Runner.Pubkey = key
+		o.Restart = updatecheck.RestartOptions{Enabled: true, DataDir: t.TempDir(), Shutdown: func() {}}
 
 		s, err := updatecheck.NewUnstarted(log.Noop, o)
 		if err != nil {
 			t.Fatal(err)
+		}
+		if s.RestartActive() {
+			t.Fatalf("key %q: restart active", key)
 		}
 		if _, err := s.Check(context.Background()); err != nil {
 			t.Fatal(err)

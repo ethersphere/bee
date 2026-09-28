@@ -133,11 +133,13 @@ func shortKey(s string) string {
 // descriptor is the subset of the signed release descriptor used here.
 // Unknown fields, such as the expiresAt of older descriptors, are ignored.
 type descriptor struct {
-	SchemaVersion int               `json:"schemaVersion"`
-	Version       uint64            `json:"version"`
-	Channels      []string          `json:"channels"`
-	Notes         string            `json:"notes"`
-	Tags          map[string]string `json:"tags"`
+	SchemaVersion        int               `json:"schemaVersion"`
+	Version              uint64            `json:"version"`
+	Channels             []string          `json:"channels"`
+	Notes                string            `json:"notes"`
+	RolloutWindowSeconds *uint64           `json:"rolloutWindowSeconds"`
+	CreatedAt            string            `json:"createdAt"`
+	Tags                 map[string]string `json:"tags"`
 }
 
 // verifyDescriptor verifies the release key's signature over body and, only then,
@@ -160,10 +162,12 @@ func (k *releaseKey) verifyDescriptor(body, sig []byte, now time.Time) (*release
 		return nil, fmt.Errorf("%w: v%d", errVersionAhead, d.Version)
 	}
 	r := &release{
-		Verified: true,
-		Version:  d.Version,
-		Channels: d.Channels,
-		Notes:    d.Notes,
+		Verified:             true,
+		Version:              d.Version,
+		Channels:             d.Channels,
+		Notes:                d.Notes,
+		CreatedAt:            d.CreatedAt,
+		RolloutWindowSeconds: d.RolloutWindowSeconds,
 	}
 	tags := make([]string, 0, len(d.Tags))
 	for t := range d.Tags {

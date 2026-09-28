@@ -303,6 +303,10 @@ func TestInvalidOptions(t *testing.T) {
 		{"scheme", updatecheck.Options{URL: "ftp://registry.example"}},
 		{"no host", updatecheck.Options{URL: "https:///path"}},
 		{"negative interval", updatecheck.Options{URL: registryURL, Interval: -time.Second}},
+		{"restart without shutdown", updatecheck.Options{URL: registryURL, Restart: updatecheck.RestartOptions{Enabled: true}}},
+		{"gate without round duration", updatecheck.Options{URL: registryURL, Restart: updatecheck.RestartOptions{
+			Enabled: true, Shutdown: func() {}, Gate: func() (bool, string) { return true, "" },
+		}}},
 	} {
 		if _, err := updatecheck.New(log.Noop, tc.o); err == nil {
 			t.Errorf("%s: no error", tc.name)
@@ -310,7 +314,8 @@ func TestInvalidOptions(t *testing.T) {
 	}
 }
 
-// Every check, not only the first, is jittered.
+// Every check, not only the first, is jittered, and the configured interval
+// applies while no restart is pending.
 func TestPollInterval(t *testing.T) {
 	t.Parallel()
 

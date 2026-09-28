@@ -100,6 +100,7 @@ const (
 	optionUseSIMD                          = "use-simd-hashing"
 	optionNameUpdateCheckURL               = "update-check-url"
 	optionNameUpdateCheckInterval          = "update-check-interval"
+	optionNameUpdateRestart                = "update-restart"
 
 	// blockchain-rpc
 	optionNameBlockchainRpcEndpoint    = "blockchain-rpc-endpoint"
@@ -401,8 +402,9 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionAutoTLSDomain, p2pforge.DefaultForgeDomain, "autotls domain")
 	cmd.Flags().String(optionAutoTLSRegistrationEndpoint, p2pforge.DefaultForgeEndpoint, "autotls registration endpoint")
 	cmd.Flags().String(optionAutoTLSCAEndpoint, p2pforge.DefaultCAEndpoint, "autotls certificate authority endpoint")
-	cmd.Flags().String(optionNameUpdateCheckURL, "", "base url of a swarm-oci-serve registry to check for newer bee releases, reported in metrics and logs; bee never downloads or installs them; empty disables the check")
-	cmd.Flags().Duration(optionNameUpdateCheckInterval, updatecheck.DefaultInterval, "interval between checks for newer bee releases, jittered by up to 10%")
+	cmd.Flags().String(optionNameUpdateCheckURL, "", "base url of a swarm-oci-serve registry to check for newer bee releases, reported in metrics and logs; bee never downloads or installs them; empty disables the check unless update-restart is active")
+	cmd.Flags().Duration(optionNameUpdateCheckInterval, updatecheck.DefaultInterval, "interval between checks for newer bee releases, jittered by up to 10%; shorter while an update restart is pending")
+	cmd.Flags().Bool(optionNameUpdateRestart, false, "when started by bee-runner, exit with status 0 in this node's slot of a newer signed release's rollout window, at a storage incentives safe point, so that the supervisor restarts bee-runner, which installs the release; checks the bee-runner registry if update-check-url is empty")
 	cmd.Flags().Bool(optionUseSIMD, false, "use SIMD BMT hasher (available only on linux amd64 platforms)")
 }
 

@@ -208,6 +208,8 @@ type Options struct {
 	UpdateCheckInterval           time.Duration
 	UpdateCheckRunner             updatecheck.Runner
 	UpdateCheckURL                string
+	UpdateRestart                 bool
+	UpdateRestartShutdown         func()
 	WarmupTime                    time.Duration
 	WelcomeMessage                string
 	WhitelistedWithdrawalAddress  []string
@@ -1362,11 +1364,26 @@ func NewBee(
 
 	}
 
+	// Created after the storage incentives agent, whose round state gates an
+	// update restart. Without an agent (light node, bootnode, incentives
+	// disabled) there is no round to protect and no gate.
+	var updateRestartGate updatecheck.Gate
+	if agent != nil {
+		updateRestartGate = agent.SafeToRestart
+	}
 	updateChecker, err := updatecheck.New(logger, updatecheck.Options{
 		URL:            o.UpdateCheckURL,
 		Interval:       o.UpdateCheckInterval,
 		CurrentVersion: bee.Version,
 		Runner:         o.UpdateCheckRunner,
+		Overlay:        swarmAddress,
+		Restart: updatecheck.RestartOptions{
+			Enabled:       o.UpdateRestart,
+			DataDir:       o.DataDir,
+			Gate:          updateRestartGate,
+			RoundDuration: o.BlockTime * time.Duration(storageincentives.DefaultBlocksPerRound),
+			Shutdown:      o.UpdateRestartShutdown,
+		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("update check: %w", err)

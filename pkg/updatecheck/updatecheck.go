@@ -11,7 +11,8 @@
 // descriptor (/release.json and /release.sig) and verifies it against that
 // key exactly as the runner does. A release is then newer when its descriptor
 // version, the Unix time it was published, is higher than the running one and
-// it is published on the runner's channel.
+// it is published on the runner's channel. This is also what the opt-in
+// update restart acts on: see RestartOptions.
 //
 // Without a release key the check is report-only and reads the registry's
 // unsigned /info summary, trusting the registry's own "verified" field.
@@ -35,6 +36,7 @@ import (
 
 	"github.com/coreos/go-semver/semver"
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -93,7 +95,8 @@ type Runner struct {
 // Options configure the update check service.
 type Options struct {
 	// URL is the base URL of the swarm-oci-serve registry. Empty disables
-	// the check.
+	// the check, unless the update restart is enabled: the registry of
+	// bee-runner is then used.
 	URL string
 	// Interval is the time between checks. Zero means DefaultInterval.
 	Interval time.Duration
@@ -105,6 +108,11 @@ type Options struct {
 	// client with a request timeout, a small response header limit and no
 	// cross-origin redirects.
 	Client *http.Client
+	// Restart configures the opt-in restart when a newer release is offered.
+	Restart RestartOptions
+	// Overlay is the node's overlay address. It places the node's restart
+	// deterministically within a release's rollout window.
+	Overlay swarm.Address
 }
 
 // release is what a check learns about the release the registry offers,
@@ -120,6 +128,26 @@ type release struct {
 	// Notes is optional free text, such as an operator action needed
 	// before upgrading.
 	Notes string `json:"notes"`
+	// CreatedAt is when the release was signed (RFC 3339). Update restarts
+	// are spread over the rollout window starting at this time.
+	CreatedAt string `json:"createdAt"`
+	// RolloutWindowSeconds is the time over which the publisher wants the
+	// fleet to restart for the release. Absent means DefaultRolloutWindow;
+	// zero means as soon as safe.
+	RolloutWindowSeconds *uint64 `json:"rolloutWindowSeconds"`
+}
+
+// rolloutWindow returns the release's rollout window and whether the release
+// sets one. Absurdly large windows are bounded by maxRolloutWindow.
+func (r *release) rolloutWindow() (time.Duration, bool) {
+	if r.RolloutWindowSeconds == nil {
+		return DefaultRolloutWindow, false
+	}
+	secs := *r.RolloutWindowSeconds
+	if secs > uint64(maxRolloutWindow/time.Second) {
+		return maxRolloutWindow, true
+	}
+	return time.Duration(secs) * time.Second, true
 }
 
 // onChannel reports whether the release is offered on channel.
@@ -161,6 +189,7 @@ type Service struct {
 	mu               sync.Mutex
 	lastAnnounce     string // latest release already announced in the log
 	lastOtherChannel uint64 // latest version on another channel already logged
+	restart          restartState
 }
 
 // New validates the options and starts the periodic check. The caller must
@@ -206,6 +235,10 @@ func newService(logger log.Logger, o Options) (*Service, error) {
 		trust = k
 	}
 
+	restartActive, err := resolveRestart(logger, &o, runner, trust != nil)
+	if err != nil {
+		return nil, err
+	}
 	if o.URL == "" {
 		return nil, nil
 	}
@@ -233,9 +266,12 @@ func newService(logger log.Logger, o Options) (*Service, error) {
 		ctx:           ctx,
 		cancel:        cancel,
 	}
+	if restartActive {
+		s.initRestart(o)
+	}
 	s.metrics.RunningReleaseVersion.Set(float64(runnerVersion))
 
-	logger.Info("checking for newer bee releases", "registry", s.registry, "interval", interval, "signed", trust != nil)
+	logger.Info("checking for newer bee releases", "registry", s.registry, "interval", interval, "signed", trust != nil, "update_restart", restartActive)
 	return s, nil
 }
 
@@ -283,7 +319,7 @@ func (s *Service) run(delay time.Duration) {
 		}
 
 		s.checkOnce(s.ctx)
-		timer.Reset(jitter(s.interval))
+		timer.Reset(jitter(s.nextInterval()))
 	}
 }
 
@@ -341,6 +377,8 @@ func (s *Service) checkOnce(ctx context.Context) {
 	if announce {
 		s.logger.Info("a newer bee release is available", append(res.logValues(), "notes", truncate(res.notes, maxLoggedNotes))...)
 	}
+
+	s.maybeScheduleRestart(res)
 }
 
 // announceOtherChannel logs, once per descriptor version, a newer release that
@@ -407,6 +445,11 @@ type result struct {
 	otherChannel bool
 	channels     []string
 	notes        string
+	// createdAt is the release's raw createdAt; window is its rollout window
+	// and windowSet whether the release sets it explicitly.
+	createdAt string
+	window    time.Duration
+	windowSet bool
 }
 
 func (r result) logValues() []any {
@@ -446,7 +489,9 @@ func (s *Service) check(ctx context.Context) (result, error) {
 		latestVersion:  r.Version,
 		channels:       r.Channels,
 		notes:          r.Notes,
+		createdAt:      r.CreatedAt,
 	}
+	res.window, res.windowSet = r.rolloutWindow()
 	if currentOK {
 		res.current = current.String()
 	}

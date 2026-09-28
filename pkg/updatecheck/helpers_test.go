@@ -44,6 +44,8 @@ type release struct {
 	window    *time.Duration
 }
 
+func window(d time.Duration) *time.Duration { return &d }
+
 // descriptor renders r as a signed release descriptor, as swarm-oci-publish
 // does.
 func descriptor(t *testing.T, r release) []byte {

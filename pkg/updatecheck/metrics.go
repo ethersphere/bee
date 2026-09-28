@@ -16,6 +16,9 @@ type metrics struct {
 
 	RunningReleaseVersion prometheus.Gauge
 	LatestReleaseVersion  prometheus.Gauge
+
+	RestartScheduled  prometheus.Gauge
+	RestartSuppressed prometheus.Gauge
 }
 
 func newMetrics() metrics {
@@ -51,6 +54,18 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "latest_release_version",
 			Help:      "Release descriptor version the registry offered at the last successful check, 0 if none.",
+		}),
+		RestartScheduled: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "restart_scheduled_timestamp_seconds",
+			Help:      "Unix time at which a scheduled restart to update bee fires, 0 if none is scheduled.",
+		}),
+		RestartSuppressed: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "restart_suppressed",
+			Help:      "1 if restarting to update is suppressed because previous restarts did not deliver the release or bee-runner rolled back from it, 0 otherwise.",
 		}),
 	}
 }

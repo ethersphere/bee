@@ -29,6 +29,10 @@ var (
 	MaxDescriptorSize = maxDescriptorSize
 	MaxSignatureSize  = maxSignatureSize
 	MaxHeaderBytes    = maxHeaderBytes
+
+	RestartSlot  = restartSlot
+	LateJitter   = lateJitter
+	RetryBackoff = retryBackoff
 )
 
 // NewUnstarted returns a service whose periodic check is not started, so that
@@ -56,13 +60,17 @@ func (s *Service) Check(ctx context.Context) (Result, error) {
 	}, err
 }
 
+func (s *Service) RestartActive() bool { return s.restart.active }
+
 func (s *Service) Registry() string { return s.registry }
 
 // Metrics is the state of the service's metrics.
 type Metrics struct {
-	Available     float64
-	CheckErrors   float64
-	LatestVersion float64
+	Available         float64
+	CheckErrors       float64
+	LatestVersion     float64
+	RestartScheduled  float64
+	RestartSuppressed float64
 }
 
 func (s *Service) MetricValues() Metrics {
@@ -82,6 +90,10 @@ func (s *Service) MetricValues() Metrics {
 				m.CheckErrors = v.GetCounter().GetValue()
 			case "bee_update_latest_release_version":
 				m.LatestVersion = v.GetGauge().GetValue()
+			case "bee_update_restart_scheduled_timestamp_seconds":
+				m.RestartScheduled = v.GetGauge().GetValue()
+			case "bee_update_restart_suppressed":
+				m.RestartSuppressed = v.GetGauge().GetValue()
 			}
 		}
 	}
