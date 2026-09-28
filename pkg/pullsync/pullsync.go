@@ -46,7 +46,7 @@ var ErrUnsolicitedChunk = errors.New("peer sent unsolicited chunk")
 const (
 	MaxCursor                       = math.MaxUint64
 	DefaultMaxPage           uint64 = 250
-	pageTimeout                     = time.Second
+	pageTimeout                     = time.Millisecond * 250
 	handleMaxChunksPerSecond        = 250
 	handleRequestsLimitRate         = time.Second / handleMaxChunksPerSecond // handle max `handleMaxChunksPerSecond` chunks per second per peer
 )
