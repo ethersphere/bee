@@ -438,8 +438,8 @@ func newTestWrappedBackendWithConfig(
 	backend, ok := NewBackend(
 		backendmock.New(opts...),
 		testMinimumGasTipCap,
-		testBlockTime,
-		testBlockSyncInterval,
+		blockTime,
+		blockSyncInterval,
 		0,
 	).(*wrappedBackend)
 	assert.True(t, ok)
