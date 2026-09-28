@@ -37,11 +37,11 @@ func TestChunkUploadDownload(t *testing.T) {
 	t.Parallel()
 
 	var (
-		chunksEndpoint           = "/chunks"
-		chunksResource           = func(a swarm.Address) string { return "/chunks/" + a.String() }
-		chunk                    = testingc.GenerateTestRandomChunk()
-		storerMock               = mockstorer.New()
-		client, _, _, chanStorer = newTestServer(t, testServerOptions{
+		chunksEndpoint              = "/chunks"
+		chunksResource              = func(a swarm.Address) string { return "/chunks/" + a.String() }
+		chunk                       = testingc.GenerateTestRandomChunk()
+		storerMock                  = mockstorer.New()
+		client, _, _, chanStorer, _ = newTestServer(t, testServerOptions{
 			Storer:       storerMock,
 			Post:         mockpost.New(mockpost.WithAcceptAll()),
 			DirectUpload: true,
@@ -104,7 +104,7 @@ func TestChunkUploadDownload(t *testing.T) {
 // nolint:paralleltest,tparallel
 func TestChunkHasHandler(t *testing.T) {
 	mockStorer := mockstorer.New()
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		Storer: mockStorer,
 	})
 
@@ -141,7 +141,7 @@ func TestChunkHasHandler(t *testing.T) {
 func TestChunkHandlersInvalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{})
+	client, _, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name    string
@@ -203,7 +203,7 @@ func TestChunkInvalidParams(t *testing.T) {
 	t.Run("batch unusable", func(t *testing.T) {
 		t.Parallel()
 
-		clientBatchUnusable, _, _, _ := newTestServer(t, testServerOptions{
+		clientBatchUnusable, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:     storerMock,
 			Logger:     logger,
 			Post:       mockpost.New(mockpost.WithAcceptAll()),
@@ -219,7 +219,7 @@ func TestChunkInvalidParams(t *testing.T) {
 	t.Run("batch exists", func(t *testing.T) {
 		t.Parallel()
 
-		clientBatchExists, _, _, _ := newTestServer(t, testServerOptions{
+		clientBatchExists, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:     storerMock,
 			Logger:     logger,
 			Post:       mockpost.New(mockpost.WithAcceptAll()),
@@ -235,7 +235,7 @@ func TestChunkInvalidParams(t *testing.T) {
 	t.Run("batch not found", func(t *testing.T) {
 		t.Parallel()
 
-		clientBatchNotFound, _, _, _ := newTestServer(t, testServerOptions{
+		clientBatchNotFound, _, _, _, _ := newTestServer(t, testServerOptions{
 			Storer: storerMock,
 			Logger: logger,
 			Post:   mockpost.New(),
@@ -253,11 +253,11 @@ func TestPreSignedUpload(t *testing.T) {
 	t.Parallel()
 
 	var (
-		chunksEndpoint  = "/chunks"
-		chunk           = testingc.GenerateTestRandomChunk()
-		storerMock      = mockstorer.New()
-		batchStore      = mockbatchstore.New()
-		client, _, _, _ = newTestServer(t, testServerOptions{
+		chunksEndpoint     = "/chunks"
+		chunk              = testingc.GenerateTestRandomChunk()
+		storerMock         = mockstorer.New()
+		batchStore         = mockbatchstore.New()
+		client, _, _, _, _ = newTestServer(t, testServerOptions{
 			Storer:     storerMock,
 			BatchStore: batchStore,
 		})

@@ -11,6 +11,7 @@ import (
 	"math"
 	"math/rand"
 	"reflect"
+	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -1776,6 +1777,47 @@ func TestAnnounceNeighborhoodToNeighbor(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("broadcast did not fire for broadcastTo peer")
+	}
+}
+
+// TestNeighborhoodBroadcasts checks the sets the periodic neighborhood gossip
+// sends out: every neighbor is told about all the other neighbors and never
+// about itself, and the input is not modified along the way.
+func TestNeighborhoodBroadcasts(t *testing.T) {
+	t.Parallel()
+
+	neighbors := make([]swarm.Address, 4)
+	for i := range neighbors {
+		neighbors[i] = swarm.RandAddress(t)
+	}
+	input := slices.Clone(neighbors)
+
+	broadcasts := kademlia.NeighborhoodBroadcasts(neighbors)
+
+	if len(broadcasts) != len(neighbors) {
+		t.Fatalf("got %d broadcasts, want %d", len(broadcasts), len(neighbors))
+	}
+	for i, others := range broadcasts {
+		want := slices.Concat(input[:i], input[i+1:])
+		if !slices.EqualFunc(others, want, swarm.Address.Equal) {
+			t.Fatalf("neighbor %d: got %v, want %v", i, others, want)
+		}
+	}
+	if !slices.EqualFunc(neighbors, input, swarm.Address.Equal) {
+		t.Fatalf("input was modified: got %v, want %v", neighbors, input)
+	}
+}
+
+func TestNeighborhoodBroadcastsSmall(t *testing.T) {
+	t.Parallel()
+
+	if got := kademlia.NeighborhoodBroadcasts(nil); len(got) != 0 {
+		t.Fatalf("no neighbors: got %v, want none", got)
+	}
+
+	got := kademlia.NeighborhoodBroadcasts([]swarm.Address{swarm.RandAddress(t)})
+	if len(got) != 1 || len(got[0]) != 0 {
+		t.Fatalf("single neighbor: got %v, want one empty set", got)
 	}
 }
 

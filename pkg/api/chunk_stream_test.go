@@ -30,8 +30,8 @@ func TestChunkUploadStream(t *testing.T) {
 	wsHeaders.Set(api.SwarmPostageBatchIdHeader, batchOkStr)
 
 	var (
-		storerMock               = mockstorer.New()
-		_, wsConn, _, chanStorer = newTestServer(t, testServerOptions{
+		storerMock                  = mockstorer.New()
+		_, wsConn, _, chanStorer, _ = newTestServer(t, testServerOptions{
 			Storer:       storerMock,
 			Post:         mockpost.New(mockpost.WithAcceptAll()),
 			WsPath:       "/chunks/stream",
@@ -149,8 +149,8 @@ func TestChunkUploadStreamWithStamp(t *testing.T) {
 	wsHeaders.Set(api.ContentTypeHeader, "application/octet-stream")
 
 	var (
-		storerMock               = mockstorer.New()
-		_, wsConn, _, chanStorer = newTestServer(t, testServerOptions{
+		storerMock                  = mockstorer.New()
+		_, wsConn, _, chanStorer, _ = newTestServer(t, testServerOptions{
 			Storer:       storerMock,
 			Post:         mockpost.New(mockpost.WithAcceptAll()),
 			BatchStore:   batchStore,
@@ -206,8 +206,8 @@ func TestChunkUploadStreamInvalidStamp(t *testing.T) {
 	wsHeaders.Set(api.ContentTypeHeader, "application/octet-stream")
 
 	var (
-		storerMock      = mockstorer.New()
-		_, wsConn, _, _ = newTestServer(t, testServerOptions{
+		storerMock         = mockstorer.New()
+		_, wsConn, _, _, _ = newTestServer(t, testServerOptions{
 			Storer:       storerMock,
 			Post:         mockpost.New(mockpost.WithAcceptAll()),
 			WsPath:       "/chunks/stream",

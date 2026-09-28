@@ -39,7 +39,7 @@ func TestChequebookBalance(t *testing.T) {
 		return returnedAvailableBalance, nil
 	}
 
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		ChequebookOpts: []mock.Option{
 			mock.WithChequebookBalanceFunc(chequebookBalanceFunc),
 			mock.WithChequebookAvailableBalanceFunc(chequebookAvailableBalanceFunc),
@@ -69,7 +69,7 @@ func TestChequebookBalanceError(t *testing.T) {
 		return big.NewInt(0), wantErr
 	}
 
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		ChequebookOpts: []mock.Option{mock.WithChequebookBalanceFunc(chequebookBalanceFunc)},
 	})
 
@@ -92,7 +92,7 @@ func TestChequebookAvailableBalanceError(t *testing.T) {
 		return nil, errors.New("New errors")
 	}
 
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		ChequebookOpts: []mock.Option{
 			mock.WithChequebookBalanceFunc(chequebookBalanceFunc),
 			mock.WithChequebookAvailableBalanceFunc(chequebookAvailableBalanceFunc),
@@ -114,7 +114,7 @@ func TestChequebookAddress(t *testing.T) {
 		return common.HexToAddress("0xfffff")
 	}
 
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		ChequebookOpts: []mock.Option{mock.WithChequebookAddressFunc(chequebookAddressFunc)},
 	})
 
@@ -149,7 +149,7 @@ func TestChequebookWithdraw(t *testing.T) {
 			return common.Hash{}, nil
 		}
 
-		testServer, _, _, _ := newTestServer(t, testServerOptions{
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			ChequebookOpts: []mock.Option{mock.WithChequebookWithdrawFunc(chequebookWithdrawFunc)},
 		})
 
@@ -178,7 +178,7 @@ func TestChequebookWithdraw(t *testing.T) {
 			return common.Hash{}, nil
 		}
 
-		testServer, _, _, _ := newTestServer(t, testServerOptions{
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			ChequebookOpts: []mock.Option{mock.WithChequebookWithdrawFunc(chequebookWithdrawFunc)},
 		})
 
@@ -211,7 +211,7 @@ func TestChequebookDeposit(t *testing.T) {
 			return common.Hash{}, nil
 		}
 
-		testServer, _, _, _ := newTestServer(t, testServerOptions{
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			ChequebookOpts: []mock.Option{mock.WithChequebookDepositFunc(chequebookDepositFunc)},
 		})
 
@@ -241,7 +241,7 @@ func TestChequebookDeposit(t *testing.T) {
 			return common.Hash{}, nil
 		}
 
-		testServer, _, _, _ := newTestServer(t, testServerOptions{
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			ChequebookOpts: []mock.Option{mock.WithChequebookDepositFunc(chequebookDepositFunc)},
 		})
 
@@ -337,7 +337,7 @@ func TestChequebookLastCheques(t *testing.T) {
 		return lastReceivedCheques, nil
 	}
 
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		SwapOpts: []swapmock.Option{swapmock.WithLastReceivedChequesFunc(lastReceivedChequesFunc), swapmock.WithLastSentChequesFunc(lastSentChequesFunc)},
 	})
 
@@ -443,7 +443,7 @@ func TestChequebookLastChequesPeer(t *testing.T) {
 		return lastReceivedCheque, nil
 	}
 
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		SwapOpts: []swapmock.Option{swapmock.WithLastReceivedChequeFunc(lastReceivedChequeFunc), swapmock.WithLastSentChequeFunc(lastSentChequeFunc)},
 	})
 
@@ -481,7 +481,7 @@ func TestChequebookCashout(t *testing.T) {
 		return deployCashingHash, nil
 	}
 
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		SwapOpts: []swapmock.Option{swapmock.WithCashChequeFunc(cashChequeFunc)},
 	})
 
@@ -511,7 +511,7 @@ func TestChequebookCashout_CustomGas(t *testing.T) {
 		return deployCashingHash, nil
 	}
 
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		SwapOpts: []swapmock.Option{swapmock.WithCashChequeFunc(cashChequeFunc)},
 	})
 
@@ -584,7 +584,7 @@ func TestChequebookCashoutStatus(t *testing.T) {
 			return status, nil
 		}
 
-		testServer, _, _, _ := newTestServer(t, testServerOptions{
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			SwapOpts: []swapmock.Option{swapmock.WithCashoutStatusFunc(cashoutStatusFunc)},
 		})
 
@@ -631,7 +631,7 @@ func TestChequebookCashoutStatus(t *testing.T) {
 			return status, nil
 		}
 
-		testServer, _, _, _ := newTestServer(t, testServerOptions{
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			SwapOpts: []swapmock.Option{swapmock.WithCashoutStatusFunc(cashoutStatusFunc)},
 		})
 
@@ -669,7 +669,7 @@ func TestChequebookCashoutStatus(t *testing.T) {
 			return status, nil
 		}
 
-		testServer, _, _, _ := newTestServer(t, testServerOptions{
+		testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 			SwapOpts: []swapmock.Option{swapmock.WithCashoutStatusFunc(cashoutStatusFunc)},
 		})
 
@@ -696,7 +696,7 @@ func TestChequebookCashoutStatus(t *testing.T) {
 func Test_chequebookLastPeerHandler_invalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{})
+	client, _, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name string
