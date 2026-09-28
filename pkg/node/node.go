@@ -77,6 +77,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
+	"github.com/ethersphere/bee/v2/pkg/updatecheck"
 	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
 	"github.com/ethersphere/bee/v2/pkg/util/ioutil"
 	"github.com/ethersphere/bee/v2/pkg/util/nbhdutil"
@@ -120,6 +121,7 @@ type Bee struct {
 	priceOracleCloser        io.Closer
 	hiveCloser               io.Closer
 	saludCloser              io.Closer
+	updateCheckCloser        io.Closer
 	storageIncetivesCloser   io.Closer
 	pushSyncCloser           io.Closer
 	retrievalCloser          io.Closer
@@ -203,6 +205,9 @@ type Options struct {
 	TracingSamplingRatio          float64
 	TracingServiceName            string
 	TrxDebugMode                  bool
+	UpdateCheckInterval           time.Duration
+	UpdateCheckRunner             updatecheck.Runner
+	UpdateCheckURL                string
 	WarmupTime                    time.Duration
 	WelcomeMessage                string
 	WhitelistedWithdrawalAddress  []string
@@ -1356,6 +1361,21 @@ func NewBee(
 		}
 
 	}
+
+	updateChecker, err := updatecheck.New(logger, updatecheck.Options{
+		URL:            o.UpdateCheckURL,
+		Interval:       o.UpdateCheckInterval,
+		CurrentVersion: bee.Version,
+		Runner:         o.UpdateCheckRunner,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("update check: %w", err)
+	}
+	if updateChecker != nil {
+		// Assigned only when running: a nil *Service in the interface would
+		// not be skipped by Shutdown's nil check.
+		b.updateCheckCloser = updateChecker
+	}
 	multiResolver := multiresolver.NewMultiResolver(
 		multiresolver.WithConnectionConfigs(o.ResolverConnectionCfgs),
 		multiresolver.WithLogger(o.Logger),
@@ -1398,6 +1418,9 @@ func NewBee(
 		apiService.MustRegisterMetrics(localStore.Metrics()...)
 		apiService.MustRegisterMetrics(kad.Metrics()...)
 		apiService.MustRegisterMetrics(saludService.Metrics()...)
+		if updateChecker != nil {
+			apiService.MustRegisterMetrics(updateChecker.Metrics()...)
+		}
 		apiService.MustRegisterMetrics(stateStoreMetrics.Metrics()...)
 		apiService.MustRegisterMetrics(getMetrics(nodeMetrics)...)
 
@@ -1487,6 +1510,7 @@ func (b *Bee) shutdownClosers() []namedCloser {
 		{b.retrievalCloser, "retrieval"},
 		{b.hiveCloser, "hive"},
 		{b.saludCloser, "salud"},
+		{b.updateCheckCloser, "update check"},
 	}
 }
 

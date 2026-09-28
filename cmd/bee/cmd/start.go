@@ -35,6 +35,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/node"
 	"github.com/ethersphere/bee/v2/pkg/resolver/multiresolver"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/updatecheck"
 	"github.com/kardianos/service"
 	"github.com/spf13/cobra"
 )
@@ -362,6 +363,9 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		TracingSamplingRatio:          c.config.GetFloat64(configKeyTracingSamplingRatio),
 		TracingServiceName:            c.config.GetString(configKeyTracingServiceName),
 		TrxDebugMode:                  c.config.GetBool(optionNameTransactionDebugMode),
+		UpdateCheckInterval:           c.config.GetDuration(optionNameUpdateCheckInterval),
+		UpdateCheckRunner:             runnerHandoff(),
+		UpdateCheckURL:                c.config.GetString(optionNameUpdateCheckURL),
 		WarmupTime:                    c.config.GetDuration(optionWarmUpTime),
 		WelcomeMessage:                c.config.GetString(optionWelcomeMessage),
 		WhitelistedWithdrawalAddress:  c.config.GetStringSlice(optionNameWhitelistedWithdrawalAddress),
@@ -482,6 +486,21 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 		pssPrivateKey:    pssPrivateKey,
 		session:          session,
 	}, nil
+}
+
+// runnerHandoff returns what bee-runner, when it started bee, handed over in
+// the environment. The variable names are the runner's contract; they are
+// read here rather than through the configuration so that a config file or
+// flag cannot pose as the runner.
+func runnerHandoff() updatecheck.Runner {
+	return updatecheck.Runner{
+		Started:    os.Getenv("BEE_RUNNER") == "1",
+		Registry:   os.Getenv("BEE_RUNNER_REGISTRY"),
+		Channel:    os.Getenv("BEE_RUNNER_CHANNEL"),
+		Version:    os.Getenv("BEE_RUNNER_VERSION"),
+		Pubkey:     os.Getenv("BEE_RUNNER_PUBKEY"),
+		RolledBack: os.Getenv("BEE_RUNNER_ROLLED_BACK"),
+	}
 }
 
 type networkConfig struct {
