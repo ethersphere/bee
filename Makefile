@@ -13,6 +13,9 @@ REACHABILITY_OVERRIDE_PUBLIC ?= false
 BATCHFACTOR_OVERRIDE_PUBLIC ?= 5
 BEE_IMAGE ?= ethersphere/bee:latest
 PLATFORM ?= linux/amd64
+# go test defaults to 10m per package binary, which the pkg/api suite exceeds
+# under the race detector on the slower CI runners.
+TEST_TIMEOUT ?= 30m
 
 BEE_API_VERSION ?= "$(shell grep '^  version:' openapi/Swarm.yaml | awk '{print $$2}')"
 
@@ -99,9 +102,9 @@ check-whitespace:
 .PHONY: test-race
 test-race:
 ifdef cover
-	$(GO) test -race -failfast -coverprofile=cover.out -v ./...
+	$(GO) test -race -failfast -timeout $(TEST_TIMEOUT) -coverprofile=cover.out -v ./...
 else
-	$(GO) test -race -failfast -v ./...
+	$(GO) test -race -failfast -timeout $(TEST_TIMEOUT) -v ./...
 endif
 
 .PHONY: test-integration
@@ -127,9 +130,9 @@ endif
 .PHONY: test-ci-race
 test-ci-race:
 ifdef cover
-	$(GO) test -race -coverprofile=cover.out ./...
+	$(GO) test -race -timeout $(TEST_TIMEOUT) -coverprofile=cover.out ./...
 else
-	$(GO) test -race ./...
+	$(GO) test -race -timeout $(TEST_TIMEOUT) ./...
 endif
 
 .PHONY: build

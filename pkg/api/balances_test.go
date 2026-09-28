@@ -31,7 +31,7 @@ func TestBalances(t *testing.T) {
 		return ret, err
 	}
 
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		AccountingOpts: []mock.Option{mock.WithCompensatedBalancesFunc(compensatedBalancesFunc)},
 	})
 
@@ -70,7 +70,7 @@ func TestBalancesError(t *testing.T) {
 	compensatedBalancesFunc := func() (ret map[string]*big.Int, err error) {
 		return nil, wantErr
 	}
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		AccountingOpts: []mock.Option{mock.WithCompensatedBalancesFunc(compensatedBalancesFunc)},
 	})
 
@@ -89,7 +89,7 @@ func TestBalancesPeers(t *testing.T) {
 	compensatedBalanceFunc := func(swarm.Address) (*big.Int, error) {
 		return big.NewInt(100000000000000000), nil
 	}
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		AccountingOpts: []mock.Option{mock.WithCompensatedBalanceFunc(compensatedBalanceFunc)},
 	})
 
@@ -109,7 +109,7 @@ func TestBalancesPeersError(t *testing.T) {
 	compensatedBalanceFunc := func(swarm.Address) (*big.Int, error) {
 		return nil, wantErr
 	}
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		AccountingOpts: []mock.Option{mock.WithCompensatedBalanceFunc(compensatedBalanceFunc)},
 	})
 
@@ -128,7 +128,7 @@ func TestBalancesPeersNoBalance(t *testing.T) {
 	compensatedBalanceFunc := func(swarm.Address) (*big.Int, error) {
 		return nil, accounting.ErrPeerNoBalance
 	}
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		AccountingOpts: []mock.Option{mock.WithCompensatedBalanceFunc(compensatedBalanceFunc)},
 	})
 
@@ -180,7 +180,7 @@ func TestConsumedBalances(t *testing.T) {
 		ret["PARTY"] = big.NewInt(0)
 		return ret, err
 	}
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		AccountingOpts: []mock.Option{mock.WithBalancesFunc(balancesFunc)},
 	})
 
@@ -219,7 +219,7 @@ func TestConsumedError(t *testing.T) {
 	balancesFunc := func() (ret map[string]*big.Int, err error) {
 		return nil, wantErr
 	}
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		AccountingOpts: []mock.Option{mock.WithBalancesFunc(balancesFunc)},
 	})
 
@@ -238,7 +238,7 @@ func TestConsumedPeers(t *testing.T) {
 	balanceFunc := func(swarm.Address) (*big.Int, error) {
 		return big.NewInt(1000000000000000000), nil
 	}
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		AccountingOpts: []mock.Option{mock.WithBalanceFunc(balanceFunc)},
 	})
 
@@ -258,7 +258,7 @@ func TestConsumedPeersError(t *testing.T) {
 	balanceFunc := func(swarm.Address) (*big.Int, error) {
 		return nil, wantErr
 	}
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		AccountingOpts: []mock.Option{mock.WithBalanceFunc(balanceFunc)},
 	})
 
@@ -277,7 +277,7 @@ func TestConsumedPeersNoBalance(t *testing.T) {
 	balanceFunc := func(swarm.Address) (*big.Int, error) {
 		return nil, accounting.ErrPeerNoBalance
 	}
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
+	testServer, _, _, _, _ := newTestServer(t, testServerOptions{
 		AccountingOpts: []mock.Option{mock.WithBalanceFunc(balanceFunc)},
 	})
 
@@ -292,7 +292,7 @@ func TestConsumedPeersNoBalance(t *testing.T) {
 func Test_peerBalanceHandler_invalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{})
+	client, _, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name string
@@ -340,7 +340,7 @@ func Test_peerBalanceHandler_invalidInputs(t *testing.T) {
 func Test_compensatedPeerBalanceHandler_invalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{})
+	client, _, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name string

@@ -102,6 +102,8 @@ data-dir: "./data"
 # postage-stamp-address: ""
 ## postage stamp contract start block number
 # postage-stamp-start-block: "0"
+## maximum number of blocks per eth_getLogs request when syncing postage contract events
+# postage-sync-block-range: 1000
 ## skip postage snapshot
 # skip-postage-snapshot: false
 ## forces the node to resync postage contract data
@@ -146,6 +148,7 @@ config: "./bee.yaml"
 # password: ""
 ## path to a file that contains password for decrypting keys
 password-file: "./password"
+
 
 ## ── Logging / tracing ─────────────────────────────────────────────────────────
 ## log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace

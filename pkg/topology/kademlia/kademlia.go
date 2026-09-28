@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"math/rand"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 
@@ -63,7 +64,7 @@ const (
 	defaultShortRetry                  = 10 * time.Second
 	defaultTimeToRetry                 = 2 * defaultShortRetry
 	defaultPruneWakeup                 = 5 * time.Minute
-	defaultBroadcastBinSize            = 2
+	defaultBroadcastBinSize            = 6
 )
 
 var (
@@ -537,6 +538,34 @@ func (k *Kad) markConnectedPeersSeen() error {
 	return k.addressBook.Seen(peers...)
 }
 
+// neighborhoodBroadcasts returns, for every neighbor, the other neighbors it
+// should be told about.
+func neighborhoodBroadcasts(neighbors []swarm.Address) [][]swarm.Address {
+	broadcasts := make([][]swarm.Address, len(neighbors))
+	for i := range neighbors {
+		broadcasts[i] = slices.Concat(neighbors[:i], neighbors[i+1:])
+	}
+	return broadcasts
+}
+
+// rebroadcastNeighborhood tells each neighbor about the other neighbors.
+func (k *Kad) rebroadcastNeighborhood(ctx context.Context) {
+	var neighbors []swarm.Address
+	_ = k.connectedPeers.EachBin(func(addr swarm.Address, bin uint8) (stop bool, jumpToNext bool, err error) {
+		if bin < k.neighborhoodDepth() {
+			return true, false, nil
+		}
+		neighbors = append(neighbors, addr)
+		return false, false, nil
+	})
+	broadcasts := neighborhoodBroadcasts(neighbors)
+	for i, peer := range neighbors {
+		if err := k.discovery.BroadcastPeers(ctx, peer, broadcasts[i]...); err != nil {
+			k.logger.Debug("broadcast neighborhood failure", "peer_address", peer, "error", err)
+		}
+	}
+}
+
 // manage is a forever loop that manages the connection to new peers
 // once they get added or once others leave.
 func (k *Kad) manage() {
@@ -617,19 +646,7 @@ func (k *Kad) manage() {
 			case <-k.quit:
 				return
 			case <-time.After(15 * time.Minute):
-				var neighbors []swarm.Address
-				_ = k.connectedPeers.EachBin(func(addr swarm.Address, bin uint8) (stop bool, jumpToNext bool, err error) {
-					if bin < k.neighborhoodDepth() {
-						return true, false, nil
-					}
-					neighbors = append(neighbors, addr)
-					return false, false, nil
-				})
-				for i, peer := range neighbors {
-					if err := k.discovery.BroadcastPeers(ctx, peer, append(neighbors[:i], neighbors[i+1:]...)...); err != nil {
-						k.logger.Debug("broadcast neighborhood failure", "peer_address", peer, "error", err)
-					}
-				}
+				k.rebroadcastNeighborhood(ctx)
 			}
 		}
 	})
@@ -1081,6 +1098,12 @@ func (k *Kad) Announce(ctx context.Context, peer swarm.Address, fullnode bool) e
 	depth := k.neighborhoodDepth()
 	isNeighbor := swarm.Proximity(peer.Bytes(), k.base.Bytes()) >= depth
 
+	if isNeighbor {
+		k.metrics.AnnounceIsNeighborTotal.WithLabelValues("true").Inc()
+	} else {
+		k.metrics.AnnounceIsNeighborTotal.WithLabelValues("false").Inc()
+	}
+
 outer:
 	for bin := range swarm.MaxBins {
 
@@ -1091,11 +1114,15 @@ outer:
 
 		if bin >= depth && isNeighbor {
 			connectedPeers = k.binPeers(bin, false) // broadcast all neighborhood peers
+			k.recordAnnounceBinSelection("full", len(connectedPeers), len(connectedPeers))
 		} else {
-			connectedPeers, err = randomSubset(k.binPeers(bin, true), k.opt.BroadcastBinSize)
+			binPeers := k.binPeers(bin, true)
+			connectedPeers, err = randomSubset(binPeers, k.opt.BroadcastBinSize)
 			if err != nil {
+				k.metrics.AnnounceErrorsTotal.WithLabelValues("random_subset").Inc()
 				return err
 			}
+			k.recordAnnounceBinSelection("subset", len(binPeers), len(connectedPeers))
 		}
 
 		for _, connectedPeer := range connectedPeers {
@@ -1140,13 +1167,24 @@ outer:
 	default:
 	}
 
+	k.metrics.AnnouncePeersSentToNewPeer.Observe(float64(len(addrs)))
+
 	err := k.discovery.BroadcastPeers(ctx, peer, addrs...)
 	if err != nil {
+		k.metrics.AnnounceErrorsTotal.WithLabelValues("broadcast_to_new").Inc()
 		k.logger.Error(err, "could not broadcast to peer", "peer_address", peer)
 		_ = k.p2p.Disconnect(peer, "failed broadcasting to peer")
 	}
 
 	return err
+}
+
+func (k *Kad) recordAnnounceBinSelection(mode string, available, selected int) {
+	if available == 0 {
+		return
+	}
+	k.metrics.AnnounceBinPeersAvailable.WithLabelValues(mode).Observe(float64(available))
+	k.metrics.AnnounceBinPeersSelected.WithLabelValues(mode).Observe(float64(selected))
 }
 
 // AnnounceTo announces a selected peer to another.
