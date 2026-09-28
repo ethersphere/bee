@@ -62,3 +62,36 @@ jobs:
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
           GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
           BEE_API_VERSION: ${{ env.BEE_API_VERSION }}
+
+  # Publish the release to Swarm for bee-runner: dispatches the mirror-bee
+  # workflow in ethersphere/swarm-oci-registry, which re-verifies this
+  # release's GPG-signed checksums, uploads the binaries and image to Swarm,
+  # signs its own descriptor and updates the channel feed. Runs after
+  # goreleaser, so the GitHub release and the Docker image already exist.
+  #
+  # Needs the repository secret SWARM_OCI_DISPATCH_TOKEN (a token that can only
+  # run workflows in ethersphere/swarm-oci-registry). Without it the job only
+  # prints a notice; it never fails a bee release.
+  mirror:
+    needs: goreleaser
+    if: github.repository == 'ethersphere/bee' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Trigger mirror-bee
+        env:
+          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ secrets.SWARM_OCI_DISPATCH_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::notice::SWARM_OCI_DISPATCH_TOKEN is not set; this release is not published to Swarm"
+            exit 0
+          fi
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$ ]] || { echo "::notice::tag $TAG is not a release tag; not publishing to Swarm"; exit 0; }
+          version="${TAG#v}"
+          channel=stable
+          [[ "$version" == *-rc* ]] && channel=rc
+          gh workflow run mirror-bee -R ethersphere/swarm-oci-registry --ref master \
+            -f bee_version="$version" -f channels="$channel"
+          echo "dispatched mirror-bee for $version on channel $channel" >> "$GITHUB_STEP_SUMMARY"
