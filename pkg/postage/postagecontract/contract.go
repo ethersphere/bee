@@ -52,6 +52,7 @@ type Interface interface {
 
 type PostageBatchExpirer interface {
 	ExpireBatches(ctx context.Context) error
+	ExpectedReward(ctx context.Context) (*big.Int, error)
 }
 
 type postageContract struct {
@@ -321,6 +322,15 @@ func (c *postageContract) getProperty(ctx context.Context, propertyName string, 
 	return nil
 }
 
+// ExpectedReward returns the current redistribution pot (totalPot) from the postage stamp contract.
+func (c *postageContract) ExpectedReward(ctx context.Context) (*big.Int, error) {
+	pot := new(big.Int)
+	if err := c.getProperty(ctx, "totalPot", pot); err != nil {
+		return nil, fmt.Errorf("totalPot: %w", err)
+	}
+	return pot, nil
+}
+
 func (c *postageContract) getMinInitialBalance(ctx context.Context) (uint64, error) {
 	var lastPrice uint64
 	err := c.getProperty(ctx, "lastPrice", &lastPrice)
@@ -549,4 +559,34 @@ func (m *noOpPostageContract) MinimumValidityBlocks(context.Context) (uint64, er
 
 func (m *noOpPostageContract) ExpireBatches(context.Context) error {
 	return ErrChainDisabled
+}
+
+func (m *noOpPostageContract) ExpectedReward(context.Context) (*big.Int, error) {
+	return nil, ErrChainDisabled
+}
+
+func LookupERC20Address(ctx context.Context, transactionService transaction.Service, postageStampContractAddress common.Address, postageStampContractABI abi.ABI, chainEnabled bool) (common.Address, error) {
+	if !chainEnabled {
+		return common.Address{}, nil
+	}
+
+	callData, err := postageStampContractABI.Pack("bzzToken")
+	if err != nil {
+		return common.Address{}, err
+	}
+
+	request := &transaction.TxRequest{
+		To:       &postageStampContractAddress,
+		Data:     callData,
+		GasPrice: nil,
+		GasLimit: 0,
+		Value:    big.NewInt(0),
+	}
+
+	data, err := transactionService.Call(ctx, request)
+	if err != nil {
+		return common.Address{}, err
+	}
+
+	return common.BytesToAddress(data), nil
 }

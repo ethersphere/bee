@@ -19,6 +19,7 @@ type contractMock struct {
 	expireBatches         func(ctx context.Context) error
 	paused                func(ctx context.Context) (bool, error)
 	minimumValidityBlocks func(ctx context.Context) (uint64, error)
+	expectedReward        func(ctx context.Context) (*big.Int, error)
 }
 
 func (c *contractMock) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) (common.Hash, []byte, error) {
@@ -43,6 +44,13 @@ func (s *contractMock) Paused(ctx context.Context) (bool, error) {
 
 func (c *contractMock) MinimumValidityBlocks(ctx context.Context) (uint64, error) {
 	return c.minimumValidityBlocks(ctx)
+}
+
+func (c *contractMock) ExpectedReward(ctx context.Context) (*big.Int, error) {
+	if c.expectedReward != nil {
+		return c.expectedReward(ctx)
+	}
+	return big.NewInt(1_000_000), nil
 }
 
 // Option is an option passed to New
@@ -92,5 +100,11 @@ func WithPaused(f func(ctx context.Context) (bool, error)) Option {
 func WithMinimumValidityBlocksFunc(f func(ctx context.Context) (uint64, error)) Option {
 	return func(mock *contractMock) {
 		mock.minimumValidityBlocks = f
+	}
+}
+
+func WithExpectedRewardFunc(f func(ctx context.Context) (*big.Int, error)) Option {
+	return func(m *contractMock) {
+		m.expectedReward = f
 	}
 }
