@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
+	"golang.org/x/sync/errgroup"
 )
 
 func TestReserveSampler(t *testing.T) {
@@ -75,6 +76,13 @@ func TestReserveSampler(t *testing.T) {
 
 			assertValidSample(t, sample, radius, anchor)
 			assertSampleNoErrors(t, sample)
+
+			if sample.Stats.LocationTableSize == 0 {
+				t.Fatal("sample should be read through the location table")
+			}
+			if sample.Stats.LocationTableMisses != 0 {
+				t.Fatalf("got %d location table misses on a quiescent reserve", sample.Stats.LocationTableMisses)
+			}
 
 			if sample.Stats.NewIgnored != 0 {
 				t.Fatalf("sample should not have ignored chunks")
@@ -685,6 +693,116 @@ func BenchmarkSampleHashing(b *testing.B) {
 				if _, err := storer.MakeSampleUsingChunks(chunks, anchor); err != nil {
 					b.Fatal(err)
 				}
+			}
+		})
+	}
+}
+
+// fillSampleReserve puts chunkCountPerPO CAC or SOC chunks in each of the first
+// maxPO bins of baseAddr and returns the anchor and consensus time to sample with.
+func fillSampleReserve(t *testing.T, st *storer.DB, baseAddr swarm.Address) ([]byte, uint64) {
+	t.Helper()
+	const chunkCountPerPO, maxPO = 10, 10
+
+	timeVar := uint64(time.Now().UnixNano())
+	putter := st.ReservePutter()
+	for po := range maxPO {
+		for range chunkCountPerPO {
+			ch := chunk.GenerateValidRandomChunkAt(t, baseAddr, po).WithBatch(3, 2, false)
+			if rand.Intn(2) == 0 {
+				ch = chunk.GenerateTestRandomSoChunk(t, ch)
+			}
+			ch = ch.WithStamp(postagetesting.MustNewStampWithTimestamp(timeVar - 1))
+			if err := putter.Put(context.Background(), ch); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	return swarm.RandAddressAt(t, baseAddr, 5).Bytes(), timeVar
+}
+
+func sampleTestStorers(t *testing.T) map[string]func(*testing.T, swarm.Address) *storer.DB {
+	t.Helper()
+	open := func(mk func(testing.TB, *storer.Options) func() (*storer.DB, error)) func(*testing.T, swarm.Address) *storer.DB {
+		return func(t *testing.T, baseAddr swarm.Address) *storer.DB {
+			t.Helper()
+			opts := dbTestOps(baseAddr, 1000, nil, nil, time.Second)
+			opts.ValidStamp = func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil }
+			st, err := mk(t, opts)()
+			if err != nil {
+				t.Fatal(err)
+			}
+			return st
+		}
+	}
+	return map[string]func(*testing.T, swarm.Address) *storer.DB{
+		"disk": open(diskStorer),
+		"mem":  open(memStorer),
+	}
+}
+
+func TestReserveSamplerSamplingViewEquivalence(t *testing.T) {
+	t.Parallel()
+
+	for name, open := range sampleTestStorers(t) {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			baseAddr := swarm.RandAddress(t)
+			st := open(t, baseAddr)
+			anchor, timeVar := fillSampleReserve(t, st, baseAddr)
+
+			withView, err := st.ReserveSample(context.Background(), anchor, 5, timeVar, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if withView.Stats.LocationTableSize == 0 {
+				t.Fatal("first sample should use the location table")
+			}
+
+			st.DisableSamplingView()
+			withIndex, err := st.ReserveSample(context.Background(), anchor, 5, timeVar, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if withIndex.Stats.LocationTableSize != 0 {
+				t.Fatal("second sample should read through the retrieval index")
+			}
+
+			if diff := cmp.Diff(withIndex.Items, withView.Items, cmp.AllowUnexported(postage.Stamp{})); diff != "" {
+				t.Fatalf("samples differ (-index +view):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestReserveSamplerConcurrentRuns(t *testing.T) {
+	t.Parallel()
+
+	for name, open := range sampleTestStorers(t) {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			baseAddr := swarm.RandAddress(t)
+			st := open(t, baseAddr)
+			anchor, timeVar := fillSampleReserve(t, st, baseAddr)
+
+			samples := make([]storer.Sample, 2)
+			var g errgroup.Group
+			for i := range samples {
+				g.Go(func() error {
+					s, err := st.ReserveSample(context.Background(), anchor, 5, timeVar, nil)
+					samples[i] = s
+					return err
+				})
+			}
+			if err := g.Wait(); err != nil {
+				t.Fatal(err)
+			}
+
+			assertSampleNoErrors(t, samples[0])
+			if diff := cmp.Diff(samples[0].Items, samples[1].Items, cmp.AllowUnexported(postage.Stamp{})); diff != "" {
+				t.Fatalf("concurrent samples differ:\n%s", diff)
 			}
 		})
 	}

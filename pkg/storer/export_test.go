@@ -48,3 +48,9 @@ func DefaultOptions() *Options {
 func TransformedAddress(hasher bmt.Hasher, ch swarm.Chunk, chType swarm.ChunkType) (swarm.Address, error) {
 	return transformedAddress(hasher, ch.Address(), ch.Data(), chType)
 }
+
+// DisableSamplingView makes ReserveSample read every chunk through the
+// retrieval index, as it did before the sampling view.
+func (db *DB) DisableSamplingView() {
+	db.samplingViewDisabled = true
+}

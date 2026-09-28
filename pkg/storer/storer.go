@@ -19,14 +19,12 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
-	"github.com/ethersphere/bee/v2/pkg/stabilization"
-	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
-
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/pusher"
 	"github.com/ethersphere/bee/v2/pkg/retrieval"
 	"github.com/ethersphere/bee/v2/pkg/sharky"
+	"github.com/ethersphere/bee/v2/pkg/stabilization"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/leveldbstore"
 	"github.com/ethersphere/bee/v2/pkg/storage/migration"
@@ -34,6 +32,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/events"
 	pinstore "github.com/ethersphere/bee/v2/pkg/storer/internal/pinning"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/upload"
 	localmigration "github.com/ethersphere/bee/v2/pkg/storer/migration"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -450,6 +449,8 @@ type DB struct {
 	reserveOptions   reserveOpts
 
 	pinIntegrity *PinIntegrity
+
+	samplingViewDisabled bool // set by tests to exercise the retrieval index read path
 }
 
 type reserveOpts struct {
