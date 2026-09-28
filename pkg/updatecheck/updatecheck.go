@@ -90,6 +90,12 @@ type Runner struct {
 	// RolledBack is BEE_RUNNER_ROLLED_BACK, the descriptor version of a
 	// release the runner rolled back from because it kept crashing.
 	RolledBack string
+	// Cache is BEE_RUNNER_CACHE, the runner's binary cache (absolute), and
+	// Binary is BEE_RUNNER_BINARY, the path of this platform's binary in a
+	// release. With both, the update restart pre-stages the new binary in
+	// the cache before exiting.
+	Cache  string
+	Binary string
 }
 
 // Options configure the update check service.
@@ -135,6 +141,9 @@ type release struct {
 	// fleet to restart for the release. Absent means DefaultRolloutWindow;
 	// zero means as soon as safe.
 	RolloutWindowSeconds *uint64 `json:"rolloutWindowSeconds"`
+	// Files maps a path in the release to its sha256 digest. Only the
+	// signed descriptor has it.
+	Files map[string]string `json:"-"`
 }
 
 // rolloutWindow returns the release's rollout window and whether the release
@@ -268,6 +277,11 @@ func newService(logger log.Logger, o Options) (*Service, error) {
 	}
 	if restartActive {
 		s.initRestart(o)
+		st, err := newStager(o.Runner, base, newDownloadClient(o.Client))
+		if err != nil {
+			logger.Warning("not pre-staging releases", "error", err)
+		}
+		s.restart.stager = st
 	}
 	s.metrics.RunningReleaseVersion.Set(float64(runnerVersion))
 
@@ -450,6 +464,9 @@ type result struct {
 	createdAt string
 	window    time.Duration
 	windowSet bool
+	// files are the release's file digests, from the signed descriptor
+	// only.
+	files map[string]string
 }
 
 func (r result) logValues() []any {
@@ -490,6 +507,7 @@ func (s *Service) check(ctx context.Context) (result, error) {
 		channels:       r.Channels,
 		notes:          r.Notes,
 		createdAt:      r.CreatedAt,
+		files:          r.Files,
 	}
 	res.window, res.windowSet = r.rolloutWindow()
 	if currentOK {

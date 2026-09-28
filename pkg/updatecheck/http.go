@@ -49,6 +49,28 @@ func newClient() *http.Client {
 	}
 }
 
+// downloadHeaderTimeout bounds how long the registry may take to start
+// answering a binary download. A gateway retrieves a cold ~75 MB file from
+// Swarm before it sends headers, which takes far longer than requestTimeout.
+const downloadHeaderTimeout = 2 * time.Minute
+
+// newDownloadClient returns the client for binary downloads: client when one
+// was configured, otherwise the default client without its overall request
+// timeout and with a longer response header timeout, both of which a cold
+// download through a gateway exceeds. The caller bounds the download with a
+// context instead.
+func newDownloadClient(client *http.Client) *http.Client {
+	if client != nil {
+		return client
+	}
+	c := newClient()
+	c.Timeout = 0
+	t := c.Transport.(*http.Transport).Clone()
+	t.ResponseHeaderTimeout = downloadHeaderTimeout
+	c.Transport = t
+	return c
+}
+
 // sameOriginRedirect follows a redirect only within the registry's origin, so
 // that a registry cannot point bee at an arbitrary host.
 func sameOriginRedirect(req *http.Request, via []*http.Request) error {

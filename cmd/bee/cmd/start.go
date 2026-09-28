@@ -508,6 +508,8 @@ func runnerHandoff() updatecheck.Runner {
 		Version:    os.Getenv("BEE_RUNNER_VERSION"),
 		Pubkey:     os.Getenv("BEE_RUNNER_PUBKEY"),
 		RolledBack: os.Getenv("BEE_RUNNER_ROLLED_BACK"),
+		Cache:      os.Getenv("BEE_RUNNER_CACHE"),
+		Binary:     os.Getenv("BEE_RUNNER_BINARY"),
 	}
 }
 

@@ -42,6 +42,7 @@ type release struct {
 	notes     string
 	createdAt time.Time
 	window    *time.Duration
+	files     map[string]string
 }
 
 func window(d time.Duration) *time.Duration { return &d }
@@ -55,6 +56,9 @@ func descriptor(t *testing.T, r release) []byte {
 		"repository":    "ethersphere/bee",
 		"version":       r.version,
 		"files":         map[string]string{},
+	}
+	if r.files != nil {
+		d["files"] = r.files
 	}
 	if len(r.channels) > 0 {
 		d["channels"] = r.channels

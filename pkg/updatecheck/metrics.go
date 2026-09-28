@@ -19,6 +19,9 @@ type metrics struct {
 
 	RestartScheduled  prometheus.Gauge
 	RestartSuppressed prometheus.Gauge
+
+	PrestageDownloads prometheus.Counter
+	PrestageErrors    prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -66,6 +69,18 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "restart_suppressed",
 			Help:      "1 if restarting to update is suppressed because previous restarts did not deliver the release or bee-runner rolled back from it, 0 otherwise.",
+		}),
+		PrestageDownloads: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "prestage_downloads_total",
+			Help:      "Number of release binaries downloaded into the bee-runner cache before an update restart.",
+		}),
+		PrestageErrors: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "prestage_errors_total",
+			Help:      "Number of failed attempts to pre-stage a release binary before an update restart.",
 		}),
 	}
 }

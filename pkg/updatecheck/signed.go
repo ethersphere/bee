@@ -140,6 +140,7 @@ type descriptor struct {
 	RolloutWindowSeconds *uint64           `json:"rolloutWindowSeconds"`
 	CreatedAt            string            `json:"createdAt"`
 	Tags                 map[string]string `json:"tags"`
+	Files                map[string]string `json:"files"`
 }
 
 // verifyDescriptor verifies the release key's signature over body and, only then,
@@ -168,6 +169,7 @@ func (k *releaseKey) verifyDescriptor(body, sig []byte, now time.Time) (*release
 		Notes:                d.Notes,
 		CreatedAt:            d.CreatedAt,
 		RolloutWindowSeconds: d.RolloutWindowSeconds,
+		Files:                d.Files,
 	}
 	tags := make([]string, 0, len(d.Tags))
 	for t := range d.Tags {

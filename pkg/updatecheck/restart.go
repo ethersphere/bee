@@ -103,6 +103,7 @@ type restartState struct {
 	gate          Gate
 	roundDuration time.Duration
 	shutdown      func()
+	stager        *stager // nil when not pre-staging
 
 	pending         bool          // a restart is scheduled or in progress
 	pendingPoll     time.Duration // poll interval while pending
@@ -440,6 +441,11 @@ func (s *Service) restartAt(at time.Time, targetVersion uint64) {
 	case <-timer.C:
 	}
 
+	// Download the new binary while bee still runs, and before waiting for a
+	// safe point so that the download does not use it up. A failure only
+	// costs the restart its speed: bee-runner downloads the binary itself.
+	s.prestage(ctx, targetVersion)
+
 	if !s.waitSafePoint(ctx) {
 		return
 	}
@@ -515,5 +521,39 @@ func (s *Service) waitSafePoint(ctx context.Context) bool {
 			return false
 		case <-time.After(gatePollInterval):
 		}
+	}
+}
+
+// prestage downloads the binary of the release offered now into bee-runner's
+// cache, if it is still the target release or a newer one.
+func (s *Service) prestage(ctx context.Context, targetVersion uint64) {
+	st := s.restart.stager
+	if st == nil {
+		return
+	}
+	res, err := s.check(ctx)
+	if err != nil || !res.available || res.latestVersion < targetVersion {
+		// restartAt re-checks and decides; nothing to stage for now.
+		return
+	}
+	digest, ok := res.files[st.binary]
+	if !ok {
+		s.metrics.PrestageErrors.Inc()
+		s.logger.Warning("not pre-staging the release: it has no binary for this platform", "binary", st.binary, "target_version", res.latestVersion)
+		return
+	}
+	start := time.Now()
+	cached, err := st.stage(ctx, digest)
+	switch {
+	case err != nil:
+		if ctx.Err() == nil {
+			s.metrics.PrestageErrors.Inc()
+			s.logger.Warning("pre-staging the release failed; bee-runner will download it at the restart", "target_version", res.latestVersion, "error", err)
+		}
+	case cached:
+		s.logger.Info("release already staged", "target_version", res.latestVersion, "digest", truncate(digest, 19))
+	default:
+		s.metrics.PrestageDownloads.Inc()
+		s.logger.Info("pre-staged the release", "target_version", res.latestVersion, "digest", truncate(digest, 19), "took", time.Since(start).Round(time.Second))
 	}
 }

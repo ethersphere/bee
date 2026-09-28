@@ -7,6 +7,7 @@ package updatecheck
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -71,6 +72,8 @@ type Metrics struct {
 	LatestVersion     float64
 	RestartScheduled  float64
 	RestartSuppressed float64
+	PrestageDownloads float64
+	PrestageErrors    float64
 }
 
 func (s *Service) MetricValues() Metrics {
@@ -94,10 +97,20 @@ func (s *Service) MetricValues() Metrics {
 				m.RestartScheduled = v.GetGauge().GetValue()
 			case "bee_update_restart_suppressed":
 				m.RestartSuppressed = v.GetGauge().GetValue()
+			case "bee_update_prestage_downloads_total":
+				m.PrestageDownloads = v.GetCounter().GetValue()
+			case "bee_update_prestage_errors_total":
+				m.PrestageErrors = v.GetCounter().GetValue()
 			}
 		}
 	}
 	return m
+}
+
+// DefaultDownloadHeaderTimeout is the response header timeout of the default
+// download client.
+func DefaultDownloadHeaderTimeout() time.Duration {
+	return newDownloadClient(nil).Transport.(*http.Transport).ResponseHeaderTimeout
 }
 
 // DefaultGet fetches url with the default client and closes its idle
