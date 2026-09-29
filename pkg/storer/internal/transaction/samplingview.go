@@ -88,13 +88,12 @@ func (v *samplingView) GetInto(ctx context.Context, addr swarm.Address, buf []by
 	return v.store.ChunkStore().GetInto(ctx, addr, buf)
 }
 
-func (v *samplingView) readAt(ctx context.Context, addr swarm.Address, loc sharky.Location, buf []byte) (n int, err error) {
-	defer handleMetric("sampling_view_get", v.store.metrics)(&err)
-	n = int(loc.Length)
+func (v *samplingView) readAt(ctx context.Context, addr swarm.Address, loc sharky.Location, buf []byte) (int, error) {
+	n := int(loc.Length)
 	if len(buf) < n {
 		return 0, fmt.Errorf("sampling view: buffer too small: %d < %d", len(buf), n)
 	}
-	if err = v.read(ctx, loc, buf[:n]); err != nil {
+	if err := v.read(ctx, loc, buf[:n]); err != nil {
 		return 0, fmt.Errorf("sampling view: read %s at %v: %w", addr, loc, err)
 	}
 	return n, nil
