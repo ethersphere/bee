@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 
 	"github.com/ethersphere/bee/v2/pkg/sharky"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstore"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -27,7 +28,7 @@ type Sharky interface {
 // use. Close must be called when sampling ends.
 type SamplingView struct {
 	sharky   Sharky
-	store    ReadOnlyStore
+	chunks   storage.ReadOnlyChunkStore // fallback for reads the table cannot serve
 	table    *chunkstore.LocationTable
 	released *releasedSlots
 	stop     func()
@@ -57,7 +58,7 @@ func NewSamplingView(ctx context.Context, sh Sharky, st ReadOnlyStore, anchor []
 	opened = true
 	return &SamplingView{
 		sharky:   sh,
-		store:    st,
+		chunks:   st.ChunkStore(),
 		table:    table,
 		released: released,
 		stop:     stop,
@@ -73,7 +74,7 @@ func (v *SamplingView) GetInto(ctx context.Context, addr swarm.Address, buf []by
 		}
 	}
 	v.misses.Add(1)
-	return v.store.ChunkStore().GetInto(ctx, addr, buf)
+	return v.chunks.GetInto(ctx, addr, buf)
 }
 
 func (v *SamplingView) readAt(ctx context.Context, addr swarm.Address, loc sharky.Location, buf []byte) (int, error) {

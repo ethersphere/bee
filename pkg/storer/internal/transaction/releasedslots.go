@@ -55,17 +55,24 @@ func (r *releasedSlots) publish(limits []uint32) {
 // contains reports whether loc's slot was released since the view started
 // watching. Slots outside the bitmaps are reported as released.
 func (r *releasedSlots) contains(loc sharky.Location) bool {
-	b := *r.bitmaps.Load()
-	if int(loc.Shard) >= len(b) || int(loc.Slot/64) >= len(b[loc.Shard]) {
-		return true
-	}
-	return b[loc.Shard][loc.Slot/64].Load()&(1<<(loc.Slot%64)) != 0
+	w := slotWord(*r.bitmaps.Load(), loc)
+	return w == nil || w.Load()&slotBit(loc) != 0
 }
 
 // setSlot marks loc's slot. Slots outside the bitmaps cannot be in the
 // location table, so they are not recorded.
 func setSlot(b [][]atomic.Uint64, loc sharky.Location) {
-	if int(loc.Shard) < len(b) && int(loc.Slot/64) < len(b[loc.Shard]) {
-		b[loc.Shard][loc.Slot/64].Or(1 << (loc.Slot % 64))
+	if w := slotWord(b, loc); w != nil {
+		w.Or(slotBit(loc))
 	}
 }
+
+// slotWord returns the bitmap word holding loc's slot, or nil if it is outside the bitmaps.
+func slotWord(b [][]atomic.Uint64, loc sharky.Location) *atomic.Uint64 {
+	if int(loc.Shard) >= len(b) || int(loc.Slot/64) >= len(b[loc.Shard]) {
+		return nil
+	}
+	return &b[loc.Shard][loc.Slot/64]
+}
+
+func slotBit(loc sharky.Location) uint64 { return 1 << (loc.Slot % 64) }

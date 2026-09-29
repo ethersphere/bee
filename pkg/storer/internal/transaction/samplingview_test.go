@@ -54,13 +54,13 @@ func putViewChunks(tb testing.TB, st transaction.Storage, chs ...swarm.Chunk) {
 	}
 }
 
-func deleteViewChunk(t *testing.T, st transaction.Storage, addr swarm.Address) {
-	t.Helper()
+func deleteViewChunk(tb testing.TB, st transaction.Storage, addr swarm.Address) {
+	tb.Helper()
 	err := st.Run(context.Background(), func(s transaction.Store) error {
 		return s.ChunkStore().Delete(context.Background(), addr)
 	})
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 }
 
