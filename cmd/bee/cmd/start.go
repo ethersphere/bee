@@ -194,8 +194,9 @@ func buildBeeNodeAsync(ctx context.Context, shutdown context.CancelFunc, c *comm
 
 // buildBeeNode builds the node. shutdown cancels the node's main context and
 // is what the update restart calls: it takes the same path as SIGINT/SIGTERM
-// (start returns, stop runs Bee.Shutdown) and bee exits with status 0. The
-// supervisor must therefore restart bee-runner on a clean exit too (k8s
+// (start returns, stop runs Bee.Shutdown) and bee exits with status 0. Whatever
+// restarts bee (systemd, Docker, Kubernetes) must therefore restart bee-runner
+// on a clean exit too (k8s
 // restartPolicy Always, systemd Restart=always, docker --restart always or
 // unless-stopped).
 func buildBeeNode(ctx context.Context, shutdown context.CancelFunc, c *command, cmd *cobra.Command, logger log.Logger) (*node.Bee, error) {

@@ -14,8 +14,8 @@ import (
 
 const (
 	// restartMargin is how long before the claim phase a voluntary restart
-	// must begin to count as safe: time for bee to stop, for its supervisor
-	// to start it again, possibly fetching a new binary first, and for the
+	// must begin to count as safe: time for bee to stop, for systemd, Docker or
+	// Kubernetes to start it again, possibly fetching a new binary first, and for the
 	// agent to observe the chain before selection for the next round is
 	// evaluated at the start of the claim phase. It is bounded by one phase,
 	// so that with any block time the commit phase of a round the node does

@@ -64,8 +64,8 @@ type Gate func() (safe bool, reason string)
 // RestartOptions configure the opt-in restart when a newer release is
 // available. The restart is only active when Enabled is set and bee was
 // started by bee-runner with a release version and a valid release signing
-// key: bee then exits cleanly and relies on its supervisor restarting the
-// runner, which fetches, verifies and execs the newest release.
+// key: bee then exits cleanly and relies on systemd, Docker or Kubernetes
+// restarting the runner, which fetches, verifies and execs the newest release.
 type RestartOptions struct {
 	// Enabled is the update-restart option.
 	Enabled bool
