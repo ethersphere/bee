@@ -975,6 +975,97 @@ paths:
         default:
           description: Default response
 
+  "/bps/subscribe/{owner}/{topic}":
+    get:
+      summary: Subscribe to a BPS cohort
+      description: |
+        WebSocket. The node joins the cohort `keccak256(keccak256("bps-claim" | topic) | owner)`
+        at `broker` and sends every broadcast as a binary frame with the full SOC bytes
+        (`id | signature | span | payload`). Broadcasts not signed by `owner` are dropped.
+        The endpoint is read-only: any client frame closes the socket with 4002.
+        Close codes: 4002 invalid message, 4003 broker stream closed.
+      tags:
+        - BPS
+      parameters:
+        - in: path
+          name: owner
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
+          required: true
+          description: Ethereum address of the cohort owner
+        - in: path
+          name: topic
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/HexString"
+          required: true
+          description: 32-byte cohort topic
+        - in: query
+          name: broker
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
+          required: true
+          description: Overlay address of the broker node. Must not be this node.
+      responses:
+        "200":
+          description: Establishes a WebSocket subscription for incoming broadcasts
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        "503":
+          description: BPS service is not configured
+        default:
+          description: Default response
+
+  "/bps/publish/{owner}/{topic}":
+    get:
+      summary: Claim and publish to a BPS cohort
+      description: |
+        WebSocket. Text frames carry JSON control messages; binary frames carry SOCs.
+
+        1. Server sends `{"type":"challenge","challenge":"<hex>","broker":"<hex>","id":"<hex>"}`.
+        2. Client signs a SOC with `id` wrapping the payload `challenge | broker` and sends
+           `{"type":"claim","signature":"<hex 65 bytes, no 0x prefix>"}` within 30 seconds.
+        3. Server verifies the claim locally, forwards it to the broker and sends
+           `{"type":"claim_sent"}`. This does not mean the broker accepted it; a rejection
+           closes the socket with 4003.
+        4. Client sends each broadcast as a binary frame containing a full SOC at the cohort address.
+
+        Close codes: 4001 invalid claim, 4002 invalid message (bad SOC, wrong frame type,
+        claim timeout), 4003 broker stream closed.
+      tags:
+        - BPS
+      parameters:
+        - in: path
+          name: owner
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
+          required: true
+          description: Ethereum address of the cohort owner
+        - in: path
+          name: topic
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/HexString"
+          required: true
+          description: 32-byte cohort topic
+        - in: query
+          name: broker
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
+          required: true
+          description: Overlay address of the broker node. Must not be this node.
+      responses:
+        "200":
+          description: Establishes a WebSocket subscription for publishing broadcasts
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        "503":
+          description: BPS service is not configured
+        default:
+          description: Default response
+
   "/soc/{owner}/{id}":
     post:
       summary: Upload a Single Owner Chunk

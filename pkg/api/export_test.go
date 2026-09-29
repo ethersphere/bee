@@ -5,6 +5,8 @@
 package api
 
 import (
+	"time"
+
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -139,4 +141,18 @@ func MapStructure(input, output any, hooks map[string]func(v string) (string, er
 
 func NewParseError(entry, value string, cause error) error {
 	return newParseError(entry, value, cause)
+}
+
+const (
+	BPSCloseInvalidClaim   = bpsCloseInvalidClaim
+	BPSCloseInvalidMessage = bpsCloseInvalidMessage
+	BPSCloseBrokerGone     = bpsCloseBrokerGone
+)
+
+// SetBPSClaimTimeout overrides the claim timeout and returns a restore func.
+// Callers must not run in parallel with other bps tests.
+func SetBPSClaimTimeout(d time.Duration) func() {
+	prev := bpsClaimTimeout
+	bpsClaimTimeout = d
+	return func() { bpsClaimTimeout = prev }
 }
