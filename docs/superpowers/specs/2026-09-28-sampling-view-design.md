@@ -63,7 +63,7 @@ Sampling View replaces random database lookups with a transient, in-memory snaps
 - Unusable duplicates fall back to LevelDB.
 - Unchanged by this revision.
 
-### 2.3 Released-Slot Set (`pkg/storer/internal/transaction/samplingview.go`)
+### 2.3 Released-Slot Set (`pkg/storer/internal/transaction/releasedslots.go`)
 Each view owns a record of slots released since it started watching.
 
 - **Build phase:** `NewSamplingView` calls `sharky.Watch` **before** the table scan. Releases that arrive during the scan go into a small mutex-protected pending list.
@@ -108,7 +108,7 @@ return n
 ## 4. Testing
 
 - **Sharky:** an observer is called with the released location before any `Write` can reuse the slot; `stop` removes it; `Release` with no observers is unchanged.
-- **View:** a slot released and overwritten between `Lookup` and the post-read check falls back to the live store (drive the interleaving with a sharky test hook or `synctest`, not a spinlock); a slot released during the table scan is honored after the bitmaps are published; a canceled context fails NewSamplingView cleanly; observer removal is covered by the sharky Watch tests.
+- **View:** a slot released and overwritten between `Lookup` and the post-read check falls back to the live store (drive the interleaving with a sharky test hook or `synctest`, not a spinlock); a slot released during the table scan is honored after the bitmaps are published (`TestSamplingViewHonorsReleaseDuringScan` fails if `Watch` is registered after the scan); a canceled context fails NewSamplingView cleanly; observer removal is covered by the sharky Watch tests.
 - **Sampler:** a ReserveSample test replaces a SOC after the view opens (test hook between opening the view and reading chunks) and checks that the sample item's ChunkData is the new version and its TransformedAddress matches it. TestReserveSampler asserts sample correctness only, not that the table was used.
 
 ---

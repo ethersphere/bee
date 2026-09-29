@@ -62,10 +62,12 @@ type store struct {
 	bstore      storage.BatchStore
 	metrics     metrics
 	chunkLocker *multex.Multex
+
+	afterTableScan func() // test seam, see SetAfterTableScan
 }
 
 func NewStorage(sharky *sharky.Store, bstore storage.BatchStore) Storage {
-	return &store{sharky, bstore, newMetrics(), multex.New()}
+	return &store{sharky: sharky, bstore: bstore, metrics: newMetrics(), chunkLocker: multex.New()}
 }
 
 type transaction struct {

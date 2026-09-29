@@ -55,6 +55,9 @@ func (s *store) NewSamplingView(ctx context.Context, anchor []byte, depth uint8)
 	if err != nil {
 		return nil, err
 	}
+	if s.afterTableScan != nil {
+		s.afterTableScan()
+	}
 	released.publish(table.SlotLimits())
 
 	opened = true
