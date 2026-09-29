@@ -25,7 +25,7 @@ func TestCheck(t *testing.T) {
 	outside := func(reg *registry) updatecheck.Options {
 		return updatecheck.Options{URL: registryURL, CurrentVersion: "2.8.0-7e703f49", Client: reg.client()}
 	}
-	// Under bee-runner, but without a release key: report-only from /info.
+	// Under bee-runner but without a release key: report-only, from /info.
 	unsigned := func(reg *registry) updatecheck.Options {
 		o := runnerOptions(reg)
 		o.Runner.Pubkey = ""
@@ -151,9 +151,9 @@ func TestCompareVersions(t *testing.T) {
 	}
 }
 
-// Registry responses end up in error messages and logs: neither the status
-// line nor the body of a response is repeated, and neither are credentials in
-// the registry URL.
+// Registry responses end up in error messages and logs. So the status line and
+// the body of a response are never repeated, and neither are credentials in the
+// registry URL.
 func TestUntrustedDataNotLogged(t *testing.T) {
 	t.Parallel()
 
@@ -283,7 +283,7 @@ func TestDisabled(t *testing.T) {
 		o    updatecheck.Options
 	}{
 		{"no url", updatecheck.Options{}},
-		// The runner's registry does not enable the check by itself.
+		// The runner's registry does not turn the check on by itself.
 		{"only the runner registry", func() updatecheck.Options { o := runnerOptions(reg); o.URL = ""; return o }()},
 	} {
 		s, err := updatecheck.New(log.Noop, tc.o)
@@ -314,8 +314,8 @@ func TestInvalidOptions(t *testing.T) {
 	}
 }
 
-// Every check, not only the first, is jittered, and the configured interval
-// applies while no restart is pending.
+// Every check is jittered, not only the first. The configured interval applies
+// while no restart is pending.
 func TestPollInterval(t *testing.T) {
 	t.Parallel()
 
@@ -356,7 +356,7 @@ func TestPollInterval(t *testing.T) {
 	})
 }
 
-// A newer release on another channel is logged once, the release notes
+// A newer release on another channel is logged once, with the release notes
 // shortened.
 func TestOtherChannelLoggedOnce(t *testing.T) {
 	t.Parallel()
@@ -388,9 +388,9 @@ func TestOtherChannelLoggedOnce(t *testing.T) {
 	})
 }
 
-// Past a noRollback release, bee-runner refuses any release carrying an older
-// bee, so a newer descriptor version with an older (or no) bee is not an
-// update to restart for. A fix forward still is.
+// Past a noRollback release, bee-runner refuses any release that carries an
+// older bee. So a newer descriptor version with an older bee (or none) is not
+// an update worth restarting for. A fix forward still is.
 func TestNoRollbackBarrier(t *testing.T) {
 	t.Parallel()
 

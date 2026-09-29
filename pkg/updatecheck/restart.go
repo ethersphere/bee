@@ -22,69 +22,69 @@ import (
 )
 
 const (
-	// DefaultRolloutWindow is the rollout window of a release that does not
+	// DefaultRolloutWindow is the rollout window for a release that does not
 	// set one.
 	DefaultRolloutWindow = 24 * time.Hour
-	// maxRolloutWindow bounds the rollout window a release may ask for.
+	// maxRolloutWindow limits the rollout window a release may ask for.
 	maxRolloutWindow = 30 * 24 * time.Hour
 
-	// A node whose slot has already passed restarts after a random delay of
-	// a tenth of the window, bounded by minLateJitter and maxLateJitter, so
-	// that late nodes do not all restart at once.
+	// A node whose slot has already passed restarts after a random delay. The
+	// delay is a tenth of the window, kept between minLateJitter and
+	// maxLateJitter. This stops late nodes from all restarting at once.
 	minLateJitter = time.Minute
 	maxLateJitter = time.Hour
 
-	// While a restart is pending, the registry is polled every quarter of
-	// the rollout window, but not more often than minPollInterval.
+	// While a restart is pending, the registry is polled every quarter of the
+	// rollout window. It is never polled more often than minPollInterval.
 	minPollInterval = time.Minute
 
-	// MarkerFileName is the file in the data directory that records the
+	// MarkerFileName is the file in the data directory that records which
 	// release a restart was made for.
 	MarkerFileName = "update-restart.json"
 	maxMarkerSize  = 4 << 10
 
-	// maxRestartAttempts is how many restarts are made for one release that
-	// bee-runner does not start, such as when the runner could not reach the
-	// registry. retryBackoff is the least time between two of them.
+	// maxRestartAttempts is the number of restarts made for one release that
+	// bee-runner does not start, for example when the runner could not reach
+	// the registry. retryBackoff is the minimum time between two such restarts.
 	maxRestartAttempts = 2
 	retryBackoff       = 30 * time.Minute
 
 	// gateRounds is how many storage incentives rounds a restart waits for a
-	// safe point before restarting anyway.
+	// safe point. After that it restarts anyway.
 	gateRounds = 2
-	// gatePollInterval is how often the safe point is re-evaluated.
+	// gatePollInterval is how often the safe point is checked again.
 	gatePollInterval = 30 * time.Second
 )
 
 var errMarkerNotRegular = errors.New("updatecheck: restart marker is not a regular file")
 
-// Gate reports whether now is a good moment to restart and, if not, why.
+// Gate reports whether now is a good time to restart. If not, it also says why.
 type Gate func() (safe bool, reason string)
 
-// RestartOptions configure the opt-in restart when a newer release is
-// available. The restart is only active when Enabled is set and bee was
-// started by bee-runner with a release version and a valid release signing
-// key: bee then exits cleanly and relies on systemd, Docker or Kubernetes
-// restarting the runner, which fetches, verifies and execs the newest release.
+// RestartOptions configure the opt-in restart for when a newer release is
+// available. The restart is active only if Enabled is set, and bee was started
+// by bee-runner with a release version and a valid release signing key. Then
+// bee exits cleanly and relies on systemd, Docker or Kubernetes to start the
+// runner again. The runner fetches, verifies and execs the newest release.
 type RestartOptions struct {
 	// Enabled is the update-restart option.
 	Enabled bool
-	// DataDir holds the restart marker file. Restart is inactive without it.
+	// DataDir holds the restart marker file. Without it, restart is inactive.
 	DataDir string
-	// Gate, when set, delays the restart until it reports a safe point, for
-	// at most gateRounds rounds of RoundDuration.
+	// Gate, if set, delays the restart until it reports a safe point, for at
+	// most gateRounds rounds of RoundDuration.
 	Gate Gate
-	// RoundDuration is the storage incentives round length, from the
-	// chain's block time. It is required with Gate.
+	// RoundDuration is the length of a storage incentives round, derived from
+	// the chain's block time. Gate requires it.
 	RoundDuration time.Duration
-	// Shutdown triggers the node's graceful shutdown. It is called on its own
+	// Shutdown starts the node's graceful shutdown. It is called on its own
 	// goroutine and must not wait for this service to close.
 	Shutdown func()
 }
 
-// marker records the release a restart was made for. TargetVersion, the
-// release descriptor version, is what counts; Target is its semver tag, kept
-// for logs. Attempts counts the restarts made for it.
+// marker records which release a restart was made for. TargetVersion, the
+// release descriptor version, is the value that matters. Target is its semver
+// tag, kept only for logs. Attempts counts the restarts made for it.
 type marker struct {
 	TargetVersion uint64 `json:"targetVersion"`
 	Target        string `json:"target"`
@@ -92,9 +92,9 @@ type marker struct {
 	Attempts      int    `json:"attempts"`
 }
 
-// restartState is the part of Service that implements the restart. The
-// fields from pending on are guarded by Service.mu; the others are set before
-// the first check and read-only afterwards.
+// restartState is the part of Service that implements the restart. Fields from
+// pending on are guarded by Service.mu. The others are set before the first
+// check and only read afterwards.
 type restartState struct {
 	active        bool
 	overlay       []byte
@@ -109,9 +109,9 @@ type restartState struct {
 	pendingPoll     time.Duration // poll interval while pending
 	suppressed      bool          // restarts for releases up to suppressVersion are suppressed
 	suppressVersion uint64        // release descriptor version
-	// retryVersion is a release a previous restart did not deliver, which
-	// may be retried not before retryNotBefore; retryAttempts restarts were
-	// already made for it.
+	// retryVersion is a release that an earlier restart did not deliver. It may
+	// be retried no earlier than retryNotBefore. retryAttempts is how many
+	// restarts were already made for it.
 	retryVersion   uint64
 	retryAttempts  int
 	retryNotBefore time.Time
@@ -124,9 +124,9 @@ func (rs *restartState) suppressUpTo(version uint64) {
 	}
 }
 
-// resolveRestart decides whether the restart is active and, when it is and no
-// registry URL is configured, takes the registry of bee-runner. It logs why
-// the restart is inactive when it was asked for.
+// resolveRestart decides whether the restart is active. If it is active and no
+// registry URL is configured, it uses the registry of bee-runner. If the
+// restart was requested but is inactive, it logs why.
 func resolveRestart(logger log.Logger, o *Options, runner, verifiable bool) (bool, error) {
 	r := o.Restart
 	if !r.Enabled {
@@ -168,8 +168,8 @@ func resolveRestart(logger log.Logger, o *Options, runner, verifiable bool) (boo
 	return true, nil
 }
 
-// parseRolledBack parses BEE_RUNNER_ROLLED_BACK. version is 0 when it is not
-// set; ok is false when it is set but not a release version.
+// parseRolledBack parses BEE_RUNNER_ROLLED_BACK. version is 0 if the variable
+// is not set. ok is false if it is set but is not a release version.
 func parseRolledBack(r Runner) (version uint64, ok bool) {
 	if r.RolledBack == "" {
 		return 0, true
@@ -181,7 +181,7 @@ func parseRolledBack(r Runner) (version uint64, ok bool) {
 	return v, true
 }
 
-// initRestart sets up the active restart: it applies a rollback reported by
+// initRestart sets up an active restart. It applies a rollback reported by
 // bee-runner and the marker of a previous restart.
 func (s *Service) initRestart(o Options) {
 	r := o.Restart
@@ -260,10 +260,10 @@ func readMarker(path string) (marker, error) {
 	return m, nil
 }
 
-// writeMarker writes the marker to a new temporary file in the data directory
-// and renames it into place, so that a crash never leaves a truncated marker
-// and an existing file or symbolic link at the marker path is replaced, never
-// written through.
+// writeMarker writes the marker to a new temporary file in the data directory,
+// then renames it into place. A crash therefore never leaves a truncated
+// marker. An existing file or symbolic link at the marker path is replaced,
+// never written through.
 func writeMarker(dir, path string, m marker) (err error) {
 	b, err := json.Marshal(m)
 	if err != nil {
@@ -301,8 +301,8 @@ func (s *Service) setSuppressedMetric() {
 }
 
 // suppressedLocked reports whether a restart for the offered release is
-// suppressed, clearing the suppression when its descriptor version is
-// strictly higher than the suppressed one. It must be called with s.mu held.
+// suppressed. It clears the suppression when the release's descriptor version
+// is strictly higher than the suppressed one. Call it with s.mu held.
 func (s *Service) suppressedLocked(res result) bool {
 	rs := &s.restart
 	if !rs.suppressed {
@@ -321,9 +321,9 @@ func (s *Service) suppressedLocked(res result) bool {
 }
 
 // restartSlot returns the node's place in the rollout window that starts at
-// base: base plus the first 8 bytes of sha256(overlay || version), taken
-// modulo the window. It is deterministic and spreads a fleet evenly, whenever
-// its nodes notice the release.
+// base. The slot is base plus the first 8 bytes of sha256(overlay || version),
+// taken modulo the window. It is deterministic and spreads a fleet evenly,
+// whenever its nodes notice the release.
 func restartSlot(overlay []byte, version uint64, base time.Time, window time.Duration) time.Time {
 	if window <= 0 {
 		return base
@@ -337,28 +337,28 @@ func restartSlot(overlay []byte, version uint64, base time.Time, window time.Dur
 	return base.Add(time.Duration(binary.BigEndian.Uint64(sum[:8]) % uint64(window)))
 }
 
-// lateJitter bounds the random delay of a node whose slot has passed.
+// lateJitter bounds the random delay for a node whose slot has already passed.
 func lateJitter(window time.Duration) time.Duration {
 	return min(max(window/10, minLateJitter), maxLateJitter)
 }
 
-// restartPlan is when a restart for a release fires and why.
+// restartPlan says when a restart for a release fires and why.
 type restartPlan struct {
 	slot time.Time
 	late bool      // the slot had passed when the restart was planned
 	at   time.Time // when the restart fires
 }
 
-// planRestart places the restart for the release in its rollout window. It
-// must be called with s.mu held.
+// planRestart places the restart for the release in its rollout window. Call it
+// with s.mu held.
 func (s *Service) planRestart(res result, now time.Time) restartPlan {
 	rs := &s.restart
 
 	base, err := time.Parse(time.RFC3339, res.createdAt)
 	if err != nil || base.After(now) {
-		// A release without a valid createdAt, or from the future (clock
-		// skew or a bogus descriptor), is spread from now, so that it does
-		// not postpone the restart past its window.
+		// A release with no valid createdAt, or one from the future (clock skew
+		// or a bogus descriptor), is spread from now. This keeps it from
+		// postponing the restart past its window.
 		s.logger.Debug("spreading the update restart from now", "created_at", truncate(res.createdAt, maxLoggedValue))
 		base = now
 	}
@@ -376,9 +376,9 @@ func (s *Service) planRestart(res result, now time.Time) restartPlan {
 	return p
 }
 
-// nextInterval is the time until the next check, before jitter: the
-// configured interval, shortened while a restart is pending so that a
-// withdrawn or newer release is seen before it fires.
+// nextInterval is the time until the next check, before jitter. It is the
+// configured interval, shortened while a restart is pending so that a withdrawn
+// or newer release is seen before the restart fires.
 func (s *Service) nextInterval() time.Duration {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -388,10 +388,10 @@ func (s *Service) nextInterval() time.Duration {
 	return s.interval
 }
 
-// maybeScheduleRestart schedules a restart for the offered release unless one
-// is already pending or restarts for it are suppressed. A pending restart is
-// kept as planned; when it fires it restarts for the newest release offered
-// then.
+// maybeScheduleRestart schedules a restart for the offered release, unless one
+// is already pending or restarts for it are suppressed. A pending restart stays
+// as planned. When it fires, it restarts for the newest release offered at that
+// time.
 func (s *Service) maybeScheduleRestart(res result) {
 	if !s.restart.active {
 		return
@@ -425,9 +425,9 @@ func (s *Service) clearPending() {
 	s.mu.Unlock()
 }
 
-// restartAt waits until at and for a storage incentives safe point, then
-// re-checks the release and, if it is still offered, records the marker and
-// shuts bee down.
+// restartAt waits until at, then for a storage incentives safe point. It then
+// re-checks the release. If the release is still offered, it records the marker
+// and shuts bee down.
 func (s *Service) restartAt(at time.Time, targetVersion uint64) {
 	defer s.wg.Done()
 	ctx := s.ctx
@@ -442,16 +442,18 @@ func (s *Service) restartAt(at time.Time, targetVersion uint64) {
 	}
 
 	// Download the new binary while bee still runs, and before waiting for a
-	// safe point so that the download does not use it up. A failure only
-	// costs the restart its speed: bee-runner downloads the binary itself.
+	// safe point, so the download does not use the safe point up. If the
+	// download fails, the restart is only slower: bee-runner downloads the
+	// binary itself.
 	s.prestage(ctx, targetVersion)
 
 	if !s.waitSafePoint(ctx) {
 		return
 	}
 
-	// The registry may have withdrawn the release in the meantime. A
-	// canceled restart is planned again by a later check that offers it.
+	// The registry may have withdrawn the release in the meantime. If the
+	// restart is canceled, a later check that offers the release plans it
+	// again.
 	res, err := s.check(ctx)
 	if err != nil {
 		if ctx.Err() == nil {
@@ -479,16 +481,16 @@ func (s *Service) restartAt(at time.Time, targetVersion uint64) {
 
 	m := marker{TargetVersion: res.latestVersion, Target: res.latest, At: time.Now().UTC().Format(time.RFC3339), Attempts: attempts}
 	if err := writeMarker(rs.dataDir, rs.markerPath, m); err != nil {
-		// Without the marker a release that is never delivered would cause
-		// a restart loop, so do not restart.
+		// Without the marker, a release that is never delivered would cause a
+		// restart loop. So do not restart.
 		s.logger.Error(err, "update restart canceled: cannot write restart marker", "path", rs.markerPath)
 		s.clearPending()
 		return
 	}
 
 	s.logger.Info("restarting to update bee", append(res.logValues(), "notes", truncate(res.notes, maxLoggedNotes))...)
-	// The shutdown path closes this service and waits for this goroutine, so
-	// it must not be called synchronously from here.
+	// The shutdown path closes this service and waits for this goroutine. So it
+	// must not be called synchronously from here.
 	go rs.shutdown()
 }
 
@@ -524,8 +526,9 @@ func (s *Service) waitSafePoint(ctx context.Context) bool {
 	}
 }
 
-// prestage downloads the binary of the release offered now into bee-runner's
-// cache, if it is still the target release or a newer one.
+// prestage downloads the binary of the currently offered release into
+// bee-runner's cache. It does this only if that release is still the target
+// release or a newer one.
 func (s *Service) prestage(ctx context.Context, targetVersion uint64) {
 	st := s.restart.stager
 	if st == nil {
@@ -533,7 +536,7 @@ func (s *Service) prestage(ctx context.Context, targetVersion uint64) {
 	}
 	res, err := s.check(ctx)
 	if err != nil || !res.available || res.latestVersion < targetVersion {
-		// restartAt re-checks and decides; nothing to stage for now.
+		// restartAt re-checks and decides. There is nothing to stage for now.
 		return
 	}
 	digest, ok := res.files[st.binary]

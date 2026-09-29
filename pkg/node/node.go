@@ -1364,9 +1364,9 @@ func NewBee(
 
 	}
 
-	// Created after the storage incentives agent, whose round state gates an
-	// update restart. Without an agent (light node, bootnode, incentives
-	// disabled) there is no round to protect and no gate.
+	// Created after the storage incentives agent, because the agent's round
+	// state gates an update restart. Without an agent (light node, bootnode,
+	// incentives disabled) there is no round to protect, so there is no gate.
 	var updateRestartGate updatecheck.Gate
 	if agent != nil {
 		updateRestartGate = agent.SafeToRestart
@@ -1389,7 +1389,7 @@ func NewBee(
 		return nil, fmt.Errorf("update check: %w", err)
 	}
 	if updateChecker != nil {
-		// Assigned only when running: a nil *Service in the interface would
+		// Assigned only when running. A nil *Service inside the interface would
 		// not be skipped by Shutdown's nil check.
 		b.updateCheckCloser = updateChecker
 	}

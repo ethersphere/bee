@@ -21,15 +21,15 @@ import (
 )
 
 const (
-	// maxBinarySize is bee-runner's download limit: a download of this many
+	// maxBinarySize is bee-runner's download limit. A download of this many
 	// bytes or more is refused.
 	maxBinarySize = 512 << 20
-	// stageTimeout bounds one pre-staging download. A cold ~75 MB download
+	// stageTimeout bounds one pre-staging download. A cold download of ~75 MB
 	// through a Swarm gateway takes a minute or two.
 	stageTimeout = 15 * time.Minute
-	// partialPrefix names an unfinished download in the runner's cache, as
-	// bee-runner names its own, so that the runner removes one a crash left
-	// behind.
+	// partialPrefix names an unfinished download in the runner's cache the same
+	// way bee-runner names its own. That way the runner removes one left behind
+	// by a crash.
 	partialPrefix = ".partial-"
 	// digestPrefix starts every digest in a release descriptor.
 	digestPrefix = "sha256:"
@@ -40,18 +40,18 @@ var (
 	errStageNoBinary = errors.New("updatecheck: release lists no binary for this platform")
 	errStageTooLarge = errors.New("updatecheck: binary too large")
 
-	// stageBinaryPattern is the binary path bee-runner hands over:
+	// stageBinaryPattern is the binary path that bee-runner hands over:
 	// binaries/<platform>/<name>.
 	stageBinaryPattern = regexp.MustCompile(`^binaries/[a-z0-9_-]+/[a-zA-Z0-9._-]+$`)
 	digestPattern      = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 )
 
-// stager pre-stages the next release: it downloads the binary into
-// bee-runner's cache, under the name the runner looks for (the lowercase hex
-// of its sha256), while bee is still running. The runner then finds it at the
-// next start and does not download anything. The runner re-verifies every
-// cache entry against the signed descriptor, so a staged file is never
-// trusted merely because bee wrote it.
+// stager pre-stages the next release. While bee is still running, it downloads
+// the binary into bee-runner's cache, under the name the runner looks for (the
+// lowercase hex of its sha256). At its next start the runner finds the file and
+// downloads nothing. The runner re-verifies every cache entry against the
+// signed descriptor, so a staged file is never trusted just because bee wrote
+// it.
 type stager struct {
 	client *http.Client
 	dir    string // bee-runner's cache, absolute
@@ -59,8 +59,9 @@ type stager struct {
 	url    string // the binary's URL in the registry
 }
 
-// newStager returns a stager for the cache and binary bee-runner handed over,
-// or nil when it handed over none or they are not usable.
+// newStager returns a stager for the cache and binary that bee-runner handed
+// over. It returns nil if the runner handed over none, or if they are not
+// usable.
 func newStager(r Runner, base *url.URL, client *http.Client) (*stager, error) {
 	if r.Cache == "" && r.Binary == "" {
 		return nil, nil
@@ -91,7 +92,7 @@ func (st *stager) stage(ctx context.Context, digest string) (cached bool, err er
 }
 
 // download streams the binary into a temporary file next to dst, checks its
-// digest and renames it into place, so that the runner never sees a partial
+// digest, and renames it into place. The runner therefore never sees a partial
 // or unverified file under the name it looks for.
 func (st *stager) download(ctx context.Context, dst, digest string) (err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, st.url, nil)

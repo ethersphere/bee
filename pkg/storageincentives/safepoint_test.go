@@ -14,22 +14,22 @@ import (
 	si "github.com/ethersphere/bee/v2/pkg/storageincentives"
 )
 
-// gnosisBlockTime makes the restart margin 36 blocks: a safe point needs a
+// gnosisBlockTime makes the restart margin 36 blocks. A safe point then needs a
 // block position of at most 76-36 = 40 in the round.
 const gnosisBlockTime = 5 * time.Second
 
 // at returns the block at position pos of round.
 func at(round, pos uint64) uint64 { return round*si.DefaultBlocksPerRound + pos }
 
-// status returns a status as the agent records it: the phase and round are
-// written at phase changes, the block at every phase check.
+// status returns a status as the agent records it. The phase and round are
+// written at phase changes, and the block at every phase check.
 func status(phase si.PhaseType, round, block uint64) *si.Status {
 	st := si.NewStatus()
 	st.Phase, st.Round, st.Block = phase, round, block
 	st.IsFullySynced, st.IsHealthy = true, true
 	st.LastPlayedRound, st.LastSelectedRound, st.LastWonRound = 900, 900, 850
 	st.Reward, st.Fees = big.NewInt(0), big.NewInt(0)
-	// Data of long past rounds does not matter.
+	// Data from rounds long past does not matter.
 	st.RoundData[899] = si.RoundData{SampleData: &si.SampleData{}}
 	st.RoundData[900] = si.RoundData{CommitKey: []byte{1}, HasRevealed: true}
 	return st
@@ -54,7 +54,7 @@ func TestRestartSafePoint(t *testing.T) {
 		{"claim", status(si.PhaseClaim, 1000, at(1000, 76)), 0, false},
 		{"end of claim", status(si.PhaseClaim, 1000, at(1000, 151)), 0, false},
 
-		// The recorded phase lags the block: the block decides.
+		// The recorded phase lags behind the block, so the block decides.
 		{"stale reveal phase, block in claim", status(si.PhaseReveal, 1000, at(1000, 80)), 0, false},
 		{"stale commit phase, block past the margin", status(si.PhaseCommit, 1000, at(1000, 50)), 0, false},
 		{"stale claim phase, block in next commit", status(si.PhaseClaim, 1000, at(1001, 2)), 0, true},
@@ -109,7 +109,7 @@ func TestRestartSafePoint(t *testing.T) {
 	}
 }
 
-// The margin is time, so with longer blocks it covers fewer of them.
+// The margin is a time, so with longer blocks it covers fewer blocks.
 func TestRestartSafePointMarginFollowsBlockTime(t *testing.T) {
 	t.Parallel()
 
@@ -117,11 +117,11 @@ func TestRestartSafePointMarginFollowsBlockTime(t *testing.T) {
 	if safe, _ := si.RestartSafePoint(st, st.Block, gnosisBlockTime); safe {
 		t.Fatal("safe with 5s blocks, want unsafe")
 	}
-	// 12s blocks: a 15 block margin.
+	// 12s blocks: the margin is 15 blocks.
 	if safe, reason := si.RestartSafePoint(st, st.Block, 12*time.Second); !safe {
 		t.Fatalf("unsafe with 12s blocks: %s", reason)
 	}
-	// Very long blocks: the margin is bounded by one phase.
+	// Very long blocks: the margin is capped at one phase.
 	st = status(si.PhaseReveal, 1000, at(1000, 38))
 	if safe, reason := si.RestartSafePoint(st, st.Block, time.Hour); !safe {
 		t.Fatalf("unsafe with 1h blocks: %s", reason)
@@ -144,21 +144,21 @@ func TestSafeToRestart(t *testing.T) {
 			t.Fatalf("unsafe at the start of an idle round: %s", reason)
 		}
 
-		// 50s later the round is estimated at block 12 even though no newer
+		// 50s later the round is estimated at block 12, even though no newer
 		// height was recorded.
 		time.Sleep(50 * time.Second)
 		if safe, reason := a.SafeToRestart(); !safe {
 			t.Fatalf("unsafe at block 12: %s", reason)
 		}
 
-		// After 75s more (block 27) the recorded height is too old to decide
+		// After 75s more (block 27), the recorded height is too old to decide
 		// on.
 		time.Sleep(75 * time.Second)
 		if safe, _ := a.SafeToRestart(); safe {
 			t.Fatal("safe with a stale block height")
 		}
 
-		// A fresh height close to the claim phase is unsafe; the elapsed time
+		// A fresh height close to the claim phase is unsafe. The elapsed time
 		// then moves the estimate into claim.
 		a.ObserveBlock(at(1000, 38))
 		if safe, reason := a.SafeToRestart(); !safe {

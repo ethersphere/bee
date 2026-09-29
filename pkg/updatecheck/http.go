@@ -17,11 +17,11 @@ import (
 
 const (
 	requestTimeout = 10 * time.Second
-	// maxHeaderBytes bounds the response headers of the registry.
+	// maxHeaderBytes limits the size of the registry's response headers.
 	maxHeaderBytes = 16 << 10 // 16 KiB
 	maxRedirects   = 5
-	// maxETagSize bounds an entity tag that is remembered for a conditional
-	// request.
+	// maxETagSize limits the size of an entity tag that is remembered for a
+	// conditional request.
 	maxETagSize = 256
 )
 
@@ -49,16 +49,16 @@ func newClient() *http.Client {
 	}
 }
 
-// downloadHeaderTimeout bounds how long the registry may take to start
-// answering a binary download. A gateway retrieves a cold ~75 MB file from
-// Swarm before it sends headers, which takes far longer than requestTimeout.
+// downloadHeaderTimeout limits how long the registry may take to start
+// answering a binary download. A gateway fetches a cold ~75 MB file from Swarm
+// before it sends headers. That takes far longer than requestTimeout.
 const downloadHeaderTimeout = 2 * time.Minute
 
-// newDownloadClient returns the client for binary downloads: client when one
-// was configured, otherwise the default client without its overall request
-// timeout and with a longer response header timeout, both of which a cold
-// download through a gateway exceeds. The caller bounds the download with a
-// context instead.
+// newDownloadClient returns the client for binary downloads. If a client was
+// configured, it returns that client. Otherwise it returns the default client
+// with no overall request timeout and with a longer response header timeout. A
+// cold download through a gateway exceeds both default limits. The caller
+// limits the download with a context instead.
 func newDownloadClient(client *http.Client) *http.Client {
 	if client != nil {
 		return client
@@ -71,8 +71,8 @@ func newDownloadClient(client *http.Client) *http.Client {
 	return c
 }
 
-// sameOriginRedirect follows a redirect only within the registry's origin, so
-// that a registry cannot point bee at an arbitrary host.
+// sameOriginRedirect follows a redirect only within the registry's origin. This
+// stops a registry from pointing bee at an arbitrary host.
 func sameOriginRedirect(req *http.Request, via []*http.Request) error {
 	if len(via) >= maxRedirects {
 		return errTooManyRedirects
@@ -90,8 +90,8 @@ type cachedResponse struct {
 	body []byte
 }
 
-// httpGetter fetches registry documents, revalidating the last response for
-// a URL with If-None-Match when the registry gave it an entity tag.
+// httpGetter fetches registry documents. If the registry gave a URL an entity
+// tag, it revalidates the last response for that URL with If-None-Match.
 type httpGetter struct {
 	client *http.Client
 
@@ -106,10 +106,10 @@ func newHTTPGetter(client *http.Client) *httpGetter {
 	return &httpGetter{client: client, cache: make(map[string]cachedResponse)}
 }
 
-// get fetches target and returns its body. A body of limit bytes or more is
-// refused, as bee-runner refuses it. Neither the status line nor the body of
-// an unexpected response is returned, since both are controlled by the
-// registry and end up in logs.
+// get fetches target and returns its body. It refuses a body of limit bytes or
+// more, as bee-runner does. It never returns the status line or the body of an
+// unexpected response, because the registry controls both and they end up in
+// logs.
 func (g *httpGetter) get(ctx context.Context, target string, limit int) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
@@ -129,8 +129,8 @@ func (g *httpGetter) get(ctx context.Context, target string, limit int) ([]byte,
 
 	resp, err := g.client.Do(req)
 	if err != nil {
-		// Drop the URL: it may carry credentials, or be a redirect target
-		// chosen by the registry.
+		// Drop the URL. It may carry credentials, or it may be a redirect
+		// target chosen by the registry.
 		var uerr *url.Error
 		if errors.As(err, &uerr) {
 			err = uerr.Err

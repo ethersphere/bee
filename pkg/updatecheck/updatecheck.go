@@ -3,21 +3,22 @@
 // license that can be found in the LICENSE file.
 
 // Package updatecheck periodically asks a swarm-oci-serve registry which bee
-// release it serves and reports, through metrics and a log line, whether it is
-// newer than the running one. It never downloads or installs anything.
+// release it serves. Through metrics and a log line, it reports whether that
+// release is newer than the running one. It never downloads or installs
+// anything.
 //
-// When bee was started by bee-runner, which hands over the release it started
-// and the release signing key it trusts, the check reads the signed release
-// descriptor (/release.json and /release.sig) and verifies it against that
-// key exactly as the runner does. A release is then newer when its descriptor
-// version, the Unix time it was published, is higher than the running one and
-// it is published on the runner's channel. This is also what the opt-in
-// update restart acts on: see RestartOptions.
+// When bee was started by bee-runner, the runner hands over the release it
+// started and the release signing key it trusts. The check then reads the
+// signed release descriptor (/release.json and /release.sig) and verifies it
+// against that key, exactly as the runner does. A release is newer when its
+// descriptor version (the Unix time it was published) is higher than the
+// running one and it is published on the runner's channel. The opt-in update
+// restart also acts on this: see RestartOptions.
 //
-// Without a release key the check is report-only and reads the registry's
-// unsigned /info summary, trusting the registry's own "verified" field.
-// Outside bee-runner, where there is no descriptor version to compare with,
-// the highest plain semver tag is compared with the running version.
+// Without a release key, the check is report-only. It reads the registry's
+// unsigned /info summary and trusts the registry's own "verified" field.
+// Outside bee-runner there is no descriptor version to compare with, so the
+// highest plain semver tag is compared with the running version.
 package updatecheck
 
 import (
@@ -50,14 +51,14 @@ const (
 	initialDelayJitter = 30 * time.Second
 
 	infoPath = "info"
-	// maxInfoSize bounds the registry's /info response.
+	// maxInfoSize bounds the size of the registry's /info response.
 	maxInfoSize = 1 << 20 // 1 MiB
 
 	// defaultChannel is the channel bee-runner follows when none is set.
 	defaultChannel = "stable"
 
-	// maxLoggedNotes, maxLoggedValue and maxLoggedChannels bound what a
-	// release, which the registry controls, writes to a log line.
+	// maxLoggedNotes, maxLoggedValue and maxLoggedChannels bound how much of a
+	// release a log line may contain. The registry controls the release.
 	maxLoggedNotes    = 1 << 10
 	maxLoggedValue    = 64
 	maxLoggedChannels = 8
@@ -81,69 +82,71 @@ type Runner struct {
 	Registry string
 	// Channel is BEE_RUNNER_CHANNEL, the release channel the runner follows.
 	Channel string
-	// Version is BEE_RUNNER_VERSION, the descriptor version of the release
-	// the runner started.
+	// Version is BEE_RUNNER_VERSION: the descriptor version of the release the
+	// runner started.
 	Version string
-	// Pubkey is BEE_RUNNER_PUBKEY, the release signing key the runner
-	// verified the release with, as 64 lowercase hex characters.
+	// Pubkey is BEE_RUNNER_PUBKEY: the release signing key the runner used to
+	// verify the release, as 64 lowercase hex characters.
 	Pubkey string
-	// RolledBack is BEE_RUNNER_ROLLED_BACK, the descriptor version of a
-	// release the runner rolled back from because it kept crashing.
+	// RolledBack is BEE_RUNNER_ROLLED_BACK: the descriptor version of a release
+	// the runner rolled back from because it kept crashing.
 	RolledBack string
-	// Cache is BEE_RUNNER_CACHE, the runner's binary cache (absolute), and
-	// Binary is BEE_RUNNER_BINARY, the path of this platform's binary in a
-	// release. With both, the update restart pre-stages the new binary in
-	// the cache before exiting.
+	// Cache is BEE_RUNNER_CACHE, the runner's binary cache (an absolute path).
+	// Binary is BEE_RUNNER_BINARY, the path of this platform's binary inside a
+	// release. When both are set, the update restart first stages the new
+	// binary in the cache, then exits.
 	Cache  string
 	Binary string
-	// NoRollback is BEE_RUNNER_NO_ROLLBACK, the bee version of a noRollback
-	// release this node ran. bee-runner refuses every release carrying an
+	// NoRollback is BEE_RUNNER_NO_ROLLBACK: the bee version of a noRollback
+	// release this node ran. bee-runner refuses every release that carries an
 	// older bee, so bee must not restart for one.
 	NoRollback string
 }
 
 // Options configure the update check service.
 type Options struct {
-	// URL is the base URL of the swarm-oci-serve registry. Empty disables
-	// the check, unless the update restart is enabled: the registry of
-	// bee-runner is then used.
+	// URL is the base URL of the swarm-oci-serve registry. If empty, the check
+	// is disabled, unless the update restart is enabled. In that case the
+	// bee-runner registry is used.
 	URL string
 	// Interval is the time between checks. Zero means DefaultInterval.
 	Interval time.Duration
 	// CurrentVersion is the version of the running bee (bee.Version).
 	CurrentVersion string
-	// Runner is the hand-over from bee-runner.
+	// Runner holds the values handed over from bee-runner.
 	Runner Runner
-	// Client is the HTTP client used for requests. Optional; by default a
-	// client with a request timeout, a small response header limit and no
-	// cross-origin redirects.
+	// Client is the HTTP client used for requests. It is optional. The default
+	// client has a request timeout, a small response header limit and follows
+	// no cross-origin redirects.
 	Client *http.Client
 	// Restart configures the opt-in restart when a newer release is offered.
 	Restart RestartOptions
-	// Overlay is the node's overlay address. It places the node's restart
-	// deterministically within a release's rollout window.
+	// Overlay is the node's overlay address. It gives the node a fixed,
+	// repeatable place for its restart inside a release's rollout window.
 	Overlay swarm.Address
 }
 
-// release is what a check learns about the release the registry offers,
-// either from the signed descriptor or from the registry's /info summary.
+// release is what a check learns about the release the registry offers. The
+// data comes from the signed descriptor or from the registry's /info summary.
 type release struct {
 	Verified bool `json:"verified"`
-	// Version is the release descriptor version: the Unix time at which it
-	// was published. bee-runner orders releases by it, never by tags.
+	// Version is the release descriptor version: the Unix time at which the
+	// release was published. bee-runner orders releases by this value, never by
+	// tags.
 	Version uint64 `json:"version"`
-	// Channels the release is published on. Empty means every channel.
+	// Channels lists the channels the release is published on. Empty means
+	// every channel.
 	Channels []string  `json:"channels"`
 	Tags     []tagInfo `json:"tags"`
-	// Notes is optional free text, such as an operator action needed
+	// Notes is optional free text, for example an action the operator must take
 	// before upgrading.
 	Notes string `json:"notes"`
-	// CreatedAt is when the release was signed (RFC 3339). Update restarts
-	// are spread over the rollout window starting at this time.
+	// CreatedAt is when the release was signed (RFC 3339). The rollout window
+	// starts at this time, and update restarts are spread across it.
 	CreatedAt string `json:"createdAt"`
-	// RolloutWindowSeconds is the time over which the publisher wants the
-	// fleet to restart for the release. Absent means DefaultRolloutWindow;
-	// zero means as soon as safe.
+	// RolloutWindowSeconds is how long the publisher wants the fleet to take to
+	// restart for this release. If absent, DefaultRolloutWindow applies. Zero
+	// means restart as soon as it is safe.
 	RolloutWindowSeconds *uint64 `json:"rolloutWindowSeconds"`
 	// Files maps a path in the release to its sha256 digest. Only the
 	// signed descriptor has it.
@@ -151,7 +154,7 @@ type release struct {
 }
 
 // rolloutWindow returns the release's rollout window and whether the release
-// sets one. Absurdly large windows are bounded by maxRolloutWindow.
+// sets one. Very large windows are capped at maxRolloutWindow.
 func (r *release) rolloutWindow() (time.Duration, bool) {
 	if r.RolloutWindowSeconds == nil {
 		return DefaultRolloutWindow, false
@@ -172,16 +175,16 @@ type tagInfo struct {
 	Tag string `json:"tag"`
 }
 
-// Service periodically checks for a newer bee release.
+// Service checks for a newer bee release at regular intervals.
 type Service struct {
 	logger log.Logger
 	http   *httpGetter
-	// registry is the registry URL with any userinfo redacted, for logs.
+	// registry is the registry URL with any userinfo removed, for logs.
 	registry      string
 	infoURL       string
 	descriptorURL string
 	signatureURL  string
-	// trust holds the release signing key from bee-runner. When set, the
+	// trust holds the release signing key from bee-runner. When it is set, the
 	// signed descriptor is fetched instead of /info.
 	trust    *releaseKey
 	interval time.Duration
@@ -190,7 +193,7 @@ type Service struct {
 
 	// runner is set when bee was started by bee-runner with a parsable
 	// BEE_RUNNER_VERSION. Updates are then decided by descriptor version
-	// (runnerVersion) and channel instead of by semver tags.
+	// (runnerVersion) and channel, not by semver tags.
 	runner        bool
 	runnerVersion uint64
 	channel       string
@@ -209,8 +212,8 @@ type Service struct {
 }
 
 // New validates the options and starts the periodic check. The caller must
-// Close the returned service to stop it. When the check is disabled, New
-// starts nothing and returns a nil service and a nil error.
+// Close the returned service to stop it. If the check is disabled, New starts
+// nothing and returns a nil service and a nil error.
 func New(logger log.Logger, o Options) (*Service, error) {
 	s, err := newService(logger, o)
 	if s == nil || err != nil {
@@ -223,8 +226,8 @@ func New(logger log.Logger, o Options) (*Service, error) {
 	return s, nil
 }
 
-// newService returns the service without starting it, or a nil service and a
-// nil error when the check is disabled.
+// newService returns the service without starting it. If the check is disabled,
+// it returns a nil service and a nil error.
 func newService(logger log.Logger, o Options) (*Service, error) {
 	logger = logger.WithName(loggerName).Register()
 
@@ -297,9 +300,9 @@ func newService(logger log.Logger, o Options) (*Service, error) {
 	return s, nil
 }
 
-// parseNoRollback parses BEE_RUNNER_NO_ROLLBACK. An unparsable value is
-// ignored with a warning: bee-runner enforces the barrier either way, and the
-// worst outcome is restarting for a release it then refuses.
+// parseNoRollback parses BEE_RUNNER_NO_ROLLBACK. A value that cannot be parsed
+// is ignored with a warning. bee-runner enforces the barrier either way, so the
+// worst outcome is that bee restarts for a release the runner then refuses.
 func parseNoRollback(logger log.Logger, r Runner) *semver.Version {
 	if r.NoRollback == "" {
 		return nil
@@ -312,9 +315,9 @@ func parseNoRollback(logger log.Logger, r Runner) *semver.Version {
 	return v
 }
 
-// parseRunnerVersion parses BEE_RUNNER_VERSION. ok is false when bee was not
-// started by bee-runner or the version is absent or invalid; bee is then not
-// treated as started by the runner.
+// parseRunnerVersion parses BEE_RUNNER_VERSION. ok is false if bee was not
+// started by bee-runner, or if the version is missing or invalid. In that case
+// bee does not treat itself as started by the runner.
 func parseRunnerVersion(r Runner) (version uint64, ok bool) {
 	if !r.Started || r.Version == "" {
 		return 0, false
@@ -329,7 +332,7 @@ func parseRunnerVersion(r Runner) (version uint64, ok bool) {
 func parseBaseURL(raw string) (*url.URL, error) {
 	u, err := url.Parse(raw)
 	if err != nil {
-		// url.Parse errors quote the input, which may hold credentials.
+		// url.Parse errors quote the input, which may contain credentials.
 		return nil, errors.New("updatecheck: invalid registry url")
 	}
 	if u.Scheme != "http" && u.Scheme != "https" {
@@ -360,21 +363,21 @@ func (s *Service) run(delay time.Duration) {
 	}
 }
 
-// jitter returns d changed by a random amount of up to 10%, so that nodes
-// started together do not poll the registry together.
+// jitter returns d changed by a random amount of up to 10%. This keeps nodes
+// that started together from polling the registry at the same time.
 func jitter(d time.Duration) time.Duration {
 	return d - d/10 + rand.N(d/5+1)
 }
 
-// checkOnce runs a single check and records its outcome in metrics and logs.
+// checkOnce runs one check and records the result in metrics and logs.
 func (s *Service) checkOnce(ctx context.Context) {
 	res, err := s.check(ctx)
 	if err != nil {
 		if ctx.Err() != nil {
 			return // shutting down
 		}
-		// Counted in a metric; the registry being unreachable now and then
-		// is not something an operator has to act on.
+		// Counted in a metric. An operator does not need to act when the
+		// registry is unreachable now and then.
 		s.metrics.CheckErrors.Inc()
 		s.logger.Debug("update check failed", "registry", s.registry, "error", err)
 		return
@@ -387,8 +390,8 @@ func (s *Service) checkOnce(ctx context.Context) {
 	if res.available {
 		available = 1
 	}
-	// Reset so that a previous {current,latest} pair does not linger once the
-	// registry moves on.
+	// Reset, so an old {current,latest} pair does not stay once the registry
+	// moves on.
 	s.metrics.Available.Reset()
 	s.metrics.Available.WithLabelValues(res.current, res.latest).Set(available)
 
@@ -403,8 +406,8 @@ func (s *Service) checkOnce(ctx context.Context) {
 		return
 	}
 
-	// Under the runner a republish of the same tag is a new release, so it
-	// is announced again.
+	// Under the runner, republishing the same tag is a new release, so it is
+	// announced again.
 	key := res.latest
 	if s.runner {
 		key += "@" + strconv.FormatUint(res.latestVersion, 10)
@@ -421,8 +424,8 @@ func (s *Service) checkOnce(ctx context.Context) {
 	s.maybeScheduleRestart(res)
 }
 
-// announceOtherChannel logs, once per descriptor version, a newer release that
-// is not offered on the runner's channel and is therefore not taken.
+// announceOtherChannel logs a newer release once per descriptor version. The
+// release is not offered on the runner's channel, so it is not taken.
 func (s *Service) announceOtherChannel(res result) {
 	s.mu.Lock()
 	announce := s.lastOtherChannel != res.latestVersion
@@ -440,9 +443,9 @@ func (s *Service) announceOtherChannel(res result) {
 	}
 }
 
-// announceBelowNoRollback logs, once per descriptor version, a newer release
-// that bee-runner will refuse because it carries a bee older than the
-// noRollback release this node ran.
+// announceBelowNoRollback logs a newer release once per descriptor version.
+// bee-runner will refuse it because its bee is older than the noRollback
+// release this node ran.
 func (s *Service) announceBelowNoRollback(res result) {
 	s.mu.Lock()
 	announce := s.lastBelowBarrier != res.latestVersion
@@ -459,8 +462,7 @@ func (s *Service) announceBelowNoRollback(res result) {
 	}
 }
 
-// truncate shortens s to at most n bytes, without splitting a UTF-8
-// sequence.
+// truncate shortens s to at most n bytes without splitting a UTF-8 sequence.
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s
@@ -473,7 +475,7 @@ func truncate(s string, n int) string {
 	return s[:cut] + suffix
 }
 
-// truncateList bounds a list of registry-provided values for a log line.
+// truncateList limits a list of registry-provided values for a log line.
 func truncateList(l []string) []string {
 	out := make([]string, 0, min(len(l), maxLoggedChannels+1))
 	for i, v := range l {
@@ -488,13 +490,14 @@ func truncateList(l []string) []string {
 
 type result struct {
 	// current and latest are the semver of the running bee and the highest
-	// release tag offered, for humans. Under the runner they may be the raw
-	// own version and empty, as they do not decide anything there.
+	// offered release tag, for humans to read. Under the runner they may be the
+	// raw own version and empty, because they decide nothing there.
 	current string
 	latest  string
-	// runningVersion and latestVersion are the descriptor versions of the
-	// release the runner started (0 outside the runner) and of the release
-	// the registry offers (0 if it reports none).
+	// runningVersion and latestVersion are descriptor versions. runningVersion
+	// is that of the release the runner started (0 outside the runner).
+	// latestVersion is that of the release the registry offers (0 if it reports
+	// none).
 	runningVersion uint64
 	latestVersion  uint64
 	available      bool
@@ -508,13 +511,13 @@ type result struct {
 	belowNoRollback bool
 	channels        []string
 	notes           string
-	// createdAt is the release's raw createdAt; window is its rollout window
-	// and windowSet whether the release sets it explicitly.
+	// createdAt is the release's raw createdAt. window is its rollout window,
+	// and windowSet says whether the release sets it explicitly.
 	createdAt string
 	window    time.Duration
 	windowSet bool
-	// files are the release's file digests, from the signed descriptor
-	// only.
+	// files are the release's file digests. They come only from the signed
+	// descriptor.
 	files map[string]string
 }
 
@@ -528,8 +531,8 @@ func (r result) logValues() []any {
 }
 
 // check fetches the offered release and decides whether it is newer than the
-// running one: by descriptor version and channel under bee-runner, by semver
-// tag otherwise.
+// running one. Under bee-runner it compares descriptor version and channel.
+// Otherwise it compares the semver tag.
 func (s *Service) check(ctx context.Context) (result, error) {
 	current, currentOK := parseCurrentVersion(s.current)
 	if !currentOK && !s.runner {
@@ -572,9 +575,9 @@ func (s *Service) check(ctx context.Context) (result, error) {
 			return result{}, errNoReleaseVersion
 		}
 		newer, onChannel := r.Version > s.runnerVersion, r.onChannel(s.channel)
-		// A newer release version can still carry an older bee (a revert),
-		// which bee-runner refuses past a noRollback release. Restarting for
-		// it would only bring back this same binary.
+		// A newer release version can still carry an older bee (a revert).
+		// bee-runner refuses such a release past a noRollback release.
+		// Restarting for it would only bring back this same binary.
 		if newer && onChannel && s.noRollback != nil {
 			if v := highestReleaseOrRC(r); v == nil || v.LessThan(*s.noRollback) {
 				res.belowNoRollback = true
@@ -592,8 +595,8 @@ func (s *Service) check(ctx context.Context) (result, error) {
 	return res, nil
 }
 
-// fetchInfo fetches the registry's unsigned /info summary and accepts it only
-// when the registry reports that it verified the release descriptor.
+// fetchInfo fetches the registry's unsigned /info summary. It accepts the
+// summary only if the registry reports that it verified the release descriptor.
 func (s *Service) fetchInfo(ctx context.Context) (*release, error) {
 	body, err := s.http.get(ctx, s.infoURL, maxInfoSize)
 	if err != nil {
@@ -610,8 +613,8 @@ func (s *Service) fetchInfo(ctx context.Context) (*release, error) {
 }
 
 // latestRelease returns the highest plain release version among the tags, or
-// nil if there is none. Other tags, pre-releases such as 2.9.0-rc1 included,
-// are skipped, so a node is never told to "upgrade" to a release candidate.
+// nil if there is none. It skips other tags, including pre-releases such as
+// 2.9.0-rc1, so a node is never told to "upgrade" to a release candidate.
 func latestRelease(r *release) *semver.Version {
 	var latest *semver.Version
 	for _, t := range r.Tags {
@@ -623,9 +626,9 @@ func latestRelease(r *release) *semver.Version {
 	return latest
 }
 
-// highestReleaseOrRC returns the highest release or release candidate among
-// the tags, or nil if there is none. This is how bee-runner reads a release's
-// bee version when ordering it against a noRollback barrier.
+// highestReleaseOrRC returns the highest release or release candidate among the
+// tags, or nil if there is none. bee-runner uses this to read a release's bee
+// version when comparing it with a noRollback barrier.
 func highestReleaseOrRC(r *release) *semver.Version {
 	var best *semver.Version
 	for _, t := range r.Tags {

@@ -28,8 +28,8 @@ func digestOf(b []byte) string {
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
-// stageHarness offers a release listing newBinary and serves served as its
-// binary, with pre-staging into a fresh cache.
+// stageHarness offers a release that lists newBinary and serves served as its
+// binary. It pre-stages into a fresh cache.
 func stageHarness(t *testing.T, served []byte, cache string) *harness {
 	t.Helper()
 	rel := release{
@@ -76,7 +76,8 @@ func TestPrestage(t *testing.T) {
 		if !bytes.Equal(b, newBinary) {
 			t.Fatal("staged binary differs")
 		}
-		// Windows has no execute bits; bee-runner is Linux only anyway.
+		// Windows has no execute bits, and bee-runner runs only on Linux
+		// anyway.
 		if fi, err := os.Stat(staged); err != nil || (runtime.GOOS != "windows" && fi.Mode().Perm() != 0o755) {
 			t.Fatalf("staged binary mode: %v, %v", fi.Mode(), err)
 		}
@@ -89,8 +90,8 @@ func TestPrestage(t *testing.T) {
 	})
 }
 
-// A binary that does not match the signed digest is never put where the
-// runner looks, and the restart goes ahead: the runner downloads it itself.
+// A binary that does not match the signed digest is never put where the runner
+// looks. The restart goes ahead, and the runner downloads the binary itself.
 func TestPrestageDigestMismatch(t *testing.T) {
 	t.Parallel()
 
@@ -131,8 +132,8 @@ func TestPrestageAlreadyCached(t *testing.T) {
 	})
 }
 
-// A cache or binary path from the environment that is not what bee-runner
-// hands over disables pre-staging, not the restart.
+// A cache or binary path from the environment that differs from what bee-runner
+// hands over turns off pre-staging, but not the restart.
 func TestPrestageBadHandoff(t *testing.T) {
 	t.Parallel()
 
@@ -165,8 +166,8 @@ func TestPrestageBadHandoff(t *testing.T) {
 	}
 }
 
-// A cold download through a gateway only starts once the gateway has
-// retrieved the file, far later than the registry's request timeout allows.
+// A cold download through a gateway starts only after the gateway has retrieved
+// the file. That is much later than the registry's request timeout allows.
 func TestPrestageDownloadHeaderTimeout(t *testing.T) {
 	t.Parallel()
 

@@ -23,11 +23,11 @@ func TestSignedRelease(t *testing.T) {
 	t.Parallel()
 
 	reg := newRegistry()
-	// The unsigned summary claims something else; it must not be read.
+	// The unsigned summary says something different, and it must not be read.
 	reg.set("/info", response{body: info(t, release{version: 5000, tags: []string{"9.0.0"}}, true)})
 	body := descriptor(t, newerRelease)
 	reg.set("/release.json", response{body: body})
-	// Entries of other keys, junk included, are ignored.
+	// Entries for other keys, including junk, are ignored.
 	reg.set("/release.sig", response{body: sigSet(t,
 		sig(otherSigner, body), testSig{KeyID: "junk"}, testSig{}, sig(testSigner, body))})
 
@@ -48,8 +48,9 @@ func TestSignedRelease(t *testing.T) {
 	}
 }
 
-// bee refuses exactly what bee-runner refuses, so that it never restarts for a
-// release the runner will not install, nor ignores one it will.
+// bee refuses exactly what bee-runner refuses. That way it never restarts for a
+// release the runner will not install, and never ignores one the runner will
+// install.
 func TestSignedReleaseRefused(t *testing.T) {
 	t.Parallel()
 
@@ -111,8 +112,8 @@ func TestSignedReleaseRefused(t *testing.T) {
 	}
 }
 
-// A release key that is not in its canonical form is not used: the check
-// falls back to the unsigned /info, and the update restart stays inactive.
+// A release key that is not in canonical form is not used. The check falls back
+// to the unsigned /info, and the update restart stays inactive.
 func TestInvalidReleaseKey(t *testing.T) {
 	t.Parallel()
 

@@ -77,8 +77,9 @@ type Agent struct {
 	sampleFlight           singleflight.Group[string, sampleResult]
 	disabled               atomic.Bool
 
-	// blockTime, blocksPerPhase and blockObservedAt (Unix nanoseconds of
-	// the last recorded block height, 0 if none yet) serve SafeToRestart.
+	// blockTime, blocksPerPhase and blockObservedAt are used by SafeToRestart.
+	// blockObservedAt is the Unix time in nanoseconds of the last recorded
+	// block height, or 0 if none has been recorded yet.
 	blockTime       time.Duration
 	blocksPerPhase  uint64
 	blockObservedAt atomic.Int64

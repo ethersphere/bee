@@ -192,13 +192,12 @@ func buildBeeNodeAsync(ctx context.Context, shutdown context.CancelFunc, c *comm
 	return respC
 }
 
-// buildBeeNode builds the node. shutdown cancels the node's main context and
-// is what the update restart calls: it takes the same path as SIGINT/SIGTERM
-// (start returns, stop runs Bee.Shutdown) and bee exits with status 0. Whatever
-// restarts bee (systemd, Docker, Kubernetes) must therefore restart bee-runner
-// on a clean exit too (k8s
-// restartPolicy Always, systemd Restart=always, docker --restart always or
-// unless-stopped).
+// buildBeeNode builds the node. shutdown cancels the node's main context, and
+// the update restart calls it. It takes the same path as SIGINT/SIGTERM: start
+// returns, stop runs Bee.Shutdown, and bee exits with status 0. So whatever
+// restarts bee (systemd, Docker, Kubernetes) must restart bee-runner on a clean
+// exit too. Use k8s restartPolicy Always, systemd Restart=always, or docker
+// --restart always or unless-stopped.
 func buildBeeNode(ctx context.Context, shutdown context.CancelFunc, c *command, cmd *cobra.Command, logger log.Logger) (*node.Bee, error) {
 	var err error
 
@@ -497,10 +496,10 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 	}, nil
 }
 
-// runnerHandoff returns what bee-runner, when it started bee, handed over in
-// the environment. The variable names are the runner's contract; they are
-// read here rather than through the configuration so that a config file or
-// flag cannot pose as the runner.
+// runnerHandoff returns what bee-runner handed over in the environment when it
+// started bee. The variable names are the runner's contract. They are read
+// here, not through the configuration, so a config file or flag cannot pose as
+// the runner.
 func runnerHandoff() updatecheck.Runner {
 	return updatecheck.Runner{
 		Started:    os.Getenv("BEE_RUNNER") == "1",

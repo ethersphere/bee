@@ -36,13 +36,13 @@ var (
 	RetryBackoff = retryBackoff
 )
 
-// NewUnstarted returns a service whose periodic check is not started, so that
-// tests call Check themselves.
+// NewUnstarted returns a service whose periodic check is not started, so tests
+// call Check themselves.
 func NewUnstarted(logger log.Logger, o Options) (*Service, error) {
 	return newService(logger, o)
 }
 
-// Result is what a check decided.
+// Result is the outcome of a check.
 type Result struct {
 	Current, Latest string
 	LatestVersion   uint64
@@ -67,7 +67,7 @@ func (s *Service) RestartActive() bool { return s.restart.active }
 
 func (s *Service) Registry() string { return s.registry }
 
-// Metrics is the state of the service's metrics.
+// Metrics holds the metrics state of the service.
 type Metrics struct {
 	Available         float64
 	CheckErrors       float64
@@ -115,15 +115,15 @@ func DefaultDownloadHeaderTimeout() time.Duration {
 	return newDownloadClient(nil).Transport.(*http.Transport).ResponseHeaderTimeout
 }
 
-// DefaultGet fetches url with the default client and closes its idle
-// connections afterwards.
+// DefaultGet fetches url with the default client. It then closes the client's
+// idle connections.
 func DefaultGet(ctx context.Context, url string, limit int) ([]byte, error) {
 	g := newHTTPGetter(nil)
 	defer g.client.CloseIdleConnections()
 	return g.get(ctx, url, limit)
 }
 
-// Get fetches url with client, reusing the getter g across calls.
+// Get fetches url with client. It reuses the getter g across calls.
 type Getter struct{ g *httpGetter }
 
 func NewGetter(client *http.Client) Getter { return Getter{newHTTPGetter(client)} }

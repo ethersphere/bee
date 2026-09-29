@@ -20,7 +20,7 @@ import (
 
 var overlay = swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 
-// harness runs the service with the update restart active in a synctest
+// harness runs the service with the update restart active, inside a synctest
 // bubble.
 type harness struct {
 	reg       *registry
@@ -129,7 +129,7 @@ func TestRestartAtSlot(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		start := time.Now()
 		w := 30 * 24 * time.Hour
-		// Place the slot about 3h from now; createdAt has whole seconds.
+		// Place the slot about 3h from now. createdAt has whole seconds.
 		offset := updatecheck.RestartSlot(overlay.Bytes(), 2000, start, w).Sub(start)
 		createdAt := start.Add(3*time.Hour - offset).Truncate(time.Second)
 		if createdAt.After(start) {
@@ -155,8 +155,8 @@ func TestRestartAtSlot(t *testing.T) {
 	})
 }
 
-// A node that notices a release after its slot restarts after a random delay
-// bounded by the window.
+// A node that notices a release after its slot restarts after a random delay.
+// The delay is bounded by the window.
 func TestRestartLateNode(t *testing.T) {
 	t.Parallel()
 
@@ -204,8 +204,8 @@ func TestRestartWaitsForSafePoint(t *testing.T) {
 				defer h.s.Close()
 
 				if tc.unsafeFor < 0 {
-					// Two rounds are waited for, from the restart time
-					// (at most 2m in).
+					// Wait for two rounds, counted from the restart time (at
+					// most 2m in).
 					sleep(20 * time.Minute)
 					h.expectShutdowns(t, 0)
 				}
@@ -220,8 +220,8 @@ func TestRestartWaitsForSafePoint(t *testing.T) {
 }
 
 // A restart for a release that was not delivered is retried once after a
-// backoff. While the restart is pending the registry is polled more often;
-// once the release is withdrawn the restart is canceled and the configured
+// backoff. While the restart is pending, the registry is polled more often.
+// Once the release is withdrawn, the restart is canceled and the configured
 // interval applies again.
 func TestRestartRetryAndPolling(t *testing.T) {
 	t.Parallel()
@@ -230,7 +230,7 @@ func TestRestartRetryAndPolling(t *testing.T) {
 		start := time.Now()
 		rel := release{version: 2000, tags: []string{"2.9.0"}, createdAt: start.Add(-48 * time.Hour), window: window(20 * time.Minute)}
 		dir := t.TempDir()
-		// bee restarted for 2000 a moment ago, but runs 1000 again.
+		// bee restarted for 2000 a moment ago, but it runs 1000 again.
 		writeMarker(t, dir, 2000, 1, start)
 		h := newHarness(t, rel, func(o *updatecheck.Options) {
 			o.Interval = time.Hour
@@ -239,7 +239,7 @@ func TestRestartRetryAndPolling(t *testing.T) {
 		h.dir = dir
 		defer h.s.Close()
 
-		// The retry waits for the backoff, polling every quarter window.
+		// The retry waits for the backoff and polls every quarter window.
 		sleep(updatecheck.RetryBackoff - time.Minute)
 		h.expectShutdowns(t, 0)
 		if got, want := h.s.MetricValues().RestartScheduled, float64(start.Add(updatecheck.RetryBackoff).Unix()); got != want {
@@ -255,7 +255,8 @@ func TestRestartRetryAndPolling(t *testing.T) {
 			}
 		}
 
-		// Withdrawn before the restart fires: canceled.
+		// The release is withdrawn before the restart fires, so the restart is
+		// canceled.
 		h.reg.offer(t, release{version: 900, tags: []string{"2.8.0"}})
 		sleep(2 * time.Minute)
 		h.expectShutdowns(t, 0)
@@ -268,7 +269,7 @@ func TestRestartRetryAndPolling(t *testing.T) {
 			t.Fatalf("%d checks in 50m after the restart was canceled", got-n)
 		}
 
-		// Offered again: the second and last attempt.
+		// The release is offered again. This is the second and last attempt.
 		h.reg.offer(t, rel)
 		sleep(time.Hour + 3*time.Minute)
 		h.expectShutdowns(t, 1)
@@ -340,7 +341,7 @@ func TestRestartMarkerAtStartup(t *testing.T) {
 		}
 		h.s.Close()
 
-		// A symbolic link is neither followed nor written through.
+		// A symbolic link is not followed, and nothing is written through it.
 		dir = t.TempDir()
 		target := filepath.Join(t.TempDir(), "elsewhere")
 		if err := os.WriteFile(target, []byte("keep"), 0o600); err != nil {
@@ -413,7 +414,7 @@ func TestRestartActivation(t *testing.T) {
 		{"no data directory", func(o *updatecheck.Options) { o.Restart.DataDir = "" }},
 		{"unnamed rollback", func(o *updatecheck.Options) { o.Runner.RolledBack = "yes" }},
 	} {
-		// With the URL configured the check still runs, report-only.
+		// With the URL configured, the check still runs, but only reports.
 		o := enabled(tc.f)
 		o.URL = registryURL
 		s, err := updatecheck.NewUnstarted(log.Noop, o)
@@ -423,7 +424,7 @@ func TestRestartActivation(t *testing.T) {
 		if s.RestartActive() {
 			t.Errorf("%s: restart active", tc.name)
 		}
-		// Without it, an inactive restart does not enable the check.
+		// Without the URL, an inactive restart does not enable the check.
 		if s, err := updatecheck.NewUnstarted(log.Noop, enabled(tc.f)); s != nil || err != nil {
 			t.Errorf("%s: check enabled without a url: %v", tc.name, err)
 		}

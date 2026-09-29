@@ -47,8 +47,8 @@ type release struct {
 
 func window(d time.Duration) *time.Duration { return &d }
 
-// descriptor renders r as a signed release descriptor, as swarm-oci-publish
-// does.
+// descriptor renders r as a signed release descriptor, the same way
+// swarm-oci-publish does.
 func descriptor(t *testing.T, r release) []byte {
 	t.Helper()
 	d := map[string]any{
@@ -131,8 +131,8 @@ type response struct {
 	etag   string
 }
 
-// registry is an in-memory swarm-oci-serve, served through an
-// http.RoundTripper so that tests run in a synctest bubble.
+// registry is an in-memory swarm-oci-serve. It is served through an
+// http.RoundTripper so that tests can run in a synctest bubble.
 type registry struct {
 	mu        sync.Mutex
 	responses map[string]response
@@ -159,7 +159,8 @@ func (r *registry) set(path string, resp response) {
 	r.responses[path] = resp
 }
 
-// offer serves r signed by the test key, and as a verified /info.
+// offer serves r signed with the test key. It also serves r as a verified
+// /info.
 func (r *registry) offer(t *testing.T, rel release) {
 	t.Helper()
 	body := descriptor(t, rel)
@@ -209,7 +210,8 @@ func (r *registry) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	return &http.Response{
 		StatusCode: resp.status,
-		// A status line a hostile registry controls; it must not be logged.
+		// A status line controlled by a hostile registry. It must not be
+		// logged.
 		Status:  "999 status from the registry",
 		Header:  header,
 		Body:    io.NopCloser(bytes.NewReader(resp.body)),
@@ -240,8 +242,8 @@ func (b *syncBuffer) String() string {
 	return b.b.String()
 }
 
-// runnerOptions are options as bee-runner hands them over with the test key,
-// running release version 1000.
+// runnerOptions are the options bee-runner passes to bee, with the test key,
+// when it runs release version 1000.
 func runnerOptions(reg *registry) updatecheck.Options {
 	return updatecheck.Options{
 		URL:            registryURL,

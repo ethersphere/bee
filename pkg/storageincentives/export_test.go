@@ -23,14 +23,14 @@ var (
 	PhaseClaim  = claim
 )
 
-// RestartSafePoint runs restartSafePoint with the round layout of an agent
-// with the given block time and the default round length.
+// RestartSafePoint runs restartSafePoint using the round layout of an agent
+// that has the given block time and the default round length.
 func RestartSafePoint(st *Status, block uint64, blockTime time.Duration) (bool, string) {
 	return restartSafePoint(st, block, newSafePointConfig(blockTime, DefaultBlocksPerRound, DefaultBlocksPerPhase))
 }
 
-// NewSafePointAgent returns an agent that is not started, reading its
-// redistribution status from store, for testing SafeToRestart.
+// NewSafePointAgent returns an agent that is not started. It reads its
+// redistribution status from store and is meant for testing SafeToRestart.
 func NewSafePointAgent(tb testing.TB, store storage.StateStorer, blockTime time.Duration) *Agent {
 	tb.Helper()
 	state, err := NewRedistributionState(log.Noop, common.Address{}, store, nil, nil)
@@ -45,8 +45,8 @@ func NewSafePointAgent(tb testing.TB, store storage.StateStorer, blockTime time.
 	}
 }
 
-// ObserveBlock records block as the current block height, as the agent does
-// on each phase check.
+// ObserveBlock records block as the current block height, the same way the
+// agent does on each phase check.
 func (a *Agent) ObserveBlock(block uint64) {
 	a.state.SetCurrentBlock(block)
 	a.blockObservedAt.Store(time.Now().UnixNano())

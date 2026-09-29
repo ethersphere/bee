@@ -24,15 +24,15 @@ const (
 	descriptorPath = "release.json"
 	signaturePath  = "release.sig"
 
-	// maxDescriptorSize and maxSignatureSize are bee-runner's limits: it
+	// maxDescriptorSize and maxSignatureSize are bee-runner's limits. It
 	// refuses a descriptor of 4 MiB or more and a signature set of 1 KiB or
-	// more. Any other limit here would let a registry pad a valid release
-	// so that bee restarts for a release the runner then refuses, or the
-	// other way around.
+	// more. A different limit here would let a registry pad a valid release.
+	// Then bee would restart for a release the runner refuses, or the other way
+	// around.
 	maxDescriptorSize = 4 << 20
 	maxSignatureSize  = 1 << 10
-	// maxSignatures bounds the entries of a signature set, as bee-runner
-	// does.
+	// maxSignatures bounds the number of entries in a signature set, as
+	// bee-runner does.
 	maxSignatures = 32
 )
 
@@ -45,14 +45,14 @@ var (
 )
 
 // releaseKey is the release signing key from bee-runner. id is its lowercase
-// hex encoding, which is also how a signature set names it.
+// hex encoding, which is also how a signature set names the key.
 type releaseKey struct {
 	id  string
 	pub ed25519.PublicKey
 }
 
-// parseReleaseKey parses the key bee-runner hands over. Only the canonical
-// form is accepted: exactly 64 lowercase hex characters, no surrounding
+// parseReleaseKey parses the key that bee-runner hands over. It accepts only
+// the canonical form: exactly 64 lowercase hex characters, with no surrounding
 // whitespace.
 func parseReleaseKey(s string) (*releaseKey, error) {
 	b, err := hex.DecodeString(s)
@@ -62,8 +62,8 @@ func parseReleaseKey(s string) (*releaseKey, error) {
 	return &releaseKey{id: s, pub: ed25519.PublicKey(b)}, nil
 }
 
-// signature and sigSet mirror the registry's detached signature document:
-// KeyID is the hex ed25519 public key, Sig the hex signature over the exact
+// signature and sigSet mirror the registry's detached signature document. KeyID
+// is the hex ed25519 public key. Sig is the hex signature over the exact
 // release.json bytes.
 type signature struct {
 	KeyID string `json:"keyid"`
@@ -130,7 +130,7 @@ func shortKey(s string) string {
 	return s
 }
 
-// descriptor is the subset of the signed release descriptor used here.
+// descriptor is the subset of the signed release descriptor that is used here.
 // Unknown fields, such as the expiresAt of older descriptors, are ignored.
 type descriptor struct {
 	SchemaVersion        int               `json:"schemaVersion"`
@@ -143,8 +143,8 @@ type descriptor struct {
 	Files                map[string]string `json:"files"`
 }
 
-// verifyDescriptor verifies the release key's signature over body and, only then,
-// parses body into the fields that decide an update.
+// verifyDescriptor verifies the release key's signature over body. Only then
+// does it parse body into the fields that decide an update.
 func (k *releaseKey) verifyDescriptor(body, sig []byte, now time.Time) (*release, error) {
 	if err := k.verifySigSet(body, sig); err != nil {
 		return nil, err
@@ -154,8 +154,8 @@ func (k *releaseKey) verifyDescriptor(body, sig []byte, now time.Time) (*release
 		return nil, fmt.Errorf("decode %s: %w", descriptorPath, err)
 	}
 	// Refuse what bee-runner refuses, so bee never restarts for a release the
-	// runner will not install. A version far in the future matters most: the
-	// restart marker would suppress every real release below it.
+	// runner will not install. A version far in the future matters most,
+	// because the restart marker would suppress every real release below it.
 	if d.SchemaVersion != descriptorSchemaVersion {
 		return nil, fmt.Errorf("%w: %d", errSchemaVersion, d.SchemaVersion)
 	}
@@ -182,8 +182,8 @@ func (k *releaseKey) verifyDescriptor(body, sig []byte, now time.Time) (*release
 	return r, nil
 }
 
-// fetchSigned fetches release.json and release.sig and returns the release
-// they describe once the release key's signature verifies.
+// fetchSigned fetches release.json and release.sig. Once the release key's
+// signature verifies, it returns the release they describe.
 func (s *Service) fetchSigned(ctx context.Context) (*release, error) {
 	body, err := s.http.get(ctx, s.descriptorURL, maxDescriptorSize)
 	if err != nil {
