@@ -19,6 +19,10 @@ var (
 	// "2.9.0-rc1-7e703f49-dirty". Only an "-rcN" suffix directly after the
 	// patch number is treated as a pre-release; anything else is build
 	// metadata and does not take part in ordering.
+	// releaseOrRCTagRe matches a release or release candidate tag, the
+	// form bee-runner orders a noRollback barrier by: 2.9.0, v2.9.0-rc1,
+	// 2.9.0-rc.1, or a dev build 2.9.0-unofficial-<12 hex> as its base.
+	releaseOrRCTagRe = regexp.MustCompile(`^v?\d+\.\d+\.\d+(?:-rc\.?\d+)?(?:-unofficial-[0-9a-f]{12})?$`)
 	currentVersionRe = regexp.MustCompile(`^v?(\d+\.\d+\.\d+)(?:-rc\.?(\d+))?(?:[-+].*)?$`)
 )
 
@@ -56,4 +60,13 @@ func parseCurrentVersion(s string) (*semver.Version, bool) {
 		v.PreRelease = semver.PreRelease("rc." + strconv.FormatUint(rc, 10))
 	}
 	return v, true
+}
+
+// parseReleaseOrRC parses a release or release candidate tag exactly as
+// bee-runner does for a noRollback barrier.
+func parseReleaseOrRC(s string) (*semver.Version, bool) {
+	if !releaseOrRCTagRe.MatchString(s) {
+		return nil, false
+	}
+	return parseCurrentVersion(s)
 }

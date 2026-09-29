@@ -387,3 +387,44 @@ func TestOtherChannelLoggedOnce(t *testing.T) {
 		}
 	})
 }
+
+// Past a noRollback release, bee-runner refuses any release carrying an older
+// bee, so a newer descriptor version with an older (or no) bee is not an
+// update to restart for. A fix forward still is.
+func TestNoRollbackBarrier(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name      string
+		tags      []string
+		available bool
+	}{
+		{"revert", []string{"2.8.2"}, false},
+		{"older rc", []string{"2.9.0-rc2"}, false},
+		{"no bee version", []string{"feat-x"}, false},
+		{"same bee", []string{"2.9.0"}, true},
+		{"older dev build", []string{"2.8.2-unofficial-0123456789ab"}, false},
+		{"dev build of it", []string{"2.9.0-unofficial-0123456789ab"}, true},
+		{"fix forward", []string{"2.9.1"}, true},
+		{"highest tag counts", []string{"2.8.2", "2.10.0"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			reg := newRegistry()
+			reg.offer(t, release{version: 2000, tags: tc.tags})
+			o := runnerOptions(reg)
+			o.Runner.NoRollback = "2.9.0"
+			s, err := updatecheck.NewUnstarted(log.Noop, o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := s.Check(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Available != tc.available || got.BelowNoRollback == tc.available {
+				t.Fatalf("got %+v, want available=%v", got, tc.available)
+			}
+		})
+	}
+}

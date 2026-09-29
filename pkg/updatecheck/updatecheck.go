@@ -96,6 +96,10 @@ type Runner struct {
 	// the cache before exiting.
 	Cache  string
 	Binary string
+	// NoRollback is BEE_RUNNER_NO_ROLLBACK, the bee version of a noRollback
+	// release this node ran. bee-runner refuses every release carrying an
+	// older bee, so bee must not restart for one.
+	NoRollback string
 }
 
 // Options configure the update check service.
@@ -190,6 +194,8 @@ type Service struct {
 	runner        bool
 	runnerVersion uint64
 	channel       string
+	// noRollback is Runner.NoRollback parsed, or nil.
+	noRollback *semver.Version
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -198,6 +204,7 @@ type Service struct {
 	mu               sync.Mutex
 	lastAnnounce     string // latest release already announced in the log
 	lastOtherChannel uint64 // latest version on another channel already logged
+	lastBelowBarrier uint64 // latest version below the noRollback barrier already logged
 	restart          restartState
 }
 
@@ -272,6 +279,7 @@ func newService(logger log.Logger, o Options) (*Service, error) {
 		runner:        runner,
 		runnerVersion: runnerVersion,
 		channel:       channel,
+		noRollback:    parseNoRollback(logger, o.Runner),
 		ctx:           ctx,
 		cancel:        cancel,
 	}
@@ -287,6 +295,21 @@ func newService(logger log.Logger, o Options) (*Service, error) {
 
 	logger.Info("checking for newer bee releases", "registry", s.registry, "interval", interval, "signed", trust != nil, "update_restart", restartActive)
 	return s, nil
+}
+
+// parseNoRollback parses BEE_RUNNER_NO_ROLLBACK. An unparsable value is
+// ignored with a warning: bee-runner enforces the barrier either way, and the
+// worst outcome is restarting for a release it then refuses.
+func parseNoRollback(logger log.Logger, r Runner) *semver.Version {
+	if r.NoRollback == "" {
+		return nil
+	}
+	v, ok := parseReleaseOrRC(r.NoRollback)
+	if !ok {
+		logger.Warning("ignoring unparsable noRollback version from bee-runner", "no_rollback", truncate(r.NoRollback, maxLoggedValue))
+		return nil
+	}
+	return v
 }
 
 // parseRunnerVersion parses BEE_RUNNER_VERSION. ok is false when bee was not
@@ -373,6 +396,9 @@ func (s *Service) checkOnce(ctx context.Context) {
 		if res.otherChannel {
 			s.announceOtherChannel(res)
 		}
+		if res.belowNoRollback {
+			s.announceBelowNoRollback(res)
+		}
 		s.logger.Debug("no newer bee release available", res.logValues()...)
 		return
 	}
@@ -409,6 +435,25 @@ func (s *Service) announceOtherChannel(res result) {
 			"latest", res.latest,
 			"latest_version", res.latestVersion,
 			"channels", truncateList(res.channels),
+			"notes", truncate(res.notes, maxLoggedNotes),
+		)
+	}
+}
+
+// announceBelowNoRollback logs, once per descriptor version, a newer release
+// that bee-runner will refuse because it carries a bee older than the
+// noRollback release this node ran.
+func (s *Service) announceBelowNoRollback(res result) {
+	s.mu.Lock()
+	announce := s.lastBelowBarrier != res.latestVersion
+	s.lastBelowBarrier = res.latestVersion
+	s.mu.Unlock()
+
+	if announce {
+		s.logger.Warning("not restarting for a newer release: it carries an older bee than the no-rollback release this node ran, which bee-runner refuses",
+			"no_rollback", s.noRollback.String(),
+			"latest", res.latest,
+			"latest_version", res.latestVersion,
 			"notes", truncate(res.notes, maxLoggedNotes),
 		)
 	}
@@ -457,8 +502,12 @@ type result struct {
 	// higher descriptor version but is not published on the runner's
 	// channel.
 	otherChannel bool
-	channels     []string
-	notes        string
+	// belowNoRollback is set under the runner when the offered release is
+	// newer but carries a bee older than the noRollback barrier, or no bee
+	// version at all.
+	belowNoRollback bool
+	channels        []string
+	notes           string
 	// createdAt is the release's raw createdAt; window is its rollout window
 	// and windowSet whether the release sets it explicitly.
 	createdAt string
@@ -523,7 +572,15 @@ func (s *Service) check(ctx context.Context) (result, error) {
 			return result{}, errNoReleaseVersion
 		}
 		newer, onChannel := r.Version > s.runnerVersion, r.onChannel(s.channel)
-		res.available = newer && onChannel
+		// A newer release version can still carry an older bee (a revert),
+		// which bee-runner refuses past a noRollback release. Restarting for
+		// it would only bring back this same binary.
+		if newer && onChannel && s.noRollback != nil {
+			if v := highestReleaseOrRC(r); v == nil || v.LessThan(*s.noRollback) {
+				res.belowNoRollback = true
+			}
+		}
+		res.available = newer && onChannel && !res.belowNoRollback
 		res.otherChannel = newer && !onChannel
 		return res, nil
 	}
@@ -564,6 +621,20 @@ func latestRelease(r *release) *semver.Version {
 		}
 	}
 	return latest
+}
+
+// highestReleaseOrRC returns the highest release or release candidate among
+// the tags, or nil if there is none. This is how bee-runner reads a release's
+// bee version when ordering it against a noRollback barrier.
+func highestReleaseOrRC(r *release) *semver.Version {
+	var best *semver.Version
+	for _, t := range r.Tags {
+		v, ok := parseReleaseOrRC(t.Tag)
+		if ok && (best == nil || v.Compare(*best) > 0) {
+			best = v
+		}
+	}
+	return best
 }
 
 // Close stops the periodic check and waits for it to finish.

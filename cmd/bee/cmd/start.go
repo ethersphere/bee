@@ -510,6 +510,7 @@ func runnerHandoff() updatecheck.Runner {
 		RolledBack: os.Getenv("BEE_RUNNER_ROLLED_BACK"),
 		Cache:      os.Getenv("BEE_RUNNER_CACHE"),
 		Binary:     os.Getenv("BEE_RUNNER_BINARY"),
+		NoRollback: os.Getenv("BEE_RUNNER_NO_ROLLBACK"),
 	}
 }
 

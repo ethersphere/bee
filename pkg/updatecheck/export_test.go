@@ -48,16 +48,18 @@ type Result struct {
 	LatestVersion   uint64
 	Available       bool
 	OtherChannel    bool
+	BelowNoRollback bool
 }
 
 func (s *Service) Check(ctx context.Context) (Result, error) {
 	r, err := s.check(ctx)
 	return Result{
-		Current:       r.current,
-		Latest:        r.latest,
-		LatestVersion: r.latestVersion,
-		Available:     r.available,
-		OtherChannel:  r.otherChannel,
+		Current:         r.current,
+		Latest:          r.latest,
+		LatestVersion:   r.latestVersion,
+		Available:       r.available,
+		OtherChannel:    r.otherChannel,
+		BelowNoRollback: r.belowNoRollback,
 	}, err
 }
 
