@@ -20,7 +20,7 @@ import (
 )
 
 // newViewStorage uses a single sharky shard so that a write after a release takes the released slot.
-func newViewStorage(tb testing.TB) (transaction.Storage, transaction.SamplingViewer) {
+func newViewStorage(tb testing.TB) (transaction.Storage, *sharky.Store) {
 	tb.Helper()
 	sh, err := sharky.New(&dirFS{basedir: tb.TempDir()}, 1, swarm.SocMaxChunkSize)
 	if err != nil {
@@ -36,11 +36,7 @@ func newViewStorage(tb testing.TB) (transaction.Storage, transaction.SamplingVie
 			tb.Fatal(err)
 		}
 	})
-	viewer, ok := st.(transaction.SamplingViewer)
-	if !ok {
-		tb.Fatal("storage does not implement SamplingViewer")
-	}
-	return st, viewer
+	return st, sh
 }
 
 func putViewChunks(tb testing.TB, st transaction.Storage, chs ...swarm.Chunk) {
@@ -68,7 +64,7 @@ func deleteViewChunk(t *testing.T, st transaction.Storage, addr swarm.Address) {
 	}
 }
 
-func assertViewNotFound(t *testing.T, view transaction.SamplingView, addr swarm.Address) {
+func assertViewNotFound(t *testing.T, view *transaction.SamplingView, addr swarm.Address) {
 	t.Helper()
 	_, err := view.GetInto(context.Background(), addr, make([]byte, swarm.SocMaxChunkSize))
 	if !errors.Is(err, storage.ErrNotFound) {
@@ -76,9 +72,9 @@ func assertViewNotFound(t *testing.T, view transaction.SamplingView, addr swarm.
 	}
 }
 
-func openView(tb testing.TB, viewer transaction.SamplingViewer) transaction.SamplingView {
+func openView(tb testing.TB, sh transaction.Sharky, st transaction.ReadOnlyStore) *transaction.SamplingView {
 	tb.Helper()
-	view, err := viewer.NewSamplingView(context.Background(), swarm.ZeroAddress.Bytes(), 0)
+	view, err := transaction.NewSamplingView(context.Background(), sh, st, swarm.ZeroAddress.Bytes(), 0)
 	if err != nil {
 		tb.Fatal(err)
 	}
@@ -86,7 +82,40 @@ func openView(tb testing.TB, viewer transaction.SamplingViewer) transaction.Samp
 	return view
 }
 
-func assertViewReads(t *testing.T, view transaction.SamplingView, addr swarm.Address, want []byte) {
+// afterScanStore calls afterScan once the location table scan of its index is done.
+type afterScanStore struct {
+	transaction.ReadOnlyStore
+	afterScan func()
+}
+
+func (s afterScanStore) IndexStore() storage.Reader {
+	return afterScanReader{s.ReadOnlyStore.IndexStore(), s.afterScan}
+}
+
+type afterScanReader struct {
+	storage.Reader
+	afterScan func()
+}
+
+func (r afterScanReader) Iterate(q storage.Query, fn storage.IterateFn) error {
+	err := r.Reader.Iterate(q, fn)
+	r.afterScan()
+	return err
+}
+
+// afterReadSharky calls afterRead after each sharky read.
+type afterReadSharky struct {
+	transaction.Sharky
+	afterRead func()
+}
+
+func (s afterReadSharky) Read(ctx context.Context, loc sharky.Location, buf []byte) error {
+	err := s.Sharky.Read(ctx, loc, buf)
+	s.afterRead()
+	return err
+}
+
+func assertViewReads(t *testing.T, view *transaction.SamplingView, addr swarm.Address, want []byte) {
 	t.Helper()
 	buf := make([]byte, swarm.SocMaxChunkSize)
 	n, err := view.GetInto(context.Background(), addr, buf)
@@ -101,11 +130,11 @@ func assertViewReads(t *testing.T, view transaction.SamplingView, addr swarm.Add
 func TestSamplingViewReadsSnapshotLocations(t *testing.T) {
 	t.Parallel()
 
-	st, viewer := newViewStorage(t)
+	st, sh := newViewStorage(t)
 	chs := test.GenerateTestRandomChunks(10)
 	putViewChunks(t, st, chs...)
 
-	view := openView(t, viewer)
+	view := openView(t, sh, st)
 	if view.Len() != len(chs) {
 		t.Fatalf("table size %d, want %d", view.Len(), len(chs))
 	}
@@ -120,8 +149,8 @@ func TestSamplingViewReadsSnapshotLocations(t *testing.T) {
 func TestSamplingViewFallsBackForNewChunks(t *testing.T) {
 	t.Parallel()
 
-	st, viewer := newViewStorage(t)
-	view := openView(t, viewer)
+	st, sh := newViewStorage(t)
+	view := openView(t, sh, st)
 
 	ch := test.GenerateTestRandomChunk()
 	putViewChunks(t, st, ch)
@@ -135,16 +164,15 @@ func TestSamplingViewFallsBackForNewChunks(t *testing.T) {
 func TestSamplingViewHonorsReleaseDuringScan(t *testing.T) {
 	t.Parallel()
 
-	st, viewer := newViewStorage(t)
+	st, sh := newViewStorage(t)
 	ch := test.GenerateTestRandomChunk()
 	putViewChunks(t, st, ch)
 
 	// Release the chunk's slot and reuse it while the table is being built.
-	transaction.SetAfterTableScan(st, func() {
+	view := openView(t, sh, afterScanStore{st, func() {
 		deleteViewChunk(t, st, ch.Address())
 		putViewChunks(t, st, test.GenerateTestRandomChunks(16)...)
-	})
-	view := openView(t, viewer)
+	}})
 
 	assertViewNotFound(t, view, ch.Address())
 	if view.Misses() != 1 {
@@ -155,11 +183,11 @@ func TestSamplingViewHonorsReleaseDuringScan(t *testing.T) {
 func TestSamplingViewFallsBackForReleasedSlots(t *testing.T) {
 	t.Parallel()
 
-	st, viewer := newViewStorage(t)
+	st, sh := newViewStorage(t)
 	ch := test.GenerateTestRandomChunk()
 	putViewChunks(t, st, ch)
 
-	view := openView(t, viewer)
+	view := openView(t, sh, st)
 
 	deleteViewChunk(t, st, ch.Address())
 	putViewChunks(t, st, test.GenerateTestRandomChunks(16)...) // one takes the released slot
@@ -173,15 +201,14 @@ func TestSamplingViewFallsBackForReleasedSlots(t *testing.T) {
 func TestSamplingViewFallsBackForSlotReleasedDuringRead(t *testing.T) {
 	t.Parallel()
 
-	st, viewer := newViewStorage(t)
+	st, sh := newViewStorage(t)
 	ch := test.GenerateTestRandomChunk()
 	putViewChunks(t, st, ch)
 
-	view := openView(t, viewer)
-	transaction.SetSamplingViewAfterRead(view, func() {
+	view := openView(t, afterReadSharky{sh, func() {
 		deleteViewChunk(t, st, ch.Address())
 		putViewChunks(t, st, test.GenerateTestRandomChunks(16)...)
-	})
+	}}, st)
 
 	assertViewNotFound(t, view, ch.Address())
 }
@@ -189,11 +216,11 @@ func TestSamplingViewFallsBackForSlotReleasedDuringRead(t *testing.T) {
 func TestSamplingViewCanceledContext(t *testing.T) {
 	t.Parallel()
 
-	_, viewer := newViewStorage(t)
+	st, sh := newViewStorage(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	if _, err := viewer.NewSamplingView(ctx, swarm.ZeroAddress.Bytes(), 0); !errors.Is(err, context.Canceled) {
+	if _, err := transaction.NewSamplingView(ctx, sh, st, swarm.ZeroAddress.Bytes(), 0); !errors.Is(err, context.Canceled) {
 		t.Fatalf("got error %v, want %v", err, context.Canceled)
 	}
 }
@@ -201,13 +228,13 @@ func TestSamplingViewCanceledContext(t *testing.T) {
 func TestSamplingViewReadsCurrentVersionOfReplacedChunk(t *testing.T) {
 	t.Parallel()
 
-	st, viewer := newViewStorage(t)
+	st, sh := newViewStorage(t)
 	addr := swarm.RandAddress(t)
 	v1 := swarm.NewChunk(addr, []byte("version in the table"))
 	v2 := swarm.NewChunk(addr, []byte("version written during the round"))
 	putViewChunks(t, st, v1)
 
-	view := openView(t, viewer)
+	view := openView(t, sh, st)
 
 	err := st.Run(context.Background(), func(s transaction.Store) error {
 		return s.ChunkStore().Replace(context.Background(), v2, false)
@@ -226,12 +253,12 @@ func TestSamplingViewReadsCurrentVersionOfReplacedChunk(t *testing.T) {
 func TestSamplingViewConcurrentReadsAndWrites(t *testing.T) {
 	t.Parallel()
 
-	st, viewer := newViewStorage(t)
+	st, sh := newViewStorage(t)
 	const deleted = 32
 	chs := test.GenerateTestRandomChunks(64)
 	putViewChunks(t, st, chs...)
 
-	view := openView(t, viewer)
+	view := openView(t, sh, st)
 
 	var g errgroup.Group
 	for range 4 {
@@ -274,10 +301,10 @@ func TestSamplingViewConcurrentReadsAndWrites(t *testing.T) {
 }
 
 func BenchmarkSamplingViewGetInto(b *testing.B) {
-	st, viewer := newViewStorage(b)
+	st, sh := newViewStorage(b)
 	chs := test.GenerateTestRandomChunks(1000)
 	putViewChunks(b, st, chs...)
-	view := openView(b, viewer)
+	view := openView(b, sh, st)
 	buf := make([]byte, swarm.SocMaxChunkSize)
 	ctx := context.Background()
 
